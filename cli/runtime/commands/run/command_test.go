@@ -1,6 +1,7 @@
 package run
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -186,6 +187,9 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	withTrailing := append(append([]byte(nil), encoded...), 0)
 	if compiled, err := loadCompiledArtifact(withTrailing); err == nil || compiled != nil || !strings.Contains(err.Error(), "trailing 1 byte") {
 		t.Fatalf("artifact with trailing byte = %v, %v; want rejection", compiled, err)
+	}
+	if compiled, err := loadCompiledArtifactReader(bytes.NewReader(withTrailing), -1); err == nil || compiled != nil || !strings.Contains(err.Error(), "trailing data") {
+		t.Fatalf("streamed artifact with trailing byte = %v, %v; want rejection", compiled, err)
 	}
 }
 

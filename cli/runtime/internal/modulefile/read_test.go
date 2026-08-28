@@ -1,6 +1,7 @@
 package modulefile
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,5 +74,40 @@ func TestReadUsesExactSizedResult(t *testing.T) {
 	}
 	if cap(got) != len(got) {
 		t.Fatalf("result capacity = %d, want exact length %d", cap(got), len(got))
+	}
+}
+
+func TestOpenSourceOrArtifactStreamsRegularArtifact(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "large.wago")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(MaxBytes + 1); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if _, err := file.WriteAt([]byte("WAGO\x01"), 0); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	input, err := OpenSourceOrArtifact(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	if !input.IsArtifact() {
+		t.Fatal("compiled artifact was classified as source")
+	}
+	if size, ok := input.Size(); !ok || size != MaxBytes+1 {
+		t.Fatalf("artifact size = %d, %v; want %d, true", size, ok, MaxBytes+1)
+	}
+	prefix := make([]byte, 5)
+	if _, err := io.ReadFull(input, prefix); err != nil || string(prefix) != "WAGO\x01" {
+		t.Fatalf("streamed artifact prefix = %q, %v", prefix, err)
 	}
 }

@@ -2,7 +2,9 @@ package run
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/ui"
@@ -12,12 +14,17 @@ import (
 )
 
 func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runtime, cache artifactcache.Cache) *wago.Module {
-	source, err := modulefile.ReadSourceOrArtifact(file)
+	input, err := modulefile.OpenSourceOrArtifact(file)
 	if err != nil {
 		ui.Fatal("%v", err)
 	}
-	if wago.IsCompiled(source) {
-		compiled, err := loadCompiledArtifact(source)
+	defer input.Close()
+	if input.IsArtifact() {
+		size, regular := input.Size()
+		if !regular {
+			size = -1
+		}
+		compiled, err := loadCompiledArtifactReader(input, size)
 		if err != nil {
 			ui.Fatal("%v", err)
 		}
@@ -27,6 +34,10 @@ func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runti
 		}
 		return module
 	}
+	source, err := input.ReadSource()
+	if err != nil {
+		ui.Fatal("%v", err)
+	}
 	module, err := cache.LoadOrCompile(source, config, runtime)
 	if err != nil {
 		ui.Fatal("%v", err)
@@ -35,14 +46,32 @@ func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runti
 }
 
 func loadCompiledArtifact(source []byte) (*wago.Compiled, error) {
+	return loadCompiledArtifactReader(bytes.NewReader(source), int64(len(source)))
+}
+
+func loadCompiledArtifactReader(source io.Reader, size int64) (*wago.Compiled, error) {
 	compiled := new(wago.Compiled)
-	read, err := compiled.ReadFromWithLimits(bytes.NewReader(source), wago.DefaultArtifactLimits())
+	read, err := compiled.ReadFromWithLimits(source, wago.DefaultArtifactLimits())
 	if err != nil {
+		_ = compiled.Close()
 		return nil, err
 	}
-	if read != int64(len(source)) {
+	if size >= 0 && read != size {
 		_ = compiled.Close()
-		return nil, fmt.Errorf("trailing %d byte(s) after compiled sections", int64(len(source))-read)
+		if read < size {
+			return nil, fmt.Errorf("trailing %d byte(s) after compiled sections", size-read)
+		}
+		return nil, fmt.Errorf("compiled artifact changed size while being read")
+	}
+	var trailing [1]byte
+	n, trailingErr := source.Read(trailing[:])
+	if n != 0 {
+		_ = compiled.Close()
+		return nil, fmt.Errorf("trailing data after compiled sections")
+	}
+	if trailingErr != nil && !errors.Is(trailingErr, io.EOF) {
+		_ = compiled.Close()
+		return nil, trailingErr
 	}
 	return compiled, nil
 }

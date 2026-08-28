@@ -17,65 +17,121 @@ const MaxBytes int64 = 256 << 20
 // MaxArtifactBytes matches the public artifact decoder plus framing overhead.
 const MaxArtifactBytes int64 = (1 << 30) + (256 << 20) + 64
 
+// Input is one bounded module input. Compiled artifacts remain streaming;
+// source modules can be materialized exactly once for compilation.
+type Input struct {
+	path     string
+	file     *os.File
+	reader   *io.LimitedReader
+	size     int64
+	regular  bool
+	artifact bool
+	limit    int64
+}
+
 // Read reads path without accepting more than MaxBytes.
 func Read(path string) ([]byte, error) {
-	return read(path, false)
+	input, err := open(path, false)
+	if err != nil {
+		return nil, err
+	}
+	defer input.Close()
+	return input.ReadSource()
 }
 
-// ReadSourceOrArtifact reads a run-command input, selecting the larger decoder
-// ceiling only when the input carries Wago's compiled-artifact magic.
-func ReadSourceOrArtifact(path string) ([]byte, error) {
-	return read(path, true)
+// OpenSourceOrArtifact inspects a run-command input without materializing a
+// compiled artifact. The caller must close the returned input.
+func OpenSourceOrArtifact(path string) (*Input, error) {
+	return open(path, true)
 }
 
-func read(path string, allowArtifact bool) ([]byte, error) {
+func open(path string, allowArtifact bool) (*Input, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
 	info, err := file.Stat()
 	if err != nil {
+		file.Close()
 		return nil, err
 	}
-	if info.Mode().IsRegular() {
-		limit := MaxBytes
-		if allowArtifact {
-			var prefix [5]byte
-			n, readErr := io.ReadFull(file, prefix[:])
-			if readErr != nil && !errors.Is(readErr, io.EOF) && !errors.Is(readErr, io.ErrUnexpectedEOF) {
-				return nil, readErr
-			}
-			limit = inputLimit(prefix[:n])
-			if _, err := file.Seek(0, io.SeekStart); err != nil {
-				return nil, err
-			}
-		}
-		if info.Size() > limit {
-			return nil, fmt.Errorf("module %q is %d bytes; CLI limit is %d bytes", path, info.Size(), limit)
-		}
-		// Reserve one sentinel byte so growth after Stat is detected without
-		// io.ReadAll's geometric over-allocation.
-		readLimit := info.Size() + 1
-		data := make([]byte, int(readLimit))
-		n, err := io.ReadFull(file, data)
-		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
-			return nil, err
-		}
-		if int64(n) > limit {
-			return nil, fmt.Errorf("module %q exceeds CLI limit of %d bytes", path, limit)
-		}
-		if int64(n) > info.Size() {
-			return nil, fmt.Errorf("module %q changed size while being read", path)
-		}
-		return data[:n:n], nil
-	}
-	if !allowArtifact {
-		return readStream(path, file, MaxBytes)
-	}
 	buffered := bufio.NewReaderSize(file, 5)
-	prefix, _ := buffered.Peek(5)
-	return readStream(path, buffered, inputLimit(prefix))
+	limit := MaxBytes
+	artifact := false
+	if allowArtifact {
+		prefix, peekErr := buffered.Peek(5)
+		if peekErr != nil && !errors.Is(peekErr, io.EOF) {
+			file.Close()
+			return nil, peekErr
+		}
+		artifact = wago.IsCompiled(prefix)
+		limit = inputLimit(prefix)
+	}
+	regular := info.Mode().IsRegular()
+	if regular && info.Size() > limit {
+		file.Close()
+		return nil, fmt.Errorf("module %q is %d bytes; CLI limit is %d bytes", path, info.Size(), limit)
+	}
+	return &Input{
+		path: path, file: file, reader: &io.LimitedReader{R: buffered, N: limit + 1},
+		size: info.Size(), regular: regular, artifact: artifact, limit: limit,
+	}, nil
+}
+
+// Read implements io.Reader for streaming artifact decoding.
+func (input *Input) Read(p []byte) (int, error) {
+	if input == nil || input.reader == nil {
+		return 0, io.EOF
+	}
+	return input.reader.Read(p)
+}
+
+// Close closes the underlying module input.
+func (input *Input) Close() error {
+	if input == nil || input.file == nil {
+		return nil
+	}
+	err := input.file.Close()
+	input.file = nil
+	return err
+}
+
+// IsArtifact reports whether the input carries Wago compiled-artifact magic.
+func (input *Input) IsArtifact() bool { return input != nil && input.artifact }
+
+// Size reports the stable pre-read size of a regular input.
+func (input *Input) Size() (int64, bool) {
+	if input == nil || !input.regular {
+		return 0, false
+	}
+	return input.size, true
+}
+
+// ReadSource materializes a bounded source module with exact slice capacity.
+func (input *Input) ReadSource() ([]byte, error) {
+	if input == nil {
+		return nil, fmt.Errorf("module input is nil")
+	}
+	if input.artifact {
+		return nil, fmt.Errorf("compiled artifact must be decoded as a stream")
+	}
+	if !input.regular {
+		return readStream(input.path, input, input.limit)
+	}
+	// Reserve one sentinel byte so growth after Stat is detected without
+	// io.ReadAll's geometric over-allocation.
+	data := make([]byte, int(input.size+1))
+	n, err := io.ReadFull(input, data)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil, err
+	}
+	if int64(n) > input.limit {
+		return nil, fmt.Errorf("module %q exceeds CLI limit of %d bytes", input.path, input.limit)
+	}
+	if int64(n) > input.size {
+		return nil, fmt.Errorf("module %q changed size while being read", input.path)
+	}
+	return data[:n:n], nil
 }
 
 func inputLimit(prefix []byte) int64 {
