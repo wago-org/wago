@@ -134,6 +134,9 @@ functions:
 		var liveMasks, callMasks []uint64
 		var maskExtra gcFrameLivenessExtra
 		if arm64BodyUsesEH(m.Code[function].BodyBytes, &classifier) {
+			if len(plan.LocalIndexes) > shared.GCFrameRootLimit {
+				return reject("function %d has %d simultaneously live collector locals, limit %d", function, len(plan.LocalIndexes), shared.GCFrameRootLimit)
+			}
 			liveMasks, callMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.LocalIndexes), &maskExtra, &classifier)
 		} else {
 			liveMasks, err = gcFrameLocalLivenessWithClassifier(m.Code[function].BodyBytes, plan.LocalIndexes, &callMasks, &maskExtra, &classifier)

@@ -528,8 +528,8 @@ func gcFrameAllLiveMasks(body []byte, localRoots int, extra *gcFrameLivenessExtr
 }
 
 func gcFrameAllLiveMasksWithClassifier(body []byte, localRoots int, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) (allocations, calls []uint64, err error) {
-	if localRoots < 0 || localRoots > shared.GCFrameTrackedLocalLimit {
-		return nil, nil, fmt.Errorf("GC conservative liveness tracks %d locals, limit %d", localRoots, shared.GCFrameTrackedLocalLimit)
+	if localRoots < 0 || localRoots > shared.GCFrameRootLimit {
+		return nil, nil, fmt.Errorf("GC conservative liveness tracks %d locals, limit %d", localRoots, shared.GCFrameRootLimit)
 	}
 	wordCount := (localRoots + 63) / 64
 	if wordCount == 0 {

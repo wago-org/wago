@@ -242,6 +242,13 @@ func TestGCFrameLocalLivenessArenaBudget(t *testing.T) {
 	}
 }
 
+func TestGCFrameConservativeLivenessRejectsWideRootsBeforeSiteAllocation(t *testing.T) {
+	_, _, err := gcFrameAllLiveMasks([]byte{0x0b}, shared.GCFrameRootLimit+1, nil)
+	if err == nil || !strings.Contains(err.Error(), "conservative liveness tracks 1025") {
+		t.Fatalf("wide conservative root error = %v", err)
+	}
+}
+
 func BenchmarkGCFrameLocalLivenessRootCounts(b *testing.B) {
 	for _, roots := range []int{64, 65, 128, 256, 1024} {
 		b.Run(fmt.Sprintf("roots=%d", roots), func(b *testing.B) {
