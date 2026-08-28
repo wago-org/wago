@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"runtime/debug"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/wago-org/wago"
@@ -42,9 +41,10 @@ const DefaultMaxBytes int64 = 512 << 20
 // maxPruneEntries bounds both cache file count and prune's in-memory index.
 const maxPruneEntries = 4096
 
-const cacheHitPruneInterval = 64
-
-var cacheHitPruneCount atomic.Uint64
+const (
+	cachePruneInterval = 5 * time.Minute
+	cachePruneMarker   = ".wago-prune"
+)
 
 var defaultIdentity = sync.OnceValues(func() ([sha256.Size]byte, bool) {
 	info, ok := debug.ReadBuildInfo()
@@ -88,13 +88,8 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 	cacheable = cacheable && cacheableGeneration
 	if cacheable {
 		if compiled, hit := loadArtifact(path); hit {
-			// Retry missed maintenance on the first process hit and periodically
-			// thereafter without turning every warm load into a full cache scan.
-			hits := cacheHitPruneCount.Add(1)
-			if hits == 1 || hits%cacheHitPruneInterval == 0 {
-				if err := cache.prune(); err != nil {
-					cache.report(err)
-				}
+			if err := cache.pruneIfDue(time.Now()); err != nil {
+				cache.report(err)
 			}
 			return prepared.Adopt(compiled)
 		}
@@ -109,10 +104,41 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 	}
 	if err := publishArtifact(path, module.Compiled()); err != nil {
 		cache.report(err)
-	} else if err := cache.prune(); err != nil {
+	} else if err := cache.pruneAndMark(); err != nil {
 		cache.report(err)
 	}
 	return module, nil
+}
+
+func (cache Cache) pruneIfDue(now time.Time) error {
+	if cache.MaxBytes < 0 || cache.Dir == "" {
+		return nil
+	}
+	marker := filepath.Join(cache.Dir, cachePruneMarker)
+	info, err := os.Lstat(marker)
+	if err == nil {
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("cache prune marker %s is not a regular file", marker)
+		}
+		age := now.Sub(info.ModTime())
+		if age >= 0 && age < cachePruneInterval {
+			return nil
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return cache.pruneAndMark()
+}
+
+func (cache Cache) pruneAndMark() error {
+	if err := cache.prune(); err != nil {
+		return err
+	}
+	if cache.MaxBytes < 0 || cache.Dir == "" {
+		return nil
+	}
+	marker := filepath.Join(cache.Dir, cachePruneMarker)
+	return atomicfile.ReplaceFile(marker, atomicfile.Options{Mode: 0o600}, func(io.Writer) error { return nil })
 }
 
 func (cache Cache) report(err error) {

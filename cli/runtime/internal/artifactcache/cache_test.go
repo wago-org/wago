@@ -91,8 +91,21 @@ func TestCacheHitRetriesPrune(t *testing.T) {
 		t.Fatal(err)
 	}
 	cache.MaxBytes = info.Size()
-	previousHits := cacheHitPruneCount.Swap(0)
-	t.Cleanup(func() { cacheHitPruneCount.Store(previousHits) })
+	module, err = cache.LoadOrCompile(constantModule(), config, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := module.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(old); err != nil {
+		t.Fatalf("recent maintenance did not skip warm-hit scan: %v", err)
+	}
+	marker := filepath.Join(dir, cachePruneMarker)
+	stale := time.Now().Add(-cachePruneInterval - time.Second)
+	if err := os.Chtimes(marker, stale, stale); err != nil {
+		t.Fatal(err)
+	}
 	module, err = cache.LoadOrCompile(constantModule(), config, rt)
 	if err != nil {
 		t.Fatal(err)
