@@ -732,6 +732,8 @@ type externrefSlot struct {
 	nextFree   uint32
 }
 
+const externrefInternalSlot = ^uint32(0)
+
 func newReferenceStore(private bool) *referenceStore {
 	return &referenceStore{private: private, runtimeClosed: private}
 }
@@ -1675,7 +1677,7 @@ func (s *referenceStore) registerHostFuncRef(owner *HostFuncRef) (uint32, error)
 		return 0, fmt.Errorf("wago: reference store has too many live objects")
 	}
 	s.liveObjects++
-	s.externrefs = append(s.externrefs, externrefSlot{value: owner})
+	s.externrefs = append(s.externrefs, externrefSlot{value: owner, nextFree: externrefInternalSlot})
 	return uint32(len(s.externrefs)), nil
 }
 
@@ -1703,7 +1705,7 @@ func (s *referenceStore) registerHostFuncRefBindingLocked(binding *hostFuncRefDi
 	if len(s.externrefs) >= int(hostFuncRefDispatchBit-1) {
 		return 0, fmt.Errorf("wago: reference store has too many host dispatch bindings")
 	}
-	s.externrefs = append(s.externrefs, externrefSlot{value: binding, generation: 1})
+	s.externrefs = append(s.externrefs, externrefSlot{value: binding, generation: 1, nextFree: externrefInternalSlot})
 	return uint32(len(s.externrefs)), nil
 }
 
@@ -2531,11 +2533,7 @@ func (s *referenceStore) releaseExternref(token uint64) bool {
 		return false
 	}
 	slot := &s.externrefs[index-1]
-	if slot.generation != generation || slot.value == releasedExternrefValue {
-		return false
-	}
-	switch slot.value.(type) {
-	case *HostFuncRef, *hostFuncRefDispatchBinding:
+	if slot.generation != generation || slot.value == releasedExternrefValue || slot.nextFree == externrefInternalSlot {
 		return false
 	}
 	slot.value = releasedExternrefValue

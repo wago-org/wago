@@ -344,6 +344,22 @@ func TestRuntimeExternrefExplicitReleaseReusesSlot(t *testing.T) {
 	}
 }
 
+func TestRuntimeExternrefReleaseUsesSlotOwnershipNotPayloadType(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	payload := &HostFuncRef{}
+	ref, err := rt.NewExternRef(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rt.ReleaseExternRef(ref) {
+		t.Fatal("release of user-owned HostFuncRef payload failed")
+	}
+	if _, ok := rt.ExternRefValue(ref); ok {
+		t.Fatal("released HostFuncRef payload still resolved")
+	}
+}
+
 func TestExternrefCodecCarriesStructureButNoStoreIdentity(t *testing.T) {
 	c := compileExplicitArtifact(t, externrefControlModule())
 	blob, err := c.MarshalBinary()
