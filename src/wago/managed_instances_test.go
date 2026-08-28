@@ -2,9 +2,11 @@ package wago
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
@@ -252,6 +254,40 @@ func TestManagedVoidTableValidationRejectsNullAndWrongSignature(t *testing.T) {
 			t.Fatal("non-void table entry accepted")
 		}
 	})
+}
+
+func TestManagedInvokeVoidTableContextInterruptsNativeLoop(t *testing.T) {
+	ext := &managedTestExtension{}
+	rt := NewRuntime()
+	defer rt.Close()
+	if err := rt.Use(ext); err != nil {
+		t.Fatal(err)
+	}
+	mod, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x01})),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x03, 0x40, 0x0c, 0x00, 0x0b, 0x0b}))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	owned, err := ext.manager.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owned.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if err := owned.InvokeVoidTable(ctx, 0); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("infinite table invocation = %v, want context deadline", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("table cancellation took %v, want bounded interruption", elapsed)
+	}
 }
 
 func TestManagedCapabilityGuardHelpers(t *testing.T) {

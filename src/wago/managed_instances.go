@@ -340,13 +340,15 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
+	stopCancel := in.startCancellationWatch(ctx, in.trap)
+	defer stopCancel()
 	if in.syncMode {
-		return in.callNativeSync(base)
+		return contextInterruptError(ctx, in.callNativeSyncWithTrapContext(base, in.trap, ctx))
 	}
 	if err := in.callNativeAsync(base, false); err != nil {
-		return err
+		return contextInterruptError(ctx, err)
 	}
-	return in.replayHostLog()
+	return contextInterruptError(ctx, in.replayHostLog())
 }
 
 func (m *InstanceManager) ensureVoidDispatcher() (uintptr, error) {
