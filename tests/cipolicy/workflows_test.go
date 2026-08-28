@@ -191,6 +191,85 @@ func splitWorkflowNeeds(value string) map[string]struct{} {
 	return needs
 }
 
+func TestStableReleasePublishesOnlyExactQualifiedArtifacts(t *testing.T) {
+	releaseWorkflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := string(releaseWorkflow)
+	if strings.Contains(release, "\n  push:") || strings.Contains(release, `tags: ["v*"]`) {
+		t.Fatal("stable publication must not start automatically from a version tag")
+	}
+	for _, required := range []string{
+		`workflow_dispatch:`,
+		`source_sha:`,
+		`stable qualification must be dispatched from the main workflow`,
+		`actions: read`,
+		`contents: write`,
+		`Resolve successful CI run for the exact SHA`,
+		`stable-source-qualification-${{ steps.inputs.outputs.source_sha }}-${{ steps.ci.outputs.run_attempt }}`,
+		`scripts/release-qualification.sh verify-ci`,
+		`Smoke-test the files that will be published`,
+		`scripts/release-qualification.sh create-release`,
+		`needs: [prepare, build, manifest]`,
+		`ref: ${{ needs.prepare.outputs.source_sha }}`,
+		`existing tag $VERSION does not point directly to qualified commit $SOURCE_SHA`,
+		`published stable release $VERSION already exists; refusing to replace it`,
+		`--json isDraft,tagName`,
+		`RESUME_DRAFT: ${{ steps.stable.outputs.resume_draft }}`,
+		`gh release upload "$VERSION" --repo "${{ github.repository }}"`,
+		`stable release $VERSION became published before draft recovery`,
+		`draft release assets do not exactly match the qualified manifest`,
+		`releases/generate-notes`,
+		`--verify-tag`,
+		`--draft`,
+		`--draft=false`,
+		`release/release-manifest.json`,
+	} {
+		if !strings.Contains(release, required) {
+			t.Errorf("stable release workflow is missing exact qualification policy %q", required)
+		}
+	}
+	jobs := workflowJobBlocks(release)
+	if !strings.Contains(jobs["build"], "scripts/build-release-assets.sh") {
+		t.Fatal("stable build job does not create release assets")
+	}
+	if !strings.Contains(jobs["build"], "scripts/smoke-release-assets.sh") {
+		t.Fatal("stable build job does not smoke-test release assets")
+	}
+	if strings.Contains(jobs["publish"], "scripts/build-release-assets.sh") {
+		t.Fatal("stable publish job rebuilds release assets after qualification")
+	}
+	if !strings.Contains(jobs["publish"], `if [ "$RESUME_DRAFT" = "true" ]; then`) ||
+		!strings.Contains(jobs["publish"], `--clobber "${assets[@]}"`) {
+		t.Fatal("stable publication does not restrict asset replacement to a resumable draft")
+	}
+	for _, job := range []string{"prepare", "build", "manifest"} {
+		if !strings.Contains(jobs[job], "overwrite: true") {
+			t.Errorf("stable %s artifacts cannot be replaced safely by a workflow retry", job)
+		}
+	}
+
+	ciWorkflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci := string(ciWorkflow)
+	ciAggregate := workflowJobBlocks(ci)["ci-ok"]
+	for _, required := range []string{
+		`actions/checkout@11d5960a326750d5838078e36cf38b85af677262`,
+		`ref: ${{ github.sha }}`,
+		`Record exact main-branch qualification`,
+		`CI_NEEDS: ${{ toJSON(needs) }}`,
+		`stable-source-qualification-${{ github.sha }}-${{ github.run_attempt }}`,
+		`scripts/release-qualification.sh record-ci stable-qualification/ci-qualification.json`,
+	} {
+		if !strings.Contains(ciAggregate, required) {
+			t.Errorf("CI aggregate job is missing stable qualification record %q", required)
+		}
+	}
+}
+
 func TestWindowsWABTInstallIsPinnedAndVerified(t *testing.T) {
 	workflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/ci.yml"))
 	if err != nil {
