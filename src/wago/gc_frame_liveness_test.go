@@ -8,6 +8,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func gcFrameLivenessBenchmarkBody(n int) []byte {
@@ -249,6 +250,29 @@ func TestGCFrameLocalLivenessRejectsUnrepresentableBrTable(t *testing.T) {
 	}
 }
 
+func TestGCFrameLocalLivenessDeduplicatesRepeatedWideBranchTable(t *testing.T) {
+	const roots, targets = 30_000, 100_000
+	indexes := make([]uint32, roots)
+	for i := range indexes {
+		indexes[i] = uint32(i)
+	}
+	if _, err := gcFrameLocalLiveness(gcFrameRepeatedBranchTableBody(targets), indexes, nil, nil); err != nil {
+		t.Fatalf("repeated-target br_table liveness: %v", err)
+	}
+}
+
+func TestGCFrameLocalLivenessBudgetsDistinctWideBranchTableEdges(t *testing.T) {
+	const roots, targets = 8192, 30_000
+	indexes := make([]uint32, roots)
+	for i := range indexes {
+		indexes[i] = uint32(i)
+	}
+	_, err := gcFrameLocalLiveness(gcFrameDistinctBranchTableBody(targets), indexes, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "graph exceeds 8388608 bitmap-word implementation limit") {
+		t.Fatalf("distinct-target br_table liveness error = %v", err)
+	}
+}
+
 func TestGCFrameLocalLivenessAllocationBudget(t *testing.T) {
 	if got := unsafe.Sizeof(gcLiveNode{}); got != 32 {
 		t.Fatalf("gcLiveNode size = %d, want 32 bytes", got)
@@ -276,6 +300,12 @@ func TestGCFrameLocalLivenessArenaBudget(t *testing.T) {
 	}
 	if gcFrameLivenessArenaFits(boundary+1, words) {
 		t.Fatal("liveness arena accepted a byte above its 64 MiB boundary")
+	}
+	if !gcFrameLivenessWorkFits(1, boundary-1, words) {
+		t.Fatal("liveness work rejected its exact 64 MiB-equivalent boundary")
+	}
+	if gcFrameLivenessWorkFits(1, boundary, words) {
+		t.Fatal("liveness work accepted one unit above its 64 MiB-equivalent boundary")
 	}
 }
 
@@ -376,4 +406,47 @@ func BenchmarkGCFrameLocalLiveness(b *testing.B) {
 			b.Fatalf("mask counts = %d allocations, %d calls; want 1024, 0", len(masks), len(callMasks))
 		}
 	}
+}
+
+func BenchmarkGCFrameLocalLivenessRepeatedWideBranchTable(b *testing.B) {
+	const roots, targets = 30_000, 250_000
+	indexes := make([]uint32, roots)
+	for i := range indexes {
+		indexes[i] = uint32(i)
+	}
+	body := gcFrameRepeatedBranchTableBody(targets)
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.ReportMetric(targets, "raw-edges/op")
+	for i := 0; i < b.N; i++ {
+		if _, err := gcFrameLocalLiveness(body, indexes, nil, nil); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func gcFrameRepeatedBranchTableBody(targets int) []byte {
+	body := make([]byte, 0, targets+16)
+	body = append(body, 0x02, 0x40, 0x41, 0x00, 0x0e) // block; i32.const 0; br_table
+	body = append(body, wasmtest.ULEB(uint32(targets-1))...)
+	for i := 0; i < targets; i++ { // vector targets plus the default target
+		body = append(body, 0x00)
+	}
+	return append(body, 0x0b, 0x0b)
+}
+
+func gcFrameDistinctBranchTableBody(targets int) []byte {
+	body := make([]byte, 0, targets*6)
+	for i := 0; i < targets; i++ {
+		body = append(body, 0x02, 0x40) // block
+	}
+	body = append(body, 0x41, 0x00, 0x0e) // i32.const 0; br_table
+	body = append(body, wasmtest.ULEB(uint32(targets-1))...)
+	for depth := 0; depth < targets; depth++ { // vector targets plus default
+		body = append(body, wasmtest.ULEB(uint32(depth))...)
+	}
+	for i := 0; i < targets; i++ {
+		body = append(body, 0x0b)
+	}
+	return append(body, 0x0b)
 }

@@ -3,6 +3,7 @@ package wago
 import (
 	"fmt"
 	"math/bits"
+	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -24,8 +25,18 @@ const noGCLiveIndex = ^uint32(0)
 
 const maxGCFrameLivenessArenaBytes = 64 << 20
 
+const maxGCFrameBranchTargets = maxGCFrameLivenessArenaBytes / 4
+
+const maxGCFrameLivenessWorkWords = maxGCFrameLivenessArenaBytes / 8
+
 func gcFrameLivenessArenaFits(nodes, words int) bool {
 	return nodes >= 0 && words > 0 && (nodes == 0 || words <= maxGCFrameLivenessArenaBytes/8/nodes)
+}
+
+func gcFrameLivenessWorkFits(nodes, branchEdges, words int) bool {
+	units := nodes + branchEdges
+	return nodes >= 0 && branchEdges >= 0 && units >= nodes && words > 0 &&
+		(units == 0 || words <= maxGCFrameLivenessWorkWords/units)
 }
 
 type gcLiveNode struct {
@@ -210,6 +221,9 @@ func gcFrameLocalLivenessWithClassifier(body []byte, indexes []uint32, callMasks
 			if count > uint64(^uint32(0)) || uint64(len(branchTargets))+count > uint64(^uint32(0)) {
 				return nil, fmt.Errorf("GC liveness br_table target count exceeds implementation limit")
 			}
+			if count > uint64(maxGCFrameBranchTargets) || uint64(len(branchTargets))+count > uint64(maxGCFrameBranchTargets) {
+				return nil, fmt.Errorf("GC liveness br_table target arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
+			}
 			node.flow = gcLiveBrTable
 			node.index = uint32(len(branchTargets))
 			node.indexN = uint32(count)
@@ -330,6 +344,7 @@ func gcFrameLocalLivenessWithClassifier(body []byte, indexes []uint32, callMasks
 		}
 		return target, target < len(nodes), nil
 	}
+	branchEdgeN := 0
 	for i := range nodes {
 		next := i + 1
 		addNext := func() {
@@ -387,9 +402,26 @@ func gcFrameLocalLivenessWithClassifier(body []byte, indexes []uint32, callMasks
 					succN++
 				}
 			}
-			nodes[i].indexN = uint32(succN)
+			// The liveness equation unions successors, so duplicate destinations
+			// carry no information. Compact them once before bitmap dataflow to
+			// keep repeated br_table labels from multiplying work by local width.
+			targets = targets[:succN]
+			slices.Sort(targets)
+			targets = slices.Compact(targets)
+			nodes[i].indexN = uint32(len(targets))
+			branchEdgeN += len(targets)
 		case gcLiveStop:
 		}
+	}
+	wordCount := (len(indexes) + 63) / 64
+	if wordCount == 0 {
+		wordCount = 1
+	}
+	if !gcFrameLivenessArenaFits(len(nodes), wordCount) {
+		return nil, fmt.Errorf("GC local liveness arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
+	}
+	if !gcFrameLivenessWorkFits(len(nodes), branchEdgeN, wordCount) {
+		return nil, fmt.Errorf("GC local liveness graph exceeds %d bitmap-word implementation limit", maxGCFrameLivenessWorkWords)
 	}
 
 	work := []int{0}
@@ -409,13 +441,6 @@ func gcFrameLocalLivenessWithClassifier(body []byte, indexes []uint32, callMasks
 				work = append(work, int(succ))
 			}
 		}
-	}
-	wordCount := (len(indexes) + 63) / 64
-	if wordCount == 0 {
-		wordCount = 1
-	}
-	if !gcFrameLivenessArenaFits(len(nodes), wordCount) {
-		return nil, fmt.Errorf("GC local liveness arena exceeds %d-byte implementation limit", maxGCFrameLivenessArenaBytes)
 	}
 	liveIn := make([]uint64, len(nodes)*wordCount)
 	changed := true
