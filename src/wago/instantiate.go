@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -16,6 +17,9 @@ import (
 type InstantiateOptions struct {
 	Imports Imports
 	GC      GCConfig
+	// Context controls cancellation of the module start function. A nil Context
+	// preserves the context-free low-level Instantiate behavior.
+	Context context.Context
 	store   *referenceStore
 
 	runtime              *Runtime
@@ -1607,12 +1611,20 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				defer gcLease.unlock()
 				previousReservation := in.swapInvocationReservation(in.constructionReservationSnapshot())
 				defer in.swapInvocationReservation(previousReservation)
+				if opts.Context != nil {
+					if err := opts.Context.Err(); err != nil {
+						return err
+					}
+					stopCancel := in.startCancellationWatch(opts.Context, in.trap)
+					defer stopCancel()
+				}
 				if in.syncMode {
-					return in.callNativeSync(startEntry)
+					return in.callNativeSyncWithTrapContext(startEntry, in.trap, opts.Context)
 				}
 				return in.callNativeAsync(startEntry, false)
 			}()
 			if startErr != nil {
+				startErr = contextInterruptError(opts.Context, startErr)
 				// Instantiation writes to imported tables are store side effects. If a
 				// local funcref remains installed when start traps, the shared table
 				// becomes the failed instance's lifetime owner. The table prunes roots

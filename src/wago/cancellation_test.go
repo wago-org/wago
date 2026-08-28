@@ -59,6 +59,32 @@ func TestCallContextInterruptsNativeLoop(t *testing.T) {
 	}
 }
 
+func TestRuntimeInstantiateContextInterruptsNativeStartLoop(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(8, wasmtest.ULEB(0)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x03, 0x40, 0x0c, 0x00, 0x0b, 0x0b}),
+		)),
+	)
+	rt := NewRuntime()
+	defer rt.Close()
+	compiled, err := rt.Compile(mod)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if in, err := rt.Instantiate(ctx, compiled); in != nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("infinite start instantiate = %v, %v; want nil, context deadline", in, err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("start cancellation took %v, want bounded interruption", elapsed)
+	}
+}
+
 // TestInvokeContextInterruptsHostCallLoop guards the runaway-guest guard itself:
 // a guest that calls a host import on every loop iteration must be interruptible
 // by context, and must not be pre-empted by any fixed host-call re-entry cap. The
