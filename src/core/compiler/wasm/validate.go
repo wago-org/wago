@@ -876,6 +876,9 @@ type ctrlFrame struct {
 	// re-pushed) so the else-arm end can confirm both arms leave the same shape.
 	ifThenHeight int
 	ifSeenElse   bool
+	// branchTableEpoch uses existing tail padding to mark whether this exact
+	// label frame has already been checked by the current br_table.
+	branchTableEpoch uint32
 }
 
 type funcValidator struct {
@@ -899,7 +902,10 @@ type funcValidator struct {
 	initializedLocals map[uint32]struct{}
 	localInitLog      []uint32
 	constOnly         bool
-	constGlobalLimit  int // globals below this absolute index are visible to a const expression
+	// branchTableEpoch fits in the padding before constGlobalLimit. Each
+	// funcValidator owns its control frames, including under parallel validation.
+	branchTableEpoch uint32
+	constGlobalLimit int // globals below this absolute index are visible to a const expression
 	// rd is reused across bodies validated by this funcValidator so the byte
 	// cursor is not heap-allocated per function/const-expression.
 	rd reader
@@ -909,11 +915,6 @@ type funcValidator struct {
 	// instrExt per memory/br_table/select/ref.null or payload-bearing SIMD
 	// instruction.
 	opExt instrExt
-	// branchTableLabels is a lazily allocated, per-validator epoch bitmap. Deep
-	// br_table instructions reuse it so repeated short tables at maximum control
-	// depth do not allocate in proportion to the nesting depth.
-	branchTableLabels []branchTableLabelWord
-	branchTableEpoch  uint32
 }
 
 func (v *funcValidator) verr(c ValidationErrorCode, d string) error {

@@ -3,6 +3,7 @@ package wasm
 import (
 	"errors"
 	"testing"
+	"unsafe"
 )
 
 func ft(params, results []ValType) RecType {
@@ -190,51 +191,61 @@ func TestValidateBranchesAndCalls(t *testing.T) {
 	})
 }
 
-func TestBranchTableLabelSetDeduplicatesWithoutAllocation(t *testing.T) {
+func TestBranchTableFrameEpochDeduplicatesWithoutAllocation(t *testing.T) {
 	v := funcValidator{ctrls: make([]ctrlFrame, maxInstructionNestingDepth)}
-	seen := v.newBranchTableLabelSet()
-	if !seen.mark(17) {
+	v.beginBranchTable()
+	if !v.markBranchTableLabel(17) {
 		t.Fatal("first label was already present")
 	}
 	for i := 0; i < 100_000; i++ {
-		if seen.mark(17) {
+		if v.markBranchTableLabel(17) {
 			t.Fatalf("duplicate label %d reported fresh", i)
 		}
 	}
-	if !seen.mark(branchTableInlineLabelWords*64 - 1) {
-		t.Fatal("highest valid label was already present")
+	deep := uint32(maxInstructionNestingDepth - 1)
+	if !v.markBranchTableLabel(deep) || v.markBranchTableLabel(deep) {
+		t.Fatal("maximum-depth label was not deduplicated")
 	}
-	deep := uint32(branchTableInlineLabelWords * 64)
-	if !seen.mark(deep) || seen.mark(deep) {
-		t.Fatal("deep label was not deduplicated")
+	v.beginBranchTable()
+	if !v.markBranchTableLabel(17) {
+		t.Fatal("label remained marked in a later table")
 	}
+
+	// Rollover is unreachable for a size-bounded decoded module, but a reused
+	// programmatic validator must still clear stale frame stamps.
+	v.branchTableEpoch = ^uint32(0)
+	v.ctrls[0].branchTableEpoch = 1
+	v.beginBranchTable()
+	if v.branchTableEpoch != 1 || v.ctrls[0].branchTableEpoch != 0 {
+		t.Fatal("epoch rollover did not clear active frame stamps")
+	}
+
+	indices := make([]uint32, 1_000)
+	for i := range indices {
+		indices[i] = uint32(i % maxInstructionNestingDepth)
+	}
+	in := Instruction{Kind: InstrBrTable, Index: 0, ext: &instrExt{Indices: indices}}
+	vals := []val{{t: I32}}
 	if allocs := testing.AllocsPerRun(100, func() {
-		localValidator := funcValidator{ctrls: make([]ctrlFrame, branchTableInlineLabelWords*64)}
-		local := localValidator.newBranchTableLabelSet()
-		for i := 0; i < 1000; i++ {
-			local.mark(uint32(i % (branchTableInlineLabelWords * 64)))
+		v.vals = vals
+		v.ctrls[len(v.ctrls)-1].unreachable = false
+		if err := v.step(&in); err != nil {
+			panic(err)
 		}
 	}); allocs != 0 {
-		t.Fatalf("inline label deduplication allocations = %.2f, want 0", allocs)
+		t.Fatalf("branch-table validation allocations = %.2f, want 0", allocs)
 	}
-	// The first deep label allocates one bounded scratch bitmap. Subsequent deep
-	// tables reuse it and distinguish visits by epoch without clearing it.
-	reused := funcValidator{ctrls: make([]ctrlFrame, branchTableInlineLabelWords*64+1)}
-	first := reused.newBranchTableLabelSet()
-	first.mark(branchTableInlineLabelWords * 64)
-	// A later function or table may be deeper than the first allocation.
-	reused.ctrls = make([]ctrlFrame, maxInstructionNestingDepth)
-	grown := reused.newBranchTableLabelSet()
-	if !grown.mark(maxInstructionNestingDepth - 1) {
-		t.Fatal("grown deep label was not marked")
+}
+
+func TestBranchTableFrameEpochFitsValidatorPadding(t *testing.T) {
+	if unsafe.Sizeof(uintptr(0)) != 8 {
+		t.Skip("64-bit validator layout")
 	}
-	if allocs := testing.AllocsPerRun(100, func() {
-		local := reused.newBranchTableLabelSet()
-		for i := 0; i < 1000; i++ {
-			local.mark(uint32(branchTableInlineLabelWords*64 + i%100))
-		}
-	}); allocs != 0 {
-		t.Fatalf("reused deep label deduplication allocations = %.2f, want 0", allocs)
+	if got := unsafe.Sizeof(funcValidator{}); got != 672 {
+		t.Fatalf("funcValidator size = %d, want 672", got)
+	}
+	if got := unsafe.Sizeof(ctrlFrame{}); got != 96 {
+		t.Fatalf("ctrlFrame size = %d, want 96", got)
 	}
 }
 

@@ -1,59 +1,23 @@
 package wasm
 
-// branchTableLabelSet deduplicates every valid label depth. The inline words keep
-// ordinary tables allocation-free; a deep table lazily allocates one bit per
-// active control frame instead of revalidating repeated payloads quadratically.
-const branchTableInlineLabelWords = 4
-
-type branchTableLabelSet struct {
-	inline [branchTableInlineLabelWords]uint64
-	deep   *[]branchTableLabelWord
-	depth  uint32
-	epoch  uint32
-}
-
-type branchTableLabelWord struct {
-	bits  uint64
-	epoch uint32
-}
-
-func (v *funcValidator) newBranchTableLabelSet() branchTableLabelSet {
+// beginBranchTable advances the generation used to stamp distinct target
+// frames. The code-section size bounds make rollover unreachable for decoded
+// modules, but clearing active frames keeps programmatically built modules safe.
+func (v *funcValidator) beginBranchTable() {
 	v.branchTableEpoch++
 	if v.branchTableEpoch == 0 {
-		clear(v.branchTableLabels)
+		for i := range v.ctrls {
+			v.ctrls[i].branchTableEpoch = 0
+		}
 		v.branchTableEpoch = 1
 	}
-	return branchTableLabelSet{deep: &v.branchTableLabels, depth: uint32(len(v.ctrls)), epoch: v.branchTableEpoch}
 }
 
-func (s *branchTableLabelSet) mark(label uint32) bool {
-	word, bit := label>>6, label&63
-	if word < branchTableInlineLabelWords {
-		mask := uint64(1) << bit
-		fresh := s.inline[word]&mask == 0
-		s.inline[word] |= mask
-		return fresh
-	}
-	if label >= s.depth {
-		// The caller validates labels before marking them. Preserve a safe
-		// fallback for direct helper use without allocating from invalid input.
-		return true
-	}
-	words := int((s.depth+63)>>6) - branchTableInlineLabelWords
-	if len(*s.deep) < words {
-		grown := make([]branchTableLabelWord, words)
-		copy(grown, *s.deep)
-		*s.deep = grown
-	}
-	word -= branchTableInlineLabelWords
-	mask := uint64(1) << bit
-	entry := &(*s.deep)[word]
-	if entry.epoch != s.epoch {
-		entry.bits = 0
-		entry.epoch = s.epoch
-	}
-	fresh := entry.bits&mask == 0
-	entry.bits |= mask
+// markBranchTableLabel is called only after label has been bounds-checked.
+func (v *funcValidator) markBranchTableLabel(label uint32) bool {
+	f := &v.ctrls[len(v.ctrls)-1-int(label)]
+	fresh := f.branchTableEpoch != v.branchTableEpoch
+	f.branchTableEpoch = v.branchTableEpoch
 	return fresh
 }
 
@@ -192,14 +156,14 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		payloadHeight := len(v.vals)
-		checked := v.newBranchTableLabelSet()
-		checked.mark(in.Index)
+		v.beginBranchTable()
+		v.markBranchTableLabel(in.Index)
 		for _, l := range in.Indices() {
 			lt, err := v.label(l)
 			if err != nil {
 				return err
 			}
-			if !checked.mark(l) {
+			if !v.markBranchTableLabel(l) {
 				continue
 			}
 			if len(lt) != len(dt) {
