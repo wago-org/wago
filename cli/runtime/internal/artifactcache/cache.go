@@ -41,6 +41,10 @@ const DefaultMaxBytes int64 = 512 << 20
 // maxPruneEntries bounds both cache file count and prune's in-memory index.
 const maxPruneEntries = 4096
 
+// maxCacheDirectoryDepth bounds descriptors retained by recursive batched scans.
+// Generated cache entries use one shard level; deeper trees are corruption.
+const maxCacheDirectoryDepth = 8
+
 const (
 	cachePruneInterval = 5 * time.Minute
 	cachePruneMarker   = ".wago-prune"
@@ -243,7 +247,7 @@ func (cache Cache) prune() error {
 		total += entry.size
 		return nil
 	}
-	err := scanCacheFiles(cache.Dir, visit)
+	err := scanCacheFiles(cache.Dir, 0, visit)
 	if err != nil || total <= limit {
 		return err
 	}
@@ -266,7 +270,10 @@ func cacheEntryNewer(left, right cacheEntry) bool {
 
 // scanCacheFiles uses File.ReadDir batches instead of os.ReadDir or WalkDir,
 // both of which read and sort a complete directory before yielding entries.
-func scanCacheFiles(dir string, visit func(string, os.FileInfo) error) error {
+func scanCacheFiles(dir string, depth int, visit func(string, os.FileInfo) error) error {
+	if depth > maxCacheDirectoryDepth {
+		return fmt.Errorf("cache directory nesting exceeds limit %d at %s", maxCacheDirectoryDepth, dir)
+	}
 	directory, err := os.Open(dir)
 	if err != nil {
 		return err
@@ -284,7 +291,7 @@ func scanCacheFiles(dir string, visit func(string, os.FileInfo) error) error {
 				return err
 			}
 			if info.IsDir() {
-				if err := scanCacheFiles(path, visit); err != nil {
+				if err := scanCacheFiles(path, depth+1, visit); err != nil {
 					return err
 				}
 				continue

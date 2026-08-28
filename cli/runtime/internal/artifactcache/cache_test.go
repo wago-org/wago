@@ -187,6 +187,24 @@ func TestCachePruneBoundsEntryIndex(t *testing.T) {
 	}
 }
 
+func TestCachePruneRejectsExcessiveDirectoryDepth(t *testing.T) {
+	dir := t.TempDir()
+	deep := dir
+	for i := 0; i <= maxCacheDirectoryDepth; i++ {
+		deep = filepath.Join(deep, "nested")
+	}
+	if err := os.MkdirAll(deep, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(deep, "entry.wago"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := (Cache{Dir: dir, MaxBytes: 1}).prune()
+	if err == nil || !strings.Contains(err.Error(), "directory nesting exceeds limit") {
+		t.Fatalf("deep cache prune error = %v, want nesting limit", err)
+	}
+}
+
 func TestLoadArtifactRejectsSymlinkAndOversizeEntry(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target.wago")
