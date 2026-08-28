@@ -39,19 +39,19 @@ func TestGCFrameRootPlanWideMaskWords(t *testing.T) {
 	}
 }
 
-func TestGCFrameRootPlanBoundedVectorMask(t *testing.T) {
-	const roots = GCFrameRootLimit
-	extraWords := roots/64 - 1
+func TestGCFrameRootPlanTrackedVectorMask(t *testing.T) {
+	const roots = GCFrameRootLimit + 1
+	extraWords := (roots+63)/64 - 1
 	plan := &GCFrameRootPlan{
 		LocalOffsets:       make([]uint32, roots),
 		LiveLocalMasks:     []uint64{0},
 		LiveMaskExtraWords: make([]uint64, extraWords),
 	}
-	plan.LiveMaskExtraWords[extraWords-1] = uint64(1) << 63
+	plan.LiveMaskExtraWords[extraWords-1] = 1
 	if !plan.ValidLiveMasks() || !plan.LocalLiveAt(0, roots-1) {
 		t.Fatal("bounded vector mask lost its highest root")
 	}
-	plan.LocalOffsets = append(plan.LocalOffsets, 0)
+	plan.LocalOffsets = make([]uint32, GCFrameTrackedLocalLimit+1)
 	if plan.ValidLiveMasks() {
 		t.Fatal("over-limit vector mask accepted")
 	}

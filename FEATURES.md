@@ -37,6 +37,10 @@ and starts the 3,225,249-byte MoonBit Starshine CLI smoke payload (SHA-256
 Linux/amd64 generated code publishes exact roots across the admitted local,
 indirect, reference, host-re-entry, EH, and same-Runtime cross-instance boundaries;
 Throughput and Tiny collectors may collect while those native frames are active.
+Root admission now compacts locals dead at every collecting site, so the 1,024-root
+bound applies per site rather than to all declared reference locals. Function
+parameters plus declared locals default to a configurable 4,096 ceiling and may be
+raised through 65,535 without weakening the independent native stack-fence check.
 Codec version 1 reloads and strictly validates the root metadata. Exact
 same-Runtime cross-instance calls canonicalize recursive structural identities across
 reordered or additional module-local types, transfer compact references through one
@@ -75,7 +79,9 @@ remain fail-closed. Explicit `target.CloneGCRefFrom(source, ref)` instead perfor
 bounded transactional graph clone across distinct Runtime stores, preserving cycles
 and internal sharing while assigning new target identity and rejecting non-null
 opaque store-owned payloads.
-See [docs/wasm3.md](docs/wasm3.md) for the implementation ledger.
+See [docs/wasm3.md](docs/wasm3.md) for the implementation ledger and
+[docs/function-local-limits.md](docs/function-local-limits.md) for the local and
+root-map bounds.
 
 ## WebAssembly 1.0 (MVP)
 
@@ -152,4 +158,3 @@ can allocate an exact caller-selected numeric or `v128` GC-array result.
 Direct views cannot outlive the host callback. Wago serializes collector/native
 mutation while a view is active and rejects Wasm re-entry during the borrow.
 See [`docs/host-guest-storage.md`](docs/host-guest-storage.md).
-

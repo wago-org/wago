@@ -1610,7 +1610,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		return nil, false
 	}
 	f.materializeGCFrameLocalsAt(siteIndex, true)
-	offsets := make([]uint32, 0, len(plan.LocalOffsets))
+	offsets := make([]uint32, 0, min(len(plan.LocalOffsets), shared.GCFrameRootLimit))
 	for i, off := range plan.LocalOffsets {
 		if plan.CallLocalLiveAt(siteIndex, i) {
 			offsets = append(offsets, off)

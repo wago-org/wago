@@ -23,10 +23,15 @@ const (
 	GCSafepointIDShift = GCHelperIDBits
 	GCSafepointIDMax   = uint32(1<<(30-GCSafepointIDShift)) - 1
 
-	// GCFrameRootLimit bounds exact roots in one native frame. The compiler keeps
+	// GCFrameRootLimit bounds simultaneously live exact roots in one native frame. The compiler keeps
 	// a one-word fast path through 64 roots, a two-word path through 128 roots,
 	// and uses one flat word arena for larger masks up to this limit.
 	GCFrameRootLimit = 1024
+
+	// GCFrameTrackedLocalLimit is the maximum configured parameter-plus-local
+	// population whose liveness may be tracked. Site maps remain bounded by
+	// GCFrameRootLimit after dead-at-all-sites locals are removed.
+	GCFrameTrackedLocalLimit = 1<<16 - 1
 )
 
 func EncodeGCDispatch(helper, safepoint uint32) (uint32, bool) {
@@ -97,7 +102,7 @@ func (p *GCFrameRootPlan) rootMaskExtraWordsPerSite() int {
 // ValidLiveMasks reports whether the flat extra-word arena matches both
 // low-word streams and the function's bounded collector-local count.
 func (p *GCFrameRootPlan) ValidLiveMasks() bool {
-	if p == nil || len(p.LocalOffsets) > GCFrameRootLimit {
+	if p == nil || len(p.LocalOffsets) > GCFrameTrackedLocalLimit {
 		return false
 	}
 	extra := p.rootMaskExtraWordsPerSite()

@@ -855,7 +855,7 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		return id
 	}
 	f.materializeGCFrameLocalsAt(siteIndex, false)
-	offsets := make([]uint32, 0, len(plan.LocalOffsets))
+	offsets := make([]uint32, 0, min(len(plan.LocalOffsets), shared.GCFrameRootLimit))
 	for i, off := range plan.LocalOffsets {
 		if plan.LocalLiveAt(siteIndex, i) {
 			offsets = append(offsets, off)

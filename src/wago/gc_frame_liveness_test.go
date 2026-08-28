@@ -161,6 +161,33 @@ func TestGCFrameLocalLivenessWideMasks(t *testing.T) {
 	}
 }
 
+func TestGCFrameLocalLivenessCompactsDeadDeclaredRoots(t *testing.T) {
+	const roots = 1138
+	indexes := make([]uint32, roots)
+	offsets := make([]uint32, roots)
+	for i := range indexes {
+		indexes[i], offsets[i] = uint32(i), uint32(16+i*8)
+	}
+	body := []byte{0xfb, 0x01, 0x00, 0x1a, 0x20, 0x00, 0x1a, 0x0b}
+	var calls []uint64
+	var extra gcFrameLivenessExtra
+	allocations, err := gcFrameLocalLiveness(body, indexes, &calls, &extra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexes, offsets, allocations, calls, maximum, err := gcFrameCompactLiveLocals(indexes, offsets, allocations, calls, &extra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if maximum != 1 || len(indexes) != 1 || indexes[0] != 0 || len(offsets) != 1 || len(extra.words) != 0 {
+		t.Fatalf("compacted roots: maximum=%d indexes=%v offsets=%v extra=%d", maximum, indexes, offsets, len(extra.words))
+	}
+	plan := shared.GCFrameRootPlan{LocalOffsets: offsets, LiveLocalMasks: allocations, LiveCallLocalMasks: calls, LiveMaskExtraWords: extra.words}
+	if !plan.ValidLiveMasks() || !plan.LocalLiveAt(0, 0) {
+		t.Fatalf("compacted plan = %+v", plan)
+	}
+}
+
 func TestGCFrameLocalLivenessConsumesMixedWidthMemarg(t *testing.T) {
 	m := &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 1}}, {Limits: wasm.Limits{Min: 1, Addr64: true}}}}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
@@ -222,6 +249,29 @@ func BenchmarkGCFrameLocalLivenessRootCounts(b *testing.B) {
 				}
 			}
 		})
+	}
+}
+
+func BenchmarkGCFrameLocalLivenessSparseDeclaredRoots(b *testing.B) {
+	const roots = 1138
+	indexes := make([]uint32, roots)
+	offsets := make([]uint32, roots)
+	for i := range indexes {
+		indexes[i], offsets[i] = uint32(i), uint32(16+i*8)
+	}
+	body := []byte{0xfb, 0x01, 0x00, 0x1a, 0x20, 0x00, 0x1a, 0x0b}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		var calls []uint64
+		var extra gcFrameLivenessExtra
+		allocations, err := gcFrameLocalLiveness(body, indexes, &calls, &extra)
+		if err != nil {
+			b.Fatal(err)
+		}
+		_, compacted, _, _, maximum, err := gcFrameCompactLiveLocals(indexes, offsets, allocations, calls, &extra)
+		if err != nil || len(compacted) != 1 || maximum != 1 {
+			b.Fatalf("sparse compaction offsets=%d maximum=%d err=%v", len(compacted), maximum, err)
+		}
 	}
 }
 

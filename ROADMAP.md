@@ -117,8 +117,9 @@ current optimization priorities. The Core 3.0 implementation ledger is
   direct/indirect/reference calls, recursion, bounded host re-entry,
   mutable/shared GC globals, local/shared collector-reference tables, EH payload
   records, local starts, and same-Runtime cross-instance calls. One-/two-word and
-  bounded flat masks cover up to 1,024 roots; codec version 1 validates the native
-  maps and the required native-GC ABI version.
+  bounded flat masks cover up to 1,024 simultaneously live roots per site; locals
+  dead at every collecting site are compacted from the plan. Codec version 1
+  validates the native maps and the required native-GC ABI version.
 - [x] Add snapshot version 1 stable-ID heap graphs for objects reachable from owned
   local GC globals and one or more heterogeneous local collector-reference tables,
   preserving cycles, sharing, growth state, strict structural subtype validation,
@@ -539,6 +540,12 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   share repeated immutable offset maps, and expose fail-closed diagnostics. The
   one-root 16K-instruction compile benchmark improves 3.2% while temporary bytes
   fall 18.6%; dense safepoint lookup remains about 1.66 ns, zero allocation.
+- [x] Base large-frame admission on per-site liveness: track the configured local
+  population, compact locals dead at every collection point, and keep the 1,024
+  bound on simultaneous roots. Function parameters plus declared locals default
+  to 4,096, are configurable through 65,535, and remain independently bounded by
+  the native 256 KiB stack fence. See
+  [`docs/function-local-limits.md`](docs/function-local-limits.md).
 - [x] Add bounded Throughput survivor aging: Eden feeds two bump-copy semispaces,
   handle-owned age bits retain the 20-byte native entry, medium-lived objects
   tenure after measured survival, and large young objects age in place. Exact
