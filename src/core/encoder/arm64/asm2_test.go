@@ -102,6 +102,10 @@ func TestPortFPEncodings(t *testing.T) {
 		{"fcvtzs x0,s1", func(a *Asm) { a.Fcvtzs(X0, X1, false, true) }, 0x9e380020},
 		{"fcvtzs w0,d1", func(a *Asm) { a.Fcvtzs(X0, X1, true, false) }, 0x1e780020},
 		{"fcvtzs x0,d1", func(a *Asm) { a.Fcvtzs(X0, X1, true, true) }, 0x9e780020},
+		{"fcvtzu w0,s1", func(a *Asm) { a.Fcvtzu(X0, X1, false, false) }, 0x1e390020},
+		{"fcvtzu x0,s1", func(a *Asm) { a.Fcvtzu(X0, X1, false, true) }, 0x9e390020},
+		{"fcvtzu w0,d1", func(a *Asm) { a.Fcvtzu(X0, X1, true, false) }, 0x1e790020},
+		{"fcvtzu x0,d1", func(a *Asm) { a.Fcvtzu(X0, X1, true, true) }, 0x9e790020},
 		{"scvtf s0,w1", func(a *Asm) { a.Scvtf(X0, X1, false, false) }, 0x1e220020},
 		{"scvtf d0,w1", func(a *Asm) { a.Scvtf(X0, X1, true, false) }, 0x1e620020},
 		{"scvtf s0,x1", func(a *Asm) { a.Scvtf(X0, X1, false, true) }, 0x9e220020},
@@ -198,6 +202,30 @@ func TestPortDispAddressing(t *testing.T) {
 	}
 }
 
+func TestPreIndexScalarMemoryEncoding(t *testing.T) {
+	var load Asm
+	if !load.LoadPreIndex(X0, X1, 7, 4, false, false) || word(&load) != 0xb8407c20 {
+		t.Fatalf("ldr w0,[x1,#7]! = %x", load.B)
+	}
+	var store Asm
+	if !store.StorePreIndex(X1, X2, -8, 8) || word(&store) != 0xf81f8c22 {
+		t.Fatalf("str x2,[x1,#-8]! = %x", store.B)
+	}
+	if load.LoadPreIndex(X0, X1, 256, 4, false, false) || store.StorePreIndex(X1, X2, -257, 8) {
+		t.Fatal("out-of-range pre-index displacement accepted")
+	}
+	var postLoad, postStore Asm
+	if !postLoad.LoadPostIndex(X0, X1, 7, 4, false, false) || word(&postLoad) != 0xb8407420 {
+		t.Fatalf("ldr w0, [x1], #7 = %#x", word(&postLoad))
+	}
+	if !postStore.StorePostIndex(X1, X2, -8, 8) || word(&postStore) != 0xf81f8422 {
+		t.Fatalf("str x2, [x1], #-8 = %#x", word(&postStore))
+	}
+	if postLoad.LoadPostIndex(X0, X1, 256, 4, false, false) || postStore.StorePostIndex(X1, X2, -257, 8) {
+		t.Fatal("out-of-range post-index displacement accepted")
+	}
+}
+
 func TestIndexedMemoryAddressingFallbacks(t *testing.T) {
 	for _, dense := range []bool{false, true} {
 		for _, tc := range []struct {
@@ -245,6 +273,7 @@ func TestPortNeon16bLogical(t *testing.T) {
 		{"eor v0.16b,v1.16b,v2.16b", func(a *Asm) { a.Eor16b(X0, X1, X2) }, 0x6e221c20},
 		{"mvn v0.16b,v1.16b", func(a *Asm) { a.NeonNot16b(X0, X1) }, 0x6e205820},
 		{"bsl v0.16b,v1.16b,v2.16b", func(a *Asm) { a.NeonBsl16b(X0, X1, X2) }, 0x6e621c20},
+		{"bit v0.16b,v1.16b,v2.16b", func(a *Asm) { a.NeonBit16b(X0, X1, X2) }, 0x6ea21c20},
 		{"cnt v0.16b,v1.16b", func(a *Asm) { a.NeonCntB(X0, X1) }, 0x4e205820},
 		{"umaxv b0,v1.16b", func(a *Asm) { a.NeonUmaxvB(X0, X1) }, 0x6e30a820},
 		{"addv b0,v1.16b", func(a *Asm) { a.NeonAddvB(X0, X1) }, 0x4e31b820},

@@ -23,6 +23,9 @@ func TestSettingsRoundTripAndDefaults(t *testing.T) {
 	if err := Set(&config, "runtime.parallel", "auto", false); err != nil {
 		t.Fatal(err)
 	}
+	if err := Set(&config, "dragline", "on", true); err != nil {
+		t.Fatal(err)
+	}
 	if err := SaveFile(path, config); err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +33,7 @@ func TestSettingsRoundTripAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Features["simd"] || loaded.Runtime.Parallel != "auto" {
+	if loaded.Features["simd"] || loaded.Runtime.Parallel != "auto" || !loaded.Experimental["dragline"] {
 		t.Fatalf("loaded = %#v", loaded)
 	}
 }
@@ -73,6 +76,9 @@ func TestSettingsRejectPreviewAndUnknown(t *testing.T) {
 	}
 	if strings.HasPrefix(experimental.Key, "optimizations.") && !config.Optimizations[name] {
 		t.Fatal("experimental optimization was not stored")
+	}
+	if strings.HasPrefix(experimental.Key, "experimental.") && !config.Experimental[name] {
+		t.Fatal("experimental preview was not stored")
 	}
 	if err := Set(&config, "not-a-setting", "on", false); err == nil {
 		t.Fatal("unknown setting was accepted")

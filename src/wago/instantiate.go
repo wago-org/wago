@@ -124,6 +124,9 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	if len(c.compactNativeFunctions()) != 0 {
+		return nil, errors.New("wago: compact native clone must be installed on a tierable compatibility instance")
+	}
 	if err := c.preflightImportBindings(opts.Imports); err != nil {
 		return nil, err
 	}
@@ -511,6 +514,12 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	nativeContext := ar.AllocNoZero(runtime.InstanceContextBytes)
 	nativeContextPtr := uintptr(unsafe.Pointer(&nativeContext[0]))
+	// A shared/imported memory may still carry another instance's basedata. This
+	// instance has no profile slab unless the opt-in collector below installs one;
+	// clear before capturing the native context so cross-instance entry cannot
+	// inherit a stale counter pointer.
+	jm.SetProfileCountersPtr(0)
+	jm.SetTierEntriesPtr(0)
 	if memoryCount > 1 || threadedControl {
 		nativeMemoryDir = ar.Alloc(memoryCount * abi.MemoryDirEntryBytes)
 		for i, memory := range memoryObjs {
@@ -566,6 +575,37 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		closeMem()
 		runtime.ReleaseEngine(eng)
 	}()
+	var profileState *instanceRailshotProfile
+	if c.hasFunctionCounters() && c.NumImports+len(c.Funcs) != 0 {
+		profileArena, allocErr := runtime.NewArena((c.NumImports + len(c.Funcs)) * 8)
+		err = allocErr
+		if err != nil {
+			return nil, fmt.Errorf("instantiate: allocate Railshot profile counters: %w", err)
+		}
+		profileState = &instanceRailshotProfile{arena: profileArena, native: profileArena.Alloc((c.NumImports + len(c.Funcs)) * 8)}
+		jm.SetProfileCountersPtr(uintptr(unsafe.Pointer(&profileState.native[0])))
+		if c.isTierable() {
+			profileState.tier, err = newInstanceCompilerTier(c, base)
+			if err != nil {
+				return nil, fmt.Errorf("instantiate: create compiler tier entries: %w", err)
+			}
+			if profileState.tier != nil {
+				jm.SetTierEntriesPtr(uintptr(unsafe.Pointer(&profileState.tier.entries[0])))
+			}
+		}
+		defer func() {
+			if !b.success && profileState != nil {
+				profileState.tier.close()
+				_ = profileState.arena.Close()
+			}
+		}()
+	}
+	localWrapperEntry := func(local int) uintptr {
+		if profileState != nil && profileState.tier != nil {
+			return profileState.tier.thunkBase + uintptr(profileState.tier.offsets[local])
+		}
+		return base + uintptr(c.Entry[local])
+	}
 	// The builder now owns a compiled-code reference. Release the Module lease
 	// before lifecycle and start callbacks; Module.Close may close the Compiled
 	// while this reference keeps its native mapping live.
@@ -629,7 +669,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				if ex.localIdx < 0 || ex.localIdx >= len(ex.inst.c.Entry) {
 					return nil, fmt.Errorf("cross-instance import %q references an unavailable function", key)
 				}
-				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], uint64(ex.inst.base)+uint64(ex.inst.c.Entry[ex.localIdx]))
+				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCodePtrOffset:], uint64(ex.inst.wrapperEntry(ex.localIdx)))
 				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchHomeLinMemOffset:], uint64(ex.inst.jm.LinMemBase()))
 				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchTargetContextOffset:], uint64(ex.inst.nativeContext))
 				binary.LittleEndian.PutUint64(dispatch[off+runtime.ImportDispatchCallerContextOffset:], uint64(nativeContextPtr))
@@ -778,21 +818,21 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 				// intentionally wrapperless direct-only function. It cannot be a valid
 				// ref.func target; leave its unused descriptor entry invalid instead of
 				// publishing the internal ABI under a wrapper tag.
-				if internal == c.Entry[li] && (localRegABI || stagedTailRegABI) {
+				if !c.isTierable() && internal == c.Entry[li] && (localRegABI || stagedTailRegABI) {
 					continue
 				}
-				code, home = uint64(base)+uint64(c.Entry[li]), selfLinMem
+				code, home = uint64(localWrapperEntry(li)), selfLinMem
 				kind = abi.FuncRefEntryLocalWrapper
 				if goruntime.GOARCH == "arm64" && localFuncrefsMayEscape {
 					kind = abi.FuncRefEntryCrossInstanceWrapper
 				}
-				if !localFuncrefsMayEscape && internal != c.Entry[li] && (regABIEnabled && funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
+				if !c.isTierable() && !localFuncrefsMayEscape && internal != c.Entry[li] && (regABIEnabled && funcSigIntRegABI(c.Funcs[li]) || stagedTailRegABI) {
 					code = uint64(base) + uint64(internal)
 					kind = abi.FuncRefEntryInternal
 				}
 			} else if fidx < c.NumImports {
 				if ex, ok := imports[c.Imports[fidx]].(*InstanceExport); ok && ex != nil && ex.inst != nil && ex.localIdx < len(ex.inst.c.Entry) {
-					code = uint64(ex.inst.base) + uint64(ex.inst.c.Entry[ex.localIdx])
+					code = uint64(ex.inst.wrapperEntry(ex.localIdx))
 					home = uint64(ex.inst.jm.LinMemBase())
 					targetContext = uint64(ex.inst.nativeContext)
 					kind = abi.FuncRefEntryCrossInstanceWrapper
@@ -911,7 +951,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 							if !ok {
 								return fmt.Errorf("funcref element global producer home collides with descriptor tags")
 							}
-							binary.LittleEndian.PutUint64(entry[runtime.TableEntryCodePtrOffset:], uint64(producer.base)+uint64(producer.c.Entry[li]))
+							binary.LittleEndian.PutUint64(entry[runtime.TableEntryCodePtrOffset:], uint64(producer.wrapperEntry(li)))
 							binary.LittleEndian.PutUint64(entry[runtime.TableEntryHomeLinMemOffset:], taggedHome)
 						}
 					}
@@ -1408,7 +1448,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcNativeView))))
 	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, profile: profileState, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
 		nativeContext:   nativeContextPtr,
 		moduleIdentity:  opts.moduleIdentity,

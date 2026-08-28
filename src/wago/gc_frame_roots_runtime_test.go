@@ -90,6 +90,69 @@ func TestGCNativeFrameRootsARM64FrameRecordWalk(t *testing.T) {
 	runtime.KeepAlive(code)
 }
 
+func TestGCNativeFrameRootsCrossCompilerGenerations(t *testing.T) {
+	frame := make([]byte, 160)
+	railshotCode := make([]byte, 256)
+	draglineCode := make([]byte, 256)
+	base := uintptr(unsafe.Pointer(&frame[0]))
+	railshotBase := uintptr(unsafe.Pointer(&railshotCode[0]))
+	draglineBase := uintptr(unsafe.Pointer(&draglineCode[0]))
+
+	const (
+		calleeFrameBytes = 32
+		callerBase       = 48
+		callerFrameBytes = 64
+	)
+	binary.LittleEndian.PutUint64(frame[16:], 5)
+	binary.LittleEndian.PutUint64(frame[calleeFrameBytes+shared.ARM64SavedLROffset:], uint64(draglineBase+100))
+	binary.LittleEndian.PutUint64(frame[callerBase+24:], 9)
+	binary.LittleEndian.PutUint64(frame[callerBase+callerFrameBytes+shared.ARM64SavedLROffset:], uint64(draglineBase+200))
+
+	railshotPlan := &compiledGCFrameRoots{callsites: []compiledGCFrameCallsite{{returnOffset: 1}}}
+	draglinePlan := &compiledGCFrameRoots{
+		adapterReturnOffsets: []uint32{200},
+		callsites: []compiledGCFrameCallsite{{
+			returnOffset: 100,
+			frameBytes:   callerFrameBytes,
+			offsets:      []uint32{24},
+		}},
+	}
+	railshot := &Compiled{code: railshotCode, validateMemo: &validateMemo{gcFrameRoots: railshotPlan}}
+	dragline := &Compiled{code: draglineCode, validateMemo: &validateMemo{gcFrameRoots: draglinePlan}}
+	tier := &instanceCompilerTier{}
+	tier.installed.Store(&compilerCodeGeneration{compiled: dragline, base: draglineBase})
+	in := &Instance{c: railshot, base: railshotBase, profile: &instanceRailshotProfile{tier: tier}}
+
+	roots := gcNativeFrameRoots{
+		owner:       in,
+		base:        base,
+		offsets:     []uint32{16},
+		frameBytes:  calleeFrameBytes,
+		frameLayout: gcNativeFrameLayoutARM64,
+		codeBase:    railshotBase,
+		codeBytes:   uintptr(len(railshotCode)),
+		callsites:   railshotPlan.callsites,
+	}
+	seen := 0
+	roots.rangeChain(func(slot gc.RootSlot) bool {
+		seen++
+		slot.SetRef(slot.GetRef() + 1)
+		return true
+	}, nil)
+	if seen != 2 {
+		t.Fatalf("cross-generation root count = %d, want 2", seen)
+	}
+	if got := (*gc.Root)(offHeapPtr(base + 16)).GetRef(); got != 6 {
+		t.Fatalf("Railshot callee root = %d, want 6", got)
+	}
+	if got := (*gc.Root)(offHeapPtr(base + callerBase + 24)).GetRef(); got != 10 {
+		t.Fatalf("Dragline caller root = %d, want 10", got)
+	}
+	runtime.KeepAlive(frame)
+	runtime.KeepAlive(railshotCode)
+	runtime.KeepAlive(draglineCode)
+}
+
 func TestGCNativeFrameRootsARM64ForeignWrapperStackAdjustment(t *testing.T) {
 	frame := make([]byte, 256)
 	code := make([]byte, 256)

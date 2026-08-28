@@ -166,6 +166,46 @@ func (m *Module) FuncTypeIndex(idx uint32) (TypeIdx, bool) {
 	return m.FuncTypes[local], true
 }
 
+// StructField returns one field from a flattened module struct type. A
+// recursive-group-local reference in the field is resolved to its absolute
+// module type index so downstream typed SSA never has to retain decoder-local
+// recursion context.
+func (m *Module) StructField(typeIndex, fieldIndex uint32) (FieldType, bool) {
+	st, recGroup, ok := m.subtypeByTypeIdxWithRecGroup(TypeIdx{Index: typeIndex})
+	if !ok || st.Comp.Kind != CompStruct || fieldIndex >= uint32(len(st.Comp.Fields)) {
+		return FieldType{}, false
+	}
+	return m.resolveFieldTypeRecIndexes(st.Comp.Fields[fieldIndex], recGroup), true
+}
+
+// StructFieldCount returns the flattened field count for a struct type.
+func (m *Module) StructFieldCount(typeIndex uint32) (uint32, bool) {
+	st, _, ok := m.subtypeByTypeIdxWithRecGroup(TypeIdx{Index: typeIndex})
+	if !ok || st.Comp.Kind != CompStruct {
+		return 0, false
+	}
+	return uint32(len(st.Comp.Fields)), true
+}
+
+// ArrayField returns the element field from a flattened module array type with
+// recursive-group-local references resolved to absolute module type indexes.
+func (m *Module) ArrayField(typeIndex uint32) (FieldType, bool) {
+	st, recGroup, ok := m.subtypeByTypeIdxWithRecGroup(TypeIdx{Index: typeIndex})
+	if !ok || st.Comp.Kind != CompArray {
+		return FieldType{}, false
+	}
+	return m.resolveFieldTypeRecIndexes(st.Comp.Array, recGroup), true
+}
+
+// GCCompositeKind returns the flattened composite kind at typeIndex.
+func (m *Module) GCCompositeKind(typeIndex uint32) (CompTypeKind, bool) {
+	st, _, ok := m.subtypeByTypeIdxWithRecGroup(TypeIdx{Index: typeIndex})
+	if !ok {
+		return 0, false
+	}
+	return st.Comp.Kind, true
+}
+
 // FuncSignature returns the function signature for a global function index.
 func (m *Module) FuncSignature(idx uint32) (*CompType, bool) {
 	typeIdx, ok := m.FuncTypeIndex(idx)

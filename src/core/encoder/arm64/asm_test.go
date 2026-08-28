@@ -61,8 +61,11 @@ func TestEncodings(t *testing.T) {
 		// frame pair
 		{"stp x29,x30,[sp,#-16]!", func(a *Asm) { a.StpPre(X29, X30, SP, -16) }, 0xa9bf7bfd},
 		{"stp xzr,xzr,[sp,#16]", func(a *Asm) { a.StpOffset(XZR, XZR, SP, 16) }, 0xa9017fff},
+		{"stp w16,w17,[x0,#8]", func(a *Asm) { a.StpOffset32(X16, X17, X0, 8) }, 0x29014410},
 		{"ldp x16,x17,[x0,#16]", func(a *Asm) { a.LdpOffset(X16, X17, X0, 16) }, 0xa9414410},
 		{"ldp w16,w17,[x0,#8]", func(a *Asm) { a.LdpOffset32(X16, X17, X0, 8) }, 0x29414410},
+		{"ldp s0,s1,[x2,#8]", func(a *Asm) { a.LdpOffsetF32(X0, X1, X2, 8) }, 0x2d410440},
+		{"ldp d0,d1,[x2,#16]", func(a *Asm) { a.LdpOffsetF64(X0, X1, X2, 16) }, 0x6d410440},
 		{"ldp x29,x30,[sp],#16", func(a *Asm) { a.LdpPost(X29, X30, SP, 16) }, 0xa8c17bfd},
 		// compare / select / set
 		{"cmp x0,x1", func(a *Asm) { a.CmpReg64(X0, X1) }, 0xeb01001f},
@@ -91,6 +94,9 @@ func TestEncodings(t *testing.T) {
 		{"cmp w3,#0", func(a *Asm) { a.CmpImm32(X3, 0) }, 0x7100007f},
 		{"cset w9,eq", func(a *Asm) { a.Cset32(X9, CondEQ) }, 0x1a9f17e9},
 		{"cset w9,lt", func(a *Asm) { a.Cset32(X9, CondLT) }, 0x1a9fa7e9},
+		{"cinc w0,w1,eq", func(a *Asm) { a.Cinc32(X0, X1, CondEQ) }, 0x1a811420},
+		{"bfi x0,x1,#63,#1", func(a *Asm) { a.Bfi64(X0, X1, 63, 1) }, 0xb3410020},
+		{"bfi w0,w1,#31,#1", func(a *Asm) { a.Bfi32(X0, X1, 31, 1) }, 0x33010020},
 		// branches / calls (zero displacement for placeholders)
 		{"ret", func(a *Asm) { a.Ret() }, 0xd65f03c0},
 		{"br x19", func(a *Asm) { a.Br(X19) }, 0xd61f0260},
@@ -437,5 +443,46 @@ func TestStoreImmIdxAddressAndValueOrder(t *testing.T) {
 	dense.StoreImmIdx(X0, X1, 8, 0x1234, 4)
 	if len(dense.B) == 0 || len(dense.B)%4 != 0 {
 		t.Fatalf("dense indexed store encoded %d bytes", len(dense.B))
+	}
+}
+
+func TestMOPSEncodingsAndRegisterConstraints(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		emit func(*Asm) bool
+		want [3]uint32
+	}{
+		{
+			name: "copy",
+			emit: func(a *Asm) bool { return a.MopsCopy(X3, X4, X5) },
+			want: [3]uint32{0x1d0404a3, 0x1d4404a3, 0x1d8404a3},
+		},
+		{
+			name: "set",
+			emit: func(a *Asm) bool { return a.MopsSet(X6, X7, X8) },
+			want: [3]uint32{0x19c804e6, 0x19c844e6, 0x19c884e6},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var a Asm
+			if !tc.emit(&a) || len(a.B) != 12 {
+				t.Fatalf("MOPS sequence encoded %d bytes", len(a.B))
+			}
+			for i, want := range tc.want {
+				if got := a.wordAt(i * 4); got != want {
+					t.Fatalf("word %d = %#08x, want %#08x", i, got, want)
+				}
+			}
+		})
+	}
+	for _, emit := range []func(*Asm) bool{
+		func(a *Asm) bool { return a.MopsCopy(X0, X0, X2) },
+		func(a *Asm) bool { return a.MopsSet(X0, X1, X1) },
+		func(a *Asm) bool { return a.MopsCopy(SP, X1, X2) },
+	} {
+		var a Asm
+		if emit(&a) || len(a.B) != 0 {
+			t.Fatalf("invalid MOPS registers emitted %d bytes", len(a.B))
+		}
 	}
 }

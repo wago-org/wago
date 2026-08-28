@@ -439,6 +439,30 @@ type ModuleStats struct {
 	Encoding              encoderamd64.EncodingStats
 }
 
+// QualityDebt returns target-neutral signals for selecting future Dragline
+// work. It does not guess at speedup or alter compilation policy.
+func (ms *ModuleStats) QualityDebt() shared.QualityDebtReport {
+	if ms == nil {
+		return shared.QualityDebtReport{}
+	}
+	report := shared.QualityDebtReport{Functions: make([]shared.FunctionQualityDebt, 0, len(ms.Funcs))}
+	for _, stats := range ms.Funcs {
+		if stats == nil {
+			continue
+		}
+		report.Functions = append(report.Functions, shared.FunctionQualityDebt{
+			Function: uint32(stats.FuncIdx), FrameBytes: uint32(stats.FrameBytes),
+			Spills: uint32(stats.Spills), Reloads: uint32(stats.Reloads), Flushes: uint32(stats.Flushes),
+			// AMD64 does not yet distinguish call-caused flushes from its total
+			// flush traffic, so CallShuffles remains zero instead of reporting an
+			// invented attribution.
+			BoundsChecks:      uint32(stats.BoundsChecks),
+			HelperTransitions: uint32(shared.HelperTransitionCount(stats.Calls)), NativeBytes: uint32(stats.CodeBytes),
+		})
+	}
+	return report
+}
+
 type NativeFunctionSizeReport = shared.NativeFunctionSizeReport
 type NativeSizeReport = shared.NativeSizeReport
 

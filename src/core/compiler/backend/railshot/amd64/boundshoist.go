@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -240,9 +240,9 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 	entryTypes := append([]machineType(nil), f.currentLogicalTypes()...)
 	entryRoots := f.rootsBottomToTop()
 	entryGCRoots := gcRootFlags(entryRoots)
-	var entryStackFacts []shared.GCRefFact
+	var entryStackFacts []codegen.GCRefFact
 	if f.gcRefFactsEnabled() {
-		entryStackFacts = make([]shared.GCRefFact, len(entryRoots))
+		entryStackFacts = make([]codegen.GCRefFact, len(entryRoots))
 		for i, root := range entryRoots {
 			entryStackFacts[i] = f.gcRefFact(root)
 		}

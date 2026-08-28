@@ -25,10 +25,20 @@ func RuntimeCommands() []*command.Cmd {
 		command.Flag{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
 		command.Flag{Name: "gc-heap", Arg: "<size>", Help: "throughput GC heap capacity in bytes or KiB, MiB, GiB"},
 		command.Flag{Name: "gc-nursery", Arg: "<size>", Help: "throughput GC nursery capacity in bytes or KiB, MiB, GiB"},
+		command.Flag{Name: "target", Arg: "<mode>", Help: "compiler target: compat | native (default compat)"},
+		command.Flag{Name: "objective", Arg: "<name>", Help: "compiler objective: speed | balanced | size (default speed)"},
 		parallel,
 	)
+	runFlags = append(runFlags, runtimeBackendFlags()...)
 	runFlags = append(runFlags, profileFlags...)
-	buildFlags := append([]command.Flag{{Name: "output", Short: "o", Arg: "<file>", Help: "output path"}, parallel}, profileFlags...)
+	buildFlags := []command.Flag{
+		{Name: "output", Short: "o", Arg: "<file>", Help: "output path"},
+		{Name: "target", Arg: "<mode>", Help: "compiler target: compat | native (default compat)"},
+		{Name: "objective", Arg: "<name>", Help: "compiler objective: speed | balanced | size (default speed)"},
+		parallel,
+	}
+	buildFlags = append(buildFlags, runtimeBackendFlags()...)
+	buildFlags = append(buildFlags, profileFlags...)
 	return []*command.Cmd{
 		{Name: "run", Summary: "compile and execute a WebAssembly module (default)", Args: "<file> [args...]", Flags: runFlags, Knobs: cloneFlags(knobs), PassThrough: true},
 		{Name: "module", Aliases: []string{"mod"}, Summary: "inspect a module's imports, exports, and required capabilities", Children: []*command.Cmd{
@@ -38,6 +48,15 @@ func RuntimeCommands() []*command.Cmd {
 		}},
 		{Name: "build", Summary: "precompile a WebAssembly module to a .wago artifact", Args: "<file>", Flags: buildFlags, Knobs: cloneFlags(knobs), Automation: command.DryRun},
 		{Name: "validate", Aliases: []string{"check"}, Summary: "decode and validate a module", Args: "<file>", Flags: []command.Flag{parallel}, Automation: command.JSONOutput},
+	}
+}
+
+func runtimeBackendFlags() []command.Flag {
+	return []command.Flag{
+		{Name: "backend", Arg: "<name>", Help: "compiler backend: railshot | dragline (default railshot)"},
+		{Name: "compiler-fallback", Arg: "<name>", Help: "whole-module fallback: none | railshot (default none)"},
+		{Name: "railshot", Bool: true, Help: "use the Railshot compiler"},
+		{Name: "dragline", Bool: true, Help: "use the Dragline compiler (strict; no fallback)"},
 	}
 }
 

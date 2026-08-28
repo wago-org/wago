@@ -1082,6 +1082,7 @@ type Compiled struct {
 	// registerABIDisabled keeps descriptor publication aligned with the actual
 	// compile policy. False preserves legacy hand-built Compiled behavior.
 	registerABIDisabled bool
+	compiler            CompilerEngine
 	requiredFeatures    CoreFeatures
 	importFuncSigs      []FuncSig
 
@@ -1110,10 +1111,20 @@ type Compiled struct {
 	requiresAVX2       bool
 	requiresAVX512     bool
 	syncHostSlots      uint16
+	requiresARM64MOPS  bool
 	// independentInstances allows instances without cross-instance Wasm imports
 	// to use instance-local native execution leases. It is intentionally not
 	// serialized because it is runtime policy rather than a module property.
 	independentInstances bool
+}
+
+// Compiler reports the engine that produced this module. The zero value is
+// Railshot, preserving compatibility with legacy hand-built Compiled values.
+func (c *Compiled) Compiler() CompilerEngine {
+	if c == nil {
+		return CompilerRailshot
+	}
+	return c.compiler
 }
 
 // The sign bit of a fresh compilation's internal-entry offset carries the
@@ -1135,6 +1146,10 @@ func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
 // RequiresAVX512 reports whether compilation selected an AVX-512 plugin lowering.
 func (c *Compiled) RequiresAVX512() bool { return c != nil && c.requiresAVX512 }
 
+// RequiresARM64MOPS reports whether compilation selected ARM FEAT_MOPS
+// memory-copy or memory-set instructions.
+func (c *Compiled) RequiresARM64MOPS() bool { return c != nil && c.requiresARM64MOPS }
+
 type validateMemo struct {
 	once                     sync.Once
 	err                      error
@@ -1145,6 +1160,16 @@ type validateMemo struct {
 	// zero entry retains the legacy first-dot interpretation for hand-built
 	// Compiled values; source compilation always records an exact nonzero end.
 	importModuleEnds []uint64
+	// nativeCloneFunctions marks a compact, non-standalone Dragline image. The
+	// sorted original-Wasm indexes must match InstallDraglineTier exactly.
+	nativeCloneFunctions []uint32
+}
+
+func (c *Compiled) compactNativeFunctions() []uint32 {
+	if c == nil || c.validateMemo == nil {
+		return nil
+	}
+	return c.validateMemo.nativeCloneFunctions
 }
 
 // validateCached returns the metadata-validation result, running the full check

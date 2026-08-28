@@ -35,6 +35,8 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 		{"globalsPtr", offGlobalsPtr, abi.GlobalsPtrOffset},
 		{"passiveDataPtr", offPassiveDataPtr, abi.PassiveDataPtrOffset},
 		{"importDispatchPtr", offImportDispatchPtr, abi.ImportDispatchPtrOffset},
+		{"profileCountersPtr", offProfileCountersPtr, abi.ProfileCountersPtrOffset},
+		{"tierEntriesPtr", offTierEntriesPtr, abi.TierEntriesPtrOffset},
 	}
 	for _, c := range cases {
 		if c.got != c.want {
@@ -67,6 +69,14 @@ func TestJobMemoryMetadataPointers(t *testing.T) {
 	got = binary.LittleEndian.Uint64(jm.mem[jm.linOff-offPassiveDataPtr:])
 	if got != 0x0fedcba987654321 {
 		t.Fatalf("passive data ptr = %#x, want %#x", got, uint64(0x0fedcba987654321))
+	}
+	jm.SetProfileCountersPtr(0x1020304050607080)
+	if got := jm.ProfileCountersPtr(); got != 0x1020304050607080 {
+		t.Fatalf("profile counters ptr = %#x", got)
+	}
+	jm.SetTierEntriesPtr(0x8877665544332211)
+	if got := jm.TierEntriesPtr(); got != 0x8877665544332211 {
+		t.Fatalf("tier entries ptr = %#x", got)
 	}
 }
 

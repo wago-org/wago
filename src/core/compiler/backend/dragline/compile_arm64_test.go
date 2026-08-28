@@ -1,0 +1,401 @@
+//go:build arm64
+
+package dragline
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"math"
+	"testing"
+
+	corecompiler "github.com/wago-org/wago/src/core/compiler"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railmach"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
+	compilerprofile "github.com/wago-org/wago/src/core/compiler/profile"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/encoder/arm64"
+	"github.com/wago-org/wago/tests/wasmtest"
+)
+
+func TestCompilerARM64MOPSBulkMemoryIsFeatureGated(t *testing.T) {
+	typeSec := wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil)))
+	funcSec := wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0)))
+	memorySec := wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01}))
+	body := func(subopcode byte) []byte {
+		instructions := []byte{
+			0x20, 0x00,
+			0x20, 0x01,
+			0x20, 0x02,
+			0xfc, subopcode,
+		}
+		if subopcode == 10 {
+			instructions = append(instructions, 0x00, 0x00)
+		} else {
+			instructions = append(instructions, 0x00)
+		}
+		instructions = append(instructions, 0x0b)
+		function := append([]byte{0x00}, instructions...)
+		return append(wasmtest.ULEB(uint32(len(function))), function...)
+	}
+	source := wasmtest.Module(typeSec, funcSec, memorySec, wasmtest.Section(10, wasmtest.Vec(body(10), body(11))))
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target := corecompiler.Target{GOOS: "linux", GOARCH: "arm64", Mode: corecompiler.TargetExplicit, CPUModel: "test-mops", TuningModel: "generic-arm64"}
+	target.FeatureBits[0] = uint64(1) << corecompiler.TargetFeatureARM64MOPS
+	cache := corecompiler.NewFunctionArtifactCache(1 << 20)
+	compiler := Compiler{FunctionCache: cache}
+	withMOPS, err := compiler.Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	copySequence := []byte{0x40, 0x04, 0x01, 0x1d, 0x40, 0x04, 0x41, 0x1d, 0x40, 0x04, 0x81, 0x1d}
+	setSequence := []byte{0x40, 0x04, 0xc1, 0x19, 0x40, 0x44, 0xc1, 0x19, 0x40, 0x84, 0xc1, 0x19}
+	if !bytes.Contains(withMOPS.Code, copySequence) || !bytes.Contains(withMOPS.Code, setSequence) {
+		t.Fatalf("MOPS code misses copy or set sequence: %x", withMOPS.Code)
+	}
+	if !withMOPS.RequiresARM64MOPS {
+		t.Fatal("MOPS output omitted its runtime ISA requirement")
+	}
+	target.FeatureBits = [4]uint64{}
+	withoutMOPS, err := (Compiler{}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(withoutMOPS.Code, copySequence) || bytes.Contains(withoutMOPS.Code, setSequence) {
+		t.Fatal("compatibility feature set emitted MOPS")
+	}
+	if withoutMOPS.RequiresARM64MOPS {
+		t.Fatal("baseline output requires MOPS")
+	}
+	if len(withMOPS.Code) >= len(withoutMOPS.Code) {
+		t.Fatalf("MOPS code size = %d, baseline = %d", len(withMOPS.Code), len(withoutMOPS.Code))
+	}
+	target.FeatureBits[0] = uint64(1) << corecompiler.TargetFeatureARM64MOPS
+	tinyProfile := &compilerprofile.Module{
+		Version: compilerprofile.Version, ModuleHash: sha256.Sum256(source), Source: compilerprofile.SourceStatic, Phase: compilerprofile.PhaseSteady,
+		MemOpSizes: []compilerprofile.ValueHistogram{
+			{Site: compilerprofile.Site{Function: 0, Offset: 6}, Buckets: []compilerprofile.ValueBucket{{Low: 0, High: 64, Count: 100}}},
+			{Site: compilerprofile.Site{Function: 1, Offset: 6}, Buckets: []compilerprofile.ValueBucket{{Low: 0, High: 64, Count: 100}}},
+		},
+	}
+	profiled, err := compiler.Compile(corecompiler.Input{Module: m, Source: source, Target: target, Profile: tinyProfile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if profiled.RequiresARM64MOPS || bytes.Contains(profiled.Code, copySequence) || bytes.Contains(profiled.Code, setSequence) {
+		t.Fatal("tiny-dominated profile selected MOPS")
+	}
+	warm, err := compiler.Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !warm.RequiresARM64MOPS || !bytes.Equal(warm.Code, withMOPS.Code) {
+		t.Fatal("warm function artifacts lost MOPS code or its requirement")
+	}
+}
+
+func TestCompilerNativeARM64RealizesNZCVPhysicalRename(t *testing.T) {
+	locals := append(wasmtest.ULEB(2), byte(0x7f))
+	body := append(wasmtest.Vec(locals), []byte{
+		0x20, 0x00, // local.get 0
+		0x20, 0x01, // local.get 1
+		0x48,       // i32.lt_s
+		0x21, 0x02, // local.set condition
+		0x41, 0x07, // i32.const 7: MOV preserves NZCV
+		0x21, 0x03, // local.set retained value
+		0x20, 0x02, // local.get condition
+		0x04, 0x7f, // if (result i32)
+		0x41, 0x01, // then 1
+		0x05,       // else
+		0x41, 0x00, // else 0
+		0x0b,       // end if
+		0x20, 0x03, // retained constant
+		0x6a, // i32.add
+		0x0b,
+	}...)
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Current schedulers correctly move the independent constant ahead of the
+	// comparison. Force the constrained legal order that this repair exists for,
+	// then rebuild every schedule-dependent product before finalization.
+	schedule := *plan.Schedule
+	schedule.Order = append([]uint32(nil), plan.Schedule.Order...)
+	if len(schedule.Order) < 3 || schedule.Order[0] != 1 || schedule.Order[1] != 0 || schedule.Order[2] != 2 {
+		t.Fatalf("unexpected source-stable compare schedule: %#v", schedule.Order)
+	}
+	schedule.Order[0], schedule.Order[1] = schedule.Order[1], schedule.Order[0]
+	allocation, err := railmach.AllocateGreedyPForSchedule(plan.Machine, &schedule, railmach.DefaultGreedyConfig(railmach.TargetARM64), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exit, err := railmach.LateSSAExit(plan.Machine, &allocation.Allocation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	postRA, err := railmach.PlanPostRA(railmach.TargetARM64, plan.Machine, plan.Selection, &schedule, allocation, exit, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, rewrite := range postRA.Rewrites {
+		found = found || rewrite.Kind == railmach.RewritePhysicalRename && rewrite.First == 0 && rewrite.Second == 2
+	}
+	if !found {
+		t.Fatalf("forced post-RA rewrites = %#v", postRA.Rewrites)
+	}
+	forced := *plan
+	forced.Schedule, forced.Allocation, forced.Exit, forced.PostRA = &schedule, allocation, exit, postRA
+	forced.PostRAFusionWith = make([]uint32, len(plan.Machine.Insts))
+	forced.PostRAFusionWith[0], forced.PostRAFusionWith[2] = 3, 1
+	var relocs []arm64CallReloc
+	var metrics FunctionMetrics
+	optimized, _, ok, err := emitARM64RailMach(fn, &forced, nil, &relocs, &metrics, nil)
+	if err != nil || !ok {
+		t.Fatalf("optimized NZCV finalization = ok %t, err %v", ok, err)
+	}
+	baseline := forced
+	clearPostRAEmissionRewrites(&baseline)
+	relocs = relocs[:0]
+	checked, _, ok, err := emitARM64RailMach(fn, &baseline, nil, &relocs, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("baseline NZCV finalization = ok %t, err %v", ok, err)
+	}
+	if metrics.PostRARewrites != 1 || len(optimized) >= len(checked) {
+		t.Fatalf("NZCV realization = rewrites %d optimized %d baseline %d", metrics.PostRARewrites, len(optimized), len(checked))
+	}
+}
+
+func TestARM64RailMachLeaSPLargeFrameOffset(t *testing.T) {
+	var a arm64.Asm
+	if !arm64RailMachLeaSP(&a, arm64.X8, 0x1234) || len(a.B) != 8 {
+		t.Fatalf("large SP-relative address = %x", a.B)
+	}
+	if arm64RailMachLeaSP(&a, arm64.X8, 0x1000000) {
+		t.Fatal("out-of-range SP-relative address accepted")
+	}
+}
+
+func TestARM64StructuredRegisterModesKeepShallowOperandStackInRegisters(t *testing.T) {
+	operandStack, full := arm64StructuredRegisterModes(false, false, false, len(arm64StackLocalRegisters)+1, 0, len(arm64OperandStackRegisters))
+	if !operandStack || full {
+		t.Fatalf("register modes = operand stack %t, full %t; want true, false", operandStack, full)
+	}
+	operandStack, full = arm64StructuredRegisterModes(false, false, false, len(arm64StackLocalRegisters), 8, len(arm64OperandStackRegisters))
+	if !operandStack || !full {
+		t.Fatalf("register modes = operand stack %t, full %t; want true, true", operandStack, full)
+	}
+}
+
+func TestARM64FloatBinaryPairRecognizesMatchingWidths(t *testing.T) {
+	typ, f64, ok := arm64FloatBinaryPair(wasm.InstrF64Mul, wasm.InstrF64Add)
+	if !ok || !f64 || typ != wasm.F64 {
+		t.Fatalf("f64 mul/add pair = type %s, f64 %t, ok %t", typ, f64, ok)
+	}
+	if _, _, ok := arm64FloatBinaryPair(wasm.InstrF32Mul, wasm.InstrF64Add); ok {
+		t.Fatal("mixed-width float pair accepted")
+	}
+}
+
+func TestARM64RealizesPreIndexLinearMemory(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x28, 0x02, 0x07, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].PostRARewrites == 0 || metrics.Functions[0].PostRAByteSavings <= 0 {
+		t.Fatalf("ARM64 pre-index finalization = %#v", metrics.Functions)
+	}
+}
+
+func TestARM64RealizesPostIndexMemoryChain(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x2d, 0x00, 0xac, 0x02, 0x1a, // i32.load8_u offset=300; drop
+			0x20, 0x00, 0x2f, 0x01, 0xad, 0x02, // i32.load16_u offset=301
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].PostRARewrites == 0 || metrics.Functions[0].PostRAByteSavings <= 0 {
+		t.Fatalf("ARM64 post-index finalization = %#v", metrics.Functions)
+	}
+}
+
+func TestARM64RealizesFloatingMemoryPair(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.F32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x2a, 0x02, 0x00, // f32.load offset=0
+			0x20, 0x00, 0x2a, 0x02, 0x04, // f32.load offset=4
+			0x92, 0x0b, // f32.add
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, encoded := range plan.PostRAPairWith {
+		found = found || encoded != 0
+	}
+	if !found {
+		t.Fatalf("floating pair was not realized: %#v", plan.PostRA.Rewrites)
+	}
+	var metrics FunctionMetrics
+	var relocs []arm64CallReloc
+	optimized, _, ok, err := emitARM64RailMach(fn, plan, nil, &relocs, &metrics, nil)
+	if err != nil || !ok {
+		t.Fatalf("floating pair finalization = ok %t, err %v", ok, err)
+	}
+	baseline := *plan
+	clearPostRAEmissionRewrites(&baseline)
+	relocs = relocs[:0]
+	checked, _, ok, err := emitARM64RailMach(fn, &baseline, nil, &relocs, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("floating pair baseline = ok %t, err %v", ok, err)
+	}
+	if metrics.PostRARewrites != 1 || len(optimized) >= len(checked) {
+		t.Fatalf("floating pair realization = rewrites %d optimized %d baseline %d", metrics.PostRARewrites, len(optimized), len(checked))
+	}
+}
+
+func TestARM64RecognizesCanonicalCountedLoop(t *testing.T) {
+	moduleBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x02, 0x40, 0x03, 0x40,
+			0x20, 0, 0x45, 0x0d, 1,
+			0x20, 0, 0x41, 1, 0x6b, 0x21, 0, 0x0c, 0,
+			0x0b, 0x0b, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(moduleBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tail, ok := arm64CountedLoopTail(f.Instrs, 2, 0); !ok || tail != 5 {
+		t.Fatalf("counted loop tail = %d, %v; want 5, true", tail, ok)
+	}
+}
+
+func TestARM64PowerRotationTablesCoverBothDirections(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		for _, right := range []bool{false, true} {
+			for exponent := uint32(0); exponent <= 10; exponent++ {
+				wantA, wantB := referencePowerRotation(wide, right, exponent)
+				gotA, gotB := arm64PowerRotationResult(wide, right, exponent)
+				if gotA != wantA || gotB != wantB {
+					t.Fatalf("wide=%t right=%t exponent=%d got=(%#x,%#x) want=(%#x,%#x)", wide, right, exponent, gotA, gotB, wantA, wantB)
+				}
+			}
+		}
+	}
+}
+
+func referencePowerRotation(wide, right bool, exponent uint32) (uint64, uint64) {
+	bits := uint64(32)
+	mask := uint64(math.MaxUint32)
+	if wide {
+		bits, mask = 64, math.MaxUint64
+	}
+	a, b := uint64(1), uint64(1)<<exponent
+	rotate := func(value, shift uint64) uint64 {
+		shift &= bits - 1
+		if right {
+			return (value>>shift | value<<((bits-shift)&(bits-1))) & mask
+		}
+		return (value<<shift | value>>((bits-shift)&(bits-1))) & mask
+	}
+	for range uint64(16) << exponent {
+		a = rotate(a, b)
+		b = rotate(b, a)
+	}
+	return a, b
+}

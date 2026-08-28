@@ -1,13 +1,10 @@
-package shared
+package codegen
 
 // GCRefFact is the backend-neutral, bounded semantic fact carried for one
 // compact WasmGC reference. The first word packs type/class, identity,
 // nullability, freshness, generation, and pointer-free state. The second word
 // stores a known array length as length+1 so every u32 length is representable.
-//
-// It deliberately contains no raw object address. Backends may pair it with a
-// separate short-lived resolver certificate whose safepoint invalidation rules
-// are stricter than these semantic facts.
+// It deliberately contains no raw object address.
 type GCRefFact struct {
 	bits     uint64
 	arrayLen uint64
@@ -43,9 +40,8 @@ const (
 )
 
 // GCBarrierState is selected after structured facts have reached the store.
-// Only NoBarrier currently authorizes omission. Generation-named states remain
-// explicit telemetry/design values but fail closed until their independent
-// relocation, marking, and remembered-set proofs are implemented.
+// Only NoBarrier authorizes omission. Generation-named states fail closed until
+// relocation, marking, and remembered-set proofs exist independently.
 type GCBarrierState uint8
 
 const (
@@ -63,10 +59,6 @@ func SelectGCStoreBarrier(parent, child GCRefFact) GCBarrierState {
 	if child.Nullability() == GCKnownNull || child.HeapClass() == GCHeapI31 || parent.PointerFree() {
 		return GCBarrierNoBarrier
 	}
-	// Generation facts remain representable for future validated producers, but
-	// they cannot currently select a no-barrier path. Young-parent and old-child
-	// proofs must eventually distinguish relocation validity, concurrent marking,
-	// and remembered-set requirements instead of collapsing them into one enum.
 	return GCBarrierSlowBarrier
 }
 
@@ -98,7 +90,7 @@ const (
 )
 
 // MaxGCRefFactIdentity is the largest bounded compiler identity retained in a
-// fact. Backends must conservatively use identity zero after exhausting it.
+// fact. Producers must conservatively use identity zero after exhausting it.
 const MaxGCRefFactIdentity = uint32(gcFactIdentityMask)
 
 func NewGCRefFact(nullability GCNullability, heap GCHeapClass) GCRefFact {
@@ -118,8 +110,7 @@ func GCRefFactFromPacked(bits, arrayLen uint64) GCRefFact {
 }
 
 func (f GCRefFact) Packed() (bits, arrayLen uint64) { return f.bits, f.arrayLen }
-
-func (f GCRefFact) IsZero() bool { return f.bits == 0 && f.arrayLen == 0 }
+func (f GCRefFact) IsZero() bool                    { return f.bits == 0 && f.arrayLen == 0 }
 
 func (f GCRefFact) Nullability() GCNullability {
 	return GCNullability((f.bits >> gcFactNullShift) & 3)
@@ -136,15 +127,12 @@ func (f GCRefFact) ExactType() (uint32, bool) {
 func (f GCRefFact) Identity() uint32 {
 	return uint32((f.bits >> gcFactIdentityShift) & gcFactIdentityMask)
 }
-
 func (f GCRefFact) Freshness() GCFreshness {
 	return GCFreshness((f.bits >> gcFactFreshShift) & 3)
 }
-
 func (f GCRefFact) Generation() GCGeneration {
 	return GCGeneration((f.bits >> gcFactGenShift) & 3)
 }
-
 func (f GCRefFact) PointerFree() bool { return f.bits&gcFactPointerFree != 0 }
 
 func (f GCRefFact) KnownArrayLength() (uint32, bool) {
@@ -217,14 +205,13 @@ func (f GCRefFact) WithoutKnownArrayLength() GCRefFact {
 }
 
 // MergeGCRefFacts intersects facts from two structured predecessors. Identity
-// and exact type survive only when equal. Published dominates fresh for one
-// retained identity; merging distinct identities loses freshness and generation.
+// and exact type survive only when equal. A structured join publishes a fresh
+// identity even if both predecessors carry the same identity.
 func MergeGCRefFacts(a, b GCRefFact) GCRefFact {
 	var out GCRefFact
 	if a.Nullability() == b.Nullability() {
 		out = out.WithNullability(a.Nullability())
 	}
-
 	aType, aExact := a.ExactType()
 	bType, bExact := b.ExactType()
 	aHeap, bHeap := a.HeapClass(), b.HeapClass()
@@ -234,24 +221,19 @@ func MergeGCRefFacts(a, b GCRefFact) GCRefFact {
 		if heap == GCHeapUnknown {
 			heap = bHeap
 		} else if bHeap != GCHeapUnknown && bHeap != heap {
-			// Exact identity survives, but inconsistent class metadata does not.
 			heap = GCHeapUnknown
 		}
 		out = out.WithExactType(aType, heap)
 	case aHeap != GCHeapUnknown && aHeap == bHeap:
 		out = out.WithHeapClass(aHeap)
 	}
-
 	identity := a.Identity()
 	if identity != 0 && identity == b.Identity() {
 		out = out.WithIdentity(identity)
-		freshA, freshB := a.Freshness(), b.Freshness()
-		switch {
+		switch freshA, freshB := a.Freshness(), b.Freshness(); {
 		case freshA == GCPublished || freshB == GCPublished:
 			out = out.WithFreshness(GCPublished)
 		case freshA == GCFreshUnpublished && freshB == GCFreshUnpublished:
-			// A structured join is an alias boundary even when both paths carry
-			// the same bounded identity.
 			out = out.WithFreshness(GCPublished)
 		case freshA == freshB:
 			out = out.WithFreshness(freshA)
@@ -263,7 +245,6 @@ func MergeGCRefFacts(a, b GCRefFact) GCRefFact {
 		(a.Freshness() == GCFreshUnpublished && b.Freshness() == GCFreshUnpublished) {
 		out = out.WithFreshness(GCPublished)
 	}
-
 	out = out.WithPointerFree(a.PointerFree() && b.PointerFree())
 	if al, ok := a.KnownArrayLength(); ok {
 		if bl, bok := b.KnownArrayLength(); bok && al == bl {

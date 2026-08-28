@@ -1288,11 +1288,11 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 // and backend/railshot/amd64: a scratch cell to carry the indirect code pointer across the
 // flush, and the indirect-call table descriptor pointer.
 const (
-	offTrapReentry = 24 // handler-jump re-entry SP (set per native entry)
-	offCustomCtx   = 40 // host-call log pointer / sync host-call control frame
-	offSpillRegion = 48 // 8B scratch
-	offStackFence  = 72 // low stack bound for the fence check
-	offTablePtr    = 80 // table descriptor pointer
+	offTrapReentry = 24                              // handler-jump re-entry SP (set per native entry)
+	offCustomCtx   = abi.SyncHostCustomContextOffset // host-call log pointer / sync host-call control frame
+	offSpillRegion = 48                              // 8B scratch
+	offStackFence  = 72                              // low stack bound for the fence check
+	offTablePtr    = 80                              // table descriptor pointer
 	// offTrapCellPtr (== abi.TrapCellPtrOffset) is defined in memory.go.
 )
 
@@ -1330,6 +1330,10 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 	}
 	f.a.Load64(RAX, src, runtime.InstanceContextGCNativeViewOffset)
 	f.a.Store64(dst, -int32(abi.GCNativeViewPtrOffset), RAX)
+	f.a.Load64(RAX, src, runtime.InstanceContextProfileCountersOffset)
+	f.a.Store64(dst, -int32(abi.ProfileCountersPtrOffset), RAX)
+	f.a.Load64(RAX, src, runtime.InstanceContextTierEntriesOffset)
+	f.a.Store64(dst, -int32(abi.TierEntriesPtrOffset), RAX)
 }
 
 // emitCrossInstanceCall lowers a call to an imported function that is bound to

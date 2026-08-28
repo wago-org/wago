@@ -23,8 +23,21 @@ func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoot
 // slots point directly at the off-heap frame, allowing collector rewrites even
 // though the current compact handle representation is stable.
 func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointID uint32) gc.RootSet {
-	plan := in.c.genericGCFrameRoots()
-	if plan == nil || ctrl == 0 {
+	if ctrl == 0 {
+		return gc.EmptyRoots{}
+	}
+	ctrlHead := unsafe.Slice((*byte)(offHeapPtr(ctrl+abi.SyncHostCallSavedNativeSPOffset)), 8)
+	savedRSP := uintptr(binary.LittleEndian.Uint64(ctrlHead))
+	if savedRSP == 0 {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root control has invalid saved RSP %#x", savedRSP)})
+	}
+	returnPC := uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(savedRSP)), 8)))
+	compiled, codeBase := in.compilerGenerationForPC(returnPC)
+	if compiled == nil {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC helper return PC %#x has no compiler generation", returnPC)})
+	}
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil {
 		return gc.EmptyRoots{}
 	}
 	safepoint := plan.safepointByID(safepointID)
@@ -36,8 +49,6 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	if state == nil || len(offsets) > gcNativeFrameRootLimit || frameBytes < 8 {
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root metadata is unavailable or oversized")})
 	}
-	ctrlHead := unsafe.Slice((*byte)(offHeapPtr(ctrl+abi.SyncHostCallSavedNativeSPOffset)), 8)
-	savedRSP := uintptr(binary.LittleEndian.Uint64(ctrlHead))
 	if savedRSP == 0 || savedRSP > ^uintptr(0)-abi.AMD64CallReturnAddressBytes {
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root control has invalid saved RSP %#x", savedRSP)})
 	}
@@ -58,8 +69,8 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	state.frameRoots.offsets = offsets
 	state.frameRoots.frameBytes = frameBytes
 	state.frameRoots.frameLayout = gcNativeFrameLayoutAMD64 | gcNativeFrameSyncGlobalRoots
-	state.frameRoots.codeBase = in.base
-	state.frameRoots.codeBytes = uintptr(len(in.c.code))
+	state.frameRoots.codeBase = codeBase
+	state.frameRoots.codeBytes = uintptr(len(compiled.code))
 	state.frameRoots.adapterReturnOffsets = plan.adapterReturnOffsets
 	state.frameRoots.callsites = plan.callsites
 	state.frameRoots.suspended = state

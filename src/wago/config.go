@@ -1,6 +1,8 @@
 package wago
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -8,8 +10,10 @@ import (
 	"strings"
 	"sync"
 
+	corecompiler "github.com/wago-org/wago/src/core/compiler"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/optimization"
+	compilerprofile "github.com/wago-org/wago/src/core/compiler/profile"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -232,20 +236,29 @@ func (m BoundsCheckMode) String() string {
 // RuntimeConfig configures compilation and execution. It is immutable — every
 // WithXxx returns a copy, so a base config can be shared and specialised safely.
 type RuntimeConfig struct {
-	features             CoreFeatures
-	optimizations        map[string]bool
-	optimizationSnapshot railshotOptimizationSnapshot
-	optimizationDeltas   map[string]bool
-	trustedOptimizations bool
-	maxMemoryPages       uint32
-	maxFunctionLocals    uint32 // total function parameters plus declared locals
-	maxMemoriesPerModule uint32
-	boundsChecks         BoundsCheckMode
-	noDeferBounds        bool // disable skipping of provably-redundant bounds checks (default: enabled)
-	functionWorkers      int  // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
-	gcCodeTelemetry      bool // collect code-neutral per-family WasmGC native byte attribution
-	independentInstances bool // allow unrelated instances to execute native code concurrently
-	instanceLimits       *runtimeInstanceLimits
+	features              CoreFeatures
+	optimizations         map[string]bool
+	optimizationSnapshot  railshotOptimizationSnapshot
+	optimizationDeltas    map[string]bool
+	trustedOptimizations  bool
+	maxMemoryPages        uint32
+	maxFunctionLocals     uint32 // total function parameters plus declared locals
+	maxMemoriesPerModule  uint32
+	boundsChecks          BoundsCheckMode
+	noDeferBounds         bool // disable skipping of provably-redundant bounds checks (default: enabled)
+	functionWorkers       int  // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
+	gcCodeTelemetry       bool // collect code-neutral per-family WasmGC native byte attribution
+	independentInstances  bool // allow unrelated instances to execute native code concurrently
+	instanceLimits        *runtimeInstanceLimits
+	railshotProfiling     bool // emit bounded native function-entry counters
+	tiering               bool // publish stable wrapper entries for Railshot -> Dragline replacement
+	compiler              CompilerEngine
+	compilerTarget        CompilerTargetMode
+	compilerProfile       *CompilerProfile
+	hostEffects           map[HostImport]HostEffectContract
+	compilerFallback      CompilerFallback
+	objective             OptimizationObjective
+	functionArtifactCache *FunctionArtifactCache
 }
 
 type runtimeInstanceLimits struct {
@@ -376,6 +389,105 @@ func (c *RuntimeConfig) WithNativeMemoryMappingLimit(maxMappings uint32) *Runtim
 	}
 	limits.maxNativeMemoryMappings = maxMappings
 	n.instanceLimits = &limits
+	return &n
+}
+
+// WithCompiler selects the compiler engine. Dragline is strict: modules outside
+// its current supported subset fail compilation and never fall back to Railshot.
+func (c *RuntimeConfig) WithCompiler(engine CompilerEngine) *RuntimeConfig {
+	n := *c
+	n.compiler = engine
+	return &n
+}
+
+// WithCompilerTarget selects portable compatibility code or code specialized
+// for the current host feature set. Target selection is independent of the
+// Railshot or Dragline compiler engine.
+func (c *RuntimeConfig) WithCompilerTarget(mode CompilerTargetMode) *RuntimeConfig {
+	n := *c
+	n.compilerTarget = mode
+	return &n
+}
+
+// WithTarget is the concise spelling of WithCompilerTarget.
+func (c *RuntimeConfig) WithTarget(mode CompilerTargetMode) *RuntimeConfig {
+	return c.WithCompilerTarget(mode)
+}
+
+// WithCompilerProfile snapshots a backend-neutral profile. Passing nil clears
+// the profile. Compile rejects a profile whose original-Wasm hash differs from
+// the admitted source generation.
+func (c *RuntimeConfig) WithCompilerProfile(value *CompilerProfile) *RuntimeConfig {
+	n := *c
+	if value == nil {
+		n.compilerProfile = nil
+	} else {
+		cloned := compilerprofile.Clone(*value)
+		n.compilerProfile = &cloned
+	}
+	return &n
+}
+
+// WithRailshotProfiling enables experimental, bounded function-entry counters
+// in Railshot-generated native code. Each instance owns its counter slab and
+// can snapshot it as a backend-neutral CompilerProfile.
+func (c *RuntimeConfig) WithRailshotProfiling(enabled bool) *RuntimeConfig {
+	n := *c
+	n.railshotProfiling = enabled
+	return &n
+}
+
+// WithTiering enables the experimental Railshot-to-Dragline installation
+// boundary. Tierable Railshot modules also collect the bounded entry profile
+// used by PlanCompilerTier.
+func (c *RuntimeConfig) WithTiering(enabled bool) *RuntimeConfig {
+	n := *c
+	n.tiering = enabled
+	if enabled {
+		n.railshotProfiling = true
+	}
+	return &n
+}
+
+// WithCompilerHostEffects snapshots trusted side-effect summaries for host
+// function imports. Keys use the exact Wasm import module and field names.
+// Unlisted imports remain conservative. Under-declaring an effect can make
+// generated code incorrect; use this only for host functions whose behavior is
+// part of a stable runtime contract. Passing nil clears all summaries.
+func (c *RuntimeConfig) WithCompilerHostEffects(value map[HostImport]HostEffectContract) *RuntimeConfig {
+	n := *c
+	if value == nil {
+		n.hostEffects = nil
+		return &n
+	}
+	n.hostEffects = make(map[HostImport]HostEffectContract, len(value))
+	for key, contract := range value {
+		n.hostEffects[key] = contract
+	}
+	return &n
+}
+
+// WithCompilerFallback selects explicit whole-module fallback. Railshot is
+// attempted only after Dragline reports a supported fallback class; strict
+// Dragline remains the default.
+func (c *RuntimeConfig) WithCompilerFallback(fallback CompilerFallback) *RuntimeConfig {
+	n := *c
+	n.compilerFallback = fallback
+	return &n
+}
+
+// WithOptimizationObjective selects speed, balanced, or size policy.
+func (c *RuntimeConfig) WithOptimizationObjective(objective OptimizationObjective) *RuntimeConfig {
+	n := *c
+	n.objective = objective
+	return &n
+}
+
+// WithFunctionArtifactCache enables opt-in bounded Dragline function reuse.
+// Passing nil disables it. The cache may be shared by several Runtime values.
+func (c *RuntimeConfig) WithFunctionArtifactCache(cache *FunctionArtifactCache) *RuntimeConfig {
+	n := *c
+	n.functionArtifactCache = cache
 	return &n
 }
 
@@ -524,6 +636,96 @@ func (c *RuntimeConfig) WithCompileWorkers(workers int) *RuntimeConfig {
 // CoreFeatures reports the configured feature set.
 func (c *RuntimeConfig) CoreFeatures() CoreFeatures { return c.features }
 
+// Compiler reports the selected compiler engine.
+func (c *RuntimeConfig) Compiler() CompilerEngine { return c.compiler }
+
+// CompilerTarget reports the selected compiler target mode.
+func (c *RuntimeConfig) CompilerTarget() CompilerTargetMode { return c.compilerTarget }
+
+// CompilerTargetFingerprint returns the stable identity used by metrics,
+// replays, and artifact caches for this process and target mode.
+func (c *RuntimeConfig) CompilerTargetFingerprint() ([32]byte, error) {
+	target, err := corecompiler.HostTarget(c.compilerTarget)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return target.Fingerprint(), nil
+}
+
+// CompilerProfile returns a deep copy of the configured profile.
+func (c *RuntimeConfig) CompilerProfile() *CompilerProfile {
+	if c.compilerProfile == nil {
+		return nil
+	}
+	cloned := compilerprofile.Clone(*c.compilerProfile)
+	return &cloned
+}
+
+// RailshotProfiling reports whether native function-entry collection is enabled.
+func (c *RuntimeConfig) RailshotProfiling() bool { return c.railshotProfiling }
+
+// Tiering reports whether stable compiler-tier entries are enabled.
+func (c *RuntimeConfig) Tiering() bool { return c.tiering }
+
+// CompilerProfileFingerprint returns the canonical profile identity. A zero
+// hash denotes no configured profile.
+func (c *RuntimeConfig) CompilerProfileFingerprint() ([32]byte, error) {
+	if c.compilerProfile == nil {
+		return [32]byte{}, nil
+	}
+	return compilerprofile.Hash(*c.compilerProfile)
+}
+
+// CompilerHostEffects returns a copy of the configured host contracts.
+func (c *RuntimeConfig) CompilerHostEffects() map[HostImport]HostEffectContract {
+	if len(c.hostEffects) == 0 {
+		return nil
+	}
+	out := make(map[HostImport]HostEffectContract, len(c.hostEffects))
+	for key, contract := range c.hostEffects {
+		out[key] = contract
+	}
+	return out
+}
+
+// CompilerConfigurationFingerprint identifies runtime/configuration facts that
+// can affect generated code but are not already explicit function-artifact
+// identity fields.
+func (c *RuntimeConfig) CompilerConfigurationFingerprint() [32]byte {
+	h := sha256.New()
+	h.Write([]byte("wago-compiler-configuration-v1\x00"))
+	var word [8]byte
+	binary.LittleEndian.PutUint64(word[:], uint64(c.features))
+	h.Write(word[:])
+	binary.LittleEndian.PutUint32(word[:4], c.maxMemoryPages)
+	h.Write(word[:4])
+	h.Write([]byte{byte(c.boundsChecks)})
+	if c.noDeferBounds {
+		h.Write([]byte{1})
+	} else {
+		h.Write([]byte{0})
+	}
+	for _, knob := range c.OptimizationInfos() {
+		binary.LittleEndian.PutUint32(word[:4], uint32(len(knob.Name)))
+		h.Write(word[:4])
+		h.Write([]byte(knob.Name))
+		if knob.On {
+			h.Write([]byte{1})
+		} else {
+			h.Write([]byte{0})
+		}
+	}
+	var out [32]byte
+	copy(out[:], h.Sum(nil))
+	return out
+}
+
+// CompilerFallback reports the whole-module fallback policy.
+func (c *RuntimeConfig) CompilerFallback() CompilerFallback { return c.compilerFallback }
+
+// OptimizationObjective reports the selected code-quality objective.
+func (c *RuntimeConfig) OptimizationObjective() OptimizationObjective { return c.objective }
+
 // OptimizationInfos reports this configuration's immutable selection in stable
 // backend order.
 func (c *RuntimeConfig) OptimizationInfos() []OptKnobInfo {
@@ -558,6 +760,7 @@ func (c *RuntimeConfig) clone() *RuntimeConfig {
 	}
 	clone := *c
 	clone.optimizations = c.optimizationValues()
+	clone.hostEffects = c.CompilerHostEffects()
 	return &clone
 }
 
@@ -614,8 +817,8 @@ func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
 }
 
 func (c *RuntimeConfig) String() string {
-	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, maxMemoriesPerModule: %d, functionWorkers: %d, independentInstances: %t}",
-		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.maxMemoriesPerModule, c.functionWorkers, c.independentInstances)
+	return fmt.Sprintf("RuntimeConfig{compiler: %s, target: %s, objective: %s, fallback: %s, features: %s, optimizations: %d, hostEffects: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, maxMemoriesPerModule: %d, functionWorkers: %d, independentInstances: %t}",
+		c.compiler, c.compilerTarget, c.objective, c.compilerFallback, c.features, len(c.optimizations), len(c.hostEffects), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.maxMemoriesPerModule, c.functionWorkers, c.independentInstances)
 }
 
 // SupportedFeatures reports the WebAssembly feature set this wago build can
@@ -753,6 +956,43 @@ func (c *RuntimeConfig) Validate() error {
 	}
 	if c.maxMemoriesPerModule == 0 || c.maxMemoriesPerModule > MaxMemoriesPerModuleLimit {
 		return fmt.Errorf("wago: max memories per module must be between 1 and %d, got %d", MaxMemoriesPerModuleLimit, c.maxMemoriesPerModule)
+	}
+	if !c.compiler.Valid() {
+		return fmt.Errorf("wago: unknown compiler engine %d", uint8(c.compiler))
+	}
+	if c.compilerTarget != TargetCompatibility && c.compilerTarget != TargetNative {
+		return fmt.Errorf("wago: unsupported compiler target %s", c.compilerTarget)
+	}
+	if c.compilerProfile != nil {
+		if err := c.compilerProfile.Validate(); err != nil {
+			return fmt.Errorf("wago: compiler %w", err)
+		}
+	}
+	if c.railshotProfiling && c.compiler != CompilerRailshot {
+		return fmt.Errorf("wago: Railshot profiling requires the Railshot compiler")
+	}
+	if c.tiering && c.compiler != CompilerRailshot {
+		return fmt.Errorf("wago: tiering requires the Railshot compiler for the initial module")
+	}
+	if c.compilerFallback != CompilerFallbackNone && c.compilerFallback != CompilerFallbackRailshot {
+		return fmt.Errorf("wago: unsupported compiler fallback %s", c.compilerFallback)
+	}
+	if c.compilerFallback == CompilerFallbackRailshot && c.compiler != CompilerDragline {
+		return fmt.Errorf("wago: Railshot fallback requires the Dragline compiler")
+	}
+	if !c.objective.Valid() {
+		return fmt.Errorf("wago: unsupported optimization objective %s", c.objective)
+	}
+	if c.functionArtifactCache != nil && c.compiler != CompilerDragline {
+		return fmt.Errorf("wago: function artifact cache requires the Dragline compiler")
+	}
+	if len(c.hostEffects) != 0 && c.compiler != CompilerDragline {
+		return fmt.Errorf("wago: compiler host effects require the Dragline compiler")
+	}
+	for key, contract := range c.hostEffects {
+		if err := contract.Validate(); err != nil {
+			return fmt.Errorf("wago: host effect contract %q.%q: %w", key.Module, key.Name, err)
+		}
 	}
 	if c.functionWorkers < 0 {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)

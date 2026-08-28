@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
 )
@@ -16,8 +17,8 @@ import (
 // funcref dispatch. These values are mirrored at the src/wago dispatcher
 // boundary; they are compile-only ABI constants, not serialized product data.
 const (
-	gcStructDispatchBit       uint32 = 1 << 30
-	gcStructAllocDefault             = 1
+	gcStructDispatchBit       uint32 = codegen.GCHelperDispatchBit
+	gcStructAllocDefault             = codegen.GCHelperStructAllocDefault
 	gcStructGet                      = 2
 	gcStructSet                      = 3
 	gcStructGetS                     = 4
@@ -228,18 +229,18 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		}
 		if field.Storage().Val().Kind() == wasm.ValRef {
 			if layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex); layoutOK && final && layout.CollectorRef && layout.Size == 4 {
-				barrierState := shared.SelectGCStoreBarrier(f.gcRefFact(objectRoot), f.gcRefFact(valueRoot))
+				barrierState := codegen.SelectGCStoreBarrier(f.gcRefFact(objectRoot), f.gcRefFact(valueRoot))
 				f.publishGCStoredChild(objectRoot, valueRoot)
 				if !barrierState.NeedsBarrier() && f.emitDirectGCStructRefSetNoBarrier(typeIndex, layout.Offset, barrierState) {
 					return nil
 				}
 				f.gcOpcodeBarrier = true
-				f.recordGCBarrierState(shared.GCBarrierSlowBarrier)
+				f.recordGCBarrierState(codegen.GCBarrierSlowBarrier)
 				return f.emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, layout.Offset, field.Storage().Val())
 			}
 			f.publishGCStoredChild(objectRoot, valueRoot)
 			f.gcOpcodeBarrier = true
-			f.recordGCBarrierState(shared.GCBarrierSlowBarrier)
+			f.recordGCBarrierState(codegen.GCBarrierSlowBarrier)
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})
@@ -361,7 +362,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 	if matched, known := f.gcRefFactMatchesTarget(castFact, heap, sub == 23, exactTarget); known {
 		if matched {
 			if sub == 22 {
-				f.markGCRefFact(f.s.back(), castFact.WithNullability(shared.GCKnownNonNull))
+				f.markGCRefFact(f.s.back(), castFact.WithNullability(codegen.GCKnownNonNull))
 			}
 			f.stats.peep("gc-ref-cast-elide")
 			return nil
@@ -380,7 +381,7 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 		if target, ok := f.stagedGCType(uint32(heap)); ok && target.Final {
 			finalTarget = true
 			if known, exact := castFact.ExactType(); exact && known == uint32(heap) &&
-				(sub == 23 || castFact.Nullability() == shared.GCKnownNonNull) {
+				(sub == 23 || castFact.Nullability() == codegen.GCKnownNonNull) {
 				// An exact nullable value proves a nullable cast, but a non-null
 				// cast still has to reject the possible null before it can be
 				// elided.
@@ -742,7 +743,7 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 	if matched, known := f.gcRefFactMatchesTarget(fact, target, flags&2 != 0, exactTarget); known {
 		branchOnMatch := sub == 24
 		if matched && flags&2 == 0 {
-			f.markGCRefFact(f.s.back(), fact.WithNullability(shared.GCKnownNonNull))
+			f.markGCRefFact(f.s.back(), fact.WithNullability(codegen.GCKnownNonNull))
 		}
 		f.stats.peep("gc-br-on-cast-fold")
 		if matched == branchOnMatch {
@@ -788,9 +789,9 @@ func (f *fn) emitGCI31(sub uint32) error {
 		f.a.ShiftImm(4, value, 1, false) // low 31 bits << 1; 32-bit write clears the upper half
 		f.a.AluRI(1, value, 1, false)    // tag immediate with low bit 1
 		result := f.pushReg(value, mtI64)
-		f.markGCRefFact(result, shared.NewGCRefFact(shared.GCKnownNonNull, shared.GCHeapI31))
+		f.markGCRefFact(result, codegen.NewGCRefFact(codegen.GCKnownNonNull, codegen.GCHeapI31))
 	case 29: // i31.get_s
-		if fact.Nullability() != shared.GCKnownNonNull {
+		if fact.Nullability() != codegen.GCKnownNonNull {
 			f.a.TestSelf(value, true)
 			f.trapIf(condE, trapNullReference)
 		} else {
@@ -799,7 +800,7 @@ func (f *fn) emitGCI31(sub uint32) error {
 		f.a.ShiftImm(7, value, 1, false) // arithmetic shift sign-extends bit 30
 		f.pushReg(value, mtI32)
 	case 30: // i31.get_u
-		if fact.Nullability() != shared.GCKnownNonNull {
+		if fact.Nullability() != codegen.GCKnownNonNull {
 			f.a.TestSelf(value, true)
 			f.trapIf(condE, trapNullReference)
 		} else {

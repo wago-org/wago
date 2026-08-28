@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "engines": [
+    {
+      "name": "dragline-native",
+      "builtin": "dragline",
+      "target": "native",
+      "workers": 8,
+      "required": true
+    },
+    {
+      "name": "railshot-native",
+      "builtin": "railshot",
+      "target": "native",
+      "workers": 8,
+      "required": true
+    },
+    {
+      "name": "cranelift",
+      "command": "wasmtime",
+      "args": ["compile", "-O", "opt-level=2,regalloc-algorithm=backtracking", "-o", "{artifact}", "{wasm}"],
+      "version_args": ["--version"],
+      "required": true
+    }
+  ]
+}

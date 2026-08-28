@@ -2,11 +2,13 @@ package wago
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	goruntime "runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -14,10 +16,14 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/internal/functionworkers"
+	corecompiler "github.com/wago-org/wago/src/core/compiler"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
+	compilerprofile "github.com/wago-org/wago/src/core/compiler/profile"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
+	runtimeabi "github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
@@ -125,6 +131,27 @@ func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 	return compileWithConfig(cfg, wasmBytes)
 }
 
+// CompileNativeClone compiles only the direct-call-closed local functions in
+// plan as a compact host-native Dragline image. The result is not a standalone
+// module: install it exactly once with InstallDraglineTier on a source-identical
+// tierable compatibility instance. Unselected functions occupy no native body
+// space in the clone.
+func CompileNativeClone(cfg *RuntimeConfig, wasmBytes []byte, plan CompilerTierPlan) (*Compiled, error) {
+	if len(plan.Functions) == 0 {
+		return nil, errors.New("wago: native clone plan selects no functions")
+	}
+	if !slices.IsSorted(plan.Functions) {
+		return nil, errors.New("wago: native clone plan functions are not sorted")
+	}
+	clone := cfg.clone()
+	clone.compiler = CompilerDragline
+	clone.compilerTarget = TargetNative
+	clone.compilerFallback = CompilerFallbackNone
+	clone.railshotProfiling = false
+	clone.tiering = false
+	return compileWithConfigSelected(clone, wasmBytes, plan.Functions)
+}
+
 func moduleDynamicFuncrefEscape(m *wasm.Module) bool {
 	typeMayCarryFuncref := func(typeIdx uint32) bool {
 		ft, ok := m.TypeFunc(typeIdx)
@@ -218,13 +245,21 @@ func compileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) 
 }
 
 func compileWithConfigAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, instructions map[string]*registeredInstruction) (*Compiled, error) {
+	return compileWithConfigAndInstructionsSelected(cfg, wasmBytes, instructions, nil)
+}
+
+func compileWithConfigSelected(cfg *RuntimeConfig, wasmBytes []byte, selectedFunctions []uint32) (*Compiled, error) {
+	return compileWithConfigAndInstructionsSelected(cfg, wasmBytes, nil, selectedFunctions)
+}
+
+func compileWithConfigAndInstructionsSelected(cfg *RuntimeConfig, wasmBytes []byte, instructions map[string]*registeredInstruction, selectedFunctions []uint32) (*Compiled, error) {
 	if cfg == nil {
 		cfg = NewRuntimeConfig()
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	compiled, err := compileWithFrontendFeaturesAndInstructions(cfg, wasmBytes, cfg.frontendFeatures(), instructions)
+	compiled, err := compileWithFrontendFeaturesAndInstructionsSelected(cfg, wasmBytes, cfg.frontendFeatures(), instructions, selectedFunctions)
 	// TinyGo's conservative collector must not reclaim compiler inputs whose
 	// derived slices and pointers remain in use below this public boundary.
 	// Keep the complete owners live until decoding and code generation finish.
@@ -1104,6 +1139,10 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 }
 
 func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features, instructions map[string]*registeredInstruction) (*Compiled, error) {
+	return compileWithFrontendFeaturesAndInstructionsSelected(cfg, wasmBytes, features, instructions, nil)
+}
+
+func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features, instructions map[string]*registeredInstruction, selectedFunctions []uint32) (*Compiled, error) {
 	m, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
@@ -1253,6 +1292,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		// ARM64 lowers collector-reference ref.test through the generic checked
 		// helper. Provision the collector and helper dispatch even when a narrower
 		// metadata-only product recognized the module.
+		gcStructProduct = stagedGCStructGeneric
+	}
+	if cfg.compiler == CompilerDragline && !gcStructProduct.requiresHelpers() && requirements.gcRefRuntimeHelper {
+		// Dragline currently lowers dynamic collector-reference tests and casts
+		// through the shared parked helper ABI on both targets. Provision its
+		// control context even when the module has no declared struct/array type.
 		gcStructProduct = stagedGCStructGeneric
 	}
 	if features.NullReferenceProducts {
@@ -1406,7 +1451,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	genericGCExecution := gcStructProduct == stagedGCStructGeneric || gcArrayProduct == stagedGCArrayProductNewData || gcArrayProduct == stagedGCArrayProductNewElem || gcArrayProduct == stagedGCArrayProductGeneric
 	collectorReferenceCallBoundary := moduleHasCollectorReferenceCallBoundary(m)
 	gcAllocationSites := moduleHasGCAllocationSites(m)
-	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary
+	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary || moduleHasCollectorReferenceFrames(m)
 	gcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots)
 	indexedFunctionRefTest, indexedFunctionRefCast := requirements.indexedFuncRefTest, requirements.indexedFuncRefCast
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
@@ -1424,7 +1469,33 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			return nil, fmt.Errorf("compile: %w", err)
 		}
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
+	router := corecompiler.Router{
+		Railshot: corecompiler.BackendFunc(func(corecompiler.Input) (corecompiler.Output, error) {
+			rail, compileErr := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), FunctionCounters: cfg.railshotProfiling, MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
+			if compileErr != nil {
+				return corecompiler.Output{}, compileErr
+			}
+			return corecompiler.Output{CodeImage: rail.CodeImage, Code: rail.Code, Entry: rail.Entry, InternalEntry: rail.InternalEntry, DirectPrepared: rail.DirectPrepared, RequiresBMI2: rail.RequiresBMI2, RequiresAVX2: rail.RequiresAVX2, RequiresAVX512: rail.RequiresAVX512}, nil
+		}),
+		Dragline: dragline.Compiler{FunctionCache: cfg.functionArtifactCache},
+	}
+	target, err := corecompiler.HostTarget(cfg.compilerTarget)
+	if err != nil {
+		return nil, fmt.Errorf("compile: %w", err)
+	}
+	var configurationFingerprint [32]byte
+	if cfg.functionArtifactCache != nil {
+		configurationFingerprint = cfg.CompilerConfigurationFingerprint()
+	}
+	compilerInput := corecompiler.Input{Module: m, FunctionWorkers: workers, Source: wasmBytes, Runtime: corecompiler.RuntimeContract{ABIRevision: runtimeabi.Revision}, Target: target, Objective: cfg.objective, Bounds: corecompiler.BoundsMode(boundsMode), ConfigurationFingerprint: configurationFingerprint, Profile: cfg.compilerProfile, HostEffects: compilerHostEffectBindings(m, cfg.hostEffects), SelectedFunctions: selectedFunctions}
+	cm, err := router.Compile(cfg.compiler, compilerInput)
+	if err != nil && cfg.compiler == CompilerDragline && cfg.compilerFallback == CompilerFallbackRailshot {
+		var unsupported *dragline.UnsupportedError
+		var resourceLimit *dragline.ResourceLimitError
+		if errors.As(err, &unsupported) || errors.As(err, &resourceLimit) {
+			cm, err = router.Compile(CompilerRailshot, compilerInput)
+		}
+	}
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1450,7 +1521,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if exactNativeGCRoots || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{code: code, compiler: cm.Engine, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: cm.Engine == corecompiler.EngineDragline || !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, requiresARM64MOPS: cm.RequiresARM64MOPS, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c.validateMemo.nativeCloneFunctions = append([]uint32(nil), selectedFunctions...)
+	c.codeCache.functionCounters = cfg.railshotProfiling
+	c.codeCache.tierable = cfg.tiering
+	c.codeCache.sourceHash = sha256.Sum256(wasmBytes)
+	c.codeCache.sourceHashAvailable = true
 	c.memoryDir.exactExports = true
 	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
 	c.memoryDir.stagedMemory64 = features.Memory64 && usesMemory64
@@ -1990,8 +2066,16 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if guardPageBuilt && cfg.boundsChecks == BoundsChecksSignalsBased {
 		compiled.codeCache.flags |= compiledCacheGuardMemory
 	}
+	var draglineRootMap *compiledGCFrameRoots
+	var draglineRootErr error
+	if cm.Engine == corecompiler.EngineDragline && exactNativeGCRoots {
+		draglineRootMap, draglineRootErr = draglineGCFrameRoots(cm)
+	}
 	validGCFrameRoots := validGCModuleFrameRootPlan(gcFrameRoots)
-	if validGCFrameRoots && (gcAllocationSites || genericGCExecution && !collectorReferenceCallBoundary) {
+	if cm.Engine == corecompiler.EngineDragline {
+		validGCFrameRoots = !exactNativeGCRoots || draglineRootErr == nil
+	}
+	if cm.Engine != corecompiler.EngineDragline && validGCFrameRoots && (gcAllocationSites || genericGCExecution && !collectorReferenceCallBoundary) {
 		hasAllocationSafepoint := false
 		for _, plan := range gcFrameRoots.Functions {
 			hasAllocationSafepoint = hasAllocationSafepoint || plan != nil && len(plan.Safepoints) != 0
@@ -2000,31 +2084,37 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	if exactNativeGCRoots && !validGCFrameRoots {
 		diagnostic := "native backend did not produce complete exact root maps"
-		if gcFrameRoots != nil && gcFrameRoots.Diagnostic != "" {
+		if cm.Engine == corecompiler.EngineDragline && draglineRootErr != nil {
+			diagnostic = draglineRootErr.Error()
+		} else if gcFrameRoots != nil && gcFrameRoots.Diagnostic != "" {
 			diagnostic = gcFrameRoots.Diagnostic
 		}
 		compiled.setGCRootAdmissionFailure(diagnostic)
 	}
 	if validGCFrameRoots {
-		rootMap := &compiledGCFrameRoots{}
-		var offsetInterner gcFrameOffsetInterner
-		for function, plan := range gcFrameRoots.Functions {
-			if plan == nil {
-				continue
+		if cm.Engine == corecompiler.EngineDragline {
+			compiled.validateMemo.gcFrameRoots = draglineRootMap
+		} else {
+			rootMap := &compiledGCFrameRoots{}
+			var offsetInterner gcFrameOffsetInterner
+			for function, plan := range gcFrameRoots.Functions {
+				if plan == nil {
+					continue
+				}
+				functionBase := uint32(compiled.Entry[function])
+				if plan.AdapterReturnOffset != 0 {
+					rootMap.adapterReturnOffsets = append(rootMap.adapterReturnOffsets, functionBase+plan.AdapterReturnOffset)
+				}
+				for i := range plan.Safepoints {
+					rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: plan.Safepoints[i].ID, frameBytes: plan.FrameBytes, offsets: offsetInterner.intern(plan.Safepoints[i].Offsets, true)})
+				}
+				for i := range plan.Callsites {
+					rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: functionBase + plan.Callsites[i].ReturnOffset, frameBytes: plan.FrameBytes, stackAdjust: plan.Callsites[i].StackAdjust, offsets: offsetInterner.intern(plan.Callsites[i].Offsets, true)})
+				}
 			}
-			functionBase := uint32(compiled.Entry[function])
-			if plan.AdapterReturnOffset != 0 {
-				rootMap.adapterReturnOffsets = append(rootMap.adapterReturnOffsets, functionBase+plan.AdapterReturnOffset)
-			}
-			for i := range plan.Safepoints {
-				rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: plan.Safepoints[i].ID, frameBytes: plan.FrameBytes, offsets: offsetInterner.intern(plan.Safepoints[i].Offsets, true)})
-			}
-			for i := range plan.Callsites {
-				rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: functionBase + plan.Callsites[i].ReturnOffset, frameBytes: plan.FrameBytes, stackAdjust: plan.Callsites[i].StackAdjust, offsets: offsetInterner.intern(plan.Callsites[i].Offsets, true)})
-			}
+			rootMap.adapterReturnOffsets = normalizeAdapterReturnOffsets(rootMap.adapterReturnOffsets)
+			compiled.validateMemo.gcFrameRoots = rootMap
 		}
-		rootMap.adapterReturnOffsets = normalizeAdapterReturnOffsets(rootMap.adapterReturnOffsets)
-		compiled.validateMemo.gcFrameRoots = rootMap
 	}
 	// GC/typed-reference admission follows validated source requirements; product
 	// classifiers below select representations and optimized paths. Exception
@@ -2073,6 +2163,26 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.codeCache.gcI31Product = gcI31Product
 	}
 	return compiled, nil
+}
+
+func compilerHostEffectBindings(m *wasm.Module, contracts map[HostImport]HostEffectContract) []corecompiler.HostEffectBinding {
+	if len(contracts) == 0 || m.ImportedFuncCount() == 0 {
+		return nil
+	}
+	bindings := make([]corecompiler.HostEffectBinding, m.ImportedFuncCount())
+	function := 0
+	for i := range m.Imports {
+		imp := &m.Imports[i]
+		if imp.Type.Kind != wasm.ExternFunc {
+			continue
+		}
+		contract, ok := contracts[HostImport{Module: imp.Module, Name: imp.Name}]
+		if ok {
+			bindings[function] = corecompiler.HostEffectBinding{Contract: contract, Declared: true}
+		}
+		function++
+	}
+	return bindings
 }
 
 func normalizeAdapterReturnOffsets(offsets []uint32) []uint32 {
@@ -2773,6 +2883,9 @@ func (c *Compiled) validate() error {
 	if c == nil {
 		return fmt.Errorf("compiled module is nil")
 	}
+	if !c.compiler.Valid() {
+		return fmt.Errorf("compiled metadata invalid: unknown compiler engine %d", uint8(c.compiler))
+	}
 	if c.NumImports < 0 {
 		return fmt.Errorf("compiled metadata invalid: negative NumImports %d", c.NumImports)
 	}
@@ -2790,6 +2903,40 @@ func (c *Compiled) validate() error {
 	}
 	if c.NumImports > maxInt()-len(c.Funcs) {
 		return fmt.Errorf("compiled metadata invalid: function count overflows int")
+	}
+	if cloneFunctions := c.compactNativeFunctions(); len(cloneFunctions) != 0 {
+		if c.compiler != CompilerDragline || !slices.IsSorted(cloneFunctions) || len(c.Entry) != len(c.Funcs) || len(c.InternalEntry) != len(c.Funcs) {
+			return fmt.Errorf("compiled metadata invalid: malformed compact native clone selection")
+		}
+		selected := make([]bool, len(c.Funcs))
+		for index, function := range cloneFunctions {
+			if index != 0 && cloneFunctions[index-1] == function || function < uint32(c.NumImports) || function-uint32(c.NumImports) >= uint32(len(c.Funcs)) {
+				return fmt.Errorf("compiled metadata invalid: compact native clone function %d is invalid", function)
+			}
+			selected[function-uint32(c.NumImports)] = true
+		}
+		for local := range c.Funcs {
+			entry, internal := c.Entry[local], internalEntryOffset(c.InternalEntry[local])
+			if selected[local] && (entry == 0 || internal == 0) || !selected[local] && (entry != 0 || internal != 0) {
+				return fmt.Errorf("compiled metadata invalid: compact native clone entry %d does not match selection", local+c.NumImports)
+			}
+		}
+	}
+	if c.hasFunctionCounters() {
+		if c.compiler != CompilerRailshot {
+			return fmt.Errorf("compiled metadata invalid: Railshot function counters require the Railshot compiler")
+		}
+		if c.NumImports+len(c.Funcs) > compilerprofile.MaxRailshotFunctionCounters {
+			return fmt.Errorf("compiled metadata invalid: %d Railshot function counters exceed limit %d", c.NumImports+len(c.Funcs), compilerprofile.MaxRailshotFunctionCounters)
+		}
+	}
+	if c.isTierable() {
+		if c.compiler != CompilerRailshot || !c.hasFunctionCounters() {
+			return fmt.Errorf("compiled metadata invalid: tiering requires profiled Railshot code")
+		}
+		if c.codeCache == nil || !c.codeCache.sourceHashAvailable {
+			return fmt.Errorf("compiled metadata invalid: tiering requires an exact source identity")
+		}
 	}
 	if err := validateDefinedTypeDescriptors(c.Types); err != nil {
 		return err
@@ -4014,6 +4161,9 @@ func (c *Compiled) validateSerializableLocked() error {
 	if c.boundsMode == BoundsChecksSignalsBased {
 		return errors.New("wago: signals-based compiled modules cannot be serialized; recompile from wasm at load time")
 	}
+	if len(c.compactNativeFunctions()) != 0 {
+		return errors.New("wago: compact native clones cannot be serialized")
+	}
 	if len(c.Entry) == 0 && len(c.Funcs) > 0 {
 		return errors.New("wago: compiled module has functions but no native entries")
 	}
@@ -4104,6 +4254,9 @@ func finishDecodedCompiled(decoded *Compiled) error {
 	}
 	if decoded.requiresBMI2 && !hostSupportsBMI2() {
 		return fmt.Errorf("wago: compiled module requires BMI2 CPU features unavailable on this host")
+	}
+	if decoded.requiresARM64MOPS && !hostSupportsARM64MOPS() {
+		return fmt.Errorf("wago: compiled module requires ARM64 MOPS CPU features unavailable on this host")
 	}
 	return nil
 }
@@ -4320,7 +4473,7 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	}
-	entry := in.base + uintptr(in.c.Entry[li])
+	entry := in.wrapperEntry(li)
 	if contexts.interrupt != nil {
 		stopCancel := in.startCancellationWatch(contexts.interrupt, in.trap)
 		defer stopCancel()
@@ -4330,7 +4483,7 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 			return nil, err
 		}
 	} else {
-		privateScalar := invokePrivateEntryEnabled && contexts.interrupt == nil && !in.nativeControlIsShared() &&
+		privateScalar := !in.tierable() && invokePrivateEntryEnabled && contexts.interrupt == nil && !in.nativeControlIsShared() &&
 			ic.entryMode != preparedEntryGeneral
 		entryMode := preparedEntryGeneral
 		if privateScalar {
@@ -4449,7 +4602,7 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts i
 	if len(in.hostLog) > 0 {
 		binary.LittleEndian.PutUint32(in.hostLog, 0)
 	}
-	entry := in.base + uintptr(in.c.Entry[li])
+	entry := in.wrapperEntry(li)
 	if len(activeTrap) < 4 {
 		activeTrap = in.trap
 	}

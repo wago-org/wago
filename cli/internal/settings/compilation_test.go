@@ -2,6 +2,7 @@ package settings
 
 import (
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago"
@@ -70,5 +71,50 @@ func TestCoreSelectionDefaultsAndExplicitRelease2(t *testing.T) {
 	}
 	if got := selection.RuntimeConfig().CoreFeatures(); got != wago.CoreFeaturesV2 {
 		t.Fatalf("explicit Core 2 features = %s, want %s", got, wago.CoreFeaturesV2)
+	}
+}
+
+func TestBackendSelectionIsExperimentalAndStrict(t *testing.T) {
+	config := Default()
+	config.Experimental["dragline"] = true
+	selection, err := ResolveCompilationFrom(config, true, CompilationRequest{Arch: runtime.GOARCH, Backend: "dragline"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.Backend != wago.CompilerDragline || selection.RuntimeConfig().Compiler() != wago.CompilerDragline {
+		t.Fatalf("selection = %#v", selection)
+	}
+	if _, err := ResolveCompilationFrom(Default(), false, CompilationRequest{Arch: runtime.GOARCH, Backend: "dragline"}); err == nil || !strings.Contains(err.Error(), "wago config --enable dragline --experimental") {
+		t.Fatalf("Dragline backend without opt-in error = %v", err)
+	}
+	if _, err := ResolveCompilationFrom(Default(), false, CompilationRequest{Arch: runtime.GOARCH, Backend: "missing"}); err == nil {
+		t.Fatal("unknown backend accepted")
+	}
+}
+
+func TestCompilerTargetSelectionIsOrthogonal(t *testing.T) {
+	config := Default()
+	config.Experimental["dragline"] = true
+	selection, err := ResolveCompilationFrom(config, true, CompilationRequest{
+		Arch: runtime.GOARCH, Backend: "dragline", Target: "native", Fallback: "railshot", Objective: "size",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.Backend != wago.CompilerDragline || selection.Target != wago.TargetNative || selection.Fallback != wago.CompilerFallbackRailshot || selection.Objective != wago.OptimizeSize {
+		t.Fatalf("selection = %#v", selection)
+	}
+	runtimeConfig := selection.RuntimeConfig()
+	if runtimeConfig.Compiler() != wago.CompilerDragline || runtimeConfig.CompilerTarget() != wago.TargetNative || runtimeConfig.CompilerFallback() != wago.CompilerFallbackRailshot || runtimeConfig.OptimizationObjective() != wago.OptimizeSize {
+		t.Fatalf("runtime config compiler=%s target=%s objective=%s fallback=%s", runtimeConfig.Compiler(), runtimeConfig.CompilerTarget(), runtimeConfig.OptimizationObjective(), runtimeConfig.CompilerFallback())
+	}
+	if _, err := ResolveCompilationFrom(Default(), false, CompilationRequest{Arch: runtime.GOARCH, Target: "host-ish"}); err == nil {
+		t.Fatal("unknown compiler target accepted")
+	}
+	if _, err := ResolveCompilationFrom(Default(), false, CompilationRequest{Arch: runtime.GOARCH, Fallback: "railshot"}); err == nil {
+		t.Fatal("Railshot fallback without Dragline was accepted")
+	}
+	if _, err := ResolveCompilationFrom(Default(), false, CompilationRequest{Arch: runtime.GOARCH, Objective: "fastish"}); err == nil {
+		t.Fatal("unknown optimization objective was accepted")
 	}
 }

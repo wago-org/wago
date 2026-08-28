@@ -29,7 +29,7 @@ type Cache struct {
 	ReportError func(error)
 }
 
-const cacheKeyFormat = 4
+const cacheKeyFormat = 8
 
 var defaultIdentity = sync.OnceValues(func() ([sha256.Size]byte, bool) {
 	info, ok := debug.ReadBuildInfo()
@@ -110,6 +110,19 @@ func (cache Cache) path(source []byte, config *wago.RuntimeConfig) (string, bool
 	encoded = append(encoded, runtime.GOOS...)
 	encoded = binary.LittleEndian.AppendUint64(encoded, uint64(len(runtime.GOARCH)))
 	encoded = append(encoded, runtime.GOARCH...)
+	encoded = append(encoded, byte(config.Compiler()))
+	encoded = append(encoded, byte(config.CompilerFallback()))
+	encoded = append(encoded, byte(config.OptimizationObjective()))
+	targetFingerprint, err := config.CompilerTargetFingerprint()
+	if err != nil {
+		return "", false
+	}
+	encoded = append(encoded, targetFingerprint[:]...)
+	profileFingerprint, err := config.CompilerProfileFingerprint()
+	if err != nil {
+		return "", false
+	}
+	encoded = append(encoded, profileFingerprint[:]...)
 	encoded = binary.LittleEndian.AppendUint64(encoded, uint64(config.CoreFeatures()))
 	encoded = binary.LittleEndian.AppendUint32(encoded, uint32(config.BoundsChecks()))
 	encoded = append(encoded, 0)

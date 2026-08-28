@@ -1399,10 +1399,10 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 // and backend/railshot/arm64: a scratch cell to carry the indirect code pointer
 // across the flush, and the indirect-call table descriptor pointer.
 const (
-	offCustomCtx    = 40 // host-call log pointer / sync host-call control frame
-	offSpillRegion  = 48 // 8B scratch
-	offStackFence   = 72 // low stack bound for the fence check
-	offTablePtr     = 80 // table descriptor pointer
+	offCustomCtx    = abi.SyncHostCustomContextOffset // host-call log pointer / sync host-call control frame
+	offSpillRegion  = 48                              // 8B scratch
+	offStackFence   = 72                              // low stack bound for the fence check
+	offTablePtr     = 80                              // table descriptor pointer
 	offMemoryDirPtr = abi.MemoryDirPtrOffset
 	// offTrapHandlerPtr (32), offTrapStackReentry (24), and offTrapCellPtr
 	// (== abi.TrapCellPtrOffset) are defined in memory.go.
@@ -1447,6 +1447,12 @@ func (f *fn) copyInstanceContext(dst, src Reg) {
 	}
 	f.ld64(X9, src, runtime.InstanceContextGCNativeViewOffset)
 	f.a.SubImm64(X8, dst, uint32(abi.GCNativeViewPtrOffset))
+	f.a.Store64(X9, X8, 0)
+	f.ld64(X9, src, runtime.InstanceContextProfileCountersOffset)
+	f.a.SubImm64(X8, dst, uint32(abi.ProfileCountersPtrOffset))
+	f.a.Store64(X9, X8, 0)
+	f.ld64(X9, src, runtime.InstanceContextTierEntriesOffset)
+	f.a.SubImm64(X8, dst, uint32(abi.TierEntriesPtrOffset))
 	f.a.Store64(X9, X8, 0)
 }
 

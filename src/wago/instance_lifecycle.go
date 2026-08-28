@@ -350,6 +350,11 @@ func (in *Instance) releaseResources() {
 		in.thunkMem = nil
 	}
 	in.c.releaseCode()
+	if in.profile != nil {
+		in.profile.tier.close()
+		_ = in.profile.arena.Close()
+		in.profile = nil
+	}
 	runtime.ReleaseArena(in.ar)
 	var detachedMemories importDedup[*Memory]
 	if in.memoryDir != nil {

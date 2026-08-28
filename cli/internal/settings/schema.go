@@ -7,7 +7,7 @@ import (
 	"regexp"
 )
 
-// GenerateSchema replaces the registered feature and optimization name enums
+// GenerateSchema replaces the registered settings name enums
 // without reformatting the hand-authored manifest schema around them.
 func GenerateSchema(source []byte) ([]byte, error) {
 	if !json.Valid(source) {
@@ -15,7 +15,7 @@ func GenerateSchema(source []byte) ([]byte, error) {
 	}
 	result := append([]byte(nil), source...)
 	names := SchemaNames()
-	for _, section := range []string{"features", "optimizations"} {
+	for _, section := range []string{"features", "optimizations", "experimental"} {
 		pattern := regexp.MustCompile(`(?s)("` + section + `"\s*:\s*\{.*?"propertyNames"\s*:\s*\{\s*"enum"\s*:\s*)\[[^]]*\]`)
 		match := pattern.FindSubmatchIndex(result)
 		if match == nil {

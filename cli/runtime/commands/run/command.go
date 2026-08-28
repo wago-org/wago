@@ -31,9 +31,12 @@ func Command(environment Environment) *command.Cmd {
 	flags = append(flags, watchFlags()...)
 	flags = append(flags,
 		command.Flag{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
+		command.Flag{Name: "target", Arg: "<mode>", Help: "compiler target: compat | native (default compat)"},
+		command.Flag{Name: "objective", Arg: "<name>", Help: "compiler objective: speed | balanced | size (default speed)"},
 	)
 	flags = append(flags, gcFlags()...)
 	flags = append(flags, ParallelFlag())
+	flags = append(flags, BackendFlags()...)
 	flags = append(flags, environment.ProfileFlags()...)
 	knobs := append(DeferredBoundsCheckingFlags(), OptimizationFlags()...)
 	parserFlags := append(append([]command.Flag(nil), flags...), knobs...)
@@ -77,8 +80,12 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	if err != nil {
 		ui.Usage("run: %v", err)
 	}
+	backend, err := BackendOverride(ctx)
+	if err != nil {
+		ui.Usage("run: %v", err)
+	}
 	selection, err := settings.ResolveCompilation(settings.CompilationRequest{
-		Arch: runtime.GOARCH, Core: ctx.Str("core"), Parallel: ctx.Str("parallel"),
+		Arch: runtime.GOARCH, Backend: backend, Target: ctx.Str("target"), Fallback: ctx.Str("compiler-fallback"), Objective: ctx.Str("objective"), Core: ctx.Str("core"), Parallel: ctx.Str("parallel"),
 		DeferredBoundsChecking: deferredBoundsChecking, Optimizations: optimizations,
 	})
 	if err != nil {
