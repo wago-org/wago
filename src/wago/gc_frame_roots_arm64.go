@@ -45,7 +45,11 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRo
 			if !ok {
 				return reject("function import %d has no validated signature", funcImport-1)
 			}
-			if collectorBoundary {
+			// Reference-free imports use the parked synchronous wrapper and need
+			// not also fit the internal register ABI. Preserve the existing
+			// collector-boundary path so reference ownership and root handling
+			// remain coupled to that module-level proof.
+			if collectorBoundary || wasmFuncTypeReferenceFree(ft) {
 				if !arm64GCFrameHostCallABI(ft) {
 					return reject("function import %d exceeds the synchronous host-call ABI", funcImport-1)
 				}
@@ -261,7 +265,7 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 			if !ok {
 				return false
 			}
-			if int(imm.Index) < m.ImportedFuncCount() && collectorBoundary {
+			if int(imm.Index) < m.ImportedFuncCount() && (collectorBoundary || wasmFuncTypeReferenceFree(ft)) {
 				if !arm64GCFrameHostCallABI(ft) {
 					return false
 				}

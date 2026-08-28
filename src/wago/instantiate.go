@@ -206,7 +206,7 @@ func (b *instanceBuilder) prepareCollector() error {
 	// modules in private collector domains so a same-memory notifier never waits
 	// behind the parked invocation's Runtime-wide collector lease.
 	if b.opts.store != nil && !b.opts.store.private && needsRuntimeDomain && b.c.sharedGCPersistentDomainSafe() && !b.c.usesAtomicWaitHelpers() {
-		preferred, err := preferredGCCollectorFromImports(b.imports, b.opts.store)
+		preferred, err := preferredGCCollectorFromImports(b.c, b.imports, b.opts.store)
 		if err != nil {
 			return err
 		}
