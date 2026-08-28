@@ -1595,7 +1595,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 		}
 		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
 	}
-	if f.opt(optRegABI) && sigFitsRegABI(ft) {
+	if f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))) {
 		if sigIsIntOnly(ft) {
 			f.stats.call(callKindRegisterABI)
 			f.emitRegisterCall(localIdx, ft, resHint)
@@ -1972,17 +1972,20 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 
 	if rN == 1 {
 		rt := mtOf(ft.Results[0])
+		var value *elem
 		if rt.isFloat() {
-			f.pushFReg(0, rt) // XMM0
+			value = f.pushFReg(0, rt) // XMM0
 		} else {
 			f.pinned = f.pinned.remove(resReg)
-			f.pushReg(resReg, rt)
+			value = f.pushReg(resReg, rt)
 		}
+		value.st.gcRoot = gcFrameRefType(f.m, ft.Results[0])
 	}
 	if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
-			f.pushReg(reg, mtOf(ft.Results[i]))
+			value := f.pushReg(reg, mtOf(ft.Results[i]))
+			value.st.gcRoot = gcFrameRefType(f.m, ft.Results[i])
 		}
 	}
 }
