@@ -421,6 +421,24 @@ func TestRuntimeMemoryLimitChargesFullSecondaryNoMaximumMemory64(t *testing.T) {
 	}
 }
 
+func TestRuntimeMemoryLimitChargesFullImportedNoMaximumMemory64(t *testing.T) {
+	const (
+		pageBytes = uint64(65536)
+		maxPages  = uint64(65536)
+	)
+	mod := &Module{c: &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{
+		{ImportKey: "env.memory", Addr64: true},
+	}}}}
+	if got, err := managedMemoryReservation(mod); err != nil || got != maxPages*pageBytes {
+		t.Fatalf("imported no-max memory64 reservation = %d, %v; want %d", got, err, maxPages*pageBytes)
+	}
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(0, (maxPages-1)*pageBytes)))
+	defer rt.Close()
+	if reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect); reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("undersized imported no-max memory64 reservation = %v, %v; want permission denial", reservation, err)
+	}
+}
+
 func TestRuntimeMemoryLimitClassifiesAccountingOverflow(t *testing.T) {
 	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(0, 1)))
 	defer rt.Close()

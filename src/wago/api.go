@@ -3614,7 +3614,7 @@ func (c *Compiled) declaredMemoryMaxBytes() (uint64, error) {
 			// by instantiation. Only staged memory 0 is capped one page below the
 			// full 2^16-page reservation used by memory32 and secondary memories.
 			pages = 1 << 16
-			if i == 0 && def.Addr64 {
+			if i == 0 && def.Addr64 && def.ImportKey == "" {
 				pages = 65535
 			}
 		}
