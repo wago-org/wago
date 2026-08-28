@@ -263,6 +263,7 @@ const (
 	CoreFeaturesV1                             = impl.CoreFeaturesV1
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
 	CoreFeaturesV3                             = impl.CoreFeaturesV3
+	DefaultMaxFunctionLocals                   = impl.DefaultMaxFunctionLocals
 	Deprecated                                 = impl.Deprecated
 	ElemModeActive                             = impl.ElemModeActive
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
@@ -303,6 +304,7 @@ const (
 	ImportTag                                  = impl.ImportTag
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateManaged                         = impl.InstantiateManaged
+	MaxFunctionLocalsLimit                     = impl.MaxFunctionLocalsLimit
 	NoPluginOverrides                          = impl.NoPluginOverrides
 	PackedTypeI16                              = impl.PackedTypeI16
 	PackedTypeI8                               = impl.PackedTypeI8
