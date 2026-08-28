@@ -242,8 +242,12 @@ type RuntimeConfig struct {
 	functionWorkers      int  // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
 	gcCodeTelemetry      bool // collect code-neutral per-family WasmGC native byte attribution
 	independentInstances bool // allow unrelated instances to execute native code concurrently
-	maxInstances         uint32
-	maxInstanceMemory    uint64
+	instanceLimits       *runtimeInstanceLimits
+}
+
+type runtimeInstanceLimits struct {
+	maxInstances   uint32
+	maxMemoryBytes uint64
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -337,8 +341,7 @@ func (c *RuntimeConfig) WithCoreFeatures(features CoreFeatures) *RuntimeConfig {
 // corresponding aggregate unbounded.
 func (c *RuntimeConfig) WithInstanceLimits(maxInstances uint32, maxMemoryBytes uint64) *RuntimeConfig {
 	n := *c
-	n.maxInstances = maxInstances
-	n.maxInstanceMemory = maxMemoryBytes
+	n.instanceLimits = &runtimeInstanceLimits{maxInstances: maxInstances, maxMemoryBytes: maxMemoryBytes}
 	return &n
 }
 

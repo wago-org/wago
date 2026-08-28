@@ -362,11 +362,14 @@ func (rt *Runtime) unregisterInstance(in *Instance) {
 	rt.mu.Lock()
 	delete(rt.instances, in)
 	rt.mu.Unlock()
-	in.runtimeReservation.release()
+	if state := in.pluginState.Load(); state != nil {
+		state.runtimeReservation.release()
+	}
 }
 
 func (rt *Runtime) reserveDirectInstance(mod *Module, origin InstantiateOrigin) (*runtimeInstanceReservation, error) {
-	if origin != InstantiateDirect || (rt.cfg.maxInstances == 0 && rt.cfg.maxInstanceMemory == 0) {
+	limits := rt.cfg.instanceLimits
+	if origin != InstantiateDirect || limits == nil || (limits.maxInstances == 0 && limits.maxMemoryBytes == 0) {
 		return nil, nil
 	}
 	memory, err := managedMemoryReservation(mod)
@@ -375,11 +378,11 @@ func (rt *Runtime) reserveDirectInstance(mod *Module, origin InstantiateOrigin) 
 	}
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	if rt.cfg.maxInstances != 0 && rt.directInstanceCount >= rt.cfg.maxInstances {
-		return nil, fmt.Errorf("wago: runtime instance limit %d reached: %w", rt.cfg.maxInstances, ErrPermissionDenied)
+	if limits.maxInstances != 0 && rt.directInstanceCount >= limits.maxInstances {
+		return nil, fmt.Errorf("wago: runtime instance limit %d reached: %w", limits.maxInstances, ErrPermissionDenied)
 	}
-	if rt.cfg.maxInstanceMemory != 0 && memory > rt.cfg.maxInstanceMemory-rt.directInstanceMemory {
-		return nil, fmt.Errorf("wago: aggregate direct instance memory %d + %d exceeds limit %d: %w", rt.directInstanceMemory, memory, rt.cfg.maxInstanceMemory, ErrPermissionDenied)
+	if limits.maxMemoryBytes != 0 && memory > limits.maxMemoryBytes-rt.directInstanceMemory {
+		return nil, fmt.Errorf("wago: aggregate direct instance memory %d + %d exceeds limit %d: %w", rt.directInstanceMemory, memory, limits.maxMemoryBytes, ErrPermissionDenied)
 	}
 	rt.directInstanceCount++
 	rt.directInstanceMemory += memory

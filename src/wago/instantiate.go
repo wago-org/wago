@@ -1408,7 +1408,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcNativeView))))
 	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView, runtimeReservation: opts.runtimeReservation,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
 		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
 		nativeContext:   nativeContextPtr,
 		moduleIdentity:  opts.moduleIdentity,
@@ -1498,6 +1498,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		}
 	}
 	if opts.runtime != nil {
+		if opts.runtimeReservation != nil {
+			in.ensurePluginState().runtimeReservation = opts.runtimeReservation
+		}
 		in.beginConstruction(opts.operationReservation)
 		if err := opts.runtime.registerInstance(in); err != nil {
 			in.endConstruction()

@@ -63,7 +63,6 @@ type Instance struct {
 	syncMode                bool                     // true when host imports use the synchronous re-entry protocol
 	constructionActive      bool                     // registration through terminal instantiation observation
 	constructionReservation *pluginOperationReservation
-	runtimeReservation      *runtimeInstanceReservation
 	executionFlags          atomic.Uint32 // independent eligibility and cross-instance native-control sharing
 	nativeContext           uintptr       // arena-backed context bytes rebound before every native entry
 	instructionState        instructionState
