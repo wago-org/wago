@@ -25,6 +25,20 @@ func TestReadBoundsModuleInput(t *testing.T) {
 	}
 }
 
+func TestReadStreamReturnsExactSizedResult(t *testing.T) {
+	want := "pipe payload"
+	got, err := readStream("pipe", strings.NewReader(want))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != want {
+		t.Fatalf("readStream = %q, want %q", got, want)
+	}
+	if cap(got) != len(got) {
+		t.Fatalf("result capacity = %d, want exact length %d", cap(got), len(got))
+	}
+}
+
 func TestReadUsesExactSizedResult(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "module.wasm")
 	want := []byte("wasm payload")

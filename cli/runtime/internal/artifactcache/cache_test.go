@@ -87,11 +87,19 @@ func TestCachePruneBoundsTotalArtifacts(t *testing.T) {
 
 func TestCachePruneBoundsEntryIndex(t *testing.T) {
 	dir := t.TempDir()
+	old := time.Unix(1, 0)
 	for i := 0; i < maxPruneEntries+1; i++ {
 		path := filepath.Join(dir, fmt.Sprintf("%04d.wago", i))
 		if err := os.WriteFile(path, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	newest := filepath.Join(dir, fmt.Sprintf("%04d.wago", maxPruneEntries))
+	if err := os.Chtimes(newest, old.Add(time.Second), old.Add(time.Second)); err != nil {
+		t.Fatal(err)
 	}
 	if err := (Cache{Dir: dir}).prune(); err != nil {
 		t.Fatal(err)
@@ -102,6 +110,9 @@ func TestCachePruneBoundsEntryIndex(t *testing.T) {
 	}
 	if len(entries) != maxPruneEntries {
 		t.Fatalf("remaining cache entries = %d, want %d", len(entries), maxPruneEntries)
+	}
+	if _, err := os.Stat(newest); err != nil {
+		t.Fatalf("newest overflow entry was not retained: %v", err)
 	}
 }
 

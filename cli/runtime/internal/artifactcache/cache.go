@@ -2,6 +2,7 @@
 package artifactcache
 
 import (
+	"container/heap"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -11,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
-	"sort"
 	"sync"
 	"time"
 
@@ -116,6 +116,28 @@ type cacheEntry struct {
 	modTime time.Time
 }
 
+type cacheEntryHeap []cacheEntry
+
+func (h cacheEntryHeap) Len() int { return len(h) }
+func (h cacheEntryHeap) Less(i, j int) bool {
+	if h[i].modTime.Equal(h[j].modTime) {
+		return h[i].path < h[j].path
+	}
+	return h[i].modTime.Before(h[j].modTime)
+}
+func (h cacheEntryHeap) Swap(i, j int) { h[i], h[j] = h[j], h[i] }
+func (h *cacheEntryHeap) Push(value interface{}) {
+	*h = append(*h, value.(cacheEntry))
+}
+func (h *cacheEntryHeap) Pop() interface{} {
+	old := *h
+	last := len(old) - 1
+	value := old[last]
+	old[last] = cacheEntry{}
+	*h = old[:last]
+	return value
+}
+
 func (cache Cache) prune() error {
 	limit := cache.MaxBytes
 	if limit == 0 {
@@ -125,52 +147,95 @@ func (cache Cache) prune() error {
 		return nil
 	}
 	var total int64
-	var entries []cacheEntry
-	err := filepath.WalkDir(cache.Dir, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.Type()&os.ModeSymlink != 0 || entry.IsDir() || filepath.Ext(path) != ".wago" {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
+	entries := make(cacheEntryHeap, 0, maxPruneEntries)
+	remove := func(entry cacheEntry) error {
+		if err := os.Remove(entry.path); err != nil && !os.IsNotExist(err) {
 			return err
 		}
-		if !info.Mode().IsRegular() || info.Size() < 0 {
-			return nil
-		}
-		if len(entries) == maxPruneEntries {
-			// Cache entries are regenerable. Removing overflow during the walk
-			// keeps even a directory full of zero-length files memory-bounded.
-			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-				return err
-			}
-			return nil
-		}
-		total += info.Size()
-		entries = append(entries, cacheEntry{path: path, size: info.Size(), modTime: info.ModTime()})
 		return nil
-	})
+	}
+	visit := func(path string, info os.FileInfo) error {
+		entry := cacheEntry{path: path, size: info.Size(), modTime: info.ModTime()}
+		if len(entries) < maxPruneEntries {
+			heap.Push(&entries, entry)
+			total += entry.size
+			return nil
+		}
+		oldest := entries[0]
+		if !cacheEntryNewer(entry, oldest) {
+			return remove(entry)
+		}
+		if err := remove(oldest); err != nil {
+			return err
+		}
+		heap.Pop(&entries)
+		total -= oldest.size
+		heap.Push(&entries, entry)
+		total += entry.size
+		return nil
+	}
+	err := scanCacheFiles(cache.Dir, true, visit)
 	if err != nil || total <= limit {
 		return err
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].modTime.Equal(entries[j].modTime) {
-			return entries[i].path < entries[j].path
-		}
-		return entries[i].modTime.Before(entries[j].modTime)
-	})
-	for _, entry := range entries {
-		if total <= limit {
-			break
-		}
-		if err := os.Remove(entry.path); err != nil && !os.IsNotExist(err) {
+	for total > limit && len(entries) != 0 {
+		entry := heap.Pop(&entries).(cacheEntry)
+		if err := remove(entry); err != nil {
 			return err
 		}
 		total -= entry.size
 	}
 	return nil
+}
+
+func cacheEntryNewer(left, right cacheEntry) bool {
+	if left.modTime.Equal(right.modTime) {
+		return left.path > right.path
+	}
+	return left.modTime.After(right.modTime)
+}
+
+// scanCacheFiles uses File.ReadDir batches instead of os.ReadDir or WalkDir,
+// both of which read and sort a complete directory before yielding entries.
+// Automatic cache paths have one shard directory, so deeper trees are ignored.
+func scanCacheFiles(dir string, descend bool, visit func(string, os.FileInfo) error) error {
+	directory, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer directory.Close()
+	for {
+		entries, readErr := directory.ReadDir(128)
+		for _, entry := range entries {
+			if entry.Type()&os.ModeSymlink != 0 {
+				continue
+			}
+			path := filepath.Join(dir, entry.Name())
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if info.IsDir() {
+				if descend {
+					if err := scanCacheFiles(path, false, visit); err != nil {
+						return err
+					}
+				}
+				continue
+			}
+			if info.Mode().IsRegular() && info.Size() >= 0 && filepath.Ext(path) == ".wago" {
+				if err := visit(path, info); err != nil {
+					return err
+				}
+			}
+		}
+		if readErr == io.EOF {
+			return nil
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
 }
 
 func (cache Cache) path(source []byte, config *wago.RuntimeConfig) (string, bool) {
