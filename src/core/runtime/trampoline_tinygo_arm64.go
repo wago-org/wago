@@ -128,7 +128,7 @@ func enterNative(code, serArgs, linMem, trap, results, foreignStackTop uintptr) 
 }
 
 var (
-	tinygoARM64ResumeOnce  sync.Once
+	tinygoARM64ResumeMu    sync.Mutex
 	tinygoARM64ResumeEntry uintptr
 )
 
@@ -163,14 +163,21 @@ func tinygoARM64ResumeCode() []byte {
 }
 
 func tinygoARM64ResumePtr() uintptr {
-	tinygoARM64ResumeOnce.Do(func() {
-		mem, err := tinygoMmapExec(tinygoARM64ResumeCode())
-		if err != nil {
-			return
-		}
-		tinygoARM64ResumeEntry = uintptr(unsafe.Pointer(&mem[0]))
-	})
-	return tinygoARM64ResumeEntry
+	if entry := atomic.LoadUintptr(&tinygoARM64ResumeEntry); entry != 0 {
+		return entry
+	}
+	tinygoARM64ResumeMu.Lock()
+	defer tinygoARM64ResumeMu.Unlock()
+	if entry := atomic.LoadUintptr(&tinygoARM64ResumeEntry); entry != 0 {
+		return entry
+	}
+	mem, err := tinygoMmapExec(tinygoARM64ResumeCode())
+	if err != nil {
+		return 0
+	}
+	entry := uintptr(unsafe.Pointer(&mem[0]))
+	atomic.StoreUintptr(&tinygoARM64ResumeEntry, entry)
+	return entry
 }
 
 func resumeNative(ctrl, foreignStackTop uintptr) {

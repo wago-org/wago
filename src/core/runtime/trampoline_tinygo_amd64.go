@@ -188,21 +188,28 @@ var resumeThunkTemplate = []byte{
 }
 
 var (
-	resumeThunkOnce  sync.Once
+	resumeThunkMu    sync.Mutex
 	resumeThunkEntry uintptr
 )
 
 func resumeThunkPtr() uintptr {
-	resumeThunkOnce.Do(func() {
-		code := make([]byte, len(resumeThunkTemplate))
-		copy(code, resumeThunkTemplate)
-		mem, err := tinygoMmapExec(code)
-		if err != nil {
-			return
-		}
-		resumeThunkEntry = uintptr(unsafe.Pointer(&mem[0])) // retained for the process
-	})
-	return resumeThunkEntry
+	if entry := atomic.LoadUintptr(&resumeThunkEntry); entry != 0 {
+		return entry
+	}
+	resumeThunkMu.Lock()
+	defer resumeThunkMu.Unlock()
+	if entry := atomic.LoadUintptr(&resumeThunkEntry); entry != 0 {
+		return entry
+	}
+	code := make([]byte, len(resumeThunkTemplate))
+	copy(code, resumeThunkTemplate)
+	mem, err := tinygoMmapExec(code)
+	if err != nil {
+		return 0
+	}
+	entry := uintptr(unsafe.Pointer(&mem[0])) // retained for the process
+	atomic.StoreUintptr(&resumeThunkEntry, entry)
+	return entry
 }
 
 // resumeNative resumes native code parked at a host call (see hostcall_amd64.go).
