@@ -504,6 +504,16 @@ func TestConfigOptimizationSelectionIsImmutableAndValidated(t *testing.T) {
 	}
 }
 
+func TestRuntimeConfigRejectsDisabledStackFence(t *testing.T) {
+	cfg := NewRuntimeConfig().WithOptimization("stack-fence", false)
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "stack-fence is required") {
+		t.Fatalf("disabled stack-fence validation = %v", err)
+	}
+	if _, err := cfg.Compile(benchAddOneModule()); err == nil || !strings.Contains(err.Error(), "stack-fence is required") {
+		t.Fatalf("disabled stack-fence compile = %v", err)
+	}
+}
+
 func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 	wantOff := map[string]bool{
 		"loop-precheck": true,

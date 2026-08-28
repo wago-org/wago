@@ -677,6 +677,9 @@ func (c *RuntimeConfig) Validate() error {
 	if c.functionWorkers < 0 {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
 	}
+	if enabled, present := c.optimizations["stack-fence"]; present && !enabled {
+		return fmt.Errorf("wago: stack-fence is required for bounded native execution")
+	}
 	if !c.trustedOptimizations {
 		for name := range c.optimizations {
 			if !optimization.Exists(runtime.GOARCH, name) {
