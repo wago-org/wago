@@ -83,6 +83,10 @@ var thunkTemplate = []byte{
 
 const thunkStackTopOff = 2
 
+const maxTinyGoEntryThunks = 256
+
+var tinygoMmapExec = mmapExec
+
 // funcValue mirrors TinyGo's in-memory representation of a func value:
 // {context, fnptr}. Overlaying it lets us synthesize a callable that jumps to
 // arbitrary machine code with a chosen context word.
@@ -110,8 +114,8 @@ var (
 
 // thunkFor returns the entry point of a foreign-stack-switch trampoline
 // specialized for foreignStackTop, generating and caching it on first use. The
-// mapping is kept for the life of the process (one executable page per distinct
-// engine stack, of which there are typically very few).
+// mapping is kept for the life of the process, up to maxTinyGoEntryThunks
+// executable pages. Exhaustion fails the call through its trap cell.
 func thunkFor(foreignStackTop uintptr) uintptr {
 	if r := lastThunk.Load(); r != nil && r.top == foreignStackTop {
 		return r.entry
@@ -123,13 +127,17 @@ func thunkForSlow(foreignStackTop uintptr) uintptr {
 	thunkMu.Lock()
 	entry, ok := thunkCache[foreignStackTop]
 	if !ok {
+		if len(thunkCache) >= maxTinyGoEntryThunks {
+			thunkMu.Unlock()
+			return 0
+		}
 		code := make([]byte, len(thunkTemplate))
 		copy(code, thunkTemplate)
 		binary.LittleEndian.PutUint64(code[thunkStackTopOff:], uint64(foreignStackTop))
-		mem, err := mmapExec(code)
+		mem, err := tinygoMmapExec(code)
 		if err != nil {
 			thunkMu.Unlock()
-			panic("wago: cannot map tinygo trampoline: " + err.Error())
+			return 0
 		}
 		entry = uintptr(unsafe.Pointer(&mem[0]))
 		thunkCache[foreignStackTop] = entry
@@ -143,7 +151,12 @@ func thunkForSlow(foreignStackTop uintptr) uintptr {
 // WasmWrapper ABI, then returns to Go. See the file comment for how the
 // arguments reach the native code with no assembly and no cgo.
 func enterNative(code, serArgs, linMem, trap, results, foreignStackTop uintptr) {
-	fv := funcValue{context: code, fnptr: thunkFor(foreignStackTop)}
+	entry := thunkFor(foreignStackTop)
+	if entry == 0 {
+		markTinyGoTrampolineFailure(trap)
+		return
+	}
+	fv := funcValue{context: code, fnptr: entry}
 	call := *(*func(a, b, c, d uintptr))(unsafe.Pointer(&fv))
 	call(serArgs, linMem, trap, results)
 }
@@ -183,9 +196,9 @@ func resumeThunkPtr() uintptr {
 	resumeThunkOnce.Do(func() {
 		code := make([]byte, len(resumeThunkTemplate))
 		copy(code, resumeThunkTemplate)
-		mem, err := mmapExec(code)
+		mem, err := tinygoMmapExec(code)
 		if err != nil {
-			panic("wago: cannot map tinygo resume trampoline: " + err.Error())
+			return
 		}
 		resumeThunkEntry = uintptr(unsafe.Pointer(&mem[0])) // retained for the process
 	})
@@ -195,7 +208,12 @@ func resumeThunkPtr() uintptr {
 // resumeNative resumes native code parked at a host call (see hostcall_amd64.go).
 // It mirrors resume_amd64.s. The thunk ignores the func-value context word.
 func resumeNative(ctrl, foreignStackTop uintptr) {
-	fv := funcValue{context: 0, fnptr: resumeThunkPtr()}
+	entry := resumeThunkPtr()
+	if entry == 0 {
+		markTinyGoResumeFailure(ctrl)
+		return
+	}
+	fv := funcValue{context: 0, fnptr: entry}
 	call := *(*func(a, b uintptr))(unsafe.Pointer(&fv))
 	call(ctrl, foreignStackTop)
 }

@@ -32,6 +32,10 @@ var (
 	tinygoARM64Thunks    = map[uintptr]uintptr{}
 )
 
+const maxTinyGoARM64EntryThunks = 256
+
+var tinygoMmapExec = mmapExec
+
 func tinygoARM64Store(a *a64.Asm, src, base a64.Reg, off uint32) {
 	if !a.Store64(src, base, off) {
 		panic("wago: arm64 TinyGo trampoline store is not encodable")
@@ -86,6 +90,8 @@ func tinygoARM64EntryCode(foreignStackTop uintptr) []byte {
 	return a.B
 }
 
+// tinygoARM64ThunkFor retains at most maxTinyGoARM64EntryThunks executable
+// entry pages; exhaustion fails the call through its trap cell.
 func tinygoARM64ThunkFor(foreignStackTop uintptr) uintptr {
 	if ref := tinygoARM64LastThunk.Load(); ref != nil && ref.top == foreignStackTop {
 		return ref.entry
@@ -93,10 +99,14 @@ func tinygoARM64ThunkFor(foreignStackTop uintptr) uintptr {
 	tinygoARM64ThunkMu.Lock()
 	entry, ok := tinygoARM64Thunks[foreignStackTop]
 	if !ok {
-		mem, err := mmapExec(tinygoARM64EntryCode(foreignStackTop))
+		if len(tinygoARM64Thunks) >= maxTinyGoARM64EntryThunks {
+			tinygoARM64ThunkMu.Unlock()
+			return 0
+		}
+		mem, err := tinygoMmapExec(tinygoARM64EntryCode(foreignStackTop))
 		if err != nil {
 			tinygoARM64ThunkMu.Unlock()
-			panic("wago: cannot map arm64 TinyGo trampoline: " + err.Error())
+			return 0
 		}
 		entry = uintptr(unsafe.Pointer(&mem[0]))
 		tinygoARM64Thunks[foreignStackTop] = entry
@@ -107,7 +117,12 @@ func tinygoARM64ThunkFor(foreignStackTop uintptr) uintptr {
 }
 
 func enterNative(code, serArgs, linMem, trap, results, foreignStackTop uintptr) {
-	fv := tinygoARM64FuncValue{context: code, fnptr: tinygoARM64ThunkFor(foreignStackTop)}
+	entry := tinygoARM64ThunkFor(foreignStackTop)
+	if entry == 0 {
+		markTinyGoTrampolineFailure(trap)
+		return
+	}
+	fv := tinygoARM64FuncValue{context: code, fnptr: entry}
 	call := *(*func(a, b, c, d uintptr))(unsafe.Pointer(&fv))
 	call(serArgs, linMem, trap, results)
 }
@@ -149,9 +164,9 @@ func tinygoARM64ResumeCode() []byte {
 
 func tinygoARM64ResumePtr() uintptr {
 	tinygoARM64ResumeOnce.Do(func() {
-		mem, err := mmapExec(tinygoARM64ResumeCode())
+		mem, err := tinygoMmapExec(tinygoARM64ResumeCode())
 		if err != nil {
-			panic("wago: cannot map arm64 TinyGo resume trampoline: " + err.Error())
+			return
 		}
 		tinygoARM64ResumeEntry = uintptr(unsafe.Pointer(&mem[0]))
 	})
@@ -159,7 +174,12 @@ func tinygoARM64ResumePtr() uintptr {
 }
 
 func resumeNative(ctrl, foreignStackTop uintptr) {
-	fv := tinygoARM64FuncValue{fnptr: tinygoARM64ResumePtr()}
+	entry := tinygoARM64ResumePtr()
+	if entry == 0 {
+		markTinyGoResumeFailure(ctrl)
+		return
+	}
+	fv := tinygoARM64FuncValue{fnptr: entry}
 	call := *(*func(a, b uintptr))(unsafe.Pointer(&fv))
 	call(ctrl, foreignStackTop)
 }
