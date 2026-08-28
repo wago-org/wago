@@ -2,7 +2,23 @@
 
 package runtime
 
-import "testing"
+import (
+	"testing"
+	"unsafe"
+)
+
+func TestTinyGoTrampolineFailurePreservesInterrupt(t *testing.T) {
+	trap := uint32(TrapInterrupted)
+	markTinyGoTrampolineFailure(uintptr(unsafe.Pointer(&trap)))
+	if got := TrapCode(trap); got != TrapInterrupted {
+		t.Fatalf("pending interrupt changed to %v", got)
+	}
+	trap = 0
+	markTinyGoTrampolineFailure(uintptr(unsafe.Pointer(&trap)))
+	if got := TrapCode(trap); got != TrapBuiltin {
+		t.Fatalf("ordinary mapping failure = %v, want builtin trap", got)
+	}
+}
 
 func TestPreparedIntThunkOwnedByEngine(t *testing.T) {
 	e := &Engine{}

@@ -10,8 +10,15 @@ import (
 )
 
 func markTinyGoTrampolineFailure(trap uintptr) {
-	if trap != 0 {
-		atomic.StoreUint32((*uint32)(unsafe.Pointer(trap)), uint32(TrapBuiltin))
+	if trap == 0 {
+		return
+	}
+	cell := (*uint32)(unsafe.Pointer(trap))
+	for {
+		old := atomic.LoadUint32(cell)
+		if TrapCode(old) == TrapInterrupted || atomic.CompareAndSwapUint32(cell, old, uint32(TrapBuiltin)) {
+			return
+		}
 	}
 }
 
