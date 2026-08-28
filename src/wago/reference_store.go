@@ -382,6 +382,8 @@ type gcRefTokenEntry struct {
 const (
 	gcNativeFrameLayoutAMD64 uint8 = iota
 	gcNativeFrameLayoutARM64
+	gcNativeFrameLayoutMask      = 0x7f
+	gcNativeFrameSyncGlobalRoots = 0x80
 )
 
 type gcNativeFrameRoots struct {
@@ -416,6 +418,19 @@ func (r *gcNativeFrameRoots) RangeRootRefs(sink gc.RootRefSink) bool {
 	return r.walk(nil, sink)
 }
 
+func (r *gcNativeFrameRoots) syncGlobalsBeforeCollection() {
+	if r == nil || r.frameLayout&gcNativeFrameSyncGlobalRoots == 0 || r.owner == nil || r.suspended == nil {
+		return
+	}
+	if err := r.owner.syncGenericGCGlobalRootsLocked(r.suspended); err != nil {
+		panic(gcStructHelperError{err: err})
+	}
+	// Native execution remains parked for the complete allocation attempt. One
+	// synchronization therefore covers a minor collection, root rewrites, and a
+	// possible full-collection retry. The next helper republishes this flag.
+	r.frameLayout &^= gcNativeFrameSyncGlobalRoots
+}
+
 // RangeClassifiedRootRefs preserves exact runtime ownership for opt-in
 // collector telemetry without allocating composite RootSet values on helper
 // paths.
@@ -423,6 +438,7 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 	if r == nil || sink == nil {
 		return true
 	}
+	r.syncGlobalsBeforeCollection()
 	if !r.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
 		return false
 	}
@@ -473,6 +489,7 @@ func (s classifiedRootSink) VisitRootRef(r gc.Ref) bool {
 }
 
 func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink) bool {
+	r.syncGlobalsBeforeCollection()
 	if !r.rangeChain(fn, sink) {
 		return false
 	}
@@ -633,7 +650,7 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 			return true
 		}
 		returnPCBias, callerFrameBias := uintptr(0), uintptr(abi.AMD64CallReturnAddressBytes)
-		if r.frameLayout == gcNativeFrameLayoutARM64 {
+		if r.frameLayout&gcNativeFrameLayoutMask == gcNativeFrameLayoutARM64 {
 			returnPCBias = uintptr(shared.ARM64SavedLROffset)
 			callerFrameBias = uintptr(shared.ARM64FrameRecordBytes)
 		}

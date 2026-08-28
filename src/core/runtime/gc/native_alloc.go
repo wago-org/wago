@@ -219,10 +219,37 @@ func (c *Collector) discardNativeStructHandles() {
 		c.nurseryBump = rewind
 	}
 	if canceled {
-		// Remove canceled identities immediately. A failed collection can return
-		// before normal nursery compaction, and later handle reuse must not append
-		// a duplicate identity to the dense young set.
-		c.compactNurseryHandles()
+		// Reserved handles are appended as one tail batch and no Go allocation or
+		// collection can append another nursery identity before cancellation. Trim
+		// that bounded tail directly and retain only consumed live handles. Keep the
+		// full compaction as a fail-closed fallback if the invariant is not exact.
+		trimmed := false
+		if int(end) <= len(c.nurseryHandles) {
+			start := len(c.nurseryHandles) - int(end)
+			trimmed = true
+			for i := uint32(0); i < end; i++ {
+				if c.nurseryHandles[start+int(i)] != s.Handles[i] {
+					trimmed = false
+					break
+				}
+			}
+			if trimmed {
+				out := c.nurseryHandles[:start]
+				for i := uint32(0); i < end; i++ {
+					h := s.Handles[i]
+					if h != 0 && int(h) < len(c.handles) && c.handles[h].space != spaceFree {
+						out = append(out, h)
+					}
+				}
+				c.nurseryHandles = out
+			}
+		}
+		if !trimmed {
+			// A failed collection can return before normal nursery compaction, and
+			// later handle reuse must not append a duplicate identity to the dense
+			// young set.
+			c.compactNurseryHandles()
+		}
 	}
 	clear(s.Handles[:])
 	s.Cursor = 0
