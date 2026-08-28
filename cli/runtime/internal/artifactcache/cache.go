@@ -112,18 +112,16 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 	if limit == 0 {
 		limit = DefaultMaxBytes
 	}
-	if limit >= 0 {
-		sizes, err := module.Compiled().ArtifactSectionSizes()
-		if err != nil {
+	sizes, err := module.Compiled().ArtifactSectionSizes()
+	if err != nil {
+		cache.report(err)
+		return module, nil
+	}
+	if !artifactFitsCache(sizes, limit) {
+		if err := cache.pruneIfDue(time.Now()); err != nil {
 			cache.report(err)
-			return module, nil
 		}
-		if sizes.Total > limit {
-			if err := cache.pruneIfDue(time.Now()); err != nil {
-				cache.report(err)
-			}
-			return module, nil
-		}
+		return module, nil
 	}
 	if err := publishArtifact(path, module.Compiled()); err != nil {
 		cache.report(err)
@@ -131,6 +129,12 @@ func (cache Cache) LoadOrCompile(source []byte, _ *wago.RuntimeConfig, rt *wago.
 		cache.report(err)
 	}
 	return module, nil
+}
+
+func artifactFitsCache(sizes wago.ArtifactSectionSizes, maxBytes int64) bool {
+	limits := wago.DefaultArtifactLimits()
+	return sizes.Code <= limits.MaxCodeBytes && sizes.Metadata <= limits.MaxMetadataBytes &&
+		(maxBytes < 0 || sizes.Total <= maxBytes)
 }
 
 func (cache Cache) pruneIfDue(now time.Time) error {

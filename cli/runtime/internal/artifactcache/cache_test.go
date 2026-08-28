@@ -173,6 +173,31 @@ func TestCachePruneRemovesArtifactLargerThanLimit(t *testing.T) {
 	}
 }
 
+func TestArtifactFitsCacheRespectsDecoderSectionLimits(t *testing.T) {
+	limits := wago.DefaultArtifactLimits()
+	within := wago.ArtifactSectionSizes{
+		Code:     limits.MaxCodeBytes,
+		Metadata: limits.MaxMetadataBytes,
+		Total:    limits.MaxCodeBytes + limits.MaxMetadataBytes + 16,
+	}
+	if !artifactFitsCache(within, within.Total) {
+		t.Fatal("artifact at decoder and cache limits was rejected")
+	}
+	tooMuchCode := within
+	tooMuchCode.Code++
+	if artifactFitsCache(tooMuchCode, -1) {
+		t.Fatal("artifact beyond decoder code limit was accepted")
+	}
+	tooMuchMetadata := within
+	tooMuchMetadata.Metadata++
+	if artifactFitsCache(tooMuchMetadata, -1) {
+		t.Fatal("artifact beyond decoder metadata limit was accepted")
+	}
+	if artifactFitsCache(within, within.Total-1) {
+		t.Fatal("artifact beyond cache total limit was accepted")
+	}
+}
+
 func TestCachePruneBoundsEntryIndex(t *testing.T) {
 	dir := t.TempDir()
 	old := time.Unix(1, 0)
