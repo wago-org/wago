@@ -275,12 +275,14 @@ func arm64GCFrameBodySafe(m *wasm.Module, body []byte, classifier *wasm.ModuleIn
 			if !ok {
 				return false
 			}
-			if int(imm.Index) < m.ImportedFuncCount() && (collectorBoundary || wasmFuncTypeReferenceFree(ft)) {
-				if !arm64GCFrameHostCallABI(ft) {
+			if int(imm.Index) < m.ImportedFuncCount() {
+				if collectorBoundary || wasmFuncTypeReferenceFree(ft) {
+					if !arm64GCFrameHostCallABI(ft) {
+						return false
+					}
+				} else if !arm64GCFrameReferenceCallABI(m, ft) {
 					return false
 				}
-			} else if !collectorBoundary && !arm64GCFrameReferenceCallABI(m, ft) {
-				return false
 			}
 		case 0x11:
 			ft, ok := m.TypeFunc(imm.Index)
