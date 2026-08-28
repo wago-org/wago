@@ -79,6 +79,17 @@ func TestPolicyMemoryLimit(t *testing.T) {
 	in.Close()
 }
 
+func TestDeclaredMemoryMaxBytesChargesFullNoMaxMemory32Reservation(t *testing.T) {
+	c := &Compiled{HasMemory: true, MemMinPages: 1}
+	got, err := c.declaredMemoryMaxBytes()
+	if err != nil {
+		t.Fatalf("declaredMemoryMaxBytes: %v", err)
+	}
+	if want := uint64(1) << 32; got != want {
+		t.Fatalf("no-max memory32 reservation = %d bytes, want %d", got, want)
+	}
+}
+
 func TestPolicyChecksEveryLocalTable(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()

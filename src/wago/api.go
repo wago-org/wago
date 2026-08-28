@@ -3611,8 +3611,12 @@ func (c *Compiled) declaredMemoryMaxBytes() (uint64, error) {
 		if !def.HasMax {
 			// The exact Wasm type remains unbounded in metadata. Policy and managed-
 			// instance accounting charge the finite implementation reservation used
-			// by instantiation, matching the existing memory32 resource model.
-			pages = 65535
+			// by instantiation. Memory32 can reach the Core limit of 65,536 pages;
+			// staged memory64 retains its smaller finite implementation ceiling.
+			pages = 1 << 16
+			if def.Addr64 {
+				pages = 65535
+			}
 		}
 		if pages > ^uint64(0)/pageBytes {
 			return 0, fmt.Errorf("memory %d maximum %d pages overflows bytes", i, pages)
