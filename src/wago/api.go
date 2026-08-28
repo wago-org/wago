@@ -4142,7 +4142,26 @@ func LoadTrustedArtifact(b []byte) (*Compiled, error) {
 // use InvokeFromHost with the HostModule value it received. Direct invocation
 // fails with ErrPermissionDenied while callback-scoped guest storage is borrowed.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
-	return in.invoke(export, args, nil)
+	return in.invoke(export, args, invocationContextSet{})
+}
+
+// invocationContextSet keeps callback-visible cancellation independent from
+// native interruption. Targets without native cancellation still propagate the
+// public invocation's cancellation and deadline to synchronous host callbacks.
+type invocationContextSet struct {
+	interrupt context.Context
+	callback  context.Context
+}
+
+func invocationContextSetFor(ctx context.Context) (contexts invocationContextSet) {
+	if ctx == nil || ctx.Done() == nil {
+		return contexts
+	}
+	contexts.callback = ctx
+	if nativeCancellationSupported() {
+		contexts.interrupt = ctx
+	}
+	return contexts
 }
 
 // InvokeContext is like Invoke but honors context cancellation. If ctx is
@@ -4166,26 +4185,22 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 		}
 	}
 
-	var cancel context.Context
-	if nativeCancellationSupported() && ctx != nil && ctx.Done() != nil {
-		cancel = ctx
-	}
-
-	out, err := in.invoke(export, args, cancel)
+	contexts := invocationContextSetFor(ctx)
+	out, err := in.invoke(export, args, contexts)
 
 	return out, contextInterruptError(ctx, err)
 }
 
-func (in *Instance) invoke(export string, args []uint64, cancel context.Context) ([]uint64, error) {
-	return in.invokeEntry(export, args, cancel, false)
+func (in *Instance) invoke(export string, args []uint64, contexts invocationContextSet) ([]uint64, error) {
+	return in.invokeEntry(export, args, contexts, false)
 }
 
-func (in *Instance) invokeAdmitted(export string, args []uint64, cancel context.Context, reservation *pluginOperationReservation) ([]uint64, error) {
+func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invocationContextSet, reservation *pluginOperationReservation) ([]uint64, error) {
 	state := in.ensurePluginState()
-	return in.invokeWithToken(export, args, cancel, state.invocationID, true, true, reservation)
+	return in.invokeWithToken(export, args, contexts, state.invocationID, true, true, reservation)
 }
 
-func (in *Instance) invokeEntry(export string, args []uint64, cancel context.Context, alreadyAdmitted bool) ([]uint64, error) {
+func (in *Instance) invokeEntry(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted bool) ([]uint64, error) {
 	// Close hooks run after the invocation gate is published and may probe that
 	// later calls fail closed. Check the gate before waiting for the per-instance
 	// serialization lock so such a probe cannot deadlock behind the activation
@@ -4205,10 +4220,10 @@ func (in *Instance) invokeEntry(export string, args []uint64, cancel context.Con
 		state.invocationID = 0
 		state.invokeMu.Unlock()
 	}()
-	return in.invokeWithToken(export, args, cancel, id, true, alreadyAdmitted, nil)
+	return in.invokeWithToken(export, args, contexts, id, true, alreadyAdmitted, nil)
 }
 
-func (in *Instance) invokeWithToken(export string, args []uint64, cancel context.Context, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {
+func (in *Instance) invokeWithToken(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {
 	reentry := !gateHeld && isNativeActive(in, id)
 	if !reentry && !gateHeld {
 		// Acquire the target instance gate before the shared collector lease. A
@@ -4271,9 +4286,9 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 			// trap cell; the import attachment retains the producer's physical resources.
 			// Keep this Go-level re-export path identical so producer Close neither owns
 			// nor strands an invocation initiated through the relay.
-			return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, cancel, in.trap, true)
+			return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, contexts, in.trap, true)
 		}
-		return in.invokeReexportedHost(export, importIdx, args, id)
+		return in.invokeReexportedHost(export, importIdx, args, id, contexts.callback)
 	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
@@ -4303,16 +4318,16 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
-	if cancel != nil {
-		stopCancel := in.startCancellationWatch(cancel, in.trap)
+	if contexts.interrupt != nil {
+		stopCancel := in.startCancellationWatch(contexts.interrupt, in.trap)
 		defer stopCancel()
 	}
 	if in.syncMode {
-		if err := in.callNativeSyncWithTrapContext(entry, in.trap, cancel); err != nil {
+		if err := in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback); err != nil {
 			return nil, err
 		}
 	} else {
-		privateScalar := invokePrivateEntryEnabled && cancel == nil && !in.nativeControlIsShared() &&
+		privateScalar := invokePrivateEntryEnabled && contexts.interrupt == nil && !in.nativeControlIsShared() &&
 			ic.entryMode != preparedEntryGeneral
 		entryMode := preparedEntryGeneral
 		if privateScalar {
@@ -4369,10 +4384,10 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 // executing in the producer. It shares the instance's call buffers, so the
 // returned slice is valid only until the next call on this Instance.
 func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
-	return in.invokeLocalContext(li, args, nil, in.trap)
+	return in.invokeLocalContext(li, args, invocationContextSet{}, in.trap)
 }
 
-func (in *Instance) invokeLocalContext(li int, args []uint64, cancel context.Context, activeTrap []byte) ([]uint64, error) {
+func (in *Instance) invokeLocalContext(li int, args []uint64, contexts invocationContextSet, activeTrap []byte) ([]uint64, error) {
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("invoke function %d: %w", li, err)
 	}
@@ -4384,14 +4399,14 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel context.Con
 			in.reconcileFuncrefRoots()
 		}
 	}()
-	return in.invokeAttachedLocalContext(li, args, cancel, activeTrap, false)
+	return in.invokeAttachedLocalContext(li, args, contexts, activeTrap, false)
 }
 
 // invokeAttachedLocalContext enters a producer retained by the caller's function
 // import attachment. The caller owns the invocation lease and active trap cell,
 // exactly as for a native dynamic import call. attachedResult permits first-time
 // funcref tokenization to transfer the attachment's finalization lifetime.
-func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel context.Context, activeTrap []byte, attachedResult bool) ([]uint64, error) {
+func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts invocationContextSet, activeTrap []byte, attachedResult bool) ([]uint64, error) {
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)
 	}
@@ -4436,12 +4451,12 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 		activeTrap = in.trap
 	}
 	stopCancel := noOpCancellationWatch
-	if cancel != nil {
-		stopCancel = in.startCancellationWatch(cancel, activeTrap)
+	if contexts.interrupt != nil {
+		stopCancel = in.startCancellationWatch(contexts.interrupt, activeTrap)
 	}
 	defer stopCancel()
 	if in.syncMode {
-		if err := in.callNativeSyncWithTrapContext(entry, activeTrap, cancel); err != nil {
+		if err := in.callNativeSyncWithTrapContext(entry, activeTrap, contexts.callback); err != nil {
 			return nil, err
 		}
 	} else {
@@ -4604,7 +4619,7 @@ func (in *Instance) replayHostLog() (err error) {
 	return nil
 }
 
-func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64, id invocationID) (results []uint64, err error) {
+func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64, id invocationID, parent context.Context) (results []uint64, err error) {
 	if importIdx < 0 || importIdx >= len(in.syncHosts) || in.syncHosts[importIdx] == nil || importIdx >= len(in.c.importFuncSigs) {
 		return nil, fmt.Errorf("export %q is an imported function without a callable host owner", export)
 	}
@@ -4670,6 +4685,8 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	// the public invocation boundary.
 	resumeGCInvocation := in.suspendGCInvocation(id)
 	defer resumeGCInvocation()
+	restoreInvocationContext := bindHostInvocationParent(in, parent)
+	defer restoreInvocationContext()
 	fn := in.syncHosts[importIdx]
 	caller := in.beginHostCallScope()
 	defer caller.scope.end(caller.generation, caller.parentGeneration)

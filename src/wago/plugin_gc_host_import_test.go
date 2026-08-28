@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
@@ -15,6 +16,8 @@ type pluginGCHostImportTestPlugin struct{ state *pluginGCHostImportTestState }
 
 type pluginGCHostImportTestState struct {
 	mu                sync.Mutex
+	resolver          *CallerResolver
+	invocationContext context.Context
 	retainedStorage   GuestStorage
 	retainedRef       GuestGCRef
 	otherViewRejected bool
@@ -22,12 +25,19 @@ type pluginGCHostImportTestState struct {
 
 func pluginGCHostImportTestProvider(state *pluginGCHostImportTestState) PluginProvider {
 	def := testDefinition("example.com/plugin-gc-host-import")
-	def.Authorities = []AuthorityRequest{{
-		Name:   AuthorityHostImportDefine,
-		Mode:   AuthorityRequired,
-		Reason: "define GC-reference host imports",
-		Scope:  AuthorityScope{Modules: []string{"plugin_gc"}},
-	}}
+	def.Authorities = []AuthorityRequest{
+		{
+			Name:   AuthorityHostImportDefine,
+			Mode:   AuthorityRequired,
+			Reason: "define GC-reference host imports",
+			Scope:  AuthorityScope{Modules: []string{"plugin_gc"}},
+		},
+		{
+			Name:   AuthorityHostCallerIdentify,
+			Mode:   AuthorityRequired,
+			Reason: "test GC host invocation context",
+		},
+	}
 	return PluginProvider{
 		Definition: def,
 		New: func() Plugin {
@@ -64,10 +74,15 @@ func requirePluginGCArrayType(storage GuestStorage, result bool, index int) (Def
 }
 
 func (p pluginGCHostImportTestPlugin) Register(reg *Registrar) error {
+	resolver, err := reg.HostCallers()
+	if err != nil {
+		return err
+	}
 	imports, err := reg.HostImports()
 	if err != nil {
 		return err
 	}
+	p.state.resolver = resolver
 	module, err := imports.Module("plugin_gc")
 	if err != nil {
 		return err
@@ -193,6 +208,17 @@ func (p pluginGCHostImportTestPlugin) Register(reg *Registrar) error {
 	module.Func("scalar", func(_ HostModule, _, results []uint64) {
 		results[0] = 11
 	}).Results(ValI32)
+	module.Func("context", func(m HostModule, params, results []uint64) {
+		if params[0] != 0 {
+			panic(HostTrap{Err: fmt.Errorf("context parameter arrived as %#x, want null", params[0])})
+		}
+		ctx, err := p.state.resolver.InvocationContext(m)
+		pluginGCHostTrap(err)
+		p.state.mu.Lock()
+		p.state.invocationContext = ctx
+		p.state.mu.Unlock()
+		results[0] = 1
+	}).Params(ValAnyRef).Results(ValI32)
 	return nil
 }
 
@@ -225,13 +251,17 @@ func pluginGCNullResultModule(name string, nullable bool) []byte {
 }
 
 func pluginGCNullParamModule() []byte {
+	return pluginGCNullParamModuleNamed("null_param")
+}
+
+func pluginGCNullParamModuleNamed(name string) []byte {
 	arrayType := []byte{0x5e, 0x78, 0x01}
 	importType := []byte{0x60, 0x01, 0x63, 0x00, 0x01, 0x7f}
 	callerType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
 	body := []byte{0xd0, 0x00, 0x10, 0x00, 0x0b} // ref.null 0; call 0; end
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(arrayType, importType, callerType)),
-		wasmtest.Section(2, wasmtest.Vec(pluginGCImport("plugin_gc", "null_param", 1))),
+		wasmtest.Section(2, wasmtest.Vec(pluginGCImport("plugin_gc", name, 1))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
@@ -368,6 +398,44 @@ func TestPluginGCHostImportsBoundaryOnlyNulls(t *testing.T) {
 				t.Fatalf("call = %v, %v; want i32(1)", values, err)
 			}
 		})
+	}
+}
+
+func TestPluginGCHostImportInvocationContext(t *testing.T) {
+	requireCompleteCore3Backend(t)
+	rt, state := newPluginGCTestRuntime(t)
+	defer rt.Close()
+	module, err := rt.Compile(pluginGCNullParamModuleNamed("context"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := rt.Instantiate(context.Background(), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	deadline := time.Now().Add(time.Hour)
+	parent, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	result, err := in.Call(parent, "call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result) != 1 || result[0].I32() != 1 {
+		t.Fatalf("call result = %v, want i32(1)", result)
+	}
+	state.mu.Lock()
+	ctx := state.invocationContext
+	state.mu.Unlock()
+	if ctx == nil {
+		t.Fatal("GC host import did not receive an invocation context")
+	}
+	gotDeadline, ok := ctx.Deadline()
+	if !ok || !gotDeadline.Equal(deadline) {
+		t.Fatalf("GC host deadline = %v, %v; want %v, true", gotDeadline, ok, deadline)
+	}
+	if ctx.Err() != context.Canceled {
+		t.Fatalf("GC host context after callback = %v, want context.Canceled", ctx.Err())
 	}
 }
 
