@@ -56,3 +56,27 @@ func TestGCFrameRootPlanTrackedVectorMask(t *testing.T) {
 		t.Fatal("over-limit vector mask accepted")
 	}
 }
+
+func TestGCFrameRootPlanTracksWideLocalPopulation(t *testing.T) {
+	// Even indexes retain a wide population while leaving in-range misses to
+	// exercise both outcomes across the configured uint16 local-index space.
+	indexes := make([]uint32, (GCFrameTrackedLocalLimit+1)/2)
+	for i := range indexes {
+		indexes[i] = uint32(i * 2)
+	}
+	plan := &GCFrameRootPlan{Candidate: true, LocalIndexes: indexes}
+	for _, index := range []uint32{0, 2, GCFrameTrackedLocalLimit - 1} {
+		if !plan.TracksLocal(index) {
+			t.Fatalf("retained local %d not found", index)
+		}
+	}
+	for _, index := range []uint32{1, 3, GCFrameTrackedLocalLimit - 2} {
+		if plan.TracksLocal(index) {
+			t.Fatalf("unretained local %d found", index)
+		}
+	}
+	plan.Candidate = false
+	if plan.TracksLocal(0) {
+		t.Fatal("non-candidate plan reported a retained local")
+	}
+}

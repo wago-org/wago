@@ -1,5 +1,7 @@
 package shared
 
+import "sort"
+
 // AMD64FrameHeaderBytes and ARM64FrameHeaderBytes are the stable local-slot
 // bases used by the railshot native frames. Root-map producers and consumers
 // must use the matching architecture value.
@@ -83,6 +85,17 @@ type GCFrameRootPlan struct {
 	// point beyond the function-owned bytes into a module-level adapter island.
 	AdapterReturnOffset uint32
 	SafepointBase       uint32
+}
+
+// TracksLocal reports whether index belongs to the sorted collector-local
+// population retained by the frontend. Binary search keeps backend local
+// instruction handling bounded when disjoint safepoints retain a wide union.
+func (p *GCFrameRootPlan) TracksLocal(index uint32) bool {
+	if p == nil || !p.Candidate {
+		return false
+	}
+	i := sort.Search(len(p.LocalIndexes), func(i int) bool { return p.LocalIndexes[i] >= index })
+	return i < len(p.LocalIndexes) && p.LocalIndexes[i] == index
 }
 
 // GCModuleFrameRootPlan owns one independent function plan per local function.

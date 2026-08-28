@@ -944,15 +944,10 @@ func gcFrameRefType(m *wasm.Module, t wasm.ValType) bool {
 }
 
 func (f *fn) gcFrameLocal(index int) bool {
-	if f.gcFrameRoots == nil || !f.gcFrameRoots.Candidate {
+	if index < 0 || f.gcFrameRoots == nil {
 		return false
 	}
-	for _, candidate := range f.gcFrameRoots.LocalIndexes {
-		if int(candidate) == index {
-			return true
-		}
-	}
-	return false
+	return f.gcFrameRoots.TracksLocal(uint32(index))
 }
 
 func gcHelperMayAllocate(helper uint32) bool {

@@ -923,15 +923,10 @@ func (f *fn) tracksGCFrameRoots() bool {
 }
 
 func (f *fn) gcFrameLocal(index int) bool {
-	if !f.tracksGCFrameRoots() {
+	if index < 0 || f.gcFrameRoots == nil {
 		return false
 	}
-	for _, candidate := range f.gcFrameRoots.LocalIndexes {
-		if int(candidate) == index {
-			return true
-		}
-	}
-	return false
+	return f.gcFrameRoots.TracksLocal(uint32(index))
 }
 
 func arm64GCHelperMayAllocate(helper uint32) bool {
