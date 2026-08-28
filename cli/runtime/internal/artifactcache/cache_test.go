@@ -118,6 +118,24 @@ func TestCacheHitRetriesPrune(t *testing.T) {
 	}
 }
 
+func TestMalformedPruneMarkerDoesNotDisableMaintenance(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, cachePruneMarker), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	artifact := filepath.Join(dir, "oversize.wago")
+	if err := os.WriteFile(artifact, []byte("oversize"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cache := Cache{Dir: dir, MaxBytes: 1}
+	if err := cache.pruneIfDue(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(artifact); !os.IsNotExist(err) {
+		t.Fatalf("oversize artifact remains with malformed marker: %v", err)
+	}
+}
+
 func TestCachePruneBoundsTotalArtifacts(t *testing.T) {
 	dir := t.TempDir()
 	cache := Cache{Dir: dir, MaxBytes: 5}

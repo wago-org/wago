@@ -144,12 +144,11 @@ func (cache Cache) pruneIfDue(now time.Time) error {
 	marker := filepath.Join(cache.Dir, cachePruneMarker)
 	info, err := os.Lstat(marker)
 	if err == nil {
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("cache prune marker %s is not a regular file", marker)
-		}
-		age := now.Sub(info.ModTime())
-		if age >= 0 && age < cachePruneInterval {
-			return nil
+		if info.Mode().IsRegular() {
+			age := now.Sub(info.ModTime())
+			if age >= 0 && age < cachePruneInterval {
+				return nil
+			}
 		}
 	} else if !os.IsNotExist(err) {
 		return err
@@ -175,6 +174,11 @@ func (cache Cache) pruneAndMark() error {
 		return nil
 	}
 	marker := filepath.Join(cache.Dir, cachePruneMarker)
+	if info, err := os.Lstat(marker); err == nil && !info.Mode().IsRegular() {
+		return nil
+	} else if err != nil && !os.IsNotExist(err) {
+		return err
+	}
 	return atomicfile.ReplaceFile(marker, atomicfile.Options{Mode: 0o600}, func(io.Writer) error { return nil })
 }
 
