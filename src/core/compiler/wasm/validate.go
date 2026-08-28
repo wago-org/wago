@@ -213,10 +213,16 @@ func (v *moduleValidator) validateModule() error {
 	}
 	v.collectDeclaredFuncs()
 	for gi, rt := range v.m.Types {
-		for _, st := range rt.SubTypes {
+		for si, st := range rt.SubTypes {
+			if len(st.Supers) > 1 {
+				return v.err(ErrTypeMismatch, "multiple supertypes")
+			}
 			for _, sup := range st.Supers {
 				if !v.validTypeIdxInRecGroup(sup, gi) {
 					return v.err(ErrUnknownType, "supertype")
+				}
+				if sup.Rec && sup.Index >= uint32(si) {
+					return v.err(ErrTypeMismatch, "supertype must precede subtype")
 				}
 			}
 			if describes, present := st.Metadata.Describes.Get(); present && !v.validTypeIdxInRecGroup(describes, gi) {
