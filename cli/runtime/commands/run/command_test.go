@@ -1,6 +1,7 @@
 package run
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -181,6 +182,32 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	}
 	if got := mustResolveExport(mustLoadModule(compiledPath, config, rt, artifactcache.Cache{}).Compiled(), "f"); got != "f" {
 		t.Fatalf("loaded export = %q", got)
+	}
+}
+
+func TestLoadCompiledArtifactEnforcesSectionLimits(t *testing.T) {
+	limits := wago.DefaultArtifactLimits()
+	for _, tc := range []struct {
+		name        string
+		codeBytes   uint64
+		metadataLen uint64
+		want        string
+	}{
+		{name: "code", codeBytes: uint64(limits.MaxCodeBytes) + 1, want: "code section length"},
+		{name: "metadata", metadataLen: uint64(limits.MaxMetadataBytes) + 1, want: "metadata section length"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			artifact := []byte{'W', 'A', 'G', 'O', 1, 2, 1}
+			artifact = binary.AppendUvarint(artifact, tc.codeBytes)
+			if tc.codeBytes == 0 {
+				artifact = append(artifact, 2)
+				artifact = binary.AppendUvarint(artifact, tc.metadataLen)
+			}
+			compiled, err := loadCompiledArtifact(artifact)
+			if err == nil || compiled != nil || !strings.Contains(err.Error(), tc.want) || !strings.Contains(err.Error(), "exceeds limit") {
+				t.Fatalf("loadCompiledArtifact = %v, %v; want bounded %s error", compiled, err, tc.want)
+			}
+		})
 	}
 }
 

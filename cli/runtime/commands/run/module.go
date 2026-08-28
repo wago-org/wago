@@ -1,6 +1,8 @@
 package run
 
 import (
+	"bytes"
+
 	"github.com/wago-org/wago"
 	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/cli/internal/wasmcall"
@@ -14,11 +16,11 @@ func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runti
 		ui.Fatal("%v", err)
 	}
 	if wago.IsCompiled(source) {
-		compiled, err := wago.Load(source)
+		compiled, err := loadCompiledArtifact(source)
 		if err != nil {
 			ui.Fatal("%v", err)
 		}
-		module, err := runtime.Module(compiled)
+		module, err := runtime.AdoptModule(compiled)
 		if err != nil {
 			ui.Fatal("%v", err)
 		}
@@ -29,6 +31,14 @@ func mustLoadModule(file string, config *wago.RuntimeConfig, runtime *wago.Runti
 		ui.Fatal("%v", err)
 	}
 	return module
+}
+
+func loadCompiledArtifact(source []byte) (*wago.Compiled, error) {
+	compiled := new(wago.Compiled)
+	if _, err := compiled.ReadFromWithLimits(bytes.NewReader(source), wago.DefaultArtifactLimits()); err != nil {
+		return nil, err
+	}
+	return compiled, nil
 }
 
 func mustResolveExport(compiled *wago.Compiled, requested string) string {
