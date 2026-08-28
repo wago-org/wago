@@ -190,6 +190,32 @@ func TestValidateBranchesAndCalls(t *testing.T) {
 	})
 }
 
+func TestBranchTableLabelSetDeduplicatesWithoutAllocation(t *testing.T) {
+	var seen [branchTableLabelSetWords]uint64
+	if !markBranchTableLabel(&seen, 17) {
+		t.Fatal("first label was already present")
+	}
+	for i := 0; i < 100_000; i++ {
+		if markBranchTableLabel(&seen, 17) {
+			t.Fatalf("duplicate label %d reported fresh", i)
+		}
+	}
+	if !markBranchTableLabel(&seen, branchTableLabelSetWords*64-1) {
+		t.Fatal("highest valid label was already present")
+	}
+	if !markBranchTableLabel(&seen, branchTableLabelSetWords*64) {
+		t.Fatal("deeper label must fall back to validation")
+	}
+	if allocs := testing.AllocsPerRun(100, func() {
+		var local [branchTableLabelSetWords]uint64
+		for i := 0; i < 1000; i++ {
+			markBranchTableLabel(&local, uint32(i%(branchTableLabelSetWords*64)))
+		}
+	}); allocs != 0 {
+		t.Fatalf("label deduplication allocations = %.2f, want 0", allocs)
+	}
+}
+
 func TestValidateModuleLevelIndexes(t *testing.T) {
 	t.Run("unknown function type", func(t *testing.T) {
 		expectValidateErr(t, &Module{Types: []RecType{ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 99}}, Code: []Func{{}}}, ErrUnknownType)

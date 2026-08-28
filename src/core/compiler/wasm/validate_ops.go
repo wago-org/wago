@@ -1,5 +1,21 @@
 package wasm
 
+// markBranchTableLabel reports whether label has not been seen before. The small
+// fixed bitset covers ordinary control depth without inflating every recursive
+// validator frame. Deeper labels remain correct and are rechecked.
+const branchTableLabelSetWords = 4
+
+func markBranchTableLabel(seen *[branchTableLabelSetWords]uint64, label uint32) bool {
+	word, bit := label>>6, label&63
+	if word >= uint32(len(seen)) {
+		return true
+	}
+	mask := uint64(1) << bit
+	fresh := seen[word]&mask == 0
+	seen[word] |= mask
+	return fresh
+}
+
 // step validates one already-decoded instruction. in is taken by pointer: the
 // Instruction struct is ~56 bytes and this is the validator's innermost hot path,
 // so passing a value here shows up as runtime.duffcopy under profiling.
@@ -135,10 +151,15 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		payloadHeight := len(v.vals)
+		var checked [branchTableLabelSetWords]uint64
+		markBranchTableLabel(&checked, in.Index)
 		for _, l := range in.Indices() {
 			lt, err := v.label(l)
 			if err != nil {
 				return err
+			}
+			if !markBranchTableLabel(&checked, l) {
+				continue
 			}
 			if len(lt) != len(dt) {
 				return v.verr(ErrTypeMismatch, "br_table label arity")
