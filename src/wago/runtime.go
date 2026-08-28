@@ -536,9 +536,11 @@ func (p *PreparedCompile) Adopt(c *Compiled) (*Module, error) {
 
 func (p *PreparedCompile) finishCompile(c *Compiled) (*Module, error) {
 	mod := buildModule(c, p.bindings)
-	if err := validateDeclaredImportIdentities(mod.imports); err != nil {
+	identities, err := indexDeclaredImportIdentities(mod.imports)
+	if err != nil {
 		return nil, emitCompileError(p.hooks, p.compilation, joinPrimary(err, c.Close()))
 	}
+	mod.importIdentities = identities
 	if len(p.hooks.afterCompile) != 0 {
 		event := ModuleCompiledEvent{Compilation: p.compilation, Module: moduleView(mod), SourceDigest: DigestModuleSource(p.source)}
 		for _, fn := range p.hooks.afterCompile {
@@ -623,9 +625,11 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 		compilation = CompilationIdentity{value: &compilationIdentityToken{}}
 	}
 	mod := buildModule(c, bindings)
-	if err := validateDeclaredImportIdentities(mod.imports); err != nil {
+	identities, err := indexDeclaredImportIdentities(mod.imports)
+	if err != nil {
 		return nil, emitCompileError(hooks, compilation, err)
 	}
+	mod.importIdentities = identities
 	if len(hooks.afterCompile) != 0 {
 		event := ModuleCompiledEvent{Compilation: compilation, Module: moduleView(mod)}
 		for _, fn := range hooks.afterCompile {
@@ -644,7 +648,8 @@ type InstantiateOption func(*instantiateConfig)
 
 type instantiateConfig struct {
 	imports       Imports
-	exactImports  map[importBindingKey]any
+	exactImports  map[string]exactImportOverride
+	importErr     error
 	gc            GCConfig
 	hasGC         bool
 	policy        Policy
@@ -654,6 +659,11 @@ type instantiateConfig struct {
 type importBindingKey struct {
 	module string
 	name   string
+}
+
+type exactImportOverride struct {
+	identity importBindingKey
+	value    any
 }
 
 // WithPolicy applies a capability/resource policy to the instance. A module that
@@ -683,9 +693,15 @@ func WithImports(im Imports) InstantiateOption {
 func WithImport(module, name string, value any) InstantiateOption {
 	return func(c *instantiateConfig) {
 		if c.exactImports == nil {
-			c.exactImports = make(map[importBindingKey]any)
+			c.exactImports = make(map[string]exactImportOverride)
 		}
-		c.exactImports[importBindingKey{module: module, name: name}] = value
+		identity := importBindingKey{module: module, name: name}
+		key := module + "." + name
+		if previous, ok := c.exactImports[key]; ok && previous.identity != identity {
+			c.importErr = importIdentityCollisionError(previous.identity, identity)
+			return
+		}
+		c.exactImports[key] = exactImportOverride{identity: identity, value: value}
 	}
 }
 
@@ -746,11 +762,14 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	if len(opts) != 0 {
 		cfg = applyInstantiateOptions(opts)
 	}
+	if cfg.importErr != nil {
+		return nil, cfg.importErr
+	}
 	if err := applyPolicy(mod, cfg.policy); err != nil {
 		return nil, err
 	}
 
-	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, cfg.imports, cfg.exactImports)
+	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, mod.importIdentities, cfg.imports, cfg.exactImports)
 	if err != nil {
 		return nil, err
 	}
@@ -772,12 +791,12 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 // cloning runtime imports the module cannot use. Explicit per-call imports are
 // retained even when undeclared, preserving the low-level Imports inspection
 // behavior. Runtime imports are only retained for declared module keys.
-func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports, exactOverrides map[importBindingKey]any) (Imports, map[uint32]struct{}, error) {
+func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities map[string]importBindingKey, overrides Imports, exactOverrides map[string]exactImportOverride) (Imports, map[uint32]struct{}, error) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 
-	for identity := range exactOverrides {
-		key := identity.module + "." + identity.name
+	for key, exact := range exactOverrides {
+		identity := exact.identity
 		if _, duplicated := overrides[key]; duplicated {
 			return nil, nil, fmt.Errorf("wago: import %q.%q is configured by both WithImport and WithImports", identity.module, identity.name)
 		}
@@ -791,26 +810,18 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports,
 			return nil, nil, fmt.Errorf("wago: import %q may not override reserved module %q", key, module)
 		}
 	}
-	for identity := range exactOverrides {
+	for key, exact := range exactOverrides {
+		identity := exact.identity
 		if !isReserved(identity.module) || rt.overridePolicy == AllowTestOverrides {
 			continue
 		}
-		key := identity.module + "." + identity.name
 		if _, provided := rt.imports[key]; provided && registeredImportMatches(rt.importMeta[key], identity.module, identity.name) {
 			return nil, nil, fmt.Errorf("wago: import %q.%q may not override reserved module %q", identity.module, identity.name, identity.module)
 		}
 	}
-	for identity := range exactOverrides {
-		for _, spec := range specs {
-			declared := importBindingKey{module: spec.Module, name: spec.Name}
-			if identity != declared && flattenedImportIdentitiesEqual(identity, declared) {
-				return nil, nil, importIdentityCollisionError(declared, identity)
-			}
-		}
-		for other := range exactOverrides {
-			if identity != other && flattenedImportIdentitiesEqual(identity, other) {
-				return nil, nil, importIdentityCollisionError(other, identity)
-			}
+	for key, exact := range exactOverrides {
+		if declared, ok := declaredIdentities[key]; ok && declared != exact.identity {
+			return nil, nil, importIdentityCollisionError(declared, exact.identity)
 		}
 	}
 
@@ -828,11 +839,12 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports,
 	}
 	for _, spec := range specs {
 		key := spec.Key()
-		if value, provided := exactOverrides[importBindingKey{module: spec.Module, name: spec.Name}]; provided {
+		identity := importBindingKey{module: spec.Module, name: spec.Name}
+		if exact, provided := exactOverrides[key]; provided && exact.identity == identity {
 			if resolved == nil {
 				resolved = make(Imports, capacity)
 			}
-			resolved[key] = value
+			resolved[key] = exact.value
 			continue
 		}
 		if _, provided := overrides[key]; provided {
@@ -872,35 +884,13 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports,
 			}
 		}
 	}
-	for identity, value := range exactOverrides {
+	for key, exact := range exactOverrides {
 		if resolved == nil {
 			resolved = make(Imports, capacity)
 		}
-		resolved[identity.module+"."+identity.name] = value
+		resolved[key] = exact.value
 	}
 	return resolved, pluginGCImports, nil
-}
-
-func flattenedImportIdentitiesEqual(a, b importBindingKey) bool {
-	aLen := len(a.module) + 1 + len(a.name)
-	if aLen != len(b.module)+1+len(b.name) {
-		return false
-	}
-	byteAt := func(identity importBindingKey, index int) byte {
-		if index < len(identity.module) {
-			return identity.module[index]
-		}
-		if index == len(identity.module) {
-			return '.'
-		}
-		return identity.name[index-len(identity.module)-1]
-	}
-	for i := 0; i < aLen; i++ {
-		if byteAt(a, i) != byteAt(b, i) {
-			return false
-		}
-	}
-	return true
 }
 
 func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {

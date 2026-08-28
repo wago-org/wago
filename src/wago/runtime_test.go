@@ -151,7 +151,7 @@ func TestResolveInstanceImportsDoesNotAllocateForUnrelatedNamespace(t *testing.T
 	}
 
 	allocs := testing.AllocsPerRun(100, func() {
-		imports, pluginGCImports, err := rt.resolveInstanceImports(nil, nil, nil)
+		imports, pluginGCImports, err := rt.resolveInstanceImports(nil, nil, nil, nil)
 		if err != nil || imports != nil || pluginGCImports != nil {
 			t.Fatalf("resolveInstanceImports = %#v, %#v, %v, want nil, nil, nil", imports, pluginGCImports, err)
 		}
@@ -168,7 +168,7 @@ func TestResolveInstanceImportsOrdinaryImportDoesNotAllocateCollisionMap(t *test
 	rt.importMeta["env.f"] = &registeredImport{module: "env", name: "f", fn: fn}
 	specs := []ImportSpec{{Module: "env", Name: "f", Kind: ImportFunc}}
 	allocs := testing.AllocsPerRun(100, func() {
-		imports, pluginGCImports, err := rt.resolveInstanceImports(specs, nil, nil)
+		imports, pluginGCImports, err := rt.resolveInstanceImports(specs, nil, nil, nil)
 		if err != nil || len(imports) != 1 || imports["env.f"] == nil || pluginGCImports != nil {
 			t.Fatalf("resolveInstanceImports = %#v, %#v, %v", imports, pluginGCImports, err)
 		}
@@ -188,7 +188,7 @@ func TestResolveInstanceImportsDottedFieldsDoNotAllocateCollisionMap(t *testing.
 	}
 	allocations := func(specs []ImportSpec) float64 {
 		return testing.AllocsPerRun(100, func() {
-			imports, pluginGCImports, err := rt.resolveInstanceImports(specs, nil, nil)
+			imports, pluginGCImports, err := rt.resolveInstanceImports(specs, nil, nil, nil)
 			if err != nil || len(imports) != 2 || pluginGCImports != nil {
 				panic(fmt.Sprintf("resolveInstanceImports = %#v, %#v, %v", imports, pluginGCImports, err))
 			}
@@ -206,9 +206,14 @@ func TestResolveInstanceImportsMatchingExactIdentityDoesNotAllocateCollisionMap(
 	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
 	allocations := func(module string) float64 {
 		specs := []ImportSpec{{Module: module, Name: "f", Kind: ImportFunc}}
-		exact := map[importBindingKey]any{{module: module, name: "f"}: fn}
+		declared, err := indexDeclaredImportIdentities(specs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		identity := importBindingKey{module: module, name: "f"}
+		exact := map[string]exactImportOverride{module + ".f": {identity: identity, value: fn}}
 		return testing.AllocsPerRun(100, func() {
-			imports, pluginGCImports, err := rt.resolveInstanceImports(specs, nil, exact)
+			imports, pluginGCImports, err := rt.resolveInstanceImports(specs, declared, nil, exact)
 			if err != nil || len(imports) != 1 || pluginGCImports != nil {
 				panic(fmt.Sprintf("resolveInstanceImports = %#v, %#v, %v", imports, pluginGCImports, err))
 			}

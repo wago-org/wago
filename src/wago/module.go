@@ -17,6 +17,9 @@ type Module struct {
 	c       *Compiled
 	imports []ImportSpec
 	reqCaps []Capability
+	// importIdentities is populated only when a declared component contains a
+	// dot and the flat binding namespace can therefore be ambiguous.
+	importIdentities map[string]importBindingKey
 
 	identity             atomic.Pointer[moduleIdentityToken]
 	ownsCompiled         bool
@@ -285,24 +288,20 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 	return m
 }
 
-// validateDeclaredImportIdentities rejects distinct structured import names
-// that the low-level flat Imports namespace cannot represent independently.
-// Run this once when the runtime wrapper is constructed, rather than rebuilding
-// collision state for every instance.
-func validateDeclaredImportIdentities(specs []ImportSpec) error {
-	var firstIdentity importBindingKey
-	haveIdentity, distinctIdentities, dottedModule := false, false, false
+// indexDeclaredImportIdentities rejects distinct structured import names that
+// the low-level flat Imports namespace cannot represent independently. It keeps
+// the resulting index only when dotted components make alternate splits
+// possible, so per-instance exact overrides can be checked in linear time.
+func indexDeclaredImportIdentities(specs []ImportSpec) (map[string]importBindingKey, error) {
+	ambiguous := false
 	for _, spec := range specs {
-		identity := importBindingKey{module: spec.Module, name: spec.Name}
-		dottedModule = dottedModule || strings.Contains(identity.module, ".")
-		if !haveIdentity {
-			firstIdentity, haveIdentity = identity, true
-		} else if identity != firstIdentity {
-			distinctIdentities = true
+		if strings.Contains(spec.Module, ".") || strings.Contains(spec.Name, ".") {
+			ambiguous = true
+			break
 		}
 	}
-	if !distinctIdentities || !dottedModule {
-		return nil
+	if !ambiguous {
+		return nil, nil
 	}
 
 	flatIdentities := make(map[string]importBindingKey, len(specs))
@@ -310,11 +309,11 @@ func validateDeclaredImportIdentities(specs []ImportSpec) error {
 		identity := importBindingKey{module: spec.Module, name: spec.Name}
 		key := spec.Key()
 		if previous, ok := flatIdentities[key]; ok && previous != identity {
-			return importIdentityCollisionError(previous, identity)
+			return nil, importIdentityCollisionError(previous, identity)
 		}
 		flatIdentities[key] = identity
 	}
-	return nil
+	return flatIdentities, nil
 }
 
 func importIdentityCollisionError(previous, identity importBindingKey) error {
