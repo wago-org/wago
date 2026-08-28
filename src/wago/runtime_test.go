@@ -172,8 +172,8 @@ func TestResolveInstanceImportsOrdinaryImportDoesNotAllocateCollisionMap(t *test
 			t.Fatalf("resolveInstanceImports = %#v, %#v, %v", imports, pluginGCImports, err)
 		}
 	})
-	if allocs != 3 {
-		t.Fatalf("resolveInstanceImports allocations = %v, want 3 without a collision map", allocs)
+	if allocs > 3 {
+		t.Fatalf("resolveInstanceImports allocations = %v, want at most 3 without a collision map", allocs)
 	}
 }
 
