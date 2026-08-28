@@ -191,28 +191,37 @@ func TestValidateBranchesAndCalls(t *testing.T) {
 }
 
 func TestBranchTableLabelSetDeduplicatesWithoutAllocation(t *testing.T) {
-	var seen [branchTableLabelSetWords]uint64
-	if !markBranchTableLabel(&seen, 17) {
+	seen := newBranchTableLabelSet(maxInstructionNestingDepth)
+	if !seen.mark(17) {
 		t.Fatal("first label was already present")
 	}
 	for i := 0; i < 100_000; i++ {
-		if markBranchTableLabel(&seen, 17) {
+		if seen.mark(17) {
 			t.Fatalf("duplicate label %d reported fresh", i)
 		}
 	}
-	if !markBranchTableLabel(&seen, branchTableLabelSetWords*64-1) {
+	if !seen.mark(branchTableInlineLabelWords*64 - 1) {
 		t.Fatal("highest valid label was already present")
 	}
-	if !markBranchTableLabel(&seen, branchTableLabelSetWords*64) {
-		t.Fatal("deeper label must fall back to validation")
+	deep := uint32(branchTableInlineLabelWords * 64)
+	if !seen.mark(deep) || seen.mark(deep) {
+		t.Fatal("deep label was not deduplicated")
 	}
 	if allocs := testing.AllocsPerRun(100, func() {
-		var local [branchTableLabelSetWords]uint64
+		local := newBranchTableLabelSet(branchTableInlineLabelWords * 64)
 		for i := 0; i < 1000; i++ {
-			markBranchTableLabel(&local, uint32(i%(branchTableLabelSetWords*64)))
+			local.mark(uint32(i % (branchTableInlineLabelWords * 64)))
 		}
 	}); allocs != 0 {
-		t.Fatalf("label deduplication allocations = %.2f, want 0", allocs)
+		t.Fatalf("inline label deduplication allocations = %.2f, want 0", allocs)
+	}
+	if allocs := testing.AllocsPerRun(100, func() {
+		local := newBranchTableLabelSet(maxInstructionNestingDepth)
+		for i := 0; i < 1000; i++ {
+			local.mark(uint32(branchTableInlineLabelWords*64 + i%100))
+		}
+	}); allocs != 1 {
+		t.Fatalf("deep label deduplication allocations = %.2f, want 1", allocs)
 	}
 }
 

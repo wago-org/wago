@@ -1,18 +1,41 @@
 package wasm
 
-// markBranchTableLabel reports whether label has not been seen before. The small
-// fixed bitset covers ordinary control depth without inflating every recursive
-// validator frame. Deeper labels remain correct and are rechecked.
-const branchTableLabelSetWords = 4
+// branchTableLabelSet deduplicates every valid label depth. The inline words keep
+// ordinary tables allocation-free; a deep table lazily allocates one bit per
+// active control frame instead of revalidating repeated payloads quadratically.
+const branchTableInlineLabelWords = 4
 
-func markBranchTableLabel(seen *[branchTableLabelSetWords]uint64, label uint32) bool {
+type branchTableLabelSet struct {
+	inline [branchTableInlineLabelWords]uint64
+	deep   []uint64
+	depth  uint32
+}
+
+func newBranchTableLabelSet(depth int) branchTableLabelSet {
+	return branchTableLabelSet{depth: uint32(depth)}
+}
+
+func (s *branchTableLabelSet) mark(label uint32) bool {
 	word, bit := label>>6, label&63
-	if word >= uint32(len(seen)) {
+	if word < branchTableInlineLabelWords {
+		mask := uint64(1) << bit
+		fresh := s.inline[word]&mask == 0
+		s.inline[word] |= mask
+		return fresh
+	}
+	if label >= s.depth {
+		// The caller validates labels before marking them. Preserve a safe
+		// fallback for direct helper use without allocating from invalid input.
 		return true
 	}
+	if s.deep == nil {
+		words := (s.depth + 63) >> 6
+		s.deep = make([]uint64, words-branchTableInlineLabelWords)
+	}
+	word -= branchTableInlineLabelWords
 	mask := uint64(1) << bit
-	fresh := seen[word]&mask == 0
-	seen[word] |= mask
+	fresh := s.deep[word]&mask == 0
+	s.deep[word] |= mask
 	return fresh
 }
 
@@ -151,14 +174,14 @@ func (v *funcValidator) step(in *Instruction) error {
 			return err
 		}
 		payloadHeight := len(v.vals)
-		var checked [branchTableLabelSetWords]uint64
-		markBranchTableLabel(&checked, in.Index)
+		checked := newBranchTableLabelSet(len(v.ctrls))
+		checked.mark(in.Index)
 		for _, l := range in.Indices() {
 			lt, err := v.label(l)
 			if err != nil {
 				return err
 			}
-			if !markBranchTableLabel(&checked, l) {
+			if !checked.mark(l) {
 				continue
 			}
 			if len(lt) != len(dt) {
