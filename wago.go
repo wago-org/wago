@@ -529,6 +529,10 @@ func WithGC(gc GCConfig) InstantiateOption { return impl.WithGC(gc) }
 
 func WithGuestArguments(args []string) RuntimeOption { return impl.WithGuestArguments(args) }
 
+func WithImport(module string, name string, value any) InstantiateOption {
+	return impl.WithImport(module, name, value)
+}
+
 func WithImportOverridePolicy(p ImportOverridePolicy) RuntimeOption {
 	return impl.WithImportOverridePolicy(p)
 }
