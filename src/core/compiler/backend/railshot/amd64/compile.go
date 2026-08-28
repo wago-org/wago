@@ -3342,8 +3342,8 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 
 func (f *fn) patchFrameSize() error {
 	frameBytes := f.frameSize()
-	if !shared.NativeFrameFitsStackFence(frameBytes) {
-		return fmt.Errorf("amd64: native frame %d bytes exceeds stack-fence headroom %d", frameBytes, shared.MaxNativeFrameBytes)
+	if !shared.NativeFrameFitsStackFence(frameBytes, shared.MaxNativeInboundCallBytes) {
+		return fmt.Errorf("amd64: native frame %d bytes exceeds stack-fence headroom %d", frameBytes, shared.MaxNativeFrameBytes-shared.MaxNativeInboundCallBytes)
 	}
 	size := uint32(frameBytes)
 	if f.stats != nil {

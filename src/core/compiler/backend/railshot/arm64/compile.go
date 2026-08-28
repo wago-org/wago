@@ -811,7 +811,7 @@ func (f *fn) patchFrameAdjusts() error {
 }
 
 func nativeFrameStackFenceHeadroom(usesCalls bool) int {
-	headroom := shared.MaxNativeFrameBytes
+	headroom := shared.MaxNativeFrameBytes - shared.MaxNativeInboundCallBytes
 	if usesCalls {
 		// A call-making frame first saves FP/LR below SP, before reserving the
 		// patched body frame and reaching its next stack-fence check.

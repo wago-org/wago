@@ -9,10 +9,10 @@ import (
 )
 
 func TestCallFrameHeadroomIncludesFrameRecord(t *testing.T) {
-	if got, want := nativeFrameStackFenceHeadroom(true), shared.MaxNativeFrameBytes-16; got != want {
+	if got, want := nativeFrameStackFenceHeadroom(true), shared.MaxNativeFrameBytes-shared.MaxNativeInboundCallBytes-16; got != want {
 		t.Fatalf("call frame headroom = %d, want %d", got, want)
 	}
-	if got := nativeFrameStackFenceHeadroom(false); got != shared.MaxNativeFrameBytes {
-		t.Fatalf("leaf frame headroom = %d, want %d", got, shared.MaxNativeFrameBytes)
+	if got, want := nativeFrameStackFenceHeadroom(false), shared.MaxNativeFrameBytes-shared.MaxNativeInboundCallBytes; got != want {
+		t.Fatalf("leaf frame headroom = %d, want %d", got, want)
 	}
 }
