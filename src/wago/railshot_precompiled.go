@@ -28,6 +28,7 @@ type railshotCompileOptions struct {
 	NoBoundsFacts          bool
 	ImportBindings         []railshotImportBinding
 	SyncHostCalls          bool
+	SyncHostSlots          int
 	Interruptible          bool
 	MemoryPressureAt       int
 	MemoryPressure         func()

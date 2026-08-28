@@ -220,15 +220,22 @@ func InitHostCtrlFrame(ctrl []byte) error {
 	if err != nil {
 		return fmt.Errorf("jit: host-call stub: %w", err)
 	}
+	if _, err := initHostCtrlExtension(ctrl); err != nil {
+		return err
+	}
 	binary.LittleEndian.PutUint64(ctrl[hcTrampoline:], uint64(stub))
 	return nil
 }
 
 func hostCtrlFrame(ptr uintptr) []byte {
+	if n, ok := registeredHostCtrlFrames.Load(ptr); ok {
+		return unsafe.Slice((*byte)(offHeapPointer(ptr)), n.(int))
+	}
 	return unsafe.Slice((*byte)(offHeapPointer(ptr)), ctrlFrameSize)
 }
 
 func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, ctrlPtr uintptr, host HostCall, argBuf, resBuf []uint64) error {
+	rootCtrl, rootCtrlPtr := ctrl, ctrlPtr
 	// The host-call re-entry loop is intentionally unbounded: a single guest
 	// invocation may legitimately make an arbitrary number of host calls (e.g. a
 	// long-running rule that polls Date.now()/Math.random() in a loop). A fixed
@@ -257,7 +264,11 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			if ctrlPtr == 0 {
 				return fmt.Errorf("jit: host call did not publish an active control frame")
 			}
-			ctrl = hostCtrlFrame(ctrlPtr)
+			if ctrlPtr == rootCtrlPtr {
+				ctrl = rootCtrl
+			} else {
+				ctrl = hostCtrlFrame(ctrlPtr)
+			}
 			imp := binary.LittleEndian.Uint32(ctrl[hcImportIdx:])
 			// hcNArgs packs the call's slot counts: low 16 bits = param slots
 			// (native->Go), high 16 bits = result slots (Go->native). Copying only
@@ -268,7 +279,15 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			n := int(raw & 0xffff)
 			nres := int(raw >> 16)
 			if n > maxHostArity || nres > maxHostArity {
-				return fmt.Errorf("jit: host call arity %d/%d exceeds %d", n, nres, maxHostArity)
+				argsArea, resultsArea, capacity, err := hostCtrlWideCallAreas(ctrl, n, nres)
+				if err != nil {
+					return err
+				}
+				args := unsafe.Slice((*uint64)(unsafe.Pointer(&argsArea[0])), capacity)
+				wideResults := unsafe.Slice((*uint64)(unsafe.Pointer(&resultsArea[0])), capacity)
+				clear(wideResults[:nres])
+				host(ctrlPtr, imp, args[:n], wideResults[:nres])
+				continue
 			}
 			for k := 0; k < n; k++ {
 				argBuf[k] = binary.LittleEndian.Uint64(ctrl[hcArgs+k*8:])

@@ -1413,7 +1413,15 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if cfg.gcCodeTelemetry {
 		gcCodeStats = new(railshotModuleStats)
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
+	syncHostSlots := wruntime.MaxHostArity
+	usesGCHelpers := gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers()
+	if usesGCHelpers {
+		syncHostSlots, err = gcSyncHostSlotCapacity(gcMetadata.Descs)
+		if err != nil {
+			return nil, fmt.Errorf("compile: %w", err)
+		}
+	}
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1439,7 +1447,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if exactNativeGCRoots || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
 	c.memoryDir.exactExports = true
 	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
 	c.memoryDir.stagedMemory64 = features.Memory64 && usesMemory64
@@ -3760,7 +3768,21 @@ func (c *Compiled) validateArenaFootprint() error {
 	}
 	hostCallBytes := 0
 	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
-		hostCallBytes = wruntime.HostCtrlFrameBytes
+		syncHostSlots := wruntime.MaxHostArity
+		if c.usesGCStructHelpers() || c.usesGCArrayHelpers() {
+			syncHostSlots, err = gcSyncHostSlotCapacity(c.GCTypeDescs)
+			if err != nil {
+				return fmt.Errorf("compiled metadata invalid: %w", err)
+			}
+			if c.syncHostSlots != 0 && int(c.syncHostSlots) != syncHostSlots {
+				return fmt.Errorf("compiled metadata invalid: synchronous host slot capacity %d, want %d", c.syncHostSlots, syncHostSlots)
+			}
+		}
+		hostCallBytes, err = wruntime.HostCtrlFrameBytesForSlots(syncHostSlots)
+		if err != nil {
+			return fmt.Errorf("compiled metadata invalid: %w", err)
+		}
+		c.syncHostSlots = uint16(syncHostSlots)
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
 		FuncImportCount:    len(c.Imports),
@@ -3796,6 +3818,9 @@ func (c *Compiled) validateArenaFootprint() error {
 	}
 	c.maxParamSlots = maxParams
 	c.maxResultSlots = maxResults
+	if c.syncHostSlots == 0 {
+		c.syncHostSlots = uint16(wruntime.MaxHostArity)
+	}
 	c.instantiateArenaNeed = need
 	return nil
 }
