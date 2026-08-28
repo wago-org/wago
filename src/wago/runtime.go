@@ -372,9 +372,13 @@ func (rt *Runtime) reserveDirectInstance(mod *Module, origin InstantiateOrigin) 
 	if origin != InstantiateDirect || limits == nil || (limits.maxInstances == 0 && limits.maxMemoryBytes == 0) {
 		return nil, nil
 	}
-	memory, err := managedMemoryReservation(mod)
-	if err != nil {
-		return nil, fmt.Errorf("wago: module memory limits: %w", err)
+	var memory uint64
+	if limits.maxMemoryBytes != 0 {
+		var err error
+		memory, err = managedMemoryReservation(mod)
+		if err != nil {
+			return nil, fmt.Errorf("wago: module memory limits: %w", err)
+		}
 	}
 	rt.mu.Lock()
 	defer rt.mu.Unlock()

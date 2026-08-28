@@ -321,6 +321,26 @@ func TestRuntimeDirectInstanceAggregateLimits(t *testing.T) {
 	}
 }
 
+func TestRuntimeCountOnlyInstanceLimitSkipsMemoryAccounting(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(1, 0)))
+	defer rt.Close()
+	// A 2^48-page memory64 maximum is exactly 2^64 bytes and therefore cannot
+	// be represented by the optional aggregate byte counter. Count-only limits
+	// must not inspect or reject that otherwise valid declaration.
+	mod := &Module{c: &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{{Addr64: true, HasMax: true, Max: 1 << 48}}}}}
+	reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect)
+	if err != nil {
+		t.Fatalf("count-only reservation: %v", err)
+	}
+	defer reservation.release()
+	if reservation.memory != 0 {
+		t.Fatalf("count-only reservation charged %d memory bytes", reservation.memory)
+	}
+	if second, err := rt.reserveDirectInstance(mod, InstantiateDirect); err == nil || second != nil || !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("second count-only reservation = %v, %v; want instance limit", second, err)
+	}
+}
+
 func TestRuntimeMinWagoTooNew(t *testing.T) {
 	rt := NewRuntime()
 	err := rt.Use(tripleExt{minWago: "999.0.0"})
