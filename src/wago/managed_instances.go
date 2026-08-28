@@ -46,9 +46,12 @@ type ManagedInstance struct {
 	memoryBytes uint64
 }
 
-var voidFuncType = wasm.CompType{Kind: wasm.CompFunc}
+var (
+	voidFuncType         = wasm.CompType{Kind: wasm.CompFunc}
+	voidFuncTypeKeyValue = wasm.StructuralFuncTypeKey(&voidFuncType)
+)
 
-func voidFuncTypeKey() uint64 { return wasm.StructuralFuncTypeKey(&voidFuncType) }
+func voidFuncTypeKey() uint64 { return voidFuncTypeKeyValue }
 
 func newPendingInstanceManager(owner string, budget AuthorityScope) *InstanceManager {
 	return &InstanceManager{owner: owner, budget: budget, instances: map[*ManagedInstance]struct{}{}, byInstance: map[*Instance]*ManagedInstance{}}
