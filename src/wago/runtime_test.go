@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -338,6 +339,16 @@ func TestRuntimeCountOnlyInstanceLimitSkipsMemoryAccounting(t *testing.T) {
 	}
 	if second, err := rt.reserveDirectInstance(mod, InstantiateDirect); err == nil || second != nil || !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("second count-only reservation = %v, %v; want instance limit", second, err)
+	}
+}
+
+func TestRuntimeMemoryLimitClassifiesAccountingOverflow(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(0, 1)))
+	defer rt.Close()
+	mod := &Module{c: &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{{Addr64: true, HasMax: true, Max: 1 << 48}}}}}
+	reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect)
+	if reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) || !strings.Contains(err.Error(), "overflows bytes") {
+		t.Fatalf("overflow reservation = %v, %v; want detailed ErrPermissionDenied", reservation, err)
 	}
 }
 
