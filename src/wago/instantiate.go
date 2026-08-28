@@ -1570,6 +1570,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	// Run the start function (() -> ()) now that memory, globals, table, and data
 	// are initialized. A trap here aborts instantiation.
 	if c.HasStart {
+		if opts.Context != nil {
+			if err := opts.Context.Err(); err != nil {
+				return nil, fmt.Errorf("start function canceled before dispatch: %w", err)
+			}
+		}
 		if c.StartIsImport {
 			// Imported start: run the imported function through the same normalized
 			// binding machinery used by ordinary host imports. Validation guarantees
@@ -1608,21 +1613,21 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					state.invocationID = 0
 					state.invokeMu.Unlock()
 				}()
-				gcLease := in.lockGCInvocation(id)
+				gcLease, err := in.lockGCInvocationContext(opts.Context, id)
+				if err != nil {
+					return err
+				}
 				defer gcLease.unlock()
 				previousReservation := in.swapInvocationReservation(in.constructionReservationSnapshot())
 				defer in.swapInvocationReservation(previousReservation)
-				if opts.Context != nil {
-					if err := opts.Context.Err(); err != nil {
-						return err
-					}
+				if opts.Context != nil && opts.Context.Done() != nil {
 					stopCancel := in.startCancellationWatch(opts.Context, in.trap)
 					defer stopCancel()
 				}
 				if in.syncMode {
 					return in.callNativeSyncWithTrapContext(startEntry, in.trap, opts.Context)
 				}
-				return in.callNativeAsync(startEntry, false)
+				return in.callNativeAsyncWithTrapContext(startEntry, false, in.trap, opts.Context)
 			}()
 			if startErr != nil {
 				startErr = contextInterruptError(opts.Context, startErr)

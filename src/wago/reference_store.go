@@ -2,6 +2,7 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
@@ -257,6 +258,23 @@ func (v gcInvocationDomainView) lock() {
 	for i := 0; i < v.len(); i++ {
 		v.at(i).invocationMu.Lock()
 	}
+}
+
+func (v gcInvocationDomainView) lockContext(ctx context.Context) error {
+	if ctx == nil || ctx.Done() == nil {
+		v.lock()
+		return nil
+	}
+	locked := 0
+	for ; locked < v.len(); locked++ {
+		if err := lockMutexContext(ctx, &v.at(locked).invocationMu); err != nil {
+			for i := locked - 1; i >= 0; i-- {
+				v.at(i).invocationMu.Unlock()
+			}
+			return err
+		}
+	}
+	return nil
 }
 
 func (v gcInvocationDomainView) unlock() {
@@ -923,6 +941,19 @@ func (in *Instance) gcInvocationDomains() gcInvocationDomainView {
 }
 
 func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
+	lease, err := in.lockGCInvocationContext(nil, owner)
+	if err != nil {
+		panic("wago: context-free GC invocation lock failed")
+	}
+	return lease
+}
+
+func (in *Instance) lockGCInvocationContext(ctx context.Context, owner invocationID) (gcInvocationLease, error) {
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return gcInvocationLease{}, err
+		}
+	}
 	if owner == 0 {
 		owner = newInvocationID()
 	}
@@ -940,14 +971,13 @@ func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 	domains := in.gcInvocationDomains()
 	if domains.len() == 0 {
 		if dynamic {
-			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}
+			return gcInvocationLease{in: in, topology: topology, owner: owner, acquired: true, dynamic: true}, nil
 		}
-		return gcInvocationLease{}
+		return gcInvocationLease{}, nil
 	}
 	// A native cross-instance call reuses the public root's invocation identity.
 	// The root pre-acquires the transitive, globally ordered domain set, so a
-	// target reached through its retained imports borrows the already-held lease
-	// instead of recursively locking the same non-reentrant mutexes.
+	// target reached through its retained imports borrows the already-held lease.
 	first := domains.at(0)
 	first.invocationState.Lock()
 	borrowed := first.invocationOwner == owner
@@ -959,11 +989,16 @@ func (in *Instance) lockGCInvocation(owner invocationID) gcInvocationLease {
 		if dynamic {
 			topology.RUnlock()
 		}
-		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner}
+		return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner}, nil
 	}
-	domains.lock()
+	if err := domains.lockContext(ctx); err != nil {
+		if dynamic {
+			topology.RUnlock()
+		}
+		return gcInvocationLease{}, err
+	}
 	domains.claim(owner)
-	return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, dynamic: dynamic}
+	return gcInvocationLease{in: in, topology: topology, domains: domains, owner: owner, acquired: true, dynamic: dynamic}, nil
 }
 
 func (l gcInvocationLease) unlock() {

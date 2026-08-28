@@ -1228,7 +1228,7 @@ func (in *Instance) callNativeSyncWithTrap(entry uintptr, activeTrap []byte) (er
 }
 
 func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []byte, waitParent context.Context) (err error) {
-	locked, err := in.beginNativeEntry()
+	locked, err := in.beginNativeEntryContext(waitParent)
 	if err != nil {
 		return err
 	}

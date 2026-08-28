@@ -1,10 +1,12 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	wruntime "github.com/wago-org/wago/src/core/runtime"
@@ -110,36 +112,64 @@ func currentInvocationReservation(in *Instance) *pluginOperationReservation {
 
 type executionLease struct{ local *sync.Mutex }
 
+// lockMutexContext keeps the ordinary blocking path allocation-free while
+// allowing the uncommon context-aware path to abandon a contended runtime
+// execution lease. sync.Mutex has no cancelable wait primitive, so bounded
+// polling is preferable to stranding one goroutine per canceled invocation.
+func lockMutexContext(ctx context.Context, mu *sync.Mutex) error {
+	if ctx == nil {
+		mu.Lock()
+		return nil
+	}
+	done := ctx.Done()
+	if done == nil {
+		mu.Lock()
+		return nil
+	}
+	for {
+		select {
+		case <-done:
+			return ctx.Err()
+		default:
+		}
+		if mu.TryLock() {
+			return nil
+		}
+		time.Sleep(100 * time.Microsecond)
+	}
+}
+
 // beginNativeEntry acquires the serialized execution lease and rebinds this
 // instance's pointer context before native code can observe basedata. Memory
 // size/growth fields remain backing-owned; invocation control is refreshed by
 // the engine entry/resume paths.
 func (in *Instance) beginNativeEntry() (executionLease, error) {
+	return in.beginNativeEntryContext(nil)
+}
+
+func (in *Instance) beginNativeEntryContext(ctx context.Context) (executionLease, error) {
+	var mu *sync.Mutex
+	local := true
 	if in.usesIndependentExecution() {
-		mu := in.independentNativeExecutionMu()
-		mu.Lock()
-		if err := in.bindAndValidateNativeContext(); err != nil {
-			mu.Unlock()
-
-			return executionLease{}, err
-		}
-
-		return executionLease{local: mu}, nil
+		mu = in.independentNativeExecutionMu()
+	} else if in.c.threadedMemory0() {
+		mu = &in.memoryDir.nativeMu
+	} else {
+		mu = &nativeExecutionMu
+		local = false
 	}
-	if in.c.threadedMemory0() {
-		mu := &in.memoryDir.nativeMu
-		mu.Lock()
-		if err := in.bindAndValidateNativeContext(); err != nil {
-			mu.Unlock()
-			return executionLease{}, err
-		}
-		return executionLease{local: mu}, nil
-	}
-	nativeExecutionMu.Lock()
-	nativeExecutionEpoch++
-	if err := in.bindAndValidateNativeContext(); err != nil {
-		nativeExecutionMu.Unlock()
+	if err := lockMutexContext(ctx, mu); err != nil {
 		return executionLease{}, err
+	}
+	if !local {
+		nativeExecutionEpoch++
+	}
+	if err := in.bindAndValidateNativeContext(); err != nil {
+		mu.Unlock()
+		return executionLease{}, err
+	}
+	if local {
+		return executionLease{local: mu}, nil
 	}
 	return executionLease{}, nil
 }
@@ -270,7 +300,11 @@ func (in *Instance) callNativeAsync(entry uintptr, prepared bool) error {
 // callNativeAsyncWithTrap enters this instance while preserving an outer
 // caller's trap cell across a Go-level re-export delegation.
 func (in *Instance) callNativeAsyncWithTrap(entry uintptr, prepared bool, activeTrap []byte) error {
-	locked, err := in.beginNativeEntry()
+	return in.callNativeAsyncWithTrapContext(entry, prepared, activeTrap, nil)
+}
+
+func (in *Instance) callNativeAsyncWithTrapContext(entry uintptr, prepared bool, activeTrap []byte, waitContext context.Context) error {
+	locked, err := in.beginNativeEntryContext(waitContext)
 	if err != nil {
 		return err
 	}

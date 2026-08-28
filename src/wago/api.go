@@ -4505,8 +4505,8 @@ func nativeCancellationSupported() bool {
 func noOpCancellationWatch() {}
 
 func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []byte) func() {
-	if !nativeCancellationSupported() || cancel == nil || len(activeTrap) < 4 {
-		return func() {}
+	if !nativeCancellationSupported() || cancel == nil || cancel.Done() == nil || len(activeTrap) < 4 {
+		return noOpCancellationWatch
 	}
 	done := make(chan struct{})
 	stopped := make(chan struct{})

@@ -3,6 +3,8 @@
 package wago
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -86,5 +88,55 @@ func TestGCAllocatingLocalStartWaitsForInvocationLease(t *testing.T) {
 	case <-started:
 	default:
 		t.Fatal("allocating local start did not reach its host callback")
+	}
+}
+
+func TestGCAllocatingLocalStartCancelsInvocationLeaseWait(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcAllocatingHostStartModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	store := newReferenceStore(false)
+	defer store.closeRuntime()
+	gcCfg := GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true}
+	first, err := instantiateCore(compiled, InstantiateOptions{
+		GC:      gcCfg,
+		store:   store,
+		Imports: Imports{"env.started": HostFunc(func(HostModule, []uint64, []uint64) {})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+
+	lease := first.lockGCInvocation(newInvocationID())
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		second, instantiateErr := instantiateCore(compiled, InstantiateOptions{
+			Context: ctx,
+			GC:      gcCfg,
+			store:   store,
+			Imports: Imports{"env.started": HostFunc(func(HostModule, []uint64, []uint64) {
+				t.Error("canceled local start reached its host callback")
+			})},
+		})
+		if second != nil {
+			_ = second.Close()
+		}
+		done <- instantiateErr
+	}()
+	select {
+	case err := <-done:
+		lease.unlock()
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("GC invocation-lease wait error = %v, want context deadline", err)
+		}
+	case <-time.After(time.Second):
+		lease.unlock()
+		<-done
+		t.Fatal("instantiation did not cancel while the GC invocation lease was held")
 	}
 }
