@@ -182,14 +182,32 @@ func TestRuntimePluginBindingRequiresExactImportIdentity(t *testing.T) {
 		t.Fatalf("colliding plugin binding error = %v, want ErrMissingImport", err)
 	}
 
-	// Explicit flat Imports remain a deliberate compatibility boundary: callers
-	// supplying one directly chose the legacy namespace themselves.
-	instance, err := rt.Instantiate(context.Background(), module, WithImports(Imports{flatKey: HostFunc(func(HostModule, []uint64, []uint64) {})}))
+	if instance, err := rt.Instantiate(context.Background(), module, WithImports(Imports{flatKey: HostFunc(func(HostModule, []uint64, []uint64) {})})); err == nil || instance != nil || !strings.Contains(err.Error(), "use WithImport") {
+		t.Fatalf("ambiguous flat override = %v, %v; want exact-import error", instance, err)
+	}
+
+	instance, err := rt.Instantiate(context.Background(), module, WithImport("a.b", "c", HostFunc(func(HostModule, []uint64, []uint64) {})))
 	if err != nil {
-		t.Fatalf("explicit legacy override: %v", err)
+		t.Fatalf("exact override: %v", err)
 	}
 	if err := instance.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestRuntimeRejectsCollidingExactImportIdentities(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	module, err := rt.Compile(exactImportIdentityModule(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	if instance, err := rt.Instantiate(context.Background(), module,
+		WithImport("a.b", "c", HostFunc(func(HostModule, []uint64, []uint64) {})),
+		WithImport("a", "b.c", HostFunc(func(HostModule, []uint64, []uint64) {})),
+	); err == nil || instance != nil || !strings.Contains(err.Error(), "cannot be bound safely") {
+		t.Fatalf("colliding exact imports = %v, %v; want rejection", instance, err)
 	}
 }
 

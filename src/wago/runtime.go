@@ -638,10 +638,16 @@ type InstantiateOption func(*instantiateConfig)
 
 type instantiateConfig struct {
 	imports       Imports
+	exactImports  map[importBindingKey]any
 	gc            GCConfig
 	hasGC         bool
 	policy        Policy
 	forceSyncHost bool
+}
+
+type importBindingKey struct {
+	module string
+	name   string
 }
 
 // WithPolicy applies a capability/resource policy to the instance. A module that
@@ -662,6 +668,18 @@ func WithImports(im Imports) InstantiateOption {
 		for k, v := range im {
 			c.imports[k] = v
 		}
+	}
+}
+
+// WithImport adds one per-call import using its exact Wasm module and name.
+// Prefer this form when either component contains a dot, because the legacy
+// Imports map represents bindings as a flattened "module.name" string.
+func WithImport(module, name string, value any) InstantiateOption {
+	return func(c *instantiateConfig) {
+		if c.exactImports == nil {
+			c.exactImports = make(map[importBindingKey]any)
+		}
+		c.exactImports[importBindingKey{module: module, name: name}] = value
 	}
 }
 
@@ -726,7 +744,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 		return nil, err
 	}
 
-	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, cfg.imports)
+	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, cfg.imports, cfg.exactImports)
 	if err != nil {
 		return nil, err
 	}
@@ -748,7 +766,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 // cloning runtime imports the module cannot use. Explicit per-call imports are
 // retained even when undeclared, preserving the low-level Imports inspection
 // behavior. Runtime imports are only retained for declared module keys.
-func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports) (Imports, map[uint32]struct{}, error) {
+func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports, exactOverrides map[importBindingKey]any) (Imports, map[uint32]struct{}, error) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 
@@ -761,9 +779,26 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports)
 			return nil, nil, fmt.Errorf("wago: import %q may not override reserved module %q", key, module)
 		}
 	}
+	for identity := range exactOverrides {
+		if !isReserved(identity.module) || rt.overridePolicy == AllowTestOverrides {
+			continue
+		}
+		if _, provided := rt.imports[identity.module+"."+identity.name]; provided {
+			return nil, nil, fmt.Errorf("wago: import %q.%q may not override reserved module %q", identity.module, identity.name, identity.module)
+		}
+	}
+	flatIdentities := make(map[string]importBindingKey, len(specs))
+	for _, spec := range specs {
+		key := spec.Key()
+		identity := importBindingKey{module: spec.Module, name: spec.Name}
+		if previous, ok := flatIdentities[key]; ok && previous != identity {
+			return nil, nil, fmt.Errorf("wago: imports %q.%q and %q.%q share flattened key %q and cannot be bound safely", previous.module, previous.name, identity.module, identity.name, key)
+		}
+		flatIdentities[key] = identity
+	}
 
-	capacity := len(overrides) + len(specs)
-	if available := len(overrides) + len(rt.imports); available < capacity {
+	capacity := len(overrides) + len(exactOverrides) + len(specs)
+	if available := len(overrides) + len(exactOverrides) + len(rt.imports); available < capacity {
 		capacity = available
 	}
 	var resolved Imports
@@ -776,7 +811,17 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports)
 	}
 	for _, spec := range specs {
 		key := spec.Key()
+		if value, provided := exactOverrides[importBindingKey{module: spec.Module, name: spec.Name}]; provided {
+			if resolved == nil {
+				resolved = make(Imports, capacity)
+			}
+			resolved[key] = value
+			continue
+		}
 		if _, provided := overrides[key]; provided {
+			if module, name := splitImportKey(key); module != spec.Module || name != spec.Name {
+				return nil, nil, fmt.Errorf("wago: flattened import %q is ambiguous for Wasm import %q.%q; use WithImport with separate module and name", key, spec.Module, spec.Name)
+			}
 			continue
 		}
 		value, provided := rt.imports[key]
