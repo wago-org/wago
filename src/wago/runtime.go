@@ -795,12 +795,20 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, overrides Imports,
 			return nil, nil, fmt.Errorf("wago: import %q.%q may not override reserved module %q", identity.module, identity.name, identity.module)
 		}
 	}
-	needsCollisionCheck := len(exactOverrides) != 0
-	if !needsCollisionCheck && len(specs) > 1 {
+	needsCollisionCheck := false
+	if len(specs)+len(exactOverrides) > 1 {
 		for _, spec := range specs {
-			if strings.Contains(spec.Module, ".") || strings.Contains(spec.Name, ".") {
+			if strings.Contains(spec.Module, ".") {
 				needsCollisionCheck = true
 				break
+			}
+		}
+		if !needsCollisionCheck {
+			for identity := range exactOverrides {
+				if strings.Contains(identity.module, ".") {
+					needsCollisionCheck = true
+					break
+				}
 			}
 		}
 	}

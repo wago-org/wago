@@ -3,6 +3,7 @@ package wago
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"testing"
 
@@ -174,6 +175,29 @@ func TestResolveInstanceImportsOrdinaryImportDoesNotAllocateCollisionMap(t *test
 	})
 	if allocs > 3 {
 		t.Fatalf("resolveInstanceImports allocations = %v, want at most 3 without a collision map", allocs)
+	}
+}
+
+func TestResolveInstanceImportsDottedFieldsDoNotAllocateCollisionMap(t *testing.T) {
+	rt := NewRuntime()
+	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	for _, name := range []string{"a", "b", "a.b", "c.d"} {
+		key := "env." + name
+		rt.imports[key] = fn
+		rt.importMeta[key] = &registeredImport{module: "env", name: name, fn: fn}
+	}
+	allocations := func(specs []ImportSpec) float64 {
+		return testing.AllocsPerRun(100, func() {
+			imports, pluginGCImports, err := rt.resolveInstanceImports(specs, nil, nil)
+			if err != nil || len(imports) != 2 || pluginGCImports != nil {
+				panic(fmt.Sprintf("resolveInstanceImports = %#v, %#v, %v", imports, pluginGCImports, err))
+			}
+		})
+	}
+	plain := allocations([]ImportSpec{{Module: "env", Name: "a", Kind: ImportFunc}, {Module: "env", Name: "b", Kind: ImportFunc}})
+	dotted := allocations([]ImportSpec{{Module: "env", Name: "a.b", Kind: ImportFunc}, {Module: "env", Name: "c.d", Kind: ImportFunc}})
+	if dotted > plain {
+		t.Fatalf("dotted-field allocations = %.0f, plain fields = %.0f", dotted, plain)
 	}
 }
 
