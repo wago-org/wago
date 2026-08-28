@@ -100,20 +100,32 @@ func gcFrameCompactLiveLocals(indexes, offsets []uint32, allocations, calls []ui
 		if live > maximum {
 			maximum = live
 		}
-	}
-	kept := make([]int, 0, len(indexes))
-	for root := range indexes {
-		if union[root/64]&(uint64(1)<<uint(root%64)) != 0 {
-			kept = append(kept, root)
+		if live > shared.GCFrameRootLimit {
+			return nil, nil, nil, nil, maximum, fmt.Errorf("GC local liveness has %d simultaneously live collector locals, limit %d", live, shared.GCFrameRootLimit)
 		}
 	}
-	compactedIndexes := make([]uint32, len(kept))
-	compactedOffsets := make([]uint32, len(kept))
-	for i, root := range kept {
-		compactedIndexes[i] = indexes[root]
-		compactedOffsets[i] = offsets[root]
+	// Every set bit in a site belongs to the union. Retain a direct old-to-new
+	// mapping so reconstruction visits arena words and live bits rather than
+	// rescanning the complete retained union at every site.
+	remap := make([]uint32, len(indexes))
+	kept := 0
+	for root := range indexes {
+		if union[root/64]&(uint64(1)<<uint(root%64)) != 0 {
+			remap[root] = uint32(kept)
+			kept++
+		}
 	}
-	newWordCount := (len(kept) + 63) / 64
+	compactedIndexes := make([]uint32, kept)
+	compactedOffsets := make([]uint32, kept)
+	compacted := 0
+	for root := range indexes {
+		if union[root/64]&(uint64(1)<<uint(root%64)) != 0 {
+			compactedIndexes[compacted] = indexes[root]
+			compactedOffsets[compacted] = offsets[root]
+			compacted++
+		}
+	}
+	newWordCount := (kept + 63) / 64
 	if newWordCount == 0 {
 		newWordCount = 1
 	}
@@ -122,19 +134,24 @@ func gcFrameCompactLiveLocals(indexes, offsets []uint32, allocations, calls []ui
 	for site := 0; site < totalSites; site++ {
 		oldLow := lowAt(site)
 		var newLow uint64
-		for root, oldRoot := range kept {
-			word, bit := oldRoot/64, uint(oldRoot%64)
+		for word := 0; word < wordCount; word++ {
 			value := oldLow
 			if word != 0 {
 				value = extraWords[site*extraPerSite+word-1]
 			}
-			if value&(uint64(1)<<bit) == 0 {
-				continue
-			}
-			if root < 64 {
-				newLow |= uint64(1) << uint(root)
-			} else {
-				newExtra[site*newExtraPerSite+root/64-1] |= uint64(1) << uint(root%64)
+			for value != 0 {
+				bit := bits.TrailingZeros64(value)
+				value &= value - 1
+				oldRoot := word*64 + bit
+				if oldRoot >= len(remap) { // Ignore unused padding bits in the final word.
+					continue
+				}
+				root := int(remap[oldRoot])
+				if root < 64 {
+					newLow |= uint64(1) << uint(root)
+				} else {
+					newExtra[site*newExtraPerSite+root/64-1] |= uint64(1) << uint(root%64)
+				}
 			}
 		}
 		if site < len(allocations) {

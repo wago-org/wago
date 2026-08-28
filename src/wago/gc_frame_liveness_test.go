@@ -188,6 +188,43 @@ func TestGCFrameLocalLivenessCompactsDeadDeclaredRoots(t *testing.T) {
 	}
 }
 
+func TestGCFrameLocalLivenessCompactsDisjointWideRoots(t *testing.T) {
+	const roots = 4096
+	indexes, offsets, allocations, extra := gcFrameDisjointRootMasks(roots)
+	indexes, offsets, allocations, _, maximum, err := gcFrameCompactLiveLocals(indexes, offsets, allocations, nil, &extra)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(indexes) != roots || len(offsets) != roots || maximum != 1 {
+		t.Fatalf("compacted disjoint roots: indexes=%d offsets=%d maximum=%d", len(indexes), len(offsets), maximum)
+	}
+	plan := shared.GCFrameRootPlan{LocalOffsets: offsets, LiveLocalMasks: allocations, LiveMaskExtraWords: extra.words}
+	for _, root := range []int{0, 63, 64, roots - 1} {
+		if !plan.LocalLiveAt(root, root) {
+			t.Fatalf("site %d lost its only live root", root)
+		}
+	}
+}
+
+func TestGCFrameLocalLivenessCompactionRejectsTooManyLiveRootsBeforeRebuild(t *testing.T) {
+	const roots = shared.GCFrameRootLimit + 1
+	indexes := make([]uint32, roots)
+	offsets := make([]uint32, roots)
+	allocations := []uint64{^uint64(0)}
+	extra := gcFrameLivenessExtra{words: make([]uint64, (roots+63)/64-1)}
+	for i := range indexes {
+		indexes[i], offsets[i] = uint32(i), uint32(i*8)
+	}
+	for i := range extra.words {
+		extra.words[i] = ^uint64(0)
+	}
+	extra.words[len(extra.words)-1] = 1
+	_, _, _, _, _, err := gcFrameCompactLiveLocals(indexes, offsets, allocations, nil, &extra)
+	if err == nil || !strings.Contains(err.Error(), "1025 simultaneously live collector locals, limit 1024") {
+		t.Fatalf("wide simultaneous-root compaction error = %v", err)
+	}
+}
+
 func TestGCFrameLocalLivenessConsumesMixedWidthMemarg(t *testing.T) {
 	m := &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 1}}, {Limits: wasm.Limits{Min: 1, Addr64: true}}}}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
@@ -291,6 +328,38 @@ func BenchmarkGCFrameLocalLivenessSparseDeclaredRoots(b *testing.B) {
 			b.Fatalf("sparse compaction offsets=%d maximum=%d err=%v", len(compacted), maximum, err)
 		}
 	}
+}
+
+func BenchmarkGCFrameCompactDisjointWideRoots(b *testing.B) {
+	const roots = 10_000
+	indexes, offsets, allocations, extra := gcFrameDisjointRootMasks(roots)
+	b.ReportAllocs()
+	b.ReportMetric(float64(len(extra.words)*8), "input-arena-bytes")
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var err error
+		indexes, offsets, allocations, _, _, err = gcFrameCompactLiveLocals(indexes, offsets, allocations, nil, &extra)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func gcFrameDisjointRootMasks(roots int) (indexes, offsets []uint32, allocations []uint64, extra gcFrameLivenessExtra) {
+	indexes = make([]uint32, roots)
+	offsets = make([]uint32, roots)
+	allocations = make([]uint64, roots)
+	extraPerSite := (roots+63)/64 - 1
+	extra.words = make([]uint64, roots*extraPerSite)
+	for root := 0; root < roots; root++ {
+		indexes[root], offsets[root] = uint32(root), uint32(16+root*8)
+		if root < 64 {
+			allocations[root] = uint64(1) << uint(root)
+		} else {
+			extra.words[root*extraPerSite+root/64-1] = uint64(1) << uint(root%64)
+		}
+	}
+	return
 }
 
 func BenchmarkGCFrameLocalLiveness(b *testing.B) {
