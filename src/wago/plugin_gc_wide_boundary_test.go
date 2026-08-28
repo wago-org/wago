@@ -138,6 +138,44 @@ func pluginGCWideScalarResultModule() []byte {
 	)
 }
 
+func pluginGCWideScalarCallerModule() []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01} // (struct (field (mut i32)))
+	wideScalarType := wasmtest.FuncType(
+		[]wasm.ValType{wasm.I32},
+		[]wasm.ValType{wasm.I32, wasm.I32, wasm.I64, wasm.I64, wasm.I32, wasm.I64, wasm.I32, wasm.I64, wasm.I32, wasm.I32},
+	)
+	wideCallerType := []byte{
+		0x60, 0x08, 0x63, 0x00, // func, eight params, (ref null 0)
+		0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, 0x7f, // seven i32 params
+		0x01, 0x7f, // one i32 result
+	}
+	runType := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	wideCallerBody := []byte{
+		0x20, 0x01, // local.get 1
+		0x10, 0x00, // call wide_scalar_results
+		0x1a, 0x1a, 0x1a, 0x1a, 0x1a, // drop ten scalar results
+		0x1a, 0x1a, 0x1a, 0x1a, 0x1a,
+		0x20, 0x00, 0xd1, 0x1a, // local.get 0; ref.is_null; drop
+		0xfb, 0x01, 0x00, 0x1a, // struct.new_default 0; drop
+		0x20, 0x07, // local.get 7
+		0x0b,
+	}
+	runBody := []byte{
+		0xfb, 0x01, 0x00, // struct.new_default 0
+		0x41, 0x01, 0x41, 0x02, 0x41, 0x03, 0x41, 0x04,
+		0x41, 0x05, 0x41, 0x06, 0x41, 0x07,
+		0x10, 0x01, // call wide_caller
+		0x0b,
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, wideScalarType, wideCallerType, runType)),
+		wasmtest.Section(2, wasmtest.Vec(pluginGCImport("plugin_gc_wide", "wide_scalar_results", 1))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2), wasmtest.ULEB(3))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(wideCallerBody), wasmtest.Code(runBody))),
+	)
+}
+
 // This architecture-neutral regression runs in the mandatory native amd64 and
 // arm64 suites. The module itself has no collector-reference import boundary:
 // its wide import is scalar-only, while struct.new_default still requires exact
@@ -155,6 +193,37 @@ func TestPluginGCWideScalarHostImportUsesSynchronousABI(t *testing.T) {
 	admission := mod.c.GCNativeRootAdmission()
 	if !admission.Required || !admission.Exact || admission.Callsites == 0 || admission.Safepoints == 0 {
 		t.Fatalf("wide scalar host root admission = %+v", admission)
+	}
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	values, err := in.Call(context.Background(), "run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 1 || values[0].I32() != 7 {
+		t.Fatalf("run = %v; want i32(7)", values)
+	}
+}
+
+// The wide local function uses the wrapper entry ABI. Its scalar host call uses
+// the synchronous host ABI. Neither boundary needs the smaller reference-call
+// register proof merely because the module has no collector-reference import.
+func TestPluginGCWideScalarCallerUsesSynchronousABI(t *testing.T) {
+	requireCompleteCore3Backend(t)
+	rt := newPluginGCWideBoundaryRuntime(t)
+	defer rt.Close()
+
+	mod, err := rt.Compile(pluginGCWideScalarCallerModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	admission := mod.c.GCNativeRootAdmission()
+	if !admission.Required || !admission.Exact || admission.Callsites == 0 || admission.Safepoints == 0 || admission.MaximumRoots == 0 {
+		t.Fatalf("wide scalar caller root admission = %+v", admission)
 	}
 	in, err := rt.Instantiate(context.Background(), mod)
 	if err != nil {

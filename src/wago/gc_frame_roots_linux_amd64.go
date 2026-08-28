@@ -162,9 +162,6 @@ functions:
 		if maximumLive > shared.GCFrameRootLimit {
 			return reject("function %d has %d simultaneously live collector locals, limit %d", function, maximumLive, shared.GCFrameRootLimit)
 		}
-		if !collectorBoundary && bodyUsesNativeCall(m.Code[function].BodyBytes, &classifier) && !gcFrameReferenceCallABI(m, ft) {
-			return reject("function %d exceeds the exact native caller ABI", function)
-		}
 		if uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
 			return reject("function %d exceeds the dense safepoint ID bound", function)
 		}
@@ -301,24 +298,6 @@ func bodyUsesEH(body []byte, classifier *wasm.ModuleInstructionClassifier) bool 
 			return true
 		}
 		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
-			return true
-		}
-	}
-	return false
-}
-
-func bodyUsesNativeCall(body []byte, classifier *wasm.ModuleInstructionClassifier) bool {
-	r := wasm.NewReader(body)
-	var imm wasm.InstructionImmediate
-	for r.HasNext() {
-		op, err := r.Byte()
-		if err != nil {
-			return true
-		}
-		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
-			return true
-		}
-		if op == 0x10 || op == 0x12 || op == 0x14 || op == 0x15 {
 			return true
 		}
 	}
