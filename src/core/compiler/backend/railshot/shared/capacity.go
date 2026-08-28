@@ -4,11 +4,12 @@
 package shared
 
 // MaxNativeFrameBytes matches the execution stack's fence margin. Inbound
-// cross-instance wrappers reserve 64 bytes before entering the target, so the
-// generated body frame must leave that space inside the checked headroom.
+// cross-instance wrappers reserve 64 bytes and the target's offset-0 adapter
+// reserves another 16 bytes before entering the target body, so the generated
+// frame must leave both inside the checked headroom.
 const (
 	MaxNativeFrameBytes       = 256 << 10
-	MaxNativeInboundCallBytes = 64
+	MaxNativeInboundCallBytes = 64 + 16
 )
 
 // NativeFrameFitsStackFence reports whether one frame fits inside the checked
