@@ -268,7 +268,7 @@ func TestHostCallWaitRegistrationLifecycle(t *testing.T) {
 		t.Fatal("scope end did not wake registered waiter")
 	}
 	h.unregisterWait(w)
-	if got := scope.waiter.Load(); got != nil {
+	if got := scope.state.Load().waiter.Load(); got != nil {
 		t.Fatalf("unregister retained waiter %p", got)
 	}
 	if h.registerWait(&hostCallWaiter{wake: make(chan struct{}, 1)}) {

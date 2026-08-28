@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"sync"
@@ -23,6 +24,11 @@ var hostControlInstances sync.Map // map[uintptr]*Instance
 type hostInvocationContext struct {
 	id          invocationID
 	reservation *pluginOperationReservation
+	parent      context.Context
+}
+
+func (c hostInvocationContext) empty() bool {
+	return c.id == 0 && c.reservation == nil && c.parent == nil
 }
 
 var hostInvocationContexts sync.Map // map[uintptr]hostInvocationContext
@@ -47,7 +53,7 @@ func activeHostInvocationContext(in *Instance) hostInvocationContext {
 }
 
 func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() {
-	if ctrl == 0 || next.id == 0 {
+	if ctrl == 0 || next.empty() {
 		return func() {}
 	}
 	previous, loaded := hostInvocationContexts.Load(ctrl)
@@ -59,6 +65,20 @@ func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() 
 			hostInvocationContexts.Delete(ctrl)
 		}
 	}
+}
+
+func bindHostInvocationParent(in *Instance, parent context.Context) func() {
+	if in == nil {
+		return func() {}
+	}
+	ctrl := offHeapSlicePtr(in.ctrl)
+	_, inherited := hostInvocationContexts.Load(ctrl)
+	if parent == nil && !inherited {
+		return func() {}
+	}
+	invocation := currentHostInvocationContext(ctrl, in)
+	invocation.parent = parent
+	return bindHostInvocationContext(ctrl, invocation)
 }
 
 func registerHostControl(in *Instance) error {
@@ -160,7 +180,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// owns the invocation identity and collector lease. Carry that identity into
 	// the producer's HostModule instead of reading its zero local invocation ID.
 	invocation := activeHostInvocationContext(root)
-	if invocation.id == 0 {
+	if invocation.empty() {
 		invocation = activeHostInvocationContext(active)
 	}
 	id := invocation.id

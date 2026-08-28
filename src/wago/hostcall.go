@@ -7,6 +7,7 @@ import (
 	goruntime "runtime"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -91,9 +92,9 @@ type GCHostModule interface {
 // under standard Go and TinyGo — with no reflection anywhere on the path.
 type HostFunc func(m HostModule, params, results []uint64)
 
-// CallerResolver resolves the exact Runtime-owned instance making an active
-// synchronous host call. Its authority is identity-only: it cannot create,
-// invoke, close, manage, pool, or otherwise control instances.
+// CallerResolver resolves information about the exact Runtime-owned invocation
+// making an active synchronous host call. Its authority is read-only: it cannot
+// create, invoke, close, manage, pool, or otherwise control instances.
 //
 // Resolve succeeds only while the HostFunc callback is active. Retaining the
 // HostModule and resolving it after the callback returns fails closed.
@@ -131,15 +132,167 @@ func (r *CallerResolver) Resolve(caller HostModule) (InstanceIdentity, error) {
 	return InstanceIdentity{value: h.in}, nil
 }
 
+// InvocationContext returns a cancellation- and deadline-only context for
+// caller's active synchronous host callback. The returned context is canceled
+// when its parent invocation is canceled or when the callback returns. It never
+// exposes values from the parent context. Repeated calls during one callback
+// return the same context.
+//
+// Forged, expired, cross-runtime, and low-level HostModule values are rejected.
+func (r *CallerResolver) InvocationContext(caller HostModule) (context.Context, error) {
+	if r == nil {
+		return nil, fmt.Errorf("wago: nil caller resolver: %w", ErrPermissionDenied)
+	}
+	rt := r.rt.Load()
+	h, ok := caller.(instanceHostModule)
+	if rt == nil || !ok || !h.valid() || h.in == nil || h.in.rt != rt || h.scope == nil {
+		return nil, fmt.Errorf("wago: invocation context requires an active host call from the owning runtime: %w", ErrPermissionDenied)
+	}
+	ctx, ok := h.scope.invocationContext(h.generation, activeHostInvocationContext(h.in).parent)
+	if !ok {
+		return nil, fmt.Errorf("wago: invocation context requires an active host call from the owning runtime: %w", ErrPermissionDenied)
+	}
+	return ctx, nil
+}
+
 // hostCallScope authorizes one synchronous use of an instanceHostModule.
 type hostCallScope struct {
 	active atomic.Uint64
-	waiter atomic.Pointer[hostCallWaiter]
+	state  atomic.Pointer[hostCallState]
 }
 
 type hostCallWaiter struct {
 	generation uint64
 	wake       chan struct{}
+}
+
+// hostCallState is allocated only after a plugin asks to watch a caller or
+// resolve an invocation context. The context list is bounded by the already-
+// bounded synchronous re-entry depth, and its lock does not protect waiter so
+// the two optional facilities cannot replace or block each other.
+type hostCallState struct {
+	waiter atomic.Pointer[hostCallWaiter]
+	mu     sync.Mutex
+	head   *callbackInvocationContext
+}
+
+type callbackInvocationContext struct {
+	generation  uint64
+	next        *callbackInvocationContext
+	done        chan struct{}
+	deadline    time.Time
+	hasDeadline bool
+
+	mu         sync.Mutex
+	err        error
+	stopParent func() bool
+}
+
+func newCallbackInvocationContext(generation uint64, parent context.Context) *callbackInvocationContext {
+	c := &callbackInvocationContext{generation: generation, done: make(chan struct{})}
+	if parent == nil {
+		return c
+	}
+	c.deadline, c.hasDeadline = parent.Deadline()
+	if err := parent.Err(); err != nil {
+		c.finish(err)
+		return c
+	}
+	if parent.Done() == nil {
+		return c
+	}
+	stop := context.AfterFunc(parent, func() { c.finish(parent.Err()) })
+	c.mu.Lock()
+	if c.err == nil {
+		c.stopParent = stop
+		c.mu.Unlock()
+	} else {
+		c.mu.Unlock()
+		stop()
+	}
+	return c
+}
+
+func (c *callbackInvocationContext) Deadline() (time.Time, bool) {
+	return c.deadline, c.hasDeadline
+}
+
+func (c *callbackInvocationContext) Done() <-chan struct{} { return c.done }
+
+func (c *callbackInvocationContext) Err() error {
+	c.mu.Lock()
+	err := c.err
+	c.mu.Unlock()
+	return err
+}
+
+func (*callbackInvocationContext) Value(any) any { return nil }
+
+func (c *callbackInvocationContext) finish(err error) {
+	if err == nil {
+		err = context.Canceled
+	}
+	c.mu.Lock()
+	if c.err != nil {
+		c.mu.Unlock()
+		return
+	}
+	c.err = err
+	stop := c.stopParent
+	c.stopParent = nil
+	close(c.done)
+	c.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
+}
+
+func (s *hostCallScope) ensureState() *hostCallState {
+	state := s.state.Load()
+	if state == nil {
+		candidate := &hostCallState{}
+		if s.state.CompareAndSwap(nil, candidate) {
+			state = candidate
+		} else {
+			state = s.state.Load()
+		}
+	}
+	return state
+}
+
+func (s *hostCallScope) invocationContext(generation uint64, parent context.Context) (context.Context, bool) {
+	state := s.ensureState()
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if generation == 0 || s.active.Load() != generation {
+		return nil, false
+	}
+	for current := state.head; current != nil; current = current.next {
+		if current.generation == generation {
+			return current, true
+		}
+	}
+	current := newCallbackInvocationContext(generation, parent)
+	current.next = state.head
+	state.head = current
+	return current, true
+}
+
+func (s *hostCallScope) expireInvocationContext(state *hostCallState, generation uint64) {
+	state.mu.Lock()
+	var expired *callbackInvocationContext
+	for link := &state.head; *link != nil; link = &(*link).next {
+		if (*link).generation == generation {
+			expired = *link
+			*link = expired.next
+			expired.next = nil
+			break
+		}
+	}
+	state.mu.Unlock()
+	if expired != nil {
+		expired.finish(context.Canceled)
+	}
 }
 
 type instancePluginState struct {
@@ -195,13 +348,20 @@ func (s *hostCallScope) beginReservedWithID(in *Instance, id invocationID, reser
 }
 
 func (s *hostCallScope) end(generation, parent uint64) {
-	if !s.active.CompareAndSwap(generation, parent) {
+	active := s.active.CompareAndSwap(generation, parent)
+	state := s.state.Load()
+	if state != nil {
+		s.expireInvocationContext(state, generation)
+	}
+	if !active {
 		return
 	}
-	if waiter := s.waiter.Load(); waiter != nil && waiter.generation == generation {
-		select {
-		case waiter.wake <- struct{}{}:
-		default:
+	if state != nil {
+		if waiter := state.waiter.Load(); waiter != nil && waiter.generation == generation {
+			select {
+			case waiter.wake <- struct{}{}:
+			default:
+			}
 		}
 	}
 }
@@ -760,9 +920,10 @@ func (h instanceHostModule) registerWait(waiter *hostCallWaiter) bool {
 		return false
 	}
 	waiter.generation = h.generation
-	h.scope.waiter.Store(waiter)
+	state := h.scope.ensureState()
+	state.waiter.Store(waiter)
 	if !h.valid() {
-		h.scope.waiter.CompareAndSwap(waiter, nil)
+		state.waiter.CompareAndSwap(waiter, nil)
 		return false
 	}
 	return true
@@ -770,7 +931,9 @@ func (h instanceHostModule) registerWait(waiter *hostCallWaiter) bool {
 
 func (h instanceHostModule) unregisterWait(waiter *hostCallWaiter) {
 	if h.scope != nil {
-		h.scope.waiter.CompareAndSwap(waiter, nil)
+		if state := h.scope.state.Load(); state != nil {
+			state.waiter.CompareAndSwap(waiter, nil)
+		}
 	}
 }
 
@@ -1233,6 +1396,8 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 		return err
 	}
 	defer locked.unlockExecution()
+	restoreInvocationContext := bindHostInvocationParent(in, waitParent)
+	defer restoreInvocationContext()
 	stopWaitContext := in.publishAtomicWaitContext(waitParent)
 	defer stopWaitContext()
 	defer func() { err = in.decorateTrap(err) }()

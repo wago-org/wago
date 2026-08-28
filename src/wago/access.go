@@ -104,8 +104,9 @@ func (a *GuestArgumentsAccess) close() error {
 	return nil
 }
 
-// HostCallers returns an identity-only, revocable resolver for synchronous host
-// calls. It cannot create, invoke, or close instances.
+// HostCallers returns a read-only, revocable resolver for synchronous host
+// caller identity and invocation cancellation/deadline context. It cannot
+// create, invoke, or close instances.
 func (r *Registrar) HostCallers() (*CallerResolver, error) {
 	if _, err := r.authorize(AuthorityHostCallerIdentify); err != nil {
 		return nil, err

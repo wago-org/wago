@@ -4273,7 +4273,7 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 			// nor strands an invocation initiated through the relay.
 			return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, cancel, in.trap, true)
 		}
-		return in.invokeReexportedHost(export, importIdx, args, id)
+		return in.invokeReexportedHost(export, importIdx, args, id, cancel)
 	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
@@ -4604,7 +4604,7 @@ func (in *Instance) replayHostLog() (err error) {
 	return nil
 }
 
-func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64, id invocationID) (results []uint64, err error) {
+func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64, id invocationID, parent context.Context) (results []uint64, err error) {
 	if importIdx < 0 || importIdx >= len(in.syncHosts) || in.syncHosts[importIdx] == nil || importIdx >= len(in.c.importFuncSigs) {
 		return nil, fmt.Errorf("export %q is an imported function without a callable host owner", export)
 	}
@@ -4670,6 +4670,8 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	// the public invocation boundary.
 	resumeGCInvocation := in.suspendGCInvocation(id)
 	defer resumeGCInvocation()
+	restoreInvocationContext := bindHostInvocationParent(in, parent)
+	defer restoreInvocationContext()
 	fn := in.syncHosts[importIdx]
 	caller := in.beginHostCallScope()
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
