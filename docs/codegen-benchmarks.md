@@ -105,6 +105,23 @@ iteration and increase the sample count only for a final retained comparison.
 Each sub-benchmark performs `b.N` dependent operations inside one Wasm invocation
 and reports a separate `ns/instruction` metric.
 
+The scalar float matrix compares GPR-built and RIP-relative masks, rounding,
+square root, ordered min/max paths, and copysign. The shift matrix compares CL,
+immediate, and experimental BMI2 rotate forms:
+
+```sh
+go test ./src/wago -run '^$' \
+  -bench '^BenchmarkAMD64ScalarFloatInstruction$' \
+  -benchmem -benchtime=150ms -count=3 -cpu=1
+
+go test ./src/wago -run '^$' \
+  -bench '^BenchmarkAMD64IntegerShiftInstruction$' \
+  -benchmem -benchtime=150ms -count=3 -cpu=1
+```
+
+Use the explicit GPR-mask float rows and baseline rotate rows as controls. Do not
+compare separate host sessions when a same-process control is available.
+
 ## Targeted profiles
 
 Backend railshot compile profiles:

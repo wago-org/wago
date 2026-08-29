@@ -161,9 +161,10 @@ var v128LocalSinkEnabled = envDefaultOff(os.Getenv("WAGO_V128_SINK"))
 // v128ConstCacheEnabled reserves an XMM register for each repeated v128.const
 // value in a call-free function and materializes it once at entry, so a loop over
 // a constant operand (the isa_simd reductions, bitselect masks, …) copies it from
-// a register instead of rebuilding the 128-bit immediate every iteration. The
-// amd64 analog of arm64 preloadV128Consts. Default ON; WAGO_AMD64_NO_V128_CONST_CACHE=1
-// disables it for A/B.
+// a register instead of rebuilding the 128-bit immediate every iteration. It also
+// selects RIP-relative literals for implicit scalar-float sign/magnitude masks.
+// The amd64 analog of arm64 preloadV128Consts. Default ON;
+// WAGO_AMD64_NO_V128_CONST_CACHE=1 disables both uses for A/B.
 var v128ConstCacheEnabled = os.Getenv("WAGO_AMD64_NO_V128_CONST_CACHE") != "1"
 
 // callNextUseEnabled skips stores of dirty pinned locals whose next bounded

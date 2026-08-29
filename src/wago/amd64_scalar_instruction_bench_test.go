@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"math/bits"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -130,6 +131,113 @@ func BenchmarkAMD64IntegerDivInstruction(b *testing.B) {
 			benchUintSink = got[0]
 			if tc.operations != 0 {
 				b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*int(tc.operations)), "ns/instruction")
+			}
+		})
+	}
+}
+
+type amd64ShiftBenchmarkCase struct {
+	name       string
+	opcode     byte
+	constant   bool
+	count      uint64
+	bmi2       bool
+	operations int
+}
+
+func amd64ShiftInstructionBenchmarkModule(tc amd64ShiftBenchmarkCase) []byte {
+	body := []byte{
+		0x01, 0x01, 0x7f, // local 3: i32 counter
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x20, 0x03, 0x20, 0x00, 0x4f, 0x0d, 0x01, // if counter >= iterations, break
+		0x20, 0x01, // accumulator
+	}
+	if tc.opcode != 0 {
+		if tc.constant {
+			body = append(body, 0x42)
+			body = append(body, wasmtest.SLEB64(int64(tc.count))...)
+		} else {
+			body = append(body, 0x20, 0x02)
+		}
+		body = append(body, tc.opcode)
+	}
+	body = append(body, 0x42)
+	body = append(body, wasmtest.SLEB64(int64(amd64DivBenchmarkAdd))...)
+	body = append(body,
+		0x7c, 0x21, 0x01, // i64.add; local.set accumulator
+		0x20, 0x03, 0x41, 0x01, 0x6a, 0x21, 0x03, // counter++
+		0x0c, 0x00, // continue
+		0x0b, 0x0b,
+		0x20, 0x01,
+		0x0b,
+	)
+	funcType := wasmtest.FuncType(
+		[]wasm.ValType{wasm.I32, wasm.I64, wasm.I64},
+		[]wasm.ValType{wasm.I64},
+	)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func amd64ShiftBenchmarkWantOne(tc amd64ShiftBenchmarkCase) uint64 {
+	value := amd64DivBenchmarkSeed
+	switch tc.opcode {
+	case 0x86:
+		value <<= tc.count & 63
+	case 0x8a:
+		value = bits.RotateLeft64(value, -int(tc.count&63))
+	}
+	return value + amd64DivBenchmarkAdd
+}
+
+// BenchmarkAMD64IntegerShiftInstruction compares immediate, CL, and BMI2 rotate
+// forms, including masked zero counts. One invocation executes b.N guest shifts.
+func BenchmarkAMD64IntegerShiftInstruction(b *testing.B) {
+	cases := []amd64ShiftBenchmarkCase{
+		{name: "loop-control"},
+		{name: "i64.rotr/dynamic-7", opcode: 0x8a, count: 7, operations: 1},
+		{name: "i64.rotr/const-7-baseline", opcode: 0x8a, constant: true, count: 7, operations: 1},
+		{name: "i64.rotr/const-7-rorx", opcode: 0x8a, constant: true, count: 7, bmi2: true, operations: 1},
+		{name: "i64.rotr/const-0-baseline", opcode: 0x8a, constant: true, operations: 1},
+		{name: "i64.rotr/const-0-rorx", opcode: 0x8a, constant: true, bmi2: true, operations: 1},
+		{name: "i64.shl/const-0", opcode: 0x86, constant: true, operations: 1},
+	}
+	for _, tc := range cases {
+		b.Run(tc.name, func(b *testing.B) {
+			cfg := NewRuntimeConfig().WithOptimization("bmi2-rorx", tc.bmi2)
+			compiled, err := Compile(cfg, amd64ShiftInstructionBenchmarkModule(tc))
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer instance.Close()
+
+			got, err := instance.Invoke("run", 1, amd64DivBenchmarkSeed, tc.count)
+			if err != nil || len(got) != 1 || got[0] != amd64ShiftBenchmarkWantOne(tc) {
+				b.Fatalf("warm run = %v, %v; want [%d]", got, err, amd64ShiftBenchmarkWantOne(tc))
+			}
+			if uint64(b.N) > uint64(^uint32(0)) {
+				b.Fatalf("iteration count %d exceeds the i32 guest-loop limit", b.N)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			got, err = instance.Invoke("run", uint64(uint32(b.N)), amd64DivBenchmarkSeed, tc.count)
+			b.StopTimer()
+			if err != nil || len(got) != 1 {
+				b.Fatalf("run(%d) = %v, %v", b.N, got, err)
+			}
+			benchUintSink = got[0]
+			if tc.operations != 0 {
+				b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*tc.operations), "ns/instruction")
 			}
 		})
 	}

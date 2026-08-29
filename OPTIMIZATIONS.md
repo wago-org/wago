@@ -19,6 +19,16 @@ Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very hi
 
 ## What's in place (updated 2026-08-29)
 
+**Scalar float mask and copysign lowering (2026-08-29).** AMD64 implicit
+abs/neg/copysign masks now use the existing RIP-relative constant pool instead of
+a GPR rebuild. Focused dependent loops improve `f64.abs` **0.571→0.447 ns/op**
+(-21.8%) and `f64.neg` **0.564→0.449** (-20.4%). Copysign now uses one mask and
+three-operand VEX XOR/AND identities while borrowing pinned operands; the full
+change improves **1.179→0.898 ns/op** (-23.8%) and reduces the fixture from 157
+to 136 bytes. A min/max branch-layout rewrite was rejected after regressing every
+measured ordered path, and BMI2 RORX remains experimental after matching the
+baseline rotate while adding two bytes.
+
 **Signed unit-divisor lowering (2026-08-29).** AMD64 now lowers constant
 `div_s 1` to identity, `rem_s ±1` to zero, and `div_s -1` to an exact `INT_MIN`
 overflow check plus `neg`, avoiding IDIV while preserving the Wasm trap. Focused
