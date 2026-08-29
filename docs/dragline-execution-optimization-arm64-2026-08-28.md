@@ -208,15 +208,22 @@ pinned the first 20 declarations even though later round-state locals are used
 up to five times as often. Vector locals are now ranked by total get/set/tee use,
 with stable source-order ties, before assigning those registers. A generic
 vector rotate fold also lowers `(x >> n) | (x << (32-n))` to ARM64 `USHR` plus
-`SLI` without changing WebAssembly lane semantics.
+`SLI` without changing WebAssembly lane semantics. Common `i8x16.shuffle`
+patterns now select `REV32`, `ZIP1`, `ZIP2`, or the same two-instruction lane
+rotate instead of materializing two masks, executing two table lookups, and
+ORing their results. When every shuffle in a call-free function has a direct
+lowering, the otherwise-unused Q2/Q3 table-lookup scratch registers retain two
+additional hot vector locals.
 
-Seven alternating 300 ms samples per backend measured 525.92 us for Dragline
-and 386.48 us for Railshot, or **1.361x**. The fresh pre-slice prioritization
-result was 802.58 us versus 404.96 us, or 1.982x, so Dragline latency fell 34.5%
-and the relative gap fell by 61.9%. Compression function 7 fell from 36,440 to
-34,380 native bytes, while function 8 fell from 33,448 to 31,516 bytes. The
-remaining gap is dominated by vector local spills and repeated explicit checks
-inside the 16-iteration compression loop.
+Seven alternating 300 ms samples per backend measured 459.98 us for Dragline
+and 395.77 us for Railshot, or **1.162x**. The fresh pre-slice prioritization
+result was 802.58 us versus 404.96 us, or 1.982x, so Dragline latency fell 42.7%
+and the relative gap fell by 83.5%. Compression function 7 fell from 36,440 to
+19,668 native bytes, while function 8 fell from 33,448 to 18,244 bytes. A
+diagnostic build that removed every structured SIMD bounds check did not
+improve the workload materially, ruling out check hoisting as the next lever.
+The remaining gap is dominated by vector local spills and moves inside the
+16-iteration compression loop.
 
 ## Historical application outliers
 

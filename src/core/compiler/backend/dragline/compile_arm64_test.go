@@ -43,7 +43,7 @@ func TestARM64PinV128LocalsUsesHottestLocals(t *testing.T) {
 		uses[i] = uint32(i)
 	}
 
-	arm64PinV128Locals(types, uses, pinned, registers)
+	arm64PinV128Locals(types, uses, pinned, registers, arm64V128LocalRegisters[:])
 
 	for i := 0; i < 3; i++ {
 		if pinned[i] {
@@ -58,6 +58,22 @@ func TestARM64PinV128LocalsUsesHottestLocals(t *testing.T) {
 		if registers[i] != want {
 			t.Fatalf("local %d register = %d, want %d", i, registers[i], want)
 		}
+	}
+}
+
+func TestARM64ShufflePatterns(t *testing.T) {
+	ror8 := [16]byte{1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12}
+	ror16 := [16]byte{2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13}
+	zip1S := [16]byte{0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23}
+	zip2D := [16]byte{8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31}
+	if !arm64ShuffleLaneRotate(ror8, 4, 1) || !arm64ShuffleLaneRotate(ror16, 4, 2) {
+		t.Fatal("lane rotate pattern was not recognized")
+	}
+	if arm64ShuffleLaneRotate(zip1S, 4, 1) {
+		t.Fatal("zip pattern was recognized as a lane rotate")
+	}
+	if !arm64ShuffleZip(zip1S, 4, false) || !arm64ShuffleZip(zip2D, 8, true) {
+		t.Fatal("zip pattern was not recognized")
 	}
 }
 

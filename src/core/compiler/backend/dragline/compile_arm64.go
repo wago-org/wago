@@ -49,8 +49,8 @@ var arm64V128LocalRegisters = [...]arm64.Reg{
 	24, 25, 26, 27, 28, 29, 30, 31,
 }
 
-func arm64PinV128Locals(types []wasm.ValType, uses []uint32, pinned []bool, localRegisters []arm64.Reg) {
-	for selected := 0; selected < min(len(arm64V128LocalRegisters), len(types)); selected++ {
+func arm64PinV128Locals(types []wasm.ValType, uses []uint32, pinned []bool, localRegisters []arm64.Reg, available []arm64.Reg) {
+	for selected := 0; selected < min(len(available), len(types)); selected++ {
 		best := -1
 		for local, typ := range types {
 			if typ == wasm.V128 && !pinned[local] && (best < 0 || uses[local] > uses[best]) {
@@ -61,7 +61,7 @@ func arm64PinV128Locals(types []wasm.ValType, uses []uint32, pinned []bool, loca
 			return
 		}
 		pinned[best] = true
-		localRegisters[best] = arm64V128LocalRegisters[selected]
+		localRegisters[best] = available[selected]
 	}
 }
 
@@ -4210,7 +4210,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	hasMemoryGrow := false
 	globalUses := make([]uint16, len(sf.Globals))
 	vectorLocalUses := make([]uint32, len(sf.Locals))
-	for _, instr := range sf.Instrs {
+	allShufflesSpecialized := true
+	hasSIMDDot := false
+	for instrIndex, instr := range sf.Instrs {
 		if (instr.Kind == wasm.InstrCall || instr.Kind == wasm.InstrCallIndirect) && instr.Inline() == wasm.InstrInvalid ||
 			instr.Kind == wasm.InstrElemDrop || instr.Kind == wasm.InstrStructGet || instr.Kind == wasm.InstrStructSet ||
 			instr.Kind == wasm.InstrArrayGet || instr.Kind == wasm.InstrArraySet || instr.Kind == wasm.InstrArrayFill || instr.Kind == wasm.InstrRefCast ||
@@ -4242,6 +4244,11 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				vectorLocalUses[instr.U32()]++
 			}
 		}
+		if instr.Kind == wasm.InstrI8x16Shuffle {
+			descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex))
+			allShufflesSpecialized = allShufflesSpecialized && ok && arm64ShuffleSpecialized(descriptor.Bytes)
+		}
+		hasSIMDDot = hasSIMDDot || instr.Kind == wasm.InstrI32x4DotI16x8S
 	}
 	promotedGlobals := [2]int{-1, -1}
 	promotedGlobalRegs := [2]arm64.Reg{arm64.X7, arm64.X6}
@@ -4286,7 +4293,17 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				}
 			}
 		}
-		arm64PinV128Locals(sf.Locals, vectorLocalUses, localV128Pinned, localRegisters)
+		var available [len(arm64V128LocalRegisters) + 2]arm64.Reg
+		count := copy(available[:], arm64V128LocalRegisters[:])
+		if allShufflesSpecialized && !hasSIMDDot {
+			available[count] = 2
+			count++
+		}
+		if allShufflesSpecialized {
+			available[count] = 3
+			count++
+		}
+		arm64PinV128Locals(sf.Locals, vectorLocalUses, localV128Pinned, localRegisters, available[:count])
 	} else if pinLocalsAcrossCalls {
 		gpRegister := 0
 		for i, typ := range sf.Locals {
@@ -8861,6 +8878,42 @@ func arm64SIMDConstantIsSplat(bytes [16]byte) bool {
 	return true
 }
 
+func arm64ShuffleLaneRotate(bytes [16]byte, laneBytes, rotateBytes byte) bool {
+	for i, lane := range bytes {
+		base := byte(i) / laneBytes * laneBytes
+		if lane != base+(byte(i)%laneBytes+rotateBytes)%laneBytes {
+			return false
+		}
+	}
+	return true
+}
+
+func arm64ShuffleZip(bytes [16]byte, laneBytes byte, upper bool) bool {
+	half := byte(8 / laneBytes)
+	start := byte(0)
+	if upper {
+		start = half
+	}
+	for i, lane := range bytes {
+		outputLane := byte(i) / laneBytes
+		inputLane := start + outputLane/2
+		expected := inputLane*laneBytes + byte(i)%laneBytes
+		if outputLane&1 != 0 {
+			expected += 16
+		}
+		if lane != expected {
+			return false
+		}
+	}
+	return true
+}
+
+func arm64ShuffleSpecialized(bytes [16]byte) bool {
+	return arm64ShuffleLaneRotate(bytes, 4, 1) || arm64ShuffleLaneRotate(bytes, 4, 2) ||
+		arm64ShuffleZip(bytes, 4, false) || arm64ShuffleZip(bytes, 4, true) ||
+		arm64ShuffleZip(bytes, 8, false) || arm64ShuffleZip(bytes, 8, true)
+}
+
 func emitARM64SIMDConstant(a *arm64.Asm, reg arm64.Reg, bytes [16]byte) {
 	if arm64SIMDConstantIsSplat(bytes) {
 		a.NeonMoviB(reg, bytes[0])
@@ -9136,27 +9189,68 @@ func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		base := len(types) - 2
 		lhs := sourceV(base, 0)
 		rhs := sourceV(base+1, 1)
-		var left, right [16]byte
-		for i, lane := range descriptor.Bytes {
-			left[i], right[i] = lane, lane-16
+		dst := stackDestination(base, 0)
+		switch {
+		case arm64ShuffleLaneRotate(descriptor.Bytes, 4, 2):
+			a.NeonRev32H(dst, lhs)
+			storeV(base, dst)
+			types = append(types[:base], wasm.V128)
+			break
+		case arm64ShuffleLaneRotate(descriptor.Bytes, 4, 1):
+			if dst == lhs {
+				dst = 0
+				if lhs == 0 {
+					dst = 1
+				}
+			}
+			a.NeonUshrS(dst, lhs, 8)
+			a.NeonSliS(dst, lhs, 24)
+			storeV(base, dst)
+			types = append(types[:base], wasm.V128)
+			break
+		case arm64ShuffleZip(descriptor.Bytes, 4, false):
+			a.NeonZip1S(dst, lhs, rhs)
+			storeV(base, dst)
+			types = append(types[:base], wasm.V128)
+			break
+		case arm64ShuffleZip(descriptor.Bytes, 4, true):
+			a.NeonZip2S(dst, lhs, rhs)
+			storeV(base, dst)
+			types = append(types[:base], wasm.V128)
+			break
+		case arm64ShuffleZip(descriptor.Bytes, 8, false):
+			a.NeonZip1D(dst, lhs, rhs)
+			storeV(base, dst)
+			types = append(types[:base], wasm.V128)
+			break
+		case arm64ShuffleZip(descriptor.Bytes, 8, true):
+			a.NeonZip2D(dst, lhs, rhs)
+			storeV(base, dst)
+			types = append(types[:base], wasm.V128)
+			break
+		default:
+			var left, right [16]byte
+			for i, lane := range descriptor.Bytes {
+				left[i], right[i] = lane, lane-16
+			}
+			leftIndex := arm64.Reg(2)
+			if cached, ok := constantRegister(left); ok {
+				leftIndex = cached
+			} else {
+				materialize(leftIndex, left)
+			}
+			a.NeonTbl(2, lhs, leftIndex)
+			rightIndex := arm64.Reg(3)
+			if cached, ok := constantRegister(right); ok {
+				rightIndex = cached
+			} else {
+				materialize(rightIndex, right)
+			}
+			a.NeonTbl(3, rhs, rightIndex)
+			a.NeonOrr16b(0, 2, 3)
+			storeV(base, 0)
+			types = append(types[:base], wasm.V128)
 		}
-		leftIndex := arm64.Reg(2)
-		if cached, ok := constantRegister(left); ok {
-			leftIndex = cached
-		} else {
-			materialize(leftIndex, left)
-		}
-		a.NeonTbl(2, lhs, leftIndex)
-		rightIndex := arm64.Reg(3)
-		if cached, ok := constantRegister(right); ok {
-			rightIndex = cached
-		} else {
-			materialize(rightIndex, right)
-		}
-		a.NeonTbl(3, rhs, rightIndex)
-		a.NeonOrr16b(0, 2, 3)
-		storeV(base, 0)
-		types = append(types[:base], wasm.V128)
 	case wasm.InstrV128AnyTrue:
 		if len(types) < 1 || types[len(types)-1] != wasm.V128 {
 			return fmt.Errorf("SIMD reduction operand mismatch")
