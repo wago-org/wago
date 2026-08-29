@@ -391,6 +391,118 @@ func TestRuntimeDirectInstanceAggregateLimits(t *testing.T) {
 	}
 }
 
+func TestRuntimeNativeMemoryMappingLimitAndStats(t *testing.T) {
+	cfg := NewRuntimeConfig().WithNativeMemoryMappingLimit(1)
+	rt := NewRuntime(WithRuntimeConfig(cfg))
+	defer rt.Close()
+	mod, err := rt.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	first, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stats := rt.ResourceStats()
+	if !stats.NativeMemoryMappingsTracked || stats.NativeMemoryMappings != 1 || stats.PeakNativeMemoryMappings != 1 || stats.MaxNativeMemoryMappings != 1 {
+		t.Fatalf("runtime resource stats = %#v", stats)
+	}
+	second, err := rt.Instantiate(context.Background(), mod)
+	if second != nil || !errors.Is(err, ErrResourceLimit) || !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("second instance = %v, %v; want resource and permission limit", second, err)
+	}
+	var limitErr *ResourceLimitError
+	if !errors.As(err, &limitErr) || limitErr.Scope != "runtime" || limitErr.Used != 1 || limitErr.Requested != 1 || limitErr.Limit != 1 {
+		t.Fatalf("runtime limit error = %#v / %v", limitErr, err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if stats := rt.ResourceStats(); stats.NativeMemoryMappings != 0 || stats.PeakNativeMemoryMappings != 1 {
+		t.Fatalf("released runtime resource stats = %#v", stats)
+	}
+	second, err = rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatalf("instantiate after release: %v", err)
+	}
+	defer second.Close()
+}
+
+func TestRuntimeModuleEnforcesMemoryCountLimit(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec(
+			[]byte{0x00, 0x00},
+			[]byte{0x00, 0x00},
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithMaxMemoriesPerModule(2), module)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+	defer compiled.Close()
+
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithMaxMemoriesPerModule(1)))
+	defer rt.Close()
+	_, err = rt.Module(compiled)
+	if !errors.Is(err, ErrResourceLimit) {
+		t.Fatalf("Module error = %v, want ErrResourceLimit", err)
+	}
+	var limitErr *ResourceLimitError
+	if !errors.As(err, &limitErr) || limitErr.Requested != 2 || limitErr.Limit != 1 {
+		t.Fatalf("Module error = %#v, want requested 2 and limit 1", err)
+	}
+}
+
+func TestRuntimeNativeMemoryMappingLimitIncludesManagedInstances(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithNativeMemoryMappingLimit(1)))
+	defer rt.Close()
+	mod := &Module{c: &Compiled{}}
+	reservation, err := rt.reserveRuntimeInstance(mod, InstantiateManaged)
+	if err != nil {
+		t.Fatalf("first managed reservation: %v", err)
+	}
+	defer reservation.release()
+	if reservation.direct {
+		t.Fatal("managed reservation was classified as direct")
+	}
+	if second, err := rt.reserveRuntimeInstance(mod, InstantiateManaged); second != nil || !errors.Is(err, ErrResourceLimit) {
+		t.Fatalf("second managed reservation = %v, %v; want resource limit", second, err)
+	}
+	if stats := rt.ResourceStats(); stats.NativeMemoryMappings != 1 || stats.DirectInstances != 0 {
+		t.Fatalf("managed resource stats = %#v", stats)
+	}
+
+	imported := &Module{c: &Compiled{
+		memoryImport: "env.memory",
+		memoryDir:    &compiledMemoryDirectory{defs: []memoryDef{{ImportKey: "env.memory"}}},
+	}}
+	if importedReservation, err := rt.reserveRuntimeInstance(imported, InstantiateManaged); err != nil || importedReservation != nil {
+		t.Fatalf("imported memory reservation = %v, %v; want no charge", importedReservation, err)
+	}
+}
+
+func TestRuntimeOwnedNativeMemoryMappingCount(t *testing.T) {
+	local := memoryDef{}
+	imported := memoryDef{ImportKey: "env.memory"}
+	for _, tc := range []struct {
+		name string
+		c    *Compiled
+		want uint32
+	}{
+		{name: "memoryless control", c: &Compiled{}, want: 1},
+		{name: "one local memory", c: &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{local}}}, want: 1},
+		{name: "one imported memory", c: &Compiled{memoryImport: "env.memory", memoryDir: &compiledMemoryDirectory{defs: []memoryDef{imported}}}, want: 0},
+		{name: "import and two locals", c: &Compiled{memoryImport: "env.memory", memoryDir: &compiledMemoryDirectory{defs: []memoryDef{imported, local, local}}}, want: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := runtimeOwnedNativeMemoryMappings(&Module{c: tc.c}); got != tc.want {
+				t.Fatalf("mapping count = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestRuntimeFailedRetainedInstanceKeepsAggregateReservation(t *testing.T) {
 	if !requireExternalWAT(t) {
 		return
@@ -438,7 +550,7 @@ func TestRuntimeCountOnlyInstanceLimitSkipsMemoryAccounting(t *testing.T) {
 	// be represented by the optional aggregate byte counter. Count-only limits
 	// must not inspect or reject that otherwise valid declaration.
 	mod := &Module{c: &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{{Addr64: true, HasMax: true, Max: 1 << 48}}}}}
-	reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect)
+	reservation, err := rt.reserveRuntimeInstance(mod, InstantiateDirect)
 	if err != nil {
 		t.Fatalf("count-only reservation: %v", err)
 	}
@@ -446,7 +558,7 @@ func TestRuntimeCountOnlyInstanceLimitSkipsMemoryAccounting(t *testing.T) {
 	if reservation.memory != 0 {
 		t.Fatalf("count-only reservation charged %d memory bytes", reservation.memory)
 	}
-	if second, err := rt.reserveDirectInstance(mod, InstantiateDirect); err == nil || second != nil || !errors.Is(err, ErrPermissionDenied) {
+	if second, err := rt.reserveRuntimeInstance(mod, InstantiateDirect); err == nil || second != nil || !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("second count-only reservation = %v, %v; want instance limit", second, err)
 	}
 }
@@ -462,7 +574,7 @@ func TestRuntimeMemoryLimitChargesFullNoMaximumMemory32(t *testing.T) {
 	}
 	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(0, (maxPages-1)*pageBytes)))
 	defer rt.Close()
-	if reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect); reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) {
+	if reservation, err := rt.reserveRuntimeInstance(mod, InstantiateDirect); reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("undersized no-max memory32 reservation = %v, %v; want permission denial", reservation, err)
 	}
 }
@@ -482,7 +594,7 @@ func TestRuntimeMemoryLimitChargesFullSecondaryNoMaximumMemory64(t *testing.T) {
 	}
 	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(0, want-pageBytes)))
 	defer rt.Close()
-	if reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect); reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) {
+	if reservation, err := rt.reserveRuntimeInstance(mod, InstantiateDirect); reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("undersized secondary no-max memory64 reservation = %v, %v; want permission denial", reservation, err)
 	}
 }
@@ -500,7 +612,7 @@ func TestRuntimeMemoryLimitChargesFullImportedNoMaximumMemory64(t *testing.T) {
 	}
 	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(0, (maxPages-1)*pageBytes)))
 	defer rt.Close()
-	if reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect); reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) {
+	if reservation, err := rt.reserveRuntimeInstance(mod, InstantiateDirect); reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("undersized imported no-max memory64 reservation = %v, %v; want permission denial", reservation, err)
 	}
 }
@@ -509,7 +621,7 @@ func TestRuntimeMemoryLimitClassifiesAccountingOverflow(t *testing.T) {
 	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(0, 1)))
 	defer rt.Close()
 	mod := &Module{c: &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{{Addr64: true, HasMax: true, Max: 1 << 48}}}}}
-	reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect)
+	reservation, err := rt.reserveRuntimeInstance(mod, InstantiateDirect)
 	if reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) || !strings.Contains(err.Error(), "overflows bytes") {
 		t.Fatalf("overflow reservation = %v, %v; want detailed ErrPermissionDenied", reservation, err)
 	}

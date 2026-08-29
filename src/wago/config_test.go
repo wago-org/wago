@@ -248,6 +248,39 @@ func TestConfigImmutable(t *testing.T) {
 	}
 }
 
+func TestConfigMemoryCountLimit(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec(
+			[]byte{0x00, 0x00},
+			[]byte{0x00, 0x00},
+		)),
+	)
+	if _, err := Compile(NewRuntimeConfig().WithMaxMemoriesPerModule(1), module); err == nil || !strings.Contains(err.Error(), "memory count 2 exceeds configured limit 1") {
+		t.Fatalf("memory count limit error = %v", err)
+	}
+	base := NewRuntimeConfig()
+	derived := base.WithMaxMemoriesPerModule(4)
+	if base.MaxMemoriesPerModule() != DefaultMaxMemoriesPerModule || derived.MaxMemoriesPerModule() != 4 {
+		t.Fatalf("memory count configs = base %d derived %d", base.MaxMemoriesPerModule(), derived.MaxMemoriesPerModule())
+	}
+	for _, value := range []uint32{0, MaxMemoriesPerModuleLimit + 1} {
+		if err := base.WithMaxMemoriesPerModule(value).Validate(); err == nil {
+			t.Fatalf("Validate accepted max memories per module %d", value)
+		}
+	}
+	combined := base.WithInstanceLimits(2, 3).WithNativeMemoryMappingLimit(4)
+	if limits := combined.instanceLimits; limits.maxInstances != 2 || limits.maxMemoryBytes != 3 || limits.maxNativeMemoryMappings != 4 {
+		t.Fatalf("combined instance limits = %#v", limits)
+	}
+	updated := combined.WithInstanceLimits(5, 6)
+	if limits := updated.instanceLimits; limits.maxInstances != 5 || limits.maxMemoryBytes != 6 || limits.maxNativeMemoryMappings != 4 {
+		t.Fatalf("updated instance limits = %#v", limits)
+	}
+	if limits := combined.instanceLimits; limits.maxInstances != 2 || limits.maxMemoryBytes != 3 || limits.maxNativeMemoryMappings != 4 {
+		t.Fatalf("WithInstanceLimits mutated base limits = %#v", limits)
+	}
+}
+
 func TestCoreFeaturesV2ReleaseScope(t *testing.T) {
 	want := CoreFeaturesV1 |
 		CoreFeatureBulkMemoryOperations |

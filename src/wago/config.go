@@ -239,6 +239,7 @@ type RuntimeConfig struct {
 	trustedOptimizations bool
 	maxMemoryPages       uint32
 	maxFunctionLocals    uint32 // total function parameters plus declared locals
+	maxMemoriesPerModule uint32
 	boundsChecks         BoundsCheckMode
 	noDeferBounds        bool // disable skipping of provably-redundant bounds checks (default: enabled)
 	functionWorkers      int  // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
@@ -248,8 +249,9 @@ type RuntimeConfig struct {
 }
 
 type runtimeInstanceLimits struct {
-	maxInstances   uint32
-	maxMemoryBytes uint64
+	maxInstances            uint32
+	maxMemoryBytes          uint64
+	maxNativeMemoryMappings uint32
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
@@ -258,8 +260,10 @@ const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
 // parameter and declared-local count. MaxFunctionLocalsLimit is the largest
 // configurable ceiling; native frame-size safety remains independently checked.
 const (
-	DefaultMaxFunctionLocals = wasm.DefaultMaxFunctionLocals
-	MaxFunctionLocalsLimit   = wasm.MaximumFunctionLocals
+	DefaultMaxFunctionLocals    = wasm.DefaultMaxFunctionLocals
+	MaxFunctionLocalsLimit      = wasm.MaximumFunctionLocals
+	DefaultMaxMemoriesPerModule = wasm.DefaultMaxMemoriesPerModule
+	MaxMemoriesPerModuleLimit   = wasm.MaximumMemoriesPerModule
 )
 
 var defaultOptimizationCache struct {
@@ -334,6 +338,7 @@ func NewRuntimeConfig() *RuntimeConfig {
 		trustedOptimizations: true,
 		maxMemoryPages:       defaultMaxMemoryPages,
 		maxFunctionLocals:    DefaultMaxFunctionLocals,
+		maxMemoriesPerModule: DefaultMaxMemoriesPerModule,
 		boundsChecks:         bounds,
 		functionWorkers:      1,
 		independentInstances: true,
@@ -352,7 +357,25 @@ func (c *RuntimeConfig) WithCoreFeatures(features CoreFeatures) *RuntimeConfig {
 // corresponding aggregate unbounded.
 func (c *RuntimeConfig) WithInstanceLimits(maxInstances uint32, maxMemoryBytes uint64) *RuntimeConfig {
 	n := *c
-	n.instanceLimits = &runtimeInstanceLimits{maxInstances: maxInstances, maxMemoryBytes: maxMemoryBytes}
+	limits := runtimeInstanceLimits{maxInstances: maxInstances, maxMemoryBytes: maxMemoryBytes}
+	if c.instanceLimits != nil {
+		limits.maxNativeMemoryMappings = c.instanceLimits.maxNativeMemoryMappings
+	}
+	n.instanceLimits = &limits
+	return &n
+}
+
+// WithNativeMemoryMappingLimit caps mappings that live instances in this
+// Runtime own. Zero removes this Runtime limit. The fixed Linux process limit
+// remains 4,096 mappings.
+func (c *RuntimeConfig) WithNativeMemoryMappingLimit(maxMappings uint32) *RuntimeConfig {
+	n := *c
+	limits := runtimeInstanceLimits{}
+	if c.instanceLimits != nil {
+		limits = *c.instanceLimits
+	}
+	limits.maxNativeMemoryMappings = maxMappings
+	n.instanceLimits = &limits
 	return &n
 }
 
@@ -439,6 +462,14 @@ func (c *RuntimeConfig) WithMemoryLimitPages(pages uint32) *RuntimeConfig {
 func (c *RuntimeConfig) WithMaxFunctionLocals(locals uint32) *RuntimeConfig {
 	n := *c
 	n.maxFunctionLocals = locals
+	return &n
+}
+
+// WithMaxMemoriesPerModule sets the maximum count of imported and local
+// memories in one module. Valid values are 1 through 4,096. The default is 100.
+func (c *RuntimeConfig) WithMaxMemoriesPerModule(memories uint32) *RuntimeConfig {
+	n := *c
+	n.maxMemoriesPerModule = memories
 	return &n
 }
 
@@ -544,6 +575,9 @@ func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
 // local ceiling for one function.
 func (c *RuntimeConfig) MaxFunctionLocals() uint32 { return c.maxFunctionLocals }
 
+// MaxMemoriesPerModule reports the configured memory declaration ceiling.
+func (c *RuntimeConfig) MaxMemoriesPerModule() uint32 { return c.maxMemoriesPerModule }
+
 // GCCodeTelemetry reports whether fresh compilation should retain code-neutral
 // WasmGC native-byte attribution. Serialized artifacts do not contain it.
 func (c *RuntimeConfig) GCCodeTelemetry() bool { return c.gcCodeTelemetry }
@@ -580,8 +614,8 @@ func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
 }
 
 func (c *RuntimeConfig) String() string {
-	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, functionWorkers: %d, independentInstances: %t}",
-		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.functionWorkers, c.independentInstances)
+	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, maxMemoriesPerModule: %d, functionWorkers: %d, independentInstances: %t}",
+		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.maxMemoriesPerModule, c.functionWorkers, c.independentInstances)
 }
 
 // SupportedFeatures reports the WebAssembly feature set this wago build can
@@ -716,6 +750,9 @@ func (c *RuntimeConfig) frontendFeatures() frontend.Features {
 func (c *RuntimeConfig) Validate() error {
 	if c.maxFunctionLocals == 0 || c.maxFunctionLocals > MaxFunctionLocalsLimit {
 		return fmt.Errorf("wago: max function locals must be between 1 and %d, got %d", MaxFunctionLocalsLimit, c.maxFunctionLocals)
+	}
+	if c.maxMemoriesPerModule == 0 || c.maxMemoriesPerModule > MaxMemoriesPerModuleLimit {
+		return fmt.Errorf("wago: max memories per module must be between 1 and %d, got %d", MaxMemoriesPerModuleLimit, c.maxMemoriesPerModule)
 	}
 	if c.functionWorkers < 0 {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)

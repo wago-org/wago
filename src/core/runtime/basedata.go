@@ -145,12 +145,14 @@ func AcquireJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 	j := jobMemoryCache.j
 	if j != nil && j.reserveBase == 0 && len(j.mem) >= need {
 		jobMemoryCache.j = nil
+		changeInterruptLinearMemoryCache(-1)
 		jobMemoryCache.Unlock()
 		j.reset(initialBytes, maxBytes, reserveBytes, false)
 		return j, nil
 	}
 	if j != nil && len(j.mem) < need {
 		jobMemoryCache.j = nil
+		changeInterruptLinearMemoryCache(-1)
 		jobMemoryCache.Unlock()
 		_ = j.Close()
 		return NewJobMemoryGrowable(initialBytes, maxBytes)
@@ -509,6 +511,7 @@ func ReleaseJobMemory(j *JobMemory) error {
 	jobMemoryCache.Lock()
 	if jobMemoryCache.j == nil {
 		jobMemoryCache.j = j
+		changeInterruptLinearMemoryCache(1)
 		jobMemoryCache.Unlock()
 		return nil
 	}

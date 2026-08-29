@@ -84,6 +84,9 @@ func AcquireJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 	jobMemoryGuardedCache.Lock()
 	j := jobMemoryGuardedCache.j
 	jobMemoryGuardedCache.j = nil
+	if j != nil {
+		changeInterruptLinearMemoryCache(-1)
+	}
 	jobMemoryGuardedCache.Unlock()
 	if j == nil {
 		return NewJobMemoryGuarded(linBytes, maxBytes)
@@ -105,6 +108,7 @@ func releaseGuardedJobMemory(j *JobMemory) bool {
 	jobMemoryGuardedCache.Lock()
 	if jobMemoryGuardedCache.j == nil {
 		jobMemoryGuardedCache.j = j
+		changeInterruptLinearMemoryCache(1)
 		jobMemoryGuardedCache.Unlock()
 		return true
 	}

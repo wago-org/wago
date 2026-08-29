@@ -142,6 +142,7 @@ type (
 	ModuleSourceDigest              = impl.ModuleSourceDigest
 	ModuleSourceTransformer         = impl.ModuleSourceTransformer
 	ModuleView                      = impl.ModuleView
+	NativeMemoryStats               = impl.NativeMemoryStats
 	OffsetInit                      = impl.OffsetInit
 	OperationIdentity               = impl.OperationIdentity
 	OptKnobInfo                     = impl.OptKnobInfo
@@ -168,11 +169,13 @@ type (
 	ReferenceTypeDescriptor         = impl.ReferenceTypeDescriptor
 	Registrar                       = impl.Registrar
 	Resource                        = impl.Resource
+	ResourceLimitError              = impl.ResourceLimitError
 	Runtime                         = impl.Runtime
 	RuntimeCloseEvent               = impl.RuntimeCloseEvent
 	RuntimeCloseObserver            = impl.RuntimeCloseObserver
 	RuntimeConfig                   = impl.RuntimeConfig
 	RuntimeOption                   = impl.RuntimeOption
+	RuntimeResourceStats            = impl.RuntimeResourceStats
 	Stability                       = impl.Stability
 	StorageTypeDescriptor           = impl.StorageTypeDescriptor
 	Table                           = impl.Table
@@ -264,6 +267,7 @@ const (
 	CoreFeaturesV2                             = impl.CoreFeaturesV2
 	CoreFeaturesV3                             = impl.CoreFeaturesV3
 	DefaultMaxFunctionLocals                   = impl.DefaultMaxFunctionLocals
+	DefaultMaxMemoriesPerModule                = impl.DefaultMaxMemoriesPerModule
 	Deprecated                                 = impl.Deprecated
 	ElemModeActive                             = impl.ElemModeActive
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
@@ -275,6 +279,7 @@ const (
 	ErrMissingImport                           = impl.ErrMissingImport
 	ErrPermissionDenied                        = impl.ErrPermissionDenied
 	ErrPluginConflict                          = impl.ErrPluginConflict
+	ErrResourceLimit                           = impl.ErrResourceLimit
 	Experimental                               = impl.Experimental
 	GCAllocatorPagedSizeClass                  = impl.GCAllocatorPagedSizeClass
 	GCAllocatorTinyFixedBlock                  = impl.GCAllocatorTinyFixedBlock
@@ -305,6 +310,7 @@ const (
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateManaged                         = impl.InstantiateManaged
 	MaxFunctionLocalsLimit                     = impl.MaxFunctionLocalsLimit
+	MaxMemoriesPerModuleLimit                  = impl.MaxMemoriesPerModuleLimit
 	NoPluginOverrides                          = impl.NoPluginOverrides
 	PackedTypeI16                              = impl.PackedTypeI16
 	PackedTypeI8                               = impl.PackedTypeI8
@@ -494,6 +500,8 @@ func OptKnobs() []OptKnobInfo { return impl.OptKnobs() }
 func OptimizationInfos() []OptKnobInfo { return impl.OptimizationInfos() }
 
 func OptimizationInfosForArch(arch string) []OptKnobInfo { return impl.OptimizationInfosForArch(arch) }
+
+func ProcessNativeMemoryStats() NativeMemoryStats { return impl.ProcessNativeMemoryStats() }
 
 func ProvideContract(reg *Registrar, spec ContractSpec, value any) error {
 	return impl.ProvideContract(reg, spec, value)

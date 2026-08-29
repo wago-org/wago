@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/semver"
 )
 
@@ -29,29 +30,31 @@ const (
 // host imports into it, and it threads those through Compile/Instantiate. The
 // package-level Compile/Instantiate remain available as the low-level API.
 type Runtime struct {
-	mu                    sync.Mutex
-	stateCond             *sync.Cond
-	state                 runtimeState
-	loadingDone           chan struct{}
-	pluginsLoadAttempted  bool
-	operational           bool
-	activeOperations      uint64
-	compileOperations     uint64
-	moduleCloseOperations uint64
-	closeState            *runtimeCloseState
-	instances             map[*Instance]uint64
-	instanceReservations  map[*Instance]*runtimeInstanceReservation
-	instanceSequence      uint64
-	directInstanceCount   uint32
-	directInstanceMemory  uint64
-	cfg                   *RuntimeConfig
-	overridePolicy        ImportOverridePolicy
-	managedActive         atomic.Bool
-	callerResolverActive  atomic.Bool
-	hooks                 *hookRegistry
-	publishedHooks        atomic.Pointer[hookRegistry]
-	refStore              *referenceStore
-	guestArguments        []string
+	mu                       sync.Mutex
+	stateCond                *sync.Cond
+	state                    runtimeState
+	loadingDone              chan struct{}
+	pluginsLoadAttempted     bool
+	operational              bool
+	activeOperations         uint64
+	compileOperations        uint64
+	moduleCloseOperations    uint64
+	closeState               *runtimeCloseState
+	instances                map[*Instance]uint64
+	instanceReservations     map[*Instance]*runtimeInstanceReservation
+	instanceSequence         uint64
+	directInstanceCount      uint32
+	directInstanceMemory     uint64
+	nativeMemoryMappings     uint32
+	nativeMemoryMappingsPeak uint32
+	cfg                      *RuntimeConfig
+	overridePolicy           ImportOverridePolicy
+	managedActive            atomic.Bool
+	callerResolverActive     atomic.Bool
+	hooks                    *hookRegistry
+	publishedHooks           atomic.Pointer[hookRegistry]
+	refStore                 *referenceStore
+	guestArguments           []string
 
 	plugins      []PluginDefinition
 	imports      Imports                      // "module.name" -> host fn (any)
@@ -67,6 +70,8 @@ type Runtime struct {
 type runtimeInstanceReservation struct {
 	rt         *Runtime
 	memory     uint64
+	mappings   uint32
+	direct     bool
 	registered atomic.Bool
 	once       sync.Once
 }
@@ -77,12 +82,19 @@ func (r *runtimeInstanceReservation) release() {
 	}
 	r.once.Do(func() {
 		r.rt.mu.Lock()
-		if r.rt.directInstanceCount == 0 || r.memory > r.rt.directInstanceMemory {
+		if r.direct && (r.rt.directInstanceCount == 0 || r.memory > r.rt.directInstanceMemory) {
 			r.rt.mu.Unlock()
 			panic("wago: direct instance reservation underflow")
 		}
-		r.rt.directInstanceCount--
-		r.rt.directInstanceMemory -= r.memory
+		if r.mappings > r.rt.nativeMemoryMappings {
+			r.rt.mu.Unlock()
+			panic("wago: native memory mapping reservation underflow")
+		}
+		if r.direct {
+			r.rt.directInstanceCount--
+			r.rt.directInstanceMemory -= r.memory
+		}
+		r.rt.nativeMemoryMappings -= r.mappings
 		r.rt.mu.Unlock()
 	})
 }
@@ -379,30 +391,76 @@ func (rt *Runtime) unregisterInstance(in *Instance) {
 	reservation.release()
 }
 
-func (rt *Runtime) reserveDirectInstance(mod *Module, origin InstantiateOrigin) (*runtimeInstanceReservation, error) {
+func (rt *Runtime) reserveRuntimeInstance(mod *Module, origin InstantiateOrigin) (*runtimeInstanceReservation, error) {
 	limits := rt.cfg.instanceLimits
-	if origin != InstantiateDirect || limits == nil || (limits.maxInstances == 0 && limits.maxMemoryBytes == 0) {
+	if limits == nil {
+		return nil, nil
+	}
+	trackDirect := origin == InstantiateDirect && (limits.maxInstances != 0 || limits.maxMemoryBytes != 0)
+	trackMappings := limits.maxNativeMemoryMappings != 0
+	if !trackDirect && !trackMappings {
 		return nil, nil
 	}
 	var memory uint64
-	if limits.maxMemoryBytes != 0 {
+	if trackDirect && limits.maxMemoryBytes != 0 {
 		var err error
 		memory, err = managedMemoryReservation(mod)
 		if err != nil {
 			return nil, fmt.Errorf("wago: module memory limits: %v: %w", err, ErrPermissionDenied)
 		}
 	}
+	var mappings uint32
+	if trackMappings {
+		mappings = runtimeOwnedNativeMemoryMappings(mod)
+	}
+	if !trackDirect && mappings == 0 {
+		return nil, nil
+	}
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	if limits.maxInstances != 0 && rt.directInstanceCount >= limits.maxInstances {
+	if trackDirect && limits.maxInstances != 0 && rt.directInstanceCount >= limits.maxInstances {
 		return nil, fmt.Errorf("wago: runtime instance limit %d reached: %w", limits.maxInstances, ErrPermissionDenied)
 	}
-	if limits.maxMemoryBytes != 0 && memory > limits.maxMemoryBytes-rt.directInstanceMemory {
+	if trackDirect && limits.maxMemoryBytes != 0 && memory > limits.maxMemoryBytes-rt.directInstanceMemory {
 		return nil, fmt.Errorf("wago: aggregate direct instance memory %d + %d exceeds limit %d: %w", rt.directInstanceMemory, memory, limits.maxMemoryBytes, ErrPermissionDenied)
 	}
-	rt.directInstanceCount++
-	rt.directInstanceMemory += memory
-	return &runtimeInstanceReservation{rt: rt, memory: memory}, nil
+	if trackMappings && mappings > limits.maxNativeMemoryMappings-rt.nativeMemoryMappings {
+		return nil, &coreruntime.ResourceLimitError{
+			Resource:   "native memory mappings",
+			Scope:      "runtime",
+			Used:       uint64(rt.nativeMemoryMappings),
+			Requested:  uint64(mappings),
+			Limit:      uint64(limits.maxNativeMemoryMappings),
+			Suggestion: "close unused instances or create a Runtime with a higher WithNativeMemoryMappingLimit value after you inspect ResourceStats and ProcessNativeMemoryStats",
+			Cause:      ErrPermissionDenied,
+		}
+	}
+	if trackDirect {
+		rt.directInstanceCount++
+		rt.directInstanceMemory += memory
+	}
+	rt.nativeMemoryMappings += mappings
+	if rt.nativeMemoryMappings > rt.nativeMemoryMappingsPeak {
+		rt.nativeMemoryMappingsPeak = rt.nativeMemoryMappings
+	}
+	return &runtimeInstanceReservation{rt: rt, memory: memory, mappings: mappings, direct: trackDirect}, nil
+}
+
+func runtimeOwnedNativeMemoryMappings(mod *Module) uint32 {
+	if mod == nil || mod.c == nil {
+		return 0
+	}
+	c := mod.c
+	var count uint32
+	if c.memoryImport == "" || c.threadedMemory0() {
+		count = 1
+	}
+	for index := 1; index < c.memoryCount(); index++ {
+		if c.memoryDef(index).ImportKey == "" {
+			count++
+		}
+	}
+	return count
 }
 
 func (rt *Runtime) beginModuleCloseCallbacks() (*hookRegistry, func()) {
@@ -684,10 +742,20 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 	rt.mu.Lock()
 	hooks := rt.loadHooks()
 	bindings := rt.snapshotModuleBindingsLocked(hooks)
+	maxMemories := rt.cfg.maxMemoriesPerModule
 	rt.mu.Unlock()
 	var compilation CompilationIdentity
 	if len(hooks.afterCompile) != 0 || len(hooks.onCompileError) != 0 {
 		compilation = CompilationIdentity{value: &compilationIdentityToken{}}
+	}
+	if memoryCount := uint64(c.memoryCount()); memoryCount > uint64(maxMemories) {
+		return nil, emitCompileError(hooks, compilation, &coreruntime.ResourceLimitError{
+			Resource:   "memories per module",
+			Scope:      "runtime configuration",
+			Requested:  memoryCount,
+			Limit:      uint64(maxMemories),
+			Suggestion: "use a smaller module or increase WithMaxMemoriesPerModule after you inspect the module metadata",
+		})
 	}
 	mod := buildModule(c, bindings)
 	identities, err := indexDeclaredImportIdentities(mod.imports)
@@ -833,7 +901,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	if err := applyPolicy(mod, cfg.policy); err != nil {
 		return nil, err
 	}
-	reservation, err := rt.reserveDirectInstance(mod, origin)
+	reservation, err := rt.reserveRuntimeInstance(mod, origin)
 	if err != nil {
 		return nil, err
 	}

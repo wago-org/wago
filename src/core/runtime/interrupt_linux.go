@@ -44,6 +44,9 @@ var (
 	interruptLinearMemories    [maxInterruptLinearMemories]uintptr
 	interruptLinearMemoryLimit uint32
 	interruptLinearMemoryState uint32
+	interruptLinearMemoryCount uint32
+	interruptLinearMemoryPeak  uint32
+	interruptLinearMemoryCache uint32
 	interruptLinearMemoryMu    sync.Mutex
 
 	interruptInstallOnce sync.Once
@@ -54,6 +57,30 @@ var (
 func init() {
 	interruptLinearMemoryRegister = registerInterruptLinearMemory
 	interruptLinearMemoryUnregister = unregisterInterruptLinearMemory
+	interruptLinearMemoryCacheChange = changeInterruptLinearMemoryCacheLinux
+	nativeMemoryStatsSnapshot = processNativeMemoryStatsLinux
+}
+
+func changeInterruptLinearMemoryCacheLinux(delta int32) {
+	atomic.AddUint32(&interruptLinearMemoryCache, uint32(delta))
+}
+
+func processNativeMemoryStatsLinux() NativeMemoryStats {
+	registered := atomic.LoadUint32(&interruptLinearMemoryCount)
+	cached := atomic.LoadUint32(&interruptLinearMemoryCache)
+	active := uint32(0)
+	if cached <= registered {
+		active = registered - cached
+	}
+	return NativeMemoryStats{
+		Supported:      true,
+		Active:         active,
+		Cached:         cached,
+		Registered:     registered,
+		PeakRegistered: atomic.LoadUint32(&interruptLinearMemoryPeak),
+		Capacity:       maxInterruptLinearMemories,
+		ScanSpan:       atomic.LoadUint32(&interruptLinearMemoryLimit),
+	}
 }
 
 func registerInterruptLinearMemory(linMem uintptr) error {
@@ -75,11 +102,24 @@ func registerInterruptLinearMemory(linMem uintptr) error {
 	}
 	if firstHole < 0 {
 		if limit == len(interruptLinearMemories) {
-			return fmt.Errorf("interrupt linear-memory table full (%d)", maxInterruptLinearMemories)
+			return &ResourceLimitError{
+				Resource:   "native memory mappings",
+				Scope:      "process",
+				Used:       uint64(atomic.LoadUint32(&interruptLinearMemoryCount)),
+				Requested:  1,
+				Limit:      maxInterruptLinearMemories,
+				Suggestion: "close unused Instance or Memory values, inspect ProcessNativeMemoryStats, or use another process",
+			}
 		}
 		firstHole = limit
 	}
 	atomic.StoreUintptr(&interruptLinearMemories[firstHole], linMem)
+	count := atomic.AddUint32(&interruptLinearMemoryCount, 1)
+	for peak := atomic.LoadUint32(&interruptLinearMemoryPeak); count > peak; peak = atomic.LoadUint32(&interruptLinearMemoryPeak) {
+		if atomic.CompareAndSwapUint32(&interruptLinearMemoryPeak, peak, count) {
+			break
+		}
+	}
 	if firstHole == limit {
 		atomic.StoreUint32(&interruptLinearMemoryLimit, uint32(limit+1))
 	}
@@ -100,11 +140,16 @@ func unregisterInterruptLinearMemory(linMem uintptr) {
 		}
 	}
 	limit := int(atomic.LoadUint32(&interruptLinearMemoryLimit))
+	removed := uint32(0)
 	for i := 0; i < limit; i++ {
 		if atomic.LoadUintptr(&interruptLinearMemories[i]) != linMem {
 			continue
 		}
 		atomic.StoreUintptr(&interruptLinearMemories[i], 0)
+		removed++
+	}
+	if removed != 0 {
+		atomic.AddUint32(&interruptLinearMemoryCount, ^uint32(removed-1))
 	}
 	for limit > 0 && atomic.LoadUintptr(&interruptLinearMemories[limit-1]) == 0 {
 		limit--

@@ -3,11 +3,95 @@
 package runtime
 
 import (
+	"errors"
 	goruntime "runtime"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestProcessNativeMemoryStatsTracksLifecycle(t *testing.T) {
+	before := ProcessNativeMemoryStats()
+	if !before.Supported || before.Capacity != maxInterruptLinearMemories {
+		t.Fatalf("initial native memory stats = %#v", before)
+	}
+	jm, err := NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	during := ProcessNativeMemoryStats()
+	if during.Registered != before.Registered+1 || during.Active != before.Active+1 || during.Cached != before.Cached {
+		_ = jm.Close()
+		t.Fatalf("registered native memory stats = %#v, before %#v", during, before)
+	}
+	if during.PeakRegistered < during.Registered || during.ScanSpan == 0 {
+		_ = jm.Close()
+		t.Fatalf("registered native memory peak/scan stats = %#v", during)
+	}
+	if err := jm.Close(); err != nil {
+		t.Fatal(err)
+	}
+	after := ProcessNativeMemoryStats()
+	if after.Registered != before.Registered || after.Active != before.Active || after.Cached != before.Cached {
+		t.Fatalf("closed native memory stats = %#v, before %#v", after, before)
+	}
+}
+
+func TestProcessNativeMemoryStatsTracksCacheReuse(t *testing.T) {
+	jm, err := AcquireJobMemoryGrowable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	active := ProcessNativeMemoryStats()
+	if err := ReleaseJobMemory(jm); err != nil {
+		t.Fatal(err)
+	}
+	cached := ProcessNativeMemoryStats()
+	if cached.Registered != active.Registered || cached.Active+1 != active.Active || cached.Cached != active.Cached+1 {
+		t.Fatalf("cache transition = active %#v cached %#v", active, cached)
+	}
+	reused, err := AcquireJobMemoryGrowable(0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reactivated := ProcessNativeMemoryStats()
+	if reactivated.Registered != cached.Registered || reactivated.Active != cached.Active+1 || reactivated.Cached+1 != cached.Cached {
+		_ = ReleaseJobMemory(reused)
+		t.Fatalf("reuse transition = cached %#v active %#v", cached, reactivated)
+	}
+	if err := ReleaseJobMemory(reused); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestInterruptLinearMemoryCapacityReturnsTypedError(t *testing.T) {
+	var registered []uintptr
+	defer func() {
+		for index := len(registered) - 1; index >= 0; index-- {
+			unregisterInterruptLinearMemory(registered[index])
+		}
+	}()
+	for candidate := uintptr(1); ProcessNativeMemoryStats().Registered < maxInterruptLinearMemories; candidate++ {
+		before := ProcessNativeMemoryStats().Registered
+		if err := registerInterruptLinearMemory(candidate); err != nil {
+			t.Fatalf("fill native memory registry at %d entries: %v", before, err)
+		}
+		if ProcessNativeMemoryStats().Registered != before {
+			registered = append(registered, candidate)
+		}
+	}
+	err := registerInterruptLinearMemory(^uintptr(0))
+	if !errors.Is(err, ErrResourceLimit) {
+		t.Fatalf("capacity error = %v, want ErrResourceLimit", err)
+	}
+	var limitErr *ResourceLimitError
+	if !errors.As(err, &limitErr) {
+		t.Fatalf("capacity error type = %T, want *ResourceLimitError", err)
+	}
+	if limitErr.Scope != "process" || limitErr.Resource != "native memory mappings" || limitErr.Used != maxInterruptLinearMemories || limitErr.Requested != 1 || limitErr.Limit != maxInterruptLinearMemories {
+		t.Fatalf("capacity error fields = %#v", limitErr)
+	}
+}
 
 func TestJobMemoryLifecycleRegistersInterruptLinearMemory(t *testing.T) {
 	jm, err := NewJobMemory(65536)

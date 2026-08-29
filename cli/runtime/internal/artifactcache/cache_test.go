@@ -351,8 +351,8 @@ func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
 }
 
 func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
-	if cacheKeyFormat != 3 {
-		t.Fatalf("cache key format = %d, want local-limit-aware version 3", cacheKeyFormat)
+	if cacheKeyFormat != 4 {
+		t.Fatalf("cache key format = %d, want memory-count-aware version 4", cacheKeyFormat)
 	}
 	source := constantModule()
 	dir := t.TempDir()
@@ -365,6 +365,7 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	deferredOff := base.WithDeferBoundsChecks(false)
 	memoryLimit := base.WithMemoryLimitPages(base.MemoryLimitPages() - 1)
 	localLimit := base.WithMaxFunctionLocals(base.MaxFunctionLocals() - 1)
+	memoryCountLimit := base.WithMaxMemoriesPerModule(base.MaxMemoriesPerModule() - 1)
 
 	basePath, ok := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, base)
 	if !ok {
@@ -377,6 +378,7 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	deferredPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, deferredOff)
 	memoryPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, memoryLimit)
 	localPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, localLimit)
+	memoryCountPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, memoryCountLimit)
 	runtimePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-b")}).path(source, base)
 	sourcePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(append(source, 0), base)
 	if basePath == featurePath {
@@ -402,6 +404,9 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	}
 	if basePath == localPath {
 		t.Fatal("function local limit did not change artifact key")
+	}
+	if basePath == memoryCountPath {
+		t.Fatal("module memory count limit did not change artifact key")
 	}
 	if basePath == sourcePath {
 		t.Fatal("source bytes did not change artifact key")

@@ -17,6 +17,11 @@ per-invocation state from the saved CPU context.
 the range start last; `Unmap` clears it first. The signal handler therefore
 performs a bounded, read-only scan without allocation or locking.
 
+Each live `JobMemory` base is in a second fixed 4,096-entry table.
+The table is process-wide and uses 32 KiB on a 64-bit system.
+The table includes mappings in the bounded reuse caches.
+See [Native memory limits](native-memory-limits.md) for configuration and telemetry.
+
 Wago reserves real-time signal 40. Go installs its dispatcher across the
 real-time range, so Wago preserves that handler and chains deliveries that are
 not its `tgkill` requests. The handler uses Go's per-thread alternate signal
@@ -24,12 +29,23 @@ stack through `SA_ONSTACK`.
 
 For a saved PC in a registered code range, the handler:
 
-1. reads the fixed linear-memory register and its basedata trap pointer;
-2. matches that pointer against the bounded table of active cold requests;
-3. writes `TrapInterrupted` to the preallocated invocation trap cell;
-4. loads the trap re-entry stack pointer recorded by `enterNative`;
-5. rewrites the saved stack/program context to a landing pad; and
-6. returns through `rt_sigreturn`.
+1. reads the fixed linear-memory register;
+2. matches the register value against the live `JobMemory` table;
+3. reads the basedata trap pointer only after the match;
+4. matches the trap pointer against the table of active cold requests;
+5. writes `TrapInterrupted` to the preallocated invocation trap cell;
+6. loads the trap re-entry stack pointer recorded by `enterNative`;
+7. rewrites the saved stack and program context to a landing pad; and
+8. returns through `rt_sigreturn`.
+
+This order protects the first instructions of a native entry.
+The saved fixed register can contain an unrelated value before the entry prologue sets it.
+The handler does not dereference that value unless it matches a registered base.
+
+Creation registers the base before the caller can use the mapping.
+Close blocks new signal readers before it removes the base.
+Close then waits for existing readers before it unmaps the memory.
+This reader gate prevents a handler from reading an unmapped basedata region.
 
 The landing pad returns into the ordinary `enterNative` epilogue, which restores
 the Go stack and registers. Existing trap decoding then returns
@@ -90,6 +106,7 @@ Run the Linux architecture-specific gates on native amd64 and arm64 machines
 
 ```sh
 go test ./src/wago -run 'Test(CallContextInterruptsNativeLoop|InvokeContextInterruptsNativeLoop|InvokeContextInterruptsHostCallLoop|KernelDeadlineInterruptsDuringStopTheWorld|CloseInterruptsInfiniteInvocation|PublicCompileOmitsCooperativeInterruptPolls)$'
+go test ./src/core/runtime -run 'Test(ProcessNativeMemoryStatsTracksLifecycle|ProcessNativeMemoryStatsTracksCacheReuse|InterruptLinearMemoryCapacityReturnsTypedError|UnregisterWaitsForSignalReaders|InterruptLinearMemoryRegistrationScansPastHoles)$'
 go test ./src/core/runtime ./src/wago
 ```
 
