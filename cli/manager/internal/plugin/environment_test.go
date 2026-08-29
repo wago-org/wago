@@ -169,6 +169,12 @@ func TestRunPluginScopeOverrides(t *testing.T) {
 	}
 
 	t.Setenv("WAGO_GLOBAL", "")
+	applyTestPluginScope(t, []string{"run", "--gc-heap", "2GiB", "--gc-nursery=64MiB", "--global", "module.wasm"})
+	if !projectconfig.Truthy("WAGO_GLOBAL") {
+		t.Fatal("GC sizing flag value hid --global")
+	}
+
+	t.Setenv("WAGO_GLOBAL", "")
 	t.Setenv("WAGO_LOCAL", "")
 	t.Setenv("WAGO_BARE", "")
 	applyTestPluginScope(t, []string{"run", "--local", "module.wasm"})

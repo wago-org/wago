@@ -5,6 +5,7 @@ package amd64
 import (
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
@@ -87,6 +88,30 @@ func TestLocalSlotOrderDoesNotGrowMixedCompactFrame(t *testing.T) {
 	}
 	if on.Peephole["local-slot-order"] != 0 {
 		t.Fatalf("local-slot-order hits = %d, want rollback", on.Peephole["local-slot-order"])
+	}
+}
+
+func TestLocalSlotOrderSkipsGCFrameRootFunctions(t *testing.T) {
+	refs := encamd64.LocalRefRecorder{
+		Sites:  []encamd64.LocalRefSite{{Local: 1}},
+		Limit:  1,
+		Locals: 2,
+	}
+	plan := &shared.GCFrameRootPlan{Candidate: true, LocalIndexes: []uint32{1}, LocalOffsets: []uint32{128}}
+	f := fn{
+		a:                  &encamd64.Asm{LocalRefs: &refs},
+		nLocals:            2,
+		localType:          []machineType{mtI64, mtI64},
+		localSlot:          []int{0, int(uint64(1)<<32 | 128)},
+		compactFrameHeader: true,
+		gcFrameRoots:       plan,
+		stats:              &CodegenStats{},
+	}
+	if got := f.packLocalSlots(1); got != 0 {
+		t.Fatalf("GC frame-root local slot swaps = %d, want 0", got)
+	}
+	if got := f.localOff(1); got != 128 || plan.LocalOffsets[0] != 128 {
+		t.Fatalf("GC frame-root local home changed: frame=%d metadata=%d", got, plan.LocalOffsets[0])
 	}
 }
 

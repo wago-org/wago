@@ -2,7 +2,6 @@
 package run
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -32,8 +31,9 @@ func Command(environment Environment) *command.Cmd {
 	flags = append(flags, watchFlags()...)
 	flags = append(flags,
 		command.Flag{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
-		ParallelFlag(),
 	)
+	flags = append(flags, gcFlags()...)
+	flags = append(flags, ParallelFlag())
 	flags = append(flags, environment.ProfileFlags()...)
 	knobs := append(DeferredBoundsCheckingFlags(), OptimizationFlags()...)
 	parserFlags := append(append([]command.Flag(nil), flags...), knobs...)
@@ -51,7 +51,8 @@ func Command(environment Environment) *command.Cmd {
 			"Selected Core 3 features default on where supported; use --core 2 for strict Release 2\n" +
 			"or --core 3 for the complete release. Use -p for\n" +
 			"adaptive validation/compile parallelism, or -p8 / -p 8 / --parallel=8 to force a\n" +
-			"worker maximum. Advanced compiler controls are listed in `wago run --help-optimizations`.",
+			"worker maximum. " + gcLongHelp() +
+			"Advanced compiler controls are listed in `wago run --help-optimizations`.",
 		Run: implementation.Run,
 	}
 }
@@ -86,6 +87,10 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		}
 		ui.Usage("run: %v", err)
 	}
+	gc, configuredGC, err := gcConfiguration(ctx)
+	if err != nil {
+		ui.Usage("run: %v", err)
+	}
 	config := selection.RuntimeConfig()
 	runtime := cmd.environment.LoadRuntime(config, positionals)
 	defer runtime.Close()
@@ -94,12 +99,12 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	export := mustResolveExport(compiled, ctx.Str("invoke"))
 
 	if export == "_start" {
-		runStart(runtime, module)
+		runStart(runtime, module, gc, configuredGC)
 		return
 	}
 	params, results, _ := compiled.Signature(export)
 	values := mustParseArgs(positionals[1:], params)
-	instance, err := runtime.Instantiate(context.Background(), module)
+	instance, err := instantiate(runtime, module, gc, configuredGC)
 	if err != nil {
 		ui.Fatal("%v", friendlyInstantiationError(err))
 	}
@@ -111,8 +116,8 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	fmt.Println(format(export, values, result, params, results))
 }
 
-func runStart(runtime *wago.Runtime, module *wago.Module) {
-	instance, err := runtime.Instantiate(context.Background(), module)
+func runStart(runtime *wago.Runtime, module *wago.Module, gc wago.GCConfig, configuredGC bool) {
+	instance, err := instantiate(runtime, module, gc, configuredGC)
 	if err != nil {
 		ui.Fatal("%v", friendlyInstantiationError(err))
 	}

@@ -11,6 +11,21 @@ The decision-grade collector measurement contract, canonical
 [benchmark review protocol](gc-benchmarks.md#benchmark-review-protocol), and
 roadmap-aligned matrix are documented in [gc-benchmarks.md](gc-benchmarks.md).
 
+## CLI heap sizing
+
+`wago run` uses the bounded Throughput collector defaults unless the invocation
+sets explicit capacities. Large compiler and build workloads can select the
+root instance's old/large-object heap and Eden nursery directly:
+
+```sh
+wago run --gc-heap 2GiB --gc-nursery 64MiB compiler.wasm
+```
+
+Both flags accept a positive byte count or a binary `KiB`, `MiB`, or `GiB`
+suffix. Values must fit the collector's 32-bit address space. Omitting the flags
+preserves the existing defaults. Collection remains enabled; heap sizing is not
+a substitute for exact native root admission.
+
 ## Current generated-payload boundary
 
 The mandatory pinned Core 3 corpus is complete, but that result is narrower than
@@ -373,7 +388,18 @@ suspended direct-host activations (including sync-thunk records), and same-domai
 foreign instances. Mutable local GC globals synchronize checked collector slots,
 one private collector-reference table is scanned directly, and indirect/reference
 calls, function subtype checks, proper tails, and fixed EH payload records publish
-exact maps. Dynamic host and same-domain foreign direct tails discard the current
+exact maps. AMD64 compact finalization does not apply `local-slot-order` to a
+function with exact GC frame-root metadata. The final local homes therefore stay
+identical to the offsets recorded by every safepoint and caller map. Wrapper calls
+stage any operand stack whose later spilled source sits
+below its canonical destination. This preserves leading arguments for wide
+reference signatures even below the 64-slot wide-stack threshold. It also stages
+before materialization when GP pressure would consume the scratch-register
+reserve or XMM pressure would exhaust the vector register file, so a deferred
+argument cannot create a new overlapping spill. The Dewdrop
+reproducer used one nullable reference followed by 17 non-null references and
+previously propagated the leading null through the first five non-null argument
+slots. Dynamic host and same-domain foreign direct tails discard the current
 frame, so no dead caller roots are retained. A direct immutable-root visitor keeps
 warmed Throughput/Tiny recursive collection allocation-free. ARM64 polymorphic
 local `call_indirect` and same-domain foreign `call_ref` publish every possible

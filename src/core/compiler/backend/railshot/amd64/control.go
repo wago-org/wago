@@ -295,6 +295,16 @@ func (f *fn) frameDepthTypes(base, suffix []machineType) []machineType {
 // deferred nodes, then rebuilds the stack model as canonical slot entries with
 // all registers freed. v128 values occupy two adjacent 8-byte slots.
 func (f *fn) flush() {
+	f.flushWithPressure(false)
+}
+
+// flushWrapper reserves register headroom before canonicalizing the operand
+// image consumed by an ordinary wrapper-ABI call.
+func (f *fn) flushWrapper() {
+	f.flushWithPressure(true)
+}
+
+func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 	f.stats.addFlush()
 	f.invalidateGlobalsCache() // the cached cell ptr must not span a call/control boundary
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
@@ -307,7 +317,7 @@ func (f *fn) flush() {
 	}
 	f.tmpGCRoots = gcRoots
 	f.tmpGCFacts = gcFacts
-	if f.flushWideStack(roots, gcRoots, gcFacts) {
+	if f.flushWideStack(roots, gcRoots, gcFacts, stageRegisterPressure) {
 		return
 	}
 	types := f.tmpTypes[:0]
@@ -354,25 +364,59 @@ func (f *fn) flush() {
 	f.setDepthTypesWithGCInfo(types, gcRoots, gcFacts)
 }
 
-// flushWideStack stages unusually wide operand stacks in a disjoint frame range
-// before copying them to canonical slots. The normal one-pass flush is faster,
-// but with more live values than the register files can hold, earlier allocation
-// spills can occupy low slots that the one-pass walk overwrites before reloading
-// their owners. Wide multi-value signatures are cold ABI stress shapes, so a
-// bounded extra copy is preferable to making every ordinary flush pay for a
-// parallel-move algorithm.
-func (f *fn) flushWideStack(roots []*elem, gcRoots []bool, gcFacts []shared.GCRefFact) bool {
+// flushWideStack stages unusually wide or overlapping operand stacks in a
+// disjoint frame range before copying them to canonical slots. The normal
+// one-pass flush is faster, but a value already spilled below its destination
+// may be overwritten by an earlier canonical store before it is reloaded. This
+// occurs below the historical 64-slot width threshold when register pressure
+// spills a later wrapper argument into an earlier argument's destination.
+func (f *fn) flushWideStack(roots []*elem, gcRoots []bool, gcFacts []shared.GCRefFact, stageRegisterPressure bool) bool {
 	const wideFlushSlots = 64
 
 	types := f.tmpFlushTypes[:0]
-	total := 0
+	total, gpValues, fpValues := 0, 0, 0
+	needsStage := false
 	for _, root := range roots {
 		typ := rootMachineType(root)
 		types = append(types, typ)
+		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot < total {
+			needsStage = true
+		}
+		if typ.isFloat() || typ.isV128() {
+			fpValues++
+		} else {
+			gpValues++
+		}
 		total += typ.stackSlots()
 	}
+	if stageRegisterPressure {
+		// Keep the scratch-register reserve available while materializing deferred
+		// wrapper arguments. Otherwise a flush that begins with no spilled roots
+		// can create a later low-slot spill, then overwrite it before that operand
+		// is visited.
+		gpBlocked := f.pinnedLocalMask.union(f.reserved)
+		gpBudget := 0
+		for _, reg := range gpAlloc {
+			if !gpBlocked.has(reg) {
+				gpBudget++
+			}
+		}
+		if gpValues > max(0, gpBudget-numScratchGP) {
+			needsStage = true
+		}
+		fpBlocked := f.fpinnedLocalMask.union(f.fconstMask()).union(f.v128ConstMask())
+		fpBudget := 0
+		for reg := Reg(0); reg < 16; reg++ {
+			if !fpBlocked.has(reg) {
+				fpBudget++
+			}
+		}
+		if fpValues > fpBudget {
+			needsStage = true
+		}
+	}
 	f.tmpFlushTypes = types
-	if total <= wideFlushSlots {
+	if total <= wideFlushSlots && !needsStage {
 		return false
 	}
 
