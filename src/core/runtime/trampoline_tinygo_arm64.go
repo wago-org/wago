@@ -3,6 +3,7 @@
 package runtime
 
 import (
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -21,20 +22,10 @@ type tinygoARM64FuncValue struct {
 	fnptr   uintptr
 }
 
-type tinygoARM64ThunkRef struct {
-	top   uintptr
-	entry uintptr
-}
-
 var (
-	tinygoARM64LastThunk atomic.Pointer[tinygoARM64ThunkRef]
-	tinygoARM64ThunkMu   sync.Mutex
-	tinygoARM64Thunks    = map[uintptr]uintptr{}
+	tinygoARM64PreparedIntEntryOffset = uintptr(len(tinygoARM64EntryCode(0)))
+	tinygoMmapExec                    = mmapExec
 )
-
-const maxTinyGoARM64EntryThunks = 256
-
-var tinygoMmapExec = mmapExec
 
 func tinygoARM64Store(a *a64.Asm, src, base a64.Reg, off uint32) {
 	if !a.Store64(src, base, off) {
@@ -74,7 +65,10 @@ func tinygoARM64RestoreGoContext(a *a64.Asm) {
 
 func tinygoARM64EntryCode(foreignStackTop uintptr) []byte {
 	var a a64.Asm
-	a.MovImm64(a64.X10, uint64(foreignStackTop))
+	a.Movz64(a64.X10, uint16(foreignStackTop), 0)
+	a.Movk64(a64.X10, uint16(foreignStackTop>>16), 1)
+	a.Movk64(a64.X10, uint16(foreignStackTop>>32), 2)
+	a.Movk64(a64.X10, uint16(foreignStackTop>>48), 3)
 	tinygoARM64SaveGoContext(&a, a64.X10)
 	a.AddImm64(a64.SP, a64.X10, 0)
 	a.MovImm64(a64.FP, 0)
@@ -90,34 +84,30 @@ func tinygoARM64EntryCode(foreignStackTop uintptr) []byte {
 	return a.B
 }
 
-// tinygoARM64ThunkFor retains at most maxTinyGoARM64EntryThunks executable
-// entry pages; exhaustion fails the call through its trap cell.
-func tinygoARM64ThunkFor(foreignStackTop uintptr) uintptr {
-	if ref := tinygoARM64LastThunk.Load(); ref != nil && ref.top == foreignStackTop {
-		return ref.entry
+// initNativeEntry creates the wrapper and prepared-integer entry thunks in one
+// Engine-owned executable mapping. Engine.Close releases the mapping with the
+// 4 MiB foreign stack, so historical stack addresses retain no executable page.
+func (e *Engine) initNativeEntry() error {
+	if e.preparedInt.mem != nil {
+		return nil
 	}
-	tinygoARM64ThunkMu.Lock()
-	entry, ok := tinygoARM64Thunks[foreignStackTop]
-	if !ok {
-		if len(tinygoARM64Thunks) >= maxTinyGoARM64EntryThunks {
-			tinygoARM64ThunkMu.Unlock()
-			return 0
-		}
-		mem, err := tinygoMmapExec(tinygoARM64EntryCode(foreignStackTop))
-		if err != nil {
-			tinygoARM64ThunkMu.Unlock()
-			return 0
-		}
-		entry = uintptr(unsafe.Pointer(&mem[0]))
-		tinygoARM64Thunks[foreignStackTop] = entry
+	stackTop := e.stackTop
+	entryCode := tinygoARM64EntryCode(stackTop)
+	intCode := tinygoARM64IntEntryCode(stackTop)
+	code := make([]byte, len(entryCode)+len(intCode))
+	copy(code, entryCode)
+	copy(code[len(entryCode):], intCode)
+	mem, err := tinygoMmapExec(code)
+	if err != nil {
+		return fmt.Errorf("tinygo entry trampoline: %w", err)
 	}
-	tinygoARM64ThunkMu.Unlock()
-	tinygoARM64LastThunk.Store(&tinygoARM64ThunkRef{top: foreignStackTop, entry: entry})
-	return entry
+	e.preparedInt.mem = mem
+	e.preparedInt.stackTop = stackTop
+	e.stackTop = uintptr(unsafe.Pointer(&mem[0]))
+	return nil
 }
 
-func enterNative(code, serArgs, linMem, trap, results, foreignStackTop uintptr) {
-	entry := tinygoARM64ThunkFor(foreignStackTop)
+func enterNative(code, serArgs, linMem, trap, results, entry uintptr) {
 	if entry == 0 {
 		markTinyGoTrampolineFailure(trap)
 		return

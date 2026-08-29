@@ -4,38 +4,60 @@ package runtime
 
 import (
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"unsafe"
 )
 
-func TestTinyGoThunkFailureReturnsTrap(t *testing.T) {
-	thunkMu.Lock()
-	oldCache, oldMapper := thunkCache, tinygoMmapExec
-	thunkCache = map[uintptr]uintptr{}
+func TestTinyGoEntryMappingFailureReturnsError(t *testing.T) {
+	oldMapper := tinygoMmapExec
 	tinygoMmapExec = func([]byte) ([]byte, error) { return nil, errors.New("mapping denied") }
-	lastThunk.Store(nil)
-	thunkMu.Unlock()
-	defer func() {
-		thunkMu.Lock()
-		thunkCache, tinygoMmapExec = oldCache, oldMapper
-		lastThunk.Store(nil)
-		thunkMu.Unlock()
-	}()
+	defer func() { tinygoMmapExec = oldMapper }()
 
-	var trap uint32
-	enterNative(1, 0, 0, uintptr(unsafe.Pointer(&trap)), 0, 1)
-	if TrapCode(trap) != TrapBuiltin {
-		t.Fatalf("mapping failure trap = %v, want builtin trap", TrapCode(trap))
+	engine, err := NewEngine()
+	if engine != nil {
+		engine.Close()
+		t.Fatal("failed entry mapping returned an Engine")
 	}
+	if err == nil || !strings.Contains(err.Error(), "tinygo entry trampoline") {
+		t.Fatalf("entry mapping error = %v", err)
+	}
+}
 
-	thunkMu.Lock()
-	for i := 0; i < maxTinyGoEntryThunks; i++ {
-		thunkCache[uintptr(i+1)] = uintptr(i + 1)
+func TestTinyGoEntryMappingRetriesWithNewEngine(t *testing.T) {
+	oldMapper := tinygoMmapExec
+	calls := 0
+	tinygoMmapExec = func(code []byte) ([]byte, error) {
+		calls++
+		if calls == 1 {
+			return nil, errors.New("mapping denied")
+		}
+		return oldMapper(code)
 	}
-	thunkMu.Unlock()
-	if entry := thunkForSlow(maxTinyGoEntryThunks + 1); entry != 0 {
-		t.Fatalf("entry beyond bounded cache = %#x, want zero", entry)
+	defer func() { tinygoMmapExec = oldMapper }()
+
+	if engine, err := NewEngine(); err == nil || engine != nil {
+		if engine != nil {
+			engine.Close()
+		}
+		t.Fatalf("first NewEngine = %v, %v; want mapping failure", engine, err)
+	}
+	engine, err := NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if engine.stackTop == 0 || len(engine.preparedInt.mem) == 0 {
+		t.Fatal("successful Engine did not own its entry mapping")
+	}
+	if calls != 2 {
+		t.Fatalf("mapping calls = %d, want 2", calls)
+	}
+	if err := engine.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if engine.preparedInt.stackTop != 0 || engine.preparedInt.mem != nil {
+		t.Fatal("Engine.Close retained its entry mapping")
 	}
 }
 

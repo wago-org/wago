@@ -43,7 +43,11 @@ func NewEngine() (*Engine, error) {
 	}
 	top := uintptr(unsafe.Pointer(&st[0])) + uintptr(len(st))
 	top &^= 15 // 16-byte align (page-aligned already, but be explicit)
-	return &Engine{stack: st, stackTop: top}, nil
+	e := &Engine{stack: st, stackTop: top}
+	if err := e.initNativeEntry(); err != nil {
+		return nil, errors.Join(err, munmap(st))
+	}
+	return e, nil
 }
 
 var engineCache struct {
@@ -143,9 +147,11 @@ func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, 
 	return nil
 }
 
+var errIncompleteTrapBuffer = errors.New("jit: trap buffer needs at least 24 bytes")
+
 func validateTrapBuffer(trap []byte) error {
 	if len(trap) < TrapBufferBytes {
-		return fmt.Errorf("jit: trap buffer has %d bytes, need %d", len(trap), TrapBufferBytes)
+		return errIncompleteTrapBuffer
 	}
 	return nil
 }
@@ -265,8 +271,9 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 			if TrapCode(loadTrap(trap)) == TrapInterrupted {
 				return trapErrorFromBuffer(TrapInterrupted, trap)
 			}
-			prepareHostResume(ctrl, trap, e.stackTop, e.StackLimit())
-			resumeNative(ctrlPtr, e.stackTop)
+			stackTop := e.StackTop()
+			prepareHostResume(ctrl, trap, stackTop, e.StackLimit())
+			resumeNative(ctrlPtr, stackTop)
 		}
 		switch tc := loadTrap(trap); {
 		case tc == hostCallPending:

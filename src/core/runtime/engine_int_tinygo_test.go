@@ -39,7 +39,7 @@ func TestPreparedIntThunkOwnedByEngine(t *testing.T) {
 	if err := e.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if e.preparedInt.entry != 0 || e.preparedInt.mem != nil {
+	if e.preparedInt.stackTop != 0 || e.preparedInt.mem != nil {
 		t.Fatal("prepared integer entry mapping retained after engine close")
 	}
 }
