@@ -4192,6 +4192,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	hasResultLoop := false
 	hasMemoryAccess := false
 	hasMemoryGrow := false
+	globalUses := make([]uint16, len(sf.Globals))
 	for _, instr := range sf.Instrs {
 		if (instr.Kind == wasm.InstrCall || instr.Kind == wasm.InstrCallIndirect) && instr.Inline() == wasm.InstrInvalid ||
 			instr.Kind == wasm.InstrElemDrop || instr.Kind == wasm.InstrStructGet || instr.Kind == wasm.InstrStructSet ||
@@ -4215,6 +4216,34 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		}
 		hasMemoryAccess = hasMemoryAccess || arm64MemoryStackKind(instr.Kind) || arm64SIMDMemoryStackKind(instr.Kind)
 		hasMemoryGrow = hasMemoryGrow || instr.Kind == wasm.InstrMemoryGrow
+		if (instr.Kind == wasm.InstrGlobalGet || instr.Kind == wasm.InstrGlobalSet) && int(instr.U32()) < len(globalUses) && globalUses[instr.U32()] != math.MaxUint16 {
+			globalUses[instr.U32()]++
+		}
+	}
+	promotedGlobals := [2]int{-1, -1}
+	promotedGlobalRegs := [2]arm64.Reg{arm64.X7, arm64.X6}
+	promotedGlobalDescriptors := [2]arm64.Reg{arm64.X8, arm64.X5}
+	if hasGeneralCall {
+		for slot := range promotedGlobals {
+			for index, uses := range globalUses {
+				alreadySelected := false
+				for previous := 0; previous < slot; previous++ {
+					alreadySelected = alreadySelected || index == promotedGlobals[previous]
+				}
+				if uses >= 2 && !alreadySelected && (promotedGlobals[slot] < 0 || uses > globalUses[promotedGlobals[slot]]) &&
+					(sf.Globals[index] == wasm.I32 || sf.Globals[index] == wasm.I64) {
+					promotedGlobals[slot] = index
+				}
+			}
+		}
+	}
+	promotedGlobalSlot := func(index uint32) int {
+		for slot, promoted := range promotedGlobals {
+			if promoted == int(index) {
+				return slot
+			}
+		}
+		return -1
 	}
 	if !hasGeneralCall {
 		gpRegister, fpRemaining := 0, 0
@@ -4481,6 +4510,22 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	for _, constant := range simdConstants {
 		emitARM64SIMDConstant(&a, constant.reg, constant.bytes)
 	}
+	reloadPromotedGlobal := func() bool {
+		for slot, promoted := range promotedGlobals {
+			if promoted < 0 {
+				continue
+			}
+			descriptor := promotedGlobalDescriptors[slot]
+			a.Ldur64(descriptor, arm64.X26, -int32(abi.GlobalsPtrOffset))
+			if !a.Load64(descriptor, descriptor, uint32(promoted)*8) || !a.Load64(promotedGlobalRegs[slot], descriptor, 0) {
+				return false
+			}
+		}
+		return true
+	}
+	if !reloadPromotedGlobal() {
+		return nil, 0, nil, fmt.Errorf("promoted globals are not encodable")
+	}
 
 	stackTypes := make([]wasm.ValType, 0, sf.MaxStack)
 	vectorStackValid := make([]bool, sf.MaxStack)
@@ -4740,6 +4785,66 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 
 	for instrIndex := 0; instrIndex < len(sf.Instrs); instrIndex++ {
 		instr := sf.Instrs[instrIndex]
+		if reachable && instrIndex+3 < len(sf.Instrs) && instr.Kind == wasm.InstrGlobalGet &&
+			(sf.Instrs[instrIndex+1].Kind == wasm.InstrI32Const || sf.Instrs[instrIndex+1].Kind == wasm.InstrI64Const) &&
+			(sf.Instrs[instrIndex+2].Kind == wasm.InstrI32Add || sf.Instrs[instrIndex+2].Kind == wasm.InstrI64Add ||
+				sf.Instrs[instrIndex+2].Kind == wasm.InstrI32Sub || sf.Instrs[instrIndex+2].Kind == wasm.InstrI64Sub) &&
+			sf.Instrs[instrIndex+3].Kind == wasm.InstrGlobalSet && sf.Instrs[instrIndex+3].U32() == instr.U32() {
+			kind := sf.Instrs[instrIndex+2].Kind
+			value := sf.Instrs[instrIndex+1].U64()
+			end := instrIndex + 4
+			for end+3 < len(sf.Instrs) && sf.Instrs[end].Kind == wasm.InstrGlobalGet && sf.Instrs[end].U32() == instr.U32() &&
+				sf.Instrs[end+1].Kind == sf.Instrs[instrIndex+1].Kind && sf.Instrs[end+2].Kind == kind &&
+				sf.Instrs[end+3].Kind == wasm.InstrGlobalSet && sf.Instrs[end+3].U32() == instr.U32() &&
+				value+sf.Instrs[end+1].U64() <= 4095 {
+				value += sf.Instrs[end+1].U64()
+				end += 4
+			}
+			if slot := promotedGlobalSlot(instr.U32()); value <= 4095 && slot >= 0 {
+				valueReg, descriptorReg := promotedGlobalRegs[slot], promotedGlobalDescriptors[slot]
+				wide := kind == wasm.InstrI64Add || kind == wasm.InstrI64Sub
+				if wide && kind == wasm.InstrI64Add {
+					a.AddImm64(valueReg, valueReg, uint32(value))
+				} else if wide {
+					a.SubImm64(valueReg, valueReg, uint32(value))
+				} else if kind == wasm.InstrI32Add {
+					a.AddImm32(valueReg, valueReg, uint32(value))
+				} else {
+					a.SubImm32(valueReg, valueReg, uint32(value))
+				}
+				a.Store64(valueReg, descriptorReg, 0)
+				metadata.recordSource(a.Len(), sf.Instrs[end-1].Offset)
+				instrIndex = end - 1
+				continue
+			}
+			if value <= 4095 {
+				a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
+				if !a.Load64(arm64.X17, arm64.X17, instr.U32()*8) {
+					return nil, 0, nil, fmt.Errorf("global %d offset is not encodable", instr.U32())
+				}
+				wide := kind == wasm.InstrI64Add || kind == wasm.InstrI64Sub
+				if wide {
+					a.Load64(arm64.X16, arm64.X17, 0)
+					if kind == wasm.InstrI64Add {
+						a.AddImm64(arm64.X16, arm64.X16, uint32(value))
+					} else {
+						a.SubImm64(arm64.X16, arm64.X16, uint32(value))
+					}
+					a.Store64(arm64.X16, arm64.X17, 0)
+				} else {
+					a.Load32(arm64.X16, arm64.X17, 0)
+					if kind == wasm.InstrI32Add {
+						a.AddImm32(arm64.X16, arm64.X16, uint32(value))
+					} else {
+						a.SubImm32(arm64.X16, arm64.X16, uint32(value))
+					}
+					a.Store32(arm64.X16, arm64.X17, 0)
+				}
+				metadata.recordSource(a.Len(), sf.Instrs[end-1].Offset)
+				instrIndex = end - 1
+				continue
+			}
+		}
 		if registerOperandStack && reachable && instr.Kind == wasm.InstrLoop {
 			if pointer, end, character, next, ok := arm64WhitespaceSkipLoop(sf.Instrs, instrIndex); ok &&
 				localScalarPinned[pointer] && localScalarPinned[end] && localScalarPinned[character] {
@@ -6365,8 +6470,14 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				stackPrefix--
 			}
 			if callBoundary && registerOperandStack {
+				if sf.HasV128 {
+					flushVectorStack()
+				}
 				for index := 0; index < len(stackTypes); index++ {
-					if index+1 < len(stackTypes) && stackOff(index) <= 504 && stackOff(index+1) == stackOff(index)+8 {
+					if stackTypes[index] == wasm.V128 {
+						continue
+					}
+					if index+1 < len(stackTypes) && stackTypes[index+1] != wasm.V128 && stackOff(index) <= 504 && stackOff(index+1) == stackOff(index)+8 {
 						a.StpOffset(arm64OperandStackRegisters[index], arm64OperandStackRegisters[index+1], arm64.SP, int32(stackOff(index)))
 						index++
 						continue
@@ -6382,6 +6493,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			if err := emitARM64StackCall(&a, sf, instr, &stackTypes, stackLoad, stackStore, stackOff, &callRelocs, fn.Index, metadata); err != nil {
 				return nil, 0, nil, fmt.Errorf("byte %d: %w", instr.Offset, err)
 			}
+			if !reloadPromotedGlobal() {
+				return nil, 0, nil, fmt.Errorf("byte %d: promoted global reload is not encodable", instr.Offset)
+			}
 			if callBoundary && !calleePreservesPinned && !reloadPinnedScalarLocals() {
 				return nil, 0, nil, fmt.Errorf("byte %d: pinned local reload is not encodable", instr.Offset)
 			}
@@ -6391,7 +6505,10 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 					reload = len(stackTypes)
 				}
 				for index := 0; index < reload; index++ {
-					if index+1 < reload && stackOff(index) <= 504 && stackOff(index+1) == stackOff(index)+8 {
+					if stackTypes[index] == wasm.V128 {
+						continue
+					}
+					if index+1 < reload && stackTypes[index+1] != wasm.V128 && stackOff(index) <= 504 && stackOff(index+1) == stackOff(index)+8 {
 						a.LdpOffset(arm64OperandStackRegisters[index], arm64OperandStackRegisters[index+1], arm64.SP, int32(stackOff(index)))
 						index++
 						continue
@@ -6689,6 +6806,12 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				return nil, 0, nil, fmt.Errorf("local offset is not encodable")
 			}
 		case wasm.InstrGlobalGet:
+			if slot := promotedGlobalSlot(instr.U32()); slot >= 0 {
+				if err := push(sf.Globals[instr.U32()], promotedGlobalRegs[slot]); err != nil {
+					return nil, 0, nil, err
+				}
+				continue
+			}
 			a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
 			if !a.Load64(arm64.X17, arm64.X17, instr.U32()*8) || !a.Load64(arm64.X16, arm64.X17, 0) {
 				return nil, 0, nil, fmt.Errorf("global %d offset is not encodable", instr.U32())
@@ -6699,6 +6822,12 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		case wasm.InstrGlobalSet:
 			if _, err := pop(arm64.X16); err != nil {
 				return nil, 0, nil, err
+			}
+			if slot := promotedGlobalSlot(instr.U32()); slot >= 0 {
+				a.MovReg64(promotedGlobalRegs[slot], arm64.X16)
+				descriptor := promotedGlobalDescriptors[slot]
+				a.Store64(promotedGlobalRegs[slot], descriptor, 0)
+				continue
 			}
 			a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
 			if !a.Load64(arm64.X17, arm64.X17, instr.U32()*8) || !a.Store64(arm64.X16, arm64.X17, 0) {
@@ -7334,7 +7463,7 @@ func arm64StructuredRegisterModes(hasV128, hasGeneralCall, pinLocalsAcrossCalls,
 	if hasV128 {
 		stackRegisters = arm64SIMDOperandStackRegisters
 	}
-	operandStack = (!hasGeneralCall || pinLocalsAcrossCalls && !hasV128) && !hasResultLoop && maxStack <= stackRegisters
+	operandStack = (!hasGeneralCall || pinLocalsAcrossCalls) && !hasResultLoop && maxStack <= stackRegisters
 	full = operandStack && !hasGeneralCall && !hasV128 && gpLocals <= len(arm64StackLocalRegisters) && fpLocals <= 8
 	return
 }

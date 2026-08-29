@@ -171,16 +171,35 @@ same Apple M4 Max. Values are medians.
 | Cold scalar traps + RailMach call contracts | 61.77 us | 49.33 us | 1.252x |
 | Whitespace predicate and loop lowering | 59.68 us | 48.65 us | 1.227x |
 | Paired call-boundary transfers | 58.86 us | 48.62 us | **1.211x** |
+| SIMD call regions + promoted globals | 54.99 us | 49.05 us | **1.121x** |
 
-That is a 57.2% execution-latency reduction from the initial state. Function
-48 is 4,552 native bytes and the large schema parser at function 51 is 7,804
-bytes, down from 4,700 and 8,344 bytes immediately before the loop and paired
-transfer work. The remaining 21.1% gap is not attributed to one parser loop:
+That is a 60.0% execution-latency reduction from the initial state. Function
+48 is 4,072 native bytes and the large schema parser at function 51 is 7,804
+bytes, down from 4,700 and 8,344 bytes before the loop, paired-transfer, and
+global-promotion work. The remaining 12.1% gap is not attributed to one parser loop:
 sampling shows it distributed across the export, allocator, vector/string,
 and array-parser helpers. Broadly admitting these large scalar functions to
 RailMach is not safe yet: repeated execution exposed the documented
 loop-edge/live-range contract gap, so the conservative SIMD-module admission
 gate remains in place.
+
+`json-as-simd.serializeN(200)` is also substantially improved but remains
+unfinished. Direct-call SIMD functions can now use the mixed register operand
+stack: vector values are flushed to canonical slots at call boundaries while
+scalar prefixes and locals use paired transfers. Structured functions with
+calls promote their two hottest numeric globals into caller-clobbered
+registers with write-through stores and exact reloads after every call. This
+targets AssemblyScript's output and shadow-stack pointers without hiding
+updates from callees.
+
+Seven alternating 300 ms samples per backend measured 28.44 us for Dragline
+and 23.05 us for Railshot, or **1.234x**. The pre-slice baseline was 54.15 us
+versus 23.24 us, or 2.330x, so Dragline latency fell 47.5%. Serializer function
+49 fell from 6,940 to 4,924 native bytes, and the SIMD string writer at function
+52 fell from 9,772 to 6,112 bytes. The remaining 23.4% gap is concentrated in
+per-item serializer/helper work and repeated explicit memory checks; broad
+RailMach admission remains excluded by the same correctness gate described
+above.
 
 ## Historical application outliers
 

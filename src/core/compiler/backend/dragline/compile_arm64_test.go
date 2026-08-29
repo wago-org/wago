@@ -302,6 +302,10 @@ func TestARM64StructuredRegisterModesKeepShallowOperandStackInRegisters(t *testi
 	if !operandStack || full {
 		t.Fatalf("direct-call register modes = operand stack %t, full %t; want true, false", operandStack, full)
 	}
+	operandStack, full = arm64StructuredRegisterModes(true, true, true, false, len(arm64CallPinnedLocalRegisters), 0, arm64SIMDOperandStackRegisters)
+	if !operandStack || full {
+		t.Fatalf("SIMD direct-call register modes = operand stack %t, full %t; want true, false", operandStack, full)
+	}
 	operandStack, _ = arm64StructuredRegisterModes(false, true, false, false, 0, 0, 1)
 	if operandStack {
 		t.Fatal("unmanaged call boundary admitted the scalar operand stack to registers")
