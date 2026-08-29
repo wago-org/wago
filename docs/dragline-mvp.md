@@ -454,6 +454,17 @@ for Dragline and 20.705 ns/op for Railshot on Apple M4 Max, or 0.999x Railshot
 latency. Focused runtime coverage executes every explicit arm and the default
 arm through the direct entry.
 
+The same ARM64 entry is now available to bounded call-free, one-argument pure
+integer/control leaves of at most 48 RailMach instructions. This covers the
+focused SWAR `pack` and `parse4` exports and `fib_iter` without granting direct
+entry to memory, global, reference, or call-dependent code. Redundant ingress
+moves are omitted when allocation already places the parameter in `X0`.
+Nine alternating 500 ms `pack` samples measured 20.008 ns/op for Dragline and
+20.105 ns/op for Railshot (0.995x); seven alternating 300 ms `fib_iter` samples
+measured 26.347 ns/op and 27.458 ns/op respectively (0.960x). `runN` improved
+from 1.180x to 1.153x Railshot but remains a loop-code-quality target rather
+than an entry-overhead problem.
+
 The same strict MVP coverage command also exercises the in-progress Phase 2
 builder independently of production emission. The current pinned run builds and
 verifies 3,184 function CFGs containing 9,662 compact blocks, 115 demanded local

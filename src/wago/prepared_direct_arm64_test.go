@@ -135,3 +135,52 @@ func TestPreparedDirectARM64BranchTable(t *testing.T) {
 		}
 	}
 }
+
+func TestPreparedDirectARM64PureIntegerLeaf(t *testing.T) {
+	body := make([]byte, 0, 48)
+	term := func(shift int64, mask int64) {
+		body = append(body, 0x20, 0x00)
+		if shift != 0 {
+			body = append(body, 0x42)
+			body = append(body, wasmtest.SLEB64(shift)...)
+			body = append(body, 0x88)
+		}
+		body = append(body, 0x42)
+		body = append(body, wasmtest.SLEB64(mask)...)
+		body = append(body, 0x83)
+	}
+	term(24, 0xff000000)
+	term(16, 0x00ff0000)
+	term(0, 0x000000ff)
+	term(8, 0x0000ff00)
+	body = append(body, 0x84, 0x84, 0x84, 0xa7, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("pack", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !compiled.directPreparedAt(0) {
+		t.Fatal("pure integer leaf did not select the ARM64 direct prepared entry")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareFunction("pack")
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	for _, x := range []uint64{0, 0x12345678, 0x0044004300420041, ^uint64(0)} {
+		want := uint32(x>>24&0xff000000 | x>>16&0x00ff0000 | x&0x000000ff | x>>8&0x0000ff00)
+		got, err := fn.Invoke1(x)
+		if err != nil || len(got) != 1 || got[0] != uint64(want) {
+			t.Fatalf("pack(%#x) = %v, %v; want %#x", x, got, err, want)
+		}
+	}
+}

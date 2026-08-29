@@ -150,8 +150,12 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 	return contract, calls, nil
 }
 
-func directPreparedIntegerContract(f *Func, allocation *GreedyAllocation, _ ABIContract) bool {
-	if f.ParamCount != 1 || len(f.Results) > 1 || len(f.Insts) > 8 {
+func directPreparedIntegerContract(f *Func, allocation *GreedyAllocation, contract ABIContract) bool {
+	maxInstructions := 8
+	if f.Target == TargetARM64 && !contract.HasCall {
+		maxInstructions = 48
+	}
+	if f.ParamCount != 1 || len(f.Results) > 1 || len(f.Insts) > maxInstructions {
 		return false
 	}
 	if !hasSingleDirectRegisterParam(f, allocation) {
@@ -166,8 +170,18 @@ func directPreparedIntegerContract(f *Func, allocation *GreedyAllocation, _ ABIC
 			wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
 			wasm.InstrI32And, wasm.InstrI64And, wasm.InstrI32Or, wasm.InstrI64Or,
 			wasm.InstrI32Xor, wasm.InstrI64Xor:
-		case wasm.InstrBrTable, wasm.InstrReturn:
-			if f.Target != TargetARM64 {
+		case wasm.InstrI32Mul, wasm.InstrI64Mul,
+			wasm.InstrI32Shl, wasm.InstrI64Shl, wasm.InstrI32ShrS, wasm.InstrI64ShrS, wasm.InstrI32ShrU, wasm.InstrI64ShrU,
+			wasm.InstrI32Rotl, wasm.InstrI64Rotl, wasm.InstrI32Rotr, wasm.InstrI64Rotr,
+			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
+			wasm.InstrI32Eq, wasm.InstrI64Eq, wasm.InstrI32Ne, wasm.InstrI64Ne,
+			wasm.InstrI32LtS, wasm.InstrI64LtS, wasm.InstrI32LtU, wasm.InstrI64LtU,
+			wasm.InstrI32GtS, wasm.InstrI64GtS, wasm.InstrI32GtU, wasm.InstrI64GtU,
+			wasm.InstrI32LeS, wasm.InstrI64LeS, wasm.InstrI32LeU, wasm.InstrI64LeU,
+			wasm.InstrI32GeS, wasm.InstrI64GeS, wasm.InstrI32GeU, wasm.InstrI64GeU,
+			wasm.InstrI64ExtendI32S, wasm.InstrI64ExtendI32U, wasm.InstrI32WrapI64,
+			wasm.InstrSelect, wasm.InstrIf, wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn:
+			if f.Target != TargetARM64 || contract.HasCall {
 				return false
 			}
 		default:

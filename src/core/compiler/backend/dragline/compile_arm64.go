@@ -1031,10 +1031,12 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					break
 				}
 				if plan.ABI.Class == railmach.ABIPreparedInt {
-					if data.Type == railmach.TypeI32 {
-						a.MovReg32(dst, arm64.X0)
-					} else {
-						a.MovReg64(dst, arm64.X0)
+					if dst != arm64.X0 {
+						if data.Type == railmach.TypeI32 {
+							a.MovReg32(dst, arm64.X0)
+						} else {
+							a.MovReg64(dst, arm64.X0)
+						}
 					}
 					break
 				}
