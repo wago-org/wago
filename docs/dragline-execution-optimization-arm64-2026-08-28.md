@@ -86,7 +86,56 @@ their execution geometric mean by 2.1%; `blake-as-simd` also improved by 14.8%.
 Those short suite-wide timings are prioritization evidence, not a replacement
 for the release-shaped paired report.
 
-## Current application outliers
+## Corpus campaign update — `utf-as-simd` — 2026-08-29
+
+The next corpus pass started with `convertN(200)` at 6.435x Railshot in the
+three-round prioritization run. Its structured ARM64 body was 1,596 bytes and
+contained 391 instructions, including 160 stack-relative references. The
+scalar operand stack was disabled solely because the function also used v128,
+even though v128 values already had a separate vector-register stack.
+
+The mixed structured path now keeps up to four scalar operands in X9-X12,
+pins eleven integer locals without consuming the cached memory-bound register,
+materializes byte splats with `MOVI`, writes vector operations directly to their
+stack destinations, and fuses `i8x16.bitmask` plus `i32.popcnt`. Pinned scalar
+local arithmetic and comparisons bypass redundant operand-stack shuffles.
+SIMD memory checks reuse the immutable memory length, and their exact Wasm trap
+bodies are outlined after the normal return rather than occupying hot-loop
+layout.
+
+The progression below uses seven alternating 300 ms samples per backend on the
+same Apple M4 Max. Values are medians.
+
+| State | Dragline | Railshot | D/R | Function bytes |
+|---|---:|---:|---:|---:|
+| SIMD scalar stack + bitmask/popcnt + `MOVI` | 111.84 us | 55.54 us | 2.014x | 1,160 |
+| Direct local and constant flow | 85.70 us | 55.34 us | 1.549x | 984 |
+| Pinned locals + cached SIMD bounds | 77.98 us | 55.62 us | 1.402x | 936 |
+| Direct vector destinations | 66.26 us | 55.65 us | 1.191x | 904 |
+| Scalar update/reduction/branch folds | 58.86 us | 55.38 us | 1.063x | 768 |
+| Cold SIMD memory traps | 45.92 us | 55.05 us | **0.834x** | 764 |
+
+The final result is 16.6% faster than Railshot and 51.9% smaller than the
+initial Dragline function. All 30 runnable and six compile-only corpus modules
+remain admitted, and every executable export agrees with Railshot. A focused
+regression also executes the fused bitmask/popcount result and verifies that an
+out-of-bounds vector load reaches the outlined linear-memory trap.
+
+A fresh three-round alternating 100 ms prioritization pass across all 36
+executable exports puts the Dragline/Railshot execution geometric mean at
+1.122x, down from 1.198x before this corpus slice. Dragline is faster on 19 of
+36 exports. The remaining top four application gaps are now
+`json-as-simd.deserializeN` (2.821x), `json-as-simd.serializeN` (2.556x),
+`utf-as-simd.validateN` (2.210x), and `blake-as-simd.hashN` (1.991x).
+
+`validateN(200)` also improved, but remains unfinished: its seven-round median
+is 307.78 us versus Railshot's 139.36 us, or 2.209x. This export is the next
+target within the `utf-as-simd` corpus.
+
+## Historical application outliers
+
+The table below predates the `blake-as` and `utf-as-simd` campaign slices and is
+retained as the original diagnostic snapshot, not current ranking evidence.
 
 The final three-round diagnostic pass produced these high-priority ratios:
 

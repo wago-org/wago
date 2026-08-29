@@ -4078,6 +4078,42 @@ func TestDraglineStructuredConstantMemoryUsesProvedBounds(t *testing.T) {
 	}
 }
 
+func TestDraglineStructuredSIMDLoadColdTrap(t *testing.T) {
+	body := []byte{0x20, 0x00, 0xfd, 0x00, 0x04, 0x00, 0xfd, 0xe4, 0x00, 0x69, 0x0b}
+	payload := make([]byte, 16)
+	for i := range payload {
+		payload[i] = 0x80
+	}
+	segment := append([]byte{0x00, 0x41, 0x00, 0x0b}, append(wasmtest.ULEB(uint32(len(payload))), payload...)...)
+	wasmBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("load", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		wasmtest.Section(11, wasmtest.Vec(segment)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), wasmBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	result, err := instance.Invoke("load", I32(0))
+	if err != nil || len(result) != 1 || result[0] != 16 {
+		t.Fatalf("load(0) = %#x, %v; want 16", result, err)
+	}
+	_, err = instance.Invoke("load", I32(65536))
+	var trap *TrapError
+	if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
+		t.Fatalf("load(65536) = %v; want linear-memory out-of-bounds trap", err)
+	}
+}
+
 func TestDraglineFrameBackedF64LocalIsZeroedOnEveryCall(t *testing.T) {
 	body := []byte{0x01, 0x09, 0x7c, 0x20, 0x00, 0x04, 0x40, 0x44}
 	var bits [8]byte

@@ -95,6 +95,7 @@ func TestEncodings(t *testing.T) {
 		{"cset w9,eq", func(a *Asm) { a.Cset32(X9, CondEQ) }, 0x1a9f17e9},
 		{"cset w9,lt", func(a *Asm) { a.Cset32(X9, CondLT) }, 0x1a9fa7e9},
 		{"cinc w0,w1,eq", func(a *Asm) { a.Cinc32(X0, X1, CondEQ) }, 0x1a811420},
+		{"movi v1.16b,#0xf8", func(a *Asm) { a.NeonMoviB(X1, 0xf8) }, 0x4f07e701},
 		{"bfi x0,x1,#63,#1", func(a *Asm) { a.Bfi64(X0, X1, 63, 1) }, 0xb3410020},
 		{"bfi w0,w1,#31,#1", func(a *Asm) { a.Bfi32(X0, X1, 31, 1) }, 0x33010020},
 		// branches / calls (zero displacement for placeholders)
@@ -393,7 +394,7 @@ func TestAdditionalScalarAndNEONWrapperForms(t *testing.T) {
 		func() { a.Ldrh(X0, X1, 2) }, func() { a.Strh(X0, X1, 2) }, func() { a.Lsrv64(X0, X1, X2) }, func() { a.Asrv64(X0, X1, X2) },
 		func() { a.LslImm64(X0, X1, 3) }, func() { a.LsrImm32(X0, X1, 3) }, func() { a.AsrImm64(X0, X1, 3) },
 		func() { a.AndImm32(X0, X1, 0xff) }, func() { a.OrrImm32(X0, X1, 1) }, func() { a.EorImm32(X0, X1, 0xff) },
-		func() { a.NeonMov16b(X0, X1) }, func() { a.Addv8b(X0, X1) }, func() { a.NeonAddvB(X0, X1) }, func() { a.NeonUminvB(X0, X1) }, func() { a.NeonUminvH(X0, X1) }, func() { a.NeonUminvS(X0, X1) }, func() { a.NeonAddvH(X0, X1) }, func() { a.NeonAddvS(X0, X1) },
+		func() { a.NeonMov16b(X0, X1) }, func() { a.NeonMoviB(X0, 0xf8) }, func() { a.Addv8b(X0, X1) }, func() { a.NeonAddvB(X0, X1) }, func() { a.NeonUminvB(X0, X1) }, func() { a.NeonUminvH(X0, X1) }, func() { a.NeonUminvS(X0, X1) }, func() { a.NeonAddvH(X0, X1) }, func() { a.NeonAddvS(X0, X1) },
 		func() { a.NeonAnd16b(X0, X1, X2) }, func() { a.NeonOrr16b(X0, X1, X2) }, func() { a.NeonEor16b(X0, X1, X2) }, func() { a.NeonAndn16b(X0, X1, X2) },
 		func() { a.NeonAddB(X0, X1, X2) }, func() { a.NeonAddH(X0, X1, X2) }, func() { a.NeonAddS(X0, X1, X2) }, func() { a.NeonAddD(X0, X1, X2) },
 		func() { a.NeonSubB(X0, X1, X2) }, func() { a.NeonSubH(X0, X1, X2) }, func() { a.NeonSubS(X0, X1, X2) }, func() { a.NeonSubD(X0, X1, X2) },

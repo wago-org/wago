@@ -768,6 +768,11 @@ func (a *Asm) NeonMov16b(dst, src Reg) {
 	a.word(0x4EA01C00 | r(src)<<16 | r(src)<<5 | r(dst))
 }
 
+// NeonMoviB broadcasts one immediate byte to all sixteen vector lanes.
+func (a *Asm) NeonMoviB(dst Reg, immediate byte) {
+	a.word(0x4F00E400 | uint32(immediate>>5)<<16 | uint32(immediate&0x1f)<<5 | r(dst))
+}
+
 // Cnt8b / Addv8b are the scalar popcnt reduction pieces. The same CNT encoding
 // is also the full-vector i8x16.popcnt lowering.
 func (a *Asm) Cnt8b(dst, src Reg)      { a.word(0x4E205800 | r(src)<<5 | r(dst)) }

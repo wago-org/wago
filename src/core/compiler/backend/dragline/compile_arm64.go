@@ -33,9 +33,12 @@ var arm64FPRRegisters = [...]arm64.Reg{
 var arm64ParamRegisters = [...]arm64.Reg{arm64.X0, arm64.X1, arm64.X2, arm64.X3, arm64.X4, arm64.X5, arm64.X6, arm64.X7}
 var arm64StackLocalRegisters = [...]arm64.Reg{arm64.X19, arm64.X20, arm64.X21, arm64.X22, arm64.X23}
 var arm64OperandStackRegisters = [...]arm64.Reg{arm64.X9, arm64.X10, arm64.X11, arm64.X12, arm64.X13, arm64.X14, arm64.X15}
+
+const arm64SIMDOperandStackRegisters = 4 // X9-X12; X13-X15 remain SIMD temporaries.
+
 var arm64MixedScalarLocalRegisters = [...]arm64.Reg{
 	arm64.X4, arm64.X5, arm64.X6, arm64.X7,
-	arm64.X24, arm64.X25, arm64.X27,
+	arm64.X19, arm64.X20, arm64.X21, arm64.X22, arm64.X23, arm64.X24, arm64.X27,
 }
 var arm64V128StackRegisters = [...]arm64.Reg{16, 17, 18, 19, 20, 21, 22, 23}
 var arm64V128LocalRegisters = [...]arm64.Reg{
@@ -4237,6 +4240,11 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		scratch = make([]byte, 0, max(64, len(sf.Instrs)))
 	}
 	a := arm64.Asm{B: scratch[:0]}
+	coldMemoryTraps := make([]nativeBranchPatch, 0, 4)
+	emitColdMemoryTrap := func(source uint32) error {
+		coldMemoryTraps = append(coldMemoryTraps, nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: source})
+		return nil
+	}
 	if metrics != nil {
 		metrics.FrameBytes = frameBytes
 	}
@@ -4368,7 +4376,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	controls := make([]arm64StackControl, 0, 8)
 	functionPatches := make([]arm64StackPatch, 0, 2)
 	defer func() {
-		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localScalarPinned) + sliceBytes(localV128Pinned) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(vectorStackValid) + sliceBytes(vectorStackSourceLocal) + sliceBytes(controls) + sliceBytes(functionPatches)
+		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(coldMemoryTraps) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localScalarPinned) + sliceBytes(localV128Pinned) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(vectorStackValid) + sliceBytes(vectorStackSourceLocal) + sliceBytes(controls) + sliceBytes(functionPatches)
 		for i := range controls {
 			workspace += sliceBytes(controls[i].patches)
 		}
@@ -4664,6 +4672,34 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		}
 		if registerOperandStack && reachable && instrIndex+1 < len(sf.Instrs) {
 			next := sf.Instrs[instrIndex+1]
+			if instr.Kind == wasm.InstrI8x16Bitmask && next.Kind == wasm.InstrI32Popcnt && len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 {
+				top := len(stackTypes) - 1
+				value := stackTakeV128(top, 0)
+				a.NeonUshrB(value, value, 7)
+				a.NeonAddvB(value, value)
+				if instrIndex+3 < len(sf.Instrs) && top != 0 && stackTypes[top-1] == wasm.I32 &&
+					sf.Instrs[instrIndex+2].Kind == wasm.InstrI32Add && sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalSet {
+					local := int(sf.Instrs[instrIndex+3].U32())
+					if sf.Locals[local] == wasm.I32 && (registerStack || localScalarPinned[local]) {
+						a.NeonUmovB(arm64.X16, value, 0)
+						a.Add32(localRegisters[local], arm64OperandStackRegisters[top-1], arm64.X16)
+						stackTypes = stackTypes[:top-1]
+						vectorStackValid[top] = false
+						vectorStackSourceLocal[top] = -1
+						metadata.recordSource(a.Len(), sf.Instrs[instrIndex+3].Offset)
+						instrIndex += 3
+						continue
+					}
+				}
+				dst := arm64OperandStackRegisters[top]
+				a.NeonUmovB(dst, value, 0)
+				vectorStackValid[top] = false
+				vectorStackSourceLocal[top] = -1
+				stackTypes[top] = wasm.I32
+				metadata.recordSource(a.Len(), next.Offset)
+				instrIndex++
+				continue
+			}
 			typ, f64, ok := arm64FloatBinaryPair(instr.Kind, next.Kind)
 			if ok && len(stackTypes) >= 3 {
 				base := len(stackTypes) - 3
@@ -4679,6 +4715,40 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 					a.FmovToGpr(arm64OperandStackRegisters[base], 1, f64)
 					stackTypes = append(stackTypes[:base], typ)
 					instrIndex++
+					continue
+				}
+			}
+		}
+		countedTail := len(controls) > 0 && controls[len(controls)-1].kind == wasm.InstrLoop && controls[len(controls)-1].counted && instrIndex == controls[len(controls)-1].countedTail
+		if registerOperandStack && reachable && !countedTail && instrIndex+3 < len(sf.Instrs) && instr.Kind == wasm.InstrLocalGet {
+			constant, binary, sink := sf.Instrs[instrIndex+1], sf.Instrs[instrIndex+2], sf.Instrs[instrIndex+3]
+			src, dst := int(instr.U32()), int(sink.U32())
+			pinned := func(local int) bool {
+				return local >= 0 && local < len(sf.Locals) && !localFloat[local] && (registerStack || localScalarPinned[local])
+			}
+			if (sink.Kind == wasm.InstrLocalSet || sink.Kind == wasm.InstrLocalTee) && pinned(src) && pinned(dst) &&
+				sf.Locals[src] == sf.Locals[dst] && constant.U64() <= 4095 {
+				srcReg, dstReg := localRegisters[src], localRegisters[dst]
+				matched := true
+				switch {
+				case sf.Locals[src] == wasm.I32 && constant.Kind == wasm.InstrI32Const && binary.Kind == wasm.InstrI32Add:
+					a.AddImm32(dstReg, srcReg, uint32(constant.U64()))
+				case sf.Locals[src] == wasm.I32 && constant.Kind == wasm.InstrI32Const && binary.Kind == wasm.InstrI32Sub:
+					a.SubImm32(dstReg, srcReg, uint32(constant.U64()))
+				case sf.Locals[src] == wasm.I64 && constant.Kind == wasm.InstrI64Const && binary.Kind == wasm.InstrI64Add:
+					a.AddImm64(dstReg, srcReg, uint32(constant.U64()))
+				case sf.Locals[src] == wasm.I64 && constant.Kind == wasm.InstrI64Const && binary.Kind == wasm.InstrI64Sub:
+					a.SubImm64(dstReg, srcReg, uint32(constant.U64()))
+				default:
+					matched = false
+				}
+				if matched {
+					if sink.Kind == wasm.InstrLocalTee {
+						if err := push(sf.Locals[dst], dstReg); err != nil {
+							return nil, 0, nil, err
+						}
+					}
+					instrIndex += 3
 					continue
 				}
 			}
@@ -5934,6 +6004,73 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				continue
 			}
 		}
+		if registerOperandStack && reachable && len(stackTypes) != 0 && instrIndex+2 < len(sf.Instrs) && instr.Kind == wasm.InstrLocalGet &&
+			arm64IntegerComparisonKind(sf.Instrs[instrIndex+1].Kind) && sf.Instrs[instrIndex+2].Kind == wasm.InstrIf {
+			rhsLocal := int(instr.U32())
+			top := len(stackTypes) - 1
+			if !localFloat[rhsLocal] && (registerStack || localScalarPinned[rhsLocal]) && stackTypes[top] == sf.Locals[rhsLocal] &&
+				(stackTypes[top] == wasm.I32 || stackTypes[top] == wasm.I64) {
+				kind := sf.Instrs[instrIndex+1].Kind
+				if stackTypes[top] == wasm.I64 {
+					a.CmpReg64(arm64OperandStackRegisters[top], localRegisters[rhsLocal])
+				} else {
+					a.CmpReg32(arm64OperandStackRegisters[top], localRegisters[rhsLocal])
+				}
+				ifInstr := sf.Instrs[instrIndex+2]
+				stackTypes = stackTypes[:top]
+				control := arm64StackControl{kind: wasm.InstrIf, depth: top, result: ifInstr.HasResult(), resultType: ifInstr.ValueType(), falsePatch: farBcond(arm64.Cond(uint8(arm64IntegerComparisonCond(kind)) ^ 1)).at, parentReachable: true}
+				controls = append(controls, control)
+				instrIndex += 2
+				continue
+			}
+		}
+		if registerOperandStack && reachable && instrIndex+3 < len(sf.Instrs) && instr.Kind == wasm.InstrLocalGet &&
+			sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalGet && arm64IntegerComparisonKind(sf.Instrs[instrIndex+2].Kind) &&
+			sf.Instrs[instrIndex+3].Kind == wasm.InstrIf {
+			lhsLocal, rhsLocal := int(instr.U32()), int(sf.Instrs[instrIndex+1].U32())
+			pinned := func(local int) bool {
+				return local >= 0 && local < len(sf.Locals) && !localFloat[local] && (registerStack || localScalarPinned[local])
+			}
+			if pinned(lhsLocal) && pinned(rhsLocal) && sf.Locals[lhsLocal] == sf.Locals[rhsLocal] {
+				kind := sf.Instrs[instrIndex+2].Kind
+				if sf.Locals[lhsLocal] == wasm.I64 {
+					a.CmpReg64(localRegisters[lhsLocal], localRegisters[rhsLocal])
+				} else {
+					a.CmpReg32(localRegisters[lhsLocal], localRegisters[rhsLocal])
+				}
+				ifInstr := sf.Instrs[instrIndex+3]
+				control := arm64StackControl{kind: wasm.InstrIf, depth: len(stackTypes), result: ifInstr.HasResult(), resultType: ifInstr.ValueType(), falsePatch: farBcond(arm64.Cond(uint8(arm64IntegerComparisonCond(kind)) ^ 1)).at, parentReachable: true}
+				controls = append(controls, control)
+				instrIndex += 3
+				continue
+			}
+		}
+		if registerOperandStack && reachable && instrIndex+2 < len(sf.Instrs) && instr.Kind == wasm.InstrLocalGet &&
+			sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalGet && arm64DirectLocalBinaryKind(sf.Instrs[instrIndex+2].Kind) &&
+			len(stackTypes) < len(arm64OperandStackRegisters) {
+			lhsLocal, rhsLocal := int(instr.U32()), int(sf.Instrs[instrIndex+1].U32())
+			pinned := func(local int) bool {
+				return local >= 0 && local < len(sf.Locals) && !localFloat[local] && (registerStack || localScalarPinned[local])
+			}
+			if pinned(lhsLocal) && pinned(rhsLocal) && sf.Locals[lhsLocal] == sf.Locals[rhsLocal] {
+				dst := arm64OperandStackRegisters[len(stackTypes)]
+				emitARM64DirectLocalBinary(&a, sf.Instrs[instrIndex+2].Kind, dst, localRegisters[lhsLocal], localRegisters[rhsLocal])
+				stackTypes = append(stackTypes, sf.Locals[lhsLocal])
+				instrIndex += 2
+				continue
+			}
+		}
+		if registerOperandStack && reachable && instrIndex+1 < len(sf.Instrs) && instr.Kind == wasm.InstrLocalGet && sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalSet {
+			src, dst := int(instr.U32()), int(sf.Instrs[instrIndex+1].U32())
+			if !localFloat[src] && !localFloat[dst] && sf.Locals[src] != wasm.V128 && sf.Locals[src] == sf.Locals[dst] &&
+				(registerStack || localScalarPinned[src]) && (registerStack || localScalarPinned[dst]) {
+				if localRegisters[src] != localRegisters[dst] {
+					a.MovReg64(localRegisters[dst], localRegisters[src])
+				}
+				instrIndex++
+				continue
+			}
+		}
 		if instr.IsElse() {
 			if len(controls) == 0 || controls[len(controls)-1].kind != wasm.InstrIf {
 				return nil, 0, nil, fmt.Errorf("else without if")
@@ -6216,29 +6353,49 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				}
 				continue
 			}
-			if !localLoad(int(instr.U32()), arm64.X16) {
+			dst := arm64.X16
+			if registerOperandStack && len(stackTypes) < len(arm64OperandStackRegisters) {
+				dst = arm64OperandStackRegisters[len(stackTypes)]
+			}
+			if !localLoad(int(instr.U32()), dst) {
 				return nil, 0, nil, fmt.Errorf("local offset is not encodable")
 			}
-			if err := push(typ, arm64.X16); err != nil {
+			if err := push(typ, dst); err != nil {
 				return nil, 0, nil, err
 			}
 		case wasm.InstrLocalSet:
 			if sf.Locals[instr.U32()] == wasm.V128 {
 				local := int(instr.U32())
+				if localV128Pinned[local] {
+					top := len(stackTypes) - 1
+					if top < 0 || stackTypes[top] != wasm.V128 {
+						return nil, 0, nil, fmt.Errorf("operand stack v128 mismatch")
+					}
+					if vectorStackSourceLocal[top] != int32(local) {
+						materializeLocalAliases(local, top)
+						stackLoadV128(top, localRegisters[local])
+					}
+					stackTypes = stackTypes[:top]
+					vectorStackValid[top] = false
+					vectorStackSourceLocal[top] = -1
+					continue
+				}
 				if err := popV128(0); err != nil {
 					return nil, 0, nil, err
-				}
-				if localV128Pinned[local] {
-					materializeLocalAliases(local, -1)
 				}
 				localStoreV128(local, 0)
 				continue
 			}
-			_, err := pop(arm64.X16)
+			local := int(instr.U32())
+			dst := arm64.X16
+			if !localFloat[local] && (registerStack || localScalarPinned[local]) {
+				dst = localRegisters[local]
+			}
+			_, err := pop(dst)
 			if err != nil {
 				return nil, 0, nil, err
 			}
-			if !localStore(int(instr.U32()), arm64.X16) {
+			if !localStore(local, dst) {
 				return nil, 0, nil, fmt.Errorf("local offset is not encodable")
 			}
 		case wasm.InstrLocalTee:
@@ -6265,10 +6422,14 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			if len(stackTypes) == 0 {
 				return nil, 0, nil, fmt.Errorf("operand stack underflow")
 			}
-			if !stackLoad(len(stackTypes)-1, arm64.X16) {
+			dst := arm64.X16
+			if !localFloat[local] && (registerStack || localScalarPinned[local]) {
+				dst = localRegisters[local]
+			}
+			if !stackLoad(len(stackTypes)-1, dst) {
 				return nil, 0, nil, fmt.Errorf("operand stack offset is not encodable")
 			}
-			if !localStore(local, arm64.X16) {
+			if !localStore(local, dst) {
 				return nil, 0, nil, fmt.Errorf("local offset is not encodable")
 			}
 		case wasm.InstrGlobalGet:
@@ -6288,7 +6449,11 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				return nil, 0, nil, fmt.Errorf("global %d offset is not encodable", instr.U32())
 			}
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const:
-			a.MovImm64(arm64.X16, instr.U64())
+			dst := arm64.X16
+			if registerOperandStack && len(stackTypes) < len(arm64OperandStackRegisters) {
+				dst = arm64OperandStackRegisters[len(stackTypes)]
+			}
+			a.MovImm64(dst, instr.U64())
 			typ := wasm.I32
 			switch instr.Kind {
 			case wasm.InstrI64Const:
@@ -6298,7 +6463,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			case wasm.InstrF64Const:
 				typ = wasm.F64
 			}
-			if err := push(typ, arm64.X16); err != nil {
+			if err := push(typ, dst); err != nil {
 				return nil, 0, nil, err
 			}
 		case wasm.InstrMemorySize:
@@ -6845,7 +7010,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				if !ok {
 					return nil, 0, nil, fmt.Errorf("byte %d: SIMD descriptor is unavailable", instr.Offset)
 				}
-				err = emitARM64StackSIMD(&a, descriptor, instr, &stackTypes, stackOff, stackLoad, stackStore, stackSourceV128, stackTakeV128, stackStoreV128, fn.Index, metadata)
+				err = emitARM64StackSIMD(&a, descriptor, instr, &stackTypes, stackOff, stackLoad, stackStore, stackSourceV128, stackTakeV128, stackStoreV128, fn.Index, registerOperandStack, cacheMemorySize, emitColdMemoryTrap, metadata)
 			} else if arm64MemoryStackKind(instr.Kind) {
 				if !registerOperandStack {
 					err = emitARM64StackBackedMemory(&a, instr, &stackTypes, stackLoad, stackStore, fn.Index, plan.ElidesBoundsCheck(uint32(instrIndex)), cacheMemorySize, metadata)
@@ -6897,12 +7062,24 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		a.LdpPost(arm64.LR, arm64.XZR, arm64.SP, 16)
 	}
 	a.Ret()
+	for _, trap := range coldMemoryTraps {
+		trapOffset := a.Len()
+		metadata.recordTrap(trapOffset, trap.Target, 3)
+		arm64EmitTrap(&a, 3, fn.Index, trap.Target)
+		if !a.PatchBranch19(trap.At, trapOffset) {
+			return nil, 0, nil, fmt.Errorf("structured cold memory trap branch is out of range")
+		}
+	}
 	return a.B, internalOffset, callRelocs, nil
 }
 
 func arm64StructuredRegisterModes(hasV128, hasGeneralCall, hasResultLoop bool, gpLocals, fpLocals, maxStack int) (operandStack, full bool) {
-	operandStack = !hasV128 && !hasGeneralCall && !hasResultLoop && maxStack <= len(arm64OperandStackRegisters)
-	full = operandStack && gpLocals <= len(arm64StackLocalRegisters) && fpLocals <= 8
+	stackRegisters := len(arm64OperandStackRegisters)
+	if hasV128 {
+		stackRegisters = arm64SIMDOperandStackRegisters
+	}
+	operandStack = !hasGeneralCall && !hasResultLoop && maxStack <= stackRegisters
+	full = operandStack && !hasV128 && gpLocals <= len(arm64StackLocalRegisters) && fpLocals <= 8
 	return
 }
 
@@ -8208,7 +8385,7 @@ func emitARM64DirectSIMDBinary(a *arm64.Asm, kind wasm.InstrKind, dst, lhs, rhs 
 func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor, instr railssa.StackInstr,
 	stack *[]wasm.ValType, stackOff func(int) uint32, load func(int, arm64.Reg) bool, store func(int, arm64.Reg) bool,
 	sourceV func(int, arm64.Reg) arm64.Reg, takeV func(int, arm64.Reg) arm64.Reg, storeV func(int, arm64.Reg),
-	function uint32, metadata *functionEmissionMetadata,
+	function uint32, registerOperandStack, cachedBounds bool, emitMemoryTrap func(uint32) error, metadata *functionEmissionMetadata,
 ) error {
 	types := *stack
 	checkMemory := func(address arm64.Reg, size uint64) error {
@@ -8218,20 +8395,23 @@ func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 			return nil
 		}
 		a.MovReg32(arm64.X16, address)
-		a.MovImm64(arm64.X17, descriptor.MemArg.Offset+size)
-		a.Add64(arm64.X16, arm64.X16, arm64.X17)
-		a.SubImm64(arm64.X17, arm64.X26, abi.ActualLinMemByteSize64Offset)
-		if !a.Load64(arm64.X17, arm64.X17, 0) {
-			return fmt.Errorf("SIMD memory size load is not encodable")
+		end := descriptor.MemArg.Offset + size
+		if end <= 4095 {
+			a.AddImm64(arm64.X16, arm64.X16, uint32(end))
+		} else {
+			a.MovImm64(arm64.X17, end)
+			a.Add64(arm64.X16, arm64.X16, arm64.X17)
 		}
-		a.CmpReg64(arm64.X16, arm64.X17)
-		inBounds := a.Bcond(arm64.CondLS)
-		metadata.recordTrap(a.Len(), instr.Offset, 3)
-		arm64EmitTrap(a, 3, function, instr.Offset)
-		if !a.PatchBranch19(inBounds, a.Len()) {
-			return fmt.Errorf("SIMD memory bounds branch is out of range")
+		bounds := arm64.X25
+		if !cachedBounds {
+			a.SubImm64(arm64.X17, arm64.X26, abi.ActualLinMemByteSize64Offset)
+			if !a.Load64(arm64.X17, arm64.X17, 0) {
+				return fmt.Errorf("SIMD memory size load is not encodable")
+			}
+			bounds = arm64.X17
 		}
-		return nil
+		a.CmpReg64(arm64.X16, bounds)
+		return emitMemoryTrap(instr.Offset)
 	}
 	effectiveAddress := func(address arm64.Reg) {
 		a.MovReg32(arm64.X16, address)
@@ -8242,43 +8422,66 @@ func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		}
 	}
 	materialize := func(reg arm64.Reg, bytes [16]byte) {
+		splat := true
+		for _, lane := range bytes[1:] {
+			if lane != bytes[0] {
+				splat = false
+				break
+			}
+		}
+		if splat {
+			a.NeonMoviB(reg, bytes[0])
+			return
+		}
 		a.MovImm64(arm64.X16, binary.LittleEndian.Uint64(bytes[:8]))
 		a.FmovFromGpr(reg, arm64.X16, true)
 		a.MovImm64(arm64.X16, binary.LittleEndian.Uint64(bytes[8:]))
 		a.NeonInsD(reg, arm64.X16, 1)
+	}
+	stackDestination := func(index int, fallback arm64.Reg) arm64.Reg {
+		if index < len(arm64V128StackRegisters) {
+			return arm64V128StackRegisters[index]
+		}
+		return fallback
 	}
 	binaryOp := func(op func(arm64.Reg, arm64.Reg, arm64.Reg)) error {
 		if len(types) < 2 || types[len(types)-2] != wasm.V128 || types[len(types)-1] != wasm.V128 {
 			return fmt.Errorf("SIMD binary operand mismatch")
 		}
 		base := len(types) - 2
-		lhs := takeV(base, 0)
+		lhs := sourceV(base, 0)
 		rhs := sourceV(base+1, 1)
-		op(lhs, lhs, rhs)
-		storeV(base, lhs)
+		dst := stackDestination(base, 0)
+		op(dst, lhs, rhs)
+		storeV(base, dst)
 		types = append(types[:base], wasm.V128)
 		return nil
 	}
 
 	switch descriptor.Kind {
 	case wasm.InstrV128Const:
-		materialize(0, descriptor.Bytes)
-		storeV(len(types), 0)
+		dst := stackDestination(len(types), 0)
+		materialize(dst, descriptor.Bytes)
+		storeV(len(types), dst)
 		types = append(types, wasm.V128)
 	case wasm.InstrV128Load:
 		if len(types) < 1 || types[len(types)-1] != wasm.I32 {
 			return fmt.Errorf("SIMD load operand mismatch")
 		}
 		base := len(types) - 1
-		if !load(base, arm64.X15) {
+		address := arm64.X15
+		if registerOperandStack {
+			address = arm64OperandStackRegisters[base]
+		} else if !load(base, address) {
 			return fmt.Errorf("SIMD load address is not encodable")
 		}
-		if err := checkMemory(arm64.X15, 16); err != nil {
+		if err := checkMemory(address, 16); err != nil {
 			return err
 		}
-		effectiveAddress(arm64.X15)
-		a.LdrQ(0, arm64.X16, 0)
-		storeV(base, 0)
+		effectiveAddress(address)
+		dst := stackDestination(base, 0)
+		a.LdrQ(dst, arm64.X16, 0)
+		storeV(base, dst)
 		types[base] = wasm.V128
 	case wasm.InstrV128Store:
 		if len(types) < 2 || types[len(types)-2] != wasm.I32 || types[len(types)-1] != wasm.V128 {

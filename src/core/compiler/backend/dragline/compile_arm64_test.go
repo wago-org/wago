@@ -290,6 +290,14 @@ func TestARM64StructuredRegisterModesKeepShallowOperandStackInRegisters(t *testi
 	if !operandStack || !full {
 		t.Fatalf("register modes = operand stack %t, full %t; want true, true", operandStack, full)
 	}
+	operandStack, full = arm64StructuredRegisterModes(true, false, false, len(arm64MixedScalarLocalRegisters), 0, arm64SIMDOperandStackRegisters)
+	if !operandStack || full {
+		t.Fatalf("mixed SIMD register modes = operand stack %t, full %t; want true, false", operandStack, full)
+	}
+	operandStack, _ = arm64StructuredRegisterModes(true, false, false, 0, 0, arm64SIMDOperandStackRegisters+1)
+	if operandStack {
+		t.Fatal("deep mixed SIMD operand stack was admitted to scalar registers")
+	}
 }
 
 func TestARM64FloatBinaryPairRecognizesMatchingWidths(t *testing.T) {
