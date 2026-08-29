@@ -203,42 +203,32 @@ above.
 
 `blake-as-simd.hashN(100)` is the next unfinished corpus. Its two large
 structured compression functions declare 37 vector locals each, but ARM64 has
-only 20 registers available for persistent structured locals. The old policy
-pinned the first 20 declarations even though later round-state locals are used
-up to five times as often. Vector locals are now ranked by total get/set/tee use,
-with stable source-order ties, before assigning those registers. A generic
-vector rotate fold also lowers `(x >> n) | (x << (32-n))` to ARM64 `USHR` plus
-`SLI` without changing WebAssembly lane semantics. Common `i8x16.shuffle`
-patterns now select `REV32`, `ZIP1`, `ZIP2`, or the same two-instruction lane
-rotate instead of materializing two masks, executing two table lookups, and
-ORing their results. When every shuffle in a call-free function has a direct
-lowering, the otherwise-unused Q2/Q3 table-lookup scratch registers retain two
-additional hot vector locals.
+only 20 registers available for persistent structured locals. Use-ranked local
+pinning and direct shuffle/rotate experiments appeared to reduce the focused
+latency from 802.58 us to roughly 460 us, but a forced uncached differential
+found an incorrect digest. Those changes were rejected in full. Lowering the
+integer RailMach density threshold similarly made `sha256.hashN(8)` appear 4.1%
+faster than Railshot but produced an incorrect SHA-256 digest, so that change
+was also reverted. A diagnostic build that removed every structured SIMD bounds
+check did not improve BLAKE materially. Both hash corpora remain unfinished;
+their next optimization must include an uncached result differential in the
+measurement loop, not only the execution worker.
 
-Seven alternating 300 ms samples per backend measured 459.98 us for Dragline
-and 395.77 us for Railshot, or **1.162x**. The fresh pre-slice prioritization
-result was 802.58 us versus 404.96 us, or 1.982x, so Dragline latency fell 42.7%
-and the relative gap fell by 83.5%. Compression function 7 fell from 36,440 to
-19,668 native bytes, while function 8 fell from 33,448 to 18,244 bytes. A
-diagnostic build that removed every structured SIMD bounds check did not
-improve the workload materially, ruling out check hoisting as the next lever.
-The remaining gap is dominated by vector local spills and moves inside the
-16-iteration compression loop.
+`fib_rec.fib(28)` is complete for this campaign slice. RailMach's ordinary
+function prologue already saves its incoming LR, but every private self-call
+also pushed and popped LR around `BL`. That second save is unnecessary: the
+callee returns to the instruction after its own `BL`, and the caller's eventual
+return address remains in its prologue frame. Single private register results
+were also copied into the canonical result vector even though the caller
+consumed X0 directly. Proven self-recursive calls now keep the canonical
+argument area but omit both operations. Other local and imported calls retain
+their wrapper save and canonical staging; imported calls also retain their exact
+GC stack adjustment, and multi-results retain canonical result staging.
 
-`sha256.hashN(8)` is complete for this campaign slice. Its 391-instruction
-integer RailMach kernel fell below the original 512-instruction gate for
-use-density allocation. Range-area priority retained long-lived sparse state
-and repeatedly spilled the short-lived values used by the 64-round compression
-loop. The already-validated integer-only density policy now begins at 256
-machine instructions; any FPR value still selects the conservative area policy.
-
-Seven alternating 300 ms samples per backend measured 26.87 us for Dragline
-and 28.01 us for Railshot, or **0.959x**: Dragline is 4.1% faster. The fresh
-all-corpus baseline was 43.74 us versus 28.16 us, or 1.553x. Native code fell
-from 5,900 to 5,844 bytes. The allocator deliberately spends four additional
-spill slots on cold state (96 to 128 frame bytes) to keep the hot compression
-temporaries resident. A subsequent three-round, 100 ms all-corpus screen
-improved the 36-export geometric mean from 1.032x to 1.019x Railshot.
+Seven alternating 300 ms samples per backend measured 1,027.10 us for Dragline
+and 1,023.25 us for Railshot, or **1.004x**. The fresh all-corpus baseline was
+1,499.41 us versus 1,016.31 us, or 1.475x, so recursive execution latency fell
+31.5% and is now at parity. Native code fell from 180 to 148 bytes (-17.8%).
 
 ## Historical application outliers
 

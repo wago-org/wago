@@ -33,50 +33,6 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 	}
 }
 
-func TestARM64PinV128LocalsUsesHottestLocals(t *testing.T) {
-	types := make([]wasm.ValType, len(arm64V128LocalRegisters)+3)
-	uses := make([]uint32, len(types))
-	pinned := make([]bool, len(types))
-	registers := make([]arm64.Reg, len(types))
-	for i := range types {
-		types[i] = wasm.V128
-		uses[i] = uint32(i)
-	}
-
-	arm64PinV128Locals(types, uses, pinned, registers, arm64V128LocalRegisters[:])
-
-	for i := 0; i < 3; i++ {
-		if pinned[i] {
-			t.Fatalf("cold local %d was pinned", i)
-		}
-	}
-	for i := 3; i < len(types); i++ {
-		if !pinned[i] {
-			t.Fatalf("hot local %d was not pinned", i)
-		}
-		want := arm64V128LocalRegisters[len(types)-1-i]
-		if registers[i] != want {
-			t.Fatalf("local %d register = %d, want %d", i, registers[i], want)
-		}
-	}
-}
-
-func TestARM64ShufflePatterns(t *testing.T) {
-	ror8 := [16]byte{1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12}
-	ror16 := [16]byte{2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13}
-	zip1S := [16]byte{0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23}
-	zip2D := [16]byte{8, 9, 10, 11, 12, 13, 14, 15, 24, 25, 26, 27, 28, 29, 30, 31}
-	if !arm64ShuffleLaneRotate(ror8, 4, 1) || !arm64ShuffleLaneRotate(ror16, 4, 2) {
-		t.Fatal("lane rotate pattern was not recognized")
-	}
-	if arm64ShuffleLaneRotate(zip1S, 4, 1) {
-		t.Fatal("zip pattern was recognized as a lane rotate")
-	}
-	if !arm64ShuffleZip(zip1S, 4, false) || !arm64ShuffleZip(zip2D, 8, true) {
-		t.Fatal("zip pattern was not recognized")
-	}
-}
-
 func TestCompilerARM64MOPSBulkMemoryIsFeatureGated(t *testing.T) {
 	typeSec := wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil)))
 	funcSec := wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0)))
@@ -740,14 +696,26 @@ func TestARM64RailMachBranchesDirectlyToBrTableCases(t *testing.T) {
 
 func TestARM64RailMachSelfCallUsesCanonicalArgumentVector(t *testing.T) {
 	plan := &nativeBackendPlan{Stack: &railssa.StackFunc{FunctionIndex: 3, ImportedFuncs: 1}}
-	if arm64RailMachDirectCallNeedsRegisterArguments(plan, railmach.Inst{Op: wasm.InstrCall, Aux: 3}) {
+	self := railmach.Inst{Op: wasm.InstrCall, Aux: 3}
+	if arm64RailMachDirectCallNeedsRegisterArguments(plan, self) {
 		t.Fatal("self-recursive RailMach call redundantly requested structured argument registers")
 	}
-	if !arm64RailMachDirectCallNeedsRegisterArguments(plan, railmach.Inst{Op: wasm.InstrCall, Aux: 4}) {
+	if got := arm64RailMachDirectCallStackAdjust(plan, self); got != 0 {
+		t.Fatalf("self-recursive RailMach call stack adjustment = %d, want 0", got)
+	}
+	local := railmach.Inst{Op: wasm.InstrCall, Aux: 4}
+	if !arm64RailMachDirectCallNeedsRegisterArguments(plan, local) {
 		t.Fatal("unproven local callee omitted structured argument registers")
 	}
-	if !arm64RailMachDirectCallNeedsRegisterArguments(plan, railmach.Inst{Op: wasm.InstrCall, Aux: 0}) {
+	if got := arm64RailMachDirectCallStackAdjust(plan, local); got != 16 {
+		t.Fatalf("non-self RailMach call stack adjustment = %d, want 16", got)
+	}
+	imported := railmach.Inst{Op: wasm.InstrCall, Aux: 0}
+	if !arm64RailMachDirectCallNeedsRegisterArguments(plan, imported) {
 		t.Fatal("imported callee omitted argument registers")
+	}
+	if got := arm64RailMachDirectCallStackAdjust(plan, imported); got != 16 {
+		t.Fatalf("imported RailMach call stack adjustment = %d, want 16", got)
 	}
 }
 

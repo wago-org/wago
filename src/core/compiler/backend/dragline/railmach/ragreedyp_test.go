@@ -17,22 +17,6 @@ func TestGreedySpillDensityPrioritizesFrequentlyUsedShortRange(t *testing.T) {
 	}
 }
 
-func TestGreedyDensityAdmissionCoversMediumIntegerKernels(t *testing.T) {
-	integer := &Func{Insts: make([]Inst, greedyDensityMinInstructions), VRegs: []VRegData{{}, {Bank: BankGPR}}}
-	if !greedyUsesDensityCost(integer) {
-		t.Fatal("medium integer kernel did not select density cost")
-	}
-	integer.Insts = integer.Insts[:greedyDensityMinInstructions-1]
-	if greedyUsesDensityCost(integer) {
-		t.Fatal("small integer kernel selected density cost")
-	}
-	integer.Insts = integer.Insts[:cap(integer.Insts)]
-	integer.VRegs[1].Bank = BankFPR
-	if greedyUsesDensityCost(integer) {
-		t.Fatal("floating-point kernel selected integer density cost")
-	}
-}
-
 func TestAllocateGreedyPPromotesCallCrossingRange(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
 		0x20, 0x00,
