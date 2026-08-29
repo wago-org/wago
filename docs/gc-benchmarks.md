@@ -53,6 +53,9 @@ Record the exact unavailable tool/version rather than silently dropping those ga
 Permanent microbenchmarks:
 
 ```sh
+go test ./src/wago -run '^$' \
+  -bench '^BenchmarkGC(RefCastInstruction|StructGetInstruction|RefCastNonFinalInstruction|StructGetNonFinalInstruction|InstructionLoopControl)$' \
+  -benchmem -benchtime=500ms -count=10 -cpu=1
 go test ./src/core/compiler/backend/railshot/shared -run '^$' \
   -bench '^BenchmarkMergeGCRefFacts$' -benchmem -count=10
 go test ./src/core/runtime/gc -run '^$' \
@@ -65,6 +68,18 @@ go test ./src/core/runtime/gc -run '^$' \
 go test ./src/core/runtime/gc -run '^$' \
   -bench '^BenchmarkGCBarrierStateMatrix$' -benchmem -count=10 -cpu=1
 ```
+
+The focused instruction benchmarks perform one host invocation and execute `b.N`
+guest-loop iterations. `BenchmarkGCRefCastInstruction` repeatedly casts a value
+loaded from a mutable `eqref` global to one final struct type, which prevents exact
+initializer facts from deleting the cast. `BenchmarkGCStructGetInstruction` reads
+one mutable `i32` field from a retained final object. The matching `NonFinal`
+benchmarks cast a proper subtype to an open supertype and access a subtype object
+through that open struct declaration. Allocation occurs before the timed loop.
+All GC results are dropped after the trap-capable instruction, and the
+function returns its loop counter. `BenchmarkGCInstructionLoopControl` measures
+the shared loop and counter-update floor. It is not an exact value to subtract because the two GC
+instructions require different operand-loading work.
 
 For a retained compiler/JIT result, also run the real Dew/Starshine workload A/B with
 `WAGO_AMD64_NO_GC_REF_FACTS=1`, record `gc-ref-test-fold`,

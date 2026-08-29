@@ -118,7 +118,10 @@ all Tiny stores retain the synchronous helper ABI. Final abstract-reference arra
 stores may write an old/large parent only when remembered membership and a validated
 object-card slot already exist. Native code may widen that card's inclusive interval
 in place, but never appends or relocates card metadata. Cardless, unremembered, Tiny,
-non-final, opaque-reference, `v128`, and bulk paths keep the helper ABI. The
+unknown non-final, opaque-reference, `v128`, and bulk paths keep the helper ABI.
+With AMD64 `gc-ref-facts` enabled, a scalar `struct.get` declared through an open
+supertype can use the direct final path when its receiver is one proved exact final
+subtype and both field layouts agree exactly. The
 basedata increase is 16 bytes per `JobMemory`;
 `Instance` grows by one eight-byte retained view pointer on current amd64 builds.
 
