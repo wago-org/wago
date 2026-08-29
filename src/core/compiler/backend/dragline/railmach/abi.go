@@ -166,6 +166,10 @@ func directPreparedIntegerContract(f *Func, allocation *GreedyAllocation, _ ABIC
 			wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
 			wasm.InstrI32And, wasm.InstrI64And, wasm.InstrI32Or, wasm.InstrI64Or,
 			wasm.InstrI32Xor, wasm.InstrI64Xor:
+		case wasm.InstrBrTable, wasm.InstrReturn:
+			if f.Target != TargetARM64 {
+				return false
+			}
 		default:
 			return false
 		}

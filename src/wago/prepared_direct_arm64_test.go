@@ -94,3 +94,44 @@ func TestPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T) {
 		t.Fatalf("call after trap = %v, %v; want 42", got, err)
 	}
 }
+
+func TestPreparedDirectARM64BranchTable(t *testing.T) {
+	body := []byte{
+		0x02, 0x40, 0x02, 0x40, 0x02, 0x40, 0x02, 0x40,
+		0x20, 0x00, 0x0e, 0x03, 0x00, 0x01, 0x02, 0x03,
+		0x0b, 0x41, 0x0a, 0x0f,
+		0x0b, 0x41, 0x14, 0x0f,
+		0x0b, 0x41, 0x1e, 0x0f,
+		0x0b, 0x41, 0x28, 0x0b,
+	}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("classify", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !compiled.directPreparedAt(0) {
+		t.Fatal("branch-table function did not select the ARM64 direct prepared entry")
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareFunction("classify")
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	for _, tc := range []struct {
+		selector, want uint64
+	}{{0, 10}, {1, 20}, {2, 30}, {3, 40}, {100, 40}} {
+		got, err := fn.Invoke1(tc.selector)
+		if err != nil || len(got) != 1 || got[0] != tc.want {
+			t.Fatalf("classify(%d) = %v, %v; want %d", tc.selector, got, err, tc.want)
+		}
+	}
+}

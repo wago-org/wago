@@ -446,6 +446,14 @@ measured 23.223 ns/op for Dragline and 23.369 ns/op for Railshot on Apple M4
 Max, or 0.994x Railshot latency. The runtime test executes both table targets,
 the out-of-bounds trap, and successful reuse after trap recovery.
 
+The `branches` module's eight-instruction integer `br_table` leaf now uses the
+same direct prepared integer entry as straight-line integer leaves. This removes
+the generic prepared-call ingress without changing the backend CFG or default
+table edge. Seven serialized alternating 300 ms samples measured 20.687 ns/op
+for Dragline and 20.705 ns/op for Railshot on Apple M4 Max, or 0.999x Railshot
+latency. Focused runtime coverage executes every explicit arm and the default
+arm through the direct entry.
+
 The same strict MVP coverage command also exercises the in-progress Phase 2
 builder independently of production emission. The current pinned run builds and
 verifies 3,184 function CFGs containing 9,662 compact blocks, 115 demanded local
