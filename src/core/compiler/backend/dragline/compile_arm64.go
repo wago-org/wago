@@ -5510,13 +5510,19 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			}
 		}
 		metadata.recordSource(a.Len(), instr.Offset)
-		if reachable && len(stackTypes) == 0 && instrIndex+3 < len(sf.Instrs) &&
+		if reachable && instrIndex+3 < len(sf.Instrs) &&
 			instr.Kind == wasm.InstrLocalGet && sf.Locals[instr.U32()] == wasm.V128 &&
 			sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalGet && sf.Locals[sf.Instrs[instrIndex+1].U32()] == wasm.V128 &&
-			sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalSet && sf.Instrs[instrIndex+3].U32() == instr.U32() {
+			(sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalSet || sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee) &&
+			sf.Locals[sf.Instrs[instrIndex+3].U32()] == wasm.V128 {
 			descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex + 2))
-			if ok && arm64DirectSIMDBinaryKind(descriptor.Kind) {
+			targetLocal := int(sf.Instrs[instrIndex+3].U32())
+			tee := sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee
+			if ok && arm64DirectSIMDBinaryKind(descriptor.Kind) && (!tee || localV128Pinned[targetLocal]) {
 				lhsLocal, rhsLocal := int(instr.U32()), int(sf.Instrs[instrIndex+1].U32())
+				if localV128Pinned[targetLocal] {
+					materializeLocalAliases(targetLocal, -1)
+				}
 				lhs := arm64.Reg(0)
 				if localV128Pinned[lhsLocal] {
 					lhs = localRegisters[lhsLocal]
@@ -5532,8 +5538,18 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 						localLoadV128(rhsLocal, rhs)
 					}
 				}
-				emitARM64DirectSIMDBinary(&a, descriptor.Kind, lhs, lhs, rhs)
-				localStoreV128(lhsLocal, lhs)
+				dst := lhs
+				if localV128Pinned[targetLocal] {
+					dst = localRegisters[targetLocal]
+				}
+				emitARM64DirectSIMDBinary(&a, descriptor.Kind, dst, lhs, rhs)
+				localStoreV128(targetLocal, dst)
+				if tee {
+					if err := pushV128Local(targetLocal); err != nil {
+						return nil, 0, nil, err
+					}
+				}
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+3].Offset)
 				instrIndex += 3
 				continue
 			}

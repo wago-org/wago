@@ -223,6 +223,21 @@ bytes. A diagnostic build that removed every structured SIMD bounds check did
 not improve BLAKE materially. The remaining gap is vector live-state pressure;
 the corpus remains unfinished.
 
+A follow-up structured-emitter slice now recognizes `local.get` / `local.get`
+/ SIMD-binary / `local.set` or pinned `local.tee` sequences even when an older
+value remains on the Wasm operand stack. The emitter computes directly from the
+local registers or homes into the destination local, materializing any older
+aliases before overwriting a pinned destination. This removes redundant stack
+traffic without changing the surrounding expression's stack semantics.
+
+Two separately built benchmark binaries were alternated for eight 500 ms
+samples each. The fused build was faster in all eight pairs: its median was
+462.26 us versus 463.64 us for the immediately preceding build, a **0.3%**
+latency reduction. The two compression functions fell from 19,668/18,244 to
+19,452/18,028 native bytes, and the full module fell from 51,892 to 51,444
+bytes. The remaining Railshot gap is still dominated by vector live-state
+pressure, so `blake-as-simd` remains open for further work.
+
 `sha256.hashN(8)` is complete for this campaign slice. Its 391-instruction
 integer RailMach kernel fell below the original 512-instruction gate for
 use-density allocation. Lowering that gate initially exposed a latent stage-4
