@@ -208,3 +208,19 @@ Guard-page mode has a lower limit of 256 live reservations.
 Each guarded memory reserves approximately 8 GiB of virtual address space.
 It also consumes one Linux host interrupt registry slot.
 The guard-page limit normally rejects the request first.
+
+## Release footprint
+
+The limit and telemetry code does not add work to the JIT hot path.
+Registration and cache transitions update the process counters.
+Runtime admission updates counters only when you configure a runtime mapping limit.
+
+The Linux process state adds three 32-bit counters and two function pointers.
+A `Runtime` adds two 32-bit mapping counters.
+The fixed 4,096-entry registry already existed before this change.
+
+The 2026-08-29 `linux/amd64` release-size run used Go 1.22.12 and TinyGo 0.41.1.
+The stripped minimal TinyGo runtime increased by 3,736 bytes, from 2,298,156
+bytes to 2,301,892 bytes. This change is 0.16 percent.
+The size budget increased by 4,000 bytes to 2,304,000 bytes.
+The new budget keeps 2,108 bytes of headroom.
