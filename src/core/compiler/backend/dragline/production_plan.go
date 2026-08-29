@@ -275,11 +275,14 @@ func railMachCandidate(stack *railssa.StackFunc) bool {
 	loopNeedsRailMach := false
 	loopI32Eqz := 0
 	loopHasWrap, loopHasI32And, loopHasReinterpret := false, false, false
+	loopHasSaturatingConversion, loopHasBulkMemory := false, false
 	for _, instruction := range stack.Instrs {
 		if stack.MaxLoopDepth != 0 {
 			loopHasWrap = loopHasWrap || instruction.Kind == wasm.InstrI32WrapI64
 			loopHasI32And = loopHasI32And || instruction.Kind == wasm.InstrI32And
 			loopHasReinterpret = loopHasReinterpret || instruction.Kind == wasm.InstrI32ReinterpretF32 || instruction.Kind == wasm.InstrI64ReinterpretF64 || instruction.Kind == wasm.InstrF32ReinterpretI32 || instruction.Kind == wasm.InstrF64ReinterpretI64
+			loopHasSaturatingConversion = loopHasSaturatingConversion || instruction.Kind >= wasm.InstrI32TruncSatF32S && instruction.Kind <= wasm.InstrI64TruncSatF64U
+			loopHasBulkMemory = loopHasBulkMemory || instruction.Kind == wasm.InstrMemoryCopy || instruction.Kind == wasm.InstrMemoryFill
 			if instruction.Kind == wasm.InstrI32Eqz {
 				loopI32Eqz++
 			}
@@ -300,10 +303,6 @@ func railMachCandidate(stack *railssa.StackFunc) bool {
 				wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
 				wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U,
 				wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U,
-				wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U,
-				wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,
-				wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U,
-				wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U,
 				wasm.InstrF32Load, wasm.InstrF64Load,
 				wasm.InstrI32Load8S, wasm.InstrI32Load8U, wasm.InstrI32Load16S, wasm.InstrI32Load16U,
 				wasm.InstrI64Load8S, wasm.InstrI64Load8U, wasm.InstrI64Load16S, wasm.InstrI64Load16U,
@@ -387,6 +386,9 @@ func railMachCandidate(stack *railssa.StackFunc) bool {
 		default:
 			return false
 		}
+	}
+	if stack.MaxLoopDepth != 0 && (loopHasSaturatingConversion || loopHasBulkMemory) {
+		return false
 	}
 	loopNeedsRailMach = loopNeedsRailMach || loopI32Eqz > 1 || loopHasWrap && loopHasI32And && !loopHasReinterpret
 	if stack.MaxLoopDepth != 0 && !loopNeedsRailMach {

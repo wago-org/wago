@@ -988,6 +988,23 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	blockOffsets := plan.BlockOffsets
 	patches := plan.BranchPatches[:0]
 	coldTraps := plan.ColdTrapPatches[:0]
+	// B.cond has a signed 19-bit word displacement. Keep a conservative
+	// instruction-count margin for large functions whose final trap section can
+	// otherwise fall outside that range.
+	coldMemoryTraps := len(plan.Machine.Insts) <= 64*1024
+	emitMemoryTrapBranch := func(source uint32) error {
+		if coldMemoryTraps {
+			coldTraps = append(coldTraps, nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: source})
+			return nil
+		}
+		inBounds := a.Bcond(arm64.CondLS)
+		metadata.recordTrap(a.Len(), source, 3)
+		arm64EmitTrap(&a, 3, fn.Index, source)
+		if !a.PatchBranch19(inBounds, a.Len()) {
+			return fmt.Errorf("RailMach inline memory bounds branch is out of range")
+		}
+		return nil
+	}
 	memoryCheckEnds := plan.MemoryCheckEnds
 	memoryCheckTouched := plan.MemoryCheckTouched[:0]
 	resetMemoryChecks := func() {
@@ -2193,7 +2210,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 							bounds = arm64.X17
 						}
 						a.CmpReg64(arm64.X16, bounds)
-						coldTraps = append(coldTraps, nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: check.source})
+						if err := emitMemoryTrapBranch(check.source); err != nil {
+							return nil, 0, true, err
+						}
 					}
 					a.MovReg32(arm64.X15, lhs)
 					if store {
@@ -2243,7 +2262,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						bounds = arm64.X17
 					}
 					a.CmpReg64(boundsAddress, bounds)
-					coldTraps = append(coldTraps, nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: wasmOffset})
+					if err := emitMemoryTrapBranch(wasmOffset); err != nil {
+						return nil, 0, true, err
+					}
 				}
 				if !chainSecond {
 					a.MovReg32(arm64.X16, lhs)
