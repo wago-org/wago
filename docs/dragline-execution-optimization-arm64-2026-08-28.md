@@ -238,6 +238,14 @@ latency reduction. The two compression functions fell from 19,668/18,244 to
 bytes. The remaining Railshot gap is still dominated by vector live-state
 pressure, so `blake-as-simd` remains open for further work.
 
+The same direct-local path now covers the verified BLAKE shuffle forms. It
+shares one exact ARM64 shuffle emitter with the general stack path, including
+the scratch-register rule needed when an 8-bit lane rotation would otherwise
+overwrite its own source. Against the preceding fused build, eight alternating
+500 ms binary pairs measured 452.97 us versus 454.23 us, a further **0.3%**
+reduction; the shuffle build won seven pairs. Compression functions 7 and 8
+fell again to 19,360/17,976 bytes, and the full module to 51,300 bytes.
+
 `sha256.hashN(8)` is complete for this campaign slice. Its 391-instruction
 integer RailMach kernel fell below the original 512-instruction gate for
 use-density allocation. Lowering that gate initially exposed a latent stage-4

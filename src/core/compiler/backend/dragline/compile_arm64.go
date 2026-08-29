@@ -5518,7 +5518,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex + 2))
 			targetLocal := int(sf.Instrs[instrIndex+3].U32())
 			tee := sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee
-			if ok && arm64DirectSIMDBinaryKind(descriptor.Kind) && (!tee || localV128Pinned[targetLocal]) {
+			directBinary := ok && arm64DirectSIMDBinaryKind(descriptor.Kind)
+			directShuffle := ok && descriptor.Kind == wasm.InstrI8x16Shuffle && arm64ShuffleSpecialized(descriptor.Bytes)
+			if (directBinary || directShuffle) && (!tee || localV128Pinned[targetLocal]) {
 				lhsLocal, rhsLocal := int(instr.U32()), int(sf.Instrs[instrIndex+1].U32())
 				if localV128Pinned[targetLocal] {
 					materializeLocalAliases(targetLocal, -1)
@@ -5542,7 +5544,11 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				if localV128Pinned[targetLocal] {
 					dst = localRegisters[targetLocal]
 				}
-				emitARM64DirectSIMDBinary(&a, descriptor.Kind, dst, lhs, rhs)
+				if directBinary {
+					emitARM64DirectSIMDBinary(&a, descriptor.Kind, dst, lhs, rhs)
+				} else {
+					dst, _ = emitARM64SpecializedShuffle(&a, descriptor.Bytes, dst, lhs, rhs)
+				}
 				localStoreV128(targetLocal, dst)
 				if tee {
 					if err := pushV128Local(targetLocal); err != nil {
@@ -9487,6 +9493,33 @@ func arm64ShuffleSpecialized(bytes [16]byte) bool {
 		arm64ShuffleZip(bytes, 8, false) || arm64ShuffleZip(bytes, 8, true)
 }
 
+func emitARM64SpecializedShuffle(a *arm64.Asm, bytes [16]byte, dst, lhs, rhs arm64.Reg) (arm64.Reg, bool) {
+	switch {
+	case arm64ShuffleLaneRotate(bytes, 4, 2):
+		a.NeonRev32H(dst, lhs)
+	case arm64ShuffleLaneRotate(bytes, 4, 1):
+		if dst == lhs {
+			dst = 0
+			if lhs == 0 {
+				dst = 1
+			}
+		}
+		a.NeonUshrS(dst, lhs, 8)
+		a.NeonSliS(dst, lhs, 24)
+	case arm64ShuffleZip(bytes, 4, false):
+		a.NeonZip1S(dst, lhs, rhs)
+	case arm64ShuffleZip(bytes, 4, true):
+		a.NeonZip2S(dst, lhs, rhs)
+	case arm64ShuffleZip(bytes, 8, false):
+		a.NeonZip1D(dst, lhs, rhs)
+	case arm64ShuffleZip(bytes, 8, true):
+		a.NeonZip2D(dst, lhs, rhs)
+	default:
+		return dst, false
+	}
+	return dst, true
+}
+
 func emitARM64SIMDConstant(a *arm64.Asm, reg arm64.Reg, bytes [16]byte) {
 	if arm64SIMDConstantIsSplat(bytes) {
 		a.NeonMoviB(reg, bytes[0])
@@ -9763,45 +9796,11 @@ func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		lhs := sourceV(base, 0)
 		rhs := sourceV(base+1, 1)
 		dst := stackDestination(base, 0)
-		switch {
-		case arm64ShuffleLaneRotate(descriptor.Bytes, 4, 2):
-			a.NeonRev32H(dst, lhs)
+		if result, ok := emitARM64SpecializedShuffle(a, descriptor.Bytes, dst, lhs, rhs); ok {
+			dst = result
 			storeV(base, dst)
 			types = append(types[:base], wasm.V128)
-			break
-		case arm64ShuffleLaneRotate(descriptor.Bytes, 4, 1):
-			if dst == lhs {
-				dst = 0
-				if lhs == 0 {
-					dst = 1
-				}
-			}
-			a.NeonUshrS(dst, lhs, 8)
-			a.NeonSliS(dst, lhs, 24)
-			storeV(base, dst)
-			types = append(types[:base], wasm.V128)
-			break
-		case arm64ShuffleZip(descriptor.Bytes, 4, false):
-			a.NeonZip1S(dst, lhs, rhs)
-			storeV(base, dst)
-			types = append(types[:base], wasm.V128)
-			break
-		case arm64ShuffleZip(descriptor.Bytes, 4, true):
-			a.NeonZip2S(dst, lhs, rhs)
-			storeV(base, dst)
-			types = append(types[:base], wasm.V128)
-			break
-		case arm64ShuffleZip(descriptor.Bytes, 8, false):
-			a.NeonZip1D(dst, lhs, rhs)
-			storeV(base, dst)
-			types = append(types[:base], wasm.V128)
-			break
-		case arm64ShuffleZip(descriptor.Bytes, 8, true):
-			a.NeonZip2D(dst, lhs, rhs)
-			storeV(base, dst)
-			types = append(types[:base], wasm.V128)
-			break
-		default:
+		} else {
 			var left, right [16]byte
 			for i, lane := range descriptor.Bytes {
 				left[i], right[i] = lane, lane-16

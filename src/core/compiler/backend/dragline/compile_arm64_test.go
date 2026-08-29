@@ -75,6 +75,14 @@ func TestARM64ShufflePatterns(t *testing.T) {
 	if !arm64ShuffleZip(zip1S, 4, false) || !arm64ShuffleZip(zip2D, 8, true) {
 		t.Fatal("zip pattern was not recognized")
 	}
+	var a arm64.Asm
+	if dst, ok := emitARM64SpecializedShuffle(&a, ror8, 4, 4, 5); !ok || dst == 4 || len(a.B) != 8 {
+		t.Fatalf("in-place lane rotate = dst %d, ok %t, bytes %d; want scratch destination and two instructions", dst, ok, len(a.B))
+	}
+	a.B = a.B[:0]
+	if dst, ok := emitARM64SpecializedShuffle(&a, zip1S, 6, 4, 5); !ok || dst != 6 || len(a.B) != 4 {
+		t.Fatalf("zip1 = dst %d, ok %t, bytes %d; want requested destination and one instruction", dst, ok, len(a.B))
+	}
 }
 
 func TestCompilerARM64MOPSBulkMemoryIsFeatureGated(t *testing.T) {
