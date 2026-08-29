@@ -168,6 +168,11 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 	}
 	for instructionID, instruction := range f.Insts {
 		position := reuse.InstructionPositions[instructionID]*6 + 2
+		block := scheduleInstructionBlock(f, schedule, uint32(instructionID))
+		useWeight := uint32(1)
+		if int(block) < len(f.Blocks) {
+			useWeight = max(f.Blocks[block].Weight, 1)
+		}
 		if instruction.Op == 0 {
 			return nil, fmt.Errorf("railmach: RALinearQ saw invalid instruction %d", instructionID)
 		}
@@ -179,7 +184,7 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 			// is not a Wasm operand-stack value, so retain that implicit use here.
 			used[instruction.Result] = true
 			ends[instruction.Result] = reuse.InstructionPositions[instructionID]*6 + 5
-			weights[instruction.Result]++
+			weights[instruction.Result] = uint32(min(uint64(^uint32(0)), uint64(weights[instruction.Result])+uint64(useWeight)))
 		}
 		for _, operand := range f.InstructionOperands(uint32(instructionID)) {
 			if operand.Flags&OperandColdRemat != 0 {
@@ -196,7 +201,7 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 					if position > ends[base] {
 						ends[base] = position
 					}
-					weights[base]++
+					weights[base] = uint32(min(uint64(^uint32(0)), uint64(weights[base])+uint64(useWeight)))
 					if f.VRegs[base].Flags&VRegRematerializable == 0 {
 						break
 					}
@@ -208,7 +213,7 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 			if position > ends[operand.Reg] {
 				ends[operand.Reg] = position
 			}
-			weights[operand.Reg]++
+			weights[operand.Reg] = uint32(min(uint64(^uint32(0)), uint64(weights[operand.Reg])+uint64(useWeight)))
 			if operand.Flags&OperandFixed != 0 {
 				if fixedAt[operand.Reg] == NoFixedReg {
 					fixedAt[operand.Reg] = operand.Fixed

@@ -27,6 +27,36 @@ func TestAllocateLinearQSpillsUnderPressure(t *testing.T) {
 	}
 }
 
+func TestAllocateLinearQWeightsInstructionUsesByBlockFrequency(t *testing.T) {
+	f := buildMachineTest(t, TargetARM64, machineModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x20, 0x00,
+		0x41, 0x01,
+		0x6a,
+		0x0b,
+	}))
+	if len(f.Blocks) == 0 || f.Blocks[0].InstCount != uint32(len(f.Insts)) {
+		t.Fatalf("blocks = %#v", f.Blocks)
+	}
+	f.Blocks[0].Weight = 64
+	allocation, err := AllocateLinearQ(f, DefaultLinearQConfig(TargetARM64), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	add := f.Insts[len(f.Insts)-1]
+	for _, operand := range f.InstructionOperands(uint32(len(f.Insts) - 1)) {
+		interval, ok := allocationInterval(allocation.Intervals, operand.Reg)
+		if !ok {
+			t.Fatalf("add operand v%d has no interval", operand.Reg)
+		}
+		if interval.Weight != 65 {
+			t.Fatalf("add operand v%d weight = %d, want 65", operand.Reg, interval.Weight)
+		}
+	}
+	if add.Op != wasm.InstrI32Add {
+		t.Fatalf("last instruction = %s, want i32.add", add.Op)
+	}
+}
+
 func TestAllocateLinearQRecordsConflictingFixedUses(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
 		0x42, 0x01,
