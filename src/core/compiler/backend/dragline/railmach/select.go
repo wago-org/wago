@@ -185,6 +185,10 @@ func SelectOrderWithCostModel(target Target, flow *railssa.ValueFlow, semantic *
 			}
 		case railspec.RuleCompareBranchFlags:
 			selection.ResultForm = FormFlags
+			if target == TargetARM64 && rhsKnown && rhs <= 4095 && len(args) == 2 && integerComparison(instruction.Op) {
+				reuse.Forms[len(reuse.Forms)-1] = FormImmediate
+				reuse.Combinations = append(reuse.Combinations, Combination{Producer: producerInstruction(flow, semantic, args[1]), Consumer: uint32(id), Kind: CombineImmediate})
+			}
 			reuse.Combinations = append(reuse.Combinations, Combination{Producer: uint32(id), Consumer: branchConsumer, Kind: CombineCompareBranch})
 		}
 	}
@@ -192,6 +196,10 @@ func SelectOrderWithCostModel(target Target, flow *railssa.ValueFlow, semantic *
 		return nil, err
 	}
 	return reuse, nil
+}
+
+func integerComparison(kind wasm.InstrKind) bool {
+	return kind >= wasm.InstrI32Eq && kind <= wasm.InstrI64GeU
 }
 
 // ApplyAddressFolding commits producer-linked i32 address additions only when

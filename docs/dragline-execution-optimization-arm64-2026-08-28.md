@@ -246,6 +246,38 @@ overwrite its own source. Against the preceding fused build, eight alternating
 reduction; the shuffle build won seven pairs. Compression functions 7 and 8
 fell again to 19,360/17,976 bytes, and the full module to 51,300 bytes.
 
+`mandelbrot.render(64)` exposed a missed combination between two already
+verified ARM64 forms. A comparison feeding `br_if` selected direct NZCV flag
+flow, but that choice prevented its single-use 12-bit constant from selecting
+the immediate form. RailMach now records both combinations and emits `CMP`
+immediate directly while retaining the comparison/branch fusion. The constant
+producer therefore emits no native instruction.
+
+Eight alternating 500 ms binary pairs measured a 235.24 us median with the
+immediate comparison and 235.71 us before it, a **0.2%** reduction; the new
+build won seven pairs. Function code fell from 572 to 568 bytes. A separate
+attempt to value-number repeated floating-point multiplies through the two
+inner-loop branch blocks was rejected: although the proof and alias were
+valid, its longer live ranges produced no code-size win and measured slightly
+slower.
+
+The dominant gap was instead a loop-carried false dependency. ARM64's existing
+edge-result rename can emit a final floating arithmetic result directly into
+its destination block-argument register, but previously rejected an entire
+edge when more than one result was eligible. It now considers the latest
+scheduled definition; the existing checks still require one outgoing edge, one
+transfer for that result, a register-to-register copy, no later use of the
+destination, and no parallel-copy source clobber. Mandelbrot can therefore
+write the new imaginary component directly into its loop register and omit the
+copy that serialized the real/imaginary update.
+
+Against the immediate-comparison build, eight alternating 500 ms binary pairs
+measured 215.92 us versus 239.19 us, a **9.7%** reduction, with the rename build
+winning every pair. A fresh eight-round alternating backend run measured
+212.32 us for Dragline and 212.60 us for Railshot by median, or **0.999x**.
+Function code is now 564 bytes. `mandelbrot.render(64)` is complete for this
+campaign slice.
+
 `sha256.hashN(8)` is complete for this campaign slice. Its 391-instruction
 integer RailMach kernel fell below the original 512-instruction gate for
 use-density allocation. Lowering that gate initially exposed a latent stage-4

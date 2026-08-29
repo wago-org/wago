@@ -89,6 +89,33 @@ func TestSelectOrderCombinesCompareBranch(t *testing.T) {
 	}
 }
 
+func TestSelectOrderCombinesARM64ImmediateCompareBranch(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x20, 0x00,
+		0x41, 0xe4, 0x00,
+		0x4e,
+		0x04, 0x7f,
+		0x41, 0x01,
+		0x05,
+		0x41, 0x02,
+		0x0b,
+		0x0b,
+	})
+	semantic, plan := buildSelectionTest(t, TargetARM64, m)
+	comparison := semantic.InstructionMap[2] - 1
+	if plan.Selections[comparison].Rule != railspec.RuleCompareBranchFlags || plan.Selections[comparison].ResultForm != FormFlags || plan.OperandForms(comparison)[1] != FormImmediate {
+		t.Fatalf("immediate comparison selection = %#v forms=%#v", plan.Selections[comparison], plan.OperandForms(comparison))
+	}
+	immediate, branch := false, false
+	for _, combination := range plan.Combinations {
+		immediate = immediate || combination.Kind == CombineImmediate && combination.Consumer == comparison
+		branch = branch || combination.Kind == CombineCompareBranch && combination.Producer == comparison
+	}
+	if !immediate || !branch {
+		t.Fatalf("immediate/branch combinations = %#v", plan.Combinations)
+	}
+}
+
 func TestSelectOrderCombinesEqzBranch(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x20, 0x00,

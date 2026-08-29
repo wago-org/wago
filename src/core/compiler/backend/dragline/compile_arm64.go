@@ -3152,6 +3152,28 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					a.RorImm(dst, lhs, uint8(-shift)&31, true)
 				case wasm.InstrI64Rotl:
 					a.RorImm(dst, lhs, uint8(-shift)&63, false)
+				case wasm.InstrI32Eq, wasm.InstrI32Ne, wasm.InstrI32LtS, wasm.InstrI32LtU,
+					wasm.InstrI32GtS, wasm.InstrI32GtU, wasm.InstrI32LeS, wasm.InstrI32LeU,
+					wasm.InstrI32GeS, wasm.InstrI32GeU:
+					a.CmpImm32(lhs, immediate)
+					if fusedComparison {
+						if metrics != nil {
+							metrics.PostRARewrites++
+						}
+						continue
+					}
+					a.Cset32(dst, arm64IntegerComparisonCond(instruction.Op))
+				case wasm.InstrI64Eq, wasm.InstrI64Ne, wasm.InstrI64LtS, wasm.InstrI64LtU,
+					wasm.InstrI64GtS, wasm.InstrI64GtU, wasm.InstrI64LeS, wasm.InstrI64LeU,
+					wasm.InstrI64GeS, wasm.InstrI64GeU:
+					a.CmpImm64(lhs, immediate)
+					if fusedComparison {
+						if metrics != nil {
+							metrics.PostRARewrites++
+						}
+						continue
+					}
+					a.Cset32(dst, arm64IntegerComparisonCond(instruction.Op))
 				default:
 					return nil, 0, true, fmt.Errorf("RailMach selected unsupported ARM64 immediate for %s", instruction.Op)
 				}
@@ -4476,6 +4498,7 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 	}
 	moveRange := plan.Exit.EdgeMoves[edge]
 	candidateMove := ^uint32(0)
+	candidatePosition := uint32(0)
 	var instructionID uint32
 	var result railmach.VReg
 	var destination railmach.Location
@@ -4501,10 +4524,14 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 		default:
 			continue
 		}
-		if candidateMove != ^uint32(0) {
-			return arm64EdgeResultRename{}
+		position := plan.Allocation.InstructionPositions[definition]
+		if candidateMove != ^uint32(0) && position <= candidatePosition {
+			continue
 		}
+		// Prefer the latest definition in the scheduled block. The validation
+		// below still rejects it if its destination is live after that definition.
 		candidateMove, instructionID, result, destination = index, definition, move.Reg, move.Dst
+		candidatePosition = position
 	}
 	if candidateMove == ^uint32(0) {
 		return arm64EdgeResultRename{}
@@ -4520,6 +4547,13 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 	}
 	if transferCount != 1 {
 		return arm64EdgeResultRename{}
+	}
+	for instructionID := range plan.Machine.Insts {
+		for _, operand := range plan.Machine.InstructionOperands(uint32(instructionID)) {
+			if operand.Reg == result {
+				return arm64EdgeResultRename{}
+			}
+		}
 	}
 	for _, value := range plan.Machine.Results {
 		if value == result {

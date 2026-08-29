@@ -466,6 +466,45 @@ func TestARM64RailMachRenamesFinalEdgeMultiply(t *testing.T) {
 	if !rename.valid || rename.instruction != 0 || rename.edge != 0 || rename.move != 0 || rename.destination.Index != 5 {
 		t.Fatalf("edge result rename = %#v", rename)
 	}
+	f.Insts = append(f.Insts, railmach.Inst{Op: wasm.InstrF64Add, Result: 5, OperandStart: 2, OperandCount: 2})
+	f.Operands = append(f.Operands, railmach.Operand{Reg: 1, Bank: railmach.BankFPR}, railmach.Operand{Reg: 2, Bank: railmach.BankFPR})
+	f.VRegs = append(f.VRegs,
+		railmach.VRegData{Def: 9, Type: railmach.TypeF64, Bank: railmach.BankFPR},
+		railmach.VRegData{Type: railmach.TypeF64, Bank: railmach.BankFPR, Flags: railmach.VRegBlockParam},
+	)
+	f.Blocks[0].InstCount = 2
+	f.Transfers = append(f.Transfers, railmach.EdgeTransfer{Src: 5, Dst: 6, Edge: 0})
+	plan.Schedule.Order = append(plan.Schedule.Order, 1)
+	plan.Schedule.BlockRanges[0].Count = 2
+	plan.Schedule.BlockRanges[1].Start = 2
+	plan.Schedule.BlockOf = append(plan.Schedule.BlockOf, 0)
+	plan.Allocation.Locations = append(plan.Allocation.Locations,
+		railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 8},
+		railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 7},
+	)
+	plan.Allocation.InstructionPositions = append(plan.Allocation.InstructionPositions, 1)
+	latest := railmach.PhysicalMove{
+		Src:       railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 8},
+		Dst:       railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 7},
+		Reg:       5,
+		Edge:      0,
+		Kind:      railmach.MoveCopy,
+		Placement: railmach.PlacePredecessorEnd,
+		Bank:      railmach.BankFPR,
+	}
+	plan.Exit.Moves = append([]railmach.PhysicalMove{latest}, plan.Exit.Moves...)
+	plan.Exit.EdgeMoves[0].Count = 2
+	rename = arm64RailMachEdgeResultRename(plan, 0)
+	if !rename.valid || rename.instruction != 1 || rename.move != 0 || rename.destination.Index != 7 {
+		t.Fatalf("latest edge result rename = %#v", rename)
+	}
+	f.Insts = append(f.Insts, railmach.Inst{Op: wasm.InstrF64Neg, OperandStart: uint32(len(f.Operands)), OperandCount: 1})
+	f.Operands = append(f.Operands, railmach.Operand{Reg: 5, Bank: railmach.BankFPR})
+	if unsafe := arm64RailMachEdgeResultRename(plan, 0); unsafe.valid {
+		t.Fatalf("rename abandoned an ordinary result use: %#v", unsafe)
+	}
+	f.Insts = f.Insts[:len(f.Insts)-1]
+	f.Operands = f.Operands[:len(f.Operands)-1]
 	plan.Exit.Moves = append(plan.Exit.Moves, railmach.PhysicalMove{Src: rename.destination, Dst: railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 4}})
 	plan.Exit.EdgeMoves[0].Count++
 	if unsafe := arm64RailMachEdgeResultRename(plan, 0); unsafe.valid {
