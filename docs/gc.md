@@ -388,7 +388,10 @@ suspended direct-host activations (including sync-thunk records), and same-domai
 foreign instances. Mutable local GC globals synchronize checked collector slots,
 one private collector-reference table is scanned directly, and indirect/reference
 calls, function subtype checks, proper tails, and fixed EH payload records publish
-exact maps. Wrapper calls stage any operand stack whose later spilled source sits
+exact maps. AMD64 compact finalization does not apply `local-slot-order` to a
+function with exact GC frame-root metadata. The final local homes therefore stay
+identical to the offsets recorded by every safepoint and caller map. Wrapper calls
+stage any operand stack whose later spilled source sits
 below its canonical destination. This preserves leading arguments for wide
 reference signatures even below the 64-slot wide-stack threshold. It also stages
 before materialization when GP pressure would consume the scratch-register

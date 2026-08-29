@@ -2669,7 +2669,7 @@ func symbolicLocalSlotPackingPolicy(policy CodegenPolicy) bool {
 // expand, so every changed site is a monotonic disp32 -> disp8/disp0 shrink.
 func (f *fn) packLocalSlots(siteBudget int) int {
 	r := f.a.LocalRefs
-	if r == nil || r.Overflow || r.Pending || siteBudget <= 0 || int(r.Locals) != f.nLocals {
+	if f.gcFrameRoots != nil || r == nil || r.Overflow || r.Pending || siteBudget <= 0 || int(r.Locals) != f.nLocals {
 		return 0
 	}
 
