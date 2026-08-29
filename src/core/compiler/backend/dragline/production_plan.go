@@ -11,6 +11,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 	"github.com/wago-org/wago/src/core/compiler/profile"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
 // nativeBackendPlan is the complete verifier-gated RailMach product consumed
@@ -1182,6 +1183,9 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	p.immediateSkip = resizeNativeSlice(p.immediateSkip, len(machine.Insts))
 	p.immediateUses = resizeNativeSlice(p.immediateUses, len(machine.VRegs))
 	buildNativeImmediateCombinations(&p.plan, p.immediateProducer, p.immediateSkip, p.immediateUses)
+	if machine.Target == railmach.TargetARM64 {
+		buildNativeARM64LogicalImmediateCombinations(&p.plan, p.immediateProducer, p.immediateSkip, p.immediateUses)
+	}
 	p.plan.ImmediateProducer = p.immediateProducer
 	p.plan.ImmediateSkip = p.immediateSkip
 	for _, transfer := range machine.Transfers {
@@ -1259,6 +1263,66 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	p.plan.MemoryCheckEnds = p.memoryCheckEnds
 	p.plan.MemoryCheckTouched = p.memoryCheckTouched
 	return &p.plan, nil
+}
+
+func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, producers []uint32, skipped []bool, uses []uint32) {
+	if plan == nil || plan.Machine == nil {
+		return
+	}
+	for instructionID, instruction := range plan.Machine.Insts {
+		if producers[instructionID] != ^uint32(0) {
+			continue
+		}
+		operands := plan.Machine.InstructionOperands(uint32(instructionID))
+		if len(operands) != 2 {
+			continue
+		}
+		constant := plan.Machine.VRegs[operands[1].Reg]
+		if constant.Flags&railmach.VRegRematerializable == 0 || int(constant.Def/6) >= len(plan.Machine.Insts) {
+			continue
+		}
+		producerID := constant.Def / 6
+		producer := plan.Machine.Insts[producerID]
+		if (producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const) || !arm64LogicalImmediateEncodable(instruction.Op, producer.Aux) {
+			continue
+		}
+		producers[instructionID] = producerID
+	}
+	for producerID, producer := range plan.Machine.Insts {
+		if producer.Result == 0 || (producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const) || skipped[producerID] || nativeMachineValueEscapes(plan.Machine, producer.Result) {
+			continue
+		}
+		folded := uint32(0)
+		for consumerID := range plan.Machine.Insts {
+			operands := plan.Machine.InstructionOperands(uint32(consumerID))
+			if len(operands) == 2 && operands[1].Reg == producer.Result && producers[consumerID] == uint32(producerID) {
+				folded++
+			}
+		}
+		if uses[producer.Result] != 0 && folded == uses[producer.Result] {
+			skipped[producerID] = true
+		}
+	}
+}
+
+func arm64LogicalImmediateEncodable(kind wasm.InstrKind, value uint64) bool {
+	var probe arm64.Asm
+	switch kind {
+	case wasm.InstrI32And:
+		return probe.AndImm32(arm64.X0, arm64.X1, uint32(value))
+	case wasm.InstrI64And:
+		return probe.AndImm64(arm64.X0, arm64.X1, value)
+	case wasm.InstrI32Or:
+		return probe.OrrImm32(arm64.X0, arm64.X1, uint32(value))
+	case wasm.InstrI64Or:
+		return probe.OrrImm64(arm64.X0, arm64.X1, value)
+	case wasm.InstrI32Xor:
+		return probe.EorImm32(arm64.X0, arm64.X1, uint32(value))
+	case wasm.InstrI64Xor:
+		return probe.EorImm64(arm64.X0, arm64.X1, value)
+	default:
+		return false
+	}
 }
 
 func nativeValueCannotCreateCollectorEdge(machine *railmach.Func, value railmach.VReg) bool {
