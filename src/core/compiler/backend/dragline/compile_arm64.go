@@ -799,9 +799,13 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	var currentResultOverrideValid bool
 	var cachedFloats [3]arm64CachedFloatConstant
 	var cachedFloatCount int
+	var promotedGlobal arm64PromotedGlobal
 	reg := func(value railmach.VReg) arm64.Reg {
 		if value == currentResult && currentResultOverrideValid {
 			return currentResultOverride
+		}
+		if arm64RailMachPromotedGlobalValue(plan, value, promotedGlobal) {
+			return arm64.X8
 		}
 		if cached, ok := arm64RailMachCachedFloatValue(plan, value, cachedFloats, cachedFloatCount); ok {
 			return cached
@@ -1014,6 +1018,18 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	for index, cached := range cachedFloats[:cachedFloatCount] {
 		a.MovImm64(arm64.X16, cached.bits)
 		a.FmovFromGpr(arm64.Reg(24+index), arm64.X16, cached.kind == wasm.InstrF64Const)
+	}
+	promotedGlobal = arm64RailMachPromotedGlobal(plan)
+	if promotedGlobal.valid {
+		a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
+		if !a.Load64(arm64.X17, arm64.X17, promotedGlobal.index*8) {
+			return nil, 0, true, fmt.Errorf("RailMach promoted global %d offset is not encodable", promotedGlobal.index)
+		}
+		if promotedGlobal.typ == wasm.I32 {
+			a.Load32(arm64.X8, arm64.X17, 0)
+		} else {
+			a.Load64(arm64.X8, arm64.X17, 0)
+		}
 	}
 	blockOffsets := plan.BlockOffsets
 	patches := plan.BranchPatches[:0]
@@ -2070,6 +2086,16 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				continue
 			}
 			if instruction.Op == wasm.InstrGlobalGet {
+				if promotedGlobal.valid && uint32(instruction.Aux) == promotedGlobal.index {
+					if !arm64RailMachPromotedGlobalValue(plan, instruction.Result, promotedGlobal) {
+						if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeI32 {
+							a.MovReg32(dst, arm64.X8)
+						} else {
+							a.MovReg64(dst, arm64.X8)
+						}
+					}
+					continue
+				}
 				a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
 				if !a.Load64(arm64.X17, arm64.X17, uint32(instruction.Aux)*8) {
 					return nil, 0, true, fmt.Errorf("RailMach global %d offset is not encodable", uint32(instruction.Aux))
@@ -2137,6 +2163,16 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				continue
 			}
 			if instruction.Op == wasm.InstrGlobalSet {
+				if promotedGlobal.valid && uint32(instruction.Aux) == promotedGlobal.index {
+					if lhs != arm64.X8 {
+						if plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeI32 {
+							a.MovReg32(arm64.X8, lhs)
+						} else {
+							a.MovReg64(arm64.X8, lhs)
+						}
+					}
+					continue
+				}
 				a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
 				if !a.Load64(arm64.X17, arm64.X17, uint32(instruction.Aux)*8) {
 					return nil, 0, true, fmt.Errorf("RailMach global %d offset is not encodable", uint32(instruction.Aux))
@@ -3002,6 +3038,12 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		}
 	}
 	plan.ConditionalPatches = conditionalPatches
+	if promotedGlobal.valid {
+		a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
+		if !a.Load64(arm64.X17, arm64.X17, promotedGlobal.index*8) || !a.Store64(arm64.X8, arm64.X17, 0) {
+			return nil, 0, true, fmt.Errorf("RailMach promoted global %d commit is not encodable", promotedGlobal.index)
+		}
+	}
 	if len(plan.Machine.Results) == 1 {
 		value := plan.Machine.Results[0]
 		scratch := arm64.X13
@@ -3209,6 +3251,116 @@ func arm64MoveImmediateInstructions(value uint64) uint32 {
 		}
 	}
 	return max(min(nonzero, nonones), 1)
+}
+
+type arm64PromotedGlobal struct {
+	index uint32
+	typ   wasm.ValType
+	valid bool
+}
+
+func arm64RailMachPromotedGlobal(plan *nativeBackendPlan) arm64PromotedGlobal {
+	if plan == nil || plan.Machine == nil || plan.Stack == nil || plan.ABI.HasCall {
+		return arm64PromotedGlobal{}
+	}
+	index := ^uint32(0)
+	hasGet, hasSet := false, false
+	for _, instruction := range plan.Machine.Insts {
+		if nativeControlInstruction(instruction.Op) {
+			continue
+		}
+		switch instruction.Op {
+		case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
+			candidate := uint32(instruction.Aux)
+			if index != ^uint32(0) && index != candidate {
+				return arm64PromotedGlobal{}
+			}
+			index = candidate
+			hasGet = hasGet || instruction.Op == wasm.InstrGlobalGet
+			hasSet = hasSet || instruction.Op == wasm.InstrGlobalSet
+		case wasm.InstrI32Const, wasm.InstrI64Const,
+			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
+			wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
+			wasm.InstrI32And, wasm.InstrI64And, wasm.InstrI32Or, wasm.InstrI64Or,
+			wasm.InstrI32Xor, wasm.InstrI64Xor,
+			wasm.InstrI32WrapI64, wasm.InstrI64ExtendI32S, wasm.InstrI64ExtendI32U:
+		default:
+			return arm64PromotedGlobal{}
+		}
+	}
+	if !hasGet || !hasSet || int(index) >= len(plan.Stack.Globals) {
+		return arm64PromotedGlobal{}
+	}
+	typ := plan.Stack.Globals[index]
+	if typ != wasm.I32 && typ != wasm.I64 {
+		return arm64PromotedGlobal{}
+	}
+	return arm64PromotedGlobal{index: index, typ: typ, valid: true}
+}
+
+func arm64RailMachPromotedGlobalValue(plan *nativeBackendPlan, value railmach.VReg, promoted arm64PromotedGlobal) bool {
+	if !promoted.valid || plan == nil || plan.Machine == nil || plan.Allocation == nil || value == 0 || int(value) >= len(plan.Machine.VRegs) {
+		return false
+	}
+	data := plan.Machine.VRegs[value]
+	if data.Flags&(railmach.VRegInitial|railmach.VRegBlockParam|railmach.VRegElided) != 0 || data.Def%6 != 3 {
+		return false
+	}
+	definition := data.Def / 6
+	if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Result != value {
+		return false
+	}
+	instruction := plan.Machine.Insts[definition]
+	if instruction.Op != wasm.InstrGlobalGet {
+		switch instruction.Op {
+		case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
+			wasm.InstrI32And, wasm.InstrI64And, wasm.InstrI32Or, wasm.InstrI64Or,
+			wasm.InstrI32Xor, wasm.InstrI64Xor:
+		default:
+			return false
+		}
+	}
+	uses, globalSetUses := 0, 0
+	for instructionID := range plan.Machine.Insts {
+		for _, operand := range plan.Machine.InstructionOperands(uint32(instructionID)) {
+			if operand.Reg != value {
+				continue
+			}
+			uses++
+			consumer := plan.Machine.Insts[instructionID]
+			if consumer.Op == wasm.InstrGlobalSet && uint32(consumer.Aux) == promoted.index {
+				globalSetUses++
+			}
+		}
+	}
+	if instruction.Op == wasm.InstrGlobalGet {
+		if uint32(instruction.Aux) != promoted.index || uses == 0 {
+			return false
+		}
+	} else if uses != 1 || globalSetUses != 1 {
+		return false
+	}
+	for _, transfer := range plan.Machine.Transfers {
+		if transfer.Src == value || transfer.Dst == value {
+			return false
+		}
+	}
+	for _, result := range plan.Machine.Results {
+		if result == value {
+			return false
+		}
+	}
+	for _, move := range plan.Allocation.FixedMoves {
+		if move.Reg == value {
+			return false
+		}
+	}
+	for _, fragment := range plan.Allocation.Fragments {
+		if fragment.Reg == value || fragment.Victim == value {
+			return false
+		}
+	}
+	return true
 }
 
 // emitARM64BoundsEnd adds a scalar access's constant end to its zero-extended

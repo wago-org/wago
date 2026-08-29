@@ -401,6 +401,44 @@ func TestARM64RailMachRenamesFinalEdgeMultiply(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachPromotesTrapFreeMutableGlobal(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Stack: &railssa.StackFunc{Globals: []wasm.ValType{wasm.I64}},
+		Machine: &railmach.Func{
+			Insts: []railmach.Inst{
+				{Op: wasm.InstrGlobalGet, Result: 1},
+				{Op: wasm.InstrI64Const, Result: 2},
+				{Op: wasm.InstrI64Add, Result: 3, OperandStart: 0, OperandCount: 2},
+				{Op: wasm.InstrGlobalSet, OperandStart: 2, OperandCount: 1},
+			},
+			Operands: []railmach.Operand{{Reg: 1, Bank: railmach.BankGPR}, {Reg: 2, Bank: railmach.BankGPR}, {Reg: 3, Bank: railmach.BankGPR}},
+			VRegs: []railmach.VRegData{
+				{},
+				{Def: 3, Type: railmach.TypeI64, Bank: railmach.BankGPR},
+				{Def: 9, Type: railmach.TypeI64, Bank: railmach.BankGPR},
+				{Def: 15, Type: railmach.TypeI64, Bank: railmach.BankGPR},
+			},
+		},
+		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: make([]railmach.Location, 4)}},
+	}
+	promoted := arm64RailMachPromotedGlobal(plan)
+	if !promoted.valid || promoted.index != 0 || promoted.typ != wasm.I64 {
+		t.Fatalf("promoted global = %#v", promoted)
+	}
+	if !arm64RailMachPromotedGlobalValue(plan, 1, promoted) || !arm64RailMachPromotedGlobalValue(plan, 3, promoted) {
+		t.Fatal("global load or committed arithmetic result did not name the promoted register")
+	}
+	plan.Machine.Results = []railmach.VReg{1}
+	if arm64RailMachPromotedGlobalValue(plan, 1, promoted) {
+		t.Fatal("function result bypassed its allocated location")
+	}
+	plan.Machine.Results = nil
+	plan.Machine.Insts = append(plan.Machine.Insts, railmach.Inst{Op: wasm.InstrI64Load})
+	if unsafe := arm64RailMachPromotedGlobal(plan); unsafe.valid {
+		t.Fatalf("trapping function promoted global: %#v", unsafe)
+	}
+}
+
 func TestARM64RailMachI32SpillUsesOneMemoryOperation(t *testing.T) {
 	plan := &nativeBackendPlan{
 		Machine: &railmach.Func{VRegs: []railmach.VRegData{{}, {Type: railmach.TypeI32, Bank: railmach.BankGPR}}},

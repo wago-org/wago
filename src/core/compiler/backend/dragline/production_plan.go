@@ -305,6 +305,7 @@ func railMachCandidate(stack *railssa.StackFunc) bool {
 			}
 			switch instruction.Kind {
 			case wasm.InstrI64Eqz,
+				wasm.InstrGlobalGet, wasm.InstrGlobalSet,
 				wasm.InstrF32Sqrt, wasm.InstrF64Sqrt,
 				wasm.InstrF32ConvertI32S, wasm.InstrF32ConvertI32U,
 				wasm.InstrF32ConvertI64S, wasm.InstrF32ConvertI64U,
