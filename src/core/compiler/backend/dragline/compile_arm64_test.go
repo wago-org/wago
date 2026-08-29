@@ -584,6 +584,56 @@ func TestARM64RailMachDefersUnreachableTrapsPastHotReturn(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachImmediateDoesNotMaterializeFoldedOperand(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x42, 0x18, // i64.const 24
+			0x88, 0x0b, // i64.shr_u
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	optimized, _, ok, err := emitARM64RailMach(fn, plan, false, nil, nil, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("optimized RailMach finalization = ok %t, err %v", ok, err)
+	}
+	baseline := *plan
+	baseline.ImmediateProducer = make([]uint32, len(plan.ImmediateProducer))
+	for index := range baseline.ImmediateProducer {
+		baseline.ImmediateProducer[index] = ^uint32(0)
+	}
+	baseline.ImmediateSkip = make([]bool, len(plan.ImmediateSkip))
+	unfolded, _, ok, err := emitARM64RailMach(fn, &baseline, false, nil, nil, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("unfolded RailMach finalization = ok %t, err %v", ok, err)
+	}
+	if len(optimized)+4 > len(unfolded) {
+		t.Fatalf("immediate/native bytes = %d/%d, want folded operand materialization removed", len(optimized), len(unfolded))
+	}
+}
+
 func TestARM64RealizesPreIndexLinearMemory(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

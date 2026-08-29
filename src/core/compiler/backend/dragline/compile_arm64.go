@@ -1265,6 +1265,11 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			}
 			if instruction.Op != wasm.InstrCall && instruction.Op != wasm.InstrCallIndirect {
 				for operandIndex, operand := range operands {
+					if operandIndex == 1 && immediateProducer[instructionID] != ^uint32(0) {
+						// The selected ARM64 immediate form consumes the literal from
+						// the producer instruction, not its allocated location.
+						continue
+					}
 					duplicate := false
 					for _, previous := range operands[:operandIndex] {
 						duplicate = duplicate || previous.Reg == operand.Reg
