@@ -256,6 +256,22 @@ func TestNativeEdgeConstantRematerializationRequiresPhysicalMoves(t *testing.T) 
 	}
 }
 
+func TestNativeScheduleScoreBoundsLargeLatencyPreference(t *testing.T) {
+	pressure := railmach.ScheduleScore{Kind: railmach.ScheduleKindPressure, WeightedSpillDebt: 300}
+	latency := railmach.ScheduleScore{Kind: railmach.ScheduleKindLatencyFusion, WeightedSpillDebt: 400}
+	if !nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, 1024, latency, pressure) || nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, 1024, pressure, latency) {
+		t.Fatal("bounded large-function latency preference was not stable across candidate order")
+	}
+	latency.WeightedSpillDebt++
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, 1024, latency, pressure) {
+		t.Fatal("latency schedule beyond the spill bound was preferred")
+	}
+	latency.WeightedSpillDebt = 400
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSize, 1024, latency, pressure) || nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, 1023, latency, pressure) {
+		t.Fatal("latency preference escaped the speed/large-function boundary")
+	}
+}
+
 func TestRailMachLoopProfitabilityPolicy(t *testing.T) {
 	for _, test := range []struct {
 		name         string
