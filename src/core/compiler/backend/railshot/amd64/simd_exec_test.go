@@ -158,7 +158,7 @@ func runAmd64V128(t *testing.T, m *wasm.Module, arg *[16]byte) [16]byte {
 
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	if arg != nil {
 		copy(serArgs, arg[:])
 	}
@@ -199,7 +199,7 @@ func runAmd64ResultBuffer(t *testing.T, m *wasm.Module, setup func(*runtime.JobM
 
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	if setup != nil {
 		setup(jm, serArgs, entry, cm)
 	}
@@ -241,7 +241,7 @@ func runMemAmd64V128(t *testing.T, m *wasm.Module, setup func([]byte)) ([16]byte
 	defer runtime.Unmap(mem)
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	callErr := eng.Call(entry+uintptr(cm.Entry[0]), serArgs, lin, trap, results)
 	var out [16]byte
 	copy(out[:], results[:16])
@@ -2322,7 +2322,7 @@ func TestSIMDV128FunctionABIUsesSixteenByteSlots(t *testing.T) {
 	defer runtime.Unmap(code)
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	binary.LittleEndian.PutUint32(serArgs[0:4], 0x11111111)
 	copy(serArgs[8:24], arg[:])
 	binary.LittleEndian.PutUint32(serArgs[24:28], 0x76543210)

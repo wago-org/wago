@@ -8,6 +8,8 @@ package runtime
 // Go context.
 func enterNative(code, serArgs, linMem, trap, results, foreignStackTop uintptr)
 
+func (e *Engine) initNativeEntry() error { return nil }
+
 // resumeNative is implemented in resume_arm64.s. It restores the wasm state
 // parked by hostCallStub and returns to the instruction after the host CALL.
 func resumeNative(ctrl, foreignStackTop uintptr)

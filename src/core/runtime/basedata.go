@@ -4,7 +4,6 @@ package runtime
 
 import (
 	"encoding/binary"
-	"fmt"
 	"sync"
 	"unsafe"
 
@@ -248,13 +247,14 @@ func (j *JobMemory) LinMemBase() uintptr {
 // guard ([linMem - 72]).
 func (j *JobMemory) SetStackFence(v uintptr) { j.putU64(offStackFence, uint64(v)) }
 
-// BindTrapCell installs the stable trap-cell pointer used by native trap stubs
-// and establishes the zero-on-entry invariant required by Engine.CallPrepared.
-// The caller must keep trap alive and at a stable address for the JobMemory's
-// native calls (Arena-backed instance buffers satisfy this).
+// BindTrapCell installs the stable trap-buffer pointer used by native trap
+// stubs and establishes the zero-on-entry invariant required by
+// Engine.CallPrepared. Native trap stubs write through byte 23, so the caller
+// must provide TrapBufferBytes stable off-heap bytes for all native calls
+// (Arena-backed instance buffers satisfy this).
 func (j *JobMemory) BindTrapCell(trap []byte) error {
-	if len(trap) < 4 {
-		return fmt.Errorf("trap cell requires at least 4 bytes")
+	if err := validateTrapBuffer(trap); err != nil {
+		return err
 	}
 	binary.LittleEndian.PutUint32(trap, 0)
 	j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
@@ -265,8 +265,8 @@ func (j *JobMemory) BindTrapCell(trap []byte) error {
 // nested entry changed basedata. Unlike BindTrapCell, it preserves a concurrent
 // interruption while clearing stale host-pending or ordinary trap state.
 func (j *JobMemory) RebindTrapCell(trap []byte) error {
-	if len(trap) < 4 {
-		return fmt.Errorf("trap cell requires at least 4 bytes")
+	if err := validateTrapBuffer(trap); err != nil {
+		return err
 	}
 	clearTrapUnlessInterrupted(trap)
 	j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
@@ -277,7 +277,7 @@ func (j *JobMemory) RebindTrapCell(trap []byte) error {
 // Cross-instance entry replaces the pointer (and the fence alongside it), so
 // this one-word identity check is sufficient for the prepared-call fast path.
 func (j *JobMemory) HasTrapCell(trap []byte) bool {
-	return len(trap) >= 4 && j.getU64(abi.TrapCellPtrOffset) == uint64(slicePtr(trap))
+	return len(trap) >= TrapBufferBytes && j.getU64(abi.TrapCellPtrOffset) == uint64(slicePtr(trap))
 }
 
 // InstanceContext is the per-instance subset of basedata. It deliberately

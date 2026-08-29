@@ -123,7 +123,7 @@ func runAmd64(t *testing.T, m *wasm.Module, args ...int32) int32 {
 
 	serArgs := ar.Alloc(128)
 	results := ar.Alloc(128)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	for i, a := range args {
 		binary.LittleEndian.PutUint32(serArgs[i*8:], uint32(a))
 	}
@@ -192,7 +192,7 @@ func runMemAmd64WithOptions(t *testing.T, m *wasm.Module, opts CompileOptions, s
 	defer runtime.Unmap(mem)
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(serArgs[i*8:], a)
 	}
@@ -236,7 +236,7 @@ func runCompiledAmd64u(t *testing.T, cm *encoderamd64.CompiledModule, args ...ui
 
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(serArgs[i*8:], a)
 	}
@@ -853,7 +853,7 @@ func TestAmd64Phase4Calls(t *testing.T) {
 		}
 		defer runtime.Unmap(mem)
 		res := ar.Alloc(64)
-		trap := ar.Alloc(8)
+		trap := ar.Alloc(runtime.TrapBufferBytes)
 		err = eng.Call(entry+uintptr(cm.Entry[0]), ar.Alloc(64), jm.LinearMemory(), trap, res)
 		if err == nil {
 			t.Fatal("expected trap to propagate through caller, got nil")
@@ -916,7 +916,7 @@ func TestAmd64BulkAndSat(t *testing.T) {
 			defer runtime.Unmap(mem)
 			serArgs := ar.Alloc(256)
 			results := ar.Alloc(256)
-			trap := ar.Alloc(8)
+			trap := ar.Alloc(runtime.TrapBufferBytes)
 			for i, a := range args {
 				binary.LittleEndian.PutUint64(serArgs[i*8:], a)
 			}

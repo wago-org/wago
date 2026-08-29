@@ -3,8 +3,8 @@
 package runtime
 
 type tinygoPreparedIntState struct {
-	mem   []byte
-	entry uintptr
+	mem      []byte
+	stackTop uintptr
 }
 
 func (state *tinygoPreparedIntState) close() error {
@@ -12,6 +12,6 @@ func (state *tinygoPreparedIntState) close() error {
 		return err
 	}
 	state.mem = nil
-	state.entry = 0
+	state.stackTop = 0
 	return nil
 }

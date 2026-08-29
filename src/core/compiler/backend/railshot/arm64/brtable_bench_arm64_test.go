@@ -44,7 +44,7 @@ func BenchmarkExecBrTableCompactTargetIDsArm64(b *testing.B) {
 			}
 			defer coreruntime.Unmap(code)
 
-			args, results, trap := arena.Alloc(16), arena.Alloc(8), arena.Alloc(8)
+			args, results, trap := arena.Alloc(16), arena.Alloc(8), arena.Alloc(coreruntime.TrapBufferBytes)
 			binary.LittleEndian.PutUint64(args, 7)
 			binary.LittleEndian.PutUint64(args[8:], 1)
 			b.ReportMetric(float64(len(cm.Code)), "code-B")

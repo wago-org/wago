@@ -48,7 +48,7 @@ func TestGCPreemptStressBounded(t *testing.T) {
 	lin := jm.LinearMemory()
 	serArgs := ar.Alloc(16)
 	results := ar.Alloc(16)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(TrapBufferBytes)
 	binary.LittleEndian.PutUint32(serArgs, 2000) // iterations per native call
 
 	var stop atomic.Bool
@@ -120,7 +120,7 @@ func TestGCStallCharacterization(t *testing.T) {
 	lin := jm.LinearMemory()
 	serArgs := ar.Alloc(16)
 	results := ar.Alloc(16)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(TrapBufferBytes)
 	binary.LittleEndian.PutUint32(serArgs, 2000000000) // ~2e9 iters: long native run
 
 	// Observer: wait until native is demonstrably running (heartbeat != 0), then

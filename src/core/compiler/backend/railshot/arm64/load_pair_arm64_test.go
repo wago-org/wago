@@ -102,7 +102,7 @@ func BenchmarkLoadPairArm64(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer coreruntime.Unmap(code)
-			args, results, trap := arena.Alloc(8), arena.Alloc(8), arena.Alloc(8)
+			args, results, trap := arena.Alloc(8), arena.Alloc(8), arena.Alloc(coreruntime.TrapBufferBytes)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {

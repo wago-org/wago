@@ -48,7 +48,7 @@ func benchmarkSIMDV128Body(b *testing.B, body []byte) {
 
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	callEntry := entry + uintptr(cm.Entry[0])
 	lin := jm.LinearMemory()
 

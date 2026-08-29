@@ -117,7 +117,7 @@ func wagoSetup(b *testing.B, wasmBytes []byte, export string) (func(n int32) int
 	entry := base + uintptr(cm.Entry[localIdx])
 	serArgs := ar.Alloc(16)
 	results := ar.Alloc(16)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	lin := jm.LinearMemory()
 	call := func(n int32) int32 {
 		binary.LittleEndian.PutUint32(serArgs, uint32(n))
