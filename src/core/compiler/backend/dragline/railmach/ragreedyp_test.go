@@ -134,7 +134,7 @@ func TestAllocateGreedyPSplitsSpilledRangeAroundCall(t *testing.T) {
 	}
 }
 
-func TestAllocateGreedyPPlacesHotLoopSpillRegion(t *testing.T) {
+func TestAllocateGreedyPDoesNotEvictHotLoopVictimWithoutCall(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I64, wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
 		0x03, 0x40,
 		0x20, 0x00, 0x42, 0x01, 0x7c, 0x1a,
@@ -151,8 +151,10 @@ func TestAllocateGreedyPPlacesHotLoopSpillRegion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(allocation.Fragments) == 0 || allocation.Metrics.RegionalFragments == 0 || allocation.Metrics.RegionalBenefit == 0 || allocation.Metrics.RegionalStores == 0 || allocation.Fragments[0].Victim == 0 {
-		t.Fatalf("fragments=%#v metrics=%#v", allocation.Fragments, allocation.Metrics)
+	for _, fragment := range allocation.Fragments {
+		if fragment.Victim != 0 {
+			t.Fatalf("call-free loop evicted victim: fragments=%#v metrics=%#v", allocation.Fragments, allocation.Metrics)
+		}
 	}
 }
 

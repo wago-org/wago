@@ -543,7 +543,7 @@ func planRegionalFragments(f *Func, schedule *Schedule, config GreedyConfig, all
 					break
 				}
 			}
-			if !committed && !regionalFragmentEndsAtBlockBoundary(f, schedule, end) && !regionalFragmentFeedsDeferredComparison(f, schedule, interval.Reg, start, end) {
+			if state.callLive && !committed && !regionalFragmentEndsAtBlockBoundary(f, schedule, end) && !regionalFragmentFeedsDeferredComparison(f, schedule, interval.Reg, start, end) {
 				for physical := uint16(0); physical < uint16(limit); physical++ {
 					victim, ok := regionalInactiveVictim(f, allocation, interval.Bank, physical, start, end)
 					if !ok {

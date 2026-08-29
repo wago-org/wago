@@ -956,9 +956,17 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	}
 	hasMemoryAccess := false
 	cacheMemoryBounds := !plan.ABI.HasCall
+	commonMemoryEnd := uint64(0)
+	commonMemoryEndValid := true
 	for _, instruction := range plan.Machine.Insts {
-		if _, _, _, memory := nativeMemoryAccess(instruction.Op); memory {
+		if size, _, _, memory := nativeMemoryAccess(instruction.Op); memory {
 			hasMemoryAccess = true
+			end := uint64(uint32(instruction.Aux)) + uint64(size)
+			if commonMemoryEnd == 0 {
+				commonMemoryEnd = end
+			} else if commonMemoryEnd != end {
+				commonMemoryEndValid = false
+			}
 		}
 		if instruction.Op == wasm.InstrMemoryGrow {
 			cacheMemoryBounds = false
@@ -966,10 +974,17 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		}
 	}
 	cacheMemoryBounds = cacheMemoryBounds && hasMemoryAccess
+	cacheMemoryLimit := cacheMemoryBounds && commonMemoryEndValid && commonMemoryEnd != 0 && commonMemoryEnd <= plan.Stack.MemoryMinBytes &&
+		(commonMemoryEnd <= 0xfff || commonMemoryEnd&0xfff == 0 && commonMemoryEnd>>12 <= 0xfff)
 	if cacheMemoryBounds {
 		a.SubImm64(arm64.X8, arm64.X26, abi.ActualLinMemByteSize64Offset)
 		if !a.Load64(arm64.X8, arm64.X8, 0) {
 			return nil, 0, true, fmt.Errorf("RailMach cached memory size load is not encodable")
+		}
+		if cacheMemoryLimit {
+			if !emitARM64BoundsLimit(&a, arm64.X8, arm64.X8, commonMemoryEnd, plan.Stack.MemoryMinBytes) {
+				return nil, 0, true, fmt.Errorf("RailMach common memory limit is not encodable")
+			}
 		}
 	}
 	hasCopysign32, hasCopysign64 := false, false
@@ -2198,9 +2213,6 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						if railMachElidesBoundsCheck(plan, check.index) || memoryChecked(operands[0].Reg, check.end) {
 							continue
 						}
-						a.MovReg32(arm64.X16, lhs)
-						a.MovImm64(arm64.X17, check.end)
-						a.Add64(arm64.X16, arm64.X16, arm64.X17)
 						bounds := arm64.X8
 						if !cacheMemoryBounds {
 							a.SubImm64(arm64.X17, arm64.X26, abi.ActualLinMemByteSize64Offset)
@@ -2209,7 +2221,15 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 							}
 							bounds = arm64.X17
 						}
-						a.CmpReg64(arm64.X16, bounds)
+						if cacheMemoryLimit {
+							a.CmpReg32(lhs, arm64.X8)
+						} else if emitARM64BoundsLimit(&a, arm64.X17, bounds, check.end, plan.Stack.MemoryMinBytes) {
+							a.CmpReg32(lhs, arm64.X17)
+						} else {
+							a.MovReg32(arm64.X16, lhs)
+							emitARM64BoundsEnd(&a, arm64.X16, check.end)
+							a.CmpReg64(arm64.X16, bounds)
+						}
 						if err := emitMemoryTrapBranch(check.source); err != nil {
 							return nil, 0, true, err
 						}
@@ -2250,9 +2270,6 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				}
 				end := uint64(uint32(instruction.Aux)) + uint64(size)
 				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
-					a.MovReg32(boundsAddress, lhs)
-					a.MovImm64(arm64.X17, uint64(uint32(instruction.Aux))+uint64(size))
-					a.Add64(boundsAddress, boundsAddress, arm64.X17)
 					bounds := arm64.X8
 					if !cacheMemoryBounds {
 						a.SubImm64(arm64.X17, arm64.X26, abi.ActualLinMemByteSize64Offset)
@@ -2261,14 +2278,23 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						}
 						bounds = arm64.X17
 					}
-					a.CmpReg64(boundsAddress, bounds)
+					if cacheMemoryLimit {
+						a.CmpReg32(lhs, arm64.X8)
+					} else if emitARM64BoundsLimit(&a, arm64.X17, bounds, end, plan.Stack.MemoryMinBytes) {
+						a.CmpReg32(lhs, arm64.X17)
+					} else {
+						a.MovReg32(boundsAddress, lhs)
+						emitARM64BoundsEnd(&a, boundsAddress, end)
+						a.CmpReg64(boundsAddress, bounds)
+					}
 					if err := emitMemoryTrapBranch(wasmOffset); err != nil {
 						return nil, 0, true, err
 					}
 				}
-				if !chainSecond {
-					a.MovReg32(arm64.X16, lhs)
-					a.Add64(arm64.X16, arm64.X26, arm64.X16)
+				preIndex := len(plan.PostRAPreIndex) != 0 && plan.PostRAPreIndex[instructionID]
+				directIndexed := encodedChain == 0 && !preIndex && uint32(instruction.Aux) == 0
+				if !chainSecond && !directIndexed {
+					a.AddExtUXTW(arm64.X16, arm64.X26, lhs)
 				}
 				if chainFirst {
 					if uint32(instruction.Aux) != 0 {
@@ -2303,7 +2329,6 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					}
 					continue
 				}
-				preIndex := len(plan.PostRAPreIndex) != 0 && plan.PostRAPreIndex[instructionID]
 				if preIndex && !chainSecond {
 					offset := int32(uint32(instruction.Aux))
 					if store {
@@ -2337,7 +2362,21 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					a.MovImm64(arm64.X17, uint64(uint32(instruction.Aux)))
 					a.Add64(arm64.X16, arm64.X16, arm64.X17)
 				}
-				if store {
+				if directIndexed {
+					if store {
+						value := operands[1].Reg
+						src := reg(value)
+						if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+							a.StrFIdx(arm64.X26, lhs, src, 0, plan.Machine.VRegs[value].Type == railmach.TypeF64)
+						} else {
+							a.StoreIdx(arm64.X26, lhs, src, 0, size)
+						}
+					} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
+						a.LdrFIdx(dst, arm64.X26, lhs, 0, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
+					} else {
+						a.LoadIdx(dst, arm64.X26, lhs, 0, size, signed, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeI64)
+					}
+				} else if store {
 					value := operands[1].Reg
 					src := reg(value)
 					if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
@@ -2984,6 +3023,41 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	plan.MemoryCheckEnds = memoryCheckEnds
 	plan.MemoryCheckTouched = memoryCheckTouched
 	return a.B, internalOffset, true, nil
+}
+
+// emitARM64BoundsEnd adds a scalar access's constant end to its zero-extended
+// memory32 address. Common access widths and offsets fit AArch64's immediate
+// form and avoid materializing a scratch constant in every hot-path check.
+func emitARM64BoundsEnd(a *arm64.Asm, address arm64.Reg, end uint64) {
+	if end <= 0xfff {
+		a.AddImm64(address, address, uint32(end))
+		return
+	}
+	if end&0xfff == 0 && end>>12 <= 0xfff {
+		a.AddImm64LSL12(address, address, uint32(end))
+		return
+	}
+	a.MovImm64(arm64.X17, end)
+	a.Add64(address, address, arm64.X17)
+}
+
+// emitARM64BoundsLimit converts addr+end <= memoryBytes into the equivalent
+// memory32 comparison addr <= memoryBytes-end. The module minimum proves the
+// subtraction cannot underflow, and memory32's 4 GiB ceiling makes the result
+// exactly representable by the 32-bit comparison.
+func emitARM64BoundsLimit(a *arm64.Asm, dst, bounds arm64.Reg, end, memoryMinimum uint64) bool {
+	if end == 0 || end > memoryMinimum {
+		return false
+	}
+	if end <= 0xfff {
+		a.SubImm64(dst, bounds, uint32(end))
+		return true
+	}
+	if end&0xfff == 0 && end>>12 <= 0xfff {
+		a.SubImm64LSL12(dst, bounds, uint32(end))
+		return true
+	}
+	return false
 }
 
 func arm64IntegerComparisonKind(kind wasm.InstrKind) bool {

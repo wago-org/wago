@@ -17,6 +17,22 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func TestARM64BoundsImmediateHelpers(t *testing.T) {
+	var a arm64.Asm
+	emitARM64BoundsEnd(&a, arm64.X3, 8)
+	if len(a.B) != 4 {
+		t.Fatalf("small bounds end emitted %d bytes, want 4", len(a.B))
+	}
+	a.B = a.B[:0]
+	if !emitARM64BoundsLimit(&a, arm64.X4, arm64.X5, 8, 64<<10) || len(a.B) != 4 {
+		t.Fatalf("small bounds limit emitted %d bytes", len(a.B))
+	}
+	a.B = a.B[:0]
+	if emitARM64BoundsLimit(&a, arm64.X4, arm64.X5, 64<<10, 32<<10) || len(a.B) != 0 {
+		t.Fatalf("underflowing bounds limit was emitted: %x", a.B)
+	}
+}
+
 func TestCompilerARM64MOPSBulkMemoryIsFeatureGated(t *testing.T) {
 	typeSec := wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil)))
 	funcSec := wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0)))
