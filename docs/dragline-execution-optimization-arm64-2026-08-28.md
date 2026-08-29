@@ -150,6 +150,38 @@ The final focused result is 3.7% faster than Railshot. The validator's native
 body fell from 11,724 to 6,564 bytes, a 44.0% reduction. The independent
 all-corpus prioritization pass measured `validateN` at 0.955x Railshot.
 
+`json-as-simd.deserializeN(200)` is substantially improved but remains the
+first unfinished corpus in the execution campaign. Direct-call structured
+functions now keep their shallow scalar operand stack and integer locals in
+registers across call-free regions, spill canonical call arguments and pinned
+locals with paired ARM64 transfers, retain the immutable memory bound, and
+outline scalar memory traps. Calls into RailMach functions consume the
+callee's existing private-ABI preservation contract instead of forcing a
+second caller-side local spill. Canonical JSON whitespace loops are emitted as
+one compact checked loop rather than nested result-valued Wasm controls.
+
+The progression below uses seven alternating 300 ms samples per backend on the
+same Apple M4 Max. Values are medians.
+
+| State | Dragline | Railshot | D/R |
+|---|---:|---:|---:|
+| Initial structured emitter | 137.54 us | 48.81 us | 2.818x |
+| Pinned locals + cached bounds | 125.38 us | 49.47 us | 2.534x |
+| Register operand stack across calls | 65.75 us | 49.35 us | 1.332x |
+| Cold scalar traps + RailMach call contracts | 61.77 us | 49.33 us | 1.252x |
+| Whitespace predicate and loop lowering | 59.68 us | 48.65 us | 1.227x |
+| Paired call-boundary transfers | 58.86 us | 48.62 us | **1.211x** |
+
+That is a 57.2% execution-latency reduction from the initial state. Function
+48 is 4,552 native bytes and the large schema parser at function 51 is 7,804
+bytes, down from 4,700 and 8,344 bytes immediately before the loop and paired
+transfer work. The remaining 21.1% gap is not attributed to one parser loop:
+sampling shows it distributed across the export, allocator, vector/string,
+and array-parser helpers. Broadly admitting these large scalar functions to
+RailMach is not safe yet: repeated execution exposed the documented
+loop-edge/live-range contract gap, so the conservative SIMD-module admission
+gate remains in place.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is

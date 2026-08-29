@@ -282,21 +282,29 @@ func TestARM64RailMachLeaSPLargeFrameOffset(t *testing.T) {
 }
 
 func TestARM64StructuredRegisterModesKeepShallowOperandStackInRegisters(t *testing.T) {
-	operandStack, full := arm64StructuredRegisterModes(false, false, false, len(arm64StackLocalRegisters)+1, 0, len(arm64OperandStackRegisters))
+	operandStack, full := arm64StructuredRegisterModes(false, false, false, false, len(arm64StackLocalRegisters)+1, 0, len(arm64OperandStackRegisters))
 	if !operandStack || full {
 		t.Fatalf("register modes = operand stack %t, full %t; want true, false", operandStack, full)
 	}
-	operandStack, full = arm64StructuredRegisterModes(false, false, false, len(arm64StackLocalRegisters), 8, len(arm64OperandStackRegisters))
+	operandStack, full = arm64StructuredRegisterModes(false, false, false, false, len(arm64StackLocalRegisters), 8, len(arm64OperandStackRegisters))
 	if !operandStack || !full {
 		t.Fatalf("register modes = operand stack %t, full %t; want true, true", operandStack, full)
 	}
-	operandStack, full = arm64StructuredRegisterModes(true, false, false, len(arm64MixedScalarLocalRegisters), 0, arm64SIMDOperandStackRegisters)
+	operandStack, full = arm64StructuredRegisterModes(true, false, false, false, len(arm64MixedScalarLocalRegisters), 0, arm64SIMDOperandStackRegisters)
 	if !operandStack || full {
 		t.Fatalf("mixed SIMD register modes = operand stack %t, full %t; want true, false", operandStack, full)
 	}
-	operandStack, _ = arm64StructuredRegisterModes(true, false, false, 0, 0, arm64SIMDOperandStackRegisters+1)
+	operandStack, _ = arm64StructuredRegisterModes(true, false, false, false, 0, 0, arm64SIMDOperandStackRegisters+1)
 	if operandStack {
 		t.Fatal("deep mixed SIMD operand stack was admitted to scalar registers")
+	}
+	operandStack, full = arm64StructuredRegisterModes(false, true, true, false, len(arm64CallPinnedLocalRegisters), 0, len(arm64OperandStackRegisters))
+	if !operandStack || full {
+		t.Fatalf("direct-call register modes = operand stack %t, full %t; want true, false", operandStack, full)
+	}
+	operandStack, _ = arm64StructuredRegisterModes(false, true, false, false, 0, 0, 1)
+	if operandStack {
+		t.Fatal("unmanaged call boundary admitted the scalar operand stack to registers")
 	}
 }
 
