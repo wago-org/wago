@@ -10,11 +10,11 @@ import (
 
 func TestARM64ProductionConsumesProvedBoundsElision(t *testing.T) {
 	fn, plan := constantMemoryEmissionTestFunc(t)
-	optimized, _, _, err := emitARM64(fn, plan, nil, corecompiler.Target{}, nil, nil, nil, nil, nil)
+	optimized, _, _, _, err := emitARM64(fn, plan, nil, corecompiler.Target{}, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	checked, _, _, err := emitARM64(fn, nil, nil, corecompiler.Target{}, nil, nil, nil, nil, nil)
+	checked, _, _, _, err := emitARM64(fn, nil, nil, corecompiler.Target{}, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,11 +25,11 @@ func TestARM64ProductionConsumesProvedBoundsElision(t *testing.T) {
 
 func TestARM64ProductionConsumesMaskedRangeBoundsElision(t *testing.T) {
 	fn, plan := maskedMemoryEmissionTestFunc(t)
-	optimized, _, _, err := emitARM64(fn, plan, nil, corecompiler.Target{}, nil, nil, nil, nil, nil)
+	optimized, _, _, _, err := emitARM64(fn, plan, nil, corecompiler.Target{}, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	checked, _, _, err := emitARM64(fn, nil, nil, corecompiler.Target{}, nil, nil, nil, nil, nil)
+	checked, _, _, _, err := emitARM64(fn, nil, nil, corecompiler.Target{}, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,11 +40,11 @@ func TestARM64ProductionConsumesMaskedRangeBoundsElision(t *testing.T) {
 
 func TestARM64ProductionConsumesMaskedInductionBoundsElision(t *testing.T) {
 	fn, plan := maskedLoopMemoryEmissionTestFunc(t)
-	optimized, _, _, err := emitARM64(fn, plan, nil, corecompiler.Target{}, nil, nil, nil, nil, nil)
+	optimized, _, _, _, err := emitARM64(fn, plan, nil, corecompiler.Target{}, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	checked, _, _, err := emitARM64(fn, nil, nil, corecompiler.Target{}, nil, nil, nil, nil, nil)
+	checked, _, _, _, err := emitARM64(fn, nil, nil, corecompiler.Target{}, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

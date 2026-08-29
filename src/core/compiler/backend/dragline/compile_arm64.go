@@ -332,9 +332,13 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			}
 		}
 		plan = applyBoundsMode(input.Bounds, plan, nativePlan)
-		body, internalOffset, relocs, err := emitARM64(fn, plan, nativePlan, input.Target, input.Profile, moduleContracts, bodyScratch, emitMetrics, capture)
+		body, internalOffset, relocs, railMachFinalized, err := emitARM64(fn, plan, nativePlan, input.Target, input.Profile, moduleContracts, bodyScratch, emitMetrics, capture)
 		if err != nil {
 			return corecompiler.Output{}, functionError(m, i, "emit", err)
+		}
+		if !railMachFinalized {
+			publishedContract = railmach.ABIContract{}
+			moduleContracts[i] = railmach.ABIContract{}
 		}
 		if captureGC {
 			appendGCFrameCallsites(&gcCallsites, &gcRoots, uint32(entries[i]), emitMetrics.FrameBytes, emissionMetadata.Safepoints, emissionMetadata.Roots)
@@ -516,7 +520,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				}
 			}
 			plan = applyBoundsMode(input.Bounds, plan, nativePlan)
-			body, internalOffset, relocs, err := emitARM64(fn, plan, nativePlan, input.Target, input.Profile, contracts, worker.body, nil, nil)
+			body, internalOffset, relocs, _, err := emitARM64(fn, plan, nativePlan, input.Target, input.Profile, contracts, worker.body, nil, nil)
 			if err != nil {
 				return functionError(m, i, "emit", err)
 			}
@@ -564,26 +568,27 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, RequiresARM64MOPS: requiresMOPS}, nil
 }
 
-func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, target corecompiler.Target, observations *compilerprofile.Module, contracts []railmach.ABIContract, scratch []byte, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []arm64CallReloc, error) {
+func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, target corecompiler.Target, observations *compilerprofile.Module, contracts []railmach.ABIContract, scratch []byte, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []arm64CallReloc, bool, error) {
 	if nativePlan != nil {
 		var relocs []arm64CallReloc
 		useMOPS := target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, observations, fn.Index)
 		if code, entry, ok, err := emitARM64RailMach(fn, nativePlan, useMOPS, scratch, &relocs, metrics, metadata); ok || err != nil {
-			return code, entry, relocs, err
+			return code, entry, relocs, ok, err
 		}
 	}
 	if fn.Stack != nil {
-		return emitARM64Stack(fn, plan, target.HasFeature(corecompiler.TargetFeatureARM64MOPS), observations, contracts, scratch, metrics, metadata)
+		code, entry, relocs, err := emitARM64Stack(fn, plan, target.HasFeature(corecompiler.TargetFeatureARM64MOPS), observations, contracts, scratch, metrics, metadata)
+		return code, entry, relocs, false, err
 	}
 	if len(fn.Params) > len(arm64ParamRegisters) {
-		return nil, 0, nil, fmt.Errorf("%d parameters exceed the four-register MVP ABI", len(fn.Params))
+		return nil, 0, nil, false, fmt.Errorf("%d parameters exceed the four-register MVP ABI", len(fn.Params))
 	}
 	allocation, err := allocateLinear(fn, len(arm64ValueRegisters))
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, nil, false, err
 	}
 	if allocation.frameBytes > 32760 {
-		return nil, 0, nil, &ResourceLimitError{Resource: "ARM64 spill frame bytes", Required: uint64(allocation.frameBytes), Limit: 32760}
+		return nil, 0, nil, false, &ResourceLimitError{Resource: "ARM64 spill frame bytes", Required: uint64(allocation.frameBytes), Limit: 32760}
 	}
 	if metrics != nil {
 		metrics.FrameBytes = allocation.frameBytes
@@ -605,7 +610,7 @@ func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 			ok = a.Load64(arm64ParamRegisters[i], arm64.X9, uint32(i*8))
 		}
 		if !ok {
-			return nil, 0, nil, fmt.Errorf("parameter %d offset is not encodable", i)
+			return nil, 0, nil, false, fmt.Errorf("parameter %d offset is not encodable", i)
 		}
 	}
 	call := a.Bl()
@@ -621,7 +626,7 @@ func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 	a.Align16()
 	internalOffset := a.Len()
 	if !a.PatchBranch26(call, internalOffset) {
-		return nil, 0, nil, fmt.Errorf("internal entry is out of branch range")
+		return nil, 0, nil, false, fmt.Errorf("internal entry is out of branch range")
 	}
 	if allocation.frameBytes != 0 {
 		a.MovImm64(arm64.X16, uint64(allocation.frameBytes))
@@ -640,11 +645,11 @@ func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 			args := fn.Operands(railssa.ValueID(id))
 			lhs, err := arm64Source(&a, allocation.values[args[0]], arm64.X16)
 			if err != nil {
-				return nil, 0, nil, err
+				return nil, 0, nil, false, err
 			}
 			rhs, err := arm64Source(&a, allocation.values[args[1]], arm64.X17)
 			if err != nil {
-				return nil, 0, nil, err
+				return nil, 0, nil, false, err
 			}
 			wide := value.Type == wasm.I64
 			switch value.Op {
@@ -679,20 +684,20 @@ func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 					a.Eor32(dst, lhs, rhs)
 				}
 			default:
-				return nil, 0, nil, fmt.Errorf("unsupported SSA op %s", value.Op)
+				return nil, 0, nil, false, fmt.Errorf("unsupported SSA op %s", value.Op)
 			}
 		}
 		if spill {
 			off := uint32(allocation.values[id].index) * 8
 			if !a.Store64(dst, arm64.SP, off) {
-				return nil, 0, nil, fmt.Errorf("spill store offset %d is not encodable", off)
+				return nil, 0, nil, false, fmt.Errorf("spill store offset %d is not encodable", off)
 			}
 		}
 	}
 	if len(fn.Results) == 1 {
 		result, err := arm64Source(&a, allocation.values[fn.Result], arm64.X16)
 		if err != nil {
-			return nil, 0, nil, err
+			return nil, 0, nil, false, err
 		}
 		if result != arm64.X0 {
 			if fn.Results[0] == wasm.I32 {
@@ -707,7 +712,7 @@ func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 		a.AddSPReg(arm64.X16)
 	}
 	a.Ret()
-	return a.B, internalOffset, nil, nil
+	return a.B, internalOffset, nil, false, nil
 }
 
 func measureARM64PostRABaseline(fn *railssa.Func, plan *nativeBackendPlan, mops bool) (int, error) {
@@ -1056,6 +1061,13 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			a.Load64(arm64.X8, arm64.X17, 0)
 		}
 	}
+	cacheGlobals := nativeARM64CachesGlobals(plan.Machine)
+	reloadCachedGlobals := func() {
+		if cacheGlobals {
+			a.Ldur64(arm64.X27, arm64.X26, -int32(abi.GlobalsPtrOffset))
+		}
+	}
+	reloadCachedGlobals()
 	blockOffsets := plan.BlockOffsets
 	patches := plan.BranchPatches[:0]
 	conditionalPatches := plan.ConditionalPatches[:0]
@@ -1079,13 +1091,41 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	}
 	memoryCheckEnds := plan.MemoryCheckEnds
 	memoryCheckTouched := plan.MemoryCheckTouched[:0]
+	type globalMemoryCheck struct {
+		index uint32
+		end   uint64
+		valid bool
+	}
+	var globalMemoryChecks [4]globalMemoryCheck
+	resetGlobalMemoryChecks := func() { clear(globalMemoryChecks[:]) }
 	resetMemoryChecks := func() {
 		for _, address := range memoryCheckTouched {
 			memoryCheckEnds[address] = 0
 		}
 		memoryCheckTouched = memoryCheckTouched[:0]
+		resetGlobalMemoryChecks()
 	}
 	memoryChecked := func(address railmach.VReg, end uint64) bool {
+		if index, ok := arm64RailMachGlobalAddress(plan, address); ok {
+			free := -1
+			for slot := range globalMemoryChecks {
+				check := &globalMemoryChecks[slot]
+				if check.valid && check.index == index {
+					if check.end >= end {
+						return true
+					}
+					check.end = end
+					return false
+				}
+				if !check.valid && free < 0 {
+					free = slot
+				}
+			}
+			if free >= 0 {
+				globalMemoryChecks[free] = globalMemoryCheck{index: index, end: end, valid: true}
+			}
+			return false
+		}
 		if memoryCheckEnds[address] >= end {
 			return true
 		}
@@ -1199,6 +1239,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			instructionResult := plan.Machine.Insts[instructionID].Result
 			skipped := skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID]
 			instruction := plan.Machine.Insts[instructionID]
+			if instruction.Op == wasm.InstrGlobalSet || railmach.IsCall(instruction.Op) {
+				resetGlobalMemoryChecks()
+			}
 			if pendingSpill != 0 {
 				switch {
 				case !skipped && !nativeControlInstruction(instruction.Op) && arm64RailMachInstructionUses(plan.Machine, instructionID, pendingSpill):
@@ -2059,6 +2102,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						return nil, 0, true, fmt.Errorf("RailMach post-call memory size load is not encodable")
 					}
 				}
+				reloadCachedGlobals()
 				continue
 			}
 			if instruction.Op == wasm.InstrCall {
@@ -2131,7 +2175,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					}
 					*relocs = append(*relocs, arm64CallReloc{at: a.Bl(), target: uint32(instruction.Aux) - plan.Stack.ImportedFuncs})
 					metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 0)
-					if !selfCall || instruction.ResultCount() > 1 {
+					if !arm64RailMachDirectCallUsesPrivateABI(plan, instructionID, instruction) || instruction.ResultCount() > 1 {
 						if err := arm64StagePrivateCallResults(&a, instruction, callOffset); err != nil {
 							return nil, 0, true, err
 						}
@@ -2161,6 +2205,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						return nil, 0, true, fmt.Errorf("RailMach post-call memory size load is not encodable")
 					}
 				}
+				reloadCachedGlobals()
 				continue
 			}
 			if instruction.Op == wasm.InstrMemoryCopy || instruction.Op == wasm.InstrMemoryFill {
@@ -2216,9 +2261,15 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					}
 					continue
 				}
-				a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
-				if !a.Load64(arm64.X17, arm64.X17, uint32(instruction.Aux)*8) {
-					return nil, 0, true, fmt.Errorf("RailMach global %d offset is not encodable", uint32(instruction.Aux))
+				if cacheGlobals {
+					if !a.Load64(arm64.X17, arm64.X27, uint32(instruction.Aux)*8) {
+						return nil, 0, true, fmt.Errorf("RailMach global %d offset is not encodable", uint32(instruction.Aux))
+					}
+				} else {
+					a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
+					if !a.Load64(arm64.X17, arm64.X17, uint32(instruction.Aux)*8) {
+						return nil, 0, true, fmt.Errorf("RailMach global %d offset is not encodable", uint32(instruction.Aux))
+					}
 				}
 				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 					if !a.Load64(arm64.X16, arm64.X17, 0) {
@@ -2293,9 +2344,15 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					}
 					continue
 				}
-				a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
-				if !a.Load64(arm64.X17, arm64.X17, uint32(instruction.Aux)*8) {
-					return nil, 0, true, fmt.Errorf("RailMach global %d offset is not encodable", uint32(instruction.Aux))
+				if cacheGlobals {
+					if !a.Load64(arm64.X17, arm64.X27, uint32(instruction.Aux)*8) {
+						return nil, 0, true, fmt.Errorf("RailMach global %d offset is not encodable", uint32(instruction.Aux))
+					}
+				} else {
+					a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
+					if !a.Load64(arm64.X17, arm64.X17, uint32(instruction.Aux)*8) {
+						return nil, 0, true, fmt.Errorf("RailMach global %d offset is not encodable", uint32(instruction.Aux))
+					}
 				}
 				src := lhs
 				if plan.Machine.VRegs[operands[0].Reg].Bank == railmach.BankFPR {
@@ -3342,6 +3399,44 @@ func arm64RailMachDirectCallStackAdjust(plan *nativeBackendPlan, instruction rai
 		return 0
 	}
 	return 16
+}
+
+func arm64RailMachDirectCallUsesPrivateABI(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) bool {
+	if plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall {
+		return false
+	}
+	target := uint32(instruction.Aux)
+	if target == plan.Stack.FunctionIndex {
+		return true
+	}
+	if target < plan.Stack.ImportedFuncs {
+		return false
+	}
+	for _, call := range plan.Calls {
+		if call.Instruction == instructionID && call.Callee == target {
+			return !call.Conservative && call.Class != 0
+		}
+	}
+	return false
+}
+
+func arm64RailMachGlobalAddress(plan *nativeBackendPlan, value railmach.VReg) (uint32, bool) {
+	if plan == nil || plan.Machine == nil || value == 0 || int(value) >= len(plan.Machine.VRegs) {
+		return 0, false
+	}
+	definition := plan.Machine.VRegs[value].Def / 6
+	if int(definition) >= len(plan.Machine.Insts) {
+		return 0, false
+	}
+	instruction := plan.Machine.Insts[definition]
+	if instruction.Op != wasm.InstrGlobalGet || instruction.Result != value {
+		return 0, false
+	}
+	index := uint32(instruction.Aux)
+	if plan.Stack == nil || int(index) >= len(plan.Stack.Globals) {
+		return 0, false
+	}
+	return index, true
 }
 
 type arm64CachedFloatConstant struct {

@@ -255,6 +255,31 @@ and 1,023.25 us for Railshot, or **1.004x**. The fresh all-corpus baseline was
 1,499.41 us versus 1,016.31 us, or 1.475x, so recursive execution latency fell
 31.5% and is now at parity. Native code fell from 180 to 148 bytes (-17.8%).
 
+`json-as.serializeN(200)` is improved but remains unfinished. The ARM64
+finalizer now reports whether a RailMach candidate actually emitted RailMach
+code before its private ABI contract is published. This closes the mixed-emitter
+hole that made an earlier broad call optimization unsafe. Calls with one result
+can consequently skip canonical result-vector staging only when the callee's
+final emitter is proven; argument mirroring and the call-frame wrapper remain.
+
+The serializer repeatedly addresses linear memory through an unchanged mutable
+global. Equivalent `global.get` addresses within one block now share explicit
+bounds proofs until a global write or call invalidates them. Global-heavy
+RailMach functions also retain the immutable global-descriptor array in X27,
+which is excluded from allocation, saved by the private ABI, and reloaded after
+every call because structured callees may use X27 internally. The abandoned X28
+variant was faster but is invalid on Go/ARM64 because X28 is the runtime's
+goroutine register.
+
+Seven alternating 300 ms samples per backend measured 22.12 us for Dragline and
+18.57 us for Railshot, or **1.191x**. The preceding three-round corpus pass was
+23.30 us versus 18.74 us, or 1.243x, so Dragline latency fell 5.1% relative to
+that fresh baseline. Serializer helper function 27 fell from 4,980 to 4,592
+native bytes (-7.8%); the export wrapper fell from 1,076 to 1,052 bytes. A fresh
+uncached 36-export differential passes. The remaining 19.1% gap is still in the
+per-item serializer and allocation helpers, so this corpus remains the active
+optimization target.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is

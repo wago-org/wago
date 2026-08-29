@@ -892,6 +892,11 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		return nil, err
 	}
 	defaultGreedy := railmach.DefaultGreedyConfig(machineTarget)
+	if nativeARM64CachesGlobals(machine) {
+		// X27 retains the immutable global-descriptor array and is reloaded after
+		// calls into structured code; keep it outside the allocator here.
+		defaultGreedy.Linear.GPRs = nativeARM64GlobalsRegister
+	}
 	defaultGreedy.CallClobbers = nativeCallClobberOverrides(machine, stack.ImportedFuncs, moduleContracts, components, refinedRecursive, localIndex, defaultGreedy)
 	bestGreedy := defaultGreedy
 	var best railmach.ScheduleScore
@@ -1110,6 +1115,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if err != nil {
 		return nil, err
 	}
+	if nativeARM64CachesGlobals(machine) {
+		contract.GPRClobbers |= uint64(1) << nativeARM64GlobalsRegister
+		contract.CalleeGPRs |= uint64(1) << nativeARM64GlobalsRegister
+	}
 	localContract := contract
 	refinedCalls := refineNativeCallContracts(calls, stack.ImportedFuncs, moduleContracts, components, refinedRecursive, localIndex)
 	railmach.PropagateCallClobbers(&contract, calls, defaultGreedy)
@@ -1285,6 +1294,21 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	p.plan.MemoryCheckEnds = p.memoryCheckEnds
 	p.plan.MemoryCheckTouched = p.memoryCheckTouched
 	return &p.plan, nil
+}
+
+const nativeARM64GlobalsRegister = 19
+
+func nativeARM64CachesGlobals(machine *railmach.Func) bool {
+	if machine == nil || machine.Target != railmach.TargetARM64 {
+		return false
+	}
+	uses := 0
+	for _, instruction := range machine.Insts {
+		if instruction.Op == wasm.InstrGlobalGet || instruction.Op == wasm.InstrGlobalSet {
+			uses++
+		}
+	}
+	return uses >= 4
 }
 
 func buildNativeEdgeConstantRematerialization(plan *nativeBackendPlan, skipped []bool, uses []uint32) {

@@ -754,12 +754,37 @@ func TestARM64RailMachSelfCallUsesCanonicalArgumentVector(t *testing.T) {
 	if got := arm64RailMachDirectCallStackAdjust(plan, local); got != 16 {
 		t.Fatalf("non-self RailMach call stack adjustment = %d, want 16", got)
 	}
+	plan.Calls = []railmach.CallContract{{Instruction: 8, Callee: 4, Class: railmach.ABILeafScalar}}
+	if !arm64RailMachDirectCallUsesPrivateABI(plan, 8, local) {
+		t.Fatal("verified local callee did not use the private result ABI")
+	}
+	plan.Calls[0].Conservative = true
+	if arm64RailMachDirectCallUsesPrivateABI(plan, 8, local) {
+		t.Fatal("conservative local callee used the private result ABI")
+	}
 	imported := railmach.Inst{Op: wasm.InstrCall, Aux: 0}
 	if !arm64RailMachDirectCallNeedsRegisterArguments(plan, imported) {
 		t.Fatal("imported callee omitted argument registers")
 	}
 	if got := arm64RailMachDirectCallStackAdjust(plan, imported); got != 16 {
 		t.Fatalf("imported RailMach call stack adjustment = %d, want 16", got)
+	}
+}
+
+func TestARM64RailMachRecognizesGlobalMemoryAddress(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Stack: &railssa.StackFunc{Globals: []wasm.ValType{wasm.I32}},
+		Machine: &railmach.Func{
+			Insts: []railmach.Inst{{Op: wasm.InstrGlobalGet, Result: 1}},
+			VRegs: []railmach.VRegData{{}, {Def: 0}},
+		},
+	}
+	if index, ok := arm64RailMachGlobalAddress(plan, 1); !ok || index != 0 {
+		t.Fatalf("global address = %d, %t; want 0, true", index, ok)
+	}
+	plan.Machine.Insts[0].Op = wasm.InstrI32Const
+	if _, ok := arm64RailMachGlobalAddress(plan, 1); ok {
+		t.Fatal("constant recognized as a global memory address")
 	}
 }
 

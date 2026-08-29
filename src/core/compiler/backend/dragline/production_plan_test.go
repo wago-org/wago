@@ -44,6 +44,23 @@ func TestNativeDenseLocalTableTargets(t *testing.T) {
 	}
 }
 
+func TestNativeARM64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
+	machine := &railmach.Func{Target: railmach.TargetARM64, Insts: []railmach.Inst{
+		{Op: wasm.InstrGlobalGet}, {Op: wasm.InstrGlobalSet}, {Op: wasm.InstrGlobalGet},
+	}}
+	if nativeARM64CachesGlobals(machine) {
+		t.Fatal("three global accesses enabled the ARM64 descriptor cache")
+	}
+	machine.Insts = append(machine.Insts, railmach.Inst{Op: wasm.InstrGlobalGet})
+	if !nativeARM64CachesGlobals(machine) {
+		t.Fatal("four global accesses did not enable the ARM64 descriptor cache")
+	}
+	machine.Target = railmach.TargetAMD64
+	if nativeARM64CachesGlobals(machine) {
+		t.Fatal("AMD64 function enabled the ARM64 descriptor cache")
+	}
+}
+
 func TestNativeBackendPlannerBuildsCompleteRailMachProduct(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
