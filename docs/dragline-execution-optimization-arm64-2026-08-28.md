@@ -204,13 +204,24 @@ above.
 `blake-as-simd.hashN(100)` is the next unfinished corpus. Its two large
 structured compression functions declare 37 vector locals each, but ARM64 has
 only 20 registers available for persistent structured locals. Use-ranked local
-pinning and direct shuffle/rotate experiments appeared to reduce the focused
-latency from 802.58 us to roughly 460 us, but a forced uncached differential
-found an incorrect digest. Those changes were rejected in full. A diagnostic
-build that removed every structured SIMD bounds check did not improve BLAKE
-materially. The corpus remains unfinished; its next optimization must include
-an uncached result differential in the measurement loop, not only the execution
-worker.
+pinning keeps the most frequently read or written round state resident. Generic
+rotate idioms select `USHR` plus `SLI`, while common `i8x16.shuffle` masks select
+`REV32`, `ZIP1`, `ZIP2`, or a two-instruction lane rotate instead of two mask
+materializations, table lookups, and an OR. When every shuffle has a direct
+lowering and the function has no SIMD dot product, the otherwise-unused Q2/Q3
+shuffle scratch registers retain two additional hot locals.
+
+These changes were initially tested alongside an unsafe non-self call-frame
+experiment, and the combined build failed an uncached digest differential. The
+call change was the cause: after restricting it to self-recursion, each SIMD
+change was reintroduced independently and passed a fresh differential before
+measurement. Seven alternating 300 ms samples per backend now measure 460.65 us
+for Dragline and 390.30 us for Railshot, or **1.180x**. The fresh pre-slice
+result was 802.58 us versus 404.96 us, so Dragline latency fell 42.6%.
+Compression functions 7 and 8 fell from 36,440/33,448 to 19,668/18,244 native
+bytes. A diagnostic build that removed every structured SIMD bounds check did
+not improve BLAKE materially. The remaining gap is vector live-state pressure;
+the corpus remains unfinished.
 
 `sha256.hashN(8)` is complete for this campaign slice. Its 391-instruction
 integer RailMach kernel fell below the original 512-instruction gate for
