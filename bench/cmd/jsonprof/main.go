@@ -16,6 +16,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/wago-org/wago/src/wago"
@@ -98,11 +99,20 @@ func writePerfMap(in *wago.Instance, c *wago.Compiled) {
 		return
 	}
 	defer f.Close()
+	type region struct {
+		index, off int
+	}
+	regions := make([]region, len(entries))
+	for index, off := range entries {
+		regions[index] = region{index: index, off: off}
+	}
+	sort.Slice(regions, func(i, j int) bool { return regions[i].off < regions[j].off })
 	codeLen := c.CodeSize()
-	for i, off := range entries {
+	for position, region := range regions {
+		i, off := region.index, region.off
 		end := codeLen
-		if i+1 < len(entries) {
-			end = entries[i+1]
+		if position+1 < len(regions) {
+			end = regions[position+1].off
 		}
 		name, ok := c.LocalFuncName(i)
 		if !ok || name == "" {
