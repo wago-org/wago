@@ -1377,7 +1377,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	resultSlot := slotTop
 	resultSlots := funcTypeSlots(ft.Results)
 
-	f.flush()
+	f.flushWrapper()
 	f.storePinnedGlobals(false) // value-pinned globals → cells (reloaded after; callee can't touch B's cells)
 
 	if need := resultSlot + resultSlots; need > f.maxSpill {
@@ -2829,7 +2829,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	if scratchEnd > f.spillFloor {
 		f.spillFloor = scratchEnd
 	}
-	f.flush() // args → canonical slot-width slots
+	f.flushWrapper() // args → canonical slot-width slots
 	f.spillFloor = oldSpillFloor
 	f.storePinnedGlobals(false)      // value-pinned globals → cells
 	f.storeModuleGlobals(RAX)        // same-instance callee's offset-0 prologue reloads from cells
@@ -2933,7 +2933,7 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 		resultSlots += mtOf(rt).stackSlots()
 	}
 
-	f.flush()                   // all operands to canonical slots; args start at slotOf[d-p]
+	f.flushWrapper()            // all operands to canonical slots; args start at slotOf[d-p]
 	f.storePinnedGlobals(false) // spill value-pinned globals to their cells before the call
 	f.storeModuleGlobals(RAX)   // wrapper callee's offset-0 prologue reloads from the cells
 

@@ -388,7 +388,15 @@ suspended direct-host activations (including sync-thunk records), and same-domai
 foreign instances. Mutable local GC globals synchronize checked collector slots,
 one private collector-reference table is scanned directly, and indirect/reference
 calls, function subtype checks, proper tails, and fixed EH payload records publish
-exact maps. Dynamic host and same-domain foreign direct tails discard the current
+exact maps. Wrapper calls stage any operand stack whose later spilled source sits
+below its canonical destination. This preserves leading arguments for wide
+reference signatures even below the 64-slot wide-stack threshold. It also stages
+before materialization when GP pressure would consume the scratch-register
+reserve or XMM pressure would exhaust the vector register file, so a deferred
+argument cannot create a new overlapping spill. The Dewdrop
+reproducer used one nullable reference followed by 17 non-null references and
+previously propagated the leading null through the first five non-null argument
+slots. Dynamic host and same-domain foreign direct tails discard the current
 frame, so no dead caller roots are retained. A direct immutable-root visitor keeps
 warmed Throughput/Tiny recursive collection allocation-free. ARM64 polymorphic
 local `call_indirect` and same-domain foreign `call_ref` publish every possible
