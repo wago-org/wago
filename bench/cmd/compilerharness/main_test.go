@@ -91,7 +91,7 @@ func TestBuiltinDraglineCompilerWritesLoadableArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiled, err := wago.Load(artifact)
+	compiled, err := wago.LoadTrustedArtifact(artifact)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestBuiltinRailshotCompilerWritesLoadableArtifact(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	compiled, err := wago.Load(artifact)
+	compiled, err := wago.LoadTrustedArtifact(artifact)
 	if err != nil {
 		t.Fatal(err)
 	}

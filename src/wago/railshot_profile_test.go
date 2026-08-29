@@ -57,7 +57,7 @@ func TestRailshotProfileCountsNativeFunctionEntries(t *testing.T) {
 
 func TestRailshotProfileSurvivesArtifactRoundTrip(t *testing.T) {
 	module := railshotProfileModule()
-	c, err := Compile(NewRuntimeConfig().WithRailshotProfiling(true), module)
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithRailshotProfiling(true), module)
 	if err != nil {
 		t.Fatal(err)
 	}

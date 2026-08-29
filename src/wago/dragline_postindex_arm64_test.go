@@ -24,7 +24,7 @@ func TestDraglineARM64PostIndexPreservesTrapOrderAndFirstStore(t *testing.T) {
 			0x0b,
 		}))),
 	)
-	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestDraglineARM64LoadPairReportsOrderedTrapSite(t *testing.T) {
 			0x6a, 0x0b,
 		}))),
 	)
-	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
 	if err != nil {
 		t.Fatal(err)
 	}

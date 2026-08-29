@@ -91,7 +91,7 @@ func TestPersistentCacheSurvivesRestart(t *testing.T) {
 	}
 	if info, err := os.Stat(path); err != nil {
 		t.Fatal(err)
-	} else if got := info.Mode().Perm(); got != 0o600 {
+	} else if got := info.Mode().Perm(); runtime.GOOS != "windows" && got != 0o600 {
 		t.Fatalf("cache permissions = %o, want 600", got)
 	}
 

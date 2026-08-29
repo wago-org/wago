@@ -688,6 +688,9 @@ func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 var defaultRuntimeConfigAllocationSink *RuntimeConfig
 
 func TestDefaultRuntimeConfigAllocationBudget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows environment lookup allocates inside the standard library")
+	}
 	configAllocs := testing.AllocsPerRun(1000, func() {
 		defaultRuntimeConfigAllocationSink = NewRuntimeConfig()
 	})
