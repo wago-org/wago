@@ -11,6 +11,21 @@ The decision-grade collector measurement contract, canonical
 [benchmark review protocol](gc-benchmarks.md#benchmark-review-protocol), and
 roadmap-aligned matrix are documented in [gc-benchmarks.md](gc-benchmarks.md).
 
+## CLI heap sizing
+
+`wago run` uses the bounded Throughput collector defaults unless the invocation
+sets explicit capacities. Large compiler and build workloads can select the
+root instance's old/large-object heap and Eden nursery directly:
+
+```sh
+wago run --gc-heap 2GiB --gc-nursery 64MiB compiler.wasm
+```
+
+Both flags accept a positive byte count or a binary `KiB`, `MiB`, or `GiB`
+suffix. Values must fit the collector's 32-bit address space. Omitting the flags
+preserves the existing defaults. Collection remains enabled; heap sizing is not
+a substitute for exact native root admission.
+
 ## Current generated-payload boundary
 
 The mandatory pinned Core 3 corpus is complete, but that result is narrower than
