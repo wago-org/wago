@@ -687,6 +687,48 @@ func TestARM64RailMachSelfCallUsesCanonicalArgumentVector(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachHostAdapterKeepsArgumentsInCanonicalVector(t *testing.T) {
+	adapterBytes := func(params []wasm.ValType) int {
+		t.Helper()
+		source := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, []wasm.ValType{wasm.I32}))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x01, 0x0b}))),
+		)
+		m, err := wasm.DecodeModule(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatal(err)
+		}
+		target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stackScratch railssa.StackFunc
+		fn, err := buildCompilerFunc(m, 0, &stackScratch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var planner nativeBackendPlanner
+		plan, err := planner.Plan(fn.Structured, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, internalOffset, ok, err := emitARM64RailMach(fn, plan, false, nil, nil, nil, nil)
+		if err != nil || !ok {
+			t.Fatalf("RailMach finalization = ok %t, err %v", ok, err)
+		}
+		return internalOffset
+	}
+	withoutParams := adapterBytes(nil)
+	withParams := adapterBytes([]wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64})
+	if withParams != withoutParams {
+		t.Fatalf("host adapter bytes with/without parameters = %d/%d; canonical X8 vector should make them equal", withParams, withoutParams)
+	}
+}
+
 func TestARM64RealizesPreIndexLinearMemory(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

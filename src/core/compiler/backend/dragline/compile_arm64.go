@@ -869,17 +869,6 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	if len(plan.Machine.Results) > railmach.PrivateResultRegisters {
 		a.MovReg64(arm64.X16, arm64.X3)
 	}
-	for index, typ := range plan.Stack.Params[:min(len(plan.Stack.Params), len(arm64ParamRegisters))] {
-		ok := false
-		if typ == wasm.I32 || typ == wasm.F32 {
-			ok = a.Load32(arm64ParamRegisters[index], arm64.X9, uint32(index)*8)
-		} else {
-			ok = a.Load64(arm64ParamRegisters[index], arm64.X9, uint32(index)*8)
-		}
-		if !ok {
-			return nil, 0, true, fmt.Errorf("RailMach parameter %d offset is not encodable", index)
-		}
-	}
 	call := a.Bl()
 	if metadata != nil {
 		metadata.AdapterReturnOffset = uint32(a.Len())
