@@ -418,7 +418,7 @@ var catalog = []Definition{
 	amd64("dead-gc-new", "Dead GC constructors", "remove dropped GC constructor trees while preserving traps"),
 	amd64Off("gc-ref-facts", "GC reference facts", "propagate exact reference facts and dependent bounded forwarding proofs"),
 	amd64("gc-native-alloc", "Native GC allocation", "allocate admitted GC objects through native nursery fast paths"),
-	amd64("v128-const-cache", "Vector constant cache", "reserve vector registers for repeated constants"),
+	amd64("v128-const-cache", "AMD64 constant cache", "reserve vector constants and pool implicit scalar float masks"),
 	both("v128-pins", "Vector pins", "pin hot vector locals in registers"),
 	amd64Off("v128-sink", "Vector sinking", "sink vector operations into pinned locals"),
 	both("reg-abi", "Register ABI", "use Wago's internal register calling convention"),

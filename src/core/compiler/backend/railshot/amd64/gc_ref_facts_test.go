@@ -769,6 +769,57 @@ func TestGCConstructorKnownBoundsElideLogicalArrayChecks(t *testing.T) {
 	t.Logf("known array bounds code bytes: enabled=%d disabled=%d", on.CodeBytes, off.CodeBytes)
 }
 
+func TestGCExactFinalSubtypeSpecializesOpenStructGet(t *testing.T) {
+	enableGCRefFacts(t)
+	body := []byte{
+		0x01, 0x01, 0x63, 0x01, // one (ref null 1) local
+		0xfb, 0x01, 0x01, 0x21, 0x00, // struct.new_default 1; local.set 0
+		0x20, 0x00,
+		0xfb, 0x02, 0x00, 0x00, // struct.get open type 0 field 0
+		0x0b,
+	}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x50, 0x00, 0x5f, 0x01, 0x7f, 0x01},       // open type 0
+			[]byte{0x4f, 0x01, 0x00, 0x5f, 0x01, 0x7f, 0x01}, // final type 1 <: 0
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	compile := func() *CodegenStats {
+		t.Helper()
+		var stats ModuleStats
+		if _, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, Stats: &stats}); err != nil {
+			t.Fatal(err)
+		}
+		return stats.Funcs[0]
+	}
+	got := compile()
+	if got.Peephole["gc-nonfinal-struct-get-specialize"] != 1 || got.GCHandleResolutions != 1 {
+		t.Fatalf("specialized open struct.get stats = %+v", got)
+	}
+	if got.Calls["hostsync"] != 1 {
+		t.Fatalf("specialized open struct.get hostsync calls = %d, want constructor only", got.Calls["hostsync"])
+	}
+
+	exactGCRefFactsEnabled = false
+	fallback := compile()
+	if fallback.Peephole["gc-nonfinal-struct-get-specialize"] != 0 || fallback.GCHandleResolutions != 0 {
+		t.Fatalf("disabled open struct.get specialization stats = %+v", fallback)
+	}
+	if fallback.Calls["hostsync"] != 2 {
+		t.Fatalf("disabled open struct.get hostsync calls = %d, want constructor plus get", fallback.Calls["hostsync"])
+	}
+}
+
 func TestGCReferenceFactLoadOpportunityCounters(t *testing.T) {
 	enableGCRefFacts(t)
 	arrayBody := []byte{

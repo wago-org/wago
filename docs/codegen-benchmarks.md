@@ -87,6 +87,41 @@ WAGO_INLINE=0 go test ./src/core/compiler/backend/railshot -bench=. -benchmem
 `WAGO_INLINE_MAXBYTES` still controls the encoded-body-size ceiling for inline
 candidates.
 
+## AMD64 scalar instruction execution
+
+Low-single-digit instruction changes need guest-loop benchmarks rather than one
+host invocation per operation. The integer division matrix compares dynamic IDIV,
+constant magic multiplication, unit-divisor identities, and power-of-two shifts:
+
+```sh
+go test ./src/wago -run '^$' \
+  -bench '^BenchmarkAMD64IntegerDivInstruction$' \
+  -benchmem -benchtime=150ms -count=3 -cpu=1
+```
+
+The short qualification command is intentional: the larger 500 ms, five-sample
+matrix exceeded 30 seconds on the Ryzen 7 8845HS audit host. Use the short form for
+iteration and increase the sample count only for a final retained comparison.
+Each sub-benchmark performs `b.N` dependent operations inside one Wasm invocation
+and reports a separate `ns/instruction` metric.
+
+The scalar float matrix compares GPR-built and RIP-relative masks, rounding,
+square root, ordered min/max paths, and copysign. The shift matrix compares CL,
+immediate, and experimental BMI2 rotate forms:
+
+```sh
+go test ./src/wago -run '^$' \
+  -bench '^BenchmarkAMD64ScalarFloatInstruction$' \
+  -benchmem -benchtime=150ms -count=3 -cpu=1
+
+go test ./src/wago -run '^$' \
+  -bench '^BenchmarkAMD64IntegerShiftInstruction$' \
+  -benchmem -benchtime=150ms -count=3 -cpu=1
+```
+
+Use the explicit GPR-mask float rows and baseline rotate rows as controls. Do not
+compare separate host sessions when a same-process control is available.
+
 ## Targeted profiles
 
 Backend railshot compile profiles:

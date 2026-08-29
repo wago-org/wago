@@ -615,6 +615,26 @@ func TestGCExactRefNullConsumesIndexedHeapImmediate(t *testing.T) {
 	}
 }
 
+func TestGCExactFinalSubtypeSpecializedOpenStructGetExecutes(t *testing.T) {
+	for _, facts := range []bool{false, true} {
+		compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithOptimization("gc-ref-facts", facts), gcNonFinalStructGetInstructionBenchmarkModule())
+		if err != nil {
+			t.Fatal(err)
+		}
+		instance, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{DisableCollection: true, ThroughputHeapBytes: 1 << 20}})
+		if err != nil {
+			compiled.Close()
+			t.Fatal(err)
+		}
+		got, callErr := instance.Invoke("run", 1000)
+		instance.Close()
+		compiled.Close()
+		if callErr != nil || len(got) != 1 || got[0] != 1000 {
+			t.Fatalf("facts=%v run = %v, %v; want [1000]", facts, got, callErr)
+		}
+	}
+}
+
 func gcExactDefinedCastModule(exact bool) []byte {
 	target := []byte{0x00}
 	if exact {

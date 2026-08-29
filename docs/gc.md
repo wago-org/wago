@@ -300,7 +300,12 @@ A nursery child behind an unremembered old/large parent, a cardless old/large ar
 every Tiny parent, and malformed metadata retain the unchanged helper with the full
 remembered-set/card or incremental barrier. Conditional
 lowering preserves hot pinned registers and emits local reloads only on the fallback
-edge. Non-final types, `v128`, bulk operations, and barrier states that require
+edge. Non-final declarations normally retain helper lowering. On AMD64, the
+opt-in `gc-ref-facts` policy can specialize a scalar `struct.get` declared through
+an open supertype when the receiver is proved to have one exact final subtype and
+both layouts have the same field offset and scalar representation. The generated
+check then uses the exact final runtime type and avoids the synchronous helper.
+Unknown dynamic subtypes, `v128`, bulk operations, and barrier states that require
 metadata growth retain helper lowering. Current scalar
 end-to-end measurements are 227.9–229.4 ns/op for struct set/get, 218.2–219.9 ns/op
 for struct get, and 265.2–265.6 ns/op for array set/get; final cast/reference-struct

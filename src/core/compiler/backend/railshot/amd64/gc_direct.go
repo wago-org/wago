@@ -2106,8 +2106,23 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 
 func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) bool {
 	off, scalar, final, ok := f.directGCStructLayout(typeIndex, fieldIndex)
-	if !ok || !final {
+	if !ok {
 		return false
+	}
+	resolveType := typeIndex
+	if !final {
+		_, knownType, exact := f.topExactGCLocal()
+		if !exact {
+			return false
+		}
+		knownOff, knownScalar, knownFinal, knownOK := f.directGCStructLayout(knownType, fieldIndex)
+		actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: knownType}), false)
+		requiredType := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false)
+		if !knownOK || !knownFinal || knownOff != off || knownScalar != scalar || !f.m.ReferenceTypeSubtype(actual, requiredType) {
+			return false
+		}
+		resolveType = knownType
+		f.stats.peep("gc-nonfinal-struct-get-specialize")
 	}
 	local, hasLocal := gcLocalProvenance(f.s.back())
 	f.flush()
@@ -2115,7 +2130,7 @@ func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) 
 	f.spillFloor = f.curSpillSlot()
 	object := f.popValue()
 	required := gc.PayloadOffset + off + uint32(scalar.size)
-	obj, done := f.emitDirectGCObject(object, typeIndex, required, local, hasLocal)
+	obj, done := f.emitDirectGCObject(object, resolveType, required, local, hasLocal)
 	disp := int32(gc.PayloadOffset + off)
 	if scalar.typ.isFloat() {
 		x := f.allocFReg(0)
