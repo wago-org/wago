@@ -139,7 +139,7 @@ func runRegressionEmbenchen(t *testing.T, name string) (int32, []byte) {
 	if stackTop >= stackMax {
 		t.Fatalf("Emscripten fixture static data leaves no test stack: top=%d max=%d", stackTop, stackMax)
 	}
-	binary.LittleEndian.PutUint32(memory.Bytes()[dynamicTopPtr:], stackMax)
+	binary.LittleEndian.PutUint32(memory.UnsafeBytes()[dynamicTopPtr:], stackMax)
 
 	imports := wago.Imports{
 		"env.DYNAMICTOP_PTR": wago.GlobalImport{Type: wago.ValI32, Bits: uint64(dynamicTopPtr)},
@@ -225,10 +225,10 @@ func runRegressionEmbenchen(t *testing.T, name string) (int32, []byte) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = in.Close() })
-	binary.LittleEndian.PutUint32(memory.Bytes()[argv:], prog)
-	binary.LittleEndian.PutUint32(memory.Bytes()[argv+4:], arg)
-	copy(memory.Bytes()[prog:], "bench\x00")
-	copy(memory.Bytes()[arg:], "1\x00")
+	binary.LittleEndian.PutUint32(memory.UnsafeBytes()[argv:], prog)
+	binary.LittleEndian.PutUint32(memory.UnsafeBytes()[argv+4:], arg)
+	copy(memory.UnsafeBytes()[prog:], "bench\x00")
+	copy(memory.UnsafeBytes()[arg:], "1\x00")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

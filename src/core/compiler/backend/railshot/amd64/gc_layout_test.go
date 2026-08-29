@@ -3,11 +3,14 @@
 package amd64
 
 import (
+	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -21,6 +24,54 @@ func gcLayoutTestModule(groupN, fieldN int) *wasm.Module {
 		groups[i].SubTypes = []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompStruct, Fields: fields}}}
 	}
 	return &wasm.Module{Types: groups}
+}
+
+func TestWideGCHelperCapacityDoesNotAdmitWidePublicImport(t *testing.T) {
+	const fields = 65
+	structType := append([]byte{0x5f}, wasmtest.ULEB(fields)...)
+	params := make([]wasm.ValType, fields)
+	for i := 0; i < fields; i++ {
+		structType = append(structType, 0x7f, 0x00)
+		params[i] = wasm.I32
+	}
+	imp := append(append(wasmtest.Name("env"), wasmtest.Name("wide")...), 0x00)
+	imp = append(imp, wasmtest.ULEB(1)...)
+	body := []byte{0x00}
+	for range params {
+		body = append(body, 0x41, 0x00)
+	}
+	body = append(body, 0x10, 0x00)
+	for range params {
+		body = append(body, 0x41, 0x00)
+	}
+	body = append(body, 0xfb, 0x00, 0x00, 0x1a, 0x0b)
+	binary := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(params, nil), wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(imp)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(2))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	m, err := wasm.DecodeModule(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = CompileModuleWith(m, CompileOptions{
+		GCStructHelpers: true,
+		SyncHostSlots:   fields + 1,
+		Codegen: codegen.Options{Module: codegen.ModuleInfo{
+			GCTypeDescs: metadata.Descs, GCTypeLayouts: metadata.Layouts,
+		}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "at most 64") {
+		t.Fatalf("mixed wide-helper/public-import compile error = %v", err)
+	}
 }
 
 func gcLayoutHeavyCompileModule(tb testing.TB, sites int) *wasm.Module {
@@ -81,6 +132,33 @@ func TestGCLayoutMetadataMatchesLegacyDerivation(t *testing.T) {
 		}
 	}); allocs != 0 {
 		t.Fatalf("precomputed native allocation plan allocs = %v, want 0", allocs)
+	}
+}
+
+func TestWideCapacityKeepsSmallHelperCodeIdentical(t *testing.T) {
+	m := gcLayoutHeavyCompileModule(t, 1)
+	metadata, err := frontend.BuildGCTypeMetadata(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compile := func(slots int) []byte {
+		cm, err := CompileModuleWith(m, CompileOptions{
+			GCStructHelpers: true,
+			SyncHostSlots:   slots,
+			Codegen:         codegen.Options{Module: codegen.ModuleInfo{GCTypeLayouts: metadata.Layouts}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cm.Code
+	}
+	inline := compile(64)
+	wideCapacity := compile(404)
+	if !bytes.Equal(inline, wideCapacity) {
+		t.Fatalf("small helper code changed under wide capacity: inline=%d bytes, wide=%d bytes", len(inline), len(wideCapacity))
+	}
+	if _, err := CompileModuleWith(&wasm.Module{}, CompileOptions{SyncHostSlots: coreruntime.MaxSyncHostSlots + 1}); err == nil {
+		t.Fatal("capacity above uint16 was accepted")
 	}
 }
 

@@ -855,11 +855,12 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		return id
 	}
 	f.materializeGCFrameLocalsAt(siteIndex, false)
-	offsets := make([]uint32, 0, len(plan.LocalOffsets))
-	for i, off := range plan.LocalOffsets {
-		if plan.LocalLiveAt(siteIndex, i) {
-			offsets = append(offsets, off)
-		}
+	offsets := make([]uint32, 0, min(len(plan.LocalOffsets), shared.GCFrameRootLimit))
+	if !plan.VisitLiveLocals(siteIndex, false, func(root int) {
+		offsets = append(offsets, plan.LocalOffsets[root])
+	}) {
+		plan.Exact = false
+		return id
 	}
 	hidden := len(roots) - paramCount
 	slot := 0
@@ -923,15 +924,10 @@ func (f *fn) tracksGCFrameRoots() bool {
 }
 
 func (f *fn) gcFrameLocal(index int) bool {
-	if !f.tracksGCFrameRoots() {
+	if index < 0 || f.gcFrameRoots == nil {
 		return false
 	}
-	for _, candidate := range f.gcFrameRoots.LocalIndexes {
-		if int(candidate) == index {
-			return true
-		}
-	}
-	return false
+	return f.gcFrameRoots.TracksLocal(uint32(index))
 }
 
 func arm64GCHelperMayAllocate(helper uint32) bool {

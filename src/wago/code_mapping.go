@@ -123,7 +123,7 @@ func (c *Compiled) setGCRootAdmissionFailure(diagnostic string) {
 		code = 5
 	case strings.Contains(diagnostic, "unsupported native call or frame"):
 		code = 6
-	case strings.Contains(diagnostic, "exceeds 1024 collector roots"):
+	case strings.Contains(diagnostic, "simultaneously live collector locals"):
 		code = 7
 	case strings.Contains(diagnostic, "local liveness"):
 		code = 8
@@ -153,7 +153,7 @@ func (c *Compiled) gcRootAdmissionFailure() string {
 	case 6:
 		return "a collecting function contains an unsupported native call or frame shape"
 	case 7:
-		return "a collecting function exceeds 1024 collector roots or the frame-offset bound"
+		return "a collecting function exceeds 1024 simultaneously live collector roots"
 	case 8:
 		return "exact structured-CFG local liveness could not be constructed"
 	case 9:

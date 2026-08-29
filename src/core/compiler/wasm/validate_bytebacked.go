@@ -57,27 +57,33 @@ type DecodedByteBackedModule struct {
 // path. It is a convenience for benchmarks and internal tests that need a
 // single call around explicit decode then validate phases.
 func ValidateByteBackedModule(data []byte) error {
-	return validateByteBackedModule(data, 1, ValidationFeatures{})
+	return validateByteBackedModule(data, 1, ValidationFeatures{}, defaultValidationLimits)
 }
 
 // ValidateByteBackedModuleWithWorkers is ValidateByteBackedModule with bounded
 // parallel function-body validation. workers <= 1 retains serial behavior.
 func ValidateByteBackedModuleWithWorkers(data []byte, workers int) error {
-	return validateByteBackedModule(data, workers, ValidationFeatures{})
+	return validateByteBackedModule(data, workers, ValidationFeatures{}, defaultValidationLimits)
 }
 
 // ValidateByteBackedModuleWithFeatures is the explicit-feature variant of
 // ValidateByteBackedModule.
 func ValidateByteBackedModuleWithFeatures(data []byte, features ValidationFeatures) error {
-	return validateByteBackedModule(data, 1, features)
+	return validateByteBackedModule(data, 1, features, defaultValidationLimits)
 }
 
-func validateByteBackedModule(data []byte, workers int, features ValidationFeatures) error {
+// ValidateByteBackedModuleWithConfig is the explicit feature, worker, and
+// resource-limit variant of ValidateByteBackedModule.
+func ValidateByteBackedModuleWithConfig(data []byte, features ValidationFeatures, workers int, limits ValidationLimits) error {
+	return validateByteBackedModule(data, workers, features, limits)
+}
+
+func validateByteBackedModule(data []byte, workers int, features ValidationFeatures, limits ValidationLimits) error {
 	dm, err := DecodeModuleByteBacked(data)
 	if err != nil {
 		return err
 	}
-	return validateDecodedByteBackedModule(dm, workers, features)
+	return validateDecodedByteBackedModule(dm, workers, features, limits)
 }
 
 // DecodeModuleByteBacked decodes data without materializing the structured
@@ -100,27 +106,33 @@ func DecodeModuleByteBacked(data []byte) (*DecodedByteBackedModule, error) {
 // DecodeModuleByteBacked without requiring a structured function-body
 // instruction tree.
 func ValidateDecodedByteBackedModule(dm *DecodedByteBackedModule) error {
-	return validateDecodedByteBackedModule(dm, 1, ValidationFeatures{})
+	return validateDecodedByteBackedModule(dm, 1, ValidationFeatures{}, defaultValidationLimits)
 }
 
 // ValidateDecodedByteBackedModuleWithWorkers is
 // ValidateDecodedByteBackedModule with bounded parallel function-body
 // validation. Errors remain ordered by function index.
 func ValidateDecodedByteBackedModuleWithWorkers(dm *DecodedByteBackedModule, workers int) error {
-	return validateDecodedByteBackedModule(dm, workers, ValidationFeatures{})
+	return validateDecodedByteBackedModule(dm, workers, ValidationFeatures{}, defaultValidationLimits)
 }
 
 // ValidateDecodedByteBackedModuleWithFeatures validates a decoded compact module
 // under explicitly staged release features.
 func ValidateDecodedByteBackedModuleWithFeatures(dm *DecodedByteBackedModule, features ValidationFeatures) error {
-	return validateDecodedByteBackedModule(dm, 1, features)
+	return validateDecodedByteBackedModule(dm, 1, features, defaultValidationLimits)
 }
 
-func validateDecodedByteBackedModule(dm *DecodedByteBackedModule, workers int, features ValidationFeatures) error {
+// ValidateDecodedByteBackedModuleWithConfig validates decoded byte-backed
+// metadata with explicit feature, worker, and resource-limit policy.
+func ValidateDecodedByteBackedModuleWithConfig(dm *DecodedByteBackedModule, features ValidationFeatures, workers int, limits ValidationLimits) error {
+	return validateDecodedByteBackedModule(dm, workers, features, limits)
+}
+
+func validateDecodedByteBackedModule(dm *DecodedByteBackedModule, workers int, features ValidationFeatures, limits ValidationLimits) error {
 	if dm == nil || dm.Module == nil {
 		return &ValidationError{Code: ErrTypeMismatch, Func: -1, Detail: "nil byte-backed module"}
 	}
-	return validateModuleWithWorkersAndFeatures(dm.Module, &dm.direct, workers, features)
+	return validateModuleWithWorkersFeaturesAndLimits(dm.Module, &dm.direct, workers, features, limits)
 }
 
 func (dm *directModule) populateCodeBodies() {
@@ -293,7 +305,6 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 			return err
 		}
 		dm.m.NameSec = ns
-		dm.m.RawNameSecPayload = append([]byte(nil), payload...)
 		dm.seenName = true
 	}
 	if name == branchHintSectionName {
@@ -307,7 +318,11 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 		dm.m.BranchHints = hints
 		dm.seenBranchHints = true
 	}
-	dm.m.Customs = append(dm.m.Customs, CustomSec{Name: name, Data: append([]byte(nil), payload...)})
+	ownedPayload := append([]byte(nil), payload...)
+	if name == "name" {
+		dm.m.RawNameSecPayload = ownedPayload
+	}
+	dm.m.Customs = append(dm.m.Customs, CustomSec{Name: name, Data: ownedPayload})
 	return nil
 }
 
@@ -316,10 +331,7 @@ func decodeDirectTableSection(dm *directModule, r *reader) error {
 	if err != nil {
 		return err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	dm.m.Tables = make([]Table, 0, capHint)
 	dm.direct.tableHasInit = make([]bool, 0, capHint)
 	dm.direct.tableInits = make([]directConstExpr, 0, capHint)
@@ -359,10 +371,7 @@ func decodeDirectGlobalSection(dm *directModule, r *reader) error {
 	if err != nil {
 		return err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	dm.m.Globals = make([]Global, 0, capHint)
 	dm.direct.globalInits = make([]directConstExpr, 0, capHint)
 	for i := uint32(0); i < n; i++ {
@@ -385,10 +394,7 @@ func decodeDirectDataSection(dm *directModule, r *reader) error {
 	if err != nil {
 		return err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	dm.m.Data = make([]Data, 0, capHint)
 	dm.direct.dataOffsets = make([]directConstExpr, 0, capHint)
 	for i := uint32(0); i < n; i++ {
@@ -449,10 +455,7 @@ func decodeDirectElementSection(dm *directModule, r *reader) error {
 	if err != nil {
 		return err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	dm.m.Elements = make([]Elem, 0, capHint)
 	dm.direct.elements = make([]directElem, 0, capHint)
 	for i := uint32(0); i < n; i++ {
@@ -613,10 +616,7 @@ func readDirectFuncIdxSummary(r *reader, de *directElem) error {
 		return err
 	}
 	de.elemLen = n
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	de.funcs = make([]FuncIdx, 0, capHint)
 	for i := uint32(0); i < n; i++ {
 		x, err := r.u32()
@@ -638,10 +638,7 @@ func readDirectConstExprVec(r *reader) ([]directConstExpr, error) {
 	if err != nil {
 		return nil, err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	exprs := make([]directConstExpr, 0, capHint)
 	for i := uint32(0); i < n; i++ {
 		e, err := readDirectConstExprBytes(r)
@@ -692,10 +689,7 @@ func decodeDirectCodeSectionWithWidths(r *reader, widths memargWidths, multiMemo
 	if err != nil {
 		return nil, false, err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	out := make([]Func, 0, capHint)
 	var sub reader
 	var frames []exprSkipFrame
@@ -895,6 +889,9 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	v.localCount, overflow = LocalCount(ft.Params, body.locals.Runs)
 	if overflow {
 		return v.verr(ErrInvalidLimitRange, "local count overflow")
+	}
+	if v.localCount > uint64(v.limits.MaxFunctionLocals) {
+		return v.verr(ErrInvalidLimitRange, "parameter and local count exceeds configured limit")
 	}
 	for _, run := range body.locals.Runs {
 		if err := v.validateValType(run.Type); err != nil {
@@ -1201,36 +1198,8 @@ func (v *funcValidator) directStartTryTable(bt BlockType, catches []Catch) error
 		return err
 	}
 	for _, c := range catches {
-		lt, err := v.label(uint32(c.Label))
-		if err != nil {
+		if err := v.validateCatchPayload(c); err != nil {
 			return err
-		}
-		var payload []ValType
-		if c.Kind == CatchTag || c.Kind == CatchRef {
-			if int(c.Tag) >= v.m.TagCount() {
-				return v.verr(ErrUnknownTag, "catch")
-			}
-			ft, ok := v.tagFuncType(uint32(c.Tag))
-			if !ok {
-				return v.verr(ErrUnknownTag, "catch")
-			}
-			payload = append(payload, ft.Params...)
-		}
-		if c.Kind == CatchRef || c.Kind == CatchAllRef {
-			// Reference catches materialize a non-null exception reference. The
-			// target label may widen it to nullable exnref, but not vice versa.
-			payload = append(payload, RefVal(Ref(false, AbsHeap(HeapExn), false)))
-		}
-		if c.Kind == CatchAll && len(lt) != 0 {
-			return v.verr(ErrTypeMismatch, "catch_all label must expect no values")
-		}
-		if len(payload) != len(lt) {
-			return v.verr(ErrTypeMismatch, "catch payload label mismatch")
-		}
-		for i := range payload {
-			if !v.subtype(payload[i], lt[i]) {
-				return v.verr(ErrTypeMismatch, "catch payload label mismatch")
-			}
 		}
 	}
 	return v.directPushCtrl(ctrlTry, ins, outs)

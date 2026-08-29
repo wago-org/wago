@@ -194,6 +194,40 @@ See [Host guest-storage access](host-guest-storage.md) for exact type inspection
 array allocation, and zero-copy numeric array access. Wago intentionally exposes
 no raw GC pointer API.
 
+## Callback invocation context
+
+A plugin granted `host.caller.identify` may obtain the active guest invocation's
+cancellation and deadline inside one of its synchronous host callbacks:
+
+```go
+callers, err := reg.HostCallers()
+if err != nil {
+    return err
+}
+
+module.Func("fetch", func(caller wago.HostModule, _, _ []uint64) {
+    ctx, err := callers.InvocationContext(caller)
+    if err != nil {
+        panic(wago.HostTrap{Err: err})
+    }
+    // Use ctx only for work owned by this callback.
+})
+```
+
+The returned context is callback-scoped. Its `Done` channel closes when the
+parent invocation is canceled, its deadline expires, or the host callback
+returns. Retaining it is safe only for observing that terminal cancellation;
+it must not be used to extend callback-owned work. Repeated resolution during
+the same callback returns the same context. Nested re-entry receives a distinct
+context and does not shorten the outer callback's lifetime.
+
+Invocation contexts deliberately expose no parent context values. Plugins must
+pass explicit dependencies instead of using context values as an ambient data
+channel. Calls without a cancellable public parent, including raw `Invoke`,
+prepared calls, and start-time callbacks, receive a live callback-scoped context
+without a deadline. Forged, expired, cross-Runtime, and low-level callers are
+rejected with `ErrPermissionDenied`.
+
 ## Exact authorities and scopes
 
 Authority names are exact. Dots are for display grouping and do not grant a
@@ -202,7 +236,7 @@ parent, wildcard, descendant, or future authority.
 | Authority | Allows |
 |---|---|
 | `host.import.define` | Define host functions in specifically granted import modules. |
-| `host.caller.identify` | Resolve the exact active instance during a synchronous host call. |
+| `host.caller.identify` | Resolve the exact active instance and its callback-scoped invocation cancellation/deadline during a synchronous host call. |
 | `host.arguments.read` | Read guest arguments exposed by the host. |
 | `runtime.close.observe` | Observe logical runtime close. |
 | `module.source.transform` | Replace module bytes before compilation. |
@@ -471,4 +505,3 @@ view.
 See [Host guest-storage access](host-guest-storage.md) for the complete API,
 lifetime rules, and examples. [Facet](https://github.com/jtenner/facet-spec) is
 one motivating consumer, but these interfaces are general Wago host APIs.
-

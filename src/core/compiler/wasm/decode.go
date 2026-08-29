@@ -66,9 +66,12 @@ func decodeSection(m *Module, r *reader, id byte) error {
 				return err
 			}
 			m.NameSec = ns
-			m.RawNameSecPayload = append([]byte(nil), payload...)
 		}
-		m.Customs = append(m.Customs, CustomSec{Name: name, Data: append([]byte(nil), payload...)})
+		ownedPayload := append([]byte(nil), payload...)
+		if name == "name" {
+			m.RawNameSecPayload = ownedPayload
+		}
+		m.Customs = append(m.Customs, CustomSec{Name: name, Data: ownedPayload})
 	case secType:
 		v, err := readVec(r, decodeRecType)
 		if err != nil {
@@ -509,10 +512,7 @@ func decodeImports(r *reader) ([]Import, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	capHint := r.left()
-	if uint64(n) < uint64(capHint) {
-		capHint = int(n)
-	}
+	capHint := boundedVecCap(n, r.left())
 	imports := make([]Import, 0, capHint)
 	compact := false
 	for uint32(len(imports)) < n {

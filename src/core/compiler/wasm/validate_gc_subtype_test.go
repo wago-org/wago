@@ -55,6 +55,58 @@ func TestValidateGCSubtypeMetadata(t *testing.T) {
 		}}}}
 		expectValidateErr(t, m, ErrTypeMismatch)
 	})
+
+	t.Run("multiple direct supertypes are rejected", func(t *testing.T) {
+		m := &Module{Types: []RecType{
+			openStructType(nil),
+			openStructType(nil),
+			openStructType(nil, TypeIdx{Index: 0}, TypeIdx{Index: 1}),
+		}}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+
+	t.Run("forward recursive supertype is rejected", func(t *testing.T) {
+		m := &Module{Types: []RecType{{SubTypes: []SubType{
+			{Final: false, Supers: []TypeIdx{{Index: 1, Rec: true}}, Comp: CompType{Kind: CompStruct}},
+			{Final: false, Comp: CompType{Kind: CompStruct}},
+		}}}}
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
+}
+
+func TestGCTypeIndexFlattensGroupsOnce(t *testing.T) {
+	m := &Module{Types: make([]RecType, 4096)}
+	for i := range m.Types {
+		m.Types[i] = openStructType(nil)
+	}
+	v := &moduleValidator{m: m}
+	st, group, ok := v.subtypeByFlatTypeIdx(len(m.Types) - 1)
+	if !ok || st == nil || group != len(m.Types)-1 {
+		t.Fatalf("last flat type = %p, %d, %v", st, group, ok)
+	}
+	flat := v.flattenedSubTypeRefs()
+	if len(flat) != len(m.Types) || len(v.typeGroupBases) != len(m.Types)+1 {
+		t.Fatalf("type index sizes = flat %d bases %d", len(flat), len(v.typeGroupBases))
+	}
+	if &flat[0] != &v.flattenedSubTypeRefs()[0] {
+		t.Fatal("flattened type index was rebuilt")
+	}
+}
+
+func BenchmarkGCFlatTypeLookupManyGroups(b *testing.B) {
+	m := &Module{Types: make([]RecType, 4096)}
+	for i := range m.Types {
+		m.Types[i] = openStructType(nil)
+	}
+	v := &moduleValidator{m: m}
+	v.ensureTypeIndex()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, _, ok := v.subtypeByFlatTypeIdx(i & 4095); !ok {
+			b.Fatal("flat type missing")
+		}
+	}
 }
 
 func TestRefTestAcceptsDefinedSiblingTypes(t *testing.T) {

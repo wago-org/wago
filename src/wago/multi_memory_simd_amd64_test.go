@@ -84,16 +84,16 @@ func TestStagedMultiMemorySIMDLoadsAndStores(t *testing.T) {
 		if got := invokeV128(t, in, "run", I32(3), lo, hi); got != want {
 			t.Fatalf("indexed v128 round trip = % x, want % x", got, want)
 		}
-		if got := V128(m1.Bytes()[8:24]); got != want {
+		if got := V128(m1.UnsafeBytes()[8:24]); got != want {
 			t.Fatalf("memory 1 bytes = % x, want % x", got, want)
 		}
 		m0, err := in.ExportedMemory("m0")
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, b := range m0.Bytes()[8:24] {
+		for _, b := range m0.UnsafeBytes()[8:24] {
 			if b != 0 {
-				t.Fatalf("memory 0 changed through indexed SIMD store: % x", m0.Bytes()[8:24])
+				t.Fatalf("memory 0 changed through indexed SIMD store: % x", m0.UnsafeBytes()[8:24])
 			}
 		}
 		if _, err := in.Invoke("run", I32(65516), lo, hi); err == nil {
@@ -127,7 +127,7 @@ func TestStagedMultiMemorySIMDLoadsAndStores(t *testing.T) {
 			body := append([]byte{0x20, 0x00}, indexedSIMDMemOp(tc.sub, tc.align, 5)...)
 			body = append(body, 0x0b)
 			_, in, m1 := stagedSIMDInstance(t, indexedSIMDModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}, body))
-			copy(m1.Bytes()[8:], tc.input[:tc.size])
+			copy(m1.UnsafeBytes()[8:], tc.input[:tc.size])
 			if got := invokeV128(t, in, "run", I32(3)); got != tc.want {
 				t.Fatalf("%s = % x, want % x", tc.name, got, tc.want)
 			}
@@ -167,11 +167,11 @@ func TestStagedMultiMemorySIMDLanes(t *testing.T) {
 			loadBody = append(loadBody, 0x0b)
 			_, loadIn, loadMem := stagedSIMDInstance(t, indexedSIMDModule([]wasm.ValType{wasm.I32, wasm.V128}, []wasm.ValType{wasm.V128}, loadBody))
 			for i := byte(0); i < tc.size; i++ {
-				loadMem.Bytes()[8+int(i)] = 0xa0 + i
+				loadMem.UnsafeBytes()[8+int(i)] = 0xa0 + i
 			}
 			initial := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
 			want := initial
-			copy(want[int(tc.lane)*int(tc.size):], loadMem.Bytes()[8:8+int(tc.size)])
+			copy(want[int(tc.lane)*int(tc.size):], loadMem.UnsafeBytes()[8:8+int(tc.size)])
 			lo, hi := v128RawSlots(initial)
 			if got := invokeV128(t, loadIn, "run", I32(3), lo, hi); got != want {
 				t.Fatalf("load lane = % x, want % x", got, want)
@@ -187,14 +187,14 @@ func TestStagedMultiMemorySIMDLanes(t *testing.T) {
 				t.Fatalf("store lane: %v", err)
 			}
 			laneStart := int(tc.lane) * int(tc.size)
-			if got, wantBytes := storeMem.Bytes()[8:8+int(tc.size)], initial[laneStart:laneStart+int(tc.size)]; string(got) != string(wantBytes) {
+			if got, wantBytes := storeMem.UnsafeBytes()[8:8+int(tc.size)], initial[laneStart:laneStart+int(tc.size)]; string(got) != string(wantBytes) {
 				t.Fatalf("stored lane bytes = % x, want % x", got, wantBytes)
 			}
-			before := append([]byte(nil), storeMem.Bytes()[8:8+int(tc.size)]...)
+			before := append([]byte(nil), storeMem.UnsafeBytes()[8:8+int(tc.size)]...)
 			if _, err := storeIn.Invoke("run", I32(int32(65536-5-int(tc.size)+1)), lo, hi); err == nil {
 				t.Fatal("cross-boundary indexed SIMD lane store unexpectedly succeeded")
 			}
-			if got := storeMem.Bytes()[8 : 8+int(tc.size)]; string(got) != string(before) {
+			if got := storeMem.UnsafeBytes()[8 : 8+int(tc.size)]; string(got) != string(before) {
 				t.Fatalf("trapping lane store changed memory: % x", got)
 			}
 		})

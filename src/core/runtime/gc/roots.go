@@ -632,6 +632,13 @@ func (c *Collector) SetGlobalSlot(i uint32, r Ref) error {
 	if !slotIndexOK(i, len(c.globalSlots)) {
 		return errRange
 	}
+	// Module-global synchronization commonly republishes unchanged roots at
+	// allocation safepoints. The stored value was already validated and its
+	// existing card remains conservative, so avoid repeating validation and the
+	// write barrier when no publication occurs.
+	if c.globalSlots[i] == r {
+		return nil
+	}
 	if err := c.validateStoredRef(r, true); err != nil {
 		return err
 	}
@@ -693,6 +700,9 @@ func (c *Collector) SetTableSlot(i uint32, r Ref) error {
 	}
 	if !slotIndexOK(i, len(c.tableSlots)) {
 		return errRange
+	}
+	if c.tableSlots[i] == r {
+		return nil
 	}
 	if err := c.validateStoredRef(r, true); err != nil {
 		return err

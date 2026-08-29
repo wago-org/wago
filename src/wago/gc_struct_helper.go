@@ -96,9 +96,6 @@ func (in *Instance) dispatchGCStructHelperParked(ctrl uintptr, helper, safepoint
 		state = in.publicGCState()
 		state.mu.Lock()
 		defer state.mu.Unlock()
-		if err := in.syncGenericGCGlobalRootsLocked(state); err != nil {
-			panic(gcStructHelperError{err: err})
-		}
 		frameRoots = in.gcHelperRoots(ctrl, state, safepoint)
 	}
 	structFieldKind := func(typeID, fieldID uint32) gc.StorageKind {

@@ -219,6 +219,68 @@ func TestNativeStructHandleCancellationCannotDuplicateNurserySet(t *testing.T) {
 	}
 }
 
+func TestNativeStructHandleCancellationPreservesDenseNurseryPrefix(t *testing.T) {
+	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{desc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	const prefixCount = 4096
+	prefix := make([]uint32, 0, prefixCount)
+	for range prefixCount {
+		h := c.newHandle(handleEntry{size: 16, allocSize: 16, space: spaceNursery})
+		c.nurseryHandles = append(c.nurseryHandles, h)
+		prefix = append(prefix, h)
+	}
+	if !c.PrepareNativeStructHandles() {
+		t.Fatal("native handle batch was not prepared")
+	}
+	s := &c.nativeStructAlloc
+	consumed := s.Handles[0]
+	c.handles[consumed] = handleEntry{size: 16, allocSize: 16, space: spaceNursery}
+	s.Cursor = 1
+	c.CancelNativeAllocationBatch()
+	if len(c.nurseryHandles) != prefixCount+1 {
+		t.Fatalf("nursery handles = %d, want %d", len(c.nurseryHandles), prefixCount+1)
+	}
+	for i, want := range prefix {
+		if got := c.nurseryHandles[i]; got != want {
+			t.Fatalf("nursery prefix %d = %d, want %d", i, got, want)
+		}
+	}
+	if got := c.nurseryHandles[prefixCount]; got != consumed {
+		t.Fatalf("consumed native handle = %d, want %d", got, consumed)
+	}
+}
+
+func BenchmarkNativeAllocationBatchCancelDenseNursery(b *testing.B) {
+	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
+	if err != nil {
+		b.Fatal(err)
+	}
+	c, err := NewCollector(Config{}, []TypeDesc{desc})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	for range 1 << 16 {
+		h := c.newHandle(handleEntry{size: 16, allocSize: 16, space: spaceNursery})
+		c.nurseryHandles = append(c.nurseryHandles, h)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if !c.PrepareNativeStructHandles() {
+			b.Fatal("native handle batch was not prepared")
+		}
+		c.CancelNativeAllocationBatch()
+	}
+}
+
 func TestNativeStructHandleBatchRejectedProfiles(t *testing.T) {
 	desc, err := NewStructDesc(0, []StorageKind{StorageI32})
 	if err != nil {

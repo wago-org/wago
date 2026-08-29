@@ -156,7 +156,7 @@ func TestMemoryGrowThroughHostReentry(t *testing.T) {
 	if nestedErr != nil || calls != 1 {
 		t.Fatalf("nested grow = calls %d err %v, want one successful call", calls, nestedErr)
 	}
-	if got := len(in.Memory().Bytes()); got != 2*65536 {
+	if got := len(in.Memory().UnsafeBytes()); got != 2*65536 {
 		t.Fatalf("memory length after nested grow = %d, want %d", got, 2*65536)
 	}
 }
@@ -185,7 +185,7 @@ func TestMemoryViewRemainsCoherentAcrossGrow(t *testing.T) {
 	)
 	in := mustInstantiateAdversarial(t, mod, nil)
 	defer in.Close()
-	old := in.Memory().Bytes()
+	old := in.Memory().UnsafeBytes()
 	if _, err := in.Invoke("store", I32(0x11223344)); err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestMemoryViewRemainsCoherentAcrossGrow(t *testing.T) {
 	if got, err := in.Invoke("grow", I32(1)); err != nil || len(got) != 1 || AsI32(got[0]) != 1 {
 		t.Fatalf("grow = %v, %v; want old size 1", got, err)
 	}
-	if got := len(in.Memory().Bytes()); got != 2*65536 {
+	if got := len(in.Memory().UnsafeBytes()); got != 2*65536 {
 		t.Fatalf("grown memory length = %d", got)
 	}
 	old[0] = 9

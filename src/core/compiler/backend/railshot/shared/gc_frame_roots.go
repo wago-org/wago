@@ -1,5 +1,10 @@
 package shared
 
+import (
+	"math/bits"
+	"sort"
+)
+
 // AMD64FrameHeaderBytes and ARM64FrameHeaderBytes are the stable local-slot
 // bases used by the railshot native frames. Root-map producers and consumers
 // must use the matching architecture value.
@@ -23,10 +28,15 @@ const (
 	GCSafepointIDShift = GCHelperIDBits
 	GCSafepointIDMax   = uint32(1<<(30-GCSafepointIDShift)) - 1
 
-	// GCFrameRootLimit bounds exact roots in one native frame. The compiler keeps
+	// GCFrameRootLimit bounds simultaneously live exact roots in one native frame. The compiler keeps
 	// a one-word fast path through 64 roots, a two-word path through 128 roots,
 	// and uses one flat word arena for larger masks up to this limit.
 	GCFrameRootLimit = 1024
+
+	// GCFrameTrackedLocalLimit is the maximum configured parameter-plus-local
+	// population whose liveness may be tracked. Site maps remain bounded by
+	// GCFrameRootLimit after dead-at-all-sites locals are removed.
+	GCFrameTrackedLocalLimit = 1<<16 - 1
 )
 
 func EncodeGCDispatch(helper, safepoint uint32) (uint32, bool) {
@@ -80,6 +90,17 @@ type GCFrameRootPlan struct {
 	SafepointBase       uint32
 }
 
+// TracksLocal reports whether index belongs to the sorted collector-local
+// population retained by the frontend. Binary search keeps backend local
+// instruction handling bounded when disjoint safepoints retain a wide union.
+func (p *GCFrameRootPlan) TracksLocal(index uint32) bool {
+	if p == nil || !p.Candidate {
+		return false
+	}
+	i := sort.Search(len(p.LocalIndexes), func(i int) bool { return p.LocalIndexes[i] >= index })
+	return i < len(p.LocalIndexes) && p.LocalIndexes[i] == index
+}
+
 // GCModuleFrameRootPlan owns one independent function plan per local function.
 // Distinct entries allow parallel code generation without shared mutation.
 type GCModuleFrameRootPlan struct {
@@ -97,7 +118,7 @@ func (p *GCFrameRootPlan) rootMaskExtraWordsPerSite() int {
 // ValidLiveMasks reports whether the flat extra-word arena matches both
 // low-word streams and the function's bounded collector-local count.
 func (p *GCFrameRootPlan) ValidLiveMasks() bool {
-	if p == nil || len(p.LocalOffsets) > GCFrameRootLimit {
+	if p == nil || len(p.LocalOffsets) > GCFrameTrackedLocalLimit {
 		return false
 	}
 	extra := p.rootMaskExtraWordsPerSite()
@@ -132,6 +153,50 @@ func (p *GCFrameRootPlan) CallLocalLiveAt(site, root int) bool {
 		return false
 	}
 	return rootMaskContains(p.LiveCallLocalMasks, p.LiveMaskExtraWords[start:], extra, site, root)
+}
+
+// VisitLiveLocals calls visit with each retained-slice index live at one
+// allocation or call site. It iterates set mask bits, so sparse sites do work
+// proportional to their live population instead of all retained locals.
+func (p *GCFrameRootPlan) VisitLiveLocals(site int, call bool, visit func(root int)) bool {
+	if p == nil || visit == nil || len(p.LocalIndexes) != len(p.LocalOffsets) {
+		return false
+	}
+	masks := p.LiveLocalMasks
+	extraPerSite := p.rootMaskExtraWordsPerSite()
+	extraStart := 0
+	if call {
+		masks = p.LiveCallLocalMasks
+		extraStart = len(p.LiveLocalMasks) * extraPerSite
+	}
+	if site < 0 || site >= len(masks) {
+		return false
+	}
+	visitWord := func(word int, value uint64) bool {
+		for value != 0 {
+			bit := bits.TrailingZeros64(value)
+			value &= value - 1
+			root := word*64 + bit
+			if root >= len(p.LocalOffsets) {
+				return false
+			}
+			visit(root)
+		}
+		return true
+	}
+	if !visitWord(0, masks[site]) {
+		return false
+	}
+	base := extraStart + site*extraPerSite
+	if base < 0 || base+extraPerSite > len(p.LiveMaskExtraWords) {
+		return false
+	}
+	for word := 1; word <= extraPerSite; word++ {
+		if !visitWord(word, p.LiveMaskExtraWords[base+word-1]) {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *GCModuleFrameRootPlan) Function(index int) *GCFrameRootPlan {

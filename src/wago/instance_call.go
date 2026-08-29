@@ -59,20 +59,17 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 			return nil, fmt.Errorf("%s result %d is v128; use Invoke for v128 values", export, i)
 		}
 	}
-	var cancel context.Context
-	if nativeCancellationSupported() && ctx != nil && ctx.Done() != nil {
-		cancel = ctx
-	}
+	contexts := invocationContextSetFor(ctx)
 
 	// Fast path: no runtime or no invoke hooks — invoke directly under the one
 	// already-admitted invocation lease, with no plugin reservation allocation.
 	if in.rt == nil {
-		out, err := in.callInnerAdmitted(export, slots, results, cancel, nil)
+		out, err := in.callInnerAdmitted(export, slots, results, contexts, nil)
 		return out, contextInterruptError(ctx, err)
 	}
 	hooks := in.rt.loadHooks()
 	if len(hooks.beforeInvoke) == 0 && len(hooks.afterInvoke) == 0 {
-		out, err := in.callInnerAdmitted(export, slots, results, cancel, nil)
+		out, err := in.callInnerAdmitted(export, slots, results, contexts, nil)
 		return out, contextInterruptError(ctx, err)
 	}
 	reservation, err := reservePluginOperation(hooks.operationGates)
@@ -106,7 +103,7 @@ func (in *Instance) Call(ctx context.Context, export string, args ...Value) ([]V
 			return nil, joinPrimary(err, emitAfter(InvocationEvent{Operation: request.Operation, Instance: request.Instance, Export: export, Err: err, Start: request.Start, reservation: reservation}))
 		}
 	}
-	out, err := in.callInnerAdmitted(export, slots, results, cancel, reservation)
+	out, err := in.callInnerAdmitted(export, slots, results, contexts, reservation)
 	err = contextInterruptError(ctx, err)
 	err = joinPrimary(err, emitAfter(InvocationEvent{Operation: request.Operation, Instance: request.Instance, Export: export, Results: out, Err: err, Start: request.Start, reservation: reservation}))
 	return out, err
@@ -130,8 +127,8 @@ func contextInterruptError(ctx context.Context, err error) error {
 
 // callInnerAdmitted performs the actual invocation and result decoding under
 // the invocation lease already held by Call.
-func (in *Instance) callInnerAdmitted(export string, slots []uint64, results []ValType, cancel context.Context, reservation *pluginOperationReservation) ([]Value, error) {
-	raw, err := in.invokeAdmitted(export, slots, cancel, reservation)
+func (in *Instance) callInnerAdmitted(export string, slots []uint64, results []ValType, contexts invocationContextSet, reservation *pluginOperationReservation) ([]Value, error) {
+	raw, err := in.invokeAdmitted(export, slots, contexts, reservation)
 	if err != nil {
 		return nil, err
 	}

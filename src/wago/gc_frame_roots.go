@@ -101,6 +101,23 @@ func wasmFuncTypeTransfersCollectorRefs(m *wasm.Module, ft *wasm.CompType) bool 
 	return false
 }
 
+func wasmFuncTypeReferenceFree(ft *wasm.CompType) bool {
+	if ft == nil {
+		return false
+	}
+	for _, typ := range ft.Params {
+		if typ.Kind() == wasm.ValRef {
+			return false
+		}
+	}
+	for _, typ := range ft.Results {
+		if typ.Kind() == wasm.ValRef {
+			return false
+		}
+	}
+	return true
+}
+
 func moduleHasCollectorReferenceCallBoundary(m *wasm.Module) bool {
 	if m == nil {
 		return false
@@ -206,7 +223,7 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 		if plan == nil {
 			continue // proven non-collecting function; no active-frame map is needed
 		}
-		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || len(plan.LiveLocalMasks) != len(plan.Safepoints) || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > gcNativeFrameRootLimit {
+		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || len(plan.LiveLocalMasks) != len(plan.Safepoints) || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > shared.GCFrameTrackedLocalLimit {
 			return false
 		}
 		active := len(plan.Safepoints) != 0 || len(plan.Callsites) != 0

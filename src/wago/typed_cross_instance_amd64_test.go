@@ -358,7 +358,7 @@ func TestStagedTypedCodecRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("marshal typed module: %v", err)
 			}
-			if _, err := Load(blob); err == nil || !strings.Contains(err.Error(), "required feature") {
+			if _, err := LoadTrustedArtifact(blob); err == nil || !strings.Contains(err.Error(), "required feature") {
 				t.Fatalf("public load of staged typed artifact = %v, want fail-closed required-feature error", err)
 			}
 			var loaded Compiled

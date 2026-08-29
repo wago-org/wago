@@ -34,17 +34,14 @@ const (
 //   - The fault address is classified against a registry of live reservations
 //     (guardRegions). A fault outside every reservation chains to Go's saved
 //     handler, so genuine Go faults still crash/panic.
-//   - For a fault inside a reservation, the handler recognizes either wasm ABI:
-//     amd64 frameless frames keep linMem in RBX and the trap pointer at [RSP+0];
-//     framed amd64 frames keep linMem at [RBP-16] and trap at [RBP-24]. It only
-//     acts if the frame's linMem matches that reservation's linMem base, which
-//     rejects the astronomically-unlikely case of a wild non-wasm pointer landing
-//     inside a live reservation.
+//   - For a fault inside a reservation, the handler requires the x64/WARP ABI's
+//     pinned RBX linMem to match the reservation owner before dereferencing
+//     basedata. A non-Wasm fault that happens to land inside a reservation chains
+//     without treating an arbitrary RBP as a legacy frame pointer.
 //   - It then writes TrapLinMemOutOfBounds, or TrapLinMemCouldNotExtend when a
 //     lazy page commit fails, to the frame's *trap and rewrites only the saved RIP
 //     to the ABI-specific trap exit: amd64 restores the trampoline's
-//     handler-jump re-entry SP and returns straight to enterNative; framed amd64
-//     performs the old one-frame `leave; ret` unwind.
+//     handler-jump re-entry SP and returns straight to enterNative.
 //
 // This mirrors WARP's memorySignalHandler (addr/state check + ucontext rewrite)
 // in a Go asm stub installed via raw rt_sigaction.
@@ -64,7 +61,6 @@ const maxGuardRegions = 256
 var (
 	guardRegions               [maxGuardRegions]guardRegion // scanned locklessly by the handler
 	guardRegionMu              sync.Mutex                   // serialises registry mutation only
-	guardTrapExitFramedPC      uintptr                      // entry of nativeTrapExitFramed
 	guardTrapExitHandlerJumpPC uintptr                      // entry of nativeTrapExitHandlerJump
 	guardOldSEGVHandler        uintptr                      // previous SIGSEGV handler
 	guardOldBUSHandler         uintptr                      // previous SIGBUS handler
@@ -122,15 +118,12 @@ func init() {
 	guardOwnerHook = setGuardRegionOwner
 }
 
-// nativeTrapExitFramed and nativeTrapExitHandlerJump are signal-rewrite landing
-// pads. Never called from Go.
-func nativeTrapExitFramed()
+// nativeTrapExitHandlerJump is a signal-rewrite landing pad. Never called from Go.
 func nativeTrapExitHandlerJump()
 
 // asm symbol-address getters (raw ABI0 entry points for the kernel/sigaction).
 func addrGuardSigHandler() uintptr
 func addrGuardSigRestorer() uintptr
-func addrNativeTrapExitFramed() uintptr
 func addrNativeTrapExitHandlerJump() uintptr
 
 // guardSigHandler / guardSigRestorer are implemented in sigtrap_amd64.s and are
@@ -148,9 +141,13 @@ type kernelSigaction struct {
 }
 
 const (
-	_SA_SIGINFO  = 0x00000004
-	_SA_RESTORER = 0x04000000
-	_SA_ONSTACK  = 0x08000000
+	_SA_SIGINFO        = 0x00000004
+	_SA_EXPOSE_TAGBITS = 0x00000800
+	_SA_RESTORER       = 0x04000000
+	_SA_ONSTACK        = 0x08000000
+	_SA_RESTART        = 0x10000000
+	_SA_NODEFER        = 0x40000000
+	_SA_RESETHAND      = 0x80000000
 )
 
 func rtSigaction(sig uintptr, act, old *kernelSigaction) error {
@@ -177,16 +174,24 @@ func installLinuxSignalHandlers(act *kernelSigaction, call func(uintptr, *kernel
 	if oldBUS.handler <= 1 {
 		return fmt.Errorf("install SIGBUS handler: previous disposition %#x is not chainable", oldBUS.handler)
 	}
+	if oldSEGV.flags&_SA_RESETHAND != 0 || oldBUS.flags&_SA_RESETHAND != 0 {
+		return fmt.Errorf("install signal handlers: one-shot prior disposition is not chainable")
+	}
+	segvAct, busAct := *act, *act
+	segvAct.mask = oldSEGV.mask
+	busAct.mask = oldBUS.mask
+	segvAct.flags |= oldSEGV.flags & (_SA_EXPOSE_TAGBITS | _SA_RESTART | _SA_NODEFER)
+	busAct.flags |= oldBUS.flags & (_SA_EXPOSE_TAGBITS | _SA_RESTART | _SA_NODEFER)
 
 	// Publish both predecessors before either replacement can receive a fault.
 	guardOldSEGVHandler = oldSEGV.handler
 	guardOldBUSHandler = oldBUS.handler
-	if err := call(uintptr(syscall.SIGSEGV), act, nil); err != nil {
+	if err := call(uintptr(syscall.SIGSEGV), &segvAct, nil); err != nil {
 		guardOldSEGVHandler = 0
 		guardOldBUSHandler = 0
 		return fmt.Errorf("install SIGSEGV handler: %w", err)
 	}
-	if err := call(uintptr(syscall.SIGBUS), act, nil); err != nil {
+	if err := call(uintptr(syscall.SIGBUS), &busAct, nil); err != nil {
 		rollback := call(uintptr(syscall.SIGSEGV), &oldSEGV, nil)
 		guardOldSEGVHandler = 0
 		guardOldBUSHandler = 0
@@ -206,7 +211,6 @@ func InstallGuardTrapHandler() error {
 	if guardInstalled {
 		return nil
 	}
-	guardTrapExitFramedPC = addrNativeTrapExitFramed()
 	guardTrapExitHandlerJumpPC = addrNativeTrapExitHandlerJump()
 	act := kernelSigaction{
 		handler:  addrGuardSigHandler(),

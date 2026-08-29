@@ -84,7 +84,7 @@ func TestActiveOffsetsUseLocalImmutableGlobals(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			compiled, err = Load(blob)
+			compiled, err = LoadTrustedArtifact(blob)
 			if err != nil {
 				t.Fatal(err)
 			}

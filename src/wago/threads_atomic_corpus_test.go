@@ -72,7 +72,7 @@ func TestThreadsOfficialAtomicCoreExecutesWithinImportedMemoryBoundary(t *testin
 			if len(args) != 1 {
 				t.Fatalf("line %d init arity = %d", command.Line, len(args))
 			}
-			binary.LittleEndian.PutUint64(memory.Bytes()[:8], args[0])
+			binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], args[0])
 			actions++
 			continue
 		}
@@ -136,7 +136,7 @@ func TestThreadsOfficialAtomicWaitNotifyExecutesWithinImportedMemoryBoundary(t *
 		t.Fatal(err)
 	}
 	defer instance.Close()
-	binary.LittleEndian.PutUint64(memory.Bytes()[:8], 0xffffffffffff)
+	binary.LittleEndian.PutUint64(memory.UnsafeBytes()[:8], 0xffffffffffff)
 
 	for _, tc := range []struct {
 		name string

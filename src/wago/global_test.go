@@ -263,7 +263,7 @@ func TestExtendedConstExpressionsExecuteAndRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MarshalBinary extended const module: %v", err)
 	}
-	loaded, err := Load(blob)
+	loaded, err := LoadTrustedArtifact(blob)
 	if err != nil {
 		t.Fatalf("Load extended const module: %v", err)
 	}
@@ -683,7 +683,7 @@ func TestDataOffsetI32ConstUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got := string(in.Memory().Bytes()[4:6]); got != "OK" {
+	if got := string(in.Memory().UnsafeBytes()[4:6]); got != "OK" {
 		t.Fatalf("data at i32.const offset = %q, want OK", got)
 	}
 }
@@ -865,7 +865,7 @@ func TestDataOffsetCanUseImportedImmutableGlobal(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
-	if got := string(in.Memory().Bytes()[9:11]); got != "OK" {
+	if got := string(in.Memory().UnsafeBytes()[9:11]); got != "OK" {
 		t.Fatalf("data at imported-global offset = %q, want OK", got)
 	}
 }

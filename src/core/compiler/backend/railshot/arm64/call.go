@@ -1076,6 +1076,35 @@ func funcTypeSlots(ts []wasm.ValType) int {
 	return n
 }
 
+func (f *fn) syncHostAddress(base Reg, disp int32, size int) (Reg, int32) {
+	if disp >= 0 && disp%int32(size) == 0 && disp/int32(size) <= 0xfff {
+		return base, disp
+	}
+	f.a.MovImm64(X16, uint64(uint32(disp)))
+	f.a.Add64(X16, base, X16)
+	return X16, 0
+}
+
+func (f *fn) syncHostStore64(base Reg, disp int32, src Reg) {
+	addr, off := f.syncHostAddress(base, disp, 8)
+	f.st64(addr, off, src)
+}
+
+func (f *fn) syncHostLoad64(dst, base Reg, disp int32) {
+	addr, off := f.syncHostAddress(base, disp, 8)
+	f.ld64(dst, addr, off)
+}
+
+func (f *fn) syncHostStoreV128(base Reg, disp int32, src Reg) {
+	addr, off := f.syncHostAddress(base, disp, 16)
+	f.a.VMovdquStoreDisp(addr, off, src)
+}
+
+func (f *fn) syncHostLoadV128(dst, base Reg, disp int32) {
+	addr, off := f.syncHostAddress(base, disp, 16)
+	f.a.VMovdquLoadDisp(dst, addr, off)
+}
+
 func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 	if !f.tracksGCFrameRoots() || n <= 0 {
 		return nil
@@ -1114,8 +1143,14 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	paramSlots := funcTypeSlots(ft.Params)
 	resultSlots := funcTypeSlots(ft.Results)
-	if paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots {
-		return fmt.Errorf("host import %d uses %d param slot(s), %d result slot(s); synchronous host imports support at most %d slots in each direction", importIdx, paramSlots, resultSlots, maxSyncHostSlots)
+	internalGCHelper := uint32(importIdx)&gcStructDispatchBit != 0
+	slotLimit := maxSyncHostSlots
+	if internalGCHelper {
+		slotLimit = f.syncHostSlots
+	}
+	wide := internalGCHelper && (paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots)
+	if paramSlots > slotLimit || resultSlots > slotLimit {
+		return fmt.Errorf("host import %d uses %d param slot(s), %d result slot(s); synchronous host frame supports at most %d slots in each direction", importIdx, paramSlots, resultSlots, slotLimit)
 	}
 
 	roots := f.rootsBottomToTop()
@@ -1157,6 +1192,12 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// two adjacent little-endian uint64 slots, exactly like Invoke and cross-
 	// instance wrapper calls.
 	f.ld64(X11, linMemReg, -int32(offCustomCtx)) // X11 = control frame
+	argsOffset, resultsOffset := int32(hcArgs), int32(hcResults)
+	if wide {
+		f.a.AddImm64(X11, X11, hcWideBase)
+		argsOffset = hcWideArgs
+		resultsOffset = hcWideArgs + int32(f.syncHostSlots)*8
+	}
 	argSlot, ctrlSlot := 0, 0
 	if p > 0 {
 		argSlot = slotOf[d-p]
@@ -1166,22 +1207,25 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		if mt.isV128() {
 			x := f.allocFReg(0)
 			f.a.VMovdquLoadDisp(x, SP, f.spillOff(argSlot))
-			f.a.VMovdquStoreDisp(X11, hcArgs+int32(ctrlSlot)*8, x)
+			f.syncHostStoreV128(X11, argsOffset+int32(ctrlSlot)*8, x)
 			f.releaseF(x)
 		} else if mt.is64() {
 			f.ld64(X9, SP, f.spillOff(argSlot))
-			f.st64(X11, hcArgs+int32(ctrlSlot)*8, X9)
+			f.syncHostStore64(X11, argsOffset+int32(ctrlSlot)*8, X9)
 		} else {
 			f.ld32(X9, SP, f.spillOff(argSlot)) // zero-extends into X9
-			f.st64(X11, hcArgs+int32(ctrlSlot)*8, X9)
+			f.syncHostStore64(X11, argsOffset+int32(ctrlSlot)*8, X9)
 		}
 		argSlot += mt.stackSlots()
 		ctrlSlot += mt.stackSlots()
 	}
+	if wide {
+		f.ld64(X11, linMemReg, -int32(offCustomCtx))
+	}
 	f.a.MovImm64(X16, uint64(uint32(importIdx)))
 	f.st32(X11, hcImportIdx, X16)
 	// hcNArgs packs param slots (low 16) and result slots (high 16) so the Go
-	// re-entry loop copies back only the real result count. Both are <= 64.
+	// re-entry loop copies back only the real result count. Both fit uint16.
 	f.a.MovImm64(X16, uint64(uint32(paramSlots)|uint32(resultSlots)<<16))
 	f.st32(X11, hcNArgs, X16)
 
@@ -1203,6 +1247,9 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// Read results out of the control frame onto the operand stack, honoring
 	// slot-width result layout for v128 and mixed scalar/vector signatures.
 	f.ld64(X11, linMemReg, -int32(offCustomCtx)) // reload ctrl (clobbered by the round trip)
+	if wide {
+		f.a.AddImm64(X11, X11, hcWideBase)
+	}
 	res := f.tmpRegs[:0]
 	if cap(res) < rN {
 		res = make([]Reg, 0, rN)
@@ -1222,18 +1269,18 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 		switch {
 		case rt.isV128():
 			res[j] = f.allocFReg(0)
-			f.a.VMovdquLoadDisp(res[j], X11, hcResults+int32(ctrlSlot)*8)
+			f.syncHostLoadV128(res[j], X11, resultsOffset+int32(ctrlSlot)*8)
 			f.fpinned = f.fpinned.add(res[j]) // keep across the remaining loads
 		case rt.isFloat():
 			tmp := f.allocReg(0)
-			f.ld64(tmp, X11, hcResults+int32(ctrlSlot)*8)
+			f.syncHostLoad64(tmp, X11, resultsOffset+int32(ctrlSlot)*8)
 			res[j] = f.allocFReg(0)
 			f.a.FmovFromGpr(res[j], tmp, true)
 			f.release(tmp)
 			f.fpinned = f.fpinned.add(res[j])
 		default:
 			res[j] = f.allocReg(0)
-			f.ld64(res[j], X11, hcResults+int32(ctrlSlot)*8)
+			f.syncHostLoad64(res[j], X11, resultsOffset+int32(ctrlSlot)*8)
 			f.pinned = f.pinned.add(res[j]) // keep across the remaining loads
 		}
 		ctrlSlot += rt.stackSlots()
@@ -1366,12 +1413,14 @@ const (
 // (offCustomCtx) for its control frame. These MUST match
 // src/core/runtime/hostcall_arm64.go (hcSavedSP..hcResults, maxHostArity=64).
 const (
-	hcTrampoline     = 176 // u64: hostCallStub address (published per-instance by CallWithHost)
-	hcImportIdx      = 184 // u32: native -> Go
-	hcNArgs          = 188 // u32: low 16 bits = param slots, high 16 bits = result slots
-	hcArgs           = 192 // [64]u64: native -> Go
-	hcResults        = 704 // [64]u64: Go -> native (== hcArgs + 64*8)
-	maxSyncHostSlots = 64  // must match runtime.MaxHostArity / maxHostArity
+	hcTrampoline           = 176 // u64: hostCallStub address (published per-instance by CallWithHost)
+	hcImportIdx            = 184 // u32: native -> Go
+	hcNArgs                = 188 // u32: low 16 bits = param slots, high 16 bits = result slots
+	hcArgs                 = 192 // [64]u64: native -> Go
+	hcResults              = 704 // [64]u64: Go -> native (== hcArgs + 64*8)
+	hcWideBase             = hcResults + maxSyncHostSlots*8
+	hcWideArgs       int32 = 8
+	maxSyncHostSlots       = 64 // must match runtime.MaxHostArity / maxHostArity
 )
 
 var instanceContextOffsets = [...]int32{
@@ -1610,11 +1659,12 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		return nil, false
 	}
 	f.materializeGCFrameLocalsAt(siteIndex, true)
-	offsets := make([]uint32, 0, len(plan.LocalOffsets))
-	for i, off := range plan.LocalOffsets {
-		if plan.CallLocalLiveAt(siteIndex, i) {
-			offsets = append(offsets, off)
-		}
+	offsets := make([]uint32, 0, min(len(plan.LocalOffsets), shared.GCFrameRootLimit))
+	if !plan.VisitLiveLocals(siteIndex, true, func(root int) {
+		offsets = append(offsets, plan.LocalOffsets[root])
+	}) {
+		plan.Exact = false
+		return nil, false
 	}
 	hidden := len(roots) - paramCount
 	slot := 0

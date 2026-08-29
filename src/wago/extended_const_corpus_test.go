@@ -78,7 +78,7 @@ func TestExtendedConstCodecExecution(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			loaded, err := wago.Load(blob)
+			loaded, err := wago.LoadTrustedArtifact(blob)
 			if err != nil {
 				t.Fatal(err)
 			}

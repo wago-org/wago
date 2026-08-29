@@ -3,7 +3,9 @@ package wago
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -150,13 +152,78 @@ func TestResolveInstanceImportsDoesNotAllocateForUnrelatedNamespace(t *testing.T
 	}
 
 	allocs := testing.AllocsPerRun(100, func() {
-		imports, pluginGCImports, err := rt.resolveInstanceImports(nil, nil)
+		imports, pluginGCImports, err := rt.resolveInstanceImports(nil, nil, nil, nil)
 		if err != nil || imports != nil || pluginGCImports != nil {
 			t.Fatalf("resolveInstanceImports = %#v, %#v, %v, want nil, nil, nil", imports, pluginGCImports, err)
 		}
 	})
 	if allocs != 0 {
 		t.Fatalf("resolveInstanceImports allocations = %v, want 0", allocs)
+	}
+}
+
+func TestResolveInstanceImportsOrdinaryImportDoesNotAllocateCollisionMap(t *testing.T) {
+	rt := NewRuntime()
+	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	rt.imports["env.f"] = fn
+	rt.importMeta["env.f"] = &registeredImport{module: "env", name: "f", fn: fn}
+	specs := []ImportSpec{{Module: "env", Name: "f", Kind: ImportFunc}}
+	allocs := testing.AllocsPerRun(100, func() {
+		imports, pluginGCImports, err := rt.resolveInstanceImports(specs, nil, nil, nil)
+		if err != nil || len(imports) != 1 || imports["env.f"] == nil || pluginGCImports != nil {
+			t.Fatalf("resolveInstanceImports = %#v, %#v, %v", imports, pluginGCImports, err)
+		}
+	})
+	if allocs > 3 {
+		t.Fatalf("resolveInstanceImports allocations = %v, want at most 3 without a collision map", allocs)
+	}
+}
+
+func TestResolveInstanceImportsDottedFieldsDoNotAllocateCollisionMap(t *testing.T) {
+	rt := NewRuntime()
+	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	for _, name := range []string{"a", "b", "a.b", "c.d"} {
+		key := "env." + name
+		rt.imports[key] = fn
+		rt.importMeta[key] = &registeredImport{module: "env", name: name, fn: fn}
+	}
+	allocations := func(specs []ImportSpec) float64 {
+		return testing.AllocsPerRun(100, func() {
+			imports, pluginGCImports, err := rt.resolveInstanceImports(specs, nil, nil, nil)
+			if err != nil || len(imports) != 2 || pluginGCImports != nil {
+				panic(fmt.Sprintf("resolveInstanceImports = %#v, %#v, %v", imports, pluginGCImports, err))
+			}
+		})
+	}
+	plain := allocations([]ImportSpec{{Module: "env", Name: "a", Kind: ImportFunc}, {Module: "env", Name: "b", Kind: ImportFunc}})
+	dotted := allocations([]ImportSpec{{Module: "env", Name: "a.b", Kind: ImportFunc}, {Module: "env", Name: "c.d", Kind: ImportFunc}})
+	if dotted > plain {
+		t.Fatalf("dotted-field allocations = %.0f, plain fields = %.0f", dotted, plain)
+	}
+}
+
+func TestResolveInstanceImportsMatchingExactIdentityDoesNotAllocateCollisionMap(t *testing.T) {
+	rt := NewRuntime()
+	fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+	allocations := func(module string) float64 {
+		specs := []ImportSpec{{Module: module, Name: "f", Kind: ImportFunc}}
+		declared, err := indexDeclaredImportIdentities(specs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		identity := importBindingKey{module: module, name: "f"}
+		exact := map[string]exactImportOverride{module + ".f": {identity: identity, value: fn}}
+		return testing.AllocsPerRun(100, func() {
+			imports, pluginGCImports, err := rt.resolveInstanceImports(specs, declared, nil, exact)
+			if err != nil || len(imports) != 1 || pluginGCImports != nil {
+				panic(fmt.Sprintf("resolveInstanceImports = %#v, %#v, %v", imports, pluginGCImports, err))
+			}
+		})
+	}
+	plain := allocations("env")
+	dotted := allocations("env.prod")
+	if dotted > plain {
+		t.Fatalf("matching dotted identity allocations = %.0f, plain identity = %.0f", dotted, plain)
 	}
 }
 
@@ -286,6 +353,165 @@ func TestRuntimeImportModuleCollision(t *testing.T) {
 	// The failed Use must not have registered the extension.
 	if len(rt.Extensions()) != 1 {
 		t.Fatalf("failed Use left %d extensions registered", len(rt.Extensions()))
+	}
+}
+
+func TestRuntimeDirectInstanceAggregateLimits(t *testing.T) {
+	const pageBytes = uint64(65536)
+	cfg := NewRuntimeConfig().WithInstanceLimits(2, pageBytes)
+	rt := NewRuntime(WithRuntimeConfig(cfg))
+	defer rt.Close()
+	mod, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x01})),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	first, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second, err := rt.Instantiate(context.Background(), mod); err == nil || second != nil || !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("second instance = %v, %v; want aggregate memory rejection", second, err)
+	}
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if rt.instanceReservations != nil {
+		t.Fatalf("released instance reservation remains indexed: %#v", rt.instanceReservations)
+	}
+	second, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatalf("instantiate after release: %v", err)
+	}
+	defer second.Close()
+	if rt.directInstanceCount != 1 || rt.directInstanceMemory != pageBytes {
+		t.Fatalf("aggregate usage = %d instances, %d bytes", rt.directInstanceCount, rt.directInstanceMemory)
+	}
+}
+
+func TestRuntimeFailedRetainedInstanceKeepsAggregateReservation(t *testing.T) {
+	if !requireExternalWAT(t) {
+		return
+	}
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(1, 0)))
+	defer rt.Close()
+	shared, err := NewTable(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := rt.Compile(watToWasmCA(t, `(module
+		(import "owner" "shared" (table $imported 1 1 funcref))
+		(table $local 1 1 funcref)
+		(func $f)
+		(elem (table $imported) (i32.const 0) func $f)
+		(elem (table $local) (i32.const 1) func $f))`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	instantiate := func() (*Instance, error) {
+		return rt.Instantiate(context.Background(), mod, WithImports(Imports{"owner.shared": shared}))
+	}
+	if in, err := instantiate(); err == nil || in != nil || !strings.Contains(err.Error(), "table 1") {
+		t.Fatalf("failed retained instance = %v, %v; want local-table bounds error", in, err)
+	}
+	if rt.directInstanceCount != 1 || len(rt.instanceReservations) != 1 {
+		t.Fatalf("retained aggregate reservation = %d instances, %d records; want 1, 1", rt.directInstanceCount, len(rt.instanceReservations))
+	}
+	if in, err := instantiate(); err == nil || in != nil || !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("second instance = %v, %v; want aggregate limit rejection", in, err)
+	}
+	if err := shared.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if rt.directInstanceCount != 0 || rt.instanceReservations != nil {
+		t.Fatalf("released aggregate reservation = %d instances, %#v records; want 0, nil", rt.directInstanceCount, rt.instanceReservations)
+	}
+}
+
+func TestRuntimeCountOnlyInstanceLimitSkipsMemoryAccounting(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(1, 0)))
+	defer rt.Close()
+	// A 2^48-page memory64 maximum is exactly 2^64 bytes and therefore cannot
+	// be represented by the optional aggregate byte counter. Count-only limits
+	// must not inspect or reject that otherwise valid declaration.
+	mod := &Module{c: &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{{Addr64: true, HasMax: true, Max: 1 << 48}}}}}
+	reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect)
+	if err != nil {
+		t.Fatalf("count-only reservation: %v", err)
+	}
+	defer reservation.release()
+	if reservation.memory != 0 {
+		t.Fatalf("count-only reservation charged %d memory bytes", reservation.memory)
+	}
+	if second, err := rt.reserveDirectInstance(mod, InstantiateDirect); err == nil || second != nil || !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("second count-only reservation = %v, %v; want instance limit", second, err)
+	}
+}
+
+func TestRuntimeMemoryLimitChargesFullNoMaximumMemory32(t *testing.T) {
+	const (
+		pageBytes = uint64(65536)
+		maxPages  = uint64(65536)
+	)
+	mod := &Module{c: &Compiled{HasMemory: true}}
+	if got, err := managedMemoryReservation(mod); err != nil || got != maxPages*pageBytes {
+		t.Fatalf("no-max memory32 reservation = %d, %v; want %d", got, err, maxPages*pageBytes)
+	}
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(0, (maxPages-1)*pageBytes)))
+	defer rt.Close()
+	if reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect); reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("undersized no-max memory32 reservation = %v, %v; want permission denial", reservation, err)
+	}
+}
+
+func TestRuntimeMemoryLimitChargesFullSecondaryNoMaximumMemory64(t *testing.T) {
+	const (
+		pageBytes = uint64(65536)
+		maxPages  = uint64(65536)
+	)
+	mod := &Module{c: &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{
+		{HasMax: true, Max: 1},
+		{Addr64: true},
+	}}}}
+	want := (maxPages + 1) * pageBytes
+	if got, err := managedMemoryReservation(mod); err != nil || got != want {
+		t.Fatalf("secondary no-max memory64 reservation = %d, %v; want %d", got, err, want)
+	}
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(0, want-pageBytes)))
+	defer rt.Close()
+	if reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect); reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("undersized secondary no-max memory64 reservation = %v, %v; want permission denial", reservation, err)
+	}
+}
+
+func TestRuntimeMemoryLimitChargesFullImportedNoMaximumMemory64(t *testing.T) {
+	const (
+		pageBytes = uint64(65536)
+		maxPages  = uint64(65536)
+	)
+	mod := &Module{c: &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{
+		{ImportKey: "env.memory", Addr64: true},
+	}}}}
+	if got, err := managedMemoryReservation(mod); err != nil || got != maxPages*pageBytes {
+		t.Fatalf("imported no-max memory64 reservation = %d, %v; want %d", got, err, maxPages*pageBytes)
+	}
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(0, (maxPages-1)*pageBytes)))
+	defer rt.Close()
+	if reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect); reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("undersized imported no-max memory64 reservation = %v, %v; want permission denial", reservation, err)
+	}
+}
+
+func TestRuntimeMemoryLimitClassifiesAccountingOverflow(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithInstanceLimits(0, 1)))
+	defer rt.Close()
+	mod := &Module{c: &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{{Addr64: true, HasMax: true, Max: 1 << 48}}}}}
+	reservation, err := rt.reserveDirectInstance(mod, InstantiateDirect)
+	if reservation != nil || err == nil || !errors.Is(err, ErrPermissionDenied) || !strings.Contains(err.Error(), "overflows bytes") {
+		t.Fatalf("overflow reservation = %v, %v; want detailed ErrPermissionDenied", reservation, err)
 	}
 }
 

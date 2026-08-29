@@ -118,6 +118,26 @@ func TestRunRecognizesFlagsAfterModulePath(t *testing.T) {
 	}
 }
 
+func TestRunParsesNativeArtifactOptInAsBoolean(t *testing.T) {
+	cmd := Command(testEnvironment{})
+	for _, args := range [][]string{
+		{"--allow-native-artifact", "module.wago"},
+		{"module.wago", "--allow-native-artifact"},
+	} {
+		normalized, err := cmd.Normalize(args)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ctx, err := cmd.Parse("wago run", normalized)
+		if err != nil {
+			t.Fatalf("parse %v: %v", args, err)
+		}
+		if !ctx.Bool("allow-native-artifact") || len(ctx.Args) != 1 || ctx.Args[0] != "module.wago" {
+			t.Fatalf("parse %v = opt-in %v, args %v", args, ctx.Bool("allow-native-artifact"), ctx.Args)
+		}
+	}
+}
+
 func TestFriendlyInstantiationErrorIsProviderNeutral(t *testing.T) {
 	for _, importName := range []string{"wasi_snapshot_preview1.fd_write", "acme_host.render"} {
 		err := fmt.Errorf(`module imports %q, but nothing provides it: %w`, importName, wago.ErrMissingImport)
@@ -164,7 +184,7 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	rt := wago.NewRuntime()
 	defer rt.Close()
 	config := wago.NewRuntimeConfig()
-	mod := mustLoadModule(path, config, rt, artifactcache.Cache{})
+	mod := mustLoadModule(path, config, rt, artifactcache.Cache{}, false)
 	if got := mustResolveExport(mod.Compiled(), ""); got != "f" {
 		t.Fatalf("default export = %q", got)
 	}
@@ -179,7 +199,10 @@ func TestLoadModuleAndResolveExport(t *testing.T) {
 	if err := os.WriteFile(compiledPath, encoded, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := mustResolveExport(mustLoadModule(compiledPath, config, rt, artifactcache.Cache{}).Compiled(), "f"); got != "f" {
+	if mod, err := loadModule(compiledPath, config, rt, artifactcache.Cache{}, false); err == nil || mod != nil || !strings.Contains(err.Error(), "--allow-native-artifact") {
+		t.Fatalf("untrusted artifact load = %v, %v; want explicit opt-in", mod, err)
+	}
+	if got := mustResolveExport(mustLoadModule(compiledPath, config, rt, artifactcache.Cache{}, true).Compiled(), "f"); got != "f" {
 		t.Fatalf("loaded export = %q", got)
 	}
 }

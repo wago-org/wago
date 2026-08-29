@@ -1129,7 +1129,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		ExtendedConstGlobals: features.ExtendedConstGlobals,
 		GCConstExpr:          features.GCStructProducts || features.GCArrayProducts || features.GCI31Products,
 	}
-	if err := wasm.ValidateModuleWithFeaturesAndWorkers(m, validationFeatures, workers); err != nil {
+	if err := wasm.ValidateModuleWithConfig(m, validationFeatures, workers, wasm.ValidationLimits{MaxFunctionLocals: cfg.maxFunctionLocals}); err != nil {
 		// Proposal-aware decoding can expose a structurally unsupported module to
 		// validation before the validator has complete proposal subtyping rules.
 		// Compile must still fail clearly as unsupported rather than mislabeling a
@@ -1413,7 +1413,15 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if cfg.gcCodeTelemetry {
 		gcCodeStats = new(railshotModuleStats)
 	}
-	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
+	syncHostSlots := wruntime.MaxHostArity
+	usesGCHelpers := gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers()
+	if usesGCHelpers {
+		syncHostSlots, err = gcSyncHostSlotCapacity(gcMetadata.Descs)
+		if err != nil {
+			return nil, fmt.Errorf("compile: %w", err)
+		}
+	}
+	cm, err := railshotCompileModuleWith(m, railshotCompileOptions{Workers: workers, Optimizations: cfg.optimizations, OptimizationSnapshot: cfg.optimizationSnapshot, OptimizationDeltas: cfg.optimizationDeltas, ElideBoundsChecks: elide, NoBoundsFacts: cfg.noDeferBounds, ImportBindings: dynamicBindings, SyncHostCalls: atomicWaitHelpers, SyncHostSlots: syncHostSlots, GCTypeSubtypingRefTest: gcFunctionRefTest, GCStructHelpers: gcStructProduct.requiresHelpers(), GCArrayHelpers: gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers(), GCFrameRoots: gcFrameRoots, Interruptible: !wruntime.HostInterruptSupported(), MemoryPressureAt: pressureAt, MemoryPressure: pressure, CustomInstructions: customInstructions, Codegen: codegen.Options{Module: codegen.ModuleInfo{GCTypeDescs: gcMetadata.Descs, GCTypeLayouts: gcMetadata.Layouts}}, Stats: gcCodeStats})
 	if err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
@@ -1439,7 +1447,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if exactNativeGCRoots || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
 	c.memoryDir.exactExports = true
 	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
 	c.memoryDir.stagedMemory64 = features.Memory64 && usesMemory64
@@ -3611,8 +3619,12 @@ func (c *Compiled) declaredMemoryMaxBytes() (uint64, error) {
 		if !def.HasMax {
 			// The exact Wasm type remains unbounded in metadata. Policy and managed-
 			// instance accounting charge the finite implementation reservation used
-			// by instantiation, matching the existing memory32 resource model.
-			pages = 65535
+			// by instantiation. Only staged memory 0 is capped one page below the
+			// full 2^16-page reservation used by memory32 and secondary memories.
+			pages = 1 << 16
+			if i == 0 && def.Addr64 && def.ImportKey == "" {
+				pages = 65535
+			}
 		}
 		if pages > ^uint64(0)/pageBytes {
 			return 0, fmt.Errorf("memory %d maximum %d pages overflows bytes", i, pages)
@@ -3756,7 +3768,21 @@ func (c *Compiled) validateArenaFootprint() error {
 	}
 	hostCallBytes := 0
 	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
-		hostCallBytes = wruntime.HostCtrlFrameBytes
+		syncHostSlots := wruntime.MaxHostArity
+		if c.usesGCStructHelpers() || c.usesGCArrayHelpers() {
+			syncHostSlots, err = gcSyncHostSlotCapacity(c.GCTypeDescs)
+			if err != nil {
+				return fmt.Errorf("compiled metadata invalid: %w", err)
+			}
+			if c.syncHostSlots != 0 && int(c.syncHostSlots) != syncHostSlots {
+				return fmt.Errorf("compiled metadata invalid: synchronous host slot capacity %d, want %d", c.syncHostSlots, syncHostSlots)
+			}
+		}
+		hostCallBytes, err = wruntime.HostCtrlFrameBytesForSlots(syncHostSlots)
+		if err != nil {
+			return fmt.Errorf("compiled metadata invalid: %w", err)
+		}
+		c.syncHostSlots = uint16(syncHostSlots)
 	}
 	need, err := wruntime.InstantiateArenaNeed(wruntime.InstantiateFootprint{
 		FuncImportCount:    len(c.Imports),
@@ -3792,6 +3818,9 @@ func (c *Compiled) validateArenaFootprint() error {
 	}
 	c.maxParamSlots = maxParams
 	c.maxResultSlots = maxResults
+	if c.syncHostSlots == 0 {
+		c.syncHostSlots = uint16(wruntime.MaxHostArity)
+	}
 	c.instantiateArenaNeed = need
 	return nil
 }
@@ -3991,9 +4020,9 @@ func (c *Compiled) validateSerializableLocked() error {
 	return c.validateCodecMetadata()
 }
 
-// ReadFrom streams one sectioned ".wago" artifact using bounded default
-// allocations. Native code is read directly into its RW image and sealed in
-// place on first instantiation.
+// ReadFrom streams one trusted sectioned ".wago" artifact using bounded default
+// allocations. Artifacts contain unsandboxed host-native code. Native code is
+// read directly into its RW image and sealed in place on first instantiation.
 func (c *Compiled) ReadFrom(r io.Reader) (int64, error) {
 	return c.ReadFromWithLimits(r, DefaultArtifactLimits())
 }
@@ -4028,9 +4057,10 @@ func (c *Compiled) ReadFromWithLimits(r io.Reader, limits ArtifactLimits) (int64
 	return n, nil
 }
 
-// UnmarshalBinary loads a ".wago" blob produced by MarshalBinary. It may
-// replace receiver state before instantiation; replacement is rejected while
-// instances of the receiver are live.
+// UnmarshalBinary loads a trusted ".wago" blob produced by MarshalBinary. The
+// artifact contains executable native code and is not a sandboxed Wasm input.
+// It may replace receiver state before instantiation; replacement is rejected
+// while instances of the receiver are live.
 func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if !IsCompiled(data) {
 		return fmt.Errorf("not a wago module")
@@ -4078,14 +4108,24 @@ func finishDecodedCompiled(decoded *Compiled) error {
 // IsCompiled reports whether b is a precompiled wago module (vs raw wasm).
 func IsCompiled(b []byte) bool { return len(b) >= 5 && string(b[:4]) == wagoMagic }
 
-// Load returns a *Compiled from either a precompiled ".wago" blob or raw wasm
-// (which it compiles).
+// Load compiles raw Wasm. It rejects native-code .wago artifacts so format
+// autodetection cannot silently cross the Wasm trust boundary.
 func Load(b []byte) (*Compiled, error) {
 	if IsCompiled(b) {
-		c := &Compiled{}
-		return c, c.UnmarshalBinary(b)
+		return nil, fmt.Errorf("wago: Load refuses native-code artifacts; use LoadTrustedArtifact only for authenticated or locally produced bytes")
 	}
 	return Compile(nil, b)
+}
+
+// LoadTrustedArtifact decodes a precompiled .wago artifact. Artifacts contain
+// raw host-native executable code and MUST be authenticated or produced in the
+// same trusted environment; validation cannot make hostile native code safe.
+func LoadTrustedArtifact(b []byte) (*Compiled, error) {
+	if !IsCompiled(b) {
+		return nil, fmt.Errorf("wago: trusted artifact input is not a .wago module")
+	}
+	c := &Compiled{}
+	return c, c.UnmarshalBinary(b)
 }
 
 // Invoke marshals slot-based arguments/results around one native WasmWrapper
@@ -4102,7 +4142,26 @@ func Load(b []byte) (*Compiled, error) {
 // use InvokeFromHost with the HostModule value it received. Direct invocation
 // fails with ErrPermissionDenied while callback-scoped guest storage is borrowed.
 func (in *Instance) Invoke(export string, args ...uint64) ([]uint64, error) {
-	return in.invoke(export, args, nil)
+	return in.invoke(export, args, invocationContextSet{})
+}
+
+// invocationContextSet keeps callback-visible cancellation independent from
+// native interruption. Targets without native cancellation still propagate the
+// public invocation's cancellation and deadline to synchronous host callbacks.
+type invocationContextSet struct {
+	interrupt context.Context
+	callback  context.Context
+}
+
+func invocationContextSetFor(ctx context.Context) (contexts invocationContextSet) {
+	if ctx == nil || ctx.Done() == nil {
+		return contexts
+	}
+	contexts.callback = ctx
+	if nativeCancellationSupported() {
+		contexts.interrupt = ctx
+	}
+	return contexts
 }
 
 // InvokeContext is like Invoke but honors context cancellation. If ctx is
@@ -4126,26 +4185,22 @@ func (in *Instance) InvokeContext(ctx context.Context, export string, args ...ui
 		}
 	}
 
-	var cancel context.Context
-	if nativeCancellationSupported() && ctx != nil && ctx.Done() != nil {
-		cancel = ctx
-	}
-
-	out, err := in.invoke(export, args, cancel)
+	contexts := invocationContextSetFor(ctx)
+	out, err := in.invoke(export, args, contexts)
 
 	return out, contextInterruptError(ctx, err)
 }
 
-func (in *Instance) invoke(export string, args []uint64, cancel context.Context) ([]uint64, error) {
-	return in.invokeEntry(export, args, cancel, false)
+func (in *Instance) invoke(export string, args []uint64, contexts invocationContextSet) ([]uint64, error) {
+	return in.invokeEntry(export, args, contexts, false)
 }
 
-func (in *Instance) invokeAdmitted(export string, args []uint64, cancel context.Context, reservation *pluginOperationReservation) ([]uint64, error) {
+func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invocationContextSet, reservation *pluginOperationReservation) ([]uint64, error) {
 	state := in.ensurePluginState()
-	return in.invokeWithToken(export, args, cancel, state.invocationID, true, true, reservation)
+	return in.invokeWithToken(export, args, contexts, state.invocationID, true, true, reservation)
 }
 
-func (in *Instance) invokeEntry(export string, args []uint64, cancel context.Context, alreadyAdmitted bool) ([]uint64, error) {
+func (in *Instance) invokeEntry(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted bool) ([]uint64, error) {
 	// Close hooks run after the invocation gate is published and may probe that
 	// later calls fail closed. Check the gate before waiting for the per-instance
 	// serialization lock so such a probe cannot deadlock behind the activation
@@ -4165,10 +4220,10 @@ func (in *Instance) invokeEntry(export string, args []uint64, cancel context.Con
 		state.invocationID = 0
 		state.invokeMu.Unlock()
 	}()
-	return in.invokeWithToken(export, args, cancel, id, true, alreadyAdmitted, nil)
+	return in.invokeWithToken(export, args, contexts, id, true, alreadyAdmitted, nil)
 }
 
-func (in *Instance) invokeWithToken(export string, args []uint64, cancel context.Context, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {
+func (in *Instance) invokeWithToken(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {
 	reentry := !gateHeld && isNativeActive(in, id)
 	if !reentry && !gateHeld {
 		// Acquire the target instance gate before the shared collector lease. A
@@ -4231,9 +4286,9 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 			// trap cell; the import attachment retains the producer's physical resources.
 			// Keep this Go-level re-export path identical so producer Close neither owns
 			// nor strands an invocation initiated through the relay.
-			return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, cancel, in.trap, true)
+			return ex.inst.invokeAttachedLocalContext(ex.localIdx, args, contexts, in.trap, true)
 		}
-		return in.invokeReexportedHost(export, importIdx, args, id)
+		return in.invokeReexportedHost(export, importIdx, args, id, contexts.callback)
 	}
 	if len(args) != ic.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
@@ -4263,16 +4318,16 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 		binary.LittleEndian.PutUint32(in.hostLog, 0) // reset host-call log
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
-	if cancel != nil {
-		stopCancel := in.startCancellationWatch(cancel, in.trap)
+	if contexts.interrupt != nil {
+		stopCancel := in.startCancellationWatch(contexts.interrupt, in.trap)
 		defer stopCancel()
 	}
 	if in.syncMode {
-		if err := in.callNativeSyncWithTrapContext(entry, in.trap, cancel); err != nil {
+		if err := in.callNativeSyncWithTrapContext(entry, in.trap, contexts.callback); err != nil {
 			return nil, err
 		}
 	} else {
-		privateScalar := invokePrivateEntryEnabled && cancel == nil && !in.nativeControlIsShared() &&
+		privateScalar := invokePrivateEntryEnabled && contexts.interrupt == nil && !in.nativeControlIsShared() &&
 			ic.entryMode != preparedEntryGeneral
 		entryMode := preparedEntryGeneral
 		if privateScalar {
@@ -4329,10 +4384,10 @@ func (in *Instance) invokeWithToken(export string, args []uint64, cancel context
 // executing in the producer. It shares the instance's call buffers, so the
 // returned slice is valid only until the next call on this Instance.
 func (in *Instance) invokeLocal(li int, args []uint64) ([]uint64, error) {
-	return in.invokeLocalContext(li, args, nil, in.trap)
+	return in.invokeLocalContext(li, args, invocationContextSet{}, in.trap)
 }
 
-func (in *Instance) invokeLocalContext(li int, args []uint64, cancel context.Context, activeTrap []byte) ([]uint64, error) {
+func (in *Instance) invokeLocalContext(li int, args []uint64, contexts invocationContextSet, activeTrap []byte) ([]uint64, error) {
 	if err := in.beginInvocation(); err != nil {
 		return nil, fmt.Errorf("invoke function %d: %w", li, err)
 	}
@@ -4344,14 +4399,14 @@ func (in *Instance) invokeLocalContext(li int, args []uint64, cancel context.Con
 			in.reconcileFuncrefRoots()
 		}
 	}()
-	return in.invokeAttachedLocalContext(li, args, cancel, activeTrap, false)
+	return in.invokeAttachedLocalContext(li, args, contexts, activeTrap, false)
 }
 
 // invokeAttachedLocalContext enters a producer retained by the caller's function
 // import attachment. The caller owns the invocation lease and active trap cell,
 // exactly as for a native dynamic import call. attachedResult permits first-time
 // funcref tokenization to transfer the attachment's finalization lifetime.
-func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel context.Context, activeTrap []byte, attachedResult bool) ([]uint64, error) {
+func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts invocationContextSet, activeTrap []byte, attachedResult bool) ([]uint64, error) {
 	if li < 0 || li >= len(in.c.Funcs) || li >= len(in.c.Entry) {
 		return nil, fmt.Errorf("invalid function index %d", li)
 	}
@@ -4396,12 +4451,12 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, cancel con
 		activeTrap = in.trap
 	}
 	stopCancel := noOpCancellationWatch
-	if cancel != nil {
-		stopCancel = in.startCancellationWatch(cancel, activeTrap)
+	if contexts.interrupt != nil {
+		stopCancel = in.startCancellationWatch(contexts.interrupt, activeTrap)
 	}
 	defer stopCancel()
 	if in.syncMode {
-		if err := in.callNativeSyncWithTrapContext(entry, activeTrap, cancel); err != nil {
+		if err := in.callNativeSyncWithTrapContext(entry, activeTrap, contexts.callback); err != nil {
 			return nil, err
 		}
 	} else {
@@ -4564,7 +4619,7 @@ func (in *Instance) replayHostLog() (err error) {
 	return nil
 }
 
-func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64, id invocationID) (results []uint64, err error) {
+func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64, id invocationID, parent context.Context) (results []uint64, err error) {
 	if importIdx < 0 || importIdx >= len(in.syncHosts) || in.syncHosts[importIdx] == nil || importIdx >= len(in.c.importFuncSigs) {
 		return nil, fmt.Errorf("export %q is an imported function without a callable host owner", export)
 	}
@@ -4630,6 +4685,8 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	// the public invocation boundary.
 	resumeGCInvocation := in.suspendGCInvocation(id)
 	defer resumeGCInvocation()
+	restoreInvocationContext := bindHostInvocationParent(in, parent)
+	defer restoreInvocationContext()
 	fn := in.syncHosts[importIdx]
 	caller := in.beginHostCallScope()
 	defer caller.scope.end(caller.generation, caller.parentGeneration)

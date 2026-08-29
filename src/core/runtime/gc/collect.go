@@ -819,23 +819,21 @@ func (c *Collector) compactNurseryHandles() {
 	out := c.nurseryHandles[:0]
 	var edenMax uint32
 	if c.survivorBump == 0 {
-		// Eden is bump allocated and nurseryHandles preserves allocation order.
-		// Compact membership once, then find the last live Eden allocation from
-		// the tail instead of recomputing a maximum across every survivor.
+		// Native array chunks and direct native structs share one reserved handle
+		// batch. Their handle publication order can differ from their physical
+		// Eden order, so derive the bump from every live extent instead of trusting
+		// the last retained handle.
 		for _, h := range c.nurseryHandles {
 			if h == 0 || int(h) >= len(c.handles) {
 				continue
 			}
-			sp := c.handles[h].space
+			e := c.handles[h]
+			sp := e.space
 			if sp == spaceNursery || (sp == spaceLarge && c.handles[h].young()) {
 				out = append(out, h)
 			}
-		}
-		for i := len(out) - 1; i >= 0; i-- {
-			e := c.handles[out[i]]
-			if e.space == spaceNursery && e.off < c.edenBytes() {
+			if sp == spaceNursery && e.off < c.edenBytes() && e.off+e.size > edenMax {
 				edenMax = e.off + e.size
-				break
 			}
 		}
 		clear(c.nurseryHandles[len(out):])

@@ -13,18 +13,12 @@ func (v *moduleValidator) subtypeByTypeIdxWithRecGroup(idx TypeIdx) (*SubType, i
 }
 
 func (v *moduleValidator) subtypeByFlatTypeIdx(idx int) (*SubType, int, bool) {
-	if idx < 0 {
+	v.ensureTypeIndex()
+	if idx < 0 || idx >= len(v.flatSubTypes) {
 		return nil, 0, false
 	}
-	want := idx
-	for gi := range v.m.Types {
-		rt := &v.m.Types[gi]
-		if want < len(rt.SubTypes) {
-			return &rt.SubTypes[want], gi, true
-		}
-		want -= len(rt.SubTypes)
-	}
-	return nil, 0, false
+	ref := v.flatSubTypes[idx]
+	return ref.st, ref.recGroup, true
 }
 
 func (v *moduleValidator) validTypeIdx(idx TypeIdx) bool {
@@ -35,14 +29,15 @@ func (v *moduleValidator) validTypeIdx(idx TypeIdx) bool {
 func (v *moduleValidator) subtypeByTypeIdxInRecGroup(idx TypeIdx, recGroup int) (*SubType, bool) {
 	if !idx.Rec {
 		if recGroup >= 0 {
+			if recGroup >= len(v.m.Types) {
+				return nil, false
+			}
 			// An absolute index inside a type definition may only name a type
 			// declared before the current recursive group. References to members
 			// of the current group are decoded as Rec indexes; later groups are
 			// out of scope even though they exist in the flattened type section.
-			base := 0
-			for gi := 0; gi < recGroup && gi < len(v.m.Types); gi++ {
-				base += len(v.m.Types[gi].SubTypes)
-			}
+			v.ensureTypeIndex()
+			base := v.typeGroupBases[recGroup]
 			if int(idx.Index) >= base {
 				return nil, false
 			}
@@ -66,13 +61,28 @@ type moduleSubTypeRef struct {
 }
 
 func (v *moduleValidator) flattenedSubTypeRefs() []moduleSubTypeRef {
-	var flat []moduleSubTypeRef
+	v.ensureTypeIndex()
+	return v.flatSubTypes
+}
+
+func (v *moduleValidator) ensureTypeIndex() {
+	if v.typeIndexReady {
+		return
+	}
+	v.typeIndexReady = true
+	v.typeGroupBases = make([]int, len(v.m.Types)+1)
+	total := 0
+	for gi := range v.m.Types {
+		v.typeGroupBases[gi] = total
+		total += len(v.m.Types[gi].SubTypes)
+	}
+	v.typeGroupBases[len(v.m.Types)] = total
+	v.flatSubTypes = make([]moduleSubTypeRef, 0, total)
 	for gi := range v.m.Types {
 		for si := range v.m.Types[gi].SubTypes {
-			flat = append(flat, moduleSubTypeRef{st: &v.m.Types[gi].SubTypes[si], recGroup: gi})
+			v.flatSubTypes = append(v.flatSubTypes, moduleSubTypeRef{st: &v.m.Types[gi].SubTypes[si], recGroup: gi})
 		}
 	}
-	return flat
 }
 
 func (v *moduleValidator) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int, bool) {
@@ -85,11 +95,8 @@ func (v *moduleValidator) flatTypeIdxInRecGroup(idx TypeIdx, recGroup int) (int,
 	if recGroup < 0 || recGroup >= len(v.m.Types) || idx.Index >= uint32(len(v.m.Types[recGroup].SubTypes)) {
 		return 0, false
 	}
-	abs := 0
-	for gi := 0; gi < recGroup; gi++ {
-		abs += len(v.m.Types[gi].SubTypes)
-	}
-	return abs + int(idx.Index), true
+	v.ensureTypeIndex()
+	return v.typeGroupBases[recGroup] + int(idx.Index), true
 }
 
 func (v *moduleValidator) validateSubtypeMetadata() error {

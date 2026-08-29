@@ -62,7 +62,7 @@ func testExplicitMemoryCopyForward12(t *testing.T, dynamic bool, base int32) {
 		t.Fatalf("instantiate: %v", err)
 	}
 	defer in.Close()
-	mem := in.Memory().Bytes()
+	mem := in.Memory().UnsafeBytes()
 	dst := int(base)
 	src := int(base + 48)
 	for i := 0; i < 12; i++ {

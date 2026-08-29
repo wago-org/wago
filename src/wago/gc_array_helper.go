@@ -80,9 +80,6 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		state = in.publicGCState()
 		state.mu.Lock()
 		defer state.mu.Unlock()
-		if err := in.syncGenericGCGlobalRootsLocked(state); err != nil {
-			panic(gcStructHelperError{err: err})
-		}
 		frameRoots = in.gcHelperRoots(ctrl, state, safepoint)
 	}
 

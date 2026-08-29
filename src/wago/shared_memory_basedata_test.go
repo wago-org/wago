@@ -46,7 +46,7 @@ func TestSharedMemoryImporterRebindsBasedataState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initializer-only shared-memory importer: %v", err)
 	}
-	if got := memImport.Bytes()[0]; got != 'a' {
+	if got := memImport.UnsafeBytes()[0]; got != 'a' {
 		t.Fatalf("active data byte = %q, want a", got)
 	}
 	if err := initializer.Close(); err != nil {
@@ -181,7 +181,7 @@ func TestHostReentryRefreshesMemorySizeAfterNestedGrow(t *testing.T) {
 			if len(grown) != 1 {
 				panic(HostTrap{Err: fmt.Errorf("nested memory.grow = %v, want one result", grown)})
 			}
-			if got := len(instance.Memory().Bytes()); got < 2*65536 || got > 3*65536 {
+			if got := len(instance.Memory().UnsafeBytes()); got < 2*65536 || got > 3*65536 {
 				panic(HostTrap{Err: fmt.Errorf("memory after nested grow = %d bytes", got)})
 			}
 			if got := len(caller.Memory()); got < 2*65536 || got > 3*65536 {

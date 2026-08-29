@@ -26,6 +26,40 @@ func arm64GCStructModule() []byte {
 	)
 }
 
+func arm64GCSparseLiveFrameRootModule(count uint32) []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	locals := append([]byte{0x01}, wasmtest.ULEB(count)...)
+	locals = append(locals, 0x63, 0x00)
+	body := append(locals, 0xfb, 0x01, 0x00, 0x1a, 0x20, 0x00, 0x1a, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+func TestGCArm64NativeRootAdmissionCompactsDeadDeclaredLocals(t *testing.T) {
+	const declaredRoots = 1138
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCSparseLiveFrameRootModule(declaredRoots))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	status := compiled.GCNativeRootAdmission()
+	if !status.Exact || status.Safepoints != 1 || status.MaximumRoots != 1 {
+		t.Fatalf("%d-declared-root arm64 admission = %+v", declaredRoots, status)
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 32, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestARM64GCNativeABIArtifactAndInstantiationPreflight(t *testing.T) {
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), arm64GCStructModule())
 	if err != nil {

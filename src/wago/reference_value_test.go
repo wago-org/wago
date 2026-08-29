@@ -246,6 +246,9 @@ func TestHostFuncRefValidationAndLifecycleHelpers(t *testing.T) {
 	if _, ok := expired.ExternRefValue(ExternRef{}); ok {
 		t.Fatal("expired host module resolved externref")
 	}
+	if expired.ReleaseExternRef(ExternRef{}) {
+		t.Fatal("expired host module released externref")
+	}
 	if err := rt.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +268,7 @@ func TestHostCallWaitRegistrationLifecycle(t *testing.T) {
 		t.Fatal("scope end did not wake registered waiter")
 	}
 	h.unregisterWait(w)
-	if got := scope.waiter.Load(); got != nil {
+	if got := scope.state.Load().waiter.Load(); got != nil {
 		t.Fatalf("unregister retained waiter %p", got)
 	}
 	if h.registerWait(&hostCallWaiter{wake: make(chan struct{}, 1)}) {

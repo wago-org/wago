@@ -199,6 +199,18 @@ func (t *Table) Size() int {
 	return int(binary.LittleEndian.Uint32(t.desc))
 }
 
+func (t *Table) runtimeCapacity() (uint32, bool) {
+	if t == nil {
+		return 0, false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed || len(t.desc) < 8 {
+		return 0, false
+	}
+	return binary.LittleEndian.Uint32(t.desc[4:]), true
+}
+
 // Close releases a host-created table after every importer closes. Instance-owned
 // export handles remain no-ops; their producer instance owns the descriptor.
 func (t *Table) Close() error {

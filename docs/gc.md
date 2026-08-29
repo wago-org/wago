@@ -85,7 +85,23 @@ and free-list metadata instead of growing metadata per cycle.
 Exact staged official products retain their existing collectors, roots, barriers,
 and stress coverage.
 
-The synchronous helper boundary is capped at 64 parameter/result slots. A lazy
+The synchronous helper boundary keeps its original 64-slot inline control frame
+and derives a checked wider capacity for large struct constructors. Counts remain
+u16 on the parked-call wire; modules above 64 append off-heap argument/result
+areas, and capacities above 65,535 reject. The 403-field regression therefore
+uses 404 slots and adds 6,472 off-heap control bytes only to that instance. Its
+ordinary 64-slot frame size, generated small-call path, and `Compiled` size stay
+unchanged. Runtime presents the appended 6,464 argument/result bytes directly
+to the helper, so wide transitions add no Go allocation or copy scratch. Codec
+reload derives the same capacity from immutable GC descriptors and never
+persists live contents; the extension address is derived from the off-heap frame
+base, so native state retains no Go pointer. Only wide instances acquire a
+length-registry entry; the ordinary per-instance heap footprint is unchanged.
+Fully initialized reference
+constructors continue to classify every initializer word through the reusable
+typed root scratch before collection.
+
+A lazy
 per-instance `gcPublicState` includes one mutex-protected 63-value constructor
 scratch, 64 reusable host-result roots, 64 reusable host-ingress roots, a bounded
 direct native-frame/root-chain adapter, one reusable foreign-clone handoff root,

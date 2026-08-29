@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"sync"
@@ -23,6 +24,11 @@ var hostControlInstances sync.Map // map[uintptr]*Instance
 type hostInvocationContext struct {
 	id          invocationID
 	reservation *pluginOperationReservation
+	parent      context.Context
+}
+
+func (c hostInvocationContext) empty() bool {
+	return c.id == 0 && c.reservation == nil && c.parent == nil
 }
 
 var hostInvocationContexts sync.Map // map[uintptr]hostInvocationContext
@@ -47,7 +53,7 @@ func activeHostInvocationContext(in *Instance) hostInvocationContext {
 }
 
 func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() {
-	if ctrl == 0 || next.id == 0 {
+	if ctrl == 0 || next.empty() {
 		return func() {}
 	}
 	previous, loaded := hostInvocationContexts.Load(ctrl)
@@ -61,6 +67,20 @@ func bindHostInvocationContext(ctrl uintptr, next hostInvocationContext) func() 
 	}
 }
 
+func bindHostInvocationParent(in *Instance, parent context.Context) func() {
+	if in == nil {
+		return func() {}
+	}
+	ctrl := offHeapSlicePtr(in.ctrl)
+	_, inherited := hostInvocationContexts.Load(ctrl)
+	if parent == nil && !inherited {
+		return func() {}
+	}
+	invocation := currentHostInvocationContext(ctrl, in)
+	invocation.parent = parent
+	return bindHostInvocationContext(ctrl, invocation)
+}
+
 func registerHostControl(in *Instance) error {
 	if in == nil || len(in.ctrl) < coreruntime.HostCtrlFrameBytes {
 		return fmt.Errorf("invalid synchronous host control frame")
@@ -68,6 +88,10 @@ func registerHostControl(in *Instance) error {
 	ptr := offHeapSlicePtr(in.ctrl)
 	if _, loaded := hostControlInstances.LoadOrStore(ptr, in); loaded {
 		return fmt.Errorf("duplicate synchronous host control frame %x", ptr)
+	}
+	if err := coreruntime.RegisterHostCtrlFrame(in.ctrl); err != nil {
+		hostControlInstances.Delete(ptr)
+		return fmt.Errorf("register runtime synchronous host control frame: %w", err)
 	}
 	return nil
 }
@@ -80,6 +104,7 @@ func unregisterHostControl(in *Instance) {
 	if current, ok := hostControlInstances.Load(ptr); ok && current == in {
 		hostControlInstances.Delete(ptr)
 	}
+	coreruntime.UnregisterHostCtrlFrame(in.ctrl)
 }
 
 func offHeapSlicePtr(b []byte) uintptr {
@@ -155,7 +180,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// owns the invocation identity and collector lease. Carry that identity into
 	// the producer's HostModule instead of reading its zero local invocation ID.
 	invocation := activeHostInvocationContext(root)
-	if invocation.id == 0 {
+	if invocation.empty() {
 		invocation = activeHostInvocationContext(active)
 	}
 	id := invocation.id
@@ -234,7 +259,7 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 		in.lifeMu.Unlock()
 		return nil, fmt.Errorf("acquire host re-entry engine: %w", err)
 	}
-	ctrl := make([]byte, coreruntime.HostCtrlFrameBytes)
+	ctrl := make([]byte, len(in.ctrl))
 	if err := coreruntime.InitHostCtrlFrame(ctrl); err != nil {
 		_ = coreruntime.ReleaseEngine(eng)
 		in.lifeMu.Unlock()
