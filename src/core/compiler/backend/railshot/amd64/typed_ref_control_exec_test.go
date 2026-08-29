@@ -59,7 +59,7 @@ func runTypedRefControl(t *testing.T, m *wasm.Module, ref uint64) (uint64, error
 	args := arena.Alloc(8)
 	binary.LittleEndian.PutUint64(args, ref)
 	results := arena.Alloc(8)
-	trap := arena.Alloc(8)
+	trap := arena.Alloc(coreruntime.TrapBufferBytes)
 	err = eng.Call(base+uintptr(cm.Entry[0]), args, jm.LinearMemory(), trap, results)
 	return binary.LittleEndian.Uint64(results), err
 }

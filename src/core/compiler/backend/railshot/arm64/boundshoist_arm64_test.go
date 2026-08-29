@@ -48,7 +48,7 @@ func runArm64WrapperMem(t *testing.T, m *wasm.Module, arg uint32, init func([]by
 		t.Fatal(err)
 	}
 	defer coreruntime.Unmap(code)
-	serArgs, results, trap := ar.Alloc(16), ar.Alloc(16), ar.Alloc(8)
+	serArgs, results, trap := ar.Alloc(16), ar.Alloc(16), ar.Alloc(coreruntime.TrapBufferBytes)
 	binary.LittleEndian.PutUint32(serArgs, arg)
 	err = eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results)
 	return binary.LittleEndian.Uint32(results), err

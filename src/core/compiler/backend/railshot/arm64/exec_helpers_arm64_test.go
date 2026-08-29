@@ -49,7 +49,7 @@ func runArm64WrapperWithOptions(t *testing.T, m *wasm.Module, opts CompileOption
 
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(coreruntime.TrapBufferBytes)
 	for i, a := range args {
 		binary.LittleEndian.PutUint64(serArgs[i*8:], a)
 	}

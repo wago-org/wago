@@ -37,7 +37,7 @@ func divInvoker(t *testing.T, m *wasm.Module) (call func(uint64) uint64, done fu
 	}
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	call = func(arg uint64) uint64 {
 		binary.LittleEndian.PutUint64(serArgs, arg)
 		if err := eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results); err != nil {

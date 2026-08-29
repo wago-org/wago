@@ -43,7 +43,7 @@ func runTailRaw(t *testing.T, m *wasm.Module, args ...uint64) ([]byte, error) {
 	defer runtime.Unmap(code)
 	argBuf := arena.Alloc(128)
 	resultBuf := arena.Alloc(128)
-	trap := arena.Alloc(8)
+	trap := arena.Alloc(runtime.TrapBufferBytes)
 	for i, arg := range args {
 		binary.LittleEndian.PutUint64(argBuf[i*8:], arg)
 	}

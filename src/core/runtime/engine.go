@@ -106,49 +106,46 @@ func (e *Engine) StackTop() uintptr {
 
 // Call enters native code at code following WARP's WasmWrapper ABI. serArgs,
 // linMem, trap and results MUST be backed by off-heap memory (Arena/JobMemory)
-// so their addresses are stable across the call. It returns a *TrapError if the
-// wrapper set a non-zero trap code.
+// so their addresses are stable across the call. trap must contain at least
+// TrapBufferBytes bytes because native trap stubs write the code and source
+// location. It returns a *TrapError if the wrapper set a non-zero trap code.
 //
 // The trap cell is zeroed and its pointer installed in basedata here, once per
 // entry, so generated code never passes or clears it: emitTrap (the only
 // consumer, cold) reads [linMem-abi.TrapCellPtrOffset], and function returns
 // carry no trap protocol at all (WARP's model).
 func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error {
-	if err := validateTrapCell(trap); err != nil {
+	if err := validateTrapBuffer(trap); err != nil {
 		return err
 	}
 	installTrapCell(linMem, trap)
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
-	if len(trap) >= 4 {
-		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
-			return trapErrorFromBuffer(tc, trap)
-		}
+	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
+		return trapErrorFromBuffer(tc, trap)
 	}
 	return nil
 }
 
 // CallPrepared enters native code after JobMemory.BindTrapCell established a
-// stable trap pointer and a zero trap cell. Successful native execution never
-// writes that cell, so repeated calls avoid clearing/rebinding it. A cold trap
-// is consumed and cleared before returning, re-establishing the invariant for
-// the next call.
+// stable trap pointer and a zero trap buffer of at least TrapBufferBytes bytes.
+// Successful native execution never writes that buffer, so repeated calls avoid
+// clearing/rebinding it. A cold trap is consumed and cleared before returning,
+// re-establishing the invariant for the next call.
 func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, trap, results []byte) error {
-	if err := validateTrapCell(trap); err != nil {
+	if err := validateTrapBuffer(trap); err != nil {
 		return err
 	}
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
-	if len(trap) >= 4 {
-		if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
-			storeTrap(trap, 0)
-			return trapErrorFromBuffer(tc, trap)
-		}
+	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
+		storeTrap(trap, 0)
+		return trapErrorFromBuffer(tc, trap)
 	}
 	return nil
 }
 
-func validateTrapCell(trap []byte) error {
-	if len(trap) < 4 {
-		return fmt.Errorf("jit: trap cell has %d bytes, need at least 4", len(trap))
+func validateTrapBuffer(trap []byte) error {
+	if len(trap) < TrapBufferBytes {
+		return fmt.Errorf("jit: trap buffer has %d bytes, need %d", len(trap), TrapBufferBytes)
 	}
 	return nil
 }
@@ -204,8 +201,8 @@ func (e *Engine) CallWithHostBase(code uintptr, serArgs []byte, linMemBase uintp
 	if linMemBase == 0 {
 		return fmt.Errorf("jit: host-call linear-memory base is zero")
 	}
-	if len(trap) < TrapBufferBytes {
-		return fmt.Errorf("jit: host-call trap buffer has %d bytes, need %d", len(trap), TrapBufferBytes)
+	if err := validateTrapBuffer(trap); err != nil {
+		return err
 	}
 	if err := InitHostCtrlFrame(ctrl); err != nil {
 		return err
