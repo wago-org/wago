@@ -20,7 +20,8 @@ type RemoteError struct{ Message string }
 func (err *RemoteError) Error() string { return err.Message }
 
 // Client serializes requests over one reusable connection. Returned artifacts
-// have passed the public Wago decoder and all of its native metadata checks.
+// are trusted as products of the configured compiler daemon, then pass Wago's
+// artifact decoder and native metadata checks before being returned.
 type Client struct {
 	connection net.Conn
 	limits     Limits
@@ -171,7 +172,7 @@ func (client *Client) Compile(ctx context.Context, options CompileOptions, wasm 
 	if header.Status == responseError {
 		return nil, &RemoteError{Message: string(payload)}
 	}
-	compiled, err := wago.Load(payload)
+	compiled, err := wago.LoadTrustedArtifact(payload)
 	if err != nil {
 		client.breakConnection()
 		return nil, fmt.Errorf("compiler daemon: validate artifact: %w", err)
