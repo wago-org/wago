@@ -49,6 +49,22 @@ var arm64V128LocalRegisters = [...]arm64.Reg{
 	24, 25, 26, 27, 28, 29, 30, 31,
 }
 
+func arm64PinV128Locals(types []wasm.ValType, uses []uint32, pinned []bool, localRegisters []arm64.Reg) {
+	for selected := 0; selected < min(len(arm64V128LocalRegisters), len(types)); selected++ {
+		best := -1
+		for local, typ := range types {
+			if typ == wasm.V128 && !pinned[local] && (best < 0 || uses[local] > uses[best]) {
+				best = local
+			}
+		}
+		if best < 0 {
+			return
+		}
+		pinned[best] = true
+		localRegisters[best] = arm64V128LocalRegisters[selected]
+	}
+}
+
 type arm64SIMDConstant struct {
 	bytes [16]byte
 	reg   arm64.Reg
@@ -4193,6 +4209,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	hasMemoryAccess := false
 	hasMemoryGrow := false
 	globalUses := make([]uint16, len(sf.Globals))
+	vectorLocalUses := make([]uint32, len(sf.Locals))
 	for _, instr := range sf.Instrs {
 		if (instr.Kind == wasm.InstrCall || instr.Kind == wasm.InstrCallIndirect) && instr.Inline() == wasm.InstrInvalid ||
 			instr.Kind == wasm.InstrElemDrop || instr.Kind == wasm.InstrStructGet || instr.Kind == wasm.InstrStructSet ||
@@ -4218,6 +4235,12 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		hasMemoryGrow = hasMemoryGrow || instr.Kind == wasm.InstrMemoryGrow
 		if (instr.Kind == wasm.InstrGlobalGet || instr.Kind == wasm.InstrGlobalSet) && int(instr.U32()) < len(globalUses) && globalUses[instr.U32()] != math.MaxUint16 {
 			globalUses[instr.U32()]++
+		}
+		if (instr.Kind == wasm.InstrLocalGet || instr.Kind == wasm.InstrLocalSet || instr.Kind == wasm.InstrLocalTee) &&
+			int(instr.U32()) < len(sf.Locals) && sf.Locals[instr.U32()] == wasm.V128 {
+			if vectorLocalUses[instr.U32()] != math.MaxUint32 {
+				vectorLocalUses[instr.U32()]++
+			}
 		}
 	}
 	promotedGlobals := [2]int{-1, -1}
@@ -4263,13 +4286,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				}
 			}
 		}
-		remaining := len(arm64V128LocalRegisters)
-		for i, typ := range sf.Locals {
-			if typ == wasm.V128 && remaining != 0 {
-				localV128Pinned[i] = true
-				remaining--
-			}
-		}
+		arm64PinV128Locals(sf.Locals, vectorLocalUses, localV128Pinned, localRegisters)
 	} else if pinLocalsAcrossCalls {
 		gpRegister := 0
 		for i, typ := range sf.Locals {
@@ -4536,7 +4553,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	controls := make([]arm64StackControl, 0, 8)
 	functionPatches := make([]arm64StackPatch, 0, 2)
 	defer func() {
-		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(coldMemoryTraps) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localScalarPinned) + sliceBytes(localV128Pinned) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(vectorStackValid) + sliceBytes(vectorStackSourceLocal) + sliceBytes(controls) + sliceBytes(functionPatches)
+		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(coldMemoryTraps) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localScalarPinned) + sliceBytes(localV128Pinned) + sliceBytes(globalUses) + sliceBytes(vectorLocalUses) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(vectorStackValid) + sliceBytes(vectorStackSourceLocal) + sliceBytes(controls) + sliceBytes(functionPatches)
 		for i := range controls {
 			workspace += sliceBytes(controls[i].patches)
 		}
@@ -4785,6 +4802,34 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 
 	for instrIndex := 0; instrIndex < len(sf.Instrs); instrIndex++ {
 		instr := sf.Instrs[instrIndex]
+		if reachable && instr.Kind == wasm.InstrLocalGet && int(instr.U32()) < len(sf.Locals) && sf.Locals[instr.U32()] == wasm.V128 &&
+			instrIndex+6 < len(sf.Instrs) && sf.Instrs[instrIndex+1].Kind == wasm.InstrI32Const &&
+			sf.Instrs[instrIndex+2].Kind == wasm.InstrI32x4ShrU && sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalGet &&
+			sf.Instrs[instrIndex+3].U32() == instr.U32() && sf.Instrs[instrIndex+4].Kind == wasm.InstrI32Const &&
+			sf.Instrs[instrIndex+5].Kind == wasm.InstrI32x4Shl && sf.Instrs[instrIndex+6].Kind == wasm.InstrV128Or {
+			right := sf.Instrs[instrIndex+1].U64()
+			left := sf.Instrs[instrIndex+4].U64()
+			if right > 0 && right < 32 && left == 32-right {
+				local := int(instr.U32())
+				dst, src := arm64.Reg(0), arm64.Reg(1)
+				if len(stackTypes) < len(arm64V128StackRegisters) {
+					dst = arm64V128StackRegisters[len(stackTypes)]
+				}
+				if localV128Pinned[local] {
+					src = localRegisters[local]
+				} else {
+					localLoadV128(local, src)
+				}
+				a.NeonUshrS(dst, src, uint8(right))
+				a.NeonSliS(dst, src, uint8(left))
+				if err := pushV128(dst); err != nil {
+					return nil, 0, nil, err
+				}
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+6].Offset)
+				instrIndex += 6
+				continue
+			}
+		}
 		if reachable && instrIndex+3 < len(sf.Instrs) && instr.Kind == wasm.InstrGlobalGet &&
 			(sf.Instrs[instrIndex+1].Kind == wasm.InstrI32Const || sf.Instrs[instrIndex+1].Kind == wasm.InstrI64Const) &&
 			(sf.Instrs[instrIndex+2].Kind == wasm.InstrI32Add || sf.Instrs[instrIndex+2].Kind == wasm.InstrI64Add ||

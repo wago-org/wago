@@ -201,6 +201,23 @@ per-item serializer/helper work and repeated explicit memory checks; broad
 RailMach admission remains excluded by the same correctness gate described
 above.
 
+`blake-as-simd.hashN(100)` is the next unfinished corpus. Its two large
+structured compression functions declare 37 vector locals each, but ARM64 has
+only 20 registers available for persistent structured locals. The old policy
+pinned the first 20 declarations even though later round-state locals are used
+up to five times as often. Vector locals are now ranked by total get/set/tee use,
+with stable source-order ties, before assigning those registers. A generic
+vector rotate fold also lowers `(x >> n) | (x << (32-n))` to ARM64 `USHR` plus
+`SLI` without changing WebAssembly lane semantics.
+
+Seven alternating 300 ms samples per backend measured 525.92 us for Dragline
+and 386.48 us for Railshot, or **1.361x**. The fresh pre-slice prioritization
+result was 802.58 us versus 404.96 us, or 1.982x, so Dragline latency fell 34.5%
+and the relative gap fell by 61.9%. Compression function 7 fell from 36,440 to
+34,380 native bytes, while function 8 fell from 33,448 to 31,516 bytes. The
+remaining gap is dominated by vector local spills and repeated explicit checks
+inside the 16-iteration compression loop.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is

@@ -33,6 +33,34 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 	}
 }
 
+func TestARM64PinV128LocalsUsesHottestLocals(t *testing.T) {
+	types := make([]wasm.ValType, len(arm64V128LocalRegisters)+3)
+	uses := make([]uint32, len(types))
+	pinned := make([]bool, len(types))
+	registers := make([]arm64.Reg, len(types))
+	for i := range types {
+		types[i] = wasm.V128
+		uses[i] = uint32(i)
+	}
+
+	arm64PinV128Locals(types, uses, pinned, registers)
+
+	for i := 0; i < 3; i++ {
+		if pinned[i] {
+			t.Fatalf("cold local %d was pinned", i)
+		}
+	}
+	for i := 3; i < len(types); i++ {
+		if !pinned[i] {
+			t.Fatalf("hot local %d was not pinned", i)
+		}
+		want := arm64V128LocalRegisters[len(types)-1-i]
+		if registers[i] != want {
+			t.Fatalf("local %d register = %d, want %d", i, registers[i], want)
+		}
+	}
+}
+
 func TestCompilerARM64MOPSBulkMemoryIsFeatureGated(t *testing.T) {
 	typeSec := wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil)))
 	funcSec := wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0)))
