@@ -28,7 +28,7 @@ type CallClobber struct {
 	FPR         uint64
 }
 
-const greedyDensityMinInstructions = 512
+const greedyDensityMinInstructions = 256
 
 func DefaultGreedyConfig(target Target) GreedyConfig {
 	linear := DefaultLinearQConfig(target)
@@ -200,15 +200,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		return survivors
 	}
 	intervals := append(reuse.priorityIntervals[:0], reuse.Intervals...)
-	useDensityCost := len(f.Insts) >= greedyDensityMinInstructions
-	if useDensityCost {
-		for reg := VReg(1); int(reg) < len(f.VRegs); reg++ {
-			if f.VRegs[reg].Bank == BankFPR {
-				useDensityCost = false
-				break
-			}
-		}
-	}
+	useDensityCost := greedyUsesDensityCost(f)
 	spillCost := func(interval LiveInterval) uint64 {
 		return greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost)
 	}
@@ -427,6 +419,18 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		}
 	}
 	return reuse, nil
+}
+
+func greedyUsesDensityCost(f *Func) bool {
+	if f == nil || len(f.Insts) < greedyDensityMinInstructions {
+		return false
+	}
+	for reg := VReg(1); int(reg) < len(f.VRegs); reg++ {
+		if f.VRegs[reg].Bank == BankFPR {
+			return false
+		}
+	}
+	return true
 }
 
 func greedySpillCost(interval LiveInterval, functionInstructions uint64, density bool) uint64 {

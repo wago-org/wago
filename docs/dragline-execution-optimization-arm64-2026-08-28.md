@@ -225,6 +225,21 @@ improve the workload materially, ruling out check hoisting as the next lever.
 The remaining gap is dominated by vector local spills and moves inside the
 16-iteration compression loop.
 
+`sha256.hashN(8)` is complete for this campaign slice. Its 391-instruction
+integer RailMach kernel fell below the original 512-instruction gate for
+use-density allocation. Range-area priority retained long-lived sparse state
+and repeatedly spilled the short-lived values used by the 64-round compression
+loop. The already-validated integer-only density policy now begins at 256
+machine instructions; any FPR value still selects the conservative area policy.
+
+Seven alternating 300 ms samples per backend measured 26.87 us for Dragline
+and 28.01 us for Railshot, or **0.959x**: Dragline is 4.1% faster. The fresh
+all-corpus baseline was 43.74 us versus 28.16 us, or 1.553x. Native code fell
+from 5,900 to 5,844 bytes. The allocator deliberately spends four additional
+spill slots on cold state (96 to 128 frame bytes) to keep the hot compression
+temporaries resident. A subsequent three-round, 100 ms all-corpus screen
+improved the 36-export geometric mean from 1.032x to 1.019x Railshot.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is
