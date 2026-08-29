@@ -61,6 +61,7 @@ type nativeBackendPlan struct {
 
 	BlockOffsets        []int
 	BranchPatches       []nativeBranchPatch
+	ConditionalPatches  []nativeBranchPatch
 	ColdTrapPatches     []nativeBranchPatch
 	MemoryCheckEnds     []uint64
 	MemoryCheckTouched  []railmach.VReg
@@ -125,6 +126,7 @@ type nativeBackendPlanner struct {
 	calleeSaveRegions   []railmach.CalleeSaveRegion
 	blockOffsets        []int
 	branchPatches       []nativeBranchPatch
+	conditionalPatches  []nativeBranchPatch
 	coldTrapPatches     []nativeBranchPatch
 	memoryCheckEnds     []uint64
 	memoryCheckTouched  []railmach.VReg
@@ -239,7 +241,7 @@ func (p *nativeBackendPlanner) capacityBreakdown() (ssa, machine, native uint64)
 			machine += railmach.PipelineCapacityBytes(nil, nil, nil, &candidate.schedule, &candidate.allocation, &candidate.exit, nil, nil, nil)
 		}
 	}
-	native = sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.coldTrapPatches) + sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.postRAPairWith) + sliceBytes(p.postRASkip) + sliceBytes(p.postRAForwardFrom) + sliceBytes(p.postRAFusionWith) + sliceBytes(p.postRAMemoryFrom) + sliceBytes(p.postRARepeatFirst) + sliceBytes(p.postRAPreIndex) + sliceBytes(p.postRAPostIndexWith) + sliceBytes(p.immediateProducer) + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses) + sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots) + sliceBytes(p.gcValues)
+	native = sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches) + sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.postRAPairWith) + sliceBytes(p.postRASkip) + sliceBytes(p.postRAForwardFrom) + sliceBytes(p.postRAFusionWith) + sliceBytes(p.postRAMemoryFrom) + sliceBytes(p.postRARepeatFirst) + sliceBytes(p.postRAPreIndex) + sliceBytes(p.postRAPostIndexWith) + sliceBytes(p.immediateProducer) + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses) + sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots) + sliceBytes(p.gcValues)
 	return ssa, machine, native
 }
 
@@ -1153,12 +1155,14 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		clear(p.blockOffsets)
 	}
 	p.branchPatches = p.branchPatches[:0]
+	p.conditionalPatches = p.conditionalPatches[:0]
 	p.coldTrapPatches = p.coldTrapPatches[:0]
 	p.memoryCheckEnds = resizeNativeSlice(p.memoryCheckEnds, len(machine.VRegs))
 	clear(p.memoryCheckEnds)
 	p.memoryCheckTouched = resizeNativeSlice(p.memoryCheckTouched, len(machine.Insts))[:0]
 	p.plan.BlockOffsets = p.blockOffsets
 	p.plan.BranchPatches = p.branchPatches
+	p.plan.ConditionalPatches = p.conditionalPatches
 	p.plan.ColdTrapPatches = p.coldTrapPatches
 	p.plan.MemoryCheckEnds = p.memoryCheckEnds
 	p.plan.MemoryCheckTouched = p.memoryCheckTouched

@@ -1000,8 +1000,14 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		a.MovImm64(arm64.X16, 0x8000000000000000)
 		a.FmovFromGpr(31, arm64.X16, true)
 	}
+	cachedFloats, cachedFloatCount := arm64RailMachCachedFloatConstants(plan)
+	for index, cached := range cachedFloats[:cachedFloatCount] {
+		a.MovImm64(arm64.X16, cached.bits)
+		a.FmovFromGpr(arm64.Reg(24+index), arm64.X16, cached.kind == wasm.InstrF64Const)
+	}
 	blockOffsets := plan.BlockOffsets
 	patches := plan.BranchPatches[:0]
+	conditionalPatches := plan.ConditionalPatches[:0]
 	coldTraps := plan.ColdTrapPatches[:0]
 	// B.cond has a signed 19-bit word displacement. Keep a conservative
 	// instruction-count margin for large functions whose final trap section can
@@ -1108,6 +1114,13 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		blockID := layoutIndex
 		if plan.Layout != nil {
 			blockID = int(plan.Layout.Order[layoutIndex])
+		}
+		nextBlock := -1
+		if layoutIndex+1 < len(plan.Schedule.BlockRanges) {
+			nextBlock = layoutIndex + 1
+			if plan.Layout != nil {
+				nextBlock = int(plan.Layout.Order[layoutIndex+1])
+			}
 		}
 		blockRange := plan.Schedule.BlockRanges[blockID]
 		blockOffsets[blockID] = a.Len()
@@ -2020,8 +2033,18 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				continue
 			}
 			if instruction.Op == wasm.InstrF32Const || instruction.Op == wasm.InstrF64Const {
-				a.MovImm64(arm64.X16, instruction.Aux)
-				a.FmovFromGpr(dst, arm64.X16, instruction.Op == wasm.InstrF64Const)
+				cached := false
+				for index, candidate := range cachedFloats[:cachedFloatCount] {
+					if instruction.Op == candidate.kind && instruction.Aux == candidate.bits {
+						a.FMov(dst, arm64.Reg(24+index), instruction.Op == wasm.InstrF64Const)
+						cached = true
+						break
+					}
+				}
+				if !cached {
+					a.MovImm64(arm64.X16, instruction.Aux)
+					a.FmovFromGpr(dst, arm64.X16, instruction.Op == wasm.InstrF64Const)
+				}
 				continue
 			}
 			if instruction.Op == wasm.InstrMemorySize {
@@ -2894,6 +2917,12 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			if falseSite < 0 {
 				falseSite = a.Bcond(falseCondition)
 			}
+			trueMoves := plan.Exit.EdgeMoves[trueEdge]
+			falseMoves := plan.Exit.EdgeMoves[falseEdge]
+			if int(plan.Machine.Edges[trueEdge].To) == nextBlock && trueMoves.Count == 0 && falseMoves.Count == 0 {
+				conditionalPatches = append(conditionalPatches, nativeBranchPatch{At: falseSite, Target: uint32(plan.Machine.Edges[falseEdge].To)})
+				continue
+			}
 			if err := emitARM64RailMachEdgeMoves(&a, plan, trueEdge); err != nil {
 				return nil, 0, true, err
 			}
@@ -2911,7 +2940,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			if err := emitARM64RailMachEdgeMoves(&a, plan, first); err != nil {
 				return nil, 0, true, err
 			}
-			patches = append(patches, nativeBranchPatch{At: a.Branch(), Target: uint32(plan.Machine.Edges[first].To)})
+			if target := int(plan.Machine.Edges[first].To); target != nextBlock {
+				patches = append(patches, nativeBranchPatch{At: a.Branch(), Target: uint32(target)})
+			}
 		} else if edgeCount != 0 {
 			return nil, 0, true, fmt.Errorf("RailMach block %d has unsupported %d-way control", blockID, edgeCount)
 		}
@@ -2922,6 +2953,12 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			return nil, 0, true, fmt.Errorf("RailMach branch target %d is out of range", patch.Target)
 		}
 	}
+	for _, patch := range conditionalPatches {
+		if int(patch.Target) >= len(blockOffsets) || !a.PatchBranch19(patch.At, blockOffsets[patch.Target]) {
+			return nil, 0, true, fmt.Errorf("RailMach conditional branch target %d is out of range", patch.Target)
+		}
+	}
+	plan.ConditionalPatches = conditionalPatches
 	if len(plan.Machine.Results) == 1 {
 		value := plan.Machine.Results[0]
 		scratch := arm64.X13
@@ -3023,6 +3060,68 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	plan.MemoryCheckEnds = memoryCheckEnds
 	plan.MemoryCheckTouched = memoryCheckTouched
 	return a.B, internalOffset, true, nil
+}
+
+type arm64CachedFloatConstant struct {
+	kind  wasm.InstrKind
+	bits  uint64
+	score uint64
+}
+
+func arm64RailMachCachedFloatConstants(plan *nativeBackendPlan) ([3]arm64CachedFloatConstant, int) {
+	var best [3]arm64CachedFloatConstant
+	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.ABI.HasCall {
+		return best, 0
+	}
+	count := 0
+	for instructionID, instruction := range plan.Machine.Insts {
+		if instruction.Op != wasm.InstrF32Const && instruction.Op != wasm.InstrF64Const {
+			continue
+		}
+		block := plan.Schedule.BlockOf[instructionID]
+		if int(block) >= len(plan.Machine.Blocks) {
+			continue
+		}
+		score := uint64(max(plan.Machine.Blocks[block].Weight, 1)) * uint64(arm64MoveImmediateInstructions(instruction.Aux))
+		slot := -1
+		for index := 0; index < count; index++ {
+			if best[index].kind == instruction.Op && best[index].bits == instruction.Aux {
+				slot = index
+				break
+			}
+		}
+		if slot >= 0 {
+			best[slot].score += score
+		} else if count < len(best) {
+			best[count] = arm64CachedFloatConstant{kind: instruction.Op, bits: instruction.Aux, score: score}
+			slot, count = count, count+1
+		} else if score > best[count-1].score {
+			best[count-1] = arm64CachedFloatConstant{kind: instruction.Op, bits: instruction.Aux, score: score}
+			slot = count - 1
+		}
+		for slot > 0 && best[slot].score > best[slot-1].score {
+			best[slot], best[slot-1] = best[slot-1], best[slot]
+			slot--
+		}
+	}
+	for count > 0 && best[count-1].score <= uint64(arm64MoveImmediateInstructions(best[count-1].bits)+1) {
+		count--
+	}
+	return best, count
+}
+
+func arm64MoveImmediateInstructions(value uint64) uint32 {
+	nonzero, nonones := uint32(0), uint32(0)
+	for shift := uint(0); shift < 64; shift += 16 {
+		chunk := uint16(value >> shift)
+		if chunk != 0 {
+			nonzero++
+		}
+		if chunk != ^uint16(0) {
+			nonones++
+		}
+	}
+	return max(min(nonzero, nonones), 1)
 }
 
 // emitARM64BoundsEnd adds a scalar access's constant end to its zero-extended

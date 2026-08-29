@@ -302,6 +302,35 @@ func TestARM64FloatBinaryPairRecognizesMatchingWidths(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachCachesHighestCostFloatConstants(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Machine: &railmach.Func{
+			Insts: []railmach.Inst{
+				{Op: wasm.InstrF64Const, Aux: 0x3f847ae147ae147b},
+				{Op: wasm.InstrF64Const, Aux: 0},
+				{Op: wasm.InstrF64Const, Aux: 0x3fe0000000000000},
+				{Op: wasm.InstrF32Const, Aux: 1},
+			},
+			Blocks: []railmach.Block{{Weight: 8}, {Weight: 16}, {Weight: 4}, {Weight: 1}},
+		},
+		Schedule: &railmach.Schedule{BlockOf: []railssa.BlockID{0, 1, 2, 3}},
+	}
+	cached, count := arm64RailMachCachedFloatConstants(plan)
+	if count != 3 {
+		t.Fatalf("cached constant count = %d, want 3: %#v", count, cached)
+	}
+	if cached[0].kind != wasm.InstrF64Const || cached[0].bits != 0x3f847ae147ae147b {
+		t.Fatalf("highest-cost constant = %#v", cached[0])
+	}
+	if cached[1].bits != 0 || cached[2].bits != 0x3fe0000000000000 {
+		t.Fatalf("remaining cached constants = %#v", cached[1:])
+	}
+	plan.ABI.HasCall = true
+	if _, count := arm64RailMachCachedFloatConstants(plan); count != 0 {
+		t.Fatalf("call-making function cached %d constants", count)
+	}
+}
+
 func TestARM64RailMachI32SpillUsesOneMemoryOperation(t *testing.T) {
 	plan := &nativeBackendPlan{
 		Machine: &railmach.Func{VRegs: []railmach.VRegData{{}, {Type: railmach.TypeI32, Bank: railmach.BankGPR}}},
