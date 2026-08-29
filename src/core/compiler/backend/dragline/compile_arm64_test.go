@@ -526,6 +526,64 @@ func TestARM64RailMachReusesDominatingMemoryCheckInBlock(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachDefersUnreachableTrapsPastHotReturn(t *testing.T) {
+	locals := append(wasmtest.ULEB(3), byte(0x7e))
+	body := append(wasmtest.Vec(locals), []byte{
+		0x42, 0x00, 0x21, 0x01, // a = 0
+		0x42, 0x01, 0x21, 0x02, // b = 1
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x20, 0x00, 0x45, 0x0d, 0x01, // break when n == 0
+		0x20, 0x01, 0x20, 0x02, 0x7c, 0x21, 0x03, // t = a + b
+		0x20, 0x02, 0x21, 0x01, // a = b
+		0x20, 0x03, 0x21, 0x02, // b = t
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, // n--
+		0x0c, 0x00, 0x0b, 0x0b, // continue; end loop/block
+		0x20, 0x01, 0x0b,
+	}...)
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata functionEmissionMetadata
+	codeBytes, _, ok, err := emitARM64RailMach(fn, plan, false, nil, nil, nil, &metadata)
+	if err != nil || !ok {
+		t.Fatalf("RailMach finalization = ok %t, err %v", ok, err)
+	}
+	firstTrap := len(codeBytes)
+	for _, trap := range metadata.Traps {
+		if trap.Code == 1 {
+			firstTrap = min(firstTrap, int(trap.Offset))
+		}
+	}
+	if firstTrap < 4 || !bytes.Equal(codeBytes[firstTrap-4:firstTrap], []byte{0xc0, 0x03, 0x5f, 0xd6}) {
+		t.Fatalf("first unreachable trap offset = %d; hot return does not precede cold traps", firstTrap)
+	}
+}
+
 func TestARM64RealizesPreIndexLinearMemory(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

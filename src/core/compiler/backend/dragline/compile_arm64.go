@@ -1155,22 +1155,20 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			if plan.Layout != nil {
 				nextBlock = int(plan.Layout.Order[layoutIndex+1])
 			}
+			if plan.Simplified != nil && nextBlock < len(plan.Simplified.Reachable) && !plan.Simplified.Reachable[nextBlock] {
+				nextBlock = -1
+			}
 		}
 		blockRange := plan.Schedule.BlockRanges[blockID]
 		edgeResultRename := arm64RailMachEdgeResultRename(plan, uint32(blockID))
-		blockOffsets[blockID] = a.Len()
 		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockExit) != 0 {
+			blockOffsets[blockID] = a.Len()
 			continue
 		}
 		if plan.Simplified != nil && blockID < len(plan.Simplified.Reachable) && !plan.Simplified.Reachable[blockID] {
-			offset := uint32(0)
-			if block := plan.CFG.Blocks[blockID]; block.InstCount != 0 {
-				offset = plan.Stack.Instrs[block.InstStart].Offset
-			}
-			metadata.recordTrap(a.Len(), offset, 1)
-			arm64EmitTrap(&a, 1, fn.Index, offset)
 			continue
 		}
+		blockOffsets[blockID] = a.Len()
 		if err := emitCalleeSaveEntry(railssa.BlockID(blockID)); err != nil {
 			return nil, 0, true, err
 		}
@@ -3078,18 +3076,6 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			return nil, 0, true, fmt.Errorf("RailMach block %d has unsupported %d-way control", blockID, edgeCount)
 		}
 	}
-	plan.BranchPatches = patches
-	for _, patch := range patches {
-		if int(patch.Target) >= len(blockOffsets) || !a.PatchBranch26(patch.At, blockOffsets[patch.Target]) {
-			return nil, 0, true, fmt.Errorf("RailMach branch target %d is out of range", patch.Target)
-		}
-	}
-	for _, patch := range conditionalPatches {
-		if int(patch.Target) >= len(blockOffsets) || !a.PatchBranch19(patch.At, blockOffsets[patch.Target]) {
-			return nil, 0, true, fmt.Errorf("RailMach conditional branch target %d is out of range", patch.Target)
-		}
-	}
-	plan.ConditionalPatches = conditionalPatches
 	if promotedGlobal.valid {
 		a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
 		if !a.Load64(arm64.X17, arm64.X17, promotedGlobal.index*8) || !a.Store64(arm64.X8, arm64.X17, 0) {
@@ -3185,6 +3171,22 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		a.LdpPost(arm64.FP, arm64.LR, arm64.SP, 16)
 	}
 	a.Ret()
+	for layoutIndex := range plan.Schedule.BlockRanges {
+		blockID := layoutIndex
+		if plan.Layout != nil {
+			blockID = int(plan.Layout.Order[layoutIndex])
+		}
+		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockExit) != 0 || plan.Simplified == nil || blockID >= len(plan.Simplified.Reachable) || plan.Simplified.Reachable[blockID] {
+			continue
+		}
+		blockOffsets[blockID] = a.Len()
+		offset := uint32(0)
+		if block := plan.CFG.Blocks[blockID]; block.InstCount != 0 {
+			offset = plan.Stack.Instrs[block.InstStart].Offset
+		}
+		metadata.recordTrap(a.Len(), offset, 1)
+		arm64EmitTrap(&a, 1, fn.Index, offset)
+	}
 	for _, trap := range coldTraps {
 		trapOffset := a.Len()
 		metadata.recordTrap(trapOffset, trap.Target, 3)
@@ -3193,6 +3195,18 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			return nil, 0, true, fmt.Errorf("RailMach cold memory trap branch is out of range")
 		}
 	}
+	plan.BranchPatches = patches
+	for _, patch := range patches {
+		if int(patch.Target) >= len(blockOffsets) || !a.PatchBranch26(patch.At, blockOffsets[patch.Target]) {
+			return nil, 0, true, fmt.Errorf("RailMach branch target %d is out of range", patch.Target)
+		}
+	}
+	for _, patch := range conditionalPatches {
+		if int(patch.Target) >= len(blockOffsets) || !a.PatchBranch19(patch.At, blockOffsets[patch.Target]) {
+			return nil, 0, true, fmt.Errorf("RailMach conditional branch target %d is out of range", patch.Target)
+		}
+	}
+	plan.ConditionalPatches = conditionalPatches
 	plan.ColdTrapPatches = coldTraps
 	plan.MemoryCheckEnds = memoryCheckEnds
 	plan.MemoryCheckTouched = memoryCheckTouched
