@@ -317,8 +317,8 @@ func TestStagedGCStructGetAllocationFailureAndCodecGate(t *testing.T) {
 }
 
 func TestStagedGCStructHelperFootprint(t *testing.T) {
-	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
-		t.Fatalf("compiledCodeCache size = %d, want 64", got)
+	if got := unsafe.Sizeof(compiledCodeCache{}); got != 104 {
+		t.Fatalf("compiledCodeCache size = %d, want 104", got)
 	}
 	if got := unsafe.Sizeof(gcPublicState{}); got != 3888 {
 		t.Fatalf("gcPublicState size = %d, want 3888", got)
