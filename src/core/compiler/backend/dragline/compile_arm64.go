@@ -2119,6 +2119,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				if !arm64RailMachLeaSP(&a, arm64.X8, callOffset) {
 					return nil, 0, true, fmt.Errorf("RailMach call area offset %d is not encodable", callOffset)
 				}
+				var singleRegisterArgument arm64.Reg
 				for index, operand := range operands {
 					scratch := arm64.X14
 					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR {
@@ -2135,17 +2136,35 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					if !a.Store64(src, arm64.X8, uint32(index*8)) {
 						return nil, 0, true, fmt.Errorf("RailMach call argument %d is not encodable", index)
 					}
+					if len(operands) == 1 {
+						singleRegisterArgument = src
+					}
 				}
 				if arm64RailMachDirectCallNeedsRegisterArguments(plan, instruction) {
-					for index, operand := range operands[:min(len(operands), len(arm64ParamRegisters))] {
+					registerArguments := operands[:min(len(operands), len(arm64ParamRegisters))]
+					loaded := 0
+					if len(registerArguments) == 1 {
+						if plan.Machine.VRegs[registerArguments[0].Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[registerArguments[0].Reg].Type == railmach.TypeF32 {
+							a.MovReg32(arm64.X0, singleRegisterArgument)
+						} else {
+							a.MovReg64(arm64.X0, singleRegisterArgument)
+						}
+						loaded = 1
+					}
+					for loaded+1 < len(registerArguments) {
+						a.LdpOffset(arm64ParamRegisters[loaded], arm64ParamRegisters[loaded+1], arm64.X8, int32(loaded*8))
+						loaded += 2
+					}
+					for ; loaded < len(registerArguments); loaded++ {
+						operand := registerArguments[loaded]
 						ok := false
 						if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
-							ok = a.Load32(arm64ParamRegisters[index], arm64.X8, uint32(index*8))
+							ok = a.Load32(arm64ParamRegisters[loaded], arm64.X8, uint32(loaded*8))
 						} else {
-							ok = a.Load64(arm64ParamRegisters[index], arm64.X8, uint32(index*8))
+							ok = a.Load64(arm64ParamRegisters[loaded], arm64.X8, uint32(loaded*8))
 						}
 						if !ok {
-							return nil, 0, true, fmt.Errorf("RailMach call argument %d is not encodable", index)
+							return nil, 0, true, fmt.Errorf("RailMach call argument %d is not encodable", loaded)
 						}
 					}
 				}

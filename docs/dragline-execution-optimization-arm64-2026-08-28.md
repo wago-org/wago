@@ -261,6 +261,9 @@ code before its private ABI contract is published. This closes the mixed-emitter
 hole that made an earlier broad call optimization unsafe. Calls with one result
 can consequently skip canonical result-vector staging only when the callee's
 final emitter is proven; argument mirroring and the call-frame wrapper remain.
+One-argument calls mirror the already-materialized source directly into X0,
+while wider argument vectors reload pairs with `LDP`; the canonical vector is
+still written first, preserving cycles and every private-entry convention.
 
 The serializer repeatedly addresses linear memory through an unchanged mutable
 global. Equivalent `global.get` addresses within one block now share explicit
@@ -271,12 +274,12 @@ every call because structured callees may use X27 internally. The abandoned X28
 variant was faster but is invalid on Go/ARM64 because X28 is the runtime's
 goroutine register.
 
-Seven alternating 300 ms samples per backend measured 22.12 us for Dragline and
-18.57 us for Railshot, or **1.191x**. The preceding three-round corpus pass was
-23.30 us versus 18.74 us, or 1.243x, so Dragline latency fell 5.1% relative to
-that fresh baseline. Serializer helper function 27 fell from 4,980 to 4,592
-native bytes (-7.8%); the export wrapper fell from 1,076 to 1,052 bytes. A fresh
-uncached 36-export differential passes. The remaining 19.1% gap is still in the
+Seven alternating 300 ms samples per backend measured 21.15 us for Dragline and
+18.53 us for Railshot, or **1.141x**. The preceding three-round corpus pass was
+23.30 us versus 18.74 us, or 1.243x, so Dragline latency fell 9.2% relative to
+that fresh baseline. Serializer helper function 27 fell from 4,980 to 4,564
+native bytes (-8.4%); the export wrapper fell from 1,076 to 1,044 bytes. A fresh
+uncached 36-export differential passes. The remaining 14.1% gap is still in the
 per-item serializer and allocation helpers, so this corpus remains the active
 optimization target.
 
