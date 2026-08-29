@@ -346,8 +346,8 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		if !errors.As(err, &unsupported) {
 			t.Fatalf("CoreFeaturesV3 Validate = %v, want platform UnsupportedFeatureError", err)
 		}
-		if unsupported.Requested != CoreFeaturesV3&^SupportedFeatures() {
-			t.Fatalf("unsupported Core 3 features = %s, want %s", unsupported.Requested, CoreFeaturesV3&^SupportedFeatures())
+		if unsupported.Requested != CoreFeaturesV3&^platformCoreFeatures() {
+			t.Fatalf("unsupported Core 3 features = %s, want %s", unsupported.Requested, CoreFeaturesV3&^platformCoreFeatures())
 		}
 	}
 }

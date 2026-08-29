@@ -1,3 +1,5 @@
+//go:build !tinygo
+
 package wago
 
 import (
@@ -39,6 +41,31 @@ func draglineScalarModule(body []byte) []byte {
 	)
 }
 
+func draglineProfiledCallIndirectModule(minSize uint32, targets ...uint32) []byte {
+	i32 := []wasm.ValType{wasm.I32}
+	twoI32 := []wasm.ValType{wasm.I32, wasm.I32}
+	elem := []byte{0x00, 0x41, 0x00, 0x0b}
+	elem = append(elem, wasmtest.ULEB(uint32(len(targets)))...)
+	for _, target := range targets {
+		elem = append(elem, wasmtest.ULEB(target)...)
+	}
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, i32),
+			wasmtest.FuncType(twoI32, i32),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec(append([]byte{0x70, 0x00}, wasmtest.ULEB(minSize)...))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("caller", 0, 0))),
+		wasmtest.Section(9, wasmtest.Vec(elem)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x01, 0x20, 0x02, 0x20, 0x00, 0x11, 0x01, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x6b, 0x0b}),
+		)),
+	)
+}
+
 func draglineReferenceResultModule(result wasm.ValType, body []byte) []byte {
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{result}))),
@@ -48,7 +75,15 @@ func draglineReferenceResultModule(result wasm.ValType, body []byte) []byte {
 	)
 }
 
+func requireDraglineCoreV3(t *testing.T) {
+	t.Helper()
+	if CoreFeaturesV3&^platformCoreFeatures() != 0 {
+		t.Skip("Dragline Core 3 execution requires a complete Core 3 backend")
+	}
+}
+
 func TestDraglineReferenceCoreOperations(t *testing.T) {
+	requireDraglineCoreV3(t)
 	for _, test := range []struct {
 		name string
 		body []byte
@@ -176,6 +211,7 @@ func TestDraglineReferenceCoreOperations(t *testing.T) {
 }
 
 func TestDraglineStructNewDefaultHelper(t *testing.T) {
+	requireDraglineCoreV3(t)
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5f, 0x00}, // (struct)
@@ -229,6 +265,7 @@ func TestDraglineStructNewDefaultHelper(t *testing.T) {
 }
 
 func TestDraglineDeadStructNewDefaultUsesCheckedReservation(t *testing.T) {
+	requireDraglineCoreV3(t)
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5f, 0x00},
@@ -289,6 +326,7 @@ func TestDraglineDeadStructNewDefaultUsesCheckedReservation(t *testing.T) {
 }
 
 func TestDraglineCheckedDeadGCConstructorFamilies(t *testing.T) {
+	requireDraglineCoreV3(t)
 	passive := append([]byte{0x01}, append(wasmtest.ULEB(3), []byte("abc")...)...)
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
@@ -336,6 +374,7 @@ func TestDraglineCheckedDeadGCConstructorFamilies(t *testing.T) {
 }
 
 func TestDraglineProvenNoBarrierGCStores(t *testing.T) {
+	requireDraglineCoreV3(t)
 	structType := []byte{0x5f}
 	structType = append(structType, wasmtest.Vec([]byte{0x6d, 0x01})...)
 	module := wasmtest.Module(
@@ -373,6 +412,7 @@ func TestDraglineProvenNoBarrierGCStores(t *testing.T) {
 }
 
 func TestDraglineStructGetHelpers(t *testing.T) {
+	requireDraglineCoreV3(t)
 	for _, test := range []struct {
 		name      string
 		fieldType byte
@@ -507,6 +547,7 @@ func TestDraglineStructGetHelpers(t *testing.T) {
 }
 
 func TestDraglineStructSetHelper(t *testing.T) {
+	requireDraglineCoreV3(t)
 	module := func(field []byte, result wasm.ValType, instructions []byte) []byte {
 		structType := append([]byte{0x5f, 0x01}, field...)
 		body := []byte{0x01, 0x01, 0x63, 0x00} // one (ref null 0) local
@@ -565,6 +606,7 @@ func TestDraglineStructSetHelper(t *testing.T) {
 }
 
 func TestDraglineStructNewHelper(t *testing.T) {
+	requireDraglineCoreV3(t)
 	t.Run("mixed-scalars", func(t *testing.T) {
 		module := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(
@@ -671,6 +713,7 @@ func TestDraglineStructNewHelper(t *testing.T) {
 }
 
 func TestDraglineArrayNewDefaultAndLenHelpers(t *testing.T) {
+	requireDraglineCoreV3(t)
 	body := []byte{
 		0x01, 0x01, 0x63, 0x00, // one (ref null 0) local
 		0x41, 0x03, 0xfb, 0x07, 0x00, 0x21, 0x00, // local0 = array.new_default 0, len 3
@@ -709,6 +752,7 @@ func TestDraglineArrayNewDefaultAndLenHelpers(t *testing.T) {
 }
 
 func TestDraglineArrayGetSetHelpers(t *testing.T) {
+	requireDraglineCoreV3(t)
 	module := func(field []byte, result wasm.ValType, operations []byte) []byte {
 		arrayType := append([]byte{0x5e}, field...)
 		body := []byte{0x01, 0x01, 0x63, 0x00}                        // one (ref null 0) local
@@ -821,6 +865,7 @@ func TestDraglineArrayGetSetHelpers(t *testing.T) {
 }
 
 func TestDraglineArrayNewHelper(t *testing.T) {
+	requireDraglineCoreV3(t)
 	for _, test := range []struct {
 		name   string
 		field  byte
@@ -903,6 +948,7 @@ func TestDraglineArrayNewHelper(t *testing.T) {
 }
 
 func TestDraglineArrayNewFixedHelper(t *testing.T) {
+	requireDraglineCoreV3(t)
 	t.Run("i64", func(t *testing.T) {
 		module := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(
@@ -1012,6 +1058,7 @@ func TestDraglineArrayNewFixedHelper(t *testing.T) {
 }
 
 func TestDraglineArrayFillHelper(t *testing.T) {
+	requireDraglineCoreV3(t)
 	t.Run("i64", func(t *testing.T) {
 		body := []byte{
 			0x01, 0x01, 0x63, 0x00, // one (ref null 0) local
@@ -1175,6 +1222,7 @@ func TestDraglineArrayFillHelper(t *testing.T) {
 }
 
 func TestDraglineArrayCopyHelper(t *testing.T) {
+	requireDraglineCoreV3(t)
 	body := []byte{
 		0x01, 0x01, 0x63, 0x00, // one (ref null 0) local
 		0x42, 0x01, 0x42, 0x02, 0x42, 0x03, 0x42, 0x04,
@@ -1290,6 +1338,7 @@ func TestDraglineArrayCopyHelper(t *testing.T) {
 }
 
 func TestDraglineArrayDataSegmentHelpers(t *testing.T) {
+	requireDraglineCoreV3(t)
 	newBody := []byte{
 		0x00,
 		0x41, 0x01, 0x41, 0x03, 0xfb, 0x09, 0x00, 0x00, // array.new_data 0 0, source 1, len 3
@@ -1360,6 +1409,7 @@ func TestDraglineArrayDataSegmentHelpers(t *testing.T) {
 }
 
 func TestDraglineArrayElementSegmentHelpers(t *testing.T) {
+	requireDraglineCoreV3(t)
 	newBody := []byte{
 		0x00,
 		0x41, 0x00, 0x41, 0x01, 0xfb, 0x0a, 0x00, 0x00, // array.new_elem 0 0
@@ -1430,6 +1480,7 @@ func TestDraglineArrayElementSegmentHelpers(t *testing.T) {
 }
 
 func TestDraglineExternConversionHelpers(t *testing.T) {
+	requireDraglineCoreV3(t)
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.ExternRef}, []wasm.ValType{wasm.ExternRef}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -1467,6 +1518,7 @@ func TestDraglineExternConversionHelpers(t *testing.T) {
 }
 
 func TestDraglineRefTestHelper(t *testing.T) {
+	requireDraglineCoreV3(t)
 	for _, test := range []struct {
 		name string
 		body []byte
@@ -1555,6 +1607,7 @@ func TestDraglineRefTestHelper(t *testing.T) {
 }
 
 func TestDraglineBranchCastHelpers(t *testing.T) {
+	requireDraglineCoreV3(t)
 	for _, test := range []struct {
 		name        string
 		blockResult wasm.ValType
@@ -1801,6 +1854,7 @@ func TestDraglineBranchCastHelpers(t *testing.T) {
 }
 
 func TestDraglineRefCastHelper(t *testing.T) {
+	requireDraglineCoreV3(t)
 	target := TargetNative
 	for _, test := range []struct {
 		name string
@@ -1891,6 +1945,7 @@ func TestDraglineRefCastHelper(t *testing.T) {
 }
 
 func TestDraglineDefinedFunctionRefTestAndCast(t *testing.T) {
+	requireDraglineCoreV3(t)
 	declarations := append(wasmtest.ULEB(1), 0x03, 0x00) // one declarative funcidx segment
 	declarations = append(declarations, wasmtest.Vec(wasmtest.ULEB(0))...)
 	module := wasmtest.Module(
@@ -1955,6 +2010,7 @@ func TestDraglineDefinedFunctionRefTestAndCast(t *testing.T) {
 }
 
 func TestDraglineStructNewDefaultPreservesLiveRoot(t *testing.T) {
+	requireDraglineCoreV3(t)
 	body := []byte{
 		0x00,             // no locals
 		0xfb, 0x01, 0x00, // first allocation remains live on the operand stack
@@ -1992,6 +2048,7 @@ func TestDraglineStructNewDefaultPreservesLiveRoot(t *testing.T) {
 }
 
 func TestDraglineStructHelperWalksCallerRoots(t *testing.T) {
+	requireDraglineCoreV3(t)
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5f, 0x00},
@@ -2030,6 +2087,7 @@ func TestDraglineStructHelperWalksCallerRoots(t *testing.T) {
 }
 
 func TestDraglinePublishesExactCollectorRootCallsites(t *testing.T) {
+	requireDraglineCoreV3(t)
 	importEntry := append(wasmtest.Name("env"), wasmtest.Name("tick")...)
 	importEntry = append(importEntry, 0)
 	importEntry = append(importEntry, wasmtest.ULEB(0)...)
@@ -5112,7 +5170,7 @@ func TestDraglineGeneralCallIndirect(t *testing.T) {
 }
 
 func TestDraglineProfiledIndirectCallGuardAndFallback(t *testing.T) {
-	module := callIndirectModule(2, 1, 2)
+	module := draglineProfiledCallIndirectModule(2, 1, 2)
 	profile := &CompilerProfile{
 		Version: 1, ModuleHash: sha256.Sum256(module), Source: "static", Phase: "steady",
 		CallTargets: []CompilerProfileTargetHistogram{{
