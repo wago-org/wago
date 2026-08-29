@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	maxInterruptRequests    = 64
-	maxExecutableCodeRanges = 4096
-	interruptDeadlineRetry  = 50 * time.Microsecond
+	maxInterruptRequests       = 64
+	maxExecutableCodeRanges    = 4096
+	maxInterruptLinearMemories = 4096
+	interruptDeadlineRetry     = 50 * time.Microsecond
 )
 
 // interruptRequest is published only while a cold interruption request is
@@ -36,14 +37,133 @@ type executableCodeRange struct {
 }
 
 var (
-	interruptRequests        [maxInterruptRequests]interruptRequest
-	executableCodeRanges     [maxExecutableCodeRanges]executableCodeRange
-	executableCodeRangeLimit uint32
-	executableCodeMu         sync.Mutex
+	interruptRequests          [maxInterruptRequests]interruptRequest
+	executableCodeRanges       [maxExecutableCodeRanges]executableCodeRange
+	executableCodeRangeLimit   uint32
+	executableCodeMu           sync.Mutex
+	interruptLinearMemories    [maxInterruptLinearMemories]uintptr
+	interruptLinearMemoryLimit uint32
+	interruptLinearMemoryState uint32
+	interruptLinearMemoryCount uint32
+	interruptLinearMemoryPeak  uint32
+	interruptLinearMemoryCache uint32
+	interruptLinearMemoryMu    sync.Mutex
 
 	interruptInstallOnce sync.Once
 	interruptInstallErr  error
 	interruptSignal      uint32
+)
+
+func init() {
+	interruptLinearMemoryRegister = registerInterruptLinearMemory
+	interruptLinearMemoryUnregister = unregisterInterruptLinearMemory
+	interruptLinearMemoryCacheChange = changeInterruptLinearMemoryCacheLinux
+	nativeMemoryStatsSnapshot = processNativeMemoryStatsLinux
+}
+
+func changeInterruptLinearMemoryCacheLinux(delta int32) {
+	atomic.AddUint32(&interruptLinearMemoryCache, uint32(delta))
+}
+
+func processNativeMemoryStatsLinux() NativeMemoryStats {
+	registered := atomic.LoadUint32(&interruptLinearMemoryCount)
+	cached := atomic.LoadUint32(&interruptLinearMemoryCache)
+	active := uint32(0)
+	if cached <= registered {
+		active = registered - cached
+	}
+	return NativeMemoryStats{
+		Supported:      true,
+		Active:         active,
+		Cached:         cached,
+		Registered:     registered,
+		PeakRegistered: atomic.LoadUint32(&interruptLinearMemoryPeak),
+		Capacity:       maxInterruptLinearMemories,
+		ScanSpan:       atomic.LoadUint32(&interruptLinearMemoryLimit),
+	}
+}
+
+func registerInterruptLinearMemory(linMem uintptr) error {
+	if linMem == 0 {
+		return fmt.Errorf("register interrupt linear memory: zero base")
+	}
+	interruptLinearMemoryMu.Lock()
+	defer interruptLinearMemoryMu.Unlock()
+	limit := int(atomic.LoadUint32(&interruptLinearMemoryLimit))
+	firstHole := -1
+	for i := 0; i < limit; i++ {
+		registered := atomic.LoadUintptr(&interruptLinearMemories[i])
+		if registered == linMem {
+			return nil
+		}
+		if registered == 0 && firstHole < 0 {
+			firstHole = i
+		}
+	}
+	if firstHole < 0 {
+		if limit == len(interruptLinearMemories) {
+			return &ResourceLimitError{
+				Resource:   "native memory mappings",
+				Scope:      "process",
+				Used:       uint64(atomic.LoadUint32(&interruptLinearMemoryCount)),
+				Requested:  1,
+				Limit:      maxInterruptLinearMemories,
+				Suggestion: "close unused Instance or Memory values, inspect ProcessNativeMemoryStats, or use another process",
+			}
+		}
+		firstHole = limit
+	}
+	atomic.StoreUintptr(&interruptLinearMemories[firstHole], linMem)
+	count := atomic.AddUint32(&interruptLinearMemoryCount, 1)
+	for peak := atomic.LoadUint32(&interruptLinearMemoryPeak); count > peak; peak = atomic.LoadUint32(&interruptLinearMemoryPeak) {
+		if atomic.CompareAndSwapUint32(&interruptLinearMemoryPeak, peak, count) {
+			break
+		}
+	}
+	if firstHole == limit {
+		atomic.StoreUint32(&interruptLinearMemoryLimit, uint32(limit+1))
+	}
+	return nil
+}
+
+func unregisterInterruptLinearMemory(linMem uintptr) {
+	interruptLinearMemoryMu.Lock()
+	defer interruptLinearMemoryMu.Unlock()
+	// Set the writer gate before clearing entries. Signal readers that entered
+	// earlier remain counted; later readers observe the gate and do not inspect
+	// the registry. Reopening the gate publishes the cleared slots before Close
+	// proceeds to unmap the memory.
+	for {
+		state := atomic.LoadUint32(&interruptLinearMemoryState)
+		if atomic.CompareAndSwapUint32(&interruptLinearMemoryState, state, state|interruptLinearMemoryWriter) {
+			break
+		}
+	}
+	limit := int(atomic.LoadUint32(&interruptLinearMemoryLimit))
+	removed := uint32(0)
+	for i := 0; i < limit; i++ {
+		if atomic.LoadUintptr(&interruptLinearMemories[i]) != linMem {
+			continue
+		}
+		atomic.StoreUintptr(&interruptLinearMemories[i], 0)
+		removed++
+	}
+	if removed != 0 {
+		atomic.AddUint32(&interruptLinearMemoryCount, ^uint32(removed-1))
+	}
+	for limit > 0 && atomic.LoadUintptr(&interruptLinearMemories[limit-1]) == 0 {
+		limit--
+	}
+	atomic.StoreUint32(&interruptLinearMemoryLimit, uint32(limit))
+	for atomic.LoadUint32(&interruptLinearMemoryState)&interruptLinearMemoryReaders != 0 {
+		goruntime.Gosched()
+	}
+	atomic.StoreUint32(&interruptLinearMemoryState, 0)
+}
+
+const (
+	interruptLinearMemoryWriter  uint32 = 1 << 31
+	interruptLinearMemoryReaders        = interruptLinearMemoryWriter - 1
 )
 
 //lint:ignore U1000 referenced from interrupt_linux_{amd64,arm64}.s

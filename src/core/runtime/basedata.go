@@ -86,6 +86,10 @@ func NewJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 	}
 	j := &JobMemory{mem: mem, linOff: basedataSize, linLen: reserveBytes}
 	j.reset(initialBytes, maxBytes, reserveBytes, false)
+	if err := j.registerInterruptLinearMemory(); err != nil {
+		_ = j.Close()
+		return nil, err
+	}
 	return j, nil
 }
 
@@ -141,12 +145,14 @@ func AcquireJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 	j := jobMemoryCache.j
 	if j != nil && j.reserveBase == 0 && len(j.mem) >= need {
 		jobMemoryCache.j = nil
+		changeInterruptLinearMemoryCache(-1)
 		jobMemoryCache.Unlock()
 		j.reset(initialBytes, maxBytes, reserveBytes, false)
 		return j, nil
 	}
 	if j != nil && len(j.mem) < need {
 		jobMemoryCache.j = nil
+		changeInterruptLinearMemoryCache(-1)
 		jobMemoryCache.Unlock()
 		_ = j.Close()
 		return NewJobMemoryGrowable(initialBytes, maxBytes)
@@ -457,7 +463,20 @@ var guardOwnerHook func(reserveBase, ownerLinMem uintptr)
 // configurations, where Close is the correct fallback).
 var guardReleaseHook func(j *JobMemory) bool
 
+var interruptLinearMemoryRegister func(uintptr) error
+var interruptLinearMemoryUnregister func(uintptr)
+
+func (j *JobMemory) registerInterruptLinearMemory() error {
+	if interruptLinearMemoryRegister == nil {
+		return nil
+	}
+	return interruptLinearMemoryRegister(j.LinMemBase())
+}
+
 func (j *JobMemory) Close() error {
+	if interruptLinearMemoryUnregister != nil {
+		interruptLinearMemoryUnregister(j.LinMemBase())
+	}
 	if j.reserveBase != 0 { // guard-page reservation
 		if guardCloseHook != nil {
 			guardCloseHook(j.reserveBase)
@@ -492,6 +511,7 @@ func ReleaseJobMemory(j *JobMemory) error {
 	jobMemoryCache.Lock()
 	if jobMemoryCache.j == nil {
 		jobMemoryCache.j = j
+		changeInterruptLinearMemoryCache(1)
 		jobMemoryCache.Unlock()
 		return nil
 	}

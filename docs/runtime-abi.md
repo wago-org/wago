@@ -6,6 +6,12 @@ backend code that emits loads from `JobMemory` basedata.
 
 ## JobMemory basedata
 
+`JobMemory` is one stable native mapping.
+It contains runtime control data and a linear memory reservation.
+A memoryless instance still needs one `JobMemory` for its control data.
+Additional local Wasm memories usually need additional mappings.
+Imported memories reuse the provider mapping.
+
 `JobMemory` reserves basedata immediately before the linear-memory base. Offsets
 are addressed as negative displacements from the linear-memory pointer used by
 JIT code. Existing offsets must not move without re-deriving the runtime ABI and
@@ -13,6 +19,12 @@ updating the guard tests. The current basedata size is 288 bytes. The fixed
 16-slot wrapper-tail bank remains `[linMem-272, linMem-144)`; the separately
 addressable native GC metadata pointer is at `[linMem-280]`, leaving the bank
 unchanged.
+
+On supported Linux hosts, each mapped linear-memory base is in the host interrupt
+registry. Close removes the base before it unmaps the memory.
+Close waits until active signal readers leave the registry.
+A cached `JobMemory` stays mapped and registered.
+See [Native memory limits](native-memory-limits.md) for the process limit.
 
 The globals pointer lives at basedata offset `112` (`abi.GlobalsPtrOffset`, used
 by runtime layout and backend codegen). Backend `global.get`/`global.set` code

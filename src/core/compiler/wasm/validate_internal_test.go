@@ -105,6 +105,23 @@ func TestValidateFunctionLocalCountDefaultAndCustomLimits(t *testing.T) {
 	}
 }
 
+func TestValidateMemoryCountDefaultAndCustomLimits(t *testing.T) {
+	moduleWithMemories := func(count uint32) *Module {
+		return &Module{Memories: make([]MemType, count)}
+	}
+	features := ValidationFeatures{MultiMemory: true}
+	err := ValidateModuleWithFeatures(moduleWithMemories(DefaultMaxMemoriesPerModule+1), features)
+	expectValidationCode(t, err, ErrResourceLimitExceeded)
+
+	limits := ValidationLimits{MaxMemoriesPerModule: DefaultMaxMemoriesPerModule + 1}
+	if err := ValidateModuleWithConfig(moduleWithMemories(DefaultMaxMemoriesPerModule+1), features, 1, limits); err != nil {
+		t.Fatalf("custom memory count boundary: %v", err)
+	}
+	if err := ValidateModuleWithConfig(&Module{}, features, 1, ValidationLimits{MaxMemoriesPerModule: MaximumMemoriesPerModule + 1}); err == nil {
+		t.Fatal("validation accepted a configured memory count limit above 4096")
+	}
+}
+
 func TestValidatorCoverageSIMDOpcodeFamilies(t *testing.T) {
 	for _, effect := range simdLoads {
 		k := effect.kind

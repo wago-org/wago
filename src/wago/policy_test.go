@@ -93,6 +93,16 @@ func TestPolicyMemoryLimit(t *testing.T) {
 	in.Close()
 }
 
+func TestPolicyMemoryCountLimit(t *testing.T) {
+	mod := &Module{c: &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{{}, {}}}}}
+	if err := applyPolicy(mod, Policy{MaxMemories: 2}); err != nil {
+		t.Fatalf("exact memory count policy: %v", err)
+	}
+	if err := applyPolicy(mod, Policy{MaxMemories: 1}); !errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("memory count policy error = %v, want ErrPermissionDenied", err)
+	}
+}
+
 func TestDeclaredMemoryMaxBytesChargesFullNoMaxMemory32Reservation(t *testing.T) {
 	c := &Compiled{HasMemory: true, MemMinPages: 1}
 	got, err := c.declaredMemoryMaxBytes()

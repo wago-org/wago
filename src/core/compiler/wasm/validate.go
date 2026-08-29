@@ -1,6 +1,7 @@
 package wasm
 
 import (
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -17,20 +18,33 @@ type ValidationFeatures struct {
 }
 
 // ValidationLimits bounds implementation resources consumed by one module.
-// MaxFunctionLocals counts function parameters and declared locals together;
-// zero selects DefaultMaxFunctionLocals.
+// MaxFunctionLocals counts function parameters and declared locals together.
+// MaxMemoriesPerModule counts imported and local memories. A zero field selects
+// its default value.
 type ValidationLimits struct {
-	MaxFunctionLocals uint32
+	MaxFunctionLocals    uint32
+	MaxMemoriesPerModule uint32
 }
 
 // DefaultMaxFunctionLocals is the ordinary validation ceiling for the total
 // parameter-plus-local count of one function.
 const DefaultMaxFunctionLocals uint32 = 4096
 
+// DefaultMaxMemoriesPerModule is the ordinary validation ceiling. It matches
+// the WebAssembly JavaScript API implementation limit. The configurable maximum
+// cannot exceed the Linux process registry capacity.
+const DefaultMaxMemoriesPerModule uint32 = 100
+
 // MaximumFunctionLocals is the largest configurable validation ceiling.
 const MaximumFunctionLocals uint32 = 1<<16 - 1
 
-var defaultValidationLimits = ValidationLimits{MaxFunctionLocals: DefaultMaxFunctionLocals}
+// MaximumMemoriesPerModule is the largest configurable validation ceiling.
+const MaximumMemoriesPerModule uint32 = 4096
+
+var defaultValidationLimits = ValidationLimits{
+	MaxFunctionLocals:    DefaultMaxFunctionLocals,
+	MaxMemoriesPerModule: DefaultMaxMemoriesPerModule,
+}
 
 // ValidateModule validates module-level indexes and typechecks function bodies.
 // The default path consumes raw BodyBytes produced by DecodeModule instead of a
@@ -71,10 +85,16 @@ func ValidateModuleWithConfig(m *Module, features ValidationFeatures, workers in
 
 func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits) error {
 	if limits.MaxFunctionLocals == 0 {
-		limits = defaultValidationLimits
+		limits.MaxFunctionLocals = DefaultMaxFunctionLocals
+	}
+	if limits.MaxMemoriesPerModule == 0 {
+		limits.MaxMemoriesPerModule = DefaultMaxMemoriesPerModule
 	}
 	if limits.MaxFunctionLocals > MaximumFunctionLocals {
 		return &ValidationError{Code: ErrInvalidLimitRange, Func: -1, Detail: "configured function local limit exceeds 65535"}
+	}
+	if limits.MaxMemoriesPerModule > MaximumMemoriesPerModule {
+		return &ValidationError{Code: ErrInvalidLimitRange, Func: -1, Detail: "configured memory count limit exceeds 4096"}
 	}
 	// Keep the serial validation owner in this frame. TinyGo's conservative
 	// collector can otherwise lose a short-lived heap validator while nested
@@ -312,6 +332,9 @@ func (v *moduleValidator) validateModule() error {
 	}
 	if v.m.MemCount() > 1 && !v.features.MultiMemory {
 		return v.err(ErrUnsupportedFeature, "multiple memories")
+	}
+	if uint64(v.m.MemCount()) > uint64(v.limits.MaxMemoriesPerModule) {
+		return v.err(ErrResourceLimitExceeded, fmt.Sprintf("memory count %d exceeds configured limit %d", v.m.MemCount(), v.limits.MaxMemoriesPerModule))
 	}
 	for _, tag := range v.m.Tags {
 		if err := v.validateTagType(tag, "tag"); err != nil {

@@ -42,10 +42,31 @@ range_next:
 	RET
 
 interrupt_match:
-	MOVQ	128(R8), AX                 // saved RBX = linMem
-	TESTQ	AX, AX
+	MOVQ	128(R8), R11                // saved RBX = linMem
+	TESTQ	R11, R11
 	JZ	handler_return
-	MOVQ	-104(AX), R10               // active trap pointer
+	LEAQ	·interruptLinearMemoryState(SB), R15
+reader_acquire:
+	MOVL	0(R15), AX
+	TESTL	$0x80000000, AX             // Close has blocked new registry readers
+	JNZ	handler_return
+	LEAL	1(AX), R13
+	LOCK
+	CMPXCHGL R13, 0(R15)
+	JNE	reader_acquire
+	LEAQ	·interruptLinearMemories(SB), R9
+	MOVL	·interruptLinearMemoryLimit(SB), R12
+	TESTQ	R12, R12
+	JZ	reader_release
+linmem_loop:
+	CMPQ	0(R9), R11
+	JE	linmem_match
+	ADDQ	$8, R9
+	DECQ	R12
+	JNZ	linmem_loop
+	JMP	reader_release
+linmem_match:
+	MOVQ	-104(R11), R10              // active trap pointer
 	LEAQ	·interruptRequests(SB), R9
 	MOVQ	$64, R12
 request_loop:
@@ -54,14 +75,18 @@ request_loop:
 	ADDQ	$16, R9
 	DECQ	R12
 	JNZ	request_loop
-	RET
+	JMP	reader_release
 request_match:
 	MOVL	$12, 0(R10)                 // TrapInterrupted
 	MOVL	$1, 8(R9)                   // acknowledgement
-	MOVQ	-24(AX), AX                 // trampoline's trap re-entry RSP
+	MOVQ	-24(R11), AX                // trampoline's trap re-entry RSP
 	MOVQ	AX, 160(R8)                 // saved RSP
 	MOVQ	·interruptTrapPC(SB), AX
 	MOVQ	AX, 168(R8)                 // saved RIP = one-instruction landing pad
+	JMP	reader_release
+reader_release:
+	LOCK
+	DECL	0(R15)
 	RET
 
 TEXT ·interruptSigRestorer(SB), NOSPLIT|NOFRAME, $0-0

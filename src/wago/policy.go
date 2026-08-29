@@ -17,6 +17,9 @@ type Policy struct {
 
 	// MaxMemoryBytes caps the module's maximum linear memory. 0 means unbounded.
 	MaxMemoryBytes uint64
+	// MaxMemories caps imported and local memories in the module. 0 means
+	// unbounded within the RuntimeConfig limit.
+	MaxMemories uint32
 	// MaxTableEntries caps the module's table size. 0 means unbounded.
 	MaxTableEntries uint32
 	// MaxTags caps the number of declared/imported exception tags. 0 means unbounded.
@@ -65,6 +68,9 @@ func applyPolicy(mod *Module, p Policy) error {
 		if maxBytes > p.MaxMemoryBytes {
 			return fmt.Errorf("module maximum memory total %d bytes exceeds policy limit %d bytes: %w", maxBytes, p.MaxMemoryBytes, ErrPermissionDenied)
 		}
+	}
+	if p.MaxMemories > 0 && uint64(mod.c.memoryCount()) > uint64(p.MaxMemories) {
+		return fmt.Errorf("module memory count %d exceeds policy limit %d: %w", mod.c.memoryCount(), p.MaxMemories, ErrPermissionDenied)
 	}
 	if p.MaxTableEntries > 0 {
 		for i := 0; i < mod.c.tableCount(); i++ {

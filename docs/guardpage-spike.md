@@ -143,6 +143,10 @@ reachable in practice.
   handlers after Wago initializes still need coordination.
 - **8 GiB virtual reservation per memory** (address space only, not committed);
   the live-reservation table is fixed at 256 entries.
+- On Linux, each guarded memory also consumes one host interrupt registry slot.
+  That process registry contains 4,096 slots.
+  The 256-entry guard registry normally rejects the request first.
+  A cached guarded mapping stays in both registries.
 - Signals-based instances accept owned or shared guard-backed memories and
   reject plain imported mappings; the layout requirement is never softened.
 - `go vet -tags wago_guardpage` reports two warnings inherent to the technique

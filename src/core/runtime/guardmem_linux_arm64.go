@@ -72,6 +72,10 @@ func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 		_, _, _ = syscall.Syscall(syscall.SYS_MUNMAP, base, guardReserveBytes, 0)
 		return nil, err
 	}
+	if err := j.registerInterruptLinearMemory(); err != nil {
+		_ = j.Close()
+		return nil, err
+	}
 	return j, nil
 }
 
@@ -116,6 +120,9 @@ func AcquireJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
 	jobMemoryGuardedCache.Lock()
 	j := jobMemoryGuardedCache.j
 	jobMemoryGuardedCache.j = nil
+	if j != nil {
+		changeInterruptLinearMemoryCache(-1)
+	}
 	jobMemoryGuardedCache.Unlock()
 	if j == nil {
 		return NewJobMemoryGuarded(linBytes, maxBytes)
@@ -144,6 +151,7 @@ func releaseGuardedJobMemory(j *JobMemory) bool {
 	jobMemoryGuardedCache.Lock()
 	if jobMemoryGuardedCache.j == nil {
 		jobMemoryGuardedCache.j = j
+		changeInterruptLinearMemoryCache(1)
 		jobMemoryGuardedCache.Unlock()
 		return true
 	}
