@@ -8,6 +8,18 @@ import (
 	"unsafe"
 )
 
+func TestExactFrameRootsRequireRuntimeDomainOnlyForDragline(t *testing.T) {
+	roots := &compiledGCFrameRoots{}
+	railshot := &Compiled{compiler: CompilerRailshot, validateMemo: &validateMemo{gcFrameRoots: roots}}
+	if railshot.needsRuntimeGCCollectorDomain() {
+		t.Fatal("Railshot exact frame roots unexpectedly selected the generic runtime GC domain")
+	}
+	dragline := &Compiled{compiler: CompilerDragline, validateMemo: &validateMemo{gcFrameRoots: roots}}
+	if !dragline.needsRuntimeGCCollectorDomain() {
+		t.Fatal("Dragline exact frame roots did not select the runtime GC domain")
+	}
+}
+
 func TestGCFrameOffsetInternerSharesImmutableMaps(t *testing.T) {
 	var interner gcFrameOffsetInterner
 	source := []uint32{16, 24, 520}

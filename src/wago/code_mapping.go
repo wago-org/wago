@@ -320,7 +320,8 @@ func (c *Compiled) needsExactNativeGCRoots() bool {
 // may need a collector solely because a Runtime-owned host import allocates or
 // inspects values selected by the caller's exact GC types.
 func (c *Compiled) needsRuntimeGCCollectorDomain() bool {
-	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary() || c.validateMemo != nil && c.validateMemo.gcFrameRoots != nil)
+	return c != nil && (c.usesGenericGCExecution() || c.hasCollectorReferenceCallBoundary() ||
+		c.Compiler() == CompilerDragline && c.validateMemo != nil && c.validateMemo.gcFrameRoots != nil)
 }
 
 func (c *Compiled) needsNativeGCABI() bool {
