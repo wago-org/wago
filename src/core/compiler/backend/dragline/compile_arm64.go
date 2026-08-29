@@ -121,6 +121,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	}
 	entries := make([]int, len(m.Code))
 	internal := make([]int, len(m.Code))
+	var directPrepared []uint64
 	var callRelocs []arm64CallReloc
 	var gcCallsites []corecompiler.GCFrameCallsite
 	var gcRoots []uint32
@@ -196,6 +197,9 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			if cacheErr == nil && hit {
 				requiresMOPS = requiresMOPS || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64MOPS)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64MOPS)%64)) != 0
 				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
+				if !captureGC && arm64DirectPreparedClass(moduleContracts[i].Class) {
+					directPrepared = markARM64DirectPrepared(directPrepared, len(m.Code), i)
+				}
 				if row != nil {
 					row.CacheHit = true
 					row.RailMachFinalized = artifact.ABIClass != 0
@@ -340,6 +344,9 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			publishedContract = railmach.ABIContract{}
 			moduleContracts[i] = railmach.ABIContract{}
 		}
+		if !captureGC && railMachFinalized && arm64DirectPreparedClass(publishedContract.Class) {
+			directPrepared = markARM64DirectPrepared(directPrepared, len(m.Code), i)
+		}
 		if captureGC {
 			appendGCFrameCallsites(&gcCallsites, &gcRoots, uint32(entries[i]), emitMetrics.FrameBytes, emissionMetadata.Safepoints, emissionMetadata.Roots)
 			appendGCFrameSafepoints(&gcSafepoints, &gcSafepointRoots, emitMetrics.FrameBytes, emissionMetadata.Safepoints, emissionMetadata.Roots)
@@ -438,7 +445,19 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		metrics.NativeBytes = uint64(len(code))
 		metrics.observe(sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(moduleContracts))
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresARM64MOPS: requiresMOPS}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresARM64MOPS: requiresMOPS}, nil
+}
+
+func markARM64DirectPrepared(bits []uint64, functions, index int) []uint64 {
+	if bits == nil {
+		bits = make([]uint64, (functions+63)/64)
+	}
+	bits[index>>6] |= uint64(1) << uint(index&63)
+	return bits
+}
+
+func arm64DirectPreparedClass(class railmach.ABIClass) bool {
+	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt
 }
 
 type parallelARM64Result struct {
@@ -446,6 +465,7 @@ type parallelARM64Result struct {
 	internalOffset int
 	relocs         []arm64CallReloc
 	requiresMOPS   bool
+	directPrepared bool
 }
 
 type parallelARM64Worker struct {
@@ -520,11 +540,14 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				}
 			}
 			plan = applyBoundsMode(input.Bounds, plan, nativePlan)
-			body, internalOffset, relocs, _, err := emitARM64(fn, plan, nativePlan, input.Target, input.Profile, contracts, worker.body, nil, nil)
+			body, internalOffset, relocs, railMachFinalized, err := emitARM64(fn, plan, nativePlan, input.Target, input.Profile, contracts, worker.body, nil, nil)
 			if err != nil {
 				return functionError(m, i, "emit", err)
 			}
-			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index)}
+			if !railMachFinalized {
+				contracts[i] = railmach.ABIContract{}
+			}
+			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class)}
 			worker.body = nil
 		}
 		return nil
@@ -536,6 +559,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 	entries := make([]int, len(m.Code))
 	internal := make([]int, len(m.Code))
 	var callRelocs []arm64CallReloc
+	var directPrepared []uint64
 	requiresMOPS := false
 	for _, i := range compilation.Order {
 		for len(code)&15 != 0 {
@@ -543,6 +567,9 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 		}
 		entries[i] = len(code)
 		result := &results[i]
+		if result.directPrepared {
+			directPrepared = markARM64DirectPrepared(directPrepared, len(m.Code), i)
+		}
 		requiresMOPS = requiresMOPS || result.requiresMOPS
 		internal[i] = len(code) + result.internalOffset
 		for _, reloc := range result.relocs {
@@ -565,7 +592,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 	if len(code) == 0 {
 		code = []byte{0xc0, 0x03, 0x5f, 0xd6}
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, RequiresARM64MOPS: requiresMOPS}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, RequiresARM64MOPS: requiresMOPS}, nil
 }
 
 func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, target corecompiler.Target, observations *compilerprofile.Module, contracts []railmach.ABIContract, scratch []byte, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []arm64CallReloc, bool, error) {
@@ -817,6 +844,16 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		return nil, 0, false, nil
 	}
 	recordNativePlanMetrics(metrics, plan)
+	inlinePreparedCalls := arm64RailMachInlinesAllTinyCalls(plan)
+	elidePreparedFrame := arm64RailMachElidesPreparedCallFrame(plan)
+	hasNativeCall := plan.ABI.HasCall && !inlinePreparedCalls
+	frameBytes := plan.Frame.TotalBytes
+	if elidePreparedFrame {
+		frameBytes = 0
+		if metrics != nil {
+			metrics.FrameBytes = 0
+		}
+	}
 	var shrinkGPRs, shrinkFPRs uint64
 	for _, region := range plan.CalleeSaves {
 		if region.Bank == railmach.BankFPR {
@@ -899,6 +936,19 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	a.MovReg64(arm64.X26, arm64.X1)
 	a.MovReg64(arm64.X9, arm64.X0)
 	a.MovReg64(arm64.X8, arm64.X9)
+	if arm64DirectPreparedClass(plan.ABI.Class) {
+		for index := uint16(0); index < plan.Machine.ParamCount; index++ {
+			var ok bool
+			if typ := plan.Stack.Locals[index]; typ == wasm.I32 || typ == wasm.F32 {
+				ok = a.Load32(arm64ParamRegisters[index], arm64.X9, uint32(index)*8)
+			} else {
+				ok = a.Load64(arm64ParamRegisters[index], arm64.X9, uint32(index)*8)
+			}
+			if !ok {
+				return nil, 0, true, fmt.Errorf("RailMach direct parameter %d offset is not encodable", index)
+			}
+		}
+	}
 	if len(plan.Machine.Results) > railmach.PrivateResultRegisters {
 		a.MovReg64(arm64.X16, arm64.X3)
 	}
@@ -923,15 +973,19 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	if !a.PatchBranch26(call, internalOffset) {
 		return nil, 0, true, fmt.Errorf("RailMach internal entry is out of branch range")
 	}
-	if plan.ABI.HasCall {
-		a.StpPre(arm64.FP, arm64.LR, arm64.SP, -16)
-		a.MovReg64(arm64.FP, arm64.SP)
-	}
-	if plan.Frame.TotalBytes != 0 {
-		if plan.Frame.TotalBytes <= 4095 {
-			a.SubSP64(plan.Frame.TotalBytes)
+	if hasNativeCall {
+		if elidePreparedFrame {
+			a.StpPre(arm64.LR, arm64.XZR, arm64.SP, -16)
 		} else {
-			a.MovImm64(arm64.X16, uint64(plan.Frame.TotalBytes))
+			a.StpPre(arm64.FP, arm64.LR, arm64.SP, -16)
+			a.MovReg64(arm64.FP, arm64.SP)
+		}
+	}
+	if frameBytes != 0 {
+		if frameBytes <= 4095 {
+			a.SubSP64(frameBytes)
+		} else {
+			a.MovImm64(arm64.X16, uint64(frameBytes))
 			a.SubSPReg(arm64.X16)
 		}
 	}
@@ -970,6 +1024,17 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				dst = reg(value)
 			}
 			if local < plan.Machine.ParamCount {
+				if plan.ABI.Class == railmach.ABITinyDirect {
+					break
+				}
+				if plan.ABI.Class == railmach.ABIPreparedInt {
+					if data.Type == railmach.TypeI32 {
+						a.MovReg32(dst, arm64.X0)
+					} else {
+						a.MovReg64(dst, arm64.X0)
+					}
+					break
+				}
 				if data.Bank == railmach.BankFPR {
 					if !a.Load64(arm64.X16, arm64.X8, uint32(local)*8) {
 						return nil, 0, true, fmt.Errorf("RailMach parameter %d offset is not encodable", local)
@@ -2115,17 +2180,40 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				continue
 			}
 			if instruction.Op == wasm.InstrCall {
+				if immediate, ok := arm64RailMachInlineI32AddImmediate(plan, instruction); ok {
+					lhs, err := arm64RailMachReadValueAt(&a, plan, operands[0].Reg, arm64.X14, 0)
+					if err != nil {
+						return nil, 0, true, err
+					}
+					dst := reg(instruction.Result)
+					switch {
+					case immediate >= 0 && immediate <= 4095:
+						a.AddImm32(dst, lhs, uint32(immediate))
+					case immediate < 0 && immediate >= -4095:
+						a.SubImm32(dst, lhs, uint32(-immediate))
+					default:
+						a.MovImm64(arm64.X16, uint64(uint32(immediate)))
+						a.Add32(dst, lhs, arm64.X16)
+					}
+					if plan.Allocation.Locations[instruction.Result].Kind == railmach.LocationSpill {
+						if err := arm64RailMachStoreValue(&a, plan, instruction.Result, dst); err != nil {
+							return nil, 0, true, err
+						}
+					}
+					continue
+				}
 				if err := emitARM64RailMachRoots(&a, plan, instruction.Source, currentPosition, false); err != nil {
 					return nil, 0, true, err
 				}
 				imported := uint32(instruction.Aux) < plan.Stack.ImportedFuncs
-				stackAdjust := arm64RailMachDirectCallStackAdjust(plan, instruction)
-				selfCall := stackAdjust == 0
-				if !selfCall {
+				stackAdjust := arm64RailMachDirectCallStackAdjust(plan, instructionID, instruction)
+				wrappedCall := stackAdjust != 0
+				if wrappedCall {
 					a.StpPre(arm64.LR, arm64.XZR, arm64.SP, -16)
 				}
 				callOffset := plan.Frame.CallAreaOffset + stackAdjust
-				if !arm64RailMachLeaSP(&a, arm64.X8, callOffset) {
+				fastTinyCall := arm64RailMachFastTinyCall(plan, instructionID, instruction, len(operands))
+				if !fastTinyCall && !arm64RailMachLeaSP(&a, arm64.X8, callOffset) {
 					return nil, 0, true, fmt.Errorf("RailMach call area offset %d is not encodable", callOffset)
 				}
 				var singleRegisterArgument arm64.Reg
@@ -2142,14 +2230,20 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						a.FmovToGpr(arm64.X16, src, plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF64)
 						src = arm64.X16
 					}
-					if !a.Store64(src, arm64.X8, uint32(index*8)) {
+					if !fastTinyCall && !a.Store64(src, arm64.X8, uint32(index*8)) {
 						return nil, 0, true, fmt.Errorf("RailMach call argument %d is not encodable", index)
 					}
 					if len(operands) == 1 {
 						singleRegisterArgument = src
 					}
 				}
-				if arm64RailMachDirectCallNeedsRegisterArguments(plan, instruction) {
+				if fastTinyCall {
+					if plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeF32 {
+						a.MovReg32(arm64.X0, singleRegisterArgument)
+					} else {
+						a.MovReg64(arm64.X0, singleRegisterArgument)
+					}
+				} else if arm64RailMachDirectCallNeedsRegisterArguments(plan, instruction) {
 					registerArguments := operands[:min(len(operands), len(arm64ParamRegisters))]
 					loaded := 0
 					if len(registerArguments) == 1 {
@@ -2209,7 +2303,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						}
 					}
 				}
-				if !selfCall {
+				if wrappedCall {
 					a.LdpPost(arm64.LR, arm64.XZR, arm64.SP, 16)
 				}
 				if imported || instruction.ResultCount() > 1 {
@@ -3380,16 +3474,20 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			}
 		}
 	}
-	if plan.Frame.TotalBytes != 0 {
-		if plan.Frame.TotalBytes <= 4095 {
-			a.AddSP64(plan.Frame.TotalBytes)
+	if frameBytes != 0 {
+		if frameBytes <= 4095 {
+			a.AddSP64(frameBytes)
 		} else {
-			a.MovImm64(arm64.X16, uint64(plan.Frame.TotalBytes))
+			a.MovImm64(arm64.X16, uint64(frameBytes))
 			a.AddSPReg(arm64.X16)
 		}
 	}
-	if plan.ABI.HasCall {
-		a.LdpPost(arm64.FP, arm64.LR, arm64.SP, 16)
+	if hasNativeCall {
+		if elidePreparedFrame {
+			a.LdpPost(arm64.LR, arm64.XZR, arm64.SP, 16)
+		} else {
+			a.LdpPost(arm64.FP, arm64.LR, arm64.SP, 16)
+		}
 	}
 	a.Ret()
 	for layoutIndex := range plan.Schedule.BlockRanges {
@@ -3441,11 +3539,88 @@ func arm64RailMachDirectCallNeedsRegisterArguments(plan *nativeBackendPlan, inst
 	return plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall || uint32(instruction.Aux) != plan.Stack.FunctionIndex
 }
 
-func arm64RailMachDirectCallStackAdjust(plan *nativeBackendPlan, instruction railmach.Inst) uint32 {
+func arm64RailMachDirectCallStackAdjust(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) uint32 {
 	if plan != nil && plan.Stack != nil && instruction.Op == wasm.InstrCall && uint32(instruction.Aux) == plan.Stack.FunctionIndex {
 		return 0
 	}
+	if arm64RailMachDirectCallClass(plan, instructionID, instruction) == railmach.ABITinyDirect {
+		// The caller's HasCall prologue already preserves its incoming LR. A
+		// finalized tiny RailMach leaf cannot call onward, so the extra
+		// per-call LR pair and its matching stack-biased call area are dead.
+		return 0
+	}
 	return 16
+}
+
+func arm64RailMachFastTinyCall(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst, operands int) bool {
+	return operands == 1 && instruction.ResultCount() <= 1 && arm64RailMachDirectCallClass(plan, instructionID, instruction) == railmach.ABITinyDirect
+}
+
+func arm64RailMachElidesPreparedCallFrame(plan *nativeBackendPlan) bool {
+	if plan == nil || plan.Machine == nil || plan.ABI.Class != railmach.ABIPreparedInt || plan.Frame.TotalBytes != 16 ||
+		plan.Frame.SpillBytes != 0 || plan.Frame.RootBytes != 0 || plan.Frame.CalleeSaveBytes != 0 || len(plan.Machine.Results) > 1 {
+		return false
+	}
+	for instructionID, instruction := range plan.Machine.Insts {
+		if !railmach.IsCall(instruction.Op) {
+			continue
+		}
+		if !arm64RailMachFastTinyCall(plan, uint32(instructionID), instruction, int(instruction.OperandCount)) {
+			return false
+		}
+	}
+	return true
+}
+
+func arm64RailMachInlinesAllTinyCalls(plan *nativeBackendPlan) bool {
+	if plan == nil || plan.Machine == nil || plan.ABI.Class != railmach.ABIPreparedInt {
+		return false
+	}
+	calls := 0
+	for _, instruction := range plan.Machine.Insts {
+		if !railmach.IsCall(instruction.Op) {
+			continue
+		}
+		calls++
+		if _, ok := arm64RailMachInlineI32AddImmediate(plan, instruction); !ok {
+			return false
+		}
+	}
+	return calls != 0
+}
+
+func arm64RailMachInlineI32AddImmediate(plan *nativeBackendPlan, instruction railmach.Inst) (int32, bool) {
+	if plan == nil || plan.Stack == nil || plan.Stack.Module == nil || instruction.Op != wasm.InstrCall || instruction.OperandCount != 1 || instruction.ResultCount() != 1 {
+		return 0, false
+	}
+	target := uint32(instruction.Aux)
+	if target < plan.Stack.ImportedFuncs {
+		return 0, false
+	}
+	local := target - plan.Stack.ImportedFuncs
+	if int(local) >= len(plan.Stack.Module.Code) {
+		return 0, false
+	}
+	body := plan.Stack.Module.Code[local].BodyBytes
+	if len(body) < 6 || body[0] != 0x20 || body[1] != 0 || body[2] != 0x41 || body[len(body)-2] != 0x6a || body[len(body)-1] != 0x0b {
+		return 0, false
+	}
+	reader := wasm.ReaderFrom(body[3 : len(body)-2])
+	immediate, err := reader.I32()
+	return immediate, err == nil && reader.BytesLeft() == 0
+}
+
+func arm64RailMachDirectCallClass(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) railmach.ABIClass {
+	if plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall || uint32(instruction.Aux) < plan.Stack.ImportedFuncs {
+		return 0
+	}
+	target := uint32(instruction.Aux)
+	for _, call := range plan.Calls {
+		if call.Instruction == instructionID && call.Callee == target && !call.Conservative {
+			return call.Class
+		}
+	}
+	return 0
 }
 
 func arm64RailMachDirectCallUsesPrivateABI(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) bool {
@@ -3456,15 +3631,7 @@ func arm64RailMachDirectCallUsesPrivateABI(plan *nativeBackendPlan, instructionI
 	if target == plan.Stack.FunctionIndex {
 		return true
 	}
-	if target < plan.Stack.ImportedFuncs {
-		return false
-	}
-	for _, call := range plan.Calls {
-		if call.Instruction == instructionID && call.Callee == target {
-			return !call.Conservative && call.Class != 0
-		}
-	}
-	return false
+	return arm64RailMachDirectCallClass(plan, instructionID, instruction) != 0
 }
 
 func arm64RailMachGlobalAddress(plan *nativeBackendPlan, value railmach.VReg) (uint32, bool) {

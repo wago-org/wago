@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"math"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -30,6 +31,75 @@ func draglineBinaryModule(param, result wasm.ValType, body []byte) []byte {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
+}
+
+func TestDraglineNativeTinyPreparedUsesDirectIntegerEntry(t *testing.T) {
+	if runtime.GOARCH != "arm64" {
+		t.Skip("Dragline direct prepared integer entries are currently ARM64-only")
+	}
+	module := draglineUnaryModule(wasm.I32, wasm.I32, []byte{0x20, 0x00, 0x41, 0x07, 0x6a, 0x0b})
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if !compiled.directPreparedAt(0) {
+		t.Fatal("tiny integer RailMach export did not publish its direct prepared entry")
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	prepared, err := instance.PrepareFunction("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prepared.directIntFast {
+		t.Fatal("tiny integer RailMach export did not select direct prepared invocation")
+	}
+	result, err := prepared.Invoke1(I32(5))
+	if err != nil || len(result) != 1 || AsI32(result[0]) != 12 {
+		t.Fatalf("prepared run(5) = %v, %v; want 12", result, err)
+	}
+}
+
+func TestDraglineNativePreparedInlinesTinyIntegerCallees(t *testing.T) {
+	if runtime.GOARCH != "arm64" {
+		t.Skip("Dragline direct prepared integer entries are currently ARM64-only")
+	}
+	i32ToI32 := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(i32ToI32)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x41, 0x00, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x41, 0x07, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x20, 0x00, 0x10, 0x01, 0x6a, 0x0b}),
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	if !compiled.directPreparedAt(2) {
+		t.Fatal("bounded integer caller did not publish its direct prepared entry")
+	}
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	prepared, err := instance.PrepareFunction("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := prepared.Invoke1(I32(5))
+	if err != nil || len(result) != 1 || AsI32(result[0]) != 17 {
+		t.Fatalf("prepared run(5) = %v, %v; want 17", result, err)
+	}
 }
 
 func draglineScalarModule(body []byte) []byte {

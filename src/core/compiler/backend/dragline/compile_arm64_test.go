@@ -744,14 +744,14 @@ func TestARM64RailMachSelfCallUsesCanonicalArgumentVector(t *testing.T) {
 	if arm64RailMachDirectCallNeedsRegisterArguments(plan, self) {
 		t.Fatal("self-recursive RailMach call redundantly requested structured argument registers")
 	}
-	if got := arm64RailMachDirectCallStackAdjust(plan, self); got != 0 {
+	if got := arm64RailMachDirectCallStackAdjust(plan, 7, self); got != 0 {
 		t.Fatalf("self-recursive RailMach call stack adjustment = %d, want 0", got)
 	}
 	local := railmach.Inst{Op: wasm.InstrCall, Aux: 4}
 	if !arm64RailMachDirectCallNeedsRegisterArguments(plan, local) {
 		t.Fatal("unproven local callee omitted structured argument registers")
 	}
-	if got := arm64RailMachDirectCallStackAdjust(plan, local); got != 16 {
+	if got := arm64RailMachDirectCallStackAdjust(plan, 8, local); got != 16 {
 		t.Fatalf("non-self RailMach call stack adjustment = %d, want 16", got)
 	}
 	plan.Calls = []railmach.CallContract{{Instruction: 8, Callee: 4, Class: railmach.ABILeafScalar}}
@@ -762,11 +762,26 @@ func TestARM64RailMachSelfCallUsesCanonicalArgumentVector(t *testing.T) {
 	if arm64RailMachDirectCallUsesPrivateABI(plan, 8, local) {
 		t.Fatal("conservative local callee used the private result ABI")
 	}
+	plan.Calls[0] = railmach.CallContract{Instruction: 8, Callee: 4, Class: railmach.ABITinyDirect}
+	if got := arm64RailMachDirectCallStackAdjust(plan, 8, local); got != 0 {
+		t.Fatalf("verified tiny-leaf RailMach call stack adjustment = %d, want 0", got)
+	}
+	local.Result = 1
+	if !arm64RailMachFastTinyCall(plan, 8, local, 1) {
+		t.Fatal("single-argument tiny-leaf RailMach call did not use direct registers")
+	}
+	if arm64RailMachFastTinyCall(plan, 8, local, 2) {
+		t.Fatal("multi-argument tiny-leaf RailMach call bypassed its canonical vector")
+	}
+	plan.Calls[0].Conservative = true
+	if got := arm64RailMachDirectCallStackAdjust(plan, 8, local); got != 16 {
+		t.Fatalf("conservative tiny-leaf RailMach call stack adjustment = %d, want 16", got)
+	}
 	imported := railmach.Inst{Op: wasm.InstrCall, Aux: 0}
 	if !arm64RailMachDirectCallNeedsRegisterArguments(plan, imported) {
 		t.Fatal("imported callee omitted argument registers")
 	}
-	if got := arm64RailMachDirectCallStackAdjust(plan, imported); got != 16 {
+	if got := arm64RailMachDirectCallStackAdjust(plan, 9, imported); got != 16 {
 		t.Fatalf("imported RailMach call stack adjustment = %d, want 16", got)
 	}
 }

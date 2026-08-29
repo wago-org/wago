@@ -15,6 +15,7 @@ const (
 	ABILeafFP
 	ABINoCollectLeaf
 	ABITinyDirect
+	ABIPreparedInt
 )
 
 type ABIContract struct {
@@ -134,8 +135,10 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		calls = append(calls, call)
 	}
 	switch {
-	case !contract.HasCall && len(f.Insts) <= 4:
+	case !contract.HasCall && len(f.Insts) <= 4 && hasDirectRegisterParams(f, allocation):
 		contract.Class = ABITinyDirect
+	case directPreparedIntegerContract(f, allocation, contract):
+		contract.Class = ABIPreparedInt
 	case !contract.HasCall && usesFP:
 		contract.Class = ABILeafFP
 	case !contract.HasCall && !contract.MayCollect:
@@ -144,6 +147,69 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		contract.Class = ABIGeneral
 	}
 	return contract, calls, nil
+}
+
+func directPreparedIntegerContract(f *Func, allocation *GreedyAllocation, _ ABIContract) bool {
+	if f.ParamCount != 1 || len(f.Results) > 1 || len(f.Insts) > 8 {
+		return false
+	}
+	if !hasSingleDirectRegisterParam(f, allocation) {
+		return false
+	}
+	if len(f.Results) == 1 && f.VRegs[f.Results[0]].Bank != BankGPR {
+		return false
+	}
+	for _, instruction := range f.Insts {
+		switch instruction.Op {
+		case wasm.InstrCall, wasm.InstrI32Const, wasm.InstrI64Const,
+			wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
+			wasm.InstrI32And, wasm.InstrI64And, wasm.InstrI32Or, wasm.InstrI64Or,
+			wasm.InstrI32Xor, wasm.InstrI64Xor:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func hasSingleDirectRegisterParam(f *Func, allocation *GreedyAllocation) bool {
+	if f.ParamCount != 1 {
+		return false
+	}
+	for value := VReg(1); int(value) < len(f.VRegs); value++ {
+		data := f.VRegs[value]
+		if data.Flags&VRegInitial == 0 || data.InitialLocal != 0 {
+			continue
+		}
+		location := allocation.Locations[value]
+		return data.Bank == BankGPR && location.Kind == LocationRegister && location.Bank == BankGPR
+	}
+	return false
+}
+
+func hasDirectRegisterParams(f *Func, allocation *GreedyAllocation) bool {
+	if f.ParamCount > 8 {
+		return false
+	}
+	for local := uint16(0); local < f.ParamCount; local++ {
+		found := false
+		for value := VReg(1); int(value) < len(f.VRegs); value++ {
+			data := f.VRegs[value]
+			if data.Flags&VRegInitial == 0 || data.InitialLocal != local {
+				continue
+			}
+			location := allocation.Locations[value]
+			if data.Bank != BankGPR || location.Kind != LocationRegister || location.Bank != BankGPR || location.Index != local {
+				return false
+			}
+			found = true
+			break
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 // PropagateCallClobbers completes a function contract with the physical

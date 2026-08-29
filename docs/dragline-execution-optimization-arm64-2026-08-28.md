@@ -292,6 +292,27 @@ uncached 36-export differential passes. The remaining 7.2% gap is still in the
 per-item serializer and allocation helpers, so this corpus remains the active
 optimization target.
 
+`many_funcs.run(5)` is complete for this campaign slice. The apparent 1.489x
+execution gap was not primarily its three private calls: it matched the fixed
+cost seen on other tiny exports. Railshot published this export to
+`PreparedFunction` as a direct integer entry, while Dragline always entered its
+serialized public adapter. ARM64 Dragline now publishes a direct prepared bit
+only for finalized, register-compatible RailMach contracts without collector
+root maps. A distinct bounded integer contract admits one integer parameter,
+at most one integer result, no more than eight machine instructions, and only
+the enumerated integer/call forms.
+
+The three local callees have the exact validated byte-backed shape
+`local.get 0; i32.const C; i32.add`. The finalizer recognizes that complete body
+including its canonical signed LEB and terminal `end`, emits the add at the call
+site, and otherwise retains the ordinary call. With every call proved inline,
+the now-call-free caller also removes its unused LR boundary and outgoing call
+area. Seven alternating 300 ms samples measured 20.02 ns for Dragline and
+20.60 ns for Railshot, or **0.972x**: Dragline is 2.8% faster. The original
+caller fell from 148 to 76 native bytes (-48.6%), from a 16-byte frame to zero,
+and from three relocations to zero. A focused prepared-entry product test and a
+fresh uncached 36-export differential pass.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is
