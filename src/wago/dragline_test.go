@@ -4114,6 +4114,47 @@ func TestDraglineStructuredSIMDLoadColdTrap(t *testing.T) {
 	}
 }
 
+func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, // local.get 0
+		0xfd, 0x00, 0x04, 0x00, // v128.load align=16 offset=0
+		0xfd, 0xe4, 0x00, // i8x16.bitmask
+		0x41, 0x00, // i32.const 0
+		0x47, // i32.ne
+		0x0b,
+	}
+	payload := make([]byte, 32)
+	payload[15] = 0x80
+	segment := append([]byte{0x00, 0x41, 0x00, 0x0b}, append(wasmtest.ULEB(uint32(len(payload))), payload...)...)
+	wasmBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("nonzero", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		wasmtest.Section(11, wasmtest.Vec(segment)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), wasmBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for _, test := range []struct {
+		address uint32
+		want    uint64
+	}{{0, 1}, {16, 0}} {
+		result, err := instance.Invoke("nonzero", I32(int32(test.address)))
+		if err != nil || len(result) != 1 || result[0] != test.want {
+			t.Fatalf("nonzero(%d) = %#x, %v; want %d", test.address, result, err, test.want)
+		}
+	}
+}
+
 func TestDraglineFrameBackedF64LocalIsZeroedOnEveryCall(t *testing.T) {
 	body := []byte{0x01, 0x09, 0x7c, 0x20, 0x00, 0x04, 0x40, 0x44}
 	var bits [8]byte

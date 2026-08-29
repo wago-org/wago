@@ -123,14 +123,32 @@ out-of-bounds vector load reaches the outlined linear-memory trap.
 
 A fresh three-round alternating 100 ms prioritization pass across all 36
 executable exports puts the Dragline/Railshot execution geometric mean at
-1.122x, down from 1.198x before this corpus slice. Dragline is faster on 19 of
+1.099x, down from 1.198x before this corpus slice. Dragline is faster on 19 of
 36 exports. The remaining top four application gaps are now
-`json-as-simd.deserializeN` (2.821x), `json-as-simd.serializeN` (2.556x),
-`utf-as-simd.validateN` (2.210x), and `blake-as-simd.hashN` (1.991x).
+`json-as-simd.deserializeN` (2.806x), `json-as-simd.serializeN` (2.533x),
+`blake-as-simd.hashN` (1.989x), and `sha256.hashN` (1.558x).
 
-`validateN(200)` also improved, but remains unfinished: its seven-round median
-is 307.78 us versus Railshot's 139.36 us, or 2.209x. This export is the next
-target within the `utf-as-simd` corpus.
+`validateN(200)` is complete for this campaign slice. SIMD-only functions now
+cache the immutable memory bound, and repeated vector constants and shuffle
+masks remain in otherwise-unused vector registers. A direct fold for
+`i8x16.bitmask != 0` avoids reconstructing a scalar bitmask when only its
+nonzero state is observed. Expanding the mixed scalar operand stack from four
+to six registers also removed avoidable frame traffic in the large validator.
+
+The progression below uses seven alternating 300 ms samples per backend on the
+same Apple M4 Max. Values are medians.
+
+| State | Dragline | Railshot | D/R |
+|---|---:|---:|---:|
+| Six scalar operand registers | 268.17 us | 139.93 us | 1.916x |
+| Cached SIMD-only memory bound | 263.59 us | 138.75 us | 1.900x |
+| Cached vector constants with alias flow | 224.40 us | 139.86 us | 1.605x |
+| Direct bitmask-nonzero fold | 202.87 us | 139.56 us | 1.454x |
+| Cached shuffle masks | 134.62 us | 139.77 us | **0.963x** |
+
+The final focused result is 3.7% faster than Railshot. The validator's native
+body fell from 11,724 to 6,564 bytes, a 44.0% reduction. The independent
+all-corpus prioritization pass measured `validateN` at 0.955x Railshot.
 
 ## Historical application outliers
 
