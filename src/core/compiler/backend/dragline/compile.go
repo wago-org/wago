@@ -744,7 +744,7 @@ func railMachWasmOffset(plan *nativeBackendPlan, source uint32) uint32 {
 // rewrites may move machine instructions but do not change that identity.
 func railMachElidesBoundsCheck(plan *nativeBackendPlan, source uint32) bool {
 	return plan != nil && plan.Stack != nil && int(source) < len(plan.Stack.Instrs) &&
-		plan.Emission != nil && plan.Emission.ElidesBoundsCheck(source)
+		(plan.SignalsBounds || plan.Emission != nil && plan.Emission.ElidesBoundsCheck(source))
 }
 
 // FunctionError identifies the original Wasm function and compiler stage that
@@ -790,6 +790,21 @@ func planCompilerFunc(fn *railssa.Func, planner *railssa.EmissionPlanner) (*rail
 		return nil, nil
 	}
 	return planner.Plan(fn.Stack)
+}
+
+func applyBoundsMode(mode corecompiler.BoundsMode, plan *railssa.EmissionPlan, native *nativeBackendPlan) *railssa.EmissionPlan {
+	if mode != corecompiler.BoundsSignals {
+		return plan
+	}
+	if native != nil {
+		native.SignalsBounds = true
+		return plan
+	}
+	if plan == nil {
+		plan = new(railssa.EmissionPlan)
+	}
+	plan.ElideAllMemoryBounds()
+	return plan
 }
 
 func stackHasControl(f *railssa.StackFunc) bool {

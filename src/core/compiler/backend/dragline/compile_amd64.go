@@ -258,6 +258,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				capture.prepare(len(fn.Stack.Instrs))
 			}
 		}
+		plan = applyBoundsMode(input.Bounds, plan, nativePlan)
 		body, internalOffset, relocs, err := emitAMD64(fn, plan, nativePlan, emitMetrics, capture)
 		if err != nil {
 			return corecompiler.Output{}, functionError(m, i, "emit", err)
@@ -434,6 +435,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 					return functionError(m, i, "optimize", err)
 				}
 			}
+			plan = applyBoundsMode(input.Bounds, plan, nativePlan)
 			body, internalOffset, relocs, err := emitAMD64(fn, plan, nativePlan, nil, nil)
 			if err != nil {
 				return functionError(m, i, "emit", err)

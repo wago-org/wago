@@ -57,6 +57,7 @@ type nativeBackendPlan struct {
 	Score             railmach.ScheduleScore
 	BackendAttempts   uint8
 	IPRARefinedCalls  uint32
+	SignalsBounds     bool
 
 	BlockOffsets        []int
 	BranchPatches       []nativeBranchPatch

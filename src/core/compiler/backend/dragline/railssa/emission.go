@@ -14,13 +14,22 @@ import (
 // planner's internal CFG and SSA storage.
 type EmissionPlan struct {
 	boundsChecksElided []bool
+	signalsBounds      bool
 	SemanticInsts      uint32
 	SemanticArgs       uint32
 	ProofQueries       uint32
 }
 
 func (p *EmissionPlan) ElidesBoundsCheck(source uint32) bool {
-	return p != nil && int(source) < len(p.boundsChecksElided) && p.boundsChecksElided[source]
+	return p != nil && (p.signalsBounds || int(source) < len(p.boundsChecksElided) && p.boundsChecksElided[source])
+}
+
+// ElideAllMemoryBounds selects signal/guard-page enforcement for scalar
+// memory accesses. Bulk-memory operations retain their explicit range checks.
+func (p *EmissionPlan) ElideAllMemoryBounds() {
+	if p != nil {
+		p.signalsBounds = true
+	}
 }
 
 func (p *EmissionPlan) ElidedBoundsChecks() uint32 {

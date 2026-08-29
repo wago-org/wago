@@ -131,6 +131,34 @@ func TestCompilerARM64RailMachFinalizesBulkMemoryAndSaturatingConversion(t *test
 	}
 }
 
+func TestCompilerARM64SignalsBoundsElideScalarChecks(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	explicit, err := (Compiler{}).Compile(corecompiler.Input{Module: m, Source: source, Target: target, Bounds: corecompiler.BoundsExplicit})
+	if err != nil {
+		t.Fatal(err)
+	}
+	signals, err := (Compiler{}).Compile(corecompiler.Input{Module: m, Source: source, Target: target, Bounds: corecompiler.BoundsSignals})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(signals.Code) >= len(explicit.Code) {
+		t.Fatalf("signals/explicit native bytes = %d/%d, want signals smaller", len(signals.Code), len(explicit.Code))
+	}
+}
+
 func TestCompilerNativeARM64RealizesNZCVPhysicalRename(t *testing.T) {
 	locals := append(wasmtest.ULEB(2), byte(0x7f))
 	body := append(wasmtest.Vec(locals), []byte{
