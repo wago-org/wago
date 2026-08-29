@@ -192,8 +192,18 @@ func TestNativeImmediateCombinationsFoldRepeatedRotateCounts(t *testing.T) {
 	skipped := make([]bool, len(machine.Insts))
 	uses := make([]uint32, len(machine.VRegs))
 	buildNativeImmediateCombinations(plan, producers, skipped, uses)
-	if producers[1] != 0 || producers[2] != 0 || skipped[0] || uses[1] != 2 {
+	if producers[1] != 0 || producers[2] != 0 || !skipped[0] || uses[1] != 2 {
 		t.Fatalf("producers=%v skipped=%v uses=%v", producers, skipped, uses)
+	}
+	machine.Target = railmach.TargetARM64
+	applyNativeARM64ShiftImmediateRematerialization(machine)
+	if machine.Operands[1].Flags&railmach.OperandColdRemat == 0 || machine.Operands[3].Flags&railmach.OperandColdRemat == 0 {
+		t.Fatalf("rotate operands were not removed from allocation liveness: %#v", machine.Operands)
+	}
+	machine.Results = []railmach.VReg{1}
+	buildNativeImmediateCombinations(plan, producers, skipped, uses)
+	if skipped[0] {
+		t.Fatal("function-result constant was elided")
 	}
 }
 

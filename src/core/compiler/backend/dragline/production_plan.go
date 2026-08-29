@@ -586,8 +586,65 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers []uint3
 				foldedUses++
 			}
 		}
-		if foldedUses == uses[producer.Result] && uses[producer.Result] == 1 {
+		if uses[producer.Result] != 0 && foldedUses == uses[producer.Result] && !nativeMachineValueEscapes(plan.Machine, producer.Result) {
 			skipped[producerID] = true
+		}
+	}
+}
+
+func nativeMachineValueEscapes(machine *railmach.Func, value railmach.VReg) bool {
+	for _, transfer := range machine.Transfers {
+		if transfer.Src == value || transfer.Dst == value {
+			return true
+		}
+	}
+	for _, result := range machine.Results {
+		if result == value {
+			return true
+		}
+	}
+	return false
+}
+
+func applyNativeARM64ShiftImmediateRematerialization(machine *railmach.Func) {
+	if machine == nil || machine.Target != railmach.TargetARM64 {
+		return
+	}
+	for _, producer := range machine.Insts {
+		if producer.Result == 0 || producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const || nativeMachineValueEscapes(machine, producer.Result) {
+			continue
+		}
+		uses, eligible := uint32(0), uint32(0)
+		for instructionID, consumer := range machine.Insts {
+			operands := machine.InstructionOperands(uint32(instructionID))
+			for operandIndex, operand := range operands {
+				if operand.Reg != producer.Result {
+					continue
+				}
+				uses++
+				if operandIndex != 1 || len(operands) != 2 {
+					continue
+				}
+				switch consumer.Op {
+				case wasm.InstrI32Shl, wasm.InstrI64Shl,
+					wasm.InstrI32ShrS, wasm.InstrI64ShrS,
+					wasm.InstrI32ShrU, wasm.InstrI64ShrU,
+					wasm.InstrI32Rotl, wasm.InstrI64Rotl,
+					wasm.InstrI32Rotr, wasm.InstrI64Rotr:
+					eligible++
+				}
+			}
+		}
+		if uses == 0 || eligible != uses {
+			continue
+		}
+		for instructionID := range machine.Insts {
+			operands := machine.InstructionOperands(uint32(instructionID))
+			for index := range operands {
+				if operands[index].Reg == producer.Result {
+					operands[index].Flags |= railmach.OperandColdRemat
+				}
+			}
 		}
 	}
 }
@@ -803,6 +860,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if _, err := railmach.ApplyAddressFolding(machine, flow, semantic, simplified, selection); err != nil {
 		return nil, err
 	}
+	applyNativeARM64ShiftImmediateRematerialization(machine)
 	dag, err := railmach.BuildDependencyDAG(machine, selection, metadata, &p.dag)
 	if err != nil {
 		return nil, err
