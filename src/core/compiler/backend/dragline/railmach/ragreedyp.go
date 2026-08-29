@@ -28,7 +28,10 @@ type CallClobber struct {
 	FPR         uint64
 }
 
-const greedyDensityMinInstructions = 512
+const (
+	greedyDensityMinInstructions         = 256
+	greedyRegionalDensityMinInstructions = 512
+)
 
 func DefaultGreedyConfig(target Target) GreedyConfig {
 	linear := DefaultLinearQConfig(target)
@@ -209,6 +212,8 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 			}
 		}
 	}
+	config.MaxStage = greedyEffectiveMaxStage(len(f.Insts), useDensityCost, config.MaxStage)
+	reuse.Stage = config.MaxStage
 	spillCost := func(interval LiveInterval) uint64 {
 		return greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost)
 	}
@@ -427,6 +432,17 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		}
 	}
 	return reuse, nil
+}
+
+func greedyEffectiveMaxStage(functionInstructions int, density bool, configured uint8) uint8 {
+	if density && functionInstructions < greedyRegionalDensityMinInstructions && configured > 3 {
+		// Medium integer kernels benefit from density priority, but their short
+		// spill ranges do not yet have a complete stage-4 regional-fragment
+		// contract. Keep the verified promotion/eviction stages and admit regional
+		// fragments only at the established large-kernel threshold.
+		return 3
+	}
+	return configured
 }
 
 func greedySpillCost(interval LiveInterval, functionInstructions uint64, density bool) uint64 {

@@ -206,13 +206,27 @@ structured compression functions declare 37 vector locals each, but ARM64 has
 only 20 registers available for persistent structured locals. Use-ranked local
 pinning and direct shuffle/rotate experiments appeared to reduce the focused
 latency from 802.58 us to roughly 460 us, but a forced uncached differential
-found an incorrect digest. Those changes were rejected in full. Lowering the
-integer RailMach density threshold similarly made `sha256.hashN(8)` appear 4.1%
-faster than Railshot but produced an incorrect SHA-256 digest, so that change
-was also reverted. A diagnostic build that removed every structured SIMD bounds
-check did not improve BLAKE materially. Both hash corpora remain unfinished;
-their next optimization must include an uncached result differential in the
-measurement loop, not only the execution worker.
+found an incorrect digest. Those changes were rejected in full. A diagnostic
+build that removed every structured SIMD bounds check did not improve BLAKE
+materially. The corpus remains unfinished; its next optimization must include
+an uncached result differential in the measurement loop, not only the execution
+worker.
+
+`sha256.hashN(8)` is complete for this campaign slice. Its 391-instruction
+integer RailMach kernel fell below the original 512-instruction gate for
+use-density allocation. Lowering that gate initially exposed a latent stage-4
+regional-fragment miscompile, caught by the uncached corpus differential. The
+safe policy now enables density priority from 256 instructions but limits
+256-511-instruction density kernels to the verified promotion/eviction stages;
+the established 512+ integer policy retains regional fragments. FPR kernels
+continue to use conservative area priority.
+
+Seven alternating 300 ms samples per backend measured 26.73 us for Dragline
+and 28.07 us for Railshot, or **0.952x**: Dragline is 4.8% faster. The fresh
+all-corpus baseline was 43.74 us versus 28.16 us, or 1.553x. Native code fell
+from 5,900 to 5,828 bytes. The safe allocation uses six spill slots and a
+112-byte frame, while reporting no regional fragments. A forced uncached
+36-module differential passes with this policy.
 
 `fib_rec.fib(28)` is complete for this campaign slice. RailMach's ordinary
 function prologue already saves its incoming LR, but every private self-call
