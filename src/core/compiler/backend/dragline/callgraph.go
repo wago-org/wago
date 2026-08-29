@@ -20,6 +20,7 @@ type compilationPlan struct {
 	Component []int
 	Recursive []bool
 	Level     []uint32
+	HasV128   bool
 	PeakBytes uint64
 }
 
@@ -33,6 +34,7 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 		components := make([]int, count)
 		recursive := make([]bool, count)
 		levels := make([]uint32, count)
+		hasV128 := false
 		if count == 1 {
 			reader := wasm.NewReader(m.Code[0].BodyBytes)
 			classifier := wasm.NewModuleInstructionClassifier(m, false)
@@ -42,15 +44,17 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 				if err != nil || classifier.ClassifyInto(reader, opcode, &immediate) != nil {
 					break
 				}
+				hasV128 = hasV128 || opcode == 0xfd
 				recursive[0] = recursive[0] || immediate.Kind == wasm.InstrCall && int(immediate.Index) == m.ImportedFuncCount()
 			}
 		}
-		return compilationPlan{Order: order, Component: components, Recursive: recursive, Level: levels, PeakBytes: sliceBytes(order) + sliceBytes(components) + sliceBytes(recursive) + sliceBytes(levels)}
+		return compilationPlan{Order: order, Component: components, Recursive: recursive, Level: levels, HasV128: hasV128, PeakBytes: sliceBytes(order) + sliceBytes(components) + sliceBytes(recursive) + sliceBytes(levels)}
 	}
 
 	edges := make([][]int, count)
 	imported := m.ImportedFuncCount()
 	classifier := wasm.NewModuleInstructionClassifier(m, false)
+	hasV128 := false
 	for caller := range m.Code {
 		reader := wasm.NewReader(m.Code[caller].BodyBytes)
 		var immediate wasm.InstructionImmediate
@@ -62,6 +66,7 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 				levels := make([]uint32, count)
 				return compilationPlan{Order: order, Component: components, Recursive: recursive, Level: levels, PeakBytes: sliceBytes(order) + sliceBytes(components) + sliceBytes(recursive) + sliceBytes(levels) + callGraphEdgeBytes(edges)}
 			}
+			hasV128 = hasV128 || opcode == 0xfd
 			if immediate.Kind == wasm.InstrCall {
 				callee := int(immediate.Index) - imported
 				if callee >= 0 && callee < count {
@@ -147,7 +152,7 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 	}
 	peakBytes := sliceBytes(order) + sliceBytes(components) + sliceBytes(recursive) + sliceBytes(levels) + callGraphEdgeBytes(edges) +
 		sliceBytes(indices) + sliceBytes(lowlink) + sliceBytes(onStack) + sliceBytes(stack)
-	return compilationPlan{Order: result, Component: components, Recursive: recursive, Level: levels, PeakBytes: peakBytes}
+	return compilationPlan{Order: result, Component: components, Recursive: recursive, Level: levels, HasV128: hasV128, PeakBytes: peakBytes}
 }
 
 type compilationComponent struct {

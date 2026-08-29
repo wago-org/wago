@@ -181,7 +181,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			fn.HelperSafepointBase = helperSafepointBases[i]
 		}
 		var nativePlan *nativeBackendPlan
-		if railMachCandidate(fn.Structured) {
+		if railMachCandidate(fn.Structured, compilationPlan.HasV128) {
 			if nativePlanner == nil {
 				nativePlanner = new(nativeBackendPlanner)
 			}
@@ -401,7 +401,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 				return functionError(m, i, "lower", err)
 			}
 			var nativePlan *nativeBackendPlan
-			if railMachCandidate(fn.Structured) {
+			if railMachCandidate(fn.Structured, compilation.HasV128) {
 				if worker.native == nil {
 					worker.native = &nativeBackendPlanner{parallelCandidates: true}
 				}

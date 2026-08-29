@@ -245,7 +245,7 @@ func (p *nativeBackendPlanner) capacityBreakdown() (ssa, machine, native uint64)
 	return ssa, machine, native
 }
 
-func railMachCandidate(stack *railssa.StackFunc) bool {
+func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 	if stack == nil {
 		return false
 	}
@@ -256,11 +256,13 @@ func railMachCandidate(stack *railssa.StackFunc) bool {
 				calls++
 			}
 		}
-		if calls > 1 && len(stack.Instrs) > 256 {
-			// Large loop values that cross several local calls still expose
-			// an incomplete RailMach edge/live-range contract. Keep this
-			// general shape on the verified structured emitter until that
-			// contract is complete.
+		largeModule := stack.Module != nil && len(stack.Module.Code) > 256
+		if (moduleHasV128 || largeModule) && calls > 1 && len(stack.Instrs) > 256 {
+			// In SIMD modules, large loop values that cross several local calls
+			// still expose an incomplete RailMach edge/live-range contract even
+			// when the caller itself is scalar. Retain the same bounded policy
+			// for large modules so admission cannot multiply compile latency.
+			// Small scalar-only modules use complete scalar edge refinement.
 			return false
 		}
 	}

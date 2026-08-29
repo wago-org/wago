@@ -886,7 +886,7 @@ func seedHotRecursiveComponent(input corecompiler.Input, m *wasm.Module, compila
 			continue
 		}
 		fn, err := buildCompilerFunc(m, member, stackScratch)
-		if err != nil || !railMachCandidate(fn.Structured) {
+		if err != nil || !railMachCandidate(fn.Structured, compilation.HasV128) {
 			// A partial component contract is never published. Mixed-emitter
 			// recursion retains the conservative private ABI.
 			abort()

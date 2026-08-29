@@ -233,19 +233,36 @@ func TestRailMachLoopProfitabilityPolicy(t *testing.T) {
 			for _, kind := range test.instructions {
 				stack.Instrs = append(stack.Instrs, railssa.StackInstr{Kind: kind})
 			}
-			if got := railMachCandidate(stack); got != test.want {
+			if got := railMachCandidate(stack, false); got != test.want {
 				t.Fatalf("RailMach candidate = %v, want %v", got, test.want)
 			}
 		})
 	}
 }
 
-func TestRailMachLoopProfitabilityKeepsLargeMultiCallLoopStructured(t *testing.T) {
-	stack := &railssa.StackFunc{MaxLoopDepth: 1, Instrs: make([]railssa.StackInstr, 257)}
-	stack.Instrs[0].Kind = wasm.InstrCall
-	stack.Instrs[1].Kind = wasm.InstrCall
-	if railMachCandidate(stack) {
-		t.Fatal("large multi-call loop unexpectedly selected RailMach")
+func TestRailMachLoopProfitabilityBoundsLargeMultiCallAdmission(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		simd        bool
+		moduleFuncs int
+		want        bool
+	}{
+		{name: "scalar", want: true},
+		{name: "simd", simd: true, want: false},
+		{name: "large_module", moduleFuncs: 257, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			stack := &railssa.StackFunc{MaxLoopDepth: 1, HasV128: test.simd, Instrs: make([]railssa.StackInstr, 257)}
+			if test.moduleFuncs != 0 {
+				stack.Module = &wasm.Module{Code: make([]wasm.Func, test.moduleFuncs)}
+			}
+			stack.Instrs[0].Kind = wasm.InstrCall
+			stack.Instrs[1].Kind = wasm.InstrCall
+			stack.Instrs[2].Kind = wasm.InstrI32LtU
+			if got := railMachCandidate(stack, test.simd); got != test.want {
+				t.Fatalf("RailMach candidate = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 

@@ -55,6 +55,23 @@ func TestCalleeFirstCompilationPlanMarksSelfRecursion(t *testing.T) {
 	}
 }
 
+func TestCalleeFirstCompilationPlanRecordsModuleSIMD(t *testing.T) {
+	body := append([]byte{0xfd, 0x0c}, make([]byte, 16)...)
+	body = append(body, 0x1a, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}), wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan := calleeFirstCompilationPlan(m); !plan.HasV128 {
+		t.Fatal("SIMD module was not recorded in compilation plan")
+	}
+}
+
 func TestVerifyRecursiveContractClosureRejectsTampering(t *testing.T) {
 	compilation := compilationPlan{Component: []int{0, 0}, Recursive: []bool{true, true}}
 	seeds := []railmach.ABIContract{{Class: railmach.ABIGeneral, GPRClobbers: 1}, {Class: railmach.ABIGeneral, GPRClobbers: 2}}
