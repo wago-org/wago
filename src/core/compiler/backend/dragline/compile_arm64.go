@@ -795,7 +795,12 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	var currentOperands []railmach.Operand
 	var currentResult railmach.VReg
 	var currentPosition uint32
+	var currentResultOverride arm64.Reg
+	var currentResultOverrideValid bool
 	reg := func(value railmach.VReg) arm64.Reg {
+		if value == currentResult && currentResultOverrideValid {
+			return currentResultOverride
+		}
 		location := plan.Allocation.LocationAt(value, currentPosition)
 		bank := plan.Machine.VRegs[value].Bank
 		cold := false
@@ -1123,6 +1128,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			}
 		}
 		blockRange := plan.Schedule.BlockRanges[blockID]
+		edgeResultRename := arm64RailMachEdgeResultRename(plan, uint32(blockID))
 		blockOffsets[blockID] = a.Len()
 		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockExit) != 0 {
 			continue
@@ -1177,6 +1183,10 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			}
 			currentOperands, currentResult = operands, instruction.Result
 			currentPosition = plan.Allocation.InstructionPositions[instructionID]*6 + 2
+			currentResultOverrideValid = edgeResultRename.valid && edgeResultRename.instruction == instructionID
+			if currentResultOverrideValid {
+				currentResultOverride = arm64RailMachPhysical(edgeResultRename.destination)
+			}
 			if len(plan.PostRARepeatFirst) != 0 && plan.PostRARepeatFirst[instructionID] != 0 {
 				first := plan.PostRARepeatFirst[instructionID] - 1
 				initial, invariant, count, ok := railmach.VerifyARM64RepeatedAddChain(plan.Machine, plan.Schedule, first, instructionID)
@@ -2937,7 +2947,11 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			continue
 		}
 		if edgeCount == 1 {
-			if err := emitARM64RailMachEdgeMoves(&a, plan, first); err != nil {
+			skipMove := ^uint32(0)
+			if edgeResultRename.valid && edgeResultRename.edge == first {
+				skipMove = edgeResultRename.move
+			}
+			if err := emitARM64RailMachEdgeMovesSkipping(&a, plan, first, skipMove); err != nil {
 				return nil, 0, true, err
 			}
 			if target := int(plan.Machine.Edges[first].To); target != nextBlock {
@@ -3407,29 +3421,144 @@ func arm64MaterializeCallResults(a *arm64.Asm, plan *nativeBackendPlan, instruct
 	return nil
 }
 
+type arm64EdgeResultRename struct {
+	instruction uint32
+	edge        uint32
+	move        uint32
+	destination railmach.Location
+	valid       bool
+}
+
+// arm64RailMachEdgeResultRename coalesces a final floating multiply with its
+// sole outgoing block-argument copy after allocation. The destination must not
+// carry another value across the parallel-copy bundle, so overwriting it at the
+// defining instruction preserves both the bundle and SSA edge semantics.
+func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64EdgeResultRename {
+	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.Allocation == nil || plan.Exit == nil || int(block) >= len(plan.Schedule.BlockRanges) {
+		return arm64EdgeResultRename{}
+	}
+	edge := ^uint32(0)
+	for index, candidate := range plan.Machine.Edges {
+		if uint32(candidate.From) != block {
+			continue
+		}
+		if edge != ^uint32(0) {
+			return arm64EdgeResultRename{}
+		}
+		edge = uint32(index)
+	}
+	if edge == ^uint32(0) {
+		return arm64EdgeResultRename{}
+	}
+	moveRange := plan.Exit.EdgeMoves[edge]
+	candidateMove := ^uint32(0)
+	var instructionID uint32
+	var result railmach.VReg
+	var destination railmach.Location
+	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
+		move := plan.Exit.Moves[index]
+		if move.Kind != railmach.MoveCopy ||
+			(move.Placement != railmach.PlacePredecessorEnd && move.Placement != railmach.PlaceSplitEdge) ||
+			move.Src.Kind != railmach.LocationRegister || move.Dst.Kind != railmach.LocationRegister || move.Src.Bank != move.Dst.Bank ||
+			move.Reg == 0 || int(move.Reg) >= len(plan.Machine.VRegs) {
+			continue
+		}
+		data := plan.Machine.VRegs[move.Reg]
+		if data.Flags&(railmach.VRegInitial|railmach.VRegBlockParam|railmach.VRegElided) != 0 || data.Def%6 != 3 {
+			continue
+		}
+		definition := data.Def / 6
+		if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Result != move.Reg || plan.Machine.Insts[definition].Op != wasm.InstrF64Mul {
+			continue
+		}
+		if candidateMove != ^uint32(0) {
+			return arm64EdgeResultRename{}
+		}
+		candidateMove, instructionID, result, destination = index, definition, move.Reg, move.Dst
+	}
+	if candidateMove == ^uint32(0) {
+		return arm64EdgeResultRename{}
+	}
+	transferCount := 0
+	for _, transfer := range plan.Machine.Transfers {
+		if transfer.Src == result {
+			transferCount++
+			if transfer.Edge != edge {
+				return arm64EdgeResultRename{}
+			}
+		}
+	}
+	if transferCount != 1 {
+		return arm64EdgeResultRename{}
+	}
+	for _, value := range plan.Machine.Results {
+		if value == result {
+			return arm64EdgeResultRename{}
+		}
+	}
+	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
+		if index != candidateMove && plan.Exit.Moves[index].Src == destination {
+			return arm64EdgeResultRename{}
+		}
+	}
+	range_ := plan.Schedule.BlockRanges[block]
+	seenDefinition := false
+	for _, candidate := range plan.Schedule.Order[range_.Start : range_.Start+range_.Count] {
+		if candidate == instructionID {
+			seenDefinition = true
+			continue
+		}
+		if !seenDefinition {
+			continue
+		}
+		position := plan.Allocation.InstructionPositions[candidate]*6 + 2
+		for _, operand := range plan.Machine.InstructionOperands(candidate) {
+			if plan.Allocation.LocationAt(operand.Reg, position) == destination {
+				return arm64EdgeResultRename{}
+			}
+		}
+		instruction := plan.Machine.Insts[candidate]
+		if instruction.Result != 0 && plan.Allocation.LocationAt(instruction.Result, position) == destination {
+			return arm64EdgeResultRename{}
+		}
+	}
+	if !seenDefinition {
+		return arm64EdgeResultRename{}
+	}
+	return arm64EdgeResultRename{instruction: instructionID, edge: edge, move: candidateMove, destination: destination, valid: true}
+}
+
 func emitARM64RailMachEdgeMoves(a *arm64.Asm, plan *nativeBackendPlan, edge uint32) error {
-	return emitARM64RailMachEdgeMovesAt(a, plan, edge, false)
+	return emitARM64RailMachEdgeMovesSkipping(a, plan, edge, ^uint32(0))
+}
+
+func emitARM64RailMachEdgeMovesSkipping(a *arm64.Asm, plan *nativeBackendPlan, edge, skipMove uint32) error {
+	return emitARM64RailMachEdgeMovesAt(a, plan, edge, false, skipMove)
 }
 
 func emitARM64RailMachSuccessorMoves(a *arm64.Asm, plan *nativeBackendPlan, edge uint32) error {
-	return emitARM64RailMachEdgeMovesAt(a, plan, edge, true)
+	return emitARM64RailMachEdgeMovesAt(a, plan, edge, true, ^uint32(0))
 }
 
-func emitARM64RailMachEdgeMovesAt(a *arm64.Asm, plan *nativeBackendPlan, edge uint32, successor bool) error {
+func emitARM64RailMachEdgeMovesAt(a *arm64.Asm, plan *nativeBackendPlan, edge uint32, successor bool, skipMove uint32) error {
 	moveRange := plan.Exit.EdgeMoves[edge]
 	placement := railmach.PlacePredecessorEnd
 	if successor {
 		placement = railmach.PlaceSuccessorStart
 	}
-	return emitARM64RailMachMoveRangeAt(a, plan, moveRange, placement)
+	return emitARM64RailMachMoveRangeAt(a, plan, moveRange, placement, skipMove)
 }
 
 func emitARM64RailMachMoveRange(a *arm64.Asm, plan *nativeBackendPlan, moveRange railmach.MoveRange) error {
-	return emitARM64RailMachMoveRangeAt(a, plan, moveRange, railmach.PlaceInvalid)
+	return emitARM64RailMachMoveRangeAt(a, plan, moveRange, railmach.PlaceInvalid, ^uint32(0))
 }
 
-func emitARM64RailMachMoveRangeAt(a *arm64.Asm, plan *nativeBackendPlan, moveRange railmach.MoveRange, placement railmach.MovePlacement) error {
-	for _, move := range plan.Exit.Moves[moveRange.Start : moveRange.Start+moveRange.Count] {
+func emitARM64RailMachMoveRangeAt(a *arm64.Asm, plan *nativeBackendPlan, moveRange railmach.MoveRange, placement railmach.MovePlacement, skipMove uint32) error {
+	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
+		if index == skipMove {
+			continue
+		}
+		move := plan.Exit.Moves[index]
 		if placement != railmach.PlaceInvalid && move.Placement != placement && !(placement == railmach.PlacePredecessorEnd && move.Placement == railmach.PlaceSplitEdge) {
 			continue
 		}

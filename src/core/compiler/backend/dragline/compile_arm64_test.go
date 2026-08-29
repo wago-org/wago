@@ -331,6 +331,62 @@ func TestARM64RailMachCachesHighestCostFloatConstants(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachRenamesFinalEdgeMultiply(t *testing.T) {
+	f := &railmach.Func{
+		Insts:    []railmach.Inst{{Op: wasm.InstrF64Mul, Result: 3, OperandStart: 0, OperandCount: 2}},
+		Operands: []railmach.Operand{{Reg: 1, Bank: railmach.BankFPR}, {Reg: 2, Bank: railmach.BankFPR}},
+		VRegs: []railmach.VRegData{
+			{},
+			{Type: railmach.TypeF64, Bank: railmach.BankFPR, Flags: railmach.VRegBlockParam},
+			{Type: railmach.TypeF64, Bank: railmach.BankFPR, Flags: railmach.VRegInitial},
+			{Def: 3, Type: railmach.TypeF64, Bank: railmach.BankFPR},
+			{Type: railmach.TypeF64, Bank: railmach.BankFPR, Flags: railmach.VRegBlockParam},
+		},
+		Blocks:    []railmach.Block{{InstCount: 1}, {}},
+		Edges:     []railmach.Edge{{From: 0, To: 1}},
+		Transfers: []railmach.EdgeTransfer{{Src: 3, Dst: 4, Edge: 0}},
+	}
+	plan := &nativeBackendPlan{
+		Machine: f,
+		Schedule: &railmach.Schedule{
+			Order:       []uint32{0},
+			BlockRanges: []railmach.MoveRange{{Count: 1}, {Start: 1}},
+			BlockOf:     []railssa.BlockID{0},
+		},
+		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{
+			Locations: []railmach.Location{
+				{},
+				{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 5},
+				{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 7},
+				{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 6},
+				{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 5},
+			},
+			InstructionPositions: []uint32{0},
+		}},
+		Exit: &railmach.SSAExit{
+			Moves: []railmach.PhysicalMove{{
+				Src:       railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 6},
+				Dst:       railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 5},
+				Reg:       3,
+				Edge:      0,
+				Kind:      railmach.MoveCopy,
+				Placement: railmach.PlacePredecessorEnd,
+				Bank:      railmach.BankFPR,
+			}},
+			EdgeMoves: []railmach.MoveRange{{Count: 1}},
+		},
+	}
+	rename := arm64RailMachEdgeResultRename(plan, 0)
+	if !rename.valid || rename.instruction != 0 || rename.edge != 0 || rename.move != 0 || rename.destination.Index != 5 {
+		t.Fatalf("edge result rename = %#v", rename)
+	}
+	plan.Exit.Moves = append(plan.Exit.Moves, railmach.PhysicalMove{Src: rename.destination, Dst: railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 4}})
+	plan.Exit.EdgeMoves[0].Count++
+	if unsafe := arm64RailMachEdgeResultRename(plan, 0); unsafe.valid {
+		t.Fatalf("rename clobbered another edge source: %#v", unsafe)
+	}
+}
+
 func TestARM64RailMachI32SpillUsesOneMemoryOperation(t *testing.T) {
 	plan := &nativeBackendPlan{
 		Machine: &railmach.Func{VRegs: []railmach.VRegData{{}, {Type: railmach.TypeI32, Bank: railmach.BankGPR}}},
