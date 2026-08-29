@@ -70,11 +70,11 @@ func TestARM64RailMachConsumesMaskedInductionBoundsElision(t *testing.T) {
 	checkedPlan := *optimizedPlan
 	checkedPlan.Emission = nil
 	var checkedMetadata, optimizedMetadata functionEmissionMetadata
-	checked, _, used, err := emitARM64RailMach(fn, &checkedPlan, nil, nil, nil, &checkedMetadata)
+	checked, _, used, err := emitARM64RailMach(fn, &checkedPlan, false, nil, nil, nil, &checkedMetadata)
 	if err != nil || !used {
 		t.Fatalf("checked RailMach emission: used=%v err=%v", used, err)
 	}
-	optimized, _, used, err := emitARM64RailMach(fn, optimizedPlan, nil, nil, nil, &optimizedMetadata)
+	optimized, _, used, err := emitARM64RailMach(fn, optimizedPlan, false, nil, nil, nil, &optimizedMetadata)
 	if err != nil || !used {
 		t.Fatalf("optimized RailMach emission: used=%v err=%v", used, err)
 	}

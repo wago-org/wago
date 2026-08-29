@@ -4131,6 +4131,37 @@ func TestDraglineBulkMemoryCopyFill(t *testing.T) {
 	}
 }
 
+func TestDraglineBulkMemoryPreservesLiveParameters(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get destination
+			0x20, 0x01, // local.get fill byte
+			0x20, 0x02, // local.get length
+			0xfc, 0x0b, 0x00, // memory.fill 0
+			0x20, 0x00, // the destination remains live across memory.fill
+			0x0b,
+		}))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	got, err := instance.Invoke("run", I32(123), I32(0xab), I32(1))
+	if err != nil || len(got) != 1 || got[0] != 123 {
+		t.Fatalf("live destination after memory.fill = %v, %v; want [123]", got, err)
+	}
+}
+
 func TestDraglineResourceLimitIsTypedAndExplicitlyRecoverable(t *testing.T) {
 	local := append(wasmtest.ULEB(4097), byte(0x7f))
 	body := append(wasmtest.Vec(local), byte(0x0b))

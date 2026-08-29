@@ -99,6 +99,38 @@ func TestCompilerARM64MOPSBulkMemoryIsFeatureGated(t *testing.T) {
 	}
 }
 
+func TestCompilerARM64RailMachFinalizesBulkMemoryAndSaturatingConversion(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.F32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get destination
+			0x20, 0x01, // local.get fill byte
+			0x20, 0x02, // local.get length
+			0xfc, 0x0b, 0x00, // memory.fill 0
+			0x20, 0x03, // local.get float
+			0xfc, 0x00, // i32.trunc_sat_f32_s
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("bulk-memory/saturating-conversion finalization = %#v", metrics.Functions)
+	}
+}
+
 func TestCompilerNativeARM64RealizesNZCVPhysicalRename(t *testing.T) {
 	locals := append(wasmtest.ULEB(2), byte(0x7f))
 	body := append(wasmtest.Vec(locals), []byte{
@@ -179,14 +211,14 @@ func TestCompilerNativeARM64RealizesNZCVPhysicalRename(t *testing.T) {
 	forced.PostRAFusionWith[0], forced.PostRAFusionWith[2] = 3, 1
 	var relocs []arm64CallReloc
 	var metrics FunctionMetrics
-	optimized, _, ok, err := emitARM64RailMach(fn, &forced, nil, &relocs, &metrics, nil)
+	optimized, _, ok, err := emitARM64RailMach(fn, &forced, false, nil, &relocs, &metrics, nil)
 	if err != nil || !ok {
 		t.Fatalf("optimized NZCV finalization = ok %t, err %v", ok, err)
 	}
 	baseline := forced
 	clearPostRAEmissionRewrites(&baseline)
 	relocs = relocs[:0]
-	checked, _, ok, err := emitARM64RailMach(fn, &baseline, nil, &relocs, nil, nil)
+	checked, _, ok, err := emitARM64RailMach(fn, &baseline, false, nil, &relocs, nil, nil)
 	if err != nil || !ok {
 		t.Fatalf("baseline NZCV finalization = ok %t, err %v", ok, err)
 	}
@@ -223,6 +255,30 @@ func TestARM64FloatBinaryPairRecognizesMatchingWidths(t *testing.T) {
 	}
 	if _, _, ok := arm64FloatBinaryPair(wasm.InstrF32Mul, wasm.InstrF64Add); ok {
 		t.Fatal("mixed-width float pair accepted")
+	}
+}
+
+func TestARM64RailMachI32SpillUsesOneMemoryOperation(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Machine: &railmach.Func{VRegs: []railmach.VRegData{{}, {Type: railmach.TypeI32, Bank: railmach.BankGPR}}},
+		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{
+			Locations:  []railmach.Location{{}, {Kind: railmach.LocationSpill, Bank: railmach.BankGPR}},
+			SpillSlots: 1,
+		}},
+	}
+	var a arm64.Asm
+	if _, err := arm64RailMachReadLocation(&a, plan, 1, plan.Allocation.Locations[1], arm64.X13, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Len(); got != 4 {
+		t.Fatalf("i32 spill load bytes = %d, want 4", got)
+	}
+	a.B = a.B[:0]
+	if err := arm64RailMachWriteLocation(&a, plan, 1, plan.Allocation.Locations[1], arm64.X13); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Len(); got != 4 {
+		t.Fatalf("i32 spill store bytes = %d, want 4", got)
 	}
 }
 
@@ -325,14 +381,14 @@ func TestARM64RealizesFloatingMemoryPair(t *testing.T) {
 	}
 	var metrics FunctionMetrics
 	var relocs []arm64CallReloc
-	optimized, _, ok, err := emitARM64RailMach(fn, plan, nil, &relocs, &metrics, nil)
+	optimized, _, ok, err := emitARM64RailMach(fn, plan, false, nil, &relocs, &metrics, nil)
 	if err != nil || !ok {
 		t.Fatalf("floating pair finalization = ok %t, err %v", ok, err)
 	}
 	baseline := *plan
 	clearPostRAEmissionRewrites(&baseline)
 	relocs = relocs[:0]
-	checked, _, ok, err := emitARM64RailMach(fn, &baseline, nil, &relocs, nil, nil)
+	checked, _, ok, err := emitARM64RailMach(fn, &baseline, false, nil, &relocs, nil, nil)
 	if err != nil || !ok {
 		t.Fatalf("floating pair baseline = ok %t, err %v", ok, err)
 	}

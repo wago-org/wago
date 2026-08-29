@@ -378,6 +378,10 @@ func resolveMachineAlias(aliases []railssa.FlowValueID, value railssa.FlowValueI
 
 func applyTargetConstraint(target Target, instruction *Inst, operand *Operand, index, count int) {
 	switch instruction.Op {
+	case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
+		if target == TargetARM64 && index < 3 {
+			operand.Fixed, operand.Flags = uint8(index), operand.Flags|OperandFixed
+		}
 	case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet, wasm.InstrRefTest, wasm.InstrRefCast, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail, wasm.InstrAnyConvertExtern, wasm.InstrExternConvertAny, wasm.InstrArrayNew, wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData, wasm.InstrArrayNewElem, wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen, wasm.InstrArrayFill, wasm.InstrArrayCopy, wasm.InstrArrayInitData, wasm.InstrArrayInitElem, wasm.InstrElemDrop:
 		// Dragline's current private scalar ABI exposes eight bank-relative
 		// argument registers. An indirect call's trailing table index is not a

@@ -60,6 +60,7 @@ type nativeBackendPlan struct {
 
 	BlockOffsets        []int
 	BranchPatches       []nativeBranchPatch
+	ColdTrapPatches     []nativeBranchPatch
 	PostRAPairWith      []uint32
 	PostRASkip          []bool
 	PostRAForwardFrom   []uint32
@@ -121,6 +122,7 @@ type nativeBackendPlanner struct {
 	calleeSaveRegions   []railmach.CalleeSaveRegion
 	blockOffsets        []int
 	branchPatches       []nativeBranchPatch
+	coldTrapPatches     []nativeBranchPatch
 	postRAPairWith      []uint32
 	postRASkip          []bool
 	postRAForwardFrom   []uint32
@@ -232,7 +234,7 @@ func (p *nativeBackendPlanner) capacityBreakdown() (ssa, machine, native uint64)
 			machine += railmach.PipelineCapacityBytes(nil, nil, nil, &candidate.schedule, &candidate.allocation, &candidate.exit, nil, nil, nil)
 		}
 	}
-	native = sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.postRAPairWith) + sliceBytes(p.postRASkip) + sliceBytes(p.postRAForwardFrom) + sliceBytes(p.postRAFusionWith) + sliceBytes(p.postRAMemoryFrom) + sliceBytes(p.postRARepeatFirst) + sliceBytes(p.postRAPreIndex) + sliceBytes(p.postRAPostIndexWith) + sliceBytes(p.immediateProducer) + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses) + sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots) + sliceBytes(p.gcValues)
+	native = sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.coldTrapPatches) + sliceBytes(p.postRAPairWith) + sliceBytes(p.postRASkip) + sliceBytes(p.postRAForwardFrom) + sliceBytes(p.postRAFusionWith) + sliceBytes(p.postRAMemoryFrom) + sliceBytes(p.postRARepeatFirst) + sliceBytes(p.postRAPreIndex) + sliceBytes(p.postRAPostIndexWith) + sliceBytes(p.immediateProducer) + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses) + sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots) + sliceBytes(p.gcValues)
 	return ssa, machine, native
 }
 
@@ -293,11 +295,16 @@ func railMachCandidate(stack *railssa.StackFunc) bool {
 				wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
 				wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U,
 				wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U,
+				wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U,
+				wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,
+				wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U,
+				wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U,
 				wasm.InstrF32Load, wasm.InstrF64Load,
 				wasm.InstrI32Load8S, wasm.InstrI32Load8U, wasm.InstrI32Load16S, wasm.InstrI32Load16U,
 				wasm.InstrI64Load8S, wasm.InstrI64Load8U, wasm.InstrI64Load16S, wasm.InstrI64Load16U,
 				wasm.InstrI64Load32S, wasm.InstrI64Load32U,
-				wasm.InstrMemorySize, wasm.InstrMemoryGrow:
+				wasm.InstrMemorySize, wasm.InstrMemoryGrow,
+				wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 				loopNeedsRailMach = true
 			}
 		}
@@ -349,6 +356,10 @@ func railMachCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
 			wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U,
 			wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U:
+		case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U,
+			wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,
+			wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U,
+			wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U:
 		case wasm.InstrI32Load, wasm.InstrI64Load, wasm.InstrF32Load, wasm.InstrF64Load,
 			wasm.InstrI32Load8S, wasm.InstrI32Load8U, wasm.InstrI32Load16S, wasm.InstrI32Load16U,
 			wasm.InstrI64Load8S, wasm.InstrI64Load8U, wasm.InstrI64Load16S, wasm.InstrI64Load16U,
@@ -356,7 +367,7 @@ func railMachCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrI32Store, wasm.InstrI64Store, wasm.InstrF32Store, wasm.InstrF64Store,
 			wasm.InstrI32Store8, wasm.InstrI32Store16,
 			wasm.InstrI64Store8, wasm.InstrI64Store16, wasm.InstrI64Store32:
-		case wasm.InstrMemorySize, wasm.InstrMemoryGrow:
+		case wasm.InstrMemorySize, wasm.InstrMemoryGrow, wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 		case wasm.InstrSelect:
 		case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
 		case wasm.InstrCall:
@@ -1123,8 +1134,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		clear(p.blockOffsets)
 	}
 	p.branchPatches = p.branchPatches[:0]
+	p.coldTrapPatches = p.coldTrapPatches[:0]
 	p.plan.BlockOffsets = p.blockOffsets
 	p.plan.BranchPatches = p.branchPatches
+	p.plan.ColdTrapPatches = p.coldTrapPatches
 	return &p.plan, nil
 }
 
