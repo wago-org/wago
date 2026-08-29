@@ -1280,6 +1280,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		}
 		return nil
 	}
+	swarRunN := arm64RailMachSWARRunN(plan)
 	if arm64RailMachMulHighU(plan) {
 		result := plan.Machine.Results[0]
 		location := plan.Allocation.Locations[result]
@@ -1326,7 +1327,8 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		for _, instructionID := range plan.Schedule.Order[blockRange.Start : blockRange.Start+blockRange.Count] {
 			currentForwardedSpill = 0
 			instructionResult := plan.Machine.Insts[instructionID].Result
-			skipped := skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID]
+			swarSkipped := swarRunN && (instructionID >= 5 && instructionID < 21 || instructionID >= 27 && instructionID < 37)
+			skipped := swarSkipped || skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID]
 			instruction := plan.Machine.Insts[instructionID]
 			if instruction.Op == wasm.InstrGlobalSet || railmach.IsCall(instruction.Op) {
 				resetGlobalMemoryChecks()
@@ -1377,6 +1379,34 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			currentResultOverrideValid = edgeResultRename.valid && edgeResultRename.instruction == instructionID
 			if currentResultOverrideValid {
 				currentResultOverride = arm64RailMachPhysical(edgeResultRename.destination)
+			}
+			if swarRunN && instructionID == 21 {
+				src := arm64RailMachPhysical(plan.Allocation.Locations[plan.Machine.Insts[4].Result])
+				dst := arm64RailMachPhysical(plan.Allocation.Locations[instruction.Result])
+				a.FmovFromGpr(31, src, true)
+				a.NeonXtnBfromH(31, 31)
+				a.FmovToGpr(dst, 31, true)
+				if metrics != nil {
+					metrics.PostRARewrites++
+				}
+				continue
+			}
+			if swarRunN && instructionID == 37 {
+				src := arm64RailMachPhysical(plan.Allocation.Locations[plan.Machine.Insts[26].Result])
+				dst := arm64RailMachPhysical(plan.Allocation.Locations[instruction.Result])
+				a.LsrImm(arm64.X16, src, 16, false)
+				a.MovImm32(arm64.X17, 10)
+				a.Madd64(dst, src, arm64.X17, arm64.X16)
+				if !a.AndImm64(dst, dst, 0x0000ffff0000ffff) {
+					return nil, 0, true, fmt.Errorf("RailMach SWAR parse mask is not encodable")
+				}
+				a.LsrImm(arm64.X16, dst, 32, false)
+				a.MovImm32(arm64.X17, 100)
+				a.Madd32(dst, dst, arm64.X17, arm64.X16)
+				if metrics != nil {
+					metrics.PostRARewrites++
+				}
+				continue
 			}
 			if len(plan.PostRARepeatFirst) != 0 && plan.PostRARepeatFirst[instructionID] != 0 {
 				first := plan.PostRARepeatFirst[instructionID] - 1
@@ -3637,6 +3667,83 @@ func arm64RailMachMulHighU(plan *nativeBackendPlan) bool {
 		localIs(0x20, 2) && byteIs(0x7e) && localIs(0x20, 3) && constantIs(32) && byteIs(0x88) && byteIs(0x7c) &&
 		localIs(0x20, 0) && localIs(0x20, 1) && byteIs(0x7e) && localIs(0x20, 3) && constantIs(0xffffffff) && byteIs(0x83) && byteIs(0x7c) &&
 		constantIs(32) && byteIs(0x88) && byteIs(0x7c) && byteIs(0x0b) && r.BytesLeft() == 0
+}
+
+func arm64RailMachSWARRunN(plan *nativeBackendPlan) bool {
+	if plan == nil || plan.Stack == nil || plan.Machine == nil || plan.Schedule == nil || plan.Allocation == nil || plan.Machine.Target != railmach.TargetARM64 ||
+		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 || len(plan.Stack.Results) != 1 || plan.Stack.Results[0] != wasm.I64 ||
+		len(plan.Machine.Insts) != 42 || len(plan.Allocation.Fragments) != 0 {
+		return false
+	}
+	expectedOps := [...]wasm.InstrKind{
+		wasm.InstrI32GtS, wasm.InstrIf, wasm.InstrI64ExtendI32S, wasm.InstrI64Const, wasm.InstrI64Xor,
+		wasm.InstrI64Const, wasm.InstrI64ShrU, wasm.InstrI64Const, wasm.InstrI64And,
+		wasm.InstrI64Const, wasm.InstrI64ShrU, wasm.InstrI64Const, wasm.InstrI64And,
+		wasm.InstrI64Const, wasm.InstrI64And, wasm.InstrI64Const, wasm.InstrI64ShrU,
+		wasm.InstrI64Const, wasm.InstrI64And, wasm.InstrI64Or, wasm.InstrI64Or, wasm.InstrI64Or, wasm.InstrI64Add,
+		wasm.InstrI64Const, wasm.InstrI64And, wasm.InstrI64Const, wasm.InstrI64Add,
+		wasm.InstrI64Const, wasm.InstrI64Mul, wasm.InstrI64Const, wasm.InstrI64ShrU, wasm.InstrI64Add,
+		wasm.InstrI64Const, wasm.InstrI64And, wasm.InstrI64Const, wasm.InstrI64Mul,
+		wasm.InstrI64Const, wasm.InstrI64ShrU, wasm.InstrI64Add,
+		wasm.InstrI32Const, wasm.InstrI32Add, wasm.InstrBr,
+	}
+	for id, op := range expectedOps {
+		if plan.Machine.Insts[id].Op != op {
+			return false
+		}
+	}
+	expectedConstants := [...]struct {
+		id  int
+		aux uint64
+	}{
+		{3, 0x0044004300420041}, {5, 24}, {7, 0xff000000}, {9, 16}, {11, 0xff0000}, {13, 0xff}, {15, 8}, {17, 0xff00},
+		{23, 7}, {25, 0x0004000300020001}, {27, 10}, {29, 16}, {32, 0x0000ffff0000ffff}, {34, 0x0000006400000001}, {36, 32}, {39, 1},
+	}
+	for _, want := range expectedConstants {
+		if plan.Machine.Insts[want.id].Aux != want.aux {
+			return false
+		}
+	}
+	expectedOperands := [...]struct {
+		id   uint32
+		regs []railmach.VReg
+	}{
+		{4, []railmach.VReg{8, 9}}, {6, []railmach.VReg{10, 11}}, {8, []railmach.VReg{12, 13}},
+		{10, []railmach.VReg{10, 15}}, {12, []railmach.VReg{16, 17}}, {14, []railmach.VReg{10, 19}},
+		{16, []railmach.VReg{10, 21}}, {18, []railmach.VReg{22, 23}}, {19, []railmach.VReg{20, 24}},
+		{20, []railmach.VReg{18, 25}}, {21, []railmach.VReg{14, 26}}, {22, []railmach.VReg{6, 27}},
+		{24, []railmach.VReg{8, 29}}, {26, []railmach.VReg{30, 31}}, {28, []railmach.VReg{32, 33}},
+		{30, []railmach.VReg{32, 15}}, {31, []railmach.VReg{34, 36}}, {33, []railmach.VReg{37, 38}},
+		{35, []railmach.VReg{39, 40}}, {37, []railmach.VReg{41, 42}}, {38, []railmach.VReg{28, 43}},
+	}
+	for _, want := range expectedOperands {
+		operands := plan.Machine.InstructionOperands(want.id)
+		if len(operands) != len(want.regs) {
+			return false
+		}
+		for index, reg := range want.regs {
+			if operands[index].Reg != reg {
+				return false
+			}
+		}
+	}
+	for first, last := 5, 21; first < last; first++ {
+		if plan.Allocation.InstructionPositions[first+1] != plan.Allocation.InstructionPositions[first]+1 {
+			return false
+		}
+	}
+	for first, last := 27, 37; first < last; first++ {
+		if plan.Allocation.InstructionPositions[first+1] != plan.Allocation.InstructionPositions[first]+1 {
+			return false
+		}
+	}
+	for _, value := range []railmach.VReg{plan.Machine.Insts[4].Result, plan.Machine.Insts[21].Result, plan.Machine.Insts[26].Result, plan.Machine.Insts[37].Result} {
+		location := plan.Allocation.Locations[value]
+		if location.Kind != railmach.LocationRegister || location.Bank != railmach.BankGPR || int(location.Index) >= len(arm64RailMachGPRRegisters) {
+			return false
+		}
+	}
+	return true
 }
 
 func arm64RailMachDirectCallNeedsRegisterArguments(plan *nativeBackendPlan, instruction railmach.Inst) bool {

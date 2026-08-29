@@ -476,6 +476,16 @@ for Dragline and 20.072 ns/op for Railshot on Apple M4 Max, or 0.996x Railshot
 latency. Runtime coverage compares the rewrite with `bits.Mul64` across zero,
 unit, all-ones, and mixed high-bit operands.
 
+The focused SWAR `runN` loop now consumes two bounded post-allocation idioms.
+The verifier matches all 42 machine instructions, the constants, complete
+operand graph, adjacent schedule positions, register locations, and absence of
+regional fragments before replacing the four-lane byte gather with
+`FMOV`/`XTN`/`FMOV` and the four-digit reduction with two `MADD` stages. No
+source instruction is skipped from a partial or reordered match. The function
+fell from 272 to 236 native bytes. Seven alternating 300 ms samples measured
+831.400 ns/op for Dragline and 943.763 ns/op for Railshot on Apple M4 Max, or
+0.881x Railshot latency, down from 1.180x before direct-entry and SWAR work.
+
 The same strict MVP coverage command also exercises the in-progress Phase 2
 builder independently of production emission. The current pinned run builds and
 verifies 3,184 function CFGs containing 9,662 compact blocks, 115 demanded local
