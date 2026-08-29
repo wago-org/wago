@@ -797,9 +797,14 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	var currentPosition uint32
 	var currentResultOverride arm64.Reg
 	var currentResultOverrideValid bool
+	var cachedFloats [3]arm64CachedFloatConstant
+	var cachedFloatCount int
 	reg := func(value railmach.VReg) arm64.Reg {
 		if value == currentResult && currentResultOverrideValid {
 			return currentResultOverride
+		}
+		if cached, ok := arm64RailMachCachedFloatValue(plan, value, cachedFloats, cachedFloatCount); ok {
+			return cached
 		}
 		location := plan.Allocation.LocationAt(value, currentPosition)
 		bank := plan.Machine.VRegs[value].Bank
@@ -1005,7 +1010,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		a.MovImm64(arm64.X16, 0x8000000000000000)
 		a.FmovFromGpr(31, arm64.X16, true)
 	}
-	cachedFloats, cachedFloatCount := arm64RailMachCachedFloatConstants(plan)
+	cachedFloats, cachedFloatCount = arm64RailMachCachedFloatConstants(plan)
 	for index, cached := range cachedFloats[:cachedFloatCount] {
 		a.MovImm64(arm64.X16, cached.bits)
 		a.FmovFromGpr(arm64.Reg(24+index), arm64.X16, cached.kind == wasm.InstrF64Const)
@@ -2043,6 +2048,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				continue
 			}
 			if instruction.Op == wasm.InstrF32Const || instruction.Op == wasm.InstrF64Const {
+				if _, cached := arm64RailMachCachedFloatValue(plan, instruction.Result, cachedFloats, cachedFloatCount); cached {
+					continue
+				}
 				cached := false
 				for index, candidate := range cachedFloats[:cachedFloatCount] {
 					if instruction.Op == candidate.kind && instruction.Aux == candidate.bits {
@@ -2884,6 +2892,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			if plan.Machine.Edges[trueEdge].Kind != railssa.EdgeTrue {
 				trueEdge, falseEdge = falseEdge, trueEdge
 			}
+			falseFallsThrough := int(plan.Machine.Edges[falseEdge].To) == nextBlock && !arm64RailMachHasPredecessorEdgeMoves(plan, trueEdge)
 			falseCondition := arm64.CondEQ
 			if terminator.Kind == wasm.InstrBrOnCastFail {
 				falseCondition = arm64.CondNE
@@ -2909,9 +2918,17 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					currentPosition = plan.Allocation.InstructionPositions[producerID]*6 + 2
 					value := reg(producerOperands[0].Reg)
 					if plan.Machine.VRegs[producerOperands[0].Reg].Type == railmach.TypeI64 {
-						falseSite = a.Cbnz64(value)
+						if falseFallsThrough {
+							falseSite = a.Cbz64(value)
+						} else {
+							falseSite = a.Cbnz64(value)
+						}
 					} else {
-						falseSite = a.Cbnz32(value)
+						if falseFallsThrough {
+							falseSite = a.Cbz32(value)
+						} else {
+							falseSite = a.Cbnz32(value)
+						}
 					}
 				} else {
 					falseCondition = condition ^ 1
@@ -2925,12 +2942,24 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				a.CmpImm32(condition, 0)
 			}
 			if falseSite < 0 {
-				falseSite = a.Bcond(falseCondition)
+				condition := falseCondition
+				if falseFallsThrough {
+					condition ^= 1
+				}
+				falseSite = a.Bcond(condition)
 			}
-			trueMoves := plan.Exit.EdgeMoves[trueEdge]
-			falseMoves := plan.Exit.EdgeMoves[falseEdge]
-			if int(plan.Machine.Edges[trueEdge].To) == nextBlock && trueMoves.Count == 0 && falseMoves.Count == 0 {
+			if falseFallsThrough {
+				conditionalPatches = append(conditionalPatches, nativeBranchPatch{At: falseSite, Target: uint32(plan.Machine.Edges[trueEdge].To)})
+				if err := emitARM64RailMachEdgeMoves(&a, plan, falseEdge); err != nil {
+					return nil, 0, true, err
+				}
+				continue
+			}
+			if int(plan.Machine.Edges[trueEdge].To) == nextBlock && !arm64RailMachHasPredecessorEdgeMoves(plan, falseEdge) {
 				conditionalPatches = append(conditionalPatches, nativeBranchPatch{At: falseSite, Target: uint32(plan.Machine.Edges[falseEdge].To)})
+				if err := emitARM64RailMachEdgeMoves(&a, plan, trueEdge); err != nil {
+					return nil, 0, true, err
+				}
 				continue
 			}
 			if err := emitARM64RailMachEdgeMoves(&a, plan, trueEdge); err != nil {
@@ -3122,6 +3151,50 @@ func arm64RailMachCachedFloatConstants(plan *nativeBackendPlan) ([3]arm64CachedF
 		count--
 	}
 	return best, count
+}
+
+func arm64RailMachCachedFloatValue(plan *nativeBackendPlan, value railmach.VReg, cached [3]arm64CachedFloatConstant, count int) (arm64.Reg, bool) {
+	if plan == nil || plan.Machine == nil || plan.Allocation == nil || value == 0 || int(value) >= len(plan.Machine.VRegs) {
+		return 0, false
+	}
+	data := plan.Machine.VRegs[value]
+	if data.Flags&(railmach.VRegInitial|railmach.VRegBlockParam|railmach.VRegElided) != 0 || data.Def%6 != 3 {
+		return 0, false
+	}
+	definition := data.Def / 6
+	if int(definition) >= len(plan.Machine.Insts) {
+		return 0, false
+	}
+	instruction := plan.Machine.Insts[definition]
+	if instruction.Result != value || instruction.Op != wasm.InstrF32Const && instruction.Op != wasm.InstrF64Const {
+		return 0, false
+	}
+	for _, transfer := range plan.Machine.Transfers {
+		if transfer.Src == value || transfer.Dst == value {
+			return 0, false
+		}
+	}
+	for _, result := range plan.Machine.Results {
+		if result == value {
+			return 0, false
+		}
+	}
+	for _, move := range plan.Allocation.FixedMoves {
+		if move.Reg == value {
+			return 0, false
+		}
+	}
+	for _, fragment := range plan.Allocation.Fragments {
+		if fragment.Reg == value || fragment.Victim == value {
+			return 0, false
+		}
+	}
+	for index, candidate := range cached[:count] {
+		if candidate.kind == instruction.Op && candidate.bits == instruction.Aux {
+			return arm64.Reg(24 + index), true
+		}
+	}
+	return 0, false
 }
 
 func arm64MoveImmediateInstructions(value uint64) uint32 {
@@ -3429,10 +3502,24 @@ type arm64EdgeResultRename struct {
 	valid       bool
 }
 
-// arm64RailMachEdgeResultRename coalesces a final floating multiply with its
-// sole outgoing block-argument copy after allocation. The destination must not
-// carry another value across the parallel-copy bundle, so overwriting it at the
-// defining instruction preserves both the bundle and SSA edge semantics.
+func arm64RailMachHasPredecessorEdgeMoves(plan *nativeBackendPlan, edge uint32) bool {
+	if plan == nil || plan.Exit == nil || int(edge) >= len(plan.Exit.EdgeMoves) {
+		return false
+	}
+	moveRange := plan.Exit.EdgeMoves[edge]
+	for _, move := range plan.Exit.Moves[moveRange.Start : moveRange.Start+moveRange.Count] {
+		if move.Placement == railmach.PlacePredecessorEnd || move.Placement == railmach.PlaceSplitEdge {
+			return true
+		}
+	}
+	return false
+}
+
+// arm64RailMachEdgeResultRename coalesces final three-address floating
+// arithmetic with its sole outgoing block-argument copy after allocation. The
+// destination must not carry another value across the parallel-copy bundle, so
+// overwriting it at the defining instruction preserves both the bundle and SSA
+// edge semantics.
 func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64EdgeResultRename {
 	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.Allocation == nil || plan.Exit == nil || int(block) >= len(plan.Schedule.BlockRanges) {
 		return arm64EdgeResultRename{}
@@ -3468,7 +3555,13 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 			continue
 		}
 		definition := data.Def / 6
-		if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Result != move.Reg || plan.Machine.Insts[definition].Op != wasm.InstrF64Mul {
+		if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Result != move.Reg {
+			continue
+		}
+		switch plan.Machine.Insts[definition].Op {
+		case wasm.InstrF32Add, wasm.InstrF64Add, wasm.InstrF32Sub, wasm.InstrF64Sub,
+			wasm.InstrF32Mul, wasm.InstrF64Mul, wasm.InstrF32Div, wasm.InstrF64Div:
+		default:
 			continue
 		}
 		if candidateMove != ^uint32(0) {

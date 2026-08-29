@@ -329,6 +329,20 @@ func TestARM64RailMachCachesHighestCostFloatConstants(t *testing.T) {
 	if _, count := arm64RailMachCachedFloatConstants(plan); count != 0 {
 		t.Fatalf("call-making function cached %d constants", count)
 	}
+	plan.ABI.HasCall = false
+	plan.Machine.Insts[0].Result = 1
+	plan.Machine.VRegs = []railmach.VRegData{{}, {Def: 3, Type: railmach.TypeF64, Bank: railmach.BankFPR}}
+	plan.Allocation = &railmach.GreedyAllocation{Allocation: railmach.Allocation{
+		Locations:            []railmach.Location{{}, {Kind: railmach.LocationRegister, Bank: railmach.BankFPR}},
+		InstructionPositions: []uint32{0, 1, 2, 3},
+	}}
+	if physical, ok := arm64RailMachCachedFloatValue(plan, 1, cached, count); !ok || physical != 24 {
+		t.Fatalf("cached SSA constant = (%d, %v), want (24, true)", physical, ok)
+	}
+	plan.Machine.Transfers = []railmach.EdgeTransfer{{Src: 1}}
+	if _, ok := arm64RailMachCachedFloatValue(plan, 1, cached, count); ok {
+		t.Fatal("edge-transferred constant bypassed its allocated location")
+	}
 }
 
 func TestARM64RailMachRenamesFinalEdgeMultiply(t *testing.T) {
