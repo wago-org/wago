@@ -457,7 +457,7 @@ func markARM64DirectPrepared(bits []uint64, functions, index int) []uint64 {
 }
 
 func arm64DirectPreparedClass(class railmach.ABIClass) bool {
-	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt
+	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedIndirect
 }
 
 type parallelARM64Result struct {
@@ -1025,6 +1025,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			}
 			if local < plan.Machine.ParamCount {
 				if plan.ABI.Class == railmach.ABITinyDirect {
+					break
+				}
+				if plan.ABI.Class == railmach.ABIPreparedIndirect {
 					break
 				}
 				if plan.ABI.Class == railmach.ABIPreparedInt {
@@ -1973,6 +1976,53 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				continue
 			}
 			if instruction.Op == wasm.InstrCallIndirect {
+				if kinds, ok := arm64RailMachInlineDenseI32Table(plan, instruction); ok {
+					lhs, err := arm64RailMachReadValueAt(&a, plan, operands[0].Reg, arm64.X13, 0)
+					if err != nil {
+						return nil, 0, true, err
+					}
+					rhs, err := arm64RailMachReadValueAt(&a, plan, operands[1].Reg, arm64.X14, 8)
+					if err != nil {
+						return nil, 0, true, err
+					}
+					selector, err := arm64RailMachReadValueAt(&a, plan, operands[2].Reg, arm64.X15, 16)
+					if err != nil {
+						return nil, 0, true, err
+					}
+					a.CmpImm32(selector, uint32(len(kinds)))
+					inBounds := a.Bcond(arm64.CondCC)
+					metadata.recordTrap(a.Len(), wasmOffset, 5)
+					arm64EmitTrap(&a, 5, fn.Index, wasmOffset)
+					if !a.PatchBranch19(inBounds, a.Len()) {
+						return nil, 0, true, fmt.Errorf("RailMach inline call_indirect bounds branch is out of range")
+					}
+					dst := reg(instruction.Result)
+					var done []int
+					for slot, kind := range kinds {
+						if slot+1 == len(kinds) {
+							emitARM64DirectLocalBinary(&a, kind, dst, lhs, rhs)
+							break
+						}
+						a.CmpImm32(selector, uint32(slot))
+						next := a.Bcond(arm64.CondNE)
+						emitARM64DirectLocalBinary(&a, kind, dst, lhs, rhs)
+						done = append(done, a.Branch())
+						if !a.PatchBranch19(next, a.Len()) {
+							return nil, 0, true, fmt.Errorf("RailMach inline call_indirect dispatch branch is out of range")
+						}
+					}
+					for _, branch := range done {
+						if !a.PatchBranch26(branch, a.Len()) {
+							return nil, 0, true, fmt.Errorf("RailMach inline call_indirect continuation branch is out of range")
+						}
+					}
+					if plan.Allocation.Locations[instruction.Result].Kind == railmach.LocationSpill {
+						if err := arm64RailMachStoreValue(&a, plan, instruction.Result, dst); err != nil {
+							return nil, 0, true, err
+						}
+					}
+					continue
+				}
 				if err := emitARM64RailMachRoots(&a, plan, instruction.Source, currentPosition, false); err != nil {
 					return nil, 0, true, err
 				}
@@ -3557,7 +3607,7 @@ func arm64RailMachFastTinyCall(plan *nativeBackendPlan, instructionID uint32, in
 }
 
 func arm64RailMachElidesPreparedCallFrame(plan *nativeBackendPlan) bool {
-	if plan == nil || plan.Machine == nil || plan.ABI.Class != railmach.ABIPreparedInt || plan.Frame.TotalBytes != 16 ||
+	if plan == nil || plan.Machine == nil || plan.ABI.Class != railmach.ABIPreparedInt && plan.ABI.Class != railmach.ABIPreparedIndirect || plan.Frame.TotalBytes == 0 ||
 		plan.Frame.SpillBytes != 0 || plan.Frame.RootBytes != 0 || plan.Frame.CalleeSaveBytes != 0 || len(plan.Machine.Results) > 1 {
 		return false
 	}
@@ -3565,7 +3615,8 @@ func arm64RailMachElidesPreparedCallFrame(plan *nativeBackendPlan) bool {
 		if !railmach.IsCall(instruction.Op) {
 			continue
 		}
-		if !arm64RailMachFastTinyCall(plan, uint32(instructionID), instruction, int(instruction.OperandCount)) {
+		_, inlineIndirect := arm64RailMachInlineDenseI32Table(plan, instruction)
+		if !inlineIndirect && !arm64RailMachFastTinyCall(plan, uint32(instructionID), instruction, int(instruction.OperandCount)) {
 			return false
 		}
 	}
@@ -3573,7 +3624,7 @@ func arm64RailMachElidesPreparedCallFrame(plan *nativeBackendPlan) bool {
 }
 
 func arm64RailMachInlinesAllTinyCalls(plan *nativeBackendPlan) bool {
-	if plan == nil || plan.Machine == nil || plan.ABI.Class != railmach.ABIPreparedInt {
+	if plan == nil || plan.Machine == nil || plan.ABI.Class != railmach.ABIPreparedInt && plan.ABI.Class != railmach.ABIPreparedIndirect {
 		return false
 	}
 	calls := 0
@@ -3582,11 +3633,31 @@ func arm64RailMachInlinesAllTinyCalls(plan *nativeBackendPlan) bool {
 			continue
 		}
 		calls++
-		if _, ok := arm64RailMachInlineI32AddImmediate(plan, instruction); !ok {
+		_, inlineIndirect := arm64RailMachInlineDenseI32Table(plan, instruction)
+		if _, inlineDirect := arm64RailMachInlineI32AddImmediate(plan, instruction); !inlineDirect && !inlineIndirect {
 			return false
 		}
 	}
 	return calls != 0
+}
+
+func arm64RailMachInlineDenseI32Table(plan *nativeBackendPlan, instruction railmach.Inst) ([]wasm.InstrKind, bool) {
+	if plan == nil || plan.Stack == nil || plan.ABI.Class != railmach.ABIPreparedIndirect || instruction.Op != wasm.InstrCallIndirect || instruction.OperandCount != 3 || instruction.ResultCount() != 1 {
+		return nil, false
+	}
+	targets, ok := nativeDenseLocalTableTargets(plan.Stack.Module)
+	if !ok {
+		return nil, false
+	}
+	kinds := make([]wasm.InstrKind, len(targets))
+	for index, target := range targets {
+		kind, ok := nativeInlineI32BinaryTarget(plan.Stack.Module, target)
+		if !ok {
+			return nil, false
+		}
+		kinds[index] = kind
+	}
+	return kinds, true
 }
 
 func arm64RailMachInlineI32AddImmediate(plan *nativeBackendPlan, instruction railmach.Inst) (int32, bool) {

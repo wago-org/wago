@@ -16,6 +16,7 @@ const (
 	ABINoCollectLeaf
 	ABITinyDirect
 	ABIPreparedInt
+	ABIPreparedIndirect
 )
 
 type ABIContract struct {

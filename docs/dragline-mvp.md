@@ -434,6 +434,18 @@ SIMD performance claim. Run
 `WAGO_DRAGLINE_CORPUS_COVERAGE=1 go test -run TestDraglineCorpusCoverage -v`
 from `bench`.
 
+Corpus-by-corpus optimization now also specializes the `dispatch` module's
+private, immutable, densely initialized local table. When the caller and every
+table target have the exact proved integer signature, and each of at most 16
+targets is a supported side-effect-free binary operation, ARM64 emits a bounded
+selector switch directly in the prepared entry. It retains the unsigned table
+bounds trap while removing the runtime table, null, signature, home, context,
+and indirect-call sequence. The caller fell from 708 to 168 native bytes and
+from a 32-byte frame to no frame. Seven serialized alternating 300 ms samples
+measured 23.223 ns/op for Dragline and 23.369 ns/op for Railshot on Apple M4
+Max, or 0.994x Railshot latency. The runtime test executes both table targets,
+the out-of-bounds trap, and successful reuse after trap recovery.
+
 The same strict MVP coverage command also exercises the in-progress Phase 2
 builder independently of production emission. The current pinned run builds and
 verifies 3,184 function CFGs containing 9,662 compact blocks, 115 demanded local

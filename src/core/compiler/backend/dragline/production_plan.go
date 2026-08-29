@@ -1119,6 +1119,9 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if err != nil {
 		return nil, err
 	}
+	if nativeARM64PreparedIndirect(stack, machine, allocation) {
+		contract.Class = railmach.ABIPreparedIndirect
+	}
 	if nativeARM64CachesGlobals(machine) {
 		contract.GPRClobbers |= uint64(1) << nativeARM64GlobalsRegister
 		contract.CalleeGPRs |= uint64(1) << nativeARM64GlobalsRegister
@@ -1673,6 +1676,47 @@ func nativeDenseLocalTableTargets(m *wasm.Module) ([]uint32, bool) {
 		targets[index] = global
 	}
 	return targets, true
+}
+
+func nativeARM64PreparedIndirect(stack *railssa.StackFunc, machine *railmach.Func, allocation *railmach.GreedyAllocation) bool {
+	if stack == nil || machine == nil || allocation == nil || machine.Target != railmach.TargetARM64 || len(stack.Params) != 3 || len(stack.Results) != 1 ||
+		stack.Params[0] != wasm.I32 || stack.Params[1] != wasm.I32 || stack.Params[2] != wasm.I32 || stack.Results[0] != wasm.I32 || len(machine.Insts) != 1 || machine.Insts[0].Op != wasm.InstrCallIndirect {
+		return false
+	}
+	for local := uint16(0); local < machine.ParamCount; local++ {
+		found := false
+		for value := railmach.VReg(1); int(value) < len(machine.VRegs); value++ {
+			data := machine.VRegs[value]
+			if data.Flags&railmach.VRegInitial == 0 || data.InitialLocal != local {
+				continue
+			}
+			location := allocation.Locations[value]
+			if data.Bank != railmach.BankGPR || location.Kind != railmach.LocationRegister || location.Bank != railmach.BankGPR || location.Index != local {
+				return false
+			}
+			found = true
+			break
+		}
+		if !found {
+			return false
+		}
+	}
+	targets, ok := nativeDenseLocalTableTargets(stack.Module)
+	const maxPreparedIndirectTargets = 16
+	if !ok || len(targets) == 0 || len(targets) > maxPreparedIndirectTargets {
+		return false
+	}
+	expected := uint32(machine.Insts[0].Aux)
+	for _, target := range targets {
+		typeIndex, ok := stack.Module.FuncTypeIndex(target)
+		if !ok || typeIndex.Rec || typeIndex.Index != expected {
+			return false
+		}
+		if _, ok := nativeInlineI32BinaryTarget(stack.Module, target); !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func nativeZeroI32ConstExpr(expr wasm.Expr) bool {
