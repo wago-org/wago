@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -270,6 +271,221 @@ func TestRecursiveHostReentry(t *testing.T) {
 	if hostCalls != 3 {
 		t.Fatalf("host calls = %d, want 3", hostCalls)
 	}
+}
+
+func TestHostReentryDepthCounterBoundsAndReleases(t *testing.T) {
+	id := newInvocationID()
+	for want := uint8(1); want <= maxHostReentryDepth; want++ {
+		if got, ok := acquireHostReentryDepth(id); !ok || got != want {
+			t.Fatalf("acquire depth = %d, %t, want %d, true", got, ok, want)
+		}
+	}
+	if got, ok := acquireHostReentryDepth(id); ok || got != maxHostReentryDepth {
+		t.Fatalf("overflow acquire depth = %d, %t, want %d, false", got, ok, maxHostReentryDepth)
+	}
+	for range maxHostReentryDepth {
+		releaseHostReentryDepth(id)
+	}
+	hostReentryDepths.Lock()
+	_, retained := hostReentryDepths.values[id]
+	hostReentryDepths.Unlock()
+	if retained {
+		t.Fatal("released host re-entry depth retained its invocation")
+	}
+	if got, ok := acquireHostReentryDepth(id); !ok || got != 1 {
+		t.Fatalf("reacquire depth = %d, %t, want 1, true", got, ok)
+	}
+	releaseHostReentryDepth(id)
+}
+
+func TestHostReentryDepthCounterReleasesOversizedMap(t *testing.T) {
+	ids := make([]invocationID, maxRetainedHostReentryChains+1)
+	for i := range ids {
+		ids[i] = newInvocationID()
+		if _, ok := acquireHostReentryDepth(ids[i]); !ok {
+			t.Fatalf("acquire invocation %d failed", i)
+		}
+	}
+	hostReentryDepths.Lock()
+	resetWhenIdle := hostReentryDepths.resetWhenIdle
+	hostReentryDepths.Unlock()
+	if !resetWhenIdle {
+		t.Fatal("oversized host re-entry map was not marked for reset")
+	}
+	for _, id := range ids {
+		releaseHostReentryDepth(id)
+	}
+	hostReentryDepths.Lock()
+	values := hostReentryDepths.values
+	resetWhenIdle = hostReentryDepths.resetWhenIdle
+	hostReentryDepths.Unlock()
+	if values != nil || resetWhenIdle {
+		t.Fatalf("drained oversized host re-entry map = %p, reset %t; want nil, false", values, resetWhenIdle)
+	}
+}
+
+func assertHostReentryDepthsEmpty(t *testing.T) {
+	t.Helper()
+	hostReentryDepths.Lock()
+	entries := len(hostReentryDepths.values)
+	resetWhenIdle := hostReentryDepths.resetWhenIdle
+	hostReentryDepths.Unlock()
+	if entries != 0 || resetWhenIdle {
+		t.Fatalf("host re-entry accounting after unwind = %d entries, reset %t; want 0, false", entries, resetWhenIdle)
+	}
+}
+
+func TestRecursiveHostReentryDepthIsBounded(t *testing.T) {
+	funcImport := append(wasmtest.Name("env"), wasmtest.Name("reenter")...)
+	funcImport = append(funcImport, 0x00, 0x00)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(2, wasmtest.Vec(funcImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("recurse", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+	compiled, err := Compile(nil, mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	var in *Instance
+	host := HostFunc(func(caller HostModule, _, _ []uint64) {
+		if _, err := in.InvokeFromHost(context.Background(), caller, "recurse"); err != nil {
+			panic(HostTrap{Err: err})
+		}
+	})
+	in, err = Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.reenter": host}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("recurse"); err == nil || !errors.Is(err, ErrPermissionDenied) || !strings.Contains(err.Error(), "host re-entry depth") {
+		t.Fatalf("recursive re-entry error = %v, want bounded-depth rejection", err)
+	}
+	assertHostReentryDepthsEmpty(t)
+}
+
+func TestRecursiveHostReentryDepthCrossesInstanceExport(t *testing.T) {
+	typeSection := wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil)))
+	producerImport := append(wasmtest.Name("env"), wasmtest.Name("reenter")...)
+	producerImport = append(producerImport, 0x00, 0x00)
+	producerModule := wasmtest.Module(
+		typeSection,
+		wasmtest.Section(2, wasmtest.Vec(producerImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("call", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+	relayImport := append(wasmtest.Name("env"), wasmtest.Name("call")...)
+	relayImport = append(relayImport, 0x00, 0x00)
+	relayModule := wasmtest.Module(
+		typeSection,
+		wasmtest.Section(2, wasmtest.Vec(relayImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("recurse", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+	producerCompiled, err := Compile(nil, producerModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producerCompiled.Close()
+	relayCompiled, err := Compile(nil, relayModule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer relayCompiled.Close()
+
+	var relay *Instance
+	hostCalls := 0
+	host := HostFunc(func(caller HostModule, _, _ []uint64) {
+		hostCalls++
+		if _, err := relay.InvokeFromHost(context.Background(), caller, "recurse"); err != nil {
+			panic(HostTrap{Err: err})
+		}
+	})
+	producer, err := Instantiate(producerCompiled, InstantiateOptions{Imports: Imports{"env.reenter": host}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	export, err := producer.ExportedFunc("call")
+	if err != nil {
+		t.Fatal(err)
+	}
+	relay, err = Instantiate(relayCompiled, InstantiateOptions{Imports: Imports{"env.call": export}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer relay.Close()
+
+	if _, err := relay.Invoke("recurse"); err == nil || !errors.Is(err, ErrPermissionDenied) || !strings.Contains(err.Error(), "host re-entry depth") {
+		t.Fatalf("cross-instance recursive re-entry error = %v, want bounded-depth rejection", err)
+	}
+	if hostCalls != maxHostReentryDepth+1 {
+		t.Fatalf("host calls = %d, want %d", hostCalls, maxHostReentryDepth+1)
+	}
+	assertHostReentryDepthsEmpty(t)
+}
+
+func TestRecursiveHostReentryDepthTracksSavedOuterCaller(t *testing.T) {
+	callImportModule := func(importName, exportName string) []byte {
+		functionImport := append(wasmtest.Name("env"), wasmtest.Name(importName)...)
+		functionImport = append(functionImport, 0x00, 0x00)
+		return wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+			wasmtest.Section(2, wasmtest.Vec(functionImport)),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry(exportName, 0, 1))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+		)
+	}
+	outerCompiled, err := Compile(nil, callImportModule("enter", "start"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outerCompiled.Close()
+	recursiveCompiled, err := Compile(nil, callImportModule("reenter", "recurse"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recursiveCompiled.Close()
+
+	var outerCaller HostModule
+	var recursive *Instance
+	hostCalls := 0
+	reenter := HostFunc(func(_ HostModule, _, _ []uint64) {
+		hostCalls++
+		if _, err := recursive.InvokeFromHost(context.Background(), outerCaller, "recurse"); err != nil {
+			panic(HostTrap{Err: err})
+		}
+	})
+	recursive, err = Instantiate(recursiveCompiled, InstantiateOptions{Imports: Imports{"env.reenter": reenter}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recursive.Close()
+	enter := HostFunc(func(caller HostModule, _, _ []uint64) {
+		outerCaller = caller
+		if _, err := recursive.InvokeFromHost(context.Background(), caller, "recurse"); err != nil {
+			panic(HostTrap{Err: err})
+		}
+	})
+	outer, err := Instantiate(outerCompiled, InstantiateOptions{Imports: Imports{"env.enter": enter}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outer.Close()
+
+	if _, err := outer.Invoke("start"); err == nil || !errors.Is(err, ErrPermissionDenied) || !strings.Contains(err.Error(), "host re-entry depth") {
+		t.Fatalf("saved-caller recursive re-entry error = %v, want bounded-depth rejection", err)
+	}
+	if hostCalls != maxHostReentryDepth {
+		t.Fatalf("saved-caller host calls = %d, want %d", hostCalls, maxHostReentryDepth)
+	}
+	assertHostReentryDepthsEmpty(t)
 }
 
 func TestConcurrentPublicInvokeWaitsForParkedHostCallback(t *testing.T) {

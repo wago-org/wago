@@ -65,6 +65,11 @@ call scratch, then restores the outer activation in LIFO order. Host code can
 use `Instance.InvokeFromHost` when it needs an explicit callback entry and
 `HostTrap` to return a host error through the native trap boundary.
 
+One invocation may have at most four active `InvokeFromHost` entries, including
+nested and concurrent entries. A fifth entry returns an error that wraps
+`ErrPermissionDenied`. This limit bounds the native stacks and call buffers
+retained under one synchronous host invocation.
+
 Use `wago.WithSynchronousHostCalls()` when instantiating a core adapter module
 whose host functions may be reached only indirectly through a table.
 

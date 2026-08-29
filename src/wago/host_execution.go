@@ -239,6 +239,13 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// call chain cannot masquerade as this parked activation.
 	markNativeActiveID(active, id)
 	defer unmarkNativeActiveID(active, id)
+	if root != nil && root != active {
+		// The producer parked on the root's native activation and invocation gate.
+		// A callback authorized by that invocation may therefore re-enter either
+		// the active producer or the public relay without waiting on its own gate.
+		markNativeActiveID(root, id)
+		defer unmarkNativeActiveID(root, id)
+	}
 	if active != root {
 		restoreInvocationContext := bindHostInvocationContext(ctrl, invocation)
 		defer restoreInvocationContext()
