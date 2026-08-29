@@ -418,9 +418,8 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 					}
 				}
 			}
-			published := railmach.ABIContract{}
 			if nativePlan != nil {
-				published = nativePlan.ABI
+				published := nativePlan.ABI
 				if i < len(candidates) && candidates[i] {
 					published = seeds[i]
 				}
@@ -2863,7 +2862,17 @@ func emitAMD64RailMachMoveRangeAt(a *amd64.Asm, plan *nativeBackendPlan, moveRan
 			if move.Dst.Kind == railmach.LocationRegister {
 				scratch = amd64RailMachPhysical(move.Dst)
 			}
-			src, err := amd64RailMachReadLocation(a, plan, move.Reg, move.Src, scratch, 0)
+			source := move.Src
+			if move.Kind == railmach.MoveCopy && int(move.Reg) < len(plan.Machine.VRegs) {
+				data := plan.Machine.VRegs[move.Reg]
+				if data.Flags&railmach.VRegRematerializable != 0 && data.Def%6 == 3 {
+					producer := data.Def / 6
+					if int(producer) < len(plan.ImmediateSkip) && plan.ImmediateSkip[producer] {
+						source = railmach.Location{Kind: railmach.LocationRematerialize, Bank: move.Bank}
+					}
+				}
+			}
+			src, err := amd64RailMachReadLocation(a, plan, move.Reg, source, scratch, 0)
 			if err != nil {
 				return err
 			}
@@ -4906,7 +4915,7 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		return binaryOp(func(dst, lhs, rhs amd64.Reg) {
 			var sign [16]byte
 			for i := range sign {
-				if !words && i%1 == 0 || words && i%2 == 1 {
+				if !words || i%2 == 1 {
 					sign[i] = 0x80
 				}
 			}
