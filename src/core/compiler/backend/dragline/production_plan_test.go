@@ -177,6 +177,26 @@ func TestNativeIntegerConstantChecksExactDefinition(t *testing.T) {
 	}
 }
 
+func TestNativeImmediateCombinationsFoldRepeatedRotateCounts(t *testing.T) {
+	machine := &railmach.Func{
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Const, Aux: 12, Result: 1},
+			{Op: wasm.InstrI32Rotr, Result: 3, OperandStart: 0, OperandCount: 2},
+			{Op: wasm.InstrI32Rotr, Result: 4, OperandStart: 2, OperandCount: 2},
+		},
+		Operands: []railmach.Operand{{Reg: 2}, {Reg: 1}, {Reg: 3}, {Reg: 1}},
+		VRegs:    make([]railmach.VRegData, 5),
+	}
+	plan := &nativeBackendPlan{Machine: machine, Selection: &railmach.SelectionPlan{}}
+	producers := make([]uint32, len(machine.Insts))
+	skipped := make([]bool, len(machine.Insts))
+	uses := make([]uint32, len(machine.VRegs))
+	buildNativeImmediateCombinations(plan, producers, skipped, uses)
+	if producers[1] != 0 || producers[2] != 0 || skipped[0] || uses[1] != 2 {
+		t.Fatalf("producers=%v skipped=%v uses=%v", producers, skipped, uses)
+	}
+}
+
 func TestRailMachLoopProfitabilityPolicy(t *testing.T) {
 	for _, test := range []struct {
 		name         string

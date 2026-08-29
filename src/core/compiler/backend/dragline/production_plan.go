@@ -566,6 +566,30 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers []uint3
 		producers[combination.Consumer] = combination.Producer
 		skipped[combination.Producer] = true
 	}
+	for producerID, producer := range plan.Machine.Insts {
+		if producer.Result == 0 || producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const || skipped[producerID] {
+			continue
+		}
+		foldedUses := uint32(0)
+		for consumerID, consumer := range plan.Machine.Insts {
+			operands := plan.Machine.InstructionOperands(uint32(consumerID))
+			if len(operands) != 2 || operands[1].Reg != producer.Result {
+				continue
+			}
+			switch consumer.Op {
+			case wasm.InstrI32Shl, wasm.InstrI64Shl,
+				wasm.InstrI32ShrS, wasm.InstrI64ShrS,
+				wasm.InstrI32ShrU, wasm.InstrI64ShrU,
+				wasm.InstrI32Rotl, wasm.InstrI64Rotl,
+				wasm.InstrI32Rotr, wasm.InstrI64Rotr:
+				producers[consumerID] = uint32(producerID)
+				foldedUses++
+			}
+		}
+		if foldedUses == uses[producer.Result] && uses[producer.Result] == 1 {
+			skipped[producerID] = true
+		}
+	}
 }
 
 // nativeIntegerConstant returns the exact defining constant for a machine SSA

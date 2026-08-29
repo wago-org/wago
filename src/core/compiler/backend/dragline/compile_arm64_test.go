@@ -439,6 +439,25 @@ func TestARM64RailMachPromotesTrapFreeMutableGlobal(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachSoleConsumerRejectsLaterUses(t *testing.T) {
+	machine := &railmach.Func{
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Const, Result: 1},
+			{Op: wasm.InstrI32Add, Result: 2, OperandCount: 1},
+		},
+		Operands: []railmach.Operand{{Reg: 1}},
+		VRegs:    make([]railmach.VRegData, 3),
+	}
+	plan := &nativeBackendPlan{Machine: machine}
+	if !arm64RailMachSoleConsumer(plan, 1, 1) {
+		t.Fatal("single consumer was not recognized")
+	}
+	machine.Results = []railmach.VReg{1}
+	if arm64RailMachSoleConsumer(plan, 1, 1) {
+		t.Fatal("function result was treated as a sole instruction consumer")
+	}
+}
+
 func TestARM64RailMachI32SpillUsesOneMemoryOperation(t *testing.T) {
 	plan := &nativeBackendPlan{
 		Machine: &railmach.Func{VRegs: []railmach.VRegData{{}, {Type: railmach.TypeI32, Bank: railmach.BankGPR}}},

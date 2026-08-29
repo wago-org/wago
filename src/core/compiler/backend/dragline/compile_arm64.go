@@ -797,12 +797,19 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	var currentPosition uint32
 	var currentResultOverride arm64.Reg
 	var currentResultOverrideValid bool
+	var currentForwardedSpill railmach.VReg
 	var cachedFloats [3]arm64CachedFloatConstant
 	var cachedFloatCount int
 	var promotedGlobal arm64PromotedGlobal
 	reg := func(value railmach.VReg) arm64.Reg {
 		if value == currentResult && currentResultOverrideValid {
 			return currentResultOverride
+		}
+		if value == currentForwardedSpill {
+			if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+				return arm64.Reg(28)
+			}
+			return arm64.X13
 		}
 		if arm64RailMachPromotedGlobalValue(plan, value, promotedGlobal) {
 			return arm64.X8
@@ -844,8 +851,8 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	}
 	immediateProducer, skipInstruction := plan.ImmediateProducer, plan.ImmediateSkip
 	if metrics != nil {
-		for _, skip := range skipInstruction {
-			if skip {
+		for _, producer := range immediateProducer {
+			if producer != ^uint32(0) {
 				metrics.ImmediateFolds++
 			}
 		}
@@ -1172,8 +1179,25 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			}
 		}
 		for _, instructionID := range plan.Schedule.Order[blockRange.Start : blockRange.Start+blockRange.Count] {
-			if err := flushPendingSpill(); err != nil {
-				return nil, 0, true, err
+			currentForwardedSpill = 0
+			instructionResult := plan.Machine.Insts[instructionID].Result
+			skipped := skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID]
+			instruction := plan.Machine.Insts[instructionID]
+			if pendingSpill != 0 {
+				switch {
+				case !skipped && !nativeControlInstruction(instruction.Op) && arm64RailMachInstructionUses(plan.Machine, instructionID, pendingSpill):
+					currentForwardedSpill = pendingSpill
+					if arm64RailMachSoleConsumer(plan, pendingSpill, instructionID) {
+						pendingSpill = 0
+					} else if err := flushPendingSpill(); err != nil {
+						return nil, 0, true, err
+					}
+				case skipped && !arm64RailMachInstructionUses(plan.Machine, instructionID, pendingSpill):
+				default:
+					if err := flushPendingSpill(); err != nil {
+						return nil, 0, true, err
+					}
+				}
 			}
 			nextPosition := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 			if err := restoreRegionalVictims(nextPosition, ^uint32(0)); err != nil {
@@ -1182,11 +1206,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			if err := emitCalleeRestoreBefore(instructionID); err != nil {
 				return nil, 0, true, err
 			}
-			instructionResult := plan.Machine.Insts[instructionID].Result
-			if skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID] {
+			if skipped {
 				continue
 			}
-			instruction := plan.Machine.Insts[instructionID]
 			if nativeControlInstruction(instruction.Op) {
 				continue
 			}
@@ -1248,7 +1270,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					for _, previous := range operands[:operandIndex] {
 						duplicate = duplicate || previous.Reg == operand.Reg
 					}
-					if duplicate || plan.Allocation.LocationAt(operand.Reg, currentPosition).Kind == railmach.LocationRegister && operand.Flags&railmach.OperandColdRemat == 0 {
+					if duplicate || operand.Reg == currentForwardedSpill || plan.Allocation.LocationAt(operand.Reg, currentPosition).Kind == railmach.LocationRegister && operand.Flags&railmach.OperandColdRemat == 0 {
 						continue
 					}
 					location := plan.Allocation.LocationAt(operand.Reg, currentPosition)
@@ -2692,6 +2714,11 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			}
 			if producer := immediateProducer[instructionID]; producer != ^uint32(0) {
 				immediate := uint32(plan.Machine.Insts[producer].Aux)
+				wide := plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeI64
+				shift := uint8(immediate & 31)
+				if wide {
+					shift = uint8(immediate & 63)
+				}
 				switch instruction.Op {
 				case wasm.InstrI32Add:
 					a.AddImm32(dst, lhs, immediate)
@@ -2701,6 +2728,18 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					a.SubImm32(dst, lhs, immediate)
 				case wasm.InstrI64Sub:
 					a.SubImm64(dst, lhs, immediate)
+				case wasm.InstrI32Shl, wasm.InstrI64Shl:
+					a.LslImm(dst, lhs, shift, !wide)
+				case wasm.InstrI32ShrS, wasm.InstrI64ShrS:
+					a.AsrImm(dst, lhs, shift, !wide)
+				case wasm.InstrI32ShrU, wasm.InstrI64ShrU:
+					a.LsrImm(dst, lhs, shift, !wide)
+				case wasm.InstrI32Rotr, wasm.InstrI64Rotr:
+					a.RorImm(dst, lhs, shift, !wide)
+				case wasm.InstrI32Rotl:
+					a.RorImm(dst, lhs, uint8(-shift)&31, true)
+				case wasm.InstrI64Rotl:
+					a.RorImm(dst, lhs, uint8(-shift)&63, false)
 				default:
 					return nil, 0, true, fmt.Errorf("RailMach selected unsupported ARM64 immediate for %s", instruction.Op)
 				}
@@ -3361,6 +3400,50 @@ func arm64RailMachPromotedGlobalValue(plan *nativeBackendPlan, value railmach.VR
 		}
 	}
 	return true
+}
+
+func arm64RailMachSoleConsumer(plan *nativeBackendPlan, value railmach.VReg, consumer uint32) bool {
+	if plan == nil || plan.Machine == nil || value == 0 || int(consumer) >= len(plan.Machine.Insts) {
+		return false
+	}
+	found := false
+	for instructionID := range plan.Machine.Insts {
+		for _, operand := range plan.Machine.InstructionOperands(uint32(instructionID)) {
+			if operand.Reg != value {
+				continue
+			}
+			if uint32(instructionID) != consumer {
+				return false
+			}
+			found = true
+		}
+	}
+	if !found {
+		return false
+	}
+	for _, transfer := range plan.Machine.Transfers {
+		if transfer.Src == value || transfer.Dst == value {
+			return false
+		}
+	}
+	for _, result := range plan.Machine.Results {
+		if result == value {
+			return false
+		}
+	}
+	return true
+}
+
+func arm64RailMachInstructionUses(machine *railmach.Func, instruction uint32, value railmach.VReg) bool {
+	if machine == nil || int(instruction) >= len(machine.Insts) {
+		return false
+	}
+	for _, operand := range machine.InstructionOperands(instruction) {
+		if operand.Reg == value {
+			return true
+		}
+	}
+	return false
 }
 
 // emitARM64BoundsEnd adds a scalar access's constant end to its zero-extended
