@@ -28,6 +28,8 @@ type CallClobber struct {
 	FPR         uint64
 }
 
+const greedyDensityMinInstructions = 512
+
 func DefaultGreedyConfig(target Target) GreedyConfig {
 	linear := DefaultLinearQConfig(target)
 	switch target {
@@ -198,6 +200,18 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		return survivors
 	}
 	intervals := append(reuse.priorityIntervals[:0], reuse.Intervals...)
+	useDensityCost := len(f.Insts) >= greedyDensityMinInstructions
+	if useDensityCost {
+		for reg := VReg(1); int(reg) < len(f.VRegs); reg++ {
+			if f.VRegs[reg].Bank == BankFPR {
+				useDensityCost = false
+				break
+			}
+		}
+	}
+	spillCost := func(interval LiveInterval) uint64 {
+		return greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost)
+	}
 	var calleeUsed [2]uint64
 	clear(reuse.occupantHead[:])
 	occupantNext := resize(reuse.occupantNext, len(reuse.Intervals))
@@ -228,8 +242,8 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		}
 	}
 	slices.SortFunc(intervals, func(a, b LiveInterval) int {
-		costA := uint64(a.Weight) * uint64(a.End-a.Start+1)
-		costB := uint64(b.Weight) * uint64(b.End-b.Start+1)
+		costA := spillCost(a)
+		costB := spillCost(b)
 		if costA != costB {
 			if costA > costB {
 				return -1
@@ -283,7 +297,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 					continue
 				}
 				victims = append(victims, other.Reg)
-				cost += uint64(other.Weight) * uint64(other.End-other.Start+1)
+				cost += spillCost(other)
 			}
 			if len(victims) == 0 {
 				best, bestCost = physical, cost
@@ -297,7 +311,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 			reuse.candidateVictims = victims
 		}
 		reuse.bestVictims = bestVictims
-		valueCost := uint64(interval.Weight) * uint64(interval.End-interval.Start+1)
+		valueCost := spillCost(interval)
 		if best < 0 || bestCost >= valueCost || len(bestVictims) != 0 && config.MaxStage < 2 {
 			continue
 		}
@@ -388,7 +402,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 	for _, interval := range reuse.Intervals {
 		location := reuse.Locations[interval.Reg]
 		if location.Kind == LocationSpill {
-			reuse.Metrics.WeightedDebt += uint64(interval.Weight) * uint64(interval.End-interval.Start+1)
+			reuse.Metrics.WeightedDebt += spillCost(interval)
 		}
 	}
 	if reuse.Metrics.RegionalBenefit >= reuse.Metrics.WeightedDebt {
@@ -413,6 +427,21 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		}
 	}
 	return reuse, nil
+}
+
+func greedySpillCost(interval LiveInterval, functionInstructions uint64, density bool) uint64 {
+	cost := uint64(interval.Weight)
+	length := uint64(interval.End - interval.Start + 1)
+	if !density {
+		return cost * length
+	}
+	// Large straight-line integer kernels carry sparse state across hundreds of
+	// instructions. Range-area priority pins that state and spills dense
+	// temporaries at every use. Squared use density instead spends registers on
+	// the values that avoid the most dynamic spill traffic. Keep the conservative
+	// area score for smaller and floating-point functions, whose control-edge and
+	// bank-transfer costs need separate evidence before broadening this policy.
+	return max(uint64(1), cost*functionInstructions*functionInstructions/(length*length))
 }
 
 func firstCallAfter(calls []callPosition, position uint32) int {

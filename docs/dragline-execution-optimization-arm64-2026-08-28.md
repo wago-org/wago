@@ -60,6 +60,32 @@ The focused `matmul` result is a 71.0% latency reduction and a 22.2% native-code
 reduction from the minimized starting point. The application-suite ratio
 improved by 22.1%, from 3.048x to 2.374x Railshot.
 
+## Corpus campaign update — `blake-as` — 2026-08-29
+
+The first corpus-by-corpus pass remeasured `blake-as.hashN(100)` on the current
+branch before changing code. Five alternating 100 ms samples put Dragline at
+661.6 us and Railshot at 387.4 us, or 1.708x Railshot. This is the relevant
+baseline for the new allocator work; it supersedes the older 13.646x row below.
+
+RailMach's greedy allocator previously ranked intervals by weighted live-range
+area. In the 1,080-instruction BLAKE compression kernel, that score retained
+long-lived, sparsely used state while repeatedly spilling short-lived values
+used in the hot straight-line rounds. Large integer-only functions now rank
+those intervals by squared weighted-use density. Smaller functions and
+functions with FPR values retain the conservative area policy.
+
+The final nine-round alternating 500 ms pass measured Dragline at 374.8 us and
+Railshot at 380.0 us by median: 0.986x Railshot, or 1.4% faster. Relative to the
+fresh pre-change Dragline baseline, execution latency fell 43.3%. The kernel's
+native body moved from 7,256 to 5,108 bytes (-29.6%), ARM64 instructions from
+1,808 to 1,270 (-29.8%), and stack-relative references from 693 to 162 (-76.6%).
+
+Every one of the manifest's 36 executable exports completed with the new
+policy. A three-round alternating 50 ms before/after diagnostic pass improved
+their execution geometric mean by 2.1%; `blake-as-simd` also improved by 14.8%.
+Those short suite-wide timings are prioritization evidence, not a replacement
+for the release-shaped paired report.
+
 ## Current application outliers
 
 The final three-round diagnostic pass produced these high-priority ratios:

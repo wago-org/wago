@@ -6,6 +6,17 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func TestGreedySpillDensityPrioritizesFrequentlyUsedShortRange(t *testing.T) {
+	sparse := LiveInterval{Start: 0, End: 999, Weight: 2}
+	dense := LiveInterval{Start: 0, End: 9, Weight: 8}
+	if sparseCost, denseCost := greedySpillCost(sparse, 1000, false), greedySpillCost(dense, 1000, false); sparseCost <= denseCost {
+		t.Fatalf("area costs sparse/dense = %d/%d, want sparse range prioritized", sparseCost, denseCost)
+	}
+	if sparseCost, denseCost := greedySpillCost(sparse, 1000, true), greedySpillCost(dense, 1000, true); denseCost <= sparseCost {
+		t.Fatalf("density costs sparse/dense = %d/%d, want dense range prioritized", sparseCost, denseCost)
+	}
+}
+
 func TestAllocateGreedyPPromotesCallCrossingRange(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
 		0x20, 0x00,
