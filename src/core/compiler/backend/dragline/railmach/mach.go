@@ -211,7 +211,7 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 			return nil, fmt.Errorf("railmach: value %d: %w", id, err)
 		}
 		data := VRegData{Type: typ, Bank: bank}
-		if simplified != nil && machineInstructionAliasSafe(flow, simplified.Aliases, railssa.FlowValueID(id)) {
+		if simplified != nil && machineAliasSafe(flow, simplified.Aliases, railssa.FlowValueID(id)) {
 			data.Flags |= VRegElided
 		}
 		switch value.Kind {
@@ -241,7 +241,7 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 			for operandIndex, value := range args {
 				if simplified != nil {
 					canonical := resolveMachineAlias(simplified.Aliases, value)
-					if machineInstructionAliasSafe(flow, simplified.Aliases, value) {
+					if machineAliasSafe(flow, simplified.Aliases, value) {
 						value = canonical
 					}
 				}
@@ -268,10 +268,13 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 			return nil, fmt.Errorf("railmach: invalid edge transfer %#v", transfer)
 		}
 		edge := cfg.Edges[transfer.Edge]
+		if simplified != nil && machineAliasSafe(flow, simplified.Aliases, transfer.Param) {
+			continue
+		}
 		source := transfer.Argument
 		if simplified != nil {
 			canonical := resolveMachineAlias(simplified.Aliases, source)
-			if machineInstructionAliasSafe(flow, simplified.Aliases, source) {
+			if machineAliasSafe(flow, simplified.Aliases, source) {
 				source = canonical
 			}
 		}
@@ -284,7 +287,7 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 	for _, result := range flow.BlockEntry(exit) {
 		if simplified != nil {
 			canonical := resolveMachineAlias(simplified.Aliases, result)
-			if machineInstructionAliasSafe(flow, simplified.Aliases, result) {
+			if machineAliasSafe(flow, simplified.Aliases, result) {
 				result = canonical
 			}
 		}
@@ -407,15 +410,27 @@ func resolveMachineAlias(aliases []railssa.FlowValueID, value railssa.FlowValueI
 	return value
 }
 
-// machineInstructionAliasSafe limits elimination to one basic block. RailMach
-// does not yet carry a dominating cross-block definition through every edge
-// transfer where sparse simplification can legally reuse it.
-func machineInstructionAliasSafe(flow *railssa.ValueFlow, aliases []railssa.FlowValueID, value railssa.FlowValueID) bool {
-	if value == 0 || int(value) >= len(flow.Values) || int(value) >= len(aliases) || flow.Values[value].Kind != railssa.FlowValueInstruction {
+// machineAliasSafe admits aliases whose defining value is directly available
+// at every use. Sparse simplification proves trivial block parameters have one
+// canonical non-self incoming value, so their edge copies and machine vregs
+// can be removed. Instruction aliases remain limited to one basic block until
+// RailMach models cross-block dominating definitions independently.
+func machineAliasSafe(flow *railssa.ValueFlow, aliases []railssa.FlowValueID, value railssa.FlowValueID) bool {
+	if value == 0 || int(value) >= len(flow.Values) || int(value) >= len(aliases) {
 		return false
 	}
 	canonical := resolveMachineAlias(aliases, value)
-	return canonical != value && flow.Values[canonical].Kind == railssa.FlowValueInstruction && flow.Values[value].Block == flow.Values[canonical].Block
+	if canonical == value {
+		return false
+	}
+	switch flow.Values[value].Kind {
+	case railssa.FlowValueBlockParam:
+		return true
+	case railssa.FlowValueInstruction:
+		return flow.Values[canonical].Kind == railssa.FlowValueInstruction && flow.Values[value].Block == flow.Values[canonical].Block
+	default:
+		return false
+	}
 }
 
 func applyTargetConstraint(target Target, instruction *Inst, operand *Operand, index, count int) {

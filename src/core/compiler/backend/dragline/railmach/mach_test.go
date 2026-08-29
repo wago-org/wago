@@ -144,6 +144,72 @@ func TestBuildRetainsCrossBlockSimplificationDefinitions(t *testing.T) {
 	}
 }
 
+func TestBuildElidesVerifiedTrivialBlockParameters(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x02, 0x40,
+		0x03, 0x40,
+		0x20, 0x00,
+		0x21, 0x00,
+		0x20, 0x00,
+		0x0d, 0x01,
+		0x0c, 0x00,
+		0x0b,
+		0x0b,
+		0x20, 0x00,
+		0x0b,
+	})
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := railssa.BuildCFG(stack, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locals, err := railssa.BuildLocalSSA(stack, cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flow, err := railssa.BuildValueFlow(stack, cfg, locals, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	semantic, err := railssa.BuildSemanticFunc(stack, cfg, flow, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := railssa.BuildMetadata(stack, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	simplified, err := railssa.SparseSimplify(stack, cfg, flow, semantic, metadata, railssa.DefaultSimplifyConfig(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine, err := BuildWithSimplify(TargetARM64, cfg, flow, semantic, simplified, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	elided := 0
+	for value, record := range flow.Values {
+		if record.Kind != railssa.FlowValueBlockParam || resolveMachineAlias(simplified.Aliases, railssa.FlowValueID(value)) == railssa.FlowValueID(value) {
+			continue
+		}
+		elided++
+		if machine.VRegs[value].Flags&VRegElided == 0 {
+			t.Fatalf("trivial block parameter v%d was retained", value)
+		}
+		for _, transfer := range machine.Transfers {
+			if transfer.Dst == VReg(value) {
+				t.Fatalf("trivial block parameter v%d retains transfer %#v", value, transfer)
+			}
+		}
+	}
+	if elided == 0 {
+		t.Fatal("fixture produced no trivial block parameter")
+	}
+}
+
 func TestAMD64ShiftCountIsFixed(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
 		0x20, 0x00,
