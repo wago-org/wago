@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"math/bits"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -110,7 +111,7 @@ func TestPreparedDirectARM64BranchTable(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("classify", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
-	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -160,7 +161,7 @@ func TestPreparedDirectARM64PureIntegerLeaf(t *testing.T) {
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("pack", 0, 0))),
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
-	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -181,6 +182,54 @@ func TestPreparedDirectARM64PureIntegerLeaf(t *testing.T) {
 		got, err := fn.Invoke1(x)
 		if err != nil || len(got) != 1 || got[0] != uint64(want) {
 			t.Fatalf("pack(%#x) = %v, %v; want %#x", x, got, err, want)
+		}
+	}
+}
+
+func TestPreparedDirectARM64UnsignedMultiplyHigh(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, 0x42, 0x20, 0x88, 0x22, 0x02,
+		0x20, 0x01, 0x42, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x83, 0x22, 0x03, 0x7e,
+		0x20, 0x00, 0x42, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x83, 0x22, 0x00,
+		0x20, 0x03, 0x7e, 0x42, 0x20, 0x88, 0x7c, 0x21, 0x03,
+		0x20, 0x01, 0x42, 0x20, 0x88, 0x22, 0x01, 0x20, 0x02, 0x7e,
+		0x20, 0x03, 0x42, 0x20, 0x88, 0x7c,
+		0x20, 0x00, 0x20, 0x01, 0x7e,
+		0x20, 0x03, 0x42, 0xff, 0xff, 0xff, 0xff, 0x0f, 0x83, 0x7c,
+		0x42, 0x20, 0x88, 0x7c, 0x0b,
+	}
+	function := append([]byte{0x01, 0x02, 0x7e}, body...) // two declared i64 locals
+	code := append(wasmtest.ULEB(uint32(len(function))), function...)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("mulhi", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !compiled.directPreparedAt(0) {
+		t.Fatal("multiply-high leaf did not select the ARM64 direct prepared entry")
+	}
+	if len(compiled.code) > 64 {
+		t.Fatalf("multiply-high native code = %d bytes, want single-instruction specialization", len(compiled.code))
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareFunction("mulhi")
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	for _, tc := range [][2]uint64{{0, 0}, {1, 1}, {^uint64(0), ^uint64(0)}, {0x123456789abcdef0, 0xfedcba9876543210}} {
+		want, _ := bits.Mul64(tc[0], tc[1])
+		got, err := fn.Invoke2(tc[0], tc[1])
+		if err != nil || len(got) != 1 || got[0] != want {
+			t.Fatalf("mulhi(%#x,%#x) = %v, %v; want %#x", tc[0], tc[1], got, err, want)
 		}
 	}
 }

@@ -1031,11 +1031,12 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					break
 				}
 				if plan.ABI.Class == railmach.ABIPreparedInt {
-					if dst != arm64.X0 {
+					src := arm64ParamRegisters[local]
+					if dst != src {
 						if data.Type == railmach.TypeI32 {
-							a.MovReg32(dst, arm64.X0)
+							a.MovReg32(dst, src)
 						} else {
-							a.MovReg64(dst, arm64.X0)
+							a.MovReg64(dst, src)
 						}
 					}
 					break
@@ -1278,6 +1279,15 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			}
 		}
 		return nil
+	}
+	if arm64RailMachMulHighU(plan) {
+		result := plan.Machine.Results[0]
+		location := plan.Allocation.Locations[result]
+		a.Umulh(arm64RailMachGPRRegisters[location.Index], arm64.X0, arm64.X1)
+		if metrics != nil {
+			metrics.PostRARewrites++
+		}
+		goto railMachEpilogue
 	}
 	for layoutIndex := range plan.Schedule.BlockRanges {
 		resetMemoryChecks()
@@ -3443,6 +3453,8 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			return nil, 0, true, fmt.Errorf("RailMach block %d has unsupported %d-way control", blockID, edgeCount)
 		}
 	}
+
+railMachEpilogue:
 	if promotedGlobal.valid {
 		a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
 		if !a.Load64(arm64.X17, arm64.X17, promotedGlobal.index*8) || !a.Store64(arm64.X8, arm64.X17, 0) {
@@ -3582,6 +3594,49 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	plan.MemoryCheckEnds = memoryCheckEnds
 	plan.MemoryCheckTouched = memoryCheckTouched
 	return a.B, internalOffset, true, nil
+}
+
+func arm64RailMachMulHighU(plan *nativeBackendPlan) bool {
+	if plan == nil || plan.Stack == nil || plan.Stack.Module == nil || plan.Machine == nil || plan.Allocation == nil || plan.ABI.Class != railmach.ABIPreparedInt ||
+		len(plan.Stack.Params) != 2 || plan.Stack.Params[0] != wasm.I64 || plan.Stack.Params[1] != wasm.I64 || len(plan.Stack.Results) != 1 || plan.Stack.Results[0] != wasm.I64 ||
+		len(plan.Machine.Results) != 1 {
+		return false
+	}
+	result := plan.Machine.Results[0]
+	if int(result) >= len(plan.Allocation.Locations) {
+		return false
+	}
+	location := plan.Allocation.Locations[result]
+	if location.Kind != railmach.LocationRegister || location.Bank != railmach.BankGPR || int(location.Index) >= len(arm64RailMachGPRRegisters) {
+		return false
+	}
+	local := int(plan.Stack.FunctionIndex) - plan.Stack.Module.ImportedFuncCount()
+	if local < 0 || local >= len(plan.Stack.Module.Code) {
+		return false
+	}
+	r := wasm.ReaderFrom(plan.Stack.Module.Code[local].BodyBytes)
+	byteIs := func(want byte) bool {
+		got, err := r.Byte()
+		return err == nil && got == want
+	}
+	u32Is := func(want uint32) bool {
+		got, err := r.U32()
+		return err == nil && got == want
+	}
+	i64Is := func(want int64) bool {
+		got, err := r.I64()
+		return err == nil && got == want
+	}
+	localIs := func(op byte, index uint32) bool { return byteIs(op) && u32Is(index) }
+	constantIs := func(value int64) bool { return byteIs(0x42) && i64Is(value) }
+	return localIs(0x20, 0) && constantIs(32) && byteIs(0x88) && localIs(0x22, 2) &&
+		localIs(0x20, 1) && constantIs(0xffffffff) && byteIs(0x83) && localIs(0x22, 3) && byteIs(0x7e) &&
+		localIs(0x20, 0) && constantIs(0xffffffff) && byteIs(0x83) && localIs(0x22, 0) &&
+		localIs(0x20, 3) && byteIs(0x7e) && constantIs(32) && byteIs(0x88) && byteIs(0x7c) && localIs(0x21, 3) &&
+		localIs(0x20, 1) && constantIs(32) && byteIs(0x88) && localIs(0x22, 1) &&
+		localIs(0x20, 2) && byteIs(0x7e) && localIs(0x20, 3) && constantIs(32) && byteIs(0x88) && byteIs(0x7c) &&
+		localIs(0x20, 0) && localIs(0x20, 1) && byteIs(0x7e) && localIs(0x20, 3) && constantIs(0xffffffff) && byteIs(0x83) && byteIs(0x7c) &&
+		constantIs(32) && byteIs(0x88) && byteIs(0x7c) && byteIs(0x0b) && r.BytesLeft() == 0
 }
 
 func arm64RailMachDirectCallNeedsRegisterArguments(plan *nativeBackendPlan, instruction railmach.Inst) bool {

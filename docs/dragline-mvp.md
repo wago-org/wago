@@ -465,6 +465,17 @@ measured 26.347 ns/op and 27.458 ns/op respectively (0.960x). `runN` improved
 from 1.180x to 1.153x Railshot but remains a loop-code-quality target rather
 than an entry-overhead problem.
 
+The exact function-tail unsigned 64x64 multiply-high expansion emitted by
+AssemblyScript/XJB is verified byte-for-byte before ARM64 replaces it with one
+`UMULH`. The bounded matcher requires two `i64` parameters, one `i64` result,
+the two declared scratch locals, every local index, mask, shift, and the final
+function end; near or embedded expressions remain on normal RailMach lowering.
+The `mulhi` entry now accepts its two integer parameters directly and fell from
+116 to 56 native bytes. Nine alternating 500 ms samples measured 19.992 ns/op
+for Dragline and 20.072 ns/op for Railshot on Apple M4 Max, or 0.996x Railshot
+latency. Runtime coverage compares the rewrite with `bits.Mul64` across zero,
+unit, all-ones, and mixed high-bit operands.
+
 The same strict MVP coverage command also exercises the in-progress Phase 2
 builder independently of production emission. The current pinned run builds and
 verifies 3,184 function CFGs containing 9,662 compact blocks, 115 demanded local

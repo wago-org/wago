@@ -155,10 +155,13 @@ func directPreparedIntegerContract(f *Func, allocation *GreedyAllocation, contra
 	if f.Target == TargetARM64 && !contract.HasCall {
 		maxInstructions = 48
 	}
-	if f.ParamCount != 1 || len(f.Results) > 1 || len(f.Insts) > maxInstructions {
+	if f.ParamCount == 0 || f.ParamCount > 3 || len(f.Results) > 1 || len(f.Insts) > maxInstructions {
 		return false
 	}
-	if !hasSingleDirectRegisterParam(f, allocation) {
+	if f.ParamCount == 1 && !hasSingleDirectRegisterParam(f, allocation) {
+		return false
+	}
+	if f.ParamCount > 1 && (f.Target != TargetARM64 || contract.HasCall || !hasDirectRegisterParams(f, allocation)) {
 		return false
 	}
 	if len(f.Results) == 1 && f.VRegs[f.Results[0]].Bank != BankGPR {

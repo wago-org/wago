@@ -13,21 +13,20 @@ const preparedDirectIntSupported = true
 const preparedDirectIntPrivateSupported = true
 
 func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
-	var a0, a1, a2, a3 uint64
 	switch len(args) {
-	case 4:
-		a3 = args[3]
-		fallthrough
-	case 3:
-		a2 = args[2]
-		fallthrough
-	case 2:
-		a1 = args[1]
-		fallthrough
+	case 0:
+		return fn.invokeDirectIntFixed(0, 0, 0, 0)
 	case 1:
-		a0 = args[0]
+		return fn.invokeDirectIntFixed(args[0], 0, 0, 0)
+	case 2:
+		return fn.invokeDirectIntFixed(args[0], args[1], 0, 0)
+	case 3:
+		return fn.invokeDirectIntFixed(args[0], args[1], args[2], 0)
+	case 4:
+		return fn.invokeDirectIntFixed(args[0], args[1], args[2], args[3])
+	default:
+		return fn.invokeDirectIntFixed(0, 0, 0, 0)
 	}
-	return fn.invokeDirectIntFixed(a0, a1, a2, a3)
 }
 
 func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
