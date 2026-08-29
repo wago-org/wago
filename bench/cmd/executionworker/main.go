@@ -19,6 +19,7 @@ type result struct {
 	Module     string  `json:"module"`
 	Export     string  `json:"export"`
 	Round      int     `json:"round"`
+	Bounds     string  `json:"bounds"`
 	Iterations uint64  `json:"iterations"`
 	ElapsedNS  int64   `json:"elapsed_ns"`
 	NSPerOp    float64 `json:"ns_per_op"`
@@ -32,6 +33,7 @@ func main() {
 	argsText := flag.String("args", "", "comma-separated i32 arguments")
 	round := flag.Int("round", 0, "measurement round")
 	benchtime := flag.Duration("benchtime", 100*time.Millisecond, "target measured duration")
+	boundsName := flag.String("bounds", "explicit", "explicit or signals")
 	outPath := flag.String("out", "", "append JSON Lines here")
 	flag.Parse()
 	if *modulePath == "" || *exportName == "" || *outPath == "" || *benchtime <= 0 {
@@ -50,8 +52,17 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
+	var bounds wago.BoundsCheckMode
+	switch *boundsName {
+	case "explicit":
+		bounds = wago.BoundsChecksExplicit
+	case "signals":
+		bounds = wago.BoundsChecksSignalsBased
+	default:
+		fatal(fmt.Errorf("unknown bounds mode %q", *boundsName))
+	}
 	compiled, err := wago.NewRuntimeConfig().WithCompiler(compiler).WithTarget(wago.TargetNative).
-		WithBoundsChecks(wago.BoundsChecksExplicit).WithFunctionWorkers(8).Compile(source)
+		WithBoundsChecks(bounds).WithFunctionWorkers(8).Compile(source)
 	if err != nil {
 		fatal(err)
 	}
@@ -93,7 +104,7 @@ func main() {
 		fatal(err)
 	}
 	elapsed := time.Since(started)
-	row := result{Engine: *engineName, Module: *modulePath, Export: *exportName, Round: *round,
+	row := result{Engine: *engineName, Module: *modulePath, Export: *exportName, Round: *round, Bounds: *boundsName,
 		Iterations: iterations, ElapsedNS: elapsed.Nanoseconds(), NSPerOp: float64(elapsed.Nanoseconds()) / float64(iterations)}
 	output, err := os.OpenFile(*outPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
