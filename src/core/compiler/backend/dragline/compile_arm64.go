@@ -2978,6 +2978,12 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					return nil, 0, true, fmt.Errorf("RailMach br_table block %d label %d has no edge", blockID, label)
 				}
 				if caseIndex != len(labels)-1 {
+					moves := plan.Exit.EdgeMoves[edge]
+					if caseIndex <= 4095 && moves.Count == 0 {
+						a.CmpImm32(selector, uint32(caseIndex))
+						conditionalPatches = append(conditionalPatches, nativeBranchPatch{At: a.Bcond(arm64.CondEQ), Target: uint32(plan.Machine.Edges[edge].To)})
+						continue
+					}
 					a.MovImm64(arm64.X17, uint64(caseIndex))
 					a.CmpReg32(selector, arm64.X17)
 					next := a.Bcond(arm64.CondNE)

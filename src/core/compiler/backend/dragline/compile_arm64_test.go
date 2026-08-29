@@ -634,6 +634,46 @@ func TestARM64RailMachImmediateDoesNotMaterializeFoldedOperand(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachBranchesDirectlyToBrTableCases(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x02, 0x40, 0x02, 0x40, // two nested blocks
+			0x20, 0x00, 0x0e, 0x02, 0x00, 0x01, 0x01, // br_table 0 1 1
+			0x0b, 0x41, 0x0a, 0x0f, // case 0: return 10
+			0x0b, 0x41, 0x14, 0x0b, // case 1/default: 20
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok, err := emitARM64RailMach(fn, plan, false, nil, nil, nil, nil); err != nil || !ok {
+		t.Fatalf("RailMach finalization = ok %t, err %v", ok, err)
+	}
+	if len(plan.ConditionalPatches) != 2 {
+		t.Fatalf("br_table direct conditional patches = %d, want 2", len(plan.ConditionalPatches))
+	}
+}
+
 func TestARM64RealizesPreIndexLinearMemory(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
