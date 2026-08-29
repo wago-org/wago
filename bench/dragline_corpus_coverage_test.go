@@ -217,7 +217,7 @@ func BenchmarkRailshotDraglineSIMDCorpusExec(b *testing.B) {
 						args[i] = wago.I32(arg)
 					}
 					b.ResetTimer()
-					for b.Loop() {
+					for i := 0; i < b.N; i++ {
 						if _, err := instance.Invoke(entry.Export, args...); err != nil {
 							b.Fatal(err)
 						}
