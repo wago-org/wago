@@ -68,6 +68,8 @@ var (
 // rather than via idiv. Signed ±1 stay on idiv (it handles the INT_MIN/-1 trap
 // and x%±1). Power-of-2 divisors are always reducible; non-power-of-2 needs the
 // (gated) magic path.
+//
+//lint:ignore U1000 retained for callers using the default magic-division policy
 func strengthReducible(c int64, w, signed bool) bool {
 	return strengthReducibleWithMagic(c, w, signed, magicDivEnabled)
 }

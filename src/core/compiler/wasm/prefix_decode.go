@@ -265,6 +265,8 @@ func decodeFDWithMemargWidths(r *reader, widths memargWidths) (Instruction, erro
 // decodeFDWithMemarg64Into decodes a SIMD-prefixed instruction. If ext is
 // non-nil, rare immediate payloads are written into that caller-owned scratch;
 // otherwise the returned Instruction owns a newly allocated payload.
+//
+//lint:ignore U1000 retained for feature-specific SIMD decoder callers
 func decodeFDWithMemarg64Into(r *reader, memarg64 bool, ext *instrExt) (Instruction, error) {
 	return decodeFDWithMemargWidthsInto(r, fixedMemargWidths(memarg64), ext)
 }

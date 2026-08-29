@@ -72,7 +72,7 @@ func main() {
 		current, readErr := os.ReadFile(*outPath)
 		failIf(readErr)
 		if !bytes.Equal(current, generated) {
-			failIf(fmt.Errorf("%s is stale; run go generate .", *outPath))
+			failIf(fmt.Errorf("%s is stale; run go generate", *outPath))
 		}
 		return
 	}

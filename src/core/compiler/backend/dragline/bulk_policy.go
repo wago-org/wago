@@ -8,8 +8,8 @@ import (
 
 const (
 	arm64MOPSProfileMinObservations uint64 = 10
-	arm64MOPSProfileMinBytes               = 65
-	arm64MOPSProfileLargePercent           = 90
+	arm64MOPSProfileMinBytes        int64  = 65
+	arm64MOPSProfileLargePercent    uint64 = 90
 )
 
 // arm64ProfileSelectsMOPS resolves one original-Wasm bulk-memory site. With

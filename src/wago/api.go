@@ -3856,6 +3856,7 @@ func (c *Compiled) tableRuntimeCapacity(index int) int {
 	return int(def.Max)
 }
 
+//lint:ignore U1000 retained as the canonical imported-or-defined table minimum query
 func (c *Compiled) tableMinimum(index int) int {
 	if def, ok := c.tableImportAt(index); ok {
 		// Import admission and codec validation prove the executable minimum fits int;

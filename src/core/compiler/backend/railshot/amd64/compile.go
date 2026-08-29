@@ -697,6 +697,7 @@ type trapSite struct {
 	pc       uint32
 }
 
+//lint:ignore U1000 retained for tests and architecture-local scratch construction
 func newScratch() *scratch {
 	return newScratchWithStackCap(defaultStackArenaCap)
 }

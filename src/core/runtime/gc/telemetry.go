@@ -11,9 +11,6 @@ const TelemetrySchemaVersion uint32 = 1
 // were compiled into this binary with wago_gcstats.
 func TelemetryAvailable() bool { return collectorTelemetryEnabled }
 
-const telemetryPauseSubBuckets = 16
-const telemetryPauseBuckets = 1 + 63*telemetryPauseSubBuckets
-
 // RootClass identifies one exact collector root source. RootSet values without
 // an explicit classification are reported as native-frame roots because that is
 // the allocation-safepoint use of the public root argument.

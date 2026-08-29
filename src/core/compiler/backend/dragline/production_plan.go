@@ -426,6 +426,8 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 // in the structured emitter until the machine SSA models distinct branch and
 // fallthrough identities. The slice is deliberately non-allocating and uses
 // only scalar control signatures, so no collector root can cross a safepoint.
+//
+//lint:ignore U1000 retained for the staged structured-branch admission gate
 func structuredBranchCastCandidate(stack *railssa.StackFunc) bool {
 	if stack == nil || stack.HasV128 || len(stack.BranchCasts) == 0 {
 		return false
@@ -689,6 +691,7 @@ func nativeHasPostRARewrite(plan *nativeBackendPlan, instructionID uint32, kind 
 	return false
 }
 
+//lint:ignore U1000 retained for architecture finalizers consuming producer rewrites
 func nativePostRAProducer(plan *nativeBackendPlan, consumer uint32, kind railmach.RewriteKind) (uint32, bool) {
 	if plan == nil || plan.PostRA == nil {
 		return 0, false
@@ -1812,6 +1815,8 @@ func nativeSuccessorEntryEdge(plan *nativeBackendPlan, block uint32) (uint32, bo
 // finalizers can realize every late-SSA move. Spills, rematerializations, and
 // fixed-register repairs remain verifier-valid shadow products, but must fall
 // back before native emission until their physical realization is implemented.
+//
+//lint:ignore U1000 retained for staged native exit admission
 func nativeRailMachExitRegisterSafe(plan *nativeBackendPlan, gprs, fprs int) bool {
 	if plan == nil || plan.Exit == nil {
 		return false
@@ -1830,6 +1835,7 @@ func nativeRailMachExitRegisterSafe(plan *nativeBackendPlan, gprs, fprs int) boo
 	return true
 }
 
+//lint:ignore U1000 retained for staged native exit admission
 func nativePhysicalMoveRangeRegisterSafe(plan *nativeBackendPlan, moveRange railmach.MoveRange, gprs, fprs int) bool {
 	if uint64(moveRange.Start)+uint64(moveRange.Count) > uint64(len(plan.Exit.Moves)) {
 		return false
@@ -1855,6 +1861,7 @@ func nativePhysicalMoveRangeRegisterSafe(plan *nativeBackendPlan, moveRange rail
 	return true
 }
 
+//lint:ignore U1000 retained for staged native exit admission
 func nativeFixedPointHandledInline(plan *nativeBackendPlan, position uint32) bool {
 	for instructionID, logical := range plan.Allocation.InstructionPositions {
 		if logical*6+2 == position {

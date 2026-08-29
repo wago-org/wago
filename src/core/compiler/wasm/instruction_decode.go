@@ -34,6 +34,7 @@ func decodeExpr(r *reader, depth int) (Expr, error) {
 	return decodeExprWithMemargWidths(r, depth, fixedMemargWidths(false))
 }
 
+//lint:ignore U1000 retained for feature-specific decoder callers
 func decodeExprWithMemarg64(r *reader, depth int, memarg64 bool) (Expr, error) {
 	return decodeExprWithMemargWidths(r, depth, fixedMemargWidths(memarg64))
 }
@@ -68,6 +69,7 @@ func decodeInstruction(r *reader, depth int) (Instruction, error) {
 	return decodeInstructionWithMemargWidths(r, depth, fixedMemargWidths(false))
 }
 
+//lint:ignore U1000 retained for feature-specific decoder callers
 func decodeInstructionWithMemarg64(r *reader, depth int, memarg64 bool) (Instruction, error) {
 	return decodeInstructionWithMemargWidths(r, depth, fixedMemargWidths(memarg64))
 }
@@ -328,6 +330,7 @@ func (w memargWidths) offset64(memoryIndex uint32) bool {
 	return w.fixed64
 }
 
+//lint:ignore U1000 retained for feature-specific decoder callers
 func decodeMemArgWithWidth(r *reader, memarg64 bool) (MemArg, error) {
 	return decodeMemArgWithWidths(r, fixedMemargWidths(memarg64))
 }

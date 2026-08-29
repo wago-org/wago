@@ -452,6 +452,7 @@ func arm64(name, label, description string) Definition {
 	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: []string{"arm64"}}
 }
 
+//lint:ignore U1000 retained for disabled-by-default arm64 optimization definitions
 func arm64Off(name, label, description string) Definition {
 	return Definition{Name: name, Label: label, Description: description, Architectures: []string{"arm64"}}
 }

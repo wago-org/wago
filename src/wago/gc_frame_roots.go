@@ -165,10 +165,10 @@ func moduleHasCollectorReferenceFrames(m *wasm.Module) bool {
 
 func draglineGCFrameRoots(output corecompiler.Output) (*compiledGCFrameRoots, error) {
 	if output.Engine != corecompiler.EngineDragline {
-		return nil, fmt.Errorf("GC frame roots require Dragline output")
+		return nil, fmt.Errorf("GC frame roots require dragline output")
 	}
 	if len(output.GCCallsites) == 0 && len(output.GCSafepoints) == 0 {
-		return nil, fmt.Errorf("Dragline produced no GC root metadata")
+		return nil, fmt.Errorf("dragline produced no GC root metadata")
 	}
 	rootMap := &compiledGCFrameRoots{
 		callsites:  make([]compiledGCFrameCallsite, 0, len(output.GCCallsites)),
@@ -176,7 +176,7 @@ func draglineGCFrameRoots(output corecompiler.Output) (*compiledGCFrameRoots, er
 	}
 	for index, offset := range output.GCAdapterReturnOffsets {
 		if offset == 0 || uint64(offset) >= uint64(len(output.Code)) || index != 0 && offset <= output.GCAdapterReturnOffsets[index-1] {
-			return nil, fmt.Errorf("Dragline GC adapter return offset %d is malformed", index)
+			return nil, fmt.Errorf("dragline GC adapter return offset %d is malformed", index)
 		}
 	}
 	rootMap.adapterReturnOffsets = append(rootMap.adapterReturnOffsets, output.GCAdapterReturnOffsets...)
@@ -186,29 +186,29 @@ func draglineGCFrameRoots(output corecompiler.Output) (*compiledGCFrameRoots, er
 	for index, safepoint := range output.GCSafepoints {
 		nextRootEnd := uint64(safepoint.RootStart) + uint64(safepoint.RootCount)
 		if uint64(safepoint.RootStart) != safepointRootEnd || nextRootEnd > uint64(len(output.GCSafepointRoots)) || safepoint.ID == 0 || safepoint.ID > shared.GCSafepointIDMax || index != 0 && safepoint.ID <= previousID || safepoint.FrameBytes < 8 || safepoint.FrameBytes > 1<<31-1 {
-			return nil, fmt.Errorf("Dragline GC safepoint %d is malformed", index)
+			return nil, fmt.Errorf("dragline GC safepoint %d is malformed", index)
 		}
 		offsets := output.GCSafepointRoots[safepoint.RootStart:nextRootEnd]
 		if len(offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(offsets, safepoint.FrameBytes) {
-			return nil, fmt.Errorf("Dragline GC safepoint %d roots are malformed", index)
+			return nil, fmt.Errorf("dragline GC safepoint %d roots are malformed", index)
 		}
 		rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: safepoint.ID, frameBytes: safepoint.FrameBytes, offsets: interner.intern(offsets, true)})
 		safepointRootEnd = nextRootEnd
 		previousID = safepoint.ID
 	}
 	if safepointRootEnd != uint64(len(output.GCSafepointRoots)) {
-		return nil, fmt.Errorf("Dragline GC safepoint root slab is not canonically packed")
+		return nil, fmt.Errorf("dragline GC safepoint root slab is not canonically packed")
 	}
 	rootEnd := uint64(0)
 	previousReturn := uint32(0)
 	for index, callsite := range output.GCCallsites {
 		nextRootEnd := uint64(callsite.RootStart) + uint64(callsite.RootCount)
 		if uint64(callsite.RootStart) != rootEnd || nextRootEnd > uint64(len(output.GCRoots)) || callsite.ReturnOffset == 0 || uint64(callsite.ReturnOffset) >= uint64(len(output.Code)) || index != 0 && callsite.ReturnOffset <= previousReturn || callsite.FrameBytes < 8 || callsite.FrameBytes > 1<<31-1 || callsite.StackAdjust&7 != 0 || callsite.StackAdjust > 1<<20 {
-			return nil, fmt.Errorf("Dragline GC callsite %d is malformed", index)
+			return nil, fmt.Errorf("dragline GC callsite %d is malformed", index)
 		}
 		offsets := output.GCRoots[callsite.RootStart:nextRootEnd]
 		if len(offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(offsets, callsite.FrameBytes) {
-			return nil, fmt.Errorf("Dragline GC callsite %d roots are malformed", index)
+			return nil, fmt.Errorf("dragline GC callsite %d roots are malformed", index)
 		}
 		rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{
 			returnOffset: callsite.ReturnOffset,
@@ -220,7 +220,7 @@ func draglineGCFrameRoots(output corecompiler.Output) (*compiledGCFrameRoots, er
 		previousReturn = callsite.ReturnOffset
 	}
 	if rootEnd != uint64(len(output.GCRoots)) {
-		return nil, fmt.Errorf("Dragline GC root slab is not canonically packed")
+		return nil, fmt.Errorf("dragline GC root slab is not canonically packed")
 	}
 	return rootMap, nil
 }

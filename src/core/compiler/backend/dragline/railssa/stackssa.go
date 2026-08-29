@@ -1066,6 +1066,7 @@ func flowTypeAssignable(m *wasm.Module, got, want wasm.ValType) bool {
 	return m != nil && got.Kind() == wasm.ValRef && want.Kind() == wasm.ValRef && m.ReferenceTypeSubtype(got.Ref(), want.Ref())
 }
 
+//lint:ignore U1000 retained for typed operand-stack validation helpers
 func peekFlow(stack []FlowValueID, values []FlowValue, want wasm.ValType) (FlowValueID, error) {
 	if len(stack) == 0 {
 		return 0, fmt.Errorf("operand stack underflow")

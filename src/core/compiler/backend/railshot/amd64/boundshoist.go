@@ -65,6 +65,8 @@ type hoistCand struct {
 // try_table catch vectors, br_table labels, SIMD/atomic forms, and memory64
 // offsets therefore cannot desynchronize this scan. No partial findings escape
 // on failure.
+//
+//lint:ignore U1000 retained for callers that do not prebuild an instruction classifier
 func walkLoopBody(r *wasm.Reader, m *wasm.Module, visit func(op byte, imm wasm.InstructionImmediate)) bool {
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	return walkLoopBodyWithClassifier(r, m, classifier, visit)

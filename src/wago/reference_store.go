@@ -2541,7 +2541,10 @@ func (s *referenceStore) issueExternref(value any) (uint64, error) {
 	}
 }
 
-type releasedExternrefMarker struct{ reserved byte }
+type releasedExternrefMarker struct {
+	//lint:ignore U1000 keeps the marker non-zero-sized so its address is unique
+	reserved byte
+}
 
 var releasedExternrefValue = &releasedExternrefMarker{}
 

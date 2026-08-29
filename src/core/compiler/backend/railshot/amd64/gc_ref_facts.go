@@ -386,6 +386,7 @@ func (f *fn) markTopConstructorGCRefFact(typeIndex uint32, arrayLength *uint32) 
 	}
 }
 
+//lint:ignore U1000 retained for exact-type propagation entry points
 func (f *fn) markExactGCType(e *elem, typeIndex uint32) {
 	fact := f.gcRefFact(e)
 	fact = fact.WithExactType(typeIndex, fact.HeapClass()).WithNullability(codegen.GCKnownNonNull)

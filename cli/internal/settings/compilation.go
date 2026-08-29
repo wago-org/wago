@@ -67,7 +67,7 @@ func ResolveCompilationFrom(config Config, configured bool, request CompilationR
 		return CompilationSelection{}, err
 	}
 	if backend == wago.CompilerDragline && !config.Experimental["dragline"] {
-		return CompilationSelection{}, fmt.Errorf("Dragline is experimental; enable it with `wago config --enable dragline --experimental`")
+		return CompilationSelection{}, fmt.Errorf("dragline is experimental; enable it with `wago config --enable dragline --experimental`")
 	}
 	target, err := resolveTarget(request.Target)
 	if err != nil {

@@ -511,6 +511,7 @@ func gcFrameLocalLivenessWithClassifier(body []byte, indexes []uint32, callMasks
 	return liveMasks, nil
 }
 
+//lint:ignore U1000 retained for callers without a reusable instruction classifier
 func gcFrameBodyMayCollect(body []byte) bool {
 	classifier := wasm.NewModuleInstructionClassifier(nil, true)
 	return gcFrameBodyMayCollectWithClassifier(body, &classifier)
