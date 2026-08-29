@@ -986,6 +986,24 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	blockOffsets := plan.BlockOffsets
 	patches := plan.BranchPatches[:0]
 	coldTraps := plan.ColdTrapPatches[:0]
+	memoryCheckEnds := plan.MemoryCheckEnds
+	memoryCheckTouched := plan.MemoryCheckTouched[:0]
+	resetMemoryChecks := func() {
+		for _, address := range memoryCheckTouched {
+			memoryCheckEnds[address] = 0
+		}
+		memoryCheckTouched = memoryCheckTouched[:0]
+	}
+	memoryChecked := func(address railmach.VReg, end uint64) bool {
+		if memoryCheckEnds[address] >= end {
+			return true
+		}
+		if memoryCheckEnds[address] == 0 {
+			memoryCheckTouched = append(memoryCheckTouched, address)
+		}
+		memoryCheckEnds[address] = end
+		return false
+	}
 	var pendingSpill railmach.VReg
 	helperOrdinal := uint32(0)
 	type pendingConditionalIncrement struct {
@@ -1052,6 +1070,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		return nil
 	}
 	for layoutIndex := range plan.Schedule.BlockRanges {
+		resetMemoryChecks()
 		blockID := layoutIndex
 		if plan.Layout != nil {
 			blockID = int(plan.Layout.Order[layoutIndex])
@@ -2157,7 +2176,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						source uint32
 						index  uint32
 					}{{uint64(uint32(instruction.Aux)) + uint64(size), wasmOffset, instruction.Source}, {uint64(uint32(second.Aux)) + uint64(size), secondWasmOffset, second.Source}} {
-						if railMachElidesBoundsCheck(plan, check.index) {
+						if railMachElidesBoundsCheck(plan, check.index) || memoryChecked(operands[0].Reg, check.end) {
 							continue
 						}
 						a.MovReg32(arm64.X16, lhs)
@@ -2208,7 +2227,8 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				if chainSecond {
 					boundsAddress = arm64.X15
 				}
-				if !railMachElidesBoundsCheck(plan, instruction.Source) {
+				end := uint64(uint32(instruction.Aux)) + uint64(size)
+				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
 					a.MovReg32(boundsAddress, lhs)
 					a.MovImm64(arm64.X17, uint64(uint32(instruction.Aux))+uint64(size))
 					a.Add64(boundsAddress, boundsAddress, arm64.X17)
@@ -2938,6 +2958,8 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		}
 	}
 	plan.ColdTrapPatches = coldTraps
+	plan.MemoryCheckEnds = memoryCheckEnds
+	plan.MemoryCheckTouched = memoryCheckTouched
 	return a.B, internalOffset, true, nil
 }
 
