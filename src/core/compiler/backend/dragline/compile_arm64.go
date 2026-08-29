@@ -976,7 +976,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		}
 	}
 	hasMemoryAccess := false
-	cacheMemoryBounds := !plan.ABI.HasCall
+	cacheMemoryBounds := !plan.ABI.HasCall || !plan.Stack.HasReferences
 	commonMemoryEnd := uint64(0)
 	commonMemoryEndValid := true
 	for _, instruction := range plan.Machine.Insts {
@@ -994,7 +994,8 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			break
 		}
 	}
-	cacheMemoryBounds = cacheMemoryBounds && hasMemoryAccess
+	cacheMemoryBounds = cacheMemoryBounds && hasMemoryAccess && !arm64RailMachPromotedGlobal(plan).valid
+	reloadMemoryBoundsAfterCalls := cacheMemoryBounds && plan.ABI.HasCall
 	cacheMemoryLimit := cacheMemoryBounds && commonMemoryEndValid && commonMemoryEnd != 0 && commonMemoryEnd <= plan.Stack.MemoryMinBytes &&
 		(commonMemoryEnd <= 0xfff || commonMemoryEnd&0xfff == 0 && commonMemoryEnd>>12 <= 0xfff)
 	if cacheMemoryBounds {
@@ -1977,6 +1978,12 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				if err := emitARM64RailMachRoots(&a, plan, instruction.Source, currentPosition, true); err != nil {
 					return nil, 0, true, err
 				}
+				if reloadMemoryBoundsAfterCalls {
+					a.SubImm64(arm64.X8, arm64.X26, abi.ActualLinMemByteSize64Offset)
+					if !a.Load64(arm64.X8, arm64.X8, 0) {
+						return nil, 0, true, fmt.Errorf("RailMach post-call memory size load is not encodable")
+					}
+				}
 				continue
 			}
 			if instruction.Op == wasm.InstrCall {
@@ -2062,6 +2069,12 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				}
 				if err := emitARM64RailMachRoots(&a, plan, instruction.Source, currentPosition, true); err != nil {
 					return nil, 0, true, err
+				}
+				if reloadMemoryBoundsAfterCalls {
+					a.SubImm64(arm64.X8, arm64.X26, abi.ActualLinMemByteSize64Offset)
+					if !a.Load64(arm64.X8, arm64.X8, 0) {
+						return nil, 0, true, fmt.Errorf("RailMach post-call memory size load is not encodable")
+					}
 				}
 				continue
 			}
