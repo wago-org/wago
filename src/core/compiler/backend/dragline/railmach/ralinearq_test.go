@@ -3,6 +3,7 @@ package railmach
 import (
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -72,6 +73,40 @@ func TestAllocateLinearQRematerializesConstants(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("allocation did not rematerialize under pressure: %#v", allocation.Locations)
+	}
+}
+
+func TestAllocateLinearQKeepsColdAffineRematerializationBaseLive(t *testing.T) {
+	module := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
+		0x20, 0x00, // local.get 0
+		0x42, 0x03, // i64.const 3
+		0x7c,       // i64.add
+		0x42, 0x02, // i64.const 2
+		0x7e, // i64.mul
+		0x0b,
+	})
+	f := buildMachineTest(t, TargetARM64, module)
+	affineValue := f.Insts[1].Result
+	base := f.InstructionOperands(1)[0].Reg
+	pressure := &railssa.PressurePlan{
+		Remats:   []railssa.RematRecipe{{Value: railssa.FlowValueID(affineValue), Base: railssa.FlowValueID(base), Aux: 3, Kind: railssa.RematAffine}},
+		ColdUses: []railssa.ColdUse{{Value: railssa.FlowValueID(affineValue), Instruction: 3, HotWeight: 8, ColdWeight: 1}},
+	}
+	priced := &RematPlan{Decisions: []RematDecision{{Value: affineValue, Base: base, RecipeCost: 2, SpillCost: 20, Profitable: true}}}
+	if committed, err := ApplyColdRematerialization(f, pressure, priced); err != nil || committed != 1 {
+		t.Fatalf("ApplyColdRematerialization committed=%d err=%v", committed, err)
+	}
+	allocation, err := AllocateLinearQ(f, LinearQConfig{GPRs: 1, FPRs: 1}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	interval, ok := allocationInterval(allocation.Intervals, base)
+	if !ok {
+		t.Fatalf("base vreg %d has no live interval", base)
+	}
+	wantEnd := allocation.InstructionPositions[3]*6 + 2
+	if interval.End < wantEnd {
+		t.Fatalf("base vreg %d ends at %d before cold rematerialization use %d", base, interval.End, wantEnd)
 	}
 }
 

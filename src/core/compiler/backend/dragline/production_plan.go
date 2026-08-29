@@ -247,6 +247,21 @@ func railMachCandidate(stack *railssa.StackFunc) bool {
 	if stack == nil {
 		return false
 	}
+	if stack.MaxLoopDepth != 0 {
+		calls := 0
+		for _, instruction := range stack.Instrs {
+			if instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect {
+				calls++
+			}
+		}
+		if calls > 1 && len(stack.Instrs) > 256 {
+			// Large loop values that cross several local calls still expose
+			// an incomplete RailMach edge/live-range contract. Keep this
+			// general shape on the verified structured emitter until that
+			// contract is complete.
+			return false
+		}
+	}
 	// RailMach's scalar edge-refinement identity is complete, but its machine
 	// value contract intentionally has no 128-bit register class yet. Keep mixed
 	// SIMD/branch-cast functions on the structured SIMD emitter.
@@ -386,9 +401,6 @@ func railMachCandidate(stack *railssa.StackFunc) bool {
 		default:
 			return false
 		}
-	}
-	if stack.MaxLoopDepth != 0 && (loopHasSaturatingConversion || loopHasBulkMemory) {
-		return false
 	}
 	loopNeedsRailMach = loopNeedsRailMach || loopI32Eqz > 1 || loopHasWrap && loopHasI32And && !loopHasReinterpret
 	if stack.MaxLoopDepth != 0 && !loopNeedsRailMach {
@@ -1250,7 +1262,19 @@ func nativeCallClobberOverrides(machine *railmach.Func, imported uint32, contrac
 			continue
 		}
 		callee := int(uint32(instruction.Aux) - imported)
-		if callee < 0 || callee >= len(contracts) || contracts[callee].Class == 0 || sameUnrefinedRecursiveComponent(components, refinedRecursive, caller, callee) {
+		if callee < 0 || callee >= len(contracts) || sameUnrefinedRecursiveComponent(components, refinedRecursive, caller, callee) {
+			continue
+		}
+		if contracts[callee].Class == 0 {
+			// A local function without a RailMach contract uses the structured
+			// private emitter, whose working register set is not described by
+			// RailMach's caller/callee partition. Keep call-live values out of
+			// every allocatable register until an exact contract is available.
+			overrides = append(overrides, railmach.CallClobber{
+				Instruction: uint32(instructionID),
+				GPR:         callerRegisterMask(config.Linear.GPRs),
+				FPR:         callerRegisterMask(config.Linear.FPRs),
+			})
 			continue
 		}
 		contract := contracts[callee]

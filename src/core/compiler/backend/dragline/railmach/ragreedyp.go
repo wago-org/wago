@@ -543,7 +543,7 @@ func planRegionalFragments(f *Func, schedule *Schedule, config GreedyConfig, all
 					break
 				}
 			}
-			if !committed {
+			if !committed && !regionalFragmentEndsAtBlockBoundary(f, schedule, end) && !regionalFragmentFeedsDeferredComparison(f, schedule, interval.Reg, start, end) {
 				for physical := uint16(0); physical < uint16(limit); physical++ {
 					victim, ok := regionalInactiveVictim(f, allocation, interval.Bank, physical, start, end)
 					if !ok {
@@ -569,6 +569,43 @@ func planRegionalFragments(f *Func, schedule *Schedule, config GreedyConfig, all
 	}
 }
 
+func regionalFragmentFeedsDeferredComparison(f *Func, schedule *Schedule, reg VReg, start, end uint32) bool {
+	for ordinal := start / 6; ordinal <= end/6; ordinal++ {
+		instructionID := ordinal
+		if schedule != nil {
+			if int(ordinal) >= len(schedule.Order) {
+				return true
+			}
+			instructionID = schedule.Order[ordinal]
+		}
+		instruction := f.Insts[instructionID]
+		if instruction.Op != wasm.InstrI32Eqz && instruction.Op != wasm.InstrI64Eqz &&
+			!(instruction.Op >= wasm.InstrI32Eq && instruction.Op <= wasm.InstrI32GeU) &&
+			!(instruction.Op >= wasm.InstrI64Eq && instruction.Op <= wasm.InstrI64GeU) {
+			continue
+		}
+		for _, operand := range f.InstructionOperands(instructionID) {
+			if operand.Reg == reg {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func regionalFragmentEndsAtBlockBoundary(f *Func, schedule *Schedule, end uint32) bool {
+	ordinal := end / 6
+	instructionID := ordinal
+	if schedule != nil {
+		if int(ordinal) >= len(schedule.Order) {
+			return true
+		}
+		instructionID = schedule.Order[ordinal]
+	}
+	block := scheduleInstructionBlock(f, schedule, instructionID)
+	return int(block) >= len(f.Blocks) || blockScheduleEnd(f, schedule, uint32(block)) == ordinal+1
+}
+
 func regionalInactiveVictim(f *Func, allocation *GreedyAllocation, bank Bank, physical uint16, start, end uint32) (VReg, bool) {
 	if !regionalFragmentsPhysicalFree(allocation, bank, physical, start, end) {
 		return 0, false
@@ -580,7 +617,13 @@ func regionalInactiveVictim(f *Func, allocation *GreedyAllocation, bank Bank, ph
 	}
 	for occupant := allocation.occupantHead[bankIndex][physical]; occupant != 0; occupant = allocation.occupantNext[occupant-1] {
 		interval := allocation.Intervals[occupant-1]
-		if interval.Start > end {
+		// A regional victim is restored before the next instruction. Reject a
+		// result assigned to this physical register after the final operand use:
+		// restoring the victim would otherwise overwrite that newly defined value.
+		if interval.Start == end+1 {
+			return 0, false
+		}
+		if interval.Start > end+1 {
 			break
 		}
 		if !intervalsOverlapRange(interval, start, end) {
@@ -736,6 +779,9 @@ func verifySpillSets(allocation *GreedyAllocation, seen []bool) error {
 		for occupant := allocation.occupantHead[bank][fragment.Location.Index]; occupant != 0; occupant = occupantNext[occupant-1] {
 			interval := allocation.Intervals[occupant-1]
 			location := allocation.Locations[interval.Reg]
+			if fragment.Victim != 0 && interval.Reg != fragment.Victim && interval.Start == fragment.End+1 {
+				return fmt.Errorf("railmach: regional fragment %d overwrites newly defined vreg %d before victim restore", index, interval.Reg)
+			}
 			if location.Kind == LocationRegister && location.Bank == fragment.Location.Bank && location.Index == fragment.Location.Index && interval.Start <= fragment.End && fragment.Start <= interval.End && interval.Reg != fragment.Victim {
 				return fmt.Errorf("railmach: regional fragment %d conflicts with vreg %d", index, interval.Reg)
 			}
@@ -767,6 +813,12 @@ func VerifyRegionalFragments(f *Func, schedule *Schedule, allocation *GreedyAllo
 		}
 		if fragment.Location.Index >= uint16(limit) {
 			return fmt.Errorf("railmach: regional fragment %d exceeds physical bank", index)
+		}
+		if fragment.Victim != 0 && regionalFragmentEndsAtBlockBoundary(f, schedule, fragment.End) {
+			return fmt.Errorf("railmach: regional fragment %d restores its victim before block control", index)
+		}
+		if fragment.Victim != 0 && regionalFragmentFeedsDeferredComparison(f, schedule, fragment.Reg, fragment.Start, fragment.End) {
+			return fmt.Errorf("railmach: regional fragment %d restores its victim before deferred comparison use", index)
 		}
 		foundStart, foundEnd := false, false
 		startBlock := ^railssa.BlockID(0)

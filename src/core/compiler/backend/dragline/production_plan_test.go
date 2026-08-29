@@ -189,10 +189,11 @@ func TestRailMachLoopProfitabilityPolicy(t *testing.T) {
 		{"masked_wrap", []wasm.InstrKind{wasm.InstrI32And, wasm.InstrI32WrapI64}, 1, true},
 		{"reinterpret_roundtrip", []wasm.InstrKind{wasm.InstrI32And, wasm.InstrI32WrapI64, wasm.InstrI64ReinterpretF64, wasm.InstrF64ReinterpretI64}, 1, false},
 		{"f64_memory_arithmetic", []wasm.InstrKind{wasm.InstrF64Load, wasm.InstrF64Mul, wasm.InstrF64Add, wasm.InstrF64Store}, 1, true},
-		{"saturating_conversion", []wasm.InstrKind{wasm.InstrF64Load, wasm.InstrI32TruncSatF64S}, 1, false},
-		{"bulk_memory", []wasm.InstrKind{wasm.InstrF64Load, wasm.InstrMemoryFill}, 1, false},
+		{"saturating_conversion", []wasm.InstrKind{wasm.InstrF64Load, wasm.InstrI32TruncSatF64S}, 1, true},
+		{"bulk_memory", []wasm.InstrKind{wasm.InstrF64Load, wasm.InstrMemoryFill}, 1, true},
 		{"structured_if", []wasm.InstrKind{wasm.InstrI32LtU, wasm.InstrIf}, 1, true},
 		{"nested_loop", []wasm.InstrKind{wasm.InstrI32LtU}, 2, true},
+		{"nested_loop_with_call", []wasm.InstrKind{wasm.InstrI32LtU, wasm.InstrCall}, 2, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			stack := &railssa.StackFunc{MaxLoopDepth: test.loopDepth}
@@ -203,6 +204,29 @@ func TestRailMachLoopProfitabilityPolicy(t *testing.T) {
 				t.Fatalf("RailMach candidate = %v, want %v", got, test.want)
 			}
 		})
+	}
+}
+
+func TestRailMachLoopProfitabilityKeepsLargeMultiCallLoopStructured(t *testing.T) {
+	stack := &railssa.StackFunc{MaxLoopDepth: 1, Instrs: make([]railssa.StackInstr, 257)}
+	stack.Instrs[0].Kind = wasm.InstrCall
+	stack.Instrs[1].Kind = wasm.InstrCall
+	if railMachCandidate(stack) {
+		t.Fatal("large multi-call loop unexpectedly selected RailMach")
+	}
+}
+
+func TestNativeCallClobbersTreatStructuredCalleeAsFullyClobbering(t *testing.T) {
+	machine := &railmach.Func{Insts: []railmach.Inst{{Op: wasm.InstrCall, Aux: 1}}}
+	config := railmach.DefaultGreedyConfig(railmach.TargetARM64)
+	overrides := nativeCallClobberOverrides(machine, 0, make([]railmach.ABIContract, 2), nil, nil, 0, config)
+	if len(overrides) != 1 {
+		t.Fatalf("overrides = %#v", overrides)
+	}
+	wantGPR := callerRegisterMask(config.Linear.GPRs)
+	wantFPR := callerRegisterMask(config.Linear.FPRs)
+	if overrides[0].Instruction != 0 || overrides[0].GPR != wantGPR || overrides[0].FPR != wantFPR {
+		t.Fatalf("override = %#v, want full masks %#x/%#x", overrides[0], wantGPR, wantFPR)
 	}
 }
 

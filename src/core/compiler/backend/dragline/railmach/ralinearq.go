@@ -183,6 +183,25 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 		}
 		for _, operand := range f.InstructionOperands(uint32(instructionID)) {
 			if operand.Flags&OperandColdRemat != 0 {
+				value := operand.Reg
+				for {
+					base, ok := coldRematerializationBase(f, value)
+					if !ok {
+						return nil, fmt.Errorf("railmach: cold rematerialization vreg %d has no encodable recipe", value)
+					}
+					if base == 0 {
+						break
+					}
+					used[base] = true
+					if position > ends[base] {
+						ends[base] = position
+					}
+					weights[base]++
+					if f.VRegs[base].Flags&VRegRematerializable == 0 {
+						break
+					}
+					value = base
+				}
 				continue
 			}
 			used[operand.Reg] = true

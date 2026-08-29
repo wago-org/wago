@@ -155,3 +155,44 @@ func TestAllocateGreedyPPlacesHotLoopSpillRegion(t *testing.T) {
 		t.Fatalf("fragments=%#v metrics=%#v", allocation.Fragments, allocation.Metrics)
 	}
 }
+
+func TestRegionalInactiveVictimRejectsResultDefinedBeforeRestore(t *testing.T) {
+	f := &Func{VRegs: make([]VRegData, 3)}
+	allocation := &GreedyAllocation{
+		Allocation: Allocation{
+			Locations: []Location{{}, {Kind: LocationRegister, Bank: BankGPR}, {Kind: LocationRegister, Bank: BankGPR}},
+			Intervals: []LiveInterval{
+				{Reg: 1, Start: 0, End: 2, Bank: BankGPR},
+				{Reg: 2, Start: 3, End: 8, Bank: BankGPR},
+			},
+		},
+		occupantNext: []uint32{2, 0},
+	}
+	allocation.occupantHead[0][0] = 1
+	if victim, ok := regionalInactiveVictim(f, allocation, BankGPR, 0, 2, 2); ok {
+		t.Fatalf("selected victim %d despite result definition before restore", victim)
+	}
+}
+
+func TestRegionalVictimFragmentsDoNotEndAtBlockBoundary(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I64, wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
+		0x03, 0x40,
+		0x20, 0x00, 0x42, 0x01, 0x7c, 0x1a,
+		0x20, 0x01, 0x0d, 0x00,
+		0x0b,
+		0x20, 0x00,
+		0x0b,
+	})
+	f := buildMachineTest(t, TargetARM64, m)
+	allocation, err := AllocateGreedyP(f, GreedyConfig{
+		Linear: LinearQConfig{GPRs: 1, FPRs: 1}, CallerGPRs: 1, CallerFPRs: 1, MaxStage: 4,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, fragment := range allocation.Fragments {
+		if fragment.Victim != 0 && regionalFragmentEndsAtBlockBoundary(f, nil, fragment.End) {
+			t.Fatalf("victim fragment %d ends at block boundary: %#v", index, fragment)
+		}
+	}
+}

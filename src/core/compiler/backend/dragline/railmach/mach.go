@@ -211,7 +211,7 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 			return nil, fmt.Errorf("railmach: value %d: %w", id, err)
 		}
 		data := VRegData{Type: typ, Bank: bank}
-		if simplified != nil && simplified.Aliases[id] != railssa.FlowValueID(id) && value.Kind == railssa.FlowValueInstruction {
+		if simplified != nil && machineInstructionAliasSafe(flow, simplified.Aliases, railssa.FlowValueID(id)) {
 			data.Flags |= VRegElided
 		}
 		switch value.Kind {
@@ -241,7 +241,7 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 			for operandIndex, value := range args {
 				if simplified != nil {
 					canonical := resolveMachineAlias(simplified.Aliases, value)
-					if flow.Values[value].Kind == railssa.FlowValueInstruction || flow.Values[canonical].Kind == railssa.FlowValueInstruction {
+					if machineInstructionAliasSafe(flow, simplified.Aliases, value) {
 						value = canonical
 					}
 				}
@@ -271,7 +271,7 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 		source := transfer.Argument
 		if simplified != nil {
 			canonical := resolveMachineAlias(simplified.Aliases, source)
-			if flow.Values[source].Kind == railssa.FlowValueInstruction || flow.Values[canonical].Kind == railssa.FlowValueInstruction {
+			if machineInstructionAliasSafe(flow, simplified.Aliases, source) {
 				source = canonical
 			}
 		}
@@ -284,7 +284,7 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 	for _, result := range flow.BlockEntry(exit) {
 		if simplified != nil {
 			canonical := resolveMachineAlias(simplified.Aliases, result)
-			if flow.Values[result].Kind == railssa.FlowValueInstruction || flow.Values[canonical].Kind == railssa.FlowValueInstruction {
+			if machineInstructionAliasSafe(flow, simplified.Aliases, result) {
 				result = canonical
 			}
 		}
@@ -369,11 +369,53 @@ func affineColdRematEncodable(f *Func, value VReg) bool {
 	return int64(immediate) == int64(int32(immediate)) || instruction.Op == wasm.InstrI32Add || instruction.Op == wasm.InstrI32Sub
 }
 
+// coldRematerializationBase returns the non-immediate input that the finalizer
+// reads when reconstructing value at a cold use. The allocator must retain this
+// implicit use even though the rematerialized value's ordinary operand is
+// deliberately omitted from liveness.
+func coldRematerializationBase(f *Func, value VReg) (VReg, bool) {
+	if value == 0 || int(value) >= len(f.VRegs) {
+		return 0, false
+	}
+	instructionID := f.VRegs[value].Def / 6
+	if int(instructionID) >= len(f.Insts) {
+		return 0, false
+	}
+	instruction := f.Insts[instructionID]
+	operands := f.InstructionOperands(instructionID)
+	switch instruction.Op {
+	case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrRefNull:
+		return 0, len(operands) == 0
+	case wasm.InstrI32WrapI64, wasm.InstrI64ExtendI32U, wasm.InstrI64ExtendI32S,
+		wasm.InstrI32Extend8S, wasm.InstrI32Extend16S,
+		wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:
+		if len(operands) == 1 {
+			return operands[0].Reg, true
+		}
+	case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub:
+		if len(operands) == 2 {
+			return operands[0].Reg, true
+		}
+	}
+	return 0, false
+}
+
 func resolveMachineAlias(aliases []railssa.FlowValueID, value railssa.FlowValueID) railssa.FlowValueID {
 	for aliases[value] != value {
 		value = aliases[value]
 	}
 	return value
+}
+
+// machineInstructionAliasSafe limits elimination to one basic block. RailMach
+// does not yet carry a dominating cross-block definition through every edge
+// transfer where sparse simplification can legally reuse it.
+func machineInstructionAliasSafe(flow *railssa.ValueFlow, aliases []railssa.FlowValueID, value railssa.FlowValueID) bool {
+	if value == 0 || int(value) >= len(flow.Values) || int(value) >= len(aliases) || flow.Values[value].Kind != railssa.FlowValueInstruction {
+		return false
+	}
+	canonical := resolveMachineAlias(aliases, value)
+	return canonical != value && flow.Values[canonical].Kind == railssa.FlowValueInstruction && flow.Values[value].Block == flow.Values[canonical].Block
 }
 
 func applyTargetConstraint(target Target, instruction *Inst, operand *Operand, index, count int) {

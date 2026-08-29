@@ -85,6 +85,65 @@ func TestBuildPreservesBlockArgumentsAndSourceOrder(t *testing.T) {
 	}
 }
 
+func TestBuildRetainsCrossBlockSimplificationDefinitions(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x20, 0x00, 0x41, 0x07, 0x6a, 0x1a,
+		0x20, 0x00,
+		0x04, 0x7f,
+		0x20, 0x00, 0x41, 0x07, 0x6a,
+		0x05,
+		0x41, 0x00,
+		0x0b,
+		0x0b,
+	})
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := railssa.BuildCFG(stack, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locals, err := railssa.BuildLocalSSA(stack, cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flow, err := railssa.BuildValueFlow(stack, cfg, locals, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	semantic, err := railssa.BuildSemanticFunc(stack, cfg, flow, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := railssa.BuildMetadata(stack, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	simplified, err := railssa.SparseSimplify(stack, cfg, flow, semantic, metadata, railssa.DefaultSimplifyConfig(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine, err := BuildWithSimplify(TargetARM64, cfg, flow, semantic, simplified, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var crossBlock int
+	for value, alias := range simplified.Aliases {
+		canonical := resolveMachineAlias(simplified.Aliases, alias)
+		if value == 0 || canonical == railssa.FlowValueID(value) || flow.Values[value].Kind != railssa.FlowValueInstruction || flow.Values[canonical].Kind != railssa.FlowValueInstruction || flow.Values[value].Block == flow.Values[canonical].Block {
+			continue
+		}
+		crossBlock++
+		if machine.VRegs[value].Flags&VRegElided != 0 {
+			t.Fatalf("cross-block alias v%d -> v%d was elided", value, canonical)
+		}
+	}
+	if crossBlock == 0 {
+		t.Fatal("fixture produced no cross-block instruction alias")
+	}
+}
+
 func TestAMD64ShiftCountIsFixed(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
 		0x20, 0x00,
