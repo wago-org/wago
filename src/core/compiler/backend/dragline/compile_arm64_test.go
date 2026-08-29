@@ -674,6 +674,19 @@ func TestARM64RailMachBranchesDirectlyToBrTableCases(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachSelfCallUsesCanonicalArgumentVector(t *testing.T) {
+	plan := &nativeBackendPlan{Stack: &railssa.StackFunc{FunctionIndex: 3, ImportedFuncs: 1}}
+	if arm64RailMachDirectCallNeedsRegisterArguments(plan, railmach.Inst{Op: wasm.InstrCall, Aux: 3}) {
+		t.Fatal("self-recursive RailMach call redundantly requested structured argument registers")
+	}
+	if !arm64RailMachDirectCallNeedsRegisterArguments(plan, railmach.Inst{Op: wasm.InstrCall, Aux: 4}) {
+		t.Fatal("unproven local callee omitted structured argument registers")
+	}
+	if !arm64RailMachDirectCallNeedsRegisterArguments(plan, railmach.Inst{Op: wasm.InstrCall, Aux: 0}) {
+		t.Fatal("imported callee omitted argument registers")
+	}
+}
+
 func TestARM64RealizesPreIndexLinearMemory(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

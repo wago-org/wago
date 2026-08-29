@@ -2015,15 +2015,17 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						return nil, 0, true, fmt.Errorf("RailMach call argument %d is not encodable", index)
 					}
 				}
-				for index, operand := range operands[:min(len(operands), len(arm64ParamRegisters))] {
-					ok := false
-					if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
-						ok = a.Load32(arm64ParamRegisters[index], arm64.X8, uint32(index*8))
-					} else {
-						ok = a.Load64(arm64ParamRegisters[index], arm64.X8, uint32(index*8))
-					}
-					if !ok {
-						return nil, 0, true, fmt.Errorf("RailMach call argument %d is not encodable", index)
+				if arm64RailMachDirectCallNeedsRegisterArguments(plan, instruction) {
+					for index, operand := range operands[:min(len(operands), len(arm64ParamRegisters))] {
+						ok := false
+						if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
+							ok = a.Load32(arm64ParamRegisters[index], arm64.X8, uint32(index*8))
+						} else {
+							ok = a.Load64(arm64ParamRegisters[index], arm64.X8, uint32(index*8))
+						}
+						if !ok {
+							return nil, 0, true, fmt.Errorf("RailMach call argument %d is not encodable", index)
+						}
 					}
 				}
 				imported := uint32(instruction.Aux) < plan.Stack.ImportedFuncs
@@ -3246,6 +3248,13 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	plan.MemoryCheckEnds = memoryCheckEnds
 	plan.MemoryCheckTouched = memoryCheckTouched
 	return a.B, internalOffset, true, nil
+}
+
+func arm64RailMachDirectCallNeedsRegisterArguments(plan *nativeBackendPlan, instruction railmach.Inst) bool {
+	// RailMach's private entry reloads its initial parameters from the canonical
+	// X8 vector. A self-recursive caller is proven to target the same finalizer,
+	// so reloading the structured emitter's X0-X7 convention is dead work.
+	return plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall || uint32(instruction.Aux) != plan.Stack.FunctionIndex
 }
 
 type arm64CachedFloatConstant struct {
