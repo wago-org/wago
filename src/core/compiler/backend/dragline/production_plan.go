@@ -1194,6 +1194,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	for _, result := range machine.Results {
 		p.immediateUses[result]++
 	}
+	buildNativeEdgeConstantRematerialization(&p.plan, p.immediateSkip, p.immediateUses)
 	p.deadGCReservations = resizeNativeSlice(p.deadGCReservations, len(machine.Insts))
 	clear(p.deadGCReservations)
 	for instructionID, instruction := range machine.Insts {
@@ -1263,6 +1264,40 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	p.plan.MemoryCheckEnds = p.memoryCheckEnds
 	p.plan.MemoryCheckTouched = p.memoryCheckTouched
 	return &p.plan, nil
+}
+
+func buildNativeEdgeConstantRematerialization(plan *nativeBackendPlan, skipped []bool, uses []uint32) {
+	if plan == nil || plan.Machine == nil || plan.Allocation == nil || plan.Exit == nil {
+		return
+	}
+	for producerID, producer := range plan.Machine.Insts {
+		if producer.Result == 0 || (producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const) || skipped[producerID] {
+			continue
+		}
+		transfers := 0
+		for _, transfer := range plan.Machine.Transfers {
+			if transfer.Src == producer.Result {
+				transfers++
+			}
+		}
+		if int(producer.Result) >= len(uses) || uses[producer.Result] != uint32(transfers) {
+			continue
+		}
+		moves := 0
+		for _, move := range plan.Exit.Moves {
+			if move.Reg != producer.Result {
+				continue
+			}
+			if move.Kind != railmach.MoveCopy || move.Src != plan.Allocation.Locations[producer.Result] {
+				moves = -1
+				break
+			}
+			moves++
+		}
+		if transfers != 0 && moves == transfers {
+			skipped[producerID] = true
+		}
+	}
 }
 
 func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, producers []uint32, skipped []bool, uses []uint32) {

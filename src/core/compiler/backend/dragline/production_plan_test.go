@@ -225,6 +225,37 @@ func TestARM64LogicalImmediateEligibility(t *testing.T) {
 	}
 }
 
+func TestNativeEdgeConstantRematerializationRequiresPhysicalMoves(t *testing.T) {
+	register := func(index uint16) railmach.Location {
+		return railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: index}
+	}
+	machine := &railmach.Func{
+		Insts:     []railmach.Inst{{Op: wasm.InstrI64Const, Aux: 7, Result: 1}},
+		VRegs:     []railmach.VRegData{{}, {Type: railmach.TypeI64, Bank: railmach.BankGPR, Def: 3, Flags: railmach.VRegRematerializable}, {Type: railmach.TypeI64, Bank: railmach.BankGPR}},
+		Transfers: []railmach.EdgeTransfer{{Src: 1, Dst: 2}},
+	}
+	plan := &nativeBackendPlan{
+		Machine:    machine,
+		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{{}, register(0), register(1)}}},
+		Exit:       &railmach.SSAExit{Moves: []railmach.PhysicalMove{{Src: register(0), Dst: register(1), Reg: 1, Kind: railmach.MoveCopy, Bank: railmach.BankGPR}}},
+	}
+	skipped := make([]bool, 1)
+	buildNativeEdgeConstantRematerialization(plan, skipped, []uint32{0, 1, 0})
+	if !skipped[0] {
+		t.Fatal("edge-only constant was not selected for direct rematerialization")
+	}
+	skipped[0] = false
+	buildNativeEdgeConstantRematerialization(plan, skipped, []uint32{0, 2, 0})
+	if skipped[0] {
+		t.Fatal("constant with a non-edge use was elided")
+	}
+	plan.Exit.Moves = nil
+	buildNativeEdgeConstantRematerialization(plan, skipped, []uint32{0, 1, 0})
+	if skipped[0] {
+		t.Fatal("coalesced edge constant lost its defining materialization")
+	}
+}
+
 func TestRailMachLoopProfitabilityPolicy(t *testing.T) {
 	for _, test := range []struct {
 		name         string

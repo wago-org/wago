@@ -3996,7 +3996,17 @@ func emitARM64RailMachMoveRangeAt(a *arm64.Asm, plan *nativeBackendPlan, moveRan
 			if move.Dst.Kind == railmach.LocationRegister {
 				scratch = arm64RailMachPhysical(move.Dst)
 			}
-			src, err := arm64RailMachReadLocation(a, plan, move.Reg, move.Src, scratch, 0)
+			source := move.Src
+			if move.Kind == railmach.MoveCopy && int(move.Reg) < len(plan.Machine.VRegs) {
+				data := plan.Machine.VRegs[move.Reg]
+				if data.Flags&railmach.VRegRematerializable != 0 && data.Def%6 == 3 {
+					producer := data.Def / 6
+					if int(producer) < len(plan.ImmediateSkip) && plan.ImmediateSkip[producer] {
+						source = railmach.Location{Kind: railmach.LocationRematerialize, Bank: move.Bank}
+					}
+				}
+			}
+			src, err := arm64RailMachReadLocation(a, plan, move.Reg, source, scratch, 0)
 			if err != nil {
 				return err
 			}
