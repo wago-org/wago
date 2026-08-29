@@ -17,7 +17,18 @@ Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very hi
 
 ---
 
-## What's in place (updated 2026-08-10)
+## What's in place (updated 2026-08-29)
+
+**Signed unit-divisor lowering (2026-08-29).** AMD64 now lowers constant
+`div_s 1` to identity, `rem_s ±1` to zero, and `div_s -1` to an exact `INT_MIN`
+overflow check plus `neg`, avoiding IDIV while preserving the Wasm trap. Focused
+dependent guest loops on the Ryzen 7 8845HS improve `i64.div_s 1`
+**3.462→0.443 ns/op** (-87.2%), `i64.rem_s 1` **3.074→0.439** (-85.7%),
+`i64.rem_s -1` **0.657→0.446** (-32.1%), and `i64.div_s -1`
+**3.650→0.444** (-87.8%), all at 0 B/op and 0 allocs/op. Current constant versus
+dynamic fixture code sizes are 101/219, 103/172, and 158/219 bytes for divide by
+1, remainder by 1, and divide by -1. A three-operand immediate-IMUL remainder
+reconstruction was measured and rejected after slowing `i64.rem_u 3` about 3.6%.
 
 **High-pressure associative Valent covers (2026-08-10).** AMD64 deferred nodes
 now retain their Sethi--Ullman register-need label at construction. The
