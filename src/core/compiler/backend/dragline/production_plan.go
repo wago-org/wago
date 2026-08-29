@@ -897,6 +897,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		// calls into structured code; keep it outside the allocator here.
 		defaultGreedy.Linear.GPRs = nativeARM64GlobalsRegister
 	}
+	if _, ok := nativeARM64CachedGlobal(stack, machine); ok {
+		// X24/X25 retain the selected descriptor and write-through value.
+		defaultGreedy.Linear.GPRs = nativeARM64CachedGlobalDescriptorRegister
+	}
 	defaultGreedy.CallClobbers = nativeCallClobberOverrides(machine, stack.ImportedFuncs, moduleContracts, components, refinedRecursive, localIndex, defaultGreedy)
 	bestGreedy := defaultGreedy
 	var best railmach.ScheduleScore
@@ -1119,6 +1123,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		contract.GPRClobbers |= uint64(1) << nativeARM64GlobalsRegister
 		contract.CalleeGPRs |= uint64(1) << nativeARM64GlobalsRegister
 	}
+	if _, ok := nativeARM64CachedGlobal(stack, machine); ok {
+		contract.GPRClobbers |= uint64(1)<<nativeARM64CachedGlobalDescriptorRegister | uint64(1)<<nativeARM64CachedGlobalValueRegister
+		contract.CalleeGPRs |= uint64(1)<<nativeARM64CachedGlobalDescriptorRegister | uint64(1)<<nativeARM64CachedGlobalValueRegister
+	}
 	localContract := contract
 	refinedCalls := refineNativeCallContracts(calls, stack.ImportedFuncs, moduleContracts, components, refinedRecursive, localIndex)
 	railmach.PropagateCallClobbers(&contract, calls, defaultGreedy)
@@ -1296,7 +1304,11 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	return &p.plan, nil
 }
 
-const nativeARM64GlobalsRegister = 19
+const (
+	nativeARM64CachedGlobalDescriptorRegister = 17
+	nativeARM64CachedGlobalValueRegister      = 18
+	nativeARM64GlobalsRegister                = 19
+)
 
 func nativeARM64CachesGlobals(machine *railmach.Func) bool {
 	if machine == nil || machine.Target != railmach.TargetARM64 {
@@ -1309,6 +1321,39 @@ func nativeARM64CachesGlobals(machine *railmach.Func) bool {
 		}
 	}
 	return uses >= 4
+}
+
+func nativeARM64CachedGlobal(stack *railssa.StackFunc, machine *railmach.Func) (uint32, bool) {
+	if stack == nil || !nativeARM64CachesGlobals(machine) {
+		return 0, false
+	}
+	type uses struct {
+		all  int
+		sets int
+	}
+	hasCall := false
+	counts := make([]uses, len(stack.Globals))
+	for _, instruction := range machine.Insts {
+		hasCall = hasCall || railmach.IsCall(instruction.Op)
+		if instruction.Op != wasm.InstrGlobalGet && instruction.Op != wasm.InstrGlobalSet {
+			continue
+		}
+		index := uint32(instruction.Aux)
+		if int(index) >= len(stack.Globals) || stack.Globals[index] != wasm.I32 && stack.Globals[index] != wasm.I64 {
+			continue
+		}
+		counts[index].all++
+		if instruction.Op == wasm.InstrGlobalSet {
+			counts[index].sets++
+		}
+	}
+	bestIndex, bestUses := uint32(0), 0
+	for index, count := range counts {
+		if count.sets != 0 && count.all > bestUses {
+			bestIndex, bestUses = uint32(index), count.all
+		}
+	}
+	return bestIndex, hasCall && bestUses >= 8
 }
 
 func buildNativeEdgeConstantRematerialization(plan *nativeBackendPlan, skipped []bool, uses []uint32) {

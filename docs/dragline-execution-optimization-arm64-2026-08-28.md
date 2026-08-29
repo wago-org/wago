@@ -274,12 +274,21 @@ every call because structured callees may use X27 internally. The abandoned X28
 variant was faster but is invalid on Go/ARM64 because X28 is the runtime's
 goroutine register.
 
-Seven alternating 300 ms samples per backend measured 21.15 us for Dragline and
-18.53 us for Railshot, or **1.141x**. The preceding three-round corpus pass was
-23.30 us versus 18.74 us, or 1.243x, so Dragline latency fell 9.2% relative to
-that fresh baseline. Serializer helper function 27 fell from 4,980 to 4,564
-native bytes (-8.4%); the export wrapper fell from 1,076 to 1,044 bytes. A fresh
-uncached 36-export differential passes. The remaining 14.1% gap is still in the
+The hottest mutable integer global in a call-heavy function can additionally
+retain its descriptor and current value in X24/X25. `global.set` writes through
+to the canonical cell before continuing, and every call reloads both registers,
+so mixed RailMach/structured calls and observable global state retain the same
+semantics. The selector is a bounded single instruction pass and reserves the
+pair only with at least eight accesses, avoiding both quadratic compile work and
+register pressure in functions without enough reuse.
+
+Seven alternating 300 ms samples per backend measured 19.92 us for Dragline and
+18.58 us for Railshot, or **1.072x**. The preceding committed seven-round result
+was 21.15 us versus 18.53 us, or 1.141x, so this slice reduced Dragline latency
+another 5.8%. Relative to the fresh 23.30 us corpus baseline, latency is down
+14.5%. Serializer helper function 27 is now 4,540 native bytes versus 4,980 at
+the baseline (-8.8%); the export wrapper is 1,060 bytes versus 1,076. A fresh
+uncached 36-export differential passes. The remaining 7.2% gap is still in the
 per-item serializer and allocation helpers, so this corpus remains the active
 optimization target.
 

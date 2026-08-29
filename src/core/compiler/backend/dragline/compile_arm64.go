@@ -1062,9 +1062,18 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		}
 	}
 	cacheGlobals := nativeARM64CachesGlobals(plan.Machine)
+	cachedGlobal, cacheGlobal := nativeARM64CachedGlobal(plan.Stack, plan.Machine)
 	reloadCachedGlobals := func() {
 		if cacheGlobals {
 			a.Ldur64(arm64.X27, arm64.X26, -int32(abi.GlobalsPtrOffset))
+		}
+		if cacheGlobal {
+			a.Load64(arm64.X24, arm64.X27, cachedGlobal*8)
+			if plan.Stack.Globals[cachedGlobal] == wasm.I32 {
+				a.Load32(arm64.X25, arm64.X24, 0)
+			} else {
+				a.Load64(arm64.X25, arm64.X24, 0)
+			}
 		}
 	}
 	reloadCachedGlobals()
@@ -2280,6 +2289,14 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					}
 					continue
 				}
+				if cacheGlobal && uint32(instruction.Aux) == cachedGlobal {
+					if plan.Stack.Globals[cachedGlobal] == wasm.I32 {
+						a.MovReg32(dst, arm64.X25)
+					} else {
+						a.MovReg64(dst, arm64.X25)
+					}
+					continue
+				}
 				if cacheGlobals {
 					if !a.Load64(arm64.X17, arm64.X27, uint32(instruction.Aux)*8) {
 						return nil, 0, true, fmt.Errorf("RailMach global %d offset is not encodable", uint32(instruction.Aux))
@@ -2360,6 +2377,17 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						} else {
 							a.MovReg64(arm64.X8, lhs)
 						}
+					}
+					continue
+				}
+				if cacheGlobal && uint32(instruction.Aux) == cachedGlobal {
+					if plan.Stack.Globals[cachedGlobal] == wasm.I32 {
+						a.MovReg32(arm64.X25, lhs)
+					} else {
+						a.MovReg64(arm64.X25, lhs)
+					}
+					if !a.Store64(arm64.X25, arm64.X24, 0) {
+						return nil, 0, true, fmt.Errorf("RailMach cached global value store is not encodable")
 					}
 					continue
 				}
