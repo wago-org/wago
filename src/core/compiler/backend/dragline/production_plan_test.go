@@ -216,6 +216,7 @@ func TestRailMachLoopProfitabilityPolicy(t *testing.T) {
 	}{
 		{"established_arithmetic", []wasm.InstrKind{wasm.InstrI32Add}, 1, false},
 		{"comparison", []wasm.InstrKind{wasm.InstrI32LtU}, 1, true},
+		{"wide_recurrence", []wasm.InstrKind{wasm.InstrI64Add, wasm.InstrI32Sub}, 1, true},
 		{"wide_multiply", []wasm.InstrKind{wasm.InstrI64Mul, wasm.InstrI64ShrU}, 1, true},
 		{"wide_memory", []wasm.InstrKind{wasm.InstrI64Load, wasm.InstrI64Add, wasm.InstrI64Store}, 1, true},
 		{"mutable_global", []wasm.InstrKind{wasm.InstrGlobalGet, wasm.InstrI64Add, wasm.InstrGlobalSet}, 1, true},
