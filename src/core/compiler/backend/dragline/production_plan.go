@@ -1557,6 +1557,93 @@ func nativeIndirectTarget(plan *nativeBackendPlan, instructionID uint32) (uint32
 	return 0, false
 }
 
+// nativeDenseLocalTableTargets proves a small table is a fixed, dense vector of
+// local functions. It deliberately accepts only the simple active-element form:
+// the bounded proof is then sufficient for a dynamic selector to branch to the
+// private Dragline ABI without publishing that ABI through a funcref descriptor.
+func nativeDenseLocalTableTargets(m *wasm.Module) ([]uint32, bool) {
+	if m == nil || m.ImportedTableCount() != 0 || len(m.Tables) != 1 || m.Tables[0].Init != nil ||
+		m.Tables[0].Type.Limits.Min == 0 || m.Tables[0].Type.Limits.Min > 32 {
+		return nil, false
+	}
+	for i := range m.Exports {
+		if m.Exports[i].Index.Kind == wasm.ExternTable {
+			return nil, false
+		}
+	}
+	for local := range m.Code {
+		stack, err := railssa.BuildStackFunc(m, local)
+		if err != nil {
+			return nil, false
+		}
+		for _, instruction := range stack.Instrs {
+			switch instruction.Kind {
+			case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy, wasm.InstrTableGrow, wasm.InstrTableFill:
+				return nil, false
+			}
+		}
+	}
+	if len(m.Elements) != 1 {
+		return nil, false
+	}
+	element := m.Elements[0]
+	if element.Mode.Kind != wasm.ElemActive || element.Mode.Table != 0 || !nativeZeroI32ConstExpr(element.Mode.Offset) ||
+		element.Kind.Kind != wasm.ElemFuncs || uint64(len(element.Kind.Funcs)) != m.Tables[0].Type.Limits.Min {
+		return nil, false
+	}
+	targets := make([]uint32, len(element.Kind.Funcs))
+	imports := uint32(m.ImportedFuncCount())
+	for index, target := range element.Kind.Funcs {
+		global := uint32(target)
+		if global < imports || global-imports >= uint32(len(m.Code)) {
+			return nil, false
+		}
+		targets[index] = global
+	}
+	return targets, true
+}
+
+func nativeZeroI32ConstExpr(expr wasm.Expr) bool {
+	if len(expr.Instrs) != 0 {
+		return len(expr.Instrs) == 1 && expr.Instrs[0].Kind == wasm.InstrI32Const && expr.Instrs[0].I32 == 0
+	}
+	return len(expr.BodyBytes) == 3 && expr.BodyBytes[0] == 0x41 && expr.BodyBytes[1] == 0 && expr.BodyBytes[2] == 0x0b
+}
+
+func nativeInlineI32BinaryTarget(m *wasm.Module, target uint32) (wasm.InstrKind, bool) {
+	if m == nil {
+		return wasm.InstrInvalid, false
+	}
+	local := int(target) - m.ImportedFuncCount()
+	if local < 0 || local >= len(m.Code) {
+		return wasm.InstrInvalid, false
+	}
+	typ, ok := m.LocalFuncType(local)
+	if !ok || len(typ.Params) != 2 || typ.Params[0] != wasm.I32 || typ.Params[1] != wasm.I32 || len(typ.Results) != 1 || typ.Results[0] != wasm.I32 {
+		return wasm.InstrInvalid, false
+	}
+	body := m.Code[local].BodyBytes
+	if len(body) != 6 || body[0] != 0x20 || body[1] != 0 || body[2] != 0x20 || body[3] != 1 || body[5] != 0x0b {
+		return wasm.InstrInvalid, false
+	}
+	switch body[4] {
+	case 0x6a:
+		return wasm.InstrI32Add, true
+	case 0x6b:
+		return wasm.InstrI32Sub, true
+	case 0x6c:
+		return wasm.InstrI32Mul, true
+	case 0x71:
+		return wasm.InstrI32And, true
+	case 0x72:
+		return wasm.InstrI32Or, true
+	case 0x73:
+		return wasm.InstrI32Xor, true
+	default:
+		return wasm.InstrInvalid, false
+	}
+}
+
 func nativeDivisorMayBeMinusOne(plan *nativeBackendPlan, operand railmach.VReg) bool {
 	if plan == nil || plan.Simplified == nil || int(operand) >= len(plan.Machine.VRegs) {
 		return true

@@ -1835,6 +1835,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					return nil, 0, true, fmt.Errorf("RailMach call_indirect metadata is unavailable")
 				}
 				args := operands[:len(operands)-1]
+				immutableTargets, immutableTable := nativeDenseLocalTableTargets(plan.Stack.Module)
 				a.StpPre(arm64.LR, arm64.XZR, arm64.SP, -16)
 				callOffset := plan.Frame.CallAreaOffset + 16
 				if !arm64RailMachLeaSP(&a, arm64.X8, callOffset) {
@@ -1906,6 +1907,39 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				if !a.PatchBranch19(sigOK, a.Len()) {
 					return nil, 0, true, fmt.Errorf("RailMach call_indirect signature branch is out of range")
 				}
+				var immutableDone []int
+				if immutableTable {
+					// The runtime checks above retain exact OOB/null/signature traps. For
+					// the proven fixed local table, dispatch matching selectors directly
+					// into Dragline's private vector ABI and leave the generic wrapper path
+					// as a defensive fallback.
+					if !arm64RailMachLeaSP(&a, arm64.X8, callOffset) || !a.Load32(arm64.X14, arm64.X8, uint32(len(args)*8)) {
+						return nil, 0, true, fmt.Errorf("RailMach immutable call_indirect selector is not encodable")
+					}
+					for slot, target := range immutableTargets {
+						a.CmpImm32(arm64.X14, uint32(slot))
+						next := a.Bcond(arm64.CondNE)
+						if kind, inline := nativeInlineI32BinaryTarget(plan.Stack.Module, target); inline && len(args) == 2 && instruction.ResultCount() == 1 {
+							emitARM64DirectLocalBinary(&a, kind, arm64.X0, arm64.X0, arm64.X1)
+						} else {
+							if !arm64RailMachLeaSP(&a, arm64.X8, callOffset) {
+								return nil, 0, true, fmt.Errorf("RailMach immutable call_indirect area offset %d is not encodable", callOffset)
+							}
+							if instruction.ResultCount() > railmach.PrivateResultRegisters {
+								a.MovReg64(arm64.X16, arm64.X8)
+							}
+							*relocs = append(*relocs, arm64CallReloc{at: a.Bl(), target: target - plan.Stack.ImportedFuncs})
+							metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 16)
+						}
+						if err := arm64StagePrivateCallResults(&a, instruction, callOffset); err != nil {
+							return nil, 0, true, err
+						}
+						immutableDone = append(immutableDone, a.Branch())
+						if !a.PatchBranch19(next, a.Len()) {
+							return nil, 0, true, fmt.Errorf("RailMach immutable call_indirect dispatch branch is out of range")
+						}
+					}
+				}
 				specializedDone := -1
 				if target, ok := nativeIndirectTarget(plan, instructionID); ok {
 					if metrics != nil {
@@ -1951,6 +1985,19 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				a.Load64(arm64.X8, arm64.X8, 32)
 				a.Ldur64(arm64.X9, arm64.X26, -int32(abi.FuncRefDescPtrOffset))
 				a.Load64(arm64.X9, arm64.X9, 32)
+				// A local funcref wrapper already runs against the caller's native
+				// instance context. Enter it directly instead of copying the complete
+				// instance and execution-control images out and back. Comparing the
+				// canonical context pointers, rather than linear-memory homes, keeps
+				// cross-instance calls correct when two instances share one memory.
+				a.CmpReg64(arm64.X8, arm64.X9)
+				crossInstance := a.Bcond(arm64.CondNE)
+				a.Blr(arm64.X16)
+				metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 16)
+				sameInstanceDone := a.Branch()
+				if !a.PatchBranch19(crossInstance, a.Len()) {
+					return nil, 0, true, fmt.Errorf("RailMach call_indirect context branch is out of range")
+				}
 				arm64CopyDraglineInstanceContext(&a, arm64.X1, arm64.X8)
 				arm64CopyDraglineExecutionControl(&a, arm64.X1)
 				a.StpPre(arm64.X26, arm64.X9, arm64.SP, -16)
@@ -1960,6 +2007,14 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				a.LdpPost(arm64.X8, arm64.XZR, arm64.SP, 16)
 				a.LdpPost(arm64.X26, arm64.X9, arm64.SP, 16)
 				arm64CopyDraglineInstanceContext(&a, arm64.X26, arm64.X9)
+				if !a.PatchBranch26(sameInstanceDone, a.Len()) {
+					return nil, 0, true, fmt.Errorf("RailMach call_indirect continuation branch is out of range")
+				}
+				for _, done := range immutableDone {
+					if !a.PatchBranch26(done, a.Len()) {
+						return nil, 0, true, fmt.Errorf("RailMach immutable call_indirect continuation branch is out of range")
+					}
+				}
 				if specializedDone >= 0 && !a.PatchBranch26(specializedDone, a.Len()) {
 					return nil, 0, true, fmt.Errorf("RailMach specialized call_indirect continuation branch is out of range")
 				}

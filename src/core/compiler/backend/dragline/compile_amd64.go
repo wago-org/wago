@@ -1487,6 +1487,36 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				metadata.recordTrap(a.Len(), wasmOffset, 6)
 				amd64EmitTrap(&a, 6, fn.Index, wasmOffset)
 				a.PatchRel32(sigOK, a.Len())
+				var immutableDone []int
+				if targets, ok := nativeDenseLocalTableTargets(plan.Stack.Module); ok {
+					// Keep the runtime OOB/null/signature checks, then use the proven
+					// dense local table to enter Dragline's private ABI directly.
+					a.Load32(amd64.RAX, amd64.RDI, int32(len(args)*8))
+					for slot, target := range targets {
+						a.AluRI(7, amd64.RAX, int32(slot), false)
+						next := a.JccPlaceholder(amd64.CondNE)
+						for index, operand := range args[:min(len(args), len(amd64ParamRegisters))] {
+							if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
+								a.Load32(amd64ParamRegisters[index], amd64.RDI, int32(index*8))
+							} else {
+								a.Load64(amd64ParamRegisters[index], amd64.RDI, int32(index*8))
+							}
+						}
+						if kind, inline := nativeInlineI32BinaryTarget(plan.Stack.Module, target); inline && len(args) == 2 && instruction.ResultCount() == 1 {
+							emitAMD64DirectIntegerBinary(&a, kind, amd64.RAX, amd64.RAX, amd64.RCX)
+						} else {
+							if instruction.ResultCount() > railmach.PrivateResultRegisters {
+								a.MovReg64(amd64.R10, amd64.RDI)
+							}
+							*relocs = append(*relocs, amd64CallReloc{at: a.CallRel32(), target: target - plan.Stack.ImportedFuncs})
+							metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 0)
+						}
+						amd64StagePrivateCallResults(&a, instruction, callOffset)
+						immutableDone = append(immutableDone, a.JmpPlaceholder())
+						a.PatchRel32(next, a.Len())
+					}
+					a.Load64(amd64.R10, amd64.R11, 8+coreruntime.TableEntryCodePtrOffset)
+				}
 				specializedDone := -1
 				if target, ok := nativeIndirectTarget(plan, instructionID); ok {
 					if metrics != nil {
@@ -1529,6 +1559,16 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.Load64(amd64.R8, amd64.R8, 32)
 				a.Load64(amd64.R9, amd64.RBX, -int32(abi.FuncRefDescPtrOffset))
 				a.Load64(amd64.R9, amd64.R9, 32)
+				// A local funcref wrapper already has the caller's native instance
+				// context. Avoid copying that context out and back. Compare canonical
+				// context pointers rather than linear-memory homes because distinct
+				// instances may share one memory.
+				a.Cmp64(amd64.R8, amd64.R9)
+				crossInstance := a.JccPlaceholder(amd64.CondNE)
+				a.CallReg(amd64.R10)
+				metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 0)
+				sameInstanceDone := a.JmpPlaceholder()
+				a.PatchRel32(crossInstance, a.Len())
 				amd64CopyDraglineInstanceContext(&a, amd64.RSI, amd64.R8)
 				amd64CopyDraglineExecutionControl(&a, amd64.RSI)
 				a.Push(amd64.RBX)
@@ -1542,6 +1582,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.Pop(amd64.R9)
 				a.Pop(amd64.RBX)
 				amd64CopyDraglineInstanceContext(&a, amd64.RBX, amd64.R9)
+				a.PatchRel32(sameInstanceDone, a.Len())
+				for _, done := range immutableDone {
+					a.PatchRel32(done, a.Len())
+				}
 				if specializedDone >= 0 {
 					a.PatchRel32(specializedDone, a.Len())
 				}
