@@ -430,21 +430,12 @@ func TestRuntimeNativeMemoryMappingLimitAndStats(t *testing.T) {
 }
 
 func TestRuntimeModuleEnforcesMemoryCountLimit(t *testing.T) {
-	module := wasmtest.Module(
-		wasmtest.Section(5, wasmtest.Vec(
-			[]byte{0x00, 0x00},
-			[]byte{0x00, 0x00},
-		)),
-	)
-	compiled, err := Compile(NewRuntimeConfig().WithMaxMemoriesPerModule(2), module)
-	if err != nil {
-		t.Fatalf("Compile: %v", err)
-	}
+	compiled := &Compiled{memoryDir: &compiledMemoryDirectory{defs: []memoryDef{{}, {}}}}
 	defer compiled.Close()
 
 	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithMaxMemoriesPerModule(1)))
 	defer rt.Close()
-	_, err = rt.Module(compiled)
+	_, err := rt.Module(compiled)
 	if !errors.Is(err, ErrResourceLimit) {
 		t.Fatalf("Module error = %v, want ErrResourceLimit", err)
 	}

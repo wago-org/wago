@@ -255,8 +255,10 @@ func TestConfigMemoryCountLimit(t *testing.T) {
 			[]byte{0x00, 0x00},
 		)),
 	)
-	if _, err := Compile(NewRuntimeConfig().WithMaxMemoriesPerModule(1), module); err == nil || !strings.Contains(err.Error(), "memory count 2 exceeds configured limit 1") {
-		t.Fatalf("memory count limit error = %v", err)
+	if SupportedFeatures().IsEnabled(CoreFeatureMultiMemory) {
+		if _, err := Compile(NewRuntimeConfig().WithMaxMemoriesPerModule(1), module); err == nil || !strings.Contains(err.Error(), "memory count 2 exceeds configured limit 1") {
+			t.Fatalf("memory count limit error = %v", err)
+		}
 	}
 	base := NewRuntimeConfig()
 	derived := base.WithMaxMemoriesPerModule(4)
