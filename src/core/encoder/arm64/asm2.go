@@ -148,6 +148,9 @@ func (a *Asm) Fdiv(rd, rn, rm Reg, f64 bool) {
 func (a *Asm) Fsqrt(rd, rn Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E21C000, 0x1E61C000) | r(rn)<<5 | r(rd))
 }
+func (a *Asm) Fabs(rd, rn Reg, f64 bool) {
+	a.word(fbase(f64, 0x1E20C000, 0x1E60C000) | r(rn)<<5 | r(rd))
+}
 func (a *Asm) Fmin(rd, rn, rm Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E205800, 0x1E605800) | r(rm)<<16 | r(rn)<<5 | r(rd))
 }

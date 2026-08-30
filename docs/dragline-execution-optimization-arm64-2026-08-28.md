@@ -602,13 +602,16 @@ For coupled add and division, RailMach now checks the raw result bits after two
 consecutive pairs. Bitwise equality proves every remaining identical pair is a
 fixed point; otherwise the complete 16-pair body runs unchanged. Sqrt never
 reaches that fixed point, so its dedicated path preserves all operations while
-executing two exact bodies per counter backedge. Correctness matches Railshot
-for both widths and the full zero-through-4,096 boundary matrix. Focused 400 ms
-samples put f32/f64 division at 45--52 ns versus 121--151 us and f64 add at
-654--661 ns versus 31.4 us. Six balanced alternating 500 ms rounds put sqrt at
-0.9994x Railshot for f32 and 0.9976x for f64. Sixteen-byte alignment of verified
-rotated counted latches supplies additional margin to instruction-throughput
-ties.
+splitting the count into a zero-to-three remainder and four-iteration chunks.
+That executes 64 exact pairs per main backedge; f32 additionally uses scalar
+`FABS` rather than a vector-wide absolute-value instruction. Correctness matches
+Railshot for both widths and the full zero-through-4,096 boundary matrix.
+Focused 400 ms samples put f32/f64 division at 45--52 ns versus 121--151 us and
+f64 add at 654--661 ns versus 31.4 us. Ten balanced alternating 700 ms rounds
+put sqrt at 0.9987x Railshot for f32 and 0.9997x for f64 by median; f64 remains
+at the same dependent-`FSQRT` hardware floor and therefore has little margin.
+Sixteen-byte alignment of verified rotated counted latches supplies additional
+margin to other instruction-throughput ties.
 
 ## Historical application outliers
 

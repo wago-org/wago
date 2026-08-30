@@ -1365,36 +1365,53 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				a.Fdiv(30, 30, 31, f64)
 				a.Fdiv(31, 31, 30, f64)
 			case wasm.InstrF32Sqrt, wasm.InstrF64Sqrt:
-				a.NeonFabs(29, 30, f64)
+				if f64 {
+					a.NeonFabs(29, 30, true)
+				} else {
+					a.Fabs(29, 30, false)
+				}
 				a.Fsqrt(29, 29, f64)
 				a.Fsub(30, 31, 29, f64)
-				a.NeonFabs(29, 31, f64)
+				if f64 {
+					a.NeonFabs(29, 31, true)
+				} else {
+					a.Fabs(29, 31, false)
+				}
 				a.Fsqrt(29, 29, f64)
 				a.Fsub(31, 30, 29, f64)
 			}
 		}
 		if op == wasm.InstrF32Sqrt || op == wasm.InstrF64Sqrt {
-			a.TstImm32(nReg, 1)
-			even := a.Bcond(arm64.CondEQ)
+			a.AndImm32(arm64.X13, nReg, 3)
+			noRemainder := a.Cbz32(arm64.X13)
+			remainderLoop := a.Len()
 			for range 16 {
 				emitPair()
 			}
-			a.SubImm32(nReg, nReg, 1)
-			oddDone := a.Cbz32(nReg)
-			a.Align16()
-			loop := a.Len()
-			if !a.PatchBranch19(even, loop) {
-				return nil, 0, true, fmt.Errorf("RailMach float sqrt even entry is out of range")
+			a.SubImm32(arm64.X13, arm64.X13, 1)
+			if !a.PatchBranch19(a.Cbnz32(arm64.X13), remainderLoop) {
+				return nil, 0, true, fmt.Errorf("RailMach float sqrt remainder loop is out of range")
 			}
-			for range 32 {
+			mainEntry := a.Len()
+			if !a.PatchBranch19(noRemainder, mainEntry) {
+				return nil, 0, true, fmt.Errorf("RailMach float sqrt main entry is out of range")
+			}
+			a.LsrImm(arm64.X13, nReg, 2, false)
+			short := a.Cbz32(arm64.X13)
+			a.Align16()
+			if !f64 {
+				a.Nop()
+			}
+			loop := a.Len()
+			for range 64 {
 				emitPair()
 			}
-			a.SubImm32(nReg, nReg, 2)
-			if !a.PatchBranch19(a.Cbnz32(nReg), loop) {
+			a.SubImm32(arm64.X13, arm64.X13, 1)
+			if !a.PatchBranch19(a.Cbnz32(arm64.X13), loop) {
 				return nil, 0, true, fmt.Errorf("RailMach float sqrt loop is out of range")
 			}
 			done := a.Len()
-			if !a.PatchBranch19(zero, done) || !a.PatchBranch19(oddDone, done) {
+			if !a.PatchBranch19(zero, done) || !a.PatchBranch19(short, done) {
 				return nil, 0, true, fmt.Errorf("RailMach float sqrt zero exit is out of range")
 			}
 			a.Fadd(resultReg, 30, 31, f64)

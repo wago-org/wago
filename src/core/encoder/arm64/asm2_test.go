@@ -84,6 +84,8 @@ func TestPortFPEncodings(t *testing.T) {
 		{"fmul s0,s1,s2", func(a *Asm) { a.Fmul(X0, X1, X2, false) }, 0x1e220820},
 		{"fdiv s0,s1,s2", func(a *Asm) { a.Fdiv(X0, X1, X2, false) }, 0x1e221820},
 		{"fsqrt s0,s1", func(a *Asm) { a.Fsqrt(X0, X1, false) }, 0x1e21c020},
+		{"fabs s0,s1", func(a *Asm) { a.Fabs(X0, X1, false) }, 0x1e20c020},
+		{"fabs d0,d1", func(a *Asm) { a.Fabs(X0, X1, true) }, 0x1e60c020},
 		{"fmin s0,s1,s2", func(a *Asm) { a.Fmin(X0, X1, X2, false) }, 0x1e225820},
 		{"fmax s0,s1,s2", func(a *Asm) { a.Fmax(X0, X1, X2, false) }, 0x1e224820},
 		{"fmov s0,s1", func(a *Asm) { a.FmovReg(X0, X1, false) }, 0x1e204020},
