@@ -175,6 +175,16 @@ func (m *Module) FuncSignature(idx uint32) (*CompType, bool) {
 	return m.typeFunc(typeIdx)
 }
 
+// ImportFuncType returns the stored signature for one import-section entry.
+// importIndex is the index in Imports, not the function index space. The
+// returned pointer aliases immutable module type storage.
+func (m *Module) ImportFuncType(importIndex int) (*CompType, bool) {
+	if importIndex < 0 || importIndex >= len(m.Imports) || m.Imports[importIndex].Type.Kind != ExternFunc {
+		return nil, false
+	}
+	return m.typeFunc(m.Imports[importIndex].Type.FuncType())
+}
+
 // LocalFuncType returns the stored function signature for a local
 // (non-imported) function index. The returned pointer aliases module storage and
 // may contain recursive-local TypeIdx values for signatures decoded inside
