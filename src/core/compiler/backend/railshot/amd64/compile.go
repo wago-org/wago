@@ -287,7 +287,6 @@ type fn struct {
 	// Number of commutative self-update spill opportunities seen in this function.
 	// The first keeps the conservative form; repeated pressure selects the denser
 	// register form without perturbing one-off sites in otherwise cold functions.
-	commuteSelfUpdates uint16
 
 	// Bounded straight-line local intervals. A non-regNone intervalReg entry marks
 	// an eligible local; locals[x].reg is populated only while its cached value is

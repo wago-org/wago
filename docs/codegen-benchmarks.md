@@ -122,6 +122,27 @@ go test ./src/wago -run '^$' \
 Use the explicit GPR-mask float rows and baseline rotate rows as controls. Do not
 compare separate host sessions when a same-process control is available.
 
+The commutative self-update watchpoints keep the retained optimization and its
+compile/code-size cost in the same process. The low-32 mask matrix compares the
+ordinary i64 immediate/register path with the zero-extending 32-bit form:
+
+```sh
+cd bench
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^Benchmark(Exec|Compile)CommuteSelfUpdate$' \
+  -benchmem -benchtime=200ms -count=5
+
+cd ..
+go test ./src/wago -run '^$' \
+  -bench '^BenchmarkAMD64Low32MaskInstruction$' \
+  -benchmem -benchtime=300ms -count=5 -cpu=1
+```
+
+`BenchmarkExecCommuteSelfUpdate` is the execution authority because its `off`
+and `on` products share one process and the same real corpus payloads. Report
+`BenchmarkCompileCommuteSelfUpdate` time, `B/op`, `allocs/op`, and `code-B`
+together; do not trade Wago's compile advantage for a micro-only execution win.
+
 ## Targeted profiles
 
 Backend railshot compile profiles:

@@ -83,10 +83,10 @@ var (
 	// default-off; WAGO_TEE_SPILL_ELIDE=1 opts in.
 	teeSpillElideEnabled = envDefaultOff(os.Getenv("WAGO_TEE_SPILL_ELIDE"))
 	// commuteSelfUpdateEnabled makes a non-fixed destination the accumulator for
-	// commutative x=f(y) op x expressions instead of spilling x first. It is
-	// default-off; WAGO_COMMUTE_SELF_UPDATE=1 opts in.
-	commuteSelfUpdateEnabled = envDefaultOff(os.Getenv("WAGO_COMMUTE_SELF_UPDATE"))
-	// i64Mask32Enabled lowers i64.and with the low-32 mask to a 32-bit AND whose
+	// commutative x=f(y) op x expressions instead of spilling x first.
+	// WAGO_AMD64_NO_COMMUTE_SELF_UPDATE=1 is the A/B oracle.
+	commuteSelfUpdateEnabled = os.Getenv("WAGO_AMD64_NO_COMMUTE_SELF_UPDATE") != "1"
+	// i64Mask32Enabled lowers i64.and with any low-32-bit mask to a 32-bit AND whose
 	// destination write implicitly zero-extends. WAGO_AMD64_NO_I64_MASK32=1 is the
 	// A/B oracle.
 	i64Mask32Enabled = os.Getenv("WAGO_AMD64_NO_I64_MASK32") != "1"

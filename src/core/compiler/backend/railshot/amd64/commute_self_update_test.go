@@ -54,8 +54,8 @@ func TestCommuteSelfUpdate(t *testing.T) {
 	if got := runAmd64(t, m, 0x55, 10, 20); got != 0x55 {
 		t.Fatalf("enabled result = %#x, want 0x55", got)
 	}
-	if got := on.Peephole["commute-self-update"]; got != 1 {
-		t.Fatalf("commute-self-update = %d, want 1 (all: %v)", got, on.Peephole)
+	if got := on.Peephole["commute-self-update"]; got != 2 {
+		t.Fatalf("commute-self-update = %d, want 2 (all: %v)", got, on.Peephole)
 	}
 	if on.Spills >= off.Spills {
 		t.Fatalf("enabled spills = %d, disabled = %d", on.Spills, off.Spills)

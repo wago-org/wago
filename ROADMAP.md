@@ -243,9 +243,10 @@ current optimization priorities. The Core 3.0 implementation ledger is
   `WAGO_EXPLAIN`, golden-disassembly harness, `WAGO_DEBUG_MODGLOBALS`, and
   `WAGO_PIN_GLOBAL_K` are implemented on amd64 and arm64.
 <!-- roadmap:P2 status=partial -->
-- 🚧 **P2 — cheap railshot wins**: the const-fold pack and same-operand integer
-  identities are landed; alias-aware pending loads, pure-tree `drop`, and
-  narrow-load mask elision remain measurement-gated.
+- 🚧 **P2 — cheap railshot wins**: the const-fold pack, same-operand integer
+  identities, direct commutative self-updates, generalized low-32 i64 masks,
+  alias-aware pending loads, and pure-tree `drop` are landed. Broader narrow-load
+  mask elision remains measurement-gated.
 <!-- roadmap:P3 status=partial -->
 - 🚧 **P3 — `stFlags` and compare fusion**: eqz-of-compare inversion and ordered
   float compare-to-branch fusion are landed; broader flags-resident consumers
