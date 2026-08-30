@@ -61,6 +61,27 @@ func TestARM64PinV128LocalsUsesHottestLocals(t *testing.T) {
 	}
 }
 
+func TestARM64StructuredDefersPromotedGlobalReloadAcrossAdjacentCalls(t *testing.T) {
+	instrs := []railssa.StackInstr{
+		{Kind: wasm.InstrCall},
+		{Kind: wasm.InstrCall},
+		{Kind: wasm.InstrCallIndirect},
+		{Kind: wasm.InstrGlobalGet},
+	}
+	if !arm64StructuredCanDeferPromotedGlobalReload(instrs, 0) {
+		t.Fatal("adjacent direct call did not defer the redundant reload")
+	}
+	if !arm64StructuredCanDeferPromotedGlobalReload(instrs, 1) {
+		t.Fatal("adjacent indirect call did not defer the redundant reload")
+	}
+	if arm64StructuredCanDeferPromotedGlobalReload(instrs, 2) {
+		t.Fatal("global access incorrectly deferred the required reload")
+	}
+	if arm64StructuredCanDeferPromotedGlobalReload(instrs, len(instrs)-1) {
+		t.Fatal("end of function incorrectly deferred the required reload")
+	}
+}
+
 func TestARM64ShufflePatterns(t *testing.T) {
 	ror8 := [16]byte{1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12}
 	ror16 := [16]byte{2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13}

@@ -172,16 +172,25 @@ same Apple M4 Max. Values are medians.
 | Whitespace predicate and loop lowering | 59.68 us | 48.65 us | 1.227x |
 | Paired call-boundary transfers | 58.86 us | 48.62 us | **1.211x** |
 | SIMD call regions + promoted globals | 54.99 us | 49.05 us | **1.121x** |
+| Adjacent-call reload deferral | 49.45 us | 48.60 us | **1.018x** |
 
-That is a 60.0% execution-latency reduction from the initial state. Function
+That is a 64.0% execution-latency reduction from the initial state. Function
 48 is 4,072 native bytes and the large schema parser at function 51 is 7,804
 bytes, down from 4,700 and 8,344 bytes before the loop, paired-transfer, and
-global-promotion work. The remaining 12.1% gap is not attributed to one parser loop:
-sampling shows it distributed across the export, allocator, vector/string,
-and array-parser helpers. Broadly admitting these large scalar functions to
-RailMach is not safe yet: repeated execution exposed the documented
+global-promotion work. The remaining 1.8% gap is not attributed to one parser
+loop: sampling shows it distributed across the export, allocator,
+vector/string, and array-parser helpers. Broadly admitting these large scalar
+functions to RailMach is not safe yet: repeated execution exposed the documented
 loop-edge/live-range contract gap, so the conservative SIMD-module admission
 gate remains in place.
+
+The remaining call sequence in the array parser exposed one redundant cache
+operation: when one non-inlined call is immediately followed by another, the
+first call's promoted-global reload is guaranteed to be clobbered before any
+Wasm instruction can observe it. Deferring that reload until after the second
+call brought the latest seven-round 300 ms median to 49.45 us versus Railshot's
+48.60 us. The deserializer is now within 1.8% of Railshot for this campaign
+slice.
 
 `json-as-simd.serializeN(200)` is also substantially improved but remains
 unfinished. Direct-call SIMD functions can now use the mixed register operand
@@ -200,6 +209,11 @@ versus 23.24 us, or 2.330x, so Dragline latency fell 47.5%. Serializer function
 per-item serializer/helper work and repeated explicit memory checks; broad
 RailMach admission remains excluded by the same correctness gate described
 above.
+
+The same adjacent-call reload deferral removes 48 bytes from serializer
+function 49, taking it from 4,924 to 4,876 native bytes. A fresh seven-round
+300 ms run measured 25.58 us versus Railshot's 22.79 us, or **1.122x**. The
+serializer remains unfinished, but the earlier 23.4% gap is now 12.2%.
 
 `blake-as-simd.hashN(100)` is the next unfinished corpus. Its two large
 structured compression functions declare 37 vector locals each, but ARM64 has

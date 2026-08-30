@@ -7168,7 +7168,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			if err := emitARM64StackCall(&a, sf, instr, &stackTypes, stackLoad, stackStore, stackOff, &callRelocs, fn.Index, metadata); err != nil {
 				return nil, 0, nil, fmt.Errorf("byte %d: %w", instr.Offset, err)
 			}
-			if !reloadPromotedGlobal() {
+			if !arm64StructuredCanDeferPromotedGlobalReload(sf.Instrs, instrIndex) && !reloadPromotedGlobal() {
 				return nil, 0, nil, fmt.Errorf("byte %d: promoted global reload is not encodable", instr.Offset)
 			}
 			if callBoundary && !calleePreservesPinned && !reloadPinnedScalarLocals() {
@@ -8141,6 +8141,14 @@ func arm64StructuredRegisterModes(hasV128, hasGeneralCall, pinLocalsAcrossCalls,
 	operandStack = (!hasGeneralCall || pinLocalsAcrossCalls) && !hasResultLoop && maxStack <= stackRegisters
 	full = operandStack && !hasGeneralCall && !hasV128 && gpLocals <= len(arm64StackLocalRegisters) && fpLocals <= 8
 	return
+}
+
+func arm64StructuredCanDeferPromotedGlobalReload(instrs []railssa.StackInstr, index int) bool {
+	if index+1 >= len(instrs) {
+		return false
+	}
+	next := instrs[index+1]
+	return (next.Kind == wasm.InstrCall || next.Kind == wasm.InstrCallIndirect) && next.Inline() == wasm.InstrInvalid
 }
 
 func arm64CountedLoopTail(instrs []railssa.StackInstr, guard int, local uint32) (int, bool) {
