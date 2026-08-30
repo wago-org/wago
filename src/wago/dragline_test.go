@@ -4149,6 +4149,9 @@ func TestDraglineStructuredConstantMemoryUsesProvedBounds(t *testing.T) {
 }
 
 func TestDraglineStructuredSIMDLoadColdTrap(t *testing.T) {
+	if runtime.GOARCH != "arm64" {
+		t.Skip("Dragline structured SIMD execution is currently ARM64-only")
+	}
 	body := []byte{0x20, 0x00, 0xfd, 0x00, 0x04, 0x00, 0xfd, 0xe4, 0x00, 0x69, 0x0b}
 	payload := make([]byte, 16)
 	for i := range payload {
@@ -4185,6 +4188,9 @@ func TestDraglineStructuredSIMDLoadColdTrap(t *testing.T) {
 }
 
 func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
+	if runtime.GOARCH != "arm64" {
+		t.Skip("Dragline structured SIMD execution is currently ARM64-only")
+	}
 	body := []byte{
 		0x20, 0x00, // local.get 0
 		0xfd, 0x00, 0x04, 0x00, // v128.load align=16 offset=0
