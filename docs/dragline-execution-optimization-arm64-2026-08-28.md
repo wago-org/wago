@@ -446,6 +446,22 @@ bytes (-26.3%); compression functions 7 and 8 fall from 19,036/17,664 to
 12,316/11,072 bytes. `blake-as-simd` is now close but remains unfinished until
 the residual 3.3% execution gap is removed.
 
+The next SIMD slice keeps binary results in pinned destination locals across
+both `local.set` and `local.tee`, while preserving any live aliases before the
+write. It also recognizes an immediately preceding unpinned `local.tee` as the
+source of the existing i32x4 rotate idiom; when the source and operand-stack
+destination coincide, a scratch vector retains the original value for the
+second half of the rotate. The full module falls again from 37,296 to 33,472
+native bytes (-10.3%); compression functions 7 and 8 fall from 12,316/11,072
+to 10,432/9,128 bytes.
+
+Twelve balanced 400 ms before/after samples moved `hashN(100)` from a
+400.804 us median to 382.455 us (-4.6%). A separate twelve-round alternating
+Dragline/Railshot comparison measured 382.600 us versus 386.616 us, or
+**0.990x Railshot**. `blake-as-simd` therefore crosses the execution gate on
+this host, with a 1.0% measured lead; the complete-corpus rerank remains the
+authority for the next outlier.
+
 A second JSON SIMD address slice caches the immutable global-descriptor table
 once per structured function, promotes the third hot integer global, and uses
 ARM64's extended-register add to form linear-memory addresses without a
@@ -492,8 +508,9 @@ The final three-round diagnostic pass produced these high-priority ratios:
 | `globals` | 3.109 us | 0.588 us | 5.291x |
 | `matmul` | 387.6 us | 149.5 us | 2.592x |
 
-No application module is faster than Railshot yet. The next coherent work is
-not another corpus-specific peephole. It is:
+At that historical snapshot, no application module was faster than Railshot.
+The current branch has since crossed that gate for multiple modules, including
+`blake-as-simd`. The next coherent work is:
 
 1. give RailMach complete lowering for bulk memory and saturating conversions,
    then retest routing of large scalar loops;

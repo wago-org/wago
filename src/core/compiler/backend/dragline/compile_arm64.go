@@ -5401,9 +5401,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		return nil
 	}
 	helperOrdinal := uint32(0)
-	materializeLocalAliases := func(local, except int) {
+	materializeLocalAliases := func(local, exceptA, exceptB int) {
 		for index := range stackTypes {
-			if index == except || vectorStackSourceLocal[index] != int32(local) {
+			if index == exceptA || index == exceptB || vectorStackSourceLocal[index] != int32(local) {
 				continue
 			}
 			if index < len(v128StackRegisters) {
@@ -5549,12 +5549,18 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			right, left := instr.U64(), sf.Instrs[instrIndex+3].U64()
 			top := len(stackTypes) - 1
 			sourceLocal := vectorStackSourceLocal[top]
-			if right > 0 && right < 32 && left == 32-right && sourceLocal >= 0 && uint32(sourceLocal) == sf.Instrs[instrIndex+2].U32() {
+			source := sf.Instrs[instrIndex+2].U32()
+			fromAlias := sourceLocal >= 0 && uint32(sourceLocal) == source
+			fromTee := instrIndex > 0 && sf.Instrs[instrIndex-1].Kind == wasm.InstrLocalTee && sf.Instrs[instrIndex-1].U32() == source
+			if right > 0 && right < 32 && left == 32-right && (fromAlias || fromTee) {
 				dst := arm64.Reg(0)
 				if top < len(v128StackRegisters) {
 					dst = v128StackRegisters[top]
 				}
 				src := stackSourceV128(top, 1)
+				if dst == src {
+					dst = 0
+				}
 				a.NeonUshrS(dst, src, uint8(right))
 				a.NeonSliS(dst, src, uint8(left))
 				stackStoreV128(top, dst)
@@ -5711,7 +5717,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			if (directBinary || directShuffle) && (!tee || localV128Pinned[targetLocal]) {
 				lhsLocal, rhsLocal := int(instr.U32()), int(sf.Instrs[instrIndex+1].U32())
 				if localV128Pinned[targetLocal] {
-					materializeLocalAliases(targetLocal, -1)
+					materializeLocalAliases(targetLocal, -1, -1)
 				}
 				lhs := arm64.Reg(0)
 				if localV128Pinned[lhsLocal] {
@@ -7688,7 +7694,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 						return nil, 0, nil, fmt.Errorf("operand stack v128 mismatch")
 					}
 					if vectorStackSourceLocal[top] != int32(local) {
-						materializeLocalAliases(local, top)
+						materializeLocalAliases(local, top, -1)
 						stackLoadV128(top, localRegisters[local])
 					}
 					stackTypes = stackTypes[:top]
@@ -7726,7 +7732,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				}
 				src := stackSourceV128(top, 0)
 				if localV128Pinned[local] {
-					materializeLocalAliases(local, top)
+					materializeLocalAliases(local, top, -1)
 				}
 				localStoreV128(local, src)
 				if localV128Pinned[local] {
@@ -8335,6 +8341,31 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex))
 				if !ok {
 					return nil, 0, nil, fmt.Errorf("byte %d: SIMD descriptor is unavailable", instr.Offset)
+				}
+				if arm64DirectSIMDBinaryKind(descriptor.Kind) && instrIndex+1 < len(sf.Instrs) &&
+					(sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalSet || sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalTee) {
+					targetLocal := int(sf.Instrs[instrIndex+1].U32())
+					if len(stackTypes) >= 2 && localV128Pinned[targetLocal] &&
+						stackTypes[len(stackTypes)-2] == wasm.V128 && stackTypes[len(stackTypes)-1] == wasm.V128 {
+						tee := sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalTee
+						base := len(stackTypes) - 2
+						lhs := stackSourceV128(base, 0)
+						rhs := stackSourceV128(base+1, 1)
+						materializeLocalAliases(targetLocal, base, base+1)
+						emitARM64DirectSIMDBinary(&a, descriptor.Kind, localRegisters[targetLocal], lhs, rhs)
+						vectorStackValid[base] = false
+						vectorStackValid[base+1] = false
+						vectorStackSourceLocal[base] = -1
+						vectorStackSourceLocal[base+1] = -1
+						stackTypes = stackTypes[:base]
+						if tee {
+							stackTypes = append(stackTypes, wasm.V128)
+							vectorStackSourceLocal[base] = int32(targetLocal)
+						}
+						metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+						instrIndex++
+						continue
+					}
 				}
 				err = emitARM64StackSIMD(&a, descriptor, instr, &stackTypes, v128StackRegisters, stackOff, stackLoad, stackStore, stackSourceV128, stackTakeV128, stackStoreV128, stackStoreV128Constant, simdConstants, fn.Index, registerOperandStack, cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata)
 			} else if arm64MemoryStackKind(instr.Kind) {
