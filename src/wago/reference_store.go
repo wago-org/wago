@@ -815,20 +815,20 @@ func (s *referenceStore) ownsGCCollector(collector *gc.Collector) bool {
 	return false
 }
 
-func (s *referenceStore) gcDomainIdentity(collector *gc.Collector) uint64 {
+func (s *referenceStore) gcDomainForCollector(collector *gc.Collector) *gcStoreDomain {
 	if s == nil || collector == nil {
-		return 0
+		return nil
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if topology := s.gcDomains; topology != nil {
 		for domain := topology.first; domain != nil; domain = domain.next {
 			if domain.collector == collector {
-				return domain.id
+				return domain
 			}
 		}
 	}
-	return 0
+	return nil
 }
 
 func (s *referenceStore) lockGCCollector(collector *gc.Collector) *gcStoreDomain {

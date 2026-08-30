@@ -108,8 +108,10 @@ The Collector republishes handle and heap pointers/counts and increments the
 refresh generation after every helper allocation and collection, including
 handle-table relocation. Canonical-domain type append first quiesces the Runtime
 GC domain's native invocation lease, then rebuilds and republishes the subtype-
-interval pointer/count under collector serialization. Close zeros
-all published backing, allocation, and interval pointers before the view lifetime
+interval pointer/count under collector serialization. Instance-view construction
+and validation take the same invocation lease, so they observe one complete
+published interval snapshot. Close zeros all published backing, allocation, and
+interval pointers before the view lifetime
 ends. Native execution and collector mutation remain serialized, so readers never
 observe a partially refreshed view.
 

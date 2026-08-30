@@ -38,8 +38,9 @@ native GC ABI remains at version 1 and now includes:
 
 The added collector-view prefix cost is 16 bytes. The interval table still costs
 8 bytes per canonical type. Runtime-domain growth quiesces the domain invocation
-lease before `Collector.AddTypes` republishes the pointer and count. Generated
-code reloads both fields for each
+lease before `Collector.AddTypes` republishes the pointer and count. Native
+instance-view construction and validation use the same lease. Generated code
+reloads both fields for each
 check and does not retain an object pointer across a call, helper, allocation,
 or safepoint.
 

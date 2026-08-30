@@ -188,6 +188,30 @@ func TestGCNativeSubtypeIntervalAppendWaitsForInvocationLease(t *testing.T) {
 	if got := domain.collector.NativeView().SubtypeIntervalCount; got != 2 {
 		t.Fatalf("completed type append published %d subtype intervals, want 2", got)
 	}
+
+	viewDone := make(chan error, 1)
+	domain.invocationMu.Lock()
+	locked = true
+	go func() {
+		builder := instanceBuilder{collector: domain.collector, gcDomain: domain}
+		_, err := builder.buildNativeGCInstanceView([]corergc.TypeID{0, 1})
+		viewDone <- err
+	}()
+	select {
+	case err := <-viewDone:
+		t.Fatalf("native view validation completed while invocation lease was held: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	domain.invocationMu.Unlock()
+	locked = false
+	select {
+	case err := <-viewDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("native view validation did not resume after invocation lease release")
+	}
 }
 
 func gcNativeLargeArraySubtypeModule() []byte {
