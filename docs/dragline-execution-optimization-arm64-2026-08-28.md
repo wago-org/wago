@@ -421,6 +421,16 @@ heap cost. For `many_funcs.run`, native code falls from 76 to 64 bytes and an
 eight-sample balanced before/after run moved the median from 19.14 ns to
 18.84 ns (-1.6%). The complete corpus differential remains clean.
 
+The SIMD JSON serializer's remaining structured-emitter path also materialized
+every scalar memory offset into X17 before adding it, including the common
+single-instruction ARM64 immediate range. Scalar bounds ends, scalar effective
+addresses, and SIMD effective addresses now share the already-tested immediate
+offset emitter. `json-as-simd` falls from 117,464 to 116,572 native bytes; hot
+function 49 falls from 4,876 to 4,712 bytes. Ten balanced 300 ms before/after
+samples moved `serializeN(200)` from a 25.59 us median to 25.32 us (-1.1%) and
+`deserializeN(200)` from 48.79 us to 48.63 us (-0.3%). Scalar `json-as` is
+unchanged because its hot functions already use RailMach's immediate forms.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is

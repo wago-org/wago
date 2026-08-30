@@ -9745,8 +9745,7 @@ func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		a.MovReg32(arm64.X16, address)
 		a.Add64(arm64.X16, arm64.X26, arm64.X16)
 		if descriptor.MemArg.Offset != 0 {
-			a.MovImm64(arm64.X17, descriptor.MemArg.Offset)
-			a.Add64(arm64.X16, arm64.X16, arm64.X17)
+			emitARM64BoundsEnd(a, arm64.X16, descriptor.MemArg.Offset)
 		}
 	}
 	checkMemory := func(address arm64.Reg, size uint64) error {
@@ -10273,8 +10272,7 @@ func emitARM64RegisterStackMemory(a *arm64.Asm, instr railssa.StackInstr, stack 
 	}
 	if !elideBounds && (!cachedBounds || !cachedMemoryEnd) {
 		a.MovReg32(arm64.X16, address)
-		a.MovImm64(arm64.X17, uint64(instr.U32())+size)
-		a.Add64(arm64.X16, arm64.X16, arm64.X17)
+		emitARM64BoundsEnd(a, arm64.X16, uint64(instr.U32())+size)
 		bounds := arm64.X25
 		if !cachedBounds {
 			a.SubImm64(arm64.X17, arm64.X26, abi.ActualLinMemByteSize64Offset)
@@ -10300,8 +10298,7 @@ func emitARM64RegisterStackMemory(a *arm64.Asm, instr railssa.StackInstr, stack 
 	a.MovReg32(arm64.X16, address)
 	a.Add64(arm64.X16, arm64.X26, arm64.X16)
 	if instr.U32() != 0 {
-		a.MovImm64(arm64.X17, uint64(instr.U32()))
-		a.Add64(arm64.X16, arm64.X16, arm64.X17)
+		emitARM64BoundsEnd(a, arm64.X16, uint64(instr.U32()))
 	}
 	if !elideBounds && cachedBounds && cachedMemoryEnd {
 		if size <= 4095 {
