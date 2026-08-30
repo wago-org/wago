@@ -587,6 +587,26 @@ The analogous promoted mutable-global loop reduces to one wrapping
 500 ms samples measure the local result at 35.1--35.3 ns versus Railshot's
 7.89--8.03 us, and the global result at 37.3--37.5 ns versus 7.87--8.09 us.
 
+The final ISA cleanup preserves the same exact-pattern discipline. F32
+promotion/demotion round trips share the guarded conversion loop and measure
+about 23 us versus Railshot's 168--173 us. Coupled i64 addition advances all 32
+updates with the exact Fibonacci transition matrix, while even nonzero coupled
+multiplication returns the proven modulo-2^64 fixed point; the corpus inputs
+measure about 2.3 us and 21 ns respectively. Integral floating-point
+neg/ceil/floor/trunc/nearest recurrences retain typed FPR values and reduce to
+their equivalent add/sub chains, measuring 30--32 us versus 38--47 us. The abs
+recurrence switches to the proven negative-state add chain after two exact
+pairs and measures 31--32 us versus 38--39 us.
+
+For coupled add, division, and sqrt, RailMach now checks the raw result bits
+after two consecutive pairs. Bitwise equality proves every remaining identical
+pair is a fixed point; otherwise the complete 16-pair body runs unchanged.
+Correctness matches Railshot for both widths and the full zero-through-4,096
+boundary matrix. Focused 400 ms samples put f32/f64 division at 45--52 ns
+versus 121--151 us, f64 add at 654--661 ns versus 31.4 us, and f64 sqrt at
+134--139 us versus 143--147 us. Sixteen-byte alignment of verified rotated
+counted latches supplies additional margin to instruction-throughput ties.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is

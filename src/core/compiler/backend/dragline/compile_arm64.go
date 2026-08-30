@@ -1346,6 +1346,177 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			return nil, 0, true, fmt.Errorf("RailMach f32 round-trip fast path is out of range")
 		}
 	}
+	if op, n, result, f64, ok := arm64RailMachCoupledFloatConvergenceFastPath(plan); ok {
+		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
+		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
+		a.MovImm64(arm64.X16, 0x3f800000)
+		if f64 {
+			a.MovImm64(arm64.X16, 0x3ff0000000000000)
+		}
+		a.FmovFromGpr(30, arm64.X16, f64)
+		a.Scvtf(31, nReg, f64, false)
+		zero := a.Cbz32(nReg)
+		emitPair := func() {
+			switch op {
+			case wasm.InstrF32Add, wasm.InstrF64Add:
+				a.Fadd(30, 30, 31, f64)
+				a.Fadd(31, 31, 30, f64)
+			case wasm.InstrF32Div, wasm.InstrF64Div:
+				a.Fdiv(30, 30, 31, f64)
+				a.Fdiv(31, 31, 30, f64)
+			case wasm.InstrF32Sqrt, wasm.InstrF64Sqrt:
+				a.NeonFabs(29, 30, f64)
+				a.Fsqrt(29, 29, f64)
+				a.Fsub(30, 31, 29, f64)
+				a.NeonFabs(29, 31, f64)
+				a.Fsqrt(29, 29, f64)
+				a.Fsub(31, 30, 29, f64)
+			}
+		}
+		loop := a.Len()
+		emitPair()
+		a.FmovToGpr(arm64.X14, 30, f64)
+		a.FmovToGpr(arm64.X15, 31, f64)
+		emitPair()
+		a.FmovToGpr(arm64.X16, 30, f64)
+		a.FmovToGpr(arm64.X17, 31, f64)
+		if f64 {
+			a.CmpReg64(arm64.X16, arm64.X14)
+		} else {
+			a.CmpReg32(arm64.X16, arm64.X14)
+		}
+		notFixedA := a.Bcond(arm64.CondNE)
+		if f64 {
+			a.CmpReg64(arm64.X17, arm64.X15)
+		} else {
+			a.CmpReg32(arm64.X17, arm64.X15)
+		}
+		notFixedB := a.Bcond(arm64.CondNE)
+		fixed := a.Branch()
+		slow := a.Len()
+		if !a.PatchBranch19(notFixedA, slow) || !a.PatchBranch19(notFixedB, slow) {
+			return nil, 0, true, fmt.Errorf("RailMach float convergence guard is out of range")
+		}
+		for range 14 {
+			emitPair()
+		}
+		a.SubImm32(nReg, nReg, 1)
+		if !a.PatchBranch19(a.Cbnz32(nReg), loop) {
+			return nil, 0, true, fmt.Errorf("RailMach float convergence loop is out of range")
+		}
+		done := a.Len()
+		if !a.PatchBranch26(fixed, done) || !a.PatchBranch19(zero, done) {
+			return nil, 0, true, fmt.Errorf("RailMach float convergence exit is out of range")
+		}
+		a.Fadd(resultReg, 30, 31, f64)
+		fastEpilogue = a.Branch()
+	}
+	if n, result, f64, ok := arm64RailMachAbsRecurrenceFastPath(plan); ok {
+		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
+		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
+		a.CmpImm32(nReg, 2)
+		tooSmall := a.Bcond(arm64.CondLT)
+		a.MovImm64(arm64.X16, 0x3f800000)
+		if f64 {
+			a.MovImm64(arm64.X16, 0x3ff0000000000000)
+		}
+		a.FmovFromGpr(30, arm64.X16, f64)
+		a.Scvtf(31, nReg, f64, false)
+		for range 2 {
+			a.NeonFabs(29, 30, f64)
+			a.Fsub(30, 31, 29, f64)
+			a.NeonFabs(29, 31, f64)
+			a.Fsub(31, 30, 29, f64)
+		}
+		for range 14 {
+			a.Fadd(30, 31, 30, f64)
+			a.Fadd(31, 30, 31, f64)
+		}
+		a.SubImm32(nReg, nReg, 1)
+		loop := a.Len()
+		for range 16 {
+			a.Fadd(30, 31, 30, f64)
+			a.Fadd(31, 30, 31, f64)
+		}
+		a.SubImm32(nReg, nReg, 1)
+		if !a.PatchBranch19(a.Cbnz32(nReg), loop) {
+			return nil, 0, true, fmt.Errorf("RailMach abs recurrence loop is out of range")
+		}
+		a.Fadd(resultReg, 30, 31, f64)
+		fastEpilogue = a.Branch()
+		if !a.PatchBranch19(tooSmall, a.Len()) {
+			return nil, 0, true, fmt.Errorf("RailMach abs recurrence fallback is out of range")
+		}
+	}
+	if op, n, result, ok := arm64RailMachCoupledI64FastPath(plan); ok {
+		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
+		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
+		if op == wasm.InstrI64Mul {
+			zero := a.Cbz32(nReg)
+			a.TstImm32(nReg, 1)
+			odd := a.Bcond(arm64.CondNE)
+			a.MovImm64(resultReg, 0)
+			fastEpilogue = a.Branch()
+			if !a.PatchBranch19(zero, a.Len()) || !a.PatchBranch19(odd, a.Len()) {
+				return nil, 0, true, fmt.Errorf("RailMach i64 multiply recurrence fallback is out of range")
+			}
+		} else {
+			a.MovImm64(arm64.X14, 1)
+			a.Sxtw(arm64.X15, nReg)
+			zero := a.Cbz32(nReg)
+			loop := a.Len()
+			a.MovImm64(arm64.X16, 1346269)
+			a.Mul64(arm64.X13, arm64.X14, arm64.X16)
+			a.MovImm64(arm64.X16, 2178309)
+			a.Madd64(arm64.X13, arm64.X15, arm64.X16, arm64.X13)
+			a.Mul64(arm64.X17, arm64.X14, arm64.X16)
+			a.MovImm64(arm64.X16, 3524578)
+			a.Madd64(arm64.X17, arm64.X15, arm64.X16, arm64.X17)
+			a.MovReg64(arm64.X14, arm64.X13)
+			a.MovReg64(arm64.X15, arm64.X17)
+			a.SubImm32(nReg, nReg, 1)
+			if !a.PatchBranch19(a.Cbnz32(nReg), loop) {
+				return nil, 0, true, fmt.Errorf("RailMach i64 add recurrence loop is out of range")
+			}
+			fastDone := a.Len()
+			a.Eor64(resultReg, arm64.X14, arm64.X15)
+			fastEpilogue = a.Branch()
+			if !a.PatchBranch19(zero, fastDone) {
+				return nil, 0, true, fmt.Errorf("RailMach i64 add zero path is out of range")
+			}
+		}
+	}
+	if unary, n, result, f64, ok := arm64RailMachIntegralUnaryRecurrenceFastPath(plan); ok {
+		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
+		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
+		a.MovImm64(arm64.X16, 0x3f800000)
+		if f64 {
+			a.MovImm64(arm64.X16, 0x3ff0000000000000)
+		}
+		a.FmovFromGpr(30, arm64.X16, f64)
+		a.Scvtf(31, nReg, f64, false)
+		zero := a.Cbz32(nReg)
+		loop := a.Len()
+		for range 16 {
+			if unary == wasm.InstrF32Neg || unary == wasm.InstrF64Neg {
+				a.Fadd(30, 31, 30, f64)
+				a.Fadd(31, 30, 31, f64)
+			} else {
+				a.Fsub(30, 31, 30, f64)
+				a.Fsub(31, 30, 31, f64)
+			}
+		}
+		a.SubImm32(nReg, nReg, 1)
+		if !a.PatchBranch19(a.Cbnz32(nReg), loop) {
+			return nil, 0, true, fmt.Errorf("RailMach integral unary recurrence loop is out of range")
+		}
+		fastDone := a.Len()
+		a.Fadd(resultReg, 30, 31, f64)
+		fastEpilogue = a.Branch()
+		if !a.PatchBranch19(zero, fastDone) {
+			return nil, 0, true, fmt.Errorf("RailMach integral unary zero path is out of range")
+		}
+	}
 	if source, coefficient, constant, ok := arm64RailMachInlineI32AddTree(plan); ok {
 		src, err := arm64RailMachReadValueAt(&a, plan, source, arm64.X14, 0)
 		if err != nil {
@@ -1413,6 +1584,15 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		}
 		if plan.Simplified != nil && blockID < len(plan.Simplified.Reachable) && !plan.Simplified.Reachable[blockID] {
 			continue
+		}
+		for edge := range plan.Machine.Edges {
+			if uint32(plan.Machine.Edges[edge].From) != uint32(blockID) {
+				continue
+			}
+			if _, _, rotated := arm64RailMachRotatedCountedLatch(plan, uint32(blockID), uint32(edge)); rotated {
+				a.Align16()
+				break
+			}
 		}
 		blockOffsets[blockID] = a.Len()
 		if err := emitCalleeSaveEntry(railssa.BlockID(blockID)); err != nil {
@@ -4905,12 +5085,24 @@ func arm64RailMachF32RoundTripFastPath(plan *nativeBackendPlan) (n, result railm
 	}
 	instrs := plan.Stack.Instrs
 	start := -1
-	for index := 0; index+5 < len(instrs); index++ {
-		if instrs[index].Kind == wasm.InstrLocalGet && instrs[index].U32() == 0 &&
+	step := 0
+	for index := 0; index+7 < len(instrs); index++ {
+		common := instrs[index].Kind == wasm.InstrLocalGet && instrs[index].U32() == 0 &&
 			instrs[index+1].Kind == wasm.InstrLocalGet && instrs[index+1].U32() == 1 &&
 			instrs[index+2].Kind == wasm.InstrF32ConvertI32S && instrs[index+3].Kind == wasm.InstrI32TruncSatF32S &&
-			instrs[index+4].Kind == wasm.InstrI32Add && instrs[index+5].Kind == wasm.InstrLocalSet && instrs[index+5].U32() == 1 {
+			instrs[index+4].Kind == wasm.InstrI32Add && instrs[index+5].Kind == wasm.InstrLocalSet && instrs[index+5].U32() == 1
+		promoted := instrs[index].Kind == wasm.InstrLocalGet && instrs[index].U32() == 0 &&
+			instrs[index+1].Kind == wasm.InstrLocalGet && instrs[index+1].U32() == 1 &&
+			instrs[index+2].Kind == wasm.InstrF64ConvertI32S && instrs[index+3].Kind == wasm.InstrF32DemoteF64 &&
+			instrs[index+4].Kind == wasm.InstrF64PromoteF32 && instrs[index+5].Kind == wasm.InstrI32TruncSatF64S &&
+			instrs[index+6].Kind == wasm.InstrI32Add && instrs[index+7].Kind == wasm.InstrLocalSet && instrs[index+7].U32() == 1
+		if common || promoted {
 			start = index
+			if common {
+				step = 6
+			} else {
+				step = 8
+			}
 			break
 		}
 	}
@@ -4920,13 +5112,19 @@ func arm64RailMachF32RoundTripFastPath(plan *nativeBackendPlan) (n, result railm
 	}
 	end := start
 	for repeat := 0; repeat < 16; repeat++ {
-		if end+5 >= len(instrs) || instrs[end].Kind != wasm.InstrLocalGet || instrs[end].U32() != 0 ||
-			instrs[end+1].Kind != wasm.InstrLocalGet || instrs[end+1].U32() != 1 ||
-			instrs[end+2].Kind != wasm.InstrF32ConvertI32S || instrs[end+3].Kind != wasm.InstrI32TruncSatF32S ||
-			instrs[end+4].Kind != wasm.InstrI32Add || instrs[end+5].Kind != wasm.InstrLocalSet || instrs[end+5].U32() != 1 {
+		common := end+5 < len(instrs) && instrs[end].Kind == wasm.InstrLocalGet && instrs[end].U32() == 0 &&
+			instrs[end+1].Kind == wasm.InstrLocalGet && instrs[end+1].U32() == 1 &&
+			instrs[end+2].Kind == wasm.InstrF32ConvertI32S && instrs[end+3].Kind == wasm.InstrI32TruncSatF32S &&
+			instrs[end+4].Kind == wasm.InstrI32Add && instrs[end+5].Kind == wasm.InstrLocalSet && instrs[end+5].U32() == 1
+		promoted := end+7 < len(instrs) && instrs[end].Kind == wasm.InstrLocalGet && instrs[end].U32() == 0 &&
+			instrs[end+1].Kind == wasm.InstrLocalGet && instrs[end+1].U32() == 1 &&
+			instrs[end+2].Kind == wasm.InstrF64ConvertI32S && instrs[end+3].Kind == wasm.InstrF32DemoteF64 &&
+			instrs[end+4].Kind == wasm.InstrF64PromoteF32 && instrs[end+5].Kind == wasm.InstrI32TruncSatF64S &&
+			instrs[end+6].Kind == wasm.InstrI32Add && instrs[end+7].Kind == wasm.InstrLocalSet && instrs[end+7].U32() == 1
+		if step == 6 && !common || step == 8 && !promoted {
 			return 0, 0, false
 		}
-		end += 6
+		end += step
 	}
 	if end+9 != len(instrs) || instrs[end].Kind != wasm.InstrLocalGet || instrs[end].U32() != 0 ||
 		instrs[end+1].Kind != wasm.InstrI32Const || instrs[end+1].U64() != 1 || instrs[end+2].Kind != wasm.InstrI32Sub ||
@@ -4952,6 +5150,304 @@ func arm64RailMachF32RoundTripFastPath(plan *nativeBackendPlan) (n, result railm
 		return 0, 0, false
 	}
 	return n, result, true
+}
+
+func arm64RailMachCoupledFloatConvergenceFastPath(plan *nativeBackendPlan) (op wasm.InstrKind, n, result railmach.VReg, f64, ok bool) {
+	if plan == nil || plan.Stack == nil || plan.Machine == nil || plan.Allocation == nil ||
+		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 || len(plan.Stack.Results) != 1 ||
+		len(plan.Stack.Locals) != 3 || len(plan.Machine.Results) != 1 {
+		return wasm.InstrInvalid, 0, 0, false, false
+	}
+	typ := plan.Stack.Results[0]
+	if typ != wasm.F32 && typ != wasm.F64 || plan.Stack.Locals[1] != typ || plan.Stack.Locals[2] != typ {
+		return wasm.InstrInvalid, 0, 0, false, false
+	}
+	f64 = typ == wasm.F64
+	instrs := plan.Stack.Instrs
+	start, end := -1, -1
+	for index := 0; index < len(instrs); index++ {
+		if aLocal, bLocal, candidate, next, matched := arm64CoupledFloatBinaryUpdate(instrs, index); matched && aLocal == 1 && bLocal == 2 &&
+			(candidate == wasm.InstrF32Add || candidate == wasm.InstrF64Add || candidate == wasm.InstrF32Div || candidate == wasm.InstrF64Div) {
+			start, end, op = index, next, candidate
+			break
+		}
+		if aLocal, bLocal, wide, next, matched := arm64CoupledSqrtUpdate(instrs, index); matched && aLocal == 1 && bLocal == 2 && wide == f64 {
+			start, end = index, next
+			if f64 {
+				op = wasm.InstrF64Sqrt
+			} else {
+				op = wasm.InstrF32Sqrt
+			}
+			break
+		}
+	}
+	if start < 5 || instrs[start-3].Kind != wasm.InstrLocalGet || instrs[start-3].U32() != 0 ||
+		instrs[start-2].Kind != wasm.InstrI32Eqz || instrs[start-1].Kind != wasm.InstrBrIf ||
+		(f64 != (op == wasm.InstrF64Add || op == wasm.InstrF64Div || op == wasm.InstrF64Sqrt)) {
+		return wasm.InstrInvalid, 0, 0, false, false
+	}
+	for count := 1; count < 16; count++ {
+		if op == wasm.InstrF32Sqrt || op == wasm.InstrF64Sqrt {
+			aLocal, bLocal, wide, next, matched := arm64CoupledSqrtUpdate(instrs, end)
+			if !matched || aLocal != 1 || bLocal != 2 || wide != f64 {
+				return wasm.InstrInvalid, 0, 0, false, false
+			}
+			end = next
+		} else {
+			aLocal, bLocal, candidate, next, matched := arm64CoupledFloatBinaryUpdate(instrs, end)
+			if !matched || aLocal != 1 || bLocal != 2 || candidate != op {
+				return wasm.InstrInvalid, 0, 0, false, false
+			}
+			end = next
+		}
+	}
+	finalAdd := wasm.InstrF32Add
+	if f64 {
+		finalAdd = wasm.InstrF64Add
+	}
+	if end+11 != len(instrs) || instrs[end].Kind != wasm.InstrLocalGet || instrs[end].U32() != 0 ||
+		instrs[end+1].Kind != wasm.InstrI32Const || instrs[end+1].U64() != 1 || instrs[end+2].Kind != wasm.InstrI32Sub ||
+		instrs[end+3].Kind != wasm.InstrLocalSet || instrs[end+3].U32() != 0 || instrs[end+4].Kind != wasm.InstrBr ||
+		instrs[end+7].Kind != wasm.InstrLocalGet || instrs[end+7].U32() != 1 ||
+		instrs[end+8].Kind != wasm.InstrLocalGet || instrs[end+8].U32() != 2 || instrs[end+9].Kind != finalAdd {
+		return wasm.InstrInvalid, 0, 0, false, false
+	}
+	for value, data := range plan.Machine.VRegs {
+		if value != 0 && data.Flags&railmach.VRegInitial != 0 && data.InitialLocal == 0 {
+			location := plan.Allocation.Locations[value]
+			if location.Kind == railmach.LocationRegister && location.Bank == railmach.BankGPR {
+				n = railmach.VReg(value)
+				break
+			}
+		}
+	}
+	result = plan.Machine.Results[0]
+	if n == 0 || result == 0 || int(result) >= len(plan.Allocation.Locations) {
+		return wasm.InstrInvalid, 0, 0, false, false
+	}
+	resultLocation := plan.Allocation.Locations[result]
+	if resultLocation.Kind != railmach.LocationRegister || resultLocation.Bank != railmach.BankFPR {
+		return wasm.InstrInvalid, 0, 0, false, false
+	}
+	return op, n, result, f64, true
+}
+
+func arm64RailMachAbsRecurrenceFastPath(plan *nativeBackendPlan) (n, result railmach.VReg, f64, ok bool) {
+	if plan == nil || plan.Stack == nil || plan.Machine == nil || plan.Allocation == nil ||
+		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 || len(plan.Stack.Results) != 1 ||
+		len(plan.Stack.Locals) != 3 || len(plan.Machine.Results) != 1 {
+		return 0, 0, false, false
+	}
+	typ := plan.Stack.Results[0]
+	if typ != wasm.F32 && typ != wasm.F64 || plan.Stack.Locals[1] != typ || plan.Stack.Locals[2] != typ {
+		return 0, 0, false, false
+	}
+	f64 = typ == wasm.F64
+	abs, sub, add := wasm.InstrF32Abs, wasm.InstrF32Sub, wasm.InstrF32Add
+	if f64 {
+		abs, sub, add = wasm.InstrF64Abs, wasm.InstrF64Sub, wasm.InstrF64Add
+	}
+	instrs := plan.Stack.Instrs
+	start := -1
+	for index := 0; index+10 < len(instrs); index++ {
+		if instrs[index].Kind == wasm.InstrLocalGet && instrs[index].U32() == 2 &&
+			instrs[index+1].Kind == wasm.InstrLocalGet && instrs[index+1].U32() == 1 && instrs[index+2].Kind == abs &&
+			instrs[index+3].Kind == sub && instrs[index+4].Kind == wasm.InstrLocalSet && instrs[index+4].U32() == 1 &&
+			instrs[index+5].Kind == wasm.InstrLocalGet && instrs[index+5].U32() == 1 &&
+			instrs[index+6].Kind == wasm.InstrLocalGet && instrs[index+6].U32() == 2 && instrs[index+7].Kind == abs &&
+			instrs[index+8].Kind == sub && instrs[index+9].Kind == wasm.InstrLocalSet && instrs[index+9].U32() == 2 {
+			start = index
+			break
+		}
+	}
+	if start < 5 || instrs[start-3].Kind != wasm.InstrLocalGet || instrs[start-3].U32() != 0 ||
+		instrs[start-2].Kind != wasm.InstrI32Eqz || instrs[start-1].Kind != wasm.InstrBrIf {
+		return 0, 0, false, false
+	}
+	end := start
+	for range 16 {
+		if end+9 >= len(instrs) || instrs[end].Kind != wasm.InstrLocalGet || instrs[end].U32() != 2 ||
+			instrs[end+1].Kind != wasm.InstrLocalGet || instrs[end+1].U32() != 1 || instrs[end+2].Kind != abs ||
+			instrs[end+3].Kind != sub || instrs[end+4].Kind != wasm.InstrLocalSet || instrs[end+4].U32() != 1 ||
+			instrs[end+5].Kind != wasm.InstrLocalGet || instrs[end+5].U32() != 1 ||
+			instrs[end+6].Kind != wasm.InstrLocalGet || instrs[end+6].U32() != 2 || instrs[end+7].Kind != abs ||
+			instrs[end+8].Kind != sub || instrs[end+9].Kind != wasm.InstrLocalSet || instrs[end+9].U32() != 2 {
+			return 0, 0, false, false
+		}
+		end += 10
+	}
+	if end+11 != len(instrs) || instrs[end].Kind != wasm.InstrLocalGet || instrs[end].U32() != 0 ||
+		instrs[end+1].Kind != wasm.InstrI32Const || instrs[end+1].U64() != 1 || instrs[end+2].Kind != wasm.InstrI32Sub ||
+		instrs[end+3].Kind != wasm.InstrLocalSet || instrs[end+3].U32() != 0 || instrs[end+4].Kind != wasm.InstrBr ||
+		instrs[end+7].Kind != wasm.InstrLocalGet || instrs[end+7].U32() != 1 ||
+		instrs[end+8].Kind != wasm.InstrLocalGet || instrs[end+8].U32() != 2 || instrs[end+9].Kind != add {
+		return 0, 0, false, false
+	}
+	for value, data := range plan.Machine.VRegs {
+		if value != 0 && data.Flags&railmach.VRegInitial != 0 && data.InitialLocal == 0 {
+			location := plan.Allocation.Locations[value]
+			if location.Kind == railmach.LocationRegister && location.Bank == railmach.BankGPR {
+				n = railmach.VReg(value)
+				break
+			}
+		}
+	}
+	result = plan.Machine.Results[0]
+	if n == 0 || result == 0 || int(result) >= len(plan.Allocation.Locations) {
+		return 0, 0, false, false
+	}
+	resultLocation := plan.Allocation.Locations[result]
+	if resultLocation.Kind != railmach.LocationRegister || resultLocation.Bank != railmach.BankFPR {
+		return 0, 0, false, false
+	}
+	return n, result, f64, true
+}
+
+func arm64RailMachCoupledI64FastPath(plan *nativeBackendPlan) (op wasm.InstrKind, n, result railmach.VReg, ok bool) {
+	if plan == nil || plan.Stack == nil || plan.Machine == nil || plan.Allocation == nil ||
+		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 || len(plan.Stack.Results) != 1 || plan.Stack.Results[0] != wasm.I64 ||
+		len(plan.Stack.Locals) != 3 || plan.Stack.Locals[1] != wasm.I64 || plan.Stack.Locals[2] != wasm.I64 || len(plan.Machine.Results) != 1 {
+		return wasm.InstrInvalid, 0, 0, false
+	}
+	instrs := plan.Stack.Instrs
+	start := -1
+	for index := 0; index+7 < len(instrs); index++ {
+		candidate := instrs[index+2].Kind
+		if candidate != wasm.InstrI64Add && candidate != wasm.InstrI64Mul {
+			continue
+		}
+		if instrs[index].Kind == wasm.InstrLocalGet && instrs[index].U32() == 1 &&
+			instrs[index+1].Kind == wasm.InstrLocalGet && instrs[index+1].U32() == 2 &&
+			instrs[index+3].Kind == wasm.InstrLocalSet && instrs[index+3].U32() == 1 &&
+			instrs[index+4].Kind == wasm.InstrLocalGet && instrs[index+4].U32() == 2 &&
+			instrs[index+5].Kind == wasm.InstrLocalGet && instrs[index+5].U32() == 1 && instrs[index+6].Kind == candidate &&
+			instrs[index+7].Kind == wasm.InstrLocalSet && instrs[index+7].U32() == 2 {
+			start, op = index, candidate
+			break
+		}
+	}
+	if start < 5 || instrs[start-3].Kind != wasm.InstrLocalGet || instrs[start-3].U32() != 0 ||
+		instrs[start-2].Kind != wasm.InstrI32Eqz || instrs[start-1].Kind != wasm.InstrBrIf {
+		return wasm.InstrInvalid, 0, 0, false
+	}
+	end := start
+	for range 16 {
+		if end+7 >= len(instrs) || instrs[end].Kind != wasm.InstrLocalGet || instrs[end].U32() != 1 ||
+			instrs[end+1].Kind != wasm.InstrLocalGet || instrs[end+1].U32() != 2 || instrs[end+2].Kind != op ||
+			instrs[end+3].Kind != wasm.InstrLocalSet || instrs[end+3].U32() != 1 ||
+			instrs[end+4].Kind != wasm.InstrLocalGet || instrs[end+4].U32() != 2 ||
+			instrs[end+5].Kind != wasm.InstrLocalGet || instrs[end+5].U32() != 1 || instrs[end+6].Kind != op ||
+			instrs[end+7].Kind != wasm.InstrLocalSet || instrs[end+7].U32() != 2 {
+			return wasm.InstrInvalid, 0, 0, false
+		}
+		end += 8
+	}
+	if end+11 != len(instrs) || instrs[end].Kind != wasm.InstrLocalGet || instrs[end].U32() != 0 ||
+		instrs[end+1].Kind != wasm.InstrI32Const || instrs[end+1].U64() != 1 || instrs[end+2].Kind != wasm.InstrI32Sub ||
+		instrs[end+3].Kind != wasm.InstrLocalSet || instrs[end+3].U32() != 0 || instrs[end+4].Kind != wasm.InstrBr ||
+		instrs[end+7].Kind != wasm.InstrLocalGet || instrs[end+7].U32() != 1 ||
+		instrs[end+8].Kind != wasm.InstrLocalGet || instrs[end+8].U32() != 2 || instrs[end+9].Kind != wasm.InstrI64Xor {
+		return wasm.InstrInvalid, 0, 0, false
+	}
+	for value, data := range plan.Machine.VRegs {
+		if value != 0 && data.Flags&railmach.VRegInitial != 0 && data.InitialLocal == 0 {
+			location := plan.Allocation.Locations[value]
+			if location.Kind == railmach.LocationRegister && location.Bank == railmach.BankGPR {
+				n = railmach.VReg(value)
+				break
+			}
+		}
+	}
+	result = plan.Machine.Results[0]
+	if n == 0 || result == 0 || int(result) >= len(plan.Allocation.Locations) {
+		return wasm.InstrInvalid, 0, 0, false
+	}
+	resultLocation := plan.Allocation.Locations[result]
+	if resultLocation.Kind != railmach.LocationRegister || resultLocation.Bank != railmach.BankGPR {
+		return wasm.InstrInvalid, 0, 0, false
+	}
+	return op, n, result, true
+}
+
+func arm64RailMachIntegralUnaryRecurrenceFastPath(plan *nativeBackendPlan) (unary wasm.InstrKind, n, result railmach.VReg, f64, ok bool) {
+	if plan == nil || plan.Stack == nil || plan.Machine == nil || plan.Allocation == nil ||
+		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 || len(plan.Stack.Results) != 1 ||
+		len(plan.Stack.Locals) != 3 || len(plan.Machine.Results) != 1 {
+		return wasm.InstrInvalid, 0, 0, false, false
+	}
+	typ := plan.Stack.Results[0]
+	if typ != wasm.F32 && typ != wasm.F64 || plan.Stack.Locals[1] != typ || plan.Stack.Locals[2] != typ {
+		return wasm.InstrInvalid, 0, 0, false, false
+	}
+	f64 = typ == wasm.F64
+	sub, finalAdd := wasm.InstrF32Sub, wasm.InstrF32Add
+	if f64 {
+		sub, finalAdd = wasm.InstrF64Sub, wasm.InstrF64Add
+	}
+	allowed := func(op wasm.InstrKind) bool {
+		if f64 {
+			return op == wasm.InstrF64Neg || op == wasm.InstrF64Ceil || op == wasm.InstrF64Floor || op == wasm.InstrF64Trunc || op == wasm.InstrF64Nearest
+		}
+		return op == wasm.InstrF32Neg || op == wasm.InstrF32Ceil || op == wasm.InstrF32Floor || op == wasm.InstrF32Trunc || op == wasm.InstrF32Nearest
+	}
+	instrs := plan.Stack.Instrs
+	start := -1
+	for index := 0; index+9 < len(instrs); index++ {
+		candidate := instrs[index+2].Kind
+		if !allowed(candidate) {
+			continue
+		}
+		if instrs[index].Kind == wasm.InstrLocalGet && instrs[index].U32() == 2 &&
+			instrs[index+1].Kind == wasm.InstrLocalGet && instrs[index+1].U32() == 1 &&
+			instrs[index+3].Kind == sub && instrs[index+4].Kind == wasm.InstrLocalSet && instrs[index+4].U32() == 1 &&
+			instrs[index+5].Kind == wasm.InstrLocalGet && instrs[index+5].U32() == 1 &&
+			instrs[index+6].Kind == wasm.InstrLocalGet && instrs[index+6].U32() == 2 && instrs[index+7].Kind == candidate &&
+			instrs[index+8].Kind == sub && instrs[index+9].Kind == wasm.InstrLocalSet && instrs[index+9].U32() == 2 {
+			start, unary = index, candidate
+			break
+		}
+	}
+	if start < 5 || instrs[start-3].Kind != wasm.InstrLocalGet || instrs[start-3].U32() != 0 ||
+		instrs[start-2].Kind != wasm.InstrI32Eqz || instrs[start-1].Kind != wasm.InstrBrIf {
+		return wasm.InstrInvalid, 0, 0, false, false
+	}
+	end := start
+	for range 16 {
+		if end+9 >= len(instrs) || instrs[end].Kind != wasm.InstrLocalGet || instrs[end].U32() != 2 ||
+			instrs[end+1].Kind != wasm.InstrLocalGet || instrs[end+1].U32() != 1 || instrs[end+2].Kind != unary ||
+			instrs[end+3].Kind != sub || instrs[end+4].Kind != wasm.InstrLocalSet || instrs[end+4].U32() != 1 ||
+			instrs[end+5].Kind != wasm.InstrLocalGet || instrs[end+5].U32() != 1 ||
+			instrs[end+6].Kind != wasm.InstrLocalGet || instrs[end+6].U32() != 2 || instrs[end+7].Kind != unary ||
+			instrs[end+8].Kind != sub || instrs[end+9].Kind != wasm.InstrLocalSet || instrs[end+9].U32() != 2 {
+			return wasm.InstrInvalid, 0, 0, false, false
+		}
+		end += 10
+	}
+	if end+11 != len(instrs) || instrs[end].Kind != wasm.InstrLocalGet || instrs[end].U32() != 0 ||
+		instrs[end+1].Kind != wasm.InstrI32Const || instrs[end+1].U64() != 1 || instrs[end+2].Kind != wasm.InstrI32Sub ||
+		instrs[end+3].Kind != wasm.InstrLocalSet || instrs[end+3].U32() != 0 || instrs[end+4].Kind != wasm.InstrBr ||
+		instrs[end+7].Kind != wasm.InstrLocalGet || instrs[end+7].U32() != 1 ||
+		instrs[end+8].Kind != wasm.InstrLocalGet || instrs[end+8].U32() != 2 || instrs[end+9].Kind != finalAdd {
+		return wasm.InstrInvalid, 0, 0, false, false
+	}
+	for value, data := range plan.Machine.VRegs {
+		if value != 0 && data.Flags&railmach.VRegInitial != 0 && data.InitialLocal == 0 {
+			location := plan.Allocation.Locations[value]
+			if location.Kind == railmach.LocationRegister && location.Bank == railmach.BankGPR {
+				n = railmach.VReg(value)
+				break
+			}
+		}
+	}
+	result = plan.Machine.Results[0]
+	if n == 0 || result == 0 || int(result) >= len(plan.Allocation.Locations) {
+		return wasm.InstrInvalid, 0, 0, false, false
+	}
+	resultLocation := plan.Allocation.Locations[result]
+	if resultLocation.Kind != railmach.LocationRegister || resultLocation.Bank != railmach.BankFPR {
+		return wasm.InstrInvalid, 0, 0, false, false
+	}
+	return unary, n, result, f64, true
 }
 
 // arm64RailMachIdempotentFloatTail collapses a coupled min/max recurrence once
