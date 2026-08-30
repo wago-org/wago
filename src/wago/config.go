@@ -233,21 +233,24 @@ func (m BoundsCheckMode) String() string {
 // RuntimeConfig configures compilation and execution. It is immutable — every
 // WithXxx returns a copy, so a base config can be shared and specialised safely.
 type RuntimeConfig struct {
-	features             CoreFeatures
-	optimizations        map[string]bool
-	optimizationSnapshot railshotOptimizationSnapshot
-	optimizationDeltas   map[string]bool
-	trustedOptimizations bool
-	maxMemoryPages       uint32
-	maxFunctionLocals    uint32 // total function parameters plus declared locals
-	maxMemoriesPerModule uint32
-	boundsChecks         BoundsCheckMode
-	noDeferBounds        bool   // disable skipping of provably-redundant bounds checks (default: enabled)
-	functionWorkers      int    // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
-	nativeStackBytes     uint64 // per-Engine foreign execution stack capacity
-	gcCodeTelemetry      bool   // collect code-neutral per-family WasmGC native byte attribution
-	independentInstances bool   // allow unrelated instances to execute native code concurrently
-	instanceLimits       *runtimeInstanceLimits
+	features                 CoreFeatures
+	optimizations            map[string]bool
+	optimizationSnapshot     railshotOptimizationSnapshot
+	optimizationDeltas       map[string]bool
+	trustedOptimizations     bool
+	maxMemoryPages           uint32
+	maxFunctionLocals        uint32 // total function parameters plus declared locals
+	maxMemoriesPerModule     uint32
+	maxInstanceMetadataBytes uint64
+	maxModuleBytes           uint64
+	maxNativeCodeBytes       uint64
+	boundsChecks             BoundsCheckMode
+	noDeferBounds            bool   // disable skipping of provably-redundant bounds checks (default: enabled)
+	functionWorkers          int    // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
+	nativeStackBytes         uint64 // per-Engine foreign execution stack capacity
+	gcCodeTelemetry          bool   // collect code-neutral per-family WasmGC native byte attribution
+	independentInstances     bool   // allow unrelated instances to execute native code concurrently
+	instanceLimits           *runtimeInstanceLimits
 }
 
 type runtimeInstanceLimits struct {
@@ -256,7 +259,9 @@ type runtimeInstanceLimits struct {
 	maxNativeMemoryMappings uint32
 }
 
-const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
+// A zero memory-page limit means no additional RuntimeConfig quota. Declared
+// Wasm limits and platform representation checks still apply.
+const defaultMaxMemoryPages = 0
 
 // Native execution stack capacities are bounded so one instance cannot retain
 // unbounded off-heap virtual address space. The minimum preserves the fixed
@@ -460,10 +465,36 @@ func (c *RuntimeConfig) WithOptimizations(values map[string]bool) *RuntimeConfig
 	return &n
 }
 
-// WithMemoryLimitPages caps the maximum linear-memory size in 64 KiB pages.
+// WithMemoryLimitPages caps each linear memory's live size in 64 KiB pages.
+// Zero removes this additional runtime quota. The quota applies at instance
+// creation and to memory.grow, including imported and indexed memories.
 func (c *RuntimeConfig) WithMemoryLimitPages(pages uint32) *RuntimeConfig {
 	n := *c
 	n.maxMemoryPages = pages
+	return &n
+}
+
+// WithMaxInstanceMetadataBytes caps the validated off-heap metadata allocated
+// for one instance. Zero leaves this resource unbounded.
+func (c *RuntimeConfig) WithMaxInstanceMetadataBytes(bytes uint64) *RuntimeConfig {
+	n := *c
+	n.maxInstanceMetadataBytes = bytes
+	return &n
+}
+
+// WithMaxModuleBytes caps input Wasm bytes accepted by compilation. Zero is
+// unbounded. This is a cheap front-door compile resource quota.
+func (c *RuntimeConfig) WithMaxModuleBytes(bytes uint64) *RuntimeConfig {
+	n := *c
+	n.maxModuleBytes = bytes
+	return &n
+}
+
+// WithMaxNativeCodeBytes caps generated native code bytes for one module. Zero
+// is unbounded. Runtime.Module rechecks decoded artifacts against this quota.
+func (c *RuntimeConfig) WithMaxNativeCodeBytes(bytes uint64) *RuntimeConfig {
+	n := *c
+	n.maxNativeCodeBytes = bytes
 	return &n
 }
 
@@ -589,8 +620,18 @@ func (c *RuntimeConfig) BoundsChecks() BoundsCheckMode { return c.boundsChecks }
 // is enabled.
 func (c *RuntimeConfig) DeferBoundsChecks() bool { return !c.noDeferBounds }
 
-// MemoryLimitPages reports the configured maximum linear-memory size in pages.
+// MemoryLimitPages reports the per-memory live-page quota. Zero is unbounded.
 func (c *RuntimeConfig) MemoryLimitPages() uint32 { return c.maxMemoryPages }
+
+// MaxInstanceMetadataBytes reports the per-instance metadata-byte quota. Zero
+// is unbounded.
+func (c *RuntimeConfig) MaxInstanceMetadataBytes() uint64 { return c.maxInstanceMetadataBytes }
+
+// MaxModuleBytes reports the compile input-byte quota. Zero is unbounded.
+func (c *RuntimeConfig) MaxModuleBytes() uint64 { return c.maxModuleBytes }
+
+// MaxNativeCodeBytes reports the generated native-code quota. Zero is unbounded.
+func (c *RuntimeConfig) MaxNativeCodeBytes() uint64 { return c.maxNativeCodeBytes }
 
 // MaxFunctionLocals reports the configured combined parameter and declared-
 // local ceiling for one function.
@@ -638,8 +679,8 @@ func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
 }
 
 func (c *RuntimeConfig) String() string {
-	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, maxMemoriesPerModule: %d, functionWorkers: %d, nativeStackBytes: %d, independentInstances: %t}",
-		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.maxMemoriesPerModule, c.functionWorkers, c.nativeStackBytes, c.independentInstances)
+	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, maxMemoriesPerModule: %d, maxInstanceMetadataBytes: %d, maxModuleBytes: %d, maxNativeCodeBytes: %d, functionWorkers: %d, nativeStackBytes: %d, independentInstances: %t}",
+		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.maxMemoriesPerModule, c.maxInstanceMetadataBytes, c.maxModuleBytes, c.maxNativeCodeBytes, c.functionWorkers, c.nativeStackBytes, c.independentInstances)
 }
 
 // SupportedFeatures reports the WebAssembly feature set this wago build can

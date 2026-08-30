@@ -1367,9 +1367,17 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 	}
 	a.SubImm64(X10, linMemReg, offCustomCtx)
 	a.Load64(X10, X10, 0) // X10 = sync host-call control frame
+	wide := paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots
+	argBase := X10
+	argOffset := uint32(hcArgs)
+	if wide {
+		argBase = X11
+		argOffset = 0
+		a.AddImm64(X11, X10, uint32(hcWideBase+hcWideArgs))
+	}
 	for i := 0; i < paramSlots; i++ {
 		a.Load64(X9, X0, uint32(i*8))
-		a.Store64(X9, X10, uint32(hcArgs+i*8))
+		a.Store64(X9, argBase, argOffset+uint32(i*8))
 	}
 	a.MovImm64(X16, uint64(uint32(importIdx)))
 	a.Store32(X16, X10, hcImportIdx)
@@ -1385,8 +1393,17 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 	a.SubImm64(X10, linMemReg, offCustomCtx)
 	a.Load64(X10, X10, 0)
 	a.Load64(X3, SP, 8) // reload the wrapper results pointer from the saved slot
+	resultBase := X10
+	resultOffset := uint32(hcResults)
+	if wide {
+		resultBase = X11
+		resultOffset = 0
+		a.Load32(X11, X10, uint32(hcWideBase+4))
+		a.AddShifted(X11, X10, X11, 3, false)
+		a.AddImm64(X11, X11, uint32(hcWideBase+hcWideArgs))
+	}
 	for i := 0; i < resultSlots; i++ {
-		a.Load64(X9, X10, uint32(hcResults+i*8))
+		a.Load64(X9, resultBase, resultOffset+uint32(i*8))
 		a.Store64(X9, X3, uint32(i*8))
 	}
 	a.Load64(LR, SP, 16)
@@ -1659,7 +1676,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		return nil, false
 	}
 	f.materializeGCFrameLocalsAt(siteIndex, true)
-	offsets := make([]uint32, 0, min(len(plan.LocalOffsets), shared.GCFrameRootLimit))
+	offsets := make([]uint32, 0, len(plan.LocalOffsets)+len(plan.FixedOffsets))
 	if !plan.VisitLiveLocals(siteIndex, true, func(root int) {
 		offsets = append(offsets, plan.LocalOffsets[root])
 	}) {
@@ -1681,9 +1698,6 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	}
 	offsets = append(offsets, plan.FixedOffsets...)
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	if len(offsets) > shared.GCFrameRootLimit {
-		plan.Exact = false
-	}
 	return offsets, true
 }
 

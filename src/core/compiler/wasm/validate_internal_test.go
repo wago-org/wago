@@ -64,11 +64,14 @@ func TestValidatorCoverageCoreOpcodeFamilies(t *testing.T) {
 }
 
 func TestValidateFunctionLocalCountDefaultAndCustomLimits(t *testing.T) {
+	const aboveOldDefault = 4097
 	m := modWithFunc(nil, nil)
-	m.Code[0].Locals = Locals{Runs: []LocalRun{{Count: DefaultMaxFunctionLocals + 1, Type: V128}}}
-	expectValidateErr(t, m, ErrInvalidLimitRange)
+	m.Code[0].Locals = Locals{Runs: []LocalRun{{Count: aboveOldDefault, Type: I32}}}
+	if err := ValidateModule(m); err != nil {
+		t.Fatalf("AST function above the old 4096-local limit: %v", err)
+	}
 
-	localRun := append(u32(DefaultMaxFunctionLocals+1), byte(0x7f))
+	localRun := append(u32(aboveOldDefault), byte(0x7f))
 	body := append([]byte{0x01}, localRun...)
 	body = append(body, 0x0b)
 	code := append(u32(uint32(len(body))), body...)
@@ -77,8 +80,12 @@ func TestValidateFunctionLocalCountDefaultAndCustomLimits(t *testing.T) {
 		section(secFunction, 0x01, 0x00),
 		section(secCode, append([]byte{0x01}, code...)...),
 	)
-	err := ValidateByteBackedModule(data)
-	expectValidationCode(t, err, ErrInvalidLimitRange)
+	if err := ValidateByteBackedModule(data); err != nil {
+		t.Fatalf("byte-backed function above the old 4096-local limit: %v", err)
+	}
+	limits := ValidationLimits{MaxFunctionLocals: 4096}
+	expectValidationCode(t, ValidateModuleWithConfig(m, ValidationFeatures{}, 1, limits), ErrInvalidLimitRange)
+	expectValidationCode(t, ValidateByteBackedModuleWithConfig(data, ValidationFeatures{}, 1, limits), ErrInvalidLimitRange)
 
 	for _, count := range []uint32{DefaultMaxFunctionLocals, MaximumFunctionLocals} {
 		limits := ValidationLimits{MaxFunctionLocals: count}

@@ -1027,10 +1027,13 @@ func TestStagedMultiMemoryNativeContextProductAndGates(t *testing.T) {
 
 func TestStagedMultiMemoryNativeContextAccounting(t *testing.T) {
 	if runtime.InstanceContextBytes != 112 {
-		t.Fatalf("native instance context = %d bytes, want 112", runtime.InstanceContextBytes)
+		t.Fatalf("native instance context = %d bytes, want restored hot-path size 112", runtime.InstanceContextBytes)
 	}
 	if abi.BasedataSize != 288 {
-		t.Fatalf("basedata = %d bytes, want 288", abi.BasedataSize)
+		t.Fatalf("basedata = %d bytes, want restored hot-path size 288", abi.BasedataSize)
+	}
+	if abi.MemoryDirEntryBytes != 24 || abi.MemoryDirPolicyMaxPagesOffset != 20 {
+		t.Fatalf("memory policy directory = %d-byte entries at offset %d, want 24 and 20", abi.MemoryDirEntryBytes, abi.MemoryDirPolicyMaxPagesOffset)
 	}
 }
 

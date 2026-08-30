@@ -40,8 +40,12 @@ fixed-order configuration values:
 - target GOOS and GOARCH;
 - accepted Core feature bits;
 - bounds-check and deferred-bounds policy;
-- maximum memory pages; and
+- the function-local and memory-count compile admission settings; and
 - the ordered compiler-optimization bit set.
+
+The live-memory page quota and instance-metadata quota are runtime-only. They do
+not change generated code and are rechecked when a cached artifact is bound and
+instantiated, so they are not part of artifact identity.
 
 Function-worker policy is intentionally excluded: it controls only bounded
 compiler scheduling, while validation order, generated native code, and

@@ -439,7 +439,7 @@ func TestHostImportThunkGeneratedForDeclarativeRefFuncOnly(t *testing.T) {
 }
 
 func TestMissingSyncHostDispatchErrors(t *testing.T) {
-	in := &Instance{syncHosts: []HostFunc{nil}}
+	in := &Instance{syncHosts: []syncHostBinding{{}}}
 	in.hostCall = in.newHostDispatch()
 	defer func() {
 		if r := recover(); r == nil {

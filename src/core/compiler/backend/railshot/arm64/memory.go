@@ -40,7 +40,7 @@ const (
 const (
 	bdCurPages  = 4                                // u32: current size in 64 KiB pages
 	bdCurBytes  = abi.ActualLinMemByteSize64Offset // u64: bounds-check limit
-	bdMaxPages  = 12                               // u32: grow ceiling in pages
+	bdMaxPages  = 12                               // u32: declared/runtime grow ceiling
 	wasmPageLog = 16                               // log2(65536)
 )
 
@@ -1446,6 +1446,21 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.ld32(mx, base, -int32(bdMaxPages))
 	f.cmpRR(nw, mx, false)
 	failMax := f.a.Bcond(condA)
+	noPolicyDir := -1
+	if memoryIndex == 0 {
+		dir = f.allocReg(avoid.add(nw).add(mx))
+		f.ld64(dir, linMemReg, -int32(offMemoryDirPtr))
+		noPolicyDir = f.zeroBranch(dir, true, true)
+	}
+	f.ld32(mx, dir, entry+abi.MemoryDirPolicyMaxPagesOffset)
+	noPolicy := f.zeroBranch(mx, false, true)
+	f.cmpRR(nw, mx, false)
+	failPolicy := f.a.Bcond(condA)
+	policyDone := f.a.Len()
+	if noPolicyDir >= 0 {
+		f.a.PatchBranch19(noPolicyDir, policyDone)
+	}
+	f.a.PatchBranch19(noPolicy, policyDone)
 	f.st32(base, -int32(bdCurPages), nw)
 	f.a.MovReg32(mx, nw)
 	f.shiftImm(shLSL, mx, wasmPageLog, true)
@@ -1454,7 +1469,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.a.Store64(mx, cacheAddr, 0)
 	f.release(cacheAddr)
 	f.st32(base, -8, mx) // legacy u32 cache; wraps only at exactly 4 GiB
-	if dir != regNone {
+	if memoryIndex != 0 {
 		f.st64(dir, entry+abi.MemoryDirCurrentBytesOffset, mx)
 		f.st32(dir, entry+abi.MemoryDirCurrentPagesOffset, nw)
 	}
@@ -1464,6 +1479,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	}
 	f.a.PatchBranch19(failOverflow, f.a.Len())
 	f.a.PatchBranch19(failMax, f.a.Len())
+	f.a.PatchBranch19(failPolicy, f.a.Len())
 	if memory64 {
 		f.a.MovImm64(res, ^uint64(0))
 	} else {
@@ -1477,8 +1493,10 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.release(delta)
 	f.release(nw)
 	f.release(mx)
-	if dir != regNone {
+	if memoryIndex != 0 {
 		f.release(base)
+	}
+	if dir != regNone {
 		f.release(dir)
 	}
 	if memory64 {

@@ -28,14 +28,10 @@ const (
 	GCSafepointIDShift = GCHelperIDBits
 	GCSafepointIDMax   = uint32(1<<(30-GCSafepointIDShift)) - 1
 
-	// GCFrameRootLimit bounds simultaneously live exact roots in one native frame. The compiler keeps
-	// a one-word fast path through 64 roots, a two-word path through 128 roots,
-	// and uses one flat word arena for larger masks up to this limit.
-	GCFrameRootLimit = 1024
-
 	// GCFrameTrackedLocalLimit is the maximum configured parameter-plus-local
-	// population whose liveness may be tracked. Site maps remain bounded by
-	// GCFrameRootLimit after dead-at-all-sites locals are removed.
+	// population whose liveness may be tracked. Final exact root vectors are
+	// variable-sized and remain bounded by the independently validated native
+	// frame size and serialized metadata length.
 	GCFrameTrackedLocalLimit = 1<<16 - 1
 )
 

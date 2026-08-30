@@ -2,13 +2,54 @@ package runtime
 
 import "fmt"
 
-type resourceLimitSentinel string
+type limitClassSentinel string
 
-func (e resourceLimitSentinel) Error() string { return string(e) }
+func (e limitClassSentinel) Error() string { return string(e) }
 
-// ErrResourceLimit identifies a runtime resource limit. Use errors.As with
-// ResourceLimitError to get the resource name and the limit values.
-const ErrResourceLimit = resourceLimitSentinel("wago: resource limit exceeded")
+const (
+	// ErrResourceLimit identifies a real finite resource or configured quota.
+	ErrResourceLimit = limitClassSentinel("wago: resource limit exceeded")
+	// ErrUnsupported identifies valid WebAssembly whose feature or shape Wago
+	// does not implement.
+	ErrUnsupported = limitClassSentinel("wago: unsupported feature or shape")
+	// ErrImplementationLimit identifies a temporary internal representation
+	// limit. It is not a host security policy or resource quota.
+	ErrImplementationLimit = limitClassSentinel("wago: implementation limit exceeded")
+)
+
+// ImplementationLimitError reports a valid operation that cannot be represented
+// by the current implementation. Resource telemetry must not count this error.
+type ImplementationLimitError struct {
+	Feature string
+	Shape   string
+	Limit   uint64
+	Cause   error
+}
+
+func (e *ImplementationLimitError) Error() string {
+	if e == nil {
+		return ErrImplementationLimit.Error()
+	}
+	feature := e.Feature
+	if feature == "" {
+		feature = "operation"
+	}
+	message := fmt.Sprintf("wago: %s exceeds an implementation limit", feature)
+	if e.Shape != "" {
+		message += ": " + e.Shape
+	}
+	if e.Limit != 0 {
+		message += fmt.Sprintf(" (limit %d)", e.Limit)
+	}
+	return message
+}
+
+func (e *ImplementationLimitError) Unwrap() []error {
+	if e != nil && e.Cause != nil {
+		return []error{ErrImplementationLimit, e.Cause}
+	}
+	return []error{ErrImplementationLimit}
+}
 
 // ResourceLimitError reports one resource request that a configured or fixed
 // limit rejected.

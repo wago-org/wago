@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"reflect"
 	goruntime "runtime"
-	"strings"
 	"testing"
 	"unsafe"
 
@@ -758,6 +757,32 @@ func gcFrameRootLimitModule(count uint32) []byte {
 	)
 }
 
+func gcManyLiveObjectsFrameRootModule(count uint32) []byte {
+	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
+	locals := append([]byte{0x01}, wasmtest.ULEB(count)...)
+	locals = append(locals, 0x63, 0x00)
+	body := append([]byte{}, locals...)
+	for i := uint32(0); i < count; i++ {
+		body = append(body, 0x41)
+		body = append(body, wasmtest.SLEB32(int32(i))...)
+		body = append(body, 0xfb, 0x00, 0x00, 0x21)
+		body = append(body, wasmtest.ULEB(i)...)
+	}
+	body = append(body, 0xfb, 0x01, 0x00, 0x1a) // collecting site with every local live
+	for i := uint32(0); i < count; i++ {
+		body = append(body, 0x20)
+		body = append(body, wasmtest.ULEB(i)...)
+		body = append(body, 0xfb, 0x02, 0x00, 0x00, 0x1a)
+	}
+	body = append(body, 0x41, 0x07, 0x0b)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(structType, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
 func gcSparseLiveFrameRootModule(count uint32) []byte {
 	structType := []byte{0x5f, 0x01, 0x7f, 0x01}
 	locals := append([]byte{0x01}, wasmtest.ULEB(count)...)
@@ -1032,7 +1057,7 @@ func TestGCNativeRootAdmissionIsPerFunction(t *testing.T) {
 	if !hostSupportsSIMD() {
 		t.Skip("host SIMD unavailable")
 	}
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcPerFunctionFrameRootModule(shared.GCFrameRootLimit+1))
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcPerFunctionFrameRootModule(1025))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1054,18 +1079,43 @@ func TestGCNativeRootAdmissionIsPerFunction(t *testing.T) {
 	}
 }
 
-func TestGCNativeRootAdmissionDiagnostic(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFrameRootLimitModule(shared.GCFrameRootLimit+1))
+func TestGCNativeRootAdmissionAcceptsMoreThan1024LiveRoots(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcFrameRootLimitModule(1025))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
 	status := compiled.GCNativeRootAdmission()
-	if !status.Required || status.Exact || !strings.Contains(status.Reason, "exceeds 1024 simultaneously live collector roots") {
-		t.Fatalf("oversized root admission = %+v", status)
+	if !status.Required || !status.Exact || status.MaximumRoots != 1025 {
+		t.Fatalf("wide root admission = %+v", status)
 	}
-	if compiled.genericGCFrameRoots() != nil {
-		t.Fatal("oversized root module retained exact root maps")
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil || len(plan.safepoints) == 0 || len(plan.safepoints[0].offsets) != 1025 {
+		t.Fatalf("wide root map = %+v", plan)
+	}
+}
+
+func TestGCNativeFrameKeepsMoreThan1024LiveObjects(t *testing.T) {
+	if !hostSupportsSIMD() {
+		t.Skip("host SIMD unavailable")
+	}
+	const roots = 1025
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcManyLiveObjectsFrameRootModule(roots))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	status := compiled.GCNativeRootAdmission()
+	if !status.Exact || status.MaximumRoots < roots {
+		t.Fatalf("wide live-object root admission = %+v", status)
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{GC: GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 128 << 10, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if got := invokeOne(t, in, "run"); got != 7 {
+		t.Fatalf("wide live-object collection result = %d, want 7", got)
 	}
 }
 
@@ -1095,7 +1145,7 @@ func TestGCNativeRootAdmissionCompactsDeadDeclaredLocals(t *testing.T) {
 }
 
 func TestGCNativeRootAdmissionAllowsWideDisjointLiveUnion(t *testing.T) {
-	const declaredRoots = shared.GCFrameRootLimit + 1
+	const declaredRoots = 1025
 	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3), gcDisjointLiveFrameRootModule(declaredRoots))
 	if err != nil {
 		t.Fatal(err)
@@ -1285,9 +1335,8 @@ func TestGCFrameRootCodecRejectsMalformedMetadata(t *testing.T) {
 		{name: "zero safepoint", module: gcSingleFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.safepoints[0].id = 0 }},
 		{name: "duplicate safepoint", module: gcSingleFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.safepoints[1].id = root.safepoints[0].id }},
 		{name: "unaligned root", module: gcSingleFrameRootModule(), mutate: func(root *compiledGCFrameRoots) { root.safepoints[1].offsets[0]++ }},
-		{name: "oversized root vector", module: gcFrameRootLimitModule(64), mutate: func(root *compiledGCFrameRoots) {
-			root.safepoints[0].frameBytes = shared.AMD64FrameHeaderBytes + (shared.GCFrameRootLimit+1)*8
-			root.safepoints[0].offsets = make([]uint32, shared.GCFrameRootLimit+1)
+		{name: "root vector exceeds frame", module: gcFrameRootLimitModule(64), mutate: func(root *compiledGCFrameRoots) {
+			root.safepoints[0].offsets = make([]uint32, 1025)
 			for i := range root.safepoints[0].offsets {
 				root.safepoints[0].offsets[i] = shared.AMD64FrameHeaderBytes + uint32(i*8)
 			}

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -1213,7 +1214,7 @@ func TestStagedMemory64ImportLimitCompatibilityAndRollback(t *testing.T) {
 
 func TestStagedMemory64AdmissionGatesAndMemory32CodeStability(t *testing.T) {
 	unallocatable := append([]byte{0x04}, uleb64(65536)...)
-	if _, err := compileStagedMemory64(wasmtest.Module(wasmtest.Section(5, wasmtest.Vec(unallocatable)))); err == nil || !strings.Contains(err.Error(), "minimum 65536 pages exceeds 65535") {
+	if _, err := compileStagedMemory64(wasmtest.Module(wasmtest.Section(5, wasmtest.Vec(unallocatable)))); err == nil || !strings.Contains(err.Error(), "implementation limit") || !errors.Is(err, ErrImplementationLimit) || errors.Is(err, ErrPermissionDenied) {
 		t.Fatalf("unallocatable memory64 minimum error = %v", err)
 	}
 	shared := append([]byte{0x07}, uleb64(1)...)

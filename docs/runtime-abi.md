@@ -20,6 +20,14 @@ updating the guard tests. The current basedata size is 288 bytes. The fixed
 addressable native GC metadata pointer is at `[linMem-280]`, leaving the bank
 unchanged.
 
+The instance memory directory keeps its 24-byte entry layout. Each entry stores
+base and live-size caches at bytes 0 through 19 and the optional runtime page
+quota in the existing four-byte tail at byte 20. A single-memory instance gets a
+cold directory entry only when a runtime quota needs it; `memory.grow` treats a
+nil directory or a zero quota as unbounded. The already-captured memory-directory
+pointer carries this per-instance policy across context switches, so basedata
+stays 288 bytes and `runtime.InstanceContext` stays 112 bytes.
+
 On supported Linux hosts, each mapped linear-memory base is in the host interrupt
 registry. Close removes the base before it unmaps the memory.
 Close waits until active signal readers leave the registry.
@@ -158,8 +166,8 @@ the exact type index against the target's declared subtype set. A same-Runtime
 foreign descriptor takes the cold synchronous fallback, which resolves its canonical
 owner and compares the full persisted structural type metadata. This keeps the local
 Dewdrop closure path collision-free and native while preserving cross-instance
-semantics without increasing the 40-byte descriptor or the strict 1 MiB instance-arena
-ceiling. The descriptor path is selected only when the indexed cast/test target is a
+semantics without increasing the 40-byte descriptor. The former 1 MiB instance-arena
+value is now only the small-arena cache threshold. The descriptor path is selected only when the indexed cast/test target is a
 function type; eqref-transported GC objects still use collector subtype metadata, so a
 concrete closure struct can cast to its declared non-final closure-base supertype.
 Abstract `eq`, `i31`, `struct`, and `array` null constant expressions remain ordinary
@@ -209,6 +217,16 @@ Modules importing a funcref table remain
 synchronous because the table may be mutated to contain a host descriptor. The
 old async log format remains an internal compatibility path but is not selected
 for these compositions.
+
+Each ordinary synchronous import has one immutable 24-byte binding. It stores
+the host function, exact type-descriptor pointer, import index, and a scalar or
+reference-bearing class. Scalar dispatch uses one predictable class branch and
+does not construct GC token scratch. GC invocation suspension uses an explicit
+stack value rather than an escaping resume closure. The existing `HostFunc` API
+still allocates one 112-byte callback-scoped `HostModule`; that immutable value
+is what keeps retained callers stale after the callback ends. A stored dynamic
+Go callback was measured slightly slower than the predictable class branch and
+is not used.
 
 The synchronous parked-Go transition restores callee-saved GPRs, but System V XMM
 registers are caller-saved. Before any synchronous host or internal GC helper
@@ -1020,8 +1038,8 @@ starts remain closed because their host ownership graph is unknown. Admission is
 per function where provably safe: a function that cannot allocate or call may
 omit a frame plan without disabling exact collecting functions in the same
 module. Any collecting function with an unsupported call ABI, ownership shape,
-frame layout, malformed liveness graph, more than 1,024 roots, or incomplete
-backend map keeps the module fail-closed in bounded collection-disabled
+frame layout, malformed liveness graph, or incomplete backend map keeps the module
+fail-closed in bounded collection-disabled
 Throughput mode. `Compiled.GCNativeRootAdmission` exposes the decision and its
 specific reason without exposing executable pointers or live runtime state.
 

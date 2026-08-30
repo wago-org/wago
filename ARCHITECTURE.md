@@ -13,7 +13,7 @@ on amd64 and arm64. Linux and Darwin/arm64 additionally support signal-backed
 guard-page bounds checks; all six targets support explicit bounds checks and
 cooperative cancellation safepoints.
 
-<!-- artifact:codec-version 1 -->
+<!-- artifact:codec-version 2 -->
 
 Compiled artifact version 1 is a strict ordered section stream: a fixed header
 and section count followed by length-delimited native-code and metadata sections.
@@ -75,7 +75,7 @@ callsite; amd64 adds hidden operand spill offsets, compact safepoint IDs, frame
 size, adapter return, and recursive call return-PC maps. The synchronous helper
 control frame publishes parked RSP, and Go exposes validated off-heap slots from
 each walked frame directly as mutable collector roots. Throughput/Tiny stress
-collection and the root walker remain zero-allocation after warm-up. Codec version 1
+collection and the root walker remain zero-allocation after warm-up. Codec version 2
 persists and strictly revalidates the map, including dynamic-import stack
 adjustments. Direct tail calls discard their caller frame. Numeric host callbacks
 use a bounded suspended-activation stack plus separate nested foreign stacks, and
@@ -105,11 +105,11 @@ and foreign tokens reject. Explicit cross-Runtime transfer uses
 `target.CloneGCRefFrom(source, ref)`: a bounded stable-ID graph clone maps
 structurally equivalent target types, preserves cycles/internal sharing, assigns
 new target identity, and rejects non-null opaque store-owned payloads. Direct
-cross-Runtime compact-handle sharing remains impossible. Codec version 1 persists helper
+cross-Runtime compact-handle sharing remains impossible. Codec version 2 persists helper
 admission, the required native-GC ABI version, and the 16-byte `v128` storage
 contract, but never compact handles. AMD64 final scalar struct/array accesses and initialized final-struct
 allocation use collector native ABI version 1. Artifact loading validates the Go/native
-layout and codec version 1 records the required ABI; instantiation validates the immutable
+layout and codec version 2 records the required ABI; instantiation validates the immutable
 instance view, local canonical-type map, collector identity, collector version, and
 handle stride before publishing basedata offset 280. Native accesses then trust those
 immutable facts while reloading and validating mutable handle ranges/liveness, heap

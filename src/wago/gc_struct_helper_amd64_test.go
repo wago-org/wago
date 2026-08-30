@@ -320,8 +320,8 @@ func TestStagedGCStructHelperFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}); got != 64 {
 		t.Fatalf("compiledCodeCache size = %d, want 64", got)
 	}
-	if got := unsafe.Sizeof(gcPublicState{}); got != 3888 {
-		t.Fatalf("gcPublicState size = %d, want 3888", got)
+	if got := unsafe.Sizeof(gcPublicState{}); got != 3984 {
+		t.Fatalf("gcPublicState size = %d, want 3984 with inline fast paths and dynamic overflow slices", got)
 	}
 	if got := unsafe.Sizeof(gcRefTokenEntry{}); got != 48 {
 		t.Fatalf("gcRefTokenEntry size = %d, want 48", got)

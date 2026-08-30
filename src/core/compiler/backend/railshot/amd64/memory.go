@@ -40,7 +40,7 @@ const (
 const (
 	bdCurPages  = 4                                // u32: current size in 64 KiB pages
 	bdCurBytes  = abi.ActualLinMemByteSize64Offset // u64: bounds-check limit
-	bdMaxPages  = 12                               // u32: grow ceiling in pages
+	bdMaxPages  = 12                               // u32: declared/runtime grow ceiling
 	wasmPageLog = 16                               // log2(65536)
 )
 
@@ -98,7 +98,7 @@ const offTrapCellPtr = abi.TrapCellPtrOffset
 const offPassiveDataPtr = abi.PassiveDataPtrOffset
 
 // offMemoryDirPtr points at abi.MemoryDirEntryBytes indexed-memory entries.
-// Memory 0 never uses it.
+// Memory 0 uses only the optional quota field on its memory.grow cold path.
 const offMemoryDirPtr = abi.MemoryDirPtrOffset
 
 // emitTrap writes the logical Wasm PC from RAX and the function index argument,
@@ -1439,7 +1439,24 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	mx := f.allocReg(avoid.add(nw))
 	f.a.Load32(mx, base, -bdMaxPages)
 	f.a.Cmp32(nw, mx)
-	failMax := f.a.JccPlaceholder(condA) // new > max
+	failMax := f.a.JccPlaceholder(condA) // new > declared/runtime max
+	noPolicyDir := -1
+	if memoryIndex == 0 {
+		dir = f.allocReg(avoid.add(nw).add(mx))
+		f.a.Load64(dir, RBX, -offMemoryDirPtr)
+		f.a.TestSelf(dir, true)
+		noPolicyDir = f.a.JccPlaceholder(condE)
+	}
+	f.a.Load32(mx, dir, entry+abi.MemoryDirPolicyMaxPagesOffset)
+	f.a.TestSelf(mx, false)
+	noPolicy := f.a.JccPlaceholder(condE)
+	f.a.Cmp32(nw, mx)
+	failPolicy := f.a.JccPlaceholder(condA)
+	policyDone := f.a.Len()
+	if noPolicyDir >= 0 {
+		f.a.PatchRel32(noPolicyDir, policyDone)
+	}
+	f.a.PatchRel32(noPolicy, policyDone)
 	f.a.Store32(base, -bdCurPages, nw)
 	f.a.MovRegReg32(mx, nw)
 	f.a.ShiftImm(4, mx, wasmPageLog, true) // bytes = uint64(pages) << 16
@@ -1457,6 +1474,7 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	}
 	f.a.PatchRel32(failOverflow, f.a.Len())
 	f.a.PatchRel32(failMax, f.a.Len())
+	f.a.PatchRel32(failPolicy, f.a.Len())
 	if memory64 {
 		f.a.MovImm64(res, ^uint64(0))
 	} else {
@@ -1472,6 +1490,8 @@ func (f *fn) memoryGrow(r *wasm.Reader) error {
 	f.release(mx)
 	if memoryIndex != 0 {
 		f.release(base)
+	}
+	if dir != regNone {
 		f.release(dir)
 	}
 	if memory64 {

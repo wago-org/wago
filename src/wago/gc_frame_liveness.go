@@ -115,9 +115,6 @@ func gcFrameCompactLiveLocals(indexes, offsets []uint32, allocations, calls []ui
 		if live > maximum {
 			maximum = live
 		}
-		if live > shared.GCFrameRootLimit {
-			return nil, nil, nil, nil, maximum, fmt.Errorf("GC local liveness has %d simultaneously live collector locals, limit %d", live, shared.GCFrameRootLimit)
-		}
 	}
 	// Every set bit in a site belongs to the union. Retain a direct old-to-new
 	// mapping so reconstruction visits arena words and live bits rather than
@@ -574,8 +571,8 @@ func gcFrameAllLiveMasks(body []byte, localRoots int, extra *gcFrameLivenessExtr
 }
 
 func gcFrameAllLiveMasksWithClassifier(body []byte, localRoots int, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) (allocations, calls []uint64, err error) {
-	if localRoots < 0 || localRoots > shared.GCFrameRootLimit {
-		return nil, nil, fmt.Errorf("GC conservative liveness tracks %d locals, limit %d", localRoots, shared.GCFrameRootLimit)
+	if localRoots < 0 || localRoots > shared.GCFrameTrackedLocalLimit {
+		return nil, nil, fmt.Errorf("GC conservative liveness tracks %d locals, representation limit %d", localRoots, shared.GCFrameTrackedLocalLimit)
 	}
 	wordCount := (localRoots + 63) / 64
 	if wordCount == 0 {

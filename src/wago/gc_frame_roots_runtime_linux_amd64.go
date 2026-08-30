@@ -33,8 +33,8 @@ func (in *Instance) gcHelperRoots(ctrl uintptr, state *gcPublicState, safepointI
 	}
 	offsets := safepoint.offsets
 	frameBytes := safepoint.frameBytes
-	if state == nil || len(offsets) > gcNativeFrameRootLimit || frameBytes < 8 {
-		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root metadata is unavailable or oversized")})
+	if state == nil || frameBytes < 8 || !validGCFrameOffsets(offsets, frameBytes) {
+		panic(gcStructHelperError{err: fmt.Errorf("generic GC frame-root metadata is unavailable or malformed")})
 	}
 	ctrlHead := unsafe.Slice((*byte)(offHeapPtr(ctrl+abi.SyncHostCallSavedNativeSPOffset)), 8)
 	savedRSP := uintptr(binary.LittleEndian.Uint64(ctrlHead))

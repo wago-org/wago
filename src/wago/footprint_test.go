@@ -2,11 +2,18 @@ package wago
 
 import (
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestSyncHostBindingStaysCompact(t *testing.T) {
+	if got := unsafe.Sizeof(syncHostBinding{}); got != 24 {
+		t.Fatalf("syncHostBinding size = %d, want 24", got)
+	}
+}
 
 func TestCallRefOnlyArenaNeedUsesFixedContextHeader(t *testing.T) {
 	if CoreFeaturesV3&^platformCoreFeatures() != 0 {

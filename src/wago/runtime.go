@@ -743,10 +743,19 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 	hooks := rt.loadHooks()
 	bindings := rt.snapshotModuleBindingsLocked(hooks)
 	maxMemories := rt.cfg.maxMemoriesPerModule
+	maxNativeCodeBytes := rt.cfg.maxNativeCodeBytes
 	rt.mu.Unlock()
 	var compilation CompilationIdentity
 	if len(hooks.afterCompile) != 0 || len(hooks.onCompileError) != 0 {
 		compilation = CompilationIdentity{value: &compilationIdentityToken{}}
+	}
+	if maxNativeCodeBytes != 0 && uint64(len(c.code)) > maxNativeCodeBytes {
+		return nil, emitCompileError(hooks, compilation, &coreruntime.ResourceLimitError{
+			Resource:  "native code bytes",
+			Scope:     "compile",
+			Requested: uint64(len(c.code)),
+			Limit:     maxNativeCodeBytes,
+		})
 	}
 	if memoryCount := uint64(c.memoryCount()); memoryCount > uint64(maxMemories) {
 		return nil, emitCompileError(hooks, compilation, &coreruntime.ResourceLimitError{
@@ -1051,13 +1060,15 @@ func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
 func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation, runtimeReservation *runtimeInstanceReservation) (*Instance, error) {
 	iopts := InstantiateOptions{
 		Imports: imports, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,
-		forceSyncHost:        forceSyncHost || rt.callerResolverActive.Load(),
-		moduleIdentity:       mod.moduleIdentity(),
-		operationReservation: reservation,
-		runtimeReservation:   runtimeReservation,
-		independentInstances: mod.independentInstances,
-		hasExecutionPolicy:   true,
-		nativeStackBytes:     rt.cfg.nativeStackBytes,
+		forceSyncHost:            forceSyncHost || rt.callerResolverActive.Load(),
+		moduleIdentity:           mod.moduleIdentity(),
+		operationReservation:     reservation,
+		runtimeReservation:       runtimeReservation,
+		independentInstances:     mod.independentInstances,
+		hasExecutionPolicy:       true,
+		nativeStackBytes:         rt.cfg.nativeStackBytes,
+		memoryLimitPages:         rt.cfg.maxMemoryPages,
+		maxInstanceMetadataBytes: rt.cfg.maxInstanceMetadataBytes,
 	}
 	if hasGC {
 		iopts.GC = gc

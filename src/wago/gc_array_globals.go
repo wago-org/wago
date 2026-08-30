@@ -10,11 +10,6 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
-const (
-	maxGCArrayFixedElements    = 4
-	maxGCArrayBulkGlobalLength = 12
-)
-
 var (
 	errGenericGCRootState   = errors.New("generic GC boundary collection has no registered root state")
 	errGenericGCRootMapping = errors.New("generic GC boundary collection has an invalid global root mapping")
@@ -38,7 +33,7 @@ type gcArrayGlobalInit struct {
 	TypeID      uint32
 	Length      uint32
 	Mode        gcArrayGlobalInitMode
-	Bits        [maxGCArrayFixedElements]uint64
+	Bits        []uint64
 }
 
 func stagedGCArrayGlobalInitializers(m *wasm.Module, product stagedGCArrayProduct) ([]gcArrayGlobalInit, error) {
@@ -46,7 +41,7 @@ func stagedGCArrayGlobalInitializers(m *wasm.Module, product stagedGCArrayProduc
 		return nil, fmt.Errorf("nil module")
 	}
 	imports := m.ImportedGlobalCount()
-	out := make([]gcArrayGlobalInit, 0, 2)
+	out := make([]gcArrayGlobalInit, 0, len(m.Globals))
 	for i, g := range m.Globals {
 		if g.Type.Type.Kind() != wasm.ValRef || g.Type.Type.Ref().Heap().Kind() != wasm.HeapTypeIndex {
 			continue
@@ -64,13 +59,6 @@ func stagedGCArrayGlobalInitializers(m *wasm.Module, product stagedGCArrayProduc
 		}
 		out = append(out, init)
 	}
-	maxGlobals := 2
-	if product == stagedGCArrayProductInitData {
-		maxGlobals = 3
-	}
-	if len(out) > maxGlobals {
-		return nil, fmt.Errorf("GC array global count %d exceeds staged bound %d", len(out), maxGlobals)
-	}
 	return out, nil
 }
 
@@ -84,7 +72,7 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, product stagedGCArrayProduct,
 		body = encoded
 	}
 	r := wasm.NewReader(body)
-	values := make([]gcStructConstValue, 0, maxGCArrayFixedElements)
+	values := make([]gcStructConstValue, 0)
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
@@ -165,7 +153,7 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, product stagedGCArrayProduct,
 					init.Mode = gcArrayGlobalInitFuncUniform
 				}
 				init.Length = uint32(values[1].bits)
-				init.Bits[0] = values[0].bits
+				init.Bits = []uint64{values[0].bits}
 			case 7: // array.new_default: length
 				if len(values) != 1 || !wasm.EqualValType(values[0].typ, wasm.I32) {
 					return gcArrayGlobalInit{}, fmt.Errorf("array.new_default requires one i32 length")
@@ -177,24 +165,18 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, product stagedGCArrayProduct,
 				if err != nil {
 					return gcArrayGlobalInit{}, err
 				}
-				if count > maxGCArrayFixedElements || int(count) != len(values) {
+				if uint64(count) > uint64(maxInt()) || int(count) != len(values) {
 					return gcArrayGlobalInit{}, fmt.Errorf("array.new_fixed count %d has %d operands", count, len(values))
 				}
 				init.Mode = gcArrayGlobalInitFixed
 				init.Length = count
+				init.Bits = make([]uint64, count)
 				for i := range values {
 					if !wasm.EqualValType(values[i].typ, want) {
 						return gcArrayGlobalInit{}, fmt.Errorf("element %d operand type %s, want %s", i, values[i].typ, want)
 					}
 					init.Bits[i] = values[i].bits
 				}
-			}
-			limit := uint32(maxGCArrayFixedElements)
-			if init.Mode == gcArrayGlobalInitDefault || init.Mode == gcArrayGlobalInitUniform || init.Mode == gcArrayGlobalInitFuncUniform {
-				limit = maxGCArrayBulkGlobalLength
-			}
-			if init.Length > limit {
-				return gcArrayGlobalInit{}, fmt.Errorf("array global length %d exceeds staged bound %d", init.Length, limit)
 			}
 			end, err := r.Byte()
 			if err != nil || end != 0x0b || r.BytesLeft() != 0 {
@@ -203,9 +185,6 @@ func decodeStagedGCArrayGlobalInit(m *wasm.Module, product stagedGCArrayProduct,
 			return init, nil
 		default:
 			return gcArrayGlobalInit{}, fmt.Errorf("unsupported GC array constant operand opcode 0x%02x", op)
-		}
-		if len(values) > maxGCArrayFixedElements {
-			return gcArrayGlobalInit{}, fmt.Errorf("GC array constant operand count exceeds %d", maxGCArrayFixedElements)
 		}
 	}
 	return gcArrayGlobalInit{}, fmt.Errorf("GC array constant expression is missing an array constructor")
@@ -227,13 +206,6 @@ func instantiateGCArrayGlobal(collector *gc.Collector, mapping *gcTypeMapping, d
 	if collector == nil || int(init.TypeID) >= len(descs) || descs[init.TypeID].Kind != gc.KindArray {
 		return gc.Null(), 0, fmt.Errorf("GC array global type %d is unavailable", init.TypeID)
 	}
-	limit := uint32(maxGCArrayFixedElements)
-	if init.Mode == gcArrayGlobalInitDefault || init.Mode == gcArrayGlobalInitUniform || init.Mode == gcArrayGlobalInitFuncUniform {
-		limit = maxGCArrayBulkGlobalLength
-	}
-	if init.Length > limit {
-		return gc.Null(), 0, fmt.Errorf("GC array global length %d exceeds staged bound %d", init.Length, limit)
-	}
 	desc := descs[init.TypeID]
 	kind := desc.Elem
 	valueKind := kind
@@ -254,11 +226,11 @@ func instantiateGCArrayGlobal(collector *gc.Collector, mapping *gcTypeMapping, d
 	case gcArrayGlobalInitUniform:
 		ref, err = collector.NewArrayWithRoots(domainType, init.Length, gc.Value{Kind: valueKind, Bits: init.Bits[0]}, gc.EmptyRoots{})
 	case gcArrayGlobalInitFixed:
-		var values [maxGCArrayFixedElements]gc.Value
+		values := make([]gc.Value, init.Length)
 		for i := uint32(0); i < init.Length; i++ {
 			values[i] = gc.Value{Kind: valueKind, Bits: init.Bits[i]}
 		}
-		ref, err = collector.NewArrayFixedWithRoots(domainType, values[:init.Length], gc.EmptyRoots{})
+		ref, err = collector.NewArrayFixedWithRoots(domainType, values, gc.EmptyRoots{})
 	case gcArrayGlobalInitFuncUniform:
 		fidx := int(init.Bits[0])
 		off := (fidx + 1) * coreruntime.FuncRefDescBytes
@@ -349,7 +321,7 @@ func (in *Instance) reconcileGCGlobalRoots() error {
 	if !hasStaged {
 		return nil
 	}
-	for i := uint8(0); i < state.gcGlobalRootCount; i++ {
+	for i := uint32(0); i < state.gcGlobalRootCount; i++ {
 		mapping := state.gcGlobalRoots[i]
 		if int(mapping.GlobalIndex) >= len(in.globalCells) || in.globalCells[mapping.GlobalIndex] == nil {
 			return fmt.Errorf("GC global root mapping %d names unavailable global %d", i, mapping.GlobalIndex)

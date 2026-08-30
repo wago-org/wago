@@ -10,6 +10,9 @@ import (
 )
 
 func TestInstanceContextBytesReserveNativeTailMetadata(t *testing.T) {
+	if InstanceContextBytes != 112 {
+		t.Fatalf("instance context bytes = %d, want hot-path layout size 112", InstanceContextBytes)
+	}
 	jm, err := NewJobMemory(65536)
 	if err != nil {
 		t.Fatal(err)

@@ -50,8 +50,7 @@ func TestGCConstClassifiedRootsHonorDirectSinkStop(t *testing.T) {
 		t.Fatalf("classified direct stop visited %v", sink.refs)
 	}
 
-	elements := &gcArrayElementRoots{Count: 1}
-	elements.Values[0] = corergc.Root(corergc.I31New(3))
+	elements := &gcArrayElementRoots{Count: 1, Values: []corergc.Root{corergc.Root(corergc.I31New(3))}}
 	roots.extra = elements
 	sink = &gcConstStoppingClassifiedSink{limit: 1}
 	if roots.RangeClassifiedRootRefs(sink) {

@@ -470,8 +470,15 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if err := NewRuntimeConfig().WithFunctionWorkers(-1).Validate(); err == nil || !strings.Contains(err.Error(), "non-negative") {
 		t.Fatalf("negative function workers should fail validation, got %v", err)
 	}
-	if got := NewRuntimeConfig().MaxFunctionLocals(); got != 4096 {
-		t.Fatalf("default max function locals = %d, want 4096", got)
+	if got := NewRuntimeConfig().MaxFunctionLocals(); got != 65535 {
+		t.Fatalf("default max function locals = %d, want 65535", got)
+	}
+	if got := NewRuntimeConfig().MemoryLimitPages(); got != 0 {
+		t.Fatalf("default memory page quota = %d, want unbounded zero", got)
+	}
+	metadata := NewRuntimeConfig().WithMaxInstanceMetadataBytes(1234)
+	if metadata.MaxInstanceMetadataBytes() != 1234 || NewRuntimeConfig().MaxInstanceMetadataBytes() != 0 {
+		t.Fatal("instance metadata quota must be immutable and unbounded by default")
 	}
 	if err := NewRuntimeConfig().WithMaxFunctionLocals(0).Validate(); err == nil || !strings.Contains(err.Error(), "between 1 and 65535") {
 		t.Fatalf("zero max function locals should fail validation, got %v", err)
@@ -530,7 +537,7 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	}
 	// String is non-empty / informative. The default bounds mode depends on the
 	// build tag (explicit normally, signals-based under wago_guardpage).
-	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") || !strings.Contains(s, "maxFunctionLocals: 4096") || !strings.Contains(s, "nativeStackBytes: 4194304") {
+	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") || !strings.Contains(s, "maxFunctionLocals: 65535") || !strings.Contains(s, "nativeStackBytes: 4194304") {
 		t.Fatalf("config String missing bounds mode or serial default policy: %q", s)
 	}
 }

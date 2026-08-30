@@ -79,7 +79,7 @@ func TestGCExternConversionStableIdentityAndOwnership(t *testing.T) {
 		t.Fatalf("object any round trip = %#x, %v; want %#x", roundTrip, err, object)
 	}
 	var rooted gc.Ref
-	for i := uint8(0); i < state.count; i++ {
+	for i := uint32(0); i < state.count; i++ {
 		entry := state.entries[i]
 		if entry.kind == gcExternConversionData && entry.ref == object {
 			if !entry.hasRoot {
@@ -112,10 +112,10 @@ func TestGCExternConversionStableIdentityAndOwnership(t *testing.T) {
 		t.Fatalf("stable object round trip allocations = %v, want 0", allocs)
 	}
 
-	t.Logf("GC extern conversion layouts: state=%d entry=%d capacity=%d", unsafe.Sizeof(gcExternConversionState{}), unsafe.Sizeof(gcExternConversionEntry{}), maxGCExternConversions)
+	t.Logf("GC extern conversion layouts: state=%d entry=%d live=%d", unsafe.Sizeof(gcExternConversionState{}), unsafe.Sizeof(gcExternConversionEntry{}), state.count)
 }
 
-func TestGCExternConversionRejectsForeignForgedFullAndClosed(t *testing.T) {
+func TestGCExternConversionRejectsForeignForgedAndClosed(t *testing.T) {
 	_, collector, state, object := newGCExternConversionFixture(t)
 	defer collector.Close()
 
@@ -137,17 +137,17 @@ func TestGCExternConversionRejectsForeignForgedFullAndClosed(t *testing.T) {
 		t.Fatal("forged compact object converted")
 	}
 
-	for i := int32(0); i < maxGCExternConversions; i++ {
+	const identities = 20
+	for i := int32(0); i < identities; i++ {
 		if _, err := state.externFromAny(uint64(gc.I31New(i))); err != nil {
-			t.Fatalf("fill conversion %d: %v", i, err)
+			t.Fatalf("grow conversion %d: %v", i, err)
 		}
 	}
-	before := state.count
-	if _, err := state.externFromAny(uint64(object)); err == nil || !strings.Contains(err.Error(), "capacity") {
-		t.Fatalf("capacity error = %v", err)
+	if _, err := state.externFromAny(uint64(object)); err != nil {
+		t.Fatalf("object conversion above old eight-identity boundary: %v", err)
 	}
-	if state.count != before {
-		t.Fatalf("rejected conversion changed count %d -> %d", before, state.count)
+	if state.count != identities+1 || len(state.entries) < identities+1 {
+		t.Fatalf("dynamic conversion state = count %d entries %d", state.count, len(state.entries))
 	}
 
 	if err := state.close(); err != nil {

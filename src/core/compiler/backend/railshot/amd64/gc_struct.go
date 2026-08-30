@@ -889,7 +889,7 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		plan.Exact = false
 		return id
 	}
-	offsets := make([]uint32, 0, min(len(plan.LocalOffsets), shared.GCFrameRootLimit))
+	offsets := make([]uint32, 0, len(plan.LocalOffsets)+len(plan.FixedOffsets))
 	if !plan.VisitLiveLocals(siteIndex, false, func(root int) {
 		offsets = append(offsets, plan.LocalOffsets[root])
 	}) {
@@ -911,9 +911,6 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 	}
 	offsets = append(offsets, plan.FixedOffsets...)
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	if len(offsets) > shared.GCFrameRootLimit {
-		plan.Exact = false
-	}
 	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{ID: id, Offsets: offsets})
 	f.stats.addGCRootMapBytes(8 + len(offsets)*4)
 	return id

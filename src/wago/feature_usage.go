@@ -17,7 +17,7 @@ type moduleRequirements struct {
 }
 
 // moduleRequiredFeatures records optional core features that remain execution
-// dependencies of the compiled artifact. Codec version 1 stores the full public
+// dependencies of the compiled artifact. Codec version 2 stores the full public
 // CoreFeatures mask and rejects unknown bits. Compile-time-only features such as
 // extended constant expressions are folded into initializer metadata.
 func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {

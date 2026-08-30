@@ -2,12 +2,23 @@ package wago
 
 import coreruntime "github.com/wago-org/wago/src/core/runtime"
 
-// ErrResourceLimit identifies a configured or fixed runtime resource limit.
-// Use errors.As with ResourceLimitError to inspect the rejected request.
-const ErrResourceLimit = coreruntime.ErrResourceLimit
+const (
+	// ErrResourceLimit identifies a real finite resource or configured quota.
+	ErrResourceLimit = coreruntime.ErrResourceLimit
+	// ErrUnsupported identifies valid WebAssembly whose feature or shape is not
+	// implemented by Wago.
+	ErrUnsupported = coreruntime.ErrUnsupported
+	// ErrImplementationLimit identifies a temporary internal representation
+	// limit. It is not a permission or resource-policy failure.
+	ErrImplementationLimit = coreruntime.ErrImplementationLimit
+)
 
 // ResourceLimitError reports one rejected resource request.
 type ResourceLimitError = coreruntime.ResourceLimitError
+
+// ImplementationLimitError reports one valid operation that the current
+// internal representation cannot support.
+type ImplementationLimitError = coreruntime.ImplementationLimitError
 
 // NativeMemoryStats reports process use of the Linux host interrupt memory
 // registry. The type contains zero values on unsupported targets.

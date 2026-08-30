@@ -300,12 +300,12 @@ type instancePluginState struct {
 	close              atomic.Pointer[instanceCloseState]
 	gcConfig           *GCConfig
 	origin             InstantiateOrigin
-	gcGlobalRootCount  uint8
+	gcGlobalRootCount  uint32
 	guestStorageBorrow atomic.Uint32
 	gcPublic           atomic.Pointer[gcPublicState]
 	gcArrayElements    atomic.Pointer[gcArrayElementState]
 	gcRefTestTable     atomic.Pointer[gcRefTestTableState]
-	gcGlobalRoots      [3]gcGlobalRootMapping
+	gcGlobalRoots      []gcGlobalRootMapping
 	tagIdentityBase    uintptr      // arena-owned bounded native u64 directory for staged EH
 	tagExports         map[int]*Tag // lazy stable identity handles for exported local tags
 }
@@ -1005,11 +1005,18 @@ func bindHostImport(v any, sig FuncSig) (HostFunc, error) {
 	}
 }
 
-// buildSyncHosts resolves every function import of a sync-mode module to a
-// HostFunc, indexed by import function index. c.Imports lists the function
-// imports in order; c.importFuncSigs holds their compile-time signatures.
-func (c *Compiled) buildSyncHosts(imports Imports) ([]HostFunc, error) {
-	hosts := make([]HostFunc, len(c.Imports))
+type syncHostBinding struct {
+	fn        HostFunc
+	exact     *DefinedTypeDescriptor
+	importIdx uint32
+	scalar    bool
+}
+
+// buildSyncHosts resolves every function import of a sync-mode module to one
+// immutable binding indexed by import function index. The exact descriptor
+// pointer and scalar/reference dispatch class are computed once at instantiation.
+func (c *Compiled) buildSyncHosts(imports Imports) ([]syncHostBinding, error) {
+	hosts := make([]syncHostBinding, len(c.Imports))
 	for i, key := range c.Imports {
 		if i >= len(c.importFuncSigs) {
 			return nil, fmt.Errorf("import %q: missing signature", key)
@@ -1019,22 +1026,38 @@ func (c *Compiled) buildSyncHosts(imports Imports) ([]HostFunc, error) {
 			continue
 		}
 		sig := c.importFuncSigs[i]
-		paramSlots, err := valTypesSlots(sig.Params)
-		if err != nil {
+		if _, err := valTypesSlots(sig.Params); err != nil {
 			return nil, fmt.Errorf("import %q params: %w", key, err)
 		}
-		resultSlots, err := valTypesSlots(sig.Results)
-		if err != nil {
+		if _, err := valTypesSlots(sig.Results); err != nil {
 			return nil, fmt.Errorf("import %q results: %w", key, err)
-		}
-		if paramSlots > runtime.MaxHostArity || resultSlots > runtime.MaxHostArity {
-			return nil, fmt.Errorf("import %q uses %d param slot(s), %d result slot(s); synchronous host imports support at most %d slots in each direction", key, paramSlots, resultSlots, runtime.MaxHostArity)
 		}
 		fn, err := bindHostImport(imports[key], sig)
 		if err != nil {
 			return nil, fmt.Errorf("import %q: %w", key, err)
 		}
-		hosts[i] = fn
+		binding := syncHostBinding{fn: fn, importIdx: uint32(i), scalar: true}
+		for _, typ := range sig.Params {
+			if isReferenceValType(typ) {
+				binding.scalar = false
+				break
+			}
+		}
+		if binding.scalar {
+			for _, typ := range sig.Results {
+				if isReferenceValType(typ) {
+					binding.scalar = false
+					break
+				}
+			}
+		}
+		if _, _, err = exactFuncSignatureView(sig, c.Types); err != nil {
+			return nil, fmt.Errorf("import %q exact signature: %w", key, err)
+		}
+		if sig.HasTypeIndex {
+			binding.exact = &c.Types[sig.TypeIndex]
+		}
+		hosts[i] = binding
 	}
 	return hosts, nil
 }
@@ -1043,19 +1066,37 @@ type missingHostFunc struct{ importIdx uint32 }
 type invalidHostReference struct{ err error }
 
 type gcHostTempTokens struct {
-	count      uint8
+	count      uint32
 	exactTypes *[]DefinedTypeDescriptor
 	tokens     [gcPublicSlotLimit]uint64
+	extra      []uint64
+}
+
+func (t *gcHostTempTokens) token(index uint32) uint64 {
+	if index < gcPublicSlotLimit {
+		return t.tokens[index]
+	}
+	return t.extra[index-gcPublicSlotLimit]
+}
+
+func (t *gcHostTempTokens) setToken(index uint32, token uint64) {
+	if index < gcPublicSlotLimit {
+		t.tokens[index] = token
+		return
+	}
+	extra := index - gcPublicSlotLimit
+	if int(extra) == len(t.extra) {
+		t.extra = append(t.extra, token)
+	} else {
+		t.extra[extra] = token
+	}
 }
 
 func (t *gcHostTempTokens) add(token uint64) error {
 	if token == 0 {
 		return nil
 	}
-	if int(t.count) >= len(t.tokens) {
-		return fmt.Errorf("GC host argument count exceeds %d", len(t.tokens))
-	}
-	t.tokens[t.count] = token
+	t.setToken(t.count, token)
 	t.count++
 	return nil
 }
@@ -1066,11 +1107,14 @@ func (t *gcHostTempTokens) release(in *Instance) {
 	}
 	for t.count != 0 {
 		t.count--
-		token := t.tokens[t.count]
-		t.tokens[t.count] = 0
+		token := t.token(t.count)
+		t.setToken(t.count, 0)
 		if token != 0 {
 			_ = in.refStore.releaseGCRef(in, token)
 		}
+	}
+	if len(t.extra) != 0 {
+		t.extra = t.extra[:0]
 	}
 }
 
@@ -1122,6 +1166,43 @@ func (in *Instance) boundHostFuncRef(dispatch uint32) (boundHostFuncRefCall, boo
 	return binding, true
 }
 
+func dispatchSyncHostScalar(in *Instance, ctrl uintptr, binding *syncHostBinding, args, results []uint64) {
+	var exactParams, exactResults []ValueTypeDescriptor
+	if binding.exact != nil {
+		exactParams, exactResults = binding.exact.Params, binding.exact.Results
+	}
+	invocation := currentHostInvocationContext(ctrl, in)
+	caller := in.beginHostCallScopeReservedWithID(invocation.id, invocation.reservation)
+	caller.exactParams = exactParams
+	caller.exactResults = exactResults
+	defer caller.scope.end(caller.generation, caller.parentGeneration)
+	var mod HostModule = caller
+	binding.fn(mod, args, results)
+}
+
+func dispatchSyncHostReference(in *Instance, ctrl uintptr, importIdx uint32, fn HostFunc, sig FuncSig, exactParams, exactResults []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor, exactTypesPtr *[]DefinedTypeDescriptor, args, results []uint64) {
+	var gcTemps gcHostTempTokens
+	if err := in.translateHostReferenceArgs(args, sig.Params, exactParams, exactTypes, &gcTemps); err != nil {
+		gcTemps.release(in)
+		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
+	}
+	defer gcTemps.release(in)
+	invocation := currentHostInvocationContext(ctrl, in)
+	caller := in.beginHostCallScopeReservedWithID(invocation.id, invocation.reservation)
+	caller.exactParams = exactParams
+	caller.exactResults = exactResults
+	var gcResultTemps gcHostTempTokens
+	gcResultTemps.exactTypes = exactTypesPtr
+	caller.ephemeralGCResults = &gcResultTemps
+	defer gcResultTemps.release(in)
+	defer caller.scope.end(caller.generation, caller.parentGeneration)
+	var mod HostModule = caller
+	fn(mod, args, results)
+	if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults, exactTypes); err != nil {
+		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
+	}
+}
+
 // newHostDispatch builds the runtime callback the CallWithHost loop invokes: it
 // maps the wasm import index to the bound HostFunc and runs it with a HostModule
 // bound to this instance. It is constructed once at instantiation so hot Invoke
@@ -1143,22 +1224,20 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			in.dispatchGCHelperParked(ctrl, helper, safepoint, args, results)
 			return
 		}
-		var fn HostFunc
-		var sig FuncSig
-		var exactParams, exactResults []ValueTypeDescriptor
-		var exactTypes []DefinedTypeDescriptor
-		var exactTypesPtr *[]DefinedTypeDescriptor
 		if importIdx&hostFuncRefDispatchBit != 0 {
 			owner, exact := in.refStore.hostFuncRefDispatch(importIdx)
 			if owner == nil {
 				panic(missingHostFunc{importIdx: importIdx})
 			}
 			owner.mu.Lock()
-			fn, sig = owner.fn, owner.sig
+			fn, sig := owner.fn, owner.sig
 			owner.mu.Unlock()
 			if fn == nil {
 				panic(missingHostFunc{importIdx: importIdx})
 			}
+			var exactParams, exactResults []ValueTypeDescriptor
+			var exactTypes []DefinedTypeDescriptor
+			var exactTypesPtr *[]DefinedTypeDescriptor
 			if exact != nil {
 				sig = exact.sig
 				exactParams = exact.params
@@ -1166,42 +1245,21 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 				exactTypes = exact.types
 				exactTypesPtr = &exact.types
 			}
+			dispatchSyncHostReference(in, ctrl, importIdx, fn, sig, exactParams, exactResults, exactTypes, exactTypesPtr, args, results)
+			return
+		}
+		if int(importIdx) >= len(in.syncHosts) || in.syncHosts[importIdx].fn == nil {
+			panic(missingHostFunc{importIdx: importIdx})
+		}
+		binding := &in.syncHosts[importIdx]
+		if binding.scalar {
+			dispatchSyncHostScalar(in, ctrl, binding, args, results)
 		} else {
-			if int(importIdx) >= len(in.syncHosts) || in.syncHosts[importIdx] == nil {
-				panic(missingHostFunc{importIdx: importIdx})
+			var exactParams, exactResults []ValueTypeDescriptor
+			if binding.exact != nil {
+				exactParams, exactResults = binding.exact.Params, binding.exact.Results
 			}
-			if int(importIdx) >= len(in.c.importFuncSigs) {
-				panic(invalidHostReference{err: fmt.Errorf("host import %d has no signature", importIdx)})
-			}
-			fn = in.syncHosts[importIdx]
-			sig = in.c.importFuncSigs[importIdx]
-			exactTypes = in.c.Types
-			exactTypesPtr = &in.c.Types
-			var err error
-			exactParams, exactResults, err = exactFuncSignatureView(sig, in.c.Types)
-			if err != nil {
-				panic(invalidHostReference{err: fmt.Errorf("host import %d exact signature: %w", importIdx, err)})
-			}
-		}
-		var gcTemps gcHostTempTokens
-		if err := in.translateHostReferenceArgs(args, sig.Params, exactParams, exactTypes, &gcTemps); err != nil {
-			gcTemps.release(in)
-			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
-		}
-		defer gcTemps.release(in)
-		invocation := currentHostInvocationContext(ctrl, in)
-		caller := in.beginHostCallScopeReservedWithID(invocation.id, invocation.reservation)
-		caller.exactParams = exactParams
-		caller.exactResults = exactResults
-		var gcResultTemps gcHostTempTokens
-		gcResultTemps.exactTypes = exactTypesPtr
-		caller.ephemeralGCResults = &gcResultTemps
-		defer gcResultTemps.release(in)
-		defer caller.scope.end(caller.generation, caller.parentGeneration)
-		var mod HostModule = caller
-		fn(mod, args, results)
-		if err := in.translateHostReferenceResults(ctrl, results, sig.Results, exactResults, exactTypes); err != nil {
-			panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
+			dispatchSyncHostReference(in, ctrl, importIdx, binding.fn, in.c.importFuncSigs[importIdx], exactParams, exactResults, in.c.Types, &in.c.Types, args, results)
 		}
 	}
 }

@@ -7,10 +7,7 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
-const (
-	maxGCRefTestTableSlots = 20
-	maxGCRefTestTables     = 3
-)
+const maxGCRefTestTables = 3
 
 // gcRefTestTableState couples exact local mixed-reference tables to their
 // distinct owners. The any/data table uses compact arena entries paired with
@@ -22,8 +19,8 @@ type gcRefTestTableState struct {
 	Descriptors   [maxGCRefTestTables][]byte
 	CanonicalType *gc.TypeCanonicalization
 	Conversion    *gcExternConversionState
-	Slots         [maxGCRefTestTableSlots]uint32
-	Count         uint8
+	Slots         []uint32
+	Count         uint32
 	TableCount    uint8
 	RootTable     uint8
 }
@@ -50,10 +47,8 @@ func newGCRefTestTableState(collector *gc.Collector, descriptors [][]byte, rootT
 	}
 	state.Descriptor = state.Descriptors[rootTable]
 	size := int(binary.LittleEndian.Uint32(state.Descriptor))
-	if size > maxGCRefTestTableSlots {
-		return nil, fmt.Errorf("GC ref.test root table size %d exceeds bound %d", size, maxGCRefTestTableSlots)
-	}
-	state.Count = uint8(size)
+	state.Count = uint32(size)
+	state.Slots = make([]uint32, size)
 	if canonicalTypes != nil {
 		canonical, err := collector.NewTypeCanonicalization(canonicalTypes)
 		if err != nil {
@@ -185,7 +180,7 @@ func (s *gcRefTestTableState) drop(collector *gc.Collector) {
 	if s == nil || collector == nil {
 		return
 	}
-	for i := uint8(0); i < s.Count; i++ {
+	for i := uint32(0); i < s.Count; i++ {
 		_ = collector.SetTableSlot(s.Slots[i], gc.Null())
 		off := 8 + int(i)*8
 		if off+8 <= len(s.Descriptor) {

@@ -7,8 +7,6 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const gcNativeFrameRootLimit = shared.GCFrameRootLimit
-
 // collectorFrameRefType classifies reference types represented by the Wasm GC
 // collector. It deliberately excludes funcref, externref, and exnref. Indexed
 // heap types are resolved in the containing module, including recursive groups;
@@ -236,7 +234,7 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 		var previousReturn uint32
 		for i := range plan.Callsites {
 			callsite := &plan.Callsites[i]
-			if callsite.ReturnOffset == 0 || (i != 0 && callsite.ReturnOffset <= previousReturn) || callsite.StackAdjust%8 != 0 || callsite.StackAdjust > 1<<20 || len(callsite.Offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.Offsets, plan.FrameBytes) {
+			if callsite.ReturnOffset == 0 || (i != 0 && callsite.ReturnOffset <= previousReturn) || callsite.StackAdjust%8 != 0 || callsite.StackAdjust > 1<<20 || !validGCFrameOffsets(callsite.Offsets, plan.FrameBytes) {
 				return false
 			}
 			previousReturn = callsite.ReturnOffset
@@ -244,7 +242,7 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 		}
 		for i := range plan.Safepoints {
 			safepoint := &plan.Safepoints[i]
-			if safepoint.ID == 0 || safepoint.ID > shared.GCSafepointIDMax || (totalSafepoints != 0 && safepoint.ID <= previousID) || len(safepoint.Offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(safepoint.Offsets, plan.FrameBytes) {
+			if safepoint.ID == 0 || safepoint.ID > shared.GCSafepointIDMax || (totalSafepoints != 0 && safepoint.ID <= previousID) || !validGCFrameOffsets(safepoint.Offsets, plan.FrameBytes) {
 				return false
 			}
 			previousID = safepoint.ID
@@ -299,7 +297,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	var previousReturn uint32
 	for i := range rootMap.callsites {
 		callsite := &rootMap.callsites[i]
-		if callsite.frameBytes < 8 || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.code)) || (i != 0 && callsite.returnOffset <= previousReturn) || callsite.stackAdjust%8 != 0 || callsite.stackAdjust > 1<<20 || len(callsite.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
+		if callsite.frameBytes < 8 || callsite.frameBytes > 1<<31-1 || callsite.returnOffset == 0 || uint64(callsite.returnOffset) >= uint64(len(c.code)) || (i != 0 && callsite.returnOffset <= previousReturn) || callsite.stackAdjust%8 != 0 || callsite.stackAdjust > 1<<20 || !validGCFrameOffsets(callsite.offsets, callsite.frameBytes) {
 			return fmt.Errorf("GC frame-root callsite %d is malformed", callsite.returnOffset)
 		}
 		previousReturn = callsite.returnOffset
@@ -307,7 +305,7 @@ func validateCompiledGCFrameRoots(c *Compiled, rootMap *compiledGCFrameRoots) er
 	var previousID uint32
 	for i := range rootMap.safepoints {
 		safepoint := &rootMap.safepoints[i]
-		if safepoint.frameBytes < 8 || safepoint.frameBytes > 1<<31-1 || safepoint.id == 0 || safepoint.id > shared.GCSafepointIDMax || (i != 0 && safepoint.id <= previousID) || len(safepoint.offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(safepoint.offsets, safepoint.frameBytes) {
+		if safepoint.frameBytes < 8 || safepoint.frameBytes > 1<<31-1 || safepoint.id == 0 || safepoint.id > shared.GCSafepointIDMax || (i != 0 && safepoint.id <= previousID) || !validGCFrameOffsets(safepoint.offsets, safepoint.frameBytes) {
 			return fmt.Errorf("GC frame-root safepoint %d is malformed", safepoint.id)
 		}
 		previousID = safepoint.id

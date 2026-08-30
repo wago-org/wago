@@ -138,9 +138,6 @@ functions:
 		var liveMasks, callMasks []uint64
 		var maskExtra gcFrameLivenessExtra
 		if arm64BodyUsesEH(m.Code[function].BodyBytes, &classifier) {
-			if len(plan.LocalIndexes) > shared.GCFrameRootLimit {
-				return reject("function %d has %d simultaneously live collector locals, limit %d", function, len(plan.LocalIndexes), shared.GCFrameRootLimit)
-			}
 			liveMasks, callMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.LocalIndexes), &maskExtra, &classifier)
 		} else {
 			liveMasks, err = gcFrameLocalLivenessWithClassifier(m.Code[function].BodyBytes, plan.LocalIndexes, &callMasks, &maskExtra, &classifier)
@@ -148,13 +145,9 @@ functions:
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
-		var maximumLive int
-		plan.LocalIndexes, plan.LocalOffsets, liveMasks, callMasks, maximumLive, err = gcFrameCompactLiveLocals(plan.LocalIndexes, plan.LocalOffsets, liveMasks, callMasks, &maskExtra)
+		plan.LocalIndexes, plan.LocalOffsets, liveMasks, callMasks, _, err = gcFrameCompactLiveLocals(plan.LocalIndexes, plan.LocalOffsets, liveMasks, callMasks, &maskExtra)
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
-		}
-		if maximumLive > shared.GCFrameRootLimit {
-			return reject("function %d has %d simultaneously live collector locals, limit %d", function, maximumLive, shared.GCFrameRootLimit)
 		}
 		if uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
 			return reject("function %d exceeds the dense safepoint ID bound", function)

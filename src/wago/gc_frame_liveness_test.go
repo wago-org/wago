@@ -207,8 +207,8 @@ func TestGCFrameLocalLivenessCompactsDisjointWideRoots(t *testing.T) {
 	}
 }
 
-func TestGCFrameLocalLivenessCompactionRejectsTooManyLiveRootsBeforeRebuild(t *testing.T) {
-	const roots = shared.GCFrameRootLimit + 1
+func TestGCFrameLocalLivenessCompactionAcceptsMoreThan1024LiveRoots(t *testing.T) {
+	const roots = 1025
 	indexes := make([]uint32, roots)
 	offsets := make([]uint32, roots)
 	allocations := []uint64{^uint64(0)}
@@ -220,9 +220,9 @@ func TestGCFrameLocalLivenessCompactionRejectsTooManyLiveRootsBeforeRebuild(t *t
 		extra.words[i] = ^uint64(0)
 	}
 	extra.words[len(extra.words)-1] = 1
-	_, _, _, _, _, err := gcFrameCompactLiveLocals(indexes, offsets, allocations, nil, &extra)
-	if err == nil || !strings.Contains(err.Error(), "1025 simultaneously live collector locals, limit 1024") {
-		t.Fatalf("wide simultaneous-root compaction error = %v", err)
+	gotIndexes, gotOffsets, _, _, maximum, err := gcFrameCompactLiveLocals(indexes, offsets, allocations, nil, &extra)
+	if err != nil || len(gotIndexes) != roots || len(gotOffsets) != roots || maximum != roots {
+		t.Fatalf("wide simultaneous-root compaction = indexes %d offsets %d maximum %d error %v", len(gotIndexes), len(gotOffsets), maximum, err)
 	}
 }
 
@@ -309,10 +309,10 @@ func TestGCFrameLocalLivenessArenaBudget(t *testing.T) {
 	}
 }
 
-func TestGCFrameConservativeLivenessRejectsWideRootsBeforeSiteAllocation(t *testing.T) {
-	_, _, err := gcFrameAllLiveMasks([]byte{0x0b}, shared.GCFrameRootLimit+1, nil)
-	if err == nil || !strings.Contains(err.Error(), "conservative liveness tracks 1025") {
-		t.Fatalf("wide conservative root error = %v", err)
+func TestGCFrameConservativeLivenessAcceptsMoreThan1024Roots(t *testing.T) {
+	allocations, calls, err := gcFrameAllLiveMasks([]byte{0x0b}, 1025, nil)
+	if err != nil || len(allocations) != 0 || len(calls) != 0 {
+		t.Fatalf("wide conservative roots = %d allocations, %d calls, %v", len(allocations), len(calls), err)
 	}
 }
 
