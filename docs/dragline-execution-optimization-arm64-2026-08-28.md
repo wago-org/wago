@@ -412,6 +412,15 @@ caller fell from 148 to 76 native bytes (-48.6%), from a 16-byte frame to zero,
 and from three relocations to zero. A focused prepared-entry product test and a
 fresh uncached 36-export differential pass.
 
+A follow-up removes the residual arithmetic tree left behind by those inlined
+calls. The ARM64 finalizer now symbolically verifies bounded expressions made
+only from one-argument `x + immediate` callees and `i32.add`, then emits the
+equivalent multiply-by-count and constant add. The matcher is capped at 32
+virtual registers and uses fixed scratch storage, so unrelated functions pay no
+heap cost. For `many_funcs.run`, native code falls from 76 to 64 bytes and an
+eight-sample balanced before/after run moved the median from 19.14 ns to
+18.84 ns (-1.6%). The complete corpus differential remains clean.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is

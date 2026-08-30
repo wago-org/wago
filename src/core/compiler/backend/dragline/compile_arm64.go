@@ -1281,6 +1281,37 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		return nil
 	}
 	swarRunN := arm64RailMachSWARRunN(plan)
+	if source, coefficient, constant, ok := arm64RailMachInlineI32AddTree(plan); ok {
+		src, err := arm64RailMachReadValueAt(&a, plan, source, arm64.X14, 0)
+		if err != nil {
+			return nil, 0, true, err
+		}
+		dst := reg(plan.Machine.Results[0])
+		switch coefficient {
+		case 1:
+			if dst != src {
+				a.MovReg32(dst, src)
+			}
+		case 3:
+			a.AddShifted(dst, src, src, 1, true)
+		default:
+			a.MovImm32(arm64.X16, int32(coefficient))
+			a.Madd32(dst, src, arm64.X16, arm64.XZR)
+		}
+		switch {
+		case constant > 0 && constant <= 4095:
+			a.AddImm32(dst, dst, uint32(constant))
+		case constant < 0 && constant >= -4095:
+			a.SubImm32(dst, dst, uint32(-constant))
+		case constant != 0:
+			a.MovImm32(arm64.X16, int32(constant))
+			a.Add32(dst, dst, arm64.X16)
+		}
+		if metrics != nil {
+			metrics.PostRARewrites += uint32(len(plan.Machine.Insts) - 1)
+		}
+		goto railMachEpilogue
+	}
 	if arm64RailMachMulHighU(plan) {
 		result := plan.Machine.Results[0]
 		location := plan.Allocation.Locations[result]
@@ -3865,6 +3896,63 @@ func arm64RailMachInlineI32AddImmediate(plan *nativeBackendPlan, instruction rai
 	reader := wasm.ReaderFrom(body[3 : len(body)-2])
 	immediate, err := reader.I32()
 	return immediate, err == nil && reader.BytesLeft() == 0
+}
+
+// arm64RailMachInlineI32AddTree recognizes an expression made solely from
+// inlinable one-argument `x + immediate` callees and i32.add nodes. Keeping the
+// expression symbolic until emission avoids preserving the artificial call
+// result tree after every call has disappeared.
+func arm64RailMachInlineI32AddTree(plan *nativeBackendPlan) (source railmach.VReg, coefficient uint32, constant int64, ok bool) {
+	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.Allocation == nil || plan.ABI.Class != railmach.ABIPreparedInt ||
+		len(plan.Machine.Results) != 1 || len(plan.Machine.Insts) < 3 || len(plan.Schedule.Order) != len(plan.Machine.Insts) ||
+		len(plan.Machine.VRegs) > 32 || plan.Frame.TotalBytes != 0 && !arm64RailMachElidesPreparedCallFrame(plan) {
+		return 0, 0, 0, false
+	}
+	type expression struct {
+		source      railmach.VReg
+		coefficient uint32
+		constant    int64
+	}
+	var expressions [32]expression
+	calls := 0
+	for _, instructionID := range plan.Schedule.Order {
+		instruction := plan.Machine.Insts[instructionID]
+		operands := plan.Machine.InstructionOperands(instructionID)
+		switch instruction.Op {
+		case wasm.InstrCall:
+			immediate, inline := arm64RailMachInlineI32AddImmediate(plan, instruction)
+			if !inline || len(operands) != 1 || instruction.Result == 0 {
+				return 0, 0, 0, false
+			}
+			expressions[instruction.Result] = expression{source: operands[0].Reg, coefficient: 1, constant: int64(immediate)}
+			calls++
+		case wasm.InstrI32Add:
+			if len(operands) != 2 || instruction.Result == 0 {
+				return 0, 0, 0, false
+			}
+			left := expressions[operands[0].Reg]
+			right := expressions[operands[1].Reg]
+			if left.coefficient == 0 || right.coefficient == 0 || left.source != right.source {
+				return 0, 0, 0, false
+			}
+			expressions[instruction.Result] = expression{
+				source: left.source, coefficient: left.coefficient + right.coefficient, constant: left.constant + right.constant,
+			}
+		default:
+			return 0, 0, 0, false
+		}
+	}
+	result := expressions[plan.Machine.Results[0]]
+	if calls < 2 || result.coefficient == 0 || result.constant < -0x80000000 || result.constant > 0xffffffff {
+		return 0, 0, 0, false
+	}
+	location := plan.Allocation.LocationAt(result.source, plan.Allocation.InstructionPositions[0]*6)
+	data := plan.Machine.VRegs[result.source]
+	if location.Kind != railmach.LocationRegister || location.Bank != railmach.BankGPR || data.Flags&railmach.VRegInitial == 0 ||
+		data.Type != railmach.TypeI32 || data.InitialLocal >= plan.Machine.ParamCount || int(data.InitialLocal) >= len(arm64ParamRegisters) {
+		return 0, 0, 0, false
+	}
+	return result.source, result.coefficient, result.constant, true
 }
 
 func arm64RailMachDirectCallClass(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) railmach.ABIClass {
