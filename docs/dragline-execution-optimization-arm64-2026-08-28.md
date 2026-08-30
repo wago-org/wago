@@ -545,6 +545,16 @@ than ARM64 `B.cond` can reach. Functions above the same conservative
 fallback. `esbuild` again compiles all 4,148 functions, while smaller functions
 keep cold trap materialization.
 
+The refreshed per-export report exposed three remaining 64-byte bulk-memory
+losses. RailMach now recognizes verifier-proven constant destination, source or
+fill byte, and length operands when both memory ranges fit the declared minimum.
+For 64-byte operations it emits four paired loads/stores in the required forward
+or backward overlap order, or four paired fill stores, without the generic
+bounds and direction machinery. Twelve alternating 400 ms before/after rounds
+move forward copy from 474.6 ns to 212.9 ns, backward copy from 491.2 ns to
+221.7 ns, and fill from 401.2 ns to 172.4 ns. Paired against Railshot, the final
+ratios are 0.509x, 0.531x, and 0.555x respectively.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is

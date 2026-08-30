@@ -385,6 +385,21 @@ func TestCompilerARM64RailMachFinalizesBulkMemoryAndSaturatingConversion(t *test
 	}
 }
 
+func TestARM64ConstantBulkMemory64IsCompactAndOverlapAware(t *testing.T) {
+	var forward, backward, fill arm64.Asm
+	emitARM64ConstantBulkMemory64(&forward, wasm.InstrMemoryCopy, 8192, 0)
+	emitARM64ConstantBulkMemory64(&backward, wasm.InstrMemoryCopy, 32784, 32768)
+	emitARM64ConstantBulkMemory64(&fill, wasm.InstrMemoryFill, 49152, 0xa5)
+	for name, code := range map[string][]byte{"forward": forward.B, "backward": backward.B, "fill": fill.B} {
+		if len(code) > 64 {
+			t.Fatalf("constant %s 64-byte bulk sequence = %d bytes, want at most 64", name, len(code))
+		}
+	}
+	if bytes.Equal(forward.B, backward.B) {
+		t.Fatal("overlapping backward copy used forward load/store order")
+	}
+}
+
 func TestCompilerARM64SignalsBoundsElideScalarChecks(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

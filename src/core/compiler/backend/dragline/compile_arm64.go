@@ -2527,7 +2527,14 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				if len(operands) != 3 {
 					return nil, 0, true, fmt.Errorf("RailMach %s operand count is %d", instruction.Op, len(operands))
 				}
-				if err := emitARM64BulkMemoryRegisters(&a, instruction.Op, wasmOffset, mops, fn.Index, metadata); err != nil {
+				dst, dstConstant := arm64RailMachI32Constant(plan, operands[0].Reg)
+				second, secondConstant := arm64RailMachI32Constant(plan, operands[1].Reg)
+				n, nConstant := arm64RailMachI32Constant(plan, operands[2].Reg)
+				constant64 := dstConstant && secondConstant && nConstant && n == 64 && dst+n <= plan.Stack.MemoryMinBytes &&
+					(instruction.Op != wasm.InstrMemoryCopy || second+n <= plan.Stack.MemoryMinBytes)
+				if constant64 {
+					emitARM64ConstantBulkMemory64(&a, instruction.Op, dst, second)
+				} else if err := emitARM64BulkMemoryRegisters(&a, instruction.Op, wasmOffset, mops, fn.Index, metadata); err != nil {
 					return nil, 0, true, err
 				}
 				for physical := range bulkLive {
@@ -4119,6 +4126,18 @@ func arm64RailMachDirectCallClass(plan *nativeBackendPlan, instructionID uint32,
 		}
 	}
 	return 0
+}
+
+func arm64RailMachI32Constant(plan *nativeBackendPlan, value railmach.VReg) (uint64, bool) {
+	if plan == nil || plan.Machine == nil || value == 0 || int(value) >= len(plan.Machine.VRegs) {
+		return 0, false
+	}
+	definition := plan.Machine.VRegs[value].Def / 6
+	if int(definition) >= len(plan.Machine.Insts) {
+		return 0, false
+	}
+	instruction := plan.Machine.Insts[definition]
+	return uint64(uint32(instruction.Aux)), instruction.Op == wasm.InstrI32Const && instruction.Result == value
 }
 
 func arm64RailMachDirectCallUsesPrivateABI(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) bool {
@@ -9585,6 +9604,31 @@ func emitARM64ConstantBulkMemory(a *arm64.Asm, kind wasm.InstrKind, dst, second,
 		return emitARM64BulkCopyForwardLoop(a, arm64.X0, arm64.X1, arm64.X2)
 	}
 	return emitARM64BulkCopyBackwardLoop(a, arm64.X0, arm64.X1, arm64.X2)
+}
+
+func emitARM64ConstantBulkMemory64(a *arm64.Asm, kind wasm.InstrKind, dst, second uint64) {
+	a.MovImm64(arm64.X0, dst)
+	a.Add64(arm64.X0, arm64.X26, arm64.X0)
+	if kind == wasm.InstrMemoryFill {
+		a.MovImm64(arm64.X1, second&0xff)
+		a.MovImm64(arm64.X16, 0x0101010101010101)
+		a.Mul64(arm64.X1, arm64.X1, arm64.X16)
+		for offset := int32(0); offset < 64; offset += 16 {
+			a.StpOffset(arm64.X1, arm64.X1, arm64.X0, offset)
+		}
+		return
+	}
+	a.MovImm64(arm64.X1, second)
+	a.Add64(arm64.X1, arm64.X26, arm64.X1)
+	backward := dst > second && dst < second+64
+	for ordinal := 0; ordinal < 4; ordinal++ {
+		offset := int32(ordinal * 16)
+		if backward {
+			offset = int32((3 - ordinal) * 16)
+		}
+		a.LdpOffset(arm64.X16, arm64.X17, arm64.X1, offset)
+		a.StpOffset(arm64.X16, arm64.X17, arm64.X0, offset)
+	}
 }
 
 func emitARM64ConstantWideCopyLoop(a *arm64.Asm, dst, src, n arm64.Reg, backward bool) bool {
