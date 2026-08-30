@@ -274,6 +274,7 @@ func (c *Collector) AddTypes(types []TypeDesc) error {
 		c.types, c.subtypeIntervals = oldTypes, oldIntervals
 		return err
 	}
+	c.refreshNativeView()
 	return nil
 }
 
