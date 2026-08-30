@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	corergc "github.com/wago-org/wago/src/core/runtime/gc"
@@ -104,6 +105,88 @@ func TestGCNativeDefinedCastAndTestAcrossCollectorSpaces(t *testing.T) {
 	defer tiny.Close()
 	for range 50 {
 		assertGCNativeDefinedTypeSemantics(t, tiny)
+	}
+}
+
+func TestGCNativeSubtypeIntervalAppendWaitsForInvocationLease(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
+	defer rt.Close()
+	baseType := []byte{0x50, 0x00, 0x5f, 0x00}
+	baseGlobal := []byte{0x6d, 0x01, 0xfb, 0x01, 0x00, 0x0b}
+	base, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(baseType)),
+		wasmtest.Section(6, wasmtest.Vec(baseGlobal)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("g", byte(wasm.ExternGlobal), 0))),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer base.Close()
+	baseInstance, err := rt.Instantiate(context.Background(), base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer baseInstance.Close()
+	sharedGlobal, err := baseInstance.ExportedGlobalObject("g")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	childType := []byte{0x4f, 0x01, 0x00, 0x5f, 0x00}
+	consumerImport := append(append(wasmtest.Name("env"), wasmtest.Name("g")...), byte(wasm.ExternGlobal), 0x6d, 0x01)
+	consumer, err := rt.Compile(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(baseType, childType)),
+		wasmtest.Section(2, wasmtest.Vec(consumerImport)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+
+	domain := baseInstance.gcInvocationDomain()
+	if domain == nil || domain.collector.NativeView().SubtypeIntervalCount != 1 {
+		t.Fatalf("initial GC domain/view = %+v/%+v", domain, baseInstance.gc.NativeView())
+	}
+	type result struct {
+		instance *Instance
+		err      error
+	}
+	done := make(chan result, 1)
+	domain.invocationMu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			domain.invocationMu.Unlock()
+		}
+	}()
+	go func() {
+		instance, err := rt.Instantiate(context.Background(), consumer, WithImports(Imports{"env.g": sharedGlobal}))
+		done <- result{instance: instance, err: err}
+	}()
+	select {
+	case got := <-done:
+		if got.instance != nil {
+			_ = got.instance.Close()
+		}
+		t.Fatalf("type append completed while native invocation lease was held: %v", got.err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	if got := domain.collector.NativeView().SubtypeIntervalCount; got != 1 {
+		t.Fatalf("blocked type append published %d subtype intervals, want 1", got)
+	}
+	domain.invocationMu.Unlock()
+	locked = false
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		defer got.instance.Close()
+	case <-time.After(5 * time.Second):
+		t.Fatal("type append did not resume after native invocation lease release")
+	}
+	if got := domain.collector.NativeView().SubtypeIntervalCount; got != 2 {
+		t.Fatalf("completed type append published %d subtype intervals, want 2", got)
 	}
 }
 

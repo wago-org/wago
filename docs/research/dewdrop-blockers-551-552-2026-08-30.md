@@ -37,8 +37,9 @@ native GC ABI remains at version 1 and now includes:
 - an interval count.
 
 The added collector-view prefix cost is 16 bytes. The interval table still costs
-8 bytes per canonical type. `Collector.AddTypes` republishes the pointer and
-count after canonical-domain growth. Generated code reloads both fields for each
+8 bytes per canonical type. Runtime-domain growth quiesces the domain invocation
+lease before `Collector.AddTypes` republishes the pointer and count. Generated
+code reloads both fields for each
 check and does not retain an object pointer across a call, helper, allocation,
 or safepoint.
 
@@ -79,3 +80,13 @@ A separate final/non-final cast run measured final casts at 3.505-3.543 ns/op
 and non-final casts at 3.503-3.568 ns/op. With `-tags wago_gcstats`, 1,000
 steady-state non-final casts and tests each report zero synchronous GC helper
 calls.
+
+## Release-size effect
+
+A local reproducible `scripts/size-card.sh` run with Go 1.24.4 and TinyGo 0.41.1
+measured deltas against `origin/main` of 0 bytes for manager, +20,480 bytes for
+Standard runtime, +12,288 bytes for Minimal runtime, and +6,000 bytes for the
+TinyGo Minimal runtime. The existing Standard budget still passes in canonical
+CI. The Minimal and TinyGo Minimal ceilings increase by 20,000 and 8,000 bytes,
+respectively; this keeps the budget change bounded to the measured CLI/runtime
+configuration and native subtype-check implementation.

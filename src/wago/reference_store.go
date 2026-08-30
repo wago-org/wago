@@ -1272,6 +1272,10 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 	topology.Unlock()
 	topologyLocked = false
 
+	// Native subtype readers hold invocationMu but do not enter Go or selected.mu.
+	// Quiesce the whole domain before replacing and republishing the interval
+	// backing, then follow the ordinary invocationMu -> mu lock order.
+	selected.invocationMu.Lock()
 	selected.mu.Lock()
 	mapping, types, reps, err := gcCanonicalTypePlan(c, selected.typeReps, selected.types, preferred != nil)
 	if err == nil && len(types) > len(selected.types) {
@@ -1281,6 +1285,7 @@ func (s *referenceStore) acquireGCCollector(config gc.Config, c *Compiled, prefe
 		selected.types, selected.typeReps = types, reps
 	}
 	selected.mu.Unlock()
+	selected.invocationMu.Unlock()
 	if err != nil {
 		s.releaseUnclaimedGCCollector(selected.collector)
 		return nil, nil, err
