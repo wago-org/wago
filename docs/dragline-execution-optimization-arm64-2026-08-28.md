@@ -598,14 +598,17 @@ their equivalent add/sub chains, measuring 30--32 us versus 38--47 us. The abs
 recurrence switches to the proven negative-state add chain after two exact
 pairs and measures 31--32 us versus 38--39 us.
 
-For coupled add, division, and sqrt, RailMach now checks the raw result bits
-after two consecutive pairs. Bitwise equality proves every remaining identical
-pair is a fixed point; otherwise the complete 16-pair body runs unchanged.
-Correctness matches Railshot for both widths and the full zero-through-4,096
-boundary matrix. Focused 400 ms samples put f32/f64 division at 45--52 ns
-versus 121--151 us, f64 add at 654--661 ns versus 31.4 us, and f64 sqrt at
-134--139 us versus 143--147 us. Sixteen-byte alignment of verified rotated
-counted latches supplies additional margin to instruction-throughput ties.
+For coupled add and division, RailMach now checks the raw result bits after two
+consecutive pairs. Bitwise equality proves every remaining identical pair is a
+fixed point; otherwise the complete 16-pair body runs unchanged. Sqrt never
+reaches that fixed point, so its dedicated path preserves all operations while
+executing two exact bodies per counter backedge. Correctness matches Railshot
+for both widths and the full zero-through-4,096 boundary matrix. Focused 400 ms
+samples put f32/f64 division at 45--52 ns versus 121--151 us and f64 add at
+654--661 ns versus 31.4 us. Six balanced alternating 500 ms rounds put sqrt at
+0.9994x Railshot for f32 and 0.9976x for f64. Sixteen-byte alignment of verified
+rotated counted latches supplies additional margin to instruction-throughput
+ties.
 
 ## Historical application outliers
 

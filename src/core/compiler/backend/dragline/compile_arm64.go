@@ -1373,43 +1373,72 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				a.Fsub(31, 30, 29, f64)
 			}
 		}
-		loop := a.Len()
-		emitPair()
-		a.FmovToGpr(arm64.X14, 30, f64)
-		a.FmovToGpr(arm64.X15, 31, f64)
-		emitPair()
-		a.FmovToGpr(arm64.X16, 30, f64)
-		a.FmovToGpr(arm64.X17, 31, f64)
-		if f64 {
-			a.CmpReg64(arm64.X16, arm64.X14)
+		if op == wasm.InstrF32Sqrt || op == wasm.InstrF64Sqrt {
+			a.TstImm32(nReg, 1)
+			even := a.Bcond(arm64.CondEQ)
+			for range 16 {
+				emitPair()
+			}
+			a.SubImm32(nReg, nReg, 1)
+			oddDone := a.Cbz32(nReg)
+			a.Align16()
+			loop := a.Len()
+			if !a.PatchBranch19(even, loop) {
+				return nil, 0, true, fmt.Errorf("RailMach float sqrt even entry is out of range")
+			}
+			for range 32 {
+				emitPair()
+			}
+			a.SubImm32(nReg, nReg, 2)
+			if !a.PatchBranch19(a.Cbnz32(nReg), loop) {
+				return nil, 0, true, fmt.Errorf("RailMach float sqrt loop is out of range")
+			}
+			done := a.Len()
+			if !a.PatchBranch19(zero, done) || !a.PatchBranch19(oddDone, done) {
+				return nil, 0, true, fmt.Errorf("RailMach float sqrt zero exit is out of range")
+			}
+			a.Fadd(resultReg, 30, 31, f64)
+			fastEpilogue = a.Branch()
 		} else {
-			a.CmpReg32(arm64.X16, arm64.X14)
-		}
-		notFixedA := a.Bcond(arm64.CondNE)
-		if f64 {
-			a.CmpReg64(arm64.X17, arm64.X15)
-		} else {
-			a.CmpReg32(arm64.X17, arm64.X15)
-		}
-		notFixedB := a.Bcond(arm64.CondNE)
-		fixed := a.Branch()
-		slow := a.Len()
-		if !a.PatchBranch19(notFixedA, slow) || !a.PatchBranch19(notFixedB, slow) {
-			return nil, 0, true, fmt.Errorf("RailMach float convergence guard is out of range")
-		}
-		for range 14 {
+			a.Align16()
+			loop := a.Len()
 			emitPair()
+			a.FmovToGpr(arm64.X14, 30, f64)
+			a.FmovToGpr(arm64.X15, 31, f64)
+			emitPair()
+			a.FmovToGpr(arm64.X16, 30, f64)
+			a.FmovToGpr(arm64.X17, 31, f64)
+			if f64 {
+				a.CmpReg64(arm64.X16, arm64.X14)
+			} else {
+				a.CmpReg32(arm64.X16, arm64.X14)
+			}
+			notFixedA := a.Bcond(arm64.CondNE)
+			if f64 {
+				a.CmpReg64(arm64.X17, arm64.X15)
+			} else {
+				a.CmpReg32(arm64.X17, arm64.X15)
+			}
+			notFixedB := a.Bcond(arm64.CondNE)
+			fixed := a.Branch()
+			slow := a.Len()
+			if !a.PatchBranch19(notFixedA, slow) || !a.PatchBranch19(notFixedB, slow) {
+				return nil, 0, true, fmt.Errorf("RailMach float convergence guard is out of range")
+			}
+			for range 14 {
+				emitPair()
+			}
+			a.SubImm32(nReg, nReg, 1)
+			if !a.PatchBranch19(a.Cbnz32(nReg), loop) {
+				return nil, 0, true, fmt.Errorf("RailMach float convergence loop is out of range")
+			}
+			done := a.Len()
+			if !a.PatchBranch26(fixed, done) || !a.PatchBranch19(zero, done) {
+				return nil, 0, true, fmt.Errorf("RailMach float convergence exit is out of range")
+			}
+			a.Fadd(resultReg, 30, 31, f64)
+			fastEpilogue = a.Branch()
 		}
-		a.SubImm32(nReg, nReg, 1)
-		if !a.PatchBranch19(a.Cbnz32(nReg), loop) {
-			return nil, 0, true, fmt.Errorf("RailMach float convergence loop is out of range")
-		}
-		done := a.Len()
-		if !a.PatchBranch26(fixed, done) || !a.PatchBranch19(zero, done) {
-			return nil, 0, true, fmt.Errorf("RailMach float convergence exit is out of range")
-		}
-		a.Fadd(resultReg, 30, 31, f64)
-		fastEpilogue = a.Branch()
 	}
 	if n, result, f64, ok := arm64RailMachAbsRecurrenceFastPath(plan); ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
