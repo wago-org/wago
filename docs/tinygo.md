@@ -98,6 +98,11 @@ This is what `make tinygo-build` / `make tinygo-test` and CI use, and the config
 in which the entire suite — including the standard-Go GC-storm stress test — is
 green and deterministic.
 
+`make tinygo-test` also sets a 64 KiB fallback goroutine stack. The broad public
+API test harness reaches some call paths indirectly, so TinyGo cannot always
+derive their exact stack requirement. This setting is test-only: release builds
+retain TinyGo's normal per-goroutine stack sizing.
+
 The reason is structural. wago runs native wasm code on a dedicated off-heap
 *foreign stack* (it switches `RSP` for the duration of a call). TinyGo's default
 collector is conservative: under a *threaded* scheduler it can stop a thread that

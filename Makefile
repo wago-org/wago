@@ -250,6 +250,10 @@ TINYGO ?= tinygo
 # switched stack, so wago under TinyGo wants the cooperative scheduler. See
 # docs/tinygo.md.
 TINYGO_SCHEDULER ?= tasks
+# TinyGo cannot statically size every goroutine reached through the public API
+# test harness. Give only that harness a roomy fallback stack; release binaries
+# continue to use TinyGo's normal per-goroutine sizing.
+TINYGO_TEST_STACK_SIZE ?= 64kb
 # Stamped into the manager and runners via -ldflags -X. Release workflows pass
 # the git tag; 0.0.0 is the pre-release default until the first tag.
 WAGO_VERSION ?= 0.0.0
@@ -303,7 +307,7 @@ tinygo-build: ## Build the Minimal runtime with TinyGo (no cgo, debug) -> ./wago
 
 .PHONY: tinygo-test
 tinygo-test: ## Run the runtime + public-API suites under TinyGo
-	$(TINYGO) test -v -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
+	$(TINYGO) test -v -scheduler=$(TINYGO_SCHEDULER) -stack-size=$(TINYGO_TEST_STACK_SIZE) ./src/core/runtime/ ./src/wago/
 
 .PHONY: cover
 cover: ## Run all five public gates with merged cross-package coverage
