@@ -305,6 +305,31 @@ func TestSparseSimplifyElidesExtendWrapRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSparseSimplifyElidesExactI32F64SaturatingRoundTrip(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		convert byte
+		trunc   byte
+	}{
+		{name: "signed", convert: 0xb7, trunc: 0x02},
+		{name: "unsigned", convert: 0xb8, trunc: 0x03},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := scalarModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+				0x20, 0x00,
+				test.convert,
+				0xfc, test.trunc,
+				0x0b,
+			})
+			_, _, flow, semantic, _, result := buildSimplifyTest(t, m)
+			trunc := semantic.Insts[semantic.InstructionMap[2]-1].Result
+			if got := resolveAlias(result.Aliases, trunc); got == trunc || flow.Values[got].Type != wasm.I32 {
+				t.Fatalf("saturating round trip alias v%d -> v%d", trunc, got)
+			}
+		})
+	}
+}
+
 func TestSparseSimplifyGVNsAcrossUniquePredecessor(t *testing.T) {
 	m := scalarModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x20, 0x00, 0x41, 0x07, 0x6a, 0x1a,

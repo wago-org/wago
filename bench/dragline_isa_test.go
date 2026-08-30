@@ -451,6 +451,39 @@ func draglineISAModule(t *testing.T, name string) corpusModule {
 	return corpusModule{}
 }
 
+func TestDraglineF32RoundTripFastPath(t *testing.T) {
+	module := draglineISAModule(t, "isa_cvt")
+	instantiate := func(compiler wago.CompilerEngine) *wago.Instance {
+		t.Helper()
+		compiled, err := wago.NewRuntimeConfig().WithCompiler(compiler).Compile(module.bytes)
+		if err != nil {
+			t.Fatalf("%s compile: %v", compiler, err)
+		}
+		t.Cleanup(func() { compiled.Close() })
+		instance, err := wago.Instantiate(compiled, wago.InstantiateOptions{})
+		if err != nil {
+			t.Fatalf("%s instantiate: %v", compiler, err)
+		}
+		t.Cleanup(func() { instance.Close() })
+		return instance
+	}
+	wantInstance := instantiate(wago.CompilerRailshot)
+	gotInstance := instantiate(wago.CompilerDragline)
+	for _, n := range []int32{0, 1, 2, 17, 1024, 2048, 4096, 8192, 8193} {
+		want, err := wantInstance.Invoke("f32_convert_s", wago.I32(n))
+		if err != nil {
+			t.Fatalf("Railshot f32_convert_s(%d): %v", n, err)
+		}
+		got, err := gotInstance.Invoke("f32_convert_s", wago.I32(n))
+		if err != nil {
+			t.Fatalf("Dragline f32_convert_s(%d): %v", n, err)
+		}
+		if !slices.Equal(got, want) {
+			t.Fatalf("f32_convert_s(%d) = %#x, want %#x", n, got, want)
+		}
+	}
+}
+
 // BenchmarkRailshotDraglineISAExec is the paired execution gate for ISA
 // families admitted by Dragline. Setup, compilation, instantiation, export
 // lookup, and one warmup invocation happen outside the timed region. Keeping

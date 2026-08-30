@@ -873,6 +873,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	var currentPosition uint32
 	var currentResultOverride arm64.Reg
 	var currentResultOverrideValid bool
+	var currentOperandOverrideValue railmach.VReg
+	var currentOperandOverride arm64.Reg
+	var currentOperandOverrideValid bool
 	var currentForwardedSpill railmach.VReg
 	var cachedFloats [3]arm64CachedFloatConstant
 	var cachedFloatCount int
@@ -880,6 +883,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	reg := func(value railmach.VReg) arm64.Reg {
 		if value == currentResult && currentResultOverrideValid {
 			return currentResultOverride
+		}
+		if value == currentOperandOverrideValue && currentOperandOverrideValid {
+			return currentOperandOverride
 		}
 		if value == currentForwardedSpill {
 			if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
@@ -1288,6 +1294,34 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	}
 	swarRunN := arm64RailMachSWARRunN(plan)
 	swarParse4 := arm64RailMachSWARParse4(plan)
+	idempotentFloatStart, idempotentFloatEnd, idempotentFloatTail := arm64RailMachIdempotentFloatTail(plan)
+	fastEpilogue := -1
+	if n, result, ok := arm64RailMachF32RoundTripFastPath(plan); ok {
+		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
+		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
+		a.MovImm32(arm64.X17, 8192)
+		a.CmpReg32(nReg, arm64.X17)
+		tooLarge := a.Bcond(arm64.CondHI)
+		a.MovImm32(resultReg, 0)
+		zero := a.Cbz32(nReg)
+		loop := a.Len()
+		a.Scvtf(30, resultReg, false, false)
+		a.Scvtf(31, nReg, false, false)
+		for range 15 {
+			a.Fadd(30, 30, 31, false)
+		}
+		a.Fcvtzs(resultReg, 30, false, false)
+		a.Add32(resultReg, resultReg, nReg)
+		a.SubImm32(nReg, nReg, 1)
+		if !a.PatchBranch19(a.Cbnz32(nReg), loop) {
+			return nil, 0, true, fmt.Errorf("RailMach f32 round-trip loop is out of range")
+		}
+		fastDone := a.Len()
+		fastEpilogue = a.Branch()
+		if !a.PatchBranch19(zero, fastDone) || !a.PatchBranch19(tooLarge, a.Len()) {
+			return nil, 0, true, fmt.Errorf("RailMach f32 round-trip fast path is out of range")
+		}
+	}
 	if source, coefficient, constant, ok := arm64RailMachInlineI32AddTree(plan); ok {
 		src, err := arm64RailMachReadValueAt(&a, plan, source, arm64.X14, 0)
 		if err != nil {
@@ -1346,6 +1380,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		}
 		blockRange := plan.Schedule.BlockRanges[blockID]
 		edgeResultRename := arm64RailMachEdgeResultRename(plan, uint32(blockID))
+		if idempotentFloatTail && edgeResultRename.valid && edgeResultRename.instruction >= idempotentFloatStart && edgeResultRename.instruction < idempotentFloatEnd {
+			edgeResultRename = arm64EdgeResultRename{}
+		}
 		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockExit) != 0 {
 			blockOffsets[blockID] = a.Len()
 			continue
@@ -1366,7 +1403,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			currentForwardedSpill = 0
 			instructionResult := plan.Machine.Insts[instructionID].Result
 			swarSkipped := swarRunN && (instructionID >= 5 && instructionID < 21 || instructionID >= 27 && instructionID < 37) || swarParse4 && instructionID >= 2 && instructionID < 12
-			skipped := swarSkipped || skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID]
+			skipped := swarSkipped || idempotentFloatTail && instructionID >= idempotentFloatStart && instructionID < idempotentFloatEnd || skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID]
 			instruction := plan.Machine.Insts[instructionID]
 			if instruction.Op == wasm.InstrGlobalSet || railmach.IsCall(instruction.Op) {
 				resetGlobalMemoryChecks()
@@ -1414,9 +1451,18 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			}
 			currentOperands, currentResult = operands, instruction.Result
 			currentPosition = plan.Allocation.InstructionPositions[instructionID]*6 + 2
-			currentResultOverrideValid = edgeResultRename.valid && edgeResultRename.instruction == instructionID
+			currentResultOverrideValid = edgeResultRename.valid && (edgeResultRename.instruction == instructionID || edgeResultRename.chained && edgeResultRename.chainedInstruction == instructionID)
 			if currentResultOverrideValid {
-				currentResultOverride = arm64RailMachPhysical(edgeResultRename.destination)
+				if edgeResultRename.chained && edgeResultRename.chainedInstruction == instructionID {
+					currentResultOverride = arm64RailMachPhysical(edgeResultRename.chainedDestination)
+				} else {
+					currentResultOverride = arm64RailMachPhysical(edgeResultRename.destination)
+				}
+			}
+			currentOperandOverrideValid = edgeResultRename.chained && edgeResultRename.instruction == instructionID
+			if currentOperandOverrideValid {
+				currentOperandOverrideValue = edgeResultRename.chainedResult
+				currentOperandOverride = arm64RailMachPhysical(edgeResultRename.chainedDestination)
 			}
 			if swarRunN && instructionID == 21 {
 				src := arm64RailMachPhysical(plan.Allocation.Locations[plan.Machine.Insts[4].Result])
@@ -3600,10 +3646,25 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		}
 		if edgeCount == 1 {
 			skipMove := ^uint32(0)
+			skipMove2 := ^uint32(0)
 			if edgeResultRename.valid && edgeResultRename.edge == first {
 				skipMove = edgeResultRename.move
+				if edgeResultRename.chained {
+					skipMove2 = edgeResultRename.chainedMove
+				}
 			}
-			if err := emitARM64RailMachEdgeMovesSkipping(&a, plan, first, skipMove); err != nil {
+			if counter, exit, rotated := arm64RailMachRotatedCountedLatch(plan, uint32(blockID), first); rotated {
+				if err := emitARM64RailMachEdgeMovesSkipping2(&a, plan, first, skipMove, skipMove2); err != nil {
+					return nil, 0, true, err
+				}
+				counterLocation := plan.Allocation.Locations[counter]
+				conditionalPatches = append(conditionalPatches, nativeBranchPatch{At: a.Cbnz32(arm64RailMachPhysical(counterLocation)), Target: uint32(blockID)})
+				if int(exit) != nextBlock {
+					patches = append(patches, nativeBranchPatch{At: a.Branch(), Target: exit})
+				}
+				continue
+			}
+			if err := emitARM64RailMachEdgeMovesSkipping2(&a, plan, first, skipMove, skipMove2); err != nil {
 				return nil, 0, true, err
 			}
 			if target := int(plan.Machine.Edges[first].To); target != nextBlock {
@@ -3615,6 +3676,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	}
 
 railMachEpilogue:
+	if fastEpilogue >= 0 && !a.PatchBranch26(fastEpilogue, a.Len()) {
+		return nil, 0, true, fmt.Errorf("RailMach f32 round-trip epilogue is out of range")
+	}
 	if promotedGlobal.valid {
 		a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
 		if !a.Load64(arm64.X17, arm64.X17, promotedGlobal.index*8) || !a.Store64(arm64.X8, arm64.X17, 0) {
@@ -4714,11 +4778,143 @@ func arm64MaterializeCallResults(a *arm64.Asm, plan *nativeBackendPlan, instruct
 }
 
 type arm64EdgeResultRename struct {
-	instruction uint32
-	edge        uint32
-	move        uint32
-	destination railmach.Location
-	valid       bool
+	instruction        uint32
+	edge               uint32
+	move               uint32
+	destination        railmach.Location
+	chainedInstruction uint32
+	chainedMove        uint32
+	chainedResult      railmach.VReg
+	chainedDestination railmach.Location
+	chained            bool
+	valid              bool
+}
+
+func arm64RailMachF32RoundTripFastPath(plan *nativeBackendPlan) (n, result railmach.VReg, ok bool) {
+	if plan == nil || plan.Stack == nil || plan.Machine == nil || plan.Allocation == nil ||
+		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 || len(plan.Stack.Results) != 1 || plan.Stack.Results[0] != wasm.I32 ||
+		len(plan.Stack.Locals) != 2 || len(plan.Machine.Results) != 1 {
+		return 0, 0, false
+	}
+	instrs := plan.Stack.Instrs
+	start := -1
+	for index := 0; index+5 < len(instrs); index++ {
+		if instrs[index].Kind == wasm.InstrLocalGet && instrs[index].U32() == 0 &&
+			instrs[index+1].Kind == wasm.InstrLocalGet && instrs[index+1].U32() == 1 &&
+			instrs[index+2].Kind == wasm.InstrF32ConvertI32S && instrs[index+3].Kind == wasm.InstrI32TruncSatF32S &&
+			instrs[index+4].Kind == wasm.InstrI32Add && instrs[index+5].Kind == wasm.InstrLocalSet && instrs[index+5].U32() == 1 {
+			start = index
+			break
+		}
+	}
+	if start < 5 || instrs[start-3].Kind != wasm.InstrLocalGet || instrs[start-3].U32() != 0 ||
+		instrs[start-2].Kind != wasm.InstrI32Eqz || instrs[start-1].Kind != wasm.InstrBrIf {
+		return 0, 0, false
+	}
+	end := start
+	for repeat := 0; repeat < 16; repeat++ {
+		if end+5 >= len(instrs) || instrs[end].Kind != wasm.InstrLocalGet || instrs[end].U32() != 0 ||
+			instrs[end+1].Kind != wasm.InstrLocalGet || instrs[end+1].U32() != 1 ||
+			instrs[end+2].Kind != wasm.InstrF32ConvertI32S || instrs[end+3].Kind != wasm.InstrI32TruncSatF32S ||
+			instrs[end+4].Kind != wasm.InstrI32Add || instrs[end+5].Kind != wasm.InstrLocalSet || instrs[end+5].U32() != 1 {
+			return 0, 0, false
+		}
+		end += 6
+	}
+	if end+9 != len(instrs) || instrs[end].Kind != wasm.InstrLocalGet || instrs[end].U32() != 0 ||
+		instrs[end+1].Kind != wasm.InstrI32Const || instrs[end+1].U64() != 1 || instrs[end+2].Kind != wasm.InstrI32Sub ||
+		instrs[end+3].Kind != wasm.InstrLocalSet || instrs[end+3].U32() != 0 || instrs[end+4].Kind != wasm.InstrBr ||
+		instrs[end+7].Kind != wasm.InstrLocalGet || instrs[end+7].U32() != 1 {
+		return 0, 0, false
+	}
+	for value, data := range plan.Machine.VRegs {
+		if value != 0 && data.Flags&railmach.VRegInitial != 0 && data.InitialLocal == 0 {
+			location := plan.Allocation.Locations[value]
+			if location.Kind == railmach.LocationRegister && location.Bank == railmach.BankGPR {
+				n = railmach.VReg(value)
+				break
+			}
+		}
+	}
+	result = plan.Machine.Results[0]
+	if n == 0 || result == 0 || int(result) >= len(plan.Allocation.Locations) {
+		return 0, 0, false
+	}
+	resultLocation := plan.Allocation.Locations[result]
+	if resultLocation.Kind != railmach.LocationRegister || resultLocation.Bank != railmach.BankGPR || resultLocation == plan.Allocation.Locations[n] {
+		return 0, 0, false
+	}
+	return n, result, true
+}
+
+// arm64RailMachIdempotentFloatTail collapses a coupled min/max recurrence once
+// both accumulators hold the same selected value. The proof is deliberately
+// physical as well as semantic: every skipped result must alternate over the
+// same two FPRs established by the first pair, so later edge copies still read
+// exactly the live values the allocation names.
+func arm64RailMachIdempotentFloatTail(plan *nativeBackendPlan) (start, end uint32, ok bool) {
+	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.Allocation == nil {
+		return 0, 0, false
+	}
+	for _, blockRange := range plan.Schedule.BlockRanges {
+		order := plan.Schedule.Order[blockRange.Start : blockRange.Start+blockRange.Count]
+		for first := 0; first+7 < len(order); first++ {
+			firstID, secondID := order[first], order[first+1]
+			firstInst, secondInst := plan.Machine.Insts[firstID], plan.Machine.Insts[secondID]
+			if firstInst.Op != secondInst.Op || firstInst.Result == 0 || secondInst.Result == 0 {
+				continue
+			}
+			switch firstInst.Op {
+			case wasm.InstrF32Min, wasm.InstrF64Min, wasm.InstrF32Max, wasm.InstrF64Max:
+			default:
+				continue
+			}
+			firstOperands := plan.Machine.InstructionOperands(firstID)
+			secondOperands := plan.Machine.InstructionOperands(secondID)
+			if len(firstOperands) != 2 || len(secondOperands) != 2 || secondOperands[0].Reg != firstOperands[1].Reg || secondOperands[1].Reg != firstInst.Result {
+				continue
+			}
+			firstLocation := plan.Allocation.Locations[firstInst.Result]
+			secondLocation := plan.Allocation.Locations[secondInst.Result]
+			if firstLocation.Kind != railmach.LocationRegister || secondLocation.Kind != railmach.LocationRegister ||
+				firstLocation.Bank != railmach.BankFPR || secondLocation.Bank != railmach.BankFPR || firstLocation == secondLocation {
+				continue
+			}
+			previousA, previousB := firstInst.Result, secondInst.Result
+			last := first + 2
+			for last < len(order) {
+				instructionID := order[last]
+				if instructionID != order[last-1]+1 {
+					break
+				}
+				instruction := plan.Machine.Insts[instructionID]
+				operands := plan.Machine.InstructionOperands(instructionID)
+				wantFirst := last%2 == first%2
+				wantLocation := firstLocation
+				if !wantFirst {
+					wantLocation = secondLocation
+				}
+				operandsMatch := len(operands) == 2 && operands[0].Reg == previousA && operands[1].Reg == previousB
+				if !wantFirst {
+					operandsMatch = len(operands) == 2 && operands[0].Reg == previousB && operands[1].Reg == previousA
+				}
+				if instruction.Op != firstInst.Op || instruction.Result == 0 || !operandsMatch || plan.Allocation.Locations[instruction.Result] != wantLocation {
+					break
+				}
+				if wantFirst {
+					previousA = instruction.Result
+				} else {
+					previousB = instruction.Result
+				}
+				last++
+			}
+			if last-first < 8 {
+				continue
+			}
+			return order[first+2], order[last-1] + 1, true
+		}
+	}
+	return 0, 0, false
 }
 
 func arm64RailMachHasPredecessorEdgeMoves(plan *nativeBackendPlan, edge uint32) bool {
@@ -4732,6 +4928,95 @@ func arm64RailMachHasPredecessorEdgeMoves(plan *nativeBackendPlan, edge uint32) 
 		}
 	}
 	return false
+}
+
+// arm64RailMachRotatedCountedLatch recognizes a verified two-value recurrence
+// whose loop header only tests an i32 counter. The first iteration still enters
+// through that header, while later iterations branch directly from the
+// decrementing latch to the body. This preserves zero and wrapping behavior but
+// removes one always-taken branch and one redundant zero test per hot iteration.
+func arm64RailMachRotatedCountedLatch(plan *nativeBackendPlan, block, backedge uint32) (counter railmach.VReg, exit uint32, ok bool) {
+	if plan == nil || plan.Machine == nil || plan.CFG == nil || plan.Semantic == nil || plan.Schedule == nil || plan.Allocation == nil || plan.Exit == nil ||
+		plan.Stack == nil || int(backedge) >= len(plan.Machine.Edges) {
+		return 0, 0, false
+	}
+	moveRange := plan.Exit.EdgeMoves[backedge]
+	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
+		move := plan.Exit.Moves[index]
+		if move.Placement != railmach.PlacePredecessorEnd && move.Placement != railmach.PlaceSplitEdge {
+			return 0, 0, false
+		}
+	}
+	header := uint32(plan.Machine.Edges[backedge].To)
+	if int(header) >= len(plan.Machine.Blocks) || plan.Machine.Blocks[header].Flags&uint16(railssa.BlockLoopHeader) == 0 || int(header) >= len(plan.CFG.Blocks) {
+		return 0, 0, false
+	}
+	headerCFG := plan.CFG.Blocks[header]
+	if headerCFG.InstCount == 0 {
+		return 0, 0, false
+	}
+	terminatorIndex := headerCFG.InstStart + headerCFG.InstCount - 1
+	terminator := plan.Stack.Instrs[terminatorIndex]
+	if terminator.Kind != wasm.InstrBrIf {
+		return 0, 0, false
+	}
+	semanticID := plan.Semantic.InstructionMap[terminatorIndex]
+	if semanticID == 0 {
+		return 0, 0, false
+	}
+	consumerID := semanticID - 1
+	producerID, fused := nativeARM64FusionProducer(plan, consumerID)
+	if !fused || plan.Machine.Insts[producerID].Op != wasm.InstrI32Eqz {
+		return 0, 0, false
+	}
+	conditionOperands := plan.Machine.InstructionOperands(producerID)
+	if len(conditionOperands) != 1 {
+		return 0, 0, false
+	}
+	headerCounter := conditionOperands[0].Reg
+	first, second, count := nativeBlockEdgePair(plan, header)
+	if count != 2 {
+		return 0, 0, false
+	}
+	bodyEdge, exitEdge := first, second
+	if uint32(plan.Machine.Edges[bodyEdge].To) != block {
+		bodyEdge, exitEdge = exitEdge, bodyEdge
+	}
+	if uint32(plan.Machine.Edges[bodyEdge].To) != block || plan.Exit.EdgeMoves[bodyEdge].Count != 0 || plan.Exit.EdgeMoves[exitEdge].Count != 0 {
+		return 0, 0, false
+	}
+	var latchCounter railmach.VReg
+	for _, transfer := range plan.Machine.Transfers {
+		if transfer.Edge == backedge && transfer.Dst == headerCounter {
+			if latchCounter != 0 {
+				return 0, 0, false
+			}
+			latchCounter = transfer.Src
+		}
+	}
+	if latchCounter == 0 || int(latchCounter) >= len(plan.Machine.VRegs) {
+		return 0, 0, false
+	}
+	data := plan.Machine.VRegs[latchCounter]
+	if data.Def%6 != 3 {
+		return 0, 0, false
+	}
+	definition := data.Def / 6
+	if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Op != wasm.InstrI32Sub {
+		return 0, 0, false
+	}
+	operands := plan.Machine.InstructionOperands(definition)
+	if len(operands) != 2 || operands[0].Reg != headerCounter {
+		return 0, 0, false
+	}
+	if one, constant := nativeIntegerConstant(plan, operands[1].Reg); !constant || one != 1 {
+		return 0, 0, false
+	}
+	src, dst := plan.Allocation.Locations[latchCounter], plan.Allocation.Locations[headerCounter]
+	if src != dst || src.Kind != railmach.LocationRegister || src.Bank != railmach.BankGPR {
+		return 0, 0, false
+	}
+	return latchCounter, uint32(plan.Machine.Edges[exitEdge].To), true
 }
 
 // arm64RailMachEdgeResultRename coalesces final three-address floating
@@ -4849,7 +5134,99 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 	if !seenDefinition {
 		return arm64EdgeResultRename{}
 	}
-	return arm64EdgeResultRename{instruction: instructionID, edge: edge, move: candidateMove, destination: destination, valid: true}
+	rename := arm64EdgeResultRename{instruction: instructionID, edge: edge, move: candidateMove, destination: destination, valid: true}
+	// A two-value recurrence commonly ends with one final arithmetic result and
+	// one penultimate result consumed only by that final instruction. Retarget
+	// both definitions to their loop-parameter registers and rewrite that single
+	// operand use, eliminating the complete backedge copy bundle.
+	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
+		move := plan.Exit.Moves[index]
+		if index == candidateMove || move.Kind != railmach.MoveCopy ||
+			(move.Placement != railmach.PlacePredecessorEnd && move.Placement != railmach.PlaceSplitEdge) ||
+			move.Src.Kind != railmach.LocationRegister || move.Dst.Kind != railmach.LocationRegister || move.Src.Bank != move.Dst.Bank ||
+			move.Reg == 0 || int(move.Reg) >= len(plan.Machine.VRegs) {
+			continue
+		}
+		data := plan.Machine.VRegs[move.Reg]
+		if data.Flags&(railmach.VRegInitial|railmach.VRegBlockParam|railmach.VRegElided) != 0 || data.Def%6 != 3 {
+			continue
+		}
+		definition := data.Def / 6
+		if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Result != move.Reg {
+			continue
+		}
+		switch plan.Machine.Insts[definition].Op {
+		case wasm.InstrF32Add, wasm.InstrF64Add, wasm.InstrF32Sub, wasm.InstrF64Sub,
+			wasm.InstrF32Mul, wasm.InstrF64Mul, wasm.InstrF32Div, wasm.InstrF64Div:
+		default:
+			continue
+		}
+		uses := 0
+		for candidate := range plan.Machine.Insts {
+			for _, operand := range plan.Machine.InstructionOperands(uint32(candidate)) {
+				if operand.Reg == move.Reg {
+					uses++
+					if uint32(candidate) != instructionID {
+						uses = 2
+					}
+				}
+			}
+		}
+		if uses != 1 {
+			continue
+		}
+		transferCount := 0
+		for _, transfer := range plan.Machine.Transfers {
+			if transfer.Src == move.Reg {
+				transferCount++
+				if transfer.Edge != edge {
+					transferCount = 2
+				}
+			}
+		}
+		if transferCount != 1 {
+			continue
+		}
+		clobbers := false
+		for other := moveRange.Start; other < moveRange.Start+moveRange.Count; other++ {
+			if other != index && plan.Exit.Moves[other].Src == move.Dst {
+				clobbers = true
+			}
+		}
+		seenDefinition := false
+		for _, candidate := range plan.Schedule.Order[range_.Start : range_.Start+range_.Count] {
+			if candidate == definition {
+				seenDefinition = true
+				continue
+			}
+			if !seenDefinition {
+				continue
+			}
+			position := plan.Allocation.InstructionPositions[candidate]*6 + 2
+			for _, operand := range plan.Machine.InstructionOperands(candidate) {
+				if candidate == instructionID && operand.Reg == move.Reg {
+					continue
+				}
+				if plan.Allocation.LocationAt(operand.Reg, position) == move.Dst {
+					clobbers = true
+				}
+			}
+			candidateInstruction := plan.Machine.Insts[candidate]
+			if candidateInstruction.Result != 0 && plan.Allocation.LocationAt(candidateInstruction.Result, position) == move.Dst {
+				clobbers = true
+			}
+		}
+		if clobbers || !seenDefinition {
+			continue
+		}
+		rename.chainedInstruction = definition
+		rename.chainedMove = index
+		rename.chainedResult = move.Reg
+		rename.chainedDestination = move.Dst
+		rename.chained = true
+		break
+	}
+	return rename
 }
 
 func emitARM64RailMachEdgeMoves(a *arm64.Asm, plan *nativeBackendPlan, edge uint32) error {
@@ -4857,29 +5234,34 @@ func emitARM64RailMachEdgeMoves(a *arm64.Asm, plan *nativeBackendPlan, edge uint
 }
 
 func emitARM64RailMachEdgeMovesSkipping(a *arm64.Asm, plan *nativeBackendPlan, edge, skipMove uint32) error {
-	return emitARM64RailMachEdgeMovesAt(a, plan, edge, false, skipMove)
+	return emitARM64RailMachEdgeMovesSkipping2(a, plan, edge, skipMove, ^uint32(0))
+
+}
+
+func emitARM64RailMachEdgeMovesSkipping2(a *arm64.Asm, plan *nativeBackendPlan, edge, skipMove, skipMove2 uint32) error {
+	return emitARM64RailMachEdgeMovesAt(a, plan, edge, false, skipMove, skipMove2)
 }
 
 func emitARM64RailMachSuccessorMoves(a *arm64.Asm, plan *nativeBackendPlan, edge uint32) error {
-	return emitARM64RailMachEdgeMovesAt(a, plan, edge, true, ^uint32(0))
+	return emitARM64RailMachEdgeMovesAt(a, plan, edge, true, ^uint32(0), ^uint32(0))
 }
 
-func emitARM64RailMachEdgeMovesAt(a *arm64.Asm, plan *nativeBackendPlan, edge uint32, successor bool, skipMove uint32) error {
+func emitARM64RailMachEdgeMovesAt(a *arm64.Asm, plan *nativeBackendPlan, edge uint32, successor bool, skipMove, skipMove2 uint32) error {
 	moveRange := plan.Exit.EdgeMoves[edge]
 	placement := railmach.PlacePredecessorEnd
 	if successor {
 		placement = railmach.PlaceSuccessorStart
 	}
-	return emitARM64RailMachMoveRangeAt(a, plan, moveRange, placement, skipMove)
+	return emitARM64RailMachMoveRangeAt(a, plan, moveRange, placement, skipMove, skipMove2)
 }
 
 func emitARM64RailMachMoveRange(a *arm64.Asm, plan *nativeBackendPlan, moveRange railmach.MoveRange) error {
-	return emitARM64RailMachMoveRangeAt(a, plan, moveRange, railmach.PlaceInvalid, ^uint32(0))
+	return emitARM64RailMachMoveRangeAt(a, plan, moveRange, railmach.PlaceInvalid, ^uint32(0), ^uint32(0))
 }
 
-func emitARM64RailMachMoveRangeAt(a *arm64.Asm, plan *nativeBackendPlan, moveRange railmach.MoveRange, placement railmach.MovePlacement, skipMove uint32) error {
+func emitARM64RailMachMoveRangeAt(a *arm64.Asm, plan *nativeBackendPlan, moveRange railmach.MoveRange, placement railmach.MovePlacement, skipMove, skipMove2 uint32) error {
 	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
-		if index == skipMove {
+		if index == skipMove || index == skipMove2 {
 			continue
 		}
 		move := plan.Exit.Moves[index]

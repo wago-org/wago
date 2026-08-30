@@ -643,7 +643,7 @@ func TestARM64RailMachRenamesFinalEdgeMultiply(t *testing.T) {
 		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{
 			Locations: []railmach.Location{
 				{},
-				{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 5},
+				{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 9},
 				{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 7},
 				{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 6},
 				{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 5},
@@ -668,7 +668,7 @@ func TestARM64RailMachRenamesFinalEdgeMultiply(t *testing.T) {
 		t.Fatalf("edge result rename = %#v", rename)
 	}
 	f.Insts = append(f.Insts, railmach.Inst{Op: wasm.InstrF64Add, Result: 5, OperandStart: 2, OperandCount: 2})
-	f.Operands = append(f.Operands, railmach.Operand{Reg: 1, Bank: railmach.BankFPR}, railmach.Operand{Reg: 2, Bank: railmach.BankFPR})
+	f.Operands = append(f.Operands, railmach.Operand{Reg: 1, Bank: railmach.BankFPR}, railmach.Operand{Reg: 3, Bank: railmach.BankFPR})
 	f.VRegs = append(f.VRegs,
 		railmach.VRegData{Def: 9, Type: railmach.TypeF64, Bank: railmach.BankFPR},
 		railmach.VRegData{Type: railmach.TypeF64, Bank: railmach.BankFPR, Flags: railmach.VRegBlockParam},
@@ -696,7 +696,8 @@ func TestARM64RailMachRenamesFinalEdgeMultiply(t *testing.T) {
 	plan.Exit.Moves = append([]railmach.PhysicalMove{latest}, plan.Exit.Moves...)
 	plan.Exit.EdgeMoves[0].Count = 2
 	rename = arm64RailMachEdgeResultRename(plan, 0)
-	if !rename.valid || rename.instruction != 1 || rename.move != 0 || rename.destination.Index != 7 {
+	if !rename.valid || rename.instruction != 1 || rename.move != 0 || rename.destination.Index != 7 ||
+		!rename.chained || rename.chainedInstruction != 0 || rename.chainedMove != 1 || rename.chainedResult != 3 || rename.chainedDestination.Index != 5 {
 		t.Fatalf("latest edge result rename = %#v", rename)
 	}
 	f.Insts = append(f.Insts, railmach.Inst{Op: wasm.InstrF64Neg, OperandStart: uint32(len(f.Operands)), OperandCount: 1})

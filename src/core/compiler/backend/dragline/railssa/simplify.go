@@ -423,6 +423,25 @@ func integerFloatRoundTripAlias(flow *ValueFlow, semantic *SemanticFunc, result 
 		return 0, false
 	}
 	instruction := semantic.Insts[instructionID]
+	// Every i32 is represented exactly in f64. Matching signed and unsigned
+	// saturating round trips therefore reproduce the original i32 bit pattern;
+	// unlike f32, no range proof is required.
+	if instruction.Op == wasm.InstrI32TruncSatF64S || instruction.Op == wasm.InstrI32TruncSatF64U {
+		args := semantic.Operands(instructionID)
+		if len(args) == 1 {
+			converted := resolveAlias(result.Aliases, args[0])
+			definition, definitionArgs, defined := definingSemantic(flow, semantic, converted)
+			matching := defined && len(definitionArgs) == 1 &&
+				(instruction.Op == wasm.InstrI32TruncSatF64S && definition.Op == wasm.InstrF64ConvertI32S ||
+					instruction.Op == wasm.InstrI32TruncSatF64U && definition.Op == wasm.InstrF64ConvertI32U)
+			if matching {
+				origin := resolveAlias(result.Aliases, definitionArgs[0])
+				if int(origin) < len(flow.Values) && flow.Values[origin].Type == wasm.I32 {
+					return origin, true
+				}
+			}
+		}
+	}
 	if origin, ok := finiteConversionOrigin(flow, semantic, result, instructionID); ok {
 		origin = resolveAlias(result.Aliases, origin)
 		if flow.Values[instruction.Result].Type == flow.Values[origin].Type {

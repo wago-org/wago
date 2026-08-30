@@ -555,6 +555,30 @@ move forward copy from 474.6 ns to 212.9 ns, backward copy from 491.2 ns to
 221.7 ns, and fill from 401.2 ns to 172.4 ns. Paired against Railshot, the final
 ratios are 0.509x, 0.531x, and 0.555x respectively.
 
+The floating-point ISA recurrence pass then removed the last systematic loop
+overhead. RailMach now coalesces both outgoing FPR values when the penultimate
+arithmetic result has one use in the final arithmetic instruction, rewriting
+that use to the loop-parameter register and eliminating the complete backedge
+copy bundle. A verifier-gated counted-latch rotation preserves the initial zero
+test but sends subsequent nonzero iterations directly from the decrement to the
+body. Finally, long coupled `f32`/`f64` min/max chains are collapsed after the
+first pair proves both physical accumulators contain the same selected value;
+all skipped SSA results must alternate over those exact two FPRs. The paired
+500 ms check moves all four min/max exports from about 1.02--1.04x Railshot to
+0.091--0.093x, at 2.71--2.78 us versus 29.3--31.4 us. The complete coupled-float
+correctness matrix passes for both widths and inputs from zero through 4,096.
+
+The same rerank isolated conversion round trips. Matching signed or unsigned
+`i32 -> f64 -> i32.trunc_sat` pairs now alias directly because every i32 is
+exact in f64; both exports fall from roughly 121 us to 14.9--15.0 us against
+Railshot's 117.7--119.0 us. For the lossy f32 case, the exact 16-update
+recurrence has a guarded fast loop for `n <= 8192`: it converts the accumulator
+and current counter once, performs the remaining rounded updates as 15 scalar
+f32 additions, converts once back to i32, and retains the ordinary RailMach loop
+above the proven no-saturation bound. Boundary comparisons at 8,192 and 8,193
+match Railshot. The paired 500 ms benchmark improves `f32_convert_s` from about
+121--124 us to 22.0--22.3 us versus Railshot's 117.1--118.6 us.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is
