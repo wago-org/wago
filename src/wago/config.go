@@ -11,6 +11,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/optimization"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 // CoreFeatures is a bit set of WebAssembly Core specification features. A
@@ -241,10 +242,11 @@ type RuntimeConfig struct {
 	maxFunctionLocals    uint32 // total function parameters plus declared locals
 	maxMemoriesPerModule uint32
 	boundsChecks         BoundsCheckMode
-	noDeferBounds        bool // disable skipping of provably-redundant bounds checks (default: enabled)
-	functionWorkers      int  // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
-	gcCodeTelemetry      bool // collect code-neutral per-family WasmGC native byte attribution
-	independentInstances bool // allow unrelated instances to execute native code concurrently
+	noDeferBounds        bool   // disable skipping of provably-redundant bounds checks (default: enabled)
+	functionWorkers      int    // function validation/codegen: 0 adaptive; 1 serial; >1 forced maximum
+	nativeStackBytes     uint64 // per-Engine foreign execution stack capacity
+	gcCodeTelemetry      bool   // collect code-neutral per-family WasmGC native byte attribution
+	independentInstances bool   // allow unrelated instances to execute native code concurrently
 	instanceLimits       *runtimeInstanceLimits
 }
 
@@ -255,6 +257,15 @@ type runtimeInstanceLimits struct {
 }
 
 const defaultMaxMemoryPages = 1 << 16 // 4 GiB worth of 64 KiB wasm pages
+
+// Native execution stack capacities are bounded so one instance cannot retain
+// unbounded off-heap virtual address space. The minimum preserves the fixed
+// 256 KiB fence plus usable frame space.
+const (
+	DefaultNativeStackBytes = coreruntime.DefaultNativeStackBytes
+	MinNativeStackBytes     = coreruntime.MinNativeStackBytes
+	MaxNativeStackBytes     = coreruntime.MaxNativeStackBytes
+)
 
 // DefaultMaxFunctionLocals is the default ceiling for one function's combined
 // parameter and declared-local count. MaxFunctionLocalsLimit is the largest
@@ -341,6 +352,7 @@ func NewRuntimeConfig() *RuntimeConfig {
 		maxMemoriesPerModule: DefaultMaxMemoriesPerModule,
 		boundsChecks:         bounds,
 		functionWorkers:      1,
+		nativeStackBytes:     DefaultNativeStackBytes,
 		independentInstances: true,
 	}
 }
@@ -503,6 +515,15 @@ func (c *RuntimeConfig) WithFunctionWorkers(workers int) *RuntimeConfig {
 	return &n
 }
 
+// WithNativeStackBytes sets the foreign execution stack capacity for each
+// instance and synchronous host re-entry Engine. Valid values are 16-byte
+// aligned capacities from 512 KiB through 1 GiB. The default remains 4 MiB.
+func (c *RuntimeConfig) WithNativeStackBytes(stackBytes uint64) *RuntimeConfig {
+	n := *c
+	n.nativeStackBytes = stackBytes
+	return &n
+}
+
 // WithIndependentInstanceExecution controls whether separately instantiated
 // modules may execute native code concurrently. It is enabled by default;
 // instances with cross-instance Wasm imports automatically use the process-wide
@@ -586,6 +607,9 @@ func (c *RuntimeConfig) GCCodeTelemetry() bool { return c.gcCodeTelemetry }
 // adaptive, one serial, or a positive forced maximum.
 func (c *RuntimeConfig) FunctionWorkers() int { return c.functionWorkers }
 
+// NativeStackBytes reports the configured foreign execution stack capacity.
+func (c *RuntimeConfig) NativeStackBytes() uint64 { return c.nativeStackBytes }
+
 // IndependentInstanceExecution reports whether native calls use instance-local
 // execution leases instead of the process-wide cross-instance lease.
 func (c *RuntimeConfig) IndependentInstanceExecution() bool { return c.independentInstances }
@@ -614,8 +638,8 @@ func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
 }
 
 func (c *RuntimeConfig) String() string {
-	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, maxMemoriesPerModule: %d, functionWorkers: %d, independentInstances: %t}",
-		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.maxMemoriesPerModule, c.functionWorkers, c.independentInstances)
+	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, maxMemoriesPerModule: %d, functionWorkers: %d, nativeStackBytes: %d, independentInstances: %t}",
+		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.maxMemoriesPerModule, c.functionWorkers, c.nativeStackBytes, c.independentInstances)
 }
 
 // SupportedFeatures reports the WebAssembly feature set this wago build can
@@ -756,6 +780,12 @@ func (c *RuntimeConfig) Validate() error {
 	}
 	if c.functionWorkers < 0 {
 		return fmt.Errorf("wago: function workers must be non-negative, got %d", c.functionWorkers)
+	}
+	if c.nativeStackBytes < MinNativeStackBytes || c.nativeStackBytes > MaxNativeStackBytes {
+		return fmt.Errorf("wago: native stack bytes must be between %d and %d, got %d", MinNativeStackBytes, MaxNativeStackBytes, c.nativeStackBytes)
+	}
+	if c.nativeStackBytes&15 != 0 {
+		return fmt.Errorf("wago: native stack bytes must be 16-byte aligned, got %d", c.nativeStackBytes)
 	}
 	if enabled, present := c.optimizations["stack-fence"]; present && !enabled {
 		return fmt.Errorf("wago: stack-fence is required for bounded native execution")

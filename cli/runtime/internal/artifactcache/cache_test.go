@@ -361,6 +361,7 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	knob := base.OptimizationInfos()[0]
 	optimizationOff := base.WithOptimization(knob.Name, !knob.On)
 	workers := base.WithFunctionWorkers(2)
+	nativeStack := base.WithNativeStackBytes(8 << 20)
 	bounds := base.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 	deferredOff := base.WithDeferBoundsChecks(false)
 	memoryLimit := base.WithMemoryLimitPages(base.MemoryLimitPages() - 1)
@@ -374,6 +375,7 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	featurePath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, featureOff)
 	optimizationPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, optimizationOff)
 	workersPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, workers)
+	nativeStackPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, nativeStack)
 	boundsPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, bounds)
 	deferredPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, deferredOff)
 	memoryPath, _ := (Cache{Dir: dir, Identity: []byte("runtime-a")}).path(source, memoryLimit)
@@ -392,6 +394,9 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	}
 	if basePath != workersPath {
 		t.Fatal("function-worker scheduling policy changed artifact key")
+	}
+	if basePath != nativeStackPath {
+		t.Fatal("runtime-only native stack capacity changed artifact key")
 	}
 	if basePath == boundsPath {
 		t.Fatal("bounds-check mode did not change artifact key")

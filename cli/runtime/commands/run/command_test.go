@@ -77,6 +77,7 @@ func TestHelpCollapsesBooleanPairs(t *testing.T) {
 		t.Fatalf("run help did not collapse advanced optimization help:\n%s", text)
 	}
 	if !strings.Contains(text, "--parallel, -p [workers]") ||
+		!strings.Contains(text, "--native-stack <size>") ||
 		!strings.Contains(text, "--gc-heap <size>") ||
 		!strings.Contains(text, "--gc-nursery <size>") ||
 		!strings.Contains(text, "-p8 / -p 8 / --parallel=8") ||
@@ -117,6 +118,41 @@ func TestRunRecognizesFlagsAfterModulePath(t *testing.T) {
 	}
 	if !ctx.Bool("global") || len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
 		t.Fatalf("file --global parsed as global=%v args=%v", ctx.Bool("global"), ctx.Args)
+	}
+}
+
+func TestRunNativeStackFlag(t *testing.T) {
+	cmd := Command(testEnvironment{})
+	for _, tc := range []struct {
+		value string
+		want  uint64
+	}{
+		{"512KiB", 512 << 10},
+		{"8MiB", 8 << 20},
+		{"1GiB", 1 << 30},
+		{"8388608B", 8 << 20},
+		{"8388608", 8 << 20},
+	} {
+		normalized, err := cmd.Normalize([]string{"module.wasm", "--native-stack", tc.value})
+		if err != nil {
+			t.Fatalf("normalize %q: %v", tc.value, err)
+		}
+		ctx, err := cmd.Parse("wago run", normalized)
+		if err != nil {
+			t.Fatalf("parse %q: %v", tc.value, err)
+		}
+		got, err := parseNativeStackBytes(ctx.Str("native-stack"))
+		if err != nil || got != tc.want {
+			t.Fatalf("native stack %q = %d, %v; want %d", tc.value, got, err, tc.want)
+		}
+		if len(ctx.Args) != 1 || ctx.Args[0] != "module.wasm" {
+			t.Fatalf("native stack flag consumed guest arguments: %v", ctx.Args)
+		}
+	}
+	for _, value := range []string{"", "511KiB", "524289", "2GiB", "1GB", "many"} {
+		if _, err := parseNativeStackBytes(value); err == nil {
+			t.Errorf("native stack %q was accepted", value)
+		}
 	}
 }
 

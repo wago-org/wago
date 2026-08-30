@@ -29,6 +29,7 @@ type InstantiateOptions struct {
 	runtimeReservation   *runtimeInstanceReservation
 	independentInstances bool
 	hasExecutionPolicy   bool
+	nativeStackBytes     uint64
 }
 
 // Instantiable is the set of sources Instantiate accepts. The interface is
@@ -350,7 +351,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if err != nil {
 		return nil, err
 	}
-	eng, err := runtime.AcquireEngine()
+	stackBytes := opts.nativeStackBytes
+	if stackBytes == 0 {
+		stackBytes = runtime.DefaultNativeStackBytes
+	}
+	eng, err := runtime.AcquireEngineWithStackBytes(stackBytes)
 	if err != nil {
 		return nil, err
 	}

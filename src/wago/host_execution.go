@@ -254,7 +254,11 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 func (in *Instance) prepareHostReentryState() (func(), error) {
 	in.lifeMu.Lock()
 	invocation := activeHostInvocationContext(in)
-	eng, err := coreruntime.AcquireEngine()
+	stackBytes := coreruntime.DefaultNativeStackBytes
+	if in.eng != nil && in.eng.StackBytes() != 0 {
+		stackBytes = in.eng.StackBytes()
+	}
+	eng, err := coreruntime.AcquireEngineWithStackBytes(stackBytes)
 	if err != nil {
 		in.lifeMu.Unlock()
 		return nil, fmt.Errorf("acquire host re-entry engine: %w", err)
