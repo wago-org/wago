@@ -353,6 +353,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	stackBytes := opts.nativeStackBytes
 	if stackBytes == 0 {
+		stackBytes = c.nativeStackBytes()
+	}
+	if stackBytes == 0 {
 		stackBytes = runtime.DefaultNativeStackBytes
 	}
 	eng, err := runtime.AcquireEngineWithStackBytes(stackBytes)

@@ -30,10 +30,11 @@ func gcNativeDefinedTypeModule() []byte {
 		wasmtest.Code([]byte{0xd0, 0x6e, 0xfb, 0x14, 0x00, 0x0b}),                         // test null
 		wasmtest.Code([]byte{0xd0, 0x6e, 0xfb, 0x15, 0x00, 0x0b}),                         // test_null null
 		wasmtest.Code([]byte{0x23, 0x00, 0xfb, 0x16, 0x62, 0x00, 0x1a, 0x41, 0x01, 0x0b}), // exact cast to open super
+		wasmtest.Code([]byte{0x23, 0x00, 0xfb, 0x16, 0x00, 0xfb, 0x14, 0x01, 0x0b}),       // cast open super, then test original child
 	}
 	funcs := make([][]byte, len(bodies))
 	exports := make([][]byte, len(bodies))
-	names := []string{"cast_super", "test_super", "test_sibling", "cast_sibling", "cast_null", "cast_nonnull_null", "test_null", "test_null_nullable", "cast_exact_super"}
+	names := []string{"cast_super", "test_super", "test_sibling", "cast_sibling", "cast_null", "cast_nonnull_null", "test_null", "test_null_nullable", "cast_exact_super", "cast_super_then_test_child"}
 	for i := range bodies {
 		funcs[i] = wasmtest.ULEB(3)
 		exports[i] = wasmtest.ExportEntry(names[i], byte(wasm.ExternFunc), uint32(i))
@@ -55,6 +56,7 @@ func assertGCNativeDefinedTypeSemantics(t *testing.T, in *Instance) {
 	}{
 		{"cast_super", 1}, {"test_super", 1}, {"test_sibling", 0},
 		{"cast_null", 1}, {"test_null", 0}, {"test_null_nullable", 1},
+		{"cast_super_then_test_child", 1},
 	} {
 		got, err := in.Invoke(tc.name)
 		if err != nil || len(got) != 1 || got[0] != tc.want {

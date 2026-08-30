@@ -91,6 +91,26 @@ func TestConfiguredNativeStackAdmitsBoundedLargeFrameRecursion(t *testing.T) {
 	}
 }
 
+func TestDirectInstantiateUsesCompiledNativeStackCapacity(t *testing.T) {
+	const stackBytes = 8 << 20
+	compiled, err := Compile(NewRuntimeConfig().WithNativeStackBytes(stackBytes), boundedLargeFrameRecursionModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got := instance.eng.StackBytes(); got != stackBytes {
+		t.Fatalf("direct instance native stack = %d, want %d", got, stackBytes)
+	}
+	if _, err := instance.Invoke("recurse", 120); err != nil {
+		t.Fatalf("direct 8 MiB native stack recursion: %v", err)
+	}
+}
+
 func TestRecursiveStackExhaustionTrapsCleanly(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),

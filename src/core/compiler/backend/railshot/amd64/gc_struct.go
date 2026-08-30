@@ -418,7 +418,11 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 				return err
 			}
 			if sub == 22 {
-				f.markTopExactGCType(uint32(heap))
+				if finalTarget || exactTarget {
+					f.markTopExactGCType(uint32(heap))
+				} else if f.gcRefFactsEnabled() {
+					f.markGCRefFact(f.s.back(), castFact.WithNullability(shared.GCKnownNonNull))
+				}
 				if hasSourceLocal {
 					markGCLocalProvenance(f.s.back(), sourceLocal)
 				}

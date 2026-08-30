@@ -23,7 +23,10 @@ wago run --native-stack 8MiB module.wasm
 ```
 
 `KiB`, `MiB`, and `GiB` suffixes are supported. The option changes runtime
-execution only. It does not change compiled artifact identity.
+execution only. It does not change compiled artifact identity. A fresh
+`Compile(cfg, wasm)` result retains the selected capacity for direct
+`Instantiate(compiled, ...)` calls. The field is not serialized; decoded
+artifacts use the default unless a managing `Runtime` supplies its own policy.
 
 Each instance engine and each synchronous host re-entry engine receives the
 selected capacity. The bounded one-slot engine cache reuses a mapping only when
