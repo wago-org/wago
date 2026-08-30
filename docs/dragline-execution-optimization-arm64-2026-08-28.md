@@ -538,6 +538,13 @@ twelve alternating 500 ms rounds. Every runnable manifest export therefore
 crosses the paired execution gate on this host; the full compile/RSS/code-size
 report still needs a post-change refresh.
 
+The report refresh also exposed an existing large-function range failure in
+the structured emitter: `esbuild` could place its shared cold memory trap more
+than ARM64 `B.cond` can reach. Functions above the same conservative
+64-Kinstruction threshold used by RailMach now retain an inline bounds-trap
+fallback. `esbuild` again compiles all 4,148 functions, while smaller functions
+keep cold trap materialization.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is

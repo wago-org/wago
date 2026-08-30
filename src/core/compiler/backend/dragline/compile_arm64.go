@@ -5256,8 +5256,18 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		simdLiteralRefs = append(simdLiteralRefs, arm64SIMDLiteralRef{bytes: bytes, at: a.LdrQLiteral(reg)})
 	}
 	coldMemoryTraps := make([]nativeBranchPatch, 0, 4)
+	coldMemoryTrapBranches := len(sf.Instrs) <= 64*1024
 	emitColdMemoryTrap := func(source uint32) error {
-		coldMemoryTraps = append(coldMemoryTraps, nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: source})
+		if coldMemoryTrapBranches {
+			coldMemoryTraps = append(coldMemoryTraps, nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: source, Code: 3})
+			return nil
+		}
+		inBounds := a.Bcond(arm64.CondLS)
+		metadata.recordTrap(a.Len(), source, 3)
+		arm64EmitTrap(&a, 3, fn.Index, source)
+		if !a.PatchBranch19(inBounds, a.Len()) {
+			return fmt.Errorf("structured inline memory trap branch is out of range")
+		}
 		return nil
 	}
 	if metrics != nil {
