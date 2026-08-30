@@ -66,7 +66,7 @@ func TestAnalyzeABIUsesPreparedIntegerContractForBoundedARM64Recursion(t *testin
 	for _, tc := range []struct {
 		target Target
 		want   ABIClass
-	}{{TargetARM64, ABIPreparedInt}, {TargetAMD64, ABIGeneral}} {
+	}{{TargetARM64, ABIPreparedCall}, {TargetAMD64, ABIGeneral}} {
 		f, allocation, metadata := buildABITest(t, tc.target, m)
 		contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
 		if err != nil {

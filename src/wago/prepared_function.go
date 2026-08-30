@@ -31,6 +31,7 @@ type PreparedFunction struct {
 	privateFast         bool
 	isolatedFast        bool
 	directIntFast       bool
+	directLeafIntFast   bool
 }
 
 func (c *Compiled) directPreparedAt(local int) bool {
@@ -125,6 +126,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
 		if (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
 			fn.directIntFast = true
+			fn.directLeafIntFast = directLeafPreparedEntry(in.c.InternalEntry[ic.li])
 			fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 		}
 	}

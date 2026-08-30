@@ -17,6 +17,8 @@ const (
 	ABITinyDirect
 	ABIPreparedInt
 	ABIPreparedIndirect
+	ABIPreparedCall
+	ABIPreparedLeaf
 )
 
 type ABIContract struct {
@@ -138,6 +140,8 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 	switch {
 	case !contract.HasCall && len(f.Insts) <= 4 && hasDirectRegisterParams(f, allocation):
 		contract.Class = ABITinyDirect
+	case directPreparedIntegerContract(f, allocation, contract) && contract.HasCall:
+		contract.Class = ABIPreparedCall
 	case directPreparedIntegerContract(f, allocation, contract):
 		contract.Class = ABIPreparedInt
 	case !contract.HasCall && usesFP:

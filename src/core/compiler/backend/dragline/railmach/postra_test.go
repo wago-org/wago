@@ -75,6 +75,60 @@ func TestPlanPostRAFindsARM64ConditionalIncrement(t *testing.T) {
 	t.Fatalf("rewrites = %#v", plan.Rewrites)
 }
 
+func TestVerifyARM64ByteWidenChain(t *testing.T) {
+	var operands []Operand
+	inst := func(op wasm.InstrKind, result VReg, args ...VReg) Inst {
+		instruction := Inst{Op: op, Result: result, OperandStart: uint32(len(operands)), OperandCount: uint16(len(args))}
+		for _, arg := range args {
+			operands = append(operands, Operand{Reg: arg, Bank: BankGPR, Flags: OperandUse, Fixed: NoFixedReg})
+		}
+		return instruction
+	}
+	f := &Func{Target: TargetARM64, VRegs: make([]VRegData, 14)}
+	f.Insts = []Inst{
+		inst(wasm.InstrI64And, 3, 1, 2),
+		inst(wasm.InstrI64Const, 4),
+		inst(wasm.InstrI64Shl, 5, 3, 4),
+		inst(wasm.InstrI64Or, 6, 3, 5),
+		inst(wasm.InstrI64Const, 7),
+		inst(wasm.InstrI64And, 8, 6, 7),
+		inst(wasm.InstrI64Const, 9),
+		inst(wasm.InstrI64Shl, 10, 8, 9),
+		inst(wasm.InstrI64Or, 11, 8, 10),
+		inst(wasm.InstrI64Const, 12),
+		inst(wasm.InstrI64And, 13, 11, 12),
+	}
+	f.Operands = operands
+	f.Insts[1].Aux = 16
+	f.Insts[4].Aux = 0x0000ffff0000ffff
+	f.Insts[6].Aux = 8
+	f.Insts[9].Aux = 0x00ff00ff00ff00ff
+	f.VRegs[1] = VRegData{Type: TypeI64, Bank: BankGPR, Flags: VRegInitial}
+	for id, instruction := range f.Insts {
+		if instruction.Result != 0 {
+			f.VRegs[instruction.Result] = VRegData{Def: uint32(id*6 + 3), Type: TypeI64, Bank: BankGPR}
+		}
+	}
+	// The first mask is defined outside the compact scheduled chain so shared
+	// constants do not constrain adjacency.
+	f.VRegs[2] = VRegData{Def: uint32(len(f.Insts) * 6), Type: TypeI64, Bank: BankGPR}
+	f.Insts = append(f.Insts, Inst{Op: wasm.InstrI64Const, Result: 2, Aux: 0xffffffff})
+	f.VRegs[2].Def = uint32((len(f.Insts)-1)*6 + 3)
+	f.Results = []VReg{13}
+	order := make([]uint32, 11)
+	for index := range order {
+		order[index] = uint32(index)
+	}
+	schedule := &Schedule{Order: order, BlockOf: make([]railssa.BlockID, len(f.Insts))}
+	if first, source, ok := VerifyARM64ByteWidenChain(f, schedule, 0, 10); !ok || first != 0 || source != 1 {
+		t.Fatalf("byte widen = first %d source %d ok %t", first, source, ok)
+	}
+	f.Insts[9].Aux++
+	if _, _, ok := VerifyARM64ByteWidenChain(f, schedule, 0, 10); ok {
+		t.Fatal("changed terminal mask was recognized")
+	}
+}
+
 func TestVerifyPostRAAllowsScheduledAdjacentARM64CompareBeyondSourceScan(t *testing.T) {
 	insts := make([]Inst, PostRAScanLimit+2)
 	insts[0] = Inst{Op: wasm.InstrI32Eq, Result: 1, OperandStart: 0, OperandCount: 2}
@@ -108,6 +162,38 @@ func TestVerifyPostRAAllowsScheduledAdjacentARM64CompareBeyondSourceScan(t *test
 	schedule.Order[len(schedule.Order)-1], schedule.Order[len(schedule.Order)-2] = schedule.Order[len(schedule.Order)-2], schedule.Order[len(schedule.Order)-1]
 	if err := VerifyPostRAPlan(TargetARM64, f, selection, schedule, plan); err == nil {
 		t.Fatal("accepted nonadjacent ARM64 compare/branch rewrite")
+	}
+}
+
+func TestVerifyPostRAAllowsAdjacentARM64FloatCompareBranch(t *testing.T) {
+	f := &Func{
+		Target: TargetARM64,
+		Insts: []Inst{
+			{Op: wasm.InstrF64Gt, Result: 1, OperandStart: 0, OperandCount: 2},
+			{Op: wasm.InstrBrIf, OperandStart: 2, OperandCount: 1},
+		},
+		Operands: []Operand{
+			{Reg: 2, Bank: BankFPR, Flags: OperandUse},
+			{Reg: 3, Bank: BankFPR, Flags: OperandUse},
+			{Reg: 1, Bank: BankGPR, Flags: OperandUse},
+		},
+		VRegs: []VRegData{
+			{},
+			{Type: TypeI32, Bank: BankGPR},
+			{Type: TypeF64, Bank: BankFPR},
+			{Type: TypeF64, Bank: BankFPR},
+		},
+		Blocks: []Block{{InstCount: 2}},
+	}
+	schedule := &Schedule{Order: []uint32{0, 1}, BlockOf: make([]railssa.BlockID, 2)}
+	selection := &SelectionPlan{Combinations: []Combination{{Producer: 0, Consumer: 1, Kind: CombineCompareBranch}}}
+	plan := &PostRAPlan{Rewrites: []Rewrite{{First: 0, Second: 1, Kind: RewriteARM64CompareBranch}}, ScanLimit: PostRAScanLimit}
+	if err := VerifyPostRAPlan(TargetARM64, f, selection, schedule, plan); err != nil {
+		t.Fatal(err)
+	}
+	f.Insts[0].Op = wasm.InstrF64Add
+	if err := VerifyPostRAPlan(TargetARM64, f, selection, schedule, plan); err == nil {
+		t.Fatal("accepted non-comparison ARM64 flag producer")
 	}
 }
 

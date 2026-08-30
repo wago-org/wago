@@ -13,6 +13,7 @@ func TestPortIntEncodings(t *testing.T) {
 		{"add x0,x1,x2,lsl#3", func(a *Asm) { a.AddShifted(X0, X1, X2, 3, false) }, 0x8b020c20},
 		{"add x0,x1,w2,uxtw", func(a *Asm) { a.AddExtUXTW(X0, X1, X2) }, 0x8b224020},
 		{"add x25,x25,w19,uxtw", func(a *Asm) { a.AddExtUXTW(X25, X25, X19) }, 0x8b334339},
+		{"uxtl v31.8h,v31.8b", func(a *Asm) { a.NeonUxtl8h(31, 31) }, 0x2f08a7ff},
 		{"adds w0,w1,w2", func(a *Asm) { a.Adds32(X0, X1, X2) }, 0x2b020020},
 		{"sxtw x0,w1", func(a *Asm) { a.Sxtw(X0, X1) }, 0x93407c20},
 		{"sxtb w0,w1", func(a *Asm) { a.Sxtb(X0, X1, true) }, 0x13001c20},

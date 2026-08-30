@@ -269,7 +269,7 @@ func TestNativeImmediateCombinationsFoldRepeatedRotateCounts(t *testing.T) {
 	}
 }
 
-func TestARM64LogicalImmediateEligibility(t *testing.T) {
+func TestARM64RepeatedImmediateEligibility(t *testing.T) {
 	for _, test := range []struct {
 		kind  wasm.InstrKind
 		value uint64
@@ -279,9 +279,10 @@ func TestARM64LogicalImmediateEligibility(t *testing.T) {
 		{wasm.InstrI32Or, 0x00ff00ff, true},
 		{wasm.InstrI64Xor, 0x0101010101010101, true},
 		{wasm.InstrI64And, 0, false},
-		{wasm.InstrI64Add, 0xff, false},
+		{wasm.InstrI64Add, 0xff, true},
+		{wasm.InstrI32Sub, 4096, false},
 	} {
-		if got := arm64LogicalImmediateEncodable(test.kind, test.value); got != test.want {
+		if got := arm64RepeatedImmediateEncodable(test.kind, test.value); got != test.want {
 			t.Fatalf("%s %#x eligibility = %t, want %t", test.kind, test.value, got, test.want)
 		}
 	}

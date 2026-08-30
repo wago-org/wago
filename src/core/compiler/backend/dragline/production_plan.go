@@ -1113,6 +1113,28 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 						p.postRASkip[instructionID] = true
 					}
 				}
+			case railmach.RewriteARM64ByteWiden:
+				if machineTarget != railmach.TargetARM64 {
+					continue
+				}
+				_, source, ok := railmach.VerifyARM64ByteWidenChain(machine, schedule, rewrite.First, rewrite.Second)
+				firstPosition := allocation.InstructionPositions[rewrite.First]
+				finalPosition := allocation.InstructionPositions[rewrite.Second]
+				if !ok || allocation.LocationAt(source, firstPosition*6+2).Kind != railmach.LocationRegister || allocation.LocationAt(machine.Insts[rewrite.Second].Result, finalPosition*6+2).Kind != railmach.LocationRegister {
+					continue
+				}
+				conflict := false
+				for instructionID, position := range allocation.InstructionPositions {
+					conflict = conflict || position > firstPosition && position < finalPosition && p.postRASkip[instructionID]
+				}
+				if conflict {
+					continue
+				}
+				for instructionID, position := range allocation.InstructionPositions {
+					if position > firstPosition && position < finalPosition {
+						p.postRASkip[instructionID] = true
+					}
+				}
 			}
 		}
 	}
@@ -1412,7 +1434,7 @@ func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, produ
 		}
 		producerID := constant.Def / 6
 		producer := plan.Machine.Insts[producerID]
-		if (producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const) || !arm64LogicalImmediateEncodable(instruction.Op, producer.Aux) {
+		if (producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const) || !arm64RepeatedImmediateEncodable(instruction.Op, producer.Aux) {
 			continue
 		}
 		producers[instructionID] = producerID
@@ -1434,9 +1456,17 @@ func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, produ
 	}
 }
 
-func arm64LogicalImmediateEncodable(kind wasm.InstrKind, value uint64) bool {
+func arm64RepeatedImmediateEncodable(kind wasm.InstrKind, value uint64) bool {
 	var probe arm64.Asm
 	switch kind {
+	case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
+		wasm.InstrI32Eq, wasm.InstrI32Ne, wasm.InstrI32LtS, wasm.InstrI32LtU,
+		wasm.InstrI32GtS, wasm.InstrI32GtU, wasm.InstrI32LeS, wasm.InstrI32LeU,
+		wasm.InstrI32GeS, wasm.InstrI32GeU,
+		wasm.InstrI64Eq, wasm.InstrI64Ne, wasm.InstrI64LtS, wasm.InstrI64LtU,
+		wasm.InstrI64GtS, wasm.InstrI64GtU, wasm.InstrI64LeS, wasm.InstrI64LeU,
+		wasm.InstrI64GeS, wasm.InstrI64GeU:
+		return value <= 4095
 	case wasm.InstrI32And:
 		return probe.AndImm32(arm64.X0, arm64.X1, uint32(value))
 	case wasm.InstrI64And:
@@ -1493,6 +1523,10 @@ func (p *nativeBackendPlanner) preparePostRAScratch(target railmach.Target, inst
 		case railmach.RewriteARM64RepeatedAdd:
 			if target == railmach.TargetARM64 {
 				needsSkip, needsRepeat = true, true
+			}
+		case railmach.RewriteARM64ByteWiden:
+			if target == railmach.TargetARM64 {
+				needsSkip = true
 			}
 		case railmach.RewriteARM64PrePostIndex:
 			if target == railmach.TargetARM64 {

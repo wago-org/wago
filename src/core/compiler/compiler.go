@@ -359,6 +359,9 @@ type Output struct {
 	Entry          []int
 	InternalEntry  []int
 	DirectPrepared []uint64
+	// DirectLeafPrepared is the subset of DirectPrepared whose private entry is
+	// a bounded, call-free, trap-free leaf that does not require guest context.
+	DirectLeafPrepared []uint64
 
 	GCCallsites            []GCFrameCallsite
 	GCRoots                []uint32

@@ -1127,15 +1127,25 @@ func (c *Compiled) Compiler() CompilerEngine {
 	return c.compiler
 }
 
-// The sign bit of a fresh compilation's internal-entry offset carries the
-// optional direct-prepared selection without growing Compiled. Native code
-// offsets are non-negative and bounded far below the host int range. The codec
-// strips this compile-only bit, so decoded artifacts retain the wrapper fallback.
+// The top two bits of a fresh compilation's internal-entry offset carry the
+// optional direct-prepared and call-free-leaf selections without growing
+// Compiled. Native code offsets are non-negative and bounded far below the host
+// int range. The codec strips these compile-only bits, so decoded artifacts
+// retain the wrapper fallback.
 var directPreparedEntryMask = ^(^uint(0) >> 1)
+var directLeafPreparedEntryMask = directPreparedEntryMask >> 1
 
 func markDirectPreparedEntry(off int) int { return int(uint(off) | directPreparedEntryMask) }
-func directPreparedEntry(off int) bool    { return uint(off)&directPreparedEntryMask != 0 }
-func internalEntryOffset(off int) int     { return int(uint(off) &^ directPreparedEntryMask) }
+func markDirectLeafPreparedEntry(off int) int {
+	return int(uint(off) | directPreparedEntryMask | directLeafPreparedEntryMask)
+}
+func directPreparedEntry(off int) bool { return uint(off)&directPreparedEntryMask != 0 }
+func directLeafPreparedEntry(off int) bool {
+	return uint(off)&directLeafPreparedEntryMask != 0
+}
+func internalEntryOffset(off int) int {
+	return int(uint(off) &^ (directPreparedEntryMask | directLeafPreparedEntryMask))
+}
 
 // RequiresBMI2 reports whether compilation selected BMI2 instructions.
 func (c *Compiled) RequiresBMI2() bool { return c != nil && c.requiresBMI2 }

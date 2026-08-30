@@ -80,6 +80,9 @@ func TestPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T) {
 	if !fn.directIntFast || fn.isolatedFast {
 		t.Fatalf("direct/private selection = %v/%v, want true/false", fn.directIntFast, fn.isolatedFast)
 	}
+	if fn.directLeafIntFast {
+		t.Fatal("call_indirect caller selected the call-free direct leaf entry")
+	}
 	for _, tc := range []struct {
 		idx, want uint64
 	}{{0, 13}, {1, 7}} {
@@ -126,6 +129,9 @@ func TestPreparedDirectARM64BranchTable(t *testing.T) {
 	fn, err := in.PrepareFunction("classify")
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
+	}
+	if !fn.directLeafIntFast {
+		t.Fatal("branch-table leaf did not prepare the ARM64 direct leaf entry")
 	}
 	for _, tc := range []struct {
 		selector, want uint64

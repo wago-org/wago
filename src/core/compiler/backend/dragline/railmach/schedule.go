@@ -374,7 +374,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 	if f.Target == TargetAMD64 || f.Target == TargetARM64 {
 		for _, combination := range selection.Combinations {
 			producer, consumer := combination.Producer, combination.Consumer
-			if combination.Kind != CombineCompareBranch || producer == ^uint32(0) || int(producer) >= len(f.Insts) || int(consumer) >= len(f.Insts) || blockOf[producer] != blockOf[consumer] || !integerFusionRepairable(f, producer, consumer, uses) {
+			if combination.Kind != CombineCompareBranch || producer == ^uint32(0) || int(producer) >= len(f.Insts) || int(consumer) >= len(f.Insts) || blockOf[producer] != blockOf[consumer] || !compareBranchFusionRepairable(f.Target, f, producer, consumer, uses) {
 				continue
 			}
 			if lateProducer[consumer] != ^uint32(0) || sinkProducer[consumer] != ^uint32(0) && sinkProducer[consumer] != producer || sinkBefore[producer] != ^uint32(0) || lateBefore[producer] != ^uint32(0) {

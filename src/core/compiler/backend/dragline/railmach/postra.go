@@ -25,6 +25,7 @@ const (
 	RewriteARM64CompareBranch
 	RewriteARM64CondIncrement
 	RewriteARM64RepeatedAdd
+	RewriteARM64ByteWiden
 )
 
 type Rewrite struct {
@@ -145,9 +146,9 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 			continue
 		}
 		adjacent := position[combination.Consumer] == position[combination.Producer]+1 && schedule.BlockOf[combination.Consumer] == schedule.BlockOf[combination.Producer]
-		if target == TargetAMD64 && adjacent && integerFusionRepairable(f, combination.Producer, combination.Consumer, uses) {
+		if target == TargetAMD64 && adjacent && compareBranchFusionRepairable(target, f, combination.Producer, combination.Consumer, uses) {
 			reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: combination.Producer, Second: combination.Consumer, Kind: RewriteAMD64FusionRepair})
-		} else if target == TargetARM64 && adjacent && integerFusionRepairable(f, combination.Producer, combination.Consumer, uses) {
+		} else if target == TargetARM64 && adjacent && compareBranchFusionRepairable(target, f, combination.Producer, combination.Consumer, uses) {
 			reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: combination.Producer, Second: combination.Consumer, Kind: RewriteARM64CompareBranch})
 		} else if !adjacent && physicalFlagsRenameable(target, f, schedule, combination.Producer, combination.Consumer, position, uses) {
 			reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: combination.Producer, Second: combination.Consumer, Kind: RewritePhysicalRename})
@@ -169,6 +170,12 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 			reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: first, Second: last, Kind: RewriteARM64RepeatedAdd})
 			for index+1 < len(schedule.Order) && schedule.Order[index] != last {
 				index++
+			}
+		}
+		for _, final := range schedule.Order {
+			first, _, ok := arm64ByteWidenChain(f, schedule, final, position, uses)
+			if ok {
+				reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: first, Second: final, Kind: RewriteARM64ByteWiden})
 			}
 		}
 	}
@@ -210,7 +217,7 @@ func arm64PostIndexChainable(first, second Inst) bool {
 func physicalFlagsRenameable(target Target, f *Func, schedule *Schedule, producer, consumer uint32, position, uses []uint32) bool {
 	if target != TargetAMD64 && target != TargetARM64 || schedule == nil || int(producer) >= len(position) || int(consumer) >= len(position) ||
 		schedule.BlockOf[producer] != schedule.BlockOf[consumer] || position[producer]+1 >= position[consumer] ||
-		!integerFusionRepairable(f, producer, consumer, uses) {
+		!compareBranchFusionRepairable(target, f, producer, consumer, uses) {
 		return false
 	}
 	for scheduled := position[producer] + 1; scheduled < position[consumer]; scheduled++ {
@@ -292,6 +299,145 @@ func VerifyARM64RepeatedAddChain(f *Func, schedule *Schedule, first, last uint32
 	return 0, 0, 0, false
 }
 
+// VerifyARM64ByteWidenChain independently reconstructs a scalar expansion of
+// four low bytes into four zero-extended 16-bit lanes. When final is ^uint32(0),
+// first is treated as the planned first instruction and the matching final is
+// discovered from the schedule.
+func VerifyARM64ByteWidenChain(f *Func, schedule *Schedule, first, final uint32) (uint32, VReg, bool) {
+	if f == nil || schedule == nil {
+		return 0, 0, false
+	}
+	position := make([]uint32, len(f.Insts))
+	uses := make([]uint32, len(f.VRegs))
+	for index, instruction := range schedule.Order {
+		if int(instruction) >= len(position) {
+			return 0, 0, false
+		}
+		position[instruction] = uint32(index)
+	}
+	for instructionID := range f.Insts {
+		for _, operand := range f.InstructionOperands(uint32(instructionID)) {
+			uses[operand.Reg]++
+		}
+	}
+	for _, transfer := range f.Transfers {
+		uses[transfer.Src]++
+	}
+	for _, result := range f.Results {
+		uses[result]++
+	}
+	if final != ^uint32(0) {
+		gotFirst, source, ok := arm64ByteWidenChain(f, schedule, final, position, uses)
+		return gotFirst, source, ok && gotFirst == first
+	}
+	for _, candidate := range schedule.Order {
+		gotFirst, source, ok := arm64ByteWidenChain(f, schedule, candidate, position, uses)
+		if ok && gotFirst == first {
+			return candidate, source, true
+		}
+	}
+	return 0, 0, false
+}
+
+func arm64ByteWidenChain(f *Func, schedule *Schedule, final uint32, position, uses []uint32) (uint32, VReg, bool) {
+	if int(final) >= len(f.Insts) || len(position) != len(f.Insts) || len(uses) != len(f.VRegs) {
+		return 0, 0, false
+	}
+	definition := func(value VReg, op wasm.InstrKind) (uint32, []Operand, bool) {
+		if value == 0 || int(value) >= len(f.VRegs) {
+			return 0, nil, false
+		}
+		id := f.VRegs[value].Def / 6
+		if int(id) >= len(f.Insts) || f.Insts[id].Result != value || f.Insts[id].Op != op {
+			return 0, nil, false
+		}
+		return id, f.InstructionOperands(id), true
+	}
+	constant := func(value VReg, want uint64) bool {
+		id, _, ok := definition(value, wasm.InstrI64Const)
+		return ok && f.Insts[id].Aux == want
+	}
+	andConstant := func(id uint32, want uint64) (VReg, bool) {
+		if int(id) >= len(f.Insts) || f.Insts[id].Op != wasm.InstrI64And {
+			return 0, false
+		}
+		operands := f.InstructionOperands(id)
+		if len(operands) != 2 {
+			return 0, false
+		}
+		if constant(operands[0].Reg, want) {
+			return operands[1].Reg, true
+		}
+		if constant(operands[1].Reg, want) {
+			return operands[0].Reg, true
+		}
+		return 0, false
+	}
+	orShift := func(value VReg, shift uint64) (base VReg, orID, shiftID uint32, ok bool) {
+		orID, operands, ok := definition(value, wasm.InstrI64Or)
+		if !ok || len(operands) != 2 || uses[value] != 1 {
+			return 0, 0, 0, false
+		}
+		for side := range 2 {
+			base, shifted := operands[side].Reg, operands[1-side].Reg
+			shiftID, shiftOperands, matched := definition(shifted, wasm.InstrI64Shl)
+			if !matched || len(shiftOperands) != 2 || uses[shifted] != 1 {
+				continue
+			}
+			if shiftOperands[0].Reg == base && constant(shiftOperands[1].Reg, shift) || shiftOperands[1].Reg == base && constant(shiftOperands[0].Reg, shift) {
+				return base, orID, shiftID, true
+			}
+		}
+		return 0, 0, 0, false
+	}
+	outer, ok := andConstant(final, 0x00ff00ff00ff00ff)
+	if !ok {
+		return 0, 0, false
+	}
+	base2, or2, shift8, ok := orShift(outer, 8)
+	if !ok || uses[base2] != 2 {
+		return 0, 0, false
+	}
+	and1 := f.VRegs[base2].Def / 6
+	outer, ok = andConstant(and1, 0x0000ffff0000ffff)
+	if !ok {
+		return 0, 0, false
+	}
+	base1, or1, shift16, ok := orShift(outer, 16)
+	if !ok || uses[base1] != 2 {
+		return 0, 0, false
+	}
+	first := f.VRegs[base1].Def / 6
+	source, ok := andConstant(first, 0xffffffff)
+	if !ok {
+		return 0, 0, false
+	}
+	ids := [...]uint32{first, shift16, or1, and1, shift8, or2, final}
+	block := schedule.BlockOf[first]
+	for index, id := range ids {
+		if int(id) >= len(schedule.BlockOf) || schedule.BlockOf[id] != block || index != 0 && position[id] <= position[ids[index-1]] {
+			return 0, 0, false
+		}
+	}
+	if position[final]-position[first] > 12 {
+		return 0, 0, false
+	}
+	for scheduled := position[first]; scheduled <= position[final]; scheduled++ {
+		id := schedule.Order[scheduled]
+		matched := false
+		for _, candidate := range ids {
+			matched = matched || id == candidate
+		}
+		if matched {
+			continue
+		}
+		if f.Insts[id].Op != wasm.InstrI64Const {
+			return 0, 0, false
+		}
+	}
+	return first, source, true
+}
+
 func arm64CondIncrementable(f *Func, producerID, consumerID uint32, uses []uint32) bool {
 	if int(producerID) >= len(f.Insts) || int(consumerID) >= len(f.Insts) {
 		return false
@@ -331,7 +477,7 @@ func amd64FoldableLoadConsumer(f *Func, loadID, consumerID uint32, uses []uint32
 	return len(operands) == 2 && operands[1].Reg == load.Result
 }
 
-func integerFusionRepairable(f *Func, producerID, consumerID uint32, uses []uint32) bool {
+func compareBranchFusionRepairable(target Target, f *Func, producerID, consumerID uint32, uses []uint32) bool {
 	if int(producerID) >= len(f.Insts) || int(consumerID) >= len(f.Insts) {
 		return false
 	}
@@ -346,7 +492,8 @@ func integerFusionRepairable(f *Func, producerID, consumerID uint32, uses []uint
 	if producer.Op == wasm.InstrI32Eqz || producer.Op == wasm.InstrI64Eqz {
 		return true
 	}
-	return producer.Op >= wasm.InstrI32Eq && producer.Op <= wasm.InstrI64GeU
+	return producer.Op >= wasm.InstrI32Eq && producer.Op <= wasm.InstrI64GeU ||
+		target == TargetARM64 && producer.Op >= wasm.InstrF32Eq && producer.Op <= wasm.InstrF64Ge
 }
 
 // amd64LEARepairable admits register addition and immediate subtraction. A
@@ -471,14 +618,14 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 		uses[result]++
 	}
 	for id, rewrite := range plan.Rewrites {
-		if rewrite.Kind == RewriteInvalid || int(rewrite.First) >= len(f.Insts) || rewrite.Second != ^uint32(0) && (int(rewrite.Second) >= len(f.Insts) || rewrite.Second <= rewrite.First || rewrite.Second-rewrite.First > PostRAScanLimit && rewrite.Kind != RewriteAMD64FusionRepair && rewrite.Kind != RewritePhysicalRename && rewrite.Kind != RewriteARM64CompareBranch && rewrite.Kind != RewriteARM64RepeatedAdd) {
+		if rewrite.Kind == RewriteInvalid || int(rewrite.First) >= len(f.Insts) || rewrite.Second != ^uint32(0) && (int(rewrite.Second) >= len(f.Insts) || rewrite.Second <= rewrite.First || rewrite.Second-rewrite.First > PostRAScanLimit && rewrite.Kind != RewriteAMD64FusionRepair && rewrite.Kind != RewritePhysicalRename && rewrite.Kind != RewriteARM64CompareBranch && rewrite.Kind != RewriteARM64RepeatedAdd && rewrite.Kind != RewriteARM64ByteWiden) {
 			return fmt.Errorf("railmach: invalid post-RA rewrite %d: %#v", id, rewrite)
 		}
-		if target == TargetAMD64 && (rewrite.Kind == RewriteARM64Pair || rewrite.Kind == RewriteARM64PrePostIndex || rewrite.Kind == RewriteARM64CompareBranch || rewrite.Kind == RewriteARM64CondIncrement || rewrite.Kind == RewriteARM64RepeatedAdd) || target == TargetARM64 && (rewrite.Kind == RewriteAMD64LEA || rewrite.Kind == RewriteAMD64FusionRepair || rewrite.Kind == RewriteAMD64FixedRepair || rewrite.Kind == RewriteAMD64MemoryFold) {
+		if target == TargetAMD64 && (rewrite.Kind == RewriteARM64Pair || rewrite.Kind == RewriteARM64PrePostIndex || rewrite.Kind == RewriteARM64CompareBranch || rewrite.Kind == RewriteARM64CondIncrement || rewrite.Kind == RewriteARM64RepeatedAdd || rewrite.Kind == RewriteARM64ByteWiden) || target == TargetARM64 && (rewrite.Kind == RewriteAMD64LEA || rewrite.Kind == RewriteAMD64FusionRepair || rewrite.Kind == RewriteAMD64FixedRepair || rewrite.Kind == RewriteAMD64MemoryFold) {
 			return fmt.Errorf("railmach: cross-target post-RA rewrite %d: %#v", id, rewrite)
 		}
 		if rewrite.Kind == RewriteAMD64FusionRepair && position[rewrite.Second] == position[rewrite.First]+1 {
-			if schedule.BlockOf[rewrite.First] != schedule.BlockOf[rewrite.Second] || !integerFusionRepairable(f, rewrite.First, rewrite.Second, uses) {
+			if schedule.BlockOf[rewrite.First] != schedule.BlockOf[rewrite.Second] || !compareBranchFusionRepairable(target, f, rewrite.First, rewrite.Second, uses) {
 				return fmt.Errorf("railmach: illegal AMD64 flag fusion %d: %#v", id, rewrite)
 			}
 			matched := false
@@ -490,7 +637,7 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 			}
 		}
 		if rewrite.Kind == RewriteARM64CompareBranch {
-			if position[rewrite.Second] != position[rewrite.First]+1 || schedule.BlockOf[rewrite.First] != schedule.BlockOf[rewrite.Second] || !integerFusionRepairable(f, rewrite.First, rewrite.Second, uses) {
+			if position[rewrite.Second] != position[rewrite.First]+1 || schedule.BlockOf[rewrite.First] != schedule.BlockOf[rewrite.Second] || !compareBranchFusionRepairable(target, f, rewrite.First, rewrite.Second, uses) {
 				return fmt.Errorf("railmach: illegal ARM64 compare/branch fusion %d: %#v", id, rewrite)
 			}
 			matched := false
@@ -537,6 +684,11 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 		if rewrite.Kind == RewriteARM64RepeatedAdd {
 			if _, _, _, ok := VerifyARM64RepeatedAddChain(f, schedule, rewrite.First, rewrite.Second); !ok {
 				return fmt.Errorf("railmach: illegal ARM64 repeated add %d: %#v", id, rewrite)
+			}
+		}
+		if rewrite.Kind == RewriteARM64ByteWiden {
+			if _, _, ok := VerifyARM64ByteWidenChain(f, schedule, rewrite.First, rewrite.Second); !ok {
+				return fmt.Errorf("railmach: illegal ARM64 byte widen %d: %#v", id, rewrite)
 			}
 		}
 		if rewrite.Kind == RewriteAMD64MemoryFold {

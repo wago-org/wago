@@ -51,11 +51,17 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 		nativeExecutionEpoch++
 		defer nativeExecutionMu.Unlock()
 	}
-	result, err := in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	var result uint64
+	var err error
+	if fn.directLeafIntFast {
+		result, err = in.eng.EnterPreparedLeafInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	} else {
+		result, err = in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
 	}
-	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
+	if !fn.directLeafIntFast && wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
 		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
 	}
 	goruntime.KeepAlive(in)

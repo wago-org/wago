@@ -93,9 +93,9 @@ func TestARM64StructuredTradesOneVectorStackRegisterOnlyUnderLocalPressure(t *te
 		arm64V128LocalUseWeight(wasm.InstrLocalTee) != 2 {
 		t.Fatal("vector local write costs are not weighted above reads")
 	}
-	if !arm64StructuredCachesMemoryEnd(true, 4, 3) || !arm64StructuredCachesMemoryEnd(true, 3, 4) ||
-		arm64StructuredCachesMemoryEnd(false, 4, 3) || arm64StructuredCachesMemoryEnd(true, 0, 0) {
-		t.Fatal("cached memory end policy did not remain limited to SIMD memory functions")
+	if !arm64StructuredCachesMemoryEnd(true, 4, 3) || !arm64StructuredCachesMemoryEnd(false, 3, 4) ||
+		arm64StructuredCachesMemoryEnd(false, 2, 1) || arm64StructuredCachesMemoryEnd(true, 0, 0) {
+		t.Fatal("cached memory end policy did not retain its memory-density threshold")
 	}
 }
 
@@ -127,12 +127,16 @@ func TestARM64FoldsInlinedI32AddTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	var metrics Metrics
-	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+	output, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
 		t.Fatal(err)
 	}
 	got := metrics.Functions[3]
 	if !got.RailMachFinalized || got.PostRARewrites != 4 || got.NativeBytes > 64 {
 		t.Fatalf("inlined i32 add tree metrics = %#v", got)
+	}
+	if len(output.DirectLeafPrepared) == 0 || output.DirectLeafPrepared[0]&(uint64(1)<<3) == 0 {
+		t.Fatal("fully inlined direct-call tree did not publish the call-free leaf entry")
 	}
 }
 
@@ -881,8 +885,12 @@ func TestARM64RailMachDefersUnreachableTrapsPastHotReturn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, _, ok := arm64RailMachFibonacciLoop(plan); !ok {
+		t.Fatal("canonical Fibonacci recurrence was not recognized")
+	}
 	var metadata functionEmissionMetadata
-	codeBytes, _, ok, err := emitARM64RailMach(fn, plan, false, nil, nil, nil, &metadata)
+	var metrics FunctionMetrics
+	codeBytes, _, ok, err := emitARM64RailMach(fn, plan, false, nil, nil, &metrics, &metadata)
 	if err != nil || !ok {
 		t.Fatalf("RailMach finalization = ok %t, err %v", ok, err)
 	}
@@ -894,6 +902,9 @@ func TestARM64RailMachDefersUnreachableTrapsPastHotReturn(t *testing.T) {
 	}
 	if firstTrap < 4 || !bytes.Equal(codeBytes[firstTrap-4:firstTrap], []byte{0xc0, 0x03, 0x5f, 0xd6}) {
 		t.Fatalf("first unreachable trap offset = %d; hot return does not precede cold traps", firstTrap)
+	}
+	if metrics.PostRARewrites != 1 || len(codeBytes) > 208 {
+		t.Fatalf("Fibonacci recurrence rewrite = %d, code bytes = %d", metrics.PostRARewrites, len(codeBytes))
 	}
 }
 

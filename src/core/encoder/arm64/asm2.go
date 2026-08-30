@@ -771,6 +771,11 @@ func (a *Asm) NeonMov16b(dst, src Reg) {
 	a.word(0x4EA01C00 | r(src)<<16 | r(src)<<5 | r(dst))
 }
 
+// NeonUxtl8h zero-extends the low eight byte lanes into eight halfword lanes.
+func (a *Asm) NeonUxtl8h(dst, src Reg) {
+	a.word(0x2F08A400 | r(src)<<5 | r(dst))
+}
+
 // NeonMoviB broadcasts one immediate byte to all sixteen vector lanes.
 func (a *Asm) NeonMoviB(dst Reg, immediate byte) {
 	a.word(0x4F00E400 | uint32(immediate>>5)<<16 | uint32(immediate&0x1f)<<5 | r(dst))
