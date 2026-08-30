@@ -9,7 +9,8 @@
 - The strongest broadly visible execution wins are ARM64 `reg-abi` (+20.42% disabled penalty), AMD64 `v128-const-cache` (+6.09%), branch folding (+2.30% ARM64 / +3.39% AMD64), AMD64 `inline` (+2.27%), and vector pins (+2.56% ARM64 / +1.84% AMD64).
 - The clearest cost/benefit review target is `loop-precheck`: disabling it cuts full-compile allocation bytes by 6.38% on ARM64 and 6.09% on AMD64 and improves compile time by 5.36% / 3.05%, while broad execution changes only +0.21% / +0.11%; focused rows still lose as much as 3.72% / 2.88%, so this is a default/removal investigation, not an immediate deletion.
 - The cleanest low-consequence implementation candidates are ARM64 `v128-const-cache`, shared `v128-sink`, AMD64 `affine-lea`, AMD64 `call-next-use`, and the default-off experimental `inline-loop-callees`. Each needs focused code-size and hit-count evidence before removal.
-- Follow-up implemented: `loop-precheck` and `v128-sink` now default off on both architectures; ARM64 also defaults `deep-fp-pins` off; AMD64 also defaults `call-next-use`, `affine-lea`, `tee-spill-elide`, and `commute-self-update` off. The already-off `inline-loop-callees` override and its unreachable backend paths were removed.
+- Follow-up implemented: `loop-precheck` and `v128-sink` now default off on both architectures; ARM64 also defaults `deep-fp-pins` off; AMD64 also defaults `call-next-use`, `affine-lea`, `tee-spill-elide`, and, at this historical checkpoint, `commute-self-update` off. The already-off `inline-loop-callees` override and its unreachable backend paths were removed.
+- Requalification on 2026-08-29 changed `commute-self-update` to handle the first eligible site through a direct lowering instead of the generic relocation path. The new same-process real-corpus A/B improves execution 3.55% geomean, removes 67.0% of measured backend spills, and leaves compile allocation unchanged, so AMD64 now defaults it on. The original table below remains the record of the older implementation and must not be read as current default policy.
 - Follow-up catalog audit: 14 formerly environment-only families are now public flags. Paired screening keeps the high-value SIMD/SWAR and focused register/code-selection wins on, defaults `fcmp-fuse` off on both architectures, and defaults AMD64 `gc-ref-facts` off while retaining it as a GC-workload opt-in.
 - In an exact original-commit versus current-commit rerun, the complete branch changed execution by **-0.10% ARM64 / +0.14% AMD64**, while improving compile time by **5.22% / 4.04%**, compile allocation bytes by **6.38% / 9.69%**, and compile allocation counts by **2.93% / 15.51%**.
 - Percentages below are **disabled versus enabled**. Positive execution time means disabling made execution slower (the optimization helped); negative means disabling made execution faster.
@@ -24,7 +25,7 @@ through the existing runtime/project optimization map.
 | Architecture | Newly default-off options | Removed surface |
 |---|---|---|
 | ARM64 | `deep-fp-pins`, `fcmp-fuse`, `loop-precheck` | `inline-loop-callees`, `v128-const-cache`, `v128-sink` |
-| AMD64 | `affine-lea`, `call-next-use`, `commute-self-update`, `fcmp-fuse`, `gc-ref-facts`, `loop-precheck`, `tee-spill-elide`, `v128-sink` | `inline-loop-callees` |
+| AMD64 | `affine-lea`, `call-next-use`, `fcmp-fuse`, `gc-ref-facts`, `loop-precheck`, `tee-spill-elide`, `v128-sink` | `inline-loop-callees` |
 
 The final bundle was measured using two separately compiled benchmark binaries:
 one at original commit `ef129fdbb820`, and one at current commit `20936e8621bc`.

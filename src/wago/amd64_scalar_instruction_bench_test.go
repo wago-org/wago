@@ -242,3 +242,91 @@ func BenchmarkAMD64IntegerShiftInstruction(b *testing.B) {
 		})
 	}
 }
+
+type amd64Low32MaskBenchmarkCase struct {
+	name   string
+	mask   uint64
+	narrow bool
+}
+
+func amd64Low32MaskBenchmarkModule(mask uint64) []byte {
+	body := []byte{
+		0x01, 0x01, 0x7f, // local 2: i32 counter
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x20, 0x02, 0x20, 0x00, 0x4f, 0x0d, 0x01, // if counter >= iterations, break
+		0x20, 0x01, // accumulator
+		0x42,
+	}
+	body = append(body, wasmtest.SLEB64(int64(amd64DivBenchmarkAdd))...)
+	body = append(body, 0x7c, 0x42) // i64.add; i64.const mask
+	body = append(body, wasmtest.SLEB64(int64(mask))...)
+	body = append(body,
+		0x83, 0x21, 0x01, // i64.and; local.set accumulator
+		0x20, 0x02, 0x41, 0x01, 0x6a, 0x21, 0x02, // counter++
+		0x0c, 0x00, // continue
+		0x0b, 0x0b,
+		0x20, 0x01,
+		0x0b,
+	)
+	funcType := wasmtest.FuncType(
+		[]wasm.ValType{wasm.I32, wasm.I64},
+		[]wasm.ValType{wasm.I64},
+	)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(funcType)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+}
+
+// BenchmarkAMD64Low32MaskInstruction compares the general i64 immediate/register
+// path with a zero-extending 32-bit AND for constants confined to the low half.
+// One public invocation executes b.N dependent guest operations.
+func BenchmarkAMD64Low32MaskInstruction(b *testing.B) {
+	cases := []amd64Low32MaskBenchmarkCase{
+		{name: "low-31/baseline", mask: 0x7fffffff},
+		{name: "low-31/narrow", mask: 0x7fffffff, narrow: true},
+		{name: "high-bit/baseline", mask: 0x80000000},
+		{name: "high-bit/narrow", mask: 0x80000000, narrow: true},
+		{name: "mixed/baseline", mask: 0x00ff00ff},
+		{name: "mixed/narrow", mask: 0x00ff00ff, narrow: true},
+		{name: "full/baseline", mask: 0xffffffff},
+		{name: "full/narrow", mask: 0xffffffff, narrow: true},
+	}
+	for _, tc := range cases {
+		b.Run(tc.name, func(b *testing.B) {
+			cfg := NewRuntimeConfig().WithOptimization("i64-mask32", tc.narrow)
+			compiled, err := Compile(cfg, amd64Low32MaskBenchmarkModule(tc.mask))
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer instance.Close()
+
+			want := (amd64DivBenchmarkSeed + amd64DivBenchmarkAdd) & tc.mask
+			got, err := instance.Invoke("run", 1, amd64DivBenchmarkSeed)
+			if err != nil || len(got) != 1 || got[0] != want {
+				b.Fatalf("warm run = %v, %v; want [%d]", got, err, want)
+			}
+			if uint64(b.N) > uint64(^uint32(0)) {
+				b.Fatalf("iteration count %d exceeds the i32 guest-loop limit", b.N)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			got, err = instance.Invoke("run", uint64(uint32(b.N)), amd64DivBenchmarkSeed)
+			b.StopTimer()
+			if err != nil || len(got) != 1 {
+				b.Fatalf("run(%d) = %v, %v", b.N, got, err)
+			}
+			benchUintSink = got[0]
+			b.ReportMetric(float64(compiled.CodeSize()), "code-B")
+			b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N), "ns/instruction")
+		})
+	}
+}

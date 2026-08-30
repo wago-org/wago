@@ -19,6 +19,26 @@ Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very hi
 
 ## What's in place (updated 2026-08-29)
 
+**Commutative self-updates and low-32 masks (2026-08-29).** AMD64 now
+accumulates every safe non-fixed `x = f(y) op x` form directly in `x` instead of
+spilling the old destination, including the first site in a function. The direct
+lowering avoids the generic relocation path and is default-on with
+`WAGO_AMD64_NO_COMMUTE_SELF_UPDATE=1` as the A/B oracle. A same-process seven-row
+corpus watchpoint improves **3.55% geomean**: scalar BLAKE3 improves
+**718.4→703.3 µs** (-2.1%), SIMD BLAKE3 **628.2→575.8 µs** (-8.3%), and the
+open-coded multiply-high loop **2.239→1.995 µs** (-10.9%); the worst row is
+spectral norm at +0.14%. Across the complete compile corpus, emitted code falls
+**69,708,236→69,675,415 bytes** (-32,821) and allocator spills fall
+**3,817→1,259** (-67.0%), with 2,556 retained sites. The nearby #438 mask
+experiment also generalizes `i64.and` to use a zero-extending 32-bit immediate
+for every mask through `0xffffffff`, not only the full low word. Runtime is flat
+in dependent loops, while 7,483 corpus sites remove 4,800 native bytes beyond
+the old exact-mask rule. `BenchmarkExecCommuteSelfUpdate`,
+`BenchmarkCompileCommuteSelfUpdate`, and `BenchmarkAMD64Low32MaskInstruction`
+are the permanent A/B watchpoints. Default-off float-compare fusion, vector
+sinking, loop prechecks, tee-spill reuse, call next-use, affine LEA, and BMI2
+RORX were remeasured and remain rejected or opt-in.
+
 **Scalar float mask and copysign lowering (2026-08-29).** AMD64 implicit
 abs/neg/copysign masks now use the existing RIP-relative constant pool instead of
 a GPR rebuild. Focused dependent loops improve `f64.abs` **0.571→0.447 ns/op**
