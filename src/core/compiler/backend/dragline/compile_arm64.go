@@ -4802,6 +4802,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	hasResultLoop := false
 	hasMemoryAccess := false
 	hasMemoryGrow := false
+	memoryLoads, memoryStores := uint32(0), uint32(0)
 	globalUses := make([]uint16, len(sf.Globals))
 	vectorLocalUses := make([]uint32, len(sf.Locals))
 	allShufflesSpecialized := true
@@ -4829,6 +4830,20 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		}
 		hasMemoryAccess = hasMemoryAccess || arm64MemoryStackKind(instr.Kind) || arm64SIMDMemoryStackKind(instr.Kind)
 		hasMemoryGrow = hasMemoryGrow || instr.Kind == wasm.InstrMemoryGrow
+		if arm64MemoryStackKind(instr.Kind) {
+			if instr.Kind >= wasm.InstrI32Store && instr.Kind <= wasm.InstrI64Store32 {
+				memoryStores++
+			} else {
+				memoryLoads++
+			}
+		} else if arm64SIMDMemoryStackKind(instr.Kind) {
+			if descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex)); ok &&
+				(descriptor.Class == wasm.SIMDEffectStore || descriptor.Class == wasm.SIMDEffectStoreLane) {
+				memoryStores++
+			} else {
+				memoryLoads++
+			}
+		}
 		if (instr.Kind == wasm.InstrGlobalGet || instr.Kind == wasm.InstrGlobalSet) && int(instr.U32()) < len(globalUses) && globalUses[instr.U32()] != math.MaxUint16 {
 			globalUses[instr.U32()]++
 		}
@@ -4919,6 +4934,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	}
 	registerOperandStack, registerStack := arm64StructuredRegisterModes(sf.HasV128, hasGeneralCall, pinLocalsAcrossCalls, hasResultLoop, gpLocals, fpLocals, int(sf.MaxStack))
 	cacheMemorySize := (registerOperandStack || pinLocalsAcrossCalls) && hasMemoryAccess && !hasMemoryGrow
+	cacheMemoryEnd := cacheMemorySize && arm64StructuredCachesMemoryEnd(sf.HasV128, memoryLoads, memoryStores)
 	var simdConstants []arm64SIMDConstant
 	if !hasGeneralCall && v128Locals < len(arm64V128LocalRegisters) {
 		observeConstant := func(bytes [16]byte) {
@@ -5045,6 +5061,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		a.SubImm64(arm64.X25, arm64.X26, abi.ActualLinMemByteSize64Offset)
 		if !a.Load64(arm64.X25, arm64.X25, 0) {
 			return nil, 0, nil, fmt.Errorf("cached memory size load is not encodable")
+		}
+		if cacheMemoryEnd {
+			a.Add64(arm64.X25, arm64.X26, arm64.X25)
 		}
 	}
 	localOff := func(index int) uint32 { return railssa.TypeSlotOffset(sf.Locals, index) * 8 }
@@ -5527,6 +5546,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 							return nil, 0, nil, fmt.Errorf("byte %d: memory size load is not encodable", load.Offset)
 						}
 						bounds = arm64.X17
+					}
+					if cacheMemoryEnd {
+						a.Add64(arm64.X16, arm64.X26, arm64.X16)
 					}
 					a.CmpReg64(arm64.X16, bounds)
 					if err := emitColdMemoryTrap(load.Offset); err != nil {
@@ -7209,6 +7231,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				if !a.Load64(arm64.X25, arm64.X25, 0) {
 					return nil, 0, nil, fmt.Errorf("byte %d: cached memory size reload is not encodable", instr.Offset)
 				}
+				if cacheMemoryEnd {
+					a.Add64(arm64.X25, arm64.X26, arm64.X25)
+				}
 			}
 		case wasm.InstrBr, wasm.InstrBrIf:
 			if int(instr.U32()) > len(controls) {
@@ -8096,12 +8121,12 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				if !ok {
 					return nil, 0, nil, fmt.Errorf("byte %d: SIMD descriptor is unavailable", instr.Offset)
 				}
-				err = emitARM64StackSIMD(&a, descriptor, instr, &stackTypes, v128StackRegisters, stackOff, stackLoad, stackStore, stackSourceV128, stackTakeV128, stackStoreV128, stackStoreV128Constant, simdConstants, fn.Index, registerOperandStack, cacheMemorySize, emitColdMemoryTrap, metadata)
+				err = emitARM64StackSIMD(&a, descriptor, instr, &stackTypes, v128StackRegisters, stackOff, stackLoad, stackStore, stackSourceV128, stackTakeV128, stackStoreV128, stackStoreV128Constant, simdConstants, fn.Index, registerOperandStack, cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata)
 			} else if arm64MemoryStackKind(instr.Kind) {
 				if !registerOperandStack {
-					err = emitARM64StackBackedMemory(&a, instr, &stackTypes, stackLoad, stackStore, fn.Index, plan.ElidesBoundsCheck(uint32(instrIndex)), cacheMemorySize, emitColdMemoryTrap, metadata)
+					err = emitARM64StackBackedMemory(&a, instr, &stackTypes, stackLoad, stackStore, fn.Index, plan.ElidesBoundsCheck(uint32(instrIndex)), cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata)
 				} else {
-					err = emitARM64RegisterStackMemory(&a, instr, &stackTypes, fn.Index, plan.ElidesBoundsCheck(uint32(instrIndex)), cacheMemorySize, emitColdMemoryTrap, metadata)
+					err = emitARM64RegisterStackMemory(&a, instr, &stackTypes, fn.Index, plan.ElidesBoundsCheck(uint32(instrIndex)), cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata)
 				}
 			} else if arm64FloatStackKind(instr.Kind) {
 				if !registerOperandStack {
@@ -8189,6 +8214,10 @@ func arm64StructuredV128StackRegisterCount(v128Locals, availableLocals int) int 
 		return len(arm64V128StackRegisters) - 1
 	}
 	return len(arm64V128StackRegisters)
+}
+
+func arm64StructuredCachesMemoryEnd(hasV128 bool, loads, stores uint32) bool {
+	return hasV128 && loads >= stores
 }
 
 func arm64CountedLoopTail(instrs []railssa.StackInstr, guard int, local uint32) (int, bool) {
@@ -9616,14 +9645,34 @@ func emitARM64SIMDConstant(a *arm64.Asm, reg arm64.Reg, bytes [16]byte) {
 func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor, instr railssa.StackInstr,
 	stack *[]wasm.ValType, stackRegisters []arm64.Reg, stackOff func(int) uint32, load func(int, arm64.Reg) bool, store func(int, arm64.Reg) bool,
 	sourceV func(int, arm64.Reg) arm64.Reg, takeV func(int, arm64.Reg) arm64.Reg, storeV func(int, arm64.Reg), storeConstant func(int, arm64.Reg),
-	constants []arm64SIMDConstant, function uint32, registerOperandStack, cachedBounds bool, emitMemoryTrap func(uint32) error, metadata *functionEmissionMetadata,
+	constants []arm64SIMDConstant, function uint32, registerOperandStack, cachedBounds, cachedMemoryEnd bool, emitMemoryTrap func(uint32) error, metadata *functionEmissionMetadata,
 ) error {
 	types := *stack
+	effectiveAddressReady := false
+	effectiveAddress := func(address arm64.Reg) {
+		if effectiveAddressReady {
+			effectiveAddressReady = false
+			return
+		}
+		a.MovReg32(arm64.X16, address)
+		a.Add64(arm64.X16, arm64.X26, arm64.X16)
+		if descriptor.MemArg.Offset != 0 {
+			a.MovImm64(arm64.X17, descriptor.MemArg.Offset)
+			a.Add64(arm64.X16, arm64.X16, arm64.X17)
+		}
+	}
 	checkMemory := func(address arm64.Reg, size uint64) error {
 		if descriptor.MemArg.Offset > math.MaxUint64-size {
 			metadata.recordTrap(a.Len(), instr.Offset, 3)
 			arm64EmitTrap(a, 3, function, instr.Offset)
 			return nil
+		}
+		if cachedBounds && cachedMemoryEnd {
+			effectiveAddress(address)
+			effectiveAddressReady = true
+			a.AddImm64(arm64.X17, arm64.X16, uint32(size))
+			a.CmpReg64(arm64.X17, arm64.X25)
+			return emitMemoryTrap(instr.Offset)
 		}
 		a.MovReg32(arm64.X16, address)
 		end := descriptor.MemArg.Offset + size
@@ -9643,14 +9692,6 @@ func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		}
 		a.CmpReg64(arm64.X16, bounds)
 		return emitMemoryTrap(instr.Offset)
-	}
-	effectiveAddress := func(address arm64.Reg) {
-		a.MovReg32(arm64.X16, address)
-		a.Add64(arm64.X16, arm64.X26, arm64.X16)
-		if descriptor.MemArg.Offset != 0 {
-			a.MovImm64(arm64.X17, descriptor.MemArg.Offset)
-			a.Add64(arm64.X16, arm64.X16, arm64.X17)
-		}
 	}
 	materialize := func(reg arm64.Reg, bytes [16]byte) {
 		emitARM64SIMDConstant(a, reg, bytes)
@@ -10025,7 +10066,7 @@ func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 
 func emitARM64StackBackedMemory(a *arm64.Asm, instr railssa.StackInstr, stack *[]wasm.ValType,
 	load func(int, arm64.Reg) bool, store func(int, arm64.Reg) bool, function uint32, elideBounds bool,
-	cachedBounds bool, emitMemoryTrap func(uint32) error,
+	cachedBounds, cachedMemoryEnd bool, emitMemoryTrap func(uint32) error,
 	metadata *functionEmissionMetadata,
 ) error {
 	types := *stack
@@ -10045,7 +10086,7 @@ func emitARM64StackBackedMemory(a *arm64.Asm, instr railssa.StackInstr, stack *[
 			return fmt.Errorf("memory operand %d is unavailable", i)
 		}
 	}
-	if err := emitARM64RegisterStackMemory(a, instr, &tmp, function, elideBounds, cachedBounds, emitMemoryTrap, metadata); err != nil {
+	if err := emitARM64RegisterStackMemory(a, instr, &tmp, function, elideBounds, cachedBounds, cachedMemoryEnd, emitMemoryTrap, metadata); err != nil {
 		return err
 	}
 	types = types[:base]
@@ -10091,7 +10132,7 @@ func emitARM64StackBackedFloat(a *arm64.Asm, kind wasm.InstrKind, stack *[]wasm.
 	return nil
 }
 
-func emitARM64RegisterStackMemory(a *arm64.Asm, instr railssa.StackInstr, stack *[]wasm.ValType, function uint32, elideBounds, cachedBounds bool, emitMemoryTrap func(uint32) error, metadata *functionEmissionMetadata) error {
+func emitARM64RegisterStackMemory(a *arm64.Asm, instr railssa.StackInstr, stack *[]wasm.ValType, function uint32, elideBounds, cachedBounds, cachedMemoryEnd bool, emitMemoryTrap func(uint32) error, metadata *functionEmissionMetadata) error {
 	types := *stack
 	store := instr.Kind >= wasm.InstrI32Store && instr.Kind <= wasm.InstrI64Store32
 	need := 1
@@ -10142,7 +10183,7 @@ func emitARM64RegisterStackMemory(a *arm64.Asm, instr railssa.StackInstr, stack 
 	case wasm.InstrI64Store32:
 		size = 4
 	}
-	if !elideBounds {
+	if !elideBounds && (!cachedBounds || !cachedMemoryEnd) {
 		a.MovReg32(arm64.X16, address)
 		a.MovImm64(arm64.X17, uint64(instr.U32())+size)
 		a.Add64(arm64.X16, arm64.X16, arm64.X17)
@@ -10173,6 +10214,27 @@ func emitARM64RegisterStackMemory(a *arm64.Asm, instr railssa.StackInstr, stack 
 	if instr.U32() != 0 {
 		a.MovImm64(arm64.X17, uint64(instr.U32()))
 		a.Add64(arm64.X16, arm64.X16, arm64.X17)
+	}
+	if !elideBounds && cachedBounds && cachedMemoryEnd {
+		if size <= 4095 {
+			a.AddImm64(arm64.X17, arm64.X16, uint32(size))
+		} else {
+			a.MovImm64(arm64.X17, size)
+			a.Add64(arm64.X17, arm64.X16, arm64.X17)
+		}
+		a.CmpReg64(arm64.X17, arm64.X25)
+		if emitMemoryTrap != nil {
+			if err := emitMemoryTrap(instr.Offset); err != nil {
+				return err
+			}
+		} else {
+			inBounds := a.Bcond(arm64.CondLS)
+			metadata.recordTrap(a.Len(), instr.Offset, 3)
+			arm64EmitTrap(a, 3, function, instr.Offset)
+			if !a.PatchBranch19(inBounds, a.Len()) {
+				return fmt.Errorf("memory bounds branch is out of range")
+			}
+		}
 	}
 	if store {
 		value := arm64OperandStackRegisters[len(types)-1]

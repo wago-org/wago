@@ -277,6 +277,19 @@ seven-round 300 ms backend comparison measured 436.51 us versus Railshot's
 385.77 us, or **1.132x**. The corpus remains unfinished; the remaining gap is
 still dominated by vector live-state pressure rather than bounds checks.
 
+Read-heavy structured SIMD functions now cache the linear-memory end pointer,
+not only its byte length. Bounds checks form the effective address once and
+compare its access end directly, removing repeated address reconstruction.
+The policy is limited to SIMD functions with at least as many loads as stores:
+the all-corpus A/B rejected applying it to scalar and store-heavy functions.
+
+Eight balanced 500 ms BLAKE pairs measured 446.87 us with the end-pointer form
+versus 448.20 us before it, a **0.3%** reduction. The compression functions are
+now 19,084/17,688 bytes and the module is 50,688 bytes. In a separate balanced
+eight-pair JSON run, `deserializeN(200)` improved from 49.65 to 49.17 us while
+`serializeN(200)` retained its existing store-heavy form; the JSON module fell
+from 118,248 to 117,144 native bytes.
+
 `mandelbrot.render(64)` exposed a missed combination between two already
 verified ARM64 forms. A comparison feeding `br_if` selected direct NZCV flag
 flow, but that choice prevented its single-use 12-bit constant from selecting
