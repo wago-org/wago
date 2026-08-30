@@ -55,7 +55,9 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 
 **Runtime (`src/core/runtime`)**
 - [x] No-cgo execution: W^X `mmap`, foreign-stack trampoline, `g` preservation,
-  trap→error, zero-copy linear memory
+  trap→error, zero-copy linear memory. Native stack capacity is configurable from
+  512 KiB through 1 GiB while retaining the 4 MiB default, 256 KiB fence, exact
+  engine-cache matching, and equal-capacity synchronous host re-entry stacks.
 - [x] Cross-instance linking: function / global / table / memory imports & exports,
   including shared mutable tables + memories. Imported calls compile once and bind
   through per-instance dispatch cells with explicit direct/indirect context switching.
@@ -181,14 +183,17 @@ current optimization priorities. The Core 3.0 implementation ledger is
   explicit checks. Native Linux/ARM64 and Darwin/ARM64 `spec3-signals` are mandatory
   CI cells alongside their explicit-bounds cells.
 - [x] **Versioned native GC metadata and checked scalar hot paths:** collectors
-  publish one stable ABI version 1 view whose handle/heap pointers, lengths, and generation
-  refresh after every allocation and collection; each instance adds an immutable
-  local-to-domain type view at basedata offset 280. AMD64 final scalar struct/array
-  get/set lowering validates ABI version, handle kind/range, space range, object
-  extent, canonical type, and array index before direct access. Reference/v128,
-  non-final, bulk, and barrier-requiring operations remain helper-bound. Current
-  end-to-end set/get measurements are 228–230 ns for structs and 265–266 ns for
-  arrays, with 0 B/op and 0 allocs/op.
+  publish one stable ABI version 1 view whose handle/heap pointers, lengths,
+  subtype-interval pointer/count, and generation refresh after every relevant
+  mutation; each instance adds an immutable local-to-domain type view at basedata
+  offset 280. AMD64 scalar struct/array get/set lowering validates ABI version,
+  handle kind/range, space range, object extent, canonical type, and array index
+  before direct access. Non-final defined struct/array `ref.cast` and `ref.test`
+  now use canonical DFS interval containment after the same checked resolution,
+  while exact casts use canonical ID equality. Reference/v128 loads, bulk, and
+  barrier-requiring operations remain helper-bound. Focused non-final cast/test
+  loops measure 3.54–3.66 ns/op, 0 B/op, and 0 allocs/op, with zero synchronous
+  helper calls under `wago_gcstats`.
 - [x] **Bounded structured WasmGC facts (#314):** AMD64 carries compact
   nullability/heap/exact-type/identity/freshness/generation/pointer-free/array-length
   facts through Valent stack values and locals, intersects them at structured joins

@@ -131,14 +131,15 @@ ns/op for the basic struct product and 688.8-697.3 ns/op for the fixed numeric a
 product, both at 0 B/op and 0 allocs/op. On July 31, 2026, five 500 ms samples of `BenchmarkGCArrayV128Set` measured 439.5-476.8 ns/op
 with 0 B/op and 0 allocs/op on the Ryzen 7 8845HS host.
 
-AMD64 final scalar struct/array get/set operations now bypass the parked helper
-through native collector ABI version 1. Its 168-byte collector-owned stable view preserves
-the complete handle/space/generation/object-card prefix and appends allocation-state,
-epoch, nursery-bump, and semantic-counter pointers. Collection and relocating/large-
-space allocation republish the complete view; ordinary helper nursery allocation
-updates only handle metadata and generation, while card append/remove/clear republishes
-card metadata. One instance-owned view publishes the immutable local-to-canonical type
-map at basedata offset 280.
+AMD64 scalar struct/array get/set operations and defined struct/array type checks
+bypass the parked helper through native collector ABI version 1. Its 184-byte
+collector-owned stable view preserves the complete handle/space/generation/object-card
+and allocation-state prefix, then publishes the immutable packed subtype-interval
+pointer and count. Collection and relocating/large-space allocation republish the
+complete view; ordinary helper nursery allocation updates only handle metadata and
+generation, card append/remove/clear republishes card metadata, and canonical-domain
+type append republishes the interval backing. One instance-owned view publishes the
+immutable local-to-canonical type map at basedata offset 280.
 
 The Go/native structure layout is validated when a collector is created. Codec version 1
 records the required native-GC ABI for generic struct/array execution and rejects a
@@ -148,8 +149,12 @@ collector version, and handle stride before basedata publication. Production AMD
 operations do not reload those immutable guards per access; `-tags wagodebug` retains
 a coarse Go-to-native entry assertion. Dynamic semantic checks are unchanged:
 generated code reloads mutable handle/backing pointers and counts, then checks compact
-handle tag/range/liveness, space and backing extents, object extent, exact canonical
-type, array bounds, ownership/barrier state, and trap order before touching payload.
+handle tag/range/liveness, space and backing extents, object extent, canonical type,
+array bounds, ownership/barrier state, and trap order before touching payload.
+Non-final defined `ref.cast` and `ref.test` reload the interval table and apply
+`required.pre <= actual.pre && actual.post <= required.post`; exact casts retain
+canonical ID equality. Neither path retains a raw object pointer across a call,
+allocation, helper, or safepoint.
 Direct scalar/reference array paths zero-extend dynamic Wasm i32 indexes before
 native-width scaling; logical bounds failures use the builtin trap category, while
 physical object-extent hardening remains a cast-failure trap.
@@ -361,8 +366,9 @@ vector layout, and bounded native root maps; compact handles remain process-loca
 
 Numeric host imports may re-enter the same instance: codec version 1 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control
-state, nested invocations borrow separate 4 MiB foreign stacks, and suspended
-outer frames remain roots during boundary and helper collection. A bounded
+state, nested invocations borrow separate foreign stacks with the active Runtime's
+configured 512 KiB-through-1 GiB capacity, and suspended outer frames remain roots
+during boundary and helper collection. The default remains 4 MiB. A bounded
 same-Runtime cross-instance product additionally canonicalizes recursive structural
 types across generic-GC modules and gives compatible reordered/additional local type
 graphs one collector. Exact GC-reference parameters/results retain
@@ -1794,7 +1800,8 @@ Objects promoted into old space are rounded into supported size classes.
 (`32` through `32768` bytes); unsupported values reject rather than round. The
 fixed 64-bit layouts are 20 bytes for `handleEntry`, 72 bytes for `Config`, and
 1,120 bytes for `Collector` in the ordinary build. The 16-byte increase is the
-ABI version 1 native allocation state for contiguous handle runs and nursery chunks.
+native allocation state for contiguous handle runs and nursery chunks; ABI version 1
+now includes the 16-byte subtype-interval pointer/count suffix in the collector view.
 
 Allocation-triggered minor collection treats old-space promotion exhaustion as a
 cold reclamation signal. Because promotion planning has published no move, the

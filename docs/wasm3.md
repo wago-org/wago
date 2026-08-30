@@ -233,8 +233,9 @@ missing official opcode families:
    rollback, codec, close-order, moving-collection, and foreign-Runtime rejection proofs;
 4. keep linux/amd64 and native Linux/Darwin arm64 explicit plus signal-backed
    conformance mandatory in CI; and
-5. preserve native collector ABI version 1, AMD64 checked final-scalar/object-card access,
-   and transactional batched final struct/array allocation, while extending direct paths
+5. preserve native collector ABI version 1, AMD64 checked scalar/object-card access,
+   direct non-final defined cast/test intervals, and transactional batched final
+   struct/array allocation, while extending direct paths
    only where metadata lifetime, collection epochs, roots, and barriers remain exact.
 
 The current descriptor-tail completion resolves runtime targets from their immutable
@@ -266,9 +267,10 @@ path at 474.7–481.6 ns/op with 0 B/op and 0 allocs/op; existing direct cross-i
 watchpoints remain 89.52–94.63 ns/op and allocation-free. The native context is now
 112 bytes: the original 72-byte pointer prefix, 32 bytes of domain/tail metadata,
 and an eight-byte native GC-view pointer used during shared-memory context switches.
-Native collector ABI version 1 retains the same basedata slot and collector view
-from 160 to 168 bytes. Byte 124 separates the Eden allocation limit from complete
-young backing; byte 160 publishes the configured nursery-object maximum. The
+Native collector ABI version 1 retains the same basedata slot and extends the
+collector view to 184 bytes. Byte 124 separates the Eden allocation limit from
+complete young backing; byte 160 publishes the configured nursery-object maximum,
+and bytes 168/176 publish the immutable packed subtype-interval pointer/count. The
 160-byte shared allocation ticket retains 32 handles and adds a contiguous handle
 base plus optional bounded nursery chunk fields. Arrays advance the private chunk
 cursor; structs retain their direct collector-bump sequence. Generic public calls
