@@ -260,6 +260,23 @@ overwrite its own source. Against the preceding fused build, eight alternating
 reduction; the shuffle build won seven pairs. Compression functions 7 and 8
 fell again to 19,360/17,976 bytes, and the full module to 51,300 bytes.
 
+The next pressure slice keeps one more hot vector local resident only when a
+call-free structured function has exhausted every ordinary local register. It
+trades the highest of eight vector operand-stack registers for that local and
+threads the resulting per-function stack-register set through generic SIMD
+lowering. A full SIMD differential caught and prevented an initial aliasing
+mistake where generic lowering still treated the reassigned register as stack
+storage. Vector local writes also receive extra pinning weight, and an
+immediate `local.tee`/`local.get` pair forwards the still-live stack value
+instead of loading its write-through frame home.
+
+Against the preceding build, eight alternating 500 ms binary pairs measured a
+439.49 us median versus 442.18 us, a **0.6%** reduction. Compression functions
+7 and 8 fell to 19,244/17,800 bytes and the module to 50,960 bytes. A fresh
+seven-round 300 ms backend comparison measured 436.51 us versus Railshot's
+385.77 us, or **1.132x**. The corpus remains unfinished; the remaining gap is
+still dominated by vector live-state pressure rather than bounds checks.
+
 `mandelbrot.render(64)` exposed a missed combination between two already
 verified ARM64 forms. A comparison feeding `br_if` selected direct NZCV flag
 flow, but that choice prevented its single-use 12-bit constant from selecting

@@ -82,6 +82,19 @@ func TestARM64StructuredDefersPromotedGlobalReloadAcrossAdjacentCalls(t *testing
 	}
 }
 
+func TestARM64StructuredTradesOneVectorStackRegisterOnlyUnderLocalPressure(t *testing.T) {
+	if got := arm64StructuredV128StackRegisterCount(22, 22); got != len(arm64V128StackRegisters) {
+		t.Fatalf("unpressured vector stack registers = %d", got)
+	}
+	if got := arm64StructuredV128StackRegisterCount(23, 22); got != len(arm64V128StackRegisters)-1 {
+		t.Fatalf("pressured vector stack registers = %d", got)
+	}
+	if arm64V128LocalUseWeight(wasm.InstrLocalGet) != 1 || arm64V128LocalUseWeight(wasm.InstrLocalSet) != 2 ||
+		arm64V128LocalUseWeight(wasm.InstrLocalTee) != 2 {
+		t.Fatal("vector local write costs are not weighted above reads")
+	}
+}
+
 func TestARM64ShufflePatterns(t *testing.T) {
 	ror8 := [16]byte{1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12}
 	ror16 := [16]byte{2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13}
