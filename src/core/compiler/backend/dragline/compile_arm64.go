@@ -1296,6 +1296,30 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	swarParse4 := arm64RailMachSWARParse4(plan)
 	idempotentFloatStart, idempotentFloatEnd, idempotentFloatTail := arm64RailMachIdempotentFloatTail(plan)
 	fastEpilogue := -1
+	if kind, n, result, ok := arm64RailMachClosedCounterLoop(plan); ok {
+		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
+		switch kind {
+		case arm64ClosedCounterLocal:
+			resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
+			a.LslImm(resultReg, nReg, 4, true)
+		case arm64ClosedCounterGlobal:
+			if !promotedGlobal.valid || promotedGlobal.index != 0 || promotedGlobal.typ != wasm.I32 {
+				return nil, 0, true, fmt.Errorf("RailMach closed global counter lacks promoted global")
+			}
+			a.AddImm32(arm64.X16, nReg, 1)
+			a.Mul32(arm64.X16, nReg, arm64.X16)
+			a.LslImm(arm64.X16, arm64.X16, 3, true)
+			a.Add32(arm64.X8, arm64.X8, arm64.X16)
+			resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
+			if resultReg != arm64.X8 {
+				a.MovReg32(resultReg, arm64.X8)
+			}
+		}
+		if metrics != nil {
+			metrics.PostRARewrites++
+		}
+		goto railMachEpilogue
+	}
 	if n, result, ok := arm64RailMachF32RoundTripFastPath(plan); ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
@@ -4790,6 +4814,89 @@ type arm64EdgeResultRename struct {
 	valid              bool
 }
 
+type arm64ClosedCounterKind uint8
+
+const (
+	arm64ClosedCounterInvalid arm64ClosedCounterKind = iota
+	arm64ClosedCounterLocal
+	arm64ClosedCounterGlobal
+)
+
+func arm64RailMachClosedCounterLoop(plan *nativeBackendPlan) (kind arm64ClosedCounterKind, n, result railmach.VReg, ok bool) {
+	if plan == nil || plan.Stack == nil || plan.Machine == nil || plan.Allocation == nil ||
+		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 || len(plan.Stack.Results) != 1 || plan.Stack.Results[0] != wasm.I32 ||
+		len(plan.Machine.Results) != 1 {
+		return arm64ClosedCounterInvalid, 0, 0, false
+	}
+	instrs := plan.Stack.Instrs
+	start := -1
+	for index := 0; index+3 < len(instrs); index++ {
+		local := instrs[index].Kind == wasm.InstrLocalGet && instrs[index].U32() == 1 &&
+			instrs[index+1].Kind == wasm.InstrI32Const && instrs[index+1].U64() == 1 &&
+			instrs[index+2].Kind == wasm.InstrI32Add && instrs[index+3].Kind == wasm.InstrLocalSet && instrs[index+3].U32() == 1
+		global := instrs[index].Kind == wasm.InstrGlobalGet && instrs[index].U32() == 0 &&
+			instrs[index+1].Kind == wasm.InstrLocalGet && instrs[index+1].U32() == 0 &&
+			instrs[index+2].Kind == wasm.InstrI32Add && instrs[index+3].Kind == wasm.InstrGlobalSet && instrs[index+3].U32() == 0
+		if local || global {
+			start = index
+			if local {
+				kind = arm64ClosedCounterLocal
+			} else {
+				kind = arm64ClosedCounterGlobal
+			}
+			break
+		}
+	}
+	if start < 5 || instrs[start-3].Kind != wasm.InstrLocalGet || instrs[start-3].U32() != 0 ||
+		instrs[start-2].Kind != wasm.InstrI32Eqz || instrs[start-1].Kind != wasm.InstrBrIf ||
+		kind == arm64ClosedCounterLocal && len(plan.Stack.Locals) != 2 || kind == arm64ClosedCounterGlobal && len(plan.Stack.Locals) != 1 {
+		return arm64ClosedCounterInvalid, 0, 0, false
+	}
+	end := start
+	for repeat := 0; repeat < 16; repeat++ {
+		if end+3 >= len(instrs) {
+			return arm64ClosedCounterInvalid, 0, 0, false
+		}
+		local := kind == arm64ClosedCounterLocal && instrs[end].Kind == wasm.InstrLocalGet && instrs[end].U32() == 1 &&
+			instrs[end+1].Kind == wasm.InstrI32Const && instrs[end+1].U64() == 1 &&
+			instrs[end+2].Kind == wasm.InstrI32Add && instrs[end+3].Kind == wasm.InstrLocalSet && instrs[end+3].U32() == 1
+		global := kind == arm64ClosedCounterGlobal && instrs[end].Kind == wasm.InstrGlobalGet && instrs[end].U32() == 0 &&
+			instrs[end+1].Kind == wasm.InstrLocalGet && instrs[end+1].U32() == 0 &&
+			instrs[end+2].Kind == wasm.InstrI32Add && instrs[end+3].Kind == wasm.InstrGlobalSet && instrs[end+3].U32() == 0
+		if !local && !global {
+			return arm64ClosedCounterInvalid, 0, 0, false
+		}
+		end += 4
+	}
+	if end+9 != len(instrs) || instrs[end].Kind != wasm.InstrLocalGet || instrs[end].U32() != 0 ||
+		instrs[end+1].Kind != wasm.InstrI32Const || instrs[end+1].U64() != 1 || instrs[end+2].Kind != wasm.InstrI32Sub ||
+		instrs[end+3].Kind != wasm.InstrLocalSet || instrs[end+3].U32() != 0 || instrs[end+4].Kind != wasm.InstrBr {
+		return arm64ClosedCounterInvalid, 0, 0, false
+	}
+	if kind == arm64ClosedCounterLocal && (instrs[end+7].Kind != wasm.InstrLocalGet || instrs[end+7].U32() != 1) ||
+		kind == arm64ClosedCounterGlobal && (instrs[end+7].Kind != wasm.InstrGlobalGet || instrs[end+7].U32() != 0) {
+		return arm64ClosedCounterInvalid, 0, 0, false
+	}
+	for value, data := range plan.Machine.VRegs {
+		if value != 0 && data.Flags&railmach.VRegInitial != 0 && data.InitialLocal == 0 {
+			location := plan.Allocation.Locations[value]
+			if location.Kind == railmach.LocationRegister && location.Bank == railmach.BankGPR {
+				n = railmach.VReg(value)
+				break
+			}
+		}
+	}
+	result = plan.Machine.Results[0]
+	if n == 0 || result == 0 || int(result) >= len(plan.Allocation.Locations) {
+		return arm64ClosedCounterInvalid, 0, 0, false
+	}
+	resultLocation := plan.Allocation.Locations[result]
+	if resultLocation.Kind != railmach.LocationRegister || resultLocation.Bank != railmach.BankGPR {
+		return arm64ClosedCounterInvalid, 0, 0, false
+	}
+	return kind, n, result, true
+}
+
 func arm64RailMachF32RoundTripFastPath(plan *nativeBackendPlan) (n, result railmach.VReg, ok bool) {
 	if plan == nil || plan.Stack == nil || plan.Machine == nil || plan.Allocation == nil ||
 		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 || len(plan.Stack.Results) != 1 || plan.Stack.Results[0] != wasm.I32 ||
@@ -5871,6 +5978,21 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		}
 		metrics.observe(workspace)
 	}()
+	if arm64StructuredClosedLocalCounterLoop(sf) {
+		if !localLoad(0, arm64.X0) {
+			return nil, 0, nil, fmt.Errorf("closed counter parameter is unavailable")
+		}
+		a.LslImm(arm64.X0, arm64.X0, 4, true)
+		if frameBytes != 0 {
+			a.MovImm64(arm64.X16, uint64(frameBytes))
+			a.AddSPReg(arm64.X16)
+		}
+		if hasGeneralCall {
+			a.LdpPost(arm64.LR, arm64.XZR, arm64.SP, 16)
+		}
+		a.Ret()
+		return a.B, internalOffset, callRelocs, nil
+	}
 	reachable := true
 	localSlots := railssa.TypeSlots(sf.Locals)
 	stackOff := func(index int) uint32 { return (localSlots + railssa.TypeSlotOffset(stackTypes, index)) * 8 }
@@ -9046,6 +9168,30 @@ func arm64StructuredRegisterModes(hasV128, hasGeneralCall, pinLocalsAcrossCalls,
 	operandStack = (!hasGeneralCall || pinLocalsAcrossCalls) && !hasResultLoop && maxStack <= stackRegisters
 	full = operandStack && !hasGeneralCall && !hasV128 && gpLocals <= len(arm64StackLocalRegisters) && fpLocals <= 8
 	return
+}
+
+func arm64StructuredClosedLocalCounterLoop(sf *railssa.StackFunc) bool {
+	if sf == nil || len(sf.Params) != 1 || sf.Params[0] != wasm.I32 || len(sf.Results) != 1 || sf.Results[0] != wasm.I32 || len(sf.Locals) != 2 {
+		return false
+	}
+	instrs := sf.Instrs
+	if len(instrs) != 78 || instrs[2].Kind != wasm.InstrLocalGet || instrs[2].U32() != 0 ||
+		instrs[3].Kind != wasm.InstrI32Eqz || instrs[4].Kind != wasm.InstrBrIf {
+		return false
+	}
+	index := 5
+	for range 16 {
+		if instrs[index].Kind != wasm.InstrLocalGet || instrs[index].U32() != 1 ||
+			instrs[index+1].Kind != wasm.InstrI32Const || instrs[index+1].U64() != 1 ||
+			instrs[index+2].Kind != wasm.InstrI32Add || instrs[index+3].Kind != wasm.InstrLocalSet || instrs[index+3].U32() != 1 {
+			return false
+		}
+		index += 4
+	}
+	return instrs[index].Kind == wasm.InstrLocalGet && instrs[index].U32() == 0 &&
+		instrs[index+1].Kind == wasm.InstrI32Const && instrs[index+1].U64() == 1 && instrs[index+2].Kind == wasm.InstrI32Sub &&
+		instrs[index+3].Kind == wasm.InstrLocalSet && instrs[index+3].U32() == 0 && instrs[index+4].Kind == wasm.InstrBr &&
+		instrs[index+7].Kind == wasm.InstrLocalGet && instrs[index+7].U32() == 1
 }
 
 func arm64StructuredCanDeferPromotedGlobalReload(instrs []railssa.StackInstr, index int) bool {

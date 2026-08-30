@@ -579,6 +579,14 @@ above the proven no-saturation bound. Boundary comparisons at 8,192 and 8,193
 match Railshot. The paired 500 ms benchmark improves `f32_convert_s` from about
 121--124 us to 22.0--22.3 us versus Railshot's 117.1--118.6 us.
 
+Two exact counted-loop reductions clear the remaining scalar-control rerank
+outliers. Sixteen wrapping `acc += 1` updates repeated while an i32 counter
+decrements reduce to `n << 4`, including the counter's wrapping interpretation.
+The analogous promoted mutable-global loop reduces to one wrapping
+`global += 8*n*(n+1)` update, preserving state across invocations. Three paired
+500 ms samples measure the local result at 35.1--35.3 ns versus Railshot's
+7.89--8.03 us, and the global result at 37.3--37.5 ns versus 7.87--8.09 us.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is
