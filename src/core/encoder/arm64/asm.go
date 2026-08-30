@@ -109,6 +109,30 @@ func (a *Asm) word(w uint32) {
 // Len is the current code length in bytes (also the offset of the next word).
 func (a *Asm) Len() int { return len(a.B) }
 
+// LdrQLiteral emits an LDR Qt literal with a placeholder displacement and
+// returns its byte offset for PatchLdrQLiteral.
+func (a *Asm) LdrQLiteral(dst Reg) int {
+	at := a.Len()
+	a.word(0x9c000000 | uint32(dst))
+	return at
+}
+
+// PatchLdrQLiteral points an LDR Qt literal at a four-byte-aligned target in
+// the signed imm19 range.
+func (a *Asm) PatchLdrQLiteral(at, target int) bool {
+	delta := target - at
+	if at < 0 || at+4 > len(a.B) || delta&3 != 0 || delta < -(1<<20) || delta >= 1<<20 {
+		return false
+	}
+	word := a.wordAt(at)
+	word = word&^uint32(0x7ffff<<5) | (uint32(int32(delta)>>2)&0x7ffff)<<5
+	a.B[at] = byte(word)
+	a.B[at+1] = byte(word >> 8)
+	a.B[at+2] = byte(word >> 16)
+	a.B[at+3] = byte(word >> 24)
+	return true
+}
+
 // MOPS copy/set operations use an architecturally required three-instruction
 // prologue/main/epilogue sequence. Registers are updated in place and must be
 // distinct, ordinary X registers; SP and XZR are not legal operands.

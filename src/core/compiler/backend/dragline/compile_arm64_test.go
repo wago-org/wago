@@ -233,6 +233,20 @@ func TestARM64StructuredWritesSIMDBinaryDirectlyToTeeLocal(t *testing.T) {
 	}
 }
 
+func TestARM64RecognizesEarlyReturnCapacityGuard(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: []byte{
+		0x20, 0x00, 0x23, 0x03, 0x4d, 0x04, 0x40, 0x0f, 0x0b, 0x23, 0x02, 0x0b,
+	}}}}
+	global, ok := arm64EarlyReturnI32LEGlobal(m, 1, 1)
+	if !ok || global != 3 {
+		t.Fatalf("capacity guard = (%d, %t), want (3, true)", global, ok)
+	}
+	m.Code[0].BodyBytes[4] = 0x4c
+	if _, ok := arm64EarlyReturnI32LEGlobal(m, 1, 1); ok {
+		t.Fatal("signed comparison was accepted as an unsigned capacity guard")
+	}
+}
+
 func TestARM64ShufflePatterns(t *testing.T) {
 	ror8 := [16]byte{1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12}
 	ror16 := [16]byte{2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13}

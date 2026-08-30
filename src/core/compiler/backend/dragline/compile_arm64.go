@@ -71,6 +71,12 @@ type arm64SIMDConstant struct {
 	uses  int
 }
 
+type arm64SIMDLiteralRef struct {
+	bytes  [16]byte
+	at     int
+	target int
+}
+
 var arm64PowerRotationResults = [2][2][31][2]uint64{
 	{
 		{{0x2, 0x10000}, {0x10000000, 0x4}, {0x2, 0x10000000}, {0x1000, 0x4}, {0x100, 0x4}, {0x400000, 0x2}, {0x1, 0x2}, {0x4, 0x1000}, {0x4000, 0x2}, {0x200000, 0x1}, {0x200, 0x4}, {0x4, 0x10000}, {0x400, 0x2}, {0x2000, 0x1}, {0x1, 0x8000}, {0x1, 0x20000}, {0x1, 0x100000}, {0x1, 0x2000000}, {0x20, 0x4}, {0x2, 0x400000}, {0x20000, 0x1}, {0x1, 0x10000}, {0x1, 0x1000}, {0x1, 0x10}, {0x100000, 0x2}, {0x800, 0x1}, {0x1, 0x8}, {0x4, 0x20000000}, {0x2, 0x4000000}, {0x1000, 0x1}, {0x1000000, 0x4}},
@@ -2303,6 +2309,39 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				continue
 			}
 			if instruction.Op == wasm.InstrCall {
+				skipCall := -1
+				if len(operands) == 2 && instruction.ResultCount() == 0 {
+					if limitGlobal, ok := arm64EarlyReturnI32LEGlobal(plan.Stack.Module, uint32(instruction.Aux), plan.Stack.ImportedFuncs); ok &&
+						int(limitGlobal) < len(plan.Stack.Globals) && plan.Stack.Globals[limitGlobal] == wasm.I32 {
+						argument, err := arm64RailMachReadValueAt(&a, plan, operands[0].Reg, arm64.X14, 0)
+						if err != nil {
+							return nil, 0, true, err
+						}
+						limit := arm64.X17
+						switch {
+						case promotedGlobal.valid && promotedGlobal.index == limitGlobal:
+							limit = arm64.X8
+						case cacheGlobal && cachedGlobal == limitGlobal:
+							limit = arm64.X25
+						default:
+							if cacheGlobals {
+								if !a.Load64(arm64.X17, arm64.X27, limitGlobal*8) {
+									return nil, 0, true, fmt.Errorf("RailMach guarded global %d offset is not encodable", limitGlobal)
+								}
+							} else {
+								a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
+								if !a.Load64(arm64.X17, arm64.X17, limitGlobal*8) {
+									return nil, 0, true, fmt.Errorf("RailMach guarded global %d offset is not encodable", limitGlobal)
+								}
+							}
+							if !a.Load32(arm64.X17, arm64.X17, 0) {
+								return nil, 0, true, fmt.Errorf("RailMach guarded global %d value is not encodable", limitGlobal)
+							}
+						}
+						a.CmpReg32(argument, limit)
+						skipCall = a.Bcond(arm64.CondLS)
+					}
+				}
 				if immediate, ok := arm64RailMachInlineI32AddImmediate(plan, instruction); ok {
 					lhs, err := arm64RailMachReadValueAt(&a, plan, operands[0].Reg, arm64.X14, 0)
 					if err != nil {
@@ -2451,6 +2490,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					}
 				}
 				reloadCachedGlobals()
+				if skipCall >= 0 && !a.PatchBranch19(skipCall, a.Len()) {
+					return nil, 0, true, fmt.Errorf("RailMach guarded call branch is out of range")
+				}
 				continue
 			}
 			if instruction.Op == wasm.InstrMemoryCopy || instruction.Op == wasm.InstrMemoryFill {
@@ -3898,6 +3940,41 @@ func arm64RailMachInlineI32AddImmediate(plan *nativeBackendPlan, instruction rai
 	return immediate, err == nil && reader.BytesLeft() == 0
 }
 
+func arm64EarlyReturnI32LEGlobal(m *wasm.Module, target, imported uint32) (uint32, bool) {
+	if m == nil || target < imported {
+		return 0, false
+	}
+	local := target - imported
+	if int(local) >= len(m.Code) {
+		return 0, false
+	}
+	r := wasm.ReaderFrom(m.Code[local].BodyBytes)
+	op, err := r.Byte()
+	if err != nil || op != 0x20 {
+		return 0, false
+	}
+	parameter, err := r.U32()
+	if err != nil || parameter != 0 {
+		return 0, false
+	}
+	op, err = r.Byte()
+	if err != nil || op != 0x23 {
+		return 0, false
+	}
+	global, err := r.U32()
+	if err != nil {
+		return 0, false
+	}
+	want := [...]byte{0x4d, 0x04, 0x40, 0x0f, 0x0b}
+	for _, expected := range want {
+		op, err = r.Byte()
+		if err != nil || op != expected {
+			return 0, false
+		}
+	}
+	return global, true
+}
+
 // arm64RailMachInlineI32AddTree recognizes an expression made solely from
 // inlinable one-argument `x + immediate` callees and i32.add nodes. Keeping the
 // expression symbolic until emission avoids preserving the artificial call
@@ -5094,6 +5171,14 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		scratch = make([]byte, 0, max(64, len(sf.Instrs)))
 	}
 	a := arm64.Asm{B: scratch[:0]}
+	var simdLiteralRefs []arm64SIMDLiteralRef
+	materializeSIMDConstant := func(reg arm64.Reg, bytes [16]byte) {
+		if arm64SIMDConstantIsSplat(bytes) {
+			a.NeonMoviB(reg, bytes[0])
+			return
+		}
+		simdLiteralRefs = append(simdLiteralRefs, arm64SIMDLiteralRef{bytes: bytes, at: a.LdrQLiteral(reg)})
+	}
 	coldMemoryTraps := make([]nativeBranchPatch, 0, 4)
 	emitColdMemoryTrap := func(source uint32) error {
 		coldMemoryTraps = append(coldMemoryTraps, nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: source})
@@ -5266,7 +5351,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		}
 	}
 	for _, constant := range simdConstants {
-		emitARM64SIMDConstant(&a, constant.reg, constant.bytes)
+		materializeSIMDConstant(constant.reg, constant.bytes)
 	}
 	reloadPromotedGlobal := func() bool {
 		for slot, promoted := range promotedGlobals {
@@ -7400,6 +7485,18 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			if instr.Kind == wasm.InstrCallIndirect {
 				stackPrefix--
 			}
+			skipCall := -1
+			if instr.Kind == wasm.InstrCall && instr.Inline() == wasm.InstrInvalid && instr.Params() == 2 && !instr.HasResult() &&
+				stackPrefix >= 0 && stackPrefix < len(stackTypes) && stackTypes[stackPrefix] == wasm.I32 {
+				if limitGlobal, ok := arm64EarlyReturnI32LEGlobal(sf.Module, instr.U32(), sf.ImportedFuncs); ok &&
+					int(limitGlobal) < len(sf.Globals) && sf.Globals[limitGlobal] == wasm.I32 {
+					if !stackLoad(stackPrefix, arm64.X16) || !loadGlobalDescriptor(arm64.X17, limitGlobal) || !a.Load32(arm64.X17, arm64.X17, 0) {
+						return nil, 0, nil, fmt.Errorf("byte %d: guarded call operands are not encodable", instr.Offset)
+					}
+					a.CmpReg32(arm64.X16, arm64.X17)
+					skipCall = a.Bcond(arm64.CondLS)
+				}
+			}
 			if callBoundary && registerOperandStack {
 				if sf.HasV128 {
 					flushVectorStack()
@@ -7457,6 +7554,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				if cacheMemoryEnd {
 					a.Add64(arm64.X25, arm64.X26, arm64.X25)
 				}
+			}
+			if skipCall >= 0 && !a.PatchBranch19(skipCall, a.Len()) {
+				return nil, 0, nil, fmt.Errorf("byte %d: guarded call branch is out of range", instr.Offset)
 			}
 		case wasm.InstrBr, wasm.InstrBrIf:
 			if int(instr.U32()) > len(controls) {
@@ -8367,7 +8467,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 						continue
 					}
 				}
-				err = emitARM64StackSIMD(&a, descriptor, instr, &stackTypes, v128StackRegisters, stackOff, stackLoad, stackStore, stackSourceV128, stackTakeV128, stackStoreV128, stackStoreV128Constant, simdConstants, fn.Index, registerOperandStack, cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata)
+				err = emitARM64StackSIMD(&a, descriptor, instr, &stackTypes, v128StackRegisters, stackOff, stackLoad, stackStore, stackSourceV128, stackTakeV128, stackStoreV128, stackStoreV128Constant, materializeSIMDConstant, simdConstants, fn.Index, registerOperandStack, cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata)
 			} else if arm64MemoryStackKind(instr.Kind) {
 				if !registerOperandStack {
 					err = emitARM64StackBackedMemory(&a, instr, &stackTypes, stackLoad, stackStore, fn.Index, plan.ElidesBoundsCheck(uint32(instrIndex)), cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata)
@@ -8425,6 +8525,27 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		arm64EmitTrap(&a, 3, fn.Index, trap.Target)
 		if !a.PatchBranch19(trap.At, trapOffset) {
 			return nil, 0, nil, fmt.Errorf("structured cold memory trap branch is out of range")
+		}
+	}
+	if len(simdLiteralRefs) != 0 {
+		a.Align16()
+		for index := range simdLiteralRefs {
+			literal := simdLiteralRefs[index]
+			target := -1
+			for previous := 0; previous < index; previous++ {
+				if simdLiteralRefs[previous].bytes == literal.bytes {
+					target = simdLiteralRefs[previous].target
+					break
+				}
+			}
+			if target < 0 {
+				target = a.Len()
+				a.B = append(a.B, literal.bytes[:]...)
+			}
+			simdLiteralRefs[index].target = target
+			if !a.PatchLdrQLiteral(literal.at, target) {
+				return nil, 0, nil, fmt.Errorf("structured SIMD literal is out of range")
+			}
 		}
 	}
 	return a.B, internalOffset, callRelocs, nil
@@ -9891,7 +10012,7 @@ func emitARM64SIMDConstant(a *arm64.Asm, reg arm64.Reg, bytes [16]byte) {
 func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor, instr railssa.StackInstr,
 	stack *[]wasm.ValType, stackRegisters []arm64.Reg, stackOff func(int) uint32, load func(int, arm64.Reg) bool, store func(int, arm64.Reg) bool,
 	sourceV func(int, arm64.Reg) arm64.Reg, takeV func(int, arm64.Reg) arm64.Reg, storeV func(int, arm64.Reg), storeConstant func(int, arm64.Reg),
-	constants []arm64SIMDConstant, function uint32, registerOperandStack, cachedBounds, cachedMemoryEnd bool, emitMemoryTrap func(uint32) error, metadata *functionEmissionMetadata,
+	materialize func(arm64.Reg, [16]byte), constants []arm64SIMDConstant, function uint32, registerOperandStack, cachedBounds, cachedMemoryEnd bool, emitMemoryTrap func(uint32) error, metadata *functionEmissionMetadata,
 ) error {
 	types := *stack
 	effectiveAddressReady := false
@@ -9936,9 +10057,6 @@ func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		}
 		a.CmpReg64(arm64.X16, bounds)
 		return emitMemoryTrap(instr.Offset)
-	}
-	materialize := func(reg arm64.Reg, bytes [16]byte) {
-		emitARM64SIMDConstant(a, reg, bytes)
 	}
 	constantRegister := func(bytes [16]byte) (arm64.Reg, bool) {
 		for _, constant := range constants {

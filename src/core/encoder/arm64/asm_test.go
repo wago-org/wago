@@ -368,6 +368,22 @@ func TestPatchAndWordHelpers(t *testing.T) {
 	}
 }
 
+func TestLdrQLiteralPatch(t *testing.T) {
+	var a Asm
+	at := a.LdrQLiteral(3)
+	a.Ret()
+	a.Align16()
+	if !a.PatchLdrQLiteral(at, a.Len()) {
+		t.Fatal("literal patch failed")
+	}
+	if got := a.wordAt(at); got != 0x9c000083 {
+		t.Fatalf("LDR Q literal = %#08x, want 0x9c000083", got)
+	}
+	if a.PatchLdrQLiteral(at, 1<<20) {
+		t.Fatal("out-of-range literal patch succeeded")
+	}
+}
+
 // TestEncodeLogicalImm covers the bitmask-immediate encoder, including values that
 // are NOT encodable (must report ok=false so the backend falls back to a register).
 func TestEncodeLogicalImm(t *testing.T) {

@@ -490,6 +490,24 @@ native bytes and the module to 114,452 bytes. A fresh paired-backend median is
 23.841 us versus Railshot's 22.357 us, or **1.066x**; the residual serializer
 gap is 6.6%.
 
+The next JSON slice recognizes local capacity helpers whose first operation is
+an unsigned `argument <= global` early-return guard. Callers duplicate that
+read-only guard and skip the complete call, safepoint, and cache-reload sequence
+on the common already-capacious path; the original helper remains the exact
+slow path. Across twelve balanced 400 ms samples this moves scalar
+`serializeN(200)` from 19.566 us to 17.124 us (-12.5%). A paired run measures
+17.075 us versus Railshot's 18.467 us, or **0.925x Railshot**.
+
+For SIMD serializers, non-splat v128 constants now use deduplicated,
+function-local ARM64 literal pools rather than repeated `mov`/`movk` materialization.
+The encoder has an exact-range-tested `LDR Qt` literal relocation, and the
+complete SIMD differential corpus exercises the emitted pools. The guarded
+SIMD serializer first improved from 23.873 us to 23.183 us (-2.9%); literal
+loads then reduced it a further 1.9% to 22.707 us in a balanced before/after
+run. The final paired median is 22.784 us versus Railshot's 23.090 us, or
+**0.987x Railshot**. The guarded module's 114,740 native bytes fall to 113,684
+with literal pooling.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is
