@@ -34,10 +34,36 @@ type Engine struct {
 	hostResults      [maxHostArity]uint64
 }
 
-const defaultStackBytes = 4 << 20 // 4 MiB foreign execution stack
+const (
+	// DefaultNativeStackBytes preserves the historical 4 MiB foreign stack.
+	DefaultNativeStackBytes uint64 = 4 << 20
+	// MinNativeStackBytes leaves at least one fence margin of usable stack.
+	MinNativeStackBytes uint64 = 512 << 10
+	// MaxNativeStackBytes bounds retained virtual address space per Engine.
+	MaxNativeStackBytes uint64 = 1 << 30
+)
+
+func validateNativeStackBytes(stackBytes uint64) error {
+	if stackBytes < MinNativeStackBytes || stackBytes > MaxNativeStackBytes {
+		return fmt.Errorf("jit: native stack bytes must be between %d and %d, got %d", MinNativeStackBytes, MaxNativeStackBytes, stackBytes)
+	}
+	if stackBytes&15 != 0 {
+		return fmt.Errorf("jit: native stack bytes must be 16-byte aligned, got %d", stackBytes)
+	}
+	return nil
+}
 
 func NewEngine() (*Engine, error) {
-	st, err := mmapRW(defaultStackBytes)
+	return NewEngineWithStackBytes(DefaultNativeStackBytes)
+}
+
+// NewEngineWithStackBytes creates an Engine with the selected bounded foreign
+// execution stack capacity.
+func NewEngineWithStackBytes(stackBytes uint64) (*Engine, error) {
+	if err := validateNativeStackBytes(stackBytes); err != nil {
+		return nil, err
+	}
+	st, err := mmapRW(int(stackBytes))
 	if err != nil {
 		return nil, err
 	}
@@ -55,19 +81,31 @@ var engineCache struct {
 	e *Engine
 }
 
-// AcquireEngine returns an Engine, reusing one recently released by ReleaseEngine
-// when available. The cache is intentionally one slot: repeated instantiate/close
-// loops avoid stack mmap churn without retaining an unbounded number of 4 MiB
-// foreign stacks.
+// AcquireEngine returns a default-capacity Engine.
 func AcquireEngine() (*Engine, error) {
+	return AcquireEngineWithStackBytes(DefaultNativeStackBytes)
+}
+
+// AcquireEngineWithStackBytes returns an Engine with exactly the requested
+// capacity. The one-slot cache never substitutes a smaller stack or retains a
+// mismatched large stack after a later default-capacity request.
+func AcquireEngineWithStackBytes(stackBytes uint64) (*Engine, error) {
+	if err := validateNativeStackBytes(stackBytes); err != nil {
+		return nil, err
+	}
 	engineCache.Lock()
 	e := engineCache.e
 	engineCache.e = nil
 	engineCache.Unlock()
 	if e != nil {
-		return e, nil
+		if e.StackBytes() == stackBytes {
+			return e, nil
+		}
+		if err := e.Close(); err != nil {
+			return nil, err
+		}
 	}
-	return NewEngine()
+	return NewEngineWithStackBytes(stackBytes)
 }
 
 // ReleaseEngine returns e to the bounded cache or unmaps its stack if the cache
@@ -106,6 +144,14 @@ func (e *Engine) StackTop() uintptr {
 		return 0
 	}
 	return uintptr(unsafe.Pointer(&e.stack[0])) + uintptr(len(e.stack))
+}
+
+// StackBytes reports the mapped foreign execution stack capacity.
+func (e *Engine) StackBytes() uint64 {
+	if e == nil {
+		return 0
+	}
+	return uint64(len(e.stack))
 }
 
 // Call enters native code at code following WARP's WasmWrapper ABI. serArgs,

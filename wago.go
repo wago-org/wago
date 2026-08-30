@@ -297,6 +297,7 @@ const (
 	CoreFeaturesV3                             = impl.CoreFeaturesV3
 	DefaultMaxFunctionLocals                   = impl.DefaultMaxFunctionLocals
 	DefaultMaxMemoriesPerModule                = impl.DefaultMaxMemoriesPerModule
+	DefaultNativeStackBytes                    = impl.DefaultNativeStackBytes
 	Deprecated                                 = impl.Deprecated
 	ElemModeActive                             = impl.ElemModeActive
 	ElemModeDeclarative                        = impl.ElemModeDeclarative
@@ -354,6 +355,8 @@ const (
 	InstantiateManaged                         = impl.InstantiateManaged
 	MaxFunctionLocalsLimit                     = impl.MaxFunctionLocalsLimit
 	MaxMemoriesPerModuleLimit                  = impl.MaxMemoriesPerModuleLimit
+	MaxNativeStackBytes                        = impl.MaxNativeStackBytes
+	MinNativeStackBytes                        = impl.MinNativeStackBytes
 	NoPluginOverrides                          = impl.NoPluginOverrides
 	OptimizeBalanced                           = impl.OptimizeBalanced
 	OptimizeSize                               = impl.OptimizeSize

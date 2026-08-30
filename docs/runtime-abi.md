@@ -64,13 +64,15 @@ collector-owned view, and an immutable local-type to canonical-domain `u32` map.
 The Go object retains that map through a typed trailing slice; native code sees
 only the fixed prefix.
 
-The shared collector view is 168 bytes. ABI version 1 contains the complete
+The shared collector view is 184 bytes. ABI version 1 contains the complete
 20-byte handle stride, current handle pointer/count, five directly indexed
 16-byte space descriptors `{base u64, bytes u32, pad}`, refresh generation,
-object-card pointer/count, Eden limit, and stable allocation pointers. The new
-byte-160 word publishes the configured nursery-object maximum; byte 124 remains
-`NurseryAllocBytes`, while the nursery descriptor covers Eden plus both survivor
-semispaces so moved handles remain directly resolvable. Space zero is invalid;
+object-card pointer/count, Eden limit, and stable allocation pointers. Byte 160
+publishes the configured nursery-object maximum. Byte 168 publishes the immutable
+packed DFS subtype-interval table, and byte 176 publishes its canonical type
+count. Byte 124 remains `NurseryAllocBytes`, while the nursery descriptor covers
+Eden plus both survivor semispaces so moved handles remain directly resolvable.
+Space zero is invalid;
 nursery, old, large, and Tiny match the stable one-byte `handleEntry.space`
 identity at byte 18. The remembered bit at byte 19 remains native-readable and
 is never mutated by generated code.
@@ -104,9 +106,20 @@ without mandatory boundary collection refill immediately.
 
 The Collector republishes handle and heap pointers/counts and increments the
 refresh generation after every helper allocation and collection, including
-handle-table relocation. Close zeros all published backing and allocation pointers
-before the view lifetime ends. Native execution and collector mutation remain
-serialized, so readers never observe a partially refreshed view.
+handle-table relocation. Canonical-domain type append first quiesces the Runtime
+GC domain's native invocation lease, then rebuilds and republishes the subtype-
+interval pointer/count under collector serialization. Instance-view construction
+and validation take the same invocation lease, so they observe one complete
+published interval snapshot. Close zeros all published backing, allocation, and
+interval pointers before the view lifetime
+ends. Native execution and collector mutation remain serialized, so readers never
+observe a partially refreshed view.
+
+AMD64 defined struct/array `ref.cast` and `ref.test` resolve the compact handle,
+load the object's canonical type, and use interval containment for ordinary targets.
+Exact casts use canonical ID equality. The generated path reloads the interval
+pointer/count for each operation and retains no raw object address across a call,
+helper, allocation, or safepoint.
 
 AMD64 direct final-scalar struct/array accesses reload the view for each operation
 and validate both version words, handle tag/index, 20-byte entry stride, space
@@ -571,8 +584,8 @@ reused after success or rollback. Throughput Eden now evacuates first survivors 
 two age bits occupy unused high `handleEntry.class` bits, and large young objects age in place. A fixed threshold starts
 at two survivals and adapts between one and three from survivor occupancy, old-space pressure, recent full collections,
 and an optional pause target. Useful object/root cards remain authoritative across survivor movement and clear when no
-young edge remains. The native collector view is ABI version 1 for shared struct/array handle runs, nursery chunks, and the explicit
-nursery-object maximum; `handleEntry` remains 20 bytes, `Config` is 72 bytes, and the current linux/amd64
+young edge remains. The native collector view is ABI version 1 for shared struct/array handle runs, nursery chunks, the explicit
+nursery-object maximum, and immutable subtype intervals; `handleEntry` remains 20 bytes, `Config` is 72 bytes, and the current linux/amd64
 `gc.Collector` is 1,120 bytes. Collector
 tests separately prove nullable/non-null storage compatibility, rejected-copy atomicity, sparse/dense card behavior,
 root bitmap consistency, failure fallback, promotion rollback, and Tiny remark preservation.

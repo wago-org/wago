@@ -11,6 +11,69 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func TestNestedHostReentryPreservesConfiguredNativeStack(t *testing.T) {
+	sig := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
+	reenter := append(append(wasmtest.Name("env"), wasmtest.Name("reenter")...), 0x00, 0x00)
+	observe := append(append(wasmtest.Name("env"), wasmtest.Name("observe")...), 0x00, 0x00)
+	moduleBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(sig)),
+		wasmtest.Section(2, wasmtest.Vec(reenter, observe)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("inner", 0, 2),
+			wasmtest.ExportEntry("outer", 0, 3),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x10, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0x10, 0x00, 0x0b}),
+		)),
+	)
+	const stackBytes = 8 << 20
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithNativeStackBytes(stackBytes)))
+	defer rt.Close()
+	module, err := rt.Compile(moduleBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	var in *Instance
+	in, err = rt.Instantiate(context.Background(), module, WithImports(Imports{
+		"env.reenter": HostFunc(func(mod HostModule, _ []uint64, results []uint64) {
+			got, callErr := in.InvokeFromHost(context.Background(), mod, "inner")
+			if callErr != nil {
+				panic(HostTrap{Err: callErr})
+			}
+			results[0] = got[0]
+		}),
+		"env.observe": HostFunc(func(_ HostModule, _ []uint64, results []uint64) {
+			results[0] = in.eng.StackBytes()
+		}),
+	}), WithSynchronousHostCalls())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	// Replace the observe import after instantiation is not supported, so inspect
+	// the private re-entry engine directly while preserving the same state swap
+	// used by InvokeFromHost.
+	restore, err := in.prepareHostReentryState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := in.eng.StackBytes(); got != stackBytes || in.eng.StackTop()&15 != 0 {
+		restore()
+		t.Fatalf("nested host re-entry stack = %d bytes, top %#x", got, in.eng.StackTop())
+	}
+	restore()
+	if got := in.eng.StackBytes(); got != stackBytes {
+		t.Fatalf("restored outer stack = %d bytes, want %d", got, uint64(stackBytes))
+	}
+	got, err := in.Invoke("outer")
+	if err != nil || len(got) != 1 || got[0] != stackBytes {
+		t.Fatalf("nested host-observed stack = %v, %v; want [%d]", got, err, uint64(stackBytes))
+	}
+}
+
 // TestNestedHostReentrySurvivesGCAndTrap exercises two live native activations
 // for one instance: outer wasm -> Go host -> inner wasm. The inner trap must
 // unwind only the nested activation; the host callback and outer wasm call then

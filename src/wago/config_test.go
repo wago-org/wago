@@ -4,6 +4,7 @@ package wago
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
@@ -541,6 +542,15 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	if workers.FunctionWorkers() != 4 || NewRuntimeConfig().FunctionWorkers() != 1 {
 		t.Fatal("WithFunctionWorkers must be immutable and observable; default must remain serial")
 	}
+	stack := NewRuntimeConfig().WithNativeStackBytes(8 << 20)
+	if stack.NativeStackBytes() != 8<<20 || NewRuntimeConfig().NativeStackBytes() != DefaultNativeStackBytes {
+		t.Fatal("WithNativeStackBytes must be immutable and preserve the 4 MiB default")
+	}
+	for _, value := range []uint64{MinNativeStackBytes - 1, MinNativeStackBytes + 1, MaxNativeStackBytes + 1} {
+		if err := NewRuntimeConfig().WithNativeStackBytes(value).Validate(); err == nil || !strings.Contains(err.Error(), "native stack bytes") {
+			t.Fatalf("native stack size %d validation = %v", value, err)
+		}
+	}
 	if got := NewRuntimeConfig().WithCompileWorkers(3); got.CompileWorkers() != 3 || got.FunctionWorkers() != 3 {
 		t.Fatal("deprecated compile-worker aliases must preserve the function-worker policy")
 	}
@@ -575,8 +585,41 @@ func TestConfigValidateAndIntrospection(t *testing.T) {
 	}
 	// String is non-empty / informative. The default bounds mode depends on the
 	// build tag (explicit normally, signals-based under wago_guardpage).
-	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") || !strings.Contains(s, "maxFunctionLocals: 4096") {
+	if s := NewRuntimeConfig().String(); (!strings.Contains(s, "explicit") && !strings.Contains(s, "signals-based")) || !strings.Contains(s, "functionWorkers: 1") || !strings.Contains(s, "maxFunctionLocals: 4096") || !strings.Contains(s, "nativeStackBytes: 4194304") {
 		t.Fatalf("config String missing bounds mode or serial default policy: %q", s)
+	}
+}
+
+func TestRuntimeRejectsInvalidNativeStackBeforeInstantiation(t *testing.T) {
+	compiled := MustCompile(wasmtest.Module())
+	defer compiled.Close()
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithNativeStackBytes(MinNativeStackBytes + 1)))
+	defer rt.Close()
+	module, err := rt.Module(compiled)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	if _, err := rt.Instantiate(context.Background(), module); err == nil || !strings.Contains(err.Error(), "16-byte aligned") {
+		t.Fatalf("invalid native stack instantiate = %v", err)
+	}
+}
+
+func TestRuntimeUsesConfiguredNativeStackCapacity(t *testing.T) {
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithNativeStackBytes(8 << 20)))
+	defer rt.Close()
+	module, err := rt.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	instance, err := rt.Instantiate(context.Background(), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got := instance.eng.StackBytes(); got != 8<<20 {
+		t.Fatalf("instance native stack = %d, want %d", got, uint64(8<<20))
 	}
 }
 

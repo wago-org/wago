@@ -666,6 +666,7 @@ type scratch struct {
 	brFoldSites             []int
 	gcArrayLenStubSites     []int
 	gcFinalCastStubSites    []int
+	gcDefinedTestStubSites  []int
 	gcArrayRefGetSites      []int
 	gcStructRefGetStubSites []int
 	gcStructRefSetStubSites []int
@@ -766,6 +767,7 @@ func (sc *scratch) reset() {
 	sc.jumpTableFragments = sc.jumpTableFragments[:0]
 	sc.gcArrayLenStubSites = sc.gcArrayLenStubSites[:0]
 	sc.gcFinalCastStubSites = sc.gcFinalCastStubSites[:0]
+	sc.gcDefinedTestStubSites = sc.gcDefinedTestStubSites[:0]
 	sc.gcArrayRefGetSites = sc.gcArrayRefGetSites[:0]
 	sc.gcStructRefGetStubSites = sc.gcStructRefGetStubSites[:0]
 	sc.gcStructRefSetStubSites = sc.gcStructRefSetStubSites[:0]

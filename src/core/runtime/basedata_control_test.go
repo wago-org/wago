@@ -152,6 +152,37 @@ func TestTrapAndSlotFormattingHelpers(t *testing.T) {
 	}
 }
 
+func TestEngineCacheMatchesRequestedStackCapacity(t *testing.T) {
+	for _, stackBytes := range []uint64{MinNativeStackBytes - 1, MinNativeStackBytes + 1, MaxNativeStackBytes + 1} {
+		if engine, err := AcquireEngineWithStackBytes(stackBytes); err == nil || engine != nil {
+			if engine != nil {
+				_ = engine.Close()
+			}
+			t.Fatalf("AcquireEngineWithStackBytes(%d) = %v, %v; want validation failure", stackBytes, engine, err)
+		}
+	}
+	large, err := AcquireEngineWithStackBytes(8 << 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if large.StackBytes() != 8<<20 || large.StackTop()&15 != 0 {
+		t.Fatalf("large engine stack = %d bytes, top %#x", large.StackBytes(), large.StackTop())
+	}
+	if err := ReleaseEngine(large); err != nil {
+		t.Fatal(err)
+	}
+	standard, err := AcquireEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if standard == large || standard.StackBytes() != DefaultNativeStackBytes {
+		t.Fatalf("default engine = %p/%d, want fresh %d-byte capacity", standard, standard.StackBytes(), DefaultNativeStackBytes)
+	}
+	if err := standard.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEngineAndArenaReuseMappings(t *testing.T) {
 	eng, err := AcquireEngine()
 	if err != nil {

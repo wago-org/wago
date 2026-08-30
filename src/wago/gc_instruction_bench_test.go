@@ -85,6 +85,35 @@ func gcNonFinalRefCastInstructionBenchmarkModule() []byte {
 	return gcInstructionBenchmarkModuleWithTypes(types, body, global)
 }
 
+func gcNonFinalRefTestInstructionBenchmarkModule() []byte {
+	types := [][]byte{
+		{0x50, 0x00, 0x5f, 0x01, 0x7f, 0x01},       // open type 0: (struct (field (mut i32)))
+		{0x4f, 0x01, 0x00, 0x5f, 0x01, 0x7f, 0x01}, // final type 1 <: 0
+	}
+	global := []byte{
+		0x6d, 0x01, // (mut eqref)
+		0x41, 0x07, // i32.const 7
+		0xfb, 0x00, 0x01, // struct.new 1
+		0x0b,
+	}
+	body := []byte{
+		0x01, 0x02, 0x7f, // locals 1=index, 2=sum
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x20, 0x01, 0x20, 0x00, 0x4f, 0x0d, 0x01, // if index >= iterations, break
+		0x20, 0x02, // sum
+		0x23, 0x00, // global.get 0: dynamic eqref
+		0xfb, 0x14, 0x00, // ref.test (ref 0), accepting subtype 1
+		0x6a, 0x21, 0x02, // sum += result
+		0x20, 0x01, 0x41, 0x01, 0x6a, 0x21, 0x01, // index++
+		0x0c, 0x00, // continue
+		0x0b, 0x0b,
+		0x20, 0x02, // return sum
+		0x0b,
+	}
+	return gcInstructionBenchmarkModuleWithTypes(types, body, global)
+}
+
 func gcStructGetInstructionBenchmarkModule() []byte {
 	body := []byte{
 		0x02,             // two local declaration groups
@@ -193,6 +222,12 @@ func BenchmarkGCStructGetInstruction(b *testing.B) {
 // dynamic eqref holding a proper subtype to an open struct supertype.
 func BenchmarkGCRefCastNonFinalInstruction(b *testing.B) {
 	benchmarkGCInstructionLoop(b, gcNonFinalRefCastInstructionBenchmarkModule(), 1)
+}
+
+// BenchmarkGCRefTestNonFinalInstruction measures a successful dynamic test of a
+// proper subtype against an open struct supertype.
+func BenchmarkGCRefTestNonFinalInstruction(b *testing.B) {
+	benchmarkGCInstructionLoop(b, gcNonFinalRefTestInstructionBenchmarkModule(), 1)
 }
 
 // BenchmarkGCStructGetNonFinalInstruction measures field access declared

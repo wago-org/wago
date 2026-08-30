@@ -1057,6 +1057,7 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, plug
 		runtimeReservation:   runtimeReservation,
 		independentInstances: mod.independentInstances,
 		hasExecutionPolicy:   true,
+		nativeStackBytes:     rt.cfg.nativeStackBytes,
 	}
 	if hasGC {
 		iopts.GC = gc

@@ -1529,6 +1529,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 	c.codeCache.tierable = cfg.tiering
 	c.codeCache.sourceHash = sha256.Sum256(wasmBytes)
 	c.codeCache.sourceHashAvailable = true
+	c.codeCache.setNativeStackBytes(cfg.nativeStackBytes)
 	c.memoryDir.exactExports = true
 	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
 	c.memoryDir.stagedMemory64 = features.Memory64 && usesMemory64

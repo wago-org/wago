@@ -25,6 +25,7 @@ func RuntimeCommands() []*command.Cmd {
 		command.Flag{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
 		command.Flag{Name: "target", Arg: "<mode>", Help: "compiler target: compat | native (default compat)"},
 		command.Flag{Name: "objective", Arg: "<name>", Help: "compiler objective: speed | balanced | size (default speed)"},
+		command.Flag{Name: "native-stack", Arg: "<size>", Help: "native execution stack capacity in bytes or KiB, MiB, GiB"},
 		command.Flag{Name: "gc-heap", Arg: "<size>", Help: "throughput GC heap capacity in bytes or KiB, MiB, GiB"},
 		command.Flag{Name: "gc-nursery", Arg: "<size>", Help: "throughput GC nursery capacity in bytes or KiB, MiB, GiB"},
 		parallel,

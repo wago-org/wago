@@ -29,6 +29,7 @@ type InstantiateOptions struct {
 	runtimeReservation   *runtimeInstanceReservation
 	independentInstances bool
 	hasExecutionPolicy   bool
+	nativeStackBytes     uint64
 }
 
 // Instantiable is the set of sources Instantiate accepts. The interface is
@@ -95,6 +96,7 @@ type instanceBuilder struct {
 
 	collector           *gc.Collector
 	collectorShared     bool
+	gcDomain            *gcStoreDomain
 	gcDomainID          uint64
 	gcTypeMap           *gcTypeMapping
 	success             bool
@@ -219,7 +221,10 @@ func (b *instanceBuilder) prepareCollector() error {
 		}
 		b.collector = collector
 		b.collectorShared = true
-		b.gcDomainID = b.opts.store.gcDomainIdentity(collector)
+		b.gcDomain = b.opts.store.gcDomainForCollector(collector)
+		if b.gcDomain != nil {
+			b.gcDomainID = b.gcDomain.id
+		}
 		if b.gcDomainID == 0 {
 			b.opts.store.releaseUnclaimedGCCollector(collector)
 			b.collector = nil
@@ -251,6 +256,14 @@ func (b *instanceBuilder) prepareCollector() error {
 	b.gcTypeMap = mapping
 	b.gcDomainID = newGCDomainIdentity()
 	return nil
+}
+
+func (b *instanceBuilder) buildNativeGCInstanceView(localTypes []gc.TypeID) (*gc.NativeInstanceView, error) {
+	if b.gcDomain != nil {
+		b.gcDomain.invocationMu.Lock()
+		defer b.gcDomain.invocationMu.Unlock()
+	}
+	return gc.BuildNativeInstanceView(b.collector, localTypes)
 }
 
 func (b *instanceBuilder) attachImports() ([]*resolvedGlobalImport, error) {
@@ -353,7 +366,14 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	if err != nil {
 		return nil, err
 	}
-	eng, err := runtime.AcquireEngine()
+	stackBytes := opts.nativeStackBytes
+	if stackBytes == 0 {
+		stackBytes = c.nativeStackBytes()
+	}
+	if stackBytes == 0 {
+		stackBytes = runtime.DefaultNativeStackBytes
+	}
+	eng, err := runtime.AcquireEngineWithStackBytes(stackBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -1436,7 +1456,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			gcNativeTypes[local] = domain
 		}
-		gcNativeView, err = gc.BuildNativeInstanceView(b.collector, gcNativeTypes)
+		gcNativeView, err = b.buildNativeGCInstanceView(gcNativeTypes)
 		if err != nil {
 			return nil, fmt.Errorf("instantiate: native GC metadata view: %w", err)
 		}

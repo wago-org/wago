@@ -632,7 +632,7 @@ func (f *fn) emitNativeFinalCastArrayLen(typeIndex uint32, nullable bool) error 
 	return nil
 }
 
-func (f *fn) emitNativeFinalCast(typeIndex uint32, nullable bool) error {
+func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact bool) error {
 	object := f.popValue()
 	f.flush()
 	ref := f.materialize(object)
@@ -646,11 +646,38 @@ func (f *fn) emitNativeFinalCast(typeIndex uint32, nullable bool) error {
 	} else {
 		f.a.MovImm32(RCX, 0)
 	}
+	if exact {
+		f.a.MovImm32(RSI, 1)
+	} else {
+		f.a.MovImm32(RSI, 0)
+	}
 	site := f.a.CallRel32()
 	f.sc.gcFinalCastStubSites = append(f.sc.gcFinalCastStubSites, site)
 	f.stats.call("gcnative")
 	result := f.pushReg(RAX, mtI64)
 	result.st.gcRoot = true
+	return nil
+}
+
+func (f *fn) emitNativeDefinedTest(typeIndex uint32, nullable bool) error {
+	object := f.popValue()
+	f.flush()
+	ref := f.materialize(object)
+	if ref != RAX {
+		f.a.MovReg64(RAX, ref)
+	}
+	f.release(ref)
+	f.a.MovImm32(RDX, int32(typeIndex))
+	if nullable {
+		f.a.MovImm32(RCX, 1)
+	} else {
+		f.a.MovImm32(RCX, 0)
+	}
+	f.a.MovImm32(RSI, 0) // ref.test does not admit exact heap markers
+	site := f.a.CallRel32()
+	f.sc.gcDefinedTestStubSites = append(f.sc.gcDefinedTestStubSites, site)
+	f.stats.call("gcnative")
+	f.pushReg(RAX, mtI32)
 	return nil
 }
 
@@ -910,8 +937,15 @@ func (f *fn) emitNativeGCStubs() {
 	}
 	if len(f.sc.gcFinalCastStubSites) != 0 {
 		stub := f.a.Len()
-		f.emitNativeFinalCastStub()
+		f.emitNativeDefinedCastStub()
 		for _, site := range f.sc.gcFinalCastStubSites {
+			f.a.PatchRel32(site, stub)
+		}
+	}
+	if len(f.sc.gcDefinedTestStubSites) != 0 {
+		stub := f.a.Len()
+		f.emitNativeDefinedTestStub()
+		for _, site := range f.sc.gcDefinedTestStubSites {
 			f.a.PatchRel32(site, stub)
 		}
 	}
@@ -1521,9 +1555,18 @@ func (f *fn) emitNativeFinalCastArrayLenStub() {
 	a.Ret()
 }
 
-// emitNativeFinalCastStub validates one final defined collector cast and returns
-// the original compact reference. Null succeeds only for ref.cast_null.
-func (f *fn) emitNativeFinalCastStub() {
+// emitNativeDefinedCastStub validates one defined collector cast through exact
+// canonical identity or the collector's immutable subtype interval table.
+func (f *fn) emitNativeDefinedCastStub() { f.emitNativeDefinedTypeCheckStub(false) }
+
+// emitNativeDefinedTestStub returns the dynamic defined-type test result without
+// entering Go. Invalid compact references remain fail-closed traps.
+func (f *fn) emitNativeDefinedTestStub() { f.emitNativeDefinedTypeCheckStub(true) }
+
+// emitNativeDefinedTypeCheckStub consumes EAX=compact reference,
+// EDX=module-local target type, ECX=nullable flag, and ESI=exact flag. Test mode
+// returns zero/one in EAX; cast mode returns the original compact reference.
+func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 	a := f.a
 	var preserve [3]bool
 	for _, local := range f.pinnedLocals {
@@ -1541,25 +1584,42 @@ func (f *fn) emitNativeFinalCastStub() {
 			a.Push(R9 + Reg(i))
 		}
 	}
+
+	mismatches := make([]int, 0, 3)
+	failIf := func(cond Cond) {
+		if test {
+			mismatches = append(mismatches, a.JccPlaceholder(cond))
+		} else {
+			f.trapIf(cond, trapCastFailure)
+		}
+	}
+
 	a.TestSelf(RAX, false)
 	nonNull := a.JccPlaceholder(condNE)
-	a.TestSelf(RCX, false)
-	f.trapIf(condE, trapCastFailure)
-	nullSuccess := a.JmpPlaceholder()
+	if test {
+		a.MovRegReg32(RAX, RCX)
+	} else {
+		a.TestSelf(RCX, false)
+		f.trapIf(condE, trapCastFailure)
+	}
+	nullDone := a.JmpPlaceholder()
 	a.PatchRel32(nonNull, a.Len())
 
-	// Save the physical compact reference while EAX becomes the handle index.
-	a.MovRegReg32(RSI, RAX)
+	if !test {
+		a.MovRegReg32(RDI, RAX) // retain the original compact reference
+	}
 	a.MovRegReg32(R10, RAX)
 	a.AluRI(4, R10, 1, false)
 	a.TestSelf(R10, false)
-	f.trapIf(condNE, trapCastFailure)
+	failIf(condNE) // i31 cannot satisfy a defined struct/array target
 
+	// Resolve the module-local target into the collector's canonical domain.
 	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
 	a.Load64(R10, R8, gc.NativeInstanceViewLocalTypesOffset)
 	a.ImulRI(RDX, 4, true)
 	a.LoadIdx(RDX, R10, RDX, 0, 4, false, false)
 
+	// Resolve and validate the compact handle against the current heap backing.
 	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
 	a.ShiftImm(5, RAX, 1, false)
 	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewHandleCountOffset, false)
@@ -1591,12 +1651,61 @@ func (f *fn) emitNativeFinalCastStub() {
 	f.trapIf(condB, trapCastFailure)
 
 	a.Add64(R11, RAX)
-	a.Load32(RCX, R11, 0)
+	a.Load32(RCX, R11, 0) // actual canonical type ID
+
+	// Exact casts compare canonical IDs. Ordinary casts/tests use DFS interval
+	// containment: required.pre <= actual.pre && actual.post <= required.post.
+	a.TestSelf(RSI, false)
+	nonExact := a.JccPlaceholder(condE)
 	a.Cmp32(RCX, RDX)
-	f.trapIf(condNE, trapCastFailure)
-	a.MovRegReg32(RAX, RSI)
-	done := a.Len()
-	a.PatchRel32(nullSuccess, done)
+	failIf(condNE)
+	exactDone := a.JmpPlaceholder()
+	a.PatchRel32(nonExact, a.Len())
+
+	a.Load64(R8, RBX, -int32(abi.GCNativeViewPtrOffset))
+	a.Load64(R8, R8, gc.NativeInstanceViewCollectorOffset)
+	a.MovRegReg32(RAX, RCX)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+	f.trapIf(condAE, trapCastFailure)
+	a.MovRegReg32(RAX, RDX)
+	a.AluRM(cmpRMcode, RAX, R8, gc.NativeViewSubtypeIntervalCountOffset, false)
+	f.trapIf(condAE, trapCastFailure)
+	a.Load64(R10, R8, gc.NativeViewSubtypeIntervalsOffset)
+	a.TestSelf(R10, true)
+	f.trapIf(condE, trapCastFailure)
+	a.MovRegReg32(RAX, RCX)
+	a.ImulRI(RAX, 8, true)
+	a.LoadIdx(R9, R10, RAX, 0, 8, false, true)
+	a.MovRegReg32(RAX, RDX)
+	a.ImulRI(RAX, 8, true)
+	a.LoadIdx(R10, R10, RAX, 0, 8, false, true)
+	a.MovReg64(RAX, R9)
+	a.ShiftImm(5, RAX, 32, true)
+	a.MovReg64(RCX, R10)
+	a.ShiftImm(5, RCX, 32, true)
+	a.Cmp32(RAX, RCX)
+	failIf(condB)
+	a.Cmp32(R9, R10)
+	failIf(condA)
+
+	successAt := a.Len()
+	a.PatchRel32(exactDone, successAt)
+	if test {
+		a.MovImm32(RAX, 1)
+	} else {
+		a.MovRegReg32(RAX, RDI)
+	}
+	done := a.JmpPlaceholder()
+	if test {
+		mismatchAt := a.Len()
+		a.MovImm32(RAX, 0)
+		for _, branch := range mismatches {
+			a.PatchRel32(branch, mismatchAt)
+		}
+	}
+	finish := a.Len()
+	a.PatchRel32(nullDone, finish)
+	a.PatchRel32(done, finish)
 	for i := len(preserve) - 1; i >= 0; i-- {
 		if preserve[i] {
 			a.Pop(R9 + Reg(i))
