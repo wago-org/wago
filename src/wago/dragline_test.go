@@ -38,7 +38,7 @@ func TestDraglineNativeTinyPreparedUsesDirectIntegerEntry(t *testing.T) {
 		t.Skip("Dragline direct prepared integer entries are currently ARM64-only")
 	}
 	module := draglineUnaryModule(wasm.I32, wasm.I32, []byte{0x20, 0x00, 0x41, 0x07, 0x6a, 0x0b})
-	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
 	if err != nil {
 		t.Fatal(err)
 	}
