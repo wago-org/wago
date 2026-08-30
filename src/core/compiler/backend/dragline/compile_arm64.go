@@ -5528,6 +5528,27 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 
 	for instrIndex := 0; instrIndex < len(sf.Instrs); instrIndex++ {
 		instr := sf.Instrs[instrIndex]
+		if reachable && instr.Kind == wasm.InstrI32Const && instrIndex+5 < len(sf.Instrs) && len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 &&
+			sf.Instrs[instrIndex+1].Kind == wasm.InstrI32x4ShrU && sf.Instrs[instrIndex+2].Kind == wasm.InstrLocalGet &&
+			sf.Instrs[instrIndex+3].Kind == wasm.InstrI32Const && sf.Instrs[instrIndex+4].Kind == wasm.InstrI32x4Shl &&
+			sf.Instrs[instrIndex+5].Kind == wasm.InstrV128Or {
+			right, left := instr.U64(), sf.Instrs[instrIndex+3].U64()
+			top := len(stackTypes) - 1
+			sourceLocal := vectorStackSourceLocal[top]
+			if right > 0 && right < 32 && left == 32-right && sourceLocal >= 0 && uint32(sourceLocal) == sf.Instrs[instrIndex+2].U32() {
+				dst := arm64.Reg(0)
+				if top < len(v128StackRegisters) {
+					dst = v128StackRegisters[top]
+				}
+				src := stackSourceV128(top, 1)
+				a.NeonUshrS(dst, src, uint8(right))
+				a.NeonSliS(dst, src, uint8(left))
+				stackStoreV128(top, dst)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+5].Offset)
+				instrIndex += 5
+				continue
+			}
+		}
 		if reachable && instr.Kind == wasm.InstrLocalGet && int(instr.U32()) < len(sf.Locals) && sf.Locals[instr.U32()] == wasm.V128 &&
 			instrIndex+6 < len(sf.Instrs) && sf.Instrs[instrIndex+1].Kind == wasm.InstrI32Const &&
 			sf.Instrs[instrIndex+2].Kind == wasm.InstrI32x4ShrU && sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalGet &&

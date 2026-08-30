@@ -431,6 +431,21 @@ samples moved `serializeN(200)` from a 25.59 us median to 25.32 us (-1.1%) and
 `deserializeN(200)` from 48.79 us to 48.63 us (-0.3%). Scalar `json-as` is
 unchanged because its hot functions already use RailMach's immediate forms.
 
+The structured SIMD stack now also preserves the local origin established by
+`local.tee` long enough to recognize the BLAKE rotate expression that consumes
+that alias. Complementary constant shifts are emitted as `USHR` plus `SLI`
+without separately materializing both shifted vectors and ORing them. A focused
+compiler test covers the exact tee-backed expression, and the complete SIMD
+differential remains clean.
+
+Against separately built binaries, sixteen balanced 300 ms samples measured a
+436.25 us baseline median and a 407.25 us fused median, a **6.6%** reduction.
+A fresh paired-backend run then measured 400.0 us for Dragline and 387.3 us for
+Railshot, or **1.033x**. The full module falls from 50,608 to 37,296 native
+bytes (-26.3%); compression functions 7 and 8 fall from 19,036/17,664 to
+12,316/11,072 bytes. `blake-as-simd` is now close but remains unfinished until
+the residual 3.3% execution gap is removed.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is
