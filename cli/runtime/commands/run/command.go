@@ -31,6 +31,7 @@ func Command(environment Environment) *command.Cmd {
 	flags = append(flags, watchFlags()...)
 	flags = append(flags,
 		command.Flag{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
+		command.Flag{Name: "native-stack", Arg: "<size>", Help: "native execution stack capacity in bytes or KiB, MiB, GiB"},
 	)
 	flags = append(flags, gcFlags()...)
 	flags = append(flags, ParallelFlag())
@@ -92,6 +93,16 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		ui.Usage("run: %v", err)
 	}
 	config := selection.RuntimeConfig()
+	if raw := ctx.Str("native-stack"); raw != "" {
+		stackBytes, err := parseNativeStackBytes(raw)
+		if err != nil {
+			ui.Usage("run: --native-stack: %v", err)
+		}
+		config = config.WithNativeStackBytes(stackBytes)
+		if err := config.Validate(); err != nil {
+			ui.Usage("run: --native-stack: %v", err)
+		}
+	}
 	runtime := cmd.environment.LoadRuntime(config, positionals)
 	defer runtime.Close()
 	module := mustLoadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache(), ctx.Bool("allow-native-artifact"))
@@ -148,6 +159,45 @@ func friendlyInstantiationError(err error) error {
 		return err
 	}
 	return fmt.Errorf("no installed plugin provides this host import\n\n  %s\n\nAdd a plugin that provides it", importName[:end])
+}
+
+func parseNativeStackBytes(raw string) (uint64, error) {
+	value := raw
+	multiplier := uint64(1)
+	switch {
+	case strings.HasSuffix(value, "GiB"):
+		value, multiplier = value[:len(value)-3], 1<<30
+	case strings.HasSuffix(value, "MiB"):
+		value, multiplier = value[:len(value)-3], 1<<20
+	case strings.HasSuffix(value, "KiB"):
+		value, multiplier = value[:len(value)-3], 1<<10
+	case strings.HasSuffix(value, "B"):
+		value = value[:len(value)-1]
+	}
+	if value == "" {
+		return 0, errors.New("size is empty")
+	}
+	limit := wago.MaxNativeStackBytes / multiplier
+	var count uint64
+	for i := 0; i < len(value); i++ {
+		digit := value[i]
+		if digit < '0' || digit > '9' {
+			return 0, fmt.Errorf("invalid size %q", raw)
+		}
+		digit -= '0'
+		if uint64(digit) > limit || count > (limit-uint64(digit))/10 {
+			return 0, fmt.Errorf("size %q exceeds %d bytes", raw, wago.MaxNativeStackBytes)
+		}
+		count = count*10 + uint64(digit)
+	}
+	bytes := count * multiplier
+	if bytes < wago.MinNativeStackBytes {
+		return 0, fmt.Errorf("size must be at least %d bytes", wago.MinNativeStackBytes)
+	}
+	if bytes&15 != 0 {
+		return 0, fmt.Errorf("size must be 16-byte aligned, got %d bytes", bytes)
+	}
+	return bytes, nil
 }
 
 func trapReason(err error) string {

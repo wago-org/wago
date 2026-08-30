@@ -293,6 +293,11 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 	if f.gcTypeSubtypingRefTest && heap >= 0 && targetIsFunc {
 		return f.emitDynamicFunctionSubtypeTest(uint32(heap), nullable)
 	}
+	if f.gcStructHelpers && heap >= 0 {
+		if target, ok := f.stagedGCType(uint32(heap)); ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
+			return f.emitNativeDefinedTest(uint32(heap), nullable)
+		}
+	}
 	if heap == -16 || heap == -17 || heap == -13 || heap == -14 { // func, extern, nofunc, noextern
 		value := f.materialize(f.popValue())
 		if heap == -16 || heap == -17 {
@@ -408,12 +413,16 @@ func (f *fn) emitGCI31Cast(sub uint32, r *wasm.Reader) error {
 			f.stats.peep("gc-ref-cast-elide")
 			return nil
 		}
-		if target, ok := f.stagedGCType(uint32(heap)); ok && target.Final && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
-			if err := f.emitNativeFinalCast(uint32(heap), sub == 23); err != nil {
+		if target, ok := f.stagedGCType(uint32(heap)); ok && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
+			if err := f.emitNativeDefinedCast(uint32(heap), sub == 23, exactTarget); err != nil {
 				return err
 			}
 			if sub == 22 {
-				f.markTopExactGCType(uint32(heap))
+				if finalTarget || exactTarget {
+					f.markTopExactGCType(uint32(heap))
+				} else if f.gcRefFactsEnabled() {
+					f.markGCRefFact(f.s.back(), castFact.WithNullability(shared.GCKnownNonNull))
+				}
 				if hasSourceLocal {
 					markGCLocalProvenance(f.s.back(), sourceLocal)
 				}

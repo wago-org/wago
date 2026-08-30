@@ -23,6 +23,7 @@ func RuntimeCommands() []*command.Cmd {
 	runFlags = append(runFlags, runtimeWatchFlags()...)
 	runFlags = append(runFlags,
 		command.Flag{Name: "core", Arg: "<version>", Help: "WebAssembly core feature set: 2 | 3 (default: best supported)"},
+		command.Flag{Name: "native-stack", Arg: "<size>", Help: "native execution stack capacity in bytes or KiB, MiB, GiB"},
 		command.Flag{Name: "gc-heap", Arg: "<size>", Help: "throughput GC heap capacity in bytes or KiB, MiB, GiB"},
 		command.Flag{Name: "gc-nursery", Arg: "<size>", Help: "throughput GC nursery capacity in bytes or KiB, MiB, GiB"},
 		parallel,

@@ -42,7 +42,10 @@ type compiledCodeCache struct {
 	gcArrayProduct         stagedGCArrayProduct         // exact products stay compile-only; codec reload may restore generic helper admission
 	gcI31Product           stagedGCI31Product           // exact non-allocating i31 boundary; never serialized
 	flags                  compiledCodeCacheFlags       // compact compile-only native dispatch and memory preferences
-	stagedFeatures         CoreFeatures                 // exact admission is compile-only; codec reload restores generic GC requirements
+	// The low 32 bits are compile-only CoreFeatures. The high 32 bits retain the
+	// direct-Instantiation native stack capacity without growing this sidecar.
+	// Neither half is serialized; codec reload restores only generic features.
+	stagedFeatures CoreFeatures
 }
 
 // compilerCompiledState groups the fixed private state owned for the complete
@@ -179,11 +182,27 @@ func (c *Compiled) prefersGuardMemory() bool {
 	return c != nil && c.codeCache != nil && c.codeCache.flags&compiledCacheGuardMemory != 0
 }
 
+const compiledStagedFeatureMask CoreFeatures = 1<<32 - 1
+
 func (c *Compiled) stagedFeatures() CoreFeatures {
 	if c == nil || c.codeCache == nil {
 		return 0
 	}
-	return c.codeCache.stagedFeatures
+	return c.codeCache.stagedFeatures & compiledStagedFeatureMask
+}
+
+func (c *compiledCodeCache) setNativeStackBytes(stackBytes uint64) {
+	if c == nil || stackBytes > uint64(^uint32(0)) {
+		panic("wago: native stack capacity exceeds compact compile policy")
+	}
+	c.stagedFeatures = c.stagedFeatures&compiledStagedFeatureMask | CoreFeatures(stackBytes)<<32
+}
+
+func (c *Compiled) nativeStackBytes() uint64 {
+	if c == nil || c.codeCache == nil {
+		return 0
+	}
+	return uint64(c.codeCache.stagedFeatures >> 32)
 }
 
 func (c *Compiled) collectorFreeStructuralMetadata() bool {

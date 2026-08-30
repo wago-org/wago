@@ -67,6 +67,9 @@ type NativeCollectorView struct {
 	AllocationCount       uintptr
 	NurseryObjectMaxBytes uint32
 	_                     uint32
+	SubtypeIntervals      uintptr
+	SubtypeIntervalCount  uint32
+	_                     uint32
 }
 
 const (
@@ -87,7 +90,9 @@ const (
 	NativeViewNurseryBumpOffset           = 144
 	NativeViewAllocationCountOffset       = 152
 	NativeViewNurseryObjectMaxBytesOffset = 160
-	NativeCollectorViewSize               = 168
+	NativeViewSubtypeIntervalsOffset      = 168
+	NativeViewSubtypeIntervalCountOffset  = 176
+	NativeCollectorViewSize               = 184
 )
 
 // NativeInstanceView adds the immutable module-local to canonical-domain type
@@ -175,7 +180,9 @@ func ValidateNativeABI() error {
 		unsafe.Offsetof(view.StructAllocEpoch) != NativeViewStructAllocEpochOffset ||
 		unsafe.Offsetof(view.NurseryBump) != NativeViewNurseryBumpOffset ||
 		unsafe.Offsetof(view.AllocationCount) != NativeViewAllocationCountOffset ||
-		unsafe.Offsetof(view.NurseryObjectMaxBytes) != NativeViewNurseryObjectMaxBytesOffset {
+		unsafe.Offsetof(view.NurseryObjectMaxBytes) != NativeViewNurseryObjectMaxBytesOffset ||
+		unsafe.Offsetof(view.SubtypeIntervals) != NativeViewSubtypeIntervalsOffset ||
+		unsafe.Offsetof(view.SubtypeIntervalCount) != NativeViewSubtypeIntervalCountOffset {
 		return fmt.Errorf("gc: native collector ABI layout mismatch")
 	}
 	var instance NativeInstanceView
@@ -222,6 +229,9 @@ func ValidateNativeInstanceView(view *NativeInstanceView, collector *Collector, 
 	if collector.nativeView.HandleStride != NativeHandleStride {
 		return fmt.Errorf("gc: native handle stride %d unsupported (want %d)", collector.nativeView.HandleStride, NativeHandleStride)
 	}
+	if collector.nativeView.SubtypeIntervalCount != uint32(len(collector.subtypeIntervals)) || collector.nativeView.SubtypeIntervals != sliceData(collector.subtypeIntervals) {
+		return fmt.Errorf("gc: native subtype interval view does not match immutable collector backing")
+	}
 	return nil
 }
 
@@ -247,6 +257,8 @@ func (c *Collector) refreshNativeView() {
 	v.Spaces[NativeSpaceTiny] = NativeSpaceView{Base: sliceData(c.tiny.mem), Bytes: uint32(len(c.tiny.mem))}
 	v.ObjectCards = sliceData(c.objectCards)
 	v.ObjectCardCount = uint32(len(c.objectCards))
+	v.SubtypeIntervals = sliceData(c.subtypeIntervals)
+	v.SubtypeIntervalCount = uint32(len(c.subtypeIntervals))
 	if c.closed {
 		v.NurseryAllocBytes = 0
 		v.StructAllocState = 0
