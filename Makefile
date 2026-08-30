@@ -253,7 +253,7 @@ TINYGO_SCHEDULER ?= tasks
 # TinyGo cannot statically size every goroutine reached through the public API
 # test harness. Give only that harness a roomy fallback stack; release binaries
 # continue to use TinyGo's normal per-goroutine sizing.
-TINYGO_TEST_STACK_SIZE ?= 64kb
+TINYGO_TEST_STACK_SIZE ?= 1mb
 # Stamped into the manager and runners via -ldflags -X. Release workflows pass
 # the git tag; 0.0.0 is the pre-release default until the first tag.
 WAGO_VERSION ?= 0.0.0
