@@ -980,6 +980,11 @@ func TestARM64RailMachSelfCallUsesCanonicalArgumentVector(t *testing.T) {
 	if got := arm64RailMachDirectCallStackAdjust(plan, 7, self); got != 0 {
 		t.Fatalf("self-recursive RailMach call stack adjustment = %d, want 0", got)
 	}
+	plan.ABI.Class = railmach.ABIPreparedInt
+	if !arm64RailMachDirectCallNeedsRegisterArguments(plan, self) || !arm64RailMachFastTinyCall(plan, 7, self, 1) {
+		t.Fatal("direct prepared self-call did not use register arguments")
+	}
+	plan.ABI.Class = railmach.ABIGeneral
 	local := railmach.Inst{Op: wasm.InstrCall, Aux: 4}
 	if !arm64RailMachDirectCallNeedsRegisterArguments(plan, local) {
 		t.Fatal("unproven local callee omitted structured argument registers")
@@ -1016,6 +1021,39 @@ func TestARM64RailMachSelfCallUsesCanonicalArgumentVector(t *testing.T) {
 	}
 	if got := arm64RailMachDirectCallStackAdjust(plan, 9, imported); got != 16 {
 		t.Fatalf("imported RailMach call stack adjustment = %d, want 16", got)
+	}
+}
+
+func TestARM64RailMachRecognizesSWARParse4(t *testing.T) {
+	ops := [...]wasm.InstrKind{
+		wasm.InstrI64Const, wasm.InstrI64Sub, wasm.InstrI64Const, wasm.InstrI64Mul,
+		wasm.InstrI64Const, wasm.InstrI64ShrU, wasm.InstrI64Add, wasm.InstrI64Const,
+		wasm.InstrI64And, wasm.InstrI64Const, wasm.InstrI64Mul, wasm.InstrI64Const,
+		wasm.InstrI64ShrU, wasm.InstrI32WrapI64,
+	}
+	insts := make([]railmach.Inst, len(ops))
+	positions := make([]uint32, len(ops))
+	locations := make([]railmach.Location, len(ops)+1)
+	for id, op := range ops {
+		insts[id] = railmach.Inst{Op: op, Result: railmach.VReg(id + 1)}
+		positions[id] = uint32(id)
+		locations[id+1] = railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: uint16(id & 1)}
+	}
+	for id, value := range map[int]uint64{0: 0x0030003000300030, 2: 10, 4: 16, 7: 0x0000ffff0000ffff, 9: 0x0000006400000001, 11: 32} {
+		insts[id].Aux = value
+	}
+	plan := &nativeBackendPlan{
+		Stack:      &railssa.StackFunc{Params: []wasm.ValType{wasm.I64}, Results: []wasm.ValType{wasm.I32}},
+		Machine:    &railmach.Func{Target: railmach.TargetARM64, Insts: insts},
+		Schedule:   new(railmach.Schedule),
+		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: locations, InstructionPositions: positions}},
+	}
+	if !arm64RailMachSWARParse4(plan) {
+		t.Fatal("verified SWAR parse4 shape was not recognized")
+	}
+	plan.Machine.Insts[9].Aux++
+	if arm64RailMachSWARParse4(plan) {
+		t.Fatal("changed SWAR parse4 multiplier was recognized")
 	}
 }
 

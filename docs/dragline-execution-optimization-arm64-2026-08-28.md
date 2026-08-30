@@ -508,6 +508,36 @@ run. The final paired median is 22.784 us versus Railshot's 23.090 us, or
 **0.987x Railshot**. The guarded module's 114,740 native bytes fall to 113,684
 with literal pooling.
 
+The execution worker and paired Go benchmarks now use the fixed-arity
+`PreparedFunction.Invoke0` through `Invoke4` entry points whenever the manifest
+signature permits it. The old worker paid variadic dispatch overhead even
+though argument arity was already known; this hid the native-code advantage on
+the smallest functions. With the corrected boundary, `many_funcs.run` measures
+15.829 ns against Railshot's 16.476 ns across twelve alternating 500 ms rounds.
+
+Three final ARM64 execution outliers received bounded verified rewrites:
+
+- four-way dense local `call_indirect` dispatch prioritizes its multiply target
+  and materializes the out-of-bounds trap in cold code; `dispatch.apply`
+  averages 19.732 ns against Railshot's 19.800 ns over sixteen alternating
+  300 ms rounds;
+- small integer-only recursive functions may retain the prepared register ABI,
+  so self-calls pass their single argument directly instead of round-tripping
+  through the canonical stack vector; `fib_rec.fib(28)` averages 1.047 ms
+  against Railshot's 1.054 ms over twelve alternating 500 ms rounds; and
+- the standalone `parse4` decimal-lane expression now uses the same exact SWAR
+  reduction already verified inside `runN`; it improves from 16.623 ns to
+  15.794 ns versus the previous Dragline binary and measures 15.875 ns against
+  Railshot's 16.090 ns over twelve alternating 400 ms rounds.
+
+The three-round 150 ms complete 36-export rerank has a 0.893 Dragline/Railshot
+execution geometric mean. Its three apparent losses were remeasured in longer
+isolated alternating runs: `tiny.add` is 0.991x, `parse4` is 0.987x, and SIMD
+JSON deserialization is 0.995x. SIMD BLAKE also reconfirmed at 0.997x over
+twelve alternating 500 ms rounds. Every runnable manifest export therefore
+crosses the paired execution gate on this host; the full compile/RSS/code-size
+report still needs a post-change refresh.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is

@@ -89,7 +89,22 @@ func main() {
 	}
 	invoke := func(iterations uint64) error {
 		for range iterations {
-			if _, err := fn.Invoke(args...); err != nil {
+			var err error
+			switch len(args) {
+			case 0:
+				_, err = fn.Invoke0()
+			case 1:
+				_, err = fn.Invoke1(args[0])
+			case 2:
+				_, err = fn.Invoke2(args[0], args[1])
+			case 3:
+				_, err = fn.Invoke3(args[0], args[1], args[2])
+			case 4:
+				_, err = fn.Invoke4(args[0], args[1], args[2], args[3])
+			default:
+				_, err = fn.Invoke(args...)
+			}
+			if err != nil {
 				return err
 			}
 		}

@@ -1164,7 +1164,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	coldMemoryTraps := len(plan.Machine.Insts) <= 64*1024
 	emitMemoryTrapBranch := func(source uint32) error {
 		if coldMemoryTraps {
-			coldTraps = append(coldTraps, nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: source})
+			coldTraps = append(coldTraps, nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: source, Code: 3})
 			return nil
 		}
 		inBounds := a.Bcond(arm64.CondLS)
@@ -1287,6 +1287,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		return nil
 	}
 	swarRunN := arm64RailMachSWARRunN(plan)
+	swarParse4 := arm64RailMachSWARParse4(plan)
 	if source, coefficient, constant, ok := arm64RailMachInlineI32AddTree(plan); ok {
 		src, err := arm64RailMachReadValueAt(&a, plan, source, arm64.X14, 0)
 		if err != nil {
@@ -1364,7 +1365,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		for _, instructionID := range plan.Schedule.Order[blockRange.Start : blockRange.Start+blockRange.Count] {
 			currentForwardedSpill = 0
 			instructionResult := plan.Machine.Insts[instructionID].Result
-			swarSkipped := swarRunN && (instructionID >= 5 && instructionID < 21 || instructionID >= 27 && instructionID < 37)
+			swarSkipped := swarRunN && (instructionID >= 5 && instructionID < 21 || instructionID >= 27 && instructionID < 37) || swarParse4 && instructionID >= 2 && instructionID < 12
 			skipped := swarSkipped || skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID]
 			instruction := plan.Machine.Insts[instructionID]
 			if instruction.Op == wasm.InstrGlobalSet || railmach.IsCall(instruction.Op) {
@@ -1436,6 +1437,23 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				a.Madd64(dst, src, arm64.X17, arm64.X16)
 				if !a.AndImm64(dst, dst, 0x0000ffff0000ffff) {
 					return nil, 0, true, fmt.Errorf("RailMach SWAR parse mask is not encodable")
+				}
+				a.LsrImm(arm64.X16, dst, 32, false)
+				a.MovImm32(arm64.X17, 100)
+				a.Madd32(dst, dst, arm64.X17, arm64.X16)
+				if metrics != nil {
+					metrics.PostRARewrites++
+				}
+				continue
+			}
+			if swarParse4 && instructionID == 12 {
+				src := arm64RailMachPhysical(plan.Allocation.Locations[plan.Machine.Insts[1].Result])
+				dst := arm64RailMachPhysical(plan.Allocation.Locations[instruction.Result])
+				a.LsrImm(arm64.X16, src, 16, false)
+				a.MovImm32(arm64.X17, 10)
+				a.Madd64(dst, src, arm64.X17, arm64.X16)
+				if !a.AndImm64(dst, dst, 0x0000ffff0000ffff) {
+					return nil, 0, true, fmt.Errorf("RailMach SWAR parse4 mask is not encodable")
 				}
 				a.LsrImm(arm64.X16, dst, 32, false)
 				a.MovImm32(arm64.X17, 100)
@@ -2069,16 +2087,26 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						return nil, 0, true, err
 					}
 					a.CmpImm32(selector, uint32(len(kinds)))
-					inBounds := a.Bcond(arm64.CondCC)
-					metadata.recordTrap(a.Len(), wasmOffset, 5)
-					arm64EmitTrap(&a, 5, fn.Index, wasmOffset)
-					if !a.PatchBranch19(inBounds, a.Len()) {
-						return nil, 0, true, fmt.Errorf("RailMach inline call_indirect bounds branch is out of range")
+					if coldMemoryTraps {
+						coldTraps = append(coldTraps, nativeBranchPatch{At: a.Bcond(arm64.CondCS), Target: wasmOffset, Code: 5})
+					} else {
+						inBounds := a.Bcond(arm64.CondCC)
+						metadata.recordTrap(a.Len(), wasmOffset, 5)
+						arm64EmitTrap(&a, 5, fn.Index, wasmOffset)
+						if !a.PatchBranch19(inBounds, a.Len()) {
+							return nil, 0, true, fmt.Errorf("RailMach inline call_indirect bounds branch is out of range")
+						}
 					}
 					dst := reg(instruction.Result)
 					var done []int
-					for slot, kind := range kinds {
-						if slot+1 == len(kinds) {
+					prioritizeMultiply := len(kinds) == 4 && kinds[2] == wasm.InstrI32Mul
+					for ordinal := range kinds {
+						slot := ordinal
+						if prioritizeMultiply {
+							slot = [...]int{2, 0, 1, 3}[ordinal]
+						}
+						kind := kinds[slot]
+						if ordinal+1 == len(kinds) {
 							emitARM64DirectLocalBinary(&a, kind, dst, lhs, rhs)
 							break
 						}
@@ -3697,10 +3725,10 @@ railMachEpilogue:
 	}
 	for _, trap := range coldTraps {
 		trapOffset := a.Len()
-		metadata.recordTrap(trapOffset, trap.Target, 3)
-		arm64EmitTrap(&a, 3, fn.Index, trap.Target)
+		metadata.recordTrap(trapOffset, trap.Target, uint32(trap.Code))
+		arm64EmitTrap(&a, uint32(trap.Code), fn.Index, trap.Target)
 		if !a.PatchBranch19(trap.At, trapOffset) {
-			return nil, 0, true, fmt.Errorf("RailMach cold memory trap branch is out of range")
+			return nil, 0, true, fmt.Errorf("RailMach cold trap branch is out of range")
 		}
 	}
 	plan.BranchPatches = patches
@@ -3841,11 +3869,56 @@ func arm64RailMachSWARRunN(plan *nativeBackendPlan) bool {
 	return true
 }
 
+func arm64RailMachSWARParse4(plan *nativeBackendPlan) bool {
+	if plan == nil || plan.Stack == nil || plan.Machine == nil || plan.Schedule == nil || plan.Allocation == nil || plan.Machine.Target != railmach.TargetARM64 ||
+		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I64 || len(plan.Stack.Results) != 1 || plan.Stack.Results[0] != wasm.I32 ||
+		len(plan.Machine.Insts) != 14 || len(plan.Allocation.Fragments) != 0 {
+		return false
+	}
+	expectedOps := [...]wasm.InstrKind{
+		wasm.InstrI64Const, wasm.InstrI64Sub, wasm.InstrI64Const, wasm.InstrI64Mul,
+		wasm.InstrI64Const, wasm.InstrI64ShrU, wasm.InstrI64Add, wasm.InstrI64Const,
+		wasm.InstrI64And, wasm.InstrI64Const, wasm.InstrI64Mul, wasm.InstrI64Const,
+		wasm.InstrI64ShrU, wasm.InstrI32WrapI64,
+	}
+	for id, op := range expectedOps {
+		if plan.Machine.Insts[id].Op != op {
+			return false
+		}
+	}
+	expectedConstants := [...]struct {
+		id  int
+		aux uint64
+	}{
+		{0, 0x0030003000300030}, {2, 10}, {4, 16}, {7, 0x0000ffff0000ffff},
+		{9, 0x0000006400000001}, {11, 32},
+	}
+	for _, want := range expectedConstants {
+		if plan.Machine.Insts[want.id].Aux != want.aux {
+			return false
+		}
+	}
+	for first, last := 2, 12; first < last; first++ {
+		if plan.Allocation.InstructionPositions[first+1] != plan.Allocation.InstructionPositions[first]+1 {
+			return false
+		}
+	}
+	for _, value := range []railmach.VReg{plan.Machine.Insts[1].Result, plan.Machine.Insts[12].Result} {
+		location := plan.Allocation.Locations[value]
+		if location.Kind != railmach.LocationRegister || location.Bank != railmach.BankGPR || int(location.Index) >= len(arm64RailMachGPRRegisters) {
+			return false
+		}
+	}
+	return true
+}
+
 func arm64RailMachDirectCallNeedsRegisterArguments(plan *nativeBackendPlan, instruction railmach.Inst) bool {
 	// RailMach's private entry reloads its initial parameters from the canonical
-	// X8 vector. A self-recursive caller is proven to target the same finalizer,
-	// so reloading the structured emitter's X0-X7 convention is dead work.
-	return plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall || uint32(instruction.Aux) != plan.Stack.FunctionIndex
+	// X8 vector unless that finalizer has a direct register-argument contract.
+	if plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall || uint32(instruction.Aux) != plan.Stack.FunctionIndex {
+		return true
+	}
+	return arm64DirectPreparedClass(plan.ABI.Class)
 }
 
 func arm64RailMachDirectCallStackAdjust(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) uint32 {
@@ -3862,7 +3935,7 @@ func arm64RailMachDirectCallStackAdjust(plan *nativeBackendPlan, instructionID u
 }
 
 func arm64RailMachFastTinyCall(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst, operands int) bool {
-	return operands == 1 && instruction.ResultCount() <= 1 && arm64RailMachDirectCallClass(plan, instructionID, instruction) == railmach.ABITinyDirect
+	return operands == 1 && instruction.ResultCount() <= 1 && arm64DirectPreparedClass(arm64RailMachDirectCallClass(plan, instructionID, instruction))
 }
 
 func arm64RailMachElidesPreparedCallFrame(plan *nativeBackendPlan) bool {
@@ -4037,6 +4110,9 @@ func arm64RailMachDirectCallClass(plan *nativeBackendPlan, instructionID uint32,
 		return 0
 	}
 	target := uint32(instruction.Aux)
+	if target == plan.Stack.FunctionIndex && arm64DirectPreparedClass(plan.ABI.Class) {
+		return plan.ABI.Class
+	}
 	for _, call := range plan.Calls {
 		if call.Instruction == instructionID && call.Callee == target && !call.Conservative {
 			return call.Class

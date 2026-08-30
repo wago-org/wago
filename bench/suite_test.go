@@ -390,6 +390,23 @@ func BenchmarkExec(b *testing.B) {
 	benchmarkExec(b, wago.NewRuntimeConfig())
 }
 
+func invokePrepared(fn *wago.PreparedFunction, args []uint64) ([]uint64, error) {
+	switch len(args) {
+	case 0:
+		return fn.Invoke0()
+	case 1:
+		return fn.Invoke1(args[0])
+	case 2:
+		return fn.Invoke2(args[0], args[1])
+	case 3:
+		return fn.Invoke3(args[0], args[1], args[2])
+	case 4:
+		return fn.Invoke4(args[0], args[1], args[2], args[3])
+	default:
+		return fn.Invoke(args...)
+	}
+}
+
 func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 	for _, m := range loadCorpus(b) {
 		if len(m.Exec) == 0 || !m.supports("Exec") {
@@ -421,12 +438,12 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 			}
 			b.Run(m.name()+"."+e.Export, func(b *testing.B) {
 				b.ReportAllocs()
-				if _, err := fn.Invoke(args...); err != nil {
+				if _, err := invokePrepared(fn, args); err != nil {
 					b.Fatalf("warmup invoke: %v", err)
 				}
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
-					if _, err := fn.Invoke(args...); err != nil {
+					if _, err := invokePrepared(fn, args); err != nil {
 						b.Fatal(err)
 					}
 				}

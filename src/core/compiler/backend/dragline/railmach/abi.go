@@ -152,7 +152,7 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 
 func directPreparedIntegerContract(f *Func, allocation *GreedyAllocation, contract ABIContract) bool {
 	maxInstructions := 8
-	if f.Target == TargetARM64 && !contract.HasCall {
+	if f.Target == TargetARM64 {
 		maxInstructions = 48
 	}
 	if f.ParamCount == 0 || f.ParamCount > 3 || len(f.Results) > 1 || len(f.Insts) > maxInstructions {
@@ -184,7 +184,7 @@ func directPreparedIntegerContract(f *Func, allocation *GreedyAllocation, contra
 			wasm.InstrI32GeS, wasm.InstrI64GeS, wasm.InstrI32GeU, wasm.InstrI64GeU,
 			wasm.InstrI64ExtendI32S, wasm.InstrI64ExtendI32U, wasm.InstrI32WrapI64,
 			wasm.InstrSelect, wasm.InstrIf, wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn:
-			if f.Target != TargetARM64 || contract.HasCall {
+			if f.Target != TargetARM64 {
 				return false
 			}
 		default:

@@ -83,6 +83,7 @@ type nativeBackendPlan struct {
 type nativeBranchPatch struct {
 	At     int
 	Target uint32
+	Code   uint8
 }
 
 func clearPostRAEmissionRewrites(plan *nativeBackendPlan) {

@@ -55,6 +55,29 @@ func TestAnalyzeABIAndRefineDirectCall(t *testing.T) {
 	}
 }
 
+func TestAnalyzeABIUsesPreparedIntegerContractForBoundedARM64Recursion(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
+		0x20, 0x00, 0x41, 0x02, 0x48, 0x04, 0x7e,
+		0x20, 0x00, 0xac, 0x05,
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x10, 0x00,
+		0x20, 0x00, 0x41, 0x02, 0x6b, 0x10, 0x00, 0x7c, 0x0b,
+		0x0b,
+	})
+	for _, tc := range []struct {
+		target Target
+		want   ABIClass
+	}{{TargetARM64, ABIPreparedInt}, {TargetAMD64, ABIGeneral}} {
+		f, allocation, metadata := buildABITest(t, tc.target, m)
+		contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if contract.Class != tc.want {
+			t.Fatalf("%v recursive contract = %v, want %v", tc.target, contract.Class, tc.want)
+		}
+	}
+}
+
 func TestFrameForAllocationUsesRegisterPrefixForMultipleResults(t *testing.T) {
 	allocation := new(GreedyAllocation)
 	requirements, layout, err := FrameForAllocation(ABIContract{Results: 6, RegisterResults: 4}, allocation, 0)

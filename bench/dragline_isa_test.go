@@ -549,7 +549,7 @@ func benchmarkISAExport(b *testing.B, compiler wago.CompilerEngine, m corpusModu
 		}
 		args[0] = wago.I32(int32(arg))
 	}
-	if _, err := fn.Invoke(args...); err != nil {
+	if _, err := invokePrepared(fn, args); err != nil {
 		b.Fatalf("warmup invoke: %v", err)
 	}
 	var counters *hwcounters.Group
@@ -574,7 +574,7 @@ func benchmarkISAExport(b *testing.B, compiler wago.CompilerEngine, m corpusModu
 		}
 	}
 	for i := 0; i < b.N; i++ {
-		if _, err := fn.Invoke(args...); err != nil {
+		if _, err := invokePrepared(fn, args); err != nil {
 			b.Fatal(err)
 		}
 	}
