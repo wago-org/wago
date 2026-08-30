@@ -446,6 +446,22 @@ bytes (-26.3%); compression functions 7 and 8 fall from 19,036/17,664 to
 12,316/11,072 bytes. `blake-as-simd` is now close but remains unfinished until
 the residual 3.3% execution gap is removed.
 
+A second JSON SIMD address slice caches the immutable global-descriptor table
+once per structured function, promotes the third hot integer global, and uses
+ARM64's extended-register add to form linear-memory addresses without a
+separate zero-extension. Store-heavy SIMD functions now cache the absolute
+memory end as well as read-heavy functions, allowing the checked effective
+address to be reused. The full corpus differential validates global mutation,
+memory access, and trap behavior after each change.
+
+Eight balanced 300 ms before/after samples moved `serializeN(200)` from a
+25.091 us median to 24.189 us (-3.6%) and `deserializeN(200)` from 48.825 us to
+48.113 us (-1.5%). The module falls from 116,572 to 114,660 native bytes;
+serializer function 49 falls from 4,712 to 4,324 bytes and SIMD string writer
+52 from 5,952 to 5,576 bytes. A fresh paired run measures 24.240 us for
+Dragline and 22.557 us for Railshot, or **1.075x**; serialization remains the
+largest application gap.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is

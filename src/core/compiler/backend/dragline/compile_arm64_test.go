@@ -93,9 +93,9 @@ func TestARM64StructuredTradesOneVectorStackRegisterOnlyUnderLocalPressure(t *te
 		arm64V128LocalUseWeight(wasm.InstrLocalTee) != 2 {
 		t.Fatal("vector local write costs are not weighted above reads")
 	}
-	if !arm64StructuredCachesMemoryEnd(true, 4, 3) || arm64StructuredCachesMemoryEnd(true, 3, 4) ||
-		arm64StructuredCachesMemoryEnd(false, 4, 3) {
-		t.Fatal("cached memory end policy did not remain SIMD read-heavy only")
+	if !arm64StructuredCachesMemoryEnd(true, 4, 3) || !arm64StructuredCachesMemoryEnd(true, 3, 4) ||
+		arm64StructuredCachesMemoryEnd(false, 4, 3) || arm64StructuredCachesMemoryEnd(true, 0, 0) {
+		t.Fatal("cached memory end policy did not remain limited to SIMD memory functions")
 	}
 }
 

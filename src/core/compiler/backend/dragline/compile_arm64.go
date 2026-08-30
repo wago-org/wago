@@ -4950,9 +4950,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		}
 		hasSIMDDot = hasSIMDDot || instr.Kind == wasm.InstrI32x4DotI16x8S
 	}
-	promotedGlobals := [2]int{-1, -1}
-	promotedGlobalRegs := [2]arm64.Reg{arm64.X7, arm64.X6}
-	promotedGlobalDescriptors := [2]arm64.Reg{arm64.X8, arm64.X5}
+	promotedGlobals := [3]int{-1, -1, -1}
+	promotedGlobalRegs := [3]arm64.Reg{arm64.X7, arm64.X6, arm64.X4}
+	promotedGlobalDescriptors := [3]arm64.Reg{arm64.X8, arm64.X5, arm64.X3}
 	if hasGeneralCall {
 		for slot := range promotedGlobals {
 			for index, uses := range globalUses {
@@ -4975,6 +4975,11 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		}
 		return -1
 	}
+	globalAccesses := uint32(0)
+	for _, uses := range globalUses {
+		globalAccesses += uint32(uses)
+	}
+	cacheGlobalDescriptors := globalAccesses >= 2
 	if !hasGeneralCall {
 		gpRegister, fpRemaining := 0, 0
 		for i, typ := range sf.Locals {
@@ -5154,6 +5159,16 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			a.Add64(arm64.X25, arm64.X26, arm64.X25)
 		}
 	}
+	if cacheGlobalDescriptors {
+		a.Ldur64(arm64.X28, arm64.X26, -int32(abi.GlobalsPtrOffset))
+	}
+	loadGlobalDescriptor := func(dst arm64.Reg, index uint32) bool {
+		if cacheGlobalDescriptors {
+			return a.Load64(dst, arm64.X28, index*8)
+		}
+		a.Ldur64(dst, arm64.X26, -int32(abi.GlobalsPtrOffset))
+		return a.Load64(dst, dst, index*8)
+	}
 	localOff := func(index int) uint32 { return railssa.TypeSlotOffset(sf.Locals, index) * 8 }
 	localLoad := func(index int, dst arm64.Reg) bool {
 		if registerStack || localScalarPinned[index] {
@@ -5259,8 +5274,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				continue
 			}
 			descriptor := promotedGlobalDescriptors[slot]
-			a.Ldur64(descriptor, arm64.X26, -int32(abi.GlobalsPtrOffset))
-			if !a.Load64(descriptor, descriptor, uint32(promoted)*8) || !a.Load64(promotedGlobalRegs[slot], descriptor, 0) {
+			if !loadGlobalDescriptor(descriptor, uint32(promoted)) || !a.Load64(promotedGlobalRegs[slot], descriptor, 0) {
 				return false
 			}
 		}
@@ -5610,8 +5624,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				continue
 			}
 			if value <= 4095 {
-				a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
-				if !a.Load64(arm64.X17, arm64.X17, instr.U32()*8) {
+				if !loadGlobalDescriptor(arm64.X17, instr.U32()) {
 					return nil, 0, nil, fmt.Errorf("global %d offset is not encodable", instr.U32())
 				}
 				wide := kind == wasm.InstrI64Add || kind == wasm.InstrI64Sub
@@ -5664,8 +5677,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 						return nil, 0, nil, err
 					}
 				}
-				a.MovReg32(arm64.X16, pointerReg)
-				a.Add64(arm64.X16, arm64.X26, arm64.X16)
+				a.AddExtUXTW(arm64.X16, arm64.X26, pointerReg)
 				a.LoadIdx(characterReg, arm64.X16, arm64.XZR, 0, 2, false, false)
 				a.CmpImm32(characterReg, 32)
 				a.Cset32(arm64.X16, arm64.CondEQ)
@@ -6830,8 +6842,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				end += 4
 			}
 			if count > 1 && count&(count-1) == 0 {
-				a.Ldur64(arm64.X16, arm64.X26, -int32(abi.GlobalsPtrOffset))
-				a.Load64(arm64.X16, arm64.X16, instr.U32()*8)
+				if !loadGlobalDescriptor(arm64.X16, instr.U32()) {
+					return nil, 0, nil, fmt.Errorf("global %d offset is not encodable", instr.U32())
+				}
 				a.Load32(arm64.X17, arm64.X16, 0)
 				shift := uint8(0)
 				for n := count; n > 1; n >>= 1 {
@@ -7647,8 +7660,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				}
 				continue
 			}
-			a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
-			if !a.Load64(arm64.X17, arm64.X17, instr.U32()*8) || !a.Load64(arm64.X16, arm64.X17, 0) {
+			if !loadGlobalDescriptor(arm64.X17, instr.U32()) || !a.Load64(arm64.X16, arm64.X17, 0) {
 				return nil, 0, nil, fmt.Errorf("global %d offset is not encodable", instr.U32())
 			}
 			if err := push(sf.Globals[instr.U32()], arm64.X16); err != nil {
@@ -7664,8 +7676,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				a.Store64(promotedGlobalRegs[slot], descriptor, 0)
 				continue
 			}
-			a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
-			if !a.Load64(arm64.X17, arm64.X17, instr.U32()*8) || !a.Store64(arm64.X16, arm64.X17, 0) {
+			if !loadGlobalDescriptor(arm64.X17, instr.U32()) || !a.Store64(arm64.X16, arm64.X17, 0) {
 				return nil, 0, nil, fmt.Errorf("global %d offset is not encodable", instr.U32())
 			}
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const:
@@ -8326,7 +8337,7 @@ func arm64StructuredV128StackRegisterCount(v128Locals, availableLocals int) int 
 }
 
 func arm64StructuredCachesMemoryEnd(hasV128 bool, loads, stores uint32) bool {
-	return hasV128 && loads >= stores
+	return hasV128 && loads+stores != 0
 }
 
 func arm64CountedLoopTail(instrs []railssa.StackInstr, guard int, local uint32) (int, bool) {
@@ -9763,8 +9774,7 @@ func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 			effectiveAddressReady = false
 			return
 		}
-		a.MovReg32(arm64.X16, address)
-		a.Add64(arm64.X16, arm64.X26, arm64.X16)
+		a.AddExtUXTW(arm64.X16, arm64.X26, address)
 		if descriptor.MemArg.Offset != 0 {
 			emitARM64BoundsEnd(a, arm64.X16, descriptor.MemArg.Offset)
 		}
@@ -10316,8 +10326,7 @@ func emitARM64RegisterStackMemory(a *arm64.Asm, instr railssa.StackInstr, stack 
 			}
 		}
 	}
-	a.MovReg32(arm64.X16, address)
-	a.Add64(arm64.X16, arm64.X26, arm64.X16)
+	a.AddExtUXTW(arm64.X16, arm64.X26, address)
 	if instr.U32() != 0 {
 		emitARM64BoundsEnd(a, arm64.X16, uint64(instr.U32()))
 	}
