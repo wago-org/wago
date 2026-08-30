@@ -84,7 +84,7 @@ func TestInstanceContextRoundTripLeavesMemoryAndInvocationState(t *testing.T) {
 	defer jm.Close()
 
 	jm.SetStackFence(0x1111)
-	trap := make([]byte, 8)
+	trap := make([]byte, TrapBufferBytes)
 	if err := jm.BindTrapCell(trap); err != nil {
 		t.Fatal(err)
 	}

@@ -31,12 +31,11 @@ func TestCatalogRegistrationIsUniqueAndArchitectureScoped(t *testing.T) {
 func TestMeasuredLowValueOptimizationsDefaultOff(t *testing.T) {
 	wantOff := map[string]map[string]bool{
 		"amd64": {
-			"affine-lea":          true,
-			"call-next-use":       true,
-			"commute-self-update": true,
-			"loop-precheck":       true,
-			"tee-spill-elide":     true,
-			"v128-sink":           true,
+			"affine-lea":      true,
+			"call-next-use":   true,
+			"loop-precheck":   true,
+			"tee-spill-elide": true,
+			"v128-sink":       true,
 		},
 		"arm64": {
 			"loop-precheck": true,

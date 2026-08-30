@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -83,6 +84,11 @@ var thunkTemplate = []byte{
 
 const thunkStackTopOff = 2
 
+var (
+	tinygoPreparedIntEntryOffset = uintptr(len(thunkTemplate))
+	tinygoMmapExec               = mmapExec
+)
+
 // funcValue mirrors TinyGo's in-memory representation of a func value:
 // {context, fnptr}. Overlaying it lets us synthesize a callable that jumps to
 // arbitrary machine code with a chosen context word.
@@ -91,59 +97,36 @@ type funcValue struct {
 	fnptr   uintptr
 }
 
-// thunkRef pairs a foreign-stack top with the entry point of the trampoline
-// specialized for it, so the two are published together atomically.
-type thunkRef struct {
-	top   uintptr
-	entry uintptr
-}
-
-var (
-	// hot path: a lock-free single-slot cache. Engines almost always share one
-	// foreign stack, so this hits on every call after the first and keeps
-	// enterNative free of locks and map hashing.
-	lastThunk atomic.Pointer[thunkRef]
-
-	thunkMu    sync.Mutex
-	thunkCache = map[uintptr]uintptr{} // foreign-stack top -> thunk entry point
-)
-
-// thunkFor returns the entry point of a foreign-stack-switch trampoline
-// specialized for foreignStackTop, generating and caching it on first use. The
-// mapping is kept for the life of the process (one executable page per distinct
-// engine stack, of which there are typically very few).
-func thunkFor(foreignStackTop uintptr) uintptr {
-	if r := lastThunk.Load(); r != nil && r.top == foreignStackTop {
-		return r.entry
+// initNativeEntry creates the wrapper and prepared-integer entry thunks in one
+// Engine-owned executable mapping. Engine.Close releases the mapping with the
+// 4 MiB foreign stack, so historical stack addresses retain no executable page.
+func (e *Engine) initNativeEntry() error {
+	if e.preparedInt.mem != nil {
+		return nil
 	}
-	return thunkForSlow(foreignStackTop)
-}
-
-func thunkForSlow(foreignStackTop uintptr) uintptr {
-	thunkMu.Lock()
-	entry, ok := thunkCache[foreignStackTop]
-	if !ok {
-		code := make([]byte, len(thunkTemplate))
-		copy(code, thunkTemplate)
-		binary.LittleEndian.PutUint64(code[thunkStackTopOff:], uint64(foreignStackTop))
-		mem, err := mmapExec(code)
-		if err != nil {
-			thunkMu.Unlock()
-			panic("wago: cannot map tinygo trampoline: " + err.Error())
-		}
-		entry = uintptr(unsafe.Pointer(&mem[0]))
-		thunkCache[foreignStackTop] = entry
+	stackTop := e.stackTop
+	code := make([]byte, len(thunkTemplate)+len(tinygoIntThunkTemplate))
+	copy(code, thunkTemplate)
+	copy(code[len(thunkTemplate):], tinygoIntThunkTemplate)
+	binary.LittleEndian.PutUint64(code[thunkStackTopOff:], uint64(stackTop))
+	binary.LittleEndian.PutUint64(code[len(thunkTemplate)+tinygoIntThunkStackTopOff:], uint64(stackTop))
+	mem, err := tinygoMmapExec(code)
+	if err != nil {
+		return fmt.Errorf("tinygo entry trampoline: %w", err)
 	}
-	thunkMu.Unlock()
-	lastThunk.Store(&thunkRef{top: foreignStackTop, entry: entry})
-	return entry
+	e.preparedInt.mem = mem
+	e.preparedInt.stackTop = stackTop
+	e.stackTop = uintptr(unsafe.Pointer(&mem[0]))
+	return nil
 }
 
-// enterNative runs WARP code at code on the engine's foreign stack following the
-// WasmWrapper ABI, then returns to Go. See the file comment for how the
-// arguments reach the native code with no assembly and no cgo.
-func enterNative(code, serArgs, linMem, trap, results, foreignStackTop uintptr) {
-	fv := funcValue{context: code, fnptr: thunkFor(foreignStackTop)}
+// enterNative runs WARP code at code on the Engine-specific entry trampoline.
+func enterNative(code, serArgs, linMem, trap, results, entry uintptr) {
+	if entry == 0 {
+		markTinyGoTrampolineFailure(trap)
+		return
+	}
+	fv := funcValue{context: code, fnptr: entry}
 	call := *(*func(a, b, c, d uintptr))(unsafe.Pointer(&fv))
 	call(serArgs, linMem, trap, results)
 }
@@ -175,27 +158,39 @@ var resumeThunkTemplate = []byte{
 }
 
 var (
-	resumeThunkOnce  sync.Once
+	resumeThunkMu    sync.Mutex
 	resumeThunkEntry uintptr
 )
 
 func resumeThunkPtr() uintptr {
-	resumeThunkOnce.Do(func() {
-		code := make([]byte, len(resumeThunkTemplate))
-		copy(code, resumeThunkTemplate)
-		mem, err := mmapExec(code)
-		if err != nil {
-			panic("wago: cannot map tinygo resume trampoline: " + err.Error())
-		}
-		resumeThunkEntry = uintptr(unsafe.Pointer(&mem[0])) // retained for the process
-	})
-	return resumeThunkEntry
+	if entry := atomic.LoadUintptr(&resumeThunkEntry); entry != 0 {
+		return entry
+	}
+	resumeThunkMu.Lock()
+	defer resumeThunkMu.Unlock()
+	if entry := atomic.LoadUintptr(&resumeThunkEntry); entry != 0 {
+		return entry
+	}
+	code := make([]byte, len(resumeThunkTemplate))
+	copy(code, resumeThunkTemplate)
+	mem, err := tinygoMmapExec(code)
+	if err != nil {
+		return 0
+	}
+	entry := uintptr(unsafe.Pointer(&mem[0])) // retained for the process
+	atomic.StoreUintptr(&resumeThunkEntry, entry)
+	return entry
 }
 
 // resumeNative resumes native code parked at a host call (see hostcall_amd64.go).
 // It mirrors resume_amd64.s. The thunk ignores the func-value context word.
 func resumeNative(ctrl, foreignStackTop uintptr) {
-	fv := funcValue{context: 0, fnptr: resumeThunkPtr()}
+	entry := resumeThunkPtr()
+	if entry == 0 {
+		markTinyGoResumeFailure(ctrl)
+		return
+	}
+	fv := funcValue{context: 0, fnptr: entry}
 	call := *(*func(a, b uintptr))(unsafe.Pointer(&fv))
 	call(ctrl, foreignStackTop)
 }

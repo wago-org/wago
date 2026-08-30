@@ -53,7 +53,7 @@ func BenchmarkExecSharedAdapterTailAMD64(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer coreruntime.Unmap(code)
-			results, trap := arena.Alloc(16), arena.Alloc(8)
+			results, trap := arena.Alloc(16), arena.Alloc(coreruntime.TrapBufferBytes)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {

@@ -121,7 +121,7 @@ func BenchmarkEntryParamPairsARM64(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer coreruntime.Unmap(code)
-			args, results, trap := arena.Alloc(n*8), arena.Alloc(8), arena.Alloc(8)
+			args, results, trap := arena.Alloc(n*8), arena.Alloc(8), arena.Alloc(coreruntime.TrapBufferBytes)
 			for i := range n {
 				binary.LittleEndian.PutUint64(args[i*8:], uint64(i+1))
 			}

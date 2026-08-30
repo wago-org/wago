@@ -35,7 +35,7 @@ func BenchmarkCrossBoundaryCall(b *testing.B) {
 
 	serArgs := ar.Alloc(16)
 	results := ar.Alloc(16)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(TrapBufferBytes)
 	lin := jm.LinearMemory()
 	binary.LittleEndian.PutUint32(serArgs, 41)
 	codePtr := slicePtr(code)

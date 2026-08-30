@@ -236,16 +236,28 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) &&
 		right.st.reg == dest
 	if commuteSelfUpdate {
-		f.commuteSelfUpdates++
-		if f.stats != nil {
-			f.stats.peep("commute-self-update-candidate")
-		}
+		f.stats.peep("commute-self-update-candidate")
 	}
-	if f.opt(optCommuteSelfUpdate) && commuteSelfUpdate && f.commuteSelfUpdates > 1 {
-		left, right = right, left
-		if f.stats != nil {
-			f.stats.peep("commute-self-update")
+	if f.opt(optCommuteSelfUpdate) && commuteSelfUpdate {
+		// Preserve the old destination while evaluating the original left operand,
+		// then consume that value directly into the destination. This is the same
+		// native order as swapping the operands, but it avoids routing the common
+		// self-update case through the generic RHS relocation and LHS sink logic.
+		f.pinned = f.pinned.add(dest)
+		if left.isDeferred() {
+			f.condense(left, regNone)
 		}
+		if node.op == opMul {
+			f.applyMul(dest, left, w)
+		} else {
+			f.applyALU(aluTable[node.op], dest, left, w)
+		}
+		f.pinned = f.pinned.remove(dest)
+		f.stats.peep("commute-self-update")
+		f.consumeBlockBelow(node)
+		f.occupy(node, dest)
+		node.op = opNone
+		return dest
 	}
 
 	// Materialize the RHS into a safe, foldable operand BEFORE the LHS overwrites
@@ -1068,15 +1080,14 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	switch right.st.kind {
 	case stConst:
-		// `i64.and x, 0xffffffff` is exactly a zero-extension of x's low
-		// 32 bits. `and r32, -1` performs that operation directly on x86-64 and
-		// preserves the zero/parity/carry/overflow flags relevant to current
-		// consumers; unlike the 64-bit masked result, it may set the sign flag.
-		// The 64-bit form cannot encode
-		// this positive mask because its imm32 is sign-extended and would therefore
-		// need a temporary register. Select this only at final emission so tree
-		// scheduling, associative covering, and higher-level SWAR recognition retain
-		// their original shapes.
+		// `i64.and x, mask` for any mask confined to the low 32 bits is exactly
+		// `and r32, imm32`: the 32-bit destination write clears the upper half. This
+		// saves REX.W for small masks and avoids a temporary register for masks with
+		// bit 31 set, which the 64-bit sign-extended immediate form cannot encode.
+		// ZF/PF/CF/OF remain exact. SF can reflect bit 31 instead of bit 63, but no
+		// current ALU-result consumer reads SF; signed relations emit their own CMP.
+		// Select this only at final emission so tree scheduling, associative covering,
+		// and higher-level SWAR recognition retain their original shapes.
 		if incDecEnabled && f.policy.CompactNative &&
 			(enc == aluTable[opAdd] || enc == aluTable[opSub]) && (right.st.cval == 1 || right.st.cval == -1) {
 			increment := enc == aluTable[opAdd] && right.st.cval == 1 || enc == aluTable[opSub] && right.st.cval == -1
@@ -1086,8 +1097,8 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 				f.a.Dec(dest, w)
 			}
 			f.stats.peep("inc-dec")
-		} else if f.opt(optI64Mask32) && w && enc == aluTable[opAnd] && isI64Mask32(right) {
-			f.a.AluRI(enc.digit, dest, -1, false)
+		} else if f.opt(optI64Mask32) && w && enc == aluTable[opAnd] && isI64Low32Mask(right) {
+			f.a.AluRI(enc.digit, dest, int32(uint32(right.st.cval)), false)
 			f.stats.peep("i64-mask32")
 		} else if fitsImm32(right.st.cval) {
 			f.a.AluRI(enc.digit, dest, int32(right.st.cval), w)
@@ -1119,9 +1130,9 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	}
 }
 
-func isI64Mask32(e *elem) bool {
+func isI64Low32Mask(e *elem) bool {
 	return e != nil && e.kind == ekValue && e.st.kind == stConst &&
-		e.st.typ == mtI64 && uint64(e.st.cval) == 0xffffffff
+		e.st.typ == mtI64 && uint64(e.st.cval) <= 0xffffffff
 }
 
 // applyMul emits `dest = dest * right` (imul), folding the right operand.

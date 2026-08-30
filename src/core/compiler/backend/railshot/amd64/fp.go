@@ -254,8 +254,18 @@ func (f *fn) loadFConst(r Reg, st storage) {
 	f.release(t)
 }
 
-// loadFMask materializes a 32/64-bit bit mask into XMM dst (via a GP scratch).
+// loadFMask materializes a 32/64-bit mask into XMM dst from the constant pool,
+// with the older GP-scratch sequence retained as the optimization control.
 func (f *fn) loadFMask(dst Reg, mask64 uint64, mask32 uint32, f64 bool) {
+	if f.opt(optV128ConstCache) {
+		bits := uint64(mask32)
+		if f64 {
+			bits = mask64
+		}
+		f.loadFConst(dst, storage{typ: mtOf2(f64), cval: int64(bits)})
+		f.stats.peep("float-mask-const-pool")
+		return
+	}
 	t := f.allocReg(0)
 	if f64 {
 		f.a.MovImm64(t, mask64)
@@ -504,29 +514,59 @@ func (f *fn) fround(f64 bool, mode byte) {
 	f.pushFReg(dst, mtOf2(f64))
 }
 
-// fcopysign: (a & ~sign) | (b & sign).
+// fcopysign uses one mask through either of these equivalent identities:
+//
+//	b ^ ((a ^ b) & magnitudeMask)
+//	a ^ ((a ^ b) & signMask)
+//
+// Select the form that can reuse an owned operand. The VEX three-operand
+// sequence also reads pinned float locals directly instead of copying both.
 func (f *fn) fcopysign(f64 bool) {
 	b := f.popValue()
 	a := f.popValue()
-	xa := f.materializeF(a)
+	xa, xaOwned := f.operandRegF(a)
 	f.fpinned = f.fpinned.add(xa)
-	xb := f.materializeF(b)
+	xb, xbOwned := f.operandRegF(b)
 	f.fpinned = f.fpinned.add(xb)
-	var prefix byte
-	if f64 {
-		prefix = 0x66
+
+	dst := regNone
+	useMagnitude := false
+	switch {
+	case xbOwned:
+		dst = xb // preserve a; finish with a ^ sign(a^b)
+	case xaOwned:
+		dst = xa
+		useMagnitude = true // preserve b; finish with b ^ magnitude(a^b)
+	default:
+		dst = f.allocFReg(maskOf(xa, xb))
 	}
-	m := f.allocFReg(0)
-	f.loadFMask(m, fMagMask64, fMagMask32, f64)
-	f.a.SseRR(prefix, 0x54, xa, m, false) // xa = |a|
-	f.loadFMask(m, fSignMask64, fSignMask32, f64)
-	f.a.SseRR(prefix, 0x54, xb, m, false) // xb = sign(b)
+	m := f.allocFReg(maskOf(dst))
+	if useMagnitude {
+		f.loadFMask(m, fMagMask64, fMagMask32, f64)
+	} else {
+		f.loadFMask(m, fSignMask64, fSignMask32, f64)
+	}
+	var pp byte
+	if f64 {
+		pp = 0b01
+	}
+	f.a.VSseRRR(pp, 0x57, dst, xa, xb) // dst = a ^ b
+	f.a.VSseRRR(pp, 0x54, dst, dst, m) // retain magnitude or sign difference
+	if useMagnitude {
+		f.a.VSseRRR(pp, 0x57, dst, xb, dst) // dst = b ^ magnitude(a^b)
+	} else {
+		f.a.VSseRRR(pp, 0x57, dst, xa, dst) // dst = a ^ sign(a^b)
+	}
 	f.releaseF(m)
-	f.a.SseRR(prefix, 0x56, xa, xb, false) // xa |= xb
-	f.fpinned = f.fpinned.remove(xa)
-	f.fpinned = f.fpinned.remove(xb)
-	f.releaseF(xb)
-	f.pushFReg(xa, mtOf2(f64))
+	f.fpinned = f.fpinned.remove(xa).remove(xb)
+	if xaOwned && xa != dst {
+		f.releaseF(xa)
+	}
+	if xbOwned && xb != dst {
+		f.releaseF(xb)
+	}
+	f.stats.peep("fcopysign-xor-mask")
+	f.pushFReg(dst, mtOf2(f64))
 }
 
 // fcmp lowers a NaN-correct float comparison to a 0/1 i32 result.

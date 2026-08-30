@@ -356,7 +356,7 @@ func BenchmarkSWARPack4Exec(b *testing.B) {
 				b.Fatal(err)
 			}
 			defer wagoruntime.Unmap(mem)
-			args, results, trap := make([]byte, 8), make([]byte, 8), make([]byte, 8)
+			args, results, trap := make([]byte, 8), make([]byte, 8), make([]byte, wagoruntime.TrapBufferBytes)
 			b.ReportAllocs()
 			b.ReportMetric(float64(len(cm.Code)), "code-B")
 			b.ResetTimer()

@@ -10,6 +10,8 @@ package runtime
 // trampoline_tinygo_amd64.go.
 func enterNative(code, serArgs, linMem, trap, results, foreignStackTop uintptr)
 
+func (e *Engine) initNativeEntry() error { return nil }
+
 // resumeNative is implemented in resume_amd64.s. It resumes native code parked
 // at a returning host import (see hostcall_amd64.go): it restores the wasm
 // register state + RSP saved in the control frame and returns into wasm after

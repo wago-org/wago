@@ -37,16 +37,10 @@ func tinygoARM64IntEntryCode(foreignStackTop uintptr) []byte {
 }
 
 func preparedIntThunkFor(e *Engine) (uintptr, error) {
-	if e.preparedInt.entry != 0 {
-		return e.preparedInt.entry, nil
-	}
-	mem, err := mmapExec(tinygoARM64IntEntryCode(e.stackTop))
-	if err != nil {
+	if err := e.initNativeEntry(); err != nil {
 		return 0, err
 	}
-	e.preparedInt.mem = mem
-	e.preparedInt.entry = uintptr(unsafe.Pointer(&mem[0]))
-	return e.preparedInt.entry, nil
+	return uintptr(unsafe.Pointer(&e.preparedInt.mem[0])) + tinygoARM64PreparedIntEntryOffset, nil
 }
 
 func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {

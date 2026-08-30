@@ -76,7 +76,7 @@ func TestJobMemoryHasTrapCellDetectsCrossInstanceOverwrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer jm.Close()
-	trap := make([]byte, 8)
+	trap := make([]byte, TrapBufferBytes)
 	if jm.HasTrapCell(trap) {
 		t.Fatal("fresh job memory unexpectedly has the trap cell bound")
 	}

@@ -37,7 +37,7 @@ func divInvoker(t *testing.T, m *wasm.Module) (call func(uint64) uint64, done fu
 	}
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(runtime.TrapBufferBytes)
 	call = func(arg uint64) uint64 {
 		binary.LittleEndian.PutUint64(serArgs, arg)
 		if err := eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results); err != nil {
@@ -127,9 +127,9 @@ func refDivRem(op divOp, w64 bool, n, d uint64) uint64 {
 	return uint64(a / b)
 }
 
-// TestDivByConstFallback covers the cases that stay on the idiv path: a constant
-// zero divisor (must trap) and signed ±1 (x/-1 == -x with an INT_MIN/-1 trap,
-// x%±1 == 0). Strength reduction must not swallow these.
+// TestDivByConstFallback covers a constant zero divisor, which must stay on the
+// trapping divide path, and signed division by -1, whose strength reduction must
+// preserve the INT_MIN/-1 overflow trap.
 func TestDivByConstFallback(t *testing.T) {
 	// div by constant 0 traps.
 	for _, w64 := range []bool{false, true} {
@@ -142,6 +142,13 @@ func TestDivByConstFallback(t *testing.T) {
 	// signed div by -1: x/-1 == -x, and INT_MIN/-1 traps; rem by ±1 == 0.
 	i32 := wasm.I32
 	m := mod1(t, []wasm.ValType{i32}, []wasm.ValType{i32}, divBody(false, divOp{"", 0x6d, true, false}, uint64(^uint32(0))))
+	var stats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
+		t.Fatal(err)
+	}
+	if got := stats.Funcs[0].Peephole["div-by-const"]; got != 1 {
+		t.Fatalf("i32.div_s -1 div-by-const = %d, want 1", got)
+	}
 	call, done := divInvoker(t, m)
 	if got := int32(uint32(call(7))); got != -7 {
 		t.Errorf("i32.div_s 7/-1 = %d, want -7", got)
@@ -150,6 +157,57 @@ func TestDivByConstFallback(t *testing.T) {
 	// INT_MIN / -1 must trap.
 	if _, _, err := runMemAmd64(t, modMem(t, 1, []wasm.ValType{i32}, []wasm.ValType{i32}, divBody(false, divOp{"", 0x6d, true, false}, uint64(^uint32(0)))), nil, 0x80000000); err == nil {
 		t.Errorf("i32.div_s INT_MIN/-1 did not trap")
+	}
+
+	i64 := wasm.I64
+	m = mod1(t, []wasm.ValType{i64}, []wasm.ValType{i64}, divBody(true, divOp{"", 0x7f, true, false}, ^uint64(0)))
+	call, done = divInvoker(t, m)
+	if got := int64(call(7)); got != -7 {
+		t.Errorf("i64.div_s 7/-1 = %d, want -7", got)
+	}
+	done()
+	if _, _, err := runMemAmd64(t, modMem(t, 1, []wasm.ValType{i64}, []wasm.ValType{i64}, divBody(true, divOp{"", 0x7f, true, false}, ^uint64(0))), nil, 0x8000000000000000); err == nil {
+		t.Errorf("i64.div_s INT_MIN/-1 did not trap")
+	}
+}
+
+func TestSignedUnitDivisorsStrengthReduceWhereSafe(t *testing.T) {
+	values := []uint64{0, 1, 7, 0x7fffffff, 0x80000000, 0xffffffffffffffff, 0x8000000000000000}
+	for _, w64 := range []bool{false, true} {
+		for _, tc := range []struct {
+			op      divOp
+			divisor uint64
+		}{
+			{op: divOp{name: "div_s_1", opcode: map[bool]byte{false: 0x6d, true: 0x7f}[w64], signed: true}, divisor: 1},
+			{op: divOp{name: "rem_s_1", opcode: map[bool]byte{false: 0x6f, true: 0x81}[w64], signed: true, rem: true}, divisor: 1},
+			{op: divOp{name: "rem_s_minus_1", opcode: map[bool]byte{false: 0x6f, true: 0x81}[w64], signed: true, rem: true}, divisor: ^uint64(0)},
+		} {
+			op := tc.op
+			m := divConstMod(t, w64, op, tc.divisor)
+			var stats ModuleStats
+			if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
+				t.Fatal(err)
+			}
+			if got := stats.Funcs[0].Peephole["div-by-const"]; got != 1 {
+				t.Fatalf("%s i64=%v div-by-const = %d, want 1", op.name, w64, got)
+			}
+			call, done := divInvoker(t, m)
+			for _, value := range values {
+				got := call(value)
+				want := value
+				if op.rem {
+					want = 0
+				}
+				if !w64 {
+					got &= 0xffffffff
+					want &= 0xffffffff
+				}
+				if got != want {
+					t.Fatalf("%s i64=%v value=%#x = %#x, want %#x", op.name, w64, value, got, want)
+				}
+			}
+			done()
+		}
 	}
 }
 

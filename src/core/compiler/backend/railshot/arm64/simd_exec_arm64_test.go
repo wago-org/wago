@@ -131,7 +131,7 @@ func runArm64Result(t *testing.T, m *wasm.Module, n int) []byte {
 
 	serArgs := ar.Alloc(256)
 	results := ar.Alloc(256)
-	trap := ar.Alloc(8)
+	trap := ar.Alloc(coreruntime.TrapBufferBytes)
 	if err := eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results); err != nil {
 		t.Fatalf("call: %v", err)
 	}
