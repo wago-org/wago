@@ -462,6 +462,18 @@ serializer function 49 falls from 4,712 to 4,324 bytes and SIMD string writer
 Dragline and 22.557 us for Railshot, or **1.075x**; serialization remains the
 largest application gap.
 
+Pinned structured locals and promoted globals now branch directly from ARM64
+comparison flags when an immediate `if` or result-free `br_if` consumes the
+comparison. This avoids materializing a Wasm boolean in an operand-stack
+register and copying it again for the control instruction. A focused structured
+compiler fixture covers both a promoted-global `br_if` and pinned-local `if`.
+
+Eight balanced 300 ms samples measured 24.183 us before and 23.994 us after,
+a further **0.8%** reduction. Serializer function 49 falls from 4,324 to 4,244
+native bytes and the module to 114,452 bytes. A fresh paired-backend median is
+23.841 us versus Railshot's 22.357 us, or **1.066x**; the residual serializer
+gap is 6.6%.
+
 ## Historical application outliers
 
 The table below predates the `blake-as` and `utf-as-simd` campaign slices and is

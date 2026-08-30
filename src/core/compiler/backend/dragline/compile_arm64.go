@@ -7186,6 +7186,101 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				continue
 			}
 		}
+		if registerOperandStack && reachable && instrIndex+3 < len(sf.Instrs) && instr.Kind == wasm.InstrLocalGet &&
+			(sf.Instrs[instrIndex+1].Kind == wasm.InstrI32Const || sf.Instrs[instrIndex+1].Kind == wasm.InstrI64Const) &&
+			arm64IntegerComparisonKind(sf.Instrs[instrIndex+2].Kind) &&
+			(sf.Instrs[instrIndex+3].Kind == wasm.InstrIf || sf.Instrs[instrIndex+3].Kind == wasm.InstrBrIf) {
+			local := int(instr.U32())
+			if local >= 0 && local < len(sf.Locals) && !localFloat[local] && (registerStack || localScalarPinned[local]) {
+				kind := sf.Instrs[instrIndex+2].Kind
+				wide := sf.Locals[local] == wasm.I64
+				constantKindMatches := wide && sf.Instrs[instrIndex+1].Kind == wasm.InstrI64Const || !wide && sf.Instrs[instrIndex+1].Kind == wasm.InstrI32Const
+				branch := sf.Instrs[instrIndex+3]
+				branchSupported := branch.Kind == wasm.InstrIf
+				if branch.Kind == wasm.InstrBrIf && int(branch.U32()) <= len(controls) {
+					branchSupported = int(branch.U32()) == len(controls) && len(sf.Results) == 0
+					if int(branch.U32()) < len(controls) {
+						target := &controls[len(controls)-1-int(branch.U32())]
+						branchSupported = !target.result
+					}
+				}
+				if constantKindMatches && branchSupported {
+					a.MovImm64(arm64.X16, sf.Instrs[instrIndex+1].U64())
+					if wide {
+						a.CmpReg64(localRegisters[local], arm64.X16)
+					} else {
+						a.CmpReg32(localRegisters[local], arm64.X16)
+					}
+					cond := arm64IntegerComparisonCond(kind)
+					if branch.Kind == wasm.InstrIf {
+						control := arm64StackControl{kind: wasm.InstrIf, depth: len(stackTypes), result: branch.HasResult(), resultType: branch.ValueType(), falsePatch: farBcond(arm64.Cond(uint8(cond) ^ 1)).at, parentReachable: true}
+						controls = append(controls, control)
+					} else if int(branch.U32()) == len(controls) {
+						functionPatches = append(functionPatches, farBcond(cond))
+					} else {
+						target := &controls[len(controls)-1-int(branch.U32())]
+						if target.kind == wasm.InstrLoop {
+							if err := patch(farBcond(cond), target.start); err != nil {
+								return nil, 0, nil, err
+							}
+						} else {
+							target.endReached = true
+							target.patches = append(target.patches, farBcond(cond))
+						}
+					}
+					metadata.recordSource(a.Len(), branch.Offset)
+					instrIndex += 3
+					continue
+				}
+			}
+		}
+		if registerOperandStack && reachable && instrIndex+3 < len(sf.Instrs) && instr.Kind == wasm.InstrGlobalGet &&
+			(sf.Instrs[instrIndex+1].Kind == wasm.InstrI32Const || sf.Instrs[instrIndex+1].Kind == wasm.InstrI64Const) &&
+			arm64IntegerComparisonKind(sf.Instrs[instrIndex+2].Kind) &&
+			(sf.Instrs[instrIndex+3].Kind == wasm.InstrIf || sf.Instrs[instrIndex+3].Kind == wasm.InstrBrIf) {
+			if slot := promotedGlobalSlot(instr.U32()); slot >= 0 {
+				kind := sf.Instrs[instrIndex+2].Kind
+				wide := sf.Globals[instr.U32()] == wasm.I64
+				constantKindMatches := wide && sf.Instrs[instrIndex+1].Kind == wasm.InstrI64Const || !wide && sf.Instrs[instrIndex+1].Kind == wasm.InstrI32Const
+				branch := sf.Instrs[instrIndex+3]
+				branchSupported := branch.Kind == wasm.InstrIf
+				if branch.Kind == wasm.InstrBrIf && int(branch.U32()) <= len(controls) {
+					branchSupported = int(branch.U32()) == len(controls) && len(sf.Results) == 0
+					if int(branch.U32()) < len(controls) {
+						target := &controls[len(controls)-1-int(branch.U32())]
+						branchSupported = !target.result
+					}
+				}
+				if constantKindMatches && branchSupported {
+					a.MovImm64(arm64.X16, sf.Instrs[instrIndex+1].U64())
+					if wide {
+						a.CmpReg64(promotedGlobalRegs[slot], arm64.X16)
+					} else {
+						a.CmpReg32(promotedGlobalRegs[slot], arm64.X16)
+					}
+					cond := arm64IntegerComparisonCond(kind)
+					if branch.Kind == wasm.InstrIf {
+						control := arm64StackControl{kind: wasm.InstrIf, depth: len(stackTypes), result: branch.HasResult(), resultType: branch.ValueType(), falsePatch: farBcond(arm64.Cond(uint8(cond) ^ 1)).at, parentReachable: true}
+						controls = append(controls, control)
+					} else if int(branch.U32()) == len(controls) {
+						functionPatches = append(functionPatches, farBcond(cond))
+					} else {
+						target := &controls[len(controls)-1-int(branch.U32())]
+						if target.kind == wasm.InstrLoop {
+							if err := patch(farBcond(cond), target.start); err != nil {
+								return nil, 0, nil, err
+							}
+						} else {
+							target.endReached = true
+							target.patches = append(target.patches, farBcond(cond))
+						}
+					}
+					metadata.recordSource(a.Len(), branch.Offset)
+					instrIndex += 3
+					continue
+				}
+			}
+		}
 		if registerOperandStack && reachable && instrIndex+2 < len(sf.Instrs) && instr.Kind == wasm.InstrLocalGet &&
 			sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalGet && arm64DirectLocalBinaryKind(sf.Instrs[instrIndex+2].Kind) &&
 			len(stackTypes) < len(arm64OperandStackRegisters) {
