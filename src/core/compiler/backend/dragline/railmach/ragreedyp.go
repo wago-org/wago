@@ -30,7 +30,7 @@ type CallClobber struct {
 
 const (
 	greedyDensityMinInstructions         = 256
-	greedyRegionalDensityMinInstructions = 512
+	greedyRegionalDensityMinInstructions = 480
 )
 
 func DefaultGreedyConfig(target Target) GreedyConfig {
@@ -436,10 +436,9 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 
 func greedyEffectiveMaxStage(functionInstructions int, density bool, configured uint8) uint8 {
 	if density && functionInstructions < greedyRegionalDensityMinInstructions && configured > 3 {
-		// Medium integer kernels benefit from density priority, but their short
-		// spill ranges do not yet have a complete stage-4 regional-fragment
-		// contract. Keep the verified promotion/eviction stages and admit regional
-		// fragments only at the established large-kernel threshold.
+		// Medium integer kernels use density scoring but retain the verified
+		// promotion/eviction stages. Admit regional fragments at the measured
+		// large-parser threshold, where their reload savings outweigh planning cost.
 		return 3
 	}
 	return configured
