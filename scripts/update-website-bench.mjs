@@ -37,17 +37,6 @@ const benchmarkSets = await loadBenchmarkSets();
 const grp = (title) => ({ group: title });
 const rs = (label, sub, wagoKey, wazeroKey, winWord = "faster", kind = "ns", forcedDelta = "") =>
   ({ label, sub, wagoKey, wazeroKey, winWord, kind, forcedDelta });
-// rsRun is an end-to-end run row: wago and wazero (both JITs) each running one
-// real Rust/WASI program to completion.
-const rsRun = (label, sub, prog) => ({
-  label,
-  sub,
-  wagoKey: `RunWago/${prog}`,
-  wazeroKey: `RunWazero/${prog}`,
-  winWord: "faster",
-  kind: "ns",
-  forcedDelta: "",
-});
 // dv is a wago-only "front-end at scale" row: the combined Decode+Validate time
 // for one real-world binary, with its parse throughput. The bar is sized by the
 // binary's byte length, so the visual shows wago's front-end absorbing ever-
@@ -64,18 +53,13 @@ const TABS = [
     label: "General",
     items: [
       rs("Compile latency", "fib_rec module", "CompileFull/fib_rec", "WazeroCompile/fib_rec"),
-      rs("Instantiate latency", "fib_rec startup + mapping", "Instantiate_wago", "Instantiate_wazero"),
-      rs("Call overhead", "host → wasm", "ExecCallOverhead_wago", "ExecCallOverhead_wazero"),
-      rs("Host roundtrip", "wasm → host → wasm", "ExecHostRoundtrip_wago", "ExecHostRoundtrip_wazero"),
-      rs("Exec latency", "fib_rec recursion", "ExecFibRec_wago", "ExecFibRec_wazero"),
+      rs("Instantiate latency", "fib_rec startup + mapping", "Instantiate/fib_rec", "WazeroInstantiate/fib_rec"),
+      rs("Call overhead", "tiny host → wasm call", "Exec/tiny.add", "WazeroExec/tiny.add"),
+      rs("Exec latency", "fib_rec recursion", "Exec/fib_rec.fib", "WazeroExec/fib_rec.fib"),
       rs("N-body", "leapfrog solar-system integrator", "Exec/nbody.step", "WazeroExec/nbody.step"),
       rs("Ray tracer", "recursive Whitted, depth-4 mirrors", "Exec/raytrace.render", "WazeroExec/raytrace.render"),
       rs("SHA-256", "hash 8 KiB", "Exec/sha256.hashN", "WazeroExec/sha256.hashN"),
       rs("JSON deserialize", "json-as, SWAR", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN"),
-      grp("WASI preview 1"),
-      rs("WASI compile", "pulldown-cmark module", "WASICompile/markdown.wasm", "WazeroWASICompile/markdown.wasm"),
-      rs("WASI instantiate", "compiled module + WASI imports", "WASIInstantiate/markdown.wasm", "WazeroWASIInstantiate/markdown.wasm"),
-      rs("WASI run", "pulldown-cmark _start command", "WASIRun/markdown.wasm", "WazeroWASIRun/markdown.wasm"),
     ],
   },
   {
@@ -121,20 +105,20 @@ const TABS = [
     id: "instantiate",
     label: "Instantiate",
     items: [
-      rs("Cold start", "fib_rec startup + mapping", "Instantiate_wago", "Instantiate_wazero"),
-      rs("Heap footprint", "bytes allocated", "Instantiate_wago", "Instantiate_wazero", "leaner", "bytes"),
-      rs("Allocations", "objects allocated", "Instantiate_wago", "Instantiate_wazero", "leaner", "count"),
-      // Warm instantiate of large real programs (compile once, fresh instance per
-      // request — the serving path). wago reuses the compiled code + mapping; these
-      // are the same programs as the Compile/Exec "runs end-to-end" groups.
-      grp("Large real programs — warm instantiate (Rust / WASI)"),
-      rs("markdown", "pulldown-cmark · 320 KB", "InstBigWago/markdown", "InstBigWazero/markdown"),
-      rs("serde_json", "serde_json · 96 KB", "InstBigWago/jsonproc", "InstBigWazero/jsonproc"),
-      rs("blake3", "blake3 · 57 KB", "InstBigWago/blake3sum", "InstBigWazero/blake3sum"),
-      rs("base64", "base64 · 64 KB", "InstBigWago/base64x", "InstBigWazero/base64x"),
-      rs("CRC-32", "crc · 51 KB", "InstBigWago/crcsum", "InstBigWazero/crcsum"),
-      rs("rhai", "scripting engine · 2.4 MB", "InstBigWago/script", "InstBigWazero/script"),
-      rs("regex", "regex engine · 1.2 MB", "InstBigWago/regexmatch", "InstBigWazero/regexmatch"),
+      grp("Micro modules"),
+      rs("tiny", "smallest valid module", "Instantiate/tiny", "WazeroInstantiate/tiny"),
+      rs("fib_rec", "recursive fib", "Instantiate/fib_rec", "WazeroInstantiate/fib_rec"),
+      rs("many_funcs", "thousands of functions", "Instantiate/many_funcs", "WazeroInstantiate/many_funcs"),
+      grp("Compute kernels"),
+      rs("linked_list", "dependent-load chase", "Instantiate/linked_list", "WazeroInstantiate/linked_list"),
+      rs("sieve", "Eratosthenes", "Instantiate/sieve", "WazeroInstantiate/sieve"),
+      rs("nbody", "leapfrog integrator", "Instantiate/nbody", "WazeroInstantiate/nbody"),
+      rs("matmul", "64³ f64 multiply-add", "Instantiate/matmul", "WazeroInstantiate/matmul"),
+      rs("raytrace", "recursive ray tracer", "Instantiate/raytrace", "WazeroInstantiate/raytrace"),
+      grp("AssemblyScript"),
+      rs("json-as", "JSON SWAR", "Instantiate/json-as", "WazeroInstantiate/json-as"),
+      rs("blake-as", "BLAKE3 SWAR", "Instantiate/blake-as", "WazeroInstantiate/blake-as"),
+      rs("utf-as", "UTF SWAR transcode", "Instantiate/utf-as", "WazeroInstantiate/utf-as"),
     ],
   },
   {
@@ -142,8 +126,8 @@ const TABS = [
     label: "Memory",
     items: [
       grp("Instantiation"),
-      rs("fib_rec instance", "bytes allocated per fresh instance", "Instantiate_wago", "Instantiate_wazero", "leaner", "bytes"),
-      rs("fib_rec instance", "allocation objects per fresh instance", "Instantiate_wago", "Instantiate_wazero", "leaner", "count"),
+      rs("fib_rec instance", "bytes allocated per fresh instance", "Instantiate/fib_rec", "WazeroInstantiate/fib_rec", "leaner", "bytes"),
+      rs("fib_rec instance", "allocation objects per fresh instance", "Instantiate/fib_rec", "WazeroInstantiate/fib_rec", "leaner", "count"),
       grp("Full compile — allocation bytes"),
       rs("tiny", "smallest module", "CompileFull/tiny", "WazeroCompile/tiny", "leaner", "bytes"),
       rs("memory tree", "calls + linear-memory access", "CompileFull/memory_tree", "WazeroCompile/memory_tree", "leaner", "bytes"),
@@ -165,10 +149,9 @@ const TABS = [
     label: "Exec",
     items: [
       grp("Micro ops"),
-      rs("Call overhead", "host → wasm", "ExecCallOverhead_wago", "ExecCallOverhead_wazero"),
-      rs("Host roundtrip", "wasm → host → wasm (sync host import)", "ExecHostRoundtrip_wago", "ExecHostRoundtrip_wazero"),
-      rs("Iterative fib", "fib_iter loop", "ExecFibLoop_wago", "ExecFibLoop_wazero"),
-      rs("Recursive fib", "fib_rec", "ExecFibRec_wago", "ExecFibRec_wazero"),
+      rs("Call overhead", "tiny host → wasm call", "Exec/tiny.add", "WazeroExec/tiny.add"),
+      rs("Iterative fib", "fib_iter loop", "Exec/fib_iter.fib", "WazeroExec/fib_iter.fib"),
+      rs("Recursive fib", "fib_rec", "Exec/fib_rec.fib", "WazeroExec/fib_rec.fib"),
       rs("Dispatch", "call_indirect apply", "Exec/dispatch.apply", "WazeroExec/dispatch.apply"),
       grp("Compute kernels"),
       rs("Linked list", "dependent-load chase", "Exec/linked_list.sum", "WazeroExec/linked_list.sum"),
@@ -195,24 +178,6 @@ const TABS = [
       rs("JSON deserialize", "json-as SIMD", "Exec/json-as-simd.deserializeN", "WazeroExec/json-as-simd.deserializeN"),
       rs("BLAKE3 hash", "blake-as SIMD, 4 KiB", "Exec/blake-as-simd.hashN", "WazeroExec/blake-as-simd.hashN"),
       rs("UTF transcode", "utf-as SIMD, mixed text", "Exec/utf-as-simd.convertN", "WazeroExec/utf-as-simd.convertN"),
-      // Real database engine: a real in-memory SQLite query (aggregate table
-      // scan) driven through the C API — the same 920 KB engine the Compile tab
-      // races, now actually executing on wago.
-      grp("Real-world engine (C / SQLite)"),
-      rs("SQLite query", "in-memory aggregate scan, 5k rows", "SqliteQueryWago", "SqliteQueryWazero"),
-      // Real Rust programs run end-to-end (compile + instantiate + execute). Their
-      // whole workload happens in _start, so this whole-program run — not a
-      // repeatable export call — is how they execute; wago's fast compile +
-      // execution win the run. Same programs as the Compile tab's "runs end-to-end"
-      // group; verified by src/wago TestWASIApps.
-      grp("Real programs run end-to-end — compile + instantiate + execute (wago · wazero)"),
-      rsRun("markdown", "pulldown-cmark render", "markdown"),
-      rsRun("serde_json", "parse + aggregate + reserialize", "jsonproc"),
-      rsRun("blake3", "BLAKE3 hash", "blake3sum"),
-      rsRun("base64", "encode + decode roundtrip", "base64x"),
-      rsRun("CRC-32", "crc crate checksum", "crcsum"),
-      rsRun("rhai", "run a script (scripting engine)", "script"),
-      rsRun("regex", "compile pattern + count matches", "regexmatch"),
     ],
   },
 ];

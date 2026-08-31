@@ -35,7 +35,8 @@ benchstat /tmp/railshot-before.txt /tmp/railshot-after.txt
 The publishable corpus run measures both compiler engines with matching public
 pipeline names: `BenchmarkCompileFull` / `BenchmarkDraglineCompileFull`,
 `BenchmarkInstantiate` / `BenchmarkDraglineInstantiate`, and `BenchmarkExec` /
-`BenchmarkDraglineExec`. Dragline sub-benchmarks explicitly skip modules outside
+`BenchmarkDraglineExec`, paired with wazero compile, instantiate, and execution
+rows. Dragline sub-benchmarks explicitly skip modules outside
 its strict feature boundary; the website publisher omits an unpaired row instead
 of substituting Railshot data. Use `bench/cmd/benchpub` so all retained samples
 and the measured commit are recorded in one `bench.json` per architecture.
