@@ -225,13 +225,31 @@ func skipRefHeapTypeBytes(r *reader) error {
 }
 
 func classifyMemArgBytes(r *reader, imm *InstructionImmediate, widths memargWidths) error {
-	ma, err := decodeMemArgWithWidths(r, widths)
-	imm.MemAlign = ma.Align
-	imm.MemOffset = ma.Offset
-	if ma.Mem != nil {
-		imm.HasMemIndex = true
-		imm.MemIndex = uint32(*ma.Mem)
+	n, err := r.u32()
+	if err != nil {
+		return err
 	}
+	memoryIndex := uint32(0)
+	switch {
+	case n < 64:
+		imm.MemAlign = n
+	case n < 128:
+		imm.MemAlign = n - 64
+		memoryIndex, err = r.u32()
+		if err != nil {
+			return err
+		}
+		imm.HasMemIndex = true
+		imm.MemIndex = memoryIndex
+	default:
+		return &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
+	}
+	if widths.offset64(memoryIndex) {
+		imm.MemOffset, err = r.u64()
+		return err
+	}
+	offset, err := r.u32()
+	imm.MemOffset = uint64(offset)
 	return err
 }
 

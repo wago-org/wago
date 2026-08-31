@@ -475,20 +475,25 @@ func TestInstantiateInitializesGlobalSlots(t *testing.T) {
 }
 
 func TestInstantiateLateGlobalErrorCleansResources(t *testing.T) {
-	before := procSelfMapsCount(t)
 	c := newHandBuiltCompiled([]byte{0xc3}, Compiled{ // ret; code is mapped before global initialization reaches this malformed reference.
 		Globals: []GlobalDef{
 			{Type: ValI32, Bits: 1},
 			{Type: ValI32, HasInitGlobal: true, InitGlobal: 2},
 		},
 	})
-	for i := 0; i < 5; i++ {
+	instantiate := func() {
+		t.Helper()
 		if in, err := Instantiate(c, InstantiateOptions{}); err == nil {
 			in.Close()
 			t.Fatal("Instantiate malformed global initializer succeeded, want error")
 		} else if !bytes.Contains([]byte(err.Error()), []byte("initializer references unavailable global")) {
 			t.Fatalf("Instantiate error = %v, want unavailable global", err)
 		}
+	}
+	instantiate() // Exclude one-time engine and arena initialization from leak accounting.
+	before := procSelfMapsCount(t)
+	for i := 0; i < 5; i++ {
+		instantiate()
 	}
 	after := procSelfMapsCount(t)
 	if after > before+2 {

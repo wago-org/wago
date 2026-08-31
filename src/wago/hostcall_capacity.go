@@ -43,10 +43,14 @@ func moduleSyncHostSlotCapacity(m *wasm.Module) (int, error) {
 	if m == nil {
 		return maxSlots, nil
 	}
-	for i := 0; i < m.ImportedFuncCount(); i++ {
-		ft, ok := m.FuncSignature(uint32(i))
+	functionIndex := 0
+	for importIndex := range m.Imports {
+		if m.Imports[importIndex].Type.Kind != wasm.ExternFunc {
+			continue
+		}
+		ft, ok := m.ImportFuncType(importIndex)
 		if !ok {
-			return 0, fmt.Errorf("imported function %d signature is unavailable", i)
+			return 0, fmt.Errorf("imported function %d signature is unavailable", functionIndex)
 		}
 		for _, values := range [][]wasm.ValType{ft.Params, ft.Results} {
 			slots := 0
@@ -58,7 +62,7 @@ func moduleSyncHostSlotCapacity(m *wasm.Module) (int, error) {
 				if slots > coreruntime.MaxSyncHostSlots {
 					return 0, &coreruntime.ImplementationLimitError{
 						Feature: "synchronous host-call signature",
-						Shape:   fmt.Sprintf("imported function %d requires more than %d ABI slots", i, coreruntime.MaxSyncHostSlots),
+						Shape:   fmt.Sprintf("imported function %d requires more than %d ABI slots", functionIndex, coreruntime.MaxSyncHostSlots),
 						Limit:   coreruntime.MaxSyncHostSlots,
 					}
 				}
@@ -67,6 +71,7 @@ func moduleSyncHostSlotCapacity(m *wasm.Module) (int, error) {
 				maxSlots = slots
 			}
 		}
+		functionIndex++
 	}
 	return maxSlots, nil
 }

@@ -627,33 +627,34 @@ func compTypeName(k wasm.CompTypeKind) string {
 
 func (p supportPass) imports() error {
 	for i, im := range p.m.Imports {
-		ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
 			ft, ok := p.funcType(im.Type.FuncType())
 			if !ok {
-				return p.unsupported("import", "function with unknown type", ctx)
+				return p.unsupported("import", "function with unknown type", fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name))
 			}
 			// Reflection-free host imports admit externref handles and opaque funcref
 			// tokens. Instantiation still requires explicit ownership before a host
 			// descriptor itself may cross a public funcref boundary.
 			for _, pt := range ft.Params {
 				if !p.supportedValType(pt) {
-					return p.valType(pt, ctx+" function signature")
+					return p.valType(pt, fmt.Sprintf("import %d %q.%q function signature", i, im.Module, im.Name))
 				}
 			}
 			for _, rt := range ft.Results {
 				if !p.supportedValType(rt) {
-					return p.valType(rt, ctx+" function result")
+					return p.valType(rt, fmt.Sprintf("import %d %q.%q function result", i, im.Module, im.Name))
 				}
 			}
 		case wasm.ExternGlobal:
+			ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 			// Imported reference globals are admitted structurally here; instantiation
 			// requires an exact typed, mutable, compatible-store Global owner.
 			if err := p.globalType(im.Type.GlobalType().Type, ctx); err != nil {
 				return err
 			}
 		case wasm.ExternTable:
+			ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 			// Imported tables carry their exact reference type into the shared
 			// runtime handle. Externref imports additionally require reference types
 			// and a compatible store-bound owner at instantiation.
@@ -676,15 +677,16 @@ func (p supportPass) imports() error {
 				}
 			}
 		case wasm.ExternMem:
+			ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 			if err := p.checkMemType(im.Type.MemType(), ctx); err != nil {
 				return err
 			}
 		case wasm.ExternTag:
 			if !p.feat.ExceptionHandling {
-				return p.unsupported("import", "tag (exception-handling disabled)", ctx)
+				return p.unsupported("import", "tag (exception-handling disabled)", fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name))
 			}
 		default:
-			return p.unsupported("import", "unknown external kind", ctx)
+			return p.unsupported("import", "unknown external kind", fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name))
 		}
 	}
 	return nil

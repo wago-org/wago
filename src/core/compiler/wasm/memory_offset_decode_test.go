@@ -61,6 +61,25 @@ func BenchmarkModuleInstructionClassifierManyImportsAndOps(b *testing.B) {
 	}
 }
 
+func TestModuleInstructionClassifierIndexedMemargDoesNotAllocate(t *testing.T) {
+	m := &Module{Memories: []MemType{{Limits: Limits{Min: 1}}, {Limits: Limits{Min: 1, Addr64: true}}}}
+	classifier := NewModuleInstructionClassifier(m, true)
+	encoded := []byte{0x40, 0x01, 0x00} // align=0, memory 1, offset=0
+	var classifyErr error
+	if allocs := testing.AllocsPerRun(1000, func() {
+		var imm InstructionImmediate
+		classifyErr = classifier.ClassifyInto(NewReader(encoded), 0x28, &imm)
+		if classifyErr == nil && (!imm.HasMemIndex || imm.MemIndex != 1 || imm.MemOffset != 0) {
+			panic("indexed memarg classification changed")
+		}
+	}); allocs != 0 {
+		t.Fatalf("indexed memarg classification allocs = %v, want 0", allocs)
+	}
+	if classifyErr != nil {
+		t.Fatal(classifyErr)
+	}
+}
+
 func BenchmarkModuleInstructionClassifierMixedLateMemory(b *testing.B) {
 	const count = 10000
 	m := &Module{Imports: make([]Import, count)}

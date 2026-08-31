@@ -120,8 +120,11 @@ func moduleHasCollectorReferenceCallBoundary(m *wasm.Module) bool {
 	if m == nil {
 		return false
 	}
-	for i := 0; i < m.ImportedFuncCount(); i++ {
-		ft, ok := m.FuncSignature(uint32(i))
+	for i := range m.Imports {
+		if m.Imports[i].Type.Kind != wasm.ExternFunc {
+			continue
+		}
+		ft, ok := m.ImportFuncType(i)
 		if !ok || wasmFuncTypeTransfersCollectorRefs(m, ft) {
 			return true
 		}
