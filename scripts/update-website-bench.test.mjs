@@ -58,12 +58,14 @@ function runUpdater(websiteDir, extraEnv = {}) {
 
 function assertDOMContract(html) {
   assert.equal(matches(html, /class="vs__archpanel"/g), 2);
-  assert.equal(matches(html, /class="vs__main"/g), 2);
-  assert.equal(matches(html, /class="vs__toprow"/g), 2);
+  assert.equal(matches(html, /class="vs__main"/g), 4);
+  assert.equal(matches(html, /class="vs__toprow"/g), 4);
   assert.equal(matches(html, /class="vs__specs"/g), 2);
-  assert.equal(matches(html, /id="perf-(?:amd64|arm64)-tab-memory"/g), 2);
+  assert.equal(matches(html, /id="perf-(?:amd64|arm64)-(?:railshot|dragline)-tab-memory"/g), 4);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);
   assert.match(html, /class="vs__stage"/);
+  assert.equal(matches(html, /vs__dot--wazero"><\/i>wazero/g), 4);
+  assert.doesNotMatch(html, /wazero's\s+Cranelift|vs__dot--wazero"><\/i>Cranelift/);
   assert.doesNotMatch(html, /class="[^"]*"[^>]+class="/);
 }
 

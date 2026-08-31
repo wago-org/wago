@@ -394,7 +394,7 @@ function renderSection(tabs, sets) {
                 <p class="section__lead">
                     Compare Railshot's direct single-pass compiler and the
                     experimental optimizing Dragline backend against wazero's
-                    Cranelift compiler. Every published row uses the same
+                    compiler backend. Every published row uses the same
                     workload on the selected architecture.
                 </p>
                 <div class="vs">
@@ -458,7 +458,7 @@ ${tablist}
                                     </div>
                                     <div class="vs__legend">
                                         <span class="vs__key"><i class="vs__dot vs__dot--wago"></i>${backend.label}</span>
-                                        <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>Cranelift</span>
+                                        <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>wazero</span>
                                     </div>
                                 </div>
 ${panels}
