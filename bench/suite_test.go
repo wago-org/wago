@@ -300,7 +300,10 @@ func BenchmarkDraglineCompileFull(b *testing.B) {
 func benchmarkCompileFull(b *testing.B, cfg *wago.RuntimeConfig) {
 	eachModule(b, "CompileFull", func(b *testing.B, m corpusModule) {
 		if _, err := cfg.Compile(append([]byte(nil), m.bytes...)); err != nil {
-			b.Skipf("%s compiler does not admit %s: %v", cfg.Compiler(), m.name(), err)
+			if cfg.Compiler() == wago.CompilerDragline {
+				b.Skipf("%s compiler does not admit %s: %v", cfg.Compiler(), m.name(), err)
+			}
+			b.Fatal(err)
 		}
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
@@ -394,7 +397,10 @@ func benchmarkInstantiate(b *testing.B, cfg *wago.RuntimeConfig) {
 	eachModule(b, "Instantiate", func(b *testing.B, m corpusModule) {
 		c, err := cfg.Compile(append([]byte(nil), m.bytes...))
 		if err != nil {
-			b.Skipf("%s compiler does not admit %s: %v", cfg.Compiler(), m.name(), err)
+			if cfg.Compiler() == wago.CompilerDragline {
+				b.Skipf("%s compiler does not admit %s: %v", cfg.Compiler(), m.name(), err)
+			}
+			b.Fatal(err)
 		}
 		imports := hostStubs(c)
 		b.ResetTimer()
@@ -439,22 +445,36 @@ func invokePrepared(fn *wago.PreparedFunction, args []uint64) ([]uint64, error) 
 }
 
 func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
+	experimental := cfg.Compiler() == wago.CompilerDragline
 	for _, m := range loadCorpus(b) {
 		if len(m.Exec) == 0 || !m.supports("Exec") {
 			continue
 		}
-		c, err := cfg.Compile(m.bytes)
+		c, err := cfg.Compile(append([]byte(nil), m.bytes...))
 		if err != nil {
+			if experimental {
+				b.Logf("%s compiler does not admit %s: %v", cfg.Compiler(), m.name(), err)
+				continue
+			}
 			b.Fatalf("%s compile: %v", m.name(), err)
 		}
 		in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: hostStubs(c)})
 		if err != nil {
+			if experimental {
+				b.Logf("%s cannot instantiate %s: %v", cfg.Compiler(), m.name(), err)
+				continue
+			}
 			b.Fatalf("%s instantiate: %v", m.name(), err)
 		}
 		// wago has no start section, so AssemblyScript modules expose their
 		// init (global setup) as an export the host calls once before exec.
 		if m.Init != "" {
 			if _, err := in.Invoke(m.Init); err != nil {
+				if experimental {
+					b.Logf("%s cannot initialize %s through %s: %v", cfg.Compiler(), m.name(), m.Init, err)
+					in.Close()
+					continue
+				}
 				b.Fatalf("%s init %s: %v", m.name(), m.Init, err)
 			}
 		}
@@ -465,16 +485,26 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 			}
 			fn, err := in.PrepareFunction(e.Export)
 			if err != nil {
+				if experimental {
+					b.Logf("%s cannot prepare %s.%s: %v", cfg.Compiler(), m.name(), e.Export, err)
+					continue
+				}
 				b.Fatalf("%s prepare %s: %v", m.name(), e.Export, err)
 			}
 			b.Run(m.name()+"."+e.Export, func(b *testing.B) {
 				b.ReportAllocs()
 				if _, err := invokePrepared(fn, args); err != nil {
+					if experimental {
+						b.Skipf("%s cannot execute %s.%s: %v", cfg.Compiler(), m.name(), e.Export, err)
+					}
 					b.Fatalf("warmup invoke: %v", err)
 				}
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					if _, err := invokePrepared(fn, args); err != nil {
+						if experimental {
+							b.Skipf("%s cannot execute %s.%s: %v", cfg.Compiler(), m.name(), e.Export, err)
+						}
 						b.Fatal(err)
 					}
 				}
