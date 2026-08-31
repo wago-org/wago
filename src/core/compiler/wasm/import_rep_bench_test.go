@@ -69,11 +69,11 @@ func syntheticImportModuleBytes(kindName string, imports int) []byte {
 	return append(module, payload...)
 }
 
-func benchmarkImportShapes(b *testing.B, fn func(*testing.B, []byte)) {
+func benchmarkImportShapes(b *testing.B, maximumMemoryImports int, fn func(*testing.B, []byte)) {
 	for _, kind := range []string{"functions", "globals", "tables", "memories", "tags", "mixed"} {
 		counts := []int{10, 100, 1000, 10000}
-		if kind == "memories" {
-			counts = []int{10, 100, 1000, int(MaximumMemoriesPerModule)}
+		if kind == "memories" && maximumMemoryImports < counts[len(counts)-1] {
+			counts[len(counts)-1] = maximumMemoryImports
 		}
 		for _, imports := range counts {
 			data := syntheticImportModuleBytes(kind, imports)
@@ -125,7 +125,7 @@ func BenchmarkImportNameDecode(b *testing.B) {
 }
 
 func BenchmarkImportMetadataDecode(b *testing.B) {
-	benchmarkImportShapes(b, func(b *testing.B, data []byte) {
+	benchmarkImportShapes(b, 10000, func(b *testing.B, data []byte) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			m, err := DecodeModule(data)
@@ -138,7 +138,7 @@ func BenchmarkImportMetadataDecode(b *testing.B) {
 }
 
 func BenchmarkImportMetadataValidate(b *testing.B) {
-	benchmarkImportShapes(b, func(b *testing.B, data []byte) {
+	benchmarkImportShapes(b, int(MaximumMemoriesPerModule), func(b *testing.B, data []byte) {
 		m, err := DecodeModule(data)
 		if err != nil {
 			b.Fatal(err)
@@ -156,7 +156,7 @@ func BenchmarkImportMetadataValidate(b *testing.B) {
 }
 
 func BenchmarkImportMetadataIterate(b *testing.B) {
-	benchmarkImportShapes(b, func(b *testing.B, data []byte) {
+	benchmarkImportShapes(b, 10000, func(b *testing.B, data []byte) {
 		m, err := DecodeModule(data)
 		if err != nil {
 			b.Fatal(err)

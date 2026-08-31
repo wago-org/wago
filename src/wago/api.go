@@ -1518,29 +1518,32 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
-		for i := 0; i < importedFuncs; i++ {
-			typeIdx, ok := m.FuncTypeIndex(uint32(i))
-			if !ok {
+		functionIndex := 0
+		for importIndex := range m.Imports {
+			if m.Imports[importIndex].Type.Kind != wasm.ExternFunc {
 				continue
 			}
+			typeIdx := m.Imports[importIndex].Type.FuncType()
 			var ft wasm.CompType
 			if !m.ResolveTypeFunc(typeIdx.Index, &ft) {
+				functionIndex++
 				continue
 			}
 			params, err := typeConverter.abiTypes(ft.Params, c.Types)
 			if err != nil {
-				return nil, fmt.Errorf("imported function %d params: %w", i, err)
+				return nil, fmt.Errorf("imported function %d params: %w", functionIndex, err)
 			}
 			results, err := typeConverter.abiTypes(ft.Results, c.Types)
 			if err != nil {
-				return nil, fmt.Errorf("imported function %d results: %w", i, err)
+				return nil, fmt.Errorf("imported function %d results: %w", functionIndex, err)
 			}
 			unsafeCrossTail := false
-			word := i >> 6
+			word := functionIndex >> 6
 			if word < len(unsafeDirectTailImports) {
-				unsafeCrossTail = unsafeDirectTailImports[word]&(uint64(1)<<uint(i&63)) != 0
+				unsafeCrossTail = unsafeDirectTailImports[word]&(uint64(1)<<uint(functionIndex&63)) != 0
 			}
-			c.importFuncSigs[i] = FuncSig{Params: params, Results: results, TypeIndex: typeIdx.Index, HasTypeIndex: true, unsafeCrossTail: unsafeCrossTail}
+			c.importFuncSigs[functionIndex] = FuncSig{Params: params, Results: results, TypeIndex: typeIdx.Index, HasTypeIndex: true, unsafeCrossTail: unsafeCrossTail}
+			functionIndex++
 		}
 	}
 	importedTables := m.ImportedTableCount()

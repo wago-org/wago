@@ -24,12 +24,16 @@ allocation-free bytecode walks now decode directly into `InstructionImmediate`
 instead of constructing the AST pointer form. A 10,000-load mixed-width fixture
 improves **287.6→211.7 µs/op** (-26.4%), **42,183→1,915 B/op**, and
 **10,001→1 alloc/op**. Large function-import modules also avoid quadratic
-`ImportedFuncCount`/`FuncSignature` rescans: GC-boundary and synchronous-host-slot
-prepasses range the import section once, while frontend diagnostics format only
-on failure. The 10,000-import compile watchpoint improves **199.726→30.442 ms**
-(-84.8%), **6,364,072→5,486,008 B/op**, and **79,818→40,071 allocs/op**; sqlite3,
-ruby, and esbuild corpus compile medians remain flat with unchanged allocation
-counts. Stale resource-limit and survivor-policy benchmark fixtures were repaired.
+`ImportedFuncCount`, `FuncSignature`, and `FuncTypeIndex` rescans: GC-boundary,
+synchronous-host-slot, and imported-signature prepasses each range the import
+section once, while frontend diagnostics format only on failure. Ten-sample
+`benchstat` results improve the 10,000-import compile watchpoint
+**217.278→5.361 ms** (-97.53%), **6,364,072→5,486,008 B/op**, and
+**79,818→40,071 allocs/op**. Ten interleaved sqlite3, ruby, and esbuild corpus
+samples are statistically unchanged with a -0.43% geomean and identical
+allocation counts. The stripped manager size is unchanged; runtime-standard and
+runtime-minimal each grow 4,096 bytes. Stale resource-limit and survivor-policy
+benchmark fixtures were repaired.
 Adjacent import-name reuse and an inline mixed-memory width word were measured and
 rejected. See `docs/research/benchmark-audit-2026-08-30.md`.
 

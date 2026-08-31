@@ -44,45 +44,64 @@ about 50.6 us/op to 48.3 us/op in the final run.
 
 ## Retained: linear imported-function metadata passes
 
-`BenchmarkCompileImportMetadata` exposed quadratic compile time. Two module
-prepasses iterated imported function indexes and called `FuncSignature` for every
-index. `FuncSignature` rescanned the import section from its start, while repeated
-`ImportedFuncCount` calls performed more full scans. A CPU profile attributed
-about 63% of samples to `Module.importCount` and 36% to `Module.FuncTypeIndex`.
+`BenchmarkCompileImportMetadata` exposed quadratic compile time. GC-boundary,
+synchronous-host-slot, and imported-signature prepasses iterated function indexes
+while `FuncSignature` or `FuncTypeIndex` rescanned the import section from its
+start. Repeated `ImportedFuncCount` calls performed more full scans. The initial
+CPU profile attributed about 63% of samples to `Module.importCount` and 36% to
+`Module.FuncTypeIndex`. After the first two prepasses became linear, an adversarial
+follow-up profile found the imported-signature loop still spent 86.7% of samples
+in `FuncTypeIndex`.
 
-The runtime now ranges the import section once and resolves each function import
-by its actual import-section index through `Module.ImportFuncType`.
-Frontend admission also stopped formatting a diagnostic string for every valid
-function import; the exact text is now built only on an error path.
+All three runtime prepasses now range the import section once. Direct
+import-section lookups use `Module.ImportFuncType` where the stored signature is
+sufficient; imported-signature conversion keeps the exact function namespace
+while resolving types directly from each function import. Frontend admission also
+stopped formatting a diagnostic string for every valid function import; the exact
+text is now built only on an error path.
 
 Command:
 
 ```sh
 GOMAXPROCS=1 go test ./src/wago -run '^$' \
   -bench '^BenchmarkCompileImportMetadata/imports=(1000|10000)/low-level$' \
-  -benchmem -benchtime=1x -count=5 -cpu=1
+  -benchmem -benchtime=1x -count=10 -cpu=1
+benchstat main.txt head.txt
 ```
 
-Median results:
+Ten-sample `benchstat` results:
 
 | imports | metric | before | after | change |
 |---:|---|---:|---:|---:|
-| 1,000 | time | 2.428 ms | 0.636 ms | -73.8% |
-| 1,000 | Go bytes | 393,560 B/op | 307,608 B/op | -21.8% |
-| 1,000 | allocations | 7,798/op | 4,054/op | -48.0% |
-| 10,000 | time | 199.726 ms | 30.442 ms | -84.8% |
-| 10,000 | Go bytes | 6,364,072 B/op | 5,486,008 B/op | -13.8% |
-| 10,000 | allocations | 79,818/op | 40,071/op | -49.8% |
+| 1,000 | time | 2.452 ms | 0.394 ms | -83.94% |
+| 1,000 | Go bytes | 393,560 B/op | 307,608 B/op | -21.84% |
+| 1,000 | allocations | 7,798/op | 4,054/op | -48.01% |
+| 10,000 | time | 217.278 ms | 5.361 ms | -97.53% |
+| 10,000 | Go bytes | 6,364,072 B/op | 5,486,008 B/op | -13.80% |
+| 10,000 | allocations | 79,818/op | 40,071/op | -49.80% |
 
-Three one-iteration corpus compile samples were flat after the change:
+Ten interleaved one-iteration corpus samples found no significant compile-time
+change. The geomean moved -0.43%:
 
-| corpus | before median | after median |
-|---|---:|---:|
-| sqlite3 | 77.474 ms | 77.810 ms |
-| ruby | 797.416 ms | 796.829 ms |
-| esbuild | 530.954 ms | 530.050 ms |
+| corpus | before median | after median | p value |
+|---|---:|---:|---:|
+| sqlite3 | 83.36 ms | 83.76 ms | 0.436 |
+| ruby | 847.5 ms | 844.8 ms | 0.796 |
+| esbuild | 571.1 ms | 562.9 ms | 0.143 |
 
-Corpus compile bytes and allocation counts were unchanged.
+Corpus compile bytes and allocation counts were unchanged in every sample.
+
+### Release binary size
+
+The retained changes do not change the stripped manager profile. On Linux/amd64,
+the stripped `runtime-standard` and `runtime-minimal` profiles each grow by one
+4 KiB file-alignment page:
+
+| profile | before | after | change |
+|---|---:|---:|---:|
+| manager | 8,601,784 B | 8,601,784 B | 0 B |
+| runtime-standard | 8,466,616 B | 8,470,712 B | +4,096 B |
+| runtime-minimal | 8,159,416 B | 8,163,512 B | +4,096 B |
 
 ## Benchmark repairs
 
@@ -95,10 +114,12 @@ The previous resource-policy change exposed three stale benchmark assumptions:
 - the dirty-persistent-root collector benchmark expected first-minor promotion
   after survivor aging became the default Throughput policy.
 
-The validation benchmarks now use explicit valid limits. The pure-memory matrix
-ends at 4,096 entries. The persistent-root benchmark disables moving survivors
-because it measures dirty-root scanning, not tenuring policy. The complete wasm
-and collector benchmark packages now pass with `-benchtime=1x`.
+The validation benchmarks now use explicit valid limits. The pure-memory
+validation matrix ends at 4,096 entries, while decode and metadata-iteration
+watchpoints retain their 10,000-import scale. The persistent-root benchmark
+disables moving survivors because it measures dirty-root scanning, not tenuring
+policy. The complete wasm and collector benchmark packages now pass with
+`-benchtime=1x`.
 
 ## Measured and rejected
 
