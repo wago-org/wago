@@ -991,6 +991,27 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 		}
 	}
+	preserveSaturatingTruncScratch := func(instruction uint32) (gpr, fpr bool) {
+		gpr = railMachPhysicalLiveAcross(plan, instruction, railmach.BankGPR, 0)
+		fpr = railMachPhysicalLiveAcross(plan, instruction, railmach.BankFPR, 1)
+		if gpr {
+			a.Push(amd64.RAX)
+		}
+		if fpr {
+			a.SubRsp(16)
+			a.VMovdquStoreDisp(amd64.RSP, 0, 1)
+		}
+		return gpr, fpr
+	}
+	restoreSaturatingTruncScratch := func(gpr, fpr bool) {
+		if fpr {
+			a.VMovdquLoadDisp(1, amd64.RSP, 0)
+			a.AddRsp(16)
+		}
+		if gpr {
+			a.Pop(amd64.RAX)
+		}
+	}
 	for layoutIndex := range plan.Schedule.BlockRanges {
 		blockID := layoutIndex
 		if plan.Layout != nil {
@@ -2123,21 +2144,25 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U:
 				f64 := instruction.Op == wasm.InstrI32TruncSatF64S || instruction.Op == wasm.InstrI32TruncSatF64U
 				unsigned := instruction.Op == wasm.InstrI32TruncSatF32U || instruction.Op == wasm.InstrI32TruncSatF64U
+				preservedGPR, preservedFPR := preserveSaturatingTruncScratch(instructionID)
 				a.FMov(15, lhs, f64)
 				emitAMD64TruncSatI32(&a, 15, f64, unsigned)
 				if dst != amd64.RAX {
 					a.MovReg32(dst, amd64.RAX)
 				}
+				restoreSaturatingTruncScratch(preservedGPR, preservedFPR)
 				continue
 			case wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U,
 				wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U:
 				f64 := instruction.Op == wasm.InstrI64TruncSatF64S || instruction.Op == wasm.InstrI64TruncSatF64U
 				unsigned := instruction.Op == wasm.InstrI64TruncSatF32U || instruction.Op == wasm.InstrI64TruncSatF64U
+				preservedGPR, preservedFPR := preserveSaturatingTruncScratch(instructionID)
 				a.FMov(15, lhs, f64)
 				emitAMD64TruncSatI64(&a, 15, f64, unsigned)
 				if dst != amd64.RAX {
 					a.MovReg64(dst, amd64.RAX)
 				}
+				restoreSaturatingTruncScratch(preservedGPR, preservedFPR)
 				continue
 			case wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U,
 				wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U:
@@ -3093,6 +3118,7 @@ func amd64RailMachTargetSafe(plan *nativeBackendPlan) bool {
 	if !amd64RailMachExitSafe(plan) {
 		return false
 	}
+	denseGlobalModule := plan.Stack.Module != nil && len(plan.Stack.Module.Globals) >= amd64RailMachDenseGlobalThreshold
 	for instructionID := range plan.Machine.Insts {
 		instruction := plan.Machine.Insts[instructionID]
 		operands := plan.Machine.InstructionOperands(uint32(instructionID))
@@ -3107,8 +3133,9 @@ func amd64RailMachTargetSafe(plan *nativeBackendPlan) bool {
 		if !trunc && !truncSat {
 			continue
 		}
-		if railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankGPR, 0) ||
-			railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankFPR, 1) {
+		scratchLive := railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankGPR, 0) ||
+			railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankFPR, 1)
+		if scratchLive && (trunc || denseGlobalModule) {
 			return false
 		}
 	}

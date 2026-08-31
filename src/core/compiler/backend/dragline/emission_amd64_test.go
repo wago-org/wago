@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railmach"
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
@@ -152,6 +153,57 @@ func TestAMD64RailMachFinalizesSaturatingConversion(t *testing.T) {
 			0x0b,
 		}))),
 	)
+	assertAMD64RailMachFinalized(t, source)
+}
+
+func TestAMD64RailMachFinalizesSaturatingConversionWithLiveScratch(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
+			[]wasm.ValType{wasm.I32, wasm.F64, wasm.F64, wasm.F64}, []wasm.ValType{wasm.I32},
+		))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // keep an i32 live across the float expression
+			0x20, 0x01, // keep two f64 values live across the first conversion
+			0x20, 0x02,
+			0x20, 0x03,
+			0xfc, 0x02, // i32.trunc_sat_f64_s
+			0xb7,       // f64.convert_i32_s
+			0xa0,       // f64.add
+			0xa0,       // f64.add
+			0xfc, 0x02, // i32.trunc_sat_f64_s
+			0x6a, // i32.add
+			0x0b,
+		}))),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(module, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := (&nativeBackendPlanner{}).Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	liveScratch := false
+	for instructionID, instruction := range plan.Machine.Insts {
+		if instruction.Op >= wasm.InstrI32TruncSatF32S && instruction.Op <= wasm.InstrI64TruncSatF64U &&
+			(railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankGPR, 0) ||
+				railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankFPR, 1)) {
+			liveScratch = true
+			break
+		}
+	}
+	if !liveScratch {
+		t.Fatal("test did not keep a saturating-conversion scratch register live")
+	}
 	assertAMD64RailMachFinalized(t, source)
 }
 
