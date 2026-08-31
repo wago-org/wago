@@ -122,11 +122,17 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		resultWide:          wide,
 	}
-	directTrapCandidate := !in.tierable() && scalarFast && preparedPrivateEntryEnabled &&
+	// Signal-backed instances normally require the guarded wrapper entry. A
+	// compiler-proven call-free leaf does not observe memory or guest context,
+	// while a direct-trap entry publishes the minimal context its cold trap path
+	// needs, so both remain safe when the broader private-entry test rejects the
+	// instance solely because of its bounds mode.
+	directEntryCandidate := !in.tierable() && scalarFast && preparedPrivateEntryEnabled &&
 		preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) &&
-		in.c.directPreparedAt(ic.li) && directTrapPreparedEntry(in.c.InternalEntry[ic.li])
+		in.c.directPreparedAt(ic.li) &&
+		(directLeafPreparedEntry(in.c.InternalEntry[ic.li]) || directTrapPreparedEntry(in.c.InternalEntry[ic.li]))
 	privateEligible := in.preparedPrivateEligible()
-	if !in.tierable() && scalarFast && preparedPrivateEntryEnabled && (privateEligible || directTrapCandidate) {
+	if !in.tierable() && scalarFast && preparedPrivateEntryEnabled && (privateEligible || directEntryCandidate) {
 		fn.privateFast = privateEligible
 		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
 		if (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
