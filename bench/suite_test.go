@@ -390,6 +390,13 @@ func BenchmarkExec(b *testing.B) {
 	benchmarkExec(b, wago.NewRuntimeConfig())
 }
 
+// BenchmarkDraglineExec runs the same prepared-function execution corpus with
+// Dragline's native target. Keeping this beside BenchmarkExec gives backend
+// work a tight, directly comparable per-module feedback loop.
+func BenchmarkDraglineExec(b *testing.B) {
+	benchmarkExec(b, wago.NewRuntimeConfig().WithCompiler(wago.CompilerDragline).WithTarget(wago.TargetNative))
+}
+
 func invokePrepared(fn *wago.PreparedFunction, args []uint64) ([]uint64, error) {
 	switch len(args) {
 	case 0:

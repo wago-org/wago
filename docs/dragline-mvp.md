@@ -292,10 +292,21 @@ file, run:
 
 ```sh
 cd bench
-go run ./cmd/draglinemetrics -out metrics.json -replay failure.json module.wasm
+go run ./cmd/draglinemetrics -target native -bounds signals \
+  -out metrics.json -code native.bin -layout layout.json \
+  -replay failure.json module.wasm
 ```
 
-The replay file is written only for a function-specific compilation failure.
+`-code` and `-layout` are optional disassembly aids. The replay file is written
+only for a function-specific compilation failure. For a tight prepared-call
+execution loop over the runnable corpus, filter `BenchmarkDraglineExec` by the
+manifest module and export name:
+
+```sh
+cd bench
+go test -tags=wago_guardpage -run '^$' \
+  -bench '^BenchmarkDraglineExec/sieve\.count$' -benchtime=500ms -count=7 .
+```
 
 External compiler compile-time gates use a strict version-2 command manifest
 and retain raw alternating-round measurements. The built-in `dragline` adapter

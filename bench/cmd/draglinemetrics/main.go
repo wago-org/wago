@@ -17,15 +17,22 @@ import (
 
 func main() {
 	outPath := flag.String("out", "", "write JSON metrics to this path instead of stdout")
+	codePath := flag.String("code", "", "write the generated native code image to this path")
+	layoutPath := flag.String("layout", "", "write generated entry offsets to this path")
 	replayPath := flag.String("replay", "", "write a replay artifact here if a function fails")
 	targetMode := flag.String("target", "compat", "target mode: compat or native")
+	boundsMode := flag.String("bounds", "explicit", "bounds mode: explicit or signals")
 	flag.Parse()
 	if flag.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "usage: draglinemetrics [-target compat|native] [-out metrics.json] [-replay failure.json] module.wasm")
+		fmt.Fprintln(os.Stderr, "usage: draglinemetrics [-target compat|native] [-bounds explicit|signals] [-out metrics.json] [-replay failure.json] module.wasm")
 		os.Exit(2)
 	}
 	if *targetMode != "compat" && *targetMode != "native" {
 		fmt.Fprintln(os.Stderr, "draglinemetrics: -target must be compat or native")
+		os.Exit(2)
+	}
+	if *boundsMode != "explicit" && *boundsMode != "signals" {
+		fmt.Fprintln(os.Stderr, "draglinemetrics: -bounds must be explicit or signals")
 		os.Exit(2)
 	}
 
@@ -56,17 +63,39 @@ func main() {
 	if *targetMode == "native" {
 		mode = corecompiler.TargetNative
 	}
+	bounds := corecompiler.BoundsExplicit
+	if *boundsMode == "signals" {
+		bounds = corecompiler.BoundsSignals
+	}
 	target, err := corecompiler.HostTarget(mode)
 	if err != nil {
 		fail("resolve target", err)
 	}
-	_, err = compiler.Compile(corecompiler.Input{
+	compiled, err := compiler.Compile(corecompiler.Input{
 		Module: m, Source: source,
 		Runtime: corecompiler.RuntimeContract{ABIRevision: runtimeabi.Revision},
 		Target:  target,
+		Bounds:  bounds,
 	})
 	if err != nil {
 		fail("compile", err)
+	}
+	if *codePath != "" {
+		if err := os.WriteFile(*codePath, compiled.Code, 0o644); err != nil {
+			fail("write code", err)
+		}
+	}
+	if *layoutPath != "" {
+		layout, err := json.MarshalIndent(struct {
+			Entry         []int `json:"entry"`
+			InternalEntry []int `json:"internal_entry"`
+		}{compiled.Entry, compiled.InternalEntry}, "", "  ")
+		if err != nil {
+			fail("encode layout", err)
+		}
+		if err := os.WriteFile(*layoutPath, append(layout, '\n'), 0o644); err != nil {
+			fail("write layout", err)
+		}
 	}
 
 	var output = os.Stdout
