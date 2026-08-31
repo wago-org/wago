@@ -117,6 +117,7 @@ type (
 	HostModule                        = impl.HostModule
 	HostTrap                          = impl.HostTrap
 	I31Ref                            = impl.I31Ref
+	ImplementationLimitError          = impl.ImplementationLimitError
 	ImportFuncBuilder                 = impl.ImportFuncBuilder
 	ImportKind                        = impl.ImportKind
 	ImportModuleBuilder               = impl.ImportModuleBuilder
@@ -304,12 +305,14 @@ const (
 	ElemModePassive                            = impl.ElemModePassive
 	ErrCallbackPanic                           = impl.ErrCallbackPanic
 	ErrForeignModule                           = impl.ErrForeignModule
+	ErrImplementationLimit                     = impl.ErrImplementationLimit
 	ErrInvalidHandle                           = impl.ErrInvalidHandle
 	ErrManagedImportLifetime                   = impl.ErrManagedImportLifetime
 	ErrMissingImport                           = impl.ErrMissingImport
 	ErrPermissionDenied                        = impl.ErrPermissionDenied
 	ErrPluginConflict                          = impl.ErrPluginConflict
 	ErrResourceLimit                           = impl.ErrResourceLimit
+	ErrUnsupported                             = impl.ErrUnsupported
 	Experimental                               = impl.Experimental
 	GCAllocatorPagedSizeClass                  = impl.GCAllocatorPagedSizeClass
 	GCAllocatorTinyFixedBlock                  = impl.GCAllocatorTinyFixedBlock

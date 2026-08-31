@@ -97,7 +97,7 @@ var arenaCache struct {
 
 // AcquireArena returns an arena of at least n bytes, reusing one recently
 // released by ReleaseArena when possible. The cache is a single mapping bounded
-// by InstantiateArenaSize so short instantiate/close loops avoid mmap churn
+// by InstantiateArenaCacheBytes so short instantiate/close loops avoid mmap churn
 // without retaining unbounded off-heap memory.
 func AcquireArena(n int) (*Arena, error) {
 	need := roundUpPage(n)
@@ -152,7 +152,7 @@ func ReleaseArena(a *Arena) error {
 	if a == nil {
 		return nil
 	}
-	if len(a.mem) > roundUpPage(InstantiateArenaSize) {
+	if len(a.mem) > roundUpPage(InstantiateArenaCacheBytes) {
 		return a.Close()
 	}
 	arenaCache.Lock()

@@ -173,12 +173,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		valueSlots := funcTypeSlots([]wasm.ValType{valueType})
 		if uint64(count)*uint64(valueSlots)+2 > maxSyncHostSlots {
-			if wasm.EqualValType(valueType, wasm.V128) {
-				result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-				return f.callGCArrayFixedV128Spill(typeIndex, count, result)
-			}
-			maxValues := (maxSyncHostSlots - 2) / valueSlots
-			return fmt.Errorf("amd64: array.new_fixed count %d of %s exceeds helper slot bound %d values", count, valueType, maxValues)
+			result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+			return f.callGCArrayFixedSpill(typeIndex, count, result)
 		}
 		params := make([]wasm.ValType, 0, int(count)+2)
 		for i := uint32(0); i < count; i++ {
@@ -449,13 +445,13 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 	}
 }
 
-// callGCArrayFixedV128Spill handles vector fixed constructors whose flattened
-// values do not fit in the 64-slot synchronous control frame. The values are
+// callGCArrayFixedSpill handles fixed constructors whose flattened values do
+// not fit in the inline synchronous control frame. The values are
 // already resident in contiguous canonical foreign-stack spill slots. Pass one
 // off-heap pointer to those slots, then discard the logical operands after the
 // helper returns the constructed reference. The parked helper copies the bytes
 // before native execution resumes; no Go pointer enters native state.
-func (f *fn) callGCArrayFixedV128Spill(typeIndex, count uint32, resultType wasm.ValType) error {
+func (f *fn) callGCArrayFixedSpill(typeIndex, count uint32, resultType wasm.ValType) error {
 	roots := f.rootsBottomToTop()
 	if uint64(count) > uint64(len(roots)) {
 		return fmt.Errorf("amd64: array.new_fixed count %d exceeds operand depth %d", count, len(roots))

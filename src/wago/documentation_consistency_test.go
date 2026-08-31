@@ -25,7 +25,7 @@ func TestRepositoryStatusDocuments(t *testing.T) {
 	}
 
 	versioning := readRepositoryDocument(t, root, "VERSIONING.md")
-	for _, marker := range []string{"Every Wago-owned codec", "uses **version 1**"} {
+	for _, marker := range []string{"compiled `.wago` executable codec uses **version 2**", "older artifact cannot bypass a stricter runtime configuration"} {
 		if !strings.Contains(versioning, marker) {
 			t.Errorf("VERSIONING.md missing pre-release format policy marker %q", marker)
 		}

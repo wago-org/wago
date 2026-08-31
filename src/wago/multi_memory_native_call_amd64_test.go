@@ -1032,6 +1032,9 @@ func TestStagedMultiMemoryNativeContextAccounting(t *testing.T) {
 	if abi.BasedataSize != 320 {
 		t.Fatalf("basedata = %d bytes, want 320", abi.BasedataSize)
 	}
+	if abi.MemoryDirEntryBytes != 24 || abi.MemoryDirPolicyMaxPagesOffset != 20 {
+		t.Fatalf("memory policy directory = %d-byte entries at offset %d, want 24 and 20", abi.MemoryDirEntryBytes, abi.MemoryDirPolicyMaxPagesOffset)
+	}
 }
 
 func BenchmarkStagedMultiMemoryNativeSameMemoryImportedGlobalTableNestedCall(b *testing.B) {

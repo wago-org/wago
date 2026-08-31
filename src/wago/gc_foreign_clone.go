@@ -111,7 +111,7 @@ func captureForeignGCGraph(source *Instance, token uint64, target *Instance) ([]
 	entry, ok := source.refStore.gcByToken[token]
 	_, registered := source.refStore.instances[source]
 	source.refStore.mu.Unlock()
-	if !ok || entry.owner != source || !registered || entry.ownerIndex >= state.resultRootsMade || state.resultTokens[entry.ownerIndex] != token || state.resultRootSlots[entry.ownerIndex] != entry.slot {
+	if !ok || entry.owner != source || !registered || entry.ownerIndex >= state.resultRootsMade || state.resultToken(entry.ownerIndex) != token || state.resultRootSlot(entry.ownerIndex) != entry.slot {
 		return nil, gcCloneRef{}, fmt.Errorf("invalid, stale, or foreign source GC reference token")
 	}
 	rootRef := source.gc.GlobalSlot(entry.slot)

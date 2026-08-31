@@ -2,11 +2,20 @@ package wago
 
 import (
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestSyncHostBindingStaysCompact(t *testing.T) {
+	// Standard Go packs the trailing scalar flag into 24 bytes. TinyGo may align
+	// the same pointer-bearing shape to 32 bytes on some targets.
+	if got := unsafe.Sizeof(syncHostBinding{}); got != 24 && got != 32 {
+		t.Fatalf("syncHostBinding size = %d, want 24 or 32", got)
+	}
+}
 
 func TestCallRefOnlyArenaNeedUsesFixedContextHeader(t *testing.T) {
 	if CoreFeaturesV3&^platformCoreFeatures() != 0 {

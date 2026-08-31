@@ -23,7 +23,7 @@ type Memory struct {
 type memoryState struct {
 	mu    sync.Mutex
 	owner *Instance // non-nil for an instance-owned exported memory
-	meta  uint64    // declared max u32 | importer count u26 | flags u6
+	meta  uint64    // declared max u49 | inline importer count u8 | flags u7
 }
 
 const (
@@ -54,13 +54,29 @@ func (s *memoryState) set(flag uint8, enabled bool) {
 	}
 }
 
+var memoryImporterOverflow sync.Map // map[*memoryState]uint32; only counts >= 255
+
 func (s *memoryState) importerCount() uint32 {
-	return uint32(s.meta>>memoryStateImporterShift) & uint32(memoryStateImporterMask)
+	inline := uint32(s.meta>>memoryStateImporterShift) & uint32(memoryStateImporterMask)
+	if inline != uint32(memoryStateImporterMask) {
+		return inline
+	}
+	if count, ok := memoryImporterOverflow.Load(s); ok {
+		return count.(uint32)
+	}
+	return inline
 }
 
 func (s *memoryState) setImporterCount(count uint32) {
+	inline := count
+	if inline >= uint32(memoryStateImporterMask) {
+		inline = uint32(memoryStateImporterMask)
+		memoryImporterOverflow.Store(s, count)
+	} else {
+		memoryImporterOverflow.Delete(s)
+	}
 	s.meta = s.meta&^(memoryStateImporterMask<<memoryStateImporterShift) |
-		(uint64(count)&memoryStateImporterMask)<<memoryStateImporterShift
+		uint64(inline)<<memoryStateImporterShift
 }
 
 func (s *memoryState) declaredMaximum() uint64 {
@@ -215,8 +231,8 @@ func (m *Memory) attachImporter() error {
 	if !s.has(memoryStateShared) && count != 0 {
 		return fmt.Errorf("memory is already used by another instance")
 	}
-	if count == uint32(memoryStateImporterMask) {
-		return fmt.Errorf("memory has too many live importers")
+	if count == ^uint32(0) {
+		return fmt.Errorf("memory importer count overflows uint32")
 	}
 	if s.owner != nil && !s.owner.retainResourceRoot() {
 		return fmt.Errorf("memory owner instance is closed")

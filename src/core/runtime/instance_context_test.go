@@ -10,6 +10,9 @@ import (
 )
 
 func TestInstanceContextBytesReserveNativeTailMetadata(t *testing.T) {
+	if InstanceContextBytes != 128 {
+		t.Fatalf("instance context bytes = %d, want 128 with opt-in profiling and tiering pointers", InstanceContextBytes)
+	}
 	jm, err := NewJobMemory(65536)
 	if err != nil {
 		t.Fatal(err)

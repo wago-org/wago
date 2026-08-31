@@ -53,7 +53,7 @@ func TestGCFrameRootPlanWideMaskWords(t *testing.T) {
 }
 
 func TestGCFrameRootPlanTrackedVectorMask(t *testing.T) {
-	const roots = GCFrameRootLimit + 1
+	const roots = 1025
 	extraWords := (roots+63)/64 - 1
 	plan := &GCFrameRootPlan{
 		LocalOffsets:       make([]uint32, roots),

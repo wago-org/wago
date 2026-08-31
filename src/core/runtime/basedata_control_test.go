@@ -259,7 +259,7 @@ func TestRuntimeMappingBoundaryHelpers(t *testing.T) {
 	if err := ReleaseArena(nil); err != nil {
 		t.Fatalf("ReleaseArena(nil): %v", err)
 	}
-	large, err := NewArena(InstantiateArenaSize + 1)
+	large, err := NewArena(InstantiateArenaCacheBytes + 1)
 	if err != nil {
 		t.Fatal(err)
 	}

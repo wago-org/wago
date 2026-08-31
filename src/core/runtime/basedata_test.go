@@ -43,8 +43,14 @@ func TestBasedataOffsetsMatchWARP(t *testing.T) {
 			t.Errorf("%s offset = %d, want %d", c.name, c.got, c.want)
 		}
 	}
+	if basedataSize != 320 {
+		t.Errorf("basedataSize = %d, want layout size 320 with opt-in profiling and tiering pointers", basedataSize)
+	}
 	if basedataSize%16 != 0 {
 		t.Errorf("basedataSize %d is not 16-byte aligned (would misalign linMem)", basedataSize)
+	}
+	if abi.MemoryDirEntryBytes != 24 || abi.MemoryDirPolicyMaxPagesOffset != 20 {
+		t.Errorf("memory directory policy layout = %d-byte entry, offset %d; want 24, 20", abi.MemoryDirEntryBytes, abi.MemoryDirPolicyMaxPagesOffset)
 	}
 	if basedataSize < offTailArgs {
 		t.Errorf("basedataSize %d too small for wrapper-tail scratch ending at -%d", basedataSize, offTailArgs)

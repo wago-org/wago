@@ -69,8 +69,8 @@ func TestPolicyRejectsUnenforcedInvokeDuration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	if _, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxInvokeDuration: time.Millisecond})); !errors.Is(err, ErrPermissionDenied) {
-		t.Fatalf("instantiate with unenforced invoke duration = %v, want ErrPermissionDenied", err)
+	if _, err := rt.Instantiate(context.Background(), mod, WithPolicy(Policy{MaxInvokeDuration: time.Millisecond})); !errors.Is(err, ErrUnsupported) || errors.Is(err, ErrPermissionDenied) {
+		t.Fatalf("instantiate with deprecated invoke duration = %v, want ErrUnsupported only", err)
 	}
 }
 

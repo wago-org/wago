@@ -24,6 +24,8 @@ func (e *UnsupportedError) Error() string {
 	return fmt.Sprintf("unsupported %s %s", e.Category, e.Feature)
 }
 
+func (e *UnsupportedError) Unwrap() error { return runtime.ErrUnsupported }
+
 // DecodeValidate decodes without materializing function-body instruction trees,
 // validates, and runs wago's support pass over data.
 func DecodeValidate(data []byte) (*wasm.Module, error) {
@@ -278,7 +280,7 @@ func SupportedTableRuntimeShapesFromFacts(m *wasm.Module, facts *ModuleFacts) ([
 			// spare capacity cannot be observed and cannot fit in the bounded arena are
 			// represented at their minimum, admitting valid huge declarations without
 			// changing grow/export semantics or common fixed-table footprints.
-			if !observableCapacity && max > uint64((runtime.InstantiateArenaSize-8)/entryBytes) {
+			if !observableCapacity && max > uint64((runtime.InstantiateArenaCacheBytes-8)/entryBytes) {
 				max = min
 			}
 		} else if observableCapacity {
@@ -503,6 +505,10 @@ func (p supportPass) unsupported(category, feature, context string) error {
 	return &UnsupportedError{Category: category, Feature: feature, Context: context}
 }
 
+func (p supportPass) implementation(feature, shape string, limit uint64) error {
+	return &runtime.ImplementationLimitError{Feature: feature, Shape: shape, Limit: limit}
+}
+
 func (p supportPass) runWithFacts() error {
 	if p.facts == nil {
 		return fmt.Errorf("nil module facts")
@@ -621,33 +627,34 @@ func compTypeName(k wasm.CompTypeKind) string {
 
 func (p supportPass) imports() error {
 	for i, im := range p.m.Imports {
-		ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 		switch im.Type.Kind {
 		case wasm.ExternFunc:
 			ft, ok := p.funcType(im.Type.FuncType())
 			if !ok {
-				return p.unsupported("import", "function with unknown type", ctx)
+				return p.unsupported("import", "function with unknown type", fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name))
 			}
 			// Reflection-free host imports admit externref handles and opaque funcref
 			// tokens. Instantiation still requires explicit ownership before a host
 			// descriptor itself may cross a public funcref boundary.
 			for _, pt := range ft.Params {
 				if !p.supportedValType(pt) {
-					return p.valType(pt, ctx+" function signature")
+					return p.valType(pt, fmt.Sprintf("import %d %q.%q function signature", i, im.Module, im.Name))
 				}
 			}
 			for _, rt := range ft.Results {
 				if !p.supportedValType(rt) {
-					return p.valType(rt, ctx+" function result")
+					return p.valType(rt, fmt.Sprintf("import %d %q.%q function result", i, im.Module, im.Name))
 				}
 			}
 		case wasm.ExternGlobal:
+			ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 			// Imported reference globals are admitted structurally here; instantiation
 			// requires an exact typed, mutable, compatible-store Global owner.
 			if err := p.globalType(im.Type.GlobalType().Type, ctx); err != nil {
 				return err
 			}
 		case wasm.ExternTable:
+			ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 			// Imported tables carry their exact reference type into the shared
 			// runtime handle. Externref imports additionally require reference types
 			// and a compatible store-bound owner at instantiation.
@@ -663,22 +670,23 @@ func (p supportPass) imports() error {
 					return p.unsupported("import", "64-bit table (table64 disabled)", ctx)
 				}
 				if table.Limits.Min > stagedTable64Max {
-					return p.unsupported("import", fmt.Sprintf("table64 minimum %d exceeds staged ceiling %d", table.Limits.Min, stagedTable64Max), ctx)
+					return p.implementation("imported table64", fmt.Sprintf("minimum %d entries exceeds executable capacity", table.Limits.Min), stagedTable64Max)
 				}
 				if table.Limits.HasMax && table.Limits.Max > stagedTable64Max {
-					return p.unsupported("import", fmt.Sprintf("table64 maximum %d exceeds staged ceiling %d", table.Limits.Max, stagedTable64Max), ctx)
+					return p.implementation("imported table64", fmt.Sprintf("maximum %d entries exceeds executable capacity", table.Limits.Max), stagedTable64Max)
 				}
 			}
 		case wasm.ExternMem:
+			ctx := fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name)
 			if err := p.checkMemType(im.Type.MemType(), ctx); err != nil {
 				return err
 			}
 		case wasm.ExternTag:
 			if !p.feat.ExceptionHandling {
-				return p.unsupported("import", "tag (exception-handling disabled)", ctx)
+				return p.unsupported("import", "tag (exception-handling disabled)", fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name))
 			}
 		default:
-			return p.unsupported("import", "unknown external kind", ctx)
+			return p.unsupported("import", "unknown external kind", fmt.Sprintf("import %d %q.%q", i, im.Module, im.Name))
 		}
 	}
 	return nil
@@ -704,10 +712,10 @@ func (p supportPass) tables() error {
 				return p.unsupported("table", "64-bit limits (table64 disabled)", ctx)
 			}
 			if t.Type.Limits.Min > stagedTable64Max {
-				return p.unsupported("table", fmt.Sprintf("table64 minimum %d exceeds staged ceiling %d", t.Type.Limits.Min, stagedTable64Max), ctx)
+				return p.implementation("table64", fmt.Sprintf("table %d minimum %d entries exceeds executable capacity", tableIndex, t.Type.Limits.Min), stagedTable64Max)
 			}
 			if t.Type.Limits.HasMax && t.Type.Limits.Max > stagedTable64Max && !inertOversizedLocalTable64(p.m, i) {
-				return p.unsupported("table", fmt.Sprintf("table64 maximum %d exceeds staged executable ceiling %d", t.Type.Limits.Max, stagedTable64Max), ctx)
+				return p.implementation("table64", fmt.Sprintf("table %d maximum %d entries exceeds executable capacity", tableIndex, t.Type.Limits.Max), stagedTable64Max)
 			}
 		}
 		if t.Init != nil {
@@ -763,12 +771,13 @@ func (p supportPass) checkMemType(mem wasm.MemType, ctx string) error {
 	}
 	maxPages := uint64(65536)
 	if mem.Limits.Addr64 {
-		// The staged memory64 execution product remains bounded to the finite
-		// reservation used before the u64 memory-size-cache extension.
+		// Temporary implementation limit: the executable reservation still uses
+		// the bounded 32-bit page cache. TODO(runtime-resource-model): replace it
+		// with platform-qualified sparse Memory64 reservation and growth accounting.
 		maxPages = 65535
 	}
 	if mem.Limits.Min > maxPages {
-		return p.unsupported("memory", fmt.Sprintf("minimum %d pages exceeds %d", mem.Limits.Min, maxPages), ctx)
+		return p.implementation("memory64 execution", fmt.Sprintf("%s minimum %d pages exceeds executable reservation capacity", ctx, mem.Limits.Min), maxPages)
 	}
 	return nil
 }
@@ -971,7 +980,7 @@ func (p supportPass) runtimeFootprint() error {
 	if needsPublicFuncrefHostReentry(p.m, tables) {
 		hostCallBytes = runtime.HostCtrlFrameBytes
 	}
-	need, err := runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
+	_, err = runtime.InstantiateArenaNeed(runtime.InstantiateFootprint{
 		FuncImportCount:    p.m.ImportedFuncCount(),
 		HostCallBytes:      hostCallBytes,
 		FuncRefCount:       funcRefCount,
@@ -990,9 +999,6 @@ func (p supportPass) runtimeFootprint() error {
 	})
 	if err != nil {
 		return p.unsupported("runtime footprint", err.Error(), "instantiate arena")
-	}
-	if need > runtime.InstantiateArenaSize {
-		return p.unsupported("runtime footprint", fmt.Sprintf("instantiate arena need %d > limit %d", need, runtime.InstantiateArenaSize), "instantiate arena")
 	}
 	return nil
 }

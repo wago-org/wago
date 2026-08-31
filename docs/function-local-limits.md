@@ -1,42 +1,35 @@
 # Function local limits
 
-`RuntimeConfig.WithMaxFunctionLocals` bounds the combined number of parameters
-and declared locals in one Wasm function. `NewRuntimeConfig` defaults to 4,096;
-callers may select any value from 1 through 65,535. Zero and values above the
-unsigned 16-bit maximum are configuration errors.
+`RuntimeConfig.WithMaxFunctionLocals` is optional early admission control for the
+combined number of parameters and declared locals in one Wasm function.
+`NewRuntimeConfig` defaults to 65,535, which is the largest count represented by
+the current compiler metadata. Callers can select a lower value from 1 through
+65,535. Zero and larger values are configuration errors.
 
-This is an early validation and compiler-bookkeeping ceiling, not a native
-stack-size promise. AMD64 and ARM64 lowering independently reject a function
-whose actual frame, including width-dependent local slots, headers, inlining,
-and operand spills, exceeds the 256 KiB stack-fence headroom. Raising the local
-ceiling never weakens that fail-closed frame check. For example, a configured
-65,535-local ceiling admits validation of the declaration but a function with
-65,535 `v128` locals still fails native compilation because its frame is too
-large.
+This setting is not the native safety boundary. AMD64 and ARM64 lowering
+independently reject a function whose actual frame, including width-dependent
+local slots, headers, inlining, and operand spills, exceeds the native stack
+fence. Integer overflow checks and stack-fence checks remain fail-closed. For
+example, 65,535 `v128` locals can pass the declaration-count policy but still
+fail native compilation because the frame is too large.
 
-The limit is part of the automatic artifact-cache key. A cached artifact built
-under a larger ceiling therefore cannot bypass a smaller caller policy.
+The local-count setting remains part of the artifact-cache key because it is a
+compile admission setting. A cached artifact admitted with a larger configured
+count cannot bypass a smaller compiler configuration.
 
 ## WasmGC root admission
 
-Collector-reference locals use the same declaration ceiling, but the separate
-native root-map limit applies to values simultaneously live at a collecting
-site. Liveness first covers the configured population, then removes locals dead
-at every allocation or native call. Each emitted safepoint and callsite remains
-limited to 1,024 exact roots. A function may consequently declare more than
-1,024 reference locals when its live site maps stay within that bound; a site
-with 1,025 live collector locals fails closed with an actionable admission
-diagnostic.
+Collector-reference liveness covers the configured local population and removes
+locals dead at every collection or native-call site. Final safepoint and callsite
+root vectors are variable-sized. The old 1,024-live-root semantic limit is
+removed.
 
-The liveness bitmap is compile-only. Its main arena is capped at 64 MiB for an
-adversarial combination of body size and configured locals. The CFG omits
-instructions that cannot affect local liveness or control flow before sizing
-that arena, and serialized metadata contains only final site offset vectors of
-at most 1,024 entries. The common path through 64 roots retains one-word masks.
+Root metadata remains exact. Every offset must be aligned, ordered, inside the
+validated native frame, and valid after artifact decoding. Corrupted lengths,
+offsets, callsites, or frame sizes fail closed. The common path through 64 roots
+retains one-word liveness masks; wider functions use the flat bitmap arena and
+variable-length final offset vectors.
 
-On the Ryzen 7 8845HS development host, the permanent 1,138-declared/one-live
-analysis benchmark measured a warmed median of 17.2 us, 29,408 B/op, and 13
-allocations. The existing dense 1,024-root benchmark measured 160.8-164.2 us,
-224,082-224,084 B/op, and 10 allocations. These are compile-time costs; runtime
-safepoint lookup and the final one-root metadata vector do not retain the
-declaration-wide bitmap.
+The compile-time liveness working arena is still capped at 64 MiB. This is a
+temporary compile-resource implementation limit, not a Wasm root-count limit.
+See `docs/runtime-resource-model.md`.

@@ -192,7 +192,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	if root != nil && root.executionFlags.Load()&executionFlagImportedGCDomain != 0 {
 		leaseOwner = root
 	}
-	resumeGCInvocation := leaseOwner.suspendGCInvocation(id)
+	gcSuspension := leaseOwner.suspendGCInvocation(id)
 	var localMu *sync.Mutex
 	var epoch uint64
 	if active.usesIndependentExecution() {
@@ -208,7 +208,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// between host result validation and the caller's resumed native frame.
 	defer active.popGCHostActivation(activation)
 	defer func() {
-		resumeGCInvocation()
+		gcSuspension.resume()
 		if localMu != nil {
 			localMu.Lock()
 		} else {

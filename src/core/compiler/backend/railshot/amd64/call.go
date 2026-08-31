@@ -1251,9 +1251,18 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 		a.MovReg64(RBX, RSI)
 	}
 	a.Load64(R8, RBX, -offCustomCtx) // R8 = sync host-call control frame
+	wide := paramSlots > maxSyncHostSlots || resultSlots > maxSyncHostSlots
+	argBase := R8
+	argOffset := int32(hcArgs)
+	if wide {
+		argBase = R9
+		argOffset = 0
+		a.MovReg64(R9, R8)
+		a.LeaDisp(R9, R9, hcWideBase+hcWideArgs)
+	}
 	for i := 0; i < paramSlots; i++ {
 		a.Load64(RAX, RDI, int32(i*8))
-		a.Store64(R8, hcArgs+int32(i*8), RAX)
+		a.Store64(argBase, argOffset+int32(i*8), RAX)
 	}
 	a.StoreImm32Mem(R8, hcImportIdx, int32(importIdx))
 	a.StoreImm32Mem(R8, hcNArgs, int32(paramSlots|resultSlots<<16)) // low16 params, high16 results
@@ -1265,8 +1274,16 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 	// result slots, then restore the caller's original RBX and return.
 	a.Load64(R8, RBX, -offCustomCtx)
 	a.Pop(RCX)
+	resultBase := R8
+	resultOffset := int32(hcResults)
+	if wide {
+		resultBase = R9
+		resultOffset = 0
+		a.Load32(R9, R8, hcWideBase+4)
+		a.LeaScaled(R9, R8, R9, 3, hcWideBase+hcWideArgs)
+	}
 	for i := 0; i < resultSlots; i++ {
-		a.Load64(RAX, R8, hcResults+int32(i*8))
+		a.Load64(RAX, resultBase, resultOffset+int32(i*8))
 		a.Store64(RCX, int32(i*8), RAX)
 	}
 	// Descriptor-driven proper tails to Runtime-owned GC host thunks retain the
@@ -1274,10 +1291,10 @@ func hostIndirectSyncThunk(importIdx uint32, paramSlots, resultSlots int, useHom
 	// register ABI. Keep the wrapper result stores above and additionally publish
 	// the first two slots in RAX/RDX; ordinary wrapper callers ignore them.
 	if resultSlots > 0 {
-		a.Load64(RAX, R8, hcResults)
+		a.Load64(RAX, resultBase, resultOffset)
 	}
 	if resultSlots > 1 {
-		a.Load64(RDX, R8, hcResults+8)
+		a.Load64(RDX, resultBase, resultOffset+8)
 	}
 	a.Pop(RBX)
 	a.Ret()
@@ -1663,7 +1680,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		return nil, false
 	}
 	f.materializeGCFrameLocalsAt(siteIndex, true)
-	offsets := make([]uint32, 0, min(len(plan.LocalOffsets), shared.GCFrameRootLimit))
+	offsets := make([]uint32, 0, len(plan.LocalOffsets)+len(plan.FixedOffsets))
 	if !plan.VisitLiveLocals(siteIndex, true, func(root int) {
 		offsets = append(offsets, plan.LocalOffsets[root])
 	}) {
@@ -1685,9 +1702,6 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	}
 	offsets = append(offsets, plan.FixedOffsets...)
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	if len(offsets) > shared.GCFrameRootLimit {
-		plan.Exact = false
-	}
 	return offsets, true
 }
 

@@ -1143,6 +1143,14 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 }
 
 func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features, instructions map[string]*registeredInstruction, selectedFunctions []uint32) (*Compiled, error) {
+	if cfg.maxModuleBytes != 0 && uint64(len(wasmBytes)) > cfg.maxModuleBytes {
+		return nil, &wruntime.ResourceLimitError{
+			Resource:  "module bytes",
+			Scope:     "compile",
+			Requested: uint64(len(wasmBytes)),
+			Limit:     cfg.maxModuleBytes,
+		}
+	}
 	m, err := wasm.DecodeModule(wasmBytes)
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
@@ -1461,12 +1469,18 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 	if cfg.gcCodeTelemetry {
 		gcCodeStats = new(railshotModuleStats)
 	}
-	syncHostSlots := wruntime.MaxHostArity
+	syncHostSlots, err := moduleSyncHostSlotCapacity(m)
+	if err != nil {
+		return nil, fmt.Errorf("compile: %w", err)
+	}
 	usesGCHelpers := gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers()
 	if usesGCHelpers {
-		syncHostSlots, err = gcSyncHostSlotCapacity(gcMetadata.Descs)
+		gcSlots, err := gcSyncHostSlotCapacity(gcMetadata.Descs)
 		if err != nil {
 			return nil, fmt.Errorf("compile: %w", err)
+		}
+		if gcSlots > syncHostSlots {
+			syncHostSlots = gcSlots
 		}
 	}
 	router := corecompiler.Router{
@@ -1505,6 +1519,14 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 			_ = cm.CodeImage.Close()
 		}
 	}()
+	if cfg.maxNativeCodeBytes != 0 && uint64(len(cm.Code)) > cfg.maxNativeCodeBytes {
+		return nil, &wruntime.ResourceLimitError{
+			Resource:  "native code bytes",
+			Scope:     "compile",
+			Requested: uint64(len(cm.Code)),
+			Limit:     cfg.maxNativeCodeBytes,
+		}
+	}
 	code, entry, internalEntry := cm.Code, cm.Entry, cm.InternalEntry
 	for i := range internalEntry {
 		if i>>6 < len(cm.DirectTrapPrepared) && cm.DirectTrapPrepared[i>>6]&(uint64(1)<<uint(i&63)) != 0 {
@@ -1532,6 +1554,10 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 	c.codeCache.sourceHash = sha256.Sum256(wasmBytes)
 	c.codeCache.sourceHashAvailable = true
 	c.codeCache.setNativeStackBytes(cfg.nativeStackBytes)
+	if c.validateMemo != nil {
+		c.validateMemo.memoryLimitPages = cfg.maxMemoryPages
+		c.validateMemo.maxInstanceMetadataBytes = cfg.maxInstanceMetadataBytes
+	}
 	c.memoryDir.exactExports = true
 	c.memoryDir.staged = features.MultiMemory && (m.MemCount() > 1 || m.ImportedMemCount() > 0)
 	c.memoryDir.stagedMemory64 = features.Memory64 && usesMemory64
@@ -1572,29 +1598,32 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 	}
 	if importedFuncs > 0 {
 		c.importFuncSigs = make([]FuncSig, importedFuncs)
-		for i := 0; i < importedFuncs; i++ {
-			typeIdx, ok := m.FuncTypeIndex(uint32(i))
-			if !ok {
+		functionIndex := 0
+		for importIndex := range m.Imports {
+			if m.Imports[importIndex].Type.Kind != wasm.ExternFunc {
 				continue
 			}
+			typeIdx := m.Imports[importIndex].Type.FuncType()
 			var ft wasm.CompType
 			if !m.ResolveTypeFunc(typeIdx.Index, &ft) {
+				functionIndex++
 				continue
 			}
 			params, err := typeConverter.abiTypes(ft.Params, c.Types)
 			if err != nil {
-				return nil, fmt.Errorf("imported function %d params: %w", i, err)
+				return nil, fmt.Errorf("imported function %d params: %w", functionIndex, err)
 			}
 			results, err := typeConverter.abiTypes(ft.Results, c.Types)
 			if err != nil {
-				return nil, fmt.Errorf("imported function %d results: %w", i, err)
+				return nil, fmt.Errorf("imported function %d results: %w", functionIndex, err)
 			}
 			unsafeCrossTail := false
-			word := i >> 6
+			word := functionIndex >> 6
 			if word < len(unsafeDirectTailImports) {
-				unsafeCrossTail = unsafeDirectTailImports[word]&(uint64(1)<<uint(i&63)) != 0
+				unsafeCrossTail = unsafeDirectTailImports[word]&(uint64(1)<<uint(functionIndex&63)) != 0
 			}
-			c.importFuncSigs[i] = FuncSig{Params: params, Results: results, TypeIndex: typeIdx.Index, HasTypeIndex: true, unsafeCrossTail: unsafeCrossTail}
+			c.importFuncSigs[functionIndex] = FuncSig{Params: params, Results: results, TypeIndex: typeIdx.Index, HasTypeIndex: true, unsafeCrossTail: unsafeCrossTail}
+			functionIndex++
 		}
 	}
 	importedTables := m.ImportedTableCount()
@@ -1988,7 +2017,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 			}
 			if table64 {
 				// OffsetInit's compact Base/HasGlobal forms are i32-only. Preserve the
-				// validated i64 expression so codec version 1 and instantiation retain every bit.
+				// validated i64 expression so codec version 2 and instantiation retain every bit.
 				if len(e.Mode.Offset.BodyBytes) != 0 {
 					init.Offset.Expr = append([]byte(nil), e.Mode.Offset.BodyBytes...)
 				} else {
@@ -2041,7 +2070,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 		if memory64 {
 			// OffsetInit's compact Base/HasGlobal forms are intentionally i32-only.
 			// Preserve the already validated i64 program in the existing Expr field so
-			// codec version 1 retains the existing expression field while instantiation preserves all 64 address bits.
+			// codec version 2 retains the existing expression field while instantiation preserves all 64 address bits.
 			if len(d.Mode.Offset.BodyBytes) != 0 {
 				init.Offset.Expr = append([]byte(nil), d.Mode.Offset.BodyBytes...)
 			} else {
@@ -3855,7 +3884,7 @@ func (c *Compiled) tableRuntimeCapacity(index int) int {
 		return def.Size
 	}
 	entryBytes := c.tableEntryBytes(index)
-	if def.HasMax && c.inertUnobservableTableDeclaration(index) && def.Max > uint64((wruntime.InstantiateArenaSize-8)/entryBytes) {
+	if def.HasMax && c.inertUnobservableTableDeclaration(index) && def.Max > uint64((wruntime.InstantiateArenaCacheBytes-8)/entryBytes) {
 		return def.Size
 	}
 	return int(def.Max)
@@ -3923,17 +3952,36 @@ func (c *Compiled) validateArenaFootprint() error {
 		passiveElemBytes += len(elem.Values) * stride
 	}
 	hostCallBytes := 0
-	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
-		syncHostSlots := wruntime.MaxHostArity
-		if c.usesGCStructHelpers() || c.usesGCArrayHelpers() {
-			syncHostSlots, err = gcSyncHostSlotCapacity(c.GCTypeDescs)
-			if err != nil {
-				return fmt.Errorf("compiled metadata invalid: %w", err)
-			}
-			if c.syncHostSlots != 0 && int(c.syncHostSlots) != syncHostSlots {
-				return fmt.Errorf("compiled metadata invalid: synchronous host slot capacity %d, want %d", c.syncHostSlots, syncHostSlots)
-			}
+	syncHostSlots := wruntime.MaxHostArity
+	for i, sig := range c.importFuncSigs {
+		paramSlots, slotErr := valTypesSlots(sig.Params)
+		if slotErr != nil {
+			return fmt.Errorf("compiled metadata invalid: import %d parameters: %w", i, slotErr)
 		}
+		resultSlots, slotErr := valTypesSlots(sig.Results)
+		if slotErr != nil {
+			return fmt.Errorf("compiled metadata invalid: import %d results: %w", i, slotErr)
+		}
+		if paramSlots > syncHostSlots {
+			syncHostSlots = paramSlots
+		}
+		if resultSlots > syncHostSlots {
+			syncHostSlots = resultSlots
+		}
+	}
+	if c.usesGCStructHelpers() || c.usesGCArrayHelpers() {
+		gcSlots, slotErr := gcSyncHostSlotCapacity(c.GCTypeDescs)
+		if slotErr != nil {
+			return fmt.Errorf("compiled metadata invalid: %w", slotErr)
+		}
+		if gcSlots > syncHostSlots {
+			syncHostSlots = gcSlots
+		}
+	}
+	if c.syncHostSlots != 0 && int(c.syncHostSlots) != syncHostSlots {
+		return fmt.Errorf("compiled metadata invalid: synchronous host slot capacity %d, want %d", c.syncHostSlots, syncHostSlots)
+	}
+	if c.needsPublicFuncrefHostReentry() || c.usesGCStructHelpers() || c.usesGCArrayHelpers() || c.usesDynamicFuncRefTest() || c.usesAtomicWaitHelpers() {
 		hostCallBytes, err = wruntime.HostCtrlFrameBytesForSlots(syncHostSlots)
 		if err != nil {
 			return fmt.Errorf("compiled metadata invalid: %w", err)
@@ -3969,13 +4017,10 @@ func (c *Compiled) validateArenaFootprint() error {
 		return fmt.Errorf("compiled metadata invalid: instantiate arena need overflows instance context")
 	}
 	need += wruntime.InstanceContextBytes
-	if need > wruntime.InstantiateArenaSize {
-		return fmt.Errorf("compiled metadata invalid: instantiate arena need %d > limit %d", need, wruntime.InstantiateArenaSize)
-	}
 	c.maxParamSlots = maxParams
 	c.maxResultSlots = maxResults
 	if c.syncHostSlots == 0 {
-		c.syncHostSlots = uint16(wruntime.MaxHostArity)
+		c.syncHostSlots = uint16(syncHostSlots)
 	}
 	c.instantiateArenaNeed = need
 	return nil
@@ -4039,7 +4084,7 @@ const wagoMagic = "WAGO"
 // so incompatible development layouts were consolidated instead of consuming
 // public version numbers. The codec never serializes live owners, collector
 // handles, mappings, tokens, active handlers, thunk addresses, or store identity.
-const wagoVersion = 1
+const wagoVersion = 2
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
 //
@@ -4782,7 +4827,7 @@ func (in *Instance) replayHostLog() (err error) {
 }
 
 func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64, id invocationID, parent context.Context) (results []uint64, err error) {
-	if importIdx < 0 || importIdx >= len(in.syncHosts) || in.syncHosts[importIdx] == nil || importIdx >= len(in.c.importFuncSigs) {
+	if importIdx < 0 || importIdx >= len(in.syncHosts) || in.syncHosts[importIdx].fn == nil || importIdx >= len(in.c.importFuncSigs) {
 		return nil, fmt.Errorf("export %q is an imported function without a callable host owner", export)
 	}
 	sig := in.c.importFuncSigs[importIdx]
@@ -4845,11 +4890,11 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	// collector lease after scalar-only validation so same-domain InvokeFromHost
 	// and CollectGC calls can proceed, then restore it before returning results to
 	// the public invocation boundary.
-	resumeGCInvocation := in.suspendGCInvocation(id)
-	defer resumeGCInvocation()
+	gcSuspension := in.suspendGCInvocation(id)
+	defer gcSuspension.resume()
 	restoreInvocationContext := bindHostInvocationParent(in, parent)
 	defer restoreInvocationContext()
-	fn := in.syncHosts[importIdx]
+	fn := in.syncHosts[importIdx].fn
 	caller := in.beginHostCallScope()
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	fn(caller, params, results)
@@ -4871,7 +4916,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		if gfi >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, gfi)
 		}
-		if ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport); (!ok || ex == nil || ex.inst == nil) && (gfi >= len(in.syncHosts) || in.syncHosts[gfi] == nil) {
+		if ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport); (!ok || ex == nil || ex.inst == nil) && (gfi >= len(in.syncHosts) || in.syncHosts[gfi].fn == nil) {
 			return nil, fmt.Errorf("export %q is an imported function without a callable owner", export)
 		}
 		slot := &in.ic[int(in.icNext)%len(in.ic)]

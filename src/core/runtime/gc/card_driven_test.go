@@ -448,19 +448,19 @@ func TestCardMetadataFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(tinyScanCursor{}); got != 8 {
 		t.Fatalf("tinyScanCursor size=%d, want 8", got)
 	}
-	if got := unsafe.Sizeof(tinyStepWork{}); got != 8 {
-		t.Fatalf("tinyStepWork size=%d, want 8", got)
+	if got := unsafe.Sizeof(tinyStepWork{}); got != 12 {
+		t.Fatalf("tinyStepWork size=%d, want 12 with uint32 transient-root accounting", got)
 	}
 	if got := unsafe.Sizeof(tinyMarkState(0)); got != 1 {
 		t.Fatalf("tinyMarkState size=%d, want 1", got)
 	}
-	if tinyStepObjectRanges > uint32(^uint16(0)) || tinyStepScanEntries > uint32(^uint16(0)) || tinyStepRefSlots > uint32(^uint16(0)) || tinyStepPayloadBytes > uint32(^uint16(0)) {
+	if tinyStepObjectRanges > uint32(^uint16(0)) || tinyStepScanEntries > uint32(^uint16(0)) || tinyStepPayloadBytes > uint32(^uint16(0)) {
 		t.Fatal("Tiny Step work bounds do not fit compact telemetry state")
 	}
-	if got := unsafe.Sizeof(tinyGC{}); got != 80 {
-		t.Fatalf("tinyGC size=%d, want 80", got)
+	if got := unsafe.Sizeof(tinyGC{}); got != 88 {
+		t.Fatalf("tinyGC size=%d, want 88 with unbounded transient-root accounting", got)
 	}
-	wantCollector := uintptr(1120)
+	wantCollector := uintptr(1128)
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}

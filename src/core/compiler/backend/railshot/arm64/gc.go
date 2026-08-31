@@ -359,11 +359,8 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		valueSlots := funcTypeSlots([]wasm.ValType{valueType})
 		if uint64(count)*uint64(valueSlots)+2 > maxSyncHostSlots {
-			if wasm.EqualValType(valueType, wasm.V128) {
-				result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
-				return f.callGCArrayFixedV128Spill(typeIndex, count, result)
-			}
-			return fmt.Errorf("arm64: array.new_fixed count %d exceeds helper slot bound", count)
+			result := wasm.RefVal(wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
+			return f.callGCArrayFixedSpill(typeIndex, count, result)
 		}
 		params := make([]wasm.ValType, 0, int(count)+2)
 		for i := uint32(0); i < count; i++ {
@@ -856,7 +853,7 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		return id
 	}
 	f.materializeGCFrameLocalsAt(siteIndex, false)
-	offsets := make([]uint32, 0, min(len(plan.LocalOffsets), shared.GCFrameRootLimit))
+	offsets := make([]uint32, 0, len(plan.LocalOffsets)+len(plan.FixedOffsets))
 	if !plan.VisitLiveLocals(siteIndex, false, func(root int) {
 		offsets = append(offsets, plan.LocalOffsets[root])
 	}) {
@@ -878,9 +875,6 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 	}
 	offsets = append(offsets, plan.FixedOffsets...)
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	if len(offsets) > shared.GCFrameRootLimit {
-		plan.Exact = false
-	}
 	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{ID: id, Offsets: offsets})
 	f.stats.addGCRootMapBytes(8 + len(offsets)*4)
 	return id
@@ -942,7 +936,7 @@ func arm64GCHelperMayAllocate(helper uint32) bool {
 	}
 }
 
-func (f *fn) callGCArrayFixedV128Spill(typeIndex, count uint32, resultType wasm.ValType) error {
+func (f *fn) callGCArrayFixedSpill(typeIndex, count uint32, resultType wasm.ValType) error {
 	roots := f.rootsBottomToTop()
 	if uint64(count) > uint64(len(roots)) {
 		return fmt.Errorf("arm64: array.new_fixed count %d exceeds operand depth %d", count, len(roots))

@@ -99,7 +99,7 @@ func TestStagedGCArrayReferenceElementSegmentRoots(t *testing.T) {
 			if binary.LittleEndian.Uint64(descriptor) != 0 || binary.LittleEndian.Uint32(descriptor[8:]) != 2 || state.Count != 2 {
 				t.Fatalf("segment descriptor/state = %x/%+v", descriptor, state)
 			}
-			for i := uint8(0); i < state.Count; i++ {
+			for i := uint32(0); i < state.Count; i++ {
 				rooted, err := collector.CheckedTableSlot(state.Slots[i])
 				if err != nil || rooted != state.Refs[i] || !rooted.IsObj() {
 					t.Fatalf("segment root %d = %v, %v; want %v", i, rooted, err, state.Refs[i])
@@ -121,7 +121,7 @@ func TestStagedGCArrayReferenceElementSegmentRoots(t *testing.T) {
 			if binary.LittleEndian.Uint32(descriptor[8:]) != 0 {
 				t.Fatalf("dropped descriptor = %x", descriptor)
 			}
-			for i := uint8(0); i < state.Count; i++ {
+			for i := uint32(0); i < state.Count; i++ {
 				if rooted, err := collector.CheckedTableSlot(state.Slots[i]); err != nil || !rooted.IsNull() {
 					t.Fatalf("dropped segment root %d = %v, %v", i, rooted, err)
 				}
@@ -214,7 +214,7 @@ func TestStagedGCArrayReferenceElementAllocationAndDrop(t *testing.T) {
 			if binary.LittleEndian.Uint32(state.Descriptor[8:]) != 0 {
 				t.Fatalf("dropped instance descriptor = %x", state.Descriptor)
 			}
-			for i := uint8(0); i < state.Count; i++ {
+			for i := uint32(0); i < state.Count; i++ {
 				if rooted, err := in.gc.CheckedTableSlot(state.Slots[i]); err != nil || !rooted.IsNull() {
 					t.Fatalf("dropped instance root %d = %v, %v", i, rooted, err)
 				}
@@ -372,7 +372,7 @@ func TestStagedGCArrayReferenceFootprint(t *testing.T) {
 		"compiledMemoryDirectory": unsafe.Sizeof(compiledMemoryDirectory{}),
 		"instancePluginState":     unsafe.Sizeof(instancePluginState{}),
 	} {
-		want := map[string]uintptr{"gcArrayElementInit": 96, "gcArrayElementState": 56, "compiledMemoryDirectory": 136, "instancePluginState": 128}[name]
+		want := map[string]uintptr{"gcArrayElementInit": 40, "gcArrayElementState": 112, "compiledMemoryDirectory": 136, "instancePluginState": 136}[name]
 		if got != want {
 			t.Fatalf("%s size = %d, want %d", name, got, want)
 		}

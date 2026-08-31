@@ -306,7 +306,7 @@ func (s *gcCountingRootRefSink) VisitRootRef(ref gc.Ref) bool {
 }
 
 func TestGCNativeFrameRootWideEnumerationIsAllocationFree(t *testing.T) {
-	const rootsN = shared.GCFrameRootLimit
+	const rootsN = 4096
 	frame, releaseFrame := newGCNativeTestFrame(t, shared.AMD64FrameHeaderBytes+rootsN*8)
 	defer releaseFrame()
 	offsets := make([]uint32, rootsN)

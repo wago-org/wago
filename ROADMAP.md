@@ -119,8 +119,8 @@ current optimization priorities. The Core 3.0 implementation ledger is
   direct/indirect/reference calls, recursion, bounded host re-entry,
   mutable/shared GC globals, local/shared collector-reference tables, EH payload
   records, local starts, and same-Runtime cross-instance calls. One-/two-word and
-  bounded flat masks cover up to 1,024 simultaneously live roots per site; locals
-  dead at every collecting site are compacted from the plan. Codec version 1
+  flat masks feed variable-size exact root vectors; locals dead at every collecting
+  site are compacted from the plan. Codec version 2
   validates the native maps and the required native-GC ABI version.
 - [x] Add snapshot version 1 stable-ID heap graphs for objects reachable from owned
   local GC globals and one or more heterogeneous local collector-reference tables,
@@ -163,10 +163,10 @@ current optimization priorities. The Core 3.0 implementation ledger is
   collector descriptors append safely under the domain lock, codec-loaded modules and
   checked host tokens use the same mapping, and incompatible layouts/configurations
   remain fail-closed.
-- [x] **Bounded host-held GC results:** generic struct/array results issue up to 64
-  opaque `GCRef` tokens per producer, atomically roll back partial multi-result egress,
-  reuse released checked slots, retain exact Runtime/store ownership after producer
-  close, and reject stale/cross-producer release.
+- [x] **Host-held GC results:** generic struct/array results use a 64-slot inline
+  fast path plus reusable dynamic overflow storage, atomically roll back partial
+  multi-result egress, retain exact Runtime/store ownership after producer close,
+  and reject stale/cross-producer release.
 - [x] **Host GC token ingress:** non-null `GCRef` arguments re-enter only the exact
   collector domain after structural subtype validation, use up to 64 reusable checked
   roots, survive concurrent release after staging, and reject stale/foreign tokens.
@@ -292,7 +292,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
   one site for that trap class. Shared multi-site stubs still report the
   function without guessing a PC. Full caller-chain unwind metadata remains a
   follow-up.
-- [x] WebAssembly 2.0 product closeout: `.wago` codec version 1 persists structural
+- [x] WebAssembly 2.0 product closeout: `.wago` codec version 2 persists structural
   reference globals, indexed typed tables/exports/elements, exact local/imported
   table/memory-limit forms, indexed memory imports/exports, and required-feature
   bits without serializing live runtime identity.
@@ -335,7 +335,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
   host, cross-instance, indirect, typed-reference, trap, and validation paths.
   Broader platform and bounds-mode parity is tracked above.
 - [x] Basic extended constant expressions: integer add/sub/mul, prior immutable
-  globals, active offsets, strict validation, and codec version 1 persistence.
+  globals, active offsets, strict validation, and codec version 2 persistence.
 - [x] Typed function references — recursive structural typing, typed tables,
   elements and globals, `call_ref`, casts/tests, null branches, linking, ownership,
   codec metadata, and official invalid/unlinkable behavior are complete for the
@@ -354,7 +354,7 @@ current optimization priorities. The Core 3.0 implementation ledger is
 - [x] Reference-types product completion: signatures, locals, control,
   local/imported/shared globals, host ABI, explicit host funcref ownership/egress,
   typed 8-byte externref tables/elements, every `table.*` operation, multiple
-  local/imported tables, exact exports/re-exports, codec version 1 structural metadata,
+  local/imported tables, exact exports/re-exports, codec version 2 structural metadata,
   snapshot isolation, complete inspection, cross-link teardown, and the
   zero-skip Release 2 execution corpus are done.
 - [x] Native Linux, macOS, and Windows runtime paths on amd64 and arm64, with
@@ -442,7 +442,7 @@ Direct numeric local calls record native return PCs, caller frame sizes, and the
 roots live at each callsite. The runtime walks cross-function and recursive
 frames from parked RSP until a validated adapter return, preserving caller
 objects while the deepest frame performs 1,000 allocations under Throughput and
-Tiny stress. Direct tail calls discard each caller frame and retain no callsite roots. Codec version 1
+Tiny stress. Direct tail calls discard each caller frame and retain no callsite roots. Codec version 2
 persists and strictly validates frame sizes, safepoint ordering, root alignment,
 callsite returns, and adapter termination. Forged metadata fails closed. Five
 500 ms samples measured 432.5-443.5 ns/op, 0 B/op, and 0 allocs/op. The expanded
@@ -455,7 +455,7 @@ Numeric host imports now record dynamic-wrapper stack adjustments and preserve
 up to eight suspended activations. Each nested callback borrows a separate
 foreign execution stack, while the outer control header and exact native roots
 remain parked. Boundary and allocating-helper collections scan every suspended
-activation. Codec version 1 persists and validates the new callsite shape. Throughput
+activation. Codec version 2 persists and validates the new callsite shape. Throughput
 forced-major and Tiny collect-every-allocation stress preserve an outer struct
 across 1,000 allocations in a re-entered function, including codec reload.
 
@@ -547,10 +547,10 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   one-root 16K-instruction compile benchmark improves 3.2% while temporary bytes
   fall 18.6%; dense safepoint lookup remains about 1.66 ns, zero allocation.
 - [x] Base large-frame admission on per-site liveness: track the configured local
-  population, compact locals dead at every collection point, and keep the 1,024
-  bound on simultaneous roots. Function parameters plus declared locals default
-  to 4,096, are configurable through 65,535, and remain independently bounded by
-  the native 256 KiB stack fence. See
+  population, compact locals dead at every collection point, and emit variable-size
+  exact root vectors. Function parameters plus declared locals default to 65,535;
+  lower configured admission limits remain available, and the native 256 KiB stack
+  fence remains independent. See
   [`docs/function-local-limits.md`](docs/function-local-limits.md).
 - [x] Add bounded Throughput survivor aging: Eden feeds two bump-copy semispaces,
   handle-owned age bits retain the 20-byte native entry, medium-lived objects

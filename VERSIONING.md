@@ -1,16 +1,15 @@
 # Format versioning
 
-Wago has not published its first release. Every Wago-owned codec, persisted
-format, machine-readable schema, cache-key encoding, snapshot format, and native
-metadata ABI therefore uses **version 1**.
+Wago has not published its first release. Most Wago-owned persisted formats,
+machine-readable schemas, snapshot formats, and metadata ABIs use **version 1**.
 
-Incompatible development layouts are consolidated into version 1 rather than
-consuming public-looking version numbers before users can depend on them. Readers
-remain strict: an unsupported version is rejected rather than guessed, upgraded,
-or interpreted as an older layout.
+The compiled `.wago` executable codec uses **version 2**. Version 2 was introduced
+on August 30, 2026 because generated `memory.grow` code and the native instance
+context gained a runtime memory-page quota. Rejecting version-1 executable code
+is required so an older artifact cannot bypass a stricter runtime configuration.
 
-After Wago's first release, an incompatible change to a persisted or
-native-visible contract must increment the relevant version and document the
-compatibility and migration policy. Third-party and standards-defined versions
-(such as WebAssembly releases, Go module versions, tool versions, and JSON Schema
-dialects) are outside this policy.
+Readers remain strict: an unsupported version is rejected rather than guessed,
+upgraded, or partially decoded. Cache-key encodings have their own explicit
+version. Before the first stable release, incompatible development layouts can
+still be consolidated when they do not cross an executable safety or policy
+boundary.

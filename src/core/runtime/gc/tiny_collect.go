@@ -70,10 +70,10 @@ const (
 	tinyStepSweepBlocks     = uint32(256)
 	tinyStepSweepBytes      = uint32(4096)
 	// Native/transient roots can change while the mutator runs, so they are
-	// captured atomically at a safepoint rather than resumed across Steps. The
-	// hard cap keeps that snapshot bounded; persistent collector slots use the
-	// resumable cursor below.
-	tinyTransientRootLimit      = 1024
+	// enumerated atomically at a safepoint rather than resumed across Steps.
+	// Zero in telemetry means there is no semantic root-count limit; native frame
+	// size and host resource policy bound the real work.
+	tinyTransientRootLimit      = 0
 	tinyAllocationDebtBytes     = uint32(1024)
 	tinyNearExhaustionFactor    = uint32(8)
 	tinyNearExhaustionStepLimit = uint32(32)
@@ -94,15 +94,15 @@ type tinyScanCursor struct {
 type tinyStepWork struct {
 	objectRanges uint16
 	scanEntries  uint16
-	refSlots     uint16
 	payloadBytes uint16
+	refSlots     uint32
 }
 
 func makeTinyStepWork(work objectScanWork) tinyStepWork {
 	return tinyStepWork{
 		objectRanges: uint16(work.ObjectRanges),
 		scanEntries:  uint16(work.ScanEntries),
-		refSlots:     uint16(work.RefSlots),
+		refSlots:     work.RefSlots,
 		payloadBytes: uint16(work.PayloadBytes),
 	}
 }
@@ -111,7 +111,7 @@ func (work tinyStepWork) objectScanWork() objectScanWork {
 	return objectScanWork{
 		ObjectRanges: uint32(work.objectRanges),
 		ScanEntries:  uint32(work.scanEntries),
-		RefSlots:     uint32(work.refSlots),
+		RefSlots:     work.refSlots,
 		PayloadBytes: uint32(work.payloadBytes),
 	}
 }
@@ -566,14 +566,10 @@ func (c *Collector) tinyCountTransientRoots(roots RootSet) error {
 	c.rootMarkMode = rootMarkTinyCount
 	c.tinyGC.lastStepWork.refSlots = 0
 	complete, err := c.tinyWalkTransientRoots(roots)
-	count := uint32(c.tinyGC.lastStepWork.refSlots)
 	c.finishDirectRootMark()
 	c.tinyGC.lastStepWork.refSlots = 0
 	if err != nil {
 		return err
-	}
-	if !complete && count >= tinyTransientRootLimit {
-		return fmt.Errorf("gc: Tiny transient root count exceeds %d", tinyTransientRootLimit)
 	}
 	if !complete {
 		return errors.New("gc: Tiny transient root enumeration stopped unexpectedly")
@@ -585,14 +581,10 @@ func (c *Collector) tinyMarkTransientRoots(roots RootSet) error {
 	c.rootMarkMode = rootMarkTinyBounded
 	c.tinyGC.lastStepWork.refSlots = 0
 	complete, err := c.tinyWalkTransientRoots(roots)
-	count := uint32(c.tinyGC.lastStepWork.refSlots)
 	c.finishDirectRootMark()
 	c.tinyGC.lastStepWork.refSlots = 0
 	if err != nil {
 		return err
-	}
-	if !complete && count >= tinyTransientRootLimit {
-		return fmt.Errorf("gc: Tiny transient root count exceeds %d during mark", tinyTransientRootLimit)
 	}
 	if !complete {
 		return errors.New("gc: Tiny transient root set changed during bounded enumeration")

@@ -6,12 +6,10 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
-// InstantiateArenaSize is the maximum supported arena size for per-instance
-// runtime metadata: host-call log, globals, table descriptor, call buffers, and
-// trap buffer. Instantiate maps the exact validated footprint, bounded by this
-// limit. Keep footprint checks in compiler/front-end support code in sync with
-// allocations in InstantiateWithImports.
-const InstantiateArenaSize = 1 << 20
+// InstantiateArenaCacheBytes is only the small-instance mmap reuse threshold.
+// It is not a semantic module limit. Larger validated metadata arenas are mapped
+// at their exact size and are unmapped instead of entering the one-entry cache.
+const InstantiateArenaCacheBytes = 1 << 20
 
 const HostCallLogBytes = 8 + ((1<<16)/8)*8
 

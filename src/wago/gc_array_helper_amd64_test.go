@@ -133,7 +133,7 @@ func TestStagedGCArrayNumericDefaultGlobalRoots(t *testing.T) {
 			if state == nil || state.gcGlobalRootCount != 2 {
 				t.Fatalf("default array root mapping = %#v", state)
 			}
-			for i := uint8(0); i < state.gcGlobalRootCount; i++ {
+			for i := uint32(0); i < state.gcGlobalRootCount; i++ {
 				mapping := state.gcGlobalRoots[i]
 				ref := gc.Ref(uint32(readGlobalObject(in.globalCells[mapping.GlobalIndex], ValAnyRef)))
 				rooted, err := in.gc.CheckedGlobalSlot(mapping.SlotIndex)
@@ -338,8 +338,8 @@ func TestStagedGCArrayHelperFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(compiledCodeCache{}); got != 104 {
 		t.Fatalf("compiledCodeCache size = %d, want 104", got)
 	}
-	if got := unsafe.Sizeof(gcArrayGlobalInit{}); got != 48 {
-		t.Fatalf("gcArrayGlobalInit size = %d, want 48", got)
+	if got := unsafe.Sizeof(gcArrayGlobalInit{}); got != 40 {
+		t.Fatalf("gcArrayGlobalInit size = %d, want 40 with dynamic value storage", got)
 	}
 }
 

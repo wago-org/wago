@@ -26,9 +26,9 @@ type ValidationLimits struct {
 	MaxMemoriesPerModule uint32
 }
 
-// DefaultMaxFunctionLocals is the ordinary validation ceiling for the total
-// parameter-plus-local count of one function.
-const DefaultMaxFunctionLocals uint32 = 4096
+// DefaultMaxFunctionLocals is the largest count represented by the current
+// uint16-backed compiler metadata. Native frame safety is checked separately.
+const DefaultMaxFunctionLocals uint32 = MaximumFunctionLocals
 
 // DefaultMaxMemoriesPerModule is the ordinary validation ceiling. It matches
 // the WebAssembly JavaScript API implementation limit. The configurable maximum

@@ -108,6 +108,18 @@ func TestModuleMetadataHelpers(t *testing.T) {
 			t.Fatalf("function signature %d = %#v, %v", idx, ft, ok)
 		}
 	}
+	if imported, ok := m.ImportFuncType(0); !ok || imported.Kind != CompFunc || len(imported.Params) != 1 || imported.Params[0] != I32 {
+		t.Fatalf("imported function type = %#v, %v", imported, ok)
+	}
+	if _, ok := m.ImportFuncType(-1); ok {
+		t.Fatal("negative import index resolved as a function type")
+	}
+	if _, ok := m.ImportFuncType(1); ok {
+		t.Fatal("non-function import resolved as a function type")
+	}
+	if _, ok := m.ImportFuncType(len(m.Imports)); ok {
+		t.Fatal("out-of-range import resolved as a function type")
+	}
 	if _, ok := m.FuncSignature(2); ok || m.CanonicalTypeID(2) != 0 || m.StructuralTypeID(2) == 0 || m.StructuralTypeID(2) == m.StructuralTypeID(0) {
 		t.Fatal("function signature IDs changed")
 	}

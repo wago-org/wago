@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago"
+	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func TestLoadOrCompileCachesAndRepairsArtifact(t *testing.T) {
@@ -272,7 +274,7 @@ func TestLoadOrCompileUsesDestinationRuntimeConfig(t *testing.T) {
 	source := constantModule()
 	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
 	runtimeConfig := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
-	callerConfig := runtimeConfig.WithMemoryLimitPages(runtimeConfig.MemoryLimitPages() - 1)
+	callerConfig := runtimeConfig.WithMaxFunctionLocals(runtimeConfig.MaxFunctionLocals() - 1)
 	callerPath, ok := cache.path(source, callerConfig)
 	if !ok {
 		t.Fatal("caller cache key unavailable")
@@ -351,8 +353,8 @@ func TestLoadOrCompileBypassesArtifactsForCompileOnlyTelemetry(t *testing.T) {
 }
 
 func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
-	if cacheKeyFormat != 8 {
-		t.Fatalf("cache key format = %d, want compiler-and-limit-aware version 8", cacheKeyFormat)
+	if cacheKeyFormat != 9 {
+		t.Fatalf("cache key format = %d, want compiler-aware, runtime-policy-independent version 9", cacheKeyFormat)
 	}
 	source := constantModule()
 	dir := t.TempDir()
@@ -364,7 +366,7 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	nativeStack := base.WithNativeStackBytes(8 << 20)
 	bounds := base.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 	deferredOff := base.WithDeferBoundsChecks(false)
-	memoryLimit := base.WithMemoryLimitPages(base.MemoryLimitPages() - 1)
+	memoryLimit := base.WithMemoryLimitPages(1)
 	localLimit := base.WithMaxFunctionLocals(base.MaxFunctionLocals() - 1)
 	memoryCountLimit := base.WithMaxMemoriesPerModule(base.MaxMemoriesPerModule() - 1)
 	dragline := base.WithCompiler(wago.CompilerDragline)
@@ -421,8 +423,8 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	if basePath == deferredPath {
 		t.Fatal("deferred-bounds policy did not change artifact key")
 	}
-	if basePath == memoryPath {
-		t.Fatal("memory limit did not change artifact key")
+	if basePath != memoryPath {
+		t.Fatal("runtime-only memory page quota changed artifact key")
 	}
 	if basePath == localPath {
 		t.Fatal("function local limit did not change artifact key")
@@ -441,6 +443,51 @@ func TestCacheKeyIncludesRuntimeAndCompilerConfiguration(t *testing.T) {
 	}
 	if basePath == sourcePath {
 		t.Fatal("source bytes did not change artifact key")
+	}
+}
+
+func cacheMemoryQuotaModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]corewasm.ValType{corewasm.I32}, []corewasm.ValType{corewasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x03})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("grow", byte(corewasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x40, 0x00, 0x0b}))),
+	)
+}
+
+func TestCachedArtifactCannotBypassStricterMemoryPageQuota(t *testing.T) {
+	source := cacheMemoryQuotaModule()
+	cache := Cache{Dir: t.TempDir(), Identity: []byte("runtime-a")}
+	unlimited := wago.NewRuntimeConfig().WithBoundsChecks(wago.BoundsChecksExplicit)
+	seed := wago.NewRuntime(wago.WithRuntimeConfig(unlimited))
+	mod, err := cache.LoadOrCompile(source, unlimited, seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mod.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := seed.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	strict := unlimited.WithMemoryLimitPages(1)
+	rt := wago.NewRuntime(wago.WithRuntimeConfig(strict))
+	defer rt.Close()
+	mod, err = cache.LoadOrCompile(source, strict, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mod.Close()
+	in, err := rt.Instantiate(context.Background(), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	values, err := in.Invoke("grow", wago.I32(1))
+	if err != nil || len(values) != 1 || uint32(values[0]) != ^uint32(0) {
+		t.Fatalf("cached artifact growth past strict quota = %v, %v", values, err)
 	}
 }
 

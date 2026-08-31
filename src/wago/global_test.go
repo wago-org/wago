@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	wruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -423,11 +422,7 @@ func TestCompiledValidateRejectsMalformedMetadata(t *testing.T) {
 			c.Globals[0].Mutable = true
 			c.Data = []DataInit{{Offset: OffsetInit{HasGlobal: true, Global: 0}}}
 		}, want: "data 0 offset global 0 must be immutable i32"},
-		{name: "arena footprint too large", mut: func(c *Compiled) { c.HasTable = true; c.TableSize = wruntime.InstantiateArenaSize }, want: "instantiate arena need"},
-		{name: "passive element footprint too large", mut: func(c *Compiled) {
-			c.HasTable = true
-			c.passiveElems = make([]ElemInit, wruntime.InstantiateArenaSize/wruntime.PassiveElemDescBytes)
-		}, want: "instantiate arena need"},
+		{name: "arena footprint arithmetic overflow", mut: func(c *Compiled) { c.HasTable = true; c.TableSize = maxInt()/32 + 1 }, want: "overflows arena allocation"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -480,20 +475,25 @@ func TestInstantiateInitializesGlobalSlots(t *testing.T) {
 }
 
 func TestInstantiateLateGlobalErrorCleansResources(t *testing.T) {
-	before := procSelfMapsCount(t)
 	c := newHandBuiltCompiled([]byte{0xc3}, Compiled{ // ret; code is mapped before global initialization reaches this malformed reference.
 		Globals: []GlobalDef{
 			{Type: ValI32, Bits: 1},
 			{Type: ValI32, HasInitGlobal: true, InitGlobal: 2},
 		},
 	})
-	for i := 0; i < 5; i++ {
+	instantiate := func() {
+		t.Helper()
 		if in, err := Instantiate(c, InstantiateOptions{}); err == nil {
 			in.Close()
 			t.Fatal("Instantiate malformed global initializer succeeded, want error")
 		} else if !bytes.Contains([]byte(err.Error()), []byte("initializer references unavailable global")) {
 			t.Fatalf("Instantiate error = %v, want unavailable global", err)
 		}
+	}
+	instantiate() // Exclude one-time engine and arena initialization from leak accounting.
+	before := procSelfMapsCount(t)
+	for i := 0; i < 5; i++ {
+		instantiate()
 	}
 	after := procSelfMapsCount(t)
 	if after > before+2 {

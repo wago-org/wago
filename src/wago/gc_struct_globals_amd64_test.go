@@ -54,7 +54,7 @@ func TestStagedGCStructGlobalRootsAndPublicEgress(t *testing.T) {
 			if state == nil || state.gcGlobalRootCount != 2 {
 				t.Fatalf("GC global root mapping = %#v", state)
 			}
-			for i := uint8(0); i < state.gcGlobalRootCount; i++ {
+			for i := uint32(0); i < state.gcGlobalRootCount; i++ {
 				mapping := state.gcGlobalRoots[i]
 				want := gc.Ref(uint32(readGlobalObject(in.globalCells[mapping.GlobalIndex], ValAnyRef)))
 				got, err := collector.CheckedGlobalSlot(mapping.SlotIndex)

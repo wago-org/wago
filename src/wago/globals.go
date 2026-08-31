@@ -950,7 +950,7 @@ type compiledMemoryDirectory struct {
 
 	stagedMemory64  bool                   // internal bounded memory64 execution gate; never serialized
 	gcStructGlobals []gcStructGlobalInit   // exact staged GC constant initializers; never serialized
-	gcArrayGlobals  []gcArrayGlobalInit    // exact staged bounded numeric array globals; never serialized
+	gcArrayGlobals  []gcArrayGlobalInit    // exact staged numeric array globals; never serialized
 	gcArrayElement  *gcArrayElementInit    // exact passive GC element constructors; never serialized
 	gcI31TableInit  *gcI31TableInitializer // exact imported-global i31 table initializer; never serialized
 	ehTags          []compiledTagDef       // staged EH product metadata in tag-index order; never serialized
@@ -1066,7 +1066,7 @@ type Compiled struct {
 	memoryImport string
 
 	// tableImport preserves the direct table-0 API/runtime metadata. Additional
-	// imported tables occupy the leading extraTables entries, and codec version 1 writes
+	// imported tables occupy the leading extraTables entries, and codec version 2 writes
 	// every declaration in exact Wasm index order.
 	tableImport       string
 	tableImportMin    int
@@ -1180,6 +1180,12 @@ type validateMemo struct {
 	// nativeCloneFunctions marks a compact, non-standalone Dragline image. The
 	// sorted original-Wasm indexes must match InstallDraglineTier exactly.
 	nativeCloneFunctions []uint32
+
+	// Fresh low-level compilation records runtime-only quotas here for a later
+	// package-level Instantiate without growing Compiled. Decoded cache artifacts
+	// receive the destination Runtime's current policy through InstantiateOptions.
+	memoryLimitPages         uint32
+	maxInstanceMetadataBytes uint64
 }
 
 func (c *Compiled) compactNativeFunctions() []uint32 {

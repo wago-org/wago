@@ -253,7 +253,7 @@ func (v *guestStorageView) GCRef(slot uint64) (GuestGCRef, error) {
 	_, registered := v.in.refStore.instances[v.in]
 	v.in.refStore.mu.Unlock()
 	ownerIndex := entry.ownerIndex
-	if !ok || entry.owner != v.in || !registered || ownerIndex >= state.resultRootsMade || state.resultTokens[ownerIndex] != slot || state.resultRootSlots[ownerIndex] != entry.slot {
+	if !ok || entry.owner != v.in || !registered || ownerIndex >= state.resultRootsMade || state.resultToken(ownerIndex) != slot || state.resultRootSlot(ownerIndex) != entry.slot {
 		return GuestGCRef{}, fmt.Errorf("wago: invalid, stale, or foreign GC reference token")
 	}
 	ref := v.in.gc.GlobalSlot(entry.slot)

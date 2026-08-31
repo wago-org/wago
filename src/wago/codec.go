@@ -2221,9 +2221,6 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 		if err != nil {
 			return nil, err
 		}
-		if count > gcNativeFrameRootLimit {
-			return nil, fmt.Errorf("GC frame safepoint %d root count %d exceeds %d", rootMap.safepoints[i].id, count, gcNativeFrameRootLimit)
-		}
 		rootMap.safepoints[i].offsets = make([]uint32, count)
 		for j := range rootMap.safepoints[i].offsets {
 			rootMap.safepoints[i].offsets[j], err = r.u32()
@@ -2257,9 +2254,6 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 		count, err := r.countElements("GC callsite root offsets", 4)
 		if err != nil {
 			return nil, err
-		}
-		if count > gcNativeFrameRootLimit {
-			return nil, fmt.Errorf("GC frame callsite %d root count %d exceeds %d", rootMap.callsites[i].returnOffset, count, gcNativeFrameRootLimit)
 		}
 		rootMap.callsites[i].offsets = make([]uint32, count)
 		for j := range rootMap.callsites[i].offsets {

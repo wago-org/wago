@@ -61,7 +61,7 @@ The bounded linux/amd64 and Linux/Darwin arm64 products collect within admitted
 native invocations. They cover local and same-domain call graphs, host re-entry,
 module-local and shared GC globals/tables, direct and discarded-frame tail calls,
 exact GC-reference parameters/results, local start functions, EH payload records,
-and up to 1,024 collector-reference roots in one frame. Imported starts and
+and variable-size exact collector-reference root vectors in one frame. Imported starts and
 unknown host/cross-runtime ownership remain fail-closed. Local-only or proven
 same-domain `call_ref`/`return_call_ref` and direct/tail `call_indirect` retain
 their existing ownership restrictions.
@@ -81,7 +81,7 @@ call graphs and recursion. Throughput collect-every-allocation/forced-major veri
 Tiny collect/step-every-allocation preserve references in every recursive caller
 while the deepest frame performs 1,000 allocations. Dead locals are omitted,
 hidden operand roots survive control merges, and malformed IDs, offsets,
-call-sites, and adapter returns fail closed. Codec version 1 persists and revalidates
+call-sites, and adapter returns fail closed. Codec version 2 persists and revalidates
 safepoint, spill, callsite, frame-size, local-start, and adapter-return metadata;
 repeated offset vectors share immutable storage after compilation and reload.
 It never persists collector handles, liveness work arenas, or live frames.
@@ -141,7 +141,7 @@ generation, card append/remove/clear republishes card metadata, and canonical-do
 type append republishes the interval backing. One instance-owned view publishes the
 immutable local-to-canonical type map at basedata offset 280.
 
-The Go/native structure layout is validated when a collector is created. Codec version 1
+The Go/native structure layout is validated when a collector is created. Codec version 2
 records the required native-GC ABI for generic struct/array execution and rejects a
 missing or mismatched requirement while loading. Instantiation then validates the
 immutable instance version, collector identity, local-type map pointer/count,
@@ -361,10 +361,10 @@ and 31.7 ms for linked instantiate/start. The cold Starshine link/JIT allocated
 166.2 MB in 565,697 allocations; this and the 74.8 MB/448,851-allocation compile
 front half are explicit optimization targets rather than footprint claims.
 
-Codec version 1 persists generic helper admission, the required native-GC ABI version,
+Codec version 2 persists generic helper admission, the required native-GC ABI version,
 vector layout, and bounded native root maps; compact handles remain process-local.
 
-Numeric host imports may re-enter the same instance: codec version 1 callsites carry
+Numeric host imports may re-enter the same instance: codec version 2 callsites carry
 stack adjustments, a bounded eight-entry activation stack preserves control
 state, nested invocations borrow separate foreign stacks with the active Runtime's
 configured 512 KiB-through-1 GiB capacity, and suspended outer frames remain roots
@@ -393,7 +393,7 @@ ordinary zero-valued constant expressions. Indexed function-identity lowering is
 selected only for function heap targets; GC struct casts continue through collector
 supertype metadata, including final concrete closure structs cast to non-final bases.
 Arm64 publishes liveness-exact locals and hidden
-spills from parked SP. Codec version 1 callsites carry caller frame size, return PC,
+spills from parked SP. Codec version 2 callsites carry caller frame size, return PC,
 stack adjustment, and exact roots; saved-LR walking spans direct/recursive calls,
 suspended direct-host activations (including sync-thunk records), and same-domain
 foreign instances. Mutable local GC globals synchronize checked collector slots,
@@ -585,7 +585,7 @@ immutable decoded subtype declarations and is discarded after code generation; i
 not retained by `Compiled` or serialized. `Compiled.GCTypeDescs` stores the runtime
 descriptor slice so `.wago` blobs can instantiate without re-decoding the Wasm type
 section. The descriptor slice index matches flattened `wasm.TypeIdx.Index`, including
-function sentinels used only to preserve indexes. Codec version 1 retains the appended
+function sentinels used only to preserve indexes. Codec version 2 retains the appended
 `StorageV128` kind, the 16-byte layout contract, and validated native
 safepoint/callsite root maps; older codec versions are rejected.
 
@@ -597,7 +597,7 @@ Iteration 38 added a separate exact numeric-local helper product with one alloca
 and a proven empty live-ref set. Iteration 39 added two collector-owned immutable global
 slots, not frame roots: each slot is installed before a later initializer allocation. The native-frame publication slice now records function-relative safepoint IDs, exact
 structured-CFG local liveness, hidden operand spills, and direct self-call return-PC maps for
-linux/amd64 local functions. Codec version 1 persists and revalidates that metadata, including
+linux/amd64 local functions. Codec version 2 persists and revalidates that metadata, including
 caller stack adjustments, and the runtime walks cross-function, recursive, and suspended host
 activations through mutable off-heap slots. Mutable module-local global slots synchronize before
 allocation. Private local `call_indirect` and tail-indirect calls now participate in exact frame walking,
@@ -1869,8 +1869,8 @@ Tiny collection is an incremental tri-color mark/sweep collector with states
 supplied `RootSet`, globals, and tables, then scans guest objects by `TypeDesc`.
 Before sweep, Tiny re-scans roots so stack/frame/local root stores that do not
 run object barriers are still observed. Transient roots are captured atomically
-at each safepoint through allocation-free direct visitors and fail closed above
-1,024 references; arbitrary callback-only root sets are not admitted to Tiny.
+at each safepoint through allocation-free direct visitors. The old 1,024-root
+semantic ceiling is removed; arbitrary callback-only root sets still require a bounded direct-enumeration interface.
 Collector-owned globals and tables resume through a stable index cursor at
 most 256 slots per `Step`, including both initial mark and remark. Sweep walks handle indexes and frees
 white Tiny objects back to the fixed-block allocator. Remark snapshots a finite
@@ -2483,8 +2483,9 @@ for future comparisons.
   roots and checked slots preserve barrier/card state. Multiple heterogeneous
   imported/exported GC tables participate with direct indexed alias roots,
   growth/close coverage, and attachment rollback.
-- Generic struct/array results may be retained as up to 64 opaque `GCRef` tokens per
-  producer. Each token has an independent checked root, retains exact Runtime/store
+- Generic struct/array results may be retained as opaque `GCRef` tokens through a
+  64-slot inline fast path plus reusable dynamic overflow storage. Each token has
+  an independent checked root and retains exact Runtime/store
   and producer ownership after producer close, rejects stale/cross-producer release,
   reuses released slots without reusing token identity, and must be released explicitly.
   Multi-result translation rolls back every token issued by the failing result boundary,
