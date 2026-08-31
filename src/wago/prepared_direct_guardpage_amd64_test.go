@@ -33,6 +33,10 @@ func TestDraglineAMD64SignalBackedLeafUsesDirectPreparedEntry(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer instance.Close()
+	result, err := instance.Invoke("run", I32(5))
+	if err != nil || len(result) != 1 || AsI32(result[0]) != 12 {
+		t.Fatalf("wrapper run(5) = %v, %v; want 12", result, err)
+	}
 	prepared, err := instance.PrepareFunction("run")
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +44,7 @@ func TestDraglineAMD64SignalBackedLeafUsesDirectPreparedEntry(t *testing.T) {
 	if !prepared.directIntFast || !prepared.directLeafIntFast {
 		t.Fatalf("signal-backed AMD64 integer leaf selected direct=%t leaf=%t", prepared.directIntFast, prepared.directLeafIntFast)
 	}
-	result, err := prepared.Invoke1(I32(5))
+	result, err = prepared.Invoke1(I32(5))
 	if err != nil || len(result) != 1 || AsI32(result[0]) != 12 {
 		t.Fatalf("prepared run(5) = %v, %v; want 12", result, err)
 	}
