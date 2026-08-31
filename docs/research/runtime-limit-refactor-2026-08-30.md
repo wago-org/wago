@@ -87,7 +87,7 @@ host API.
 
 ## CI qualification follow-up
 
-The post-merge qualification run exposed four fixture and policy gaps rather
+The post-merge qualification run exposed five fixture and policy gaps rather
 than runtime failures:
 
 - the cold single-memory quota test converted a captured native `uintptr` back
@@ -98,7 +98,9 @@ than runtime failures:
   guard, matching the memory64 test on Darwin/AMD64;
 - `syncHostBinding` remains 24 bytes under standard Go, while TinyGo may align
   the same pointer-bearing shape to 32 bytes on some targets; both bounded shapes
-  are accepted; and
+  are accepted;
+- the late-instantiation mapping leak test now warms one-time engine and arena
+  mappings before counting repeated failures; and
 - release-size budgets now describe the measured resource-policy product rather
   than the pre-refactor binaries.
 
@@ -109,8 +111,11 @@ The final Linux/AMD64 stripped sizes and updated ceilings are:
 | manager | 8,601,784 | 9,000,000 | 398,216 |
 | runtime-standard | 8,470,712 | 8,870,000 | 399,288 |
 | runtime-minimal | 8,163,512 | 8,560,000 | 396,488 |
+| runtime-minimal-tiny | 2,314,776 | 2,317,000 | 2,224 |
 
 The performance-audit follow-up accounts for one 4 KiB alignment page in each
-runtime profile. The remaining increase belongs to the resource-policy change.
-The new ceilings restore about 389 KiB of explicit headroom per standard-Go
-runtime profile instead of hiding the measured product behind stale budgets.
+standard-Go runtime profile. The remaining increase belongs to the
+resource-policy change. The new ceilings restore about 389 KiB of explicit
+headroom per standard-Go runtime profile instead of hiding the measured product
+behind stale budgets. TinyGo keeps a deliberately tight 2,224-byte ceiling under
+the CI Go 1.22.12 and TinyGo 0.41.1 toolchain.
