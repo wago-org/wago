@@ -67,3 +67,32 @@ func TestAMD64PublishesDirectPreparedLeafAcrossCompilerPaths(t *testing.T) {
 		})
 	}
 }
+
+func TestAMD64StructuredWritesSIMDBinaryDirectlyToTeeLocal(t *testing.T) {
+	source := []byte{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+		0x01, 0x07, 0x01, 0x60, 0x02, 0x7b, 0x7b, 0x01, 0x7b,
+		0x03, 0x02, 0x01, 0x00,
+		0x0a, 0x12, 0x01, 0x10, 0x01, 0x01, 0x7b,
+		0x20, 0x00, 0x20, 0x01, 0xfd, 0x51,
+		0x20, 0x00, 0xfd, 0x51, 0x22, 0x02, 0x0b,
+	}
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: module, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if got := metrics.Functions[0].NativeBytes; got > 200 {
+		t.Fatalf("direct SIMD tee emitted %d bytes, want at most 200", got)
+	}
+}

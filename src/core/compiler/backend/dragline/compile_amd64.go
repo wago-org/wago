@@ -3160,8 +3160,13 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	callRelocs := make([]amd64CallReloc, 0, 2)
 	localRegisters := make([]amd64.Reg, len(sf.Locals))
 	localFloat := make([]bool, len(sf.Locals))
+	localPinned := make([]bool, len(sf.Locals))
+	vectorLocalUses := make([]uint32, len(sf.Locals))
 	gpLocals, fpLocals := 0, 0
 	for i, typ := range sf.Locals {
+		if typ == wasm.V128 {
+			continue
+		}
 		if typ == wasm.F32 || typ == wasm.F64 {
 			localFloat[i] = true
 			if fpLocals < 8 {
@@ -3183,10 +3188,35 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			instr.Kind == wasm.InstrBrOnCast || instr.Kind == wasm.InstrBrOnCastFail ||
 			instr.Kind == wasm.InstrAnyConvertExtern || instr.Kind == wasm.InstrExternConvertAny {
 			hasGeneralCall = true
-			break
+		}
+		if (instr.Kind == wasm.InstrLocalGet || instr.Kind == wasm.InstrLocalSet || instr.Kind == wasm.InstrLocalTee) &&
+			int(instr.U32()) < len(sf.Locals) && sf.Locals[instr.U32()] == wasm.V128 {
+			vectorLocalUses[instr.U32()]++
 		}
 	}
 	registerLocals := !sf.HasV128 && !hasGeneralCall && len(sf.Params) <= 4 && gpLocals <= len(amd64StackLocalRegisters) && fpLocals <= 8
+	if registerLocals {
+		for i := range localPinned {
+			localPinned[i] = true
+		}
+	} else if sf.HasV128 && !hasGeneralCall && len(sf.Params) <= 4 {
+		for i, typ := range sf.Locals {
+			localPinned[i] = (typ == wasm.I32 || typ == wasm.I64) && localRegisters[i] != 0
+		}
+		for slot := 0; slot < 8; slot++ {
+			best := -1
+			for i, uses := range vectorLocalUses {
+				if sf.Locals[i] == wasm.V128 && !localPinned[i] && uses != 0 && (best < 0 || uses > vectorLocalUses[best]) {
+					best = i
+				}
+			}
+			if best < 0 {
+				break
+			}
+			localPinned[best] = true
+			localRegisters[best] = amd64.Reg(8 + slot)
+		}
+	}
 	stackSlots := uint64(sf.MaxStack)
 	if sf.HasV128 {
 		stackSlots *= 2
@@ -3244,8 +3274,10 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			}
 			continue
 		}
-		if registerLocals {
-			if localFloat[i] {
+		if localPinned[i] {
+			if sf.Locals[i] == wasm.V128 {
+				a.VMovdqu(localRegisters[i], amd64.Reg(i))
+			} else if localFloat[i] {
 				a.MovGprToXmm(localRegisters[i], amd64ParamRegisters[i], sf.Locals[i] == wasm.F64)
 			} else {
 				a.MovReg64(localRegisters[i], amd64ParamRegisters[i])
@@ -3262,8 +3294,10 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		a.XorSelf32(amd64.RAX)
 	}
 	for i := len(sf.Params); i < len(sf.Locals); i++ {
-		if registerLocals {
-			if localFloat[i] {
+		if localPinned[i] {
+			if sf.Locals[i] == wasm.V128 {
+				a.VPxor(localRegisters[i], localRegisters[i], localRegisters[i])
+			} else if localFloat[i] {
 				a.XorSelf32(amd64.RAX)
 				a.MovGprToXmm(localRegisters[i], amd64.RAX, sf.Locals[i] == wasm.F64)
 			} else {
@@ -3305,7 +3339,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	controls := make([]amd64StackControl, 0, 8)
 	functionPatches := make([]int, 0, 2)
 	defer func() {
-		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(controls) + sliceBytes(functionPatches)
+		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localPinned) + sliceBytes(vectorLocalUses) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(controls) + sliceBytes(functionPatches)
 		for i := range controls {
 			workspace += sliceBytes(controls[i].patches)
 		}
@@ -3374,6 +3408,48 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	for instrIndex := 0; instrIndex < len(sf.Instrs); instrIndex++ {
 		instr := sf.Instrs[instrIndex]
 		metadata.recordSource(a.Len(), instr.Offset)
+		if reachable && instrIndex+3 < len(sf.Instrs) &&
+			instr.Kind == wasm.InstrLocalGet && sf.Locals[instr.U32()] == wasm.V128 &&
+			sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalGet && sf.Locals[sf.Instrs[instrIndex+1].U32()] == wasm.V128 &&
+			(sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalSet || sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee) &&
+			sf.Locals[sf.Instrs[instrIndex+3].U32()] == wasm.V128 {
+			descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex + 2))
+			if ok && amd64DirectSIMDBinaryKind(descriptor.Kind) {
+				lhsLocal, rhsLocal := int(instr.U32()), int(sf.Instrs[instrIndex+1].U32())
+				lhs := amd64.Reg(0)
+				if localPinned[lhsLocal] {
+					lhs = localRegisters[lhsLocal]
+				} else {
+					a.VMovdquLoadDisp(lhs, amd64.RSP, localOff(lhsLocal))
+				}
+				rhs := lhs
+				if rhsLocal != lhsLocal {
+					rhs = 1
+					if localPinned[rhsLocal] {
+						rhs = localRegisters[rhsLocal]
+					} else {
+						a.VMovdquLoadDisp(rhs, amd64.RSP, localOff(rhsLocal))
+					}
+				}
+				targetLocal := int(sf.Instrs[instrIndex+3].U32())
+				dst := amd64.Reg(0)
+				if localPinned[targetLocal] {
+					dst = localRegisters[targetLocal]
+				}
+				emitAMD64DirectSIMDBinary(&a, descriptor.Kind, dst, lhs, rhs)
+				if !localPinned[targetLocal] {
+					a.VMovdquStoreDisp(amd64.RSP, localOff(targetLocal), dst)
+				}
+				if sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee {
+					if err := pushV128(dst); err != nil {
+						return nil, 0, nil, err
+					}
+				}
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+3].Offset)
+				instrIndex += 3
+				continue
+			}
+		}
 		if registerLocals && reachable {
 			if nLocal, accLocal, promote, end, ok := amd64F32RoundTripUpdate(sf.Instrs, instrIndex); ok && int(accLocal) >= len(sf.Params) {
 				count := 1
@@ -3977,13 +4053,18 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			}
 		case wasm.InstrLocalGet:
 			if sf.Locals[instr.U32()] == wasm.V128 {
-				a.VMovdquLoadDisp(0, amd64.RSP, localOff(int(instr.U32())))
-				if err := pushV128(0); err != nil {
+				reg := amd64.Reg(0)
+				if localPinned[instr.U32()] {
+					reg = localRegisters[instr.U32()]
+				} else {
+					a.VMovdquLoadDisp(reg, amd64.RSP, localOff(int(instr.U32())))
+				}
+				if err := pushV128(reg); err != nil {
 					return nil, 0, nil, err
 				}
 				continue
 			}
-			if registerLocals {
+			if localPinned[instr.U32()] {
 				if localFloat[instr.U32()] {
 					a.MovXmmToGpr(amd64.R10, localRegisters[instr.U32()], sf.Locals[instr.U32()] == wasm.F64)
 				} else {
@@ -4000,9 +4081,15 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 				if err := popV128(0); err != nil {
 					return nil, 0, nil, err
 				}
-				a.VMovdquStoreDisp(amd64.RSP, localOff(int(instr.U32())), 0)
+				reg := amd64.Reg(0)
+				if localPinned[instr.U32()] {
+					reg = localRegisters[instr.U32()]
+					a.VMovdqu(reg, 0)
+				} else {
+					a.VMovdquStoreDisp(amd64.RSP, localOff(int(instr.U32())), reg)
+				}
 				if instr.Kind == wasm.InstrLocalTee {
-					if err := pushV128(0); err != nil {
+					if err := pushV128(reg); err != nil {
 						return nil, 0, nil, err
 					}
 				}
@@ -4012,7 +4099,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			if err != nil {
 				return nil, 0, nil, err
 			}
-			if registerLocals {
+			if localPinned[instr.U32()] {
 				if localFloat[instr.U32()] {
 					a.MovGprToXmm(localRegisters[instr.U32()], amd64.R10, sf.Locals[instr.U32()] == wasm.F64)
 				} else {
@@ -4763,6 +4850,35 @@ func emitAMD64DirectFloatBinary(a *amd64.Asm, kind wasm.InstrKind, dst, lhs, rhs
 
 func amd64DirectFloatUnaryKind(kind wasm.InstrKind) bool {
 	return kind >= wasm.InstrF32Abs && kind <= wasm.InstrF32Sqrt || kind >= wasm.InstrF64Abs && kind <= wasm.InstrF64Sqrt
+}
+
+func amd64DirectSIMDBinaryKind(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrV128And, wasm.InstrV128Andnot, wasm.InstrV128Or, wasm.InstrV128Xor,
+		wasm.InstrI8x16SubSatU, wasm.InstrI16x8Sub, wasm.InstrI32x4Add:
+		return true
+	default:
+		return false
+	}
+}
+
+func emitAMD64DirectSIMDBinary(a *amd64.Asm, kind wasm.InstrKind, dst, lhs, rhs amd64.Reg) {
+	switch kind {
+	case wasm.InstrV128And:
+		a.VPand(dst, lhs, rhs)
+	case wasm.InstrV128Andnot:
+		a.VPandn(dst, rhs, lhs)
+	case wasm.InstrV128Or:
+		a.VPor(dst, lhs, rhs)
+	case wasm.InstrV128Xor:
+		a.VPxor(dst, lhs, rhs)
+	case wasm.InstrI8x16SubSatU:
+		a.VPsubusb(dst, lhs, rhs)
+	case wasm.InstrI16x8Sub:
+		a.VPsubw(dst, lhs, rhs)
+	case wasm.InstrI32x4Add:
+		a.VPaddd(dst, lhs, rhs)
+	}
 }
 
 func emitAMD64DirectFloatUnary(a *amd64.Asm, kind wasm.InstrKind, dst, src amd64.Reg, f64 bool) {
