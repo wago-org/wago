@@ -30,15 +30,39 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, moduleHasDe
 		return false
 	}
 	if moduleHasDenseGlobals {
-		// Dense mutable-global modules still expose incomplete value flow across
-		// allocator helper calls. Their structured product is the verified path.
-		return false
+		hasGlobal, hasCall := false, false
+		for _, instruction := range stack.Instrs {
+			hasGlobal = hasGlobal || instruction.Kind == wasm.InstrGlobalGet || instruction.Kind == wasm.InstrGlobalSet
+			hasCall = hasCall || instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect
+		}
+		if hasGlobal && hasCall && stack.MaxLoopDepth != 0 {
+			// Dense mutable-global allocator helpers still expose incomplete value
+			// flow across loop-carried calls. Keep only that intersection structured;
+			// leaf global accessors and acyclic helper functions use RailMach.
+			return false
+		}
 	}
-	// Very large parameterless functions still expose incomplete AMD64 value
-	// flow at loop edges. Keep them on the structured emitter until that proof
-	// is complete instead of accepting a RailMach product that can silently
-	// corrupt long-running decoder loops.
-	return len(stack.Params) != 0 || len(stack.Instrs) <= 1024
+	if stack.MaxLoopDepth != 0 && len(stack.Results) == 1 && stack.Results[0] == wasm.I64 {
+		for _, instruction := range stack.Instrs {
+			if instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect {
+				// Recursive loop kernels returning i64 still expose an incomplete
+				// AMD64 call-result edge contract. Keep their verified structured
+				// product while scalar leaf broadword loops use RailMach.
+				return false
+			}
+		}
+	}
+	if len(stack.Instrs) > 512 {
+		for _, instruction := range stack.Instrs {
+			if instruction.Kind == wasm.InstrMemoryCopy {
+				// Large memory.copy control graphs still expose incomplete AMD64
+				// loop-edge value flow. Smaller kernels use the verified RailMach
+				// parallel-move lowering below.
+				return false
+			}
+		}
+	}
+	return true
 }
 
 var amd64StackLocalRegisters = [...]amd64.Reg{amd64.R12, amd64.R13, amd64.R14, amd64.R15, amd64.R8, amd64.R9}
@@ -724,6 +748,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
 			wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U,
 			wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U,
+			wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U,
+			wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,
+			wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U,
+			wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U,
 			wasm.InstrI32Load, wasm.InstrI64Load, wasm.InstrF32Load, wasm.InstrF64Load,
 			wasm.InstrI32Load8S, wasm.InstrI32Load8U, wasm.InstrI32Load16S, wasm.InstrI32Load16U,
 			wasm.InstrI64Load8S, wasm.InstrI64Load8U, wasm.InstrI64Load16S, wasm.InstrI64Load16U,
@@ -731,7 +759,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			wasm.InstrI32Store, wasm.InstrI64Store, wasm.InstrF32Store, wasm.InstrF64Store,
 			wasm.InstrI32Store8, wasm.InstrI32Store16,
 			wasm.InstrI64Store8, wasm.InstrI64Store16, wasm.InstrI64Store32:
-		case wasm.InstrMemorySize, wasm.InstrMemoryGrow:
+		case wasm.InstrMemorySize, wasm.InstrMemoryGrow, wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 		case wasm.InstrSelect:
 		case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
 		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrStructNew, wasm.InstrStructNewDefault,
@@ -1751,6 +1779,36 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
+			if instruction.Op == wasm.InstrMemoryCopy || instruction.Op == wasm.InstrMemoryFill {
+				if len(operands) != 3 {
+					return nil, 0, true, fmt.Errorf("RailMach %s operand count is %d", instruction.Op, len(operands))
+				}
+				a.Push(amd64.RAX)
+				a.Push(amd64.RCX)
+				destination, source, length := reg(operands[0].Reg), reg(operands[1].Reg), reg(operands[2].Reg)
+				if source != amd64.RDI && length != amd64.RDI && length != amd64.RSI {
+					a.MovReg32(amd64.RDI, destination)
+					a.MovReg32(amd64.RSI, source)
+					a.MovReg32(amd64.R10, length)
+					a.MovReg32(amd64.RAX, amd64.RSI)
+					a.MovReg32(amd64.RCX, amd64.R10)
+				} else {
+					// Materialized spills use RSI/RDI/R11, so assigning RDI first can
+					// destroy a later operand. Snapshot conflicting inputs before
+					// realizing REP's fixed-register parallel move.
+					a.Push(destination)
+					a.Push(source)
+					a.Push(length)
+					a.LoadRsp32(amd64.RDI, 16)
+					a.LoadRsp32(amd64.RAX, 8)
+					a.LoadRsp32(amd64.RCX, 0)
+					a.AddRsp(24)
+				}
+				emitAMD64BulkMemoryRegisters(&a, instruction.Op, fn.Index, wasmOffset, metadata)
+				a.Pop(amd64.RCX)
+				a.Pop(amd64.RAX)
+				continue
+			}
 			dst := reg(instruction.Result)
 			wide := plan.Machine.VRegs[instruction.Result].Type.IsWideGPR()
 			if instruction.Op == wasm.InstrI32Const || instruction.Op == wasm.InstrI64Const || instruction.Op == wasm.InstrRefNull {
@@ -1926,6 +1984,18 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 					continue
 				}
+				storeSrc := amd64.Reg(0)
+				if store {
+					value := operands[1].Reg
+					storeSrc = reg(value)
+					if plan.Machine.VRegs[value].Bank == railmach.BankGPR && storeSrc == amd64.RSI {
+						// A store may use the same spilled value as its address and
+						// payload. Preserve the payload before the bounds check reuses
+						// RSI for the current memory length.
+						a.MovReg64(amd64.RDI, storeSrc)
+						storeSrc = amd64.RDI
+					}
+				}
 				a.MovReg32(amd64.R10, lhs)
 				if !railMachElidesBoundsCheck(plan, instruction.Source) {
 					a.MovReg64(amd64.R11, amd64.R10)
@@ -1952,11 +2022,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				if store {
 					value := operands[1].Reg
-					src := reg(value)
 					if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-						a.FStoreIdx(amd64.RBX, address, src, disp, plan.Machine.VRegs[value].Type == railmach.TypeF64)
+						a.FStoreIdx(amd64.RBX, address, storeSrc, disp, plan.Machine.VRegs[value].Type == railmach.TypeF64)
 					} else {
-						a.StoreIdx(amd64.RBX, address, src, disp, size)
+						a.StoreIdx(amd64.RBX, address, storeSrc, disp, size)
 					}
 				} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 					a.FLoadIdx(dst, amd64.RBX, address, disp, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
@@ -2050,6 +2119,26 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			switch instruction.Op {
+			case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U,
+				wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U:
+				f64 := instruction.Op == wasm.InstrI32TruncSatF64S || instruction.Op == wasm.InstrI32TruncSatF64U
+				unsigned := instruction.Op == wasm.InstrI32TruncSatF32U || instruction.Op == wasm.InstrI32TruncSatF64U
+				a.FMov(15, lhs, f64)
+				emitAMD64TruncSatI32(&a, 15, f64, unsigned)
+				if dst != amd64.RAX {
+					a.MovReg32(dst, amd64.RAX)
+				}
+				continue
+			case wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U,
+				wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U:
+				f64 := instruction.Op == wasm.InstrI64TruncSatF64S || instruction.Op == wasm.InstrI64TruncSatF64U
+				unsigned := instruction.Op == wasm.InstrI64TruncSatF32U || instruction.Op == wasm.InstrI64TruncSatF64U
+				a.FMov(15, lhs, f64)
+				emitAMD64TruncSatI64(&a, 15, f64, unsigned)
+				if dst != amd64.RAX {
+					a.MovReg64(dst, amd64.RAX)
+				}
+				continue
 			case wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U,
 				wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U:
 				f64 := instruction.Op == wasm.InstrI32TruncF64S || instruction.Op == wasm.InstrI32TruncF64U
@@ -2245,7 +2334,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				case wasm.InstrI32Rotr, wasm.InstrI64Rotr:
 					digit = 1
 				}
-				a.ShiftCL(digit, out, wide)
+				if producer != ^uint32(0) {
+					a.ShiftImm(digit, out, byte(plan.Machine.Insts[producer].Aux), wide)
+				} else {
+					a.ShiftCL(digit, out, wide)
+				}
 				if out != dst {
 					a.MovReg64(dst, out)
 				}
@@ -2588,6 +2681,12 @@ func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID,
 	}
 	if address != amd64.R10 {
 		a.MovReg32(amd64.R10, address)
+	}
+	if lhs == amd64.RSI && dst != lhs {
+		// A spilled lhs is materialized in RSI, which the explicit bounds
+		// check reuses for the current memory length.
+		a.MovReg64(dst, lhs)
+		lhs = dst
 	}
 	a.MovReg64(amd64.R11, amd64.R10)
 	width := uint64(4)
@@ -3003,7 +3102,9 @@ func amd64RailMachTargetSafe(plan *nativeBackendPlan) bool {
 		if (instruction.Op == wasm.InstrCall || instruction.Op == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
 			return false
 		}
-		if instruction.Op < wasm.InstrI32TruncF32S || instruction.Op > wasm.InstrI64TruncF64U {
+		trunc := railMachTrappingTrunc(instruction.Op)
+		truncSat := instruction.Op >= wasm.InstrI32TruncSatF32S && instruction.Op <= wasm.InstrI64TruncSatF64U
+		if !trunc && !truncSat {
 			continue
 		}
 		if railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankGPR, 0) ||
@@ -4736,13 +4837,22 @@ func emitAMD64StackBulkMemory(a *amd64.Asm, instr railssa.StackInstr, stack *[]w
 	a.LoadRsp32(amd64.RDI, stackOff(base))
 	a.LoadRsp32(amd64.RAX, stackOff(base+1))
 	a.LoadRsp32(amd64.RCX, stackOff(base+2))
+	emitAMD64BulkMemoryRegisters(a, instr.Kind, function, instr.Offset, metadata)
+	*stack = types[:base]
+	return nil
+}
+
+// emitAMD64BulkMemoryRegisters emits memory.copy/fill with destination in RDI,
+// source or fill byte in RAX, and length in RCX. Callers preserve allocated
+// values occupying REP's fixed registers before entering this helper.
+func emitAMD64BulkMemoryRegisters(a *amd64.Asm, kind wasm.InstrKind, function, wasmOffset uint32, metadata *functionEmissionMetadata) {
 	a.Load64(amd64.R11, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
 	a.MovReg64(amd64.R10, amd64.RDI)
 	a.Add64(amd64.R10, amd64.RCX)
 	a.Cmp64(amd64.R10, amd64.R11)
 	dstOOB := a.JccPlaceholder(amd64.CondA)
 	var srcOOB int
-	if instr.Kind == wasm.InstrMemoryCopy {
+	if kind == wasm.InstrMemoryCopy {
 		a.MovReg32(amd64.RSI, amd64.RAX)
 		a.MovReg64(amd64.R10, amd64.RSI)
 		a.Add64(amd64.R10, amd64.RCX)
@@ -4750,7 +4860,7 @@ func emitAMD64StackBulkMemory(a *amd64.Asm, instr railssa.StackInstr, stack *[]w
 		srcOOB = a.JccPlaceholder(amd64.CondA)
 	}
 	a.Add64(amd64.RDI, amd64.RBX)
-	if instr.Kind == wasm.InstrMemoryFill {
+	if kind == wasm.InstrMemoryFill {
 		a.RepStosb()
 	} else {
 		a.Add64(amd64.RSI, amd64.RBX)
@@ -4777,14 +4887,12 @@ func emitAMD64StackBulkMemory(a *amd64.Asm, instr railssa.StackInstr, stack *[]w
 	done := a.JmpPlaceholder()
 	trap := a.Len()
 	a.PatchRel32(dstOOB, trap)
-	if instr.Kind == wasm.InstrMemoryCopy {
+	if kind == wasm.InstrMemoryCopy {
 		a.PatchRel32(srcOOB, trap)
 	}
-	metadata.recordTrap(trap, instr.Offset, 3)
-	amd64EmitTrap(a, 3, function, instr.Offset)
+	metadata.recordTrap(trap, wasmOffset, 3)
+	amd64EmitTrap(a, 3, function, wasmOffset)
 	a.PatchRel32(done, a.Len())
-	*stack = types[:base]
-	return nil
 }
 
 func emitAMD64StackCall(a *amd64.Asm, sf *railssa.StackFunc, instr railssa.StackInstr, stack *[]wasm.ValType, stackOff func(int) int32, relocs *[]amd64CallReloc, function uint32, metadata *functionEmissionMetadata) error {

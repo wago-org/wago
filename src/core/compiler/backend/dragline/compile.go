@@ -816,6 +816,18 @@ func stackHasControl(f *railssa.StackFunc) bool {
 	return false
 }
 
+func railMachTrappingTrunc(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U,
+		wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
+		wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U,
+		wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U:
+		return true
+	default:
+		return false
+	}
+}
+
 func hotRecursiveComponent(input corecompiler.Input, m *wasm.Module, compilation compilationPlan, local int) bool {
 	if input.Profile == nil || local < 0 || local >= len(compilation.Recursive) || !compilation.Recursive[local] {
 		return false

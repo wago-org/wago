@@ -4373,6 +4373,53 @@ func TestDraglineBulkMemoryPreservesLiveParameters(t *testing.T) {
 	}
 }
 
+func TestDraglineAMD64RailMachConstantShiftDoesNotUseStaleRCX(t *testing.T) {
+	if runtime.GOARCH != "amd64" {
+		t.Skip("AMD64 RailMach regression")
+	}
+	one := []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x3f}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x41, 0x00, // i32.const 0
+			0x41, 0x01, // i32.const 1
+			0x47,       // i32.ne; leave a stale zero shift count in RCX
+			0x1a,       // drop
+			0x41, 0x01, // i32.const 1
+			0x44, one[0], one[1], one[2], one[3], one[4], one[5], one[6], one[7],
+			0x39, 0x03, 0x00, // f64.store align=3 offset=0
+			0x41, 0x01, // i32.const 1
+			0x41, 0x03, // i32.const 3
+			0x74,       // i32.shl
+			0x41, 0x01, // i32.const 1
+			0x6a, // i32.add: address 9
+			0x44, one[0], one[1], one[2], one[3], one[4], one[5], one[6], one[7],
+			0x39, 0x03, 0x00, // f64.store align=3 offset=0
+			0x41, 0x01, // i32.const 1
+			0x2b, 0x03, 0x00, // f64.load align=3 offset=0
+			0xaa, // i32.trunc_f64_s
+			0x0b,
+		}))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	got, err := instance.Invoke("run")
+	if err != nil || len(got) != 1 || got[0] != 1 {
+		t.Fatalf("run = %v, %v; want [1]", got, err)
+	}
+}
+
 func TestDraglineResourceLimitIsTypedAndExplicitlyRecoverable(t *testing.T) {
 	local := append(wasmtest.ULEB(4097), byte(0x7f))
 	body := append(wasmtest.Vec(local), byte(0x0b))

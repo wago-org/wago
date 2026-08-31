@@ -6532,7 +6532,7 @@ func arm64RailMachTargetSafe(plan *nativeBackendPlan) bool {
 		if (instruction.Op == wasm.InstrCall || instruction.Op == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
 			return false
 		}
-		if instruction.Op < wasm.InstrI32TruncF32S || instruction.Op > wasm.InstrI64TruncF64U {
+		if !railMachTrappingTrunc(instruction.Op) {
 			continue
 		}
 		if railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankFPR, 0) ||

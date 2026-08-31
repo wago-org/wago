@@ -9,6 +9,7 @@ import (
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 func TestAMD64ShuffleMasksSelectExactlyOneInput(t *testing.T) {
@@ -26,16 +27,40 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 	if !amd64RailMachCandidate(stack, false, false) {
 		t.Fatal("ordinary scalar candidate was rejected")
 	}
-	if amd64RailMachCandidate(stack, false, true) {
-		t.Fatal("dense-global module was admitted")
+	if !amd64RailMachCandidate(stack, false, true) {
+		t.Fatal("dense-global leaf was rejected")
 	}
+	stack.Instrs = []railssa.StackInstr{{Kind: wasm.InstrGlobalGet}, {Kind: wasm.InstrCall}}
+	if !amd64RailMachCandidate(stack, false, true) {
+		t.Fatal("acyclic dense-global call helper was rejected")
+	}
+	stack.MaxLoopDepth = 1
+	if amd64RailMachCandidate(stack, false, true) {
+		t.Fatal("cyclic dense-global call helper was admitted")
+	}
+	stack.MaxLoopDepth = 0
 	stack.Instrs = make([]railssa.StackInstr, 1025)
-	if amd64RailMachCandidate(stack, false, false) {
-		t.Fatal("large parameterless function was admitted")
+	if !amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("large parameterless function was rejected")
 	}
 	stack.Params = []wasm.ValType{wasm.I32}
 	if !amd64RailMachCandidate(stack, false, false) {
 		t.Fatal("large parameterized scalar candidate was rejected")
+	}
+	stack.Instrs[0].Kind = wasm.InstrMemoryCopy
+	if amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("large memory.copy function was admitted")
+	}
+}
+
+func TestAMD64RailMachAdmissionKeepsRecursiveI64LoopStructured(t *testing.T) {
+	stack := &railssa.StackFunc{
+		MaxLoopDepth: 1,
+		Results:      []wasm.ValType{wasm.I64},
+		Instrs:       []railssa.StackInstr{{Kind: wasm.InstrCall}},
+	}
+	if amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("recursive i64 loop was admitted")
 	}
 }
 
@@ -114,5 +139,56 @@ func TestAMD64RailMachConsumesMaskedInductionBoundsElision(t *testing.T) {
 	}
 	if len(optimizedMetadata.Traps) >= len(checkedMetadata.Traps) {
 		t.Fatalf("optimized traps=%d checked traps=%d", len(optimizedMetadata.Traps), len(checkedMetadata.Traps))
+	}
+}
+
+func TestAMD64RailMachFinalizesSaturatingConversion(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0xfc, 0x02, // i32.trunc_sat_f64_s
+			0x0b,
+		}))),
+	)
+	assertAMD64RailMachFinalized(t, source)
+}
+
+func TestAMD64RailMachFinalizesBulkMemory(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec(append([]byte{0x00}, wasmtest.ULEB(1)...))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0: destination
+			0x20, 0x01, // local.get 1: source
+			0x20, 0x02, // local.get 2: length
+			0xfc, 0x0a, 0x00, 0x00, // memory.copy 0 0
+			0x0b,
+		}))),
+	)
+	assertAMD64RailMachFinalized(t, source)
+}
+
+func assertAMD64RailMachFinalized(t *testing.T, source []byte) {
+	t.Helper()
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("RailMach metrics = %#v", metrics.Functions)
 	}
 }

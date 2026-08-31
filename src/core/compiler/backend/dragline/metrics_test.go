@@ -529,6 +529,24 @@ func TestCompilerNativeRailMachCallLiveFinalization(t *testing.T) {
 	}
 }
 
+func TestRailMachTrappingTruncExcludesIntegerExtension(t *testing.T) {
+	for _, kind := range []wasm.InstrKind{
+		wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U,
+		wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
+		wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U,
+		wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U,
+	} {
+		if !railMachTrappingTrunc(kind) {
+			t.Fatalf("%s was not classified as a trapping conversion", kind)
+		}
+	}
+	for _, kind := range []wasm.InstrKind{wasm.InstrI64ExtendI32S, wasm.InstrI64ExtendI32U} {
+		if railMachTrappingTrunc(kind) {
+			t.Fatalf("%s was classified as a trapping conversion", kind)
+		}
+	}
+}
+
 func TestCompilerNativeRecursiveSCCRemainsConservative(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
