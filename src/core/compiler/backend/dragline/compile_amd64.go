@@ -22,6 +22,25 @@ var amd64ValueRegisters = [...]amd64.Reg{amd64.RAX, amd64.RCX, amd64.RDX, amd64.
 var amd64RailMachGPRRegisters = [...]amd64.Reg{amd64.RAX, amd64.RCX, amd64.RDX, amd64.R8, amd64.R9, amd64.R13, amd64.R14, amd64.R15, amd64.RBP, amd64.R12}
 var amd64FPRRegisters = [...]amd64.Reg{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
 var amd64ParamRegisters = [...]amd64.Reg{amd64.RAX, amd64.RCX, amd64.RDX, amd64.R8, amd64.R9, amd64.R10, amd64.R11, amd64.R12}
+
+const amd64RailMachDenseGlobalThreshold = 20
+
+func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, moduleHasDenseGlobals bool) bool {
+	if !railMachCandidate(stack, moduleHasV128) {
+		return false
+	}
+	if moduleHasDenseGlobals {
+		// Dense mutable-global modules still expose incomplete value flow across
+		// allocator helper calls. Their structured product is the verified path.
+		return false
+	}
+	// Very large parameterless functions still expose incomplete AMD64 value
+	// flow at loop edges. Keep them on the structured emitter until that proof
+	// is complete instead of accepting a RailMach product that can silently
+	// corrupt long-running decoder loops.
+	return len(stack.Params) != 0 || len(stack.Instrs) <= 1024
+}
+
 var amd64StackLocalRegisters = [...]amd64.Reg{amd64.R12, amd64.R13, amd64.R14, amd64.R15, amd64.R8, amd64.R9}
 
 type amd64CallReloc struct {
@@ -187,7 +206,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			fn.HelperSafepointBase = helperSafepointBases[i]
 		}
 		var nativePlan *nativeBackendPlan
-		if railMachCandidate(fn.Structured, compilationPlan.HasV128) {
+		if amd64RailMachCandidate(fn.Structured, compilationPlan.HasV128, len(m.Globals) >= amd64RailMachDenseGlobalThreshold) {
 			if nativePlanner == nil {
 				nativePlanner = new(nativeBackendPlanner)
 			}
@@ -428,7 +447,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 				return functionError(m, i, "lower", err)
 			}
 			var nativePlan *nativeBackendPlan
-			if railMachCandidate(fn.Structured, compilation.HasV128) {
+			if amd64RailMachCandidate(fn.Structured, compilation.HasV128, len(m.Globals) >= amd64RailMachDenseGlobalThreshold) {
 				if worker.native == nil {
 					worker.native = &nativeBackendPlanner{parallelCandidates: true}
 				}
@@ -5150,10 +5169,7 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		base := len(types) - 2
 		loadV(base, 0)
 		loadV(base+1, 1)
-		var left, right [16]byte
-		for i, lane := range descriptor.Bytes {
-			left[i], right[i] = lane, lane-16
-		}
+		left, right := amd64ShuffleMasks(descriptor.Bytes)
 		materialize(2, left)
 		a.VPshufb(2, 0, 2)
 		materialize(3, right)
@@ -5245,6 +5261,18 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 	}
 	*stack = types
 	return nil
+}
+
+func amd64ShuffleMasks(lanes [16]byte) (left, right [16]byte) {
+	for i, lane := range lanes {
+		left[i], right[i] = 0x80, 0x80
+		if lane < 16 {
+			left[i] = lane
+		} else {
+			right[i] = lane - 16
+		}
+	}
+	return left, right
 }
 
 func amd64CopyDraglineExecutionControl(a *amd64.Asm, targetLinMem amd64.Reg) {

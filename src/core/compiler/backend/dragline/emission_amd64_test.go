@@ -3,10 +3,41 @@
 package dragline
 
 import (
+	"bytes"
 	"testing"
 
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func TestAMD64ShuffleMasksSelectExactlyOneInput(t *testing.T) {
+	lanes := [16]byte{0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 15, 31}
+	left, right := amd64ShuffleMasks(lanes)
+	wantLeft := [16]byte{0, 0x80, 1, 0x80, 2, 0x80, 3, 0x80, 4, 0x80, 5, 0x80, 6, 0x80, 15, 0x80}
+	wantRight := [16]byte{0x80, 0, 0x80, 1, 0x80, 2, 0x80, 3, 0x80, 4, 0x80, 5, 0x80, 6, 0x80, 15}
+	if !bytes.Equal(left[:], wantLeft[:]) || !bytes.Equal(right[:], wantRight[:]) {
+		t.Fatalf("shuffle masks = %x / %x, want %x / %x", left, right, wantLeft, wantRight)
+	}
+}
+
+func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T) {
+	stack := &railssa.StackFunc{HasReferences: true}
+	if !amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("ordinary scalar candidate was rejected")
+	}
+	if amd64RailMachCandidate(stack, false, true) {
+		t.Fatal("dense-global module was admitted")
+	}
+	stack.Instrs = make([]railssa.StackInstr, 1025)
+	if amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("large parameterless function was admitted")
+	}
+	stack.Params = []wasm.ValType{wasm.I32}
+	if !amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("large parameterized scalar candidate was rejected")
+	}
+}
 
 func TestAMD64ProductionConsumesProvedBoundsElision(t *testing.T) {
 	fn, plan := constantMemoryEmissionTestFunc(t)
