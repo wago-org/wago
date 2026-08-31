@@ -56,6 +56,26 @@ func TestSaturatingConversionsDoNotCarryTrapObligations(t *testing.T) {
 	}
 }
 
+func TestContextFreeTrapFree(t *testing.T) {
+	pure := &StackFunc{Instrs: []StackInstr{{Kind: wasm.InstrLocalGet}, {Kind: wasm.InstrI32Add}}}
+	if !ContextFreeTrapFree(pure, false) {
+		t.Fatal("pure integer function requires guest context")
+	}
+	for _, kind := range []wasm.InstrKind{wasm.InstrI32Load, wasm.InstrGlobalGet, wasm.InstrI32DivU, wasm.InstrUnreachable} {
+		if ContextFreeTrapFree(&StackFunc{Instrs: []StackInstr{{Kind: kind}}}, false) {
+			t.Fatalf("%s was classified as context-free and trap-free", kind)
+		}
+	}
+	localCall := &StackFunc{Instrs: []StackInstr{{Kind: wasm.InstrCall, aux: 0}}}
+	if ContextFreeTrapFree(localCall, false) || !ContextFreeTrapFree(localCall, true) {
+		t.Fatal("inlined local-call handling is inconsistent")
+	}
+	hostCall := &StackFunc{ImportedFuncs: 1, Instrs: []StackInstr{{Kind: wasm.InstrCall, aux: 0}}}
+	if ContextFreeTrapFree(hostCall, true) {
+		t.Fatal("host call was ignored as an inlined local call")
+	}
+}
+
 func TestVerifyMetadataRejectsLostTrapOrder(t *testing.T) {
 	f := &StackFunc{Instrs: []StackInstr{{Kind: wasm.InstrUnreachable, Offset: 2}}}
 	metadata := &Metadata{Instructions: []InstructionMetadata{{Offset: 2, Epoch: 0, Traps: TrapUnreachable, Flags: EffectMayTrap}}, Epochs: 1}

@@ -379,6 +379,16 @@ func TestRailMachLoopProfitabilityPolicy(t *testing.T) {
 	}
 }
 
+func TestRailMachAdmitsScalarFunctionInSIMDModule(t *testing.T) {
+	stack := &railssa.StackFunc{
+		MaxLoopDepth: 1,
+		Instrs:       []railssa.StackInstr{{Kind: wasm.InstrI32LtU}},
+	}
+	if !railMachCandidate(stack, true) {
+		t.Fatal("scalar function in SIMD module did not remain a RailMach candidate")
+	}
+}
+
 func TestRailMachLoopProfitabilityBoundsLargeMultiCallAdmission(t *testing.T) {
 	for _, test := range []struct {
 		name        string

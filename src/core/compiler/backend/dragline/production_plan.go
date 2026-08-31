@@ -251,12 +251,6 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 	if stack == nil {
 		return false
 	}
-	if moduleHasV128 {
-		// RailMach's widened private scalar ABI is intentionally module-local.
-		// Until the structured SIMD emitter participates in that contract, keep
-		// SIMD modules on one calling convention instead of mixing entry shapes.
-		return false
-	}
 	if stack.MaxLoopDepth != 0 {
 		calls := 0
 		for _, instruction := range stack.Instrs {

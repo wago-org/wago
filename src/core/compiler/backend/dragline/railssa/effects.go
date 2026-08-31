@@ -77,6 +77,26 @@ type Metadata struct {
 	Epochs       uint32
 }
 
+// ContextFreeTrapFree reports whether a function can execute without guest
+// instance state or trap materialization. When localCallsAreInlined is true,
+// direct local calls are ignored because the backend has proved and removed
+// every remaining machine call.
+func ContextFreeTrapFree(f *StackFunc, localCallsAreInlined bool) bool {
+	if f == nil {
+		return false
+	}
+	for index, instruction := range f.Instrs {
+		if localCallsAreInlined && instruction.Kind == wasm.InstrCall && instruction.U32() >= f.ImportedFuncs {
+			continue
+		}
+		meta := classifyInstruction(f, uint32(index), instruction)
+		if meta.Reads != 0 || meta.Writes != 0 || meta.Flags != 0 || meta.Traps != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 func BuildMetadata(f *StackFunc, reuse *Metadata) (*Metadata, error) {
 	if f == nil {
 		return nil, fmt.Errorf("railssa: metadata requires a function")

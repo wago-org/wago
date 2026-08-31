@@ -33,6 +33,31 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 	}
 }
 
+func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {
+	leaf := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrI32Add}}}
+	if !arm64RailMachCandidate(leaf, true) {
+		t.Fatal("scalar leaf in SIMD module was not admitted")
+	}
+	caller := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrCall}}}
+	if arm64RailMachCandidate(caller, true) {
+		t.Fatal("mixed-module RailMach caller was admitted before its frame contract is shared")
+	}
+	if !arm64RailMachCandidate(caller, false) {
+		t.Fatal("scalar-only RailMach caller was rejected")
+	}
+}
+
+func TestARM64UnboundedLoopStaysOffGoStack(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Stack:   &railssa.StackFunc{MaxLoopDepth: 1},
+		Machine: &railmach.Func{},
+		ABI:     railmach.ABIContract{Class: railmach.ABIPreparedInt},
+	}
+	if arm64DirectPreparedLeafPlan(plan) {
+		t.Fatal("unbounded loop published the non-interruptible Go-stack leaf entry")
+	}
+}
+
 func TestARM64PinV128LocalsUsesHottestLocals(t *testing.T) {
 	types := make([]wasm.ValType, len(arm64V128LocalRegisters)+3)
 	uses := make([]uint32, len(types))
@@ -137,6 +162,56 @@ func TestARM64FoldsInlinedI32AddTree(t *testing.T) {
 	}
 	if len(output.DirectLeafPrepared) == 0 || output.DirectLeafPrepared[0]&(uint64(1)<<3) == 0 {
 		t.Fatal("fully inlined direct-call tree did not publish the call-free leaf entry")
+	}
+}
+
+func TestARM64FramefulPreparedLeafStaysOffGoStack(t *testing.T) {
+	const locals = 32
+	body := make([]byte, 0, locals*16)
+	for local := range locals {
+		body = append(body, 0x20, 0x00, 0xb8, 0x44)
+		body = append(body, make([]byte, 8)...)
+		body[len(body)-8] = byte(local + 1)
+		body = append(body, 0xa0)
+		body = append(body, 0x21)
+		body = append(body, wasmtest.ULEB(uint32(local+1))...)
+	}
+	for local := range locals {
+		body = append(body, 0x20)
+		body = append(body, wasmtest.ULEB(uint32(local+1))...)
+	}
+	for range locals - 1 {
+		body = append(body, 0xa0)
+	}
+	body = append(body, 0xbd, 0xa7, 0x0b)
+	function := append([]byte{0x01, locals, 0x7c}, body...)
+	code := append(wasmtest.ULEB(uint32(len(function))), function...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	output, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].FrameBytes == 0 {
+		t.Fatalf("frameful prepared leaf metrics = %#v", metrics.Functions)
+	}
+	if len(output.DirectPrepared) == 0 || output.DirectPrepared[0]&1 == 0 {
+		t.Fatal("frameful prepared leaf lost its foreign-stack direct entry")
+	}
+	if len(output.DirectLeafPrepared) != 0 && output.DirectLeafPrepared[0]&1 != 0 {
+		t.Fatal("frameful prepared leaf published the Go-stack entry")
 	}
 }
 

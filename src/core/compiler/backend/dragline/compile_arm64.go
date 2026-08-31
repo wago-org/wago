@@ -31,6 +31,23 @@ var arm64FPRRegisters = [...]arm64.Reg{
 	8, 9, 10, 11, 12, 13, 14, 15,
 }
 var arm64ParamRegisters = [...]arm64.Reg{arm64.X0, arm64.X1, arm64.X2, arm64.X3, arm64.X4, arm64.X5, arm64.X6, arm64.X7}
+
+func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
+	if !railMachCandidate(stack, moduleHasV128) {
+		return false
+	}
+	if moduleHasV128 {
+		for _, instruction := range stack.Instrs {
+			if instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect {
+				// Mixed structured/RailMach calls still require one shared private
+				// frame contract. Scalar leaves are safe to admit independently.
+				return false
+			}
+		}
+	}
+	return true
+}
+
 var arm64StackLocalRegisters = [...]arm64.Reg{arm64.X19, arm64.X20, arm64.X21, arm64.X22, arm64.X23}
 var arm64OperandStackRegisters = [...]arm64.Reg{arm64.X9, arm64.X10, arm64.X11, arm64.X12, arm64.X13, arm64.X14, arm64.X15}
 
@@ -207,9 +224,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
 				if !captureGC && arm64DirectPreparedClass(moduleContracts[i].Class) {
 					directPrepared = markARM64DirectPrepared(directPrepared, len(m.Code), i)
-					if arm64DirectPreparedLeafClass(moduleContracts[i].Class) {
-						directLeafPrepared = markARM64DirectPrepared(directLeafPrepared, len(m.Code), i)
-					} else if arm64DirectPreparedTrapClass(moduleContracts[i].Class) {
+					if arm64DirectPreparedTrapClass(moduleContracts[i].Class) {
 						directTrapPrepared = markARM64DirectPrepared(directTrapPrepared, len(m.Code), i)
 					}
 				}
@@ -271,7 +286,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		functionRequiresMOPS := input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index)
 		requiresMOPS = requiresMOPS || functionRequiresMOPS
 		var nativePlan *nativeBackendPlan
-		if railMachCandidate(fn.Structured, compilationPlan.HasV128) {
+		if arm64RailMachCandidate(fn.Structured, compilationPlan.HasV128) {
 			if nativePlanner == nil {
 				nativePlanner = new(nativeBackendPlanner)
 			}
@@ -360,7 +375,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		}
 		if !captureGC && railMachFinalized && arm64DirectPreparedClass(publishedContract.Class) {
 			directPrepared = markARM64DirectPrepared(directPrepared, len(m.Code), i)
-			if arm64DirectPreparedLeafClass(publishedContract.Class) {
+			if arm64DirectPreparedLeafPlan(nativePlan) {
 				directLeafPrepared = markARM64DirectPrepared(directLeafPrepared, len(m.Code), i)
 			} else if arm64DirectPreparedTrapClass(publishedContract.Class) {
 				directTrapPrepared = markARM64DirectPrepared(directTrapPrepared, len(m.Code), i)
@@ -483,6 +498,12 @@ func arm64DirectPreparedLeafClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedLeaf
 }
 
+func arm64DirectPreparedLeafPlan(plan *nativeBackendPlan) bool {
+	return plan != nil && plan.Stack != nil && plan.Stack.MaxLoopDepth == 0 && arm64DirectPreparedLeafClass(plan.ABI.Class) &&
+		(plan.Frame.TotalBytes == 0 || arm64RailMachElidesPreparedCallFrame(plan)) &&
+		railssa.ContextFreeTrapFree(plan.Stack, arm64RailMachInlinesAllTinyCalls(plan))
+}
+
 func arm64DirectPreparedTrapClass(class railmach.ABIClass) bool {
 	return class == railmach.ABIPreparedIndirect
 }
@@ -540,7 +561,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				return functionError(m, i, "lower", err)
 			}
 			var nativePlan *nativeBackendPlan
-			if railMachCandidate(fn.Structured, compilation.HasV128) {
+			if arm64RailMachCandidate(fn.Structured, compilation.HasV128) {
 				if worker.native == nil {
 					worker.native = &nativeBackendPlanner{parallelCandidates: true}
 				}
@@ -5547,6 +5568,55 @@ func arm64RailMachClosedCounterLoop(plan *nativeBackendPlan) (kind arm64ClosedCo
 	return kind, n, result, true
 }
 
+// arm64RailMachI64HashLoop recognizes the compact scalar hash recurrence used
+// by arithmetic kernels. Its loop-invariant multiplier can then stay in a
+// register and four iterations share each backedge.
+func arm64RailMachI64HashLoop(plan *nativeBackendPlan) (n, result railmach.VReg, ok bool) {
+	if plan == nil || plan.Stack == nil || plan.Machine == nil || plan.Allocation == nil ||
+		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 || len(plan.Stack.Results) != 1 || plan.Stack.Results[0] != wasm.I64 ||
+		len(plan.Stack.Locals) != 2 || len(plan.Machine.Results) != 1 || len(plan.Stack.Instrs) != 29 {
+		return 0, 0, false
+	}
+	instrs := plan.Stack.Instrs
+	type expectedInstruction struct {
+		kind wasm.InstrKind
+		aux  uint64
+	}
+	want := [...]expectedInstruction{
+		{wasm.InstrI64Const, 0}, {wasm.InstrLocalSet, 1}, {wasm.InstrBlock, 0}, {wasm.InstrLoop, 0},
+		{wasm.InstrLocalGet, 0}, {wasm.InstrI32Eqz, 0}, {wasm.InstrBrIf, 1},
+		{wasm.InstrLocalGet, 1}, {wasm.InstrLocalGet, 0}, {wasm.InstrI64ExtendI32S, 0},
+		{wasm.InstrI64Const, 0x9e3779b1}, {wasm.InstrI64Mul, 0}, {wasm.InstrI64Add, 0}, {wasm.InstrLocalSet, 1},
+		{wasm.InstrLocalGet, 1}, {wasm.InstrLocalGet, 1}, {wasm.InstrI64Const, 13}, {wasm.InstrI64ShrU, 0}, {wasm.InstrI64Xor, 0}, {wasm.InstrLocalSet, 1},
+		{wasm.InstrLocalGet, 0}, {wasm.InstrI32Const, 1}, {wasm.InstrI32Sub, 0}, {wasm.InstrLocalSet, 0}, {wasm.InstrBr, 0},
+		{wasm.InstrInvalid, 0}, {wasm.InstrInvalid, 0}, {wasm.InstrLocalGet, 1}, {wasm.InstrInvalid, 0},
+	}
+	for index, expected := range want {
+		if instrs[index].Kind != expected.kind || instrs[index].U64() != expected.aux {
+			return 0, 0, false
+		}
+	}
+	for value, data := range plan.Machine.VRegs {
+		if value == 0 || data.Flags&railmach.VRegInitial == 0 || data.InitialLocal != 0 {
+			continue
+		}
+		location := plan.Allocation.Locations[value]
+		if location.Kind == railmach.LocationRegister && location.Bank == railmach.BankGPR {
+			n = railmach.VReg(value)
+			break
+		}
+	}
+	result = plan.Machine.Results[0]
+	if n == 0 || result == 0 || int(result) >= len(plan.Allocation.Locations) {
+		return 0, 0, false
+	}
+	resultLocation := plan.Allocation.Locations[result]
+	if resultLocation.Kind != railmach.LocationRegister || resultLocation.Bank != railmach.BankGPR {
+		return 0, 0, false
+	}
+	return n, result, true
+}
+
 // arm64RailMachFibonacciLoop recognizes the canonical two-value Fibonacci
 // recurrence. Emission can then rotate the two physical accumulators by
 // unrolling two iterations instead of materializing three loop-carried moves.
@@ -7005,6 +7075,20 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			return
 		}
 		a.StrQ(arm64.SP, int32(localOff(index)), src)
+	}
+	spillPinnedV128Locals := func() {
+		for local := 0; local < len(localV128Pinned); local++ {
+			if localV128Pinned[local] {
+				a.StrQ(arm64.SP, int32(localOff(local)), localRegisters[local])
+			}
+		}
+	}
+	reloadPinnedV128Locals := func() {
+		for local := 0; local < len(localV128Pinned); local++ {
+			if localV128Pinned[local] {
+				a.LdrQ(localRegisters[local], arm64.SP, int32(localOff(local)))
+			}
+		}
 	}
 	spillPinnedScalarLocals := func() bool {
 		for local := 0; local < len(localScalarPinned); local++ {
@@ -9249,7 +9333,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			calleePreservesPinned := false
 			if callBoundary && instr.Kind == wasm.InstrCall && instr.U32() >= sf.ImportedFuncs {
 				callee := int(instr.U32() - sf.ImportedFuncs)
-				calleePreservesPinned = callee < len(contracts) && contracts[callee].Class != 0
+				calleePreservesPinned = !sf.HasV128 && callee < len(contracts) && contracts[callee].Class != 0
 			}
 			stackPrefix := len(stackTypes) - int(instr.Params())
 			if instr.Kind == wasm.InstrCallIndirect {
@@ -9288,6 +9372,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			if callBoundary && !calleePreservesPinned && !spillPinnedScalarLocals() {
 				return nil, 0, nil, fmt.Errorf("byte %d: pinned local spill is not encodable", instr.Offset)
 			}
+			if callBoundary && !calleePreservesPinned {
+				spillPinnedV128Locals()
+			}
 			if err := emitARM64StackCall(&a, sf, instr, &stackTypes, stackLoad, stackStore, stackOff, &callRelocs, fn.Index, metadata); err != nil {
 				return nil, 0, nil, fmt.Errorf("byte %d: %w", instr.Offset, err)
 			}
@@ -9296,6 +9383,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			}
 			if callBoundary && !calleePreservesPinned && !reloadPinnedScalarLocals() {
 				return nil, 0, nil, fmt.Errorf("byte %d: pinned local reload is not encodable", instr.Offset)
+			}
+			if callBoundary && !calleePreservesPinned {
+				reloadPinnedV128Locals()
 			}
 			if callBoundary && registerOperandStack {
 				reload := stackPrefix
