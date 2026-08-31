@@ -288,9 +288,23 @@ func BenchmarkCompileWorkers(b *testing.B) {
 
 // BenchmarkCompileFull times the end-to-end decode+validate+compile entry point.
 func BenchmarkCompileFull(b *testing.B) {
+	benchmarkCompileFull(b, wago.NewRuntimeConfig())
+}
+
+// BenchmarkDraglineCompileFull measures the same end-to-end compilation corpus
+// with Dragline selected explicitly.
+func BenchmarkDraglineCompileFull(b *testing.B) {
+	benchmarkCompileFull(b, wago.NewRuntimeConfig().WithCompiler(wago.CompilerDragline).WithTarget(wago.TargetNative))
+}
+
+func benchmarkCompileFull(b *testing.B, cfg *wago.RuntimeConfig) {
 	eachModule(b, "CompileFull", func(b *testing.B, m corpusModule) {
+		if _, err := cfg.Compile(append([]byte(nil), m.bytes...)); err != nil {
+			b.Skipf("%s compiler does not admit %s: %v", cfg.Compiler(), m.name(), err)
+		}
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			if _, err := wago.Compile(nil, m.bytes); err != nil {
+			if _, err := cfg.Compile(append([]byte(nil), m.bytes...)); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -367,10 +381,20 @@ func BenchmarkCompileMultiModuleThroughput(b *testing.B) {
 
 // BenchmarkInstantiate times instance setup for an already-compiled module.
 func BenchmarkInstantiate(b *testing.B) {
+	benchmarkInstantiate(b, wago.NewRuntimeConfig())
+}
+
+// BenchmarkDraglineInstantiate measures fresh instances of modules compiled by
+// Dragline, omitting corpus entries the strict experimental backend rejects.
+func BenchmarkDraglineInstantiate(b *testing.B) {
+	benchmarkInstantiate(b, wago.NewRuntimeConfig().WithCompiler(wago.CompilerDragline).WithTarget(wago.TargetNative))
+}
+
+func benchmarkInstantiate(b *testing.B, cfg *wago.RuntimeConfig) {
 	eachModule(b, "Instantiate", func(b *testing.B, m corpusModule) {
-		c, err := wago.Compile(nil, m.bytes)
+		c, err := cfg.Compile(append([]byte(nil), m.bytes...))
 		if err != nil {
-			b.Fatal(err)
+			b.Skipf("%s compiler does not admit %s: %v", cfg.Compiler(), m.name(), err)
 		}
 		imports := hostStubs(c)
 		b.ResetTimer()

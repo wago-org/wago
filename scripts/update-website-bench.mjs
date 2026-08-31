@@ -24,6 +24,10 @@ const benchFile = resolve(process.env.WAGO_BENCH_IN || join(root, "bench", ".ben
 const websiteDir = resolve(process.env.WAGO_WEBSITE_DIR || join(root, "..", "website"));
 const indexPath = join(websiteDir, "index.html");
 const requestedUpdateArch = process.env.WAGO_BENCH_UPDATE_ARCH || "";
+const BACKENDS = [
+  { id: "railshot", label: "Railshot" },
+  { id: "dragline", label: "Dragline" },
+];
 
 const benchmarkSets = await loadBenchmarkSets();
 
@@ -59,7 +63,7 @@ const TABS = [
     id: "general",
     label: "General",
     items: [
-      rs("Compile latency", "fib_rec module", "Compile/fib_rec", "WazeroCompile/fib_rec"),
+      rs("Compile latency", "fib_rec module", "CompileFull/fib_rec", "WazeroCompile/fib_rec"),
       rs("Instantiate latency", "fib_rec startup + mapping", "Instantiate_wago", "Instantiate_wazero"),
       rs("Call overhead", "host → wasm", "ExecCallOverhead_wago", "ExecCallOverhead_wazero"),
       rs("Host roundtrip", "wasm → host → wasm", "ExecHostRoundtrip_wago", "ExecHostRoundtrip_wazero"),
@@ -79,29 +83,29 @@ const TABS = [
     label: "Compile",
     items: [
       grp("Micro modules"),
-      rs("tiny", "smallest valid module", "Compile/tiny", "WazeroCompile/tiny"),
-      rs("fib_rec", "recursive fib", "Compile/fib_rec", "WazeroCompile/fib_rec"),
-      rs("dispatch", "call_indirect table", "Compile/dispatch", "WazeroCompile/dispatch"),
-      rs("many_funcs", "thousands of functions", "Compile/many_funcs", "WazeroCompile/many_funcs"),
+      rs("tiny", "smallest valid module", "CompileFull/tiny", "WazeroCompile/tiny"),
+      rs("fib_rec", "recursive fib", "CompileFull/fib_rec", "WazeroCompile/fib_rec"),
+      rs("dispatch", "call_indirect table", "CompileFull/dispatch", "WazeroCompile/dispatch"),
+      rs("many_funcs", "thousands of functions", "CompileFull/many_funcs", "WazeroCompile/many_funcs"),
       grp("Compute kernels"),
-      rs("linked_list", "dependent-load chase", "Compile/linked_list", "WazeroCompile/linked_list"),
-      rs("memory_tree", "loads + calls", "Compile/memory_tree", "WazeroCompile/memory_tree"),
-      rs("sieve", "Eratosthenes", "Compile/sieve", "WazeroCompile/sieve"),
-      rs("mandelbrot", "f64 escape-time", "Compile/mandelbrot", "WazeroCompile/mandelbrot"),
+      rs("linked_list", "dependent-load chase", "CompileFull/linked_list", "WazeroCompile/linked_list"),
+      rs("memory_tree", "loads + calls", "CompileFull/memory_tree", "WazeroCompile/memory_tree"),
+      rs("sieve", "Eratosthenes", "CompileFull/sieve", "WazeroCompile/sieve"),
+      rs("mandelbrot", "f64 escape-time", "CompileFull/mandelbrot", "WazeroCompile/mandelbrot"),
       grp("Benchmarks Game (Rust)"),
-      rs("nbody", "leapfrog integrator", "Compile/nbody", "WazeroCompile/nbody"),
-      rs("spectralnorm", "AᵀA power iteration", "Compile/spectralnorm", "WazeroCompile/spectralnorm"),
-      rs("fannkuch", "permutation pancake-flips", "Compile/fannkuch", "WazeroCompile/fannkuch"),
+      rs("nbody", "leapfrog integrator", "CompileFull/nbody", "WazeroCompile/nbody"),
+      rs("spectralnorm", "AᵀA power iteration", "CompileFull/spectralnorm", "WazeroCompile/spectralnorm"),
+      rs("fannkuch", "permutation pancake-flips", "CompileFull/fannkuch", "WazeroCompile/fannkuch"),
       grp("Crypto & graphics (Rust)"),
-      rs("matmul", "64³ f64 multiply-add", "Compile/matmul", "WazeroCompile/matmul"),
-      rs("quicksort", "recursive int sort", "Compile/quicksort", "WazeroCompile/quicksort"),
-      rs("crc32", "table-driven checksum", "Compile/crc32", "WazeroCompile/crc32"),
-      rs("sha256", "SHA-256 hash", "Compile/sha256", "WazeroCompile/sha256"),
-      rs("raytrace", "recursive ray tracer", "Compile/raytrace", "WazeroCompile/raytrace"),
+      rs("matmul", "64³ f64 multiply-add", "CompileFull/matmul", "WazeroCompile/matmul"),
+      rs("quicksort", "recursive int sort", "CompileFull/quicksort", "WazeroCompile/quicksort"),
+      rs("crc32", "table-driven checksum", "CompileFull/crc32", "WazeroCompile/crc32"),
+      rs("sha256", "SHA-256 hash", "CompileFull/sha256", "WazeroCompile/sha256"),
+      rs("raytrace", "recursive ray tracer", "CompileFull/raytrace", "WazeroCompile/raytrace"),
       grp("Real-world (AssemblyScript)"),
-      rs("json-as", "JSON SWAR", "Compile/json-as", "WazeroCompile/json-as"),
-      rs("blake-as", "BLAKE3 SWAR", "Compile/blake-as", "WazeroCompile/blake-as"),
-      rs("utf-as", "UTF SWAR transcode", "Compile/utf-as", "WazeroCompile/utf-as"),
+      rs("json-as", "JSON SWAR", "CompileFull/json-as", "WazeroCompile/json-as"),
+      rs("blake-as", "BLAKE3 SWAR", "CompileFull/blake-as", "WazeroCompile/blake-as"),
+      rs("utf-as", "UTF SWAR transcode", "CompileFull/utf-as", "WazeroCompile/utf-as"),
       // Real-world interpreters/engines. These carry WASI/host imports so they
       // can't yet be executed here, but the backend compiles them — so this is a
       // like-for-like FULL-compile race (decode + validate + codegen) vs wazero's
@@ -291,11 +295,27 @@ function parseBench(text) {
 
 // buildRow resolves a spec against the loaded metrics. Returns null (and warns)
 // when either side is missing so the row is skipped rather than crashing.
-function buildRow(spec, metrics) {
-  const w = metrics.get(spec.wagoKey);
+function backendMetricKey(key, backend) {
+  if (backend === "railshot") return key;
+  for (const [stage, replacement] of [
+    ["CompileFull/", "DraglineCompileFull/"],
+    ["Instantiate/", "DraglineInstantiate/"],
+    ["Exec/", "DraglineExec/"],
+  ]) {
+    if (key.startsWith(stage)) return replacement + key.slice(stage.length);
+  }
+  // Decode and validation are shared frontend work. Backend-specific tabs omit
+  // fixed microbenchmarks and runtime integrations without a paired Dragline row.
+  if (key.startsWith("Decode/") || key.startsWith("Validate/")) return key;
+  return "";
+}
+
+function buildRow(spec, metrics, backend) {
+  const wagoKey = backendMetricKey(spec.wagoKey, backend);
+  const w = wagoKey ? metrics.get(wagoKey) : null;
   const z = metrics.get(spec.wazeroKey);
   if (!w || !z) {
-    console.warn(`wago: skipping row "${spec.label}" — missing metric ${!w ? spec.wagoKey : spec.wazeroKey}`);
+    console.warn(`wago: skipping ${backend} row "${spec.label}" — missing metric ${!w ? wagoKey || spec.wagoKey : spec.wazeroKey}`);
     return null;
   }
   const kind = spec.kind ?? "ns";
@@ -399,19 +419,18 @@ function renderSection(tabs, sets) {
   const archPanels = sets.map((set, i) => renderArchitecture(tabs, set, i)).join("\n");
   const foot = multiArch
     ? "Measured separately on each listed architecture; compare values within an architecture, not across machines."
-    : `Measured on ${archLabel(sets[0])} with the single-pass backend; wago vs wazero over the same corpus.`;
+    : `Measured on ${archLabel(sets[0])}; each selected Wago backend is compared with wazero over the same corpus.`;
   const out = `            <section id="performance" class="section">
                 <div class="eyebrow eyebrow--center">Performance</div>
                 <h2 class="section__title">
-                    No IR,
-                    <span class="section__title-accent">no compromise</span>
+                    Two compilers,
+                    <span class="section__title-accent">one corpus</span>
                 </h2>
                 <p class="section__lead">
-                    wago compiles straight to native in a single pass: no SSA,
-                    no IR, no optimizer, just the novel Valent-Block
-                    architecture. It still keeps pace with runtimes that run a
-                    full optimizing backend. Every stage, head-to-head with
-                    wazero.
+                    Compare Railshot's direct single-pass compiler and the
+                    experimental optimizing Dragline backend against wazero's
+                    Cranelift compiler. Every published row uses the same
+                    workload on the selected architecture.
                 </p>
                 <div class="vs">
                     <div class="vs__body">
@@ -442,70 +461,75 @@ function archLabel(set) {
 }
 
 function renderArchitecture(tabs, set, index) {
+  return renderArchitecturePanel(tabs, set, index);
+}
+
+function renderBackend(tabs, set, backend, index) {
+  const arch = set.arch || "host";
   const tablist = tabs
     .map(
-      (t, i) => `                        <button
+      (t, i) => `                            <button
                             class="vs__tab"
                             role="tab"
-                            id="perf-${set.arch || "host"}-tab-${t.id}"
-                            aria-controls="perf-${set.arch || "host"}-panel-${t.id}"
+                            id="perf-${arch}-${backend.id}-tab-${t.id}"
+                            aria-controls="perf-${arch}-${backend.id}-panel-${t.id}"
                             aria-selected="${i === 0 ? "true" : "false"}"
                             tabindex="${i === 0 ? "0" : "-1"}"
                         >${esc(t.label)}</button>`
     )
     .join("\n");
-  const panels = tabs.map((t, i) => renderPanel(t, i, set.metrics, set.arch || "host")).join("\n");
-  return renderArchitecturePanel(set, index, tablist, panels);
+  const panels = tabs.map((t, i) => renderPanel(t, i, set.metrics, arch, backend.id)).join("\n");
+  return `                        <div
+                            class="vs__backendpanel"
+                            role="tabpanel"
+                            id="backend-panel-${arch}-${backend.id}"
+                            aria-labelledby="backend-tab-${arch}-${backend.id}"${index === 0 ? "" : "\n                            hidden"}
+                        >
+                            <div class="vs__main">
+                                <div class="vs__toprow">
+                                    <div class="vs__tabs" role="tablist" aria-label="Benchmark categories" data-tabs>
+${tablist}
+                                    </div>
+                                    <div class="vs__legend">
+                                        <span class="vs__key"><i class="vs__dot vs__dot--wago"></i>${backend.label}</span>
+                                        <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>Cranelift</span>
+                                    </div>
+                                </div>
+${panels}
+                            </div>
+                        </div>`;
 }
 
 // The website may already contain architecture tabs whose other panel came from
 // a different machine. Update one measured panel in place so refreshing ARM64
 // does not rewrite or round-trip the committed AMD64 reference numbers.
 function renderExistingArchitecture(tabs, set) {
-  const arch = set.arch || "host";
-  const tablist = tabs
-    .map(
-      (t, i) => `                        <button
-                            class="vs__tab"
-                            role="tab"
-                            id="perf-${arch}-tab-${t.id}"
-                            aria-controls="perf-${arch}-panel-${t.id}"
-                            aria-selected="${i === 0 ? "true" : "false"}"
-                            tabindex="${i === 0 ? "0" : "-1"}"
-                        >${esc(t.label)}</button>`,
-    )
-    .join("\n");
-  const panels = tabs.map((tab, i) => renderPanel(tab, i, set.metrics, arch)).join("\n");
-  return renderArchitecturePanel(set, arch === "amd64" ? 0 : 1, tablist, panels);
+  return renderArchitecturePanel(tabs, set, (set.arch || "host") === "amd64" ? 0 : 1);
 }
 
 // Keep the platform rail, category tabs, and capped row viewport separate. The
 // website CSS and tabs controller target this exact structure; flattening it
 // makes long Compile/Exec tabs expand the whole card after every regeneration.
-function renderArchitecturePanel(set, index, tablist, panels) {
+function renderArchitecturePanel(tabs, set, index) {
   const arch = set.arch || "host";
   const spec = [set.goos, set.arch, set.cpu].filter(Boolean).join(" · ");
+  const backendTabs = BACKENDS.map((backend, i) => `                            <button class="vs__archbtn" role="tab" id="backend-tab-${arch}-${backend.id}" aria-controls="backend-panel-${arch}-${backend.id}" aria-selected="${i === 0 ? "true" : "false"}" tabindex="${i === 0 ? "0" : "-1"}">${backend.label}</button>`).join("\n");
+  const backendPanels = BACKENDS.map((backend, i) => renderBackend(tabs, set, backend, i)).join("\n");
   const out = `                    <div
                         class="vs__archpanel"
                         role="tabpanel"
                         id="arch-panel-${arch}"
                         aria-labelledby="arch-tab-${arch}"${index === 0 ? "" : "\n                        hidden"}
                     >
-                        <div class="vs__main">
-                            <div class="vs__toprow">
-                                <div class="vs__tabs" role="tablist" aria-label="Benchmark categories" data-tabs>
-${tablist}
-                                </div>
-                                <div class="vs__legend">
-                                    <span class="vs__key"><i class="vs__dot vs__dot--wago"></i>wago</span>
-                                    <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>wazero</span>
-                                </div>
-                            </div>
-${panels}
+                        <div class="vs__backendstage">
+${backendPanels}
                         </div>
                         <div class="vs__specs">${esc(spec)}</div>
+                        <div class="vs__side vs__side--backend" role="tablist" aria-label="Compiler backend" data-backend-toggle>
+${backendTabs}
+                        </div>
                     </div>`;
-  for (const marker of ["vs__archpanel", "vs__main", "vs__toprow", "vs__tabs", "vs__specs"]) {
+  for (const marker of ["vs__archpanel", "vs__backendstage", "data-backend-toggle", "vs__main", "vs__toprow", "vs__tabs", "vs__specs"]) {
     if (!out.includes(marker)) {
       throw new Error(`benchmark architecture renderer lost required ${marker} markup`);
     }
@@ -544,7 +568,7 @@ function replacePerformanceFoot(html) {
   return `${html.slice(0, start)}${foot}${html.slice(end + 4)}`;
 }
 
-function renderPanel(tab, index, metrics, arch) {
+function renderPanel(tab, index, metrics, arch, backend) {
   const dvMax = Math.max(1, ...tab.items.filter((i) => i.dv).map((i) => i.bytes));
   const parts = tab.items.map((item) => {
     if (item.group) return { group: true, html: renderGroup(item.group) };
@@ -552,7 +576,7 @@ function renderPanel(tab, index, metrics, arch) {
       const r = buildDVRow(item, metrics);
       return { group: false, html: r ? renderDVRow(r, dvMax, 24) : null };
     }
-    const r = buildRow(item, metrics);
+    const r = buildRow(item, metrics, backend);
     return { group: false, html: r ? renderRow(r, 24) : null };
   });
   const body = parts
@@ -569,8 +593,8 @@ function renderPanel(tab, index, metrics, arch) {
   return `                    <div
                         class="vs__panel"
                         role="tabpanel"
-                        id="perf-${arch}-panel-${tab.id}"
-                        aria-labelledby="perf-${arch}-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
+                        id="perf-${arch}-${backend}-panel-${tab.id}"
+                        aria-labelledby="perf-${arch}-${backend}-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
                     >
 ${body}
                     </div>`;
