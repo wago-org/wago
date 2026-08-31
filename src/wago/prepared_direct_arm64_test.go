@@ -60,6 +60,51 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 	}
 }
 
+func TestPreparedDirectARM64I64HashLoop(t *testing.T) {
+	body := []byte{
+		0x42, 0x00, 0x21, 0x01, 0x02, 0x40, 0x03, 0x40, 0x20, 0x00, 0x45, 0x0d, 0x01,
+		0x20, 0x01, 0x20, 0x00, 0xac, 0x42, 0xb1, 0xf3, 0xdd, 0xf1, 0x09, 0x7e, 0x7c, 0x21, 0x01,
+		0x20, 0x01, 0x20, 0x01, 0x42, 0x0d, 0x88, 0x85, 0x21, 0x01,
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, 0x0c, 0x00, 0x0b, 0x0b, 0x20, 0x01, 0x0b,
+	}
+	function := append([]byte{0x01, 0x01, 0x7e}, body...)
+	code := append(wasmtest.ULEB(uint32(len(function))), function...)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	fn, err := instance.PrepareFunction("run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fn.directIntFast || fn.directLeafIntFast {
+		t.Fatalf("hash loop selected direct=%t leaf=%t, want interruptible direct entry", fn.directIntFast, fn.directLeafIntFast)
+	}
+	for _, count := range []uint32{0, 1, 2, 3, 10, 101} {
+		var want uint64
+		for n := count; n != 0; n-- {
+			want += uint64(int64(int32(n))) * uint64(0x9e3779b1)
+			want ^= want >> 13
+		}
+		got, err := fn.Invoke1(uint64(count))
+		if err != nil || len(got) != 1 || got[0] != want {
+			t.Fatalf("run(%d) = %v, %v; want %#x", count, got, err, want)
+		}
+	}
+}
+
 func TestPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T) {
 	twoI32 := []wasm.ValType{wasm.I32, wasm.I32}
 	threeI32 := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}

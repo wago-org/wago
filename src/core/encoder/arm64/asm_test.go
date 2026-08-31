@@ -84,6 +84,7 @@ func TestEncodings(t *testing.T) {
 		{"and x5,x6,x7", func(a *Asm) { a.And64(X5, X6, X7) }, 0x8a0700c5},
 		{"orr x5,x6,x7", func(a *Asm) { a.Orr64(X5, X6, X7) }, 0xaa0700c5},
 		{"eor x5,x6,x7", func(a *Asm) { a.Eor64(X5, X6, X7) }, 0xca0700c5},
+		{"eor x14,x14,x14,lsr#13", func(a *Asm) { a.Eor64Lsr(X14, X14, X14, 13) }, 0xca4e35ce},
 		// variable shifts
 		{"lsl w5,w6,w7", func(a *Asm) { a.Lslv32(X5, X6, X7) }, 0x1ac720c5},
 		{"lsr w5,w6,w7", func(a *Asm) { a.Lsrv32(X5, X6, X7) }, 0x1ac724c5},

@@ -489,6 +489,11 @@ func (a *Asm) And64(rd, rn, rm Reg) { a.word(0x8A000000 | r(rm)<<16 | r(rn)<<5 |
 func (a *Asm) Orr64(rd, rn, rm Reg) { a.word(0xAA000000 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
 func (a *Asm) Eor64(rd, rn, rm Reg) { a.word(0xCA000000 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
 
+// Eor64Lsr is Rd = Rn ^ (Rm >> shift).
+func (a *Asm) Eor64Lsr(rd, rn, rm Reg, shift uint8) {
+	a.word(0xCA400000 | r(rm)<<16 | uint32(shift&63)<<10 | r(rn)<<5 | r(rd))
+}
+
 // --- Variable shifts (LSLV/LSRV/ASRV: shift Rn by Rm mod width) ---
 
 func (a *Asm) Lslv32(rd, rn, rm Reg) { a.word(0x1AC02000 | r(rm)<<16 | r(rn)<<5 | r(rd)) }

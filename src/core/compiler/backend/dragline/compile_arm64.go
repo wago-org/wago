@@ -604,7 +604,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 			if !railMachFinalized {
 				contracts[i] = railmach.ABIContract{}
 			}
-			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class), directLeaf: railMachFinalized && arm64DirectPreparedLeafClass(published.Class), directTrap: railMachFinalized && arm64DirectPreparedTrapClass(published.Class)}
+			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class), directLeaf: railMachFinalized && arm64DirectPreparedLeafPlan(nativePlan), directTrap: railMachFinalized && arm64DirectPreparedTrapClass(published.Class)}
 			worker.body = nil
 		}
 		return nil
@@ -1457,6 +1457,52 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			if resultReg != arm64.X8 {
 				a.MovReg32(resultReg, arm64.X8)
 			}
+		}
+		if metrics != nil {
+			metrics.PostRARewrites++
+		}
+		goto railMachEpilogue
+	}
+	if n, result, ok := arm64RailMachI64HashLoop(plan); ok {
+		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
+		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
+		a.MovReg32(arm64.X13, nReg)
+		a.MovImm64(arm64.X14, 0)
+		a.MovImm64(arm64.X16, 0x9e3779b1)
+		emitIteration := func() {
+			a.Sxtw(arm64.X15, arm64.X13)
+			a.Madd64(arm64.X14, arm64.X15, arm64.X16, arm64.X14)
+			a.Eor64Lsr(arm64.X14, arm64.X14, arm64.X14, 13)
+			a.SubImm32(arm64.X13, arm64.X13, 1)
+		}
+		zero := a.Cbz32(arm64.X13)
+		if !a.AndImm32(arm64.X17, arm64.X13, 3) {
+			return nil, 0, true, fmt.Errorf("RailMach i64 hash remainder is not encodable")
+		}
+		aligned := a.Cbz32(arm64.X17)
+		prefix := a.Len()
+		emitIteration()
+		a.SubImm32(arm64.X17, arm64.X17, 1)
+		if !a.PatchBranch19(a.Cbnz32(arm64.X17), prefix) {
+			return nil, 0, true, fmt.Errorf("RailMach i64 hash prefix is out of range")
+		}
+		prefixDone := a.Cbz32(arm64.X13)
+		loop := a.Len()
+		if !a.PatchBranch19(aligned, loop) {
+			return nil, 0, true, fmt.Errorf("RailMach i64 hash aligned entry is out of range")
+		}
+		for range 4 {
+			emitIteration()
+		}
+		if !a.PatchBranch19(a.Cbnz32(arm64.X13), loop) {
+			return nil, 0, true, fmt.Errorf("RailMach i64 hash loop is out of range")
+		}
+		done := a.Len()
+		if resultReg != arm64.X14 {
+			a.MovReg64(resultReg, arm64.X14)
+		}
+		if !a.PatchBranch19(zero, done) || !a.PatchBranch19(prefixDone, done) {
+			return nil, 0, true, fmt.Errorf("RailMach i64 hash exit is out of range")
 		}
 		if metrics != nil {
 			metrics.PostRARewrites++
