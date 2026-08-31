@@ -53,6 +53,8 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	}
 	entries := make([]int, len(m.Code))
 	internal := make([]int, len(m.Code))
+	var directPrepared []uint64
+	var directLeafPrepared []uint64
 	var callRelocs []amd64CallReloc
 	var gcCallsites []corecompiler.GCFrameCallsite
 	var gcRoots []uint32
@@ -125,6 +127,10 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			artifact, hit, cacheErr := functionCache.Get(artifactIdentity)
 			if cacheErr == nil && hit {
 				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
+				if !captureGC && amd64DirectPreparedLeafClass(moduleContracts[i].Class) {
+					directPrepared = markAMD64DirectPrepared(directPrepared, len(m.Code), i)
+					directLeafPrepared = markAMD64DirectPrepared(directLeafPrepared, len(m.Code), i)
+				}
 				if row != nil {
 					row.CacheHit = true
 					row.RailMachFinalized = artifact.ABIClass != 0
@@ -259,9 +265,17 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			}
 		}
 		plan = applyBoundsMode(input.Bounds, plan, nativePlan)
-		body, internalOffset, relocs, err := emitAMD64(fn, plan, nativePlan, emitMetrics, capture)
+		body, internalOffset, relocs, railMachFinalized, err := emitAMD64(fn, plan, nativePlan, emitMetrics, capture)
 		if err != nil {
 			return corecompiler.Output{}, functionError(m, i, "emit", err)
+		}
+		if !railMachFinalized {
+			publishedContract = railmach.ABIContract{}
+			moduleContracts[i] = railmach.ABIContract{}
+		}
+		if !captureGC && railMachFinalized && amd64DirectPreparedLeafClass(publishedContract.Class) {
+			directPrepared = markAMD64DirectPrepared(directPrepared, len(m.Code), i)
+			directLeafPrepared = markAMD64DirectPrepared(directLeafPrepared, len(m.Code), i)
 		}
 		if captureGC {
 			appendGCFrameCallsites(&gcCallsites, &gcRoots, uint32(entries[i]), emitMetrics.FrameBytes, emissionMetadata.Safepoints, emissionMetadata.Roots)
@@ -356,13 +370,26 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		metrics.NativeBytes = uint64(len(code))
 		metrics.observe(sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(moduleContracts))
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets}, nil
+}
+
+func markAMD64DirectPrepared(bits []uint64, functions, index int) []uint64 {
+	if bits == nil {
+		bits = make([]uint64, (functions+63)/64)
+	}
+	bits[index>>6] |= uint64(1) << uint(index&63)
+	return bits
+}
+
+func amd64DirectPreparedLeafClass(class railmach.ABIClass) bool {
+	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt
 }
 
 type parallelAMD64Result struct {
 	body           []byte
 	internalOffset int
 	relocs         []amd64CallReloc
+	directPrepared bool
 }
 
 type parallelAMD64Worker struct {
@@ -435,11 +462,14 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 				}
 			}
 			plan = applyBoundsMode(input.Bounds, plan, nativePlan)
-			body, internalOffset, relocs, err := emitAMD64(fn, plan, nativePlan, nil, nil)
+			body, internalOffset, relocs, railMachFinalized, err := emitAMD64(fn, plan, nativePlan, nil, nil)
 			if err != nil {
 				return functionError(m, i, "emit", err)
 			}
-			results[i] = parallelAMD64Result{body: body, internalOffset: internalOffset, relocs: relocs}
+			if !railMachFinalized {
+				contracts[i] = railmach.ABIContract{}
+			}
+			results[i] = parallelAMD64Result{body: body, internalOffset: internalOffset, relocs: relocs, directPrepared: railMachFinalized && amd64DirectPreparedLeafClass(contracts[i].Class)}
 		}
 		return nil
 	})
@@ -450,12 +480,18 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 	entries := make([]int, len(m.Code))
 	internal := make([]int, len(m.Code))
 	var callRelocs []amd64CallReloc
+	var directPrepared []uint64
+	var directLeafPrepared []uint64
 	for _, i := range compilation.Order {
 		for len(code)&15 != 0 {
 			code = append(code, 0x90)
 		}
 		entries[i] = len(code)
 		result := &results[i]
+		if result.directPrepared {
+			directPrepared = markAMD64DirectPrepared(directPrepared, len(m.Code), i)
+			directLeafPrepared = markAMD64DirectPrepared(directLeafPrepared, len(m.Code), i)
+		}
 		internal[i] = len(code) + result.internalOffset
 		for _, reloc := range result.relocs {
 			reloc.at += len(code)
@@ -476,28 +512,29 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 	if len(code) == 0 {
 		code = []byte{0xc3}
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared}, nil
 }
 
-func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []amd64CallReloc, error) {
+func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []amd64CallReloc, bool, error) {
 	if nativePlan != nil {
 		var relocs []amd64CallReloc
 		if code, entry, ok, err := emitAMD64RailMach(fn, nativePlan, &relocs, metrics, metadata); ok || err != nil {
-			return code, entry, relocs, err
+			return code, entry, relocs, ok, err
 		}
 	}
 	if fn.Stack != nil {
-		return emitAMD64Stack(fn, plan, metrics, metadata)
+		code, entry, relocs, err := emitAMD64Stack(fn, plan, metrics, metadata)
+		return code, entry, relocs, false, err
 	}
 	if len(fn.Params) > len(amd64ParamRegisters) {
-		return nil, 0, nil, fmt.Errorf("%d parameters exceed the four-register MVP ABI", len(fn.Params))
+		return nil, 0, nil, false, fmt.Errorf("%d parameters exceed the four-register MVP ABI", len(fn.Params))
 	}
 	allocation, err := allocateLinear(fn, len(amd64ValueRegisters))
 	if err != nil {
-		return nil, 0, nil, err
+		return nil, 0, nil, false, err
 	}
 	if allocation.frameBytes > uint32(^uint32(0)>>1) {
-		return nil, 0, nil, &ResourceLimitError{Resource: "AMD64 spill frame bytes", Required: uint64(allocation.frameBytes), Limit: uint64(^uint32(0) >> 1)}
+		return nil, 0, nil, false, &ResourceLimitError{Resource: "AMD64 spill frame bytes", Required: uint64(allocation.frameBytes), Limit: uint64(^uint32(0) >> 1)}
 	}
 	if metrics != nil {
 		metrics.FrameBytes = allocation.frameBytes
@@ -547,11 +584,11 @@ func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 			args := fn.Operands(railssa.ValueID(id))
 			lhs, err := amd64Source(&a, allocation.values[args[0]], amd64.R10)
 			if err != nil {
-				return nil, 0, nil, err
+				return nil, 0, nil, false, err
 			}
 			rhs, err := amd64Source(&a, allocation.values[args[1]], amd64.R11)
 			if err != nil {
-				return nil, 0, nil, err
+				return nil, 0, nil, false, err
 			}
 			wide := value.Type == wasm.I64
 			if dst != lhs {
@@ -570,7 +607,7 @@ func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 			case railssa.OpXor:
 				opcode = 0x31
 			default:
-				return nil, 0, nil, fmt.Errorf("unsupported SSA op %s", value.Op)
+				return nil, 0, nil, false, fmt.Errorf("unsupported SSA op %s", value.Op)
 			}
 			a.AluRR(opcode, dst, rhs, wide)
 		}
@@ -581,7 +618,7 @@ func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 	if len(fn.Results) == 1 {
 		result, err := amd64Source(&a, allocation.values[fn.Result], amd64.R10)
 		if err != nil {
-			return nil, 0, nil, err
+			return nil, 0, nil, false, err
 		}
 		if result != amd64.RAX {
 			a.MovReg64(amd64.RAX, result)
@@ -591,7 +628,7 @@ func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 		a.AddRsp(int32(allocation.frameBytes))
 	}
 	a.Ret()
-	return a.B, internalOffset, nil, nil
+	return a.B, internalOffset, nil, false, nil
 }
 
 func measureAMD64PostRABaseline(fn *railssa.Func, plan *nativeBackendPlan) (int, error) {
@@ -773,8 +810,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	a.Ret()
 	a.Align16()
 	internalOffset := a.Len()
+	directPrepared := amd64DirectPreparedLeafClass(plan.ABI.Class)
 	if len(plan.Stack.Instrs) != 0 {
 		metadata.recordSource(internalOffset, plan.Stack.Instrs[0].Offset)
+	}
+	if directPrepared {
+		// Preserve a distinct source-map position when parameter locals are
+		// already in their private-ABI registers and emit no entry moves.
+		a.B = append(a.B, 0x90)
 	}
 	a.PatchRel32(call, internalOffset)
 	if plan.Frame.TotalBytes != 0 {
@@ -800,11 +843,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		}
 	}
 	paramBase := amd64.RDI
-	for value := railmach.VReg(1); int(value) < len(plan.Machine.VRegs); value++ {
-		if plan.Machine.VRegs[value].Flags&railmach.VRegInitial != 0 && plan.Allocation.Locations[value].Kind == railmach.LocationSpill {
-			a.MovReg64(amd64.R11, amd64.RDI)
-			paramBase = amd64.R11
-			break
+	if !directPrepared {
+		for value := railmach.VReg(1); int(value) < len(plan.Machine.VRegs); value++ {
+			if plan.Machine.VRegs[value].Flags&railmach.VRegInitial != 0 && plan.Allocation.Locations[value].Kind == railmach.LocationSpill {
+				a.MovReg64(amd64.R11, amd64.RDI)
+				paramBase = amd64.R11
+				break
+			}
 		}
 	}
 	for local := uint16(0); int(local) < len(plan.Stack.Locals); local++ {
@@ -822,7 +867,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				dst = reg(value)
 			}
 			if local < plan.Machine.ParamCount {
-				if data.Bank == railmach.BankFPR {
+				if directPrepared {
+					src := amd64ParamRegisters[local]
+					if location.Kind == railmach.LocationRegister && dst != src {
+						a.MovReg64(dst, src)
+					} else if location.Kind == railmach.LocationSpill {
+						dst = src
+					}
+				} else if data.Bank == railmach.BankFPR {
 					a.Load64(amd64.R10, paramBase, int32(local)*8)
 					a.MovGprToXmm(dst, amd64.R10, data.Type == railmach.TypeF64)
 				} else if data.Type == railmach.TypeI32 {

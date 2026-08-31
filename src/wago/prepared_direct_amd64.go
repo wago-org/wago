@@ -10,7 +10,10 @@ import (
 )
 
 const preparedDirectIntSupported = true
-const preparedDirectIntPrivateSupported = false
+
+// AMD64's direct prepared path retains the established foreign-stack transition;
+// the compiler-proven private entry only removes wrapper marshalling.
+const preparedDirectIntPrivateSupported = true
 
 func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
 	var a0, a1, a2, a3 uint64

@@ -10,11 +10,11 @@ import (
 
 func TestAMD64ProductionConsumesProvedBoundsElision(t *testing.T) {
 	fn, plan := constantMemoryEmissionTestFunc(t)
-	optimized, _, _, err := emitAMD64(fn, plan, nil, nil, nil)
+	optimized, _, _, _, err := emitAMD64(fn, plan, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	checked, _, _, err := emitAMD64(fn, nil, nil, nil, nil)
+	checked, _, _, _, err := emitAMD64(fn, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,11 +25,11 @@ func TestAMD64ProductionConsumesProvedBoundsElision(t *testing.T) {
 
 func TestAMD64ProductionConsumesMaskedRangeBoundsElision(t *testing.T) {
 	fn, plan := maskedMemoryEmissionTestFunc(t)
-	optimized, _, _, err := emitAMD64(fn, plan, nil, nil, nil)
+	optimized, _, _, _, err := emitAMD64(fn, plan, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	checked, _, _, err := emitAMD64(fn, nil, nil, nil, nil)
+	checked, _, _, _, err := emitAMD64(fn, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,11 +40,11 @@ func TestAMD64ProductionConsumesMaskedRangeBoundsElision(t *testing.T) {
 
 func TestAMD64ProductionConsumesMaskedInductionBoundsElision(t *testing.T) {
 	fn, plan := maskedLoopMemoryEmissionTestFunc(t)
-	optimized, _, _, err := emitAMD64(fn, plan, nil, nil, nil)
+	optimized, _, _, _, err := emitAMD64(fn, plan, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	checked, _, _, err := emitAMD64(fn, nil, nil, nil, nil)
+	checked, _, _, _, err := emitAMD64(fn, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
