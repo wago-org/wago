@@ -671,6 +671,38 @@ func TestARM64RailMachRenamesFinalEdgeMultiply(t *testing.T) {
 	if !rename.valid || rename.instruction != 0 || rename.edge != 0 || rename.move != 0 || rename.destination.Index != 5 {
 		t.Fatalf("edge result rename = %#v", rename)
 	}
+	f.Insts[0].Op = wasm.InstrI64Add
+	for index := range f.Operands {
+		f.Operands[index].Bank = railmach.BankGPR
+	}
+	for index := 1; index < len(f.VRegs); index++ {
+		f.VRegs[index].Type = railmach.TypeI64
+		f.VRegs[index].Bank = railmach.BankGPR
+		plan.Allocation.Locations[index].Bank = railmach.BankGPR
+	}
+	plan.Exit.Moves[0].Src.Bank = railmach.BankGPR
+	plan.Exit.Moves[0].Dst.Bank = railmach.BankGPR
+	plan.Exit.Moves[0].Bank = railmach.BankGPR
+	if integer := arm64RailMachEdgeResultRename(plan, 0); !integer.valid || integer.destination.Index != 5 {
+		t.Fatalf("integer edge result rename = %#v", integer)
+	}
+	f.Insts = append(f.Insts, make([]railmach.Inst, 255)...)
+	if large := arm64RailMachEdgeResultRename(plan, 0); large.valid {
+		t.Fatalf("large integer edge result rename = %#v, want disabled", large)
+	}
+	f.Insts = f.Insts[:1]
+	f.Insts[0].Op = wasm.InstrF64Mul
+	for index := range f.Operands {
+		f.Operands[index].Bank = railmach.BankFPR
+	}
+	for index := 1; index < len(f.VRegs); index++ {
+		f.VRegs[index].Type = railmach.TypeF64
+		f.VRegs[index].Bank = railmach.BankFPR
+		plan.Allocation.Locations[index].Bank = railmach.BankFPR
+	}
+	plan.Exit.Moves[0].Src.Bank = railmach.BankFPR
+	plan.Exit.Moves[0].Dst.Bank = railmach.BankFPR
+	plan.Exit.Moves[0].Bank = railmach.BankFPR
 	f.Insts = append(f.Insts, railmach.Inst{Op: wasm.InstrF64Add, Result: 5, OperandStart: 2, OperandCount: 2})
 	f.Operands = append(f.Operands, railmach.Operand{Reg: 1, Bank: railmach.BankFPR}, railmach.Operand{Reg: 3, Bank: railmach.BankFPR})
 	f.VRegs = append(f.VRegs,

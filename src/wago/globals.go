@@ -1134,17 +1134,24 @@ func (c *Compiled) Compiler() CompilerEngine {
 // retain the wrapper fallback.
 var directPreparedEntryMask = ^(^uint(0) >> 1)
 var directLeafPreparedEntryMask = directPreparedEntryMask >> 1
+var directTrapPreparedEntryMask = directLeafPreparedEntryMask >> 1
 
 func markDirectPreparedEntry(off int) int { return int(uint(off) | directPreparedEntryMask) }
 func markDirectLeafPreparedEntry(off int) int {
 	return int(uint(off) | directPreparedEntryMask | directLeafPreparedEntryMask)
 }
+func markDirectTrapPreparedEntry(off int) int {
+	return int(uint(off) | directPreparedEntryMask | directTrapPreparedEntryMask)
+}
 func directPreparedEntry(off int) bool { return uint(off)&directPreparedEntryMask != 0 }
 func directLeafPreparedEntry(off int) bool {
 	return uint(off)&directLeafPreparedEntryMask != 0
 }
+func directTrapPreparedEntry(off int) bool {
+	return uint(off)&directTrapPreparedEntryMask != 0
+}
 func internalEntryOffset(off int) int {
-	return int(uint(off) &^ (directPreparedEntryMask | directLeafPreparedEntryMask))
+	return int(uint(off) &^ (directPreparedEntryMask | directLeafPreparedEntryMask | directTrapPreparedEntryMask))
 }
 
 // RequiresBMI2 reports whether compilation selected BMI2 instructions.

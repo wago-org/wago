@@ -60,6 +60,12 @@ func (e *Engine) EnterPreparedLeafInt(code, linMemBase uintptr, a0, a1, a2, a3 u
 	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
 }
 
+// TinyGo retains the established foreign-stack transition for trap-capable
+// prepared entries.
+func (e *Engine) EnterPreparedTrapInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
+}
+
 func PreparedIntTrapCode(trap []byte) TrapCode {
 	if len(trap) < 4 {
 		return TrapNone

@@ -14,6 +14,32 @@ TEXT ·enterNativeLeafInt(SB), NOSPLIT, $16-48
 	MOVD R0, ret+40(FP)
 	RET
 
+// func enterNativeTrapInt(code, linMem, a0, a1, a2, a3 uintptr) uintptr
+// The selected code is call-free but may take a cold trap. Keep execution on
+// the Go stack and publish only the stack/link pair consumed by arm64EmitTrap.
+TEXT ·enterNativeTrapInt(SB), NOSPLIT, $8-56
+	MOVD code+0(FP), R9
+	MOVD R26, savedR26-8(SP)
+	MOVD linMem+8(FP), R26
+	MOVD a0+16(FP), R0
+	MOVD a1+24(FP), R1
+	MOVD a2+32(FP), R2
+	MOVD a3+40(FP), R3
+	BL   callNativeTrapInt
+
+afterNativeTrapIntCall:
+	MOVD savedR26-8(SP), R26
+	MOVD R0, ret+48(FP)
+	RET
+
+callNativeTrapInt:
+	MOVD RSP, R11
+	MOVD R11, -24(R26)
+	MOVD R30, R11
+	MOVD R11, -32(R26)
+	BL   (R9)
+	B    afterNativeTrapIntCall
+
 // func enterNativeInt(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
 TEXT ·enterNativeInt(SB), NOSPLIT, $0-64
 	MOVD code+0(FP), R9

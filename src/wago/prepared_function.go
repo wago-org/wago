@@ -32,6 +32,7 @@ type PreparedFunction struct {
 	isolatedFast        bool
 	directIntFast       bool
 	directLeafIntFast   bool
+	directTrapIntFast   bool
 }
 
 func (c *Compiled) directPreparedAt(local int) bool {
@@ -121,12 +122,17 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		resultWide:          wide,
 	}
-	if !in.tierable() && scalarFast && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
-		fn.privateFast = true
+	directTrapCandidate := !in.tierable() && scalarFast && preparedPrivateEntryEnabled &&
+		preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) &&
+		in.c.directPreparedAt(ic.li) && directTrapPreparedEntry(in.c.InternalEntry[ic.li])
+	privateEligible := in.preparedPrivateEligible()
+	if !in.tierable() && scalarFast && preparedPrivateEntryEnabled && (privateEligible || directTrapCandidate) {
+		fn.privateFast = privateEligible
 		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
 		if (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
 			fn.directIntFast = true
 			fn.directLeafIntFast = directLeafPreparedEntry(in.c.InternalEntry[ic.li])
+			fn.directTrapIntFast = directTrapPreparedEntry(in.c.InternalEntry[ic.li])
 			fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 		}
 	}
@@ -184,6 +190,9 @@ func (fn *PreparedFunction) Invoke2(a0, a1 uint64) ([]uint64, error) {
 
 // Invoke3 calls a prepared export with three argument slots.
 func (fn *PreparedFunction) Invoke3(a0, a1, a2 uint64) ([]uint64, error) {
+	if fn != nil && fn.in != nil && fn.paramSlots == 3 && fn.directTrapIntFast {
+		return fn.invokeDirectTrapIntFixed(a0, a1, a2, 0)
+	}
 	return fn.invokeFixed(3, a0, a1, a2, 0)
 }
 
@@ -198,6 +207,9 @@ func (fn *PreparedFunction) invokeFixed(count int, a0, a1, a2, a3 uint64) ([]uin
 	}
 	if count != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, count)
+	}
+	if fn.directTrapIntFast {
+		return fn.invokeDirectTrapIntFixed(a0, a1, a2, a3)
 	}
 	if fn.directIntFast {
 		return fn.invokeDirectIntFixed(a0, a1, a2, a3)

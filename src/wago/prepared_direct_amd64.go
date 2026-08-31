@@ -66,3 +66,7 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 	}
 	return out, nil
 }
+
+func (fn *PreparedFunction) invokeDirectTrapIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
+	return fn.invokeDirectIntFixed(a0, a1, a2, a3)
+}

@@ -61,7 +61,42 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 }
 
 func TestPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T) {
-	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), callIndirectModule(2, 1, 2))
+	twoI32 := []wasm.ValType{wasm.I32, wasm.I32}
+	threeI32 := []wasm.ValType{wasm.I32, wasm.I32, wasm.I32}
+	elem := []byte{0x00, 0x41, 0x00, 0x0b, 0x04, 0x00, 0x01, 0x02, 0x03}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(twoI32, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType(threeI32, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x04})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("caller", 0, 4))),
+		wasmtest.Section(9, wasmtest.Vec(elem)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x6b, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x6c, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x73, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x01, 0x20, 0x02, 0x20, 0x00, 0x11, 0x00, 0x00, 0x0b}),
+		)),
+	)
+	for _, tc := range []struct {
+		name string
+		mode BoundsCheckMode
+	}{{"explicit", BoundsChecksExplicit}, {"signals", BoundsChecksSignalsBased}} {
+		if tc.mode == BoundsChecksSignalsBased && !GuardPageSupported() {
+			continue
+		}
+		t.Run(tc.name, func(t *testing.T) {
+			testPreparedDirectARM64CallIndirectAndTrapRecovery(t, module, tc.mode)
+		})
+	}
+}
+
+func testPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T, module []byte, mode BoundsCheckMode) {
+	t.Helper()
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(mode), module)
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -83,15 +118,18 @@ func TestPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T) {
 	if fn.directLeafIntFast {
 		t.Fatal("call_indirect caller selected the call-free direct leaf entry")
 	}
+	if !fn.directTrapIntFast {
+		t.Fatal("call_indirect caller did not select the call-free trap-capable entry")
+	}
 	for _, tc := range []struct {
 		idx, want uint64
-	}{{0, 13}, {1, 7}} {
+	}{{0, 13}, {1, 7}, {2, 30}, {3, 9}} {
 		got, err := fn.Invoke(tc.idx, 10, 3)
 		if err != nil || len(got) != 1 || got[0] != tc.want {
 			t.Fatalf("caller(%d,10,3) = %v, %v; want %d", tc.idx, got, err, tc.want)
 		}
 	}
-	if _, err := fn.Invoke(2, 10, 3); err == nil {
+	if _, err := fn.Invoke(4, 10, 3); err == nil {
 		t.Fatal("out-of-bounds direct prepared call_indirect did not trap")
 	}
 	if got, err := fn.Invoke(0, 20, 22); err != nil || len(got) != 1 || got[0] != 42 {

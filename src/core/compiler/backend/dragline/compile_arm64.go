@@ -129,6 +129,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	internal := make([]int, len(m.Code))
 	var directPrepared []uint64
 	var directLeafPrepared []uint64
+	var directTrapPrepared []uint64
 	var callRelocs []arm64CallReloc
 	var gcCallsites []corecompiler.GCFrameCallsite
 	var gcRoots []uint32
@@ -208,6 +209,8 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 					directPrepared = markARM64DirectPrepared(directPrepared, len(m.Code), i)
 					if arm64DirectPreparedLeafClass(moduleContracts[i].Class) {
 						directLeafPrepared = markARM64DirectPrepared(directLeafPrepared, len(m.Code), i)
+					} else if arm64DirectPreparedTrapClass(moduleContracts[i].Class) {
+						directTrapPrepared = markARM64DirectPrepared(directTrapPrepared, len(m.Code), i)
 					}
 				}
 				if row != nil {
@@ -359,6 +362,8 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			directPrepared = markARM64DirectPrepared(directPrepared, len(m.Code), i)
 			if arm64DirectPreparedLeafClass(publishedContract.Class) {
 				directLeafPrepared = markARM64DirectPrepared(directLeafPrepared, len(m.Code), i)
+			} else if arm64DirectPreparedTrapClass(publishedContract.Class) {
+				directTrapPrepared = markARM64DirectPrepared(directTrapPrepared, len(m.Code), i)
 			}
 		}
 		if captureGC {
@@ -459,7 +464,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		metrics.NativeBytes = uint64(len(code))
 		metrics.observe(sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(moduleContracts))
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresARM64MOPS: requiresMOPS}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresARM64MOPS: requiresMOPS}, nil
 }
 
 func markARM64DirectPrepared(bits []uint64, functions, index int) []uint64 {
@@ -478,6 +483,10 @@ func arm64DirectPreparedLeafClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedLeaf
 }
 
+func arm64DirectPreparedTrapClass(class railmach.ABIClass) bool {
+	return class == railmach.ABIPreparedIndirect
+}
+
 func arm64PromoteInlinedPreparedLeaf(plan *nativeBackendPlan) {
 	if plan != nil && plan.ABI.Class == railmach.ABIPreparedCall && arm64RailMachInlinesAllTinyCalls(plan) {
 		plan.ABI.Class = railmach.ABIPreparedLeaf
@@ -491,6 +500,7 @@ type parallelARM64Result struct {
 	requiresMOPS   bool
 	directPrepared bool
 	directLeaf     bool
+	directTrap     bool
 }
 
 type parallelARM64Worker struct {
@@ -573,7 +583,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 			if !railMachFinalized {
 				contracts[i] = railmach.ABIContract{}
 			}
-			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class), directLeaf: railMachFinalized && arm64DirectPreparedLeafClass(published.Class)}
+			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class), directLeaf: railMachFinalized && arm64DirectPreparedLeafClass(published.Class), directTrap: railMachFinalized && arm64DirectPreparedTrapClass(published.Class)}
 			worker.body = nil
 		}
 		return nil
@@ -587,6 +597,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 	var callRelocs []arm64CallReloc
 	var directPrepared []uint64
 	var directLeafPrepared []uint64
+	var directTrapPrepared []uint64
 	requiresMOPS := false
 	for _, i := range compilation.Order {
 		for len(code)&15 != 0 {
@@ -599,6 +610,9 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 		}
 		if result.directLeaf {
 			directLeafPrepared = markARM64DirectPrepared(directLeafPrepared, len(m.Code), i)
+		}
+		if result.directTrap {
+			directTrapPrepared = markARM64DirectPrepared(directTrapPrepared, len(m.Code), i)
 		}
 		requiresMOPS = requiresMOPS || result.requiresMOPS
 		internal[i] = len(code) + result.internalOffset
@@ -622,7 +636,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 	if len(code) == 0 {
 		code = []byte{0xc0, 0x03, 0x5f, 0xd6}
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, RequiresARM64MOPS: requiresMOPS}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, RequiresARM64MOPS: requiresMOPS}, nil
 }
 
 func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, target corecompiler.Target, observations *compilerprofile.Module, contracts []railmach.ABIContract, scratch []byte, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []arm64CallReloc, bool, error) {
@@ -1204,6 +1218,12 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			return fmt.Errorf("RailMach inline memory bounds branch is out of range")
 		}
 		return nil
+	}
+	var recordBulkMemoryTrap func(int, uint32)
+	if coldMemoryTraps {
+		recordBulkMemoryTrap = func(at int, source uint32) {
+			coldTraps = append(coldTraps, nativeBranchPatch{At: at, Target: source, Code: 3})
+		}
 	}
 	memoryCheckEnds := plan.MemoryCheckEnds
 	memoryCheckTouched := plan.MemoryCheckTouched[:0]
@@ -1867,11 +1887,10 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				firstPosition := plan.Allocation.InstructionPositions[first]*6 + 2
 				initialLocation := plan.Allocation.LocationAt(initial, firstPosition)
 				invariantLocation := plan.Allocation.LocationAt(invariant, firstPosition)
-				dstLocation := plan.Allocation.LocationAt(instruction.Result, currentPosition)
-				if initialLocation.Kind != railmach.LocationRegister || invariantLocation.Kind != railmach.LocationRegister || dstLocation.Kind != railmach.LocationRegister {
+				if initialLocation.Kind != railmach.LocationRegister || invariantLocation.Kind != railmach.LocationRegister || plan.Allocation.LocationAt(instruction.Result, currentPosition).Kind != railmach.LocationRegister {
 					return nil, 0, true, fmt.Errorf("RailMach repeated-add rewrite lost register allocation")
 				}
-				a.AddShifted(arm64RailMachPhysical(dstLocation), arm64RailMachPhysical(initialLocation), arm64RailMachPhysical(invariantLocation), uint8(bits.TrailingZeros8(count)), true)
+				a.AddShifted(reg(instruction.Result), arm64RailMachPhysical(initialLocation), arm64RailMachPhysical(invariantLocation), uint8(bits.TrailingZeros8(count)), true)
 				if metrics != nil {
 					metrics.PostRARewrites++
 				}
@@ -2933,7 +2952,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					(instruction.Op != wasm.InstrMemoryCopy || second+n <= plan.Stack.MemoryMinBytes)
 				if constant64 {
 					emitARM64ConstantBulkMemory64(&a, instruction.Op, dst, second)
-				} else if err := emitARM64BulkMemoryRegisters(&a, instruction.Op, wasmOffset, mops, fn.Index, metadata); err != nil {
+				} else if err := emitARM64BulkMemoryRegisters(&a, instruction.Op, wasmOffset, mops, fn.Index, metadata, recordBulkMemoryTrap); err != nil {
 					return nil, 0, true, err
 				}
 				for physical := range bulkLive {
@@ -4153,13 +4172,8 @@ railMachEpilogue:
 		metadata.recordTrap(a.Len(), offset, 1)
 		arm64EmitTrap(&a, 1, fn.Index, offset)
 	}
-	for _, trap := range coldTraps {
-		trapOffset := a.Len()
-		metadata.recordTrap(trapOffset, trap.Target, uint32(trap.Code))
-		arm64EmitTrap(&a, uint32(trap.Code), fn.Index, trap.Target)
-		if !a.PatchBranch19(trap.At, trapOffset) {
-			return nil, 0, true, fmt.Errorf("RailMach cold trap branch is out of range")
-		}
+	if err := arm64EmitSharedColdTraps(&a, coldTraps, fn.Index, metadata); err != nil {
+		return nil, 0, true, fmt.Errorf("RailMach %w", err)
 	}
 	plan.BranchPatches = patches
 	for _, patch := range patches {
@@ -5959,8 +5973,8 @@ func arm64RailMachRotatedCountedLatch(plan *nativeBackendPlan, block, backedge u
 	return latchCounter, uint32(plan.Machine.Edges[exitEdge].To), true
 }
 
-// arm64RailMachEdgeResultRename coalesces final three-address floating
-// arithmetic with its sole outgoing block-argument copy after allocation. The
+// arm64RailMachEdgeResultRename coalesces final three-address arithmetic with
+// its sole outgoing block-argument copy after allocation. The
 // destination must not carry another value across the parallel-copy bundle, so
 // overwriting it at the defining instruction preserves both the bundle and SSA
 // edge semantics.
@@ -6004,6 +6018,11 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 			continue
 		}
 		switch plan.Machine.Insts[definition].Op {
+		case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
+			wasm.InstrI32Mul, wasm.InstrI64Mul:
+			if len(plan.Machine.Insts) >= 256 {
+				continue
+			}
 		case wasm.InstrF32Add, wasm.InstrF64Add, wasm.InstrF32Sub, wasm.InstrF64Sub,
 			wasm.InstrF32Mul, wasm.InstrF64Mul, wasm.InstrF32Div, wasm.InstrF64Div:
 		default:
@@ -6096,6 +6115,11 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 			continue
 		}
 		switch plan.Machine.Insts[definition].Op {
+		case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
+			wasm.InstrI32Mul, wasm.InstrI64Mul:
+			if len(plan.Machine.Insts) >= 256 {
+				continue
+			}
 		case wasm.InstrF32Add, wasm.InstrF64Add, wasm.InstrF32Sub, wasm.InstrF64Sub,
 			wasm.InstrF32Mul, wasm.InstrF64Mul, wasm.InstrF32Div, wasm.InstrF64Div:
 		default:
@@ -6627,6 +6651,12 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			return fmt.Errorf("structured inline memory trap branch is out of range")
 		}
 		return nil
+	}
+	var recordBulkMemoryTrap func(int, uint32)
+	if coldMemoryTrapBranches {
+		recordBulkMemoryTrap = func(at int, source uint32) {
+			coldMemoryTraps = append(coldMemoryTraps, nativeBranchPatch{At: at, Target: source, Code: 3})
+		}
 	}
 	if metrics != nil {
 		metrics.FrameBytes = frameBytes
@@ -9452,7 +9482,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			}
 		case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 			useMOPS := mops && arm64ProfileSelectsMOPS(observations, fn.Index, instr.Offset)
-			if err := emitARM64StackBulkMemory(&a, instr, &stackTypes, stackLoad, useMOPS, fn.Index, metadata); err != nil {
+			if err := emitARM64StackBulkMemory(&a, instr, &stackTypes, stackLoad, useMOPS, fn.Index, metadata, recordBulkMemoryTrap); err != nil {
 				return nil, 0, nil, fmt.Errorf("byte %d: %w", instr.Offset, err)
 			}
 		case wasm.InstrStructNewDefault:
@@ -10026,13 +10056,8 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		a.LdpPost(arm64.LR, arm64.XZR, arm64.SP, 16)
 	}
 	a.Ret()
-	for _, trap := range coldMemoryTraps {
-		trapOffset := a.Len()
-		metadata.recordTrap(trapOffset, trap.Target, 3)
-		arm64EmitTrap(&a, 3, fn.Index, trap.Target)
-		if !a.PatchBranch19(trap.At, trapOffset) {
-			return nil, 0, nil, fmt.Errorf("structured cold memory trap branch is out of range")
-		}
+	if err := arm64EmitSharedColdTraps(&a, coldMemoryTraps, fn.Index, metadata); err != nil {
+		return nil, 0, nil, fmt.Errorf("structured %w", err)
 	}
 	if len(simdLiteralRefs) != 0 {
 		a.Align16()
@@ -10882,7 +10907,7 @@ func arm64StackSelectsMOPS(stack *railssa.StackFunc, observations *compilerprofi
 	return false
 }
 
-func emitARM64StackBulkMemory(a *arm64.Asm, instr railssa.StackInstr, stack *[]wasm.ValType, load func(int, arm64.Reg) bool, mops bool, function uint32, metadata *functionEmissionMetadata) error {
+func emitARM64StackBulkMemory(a *arm64.Asm, instr railssa.StackInstr, stack *[]wasm.ValType, load func(int, arm64.Reg) bool, mops bool, function uint32, metadata *functionEmissionMetadata, recordColdTrap func(int, uint32)) error {
 	types := *stack
 	if len(types) < 3 {
 		return fmt.Errorf("operand stack underflow")
@@ -10896,7 +10921,7 @@ func emitARM64StackBulkMemory(a *arm64.Asm, instr railssa.StackInstr, stack *[]w
 	if !load(base, arm64.X0) || !load(base+1, arm64.X1) || !load(base+2, arm64.X2) {
 		return fmt.Errorf("bulk-memory operand is not encodable")
 	}
-	if err := emitARM64BulkMemoryRegisters(a, instr.Kind, instr.Offset, mops, function, metadata); err != nil {
+	if err := emitARM64BulkMemoryRegisters(a, instr.Kind, instr.Offset, mops, function, metadata, recordColdTrap); err != nil {
 		return err
 	}
 	*stack = types[:base]
@@ -10906,7 +10931,7 @@ func emitARM64StackBulkMemory(a *arm64.Asm, instr railssa.StackInstr, stack *[]w
 // emitARM64BulkMemoryRegisters emits memory.copy/fill with its three i32
 // operands in X0, X1, and X2. RailMach fixes those operands in the allocator;
 // the structured stack emitter materializes them immediately before the call.
-func emitARM64BulkMemoryRegisters(a *arm64.Asm, kind wasm.InstrKind, wasmOffset uint32, mops bool, function uint32, metadata *functionEmissionMetadata) error {
+func emitARM64BulkMemoryRegisters(a *arm64.Asm, kind wasm.InstrKind, wasmOffset uint32, mops bool, function uint32, metadata *functionEmissionMetadata, recordColdTrap func(int, uint32)) error {
 	a.MovReg32(arm64.X0, arm64.X0)
 	a.MovReg32(arm64.X1, arm64.X1)
 	a.MovReg32(arm64.X2, arm64.X2)
@@ -10965,6 +10990,13 @@ func emitARM64BulkMemoryRegisters(a *arm64.Asm, kind wasm.InstrKind, wasmOffset 
 				return fmt.Errorf("memory.copy completion branch is out of range")
 			}
 		}
+	}
+	if recordColdTrap != nil {
+		recordColdTrap(dstOOB, wasmOffset)
+		if kind == wasm.InstrMemoryCopy {
+			recordColdTrap(srcOOB, wasmOffset)
+		}
+		return nil
 	}
 	done := a.Branch()
 	trap := a.Len()
@@ -13096,6 +13128,35 @@ func arm64EmitTrap(a *arm64.Asm, code, function, wasmOffset uint32) {
 	a.Ldur64(arm64.LR, arm64.X26, -32)
 	a.AddImm64(arm64.SP, arm64.X16, 0)
 	a.Ret()
+}
+
+func arm64EmitSharedColdTraps(a *arm64.Asm, traps []nativeBranchPatch, function uint32, metadata *functionEmissionMetadata) error {
+	if len(traps) == 0 {
+		return nil
+	}
+	common := a.Len()
+	a.Ldur64(arm64.X12, arm64.X26, -int32(abi.TrapCellPtrOffset))
+	a.MovImm64(arm64.X16, uint64(function+1))
+	a.Store32(arm64.X16, arm64.X12, 16)
+	a.Store32(arm64.X14, arm64.X12, 20)
+	a.Store32(arm64.X15, arm64.X12, 0)
+	a.Ldur64(arm64.X16, arm64.X26, -24)
+	a.Ldur64(arm64.LR, arm64.X26, -32)
+	a.AddImm64(arm64.SP, arm64.X16, 0)
+	a.Ret()
+	for _, trap := range traps {
+		trapOffset := a.Len()
+		metadata.recordTrap(trapOffset, trap.Target, uint32(trap.Code))
+		a.MovImm64(arm64.X14, uint64(trap.Target))
+		a.MovImm64(arm64.X15, uint64(uint32(trap.Code)))
+		if !a.PatchBranch26(a.Branch(), common) {
+			return fmt.Errorf("shared cold trap branch is out of range")
+		}
+		if !a.PatchBranch19(trap.At, trapOffset) {
+			return fmt.Errorf("cold trap branch is out of range")
+		}
+	}
+	return nil
 }
 
 func arm64Destination(_ *arm64.Asm, loc location) (arm64.Reg, bool) {

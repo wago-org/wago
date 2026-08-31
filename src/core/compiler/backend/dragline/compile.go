@@ -75,7 +75,7 @@ type Compiler struct {
 
 const draglinePrivateABIRevision = 1
 
-var draglineCompilerRevision = sha256.Sum256([]byte("wago-dragline-function-artifact-v44"))
+var draglineCompilerRevision = sha256.Sum256([]byte("wago-dragline-function-artifact-v45"))
 
 func (c Compiler) Compile(input corecompiler.Input) (corecompiler.Output, error) {
 	if c.Metrics != nil {
