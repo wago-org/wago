@@ -242,7 +242,7 @@ async function loadRunMetrics(path, fallbackArch = "") {
   for (const [key, m] of Object.entries(run.metrics ?? {})) {
     metrics.set(key, { ns: Number(m.ns ?? 0), bytes: Number(m.bytes ?? 0), allocs: Number(m.allocs ?? 0) });
   }
-  return { metrics, source: path, arch: run.goarch || fallbackArch, goos: run.goos || "" };
+  return { metrics, source: path, arch: run.goarch || fallbackArch, goos: run.goos || "", commit: run.commit || "" };
 }
 
 function parseBench(text) {
@@ -408,7 +408,8 @@ ${archPanels}
                     </div>
                 </div>
                 <p class="vs__foot">
-                    ${foot} Numbers shift as the engine evolves — see the
+                    ${foot} Rows appear only when the selected backend completes
+                    the workload. Numbers shift as the engine evolves — see the
                     <a href="https://github.com/wago-org/wago/tree/main/bench" target="_blank" rel="noopener">benchmark corpus &amp; methodology</a>.
                 </p>
             </section>
@@ -477,7 +478,7 @@ function renderExistingArchitecture(tabs, set) {
 // makes long Compile/Exec tabs expand the whole card after every regeneration.
 function renderArchitecturePanel(tabs, set, index) {
   const arch = set.arch || "host";
-  const spec = [set.goos, set.arch, set.cpu].filter(Boolean).join(" · ");
+  const spec = [set.goos, set.arch, set.cpu, set.commit ? `wago ${set.commit}` : ""].filter(Boolean).join(" · ");
   const backendTabs = BACKENDS.map((backend, i) => `                            <button class="vs__archbtn" role="tab" id="backend-tab-${arch}-${backend.id}" aria-controls="backend-panel-${arch}-${backend.id}" aria-selected="${i === 0 ? "true" : "false"}" tabindex="${i === 0 ? "0" : "-1"}">${backend.label}</button>`).join("\n");
   const backendPanels = BACKENDS.map((backend, i) => renderBackend(tabs, set, backend, i)).join("\n");
   const out = `                    <div
@@ -526,7 +527,8 @@ function replacePerformanceFoot(html) {
   if (start < 0 || end < 0) throw new Error("could not find website performance footnote");
   const foot = `                <p class="vs__foot">
                     Measured separately on each listed architecture; compare
-                    values within an architecture, not across machines. Numbers
+                    values within an architecture, not across machines. Rows
+                    appear only when the selected backend completes the workload. Numbers
                     shift as the engine evolves — see the
                     <a href="https://github.com/wago-org/wago/tree/main/bench" target="_blank" rel="noopener">benchmark corpus &amp; methodology</a>.
                 </p>`;

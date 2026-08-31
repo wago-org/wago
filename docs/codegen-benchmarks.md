@@ -39,7 +39,8 @@ pipeline names: `BenchmarkCompileFull` / `BenchmarkDraglineCompileFull`,
 rows. Dragline sub-benchmarks explicitly skip modules outside
 its strict feature boundary; the website publisher omits an unpaired row instead
 of substituting Railshot data. Use `bench/cmd/benchpub` so all retained samples
-and the measured commit are recorded in one `bench.json` per architecture.
+and the measured commit are recorded in one `bench.json` per architecture; the
+website machine rail displays that commit beside the host details.
 
 ## Compile-memory reference (2026-07-17)
 
