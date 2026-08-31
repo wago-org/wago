@@ -15,14 +15,23 @@ func TestGreedySpillDensityPrioritizesFrequentlyUsedShortRange(t *testing.T) {
 	if sparseCost, denseCost := greedySpillCost(sparse, 1000, true), greedySpillCost(dense, 1000, true); denseCost <= sparseCost {
 		t.Fatalf("density costs sparse/dense = %d/%d, want dense range prioritized", sparseCost, denseCost)
 	}
-	if got := greedyEffectiveMaxStage(391, true, 4); got != 3 {
+	if got := greedyEffectiveMaxStage(TargetARM64, 391, true, false, 4); got != 3 {
 		t.Fatalf("medium density max stage = %d, want 3", got)
 	}
-	if got := greedyEffectiveMaxStage(512, true, 4); got != 4 {
+	if got := greedyEffectiveMaxStage(TargetARM64, 512, true, false, 4); got != 4 {
 		t.Fatalf("large density max stage = %d, want 4", got)
 	}
-	if got := greedyEffectiveMaxStage(391, false, 4); got != 4 {
+	if got := greedyEffectiveMaxStage(TargetARM64, 391, false, false, 4); got != 4 {
 		t.Fatalf("area-priority max stage = %d, want 4", got)
+	}
+	if got := greedyEffectiveMaxStage(TargetAMD64, 512, false, true, 4); got != 3 {
+		t.Fatalf("AMD64 cyclic-call max stage = %d, want 3", got)
+	}
+	if got := greedyEffectiveMaxStage(TargetAMD64, 512, false, false, 4); got != 4 {
+		t.Fatalf("AMD64 ordinary max stage = %d, want 4", got)
+	}
+	if got := greedyEffectiveMaxStage(TargetARM64, 512, false, true, 4); got != 4 {
+		t.Fatalf("ARM64 cyclic-call max stage = %d, want 4", got)
 	}
 }
 

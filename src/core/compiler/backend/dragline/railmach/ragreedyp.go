@@ -212,7 +212,27 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 			}
 		}
 	}
-	config.MaxStage = greedyEffectiveMaxStage(len(f.Insts), useDensityCost, config.MaxStage)
+	hasCall := false
+	for _, instruction := range f.Insts {
+		if IsCall(instruction.Op) {
+			hasCall = true
+			break
+		}
+	}
+	hasBackedge := false
+	for _, edge := range f.Edges {
+		if edge.To <= edge.From {
+			hasBackedge = true
+			break
+		}
+	}
+	// AMD64 regional fragments do not yet have a sound edge contract for a
+	// four-or-more-parameter value set that crosses calls in a cyclic CFG. Keep
+	// the verified promotion/eviction stages for that narrow shape; this avoids
+	// corrupting recursive loop arguments while retaining regional allocation
+	// for ordinary call-crossing and loop-heavy functions.
+	unsafeCyclicCallFragments := hasCall && hasBackedge && f.ParamCount > 3
+	config.MaxStage = greedyEffectiveMaxStage(f.Target, len(f.Insts), useDensityCost, unsafeCyclicCallFragments, config.MaxStage)
 	reuse.Stage = config.MaxStage
 	spillCost := func(interval LiveInterval) uint64 {
 		return greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost)
@@ -434,7 +454,10 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 	return reuse, nil
 }
 
-func greedyEffectiveMaxStage(functionInstructions int, density bool, configured uint8) uint8 {
+func greedyEffectiveMaxStage(target Target, functionInstructions int, density, hasCyclicCall bool, configured uint8) uint8 {
+	if target == TargetAMD64 && hasCyclicCall && configured > 3 {
+		return 3
+	}
 	if density && functionInstructions < greedyRegionalDensityMinInstructions && configured > 3 {
 		// Medium integer kernels use density scoring but retain the verified
 		// promotion/eviction stages. Admit regional fragments at the measured
