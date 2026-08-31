@@ -67,6 +67,15 @@ func TestNativeARM64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
 	if index, ok := nativeARM64CachedGlobal(stack, machine); !ok || index != 0 {
 		t.Fatalf("write-through cached global = %d, %t; want 0, true", index, ok)
 	}
+	stack.Globals = append(stack.Globals, wasm.I32)
+	for range 5 {
+		machine.Insts = append(machine.Insts,
+			railmach.Inst{Op: wasm.InstrGlobalSet, Aux: 1},
+			railmach.Inst{Op: wasm.InstrGlobalGet, Aux: 1})
+	}
+	if globals, count := nativeARM64CachedGlobals(stack, machine); count != 2 || globals != [2]uint32{1, 0} {
+		t.Fatalf("write-through cached globals = %v, %d; want [1 0], 2", globals, count)
+	}
 	machine.Target = railmach.TargetAMD64
 	if nativeARM64CachesGlobals(machine) {
 		t.Fatal("AMD64 function enabled the ARM64 descriptor cache")

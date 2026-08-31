@@ -1,6 +1,6 @@
 // jsonprof runs the json-as (SWAR) serialize/deserialize workload through the
-// amd64 backend in a tight loop, and writes a /tmp/perf-<pid>.map JIT symbol map so
-// `perf` can attribute samples to individual wasm functions.
+// Dragline native backend in a tight loop, and writes a /tmp/perf-<pid>.map JIT
+// symbol map so a sampler can attribute PCs to individual wasm functions.
 //
 // Usage:
 //
@@ -41,7 +41,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "read module:", err)
 		os.Exit(1)
 	}
-	cfg := wago.NewRuntimeConfig()
+	cfg := wago.NewRuntimeConfig().WithCompiler(wago.CompilerDragline).WithTarget(wago.TargetNative)
 	if len(os.Args) > 2 && os.Args[2] == "guard" {
 		cfg = cfg.WithBoundsChecks(wago.BoundsChecksSignalsBased)
 	}
@@ -61,6 +61,16 @@ func main() {
 	}
 
 	writePerfMap(in, c)
+	serialize, err := in.PrepareFunction("serializeN")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "prepare serializeN:", err)
+		os.Exit(1)
+	}
+	deserialize, err := in.PrepareFunction("deserializeN")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "prepare deserializeN:", err)
+		os.Exit(1)
+	}
 
 	fmt.Printf("jsonprof pid=%d running %s (perf map at /tmp/perf-%d.map)\n", os.Getpid(), dur, os.Getpid())
 	deadline := time.Now().Add(dur)
@@ -69,7 +79,7 @@ func main() {
 	for time.Now().Before(deadline) {
 		for i := 0; i < 200; i++ {
 			if only != "deser" {
-				r, err := in.Invoke("serializeN", 256)
+				r, err := serialize.Invoke1(wago.I32(200))
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "serializeN:", err)
 					os.Exit(1)
@@ -77,7 +87,7 @@ func main() {
 				sink += int64(r[0])
 			}
 			if only != "ser" {
-				r, err := in.Invoke("deserializeN", 256)
+				r, err := deserialize.Invoke1(wago.I32(200))
 				if err != nil {
 					fmt.Fprintln(os.Stderr, "deserializeN:", err)
 					os.Exit(1)

@@ -144,6 +144,10 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		contract.Class = ABIPreparedCall
 	case directPreparedIntegerContract(f, allocation, contract):
 		contract.Class = ABIPreparedInt
+	case directPreparedARM64Contract(f, allocation) && contract.HasCall:
+		contract.Class = ABIPreparedCall
+	case directPreparedARM64Contract(f, allocation):
+		contract.Class = ABIPreparedLeaf
 	case !contract.HasCall && usesFP:
 		contract.Class = ABILeafFP
 	case !contract.HasCall && !contract.MayCollect:
@@ -152,6 +156,35 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		contract.Class = ABIGeneral
 	}
 	return contract, calls, nil
+}
+
+// directPreparedARM64Contract admits the general scalar shape to ARM64's
+// private register entry. Unlike the tiny contract, parameters may have been
+// allocated to other registers or spills; the ARM64 prologue realizes that
+// bounded parallel assignment before executing the function body.
+func directPreparedARM64Contract(f *Func, allocation *GreedyAllocation) bool {
+	if f == nil || allocation == nil || f.Target != TargetARM64 || f.ParamCount > 8 || len(f.Results) > 1 {
+		return false
+	}
+	for local := uint16(0); local < f.ParamCount; local++ {
+		found := false
+		for value := VReg(1); int(value) < len(f.VRegs); value++ {
+			data := f.VRegs[value]
+			if data.Flags&VRegInitial == 0 || data.InitialLocal != local {
+				continue
+			}
+			location := allocation.Locations[value]
+			if data.Bank != BankGPR || location.Bank != BankGPR || location.Kind != LocationRegister && location.Kind != LocationSpill {
+				return false
+			}
+			found = true
+			break
+		}
+		if !found {
+			return false
+		}
+	}
+	return len(f.Results) == 0 || f.VRegs[f.Results[0]].Bank == BankGPR
 }
 
 func directPreparedIntegerContract(f *Func, allocation *GreedyAllocation, contract ABIContract) bool {

@@ -251,6 +251,12 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 	if stack == nil {
 		return false
 	}
+	if moduleHasV128 {
+		// RailMach's widened private scalar ABI is intentionally module-local.
+		// Until the structured SIMD emitter participates in that contract, keep
+		// SIMD modules on one calling convention instead of mixing entry shapes.
+		return false
+	}
 	if stack.MaxLoopDepth != 0 {
 		calls := 0
 		for _, instruction := range stack.Instrs {
@@ -898,7 +904,11 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		// calls into structured code; keep it outside the allocator here.
 		defaultGreedy.Linear.GPRs = nativeARM64GlobalsRegister
 	}
-	if _, ok := nativeARM64CachedGlobal(stack, machine); ok {
+	_, cachedGlobalCount := nativeARM64CachedGlobals(stack, machine)
+	if cachedGlobalCount >= 2 {
+		// X22/X23 retain a second selected descriptor and write-through value.
+		defaultGreedy.Linear.GPRs = nativeARM64SecondCachedGlobalDescriptorRegister
+	} else if cachedGlobalCount == 1 {
 		// X24/X25 retain the selected descriptor and write-through value.
 		defaultGreedy.Linear.GPRs = nativeARM64CachedGlobalDescriptorRegister
 	}
@@ -1149,9 +1159,13 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		contract.GPRClobbers |= uint64(1) << nativeARM64GlobalsRegister
 		contract.CalleeGPRs |= uint64(1) << nativeARM64GlobalsRegister
 	}
-	if _, ok := nativeARM64CachedGlobal(stack, machine); ok {
+	if cachedGlobalCount != 0 {
 		contract.GPRClobbers |= uint64(1)<<nativeARM64CachedGlobalDescriptorRegister | uint64(1)<<nativeARM64CachedGlobalValueRegister
 		contract.CalleeGPRs |= uint64(1)<<nativeARM64CachedGlobalDescriptorRegister | uint64(1)<<nativeARM64CachedGlobalValueRegister
+		if cachedGlobalCount >= 2 {
+			contract.GPRClobbers |= uint64(1)<<nativeARM64SecondCachedGlobalDescriptorRegister | uint64(1)<<nativeARM64SecondCachedGlobalValueRegister
+			contract.CalleeGPRs |= uint64(1)<<nativeARM64SecondCachedGlobalDescriptorRegister | uint64(1)<<nativeARM64SecondCachedGlobalValueRegister
+		}
 	}
 	localContract := contract
 	refinedCalls := refineNativeCallContracts(calls, stack.ImportedFuncs, moduleContracts, components, refinedRecursive, localIndex)
@@ -1331,9 +1345,11 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 }
 
 const (
-	nativeARM64CachedGlobalDescriptorRegister = 17
-	nativeARM64CachedGlobalValueRegister      = 18
-	nativeARM64GlobalsRegister                = 19
+	nativeARM64SecondCachedGlobalDescriptorRegister = 15
+	nativeARM64SecondCachedGlobalValueRegister      = 16
+	nativeARM64CachedGlobalDescriptorRegister       = 17
+	nativeARM64CachedGlobalValueRegister            = 18
+	nativeARM64GlobalsRegister                      = 19
 )
 
 func nativeARM64CachesGlobals(machine *railmach.Func) bool {
@@ -1350,8 +1366,13 @@ func nativeARM64CachesGlobals(machine *railmach.Func) bool {
 }
 
 func nativeARM64CachedGlobal(stack *railssa.StackFunc, machine *railmach.Func) (uint32, bool) {
+	globals, count := nativeARM64CachedGlobals(stack, machine)
+	return globals[0], count != 0
+}
+
+func nativeARM64CachedGlobals(stack *railssa.StackFunc, machine *railmach.Func) ([2]uint32, int) {
 	if stack == nil || !nativeARM64CachesGlobals(machine) {
-		return 0, false
+		return [2]uint32{}, 0
 	}
 	type uses struct {
 		all  int
@@ -1373,13 +1394,26 @@ func nativeARM64CachedGlobal(stack *railssa.StackFunc, machine *railmach.Func) (
 			counts[index].sets++
 		}
 	}
-	bestIndex, bestUses := uint32(0), 0
-	for index, count := range counts {
-		if count.sets != 0 && count.all > bestUses {
-			bestIndex, bestUses = uint32(index), count.all
+	var selected [2]uint32
+	selectedCount := 0
+	for slot := range selected {
+		bestIndex, bestUses := uint32(0), 0
+		for index, count := range counts {
+			alreadySelected := false
+			for previous := 0; previous < slot; previous++ {
+				alreadySelected = alreadySelected || uint32(index) == selected[previous]
+			}
+			if !alreadySelected && count.sets != 0 && count.all > bestUses {
+				bestIndex, bestUses = uint32(index), count.all
+			}
 		}
+		if !hasCall || bestUses < 8 {
+			break
+		}
+		selected[slot] = bestIndex
+		selectedCount++
 	}
-	return bestIndex, hasCall && bestUses >= 8
+	return selected, selectedCount
 }
 
 func buildNativeEdgeConstantRematerialization(plan *nativeBackendPlan, skipped []bool, uses []uint32) {

@@ -668,6 +668,11 @@ func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 		scratch = make([]byte, 0, max(64, len(fn.Values)*8))
 	}
 	a := arm64.Asm{B: scratch[:0]}
+	// RailMach already proves and emits the complete Wasm effective-address
+	// check before the access. Prefer base+index followed by ARM64's scaled
+	// displacement form instead of materializing the displacement in a second
+	// integer add.
+	a.DenseIdxDisp = true
 	defer func() {
 		metrics.observe(fn.CapacityBytes() + allocation.peakBytes + sliceBytes(allocation.values) + sliceBytes(a.B))
 	}()
@@ -1045,8 +1050,16 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		}
 	}
 	calleeSaveOffset := plan.Frame.SpillBytes + plan.Frame.RootBytes
-	for index := range arm64RailMachGPRRegisters {
-		if plan.ABI.CalleeGPRs&^shrinkGPRs&(uint64(1)<<index) != 0 {
+	calleeGPRs := plan.ABI.CalleeGPRs &^ shrinkGPRs
+	for index := 0; index < len(arm64RailMachGPRRegisters); index++ {
+		if calleeGPRs&(uint64(1)<<index) != 0 {
+			if index+1 < len(arm64RailMachGPRRegisters) && calleeGPRs&(uint64(1)<<(index+1)) != 0 &&
+				arm64RailMachGPRRegisters[index+1] == arm64RailMachGPRRegisters[index]+1 && calleeSaveOffset <= 504 {
+				a.StpOffset(arm64RailMachGPRRegisters[index], arm64RailMachGPRRegisters[index+1], arm64.SP, int32(calleeSaveOffset))
+				calleeSaveOffset += 16
+				index++
+				continue
+			}
 			if !a.Store64(arm64RailMachGPRRegisters[index], arm64.SP, calleeSaveOffset) {
 				return nil, 0, true, fmt.Errorf("RailMach callee-save offset %d is not encodable", calleeSaveOffset)
 			}
@@ -1059,7 +1072,46 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			calleeSaveOffset += 8
 		}
 	}
+	if arm64DirectPreparedClass(plan.ABI.Class) {
+		var parameterMoves [len(arm64ParamRegisters)]arm64RailMachCallArgument
+		moveCount := 0
+		for local := uint16(0); local < plan.Machine.ParamCount; local++ {
+			for value := railmach.VReg(1); int(value) < len(plan.Machine.VRegs); value++ {
+				data := plan.Machine.VRegs[value]
+				if data.Flags&railmach.VRegInitial == 0 || data.InitialLocal != local {
+					continue
+				}
+				location := plan.Allocation.Locations[value]
+				src := arm64ParamRegisters[local]
+				switch location.Kind {
+				case railmach.LocationRegister:
+					parameterMoves[moveCount] = arm64RailMachCallArgument{
+						src: src, dst: arm64RailMachGPRRegisters[location.Index], i32: data.Type == railmach.TypeI32,
+					}
+					moveCount++
+				case railmach.LocationSpill:
+					offset := uint32(location.Index) * 8
+					ok := false
+					if data.Type == railmach.TypeI32 {
+						ok = a.Store32(src, arm64.SP, offset)
+					} else {
+						ok = a.Store64(src, arm64.SP, offset)
+					}
+					if !ok {
+						return nil, 0, true, fmt.Errorf("RailMach direct parameter %d spill offset is not encodable", local)
+					}
+				default:
+					return nil, 0, true, fmt.Errorf("RailMach direct parameter %d has invalid location %d", local, location.Kind)
+				}
+				break
+			}
+		}
+		arm64EmitRailMachCallArguments(&a, parameterMoves[:moveCount])
+	}
 	for local := uint16(0); int(local) < len(plan.Stack.Locals); local++ {
+		if local < plan.Machine.ParamCount && arm64DirectPreparedClass(plan.ABI.Class) {
+			continue
+		}
 		for value := railmach.VReg(1); int(value) < len(plan.Machine.VRegs); value++ {
 			data := plan.Machine.VRegs[value]
 			location := plan.Allocation.Locations[value]
@@ -1183,7 +1235,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		}
 	}
 	cacheGlobals := nativeARM64CachesGlobals(plan.Machine)
-	cachedGlobal, cacheGlobal := nativeARM64CachedGlobal(plan.Stack, plan.Machine)
+	cachedGlobals, cachedGlobalCount := nativeARM64CachedGlobals(plan.Stack, plan.Machine)
+	cachedGlobal, cacheGlobal := cachedGlobals[0], cachedGlobalCount != 0
+	secondCachedGlobal, cacheSecondGlobal := cachedGlobals[1], cachedGlobalCount >= 2
 	reloadCachedGlobals := func() {
 		if cacheGlobals {
 			a.Ldur64(arm64.X27, arm64.X26, -int32(abi.GlobalsPtrOffset))
@@ -1194,6 +1248,30 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				a.Load32(arm64.X25, arm64.X24, 0)
 			} else {
 				a.Load64(arm64.X25, arm64.X24, 0)
+			}
+		}
+		if cacheSecondGlobal {
+			a.Load64(arm64.X22, arm64.X27, secondCachedGlobal*8)
+			if plan.Stack.Globals[secondCachedGlobal] == wasm.I32 {
+				a.Load32(arm64.X23, arm64.X22, 0)
+			} else {
+				a.Load64(arm64.X23, arm64.X22, 0)
+			}
+		}
+	}
+	reloadCachedGlobalValues := func() {
+		if cacheGlobal {
+			if plan.Stack.Globals[cachedGlobal] == wasm.I32 {
+				a.Load32(arm64.X25, arm64.X24, 0)
+			} else {
+				a.Load64(arm64.X25, arm64.X24, 0)
+			}
+		}
+		if cacheSecondGlobal {
+			if plan.Stack.Globals[secondCachedGlobal] == wasm.I32 {
+				a.Load32(arm64.X23, arm64.X22, 0)
+			} else {
+				a.Load64(arm64.X23, arm64.X22, 0)
 			}
 		}
 	}
@@ -2765,6 +2843,8 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 							limit = arm64.X8
 						case cacheGlobal && cachedGlobal == limitGlobal:
 							limit = arm64.X25
+						case cacheSecondGlobal && secondCachedGlobal == limitGlobal:
+							limit = arm64.X23
 						default:
 							if cacheGlobals {
 								if !a.Load64(arm64.X17, arm64.X27, limitGlobal*8) {
@@ -2810,17 +2890,22 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					return nil, 0, true, err
 				}
 				imported := uint32(instruction.Aux) < plan.Stack.ImportedFuncs
+				privateRegisterCall := arm64RailMachPrivateRegisterCall(plan, instructionID, instruction, operands, currentPosition)
 				stackAdjust := arm64RailMachDirectCallStackAdjust(plan, instructionID, instruction)
+				if privateRegisterCall {
+					stackAdjust = 0
+				}
 				wrappedCall := stackAdjust != 0
 				if wrappedCall {
 					a.StpPre(arm64.LR, arm64.XZR, arm64.SP, -16)
 				}
 				callOffset := plan.Frame.CallAreaOffset + stackAdjust
 				fastTinyCall := arm64RailMachFastTinyCall(plan, instructionID, instruction, len(operands))
-				if !fastTinyCall && !arm64RailMachLeaSP(&a, arm64.X8, callOffset) {
+				if !fastTinyCall && !privateRegisterCall && !arm64RailMachLeaSP(&a, arm64.X8, callOffset) {
 					return nil, 0, true, fmt.Errorf("RailMach call area offset %d is not encodable", callOffset)
 				}
 				var singleRegisterArgument arm64.Reg
+				var privateArguments [len(arm64ParamRegisters)]arm64RailMachCallArgument
 				registerArgumentsReady := true
 				for index, operand := range operands {
 					scratch := arm64.X14
@@ -2835,7 +2920,12 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						a.FmovToGpr(arm64.X16, src, plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF64)
 						src = arm64.X16
 					}
-					if !fastTinyCall && !a.Store64(src, arm64.X8, uint32(index*8)) {
+					if privateRegisterCall {
+						privateArguments[index] = arm64RailMachCallArgument{
+							src: src, dst: arm64ParamRegisters[index],
+							i32: plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32,
+						}
+					} else if !fastTinyCall && !a.Store64(src, arm64.X8, uint32(index*8)) {
 						return nil, 0, true, fmt.Errorf("RailMach call argument %d is not encodable", index)
 					}
 					if index < len(arm64ParamRegisters) {
@@ -2845,7 +2935,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						singleRegisterArgument = src
 					}
 				}
-				if fastTinyCall {
+				if privateRegisterCall {
+					arm64EmitRailMachCallArguments(&a, privateArguments[:len(operands)])
+				} else if fastTinyCall {
 					if plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeF32 {
 						a.MovReg32(arm64.X0, singleRegisterArgument)
 					} else {
@@ -2935,7 +3027,11 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						return nil, 0, true, fmt.Errorf("RailMach post-call memory size load is not encodable")
 					}
 				}
-				reloadCachedGlobals()
+				if imported {
+					reloadCachedGlobals()
+				} else {
+					reloadCachedGlobalValues()
+				}
 				if skipCall >= 0 && !a.PatchBranch19(skipCall, a.Len()) {
 					return nil, 0, true, fmt.Errorf("RailMach guarded call branch is out of range")
 				}
@@ -3006,6 +3102,14 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						a.MovReg32(dst, arm64.X25)
 					} else {
 						a.MovReg64(dst, arm64.X25)
+					}
+					continue
+				}
+				if cacheSecondGlobal && uint32(instruction.Aux) == secondCachedGlobal {
+					if plan.Stack.Globals[secondCachedGlobal] == wasm.I32 {
+						a.MovReg32(dst, arm64.X23)
+					} else {
+						a.MovReg64(dst, arm64.X23)
 					}
 					continue
 				}
@@ -3100,6 +3204,17 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					}
 					if !a.Store64(arm64.X25, arm64.X24, 0) {
 						return nil, 0, true, fmt.Errorf("RailMach cached global value store is not encodable")
+					}
+					continue
+				}
+				if cacheSecondGlobal && uint32(instruction.Aux) == secondCachedGlobal {
+					if plan.Stack.Globals[secondCachedGlobal] == wasm.I32 {
+						a.MovReg32(arm64.X23, lhs)
+					} else {
+						a.MovReg64(arm64.X23, lhs)
+					}
+					if !a.Store64(arm64.X23, arm64.X22, 0) {
+						return nil, 0, true, fmt.Errorf("RailMach second cached global value store is not encodable")
 					}
 					continue
 				}
@@ -3305,8 +3420,8 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					}
 				}
 				preIndex := len(plan.PostRAPreIndex) != 0 && plan.PostRAPreIndex[instructionID]
-				directIndexed := encodedChain == 0 && !preIndex && uint32(instruction.Aux) == 0
-				if !chainSecond && !directIndexed {
+				foldedIndexed := encodedChain == 0 && !preIndex && uint32(instruction.Aux) <= math.MaxInt32
+				if !chainSecond && !foldedIndexed {
 					a.AddExtUXTW(arm64.X16, arm64.X26, lhs)
 				}
 				if chainFirst {
@@ -3371,23 +3486,24 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					}
 					continue
 				}
-				if !chainSecond && uint32(instruction.Aux) != 0 {
+				if !chainSecond && !foldedIndexed && uint32(instruction.Aux) != 0 {
 					a.MovImm64(arm64.X17, uint64(uint32(instruction.Aux)))
 					a.Add64(arm64.X16, arm64.X16, arm64.X17)
 				}
-				if directIndexed {
+				if foldedIndexed {
+					displacement := int32(uint32(instruction.Aux))
 					if store {
 						value := operands[1].Reg
 						src := reg(value)
 						if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
-							a.StrFIdx(arm64.X26, lhs, src, 0, plan.Machine.VRegs[value].Type == railmach.TypeF64)
+							a.StrFIdx(arm64.X26, lhs, src, displacement, plan.Machine.VRegs[value].Type == railmach.TypeF64)
 						} else {
-							a.StoreIdx(arm64.X26, lhs, src, 0, size)
+							a.StoreIdx(arm64.X26, lhs, src, displacement, size)
 						}
 					} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
-						a.LdrFIdx(dst, arm64.X26, lhs, 0, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
+						a.LdrFIdx(dst, arm64.X26, lhs, displacement, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
 					} else {
-						a.LoadIdx(dst, arm64.X26, lhs, 0, size, signed, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeI64)
+						a.LoadIdx(dst, arm64.X26, lhs, displacement, size, signed, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeI64)
 					}
 				} else if store {
 					value := operands[1].Reg
@@ -3986,7 +4102,11 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				if err != nil {
 					return nil, 0, true, err
 				}
-				a.CmpImm32(condition, 0)
+				if falseFallsThrough {
+					falseSite = a.Cbnz32(condition)
+				} else {
+					falseSite = a.Cbz32(condition)
+				}
 			}
 			if falseSite < 0 {
 				condition := falseCondition
@@ -4102,8 +4222,15 @@ railMachEpilogue:
 		}
 	}
 	calleeSaveOffset = plan.Frame.SpillBytes + plan.Frame.RootBytes
-	for index := range arm64RailMachGPRRegisters {
-		if plan.ABI.CalleeGPRs&^shrinkGPRs&(uint64(1)<<index) != 0 {
+	for index := 0; index < len(arm64RailMachGPRRegisters); index++ {
+		if calleeGPRs&(uint64(1)<<index) != 0 {
+			if index+1 < len(arm64RailMachGPRRegisters) && calleeGPRs&(uint64(1)<<(index+1)) != 0 &&
+				arm64RailMachGPRRegisters[index+1] == arm64RailMachGPRRegisters[index]+1 && calleeSaveOffset <= 504 {
+				a.LdpOffset(arm64RailMachGPRRegisters[index], arm64RailMachGPRRegisters[index+1], arm64.SP, int32(calleeSaveOffset))
+				calleeSaveOffset += 16
+				index++
+				continue
+			}
 			if !a.Load64(arm64RailMachGPRRegisters[index], arm64.SP, calleeSaveOffset) {
 				return nil, 0, true, fmt.Errorf("RailMach callee-restore offset %d is not encodable", calleeSaveOffset)
 			}
@@ -4439,10 +4566,22 @@ func arm64RailMachSWARParse4(plan *nativeBackendPlan) bool {
 func arm64RailMachDirectCallNeedsRegisterArguments(plan *nativeBackendPlan, instruction railmach.Inst) bool {
 	// RailMach's private entry reloads its initial parameters from the canonical
 	// X8 vector unless that finalizer has a direct register-argument contract.
-	if plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall || uint32(instruction.Aux) != plan.Stack.FunctionIndex {
-		return true
+	if plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall {
+		return false
 	}
-	return arm64DirectPreparedClass(plan.ABI.Class)
+	target := uint32(instruction.Aux)
+	if target == plan.Stack.FunctionIndex {
+		return arm64DirectPreparedClass(plan.ABI.Class)
+	}
+	if target < plan.Stack.ImportedFuncs {
+		return false
+	}
+	for _, call := range plan.Calls {
+		if call.Callee == target && !call.Conservative {
+			return arm64DirectPreparedClass(call.Class)
+		}
+	}
+	return false
 }
 
 func arm64RailMachDirectCallStackAdjust(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) uint32 {
@@ -4460,6 +4599,88 @@ func arm64RailMachDirectCallStackAdjust(plan *nativeBackendPlan, instructionID u
 
 func arm64RailMachFastTinyCall(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst, operands int) bool {
 	return operands == 1 && instruction.ResultCount() <= 1 && arm64DirectPreparedClass(arm64RailMachDirectCallClass(plan, instructionID, instruction))
+}
+
+type arm64RailMachCallArgument struct {
+	src arm64.Reg
+	dst arm64.Reg
+	i32 bool
+}
+
+// arm64RailMachPrivateRegisterCall reports whether a verified direct callee can
+// consume every argument from the private register ABI. General callees still
+// require the canonical argument vector, as do values that need materializing
+// from spills or rematerialization recipes.
+func arm64RailMachPrivateRegisterCall(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst, operands []railmach.Operand, position uint32) bool {
+	if plan == nil || plan.Machine == nil || instruction.ResultCount() > 1 || len(operands) > len(arm64ParamRegisters) ||
+		!arm64DirectPreparedClass(arm64RailMachDirectCallClass(plan, instructionID, instruction)) {
+		return false
+	}
+	for _, operand := range operands {
+		if operand.Flags&railmach.OperandColdRemat != 0 || plan.Machine.VRegs[operand.Reg].Bank != railmach.BankGPR {
+			return false
+		}
+		location := plan.Allocation.LocationAt(operand.Reg, position)
+		if location.Kind != railmach.LocationRegister || int(location.Index) >= len(arm64RailMachGPRRegisters) {
+			return false
+		}
+	}
+	return true
+}
+
+// arm64EmitRailMachCallArguments resolves the parallel assignment into X0-X7
+// without round-tripping register-resident arguments through the frame. X16 is
+// outside the allocator and breaks the uncommon argument-register cycle.
+func arm64EmitRailMachCallArguments(a *arm64.Asm, arguments []arm64RailMachCallArgument) {
+	var pending [len(arm64ParamRegisters)]arm64RailMachCallArgument
+	n := 0
+	for _, argument := range arguments {
+		if argument.src != argument.dst {
+			pending[n] = argument
+			n++
+		}
+	}
+	emit := func(argument arm64RailMachCallArgument) {
+		if argument.i32 {
+			a.MovReg32(argument.dst, argument.src)
+		} else {
+			a.MovReg64(argument.dst, argument.src)
+		}
+	}
+	remove := func(index int) {
+		copy(pending[index:n-1], pending[index+1:n])
+		n--
+	}
+	for n != 0 {
+		safe := -1
+		for index := 0; index < n; index++ {
+			destinationIsSource := false
+			for other := 0; other < n; other++ {
+				destinationIsSource = destinationIsSource || pending[other].src == pending[index].dst
+			}
+			if !destinationIsSource {
+				safe = index
+				break
+			}
+		}
+		if safe >= 0 {
+			emit(pending[safe])
+			remove(safe)
+			continue
+		}
+		// The remaining moves form at least one cycle. Preserve the selected
+		// destination's full register before overwriting it, then redirect its
+		// remaining consumer through the reserved scratch register.
+		saved := pending[0].dst
+		a.MovReg64(arm64.X16, saved)
+		emit(pending[0])
+		remove(0)
+		for index := 0; index < n; index++ {
+			if pending[index].src == saved {
+				pending[index].src = arm64.X16
+			}
+		}
+	}
 }
 
 func arm64RailMachElidesPreparedCallFrame(plan *nativeBackendPlan) bool {
@@ -6023,6 +6244,12 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 			if len(plan.Machine.Insts) >= 256 {
 				continue
 			}
+		case wasm.InstrI32Eqz, wasm.InstrI64Eqz,
+			wasm.InstrI32Eq, wasm.InstrI64Eq, wasm.InstrI32Ne, wasm.InstrI64Ne,
+			wasm.InstrI32LtS, wasm.InstrI64LtS, wasm.InstrI32LtU, wasm.InstrI64LtU,
+			wasm.InstrI32GtS, wasm.InstrI64GtS, wasm.InstrI32GtU, wasm.InstrI64GtU,
+			wasm.InstrI32LeS, wasm.InstrI64LeS, wasm.InstrI32LeU, wasm.InstrI64LeU,
+			wasm.InstrI32GeS, wasm.InstrI64GeS, wasm.InstrI32GeU, wasm.InstrI64GeU:
 		case wasm.InstrF32Add, wasm.InstrF64Add, wasm.InstrF32Sub, wasm.InstrF64Sub,
 			wasm.InstrF32Mul, wasm.InstrF64Mul, wasm.InstrF32Div, wasm.InstrF64Div:
 		default:
@@ -6120,6 +6347,12 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 			if len(plan.Machine.Insts) >= 256 {
 				continue
 			}
+		case wasm.InstrI32Eqz, wasm.InstrI64Eqz,
+			wasm.InstrI32Eq, wasm.InstrI64Eq, wasm.InstrI32Ne, wasm.InstrI64Ne,
+			wasm.InstrI32LtS, wasm.InstrI64LtS, wasm.InstrI32LtU, wasm.InstrI64LtU,
+			wasm.InstrI32GtS, wasm.InstrI64GtS, wasm.InstrI32GtU, wasm.InstrI64GtU,
+			wasm.InstrI32LeS, wasm.InstrI64LeS, wasm.InstrI32LeU, wasm.InstrI64LeU,
+			wasm.InstrI32GeS, wasm.InstrI64GeS, wasm.InstrI32GeU, wasm.InstrI64GeU:
 		case wasm.InstrF32Add, wasm.InstrF64Add, wasm.InstrF32Sub, wasm.InstrF64Sub,
 			wasm.InstrF32Mul, wasm.InstrF64Mul, wasm.InstrF32Div, wasm.InstrF64Div:
 		default:
