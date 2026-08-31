@@ -4,10 +4,8 @@ package wago
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -208,7 +206,7 @@ func TestMemoryPageQuotaImportedMemoryUsesColdPerInstanceDirectory(t *testing.T)
 		}
 		return compiled
 	}
-	policy := func(instance *Instance) (uintptr, uint32) {
+	policyPtr := func(instance *Instance) uintptr {
 		t.Helper()
 		if instance.memoryDir != nil {
 			t.Fatal("single-memory quota installed indexed-memory hot-path state")
@@ -217,44 +215,61 @@ func TestMemoryPageQuotaImportedMemoryUsesColdPerInstanceDirectory(t *testing.T)
 		if ptr == 0 {
 			t.Fatal("single-memory quota has no native policy directory")
 		}
-		entry := unsafe.Slice((*byte)(unsafe.Pointer(ptr)), abi.MemoryDirEntryBytes)
-		return ptr, binary.LittleEndian.Uint32(entry[abi.MemoryDirPolicyMaxPagesOffset:])
+		return ptr
 	}
 
-	memory, err := NewMemory(1, 4)
+	lowMemory, err := NewMemory(1, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer memory.Close()
-	imports := Imports{"env.memory": memory}
+	defer lowMemory.Close()
+	highMemory, err := NewMemory(1, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer highMemory.Close()
 	low := compile(2)
-	lowInstance, err := Instantiate(low, InstantiateOptions{Imports: imports})
+	defer low.Close()
+	lowInstance, err := Instantiate(low, InstantiateOptions{Imports: Imports{"env.memory": lowMemory}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, lowLimit := policy(lowInstance)
-	if lowLimit != 2 {
-		t.Fatalf("low policy = %d, want 2", lowLimit)
-	}
-	if err := lowInstance.Close(); err != nil {
-		t.Fatal(err)
-	}
-	low.Close()
+	defer lowInstance.Close()
+	lowPtr := policyPtr(lowInstance)
 
 	high := compile(4)
 	defer high.Close()
-	highInstance, err := Instantiate(high, InstantiateOptions{Imports: imports})
+	highInstance, err := Instantiate(high, InstantiateOptions{Imports: Imports{"env.memory": highMemory}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer highInstance.Close()
-	_, highLimit := policy(highInstance)
-	if highLimit != 4 {
-		t.Fatalf("high policy = %d, want 4", highLimit)
+	highPtr := policyPtr(highInstance)
+	if lowPtr == highPtr {
+		t.Fatalf("per-instance native policy directories alias at %#x", lowPtr)
+	}
+	if got := invokeOne(t, lowInstance, "grow", I32(1)); got != 1 {
+		t.Fatalf("low policy growth = %d, want 1", got)
+	}
+	if got := invokeOne(t, lowInstance, "grow", I32(1)); uint32(got) != ^uint32(0) {
+		t.Fatalf("low policy growth past quota = %#x", got)
+	}
+	if got := invokeOne(t, highInstance, "grow", I32(1)); got != 1 {
+		t.Fatalf("high policy first growth = %d, want 1", got)
+	}
+	if got := invokeOne(t, highInstance, "grow", I32(1)); got != 2 {
+		t.Fatalf("high policy second growth = %d, want 2", got)
+	}
+	if got := invokeOne(t, highInstance, "grow", I32(1)); got != 3 {
+		t.Fatalf("high policy third growth = %d, want 3", got)
+	}
+	if got := invokeOne(t, highInstance, "grow", I32(1)); uint32(got) != ^uint32(0) {
+		t.Fatalf("high policy growth past quota = %#x", got)
 	}
 }
 
 func TestMemoryPageQuotaMultiMemory(t *testing.T) {
+	requireCompleteCore3Backend(t)
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).WithMemoryLimitPages(2)
 	compiled, err := Compile(cfg, quotaMultiMemoryModule())
 	if err != nil {

@@ -10,8 +10,10 @@ import (
 )
 
 func TestSyncHostBindingStaysCompact(t *testing.T) {
-	if got := unsafe.Sizeof(syncHostBinding{}); got != 24 {
-		t.Fatalf("syncHostBinding size = %d, want 24", got)
+	// Standard Go packs the trailing scalar flag into 24 bytes. TinyGo may align
+	// the same pointer-bearing shape to 32 bytes on some targets.
+	if got := unsafe.Sizeof(syncHostBinding{}); got != 24 && got != 32 {
+		t.Fatalf("syncHostBinding size = %d, want 24 or 32", got)
 	}
 }
 

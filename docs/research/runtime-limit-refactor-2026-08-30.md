@@ -84,3 +84,33 @@ paired geometric-mean change. The remaining 112-byte allocation is the immutable
 callback-scoped `HostModule` value; removing it from the existing API would need
 a non-reusable stale-safe token representation or a separate module-free fast
 host API.
+
+## CI qualification follow-up
+
+The post-merge qualification run exposed four fixture and policy gaps rather
+than runtime failures:
+
+- the cold single-memory quota test converted a captured native `uintptr` back
+  to a Go pointer, which `go vet` correctly rejected; it now proves separate
+  per-instance policy directories through non-aliasing pointers and observable
+  low/high `memory.grow` quotas without dereferencing native state;
+- the multi-memory execution test now uses the existing complete-Core-3 backend
+  guard, matching the memory64 test on Darwin/AMD64;
+- `syncHostBinding` remains 24 bytes under standard Go, while TinyGo may align
+  the same pointer-bearing shape to 32 bytes on some targets; both bounded shapes
+  are accepted; and
+- release-size budgets now describe the measured resource-policy product rather
+  than the pre-refactor binaries.
+
+The final Linux/AMD64 stripped sizes and updated ceilings are:
+
+| profile | measured bytes | budget bytes | headroom |
+|---|---:|---:|---:|
+| manager | 8,601,784 | 9,000,000 | 398,216 |
+| runtime-standard | 8,470,712 | 8,870,000 | 399,288 |
+| runtime-minimal | 8,163,512 | 8,560,000 | 396,488 |
+
+The performance-audit follow-up accounts for one 4 KiB alignment page in each
+runtime profile. The remaining increase belongs to the resource-policy change.
+The new ceilings restore about 389 KiB of explicit headroom per standard-Go
+runtime profile instead of hiding the measured product behind stale budgets.
