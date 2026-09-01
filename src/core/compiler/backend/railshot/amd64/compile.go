@@ -715,7 +715,7 @@ const maxInitialStackArenaCap = shared.MaxInitialStackArenaCapacity
 // arena-producing nodes, so use its largest bounded estimate instead of forcing
 // large functions through the legacy 256-element geometric growth path.
 func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
-	if len(hints) != len(m.Code) {
+	if len(hints) != len(m.Code) || moduleHasMultiValueResults(m) {
 		return defaultStackArenaCap
 	}
 	capHint := minStackArenaCap
@@ -729,6 +729,18 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 		}
 	}
 	return capHint
+}
+
+func moduleHasMultiValueResults(m *wasm.Module) bool {
+	for i := range m.Types {
+		for j := range m.Types[i].SubTypes {
+			ct := &m.Types[i].SubTypes[j].Comp
+			if ct.Kind == wasm.CompFunc && len(ct.Results) > 1 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // serialStackArenaCap keeps the legacy growth path when lowering may expand one

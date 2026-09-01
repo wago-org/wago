@@ -32,6 +32,11 @@ Parallel workers retain the legacy 256-node ceiling. This avoids multiplying one
 large function's initial arena by every worker. A worker allocates larger stable
 chunks only if it receives a function that needs them.
 
+Modules that declare any multi-value function type retain the legacy first
+chunk. This covers direct, indirect, and reference calls as well as indexed block
+signatures without a call-site scan: one opcode can otherwise allocate one node
+per result, far beyond opcode-count slack.
+
 Modules with active inline targets also retain the legacy first chunk. A caller's
 hint counts the call opcode but not each node-producing instruction spliced from
 the callee at every call site. AMD64 modules with custom instruction recipes use
@@ -41,8 +46,8 @@ scan or an unbounded expansion estimate. The measured json-as and utf-as modules
 have neither active inline candidates nor custom recipes, so their results below
 are unchanged.
 
-The body-size floor, multi-value slack, and no-hint fallback remain in place. An
-underestimated hint can affect allocation only; it cannot invalidate node
+The body-size floor, bounded opcode slack, and no-hint fallback remain in place.
+An underestimated hint can affect allocation only; it cannot invalidate node
 pointers or emitted code.
 
 ## Focused benchmark

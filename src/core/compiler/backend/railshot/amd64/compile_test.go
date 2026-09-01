@@ -28,6 +28,16 @@ func TestModuleStackArenaCapFallsBackForIncompleteHints(t *testing.T) {
 	}
 }
 
+func TestModuleStackArenaCapFallsBackForMultiValueTypes(t *testing.T) {
+	m := &wasm.Module{
+		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32, wasm.I64}}}}}},
+		Code:  []wasm.Func{{BodyBytes: []byte{0x0b}}},
+	}
+	if got := moduleStackArenaCap(m, []funcHints{{stackArenaNodes: 1}}); got != defaultStackArenaCap {
+		t.Fatalf("multi-value stack arena cap = %d, want %d", got, defaultStackArenaCap)
+	}
+}
+
 func TestModuleStackArenaCapUsesBoundedLargeFunctionHint(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, defaultStackArenaCap*2)}}}
 	hints := []funcHints{{stackArenaNodes: defaultStackArenaCap * 2}}
