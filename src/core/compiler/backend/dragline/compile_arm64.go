@@ -2125,9 +2125,13 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			}
 			currentOperands, currentResult = operands, instruction.Result
 			currentPosition = plan.Allocation.InstructionPositions[instructionID]*6 + 2
-			currentResultOverrideValid = edgeResultRename.valid && (edgeResultRename.instruction == instructionID || edgeResultRename.chained && edgeResultRename.chainedInstruction == instructionID)
+			currentResultOverrideValid = edgeResultRename.valid && (edgeResultRename.instruction == instructionID ||
+				edgeResultRename.chained && edgeResultRename.chainedInstruction == instructionID ||
+				edgeResultRename.independent && edgeResultRename.independentInstruction == instructionID)
 			if currentResultOverrideValid {
-				if edgeResultRename.chained && edgeResultRename.chainedInstruction == instructionID {
+				if edgeResultRename.independent && edgeResultRename.independentInstruction == instructionID {
+					currentResultOverride = arm64RailMachPhysical(edgeResultRename.independentDestination)
+				} else if edgeResultRename.chained && edgeResultRename.chainedInstruction == instructionID {
 					currentResultOverride = arm64RailMachPhysical(edgeResultRename.chainedDestination)
 				} else {
 					currentResultOverride = arm64RailMachPhysical(edgeResultRename.destination)
@@ -4461,14 +4465,18 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		if edgeCount == 1 {
 			skipMove := ^uint32(0)
 			skipMove2 := ^uint32(0)
+			skipMove3 := ^uint32(0)
 			if edgeResultRename.valid && edgeResultRename.edge == first {
 				skipMove = edgeResultRename.move
 				if edgeResultRename.chained {
 					skipMove2 = edgeResultRename.chainedMove
 				}
+				if edgeResultRename.independent {
+					skipMove3 = edgeResultRename.independentMove
+				}
 			}
 			if counter, exit, rotated := arm64RailMachRotatedZeroTestLatch(plan, uint32(blockID), first); rotated {
-				if err := emitARM64RailMachEdgeMovesSkipping2(&a, plan, first, skipMove, skipMove2); err != nil {
+				if err := emitARM64RailMachEdgeMovesSkipping3(&a, plan, first, skipMove, skipMove2, skipMove3); err != nil {
 					return nil, 0, true, err
 				}
 				counterLocation := plan.Allocation.Locations[counter]
@@ -4478,7 +4486,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				}
 				continue
 			}
-			if err := emitARM64RailMachEdgeMovesSkipping2(&a, plan, first, skipMove, skipMove2); err != nil {
+			if err := emitARM64RailMachEdgeMovesSkipping3(&a, plan, first, skipMove, skipMove2, skipMove3); err != nil {
 				return nil, 0, true, err
 			}
 			if target := int(plan.Machine.Edges[first].To); target != nextBlock {
@@ -5967,16 +5975,20 @@ func arm64MaterializeCallResults(a *arm64.Asm, plan *nativeBackendPlan, instruct
 }
 
 type arm64EdgeResultRename struct {
-	instruction        uint32
-	edge               uint32
-	move               uint32
-	destination        railmach.Location
-	chainedInstruction uint32
-	chainedMove        uint32
-	chainedResult      railmach.VReg
-	chainedDestination railmach.Location
-	chained            bool
-	valid              bool
+	instruction            uint32
+	edge                   uint32
+	move                   uint32
+	destination            railmach.Location
+	chainedInstruction     uint32
+	chainedMove            uint32
+	chainedResult          railmach.VReg
+	chainedDestination     railmach.Location
+	chained                bool
+	independentInstruction uint32
+	independentMove        uint32
+	independentDestination railmach.Location
+	independent            bool
+	valid                  bool
 }
 
 type arm64ClosedCounterKind uint8
@@ -7022,6 +7034,99 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 		rename.chained = true
 		break
 	}
+	// A third, independent recurrence can be renamed when its result has no
+	// ordinary consumer. This covers counters updated alongside a coupled FP
+	// recurrence without weakening the parallel-copy clobber proof above.
+	if rename.destination.Bank != railmach.BankFPR {
+		return rename
+	}
+	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
+		move := plan.Exit.Moves[index]
+		if index == candidateMove || rename.chained && index == rename.chainedMove || move.Kind != railmach.MoveCopy ||
+			(move.Placement != railmach.PlacePredecessorEnd && move.Placement != railmach.PlaceSplitEdge) ||
+			move.Src.Kind != railmach.LocationRegister || move.Dst.Kind != railmach.LocationRegister || move.Src.Bank != railmach.BankGPR || move.Dst.Bank != railmach.BankGPR ||
+			move.Dst == rename.destination || rename.chained && move.Dst == rename.chainedDestination ||
+			move.Reg == 0 || int(move.Reg) >= len(plan.Machine.VRegs) {
+			continue
+		}
+		data := plan.Machine.VRegs[move.Reg]
+		if data.Flags&(railmach.VRegInitial|railmach.VRegBlockParam|railmach.VRegElided) != 0 || data.Def%6 != 3 {
+			continue
+		}
+		definition := data.Def / 6
+		if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Result != move.Reg {
+			continue
+		}
+		switch plan.Machine.Insts[definition].Op {
+		case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
+			wasm.InstrI32Mul, wasm.InstrI64Mul:
+			if len(plan.Machine.Insts) >= 256 {
+				continue
+			}
+		case wasm.InstrF32Add, wasm.InstrF64Add, wasm.InstrF32Sub, wasm.InstrF64Sub,
+			wasm.InstrF32Mul, wasm.InstrF64Mul, wasm.InstrF32Div, wasm.InstrF64Div:
+		default:
+			continue
+		}
+		used := false
+		for candidate := range plan.Machine.Insts {
+			for _, operand := range plan.Machine.InstructionOperands(uint32(candidate)) {
+				used = used || operand.Reg == move.Reg
+			}
+		}
+		for _, value := range plan.Machine.Results {
+			used = used || value == move.Reg
+		}
+		if used {
+			continue
+		}
+		transferCount := 0
+		for _, transfer := range plan.Machine.Transfers {
+			if transfer.Src == move.Reg {
+				transferCount++
+				if transfer.Edge != edge {
+					transferCount = 2
+				}
+			}
+		}
+		if transferCount != 1 {
+			continue
+		}
+		clobbers := false
+		for other := moveRange.Start; other < moveRange.Start+moveRange.Count; other++ {
+			if other != index && plan.Exit.Moves[other].Src == move.Dst {
+				clobbers = true
+			}
+		}
+		seenDefinition := false
+		for _, candidate := range plan.Schedule.Order[range_.Start : range_.Start+range_.Count] {
+			if candidate == definition {
+				seenDefinition = true
+				continue
+			}
+			if !seenDefinition {
+				continue
+			}
+			position := plan.Allocation.InstructionPositions[candidate]*6 + 2
+			for _, operand := range plan.Machine.InstructionOperands(candidate) {
+				if plan.Allocation.LocationAt(operand.Reg, position) == move.Dst {
+					clobbers = true
+				}
+			}
+			instruction := plan.Machine.Insts[candidate]
+			if instruction.Result != 0 && plan.Allocation.LocationAt(instruction.Result, position) == move.Dst {
+				clobbers = true
+			}
+		}
+		if clobbers || !seenDefinition {
+			continue
+		}
+		rename.independentInstruction = definition
+		rename.independentMove = index
+		rename.independentDestination = move.Dst
+		rename.independent = true
+		break
+	}
 	return rename
 }
 
@@ -7035,29 +7140,33 @@ func emitARM64RailMachEdgeMovesSkipping(a *arm64.Asm, plan *nativeBackendPlan, e
 }
 
 func emitARM64RailMachEdgeMovesSkipping2(a *arm64.Asm, plan *nativeBackendPlan, edge, skipMove, skipMove2 uint32) error {
-	return emitARM64RailMachEdgeMovesAt(a, plan, edge, false, skipMove, skipMove2)
+	return emitARM64RailMachEdgeMovesSkipping3(a, plan, edge, skipMove, skipMove2, ^uint32(0))
+}
+
+func emitARM64RailMachEdgeMovesSkipping3(a *arm64.Asm, plan *nativeBackendPlan, edge, skipMove, skipMove2, skipMove3 uint32) error {
+	return emitARM64RailMachEdgeMovesAt(a, plan, edge, false, skipMove, skipMove2, skipMove3)
 }
 
 func emitARM64RailMachSuccessorMoves(a *arm64.Asm, plan *nativeBackendPlan, edge uint32) error {
-	return emitARM64RailMachEdgeMovesAt(a, plan, edge, true, ^uint32(0), ^uint32(0))
+	return emitARM64RailMachEdgeMovesAt(a, plan, edge, true, ^uint32(0), ^uint32(0), ^uint32(0))
 }
 
-func emitARM64RailMachEdgeMovesAt(a *arm64.Asm, plan *nativeBackendPlan, edge uint32, successor bool, skipMove, skipMove2 uint32) error {
+func emitARM64RailMachEdgeMovesAt(a *arm64.Asm, plan *nativeBackendPlan, edge uint32, successor bool, skipMove, skipMove2, skipMove3 uint32) error {
 	moveRange := plan.Exit.EdgeMoves[edge]
 	placement := railmach.PlacePredecessorEnd
 	if successor {
 		placement = railmach.PlaceSuccessorStart
 	}
-	return emitARM64RailMachMoveRangeAt(a, plan, moveRange, placement, skipMove, skipMove2)
+	return emitARM64RailMachMoveRangeAt(a, plan, moveRange, placement, skipMove, skipMove2, skipMove3)
 }
 
 func emitARM64RailMachMoveRange(a *arm64.Asm, plan *nativeBackendPlan, moveRange railmach.MoveRange) error {
-	return emitARM64RailMachMoveRangeAt(a, plan, moveRange, railmach.PlaceInvalid, ^uint32(0), ^uint32(0))
+	return emitARM64RailMachMoveRangeAt(a, plan, moveRange, railmach.PlaceInvalid, ^uint32(0), ^uint32(0), ^uint32(0))
 }
 
-func emitARM64RailMachMoveRangeAt(a *arm64.Asm, plan *nativeBackendPlan, moveRange railmach.MoveRange, placement railmach.MovePlacement, skipMove, skipMove2 uint32) error {
+func emitARM64RailMachMoveRangeAt(a *arm64.Asm, plan *nativeBackendPlan, moveRange railmach.MoveRange, placement railmach.MovePlacement, skipMove, skipMove2, skipMove3 uint32) error {
 	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
-		if index == skipMove || index == skipMove2 {
+		if index == skipMove || index == skipMove2 || index == skipMove3 {
 			continue
 		}
 		move := plan.Exit.Moves[index]

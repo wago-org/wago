@@ -1290,6 +1290,14 @@ func TestARM64RailMachPrefersCoupledFPRCopiesOverLaterIntegerCopy(t *testing.T) 
 	if !rename.valid || rename.instruction != 1 || rename.destination != locations[6] {
 		t.Fatalf("FPR recurrence rename = %#v, want instruction 1 to %#v", rename, locations[6])
 	}
+	if !rename.independent || rename.independentInstruction != 2 || rename.independentMove != 2 || rename.independentDestination != locations[8] {
+		t.Fatalf("independent recurrence rename = %#v, want instruction 2 to %#v", rename, locations[8])
+	}
+	f.Insts = append(f.Insts, railmach.Inst{Op: wasm.InstrI32Eqz, OperandStart: uint32(len(f.Operands)), OperandCount: 1})
+	f.Operands = append(f.Operands, railmach.Operand{Reg: 7, Bank: railmach.BankGPR})
+	if unsafe := arm64RailMachEdgeResultRename(plan, 0); unsafe.independent {
+		t.Fatalf("independent rename abandoned an ordinary counter use: %#v", unsafe)
+	}
 }
 
 func TestARM64RailMachPromotesTrapFreeMutableGlobal(t *testing.T) {

@@ -147,6 +147,38 @@ A signed-division-by-two rewrite was also tested on the pivot calculation. It
 removed `sdiv` with the required negative-value bias, but regressed the 21-pair
 median to 1.023x and geometric mean to 1.007x of baseline, so it was removed.
 
+## Retained ARM64 result: independent loop-counter rename
+
+Current Mandelbrot disassembly showed that Dragline and Cranelift each executed
+16 instructions in the escape-loop body, but Dragline's integer recurrence
+ended with `add w11, w10, #1; mov w10, w11`. The existing edge-result rename
+could already retarget one selected FP recurrence into its loop-parameter
+register. It now also retargets one independent integer recurrence when the
+selected result is FP, the integer result has exactly one transfer on the same
+edge and no ordinary consumer, and the destination is neither a parallel-copy
+source nor live after the definition. Other integer-only and additional FP
+bundles retain their prior policy.
+
+The Mandelbrot loop now emits `add w10, w10, #1` directly, reducing the native
+module from 556 to 552 bytes and the hot loop from 16 to 15 instructions. Across
+15 alternating one-second A/B pairs, the candidate won 11 pairs: paired median
+was **0.9988x** and paired geometric mean was **0.9986x**. A native-code scan of
+all 71 top-level corpus Wasm files found no non-ISA code change outside
+`mandelbrot.wasm`; SIMD ISA files that need a separate feature configuration
+were excluded as requested. The corpus differential and focused allocator/
+finalizer tests pass.
+
+A separate 15-pair, 500 ms comparison measured 208.130 us for Dragline and
+180.193 us for Cranelift, a **1.155x** paired median and geometric mean. This
+removes one demonstrable instruction but does not close Mandelbrot's remaining
+execution gap.
+
+Two constant-materialization experiments were rejected. A fourth persistent FP
+constant register was benchmark-neutral to slightly slower. Replacing legal
+constants with one-instruction `FMOV` immediates regressed the broad form by
+about 0.7% and the loop-only form by roughly 0.3--0.5%, despite smaller code;
+both experiments were fully removed.
+
 ## Prioritized work
 
 ### P0: first-class `v128` in RailMach
