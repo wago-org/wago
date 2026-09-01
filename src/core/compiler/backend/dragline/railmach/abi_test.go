@@ -78,6 +78,21 @@ func TestAnalyzeABIUsesPreparedIntegerContractForBoundedARM64Recursion(t *testin
 	}
 }
 
+func TestAnalyzeABIUsesTypedARM64FPResultRegister(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}, []byte{
+		0x20, 0x00,
+		0x0b,
+	})
+	f, allocation, metadata := buildABITest(t, TargetARM64, m)
+	contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contract.Class != ABIPreparedLeaf || contract.FPRClobbers&1 == 0 || contract.GPRClobbers&1 != 0 {
+		t.Fatalf("typed FP contract = %#v", contract)
+	}
+}
+
 func TestFrameForAllocationUsesRegisterPrefixForMultipleResults(t *testing.T) {
 	allocation := new(GreedyAllocation)
 	requirements, layout, err := FrameForAllocation(ABIContract{Results: 6, RegisterResults: 4}, allocation, 0)

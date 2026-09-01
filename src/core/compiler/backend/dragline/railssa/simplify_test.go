@@ -347,6 +347,51 @@ func TestSparseSimplifyGVNsAcrossUniquePredecessor(t *testing.T) {
 	}
 }
 
+func TestSparseSimplifyGVNsEquivalentFloatArithmeticAcrossUniquePredecessor(t *testing.T) {
+	m := scalarModule([]wasm.ValType{wasm.F64, wasm.I32}, []wasm.ValType{wasm.F64}, []byte{
+		0x20, 0x00, 0x20, 0x00, 0xa2, 0x1a, // f64.mul(local 0, local 0); drop
+		0x20, 0x01,
+		0x04, 0x7c, // if (result f64)
+		0x20, 0x00, 0x20, 0x00, 0xa2,
+		0x05,
+		0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x0b,
+		0x0b,
+	})
+	_, _, _, semantic, _, result := buildSimplifyTest(t, m)
+	muls := make([]FlowValueID, 0, 2)
+	for _, instruction := range semantic.Insts {
+		if instruction.Op == wasm.InstrF64Mul {
+			muls = append(muls, instruction.Result)
+		}
+	}
+	if len(muls) != 2 || resolveAlias(result.Aliases, muls[1]) != resolveAlias(result.Aliases, muls[0]) || result.Metrics.CrossBlockAliases == 0 {
+		t.Fatalf("muls=%v aliases=%v metrics=%#v", muls, result.Aliases, result.Metrics)
+	}
+}
+
+func TestSparseSimplifyGVNsEquivalentFloatArithmeticThroughPredecessorChain(t *testing.T) {
+	m := scalarModule([]wasm.ValType{wasm.F64, wasm.I32}, []wasm.ValType{wasm.F64}, []byte{
+		0x20, 0x00, 0x20, 0x00, 0xa2, 0x1a, // f64.mul(local 0, local 0); drop
+		0x20, 0x01, 0x04, 0x40, // if
+		0x20, 0x01, 0x04, 0x40, //   if
+		0x20, 0x00, 0x20, 0x00, 0xa2, 0x1a,
+		0x0b, 0x0b,
+		0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x0b,
+	})
+	_, _, _, semantic, _, result := buildSimplifyTest(t, m)
+	muls := make([]FlowValueID, 0, 2)
+	for _, instruction := range semantic.Insts {
+		if instruction.Op == wasm.InstrF64Mul {
+			muls = append(muls, instruction.Result)
+		}
+	}
+	if len(muls) != 2 || resolveAlias(result.Aliases, muls[1]) != resolveAlias(result.Aliases, muls[0]) || result.Metrics.CrossBlockAliases == 0 {
+		t.Fatalf("muls=%v aliases=%v metrics=%#v", muls, result.Aliases, result.Metrics)
+	}
+}
+
 func maskedInductionModule(t *testing.T, step, mask int32) *wasm.Module {
 	return maskedInductionModuleWithPrefix(t, step, mask, nil)
 }

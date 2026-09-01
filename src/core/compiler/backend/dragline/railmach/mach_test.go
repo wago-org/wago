@@ -85,7 +85,7 @@ func TestBuildPreservesBlockArgumentsAndSourceOrder(t *testing.T) {
 	}
 }
 
-func TestBuildRetainsCrossBlockSimplificationDefinitions(t *testing.T) {
+func TestBuildElidesVerifiedDominatingCrossBlockDefinitions(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x20, 0x00, 0x41, 0x07, 0x6a, 0x1a,
 		0x20, 0x00,
@@ -135,8 +135,15 @@ func TestBuildRetainsCrossBlockSimplificationDefinitions(t *testing.T) {
 			continue
 		}
 		crossBlock++
-		if machine.VRegs[value].Flags&VRegElided != 0 {
-			t.Fatalf("cross-block alias v%d -> v%d was elided", value, canonical)
+		if machine.VRegs[value].Flags&VRegElided == 0 {
+			t.Fatalf("dominated cross-block alias v%d -> v%d was retained", value, canonical)
+		}
+		for instructionID := range machine.Insts {
+			for _, operand := range machine.InstructionOperands(uint32(instructionID)) {
+				if operand.Reg == VReg(value) {
+					t.Fatalf("instruction %d still uses elided cross-block alias v%d", instructionID, value)
+				}
+			}
 		}
 	}
 	if crossBlock == 0 {

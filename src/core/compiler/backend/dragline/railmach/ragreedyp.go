@@ -210,14 +210,6 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 	}
 	intervals := append(reuse.priorityIntervals[:0], reuse.Intervals...)
 	useDensityCost := len(f.Insts) >= greedyDensityMinInstructions
-	if useDensityCost {
-		for reg := VReg(1); int(reg) < len(f.VRegs); reg++ {
-			if f.VRegs[reg].Bank == BankFPR {
-				useDensityCost = false
-				break
-			}
-		}
-	}
 	hasCall := false
 	for _, instruction := range f.Insts {
 		if IsCall(instruction.Op) {

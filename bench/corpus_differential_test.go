@@ -45,6 +45,12 @@ var corpusDifferentialCases = []struct {
 	{"crc32.wasm", "", "hashN", []uint64{8}, 1443045851},
 	{"sha256.wasm", "", "hashN", []uint64{8}, 3825852647},
 	{"raytrace.wasm", "", "render", []uint64{48}, 1021273579},
+	// Portable 64x64->high64 multiplication is target-specialized on ARM64.
+	// Pin zero, one, and a hot counted run so both the control edge and UMULH
+	// replacement remain covered by independent golden values.
+	{"xjb-mulhi.wasm", "", "runN", []uint64{0}, 0},
+	{"xjb-mulhi.wasm", "", "runN", []uint64{1}, 9570817111587742042},
+	{"xjb-mulhi.wasm", "", "runN", []uint64{1000}, 6461867963582441754},
 }
 
 func runCorpusDifferentialCase(t *testing.T, compiler wago.CompilerEngine, mode wago.BoundsCheckMode, file, init, export string, args []uint64) uint64 {

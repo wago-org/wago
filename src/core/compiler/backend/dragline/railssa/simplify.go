@@ -548,21 +548,31 @@ func localPureGVN(cfg *CFG, flow *ValueFlow, semantic *SemanticFunc, metadata *M
 	for blockID, block := range semantic.Blocks {
 		clear(result.gvnKeys)
 		clear(result.gvnValues)
-		predStart := cfg.Blocks[blockID].PredStart
-		predCount := uint32(cfg.Blocks[blockID].PredCount)
-		if predCount == 1 {
-			predecessor := cfg.Preds[predStart]
-			if int(predecessor) < len(semantic.Blocks) && predecessor != BlockID(blockID) {
-				predBlock := semantic.Blocks[predecessor]
-				for instructionID := predBlock.InstStart; instructionID < predBlock.InstStart+predBlock.InstCount; instructionID++ {
-					// Runtime-state reads are CSEd only inside one basic block. This
-					// avoids needing path-sensitive memory epochs at joins.
-					if semantic.Insts[instructionID].Op == wasm.InstrMemorySize {
-						continue
-					}
-					insert(instructionID)
-				}
+		// Seed every block on the unique-predecessor chain. Such a chain is a
+		// directly replayable dominance proof, and retaining all of its pure
+		// values lets control-heavy loops reuse work computed before successive
+		// early-exit checks. Stop at a join or cycle; the independent verifier
+		// repeats the same dominance walk for every committed alias.
+		predecessorOf := BlockID(blockID)
+		for steps := 0; steps < len(cfg.Blocks); steps++ {
+			predRecord := cfg.Blocks[predecessorOf]
+			if predRecord.PredCount != 1 {
+				break
 			}
+			predecessor := cfg.Preds[predRecord.PredStart]
+			if int(predecessor) >= len(semantic.Blocks) || predecessor == predecessorOf || predecessor == BlockID(blockID) {
+				break
+			}
+			predBlock := semantic.Blocks[predecessor]
+			for instructionID := predBlock.InstStart; instructionID < predBlock.InstStart+predBlock.InstCount; instructionID++ {
+				// Runtime-state reads are CSEd only inside one basic block. This
+				// avoids needing path-sensitive memory epochs at joins.
+				if semantic.Insts[instructionID].Op == wasm.InstrMemorySize {
+					continue
+				}
+				insert(instructionID)
+			}
+			predecessorOf = predecessor
 		}
 		for instructionID := block.InstStart; instructionID < block.InstStart+block.InstCount; instructionID++ {
 			instruction := semantic.Insts[instructionID]
@@ -640,6 +650,8 @@ func pureGVNOp(kind wasm.InstrKind) bool {
 		wasm.InstrI64And, wasm.InstrI64Or, wasm.InstrI64Xor,
 		wasm.InstrI32Shl, wasm.InstrI32ShrS, wasm.InstrI32ShrU, wasm.InstrI32Rotl, wasm.InstrI32Rotr,
 		wasm.InstrI64Shl, wasm.InstrI64ShrS, wasm.InstrI64ShrU, wasm.InstrI64Rotl, wasm.InstrI64Rotr,
+		wasm.InstrF32Add, wasm.InstrF32Sub, wasm.InstrF32Mul, wasm.InstrF32Div,
+		wasm.InstrF64Add, wasm.InstrF64Sub, wasm.InstrF64Mul, wasm.InstrF64Div,
 		wasm.InstrI32Eq, wasm.InstrI32Ne, wasm.InstrI32LtS, wasm.InstrI32LtU, wasm.InstrI32GtS, wasm.InstrI32GtU, wasm.InstrI32LeS, wasm.InstrI32LeU, wasm.InstrI32GeS, wasm.InstrI32GeU,
 		wasm.InstrI64Eq, wasm.InstrI64Ne, wasm.InstrI64LtS, wasm.InstrI64LtU, wasm.InstrI64GtS, wasm.InstrI64GtU, wasm.InstrI64LeS, wasm.InstrI64LeU, wasm.InstrI64GeS, wasm.InstrI64GeU,
 		wasm.InstrI32WrapI64, wasm.InstrI64ExtendI32S, wasm.InstrI64ExtendI32U,

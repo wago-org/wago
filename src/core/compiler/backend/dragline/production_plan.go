@@ -563,6 +563,12 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers []uint3
 			uses[operand.Reg]++
 		}
 	}
+	for _, transfer := range plan.Machine.Transfers {
+		uses[transfer.Src]++
+	}
+	for _, result := range plan.Machine.Results {
+		uses[result]++
+	}
 	for _, combination := range plan.Selection.Combinations {
 		if combination.Kind != railmach.CombineImmediate || combination.Producer == ^uint32(0) || int(combination.Producer) >= len(plan.Machine.Insts) || int(combination.Consumer) >= len(plan.Machine.Insts) {
 			continue
@@ -1282,12 +1288,6 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	}
 	p.plan.ImmediateProducer = p.immediateProducer
 	p.plan.ImmediateSkip = p.immediateSkip
-	for _, transfer := range machine.Transfers {
-		p.immediateUses[transfer.Src]++
-	}
-	for _, result := range machine.Results {
-		p.immediateUses[result]++
-	}
 	buildNativeEdgeConstantRematerialization(&p.plan, p.immediateSkip, p.immediateUses)
 	p.deadGCReservations = resizeNativeSlice(p.deadGCReservations, len(machine.Insts))
 	clear(p.deadGCReservations)
@@ -1506,6 +1506,13 @@ func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, produ
 		if (producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const) || !arm64RepeatedImmediateEncodable(instruction.Op, producer.Aux) {
 			continue
 		}
+		// Shifted or sign-inverted add/sub immediates save code, but changing a
+		// small/cold block's byte phase can perturb a later compact loop more than
+		// the fold is worth. Restrict this extended class to repeatedly hot blocks;
+		// ordinary 12-bit immediates and logical immediates retain their old scope.
+		if producer.Aux > 0xfff && arm64AddSubKind(instruction.Op) && nativeMachineInstructionWeight(plan.Machine, uint32(instructionID)) < 64 {
+			continue
+		}
 		producers[instructionID] = producerID
 	}
 	for producerID, producer := range plan.Machine.Insts {
@@ -1525,11 +1532,34 @@ func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, produ
 	}
 }
 
+func arm64AddSubKind(kind wasm.InstrKind) bool {
+	return kind == wasm.InstrI32Add || kind == wasm.InstrI64Add || kind == wasm.InstrI32Sub || kind == wasm.InstrI64Sub
+}
+
+func nativeMachineInstructionWeight(machine *railmach.Func, instruction uint32) uint32 {
+	if machine == nil {
+		return 0
+	}
+	for _, block := range machine.Blocks {
+		if instruction >= block.InstStart && instruction < block.InstStart+block.InstCount {
+			return block.Weight
+		}
+	}
+	return 0
+}
+
 func arm64RepeatedImmediateEncodable(kind wasm.InstrKind, value uint64) bool {
 	var probe arm64.Asm
 	switch kind {
-	case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
-		wasm.InstrI32Eq, wasm.InstrI32Ne, wasm.InstrI32LtS, wasm.InstrI32LtU,
+	case wasm.InstrI32Add:
+		return arm64I32AddSubImmediateEncodable(uint32(value), false)
+	case wasm.InstrI32Sub:
+		return arm64I32AddSubImmediateEncodable(uint32(value), true)
+	case wasm.InstrI64Add:
+		return arm64I64AddSubImmediateEncodable(value, false)
+	case wasm.InstrI64Sub:
+		return arm64I64AddSubImmediateEncodable(value, true)
+	case wasm.InstrI32Eq, wasm.InstrI32Ne, wasm.InstrI32LtS, wasm.InstrI32LtU,
 		wasm.InstrI32GtS, wasm.InstrI32GtU, wasm.InstrI32LeS, wasm.InstrI32LeU,
 		wasm.InstrI32GeS, wasm.InstrI32GeU,
 		wasm.InstrI64Eq, wasm.InstrI64Ne, wasm.InstrI64LtS, wasm.InstrI64LtU,

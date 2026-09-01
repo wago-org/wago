@@ -73,6 +73,7 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 	}
 	registerResults := min(len(f.Results), PrivateResultRegisters)
 	contract := ABIContract{Class: ABILeafScalar, Params: f.ParamCount, Results: uint16(len(f.Results)), RegisterResults: uint8(registerResults)}
+	directARM64 := directPreparedARM64Contract(f, allocation)
 	var calls []CallContract
 	usesFP := false
 	for reg, location := range allocation.Locations {
@@ -116,10 +117,15 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 			contract.GPRClobbers |= uint64(1) << move.Physical
 		}
 	}
-	// The private result convention materializes a bounded source-ordered
-	// prefix in GPRs (floating values retain their bits there as well).
-	if contract.RegisterResults != 0 {
-		contract.GPRClobbers |= lowMask(contract.RegisterResults)
+	// The private result convention materializes scalar floating-point results
+	// directly in V0 on ARM64. Other results retain the source-ordered GPR
+	// prefix shared by both native targets.
+	for index, result := range f.Results[:registerResults] {
+		if directARM64 && len(f.Results) == 1 && f.VRegs[result].Bank == BankFPR {
+			contract.FPRClobbers |= uint64(1) << index
+		} else {
+			contract.GPRClobbers |= uint64(1) << index
+		}
 	}
 	config := DefaultGreedyConfig(f.Target)
 	callerGPRs, callerFPRs := config.CallerMask(BankGPR), config.CallerMask(BankFPR)
@@ -145,9 +151,9 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		contract.Class = ABIPreparedCall
 	case directPreparedIntegerContract(f, allocation, contract):
 		contract.Class = ABIPreparedInt
-	case directPreparedARM64Contract(f, allocation) && contract.HasCall:
+	case directARM64 && contract.HasCall:
 		contract.Class = ABIPreparedCall
-	case directPreparedARM64Contract(f, allocation):
+	case directARM64:
 		contract.Class = ABIPreparedLeaf
 	case !contract.HasCall && usesFP:
 		contract.Class = ABILeafFP
@@ -175,7 +181,7 @@ func directPreparedARM64Contract(f *Func, allocation *GreedyAllocation) bool {
 				continue
 			}
 			location := allocation.Locations[value]
-			if data.Bank != BankGPR || location.Bank != BankGPR || location.Kind != LocationRegister && location.Kind != LocationSpill {
+			if location.Bank != data.Bank || location.Kind != LocationRegister && location.Kind != LocationSpill {
 				return false
 			}
 			found = true
@@ -185,7 +191,7 @@ func directPreparedARM64Contract(f *Func, allocation *GreedyAllocation) bool {
 			return false
 		}
 	}
-	return len(f.Results) == 0 || f.VRegs[f.Results[0]].Bank == BankGPR
+	return true
 }
 
 func directPreparedIntegerContract(f *Func, allocation *GreedyAllocation, contract ABIContract) bool {

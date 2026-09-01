@@ -297,6 +297,27 @@ func TestNativeImmediateCombinationsFoldRepeatedRotateCounts(t *testing.T) {
 	}
 }
 
+func TestNativeImmediateCombinationRetainsEdgeTransferConstant(t *testing.T) {
+	machine := &railmach.Func{
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Const, Aux: 7, Result: 1},
+			{Op: wasm.InstrI32LtS, Result: 3, OperandStart: 0, OperandCount: 2},
+		},
+		Operands:  []railmach.Operand{{Reg: 2}, {Reg: 1}},
+		VRegs:     make([]railmach.VRegData, 4),
+		Transfers: []railmach.EdgeTransfer{{Src: 1, Dst: 3}},
+	}
+	selection := &railmach.SelectionPlan{Combinations: []railmach.Combination{{Kind: railmach.CombineImmediate, Producer: 0, Consumer: 1}}}
+	plan := &nativeBackendPlan{Machine: machine, Selection: selection}
+	producers := make([]uint32, len(machine.Insts))
+	skipped := make([]bool, len(machine.Insts))
+	uses := make([]uint32, len(machine.VRegs))
+	buildNativeImmediateCombinations(plan, producers, skipped, uses)
+	if skipped[0] || uses[1] != 2 {
+		t.Fatalf("edge-transfer constant skipped=%v uses=%v producers=%v", skipped, uses, producers)
+	}
+}
+
 func TestARM64RepeatedImmediateEligibility(t *testing.T) {
 	for _, test := range []struct {
 		kind  wasm.InstrKind
@@ -308,11 +329,42 @@ func TestARM64RepeatedImmediateEligibility(t *testing.T) {
 		{wasm.InstrI64Xor, 0x0101010101010101, true},
 		{wasm.InstrI64And, 0, false},
 		{wasm.InstrI64Add, 0xff, true},
-		{wasm.InstrI32Sub, 4096, false},
+		{wasm.InstrI32Sub, 4096, true},
+		{wasm.InstrI32Sub, 0xfff00000, true},
+		{wasm.InstrI64Add, 1048576, true},
+		{wasm.InstrI32Add, 4097, false},
 	} {
 		if got := arm64RepeatedImmediateEncodable(test.kind, test.value); got != test.want {
 			t.Fatalf("%s %#x eligibility = %t, want %t", test.kind, test.value, got, test.want)
 		}
+	}
+}
+
+func TestARM64ExtendedAddSubImmediateRequiresHotBlock(t *testing.T) {
+	machine := &railmach.Func{
+		Target: railmach.TargetARM64,
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Const, Aux: 0xfff00000, Result: 1},
+			{Op: wasm.InstrI32Sub, Result: 3, OperandStart: 0, OperandCount: 2},
+		},
+		Operands: []railmach.Operand{{Reg: 2}, {Reg: 1}},
+		VRegs:    []railmach.VRegData{{}, {Def: 3, Flags: railmach.VRegRematerializable}, {}, {}},
+		Blocks:   []railmach.Block{{InstStart: 0, InstCount: 2, Weight: 8}},
+	}
+	plan := &nativeBackendPlan{Machine: machine, Selection: &railmach.SelectionPlan{}}
+	producers := make([]uint32, len(machine.Insts))
+	skipped := make([]bool, len(machine.Insts))
+	uses := make([]uint32, len(machine.VRegs))
+	buildNativeImmediateCombinations(plan, producers, skipped, uses)
+	buildNativeARM64LogicalImmediateCombinations(plan, producers, skipped, uses)
+	if producers[1] != ^uint32(0) {
+		t.Fatal("extended immediate folded in a low-weight block")
+	}
+	machine.Blocks[0].Weight = 64
+	buildNativeImmediateCombinations(plan, producers, skipped, uses)
+	buildNativeARM64LogicalImmediateCombinations(plan, producers, skipped, uses)
+	if producers[1] != 0 || !skipped[0] {
+		t.Fatalf("hot extended immediate producers=%v skipped=%v", producers, skipped)
 	}
 }
 

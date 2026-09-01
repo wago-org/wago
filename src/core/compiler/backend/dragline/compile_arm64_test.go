@@ -33,17 +33,151 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 	}
 }
 
+func TestARM64AddSubImmediateHelpersCanonicalizeShiftedAndNegativeConstants(t *testing.T) {
+	var a arm64.Asm
+	if !emitARM64I32AddSubImmediate(&a, arm64.X2, arm64.X3, 0xfff00000, true) || !bytes.Equal(a.B, []byte{0x62, 0x00, 0x44, 0x11}) {
+		t.Fatalf("i32 subtract-negative immediate = %x", a.B)
+	}
+	a.B = a.B[:0]
+	if !emitARM64I64AddSubImmediate(&a, arm64.X2, arm64.X3, 1048576, false) || !bytes.Equal(a.B, []byte{0x62, 0x00, 0x44, 0x91}) {
+		t.Fatalf("i64 shifted add immediate = %x", a.B)
+	}
+	a.B = a.B[:0]
+	if emitARM64I32AddSubImmediate(&a, arm64.X2, arm64.X3, 4097, false) || len(a.B) != 0 {
+		t.Fatalf("unencodable i32 immediate emitted %d bytes", len(a.B))
+	}
+}
+
+func TestARM64RailMachMulHighLoopRequiresCompletePortableIdiom(t *testing.T) {
+	body := make([]byte, 0, 160)
+	bytecode := func(op byte) { body = append(body, op) }
+	local := func(op byte, index uint32) {
+		body = append(body, op)
+		body = append(body, wasmtest.ULEB(index)...)
+	}
+	i64const := func(value int64) {
+		body = append(body, 0x42)
+		body = append(body, wasmtest.SLEB64(value)...)
+	}
+	body = append(body, 0x03, 0x40)
+	local(0x20, 0)
+	local(0x20, 6)
+	body = append(body, 0x4a, 0x04, 0x40)
+	local(0x20, 6)
+	bytecode(0xac)
+	local(0x22, 3)
+	i64const(7046029254386353131)
+	bytecode(0x7d)
+	local(0x22, 4)
+	i64const(32)
+	bytecode(0x88)
+	local(0x22, 2)
+	local(0x20, 3)
+	i64const(-6884282663029611473)
+	bytecode(0x7e)
+	i64const(-2960836687051489901)
+	bytecode(0x85)
+	local(0x22, 3)
+	i64const(0xffffffff)
+	bytecode(0x83)
+	local(0x22, 5)
+	bytecode(0x7e)
+	local(0x20, 4)
+	i64const(0xffffffff)
+	bytecode(0x83)
+	local(0x22, 4)
+	local(0x20, 5)
+	bytecode(0x7e)
+	i64const(32)
+	body = append(body, 0x88, 0x7c)
+	local(0x21, 5)
+	local(0x20, 1)
+	local(0x20, 3)
+	i64const(32)
+	bytecode(0x88)
+	local(0x22, 1)
+	local(0x20, 2)
+	bytecode(0x7e)
+	local(0x20, 5)
+	i64const(32)
+	body = append(body, 0x88, 0x7c)
+	local(0x20, 1)
+	local(0x20, 4)
+	bytecode(0x7e)
+	local(0x20, 5)
+	i64const(0xffffffff)
+	body = append(body, 0x83, 0x7c)
+	i64const(32)
+	body = append(body, 0x88, 0x7c, 0x85)
+	local(0x21, 1)
+	local(0x20, 6)
+	body = append(body, 0x41)
+	body = append(body, wasmtest.SLEB32(1)...)
+	bytecode(0x6a)
+	local(0x21, 6)
+	body = append(body, 0x0c, 0x01, 0x0b, 0x0b)
+	local(0x20, 1)
+	bytecode(0x0b)
+
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: body}}}
+	plan := &nativeBackendPlan{
+		Stack: &railssa.StackFunc{Module: m, Params: []wasm.ValType{wasm.I32}, Results: []wasm.ValType{wasm.I64}},
+		Machine: &railmach.Func{
+			VRegs:   []railmach.VRegData{{}, {Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegInitial}, {Type: railmach.TypeI64, Bank: railmach.BankGPR}},
+			Results: []railmach.VReg{2},
+		},
+		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{{}, {Kind: railmach.LocationRegister, Bank: railmach.BankGPR}, {Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 1}}}},
+	}
+	n, result, subtract, multiply, xor, ok := arm64RailMachMulHighLoop(plan)
+	multiplyWant, xorWant := int64(-6884282663029611473), int64(-2960836687051489901)
+	if !ok || n != 1 || result != 2 || subtract != 7046029254386353131 || multiply != uint64(multiplyWant) || xor != uint64(xorWant) {
+		t.Fatalf("mulhi loop = n%d result%d constants=%#x/%#x/%#x ok=%t", n, result, subtract, multiply, xor, ok)
+	}
+	body[0] = 0x02
+	if _, _, _, _, _, ok := arm64RailMachMulHighLoop(plan); ok {
+		t.Fatal("changed loop opcode was recognized as the complete mulhi idiom")
+	}
+}
+
+func TestARM64StructuredSIMDImmediateShiftMasksLaneCount(t *testing.T) {
+	var a arm64.Asm
+	if !emitARM64StructuredSIMDImmediateShift(&a, wasm.InstrI16x8ShrU, arm64.X2, arm64.X3, 20) || len(a.B) != 4 {
+		t.Fatalf("i16x8.shr_u immediate emitted %x", a.B)
+	}
+	a.B = a.B[:0]
+	if !emitARM64StructuredSIMDImmediateShift(&a, wasm.InstrI16x8Shl, arm64.X3, arm64.X3, 16) || len(a.B) != 0 {
+		t.Fatalf("masked-zero i16x8 shift emitted %x", a.B)
+	}
+	if emitARM64StructuredSIMDImmediateShift(&a, wasm.InstrI8x16Add, arm64.X2, arm64.X3, 1) {
+		t.Fatal("unsupported immediate SIMD shift was accepted")
+	}
+}
+
 func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {
 	leaf := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrI32Add}}}
-	if !arm64RailMachCandidate(leaf, true) {
+	if !arm64RailMachCandidate(leaf, true, nil) {
 		t.Fatal("scalar leaf in SIMD module was not admitted")
 	}
+	largeLeaf := &railssa.StackFunc{Instrs: make([]railssa.StackInstr, 193)}
+	for i := range largeLeaf.Instrs {
+		largeLeaf.Instrs[i].Kind = wasm.InstrI32Add
+	}
+	if !arm64RailMachCandidate(largeLeaf, true, nil) {
+		t.Fatal("large scalar leaf in SIMD module was rejected")
+	}
 	caller := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrCall}}}
-	if arm64RailMachCandidate(caller, true) {
+	if arm64RailMachCandidate(caller, true, nil) {
 		t.Fatal("mixed-module RailMach caller was admitted before its frame contract is shared")
 	}
-	if !arm64RailMachCandidate(caller, false) {
+	if !arm64RailMachCandidate(caller, false, nil) {
 		t.Fatal("scalar-only RailMach caller was rejected")
+	}
+	if !arm64RailMachCandidate(caller, true, []railmach.ABIContract{{Class: railmach.ABIPreparedLeaf}}) {
+		t.Fatal("bounded scalar caller with a prepared callee was rejected in a SIMD module")
+	}
+	trapCaller := &railssa.StackFunc{ImportedFuncs: 1, Instrs: []railssa.StackInstr{{Kind: wasm.InstrCall}, {Kind: wasm.InstrUnreachable}}}
+	if !arm64RailMachCandidate(trapCaller, true, nil) {
+		t.Fatal("cold imported trap call was rejected in a SIMD module")
 	}
 }
 
@@ -82,6 +216,16 @@ func TestARM64PinV128LocalsUsesHottestLocals(t *testing.T) {
 		want := arm64V128LocalRegisters[len(types)-1-i]
 		if registers[i] != want {
 			t.Fatalf("local %d register = %d, want %d", i, registers[i], want)
+		}
+	}
+}
+
+func TestARM64CallPinnedV128RegistersAvoidOperandStack(t *testing.T) {
+	for _, pinned := range arm64V128CallPinnedRegisters {
+		for _, stack := range arm64V128StackRegisters {
+			if pinned == stack {
+				t.Fatalf("call-pinned V%d overlaps the structured operand stack", pinned)
+			}
 		}
 	}
 }
@@ -311,6 +455,46 @@ func TestARM64StructuredBranchesDirectlyOnPinnedComparisons(t *testing.T) {
 	}
 }
 
+func TestARM64StructuredBranchesDirectlyOnStackComparisons(t *testing.T) {
+	body := []byte{
+		0x00,                                                             // no locals
+		0xfd, 0x0c, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1a, // v128.const 0; drop
+		0x20, 0x00, 0x29, 0x00, 0x00, // local.get 0; i64.load
+		0x42, 0x00, 0x52, // i64.const 0; i64.ne
+		0x04, 0x7f, 0x41, 0x01, // if (result i32); i32.const 1
+		0x05, 0x41, 0x02, 0x0b, 0x0b, // else; i32.const 2; end; end
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec(append([]byte{0x00}, wasmtest.ULEB(1)...))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	compiled, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := metrics.Functions[0]
+	if got.RailMachFinalized || got.NativeBytes > 108 {
+		t.Fatalf("structured stack-comparison branch metrics = %#v", got)
+	}
+	if bytes.Contains(compiled.Code, []byte{0xe9, 0x03, 0x04, 0x2a}) { // mov w9, w4
+		t.Fatal("pinned local address was copied to the operand stack before the load")
+	}
+}
+
 func TestARM64StructuredWritesSIMDBinaryDirectlyToTeeLocal(t *testing.T) {
 	source := []byte{
 		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
@@ -338,6 +522,35 @@ func TestARM64StructuredWritesSIMDBinaryDirectlyToTeeLocal(t *testing.T) {
 	got := metrics.Functions[0]
 	if got.NativeBytes > 100 {
 		t.Fatalf("direct SIMD tee emitted %d bytes, want at most 100", got.NativeBytes)
+	}
+}
+
+func TestARM64StructuredLoadsSIMDDirectlyIntoTeeLocal(t *testing.T) {
+	source := []byte{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+		0x01, 0x06, 0x01, 0x60, 0x01, 0x7f, 0x01, 0x7b,
+		0x03, 0x02, 0x01, 0x00,
+		0x05, 0x03, 0x01, 0x00, 0x01,
+		0x0a, 0x0e, 0x01, 0x0c, 0x01, 0x01, 0x7b,
+		0x20, 0x00, 0xfd, 0x00, 0x04, 0x00, 0x22, 0x01, 0x0b,
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if got := metrics.Functions[0].NativeBytes; got > 164 {
+		t.Fatalf("direct SIMD load tee emitted %d bytes, want at most 164", got)
 	}
 }
 
@@ -508,6 +721,29 @@ func TestARM64ConstantBulkMemory64IsCompactAndOverlapAware(t *testing.T) {
 	}
 }
 
+func TestARM64BulkMemoryCopyHasOverlapSafe32BytePath(t *testing.T) {
+	var emitted arm64.Asm
+	traps := 0
+	if err := emitARM64BulkMemoryRegisters(&emitted, wasm.InstrMemoryCopy, 17, false, 0, nil, func(_ int, offset uint32) {
+		if offset != 17 {
+			t.Fatalf("trap offset = %d", offset)
+		}
+		traps++
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if traps != 2 {
+		t.Fatalf("memory.copy trap branches = %d", traps)
+	}
+	var fixed arm64.Asm
+	fixed.LdrQ(arm64.X16, arm64.X1, 0)
+	fixed.LdrQ(arm64.X17, arm64.X1, 16)
+	fixed.StpQOffset(arm64.X16, arm64.X17, arm64.X0, 0)
+	if !bytes.Contains(emitted.B, fixed.B) {
+		t.Fatalf("memory.copy lacks load-before-store 32-byte path: %x", emitted.B)
+	}
+}
+
 func TestCompilerARM64SignalsBoundsElideScalarChecks(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
@@ -667,9 +903,41 @@ func TestARM64StructuredRegisterModesKeepShallowOperandStackInRegisters(t *testi
 	if !operandStack || full {
 		t.Fatalf("SIMD direct-call register modes = operand stack %t, full %t; want true, false", operandStack, full)
 	}
+	operandStack, _ = arm64StructuredRegisterModes(true, true, true, true, 0, 0, arm64SIMDOperandStackRegisters)
+	if !operandStack {
+		t.Fatal("result-typed loop unnecessarily disabled the register operand stack")
+	}
 	operandStack, _ = arm64StructuredRegisterModes(false, true, false, false, 0, 0, 1)
 	if operandStack {
 		t.Fatal("unmanaged call boundary admitted the scalar operand stack to registers")
+	}
+}
+
+func TestARM64StructuredOperandStackRegistersAdmitDeepCallFreeSIMD(t *testing.T) {
+	registers, deep := arm64StructuredOperandStackRegisters(true, false, uint32(len(arm64DeepSIMDOperandStackRegisters)))
+	if !deep || len(registers) != len(arm64DeepSIMDOperandStackRegisters) {
+		t.Fatalf("deep SIMD registers = %v, deep %t", registers, deep)
+	}
+	seen := map[arm64.Reg]bool{}
+	for _, reg := range registers {
+		if reg == arm64.X15 || seen[reg] {
+			t.Fatalf("unsafe or duplicate deep SIMD operand register %d in %v", reg, registers)
+		}
+		seen[reg] = true
+	}
+	for _, test := range []struct {
+		hasV128, hasCall bool
+		maxStack         uint32
+	}{
+		{hasV128: true, maxStack: arm64SIMDOperandStackRegisters},
+		{hasV128: true, maxStack: uint32(len(arm64DeepSIMDOperandStackRegisters) + 1)},
+		{hasV128: true, hasCall: true, maxStack: uint32(len(arm64DeepSIMDOperandStackRegisters))},
+		{maxStack: uint32(len(arm64DeepSIMDOperandStackRegisters))},
+	} {
+		registers, deep := arm64StructuredOperandStackRegisters(test.hasV128, test.hasCall, test.maxStack)
+		if deep || len(registers) != len(arm64OperandStackRegisters) {
+			t.Fatalf("fallback registers(%t, %t, %d) = %v, deep %t", test.hasV128, test.hasCall, test.maxStack, registers, deep)
+		}
 	}
 }
 
@@ -851,6 +1119,71 @@ func TestARM64RailMachRenamesFinalEdgeMultiply(t *testing.T) {
 	plan.Exit.EdgeMoves[0].Count++
 	if unsafe := arm64RailMachEdgeResultRename(plan, 0); unsafe.valid {
 		t.Fatalf("rename clobbered another edge source: %#v", unsafe)
+	}
+}
+
+func TestARM64RailMachPrefersCoupledFPRCopiesOverLaterIntegerCopy(t *testing.T) {
+	f := &railmach.Func{
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrF64Mul, Result: 3, OperandStart: 0, OperandCount: 2},
+			{Op: wasm.InstrF64Add, Result: 5, OperandStart: 2, OperandCount: 2},
+			{Op: wasm.InstrI32Add, Result: 7, OperandStart: 4, OperandCount: 2},
+		},
+		Operands: []railmach.Operand{
+			{Reg: 1, Bank: railmach.BankFPR}, {Reg: 2, Bank: railmach.BankFPR},
+			{Reg: 1, Bank: railmach.BankFPR}, {Reg: 2, Bank: railmach.BankFPR},
+			{Reg: 9, Bank: railmach.BankGPR}, {Reg: 10, Bank: railmach.BankGPR},
+		},
+		VRegs: []railmach.VRegData{
+			{},
+			{Type: railmach.TypeF64, Bank: railmach.BankFPR, Flags: railmach.VRegBlockParam},
+			{Type: railmach.TypeF64, Bank: railmach.BankFPR, Flags: railmach.VRegBlockParam},
+			{Def: 3, Type: railmach.TypeF64, Bank: railmach.BankFPR},
+			{Type: railmach.TypeF64, Bank: railmach.BankFPR, Flags: railmach.VRegBlockParam},
+			{Def: 9, Type: railmach.TypeF64, Bank: railmach.BankFPR},
+			{Type: railmach.TypeF64, Bank: railmach.BankFPR, Flags: railmach.VRegBlockParam},
+			{Def: 15, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegBlockParam},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegBlockParam},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegInitial},
+		},
+		Blocks: []railmach.Block{{InstCount: 3}, {}},
+		Edges:  []railmach.Edge{{From: 0, To: 1}},
+		Transfers: []railmach.EdgeTransfer{
+			{Src: 3, Dst: 4, Edge: 0}, {Src: 5, Dst: 6, Edge: 0}, {Src: 7, Dst: 8, Edge: 0},
+		},
+	}
+	locations := []railmach.Location{
+		{},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 9},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 10},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 6},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 5},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 8},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankFPR, Index: 7},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 2},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 1},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 3},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 4},
+	}
+	plan := &nativeBackendPlan{
+		Machine: f,
+		Schedule: &railmach.Schedule{
+			Order: []uint32{0, 1, 2}, BlockRanges: []railmach.MoveRange{{Count: 3}, {Start: 3}}, BlockOf: []railssa.BlockID{0, 0, 0},
+		},
+		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: locations, InstructionPositions: []uint32{0, 1, 2}}},
+		Exit: &railmach.SSAExit{
+			Moves: []railmach.PhysicalMove{
+				{Src: locations[3], Dst: locations[4], Reg: 3, Edge: 0, Kind: railmach.MoveCopy, Placement: railmach.PlacePredecessorEnd, Bank: railmach.BankFPR},
+				{Src: locations[5], Dst: locations[6], Reg: 5, Edge: 0, Kind: railmach.MoveCopy, Placement: railmach.PlacePredecessorEnd, Bank: railmach.BankFPR},
+				{Src: locations[7], Dst: locations[8], Reg: 7, Edge: 0, Kind: railmach.MoveCopy, Placement: railmach.PlacePredecessorEnd, Bank: railmach.BankGPR},
+			},
+			EdgeMoves: []railmach.MoveRange{{Count: 3}},
+		},
+	}
+	rename := arm64RailMachEdgeResultRename(plan, 0)
+	if !rename.valid || rename.instruction != 1 || rename.destination != locations[6] {
+		t.Fatalf("FPR recurrence rename = %#v, want instruction 1 to %#v", rename, locations[6])
 	}
 }
 
@@ -1039,7 +1372,7 @@ func TestARM64RailMachDefersUnreachableTrapsPastHotReturn(t *testing.T) {
 	if firstTrap < 4 || !bytes.Equal(codeBytes[firstTrap-4:firstTrap], []byte{0xc0, 0x03, 0x5f, 0xd6}) {
 		t.Fatalf("first unreachable trap offset = %d; hot return does not precede cold traps", firstTrap)
 	}
-	if metrics.PostRARewrites != 1 || len(codeBytes) > 208 {
+	if metrics.PostRARewrites != 1 || len(codeBytes) > 192 {
 		t.Fatalf("Fibonacci recurrence rewrite = %d, code bytes = %d", metrics.PostRARewrites, len(codeBytes))
 	}
 }

@@ -211,7 +211,7 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 			return nil, fmt.Errorf("railmach: value %d: %w", id, err)
 		}
 		data := VRegData{Type: typ, Bank: bank}
-		if simplified != nil && machineAliasSafe(flow, simplified.Aliases, railssa.FlowValueID(id)) {
+		if simplified != nil && machineAliasSafe(cfg, flow, simplified.Aliases, railssa.FlowValueID(id)) {
 			data.Flags |= VRegElided
 		}
 		switch value.Kind {
@@ -241,7 +241,7 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 			for operandIndex, value := range args {
 				if simplified != nil {
 					canonical := resolveMachineAlias(simplified.Aliases, value)
-					if machineAliasSafe(flow, simplified.Aliases, value) {
+					if machineAliasSafe(cfg, flow, simplified.Aliases, value) {
 						value = canonical
 					}
 				}
@@ -268,13 +268,13 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 			return nil, fmt.Errorf("railmach: invalid edge transfer %#v", transfer)
 		}
 		edge := cfg.Edges[transfer.Edge]
-		if simplified != nil && machineAliasSafe(flow, simplified.Aliases, transfer.Param) {
+		if simplified != nil && machineAliasSafe(cfg, flow, simplified.Aliases, transfer.Param) {
 			continue
 		}
 		source := transfer.Argument
 		if simplified != nil {
 			canonical := resolveMachineAlias(simplified.Aliases, source)
-			if machineAliasSafe(flow, simplified.Aliases, source) {
+			if machineAliasSafe(cfg, flow, simplified.Aliases, source) {
 				source = canonical
 			}
 		}
@@ -287,7 +287,7 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 	for _, result := range flow.BlockEntry(exit) {
 		if simplified != nil {
 			canonical := resolveMachineAlias(simplified.Aliases, result)
-			if machineAliasSafe(flow, simplified.Aliases, result) {
+			if machineAliasSafe(cfg, flow, simplified.Aliases, result) {
 				result = canonical
 			}
 		}
@@ -412,10 +412,11 @@ func resolveMachineAlias(aliases []railssa.FlowValueID, value railssa.FlowValueI
 
 // machineAliasSafe admits aliases whose defining value is directly available
 // at every use. Sparse simplification proves trivial block parameters have one
-// canonical non-self incoming value, so their edge copies and machine vregs
-// can be removed. Instruction aliases remain limited to one basic block until
-// RailMach models cross-block dominating definitions independently.
-func machineAliasSafe(flow *railssa.ValueFlow, aliases []railssa.FlowValueID, value railssa.FlowValueID) bool {
+// canonical non-self incoming value. Instruction aliases additionally require
+// the canonical definition's block to dominate the duplicate through an exact
+// unique-predecessor chain, matching SparseSimplify's independently verified
+// cross-block GVN proof.
+func machineAliasSafe(cfg *railssa.CFG, flow *railssa.ValueFlow, aliases []railssa.FlowValueID, value railssa.FlowValueID) bool {
 	if value == 0 || int(value) >= len(flow.Values) || int(value) >= len(aliases) {
 		return false
 	}
@@ -427,10 +428,33 @@ func machineAliasSafe(flow *railssa.ValueFlow, aliases []railssa.FlowValueID, va
 	case railssa.FlowValueBlockParam:
 		return true
 	case railssa.FlowValueInstruction:
-		return flow.Values[canonical].Kind == railssa.FlowValueInstruction && flow.Values[value].Block == flow.Values[canonical].Block
+		return flow.Values[canonical].Kind == railssa.FlowValueInstruction && machineBlockDominates(cfg, flow.Values[canonical].Block, flow.Values[value].Block)
 	default:
 		return false
 	}
+}
+
+func machineBlockDominates(cfg *railssa.CFG, candidate, use railssa.BlockID) bool {
+	if cfg == nil || int(candidate) >= len(cfg.Blocks) || int(use) >= len(cfg.Blocks) {
+		return false
+	}
+	if candidate == use {
+		return true
+	}
+	for steps := 0; steps < len(cfg.Blocks); steps++ {
+		block := cfg.Blocks[use]
+		if block.PredCount != 1 {
+			return false
+		}
+		use = cfg.Preds[block.PredStart]
+		if use == candidate {
+			return true
+		}
+		if int(use) >= len(cfg.Blocks) {
+			return false
+		}
+	}
+	return false
 }
 
 func applyTargetConstraint(target Target, instruction *Inst, operand *Operand, index, count int) {

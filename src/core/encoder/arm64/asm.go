@@ -438,6 +438,12 @@ func (a *Asm) StpOffset32(rt, rt2, rn Reg, imm int32) {
 	a.word(0x29000000 | uint32((imm/4)&0x7F)<<15 | r(rt2)<<10 | r(rn)<<5 | r(rt))
 }
 
+// StpQOffset stores two 128-bit vector registers at [rn, #imm].
+// imm is a BYTE offset, a signed multiple of 16 in [-1024, 1008].
+func (a *Asm) StpQOffset(rt, rt2, rn Reg, imm int32) {
+	a.word(0xAD000000 | uint32((imm/16)&0x7F)<<15 | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
 // LdpOffset loads rt,rt2 from [rn, #imm] without modifying rn.
 func (a *Asm) LdpOffset(rt, rt2, rn Reg, imm int32) {
 	a.word(0xA9400000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
