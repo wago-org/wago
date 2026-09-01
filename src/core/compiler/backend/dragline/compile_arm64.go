@@ -9888,7 +9888,11 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				if sf.HasV128 {
 					flushVectorStack()
 				}
-				for index := 0; index < len(stackTypes); index++ {
+				// Direct private calls consume arguments from disjoint parameter
+				// registers, so only their live prefix survives. Wrapper calls keep
+				// the complete canonical argument vector for the callee to read.
+				spill := arm64StructuredCallSpillLimit(instr.Kind, instr.U32(), sf.ImportedFuncs, len(stackTypes), stackPrefix)
+				for index := 0; index < spill; index++ {
 					if stackTypes[index] == wasm.V128 {
 						continue
 					}
@@ -10973,6 +10977,13 @@ func arm64StructuredRegisterModes(hasV128, hasGeneralCall, pinLocalsAcrossCalls,
 	operandStack = (!hasGeneralCall || pinLocalsAcrossCalls) && maxStack <= stackRegisters
 	full = operandStack && !hasGeneralCall && !hasV128 && gpLocals <= len(arm64StackLocalRegisters) && fpLocals <= 8
 	return
+}
+
+func arm64StructuredCallSpillLimit(kind wasm.InstrKind, target, imported uint32, depth, prefix int) int {
+	if kind == wasm.InstrCall && target >= imported {
+		return prefix
+	}
+	return depth
 }
 
 func arm64StructuredOperandStackRegisters(hasV128, hasGeneralCall bool, maxStack uint32) ([]arm64.Reg, bool) {
