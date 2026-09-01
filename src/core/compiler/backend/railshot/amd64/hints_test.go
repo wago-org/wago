@@ -203,6 +203,21 @@ func TestScanBodyBytesStackArenaHintCountsAtomics(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesDiscountsSWARLookaheadCandidates(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, 0x42, 0x00, 0x83, 0x22, 0x01, 0x1a, // i64.and; local.tee
+		0x20, 0x00, 0x42, 0x20, 0x88, 0x22, 0x01, 0x1a, // i64.shr_u; local.tee
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 2, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.stackArenaDiscount != 44 {
+		t.Fatalf("SWAR lookahead discount = %d, want 44", h.stackArenaDiscount)
+	}
+}
+
 func TestScanBodyBytesDetectsStackSinkFusion(t *testing.T) {
 	body := []byte{
 		0x20, 0x00, // local.get 0
@@ -257,8 +272,8 @@ func TestScanBodyBytesStackArenaHintSkipsSIMDImmediateBytes(t *testing.T) {
 		t.Fatalf("scanFuncBody: %v", err)
 	}
 	legacy := stackArenaCapForBody(len(m.Code[0].BodyBytes), nLocals)
-	hinted := stackArenaCapForHints(len(m.Code[0].BodyBytes), nLocals, h.stackArenaNodes)
-	if h.stackArenaNodes == 0 || h.stackArenaNodes >= len(m.Code[0].BodyBytes)/2 {
+	hinted := stackArenaCapForHints(len(m.Code[0].BodyBytes), nLocals, int(h.stackArenaNodes))
+	if h.stackArenaNodes == 0 || int(h.stackArenaNodes) >= len(m.Code[0].BodyBytes)/2 {
 		t.Fatalf("stack arena node hint = %d, body bytes = %d", h.stackArenaNodes, len(m.Code[0].BodyBytes))
 	}
 	if hinted >= legacy {

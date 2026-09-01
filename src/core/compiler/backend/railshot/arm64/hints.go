@@ -93,7 +93,24 @@ type funcHints struct {
 	// arena nodes for long immediates (notably v128.const payload bytes) while the
 	// stack's heap fallback still preserves pointer stability if the estimate is
 	// low for unusual control flow.
-	stackArenaNodes int
+	stackArenaNodes    uint32
+	stackArenaDiscount uint16 // possible scanned nodes removed by bounded lookahead peepholes
+}
+
+func (h *funcHints) addStackArenaNodes(n uint32) {
+	if ^uint32(0)-h.stackArenaNodes < n {
+		h.stackArenaNodes = ^uint32(0)
+	} else {
+		h.stackArenaNodes += n
+	}
+}
+
+func (h *funcHints) addStackArenaDiscount(n uint16) {
+	if ^uint16(0)-h.stackArenaDiscount < n {
+		h.stackArenaDiscount = ^uint16(0)
+	} else {
+		h.stackArenaDiscount += n
+	}
 }
 
 func newFuncHints(nLocals, nGlobals int) funcHints {
@@ -253,6 +270,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			in := &instrs[i]
 			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
 				h.hasStackSinkFusion = true
+			}
+			if in.Kind == wasm.InstrLocalTee && i != 0 {
+				h.addStackArenaDiscount(stackLookaheadDiscount(instrs[i-1].Kind))
 			}
 			if i+1 < len(instrs) && stackSinkFusionCandidate(in.Kind, instrs[i+1].Kind) {
 				h.hasStackSinkFusion = true
@@ -552,6 +572,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
 	}
 	subHasCall := false
+	var prevOp byte
 	for {
 		op, err := s.r.byte()
 		if err != nil {
@@ -566,17 +587,17 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		}
 		switch op {
 		case 0x0b: // end
-			s.h.stackArenaNodes += 2 // flush/rebuild allowance for the closing edge.
+			s.h.addStackArenaNodes(2) // flush/rebuild allowance for the closing edge.
 			return subHasCall, op, nil
 		case 0x05: // else
-			s.h.stackArenaNodes += 2 // then-edge flush plus else-entry rebuild.
+			s.h.addStackArenaNodes(2) // then-edge flush plus else-entry rebuild.
 			if stopAtElse {
 				return subHasCall, op, nil
 			}
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
 			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
-			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
+			s.h.addStackArenaNodes(2) // entry flush/rebuild allowance.
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
@@ -663,6 +684,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
+			if op == 0x22 {
+				s.h.addStackArenaDiscount(stackLookaheadDiscountOpcode(prevOp))
+			}
 			idx := imm.Index
 			if int(idx) < s.nLocals {
 				if s.entryPrefix && idx < 64 {
@@ -731,7 +755,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
 			s.h.moduleEH = true
-			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
+			s.h.addStackArenaNodes(2) // entry flush/rebuild allowance.
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
@@ -772,6 +796,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.usesBulkMem = true
 			}
 		}
+		prevOp = op
 	}
 }
 
@@ -836,7 +861,7 @@ func isTableMutation(kind wasm.InstrKind) bool {
 
 func (s *byteBodyScanner) noteStackArenaOp(op byte, imm *wasm.InstructionImmediate) {
 	if stackArenaOpAllocates(op, imm) {
-		s.h.stackArenaNodes++
+		s.h.addStackArenaNodes(1)
 	}
 	if op == 0xfd {
 		s.h.hasStackSinkFusion = true
@@ -865,6 +890,28 @@ func stackSinkFusionCandidate(kind, next wasm.InstrKind) bool {
 
 func stackSinkFusionOpcode(op byte) bool {
 	return op == 0x1b || op == 0x1c || op >= 0x92 && op <= 0x97 || op >= 0xa0 && op <= 0xa5
+}
+
+func stackLookaheadDiscount(kind wasm.InstrKind) uint16 {
+	switch kind {
+	case wasm.InstrI64And:
+		return 12 // two skipped widen stages, six node-producing instructions each
+	case wasm.InstrI64ShrU:
+		return 32 // bounded multiply-high tail expansion
+	default:
+		return 0
+	}
+}
+
+func stackLookaheadDiscountOpcode(op byte) uint16 {
+	switch op {
+	case 0x83: // i64.and
+		return 12
+	case 0x88: // i64.shr_u
+		return 32
+	default:
+		return 0
+	}
 }
 
 func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {

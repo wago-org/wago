@@ -106,6 +106,21 @@ func TestScanBodyBytesStackArenaHintCountsAtomicsArm64(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesDiscountsSWARLookaheadCandidatesArm64(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, 0x42, 0x00, 0x83, 0x22, 0x01, 0x1a, // i64.and; local.tee
+		0x20, 0x00, 0x42, 0x20, 0x88, 0x22, 0x01, 0x1a, // i64.shr_u; local.tee
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 2, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.stackArenaDiscount != 44 {
+		t.Fatalf("SWAR lookahead discount = %d, want 44", h.stackArenaDiscount)
+	}
+}
+
 func TestScanBodyBytesDetectsSIMDFusionRiskArm64(t *testing.T) {
 	body := []byte{
 		0xfd, 0x0b, 0x04, 0x00, // v128.store align=16 offset=0

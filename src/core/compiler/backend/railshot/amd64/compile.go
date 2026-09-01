@@ -724,7 +724,7 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 		if hints[i].hasStackSinkFusion {
 			return defaultStackArenaCap
 		}
-		nodes := hints[i].stackArenaNodes
+		nodes := int(hints[i].stackArenaNodes)
 		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, nodes)
 		if fnCap > maxInitialStackArenaCap || fnCap < nodes {
 			return defaultStackArenaCap
@@ -732,7 +732,11 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 		if fnCap > capHint {
 			capHint = fnCap
 		}
-		if retained := legacyStackArenaRetained(nodes); retained > legacyRetained {
+		effectiveNodes := nodes - int(hints[i].stackArenaDiscount)
+		if effectiveNodes < 1 {
+			effectiveNodes = 1
+		}
+		if retained := legacyStackArenaRetained(effectiveNodes); retained > legacyRetained {
 			legacyRetained = retained
 		}
 	}
