@@ -854,7 +854,15 @@ func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {
 	case 0xfc:
 		return imm.Subopcode <= 7 || imm.Subopcode == 15 || imm.Subopcode == 16 // trunc_sat/table.grow/table.size push.
 	case 0xfe:
-		return true // atomics may push a load, wait/notify, RMW, or cmpxchg result; stores/fence are safe overestimates.
+		switch imm.Kind {
+		case wasm.InstrAtomicFence,
+			wasm.InstrI32AtomicStore, wasm.InstrI64AtomicStore,
+			wasm.InstrI32AtomicStore8, wasm.InstrI32AtomicStore16,
+			wasm.InstrI64AtomicStore8, wasm.InstrI64AtomicStore16, wasm.InstrI64AtomicStore32:
+			return false
+		default:
+			return true // loads, wait/notify, RMW, and cmpxchg push one result.
+		}
 	case 0xfb:
 		return true // GC/reference operations push at most one native result; result-free forms are safe overestimates.
 	case 0xfd:

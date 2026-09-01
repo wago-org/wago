@@ -38,9 +38,9 @@ chunks only if it receives a function that needs them.
 Modules that declare any multi-value function type retain the legacy first
 chunk. This covers direct, indirect, and reference calls as well as indexed block
 signatures without a call-site scan: one opcode can otherwise allocate one node
-per result, far beyond opcode-count slack. Atomic opcodes are counted
-conservatively as one node each; result-free stores and fences may overestimate,
-while loads, waits, notifications, RMWs, and compare-exchanges cover their result.
+per result, far beyond opcode-count slack. Result-producing atomic loads, waits,
+notifications, RMWs, and compare-exchanges count one node; stores and fences are
+excluded.
 Core reference transforms and `0xfb` GC/reference operations are also counted as
 one node; result-free branch/store forms are safe overestimates.
 

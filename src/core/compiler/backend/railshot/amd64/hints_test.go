@@ -177,6 +177,11 @@ func TestScanBodyBytesStackArenaHintSkipsSIMDStores(t *testing.T) {
 }
 
 func TestScanBodyBytesStackArenaHintCountsAtomics(t *testing.T) {
+	for _, kind := range []wasm.InstrKind{wasm.InstrAtomicFence, wasm.InstrI32AtomicStore, wasm.InstrI64AtomicStore32} {
+		if stackArenaOpAllocates(0xfe, &wasm.InstructionImmediate{Kind: kind}) {
+			t.Fatalf("result-free atomic %v counted as arena allocation", kind)
+		}
+	}
 	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
