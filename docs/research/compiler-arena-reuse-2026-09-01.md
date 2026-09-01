@@ -46,10 +46,11 @@ one node; result-free branch/store forms are safe overestimates.
 
 Modules with active inline targets also retain the legacy first chunk. A caller's
 hint counts the call opcode but not each node-producing instruction spliced from
-the callee at every call site. Modules with custom instruction recipes or GC
-struct/array helper lowering use the same fallback because one scanned opcode may
-expand into extension-owned or helper-argument nodes not present in the Wasm
-scan. Falling back avoids a new scan or an unbounded expansion estimate. The
+the callee at every call site. Modules with custom instruction recipes, typed
+function-subtyping helpers, or GC struct/array helper lowering use the same
+fallback because one scanned opcode may expand into extension-owned or
+helper-argument nodes not present in the Wasm scan. Falling back avoids a new
+scan or an unbounded expansion estimate. The
 measured json-as and utf-as modules have none of these expansions, so their
 results below are unchanged.
 

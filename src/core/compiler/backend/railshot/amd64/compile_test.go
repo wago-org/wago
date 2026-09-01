@@ -84,6 +84,15 @@ func TestInlineTargetsKeepLegacyStackArenaCap(t *testing.T) {
 	}
 }
 
+func TestGCTypeSubtypingUsesExpandedStackLowering(t *testing.T) {
+	if expandedStackLowering(CompileOptions{}) {
+		t.Fatal("empty options reported expanded stack lowering")
+	}
+	if !expandedStackLowering(CompileOptions{GCTypeSubtypingRefTest: true}) {
+		t.Fatal("GC subtype helper did not report expanded stack lowering")
+	}
+}
+
 func TestExpandedLoweringKeepsLegacyStackArenaCap(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 512)}}}
 	hints := []funcHints{{stackArenaNodes: 256}}

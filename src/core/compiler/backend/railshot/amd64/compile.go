@@ -789,6 +789,10 @@ func workerStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inline
 	return capHint
 }
 
+func expandedStackLowering(opts CompileOptions) bool {
+	return len(opts.CustomInstructions) != 0 || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers
+}
+
 const maxHintedControlFrames = 64
 
 // moduleControlFrameCap sizes the reusable control stack from the same one-pass
@@ -1309,7 +1313,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if workers <= 1 {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
-		expandedLowering := len(opts.CustomInstructions) != 0 || opts.GCStructHelpers || opts.GCArrayHelpers
+		expandedLowering := expandedStackLowering(opts)
 		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.policy = policy
 		sc.classifier = classifier
@@ -1508,7 +1512,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if symbolicLocalSlotPackingPolicy(policy) {
 		arenaCap += amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
 	}
-	expandedLowering := len(opts.CustomInstructions) != 0 || opts.GCStructHelpers || opts.GCArrayHelpers
+	expandedLowering := expandedStackLowering(opts)
 	stackCap := workerStackArenaCap(m, allHints, inlineTargets, expandedLowering)
 	ctrlCap := moduleControlFrameCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)

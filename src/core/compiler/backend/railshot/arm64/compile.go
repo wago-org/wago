@@ -642,6 +642,10 @@ func workerStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inline
 	return capHint
 }
 
+func expandedStackLowering(opts CompileOptions) bool {
+	return len(opts.CustomInstructions) != 0 || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers
+}
+
 func (sc *scratch) reset() {
 	sc.stack.reset()
 	sc.asm.B = sc.asm.B[:0]
@@ -1118,7 +1122,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if workers <= 1 {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
-		expandedLowering := len(opts.CustomInstructions) != 0 || opts.GCStructHelpers || opts.GCArrayHelpers
+		expandedLowering := expandedStackLowering(opts)
 		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.classifier = classifier
 		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
@@ -1255,7 +1259,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	states := make([]workerState, workers)
 	arenaCap := (codeCap + workers - 1) / workers
-	expandedLowering := len(opts.CustomInstructions) != 0 || opts.GCStructHelpers || opts.GCArrayHelpers
+	expandedLowering := expandedStackLowering(opts)
 	stackCap := workerStackArenaCap(m, allHints, inlineTargets, expandedLowering)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
