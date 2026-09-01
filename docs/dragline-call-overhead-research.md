@@ -58,21 +58,12 @@ linear memory, proves the selected export carries the leaf metadata, and checks
 the direct result. This does not admit memory-touching, calling, reference,
 host-reentrant, or otherwise unproved functions to the leaf transition.
 
-The same distinction now applies to compiler-proven context-free loops. These
-loops cannot use memory, globals, tables, calls, references, or ordinary Wasm
-trap paths, but they may run long enough that Linux `Instance.Close` must still
-interrupt them. ARM64 therefore routes eligible integer signatures through the
-existing Go-stack trap entry rather than the foreign guest stack. That entry
-publishes the active SP and return link consumed by the Linux asynchronous
-interrupt landing pad and retains the post-call trap check.
-
-On `fib_iter.fib(30)`, 21 alternating one-second pairs reduced the median from
-21.332 ns to 15.653 ns, a **0.736x** latency ratio, with all 21 pairs improving.
-The paired geometric-mean ratio was 0.735x. A separate 15-pair comparison
-measured 15.552 ns for Dragline and 15.680 ns for Cranelift, a **0.994x** paired
-median ratio with 14/15 Dragline wins. A three-round, 36-export non-ISA screen
-improved the aggregate geometric mean to 0.996x of the prior compiler; only the
-eligible context-free integer-loop path is semantically changed.
+An experiment also admitted generic compiler-proven context-free loops to this
+Go-stack entry. It reduced `fib_iter.fib(30)` from 21.332 ns to 15.653 ns, but
+the Linux ARM64 guard-page gate proved that `Instance.Close` could fail to
+interrupt such a loop and then unmap code beneath it. The admission was removed;
+context-free loops retain the interruptible foreign-stack wrapper until their
+complete asynchronous-entry contract is proved on native Linux ARM64.
 
 The trap entry originally called a small assembly helper, which called the
 guest and then branched back to the entry epilogue. The helper's link register
@@ -81,10 +72,9 @@ and interrupt recovery. Tail-branching from the helper to the call-free guest
 therefore removes the extra return branch while preserving both recovery paths.
 Across 21 alternating 750 ms pairs, `dispatch.apply` fell from 14.825 ns to
 4.107 ns (**0.278x**, 21/21 wins). Against Cranelift it measured 4.125 ns versus
-12.539 ns (**0.327x**, 15/15 wins). `fib_iter.fib(30)` measured 5.322 ns versus
-15.858 ns for Cranelift (**0.335x**, 15/15 wins). A complete three-round,
-36-export non-ISA A/B screen measured a **0.933x** geometric mean; generated
-guest code is unchanged.
+12.539 ns (**0.327x**, 15/15 wins). After removing the unsafe generic-loop
+admission, a complete three-round, 36-export non-ISA A/B screen measured a
+**0.964x** geometric mean; generated guest code is unchanged.
 
 ## What Wago pays today
 

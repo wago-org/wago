@@ -84,27 +84,23 @@ paths are explicit. A three-round 150 ms, 36-export non-ISA signal-bounds A/B
 screen was aggregate-neutral at 0.9973x with 22/36 apparent wins; unchanged
 exports in that short screen quantify its noise floor rather than code changes.
 
-## Retained ARM64 result: direct trap-aware context-free loops
+## Rejected ARM64 experiment: direct context-free loops
 
 The generated Fibonacci body was already much shorter than Cranelift's scalar
-loop, but its prepared host entry still switched to the foreign guest stack.
-Context-free loops now use ARM64's existing direct trap-aware Go-stack entry for
-eligible integer signatures. Unlike the trap-free leaf entry, this path
-publishes the active stack pointer and return link, so Linux asynchronous
-`Instance.Close` interruption retains its landing-pad contract. Memory,
-globals, tables, calls, references, and ordinary trapping operations remain
-excluded by the existing context-free proof.
+loop, but its prepared host entry still switched to the foreign guest stack. An
+experiment routed compiler-proven context-free loops through ARM64's direct
+trap-aware Go-stack entry. Memory, globals, tables, calls, references, and
+ordinary trapping operations remained excluded by the context-free proof.
 
 | Measurement | Before | After / peer | Ratio |
 | --- | ---: | ---: | ---: |
 | Dragline A/B, 21 x 1 s | 21.332 ns | 15.653 ns | **0.736x** paired median |
 | Dragline vs Cranelift, 15 x 500 ms | 15.680 ns Cranelift | 15.552 ns Dragline | **0.994x** paired median |
 
-All 21 long A/B pairs improved, with a 0.735x paired geometric mean. Dragline
-won 14/15 Cranelift pairs. A three-round 150 ms, 36-export non-ISA signal-bounds
-screen improved the aggregate geometric mean to 0.996x of the previous
-compiler. The native function remains 248 bytes; this gain is entirely at the
-host-to-Wasm boundary.
+All 21 long A/B pairs improved, but the native Linux ARM64 guard-page gate then
+proved that `Instance.Close` could fail to interrupt the admitted loop and
+subsequently unmap code while it was still executing. The admission was rolled
+back. These measurements are diagnostic only and are not current performance.
 
 ## Retained ARM64 result: tail-enter trap-aware guests
 
@@ -121,13 +117,12 @@ do not change.
 | --- | ---: | ---: | ---: |
 | `dispatch.apply` A/B, 21 x 750 ms | 14.825 ns | 4.107 ns | **0.278x** paired median |
 | `dispatch.apply` vs Cranelift, 15 x 500 ms | 12.539 ns | 4.125 ns | **0.327x** paired median |
-| `fib_iter.fib(30)` vs Cranelift, 15 x 500 ms | 15.858 ns | 5.322 ns | **0.335x** paired median |
 
-Every focused pair improved. A three-round 150 ms A/B screen over all 36
-non-ISA runnable exports measured a 0.933x geometric mean, with `dispatch` at
-0.285x and `fib_iter` at 0.327x of the immediately preceding binary. The full
-Go suite, guard-page package, corpus differential, explicit trap/recovery test,
-and Linux ARM64 interrupt-test cross-build pass.
+Every focused pair improved. With the unsafe generic-loop admission removed, a
+three-round 150 ms A/B screen over all 36 non-ISA runnable exports measured a
+0.964x geometric mean, with `dispatch` at 0.287x of the immediately preceding
+compiler and `fib_iter` neutral at 0.998x. The full Go suite, guard-page package,
+corpus differential, and explicit trap/recovery test pass.
 
 ## Prioritized work
 
