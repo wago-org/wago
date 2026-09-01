@@ -719,16 +719,41 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 		return defaultStackArenaCap
 	}
 	capHint := minStackArenaCap
+	legacyRetained := defaultStackArenaCap
 	for i := range hints {
-		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, hints[i].stackArenaNodes)
-		if fnCap > maxInitialStackArenaCap {
+		nodes := hints[i].stackArenaNodes
+		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, nodes)
+		if fnCap > maxInitialStackArenaCap || fnCap < nodes {
 			return defaultStackArenaCap
 		}
 		if fnCap > capHint {
 			capHint = fnCap
 		}
+		if retained := legacyStackArenaRetained(nodes); retained > legacyRetained {
+			legacyRetained = retained
+		}
+	}
+	if capHint >= legacyRetained {
+		return defaultStackArenaCap
 	}
 	return capHint
+}
+
+// legacyStackArenaRetained returns the total node capacity held by the legacy
+// 256/512/... chunk sequence for a raw node hint. It stops once the total is
+// already above any admissible direct first chunk.
+func legacyStackArenaRetained(nodes int) int {
+	total, next := defaultStackArenaCap, defaultStackArenaCap*2
+	for total < nodes && total <= maxInitialStackArenaCap {
+		total += next
+		if next < maxStackChunkCap {
+			next *= 2
+			if next > maxStackChunkCap {
+				next = maxStackChunkCap
+			}
+		}
+	}
+	return total
 }
 
 func moduleHasMultiValueResults(m *wasm.Module) bool {

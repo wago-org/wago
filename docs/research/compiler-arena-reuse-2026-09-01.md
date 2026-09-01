@@ -24,9 +24,12 @@ make such functions grow a second retained chunk.
 ## Retained change
 
 Serial compilation uses the existing bounded estimate when it is at most 2,048
-nodes. A larger estimate falls back to the legacy 256-node first chunk and stable
-geometric growth. This avoids both unbounded speculative retention and the
-measured json-as over-allocation caused by clamping a larger hint to 2,048.
+nodes and smaller than the total capacity the legacy 256/512/... growth path
+would retain for the raw hint. A larger estimate, a hint capped below its raw
+node count, or an estimate that does not reduce retained storage falls back to
+the legacy first chunk. This avoids unbounded speculative retention, geometric
+boundary over-reservation, and the measured json-as over-allocation caused by
+clamping a larger hint to 2,048.
 
 Parallel workers retain the legacy 256-node ceiling. This avoids multiplying one
 large function's initial arena by every worker. A worker allocates larger stable

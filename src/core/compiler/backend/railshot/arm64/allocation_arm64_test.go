@@ -62,6 +62,17 @@ func TestModuleStackArenaCapUsesBoundedLargeHintArm64(t *testing.T) {
 	}
 }
 
+func TestModuleStackArenaCapFallsBackWhenHintExceedsLegacyRetentionArm64(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 1536)}}}
+	hints := []funcHints{{stackArenaNodes: 768}}
+	if hinted := stackArenaCapForHints(len(m.Code[0].BodyBytes), 0, hints[0].stackArenaNodes); hinted != 1153 {
+		t.Fatalf("test hinted cap = %d, want 1153", hinted)
+	}
+	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
+		t.Fatalf("over-reserved cap = %d, want legacy %d", got, defaultStackArenaCap)
+	}
+}
+
 func TestWorkerStackArenaCapDoesNotMultiplyLargeHintArm64(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 4096)}}}
 	hints := []funcHints{{stackArenaNodes: 4096}}
