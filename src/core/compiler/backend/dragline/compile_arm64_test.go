@@ -5,6 +5,7 @@ package dragline
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/binary"
 	"math"
 	"testing"
 
@@ -1346,6 +1347,57 @@ func TestARM64RailMachReusesDominatingMemoryCheckInBlock(t *testing.T) {
 	}
 	if len(metadata.Traps) != 1 || metadata.Traps[0].Code != 3 {
 		t.Fatalf("same-address memory traps = %#v, want one dominating bounds trap", metadata.Traps)
+	}
+}
+
+func TestARM64RailMachCombinesAdjacentLoadBoundsChecks(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x28, 0x02, 0x00, // i32.load address 0
+			0x20, 0x01, 0x28, 0x02, 0x00, // i32.load address 1
+			0x6a, 0x0b, // i32.add; end
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata functionEmissionMetadata
+	code, _, ok, err := emitARM64RailMach(fn, plan, false, nil, nil, nil, &metadata)
+	if err != nil || !ok {
+		t.Fatalf("RailMach finalization = ok %t, err %v", ok, err)
+	}
+	conditionalCompares := 0
+	for offset := 0; offset+4 <= len(code); offset += 4 {
+		if binary.LittleEndian.Uint32(code[offset:])&0xffe00c10 == 0x7a400000 {
+			conditionalCompares++
+		}
+	}
+	if conditionalCompares != 1 {
+		t.Fatalf("conditional bounds compares = %d, want 1", conditionalCompares)
+	}
+	if len(metadata.Traps) != 1 || metadata.Traps[0].Code != 3 {
+		t.Fatalf("adjacent-load memory traps = %#v, want one combined bounds trap", metadata.Traps)
 	}
 }
 

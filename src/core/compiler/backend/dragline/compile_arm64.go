@@ -1986,7 +1986,9 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				return nil, 0, true, err
 			}
 		}
-		for _, instructionID := range plan.Schedule.Order[blockRange.Start : blockRange.Start+blockRange.Count] {
+		blockOrder := plan.Schedule.Order[blockRange.Start : blockRange.Start+blockRange.Count]
+		combinedBoundsSecond := ^uint32(0)
+		for scheduleIndex, instructionID := range blockOrder {
 			currentForwardedSpill = 0
 			instructionResult := plan.Machine.Insts[instructionID].Result
 			swarSkipped := swarRunN && (instructionID >= 5 && instructionID < 21 || instructionID >= 27 && instructionID < 37) || swarParse4 && instructionID >= 2 && instructionID < 12
@@ -3577,8 +3579,50 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				if chainSecond {
 					boundsAddress = arm64.X15
 				}
+				preIndex := len(plan.PostRAPreIndex) != 0 && plan.PostRAPreIndex[instructionID]
 				end := uint64(uint32(instruction.Aux)) + uint64(size)
-				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
+				combinedBounds := combinedBoundsSecond == instructionID
+				if combinedBounds {
+					combinedBoundsSecond = ^uint32(0)
+				}
+				// Two adjacent loads have no intervening Wasm side effect. With the
+				// common adjusted memory limit cached in X8, CCMP preserves the first
+				// failure and evaluates the second address only after the first is in
+				// bounds. One cold branch therefore covers both loads without moving a
+				// check across a store, call, or trapping instruction.
+				if !combinedBounds && cacheMemoryLimit && !store && encodedSecond == 0 && encodedChain == 0 && !preIndex &&
+					!railMachElidesBoundsCheck(plan, instruction.Source) && scheduleIndex+1 < len(blockOrder) &&
+					memoryCheckEnds[operands[0].Reg] < end && !arm64RailMachHasSpecialMemoryEmission(plan, instructionID) {
+					nextID := blockOrder[scheduleIndex+1]
+					next := plan.Machine.Insts[nextID]
+					nextSize, _, nextStore, nextMemory := nativeMemoryAccess(next.Op)
+					nextOperands := plan.Machine.InstructionOperands(nextID)
+					nextEnd := uint64(uint32(next.Aux)) + uint64(nextSize)
+					nextResult := next.Result
+					nextSwarSkipped := swarRunN && (nextID >= 5 && nextID < 21 || nextID >= 27 && nextID < 37) || swarParse4 && nextID >= 2 && nextID < 12
+					nextSkipped := nextSwarSkipped || idempotentFloatTail && nextID >= idempotentFloatStart && nextID < idempotentFloatEnd || skipInstruction[nextID] ||
+						nextResult != 0 && plan.Machine.VRegs[nextResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[nextID]
+					if nextMemory && !nextStore && !nextSkipped && len(nextOperands) != 0 && nextOperands[0].Reg != operands[0].Reg && nextEnd == end &&
+						!railMachElidesBoundsCheck(plan, next.Source) && memoryCheckEnds[nextOperands[0].Reg] < nextEnd &&
+						!arm64RailMachHasSpecialMemoryEmission(plan, nextID) &&
+						plan.Allocation.LocationAt(operands[0].Reg, currentPosition).Kind == railmach.LocationRegister &&
+						plan.Allocation.LocationAt(nextOperands[0].Reg, currentPosition).Kind == railmach.LocationRegister {
+						nextAddress := arm64RailMachPhysical(plan.Allocation.LocationAt(nextOperands[0].Reg, currentPosition))
+						a.CmpReg32(lhs, arm64.X8)
+						a.CcmpReg32(nextAddress, arm64.X8, 2, arm64.CondLS)
+						if err := emitMemoryTrapBranch(wasmOffset); err != nil {
+							return nil, 0, true, err
+						}
+						memoryChecked(operands[0].Reg, end)
+						memoryChecked(nextOperands[0].Reg, nextEnd)
+						combinedBoundsSecond = nextID
+						combinedBounds = true
+						if metrics != nil {
+							metrics.PostRARewrites++
+						}
+					}
+				}
+				if !combinedBounds && !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
 					bounds := arm64.X8
 					if !cacheMemoryBounds {
 						a.SubImm64(arm64.X17, arm64.X26, abi.ActualLinMemByteSize64Offset)
@@ -3600,7 +3644,6 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 						return nil, 0, true, err
 					}
 				}
-				preIndex := len(plan.PostRAPreIndex) != 0 && plan.PostRAPreIndex[instructionID]
 				foldedIndexed := encodedChain == 0 && !preIndex && uint32(instruction.Aux) <= math.MaxInt32
 				if !chainSecond && !foldedIndexed {
 					a.AddExtUXTW(arm64.X16, arm64.X26, lhs)
@@ -5587,6 +5630,20 @@ func arm64RailMachPhysical(location railmach.Location) arm64.Reg {
 		return arm64FPRRegisters[location.Index]
 	}
 	return arm64RailMachGPRRegisters[location.Index]
+}
+
+func arm64RailMachHasSpecialMemoryEmission(plan *nativeBackendPlan, instruction uint32) bool {
+	if plan == nil {
+		return true
+	}
+	return len(plan.PostRASkip) != 0 && plan.PostRASkip[instruction] ||
+		len(plan.PostRAPairWith) != 0 && plan.PostRAPairWith[instruction] != 0 ||
+		len(plan.PostRAForwardFrom) != 0 && plan.PostRAForwardFrom[instruction] != 0 ||
+		len(plan.PostRAFusionWith) != 0 && plan.PostRAFusionWith[instruction] != 0 ||
+		len(plan.PostRAMemoryFrom) != 0 && plan.PostRAMemoryFrom[instruction] != 0 ||
+		len(plan.PostRARepeatFirst) != 0 && plan.PostRARepeatFirst[instruction] != 0 ||
+		len(plan.PostRAPreIndex) != 0 && plan.PostRAPreIndex[instruction] ||
+		len(plan.PostRAPostIndexWith) != 0 && plan.PostRAPostIndexWith[instruction] != 0
 }
 
 func arm64RailMachLeaSP(a *arm64.Asm, dst arm64.Reg, offset uint32) bool {

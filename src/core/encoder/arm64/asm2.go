@@ -109,6 +109,12 @@ func (a *Asm) Csel32(rd, rn, rm Reg, c Cond) {
 	a.word(0x1A800000 | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | r(rd))
 }
 
+// CcmpReg32 conditionally compares Wn with Wm. When c is false, the low four
+// bits of nzcv become the architectural NZCV flags instead.
+func (a *Asm) CcmpReg32(rn, rm Reg, nzcv uint8, c Cond) {
+	a.word(0x7A400000 | r(rm)<<16 | uint32(c)<<12 | r(rn)<<5 | uint32(nzcv&0xf))
+}
+
 // 32-bit logical immediates (return false when val is not an encodable bitmask).
 func (a *Asm) AndImm32(rd, rn Reg, val uint32) bool { return a.logicalImm32(0x12000000, rd, rn, val) }
 func (a *Asm) OrrImm32(rd, rn Reg, val uint32) bool { return a.logicalImm32(0x32000000, rd, rn, val) }

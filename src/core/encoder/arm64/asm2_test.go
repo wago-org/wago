@@ -47,6 +47,7 @@ func TestPortIntEncodings(t *testing.T) {
 		{"smull x0,w1,w2", func(a *Asm) { a.Smull(X0, X1, X2) }, 0x9b227c20},
 		{"umull x0,w1,w2", func(a *Asm) { a.Umull(X0, X1, X2) }, 0x9ba27c20},
 		{"csel w0,w1,w2,eq", func(a *Asm) { a.Csel32(X0, X1, X2, CondEQ) }, 0x1a820020},
+		{"ccmp w1,w2,#2,ls", func(a *Asm) { a.CcmpReg32(X1, X2, 2, CondLS) }, 0x7a429022},
 		{"tst x1,x2", func(a *Asm) { a.TstReg(X1, X2, false) }, 0xea02003f},
 		{"tst w1,w2", func(a *Asm) { a.TstReg(X1, X2, true) }, 0x6a02003f},
 		{"tst x1,#0x8080808080808080", func(a *Asm) {
