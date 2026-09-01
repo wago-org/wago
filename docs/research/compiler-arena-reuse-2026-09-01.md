@@ -34,9 +34,12 @@ chunks only if it receives a function that needs them.
 
 Modules with active inline targets also retain the legacy first chunk. A caller's
 hint counts the call opcode but not each node-producing instruction spliced from
-the callee at every call site. Falling back avoids a new scan or unbounded inline
-expansion estimate. The measured json-as and utf-as modules have no active inline
-candidates, so their results below are unchanged.
+the callee at every call site. AMD64 modules with custom instruction recipes use
+the same fallback because one imported call may expand into an extension-owned
+recipe whose nodes are not present in the Wasm scan. Falling back avoids a new
+scan or an unbounded expansion estimate. The measured json-as and utf-as modules
+have neither active inline candidates nor custom recipes, so their results below
+are unchanged.
 
 The body-size floor, multi-value slack, and no-hint fallback remain in place. An
 underestimated hint can affect allocation only; it cannot invalidate node
