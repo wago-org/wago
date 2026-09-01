@@ -49,9 +49,11 @@ result-to-local sink fusion retain the legacy first chunk. SIMD adjacent-op
 superoptimization and float, select, or simple-if sinks can consume a scanned
 result without allocating its node, so the raw hint can overstate legacy
 retention. Local-tee roots that can start the bounded SWAR widen or multiply-high
-lookahead receive a saturated skipped-node discount. The final direct capacity is
-then compared with legacy retention at the discounted lower bound; isolated
-patterns keep useful sizing, while repeated patterns fall back.
+lookahead receive a saturated skipped-node discount. Adjacent scalar identities
+such as `x + 0`, same-local simplifications such as `x - x`, and the SWAR pack
+wrap receive the same one-node accounting. The final direct capacity is then
+compared with legacy retention at the discounted lower bound; isolated patterns
+keep useful sizing, while repeated patterns fall back.
 
 Modules with active inline targets also retain the legacy first chunk. A caller's
 hint counts the call opcode but not each node-producing instruction spliced from

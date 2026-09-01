@@ -268,6 +268,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			h.addStackArenaDiscount(stackAlgebraicDiscount(instrs, i))
 			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
 				h.hasStackSinkFusion = true
 			}
@@ -572,11 +573,26 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
 	}
 	subHasCall := false
-	var prevOp byte
+	var prevOp, prevPrevOp byte
+	var prevIndex, prevPrevIndex uint32
+	var prevConst int64
+	var prevConstOK bool
 	for {
 		op, err := s.r.byte()
 		if err != nil {
 			return true, 0, err
+		}
+		curIndex := ^uint32(0)
+		var curConst int64
+		curConstOK := false
+		if op == 0x41 || op == 0x42 {
+			if b, ok := s.r.Peek(); ok && b&0x80 == 0 {
+				curConst = int64(b & 0x7f)
+				if b&0x40 != 0 {
+					curConst |= ^int64(0x7f)
+				}
+				curConstOK = true
+			}
 		}
 		if shared.InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) {
 			s.h.hasControlFlow = true
@@ -688,6 +704,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.addStackArenaDiscount(stackLookaheadDiscountOpcode(prevOp))
 			}
 			idx := imm.Index
+			curIndex = idx
 			if int(idx) < s.nLocals {
 				if s.entryPrefix && idx < 64 {
 					bit := uint64(1) << idx
@@ -796,7 +813,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.usesBulkMem = true
 			}
 		}
-		prevOp = op
+		s.h.addStackArenaDiscount(stackAlgebraicDiscountOpcode(op, prevOp, prevPrevOp, prevIndex, prevPrevIndex, prevConst, prevConstOK))
+		prevPrevOp, prevPrevIndex = prevOp, prevIndex
+		prevOp, prevIndex = op, curIndex
+		prevConst, prevConstOK = curConst, curConstOK
 	}
 }
 
@@ -911,6 +931,100 @@ func stackLookaheadDiscountOpcode(op byte) uint16 {
 		return 32
 	default:
 		return 0
+	}
+}
+
+func stackAlgebraicDiscount(instrs []wasm.Instruction, i int) uint16 {
+	kind := instrs[i].Kind
+	if i != 0 {
+		prev := &instrs[i-1]
+		if algebraicIdentityKind(kind, prev.Kind, prev.I32, prev.I64) || kind == wasm.InstrI32WrapI64 && prev.Kind == wasm.InstrI64Or {
+			return 1
+		}
+	}
+	if i >= 2 && instrs[i-1].Kind == wasm.InstrLocalGet && instrs[i-2].Kind == wasm.InstrLocalGet &&
+		instrs[i-1].Index == instrs[i-2].Index && sameOperandSimplifies(kind) {
+		return 1
+	}
+	return 0
+}
+
+func algebraicIdentityKind(kind, constKind wasm.InstrKind, i32 int32, i64 int64) bool {
+	var c int64
+	switch constKind {
+	case wasm.InstrI32Const:
+		c = int64(i32)
+	case wasm.InstrI64Const:
+		c = i64
+	default:
+		return false
+	}
+	switch kind {
+	case wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Or, wasm.InstrI32Xor,
+		wasm.InstrI32Shl, wasm.InstrI32ShrS, wasm.InstrI32ShrU, wasm.InstrI32Rotl, wasm.InstrI32Rotr,
+		wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Or, wasm.InstrI64Xor,
+		wasm.InstrI64Shl, wasm.InstrI64ShrS, wasm.InstrI64ShrU, wasm.InstrI64Rotl, wasm.InstrI64Rotr:
+		return c == 0
+	case wasm.InstrI32Mul, wasm.InstrI32DivU, wasm.InstrI64Mul, wasm.InstrI64DivU:
+		return c == 1
+	case wasm.InstrI32And:
+		return int32(c) == -1
+	case wasm.InstrI64And:
+		return c == -1
+	default:
+		return false
+	}
+}
+
+func sameOperandSimplifies(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrI32Sub, wasm.InstrI32And, wasm.InstrI32Or, wasm.InstrI32Xor,
+		wasm.InstrI64Sub, wasm.InstrI64And, wasm.InstrI64Or, wasm.InstrI64Xor,
+		wasm.InstrI32Eq, wasm.InstrI32Ne, wasm.InstrI32LtS, wasm.InstrI32LtU, wasm.InstrI32GtS, wasm.InstrI32GtU, wasm.InstrI32LeS, wasm.InstrI32LeU, wasm.InstrI32GeS, wasm.InstrI32GeU,
+		wasm.InstrI64Eq, wasm.InstrI64Ne, wasm.InstrI64LtS, wasm.InstrI64LtU, wasm.InstrI64GtS, wasm.InstrI64GtU, wasm.InstrI64LeS, wasm.InstrI64LeU, wasm.InstrI64GeS, wasm.InstrI64GeU:
+		return true
+	default:
+		return false
+	}
+}
+
+func stackAlgebraicDiscountOpcode(op, prevOp, prevPrevOp byte, prevIndex, prevPrevIndex uint32, prevConst int64, prevConstOK bool) uint16 {
+	if prevConstOK && algebraicIdentityOpcode(op, prevOp, prevConst) || op == 0xa7 && prevOp == 0x84 {
+		return 1
+	}
+	if prevOp == 0x20 && prevPrevOp == 0x20 && prevIndex == prevPrevIndex && sameOperandSimplifiesOpcode(op) {
+		return 1
+	}
+	return 0
+}
+
+func algebraicIdentityOpcode(op, constOp byte, c int64) bool {
+	if constOp != 0x41 && constOp != 0x42 {
+		return false
+	}
+	switch op {
+	case 0x6a, 0x6b, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78,
+		0x7c, 0x7d, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a:
+		return c == 0
+	case 0x6c, 0x6e, 0x7e, 0x80:
+		return c == 1
+	case 0x71:
+		return int32(c) == -1
+	case 0x83:
+		return c == -1
+	default:
+		return false
+	}
+}
+
+func sameOperandSimplifiesOpcode(op byte) bool {
+	switch op {
+	case 0x6b, 0x71, 0x72, 0x73, 0x7d, 0x83, 0x84, 0x85,
+		0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f,
+		0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a:
+		return true
+	default:
+		return false
 	}
 }
 

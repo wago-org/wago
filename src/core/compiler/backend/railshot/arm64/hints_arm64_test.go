@@ -106,6 +106,22 @@ func TestScanBodyBytesStackArenaHintCountsAtomicsArm64(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesDiscountsAlgebraicIdentitiesArm64(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, 0x41, 0x00, 0x6a, 0x1a, // x + 0; drop
+		0x20, 0x00, 0x41, 0x01, 0x6a, 0x1a, // x + 1; drop (not an identity)
+		0x20, 0x00, 0x20, 0x00, 0x6b, 0x1a, // x - x; drop
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 1, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.stackArenaDiscount != 2 {
+		t.Fatalf("algebraic discount = %d, want 2", h.stackArenaDiscount)
+	}
+}
+
 func TestScanBodyBytesDiscountsSWARLookaheadCandidatesArm64(t *testing.T) {
 	body := []byte{
 		0x20, 0x00, 0x42, 0x00, 0x83, 0x22, 0x01, 0x1a, // i64.and; local.tee
