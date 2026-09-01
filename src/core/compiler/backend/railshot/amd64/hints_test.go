@@ -200,6 +200,23 @@ func TestScanBodyBytesStackArenaHintCountsAtomics(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesDetectsStackSinkFusion(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, // local.get 0
+		0x20, 0x01, // local.get 1
+		0x92,       // f32.add
+		0x21, 0x02, // local.set 2
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 3, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.hasStackSinkFusion {
+		t.Fatal("float local sink fusion was not detected")
+	}
+}
+
 func TestScanBodyBytesStackArenaHintCountsReferenceResults(t *testing.T) {
 	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
 	if err != nil {

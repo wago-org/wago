@@ -55,12 +55,13 @@ type funcHints struct {
 	// exactly (unreachable/block/loop/if/else/br*/return, NOT try_table); hasLoop is
 	// the loop subset. calleeCount>0/hasControlCall from inlineOK both reduce to
 	// hasCall (an inline candidate is leaf), so no separate call-kind split is kept.
-	hasLoop          bool
-	hasJumpTableData bool
-	hasControlFlow   bool
-	moduleEH         bool
-	hasFloatConst    bool // body contains f32.const or f64.const
-	hasSIMD          bool // body contains an 0xfd SIMD instruction
+	hasLoop            bool
+	hasJumpTableData   bool
+	hasControlFlow     bool
+	moduleEH           bool
+	hasFloatConst      bool // body contains f32.const or f64.const
+	hasSIMD            bool // body contains an 0xfd SIMD instruction
+	hasStackSinkFusion bool // a following local.set/tee may consume a scanned result without allocating it
 
 	// immutableTables is derived after the one-pass per-function scans have been
 	// aggregated (computeModuleHints). Each admitted table is local, unexported,
@@ -320,6 +321,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if i+1 < len(instrs) && stackSinkFusionCandidate(in.Kind, instrs[i+1].Kind) {
+				h.hasStackSinkFusion = true
+			}
 			if in.Kind == wasm.InstrF32Const || in.Kind == wasm.InstrF64Const {
 				h.hasFloatConst = true
 			}
@@ -919,6 +923,29 @@ func (s *byteBodyScanner) noteStackArenaOp(op byte, imm *wasm.InstructionImmedia
 	if stackArenaOpAllocates(op, imm) {
 		s.h.stackArenaNodes++
 	}
+	if stackSinkFusionOpcode(op) {
+		next, ok := s.r.Peek()
+		if ok && (next == 0x21 || next == 0x22) {
+			s.h.hasStackSinkFusion = true
+		}
+	}
+}
+
+func stackSinkFusionCandidate(kind, next wasm.InstrKind) bool {
+	if next != wasm.InstrLocalSet && next != wasm.InstrLocalTee {
+		return false
+	}
+	switch kind {
+	case wasm.InstrF32Add, wasm.InstrF32Sub, wasm.InstrF32Mul, wasm.InstrF32Div,
+		wasm.InstrF64Add, wasm.InstrF64Sub, wasm.InstrF64Mul, wasm.InstrF64Div:
+		return true
+	default:
+		return wasm.IsSIMDValidationInstructionKind(kind)
+	}
+}
+
+func stackSinkFusionOpcode(op byte) bool {
+	return op == 0xfd || op >= 0x92 && op <= 0x95 || op >= 0xa0 && op <= 0xa3
 }
 
 func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {

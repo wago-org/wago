@@ -40,19 +40,20 @@ func weightedBranchPath(weight int64) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	nLocals           int
-	hasCall           bool   // any direct or indirect call
-	callsSelf         bool   // a direct call to the function's own index
-	hasLoop           bool   // structured loop (X12/X13 may be borrowed by loop promotion)
-	touchesMemory     bool   // any linear-memory op
-	inlineCallSites   uint16 // saturated ordinary direct call sites targeting this local function
-	directCallRefs    uint8  // saturated call + return_call references targeting this local function
-	hasInlineLoopCall bool   // an ordinary direct call site is nested in a loop
-	memOps            int    // scalar/vector/bulk linear-memory instructions
-	usesBulkMem       bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
-	mutatesTable      bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
-	hasControlFlow    bool   // control opcode relevant to inline splice framing
-	moduleEH          bool   // module-wide: reserve the active exception-handler register
+	nLocals            int
+	hasCall            bool   // any direct or indirect call
+	callsSelf          bool   // a direct call to the function's own index
+	hasLoop            bool   // structured loop (X12/X13 may be borrowed by loop promotion)
+	touchesMemory      bool   // any linear-memory op
+	inlineCallSites    uint16 // saturated ordinary direct call sites targeting this local function
+	directCallRefs     uint8  // saturated call + return_call references targeting this local function
+	hasInlineLoopCall  bool   // an ordinary direct call site is nested in a loop
+	memOps             int    // scalar/vector/bulk linear-memory instructions
+	usesBulkMem        bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
+	mutatesTable       bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	hasControlFlow     bool   // control opcode relevant to inline splice framing
+	moduleEH           bool   // module-wide: reserve the active exception-handler register
+	hasStackSinkFusion bool   // a following local.set/tee may consume a scanned result without allocating it
 
 	// immutableLocalTable is derived after the one-pass per-function scans have
 	// been aggregated. The table must also be private (an exported table can be
@@ -250,6 +251,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if i+1 < len(instrs) && stackSinkFusionCandidate(in.Kind, instrs[i+1].Kind) {
+				h.hasStackSinkFusion = true
+			}
 			if gcOrAtomicInstructionMayCall(in.Kind) {
 				sub, h.hasCall = true, true
 			}
@@ -625,6 +629,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 				}
 				subHasCall = subHasCall || callsThen || callsElse
+				if next, ok := s.r.Peek(); ok && (next == 0x21 || next == 0x22) {
+					s.h.hasStackSinkFusion = true
+				}
 			}
 		case 0x10, 0x12: // call, return_call
 			var imm wasm.InstructionImmediate
@@ -828,6 +835,30 @@ func (s *byteBodyScanner) noteStackArenaOp(op byte, imm *wasm.InstructionImmedia
 	if stackArenaOpAllocates(op, imm) {
 		s.h.stackArenaNodes++
 	}
+	if stackSinkFusionOpcode(op) {
+		next, ok := s.r.Peek()
+		if ok && (next == 0x21 || next == 0x22) {
+			s.h.hasStackSinkFusion = true
+		}
+	}
+}
+
+func stackSinkFusionCandidate(kind, next wasm.InstrKind) bool {
+	if next != wasm.InstrLocalSet && next != wasm.InstrLocalTee {
+		return false
+	}
+	switch kind {
+	case wasm.InstrSelect, wasm.InstrIf,
+		wasm.InstrF32Add, wasm.InstrF32Sub, wasm.InstrF32Mul, wasm.InstrF32Div, wasm.InstrF32Min, wasm.InstrF32Max,
+		wasm.InstrF64Add, wasm.InstrF64Sub, wasm.InstrF64Mul, wasm.InstrF64Div, wasm.InstrF64Min, wasm.InstrF64Max:
+		return true
+	default:
+		return false
+	}
+}
+
+func stackSinkFusionOpcode(op byte) bool {
+	return op == 0x1b || op == 0x1c || op >= 0x92 && op <= 0x97 || op >= 0xa0 && op <= 0xa5
 }
 
 func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {

@@ -574,6 +574,9 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 	capHint := minStackArenaCap
 	legacyRetained := defaultStackArenaCap
 	for i := range hints {
+		if hints[i].hasStackSinkFusion {
+			return defaultStackArenaCap
+		}
 		nodes := hints[i].stackArenaNodes
 		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, nodes)
 		if fnCap > maxInitialStackArenaCap || fnCap < nodes {

@@ -38,6 +38,14 @@ func TestModuleStackArenaCapFallsBackForMultiValueTypes(t *testing.T) {
 	}
 }
 
+func TestModuleStackArenaCapFallsBackForStackSinkFusion(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 1536)}}}
+	hints := []funcHints{{stackArenaNodes: 770, hasStackSinkFusion: true}}
+	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
+		t.Fatalf("stack-sink fusion cap = %d, want legacy %d", got, defaultStackArenaCap)
+	}
+}
+
 func TestModuleStackArenaCapUsesBoundedLargeFunctionHint(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, defaultStackArenaCap*2)}}}
 	hints := []funcHints{{stackArenaNodes: defaultStackArenaCap * 2}}
