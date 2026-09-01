@@ -82,6 +82,25 @@ func TestLoopHintReservesLoopScratchPins(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesStackArenaHintCountsAtomicsArm64(t *testing.T) {
+	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte{
+		0x41, 0x00, // i32.const address
+		0xfe, 0x10, 0x02, 0x00, // i32.atomic.load align=4 offset=0
+		0x1a, 0x0b, // drop; end
+	}
+	h, err := scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := endOnly.stackArenaNodes + 2; h.stackArenaNodes != want {
+		t.Fatalf("atomic stack arena nodes = %d, want %d", h.stackArenaNodes, want)
+	}
+}
+
 func TestModuleGlobalScores(t *testing.T) {
 	bytes := []byte{
 		0x23, 0x00, // global.get 0

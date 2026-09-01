@@ -944,6 +944,8 @@ func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {
 		return true
 	case 0xfc:
 		return imm.Subopcode <= 7 || imm.Subopcode == 15 || imm.Subopcode == 16 // trunc_sat/table.grow/table.size push.
+	case 0xfe:
+		return true // atomics may push a load, wait/notify, RMW, or cmpxchg result; stores/fence are safe overestimates.
 	case 0xfb:
 		switch imm.Kind {
 		case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrRefTest:
