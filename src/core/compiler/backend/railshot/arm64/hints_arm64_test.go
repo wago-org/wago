@@ -101,6 +101,28 @@ func TestScanBodyBytesStackArenaHintCountsAtomicsArm64(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesStackArenaHintCountsReferenceResultsArm64(t *testing.T) {
+	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte{
+		0x20, 0x00, // local.get 0
+		0xd4,       // ref.as_non_null
+		0x1a,       // drop
+		0x41, 0x00, // i32.const 0
+		0xfb, 0x1c, // ref.i31
+		0x1a, 0x0b, // drop; end
+	}
+	h, err := scanBodyBytes(body, 1, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := endOnly.stackArenaNodes + 4; h.stackArenaNodes != want {
+		t.Fatalf("reference stack arena nodes = %d, want %d", h.stackArenaNodes, want)
+	}
+}
+
 func TestModuleGlobalScores(t *testing.T) {
 	bytes := []byte{
 		0x23, 0x00, // global.get 0

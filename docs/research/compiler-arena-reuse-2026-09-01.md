@@ -41,6 +41,8 @@ signatures without a call-site scan: one opcode can otherwise allocate one node
 per result, far beyond opcode-count slack. Atomic opcodes are counted
 conservatively as one node each; result-free stores and fences may overestimate,
 while loads, waits, notifications, RMWs, and compare-exchanges cover their result.
+Core reference transforms and `0xfb` GC/reference operations are also counted as
+one node; result-free branch/store forms are safe overestimates.
 
 Modules with active inline targets also retain the legacy first chunk. A caller's
 hint counts the call opcode but not each node-producing instruction spliced from

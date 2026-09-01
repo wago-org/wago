@@ -940,19 +940,14 @@ func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {
 		0x99, 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6,
 		0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf, 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf,
 		0xc0, 0xc1, 0xc2, 0xc3, 0xc4,
-		0xd0, 0xd1, 0xd2, 0xd3:
+		0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6:
 		return true
 	case 0xfc:
 		return imm.Subopcode <= 7 || imm.Subopcode == 15 || imm.Subopcode == 16 // trunc_sat/table.grow/table.size push.
 	case 0xfe:
 		return true // atomics may push a load, wait/notify, RMW, or cmpxchg result; stores/fence are safe overestimates.
 	case 0xfb:
-		switch imm.Kind {
-		case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrRefTest:
-			return true
-		default:
-			return false
-		}
+		return true // GC/reference operations push at most one native result; result-free forms are safe overestimates.
 	case 0xfd:
 		switch imm.Subopcode {
 		case 11, 88, 89, 90, 91: // v128.store and v128.store{8,16,32,64}_lane push no result.
