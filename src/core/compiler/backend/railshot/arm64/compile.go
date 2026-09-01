@@ -584,11 +584,21 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 	return capHint
 }
 
+// serialStackArenaCap keeps the legacy growth path when inlining is active. The
+// original caller hint counts one call opcode, not every node allocated while
+// lowering the spliced body at each call site.
+func serialStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inlineTargetTable) int {
+	if !inlineTargets.empty() {
+		return defaultStackArenaCap
+	}
+	return moduleStackArenaCap(m, hints)
+}
+
 // workerStackArenaCap avoids multiplying one large function's initial arena by
 // every parallel worker. Each worker keeps the established bounded growth path
 // and allocates larger chunks only when it actually receives such a function.
-func workerStackArenaCap(m *wasm.Module, hints []funcHints) int {
-	capHint := moduleStackArenaCap(m, hints)
+func workerStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inlineTargetTable) int {
+	capHint := serialStackArenaCap(m, hints, inlineTargets)
 	if capHint > defaultStackArenaCap {
 		return defaultStackArenaCap
 	}
@@ -1071,7 +1081,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if workers <= 1 {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
-		sc := newScratchWithStackCap(moduleStackArenaCap(m, allHints))
+		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets))
 		sc.classifier = classifier
 		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
 		if err != nil {
@@ -1207,7 +1217,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	states := make([]workerState, workers)
 	arenaCap := (codeCap + workers - 1) / workers
-	stackCap := workerStackArenaCap(m, allHints)
+	stackCap := workerStackArenaCap(m, allHints, inlineTargets)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	var pressureBytes atomic.Int64

@@ -32,6 +32,12 @@ Parallel workers retain the legacy 256-node ceiling. This avoids multiplying one
 large function's initial arena by every worker. A worker allocates larger stable
 chunks only if it receives a function that needs them.
 
+Modules with active inline targets also retain the legacy first chunk. A caller's
+hint counts the call opcode but not each node-producing instruction spliced from
+the callee at every call site. Falling back avoids a new scan or unbounded inline
+expansion estimate. The measured json-as and utf-as modules have no active inline
+candidates, so their results below are unchanged.
+
 The body-size floor, multi-value slack, and no-hint fallback remain in place. An
 underestimated hint can affect allocation only; it cannot invalidate node
 pointers or emitted code.

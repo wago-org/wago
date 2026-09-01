@@ -55,8 +55,20 @@ func TestModuleStackArenaCapUsesBoundedLargeHintArm64(t *testing.T) {
 func TestWorkerStackArenaCapDoesNotMultiplyLargeHintArm64(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 4096)}}}
 	hints := []funcHints{{stackArenaNodes: 4096}}
-	if got := workerStackArenaCap(m, hints); got != defaultStackArenaCap {
+	if got := workerStackArenaCap(m, hints, inlineTargetTable{}); got != defaultStackArenaCap {
 		t.Fatalf("worker stack arena cap = %d, want %d", got, defaultStackArenaCap)
+	}
+}
+
+func TestInlineTargetsKeepLegacyStackArenaCapArm64(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: []byte{0x0b}}}}
+	hints := []funcHints{{stackArenaNodes: 1}}
+	targets := inlineTargetTable{targets: []inlineTarget{{valid: true}}}
+	if got := serialStackArenaCap(m, hints, targets); got != defaultStackArenaCap {
+		t.Fatalf("serial inline stack arena cap = %d, want %d", got, defaultStackArenaCap)
+	}
+	if got := workerStackArenaCap(m, hints, targets); got != defaultStackArenaCap {
+		t.Fatalf("worker inline stack arena cap = %d, want %d", got, defaultStackArenaCap)
 	}
 }
 
