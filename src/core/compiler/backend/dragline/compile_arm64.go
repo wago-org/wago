@@ -171,6 +171,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	var directPrepared []uint64
 	var directLeafPrepared []uint64
 	var directTrapPrepared []uint64
+	var contextFreeLoopPrepared []uint64
 	var callRelocs []arm64CallReloc
 	var gcCallsites []corecompiler.GCFrameCallsite
 	var gcRoots []uint32
@@ -246,6 +247,9 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			if cacheErr == nil && hit {
 				requiresMOPS = requiresMOPS || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64MOPS)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64MOPS)%64)) != 0
 				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
+				if !captureGC && artifact.ContextFreeLoop {
+					contextFreeLoopPrepared = markARM64DirectPrepared(contextFreeLoopPrepared, len(m.Code), i)
+				}
 				if !captureGC && arm64DirectPreparedClass(moduleContracts[i].Class) {
 					directPrepared = markARM64DirectPrepared(directPrepared, len(m.Code), i)
 					if arm64DirectPreparedTrapClass(moduleContracts[i].Class) {
@@ -397,6 +401,9 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			publishedContract = railmach.ABIContract{}
 			moduleContracts[i] = railmach.ABIContract{}
 		}
+		if !captureGC && arm64ContextFreePreparedLoop(fn.Stack) {
+			contextFreeLoopPrepared = markARM64DirectPrepared(contextFreeLoopPrepared, len(m.Code), i)
+		}
 		if !captureGC && railMachFinalized && arm64DirectPreparedClass(publishedContract.Class) {
 			directPrepared = markARM64DirectPrepared(directPrepared, len(m.Code), i)
 			if arm64DirectPreparedLeafPlan(nativePlan) {
@@ -435,6 +442,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64MOPS)/64] |= uint64(1) << (uint16(corecompiler.TargetFeatureARM64MOPS) % 64)
 			}
 			artifact.PrivateEntry = uint32(internalOffset)
+			artifact.ContextFreeLoop = arm64ContextFreePreparedLoop(fn.Stack)
 			artifact.Sources = emissionMetadata.Sources
 			artifact.Traps = emissionMetadata.Traps
 			artifact.Safepoints = emissionMetadata.Safepoints
@@ -503,7 +511,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		metrics.NativeBytes = uint64(len(code))
 		metrics.observe(sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(moduleContracts))
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresARM64MOPS: requiresMOPS}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, ContextFreeLoopPrepared: contextFreeLoopPrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresARM64MOPS: requiresMOPS}, nil
 }
 
 func markARM64DirectPrepared(bits []uint64, functions, index int) []uint64 {
@@ -528,6 +536,10 @@ func arm64DirectPreparedLeafPlan(plan *nativeBackendPlan) bool {
 		railssa.ContextFreeTrapFree(plan.Stack, arm64RailMachInlinesAllTinyCalls(plan))
 }
 
+func arm64ContextFreePreparedLoop(stack *railssa.StackFunc) bool {
+	return stack != nil && stack.MaxLoopDepth != 0 && railssa.ContextFreeTrapFree(stack, false)
+}
+
 func arm64DirectPreparedTrapClass(class railmach.ABIClass) bool {
 	return class == railmach.ABIPreparedIndirect
 }
@@ -539,13 +551,14 @@ func arm64PromoteInlinedPreparedLeaf(plan *nativeBackendPlan) {
 }
 
 type parallelARM64Result struct {
-	body           []byte
-	internalOffset int
-	relocs         []arm64CallReloc
-	requiresMOPS   bool
-	directPrepared bool
-	directLeaf     bool
-	directTrap     bool
+	body            []byte
+	internalOffset  int
+	relocs          []arm64CallReloc
+	requiresMOPS    bool
+	directPrepared  bool
+	directLeaf      bool
+	directTrap      bool
+	contextFreeLoop bool
 }
 
 type parallelARM64Worker struct {
@@ -628,7 +641,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 			if !railMachFinalized {
 				contracts[i] = railmach.ABIContract{}
 			}
-			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class), directLeaf: railMachFinalized && arm64DirectPreparedLeafPlan(nativePlan), directTrap: railMachFinalized && arm64DirectPreparedTrapClass(published.Class)}
+			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class), directLeaf: railMachFinalized && arm64DirectPreparedLeafPlan(nativePlan), directTrap: railMachFinalized && arm64DirectPreparedTrapClass(published.Class), contextFreeLoop: arm64ContextFreePreparedLoop(fn.Stack)}
 			worker.body = nil
 		}
 		return nil
@@ -643,6 +656,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 	var directPrepared []uint64
 	var directLeafPrepared []uint64
 	var directTrapPrepared []uint64
+	var contextFreeLoopPrepared []uint64
 	requiresMOPS := false
 	for _, i := range compilation.Order {
 		for len(code)&15 != 0 {
@@ -658,6 +672,9 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 		}
 		if result.directTrap {
 			directTrapPrepared = markARM64DirectPrepared(directTrapPrepared, len(m.Code), i)
+		}
+		if result.contextFreeLoop {
+			contextFreeLoopPrepared = markARM64DirectPrepared(contextFreeLoopPrepared, len(m.Code), i)
 		}
 		requiresMOPS = requiresMOPS || result.requiresMOPS
 		internal[i] = len(code) + result.internalOffset
@@ -681,7 +698,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 	if len(code) == 0 {
 		code = []byte{0xc0, 0x03, 0x5f, 0xd6}
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, RequiresARM64MOPS: requiresMOPS}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, ContextFreeLoopPrepared: contextFreeLoopPrepared, RequiresARM64MOPS: requiresMOPS}, nil
 }
 
 func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, target corecompiler.Target, observations *compilerprofile.Module, contracts []railmach.ABIContract, scratch []byte, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []arm64CallReloc, bool, error) {

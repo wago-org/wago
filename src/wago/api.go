@@ -1529,7 +1529,12 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 	}
 	code, entry, internalEntry := cm.Code, cm.Entry, cm.InternalEntry
 	for i := range internalEntry {
-		if i>>6 < len(cm.DirectTrapPrepared) && cm.DirectTrapPrepared[i>>6]&(uint64(1)<<uint(i&63)) != 0 {
+		if i>>6 < len(cm.ContextFreeLoopPrepared) && cm.ContextFreeLoopPrepared[i>>6]&(uint64(1)<<uint(i&63)) != 0 {
+			internalEntry[i] = markContextFreeLoopPreparedEntry(internalEntry[i])
+			if i>>6 < len(cm.DirectPrepared) && cm.DirectPrepared[i>>6]&(uint64(1)<<uint(i&63)) != 0 {
+				internalEntry[i] = markDirectPreparedEntry(internalEntry[i])
+			}
+		} else if i>>6 < len(cm.DirectTrapPrepared) && cm.DirectTrapPrepared[i>>6]&(uint64(1)<<uint(i&63)) != 0 {
 			internalEntry[i] = markDirectTrapPreparedEntry(internalEntry[i])
 		} else if i>>6 < len(cm.DirectLeafPrepared) && cm.DirectLeafPrepared[i>>6]&(uint64(1)<<uint(i&63)) != 0 {
 			internalEntry[i] = markDirectLeafPreparedEntry(internalEntry[i])

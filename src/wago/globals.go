@@ -1127,14 +1127,15 @@ func (c *Compiled) Compiler() CompilerEngine {
 	return c.compiler
 }
 
-// The top two bits of a fresh compilation's internal-entry offset carry the
-// optional direct-prepared and call-free-leaf selections without growing
+// The high bits of a fresh compilation's internal-entry offset carry optional
+// direct-prepared entry selections without growing
 // Compiled. Native code offsets are non-negative and bounded far below the host
 // int range. The codec strips these compile-only bits, so decoded artifacts
 // retain the wrapper fallback.
 var directPreparedEntryMask = ^(^uint(0) >> 1)
 var directLeafPreparedEntryMask = directPreparedEntryMask >> 1
 var directTrapPreparedEntryMask = directLeafPreparedEntryMask >> 1
+var contextFreeLoopPreparedEntryMask = directTrapPreparedEntryMask >> 1
 
 func markDirectPreparedEntry(off int) int { return int(uint(off) | directPreparedEntryMask) }
 func markDirectLeafPreparedEntry(off int) int {
@@ -1143,6 +1144,9 @@ func markDirectLeafPreparedEntry(off int) int {
 func markDirectTrapPreparedEntry(off int) int {
 	return int(uint(off) | directPreparedEntryMask | directTrapPreparedEntryMask)
 }
+func markContextFreeLoopPreparedEntry(off int) int {
+	return int(uint(off) | contextFreeLoopPreparedEntryMask)
+}
 func directPreparedEntry(off int) bool { return uint(off)&directPreparedEntryMask != 0 }
 func directLeafPreparedEntry(off int) bool {
 	return uint(off)&directLeafPreparedEntryMask != 0
@@ -1150,8 +1154,11 @@ func directLeafPreparedEntry(off int) bool {
 func directTrapPreparedEntry(off int) bool {
 	return uint(off)&directTrapPreparedEntryMask != 0
 }
+func contextFreeLoopPreparedEntry(off int) bool {
+	return uint(off)&contextFreeLoopPreparedEntryMask != 0
+}
 func internalEntryOffset(off int) int {
-	return int(uint(off) &^ (directPreparedEntryMask | directLeafPreparedEntryMask | directTrapPreparedEntryMask))
+	return int(uint(off) &^ (directPreparedEntryMask | directLeafPreparedEntryMask | directTrapPreparedEntryMask | contextFreeLoopPreparedEntryMask))
 }
 
 // RequiresBMI2 reports whether compilation selected BMI2 instructions.

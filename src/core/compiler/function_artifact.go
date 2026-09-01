@@ -154,6 +154,7 @@ type FunctionArtifact struct {
 	Entry               uint32                   `json:"entry"`
 	PrivateEntry        uint32                   `json:"private_entry"`
 	ABIClass            uint8                    `json:"abi_class"`
+	ContextFreeLoop     bool                     `json:"context_free_loop_prepared,omitempty"`
 	FrameBytes          uint32                   `json:"frame_bytes"`
 	AdapterReturnOffset uint32                   `json:"adapter_return_offset,omitempty"`
 	ClobberGPR          uint64                   `json:"clobber_gpr"`

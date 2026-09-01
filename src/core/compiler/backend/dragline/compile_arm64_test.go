@@ -190,6 +190,43 @@ func TestARM64UnboundedLoopStaysOffGoStack(t *testing.T) {
 	if arm64DirectPreparedLeafPlan(plan) {
 		t.Fatal("unbounded loop published the non-interruptible Go-stack leaf entry")
 	}
+	if !arm64ContextFreePreparedLoop(plan.Stack) {
+		t.Fatal("context-free unbounded loop did not publish the private-wrapper proof")
+	}
+	plan.Stack.Instrs = []railssa.StackInstr{{Kind: wasm.InstrMemorySize}}
+	if arm64ContextFreePreparedLoop(plan.Stack) {
+		t.Fatal("context-dependent loop published the context-free private-wrapper proof")
+	}
+}
+
+func TestARM64ContextFreeLoopMarkerSurvivesFunctionCache(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x03, 0x40, 0x0c, 0x00, 0x0b, 0x0b}))),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := corecompiler.Input{Module: module, Source: source, Target: target}
+	compiler := Compiler{FunctionCache: corecompiler.NewFunctionArtifactCache(1 << 20)}
+	for _, pass := range []string{"cold", "warm"} {
+		output, err := compiler.Compile(input)
+		if err != nil {
+			t.Fatalf("%s compile: %v", pass, err)
+		}
+		if len(output.ContextFreeLoopPrepared) == 0 || output.ContextFreeLoopPrepared[0]&1 == 0 {
+			t.Fatalf("%s compile lost the context-free loop marker", pass)
+		}
+	}
 }
 
 func TestARM64PinV128LocalsUsesHottestLocals(t *testing.T) {
