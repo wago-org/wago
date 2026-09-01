@@ -62,6 +62,22 @@ func TestAllocateGreedyPPromotesCallCrossingRange(t *testing.T) {
 	}
 }
 
+func TestDefaultARM64GreedyConfigModelsNoncontiguousCallerFPRs(t *testing.T) {
+	config := DefaultGreedyConfig(TargetARM64)
+	want := lowMask(16) | uint64(0xf)<<24
+	if got := config.CallerMask(BankFPR); got != want {
+		t.Fatalf("caller FPR mask = %#x, want %#x", got, want)
+	}
+	for physical := uint(16); physical < 24; physical++ {
+		if want&(uint64(1)<<physical) != 0 {
+			t.Fatalf("private callee-saved FPR %d is caller-clobbered", physical)
+		}
+	}
+	if config.Linear.FPRs != 28 {
+		t.Fatalf("allocatable ARM64 FPRs = %d, want 28", config.Linear.FPRs)
+	}
+}
+
 func TestAllocateGreedyPUsesExactDirectCallClobbers(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
 		0x20, 0x00,

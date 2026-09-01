@@ -29,6 +29,7 @@ var arm64RailMachGPRRegisters = [...]arm64.Reg{
 var arm64FPRRegisters = [...]arm64.Reg{
 	0, 1, 2, 3, 4, 5, 6, 7, 16, 17, 18, 19, 20, 21, 22, 23,
 	8, 9, 10, 11, 12, 13, 14, 15,
+	24, 25, 26, 27,
 }
 var arm64ParamRegisters = [...]arm64.Reg{arm64.X0, arm64.X1, arm64.X2, arm64.X3, arm64.X4, arm64.X5, arm64.X6, arm64.X7}
 

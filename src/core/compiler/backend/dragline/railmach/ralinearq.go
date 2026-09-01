@@ -92,7 +92,7 @@ func DefaultLinearQConfig(target Target) LinearQConfig {
 	case TargetAMD64:
 		return LinearQConfig{GPRs: 10, FPRs: 12}
 	case TargetARM64:
-		return LinearQConfig{GPRs: 20, FPRs: 24}
+		return LinearQConfig{GPRs: 20, FPRs: 28}
 	default:
 		return LinearQConfig{}
 	}

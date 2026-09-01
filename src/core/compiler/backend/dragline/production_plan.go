@@ -893,6 +893,9 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		return nil, err
 	}
 	defaultGreedy := railmach.DefaultGreedyConfig(machineTarget)
+	if machineTarget == railmach.TargetARM64 {
+		defaultGreedy.Linear.FPRs = nativeARM64AllocatableFPRs(machine)
+	}
 	if nativeARM64CachesGlobals(machine) {
 		// X27 retains the immutable global-descriptor array and is reloaded after
 		// calls into structured code; keep it outside the allocator here.
@@ -1338,6 +1341,25 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	return &p.plan, nil
 }
 
+func nativeARM64AllocatableFPRs(machine *railmach.Func) uint8 {
+	hasCall, hasF32Copysign := false, false
+	for _, instruction := range machine.Insts {
+		hasCall = hasCall || railmach.IsCall(instruction.Op)
+		hasF32Copysign = hasF32Copysign || instruction.Op == wasm.InstrF32Copysign
+	}
+	switch {
+	case !hasCall:
+		// V24-V26 may cache repeated floating constants and V27 is the
+		// f32.copysign mask in call-free functions.
+		return 24
+	case hasF32Copysign:
+		// Calls disable constant caching, but f32.copysign still reserves V27.
+		return 27
+	default:
+		return 28
+	}
+}
+
 const (
 	nativeARM64SecondCachedGlobalDescriptorRegister = 15
 	nativeARM64SecondCachedGlobalValueRegister      = 16
@@ -1631,8 +1653,8 @@ func nativeCallClobberOverrides(machine *railmach.Func, imported uint32, contrac
 		contract := contracts[callee]
 		overrides = append(overrides, railmach.CallClobber{
 			Instruction: uint32(instructionID),
-			GPR:         contract.GPRClobbers & callerRegisterMask(config.CallerGPRs),
-			FPR:         contract.FPRClobbers & callerRegisterMask(config.CallerFPRs),
+			GPR:         contract.GPRClobbers & config.CallerMask(railmach.BankGPR),
+			FPR:         contract.FPRClobbers & config.CallerMask(railmach.BankFPR),
 		})
 	}
 	return overrides
@@ -2061,11 +2083,11 @@ func nativeCallTargetSafe(plan *nativeBackendPlan, instructionID uint32) bool {
 	position := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 	config := railmach.DefaultGreedyConfig(plan.Machine.Target)
 	instruction := plan.Machine.Insts[instructionID]
-	gprClobbers, fprClobbers := callerRegisterMask(config.CallerGPRs), callerRegisterMask(config.CallerFPRs)
+	gprClobbers, fprClobbers := config.CallerMask(railmach.BankGPR), config.CallerMask(railmach.BankFPR)
 	for _, call := range plan.Calls {
 		if call.Instruction == instructionID && !call.Conservative {
-			gprClobbers = call.GPRClobbers & callerRegisterMask(config.CallerGPRs)
-			fprClobbers = call.FPRClobbers & callerRegisterMask(config.CallerFPRs)
+			gprClobbers = call.GPRClobbers & config.CallerMask(railmach.BankGPR)
+			fprClobbers = call.FPRClobbers & config.CallerMask(railmach.BankFPR)
 			break
 		}
 	}

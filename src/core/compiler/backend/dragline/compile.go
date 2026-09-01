@@ -891,8 +891,8 @@ func seedHotRecursiveComponent(input corecompiler.Input, m *wasm.Module, compila
 		machineTarget = railmach.TargetAMD64
 	}
 	config := railmach.DefaultGreedyConfig(machineTarget)
-	callerGPRMask := callerRegisterMask(config.CallerGPRs)
-	callerFPRMask := callerRegisterMask(config.CallerFPRs)
+	callerGPRMask := config.CallerMask(railmach.BankGPR)
+	callerFPRMask := config.CallerMask(railmach.BankFPR)
 	for _, member := range compilation.Order {
 		if compilation.Component[member] != component {
 			continue
@@ -958,8 +958,8 @@ func seedHotRecursiveComponent(input corecompiler.Input, m *wasm.Module, compila
 }
 
 func verifyRecursiveContractClosure(compilation compilationPlan, component int, seeds []railmach.ABIContract, candidates []bool, contracts []railmach.ABIContract, config railmach.GreedyConfig) bool {
-	callerGPRMask := callerRegisterMask(config.CallerGPRs)
-	callerFPRMask := callerRegisterMask(config.CallerFPRs)
+	callerGPRMask := config.CallerMask(railmach.BankGPR)
+	callerFPRMask := config.CallerMask(railmach.BankFPR)
 	var recursiveGPR, recursiveFPR uint64
 	for member, memberComponent := range compilation.Component {
 		if memberComponent != component {

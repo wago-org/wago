@@ -122,8 +122,9 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		contract.GPRClobbers |= lowMask(contract.RegisterResults)
 	}
 	config := DefaultGreedyConfig(f.Target)
-	contract.CalleeGPRs = contract.GPRClobbers &^ lowMask(config.CallerGPRs)
-	contract.CalleeFPRs = contract.FPRClobbers &^ lowMask(config.CallerFPRs)
+	callerGPRs, callerFPRs := config.CallerMask(BankGPR), config.CallerMask(BankFPR)
+	contract.CalleeGPRs = contract.GPRClobbers &^ callerGPRs
+	contract.CalleeFPRs = contract.FPRClobbers &^ callerFPRs
 	for instructionID, instruction := range f.Insts {
 		if !IsCall(instruction.Op) {
 			continue
@@ -131,7 +132,7 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		contract.HasCall = true
 		meta := metadata.Instructions[instruction.Source]
 		contract.MayCollect = contract.MayCollect || meta.Flags&railssa.EffectMayCollect != 0
-		call := CallContract{Instruction: uint32(instructionID), Callee: uint32(instruction.Aux), Class: ABIGeneral, Conservative: true, GPRClobbers: lowMask(config.CallerGPRs), FPRClobbers: lowMask(config.CallerFPRs)}
+		call := CallContract{Instruction: uint32(instructionID), Callee: uint32(instruction.Aux), Class: ABIGeneral, Conservative: true, GPRClobbers: callerGPRs, FPRClobbers: callerFPRs}
 		if instruction.Op == wasm.InstrCall && call.Callee >= importedFunctions {
 			call.Conservative = false
 		}
@@ -279,11 +280,11 @@ func PropagateCallClobbers(contract *ABIContract, calls []CallContract, config G
 		return
 	}
 	for _, call := range calls {
-		contract.GPRClobbers |= call.GPRClobbers & lowMask(config.CallerGPRs)
-		contract.FPRClobbers |= call.FPRClobbers & lowMask(config.CallerFPRs)
+		contract.GPRClobbers |= call.GPRClobbers & config.CallerMask(BankGPR)
+		contract.FPRClobbers |= call.FPRClobbers & config.CallerMask(BankFPR)
 	}
-	contract.CalleeGPRs = contract.GPRClobbers &^ lowMask(config.CallerGPRs)
-	contract.CalleeFPRs = contract.FPRClobbers &^ lowMask(config.CallerFPRs)
+	contract.CalleeGPRs = contract.GPRClobbers &^ config.CallerMask(BankGPR)
+	contract.CalleeFPRs = contract.FPRClobbers &^ config.CallerMask(BankFPR)
 }
 
 func RefineCallContracts(calls []CallContract, module []ABIContract, importedFunctions uint32) uint32 {

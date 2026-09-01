@@ -13,6 +13,8 @@ type GreedyConfig struct {
 	Linear          LinearQConfig
 	CallerGPRs      uint8
 	CallerFPRs      uint8
+	CallerGPRMask   uint64
+	CallerFPRMask   uint64
 	MaxStage        uint8
 	PreserveGPRCost uint16
 	PreserveFPRCost uint16
@@ -42,7 +44,11 @@ func DefaultGreedyConfig(target Target) GreedyConfig {
 		// abstract registers map to registers preserved by the private ABI.
 		return GreedyConfig{Linear: linear, CallerGPRs: 5, CallerFPRs: 8, MaxStage: 4, PreserveGPRCost: 2, PreserveFPRCost: 2}
 	case TargetARM64:
-		return GreedyConfig{Linear: linear, CallerGPRs: 12, CallerFPRs: 16, MaxStage: 4, PreserveGPRCost: 2, PreserveFPRCost: 2}
+		return GreedyConfig{
+			Linear: linear, CallerGPRs: 12, CallerFPRs: 20,
+			CallerGPRMask: lowMask(12), CallerFPRMask: lowMask(16) | uint64(0xf)<<24,
+			MaxStage: 4, PreserveGPRCost: 2, PreserveFPRCost: 2,
+		}
 	default:
 		return GreedyConfig{}
 	}
@@ -258,11 +264,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		if !crossesCall(interval) {
 			continue
 		}
-		first := config.CallerGPRs
-		if interval.Bank == BankFPR {
-			first = config.CallerFPRs
-		}
-		if location.Kind == LocationRegister && location.Index >= uint16(first) && location.Index < 64 {
+		if location.Kind == LocationRegister && location.Index < 64 && conservativeCallMask(config, interval.Bank)&(uint64(1)<<location.Index) == 0 {
 			calleeUsed[bank] |= uint64(1) << location.Index
 		}
 	}
@@ -308,11 +310,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 			if interval.Bank == BankFPR {
 				bankIndex, preserveCost = 1, config.PreserveFPRCost
 			}
-			callerLimit := config.CallerGPRs
-			if interval.Bank == BankFPR {
-				callerLimit = config.CallerFPRs
-			}
-			if callLive && physical >= int(callerLimit) && calleeUsed[bankIndex]&(uint64(1)<<physical) == 0 {
+			if callLive && conservativeCallMask(config, interval.Bank)&(uint64(1)<<physical) == 0 && calleeUsed[bankIndex]&(uint64(1)<<physical) == 0 {
 				cost += uint64(preserveCost)
 			}
 			for occupant := reuse.occupantHead[bankIndex][physical]; occupant != 0; occupant = occupantNext[occupant-1] {
@@ -382,11 +380,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 			reuse.occupantHead[bankIndex][best] = intervalIndex
 		}
 		reuse.Metrics.Promotions++
-		callerLimit := config.CallerGPRs
-		if interval.Bank == BankFPR {
-			callerLimit = config.CallerFPRs
-		}
-		if callLive && best >= int(callerLimit) {
+		if callLive && conservativeCallMask(config, interval.Bank)&(uint64(1)<<best) == 0 {
 			reuse.Metrics.CalleeSaved++
 			bankIndex, preserveCost := 0, config.PreserveGPRCost
 			if interval.Bank == BankFPR {
@@ -487,6 +481,12 @@ func firstCallAfter(calls []callPosition, position uint32) int {
 }
 
 func conservativeCallMask(config GreedyConfig, bank Bank) uint64 {
+	if bank == BankFPR && config.CallerFPRMask != 0 {
+		return config.CallerFPRMask
+	}
+	if bank == BankGPR && config.CallerGPRMask != 0 {
+		return config.CallerGPRMask
+	}
 	count := config.CallerGPRs
 	if bank == BankFPR {
 		count = config.CallerFPRs
@@ -495,6 +495,10 @@ func conservativeCallMask(config GreedyConfig, bank Bank) uint64 {
 		return ^uint64(0)
 	}
 	return uint64(1)<<count - 1
+}
+
+func (config GreedyConfig) CallerMask(bank Bank) uint64 {
+	return conservativeCallMask(config, bank)
 }
 
 // LocationAt returns the regional location in effect at position, falling back

@@ -44,6 +44,25 @@ func TestNativeDenseLocalTableTargets(t *testing.T) {
 	}
 }
 
+func TestNativeARM64AllocatableFPRsRespectReservedRegisters(t *testing.T) {
+	tests := []struct {
+		name  string
+		insts []railmach.Inst
+		want  uint8
+	}{
+		{name: "call-free", want: 24},
+		{name: "call", insts: []railmach.Inst{{Op: wasm.InstrCall}}, want: 28},
+		{name: "call and f32 copysign", insts: []railmach.Inst{{Op: wasm.InstrCall}, {Op: wasm.InstrF32Copysign}}, want: 27},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := nativeARM64AllocatableFPRs(&railmach.Func{Insts: test.insts}); got != test.want {
+				t.Fatalf("allocatable FPRs = %d, want %d", got, test.want)
+			}
+		})
+	}
+}
+
 func TestNativeARM64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
 	machine := &railmach.Func{Target: railmach.TargetARM64, Insts: []railmach.Inst{
 		{Op: wasm.InstrGlobalGet}, {Op: wasm.InstrGlobalSet}, {Op: wasm.InstrGlobalGet},
