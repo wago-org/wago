@@ -35,6 +35,40 @@ func TestNewStackWithCapSizesFirstChunk(t *testing.T) {
 	}
 }
 
+func TestHintedStackGrowthMatchesLegacyRetention(t *testing.T) {
+	const (
+		firstCap = 386
+		nodes    = 31_000
+	)
+	hinted, legacy := newStackWithCap(firstCap), newStack()
+	for i := 1; i < nodes; i++ { // each stack already contains its sentinel
+		hinted.alloc()
+		legacy.alloc()
+	}
+	if len(hinted.chunks) < 2 || cap(hinted.chunks[1]) != 768-firstCap {
+		t.Fatalf("hinted fallback chunks = %v, want second cap %d", stackChunkCaps(hinted), 768-firstCap)
+	}
+	if got, want := retainedStackArenaCapacity(hinted), retainedStackArenaCapacity(legacy); got != want {
+		t.Fatalf("hinted retained capacity = %d, want legacy %d; hinted=%v legacy=%v", got, want, stackChunkCaps(hinted), stackChunkCaps(legacy))
+	}
+}
+
+func retainedStackArenaCapacity(s *stack) int {
+	total := 0
+	for i := range s.chunks {
+		total += cap(s.chunks[i])
+	}
+	return total
+}
+
+func stackChunkCaps(s *stack) []int {
+	caps := make([]int, len(s.chunks))
+	for i := range s.chunks {
+		caps[i] = cap(s.chunks[i])
+	}
+	return caps
+}
+
 func TestStackArenaCapForBodyTinyFunction(t *testing.T) {
 	s := newStackWithCap(stackArenaCapForBody(0, 0))
 	if cap(s.chunks[0]) != minStackArenaCap {

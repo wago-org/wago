@@ -188,16 +188,19 @@ func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
 // stack is the operand stack: a sentinel-terminated doubly-linked list backed by
 // a chunked bump arena of elems. Each chunk is a fixed-capacity []elem that is
 // never reallocated once created, so every *elem handed out stays valid for the
-// life of the function even as the arena grows without bound. Chunks grow
-// geometrically (256, 512, … capped) so a huge function costs O(log n) chunk
-// allocations instead of one heap object per node; reset() reuses every chunk
+// life of the function even as the arena grows without bound. After a hinted
+// first chunk, growth fills to the next legacy 256/512/... cumulative boundary
+// and then resumes the capped geometric sequence. Thus an underestimated hint
+// never retains more capacity than legacy growth. reset() reuses every chunk
 // across the module compile, so after the largest function is seen the arena
 // allocates nothing further. Nodes are never freed mid-function — that matches
 // single-pass usage.
 type stack struct {
-	chunks [][]elem
-	cur    int
-	head   *elem
+	chunks           [][]elem
+	cur              int
+	head             *elem
+	nextChunkCap     int
+	nextGeometricCap int
 }
 
 const (
@@ -212,9 +215,38 @@ func newStackWithCap(capHint int) *stack {
 	if capHint < minStackArenaCap {
 		capHint = minStackArenaCap
 	}
-	s := &stack{chunks: [][]elem{make([]elem, 0, capHint)}}
+	next, geometric := stackArenaGrowthCaps(capHint)
+	s := &stack{
+		chunks:           [][]elem{make([]elem, 0, capHint)},
+		nextChunkCap:     next,
+		nextGeometricCap: geometric,
+	}
 	s.initSentinel()
 	return s
+}
+
+func stackArenaGrowthCaps(firstCap int) (next, geometric int) {
+	total, geometric := defaultStackArenaCap, defaultStackArenaCap*2
+	for total < firstCap {
+		total += geometric
+		if geometric < maxStackChunkCap {
+			geometric *= 2
+			if geometric > maxStackChunkCap {
+				geometric = maxStackChunkCap
+			}
+		}
+	}
+	if remainder := total - firstCap; remainder > 0 {
+		return remainder, geometric
+	}
+	next = geometric
+	if geometric < maxStackChunkCap {
+		geometric *= 2
+		if geometric > maxStackChunkCap {
+			geometric = maxStackChunkCap
+		}
+	}
+	return next, geometric
 }
 
 // initSentinel rewinds to the first chunk and installs the sentinel node.
@@ -255,11 +287,14 @@ func (s *stack) alloc() *elem {
 	if len(*chunk) == cap(*chunk) {
 		s.cur++
 		if s.cur == len(s.chunks) {
-			nextCap := cap(*chunk) * 2
-			if nextCap > maxStackChunkCap {
-				nextCap = maxStackChunkCap
+			s.chunks = append(s.chunks, make([]elem, 0, s.nextChunkCap))
+			s.nextChunkCap = s.nextGeometricCap
+			if s.nextGeometricCap < maxStackChunkCap {
+				s.nextGeometricCap *= 2
+				if s.nextGeometricCap > maxStackChunkCap {
+					s.nextGeometricCap = maxStackChunkCap
+				}
 			}
-			s.chunks = append(s.chunks, make([]elem, 0, nextCap))
 		}
 		chunk = &s.chunks[s.cur]
 		*chunk = (*chunk)[:0]
