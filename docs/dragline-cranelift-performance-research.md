@@ -63,6 +63,29 @@ result before this slice was 0.852x Cranelift at module level, and only 9/36
 modules met the requested 0.5x threshold. A fresh complete paired comparison is
 required after additional worst-corpus work.
 
+## Retained ARM64 result: eight-step Fibonacci recurrence
+
+The verified canonical scalar Fibonacci loop now advances eight recurrence
+states per native loop iteration instead of four. Its low three input bits gate
+four and two residual steps and select the final even/odd state, so every i32
+input retains the original wrapping i64 semantics. A native execution test
+checks inputs 0 through 96, including all remainder classes and i64 overflow.
+
+Alternating paired samples on the non-ISA `fib_iter.fib(30)` export produced:
+
+| Measurement | Before | After | Ratio |
+| --- | ---: | ---: | ---: |
+| Dragline A/B, 21 x 1 s | 21.030 ns | 20.863 ns | **0.9905x** paired median |
+| Dragline vs Cranelift, 15 x 500 ms | 15.357 ns Cranelift | 20.786 ns Dragline | **1.350x** |
+
+The long A/B run improved in 21/21 pairs; its paired geometric-mean ratio was
+0.9884x. The native function grew from 212 to 248 bytes because the remainder
+paths are explicit. A three-round 150 ms, 36-export non-ISA signal-bounds A/B
+screen was aggregate-neutral at 0.9973x with 22/36 apparent wins; unchanged
+exports in that short screen quantify its noise floor rather than code changes.
+This narrows a worst corpus but remains far from the requested 0.5x Cranelift
+target.
+
 ## Prioritized work
 
 ### P0: first-class `v128` in RailMach

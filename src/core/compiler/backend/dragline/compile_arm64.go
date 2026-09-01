@@ -1592,14 +1592,19 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	if n, result, ok := arm64RailMachFibonacciLoop(plan); ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
-		// Advance the two-value recurrence four times per loop iteration. The
-		// low two count bits select one of the exact remaining states after the
-		// grouped loop, retaining wrapping i32 count and i64 add semantics.
-		a.LsrImm32(arm64.X13, nReg, 2)
+		// Advance the two-value recurrence eight times per loop iteration. The
+		// low three count bits execute groups of four and two remaining steps,
+		// then select the exact even/odd state. This retains wrapping i32 count
+		// and i64 add semantics over the full input domain.
+		a.LsrImm32(arm64.X13, nReg, 3)
 		a.MovImm64(arm64.X14, 0)
 		a.MovImm64(arm64.X15, 1)
 		noGroups := a.Cbz32(arm64.X13)
 		loop := a.Len()
+		a.Add64(arm64.X14, arm64.X14, arm64.X15)
+		a.Add64(arm64.X15, arm64.X15, arm64.X14)
+		a.Add64(arm64.X14, arm64.X14, arm64.X15)
+		a.Add64(arm64.X15, arm64.X15, arm64.X14)
 		a.Add64(arm64.X14, arm64.X14, arm64.X15)
 		a.Add64(arm64.X15, arm64.X15, arm64.X14)
 		a.Add64(arm64.X14, arm64.X14, arm64.X15)
@@ -1609,17 +1614,30 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			return nil, 0, true, fmt.Errorf("RailMach Fibonacci loop is out of range")
 		}
 		selectResult := a.Len()
+		if !a.TstImm32(nReg, 4) {
+			return nil, 0, true, fmt.Errorf("RailMach Fibonacci four-step remainder test is not encodable")
+		}
+		skipFour := a.Bcond(arm64.CondEQ)
+		a.Add64(arm64.X14, arm64.X14, arm64.X15)
+		a.Add64(arm64.X15, arm64.X15, arm64.X14)
+		a.Add64(arm64.X14, arm64.X14, arm64.X15)
+		a.Add64(arm64.X15, arm64.X15, arm64.X14)
+		if !a.PatchBranch19(skipFour, a.Len()) {
+			return nil, 0, true, fmt.Errorf("RailMach Fibonacci four-step remainder is out of range")
+		}
+		if !a.TstImm32(nReg, 2) {
+			return nil, 0, true, fmt.Errorf("RailMach Fibonacci two-step remainder test is not encodable")
+		}
+		skipTwo := a.Bcond(arm64.CondEQ)
+		a.Add64(arm64.X14, arm64.X14, arm64.X15)
+		a.Add64(arm64.X15, arm64.X15, arm64.X14)
+		if !a.PatchBranch19(skipTwo, a.Len()) {
+			return nil, 0, true, fmt.Errorf("RailMach Fibonacci two-step remainder is out of range")
+		}
 		if !a.TstImm32(nReg, 1) {
 			return nil, 0, true, fmt.Errorf("RailMach Fibonacci parity test is not encodable")
 		}
-		a.Csel64(arm64.X16, arm64.X15, arm64.X14, arm64.CondNE)
-		a.Add64(arm64.X17, arm64.X14, arm64.X15)
-		a.Add64(arm64.X13, arm64.X17, arm64.X15)
-		a.Csel64(arm64.X17, arm64.X13, arm64.X17, arm64.CondNE)
-		if !a.TstImm32(nReg, 2) {
-			return nil, 0, true, fmt.Errorf("RailMach Fibonacci remainder test is not encodable")
-		}
-		a.Csel64(resultReg, arm64.X17, arm64.X16, arm64.CondNE)
+		a.Csel64(resultReg, arm64.X15, arm64.X14, arm64.CondNE)
 		if !a.PatchBranch19(noGroups, selectResult) {
 			return nil, 0, true, fmt.Errorf("RailMach Fibonacci exit is out of range")
 		}

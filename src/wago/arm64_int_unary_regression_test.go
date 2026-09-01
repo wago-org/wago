@@ -56,3 +56,45 @@ func TestARM64I32ClzCtzWidth(t *testing.T) {
 		}
 	}
 }
+
+func TestARM64DraglineFibonacciGroupedRemainders(t *testing.T) {
+	locals := append(wasmtest.ULEB(3), byte(0x7e))
+	body := append(wasmtest.Vec(locals), []byte{
+		0x42, 0x00, 0x21, 0x01, // a = 0
+		0x42, 0x01, 0x21, 0x02, // b = 1
+		0x02, 0x40, 0x03, 0x40, // block; loop
+		0x20, 0x00, 0x45, 0x0d, 0x01, // break when n == 0
+		0x20, 0x01, 0x20, 0x02, 0x7c, 0x21, 0x03, // t = a + b
+		0x20, 0x02, 0x21, 0x01, // a = b
+		0x20, 0x03, 0x21, 0x02, // b = t
+		0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, // n--
+		0x0c, 0x00, 0x0b, 0x0b, // continue; end loop/block
+		0x20, 0x01, 0x0b,
+	}...)
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("fib", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	for n := int32(0); n <= 96; n++ {
+		a, b := uint64(0), uint64(1)
+		for range n {
+			a, b = b, a+b
+		}
+		result, err := instance.Invoke("fib", I32(n))
+		if err != nil || len(result) != 1 || uint64(AsI64(result[0])) != a {
+			t.Fatalf("fib(%d) = %v, %v; want %d", n, result, err, a)
+		}
+	}
+}
