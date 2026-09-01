@@ -1473,7 +1473,7 @@ func TestARM64RailMachDefersUnreachableTrapsPastHotReturn(t *testing.T) {
 	if firstTrap < 4 || !bytes.Equal(codeBytes[firstTrap-4:firstTrap], []byte{0xc0, 0x03, 0x5f, 0xd6}) {
 		t.Fatalf("first unreachable trap offset = %d; hot return does not precede cold traps", firstTrap)
 	}
-	if metrics.PostRARewrites != 1 || len(codeBytes) > 192 {
+	if metrics.PostRARewrites != 1 || len(codeBytes) > 224 {
 		t.Fatalf("Fibonacci recurrence rewrite = %d, code bytes = %d", metrics.PostRARewrites, len(codeBytes))
 	}
 }

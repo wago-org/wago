@@ -1592,15 +1592,16 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	if n, result, ok := arm64RailMachFibonacciLoop(plan); ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
-		// Advance the two-value recurrence twice per loop iteration. Splitting
-		// the i32 iteration count into pairs and parity removes one decrement
-		// and one conditional branch from every pair while retaining wrapping
-		// i32 semantics for the full input domain.
-		a.LsrImm32(arm64.X13, nReg, 1)
+		// Advance the two-value recurrence four times per loop iteration. The
+		// low two count bits select one of the exact remaining states after the
+		// grouped loop, retaining wrapping i32 count and i64 add semantics.
+		a.LsrImm32(arm64.X13, nReg, 2)
 		a.MovImm64(arm64.X14, 0)
 		a.MovImm64(arm64.X15, 1)
-		noPairs := a.Cbz32(arm64.X13)
+		noGroups := a.Cbz32(arm64.X13)
 		loop := a.Len()
+		a.Add64(arm64.X14, arm64.X14, arm64.X15)
+		a.Add64(arm64.X15, arm64.X15, arm64.X14)
 		a.Add64(arm64.X14, arm64.X14, arm64.X15)
 		a.Add64(arm64.X15, arm64.X15, arm64.X14)
 		a.SubImm32(arm64.X13, arm64.X13, 1)
@@ -1611,8 +1612,15 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 		if !a.TstImm32(nReg, 1) {
 			return nil, 0, true, fmt.Errorf("RailMach Fibonacci parity test is not encodable")
 		}
-		a.Csel64(resultReg, arm64.X15, arm64.X14, arm64.CondNE)
-		if !a.PatchBranch19(noPairs, selectResult) {
+		a.Csel64(arm64.X16, arm64.X15, arm64.X14, arm64.CondNE)
+		a.Add64(arm64.X17, arm64.X14, arm64.X15)
+		a.Add64(arm64.X13, arm64.X17, arm64.X15)
+		a.Csel64(arm64.X17, arm64.X13, arm64.X17, arm64.CondNE)
+		if !a.TstImm32(nReg, 2) {
+			return nil, 0, true, fmt.Errorf("RailMach Fibonacci remainder test is not encodable")
+		}
+		a.Csel64(resultReg, arm64.X17, arm64.X16, arm64.CondNE)
+		if !a.PatchBranch19(noGroups, selectResult) {
 			return nil, 0, true, fmt.Errorf("RailMach Fibonacci exit is out of range")
 		}
 		if metrics != nil {
