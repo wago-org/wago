@@ -34,6 +34,61 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachTopLevelI32LTGuardRequiresWholeVoidBody(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x02, // local.get 2
+			0x20, 0x03, // local.get 3
+			0x48,       // i32.lt_s
+			0x04, 0x40, // if
+			0x20, 0x00, // local.get 0
+			0x20, 0x01, // local.get 1
+			0x20, 0x02, // local.get 2
+			0x20, 0x03, // local.get 3
+			0x10, 0x00, // call 0
+			0x0b, // end if
+			0x0b, // end function
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lhs, rhs, ok := arm64RailMachTopLevelI32LTGuard(plan)
+	if !ok || lhs != arm64.X2 || rhs != arm64.X3 {
+		t.Fatalf("top-level guard = %d, %d, %t; want X2, X3, true", lhs, rhs, ok)
+	}
+	region := plan.Stack.Regions[0]
+	plan.Stack.Regions[0].ElseInstr = region.StartInstr + 1
+	if _, _, ok := arm64RailMachTopLevelI32LTGuard(plan); ok {
+		t.Fatal("guard with else was accepted")
+	}
+	plan.Stack.Regions[0] = region
+	plan.Stack.Results = []wasm.ValType{wasm.I32}
+	if _, _, ok := arm64RailMachTopLevelI32LTGuard(plan); ok {
+		t.Fatal("result-bearing function guard was accepted")
+	}
+}
+
 func TestARM64AddSubImmediateHelpersCanonicalizeShiftedAndNegativeConstants(t *testing.T) {
 	var a arm64.Asm
 	if !emitARM64I32AddSubImmediate(&a, arm64.X2, arm64.X3, 0xfff00000, true) || !bytes.Equal(a.B, []byte{0x62, 0x00, 0x44, 0x11}) {

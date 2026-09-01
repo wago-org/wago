@@ -544,6 +544,57 @@ func arm64DirectPreparedTrapClass(class railmach.ABIClass) bool {
 	return class == railmach.ABIPreparedIndirect
 }
 
+func arm64RailMachI32ParamRegister(plan *nativeBackendPlan, local uint32) (arm64.Reg, bool) {
+	if plan == nil || plan.Stack == nil || plan.Machine == nil || local >= uint32(plan.Machine.ParamCount) || int(local) >= len(plan.Stack.Locals) || plan.Stack.Locals[local] != wasm.I32 {
+		return 0, false
+	}
+	gpr := 0
+	for index := uint32(0); index < local; index++ {
+		switch plan.Stack.Locals[index] {
+		case wasm.F32, wasm.F64:
+		case wasm.I32, wasm.I64:
+			gpr++
+		default:
+			return 0, false
+		}
+	}
+	if gpr >= len(arm64ParamRegisters) {
+		return 0, false
+	}
+	return arm64ParamRegisters[gpr], true
+}
+
+func arm64RailMachTopLevelI32LTGuard(plan *nativeBackendPlan) (lhs, rhs arm64.Reg, ok bool) {
+	if plan == nil || plan.Stack == nil || plan.Machine == nil || !arm64DirectPreparedClass(plan.ABI.Class) || len(plan.Stack.Results) != 0 || len(plan.Stack.Instrs) < 6 {
+		return 0, 0, false
+	}
+	selfRecursive := false
+	for _, instruction := range plan.Machine.Insts {
+		if instruction.Op == wasm.InstrCall && uint32(instruction.Aux) == plan.Stack.FunctionIndex {
+			selfRecursive = true
+			break
+		}
+	}
+	if !selfRecursive {
+		return 0, 0, false
+	}
+	instructions := plan.Stack.Instrs
+	if instructions[0].Kind != wasm.InstrLocalGet || instructions[1].Kind != wasm.InstrLocalGet || instructions[2].Kind != wasm.InstrI32LtS || instructions[3].Kind != wasm.InstrIf {
+		return 0, 0, false
+	}
+	lhs, lhsOK := arm64RailMachI32ParamRegister(plan, instructions[0].U32())
+	rhs, rhsOK := arm64RailMachI32ParamRegister(plan, instructions[1].U32())
+	if !lhsOK || !rhsOK {
+		return 0, 0, false
+	}
+	for _, region := range plan.Stack.Regions {
+		if region.Kind == wasm.InstrIf && region.Parent == railssa.NoRegion && region.StartInstr == 3 && region.ElseInstr == ^uint32(0) && region.EndInstr+2 == uint32(len(instructions)) && region.ParamArity == 0 && region.ResultArity == 0 {
+			return lhs, rhs, true
+		}
+	}
+	return 0, 0, false
+}
+
 func arm64PromoteInlinedPreparedLeaf(plan *nativeBackendPlan) {
 	if plan != nil && plan.ABI.Class == railmach.ABIPreparedCall && arm64RailMachInlinesAllTinyCalls(plan) {
 		plan.ABI.Class = railmach.ABIPreparedLeaf
@@ -1102,6 +1153,14 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	}
 	if !a.PatchBranch26(call, internalOffset) {
 		return nil, 0, true, fmt.Errorf("RailMach internal entry is out of branch range")
+	}
+	if lhs, rhs, ok := arm64RailMachTopLevelI32LTGuard(plan); ok {
+		a.CmpReg32(lhs, rhs)
+		body := a.Bcond(arm64.CondLT)
+		a.Ret()
+		if !a.PatchBranch19(body, a.Len()) {
+			return nil, 0, true, fmt.Errorf("RailMach top-level guard branch is out of range")
+		}
 	}
 	if hasNativeCall {
 		if elidePreparedFrame {

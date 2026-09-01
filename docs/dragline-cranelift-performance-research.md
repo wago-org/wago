@@ -124,6 +124,29 @@ three-round 150 ms A/B screen over all 36 non-ISA runnable exports measured a
 compiler and `fib_iter` neutral at 0.998x. The full Go suite, guard-page package,
 corpus differential, and explicit trap/recovery test pass.
 
+## Retained ARM64 result: recursive guard before frame setup
+
+The quicksort helper's source-level `lo < hi` guard encloses its complete void
+body, but the native entry previously allocated a 96-byte frame and saved seven
+registers before testing it. Recursive base cases therefore paid the full
+prologue and epilogue. ARM64 now recognizes only a verified top-level signed
+`i32` less-than guard in a self-recursive, direct-private-ABI void function. It
+maps the guarded parameters through the ABI's separate integer register stream
+and returns before frame setup when the guard is false. Functions with an
+`else`, a result, a nested rather than whole-body region, a non-parameter guard,
+or no self-call do not qualify.
+
+Across 21 alternating 750 ms A/B pairs, `quicksort.sortN(4096)` fell from
+65.320 us to 53.898 us: a **0.819x** paired median and **0.816x** paired
+geometric mean, with 21/21 wins. A separate 15-pair comparison measured
+55.128 us for Dragline and 47.271 us for Cranelift, a **1.166x** paired median
+and **1.161x** paired geometric mean. The helper's native body grows by 12 bytes
+for the early compare, branch, and return.
+
+A signed-division-by-two rewrite was also tested on the pivot calculation. It
+removed `sdiv` with the required negative-value bias, but regressed the 21-pair
+median to 1.023x and geometric mean to 1.007x of baseline, so it was removed.
+
 ## Prioritized work
 
 ### P0: first-class `v128` in RailMach
