@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -50,6 +51,18 @@ func TestHintedStackGrowthMatchesLegacyRetention(t *testing.T) {
 	}
 	if got, want := retainedStackArenaCapacity(hinted), retainedStackArenaCapacity(legacy); got != want {
 		t.Fatalf("hinted retained capacity = %d, want legacy %d; hinted=%v legacy=%v", got, want, stackChunkCaps(hinted), stackChunkCaps(legacy))
+	}
+}
+
+func TestSubDefaultHintPreservesGeometricGrowth(t *testing.T) {
+	const nodes = 2_000
+	s := newStackWithCap(101)
+	for i := 1; i < nodes; i++ {
+		s.alloc()
+	}
+	want := []int{101, 202, 404, 808, 1616}
+	if got := stackChunkCaps(s); !slices.Equal(got, want) {
+		t.Fatalf("sub-default growth = %v, want %v", got, want)
 	}
 }
 

@@ -55,11 +55,12 @@ measured json-as and utf-as modules have none of these expansions, so their
 results below are unchanged.
 
 The body-size floor, bounded opcode slack, and no-hint fallback remain in place.
-If a hinted first chunk overflows, its first fallback chunk fills only the gap to
-the next legacy 256/512/... cumulative boundary; later chunks resume the legacy
-geometric sequence. Thus any underestimate retains no more total node capacity
-than the old arena at the same allocation count. It also cannot invalidate node
-pointers or emitted code.
+A sub-256 hinted first chunk preserves the existing direct-doubling fallback.
+For a hinted first chunk at or above 256, overflow fills only the gap to the next
+legacy 256/512/... cumulative boundary; later chunks resume the legacy geometric
+sequence. Thus larger direct hints cannot retain more total node capacity than
+the old arena at the same allocation count. Underestimates cannot invalidate
+node pointers or emitted code.
 
 ## Focused benchmark
 

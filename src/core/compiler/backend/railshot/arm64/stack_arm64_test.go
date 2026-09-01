@@ -2,7 +2,10 @@
 
 package arm64
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // Operand-stack arena sizing, ported from amd64/stack_test.go. The arena-capacity
 // heuristics are shared verbatim with amd64 (identical constants and formulas), so
@@ -51,6 +54,18 @@ func TestHintedStackGrowthMatchesLegacyRetentionArm64(t *testing.T) {
 	}
 	if got, want := retainedStackArenaCapacityArm64(hinted), retainedStackArenaCapacityArm64(legacy); got != want {
 		t.Fatalf("hinted retained capacity = %d, want legacy %d; hinted=%v legacy=%v", got, want, stackChunkCapsArm64(hinted), stackChunkCapsArm64(legacy))
+	}
+}
+
+func TestSubDefaultHintPreservesGeometricGrowthArm64(t *testing.T) {
+	const nodes = 2_000
+	s := newStackWithCap(101)
+	for i := 1; i < nodes; i++ {
+		s.alloc()
+	}
+	want := []int{101, 202, 404, 808, 1616}
+	if got := stackChunkCapsArm64(s); !slices.Equal(got, want) {
+		t.Fatalf("sub-default growth = %v, want %v", got, want)
 	}
 }
 

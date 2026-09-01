@@ -192,9 +192,9 @@ func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
 
 // stack is the operand stack: a sentinel-terminated doubly-linked list with a
 // bump arena of elems (never freed mid-function; that matches single-pass usage
-// and keeps *elem pointers stable). After a hinted first chunk, growth fills to
-// the next legacy cumulative boundary before resuming geometric chunks, so an
-// underestimated hint never retains more capacity than legacy growth.
+// and keeps *elem pointers stable). Sub-default hints preserve direct doubling.
+// At or above 256, growth fills to the next legacy cumulative boundary before
+// resuming geometric chunks, so an underestimate cannot regress legacy retention.
 type stack struct {
 	chunks           [][]elem
 	cur              int
@@ -226,6 +226,17 @@ func newStackWithCap(capHint int) *stack {
 }
 
 func stackArenaGrowthCaps(firstCap int) (next, geometric int) {
+	if firstCap < defaultStackArenaCap {
+		next = firstCap * 2
+		if next > maxStackChunkCap {
+			next = maxStackChunkCap
+		}
+		geometric = next * 2
+		if geometric > maxStackChunkCap {
+			geometric = maxStackChunkCap
+		}
+		return next, geometric
+	}
 	total, geometric := defaultStackArenaCap, defaultStackArenaCap*2
 	for total < firstCap {
 		total += geometric

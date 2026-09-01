@@ -188,10 +188,10 @@ func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
 // stack is the operand stack: a sentinel-terminated doubly-linked list backed by
 // a chunked bump arena of elems. Each chunk is a fixed-capacity []elem that is
 // never reallocated once created, so every *elem handed out stays valid for the
-// life of the function even as the arena grows without bound. After a hinted
-// first chunk, growth fills to the next legacy 256/512/... cumulative boundary
-// and then resumes the capped geometric sequence. Thus an underestimated hint
-// never retains more capacity than legacy growth. reset() reuses every chunk
+// life of the function even as the arena grows without bound. Sub-default hints
+// preserve direct doubling. At or above 256, growth fills to the next legacy
+// 256/512/... cumulative boundary and then resumes the capped geometric sequence,
+// so an underestimate cannot regress legacy retention. reset() reuses every chunk
 // across the module compile, so after the largest function is seen the arena
 // allocates nothing further. Nodes are never freed mid-function — that matches
 // single-pass usage.
@@ -226,6 +226,17 @@ func newStackWithCap(capHint int) *stack {
 }
 
 func stackArenaGrowthCaps(firstCap int) (next, geometric int) {
+	if firstCap < defaultStackArenaCap {
+		next = firstCap * 2
+		if next > maxStackChunkCap {
+			next = maxStackChunkCap
+		}
+		geometric = next * 2
+		if geometric > maxStackChunkCap {
+			geometric = maxStackChunkCap
+		}
+		return next, geometric
+	}
 	total, geometric := defaultStackArenaCap, defaultStackArenaCap*2
 	for total < firstCap {
 		total += geometric
