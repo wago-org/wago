@@ -31,7 +31,12 @@ func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
 
 func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint64, error) {
 	in := fn.in
-	if in.isLogicallyClosed() {
+	if fn.privateLifetime {
+		if err := in.beginPrivateInvocation(); err != nil {
+			return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+		}
+		defer in.endPrivateInvocation()
+	} else if in.isLogicallyClosed() {
 		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
 	}
 	if fn.scalarWideMask&1 == 0 {

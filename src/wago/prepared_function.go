@@ -30,6 +30,7 @@ type PreparedFunction struct {
 	resultWide          []bool
 	privateFast         bool
 	isolatedFast        bool
+	privateLifetime     bool
 	directIntFast       bool
 	directLeafIntFast   bool
 	directTrapIntFast   bool
@@ -135,6 +136,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 	if !in.tierable() && scalarFast && preparedPrivateEntryEnabled && (privateEligible || directEntryCandidate || contextFreeLoopCandidate) {
 		fn.privateFast = privateEligible || contextFreeLoopCandidate
 		fn.isolatedFast = preparedIsolatedEntryEnabled && (in.preparedIsolatedEligible() || contextFreeLoopCandidate && in.preparedContextFreeIsolatedEligible())
+		fn.privateLifetime = contextFreeLoopCandidate && !privateEligible
 		if (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
 			fn.directIntFast = true
 			fn.directLeafIntFast = directLeafPreparedEntry(in.c.InternalEntry[ic.li])
@@ -306,7 +308,12 @@ func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
 
 func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 	in := fn.in
-	if fn.privateFast {
+	if fn.privateLifetime {
+		if err := in.beginPrivateInvocation(); err != nil {
+			return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+		}
+		defer in.endPrivateInvocation()
+	} else if fn.privateFast {
 		if in.isLogicallyClosed() {
 			return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
 		}

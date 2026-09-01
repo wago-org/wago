@@ -195,6 +195,52 @@ func (in *Instance) beginInvocation() error {
 	}
 }
 
+// beginPrivateInvocation retains only the instance lifetime around a prepared
+// entry that has compiler proof it cannot observe shared runtime state. Unlike
+// beginInvocation, it deliberately does not enter the Runtime operation or GC
+// domains; the invocation count exists so Close can interrupt native execution
+// and defer physical release until it unwinds.
+func (in *Instance) beginPrivateInvocation() error {
+	if in == nil {
+		return fmt.Errorf("instance is nil")
+	}
+	for {
+		state := in.invocationState.Load()
+		if state&instanceInvocationClosed != 0 {
+			return fmt.Errorf("instance is closed")
+		}
+		if state&instanceInvocationCount == instanceInvocationCount {
+			return fmt.Errorf("instance has too many active invocations")
+		}
+		if in.invocationState.CompareAndSwap(state, state+1) {
+			return nil
+		}
+	}
+}
+
+func (in *Instance) endPrivateInvocation() {
+	if in == nil {
+		return
+	}
+	for {
+		state := in.invocationState.Load()
+		if state&instanceInvocationCount == 0 {
+			panic("wago: private invocation lease underflow")
+		}
+		next := state - 1
+		if !in.invocationState.CompareAndSwap(state, next) {
+			continue
+		}
+		if next == instanceInvocationClosed {
+			if closeState := in.ensurePluginState().close.Load(); closeState != nil {
+				closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
+			}
+			in.tryFinalize()
+		}
+		return
+	}
+}
+
 func (in *Instance) endInvocation() {
 	if in == nil {
 		return
