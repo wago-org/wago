@@ -10,6 +10,10 @@ package shared
 const (
 	MaxNativeFrameBytes       = 256 << 10
 	MaxNativeInboundCallBytes = 64 + 16
+
+	// MaxInitialStackArenaCapacity bounds speculative operand-node storage in one
+	// serial compiler scratch. Larger functions use stable fallback chunks.
+	MaxInitialStackArenaCapacity = 2048
 )
 
 // NativeFrameFitsStackFence reports whether a body frame plus fixed entry
@@ -18,15 +22,17 @@ func NativeFrameFitsStackFence(frameBytes, entryOverhead int) bool {
 	return frameBytes >= 0 && entryOverhead >= 0 && entryOverhead <= MaxNativeFrameBytes && frameBytes <= MaxNativeFrameBytes-entryOverhead
 }
 
-// StackArenaCapacity estimates operand nodes for one function. An opcode-based
-// hint avoids reserving nodes for immediate bytes while a body-size floor keeps
-// malformed or incomplete hints from causing allocation cliffs.
+// StackArenaCapacity estimates operand nodes for one function. The opcode hint
+// already counts every node-producing instruction plus control-edge rebuild
+// allowance, so reserve it directly instead of adding geometric-growth slack.
+// A body-size floor keeps malformed or incomplete hints from causing allocation
+// cliffs, and stable arena chunks remain the correctness fallback for a low hint.
 func StackArenaCapacity(bodyLen, nLocals, nodeHint int) int {
 	legacy := bodyLen + nLocals/4 + 1
 	if nodeHint <= 0 {
 		return legacy
 	}
-	precise := nodeHint + nodeHint/2 + nLocals/4 + 1
+	precise := nodeHint + nLocals/4 + 1
 	if floor := bodyLen/4 + nLocals/4 + 1; precise < floor {
 		precise = floor
 	}

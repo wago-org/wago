@@ -557,12 +557,16 @@ func newScratchWithStackCap(stackCap int) *scratch {
 	return &scratch{stack: newStackWithCap(stackCap), asm: &a64.Asm{}}
 }
 
-// moduleStackArenaCap chooses the first chunk of the operand-stack scratch that
-// is reused across every function (or every function assigned to one worker).
-// The function pre-scan already counted arena-producing opcodes, so use the
-// largest bounded per-function estimate instead of reserving the legacy 256
-// elems for every module. The legacy cap remains the ceiling: large or
-// incomplete hint sets keep the established growth behavior and memory bound.
+// maxInitialStackArenaCap bounds speculative operand-node storage retained by
+// one serial compiler scratch. Larger functions still grow through stable
+// chunks. This removes geometric growth for ordinary large functions without
+// letting one pathological hint reserve an unbounded first chunk.
+const maxInitialStackArenaCap = shared.MaxInitialStackArenaCapacity
+
+// moduleStackArenaCap chooses the first operand-stack chunk reused across the
+// serial module compile. The one-pass function pre-scan already counts
+// arena-producing nodes, so use its largest bounded estimate instead of forcing
+// large functions through the legacy 256-element geometric growth path.
 func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 	if len(hints) != len(m.Code) {
 		return defaultStackArenaCap
@@ -570,12 +574,23 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 	capHint := minStackArenaCap
 	for i := range hints {
 		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, hints[i].stackArenaNodes)
-		if fnCap >= defaultStackArenaCap {
-			return defaultStackArenaCap
+		if fnCap > maxInitialStackArenaCap {
+			fnCap = maxInitialStackArenaCap
 		}
 		if fnCap > capHint {
 			capHint = fnCap
 		}
+	}
+	return capHint
+}
+
+// workerStackArenaCap avoids multiplying one large function's initial arena by
+// every parallel worker. Each worker keeps the established bounded growth path
+// and allocates larger chunks only when it actually receives such a function.
+func workerStackArenaCap(m *wasm.Module, hints []funcHints) int {
+	capHint := moduleStackArenaCap(m, hints)
+	if capHint > defaultStackArenaCap {
+		return defaultStackArenaCap
 	}
 	return capHint
 }
@@ -1192,7 +1207,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	states := make([]workerState, workers)
 	arenaCap := (codeCap + workers - 1) / workers
-	stackCap := moduleStackArenaCap(m, allHints)
+	stackCap := workerStackArenaCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	var pressureBytes atomic.Int64

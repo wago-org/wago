@@ -704,11 +704,16 @@ func newScratchWithStackCap(stackCap int) *scratch {
 	return &scratch{stack: newStackWithCap(stackCap), asm: &amd64.Asm{}}
 }
 
+// maxInitialStackArenaCap bounds speculative operand-node storage retained by
+// one serial compiler scratch. Larger functions still grow through stable
+// chunks. This removes geometric growth for ordinary large functions without
+// letting one pathological hint reserve an unbounded first chunk.
+const maxInitialStackArenaCap = shared.MaxInitialStackArenaCapacity
+
 // moduleStackArenaCap chooses the first operand-stack chunk reused across the
-// module. The one-pass function pre-scan already counts arena-producing nodes,
-// so small modules need not reserve the legacy 256-element chunk. Chunk growth
-// remains the conservative overflow path; incomplete hints retain the legacy
-// capacity to avoid predictable growth churn.
+// serial module compile. The one-pass function pre-scan already counts
+// arena-producing nodes, so use its largest bounded estimate instead of forcing
+// large functions through the legacy 256-element geometric growth path.
 func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 	if len(hints) != len(m.Code) {
 		return defaultStackArenaCap
@@ -716,12 +721,23 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 	capHint := minStackArenaCap
 	for i := range hints {
 		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, hints[i].stackArenaNodes)
-		if fnCap >= defaultStackArenaCap {
-			return defaultStackArenaCap
+		if fnCap > maxInitialStackArenaCap {
+			fnCap = maxInitialStackArenaCap
 		}
 		if fnCap > capHint {
 			capHint = fnCap
 		}
+	}
+	return capHint
+}
+
+// workerStackArenaCap avoids multiplying one large function's initial arena by
+// every parallel worker. Each worker keeps the established bounded growth path
+// and allocates larger chunks only when it actually receives such a function.
+func workerStackArenaCap(m *wasm.Module, hints []funcHints) int {
+	capHint := moduleStackArenaCap(m, hints)
+	if capHint > defaultStackArenaCap {
+		return defaultStackArenaCap
 	}
 	return capHint
 }
@@ -1444,7 +1460,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if symbolicLocalSlotPackingPolicy(policy) {
 		arenaCap += amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
 	}
-	stackCap := moduleStackArenaCap(m, allHints)
+	stackCap := workerStackArenaCap(m, allHints)
 	ctrlCap := moduleControlFrameCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)

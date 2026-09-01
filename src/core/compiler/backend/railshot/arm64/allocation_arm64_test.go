@@ -37,11 +37,26 @@ func TestModuleScratchUsesBoundedStackArenaHintArm64(t *testing.T) {
 	}
 }
 
-func TestModuleStackArenaCapDoesNotGrowPastLegacyDefaultArm64(t *testing.T) {
+func TestModuleStackArenaCapUsesBoundedLargeHintArm64(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, defaultStackArenaCap*2)}}}
+	hints := []funcHints{{stackArenaNodes: defaultStackArenaCap * 2}}
+	want := stackArenaCapForHints(len(m.Code[0].BodyBytes), 0, hints[0].stackArenaNodes)
+	if got := moduleStackArenaCap(m, hints); got != want {
+		t.Fatalf("large-function cap = %d, want hinted %d", got, want)
+	}
+
+	m.Code[0].BodyBytes = make([]byte, maxInitialStackArenaCap*2)
+	hints[0].stackArenaNodes = maxInitialStackArenaCap * 2
+	if got := moduleStackArenaCap(m, hints); got != maxInitialStackArenaCap {
+		t.Fatalf("pathological-function cap = %d, want bound %d", got, maxInitialStackArenaCap)
+	}
+}
+
+func TestWorkerStackArenaCapDoesNotMultiplyLargeHintArm64(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 4096)}}}
 	hints := []funcHints{{stackArenaNodes: 4096}}
-	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
-		t.Fatalf("large-module initial cap = %d, want legacy cap %d", got, defaultStackArenaCap)
+	if got := workerStackArenaCap(m, hints); got != defaultStackArenaCap {
+		t.Fatalf("worker stack arena cap = %d, want %d", got, defaultStackArenaCap)
 	}
 }
 

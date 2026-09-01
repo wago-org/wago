@@ -3,8 +3,8 @@ package shared
 import "testing"
 
 func TestStackArenaCapacity(t *testing.T) {
-	if got := StackArenaCapacity(64, 0, 12); got != 19 {
-		t.Fatalf("hinted capacity = %d, want 19", got)
+	if got := StackArenaCapacity(64, 0, 12); got != 17 {
+		t.Fatalf("hinted capacity = %d, want body-floor 17", got)
 	}
 	if got := StackArenaCapacity(64, 12, 0); got != 68 {
 		t.Fatalf("legacy capacity = %d, want 68", got)
