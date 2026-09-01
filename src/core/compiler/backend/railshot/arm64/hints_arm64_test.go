@@ -106,6 +106,20 @@ func TestScanBodyBytesStackArenaHintCountsAtomicsArm64(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesDetectsSIMDFusionRiskArm64(t *testing.T) {
+	body := []byte{
+		0xfd, 0x0b, 0x04, 0x00, // v128.store align=16 offset=0
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.hasStackSinkFusion {
+		t.Fatal("SIMD body did not select legacy arena sizing")
+	}
+}
+
 func TestScanBodyBytesDetectsStackSinkFusionArm64(t *testing.T) {
 	body := []byte{
 		0x20, 0x00, // local.get 0

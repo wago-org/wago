@@ -251,6 +251,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
+				h.hasStackSinkFusion = true
+			}
 			if i+1 < len(instrs) && stackSinkFusionCandidate(in.Kind, instrs[i+1].Kind) {
 				h.hasStackSinkFusion = true
 			}
@@ -834,6 +837,9 @@ func isTableMutation(kind wasm.InstrKind) bool {
 func (s *byteBodyScanner) noteStackArenaOp(op byte, imm *wasm.InstructionImmediate) {
 	if stackArenaOpAllocates(op, imm) {
 		s.h.stackArenaNodes++
+	}
+	if op == 0xfd {
+		s.h.hasStackSinkFusion = true
 	}
 	if stackSinkFusionOpcode(op) {
 		next, ok := s.r.Peek()

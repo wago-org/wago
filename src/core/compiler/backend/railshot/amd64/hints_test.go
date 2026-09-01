@@ -162,6 +162,9 @@ func TestScanBodyBytesStackArenaHintSkipsSIMDStores(t *testing.T) {
 	if storeHints.stackArenaNodes != endOnly.stackArenaNodes {
 		t.Fatalf("SIMD store stack arena nodes = %d, want end-only baseline %d", storeHints.stackArenaNodes, endOnly.stackArenaNodes)
 	}
+	if !storeHints.hasStackSinkFusion {
+		t.Fatal("SIMD body did not select legacy arena sizing")
+	}
 
 	body = []byte{
 		0xfd, 0x54, 0x00, 0x00, 0x0f, // v128.load8_lane align=1 offset=0 lane=15

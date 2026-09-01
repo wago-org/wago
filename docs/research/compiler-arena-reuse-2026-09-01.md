@@ -44,10 +44,11 @@ excluded.
 Core reference transforms and `0xfb` GC/reference operations are also counted as
 one node; result-free branch/store forms are safe overestimates.
 
-Modules with a bytecode shape eligible for a result-to-local sink fusion retain
-the legacy first chunk. These peepholes can consume a scanned float, SIMD, select,
-or simple-if result without allocating its node, so the raw hint can overstate
-legacy retention.
+Modules with any SIMD instruction or a scalar bytecode shape eligible for a
+result-to-local sink fusion retain the legacy first chunk. SIMD adjacent-op
+superoptimization and float, select, or simple-if sinks can consume a scanned
+result without allocating its node, so the raw hint can overstate legacy
+retention.
 
 Modules with active inline targets also retain the legacy first chunk. A caller's
 hint counts the call opcode but not each node-producing instruction spliced from
