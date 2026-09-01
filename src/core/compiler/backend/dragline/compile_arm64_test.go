@@ -124,6 +124,35 @@ func TestARM64StructuredTradesOneVectorStackRegisterOnlyUnderLocalPressure(t *te
 	}
 }
 
+func TestARM64StructuredReusesV128LocalZero(t *testing.T) {
+	source := []byte{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+		0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7b,
+		0x03, 0x02, 0x01, 0x00,
+		0x0a, 0x0f, 0x01, 0x0d, 0x01, 0x02, 0x7b,
+		0x20, 0x00, 0x20, 0x01, 0xfd, 0x51, 0x1a, 0x20, 0x00, 0x0b,
+	}
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := (Compiler{}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zeroV128 := []byte{0x00, 0x1c, 0x20, 0x6e} // eor v0.16b, v0.16b, v0.16b
+	if got := bytes.Count(output.Code, zeroV128); got != 1 {
+		t.Fatalf("v128 local zero materializations = %d, want 1", got)
+	}
+}
+
 func TestARM64FoldsInlinedI32AddTree(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

@@ -7180,9 +7180,13 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			}
 		}
 	}
+	v128ZeroReady := false
 	for i := len(sf.Params); i < len(sf.Locals); i++ {
 		if sf.Locals[i] == wasm.V128 {
-			a.NeonEor16b(0, 0, 0)
+			if !v128ZeroReady {
+				a.NeonEor16b(0, 0, 0)
+				v128ZeroReady = true
+			}
 			localStoreV128(i, 0)
 		} else {
 			localStore(i, arm64.XZR)
