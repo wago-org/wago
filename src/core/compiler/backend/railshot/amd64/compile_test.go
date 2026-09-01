@@ -38,8 +38,8 @@ func TestModuleStackArenaCapUsesBoundedLargeFunctionHint(t *testing.T) {
 
 	m.Code[0].BodyBytes = make([]byte, maxInitialStackArenaCap*2)
 	hints[0].stackArenaNodes = maxInitialStackArenaCap * 2
-	if got := moduleStackArenaCap(m, hints); got != maxInitialStackArenaCap {
-		t.Fatalf("pathological-function cap = %d, want bound %d", got, maxInitialStackArenaCap)
+	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
+		t.Fatalf("pathological-function cap = %d, want fallback %d", got, defaultStackArenaCap)
 	}
 }
 

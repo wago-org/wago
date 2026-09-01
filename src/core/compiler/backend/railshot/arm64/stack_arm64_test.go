@@ -66,7 +66,7 @@ func TestStackArenaCapForHintsIgnoresLongImmediatesArm64(t *testing.T) {
 	// from the opcode hint, not one arena elem per byte.
 	const bodyLen = 64
 	const nodes = 12
-	want := bodyLen/4 + 1
+	want := nodes + nodes/2 + 1
 	if got := stackArenaCapForHints(bodyLen, 0, nodes); got != want {
 		t.Fatalf("stackArenaCapForHints(%d, 0, %d) = %d, want %d", bodyLen, nodes, got, want)
 	}

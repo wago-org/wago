@@ -722,7 +722,7 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 	for i := range hints {
 		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, hints[i].stackArenaNodes)
 		if fnCap > maxInitialStackArenaCap {
-			fnCap = maxInitialStackArenaCap
+			return defaultStackArenaCap
 		}
 		if fnCap > capHint {
 			capHint = fnCap

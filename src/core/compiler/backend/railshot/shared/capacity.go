@@ -22,17 +22,17 @@ func NativeFrameFitsStackFence(frameBytes, entryOverhead int) bool {
 	return frameBytes >= 0 && entryOverhead >= 0 && entryOverhead <= MaxNativeFrameBytes && frameBytes <= MaxNativeFrameBytes-entryOverhead
 }
 
-// StackArenaCapacity estimates operand nodes for one function. The opcode hint
-// already counts every node-producing instruction plus control-edge rebuild
-// allowance, so reserve it directly instead of adding geometric-growth slack.
-// A body-size floor keeps malformed or incomplete hints from causing allocation
-// cliffs, and stable arena chunks remain the correctness fallback for a low hint.
+// StackArenaCapacity estimates operand nodes for one function. An opcode-based
+// hint avoids reserving nodes for immediate bytes while bounded slack covers
+// operations such as multi-value calls whose lowering may allocate more than one
+// node per opcode. A body-size floor keeps malformed or incomplete hints from
+// causing allocation cliffs.
 func StackArenaCapacity(bodyLen, nLocals, nodeHint int) int {
 	legacy := bodyLen + nLocals/4 + 1
 	if nodeHint <= 0 {
 		return legacy
 	}
-	precise := nodeHint + nLocals/4 + 1
+	precise := nodeHint + nodeHint/2 + nLocals/4 + 1
 	if floor := bodyLen/4 + nLocals/4 + 1; precise < floor {
 		precise = floor
 	}
