@@ -73,14 +73,14 @@ func TestInlineTargetsKeepLegacyStackArenaCap(t *testing.T) {
 	}
 }
 
-func TestCustomRecipesKeepLegacyStackArenaCap(t *testing.T) {
+func TestExpandedLoweringKeepsLegacyStackArenaCap(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 512)}}}
 	hints := []funcHints{{stackArenaNodes: 256}}
 	if got := serialStackArenaCap(m, hints, inlineTargetTable{}, true); got != defaultStackArenaCap {
-		t.Fatalf("serial custom-recipe stack arena cap = %d, want %d", got, defaultStackArenaCap)
+		t.Fatalf("serial expanded-lowering stack arena cap = %d, want %d", got, defaultStackArenaCap)
 	}
 	if got := workerStackArenaCap(m, hints, inlineTargetTable{}, true); got != defaultStackArenaCap {
-		t.Fatalf("worker custom-recipe stack arena cap = %d, want %d", got, defaultStackArenaCap)
+		t.Fatalf("worker expanded-lowering stack arena cap = %d, want %d", got, defaultStackArenaCap)
 	}
 }
 

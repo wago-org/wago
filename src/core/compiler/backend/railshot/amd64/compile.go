@@ -744,10 +744,10 @@ func moduleHasMultiValueResults(m *wasm.Module) bool {
 }
 
 // serialStackArenaCap keeps the legacy growth path when lowering may expand one
-// scanned call into uncounted nodes. This applies to spliced inline bodies and
-// extension-owned custom recipes.
-func serialStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inlineTargetTable, customRecipes bool) int {
-	if !inlineTargets.empty() || customRecipes {
+// scanned instruction into uncounted nodes. This applies to spliced inline
+// bodies, extension-owned custom recipes, and GC helper argument construction.
+func serialStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inlineTargetTable, expandedLowering bool) int {
+	if !inlineTargets.empty() || expandedLowering {
 		return defaultStackArenaCap
 	}
 	return moduleStackArenaCap(m, hints)
@@ -756,8 +756,8 @@ func serialStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inline
 // workerStackArenaCap avoids multiplying one large function's initial arena by
 // every parallel worker. Each worker keeps the established bounded growth path
 // and allocates larger chunks only when it actually receives such a function.
-func workerStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inlineTargetTable, customRecipes bool) int {
-	capHint := serialStackArenaCap(m, hints, inlineTargets, customRecipes)
+func workerStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inlineTargetTable, expandedLowering bool) int {
+	capHint := serialStackArenaCap(m, hints, inlineTargets, expandedLowering)
 	if capHint > defaultStackArenaCap {
 		return defaultStackArenaCap
 	}
@@ -1284,7 +1284,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if workers <= 1 {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
-		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, len(opts.CustomInstructions) != 0))
+		expandedLowering := len(opts.CustomInstructions) != 0 || opts.GCStructHelpers || opts.GCArrayHelpers
+		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.policy = policy
 		sc.classifier = classifier
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
@@ -1482,7 +1483,8 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if symbolicLocalSlotPackingPolicy(policy) {
 		arenaCap += amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
 	}
-	stackCap := workerStackArenaCap(m, allHints, inlineTargets, len(opts.CustomInstructions) != 0)
+	expandedLowering := len(opts.CustomInstructions) != 0 || opts.GCStructHelpers || opts.GCArrayHelpers
+	stackCap := workerStackArenaCap(m, allHints, inlineTargets, expandedLowering)
 	ctrlCap := moduleControlFrameCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
