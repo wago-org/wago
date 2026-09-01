@@ -110,12 +110,26 @@ func (h *funcHints) addStackArenaNodes(n uint32) {
 	}
 }
 
+const stackArenaDeadCodeFlag uint16 = 1 << 15
+
 func (h *funcHints) addStackArenaDiscount(n uint16) {
-	if ^uint16(0)-h.stackArenaDiscount < n {
-		h.stackArenaDiscount = ^uint16(0)
+	const maxDiscount = stackArenaDeadCodeFlag - 1
+	flags := h.stackArenaDiscount & stackArenaDeadCodeFlag
+	discount := h.stackArenaDiscount & maxDiscount
+	if maxDiscount-discount < n {
+		discount = maxDiscount
 	} else {
-		h.stackArenaDiscount += n
+		discount += n
 	}
+	h.stackArenaDiscount = flags | discount
+}
+
+func (h *funcHints) markStackArenaDeadCode() { h.stackArenaDiscount |= stackArenaDeadCodeFlag }
+func (h funcHints) hasStackArenaDeadCode() bool {
+	return h.stackArenaDiscount&stackArenaDeadCodeFlag != 0
+}
+func (h funcHints) stackArenaDiscountNodes() int {
+	return int(h.stackArenaDiscount & (stackArenaDeadCodeFlag - 1))
 }
 
 func (h *funcHints) noteControlDepth(depth int) {
@@ -339,6 +353,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		for i := range instrs {
 			in := &instrs[i]
 			h.addStackArenaDiscount(stackAlgebraicDiscount(instrs, i))
+			if i+1 < len(instrs) && stackFlowTerminator(in.Kind) {
+				h.markStackArenaDeadCode()
+			}
 			if wasm.IsSIMDValidationInstructionKind(in.Kind) {
 				h.hasStackSinkFusion = true
 			}
@@ -678,6 +695,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		if err != nil {
 			return true, 0, err
 		}
+		constStart := s.r.off()
 		curIndex := ^uint32(0)
 		var curConst int64
 		curConstOK := false
@@ -905,6 +923,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err != nil {
 				return true, 0, err
 			}
+			if !curConstOK && (op == 0x41 || op == 0x42) {
+				curConst, curConstOK = scannedIntegerConst(&s.r, constStart, s.r.off(), op)
+			}
 			s.noteStackArenaOp(op, &imm)
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
 				s.h.hasControlFlow = true
@@ -917,6 +938,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if imm.UsesBulkMemory {
 				s.h.usesBulkMem = true
+			}
+		}
+		if stackFlowTerminatorOpcode(op) {
+			if next, ok := s.r.Peek(); ok && next != 0x0b && next != 0x05 {
+				s.h.markStackArenaDeadCode()
 			}
 		}
 		s.h.addStackArenaDiscount(stackAlgebraicDiscountOpcode(op, prevOp, prevPrevOp, prevIndex, prevPrevIndex, prevConst, prevConstOK))
@@ -1021,6 +1047,47 @@ func stackLookaheadDiscountOpcode(op byte) uint16 {
 	}
 }
 
+func stackFlowTerminator(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrUnreachable, wasm.InstrThrow, wasm.InstrThrowRef,
+		wasm.InstrBr, wasm.InstrBrTable, wasm.InstrReturn,
+		wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef:
+		return true
+	default:
+		return false
+	}
+}
+
+func stackFlowTerminatorOpcode(op byte) bool {
+	switch op {
+	case 0x00, 0x08, 0x0a, 0x0c, 0x0e, 0x0f, 0x12, 0x13, 0x15:
+		return true
+	default:
+		return false
+	}
+}
+
+func scannedIntegerConst(r *byteScanReader, start, end int, op byte) (int64, bool) {
+	if r.JumpTo(start) != nil {
+		return 0, false
+	}
+	var (
+		v   int64
+		err error
+	)
+	if op == 0x41 {
+		var x int32
+		x, err = r.I32()
+		v = int64(x)
+	} else {
+		v, err = r.I64()
+	}
+	if restoreErr := r.JumpTo(end); err != nil || restoreErr != nil {
+		return 0, false
+	}
+	return v, true
+}
+
 func stackAlgebraicDiscount(instrs []wasm.Instruction, i int) uint16 {
 	kind := instrs[i].Kind
 	if i != 0 {
@@ -1048,10 +1115,12 @@ func algebraicIdentityKind(kind, constKind wasm.InstrKind, i32 int32, i64 int64)
 	}
 	switch kind {
 	case wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32Or, wasm.InstrI32Xor,
-		wasm.InstrI32Shl, wasm.InstrI32ShrS, wasm.InstrI32ShrU, wasm.InstrI32Rotl, wasm.InstrI32Rotr,
-		wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Or, wasm.InstrI64Xor,
-		wasm.InstrI64Shl, wasm.InstrI64ShrS, wasm.InstrI64ShrU, wasm.InstrI64Rotl, wasm.InstrI64Rotr:
+		wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64Or, wasm.InstrI64Xor:
 		return c == 0
+	case wasm.InstrI32Shl, wasm.InstrI32ShrS, wasm.InstrI32ShrU, wasm.InstrI32Rotl, wasm.InstrI32Rotr:
+		return c&31 == 0
+	case wasm.InstrI64Shl, wasm.InstrI64ShrS, wasm.InstrI64ShrU, wasm.InstrI64Rotl, wasm.InstrI64Rotr:
+		return c&63 == 0
 	case wasm.InstrI32Mul, wasm.InstrI32DivU, wasm.InstrI64Mul, wasm.InstrI64DivU:
 		return c == 1
 	case wasm.InstrI32And:
@@ -1090,9 +1159,12 @@ func algebraicIdentityOpcode(op, constOp byte, c int64) bool {
 		return false
 	}
 	switch op {
-	case 0x6a, 0x6b, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78,
-		0x7c, 0x7d, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a:
+	case 0x6a, 0x6b, 0x72, 0x73, 0x7c, 0x7d, 0x84, 0x85:
 		return c == 0
+	case 0x74, 0x75, 0x76, 0x77, 0x78:
+		return c&31 == 0
+	case 0x86, 0x87, 0x88, 0x89, 0x8a:
+		return c&63 == 0
 	case 0x6c, 0x6e, 0x7e, 0x80:
 		return c == 1
 	case 0x71:

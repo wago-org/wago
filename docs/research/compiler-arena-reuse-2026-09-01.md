@@ -50,8 +50,11 @@ superoptimization and float, select, or simple-if sinks can consume a scanned
 result without allocating its node, so the raw hint can overstate legacy
 retention. Local-tee roots that can start the bounded SWAR widen or multiply-high
 lookahead receive a saturated skipped-node discount. Adjacent scalar identities
-such as `x + 0`, same-local simplifications such as `x - x`, and the SWAR pack
-wrap receive the same one-node accounting. The final direct capacity is then
+such as `x + 0`, width-multiple shifts, same-local simplifications such as
+`x - x`, and the SWAR pack wrap receive the same one-node accounting. Functions
+with instructions after an unconditional terminator retain legacy sizing because
+the compiler classifies that dead region without allocating operand nodes. The
+final direct capacity is then
 compared with legacy retention at the discounted lower bound; isolated patterns
 keep useful sizing, while repeated patterns fall back.
 
