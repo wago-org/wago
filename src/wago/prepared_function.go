@@ -137,10 +137,14 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		fn.privateFast = privateEligible || contextFreeLoopCandidate
 		fn.isolatedFast = preparedIsolatedEntryEnabled && (in.preparedIsolatedEligible() || contextFreeLoopCandidate && in.preparedContextFreeIsolatedEligible())
 		fn.privateLifetime = contextFreeLoopCandidate && !privateEligible
-		if (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
+		if (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && (in.c.directPreparedAt(ic.li) || contextFreeLoopCandidate) {
 			fn.directIntFast = true
 			fn.directLeafIntFast = directLeafPreparedEntry(in.c.InternalEntry[ic.li])
-			fn.directTrapIntFast = directTrapPreparedEntry(in.c.InternalEntry[ic.li])
+			// Context-free loops still need the interrupt/trap publication used by
+			// Close on Linux, but they do not need a foreign guest stack. The direct
+			// trap entry publishes the same stack/link pair as call-free trapping
+			// functions and keeps these loops on the Go stack.
+			fn.directTrapIntFast = directTrapPreparedEntry(in.c.InternalEntry[ic.li]) || contextFreeLoopCandidate
 			fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 		}
 	}

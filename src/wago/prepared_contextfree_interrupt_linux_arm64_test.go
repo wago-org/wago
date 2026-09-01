@@ -33,8 +33,8 @@ func TestCloseInterruptsSignalBackedPreparedContextFreeLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !prepared.privateFast || !prepared.isolatedFast || !prepared.privateLifetime {
-		t.Fatalf("signal-backed loop selected private=%t isolated=%t lifetime=%t", prepared.privateFast, prepared.isolatedFast, prepared.privateLifetime)
+	if !prepared.privateFast || !prepared.isolatedFast || !prepared.privateLifetime || !prepared.directTrapIntFast {
+		t.Fatalf("signal-backed loop selected private=%t isolated=%t lifetime=%t direct-trap=%t", prepared.privateFast, prepared.isolatedFast, prepared.privateLifetime, prepared.directTrapIntFast)
 	}
 	done := make(chan error, 1)
 	go func() {

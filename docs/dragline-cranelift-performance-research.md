@@ -83,8 +83,28 @@ The long A/B run improved in 21/21 pairs; its paired geometric-mean ratio was
 paths are explicit. A three-round 150 ms, 36-export non-ISA signal-bounds A/B
 screen was aggregate-neutral at 0.9973x with 22/36 apparent wins; unchanged
 exports in that short screen quantify its noise floor rather than code changes.
-This narrows a worst corpus but remains far from the requested 0.5x Cranelift
-target.
+
+## Retained ARM64 result: direct trap-aware context-free loops
+
+The generated Fibonacci body was already much shorter than Cranelift's scalar
+loop, but its prepared host entry still switched to the foreign guest stack.
+Context-free loops now use ARM64's existing direct trap-aware Go-stack entry for
+eligible integer signatures. Unlike the trap-free leaf entry, this path
+publishes the active stack pointer and return link, so Linux asynchronous
+`Instance.Close` interruption retains its landing-pad contract. Memory,
+globals, tables, calls, references, and ordinary trapping operations remain
+excluded by the existing context-free proof.
+
+| Measurement | Before | After / peer | Ratio |
+| --- | ---: | ---: | ---: |
+| Dragline A/B, 21 x 1 s | 21.332 ns | 15.653 ns | **0.736x** paired median |
+| Dragline vs Cranelift, 15 x 500 ms | 15.680 ns Cranelift | 15.552 ns Dragline | **0.994x** paired median |
+
+All 21 long A/B pairs improved, with a 0.735x paired geometric mean. Dragline
+won 14/15 Cranelift pairs. A three-round 150 ms, 36-export non-ISA signal-bounds
+screen improved the aggregate geometric mean to 0.996x of the previous
+compiler. The native function remains 248 bytes; this gain is entirely at the
+host-to-Wasm boundary.
 
 ## Prioritized work
 

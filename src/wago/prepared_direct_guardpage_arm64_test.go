@@ -83,7 +83,7 @@ func TestDraglineSignalBackedContextFreeLoopUsesPrivatePreparedEntry(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !prepared.privateFast || !prepared.isolatedFast || !prepared.privateLifetime || prepared.directLeafIntFast || prepared.directTrapIntFast {
+	if !prepared.privateFast || !prepared.isolatedFast || !prepared.privateLifetime || prepared.directLeafIntFast || !prepared.directTrapIntFast {
 		t.Fatalf("signal-backed loop selected private=%t isolated=%t lifetime=%t leaf=%t trap=%t", prepared.privateFast, prepared.isolatedFast, prepared.privateLifetime, prepared.directLeafIntFast, prepared.directTrapIntFast)
 	}
 	result, err := prepared.Invoke1(I32(10))

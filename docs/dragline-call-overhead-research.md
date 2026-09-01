@@ -58,6 +58,22 @@ linear memory, proves the selected export carries the leaf metadata, and checks
 the direct result. This does not admit memory-touching, calling, reference,
 host-reentrant, or otherwise unproved functions to the leaf transition.
 
+The same distinction now applies to compiler-proven context-free loops. These
+loops cannot use memory, globals, tables, calls, references, or ordinary Wasm
+trap paths, but they may run long enough that Linux `Instance.Close` must still
+interrupt them. ARM64 therefore routes eligible integer signatures through the
+existing Go-stack trap entry rather than the foreign guest stack. That entry
+publishes the active SP and return link consumed by the Linux asynchronous
+interrupt landing pad and retains the post-call trap check.
+
+On `fib_iter.fib(30)`, 21 alternating one-second pairs reduced the median from
+21.332 ns to 15.653 ns, a **0.736x** latency ratio, with all 21 pairs improving.
+The paired geometric-mean ratio was 0.735x. A separate 15-pair comparison
+measured 15.552 ns for Dragline and 15.680 ns for Cranelift, a **0.994x** paired
+median ratio with 14/15 Dragline wins. A three-round, 36-export non-ISA screen
+improved the aggregate geometric mean to 0.996x of the prior compiler; only the
+eligible context-free integer-loop path is semantically changed.
+
 ## What Wago pays today
 
 `Instance.Invoke` serializes the instance, creates an invocation ID, acquires
