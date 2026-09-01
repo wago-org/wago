@@ -106,6 +106,29 @@ screen improved the aggregate geometric mean to 0.996x of the previous
 compiler. The native function remains 248 bytes; this gain is entirely at the
 host-to-Wasm boundary.
 
+## Retained ARM64 result: tail-enter trap-aware guests
+
+The direct trap-aware assembly entry used an intermediate call solely to
+publish its link register as the cold trap continuation. It then called the
+guest and branched back to that continuation after the guest returned. The
+published link already is the correct continuation, so the helper now
+tail-branches to compiler-proven call-free guest code. A normal guest `RET` and
+the Linux asynchronous interrupt landing pad both return to the same epilogue,
+without the extra return branch. Generated guest code and its native-code size
+do not change.
+
+| Measurement | Before / peer | After | Ratio |
+| --- | ---: | ---: | ---: |
+| `dispatch.apply` A/B, 21 x 750 ms | 14.825 ns | 4.107 ns | **0.278x** paired median |
+| `dispatch.apply` vs Cranelift, 15 x 500 ms | 12.539 ns | 4.125 ns | **0.327x** paired median |
+| `fib_iter.fib(30)` vs Cranelift, 15 x 500 ms | 15.858 ns | 5.322 ns | **0.335x** paired median |
+
+Every focused pair improved. A three-round 150 ms A/B screen over all 36
+non-ISA runnable exports measured a 0.933x geometric mean, with `dispatch` at
+0.285x and `fib_iter` at 0.327x of the immediately preceding binary. The full
+Go suite, guard-page package, corpus differential, explicit trap/recovery test,
+and Linux ARM64 interrupt-test cross-build pass.
+
 ## Prioritized work
 
 ### P0: first-class `v128` in RailMach

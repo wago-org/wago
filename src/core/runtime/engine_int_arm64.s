@@ -37,8 +37,9 @@ callNativeTrapInt:
 	MOVD R11, -24(R26)
 	MOVD R30, R11
 	MOVD R11, -32(R26)
-	BL   (R9)
-	B    afterNativeTrapIntCall
+	// R30 already names afterNativeTrapIntCall. Tail-enter the call-free guest
+	// so its RET (or the trap landing pad) returns there without another branch.
+	B    (R9)
 
 // func enterNativeInt(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
 TEXT ·enterNativeInt(SB), NOSPLIT, $0-64

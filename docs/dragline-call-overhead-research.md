@@ -74,6 +74,18 @@ median ratio with 14/15 Dragline wins. A three-round, 36-export non-ISA screen
 improved the aggregate geometric mean to 0.996x of the prior compiler; only the
 eligible context-free integer-loop path is semantically changed.
 
+The trap entry originally called a small assembly helper, which called the
+guest and then branched back to the entry epilogue. The helper's link register
+already names that epilogue and is the exact continuation published for trap
+and interrupt recovery. Tail-branching from the helper to the call-free guest
+therefore removes the extra return branch while preserving both recovery paths.
+Across 21 alternating 750 ms pairs, `dispatch.apply` fell from 14.825 ns to
+4.107 ns (**0.278x**, 21/21 wins). Against Cranelift it measured 4.125 ns versus
+12.539 ns (**0.327x**, 15/15 wins). `fib_iter.fib(30)` measured 5.322 ns versus
+15.858 ns for Cranelift (**0.335x**, 15/15 wins). A complete three-round,
+36-export non-ISA A/B screen measured a **0.933x** geometric mean; generated
+guest code is unchanged.
+
 ## What Wago pays today
 
 `Instance.Invoke` serializes the instance, creates an invocation ID, acquires
