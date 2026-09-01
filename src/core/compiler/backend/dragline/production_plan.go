@@ -717,7 +717,22 @@ func planInstructionsAdjacent(schedule *railmach.Schedule, first, second uint32)
 	return false
 }
 
-func nativeScheduleScoreBetter(objective corecompiler.OptimizationObjective, instructions int, candidate, retained railmach.ScheduleScore) bool {
+func nativeScheduleScoreBetter(objective corecompiler.OptimizationObjective, target railmach.Target, instructions int, usesFPR bool, candidate, retained railmach.ScheduleScore) bool {
+	if objective == corecompiler.ObjectiveSpeed && target == railmach.TargetARM64 && usesFPR && instructions >= 256 && instructions < 1024 {
+		latencyWithinBound := func(latency, other railmach.ScheduleScore) bool {
+			spillWithinBound := other.WeightedSpillDebt > ^uint64(0)/3 || latency.WeightedSpillDebt <= other.WeightedSpillDebt*3
+			return latency.Kind == railmach.ScheduleKindLatencyFusion &&
+				spillWithinBound &&
+				latency.CopyCycles <= other.CopyCycles && latency.PhysicalCopies <= other.PhysicalCopies &&
+				latency.FixedRepairs <= other.FixedRepairs && latency.BrokenFusions <= other.BrokenFusions
+		}
+		if latencyWithinBound(candidate, retained) {
+			return true
+		}
+		if latencyWithinBound(retained, candidate) {
+			return false
+		}
+	}
 	if objective == corecompiler.ObjectiveSpeed && instructions >= 1024 {
 		latencyWithinBound := func(latency, other railmach.ScheduleScore) bool {
 			return latency.Kind == railmach.ScheduleKindLatencyFusion &&
@@ -910,6 +925,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		defaultGreedy.Linear.GPRs = nativeARM64CachedGlobalDescriptorRegister
 	}
 	defaultGreedy.CallClobbers = nativeCallClobberOverrides(machine, stack.ImportedFuncs, moduleContracts, components, refinedRecursive, localIndex, defaultGreedy)
+	usesFPR := false
+	for _, data := range machine.VRegs {
+		usesFPR = usesFPR || data.Bank == railmach.BankFPR
+	}
 	bestGreedy := defaultGreedy
 	var best railmach.ScheduleScore
 	haveBest := false
@@ -926,7 +945,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			if candidateErrs[index] != nil {
 				return nil, candidateErrs[index]
 			}
-			if !haveBest || nativeScheduleScoreBetter(objective, len(machine.Insts), score, best) {
+			if !haveBest || nativeScheduleScoreBetter(objective, machine.Target, len(machine.Insts), usesFPR, score, best) {
 				best, bestIndex, haveBest = score, index, true
 			}
 		}
@@ -948,7 +967,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			if candidateErr != nil {
 				return nil, candidateErr
 			}
-			if !haveBest || nativeScheduleScoreBetter(objective, len(machine.Insts), score, best) {
+			if !haveBest || nativeScheduleScoreBetter(objective, machine.Target, len(machine.Insts), usesFPR, score, best) {
 				best, haveBest = score, true
 			}
 		}
@@ -992,7 +1011,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				if retryErrs[index] != nil {
 					return nil, retryErrs[index]
 				}
-				if nativeScheduleScoreBetter(objective, len(machine.Insts), candidateScore, retryBest) {
+				if nativeScheduleScoreBetter(objective, machine.Target, len(machine.Insts), usesFPR, candidateScore, retryBest) {
 					retryBest, retryKind, retryIndex, improved = candidateScore, retryKinds[index], index, true
 				}
 			}
@@ -1014,7 +1033,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				if retryErr != nil {
 					return nil, retryErr
 				}
-				if nativeScheduleScoreBetter(objective, len(machine.Insts), candidateScore, retryBest) {
+				if nativeScheduleScoreBetter(objective, machine.Target, len(machine.Insts), usesFPR, candidateScore, retryBest) {
 					retryBest, retryKind, improved = candidateScore, kind, true
 				}
 			}

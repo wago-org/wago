@@ -350,16 +350,35 @@ func TestNativeEdgeConstantRematerializationRequiresPhysicalMoves(t *testing.T) 
 func TestNativeScheduleScoreBoundsLargeLatencyPreference(t *testing.T) {
 	pressure := railmach.ScheduleScore{Kind: railmach.ScheduleKindPressure, WeightedSpillDebt: 300}
 	latency := railmach.ScheduleScore{Kind: railmach.ScheduleKindLatencyFusion, WeightedSpillDebt: 400}
-	if !nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, 1024, latency, pressure) || nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, 1024, pressure, latency) {
+	if !nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 1024, false, latency, pressure) || nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 1024, false, pressure, latency) {
 		t.Fatal("bounded large-function latency preference was not stable across candidate order")
 	}
 	latency.WeightedSpillDebt++
-	if nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, 1024, latency, pressure) {
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 1024, false, latency, pressure) {
 		t.Fatal("latency schedule beyond the spill bound was preferred")
 	}
 	latency.WeightedSpillDebt = 400
-	if nativeScheduleScoreBetter(corecompiler.ObjectiveSize, 1024, latency, pressure) || nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, 1023, latency, pressure) {
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSize, railmach.TargetAMD64, 1024, false, latency, pressure) || nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 1023, false, latency, pressure) {
 		t.Fatal("latency preference escaped the speed/large-function boundary")
+	}
+}
+
+func TestNativeScheduleScorePrefersARM64FloatLatencyWithinSpillBound(t *testing.T) {
+	pressure := railmach.ScheduleScore{Kind: railmach.ScheduleKindPressure, WeightedSpillDebt: 300, PhysicalCopies: 38}
+	latency := railmach.ScheduleScore{Kind: railmach.ScheduleKindLatencyFusion, WeightedSpillDebt: 900, PhysicalCopies: 36}
+	if !nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetARM64, 386, true, latency, pressure) ||
+		nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetARM64, 386, true, pressure, latency) {
+		t.Fatal("bounded ARM64 floating latency preference was not stable across candidate order")
+	}
+	latency.WeightedSpillDebt++
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetARM64, 386, true, latency, pressure) {
+		t.Fatal("ARM64 floating latency schedule beyond the spill bound was preferred")
+	}
+	latency.WeightedSpillDebt = 900
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetAMD64, 386, true, latency, pressure) ||
+		nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetARM64, 386, false, latency, pressure) ||
+		nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetARM64, 1024, true, latency, pressure) {
+		t.Fatal("ARM64 floating latency preference escaped its target, register-bank, or medium-function boundary")
 	}
 }
 
