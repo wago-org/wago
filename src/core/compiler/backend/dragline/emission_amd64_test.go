@@ -28,12 +28,12 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 	if !amd64RailMachCandidate(stack, false, false) {
 		t.Fatal("ordinary scalar candidate was rejected")
 	}
-	if !amd64RailMachCandidate(stack, false, true) {
-		t.Fatal("dense-global leaf was rejected")
+	if amd64RailMachCandidate(stack, false, true) {
+		t.Fatal("dense-global leaf was admitted")
 	}
 	stack.Instrs = []railssa.StackInstr{{Kind: wasm.InstrGlobalGet}, {Kind: wasm.InstrCall}}
-	if !amd64RailMachCandidate(stack, false, true) {
-		t.Fatal("acyclic dense-global call helper was rejected")
+	if amd64RailMachCandidate(stack, false, true) {
+		t.Fatal("acyclic dense-global call helper was admitted")
 	}
 	stack.MaxLoopDepth = 1
 	if amd64RailMachCandidate(stack, false, true) {
@@ -41,8 +41,8 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 	}
 	stack.MaxLoopDepth = 0
 	stack.Instrs = make([]railssa.StackInstr, 1025)
-	if !amd64RailMachCandidate(stack, false, false) {
-		t.Fatal("large parameterless function was rejected")
+	if amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("large parameterless function was admitted")
 	}
 	stack.Params = []wasm.ValType{wasm.I32}
 	if !amd64RailMachCandidate(stack, false, false) {

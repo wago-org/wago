@@ -35,6 +35,28 @@ func TestGreedySpillDensityPrioritizesFrequentlyUsedShortRange(t *testing.T) {
 	}
 }
 
+func TestGreedyDensityWithFPRsIsARM64Only(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   bool
+	}{
+		{name: "arm64", target: TargetARM64, want: true},
+		{name: "amd64", target: TargetAMD64, want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := &Func{
+				Target: test.target,
+				Insts:  make([]Inst, greedyDensityMinInstructions),
+				VRegs:  []VRegData{{}, {Bank: BankFPR}},
+			}
+			if got := greedyUsesDensityCost(f); got != test.want {
+				t.Fatalf("greedyUsesDensityCost = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
 func TestAllocateGreedyPPromotesCallCrossingRange(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
 		0x20, 0x00,

@@ -209,7 +209,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		return survivors
 	}
 	intervals := append(reuse.priorityIntervals[:0], reuse.Intervals...)
-	useDensityCost := len(f.Insts) >= greedyDensityMinInstructions
+	useDensityCost := greedyUsesDensityCost(f)
 	hasCall := false
 	for _, instruction := range f.Insts {
 		if IsCall(instruction.Op) {
@@ -438,6 +438,21 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		}
 	}
 	return reuse, nil
+}
+
+func greedyUsesDensityCost(f *Func) bool {
+	if f == nil || len(f.Insts) < greedyDensityMinInstructions {
+		return false
+	}
+	if f.Target == TargetARM64 {
+		return true
+	}
+	for reg := VReg(1); int(reg) < len(f.VRegs); reg++ {
+		if f.VRegs[reg].Bank == BankFPR {
+			return false
+		}
+	}
+	return true
 }
 
 func greedyEffectiveMaxStage(target Target, functionInstructions int, density, hasCyclicCall bool, configured uint8) uint8 {

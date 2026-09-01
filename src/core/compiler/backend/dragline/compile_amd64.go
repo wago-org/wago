@@ -30,17 +30,9 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, moduleHasDe
 		return false
 	}
 	if moduleHasDenseGlobals {
-		hasGlobal, hasCall := false, false
-		for _, instruction := range stack.Instrs {
-			hasGlobal = hasGlobal || instruction.Kind == wasm.InstrGlobalGet || instruction.Kind == wasm.InstrGlobalSet
-			hasCall = hasCall || instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect
-		}
-		if hasGlobal && hasCall && stack.MaxLoopDepth != 0 {
-			// Dense mutable-global allocator helpers still expose incomplete value
-			// flow across loop-carried calls. Keep only that intersection structured;
-			// leaf global accessors and acyclic helper functions use RailMach.
-			return false
-		}
+		// Dense mutable-global modules still expose incomplete value flow across
+		// allocator helper calls. Keep their verified structured product.
+		return false
 	}
 	if stack.MaxLoopDepth != 0 && len(stack.Results) == 1 && stack.Results[0] == wasm.I64 {
 		for _, instruction := range stack.Instrs {
@@ -51,6 +43,12 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, moduleHasDe
 				return false
 			}
 		}
+	}
+	if len(stack.Params) == 0 && len(stack.Instrs) > 1024 {
+		// Large parameterless decoder and allocator functions still expose
+		// incomplete AMD64 value flow at loop edges. Keep their verified
+		// structured product until that contract is proved end to end.
+		return false
 	}
 	if len(stack.Instrs) > 512 {
 		for _, instruction := range stack.Instrs {
