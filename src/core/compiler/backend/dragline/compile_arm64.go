@@ -1980,7 +1980,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 			if alignBlock || uint32(plan.Machine.Edges[edge].From) != uint32(blockID) {
 				continue
 			}
-			_, _, alignBlock = arm64RailMachRotatedCountedLatch(plan, uint32(blockID), uint32(edge))
+			_, _, alignBlock = arm64RailMachRotatedZeroTestLatch(plan, uint32(blockID), uint32(edge))
 		}
 		if alignBlock {
 			a.Align16()
@@ -3553,15 +3553,14 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 							return nil, 0, true, err
 						}
 					}
-					a.MovReg32(arm64.X15, lhs)
 					if store {
 						return nil, 0, true, fmt.Errorf("RailMach store pair cannot preserve ordered Wasm side effects")
 					} else {
 						pairOK := false
 						if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
-							pairOK = a.LoadPairFPIdx(dst, reg(second.Result), arm64.X26, arm64.X15, int32(uint32(instruction.Aux)), size)
+							pairOK = a.LoadPairFPIdx(dst, reg(second.Result), arm64.X26, lhs, int32(uint32(instruction.Aux)), size)
 						} else {
-							pairOK = a.LoadPairIdx(dst, reg(second.Result), arm64.X26, arm64.X15, int32(uint32(instruction.Aux)), size)
+							pairOK = a.LoadPairIdx(dst, reg(second.Result), arm64.X26, lhs, int32(uint32(instruction.Aux)), size)
 						}
 						if !pairOK {
 							return nil, 0, true, fmt.Errorf("RailMach load pair is not encodable")
@@ -4391,7 +4390,7 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 					skipMove2 = edgeResultRename.chainedMove
 				}
 			}
-			if counter, exit, rotated := arm64RailMachRotatedCountedLatch(plan, uint32(blockID), first); rotated {
+			if counter, exit, rotated := arm64RailMachRotatedZeroTestLatch(plan, uint32(blockID), first); rotated {
 				if err := emitARM64RailMachEdgeMovesSkipping2(&a, plan, first, skipMove, skipMove2); err != nil {
 					return nil, 0, true, err
 				}
@@ -6593,12 +6592,13 @@ func arm64RailMachHasPredecessorEdgeMoves(plan *nativeBackendPlan, edge uint32) 
 	return false
 }
 
-// arm64RailMachRotatedCountedLatch recognizes a verified two-value recurrence
-// whose loop header only tests an i32 counter. The first iteration still enters
-// through that header, while later iterations branch directly from the
-// decrementing latch to the body. This preserves zero and wrapping behavior but
-// removes one always-taken branch and one redundant zero test per hot iteration.
-func arm64RailMachRotatedCountedLatch(plan *nativeBackendPlan, block, backedge uint32) (counter railmach.VReg, exit uint32, ok bool) {
+// arm64RailMachRotatedZeroTestLatch recognizes a recurrence whose loop header
+// only tests one i32 value for zero. The first iteration still enters through
+// that header, while later iterations test the transferred latch value directly
+// and branch back to the body. This covers counters and dependent pointer
+// chases while removing one always-taken branch and one redundant zero test per
+// hot iteration.
+func arm64RailMachRotatedZeroTestLatch(plan *nativeBackendPlan, block, backedge uint32) (counter railmach.VReg, exit uint32, ok bool) {
 	if plan == nil || plan.Machine == nil || plan.CFG == nil || plan.Semantic == nil || plan.Schedule == nil || plan.Allocation == nil || plan.Exit == nil ||
 		plan.Stack == nil || int(backedge) >= len(plan.Machine.Edges) {
 		return 0, 0, false
@@ -6632,6 +6632,19 @@ func arm64RailMachRotatedCountedLatch(plan *nativeBackendPlan, block, backedge u
 	if !fused || plan.Machine.Insts[producerID].Op != wasm.InstrI32Eqz {
 		return 0, 0, false
 	}
+	if int(header) >= len(plan.Schedule.BlockRanges) {
+		return 0, 0, false
+	}
+	headerRange := plan.Schedule.BlockRanges[header]
+	for _, instructionID := range plan.Schedule.Order[headerRange.Start : headerRange.Start+headerRange.Count] {
+		if instructionID == producerID || instructionID == consumerID {
+			continue
+		}
+		instruction := plan.Machine.Insts[instructionID]
+		if instruction.Result == 0 || plan.Machine.VRegs[instruction.Result].Flags&railmach.VRegElided == 0 {
+			return 0, 0, false
+		}
+	}
 	conditionOperands := plan.Machine.InstructionOperands(producerID)
 	if len(conditionOperands) != 1 {
 		return 0, 0, false
@@ -6660,20 +6673,30 @@ func arm64RailMachRotatedCountedLatch(plan *nativeBackendPlan, block, backedge u
 	if latchCounter == 0 || int(latchCounter) >= len(plan.Machine.VRegs) {
 		return 0, 0, false
 	}
-	data := plan.Machine.VRegs[latchCounter]
-	if data.Def%6 != 3 {
+	if plan.Machine.VRegs[latchCounter].Type != railmach.TypeI32 {
 		return 0, 0, false
 	}
-	definition := data.Def / 6
-	if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Op != wasm.InstrI32Sub {
-		return 0, 0, false
-	}
-	operands := plan.Machine.InstructionOperands(definition)
-	if len(operands) != 2 || operands[0].Reg != headerCounter {
-		return 0, 0, false
-	}
-	if one, constant := nativeIntegerConstant(plan, operands[1].Reg); !constant || one != 1 {
-		return 0, 0, false
+	if !plan.SignalsBounds {
+		// Explicit checks lengthen memory-heavy latches enough that rotating a
+		// dependent pointer chase regresses the measured loop. Preserve the
+		// established counted-loop win in this mode and broaden to arbitrary
+		// zero-tested recurrences only when guard-backed accesses keep the latch
+		// compact.
+		data := plan.Machine.VRegs[latchCounter]
+		if data.Def%6 != 3 {
+			return 0, 0, false
+		}
+		definition := data.Def / 6
+		if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Op != wasm.InstrI32Sub {
+			return 0, 0, false
+		}
+		operands := plan.Machine.InstructionOperands(definition)
+		if len(operands) != 2 || operands[0].Reg != headerCounter {
+			return 0, 0, false
+		}
+		if one, constant := nativeIntegerConstant(plan, operands[1].Reg); !constant || one != 1 {
+			return 0, 0, false
+		}
 	}
 	src, dst := plan.Allocation.Locations[latchCounter], plan.Allocation.Locations[headerCounter]
 	if src != dst || src.Kind != railmach.LocationRegister || src.Bank != railmach.BankGPR {

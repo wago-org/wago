@@ -388,6 +388,36 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 			}
 		}
 	}
+	if f.Target == TargetARM64 {
+		for firstID, first := range f.Insts {
+			if !isMemoryOp(first.Op) {
+				continue
+			}
+			for distance := 1; distance <= PostRAScanLimit && firstID+distance < len(f.Insts); distance++ {
+				secondID := firstID + distance
+				second := f.Insts[secondID]
+				if isMemoryBarrier(second.Op) {
+					break
+				}
+				if !isMemoryOp(second.Op) {
+					continue
+				}
+				firstIndex, secondIndex := uint32(firstID), uint32(secondID)
+				if blockOf[firstIndex] == blockOf[secondIndex] && pairableMemory(first, second) && sameMemoryBase(f, firstIndex, secondIndex) &&
+					schedulePairDependenciesReady(firstIndex, secondIndex, dag, blockOf) &&
+					fusionBefore[firstIndex] == ^uint32(0) && fusionSource[firstIndex] == ^uint32(0) &&
+					fusionBefore[secondIndex] == ^uint32(0) && fusionSource[secondIndex] == ^uint32(0) &&
+					sinkBefore[firstIndex] == ^uint32(0) && sinkProducer[firstIndex] == ^uint32(0) &&
+					lateBefore[firstIndex] == ^uint32(0) && lateProducer[firstIndex] == ^uint32(0) &&
+					sinkBefore[secondIndex] == ^uint32(0) && sinkProducer[secondIndex] == ^uint32(0) &&
+					lateBefore[secondIndex] == ^uint32(0) && lateProducer[secondIndex] == ^uint32(0) {
+					fusionBefore[firstIndex] = secondIndex
+					fusionSource[secondIndex] = firstIndex
+				}
+				break
+			}
+		}
+	}
 	committed := uint32(0)
 	committedInductions := uint32(0)
 	committedLICM := uint32(0)
@@ -480,7 +510,11 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 						if !remaining[candidate] || reuse.BlockOf[candidate] != railssa.BlockID(blockID) || scheduleControlOp(f.Insts[candidate].Op) && pendingCount != 1 {
 							continue
 						}
-						if target := reuse.fusionBefore[candidate]; target != ^uint32(0) && remaining[target] && pendingCount != 2 {
+						if target := reuse.fusionBefore[candidate]; target != ^uint32(0) && remaining[target] && pendingCount != 2 && scheduleControlOp(f.Insts[target].Op) {
+							continue
+						}
+						if target := reuse.fusionBefore[candidate]; target != ^uint32(0) && remaining[target] && !scheduleControlOp(f.Insts[target].Op) &&
+							!scheduleReadyPlaced(railssa.BlockID(blockID), target, dag, remaining, reuse.BlockOf, candidate) {
 							continue
 						}
 						if reuse.lateProducer[candidate] != ^uint32(0) && remaining[reuse.lateProducer[candidate]] || !scheduleReadyPlaced(railssa.BlockID(blockID), candidate, dag, remaining, reuse.BlockOf, ^uint32(0)) {
@@ -515,7 +549,11 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 					if scheduleControlOp(f.Insts[candidate].Op) && pendingCount != 1 {
 						continue
 					}
-					if target := reuse.fusionBefore[candidate]; target != ^uint32(0) && remaining[target] && pendingCount != 2 {
+					if target := reuse.fusionBefore[candidate]; target != ^uint32(0) && remaining[target] && pendingCount != 2 && scheduleControlOp(f.Insts[target].Op) {
+						continue
+					}
+					if target := reuse.fusionBefore[candidate]; target != ^uint32(0) && remaining[target] && !scheduleControlOp(f.Insts[target].Op) &&
+						!scheduleReadyPlaced(railssa.BlockID(blockID), target, dag, remaining, reuse.BlockOf, candidate) {
 						continue
 					}
 					if kind == ScheduleKindPressure && reuse.lateProducer[candidate] != ^uint32(0) && remaining[reuse.lateProducer[candidate]] {
@@ -562,6 +600,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 		reuse.BlockRanges[blockID] = MoveRange{Start: start, Count: uint32(len(reuse.Order)) - start}
 		reuse.remaining = remaining[:0]
 	}
+	dropUncommittedMemoryPairs(f, reuse)
 	if err := verifyScheduleReusingScratch(f, dag, reuse); err != nil {
 		return nil, err
 	}
@@ -574,6 +613,29 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 		return nil, err
 	}
 	return reuse, nil
+}
+
+func dropUncommittedMemoryPairs(f *Func, schedule *Schedule) {
+	position := resize(schedule.verifyPosition, len(f.Insts))
+	schedule.verifyPosition = position
+	for index, instruction := range schedule.Order {
+		position[instruction] = uint32(index)
+	}
+	committed := uint32(0)
+	for producer, consumer := range schedule.fusionBefore {
+		if consumer == ^uint32(0) {
+			continue
+		}
+		if int(consumer) < len(f.Insts) && isMemoryOp(f.Insts[consumer].Op) && position[consumer] != position[producer]+1 {
+			schedule.fusionBefore[producer] = ^uint32(0)
+			if int(consumer) < len(schedule.fusionSource) && schedule.fusionSource[consumer] == uint32(producer) {
+				schedule.fusionSource[consumer] = ^uint32(0)
+			}
+			continue
+		}
+		committed++
+	}
+	schedule.CommittedFusions = committed
 }
 
 func verifyCommittedFusions(f *Func, schedule *Schedule) error {
@@ -748,6 +810,19 @@ func schedulePriority(f *Func, selection *SelectionPlan, instruction uint32, kin
 	default:
 		return -int64(instruction)
 	}
+}
+
+func schedulePairDependenciesReady(first, second uint32, dag *DependencyDAG, blockOf []railssa.BlockID) bool {
+	if dag == nil || int(second)+1 >= len(dag.Offsets) || int(second) >= len(blockOf) {
+		return false
+	}
+	block := blockOf[second]
+	for _, dependency := range dag.Dependencies[dag.Offsets[second]:dag.Offsets[second+1]] {
+		if dependency.Instruction != first && int(dependency.Instruction) < len(blockOf) && blockOf[dependency.Instruction] == block && dependency.Instruction > first {
+			return false
+		}
+	}
+	return true
 }
 
 func VerifySchedule(f *Func, dag *DependencyDAG, schedule *Schedule) error {

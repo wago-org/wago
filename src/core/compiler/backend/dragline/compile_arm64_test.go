@@ -1413,6 +1413,118 @@ func TestARM64RailMachCombinesAdjacentLoadBoundsChecks(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachPairsAndRotatesZeroTerminatedPointerChase(t *testing.T) {
+	locals := append(wasmtest.ULEB(1), byte(0x7f))
+	body := append(wasmtest.Vec(locals), []byte{
+		0x41, 0x00, 0x21, 0x01, // sum = 0
+		0x02, 0x40, // block
+		0x03, 0x40, // loop
+		0x20, 0x00, 0x45, 0x0d, 0x01, // break when pointer == 0
+		0x20, 0x01, 0x20, 0x00, 0x28, 0x02, 0x00, 0x6a, 0x21, 0x01, // sum += node.value
+		0x20, 0x00, 0x28, 0x02, 0x04, 0x21, 0x00, // pointer = node.next
+		0x0c, 0x00, 0x0b, 0x0b, // continue; end loop/block
+		0x20, 0x01, 0x0b,
+	}...)
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan.SignalsBounds = true
+	paired := false
+	for _, encoded := range plan.PostRAPairWith {
+		paired = paired || encoded != 0
+	}
+	rotated := false
+	for edge, candidate := range plan.Machine.Edges {
+		_, _, ok := arm64RailMachRotatedZeroTestLatch(plan, uint32(candidate.From), uint32(edge))
+		rotated = rotated || ok
+	}
+	if !paired || !rotated {
+		t.Fatalf("pointer chase optimization = pair %t, rotate %t; rewrites %#v", paired, rotated, plan.PostRA.Rewrites)
+	}
+	native, _, ok, err := emitARM64RailMach(fn, plan, false, nil, nil, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("pointer chase finalization = ok %t, err %v", ok, err)
+	}
+	loadPairs, backwardCBNZ := 0, 0
+	for offset := 0; offset+4 <= len(native); offset += 4 {
+		instruction := binary.LittleEndian.Uint32(native[offset:])
+		if instruction&0xffc00000 == 0x29400000 {
+			loadPairs++
+		}
+		if instruction&0x7f000000 == 0x35000000 && instruction&0x00800000 != 0 {
+			backwardCBNZ++
+		}
+	}
+	if loadPairs == 0 || backwardCBNZ == 0 {
+		t.Fatalf("pointer chase code has load pairs=%d backward CBNZ=%d", loadPairs, backwardCBNZ)
+	}
+}
+
+func TestARM64RailMachDoesNotPairLoadsAcrossTrap(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x28, 0x02, 0x00, // i32.load offset=0
+			0x20, 0x01, 0x6d, // i32.div_s (may trap)
+			0x20, 0x00, 0x28, 0x02, 0x04, // i32.load offset=4
+			0x6a, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, encoded := range plan.PostRAPairWith {
+		if encoded != 0 {
+			t.Fatalf("loads were paired across trapping division: %#v", plan.PostRA.Rewrites)
+		}
+	}
+}
+
 func TestARM64RailMachDefersUnreachableTrapsPastHotReturn(t *testing.T) {
 	locals := append(wasmtest.ULEB(3), byte(0x7e))
 	body := append(wasmtest.Vec(locals), []byte{

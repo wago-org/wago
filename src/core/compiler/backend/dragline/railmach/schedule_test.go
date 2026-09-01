@@ -225,3 +225,38 @@ func TestPressureScheduleCommitsCheapSinkAdjacentToConsumer(t *testing.T) {
 		t.Fatalf("pressure order = %v, want %v", got, want)
 	}
 }
+
+func TestDropUncommittedMemoryPairs(t *testing.T) {
+	f := &Func{Insts: []Inst{
+		{Op: wasm.InstrI32Load},
+		{Op: wasm.InstrNop},
+		{Op: wasm.InstrI32Load},
+	}}
+	const none = ^uint32(0)
+	for _, test := range []struct {
+		name      string
+		order     []uint32
+		committed uint32
+		consumer  uint32
+		source    uint32
+	}{
+		{name: "adjacent", order: []uint32{0, 2, 1}, committed: 1, consumer: 2, source: 0},
+		{name: "separated", order: []uint32{0, 1, 2}, committed: 0, consumer: none, source: none},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			schedule := &Schedule{
+				Order:            slices.Clone(test.order),
+				CommittedFusions: 1,
+				fusionBefore:     []uint32{2, none, none},
+				fusionSource:     []uint32{none, none, 0},
+			}
+			dropUncommittedMemoryPairs(f, schedule)
+			if schedule.CommittedFusions != test.committed || schedule.fusionBefore[0] != test.consumer {
+				t.Fatalf("committed=%d fusion=%v, want committed=%d consumer=%d", schedule.CommittedFusions, schedule.fusionBefore, test.committed, test.consumer)
+			}
+			if got := schedule.fusionSource[2]; got != test.source {
+				t.Fatalf("fusion source = %d, want %d", got, test.source)
+			}
+		})
+	}
+}

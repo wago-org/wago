@@ -1,9 +1,9 @@
 # Dragline ARM64 execution research
 
 Research snapshot: 2026-09-01. Upstream source comparisons are pinned to
-Wasmtime `e6a948e3` and regalloc2 `2fe490bc`. This report deliberately makes no
-benchmark claim: each item is a source-backed hypothesis that still needs a
-paired corpus measurement on the target machine.
+Wasmtime `e6a948e3` and regalloc2 `2fe490bc`. The prioritized work is based on
+current source inspection; retained implementation results below use paired
+local measurements on the target ARM64 machine.
 
 ## Conclusion
 
@@ -29,6 +29,39 @@ The best path toward a large application-level gain is therefore:
 These changes reinforce one another. SIMD residency is of limited value if a
 call or block edge immediately spills it, and a better scheduler is of limited
 value if register pressure converts its latency win into frame traffic.
+
+## Retained ARM64 result: zero-terminated pointer loops
+
+Dragline now keeps legal adjacent ARM64 load pairs together through scheduling,
+emits the pair without a redundant address-register copy, and rotates verified
+zero-tested recurrences when signal bounds make the loop safe to reshape. The
+explicit-bounds path retains the narrower counted-loop rule because broadening
+rotation there regressed memory-heavy loops. Optional load-pair hints that do
+not become adjacent are discarded before schedule verification. Trapping
+operations remain barriers, and paired explicit loads retain two ordered checks
+so each Wasm instruction reports its own source PC.
+
+Alternating paired samples produced:
+
+| Measurement | Before | After | Ratio |
+| --- | ---: | ---: | ---: |
+| `linked_list`, signal bounds, 21 x 500 ms | 6,745.20 ns | 3,219.40 ns | **0.477x** |
+| `linked_list`, explicit bounds, 21 x 500 ms | 3,857.90 ns | 3,672.57 ns | **0.952x** |
+| `linked_list`, signal Dragline vs Cranelift, 15 x 500 ms | 4,653.57 ns Cranelift | 3,276.53 ns Dragline | **0.704x** |
+
+The signal-bounds pointer loop is therefore 52.3% faster than its prior
+Dragline form and 29.6% faster than Cranelift in the focused comparison. A
+36-export non-ISA signal-bounds A/B pass improved the Dragline geometric mean
+to 0.969x of the prior compiler, with 24/36 exports improving. A separate
+15-round robust check measured `raytrace` at 0.989x of the prior compiler. The
+same 36-export explicit-bounds pass was neutral at 0.998x; its longer focused
+`linked_list` result above is the more stable explicit measurement.
+
+This is a retained mechanism and a large focused win, not completion of the
+full-corpus goal. The latest complete paired Dragline/Cranelift explicit-bounds
+result before this slice was 0.852x Cranelift at module level, and only 9/36
+modules met the requested 0.5x threshold. A fresh complete paired comparison is
+required after additional worst-corpus work.
 
 ## Prioritized work
 
