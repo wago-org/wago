@@ -1583,6 +1583,36 @@ func arm64RepeatedImmediateEncodable(kind wasm.InstrKind, value uint64) bool {
 	}
 }
 
+func arm64AddSubImmediateMagnitude(value uint64) (immediate uint32, shifted bool, ok bool) {
+	if value <= 0xfff {
+		return uint32(value), false, true
+	}
+	if value&0xfff == 0 && value>>12 <= 0xfff {
+		return uint32(value), true, true
+	}
+	return 0, false, false
+}
+
+func arm64I32AddSubImmediateEncodable(value uint32, subtract bool) bool {
+	effective := value
+	if subtract {
+		effective = -effective
+	}
+	_, _, direct := arm64AddSubImmediateMagnitude(uint64(effective))
+	_, _, inverse := arm64AddSubImmediateMagnitude(uint64(-effective))
+	return direct || inverse
+}
+
+func arm64I64AddSubImmediateEncodable(value uint64, subtract bool) bool {
+	effective := value
+	if subtract {
+		effective = -effective
+	}
+	_, _, direct := arm64AddSubImmediateMagnitude(effective)
+	_, _, inverse := arm64AddSubImmediateMagnitude(-effective)
+	return direct || inverse
+}
+
 func nativeValueCannotCreateCollectorEdge(machine *railmach.Func, value railmach.VReg) bool {
 	if machine == nil || value == 0 || int(value) >= len(machine.VRegs) {
 		return false
