@@ -110,9 +110,10 @@ func TestDraglineMulhiDifferential(t *testing.T) {
 }
 
 // TestDraglineCorpusCoverage identifies which curated non-ISA corpus modules
-// execute through strict Dragline today. Unsupported modules are reported, not
-// treated as fallback successes. Any module Dragline admits must instantiate
-// and agree with an independently compiled Railshot instance.
+// execute through strict Dragline. Every available module must compile; every
+// runnable module must also agree with an independently compiled Railshot
+// instance. This opt-in gate is intentionally exhaustive rather than a support
+// inventory now that Dragline admits the complete curated corpus.
 //
 //	WAGO_DRAGLINE_CORPUS_COVERAGE=1 go test -run TestDraglineCorpusCoverage -v
 func TestDraglineCorpusCoverage(t *testing.T) {
@@ -128,8 +129,7 @@ func TestDraglineCorpusCoverage(t *testing.T) {
 		}
 		dragline, err := wago.NewRuntimeConfig().WithCompiler(wago.CompilerDragline).Compile(module.bytes)
 		if err != nil {
-			t.Logf("UNSUPPORTED %s: %v", module.File, err)
-			continue
+			t.Fatalf("Dragline compile %s: %v", module.File, err)
 		}
 		railshot, err := wago.NewRuntimeConfig().WithCompiler(wago.CompilerRailshot).Compile(module.bytes)
 		if err != nil {
