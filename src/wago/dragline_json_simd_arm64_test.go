@@ -58,6 +58,9 @@ func TestDraglineJSONSIMDCorpusMatchesRailshot(t *testing.T) {
 		return instance
 	}
 	referenceInstance := instantiate("railshot", reference)
+	if runtime.GOOS == "windows" {
+		instantiate("dragline-explicit", compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit)))
+	}
 	nativeInstances := make([]*Instance, len(native))
 	for i, compiled := range native {
 		nativeInstances[i] = instantiate(fmt.Sprintf("dragline-%d", i), compiled)
