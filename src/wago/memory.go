@@ -330,6 +330,20 @@ func (m *Memory) share(owner *Instance, def memoryDef) error {
 	return nil
 }
 
+func (m *Memory) instanceOwner() *Instance {
+	if m == nil {
+		return nil
+	}
+	s := m.state.Load()
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	owner := s.owner
+	s.mu.Unlock()
+	return owner
+}
+
 func (m *Memory) validateLimits(min, max uint64, hasMax, addr64, shared bool) error {
 	s := m.state.Load()
 	if s == nil {

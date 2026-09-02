@@ -362,7 +362,7 @@ func (in *Instance) releaseResources() {
 				memoryJM := memory.jobMemory()
 				memory.ownerClosed()
 				runtime.ReleaseJobMemory(memoryJM)
-			} else if detachedMemories.add(memory) {
+			} else if detachedMemories.add(memory) && !in.ownsTransferredMemoryAttachment(memory) {
 				memory.detachImporter()
 			}
 		}
@@ -377,7 +377,7 @@ func (in *Instance) releaseResources() {
 			in.memory.ownerClosed()
 		}
 		runtime.ReleaseJobMemory(in.jm)
-	} else if in.memory != nil && detachedMemories.add(in.memory) {
+	} else if in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
 		in.memory.detachImporter()
 	}
 	runtime.ReleaseEngine(in.eng)

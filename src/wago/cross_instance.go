@@ -115,6 +115,16 @@ type tableOwner struct {
 	closed         bool
 }
 
+func (t *Table) instanceOwner() *Instance {
+	if t == nil || t.owner == nil {
+		return nil
+	}
+	t.owner.mu.Lock()
+	owner := t.owner.instance
+	t.owner.mu.Unlock()
+	return owner
+}
+
 // NewTable creates a host-owned funcref table that modules can import and share
 // (e.g. the testsuite's spectest.table). Its entries start empty (an indirect
 // call to one traps as uninitialized) until a module populates them via an active
