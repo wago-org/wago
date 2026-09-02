@@ -412,15 +412,19 @@ func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {
 	}
 }
 
-func TestARM64WindowsUsesStructuredFallback(t *testing.T) {
+func TestARM64WindowsRetainsRailMachWithCanonicalPrivateABI(t *testing.T) {
 	windows := corecompiler.Target{GOOS: "windows", GOARCH: "arm64"}
 	linux := corecompiler.Target{GOOS: "linux", GOARCH: "arm64"}
-	stack := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrI32Add}}}
-	if arm64RailMachCandidateForTarget(stack, false, nil, windows) {
-		t.Fatal("Windows admitted RailMach before its native mixed-emitter boundary is qualified")
+	leaf := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrI32Add}}}
+	if !arm64RailMachCandidateForTarget(leaf, false, nil, windows) {
+		t.Fatal("Windows rejected a scalar RailMach leaf")
 	}
-	if !arm64RailMachCandidateForTarget(stack, false, nil, linux) {
-		t.Fatal("Linux RailMach candidate was rejected by the Windows fallback")
+	call := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrCall}}}
+	if arm64RailMachCandidateForTarget(call, false, nil, windows) {
+		t.Fatal("Windows admitted a call-bearing RailMach function before its mixed-emitter boundary is qualified")
+	}
+	if !arm64RailMachCandidateForTarget(call, false, nil, linux) {
+		t.Fatal("Linux RailMach candidate was rejected by the Windows boundary rule")
 	}
 	plan := &nativeBackendPlan{
 		ABI:      railmach.ABIContract{Class: railmach.ABIPreparedCall, GPRClobbers: 3, CalleeGPRs: 2},

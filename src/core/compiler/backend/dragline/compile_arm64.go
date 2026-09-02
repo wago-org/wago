@@ -72,11 +72,24 @@ func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, contra
 	return true
 }
 
-// Windows ARM64 keeps the structured finalizer until the RailMach-to-wrapper
-// boundary has native signal-mode coverage. This is a target ABI constraint,
-// not a module or workload selection rule.
+// Windows ARM64 keeps call- and global-bearing functions on the canonical
+// structured convention until the native mixed-emitter boundary has complete
+// signal-mode coverage. Scalar RailMach leaves remain enabled. The admission
+// rule depends only on reusable IR effects, never module or workload identity.
 func arm64RailMachCandidateForTarget(stack *railssa.StackFunc, moduleHasV128 bool, contracts []railmach.ABIContract, target corecompiler.Target) bool {
-	return target.GOOS != "windows" && arm64RailMachCandidate(stack, moduleHasV128, contracts)
+	if !arm64RailMachCandidate(stack, moduleHasV128, contracts) {
+		return false
+	}
+	if target.GOOS != "windows" {
+		return true
+	}
+	for _, instr := range stack.Instrs {
+		switch instr.Kind {
+		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrGlobalGet, wasm.InstrGlobalSet:
+			return false
+		}
+	}
+	return true
 }
 
 var arm64StackLocalRegisters = [...]arm64.Reg{arm64.X19, arm64.X20, arm64.X21, arm64.X22, arm64.X23}
