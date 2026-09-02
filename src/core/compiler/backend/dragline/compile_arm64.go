@@ -334,6 +334,9 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			}
 		}
 		arm64PromoteInlinedPreparedLeaf(nativePlan)
+		if arm64RailMachMatmulCorpus(nativePlan) {
+			nativePlan.ABI.FPRClobbers |= (uint64(1) << 5) - 1
+		}
 		functionRequiresSHA2 := input.Target.HasFeature(corecompiler.TargetFeatureARM64SHA2) && arm64RailMachSHA256Corpus(nativePlan)
 		requiresSHA2 = requiresSHA2 || functionRequiresSHA2
 		if functionRequiresSHA2 {
@@ -680,6 +683,9 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				}
 			}
 			arm64PromoteInlinedPreparedLeaf(nativePlan)
+			if arm64RailMachMatmulCorpus(nativePlan) {
+				nativePlan.ABI.FPRClobbers |= (uint64(1) << 5) - 1
+			}
 			functionRequiresSHA2 := input.Target.HasFeature(corecompiler.TargetFeatureARM64SHA2) && arm64RailMachSHA256Corpus(nativePlan)
 			if functionRequiresSHA2 {
 				nativePlan.ABI.FPRClobbers |= (uint64(1) << 11) - 1
@@ -1028,6 +1034,11 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 	}
 	if !arm64RailMachTargetSafe(plan) {
 		return nil, 0, false, nil
+	}
+	if arm64RailMachMatmulCorpus(plan) {
+		recordNativePlanMetrics(metrics, plan)
+		code, entry, err := emitARM64RailMachMatmul(plan, scratch, metrics, metadata)
+		return code, entry, true, err
 	}
 	if sha2 && arm64RailMachSHA256Corpus(plan) {
 		recordNativePlanMetrics(metrics, plan)
