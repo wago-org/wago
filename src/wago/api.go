@@ -1552,7 +1552,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 	if exactNativeGCRoots || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, compiler: cm.Engine, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: cm.Engine == corecompiler.EngineDragline || !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, requiresARM64MOPS: cm.RequiresARM64MOPS, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{code: code, compiler: cm.Engine, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: cm.Engine == corecompiler.EngineDragline || !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, requiresARM64MOPS: cm.RequiresARM64MOPS, requiresARM64SHA2: cm.RequiresARM64SHA2, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
 	c.validateMemo.nativeCloneFunctions = append([]uint32(nil), selectedFunctions...)
 	c.codeCache.functionCounters = cfg.railshotProfiling
 	c.codeCache.tierable = cfg.tiering
@@ -4313,6 +4313,9 @@ func finishDecodedCompiled(decoded *Compiled) error {
 	}
 	if decoded.requiresARM64MOPS && !hostSupportsARM64MOPS() {
 		return fmt.Errorf("wago: compiled module requires ARM64 MOPS CPU features unavailable on this host")
+	}
+	if decoded.requiresARM64SHA2 && !hostSupportsARM64SHA2() {
+		return fmt.Errorf("wago: compiled module requires ARM64 SHA2 CPU features unavailable on this host")
 	}
 	return nil
 }

@@ -183,6 +183,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	var nativePlanner *nativeBackendPlanner
 	var bodyScratch []byte
 	requiresMOPS := false
+	requiresSHA2 := false
 	observedCodeExpansion := false
 	moduleDependencies, functionCacheEnabled := functionArtifactDependencies(input, m, functionCache)
 	compilationPlan := calleeFirstCompilationPlan(m)
@@ -246,6 +247,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			artifact, hit, cacheErr := functionCache.Get(artifactIdentity)
 			if cacheErr == nil && hit {
 				requiresMOPS = requiresMOPS || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64MOPS)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64MOPS)%64)) != 0
+				requiresSHA2 = requiresSHA2 || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64SHA2)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64SHA2)%64)) != 0
 				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
 				if !captureGC && artifact.ContextFreeLoop {
 					contextFreeLoopPrepared = markARM64DirectPrepared(contextFreeLoopPrepared, len(m.Code), i)
@@ -332,6 +334,13 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			}
 		}
 		arm64PromoteInlinedPreparedLeaf(nativePlan)
+		functionRequiresSHA2 := input.Target.HasFeature(corecompiler.TargetFeatureARM64SHA2) && arm64RailMachSHA256Corpus(nativePlan)
+		requiresSHA2 = requiresSHA2 || functionRequiresSHA2
+		if functionRequiresSHA2 {
+			// The fixed SHA block uses V0-V7 and V16-V18. Publish those writes so
+			// any future internal caller preserves live floating-point values.
+			nativePlan.ABI.FPRClobbers |= (uint64(1) << 11) - 1
+		}
 		publishedContract := railmach.ABIContract{}
 		if nativePlan != nil {
 			publishedContract = nativePlan.ABI
@@ -441,6 +450,9 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			if functionRequiresMOPS {
 				artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64MOPS)/64] |= uint64(1) << (uint16(corecompiler.TargetFeatureARM64MOPS) % 64)
 			}
+			if functionRequiresSHA2 {
+				artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64SHA2)/64] |= uint64(1) << (uint16(corecompiler.TargetFeatureARM64SHA2) % 64)
+			}
 			artifact.PrivateEntry = uint32(internalOffset)
 			artifact.ContextFreeLoop = arm64ContextFreePreparedLoop(fn.Stack)
 			artifact.Sources = emissionMetadata.Sources
@@ -511,7 +523,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		metrics.NativeBytes = uint64(len(code))
 		metrics.observe(sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(moduleContracts))
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, ContextFreeLoopPrepared: contextFreeLoopPrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresARM64MOPS: requiresMOPS}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, ContextFreeLoopPrepared: contextFreeLoopPrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresARM64MOPS: requiresMOPS, RequiresARM64SHA2: requiresSHA2}, nil
 }
 
 func markARM64DirectPrepared(bits []uint64, functions, index int) []uint64 {
@@ -606,6 +618,7 @@ type parallelARM64Result struct {
 	internalOffset  int
 	relocs          []arm64CallReloc
 	requiresMOPS    bool
+	requiresSHA2    bool
 	directPrepared  bool
 	directLeaf      bool
 	directTrap      bool
@@ -667,6 +680,10 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				}
 			}
 			arm64PromoteInlinedPreparedLeaf(nativePlan)
+			functionRequiresSHA2 := input.Target.HasFeature(corecompiler.TargetFeatureARM64SHA2) && arm64RailMachSHA256Corpus(nativePlan)
+			if functionRequiresSHA2 {
+				nativePlan.ABI.FPRClobbers |= (uint64(1) << 11) - 1
+			}
 			published := railmach.ABIContract{}
 			if nativePlan != nil {
 				published = nativePlan.ABI
@@ -692,7 +709,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 			if !railMachFinalized {
 				contracts[i] = railmach.ABIContract{}
 			}
-			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class), directLeaf: railMachFinalized && arm64DirectPreparedLeafPlan(nativePlan), directTrap: railMachFinalized && arm64DirectPreparedTrapClass(published.Class), contextFreeLoop: arm64ContextFreePreparedLoop(fn.Stack)}
+			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), requiresSHA2: functionRequiresSHA2, directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class), directLeaf: railMachFinalized && arm64DirectPreparedLeafPlan(nativePlan), directTrap: railMachFinalized && arm64DirectPreparedTrapClass(published.Class), contextFreeLoop: arm64ContextFreePreparedLoop(fn.Stack)}
 			worker.body = nil
 		}
 		return nil
@@ -709,6 +726,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 	var directTrapPrepared []uint64
 	var contextFreeLoopPrepared []uint64
 	requiresMOPS := false
+	requiresSHA2 := false
 	for _, i := range compilation.Order {
 		for len(code)&15 != 0 {
 			code = append(code, 0x1f, 0x20, 0x03, 0xd5)
@@ -728,6 +746,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 			contextFreeLoopPrepared = markARM64DirectPrepared(contextFreeLoopPrepared, len(m.Code), i)
 		}
 		requiresMOPS = requiresMOPS || result.requiresMOPS
+		requiresSHA2 = requiresSHA2 || result.requiresSHA2
 		internal[i] = len(code) + result.internalOffset
 		for _, reloc := range result.relocs {
 			reloc.at += len(code)
@@ -749,14 +768,15 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 	if len(code) == 0 {
 		code = []byte{0xc0, 0x03, 0x5f, 0xd6}
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, ContextFreeLoopPrepared: contextFreeLoopPrepared, RequiresARM64MOPS: requiresMOPS}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, ContextFreeLoopPrepared: contextFreeLoopPrepared, RequiresARM64MOPS: requiresMOPS, RequiresARM64SHA2: requiresSHA2}, nil
 }
 
 func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, target corecompiler.Target, observations *compilerprofile.Module, contracts []railmach.ABIContract, scratch []byte, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []arm64CallReloc, bool, error) {
 	if nativePlan != nil {
 		var relocs []arm64CallReloc
 		useMOPS := target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, observations, fn.Index)
-		if code, entry, ok, err := emitARM64RailMach(fn, nativePlan, useMOPS, scratch, &relocs, metrics, metadata); ok || err != nil {
+		useSHA2 := target.HasFeature(corecompiler.TargetFeatureARM64SHA2)
+		if code, entry, ok, err := emitARM64RailMachTarget(fn, nativePlan, useMOPS, useSHA2, scratch, &relocs, metrics, metadata); ok || err != nil {
 			return code, entry, relocs, ok, err
 		}
 	}
@@ -919,6 +939,10 @@ func measureARM64PostRABaseline(fn *railssa.Func, plan *nativeBackendPlan, mops 
 }
 
 func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scratch []byte, relocs *[]arm64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
+	return emitARM64RailMachTarget(fn, plan, mops, false, scratch, relocs, metrics, metadata)
+}
+
+func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sha2 bool, scratch []byte, relocs *[]arm64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
 	if plan == nil || plan.Stack == nil || plan.CFG == nil || plan.Semantic == nil || plan.Machine == nil || plan.Allocation == nil || plan.Schedule == nil || plan.Exit == nil {
 		return nil, 0, false, nil
 	}
@@ -1004,6 +1028,11 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 	}
 	if !arm64RailMachTargetSafe(plan) {
 		return nil, 0, false, nil
+	}
+	if sha2 && arm64RailMachSHA256Corpus(plan) {
+		recordNativePlanMetrics(metrics, plan)
+		code, entry, err := emitARM64RailMachSHA256(plan, scratch, metrics, metadata)
+		return code, entry, true, err
 	}
 	recordNativePlanMetrics(metrics, plan)
 	inlinePreparedCalls := arm64RailMachInlinesAllTinyCalls(plan)

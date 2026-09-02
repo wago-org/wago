@@ -202,6 +202,7 @@ const (
 	// identities keep the meaning of every earlier bit.
 	TargetFeatureAMD64APX
 	TargetFeatureARM64MOPS
+	TargetFeatureARM64SHA2
 )
 
 // Target identifies the machine-code product requested from an engine.
@@ -379,6 +380,7 @@ type Output struct {
 	RequiresAVX2      bool
 	RequiresAVX512    bool
 	RequiresARM64MOPS bool
+	RequiresARM64SHA2 bool
 }
 
 // GCFrameSafepoint identifies the exact roots visible while a parked runtime

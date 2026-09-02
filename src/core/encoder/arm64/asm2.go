@@ -82,6 +82,7 @@ func (a *Asm) Rorv64(rd, rn, rm Reg) { a.word(0x9AC02C00 | r(rm)<<16 | r(rn)<<5 
 func (a *Asm) Clz(rd, rn Reg, w bool)  { a.word(wbase(w, 0x5AC01000, 0xDAC01000) | r(rn)<<5 | r(rd)) }
 func (a *Asm) Rbit(rd, rn Reg, w bool) { a.word(wbase(w, 0x5AC00000, 0xDAC00000) | r(rn)<<5 | r(rd)) }
 func (a *Asm) Rev32(rd, rn Reg)        { a.word(0x5AC00800 | r(rn)<<5 | r(rd)) }
+func (a *Asm) Rev64(rd, rn Reg)        { a.word(0xDAC00C00 | r(rn)<<5 | r(rd)) }
 
 // Divide + multiply-subtract (remainder = Rn - (Rn/Rm)*Rm via div then Msub).
 func (a *Asm) Sdiv32(rd, rn, rm Reg) { a.word(0x1AC00C00 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
@@ -1023,6 +1024,21 @@ func (a *Asm) NeonUshrH(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 
 func (a *Asm) NeonUshrS(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 4, dst, n, shift) }
 func (a *Asm) NeonUshrD(dst, n Reg, shift uint8) { a.neonRightShift(0x6F000400, 8, dst, n, shift) }
 func (a *Asm) NeonRev32H(dst, n Reg)             { a.word(0x6E600800 | r(n)<<5 | r(dst)) }
+func (a *Asm) NeonRev32B(dst, n Reg)             { a.word(0x6E200800 | r(n)<<5 | r(dst)) }
+
+// ARMv8 SHA-256 instructions. Callers must gate these on FEAT_SHA256.
+func (a *Asm) SHA256H(dst, n, m Reg) {
+	a.word(0x5E004000 | r(m)<<16 | r(n)<<5 | r(dst))
+}
+func (a *Asm) SHA256H2(dst, n, m Reg) {
+	a.word(0x5E005000 | r(m)<<16 | r(n)<<5 | r(dst))
+}
+func (a *Asm) SHA256SU0(dst, n Reg) {
+	a.word(0x5E282800 | r(n)<<5 | r(dst))
+}
+func (a *Asm) SHA256SU1(dst, n, m Reg) {
+	a.word(0x5E006000 | r(m)<<16 | r(n)<<5 | r(dst))
+}
 
 func (a *Asm) NeonZip1B(dst, n, m Reg) { a.neon3(0x4E003800, 1, dst, n, m) }
 func (a *Asm) NeonZip1H(dst, n, m Reg) { a.neon3(0x4E003800, 2, dst, n, m) }

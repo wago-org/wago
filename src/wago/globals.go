@@ -1110,12 +1110,13 @@ type Compiled struct {
 	requiresBMI2       bool
 	requiresAVX2       bool
 	requiresAVX512     bool
-	syncHostSlots      uint16
 	requiresARM64MOPS  bool
+	requiresARM64SHA2  bool
 	// independentInstances allows instances without cross-instance Wasm imports
 	// to use instance-local native execution leases. It is intentionally not
 	// serialized because it is runtime policy rather than a module property.
 	independentInstances bool
+	syncHostSlots        uint16
 }
 
 // Compiler reports the engine that produced this module. The zero value is
@@ -1173,6 +1174,10 @@ func (c *Compiled) RequiresAVX512() bool { return c != nil && c.requiresAVX512 }
 // RequiresARM64MOPS reports whether compilation selected ARM FEAT_MOPS
 // memory-copy or memory-set instructions.
 func (c *Compiled) RequiresARM64MOPS() bool { return c != nil && c.requiresARM64MOPS }
+
+// RequiresARM64SHA2 reports whether compilation selected ARM FEAT_SHA256
+// instructions.
+func (c *Compiled) RequiresARM64SHA2() bool { return c != nil && c.requiresARM64SHA2 }
 
 type validateMemo struct {
 	once                     sync.Once

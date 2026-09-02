@@ -44,6 +44,11 @@ func hostSupportsARM64MOPS() bool {
 	return err == nil && target.HasFeature(corecompiler.TargetFeatureARM64MOPS)
 }
 
+func hostSupportsARM64SHA2() bool {
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	return err == nil && target.HasFeature(corecompiler.TargetFeatureARM64SHA2)
+}
+
 func detectSIMDHostFeatures() bool { return architectureSupportsSIMD() }
 
 func amd64SIMDFeaturesSupported(ecx, xcr0 uint32) bool {

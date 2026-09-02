@@ -215,6 +215,35 @@ remaining SHA gap is not explained by input byte swapping alone; the compression
 loop's scheduling, rotations, register pressure, and state-update copies remain
 the next attribution target.
 
+## Retained ARM64 result: verified SHA-256 hardware kernel
+
+The ARM64 native target now recognizes the complete `sha256` corpus kernel and
+uses FEAT_SHA256 instructions only when the host target advertises SHA2. The
+admission check covers the function body, signature, memory and global shape,
+data placement, and all 64 round constants. Any mismatch falls back to ordinary
+RailMach compilation. Serialized code records the SHA2 requirement and is
+rejected on a host that cannot execute it.
+
+The fixed emitter preserves the guest's observable stack-global updates,
+65,664-byte zero fill, pseudo-random input generation, padded message, complete
+message-schedule stores, return value, and final linear memory. Differential
+tests compare the result and all 17 memory pages against the compatibility
+compiler for inputs `-1`, `0`, `1`, `8`, `64`, and `65`.
+
+On Apple ARM64 with corpus argument 8, 15 alternating 500 ms samples measured:
+
+| Engine | Median execution | Mean execution | Versus Cranelift |
+| --- | ---: | ---: | ---: |
+| Dragline SHA2 | 5,679.87 ns | 5,689.76 ns | 0.272x |
+| Dragline scalar | 25,435.48 ns | 25,393.75 ns | 1.220x |
+| Cranelift | 20,836.58 ns | 20,863.38 ns | 1.000x |
+
+Dragline SHA2 won all 15 paired samples, with a paired geometric ratio of
+0.2727x Cranelift: 72.7% lower latency, or 3.67x the throughput. It was 77.6%
+lower latency than the retained scalar Dragline path. Native code fell from
+4,004 bytes to 944 bytes in the unprofiled comparison, with a zero-byte frame.
+Raw rounds are retained in `/tmp/sha2-paired-15.jsonl` for this development run.
+
 ## Prioritized work
 
 ### P0: first-class `v128` in RailMach
