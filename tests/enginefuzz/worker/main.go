@@ -23,7 +23,11 @@ const maxRequestBytes = 64 << 10
 type request struct {
 	ID            uint64 `json:"id"`
 	Path          string `json:"path"`
+	SupportPath   string `json:"support_path,omitempty"`
 	CaseSeed      string `json:"case_seed"`
+	Profile       string `json:"profile"`
+	OutcomeKind   string `json:"outcome_kind"`
+	FailureFamily string `json:"failure_family,omitempty"`
 	IncludeEvents bool   `json:"include_events,omitempty"`
 }
 
@@ -47,7 +51,7 @@ func newWorker() (*worker, error) {
 	if err != nil {
 		return nil, err
 	}
-	config := wago.NewRuntimeConfig().WithCoreFeatures(wago.CoreFeaturesV2).WithMemoryLimitPages(2)
+	config := wago.NewRuntimeConfig().WithCoreFeatures(wago.CoreFeaturesV3).WithMemoryLimitPages(2)
 	runtime := wago.NewRuntime(wago.WithRuntimeConfig(config))
 	if err := runtime.LoadPlugins(context.Background(), plugins); err != nil {
 		_ = runtime.Close()
@@ -90,13 +94,73 @@ func (w *worker) run(req request) (result response) {
 		}
 	}()
 
-	caseState, err := w.harness.Begin(seed)
+	instantiateOptions := []wago.InstantiateOption{}
+	if req.SupportPath != "" {
+		supportBytes, err := os.ReadFile(req.SupportPath)
+		if err != nil {
+			result.Error = fmt.Sprintf("read support module: %v", err)
+			return result
+		}
+		supportModule, err := w.runtime.Compile(supportBytes)
+		if err != nil {
+			result.Error = fmt.Sprintf("compile support module: %v", err)
+			return result
+		}
+		defer func() {
+			if err := supportModule.Close(); err != nil && result.Error == "" {
+				result = response{ID: req.ID, Status: "error", Error: fmt.Sprintf("close support module: %v", err)}
+			}
+		}()
+		supportInstance, err := w.runtime.Instantiate(context.Background(), supportModule)
+		if err != nil {
+			result.Error = fmt.Sprintf("instantiate support module: %v", err)
+			return result
+		}
+		defer func() {
+			if err := supportInstance.Close(); err != nil && result.Error == "" {
+				result = response{ID: req.ID, Status: "error", Error: fmt.Sprintf("close support instance: %v", err)}
+			}
+		}()
+		linkedMemory, err := supportInstance.ExportedMemory("state_memory")
+		if err != nil {
+			result.Error = fmt.Sprintf("link support memory: %v", err)
+			return result
+		}
+		linkedTable, err := supportInstance.ExportedTable("state_table")
+		if err != nil {
+			result.Error = fmt.Sprintf("link support table: %v", err)
+			return result
+		}
+		linkedGlobal, err := supportInstance.ExportedGlobalObject("state_global_i32")
+		if err != nil {
+			result.Error = fmt.Sprintf("link support global: %v", err)
+			return result
+		}
+		// These handles are owned by supportInstance. The consumer releases its
+		// import attachments when it closes; supportInstance then releases the
+		// actual resources. Calling Close on an instance-owned exported handle is
+		// an API error.
+		instantiateOptions = append(instantiateOptions,
+			wago.WithImport("__link", "state_memory", linkedMemory),
+			wago.WithImport("__link", "state_table", linkedTable),
+			wago.WithImport("__link", "state_global_i32", linkedGlobal),
+		)
+	}
+
+	caseState, err := w.harness.Begin(seed, req.FailureFamily)
 	if err != nil {
 		result.Error = fmt.Sprintf("begin case: %v", err)
 		return result
 	}
-	instance, executionErr := w.runtime.Instantiate(context.Background(), module, caseState.InstantiateOptions()...)
-	observation, observeErr := caseState.Finish(module.Metadata(), instance, executionErr)
+	instantiateOptions = append(instantiateOptions, caseState.InstantiateOptions()...)
+	instance, executionErr := w.runtime.Instantiate(context.Background(), module, instantiateOptions...)
+	var observation oracle.Observation
+	var observeErr error
+	if req.OutcomeKind == "instantiation-failure" {
+		observation, observeErr = caseState.FinishInstantiationFailure(executionErr)
+	} else {
+		observation, observeErr = caseState.Finish(module.Metadata(), instance, executionErr)
+	}
 	var closeErr error
 	if instance != nil {
 		closeErr = instance.Close()

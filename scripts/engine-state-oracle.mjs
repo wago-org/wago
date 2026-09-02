@@ -36,7 +36,7 @@ export function hashCanonical(canonical) {
   return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
 }
 
-function normalizeTrap(error) {
+function normalizeTrap(error, expectedFamily = "") {
   if (!(error instanceof WebAssembly.RuntimeError)) {
     throw error;
   }
@@ -53,7 +53,32 @@ function normalizeTrap(error) {
   if (message.includes("table index is out of bounds") || message.includes("table out of bounds")) {
     return "out-of-bounds-table-access";
   }
+  if ((message.includes("null function") || message.includes("signature mismatch")) &&
+      (expectedFamily === "null-function-reference" || expectedFamily === "indirect-call-type-mismatch")) {
+    return expectedFamily;
+  }
+  if (message.includes("null function")) return "null-function-reference";
+  if (message.includes("function signature mismatch") || message.includes("indirect call type mismatch")) {
+    return "indirect-call-type-mismatch";
+  }
   throw new Error(`unclassified Node WebAssembly trap: ${error.message}`);
+}
+
+function normalizeInstantiationFailure(error, expectedFamily) {
+  const message = error?.message?.toLowerCase?.() || "";
+  if (expectedFamily === "active-data-out-of-bounds") {
+    if (!(error instanceof WebAssembly.RuntimeError) || !message.includes("out of bounds")) throw error;
+    return expectedFamily;
+  }
+  if (expectedFamily === "memory-import-limit-mismatch") {
+    if (!(error instanceof WebAssembly.LinkError) || !message.includes("memory")) throw error;
+    return expectedFamily;
+  }
+  if (expectedFamily === "table-import-limit-mismatch") {
+    if (!(error instanceof WebAssembly.LinkError) || !message.includes("table")) throw error;
+    return expectedFamily;
+  }
+  throw new Error(`unclassified Node instantiation failure: ${error?.message || error}`);
 }
 
 function resourceGroups(module) {
@@ -142,9 +167,13 @@ function appendState(events, module, instance, imported) {
 
 // observeInNode instantiates one generated module. Its imports record the same
 // schema as the Go plug-in, but this implementation shares no oracle code.
-export function observeInNode(moduleBytes, caseSeed) {
+export function observeInNode(moduleBytes, caseSeed, options = {}) {
   const events = [["schema", SCHEMA]];
   const module = new WebAssembly.Module(moduleBytes);
+  const supportModule = options.supportModuleBytes?.byteLength
+    ? new WebAssembly.Module(options.supportModuleBytes)
+    : null;
+  const supportInstance = supportModule ? new WebAssembly.Instance(supportModule) : null;
   const imported = stateImports();
   const fuzz = {
     input_i32(channel) {
@@ -173,12 +202,21 @@ export function observeInNode(moduleBytes, caseSeed) {
 
   let instance = null;
   try {
-    instance = new WebAssembly.Instance(module, { __fuzz: fuzz });
+    instance = new WebAssembly.Instance(module, {
+      __fuzz: fuzz,
+      __link: supportInstance?.exports,
+    });
     events.push(["outcome", "returned"]);
   } catch (error) {
-    events.push(["outcome", "trapped", normalizeTrap(error)]);
+    if (options.outcomeKind === "instantiation-failure") {
+      events.push(["outcome", "instantiation-failed", normalizeInstantiationFailure(error, options.trapFamily)]);
+    } else {
+      events.push(["outcome", "trapped", normalizeTrap(error, options.trapFamily)]);
+    }
   }
-  appendState(events, module, instance, imported);
+  if (options.outcomeKind !== "instantiation-failure") {
+    appendState(events, module, instance, imported);
+  }
   const canonical = canonicalEvents(events);
   return { events, canonical, hash: hashCanonical(canonical) };
 }
@@ -190,4 +228,9 @@ export const intendedTrapClasses = Object.freeze({
   "invalid-float-to-integer-conversion": "invalid-conversion-to-integer",
   "out-of-bounds-memory": "out-of-bounds-memory-access",
   "out-of-bounds-table": "out-of-bounds-table-access",
+  "null-function-reference": "null-function-reference",
+  "indirect-call-type-mismatch": "indirect-call-type-mismatch",
+  "active-data-out-of-bounds": "active-data-out-of-bounds",
+  "memory-import-limit-mismatch": "memory-import-limit-mismatch",
+  "table-import-limit-mismatch": "table-import-limit-mismatch",
 });

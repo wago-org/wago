@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	wago "github.com/wago-org/wago"
@@ -51,16 +52,17 @@ type Harness struct {
 
 // Case owns all imported state for one engine-state execution.
 type Case struct {
-	harness  *Harness
-	seed     uint64
-	identity wago.InstanceIdentity
-	events   []rawEvent
-	overflow bool
-	global   *wago.Global
-	memory   *wago.Memory
-	table    *wago.Table
-	finished bool
-	closed   bool
+	harness               *Harness
+	seed                  uint64
+	expectedFailureFamily string
+	identity              wago.InstanceIdentity
+	events                []rawEvent
+	overflow              bool
+	global                *wago.Global
+	memory                *wago.Memory
+	table                 *wago.Table
+	finished              bool
+	closed                bool
 }
 
 var Definition = wago.PluginDefinition{
@@ -146,7 +148,10 @@ func (h *Harness) Register(reg *wago.Registrar) error {
 	return interceptor.After(func(event wago.InstantiationEvent) error {
 		h.mu.Lock()
 		defer h.mu.Unlock()
-		if h.pending == nil || h.active != nil {
+		if h.pending == nil {
+			return nil
+		}
+		if h.active != nil {
 			return fmt.Errorf("engine-state harness has no unique pending case")
 		}
 		h.pending.identity = event.Instance
@@ -156,7 +161,7 @@ func (h *Harness) Register(reg *wago.Registrar) error {
 }
 
 // Begin creates the fresh resource imports and event buffer for one case.
-func (h *Harness) Begin(seed uint64) (*Case, error) {
+func (h *Harness) Begin(seed uint64, expectedFailureFamily ...string) (*Case, error) {
 	memory, err := wago.NewMemory(1, 2)
 	if err != nil {
 		return nil, err
@@ -173,6 +178,9 @@ func (h *Harness) Begin(seed uint64) (*Case, error) {
 		global:  wago.NewGlobalI32(0, true),
 		memory:  memory,
 		table:   table,
+	}
+	if len(expectedFailureFamily) > 0 {
+		c.expectedFailureFamily = expectedFailureFamily[0]
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -271,7 +279,7 @@ func expandRaw(raw []rawEvent) []Event {
 	return events
 }
 
-func trapClass(err error) (string, bool) {
+func trapClass(err error, expectedFamily string) (string, bool) {
 	var trap *wago.TrapError
 	if !errors.As(err, &trap) {
 		return "", false
@@ -287,11 +295,47 @@ func trapClass(err error) (string, bool) {
 		return "invalid-conversion-to-integer", true
 	case wago.TrapLinMemOutOfBounds, wago.TrapLinkedMemOutOfBounds:
 		return "out-of-bounds-memory-access", true
-	case wago.TrapTableOutOfBounds, wago.TrapIndirectOutOfBounds:
+	case wago.TrapIndirectWrongSig:
+		return "indirect-call-type-mismatch", true
+	case wago.TrapIndirectOutOfBounds:
+		if expectedFamily == "null-function-reference" {
+			return "null-function-reference", true
+		}
+		return "out-of-bounds-table-access", true
+	case wago.TrapTableOutOfBounds:
 		return "out-of-bounds-table-access", true
 	default:
 		return trap.Code.String(), true
 	}
+}
+
+func validateInstantiationFailure(err error, expectedFamily string) error {
+	if err == nil {
+		return fmt.Errorf("engine-state instantiation unexpectedly succeeded")
+	}
+	message := strings.ToLower(err.Error())
+	switch expectedFamily {
+	case "active-data-out-of-bounds":
+		var trap *wago.TrapError
+		if errors.As(err, &trap) && (trap.Code == wago.TrapLinMemOutOfBounds || trap.Code == wago.TrapLinkedMemOutOfBounds) {
+			return nil
+		}
+		if strings.Contains(message, "active data segment") &&
+			strings.Contains(message, "out of bounds") && strings.Contains(message, "memory") {
+			return nil
+		}
+	case "memory-import-limit-mismatch":
+		if strings.Contains(message, "imported memory") &&
+			(strings.Contains(message, "limit") || strings.Contains(message, "minimum") || strings.Contains(message, "maximum")) {
+			return nil
+		}
+	case "table-import-limit-mismatch":
+		if strings.Contains(message, "imported table") &&
+			(strings.Contains(message, "limit") || strings.Contains(message, "minimum") || strings.Contains(message, "maximum")) {
+			return nil
+		}
+	}
+	return fmt.Errorf("engine-state instantiation error does not match %q: %w", expectedFamily, err)
 }
 
 func resourceNames(names []string, kind string, index int) ([]string, error) {
@@ -439,7 +483,7 @@ func (c *Case) Finish(metadata wago.ModuleMetadata, instance *wago.Instance, exe
 	events := expandRaw(raw)
 	if executionErr == nil {
 		events = append(events, Event{"outcome", "returned"})
-	} else if class, trapped := trapClass(executionErr); trapped {
+	} else if class, trapped := trapClass(executionErr, c.expectedFailureFamily); trapped {
 		events = append(events, Event{"outcome", "trapped", class})
 	} else {
 		return Observation{}, fmt.Errorf("engine-state instantiation failed: %w", executionErr)
@@ -455,6 +499,39 @@ func (c *Case) Finish(metadata wago.ModuleMetadata, instance *wago.Instance, exe
 	if err != nil {
 		return Observation{}, err
 	}
+	canonical, err := Marshal(events)
+	if err != nil {
+		return Observation{}, err
+	}
+	return Observation{Events: events, JSON: canonical, Hash: Hash(canonical)}, nil
+}
+
+// FinishInstantiationFailure records a failure that occurs before a usable
+// instance or start-function event stream exists. It does not inspect module
+// resources because no instance state is observable on either engine.
+func (c *Case) FinishInstantiationFailure(executionErr error) (Observation, error) {
+	if err := validateInstantiationFailure(executionErr, c.expectedFailureFamily); err != nil {
+		return Observation{}, err
+	}
+	h := c.harness
+	h.mu.Lock()
+	if c.finished {
+		h.mu.Unlock()
+		return Observation{}, fmt.Errorf("engine-state case is already finished")
+	}
+	c.finished = true
+	if h.pending == c {
+		h.pending = nil
+	}
+	if h.active == c {
+		h.active = nil
+	}
+	rawCount := len(c.events)
+	h.mu.Unlock()
+	if rawCount != 0 {
+		return Observation{}, fmt.Errorf("engine-state pre-start failure recorded %d start events", rawCount)
+	}
+	events := []Event{{"schema", Schema}, {"outcome", "instantiation-failed", c.expectedFailureFamily}}
 	canonical, err := Marshal(events)
 	if err != nil {
 		return Observation{}, err

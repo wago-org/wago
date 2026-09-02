@@ -4,6 +4,7 @@ package oracle
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -14,6 +15,76 @@ import (
 
 func fuzzTestConst(value int32) []byte {
 	return append([]byte{0x41}, wasmtest.SLEB32(value)...)
+}
+
+func TestHarnessRecordsPreStartInstantiationFailureWithoutState(t *testing.T) {
+	harness := NewHarness()
+	caseState, err := harness.Begin(0x5eed, "memory-import-limit-mismatch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	observation, err := caseState.FinishInstantiationFailure(errors.New("imported memory __fuzz.state_memory limits do not match"))
+	if err != nil {
+		_ = caseState.Close()
+		t.Fatal(err)
+	}
+	want := []Event{{"schema", Schema}, {"outcome", "instantiation-failed", "memory-import-limit-mismatch"}}
+	if !reflect.DeepEqual(observation.Events, want) {
+		t.Fatalf("events = %#v, want %#v", observation.Events, want)
+	}
+	if observation.Hash == "" || len(observation.JSON) == 0 {
+		t.Fatalf("observation hash/json are empty: %#v", observation)
+	}
+	if err := caseState.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHarnessIgnoresProviderInstantiationBeforeCase(t *testing.T) {
+	harness := NewHarness()
+	set, err := harness.PluginSet()
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime := wago.NewRuntime()
+	defer runtime.Close()
+	if err := runtime.LoadPlugins(context.Background(), set); err != nil {
+		t.Fatal(err)
+	}
+	module, err := runtime.Compile(wasmtest.Module())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer module.Close()
+	instance, err := runtime.Instantiate(context.Background(), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.Close(); err != nil {
+		t.Fatal(err)
+	}
+	caseState, err := harness.Begin(0x5eed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := caseState.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHarnessRejectsUnrelatedPreStartFailure(t *testing.T) {
+	harness := NewHarness()
+	caseState, err := harness.Begin(0x5eed, "table-import-limit-mismatch")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := caseState.FinishInstantiationFailure(errors.New("unrelated host failure")); err == nil {
+		_ = caseState.Close()
+		t.Fatal("unrelated failure was accepted")
+	}
+	if err := caseState.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func fuzzTestCall(index uint32) []byte {
