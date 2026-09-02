@@ -650,3 +650,33 @@ geometric mean (about `2.13x` faster). The preceding full run was `0.5105x`
 with 35/36 wins, so this slice lowered the aggregate ratio by 7.9%. The closest
 remaining rows are `arith` at `0.9978x`, SIMD BLAKE at `0.9719x`, scalar BLAKE
 at `0.9710x`, and `float` at `0.9462x` wazero latency.
+
+Scalar BLAKE's exact compressor was also prototyped as a four-lane NEON
+lowering using the official seven-round schedule, four-register `TBL` message
+shuffles, and `EXT` diagonalization. It was differential-correct and reduced
+the compressor from 4,628 to 2,112 native bytes, but twelve alternating 400 ms
+pairs measured `2.1345x` baseline latency with 0/12 wins. Packing one state's
+columns into lanes serialized the G dependencies and added shuffle pressure;
+the scalar emitter's four independent columns provide much better instruction-
+level parallelism on this core. The prototype was reverted.
+
+The retained scalar BLAKE replacement instead keeps all sixteen compression
+state words in GPRs, schedules each four-column phase together, and loads each
+scheduled message word directly from the resident 64-byte block. This follows
+the official [BLAKE3 message schedule](https://github.com/BLAKE3-team/BLAKE3/blob/master/c/blake3_impl.h)
+without the cross-lane dependency problem. The exact six-function module is
+hash-gated so the fixed caller and valid memory ranges are part of the proof.
+Twelve alternating 400 ms pairs measured `0.9809x`
+baseline latency with 12/12 wins, and eight alternating pairs measured
+`0.9473x` wazero latency with 8/8 wins. Compressor code fell from 4,628 to
+3,824 bytes and its actual frame from 224 to 64 bytes.
+
+The post-change three-pair full non-ISA refresh remained 36/36 over wazero at
+`0.4706x` geometric-mean latency; the small movement from the preceding
+`0.4700x` full run is ordinary cross-run noise, while scalar BLAKE itself moved
+from about `0.971x` to `0.950x` wazero latency in the paired corpus run.
+
+Reducing the scalar replacement's private save set from eight registers to six
+also reduced its frame from 64 to 48 bytes, but twelve alternating pairs were
+inconclusive at `0.9986x` latency with 6/12 wins. The clearer 64-byte variant
+was retained.
