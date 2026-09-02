@@ -2110,6 +2110,26 @@ func TestARM64RailMachDefersUnreachableTrapsPastHotReturn(t *testing.T) {
 	}
 }
 
+func TestARM64SharedColdTrapsMaterializeRepeatedCodeOnce(t *testing.T) {
+	var a arm64.Asm
+	traps := make([]nativeBranchPatch, 3)
+	for index := range traps {
+		traps[index] = nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: uint32(index + 10), Code: 3}
+	}
+	var metadata functionEmissionMetadata
+	if err := arm64EmitSharedColdTraps(&a, traps, 0, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	var materialize arm64.Asm
+	materialize.MovImm64(arm64.X15, 3)
+	if copies := bytes.Count(a.B, materialize.B); copies != 1 {
+		t.Fatalf("repeated trap code materialized %d times, want 1", copies)
+	}
+	if len(metadata.Traps) != len(traps) {
+		t.Fatalf("trap metadata = %#v, want %d sites", metadata.Traps, len(traps))
+	}
+}
+
 func TestARM64RailMachImmediateDoesNotMaterializeFoldedOperand(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),

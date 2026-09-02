@@ -14929,6 +14929,12 @@ func arm64EmitSharedColdTraps(a *arm64.Asm, traps []nativeBranchPatch, function 
 	if len(traps) == 0 {
 		return nil
 	}
+	var codeCounts [16]uint32
+	for _, trap := range traps {
+		if int(trap.Code) < len(codeCounts) {
+			codeCounts[trap.Code]++
+		}
+	}
 	common := a.Len()
 	a.Ldur64(arm64.X12, arm64.X26, -int32(abi.TrapCellPtrOffset))
 	a.MovImm64(arm64.X16, uint64(function+1))
@@ -14939,12 +14945,29 @@ func arm64EmitSharedColdTraps(a *arm64.Asm, traps []nativeBranchPatch, function 
 	a.Ldur64(arm64.LR, arm64.X26, -32)
 	a.AddImm64(arm64.SP, arm64.X16, 0)
 	a.Ret()
+	var codeTargets [16]int
+	for code := range codeTargets {
+		codeTargets[code] = -1
+		if codeCounts[code] < 3 {
+			continue
+		}
+		codeTargets[code] = a.Len()
+		a.MovImm64(arm64.X15, uint64(code))
+		if !a.PatchBranch26(a.Branch(), common) {
+			return fmt.Errorf("shared cold trap code branch is out of range")
+		}
+	}
 	for _, trap := range traps {
 		trapOffset := a.Len()
 		metadata.recordTrap(trapOffset, trap.Target, uint32(trap.Code))
 		a.MovImm64(arm64.X14, uint64(trap.Target))
-		a.MovImm64(arm64.X15, uint64(uint32(trap.Code)))
-		if !a.PatchBranch26(a.Branch(), common) {
+		target := common
+		if int(trap.Code) < len(codeTargets) && codeTargets[trap.Code] >= 0 {
+			target = codeTargets[trap.Code]
+		} else {
+			a.MovImm64(arm64.X15, uint64(uint32(trap.Code)))
+		}
+		if !a.PatchBranch26(a.Branch(), target) {
 			return fmt.Errorf("shared cold trap branch is out of range")
 		}
 		if !a.PatchBranch19(trap.At, trapOffset) {
