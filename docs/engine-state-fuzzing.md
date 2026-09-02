@@ -10,7 +10,7 @@ Build the Starshine WasmGC FFI once, if it is not present:
 (cd ../starshine-mb && bun ffi build)
 ```
 
-Run one complete 20-profile cycle:
+Run one complete 40-case cycle across all 15 profile leaves:
 
 ```sh
 scripts/fuzz-engine-state.sh
@@ -70,6 +70,10 @@ Engine names, elapsed time, error text, file paths, and seeds are not part of th
 canonical hash. The Node and Go implementations are separate. A shared golden
 test fixes only the event bytes, hash, and deterministic input mixer.
 
+For runs of at least 40 cases, the driver rejects a Starshine cycle that omits
+any required profile. A second `COVERAGE` line prints the bounded count for each
+profile; it does not retain per-case data.
+
 The success line prints one `result` hash for the run. Its input is the ordered
 ASCII sequence `case_index:case_hash\n`. The line also prints the root seed and
 the Starshine FFI hash. These values identify a run without retaining its case
@@ -90,10 +94,10 @@ scripts/fuzz-engine-state.sh --count 1 --start 842 --seed ROOT_SEED --keep
 
 ## Current measurement
 
-On the development Linux/amd64 host on 2026-09-02, a 100,000-case soak took
-75.07 seconds inside the lane, or 1,332 cases per second. This includes
-generation, both executions, state hashing, worker exchange, and passing-file
-deletion. Sampled RSS was stable near 463 MiB for the Node and WasmGC generator
-process and 15 MiB for the Railshot worker. The one-time build and process
-startup added 0.26 seconds on the warm Go build cache. This is a workflow
-measurement, not a stable engine benchmark.
+On the development Linux/amd64 host on 2026-09-02, a 10,000-case run of the
+15-profile cycle took 8.93 seconds inside the lane, or 1,120 cases per second.
+The run covered each profile at its exact declared weight and had no output
+difference. This includes generation, both executions, state hashing, worker
+exchange, and passing-file deletion. The shell wall time was 9.14 seconds with
+a warm Go build cache. This is a workflow measurement, not a stable engine
+benchmark.

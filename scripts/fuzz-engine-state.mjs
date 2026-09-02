@@ -10,16 +10,33 @@ import { performance } from "node:perf_hooks";
 
 import { intendedTrapClasses, observeInNode } from "./engine-state-oracle.mjs";
 
-const DEFAULT_COUNT = 20;
+const DEFAULT_COUNT = 40;
 const DEFAULT_SEED = "0x5eed";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const textDecoder = new TextDecoder();
+const FULL_CYCLE_PROFILES = [
+  "engine-state-scalar-control",
+  "engine-state-calls",
+  "engine-state-memory",
+  "engine-state-table",
+  "engine-state-simd",
+  "engine-state-imports",
+  "engine-state-initialization",
+  "engine-state-trap",
+  "engine-state-mixed",
+  "engine-state-topology",
+  "engine-state-effects",
+  "engine-state-resources",
+  "engine-state-boundaries",
+  "engine-state-optimizer-shapes",
+  "engine-state-equivalent-families",
+];
 
 function usage() {
   return `Usage: scripts/fuzz-engine-state.sh [options]
 
 Options:
-  --count N          Number of generated cases (default: 20)
+  --count N          Number of generated cases (default: 40)
   --start N          First one-based case index (default: 1)
   --seed N|random    Unsigned 64-bit root seed (default: 0x5eed)
   --starshine PATH   Starshine WasmGC FFI binary
@@ -265,12 +282,14 @@ async function run(options) {
   const worker = new WorkerClient(workerPath, options.timeoutMs);
   const started = performance.now();
   const runDigest = createHash("sha256");
+  const profileCounts = new Map();
   let failed = false;
   try {
     const end = options.start + options.count;
     for (let caseIndex = options.start; caseIndex < end; caseIndex++) {
       const generated = generator.generate(options.rootSeed, caseIndex);
       if (generated.caseIndex !== caseIndex) throw new Error(`Starshine returned case index ${generated.caseIndex}; expected ${caseIndex}`);
+      profileCounts.set(generated.profile, (profileCounts.get(generated.profile) || 0) + 1);
       const moduleHash = createHash("sha256").update(generated.moduleBytes).digest("hex");
       const modulePath = path.join(runDirectory, `${String(caseIndex).padStart(8, "0")}-${moduleHash.slice(0, 16)}.wasm`);
       await fs.writeFile(modulePath, generated.moduleBytes);
@@ -325,6 +344,12 @@ async function run(options) {
       if (!options.keep) await fs.unlink(modulePath);
       runDigest.update(`${caseIndex}:${node.hash}\n`);
     }
+    if (options.count >= 40) {
+      const missingProfiles = FULL_CYCLE_PROFILES.filter((profile) => !profileCounts.has(profile));
+      if (missingProfiles.length > 0) {
+        throw new Error(`Starshine engine-state cycle missed profiles: ${missingProfiles.join(", ")}`);
+      }
+    }
   } finally {
     await worker.close();
   }
@@ -338,7 +363,12 @@ async function run(options) {
   const rate = options.count / Math.max(elapsedSeconds, 0.001);
   const resultHash = `sha256:${runDigest.digest("hex")}`;
   const kept = options.keep ? ` artifacts=${runDirectory}` : "";
+  const coverage = FULL_CYCLE_PROFILES
+    .filter((profile) => profileCounts.has(profile))
+    .map((profile) => `${profile.slice("engine-state-".length)}:${profileCounts.get(profile)}`)
+    .join(",");
   console.log(`PASS cases=${options.count} start=${options.start} seed=${seedHex(options.rootSeed)} result=${resultHash} ffi=${generator.ffiHash} elapsed=${elapsedSeconds.toFixed(2)}s rate=${rate.toFixed(1)}/s${kept}`);
+  console.log(`COVERAGE profiles=${coverage}`);
 }
 
 async function main() {
