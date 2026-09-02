@@ -438,6 +438,10 @@ func TestARM64StructuredTradesOneVectorStackRegisterOnlyUnderLocalPressure(t *te
 		arm64StructuredCachesMemoryEnd(false, 2, 1) || arm64StructuredCachesMemoryEnd(true, 0, 0) {
 		t.Fatal("cached memory end policy did not retain its memory-density threshold")
 	}
+	if !arm64StructuredSIMDDirectLocalKind(wasm.InstrV128Load) || !arm64StructuredSIMDDirectLocalKind(wasm.InstrI32x4Splat) ||
+		arm64StructuredSIMDDirectLocalKind(wasm.InstrI32x4Add) {
+		t.Fatal("direct SIMD local-result policy accepted the wrong operation")
+	}
 }
 
 func TestARM64StructuredReusesV128LocalZero(t *testing.T) {

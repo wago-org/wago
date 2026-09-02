@@ -595,3 +595,24 @@ signals/explicit ratio. The retained one-check explicit implementation measured
 4,040 bytes; the signals build is 4,012 bytes. Focused explicit/guard/wazero
 corpus execution, the ARM64 watchdog regression, backend tests, and the public
 runtime tests pass.
+
+### 2026-09-02 BLAKE SIMD direct-splat results
+
+The structured ARM64 emitter now sends `i32x4.splat` results directly to an
+immediately following pinned `local.set` or `local.tee`, extending the existing
+direct-result contract for `v128.load`. This removes the intermediate operand-
+stack copy without changing local-alias materialization. Compression functions
+7 and 8 fall from 8,064/7,328 to 8,016/7,248 native bytes, and the complete
+module falls by 128 bytes.
+
+Twelve alternating 400 ms BLAKE pairs measured `0.9991x` baseline latency with
+7/12 wins. A separate six-pair 300 ms SIMD-corpus gate measured BLAKE at
+`0.9950x` with 5/6 wins, JSON serialize/deserialize at `0.9987x`/`1.0003x`, and
+UTF convert/validate at `0.9998x`/`0.9990x`. The generic move elimination is
+retained for its lower dynamic instruction count, smaller code, and neutral-to-
+positive cross-corpus result.
+
+An entry-prefix proof was also prototyped to skip zero initialization for
+declared locals overwritten before their first read. It removed another 128
+module bytes, but BLAKE measured `1.0056x` baseline latency with 0/12 wins,
+likely from unfavorable hot-loop alignment. That experiment was reverted.

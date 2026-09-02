@@ -11390,21 +11390,21 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 					shiftImmediate, hasShiftImmediate = sf.Instrs[instrIndex-1].U32(), true
 				}
 				loadDestination, hasLoadDestination := arm64.Reg(0), false
-				directLoadLocal := -1
-				if descriptor.Kind == wasm.InstrV128Load && instrIndex+1 < len(sf.Instrs) &&
+				directResultLocal := -1
+				if arm64StructuredSIMDDirectLocalKind(descriptor.Kind) && instrIndex+1 < len(sf.Instrs) &&
 					(sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalSet || sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalTee) {
 					targetLocal := int(sf.Instrs[instrIndex+1].U32())
 					if targetLocal < len(localV128Pinned) && localV128Pinned[targetLocal] {
 						materializeLocalAliases(targetLocal, -1, -1)
 						loadDestination, hasLoadDestination = localRegisters[targetLocal], true
-						directLoadLocal = targetLocal
+						directResultLocal = targetLocal
 					}
 				}
 				err = emitARM64StackSIMD(&a, descriptor, instr, &stackTypes, v128StackRegisters, operandStackRegisters, stackOff, stackLoad, stackStore, stackSourceV128, stackTakeV128, stackStoreV128, stackStoreV128Constant, materializeSIMDConstant, simdConstants, shiftImmediate, hasShiftImmediate, loadDestination, hasLoadDestination, fn.Index, registerOperandStack, cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata)
-				if err == nil && directLoadLocal >= 0 {
+				if err == nil && directResultLocal >= 0 {
 					result := len(stackTypes) - 1
 					vectorStackValid[result] = false
-					vectorStackSourceLocal[result] = int32(directLoadLocal)
+					vectorStackSourceLocal[result] = int32(directResultLocal)
 				}
 			} else if arm64MemoryStackKind(instr.Kind) {
 				if !registerOperandStack {
@@ -11559,6 +11559,10 @@ func arm64StructuredV128StackRegisterCount(v128Locals, availableLocals int) int 
 		return len(arm64V128StackRegisters) - 1
 	}
 	return len(arm64V128StackRegisters)
+}
+
+func arm64StructuredSIMDDirectLocalKind(kind wasm.InstrKind) bool {
+	return kind == wasm.InstrV128Load || kind == wasm.InstrI32x4Splat
 }
 
 func arm64StructuredCachesMemoryEnd(_ bool, loads, stores uint32) bool {
@@ -13397,8 +13401,14 @@ func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		if !load(base, arm64.X16) {
 			return fmt.Errorf("SIMD splat operand is not encodable")
 		}
-		a.NeonDupGprS(0, arm64.X16)
-		storeV(base, 0)
+		dst := stackDestination(base, 0)
+		if hasLoadDestination {
+			dst = loadDestination
+		}
+		a.NeonDupGprS(dst, arm64.X16)
+		if !hasLoadDestination {
+			storeV(base, dst)
+		}
 		types[base] = wasm.V128
 	case wasm.InstrI32x4ReplaceLane:
 		if len(types) < 2 || types[len(types)-2] != wasm.V128 || types[len(types)-1] != wasm.I32 {
