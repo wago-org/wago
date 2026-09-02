@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -41,6 +42,9 @@ func TestDraglineJSONSIMDCorpusMatchesRailshot(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { instance.Close() })
+		if runtime.GOOS == "windows" {
+			t.Logf("Windows ARM64 code base=%#x stack top=%#x code bytes=%#x", instance.base, instance.eng.StackTop(), len(compiled.code))
+		}
 		if _, err := instance.Invoke("_initialize"); err != nil {
 			t.Fatal(err)
 		}
