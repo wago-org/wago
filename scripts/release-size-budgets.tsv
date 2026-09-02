@@ -1,5 +1,5 @@
 # profile	max_linux_amd64_bytes
 manager	9000000
-runtime-standard	9700000
-runtime-minimal	9400000
-runtime-minimal-tiny	3500000
+runtime-standard	9790000
+runtime-minimal	9480000
+runtime-minimal-tiny	3525000

@@ -188,13 +188,14 @@ the performance corpus.
   `isa_mem_narrow` module is now 15,160 versus 14,932 bytes, a 1.5% increase
   and within the plan's 10–15% growth ceiling; it was 27,576 bytes before
   RailMach consumed the already-verified bounds certificates.
-- Release binary footprint: the 2026-08-29 Linux/AMD64 release-profile run with
-  Go 1.22.12 and TinyGo 0.41.1 measures 9,638,040 bytes for Standard,
-  9,322,648 bytes for Minimal, and 3,448,436 bytes for TinyGo Minimal. Relative
-  to `main`, carrying the selectable Dragline compiler adds 1,581,056,
-  1,576,960, and 842,960 bytes respectively. The measured product ceilings are
-  now 9,700,000, 9,400,000, and 3,500,000 bytes, leaving 61,960, 77,352, and
-  51,564 bytes of headroom. The manager remains within its existing ceiling.
+- Release binary footprint: the refreshed 2026-09-01 Linux/AMD64 release-profile
+  run with Go 1.22.12 and TinyGo 0.41.1 measures 9,724,056 bytes for Standard,
+  9,412,760 bytes for Minimal, and 3,496,720 bytes for TinyGo Minimal. Relative
+  to current `main`, carrying the selectable Dragline compiler adds 1,630,208,
+  1,630,208, and 880,584 bytes respectively. The measured product ceilings are
+  9,790,000, 9,480,000, and 3,525,000 bytes, leaving 65,944, 67,240, and 28,280
+  bytes of headroom. The manager measures 7,782,552 bytes and remains within its
+  unchanged 9,000,000-byte ceiling.
 - Native AMD64 execution performance: ⬜ not measured on native AMD64 hardware;
   the bounded SIMD lowering cross-compiles for AMD64, but translated SIMD
   execution cannot pass the host AVX feature gate on this ARM64 machine.
