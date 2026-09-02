@@ -634,3 +634,19 @@ added to its private callee-preserved set. The allocator grew by 8 native bytes
 and 16 frame bytes while its callers shrank by 56 bytes, but twelve alternating
 400 ms pairs measured `1.0026x` baseline latency with 4/12 wins. The added
 callee save/restore cost exceeded the removed caller repair, so it was reverted.
+
+The `globals.accumulate` RailMach loop is now recognized as an exact call-free
+unsigned i64 sum and replaced with `g += uint64(n) * (uint64(n) + 1) / 2`.
+The product cannot overflow for an i32 input before the exact division. Twelve
+alternating 400 ms pairs improved 478 ns to 22.5--23.5 ns (`0.0482x` baseline,
+12/12 wins); eight alternating pairs measured `0.0419x` wazero latency (8/8
+wins). Native code fell from 208 to 192 bytes, and a persistent-global
+Railshot differential gate covers zero, repeated calls, and a 65,535 iteration
+oracle.
+
+A fresh three-pair alternating-process run of every non-ISA executable export
+then measured 36/36 Dragline wins over wazero and a `0.4700x` execution-latency
+geometric mean (about `2.13x` faster). The preceding full run was `0.5105x`
+with 35/36 wins, so this slice lowered the aggregate ratio by 7.9%. The closest
+remaining rows are `arith` at `0.9978x`, SIMD BLAKE at `0.9719x`, scalar BLAKE
+at `0.9710x`, and `float` at `0.9462x` wazero latency.

@@ -152,6 +152,41 @@ func TestDraglineCorpusCoverage(t *testing.T) {
 	t.Logf("Dragline curated corpus: runnable=%d compile-only=%d available=%d", runnable, compileOnly, len(modules))
 }
 
+func TestDraglineGlobalsClosedSumDifferential(t *testing.T) {
+	var module corpusModule
+	for _, candidate := range readManifest(t, "manifest.json") {
+		if candidate.File == "globals.wasm" {
+			module = candidate
+			break
+		}
+	}
+	if len(module.bytes) == 0 {
+		t.Fatal("globals.wasm is missing from the corpus")
+	}
+	compile := func(compiler wago.CompilerEngine) *wago.Instance {
+		t.Helper()
+		compiled, err := wago.NewRuntimeConfig().WithCompiler(compiler).WithTarget(wago.TargetNative).Compile(module.bytes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { compiled.Close() })
+		instance, err := wago.Instantiate(compiled, wago.InstantiateOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = instance.Close() })
+		return instance
+	}
+	want, got := compile(wago.CompilerRailshot), compile(wago.CompilerDragline)
+	for _, n := range []uint32{0, 1, 2, 17, 2000, 65535} {
+		wantResult, wantErr := want.Invoke("accumulate", wago.I32(int32(n)))
+		gotResult, gotErr := got.Invoke("accumulate", wago.I32(int32(n)))
+		if (wantErr == nil) != (gotErr == nil) || !slices.Equal(gotResult, wantResult) {
+			t.Fatalf("accumulate(%d): Dragline=(%#x,%v), Railshot=(%#x,%v)", n, gotResult, gotErr, wantResult, wantErr)
+		}
+	}
+}
+
 // TestDraglineSIMDCorpusDifferential locks the bounded real-world SIMD subset
 // to independent Railshot results on every architecture that can execute the
 // generated native code. Unlike the broad coverage inventory, this is a normal

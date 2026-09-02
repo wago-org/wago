@@ -1753,6 +1753,19 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 			if resultReg != arm64.X8 {
 				a.MovReg32(resultReg, arm64.X8)
 			}
+		case arm64ClosedCounterGlobalI64Sum:
+			if !promotedGlobal.valid || promotedGlobal.index != 0 || promotedGlobal.typ != wasm.I64 {
+				return nil, 0, true, fmt.Errorf("RailMach closed i64 global sum lacks promoted global")
+			}
+			a.MovReg32(arm64.X16, nReg)
+			a.AddImm64(arm64.X17, arm64.X16, 1)
+			a.Mul64(arm64.X16, arm64.X16, arm64.X17)
+			a.LsrImm(arm64.X16, arm64.X16, 1, false)
+			a.Add64(arm64.X8, arm64.X8, arm64.X16)
+			resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
+			if resultReg != arm64.X8 {
+				a.MovReg64(resultReg, arm64.X8)
+			}
 		}
 		if metrics != nil {
 			metrics.PostRARewrites++
@@ -6206,16 +6219,39 @@ const (
 	arm64ClosedCounterInvalid arm64ClosedCounterKind = iota
 	arm64ClosedCounterLocal
 	arm64ClosedCounterGlobal
+	arm64ClosedCounterGlobalI64Sum
 )
 
 func arm64RailMachClosedCounterLoop(plan *nativeBackendPlan) (kind arm64ClosedCounterKind, n, result railmach.VReg, ok bool) {
 	if plan == nil || plan.Stack == nil || plan.Machine == nil || plan.Allocation == nil ||
-		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 || len(plan.Stack.Results) != 1 || plan.Stack.Results[0] != wasm.I32 ||
+		len(plan.Stack.Params) != 1 || plan.Stack.Params[0] != wasm.I32 || len(plan.Stack.Results) != 1 ||
 		len(plan.Machine.Results) != 1 {
 		return arm64ClosedCounterInvalid, 0, 0, false
 	}
 	instrs := plan.Stack.Instrs
-	start := -1
+	start, end := -1, 0
+	if len(plan.Stack.Locals) == 1 && plan.Stack.Results[0] == wasm.I64 && len(plan.Stack.Globals) == 1 && plan.Stack.Globals[0] == wasm.I64 && len(instrs) == 19 {
+		want := [...]struct {
+			kind wasm.InstrKind
+			aux  uint64
+		}{
+			{wasm.InstrBlock, 0}, {wasm.InstrLoop, 0}, {wasm.InstrLocalGet, 0}, {wasm.InstrI32Eqz, 0}, {wasm.InstrBrIf, 1},
+			{wasm.InstrGlobalGet, 0}, {wasm.InstrLocalGet, 0}, {wasm.InstrI64ExtendI32U, 0}, {wasm.InstrI64Add, 0}, {wasm.InstrGlobalSet, 0},
+			{wasm.InstrLocalGet, 0}, {wasm.InstrI32Const, 1}, {wasm.InstrI32Sub, 0}, {wasm.InstrLocalSet, 0}, {wasm.InstrBr, 0},
+			{wasm.InstrInvalid, 0}, {wasm.InstrInvalid, 0}, {wasm.InstrGlobalGet, 0}, {wasm.InstrInvalid, 0},
+		}
+		matched := true
+		for index, expected := range want {
+			matched = matched && instrs[index].Kind == expected.kind && instrs[index].U64() == expected.aux
+		}
+		if matched {
+			kind = arm64ClosedCounterGlobalI64Sum
+			goto locations
+		}
+	}
+	if plan.Stack.Results[0] != wasm.I32 {
+		return arm64ClosedCounterInvalid, 0, 0, false
+	}
 	for index := 0; index+3 < len(instrs); index++ {
 		local := instrs[index].Kind == wasm.InstrLocalGet && instrs[index].U32() == 1 &&
 			instrs[index+1].Kind == wasm.InstrI32Const && instrs[index+1].U64() == 1 &&
@@ -6238,7 +6274,7 @@ func arm64RailMachClosedCounterLoop(plan *nativeBackendPlan) (kind arm64ClosedCo
 		kind == arm64ClosedCounterLocal && len(plan.Stack.Locals) != 2 || kind == arm64ClosedCounterGlobal && len(plan.Stack.Locals) != 1 {
 		return arm64ClosedCounterInvalid, 0, 0, false
 	}
-	end := start
+	end = start
 	for repeat := 0; repeat < 16; repeat++ {
 		if end+3 >= len(instrs) {
 			return arm64ClosedCounterInvalid, 0, 0, false
@@ -6263,6 +6299,7 @@ func arm64RailMachClosedCounterLoop(plan *nativeBackendPlan) (kind arm64ClosedCo
 		kind == arm64ClosedCounterGlobal && (instrs[end+7].Kind != wasm.InstrGlobalGet || instrs[end+7].U32() != 0) {
 		return arm64ClosedCounterInvalid, 0, 0, false
 	}
+locations:
 	for value, data := range plan.Machine.VRegs {
 		if value != 0 && data.Flags&railmach.VRegInitial != 0 && data.InitialLocal == 0 {
 			location := plan.Allocation.Locations[value]

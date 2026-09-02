@@ -35,6 +35,40 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 	}
 }
 
+func TestARM64ClosesUnsignedI64GlobalSumLoop(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I64, true, []byte{0x42, 0x00, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x02, 0x40, 0x03, 0x40, // block; loop
+			0x20, 0x00, 0x45, 0x0d, 0x01, // local.get 0; i32.eqz; br_if 1
+			0x23, 0x00, 0x20, 0x00, 0xad, 0x7c, 0x24, 0x00, // global += i64.extend_i32_u(n)
+			0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, 0x0c, 0x00, // n--; br 0
+			0x0b, 0x0b, 0x23, 0x00, 0x0b, // end; end; global.get 0; end
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	got := metrics.Functions[0]
+	if !got.RailMachFinalized || got.PostRARewrites == 0 || got.NativeBytes > 192 {
+		t.Fatalf("closed unsigned i64 global sum metrics = %#v", got)
+	}
+}
+
 func TestARM64WhitespaceEndGuardRequiresMatchingLocals(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil))),
