@@ -112,6 +112,7 @@ TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
 	FSTPQ	(F30, F31), 624(RSP)
 	MRS	NZCV, R17
 	MOVD	R17, 656(RSP)
+	MOVD	R30, 664(RSP)          // interrupted Wasm LR; BL VirtualAlloc clobbers it
 	MOVD	672(RSP), R0           // allocation-aligned page from VEH frame
 	MOVD	$65536, R1
 	MOVD	$0x1000, R2            // MEM_COMMIT
@@ -137,6 +138,7 @@ TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
 	FLDPQ	624(RSP), (F30, F31)
 	MOVD	656(RSP), R17
 	MSR	R17, NZCV
+	MOVD	664(RSP), R30
 	LDP	0(RSP), (R0, R1)
 	LDP	16(RSP), (R2, R3)
 	LDP	32(RSP), (R4, R5)

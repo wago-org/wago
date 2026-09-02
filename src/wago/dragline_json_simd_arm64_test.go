@@ -5,10 +5,8 @@ package wago
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
@@ -34,7 +32,7 @@ func TestDraglineJSONSIMDCorpusMatchesRailshot(t *testing.T) {
 	cacheConfig := NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).
 		WithFunctionArtifactCache(NewFunctionArtifactCache(4 << 20))
 	native = append(native, compile(cacheConfig), compile(cacheConfig))
-	instantiate := func(label string, compiled *Compiled) *Instance {
+	instantiate := func(compiled *Compiled) *Instance {
 		t.Helper()
 		instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
 			"env.abort": HostFunc(func(HostModule, []uint64, []uint64) {}),
@@ -43,27 +41,15 @@ func TestDraglineJSONSIMDCorpusMatchesRailshot(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { instance.Close() })
-		if runtime.GOOS == "windows" {
-			memory := instance.Memory().UnsafeBytes()
-			t.Logf("%s code base=%#x memory=%p stack top=%#x code bytes=%#x", label, instance.base, &memory[0], instance.eng.StackTop(), len(compiled.code))
-			t.Logf("%s entry=%v", label, compiled.Entry)
-			t.Logf("%s internal=%v", label, compiled.InternalEntry)
-			if len(compiled.code) >= 0x2b00 {
-				t.Logf("%s code[0x2700:0x2b00]=%x", label, compiled.code[0x2700:0x2b00])
-			}
-		}
 		if _, err := instance.Invoke("_initialize"); err != nil {
 			t.Fatal(err)
 		}
 		return instance
 	}
-	referenceInstance := instantiate("railshot", reference)
-	if runtime.GOOS == "windows" {
-		instantiate("dragline-explicit", compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit)))
-	}
+	referenceInstance := instantiate(reference)
 	nativeInstances := make([]*Instance, len(native))
 	for i, compiled := range native {
-		nativeInstances[i] = instantiate(fmt.Sprintf("dragline-%d", i), compiled)
+		nativeInstances[i] = instantiate(compiled)
 	}
 	for _, export := range []string{"serializeN", "deserializeN"} {
 		for _, n := range []int32{0, 1, 2, 200} {
