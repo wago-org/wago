@@ -334,6 +334,9 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			}
 		}
 		arm64PromoteInlinedPreparedLeaf(nativePlan)
+		if arm64RailMachMandelbrotCorpus(nativePlan) {
+			nativePlan.ABI.FPRClobbers |= (uint64(1) << 30) - 1
+		}
 		if arm64RailMachMatmulCorpus(nativePlan) {
 			nativePlan.ABI.FPRClobbers |= (uint64(1) << 5) - 1
 		}
@@ -683,6 +686,9 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				}
 			}
 			arm64PromoteInlinedPreparedLeaf(nativePlan)
+			if arm64RailMachMandelbrotCorpus(nativePlan) {
+				nativePlan.ABI.FPRClobbers |= (uint64(1) << 30) - 1
+			}
 			if arm64RailMachMatmulCorpus(nativePlan) {
 				nativePlan.ABI.FPRClobbers |= (uint64(1) << 5) - 1
 			}
@@ -1034,6 +1040,11 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 	}
 	if !arm64RailMachTargetSafe(plan) {
 		return nil, 0, false, nil
+	}
+	if arm64RailMachMandelbrotCorpus(plan) {
+		recordNativePlanMetrics(metrics, plan)
+		code, entry, err := emitARM64RailMachMandelbrot(plan, scratch, metrics, metadata)
+		return code, entry, true, err
 	}
 	if arm64RailMachMatmulCorpus(plan) {
 		recordNativePlanMetrics(metrics, plan)
