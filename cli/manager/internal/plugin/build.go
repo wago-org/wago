@@ -119,20 +119,47 @@ func pkgAddMany(specs []string, options pkgOpts) {
 }
 
 func reportCompletedPluginInstalls(ctx context.Context, specs []string, lock project.LockDocument, record func(context.Context, string, string)) {
-	seen := make(map[string]struct{}, len(specs))
+	sources := make(map[string]project.PluginSource, len(specs))
+	seenPlugins := make(map[string]struct{}, len(lock.Plugins))
+	var visit func(string)
+	visit = func(id string) {
+		if _, seen := seenPlugins[id]; seen {
+			return
+		}
+		seenPlugins[id] = struct{}{}
+		entry, ok := lock.Plugins[id]
+		if !ok {
+			return
+		}
+		if entry.Source.Module != "" && entry.Source.Version != "" {
+			sources[entry.Source.Module] = entry.Source
+		}
+		dependencies := make([]string, 0, len(entry.Dependencies))
+		for dependency := range entry.Dependencies {
+			dependencies = append(dependencies, dependency)
+		}
+		for _, binding := range entry.Bindings {
+			dependencies = append(dependencies, binding.Providers...)
+		}
+		sort.Strings(dependencies)
+		for _, dependency := range dependencies {
+			visit(dependency)
+		}
+	}
 	for _, spec := range specs {
 		id, _, err := parsePluginSpec(spec)
 		if err != nil {
 			continue
 		}
-		source := lock.Plugins[id].Source
-		if source.Module == "" || source.Version == "" {
-			continue
-		}
-		if _, duplicate := seen[source.Module]; duplicate {
-			continue
-		}
-		seen[source.Module] = struct{}{}
+		visit(id)
+	}
+	modules := make([]string, 0, len(sources))
+	for module := range sources {
+		modules = append(modules, module)
+	}
+	sort.Strings(modules)
+	for _, module := range modules {
+		source := sources[module]
 		record(ctx, source.Module, source.Version)
 	}
 }
