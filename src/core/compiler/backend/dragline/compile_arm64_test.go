@@ -388,13 +388,16 @@ func TestARM64CallPinnedV128RegistersAvoidOperandStack(t *testing.T) {
 }
 
 func TestARM64StructuredDirectCallSpillsOnlyLivePrefix(t *testing.T) {
-	if got := arm64StructuredCallSpillLimit(wasm.InstrCall, 1, 1, 6, 4); got != 4 {
+	if got := arm64StructuredCallSpillLimit(wasm.InstrCall, 1, 1, 6, 4, true); got != 4 {
 		t.Fatalf("direct call spill limit = %d, want live prefix 4", got)
 	}
-	if got := arm64StructuredCallSpillLimit(wasm.InstrCall, 0, 1, 6, 4); got != 6 {
+	if got := arm64StructuredCallSpillLimit(wasm.InstrCall, 1, 1, 6, 4, false); got != 6 {
+		t.Fatalf("canonical direct call spill limit = %d, want complete argument vector 6", got)
+	}
+	if got := arm64StructuredCallSpillLimit(wasm.InstrCall, 0, 1, 6, 4, false); got != 6 {
 		t.Fatalf("imported wrapper spill limit = %d, want complete canonical vector 6", got)
 	}
-	if got := arm64StructuredCallSpillLimit(wasm.InstrCallIndirect, 1, 1, 7, 4); got != 7 {
+	if got := arm64StructuredCallSpillLimit(wasm.InstrCallIndirect, 1, 1, 7, 4, false); got != 7 {
 		t.Fatalf("indirect wrapper spill limit = %d, want complete canonical vector 7", got)
 	}
 }

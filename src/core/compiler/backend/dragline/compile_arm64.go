@@ -10309,9 +10309,13 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		case wasm.InstrCall, wasm.InstrCallIndirect:
 			callBoundary := pinLocalsAcrossCalls && instr.Inline() == wasm.InstrInvalid
 			calleePreservesPinned := false
-			if callBoundary && instr.Kind == wasm.InstrCall && instr.U32() >= sf.ImportedFuncs {
+			calleeUsesPrivateArguments := instr.Kind == wasm.InstrCall && instr.U32() >= sf.ImportedFuncs
+			if instr.Kind == wasm.InstrCall && instr.U32() >= sf.ImportedFuncs {
 				callee := int(instr.U32() - sf.ImportedFuncs)
-				calleePreservesPinned = !sf.HasV128 && callee < len(contracts) && (contracts[callee].Class != 0 ||
+				if callee < len(contracts) && contracts[callee].Class != 0 {
+					calleeUsesPrivateArguments = arm64DirectPreparedClass(contracts[callee].Class)
+				}
+				calleePreservesPinned = callBoundary && !sf.HasV128 && callee < len(contracts) && (contracts[callee].Class != 0 ||
 					arm64JSONSIMDDeserializePreservedFunction(uint32(callee)) && arm64JSONSIMDDeserializePreservationModule(sf.Module))
 			}
 			stackPrefix := len(stackTypes) - int(instr.Params())
@@ -10335,9 +10339,9 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 					flushVectorStack()
 				}
 				// Direct private calls consume arguments from disjoint parameter
-				// registers, so only their live prefix survives. Wrapper calls keep
-				// the complete canonical argument vector for the callee to read.
-				spill := arm64StructuredCallSpillLimit(instr.Kind, instr.U32(), sf.ImportedFuncs, len(stackTypes), stackPrefix)
+				// registers, so only their live prefix survives. Canonical local and
+				// wrapper calls keep the complete argument vector for the callee to read.
+				spill := arm64StructuredCallSpillLimit(instr.Kind, instr.U32(), sf.ImportedFuncs, len(stackTypes), stackPrefix, calleeUsesPrivateArguments)
 				for index := 0; index < spill; index++ {
 					if stackTypes[index] == wasm.V128 {
 						continue
@@ -11432,8 +11436,8 @@ func arm64StructuredRegisterModes(hasV128, hasGeneralCall, pinLocalsAcrossCalls,
 	return
 }
 
-func arm64StructuredCallSpillLimit(kind wasm.InstrKind, target, imported uint32, depth, prefix int) int {
-	if kind == wasm.InstrCall && target >= imported {
+func arm64StructuredCallSpillLimit(kind wasm.InstrKind, target, imported uint32, depth, prefix int, privateArguments bool) int {
+	if kind == wasm.InstrCall && target >= imported && privateArguments {
 		return prefix
 	}
 	return depth
