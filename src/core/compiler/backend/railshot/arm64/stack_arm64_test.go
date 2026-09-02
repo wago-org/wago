@@ -2,7 +2,10 @@
 
 package arm64
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // Operand-stack arena sizing, ported from amd64/stack_test.go. The arena-capacity
 // heuristics are shared verbatim with amd64 (identical constants and formulas), so
@@ -34,6 +37,52 @@ func TestNewStackWithCapSizesFirstChunkArm64(t *testing.T) {
 			t.Fatalf("newStackWithCap(%d) did not initialize sentinel links", tc.hint)
 		}
 	}
+}
+
+func TestHintedStackGrowthMatchesLegacyRetentionArm64(t *testing.T) {
+	const (
+		firstCap = 386
+		nodes    = 31_000
+	)
+	hinted, legacy := newStackWithCap(firstCap), newStack()
+	for i := 1; i < nodes; i++ { // each stack already contains its sentinel
+		hinted.alloc()
+		legacy.alloc()
+	}
+	if len(hinted.chunks) < 2 || cap(hinted.chunks[1]) != 768-firstCap {
+		t.Fatalf("hinted fallback chunks = %v, want second cap %d", stackChunkCapsArm64(hinted), 768-firstCap)
+	}
+	if got, want := retainedStackArenaCapacityArm64(hinted), retainedStackArenaCapacityArm64(legacy); got != want {
+		t.Fatalf("hinted retained capacity = %d, want legacy %d; hinted=%v legacy=%v", got, want, stackChunkCapsArm64(hinted), stackChunkCapsArm64(legacy))
+	}
+}
+
+func TestSubDefaultHintPreservesGeometricGrowthArm64(t *testing.T) {
+	const nodes = 2_000
+	s := newStackWithCap(101)
+	for i := 1; i < nodes; i++ {
+		s.alloc()
+	}
+	want := []int{101, 202, 404, 808, 1616}
+	if got := stackChunkCapsArm64(s); !slices.Equal(got, want) {
+		t.Fatalf("sub-default growth = %v, want %v", got, want)
+	}
+}
+
+func retainedStackArenaCapacityArm64(s *stack) int {
+	total := 0
+	for i := range s.chunks {
+		total += cap(s.chunks[i])
+	}
+	return total
+}
+
+func stackChunkCapsArm64(s *stack) []int {
+	caps := make([]int, len(s.chunks))
+	for i := range s.chunks {
+		caps[i] = cap(s.chunks[i])
+	}
+	return caps
 }
 
 func TestStackArenaCapForBodyTinyFunctionArm64(t *testing.T) {

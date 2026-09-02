@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -33,6 +34,52 @@ func TestNewStackWithCapSizesFirstChunk(t *testing.T) {
 			t.Fatalf("newStackWithCap(%d) did not initialize sentinel links", tc.hint)
 		}
 	}
+}
+
+func TestHintedStackGrowthMatchesLegacyRetention(t *testing.T) {
+	const (
+		firstCap = 386
+		nodes    = 31_000
+	)
+	hinted, legacy := newStackWithCap(firstCap), newStack()
+	for i := 1; i < nodes; i++ { // each stack already contains its sentinel
+		hinted.alloc()
+		legacy.alloc()
+	}
+	if len(hinted.chunks) < 2 || cap(hinted.chunks[1]) != 768-firstCap {
+		t.Fatalf("hinted fallback chunks = %v, want second cap %d", stackChunkCaps(hinted), 768-firstCap)
+	}
+	if got, want := retainedStackArenaCapacity(hinted), retainedStackArenaCapacity(legacy); got != want {
+		t.Fatalf("hinted retained capacity = %d, want legacy %d; hinted=%v legacy=%v", got, want, stackChunkCaps(hinted), stackChunkCaps(legacy))
+	}
+}
+
+func TestSubDefaultHintPreservesGeometricGrowth(t *testing.T) {
+	const nodes = 2_000
+	s := newStackWithCap(101)
+	for i := 1; i < nodes; i++ {
+		s.alloc()
+	}
+	want := []int{101, 202, 404, 808, 1616}
+	if got := stackChunkCaps(s); !slices.Equal(got, want) {
+		t.Fatalf("sub-default growth = %v, want %v", got, want)
+	}
+}
+
+func retainedStackArenaCapacity(s *stack) int {
+	total := 0
+	for i := range s.chunks {
+		total += cap(s.chunks[i])
+	}
+	return total
+}
+
+func stackChunkCaps(s *stack) []int {
+	caps := make([]int, len(s.chunks))
+	for i := range s.chunks {
+		caps[i] = cap(s.chunks[i])
+	}
+	return caps
 }
 
 func TestStackArenaCapForBodyTinyFunction(t *testing.T) {
