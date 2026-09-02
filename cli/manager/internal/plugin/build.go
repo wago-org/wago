@@ -65,6 +65,7 @@ func pkgAddMany(specs []string, options pkgOpts) {
 			progress.Begin("Fetching selected plugins")
 		}
 	}
+	var installedLock project.LockDocument
 	err = withPluginMutationLock(pluginContext(options.ctx), src, func(mutation *project.Mutation) error {
 		manifest, err := mutation.ReadManifest()
 		if err != nil {
@@ -100,7 +101,11 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		printPluginPlanWarnings(reviewed.Warnings)
 		progress.Finish("Permissions checked")
 		progress.Begin("Building plugin runtime")
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose)
+		if err := stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose); err != nil {
+			return err
+		}
+		installedLock = reviewed.Lock
+		return nil
 	})
 	if err != nil {
 		progress.Fail("Plugin install failed")
@@ -109,7 +114,27 @@ func pkgAddMany(specs []string, options pkgOpts) {
 	if !options.global {
 		project.EnsureGitignore(".wago/")
 	}
+	reportCompletedPluginInstalls(context.WithoutCancel(pluginContext(options.ctx)), specs, installedLock, registry.RecordInstallContext)
 	progress.Finish(fmt.Sprintf("Installed %d plugin%s in %s", len(specs), plural(len(specs)), time.Since(started).Round(time.Millisecond)))
+}
+
+func reportCompletedPluginInstalls(ctx context.Context, specs []string, lock project.LockDocument, record func(context.Context, string, string)) {
+	seen := make(map[string]struct{}, len(specs))
+	for _, spec := range specs {
+		id, _, err := parsePluginSpec(spec)
+		if err != nil {
+			continue
+		}
+		source := lock.Plugins[id].Source
+		if source.Module == "" || source.Version == "" {
+			continue
+		}
+		if _, duplicate := seen[source.Module]; duplicate {
+			continue
+		}
+		seen[source.Module] = struct{}{}
+		record(ctx, source.Module, source.Version)
+	}
 }
 
 func pkgRemove(name string, options pkgOpts) {
