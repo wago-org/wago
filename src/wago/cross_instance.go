@@ -199,6 +199,39 @@ func (t *Table) Size() int {
 	return int(binary.LittleEndian.Uint32(t.desc))
 }
 
+// EntryIsNull reports whether one table entry is null without exposing its
+// internal descriptor or allocating a public reference token. Callers must not
+// race this diagnostic read with guest table mutation.
+func (t *Table) EntryIsNull(index uint64) (bool, error) {
+	if t == nil {
+		return false, fmt.Errorf("wago: nil table")
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed || len(t.desc) < 8 || t.owner == nil {
+		return false, fmt.Errorf("wago: table is closed or invalid")
+	}
+	size := uint64(binary.LittleEndian.Uint32(t.desc))
+	if index >= size {
+		return false, fmt.Errorf("wago: table index %d out of bounds (size %d)", index, size)
+	}
+	stride := coreruntime.TableEntryBytes
+	valueOffset := 0
+	if t.owner.elementType != ValFuncRef {
+		stride = 8
+	} else {
+		valueOffset = coreruntime.TableEntryRefSlotOffset
+	}
+	if index > uint64((maxInt()-8-valueOffset)/stride) {
+		return false, fmt.Errorf("wago: table index %d overflows host addressing", index)
+	}
+	offset := 8 + int(index)*stride + valueOffset
+	if offset < 8 || offset+8 > len(t.desc) {
+		return false, fmt.Errorf("wago: table descriptor is truncated")
+	}
+	return binary.LittleEndian.Uint64(t.desc[offset:]) == 0, nil
+}
+
 func (t *Table) runtimeCapacity() (uint32, bool) {
 	if t == nil {
 		return 0, false

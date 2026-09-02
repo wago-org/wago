@@ -91,6 +91,7 @@ lint-staticcheck:
 .PHONY: lint-website-generator
 lint-website-generator:
 	node --test scripts/update-website-bench.test.mjs
+	node --test scripts/engine-state-oracle.test.mjs
 
 .PHONY: docs-check
 docs-check: ## Validate local paths and anchors in tracked Markdown files
@@ -108,6 +109,12 @@ test: ## Build and run the test suite (host)
 .PHONY: test-concurrency
 test-concurrency: ## Run the deterministic runtime concurrency harness (WAGO_CONCURRENCY_SEED=...)
 	go test -count=1 -run '^TestRuntimeConcurrency' ./tests/runtimeconcurrency
+
+ENGINE_FUZZ_ARGS ?=
+
+.PHONY: fuzz-engine-state
+fuzz-engine-state: ## Compare Starshine state hashes in Node and Railshot (ENGINE_FUZZ_ARGS="...")
+	scripts/fuzz-engine-state.sh $(ENGINE_FUZZ_ARGS)
 
 .PHONY: install-local
 install-local: ## Run the installer from this checkout
