@@ -302,14 +302,15 @@ module bytes, but 15 alternating 500 ms signal-bounds pairs were neutral at
 page JSON serialize/deserialize benchmarks added for that experiment remain as
 the repeatable retention gate for future parser work.
 
-Windows ARM64 currently uses the structured emitter for every function. Native
-CI showed that small direct-entry fixtures passed while mixed structured and
-RailMach JSON modules corrupted linear-memory state and the guard-page handler
-later faulted. The earlier call/global-only fence was insufficient because it
-left RailMach leaves behind that boundary. Until the Windows register/unwind
-boundary has a native proof, the platform therefore keeps the ordinary verified
-wrapper and structured internal convention. Linux and Darwin retain RailMach's
-measured register-entry and widened private-call paths.
+Windows ARM64 does not currently select the register-ABI prepared host entry.
+Native CI showed that small direct-entry fixtures passed while the larger JSON
+initializers corrupted linear-memory state and the guard-page handler later
+faulted. The platform therefore keeps the ordinary verified wrapper entry until
+the Windows register/unwind boundary has a native proof. RailMach remains
+enabled on that platform, but generated functions retain the canonical X8
+argument-vector convention instead of publishing the widened private register
+ABI. Linux and Darwin retain the measured register-entry and widened private-
+call paths.
 
 The next structured-SIMD slice defers unpinned `v128` local reads on the operand
 stack until their consumer selects a scratch register. A local write first
