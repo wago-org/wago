@@ -517,20 +517,21 @@ type scratch struct {
 	classifier     wasm.ModuleInstructionClassifier
 	directPrepared bool
 
-	retSites         []int
-	ctrl             []ctrlFrame
-	trapSites        [trapAtomicUnaligned + 1][]trapSite
-	branchTargets    map[int]bool
-	brTableStubAt    []int // duplicate-heavy jump-table target positions by control depth
-	finalFragments   []finalizerFragment
-	deadHoleSites    [maxFinalizerDeletions]int
-	branchNextSites  [maxFinalizerDeletions]int
-	singleBitTests   [maxFinalizerDeletions]singleBitTestSite
-	deadHoleN        uint8
-	branchNextN      uint8
-	singleBitTestN   uint8
-	deadHoleOverflow bool
-	offsetMap        shared.OffsetMap
+	retSites                []int
+	ctrl                    []ctrlFrame
+	functionResultTypeArena [maxScratchFunctionResults]machineType
+	trapSites               [trapAtomicUnaligned + 1][]trapSite
+	branchTargets           map[int]bool
+	brTableStubAt           []int // duplicate-heavy jump-table target positions by control depth
+	finalFragments          []finalizerFragment
+	deadHoleSites           [maxFinalizerDeletions]int
+	branchNextSites         [maxFinalizerDeletions]int
+	singleBitTests          [maxFinalizerDeletions]singleBitTestSite
+	deadHoleN               uint8
+	branchNextN             uint8
+	singleBitTestN          uint8
+	deadHoleOverflow        bool
+	offsetMap               shared.OffsetMap
 	transient
 }
 
@@ -556,6 +557,11 @@ func newScratch() *scratch {
 func newScratchWithStackCap(stackCap int) *scratch {
 	return &scratch{stack: newStackWithCap(stackCap), asm: &a64.Asm{}}
 }
+
+// maxScratchFunctionResults bounds owner-local signature lowering storage.
+// Standard Go keeps 64 entries; TinyGo keeps none to protect release size.
+// Signatures above the active bound allocate for that function only.
+const maxScratchFunctionResults = shared.FunctionResultScratchCapacity
 
 // maxInitialStackArenaCap bounds speculative operand-node storage retained by
 // one serial compiler scratch. Larger functions still grow through stable
@@ -2278,8 +2284,8 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the current epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
-	resultTypes := typesOfVals(f.ft.Results)
 	sc := f.scratchState()
+	resultTypes := lowerFunctionResultTypes(sc, f.ft.Results)
 	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes})
 	if err := f.body(c.BodyBytes); err != nil {
 		return err

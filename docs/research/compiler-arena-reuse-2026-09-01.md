@@ -145,6 +145,33 @@ change:
 The change therefore gives a clear compile-memory win for utf-as SWAR, leaves
 json-as compile memory neutral, and does not alter execution speed.
 
+## Function result-type scratch follow-up
+
+A later bounded slice removed the per-function `typesOfVals(ft.Results)` heap
+slice from the standard Go backends. Each serial compiler or parallel worker now
+owns 64 bytes of function-result type scratch. Signatures above 64 results use a
+function-local fallback allocation and do not enlarge retained scratch. TinyGo
+keeps the prior allocation path and a zero-capacity arena to protect the minimal
+release profile.
+
+Ten interleaved base/head samples ran on CPU 2 with `GOMAXPROCS=1`. Allocation
+counts were stable; timing was noisy, so this slice claims the allocation result
+only.
+
+| workload | base allocs/op | candidate allocs/op | change | base B/op | candidate B/op |
+|---|---:|---:|---:|---:|---:|
+| 301-function scale module | 337 | 36 | **-89.32%** | 171,068 | 170,762 |
+| json-as | 1,353 | 1,329 | **-1.77%** | 280,488 | 280,440 |
+| utf-as | 147 | 144 | **-2.04%** | 224,334 | 224,326 |
+| Ruby 3.3 interpreter | 276,784 | 262,364 | **-5.21%** | 25,259,400 | 25,238,304 |
+| esbuild | 76,383 | 72,240 | **-5.42%** | 23,759,552 | 23,754,544 |
+
+The allocation reductions match result-bearing local functions, plus retrying
+functions that previously converted the same signature again. Base and candidate
+native code SHA-256 hashes were identical for all five workloads. The local
+TinyGo 0.41.1 minimal binary changed by 96 bytes; the merged baseline CI report
+had 3,968 bytes of budget headroom, and PR CI remains the release-size authority.
+
 ## Verification
 
 Passed:
@@ -162,7 +189,6 @@ host.
 ## Next work
 
 - Add retry cost counters and a bounded pressure hint before changing pin policy.
-- Reuse function result-type conversion storage.
 - Measure large real modules and forced parallel builds before changing worker
   arena growth.
 - Rerun the matrix on Go 1.26 when that toolchain is available.

@@ -673,8 +673,9 @@ type scratch struct {
 	gcArrayAllocStubSites   []gcArrayAllocStubSite
 	trapSites               [trapMax + 1][]trapSite
 	ctrl                    []ctrlFrame // control-frame stack backing; reused across functions
-	pinnedLocals            []int       // pinned-local index backing; reused across functions
-	brTableStubAt           []int       // duplicate-heavy jump-table target positions by control depth
+	functionResultTypeArena [maxScratchFunctionResults]machineType
+	pinnedLocals            []int // pinned-local index backing; reused across functions
+	brTableStubAt           []int // duplicate-heavy jump-table target positions by control depth
 	jumpTableFragments      []jumpTableFragment
 	localRefs               amd64.LocalRefRecorder
 	offsetMap               shared.WideOffsetMap
@@ -703,6 +704,11 @@ func newScratch() *scratch {
 func newScratchWithStackCap(stackCap int) *scratch {
 	return &scratch{stack: newStackWithCap(stackCap), asm: &amd64.Asm{}}
 }
+
+// maxScratchFunctionResults bounds owner-local signature lowering storage.
+// Standard Go keeps 64 entries; TinyGo keeps none to protect release size.
+// Signatures above the active bound allocate for that function only.
+const maxScratchFunctionResults = shared.FunctionResultScratchCapacity
 
 // maxInitialStackArenaCap bounds speculative operand-node storage retained by
 // one serial compiler scratch. Larger functions still grow through stable
@@ -2817,11 +2823,12 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the (current) epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
-	resultTypes := typesOfVals(f.ft.Results)
+	sc := f.scratchState()
+	resultTypes := lowerFunctionResultTypes(sc, f.ft.Results)
 	// Seed the control-frame stack from scratch's retained backing so its
 	// (large-struct) array is reused across functions rather than regrown to peak
 	// nesting depth for every one; sc.ctrl is written back below to keep the cap.
-	f.ctrl = append(f.sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes})
+	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes})
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}
