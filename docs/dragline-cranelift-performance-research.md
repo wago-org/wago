@@ -296,6 +296,13 @@ ratio with 9/15 wins. A shorter six-pair signal-bounds run was noisy and measure
 1.0064x, so the retained claim is the instruction/code-size reduction and the
 explicit paired result, not a signal-bounds latency win.
 
+Windows ARM64 does not currently select the register-ABI prepared host entry.
+Native CI showed that small direct-entry fixtures passed while the larger JSON
+initializers corrupted linear-memory state and the guard-page handler later
+faulted. The platform therefore keeps the ordinary verified wrapper entry until
+the Windows register/unwind boundary has a native proof; Linux and Darwin retain
+the measured direct-entry path.
+
 ## Prioritized work
 
 ### P0: first-class `v128` in RailMach
