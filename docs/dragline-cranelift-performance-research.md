@@ -272,6 +272,20 @@ sets, forced RailMach admission, accessor inlining, and a direct comparison-to-
 branch fold were rejected after correctness failures or neutral/regressing
 paired measurements.
 
+The next retained slice fuses recognized UTF-16 whitespace loops. Since their
+character is proven to come from `i32.load16_u`, `(character - 9) & 65535 <= 4`
+is exactly equivalent to the unsigned comparison without the mask. Direct
+branches for that range and the separate space character replace two
+materialized booleans, their OR, and the final boolean branch. On signal bounds,
+15 alternating 500 ms pairs measured `json-as-simd.deserializeN(200)` at
+34,466.30 ns versus 34,815.07 ns before the change: **0.9896x**, with 15/15
+wins. Scalar `json-as.deserializeN(200)` was neutral at 0.9992x. The SIMD
+module's native code fell another 288 bytes, from 73,424 to 73,136 bytes; its
+array parser fell from 2,184 to 2,144 bytes. Differential coverage injects each
+accepted UTF-16 whitespace value (9 through 13 and 32) into the encoded corpus
+input. Small-fill tail decomposition and extra parser-local pinning were
+rejected after their signal-bounds gains remained below the retention threshold.
+
 ## Prioritized work
 
 ### P0: first-class `v128` in RailMach

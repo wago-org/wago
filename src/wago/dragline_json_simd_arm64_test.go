@@ -3,12 +3,14 @@
 package wago
 
 import (
+	"bytes"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-func TestDraglineJSONSIMDCorpusPreservedCalleeMatchesRailshot(t *testing.T) {
+func TestDraglineJSONSIMDCorpusMatchesRailshot(t *testing.T) {
 	source, err := os.ReadFile(filepath.Join("..", "..", "bench", "corpus", "json-as-simd.wasm"))
 	if err != nil {
 		t.Fatal(err)
@@ -60,6 +62,47 @@ func TestDraglineJSONSIMDCorpusPreservedCalleeMatchesRailshot(t *testing.T) {
 				if err != nil || len(got) != 1 || got[0] != want[0] {
 					t.Errorf("variant %d %s(%d) = %v, %v, want %v", variant, export, n, got, err, want)
 				}
+			}
+		}
+	}
+
+	// Exercise every character accepted by the parser's load16_u whitespace
+	// loop. Replacing the leading digit in 13 keeps the JSON valid while forcing
+	// the loop down its whitespace edge.
+	instances := append([]*Instance{referenceInstance}, nativeInstances...)
+	needle := []byte{',', 0, '1', 0, '3', 0, ',', 0}
+	for _, whitespace := range []uint16{9, 10, 11, 12, 13, 32} {
+		offsets := make([][]int, len(instances))
+		for variant, instance := range instances {
+			memory := instance.Memory().UnsafeBytes()
+			for start := 0; start < len(memory); {
+				relative := bytes.Index(memory[start:], needle)
+				if relative < 0 {
+					break
+				}
+				offset := start + relative + 2
+				offsets[variant] = append(offsets[variant], offset)
+				binary.LittleEndian.PutUint16(memory[offset:], whitespace)
+				start = offset + 2
+			}
+			if len(offsets[variant]) == 0 {
+				t.Fatalf("variant %d encoded JSON is unavailable", variant)
+			}
+		}
+		want, err := referenceInstance.Invoke("deserializeN", I32(1))
+		if err != nil || len(want) != 1 {
+			t.Fatalf("Railshot whitespace %d = %v, %v", whitespace, want, err)
+		}
+		for variant, instance := range nativeInstances {
+			got, err := instance.Invoke("deserializeN", I32(1))
+			if err != nil || len(got) != 1 || got[0] != want[0] {
+				t.Errorf("variant %d whitespace %d = %v, %v, want %v", variant, whitespace, got, err, want)
+			}
+		}
+		for variant, instance := range instances {
+			memory := instance.Memory().UnsafeBytes()
+			for _, offset := range offsets[variant] {
+				binary.LittleEndian.PutUint16(memory[offset:], '1')
 			}
 		}
 	}

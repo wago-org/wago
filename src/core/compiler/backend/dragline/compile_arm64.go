@@ -8459,14 +8459,17 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				}
 				a.AddExtUXTW(arm64.X16, arm64.X26, pointerReg)
 				a.LoadIdx(characterReg, arm64.X16, arm64.XZR, 0, 2, false, false)
+				// load16_u proves the character is in [0, 65535], so the Wasm
+				// (character-9)&65535 <= 4 test needs no explicit mask. Branch
+				// directly instead of materializing and ORing two booleans.
 				a.CmpImm32(characterReg, 32)
-				a.Cset32(arm64.X16, arm64.CondEQ)
+				space := a.Bcond(arm64.CondEQ)
 				a.SubImm32(arm64.X17, characterReg, 9)
-				a.AndImm64(arm64.X17, arm64.X17, 65535)
 				a.CmpImm32(arm64.X17, 4)
-				a.Cset32(arm64.X17, arm64.CondLS)
-				a.Orr32(arm64.X16, arm64.X16, arm64.X17)
-				nonWhitespace := farCBZ32(arm64.X16)
+				nonWhitespace := farBcond(arm64.CondHI)
+				if !a.PatchBranch19(space, a.Len()) {
+					return nil, 0, nil, fmt.Errorf("byte %d: whitespace space branch is out of range", instr.Offset)
+				}
 				a.AddImm32(pointerReg, pointerReg, 2)
 				back := a.Branch()
 				if !a.PatchBranch26(back, loop) || patch(exhausted, a.Len()) != nil || patch(nonWhitespace, a.Len()) != nil {
