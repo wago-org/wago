@@ -8581,28 +8581,102 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		return patch(farBcond(cond), target)
 	}
 
+	directStoreNext := -1
+	directStoreGlobal := ^uint32(0)
+	directStoreEnd := uint64(0)
 	for instrIndex := 0; instrIndex < len(sf.Instrs); instrIndex++ {
+		if instrIndex != directStoreNext {
+			directStoreGlobal, directStoreEnd = ^uint32(0), 0
+		}
 		instr := sf.Instrs[instrIndex]
-		if reachable && registerOperandStack && instr.Kind == wasm.InstrGlobalGet && instrIndex+2 < len(sf.Instrs) {
-			constant, store := sf.Instrs[instrIndex+1], sf.Instrs[instrIndex+2]
-			zeroStore := constant.U64() == 0 &&
-				(constant.Kind == wasm.InstrI32Const && store.Kind == wasm.InstrI32Store ||
-					constant.Kind == wasm.InstrI64Const && store.Kind == wasm.InstrI64Store)
-			if slot := promotedGlobalSlot(instr.U32()); zeroStore && slot >= 0 {
-				size := uint64(4)
-				if store.Kind == wasm.InstrI64Store {
-					size = 8
+		if reachable && registerOperandStack && instr.Kind == wasm.InstrGlobalGet && instrIndex+3 < len(sf.Instrs) {
+			value, tee, store := sf.Instrs[instrIndex+1], sf.Instrs[instrIndex+2], sf.Instrs[instrIndex+3]
+			storeKind := store.Kind >= wasm.InstrI32Store && store.Kind <= wasm.InstrI64Store32
+			local := tee.U32()
+			if addressSlot := promotedGlobalSlot(instr.U32()); addressSlot >= 0 && value.Kind == wasm.InstrGlobalGet &&
+				tee.Kind == wasm.InstrLocalTee && int(local) < len(sf.Locals) && !localFloat[local] &&
+				(registerStack || localScalarPinned[local]) && storeKind && int(value.U32()) < len(sf.Globals) {
+				valueReg := localRegisters[local]
+				if valueSlot := promotedGlobalSlot(value.U32()); valueSlot >= 0 {
+					if source := promotedGlobalRegs[valueSlot]; source != valueReg {
+						a.MovReg64(valueReg, source)
+					}
+				} else {
+					if !loadGlobalDescriptor(arm64.X17, value.U32()) {
+						return nil, 0, nil, fmt.Errorf("global %d offset is not encodable", value.U32())
+					}
+					if sf.Globals[value.U32()] == wasm.I32 {
+						a.Load32(valueReg, arm64.X17, 0)
+					} else {
+						a.Load64(valueReg, arm64.X17, 0)
+					}
 				}
-				if err := emitARM64CheckedMemoryAddress(&a, store, promotedGlobalRegs[slot], size, fn.Index,
-					plan.ElidesBoundsCheck(uint32(instrIndex+2)), cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata); err != nil {
+				size := uint64(4)
+				switch store.Kind {
+				case wasm.InstrI64Store:
+					size = 8
+				case wasm.InstrI32Store8, wasm.InstrI64Store8:
+					size = 1
+				case wasm.InstrI32Store16, wasm.InstrI64Store16:
+					size = 2
+				}
+				end := uint64(store.U32()) + size
+				sameAddress := directStoreGlobal == instr.U32()
+				elideBounds := plan.ElidesBoundsCheck(uint32(instrIndex+3)) || sameAddress && directStoreEnd >= end
+				if err := emitARM64CheckedMemoryAddress(&a, store, promotedGlobalRegs[addressSlot], size, fn.Index,
+					elideBounds, cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata); err != nil {
 					return nil, 0, nil, fmt.Errorf("byte %d: %w", store.Offset, err)
 				}
-				a.StoreIdx(arm64.X16, arm64.XZR, arm64.XZR, 0, int(size))
+				a.StoreIdx(arm64.X16, arm64.XZR, valueReg, 0, int(size))
 				metadata.recordSource(a.Len(), store.Offset)
+				if !sameAddress {
+					directStoreEnd = 0
+				}
+				directStoreNext, directStoreGlobal, directStoreEnd = instrIndex+4, instr.U32(), max(directStoreEnd, end)
+				instrIndex += 3
+				continue
+			}
+		}
+		if reachable && registerOperandStack && instr.Kind == wasm.InstrGlobalGet && instrIndex+2 < len(sf.Instrs) {
+			value, store := sf.Instrs[instrIndex+1], sf.Instrs[instrIndex+2]
+			storeKind := store.Kind >= wasm.InstrI32Store && store.Kind <= wasm.InstrI64Store32
+			valueReg, directValue := arm64.XZR, value.U64() == 0 && (value.Kind == wasm.InstrI32Const || value.Kind == wasm.InstrI64Const)
+			if value.Kind == wasm.InstrLocalGet && int(value.U32()) < len(sf.Locals) && !localFloat[value.U32()] &&
+				(registerStack || localScalarPinned[value.U32()]) {
+				valueReg, directValue = localRegisters[value.U32()], true
+			} else if value.Kind == wasm.InstrGlobalGet {
+				if valueSlot := promotedGlobalSlot(value.U32()); valueSlot >= 0 {
+					valueReg, directValue = promotedGlobalRegs[valueSlot], true
+				}
+			}
+			if slot := promotedGlobalSlot(instr.U32()); storeKind && directValue && slot >= 0 {
+				size := uint64(4)
+				switch store.Kind {
+				case wasm.InstrI64Store:
+					size = 8
+				case wasm.InstrI32Store8, wasm.InstrI64Store8:
+					size = 1
+				case wasm.InstrI32Store16, wasm.InstrI64Store16:
+					size = 2
+				}
+				end := uint64(store.U32()) + size
+				sameAddress := directStoreGlobal == instr.U32()
+				elideBounds := plan.ElidesBoundsCheck(uint32(instrIndex+2)) || sameAddress && directStoreEnd >= end
+				if err := emitARM64CheckedMemoryAddress(&a, store, promotedGlobalRegs[slot], size, fn.Index,
+					elideBounds, cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata); err != nil {
+					return nil, 0, nil, fmt.Errorf("byte %d: %w", store.Offset, err)
+				}
+				a.StoreIdx(arm64.X16, arm64.XZR, valueReg, 0, int(size))
+				metadata.recordSource(a.Len(), store.Offset)
+				if !sameAddress {
+					directStoreEnd = 0
+				}
+				directStoreNext, directStoreGlobal, directStoreEnd = instrIndex+3, instr.U32(), max(directStoreEnd, end)
 				instrIndex += 2
 				continue
 			}
 		}
+		directStoreNext, directStoreGlobal, directStoreEnd = -1, ^uint32(0), 0
 		if reachable && instr.Kind == wasm.InstrI32Const && instrIndex+5 < len(sf.Instrs) && len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 &&
 			sf.Instrs[instrIndex+1].Kind == wasm.InstrI32x4ShrU && sf.Instrs[instrIndex+2].Kind == wasm.InstrLocalGet &&
 			sf.Instrs[instrIndex+3].Kind == wasm.InstrI32Const && sf.Instrs[instrIndex+4].Kind == wasm.InstrI32x4Shl &&
@@ -10561,6 +10635,21 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				load := sf.Instrs[instrIndex+1]
 				stackTypes = append(stackTypes, wasm.I32)
 				if err := emitARM64RegisterStackMemory(&a, load, &stackTypes, operandStackRegisters, localRegisters[local], true, fn.Index, plan.ElidesBoundsCheck(uint32(instrIndex+1)), cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata); err != nil {
+					return nil, 0, nil, fmt.Errorf("byte %d: %w", load.Offset, err)
+				}
+				metadata.recordSource(a.Len(), load.Offset)
+				instrIndex++
+				continue
+			}
+		}
+		if registerOperandStack && reachable && instr.Kind == wasm.InstrGlobalGet && instrIndex+1 < len(sf.Instrs) &&
+			arm64MemoryStackKind(sf.Instrs[instrIndex+1].Kind) &&
+			!(sf.Instrs[instrIndex+1].Kind >= wasm.InstrI32Store && sf.Instrs[instrIndex+1].Kind <= wasm.InstrI64Store32) &&
+			len(stackTypes) < len(operandStackRegisters) {
+			if slot := promotedGlobalSlot(instr.U32()); slot >= 0 && sf.Globals[instr.U32()] == wasm.I32 {
+				load := sf.Instrs[instrIndex+1]
+				stackTypes = append(stackTypes, wasm.I32)
+				if err := emitARM64RegisterStackMemory(&a, load, &stackTypes, operandStackRegisters, promotedGlobalRegs[slot], true, fn.Index, plan.ElidesBoundsCheck(uint32(instrIndex+1)), cacheMemorySize, cacheMemoryEnd, emitColdMemoryTrap, metadata); err != nil {
 					return nil, 0, nil, fmt.Errorf("byte %d: %w", load.Offset, err)
 				}
 				metadata.recordSource(a.Len(), load.Offset)

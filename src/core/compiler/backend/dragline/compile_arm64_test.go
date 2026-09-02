@@ -880,6 +880,69 @@ func TestARM64StructuredBranchesDirectlyOnPinnedComparisons(t *testing.T) {
 	}
 }
 
+func TestARM64StructuredStoresResidentScalarsDirectly(t *testing.T) {
+	importEntry := append(wasmtest.Name("env"), wasmtest.Name("tick")...)
+	importEntry = append(importEntry, 0)
+	importEntry = append(importEntry, wasmtest.ULEB(0)...)
+	body := []byte{
+		0x10, 0x00, // call tick so the scalar parameter and global are call-pinned
+		0xfd, 0x0c, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1a, // v128.const 0; drop: retain the structured emitter
+		0x23, 0x00, 0x20, 0x00, 0x36, 0x02, 0x00, // store parameter at global address
+		0x23, 0x00, 0x20, 0x00, 0x36, 0x02, 0x04, // store parameter at global address + 4
+		0x23, 0x00, 0x23, 0x01, 0x22, 0x00, 0x36, 0x02, 0x08, // tee global value into the parameter, then store it
+		0x23, 0x00, 0x20, 0x00, 0x36, 0x02, 0x00, // the preceding larger check covers this store
+		0x23, 0x01, 0x20, 0x00, 0x36, 0x02, 0x00, // a different address starts a new bounds fact
+		0x23, 0x01, 0x20, 0x00, 0x36, 0x02, 0x04, // the larger access must still check
+		0x23, 0x00, 0x28, 0x02, 0x00, 0x1a, // load directly from the resident global address
+		0x20, 0x00, 0x0b,
+	}
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(6, wasmtest.Vec(
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}),
+			wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x07, 0x0b}),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	compiled, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metrics.Functions[0].RailMachFinalized {
+		t.Fatal("resident-scalar store fixture unexpectedly used RailMach")
+	}
+	if copies := bytes.Count(compiled.Code, []byte{0xe9, 0x03, 0x07, 0xaa}); copies != 0 { // mov x9, x7
+		t.Fatalf("resident global address copied to operand stack %d times", copies)
+	}
+	boundsBranches := 0
+	for offset := 0; offset+4 <= len(compiled.Code); offset += 4 {
+		if binary.LittleEndian.Uint32(compiled.Code[offset:])&0xff00001f == 0x54000008 { // b.hi
+			boundsBranches++
+		}
+	}
+	if boundsBranches != 6 {
+		t.Fatalf("resident memory accesses emitted %d bounds branches, want 6", boundsBranches)
+	}
+}
+
 func TestARM64StructuredBranchesDirectlyOnStackComparisons(t *testing.T) {
 	body := []byte{
 		0x00,                                                             // no locals
