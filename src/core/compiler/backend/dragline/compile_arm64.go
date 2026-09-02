@@ -7649,6 +7649,36 @@ type arm64StackControl struct {
 	unrollStep      uint32
 }
 
+// arm64StructuredLocalOverwrittenBeforeRead proves a local's current value is
+// dead on the straight-line suffix after a call. Control-flow boundaries stop
+// the scan: the caller may only omit preservation when an unconditional local
+// write is encountered first in the same basic block.
+func arm64StructuredLocalOverwrittenBeforeRead(instrs []railssa.StackInstr, callIndex int, local uint32) bool {
+	for index := callIndex + 1; index < len(instrs); index++ {
+		instr := instrs[index]
+		if instr.Kind == wasm.InstrInvalid || instr.IsElse() {
+			return false
+		}
+		switch instr.Kind {
+		case wasm.InstrLocalGet:
+			if instr.U32() == local {
+				return false
+			}
+		case wasm.InstrLocalSet, wasm.InstrLocalTee:
+			if instr.U32() == local {
+				return true
+			}
+		case wasm.InstrUnreachable, wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf,
+			wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn,
+			wasm.InstrTryTable, wasm.InstrThrow, wasm.InstrThrowRef,
+			wasm.InstrReturnCall, wasm.InstrReturnCallIndirect, wasm.InstrReturnCallRef,
+			wasm.InstrBrOnNull, wasm.InstrBrOnNonNull, wasm.InstrBrOnCast, wasm.InstrBrOnCastFail:
+			return false
+		}
+	}
+	return false
+}
+
 func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, observations *compilerprofile.Module, contracts []railmach.ABIContract, scratch []byte, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []arm64CallReloc, error) {
 	sf := fn.Stack
 	v128StackRegisters := arm64V128StackRegisters[:]
@@ -7656,6 +7686,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	localRegisters := make([]arm64.Reg, len(sf.Locals))
 	localFloat := make([]bool, len(sf.Locals))
 	localScalarPinned := make([]bool, len(sf.Locals))
+	var localScalarDeadAcrossCall []bool
 	localV128Pinned := make([]bool, len(sf.Locals))
 	gpLocals, fpLocals, v128Locals := 0, 0, 0
 	for i, typ := range sf.Locals {
@@ -7812,6 +7843,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		}
 		arm64PinV128Locals(sf.Locals, vectorLocalUses, localV128Pinned, localRegisters, available[:count])
 	} else if pinLocalsAcrossCalls {
+		localScalarDeadAcrossCall = make([]bool, len(sf.Locals))
 		gpRegister := 0
 		for i, typ := range sf.Locals {
 			if typ == wasm.V128 || typ == wasm.F32 || typ == wasm.F64 || gpRegister >= len(arm64CallPinnedLocalRegisters) {
@@ -8091,12 +8123,18 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			}
 		}
 	}
-	spillPinnedScalarLocals := func() bool {
+	spillPinnedScalarLocals := func(callIndex int) bool {
+		for local := range localScalarDeadAcrossCall {
+			localScalarDeadAcrossCall[local] = localScalarPinned[local] &&
+				(sf.Locals[local] == wasm.I32 || sf.Locals[local] == wasm.I64) &&
+				arm64StructuredLocalOverwrittenBeforeRead(sf.Instrs, callIndex, uint32(local))
+		}
 		for local := 0; local < len(localScalarPinned); local++ {
-			if !localScalarPinned[local] {
+			if !localScalarPinned[local] || localScalarDeadAcrossCall[local] {
 				continue
 			}
-			if local+1 < len(localScalarPinned) && localScalarPinned[local+1] && localOff(local) <= 504 && localOff(local+1) == localOff(local)+8 {
+			if local+1 < len(localScalarPinned) && localScalarPinned[local+1] && !localScalarDeadAcrossCall[local+1] &&
+				localOff(local) <= 504 && localOff(local+1) == localOff(local)+8 {
 				a.StpOffset(localRegisters[local], localRegisters[local+1], arm64.SP, int32(localOff(local)))
 				local++
 				continue
@@ -8109,10 +8147,11 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	}
 	reloadPinnedScalarLocals := func() bool {
 		for local := 0; local < len(localScalarPinned); local++ {
-			if !localScalarPinned[local] {
+			if !localScalarPinned[local] || localScalarDeadAcrossCall[local] {
 				continue
 			}
-			if local+1 < len(localScalarPinned) && localScalarPinned[local+1] && localOff(local) <= 504 && localOff(local+1) == localOff(local)+8 {
+			if local+1 < len(localScalarPinned) && localScalarPinned[local+1] && !localScalarDeadAcrossCall[local+1] &&
+				localOff(local) <= 504 && localOff(local+1) == localOff(local)+8 {
 				a.LdpOffset(localRegisters[local], localRegisters[local+1], arm64.SP, int32(localOff(local)))
 				local++
 				continue
@@ -8202,7 +8241,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	controls := make([]arm64StackControl, 0, 8)
 	functionPatches := make([]arm64StackPatch, 0, 2)
 	defer func() {
-		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(coldMemoryTraps) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localScalarPinned) + sliceBytes(localV128Pinned) + sliceBytes(globalUses) + sliceBytes(vectorLocalUses) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(vectorStackValid) + sliceBytes(vectorStackSourceLocal) + sliceBytes(controls) + sliceBytes(functionPatches)
+		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(coldMemoryTraps) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localScalarPinned) + sliceBytes(localScalarDeadAcrossCall) + sliceBytes(localV128Pinned) + sliceBytes(globalUses) + sliceBytes(vectorLocalUses) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(vectorStackValid) + sliceBytes(vectorStackSourceLocal) + sliceBytes(controls) + sliceBytes(functionPatches)
 		for i := range controls {
 			workspace += sliceBytes(controls[i].patches)
 		}
@@ -10549,7 +10588,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 					}
 				}
 			}
-			if callBoundary && !calleePreservesPinned && !spillPinnedScalarLocals() {
+			if callBoundary && !calleePreservesPinned && !spillPinnedScalarLocals(instrIndex) {
 				return nil, 0, nil, fmt.Errorf("byte %d: pinned local spill is not encodable", instr.Offset)
 			}
 			if callBoundary && !calleePreservesPinned {
