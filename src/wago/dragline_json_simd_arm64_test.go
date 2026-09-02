@@ -5,8 +5,10 @@ package wago
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -32,7 +34,7 @@ func TestDraglineJSONSIMDCorpusMatchesRailshot(t *testing.T) {
 	cacheConfig := NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative).
 		WithFunctionArtifactCache(NewFunctionArtifactCache(4 << 20))
 	native = append(native, compile(cacheConfig), compile(cacheConfig))
-	instantiate := func(compiled *Compiled) *Instance {
+	instantiate := func(label string, compiled *Compiled) *Instance {
 		t.Helper()
 		instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
 			"env.abort": HostFunc(func(HostModule, []uint64, []uint64) {}),
@@ -41,15 +43,21 @@ func TestDraglineJSONSIMDCorpusMatchesRailshot(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { instance.Close() })
+		if runtime.GOOS == "windows" {
+			t.Logf("%s code base=%#x stack top=%#x code bytes=%#x", label, instance.base, instance.eng.StackTop(), len(compiled.code))
+			if len(compiled.code) >= 0x2b00 {
+				t.Logf("%s code[0x2700:0x2b00]=%x", label, compiled.code[0x2700:0x2b00])
+			}
+		}
 		if _, err := instance.Invoke("_initialize"); err != nil {
 			t.Fatal(err)
 		}
 		return instance
 	}
-	referenceInstance := instantiate(reference)
+	referenceInstance := instantiate("railshot", reference)
 	nativeInstances := make([]*Instance, len(native))
 	for i, compiled := range native {
-		nativeInstances[i] = instantiate(compiled)
+		nativeInstances[i] = instantiate(fmt.Sprintf("dragline-%d", i), compiled)
 	}
 	for _, export := range []string{"serializeN", "deserializeN"} {
 		for _, n := range []int32{0, 1, 2, 200} {
