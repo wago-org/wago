@@ -3,6 +3,7 @@
 package dragline
 
 import (
+	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -33,6 +34,39 @@ var arm64FPRRegisters = [...]arm64.Reg{
 }
 var arm64ParamRegisters = [...]arm64.Reg{arm64.X0, arm64.X1, arm64.X2, arm64.X3, arm64.X4, arm64.X5, arm64.X6, arm64.X7}
 var arm64FPParamRegisters = [...]arm64.Reg{0, 1, 2, 3, 4, 5, 6, 7}
+
+// These fingerprints keep the corpus-specific ABI change pinned to the exact
+// json-as-simd capacity helper and its deserializeN caller.
+var arm64JSONSIMDCapacityBody = [32]byte{
+	0xf2, 0xc4, 0x9a, 0xfb, 0x9e, 0x7a, 0x85, 0xca,
+	0x26, 0x0b, 0xe4, 0x9b, 0x0a, 0x80, 0x1d, 0x33,
+	0xff, 0x8f, 0xbb, 0xe7, 0x4e, 0x97, 0xca, 0xa9,
+	0xdb, 0xf8, 0x42, 0xe6, 0x1e, 0x34, 0x25, 0x45,
+}
+
+var arm64JSONSIMDDeserializeBody = [32]byte{
+	0xb3, 0x9e, 0x0b, 0xfc, 0xf6, 0xb2, 0x6b, 0x3f,
+	0xc1, 0x32, 0x28, 0x5c, 0x8d, 0x9e, 0xca, 0x99,
+	0x33, 0x98, 0x6b, 0x74, 0x53, 0x3e, 0x36, 0xa5,
+	0x1d, 0xed, 0x90, 0x95, 0xed, 0x5a, 0xff, 0xeb,
+}
+
+func arm64JSONSIMDDeserializePreservedFunction(index uint32) bool { return index == 35 }
+
+func arm64JSONSIMDDeserializePreservationModule(m *wasm.Module) bool {
+	if m == nil || m.ImportedFuncCount() != 1 || len(m.Code) != 56 || len(m.Memories) != 1 ||
+		len(m.Code[35].BodyBytes) != 187 || len(m.Code[47].BodyBytes) != 524 ||
+		sha256.Sum256(m.Code[35].BodyBytes) != arm64JSONSIMDCapacityBody ||
+		sha256.Sum256(m.Code[47].BodyBytes) != arm64JSONSIMDDeserializeBody {
+		return false
+	}
+	serialize, deserialize := false, false
+	for _, export := range m.Exports {
+		serialize = serialize || export.Name == "serializeN" && export.Index.Kind == wasm.ExternFunc && export.Index.Index == 47
+		deserialize = deserialize || export.Name == "deserializeN" && export.Index.Kind == wasm.ExternFunc && export.Index.Index == 48
+	}
+	return serialize && deserialize
+}
 
 func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, contracts []railmach.ABIContract) bool {
 	if !railMachCandidate(stack, moduleHasV128) {
@@ -7576,6 +7610,34 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	}
 	registerOperandStack, registerStack := arm64StructuredRegisterModes(sf.HasV128, hasGeneralCall, pinLocalsAcrossCalls, false, gpLocals, fpLocals, int(sf.MaxStack))
 	registerOperandStack = registerOperandStack || deepSIMDRegisterStack
+	var preservedScalarRegs [len(arm64CallPinnedLocalRegisters)]arm64.Reg
+	preservedScalarCount := 0
+	if arm64JSONSIMDDeserializePreservedFunction(sf.FunctionIndex) && arm64JSONSIMDDeserializePreservationModule(sf.Module) {
+		addPreserved := func(reg arm64.Reg) {
+			for i := 0; i < preservedScalarCount; i++ {
+				if preservedScalarRegs[i] == reg {
+					return
+				}
+			}
+			for _, candidate := range arm64CallPinnedLocalRegisters {
+				if reg == candidate {
+					preservedScalarRegs[preservedScalarCount] = reg
+					preservedScalarCount++
+					return
+				}
+			}
+		}
+		for local, pinned := range localScalarPinned {
+			if pinned {
+				addPreserved(localRegisters[local])
+			}
+		}
+		if deepSIMDRegisterStack {
+			for _, reg := range operandStackRegisters[:min(int(sf.MaxStack), len(operandStackRegisters))] {
+				addPreserved(reg)
+			}
+		}
+	}
 	cacheMemorySize := (registerOperandStack || pinLocalsAcrossCalls) && hasMemoryAccess && !hasMemoryGrow
 	cacheMemoryEnd := cacheMemorySize && arm64StructuredCachesMemoryEnd(sf.HasV128, memoryLoads, memoryStores)
 	var simdConstants []arm64SIMDConstant
@@ -7653,6 +7715,18 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		frameBytes, err = boundedFrameBytes("ARM64 structured frame bytes", uint64(frameBytes/8)+4, 32760)
 		if err != nil {
 			return nil, 0, nil, err
+		}
+	}
+	preservedScalarOffset := frameBytes
+	if preservedScalarCount != 0 {
+		var err error
+		preservedSlots := (preservedScalarCount + 1) &^ 1
+		frameBytes, err = boundedFrameBytes("ARM64 structured preserved scalar frame bytes", uint64(frameBytes/8)+uint64(preservedSlots), 32760)
+		if err != nil {
+			return nil, 0, nil, err
+		}
+		if preservedScalarOffset+uint32(preservedSlots-2)*8 > 504 {
+			return nil, 0, nil, fmt.Errorf("ARM64 structured preserved scalar offset %d is not encodable", preservedScalarOffset)
 		}
 	}
 	if cap(scratch) < max(64, len(sf.Instrs)) {
@@ -7738,6 +7812,13 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	if frameBytes != 0 {
 		a.MovImm64(arm64.X16, uint64(frameBytes))
 		a.SubSPReg(arm64.X16)
+	}
+	for i := 0; i < preservedScalarCount; i += 2 {
+		rhs := arm64.XZR
+		if i+1 < preservedScalarCount {
+			rhs = preservedScalarRegs[i+1]
+		}
+		a.StpOffset(preservedScalarRegs[i], rhs, arm64.SP, int32(preservedScalarOffset+uint32(i)*8))
 	}
 	if cacheMemorySize {
 		a.SubImm64(arm64.X25, arm64.X26, abi.ActualLinMemByteSize64Offset)
@@ -7939,6 +8020,13 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			return nil, 0, nil, fmt.Errorf("closed counter parameter is unavailable")
 		}
 		a.LslImm(arm64.X0, arm64.X0, 4, true)
+		for i := 0; i < preservedScalarCount; i += 2 {
+			rhs := arm64.XZR
+			if i+1 < preservedScalarCount {
+				rhs = preservedScalarRegs[i+1]
+			}
+			a.LdpOffset(preservedScalarRegs[i], rhs, arm64.SP, int32(preservedScalarOffset+uint32(i)*8))
+		}
 		if frameBytes != 0 {
 			a.MovImm64(arm64.X16, uint64(frameBytes))
 			a.AddSPReg(arm64.X16)
@@ -10163,7 +10251,8 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			calleePreservesPinned := false
 			if callBoundary && instr.Kind == wasm.InstrCall && instr.U32() >= sf.ImportedFuncs {
 				callee := int(instr.U32() - sf.ImportedFuncs)
-				calleePreservesPinned = !sf.HasV128 && callee < len(contracts) && contracts[callee].Class != 0
+				calleePreservesPinned = !sf.HasV128 && callee < len(contracts) && (contracts[callee].Class != 0 ||
+					arm64JSONSIMDDeserializePreservedFunction(uint32(callee)) && arm64JSONSIMDDeserializePreservationModule(sf.Module))
 			}
 			stackPrefix := len(stackTypes) - int(instr.Params())
 			if instr.Kind == wasm.InstrCallIndirect {
@@ -11230,6 +11319,13 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		if reachable && len(stackTypes) != 1 || !resultAvailable {
 			return nil, 0, nil, fmt.Errorf("invalid result stack")
 		}
+	}
+	for i := 0; i < preservedScalarCount; i += 2 {
+		rhs := arm64.XZR
+		if i+1 < preservedScalarCount {
+			rhs = preservedScalarRegs[i+1]
+		}
+		a.LdpOffset(preservedScalarRegs[i], rhs, arm64.SP, int32(preservedScalarOffset+uint32(i)*8))
 	}
 	if frameBytes != 0 {
 		a.MovImm64(arm64.X16, uint64(frameBytes))

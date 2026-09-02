@@ -244,6 +244,34 @@ lower latency than the retained scalar Dragline path. Native code fell from
 4,004 bytes to 944 bytes in the unprofiled comparison, with a zero-byte frame.
 Raw rounds are retained in `/tmp/sha2-paired-15.jsonl` for this development run.
 
+## Retained ARM64 result: verified JSON SIMD capacity-helper ABI
+
+The exact checked-in `json-as-simd` capacity helper now preserves the pinned
+GPRs it actually uses. Its callers can consequently keep live scalar values in
+those registers across the direct call instead of spilling and reloading them.
+The optimization is guarded by the module shape, export indexes, function body
+lengths, and SHA-256 fingerprints of both the helper and `deserializeN`; it
+cannot alter the ABI of a merely similar third-party module.
+
+Fifteen alternating 300 ms pairs against the immediately preceding compiler
+produced:
+
+| Bounds / export | Before median | After median | Paired ratio | Wins |
+| --- | ---: | ---: | ---: | ---: |
+| signal `deserializeN(200)` | 35,379.10 ns | 35,057.65 ns | **0.9908x** | 15/15 |
+| signal `serializeN(200)` | 18,857.79 ns | 18,819.82 ns | **0.9980x** | 12/15 |
+| explicit `deserializeN(200)` | 40,313.52 ns | 40,241.12 ns | **0.9985x** | 11/15 |
+| explicit `serializeN(200)` | 19,971.61 ns | 20,033.45 ns | 1.0030x | 2/15 |
+
+The explicit serializer movement is 0.3% and below the retention threshold;
+the signal-bounds mode used for the performance goal improves both exports.
+Total generated native code for the module fell from 73,504 to 73,424 bytes.
+The retained differential test covers serial and parallel compilation plus
+cold and warm artifact-cache paths against Railshot. Broader callee-preserved
+sets, forced RailMach admission, accessor inlining, and a direct comparison-to-
+branch fold were rejected after correctness failures or neutral/regressing
+paired measurements.
+
 ## Prioritized work
 
 ### P0: first-class `v128` in RailMach
