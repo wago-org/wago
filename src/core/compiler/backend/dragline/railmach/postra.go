@@ -133,7 +133,7 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 					reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: uint32(instructionID), Second: uint32(instructionID + distance), Kind: RewriteLoadStoreForward})
 					break
 				}
-				if target == TargetAMD64 && adjacent && amd64FoldableLoadConsumer(f, uint32(instructionID), uint32(instructionID+distance), uses) {
+				if target == TargetAMD64 && adjacent && sameBlock && amd64FoldableLoadConsumer(f, uint32(instructionID), uint32(instructionID+distance), uses) {
 					reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: uint32(instructionID), Second: uint32(instructionID + distance), Kind: RewriteAMD64MemoryFold})
 					break
 				}

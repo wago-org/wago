@@ -445,10 +445,25 @@ func TestPlanPostRAFindsAMD64FullWidthMemoryFold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var fold Rewrite
 	for _, rewrite := range plan.Rewrites {
 		if rewrite.Kind == RewriteAMD64MemoryFold {
-			return
+			fold = rewrite
+			break
 		}
 	}
-	t.Fatalf("rewrites = %#v", plan.Rewrites)
+	if fold.Kind == RewriteInvalid {
+		t.Fatalf("rewrites = %#v", plan.Rewrites)
+	}
+
+	schedule.BlockOf[fold.Second] = schedule.BlockOf[fold.First] + 1
+	plan, err = PlanPostRA(TargetAMD64, f, selection, schedule, allocation, exit, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rewrite := range plan.Rewrites {
+		if rewrite.Kind == RewriteAMD64MemoryFold {
+			t.Fatalf("cross-block memory fold = %#v", rewrite)
+		}
+	}
 }
