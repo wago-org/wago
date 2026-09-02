@@ -44,7 +44,10 @@ func TestDraglineJSONSIMDCorpusMatchesRailshot(t *testing.T) {
 		}
 		t.Cleanup(func() { instance.Close() })
 		if runtime.GOOS == "windows" {
-			t.Logf("%s code base=%#x stack top=%#x code bytes=%#x", label, instance.base, instance.eng.StackTop(), len(compiled.code))
+			memory := instance.Memory().UnsafeBytes()
+			t.Logf("%s code base=%#x memory=%p stack top=%#x code bytes=%#x", label, instance.base, &memory[0], instance.eng.StackTop(), len(compiled.code))
+			t.Logf("%s entry=%v", label, compiled.Entry)
+			t.Logf("%s internal=%v", label, compiled.InternalEntry)
 			if len(compiled.code) >= 0x2b00 {
 				t.Logf("%s code[0x2700:0x2b00]=%x", label, compiled.code[0x2700:0x2b00])
 			}
