@@ -10,7 +10,7 @@ import { performance } from "node:perf_hooks";
 
 import { intendedTrapClasses, observeInNode } from "./engine-state-oracle.mjs";
 
-const DEFAULT_COUNT = 80;
+const DEFAULT_COUNT = 128;
 const DEFAULT_SEED = "0x5eed";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const textDecoder = new TextDecoder();
@@ -45,13 +45,26 @@ const FULL_CYCLE_PROFILES = [
   "engine-state-memory64",
   "engine-state-exceptions",
   "engine-state-gc",
+  "engine-state-link-graph",
+  "engine-state-gc-graph",
+  "engine-state-initialization-graph",
+  "engine-state-exception-unwind",
+  "engine-state-type-call-matrix",
+  "engine-state-leb-index-boundaries",
+  "engine-state-table-reference-matrix",
+  "engine-state-memory64-multi-memory",
+  "engine-state-trap-commit-matrix",
+  "engine-state-metamorphic-twins",
+  "engine-state-compiler-boundaries",
+  "engine-state-nan",
+  "engine-state-invalid-module",
 ];
 
 function usage() {
   return `Usage: scripts/fuzz-engine-state.sh [options]
 
 Options:
-  --count N          Number of generated cases (default: 80)
+  --count N          Number of generated cases (default: 128)
   --start N          First one-based case index (default: 1)
   --seed N|random    Unsigned 64-bit root seed (default: 0x5eed)
   --starshine PATH   Starshine WasmGC FFI binary
@@ -164,9 +177,18 @@ async function loadGenerator(filename) {
       if (!get("EncodedEngineStateCase::is_ok")(object)) {
         throw new Error(textField(object, "error"));
       }
+      const supportModuleCount = get("EncodedEngineStateCase::support_module_count")(object);
+      const supportModuleLength = get("EncodedEngineStateCase::support_module_indexed_byte_length");
+      const supportModuleByteAt = get("EncodedEngineStateCase::support_module_indexed_byte_at");
+      const supportModuleBytesList = Array.from({ length: supportModuleCount }, (_, moduleIndex) =>
+        Uint8Array.from(
+          { length: supportModuleLength(object, moduleIndex) },
+          (_, byteIndex) => supportModuleByteAt(object, moduleIndex, byteIndex),
+        ));
       return {
         moduleBytes: byteField(object, "module"),
-        supportModuleBytes: byteField(object, "support_module"),
+        supportModuleBytesList,
+        comparisonModuleBytes: byteField(object, "comparison_module"),
         caseIndex: get("EncodedEngineStateCase::case_index")(object),
         caseSeed: BigInt.asUintN(64, get("EncodedEngineStateCase::case_seed")(object)),
         profile: textField(object, "selected_profile"),
@@ -276,7 +298,11 @@ function expectedOutcomeError(generated, observation) {
   }
   const expectedClass = intendedTrapClasses[generated.trapFamily];
   if (!expectedClass) return `Starshine supplied unknown failure family ${generated.trapFamily}`;
-  const expectedOutcome = generated.outcomeKind === "instantiation-failure" ? "instantiation-failed" : "trapped";
+  const expectedOutcome = generated.outcomeKind === "instantiation-failure"
+    ? "instantiation-failed"
+    : generated.outcomeKind === "compile-failure"
+      ? "compile-failed"
+      : "trapped";
   if (outcome[1] !== expectedOutcome || outcome[2] !== expectedClass) {
     return `Starshine expected ${expectedOutcome} ${expectedClass}; Node recorded ${outcome.slice(1).join(":")}`;
   }
@@ -311,13 +337,18 @@ async function run(options) {
       const moduleHash = createHash("sha256").update(generated.moduleBytes).digest("hex");
       const modulePath = path.join(runDirectory, `${String(caseIndex).padStart(8, "0")}-${moduleHash.slice(0, 16)}.wasm`);
       await fs.writeFile(modulePath, generated.moduleBytes);
-      const supportModuleHash = generated.supportModuleBytes.byteLength
-        ? createHash("sha256").update(generated.supportModuleBytes).digest("hex")
+      const supportModuleHashes = generated.supportModuleBytesList.map((bytes) =>
+        createHash("sha256").update(bytes).digest("hex"));
+      const supportModulePaths = generated.supportModuleBytesList.map((_, index) =>
+        `${modulePath}.support.${index}.wasm`);
+      for (let index = 0; index < supportModulePaths.length; index++) {
+        await fs.writeFile(supportModulePaths[index], generated.supportModuleBytesList[index]);
+      }
+      const comparisonModuleHash = generated.comparisonModuleBytes.byteLength
+        ? createHash("sha256").update(generated.comparisonModuleBytes).digest("hex")
         : "";
-      const supportModulePath = generated.supportModuleBytes.byteLength
-        ? `${modulePath}.support.wasm`
-        : "";
-      if (supportModulePath) await fs.writeFile(supportModulePath, generated.supportModuleBytes);
+      const comparisonModulePath = comparisonModuleHash ? `${modulePath}.comparison.wasm` : "";
+      if (comparisonModulePath) await fs.writeFile(comparisonModulePath, generated.comparisonModuleBytes);
 
       let node;
       let nodeError = "";
@@ -325,17 +356,30 @@ async function run(options) {
         node = observeInNode(generated.moduleBytes, generated.caseSeed, {
           outcomeKind: generated.outcomeKind,
           trapFamily: generated.trapFamily,
-          supportModuleBytes: generated.supportModuleBytes,
+          supportModuleBytesList: generated.supportModuleBytesList,
         });
       } catch (error) {
         nodeError = error.message;
+      }
+      let comparisonNode;
+      let comparisonNodeError = "";
+      if (comparisonModulePath) {
+        try {
+          comparisonNode = observeInNode(generated.comparisonModuleBytes, generated.caseSeed, {
+            outcomeKind: "complete",
+            trapFamily: "",
+            supportModuleBytesList: generated.supportModuleBytesList,
+          });
+        } catch (error) {
+          comparisonNodeError = error.message;
+        }
       }
       let railshot;
       try {
         railshot = await worker.request({
           id: caseIndex,
           path: modulePath,
-          support_path: supportModulePath,
+          support_paths: supportModulePaths,
           case_seed: seedHex(generated.caseSeed),
           profile: generated.profile,
           outcome_kind: generated.outcomeKind,
@@ -344,7 +388,34 @@ async function run(options) {
       } catch (error) {
         railshot = { id: caseIndex, status: "error", error: error.message };
       }
-      const contractError = node ? expectedOutcomeError(generated, node) : `Node oracle failed: ${nodeError}`;
+      let comparisonRailshot;
+      if (comparisonModulePath) {
+        try {
+          comparisonRailshot = await worker.request({
+            id: caseIndex,
+            path: comparisonModulePath,
+            support_paths: supportModulePaths,
+            case_seed: seedHex(generated.caseSeed),
+            profile: generated.profile,
+            outcome_kind: "complete",
+            failure_family: "",
+          });
+        } catch (error) {
+          comparisonRailshot = { id: caseIndex, status: "error", error: error.message };
+        }
+      }
+      let contractError = node ? expectedOutcomeError(generated, node) : `Node oracle failed: ${nodeError}`;
+      if (!contractError && comparisonModulePath) {
+        if (!comparisonNode) {
+          contractError = `comparison Node oracle failed: ${comparisonNodeError}`;
+        } else if (comparisonNode.hash !== node.hash) {
+          contractError = `metamorphic Node hashes differ: ${node.hash} != ${comparisonNode.hash}`;
+        } else if (comparisonRailshot.status !== "complete") {
+          contractError = `comparison Railshot failed: ${comparisonRailshot.error}`;
+        } else if (comparisonRailshot.hash !== railshot.hash) {
+          contractError = `metamorphic Railshot hashes differ: ${railshot.hash} != ${comparisonRailshot.hash}`;
+        }
+      }
       if (contractError || railshot.status !== "complete" || railshot.hash !== node.hash) {
         failed = true;
         let diagnosticRailshot = railshot;
@@ -352,11 +423,24 @@ async function run(options) {
           diagnosticRailshot = await worker.request({
             id: caseIndex,
             path: modulePath,
-            support_path: supportModulePath,
+            support_paths: supportModulePaths,
             case_seed: seedHex(generated.caseSeed),
             profile: generated.profile,
             outcome_kind: generated.outcomeKind,
             failure_family: generated.trapFamily,
+            include_events: true,
+          });
+        }
+        let diagnosticComparisonRailshot = comparisonRailshot;
+        if (comparisonModulePath && comparisonRailshot?.status === "complete") {
+          diagnosticComparisonRailshot = await worker.request({
+            id: caseIndex,
+            path: comparisonModulePath,
+            support_paths: supportModulePaths,
+            case_seed: seedHex(generated.caseSeed),
+            profile: generated.profile,
+            outcome_kind: "complete",
+            failure_family: "",
             include_events: true,
           });
         }
@@ -372,21 +456,29 @@ async function run(options) {
           static_instruction_count: generated.staticInstructions,
           starshine_ffi_hash: generator.ffiHash,
           module_hash: `sha256:${moduleHash}`,
-          support_module_hash: supportModuleHash ? `sha256:${supportModuleHash}` : null,
+          support_module_hashes: supportModuleHashes.map((hash) => `sha256:${hash}`),
+          comparison_module_hash: comparisonModuleHash ? `sha256:${comparisonModuleHash}` : null,
           contract_error: contractError || null,
           node: node ? { hash: node.hash, events: node.events } : { error: nodeError },
           railshot: diagnosticRailshot,
+          comparison: comparisonModulePath ? {
+            node: comparisonNode
+              ? { hash: comparisonNode.hash, events: comparisonNode.events }
+              : { error: comparisonNodeError },
+            railshot: diagnosticComparisonRailshot,
+          } : null,
         });
         console.error(`FAIL case=${caseIndex} seed=${seedHex(generated.caseSeed)} artifact=${failurePath}`);
         break;
       }
       if (!options.keep) {
         await fs.unlink(modulePath);
-        if (supportModulePath) await fs.unlink(supportModulePath);
+        for (const supportModulePath of supportModulePaths) await fs.unlink(supportModulePath);
+        if (comparisonModulePath) await fs.unlink(comparisonModulePath);
       }
       runDigest.update(`${caseIndex}:${node.hash}\n`);
     }
-    if (!failed && options.count >= 80) {
+    if (!failed && options.count >= 128) {
       const missingProfiles = FULL_CYCLE_PROFILES.filter((profile) => !profileCounts.has(profile));
       if (missingProfiles.length > 0) {
         throw new Error(`Starshine engine-state cycle missed profiles: ${missingProfiles.join(", ")}`);

@@ -21,14 +21,15 @@ import (
 const maxRequestBytes = 64 << 10
 
 type request struct {
-	ID            uint64 `json:"id"`
-	Path          string `json:"path"`
-	SupportPath   string `json:"support_path,omitempty"`
-	CaseSeed      string `json:"case_seed"`
-	Profile       string `json:"profile"`
-	OutcomeKind   string `json:"outcome_kind"`
-	FailureFamily string `json:"failure_family,omitempty"`
-	IncludeEvents bool   `json:"include_events,omitempty"`
+	ID            uint64   `json:"id"`
+	Path          string   `json:"path"`
+	SupportPath   string   `json:"support_path,omitempty"`
+	SupportPaths  []string `json:"support_paths,omitempty"`
+	CaseSeed      string   `json:"case_seed"`
+	Profile       string   `json:"profile"`
+	OutcomeKind   string   `json:"outcome_kind"`
+	FailureFamily string   `json:"failure_family,omitempty"`
+	IncludeEvents bool     `json:"include_events,omitempty"`
 }
 
 type response struct {
@@ -84,6 +85,23 @@ func (w *worker) run(req request) (result response) {
 		return result
 	}
 	module, err := w.runtime.Compile(wasmBytes)
+	if req.OutcomeKind == "compile-failure" {
+		observation, observeErr := oracle.ObserveCompileFailure(err, req.FailureFamily)
+		if module != nil {
+			_ = module.Close()
+		}
+		if observeErr != nil {
+			result.Error = fmt.Sprintf("observe compile failure: %v", observeErr)
+			return result
+		}
+		result.Status = "complete"
+		result.Hash = observation.Hash
+		result.EventCount = len(observation.Events)
+		if req.IncludeEvents {
+			result.Events = json.RawMessage(observation.JSON)
+		}
+		return result
+	}
 	if err != nil {
 		result.Error = fmt.Sprintf("compile module: %v", err)
 		return result
@@ -95,15 +113,20 @@ func (w *worker) run(req request) (result response) {
 	}()
 
 	instantiateOptions := []wago.InstantiateOption{}
-	if req.SupportPath != "" {
-		supportBytes, err := os.ReadFile(req.SupportPath)
+	supportPaths := req.SupportPaths
+	if len(supportPaths) == 0 && req.SupportPath != "" {
+		supportPaths = []string{req.SupportPath}
+	}
+	var previousSupport *wago.Instance
+	for supportIndex, supportPath := range supportPaths {
+		supportBytes, err := os.ReadFile(supportPath)
 		if err != nil {
-			result.Error = fmt.Sprintf("read support module: %v", err)
+			result.Error = fmt.Sprintf("read support module %d: %v", supportIndex, err)
 			return result
 		}
 		supportModule, err := w.runtime.Compile(supportBytes)
 		if err != nil {
-			result.Error = fmt.Sprintf("compile support module: %v", err)
+			result.Error = fmt.Sprintf("compile support module %d: %v", supportIndex, err)
 			return result
 		}
 		defer func() {
@@ -111,9 +134,32 @@ func (w *worker) run(req request) (result response) {
 				result = response{ID: req.ID, Status: "error", Error: fmt.Sprintf("close support module: %v", err)}
 			}
 		}()
-		supportInstance, err := w.runtime.Instantiate(context.Background(), supportModule)
+		supportOptions := []wago.InstantiateOption{}
+		if previousSupport != nil {
+			linkedMemory, linkErr := previousSupport.ExportedMemory("state_memory")
+			if linkErr != nil {
+				result.Error = fmt.Sprintf("link support memory %d: %v", supportIndex, linkErr)
+				return result
+			}
+			linkedTable, linkErr := previousSupport.ExportedTable("state_table")
+			if linkErr != nil {
+				result.Error = fmt.Sprintf("link support table %d: %v", supportIndex, linkErr)
+				return result
+			}
+			linkedGlobal, linkErr := previousSupport.ExportedGlobalObject("state_global_i32")
+			if linkErr != nil {
+				result.Error = fmt.Sprintf("link support global %d: %v", supportIndex, linkErr)
+				return result
+			}
+			supportOptions = append(supportOptions,
+				wago.WithImport("__link", "state_memory", linkedMemory),
+				wago.WithImport("__link", "state_table", linkedTable),
+				wago.WithImport("__link", "state_global_i32", linkedGlobal),
+			)
+		}
+		supportInstance, err := w.runtime.Instantiate(context.Background(), supportModule, supportOptions...)
 		if err != nil {
-			result.Error = fmt.Sprintf("instantiate support module: %v", err)
+			result.Error = fmt.Sprintf("instantiate support module %d: %v", supportIndex, err)
 			return result
 		}
 		defer func() {
@@ -121,24 +167,27 @@ func (w *worker) run(req request) (result response) {
 				result = response{ID: req.ID, Status: "error", Error: fmt.Sprintf("close support instance: %v", err)}
 			}
 		}()
-		linkedMemory, err := supportInstance.ExportedMemory("state_memory")
+		previousSupport = supportInstance
+	}
+	if previousSupport != nil {
+		linkedMemory, err := previousSupport.ExportedMemory("state_memory")
 		if err != nil {
-			result.Error = fmt.Sprintf("link support memory: %v", err)
+			result.Error = fmt.Sprintf("link consumer memory: %v", err)
 			return result
 		}
-		linkedTable, err := supportInstance.ExportedTable("state_table")
+		linkedTable, err := previousSupport.ExportedTable("state_table")
 		if err != nil {
-			result.Error = fmt.Sprintf("link support table: %v", err)
+			result.Error = fmt.Sprintf("link consumer table: %v", err)
 			return result
 		}
-		linkedGlobal, err := supportInstance.ExportedGlobalObject("state_global_i32")
+		linkedGlobal, err := previousSupport.ExportedGlobalObject("state_global_i32")
 		if err != nil {
-			result.Error = fmt.Sprintf("link support global: %v", err)
+			result.Error = fmt.Sprintf("link consumer global: %v", err)
 			return result
 		}
-		// These handles are owned by supportInstance. The consumer releases its
-		// import attachments when it closes; supportInstance then releases the
-		// actual resources. Calling Close on an instance-owned exported handle is
+		// These handles are owned by the final support instance. The consumer
+		// releases its import attachments when it closes; the support chain then
+		// releases the actual resources. Calling Close on an instance-owned handle is
 		// an API error.
 		instantiateOptions = append(instantiateOptions,
 			wago.WithImport("__link", "state_memory", linkedMemory),

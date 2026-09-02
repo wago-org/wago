@@ -10,7 +10,7 @@ Build the Starshine WasmGC FFI once, if it is not present:
 (cd ../starshine-mb && bun ffi build)
 ```
 
-Run one complete 80-case cycle across all 30 profile leaves:
+Run one complete 128-case cycle across all 43 profile leaves:
 
 ```sh
 scripts/fuzz-engine-state.sh
@@ -39,31 +39,47 @@ The shell script builds one persistent Go worker in the ignored
 `.tmp/engine-state/` directory. Node loads the Starshine FFI once. For each case
 it does the following work:
 
-1. Generate a module from the root seed and one-based case index. A
-   cross-instance case also generates one provider module.
-2. Write the module, and its provider when present, to the run directory.
-3. Execute its start function in Node and create the Node observation.
+1. Generate a module from the root seed and one-based case index. Some cases
+   also generate an ordered support-module chain or an equivalent comparison
+   module.
+2. Write the generated binaries to the run directory.
+3. Execute the primary module in Node. Execute its comparison twin when one is
+   present.
 4. Send the paths, case seed, profile, and intended outcome to the persistent
    Railshot worker.
-5. Compare the canonical SHA-256 hashes.
+5. Compare both engines' canonical SHA-256 hashes. For a twin case, also require
+   both distinct modules to produce the same hash in each engine.
 6. Delete a passing module, unless `--keep` is set.
 
 The worker loads the custom `__fuzz` harness plug-in once. Each case gets fresh
-imported global, memory, and table resources. Cross-instance cases instantiate
-a provider first and import its exported resources into the consumer. The
-provider does not attach to the pending harness case. The worker enables Wago
+imported global, immutable initialization global, memory, and table resources.
+Cross-instance cases instantiate an ordered provider and relay chain, then
+import the final exports into the consumer. Support modules do not attach to the
+pending harness case. The worker enables Wago
 Core 3 features. One worker permits only one active case. The raw event buffer
 is limited to 8,192 entries. Observation is limited to 2 memory pages and 32
 table entries. These limits match the Starshine engine-state profile and keep
 memory use predictable.
 
-The exact cycle adds forced shapes for passive segment lifecycle, instantiation
-boundaries, multiple memories and tables, wide and deep stacks, overlapping and
-mixed-width memory access, indirect-call traps, nested trap placement,
-cross-instance resource identity, failed bounded growth, and decoder topology.
-It also contains one slot each for tail calls, typed function references,
-memory64, exceptions, and GC. These proposal cases reduce their final result to
-the same scalar and resource event schema.
+The exact cycle includes the original execution and proposal leaves. It also
+forces 13 broader module shapes:
+
+- multi-module link graphs with zero to two re-export relays;
+- cyclic GC structs, mutable arrays, i31 values, and dynamic reference tests;
+- extended constant expressions plus active and passive initialization graphs;
+- exception unwind through direct, indirect, typed-reference, and tail calls;
+- mixed result types across direct, indirect, `call_ref`, and tail calls;
+- function-index and custom-section LEB boundaries;
+- funcref, externref, typed funcref, and table64 behavior;
+- mixed memory32 and memory64 modules;
+- committed state before four trap families;
+- independently encoded, semantically equivalent module twins;
+- function-count, local-count, and control-depth compiler thresholds;
+- stable NaN classification and signed-zero results; and
+- malformed binary families with strict compile-failure classification.
+
+All executable cases reduce their result to the same scalar and resource event
+schema. The invalid-module cases reduce compile errors to an expected family.
 
 The event array starts with this schema marker:
 
@@ -72,20 +88,22 @@ The event array starts with this schema marker:
 ```
 
 It then records ordered input, mark, and value events from the `__fuzz` ABI. The
-tail records the return, runtime trap, or pre-start instantiation-failure class.
-A pre-start failure has no resource snapshot. Other outcomes are followed by
-every synthetic exported global, memory, and table in Wasm index order. Integer
+tail records the return, runtime trap, pre-start instantiation-failure, or
+compile-failure class. A pre-start or compile failure has no resource snapshot.
+Other outcomes are followed by every synthetic exported global, memory, and
+table in Wasm index order. Integer
 values use fixed-width lowercase hex. Each memory records its byte length and
 SHA-256 hash. A live table function records `funcidx:N` when the instance is
 available. After a trapping start, JavaScript does not expose the partial
 instance. Its retained imported table can therefore record only the portable
-`null` or `non-null` relation.
+`null` or `non-null` relation. Externref tables also use this portable nullness
+relation because their identities are host-local.
 
 Engine names, elapsed time, error text, file paths, and seeds are not part of the
 canonical hash. The Node and Go implementations are separate. A shared golden
 test fixes only the event bytes, hash, and deterministic input mixer.
 
-For runs of at least 80 cases, the driver rejects a Starshine cycle that omits
+For runs of at least 128 cases, the driver rejects a Starshine cycle that omits
 any required profile. A second `COVERAGE` line prints the bounded count for each
 profile; it does not retain per-case data.
 
@@ -98,9 +116,11 @@ files.
 
 Passing runs retain no case files by default. On the first difference, the lane
 keeps the failing `.wasm` and writes a neighboring `.wasm.failure.json`. A
-cross-instance failure also keeps `.wasm.support.wasm`. The JSON contains both
-event arrays, both hashes, root and case seeds, the selected Starshine profile,
-the FFI binary hash, support-module hash when present, and generator facts.
+support-graph failure also keeps numbered `.support.N.wasm` files. A metamorphic
+failure keeps `.comparison.wasm`. The JSON contains both event arrays and
+hashes, root and case seeds, the selected Starshine profile, the FFI binary
+hash, all support-module hashes, the comparison-module hash when present, and
+generator facts.
 
 Reproduce case 842 directly with:
 
@@ -110,11 +130,13 @@ scripts/fuzz-engine-state.sh --count 1 --start 842 --seed ROOT_SEED --keep
 
 ## Current measurement
 
-On the development Linux/amd64 host on 2026-09-02, a retained 10,000-case run of
-the 30-profile cycle took 7.44 seconds inside the lane, or 1,344.1 cases per
-second. The result hash was
-`sha256:60bf0bd3e0f9867dcdffe3d7f0038aa5bccf680dacfe06d7ee0c7881dc5edd5d`.
-The run covered each profile at its exact declared weight and had no output
+On the development Linux/amd64 host on 2026-09-02, a 10,000-case run of the
+43-profile cycle took 9.52 seconds inside the lane, or 1,050.8 cases per second.
+The result hash was
+`sha256:09943633799d8df43e931e55dd91a06a19b59b0398ac4a547c0a71466a26401d`.
+The run used Starshine FFI hash
+`sha256:553b3085e728c4bc80fb54555672cf4de2f281a3a99a456f1f71c5b770fb78c9`,
+covered all profiles at their declared cycle weights, and found no output
 difference. This includes generation, both executions, state hashing, worker
-exchange, and passing-file writes. This is a workflow measurement, not a stable
-engine benchmark.
+exchange, and temporary passing-file writes. This is a workflow measurement,
+not a stable engine benchmark.

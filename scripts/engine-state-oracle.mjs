@@ -81,6 +81,19 @@ function normalizeInstantiationFailure(error, expectedFamily) {
   throw new Error(`unclassified Node instantiation failure: ${error?.message || error}`);
 }
 
+function normalizeCompileFailure(error, expectedFamily) {
+  if (!(error instanceof WebAssembly.CompileError)) throw error;
+  const message = error.message.toLowerCase();
+  if (expectedFamily === "invalid-magic" && !message.includes("magic")) throw error;
+  if (expectedFamily === "invalid-version" && !message.includes("version")) throw error;
+  if (expectedFamily === "truncated-binary" || expectedFamily === "malformed-section-length") {
+    if (!message.includes("end") && !message.includes("section") && !message.includes("length")) throw error;
+  } else if (expectedFamily !== "invalid-magic" && expectedFamily !== "invalid-version") {
+    throw new Error(`unclassified Node compile failure: ${error.message}`);
+  }
+  return expectedFamily;
+}
+
 function resourceGroups(module) {
   const groups = new Map();
   for (const descriptor of WebAssembly.Module.exports(module)) {
@@ -102,9 +115,10 @@ function resourceGroups(module) {
     });
 }
 
-function stateImports() {
+function stateImports(caseSeed) {
   return {
     global: new WebAssembly.Global({ value: "i32", mutable: true }, 0),
+    constGlobal: new WebAssembly.Global({ value: "i32", mutable: false }, Number(caseSeed & 3n)),
     memory: new WebAssembly.Memory({ initial: 1, maximum: 2 }),
     table: new WebAssembly.Table({ element: "anyfunc", initial: 4, maximum: 8 }),
   };
@@ -143,12 +157,19 @@ function appendState(events, module, instance, imported) {
       events.push(["memory", group.index, group.names, bytes.byteLength, `sha256:${digest}`]);
       continue;
     }
-    if (value.length > TABLE_ENTRY_LIMIT) {
-      throw new Error(`table ${group.index} has ${value.length} entries; limit is ${TABLE_ENTRY_LIMIT}`);
+    const length = Number(value.length);
+    if (length > TABLE_ENTRY_LIMIT) {
+      throw new Error(`table ${group.index} has ${length} entries; limit is ${TABLE_ENTRY_LIMIT}`);
     }
     const relations = [];
-    for (let entry = 0; entry < value.length; entry++) {
-      const ref = value.get(entry);
+    for (let entry = 0; entry < length; entry++) {
+      let ref;
+      try {
+        ref = value.get(entry);
+      } catch (error) {
+        if (!(error instanceof TypeError) || !error.message.includes("BigInt")) throw error;
+        ref = value.get(BigInt(entry));
+      }
       if (ref === null) {
         relations.push("null");
       } else if (functionIndexes.has(ref)) {
@@ -161,7 +182,7 @@ function appendState(events, module, instance, imported) {
         throw new Error(`table ${group.index} entry ${entry} has no synthetic function relation`);
       }
     }
-    events.push(["table", group.index, group.names, value.length, relations]);
+    events.push(["table", group.index, group.names, length, relations]);
   }
 }
 
@@ -169,12 +190,26 @@ function appendState(events, module, instance, imported) {
 // schema as the Go plug-in, but this implementation shares no oracle code.
 export function observeInNode(moduleBytes, caseSeed, options = {}) {
   const events = [["schema", SCHEMA]];
-  const module = new WebAssembly.Module(moduleBytes);
-  const supportModule = options.supportModuleBytes?.byteLength
-    ? new WebAssembly.Module(options.supportModuleBytes)
-    : null;
-  const supportInstance = supportModule ? new WebAssembly.Instance(supportModule) : null;
-  const imported = stateImports();
+  let module;
+  try {
+    module = new WebAssembly.Module(moduleBytes);
+  } catch (error) {
+    if (options.outcomeKind !== "compile-failure") throw error;
+    events.push(["outcome", "compile-failed", normalizeCompileFailure(error, options.trapFamily)]);
+    const canonical = canonicalEvents(events);
+    return { events, canonical, hash: hashCanonical(canonical) };
+  }
+  const supportBytes = options.supportModuleBytesList ??
+    (options.supportModuleBytes?.byteLength ? [options.supportModuleBytes] : []);
+  let supportInstance = null;
+  for (const bytes of supportBytes) {
+    const supportModule = new WebAssembly.Module(bytes);
+    supportInstance = new WebAssembly.Instance(
+      supportModule,
+      supportInstance ? { __link: supportInstance.exports } : {},
+    );
+  }
+  const imported = stateImports(caseSeed);
   const fuzz = {
     input_i32(channel) {
       const result = mixInput64(caseSeed, channel >>> 0, I32_SALT);
@@ -196,6 +231,7 @@ export function observeInNode(moduleBytes, caseSeed, options = {}) {
       events.push(["observe_i64", hex32(id), hex64(value)]);
     },
     state_global_i32: imported.global,
+    const_i32: imported.constGlobal,
     state_memory: imported.memory,
     state_table: imported.table,
   };
@@ -233,4 +269,8 @@ export const intendedTrapClasses = Object.freeze({
   "active-data-out-of-bounds": "active-data-out-of-bounds",
   "memory-import-limit-mismatch": "memory-import-limit-mismatch",
   "table-import-limit-mismatch": "table-import-limit-mismatch",
+  "invalid-magic": "invalid-magic",
+  "invalid-version": "invalid-version",
+  "truncated-binary": "truncated-binary",
+  "malformed-section-length": "malformed-section-length",
 });

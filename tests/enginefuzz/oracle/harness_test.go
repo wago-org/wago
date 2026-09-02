@@ -87,6 +87,23 @@ func TestHarnessRejectsUnrelatedPreStartFailure(t *testing.T) {
 	}
 }
 
+func TestObserveCompileFailureClassifiesTruncatedDecoderBounds(t *testing.T) {
+	observation, err := ObserveCompileFailure(
+		errors.New("decode: wasm decode: index out of bounds at offset 180"),
+		"truncated-binary",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Event{{"schema", Schema}, {"outcome", "compile-failed", "truncated-binary"}}
+	if !reflect.DeepEqual(observation.Events, want) {
+		t.Fatalf("events = %#v, want %#v", observation.Events, want)
+	}
+	if _, err := ObserveCompileFailure(errors.New("unrelated compile failure"), "truncated-binary"); err == nil {
+		t.Fatal("unrelated compile failure was accepted")
+	}
+}
+
 func fuzzTestCall(index uint32) []byte {
 	return append([]byte{0x10}, wasmtest.ULEB(index)...)
 }

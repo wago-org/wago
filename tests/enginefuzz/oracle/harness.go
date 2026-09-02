@@ -59,6 +59,7 @@ type Case struct {
 	events                []rawEvent
 	overflow              bool
 	global                *wago.Global
+	constGlobal           *wago.Global
 	memory                *wago.Memory
 	table                 *wago.Table
 	finished              bool
@@ -172,12 +173,13 @@ func (h *Harness) Begin(seed uint64, expectedFailureFamily ...string) (*Case, er
 		return nil, err
 	}
 	c := &Case{
-		harness: h,
-		seed:    seed,
-		events:  make([]rawEvent, 0, min(h.eventLimit, 256)),
-		global:  wago.NewGlobalI32(0, true),
-		memory:  memory,
-		table:   table,
+		harness:     h,
+		seed:        seed,
+		events:      make([]rawEvent, 0, min(h.eventLimit, 256)),
+		global:      wago.NewGlobalI32(0, true),
+		constGlobal: wago.NewGlobalI32(int32(seed&3), false),
+		memory:      memory,
+		table:       table,
 	}
 	if len(expectedFailureFamily) > 0 {
 		c.expectedFailureFamily = expectedFailureFamily[0]
@@ -197,6 +199,7 @@ func (h *Harness) Begin(seed uint64, expectedFailureFamily ...string) (*Case, er
 func (c *Case) InstantiateOptions() []wago.InstantiateOption {
 	return []wago.InstantiateOption{
 		wago.WithImport("__fuzz", "state_global_i32", c.global),
+		wago.WithImport("__fuzz", "const_i32", c.constGlobal),
 		wago.WithImport("__fuzz", "state_memory", c.memory),
 		wago.WithImport("__fuzz", "state_table", c.table),
 	}
@@ -427,7 +430,7 @@ func appendTables(events []Event, c *Case, metadata wago.ModuleMetadata, instanc
 		}
 		relations := make([]string, length)
 		for entry := range relations {
-			if instance == nil {
+			if instance == nil || table.Type != wago.ValFuncRef {
 				null, err := resource.EntryIsNull(uint64(entry))
 				if err != nil {
 					return nil, err
@@ -435,9 +438,9 @@ func appendTables(events []Event, c *Case, metadata wago.ModuleMetadata, instanc
 				if null {
 					relations[entry] = "null"
 				} else {
-					// JavaScript retains imported tables after a trapping start, but
-					// does not expose the partial instance needed to relate a guest
-					// function to an export. Preserve the portable nullness state.
+					// JavaScript does not expose the partial instance after a trapping
+					// start. Non-funcref identities are also host-local. Preserve the
+					// portable nullness state in both cases.
 					relations[entry] = "non-null"
 				}
 				continue
@@ -539,6 +542,39 @@ func (c *Case) FinishInstantiationFailure(executionErr error) (Observation, erro
 	return Observation{Events: events, JSON: canonical, Hash: Hash(canonical)}, nil
 }
 
+// ObserveCompileFailure records a malformed binary rejected before an
+// instance or case state exists.
+func ObserveCompileFailure(executionErr error, expectedFamily string) (Observation, error) {
+	if executionErr == nil {
+		return Observation{}, fmt.Errorf("engine-state module unexpectedly compiled")
+	}
+	message := strings.ToLower(executionErr.Error())
+	switch expectedFamily {
+	case "invalid-magic":
+		if !strings.Contains(message, "magic") {
+			return Observation{}, fmt.Errorf("compile error does not identify invalid magic: %w", executionErr)
+		}
+	case "invalid-version":
+		if !strings.Contains(message, "version") {
+			return Observation{}, fmt.Errorf("compile error does not identify invalid version: %w", executionErr)
+		}
+	case "truncated-binary", "malformed-section-length":
+		if !strings.Contains(message, "end") && !strings.Contains(message, "eof") &&
+			!strings.Contains(message, "section") && !strings.Contains(message, "length") &&
+			!strings.Contains(message, "index out of bounds") {
+			return Observation{}, fmt.Errorf("compile error does not identify malformed length: %w", executionErr)
+		}
+	default:
+		return Observation{}, fmt.Errorf("unknown compile-failure family %q", expectedFamily)
+	}
+	events := []Event{{"schema", Schema}, {"outcome", "compile-failed", expectedFamily}}
+	canonical, err := Marshal(events)
+	if err != nil {
+		return Observation{}, err
+	}
+	return Observation{Events: events, JSON: canonical, Hash: Hash(canonical)}, nil
+}
+
 func (c *Case) closeResources() error {
 	// A trapping start can leave a guest function in the imported table. Close
 	// the table first so that reference releases can finish partial-instance
@@ -546,7 +582,8 @@ func (c *Case) closeResources() error {
 	tableErr := c.table.Close()
 	memoryErr := c.memory.Close()
 	globalErr := c.global.Close()
-	return errors.Join(tableErr, memoryErr, globalErr)
+	constGlobalErr := c.constGlobal.Close()
+	return errors.Join(tableErr, memoryErr, globalErr, constGlobalErr)
 }
 
 // Close releases the host-owned resources after the guest instance is closed.
