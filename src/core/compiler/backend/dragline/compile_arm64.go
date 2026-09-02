@@ -3651,21 +3651,15 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			if instruction.Op == wasm.InstrSelect {
 				rhs := reg(operands[1].Reg)
 				condition := reg(operands[2].Reg)
-				a.CmpImm32(condition, 0)
 				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
-					chooseRHS := a.Bcond(arm64.CondEQ)
-					a.FmovReg(dst, lhs, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
-					done := a.Branch()
-					if !a.PatchBranch19(chooseRHS, a.Len()) {
-						return nil, 0, true, fmt.Errorf("RailMach select branch is out of range")
-					}
-					a.FmovReg(dst, rhs, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
-					if !a.PatchBranch26(done, a.Len()) {
-						return nil, 0, true, fmt.Errorf("RailMach select completion branch is out of range")
+					if !emitARM64FloatSelect(&a, dst, lhs, rhs, condition, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64) {
+						return nil, 0, true, fmt.Errorf("RailMach floating-point select branch is out of range")
 					}
 				} else if plan.Machine.VRegs[instruction.Result].Type.IsWideGPR() {
+					a.CmpImm32(condition, 0)
 					a.Csel64(dst, lhs, rhs, arm64.CondNE)
 				} else {
+					a.CmpImm32(condition, 0)
 					a.Csel32(dst, lhs, rhs, arm64.CondNE)
 				}
 				continue
@@ -6209,6 +6203,33 @@ func emitARM64FloatConstant(a *arm64.Asm, dst arm64.Reg, bits uint64, f64 bool) 
 	}
 	a.MovImm64(arm64.X16, bits)
 	a.FmovFromGpr(dst, arm64.X16, f64)
+}
+
+func emitARM64FloatSelect(a *arm64.Asm, dst, lhs, rhs, condition arm64.Reg, f64 bool) bool {
+	if lhs == rhs {
+		if dst != lhs {
+			a.FmovReg(dst, lhs, f64)
+		}
+		return true
+	}
+	if dst == lhs {
+		done := a.Cbnz32(condition)
+		a.FmovReg(dst, rhs, f64)
+		return a.PatchBranch19(done, a.Len())
+	}
+	if dst == rhs {
+		done := a.Cbz32(condition)
+		a.FmovReg(dst, lhs, f64)
+		return a.PatchBranch19(done, a.Len())
+	}
+	chooseRHS := a.Cbz32(condition)
+	a.FmovReg(dst, lhs, f64)
+	done := a.Branch()
+	if !a.PatchBranch19(chooseRHS, a.Len()) {
+		return false
+	}
+	a.FmovReg(dst, rhs, f64)
+	return a.PatchBranch26(done, a.Len())
 }
 
 func arm64RailMachStoreValue(a *arm64.Asm, plan *nativeBackendPlan, value railmach.VReg, src arm64.Reg) error {

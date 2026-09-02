@@ -48,6 +48,29 @@ func TestARM64FloatConstantUsesImmediateAndPreservesNegativeZero(t *testing.T) {
 	}
 }
 
+func TestARM64FloatSelectCoalescesDestination(t *testing.T) {
+	for _, test := range []struct {
+		name                string
+		dst, lhs, rhs, cond arm64.Reg
+		wantBytes           int
+	}{
+		{"destination is lhs", 2, 2, 3, arm64.X4, 8},
+		{"destination is rhs", 3, 2, 3, arm64.X4, 8},
+		{"identical inputs", 4, 2, 2, arm64.X5, 4},
+		{"distinct registers", 4, 2, 3, arm64.X5, 16},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var a arm64.Asm
+			if !emitARM64FloatSelect(&a, test.dst, test.lhs, test.rhs, test.cond, true) {
+				t.Fatal("float select branch was not patchable")
+			}
+			if len(a.B) != test.wantBytes {
+				t.Fatalf("float select emitted %d bytes, want %d", len(a.B), test.wantBytes)
+			}
+		})
+	}
+}
+
 func TestARM64CarriesMemoryChecksOnlyAcrossUniqueLaidOutPredecessor(t *testing.T) {
 	plan := &nativeBackendPlan{CFG: &railssa.CFG{
 		Blocks: []railssa.Block{
