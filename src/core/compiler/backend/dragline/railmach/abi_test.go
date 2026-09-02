@@ -155,6 +155,41 @@ func TestAnalyzeABIAccountsForRegionalFragmentRegisters(t *testing.T) {
 	}
 }
 
+func TestPruneSkippedDefinitionClobbersRetainsOnlyPhysicalWrites(t *testing.T) {
+	f := &Func{
+		Target: TargetARM64,
+		Insts: []Inst{
+			{Result: 1, Op: wasm.InstrI64Const},
+			{Result: 2, Op: wasm.InstrI64Const},
+			{Result: 3, Op: wasm.InstrI64Const},
+		},
+		VRegs: []VRegData{
+			{},
+			{Def: 3, Bank: BankGPR},
+			{Def: 9, Bank: BankGPR},
+			{Def: 15, Bank: BankGPR},
+		},
+	}
+	allocation := &GreedyAllocation{Allocation: Allocation{Locations: []Location{
+		{},
+		{Kind: LocationRegister, Bank: BankGPR, Index: 13},
+		{Kind: LocationRegister, Bank: BankGPR, Index: 12},
+		{Kind: LocationRegister, Bank: BankGPR, Index: 13},
+	}}}
+	contract := ABIContract{GPRClobbers: uint64(1)<<12 | uint64(1)<<13, CalleeGPRs: uint64(1)<<12 | uint64(1)<<13}
+
+	pruned := PruneSkippedDefinitionClobbers(f, allocation, contract, []bool{true, false, true})
+	if pruned.GPRClobbers != uint64(1)<<12 || pruned.CalleeGPRs != uint64(1)<<12 {
+		t.Fatalf("pruned shared definitions = %#v", pruned)
+	}
+
+	allocation.Fragments = []AllocationFragment{{Location: Location{Kind: LocationRegister, Bank: BankGPR, Index: 13}}}
+	retained := PruneSkippedDefinitionClobbers(f, allocation, contract, []bool{true, false, true})
+	if retained.GPRClobbers != contract.GPRClobbers || retained.CalleeGPRs != contract.CalleeGPRs {
+		t.Fatalf("fragment write was pruned: %#v", retained)
+	}
+}
+
 func TestComposeFrameIsAlignedAndIncludesCalleeSaves(t *testing.T) {
 	requirements := FrameRequirements{SpillSlots: 3, RootSlots: 1, CalleeGPRs: 0b101, CalleeFPRs: 0b10, CallAreaBytes: 24, RuntimeBytes: 8}
 	layout, err := ComposeFrame(requirements)

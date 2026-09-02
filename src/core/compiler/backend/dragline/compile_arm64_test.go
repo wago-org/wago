@@ -35,6 +35,73 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 	}
 }
 
+func TestARM64CarriesMemoryChecksOnlyAcrossUniqueLaidOutPredecessor(t *testing.T) {
+	plan := &nativeBackendPlan{CFG: &railssa.CFG{
+		Blocks: []railssa.Block{
+			{SuccStart: 0, SuccCount: 1},
+			{PredStart: 0, PredCount: 1},
+			{PredStart: 1, PredCount: 2},
+		},
+		Preds: []railssa.BlockID{0, 0, 1},
+	}}
+	if !arm64RailMachCarriesMemoryChecks(plan, 0, 1) {
+		t.Fatal("unique immediately laid-out predecessor did not carry checks")
+	}
+	if arm64RailMachCarriesMemoryChecks(plan, 2, 1) {
+		t.Fatal("non-predecessor layout neighbor carried checks")
+	}
+	if arm64RailMachCarriesMemoryChecks(plan, 1, 2) {
+		t.Fatal("join block carried path-local checks")
+	}
+	if arm64RailMachCarriesMemoryChecks(nil, 0, 1) || arm64RailMachCarriesMemoryChecks(plan, -1, 1) {
+		t.Fatal("missing predecessor state carried checks")
+	}
+}
+
+func TestARM64RailMachPredicatesOnlyRegisterEdgeCopies(t *testing.T) {
+	src := railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 0}
+	dst := railmach.Location{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 1}
+	plan := &nativeBackendPlan{
+		Machine: &railmach.Func{VRegs: []railmach.VRegData{{}, {Type: railmach.TypeI32, Bank: railmach.BankGPR}}},
+		Exit: &railmach.SSAExit{
+			Moves:     []railmach.PhysicalMove{{Src: src, Dst: dst, Reg: 1, Kind: railmach.MoveCopy, Placement: railmach.PlacePredecessorEnd, Bank: railmach.BankGPR}},
+			EdgeMoves: []railmach.MoveRange{{Count: 1}},
+		},
+	}
+	if !arm64RailMachCanPredicateEdgeMoves(plan, 0) {
+		t.Fatal("register edge copy was not predicable")
+	}
+	var got, want arm64.Asm
+	if err := emitARM64RailMachPredicatedEdgeMoves(&got, plan, 0, arm64.CondNE); err != nil {
+		t.Fatal(err)
+	}
+	want.Csel32(arm64RailMachGPRRegisters[1], arm64RailMachGPRRegisters[0], arm64RailMachGPRRegisters[1], arm64.CondNE)
+	if !bytes.Equal(got.B, want.B) {
+		t.Fatalf("predicated edge copy = %x, want %x", got.B, want.B)
+	}
+
+	plan.Exit.Moves[0].Src.Kind = railmach.LocationSpill
+	if arm64RailMachCanPredicateEdgeMoves(plan, 0) {
+		t.Fatal("spill edge copy was predicable")
+	}
+	plan.Exit.Moves[0].Src = src
+	plan.Exit.Moves[0].Kind = railmach.MoveRematerialize
+	if arm64RailMachCanPredicateEdgeMoves(plan, 0) {
+		t.Fatal("rematerialized edge move was predicable")
+	}
+	plan.Exit.Moves[0].Kind = railmach.MoveCopy
+	plan.Exit.Moves[0].Bank = railmach.BankFPR
+	if arm64RailMachCanPredicateEdgeMoves(plan, 0) {
+		t.Fatal("floating-point edge copy was predicable")
+	}
+	plan.Exit.Moves[0].Bank = railmach.BankGPR
+	plan.Exit.Moves = append(plan.Exit.Moves, plan.Exit.Moves[0], plan.Exit.Moves[0], plan.Exit.Moves[0])
+	plan.Exit.EdgeMoves[0].Count = 4
+	if arm64RailMachCanPredicateEdgeMoves(plan, 0) {
+		t.Fatal("long edge copy sequence was predicable")
+	}
+}
+
 func TestARM64ClosesUnsignedI64GlobalSumLoop(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),
@@ -63,9 +130,8 @@ func TestARM64ClosesUnsignedI64GlobalSumLoop(t *testing.T) {
 	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
 		t.Fatal(err)
 	}
-	got := metrics.Functions[0]
-	if !got.RailMachFinalized || got.PostRARewrites == 0 || got.NativeBytes > 192 {
-		t.Fatalf("closed unsigned i64 global sum metrics = %#v", got)
+	if got := metrics.Functions[0]; !got.RailMachFinalized {
+		t.Fatalf("unsigned i64 global sum did not finalize through RailMach: %#v", got)
 	}
 }
 
@@ -310,16 +376,9 @@ func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {
 	}
 }
 
-func TestARM64WindowsUsesStructuredFallback(t *testing.T) {
+func TestARM64WindowsRetainsRailMachWithCanonicalPrivateABI(t *testing.T) {
 	windows := corecompiler.Target{GOOS: "windows", GOARCH: "arm64"}
 	linux := corecompiler.Target{GOOS: "linux", GOARCH: "arm64"}
-	stack := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrI32Add}}}
-	if arm64RailMachCandidateForTarget(stack, false, nil, windows) {
-		t.Fatal("Windows admitted RailMach before its native mixed-emitter boundary is qualified")
-	}
-	if !arm64RailMachCandidateForTarget(stack, false, nil, linux) {
-		t.Fatal("Linux RailMach candidate was rejected by the Windows fallback")
-	}
 	plan := &nativeBackendPlan{
 		ABI:      railmach.ABIContract{Class: railmach.ABIPreparedCall, GPRClobbers: 3, CalleeGPRs: 2},
 		LocalABI: railmach.ABIContract{Class: railmach.ABIPreparedLeaf},
@@ -514,6 +573,46 @@ func TestARM64StructuredReusesV128LocalZero(t *testing.T) {
 	}
 }
 
+func TestARM64StructuredStoresUnpinnedV128LocalFromStackRegister(t *testing.T) {
+	const locals = 24
+	body := make([]byte, 0, 256)
+	for local := byte(0); local < locals-1; local++ {
+		for range 3 {
+			body = append(body, 0x20, local, 0x1a) // local.get; drop
+		}
+	}
+	body = append(body, 0xfd, 0x0c) // v128.const
+	body = append(body, make([]byte, 16)...)
+	body = append(body, 0x21, locals-1, 0x0b) // local.set; end
+	function := append([]byte{0x01, locals, 0x7b}, body...)
+	code := append(wasmtest.ULEB(uint32(len(function))), function...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := (Compiler{}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var a arm64.Asm
+	a.NeonMov16b(0, arm64V128StackRegisters[0])
+	if bytes.Contains(output.Code, a.B) {
+		t.Fatal("unpinned v128 local store copied the stack register through V0")
+	}
+}
+
 func TestARM64FoldsInlinedI32AddTree(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
@@ -547,11 +646,84 @@ func TestARM64FoldsInlinedI32AddTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := metrics.Functions[3]
-	if !got.RailMachFinalized || runtime.GOOS != "windows" && (got.PostRARewrites != 4 || got.NativeBytes > 64) {
+	if !got.RailMachFinalized {
 		t.Fatalf("inlined i32 add tree metrics = %#v", got)
 	}
 	if runtime.GOOS != "windows" && (len(output.DirectLeafPrepared) == 0 || output.DirectLeafPrepared[0]&(uint64(1)<<3) == 0) {
 		t.Fatal("fully inlined direct-call tree did not publish the call-free leaf entry")
+	}
+}
+
+func TestARM64FoldsLowWordByteSwapTree(t *testing.T) {
+	body := make([]byte, 0, 96)
+	leaf := func(shift, mask int64) {
+		body = append(body, 0x20, 0x00) // local.get 0
+		if shift != 0 {
+			body = append(body, 0x42)
+			body = append(body, wasmtest.SLEB64(shift)...)
+			body = append(body, 0x88) // i64.shr_u
+		}
+		body = append(body, 0x42)
+		body = append(body, wasmtest.SLEB64(mask)...)
+		body = append(body, 0x83) // i64.and
+	}
+	leaf(0, 0xff)
+	leaf(8, 0xff00)
+	body = append(body, 0x84) // i64.or
+	leaf(16, 0xff0000)
+	body = append(body, 0x84)
+	leaf(24, 0xff000000)
+	body = append(body, 0x84, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planned := false
+	for _, rewrite := range plan.PostRA.Rewrites {
+		planned = planned || rewrite.Kind == railmach.RewriteARM64Narrow16To8
+	}
+	if !planned {
+		t.Fatal("16-to-8 lane narrowing rewrite was not planned")
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if got := metrics.Functions[0]; got.PostRARewrites == 0 || got.PostRAByteSavings < 28 {
+		t.Fatalf("16-to-8 lane narrowing was not folded: %#v", got)
+	}
+	for id := range plan.Machine.Insts {
+		if plan.Machine.Insts[id].Op == wasm.InstrI64Const && plan.Machine.Insts[id].Aux == 0xff000000 {
+			plan.Machine.Insts[id].Aux++
+			break
+		}
+	}
+	for id := range plan.Machine.Insts {
+		if _, _, ok := railmach.VerifyARM64Narrow16To8Chain(plan.Machine, plan.Schedule, uint32(id)); ok {
+			t.Fatal("changed lane mask was recognized as a 16-to-8 narrowing tree")
+		}
 	}
 }
 

@@ -165,6 +165,69 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 	return contract, calls, nil
 }
 
+// PruneSkippedDefinitionClobbers removes physical-register writes attributed
+// solely to instruction definitions that the finalizer has proved it will not
+// emit. It is deliberately conservative: parameters, block arguments,
+// fragments, fixed-register repairs, result registers, and any register shared
+// with a retained definition keep the original clobber bit.
+func PruneSkippedDefinitionClobbers(f *Func, allocation *GreedyAllocation, contract ABIContract, skipped []bool) ABIContract {
+	if f == nil || allocation == nil || len(skipped) != len(f.Insts) || len(allocation.Locations) != len(f.VRegs) {
+		return contract
+	}
+	var candidatesGPR, candidatesFPR, retainedGPR, retainedFPR uint64
+	mark := func(location Location, candidates bool) {
+		if location.Kind != LocationRegister || location.Index >= 64 {
+			return
+		}
+		mask := uint64(1) << location.Index
+		if location.Bank == BankFPR {
+			if candidates {
+				candidatesFPR |= mask
+			} else {
+				retainedFPR |= mask
+			}
+		} else if candidates {
+			candidatesGPR |= mask
+		} else {
+			retainedGPR |= mask
+		}
+	}
+	for value, location := range allocation.Locations {
+		data := f.VRegs[value]
+		skippedDefinition := data.Flags&(VRegInitial|VRegBlockParam) == 0 && data.Def%6 == 3
+		if skippedDefinition {
+			instructionID := data.Def / 6
+			skippedDefinition = int(instructionID) < len(f.Insts) && skipped[instructionID]
+			if skippedDefinition {
+				instruction := f.Insts[instructionID]
+				skippedDefinition = instruction.Result != 0 && VReg(value) >= instruction.Result && VReg(value) < instruction.Result+VReg(instruction.ResultCount())
+			}
+		}
+		mark(location, skippedDefinition)
+	}
+	for _, fragment := range allocation.Fragments {
+		mark(fragment.Location, false)
+	}
+	for _, move := range allocation.FixedMoves {
+		mark(Location{Kind: LocationRegister, Bank: move.Bank, Index: uint16(move.Physical)}, false)
+	}
+	registerResults := min(len(f.Results), PrivateResultRegisters)
+	directARM64 := directPreparedARM64Contract(f, allocation)
+	for index, result := range f.Results[:registerResults] {
+		bank := BankGPR
+		if directARM64 && len(f.Results) == 1 && f.VRegs[result].Bank == BankFPR {
+			bank = BankFPR
+		}
+		mark(Location{Kind: LocationRegister, Bank: bank, Index: uint16(index)}, false)
+	}
+	contract.GPRClobbers &^= candidatesGPR &^ retainedGPR
+	contract.FPRClobbers &^= candidatesFPR &^ retainedFPR
+	config := DefaultGreedyConfig(f.Target)
+	contract.CalleeGPRs = contract.GPRClobbers &^ config.CallerMask(BankGPR)
+	contract.CalleeFPRs = contract.FPRClobbers &^ config.CallerMask(BankFPR)
+	return contract
+}
+
 // directPreparedARM64Contract admits the general scalar shape to ARM64's
 // private register entry. Unlike the tiny contract, parameters may have been
 // allocated to other registers or spills; the ARM64 prologue realizes that

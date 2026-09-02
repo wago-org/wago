@@ -3,8 +3,6 @@
 package dragline
 
 import (
-	"bytes"
-	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -36,82 +34,10 @@ var arm64FPRRegisters = [...]arm64.Reg{
 var arm64ParamRegisters = [...]arm64.Reg{arm64.X0, arm64.X1, arm64.X2, arm64.X3, arm64.X4, arm64.X5, arm64.X6, arm64.X7}
 var arm64FPParamRegisters = [...]arm64.Reg{0, 1, 2, 3, 4, 5, 6, 7}
 
-// These fingerprints keep the corpus-specific ABI change pinned to the exact
-// json-as-simd capacity helper and its deserializeN caller.
-var arm64JSONSIMDCapacityBody = [32]byte{
-	0xf2, 0xc4, 0x9a, 0xfb, 0x9e, 0x7a, 0x85, 0xca,
-	0x26, 0x0b, 0xe4, 0x9b, 0x0a, 0x80, 0x1d, 0x33,
-	0xff, 0x8f, 0xbb, 0xe7, 0x4e, 0x97, 0xca, 0xa9,
-	0xdb, 0xf8, 0x42, 0xe6, 0x1e, 0x34, 0x25, 0x45,
-}
-
-var arm64JSONSIMDDeserializeBody = [32]byte{
-	0xb3, 0x9e, 0x0b, 0xfc, 0xf6, 0xb2, 0x6b, 0x3f,
-	0xc1, 0x32, 0x28, 0x5c, 0x8d, 0x9e, 0xca, 0x99,
-	0x33, 0x98, 0x6b, 0x74, 0x53, 0x3e, 0x36, 0xa5,
-	0x1d, 0xed, 0x90, 0x95, 0xed, 0x5a, 0xff, 0xeb,
-}
-
-var arm64FannkuchBody = [32]byte{
-	0x45, 0x5c, 0x9d, 0xd5, 0x58, 0x32, 0x2e, 0x72,
-	0x42, 0x72, 0xea, 0x2b, 0x35, 0x3e, 0x75, 0x3b,
-	0x13, 0xd1, 0x02, 0xe5, 0x60, 0x33, 0x2a, 0x4c,
-	0x77, 0x19, 0x78, 0x86, 0x1e, 0x07, 0xf1, 0xb6,
-}
-
-var arm64NBodyBody = [32]byte{
-	0xe4, 0xfb, 0x4f, 0x5a, 0x27, 0x28, 0xbf, 0x72,
-	0xd5, 0x9e, 0x42, 0xe3, 0x64, 0x1d, 0xfc, 0x78,
-	0x77, 0x12, 0x10, 0x78, 0x5e, 0xad, 0x5c, 0x0e,
-	0x61, 0x09, 0x24, 0x2a, 0xef, 0x57, 0xbc, 0xeb,
-}
-
-// arm64RailMachStaticFrame recognizes exact call-free corpus functions whose
-// only memory accesses target one fixed shadow-stack frame. Emission may
-// replace their per-access checks with one range check at the first store.
-func arm64RailMachStaticFrame(plan *nativeBackendPlan) (uint64, bool) {
-	if plan == nil || plan.Stack == nil || plan.Stack.Module == nil || plan.Machine == nil || plan.ABI.HasCall {
-		return 0, false
-	}
-	m := plan.Stack.Module
-	if plan.Stack.ImportedFuncs != 0 || plan.Stack.FunctionIndex != 0 || len(m.Imports) != 0 || len(m.Code) != 1 ||
-		len(m.Memories) != 1 || m.Memories[0].Limits.Min != 16 || m.Memories[0].Limits.Addr64 || len(m.Globals) != 3 {
-		return 0, false
-	}
-	init := []byte{0x41, 0x80, 0x80, 0xc0, 0x00, 0x0b} // i32.const 1 MiB; end
-	for index := range m.Globals {
-		if m.Globals[index].Type.Type != wasm.I32 || m.Globals[index].Type.Mutable != (index == 0) ||
-			!bytes.Equal(m.Globals[index].Init.BodyBytes, init) {
-			return 0, false
-		}
-	}
-	body := m.Code[0].BodyBytes
-	switch {
-	case len(body) == 1671 && sha256.Sum256(body) == arm64FannkuchBody:
-		return 144, true
-	case len(body) == 1958 && sha256.Sum256(body) == arm64NBodyBody:
-		return 288, true
-	default:
-		return 0, false
-	}
-}
-
-func arm64JSONSIMDDeserializePreservedFunction(index uint32) bool { return index == 35 }
-
-func arm64JSONSIMDDeserializePreservationModule(m *wasm.Module) bool {
-	if m == nil || m.ImportedFuncCount() != 1 || len(m.Code) != 56 || len(m.Memories) != 1 ||
-		len(m.Code[35].BodyBytes) != 187 || len(m.Code[47].BodyBytes) != 524 ||
-		sha256.Sum256(m.Code[35].BodyBytes) != arm64JSONSIMDCapacityBody ||
-		sha256.Sum256(m.Code[47].BodyBytes) != arm64JSONSIMDDeserializeBody {
-		return false
-	}
-	serialize, deserialize := false, false
-	for _, export := range m.Exports {
-		serialize = serialize || export.Name == "serializeN" && export.Index.Kind == wasm.ExternFunc && export.Index.Index == 47
-		deserialize = deserialize || export.Name == "deserializeN" && export.Index.Kind == wasm.ExternFunc && export.Index.Index == 48
-	}
-	return serialize && deserialize
-}
+// Algorithm-shaped and whole-function substitutions are intentionally disabled.
+// Dragline optimizations must operate on reusable compiler IR properties rather
+// than recognizing a benchmark, recurrence, parser, or other complete workload.
+const arm64EnableAlgorithmSpecializations = false
 
 func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, contracts []railmach.ABIContract) bool {
 	if !railMachCandidate(stack, moduleHasV128) {
@@ -144,10 +70,6 @@ func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, contra
 		}
 	}
 	return true
-}
-
-func arm64RailMachCandidateForTarget(stack *railssa.StackFunc, moduleHasV128 bool, contracts []railmach.ABIContract, target corecompiler.Target) bool {
-	return target.GOOS != "windows" && arm64RailMachCandidate(stack, moduleHasV128, contracts)
 }
 
 var arm64StackLocalRegisters = [...]arm64.Reg{arm64.X19, arm64.X20, arm64.X21, arm64.X22, arm64.X23}
@@ -400,7 +322,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		functionRequiresMOPS := input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index)
 		requiresMOPS = requiresMOPS || functionRequiresMOPS
 		var nativePlan *nativeBackendPlan
-		if arm64RailMachCandidateForTarget(fn.Structured, compilationPlan.HasV128, moduleContracts, input.Target) {
+		if arm64RailMachCandidate(fn.Structured, compilationPlan.HasV128, moduleContracts) {
 			if nativePlanner == nil {
 				nativePlanner = new(nativeBackendPlanner)
 			}
@@ -419,22 +341,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		}
 		arm64ConstrainPrivateABI(nativePlan, input.Target)
 		arm64PromoteInlinedPreparedLeaf(nativePlan)
-		if arm64RailMachMandelbrotCorpus(nativePlan) {
-			nativePlan.ABI.FPRClobbers |= (uint64(1) << 30) - 1
-		}
-		if arm64RailMachMatmulCorpus(nativePlan) {
-			nativePlan.ABI.FPRClobbers |= (uint64(1) << 5) - 1
-		}
-		if arm64RailMachBlake3Corpus(nativePlan) {
-			nativePlan.ABI.FPRClobbers |= arm64Blake3FPRClobbers
-		}
-		functionRequiresSHA2 := input.Target.HasFeature(corecompiler.TargetFeatureARM64SHA2) && arm64RailMachSHA256Corpus(nativePlan)
-		requiresSHA2 = requiresSHA2 || functionRequiresSHA2
-		if functionRequiresSHA2 {
-			// The fixed SHA block uses V0-V7 and V16-V18. Publish those writes so
-			// any future internal caller preserves live floating-point values.
-			nativePlan.ABI.FPRClobbers |= (uint64(1) << 11) - 1
-		}
+		functionRequiresSHA2 := false
 		publishedContract := railmach.ABIContract{}
 		if nativePlan != nil {
 			publishedContract = nativePlan.ABI
@@ -786,7 +693,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				return functionError(m, i, "lower", err)
 			}
 			var nativePlan *nativeBackendPlan
-			if arm64RailMachCandidateForTarget(fn.Structured, compilation.HasV128, contracts, input.Target) {
+			if arm64RailMachCandidate(fn.Structured, compilation.HasV128, contracts) {
 				if worker.native == nil {
 					worker.native = &nativeBackendPlanner{parallelCandidates: true}
 				}
@@ -805,19 +712,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 			}
 			arm64ConstrainPrivateABI(nativePlan, input.Target)
 			arm64PromoteInlinedPreparedLeaf(nativePlan)
-			if arm64RailMachMandelbrotCorpus(nativePlan) {
-				nativePlan.ABI.FPRClobbers |= (uint64(1) << 30) - 1
-			}
-			if arm64RailMachMatmulCorpus(nativePlan) {
-				nativePlan.ABI.FPRClobbers |= (uint64(1) << 5) - 1
-			}
-			if arm64RailMachBlake3Corpus(nativePlan) {
-				nativePlan.ABI.FPRClobbers |= arm64Blake3FPRClobbers
-			}
-			functionRequiresSHA2 := input.Target.HasFeature(corecompiler.TargetFeatureARM64SHA2) && arm64RailMachSHA256Corpus(nativePlan)
-			if functionRequiresSHA2 {
-				nativePlan.ABI.FPRClobbers |= (uint64(1) << 11) - 1
-			}
+			functionRequiresSHA2 := false
 			published := railmach.ABIContract{}
 			if nativePlan != nil {
 				published = nativePlan.ABI
@@ -910,8 +805,7 @@ func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 	if nativePlan != nil {
 		var relocs []arm64CallReloc
 		useMOPS := target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, observations, fn.Index)
-		useSHA2 := target.HasFeature(corecompiler.TargetFeatureARM64SHA2)
-		if code, entry, ok, err := emitARM64RailMachTarget(fn, nativePlan, useMOPS, useSHA2, scratch, &relocs, metrics, metadata); ok || err != nil {
+		if code, entry, ok, err := emitARM64RailMachTarget(fn, nativePlan, useMOPS, scratch, &relocs, metrics, metadata); ok || err != nil {
 			return code, entry, relocs, ok, err
 		}
 	}
@@ -1074,10 +968,10 @@ func measureARM64PostRABaseline(fn *railssa.Func, plan *nativeBackendPlan, mops 
 }
 
 func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scratch []byte, relocs *[]arm64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
-	return emitARM64RailMachTarget(fn, plan, mops, false, scratch, relocs, metrics, metadata)
+	return emitARM64RailMachTarget(fn, plan, mops, scratch, relocs, metrics, metadata)
 }
 
-func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sha2 bool, scratch []byte, relocs *[]arm64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
+func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scratch []byte, relocs *[]arm64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
 	if plan == nil || plan.Stack == nil || plan.CFG == nil || plan.Semantic == nil || plan.Machine == nil || plan.Allocation == nil || plan.Schedule == nil || plan.Exit == nil {
 		return nil, 0, false, nil
 	}
@@ -1164,26 +1058,6 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 	if !arm64RailMachTargetSafe(plan) {
 		return nil, 0, false, nil
 	}
-	if arm64RailMachMandelbrotCorpus(plan) {
-		recordNativePlanMetrics(metrics, plan)
-		code, entry, err := emitARM64RailMachMandelbrot(plan, scratch, metrics, metadata)
-		return code, entry, true, err
-	}
-	if arm64RailMachMatmulCorpus(plan) {
-		recordNativePlanMetrics(metrics, plan)
-		code, entry, err := emitARM64RailMachMatmul(plan, scratch, metrics, metadata)
-		return code, entry, true, err
-	}
-	if arm64RailMachBlake3Corpus(plan) {
-		recordNativePlanMetrics(metrics, plan)
-		code, entry, err := emitARM64RailMachBlake3(plan, scratch, metrics, metadata)
-		return code, entry, true, err
-	}
-	if sha2 && arm64RailMachSHA256Corpus(plan) {
-		recordNativePlanMetrics(metrics, plan)
-		code, entry, err := emitARM64RailMachSHA256(plan, scratch, metrics, metadata)
-		return code, entry, true, err
-	}
 	recordNativePlanMetrics(metrics, plan)
 	inlinePreparedCalls := arm64RailMachInlinesAllTinyCalls(plan)
 	elidePreparedFrame := arm64RailMachElidesPreparedCallFrame(plan)
@@ -1203,6 +1077,10 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 			shrinkGPRs |= uint64(1) << region.Physical
 		}
 	}
+	calleeGPRs := plan.ABI.CalleeGPRs &^ shrinkGPRs
+	calleeFPRs := plan.ABI.CalleeFPRs &^ shrinkFPRs
+	preindexedCalleeFrame := frameBytes != 0 && frameBytes <= 504 && plan.Frame.SpillBytes == 0 && plan.Frame.RootBytes == 0 &&
+		len(plan.CalleeSaves) == 0 && bits.OnesCount64(calleeGPRs) >= 2 && len(plan.Machine.Results) <= 1
 	var currentOperands []railmach.Operand
 	var currentResult railmach.VReg
 	var currentPosition uint32
@@ -1349,7 +1227,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 			a.MovReg64(arm64.FP, arm64.SP)
 		}
 	}
-	if frameBytes != 0 {
+	if frameBytes != 0 && !preindexedCalleeFrame {
 		if frameBytes <= 4095 {
 			a.SubSP64(frameBytes)
 		} else {
@@ -1363,14 +1241,20 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 		}
 	}
 	calleeSaveOffset := plan.Frame.SpillBytes + plan.Frame.RootBytes
-	calleeGPRs := plan.ABI.CalleeGPRs &^ shrinkGPRs
 	for index := 0; index < len(arm64RailMachGPRRegisters); index++ {
 		if calleeGPRs&(uint64(1)<<index) != 0 {
-			if index+1 < len(arm64RailMachGPRRegisters) && calleeGPRs&(uint64(1)<<(index+1)) != 0 &&
-				arm64RailMachGPRRegisters[index+1] == arm64RailMachGPRRegisters[index]+1 && calleeSaveOffset <= 504 {
-				a.StpOffset(arm64RailMachGPRRegisters[index], arm64RailMachGPRRegisters[index+1], arm64.SP, int32(calleeSaveOffset))
+			next := index + 1
+			for next < len(arm64RailMachGPRRegisters) && calleeGPRs&(uint64(1)<<next) == 0 {
+				next++
+			}
+			if next < len(arm64RailMachGPRRegisters) && calleeSaveOffset <= 504 {
+				if preindexedCalleeFrame && calleeSaveOffset == 0 {
+					a.StpPre(arm64RailMachGPRRegisters[index], arm64RailMachGPRRegisters[next], arm64.SP, -int32(frameBytes))
+				} else {
+					a.StpOffset(arm64RailMachGPRRegisters[index], arm64RailMachGPRRegisters[next], arm64.SP, int32(calleeSaveOffset))
+				}
 				calleeSaveOffset += 16
-				index++
+				index = next
 				continue
 			}
 			if !a.Store64(arm64RailMachGPRRegisters[index], arm64.SP, calleeSaveOffset) {
@@ -1379,11 +1263,22 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 			calleeSaveOffset += 8
 		}
 	}
-	for index := range arm64FPRRegisters {
-		if plan.ABI.CalleeFPRs&^shrinkFPRs&(uint64(1)<<index) != 0 {
-			a.FStoreDisp(arm64.SP, int32(calleeSaveOffset), arm64FPRRegisters[index], true)
-			calleeSaveOffset += 8
+	for index := 0; index < len(arm64FPRRegisters); index++ {
+		if calleeFPRs&(uint64(1)<<index) == 0 {
+			continue
 		}
+		next := index + 1
+		for next < len(arm64FPRRegisters) && calleeFPRs&(uint64(1)<<next) == 0 {
+			next++
+		}
+		if next < len(arm64FPRRegisters) && calleeSaveOffset <= 504 {
+			a.StpOffsetF64(arm64FPRRegisters[index], arm64FPRRegisters[next], arm64.SP, int32(calleeSaveOffset))
+			calleeSaveOffset += 16
+			index = next
+			continue
+		}
+		a.FStoreDisp(arm64.SP, int32(calleeSaveOffset), arm64FPRRegisters[index], true)
+		calleeSaveOffset += 8
 	}
 	if arm64DirectPreparedClass(plan.ABI.Class) {
 		var parameterMoves [len(arm64ParamRegisters)]arm64RailMachCallArgument
@@ -1631,6 +1526,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 	}
 	memoryCheckEnds := plan.MemoryCheckEnds
 	memoryCheckTouched := plan.MemoryCheckTouched[:0]
+	previousLayoutBlock := -1
 	type globalMemoryCheck struct {
 		index uint32
 		end   uint64
@@ -1740,17 +1636,11 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 		}
 		return nil
 	}
-	swarRunN := arm64RailMachSWARRunN(plan)
-	swarParse4 := arm64RailMachSWARParse4(plan)
-	staticFrameBytes, staticFrameBounds := arm64RailMachStaticFrame(plan)
-	staticFrameBounds = staticFrameBounds && !plan.SignalsBounds
-	staticFrameChecked := false
-	memoryBoundsElided := func(source uint32) bool {
-		return staticFrameChecked || railMachElidesBoundsCheck(plan, source)
-	}
-	idempotentFloatStart, idempotentFloatEnd, idempotentFloatTail := arm64RailMachIdempotentFloatTail(plan)
+	swarRunN := arm64EnableAlgorithmSpecializations && arm64RailMachSWARRunN(plan)
+	swarParse4 := arm64EnableAlgorithmSpecializations && arm64RailMachSWARParse4(plan)
+	idempotentFloatStart, idempotentFloatEnd, idempotentFloatTail := uint32(0), uint32(0), false
 	fastEpilogue := -1
-	if kind, n, result, ok := arm64RailMachClosedCounterLoop(plan); ok {
+	if kind, n, result, ok := arm64RailMachClosedCounterLoop(plan); arm64EnableAlgorithmSpecializations && ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		switch kind {
 		case arm64ClosedCounterLocal:
@@ -1787,7 +1677,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 		}
 		goto railMachEpilogue
 	}
-	if n, result, ok := arm64RailMachI64HashLoop(plan); ok {
+	if n, result, ok := arm64RailMachI64HashLoop(plan); arm64EnableAlgorithmSpecializations && ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
 		a.MovReg32(arm64.X13, nReg)
@@ -1833,7 +1723,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 		}
 		goto railMachEpilogue
 	}
-	if selector, result, ok := arm64RailMachDenseI32BrTable(plan); ok {
+	if selector, result, ok := arm64RailMachDenseI32BrTable(plan); arm64EnableAlgorithmSpecializations && ok {
 		selectorReg := arm64RailMachPhysical(plan.Allocation.Locations[selector])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
 		a.MovImm32(arm64.X16, 3)
@@ -1846,7 +1736,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 		}
 		goto railMachEpilogue
 	}
-	if n, result, ok := arm64RailMachFibonacciLoop(plan); ok {
+	if n, result, ok := arm64RailMachFibonacciLoop(plan); arm64EnableAlgorithmSpecializations && ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
 		// Advance the two-value recurrence eight times per loop iteration. The
@@ -1903,7 +1793,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 		}
 		goto railMachEpilogue
 	}
-	if n, result, ok := arm64RailMachF32RoundTripFastPath(plan); ok {
+	if n, result, ok := arm64RailMachF32RoundTripFastPath(plan); arm64EnableAlgorithmSpecializations && ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
 		a.MovImm32(arm64.X17, 8192)
@@ -1929,7 +1819,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 			return nil, 0, true, fmt.Errorf("RailMach f32 round-trip fast path is out of range")
 		}
 	}
-	if op, n, result, f64, ok := arm64RailMachCoupledFloatConvergenceFastPath(plan); ok {
+	if op, n, result, f64, ok := arm64RailMachCoupledFloatConvergenceFastPath(plan); arm64EnableAlgorithmSpecializations && ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
 		a.MovImm64(arm64.X16, 0x3f800000)
@@ -2040,7 +1930,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 			fastEpilogue = a.Branch()
 		}
 	}
-	if n, result, f64, ok := arm64RailMachAbsRecurrenceFastPath(plan); ok {
+	if n, result, f64, ok := arm64RailMachAbsRecurrenceFastPath(plan); arm64EnableAlgorithmSpecializations && ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
 		a.CmpImm32(nReg, 2)
@@ -2077,7 +1967,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 			return nil, 0, true, fmt.Errorf("RailMach abs recurrence fallback is out of range")
 		}
 	}
-	if op, n, result, ok := arm64RailMachCoupledI64FastPath(plan); ok {
+	if op, n, result, ok := arm64RailMachCoupledI64FastPath(plan); arm64EnableAlgorithmSpecializations && ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
 		if op == wasm.InstrI64Mul {
@@ -2115,7 +2005,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 			}
 		}
 	}
-	if unary, n, result, f64, ok := arm64RailMachIntegralUnaryRecurrenceFastPath(plan); ok {
+	if unary, n, result, f64, ok := arm64RailMachIntegralUnaryRecurrenceFastPath(plan); arm64EnableAlgorithmSpecializations && ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
 		a.MovImm64(arm64.X16, 0x3f800000)
@@ -2146,7 +2036,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 			return nil, 0, true, fmt.Errorf("RailMach integral unary zero path is out of range")
 		}
 	}
-	if source, coefficient, constant, ok := arm64RailMachInlineI32AddTree(plan); ok {
+	if source, coefficient, constant, ok := arm64RailMachInlineI32AddTree(plan); arm64EnableAlgorithmSpecializations && ok {
 		src, err := arm64RailMachReadValueAt(&a, plan, source, arm64.X14, 0)
 		if err != nil {
 			return nil, 0, true, err
@@ -2177,7 +2067,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 		}
 		goto railMachEpilogue
 	}
-	if arm64RailMachMulHighU(plan) {
+	if arm64EnableAlgorithmSpecializations && arm64RailMachMulHighU(plan) {
 		result := plan.Machine.Results[0]
 		location := plan.Allocation.Locations[result]
 		a.Umulh(arm64RailMachGPRRegisters[location.Index], arm64.X0, arm64.X1)
@@ -2186,7 +2076,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 		}
 		goto railMachEpilogue
 	}
-	if n, result, subtract, multiply, xor, ok := arm64RailMachMulHighLoop(plan); ok {
+	if n, result, subtract, multiply, xor, ok := arm64RailMachMulHighLoop(plan); arm64EnableAlgorithmSpecializations && ok {
 		nReg := arm64RailMachPhysical(plan.Allocation.Locations[n])
 		resultReg := arm64RailMachPhysical(plan.Allocation.Locations[result])
 		a.MovReg32(arm64.X13, nReg)
@@ -2218,11 +2108,14 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 		goto railMachEpilogue
 	}
 	for layoutIndex := range plan.Schedule.BlockRanges {
-		resetMemoryChecks()
 		blockID := layoutIndex
 		if plan.Layout != nil {
 			blockID = int(plan.Layout.Order[layoutIndex])
 		}
+		if !arm64RailMachCarriesMemoryChecks(plan, previousLayoutBlock, blockID) {
+			resetMemoryChecks()
+		}
+		previousLayoutBlock = blockID
 		nextBlock := -1
 		if layoutIndex+1 < len(plan.Schedule.BlockRanges) {
 			nextBlock = layoutIndex + 1
@@ -2340,8 +2233,14 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 				currentOperandOverrideValue = edgeResultRename.chainedResult
 				currentOperandOverride = arm64RailMachPhysical(edgeResultRename.chainedDestination)
 			}
-			if source, ok := arm64RailMachByteSwapSource(plan, instructionID); ok {
-				a.Rev32(reg(instruction.Result), reg(source))
+			if source, destination, narrow, ok := arm64RailMachByteSwapSource(plan, instructionID); ok {
+				if narrow {
+					a.FmovFromGpr(31, reg(source), true)
+					a.NeonXtnBfromH(31, 31)
+					a.FmovToGpr(destination, 31, true)
+				} else {
+					a.Rev32(destination, reg(source))
+				}
 				if metrics != nil {
 					metrics.PostRARewrites++
 				}
@@ -3296,7 +3195,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 			if instruction.Op == wasm.InstrCall {
 				skipCall := -1
 				if len(operands) == 2 && instruction.ResultCount() == 0 {
-					if limitGlobal, ok := arm64EarlyReturnI32LEGlobal(plan.Stack.Module, uint32(instruction.Aux), plan.Stack.ImportedFuncs); ok &&
+					if limitGlobal, ok := arm64EarlyReturnI32LEGlobal(plan.Stack.Module, uint32(instruction.Aux), plan.Stack.ImportedFuncs); arm64EnableAlgorithmSpecializations && ok &&
 						int(limitGlobal) < len(plan.Stack.Globals) && plan.Stack.Globals[limitGlobal] == wasm.I32 {
 						argument, err := arm64RailMachReadValueAt(&a, plan, operands[0].Reg, arm64.X14, 0)
 						if err != nil {
@@ -3773,16 +3672,6 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 				continue
 			}
 			if size, signed, store, memory := nativeMemoryAccess(instruction.Op); memory {
-				if staticFrameBounds && !staticFrameChecked {
-					if !cacheMemoryBounds || !emitARM64BoundsLimit(&a, arm64.X17, arm64.X8, staticFrameBytes, plan.Stack.MemoryMinBytes) {
-						return nil, 0, true, fmt.Errorf("RailMach static frame bound is unavailable")
-					}
-					a.CmpReg32(lhs, arm64.X17)
-					if err := emitMemoryTrapBranch(instruction.Source); err != nil {
-						return nil, 0, true, err
-					}
-					staticFrameChecked = true
-				}
 				encodedStore := uint32(0)
 				if len(plan.PostRAForwardFrom) != 0 {
 					encodedStore = plan.PostRAForwardFrom[instructionID]
@@ -3825,7 +3714,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 						source uint32
 						index  uint32
 					}{{uint64(uint32(instruction.Aux)) + uint64(size), wasmOffset, instruction.Source}, {uint64(uint32(second.Aux)) + uint64(size), secondWasmOffset, second.Source}} {
-						if memoryBoundsElided(check.index) || memoryChecked(operands[0].Reg, check.end) {
+						if railMachElidesBoundsCheck(plan, check.index) || memoryChecked(operands[0].Reg, check.end) {
 							continue
 						}
 						bounds := arm64.X8
@@ -3894,7 +3783,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 				// bounds. One cold branch therefore covers both loads without moving a
 				// check across a store, call, or trapping instruction.
 				if !combinedBounds && cacheMemoryLimit && !store && encodedSecond == 0 && encodedChain == 0 && !preIndex &&
-					!memoryBoundsElided(instruction.Source) && scheduleIndex+1 < len(blockOrder) &&
+					!railMachElidesBoundsCheck(plan, instruction.Source) && scheduleIndex+1 < len(blockOrder) &&
 					memoryCheckEnds[operands[0].Reg] < end && !arm64RailMachHasSpecialMemoryEmission(plan, instructionID) {
 					nextID := blockOrder[scheduleIndex+1]
 					next := plan.Machine.Insts[nextID]
@@ -3906,7 +3795,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 					nextSkipped := nextSwarSkipped || idempotentFloatTail && nextID >= idempotentFloatStart && nextID < idempotentFloatEnd || skipInstruction[nextID] ||
 						nextResult != 0 && plan.Machine.VRegs[nextResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[nextID]
 					if nextMemory && !nextStore && !nextSkipped && len(nextOperands) != 0 && nextOperands[0].Reg != operands[0].Reg && nextEnd == end &&
-						!memoryBoundsElided(next.Source) && memoryCheckEnds[nextOperands[0].Reg] < nextEnd &&
+						!railMachElidesBoundsCheck(plan, next.Source) && memoryCheckEnds[nextOperands[0].Reg] < nextEnd &&
 						!arm64RailMachHasSpecialMemoryEmission(plan, nextID) &&
 						plan.Allocation.LocationAt(operands[0].Reg, currentPosition).Kind == railmach.LocationRegister &&
 						plan.Allocation.LocationAt(nextOperands[0].Reg, currentPosition).Kind == railmach.LocationRegister {
@@ -3925,7 +3814,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 						}
 					}
 				}
-				if !combinedBounds && !memoryBoundsElided(instruction.Source) && !memoryChecked(operands[0].Reg, end) {
+				if !combinedBounds && !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
 					bounds := arm64.X8
 					if !cacheMemoryBounds {
 						a.SubImm64(arm64.X17, arm64.X26, abi.ActualLinMemByteSize64Offset)
@@ -4590,6 +4479,54 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 			if plan.Machine.Edges[trueEdge].Kind != railssa.EdgeTrue {
 				trueEdge, falseEdge = falseEdge, trueEdge
 			}
+			if int(plan.Machine.Edges[falseEdge].To) == nextBlock && arm64RailMachCanPredicateEdgeMoves(plan, trueEdge) {
+				trueCondition := arm64.CondNE
+				if terminator.Kind == wasm.InstrBrOnCast || terminator.Kind == wasm.InstrBrOnCastFail {
+					if !a.Load64(arm64.X17, arm64.SP, plan.Frame.CallAreaOffset) {
+						return nil, 0, true, fmt.Errorf("RailMach branch-cast condition offset is not encodable")
+					}
+					a.CmpImm32(arm64.X17, 0)
+					if terminator.Kind == wasm.InstrBrOnCastFail {
+						trueCondition = arm64.CondEQ
+					}
+				} else if producerID, fused := nativeARM64FusionProducer(plan, consumerID); fused {
+					producer := plan.Machine.Insts[producerID]
+					condition, ok := arm64FusedComparisonCond(producer.Op)
+					if !ok {
+						return nil, 0, true, fmt.Errorf("RailMach conditional block %d has invalid fused producer %d", blockID, producerID)
+					}
+					trueCondition = condition
+					if producer.Op == wasm.InstrI32Eqz || producer.Op == wasm.InstrI64Eqz {
+						producerOperands := plan.Machine.InstructionOperands(producerID)
+						if len(producerOperands) != 1 {
+							return nil, 0, true, fmt.Errorf("RailMach eqz fusion producer %d has %d operands", producerID, len(producerOperands))
+						}
+						currentOperands, currentResult = producerOperands, 0
+						currentPosition = plan.Allocation.InstructionPositions[producerID]*6 + 2
+						value := reg(producerOperands[0].Reg)
+						if plan.Machine.VRegs[producerOperands[0].Reg].Type == railmach.TypeI64 {
+							a.CmpImm64(value, 0)
+						} else {
+							a.CmpImm32(value, 0)
+						}
+					}
+				} else {
+					conditionValue := plan.Machine.InstructionOperands(consumerID)[0].Reg
+					condition, err := arm64RailMachReadValue(&a, plan, conditionValue, arm64.X14)
+					if err != nil {
+						return nil, 0, true, err
+					}
+					a.CmpImm32(condition, 0)
+				}
+				if err := emitARM64RailMachPredicatedEdgeMoves(&a, plan, trueEdge, trueCondition); err != nil {
+					return nil, 0, true, err
+				}
+				conditionalPatches = append(conditionalPatches, nativeBranchPatch{At: a.Bcond(trueCondition), Target: uint32(plan.Machine.Edges[trueEdge].To)})
+				if err := emitARM64RailMachEdgeMoves(&a, plan, falseEdge); err != nil {
+					return nil, 0, true, err
+				}
+				continue
+			}
 			falseFallsThrough := int(plan.Machine.Edges[falseEdge].To) == nextBlock && !arm64RailMachHasPredecessorEdgeMoves(plan, trueEdge)
 			falseCondition := arm64.CondEQ
 			if terminator.Kind == wasm.InstrBrOnCastFail {
@@ -4765,26 +4702,66 @@ railMachEpilogue:
 		}
 	}
 	calleeSaveOffset = plan.Frame.SpillBytes + plan.Frame.RootBytes
-	for index := 0; index < len(arm64RailMachGPRRegisters); index++ {
-		if calleeGPRs&(uint64(1)<<index) != 0 {
-			if index+1 < len(arm64RailMachGPRRegisters) && calleeGPRs&(uint64(1)<<(index+1)) != 0 &&
-				arm64RailMachGPRRegisters[index+1] == arm64RailMachGPRRegisters[index]+1 && calleeSaveOffset <= 504 {
-				a.LdpOffset(arm64RailMachGPRRegisters[index], arm64RailMachGPRRegisters[index+1], arm64.SP, int32(calleeSaveOffset))
-				calleeSaveOffset += 16
-				index++
-				continue
+	var postindexedCalleeFrame [2]arm64.Reg
+	if preindexedCalleeFrame {
+		var saved [len(arm64RailMachGPRRegisters)]arm64.Reg
+		savedCount := 0
+		for index, physical := range arm64RailMachGPRRegisters {
+			if calleeGPRs&(uint64(1)<<index) != 0 {
+				saved[savedCount] = physical
+				savedCount++
 			}
-			if !a.Load64(arm64RailMachGPRRegisters[index], arm64.SP, calleeSaveOffset) {
-				return nil, 0, true, fmt.Errorf("RailMach callee-restore offset %d is not encodable", calleeSaveOffset)
+		}
+		if savedCount&1 != 0 {
+			offset := uint32((savedCount - 1) * 8)
+			if !a.Load64(saved[savedCount-1], arm64.SP, offset) {
+				return nil, 0, true, fmt.Errorf("RailMach callee-restore offset %d is not encodable", offset)
 			}
-			calleeSaveOffset += 8
+		}
+		for index := savedCount&^1 - 2; index >= 2; index -= 2 {
+			a.LdpOffset(saved[index], saved[index+1], arm64.SP, int32(index*8))
+		}
+		postindexedCalleeFrame = [2]arm64.Reg{saved[0], saved[1]}
+		calleeSaveOffset = uint32(savedCount * 8)
+	} else {
+		for index := 0; index < len(arm64RailMachGPRRegisters); index++ {
+			if calleeGPRs&(uint64(1)<<index) != 0 {
+				next := index + 1
+				for next < len(arm64RailMachGPRRegisters) && calleeGPRs&(uint64(1)<<next) == 0 {
+					next++
+				}
+				if next < len(arm64RailMachGPRRegisters) && calleeSaveOffset <= 504 {
+					a.LdpOffset(arm64RailMachGPRRegisters[index], arm64RailMachGPRRegisters[next], arm64.SP, int32(calleeSaveOffset))
+					calleeSaveOffset += 16
+					index = next
+					continue
+				}
+				if !a.Load64(arm64RailMachGPRRegisters[index], arm64.SP, calleeSaveOffset) {
+					return nil, 0, true, fmt.Errorf("RailMach callee-restore offset %d is not encodable", calleeSaveOffset)
+				}
+				calleeSaveOffset += 8
+			}
 		}
 	}
-	for index := range arm64FPRRegisters {
-		if plan.ABI.CalleeFPRs&^shrinkFPRs&(uint64(1)<<index) != 0 {
-			a.FLoadDisp(arm64FPRRegisters[index], arm64.SP, int32(calleeSaveOffset), true)
-			calleeSaveOffset += 8
+	for index := 0; index < len(arm64FPRRegisters); index++ {
+		if calleeFPRs&(uint64(1)<<index) == 0 {
+			continue
 		}
+		next := index + 1
+		for next < len(arm64FPRRegisters) && calleeFPRs&(uint64(1)<<next) == 0 {
+			next++
+		}
+		if next < len(arm64FPRRegisters) && calleeSaveOffset <= 504 {
+			a.LdpOffsetF64(arm64FPRRegisters[index], arm64FPRRegisters[next], arm64.SP, int32(calleeSaveOffset))
+			calleeSaveOffset += 16
+			index = next
+			continue
+		}
+		a.FLoadDisp(arm64FPRRegisters[index], arm64.SP, int32(calleeSaveOffset), true)
+		calleeSaveOffset += 8
+	}
+	if preindexedCalleeFrame {
+		a.LdpPost(postindexedCalleeFrame[0], postindexedCalleeFrame[1], arm64.SP, int32(frameBytes))
 	}
 	if len(plan.Machine.Results) > railmach.PrivateResultRegisters {
 		if !a.Load64(arm64.X16, arm64.SP, plan.Frame.RuntimeOffset) {
@@ -4810,7 +4787,7 @@ railMachEpilogue:
 			}
 		}
 	}
-	if frameBytes != 0 {
+	if frameBytes != 0 && !preindexedCalleeFrame {
 		if frameBytes <= 4095 {
 			a.AddSP64(frameBytes)
 		} else {
@@ -4858,9 +4835,25 @@ railMachEpilogue:
 	}
 	plan.ConditionalPatches = conditionalPatches
 	plan.ColdTrapPatches = coldTraps
+	// Plans may be emitted again for exact post-RA byte accounting. Leave the
+	// reusable scratch in its empty state without a dense per-function clear.
+	resetMemoryChecks()
 	plan.MemoryCheckEnds = memoryCheckEnds
 	plan.MemoryCheckTouched = memoryCheckTouched
 	return a.B, internalOffset, true, nil
+}
+
+// arm64RailMachCarriesMemoryChecks permits exact SSA-address bounds facts to
+// cross a laid-out block boundary only when every entry to the current block
+// comes from the block emitted immediately before it. Linear memory cannot
+// shrink, so a passed check remains valid; calls and global writes separately
+// invalidate the mutable-global address cache at their emission sites.
+func arm64RailMachCarriesMemoryChecks(plan *nativeBackendPlan, previous, current int) bool {
+	if plan == nil || plan.CFG == nil || previous < 0 || current < 0 || current >= len(plan.CFG.Blocks) {
+		return false
+	}
+	block := plan.CFG.Blocks[current]
+	return block.PredCount == 1 && int(block.PredStart) < len(plan.CFG.Preds) && int(plan.CFG.Preds[block.PredStart]) == previous
 }
 
 func arm64RailMachMulHighU(plan *nativeBackendPlan) bool {
@@ -5001,26 +4994,53 @@ func arm64RailMachByteWidenRealized(plan *nativeBackendPlan, first, final uint32
 	return firstPosition < finalPosition
 }
 
-func arm64RailMachByteSwapSource(plan *nativeBackendPlan, first uint32) (railmach.VReg, bool) {
+func arm64RailMachByteSwapSource(plan *nativeBackendPlan, first uint32) (railmach.VReg, arm64.Reg, bool, bool) {
 	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.PostRA == nil || len(plan.PostRASkip) != len(plan.Machine.Insts) {
-		return 0, false
+		return 0, 0, false, false
 	}
 	for _, rewrite := range plan.PostRA.Rewrites {
-		if rewrite.Kind != railmach.RewriteARM64ByteSwap || rewrite.First != first {
+		if rewrite.First != first {
 			continue
 		}
-		source, members, ok := railmach.VerifyARM64ByteSwapChain(plan.Machine, plan.Schedule, rewrite.Second)
-		if !ok || members[0] != first || plan.PostRASkip[first] {
-			return 0, false
+		var source railmach.VReg
+		var members [10]uint32
+		memberCount := 0
+		narrow := false
+		switch rewrite.Kind {
+		case railmach.RewriteARM64ByteSwap:
+			verifiedSource, verifiedMembers, ok := railmach.VerifyARM64ByteSwapChain(plan.Machine, plan.Schedule, rewrite.Second)
+			if !ok {
+				continue
+			}
+			source, memberCount = verifiedSource, len(verifiedMembers)
+			copy(members[:], verifiedMembers[:])
+		case railmach.RewriteARM64Narrow16To8:
+			verifiedSource, verifiedMembers, ok := railmach.VerifyARM64Narrow16To8Chain(plan.Machine, plan.Schedule, rewrite.Second)
+			if !ok {
+				continue
+			}
+			source, members, memberCount = verifiedSource, verifiedMembers, len(verifiedMembers)
+			narrow = true
+		default:
+			continue
 		}
-		for _, instructionID := range members[1:] {
+		activeMembers := members[:memberCount]
+		if activeMembers[0] != first || plan.PostRASkip[first] {
+			return 0, 0, false, false
+		}
+		for _, instructionID := range activeMembers[1:] {
 			if !plan.PostRASkip[instructionID] {
-				return 0, false
+				return 0, 0, false, false
 			}
 		}
-		return source, true
+		result := plan.Machine.Insts[activeMembers[memberCount-1]].Result
+		location := plan.Allocation.Locations[result]
+		if location.Kind != railmach.LocationRegister || location.Bank != railmach.BankGPR {
+			return 0, 0, false, false
+		}
+		return source, arm64RailMachPhysical(location), narrow, true
 	}
-	return 0, false
+	return 0, 0, false, false
 }
 
 func arm64RailMachByteWidenPairConsumer(plan *nativeBackendPlan, first uint32) (uint32, bool) {
@@ -6942,6 +6962,35 @@ func arm64RailMachHasPredecessorEdgeMoves(plan *nativeBackendPlan, edge uint32) 
 	return false
 }
 
+// arm64RailMachCanPredicateEdgeMoves reports whether every predecessor-side
+// move on edge is a GPR-to-GPR copy. Such copies can use CSEL to preserve the
+// old destination on the untaken path, allowing a conditional backedge to
+// fall through without an extra unconditional branch.
+func arm64RailMachCanPredicateEdgeMoves(plan *nativeBackendPlan, edge uint32) bool {
+	if plan == nil || plan.Exit == nil || int(edge) >= len(plan.Exit.EdgeMoves) {
+		return false
+	}
+	moveRange := plan.Exit.EdgeMoves[edge]
+	count := 0
+	for _, move := range plan.Exit.Moves[moveRange.Start : moveRange.Start+moveRange.Count] {
+		if move.Placement != railmach.PlacePredecessorEnd && move.Placement != railmach.PlaceSplitEdge {
+			continue
+		}
+		count++
+		if move.Kind != railmach.MoveCopy || move.Bank != railmach.BankGPR || move.Src.Kind != railmach.LocationRegister || move.Dst.Kind != railmach.LocationRegister {
+			return false
+		}
+		// A short CSEL sequence saves a hot unconditional branch. Longer
+		// parallel copies are better left as MOVs: every CSEL reads both the
+		// old destination and the flags, extending dependency chains merely to
+		// save one branch instruction.
+		if count > 3 {
+			return false
+		}
+	}
+	return count != 0
+}
+
 // arm64RailMachRotatedZeroTestLatch recognizes a recurrence whose loop header
 // only tests one i32 value for zero. The first iteration still enters through
 // that header, while later iterations test the transferred latch value directly
@@ -7395,6 +7444,29 @@ func emitARM64RailMachEdgeMoves(a *arm64.Asm, plan *nativeBackendPlan, edge uint
 	return emitARM64RailMachEdgeMovesSkipping(a, plan, edge, ^uint32(0))
 }
 
+func emitARM64RailMachPredicatedEdgeMoves(a *arm64.Asm, plan *nativeBackendPlan, edge uint32, condition arm64.Cond) error {
+	if !arm64RailMachCanPredicateEdgeMoves(plan, edge) {
+		return fmt.Errorf("RailMach edge %d has non-predicable moves", edge)
+	}
+	moveRange := plan.Exit.EdgeMoves[edge]
+	for _, move := range plan.Exit.Moves[moveRange.Start : moveRange.Start+moveRange.Count] {
+		if move.Placement != railmach.PlacePredecessorEnd && move.Placement != railmach.PlaceSplitEdge {
+			continue
+		}
+		src := arm64RailMachPhysical(move.Src)
+		dst := arm64RailMachPhysical(move.Dst)
+		if src == dst {
+			continue
+		}
+		if plan.Machine.VRegs[move.Reg].Type == railmach.TypeI32 {
+			a.Csel32(dst, src, dst, condition)
+		} else {
+			a.Csel64(dst, src, dst, condition)
+		}
+	}
+	return nil
+}
+
 func emitARM64RailMachEdgeMovesSkipping(a *arm64.Asm, plan *nativeBackendPlan, edge, skipMove uint32) error {
 	return emitARM64RailMachEdgeMovesSkipping2(a, plan, edge, skipMove, ^uint32(0))
 
@@ -7759,32 +7831,6 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	registerOperandStack = registerOperandStack || deepSIMDRegisterStack
 	var preservedScalarRegs [len(arm64CallPinnedLocalRegisters)]arm64.Reg
 	preservedScalarCount := 0
-	if arm64JSONSIMDDeserializePreservedFunction(sf.FunctionIndex) && arm64JSONSIMDDeserializePreservationModule(sf.Module) {
-		addPreserved := func(reg arm64.Reg) {
-			for i := 0; i < preservedScalarCount; i++ {
-				if preservedScalarRegs[i] == reg {
-					return
-				}
-			}
-			for _, candidate := range arm64CallPinnedLocalRegisters {
-				if reg == candidate {
-					preservedScalarRegs[preservedScalarCount] = reg
-					preservedScalarCount++
-					return
-				}
-			}
-		}
-		for local, pinned := range localScalarPinned {
-			if pinned {
-				addPreserved(localRegisters[local])
-			}
-		}
-		if deepSIMDRegisterStack {
-			for _, reg := range operandStackRegisters[:min(int(sf.MaxStack), len(operandStackRegisters))] {
-				addPreserved(reg)
-			}
-		}
-	}
 	cacheMemorySize := (registerOperandStack || pinLocalsAcrossCalls) && hasMemoryAccess && !hasMemoryGrow
 	cacheMemoryEnd := cacheMemorySize && arm64StructuredCachesMemoryEnd(sf.HasV128, memoryLoads, memoryStores)
 	var simdConstants []arm64SIMDConstant
@@ -8590,7 +8636,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				continue
 			}
 		}
-		if registerOperandStack && reachable && instr.Kind == wasm.InstrLoop {
+		if arm64EnableAlgorithmSpecializations && registerOperandStack && reachable && instr.Kind == wasm.InstrLoop {
 			if pointer, end, character, next, ok := arm64WhitespaceSkipLoop(sf.Instrs, instrIndex); ok &&
 				localScalarPinned[pointer] && localScalarPinned[end] && localScalarPinned[character] {
 				pointerReg, endReg, characterReg := localRegisters[pointer], localRegisters[end], localRegisters[character]
@@ -8885,7 +8931,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				continue
 			}
 		}
-		if registerStack && reachable {
+		if arm64EnableAlgorithmSpecializations && registerStack && reachable {
 			if nLocal, accLocal, promote, end, ok := arm64F32RoundTripUpdate(sf.Instrs, instrIndex); ok && int(accLocal) >= len(sf.Params) {
 				count := 1
 				for end < len(sf.Instrs) {
@@ -8969,7 +9015,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			instrIndex += 7
 			continue
 		}
-		if registerStack && reachable {
+		if arm64EnableAlgorithmSpecializations && registerStack && reachable {
 			if aLocal, bLocal, kind, end, ok := arm64CoupledPopcntUpdate(sf.Instrs, instrIndex); ok {
 				count := 1
 				for end < len(sf.Instrs) {
@@ -10038,7 +10084,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 					if loop := &controls[len(controls)-1]; loop.kind == wasm.InstrLoop {
 						if tail, ok := arm64CountedLoopTail(sf.Instrs, instrIndex, instr.U32()); ok {
 							_, _, rotation, _, rotationOK := arm64CoupledRotationUpdate(sf.Instrs, instrIndex+3)
-							if rotationOK && (rotation == wasm.InstrI32Rotl || rotation == wasm.InstrI64Rotl) {
+							if arm64EnableAlgorithmSpecializations && rotationOK && (rotation == wasm.InstrI32Rotl || rotation == wasm.InstrI64Rotl) {
 								for a.Len()&63 != 0 {
 									a.Nop()
 								}
@@ -10439,8 +10485,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				if callee < len(contracts) && contracts[callee].Class != 0 {
 					calleeUsesPrivateArguments = arm64DirectPreparedClass(contracts[callee].Class)
 				}
-				calleePreservesPinned = callBoundary && !sf.HasV128 && callee < len(contracts) && (contracts[callee].Class != 0 ||
-					arm64JSONSIMDDeserializePreservedFunction(uint32(callee)) && arm64JSONSIMDDeserializePreservationModule(sf.Module))
+				calleePreservesPinned = callBoundary && !sf.HasV128 && callee < len(contracts) && contracts[callee].Class != 0
 			}
 			stackPrefix := len(stackTypes) - int(instr.Params())
 			if instr.Kind == wasm.InstrCallIndirect {
@@ -10449,7 +10494,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			skipCall := -1
 			if instr.Kind == wasm.InstrCall && instr.Inline() == wasm.InstrInvalid && instr.Params() == 2 && !instr.HasResult() &&
 				stackPrefix >= 0 && stackPrefix < len(stackTypes) && stackTypes[stackPrefix] == wasm.I32 {
-				if limitGlobal, ok := arm64EarlyReturnI32LEGlobal(sf.Module, instr.U32(), sf.ImportedFuncs); ok &&
+				if limitGlobal, ok := arm64EarlyReturnI32LEGlobal(sf.Module, instr.U32(), sf.ImportedFuncs); arm64EnableAlgorithmSpecializations && ok &&
 					int(limitGlobal) < len(sf.Globals) && sf.Globals[limitGlobal] == wasm.I32 {
 					if !stackLoad(stackPrefix, arm64.X16) || !loadGlobalDescriptor(arm64.X17, limitGlobal) || !a.Load32(arm64.X17, arm64.X17, 0) {
 						return nil, 0, nil, fmt.Errorf("byte %d: guarded call operands are not encodable", instr.Offset)
@@ -10756,11 +10801,12 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				if top < 0 || stackTypes[top] != wasm.V128 {
 					return nil, 0, nil, fmt.Errorf("operand stack v128 mismatch")
 				}
-				if vectorStackSourceLocal[top] != int32(local) {
+				sameLocal := vectorStackSourceLocal[top] == int32(local)
+				if !sameLocal {
 					materializeLocalAliases(local, top, -1)
 				}
 				if localV128Pinned[local] {
-					if vectorStackSourceLocal[top] != int32(local) {
+					if !sameLocal {
 						stackLoadV128(top, localRegisters[local])
 					}
 					stackTypes = stackTypes[:top]
@@ -10768,10 +10814,12 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 					vectorStackSourceLocal[top] = -1
 					continue
 				}
-				if err := popV128(0); err != nil {
-					return nil, 0, nil, err
+				if !sameLocal {
+					localStoreV128(local, stackSourceV128(top, 0))
 				}
-				localStoreV128(local, 0)
+				stackTypes = stackTypes[:top]
+				vectorStackValid[top] = false
+				vectorStackSourceLocal[top] = -1
 				continue
 			}
 			local := int(instr.U32())

@@ -444,6 +444,12 @@ func (a *Asm) StpQOffset(rt, rt2, rn Reg, imm int32) {
 	a.word(0xAD000000 | uint32((imm/16)&0x7F)<<15 | r(rt2)<<10 | r(rn)<<5 | r(rt))
 }
 
+// StpOffsetF64 stores two scalar D registers at [rn, #imm]. imm is a byte
+// offset and must be a signed multiple of 8 in the architectural imm7 range.
+func (a *Asm) StpOffsetF64(rt, rt2, rn Reg, imm int32) {
+	a.word(0x6D000000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
 // LdpOffset loads rt,rt2 from [rn, #imm] without modifying rn.
 func (a *Asm) LdpOffset(rt, rt2, rn Reg, imm int32) {
 	a.word(0xA9400000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))

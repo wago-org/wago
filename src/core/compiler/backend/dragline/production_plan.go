@@ -569,6 +569,21 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers []uint3
 	for _, result := range plan.Machine.Results {
 		uses[result]++
 	}
+	if plan.Allocation != nil {
+		for instructionID, instruction := range plan.Machine.Insts {
+			if instruction.Result == 0 || int(instruction.Result) >= len(plan.Machine.VRegs) || int(instruction.Result) >= len(plan.Allocation.Locations) {
+				continue
+			}
+			data := plan.Machine.VRegs[instruction.Result]
+			// A rematerialized durable location has no definition-time home. Every
+			// ordinary, fixed, edge, and result use reconstructs the value at its
+			// use site, so emitting the pure rematerializable definition only writes
+			// a scratch register that is dead immediately afterward.
+			if data.Flags&railmach.VRegRematerializable != 0 && plan.Allocation.Locations[instruction.Result].Kind == railmach.LocationRematerialize {
+				skipped[instructionID] = true
+			}
+		}
+	}
 	for _, combination := range plan.Selection.Combinations {
 		if combination.Kind != railmach.CombineImmediate || combination.Producer == ^uint32(0) || int(combination.Producer) >= len(plan.Machine.Insts) || int(combination.Consumer) >= len(plan.Machine.Insts) {
 			continue
@@ -1170,9 +1185,20 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			}
 		}
 	}
+	p.immediateProducer = resizeNativeSlice(p.immediateProducer, len(machine.Insts))
+	p.immediateSkip = resizeNativeSlice(p.immediateSkip, len(machine.Insts))
+	p.immediateUses = resizeNativeSlice(p.immediateUses, len(machine.VRegs))
+	immediatePlan := nativeBackendPlan{Machine: machine, Selection: selection, Allocation: allocation}
+	buildNativeImmediateCombinations(&immediatePlan, p.immediateProducer, p.immediateSkip, p.immediateUses)
+	if machine.Target == railmach.TargetARM64 {
+		buildNativeARM64LogicalImmediateCombinations(&immediatePlan, p.immediateProducer, p.immediateSkip, p.immediateUses)
+	}
 	contract, calls, err := railmach.AnalyzeVerifiedABI(machine, allocation, metadata, stack.ImportedFuncs)
 	if err != nil {
 		return nil, err
+	}
+	if machine.Target == railmach.TargetARM64 {
+		contract = railmach.PruneSkippedDefinitionClobbers(machine, allocation, contract, p.immediateSkip)
 	}
 	if nativeARM64PreparedIndirect(stack, machine, allocation) {
 		contract.Class = railmach.ABIPreparedIndirect
@@ -1279,39 +1305,50 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		PostRAPreIndex:      p.postRAPreIndex,
 		PostRAPostIndexWith: p.postRAPostIndexWith,
 	}
-	p.immediateProducer = resizeNativeSlice(p.immediateProducer, len(machine.Insts))
-	p.immediateSkip = resizeNativeSlice(p.immediateSkip, len(machine.Insts))
-	p.immediateUses = resizeNativeSlice(p.immediateUses, len(machine.VRegs))
-	buildNativeImmediateCombinations(&p.plan, p.immediateProducer, p.immediateSkip, p.immediateUses)
-	if machine.Target == railmach.TargetARM64 {
-		buildNativeARM64LogicalImmediateCombinations(&p.plan, p.immediateProducer, p.immediateSkip, p.immediateUses)
-	}
 	p.plan.ImmediateProducer = p.immediateProducer
 	p.plan.ImmediateSkip = p.immediateSkip
 	if machine.Target == railmach.TargetARM64 && len(p.postRASkip) == len(machine.Insts) {
 		for _, rewrite := range postRA.Rewrites {
-			if rewrite.Kind != railmach.RewriteARM64ByteSwap {
+			var source railmach.VReg
+			var members [10]uint32
+			memberCount := 0
+			switch rewrite.Kind {
+			case railmach.RewriteARM64ByteSwap:
+				verifiedSource, verifiedMembers, ok := railmach.VerifyARM64ByteSwapChain(machine, schedule, rewrite.Second)
+				if !ok {
+					continue
+				}
+				source, memberCount = verifiedSource, len(verifiedMembers)
+				copy(members[:], verifiedMembers[:])
+			case railmach.RewriteARM64Narrow16To8:
+				verifiedSource, verifiedMembers, ok := railmach.VerifyARM64Narrow16To8Chain(machine, schedule, rewrite.Second)
+				if !ok {
+					continue
+				}
+				source, members, memberCount = verifiedSource, verifiedMembers, len(verifiedMembers)
+			default:
 				continue
 			}
-			source, members, ok := railmach.VerifyARM64ByteSwapChain(machine, schedule, rewrite.Second)
-			if !ok || members[0] != rewrite.First {
+			activeMembers := members[:memberCount]
+			if activeMembers[0] != rewrite.First {
 				continue
 			}
-			firstPosition := allocation.InstructionPositions[members[0]]
-			finalPosition := allocation.InstructionPositions[members[4]]
+			firstPosition := allocation.InstructionPositions[activeMembers[0]]
+			finalPosition := allocation.InstructionPositions[activeMembers[memberCount-1]]
 			sourceLocation := allocation.LocationAt(source, firstPosition*6+2)
-			firstLocation := allocation.LocationAt(machine.Insts[members[0]].Result, firstPosition*6+2)
-			finalLocation := allocation.LocationAt(machine.Insts[members[4]].Result, finalPosition*6+2)
+			firstLocation := allocation.LocationAt(machine.Insts[activeMembers[0]].Result, firstPosition*6+2)
+			finalLocation := allocation.LocationAt(machine.Insts[activeMembers[memberCount-1]].Result, finalPosition*6+2)
 			if sourceLocation.Kind != railmach.LocationRegister || sourceLocation.Bank != railmach.BankGPR ||
-				firstLocation.Kind != railmach.LocationRegister || firstLocation.Bank != railmach.BankGPR ||
-				finalLocation != firstLocation {
+				finalLocation.Kind != railmach.LocationRegister || finalLocation.Bank != railmach.BankGPR ||
+				rewrite.Kind == railmach.RewriteARM64ByteSwap && (firstLocation.Kind != railmach.LocationRegister || firstLocation.Bank != railmach.BankGPR || finalLocation != firstLocation) ||
+				rewrite.Kind == railmach.RewriteARM64Narrow16To8 && finalLocation != sourceLocation {
 				continue
 			}
 			conflict := false
 			for scheduled := firstPosition; scheduled <= finalPosition; scheduled++ {
 				instructionID := schedule.Order[scheduled]
 				member := false
-				for _, candidate := range members {
+				for _, candidate := range activeMembers {
 					member = member || instructionID == candidate
 				}
 				if member {
@@ -1325,7 +1362,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			if conflict {
 				continue
 			}
-			for _, instructionID := range members[1:] {
+			for _, instructionID := range activeMembers[1:] {
 				p.postRASkip[instructionID] = true
 			}
 		}
@@ -1700,6 +1737,10 @@ func (p *nativeBackendPlanner) preparePostRAScratch(target railmach.Target, inst
 				needsSkip = true
 			}
 		case railmach.RewriteARM64ByteSwap:
+			if target == railmach.TargetARM64 {
+				needsSkip = true
+			}
+		case railmach.RewriteARM64Narrow16To8:
 			if target == railmach.TargetARM64 {
 				needsSkip = true
 			}

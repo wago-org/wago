@@ -38,5 +38,6 @@ afterNativeIntCall:
 callNativeInt:
 	MOVD R30, R11
 	MOVD R11, -32(R26)
-	BL   (R9)
-	B    afterNativeIntCall
+	// R30 already names afterNativeIntCall. Tail-enter the guest so its RET
+	// returns directly to the restore path without an intermediate branch.
+	B    (R9)

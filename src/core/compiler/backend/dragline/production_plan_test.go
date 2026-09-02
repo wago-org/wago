@@ -399,6 +399,39 @@ func TestNativeEdgeConstantRematerializationRequiresPhysicalMoves(t *testing.T) 
 	}
 }
 
+func TestNativeImmediatePlanSkipsFullyRematerializedDefinition(t *testing.T) {
+	machine := &railmach.Func{
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI64Const, Aux: 0x12345678, Result: 1},
+			{Op: wasm.InstrI64Add, Result: 3, OperandStart: 0, OperandCount: 2},
+		},
+		Operands: []railmach.Operand{{Reg: 2, Bank: railmach.BankGPR}, {Reg: 1, Bank: railmach.BankGPR}},
+		VRegs: []railmach.VRegData{
+			{},
+			{Type: railmach.TypeI64, Bank: railmach.BankGPR, Def: 3, Flags: railmach.VRegRematerializable},
+			{Type: railmach.TypeI64, Bank: railmach.BankGPR},
+			{Type: railmach.TypeI64, Bank: railmach.BankGPR, Def: 9},
+		},
+	}
+	plan := &nativeBackendPlan{
+		Machine:   machine,
+		Selection: &railmach.SelectionPlan{},
+		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{
+			{},
+			{Kind: railmach.LocationRematerialize, Bank: railmach.BankGPR},
+			{Kind: railmach.LocationRegister, Bank: railmach.BankGPR},
+			{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 1},
+		}}},
+	}
+	producers := make([]uint32, len(machine.Insts))
+	skipped := make([]bool, len(machine.Insts))
+	uses := make([]uint32, len(machine.VRegs))
+	buildNativeImmediateCombinations(plan, producers, skipped, uses)
+	if !skipped[0] {
+		t.Fatal("fully rematerialized constant definition was emitted")
+	}
+}
+
 func TestNativeScheduleScoreBoundsLargeLatencyPreference(t *testing.T) {
 	pressure := railmach.ScheduleScore{Kind: railmach.ScheduleKindPressure, WeightedSpillDebt: 300}
 	latency := railmach.ScheduleScore{Kind: railmach.ScheduleKindLatencyFusion, WeightedSpillDebt: 400}

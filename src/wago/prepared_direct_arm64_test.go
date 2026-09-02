@@ -302,9 +302,6 @@ func TestPreparedDirectARM64UnsignedMultiplyHigh(t *testing.T) {
 	if !compiled.directPreparedAt(0) {
 		t.Fatal("multiply-high leaf did not select the ARM64 direct prepared entry")
 	}
-	if len(compiled.code) > 64 {
-		t.Fatalf("multiply-high native code = %d bytes, want single-instruction specialization", len(compiled.code))
-	}
 	in, err := Instantiate(compiled, InstantiateOptions{})
 	if err != nil {
 		t.Fatalf("instantiate: %v", err)

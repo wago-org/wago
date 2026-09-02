@@ -260,3 +260,83 @@ func TestDropUncommittedMemoryPairs(t *testing.T) {
 		})
 	}
 }
+
+func TestHoistARM64AdjacentLoadAddresses(t *testing.T) {
+	const none = ^uint32(0)
+	f := &Func{
+		Target: TargetARM64,
+		Insts: []Inst{
+			{Op: wasm.InstrI32Load, Result: 3, OperandStart: 0, OperandCount: 1},
+			{Op: wasm.InstrI32Add, Result: 4, OperandStart: 1, OperandCount: 2},
+			{Op: wasm.InstrI32Load, Result: 5, OperandStart: 3, OperandCount: 1},
+		},
+		Operands: []Operand{{Reg: 1}, {Reg: 2}, {Reg: 6}, {Reg: 4}},
+		VRegs:    make([]VRegData, 7),
+	}
+	dag := &DependencyDAG{
+		Offsets: []uint32{0, 0, 0, 2},
+		Dependencies: []Dependency{
+			{Instruction: 0, Kind: DependencyTrap},
+			{Instruction: 1, Kind: DependencyData},
+		},
+	}
+	schedule := &Schedule{
+		Order:          []uint32{0, 1, 2},
+		BlockRanges:    []MoveRange{{Count: 3}},
+		uses:           make([]uint32, 7),
+		fusionBefore:   []uint32{none, none, none},
+		fusionSource:   []uint32{none, none, none},
+		sinkBefore:     []uint32{none, none, none},
+		sinkProducer:   []uint32{none, none, none},
+		lateBefore:     []uint32{none, none, none},
+		lateProducer:   []uint32{none, none, none},
+		verifyPosition: make([]uint32, 3),
+	}
+	schedule.uses[4] = 1
+	if committed := hoistARM64AdjacentLoadAddresses(f, dag, schedule); committed != 1 || !slices.Equal(schedule.Order, []uint32{1, 0, 2}) {
+		t.Fatalf("committed=%d order=%v", committed, schedule.Order)
+	}
+
+	schedule.Order = []uint32{0, 1, 2}
+	dag.Offsets = []uint32{0, 0, 1, 3}
+	dag.Dependencies = []Dependency{{Instruction: 0, Kind: DependencyData}, {Instruction: 0, Kind: DependencyTrap}, {Instruction: 1, Kind: DependencyData}}
+	if committed := hoistARM64AdjacentLoadAddresses(f, dag, schedule); committed != 0 || !slices.Equal(schedule.Order, []uint32{0, 1, 2}) {
+		t.Fatalf("dependent committed=%d order=%v", committed, schedule.Order)
+	}
+
+	f = &Func{
+		Target: TargetARM64,
+		Insts: []Inst{
+			{Op: wasm.InstrF64Load, Result: 3, OperandStart: 0, OperandCount: 1},
+			{Op: wasm.InstrI32Const, Result: 4},
+			{Op: wasm.InstrI32Add, Result: 5, OperandStart: 1, OperandCount: 2},
+			{Op: wasm.InstrF64Load, Result: 6, OperandStart: 3, OperandCount: 1},
+		},
+		Operands: []Operand{{Reg: 1}, {Reg: 2}, {Reg: 4}, {Reg: 5}},
+		VRegs:    make([]VRegData, 7),
+	}
+	dag = &DependencyDAG{
+		Offsets: []uint32{0, 0, 0, 1, 3},
+		Dependencies: []Dependency{
+			{Instruction: 1, Kind: DependencyData},
+			{Instruction: 0, Kind: DependencyTrap},
+			{Instruction: 2, Kind: DependencyData},
+		},
+	}
+	schedule = &Schedule{
+		Order:          []uint32{0, 1, 2, 3},
+		BlockRanges:    []MoveRange{{Count: 4}},
+		uses:           make([]uint32, 7),
+		fusionBefore:   []uint32{none, none, none, none},
+		fusionSource:   []uint32{none, none, none, none},
+		sinkBefore:     []uint32{none, none, none, none},
+		sinkProducer:   []uint32{none, none, none, none},
+		lateBefore:     []uint32{none, none, none, none},
+		lateProducer:   []uint32{none, none, none, none},
+		verifyPosition: make([]uint32, 4),
+	}
+	schedule.uses[5] = 1
+	if committed := hoistARM64AdjacentLoadAddresses(f, dag, schedule); committed != 1 || !slices.Equal(schedule.Order, []uint32{1, 2, 0, 3}) {
+		t.Fatalf("constant committed=%d order=%v", committed, schedule.Order)
+	}
+}

@@ -600,6 +600,9 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 		reuse.BlockRanges[blockID] = MoveRange{Start: start, Count: uint32(len(reuse.Order)) - start}
 		reuse.remaining = remaining[:0]
 	}
+	if f.Target == TargetARM64 {
+		hoistARM64AdjacentLoadAddresses(f, dag, reuse)
+	}
 	dropUncommittedMemoryPairs(f, reuse)
 	if err := verifyScheduleReusingScratch(f, dag, reuse); err != nil {
 		return nil, err
@@ -613,6 +616,85 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 		return nil, err
 	}
 	return reuse, nil
+}
+
+// hoistARM64AdjacentLoadAddresses moves a pure, single-use address addition
+// across the preceding load when that makes two equal-width loads adjacent. A
+// constant immediately before the addition moves with it: constants are often
+// rematerialized away after scheduling, but still separate the loads in the
+// machine order. The loads retain their Wasm order; only non-trapping integer
+// arithmetic is moved. ARM64 can then validate both addresses with one
+// CMP/CCMP branch.
+func hoistARM64AdjacentLoadAddresses(f *Func, dag *DependencyDAG, schedule *Schedule) uint32 {
+	if f == nil || dag == nil || schedule == nil || len(dag.Offsets) != len(f.Insts)+1 || len(schedule.uses) != len(f.VRegs) {
+		return 0
+	}
+	position := resize(schedule.verifyPosition, len(f.Insts))
+	schedule.verifyPosition = position
+	for index, instruction := range schedule.Order {
+		position[instruction] = uint32(index)
+	}
+	reserved := func(instruction uint32) bool {
+		return schedule.fusionBefore[instruction] != ^uint32(0) || schedule.fusionSource[instruction] != ^uint32(0) ||
+			schedule.sinkBefore[instruction] != ^uint32(0) || schedule.sinkProducer[instruction] != ^uint32(0) ||
+			schedule.lateBefore[instruction] != ^uint32(0) || schedule.lateProducer[instruction] != ^uint32(0)
+	}
+	var committed uint32
+	for _, block := range schedule.BlockRanges {
+		order := schedule.Order[block.Start : block.Start+block.Count]
+		for index := 0; index+2 < len(order); index++ {
+			addressIndex, secondIndex := index+1, index+2
+			if index+3 < len(order) && arm64IntegerConstant(f.Insts[order[index+1]].Op) {
+				addressIndex, secondIndex = index+2, index+3
+			}
+			firstID, addressID, secondID := order[index], order[addressIndex], order[secondIndex]
+			first, address, second := f.Insts[firstID], f.Insts[addressID], f.Insts[secondID]
+			if reserved(firstID) || reserved(addressID) || reserved(secondID) ||
+				first.Op != second.Op || uint32(first.Aux) != uint32(second.Aux) || !arm64FullWidthLoad(first.Op) ||
+				address.Result == 0 || schedule.uses[address.Result] != 1 || address.Op != wasm.InstrI32Add && address.Op != wasm.InstrI64Add {
+				continue
+			}
+			if addressIndex != index+1 && reserved(order[index+1]) {
+				continue
+			}
+			firstOperands, addressOperands, secondOperands := f.InstructionOperands(firstID), f.InstructionOperands(addressID), f.InstructionOperands(secondID)
+			if len(firstOperands) != 1 || len(addressOperands) != 2 || len(secondOperands) != 1 ||
+				secondOperands[0].Reg != address.Result || firstOperands[0].Reg == secondOperands[0].Reg {
+				continue
+			}
+			ready := true
+			firstPosition := position[firstID]
+			for _, dependency := range dag.Dependencies[dag.Offsets[addressID]:dag.Offsets[addressID+1]] {
+				movingConstant := addressIndex != index+1 && dependency.Instruction == order[index+1]
+				if position[dependency.Instruction] >= firstPosition && !movingConstant {
+					ready = false
+					break
+				}
+			}
+			if !ready {
+				continue
+			}
+			if addressIndex == index+1 {
+				order[index], order[index+1] = addressID, firstID
+				position[addressID], position[firstID] = firstPosition, firstPosition+1
+			} else {
+				constantID := order[index+1]
+				order[index], order[index+1], order[index+2] = constantID, addressID, firstID
+				position[constantID], position[addressID], position[firstID] = firstPosition, firstPosition+1, firstPosition+2
+			}
+			committed++
+			index = secondIndex - 1
+		}
+	}
+	return committed
+}
+
+func arm64IntegerConstant(kind wasm.InstrKind) bool {
+	return kind == wasm.InstrI32Const || kind == wasm.InstrI64Const
+}
+
+func arm64FullWidthLoad(kind wasm.InstrKind) bool {
+	return kind == wasm.InstrI32Load || kind == wasm.InstrI64Load || kind == wasm.InstrF32Load || kind == wasm.InstrF64Load
 }
 
 func dropUncommittedMemoryPairs(f *Func, schedule *Schedule) {

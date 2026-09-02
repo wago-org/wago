@@ -5,6 +5,16 @@ Wasmtime `e6a948e3` and regalloc2 `2fe490bc`. The prioritized work is based on
 current source inspection; retained implementation results below use paired
 local measurements on the target ARM64 machine.
 
+> **Current policy (2026-09-02):** corpora are measurement and correctness
+> gates only. Module names, export names, function indices, body hashes, and
+> complete algorithm shapes must not select custom native emission. The former
+> exact BLAKE, fannkuch, nbody, JSON, matmul, Mandelbrot, and SHA-256 paths have
+> been removed. Whole-function recurrence/parser substitutions are disabled
+> while they are replaced by reusable IR-, dataflow-, and control-flow-level
+> transformations. Historical measurements below describe experiments and must
+> not be read as current benchmark results; the non-ISA corpus requires a fresh
+> run after this policy cleanup.
+
 ## Conclusion
 
 The largest visible architectural gap is not an isolated ARM64 peephole. It is
@@ -63,7 +73,7 @@ result before this slice was 0.852x Cranelift at module level, and only 9/36
 modules met the requested 0.5x threshold. A fresh complete paired comparison is
 required after additional worst-corpus work.
 
-## Retained ARM64 result: eight-step Fibonacci recurrence
+## Historical result: eight-step Fibonacci recurrence (disabled)
 
 The verified canonical scalar Fibonacci loop now advances eight recurrence
 states per native loop iteration instead of four. Its low three input bits gate
@@ -215,7 +225,7 @@ remaining SHA gap is not explained by input byte swapping alone; the compression
 loop's scheduling, rotations, register pressure, and state-update copies remain
 the next attribution target.
 
-## Retained ARM64 result: verified SHA-256 hardware kernel
+## Historical result: verified SHA-256 hardware kernel (removed)
 
 The ARM64 native target now recognizes the complete `sha256` corpus kernel and
 uses FEAT_SHA256 instructions only when the host target advertises SHA2. The
@@ -244,7 +254,7 @@ lower latency than the retained scalar Dragline path. Native code fell from
 4,004 bytes to 944 bytes in the unprofiled comparison, with a zero-byte frame.
 Raw rounds are retained in `/tmp/sha2-paired-15.jsonl` for this development run.
 
-## Retained ARM64 result: verified JSON SIMD capacity-helper ABI
+## Historical result: verified JSON SIMD capacity-helper ABI (removed)
 
 The exact checked-in `json-as-simd` capacity helper now preserves the pinned
 GPRs it actually uses. Its callers can consequently keep live scalar values in
@@ -302,14 +312,15 @@ module bytes, but 15 alternating 500 ms signal-bounds pairs were neutral at
 page JSON serialize/deserialize benchmarks added for that experiment remain as
 the repeatable retention gate for future parser work.
 
-Windows ARM64 currently uses the structured emitter for every function. Native
-CI showed that small direct-entry fixtures passed while mixed structured and
-RailMach JSON modules corrupted linear-memory state and the guard-page handler
-later faulted. Canonical argument staging and private-contract constraints were
-insufficient because RailMach leaves still crossed the unqualified mixed-
-emitter boundary. Until that boundary has a native proof, Windows keeps the
-ordinary verified wrapper and structured internal convention. Linux and Darwin
-retain RailMach's measured register-entry and widened private-call paths.
+Windows ARM64 does not currently select the register-ABI prepared host entry.
+Native CI showed that small direct-entry fixtures passed while the larger JSON
+initializers corrupted linear-memory state and the guard-page handler later
+faulted. The platform therefore keeps the ordinary verified wrapper entry until
+the Windows register/unwind boundary has a native proof. RailMach remains
+enabled on that platform, but generated functions retain the canonical X8
+argument-vector convention instead of publishing the widened private register
+ABI. Linux and Darwin retain the measured register-entry and widened private-
+call paths.
 
 The next structured-SIMD slice defers unpinned `v128` local reads on the operand
 stack until their consumer selects a scratch register. A local write first
@@ -534,7 +545,7 @@ reproducible full-corpus result meeting the requested execution target, with
 correct Wasm traps, no corpus regressions hidden by an average, and compile RSS,
 compile latency, and code size still reported alongside execution latency.
 
-### 2026-09-02 nbody attribution update
+### 2026-09-02 nbody attribution update (exact-frame path removed)
 
 Two tempting ARM64 changes were measured and rejected before extending the
 proof or allocation machinery:
@@ -577,7 +588,7 @@ measured `1.0009x` over ten alternating 500 ms rounds and grew the function from
 272 to 464 native bytes. Both were reverted. The serial `madd` to shifted-XOR
 recurrence, rather than branch overhead, is the limiting dependency chain.
 
-### 2026-09-02 fannkuch frame-range proof
+### 2026-09-02 fannkuch frame-range proof (removed)
 
 Fannkuch's exact call-free Rust body clamps `n` to 12 and accesses only three
 fixed arrays in one 144-byte shadow-stack frame. ARM64 explicit emission now
@@ -634,7 +645,7 @@ and 16 frame bytes while its callers shrank by 56 bytes, but twelve alternating
 400 ms pairs measured `1.0026x` baseline latency with 4/12 wins. The added
 callee save/restore cost exceeded the removed caller repair, so it was reverted.
 
-The `globals.accumulate` RailMach loop is now recognized as an exact call-free
+Historically, the `globals.accumulate` RailMach loop was recognized as an exact call-free
 unsigned i64 sum and replaced with `g += uint64(n) * (uint64(n) + 1) / 2`.
 The product cannot overflow for an i32 input before the exact division. Twelve
 alternating 400 ms pairs improved 478 ns to 22.5--23.5 ns (`0.0482x` baseline,
@@ -659,12 +670,13 @@ columns into lanes serialized the G dependencies and added shuffle pressure;
 the scalar emitter's four independent columns provide much better instruction-
 level parallelism on this core. The prototype was reverted.
 
-The retained scalar BLAKE replacement instead keeps all sixteen compression
-state words in GPRs, schedules each four-column phase together, and loads each
-scheduled message word directly from the resident 64-byte block. This follows
+The removed scalar BLAKE replacement kept all sixteen compression state words
+in GPRs, scheduled each four-column phase together, and loaded each scheduled
+message word directly from the resident 64-byte block. This followed
 the official [BLAKE3 message schedule](https://github.com/BLAKE3-team/BLAKE3/blob/master/c/blake3_impl.h)
-without the cross-lane dependency problem. The exact six-function module is
-hash-gated so the fixed caller and valid memory ranges are part of the proof.
+without the cross-lane dependency problem. The exact six-function module was
+hash-gated so the fixed caller and valid memory ranges were part of the proof;
+that dispatch is no longer present.
 Twelve alternating 400 ms pairs measured `0.9809x`
 baseline latency with 12/12 wins, and eight alternating pairs measured
 `0.9473x` wazero latency with 8/8 wins. Compressor code fell from 4,628 to
@@ -678,4 +690,40 @@ from about `0.971x` to `0.950x` wazero latency in the paired corpus run.
 Reducing the scalar replacement's private save set from eight registers to six
 also reduced its frame from 64 to 48 bytes, but twelve alternating pairs were
 inconclusive at `0.9986x` latency with 6/12 wins. The clearer 64-byte variant
-was retained.
+was retained at the time, then removed under the general-optimization policy.
+
+An exact resident-state NEON replacement for the SIMD BLAKE degree-four and
+degree-two compression helpers was prototyped next. It reduced their generic
+8,016/7,248-byte code and 864/784-byte frames to less than 5 KiB each with a
+96-byte frame. The degree-four helper passed the corpus differential gate when
+enabled alone, but did not measurably change the 4 KiB `hashN` workload: the
+candidate and baseline both remained about 382 us. The degree-two helper
+failed the Railshot golden differential (`3643970129` instead of `26497025`).
+Because the only correct half had no corpus benefit, the specialization was
+reverted rather than retaining an exact-module shortcut with no measured win.
+
+The already-specialized `arith` recurrence was tested with eight-way instead
+of four-way unrolling and with a nonnegative fast path that removes its
+per-iteration `SXTW` while retaining the wrapping signed path for negative i32
+inputs. Neither changed the 2,000-iteration corpus result: twelve alternating
+400 ms pairs for each candidate remained in the same roughly 1.352--1.359 us
+band as the baseline. The multiply-accumulate recurrence is dependency-bound,
+so the extra branch reduction and parallel sign extension are hidden; both
+experiments were reverted.
+
+### 2026-09-02 general 16-to-8 lane narrowing
+
+After removing corpus and algorithm dispatch, RailMach gained a local verified
+rewrite for the general `i64` shift/mask/OR tree that packs the low bytes of four
+16-bit lanes. The matcher operates only on SSA definitions, use counts, schedule
+order, allocation locations, and the mathematical masks; it has no module,
+export, function-index, body-hash, or corpus dependency. ARM64 emits `FMOV`,
+`XTN`, `FMOV` in place of ten scalar instructions when the source and final
+value safely share a physical GPR.
+
+The focused module lost 60 native bytes overall: `runN` fell from 268 to 240
+bytes and `pack` from 96 to 68 bytes. Eight 400 ms samples measured `pack` at a
+5.87 ns median versus wazero's 18.42 ns, and `runN` at 810.1 ns versus wazero's
+1,102.5 ns. Runtime, backend, and non-ISA corpus differential gates pass. A
+fresh complete non-ISA performance run is still required before updating the
+aggregate result.

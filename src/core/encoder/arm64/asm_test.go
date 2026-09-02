@@ -63,6 +63,7 @@ func TestEncodings(t *testing.T) {
 		{"stp xzr,xzr,[sp,#16]", func(a *Asm) { a.StpOffset(XZR, XZR, SP, 16) }, 0xa9017fff},
 		{"stp w16,w17,[x0,#8]", func(a *Asm) { a.StpOffset32(X16, X17, X0, 8) }, 0x29014410},
 		{"stp q16,q16,[x0,#32]", func(a *Asm) { a.StpQOffset(X16, X16, X0, 32) }, 0xad014010},
+		{"stp d0,d1,[x2,#16]", func(a *Asm) { a.StpOffsetF64(X0, X1, X2, 16) }, 0x6d010440},
 		{"ldp x16,x17,[x0,#16]", func(a *Asm) { a.LdpOffset(X16, X17, X0, 16) }, 0xa9414410},
 		{"ldp w16,w17,[x0,#8]", func(a *Asm) { a.LdpOffset32(X16, X17, X0, 8) }, 0x29414410},
 		{"ldp s0,s1,[x2,#8]", func(a *Asm) { a.LdpOffsetF32(X0, X1, X2, 8) }, 0x2d410440},
