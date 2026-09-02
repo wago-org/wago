@@ -534,3 +534,30 @@ The completion criterion is not “all five mechanisms exist.” It is a current
 reproducible full-corpus result meeting the requested execution target, with
 correct Wasm traps, no corpus regressions hidden by an average, and compile RSS,
 compile latency, and code size still reported alongside execution latency.
+
+### 2026-09-02 nbody attribution update
+
+Two tempting ARM64 changes were measured and rejected before extending the
+proof or allocation machinery:
+
+- A ten-round alternating explicit/signals comparison put signals-based nbody
+  at `0.9822x` explicit latency (10/10 wins; `129.96 us` to `127.72 us`
+  median). Eliminating every explicit check is therefore worth about 1.8%, but
+  cannot explain the remaining execution gap by itself.
+- Reclaiming V30 from the emitter scratch set reduced the allocation from nine
+  spill slots to eight, the frame from 192 to 176 bytes, and native code from
+  4,008 to 3,996 bytes. Fifteen alternating 500 ms rounds nevertheless measured
+  `1.0179x` baseline latency with 0/15 wins, so the register-map change was
+  reverted.
+- Replacing repeated floating constants with a deduplicated literal pool saved
+  96 native bytes but measured `1.0012x` baseline latency over fifteen
+  alternating 500 ms rounds (5/15 wins), so that prototype was also reverted.
+- Ranking ready instructions by reverse dependency-chain height measured
+  `0.9977x` baseline latency over twelve alternating 500 ms rounds (9/12 wins),
+  but added 16 native bytes, one eviction, and broke existing frame/rematerialize
+  allocation expectations. The prototype was reverted; any successor must score
+  incremental live pressure as well as critical height.
+
+The remaining nbody work should target dependency-chain and scheduling quality.
+Bounds proof remains a safe later size/latency cleanup, but it is not the next
+high-leverage mechanism for this corpus.
