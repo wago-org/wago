@@ -550,6 +550,7 @@ func arm64ConstrainPrivateABI(plan *nativeBackendPlan, target corecompiler.Targe
 		return
 	}
 	if arm64DirectPreparedClass(plan.ABI.Class) {
+		plan.CanonicalPreparedParams = true
 		plan.ABI.Class = railmach.ABIGeneral
 	}
 	if arm64DirectPreparedClass(plan.LocalABI.Class) {
@@ -1162,26 +1163,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 	a.MovReg64(arm64.X9, arm64.X0)
 	a.MovReg64(arm64.X8, arm64.X9)
 	if arm64DirectPreparedClass(plan.ABI.Class) {
-		gpr, fpr := 0, 0
-		for index := uint16(0); index < plan.Machine.ParamCount; index++ {
-			var ok bool
-			typ := plan.Stack.Locals[index]
-			if typ == wasm.F32 || typ == wasm.F64 {
-				ok = a.Load64(arm64.X16, arm64.X9, uint32(index)*8)
-				if ok {
-					a.FmovFromGpr(arm64FPParamRegisters[fpr], arm64.X16, typ == wasm.F64)
-					fpr++
-				}
-			} else if typ == wasm.I32 {
-				ok = a.Load32(arm64ParamRegisters[gpr], arm64.X9, uint32(index)*8)
-				gpr++
-			} else {
-				ok = a.Load64(arm64ParamRegisters[gpr], arm64.X9, uint32(index)*8)
-				gpr++
-			}
-			if !ok {
-				return nil, 0, true, fmt.Errorf("RailMach direct parameter %d offset is not encodable", index)
-			}
+		if err := arm64LoadRailMachParameterRegisters(&a, plan); err != nil {
+			return nil, 0, true, err
 		}
 	}
 	if len(plan.Machine.Results) > railmach.PrivateResultRegisters {
@@ -1210,6 +1193,15 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 	}
 	if !a.PatchBranch26(call, internalOffset) {
 		return nil, 0, true, fmt.Errorf("RailMach internal entry is out of branch range")
+	}
+	// Windows constrains widened private contracts to ABIGeneral after planning.
+	// Keep the canonical X8 vector authoritative, but also materialize its scalar
+	// register prefix before any fixed-register lowering consumes those values.
+	// This makes the emitted entry agree with the already-verified allocation.
+	if plan.CanonicalPreparedParams && plan.Machine.ParamCount != 0 {
+		if err := arm64LoadRailMachParameterRegisters(&a, plan); err != nil {
+			return nil, 0, true, err
+		}
 	}
 	if lhs, rhs, ok := arm64RailMachTopLevelI32LTGuard(plan); ok {
 		a.CmpReg32(lhs, rhs)
@@ -4833,6 +4825,44 @@ railMachEpilogue:
 	plan.MemoryCheckEnds = memoryCheckEnds
 	plan.MemoryCheckTouched = memoryCheckTouched
 	return a.B, internalOffset, true, nil
+}
+
+func arm64LoadRailMachParameterRegisters(a *arm64.Asm, plan *nativeBackendPlan) error {
+	if a == nil || plan == nil || plan.Stack == nil || plan.Machine == nil {
+		return fmt.Errorf("RailMach parameter register load requires a complete plan")
+	}
+	gpr, fpr := 0, 0
+	for index := uint16(0); index < plan.Machine.ParamCount; index++ {
+		if int(index) >= len(plan.Stack.Locals) {
+			return fmt.Errorf("RailMach parameter %d is missing its type", index)
+		}
+		var ok bool
+		typ := plan.Stack.Locals[index]
+		if typ == wasm.F32 || typ == wasm.F64 {
+			if fpr >= len(arm64FPParamRegisters) {
+				continue
+			}
+			ok = a.Load64(arm64.X16, arm64.X8, uint32(index)*8)
+			if ok {
+				a.FmovFromGpr(arm64FPParamRegisters[fpr], arm64.X16, typ == wasm.F64)
+				fpr++
+			}
+		} else {
+			if gpr >= len(arm64ParamRegisters) {
+				continue
+			}
+			if typ == wasm.I32 {
+				ok = a.Load32(arm64ParamRegisters[gpr], arm64.X8, uint32(index)*8)
+			} else {
+				ok = a.Load64(arm64ParamRegisters[gpr], arm64.X8, uint32(index)*8)
+			}
+			gpr++
+		}
+		if !ok {
+			return fmt.Errorf("RailMach parameter %d offset is not encodable", index)
+		}
+	}
+	return nil
 }
 
 // arm64RailMachCarriesMemoryChecks permits exact SSA-address bounds facts to

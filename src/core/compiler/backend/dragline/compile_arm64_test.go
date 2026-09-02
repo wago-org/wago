@@ -425,7 +425,7 @@ func TestARM64WindowsRetainsRailMachWithCanonicalPrivateABI(t *testing.T) {
 		t.Fatal("Linux private register ABI was constrained")
 	}
 	arm64ConstrainPrivateABI(plan, windows)
-	if plan.ABI.Class != railmach.ABIGeneral || plan.LocalABI.Class != railmach.ABIGeneral || plan.Calls[0].Class != railmach.ABIGeneral {
+	if plan.ABI.Class != railmach.ABIGeneral || plan.LocalABI.Class != railmach.ABIGeneral || plan.Calls[0].Class != railmach.ABIGeneral || !plan.CanonicalPreparedParams {
 		t.Fatalf("Windows retained widened private ABI: plan=%v local=%v call=%v", plan.ABI.Class, plan.LocalABI.Class, plan.Calls[0].Class)
 	}
 	if plan.Calls[1].Class != railmach.ABILeafScalar || plan.ABI.GPRClobbers != 3 || plan.ABI.CalleeGPRs != 2 {
@@ -2376,6 +2376,22 @@ func TestARM64RailMachHostAdapterKeepsArgumentsInCanonicalVector(t *testing.T) {
 	withParams := adapterBytes([]wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64})
 	if withParams != withoutParams {
 		t.Fatalf("host adapter bytes with/without parameters = %d/%d; canonical X8 vector should make them equal", withParams, withoutParams)
+	}
+}
+
+func TestARM64RailMachCanonicalEntryMaterializesScalarParameterRegisters(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Stack:   &railssa.StackFunc{Locals: []wasm.ValType{wasm.I32, wasm.F64, wasm.I64, wasm.F32}},
+		Machine: &railmach.Func{ParamCount: 4},
+	}
+	var a arm64.Asm
+	if err := arm64LoadRailMachParameterRegisters(&a, plan); err != nil {
+		t.Fatal(err)
+	}
+	// Integer parameters each need one load. Floating parameters need a load
+	// through X16 plus an FMOV into the private FPR argument bank.
+	if len(a.B) != 24 {
+		t.Fatalf("canonical scalar parameter materialization bytes = %d, want 24", len(a.B))
 	}
 }
 
