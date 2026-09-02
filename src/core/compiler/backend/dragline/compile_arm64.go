@@ -1441,8 +1441,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 	cachedFloats, cachedFloatCount = arm64RailMachCachedFloatConstants(plan)
 	cachedFloatBase := arm64RailMachCachedFloatRegisterBase(plan.Machine)
 	for index, cached := range cachedFloats[:cachedFloatCount] {
-		a.MovImm64(arm64.X16, cached.bits)
-		a.FmovFromGpr(cachedFloatBase+arm64.Reg(index), arm64.X16, cached.kind == wasm.InstrF64Const)
+		emitARM64FloatConstant(&a, cachedFloatBase+arm64.Reg(index), cached.bits, cached.kind == wasm.InstrF64Const)
 	}
 	promotedGlobal = arm64RailMachPromotedGlobal(plan)
 	if promotedGlobal.valid {
@@ -3454,8 +3453,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					}
 				}
 				if !cached {
-					a.MovImm64(arm64.X16, instruction.Aux)
-					a.FmovFromGpr(dst, arm64.X16, instruction.Op == wasm.InstrF64Const)
+					emitARM64FloatConstant(&a, dst, instruction.Aux, instruction.Op == wasm.InstrF64Const)
 				}
 				continue
 			}
@@ -6065,8 +6063,7 @@ func arm64RailMachReadLocation(a *arm64.Asm, plan *nativeBackendPlan, value rail
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull:
 			a.MovImm64(scratch, definition.Aux)
 		case wasm.InstrF32Const, wasm.InstrF64Const:
-			a.MovImm64(arm64.X16, definition.Aux)
-			a.FmovFromGpr(scratch, arm64.X16, definition.Op == wasm.InstrF64Const)
+			emitARM64FloatConstant(a, scratch, definition.Aux, definition.Op == wasm.InstrF64Const)
 		case wasm.InstrI32WrapI64, wasm.InstrI64ExtendI32U, wasm.InstrI64ExtendI32S,
 			wasm.InstrI32Extend8S, wasm.InstrI32Extend16S,
 			wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:
@@ -6200,6 +6197,18 @@ func arm64RailMachWriteLocation(a *arm64.Asm, plan *nativeBackendPlan, value rai
 	default:
 		return fmt.Errorf("RailMach value %d has unwritable location %#v", value, location)
 	}
+}
+
+func emitARM64FloatConstant(a *arm64.Asm, dst arm64.Reg, bits uint64, f64 bool) {
+	if bits == 0 {
+		a.FmovFromGpr(dst, arm64.XZR, f64)
+		return
+	}
+	if a.FmovImm(dst, bits, f64) {
+		return
+	}
+	a.MovImm64(arm64.X16, bits)
+	a.FmovFromGpr(dst, arm64.X16, f64)
 }
 
 func arm64RailMachStoreValue(a *arm64.Asm, plan *nativeBackendPlan, value railmach.VReg, src arm64.Reg) error {

@@ -95,6 +95,21 @@ func TestPortFPEncodings(t *testing.T) {
 		{"fmov d0,d1", func(a *Asm) { a.FmovReg(X0, X1, true) }, 0x1e604020},
 		{"fmov s0,w1", func(a *Asm) { a.FmovFromGpr(X0, X1, false) }, 0x1e270020},
 		{"fmov d0,x1", func(a *Asm) { a.FmovFromGpr(X0, X1, true) }, 0x9e670020},
+		{"fmov d0,#1.0", func(a *Asm) {
+			if !a.FmovImm(X0, 0x3ff0000000000000, true) {
+				t.Fatal("f64 1.0 immediate was rejected")
+			}
+		}, 0x1e6e1000},
+		{"fmov d3,#-1.0", func(a *Asm) {
+			if !a.FmovImm(X3, 0xbff0000000000000, true) {
+				t.Fatal("f64 -1.0 immediate was rejected")
+			}
+		}, 0x1e7e1003},
+		{"fmov s7,#2.0", func(a *Asm) {
+			if !a.FmovImm(X7, 0x40000000, false) {
+				t.Fatal("f32 2.0 immediate was rejected")
+			}
+		}, 0x1e201007},
 		{"fmov w0,s1", func(a *Asm) { a.FmovToGpr(X0, X1, false) }, 0x1e260020},
 		{"fmov x0,d1", func(a *Asm) { a.FmovToGpr(X0, X1, true) }, 0x9e660020},
 		{"fcmp s0,s1", func(a *Asm) { a.Fcmp(X0, X1, false) }, 0x1e212000},
@@ -135,6 +150,15 @@ func TestPortFPEncodings(t *testing.T) {
 				t.Errorf("%s: got %#08x, want %#08x", c.name, got, c.want)
 			}
 		})
+	}
+	for _, c := range []struct {
+		bits uint64
+		f64  bool
+	}{{0, true}, {0x3ff199999999999a, true}, {0x3f8ccccd, false}} {
+		var a Asm
+		if a.FmovImm(X0, c.bits, c.f64) || len(a.B) != 0 {
+			t.Fatalf("unencodable FP immediate %#x (f64=%t) was emitted", c.bits, c.f64)
+		}
 	}
 }
 

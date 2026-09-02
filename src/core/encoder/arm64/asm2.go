@@ -174,6 +174,54 @@ func (a *Asm) FmovReg(rd, rn Reg, f64 bool) {
 func (a *Asm) FmovFromGpr(rd, rn Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E270000, 0x9E670000) | r(rn)<<5 | r(rd))
 }
+
+// FmovImm materializes an exactly encodable ARM scalar floating-point
+// immediate. bits contains the IEEE-754 binary32 or binary64 representation.
+func (a *Asm) FmovImm(rd Reg, bits uint64, f64 bool) bool {
+	var sign, exponent, fraction, repeated uint64
+	if f64 {
+		sign = bits >> 63
+		exponent = bits >> 52 & 0x7ff
+		fraction = bits & (uint64(1)<<52 - 1)
+		if fraction&(uint64(1)<<48-1) != 0 {
+			return false
+		}
+		repeated = exponent >> 2 & 0xff
+		fraction >>= 48
+	} else {
+		if bits>>32 != 0 {
+			return false
+		}
+		sign = bits >> 31
+		exponent = bits >> 23 & 0xff
+		fraction = bits & (uint64(1)<<23 - 1)
+		if fraction&(uint64(1)<<19-1) != 0 {
+			return false
+		}
+		repeated = exponent >> 2 & 0x1f
+		fraction >>= 19
+	}
+	bShift, topShift := uint(6), uint(7)
+	if f64 {
+		bShift, topShift = 9, 10
+	}
+	b := exponent >> bShift & 1
+	top := exponent >> topShift & 1
+	wantRepeated := uint64(0)
+	if b != 0 {
+		if f64 {
+			wantRepeated = 0xff
+		} else {
+			wantRepeated = 0x1f
+		}
+	}
+	if top == b || repeated != wantRepeated {
+		return false
+	}
+	imm8 := sign<<7 | b<<6 | (exponent&3)<<4 | fraction
+	a.word(fbase(f64, 0x1E201000, 0x1E601000) | uint32(imm8)<<13 | r(rd))
+	return true
+}
 func (a *Asm) FmovToGpr(rd, rn Reg, f64 bool) {
 	a.word(fbase(f64, 0x1E260000, 0x9E660000) | r(rn)<<5 | r(rd))
 }

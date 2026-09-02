@@ -35,6 +35,19 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 	}
 }
 
+func TestARM64FloatConstantUsesImmediateAndPreservesNegativeZero(t *testing.T) {
+	var a arm64.Asm
+	emitARM64FloatConstant(&a, 3, math.Float64bits(1), true)
+	if len(a.B) != 4 || binary.LittleEndian.Uint32(a.B) != 0x1e6e1003 {
+		t.Fatalf("f64 1.0 materialization = %x, want one FMOV immediate", a.B)
+	}
+	a.B = a.B[:0]
+	emitARM64FloatConstant(&a, 3, math.Float64bits(math.Copysign(0, -1)), true)
+	if len(a.B) != 8 {
+		t.Fatalf("f64 negative zero materialization = %x, want exact two-instruction fallback", a.B)
+	}
+}
+
 func TestARM64CarriesMemoryChecksOnlyAcrossUniqueLaidOutPredecessor(t *testing.T) {
 	plan := &nativeBackendPlan{CFG: &railssa.CFG{
 		Blocks: []railssa.Block{
