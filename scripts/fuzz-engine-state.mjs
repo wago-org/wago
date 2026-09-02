@@ -10,7 +10,7 @@ import { performance } from "node:perf_hooks";
 
 import { intendedTrapClasses, observeInNode } from "./engine-state-oracle.mjs";
 
-const DEFAULT_COUNT = 128;
+const DEFAULT_COUNT = 136;
 const DEFAULT_SEED = "0x5eed";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const textDecoder = new TextDecoder();
@@ -58,13 +58,15 @@ const FULL_CYCLE_PROFILES = [
   "engine-state-compiler-boundaries",
   "engine-state-nan",
   "engine-state-invalid-module",
+  "engine-state-recursive-multivalue",
+  "engine-state-subtype-cast-graph",
 ];
 
 function usage() {
   return `Usage: scripts/fuzz-engine-state.sh [options]
 
 Options:
-  --count N          Number of generated cases (default: 128)
+  --count N          Number of generated cases (default: 136)
   --start N          First one-based case index (default: 1)
   --seed N|random    Unsigned 64-bit root seed (default: 0x5eed)
   --starshine PATH   Starshine WasmGC FFI binary
@@ -478,7 +480,7 @@ async function run(options) {
       }
       runDigest.update(`${caseIndex}:${node.hash}\n`);
     }
-    if (!failed && options.count >= 128) {
+    if (!failed && options.count >= 136) {
       const missingProfiles = FULL_CYCLE_PROFILES.filter((profile) => !profileCounts.has(profile));
       if (missingProfiles.length > 0) {
         throw new Error(`Starshine engine-state cycle missed profiles: ${missingProfiles.join(", ")}`);

@@ -10,7 +10,7 @@ Build the Starshine WasmGC FFI once, if it is not present:
 (cd ../starshine-mb && bun ffi build)
 ```
 
-Run one complete 128-case cycle across all 43 profile leaves:
+Run one complete 136-case cycle across all 45 profile leaves:
 
 ```sh
 scripts/fuzz-engine-state.sh
@@ -62,7 +62,7 @@ table entries. These limits match the Starshine engine-state profile and keep
 memory use predictable.
 
 The exact cycle includes the original execution and proposal leaves. It also
-forces 13 broader module shapes:
+forces 15 broader module shapes:
 
 - multi-module link graphs with zero to two re-export relays;
 - cyclic GC structs, mutable arrays, i31 values, and dynamic reference tests;
@@ -75,8 +75,11 @@ forces 13 broader module shapes:
 - committed state before four trap families;
 - independently encoded, semantically equivalent module twins;
 - function-count, local-count, and control-depth compiler thresholds;
-- stable NaN classification and signed-zero results; and
-- malformed binary families with strict compile-failure classification.
+- stable NaN classification and signed-zero results;
+- malformed binary families with strict compile-failure classification;
+- bounded direct and mutual recursion with typed multi-value control joins; and
+- branched nominal GC subtype graphs with successful casts and cross-sibling
+  `ref.test` checks.
 
 All executable cases reduce their result to the same scalar and resource event
 schema. The invalid-module cases reduce compile errors to an expected family.
@@ -103,9 +106,15 @@ Engine names, elapsed time, error text, file paths, and seeds are not part of th
 canonical hash. The Node and Go implementations are separate. A shared golden
 test fixes only the event bytes, hash, and deterministic input mixer.
 
-For runs of at least 128 cases, the driver rejects a Starshine cycle that omits
+For runs of at least 136 cases, the driver rejects a Starshine cycle that omits
 any required profile. A second `COVERAGE` line prints the bounded count for each
 profile; it does not retain per-case data.
+
+The long lane also checks resource lifetime. A linked owner can hold a closed
+consumer function in an imported table while that consumer imports memory and a
+global from the owner. Closing the chain in reverse must release this cycle.
+`TestReverseCloseReexportChainReleasesFuncrefCycle` keeps that case as a small,
+deterministic runtime regression.
 
 The success line prints one `result` hash for the run. Its input is the ordered
 ASCII sequence `case_index:case_hash\n`. The line also prints the root seed and
@@ -130,13 +139,14 @@ scripts/fuzz-engine-state.sh --count 1 --start 842 --seed ROOT_SEED --keep
 
 ## Current measurement
 
-On the development Linux/amd64 host on 2026-09-02, a 10,000-case run of the
-43-profile cycle took 9.52 seconds inside the lane, or 1,050.8 cases per second.
-The result hash was
-`sha256:09943633799d8df43e931e55dd91a06a19b59b0398ac4a547c0a71466a26401d`.
+On the development Linux/amd64 host on 2026-09-02, a 1,000,000-case run of the
+45-profile cycle took 859.65 seconds inside the lane, or 1,163.3 cases per
+second. The root seed was `0xf00dcafe12345678`, and the result hash was
+`sha256:690a9a45aeb548c7248b24a9a53e0dd8393fa2d3ca07e6a70c0846eab1c11ed9`.
 The run used Starshine FFI hash
-`sha256:553b3085e728c4bc80fb54555672cf4de2f281a3a99a456f1f71c5b770fb78c9`,
+`sha256:e4bb3aed71e8bcaa3b0fda634024bf0c46e8881353d13e1dcc69df2460288b18`,
 covered all profiles at their declared cycle weights, and found no output
-difference. This includes generation, both executions, state hashing, worker
-exchange, and temporary passing-file writes. This is a workflow measurement,
-not a stable engine benchmark.
+difference. An earlier attempt found the linked funcref resource cycle described
+above; the complete rerun passed after its runtime fix. This includes generation,
+both executions, state hashing, worker exchange, and temporary passing-file
+writes. This is a workflow measurement, not a stable engine benchmark.
