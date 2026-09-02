@@ -1952,6 +1952,52 @@ func TestARM64RealizesPostIndexMemoryChain(t *testing.T) {
 	}
 }
 
+func TestARM64PlansScalarByteSwap(t *testing.T) {
+	body := []byte{0x20, 0x00, 0x20, 0x01, 0x28, 0x02, 0x00, 0x22, 0x02, 0x41}
+	body = append(body, wasmtest.SLEB32(0x00ff00ff)...)
+	body = append(body,
+		0x71, 0x41, 0x08, 0x78, // rotr(local & 0x00ff00ff, 8)
+		0x20, 0x02, 0x41, 0x18, 0x78, 0x41,
+	)
+	body = append(body, wasmtest.SLEB32(0x00ff00ff)...)
+	body = append(body, 0x71, 0x72, 0x36, 0x02, 0x00, 0x0b) // store((rotr(local, 24) & mask) | first)
+	function := append(wasmtest.Vec([]byte{0x01, wasm.MustEncodeValType(wasm.I32)}), body...)
+	function = append(wasmtest.ULEB(uint32(len(function))), function...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(function)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rewrite := range plan.PostRA.Rewrites {
+		if rewrite.Kind == railmach.RewriteARM64ByteSwap {
+			return
+		}
+	}
+	t.Fatalf("byte swap was not planned: %#v", plan.PostRA.Rewrites)
+}
+
 func TestARM64RealizesFloatingMemoryPair(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.F32}))),

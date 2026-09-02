@@ -1288,6 +1288,48 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	}
 	p.plan.ImmediateProducer = p.immediateProducer
 	p.plan.ImmediateSkip = p.immediateSkip
+	if machine.Target == railmach.TargetARM64 && len(p.postRASkip) == len(machine.Insts) {
+		for _, rewrite := range postRA.Rewrites {
+			if rewrite.Kind != railmach.RewriteARM64ByteSwap {
+				continue
+			}
+			source, members, ok := railmach.VerifyARM64ByteSwapChain(machine, schedule, rewrite.Second)
+			if !ok || members[0] != rewrite.First {
+				continue
+			}
+			firstPosition := allocation.InstructionPositions[members[0]]
+			finalPosition := allocation.InstructionPositions[members[4]]
+			sourceLocation := allocation.LocationAt(source, firstPosition*6+2)
+			firstLocation := allocation.LocationAt(machine.Insts[members[0]].Result, firstPosition*6+2)
+			finalLocation := allocation.LocationAt(machine.Insts[members[4]].Result, finalPosition*6+2)
+			if sourceLocation.Kind != railmach.LocationRegister || sourceLocation.Bank != railmach.BankGPR ||
+				firstLocation.Kind != railmach.LocationRegister || firstLocation.Bank != railmach.BankGPR ||
+				finalLocation != firstLocation {
+				continue
+			}
+			conflict := false
+			for scheduled := firstPosition; scheduled <= finalPosition; scheduled++ {
+				instructionID := schedule.Order[scheduled]
+				member := false
+				for _, candidate := range members {
+					member = member || instructionID == candidate
+				}
+				if member {
+					conflict = conflict || p.postRASkip[instructionID]
+				} else {
+					instruction := machine.Insts[instructionID]
+					elided := p.immediateSkip[instructionID] || instruction.Result != 0 && machine.VRegs[instruction.Result].Flags&railmach.VRegElided != 0
+					conflict = conflict || !elided
+				}
+			}
+			if conflict {
+				continue
+			}
+			for _, instructionID := range members[1:] {
+				p.postRASkip[instructionID] = true
+			}
+		}
+	}
 	buildNativeEdgeConstantRematerialization(&p.plan, p.immediateSkip, p.immediateUses)
 	p.deadGCReservations = resizeNativeSlice(p.deadGCReservations, len(machine.Insts))
 	clear(p.deadGCReservations)
@@ -1654,6 +1696,10 @@ func (p *nativeBackendPlanner) preparePostRAScratch(target railmach.Target, inst
 				needsSkip, needsRepeat = true, true
 			}
 		case railmach.RewriteARM64ByteWiden:
+			if target == railmach.TargetARM64 {
+				needsSkip = true
+			}
+		case railmach.RewriteARM64ByteSwap:
 			if target == railmach.TargetARM64 {
 				needsSkip = true
 			}

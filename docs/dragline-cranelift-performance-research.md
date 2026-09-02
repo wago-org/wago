@@ -179,6 +179,42 @@ constants with one-instruction `FMOV` immediates regressed the broad form by
 about 0.7% and the loop-only form by roughly 0.3--0.5%, despite smaller code;
 both experiments were fully removed.
 
+## Retained ARM64 result: scalar SHA-256 byte swaps
+
+Rust's scalar SHA-256 input decoder expresses each big-endian word as the
+canonical Wasm tree
+`rotr(x & 0x00ff00ff, 8) | (rotr(x, 24) & 0x00ff00ff)`. Dragline previously
+lowered that tree literally as five ARM64 instructions. The post-allocation
+planner now verifies the exact constants, rotations, shared source, single-use
+intermediates, block, and schedule order, then emits one `REV Wd, Wn` when the
+allocated first and final values share a GPR. ARM defines `REV` as the scalar
+byte-order reversal operation
+([ARMv8-A A64 ISA overview](https://developer.arm.com/-/media/Files/pdf/graphics-and-multimedia/ARMv8_InstructionSetOverview.pdf)).
+
+On `sha256.hashN`, 15 of 16 input-word swaps meet that post-allocation contract:
+
+| Measurement | Before | After | Ratio |
+| --- | ---: | ---: | ---: |
+| Dragline A/B, 21 x 750 ms | 25,919 ns | 25,690 ns | **0.9902x** paired median |
+| Dragline vs Cranelift, 15 x 500 ms | 21,111 ns Cranelift | 25,672 ns Dragline | **1.2028x** geometric mean |
+| Native function bytes | 2,920 | 2,680 | **0.918x** |
+| Realized post-RA rewrites | 26 | 41 | +15 |
+| Accounted post-RA byte savings | 104 | 344 | +240 bytes |
+
+The A/B paired geometric mean was 0.9900x with 20/21 wins. A scan of 43
+non-ISA, non-SIMD corpus modules found only `sha256.wasm` changed from this
+slice; `mandelbrot.wasm` also differed because the baseline binary predates the
+separately retained counter-rename commit. Guard-page corpus differential tests
+passed.
+
+A broader realization that allowed different first/final GPRs folded all 16
+swaps and reduced the function to 2,664 bytes, but required `REV; MOV` for the
+last word. In 15 alternating 500 ms pairs it regressed execution by 1.15%
+geometrically and won only 1/15 rounds, so that variant was removed. The
+remaining SHA gap is not explained by input byte swapping alone; the compression
+loop's scheduling, rotations, register pressure, and state-update copies remain
+the next attribution target.
+
 ## Prioritized work
 
 ### P0: first-class `v128` in RailMach

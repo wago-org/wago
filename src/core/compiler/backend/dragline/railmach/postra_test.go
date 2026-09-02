@@ -229,6 +229,46 @@ func TestVerifyPostRAAllowsARM64NZCVRenameAcrossConstant(t *testing.T) {
 	}
 }
 
+func TestVerifyARM64ByteSwapChain(t *testing.T) {
+	f := &Func{
+		Target: TargetARM64,
+		Insts: []Inst{
+			{Op: wasm.InstrI32Const, Result: 2, Aux: 0x00ff00ff},
+			{Op: wasm.InstrI32And, Result: 3, OperandStart: 0, OperandCount: 2},
+			{Op: wasm.InstrI32Const, Result: 4, Aux: 8},
+			{Op: wasm.InstrI32Rotr, Result: 5, OperandStart: 2, OperandCount: 2},
+			{Op: wasm.InstrI32Const, Result: 6, Aux: 24},
+			{Op: wasm.InstrI32Rotr, Result: 7, OperandStart: 4, OperandCount: 2},
+			{Op: wasm.InstrI32And, Result: 8, OperandStart: 6, OperandCount: 2},
+			{Op: wasm.InstrI32Or, Result: 9, OperandStart: 8, OperandCount: 2},
+		},
+		Operands: []Operand{
+			{Reg: 1, Bank: BankGPR}, {Reg: 2, Bank: BankGPR},
+			{Reg: 3, Bank: BankGPR}, {Reg: 4, Bank: BankGPR},
+			{Reg: 1, Bank: BankGPR}, {Reg: 6, Bank: BankGPR},
+			{Reg: 7, Bank: BankGPR}, {Reg: 2, Bank: BankGPR},
+			{Reg: 5, Bank: BankGPR}, {Reg: 8, Bank: BankGPR},
+		},
+		VRegs: []VRegData{
+			{}, {Type: TypeI32, Bank: BankGPR, Flags: VRegInitial},
+			{Def: 3, Type: TypeI32, Bank: BankGPR}, {Def: 9, Type: TypeI32, Bank: BankGPR},
+			{Def: 15, Type: TypeI32, Bank: BankGPR}, {Def: 21, Type: TypeI32, Bank: BankGPR},
+			{Def: 27, Type: TypeI32, Bank: BankGPR}, {Def: 33, Type: TypeI32, Bank: BankGPR},
+			{Def: 39, Type: TypeI32, Bank: BankGPR}, {Def: 45, Type: TypeI32, Bank: BankGPR},
+		},
+		Blocks: []Block{{InstCount: 8}},
+	}
+	schedule := &Schedule{Order: []uint32{0, 1, 2, 3, 4, 5, 6, 7}, BlockRanges: []MoveRange{{Count: 8}}, BlockOf: make([]railssa.BlockID, 8)}
+	source, members, ok := VerifyARM64ByteSwapChain(f, schedule, 7)
+	if !ok || source != 1 || members != [5]uint32{1, 3, 5, 6, 7} {
+		t.Fatalf("byte swap = source %d, members %v, ok %t", source, members, ok)
+	}
+	f.Insts[4].Aux = 23
+	if _, _, ok := VerifyARM64ByteSwapChain(f, schedule, 7); ok {
+		t.Fatal("byte swap accepted rotate by 23")
+	}
+}
+
 func TestPlanPostRAFindsARM64RepeatedAdd(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x20, 0x00,

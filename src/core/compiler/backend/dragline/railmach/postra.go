@@ -26,6 +26,7 @@ const (
 	RewriteARM64CondIncrement
 	RewriteARM64RepeatedAdd
 	RewriteARM64ByteWiden
+	RewriteARM64ByteSwap
 )
 
 type Rewrite struct {
@@ -176,6 +177,9 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 			first, _, ok := arm64ByteWidenChain(f, schedule, final, position, uses)
 			if ok {
 				reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: first, Second: final, Kind: RewriteARM64ByteWiden})
+			}
+			if _, members, ok := verifyARM64ByteSwapChain(f, schedule, final, position, uses); ok {
+				reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: members[0], Second: final, Kind: RewriteARM64ByteSwap})
 			}
 		}
 	}
@@ -438,6 +442,118 @@ func arm64ByteWidenChain(f *Func, schedule *Schedule, final uint32, position, us
 	return first, source, true
 }
 
+// VerifyARM64ByteSwapChain recognizes the canonical scalar i32 byte-swap tree
+// emitted by Rust for from_be: ror(x & 0x00ff00ff, 8) |
+// (ror(x, 24) & 0x00ff00ff). The returned members are in required schedule
+// order and include the final or.
+func VerifyARM64ByteSwapChain(f *Func, schedule *Schedule, final uint32) (VReg, [5]uint32, bool) {
+	if f == nil || schedule == nil {
+		return 0, [5]uint32{}, false
+	}
+	position := make([]uint32, len(f.Insts))
+	uses := make([]uint32, len(f.VRegs))
+	for index, instruction := range schedule.Order {
+		if int(instruction) >= len(position) {
+			return 0, [5]uint32{}, false
+		}
+		position[instruction] = uint32(index)
+	}
+	for instructionID := range f.Insts {
+		for _, operand := range f.InstructionOperands(uint32(instructionID)) {
+			uses[operand.Reg]++
+		}
+	}
+	for _, transfer := range f.Transfers {
+		uses[transfer.Src]++
+	}
+	for _, result := range f.Results {
+		uses[result]++
+	}
+	return verifyARM64ByteSwapChain(f, schedule, final, position, uses)
+}
+
+func verifyARM64ByteSwapChain(f *Func, schedule *Schedule, final uint32, position, uses []uint32) (VReg, [5]uint32, bool) {
+	var none [5]uint32
+	if int(final) >= len(f.Insts) || len(position) != len(f.Insts) || len(uses) != len(f.VRegs) || f.Insts[final].Op != wasm.InstrI32Or {
+		return 0, none, false
+	}
+	definition := func(value VReg, op wasm.InstrKind) (uint32, []Operand, bool) {
+		if value == 0 || int(value) >= len(f.VRegs) || f.VRegs[value].Def%6 != 3 {
+			return 0, nil, false
+		}
+		id := f.VRegs[value].Def / 6
+		if int(id) >= len(f.Insts) || f.Insts[id].Result != value || f.Insts[id].Op != op {
+			return 0, nil, false
+		}
+		return id, f.InstructionOperands(id), true
+	}
+	constant := func(value VReg, want uint64) bool {
+		id, _, ok := definition(value, wasm.InstrI32Const)
+		return ok && uint64(uint32(f.Insts[id].Aux)) == want
+	}
+	matchMaskedRotate := func(value VReg) (source VReg, andID, rotateID uint32, ok bool) {
+		rotateID, rotateOperands, ok := definition(value, wasm.InstrI32Rotr)
+		if !ok || len(rotateOperands) != 2 || uses[value] != 1 || !constant(rotateOperands[1].Reg, 8) {
+			return 0, 0, 0, false
+		}
+		masked := rotateOperands[0].Reg
+		andID, andOperands, ok := definition(masked, wasm.InstrI32And)
+		if !ok || len(andOperands) != 2 || uses[masked] != 1 {
+			return 0, 0, 0, false
+		}
+		if constant(andOperands[0].Reg, 0x00ff00ff) {
+			return andOperands[1].Reg, andID, rotateID, true
+		}
+		if constant(andOperands[1].Reg, 0x00ff00ff) {
+			return andOperands[0].Reg, andID, rotateID, true
+		}
+		return 0, 0, 0, false
+	}
+	matchRotateMasked := func(value VReg) (source VReg, rotateID, andID uint32, ok bool) {
+		andID, andOperands, ok := definition(value, wasm.InstrI32And)
+		if !ok || len(andOperands) != 2 || uses[value] != 1 {
+			return 0, 0, 0, false
+		}
+		rotated := andOperands[0].Reg
+		if constant(rotated, 0x00ff00ff) {
+			rotated = andOperands[1].Reg
+		} else if !constant(andOperands[1].Reg, 0x00ff00ff) {
+			return 0, 0, 0, false
+		}
+		rotateID, rotateOperands, ok := definition(rotated, wasm.InstrI32Rotr)
+		if !ok || len(rotateOperands) != 2 || uses[rotated] != 1 || !constant(rotateOperands[1].Reg, 24) {
+			return 0, 0, 0, false
+		}
+		return rotateOperands[0].Reg, rotateID, andID, true
+	}
+	operands := f.InstructionOperands(final)
+	if len(operands) != 2 {
+		return 0, none, false
+	}
+	for side := range 2 {
+		source, andFirst, rotate8, leftOK := matchMaskedRotate(operands[side].Reg)
+		otherSource, rotate24, andSecond, rightOK := matchRotateMasked(operands[1-side].Reg)
+		members := [5]uint32{andFirst, rotate8, rotate24, andSecond, final}
+		if !leftOK || !rightOK || source != otherSource {
+			continue
+		}
+		block := schedule.BlockOf[members[0]]
+		previous := position[members[0]]
+		for index, id := range members {
+			if int(id) >= len(schedule.BlockOf) || schedule.BlockOf[id] != block || index != 0 && position[id] <= previous {
+				leftOK = false
+				break
+			}
+			previous = position[id]
+		}
+		if !leftOK {
+			continue
+		}
+		return source, members, true
+	}
+	return 0, none, false
+}
+
 func arm64CondIncrementable(f *Func, producerID, consumerID uint32, uses []uint32) bool {
 	if int(producerID) >= len(f.Insts) || int(consumerID) >= len(f.Insts) {
 		return false
@@ -618,10 +734,10 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 		uses[result]++
 	}
 	for id, rewrite := range plan.Rewrites {
-		if rewrite.Kind == RewriteInvalid || int(rewrite.First) >= len(f.Insts) || rewrite.Second != ^uint32(0) && (int(rewrite.Second) >= len(f.Insts) || rewrite.Second <= rewrite.First || rewrite.Second-rewrite.First > PostRAScanLimit && rewrite.Kind != RewriteAMD64FusionRepair && rewrite.Kind != RewritePhysicalRename && rewrite.Kind != RewriteARM64CompareBranch && rewrite.Kind != RewriteARM64RepeatedAdd && rewrite.Kind != RewriteARM64ByteWiden) {
+		if rewrite.Kind == RewriteInvalid || int(rewrite.First) >= len(f.Insts) || rewrite.Second != ^uint32(0) && (int(rewrite.Second) >= len(f.Insts) || rewrite.Second <= rewrite.First || rewrite.Second-rewrite.First > PostRAScanLimit && rewrite.Kind != RewriteAMD64FusionRepair && rewrite.Kind != RewritePhysicalRename && rewrite.Kind != RewriteARM64CompareBranch && rewrite.Kind != RewriteARM64RepeatedAdd && rewrite.Kind != RewriteARM64ByteWiden && rewrite.Kind != RewriteARM64ByteSwap) {
 			return fmt.Errorf("railmach: invalid post-RA rewrite %d: %#v", id, rewrite)
 		}
-		if target == TargetAMD64 && (rewrite.Kind == RewriteARM64Pair || rewrite.Kind == RewriteARM64PrePostIndex || rewrite.Kind == RewriteARM64CompareBranch || rewrite.Kind == RewriteARM64CondIncrement || rewrite.Kind == RewriteARM64RepeatedAdd || rewrite.Kind == RewriteARM64ByteWiden) || target == TargetARM64 && (rewrite.Kind == RewriteAMD64LEA || rewrite.Kind == RewriteAMD64FusionRepair || rewrite.Kind == RewriteAMD64FixedRepair || rewrite.Kind == RewriteAMD64MemoryFold) {
+		if target == TargetAMD64 && (rewrite.Kind == RewriteARM64Pair || rewrite.Kind == RewriteARM64PrePostIndex || rewrite.Kind == RewriteARM64CompareBranch || rewrite.Kind == RewriteARM64CondIncrement || rewrite.Kind == RewriteARM64RepeatedAdd || rewrite.Kind == RewriteARM64ByteWiden || rewrite.Kind == RewriteARM64ByteSwap) || target == TargetARM64 && (rewrite.Kind == RewriteAMD64LEA || rewrite.Kind == RewriteAMD64FusionRepair || rewrite.Kind == RewriteAMD64FixedRepair || rewrite.Kind == RewriteAMD64MemoryFold) {
 			return fmt.Errorf("railmach: cross-target post-RA rewrite %d: %#v", id, rewrite)
 		}
 		if rewrite.Kind == RewriteAMD64FusionRepair && position[rewrite.Second] == position[rewrite.First]+1 {
@@ -689,6 +805,11 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 		if rewrite.Kind == RewriteARM64ByteWiden {
 			if _, _, ok := VerifyARM64ByteWidenChain(f, schedule, rewrite.First, rewrite.Second); !ok {
 				return fmt.Errorf("railmach: illegal ARM64 byte widen %d: %#v", id, rewrite)
+			}
+		}
+		if rewrite.Kind == RewriteARM64ByteSwap {
+			if _, members, ok := VerifyARM64ByteSwapChain(f, schedule, rewrite.Second); !ok || members[0] != rewrite.First {
+				return fmt.Errorf("railmach: illegal ARM64 byte swap %d: %#v", id, rewrite)
 			}
 		}
 		if rewrite.Kind == RewriteAMD64MemoryFold {

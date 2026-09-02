@@ -2142,6 +2142,13 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 				currentOperandOverrideValue = edgeResultRename.chainedResult
 				currentOperandOverride = arm64RailMachPhysical(edgeResultRename.chainedDestination)
 			}
+			if source, ok := arm64RailMachByteSwapSource(plan, instructionID); ok {
+				a.Rev32(reg(instruction.Result), reg(source))
+				if metrics != nil {
+					metrics.PostRARewrites++
+				}
+				continue
+			}
 			if nativeHasPostRARewrite(plan, instructionID, railmach.RewriteARM64ByteWiden) {
 				final, source, ok := railmach.VerifyARM64ByteWidenChain(plan.Machine, plan.Schedule, instructionID, ^uint32(0))
 				if ok && arm64RailMachByteWidenRealized(plan, instructionID, final) {
@@ -4784,6 +4791,28 @@ func arm64RailMachByteWidenRealized(plan *nativeBackendPlan, first, final uint32
 		}
 	}
 	return firstPosition < finalPosition
+}
+
+func arm64RailMachByteSwapSource(plan *nativeBackendPlan, first uint32) (railmach.VReg, bool) {
+	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.PostRA == nil || len(plan.PostRASkip) != len(plan.Machine.Insts) {
+		return 0, false
+	}
+	for _, rewrite := range plan.PostRA.Rewrites {
+		if rewrite.Kind != railmach.RewriteARM64ByteSwap || rewrite.First != first {
+			continue
+		}
+		source, members, ok := railmach.VerifyARM64ByteSwapChain(plan.Machine, plan.Schedule, rewrite.Second)
+		if !ok || members[0] != first || plan.PostRASkip[first] {
+			return 0, false
+		}
+		for _, instructionID := range members[1:] {
+			if !plan.PostRASkip[instructionID] {
+				return 0, false
+			}
+		}
+		return source, true
+	}
+	return 0, false
 }
 
 func arm64RailMachByteWidenPairConsumer(plan *nativeBackendPlan, first uint32) (uint32, bool) {
