@@ -39,46 +39,21 @@ var arm64FPParamRegisters = [...]arm64.Reg{0, 1, 2, 3, 4, 5, 6, 7}
 // than recognizing a benchmark, recurrence, parser, or other complete workload.
 const arm64EnableAlgorithmSpecializations = false
 
-func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, contracts []railmach.ABIContract) bool {
+func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, _ []railmach.ABIContract) bool {
 	if !railMachCandidate(stack, moduleHasV128) {
 		return false
 	}
 	if moduleHasV128 {
-		for index, instruction := range stack.Instrs {
-			if instruction.Kind == wasm.InstrCallIndirect {
-				return false
-			}
-			if instruction.Kind != wasm.InstrCall {
-				continue
-			}
-			if len(stack.Instrs) > 192 {
-				return false
-			}
-			callee := instruction.U32()
-			if callee < stack.ImportedFuncs {
-				if index+1 < len(stack.Instrs) && stack.Instrs[index+1].Kind == wasm.InstrUnreachable {
-					continue
-				}
-				return false
-			}
-			if int(callee-stack.ImportedFuncs) >= len(contracts) ||
-				!arm64DirectPreparedClass(contracts[callee-stack.ImportedFuncs].Class) {
-				// Call-containing scalar functions in a SIMD module are admitted only
-				// when every edge already has the shared private-register contract.
+		for _, instruction := range stack.Instrs {
+			if instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect {
+				// Keep SIMD leaves on RailMach, but retain the canonical finalizer for
+				// call-bearing functions until the private ABI carries complete V128
+				// argument and result vectors across every mixed-emitter edge.
 				return false
 			}
 		}
 	}
 	return true
-}
-
-// Windows ARM64 signal handling redirects a fault through a native helper on
-// the interrupted Wasm stack. Keep that mode on the structured finalizer until
-// the private RailMach call stack is qualified across that redirection. Explicit
-// bounds on Windows and both ARM64 Unix targets retain RailMach.
-func arm64RailMachCandidateForMode(stack *railssa.StackFunc, moduleHasV128 bool, contracts []railmach.ABIContract, target corecompiler.Target, bounds corecompiler.BoundsMode) bool {
-	return !(target.GOOS == "windows" && bounds == corecompiler.BoundsSignals) &&
-		arm64RailMachCandidate(stack, moduleHasV128, contracts)
 }
 
 var arm64StackLocalRegisters = [...]arm64.Reg{arm64.X19, arm64.X20, arm64.X21, arm64.X22, arm64.X23}
@@ -330,7 +305,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		functionRequiresMOPS := input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index)
 		requiresMOPS = requiresMOPS || functionRequiresMOPS
 		var nativePlan *nativeBackendPlan
-		if arm64RailMachCandidateForMode(fn.Structured, compilationPlan.HasV128, moduleContracts, input.Target, input.Bounds) {
+		if arm64RailMachCandidate(fn.Structured, compilationPlan.HasV128, moduleContracts) {
 			if nativePlanner == nil {
 				nativePlanner = new(nativeBackendPlanner)
 			}
@@ -670,7 +645,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				return functionError(m, i, "lower", err)
 			}
 			var nativePlan *nativeBackendPlan
-			if arm64RailMachCandidateForMode(fn.Structured, compilation.HasV128, contracts, input.Target, input.Bounds) {
+			if arm64RailMachCandidate(fn.Structured, compilation.HasV128, contracts) {
 				if worker.native == nil {
 					worker.native = &nativeBackendPlanner{parallelCandidates: true}
 				}

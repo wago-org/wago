@@ -403,28 +403,12 @@ func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {
 	if !arm64RailMachCandidate(caller, false, nil) {
 		t.Fatal("scalar-only RailMach caller was rejected")
 	}
-	if !arm64RailMachCandidate(caller, true, []railmach.ABIContract{{Class: railmach.ABIPreparedLeaf}}) {
-		t.Fatal("bounded scalar caller with a prepared callee was rejected in a SIMD module")
+	if arm64RailMachCandidate(caller, true, []railmach.ABIContract{{Class: railmach.ABIPreparedLeaf}}) {
+		t.Fatal("SIMD-module caller was admitted across the incomplete V128 private ABI")
 	}
 	trapCaller := &railssa.StackFunc{ImportedFuncs: 1, Instrs: []railssa.StackInstr{{Kind: wasm.InstrCall}, {Kind: wasm.InstrUnreachable}}}
-	if !arm64RailMachCandidate(trapCaller, true, nil) {
-		t.Fatal("cold imported trap call was rejected in a SIMD module")
-	}
-}
-
-func TestARM64WindowsSignalsUseStructuredFinalizer(t *testing.T) {
-	stack := &railssa.StackFunc{}
-	windows := corecompiler.Target{GOOS: "windows", GOARCH: "arm64"}
-	linux := corecompiler.Target{GOOS: "linux", GOARCH: "arm64"}
-
-	if arm64RailMachCandidateForMode(stack, false, nil, windows, corecompiler.BoundsSignals) {
-		t.Fatal("Windows ARM64 signals admitted RailMach")
-	}
-	if !arm64RailMachCandidateForMode(stack, false, nil, windows, corecompiler.BoundsExplicit) {
-		t.Fatal("Windows ARM64 explicit bounds rejected RailMach")
-	}
-	if !arm64RailMachCandidateForMode(stack, false, nil, linux, corecompiler.BoundsSignals) {
-		t.Fatal("Linux ARM64 signals rejected RailMach")
+	if arm64RailMachCandidate(trapCaller, true, nil) {
+		t.Fatal("SIMD-module imported trap call was admitted across the mixed-emitter ABI")
 	}
 }
 
