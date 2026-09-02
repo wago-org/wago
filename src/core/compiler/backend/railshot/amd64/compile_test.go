@@ -8,6 +8,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -48,8 +49,7 @@ func TestModuleStackArenaCapFallsBackWhenLookaheadDiscountRemovesBenefit(t *test
 
 func TestModuleStackArenaCapFallsBackForDeadCode(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 1536)}}}
-	hints := []funcHints{{stackArenaNodes: 770}}
-	hints[0].markStackArenaDeadCode()
+	hints := []funcHints{{stackArenaNodes: 770, hasStackSinkFusion: true}}
 	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
 		t.Fatalf("dead-code stack arena cap = %d, want legacy %d", got, defaultStackArenaCap)
 	}
@@ -110,11 +110,18 @@ func TestInlineTargetsKeepLegacyStackArenaCap(t *testing.T) {
 }
 
 func TestGCTypeSubtypingUsesExpandedStackLowering(t *testing.T) {
-	if expandedStackLowering(CompileOptions{}) {
+	if expandedStackLowering(CompileOptions{}, CodegenPolicy{}) {
 		t.Fatal("empty options reported expanded stack lowering")
 	}
-	if !expandedStackLowering(CompileOptions{GCTypeSubtypingRefTest: true}) {
+	if !expandedStackLowering(CompileOptions{GCTypeSubtypingRefTest: true}, CodegenPolicy{}) {
 		t.Fatal("GC subtype helper did not report expanded stack lowering")
+	}
+	selection, err := optimizationBindings.ResolveSnapshot(map[string]bool{"gc-ref-facts": true}, OptimizationSnapshot{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !expandedStackLowering(CompileOptions{}, shared.DefaultCodegenPolicy(selection)) {
+		t.Fatal("GC reference facts did not report expanded stack lowering")
 	}
 }
 

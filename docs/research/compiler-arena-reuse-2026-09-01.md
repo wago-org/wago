@@ -50,23 +50,34 @@ superoptimization and float, select, or simple-if sinks can consume a scanned
 result without allocating its node, so the raw hint can overstate legacy
 retention. Local-tee roots that can start the bounded SWAR widen or multiply-high
 lookahead receive a saturated skipped-node discount. Adjacent scalar identities
-such as `x + 0`, width-multiple shifts, same-local simplifications such as
-`x - x`, and the SWAR pack wrap receive the same one-node accounting. Functions
-with instructions after an unconditional terminator retain legacy sizing because
+such as `x + 0`, one-byte width-multiple shifts, same-local simplifications such
+as `x - x`, and the SWAR pack wrap receive the same one-node accounting.
+Optimizer-eligible operations after a multibyte integer constant retain legacy
+sizing instead of adding a second constant decode to the scan. Functions with
+instructions after an unconditional terminator retain legacy sizing because
 the compiler classifies that dead region without allocating operand nodes. The
 final direct capacity is then
 compared with legacy retention at the discounted lower bound; isolated patterns
 keep useful sizing, while repeated patterns fall back.
+
+Programmatic decoded bodies also retain legacy sizing; production decoded
+modules use the byte scan, while the AST path can expose context-sensitive folds
+without the same immediate-byte evidence.
 
 Modules with active inline targets also retain the legacy first chunk. A caller's
 hint counts the call opcode but not each node-producing instruction spliced from
 the callee at every call site. Modules with custom instruction recipes, typed
 function-subtyping helpers, or GC struct/array helper lowering use the same
 fallback because one scanned opcode may expand into extension-owned or
-helper-argument nodes not present in the Wasm scan. Falling back avoids a new
-scan or an unbounded expansion estimate. The
-measured json-as and utf-as modules have none of these expansions, so their
-results below are unchanged.
+helper-argument nodes not present in the Wasm scan. AMD64 also falls back when
+GC reference-fact propagation is active because known facts can reuse a scanned
+reference node. Falling back avoids a new scan or an unbounded expansion
+estimate. The measured json-as and utf-as modules have none of these expansions,
+so their results below are unchanged.
+
+TinyGo builds keep the legacy arena policy. This allocation tuning targets the
+standard Go compiler path; removing its hint accounting from TinyGo preserves
+the minimal release profile's binary-size budget.
 
 The body-size floor, bounded opcode slack, and no-hint fallback remain in place.
 A sub-256 hinted first chunk preserves the existing direct-doubling fallback.

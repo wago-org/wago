@@ -119,8 +119,11 @@ func TestScanBodyBytesDiscountsAlgebraicIdentitiesArm64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if h.stackArenaDiscount != 4 {
-		t.Fatalf("algebraic discount = %d, want 4", h.stackArenaDiscount)
+	if h.stackArenaDiscount != 3 {
+		t.Fatalf("algebraic discount = %d, want 3", h.stackArenaDiscount)
+	}
+	if !h.hasStackSinkFusion {
+		t.Fatal("multibyte identity constant did not retain legacy sizing")
 	}
 }
 
@@ -129,14 +132,14 @@ func TestScanBodyBytesDetectsDeadCodeAfterTerminatorArm64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !h.hasStackArenaDeadCode() {
+	if !h.hasStackSinkFusion {
 		t.Fatal("dead instructions after unreachable were not detected")
 	}
 	terminalOnly, err := scanBodyBytes([]byte{0x00, 0x0b}, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if terminalOnly.hasStackArenaDeadCode() {
+	if terminalOnly.hasStackSinkFusion {
 		t.Fatal("terminal unreachable was marked as followed by dead code")
 	}
 }

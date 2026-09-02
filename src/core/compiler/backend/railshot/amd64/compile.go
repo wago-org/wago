@@ -715,13 +715,13 @@ const maxInitialStackArenaCap = shared.MaxInitialStackArenaCapacity
 // arena-producing nodes, so use its largest bounded estimate instead of forcing
 // large functions through the legacy 256-element geometric growth path.
 func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
-	if len(hints) != len(m.Code) || moduleHasMultiValueResults(m) {
+	if !shared.StackArenaHintsEnabled || len(hints) != len(m.Code) || moduleHasMultiValueResults(m) {
 		return defaultStackArenaCap
 	}
 	capHint := minStackArenaCap
 	legacyRetained := defaultStackArenaCap
 	for i := range hints {
-		if hints[i].hasStackSinkFusion || hints[i].hasStackArenaDeadCode() {
+		if hints[i].hasStackSinkFusion {
 			return defaultStackArenaCap
 		}
 		nodes := int(hints[i].stackArenaNodes)
@@ -732,7 +732,7 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 		if fnCap > capHint {
 			capHint = fnCap
 		}
-		effectiveNodes := nodes - hints[i].stackArenaDiscountNodes()
+		effectiveNodes := nodes - int(hints[i].stackArenaDiscount)
 		if effectiveNodes < 1 {
 			effectiveNodes = 1
 		}
@@ -796,8 +796,8 @@ func workerStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inline
 	return capHint
 }
 
-func expandedStackLowering(opts CompileOptions) bool {
-	return len(opts.CustomInstructions) != 0 || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers
+func expandedStackLowering(opts CompileOptions, policy CodegenPolicy) bool {
+	return policy.EnabledOption(optGCRefFacts) || len(opts.CustomInstructions) != 0 || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers
 }
 
 const maxHintedControlFrames = 64
@@ -1320,7 +1320,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if workers <= 1 {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
-		expandedLowering := expandedStackLowering(opts)
+		expandedLowering := expandedStackLowering(opts, policy)
 		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.policy = policy
 		sc.classifier = classifier
@@ -1519,7 +1519,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if symbolicLocalSlotPackingPolicy(policy) {
 		arenaCap += amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
 	}
-	expandedLowering := expandedStackLowering(opts)
+	expandedLowering := expandedStackLowering(opts, policy)
 	stackCap := workerStackArenaCap(m, allHints, inlineTargets, expandedLowering)
 	ctrlCap := moduleControlFrameCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
