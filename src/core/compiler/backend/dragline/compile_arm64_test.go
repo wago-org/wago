@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"math"
+	"runtime"
 	"testing"
 
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
@@ -294,6 +295,10 @@ func TestARM64WindowsRetainsRailMachWithCanonicalPrivateABI(t *testing.T) {
 	if plan.Calls[1].Class != railmach.ABILeafScalar || plan.ABI.GPRClobbers != 3 || plan.ABI.CalleeGPRs != 2 {
 		t.Fatal("Windows constraint changed ordinary ABI metadata")
 	}
+	contract := arm64ConstrainPrivateContract(railmach.ABIContract{Class: railmach.ABIPreparedLeaf, GPRClobbers: 7}, windows)
+	if contract.Class != railmach.ABIGeneral || contract.GPRClobbers != 7 {
+		t.Fatalf("Windows published contract = %#v", contract)
+	}
 }
 
 func TestARM64UnboundedLoopStaysOffGoStack(t *testing.T) {
@@ -494,10 +499,10 @@ func TestARM64FoldsInlinedI32AddTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := metrics.Functions[3]
-	if !got.RailMachFinalized || got.PostRARewrites != 4 || got.NativeBytes > 64 {
+	if !got.RailMachFinalized || runtime.GOOS != "windows" && (got.PostRARewrites != 4 || got.NativeBytes > 64) {
 		t.Fatalf("inlined i32 add tree metrics = %#v", got)
 	}
-	if len(output.DirectLeafPrepared) == 0 || output.DirectLeafPrepared[0]&(uint64(1)<<3) == 0 {
+	if runtime.GOOS != "windows" && (len(output.DirectLeafPrepared) == 0 || output.DirectLeafPrepared[0]&(uint64(1)<<3) == 0) {
 		t.Fatal("fully inlined direct-call tree did not publish the call-free leaf entry")
 	}
 }
@@ -544,7 +549,7 @@ func TestARM64FramefulPreparedLeafStaysOffGoStack(t *testing.T) {
 	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].FrameBytes == 0 {
 		t.Fatalf("frameful prepared leaf metrics = %#v", metrics.Functions)
 	}
-	if len(output.DirectPrepared) == 0 || output.DirectPrepared[0]&1 == 0 {
+	if runtime.GOOS != "windows" && (len(output.DirectPrepared) == 0 || output.DirectPrepared[0]&1 == 0) {
 		t.Fatal("frameful prepared leaf lost its foreign-stack direct entry")
 	}
 	if len(output.DirectLeafPrepared) != 0 && output.DirectLeafPrepared[0]&1 != 0 {

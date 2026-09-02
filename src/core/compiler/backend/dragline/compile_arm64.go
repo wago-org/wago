@@ -283,6 +283,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				requiresMOPS = requiresMOPS || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64MOPS)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64MOPS)%64)) != 0
 				requiresSHA2 = requiresSHA2 || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64SHA2)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64SHA2)%64)) != 0
 				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
+				moduleContracts[i] = arm64ConstrainPrivateContract(moduleContracts[i], input.Target)
 				if !captureGC && artifact.ContextFreeLoop {
 					contextFreeLoopPrepared = markARM64DirectPrepared(contextFreeLoopPrepared, len(m.Code), i)
 				}
@@ -388,6 +389,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			if i < len(seedCandidates) && seedCandidates[i] {
 				publishedContract = seedContracts[i]
 			}
+			publishedContract = arm64ConstrainPrivateContract(publishedContract, input.Target)
 			moduleContracts[i] = publishedContract
 		}
 		var plan *railssa.EmissionPlan
@@ -601,6 +603,13 @@ func arm64ConstrainPrivateABI(plan *nativeBackendPlan, target corecompiler.Targe
 	}
 }
 
+func arm64ConstrainPrivateContract(contract railmach.ABIContract, target corecompiler.Target) railmach.ABIContract {
+	if target.GOOS == "windows" && arm64DirectPreparedClass(contract.Class) {
+		contract.Class = railmach.ABIGeneral
+	}
+	return contract
+}
+
 func arm64DirectPreparedLeafClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedLeaf
 }
@@ -760,6 +769,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				if i < len(candidates) && candidates[i] {
 					published = seeds[i]
 				}
+				published = arm64ConstrainPrivateContract(published, input.Target)
 				contracts[i] = published
 			}
 			var plan *railssa.EmissionPlan

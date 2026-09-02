@@ -84,7 +84,7 @@ func TestDraglineNativePreparedInlinesTinyIntegerCallees(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	if !compiled.directPreparedAt(2) {
+	if runtime.GOOS != "windows" && !compiled.directPreparedAt(2) {
 		t.Fatal("bounded integer caller did not publish its direct prepared entry")
 	}
 	instance, err := Instantiate(compiled, InstantiateOptions{})
