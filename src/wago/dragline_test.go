@@ -4166,7 +4166,7 @@ func TestDraglineStructuredSIMDLoadColdTrap(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 		wasmtest.Section(11, wasmtest.Vec(segment)),
 	)
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), wasmBytes)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), wasmBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -4210,7 +4210,7 @@ func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 		wasmtest.Section(11, wasmtest.Vec(segment)),
 	)
-	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), wasmBytes)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), wasmBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
