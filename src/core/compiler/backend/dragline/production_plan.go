@@ -59,10 +59,6 @@ type nativeBackendPlan struct {
 	BackendAttempts   uint8
 	IPRARefinedCalls  uint32
 	SignalsBounds     bool
-	// CanonicalPreparedParams records a target constraint applied after the
-	// verified ARM64 allocation selected prepared parameter registers. Emission
-	// must materialize that register prefix from the canonical argument vector.
-	CanonicalPreparedParams bool
 
 	BlockOffsets        []int
 	BranchPatches       []nativeBranchPatch

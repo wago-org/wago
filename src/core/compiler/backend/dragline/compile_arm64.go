@@ -254,7 +254,6 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				requiresMOPS = requiresMOPS || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64MOPS)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64MOPS)%64)) != 0
 				requiresSHA2 = requiresSHA2 || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64SHA2)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64SHA2)%64)) != 0
 				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
-				moduleContracts[i] = arm64ConstrainPrivateContract(moduleContracts[i], input.Target)
 				if !captureGC && artifact.ContextFreeLoop {
 					contextFreeLoopPrepared = markARM64DirectPrepared(contextFreeLoopPrepared, len(m.Code), i)
 				}
@@ -339,7 +338,6 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				}
 			}
 		}
-		arm64ConstrainPrivateABI(nativePlan, input.Target)
 		arm64PromoteInlinedPreparedLeaf(nativePlan)
 		functionRequiresSHA2 := false
 		publishedContract := railmach.ABIContract{}
@@ -348,7 +346,6 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			if i < len(seedCandidates) && seedCandidates[i] {
 				publishedContract = seedContracts[i]
 			}
-			publishedContract = arm64ConstrainPrivateContract(publishedContract, input.Target)
 			moduleContracts[i] = publishedContract
 		}
 		var plan *railssa.EmissionPlan
@@ -540,36 +537,6 @@ func arm64DirectPreparedClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedIndirect || class == railmach.ABIPreparedCall || class == railmach.ABIPreparedLeaf
 }
 
-// arm64ConstrainPrivateABI keeps the Windows ARM64 target on the canonical
-// X8 argument vector between generated functions. RailMach itself remains
-// enabled; only the widened private register-entry contract is withheld until
-// it has native Windows execution coverage. Clobber and callee-save contracts
-// remain intact.
-func arm64ConstrainPrivateABI(plan *nativeBackendPlan, target corecompiler.Target) {
-	if plan == nil || target.GOOS != "windows" {
-		return
-	}
-	if arm64DirectPreparedClass(plan.ABI.Class) {
-		plan.CanonicalPreparedParams = true
-		plan.ABI.Class = railmach.ABIGeneral
-	}
-	if arm64DirectPreparedClass(plan.LocalABI.Class) {
-		plan.LocalABI.Class = railmach.ABIGeneral
-	}
-	for i := range plan.Calls {
-		if arm64DirectPreparedClass(plan.Calls[i].Class) {
-			plan.Calls[i].Class = railmach.ABIGeneral
-		}
-	}
-}
-
-func arm64ConstrainPrivateContract(contract railmach.ABIContract, target corecompiler.Target) railmach.ABIContract {
-	if target.GOOS == "windows" && arm64DirectPreparedClass(contract.Class) {
-		contract.Class = railmach.ABIGeneral
-	}
-	return contract
-}
-
 func arm64DirectPreparedLeafClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedLeaf
 }
@@ -711,7 +678,6 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 					}
 				}
 			}
-			arm64ConstrainPrivateABI(nativePlan, input.Target)
 			arm64PromoteInlinedPreparedLeaf(nativePlan)
 			functionRequiresSHA2 := false
 			published := railmach.ABIContract{}
@@ -720,7 +686,6 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				if i < len(candidates) && candidates[i] {
 					published = seeds[i]
 				}
-				published = arm64ConstrainPrivateContract(published, input.Target)
 				contracts[i] = published
 			}
 			var plan *railssa.EmissionPlan
@@ -1193,15 +1158,6 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 	}
 	if !a.PatchBranch26(call, internalOffset) {
 		return nil, 0, true, fmt.Errorf("RailMach internal entry is out of branch range")
-	}
-	// Windows constrains widened private contracts to ABIGeneral after planning.
-	// Keep the canonical X8 vector authoritative, but also materialize its scalar
-	// register prefix before any fixed-register lowering consumes those values.
-	// This makes the emitted entry agree with the already-verified allocation.
-	if plan.CanonicalPreparedParams && plan.Machine.ParamCount != 0 {
-		if err := arm64LoadRailMachParameterRegisters(&a, plan); err != nil {
-			return nil, 0, true, err
-		}
 	}
 	if lhs, rhs, ok := arm64RailMachTopLevelI32LTGuard(plan); ok {
 		a.CmpReg32(lhs, rhs)
