@@ -8102,8 +8102,12 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	}
 	stackSourceV128 := func(index int, scratch arm64.Reg) arm64.Reg {
 		if source := vectorStackSourceLocal[index]; source >= 0 {
-			if int(source) < len(localRegisters) {
-				return localRegisters[source]
+			if local := int(source); local < len(localRegisters) {
+				if localV128Pinned[local] {
+					return localRegisters[local]
+				}
+				localLoadV128(local, scratch)
+				return scratch
 			}
 			return arm64.Reg(int(source) - len(localRegisters))
 		}
@@ -8178,15 +8182,24 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	}
 	helperOrdinal := uint32(0)
 	materializeLocalAliases := func(local, exceptA, exceptB int) {
+		loaded := false
 		for index := range stackTypes {
 			if index == exceptA || index == exceptB || vectorStackSourceLocal[index] != int32(local) {
 				continue
 			}
+			src := localRegisters[local]
+			if !localV128Pinned[local] {
+				if !loaded {
+					localLoadV128(local, 0)
+					loaded = true
+				}
+				src = 0
+			}
 			if index < len(v128StackRegisters) {
-				a.NeonMov16b(v128StackRegisters[index], localRegisters[local])
+				a.NeonMov16b(v128StackRegisters[index], src)
 				vectorStackValid[index] = true
 			} else {
-				a.StrQ(arm64.SP, int32(stackOff(index)), localRegisters[local])
+				a.StrQ(arm64.SP, int32(stackOff(index)), src)
 			}
 			vectorStackSourceLocal[index] = -1
 		}
@@ -8554,9 +8567,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			directShuffle := ok && descriptor.Kind == wasm.InstrI8x16Shuffle && arm64ShuffleSpecialized(descriptor.Bytes)
 			if (directBinary || directShuffle) && (!tee || localV128Pinned[targetLocal]) {
 				lhsLocal, rhsLocal := int(instr.U32()), int(sf.Instrs[instrIndex+1].U32())
-				if localV128Pinned[targetLocal] {
-					materializeLocalAliases(targetLocal, -1, -1)
-				}
+				materializeLocalAliases(targetLocal, -1, -1)
 				lhs := arm64.Reg(0)
 				if localV128Pinned[lhsLocal] {
 					lhs = localRegisters[lhsLocal]
@@ -10614,14 +10625,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 					}
 					continue
 				}
-				if localV128Pinned[local] {
-					if err := pushV128Local(local); err != nil {
-						return nil, 0, nil, err
-					}
-					continue
-				}
-				localLoadV128(local, 0)
-				if err := pushV128(0); err != nil {
+				if err := pushV128Local(local); err != nil {
 					return nil, 0, nil, err
 				}
 				continue
@@ -10639,13 +10643,15 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		case wasm.InstrLocalSet:
 			if sf.Locals[instr.U32()] == wasm.V128 {
 				local := int(instr.U32())
+				top := len(stackTypes) - 1
+				if top < 0 || stackTypes[top] != wasm.V128 {
+					return nil, 0, nil, fmt.Errorf("operand stack v128 mismatch")
+				}
+				if vectorStackSourceLocal[top] != int32(local) {
+					materializeLocalAliases(local, top, -1)
+				}
 				if localV128Pinned[local] {
-					top := len(stackTypes) - 1
-					if top < 0 || stackTypes[top] != wasm.V128 {
-						return nil, 0, nil, fmt.Errorf("operand stack v128 mismatch")
-					}
 					if vectorStackSourceLocal[top] != int32(local) {
-						materializeLocalAliases(local, top, -1)
 						stackLoadV128(top, localRegisters[local])
 					}
 					stackTypes = stackTypes[:top]
@@ -10681,10 +10687,8 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				if vectorStackSourceLocal[top] == int32(local) {
 					continue
 				}
+				materializeLocalAliases(local, top, -1)
 				src := stackSourceV128(top, 0)
-				if localV128Pinned[local] {
-					materializeLocalAliases(local, top, -1)
-				}
 				localStoreV128(local, src)
 				if localV128Pinned[local] {
 					vectorStackValid[top] = false

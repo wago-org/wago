@@ -4231,6 +4231,50 @@ func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
 	}
 }
 
+func TestDraglineStructuredSIMDDeferredLocalPreservesAlias(t *testing.T) {
+	if runtime.GOARCH != "arm64" {
+		t.Skip("Dragline structured SIMD execution is currently ARM64-only")
+	}
+	const locals = 24
+	body := make([]byte, 0, 256)
+	// Keep locals 0..22 hotter than local 23 so the final local is deliberately
+	// left in its frame home rather than one of the 23 structured vector-local
+	// registers. Dropped deferred reads should emit no native work.
+	for local := byte(0); local < locals-1; local++ {
+		for range 4 {
+			body = append(body, 0x20, local, 0x1a) // local.get; drop
+		}
+	}
+	body = append(body, 0x20, locals-1) // retain the old zero value as an alias
+	body = append(body, 0xfd, 0x0c)     // v128.const
+	for range 16 {
+		body = append(body, 0xff)
+	}
+	body = append(body, 0x21, locals-1)                     // local.set overwrites its frame home
+	body = append(body, 0xfd, 0xe4, 0x00, 0x0b)             // i8x16.bitmask; end
+	function := append([]byte{0x01, locals, 0x7b}, body...) // one group of v128 locals
+	wasmBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(function))), function...))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), wasmBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	result, err := instance.Invoke("run")
+	if err != nil || len(result) != 1 || result[0] != 0 {
+		t.Fatalf("run() = %#x, %v; want the pre-store zero alias", result, err)
+	}
+}
+
 func TestDraglineFrameBackedF64LocalIsZeroedOnEveryCall(t *testing.T) {
 	body := []byte{0x01, 0x09, 0x7c, 0x20, 0x00, 0x04, 0x40, 0x44}
 	var bits [8]byte

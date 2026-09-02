@@ -311,6 +311,20 @@ boundary has a native proof, the platform therefore keeps the ordinary verified
 wrapper and structured internal convention. Linux and Darwin retain RailMach's
 measured register-entry and widened private-call paths.
 
+The next structured-SIMD slice defers unpinned `v128` local reads on the operand
+stack until their consumer selects a scratch register. A local write first
+materializes any older deferred aliases, preserving Wasm value semantics while
+avoiding the former `LDR q0; MOV vN, v0` pair. In the two hot
+`blake-as-simd` compression functions this removes 98 and 94 vector moves and
+reduces native code from 8,448/7,696 to 8,064/7,328 bytes; the module falls from
+31,388 to 30,636 bytes. Twelve alternating 400 ms baseline/candidate pairs
+measured a **0.9907x** geometric-mean latency ratio with 10/12 wins (394.724 us
+baseline median, 389.671 us candidate median). Seven alternating 300 ms passes
+over both JSON SIMD and both UTF SIMD exports remained within their observed
+noise. A focused execution test forces an unpinned local, retains its old value
+across a write, and verifies that deferred alias materialization returns the old
+value.
+
 ## Prioritized work
 
 ### P0: first-class `v128` in RailMach
