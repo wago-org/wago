@@ -101,26 +101,6 @@ func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, contra
 	return true
 }
 
-func arm64RailMachCandidateForTarget(stack *railssa.StackFunc, moduleHasV128 bool, contracts []railmach.ABIContract, target corecompiler.Target) bool {
-	if !arm64RailMachCandidate(stack, moduleHasV128, contracts) {
-		return false
-	}
-	if target.GOOS != "windows" {
-		return true
-	}
-	// The Windows ARM64 native runner does not yet qualify the widened private
-	// register ABI across call/global-heavy RailMach functions. Keep those
-	// functions on the established structured convention; scalar RailMach leaves
-	// remain enabled and independently covered.
-	for _, instr := range stack.Instrs {
-		switch instr.Kind {
-		case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrGlobalGet, wasm.InstrGlobalSet:
-			return false
-		}
-	}
-	return true
-}
-
 var arm64StackLocalRegisters = [...]arm64.Reg{arm64.X19, arm64.X20, arm64.X21, arm64.X22, arm64.X23}
 var arm64OperandStackRegisters = [...]arm64.Reg{arm64.X9, arm64.X10, arm64.X11, arm64.X12, arm64.X13, arm64.X14, arm64.X15}
 var arm64DeepSIMDOperandStackRegisters = [...]arm64.Reg{
@@ -370,7 +350,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		functionRequiresMOPS := input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index)
 		requiresMOPS = requiresMOPS || functionRequiresMOPS
 		var nativePlan *nativeBackendPlan
-		if arm64RailMachCandidateForTarget(fn.Structured, compilationPlan.HasV128, moduleContracts, input.Target) {
+		if arm64RailMachCandidate(fn.Structured, compilationPlan.HasV128, moduleContracts) {
 			if nativePlanner == nil {
 				nativePlanner = new(nativeBackendPlanner)
 			}
@@ -387,6 +367,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				}
 			}
 		}
+		arm64ConstrainPrivateABI(nativePlan, input.Target)
 		arm64PromoteInlinedPreparedLeaf(nativePlan)
 		if arm64RailMachMandelbrotCorpus(nativePlan) {
 			nativePlan.ABI.FPRClobbers |= (uint64(1) << 30) - 1
@@ -598,6 +579,28 @@ func arm64DirectPreparedClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedIndirect || class == railmach.ABIPreparedCall || class == railmach.ABIPreparedLeaf
 }
 
+// arm64ConstrainPrivateABI keeps the Windows ARM64 target on the canonical
+// X8 argument vector between generated functions. RailMach itself remains
+// enabled; only the widened private register-entry contract is withheld until
+// it has native Windows execution coverage. Clobber and callee-save contracts
+// remain intact.
+func arm64ConstrainPrivateABI(plan *nativeBackendPlan, target corecompiler.Target) {
+	if plan == nil || target.GOOS != "windows" {
+		return
+	}
+	if arm64DirectPreparedClass(plan.ABI.Class) {
+		plan.ABI.Class = railmach.ABIGeneral
+	}
+	if arm64DirectPreparedClass(plan.LocalABI.Class) {
+		plan.LocalABI.Class = railmach.ABIGeneral
+	}
+	for i := range plan.Calls {
+		if arm64DirectPreparedClass(plan.Calls[i].Class) {
+			plan.Calls[i].Class = railmach.ABIGeneral
+		}
+	}
+}
+
 func arm64DirectPreparedLeafClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedLeaf
 }
@@ -722,7 +725,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				return functionError(m, i, "lower", err)
 			}
 			var nativePlan *nativeBackendPlan
-			if arm64RailMachCandidateForTarget(fn.Structured, compilation.HasV128, contracts, input.Target) {
+			if arm64RailMachCandidate(fn.Structured, compilation.HasV128, contracts) {
 				if worker.native == nil {
 					worker.native = &nativeBackendPlanner{parallelCandidates: true}
 				}
@@ -739,6 +742,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 					}
 				}
 			}
+			arm64ConstrainPrivateABI(nativePlan, input.Target)
 			arm64PromoteInlinedPreparedLeaf(nativePlan)
 			if arm64RailMachMandelbrotCorpus(nativePlan) {
 				nativePlan.ABI.FPRClobbers |= (uint64(1) << 30) - 1

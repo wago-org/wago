@@ -275,21 +275,24 @@ func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {
 	}
 }
 
-func TestARM64WindowsKeepsCallAndGlobalFunctionsOnStructuredABI(t *testing.T) {
+func TestARM64WindowsRetainsRailMachWithCanonicalPrivateABI(t *testing.T) {
 	windows := corecompiler.Target{GOOS: "windows", GOARCH: "arm64"}
 	linux := corecompiler.Target{GOOS: "linux", GOARCH: "arm64"}
-	for _, kind := range []wasm.InstrKind{wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrGlobalGet, wasm.InstrGlobalSet} {
-		stack := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: kind}}}
-		if arm64RailMachCandidateForTarget(stack, false, nil, windows) {
-			t.Fatalf("Windows admitted %v to the private RailMach ABI", kind)
-		}
-		if !arm64RailMachCandidateForTarget(stack, false, nil, linux) {
-			t.Fatalf("Linux rejected %v from the ordinary RailMach policy", kind)
-		}
+	plan := &nativeBackendPlan{
+		ABI:      railmach.ABIContract{Class: railmach.ABIPreparedCall, GPRClobbers: 3, CalleeGPRs: 2},
+		LocalABI: railmach.ABIContract{Class: railmach.ABIPreparedLeaf},
+		Calls:    []railmach.CallContract{{Class: railmach.ABIPreparedInt}, {Class: railmach.ABILeafScalar}},
 	}
-	leaf := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrI32Add}}}
-	if !arm64RailMachCandidateForTarget(leaf, false, nil, windows) {
-		t.Fatal("Windows rejected a call-free scalar RailMach leaf")
+	arm64ConstrainPrivateABI(plan, linux)
+	if plan.ABI.Class != railmach.ABIPreparedCall || plan.Calls[0].Class != railmach.ABIPreparedInt {
+		t.Fatal("Linux private register ABI was constrained")
+	}
+	arm64ConstrainPrivateABI(plan, windows)
+	if plan.ABI.Class != railmach.ABIGeneral || plan.LocalABI.Class != railmach.ABIGeneral || plan.Calls[0].Class != railmach.ABIGeneral {
+		t.Fatalf("Windows retained widened private ABI: plan=%v local=%v call=%v", plan.ABI.Class, plan.LocalABI.Class, plan.Calls[0].Class)
+	}
+	if plan.Calls[1].Class != railmach.ABILeafScalar || plan.ABI.GPRClobbers != 3 || plan.ABI.CalleeGPRs != 2 {
+		t.Fatal("Windows constraint changed ordinary ABI metadata")
 	}
 }
 

@@ -306,10 +306,11 @@ Windows ARM64 does not currently select the register-ABI prepared host entry.
 Native CI showed that small direct-entry fixtures passed while the larger JSON
 initializers corrupted linear-memory state and the guard-page handler later
 faulted. The platform therefore keeps the ordinary verified wrapper entry until
-the Windows register/unwind boundary has a native proof. Call- or mutable-global-
-bearing functions also retain the established structured private ABI on that
-platform, while call-free scalar leaves still use RailMach. Linux and Darwin
-retain the measured register-entry and widened private-call paths.
+the Windows register/unwind boundary has a native proof. RailMach remains
+enabled on that platform, but generated functions retain the canonical X8
+argument-vector convention instead of publishing the widened private register
+ABI. Linux and Darwin retain the measured register-entry and widened private-
+call paths.
 
 ## Prioritized work
 
