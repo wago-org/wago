@@ -146,6 +146,36 @@ func TestModuleStackArenaCapIsDeterministicAcrossFunctionOrder(t *testing.T) {
 	}
 }
 
+func TestFunctionResultTypesUseBoundedScratch(t *testing.T) {
+	var sc scratch
+	got := lowerFunctionResultTypes(&sc, []wasm.ValType{wasm.I32, wasm.F64})
+	if len(got) != 2 || got[0] != mtI32 || got[1] != mtF64 {
+		t.Fatalf("lowered result types = %v, want [i32 f64]", got)
+	}
+	if &got[0] != &sc.functionResultTypeArena[0] {
+		t.Fatal("common function results did not use scratch backing")
+	}
+	one := []wasm.ValType{wasm.I32}
+	var sink machineType
+	if allocs := testing.AllocsPerRun(100, func() {
+		sink = lowerFunctionResultTypes(&sc, one)[0]
+	}); allocs != 0 {
+		t.Fatalf("common result lowering allocations = %v, want 0", allocs)
+	}
+	_ = sink
+
+	wide := make([]wasm.ValType, maxScratchFunctionResults+1)
+	overflow := lowerFunctionResultTypes(&sc, wide)
+	if &overflow[0] == &sc.functionResultTypeArena[0] {
+		t.Fatal("oversized function results unexpectedly used bounded scratch")
+	}
+
+	again := lowerFunctionResultTypes(&sc, []wasm.ValType{wasm.I64})
+	if &again[0] != &sc.functionResultTypeArena[0] || again[0] != mtI64 {
+		t.Fatalf("reused result scratch = %v, want [i64]", again)
+	}
+}
+
 func TestHintSizedScratchRemovesFixedArenaBacking(t *testing.T) {
 	saved := uintptr(defaultStackArenaCap-minStackArenaCap) * unsafe.Sizeof(elem{})
 	if want := uintptr(24 << 10); saved < want {
