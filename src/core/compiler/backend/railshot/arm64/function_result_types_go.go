@@ -1,4 +1,4 @@
-//go:build !tinygo
+//go:build arm64 && !tinygo
 
 package arm64
 
