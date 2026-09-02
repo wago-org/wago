@@ -628,3 +628,9 @@ proof used by fannkuch and nbody. It removed 356 native bytes (1,508 to 1,152),
 but twelve alternating 400 ms pairs measured `1.0026x` baseline latency with
 5/12 wins. The fill loop's independent checks overlap its LCG multiply, while
 the hash loop remains load-dependent; the specialization was reverted.
+
+Scalar BLAKE's exact AssemblyScript allocator was also tested with X11/X12
+added to its private callee-preserved set. The allocator grew by 8 native bytes
+and 16 frame bytes while its callers shrank by 56 bytes, but twelve alternating
+400 ms pairs measured `1.0026x` baseline latency with 4/12 wins. The added
+callee save/restore cost exceeded the removed caller repair, so it was reverted.
