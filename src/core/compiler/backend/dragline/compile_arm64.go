@@ -1439,9 +1439,10 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 		a.FmovFromGpr(31, arm64.X16, true)
 	}
 	cachedFloats, cachedFloatCount = arm64RailMachCachedFloatConstants(plan)
+	cachedFloatBase := arm64RailMachCachedFloatRegisterBase(plan.Machine)
 	for index, cached := range cachedFloats[:cachedFloatCount] {
 		a.MovImm64(arm64.X16, cached.bits)
-		a.FmovFromGpr(arm64.Reg(24+index), arm64.X16, cached.kind == wasm.InstrF64Const)
+		a.FmovFromGpr(cachedFloatBase+arm64.Reg(index), arm64.X16, cached.kind == wasm.InstrF64Const)
 	}
 	promotedGlobal = arm64RailMachPromotedGlobal(plan)
 	if promotedGlobal.valid {
@@ -5630,6 +5631,17 @@ type arm64CachedFloatConstant struct {
 	score uint64
 }
 
+func arm64RailMachCachedFloatRegisterBase(machine *railmach.Func) arm64.Reg {
+	if machine != nil {
+		for _, instruction := range machine.Insts {
+			if instruction.Op == wasm.InstrF32Copysign {
+				return 24
+			}
+		}
+	}
+	return 25
+}
+
 func arm64RailMachCachedFloatConstants(plan *nativeBackendPlan) ([3]arm64CachedFloatConstant, int) {
 	var best [3]arm64CachedFloatConstant
 	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.ABI.HasCall {
@@ -5710,7 +5722,7 @@ func arm64RailMachCachedFloatValue(plan *nativeBackendPlan, value railmach.VReg,
 	}
 	for index, candidate := range cached[:count] {
 		if candidate.kind == instruction.Op && candidate.bits == instruction.Aux {
-			return arm64.Reg(24 + index), true
+			return arm64RailMachCachedFloatRegisterBase(plan.Machine) + arm64.Reg(index), true
 		}
 	}
 	return 0, false

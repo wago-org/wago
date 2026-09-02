@@ -1448,8 +1448,8 @@ func TestARM64RailMachCachesHighestCostFloatConstants(t *testing.T) {
 		Locations:            []railmach.Location{{}, {Kind: railmach.LocationRegister, Bank: railmach.BankFPR}},
 		InstructionPositions: []uint32{0, 1, 2, 3},
 	}}
-	if physical, ok := arm64RailMachCachedFloatValue(plan, 1, cached, count); !ok || physical != 24 {
-		t.Fatalf("cached SSA constant = (%d, %v), want (24, true)", physical, ok)
+	if physical, ok := arm64RailMachCachedFloatValue(plan, 1, cached, count); !ok || physical != 25 {
+		t.Fatalf("cached SSA constant = (%d, %v), want (25, true)", physical, ok)
 	}
 	plan.Machine.Transfers = []railmach.EdgeTransfer{{Src: 1}}
 	if _, ok := arm64RailMachCachedFloatValue(plan, 1, cached, count); ok {

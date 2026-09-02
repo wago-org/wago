@@ -1446,10 +1446,14 @@ func nativeARM64AllocatableFPRs(machine *railmach.Func) uint8 {
 		hasF32Copysign = hasF32Copysign || instruction.Op == wasm.InstrF32Copysign
 	}
 	switch {
-	case !hasCall:
-		// V24-V26 may cache repeated floating constants and V27 is the
-		// f32.copysign mask in call-free functions.
+	case !hasCall && hasF32Copysign:
+		// V24-V26 may cache repeated floating constants and V27 holds the
+		// f32.copysign mask.
 		return 24
+	case !hasCall:
+		// Without the f32.copysign mask, V24 joins the allocation while
+		// V25-V27 retain the three floating-constant cache slots.
+		return 25
 	case hasF32Copysign:
 		// Calls disable constant caching, but f32.copysign still reserves V27.
 		return 27

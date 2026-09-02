@@ -50,7 +50,8 @@ func TestNativeARM64AllocatableFPRsRespectReservedRegisters(t *testing.T) {
 		insts []railmach.Inst
 		want  uint8
 	}{
-		{name: "call-free", want: 24},
+		{name: "call-free", want: 25},
+		{name: "call-free f32 copysign", insts: []railmach.Inst{{Op: wasm.InstrF32Copysign}}, want: 24},
 		{name: "call", insts: []railmach.Inst{{Op: wasm.InstrCall}}, want: 28},
 		{name: "call and f32 copysign", insts: []railmach.Inst{{Op: wasm.InstrCall}, {Op: wasm.InstrF32Copysign}}, want: 27},
 	}
