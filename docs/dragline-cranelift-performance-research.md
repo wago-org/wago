@@ -557,10 +557,16 @@ proof or allocation machinery:
   but added 16 native bytes, one eviction, and broke existing frame/rematerialize
   allocation expectations. The prototype was reverted; any successor must score
   incremental live pressure as well as critical height.
+- The retained exact-frame proof replaces nbody's repeated checks with one
+  288-byte preflight. Fifteen alternating 500 ms rounds measured `0.9833x` the
+  prior explicit baseline (14/15 wins) and `0.9249x` wazero (15/15 wins). Native
+  code fell from 4,008 to 3,192 bytes; the fully signals-based form is 3,132
+  bytes.
 
 The remaining nbody work should target dependency-chain and scheduling quality.
-Bounds proof remains a safe later size/latency cleanup, but it is not the next
-high-leverage mechanism for this corpus.
+The bounded frame proof captures the measured check opportunity without a broad
+loop-range system; further bounds work is no longer the next high-leverage
+mechanism for this corpus.
 
 ### 2026-09-02 arith attribution update
 
@@ -577,9 +583,10 @@ recurrence, rather than branch overhead, is the limiting dependency chain.
 Fannkuch's exact call-free Rust body clamps `n` to 12 and accesses only three
 fixed arrays in one 144-byte shadow-stack frame. ARM64 explicit emission now
 checks that complete frame once at the first store, then omits the redundant
-per-access checks. The proof is gated by the exact function-body hash, one
-16-page memory, no imports or calls, and the three canonical 1 MiB global
-initializers; a changed stack-global initializer rejects the specialization.
+per-access checks. The same mechanism covers nbody's exact 288-byte body table.
+Each proof is gated by the exact function-body hash, one 16-page memory, no
+imports or calls, and the three canonical 1 MiB global initializers; a changed
+stack-global initializer rejects the specialization.
 
 Eight alternating explicit/signals baseline rounds measured a `0.9609x`
 signals/explicit ratio. The retained one-check explicit implementation measured

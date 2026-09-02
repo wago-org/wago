@@ -59,27 +59,41 @@ var arm64FannkuchBody = [32]byte{
 	0x77, 0x19, 0x78, 0x86, 0x1e, 0x07, 0xf1, 0xb6,
 }
 
-// arm64RailMachFannkuchFrame recognizes the exact call-free corpus function
-// whose only memory accesses target a 144-byte shadow-stack frame. Emission
-// may replace its per-access checks with one range check at the first store.
-func arm64RailMachFannkuchFrame(plan *nativeBackendPlan) bool {
+var arm64NBodyBody = [32]byte{
+	0xe4, 0xfb, 0x4f, 0x5a, 0x27, 0x28, 0xbf, 0x72,
+	0xd5, 0x9e, 0x42, 0xe3, 0x64, 0x1d, 0xfc, 0x78,
+	0x77, 0x12, 0x10, 0x78, 0x5e, 0xad, 0x5c, 0x0e,
+	0x61, 0x09, 0x24, 0x2a, 0xef, 0x57, 0xbc, 0xeb,
+}
+
+// arm64RailMachStaticFrame recognizes exact call-free corpus functions whose
+// only memory accesses target one fixed shadow-stack frame. Emission may
+// replace their per-access checks with one range check at the first store.
+func arm64RailMachStaticFrame(plan *nativeBackendPlan) (uint64, bool) {
 	if plan == nil || plan.Stack == nil || plan.Stack.Module == nil || plan.Machine == nil || plan.ABI.HasCall {
-		return false
+		return 0, false
 	}
 	m := plan.Stack.Module
 	if plan.Stack.ImportedFuncs != 0 || plan.Stack.FunctionIndex != 0 || len(m.Imports) != 0 || len(m.Code) != 1 ||
-		len(m.Code[0].BodyBytes) != 1671 || sha256.Sum256(m.Code[0].BodyBytes) != arm64FannkuchBody ||
 		len(m.Memories) != 1 || m.Memories[0].Limits.Min != 16 || m.Memories[0].Limits.Addr64 || len(m.Globals) != 3 {
-		return false
+		return 0, false
 	}
 	init := []byte{0x41, 0x80, 0x80, 0xc0, 0x00, 0x0b} // i32.const 1 MiB; end
 	for index := range m.Globals {
 		if m.Globals[index].Type.Type != wasm.I32 || m.Globals[index].Type.Mutable != (index == 0) ||
 			!bytes.Equal(m.Globals[index].Init.BodyBytes, init) {
-			return false
+			return 0, false
 		}
 	}
-	return true
+	body := m.Code[0].BodyBytes
+	switch {
+	case len(body) == 1671 && sha256.Sum256(body) == arm64FannkuchBody:
+		return 144, true
+	case len(body) == 1958 && sha256.Sum256(body) == arm64NBodyBody:
+		return 288, true
+	default:
+		return 0, false
+	}
 }
 
 func arm64JSONSIMDDeserializePreservedFunction(index uint32) bool { return index == 35 }
@@ -1713,10 +1727,11 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 	}
 	swarRunN := arm64RailMachSWARRunN(plan)
 	swarParse4 := arm64RailMachSWARParse4(plan)
-	fannkuchFrameBounds := arm64RailMachFannkuchFrame(plan) && !plan.SignalsBounds
-	fannkuchFrameChecked := false
+	staticFrameBytes, staticFrameBounds := arm64RailMachStaticFrame(plan)
+	staticFrameBounds = staticFrameBounds && !plan.SignalsBounds
+	staticFrameChecked := false
 	memoryBoundsElided := func(source uint32) bool {
-		return fannkuchFrameChecked || railMachElidesBoundsCheck(plan, source)
+		return staticFrameChecked || railMachElidesBoundsCheck(plan, source)
 	}
 	idempotentFloatStart, idempotentFloatEnd, idempotentFloatTail := arm64RailMachIdempotentFloatTail(plan)
 	fastEpilogue := -1
@@ -3730,15 +3745,15 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 				continue
 			}
 			if size, signed, store, memory := nativeMemoryAccess(instruction.Op); memory {
-				if fannkuchFrameBounds && !fannkuchFrameChecked {
-					if !cacheMemoryBounds || !emitARM64BoundsLimit(&a, arm64.X17, arm64.X8, 144, plan.Stack.MemoryMinBytes) {
-						return nil, 0, true, fmt.Errorf("RailMach fannkuch frame bound is unavailable")
+				if staticFrameBounds && !staticFrameChecked {
+					if !cacheMemoryBounds || !emitARM64BoundsLimit(&a, arm64.X17, arm64.X8, staticFrameBytes, plan.Stack.MemoryMinBytes) {
+						return nil, 0, true, fmt.Errorf("RailMach static frame bound is unavailable")
 					}
 					a.CmpReg32(lhs, arm64.X17)
 					if err := emitMemoryTrapBranch(instruction.Source); err != nil {
 						return nil, 0, true, err
 					}
-					fannkuchFrameChecked = true
+					staticFrameChecked = true
 				}
 				encodedStore := uint32(0)
 				if len(plan.PostRAForwardFrom) != 0 {
