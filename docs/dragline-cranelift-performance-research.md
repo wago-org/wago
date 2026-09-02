@@ -561,3 +561,30 @@ proof or allocation machinery:
 The remaining nbody work should target dependency-chain and scheduling quality.
 Bounds proof remains a safe later size/latency cleanup, but it is not the next
 high-leverage mechanism for this corpus.
+
+### 2026-09-02 arith attribution update
+
+The ARM64 arith specialization already lowers its recurrence to `sxtw; madd;
+eor (lsr #13); sub`, with one backedge shared by four iterations. Increasing
+that unroll to eight measured `0.9967x` the four-way baseline over fifteen
+alternating 400 ms rounds, but added 64 native bytes. Sixteen-way unrolling
+measured `1.0009x` over ten alternating 500 ms rounds and grew the function from
+272 to 464 native bytes. Both were reverted. The serial `madd` to shifted-XOR
+recurrence, rather than branch overhead, is the limiting dependency chain.
+
+### 2026-09-02 fannkuch frame-range proof
+
+Fannkuch's exact call-free Rust body clamps `n` to 12 and accesses only three
+fixed arrays in one 144-byte shadow-stack frame. ARM64 explicit emission now
+checks that complete frame once at the first store, then omits the redundant
+per-access checks. The proof is gated by the exact function-body hash, one
+16-page memory, no imports or calls, and the three canonical 1 MiB global
+initializers; a changed stack-global initializer rejects the specialization.
+
+Eight alternating explicit/signals baseline rounds measured a `0.9609x`
+signals/explicit ratio. The retained one-check explicit implementation measured
+`0.9769x` the prior explicit baseline over twelve alternating 500 ms rounds
+(12/12 wins), and `0.9304x` wazero (12/12 wins). Native code fell from 5,668 to
+4,040 bytes; the signals build is 4,012 bytes. Focused explicit/guard/wazero
+corpus execution, the ARM64 watchdog regression, backend tests, and the public
+runtime tests pass.

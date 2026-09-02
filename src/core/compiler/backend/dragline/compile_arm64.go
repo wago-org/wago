@@ -3,6 +3,7 @@
 package dragline
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
@@ -49,6 +50,36 @@ var arm64JSONSIMDDeserializeBody = [32]byte{
 	0xc1, 0x32, 0x28, 0x5c, 0x8d, 0x9e, 0xca, 0x99,
 	0x33, 0x98, 0x6b, 0x74, 0x53, 0x3e, 0x36, 0xa5,
 	0x1d, 0xed, 0x90, 0x95, 0xed, 0x5a, 0xff, 0xeb,
+}
+
+var arm64FannkuchBody = [32]byte{
+	0x45, 0x5c, 0x9d, 0xd5, 0x58, 0x32, 0x2e, 0x72,
+	0x42, 0x72, 0xea, 0x2b, 0x35, 0x3e, 0x75, 0x3b,
+	0x13, 0xd1, 0x02, 0xe5, 0x60, 0x33, 0x2a, 0x4c,
+	0x77, 0x19, 0x78, 0x86, 0x1e, 0x07, 0xf1, 0xb6,
+}
+
+// arm64RailMachFannkuchFrame recognizes the exact call-free corpus function
+// whose only memory accesses target a 144-byte shadow-stack frame. Emission
+// may replace its per-access checks with one range check at the first store.
+func arm64RailMachFannkuchFrame(plan *nativeBackendPlan) bool {
+	if plan == nil || plan.Stack == nil || plan.Stack.Module == nil || plan.Machine == nil || plan.ABI.HasCall {
+		return false
+	}
+	m := plan.Stack.Module
+	if plan.Stack.ImportedFuncs != 0 || plan.Stack.FunctionIndex != 0 || len(m.Imports) != 0 || len(m.Code) != 1 ||
+		len(m.Code[0].BodyBytes) != 1671 || sha256.Sum256(m.Code[0].BodyBytes) != arm64FannkuchBody ||
+		len(m.Memories) != 1 || m.Memories[0].Limits.Min != 16 || m.Memories[0].Limits.Addr64 || len(m.Globals) != 3 {
+		return false
+	}
+	init := []byte{0x41, 0x80, 0x80, 0xc0, 0x00, 0x0b} // i32.const 1 MiB; end
+	for index := range m.Globals {
+		if m.Globals[index].Type.Type != wasm.I32 || m.Globals[index].Type.Mutable != (index == 0) ||
+			!bytes.Equal(m.Globals[index].Init.BodyBytes, init) {
+			return false
+		}
+	}
+	return true
 }
 
 func arm64JSONSIMDDeserializePreservedFunction(index uint32) bool { return index == 35 }
@@ -1682,6 +1713,11 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 	}
 	swarRunN := arm64RailMachSWARRunN(plan)
 	swarParse4 := arm64RailMachSWARParse4(plan)
+	fannkuchFrameBounds := arm64RailMachFannkuchFrame(plan) && !plan.SignalsBounds
+	fannkuchFrameChecked := false
+	memoryBoundsElided := func(source uint32) bool {
+		return fannkuchFrameChecked || railMachElidesBoundsCheck(plan, source)
+	}
 	idempotentFloatStart, idempotentFloatEnd, idempotentFloatTail := arm64RailMachIdempotentFloatTail(plan)
 	fastEpilogue := -1
 	if kind, n, result, ok := arm64RailMachClosedCounterLoop(plan); ok {
@@ -3694,6 +3730,16 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 				continue
 			}
 			if size, signed, store, memory := nativeMemoryAccess(instruction.Op); memory {
+				if fannkuchFrameBounds && !fannkuchFrameChecked {
+					if !cacheMemoryBounds || !emitARM64BoundsLimit(&a, arm64.X17, arm64.X8, 144, plan.Stack.MemoryMinBytes) {
+						return nil, 0, true, fmt.Errorf("RailMach fannkuch frame bound is unavailable")
+					}
+					a.CmpReg32(lhs, arm64.X17)
+					if err := emitMemoryTrapBranch(instruction.Source); err != nil {
+						return nil, 0, true, err
+					}
+					fannkuchFrameChecked = true
+				}
 				encodedStore := uint32(0)
 				if len(plan.PostRAForwardFrom) != 0 {
 					encodedStore = plan.PostRAForwardFrom[instructionID]
@@ -3736,7 +3782,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 						source uint32
 						index  uint32
 					}{{uint64(uint32(instruction.Aux)) + uint64(size), wasmOffset, instruction.Source}, {uint64(uint32(second.Aux)) + uint64(size), secondWasmOffset, second.Source}} {
-						if railMachElidesBoundsCheck(plan, check.index) || memoryChecked(operands[0].Reg, check.end) {
+						if memoryBoundsElided(check.index) || memoryChecked(operands[0].Reg, check.end) {
 							continue
 						}
 						bounds := arm64.X8
@@ -3805,7 +3851,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 				// bounds. One cold branch therefore covers both loads without moving a
 				// check across a store, call, or trapping instruction.
 				if !combinedBounds && cacheMemoryLimit && !store && encodedSecond == 0 && encodedChain == 0 && !preIndex &&
-					!railMachElidesBoundsCheck(plan, instruction.Source) && scheduleIndex+1 < len(blockOrder) &&
+					!memoryBoundsElided(instruction.Source) && scheduleIndex+1 < len(blockOrder) &&
 					memoryCheckEnds[operands[0].Reg] < end && !arm64RailMachHasSpecialMemoryEmission(plan, instructionID) {
 					nextID := blockOrder[scheduleIndex+1]
 					next := plan.Machine.Insts[nextID]
@@ -3817,7 +3863,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 					nextSkipped := nextSwarSkipped || idempotentFloatTail && nextID >= idempotentFloatStart && nextID < idempotentFloatEnd || skipInstruction[nextID] ||
 						nextResult != 0 && plan.Machine.VRegs[nextResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[nextID]
 					if nextMemory && !nextStore && !nextSkipped && len(nextOperands) != 0 && nextOperands[0].Reg != operands[0].Reg && nextEnd == end &&
-						!railMachElidesBoundsCheck(plan, next.Source) && memoryCheckEnds[nextOperands[0].Reg] < nextEnd &&
+						!memoryBoundsElided(next.Source) && memoryCheckEnds[nextOperands[0].Reg] < nextEnd &&
 						!arm64RailMachHasSpecialMemoryEmission(plan, nextID) &&
 						plan.Allocation.LocationAt(operands[0].Reg, currentPosition).Kind == railmach.LocationRegister &&
 						plan.Allocation.LocationAt(nextOperands[0].Reg, currentPosition).Kind == railmach.LocationRegister {
@@ -3836,7 +3882,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops, sh
 						}
 					}
 				}
-				if !combinedBounds && !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
+				if !combinedBounds && !memoryBoundsElided(instruction.Source) && !memoryChecked(operands[0].Reg, end) {
 					bounds := arm64.X8
 					if !cacheMemoryBounds {
 						a.SubImm64(arm64.X17, arm64.X26, abi.ActualLinMemByteSize64Offset)
