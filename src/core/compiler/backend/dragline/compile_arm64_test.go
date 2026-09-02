@@ -1550,6 +1550,14 @@ func TestARM64RailMachCachesHighestCostFloatConstants(t *testing.T) {
 	if physical, ok := arm64RailMachCachedFloatValue(plan, 1, cached, count); !ok || physical != 25 {
 		t.Fatalf("cached SSA constant = (%d, %v), want (25, true)", physical, ok)
 	}
+	if physical := arm64RailMachCachedFloatRegister(plan.Machine, 2); physical != 27 {
+		t.Fatalf("cached constant copy register = %d, want 27", physical)
+	}
+	plan.Machine.Insts = append(plan.Machine.Insts, railmach.Inst{Op: wasm.InstrF32Copysign})
+	if physical := arm64RailMachCachedFloatRegister(plan.Machine, 2); physical != 26 {
+		t.Fatalf("cached constant copy register with f32.copysign = %d, want 26", physical)
+	}
+	plan.Machine.Insts = plan.Machine.Insts[:len(plan.Machine.Insts)-1]
 	plan.Machine.Transfers = []railmach.EdgeTransfer{{Src: 1}}
 	if _, ok := arm64RailMachCachedFloatValue(plan, 1, cached, count); ok {
 		t.Fatal("edge-transferred constant bypassed its allocated location")

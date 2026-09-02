@@ -1439,9 +1439,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 		a.FmovFromGpr(31, arm64.X16, true)
 	}
 	cachedFloats, cachedFloatCount = arm64RailMachCachedFloatConstants(plan)
-	cachedFloatBase := arm64RailMachCachedFloatRegisterBase(plan.Machine)
 	for index, cached := range cachedFloats[:cachedFloatCount] {
-		emitARM64FloatConstant(&a, cachedFloatBase+arm64.Reg(index), cached.bits, cached.kind == wasm.InstrF64Const)
+		emitARM64FloatConstant(&a, arm64RailMachCachedFloatRegister(plan.Machine, index), cached.bits, cached.kind == wasm.InstrF64Const)
 	}
 	promotedGlobal = arm64RailMachPromotedGlobal(plan)
 	if promotedGlobal.valid {
@@ -3447,7 +3446,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				cached := false
 				for index, candidate := range cachedFloats[:cachedFloatCount] {
 					if instruction.Op == candidate.kind && instruction.Aux == candidate.bits {
-						a.FMov(dst, arm64.Reg(24+index), instruction.Op == wasm.InstrF64Const)
+						a.FMov(dst, arm64RailMachCachedFloatRegister(plan.Machine, index), instruction.Op == wasm.InstrF64Const)
 						cached = true
 						break
 					}
@@ -5634,6 +5633,10 @@ func arm64RailMachCachedFloatRegisterBase(machine *railmach.Func) arm64.Reg {
 	return 25
 }
 
+func arm64RailMachCachedFloatRegister(machine *railmach.Func, index int) arm64.Reg {
+	return arm64RailMachCachedFloatRegisterBase(machine) + arm64.Reg(index)
+}
+
 func arm64RailMachCachedFloatConstants(plan *nativeBackendPlan) ([3]arm64CachedFloatConstant, int) {
 	var best [3]arm64CachedFloatConstant
 	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.ABI.HasCall {
@@ -5714,7 +5717,7 @@ func arm64RailMachCachedFloatValue(plan *nativeBackendPlan, value railmach.VReg,
 	}
 	for index, candidate := range cached[:count] {
 		if candidate.kind == instruction.Op && candidate.bits == instruction.Aux {
-			return arm64RailMachCachedFloatRegisterBase(plan.Machine) + arm64.Reg(index), true
+			return arm64RailMachCachedFloatRegister(plan.Machine, index), true
 		}
 	}
 	return 0, false
