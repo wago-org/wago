@@ -34,7 +34,7 @@ func draglineBinaryModule(param, result wasm.ValType, body []byte) []byte {
 }
 
 func TestDraglineNativeTinyPreparedUsesDirectIntegerEntry(t *testing.T) {
-	if runtime.GOARCH != "arm64" {
+	if runtime.GOARCH != "arm64" || !preparedDirectIntSupported {
 		t.Skip("Dragline direct prepared integer entries are currently ARM64-only")
 	}
 	module := draglineUnaryModule(wasm.I32, wasm.I32, []byte{0x20, 0x00, 0x41, 0x07, 0x6a, 0x0b})

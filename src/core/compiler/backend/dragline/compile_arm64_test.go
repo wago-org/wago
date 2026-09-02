@@ -275,6 +275,24 @@ func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {
 	}
 }
 
+func TestARM64WindowsKeepsCallAndGlobalFunctionsOnStructuredABI(t *testing.T) {
+	windows := corecompiler.Target{GOOS: "windows", GOARCH: "arm64"}
+	linux := corecompiler.Target{GOOS: "linux", GOARCH: "arm64"}
+	for _, kind := range []wasm.InstrKind{wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrGlobalGet, wasm.InstrGlobalSet} {
+		stack := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: kind}}}
+		if arm64RailMachCandidateForTarget(stack, false, nil, windows) {
+			t.Fatalf("Windows admitted %v to the private RailMach ABI", kind)
+		}
+		if !arm64RailMachCandidateForTarget(stack, false, nil, linux) {
+			t.Fatalf("Linux rejected %v from the ordinary RailMach policy", kind)
+		}
+	}
+	leaf := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrI32Add}}}
+	if !arm64RailMachCandidateForTarget(leaf, false, nil, windows) {
+		t.Fatal("Windows rejected a call-free scalar RailMach leaf")
+	}
+}
+
 func TestARM64UnboundedLoopStaysOffGoStack(t *testing.T) {
 	plan := &nativeBackendPlan{
 		Stack:   &railssa.StackFunc{MaxLoopDepth: 1},

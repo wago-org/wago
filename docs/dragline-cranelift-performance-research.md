@@ -296,12 +296,20 @@ ratio with 9/15 wins. A shorter six-pair signal-bounds run was noisy and measure
 1.0064x, so the retained claim is the instruction/code-size reduction and the
 explicit paired result, not a signal-bounds latency win.
 
+A subsequent register-only decimal tail-loop experiment removed another 144
+module bytes, but 15 alternating 500 ms signal-bounds pairs were neutral at
+0.9993x with 8/15 wins, so the compiler specialization was rejected. The guard-
+page JSON serialize/deserialize benchmarks added for that experiment remain as
+the repeatable retention gate for future parser work.
+
 Windows ARM64 does not currently select the register-ABI prepared host entry.
 Native CI showed that small direct-entry fixtures passed while the larger JSON
 initializers corrupted linear-memory state and the guard-page handler later
 faulted. The platform therefore keeps the ordinary verified wrapper entry until
-the Windows register/unwind boundary has a native proof; Linux and Darwin retain
-the measured direct-entry path.
+the Windows register/unwind boundary has a native proof. Call- or mutable-global-
+bearing functions also retain the established structured private ABI on that
+platform, while call-free scalar leaves still use RailMach. Linux and Darwin
+retain the measured register-entry and widened private-call paths.
 
 ## Prioritized work
 
