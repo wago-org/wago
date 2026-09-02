@@ -622,3 +622,9 @@ with 0/12 wins.
 Giving vector-local reads and writes equal pinning weight saved 32 bytes in one
 compression function but added a frame load/store pair; it measured `1.0039x`
 baseline latency with 3/12 wins and was reverted.
+
+CRC32's exact 65 KiB shadow-stack frame was tested with the same one-preflight
+proof used by fannkuch and nbody. It removed 356 native bytes (1,508 to 1,152),
+but twelve alternating 400 ms pairs measured `1.0026x` baseline latency with
+5/12 wins. The fill loop's independent checks overlap its LCG multiply, while
+the hash loop remains load-dependent; the specialization was reverted.
