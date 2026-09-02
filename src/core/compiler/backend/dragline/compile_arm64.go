@@ -8434,9 +8434,29 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			if pointer, end, character, next, ok := arm64WhitespaceSkipLoop(sf.Instrs, instrIndex); ok &&
 				localScalarPinned[pointer] && localScalarPinned[end] && localScalarPinned[character] {
 				pointerReg, endReg, characterReg := localRegisters[pointer], localRegisters[end], localRegisters[character]
+				guardLabel, guardedNext, guarded := arm64WhitespaceEndGuard(sf.Instrs, next, pointer, end)
+				var guardTarget *arm64StackControl
+				if guarded && int(guardLabel) < len(controls) {
+					guardTarget = &controls[len(controls)-1-int(guardLabel)]
+					guarded = !guardTarget.result || guardTarget.kind == wasm.InstrLoop
+				} else {
+					guarded = false
+				}
 				loop := a.Len()
 				a.CmpReg32(pointerReg, endReg)
-				exhausted := farBcond(arm64.CondCS)
+				var exhausted arm64StackPatch
+				if guarded {
+					if guardTarget.kind == wasm.InstrLoop {
+						if err := patchBcond(arm64.CondCS, guardTarget.start); err != nil {
+							return nil, 0, nil, err
+						}
+					} else {
+						guardTarget.endReached = true
+						guardTarget.patches = append(guardTarget.patches, farBcond(arm64.CondCS))
+					}
+				} else {
+					exhausted = farBcond(arm64.CondCS)
+				}
 				load := sf.Instrs[instrIndex+6]
 				if !plan.ElidesBoundsCheck(uint32(instrIndex + 6)) {
 					a.MovReg32(arm64.X16, pointerReg)
@@ -8472,8 +8492,11 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				}
 				a.AddImm32(pointerReg, pointerReg, 2)
 				back := a.Branch()
-				if !a.PatchBranch26(back, loop) || patch(exhausted, a.Len()) != nil || patch(nonWhitespace, a.Len()) != nil {
+				if !a.PatchBranch26(back, loop) || !guarded && patch(exhausted, a.Len()) != nil || patch(nonWhitespace, a.Len()) != nil {
 					return nil, 0, nil, fmt.Errorf("byte %d: whitespace loop branch is out of range", instr.Offset)
+				}
+				if guarded {
+					next = guardedNext
 				}
 				metadata.recordSource(a.Len(), sf.Instrs[next-1].Offset)
 				instrIndex = next - 1
@@ -11935,6 +11958,15 @@ func arm64WhitespaceSkipLoop(instrs []railssa.StackInstr, start int) (pointer, e
 		return 0, 0, 0, start, false
 	}
 	return pointer, end, character, start + 32, true
+}
+
+func arm64WhitespaceEndGuard(instrs []railssa.StackInstr, start, pointer, end int) (label uint32, next int, ok bool) {
+	if start+3 >= len(instrs) || instrs[start].Kind != wasm.InstrLocalGet || int(instrs[start].U32()) != pointer ||
+		instrs[start+1].Kind != wasm.InstrLocalGet || int(instrs[start+1].U32()) != end ||
+		instrs[start+2].Kind != wasm.InstrI32GeU || instrs[start+3].Kind != wasm.InstrBrIf {
+		return 0, start, false
+	}
+	return instrs[start+3].U32(), start + 4, true
 }
 
 func arm64BrIfAccumulatorGroup(instrs []railssa.StackInstr, start int) (uint32, int, bool) {

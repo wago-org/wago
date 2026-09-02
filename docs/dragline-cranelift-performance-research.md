@@ -286,6 +286,16 @@ accepted UTF-16 whitespace value (9 through 13 and 32) into the encoded corpus
 input. Small-fill tail decomposition and extra parser-local pinning were
 rejected after their signal-bounds gains remained below the retention threshold.
 
+The following slice folds the parser's immediate post-loop
+`pointer >= end; br_if` into that same whitespace scan. Exhaustion branches
+straight to the original enclosing label, while observing a non-whitespace
+character proves the repeated guard false. This removes 40 bytes from the array
+parser and 96 bytes from the signal-bounds module. Fifteen alternating 500 ms
+explicit-bounds pairs measured `deserializeN` at a **0.9948x** geometric-mean
+ratio with 9/15 wins. A shorter six-pair signal-bounds run was noisy and measured
+1.0064x, so the retained claim is the instruction/code-size reduction and the
+explicit paired result, not a signal-bounds latency win.
+
 ## Prioritized work
 
 ### P0: first-class `v128` in RailMach

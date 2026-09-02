@@ -34,6 +34,44 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 	}
 }
 
+func TestARM64WhitespaceEndGuardRequiresMatchingLocals(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x02, 0x40, // block
+			0x20, 0x00, // local.get 0
+			0x20, 0x01, // local.get 1
+			0x4f,       // i32.ge_u
+			0x0d, 0x00, // br_if 0
+			0x0b, // end block
+			0x0b, // end function
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	label, next, ok := arm64WhitespaceEndGuard(stack.Instrs, 1, 0, 1)
+	if !ok || label != 0 || next != 5 {
+		t.Fatalf("guard = label %d, next %d, ok %t", label, next, ok)
+	}
+	if _, _, ok := arm64WhitespaceEndGuard(stack.Instrs, 1, 0, 0); ok {
+		t.Fatal("guard with a different end local was accepted")
+	}
+	stack.Instrs[3].Kind = wasm.InstrI32GtU
+	if _, _, ok := arm64WhitespaceEndGuard(stack.Instrs, 1, 0, 1); ok {
+		t.Fatal("guard with a different comparison was accepted")
+	}
+}
+
 func TestARM64RailMachTopLevelI32LTGuardRequiresWholeVoidBody(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil))),
