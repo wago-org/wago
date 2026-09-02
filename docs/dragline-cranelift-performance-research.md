@@ -616,3 +616,9 @@ An entry-prefix proof was also prototyped to skip zero initialization for
 declared locals overwritten before their first read. It removed another 128
 module bytes, but BLAKE measured `1.0056x` baseline latency with 0/12 wins,
 likely from unfavorable hot-loop alignment. That experiment was reverted.
+Trading a second operand-stack vector register for another pinned local was
+also rejected: it added 80 module bytes and measured `1.0078x` baseline latency
+with 0/12 wins.
+Giving vector-local reads and writes equal pinning weight saved 32 bytes in one
+compression function but added a frame load/store pair; it measured `1.0039x`
+baseline latency with 3/12 wins and was reverted.
