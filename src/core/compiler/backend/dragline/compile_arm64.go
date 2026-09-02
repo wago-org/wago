@@ -10175,23 +10175,47 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 				continue
 			}
 		}
-		if registerOperandStack && reachable && instrIndex+1 < len(sf.Instrs) && sf.Instrs[instrIndex+1].Kind == wasm.InstrIf &&
+		if registerOperandStack && reachable && instrIndex+1 < len(sf.Instrs) &&
+			(sf.Instrs[instrIndex+1].Kind == wasm.InstrIf || sf.Instrs[instrIndex+1].Kind == wasm.InstrBrIf) &&
 			arm64IntegerComparisonKind(instr.Kind) && len(stackTypes) >= 2 {
 			lhsIndex, rhsIndex := len(stackTypes)-2, len(stackTypes)-1
 			wide := instr.Kind >= wasm.InstrI64Eq && instr.Kind <= wasm.InstrI64GeU
 			typeMatches := wide && stackTypes[lhsIndex] == wasm.I64 && stackTypes[rhsIndex] == wasm.I64 ||
 				!wide && stackTypes[lhsIndex] == wasm.I32 && stackTypes[rhsIndex] == wasm.I32
-			if typeMatches {
+			branch := sf.Instrs[instrIndex+1]
+			branchSupported := branch.Kind == wasm.InstrIf
+			if branch.Kind == wasm.InstrBrIf && int(branch.U32()) <= len(controls) {
+				branchSupported = int(branch.U32()) == len(controls) && len(sf.Results) == 0
+				if int(branch.U32()) < len(controls) {
+					branchSupported = !controls[len(controls)-1-int(branch.U32())].result
+				}
+			}
+			if typeMatches && branchSupported {
 				if wide {
 					a.CmpReg64(operandStackRegisters[lhsIndex], operandStackRegisters[rhsIndex])
 				} else {
 					a.CmpReg32(operandStackRegisters[lhsIndex], operandStackRegisters[rhsIndex])
 				}
 				stackTypes = stackTypes[:lhsIndex]
-				ifInstr := sf.Instrs[instrIndex+1]
-				control := arm64StackControl{kind: wasm.InstrIf, depth: lhsIndex, result: ifInstr.HasResult(), resultType: ifInstr.ValueType(), falsePatch: farBcond(arm64.Cond(uint8(arm64IntegerComparisonCond(instr.Kind)) ^ 1)), parentReachable: true}
-				controls = append(controls, control)
-				metadata.recordSource(a.Len(), ifInstr.Offset)
+				cond := arm64IntegerComparisonCond(instr.Kind)
+				if branch.Kind == wasm.InstrIf {
+					control := arm64StackControl{kind: wasm.InstrIf, depth: lhsIndex, result: branch.HasResult(), resultType: branch.ValueType(), falsePatch: farBcond(arm64.Cond(uint8(cond) ^ 1)), parentReachable: true}
+					controls = append(controls, control)
+				} else if int(branch.U32()) == len(controls) {
+					functionPatches = append(functionPatches, farBcond(cond))
+				} else {
+					target := &controls[len(controls)-1-int(branch.U32())]
+					site := farBcond(cond)
+					if target.kind == wasm.InstrLoop {
+						if err := patch(site, target.start); err != nil {
+							return nil, 0, nil, err
+						}
+					} else {
+						target.endReached = true
+						target.patches = append(target.patches, site)
+					}
+				}
+				metadata.recordSource(a.Len(), branch.Offset)
 				instrIndex++
 				continue
 			}
