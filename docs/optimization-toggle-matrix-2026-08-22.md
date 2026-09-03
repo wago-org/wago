@@ -9,7 +9,7 @@
 - The strongest broadly visible execution wins are ARM64 `reg-abi` (+20.42% disabled penalty), AMD64 `v128-const-cache` (+6.09%), branch folding (+2.30% ARM64 / +3.39% AMD64), AMD64 `inline` (+2.27%), and vector pins (+2.56% ARM64 / +1.84% AMD64).
 - The clearest cost/benefit review target is `loop-precheck`: disabling it cuts full-compile allocation bytes by 6.38% on ARM64 and 6.09% on AMD64 and improves compile time by 5.36% / 3.05%, while broad execution changes only +0.21% / +0.11%; focused rows still lose as much as 3.72% / 2.88%, so this is a default/removal investigation, not an immediate deletion.
 - The cleanest low-consequence implementation candidates were ARM64 `v128-const-cache`, shared `v128-sink`, AMD64 `affine-lea`, AMD64 `call-next-use`, and the default-off experimental `inline-loop-callees`. The ARM64 cache/sink and AMD64 affine-LEA/call-next-use paths have since been retired after their focused screens failed the normal gates.
-- Follow-up implemented: `loop-precheck` and `v128-sink` now default off on both architectures; ARM64 also defaults `deep-fp-pins` off; AMD64 also defaults `tee-spill-elide` and, at this historical checkpoint, `commute-self-update` off. The already-off `inline-loop-callees` override and the failed `call-next-use` and `affine-lea` paths were removed.
+- Follow-up implemented: `loop-precheck` and `v128-sink` now default off on both architectures; ARM64 also defaults `deep-fp-pins` off and, at this historical checkpoint, AMD64 defaulted `commute-self-update` off. The already-off `inline-loop-callees` override and the failed `call-next-use`, `affine-lea`, and `tee-spill-elide` paths were removed.
 - Requalification on 2026-08-29 changed `commute-self-update` to handle the first eligible site through a direct lowering instead of the generic relocation path. The new same-process real-corpus A/B improves execution 3.55% geomean, removes 67.0% of measured backend spills, and leaves compile allocation unchanged, so AMD64 now defaults it on. The original table below remains the record of the older implementation and must not be read as current default policy.
 - Follow-up catalog audit: formerly environment-only families were screened as public flags. Paired screening kept the high-value SIMD/SWAR and focused register/code-selection wins on and defaulted AMD64 `gc-ref-facts` off while retaining it as a GC-workload opt-in. The failed `fcmp-fuse` experiment was subsequently retired rather than kept as a permanent alternate path.
 - In an exact original-commit versus current-commit rerun, the complete branch changed execution by **-0.10% ARM64 / +0.14% AMD64**, while improving compile time by **5.22% / 4.04%**, compile allocation bytes by **6.38% / 9.69%**, and compile allocation counts by **2.93% / 15.51%**.
@@ -25,7 +25,7 @@ through the existing runtime/project optimization map.
 | Architecture | Newly default-off options | Removed surface |
 |---|---|---|
 | ARM64 | `loop-precheck` | `inline-loop-callees`, `v128-const-cache`, `v128-sink`, `deep-fp-pins`, `fcmp-fuse` |
-| AMD64 | `gc-ref-facts`, `loop-precheck`, `tee-spill-elide`, `v128-sink` | `inline-loop-callees`, `fcmp-fuse`, `call-next-use`, `affine-lea` |
+| AMD64 | `gc-ref-facts`, `loop-precheck`, `v128-sink` | `inline-loop-callees`, `fcmp-fuse`, `call-next-use`, `affine-lea`, `tee-spill-elide` |
 
 The final bundle was measured using two separately compiled benchmark binaries:
 one at original commit `ef129fdbb820`, and one at current commit `20936e8621bc`.
@@ -271,7 +271,7 @@ matrix does not measure generated native-code bytes.
 | `frame-elide` | on | no | +0.19% | +0.16% | -0.00% | `json-as.serializeN` +2.26% | 0.64% | mixed/noisy |
 | `compact-i32-frame` | on | no | +0.12% | +0.36% | +0.00% | `json-as-simd.deserializeN` +1.39% | 0.70% | removal-screen |
 | `local-slot-order` | on | no | +0.07% | +0.46% | +0.00% | `json-as.serializeN` +1.43% | 0.56% | removal-screen |
-| `tee-spill-elide` | on | no | +0.04% | -0.13% | +0.00% | `arith.run` +1.12% | 0.56% | removal-screen |
+| `tee-spill-elide` | on | no | +0.04% | -0.13% | +0.00% | `arith.run` +1.12% | 0.56% | retired after failed screening |
 | `commute-self-update` | on | no | +0.08% | -0.20% | +0.00% | `blake-as.hashN` +1.35% | 0.60% | removal-screen |
 | `i64-mask32` | on | no | +0.61% | +0.37% | -0.00% | `xjb-mulhi.runN` +17.13% | 0.71% | retain |
 | `accumulator-immediate` | on | no | -0.06% | -0.43% | +0.00% | `branches.classify` +1.11% | 0.69% | removal-screen |
@@ -344,7 +344,7 @@ For Wago's low-memory direction, this deserves the first focused follow-up. The 
 ### Weak candidates, not first cuts
 
 - ARM64 `deep-fp-pins` is neutral, but it is only one conservative admission condition over the existing pin allocator; deleting it saves little implementation complexity.
-- AMD64 `tee-spill-elide` and `commute-self-update` are neutral and slightly cheaper when disabled, but each is a small local condition. They are reasonable cleanup only after higher-complexity candidates.
+- AMD64 `tee-spill-elide` was retired after its focused check remained below the gates. `commute-self-update` was subsequently reworked and requalified, so its original neutral result is historical rather than removal evidence.
 - AMD64 `unary-sink`, `entry-arg-pins`, and `immutable-table-type` pass the mechanical screen, but their shared or structural roles and focused improvements make them poor first removals.
 
 ### Do not strip based on this matrix
@@ -1895,7 +1895,7 @@ Move exact referenced local homes into zero-reference compact slots. Selected de
 
 #### `tee-spill-elide` — Reuse tee spill homes
 
-Reuse a local.tee frame slot when spilling its still-live scalar result. Selected default: **on**; experimental: **no**; triage: **removal-screen**.
+Reuse a local.tee frame slot when spilling its still-live scalar result. Historical selected default: **on**; experimental: **no**; final triage: **retired after failed screening**.
 
 | Metric | Enabled geomean | Disabled geomean | Disabled delta | Median sample spread |
 |---|---:|---:|---:|---:|

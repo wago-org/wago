@@ -79,10 +79,6 @@ var (
 	// compact compilation swap referenced disp32 homes with equal-type zero-reference
 	// low homes during finalization. WAGO_LOCAL_SLOT_ORDER=0 is the rollback.
 	localSlotOrderEnabled = os.Getenv("WAGO_LOCAL_SLOT_ORDER") != "0"
-	// teeSpillElideEnabled reuses an unpinned scalar local.tee's canonical frame
-	// slot when its still-live result must be evicted from a register. It is
-	// default-off; WAGO_TEE_SPILL_ELIDE=1 opts in.
-	teeSpillElideEnabled = envDefaultOff(os.Getenv("WAGO_TEE_SPILL_ELIDE"))
 	// commuteSelfUpdateEnabled makes a non-fixed destination the accumulator for
 	// commutative x=f(y) op x expressions instead of spilling x first.
 	// WAGO_AMD64_NO_COMMUTE_SELF_UPDATE=1 is the A/B oracle.

@@ -134,7 +134,7 @@ var manifestOptimizationNames = stringSet(
 	"olddest-rhs-sink", "reg-abi", "reg-merge", "small-frame", "st-flags",
 	"shared-adapters", "shared-trap-body", "simd-superopt", "stack-fence", "stack-reg",
 	"store-forward", "store-load-fwd", "store8-flags", "swar-idioms", "tee-sink",
-	"tee-spill-elide", "three-op-sink", "tree-order", "unary-sink", "uxtw-add",
+	"three-op-sink", "tree-order", "unary-sink", "uxtw-add",
 	"v128-const-cache", "v128-direct-results", "v128-pins", "v128-sink",
 	"vex-float-mem", "x8-pin", "zero-branch",
 )

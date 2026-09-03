@@ -296,7 +296,7 @@ func TestExactGCReferenceFactsElideProvenCast(t *testing.T) {
 	}
 }
 
-func TestTeeSpillElisionPreservesGCReferenceFacts(t *testing.T) {
+func TestGCReferenceFactsSurviveIntegerPressure(t *testing.T) {
 	enableGCRefFacts(t)
 	const n = 20
 	body := []byte{
@@ -333,27 +333,21 @@ func TestTeeSpillElisionPreservesGCReferenceFacts(t *testing.T) {
 		t.Fatalf("validate GC tee pressure module: %v", err)
 	}
 
-	saved := teeSpillElideEnabled
-	teeSpillElideEnabled = true
-	defer func() { teeSpillElideEnabled = saved }()
 	var stats ModuleStats
 	if _, err := CompileModuleWith(m, CompileOptions{GCStructHelpers: true, Stats: &stats}); err != nil {
 		t.Fatalf("compile GC tee pressure module: %v", err)
 	}
 	fn := stats.Funcs[0]
-	if got := fn.Peephole["tee-spill-elide"]; got == 0 {
-		t.Fatal("integer tee spill elision was not active under GC reference pressure")
-	}
 	if got := fn.Peephole["gc-ref-cast-elide"]; got != 1 {
 		t.Fatalf("GC reference fact lost across pressure: cast elisions = %d, want 1", got)
 	}
 }
 
-func TestTeeSpillElisionDoesNotReuseGCReferenceHome(t *testing.T) {
+func TestGCReferenceSpillPreservesFacts(t *testing.T) {
 	enableGCRefFacts(t)
-	savedFacts, savedTee := exactGCRefFactsEnabled, teeSpillElideEnabled
-	exactGCRefFactsEnabled, teeSpillElideEnabled = true, true
-	defer func() { exactGCRefFactsEnabled, teeSpillElideEnabled = savedFacts, savedTee }()
+	savedFacts := exactGCRefFactsEnabled
+	exactGCRefFactsEnabled = true
+	defer func() { exactGCRefFactsEnabled = savedFacts }()
 
 	stats := &CodegenStats{}
 	f := fn{a: &encoderamd64.Asm{}, s: newStack(), stats: stats}
@@ -375,9 +369,6 @@ func TestTeeSpillElisionDoesNotReuseGCReferenceHome(t *testing.T) {
 	}
 	if stats.Spills != 1 {
 		t.Fatalf("GC reference spills = %d, want 1", stats.Spills)
-	}
-	if got := stats.Peephole["tee-spill-elide"]; got != 0 {
-		t.Fatalf("GC reference used integer tee spill home %d times", got)
 	}
 }
 

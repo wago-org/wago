@@ -111,7 +111,6 @@
               "store8-flags",
               "swar-idioms",
               "tee-sink",
-              "tee-spill-elide",
               "three-op-sink",
               "tree-order",
               "unary-sink",
