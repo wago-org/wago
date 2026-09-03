@@ -355,6 +355,18 @@ target-specific workload switch; its next attempt should remove all node
 pointers and reduce lookup cost structurally, then qualify that one uniform
 representation on native AMD64.
 
+A follow-up ARM64 prototype converted both deferred-child pointers through the
+same chunk/slot coordinate and proved the intended memory ceiling: `elem` became
+pointer-free and 48 bytes, `json-as` fell again from 196,688 to 167,792 B/op,
+and `many_funcs` fell from 75,992 to 71,896 B/op. It nevertheless failed the
+latency gate. Native `GOGC=off` samples were roughly 3–5% slower because the
+pointer-oriented lowering API turned every child read into a two-level chunk
+lookup; a cached chunk-zero view did not materially recover the loss. That
+prototype was removed. The result narrows the viable design: complete NodeID
+conversion should include register-user tables and other transient node owners,
+allowing a flat movable `[]ValueNode` and one-index access. Merely replacing
+stored pointers while preserving pointer-shaped APIs is not balanced enough.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so
