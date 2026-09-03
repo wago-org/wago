@@ -27,6 +27,7 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
 </body>
 `);
     const metrics = {
+      "CompileFull/tiny": { ns: 10, bytes: 2048 }, "DraglineCompileFull/tiny": { ns: 9, bytes: 3072 }, "WazeroCompile/tiny": { ns: 12, bytes: 4096 },
       "Instantiate/tiny": { ns: 10 }, "DraglineInstantiate/tiny": { ns: 9 }, "WazeroInstantiate/tiny": { ns: 12 },
       "Exec/tiny.add": { ns: 3 }, "DraglineExec/tiny.add": { ns: 2 }, "WazeroExec/tiny.add": { ns: 4 },
     };
@@ -39,14 +40,6 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
         { engine: "v8", wall_nanos: 8, peak_rss_bytes: 160 },
         { engine: "wavm", wall_nanos: 30, peak_rss_bytes: 180 },
       ] }],
-      compileRSS: [
-        { engine: "railshot-native", peak_rss_bytes: 2048 },
-        { engine: "dragline-native", peak_rss_bytes: 3072 },
-        { engine: "wazero", peak_rss_bytes: 4096 },
-        { engine: "cranelift", peak_rss_bytes: 5120 },
-        { engine: "v8", peak_rss_bytes: 6144 },
-        { engine: "wavm", peak_rss_bytes: 7168 },
-      ],
       runtime: [
         { engine: "cranelift", stage: "instantiate", module: "tiny.wasm", ns_per_op: 14 },
         { engine: "cranelift", stage: "exec", module: "tiny.wasm", export: "add", ns_per_op: 5 },
@@ -100,7 +93,9 @@ function assertDOMContract(html) {
   assert.equal(matches(html, /id="perf-(?:amd64|arm64)-tab-memory"/g), 2);
   assert.equal(matches(html, /data-engine-toggles/g), 2);
   assert.equal(matches(html, /data-engine-toggle=/g), 12);
-  assert.equal(matches(html, /data-engine-row/g), 16);
+  assert.equal(matches(html, /data-engine-row/g), 20);
+  assert.match(html, /Compile heap/);
+  assert.doesNotMatch(html, /Compile RSS/);
   assert.match(html, /End-to-end latency/);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);
   assert.match(html, /class="vs__stage"/);

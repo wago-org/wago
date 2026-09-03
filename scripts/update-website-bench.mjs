@@ -278,35 +278,14 @@ function buildGeneralSummary(metrics, raw) {
     for (const run of report.runs ?? []) {
       const engine = compileNames.get(run.engine);
       if (!engine) continue;
-      const values = byEngine.get(engine) ?? { wall: [], rss: [] };
+      const values = byEngine.get(engine) ?? { wall: [] };
       values.wall.push(Number(run.wall_nanos));
-      values.rss.push(Number(run.peak_rss_bytes));
       byEngine.set(engine, values);
     }
     for (const [engine, values] of byEngine) {
-      const aggregate = compile.get(engine) ?? { wall: [], rss: [] };
+      const aggregate = compile.get(engine) ?? { wall: [] };
       aggregate.wall.push(median(values.wall));
-      aggregate.rss.push(median(values.rss));
       compile.set(engine, aggregate);
-    }
-  }
-  if (Array.isArray(raw.compileRSS)) {
-    const rssByEngine = new Map();
-    for (const sample of raw.compileRSS) {
-      const engine = compileNames.get(sample.engine);
-      if (!engine || !(Number(sample.peak_rss_bytes) > 0)) continue;
-      const values = rssByEngine.get(engine) ?? [];
-      values.push(Number(sample.peak_rss_bytes));
-      rssByEngine.set(engine, values);
-    }
-    for (const engine of compileNames.values()) {
-      if (rssByEngine.get(engine)?.length !== raw.compile.length) {
-        throw new Error(`general benchmark has incomplete direct RSS samples for ${engine}`);
-      }
-    }
-    for (const [engine, values] of rssByEngine) {
-      const aggregate = compile.get(engine);
-      if (aggregate) aggregate.rss = values;
     }
   }
   const runtime = raw.runtime ?? raw.wasmtimeRuntime ?? [];
@@ -329,9 +308,11 @@ function buildGeneralSummary(metrics, raw) {
   const compileTime = Object.fromEntries([...compile].map(([engine, values]) => [engine, geomean(values.wall)]));
   return [
     ["Compile mean", "Corpus geometric mean · fresh process", "ns", compileTime],
-    ["Compile memory", "Corpus geometric mean · peak RSS", "bytes", Object.fromEntries(
-      [...compile].map(([engine, values]) => [engine, geomean(values.rss)]),
-    )],
+    ["Compile heap", "Full compile allocation bytes/op", "bytes", {
+      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes"),
+      dragline: metricGeomean(metrics, "DraglineCompileFull/", false, "bytes"),
+      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes"),
+    }],
     ["Instantiate mean", "Runnable corpus geometric mean", "ns", instantiate],
     ["Execution mean", "Runnable corpus geometric mean", "ns", execution],
     ["Call latency", "tiny.add host → Wasm", "ns", tinyCall],
@@ -341,14 +322,14 @@ function buildGeneralSummary(metrics, raw) {
   ].map(([label, sub, kind, values]) => ({ label, sub, kind, values }));
 }
 
-function metricGeomean(metrics, prefix, groupExports = false) {
+function metricGeomean(metrics, prefix, groupExports = false, field = "ns") {
   const groups = new Map();
   for (const [key, metric] of metrics) {
-    if (!key.startsWith(prefix) || !(metric.ns > 0)) continue;
+    if (!key.startsWith(prefix) || !(Number(metric[field]) > 0)) continue;
     const tail = key.slice(prefix.length);
     const group = groupExports ? tail.split(".", 1)[0] : tail;
     const values = groups.get(group) ?? [];
-    values.push(metric.ns);
+    values.push(Number(metric[field]));
     groups.set(group, values);
   }
   return geomean([...groups.values()].map(geomean));
