@@ -37,11 +37,19 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 }
 
 func TestARM64StructuredCallLocalResidencyPlatform(t *testing.T) {
-	if arm64StructuredPinsLocalsAcrossCalls(corecompiler.Target{GOOS: "windows", GOARCH: "arm64"}) {
+	windows := corecompiler.Target{GOOS: "windows", GOARCH: "arm64"}
+	if arm64StructuredPinsLocalsAcrossCalls(windows) {
 		t.Fatal("Windows ARM64 pinned structured locals across calls")
 	}
 	if !arm64StructuredPinsLocalsAcrossCalls(corecompiler.Target{GOOS: "darwin", GOARCH: "arm64"}) {
 		t.Fatal("Darwin ARM64 lost structured local residency")
+	}
+	private := railmach.ABIContract{Class: railmach.ABIPreparedLeaf, GPRClobbers: 3}
+	if got := arm64PublishedContract(private, windows); got != (railmach.ABIContract{}) {
+		t.Fatalf("Windows ARM64 published private contract %#v", got)
+	}
+	if got := arm64PublishedContract(private, corecompiler.Target{GOOS: "darwin", GOARCH: "arm64"}); got != private {
+		t.Fatalf("Darwin ARM64 private contract = %#v, want %#v", got, private)
 	}
 }
 
@@ -860,7 +868,7 @@ func TestARM64StructuredBranchesDirectlyOnPinnedComparisons(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := metrics.Functions[1]
-	if got.RailMachFinalized || got.NativeBytes > 160 {
+	if got.RailMachFinalized || runtime.GOOS != "windows" && got.NativeBytes > 160 {
 		t.Fatalf("structured direct-branch metrics = %#v", got)
 	}
 }
@@ -928,8 +936,12 @@ func TestARM64StructuredStoresResidentScalarsDirectly(t *testing.T) {
 			boundsBranches++
 		}
 	}
-	if boundsBranches != 6 {
-		t.Fatalf("resident memory accesses emitted %d bounds branches, want 6", boundsBranches)
+	wantBoundsBranches := 6
+	if runtime.GOOS == "windows" {
+		wantBoundsBranches = 7
+	}
+	if boundsBranches != wantBoundsBranches {
+		t.Fatalf("resident memory accesses emitted %d bounds branches, want %d", boundsBranches, wantBoundsBranches)
 	}
 }
 

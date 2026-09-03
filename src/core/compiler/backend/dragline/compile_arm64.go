@@ -237,7 +237,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			if cacheErr == nil && hit {
 				requiresMOPS = requiresMOPS || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64MOPS)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64MOPS)%64)) != 0
 				requiresSHA2 = requiresSHA2 || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64SHA2)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64SHA2)%64)) != 0
-				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
+				moduleContracts[i] = arm64PublishedContract(railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}, input.Target)
 				if !captureGC && artifact.ContextFreeLoop {
 					contextFreeLoopPrepared = markARM64DirectPrepared(contextFreeLoopPrepared, len(m.Code), i)
 				}
@@ -330,6 +330,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			if i < len(seedCandidates) && seedCandidates[i] {
 				publishedContract = seedContracts[i]
 			}
+			publishedContract = arm64PublishedContract(publishedContract, input.Target)
 			moduleContracts[i] = publishedContract
 		}
 		var plan *railssa.EmissionPlan
@@ -521,6 +522,17 @@ func arm64DirectPreparedClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedIndirect || class == railmach.ABIPreparedCall || class == railmach.ABIPreparedLeaf
 }
 
+// Windows generated-to-generated calls stay on the canonical wrapper ABI.
+// RailMach functions still use their verified private contract internally, but
+// that contract is not published to callers until the Windows foreign-stack
+// call boundary is qualified end to end.
+func arm64PublishedContract(contract railmach.ABIContract, target corecompiler.Target) railmach.ABIContract {
+	if target.GOOS == "windows" && arm64DirectPreparedClass(contract.Class) {
+		return railmach.ABIContract{}
+	}
+	return contract
+}
+
 func arm64DirectPreparedLeafClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedLeaf
 }
@@ -670,6 +682,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				if i < len(candidates) && candidates[i] {
 					published = seeds[i]
 				}
+				published = arm64PublishedContract(published, input.Target)
 				contracts[i] = published
 			}
 			var plan *railssa.EmissionPlan
