@@ -1014,7 +1014,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 		}
 		switch normalizedElemRefType(refType) {
-		case ValExternRef, ValExnRef:
+		case ValExternRef, ValExnRef, ValAnyRef:
 			if !value.Null {
 				return fmt.Errorf("externref element contains a non-null initializer")
 			}

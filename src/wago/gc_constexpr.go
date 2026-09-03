@@ -283,6 +283,34 @@ func evalCompiledGCConstExpr(expr []byte, collector *gc.Collector, mapping *gcTy
 				return 0, err
 			}
 			stack = append(stack, gcConstStackValue{bits: binary.LittleEndian.Uint64(b)})
+		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e: // integer add/sub/mul
+			right, err := pop()
+			if err != nil {
+				return 0, err
+			}
+			left, err := pop()
+			if err != nil {
+				return 0, err
+			}
+			if left.kind != gcConstNumeric || right.kind != gcConstNumeric {
+				return 0, fmt.Errorf("integer constant expression operand is not numeric")
+			}
+			var bits uint64
+			switch op {
+			case 0x6a:
+				bits = uint64(uint32(left.bits) + uint32(right.bits))
+			case 0x6b:
+				bits = uint64(uint32(left.bits) - uint32(right.bits))
+			case 0x6c:
+				bits = uint64(uint32(left.bits) * uint32(right.bits))
+			case 0x7c:
+				bits = left.bits + right.bits
+			case 0x7d:
+				bits = left.bits - right.bits
+			case 0x7e:
+				bits = left.bits * right.bits
+			}
+			stack = append(stack, gcConstStackValue{bits: bits})
 		case 0xfd: // SIMD prefix
 			sub, err := r.U32()
 			if err != nil {

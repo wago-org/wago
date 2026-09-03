@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// The reference-types/function-references proposals let a funcref/externref
-// global or element be initialized with a bottom-type null (ref.null nofunc /
-// ref.null noextern), which validation accepts as a subtype of func/extern.
+// The GC proposal lets a funcref/externref global or element be initialized
+// with a bottom-type null (ref.null nofunc / ref.null noextern), which validation
+// accepts as a subtype of func/extern. The default policy keeps GC disabled.
 // wat2wasm (wabt) on the test hosts cannot emit these heap types, so the
 // fixtures below are assembled by hand. Regression coverage for the three
 // const-expr sites that previously whitelisted only func (-16) / extern (-17):
@@ -32,7 +32,15 @@ func TestConstExprBottomRefNullGlobals(t *testing.T) {
 		0x01, 0x67, 0x03, 0x00, // "g" global 0
 		0x01, 0x65, 0x03, 0x01, // "e" global 1
 	}
-	rt := NewRuntime()
+	defaultRT := NewRuntime()
+	if m, err := defaultRT.Compile(mod); err == nil {
+		m.Close()
+		defaultRT.Close()
+		t.Fatal("default GC-off runtime accepted bottom ref-null globals")
+	}
+	defaultRT.Close()
+
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
 	defer rt.Close()
 	m, err := rt.Compile(mod)
 	if err != nil {
@@ -78,7 +86,15 @@ func TestElementExprBottomRefNull(t *testing.T) {
 		0x01,             // 1 element expr
 		0xd0, 0x73, 0x0b, // ref.null nofunc; end
 	}
-	rt := NewRuntime()
+	defaultRT := NewRuntime()
+	if m, err := defaultRT.Compile(mod); err == nil {
+		m.Close()
+		defaultRT.Close()
+		t.Fatal("default GC-off runtime accepted a bottom ref-null element")
+	}
+	defaultRT.Close()
+
+	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
 	defer rt.Close()
 	m, err := rt.Compile(mod)
 	if err != nil {

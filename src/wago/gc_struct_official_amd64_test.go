@@ -58,6 +58,7 @@ func compileStagedGCStruct(data []byte) (*Compiled, error) {
 	features := cfg.frontendFeatures()
 	features.TypedFunctionReferences = true
 	features.GCStructProducts = true
+	features.NullReferenceProducts = true
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 

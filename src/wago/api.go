@@ -931,36 +931,6 @@ func isExactGlobalGetBody(body []byte, index uint32) bool {
 	return err == nil && end == 0x0b && r.BytesLeft() == 0
 }
 
-func moduleUsesTypedTableReferences(m *wasm.Module) bool {
-	if m == nil {
-		return false
-	}
-	for _, rec := range m.Types {
-		if len(rec.SubTypes) > 1 {
-			return true
-		}
-	}
-	check := func(ref wasm.RefType) bool {
-		return ref.Heap().Kind() == wasm.HeapTypeIndex || !ref.Nullable() || ref.Exact()
-	}
-	for _, im := range m.Imports {
-		if im.Type.Kind == wasm.ExternTable && check(im.Type.TableType().Ref) {
-			return true
-		}
-	}
-	for _, table := range m.Tables {
-		if check(table.Type.Ref) {
-			return true
-		}
-	}
-	for _, elem := range m.Elements {
-		if elem.Kind.Kind == wasm.ElemTypedExprs && check(elem.Kind.Ref) {
-			return true
-		}
-	}
-	return false
-}
-
 func directCrossTailRegABI(ft *wasm.CompType) bool {
 	if ft == nil || len(ft.Results) > 2 {
 		return false
@@ -1118,7 +1088,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	requirements := analyzeModuleRequirements(m)
 	requiredByModule := requirements.features
-	if !requiredByModule.IsEnabled(CoreFeatureTypedFunctionReferences) && !requiredByModule.IsEnabled(CoreFeatureGC) && !moduleUsesTypedTableReferences(m) {
+	if !requiredByModule.IsEnabled(CoreFeatureTypedFunctionReferences) && !requiredByModule.IsEnabled(CoreFeatureGC) {
 		features.TypedFunctionReferences = false
 		features.TypedTailCalls = false
 	}
@@ -1913,7 +1883,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 				return nil, fmt.Errorf("element %d: %w", i, err)
 			}
 		}
-		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, ValueTypeIndex: internValueType(&c.ValueTypes, exactType), HasValueType: true, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
+		hasValueType := e.Kind.Kind != wasm.ElemFuncs
+		var valueTypeIndex uint32
+		if hasValueType {
+			valueTypeIndex = internValueType(&c.ValueTypes, exactType)
+		}
+		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, ValueTypeIndex: valueTypeIndex, HasValueType: hasValueType, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
 		if i < len(c.passiveElems) {
 			state := init
 			if e.Mode.Kind != wasm.ElemPassive {
@@ -2240,17 +2215,24 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, constExprCtx
 				}
 			}
 			if refType == ValI31Ref {
-				body := ex.BodyBytes
-				if len(body) == 0 {
-					var err error
-					body, err = wasm.EncodeExpr(ex)
-					if err != nil {
-						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d encode: %w", i, err)
+				if len(body) != 0 && body[0] == 0xd0 {
+					result, err := evalConstExprBytesWithContext(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
+					if err == nil && isNullReferenceConstExprResult(result) {
+						out[i] = RefInit{Null: true}
+						continue
 					}
 				}
 				result, matched, err := evalI31ConstExprBytes(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
-				if err != nil || !matched {
+				if err != nil {
 					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d is not an exact i31 initializer: %v", i, err)
+				}
+				if !matched {
+					result, err = evalConstExprBytesWithContext(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
+					if err != nil || len(result.Expr) == 0 {
+						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d is not an exact i31 initializer: %v", i, err)
+					}
+					out[i] = RefInit{Expr: append([]byte(nil), result.Expr...)}
+					continue
 				}
 				if len(result.Expr) != 0 {
 					r := wasm.NewReader(result.Expr)
@@ -2269,9 +2251,17 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, constExprCtx
 				continue
 			}
 			result, exprErr := evalConstExprBytesWithContext(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
-			if exprErr == nil && len(result.Expr) != 0 {
-				out[i] = RefInit{Expr: append([]byte(nil), result.Expr...)}
-				continue
+			if exprErr == nil {
+				if len(result.Expr) != 0 {
+					out[i] = RefInit{Expr: append([]byte(nil), result.Expr...)}
+					continue
+				}
+				// Core 3 element expressions may use a null from any reference
+				// hierarchy. The Release 2 fallback parser only covers func/extern.
+				if isNullReferenceConstExprResult(result) {
+					out[i] = RefInit{Null: true}
+					continue
+				}
 			}
 			payload, err := wasm.ParseElementExpr(ex)
 			if err != nil {
@@ -2291,6 +2281,10 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, constExprCtx
 	default:
 		return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("unsupported element kind %d", e.Kind.Kind)
 	}
+}
+
+func isNullReferenceConstExprResult(result constExprResult) bool {
+	return result.vtype.Kind() == wasm.ValRef && result.bits == 0 && result.GlobalIndex < 0 && result.FuncIndex < 0
 }
 
 func funcrefExprPayload(e wasm.Expr) (uint32, error) {
@@ -3156,7 +3150,7 @@ func (c *Compiled) validate() error {
 				if value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 {
 					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has multiple initializer forms", kind, seg, k)
 				}
-				gcConstExpr := c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
+				gcConstExpr := c.requiredFeatures.IsEnabled(CoreFeatureGC) || c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
 				if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
 					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid GC expression", kind, seg, k)
 				}
@@ -3436,6 +3430,20 @@ func (c *Compiled) validateCodecMetadata() error {
 			}
 			refType := normalizedElemRefType(elem.RefType)
 			for j, value := range elem.Values {
+				if len(value.Expr) != 0 {
+					required, err := c.elemExactType(elem)
+					if err != nil {
+						return fmt.Errorf("compiled metadata invalid: %s element %d exact type: %w", kind, i, err)
+					}
+					gcConstExpr := c.requiredFeatures.IsEnabled(CoreFeatureGC) || c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
+					if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
+						return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid GC expression", kind, i, j)
+					}
+					if err := c.validateGCConstExpr(value.Expr, required, len(c.Globals)); err != nil {
+						return fmt.Errorf("compiled metadata invalid: %s element %d value %d GC expression: %w", kind, i, j, err)
+					}
+					continue
+				}
 				if value.HasGlobal || value.Null || refType == ValFuncRef {
 					continue
 				}

@@ -880,6 +880,8 @@ type RefInit struct {
 // destination, RefType selects the 32-byte funcref or 8-byte externref runtime
 // representation, Mode preserves active/passive/declarative semantics, and
 // Values carries structural null/ref.func payloads without live addresses.
+// HasValueType is false for the legacy function-index segment encoding, whose
+// exact element type is non-null (ref func).
 type ElemInit struct {
 	TableIndex     uint32
 	RefType        ValType
@@ -1232,6 +1234,25 @@ func (c *Compiled) tableExactType(index int) (ValueTypeDescriptor, error) {
 }
 
 func (c *Compiled) elemExactType(elem ElemInit) (ValueTypeDescriptor, error) {
+	// The legacy function-index encoding declares a non-null (ref func) segment,
+	// but predates structural value-type metadata. Keep HasValueType false as its
+	// persisted marker so MVP artifacts remain feature-free while Core 3 can use
+	// the segment to initialize a non-null function table. A null initializer
+	// identifies older hand-built nullable metadata instead.
+	if !elem.HasValueType && normalizedElemRefType(elem.RefType) == ValFuncRef {
+		legacy := true
+		for _, value := range elem.Values {
+			if value.Null || value.HasGlobal || value.I31Wrap || len(value.Expr) != 0 {
+				legacy = false
+				break
+			}
+		}
+		if legacy {
+			exact, _ := valueTypeDescriptorFromValType(ValFuncRef)
+			exact.Ref.Nullable = false
+			return exact, nil
+		}
+	}
 	return exactValueType(normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, c.ValueTypes, c.Types)
 }
 
