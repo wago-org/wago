@@ -823,9 +823,6 @@ func (f *fn) rorv(d, n, m Reg, w bool) {
 // boolean.) AArch64 has no memory operands, so a slot/local-ref/mem-ref right
 // operand is loaded into a register and compared register-register.
 func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
-	if node.typ.isFloat() { // deferred ordered float compare materialized as a value
-		return f.condenseFCompareValue(node, dest)
-	}
 	if cc, ok := f.tryMaskedEqzToFlags(node); ok {
 		result := dest
 		if result == regNone {

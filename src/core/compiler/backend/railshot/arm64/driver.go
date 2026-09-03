@@ -83,21 +83,6 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 	return nil
 }
 
-// fcmpMaybeDefer lowers an ordered float compare (gt/ge/lt/le). It defers the
-// compare as a fusable node only when the very next opcode is if (0x04) or br_if
-// (0x0d), so that consumer condenses it directly to FCMP + B.cond; otherwise it
-// emits the eager 0/1 boolean. The node therefore never lingers on the operand
-// stack past its immediate branch consumer.
-func (f *fn) fcmpMaybeDefer(r *wasm.Reader, op wOp, f64 bool) {
-	if f.opt(optFCmpFuse) {
-		if next, ok := r.Peek(); ok && (next == 0x04 || next == 0x0d) {
-			f.pushFCompare(op, f64)
-			return
-		}
-	}
-	f.fcmp(op, f64)
-}
-
 // emitPlain lowers a single non-control opcode (leaves, arithmetic, memory,
 // conversions). Called only when reachable; dead code is skipped by the body loop.
 func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
@@ -477,26 +462,26 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x5c:
 		f.fcmp(opNe, false)
 	case 0x5d:
-		f.fcmpMaybeDefer(r, opLtS, false)
+		f.fcmp(opLtS, false)
 	case 0x5e:
-		f.fcmpMaybeDefer(r, opGtS, false)
+		f.fcmp(opGtS, false)
 	case 0x5f:
-		f.fcmpMaybeDefer(r, opLeS, false)
+		f.fcmp(opLeS, false)
 	case 0x60:
-		f.fcmpMaybeDefer(r, opGeS, false)
+		f.fcmp(opGeS, false)
 	// f64 comparisons
 	case 0x61:
 		f.fcmp(opEq, true)
 	case 0x62:
 		f.fcmp(opNe, true)
 	case 0x63:
-		f.fcmpMaybeDefer(r, opLtS, true)
+		f.fcmp(opLtS, true)
 	case 0x64:
-		f.fcmpMaybeDefer(r, opGtS, true)
+		f.fcmp(opGtS, true)
 	case 0x65:
-		f.fcmpMaybeDefer(r, opLeS, true)
+		f.fcmp(opLeS, true)
 	case 0x66:
-		f.fcmpMaybeDefer(r, opGeS, true)
+		f.fcmp(opGeS, true)
 
 	// f32 unary/binary
 	case 0x8b:

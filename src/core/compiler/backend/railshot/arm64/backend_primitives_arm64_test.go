@@ -69,30 +69,6 @@ func TestBackendPrimitiveHelpers(t *testing.T) {
 	}
 }
 
-func TestCondenseDeferredFloatCompareValue(t *testing.T) {
-	for _, tc := range []struct {
-		op  wOp
-		typ machineType
-		dst Reg
-	}{
-		{opGtS, mtF32, regNone},
-		{opLeS, mtF64, X5},
-	} {
-		f := &fn{a: &a64.Asm{}, s: newStack()}
-		f.pushValue(storage{kind: stConst, typ: tc.typ, cval: int64(floatBits(1, tc.typ == mtF64))})
-		f.pushValue(storage{kind: stConst, typ: tc.typ, cval: int64(floatBits(2, tc.typ == mtF64))})
-		f.pushFCompare(tc.op, tc.typ == mtF64)
-		node := f.s.back()
-		got := f.condenseFCompareValue(node, tc.dst)
-		if tc.dst != regNone && got != tc.dst {
-			t.Fatalf("compare result = %v, want %v", got, tc.dst)
-		}
-		if node.kind != ekValue || node.st.typ != mtI32 || node.op != opNone || len(f.a.B) == 0 {
-			t.Fatalf("condensed node = %#v, code = %d bytes", node, len(f.a.B))
-		}
-	}
-}
-
 func TestCrossInstanceAndMixedRegisterCallLowering(t *testing.T) {
 	cross := &fn{a: &a64.Asm{}, s: newStack(), m: &wasm.Module{}, memSizeReg: regNone}
 	intResult := &wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I64}}

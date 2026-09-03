@@ -84,7 +84,7 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkArm64(t *testing.T) {
 
 func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
 	names := []string{
-		"simd-superopt", "swar-idioms", "interval-region-pins", "fcmp-fuse", "magic-div",
+		"simd-superopt", "swar-idioms", "interval-region-pins", "magic-div",
 		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "entry-init-elision",
 		"v128-direct-results",
 	}

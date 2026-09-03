@@ -167,7 +167,7 @@ stack-reg
 
 ### Complete current peephole/explain event vocabulary
 
-These 95 names are the union emitted by current AMD64 and ARM64 source. Candidate
+These 93 names are the union emitted by current AMD64 and ARM64 source. Candidate
 and bookkeeping events are included deliberately so the audit trail is complete:
 
 ```text
@@ -178,7 +178,7 @@ call-local-reload-gp, call-local-store, call-localset-fuse, call-result-x0,
 cmp-branch-fuse, cmp-tee-branch-fuse, commute-mem-left, compare-setcc,
 const-fold, deep-fp-local-pin, div-by-const, eh-root-clear, eh-root-init,
 entry-arg-local-pin, eqz-fold, ext-elim, extend-wrap-elim,
-fcmp-branch-fuse, fcmp-value-fallback, fcommute_mem,
+fcommute_mem,
 final-cast-array-len-fuse, final-cast-struct-get-fuse, float-local-sink,
 float-minmax-local-sink, frame-adjust-elide, gc-array-len-repeat,
 gc-dead-new, gc-known-array-len, gc-known-struct-get, gc-ref-cast-elide,

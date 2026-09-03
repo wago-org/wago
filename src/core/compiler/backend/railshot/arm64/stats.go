@@ -66,10 +66,6 @@ var (
 	// first straight-line access is a set/tee. The kill switch is the A/B oracle.
 	entryInitElisionEnabled = os.Getenv("WAGO_ARM64_NO_ENTRY_INIT_ELISION") != "1"
 
-	// fcmpFuseEnabled gates float compare→branch fusion (FCMP + B.cond instead of
-	// FCMP + CSET + branch). It is default-off after paired screening;
-	// WAGO_FCMP_FUSE=1 opts in and WAGO_NO_FCMP_FUSE=1 rolls it back.
-	fcmpFuseEnabled = envDefaultOff(os.Getenv("WAGO_FCMP_FUSE")) && os.Getenv("WAGO_NO_FCMP_FUSE") != "1"
 	// zeroBranchEnabled selects CBZ/CBNZ for flag-dead i32 control tests instead
 	// of materializing NZCV with CMP before B.cond. The kill switch is the A/B
 	// oracle for the one-word lowering.

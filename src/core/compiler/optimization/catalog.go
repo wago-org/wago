@@ -367,7 +367,6 @@ var catalog = []Definition{
 	both("simd-superopt", "SIMD superoptimization", "recognize bounded multi-operation SIMD sequences"),
 	both("swar-idioms", "SWAR idioms", "recognize bounded open-coded packed-byte algorithms"),
 	both("interval-region-pins", "Interval-region pins", "reuse registers across bounded straight-line local lifetimes"),
-	bothOff("fcmp-fuse", "Float compare fusion", "fuse ordered floating-point comparisons into conditional branches"),
 	both("magic-div", "Magic division", "lower constant integer division through multiply-high sequences"),
 	both("shared-trap-body", "Shared trap bodies", "share repeated cold trap bodies in size-oriented code"),
 	both("shared-adapters", "Shared adapters", "share byte-identical host adapters in size-oriented code"),

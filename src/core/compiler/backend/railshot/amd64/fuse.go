@@ -166,11 +166,6 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 			invert = !invert
 		}
 	}
-	// Ordered float relational nodes (gt/ge/lt/le) lower to UCOMIS + a NaN-safe
-	// condition instead of a materialized boolean. eq/ne are never deferred here.
-	if node.typ.isFloat() {
-		return f.condenseFCompareToFlags(node, invert)
-	}
 	if !invert {
 		if cc, ok := f.tryMaskedEqzToFlags(node); ok {
 			f.erase(node)

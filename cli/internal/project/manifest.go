@@ -125,7 +125,7 @@ var manifestOptimizationNames = stringSet(
 	"affine-lea", "assoc-tree", "bmi2-rorx", "bounds-facts", "branch-fold",
 	"call-next-use", "commute-self-update", "compact-i32-frame",
 	"dead-gc-new", "entry-arg-pins", "entry-init-elision", "ext-fp-pins",
-	"fcmp-fuse", "frame-elide", "frame-elide-reghomed", "gc-native-alloc",
+	"frame-elide", "frame-elide-reghomed", "gc-native-alloc",
 	"gc-ref-facts",
 	"immutable-poly-fastpath", "immutable-table", "immutable-table-type", "inline",
 	"inline-callfree", "interval-region-pins", "leaf-scratch-pins", "legacy-fp-pins",

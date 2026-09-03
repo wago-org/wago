@@ -11,7 +11,7 @@
 - The cleanest low-consequence implementation candidates are ARM64 `v128-const-cache`, shared `v128-sink`, AMD64 `affine-lea`, AMD64 `call-next-use`, and the default-off experimental `inline-loop-callees`. Each needs focused code-size and hit-count evidence before removal.
 - Follow-up implemented: `loop-precheck` and `v128-sink` now default off on both architectures; ARM64 also defaults `deep-fp-pins` off; AMD64 also defaults `call-next-use`, `affine-lea`, `tee-spill-elide`, and, at this historical checkpoint, `commute-self-update` off. The already-off `inline-loop-callees` override and its unreachable backend paths were removed.
 - Requalification on 2026-08-29 changed `commute-self-update` to handle the first eligible site through a direct lowering instead of the generic relocation path. The new same-process real-corpus A/B improves execution 3.55% geomean, removes 67.0% of measured backend spills, and leaves compile allocation unchanged, so AMD64 now defaults it on. The original table below remains the record of the older implementation and must not be read as current default policy.
-- Follow-up catalog audit: 14 formerly environment-only families are now public flags. Paired screening keeps the high-value SIMD/SWAR and focused register/code-selection wins on, defaults `fcmp-fuse` off on both architectures, and defaults AMD64 `gc-ref-facts` off while retaining it as a GC-workload opt-in.
+- Follow-up catalog audit: formerly environment-only families were screened as public flags. Paired screening kept the high-value SIMD/SWAR and focused register/code-selection wins on and defaulted AMD64 `gc-ref-facts` off while retaining it as a GC-workload opt-in. The failed `fcmp-fuse` experiment was subsequently retired rather than kept as a permanent alternate path.
 - In an exact original-commit versus current-commit rerun, the complete branch changed execution by **-0.10% ARM64 / +0.14% AMD64**, while improving compile time by **5.22% / 4.04%**, compile allocation bytes by **6.38% / 9.69%**, and compile allocation counts by **2.93% / 15.51%**.
 - Percentages below are **disabled versus enabled**. Positive execution time means disabling made execution slower (the optimization helped); negative means disabling made execution faster.
 - This is a broad screening matrix, not automatic deletion authority. Correctness/safety responsibilities, native-code size, static hit counts, and focused reruns still gate removal.
@@ -24,8 +24,8 @@ through the existing runtime/project optimization map.
 
 | Architecture | Newly default-off options | Removed surface |
 |---|---|---|
-| ARM64 | `deep-fp-pins`, `fcmp-fuse`, `loop-precheck` | `inline-loop-callees`, `v128-const-cache`, `v128-sink` |
-| AMD64 | `affine-lea`, `call-next-use`, `fcmp-fuse`, `gc-ref-facts`, `loop-precheck`, `tee-spill-elide`, `v128-sink` | `inline-loop-callees` |
+| ARM64 | `loop-precheck` | `inline-loop-callees`, `v128-const-cache`, `v128-sink`, `deep-fp-pins`, `fcmp-fuse` |
+| AMD64 | `affine-lea`, `call-next-use`, `gc-ref-facts`, `loop-precheck`, `tee-spill-elide`, `v128-sink` | `inline-loop-callees`, `fcmp-fuse` |
 
 The final bundle was measured using two separately compiled benchmark binaries:
 one at original commit `ef129fdbb820`, and one at current commit `20936e8621bc`.
@@ -65,6 +65,21 @@ worth retaining. Making the catalog entry AMD64-only preserves the catalog as th
 single source of truth without introducing architecture-dependent defaults for
 one shared definition.
 
+### Follow-on float-compare-fusion removal
+
+The shared `fcmp-fuse` experiment was removed after its paired screening failed
+to justify a permanent alternate lowering path. Disabling it changed aggregate
+execution by -0.21% on ARM64 and +0.07% on AMD64, improved compile time by 0.92%
+and 0.09%, and left compile allocation unchanged. Its worst focused slowdowns
+were 2.46% and 1.33%, respectively, which did not clear the generated-code gate.
+
+The deletion removes the deferred float-comparison node construction, branch
+and value fallback lowerings, per-compilation option, environment controls,
+manifest/schema entry, and experiment-only primitive test on both architectures.
+The ordinary eager float comparison path and semantic execution coverage for all
+ordered comparisons, `if`, `br_if`, and NaN inputs remain. This is a code-size and
+maintenance reduction; it is not claimed as a compile-heap win.
+
 ### Follow-on ARM64 deep-float-pin removal
 
 ARM64 `deep-fp-pins` was also removed rather than left as a permanent default-off
@@ -98,7 +113,7 @@ They are now first-class catalog entries without changing their defaults:
 
 | Scope | Newly public optimization families |
 |---|---|
-| Both architectures | `simd-superopt`, `swar-idioms`, `interval-region-pins`, `fcmp-fuse`, `magic-div`, `shared-trap-body`, `shared-adapters` |
+| Both architectures | `simd-superopt`, `swar-idioms`, `interval-region-pins`, `magic-div`, `shared-trap-body`, `shared-adapters` |
 | ARM64 | `zero-branch`, `mul-add-fuse`, `entry-init-elision`, `v128-direct-results` |
 | AMD64 | `dead-gc-new`, `gc-ref-facts`, `gc-native-alloc` |
 
@@ -118,7 +133,7 @@ the same four-sample ABBA procedure. The complete detailed captures remain under
 | ARM64 | `simd-superopt` | +2.16% | +1.44% | -0.00% | +80.02% | keep on |
 | ARM64 | `swar-idioms` | +1.78% | +0.87% | -0.00% | +29.61% | keep on |
 | ARM64 | `interval-region-pins` | -0.11% | -1.31% | +0.00% | +6.72% | keep on |
-| ARM64 | `fcmp-fuse` | -0.21% | -0.92% | +0.00% | +2.46% | default off |
+| ARM64 | `fcmp-fuse` | -0.21% | -0.92% | +0.00% | +2.46% | retired after failed screening |
 | ARM64 | `magic-div` | +0.41% | -0.79% | -0.11% | +5.03% | keep on |
 | ARM64 | `shared-trap-body` | -0.31% | +0.74% | +0.00% | +0.86% | keep; size-only |
 | ARM64 | `shared-adapters` | -0.16% | +0.25% | -0.00% | +1.12% | keep; size-only |
@@ -129,7 +144,7 @@ the same four-sample ABBA procedure. The complete detailed captures remain under
 | AMD64 | `simd-superopt` | +0.13% | +0.77% | -0.00% | +1.34% | keep on |
 | AMD64 | `swar-idioms` | +1.41% | +0.16% | -0.00% | +27.77% | keep on |
 | AMD64 | `interval-region-pins` | +0.45% | +0.47% | -0.04% | +10.21% | keep on |
-| AMD64 | `fcmp-fuse` | +0.07% | -0.09% | -0.00% | +1.33% | default off |
+| AMD64 | `fcmp-fuse` | +0.07% | -0.09% | -0.00% | +1.33% | retired after failed screening |
 | AMD64 | `magic-div` | -0.14% | -0.16% | -0.11% | +0.77% | keep shared default; ARM64 wins |
 | AMD64 | `shared-trap-body` | +0.02% | +0.02% | +0.00% | +0.68% | keep; size-only |
 | AMD64 | `shared-adapters` | +0.10% | -0.32% | +0.00% | +1.11% | keep; size-only |

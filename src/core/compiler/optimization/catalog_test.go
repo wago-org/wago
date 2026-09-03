@@ -96,15 +96,13 @@ func TestV128ConstCacheIsAMD64Only(t *testing.T) {
 
 func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
 	wantDefaultOff := map[string]map[string]bool{
-		"amd64": {"fcmp-fuse": true, "gc-ref-facts": true},
-		"arm64": {"fcmp-fuse": true},
+		"amd64": {"gc-ref-facts": true},
 	}
 	want := map[string][]string{
 		"amd64": {
 			"simd-superopt",
 			"swar-idioms",
 			"interval-region-pins",
-			"fcmp-fuse",
 			"magic-div",
 			"shared-trap-body",
 			"shared-adapters",
@@ -116,7 +114,6 @@ func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
 			"simd-superopt",
 			"swar-idioms",
 			"interval-region-pins",
-			"fcmp-fuse",
 			"magic-div",
 			"shared-trap-body",
 			"shared-adapters",

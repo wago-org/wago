@@ -14,7 +14,6 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
 	optimization.Bind("swar-idioms", &swarIdiomsEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
-	optimization.Bind("fcmp-fuse", &fcmpFuseEnabled),
 	optimization.Bind("magic-div", &magicDivEnabled),
 	optimization.Bind("shared-trap-body", &sharedTrapBodyEnabled),
 	optimization.Bind("shared-adapters", &sharedAdaptersEnabled),
@@ -64,7 +63,6 @@ var (
 	optSIMDSuperopt         = optimizationBindings.Option("simd-superopt")
 	optSWARIdioms           = optimizationBindings.Option("swar-idioms")
 	optIntervalRegionPins   = optimizationBindings.Option("interval-region-pins")
-	optFCmpFuse             = optimizationBindings.Option("fcmp-fuse")
 	optMagicDiv             = optimizationBindings.Option("magic-div")
 	optSharedTrapBody       = optimizationBindings.Option("shared-trap-body")
 	optSharedAdapters       = optimizationBindings.Option("shared-adapters")
