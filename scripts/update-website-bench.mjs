@@ -278,13 +278,15 @@ function buildGeneralSummary(metrics, raw) {
     for (const run of report.runs ?? []) {
       const engine = compileNames.get(run.engine);
       if (!engine) continue;
-      const values = byEngine.get(engine) ?? { wall: [] };
+      const values = byEngine.get(engine) ?? { wall: [], rss: [] };
       values.wall.push(Number(run.wall_nanos));
+      values.rss.push(Number(run.peak_rss_bytes));
       byEngine.set(engine, values);
     }
     for (const [engine, values] of byEngine) {
-      const aggregate = compile.get(engine) ?? { wall: [] };
+      const aggregate = compile.get(engine) ?? { wall: [], rss: [] };
       aggregate.wall.push(median(values.wall));
+      aggregate.rss.push(median(values.rss));
       compile.set(engine, aggregate);
     }
   }
@@ -306,13 +308,10 @@ function buildGeneralSummary(metrics, raw) {
     externalRuntimeMetric(runtime, id, "exec", "tiny", "add"),
   ]));
   const compileTime = Object.fromEntries([...compile].map(([engine, values]) => [engine, geomean(values.wall)]));
+  const compileRSS = Object.fromEntries([...compile].map(([engine, values]) => [engine, geomean(values.rss)]));
   return [
     ["Compile mean", "Corpus geometric mean · fresh process", "ns", compileTime],
-    ["Compile heap", "Go heap allocation bytes/op · full compile", "bytes", {
-      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes"),
-      dragline: metricGeomean(metrics, "DraglineCompileFull/", false, "bytes"),
-      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes"),
-    }],
+    ["Compile process RSS", "Peak resident set · fresh compile process", "bytes", compileRSS],
     ["Instantiate mean", "Runnable corpus geometric mean", "ns", instantiate],
     ["Execution mean", "Runnable corpus geometric mean", "ns", execution],
     ["Call latency", "tiny.add host → Wasm", "ns", tinyCall],

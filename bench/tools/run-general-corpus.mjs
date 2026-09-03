@@ -46,7 +46,7 @@ try {
     await writeReport();
   }
 
-  for (const worker of options.runtimeWorkers) {
+  if (!options.compileOnly) for (const worker of options.runtimeWorkers) {
     const expectedRows = options.runtimeRounds * manifest.modules.reduce(
       (sum, module) => sum + (Array.isArray(module.exec) && module.exec.length ? module.exec.length + 1 : 0),
       0,
@@ -92,7 +92,9 @@ try {
     await writeReport();
   }
   await writeReport();
-  console.log(`wrote ${options.out}: ${compileReports.length} modules, ${runtimeRows.length} external runtime samples`);
+  console.log(options.compileOnly
+    ? `wrote ${options.out}: ${compileReports.length} modules, compile only`
+    : `wrote ${options.out}: ${compileReports.length} modules, ${runtimeRows.length} external runtime samples`);
 } finally {
   await rm(work, { recursive: true, force: true });
 }
@@ -139,7 +141,14 @@ function parseArgs(args) {
     compileRounds: positiveInt(values.get("compile-rounds") ?? "6"),
     runtimeRounds: positiveInt(values.get("runtime-rounds") ?? "4"),
     benchtimeNs: positiveInt(values.get("benchtime-ns") ?? "100000000"),
+    compileOnly: booleanValue(values.get("compile-only") ?? "false"),
   };
+}
+
+function booleanValue(value) {
+  if (value === "true") return true;
+  if (value === "false") return false;
+  usage();
 }
 
 function positiveInt(value) {
@@ -149,7 +158,7 @@ function positiveInt(value) {
 }
 
 function usage() {
-  console.error("usage: run-general-corpus.mjs --compiler-harness BIN --wasmtime-worker BIN --wavm-worker BIN --out FILE [--resume FILE] [--v8 BIN] [--v8-worker FILE] [--commit SHA] [--cpu NAME] [--config FILE] [--manifest FILE] [--compile-rounds N] [--runtime-rounds N] [--benchtime-ns N]");
+  console.error("usage: run-general-corpus.mjs --compiler-harness BIN --wasmtime-worker BIN --wavm-worker BIN --out FILE [--resume FILE] [--v8 BIN] [--v8-worker FILE] [--commit SHA] [--cpu NAME] [--config FILE] [--manifest FILE] [--compile-rounds N] [--runtime-rounds N] [--benchtime-ns N] [--compile-only true|false]");
   process.exit(2);
 }
 

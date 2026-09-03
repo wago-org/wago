@@ -94,8 +94,15 @@ function assertDOMContract(html) {
   assert.equal(matches(html, /data-engine-toggles/g), 2);
   assert.equal(matches(html, /data-engine-toggle=/g), 12);
   assert.equal(matches(html, /data-engine-row/g), 20);
-  assert.match(html, /Compile heap/);
-  assert.doesNotMatch(html, /Compile RSS/);
+  assert.match(html, /Compile process RSS/);
+  assert.match(html, /Peak resident set · fresh compile process/);
+  assert.doesNotMatch(html, /Compile heap/);
+  const rssStart = html.indexOf("Compile process RSS");
+  const rssEnd = html.indexOf('<div class="vs__row" data-engine-row>', rssStart);
+  const rssRow = html.slice(rssStart, rssEnd);
+  for (const engine of ["railshot", "dragline", "wazero", "wasmtime", "v8", "wavm"]) {
+    assert.match(rssRow, new RegExp(`data-engine="${engine}"`));
+  }
   assert.match(html, /End-to-end latency/);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);
   assert.match(html, /class="vs__stage"/);
