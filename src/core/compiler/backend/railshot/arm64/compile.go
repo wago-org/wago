@@ -1630,7 +1630,6 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, policy CodegenPolicy) ([]funcHints, funcHintSidecar, []int64, error) {
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
-	localCounts := make([]int, n)
 	totalLocals := 0
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
@@ -1644,7 +1643,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		if count > int(^uint(0)>>1)-totalLocals {
 			return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint locals overflow")
 		}
-		localCounts[i] = count
+		allHints[i].nLocals = count
 		totalLocals += count
 	}
 	if uint64(totalLocals) > uint64(^uint32(0)) {
@@ -1663,7 +1662,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	localAt := 0
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
-		nLocals := localCounts[i]
+		nLocals := allHints[i].nLocals
 		sparseAccum.Reset(nGlobals)
 		h := funcHintsWithStorage(localScores[localAt : localAt+nLocals])
 		h.localLastGet = localLastGets[localAt : localAt+nLocals]

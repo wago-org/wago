@@ -56,6 +56,13 @@ investigation gate; with GC disabled the median improved by 1.3%. Native-code
 hashes for many-function, global-heavy, indirect-dispatch, and json-as fixtures
 were identical to the parent revision.
 
+ARM64 then removed a duplicate host-width local-count array by writing the
+validated count directly into the compact summary before scanning. The
+1,024-function stress case dropped again from 134,168 to 125,976 B/op and from
+21 to 20 allocations; `many_funcs` dropped from 125,240 to 122,552 B/op and
+from 39 to 38 allocations. This follows function structure only and introduces
+no workload or corpus-specific admission path.
+
 This is a staged reduction, not satisfaction of the 32--48-byte common-record
 target. Index-width, further retention work, sidecar pooling, and policy deletion
 remain subject to the gates below.
