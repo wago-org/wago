@@ -167,6 +167,24 @@ func TestFunctionResultTypesUseBoundedScratchArm64(t *testing.T) {
 	}
 }
 
+func TestModuleGlobalMembershipUsesBorrowedBoundedPinsArm64(t *testing.T) {
+	const nGlobals = 4096
+	f := fn{
+		m:           &wasm.Module{Globals: make([]wasm.Global, nGlobals)},
+		globalReg:   make([]Reg, nGlobals),
+		globalDirty: make([]bool, nGlobals),
+	}
+	pins := []moduleGlobalPin{{global: 123, reg: moduleGlobalRegs[0]}}
+	if allocs := testing.AllocsPerRun(100, func() {
+		f.installModuleGlobals(pins)
+	}); allocs != 0 {
+		t.Fatalf("module-global membership allocations = %v, want 0", allocs)
+	}
+	if !f.isModuleGlobal(123) || f.isModuleGlobal(124) {
+		t.Fatalf("module-global membership mismatch")
+	}
+}
+
 func TestHintSizedModuleStackArenaExecArm64(t *testing.T) {
 	m := mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{0x00, 0x41, 0x2a, 0x0b})
 	if got := runArm64(t, m); got != 42 {

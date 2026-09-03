@@ -12,10 +12,19 @@ import (
 )
 
 func TestFuncHintsSize(t *testing.T) {
-	const want = 200
+	const want = 152
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
 	}
+}
+
+func globalHint(h funcHints, index uint32) (score uint32, eligible bool) {
+	for _, hint := range h.sparseGlobals {
+		if hint.Index == index {
+			return hint.Score, hint.Eligible
+		}
+	}
+	return 0, false
 }
 
 func TestConstantPreloadHints(t *testing.T) {
@@ -368,11 +377,10 @@ func TestScanBodyBytesLoopWeightedScoresAndEligibility(t *testing.T) {
 	if h.localScore[0] != 10 || h.localScore[1] != 20 {
 		t.Fatalf("local scores = %v, want [10 20]", h.localScore)
 	}
-	if h.globalScore[1] != 10 || h.globalScore[2] != 20 {
-		t.Fatalf("global scores = %v, want g1=10 g2=20", h.globalScore)
-	}
-	if !h.globalElig[1] || !h.globalElig[2] {
-		t.Fatalf("global eligibility = %v, want globals 1 and 2 eligible", h.globalElig)
+	for index, wantScore := range map[uint32]uint32{1: 10, 2: 20} {
+		if score, eligible := globalHint(h, index); score != wantScore || !eligible {
+			t.Fatalf("global %d hint = (%d, %v), want (%d, true)", index, score, eligible, wantScore)
+		}
 	}
 }
 
@@ -389,11 +397,8 @@ func TestScanBodyBytesRepeatedGlobalsAreEligibleOncePerCallFreeLoop(t *testing.T
 	if err != nil {
 		t.Fatalf("scan repeated global loop: %v", err)
 	}
-	if h.globalScore[0] != 40 { // two gets + one set, all at loop weight 10
-		t.Fatalf("global score = %d, want 40", h.globalScore[0])
-	}
-	if !h.globalElig[0] {
-		t.Fatalf("global eligibility = %v, want global 0 eligible", h.globalElig)
+	if score, eligible := globalHint(h, 0); score != 40 || !eligible { // two gets + one set, all at loop weight 10
+		t.Fatalf("global hint = (%d, %v), want (40, true)", score, eligible)
 	}
 }
 
@@ -413,11 +418,8 @@ func TestScanBodyBytesLoopWithCallDisablesGlobalEligibility(t *testing.T) {
 	if !h.hasCall {
 		t.Fatalf("hints = %+v, want hasCall", h)
 	}
-	if h.globalScore[0] == 0 {
-		t.Fatalf("global scores = %v, want global 0 scored", h.globalScore)
-	}
-	if h.globalElig[0] {
-		t.Fatalf("global eligibility = %v, call-containing loop should not be eligible", h.globalElig)
+	if score, eligible := globalHint(h, 0); score == 0 || eligible {
+		t.Fatalf("global hint = (%d, %v), want nonzero and ineligible", score, eligible)
 	}
 }
 
@@ -471,8 +473,8 @@ func TestModuleGlobalScoreScanMatchesFullHints(t *testing.T) {
 				if err != nil {
 					t.Fatalf("full scan body %x: %v", body, err)
 				}
-				for g, score := range h.globalScore {
-					want[g] += int64(score)
+				for _, hint := range h.sparseGlobals {
+					want[hint.Index] += int64(hint.Score)
 				}
 			}
 			if len(got) != len(want) {
@@ -507,9 +509,9 @@ func TestModuleGlobalScoreScanSupportsASTBodies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("compute module global scores for ast body: %v", err)
 	}
-	want := scanBody(m.Code[0].Body, 0, 1, 0).globalScore
-	if len(got) != 1 || got[0] != int64(want[0]) || got[0] != 30 {
-		t.Fatalf("AST aggregate scores = %v, want %v", got, want)
+	want, _ := globalHint(scanBody(m.Code[0].Body, 0, 1, 0), 0)
+	if len(got) != 1 || got[0] != int64(want) || got[0] != 30 {
+		t.Fatalf("AST aggregate scores = %v, want %d", got, want)
 	}
 	pins := pickModuleGlobals(m, m.GlobalCount(), got)
 	if len(pins) != 1 || pins[0].global != 0 {
@@ -629,8 +631,8 @@ func TestManyGlobalHintScoresEligibilityAndModulePinning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan many-global body: %v", err)
 	}
-	if h.globalScore[hotGlobal] != 30 || !h.globalElig[hotGlobal] {
-		t.Fatalf("hot global hints score=%d elig=%v, want score 30 and eligible", h.globalScore[hotGlobal], h.globalElig[hotGlobal])
+	if score, eligible := globalHint(h, hotGlobal); score != 30 || !eligible {
+		t.Fatalf("hot global hint=(%d, %v), want (30, true)", score, eligible)
 	}
 	globals := make([]wasm.Global, 256)
 	for i := range globals {
@@ -703,14 +705,17 @@ func TestScanFuncBodyUsesDecodedBodyBytes(t *testing.T) {
 	if !h.hasCall || !h.callsSelf {
 		t.Fatalf("decoded recursive body hints = %+v, want call+self-call", h)
 	}
-	if h.localScore[0] == 0 || h.globalScore[0] == 0 || h.globalScore[1] == 0 || h.globalScore[2] == 0 {
-		t.Fatalf("decoded byte-backed body produced missing scores: locals=%v globals=%v", h.localScore, h.globalScore)
+	score0, _ := globalHint(h, 0)
+	score1, eligible1 := globalHint(h, 1)
+	score2, eligible2 := globalHint(h, 2)
+	if h.localScore[0] == 0 || score0 == 0 || score1 == 0 || score2 == 0 {
+		t.Fatalf("decoded byte-backed body produced missing scores: locals=%v globals=%v", h.localScore, h.sparseGlobals)
 	}
-	if !h.globalElig[1] {
-		t.Fatalf("decoded loop without call should mark global 1 eligible: %v", h.globalElig)
+	if !eligible1 {
+		t.Fatalf("decoded loop without call should mark global 1 eligible: %v", h.sparseGlobals)
 	}
-	if h.globalElig[2] {
-		t.Fatalf("decoded loop with self call should not mark global 2 eligible: %v", h.globalElig)
+	if eligible2 {
+		t.Fatalf("decoded loop with self call should not mark global 2 eligible: %v", h.sparseGlobals)
 	}
 }
 

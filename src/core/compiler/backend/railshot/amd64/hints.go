@@ -71,8 +71,7 @@ type funcHints struct {
 
 	// Loop-weighted hotness: local.get/global.get = 1×, set/tee = 2×, ×loopWeight
 	// per enclosing loop level.
-	localScore  []uint32
-	globalScore []uint32
+	localScore []uint32
 	// localLastGet records the byte offset immediately after each local's final
 	// local.get. It is filled by the production byte scanner and lets bounded
 	// regional allocation release a cache register without another body walk.
@@ -82,14 +81,9 @@ type funcHints struct {
 	// value cannot be observed, so the prologue may skip initializing them.
 	entryInitialized uint64
 
-	// globalElig[g]: global g is accessed inside a loop whose subtree contains NO
-	// call. Value-pinning such a global in a call-making function is a win: the
-	// per-iteration memory traffic disappears while the coherence spill/reload
-	// lands only on the (sparse) calls outside that loop. The innermost enclosing
-	// loop decides — if it calls, no outer loop can be call-free.
-	globalElig []bool
-	// sparseGlobals replaces the dense score/eligibility slices for modules whose
-	// functions-by-globals matrix would exceed the bounded dense fast path.
+	// sparseGlobals retains one record for each touched global. Eligible marks a
+	// global accessed inside a call-free loop, where pinning cannot move coherence
+	// traffic into that loop.
 	sparseGlobals []shared.GlobalHint
 	globalAccum   *shared.GlobalHintAccumulator
 
@@ -133,14 +127,24 @@ func (h *funcHints) noteControlDepth(depth int) {
 }
 
 func newFuncHints(nLocals, nGlobals int) funcHints {
-	h := funcHintsWithStorage(make([]uint32, nLocals), make([]uint32, nGlobals), make([]bool, nGlobals))
+	h := funcHintsWithStorage(make([]uint32, nLocals))
 	h.localLastGet = make([]uint32, nLocals)
 	h.nLocals = nLocals
+	h.globalAccum = new(shared.GlobalHintAccumulator)
+	h.globalAccum.Reset(nGlobals)
 	return h
 }
 
-func funcHintsWithStorage(localScore, globalScore []uint32, globalElig []bool) funcHints {
-	return funcHints{localScore: localScore, globalScore: globalScore, globalElig: globalElig}
+func funcHintsWithStorage(localScore []uint32) funcHints {
+	return funcHints{localScore: localScore}
+}
+
+func (h funcHints) finishGlobalHints() funcHints {
+	if h.globalAccum != nil {
+		h.sparseGlobals = h.globalAccum.AppendTo(h.sparseGlobals[:0])
+		h.globalAccum = nil
+	}
+	return h
 }
 
 func addHotness(scores []uint32, idx uint32, delta int64) {
@@ -158,18 +162,12 @@ func addHotness(scores []uint32, idx uint32, delta int64) {
 func (h *funcHints) addGlobalHotness(idx uint32, delta int64) {
 	if h.globalAccum != nil {
 		h.globalAccum.Add(idx, delta)
-		return
 	}
-	addHotness(h.globalScore, idx, delta)
 }
 
 func (h *funcHints) markGlobalEligible(idx uint32) {
 	if h.globalAccum != nil {
 		h.globalAccum.MarkEligible(idx)
-		return
-	}
-	if int(idx) < len(h.globalElig) {
-		h.globalElig[idx] = true
 	}
 }
 
@@ -246,7 +244,8 @@ func (t *globalEligibilityTracker) pop(frame int) {
 func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32) (funcHints, error) {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanFuncBodyInto(fn, nLocals, nGlobals, selfIdx, h, &elig)
+	h, err := scanFuncBodyInto(fn, nLocals, nGlobals, selfIdx, h, &elig)
+	return h.finishGlobalHints(), err
 }
 
 func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) (funcHints, error) {
@@ -331,7 +330,7 @@ func directGCResolverInstruction(m *wasm.Module, gcTypeLayouts []codegen.GCTypeL
 func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig, nil, nil, false)
+	return scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig, nil, nil, false).finishGlobalHints()
 }
 
 func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) funcHints {
@@ -612,7 +611,8 @@ func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (func
 func scanBodyBytesMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint32, memory64 bool) (funcHints, error) {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanBodyBytesIntoMemory64(body, nLocals, nGlobals, selfIdx, h, &elig, memory64)
+	h, err := scanBodyBytesIntoMemory64(body, nLocals, nGlobals, selfIdx, h, &elig, memory64)
+	return h.finishGlobalHints(), err
 }
 
 func scanBodyBytesIntoMemory64(body []byte, nLocals int, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, memory64 bool) (funcHints, error) {

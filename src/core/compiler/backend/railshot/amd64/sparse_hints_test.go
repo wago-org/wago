@@ -8,8 +8,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func TestComputeModuleHintsRetainsSparseGlobalsPastDenseCutoff(t *testing.T) {
-	const count = 1025
+func TestComputeModuleHintsRetainsOnlyTouchedGlobals(t *testing.T) {
+	const count = 128
 	body := []byte{0x03, 0x40, 0x23, 0x7b, 0x1a, 0x0b, 0x0b} // loop { global.get 123; drop }
 	m := sparseGlobalHintModule(count, body)
 	hints, aggregate, err := computeModuleHints(m, m.GlobalCount(), 0, nil, false)
@@ -20,7 +20,7 @@ func TestComputeModuleHintsRetainsSparseGlobalsPastDenseCutoff(t *testing.T) {
 		t.Fatalf("aggregate[123] = %d, want %d", got, count*10)
 	}
 	for i, h := range hints {
-		if h.globalScore != nil || h.globalElig != nil || len(h.sparseGlobals) != 1 || h.sparseGlobals[0].Index != 123 || h.sparseGlobals[0].Score != 10 || !h.sparseGlobals[0].Eligible {
+		if len(h.sparseGlobals) != 1 || h.sparseGlobals[0].Index != 123 || h.sparseGlobals[0].Score != 10 || !h.sparseGlobals[0].Eligible {
 			t.Fatalf("function %d sparse hints = %+v", i, h.sparseGlobals)
 		}
 	}

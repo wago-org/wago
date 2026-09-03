@@ -284,15 +284,15 @@ type fn struct {
 	globalReg   []Reg
 	globalDirty []bool // value-pinned global g was written → needs epilogue write-back
 
-	// moduleGlobal[g] marks g as MODULE-pinned (WARP's model): every function in
-	// the module holds g's live value in the SAME reserved register, making it a
+	// moduleGlobals is the bounded module-owned set of MODULE-pinned globals. Every
+	// function holds each global's live value in the SAME reserved register, making it a
 	// whole-module invariant like linMemReg/linMem — register-ABI calls and returns
 	// carry no spill/reload for it at all. The cell is synced only at the
 	// wasm↔native boundary (offset-0 prologues/epilogues, adapter exit, trap
 	// stubs) and around wrapper-ABI calls (whose callee's offset-0 prologue
 	// reloads). This is what makes the AssemblyScript shadow-stack pointer
 	// (touched in every function) free at call boundaries.
-	moduleGlobal []bool
+	moduleGlobals []moduleGlobalPin
 
 	// Control-flow state (Phase 3).
 	ctrl                []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
@@ -1039,6 +1039,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if opts.SyncHostSlots < coreruntime.MaxHostArity || opts.SyncHostSlots > coreruntime.MaxSyncHostSlots {
 		return nil, fmt.Errorf("arm64: synchronous host slot capacity %d is outside %d..%d", opts.SyncHostSlots, coreruntime.MaxHostArity, coreruntime.MaxSyncHostSlots)
 	}
+	// This is a module invariant. Resolve it once rather than rescanning imports
+	// for every function (and again on an unpinned retry).
+	opts.SyncHostCalls = opts.SyncHostCalls || opts.GCStructHelpers || opts.GCArrayHelpers || moduleUsesSyncHostCalls(m, opts.ImportBindings)
 	selection, err := optimizationBindings.ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas)
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
@@ -1573,10 +1576,9 @@ func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs i
 }
 
 // computeModuleHints scans every function body ONCE, returning per-function hints
-// plus the module-wide aggregated global scores. scanFuncBody already computes a
-// per-function globalScore, and the module score for a global is just the sum of
-// those across functions — so summing here removes a second full-body
-// immediate-decoding pass per function (the standalone global-scores scan). The
+// plus the module-wide aggregated global scores. The scan uses one reusable dense
+// accumulator and retains only the globals each function actually touches. This
+// avoids both a second body pass and a functions-by-globals retained matrix. The
 // standalone computeModuleGlobalScores is retained as the parity oracle in tests.
 func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHints, []int64, error) {
 	return computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, currentCodegenPolicy())
@@ -1602,25 +1604,12 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		localCounts[i] = count
 		totalLocals += count
 	}
-	if nGlobals > 0 && n > int(^uint(0)>>1)/nGlobals {
-		return nil, nil, fmt.Errorf("function hint globals overflow")
-	}
 	localScores := make([]uint32, totalLocals)
 	localLastGets := make([]uint32, totalLocals)
-	denseGlobals := uint64(n)*uint64(nGlobals) <= 1<<20
-	var globalScores []uint32
-	var globalEligibility []bool
-	if denseGlobals {
-		globalScores = make([]uint32, n*nGlobals)
-		globalEligibility = make([]bool, n*nGlobals)
-	}
 	type hintRange struct{ start, end int }
-	var sparseRanges []hintRange
+	sparseRanges := make([]hintRange, n)
 	var sparseGlobals []shared.GlobalHint
 	var sparseAccum shared.GlobalHintAccumulator
-	if !denseGlobals {
-		sparseRanges = make([]hintRange, n)
-	}
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
 	var agg []int64
 	if nGlobals > 0 && n > 0 {
@@ -1631,15 +1620,9 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		nLocals := localCounts[i]
-		var h funcHints
-		if denseGlobals {
-			globalAt := i * nGlobals
-			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], globalScores[globalAt:globalAt+nGlobals], globalEligibility[globalAt:globalAt+nGlobals])
-		} else {
-			sparseAccum.Reset(nGlobals)
-			h = funcHintsWithStorage(localScores[localAt:localAt+nLocals], nil, nil)
-			h.globalAccum = &sparseAccum
-		}
+		sparseAccum.Reset(nGlobals)
+		h := funcHintsWithStorage(localScores[localAt : localAt+nLocals])
+		h.globalAccum = &sparseAccum
 		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
 		h.inlineCallSites = allHints[i].inlineCallSites
@@ -1657,23 +1640,15 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		moduleEH = moduleEH || h.moduleEH
 		h.globalAccum = nil
 		allHints[i] = h
-		if denseGlobals {
-			for g := 0; g < nGlobals; g++ {
-				agg[g] += int64(h.globalScore[g])
-			}
-		} else {
-			start := len(sparseGlobals)
-			sparseGlobals = sparseAccum.AppendTo(sparseGlobals)
-			sparseRanges[i] = hintRange{start: start, end: len(sparseGlobals)}
-			for _, gh := range sparseGlobals[start:] {
-				agg[gh.Index] += int64(gh.Score)
-			}
+		start := len(sparseGlobals)
+		sparseGlobals = sparseAccum.AppendTo(sparseGlobals)
+		sparseRanges[i] = hintRange{start: start, end: len(sparseGlobals)}
+		for _, gh := range sparseGlobals[start:] {
+			agg[gh.Index] += int64(gh.Score)
 		}
 	}
-	if !denseGlobals {
-		for i, r := range sparseRanges {
-			allHints[i].sparseGlobals = sparseGlobals[r.start:r.end]
-		}
+	for i, r := range sparseRanges {
+		allHints[i].sparseGlobals = sparseGlobals[r.start:r.end]
 	}
 	if moduleEH {
 		for i := range allHints {
@@ -1932,10 +1907,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		return nil, nil, 0, fmt.Errorf("unknown function type")
 	}
 	c := &m.Code[funcIdx]
-	nLocals, err := countLocals(ft.Params, c.Locals)
-	if err != nil {
-		return nil, nil, 0, err
-	}
+	// Module hint construction already validated and counted the parameters and
+	// local runs. Reuse that result, including on an unpinned retry.
+	nLocals := hints.nLocals
 
 	sc.reset()
 	sc.asm.DenseIdxDisp = hints.memOps >= 8
@@ -1958,7 +1932,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		sc.transient = f.transient
 	}()
 	f.storeForwardOK = policy.EnabledOption(optStoreForward) && len(c.BodyBytes) <= 256 && nLocals <= 8
-	f.syncHostCalls = syncHostCalls || gcStructHelpers || gcArrayHelpers || moduleUsesSyncHostCalls(m, importBindings)
+	f.syncHostCalls = syncHostCalls
 	f.syncHostSlots = syncHostSlots
 	f.gcTypeSubtypingRefTest = gcTypeSubtypingRefTest
 	if !guardMode && len(m.Memories) > 0 {
@@ -2133,14 +2107,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// loop do — the spill/reload keeping the cell coherent then lands on the sparse
 	// out-of-loop calls, not per iteration. Non-eligible globals use the per-run
 	// cell-pointer cache (globalCellPtr).
-	var globalScores []uint32
-	var globalElig []bool
+	var globalHints []shared.GlobalHint
 	if regABI {
 		sc.directPrepared = directPrepared
-		globalScores = hints.globalScore
-		if hasCall {
-			globalElig = hints.globalElig
-		}
+		globalHints = hints.sparseGlobals
 	}
 	f.installModuleGlobals(modGlobals)
 	intervalRegion := pinLocals && regABI && !hasCall && !hints.hasControlFlow &&
@@ -2148,7 +2118,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if intervalRegion {
 		gpPool = nil // regional assignments supersede whole-function GP pins
 	}
-	f.assignPinnedLocals(hints.localScore, globalScores, globalElig, hints.sparseGlobals, gpPool, hasCall, pinLocals)
+	f.assignPinnedLocals(hints.localScore, globalHints, gpPool, hasCall, pinLocals)
 	for i := range f.locals {
 		if r := f.locals[i].reg; r >= X2 && r <= X7 {
 			f.stats.peep("entry-arg-local-pin")
@@ -2255,10 +2225,8 @@ func preservesCallerPins(ft *wasm.CompType, nLocals int, h funcHints) bool {
 	if !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || nLocals != len(ft.Params) || h.hasCall || h.touchesMemory {
 		return false
 	}
-	for _, score := range h.globalScore {
-		if score != 0 {
-			return false
-		}
+	if h.touchesGlobal() {
+		return false
 	}
 	return true
 }
@@ -2357,7 +2325,7 @@ func withoutReg(pool []Reg, r Reg) []Reg {
 	return out
 }
 
-func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool, sparseGlobals []shared.GlobalHint, gpPool []Reg, hasCall, pinLocals bool) {
+func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint, gpPool []Reg, hasCall, pinLocals bool) {
 	if cap(f.locals) < f.nLocals {
 		f.locals = make([]localDef, f.nLocals)
 	} else {
@@ -2395,24 +2363,7 @@ func (f *fn) assignPinnedLocals(scores, globalScores []uint32, globalElig []bool
 		}
 	}
 	loopMin := uint32(loopWeight(1))
-	for g := 0; g < len(globalScores); g++ {
-		if globalScores[g] < loopMin || f.isModuleGlobal(g) {
-			continue
-		}
-		// In a call-making function (globalElig non-nil) only globals accessed in a
-		// call-free loop qualify — otherwise the per-call spill/reload would land in
-		// the hot loop and regress. In a call-free function every loop-accessed global
-		// qualifies (globalElig nil).
-		if globalElig != nil && !globalElig[g] {
-			continue
-		}
-		gt, ok := f.m.GlobalTypeByIndex(uint32(g))
-		if !ok || !gt.Mutable || !isIntValType(wasm.GlobalValueType(gt)) {
-			continue
-		}
-		gp = append(gp, gpCand{global: true, idx: g, score: globalScores[g]})
-	}
-	for _, gh := range sparseGlobals {
+	for _, gh := range globalHints {
 		g := int(gh.Index)
 		if gh.Score < loopMin || f.isModuleGlobal(g) || hasCall && !gh.Eligible {
 			continue
@@ -2567,15 +2518,19 @@ func (f *fn) installModuleGlobals(pins []moduleGlobalPin) {
 		copy(gd, f.globalDirty)
 		f.globalDirty = gd
 	}
-	f.moduleGlobal = make([]bool, nG)
+	f.moduleGlobals = pins
 	for _, p := range pins {
 		f.globalReg[p.global] = p.reg
-		f.moduleGlobal[p.global] = true
 	}
 }
 
 func (f *fn) isModuleGlobal(g int) bool {
-	return f.moduleGlobal != nil && g < len(f.moduleGlobal) && f.moduleGlobal[g]
+	for _, p := range f.moduleGlobals {
+		if int(p.global) == g {
+			return true
+		}
+	}
+	return false
 }
 
 // deriveModuleGlobals / storeModuleGlobals sync the module-pinned globals with

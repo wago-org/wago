@@ -531,18 +531,11 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		if h.moduleEH {
 			continue
 		}
-		touchesGlobal := false
-		for _, score := range h.globalScore {
-			if score != 0 {
-				touchesGlobal = true
-				break
-			}
-		}
 		facts := inlineFacts{
 			bodyBytes:      len(body),
 			hasLoop:        h.hasLoop,
 			hasControlFlow: h.hasControlFlow,
-			touchesGlobal:  touchesGlobal,
+			touchesGlobal:  h.touchesGlobal(),
 			touchesMem:     h.touchesMemory || h.usesBulkMem,
 			params:         len(ft.Params),
 			results:        len(ft.Results),

@@ -11,6 +11,24 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func TestModuleGlobalMembershipUsesBorrowedBoundedPins(t *testing.T) {
+	const nGlobals = 4096
+	f := fn{
+		m:           &wasm.Module{Globals: make([]wasm.Global, nGlobals)},
+		globalReg:   make([]Reg, nGlobals),
+		globalDirty: make([]bool, nGlobals),
+	}
+	pins := []moduleGlobalPin{{global: 123, reg: moduleGlobalRegs[0]}}
+	if allocs := testing.AllocsPerRun(100, func() {
+		f.installModuleGlobals(pins)
+	}); allocs != 0 {
+		t.Fatalf("module-global membership allocations = %v, want 0", allocs)
+	}
+	if !f.isModuleGlobal(123) || f.isModuleGlobal(124) {
+		t.Fatalf("module-global membership mismatch")
+	}
+}
+
 func TestCompileModuleHintLocalCountAllocationAndCodeIdentity(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
 	tests := []struct {

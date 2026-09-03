@@ -217,7 +217,7 @@ func TestAssignPinnedLocalsUsesLocalDefs(t *testing.T) {
 		m:         &wasm.Module{},
 		sc:        &scratch{},
 	}
-	f.assignPinnedLocals([]uint32{1, 10, 5}, nil, nil, nil, pinnedLocalRegs, baseFPPins, false, false)
+	f.assignPinnedLocals([]uint32{1, 10, 5}, nil, pinnedLocalRegs, baseFPPins, false, false)
 
 	r, isFloat, ok := f.pinReg(1)
 	if !ok || !isFloat || r != pinnedFLocalRegs[0] {
