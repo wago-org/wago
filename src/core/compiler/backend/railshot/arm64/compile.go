@@ -521,6 +521,7 @@ type scratch struct {
 	retSites                []int
 	ctrl                    []ctrlFrame
 	ctrlMerges              []ctrlFrameMerge
+	ctrlRoots               []ctrlFrameRoots
 	functionResultTypeArena [maxScratchFunctionResults]machineType
 	trapSites               [trapAtomicUnaligned + 1][]trapSite
 	branchTargets           map[int]bool
@@ -542,6 +543,8 @@ type scratch struct {
 	controlScratchDiscarded int
 	controlMergePeak        int
 	controlMergeDiscarded   int
+	controlRootsPeak        int
+	controlRootsDiscarded   int
 	transient
 }
 
@@ -577,6 +580,9 @@ func (sc *scratch) noteControlScratch() {
 	if capacity := cap(sc.ctrlMerges); capacity > sc.controlMergePeak {
 		sc.controlMergePeak = capacity
 	}
+	if capacity := cap(sc.ctrlRoots); capacity > sc.controlRootsPeak {
+		sc.controlRootsPeak = capacity
+	}
 }
 
 // finishControlWorker releases pointer-rich control frames before the parallel
@@ -591,6 +597,11 @@ func (sc *scratch) finishControlWorker() {
 		clear(sc.ctrlMerges[:capacity])
 		sc.ctrlMerges = nil
 		sc.controlMergeDiscarded += capacity
+	}
+	if capacity := cap(sc.ctrlRoots); capacity != 0 {
+		clear(sc.ctrlRoots[:capacity])
+		sc.ctrlRoots = nil
+		sc.controlRootsDiscarded += capacity
 	}
 }
 
@@ -705,6 +716,8 @@ func (sc *scratch) reset() {
 	sc.ctrl = sc.ctrl[:0]
 	sc.transient.loopSetLocals = sc.transient.loopSetLocals[:0]
 	clear(sc.ctrlMerges[:cap(sc.ctrlMerges)])
+	clear(sc.ctrlRoots[:cap(sc.ctrlRoots)])
+	sc.ctrlRoots = sc.ctrlRoots[:0]
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]
 	}

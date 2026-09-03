@@ -421,6 +421,18 @@ Six `GOGC=off` timing samples overlap. Counts saturate conservatively and append
 remains the correctness fallback. The rule uses only decoded local-call count
 and target record-growth cost, never module or workload identity.
 
+The next ARM64 control-state split removes GC-only slice headers from ordinary
+merge records. `base`, parameter, and result root vectors now live in a lazy
+72-byte `ctrlFrameRoots` arena parallel to the existing depth-owned merge arena;
+the common `ctrlFrameMerge` falls from 232 to 160 bytes. Scalar compilation does
+not allocate the root sidecar. Exact-GC frames retain the same vectors, and
+slot moves, release clearing, worker teardown, and resource-ledger accounting
+move both arenas together. Native `json-as` falls from 190,248 to 188,840 B/op
+with 544 allocations unchanged, while `many_funcs` remains unchanged because
+it does not allocate merge backing. Eight `GOGC=off` timing samples overlap.
+The sidecar is admitted only when an actual root bit is recorded, an exact
+semantic condition shared by every function.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so
