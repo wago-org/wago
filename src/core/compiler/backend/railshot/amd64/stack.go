@@ -221,8 +221,9 @@ type stack struct {
 	cold             []elemCold
 	cur              int
 	head             *elem
-	nextChunkCap     int
-	nextGeometricCap int
+	nextChunkCap     uint16
+	nextGeometricCap uint16
+	trimKeep         uint32
 }
 
 const (
@@ -240,8 +241,8 @@ func newStackWithCap(capHint int) *stack {
 	next, geometric := stackArenaGrowthCaps(capHint)
 	s := &stack{
 		chunks:           [][]elem{make([]elem, 0, capHint)},
-		nextChunkCap:     next,
-		nextGeometricCap: geometric,
+		nextChunkCap:     uint16(next),
+		nextGeometricCap: uint16(geometric),
 	}
 	s.initSentinel()
 	return s
@@ -325,17 +326,39 @@ func (s *stack) clearElemCold(e *elem) {
 
 func (s *stack) hasUnusedChunks() bool { return s.cur+1 < len(s.chunks) }
 
-// finishFunction releases arena chunks that the just-completed function did not
-// reach. This keeps repeated large functions allocation-free, while a smaller
-// successor ratchets a worker's retained high-water back down to that function's
-// actual demand. Before dropping slice headers, clear retained backing so stale
-// node links cannot keep discarded pointer-rich chunks reachable from the first
-// chunk.
+// finishFunction releases arena chunks after two consecutive functions do not
+// reach them. This keeps neighboring functions with modestly different demands
+// from repeatedly discarding and reallocating the same backing, while sustained
+// smaller work ratchets retained high-water down. Before dropping slice headers,
+// clear retained backing so stale node links cannot keep discarded pointer-rich
+// chunks reachable from the first chunk.
 func (s *stack) finishFunction() (discarded uint64) {
 	keep := s.cur + 1
 	if !s.hasUnusedChunks() {
+		s.trimKeep = 0
 		return 0
 	}
+	// One smaller function is not enough evidence to discard reusable overflow:
+	// neighboring functions commonly have different node counts, and eagerly
+	// trimming here makes the next larger function allocate the same chunks again.
+	// Two consecutive functions below the retained high-water confirm the drop;
+	// retain enough chunks for the larger of the pair to avoid overreacting to a
+	// single unusually tiny body.
+	if s.trimKeep == 0 {
+		if uint64(keep) > uint64(^uint32(0)) {
+			return 0
+		}
+		s.trimKeep = uint32(keep)
+		return 0
+	}
+	if keep > int(s.trimKeep) {
+		if uint64(keep) > uint64(^uint32(0)) {
+			s.trimKeep = 0
+			return 0
+		}
+		s.trimKeep = uint32(keep)
+	}
+	keep, s.trimKeep = int(s.trimKeep), 0
 	for i := 0; i < keep; i++ {
 		clear(s.chunks[i][:cap(s.chunks[i])])
 	}
@@ -351,7 +374,8 @@ func (s *stack) finishFunction() (discarded uint64) {
 }
 
 func (s *stack) resetGrowthCaps() {
-	s.nextChunkCap, s.nextGeometricCap = stackArenaGrowthCaps(cap(s.chunks[0]))
+	next, geometric := stackArenaGrowthCaps(cap(s.chunks[0]))
+	s.nextChunkCap, s.nextGeometricCap = uint16(next), uint16(geometric)
 	for range s.chunks[1:] {
 		s.nextChunkCap = s.nextGeometricCap
 		if s.nextGeometricCap < maxStackChunkCap {
@@ -385,7 +409,7 @@ func (s *stack) alloc() *elem {
 	if len(*chunk) == cap(*chunk) {
 		s.cur++
 		if s.cur == len(s.chunks) {
-			s.chunks = append(s.chunks, make([]elem, 0, s.nextChunkCap))
+			s.chunks = append(s.chunks, make([]elem, 0, int(s.nextChunkCap)))
 			s.nextChunkCap = s.nextGeometricCap
 			if s.nextGeometricCap < maxStackChunkCap {
 				s.nextGeometricCap *= 2

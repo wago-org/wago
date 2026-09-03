@@ -117,6 +117,13 @@ func TestStackFinishFunctionRatchetsUnusedOverflow(t *testing.T) {
 	oldChunks := s.chunks
 	overflowCapacity := retainedStackArenaCapacity(s) - cap(s.chunks[0])
 	wantDiscarded := uint64(overflowCapacity) * uint64(unsafe.Sizeof(elem{}))
+	if got := s.finishFunction(); got != 0 {
+		t.Fatalf("first tiny successor discarded %d bytes, want hysteresis", got)
+	}
+	s.reset()
+	for i := 1; i < 4; i++ {
+		s.alloc()
+	}
 	if got := s.finishFunction(); got != wantDiscarded {
 		t.Fatalf("tiny successor discarded %d bytes, want %d", got, wantDiscarded)
 	}
@@ -170,6 +177,11 @@ func TestScratchNodeResourceStats(t *testing.T) {
 		sc.stack.alloc()
 	}
 	peakCapacity := retainedStackArenaCapacity(sc.stack)
+	sc.finishStackFunction()
+	sc.stack.reset()
+	for i := 1; i < 4; i++ {
+		sc.stack.alloc()
+	}
 	sc.finishStackFunction()
 	sc.stack.reset()
 	for i := 1; i < 4; i++ {

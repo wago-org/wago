@@ -114,17 +114,22 @@ Further control-memory work should split independently cold feature families or
 narrow exact domains instead of trading retained capacity for allocation churn.
 
 The first worker-lifecycle implementation keeps the initial operand chunk and
-ratchets overflow retention to the just-completed function's actual chunk use.
-Repeated large functions therefore reuse backing, while a smaller successor
-releases the unused suffix. The rare shrink transition explicitly clears every
+can release an unused overflow suffix. Eagerly doing so after one smaller
+neighbor, however, caused ordinary modules with varying function sizes to
+discard and regrow the same pointer-rich chunks. Trimming now requires two
+consecutive lower-demand functions and retains enough chunks for the larger of
+that pair. Sustained small work still collapses giant high-water, while a single
+small body no longer provokes churn. Chunk capacities are bounded at 8,192 and
+now occupy `uint16`; the trim count uses `uint32`, reducing the stack owner from
+80 to 72 bytes without narrowing an admissible chunk count. Native ARM64
+`json-as` falls from 255,280 to 222,512 B/op (-12.8%) and 936 to 935 allocations;
+emulated Linux/AMD64 falls from 241,760 to about 208,992 B/op (-13.6%) and 909 to
+908 allocations. `many_funcs` changes only by the eight-byte owner reduction.
+Timing samples overlap. The rare shrink transition still clears every
 scratch-owned `*elem` path and retained chunk capacity before removing slice
-headers; ordinary one-chunk functions take no cleanup call. The resource ledger
-now exposes initial reservation, per-worker peak envelope, final retention, and
-cumulative discarded bytes. A Linux/AMD64 `many_funcs` screen stayed at 36
-allocations and about 158,968 B/op, with eight-run medians of 341.9 microseconds
-before and 344.0 microseconds after, a 0.6% movement inside the 1.5% investigation
-gate. Giant-lane scheduling and byte-weighted
-admission are not yet implemented.
+headers, and the resource ledger still reports reservation, peak, retention,
+and discarded bytes. Giant-lane scheduling and byte-weighted admission remain
+open.
 
 ## Primary-source facts
 
@@ -263,6 +268,16 @@ Five-sample timings overlap; ordinary `many_funcs` and `json-as` remain in the
 same size classes, and matched corpus hashes are identical. Oversized functions
 remain rejected by the architecture's native-frame check before any compiled
 artifact is published.
+
+An allocation-space profile of native ARM64 `json-as` compilation then showed
+`stack.alloc` responsible for 56.5% of sampled bytes. The common 64-byte node is
+still the fundamental target, but the profile also exposed lifecycle churn:
+overflow chunks were being allocated again after eager one-function trimming.
+The two-function bounded hysteresis above removes roughly 32 KiB per compile on
+both architectures without changing node sizing, instruction selection, or
+native bytes. This is a useful ordering result: eliminate avoidable arena churn
+before undertaking the larger pointer-to-ID migration, so that migration is
+measured against an honest allocation baseline.
 
 ### 3. Easy repeated work exists today
 
