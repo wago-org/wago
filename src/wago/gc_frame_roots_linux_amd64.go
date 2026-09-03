@@ -81,7 +81,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRo
 	if err != nil {
 		return reject("exception root maps: %v", err)
 	}
-	fixedRoots := make([][]uint32, len(m.Code))
+	var fixedRoots [][]uint32
+	if len(ehMaps) != 0 {
+		fixedRoots = make([][]uint32, len(m.Code))
+	}
 	for i := range ehMaps {
 		if int(ehMaps[i].LocalFunction) >= len(fixedRoots) {
 			return reject("exception root map function %d is out of range", ehMaps[i].LocalFunction)
@@ -107,7 +110,11 @@ functions:
 		if !ok {
 			return reject("function %d has no validated signature", function)
 		}
-		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedRoots[function]}
+		var fixedOffsets []uint32
+		if fixedRoots != nil {
+			fixedOffsets = fixedRoots[function]
+		}
+		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedOffsets}
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if collectorFrameRefType(m, t) {
