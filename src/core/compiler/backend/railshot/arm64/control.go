@@ -64,8 +64,7 @@ type ctrlFrame struct {
 	loopStart       int // cfLoop: backward target byte offset
 	elseSite        int // cfIf: the false-edge B.cond site (to else/end), -1 once patched
 	baseTypes       []machineType
-	paramTypes      []machineType
-	resultTypes     []machineType
+	types           []machineType // parameters followed by results; split by paramN/resultN
 }
 
 func (fr *ctrlFrame) has(flag ctrlFlags) bool { return fr.flags&flag != 0 }
@@ -207,6 +206,14 @@ func (f *fn) frameBaseGCRoots(fr *ctrlFrame) []bool {
 		return cold.baseGCRoots
 	}
 	return nil
+}
+
+func (fr *ctrlFrame) parameterTypes() []machineType {
+	return fr.types[:fr.paramN]
+}
+
+func (fr *ctrlFrame) resultTypes() []machineType {
+	return fr.types[fr.paramN : fr.paramN+fr.resultN]
 }
 
 func (f *fn) frameEnds(fr *ctrlFrame) []int {
@@ -743,19 +750,20 @@ func valByteMT(b byte) machineType {
 
 // blockType decodes a block's parameter and result types, plus the first
 // result's machine type (res0; mtNone when resultN == 0).
-func (f *fn) blockType(r *wasm.Reader) (params, results []machineType, res0 machineType, err error) {
+func (f *fn) blockType(r *wasm.Reader) (params, results, frameTypes []machineType, res0 machineType, err error) {
 	b, ok := r.Peek()
 	if !ok {
-		return nil, nil, mtNone, fmt.Errorf("eof in blocktype")
+		return nil, nil, nil, mtNone, fmt.Errorf("eof in blocktype")
 	}
 	if b == 0x40 { // empty
 		_, _ = r.Byte()
-		return nil, nil, mtNone, nil
+		return nil, nil, nil, mtNone, nil
 	}
 	if isValByte(b) {
 		_, _ = r.Byte()
 		mt := valByteMT(b)
-		return nil, []machineType{mt}, mt, nil
+		frameTypes = []machineType{mt}
+		return nil, frameTypes, frameTypes, mt, nil
 	}
 	if b == 0x63 || b == 0x64 { // ref null <heaptype> / ref <heaptype>
 		_, _ = r.Byte()
@@ -763,23 +771,31 @@ func (f *fn) blockType(r *wasm.Reader) (params, results []machineType, res0 mach
 			_, _ = r.Byte()
 		}
 		if _, e := r.S33(); e != nil {
-			return nil, nil, mtNone, e
+			return nil, nil, nil, mtNone, e
 		}
-		return nil, []machineType{mtI64}, mtI64, nil
+		frameTypes = []machineType{mtI64}
+		return nil, frameTypes, frameTypes, mtI64, nil
 	}
 	x, e := r.I64()
 	if e != nil {
-		return nil, nil, mtNone, e
+		return nil, nil, nil, mtNone, e
 	}
 	ft, ok := f.m.TypeFunc(uint32(x))
 	if x < 0 || !ok {
-		return nil, nil, mtNone, fmt.Errorf("bad blocktype index %d", x)
+		return nil, nil, nil, mtNone, fmt.Errorf("bad blocktype index %d", x)
 	}
 	r0 := mtNone
 	if len(ft.Results) > 0 {
 		r0 = mtOf(ft.Results[0])
 	}
-	return typesOfVals(ft.Params), typesOfVals(ft.Results), r0, nil
+	frameTypes = make([]machineType, len(ft.Params)+len(ft.Results))
+	for i, typ := range ft.Params {
+		frameTypes[i] = mtOf(typ)
+	}
+	for i, typ := range ft.Results {
+		frameTypes[len(ft.Params)+i] = mtOf(typ)
+	}
+	return frameTypes[:len(ft.Params)], frameTypes[len(ft.Params):], frameTypes, r0, nil
 }
 
 // placeSingleResult produces the single result value (top of the operand stack)
@@ -985,7 +1001,7 @@ func scanLoopBodyWithClassifier(r *wasm.Reader, classifier wasm.ModuleInstructio
 }
 
 func (f *fn) opBlock(r *wasm.Reader, op byte) error {
-	paramTypes, resultTypes, res0, err := f.blockType(r)
+	paramTypes, resultTypes, frameTypes, res0, err := f.blockType(r)
 	if err != nil {
 		return err
 	}
@@ -1001,7 +1017,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			return err
 		}
 	}
-	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, res0: res0, types: frameTypes}
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if kind == cfLoop {
 		fr.branchN = pN
@@ -1278,7 +1294,7 @@ func moduleTagType(m *wasm.Module, index uint32) (wasm.TagType, bool) {
 }
 
 func (f *fn) opTryTable(r *wasm.Reader) error {
-	paramTypes, resultTypes, res0, err := f.blockType(r)
+	paramTypes, resultTypes, frameTypes, res0, err := f.blockType(r)
 	if err != nil {
 		return err
 	}
@@ -1289,7 +1305,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	if n > maxEHCatches {
 		return fmt.Errorf("bounded exception handling supports at most %d catches per try_table", maxEHCatches)
 	}
-	fr := ctrlFrame{kind: cfTry, paramN: len(paramTypes), resultN: len(resultTypes), branchN: len(resultTypes), elseSite: -1, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	fr := ctrlFrame{kind: cfTry, paramN: len(paramTypes), resultN: len(resultTypes), branchN: len(resultTypes), elseSite: -1, res0: res0, types: frameTypes}
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	eh := f.ensureFrameEH(&fr)
 	for i := uint32(0); i < n; i++ {
@@ -1592,7 +1608,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 		return
 	}
 	e := f.s.back()
-	for i := len(fr.resultTypes) - 1; i >= 0; i-- {
+	for i := len(fr.resultTypes()) - 1; i >= 0; i-- {
 		if i < len(eh.refResults) && eh.refResults[i] {
 			e.st.ehRoot = true
 		}
@@ -1624,7 +1640,7 @@ func (f *fn) opElse() error {
 	f.a.PatchBranch19(fr.elseSite, f.a.Len()) // the false edge is a B.cond (imm19)
 	fr.elseSite = -1
 	fr.set(ctrlHasElse, true)
-	f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.paramTypes), frameGCRootFlags(f.frameBaseGCRoots(fr), f.frameParamGCRoots(fr)))
+	f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.parameterTypes()), frameGCRootFlags(f.frameBaseGCRoots(fr), f.frameParamGCRoots(fr)))
 	// The else body is entered via the if's false edge: locals are exactly in the
 	// header-snapshot state (no code).
 	f.setLocalsState(f.frameEntryState(fr))
@@ -1814,7 +1830,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 				result.st.gcRoot = resultGCRoots[0]
 			}
 		} else {
-			f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.resultTypes), frameGCRootFlags(baseGCRoots, resultGCRoots))
+			f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.resultTypes()), frameGCRootFlags(baseGCRoots, resultGCRoots))
 		}
 		f.markEHReferenceResults(&fr)
 	}

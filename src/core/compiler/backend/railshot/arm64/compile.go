@@ -2370,7 +2370,7 @@ func (f *fn) finalizeStats(codeLen int) {
 func (f *fn) runBody(c *wasm.Func) error {
 	sc := f.scratchState()
 	resultTypes := lowerFunctionResultTypes(sc, f.ft.Results)
-	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes})
+	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), types: resultTypes})
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}

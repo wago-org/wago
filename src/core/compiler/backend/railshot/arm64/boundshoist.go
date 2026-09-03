@@ -233,7 +233,7 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 // align the loop top, and push the frame.
 func (f *fn) enterLoopFrame(resultTypes []machineType, res0 machineType) {
 	rN := len(resultTypes)
-	fr := ctrlFrame{kind: cfLoop, resultN: rN, branchN: 0, elseSite: -1, res0: res0, resultTypes: resultTypes}
+	fr := ctrlFrame{kind: cfLoop, resultN: rN, branchN: 0, elseSite: -1, res0: res0, types: resultTypes}
 	fr.height = f.depth()
 	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()...)
 	f.reconcileLocals()
