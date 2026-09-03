@@ -12,7 +12,7 @@ import (
 )
 
 func TestFuncHintsSize(t *testing.T) {
-	const want = 56
+	const want = 40
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
 	}
@@ -76,21 +76,21 @@ func TestConstantPreloadHints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !h.hasFloatConst || !h.hasSIMD {
-		t.Fatalf("byte hints = float:%v SIMD:%v, want both", h.hasFloatConst, h.hasSIMD)
+	if !h.flags.has(hintHasFloatConst) || !h.flags.has(hintHasSIMD) {
+		t.Fatalf("byte hints = float:%v SIMD:%v, want both", h.flags.has(hintHasFloatConst), h.flags.has(hintHasSIMD))
 	}
 	ast := scanBody(wasm.Expr{Instrs: []wasm.Instruction{
 		{Kind: wasm.InstrF64Const}, {Kind: wasm.InstrV128Const},
 	}}, 0, 0, 0)
-	if !ast.hasFloatConst || !ast.hasSIMD {
-		t.Fatalf("AST hints = float:%v SIMD:%v, want both", ast.hasFloatConst, ast.hasSIMD)
+	if !ast.flags.has(hintHasFloatConst) || !ast.flags.has(hintHasSIMD) {
+		t.Fatalf("AST hints = float:%v SIMD:%v, want both", ast.flags.has(hintHasFloatConst), ast.flags.has(hintHasSIMD))
 	}
 	plain, err := scanBodyBytes([]byte{0x41, 0, 0x1a, 0x0b}, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plain.hasFloatConst || plain.hasSIMD {
-		t.Fatalf("integer hints = float:%v SIMD:%v, want neither", plain.hasFloatConst, plain.hasSIMD)
+	if plain.flags.has(hintHasFloatConst) || plain.flags.has(hintHasSIMD) {
+		t.Fatalf("integer hints = float:%v SIMD:%v, want neither", plain.flags.has(hintHasFloatConst), plain.flags.has(hintHasSIMD))
 	}
 }
 
@@ -108,13 +108,13 @@ func TestScanBodyHints(t *testing.T) {
 		{Kind: wasm.InstrCall, Index: 7},
 	}}
 	h := scanBody(callOnly, 1, 0, 7)
-	if !h.hasCall || h.touchesMemory || !h.callsSelf {
-		t.Fatalf("call-only body: hasCall=%v touchesMemory=%v callsSelf=%v", h.hasCall, h.touchesMemory, h.callsSelf)
+	if !h.flags.has(hintHasCall) || h.flags.has(hintTouchesMemory) || !h.flags.has(hintCallsSelf) {
+		t.Fatalf("call-only body: hasCall=%v touchesMemory=%v callsSelf=%v", h.flags.has(hintHasCall), h.flags.has(hintTouchesMemory), h.flags.has(hintCallsSelf))
 	}
 	if h.localScore[0] != 1 {
 		t.Fatalf("local 0 score = %d, want 1", h.localScore[0])
 	}
-	if h2 := scanBody(callOnly, 1, 0, 8); h2.callsSelf {
+	if h2 := scanBody(callOnly, 1, 0, 8); h2.flags.has(hintCallsSelf) {
 		t.Fatal("call to 7 should not count as self for index 8")
 	}
 
@@ -125,7 +125,7 @@ func TestScanBodyHints(t *testing.T) {
 		{Kind: wasm.InstrMemoryFill},
 	}}
 	h = scanBody(callMemory, 1, 0, 99)
-	if !h.hasCall || !h.touchesMemory || !h.usesBulkMem {
+	if !h.flags.has(hintHasCall) || !h.flags.has(hintTouchesMemory) || !h.flags.has(hintUsesBulkMem) {
 		t.Fatalf("call+memory body: %+v", h)
 	}
 }
@@ -135,7 +135,7 @@ func TestScanBodyBytesCallHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan self call: %v", err)
 	}
-	if !h.hasCall || !h.callsSelf {
+	if !h.flags.has(hintHasCall) || !h.flags.has(hintCallsSelf) {
 		t.Fatalf("self call hints = %+v, want hasCall and callsSelf", h)
 	}
 
@@ -143,7 +143,7 @@ func TestScanBodyBytesCallHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan call_indirect: %v", err)
 	}
-	if !h.hasCall || h.callsSelf {
+	if !h.flags.has(hintHasCall) || h.flags.has(hintCallsSelf) {
 		t.Fatalf("call_indirect hints = %+v, want hasCall without callsSelf", h)
 	}
 }
@@ -165,8 +165,8 @@ func TestBrTableJumpDataHintUsesBackendThreshold(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if h.hasJumpTableData != test.want {
-				t.Fatalf("jump-table-data hint = %v, want %v", h.hasJumpTableData, test.want)
+			if got := h.flags.has(hintHasJumpTableData); got != test.want {
+				t.Fatalf("jump-table-data hint = %v, want %v", got, test.want)
 			}
 		})
 	}
@@ -174,21 +174,21 @@ func TestBrTableJumpDataHintUsesBackendThreshold(t *testing.T) {
 
 func TestScanBodyExceptionHandlingHint(t *testing.T) {
 	ast := scanBody(wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrThrow}}}, 0, 0, 0)
-	if !ast.moduleEH {
+	if !ast.flags.has(hintModuleEH) {
 		t.Fatal("AST throw did not mark exception handling")
 	}
 	bytes, err := scanBodyBytes([]byte{0x08, 0x00, 0x0b}, 0, 0, 0) // throw tag 0; end
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.moduleEH {
+	if !bytes.flags.has(hintModuleEH) {
 		t.Fatal("bytecode throw did not mark exception handling")
 	}
 	plain, err := scanBodyBytes([]byte{0x41, 0x00, 0x1a, 0x0b}, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plain.moduleEH {
+	if plain.flags.has(hintModuleEH) {
 		t.Fatal("plain bytecode marked exception handling")
 	}
 }
@@ -213,7 +213,7 @@ func TestScanBodyBytesStackArenaHintSkipsSIMDStores(t *testing.T) {
 	if storeHints.stackArenaNodes != endOnly.stackArenaNodes {
 		t.Fatalf("SIMD store stack arena nodes = %d, want end-only baseline %d", storeHints.stackArenaNodes, endOnly.stackArenaNodes)
 	}
-	if !storeHints.hasStackSinkFusion {
+	if !storeHints.flags.has(hintHasStackSinkFusion) {
 		t.Fatal("SIMD body did not select legacy arena sizing")
 	}
 
@@ -270,7 +270,7 @@ func TestScanBodyBytesDiscountsAlgebraicIdentities(t *testing.T) {
 	if h.stackArenaDiscount != 3 {
 		t.Fatalf("algebraic discount = %d, want 3", h.stackArenaDiscount)
 	}
-	if !h.hasStackSinkFusion {
+	if !h.flags.has(hintHasStackSinkFusion) {
 		t.Fatal("multibyte identity constant did not retain legacy sizing")
 	}
 }
@@ -280,14 +280,14 @@ func TestScanBodyBytesDetectsDeadCodeAfterTerminator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !h.hasStackSinkFusion {
+	if !h.flags.has(hintHasStackSinkFusion) {
 		t.Fatal("dead instructions after unreachable were not detected")
 	}
 	terminalOnly, err := scanBodyBytes([]byte{0x00, 0x0b}, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if terminalOnly.hasStackSinkFusion {
+	if terminalOnly.flags.has(hintHasStackSinkFusion) {
 		t.Fatal("terminal unreachable was marked as followed by dead code")
 	}
 }
@@ -319,7 +319,7 @@ func TestScanBodyBytesDetectsStackSinkFusion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !h.hasStackSinkFusion {
+	if !h.flags.has(hintHasStackSinkFusion) {
 		t.Fatal("float local sink fusion was not detected")
 	}
 }
@@ -382,7 +382,7 @@ func TestScanBodyBytesMemoryHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan memory body: %v", err)
 	}
-	if !h.touchesMemory || h.usesBulkMem {
+	if !h.flags.has(hintTouchesMemory) || h.flags.has(hintUsesBulkMem) {
 		t.Fatalf("memory hints = %+v, want touchesMemory only", h)
 	}
 }
@@ -397,7 +397,7 @@ func TestScanBodyBytesBulkMemoryHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan bulk memory body: %v", err)
 	}
-	if !h.touchesMemory || !h.usesBulkMem {
+	if !h.flags.has(hintTouchesMemory) || !h.flags.has(hintUsesBulkMem) {
 		t.Fatalf("bulk memory hints = %+v, want touchesMemory and usesBulkMem", h)
 	}
 }
@@ -457,7 +457,7 @@ func TestScanBodyBytesLoopWithCallDisablesGlobalEligibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan loop call body: %v", err)
 	}
-	if !h.hasCall {
+	if !h.flags.has(hintHasCall) {
 		t.Fatalf("hints = %+v, want hasCall", h)
 	}
 	if score, eligible := globalHint(h, 0); score == 0 || eligible {
@@ -576,8 +576,8 @@ func TestGCHelperHintScannersMarkNativeCalls(t *testing.T) {
 		{Kind: wasm.InstrArrayNewDefault, Index: 0},
 		{Kind: wasm.InstrDrop},
 	}}, 0, 0, 0)
-	if !byteHints.hasCall || !astHints.hasCall {
-		t.Fatalf("array helper call hints byte/AST = %v/%v, want true/true", byteHints.hasCall, astHints.hasCall)
+	if !byteHints.flags.has(hintHasCall) || !astHints.flags.has(hintHasCall) {
+		t.Fatalf("array helper call hints byte/AST = %v/%v, want true/true", byteHints.flags.has(hintHasCall), astHints.flags.has(hintHasCall))
 	}
 }
 
@@ -596,8 +596,8 @@ func TestASTExceptionHintsReserveHandlerState(t *testing.T) {
 		{Kind: wasm.InstrArrayNewDefault, Index: 0},
 	}}
 	h := scanBody(ast, 0, 0, 0)
-	if !h.moduleEH || !h.hasControlFlow || !h.hasCall {
-		t.Fatalf("AST exception hints = EH:%v control:%v call:%v, want all true", h.moduleEH, h.hasControlFlow, h.hasCall)
+	if !h.flags.has(hintModuleEH) || !h.flags.has(hintHasControlFlow) || !h.flags.has(hintHasCall) {
+		t.Fatalf("AST exception hints = EH:%v control:%v call:%v, want all true", h.flags.has(hintModuleEH), h.flags.has(hintHasControlFlow), h.flags.has(hintHasCall))
 	}
 }
 
@@ -748,7 +748,7 @@ func TestScanFuncBodyUsesDecodedBodyBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan decoded body: %v", err)
 	}
-	if !h.hasCall || !h.callsSelf {
+	if !h.flags.has(hintHasCall) || !h.flags.has(hintCallsSelf) {
 		t.Fatalf("decoded recursive body hints = %+v, want call+self-call", h)
 	}
 	score0, _ := globalHint(h, 0)
@@ -783,10 +783,10 @@ func TestDecodedRecursiveBodyDoesNotSkipStackFence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan recursive body: %v", err)
 	}
-	if !h.hasCall || !h.callsSelf {
+	if !h.flags.has(hintHasCall) || !h.flags.has(hintCallsSelf) {
 		t.Fatalf("recursive decoded body hints = %+v, want hasCall and callsSelf", h)
 	}
-	if shouldSkipStackFence(h.hasCall, 0, len(m.Code[0].BodyBytes)) {
+	if shouldSkipStackFence(h.flags.has(hintHasCall), 0, len(m.Code[0].BodyBytes)) {
 		t.Fatalf("recursive call-making body was allowed to skip the stack fence")
 	}
 }

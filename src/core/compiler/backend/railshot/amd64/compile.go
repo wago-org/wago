@@ -542,8 +542,8 @@ func boolFlag(on bool, flag uint8) uint8 {
 }
 
 func functionStartPadding(off, bodyBytes int, hostAdapter bool, hints funcHints, policy CodegenPolicy) int {
-	flags := boolFlag(hostAdapter, layoutHostAdapter) | boolFlag(hints.hasLoop, layoutHasLoop) |
-		boolFlag(hints.hasCall, layoutHasCall) | boolFlag(hints.callsSelf, layoutCallsSelf)
+	flags := boolFlag(hostAdapter, layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
+		boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf)
 	return functionStartPaddingFlags(off, bodyBytes, flags, policy)
 }
 
@@ -766,7 +766,7 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 	capHint := minStackArenaCap
 	legacyRetained := defaultStackArenaCap
 	for i := range hints {
-		if hints[i].hasStackSinkFusion {
+		if hints[i].flags.has(hintHasStackSinkFusion) {
 			return defaultStackArenaCap
 		}
 		nodes := int(hints[i].stackArenaNodes)
@@ -1351,7 +1351,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	deferSingleFuncGCResolverDecision := gcSharedStubsEnabled && gcResolveReuseEnabled && n == 1 && resolverSites >= 2
 	useSharedGCResolver := gcSharedStubsEnabled && resolverSites >= 2 && !deferSingleFuncGCResolverDecision
 	for i := range allHints {
-		allHints[i].gcSharedResolver = useSharedGCResolver
+		allHints[i].flags.assign(hintGCSharedResolver, useSharedGCResolver)
 	}
 	modGlobals := pickModuleGlobals(m, nGlobals, globalScores)
 	hostAdapters, err := shared.HostAdapterSet(m)
@@ -1509,7 +1509,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			hints := hintSidecar.view(allHints[i])
 			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc)
 			if err == nil && deferSingleFuncGCResolverDecision && sc.fnState.gcHandleResolutions >= 2 {
-				hints.gcSharedResolver = true
+				hints.flags.set(hintGCSharedResolver)
 				resetFuncStats(st)
 				fnCode, rl, internalOff, err = compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc)
 			}
@@ -1713,8 +1713,8 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
 				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
-				flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.hasLoop, layoutHasLoop) |
-					boolFlag(hints.hasCall, layoutHasCall) | boolFlag(hints.callsSelf, layoutCallsSelf) |
+				flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
+					boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
 					boolFlag(ws.scratch.directPrepared, layoutDirectPrepared)
 				literalStart := len(ws.literals)
 				ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
@@ -2144,8 +2144,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		h.inlineCallSites = allHints[i].inlineCallSites
 		localAt += nLocals
 		allHints[i] = h.funcHints
-		moduleHasTailCall = moduleHasTailCall || h.hasTailCall
-		moduleEH = moduleEH || h.moduleEH
+		moduleHasTailCall = moduleHasTailCall || h.flags.has(hintHasTailCall)
+		moduleEH = moduleEH || h.flags.has(hintModuleEH)
 		start := len(sparseGlobals)
 		sparseGlobals = sparseAccum.AppendTo(sparseGlobals)
 		if uint64(len(sparseGlobals)) > uint64(^uint32(0)) {
@@ -2158,8 +2158,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		}
 	}
 	for i := range allHints {
-		allHints[i].hasTailCall = moduleHasTailCall
-		allHints[i].moduleEH = moduleEH
+		allHints[i].flags.assign(hintHasTailCall, moduleHasTailCall)
+		allHints[i].flags.assign(hintModuleEH, moduleEH)
 	}
 	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, sparseGlobals: sparseGlobals}, agg, nil
 }
@@ -2181,7 +2181,7 @@ func computeImmutableTableHints(m *wasm.Module, allHints []funcHints, policy Cod
 	immutableCandidates := policy.EnabledOption(optImmutableTable) && m.ImportedTableCount() == 0
 	if immutableCandidates {
 		for i := range allHints {
-			if allHints[i].mutatesTable {
+			if allHints[i].flags.has(hintMutatesTable) {
 				immutableCandidates = false
 				break
 			}
@@ -2441,7 +2441,7 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		gcFrameRoots.FrameBytes = 0
 		gcFrameRoots.AdapterReturnOffset = 0
 	}
-	moduleEH := hints.moduleEH
+	moduleEH := hints.flags.has(hintModuleEH)
 	pinLocals := !moduleEH
 	if !pinLocals {
 		// The bounded EH handler restores an older native frame directly. Keep
@@ -2507,7 +2507,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	if compactNativePolicy(sc.policy) {
-		if hints.hasLoop && !loopCompactionEnabled || hints.hasJumpTableData && !jumpTableCompactionEnabled || len(custom) != 0 {
+		if hints.flags.has(hintHasLoop) && !loopCompactionEnabled || hints.flags.has(hintHasJumpTableData) && !jumpTableCompactionEnabled || len(custom) != 0 {
 			// These are finalizer exclusions known before emission. Avoid
 			// recording sites only to take identity.
 			sc.asm.ResetRel32Recorder(0)
@@ -2534,7 +2534,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	sc.asm.CompactAccumulatorImmediates = compactAccumulatorImmediatePolicy(policy)
 	localType, localSlot, localGCRefFacts, locals := f.localType, f.localSlot, f.localGCRefFacts, f.locals
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.hasTailCall, importBindings: importBindings, stats: stats, policy: policy, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.hasLoop, gcSharedResolver: hints.gcSharedResolver, classifier: sc.classifier}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), gcSharedResolver: hints.flags.has(hintGCSharedResolver), classifier: sc.classifier}
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
 	f.literalWords = f.literalWords[:0]
@@ -2601,7 +2601,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			i32Locals++
 		}
 	}
-	compactI32Frame := f.opt(optCompactI32Frame) && (!hints.hasCall || compactI32CallsEnabled) && (!hints.hasControlFlow || compactI32ControlFlowEnabled) && !moduleEH && gcFrameRoots == nil && i32Locals >= 2
+	compactI32Frame := f.opt(optCompactI32Frame) && (!hints.flags.has(hintHasCall) || compactI32CallsEnabled) && (!hints.flags.has(hintHasControlFlow) || compactI32ControlFlowEnabled) && !moduleEH && gcFrameRoots == nil && i32Locals >= 2
 	if compactI32Frame {
 		f.stats.peep("compact-i32-frame")
 	}
@@ -2617,8 +2617,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		localBytes += 8 * mt.stackSlots()
 	}
 	f.nLocalSlots = (localBytes + 7) / 8
-	hasCall := hints.hasCall
-	touchesMemory := hints.touchesMemory
+	hasCall := hints.flags.has(hintHasCall)
+	touchesMemory := hints.flags.has(hintTouchesMemory)
 	// Auto-inlining: collect the callees this caller will splice (before the pin
 	// setup below, which the plan can influence). A spliced memory-touching callee
 	// runs its linear-memory ops in THIS caller's frame, so fold it into
@@ -2642,7 +2642,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// RCX below the internal frame and direct calls return in registers. Retain the
 	// established header for tail transfer, EH, and GC-frame paths whose auxiliary
 	// offset protocols still refer to that fixed layout.
-	f.compactFrameHeader = compactRegABIFrameHeader && regABI && !hints.hasTailCall && !moduleEH
+	f.compactFrameHeader = compactRegABIFrameHeader && regABI && !hints.flags.has(hintHasTailCall) && !moduleEH
 	if f.compactFrameHeader && !f.prepareCompactGCFrameHeader(gcFrameRoots) {
 		f.compactFrameHeader = false
 	}
@@ -2651,7 +2651,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	var gpPoolStorage [16]Reg
 	gpPool := gpPinPool(gpPoolStorage[:0], regABI, f.nParams, !hasCall, f.opt(optEntryArgPins))
-	if compactLowPinEnabled && f.policy.CompactNative && !hasCall && !hints.hasControlFlow {
+	if compactLowPinEnabled && f.policy.CompactNative && !hasCall && !hints.flags.has(hintHasControlFlow) {
 		preferPinReg(gpPool, RBP)
 	}
 	// Tiny prepared integer leaves can use a slimmer host trampoline when their
@@ -2742,7 +2742,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if !pinLocals {
 		fpPinLimit = 0
 	}
-	intervalRegion := regABI && !hasCall && !hints.hasControlFlow && !hints.usesBulkMem && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
+	intervalRegion := regABI && !hasCall && !hints.flags.has(hintHasControlFlow) && !hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
 	if intervalRegion {
 		gpPool = nil // regional GP assignments supersede whole-function GP pins
 	}
@@ -2778,7 +2778,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.resultFloat = rt.isFloat()
 		f.resultF64 = rt == mtF64
 	}
-	f.lazyZero = hints.callsSelf && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
+	f.lazyZero = hints.flags.has(hintCallsSelf) && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
 	f.storeForwardOK = f.opt(optStoreForward) && len(c.BodyBytes) <= 256 && nLocals <= 8
 
 	// Auto-inlining: reserve each spliced callee's locals past f.nLocals (after all
@@ -2796,7 +2796,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		// state beyond RBX is required. Keep this deliberately leaf-only: a local
 		// callee could itself expect the module memory-size cache to be live.
 		sc.directPrepared = volatilePrepared
-		internalOff, err := f.emitRegABI(c, hostAdapter, hints.hasFloatConst, hints.hasSIMD)
+		internalOff, err := f.emitRegABI(c, hostAdapter, hints.flags.has(hintHasFloatConst), hints.flags.has(hintHasSIMD))
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -2817,10 +2817,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 
 	f.prologue()
-	if !preloadScanGatesEnabled || hints.hasFloatConst {
+	if !preloadScanGatesEnabled || hints.flags.has(hintHasFloatConst) {
 		f.preloadFloatConsts(c.BodyBytes)
 	}
-	if !preloadScanGatesEnabled || hints.hasSIMD {
+	if !preloadScanGatesEnabled || hints.flags.has(hintHasSIMD) {
 		f.preloadV128Consts(c.BodyBytes)
 	}
 	if err := f.runBody(c); err != nil {

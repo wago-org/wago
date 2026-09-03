@@ -26,12 +26,12 @@ func TestTableMutationHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scanBodyBytes: %v", err)
 	}
-	if !h.mutatesTable {
+	if !h.flags.has(hintMutatesTable) {
 		t.Fatal("table.set was not recorded as a table mutation")
 	}
 
 	ast := wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableGrow}}}
-	if h := scanBody(ast, 0, 0, 0); !h.mutatesTable {
+	if h := scanBody(ast, 0, 0, 0); !h.flags.has(hintMutatesTable) {
 		t.Fatal("AST table.grow was not recorded as a table mutation")
 	}
 }

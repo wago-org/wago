@@ -20,7 +20,7 @@ func TestInlineTargetPlanWithoutCandidatesDoesNotAllocateAMD64(t *testing.T) {
 		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
 		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
 	)
-	hints := []funcHints{{hasCall: true}, {hasCall: true}}
+	hints := []funcHints{{flags: hintHasCall}, {flags: hintHasCall}}
 	policy := currentCodegenPolicy()
 	var targets inlineTargetTable
 	if allocs := testing.AllocsPerRun(100, func() {
@@ -250,7 +250,7 @@ func TestInlineTargetsRejectEHAMD64(t *testing.T) {
 		funcDef{body: []byte{0x00, 0x0b}},
 	)
 	policy := shared.DefaultCodegenPolicy(currentCodegenPolicy().Selection)
-	hints := []funcHints{{hasCall: true}, {moduleEH: true, inlineCallSites: 1}}
+	hints := []funcHints{{flags: hintHasCall}, {flags: hintModuleEH, inlineCallSites: 1}}
 	if target := buildInlineTargets(m, hints, policy).target(1); target != nil {
 		t.Fatal("ordinary policy admitted EH inline target")
 	}
@@ -276,8 +276,8 @@ func TestInlineBoundaryParityAMD64(t *testing.T) {
 		if err := scanInlineFactsBytes(body, &facts); err != nil {
 			t.Fatalf("inline scan opcode %#x: %v", op, err)
 		}
-		if !h.hasControlFlow || !facts.hasControlFlow {
-			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.hasControlFlow, facts.hasControlFlow)
+		if !h.flags.has(hintHasControlFlow) || !facts.hasControlFlow {
+			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.flags.has(hintHasControlFlow), facts.hasControlFlow)
 		}
 	}
 }
@@ -311,8 +311,8 @@ func TestCompactInlinePrunesTransitiveOmissionAMD64(t *testing.T) {
 	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
 	policy.MaxCompactInlineBodyBytes = 12
 	hints := []funcHints{
-		{hasCall: true},
-		{localCount: 1, hasCall: true, inlineCallSites: 1},
+		{flags: hintHasCall},
+		{localCount: 1, flags: hintHasCall, inlineCallSites: 1},
 		{localCount: 1, inlineCallSites: 1},
 	}
 	targets := buildInlineTargets(m, hints, policy)
@@ -443,7 +443,7 @@ func TestInlineDeadBodyProofRejectsTailReferenceAMD64(t *testing.T) {
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 	)
 	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
-	base := []funcHints{{hasCall: true}, {localCount: 1, inlineCallSites: 1}}
+	base := []funcHints{{flags: hintHasCall}, {localCount: 1, inlineCallSites: 1}}
 	if targets := buildInlineTargets(m, base, policy); !targets.omitStandaloneBody(1, false) {
 		t.Fatal("single ordinary call did not prove standalone body dead")
 	}

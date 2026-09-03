@@ -49,7 +49,7 @@ func TestModuleStackArenaCapFallsBackWhenLookaheadDiscountRemovesBenefit(t *test
 
 func TestModuleStackArenaCapFallsBackForDeadCode(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 1536)}}}
-	hints := []funcHints{{stackArenaNodes: 770, hasStackSinkFusion: true}}
+	hints := []funcHints{{stackArenaNodes: 770, flags: hintHasStackSinkFusion}}
 	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
 		t.Fatalf("dead-code stack arena cap = %d, want legacy %d", got, defaultStackArenaCap)
 	}
@@ -57,7 +57,7 @@ func TestModuleStackArenaCapFallsBackForDeadCode(t *testing.T) {
 
 func TestModuleStackArenaCapFallsBackForStackSinkFusion(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 1536)}}}
-	hints := []funcHints{{stackArenaNodes: 770, hasStackSinkFusion: true}}
+	hints := []funcHints{{stackArenaNodes: 770, flags: hintHasStackSinkFusion}}
 	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
 		t.Fatalf("stack-sink fusion cap = %d, want legacy %d", got, defaultStackArenaCap)
 	}
