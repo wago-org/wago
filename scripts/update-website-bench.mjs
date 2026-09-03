@@ -444,7 +444,8 @@ function buildRow(spec, metrics, backend) {
 
 function barWidth(value, max) {
   if (value <= 0) return 4;
-  return Math.max(4, Math.round((value / max) * 100));
+  if (value === max) return 100;
+  return Math.max(4, Math.min(99, Math.round((value / max) * 100)));
 }
 
 // buildDVRow resolves a wago-only Decode+Validate "scale" row: combined front-end
@@ -466,7 +467,9 @@ function buildDVRow(spec, metrics) {
 // validate time, and the badge is the parse throughput.
 function renderDVRow(r, maxBytes, indent) {
   const pad = " ".repeat(indent);
-  const w = Math.max(4, Math.round((r.bytes / maxBytes) * 100));
+  const w = r.bytes === maxBytes
+    ? 100
+    : Math.max(4, Math.min(99, Math.round((r.bytes / maxBytes) * 100)));
   return `${pad}<div class="vs__row">
 ${pad}    <div class="vs__meta">
 ${pad}        <span class="vs__label">${esc(r.label)}</span

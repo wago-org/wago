@@ -23,7 +23,8 @@ for the performance section).
 - `run.mjs` — the sweep. Skips any runtime whose binary isn't found and still
   writes the rest. Run it once per architecture.
 - `startup-arm64.json` and `startup-amd64.json` — the matched datasets the
-  website generator consumes (committed). Both include Railshot and Dragline.
+  website generator consumes (committed). The UI labels Railshot as
+  `wago single-pass` and Dragline as `wago multi-pass`.
 
 ## Run it
 
@@ -47,9 +48,9 @@ make startup-website
 on both architectures. Each workload is one hyperfine invocation with one
 named command per runtime, so all engines are timed back-to-back under
 identical conditions. The website panel sorts each workload ascending and
-scales bar widths against the slowest non-LLVM runtime (wavm's LLVM compile is
-an outlier that would otherwise flatten every bar). Wago's runtime binary is
-measured twice, once with `--railshot` and once with `--dragline`; enable the
+scales every bar against that workload's highest latency, which always fills
+the rail. Wago's runtime binary is measured twice, once with `--railshot`
+(`wago single-pass`) and once with `--dragline` (`wago multi-pass`); enable the
 experimental Dragline setting in an isolated benchmark configuration first.
 
 See `skills/startup-latency-bench/SKILL.md` for the twin construction, the

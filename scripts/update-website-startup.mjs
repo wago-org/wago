@@ -59,11 +59,13 @@ function fmtMs(ms) {
   return `${(Math.round(ms * 10) / 10).toFixed(1)} ms`;
 }
 
-// Bar scale excludes the LLVM outlier (wavm's ~audio-rate compile would flatten
-// every other bar); wavm then caps at 100. Matches the hand-tuned panels.
-function widths(rows, tagOf) {
-  const scaleMax = Math.max(...rows.filter((r) => tagOf(r.name) !== "LLVM").map((r) => r.ms), 1);
-  return rows.map((r) => Math.max(1, Math.min(100, Math.round((r.ms / scaleMax) * 100))));
+// The slowest runtime fills the rail; every other width is relative to its
+// value. Cap rounded non-max values below 100 so only the true maximum fills it.
+function widths(rows) {
+  const scaleMax = Math.max(...rows.map((r) => r.ms), 1);
+  return rows.map((r) => r.ms === scaleMax
+    ? 100
+    : Math.max(1, Math.min(99, Math.round((r.ms / scaleMax) * 100))));
 }
 
 function renderPanel(w, index, runtimes, arch) {
@@ -71,20 +73,20 @@ function renderPanel(w, index, runtimes, arch) {
   const rows = Object.entries(w.results)
     .map(([name, ms]) => ({ name, ms }))
     .sort((a, b) => a.ms - b.ms);
-  const wds = widths(rows, tagOf);
+  const wds = widths(rows);
   const body = rows
     .map((r, i) => {
       const isWago = r.name === "railshot" || r.name === "dragline";
       const fill = r.name === "dragline" ? "vs__fill--dragline" : isWago ? "vs__fill--railshot" : "vs__fill--wazero";
       const rowClass = isWago ? "rank__row rank__row--wago" : "rank__row";
       return `                                <div class="${rowClass}">
-                                    <span class="rank__name">${esc(runtimes[r.name]?.label ?? r.name)}<span class="rank__tag">${esc(tagOf(r.name))}</span></span>
-                                    <span class="vs__track"><span class="vs__fill ${fill}" data-bar data-width="${wds[i]}"></span></span>
+                                    <span class="rank__name">${esc(runtimes[r.name]?.label ?? r.name)}${isWago ? "" : `<span class="rank__tag">${esc(tagOf(r.name))}</span>`}</span>
+                                    <span class="vs__track"><span class="vs__fill ${fill}" data-bar data-value="${r.ms}" data-width="${wds[i]}"></span></span>
                                     <span class="rank__val">${fmtMs(r.ms)}</span>
                                 </div>`;
     })
     .join("\n");
-  return `                                <div class="chart__panel rank" role="tabpanel" id="su-${arch}-panel-${w.id}" aria-labelledby="su-${arch}-tab-${w.id}"${index === 0 ? "" : " hidden"}>
+  return `                                <div class="chart__panel rank" role="tabpanel" id="su-${arch}-panel-${w.id}" aria-labelledby="su-${arch}-tab-${w.id}" data-relative-bars${index === 0 ? "" : " hidden"}>
 ${body}
                                 </div>`;
 }

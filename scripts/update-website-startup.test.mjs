@@ -7,7 +7,7 @@ import test from "node:test";
 
 const root = resolve(import.meta.dirname, "..");
 
-test("renders matched architecture panels with Dragline", () => {
+test("renders matched architecture panels with relative bars", () => {
   const website = mkdtempSync(join(tmpdir(), "wago-startup-site-"));
   writeFileSync(
     join(website, "index.html"),
@@ -27,10 +27,17 @@ test("renders matched architecture panels with Dragline", () => {
   assert.equal(matches(html, /data-startup-arch-panel=/g), 2);
   assert.match(html, /data-startup-arch-target="arm64"/);
   assert.match(html, /data-startup-arch-target="amd64"/);
-  assert.match(html, />Dragline</);
-  assert.match(html, />Railshot</);
+  assert.match(html, />wago multi-pass</);
+  assert.match(html, />wago single-pass</);
+  assert.doesNotMatch(html, />Dragline</);
+  assert.doesNotMatch(html, />Railshot</);
   assert.match(html, /Apple M4 Max, darwin\/arm64/);
   assert.match(html, /AMD Ryzen 7 7800X3D, linux\/amd64, CPU 7 pinned/);
+  for (const panel of html.matchAll(/<div class="chart__panel rank"[\s\S]*?<\/div>\n                                <\/div>/g)) {
+    const widths = [...panel[0].matchAll(/data-width="(\d+)"/g)].map((match) => Number(match[1]));
+    assert.equal(widths.filter((width) => width === 100).length, 1);
+    assert.equal(Math.max(...widths), 100);
+  }
 });
 
 function matches(text, pattern) {

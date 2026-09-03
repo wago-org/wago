@@ -14,7 +14,7 @@
   ],
   "runtimes": {
     "railshot": {
-      "label": "Railshot",
+      "label": "wago single-pass",
       "tag": "wago",
       "bin": "wago",
       "env": "WAGO_BIN",
@@ -25,7 +25,7 @@
       ]
     },
     "dragline": {
-      "label": "Dragline",
+      "label": "wago multi-pass",
       "tag": "wago",
       "bin": "wago",
       "env": "WAGO_BIN",

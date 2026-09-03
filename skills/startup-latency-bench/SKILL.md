@@ -79,8 +79,9 @@ Sanity: `wasm-tools print /tmp/json-startup.wasm | grep -c '(import'` must be 0.
 
 ## 2. Get the runtimes
 
-- **wago runtime** (run once with `--railshot` and once with `--dragline`; use
-  an isolated `WAGO_CONFIG` with Dragline enabled):
+- **wago runtime** (run once with `--railshot` / `wago single-pass` and once
+  with `--dragline` / `wago multi-pass`; use an isolated `WAGO_CONFIG` with
+  Dragline enabled):
   `go build -tags wago_runtime -o /tmp/bin/wago ./cli/wago`
   (matches `make build-runtime-standard`).
 - **wasmtime, wazero, wasmer, wavm**: upstream release binaries.

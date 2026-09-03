@@ -7,11 +7,11 @@
   "architecture": "arm64",
   "runtimes": {
     "railshot": {
-      "label": "Railshot",
+      "label": "wago single-pass",
       "tag": "wago"
     },
     "dragline": {
-      "label": "Dragline",
+      "label": "wago multi-pass",
       "tag": "wago"
     },
     "wazero": {
