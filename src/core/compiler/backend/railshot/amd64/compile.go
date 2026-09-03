@@ -482,7 +482,7 @@ type transient struct {
 	tmpDeferred    []deferredArg
 	tmpBelow       []*elem
 	tmpGpCand      []gpCand
-	tmpInts        []int
+	tmpLocalIndex  []uint16
 	tmpIntervalReg []Reg
 	v128Pool       []poolConst // reusable 4/8/16-byte trailing rip-relative constants
 	poolSites      []poolSite  // flat intrusive site lists; no per-constant allocation
@@ -3152,29 +3152,31 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	// Float locals use the separate XMM pin pool. Call-free functions also pin hot
 	// v128 locals here (same pool, full 128-bit): every XMM is caller-saved, so a
 	// v128 pin is confined to the call-free class (pinV128).
-	fc := f.tmpInts[:0]
+	fc := f.tmpLocalIndex[:0]
 	for i := 0; i < f.nLocals; i++ {
 		if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
-			fc = append(fc, i)
+			fc = append(fc, uint16(i))
 		}
 	}
-	slices.SortFunc(fc, func(a, b int) int {
-		if localHotness(scores[a]) != localHotness(scores[b]) {
-			if localHotness(scores[a]) > localHotness(scores[b]) {
+	slices.SortFunc(fc, func(a, b uint16) int {
+		ai, bi := int(a), int(b)
+		if localHotness(scores[ai]) != localHotness(scores[bi]) {
+			if localHotness(scores[ai]) > localHotness(scores[bi]) {
 				return -1
 			}
 			return 1
 		}
-		return a - b
+		return cmp.Compare(a, b)
 	})
-	f.tmpInts = fc
+	f.tmpLocalIndex = fc
 	if fpPinLimit > len(pinnedFLocalRegs) {
 		fpPinLimit = len(pinnedFLocalRegs)
 	}
-	for k, i := range fc {
+	for k, local := range fc {
 		if k >= fpPinLimit {
 			break
 		}
+		i := int(local)
 		if pinnedFLocalRegs[k] < 12 {
 			f.stats.peep("deep-fp-local-pin") // extended XMM8-10/XMM4-7 pin
 		}

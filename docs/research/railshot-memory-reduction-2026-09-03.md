@@ -243,6 +243,16 @@ counts unchanged. Five-sample stress timings improved slightly, focused backend
 tests pass, and matched corpus hashes are identical. This suggests auditing
 scratch element layout is at least as important as auditing the slice headers.
 
+The float/vector candidate list had the same issue in a simpler form: it stored
+validated original-local indexes in a reusable `[]int`. It is now `[]uint16` on
+both backends. The walk stops at `nLocals`, which validation caps at 65,535; it
+does not include appended inline scratch, so the conversion is exact. A
+generated 4,000-`f64`-local compile falls from 226,984 to 123,688 B/op on ARM64
+and from 348,728 to 245,432 B/op on Linux/AMD64, removing three allocations on
+each target. Native ARM64 median time improves slightly and emulated AMD64
+samples overlap. Ordinary `many_funcs` and `json-as` remain in the same
+allocator classes. No rank or admission policy changed.
+
 ### 3. Easy repeated work exists today
 
 Both backends call `moduleUsesSyncHostCalls` inside every function attempt. That

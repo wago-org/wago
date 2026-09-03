@@ -404,7 +404,7 @@ type transient struct {
 	tmpLabels     []uint32
 	tmpDeferred   []deferredArg
 	tmpGpCand     []gpCand
-	tmpInts       []int
+	tmpLocalIndex []uint16
 	edgeScratch   []byte
 }
 
@@ -2575,23 +2575,24 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	// v128 locals here (same V registers, full 128-bit): a wasm→wasm call would only
 	// preserve the low 64 bits, so a v128 pin is confined to the call-free class.
 	pinV128 := f.opt(optV128Pins) && !hasCall
-	fc := f.tmpInts[:0]
+	fc := f.tmpLocalIndex[:0]
 	hotV128Candidates := 0
 	for i := 0; i < f.nLocals; i++ {
 		if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
-			fc = append(fc, i)
+			fc = append(fc, uint16(i))
 			if f.localType[i] == mtV128 && localHotness(scores[i]) > 0 {
 				hotV128Candidates++
 			}
 		}
 	}
-	slices.SortFunc(fc, func(a, b int) int {
-		if localHotness(scores[a]) != localHotness(scores[b]) {
-			return cmp.Compare(localHotness(scores[b]), localHotness(scores[a]))
+	slices.SortFunc(fc, func(a, b uint16) int {
+		ai, bi := int(a), int(b)
+		if localHotness(scores[ai]) != localHotness(scores[bi]) {
+			return cmp.Compare(localHotness(scores[bi]), localHotness(scores[ai]))
 		}
-		return a - b
+		return cmp.Compare(a, b)
 	})
-	f.tmpInts = fc
+	f.tmpLocalIndex = fc
 	fpPinLimit := len(pinnedFLocalRegs)
 	deepV128Pins := false
 	if f.opt(optLegacyFPPins) && fpPinLimit > 4 {
@@ -2620,10 +2621,11 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		// register-pressure retry must release the V-register pins as well as GP.
 		fpPinLimit = 0
 	}
-	for k, i := range fc {
+	for k, local := range fc {
 		if k >= fpPinLimit {
 			break
 		}
+		i := int(local)
 		if deepV128Pins && localHotness(scores[i]) == 0 {
 			break
 		}
