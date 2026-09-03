@@ -55,7 +55,7 @@ func TestRegisterABICompactHeaderRemapsGCFrameLocalsArm64(t *testing.T) {
 	}
 	f := fn{
 		nLocals:            2,
-		localSlot:          []int{0, 1},
+		localSlot:          []uint32{0, 1},
 		localType:          []machineType{mtI32, mtI64},
 		compactFrameHeader: true,
 	}

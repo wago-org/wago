@@ -115,7 +115,7 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 	f := &fn{
 		a:         &a64.Asm{},
 		localType: []machineType{mtI32, mtI64, mtF32, mtI32},
-		localSlot: []int{0, 1, 2, 3},
+		localSlot: []uint32{0, 1, 2, 3},
 		locals: []localDef{
 			{reg: regNone, state: lsConstZero},
 			{reg: regNone, state: lsMem},

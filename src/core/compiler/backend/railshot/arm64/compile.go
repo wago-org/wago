@@ -164,7 +164,7 @@ type fn struct {
 	nParams     int
 	nLocals     int           // params + declared locals
 	localType   []machineType // per-local machine type
-	localSlot   []int         // per-local frame slot in 8-byte units; v128 occupies two
+	localSlot   []uint32      // per-local frame slot in 8-byte units; v128 occupies two
 	nLocalSlots int           // total local frame slots in 8-byte units
 
 	// WARP-style per-local storage metadata. localType remains as the compact
@@ -866,7 +866,7 @@ func (f *fn) prepareCompactGCFrameHeader(plan *shared.GCFrameRootPlan) bool {
 	return true
 }
 
-func (f *fn) localOff(i int) int32 { return int32(f.frameHeaderBytes() + 8*f.localSlot[i]) }
+func (f *fn) localOff(i int) int32 { return int32(f.frameHeaderBytes() + 8*int(f.localSlot[i])) }
 func (f *fn) ehFrameBytes() int {
 	if f.moduleEH {
 		return (maxEHTryRecords*ehRecordSlots + maxEHRootRecords*ehRootSlots) * 8
@@ -2102,12 +2102,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	if cap(f.localSlot) < nLocals {
-		f.localSlot = make([]int, nLocals)
+		f.localSlot = make([]uint32, nLocals)
 	} else {
 		f.localSlot = f.localSlot[:nLocals]
 	}
 	for i, mt := range f.localType {
-		f.localSlot[i] = f.nLocalSlots
+		// Validation caps a function at 65,535 locals, so even an all-v128
+		// local area fits exactly in uint32 slots. Inlined scratch is checked
+		// against the much smaller native-frame limit below before any home is
+		// consumed.
+		f.localSlot[i] = uint32(f.nLocalSlots)
 		f.nLocalSlots += mt.stackSlots()
 	}
 	hasCall := hints.flags.has(hintHasCall)

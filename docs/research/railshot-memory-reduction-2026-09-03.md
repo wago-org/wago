@@ -197,10 +197,10 @@ cache traffic in deeply nested scalar code. Prove it with `unsafe.Sizeof`,
 
 ### 2. Several compiler indexes are needlessly host-width
 
-`localSlot []int`, relocation offsets/targets, control heights/counts, and most
-fields in parallel `funcResult` use 64-bit `int` on supported hosts. The module
-and metadata layers already use `uint32` for function indexes, local indexes,
-code offsets, frame offsets, and safepoint IDs.
+At the inspected base, `localSlot []int`, relocation offsets/targets, control
+heights/counts, and most fields in parallel `funcResult` used 64-bit `int` on
+supported hosts. The module and metadata layers already use `uint32` for
+function indexes, local indexes, code offsets, frame offsets, and safepoint IDs.
 
 Sources: [AMD64 function state](../../src/core/compiler/backend/railshot/amd64/compile.go#L240),
 [AMD64 relocations](../../src/core/compiler/backend/railshot/amd64/call.go#L47),
@@ -211,9 +211,17 @@ Use checked conversion at the decoder/compiler boundary, then retain `uint32`
 internally. Pack booleans and small enums into flags. This is general input-size
 accounting, not a workload heuristic.
 
-**Hypothesis:** narrowing `localSlot` alone halves that backing array; narrowing
-and flattening relocations should also reduce parallel result metadata and
-allocation count. Reject the change if checks add measurable compile time.
+ARM64 now retains local slots as `[]uint32`. Validated functions fit exactly,
+and the compiler rejects an oversized synthetic inline frame before consuming
+its stored homes. A generated 4,000-local compile saves exactly 16,384 B/op
+(414,098 to 397,714, with 38 allocations unchanged); ordinary `many_funcs` and
+`json-as` save 32 and 120 B/op because their shorter arrays straddle only nearby
+allocator size classes. Five-sample stress timings overlap and matched corpus
+hashes are identical. AMD64 is not mechanically mirrored: its current word
+also packs a local-reference count in the high 32 bits, so a split sidecar must
+first prove a net memory benefit. Narrowing and flattening remaining relocations
+is still a hypothesis and should be rejected if checks add measurable compile
+time.
 
 ### 3. Easy repeated work exists today
 

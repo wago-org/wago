@@ -714,7 +714,10 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 		base := len(f.localType)
 		for _, lt := range targets.localTypes(t) {
 			f.localType = append(f.localType, lt)
-			f.localSlot = append(f.localSlot, f.nLocalSlots)
+			// compileFuncAttempt rejects the completed frame before any of these
+			// homes are consumed. Accepted native frames are far below uint32
+			// slots, so this representation is exact on every successful path.
+			f.localSlot = append(f.localSlot, uint32(f.nLocalSlots))
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, state: lsMem})
 		}
