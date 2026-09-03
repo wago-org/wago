@@ -157,7 +157,14 @@ func (f *fn) trapAlways(code uint32) {
 }
 
 func (f *fn) trapSite(branch int) trapSite {
-	return trapSite{branch: branch, function: f.traceFuncIdx, pc: f.wasmPC}
+	return trapSite{branch: compactTrapBranch(branch), function: f.traceFuncIdx, pc: f.wasmPC}
+}
+
+func compactTrapBranch(branch int) uint32 {
+	if branch < 0 || uint64(branch) >= uint64(^uint32(0)) {
+		panic("amd64: trap branch offset exceeds 32-bit function domain")
+	}
+	return uint32(branch)
 }
 
 // emitTrapStubs emits one trap stub per trap code used by this function and
@@ -207,13 +214,13 @@ func (f *fn) emitTrapStubs() {
 				pos := f.a.Len()
 				f.a.MovImm32(RAX, int32(first.pc))
 				commonJump = f.a.JmpPlaceholder()
-				f.a.PatchRel32(first.branch, pos)
+				f.a.PatchRel32(int(first.branch), pos)
 			}
 			common := f.a.Len()
 			if len(group) != 1 {
 				f.a.MovImm32(RAX, -1)
 				for _, site := range group {
-					f.a.PatchRel32(site.branch, common)
+					f.a.PatchRel32(int(site.branch), common)
 				}
 			}
 			f.storeModuleGlobals(RSI)
@@ -250,14 +257,14 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 			f.a.MovImm32(RCX, int32(first.function+1))
 			f.a.MovImm32(RDX, int32(code))
 			for _, site := range group {
-				f.a.PatchRel32(site.branch, pos)
+				f.a.PatchRel32(int(site.branch), pos)
 			}
 			f.stats.addTrapGroup()
 			emitted++
 			if emitted < groupCount {
-				group[0].branch = f.a.JmpPlaceholder()
+				group[0].branch = compactTrapBranch(f.a.JmpPlaceholder())
 			} else {
-				group[0].branch = -1
+				group[0].branch = ^uint32(0)
 			}
 			start = end
 		}
@@ -281,8 +288,8 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 			for end < len(sites) && sites[end].function == sites[start].function {
 				end++
 			}
-			if sites[start].branch >= 0 {
-				f.a.PatchRel32(sites[start].branch, common)
+			if sites[start].branch != ^uint32(0) {
+				f.a.PatchRel32(int(sites[start].branch), common)
 			}
 			start = end
 		}

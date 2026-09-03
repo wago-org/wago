@@ -301,6 +301,16 @@ allocations; `many_funcs` stays in the same allocation class and timing samples
 overlap. The default-off loop-versioning experiment does not receive a new
 admission path; only its shared fact representation changes.
 
+Trap patch lists were the next exact-width sidecar visible in the profile. Their
+branch offset used a host-width `int` beside two `uint32` fields, padding each
+record to 16 bytes. Both backends now narrow at an explicit checked boundary and
+retain a 12-byte `trapSite`; AMD64 reserves all-ones for its existing internal
+no-common-jump state. `json-as` saves approximately 1,072 B/op on both targets
+without changing allocation count, while the trap-free `many_funcs` fixture is
+unchanged. The result reinforces the layout audit rule: range-check native
+offsets once where they enter retained metadata, then keep sidecars uniformly
+32-bit until an encoder API requires `int`.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so

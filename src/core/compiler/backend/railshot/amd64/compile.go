@@ -693,7 +693,7 @@ func (f *fn) scratchState() *scratch {
 }
 
 type trapSite struct {
-	branch   int
+	branch   uint32
 	function uint32
 	pc       uint32
 }

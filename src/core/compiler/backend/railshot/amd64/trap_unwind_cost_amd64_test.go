@@ -104,7 +104,7 @@ func TestSizeSharesCompleteTrapBodyAMD64(t *testing.T) {
 		for code := uint32(1); code <= 3; code++ {
 			branch := a.JccPlaceholder(condNE)
 			sc.trapSites[code] = append(sc.trapSites[code], trapSite{
-				branch: branch, function: 4, pc: code * 10,
+				branch: uint32(branch), function: 4, pc: code * 10,
 			})
 		}
 		f.emitTrapStubs()

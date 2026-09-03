@@ -19,9 +19,24 @@ func TestValueFactsAndRootsFitCompactStorageAMD64(t *testing.T) {
 	if got, want := unsafe.Sizeof(stack{}), uintptr(72); got != want {
 		t.Fatalf("stack size = %d, want %d", got, want)
 	}
+	if got, want := unsafe.Sizeof(trapSite{}), uintptr(12); got != want {
+		t.Fatalf("trapSite size = %d, want %d", got, want)
+	}
 	if got, want := unsafe.Sizeof(gpCand{}), uintptr(12); got != want {
 		t.Fatalf("GP candidate size = %d, want %d", got, want)
 	}
+}
+
+func TestCompactTrapBranchDomainAMD64(t *testing.T) {
+	if got, want := compactTrapBranch(int(^uint32(0)-1)), ^uint32(0)-1; got != want {
+		t.Fatalf("compact trap branch = %d, want %d", got, want)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("reserved trap branch sentinel accepted")
+		}
+	}()
+	compactTrapBranch(int(^uint32(0)))
 }
 
 func TestStorageMetadataFieldsAreIndependentAMD64(t *testing.T) {
