@@ -14,8 +14,25 @@ const work = await mkdtemp(join(tmpdir(), "wago-general-corpus-"));
 const compileReports = [];
 const runtimeRows = [];
 
+if (options.resume) {
+  const saved = JSON.parse(await readFile(options.resume, "utf8"));
+  for (const [field, expected] of [
+    ["commit", options.commit],
+    ["compileRounds", options.compileRounds],
+    ["runtimeRounds", options.runtimeRounds],
+    ["benchtimeNs", options.benchtimeNs],
+  ]) {
+    if (String(saved[field] ?? "") !== String(expected)) {
+      throw new Error(`resume report ${field}=${saved[field]} does not match ${expected}`);
+    }
+  }
+  compileReports.push(...(saved.compile ?? []));
+  runtimeRows.push(...(saved.runtime ?? []));
+}
+
 try {
   for (const [moduleIndex, module] of manifest.modules.entries()) {
+    if (moduleIndex < compileReports.length) continue;
     console.error(`compile ${moduleIndex + 1}/${manifest.modules.length}: ${module.file}`);
     const wasm = join(benchDir, "corpus", module.file);
     const reportPath = join(work, `${basename(module.file, ".wasm")}-compile.json`);
@@ -30,6 +47,22 @@ try {
   }
 
   for (const worker of options.runtimeWorkers) {
+    const expectedRows = options.runtimeRounds * manifest.modules.reduce(
+      (sum, module) => sum + (Array.isArray(module.exec) && module.exec.length ? module.exec.length + 1 : 0),
+      0,
+    );
+    const matchesWorker = (row) => (row.engine === "cranelift" ? "wasmtime" : row.engine) === worker.engine;
+    const savedRows = runtimeRows.filter(matchesWorker).length;
+    if (savedRows === expectedRows) {
+      console.error(`${worker.label} runtime: reusing ${savedRows} checkpointed samples`);
+      continue;
+    }
+    if (savedRows > 0) {
+      console.error(`${worker.label} runtime: replacing ${savedRows}/${expectedRows} incomplete samples`);
+      for (let i = runtimeRows.length - 1; i >= 0; i--) {
+        if (matchesWorker(runtimeRows[i])) runtimeRows.splice(i, 1);
+      }
+    }
     const runtimePath = join(work, `${worker.engine}-runtime.jsonl`);
     for (let round = 0; round < options.runtimeRounds; round++) {
       console.error(`${worker.label} runtime round ${round + 1}/${options.runtimeRounds}`);
@@ -100,6 +133,7 @@ function parseArgs(args) {
     config: resolve(values.get("config") ?? join(benchDir, "dragline-railshot-cranelift.json")),
     manifest: resolve(values.get("manifest") ?? join(benchDir, "corpus", "manifest.json")),
     out: required("out"),
+    resume: values.has("resume") ? resolve(values.get("resume")) : "",
     commit: values.get("commit") ?? "",
     cpu: values.get("cpu") ?? "",
     compileRounds: positiveInt(values.get("compile-rounds") ?? "6"),
@@ -115,7 +149,7 @@ function positiveInt(value) {
 }
 
 function usage() {
-  console.error("usage: run-general-corpus.mjs --compiler-harness BIN --wasmtime-worker BIN --wavm-worker BIN --out FILE [--v8 BIN] [--v8-worker FILE] [--commit SHA] [--cpu NAME] [--config FILE] [--manifest FILE] [--compile-rounds N] [--runtime-rounds N] [--benchtime-ns N]");
+  console.error("usage: run-general-corpus.mjs --compiler-harness BIN --wasmtime-worker BIN --wavm-worker BIN --out FILE [--resume FILE] [--v8 BIN] [--v8-worker FILE] [--commit SHA] [--cpu NAME] [--config FILE] [--manifest FILE] [--compile-rounds N] [--runtime-rounds N] [--benchtime-ns N]");
   process.exit(2);
 }
 

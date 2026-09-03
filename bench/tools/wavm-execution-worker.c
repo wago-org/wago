@@ -13,6 +13,17 @@ static void fail(const char* message) {
   exit(1);
 }
 
+static void fail_trap(const char* context, wasm_trap_t* trap) {
+  char message[1024];
+  size_t size = sizeof(message) - 1;
+  if (trap && wasm_trap_message(trap, message, &size)) {
+    message[size] = '\0';
+    fprintf(stderr, "wavm-execution-worker: %s: %s\n", context, message);
+    exit(1);
+  }
+  fail(context);
+}
+
 static uint64_t now_ns(void) {
   struct timespec value;
   if (clock_gettime(CLOCK_MONOTONIC, &value) != 0) fail("clock_gettime failed");
@@ -79,7 +90,7 @@ static void destroy_state(runtime_state* s) {
 static wasm_instance_t* instantiate(runtime_state* s) {
   wasm_trap_t* trap = NULL;
   wasm_instance_t* instance = wasm_instance_new(s->store, s->module, s->imports, &trap, "benchmark");
-  if (!instance) fail("instantiation failed");
+  if (!instance) fail_trap("instantiation failed", trap);
   return instance;
 }
 
@@ -98,8 +109,13 @@ static wasm_func_t* find_function(wasm_module_t* module, wasm_instance_t* instan
 static uint64_t run_instantiations(runtime_state* s, uint64_t iterations) {
   uint64_t started = now_ns();
   for (uint64_t i = 0; i < iterations; i++) {
-    wasm_instance_t* instance = instantiate(s);
+    // WAVM retains linear-memory address reservations for the lifetime of a
+    // compartment. A fresh store alone is therefore insufficient for repeated
+    // instantiation benchmarks of modules that define memory.
+    runtime_state iteration = make_state(s->engine, s->module);
+    wasm_instance_t* instance = instantiate(&iteration);
     wasm_instance_delete(instance);
+    destroy_state(&iteration);
   }
   return now_ns() - started;
 }
