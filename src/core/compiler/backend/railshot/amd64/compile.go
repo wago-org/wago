@@ -666,6 +666,7 @@ type scratch struct {
 	trapSites               [trapMax + 1][]trapSite
 	ctrl                    []ctrlFrame // control-frame stack backing; reused across functions
 	ctrlMerges              []ctrlFrameMerge
+	ctrlGC                  []ctrlFrameGC
 	functionResultTypeArena [maxScratchFunctionResults]machineType
 	pinnedLocals            []int // pinned-local index backing; reused across functions
 	brTableStubAt           []int // duplicate-heavy jump-table target positions by control depth
@@ -678,8 +679,10 @@ type scratch struct {
 	controlScratchReserved  int
 	controlScratchPeak      int
 	controlScratchDiscarded int
-	controlMergePeak        int
-	controlMergeDiscarded   int
+	controlMergePeak        uint32
+	controlMergeDiscarded   uint32
+	controlGCPeak           uint32
+	controlGCDiscarded      uint32
 	transient
 }
 
@@ -721,8 +724,11 @@ func (sc *scratch) noteControlScratch() {
 	if capacity := cap(sc.ctrl); capacity > sc.controlScratchPeak {
 		sc.controlScratchPeak = capacity
 	}
-	if capacity := cap(sc.ctrlMerges); capacity > sc.controlMergePeak {
+	if capacity := uint32(cap(sc.ctrlMerges)); capacity > sc.controlMergePeak {
 		sc.controlMergePeak = capacity
+	}
+	if capacity := uint32(cap(sc.ctrlGC)); capacity > sc.controlGCPeak {
+		sc.controlGCPeak = capacity
 	}
 }
 
@@ -737,7 +743,12 @@ func (sc *scratch) finishControlWorker() {
 	if capacity := cap(sc.ctrlMerges); capacity != 0 {
 		clear(sc.ctrlMerges[:capacity])
 		sc.ctrlMerges = nil
-		sc.controlMergeDiscarded += capacity
+		sc.controlMergeDiscarded += uint32(capacity)
+	}
+	if capacity := cap(sc.ctrlGC); capacity != 0 {
+		clear(sc.ctrlGC[:capacity])
+		sc.ctrlGC = nil
+		sc.controlGCDiscarded += uint32(capacity)
 	}
 }
 
@@ -906,6 +917,8 @@ func (sc *scratch) reset() {
 	sc.transient.loopScanLocals = sc.transient.loopScanLocals[:0]
 	sc.transient.loopSetLocals = sc.transient.loopSetLocals[:0]
 	clear(sc.ctrlMerges[:cap(sc.ctrlMerges)])
+	clear(sc.ctrlGC[:cap(sc.ctrlGC)])
+	sc.ctrlGC = sc.ctrlGC[:0]
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]
 	}

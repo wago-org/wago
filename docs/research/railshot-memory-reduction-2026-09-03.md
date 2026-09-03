@@ -433,6 +433,19 @@ it does not allocate merge backing. Eight `GOGC=off` timing samples overlap.
 The sidecar is admitted only when an actual root bit is recorded, an exact
 semantic condition shared by every function.
 
+AMD64 has the same ownership seam and a larger cold family: eight root and
+reference-fact slices previously occupied every 280-byte merge record. Moving
+them into one lazy, depth-parallel 192-byte GC arena reduces the common record
+to 88 bytes. Both arenas move and clear together, and their capacities remain
+fully represented in the worker resource ledger. Packing the four merge/GC
+peak and discard capacities into their exact 32-bit domains prevents the new
+sidecar header from pushing ordinary scratch into a larger allocation class.
+Emulated Linux/AMD64 `json-as` falls from 188,448 to 185,120 B/op with 544
+allocations unchanged; `many_funcs` remains exactly 70,480 B/op and 35
+allocations. Six `GOGC=off` timing samples are neutral to favorable, and the
+complete backend suite passes. As on ARM64, only actual semantic root or fact
+state allocates the secondary arena.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so

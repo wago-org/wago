@@ -70,9 +70,19 @@ func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
 // merge pinned locals, track GC roots/facts, patch branches, or analyze loops. Keeping it in
 // compact scratch removes pointer-rich fields from ordinary frames.
 type ctrlFrameMerge struct {
-	ends          []int // cfBlock/cfIf: forward jmp sites to patch to end
-	branchState   []locState
-	entryState    []locState
+	ends         []int // cfBlock/cfIf: forward jmp sites to patch to end
+	branchState  []locState
+	entryState   []locState
+	loopSetStart uint32
+	loopSetCount uint16
+	loopSetKnown bool
+	eh           *ctrlFrameEH
+}
+
+// ctrlFrameGC is allocated as a depth-parallel sidecar only when exact GC root
+// or value-fact tracking reaches structured control. Scalar merges do not
+// retain eight scanned slice headers per reserved merge slot.
+type ctrlFrameGC struct {
 	branchGCFacts []shared.GCRefFact
 	entryGCFacts  []shared.GCRefFact
 	baseGCRoots   []bool
@@ -81,10 +91,6 @@ type ctrlFrameMerge struct {
 	baseGCFacts   []shared.GCRefFact
 	paramGCFacts  []shared.GCRefFact
 	resultGCFacts []shared.GCRefFact
-	loopSetStart  uint32
-	loopSetCount  uint16
-	loopSetKnown  bool
-	eh            *ctrlFrameEH
 }
 
 const initialCtrlMergeCapacity = 16
@@ -135,6 +141,25 @@ func (f *fn) ensureCtrlMerge(fr *ctrlFrame) *ctrlFrameMerge {
 	return &sc.ctrlMerges[fr.mergeIndex-1]
 }
 
+func (f *fn) ctrlGC(fr *ctrlFrame) *ctrlFrameGC {
+	if fr.mergeIndex == 0 || int(fr.mergeIndex) > len(f.scratchState().ctrlGC) {
+		return nil
+	}
+	return &f.scratchState().ctrlGC[fr.mergeIndex-1]
+}
+
+func (f *fn) ensureCtrlGC(fr *ctrlFrame) *ctrlFrameGC {
+	f.ensureCtrlMerge(fr)
+	sc := f.scratchState()
+	if sc.ctrlGC == nil {
+		sc.ctrlGC = make([]ctrlFrameGC, 0, initialCtrlMergeCapacity)
+	}
+	for len(sc.ctrlGC) < int(fr.mergeIndex) {
+		sc.ctrlGC = append(sc.ctrlGC, ctrlFrameGC{})
+	}
+	return &sc.ctrlGC[fr.mergeIndex-1]
+}
+
 func (f *fn) releaseCtrlMerge(fr *ctrlFrame) {
 	if fr.mergeIndex == 0 {
 		return
@@ -142,6 +167,9 @@ func (f *fn) releaseCtrlMerge(fr *ctrlFrame) {
 	sc := f.scratchState()
 	merge := &sc.ctrlMerges[fr.mergeIndex-1]
 	*merge = ctrlFrameMerge{}
+	if int(fr.mergeIndex) <= len(sc.ctrlGC) {
+		sc.ctrlGC[fr.mergeIndex-1] = ctrlFrameGC{}
+	}
 }
 
 // pushCtrl reuses a cold-merge slot previously assigned to this nesting depth.
@@ -159,6 +187,15 @@ func (f *fn) pushCtrl(fr *ctrlFrame) {
 			fresh := fr.mergeIndex
 			sc.ctrlMerges[stale-1] = sc.ctrlMerges[fresh-1]
 			sc.ctrlMerges[fresh-1] = ctrlFrameMerge{}
+			if int(fresh) <= len(sc.ctrlGC) {
+				for len(sc.ctrlGC) < int(stale) {
+					sc.ctrlGC = append(sc.ctrlGC, ctrlFrameGC{})
+				}
+				sc.ctrlGC[stale-1] = sc.ctrlGC[fresh-1]
+				sc.ctrlGC[fresh-1] = ctrlFrameGC{}
+			} else if int(stale) <= len(sc.ctrlGC) {
+				sc.ctrlGC[stale-1] = ctrlFrameGC{}
+			}
 			if int(fresh) == len(sc.ctrlMerges) {
 				sc.ctrlMerges = sc.ctrlMerges[:len(sc.ctrlMerges)-1]
 			}
@@ -183,15 +220,15 @@ func (f *fn) frameEntryState(fr *ctrlFrame) []locState {
 }
 
 func (f *fn) frameBranchGCFacts(fr *ctrlFrame) []shared.GCRefFact {
-	if merge := f.ctrlMerge(fr); merge != nil {
-		return merge.branchGCFacts
+	if gc := f.ctrlGC(fr); gc != nil {
+		return gc.branchGCFacts
 	}
 	return nil
 }
 
 func (f *fn) frameEntryGCFacts(fr *ctrlFrame) []shared.GCRefFact {
-	if merge := f.ctrlMerge(fr); merge != nil {
-		return merge.entryGCFacts
+	if gc := f.ctrlGC(fr); gc != nil {
+		return gc.entryGCFacts
 	}
 	return nil
 }
@@ -210,19 +247,19 @@ func (f *fn) setFrameEntryState(fr *ctrlFrame, state []locState) {
 
 func (f *fn) setFrameBranchGCFacts(fr *ctrlFrame, facts []shared.GCRefFact) {
 	if facts != nil {
-		f.ensureCtrlMerge(fr).branchGCFacts = facts
+		f.ensureCtrlGC(fr).branchGCFacts = facts
 	}
 }
 
 func (f *fn) setFrameEntryGCFacts(fr *ctrlFrame, facts []shared.GCRefFact) {
 	if facts != nil {
-		f.ensureCtrlMerge(fr).entryGCFacts = facts
+		f.ensureCtrlGC(fr).entryGCFacts = facts
 	}
 }
 
 func (f *fn) frameBaseGCRoots(fr *ctrlFrame) []bool {
-	if cold := f.ctrlMerge(fr); cold != nil {
-		return cold.baseGCRoots
+	if gc := f.ctrlGC(fr); gc != nil {
+		return gc.baseGCRoots
 	}
 	return nil
 }
@@ -243,36 +280,36 @@ func (f *fn) frameEnds(fr *ctrlFrame) []int {
 }
 
 func (f *fn) frameParamGCRoots(fr *ctrlFrame) []bool {
-	if cold := f.ctrlMerge(fr); cold != nil {
-		return cold.paramGCRoots
+	if gc := f.ctrlGC(fr); gc != nil {
+		return gc.paramGCRoots
 	}
 	return nil
 }
 
 func (f *fn) frameResultGCRoots(fr *ctrlFrame) []bool {
-	if cold := f.ctrlMerge(fr); cold != nil {
-		return cold.resultGCRoots
+	if gc := f.ctrlGC(fr); gc != nil {
+		return gc.resultGCRoots
 	}
 	return nil
 }
 
 func (f *fn) frameBaseGCFacts(fr *ctrlFrame) []shared.GCRefFact {
-	if cold := f.ctrlMerge(fr); cold != nil {
-		return cold.baseGCFacts
+	if gc := f.ctrlGC(fr); gc != nil {
+		return gc.baseGCFacts
 	}
 	return nil
 }
 
 func (f *fn) frameParamGCFacts(fr *ctrlFrame) []shared.GCRefFact {
-	if cold := f.ctrlMerge(fr); cold != nil {
-		return cold.paramGCFacts
+	if gc := f.ctrlGC(fr); gc != nil {
+		return gc.paramGCFacts
 	}
 	return nil
 }
 
 func (f *fn) frameResultGCFacts(fr *ctrlFrame) []shared.GCRefFact {
-	if cold := f.ctrlMerge(fr); cold != nil {
-		return cold.resultGCFacts
+	if gc := f.ctrlGC(fr); gc != nil {
+		return gc.resultGCFacts
 	}
 	return nil
 }
@@ -421,23 +458,23 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 	baseRoots := gcRootFlags(roots[:fr.height])
 	paramRoots := gcRootFlags(roots[fr.height : fr.height+fr.paramN])
 	if baseRoots != nil || paramRoots != nil {
-		cold := f.ensureCtrlMerge(fr)
-		cold.baseGCRoots = baseRoots
-		cold.paramGCRoots = paramRoots
+		gc := f.ensureCtrlGC(fr)
+		gc.baseGCRoots = baseRoots
+		gc.paramGCRoots = paramRoots
 	}
 	if !f.gcRefFactsEnabled() {
 		return
 	}
-	cold := f.ensureCtrlMerge(fr)
-	cold.baseGCFacts = make([]shared.GCRefFact, fr.height)
+	gc := f.ensureCtrlGC(fr)
+	gc.baseGCFacts = make([]shared.GCRefFact, fr.height)
 	for i, root := range roots[:fr.height] {
 		fact := f.gcRefFact(root)
 		if fact.Freshness() == shared.GCFreshUnpublished {
 			fact = fact.WithFreshness(shared.GCPublished)
 		}
-		cold.baseGCFacts[i] = fact
+		gc.baseGCFacts[i] = fact
 	}
-	cold.paramGCFacts = make([]shared.GCRefFact, fr.paramN)
+	gc.paramGCFacts = make([]shared.GCRefFact, fr.paramN)
 	if fr.kind == cfLoop {
 		// opBlock replaces these slots with facts reconstructed from the declared
 		// loop parameter ValTypes. Never copy first-entry dynamic facts here.
@@ -448,7 +485,7 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 		if fact.Freshness() == shared.GCFreshUnpublished {
 			fact = fact.WithFreshness(shared.GCPublished)
 		}
-		cold.paramGCFacts[i] = fact
+		gc.paramGCFacts[i] = fact
 	}
 }
 
@@ -485,28 +522,28 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 		if root.kind != ekValue || !root.st.hasGCRoot() {
 			continue
 		}
-		cold := f.ensureCtrlMerge(fr)
-		if len(cold.resultGCRoots) < n {
-			cold.resultGCRoots = make([]bool, n)
+		gc := f.ensureCtrlGC(fr)
+		if len(gc.resultGCRoots) < n {
+			gc.resultGCRoots = make([]bool, n)
 		}
-		cold.resultGCRoots[i] = true
+		gc.resultGCRoots[i] = true
 	}
 	if !f.gcRefFactsEnabled() {
 		return
 	}
-	cold := f.ensureCtrlMerge(fr)
-	if len(cold.resultGCFacts) < n {
-		cold.resultGCFacts = make([]shared.GCRefFact, n)
+	gc := f.ensureCtrlGC(fr)
+	if len(gc.resultGCFacts) < n {
+		gc.resultGCFacts = make([]shared.GCRefFact, n)
 	}
 	if !fr.has(ctrlResultGCFactsSet) {
 		for i, root := range resultRoots {
-			cold.resultGCFacts[i] = f.gcRefFact(root)
+			gc.resultGCFacts[i] = f.gcRefFact(root)
 		}
 		fr.set(ctrlResultGCFactsSet, true)
 		return
 	}
 	for i, root := range resultRoots {
-		cold.resultGCFacts[i] = shared.MergeGCRefFacts(cold.resultGCFacts[i], f.gcRefFact(root))
+		gc.resultGCFacts[i] = shared.MergeGCRefFacts(gc.resultGCFacts[i], f.gcRefFact(root))
 	}
 }
 
@@ -1535,13 +1572,13 @@ func (f *fn) opEnd() error {
 		for i := 0; i < len(paramGCRoots) && i < fr.resultN; i++ {
 			if len(resultGCRoots) < fr.resultN {
 				resultGCRoots = append(resultGCRoots, make([]bool, fr.resultN-len(resultGCRoots))...)
-				f.ensureCtrlMerge(&fr).resultGCRoots = resultGCRoots
+				f.ensureCtrlGC(&fr).resultGCRoots = resultGCRoots
 			}
 			resultGCRoots[i] = resultGCRoots[i] || paramGCRoots[i]
 			if f.gcRefFactsEnabled() {
 				if len(resultGCFacts) < fr.resultN {
 					resultGCFacts = append(resultGCFacts, make([]shared.GCRefFact, fr.resultN-len(resultGCFacts))...)
-					f.ensureCtrlMerge(&fr).resultGCFacts = resultGCFacts
+					f.ensureCtrlGC(&fr).resultGCFacts = resultGCFacts
 				}
 				if fr.has(ctrlResultGCFactsSet) {
 					resultGCFacts[i] = shared.MergeGCRefFacts(resultGCFacts[i], paramGCFacts[i])
