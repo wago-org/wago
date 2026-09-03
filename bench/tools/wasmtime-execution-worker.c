@@ -246,7 +246,22 @@ int main(int argc, char **argv) {
        part = strtok_r(NULL, ",", &save)) {
     if (nargs >= params->size)
       fail("too many arguments");
-    original[nargs].i32 = (int32_t)strtol(part, NULL, 10);
+    switch (wasm_valtype_kind(params->data[nargs])) {
+    case WASM_I32:
+      original[nargs].i32 = (int32_t)strtol(part, NULL, 10);
+      break;
+    case WASM_I64:
+      original[nargs].i64 = (int64_t)strtoll(part, NULL, 10);
+      break;
+    case WASM_F32:
+      original[nargs].f32 = strtof(part, NULL);
+      break;
+    case WASM_F64:
+      original[nargs].f64 = strtod(part, NULL);
+      break;
+    default:
+      fail("unsupported argument type");
+    }
     nargs++;
   }
   if (nargs != params->size)

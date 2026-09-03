@@ -185,8 +185,16 @@ int main(int argc, char** argv) {
   char* save = NULL;
   size_t index = 0;
   for (char* part = strtok_r(copy, ",", &save); part; part = strtok_r(NULL, ",", &save)) {
-    if (index >= nargs || wasm_valtype_kind(wasm_functype_param(type, index)) != WASM_I32) fail("expected i32 arguments");
-    args[index++].i32 = (int32_t)strtol(part, NULL, 10);
+    if (index >= nargs) fail("too many arguments");
+    wasm_valkind_t kind = wasm_valtype_kind(wasm_functype_param(type, index));
+    switch (kind) {
+      case WASM_I32: args[index].i32 = (int32_t)strtol(part, NULL, 10); break;
+      case WASM_I64: args[index].i64 = (int64_t)strtoll(part, NULL, 10); break;
+      case WASM_F32: args[index].f32 = strtof(part, NULL); break;
+      case WASM_F64: args[index].f64 = strtod(part, NULL); break;
+      default: fail("unsupported argument type");
+    }
+    index++;
   }
   if (index != nargs) fail("argument count mismatch");
   call_state calls = {state.store, function, args, results};
