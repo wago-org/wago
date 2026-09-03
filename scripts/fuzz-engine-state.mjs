@@ -94,7 +94,7 @@ function parseArguments(argv) {
     count: DEFAULT_COUNT,
     start: 1,
     seed: process.env.ENGINE_FUZZ_SEED || DEFAULT_SEED,
-    starshine: process.env.STARSHINE_FFI_WASM || "../starshine-mb/dist/ffi/starshine-ffi.wasm",
+    starshine: process.env.STARSHINE_FFI_WASM || "tests/enginefuzz/starshine-ffi.wasm",
     timeoutMs: DEFAULT_TIMEOUT_MS,
     worker: "",
     keep: false,

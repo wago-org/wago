@@ -4,10 +4,16 @@ The engine-state lane generates valid Wasm modules with Starshine. It runs each
 module in Node and Railshot. Both sides record the same bounded event array and
 compare its SHA-256 hash.
 
-Build the Starshine WasmGC FFI once, if it is not present:
+The repository includes the pinned Starshine WasmGC FFI at
+`tests/enginefuzz/starshine-ffi.wasm`. It was built from Starshine commit
+`1b46f450aa3adc252409bfa611514140cf91cd66` and has SHA-256 hash
+`e4bb3aed71e8bcaa3b0fda634024bf0c46e8881353d13e1dcc69df2460288b18`.
+
+To refresh it from a sibling Starshine checkout:
 
 ```sh
 (cd ../starshine-mb && bun ffi build)
+cp ../starshine-mb/dist/ffi/starshine-ffi.wasm tests/enginefuzz/starshine-ffi.wasm
 ```
 
 Run one complete 136-case cycle across all 45 profile leaves:
@@ -31,7 +37,7 @@ make fuzz-engine-state ENGINE_FUZZ_ARGS="--count 1000 --seed random"
 ```
 
 Set `STARSHINE_FFI_WASM` to use a non-default FFI binary. The default is
-`../starshine-mb/dist/ffi/starshine-ffi.wasm`.
+`tests/enginefuzz/starshine-ffi.wasm`.
 
 ## Execution model
 
