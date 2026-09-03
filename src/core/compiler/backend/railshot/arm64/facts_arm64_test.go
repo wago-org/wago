@@ -22,12 +22,27 @@ func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
 	if got, want := unsafe.Sizeof(trapSite{}), uintptr(12); got != want {
 		t.Fatalf("trapSite size = %d, want %d", got, want)
 	}
+	if got, want := unsafe.Sizeof(callReloc{}), uintptr(12); got != want {
+		t.Fatalf("callReloc size = %d, want %d", got, want)
+	}
 	if got, want := unsafe.Sizeof(localDef{}), uintptr(4); got != want {
 		t.Fatalf("local definition size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(gpCand{}), uintptr(12); got != want {
 		t.Fatalf("GP candidate size = %d, want %d", got, want)
 	}
+}
+
+func TestCompactCallRelocFieldArm64(t *testing.T) {
+	if got, want := compactCallRelocField(int(invalidCallRelocField-1)), invalidCallRelocField-1; got != want {
+		t.Fatalf("compact call relocation field = %d, want %d", got, want)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("negative call relocation field accepted")
+		}
+	}()
+	compactCallRelocField(-1)
 }
 
 func TestCompactTrapBranchDomainArm64(t *testing.T) {

@@ -1580,7 +1580,8 @@ func finalizeOmittedInlineEntries(entry, internalEntry []int, relocs [][]callRel
 	}
 	for caller := range relocs {
 		for _, rl := range relocs[caller] {
-			if rl.target >= 0 && rl.target < len(entry) && targets.omitStandaloneBody(rl.target, hostAdapters[rl.target]) {
+			target := int(rl.target)
+			if rl.target != invalidCallRelocField && target < len(entry) && targets.omitStandaloneBody(target, hostAdapters[target]) {
 				return fmt.Errorf("arm64: function %d retains relocation to omitted inline body %d", caller, rl.target)
 			}
 		}
@@ -1595,13 +1596,27 @@ func finalizeOmittedInlineEntries(entry, internalEntry []int, relocs [][]callRel
 }
 
 func patchCallRelocs(code []byte, entry, internalEntry []int, relocs [][]callReloc) error {
+	if len(entry) < len(relocs) {
+		return fmt.Errorf("arm64: relocation entry table has %d functions, want at least %d", len(entry), len(relocs))
+	}
 	asm := &a64.Asm{B: code}
 	for i := range relocs {
+		base := entry[i]
 		for _, rl := range relocs[i] {
-			site := entry[i] + rl.at
-			target := entry[rl.target]
+			if rl.at == invalidCallRelocField || base < 0 || base > len(code)-4 || uint64(rl.at) > uint64(len(code)-base-4) {
+				return fmt.Errorf("arm64: invalid relocation site %#x in function %d for %d-byte code image", rl.at, i, len(code))
+			}
+			targetIndex := int(rl.target)
+			if rl.target == invalidCallRelocField || targetIndex >= len(entry) {
+				return fmt.Errorf("arm64: invalid call relocation target %d for function %d", rl.target, i)
+			}
+			site := base + int(rl.at)
+			target := entry[targetIndex]
 			if rl.internal {
-				target = internalEntry[rl.target]
+				if targetIndex >= len(internalEntry) {
+					return fmt.Errorf("arm64: missing internal entry for call relocation target %d in function %d", rl.target, i)
+				}
+				target = internalEntry[targetIndex]
 			}
 			if !asm.PatchBranch26(site, target) {
 				return fmt.Errorf("arm64 direct call relocation from function %d at %#x to function %d at %#x exceeds BL range", i, site, rl.target, target)

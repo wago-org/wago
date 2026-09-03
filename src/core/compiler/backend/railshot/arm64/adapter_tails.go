@@ -183,8 +183,8 @@ func compactSharedAdapterTails(code []byte, oldLen int, entry, internalEntry []i
 			deleted := end - keepEnd
 			removed += deleted
 			for j := range relocs[i] {
-				if relocs[i][j].at >= int(info.endOff) {
-					relocs[i][j].at -= deleted
+				if relocs[i][j].at >= info.endOff {
+					relocs[i][j].at -= uint32(deleted)
 				}
 			}
 			if roots != nil {

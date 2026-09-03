@@ -311,6 +311,17 @@ unchanged. The result reinforces the layout audit rule: range-check native
 offsets once where they enter retained metadata, then keep sidecars uniformly
 32-bit until an encoder API requires `int`.
 
+ARM64 direct-call relocations had the same avoidable host-width layout: two
+`int` fields and one boolean occupied 24 bytes although both retained values are
+bounded code/function indexes. Checked construction and finalizer remapping now
+retain two `uint32` fields, and the module patcher rejects an all-ones invalid
+sentinel before indexing. The record is 12 bytes. Native `json-as`, which keeps
+326 call relocations, falls from approximately 210,841 to 206,929 B/op with the
+same 770 allocations; the 3,912-byte delta exactly equals 326 times the 12-byte
+record saving. `many_funcs` has no retained direct-call relocation backing and
+is unchanged. This applies uniformly to every direct call and changes no call
+admission or code-selection policy.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so

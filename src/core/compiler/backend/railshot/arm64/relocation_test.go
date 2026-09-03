@@ -9,6 +9,18 @@ import (
 )
 
 func TestPatchCallRelocsRangeChecks(t *testing.T) {
+	t.Run("invalid site", func(t *testing.T) {
+		err := patchCallRelocs(make([]byte, 4), []int{0}, []int{0}, [][]callReloc{{{at: invalidCallRelocField}}})
+		if err == nil || !strings.Contains(err.Error(), "invalid relocation site") {
+			t.Fatalf("invalid-site error = %v", err)
+		}
+	})
+	t.Run("invalid target", func(t *testing.T) {
+		err := patchCallRelocs(make([]byte, 4), []int{0}, []int{0}, [][]callReloc{{{target: invalidCallRelocField}}})
+		if err == nil || !strings.Contains(err.Error(), "invalid call relocation target") {
+			t.Fatalf("invalid-target error = %v", err)
+		}
+	})
 	t.Run("forward", func(t *testing.T) {
 		code := make([]byte, 8)
 		binary.LittleEndian.PutUint32(code, 0x94000000) // BL placeholder

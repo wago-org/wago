@@ -259,11 +259,11 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	}
 	internalOff = mappedInternal
 	for i := range f.relocs {
-		mapped, err := mapFinalOffset(offsets, f.relocs[i].at, len(code), "call relocation")
+		mapped, err := mapFinalOffset(offsets, int(f.relocs[i].at), len(code), "call relocation")
 		if err != nil {
 			return 0, err
 		}
-		f.relocs[i].at = mapped
+		f.relocs[i].at = compactCallRelocField(mapped)
 	}
 	if f.adapterReturnOff != 0 {
 		mapped, err := mapFinalOffset(offsets, f.adapterReturnOff, len(code), "adapter return")

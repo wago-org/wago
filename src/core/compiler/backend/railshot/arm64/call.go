@@ -53,9 +53,26 @@ var noStackReg = os.Getenv("WAGO_ARM64_NOSTACKREG") == "1"
 // callReloc records a Bl (BL) site whose imm26 must be patched to point at the
 // target local function's entry once the module is laid out.
 type callReloc struct {
-	at       int  // byte offset of the BL instruction within this function's code
-	target   int  // target local-function index (into m.Code)
-	internal bool // target the callee's register-ABI internal entry (else offset 0)
+	at       uint32 // byte offset of the BL instruction within this function's code
+	target   uint32 // target local-function index (into m.Code)
+	internal bool   // target the callee's register-ABI internal entry (else offset 0)
+}
+
+const invalidCallRelocField = ^uint32(0)
+
+func compactCallRelocField(value int) uint32 {
+	if value < 0 || uint64(value) >= uint64(invalidCallRelocField) {
+		panic("arm64: call relocation field exceeds compact domain")
+	}
+	return uint32(value)
+}
+
+func newCallReloc(at, target int, internal bool) callReloc {
+	return callReloc{
+		at:       compactCallRelocField(at),
+		target:   compactCallRelocField(target),
+		internal: internal,
+	}
 }
 
 // intArgRegs is the integer argument/result register order for the internal
@@ -297,7 +314,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if f.opt(optRegABI) && targetRegisterABI {
 		jump := func() {
 			site := f.a.Branch()
-			f.relocs = append(f.relocs, callReloc{at: site, target: target, internal: true})
+			f.relocs = append(f.relocs, newCallReloc(site, target, true))
 		}
 		if callerRegisterABI {
 			f.emitTailRegisterJump(ft, jump)
@@ -310,7 +327,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		}
 		f.emitTailWrapperJump(ft, func() {
 			site := f.a.Branch()
-			f.relocs = append(f.relocs, callReloc{at: site, target: target})
+			f.relocs = append(f.relocs, newCallReloc(site, target, false))
 		})
 	}
 	f.unreachable = true
@@ -1637,7 +1654,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	f.stats.call(callKindWrapper)
 	f.emitWrapperCall(ft, func() {
 		site := f.a.Bl()
-		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx})
+		f.relocs = append(f.relocs, newCallReloc(site, localIdx, false))
 	})
 	finishRoots()
 	return nil
@@ -1809,7 +1826,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	var returnOffset uint32
 	if localIdx >= 0 {
 		site := f.a.Bl()
-		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+		f.relocs = append(f.relocs, newCallReloc(site, localIdx, true))
 		returnOffset = uint32(site + 4)
 	} else {
 		f.a.Blr(indirect)
@@ -2040,7 +2057,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	var returnOffset uint32
 	if localIdx >= 0 {
 		site := f.a.Bl()
-		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+		f.relocs = append(f.relocs, newCallReloc(site, localIdx, true))
 		returnOffset = uint32(site + 4)
 	} else {
 		f.a.Blr(indirect)
