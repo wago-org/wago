@@ -19,6 +19,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -267,6 +268,9 @@ func (ms *ModuleStats) setNodeScratchStats(sc *scratch) {
 	ms.Compile.NodeScratchPeak = 0
 	ms.Compile.NodeScratchRetained = 0
 	ms.Compile.NodeScratchDiscarded = 0
+	ms.Compile.ControlScratchReserved = 0
+	ms.Compile.ControlScratchPeak = 0
+	ms.Compile.ControlScratchRetained = 0
 	ms.addNodeScratchStats(sc)
 }
 
@@ -279,6 +283,10 @@ func (ms *ModuleStats) addNodeScratchStats(sc *scratch) {
 	ms.Compile.NodeScratchPeak += sc.nodeScratchPeak
 	ms.Compile.NodeScratchRetained += retained
 	ms.Compile.NodeScratchDiscarded += sc.nodeScratchDiscarded
+	frameBytes := uint64(unsafe.Sizeof(ctrlFrame{}))
+	ms.Compile.ControlScratchReserved += uint64(sc.controlScratchReserved) * frameBytes
+	ms.Compile.ControlScratchPeak += uint64(sc.controlScratchPeak) * frameBytes
+	ms.Compile.ControlScratchRetained += uint64(cap(sc.ctrl)) * frameBytes
 }
 
 func (s *CodegenStats) setUnpinnedRetry() {
@@ -512,6 +520,8 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "compile-node-scratch: reserved=%dB peak-envelope=%dB retained=%dB discarded=%dB\n",
 		ms.Compile.NodeScratchReserved, ms.Compile.NodeScratchPeak,
 		ms.Compile.NodeScratchRetained, ms.Compile.NodeScratchDiscarded)
+	fmt.Fprintf(&b, "compile-control-scratch: reserved=%dB peak-envelope=%dB retained=%dB\n",
+		ms.Compile.ControlScratchReserved, ms.Compile.ControlScratchPeak, ms.Compile.ControlScratchRetained)
 	fmt.Fprintf(&b, "native: total=%d functions=%d function-align=%d module-other=%d dead-reserved=%d\n",
 		ms.NativeSize.TotalBytes, ms.NativeSize.FunctionBytes, ms.NativeSize.FunctionAlignmentBytes,
 		ms.NativeSize.ModuleOtherBytes, ms.NativeSize.DeadReservationBytes())

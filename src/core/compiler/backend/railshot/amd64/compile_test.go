@@ -207,6 +207,40 @@ func TestModuleControlFrameCapFallsBackConservatively(t *testing.T) {
 	}
 }
 
+func TestWorkerControlFrameCapBoundsModuleOutlier(t *testing.T) {
+	m := &wasm.Module{Code: make([]wasm.Func, 3)}
+	if got := workerControlFrameCap(m, []funcHints{{maxControlDepth: 2}, {maxControlDepth: 3}, {maxControlDepth: 40}}); got != maxWorkerInitialControlFrames {
+		t.Fatalf("worker control cap = %d, want %d", got, maxWorkerInitialControlFrames)
+	}
+	if got := workerControlFrameCap(m, []funcHints{{maxControlDepth: 2}, {maxControlDepth: 3}, {maxControlDepth: 4}}); got != 5 {
+		t.Fatalf("ordinary worker control cap = %d, want 5", got)
+	}
+}
+
+func TestParallelControlFrameScratchDoesNotMultiplyOutlier(t *testing.T) {
+	const workers, depth = 4, 40
+	m := benchParallelControlOutlierModule(t, 64, depth)
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Workers: workers, Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	frameBytes := uint64(unsafe.Sizeof(ctrlFrame{}))
+	if got, want := stats.Compile.ControlScratchReserved, uint64(workers*maxWorkerInitialControlFrames)*frameBytes; got != want {
+		t.Fatalf("parallel control scratch reserved = %d, want %d", got, want)
+	}
+	oldReservation := uint64(workers*(depth+1)) * frameBytes
+	if stats.Compile.ControlScratchPeak >= oldReservation {
+		t.Fatalf("parallel control peak envelope = %d, want below former reservation %d", stats.Compile.ControlScratchPeak, oldReservation)
+	}
+	t.Logf("control scratch: reserved=%d peak-envelope=%d retained=%d former-reservation=%d",
+		stats.Compile.ControlScratchReserved, stats.Compile.ControlScratchPeak,
+		stats.Compile.ControlScratchRetained, oldReservation)
+}
+
 func TestAsmCapForBodyClamps(t *testing.T) {
 	for _, tc := range []struct {
 		bodyLen int

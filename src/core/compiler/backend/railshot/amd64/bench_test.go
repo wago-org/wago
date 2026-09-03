@@ -35,6 +35,19 @@ func BenchmarkRailshotCompileDeepScalarControl(b *testing.B) {
 	benchmarkCompileModule(b, m)
 }
 
+func BenchmarkRailshotCompileParallelControlOutlier(b *testing.B) {
+	m := benchParallelControlOutlierModule(b, 64, 40)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		cm, err := CompileModuleWith(m, CompileOptions{Workers: 4})
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchCompiledSink = cm
+	}
+}
+
 func BenchmarkRailshotCompileALUHeavy(b *testing.B) {
 	m := benchALUHeavyModule(b)
 	benchmarkCompileModule(b, m)
@@ -155,6 +168,21 @@ func benchDeepScalarControlModule(tb testing.TB, depth int) *wasm.Module {
 		results: []wasm.ValType{wasm.I32},
 		body:    body,
 	}}, false))
+}
+
+func benchParallelControlOutlierModule(tb testing.TB, functions, depth int) *wasm.Module {
+	tb.Helper()
+	m := benchDeepScalarControlModule(tb, depth)
+	deep, typeIndex := m.Code[0], m.FuncTypes[0]
+	m.Code = make([]wasm.Func, functions)
+	m.FuncTypes = make([]wasm.TypeIdx, functions)
+	for i := range m.Code {
+		m.Code[i] = deep
+		m.Code[i].BodyBytes = []byte{0x41, 0x01, 0x0b}
+		m.FuncTypes[i] = typeIndex
+	}
+	m.Code[0] = deep
+	return m
 }
 
 func benchALUHeavyModule(tb testing.TB) *wasm.Module {

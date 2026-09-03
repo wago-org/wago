@@ -536,6 +536,8 @@ type scratch struct {
 	nodeScratchReserved     uint64
 	nodeScratchPeak         uint64
 	nodeScratchDiscarded    uint64
+	controlScratchReserved  int
+	controlScratchPeak      int
 	transient
 }
 
@@ -562,6 +564,12 @@ func newScratchWithStackCap(stackCap int) *scratch {
 	stack := newStackWithCap(stackCap)
 	_, reserved := stack.nodeMemory()
 	return &scratch{stack: stack, asm: &a64.Asm{}, nodeScratchReserved: reserved, nodeScratchPeak: reserved}
+}
+
+func (sc *scratch) noteControlScratch() {
+	if capacity := cap(sc.ctrl); capacity > sc.controlScratchPeak {
+		sc.controlScratchPeak = capacity
+	}
 }
 
 // maxScratchFunctionResults bounds owner-local signature lowering storage.
@@ -1951,6 +1959,9 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	}
 	if len(sc.stack.chunks) > 1 {
 		sc.finishStackFunction()
+	}
+	if stats != nil {
+		sc.noteControlScratch()
 	}
 	return
 }

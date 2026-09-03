@@ -77,6 +77,9 @@ func equalWorkerModuleStatsARM64(a, b *ModuleStats) bool {
 	aCopy.Compile.NodeScratchPeak, bCopy.Compile.NodeScratchPeak = 0, 0
 	aCopy.Compile.NodeScratchRetained, bCopy.Compile.NodeScratchRetained = 0, 0
 	aCopy.Compile.NodeScratchDiscarded, bCopy.Compile.NodeScratchDiscarded = 0, 0
+	aCopy.Compile.ControlScratchReserved, bCopy.Compile.ControlScratchReserved = 0, 0
+	aCopy.Compile.ControlScratchPeak, bCopy.Compile.ControlScratchPeak = 0, 0
+	aCopy.Compile.ControlScratchRetained, bCopy.Compile.ControlScratchRetained = 0, 0
 	aCopy.Compile.RetryNanos, bCopy.Compile.RetryNanos = 0, 0
 	for i := range aCopy.Funcs {
 		if aCopy.Funcs[i] == nil || bCopy.Funcs[i] == nil {

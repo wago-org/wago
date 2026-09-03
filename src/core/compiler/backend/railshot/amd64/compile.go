@@ -677,6 +677,8 @@ type scratch struct {
 	nodeScratchReserved     uint64
 	nodeScratchPeak         uint64
 	nodeScratchDiscarded    uint64
+	controlScratchReserved  int
+	controlScratchPeak      int
 	transient
 }
 
@@ -703,6 +705,21 @@ func newScratchWithStackCap(stackCap int) *scratch {
 	stack := newStackWithCap(stackCap)
 	_, reserved := stack.nodeMemory()
 	return &scratch{stack: stack, asm: &amd64.Asm{}, nodeScratchReserved: reserved, nodeScratchPeak: reserved}
+}
+
+func (sc *scratch) reserveControlFrames(capacity int) {
+	if capacity <= 0 {
+		return
+	}
+	sc.ctrl = make([]ctrlFrame, 0, capacity)
+	sc.controlScratchReserved = capacity
+	sc.controlScratchPeak = capacity
+}
+
+func (sc *scratch) noteControlScratch() {
+	if capacity := cap(sc.ctrl); capacity > sc.controlScratchPeak {
+		sc.controlScratchPeak = capacity
+	}
 }
 
 // maxScratchFunctionResults bounds owner-local signature lowering storage.
@@ -808,8 +825,15 @@ func expandedStackLowering(opts CompileOptions, policy CodegenPolicy) bool {
 
 const maxHintedControlFrames = 64
 
-// moduleControlFrameCap sizes the reusable control stack from the same one-pass
-// bytecode hints. Zero preserves lazy allocation for straight-line, incomplete,
+// maxWorkerInitialControlFrames bounds speculative pointer-rich control backing
+// retained by every parallel worker. Deeper functions grow only the worker that
+// receives them; append remains the correctness fallback.
+const maxWorkerInitialControlFrames = 8
+
+// moduleControlFrameCap sizes the serial compiler's reusable control stack from
+// the same one-pass bytecode hints. Parallel workers grow independently so one
+// deeply nested function does not multiply its pointer-rich backing by every
+// worker. Zero preserves lazy allocation for straight-line, incomplete,
 // AST-only, or unusually deep modules; append remains the correctness fallback.
 func moduleControlFrameCap(m *wasm.Module, hints []funcHints) int {
 	if len(hints) != len(m.Code) {
@@ -825,6 +849,14 @@ func moduleControlFrameCap(m *wasm.Module, hints []funcHints) int {
 		return 0
 	}
 	return maxDepth + 1 // implicit function frame
+}
+
+func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
+	capHint := moduleControlFrameCap(m, hints)
+	if capHint > maxWorkerInitialControlFrames {
+		return maxWorkerInitialControlFrames
+	}
+	return capHint
 }
 
 func (sc *scratch) reset() {
@@ -1370,7 +1402,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		sc.policy = policy
 		sc.classifier = classifier
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
-			sc.ctrl = make([]ctrlFrame, 0, ctrlCap)
+			sc.reserveControlFrames(ctrlCap)
 		}
 		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
 		if err != nil {
@@ -1568,7 +1600,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	expandedLowering := expandedStackLowering(opts, policy)
 	stackCap := workerStackArenaCap(m, allHints, inlineTargets, expandedLowering)
-	ctrlCap := moduleControlFrameCap(m, allHints)
+	ctrlCap := workerControlFrameCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	var pressureBytes atomic.Int64
@@ -1578,7 +1610,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		states[i].scratch.policy = policy
 		states[i].scratch.classifier = classifier
 		if ctrlCap != 0 {
-			states[i].scratch.ctrl = make([]ctrlFrame, 0, ctrlCap)
+			states[i].scratch.reserveControlFrames(ctrlCap)
 		}
 	}
 	results := make([]funcResult, n)
@@ -2392,6 +2424,9 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	}
 	if len(sc.stack.chunks) > 1 {
 		sc.finishStackFunction()
+	}
+	if stats != nil {
+		sc.noteControlScratch()
 	}
 	return
 }
