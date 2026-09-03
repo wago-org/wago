@@ -218,6 +218,28 @@ func TestEffectiveCompileBoundsModeZeroMemoryARM64Fallback(t *testing.T) {
 	}
 }
 
+func TestEffectiveDraglinePlatformBoundsMode(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		compiler     CompilerEngine
+		mode         BoundsCheckMode
+		goos, goarch string
+		want         BoundsCheckMode
+	}{
+		{"windows-arm64-dragline-signals", CompilerDragline, BoundsChecksSignalsBased, "windows", "arm64", BoundsChecksExplicit},
+		{"windows-arm64-dragline-explicit", CompilerDragline, BoundsChecksExplicit, "windows", "arm64", BoundsChecksExplicit},
+		{"windows-amd64-dragline", CompilerDragline, BoundsChecksSignalsBased, "windows", "amd64", BoundsChecksSignalsBased},
+		{"darwin-arm64-dragline", CompilerDragline, BoundsChecksSignalsBased, "darwin", "arm64", BoundsChecksSignalsBased},
+		{"windows-arm64-railshot", CompilerRailshot, BoundsChecksSignalsBased, "windows", "arm64", BoundsChecksSignalsBased},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := effectiveDraglinePlatformBoundsMode(test.compiler, test.mode, test.goos, test.goarch); got != test.want {
+				t.Fatalf("effective platform bounds mode = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestConfigSignalsBasedRequiresBuildTag(t *testing.T) {
 	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
 	_, err := Compile(cfg, signExtModule())

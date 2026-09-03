@@ -1449,6 +1449,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 	// Architectures that always use the sync-host dispatcher can compile host
 	// defaults up front; others defer returning imports until link time.
 	boundsMode := effectiveCompileBoundsMode(cfg.boundsChecks, m)
+	boundsMode = effectiveDraglinePlatformBoundsMode(cfg.compiler, boundsMode, goruntime.GOOS, goruntime.GOARCH)
 	elide := boundsMode == BoundsChecksSignalsBased
 	importedFuncs := m.ImportedFuncCount()
 	dynamicBindings := make([]railshotImportBinding, importedFuncs)
@@ -2270,6 +2271,17 @@ func effectiveCompileBoundsMode(requested BoundsCheckMode, m *wasm.Module) Bound
 		return BoundsChecksExplicit
 	}
 	return requested
+}
+
+func effectiveDraglinePlatformBoundsMode(compiler CompilerEngine, mode BoundsCheckMode, goos, goarch string) BoundsCheckMode {
+	if compiler == CompilerDragline && mode == BoundsChecksSignalsBased && goos == "windows" && goarch == "arm64" {
+		// Windows ARM64's VEH lazy-page continuation is not yet qualified for
+		// Dragline's private call ABI. Keep the whole target on explicit bounds
+		// and classic growable memory. This is a platform contract, not a
+		// module- or workload-specific fallback.
+		return BoundsChecksExplicit
+	}
+	return mode
 }
 
 func moduleInitialMemoryPages(m *wasm.Module) (uint64, bool) {
