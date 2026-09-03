@@ -125,7 +125,7 @@ func putGCRefFact(st *storage, fact shared.GCRefFact) {
 	}
 	switch st.kind {
 	case stLocalRef, stLocalReg:
-		st.slot = int(arrayLen)
+		st.slot = uint32(arrayLen)
 	default:
 		st.idx = int(arrayLen)
 	}
@@ -761,7 +761,7 @@ func gcLocalProvenance(e *elem) (int, bool) {
 		return e.st.idx, true
 	case stReg:
 		if e.st.slot > 0 {
-			return e.st.slot - 1, true
+			return e.st.slotIndex() - 1, true
 		}
 	}
 	return 0, false
@@ -769,7 +769,7 @@ func gcLocalProvenance(e *elem) (int, bool) {
 
 func markGCLocalProvenance(e *elem, local int) {
 	if e != nil && e.kind == ekValue && e.st.kind == stReg && local >= 0 {
-		e.st.slot = local + 1
+		e.st.slot = uint32(local + 1)
 	}
 }
 

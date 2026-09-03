@@ -886,7 +886,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			f.cmpRR(L, right.st.reg, w) // pinned local/global; never release
 		case stSlot:
 			t := f.allocReg(maskOf(L))
-			f.ld64(t, SP, f.spillOff(right.st.slot))
+			f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
 			f.cmpRR(L, t, w)
 			f.release(t)
 		case stLocalRef:
@@ -1245,7 +1245,7 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 	case stConst:
 		f.loadConst(dest, e.st)
 	case stSlot:
-		f.ld64(dest, SP, f.spillOff(e.st.slot))
+		f.ld64(dest, SP, f.spillOff(e.st.slotIndex()))
 	case stLocalRef:
 		f.ld64(dest, SP, f.localOff(e.st.idx))
 	case stLocalReg, stGlobReg:
@@ -1278,7 +1278,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		f.aluRR(enc.op, dest, right.st.reg, w) // pinned local/global; never release
 	case stSlot:
 		t := f.allocReg(maskOf(dest))
-		f.ld64(t, SP, f.spillOff(right.st.slot))
+		f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
 		f.aluRR(enc.op, dest, t, w)
 		f.release(t)
 	case stLocalRef:
@@ -1455,7 +1455,7 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 		f.mulRR(dest, right.st.reg, w) // pinned local/global; never release
 	case stSlot:
 		t := f.allocReg(maskOf(dest))
-		f.ld64(t, SP, f.spillOff(right.st.slot))
+		f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
 		f.mulRR(dest, t, w)
 		f.release(t)
 	case stLocalRef:

@@ -97,7 +97,7 @@ func (f *fn) flushBelow(node *elem) int {
 	slot := 0
 	for _, root := range below {
 		typ := rootMachineType(root)
-		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
+		if root.kind == ekValue && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue
 		}
@@ -106,7 +106,7 @@ func (f *fn) flushBelow(node *elem) int {
 			f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), x)
 			f.releaseF(x)
 			root.kind = ekValue
-			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: slot})
+			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: uint32(slot)})
 			slot += 2
 			continue
 		}
@@ -116,7 +116,7 @@ func (f *fn) flushBelow(node *elem) int {
 			} else {
 				f.a.Store64(RSP, f.spillOff(slot), root.st.reg)
 			}
-			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 			slot++
 			continue
 		}
@@ -125,7 +125,7 @@ func (f *fn) flushBelow(node *elem) int {
 			f.a.FStoreDisp(RSP, f.spillOff(slot), x, true)
 			f.releaseF(x)
 			root.kind = ekValue
-			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 			slot++
 			continue
 		}
@@ -133,7 +133,7 @@ func (f *fn) flushBelow(node *elem) int {
 		f.a.Store64(RSP, f.spillOff(slot), r)
 		f.release(r)
 		root.kind = ekValue
-		f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+		f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 		slot++
 	}
 	if slot > f.maxSpill {
@@ -238,7 +238,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	case stLocalReg, stGlobReg:
 		f.cmpRR(L, right.st.reg, w)
 	case stSlot:
-		f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slot), w)
+		f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slotIndex()), w)
 	case stLocalRef:
 		f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.idx), w)
 	case stMemRef:

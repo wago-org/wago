@@ -10,10 +10,10 @@ import (
 )
 
 func TestValueFactsFitExistingStoragePaddingAMD64(t *testing.T) {
-	if got, want := unsafe.Sizeof(storage{}), uintptr(40); got != want {
+	if got, want := unsafe.Sizeof(storage{}), uintptr(32); got != want {
 		t.Fatalf("storage size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(elem{}), uintptr(88); got != want {
+	if got, want := unsafe.Sizeof(elem{}), uintptr(80); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
 }

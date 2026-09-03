@@ -35,7 +35,7 @@ func (f *fn) materializeV128(e *elem) Reg {
 		}
 	case stSlot:
 		x := f.allocFReg(0)
-		f.a.VMovdquLoadDisp(x, RSP, f.spillOff(e.st.slot))
+		f.a.VMovdquLoadDisp(x, RSP, f.spillOff(e.st.slotIndex()))
 		f.occupyF(e, x)
 		return x
 	case stLocalRef:
@@ -819,7 +819,7 @@ func (f *fn) v128StackMem(e *elem) (int32, bool) {
 	case stLocalRef:
 		return f.localAddr(e.st.idx), true
 	case stSlot:
-		return f.spillOff(e.st.slot), true
+		return f.spillOff(e.st.slotIndex()), true
 	default:
 		return 0, false
 	}

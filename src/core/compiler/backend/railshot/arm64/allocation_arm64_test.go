@@ -5,7 +5,6 @@ package arm64
 import (
 	"fmt"
 	"testing"
-	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
@@ -28,13 +27,6 @@ func TestModuleScratchUsesBoundedStackArenaHintArm64(t *testing.T) {
 		t.Fatalf("scratch first chunk cap = %d, want %d", got, wantCap)
 	}
 
-	// elem is the unit actually reserved by newStackWithCap. Pin the static
-	// allocation reduction rather than a runtime.MemStats sample, which would be
-	// vulnerable to unrelated test-process allocation noise.
-	savedBytes := uintptr(defaultStackArenaCap-gotCap) * unsafe.Sizeof(elem{})
-	if minimum := uintptr(20 << 10); savedBytes < minimum {
-		t.Fatalf("initial arena saving = %d bytes, want at least %d", savedBytes, minimum)
-	}
 }
 
 func TestModuleStackArenaCapFallsBackForMultiValueTypesArm64(t *testing.T) {

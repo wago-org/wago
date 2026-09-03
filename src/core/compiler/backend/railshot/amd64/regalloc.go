@@ -220,7 +220,7 @@ func (f *fn) spill(e *elem) {
 	slot := f.allocSpillSlot()
 	f.a.Store64(RSP, f.spillOff(slot), r)
 	f.regUser[r] = nil
-	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
+	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 }
 
 // allocSpillSlot returns the next 8-byte operand spill slot index, growing the frame.
@@ -241,7 +241,7 @@ func (f *fn) curSpillSlot() int {
 	used := f.spillFloor
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue && e.st.kind == stSlot {
-			end := e.st.slot + e.st.typ.stackSlots()
+			end := e.st.slotIndex() + e.st.typ.stackSlots()
 			if end > used {
 				used = end
 			}
@@ -279,7 +279,7 @@ func (f *fn) materialize(e *elem) Reg {
 		f.stats.addReload()
 		r := f.allocReg(0)
 		before := f.a.Len()
-		f.a.Load64(r, RSP, f.spillOff(e.st.slot))
+		f.a.Load64(r, RSP, f.spillOff(e.st.slotIndex()))
 		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
 		f.occupy(e, r)
 		return r

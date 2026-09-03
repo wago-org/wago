@@ -604,7 +604,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 		return fmt.Errorf("arm64: dynamic function ref.test lost canonical operand")
 	}
 	value := f.allocReg(0)
-	f.ld64(value, SP, f.spillOff(valueElem.st.slot))
+	f.ld64(value, SP, f.spillOff(valueElem.st.slotIndex()))
 	nullSite := f.zeroBranch(value, true, true)
 	base := f.allocReg(maskOf(value))
 	f.ld64(base, linMemReg, -int32(offFuncRefDescPtr))
@@ -706,7 +706,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	if !f.a.PatchBranch19(known, f.a.Len()) {
 		return fmt.Errorf("arm64: dynamic function ref.test known edge exceeds conditional branch range")
 	}
-	f.st32(SP, f.spillOff(result.st.slot), resultReg)
+	f.st32(SP, f.spillOff(result.st.slotIndex()), resultReg)
 	if !f.a.PatchBranch26(done, f.a.Len()) {
 		return fmt.Errorf("arm64: dynamic function ref.test result join exceeds branch range")
 	}

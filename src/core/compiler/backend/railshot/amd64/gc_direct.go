@@ -747,8 +747,8 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
 	if value == f.s.head || object == f.s.head || value.kind != ekValue || object.kind != ekValue || value.st.kind != stSlot || object.st.kind != stSlot {
 		return fmt.Errorf("amd64: native nursery struct reference store lost canonical operands")
 	}
-	f.a.Load64(RAX, RSP, f.spillOff(object.st.slot))
-	f.a.Load64(RSI, RSP, f.spillOff(value.st.slot))
+	f.a.Load64(RAX, RSP, f.spillOff(object.st.slotIndex()))
+	f.a.Load64(RSI, RSP, f.spillOff(value.st.slotIndex()))
 	required := uint64(gc.PayloadOffset) + uint64(fieldOffset) + 4
 	if required > math.MaxInt32 {
 		return fmt.Errorf("amd64: final struct reference store extent %d exceeds native immediate", required)
@@ -834,9 +834,9 @@ func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValT
 	if value == f.s.head || index == f.s.head || object == f.s.head || value.kind != ekValue || index.kind != ekValue || object.kind != ekValue || value.st.kind != stSlot || index.st.kind != stSlot || object.st.kind != stSlot {
 		return fmt.Errorf("amd64: native nursery array reference store lost canonical operands")
 	}
-	f.a.Load64(RAX, RSP, f.spillOff(object.st.slot))
-	f.a.Load64(RCX, RSP, f.spillOff(index.st.slot))
-	f.a.Load64(RSI, RSP, f.spillOff(value.st.slot))
+	f.a.Load64(RAX, RSP, f.spillOff(object.st.slotIndex()))
+	f.a.Load64(RCX, RSP, f.spillOff(index.st.slotIndex()))
+	f.a.Load64(RSI, RSP, f.spillOff(value.st.slotIndex()))
 	f.a.MovImm32(RDX, int32(typeIndex))
 	site := f.a.CallRel32()
 	f.sc.gcArrayRefSetStubSites = append(f.sc.gcArrayRefSetStubSites, site)

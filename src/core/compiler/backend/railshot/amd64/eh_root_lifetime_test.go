@@ -46,10 +46,10 @@ func exceptionFuncrefRootLifetimeModule(payloadType []byte) []byte {
 
 func TestExceptionFuncrefRootsInitializeAndClear(t *testing.T) {
 	// Compiler-plugin custom values live in a cold sidecar; keep the ordinary
-	// storage record at its measured 40-byte ceiling while EH roots continue to
+	// storage record at its measured 32-byte ceiling while EH roots continue to
 	// use the existing inline flag.
-	if got := unsafe.Sizeof(storage{}); got != 40 {
-		t.Fatalf("storage size = %d, want bounded 40 bytes", got)
+	if got := unsafe.Sizeof(storage{}); got != 32 {
+		t.Fatalf("storage size = %d, want bounded 32 bytes", got)
 	}
 	m, err := wasm.DecodeModule(exceptionFuncrefRootLifetimeModule([]byte{0x64, 0x00}))
 	if err != nil {

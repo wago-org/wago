@@ -88,20 +88,20 @@ func (f *fn) spillF(e *elem) {
 			f.a.YMovdquStoreDisp(RSP, f.spillOff(slot+i*4), reg)
 			f.fregUser[reg] = nil
 		}
-		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: slot})
+		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: uint32(slot)})
 		return
 	}
 	if e.st.typ == mtV128 {
 		slot := f.allocSpillSlots(2)
 		f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), r)
 		f.fregUser[r] = nil
-		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
+		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 		return
 	}
 	slot := f.allocSpillSlot()
 	f.a.FStoreDisp(RSP, f.spillOff(slot), r, true)
 	f.fregUser[r] = nil
-	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
+	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 }
 
 // materializeF ensures float value e lives in an XMM register and returns it.
@@ -125,7 +125,7 @@ func (f *fn) materializeF(e *elem) Reg {
 	case stSlot:
 		x := f.allocFReg(0)
 		before := f.a.Len()
-		f.a.FLoadDisp(x, RSP, f.spillOff(e.st.slot), true) // 8B; f32 uses the low 4
+		f.a.FLoadDisp(x, RSP, f.spillOff(e.st.slotIndex()), true) // 8B; f32 uses the low 4
 		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
 		f.occupyF(e, x)
 		return x

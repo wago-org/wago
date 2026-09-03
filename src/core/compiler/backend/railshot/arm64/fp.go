@@ -86,20 +86,20 @@ func (f *fn) spillF(e *elem) {
 			f.a.StrQ(SP, f.spillOff(slot+i*2), reg)
 			f.fregUser[reg] = nil
 		}
-		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: slot})
+		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: uint32(slot)})
 		return
 	}
 	if e.st.typ == mtV128 {
 		slot := f.allocSpillSlots(2)
 		f.a.StrQ(a64.SP, f.spillOff(slot), r)
 		f.fregUser[r] = nil
-		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
+		f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 		return
 	}
 	slot := f.allocSpillSlot()
 	f.a.StrF(a64.SP, f.spillOff(slot), r, true)
 	f.fregUser[r] = nil
-	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
+	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 }
 
 // materializeF ensures float value e lives in a V register and returns it.
@@ -123,7 +123,7 @@ func (f *fn) materializeF(e *elem) Reg {
 	case stSlot:
 		x := f.allocFReg(0)
 		before := f.a.Len()
-		f.a.LdrF(x, a64.SP, f.spillOff(e.st.slot), true) // 8B; f32 uses the low 4
+		f.a.LdrF(x, a64.SP, f.spillOff(e.st.slotIndex()), true) // 8B; f32 uses the low 4
 		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
 		f.occupyF(e, x)
 		return x

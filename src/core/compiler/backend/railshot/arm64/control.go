@@ -489,7 +489,7 @@ func (f *fn) flush() {
 		}
 		f.stats.addFlushRoot(root.kind == ekDeferred)
 		types = append(types, typ)
-		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
+		if root.kind == ekValue && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue // already canonical
 		}
@@ -613,7 +613,7 @@ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
 	slot := 0
 	for i, typ := range types {
-		value := f.pushValue(storage{kind: stSlot, typ: typ, slot: slot})
+		value := f.pushValue(storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 		if i < len(gcRoots) {
 			value.st.gcRoot = gcRoots[i]
 		}

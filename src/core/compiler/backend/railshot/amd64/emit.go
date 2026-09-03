@@ -824,7 +824,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		case stLocalReg, stGlobReg:
 			f.cmpRR(L, right.st.reg, w) // pinned local/global; never release
 		case stSlot:
-			f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slot), w)
+			f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slotIndex()), w)
 		case stLocalRef:
 			f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.idx), w)
 		case stMemRef:
@@ -1059,7 +1059,7 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 	case stConst:
 		f.loadConst(dest, e.st)
 	case stSlot:
-		f.a.Load64(dest, RSP, f.spillOff(e.st.slot))
+		f.a.Load64(dest, RSP, f.spillOff(e.st.slotIndex()))
 	case stLocalRef:
 		f.loadFrameInt(dest, f.localAddr(e.st.idx), e.st.typ)
 	case stLocalReg, stGlobReg:
@@ -1111,7 +1111,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	case stLocalReg, stGlobReg:
 		f.a.AluRR(enc.rr, dest, right.st.reg, w) // pinned local/global; never release
 	case stSlot:
-		f.a.AluRM(enc.rm, dest, RSP, f.spillOff(right.st.slot), w)
+		f.a.AluRM(enc.rm, dest, RSP, f.spillOff(right.st.slotIndex()), w)
 	case stLocalRef:
 		f.a.AluRM(enc.rm, dest, RSP, f.localAddr(right.st.idx), w)
 	case stMemRef:
@@ -1186,7 +1186,7 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	case stLocalReg, stGlobReg:
 		f.a.IMul(dest, right.st.reg, w) // pinned local/global; never release
 	case stSlot:
-		f.a.ImulRM(dest, RSP, f.spillOff(right.st.slot), w)
+		f.a.ImulRM(dest, RSP, f.spillOff(right.st.slotIndex()), w)
 	case stLocalRef:
 		f.a.ImulRM(dest, RSP, f.localAddr(right.st.idx), w)
 	case stMemRef:

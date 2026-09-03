@@ -501,7 +501,7 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 			panic("custom value cannot cross a control-flow or ordinary call boundary")
 		}
 		types = append(types, typ)
-		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
+		if root.kind == ekValue && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue // already canonical
 		}
@@ -552,7 +552,7 @@ func (f *fn) flushWideStack(roots []*elem, gcRoots []bool, gcFacts []shared.GCRe
 	for _, root := range roots {
 		typ := rootMachineType(root)
 		types = append(types, typ)
-		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot < total {
+		if root.kind == ekValue && root.st.kind == stSlot && root.st.slotIndex() < total {
 			needsStage = true
 		}
 		if typ.isFloat() || typ.isV128() {
@@ -663,7 +663,7 @@ func (f *fn) setDepthTypesWithGCInfo(types []machineType, gcRoots []bool, gcFact
 	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
 	slot := 0
 	for i, typ := range types {
-		value := f.pushValue(storage{kind: stSlot, typ: typ, slot: slot})
+		value := f.pushValue(storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 		if i < len(gcRoots) {
 			value.st.gcRoot = gcRoots[i]
 		}

@@ -39,7 +39,7 @@ func (f *fn) materializeV128(e *elem) Reg {
 		}
 	case stSlot:
 		x := f.allocFReg(0)
-		f.a.LdrQ(x, SP, f.spillOff(e.st.slot))
+		f.a.LdrQ(x, SP, f.spillOff(e.st.slotIndex()))
 		f.occupyF(e, x)
 		return x
 	case stLocalRef:

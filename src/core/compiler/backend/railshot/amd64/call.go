@@ -311,7 +311,7 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) 
 		for i, arg := range args {
 			f.materialize(arg)
 			f.spill(arg)
-			argSlots[i] = arg.st.slot
+			argSlots[i] = arg.st.slotIndex()
 		}
 	}
 
@@ -346,7 +346,7 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) 
 			if n.Input < 0 || n.Input >= len(argSlots) {
 				return fmt.Errorf("custom instruction input %d out of range", n.Input)
 			}
-			f.pushValue(storage{kind: stSlot, typ: mtI32, slot: argSlots[n.Input]})
+			f.pushValue(storage{kind: stSlot, typ: mtI32, slot: uint32(argSlots[n.Input])})
 			maskTop(n.Width)
 			return nil
 		case CustomInstructionConst:
@@ -871,7 +871,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			case stConst:
 				f.loadFConst(arg.target, arg.root.st)
 			case stSlot:
-				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slot), arg.root.st.typ == mtF64)
+				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slotIndex()), arg.root.st.typ == mtF64)
 			case stLocalRef:
 				f.a.FLoadDisp(arg.target, RSP, f.localAddr(arg.root.st.idx), arg.root.st.typ == mtF64)
 			}
@@ -881,7 +881,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 		case stConst:
 			f.loadConst(arg.target, arg.root.st)
 		case stSlot:
-			f.a.Load64(arg.target, RSP, f.spillOff(arg.root.st.slot))
+			f.a.Load64(arg.target, RSP, f.spillOff(arg.root.st.slotIndex()))
 		case stLocalRef:
 			f.loadCallLocalInt(arg.target, arg.root.st)
 		}
@@ -1773,7 +1773,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		case stConst:
 			f.loadConst(da.target, da.root.st)
 		case stSlot:
-			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slot))
+			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slotIndex()))
 		case stLocalRef:
 			f.loadCallLocalInt(da.target, da.root.st)
 		}
@@ -1969,7 +1969,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			case stConst:
 				f.loadFConst(da.target, da.root.st)
 			case stSlot:
-				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slot), da.root.st.typ == mtF64)
+				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
 			case stLocalRef:
 				f.a.FLoadDisp(da.target, RSP, f.localAddr(da.root.st.idx), da.root.st.typ == mtF64)
 			}
@@ -1979,7 +1979,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		case stConst:
 			f.loadConst(da.target, da.root.st)
 		case stSlot:
-			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slot))
+			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slotIndex()))
 		case stLocalRef:
 			f.loadCallLocalInt(da.target, da.root.st)
 		}

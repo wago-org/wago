@@ -94,7 +94,7 @@ func memRefStorage(ea Reg, disp int32, size int, signed, wide bool, borrow int) 
 	if signed {
 		sidx |= 0x100
 	}
-	return storage{kind: stMemRef, typ: typ, reg: ea, slot: int(disp), idx: sidx, cval: int64(borrow + 1)}
+	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: sidx, cval: int64(borrow + 1)}
 }
 
 func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow int) storage {
@@ -104,10 +104,11 @@ func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow int) storage {
 		typ = mtF64
 		size = 8
 	}
-	return storage{kind: stMemRef, typ: typ, reg: ea, slot: int(disp), idx: size, cval: int64(borrow + 1)}
+	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: size, cval: int64(borrow + 1)}
 }
 
 func (st storage) memDisp() int32  { return int32(st.slot) }
+func (st storage) slotIndex() int  { return int(st.slot) }
 func (st storage) memSize() int    { return st.idx & 0xff }
 func (st storage) memSigned() bool { return st.idx&0x100 != 0 }
 
@@ -130,10 +131,10 @@ type storage struct {
 	ehRoot bool // frame-relative rooted exception identity; clear the three-word record on drop
 	gcRoot bool // value may contain a collector-owned gc.Ref and must be mapped at safepoints
 	facts  valueFacts
-	slot   int
-	idx    int    // local/global index for stLocalRef/stGlobalRef
-	cval   int64  // constant value/bits for stConst
+	slot   uint32 // spill-slot index, or int32 displacement bits for stMemRef
 	cold   uint32 // index+1 into stack.cold for custom plugin values
+	idx    int    // local/global index, or packed stMemRef metadata
+	cval   int64  // constant value/bits for stConst
 }
 
 // elemCold contains state used only by custom plugin values. Keeping it out of

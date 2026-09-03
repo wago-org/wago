@@ -1794,7 +1794,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		case stConst:
 			f.loadConst(da.target, da.root.st)
 		case stSlot:
-			f.ld64(da.target, SP, f.spillOff(da.root.st.slot))
+			f.ld64(da.target, SP, f.spillOff(da.root.st.slotIndex()))
 		case stLocalRef:
 			f.ld64(da.target, SP, f.localOff(da.root.st.idx))
 		}
@@ -2020,7 +2020,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 					f.a.FmovFromGpr(da.target, X16, false)
 				}
 			case stSlot:
-				f.fld(da.target, SP, f.spillOff(da.root.st.slot), da.root.st.typ == mtF64)
+				f.fld(da.target, SP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
 			case stLocalRef:
 				f.fld(da.target, SP, f.localOff(da.root.st.idx), da.root.st.typ == mtF64)
 			}
@@ -2030,7 +2030,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		case stConst:
 			f.loadConst(da.target, da.root.st)
 		case stSlot:
-			f.ld64(da.target, SP, f.spillOff(da.root.st.slot))
+			f.ld64(da.target, SP, f.spillOff(da.root.st.slotIndex()))
 		case stLocalRef:
 			f.ld64(da.target, SP, f.localOff(da.root.st.idx))
 		}

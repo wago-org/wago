@@ -610,7 +610,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	if value == f.s.head || value.kind != ekValue || value.st.kind != stSlot {
 		return fmt.Errorf("amd64: dynamic function ref.test lost canonical operand")
 	}
-	f.a.Load64(RAX, RSP, f.spillOff(value.st.slot))
+	f.a.Load64(RAX, RSP, f.spillOff(value.st.slotIndex()))
 	f.a.TestSelf(RAX, true)
 	nullSite := f.a.JccPlaceholder(condE)
 	f.a.Load64(RCX, RBX, -int32(offFuncRefDescPtr))
@@ -685,7 +685,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	}
 	done := f.a.JmpPlaceholder()
 	f.a.PatchRel32(known, f.a.Len())
-	f.a.Store32(RSP, f.spillOff(result.st.slot), RAX)
+	f.a.Store32(RSP, f.spillOff(result.st.slotIndex()), RAX)
 	f.a.PatchRel32(done, f.a.Len())
 	return nil
 }

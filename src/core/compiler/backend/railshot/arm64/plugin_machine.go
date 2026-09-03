@@ -153,7 +153,7 @@ func (c *pluginARM64Context) CheckedMemory(input int, offset uint32, size int) (
 	if size <= 0 {
 		return 0, 0, 0, fmt.Errorf("arm64 plugin memory access has invalid size %d", size)
 	}
-	c.f.pushValue(storage{kind: stSlot, typ: mtI32, slot: c.paramSlots[input]})
+	c.f.pushValue(storage{kind: stSlot, typ: mtI32, slot: uint32(c.paramSlots[input])})
 	ea, owned, _, disp := c.f.memAddr(uint64(offset), size, true)
 	if owned {
 		c.f.pinned = c.f.pinned.add(ea)
@@ -217,7 +217,7 @@ func (f *fn) materializePluginCustom(e *elem) []Reg {
 		avoid = avoid.add(reg)
 		f.fpinned = f.fpinned.add(reg)
 		regs[i] = reg
-		f.a.LdrQ(reg, SP, f.spillOff(e.st.slot+i*2))
+		f.a.LdrQ(reg, SP, f.spillOff(e.st.slotIndex()+i*2))
 	}
 	for i := 0; i < count; i++ {
 		f.fpinned = f.fpinned.remove(regs[i])
@@ -273,7 +273,7 @@ func (f *fn) emitPluginARM64(lowering *plugincodegen.Lowering, inputWidths []int
 		if e.kind != ekValue || e.st.kind != stSlot || e.st.typ != mtI32 {
 			return fmt.Errorf("arm64 plugin input %d is not a canonical i32 slot", i)
 		}
-		ctx.paramSlots[i] = e.st.slot
+		ctx.paramSlots[i] = e.st.slotIndex()
 	}
 	switch lowering.Compatibility {
 	case plugincodegen.CompatibilityManaged:
@@ -329,7 +329,7 @@ func (f *fn) emitPluginARM64Custom(lowering *plugincodegen.Lowering, inputWidths
 		r := f.materialize(e)
 		f.spill(e)
 		f.release(r)
-		ctx.paramSlots[i] = e.st.slot
+		ctx.paramSlots[i] = e.st.slotIndex()
 	}
 	switch lowering.Compatibility {
 	case plugincodegen.CompatibilityManaged:

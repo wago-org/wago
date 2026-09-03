@@ -80,7 +80,7 @@ func (f *fn) flushBelow(node *elem) int {
 	for _, root := range below {
 		typ := rootMachineType(root)
 		f.stats.addFlushBelowRoot(root.kind == ekDeferred)
-		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
+		if root.kind == ekValue && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue
 		}
@@ -89,7 +89,7 @@ func (f *fn) flushBelow(node *elem) int {
 			f.a.StrQ(SP, f.spillOff(slot), x)
 			f.releaseF(x)
 			root.kind = ekValue
-			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: slot})
+			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: uint32(slot)})
 			slot += 2
 			continue
 		}
@@ -99,7 +99,7 @@ func (f *fn) flushBelow(node *elem) int {
 			} else {
 				f.st64(SP, f.spillOff(slot), root.st.reg)
 			}
-			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 			slot++
 			continue
 		}
@@ -108,7 +108,7 @@ func (f *fn) flushBelow(node *elem) int {
 			f.a.StrD(SP, f.spillOff(slot), x)
 			f.releaseF(x)
 			root.kind = ekValue
-			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 			slot++
 			continue
 		}
@@ -116,7 +116,7 @@ func (f *fn) flushBelow(node *elem) int {
 		f.st64(SP, f.spillOff(slot), r)
 		f.release(r)
 		root.kind = ekValue
-		f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+		f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 		slot++
 	}
 	if slot > f.maxSpill {
@@ -237,7 +237,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	case stSlot:
 		// arm64 has no memory operand: LDR the spilled value, then compare reg-reg.
 		t := f.allocReg(maskOf(L))
-		f.ld64(t, SP, f.spillOff(right.st.slot))
+		f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
 		f.cmpRR(L, t, w)
 		f.release(t)
 	case stLocalRef:
