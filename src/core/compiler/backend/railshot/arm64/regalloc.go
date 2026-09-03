@@ -71,7 +71,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	}
 	// Spill a victim: the deepest (bottom-most) stack value in a register — it is
 	// used furthest in the future, WARP's spill heuristic approximated by depth.
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
 		if e.kind == ekValue && e.st.kind == stReg && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spill(e)
@@ -80,7 +80,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	}
 	// Under high pressure, a pending deferred load holds an address register: emit
 	// its load and spill the result to free the register.
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
 		if e.kind == ekValue && e.st.kind == stMemRef && !block.has(e.st.reg) {
 			r := e.st.reg
 			if e.st.typ.isFloat() {
@@ -168,7 +168,7 @@ func (f *fn) allocSpillSlots(n int) int {
 // slots are reclaimed as values are consumed.)
 func (f *fn) curSpillSlot() int {
 	used := f.spillFloor
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
 		if e.kind == ekValue && e.st.kind == stSlot {
 			end := e.st.slotIndex() + e.st.typ.stackSlots()
 			if end > used {
@@ -305,7 +305,7 @@ func (f *fn) materializeByType(e *elem) Reg {
 // emitted. Called before a linear-memory write so a deferred load reads the
 // pre-write value (WARP's load-before-store ordering).
 func (f *fn) materializePendingLoads() {
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
 		if e.kind == ekValue && e.st.kind == stMemRef {
 			f.stats.addForcedLoad()
 			f.materializeByType(e)
@@ -320,7 +320,7 @@ func (f *fn) materializePendingLoads() {
 // wasm addresses may hold the same offset.
 func (f *fn) materializePendingLoadsBeforeStore(base Reg, baseLocal int, baseLocalOK bool, disp int32, size int) {
 	storeLo, storeHi := int64(disp), int64(disp)+int64(size)
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
 		if e.kind != ekValue || e.st.kind != stMemRef {
 			continue
 		}

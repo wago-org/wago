@@ -34,9 +34,24 @@ func TestNewStackWithCapSizesFirstChunkArm64(t *testing.T) {
 		if cap(s.chunks[0]) != tc.want {
 			t.Fatalf("newStackWithCap(%d) cap = %d, want %d", tc.hint, cap(s.chunks[0]), tc.want)
 		}
-		if s.head == nil || s.head.next != s.head || s.head.prev != s.head {
+		if s.head == nil || s.head.next != sentinelNodeID || s.head.prev != sentinelNodeID {
 			t.Fatalf("newStackWithCap(%d) did not initialize sentinel links", tc.hint)
 		}
+	}
+}
+
+func TestStackNodeIDsSurviveChunkGrowthArm64(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	firstID, first := s.alloc()
+	for len(s.chunks) == 1 {
+		s.alloc()
+	}
+	secondID, second := s.alloc()
+	if firstID == nilNodeID || secondID == nilNodeID || firstID == secondID {
+		t.Fatalf("node IDs = %d, %d; want distinct nonzero IDs", firstID, secondID)
+	}
+	if s.node(firstID) != first || s.node(secondID) != second {
+		t.Fatal("node ID changed identity after arena chunk growth")
 	}
 }
 
@@ -138,7 +153,7 @@ func TestStackFinishFunctionRatchetsUnusedOverflowArm64(t *testing.T) {
 			t.Fatalf("discarded chunk %d still has a slice header", i)
 		}
 	}
-	if stale := s.chunks[0][:cap(s.chunks[0])][1]; stale.prev != nil || stale.next != nil || stale.arg0 != nil || stale.arg1 != nil {
+	if stale := s.chunks[0][:cap(s.chunks[0])][1]; stale.prev != nilNodeID || stale.next != nilNodeID || stale.arg0 != nil || stale.arg1 != nil {
 		t.Fatal("retained backing still points at prior-function nodes")
 	}
 

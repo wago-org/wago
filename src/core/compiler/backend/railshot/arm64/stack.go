@@ -26,10 +26,9 @@ func (s *stack) nodeMemory() (used, reserved uint64) {
 // StackElement / StackType / VariableStorage (warp/src/core/compiler/common/).
 //
 // The stack is the compiler's working state: a list of not-yet-emitted operands
-// and deferred operations ("valent blocks"). It is a doubly-linked list of *elem
-// (Go's pointer-stable equivalent of WARP's intrusive list + iterators), so the
-// parent/sibling links that overlay a deferred-action tree onto the physical
-// stack stay valid across pushes and pops.
+// and deferred operations ("valent blocks"). It is a doubly-linked list using
+// stable arena IDs, while deferred tree children remain pointers during the
+// staged compact-node migration. Both forms stay valid across pushes and pops.
 //
 // A binary op like `i32.add` pushes a deferred-action node ON TOP of its two
 // operand sub-trees; the operands stay on the stack and become the node's
@@ -170,7 +169,7 @@ type elem struct {
 	st storage // valid when kind == ekValue
 
 	// Intrusive doubly-linked list (physical stack order).
-	prev, next *elem
+	prev, next nodeID
 
 	// Deferred-action tree (valid when kind == ekDeferred): the two operand
 	// sub-tree roots. arg0 is the left/first operand (deeper on the stack), arg1
@@ -190,6 +189,18 @@ type elem struct {
 	// file — see maxDeferDepth in pushBinOp. Valid only when kind == ekDeferred.
 	deferDepth int16
 }
+
+// nodeID is a stable arena coordinate. The high 16 bits select a chunk and the
+// low 16 bits hold the slot plus one, leaving zero as nil. Stack chunks are
+// capped far below 2^16 elements; exhausting the chunk field would require more
+// compiler memory than a process can practically address and is rejected at the
+// allocation boundary.
+type nodeID uint32
+
+const (
+	nilNodeID      nodeID = 0
+	sentinelNodeID nodeID = 1 // chunk 0, slot 0
+)
 
 // deferDepthOf is the subtree height contributed by an operand: its deferDepth
 // when deferred, else 0 (a concrete value is a leaf).
@@ -213,7 +224,7 @@ func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
 
 // stack is the operand stack: a sentinel-terminated doubly-linked list with a
 // bump arena of elems (never freed mid-function; that matches single-pass usage
-// and keeps *elem pointers stable). Sub-default hints preserve direct doubling.
+// and keeps temporary *elem views stable). Sub-default hints preserve doubling.
 // At or above 256, growth fills to the next legacy cumulative boundary before
 // resuming geometric chunks, so an underestimate cannot regress legacy retention.
 type stack struct {
@@ -288,7 +299,7 @@ func (s *stack) initSentinel() {
 	chunk := &s.chunks[0]
 	*chunk = append((*chunk)[:0], elem{})
 	s.head = &(*chunk)[0]
-	s.head.prev, s.head.next = s.head, s.head
+	s.head.prev, s.head.next = sentinelNodeID, sentinelNodeID
 }
 
 // reset rewinds the stack to empty for reuse by the next function in a module
@@ -400,8 +411,20 @@ func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
 	return shared.StackArenaCapacity(bodyLen, nLocals, nodeHint)
 }
 
-// alloc returns a fresh zeroed node from the arena.
-func (s *stack) alloc() *elem {
+func (s *stack) node(id nodeID) *elem {
+	if id == nilNodeID {
+		return nil
+	}
+	chunkIndex := int(uint32(id) >> 16)
+	slot := int(uint16(id)) - 1
+	return &s.chunks[chunkIndex][slot]
+}
+
+func (s *stack) prev(e *elem) *elem { return s.node(e.prev) }
+func (s *stack) next(e *elem) *elem { return s.node(e.next) }
+
+// alloc returns a stable ID and fresh zeroed node from the arena.
+func (s *stack) alloc() (nodeID, *elem) {
 	chunk := &s.chunks[s.cur]
 	if len(*chunk) == cap(*chunk) {
 		s.cur++
@@ -419,37 +442,42 @@ func (s *stack) alloc() *elem {
 		*chunk = (*chunk)[:0]
 	}
 	*chunk = append(*chunk, elem{})
-	return &(*chunk)[len(*chunk)-1]
+	if s.cur >= 1<<16 {
+		panic("arm64: operand arena exceeds compact chunk domain")
+	}
+	slot := len(*chunk) - 1
+	return nodeID(uint32(s.cur)<<16 | uint32(slot+1)), &(*chunk)[slot]
 }
 
 // push appends e as the new top of the stack and returns it.
-func (s *stack) push(e *elem) *elem {
-	last := s.head.prev
-	e.prev, e.next = last, s.head
-	last.next, s.head.prev = e, e
+func (s *stack) push(id nodeID, e *elem) *elem {
+	lastID := s.head.prev
+	last := s.node(lastID)
+	e.prev, e.next = lastID, sentinelNodeID
+	last.next, s.head.prev = id, id
 	return e
 }
 
 // pushValue pushes a concrete value with the given storage.
 func (s *stack) pushValue(st storage) *elem {
-	e := s.alloc()
+	id, e := s.alloc()
 	e.kind, e.st = ekValue, st
-	return s.push(e)
+	return s.push(id, e)
 }
 
 // back returns the top element, or nil when empty.
 func (s *stack) back() *elem {
-	if s.head.prev == s.head {
+	if s.head.prev == sentinelNodeID {
 		return nil
 	}
-	return s.head.prev
+	return s.node(s.head.prev)
 }
 
 // erase unlinks e from the physical list (used when a node is condensed away or
 // consumed). It does not touch parent/sibling links.
 func (s *stack) erase(e *elem) {
-	e.prev.next, e.next.prev = e.next, e.prev
-	e.prev, e.next = nil, nil
+	s.prev(e).next, s.next(e).prev = e.next, e.prev
+	e.prev, e.next = nilNodeID, nilNodeID
 }
 
 // --- deferred-tree navigation (WARP: getFirstOperand / findBaseOfValentBlock) ---
@@ -470,7 +498,7 @@ func baseOfValentBlock(root *elem) *elem {
 // machine code is emitted; the op condenses later when a sink forces it.
 func (f *fn) pushBinOp(op wOp, typ machineType) {
 	right := f.s.back()
-	left := baseOfValentBlock(right).prev
+	left := f.s.prev(baseOfValentBlock(right))
 	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
 	if right.kind == ekValue && right.st.kind == stConst &&
 		left.kind == ekValue && left.st.kind == stConst {
@@ -509,22 +537,22 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	}
 	if op == opOr && typ == mtI64 && f.opt(optSWARIdioms) {
 		if source := matchSWARPack4(left, right); source != nil {
-			node := f.s.alloc()
+			id, node := f.s.alloc()
 			node.kind, node.op, node.typ = ekDeferred, opSWARPack4, mtI64
 			node.arg0 = source
 			node.deferDepth = 1 + deferDepthOf(source)
-			f.s.push(node)
+			f.s.push(id, node)
 			f.stats.peep("swar-pack4")
 			return
 		}
 	}
 	if op == opShrU && typ == mtI64 && f.opt(optSWARIdioms) && isSWARConst(right, 32) {
 		if mul10 := matchSWARParse4(left); mul10 != nil {
-			node := f.s.alloc()
+			id, node := f.s.alloc()
 			node.kind, node.op, node.typ = ekDeferred, opSWARParse4, mtI64
 			node.arg0 = mul10
 			node.deferDepth = 1 + deferDepthOf(mul10)
-			f.s.push(node)
+			f.s.push(id, node)
 			f.stats.peep("swar-parse4")
 			return
 		}
@@ -539,14 +567,14 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	if deferDepthOf(right) >= maxDeferDepth {
 		f.materialize(right)
 	}
-	node := f.s.alloc()
+	id, node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
 	if f.opt(optValueFacts) {
 		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
 	node.arg0, node.arg1 = left, right
 	node.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
-	f.s.push(node)
+	f.s.push(id, node)
 }
 
 func max16(a, b int16) int16 {
@@ -711,12 +739,12 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	if deferDepthOf(operand) >= maxDeferDepth {
 		f.materialize(operand) // cap deferred-tree height (see pushBinOp)
 	}
-	node := f.s.alloc()
+	id, node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
 	if f.opt(optValueFacts) {
 		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
 	node.arg0 = operand
 	node.deferDepth = 1 + deferDepthOf(operand)
-	f.s.push(node)
+	f.s.push(id, node)
 }

@@ -487,7 +487,7 @@ func TestStackArenaOverflowKeepsExistingPointersStableArm64(t *testing.T) {
 	if first.kind != ekValue || first.st.cval != 1 {
 		t.Fatalf("first arena elem changed after overflow: kind=%v cval=%d", first.kind, first.st.cval)
 	}
-	if s.head.next != first {
+	if s.node(s.head.next) != first {
 		t.Fatal("first elem is no longer linked after arena overflow")
 	}
 	if len(s.chunks) < 2 {

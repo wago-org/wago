@@ -1562,9 +1562,9 @@ func (f *fn) fitsAddSubImmediate(v int64) bool {
 // that sits below node (its operand sub-trees), leaving node as the top.
 func (f *fn) consumeBlockBelow(node *elem) {
 	base := baseOfValentBlock(node)
-	e := node.prev
+	e := f.s.prev(node)
 	for {
-		prev := e.prev
+		prev := f.s.prev(e)
 		isBase := e == base
 		f.erase(e)
 		if isBase {

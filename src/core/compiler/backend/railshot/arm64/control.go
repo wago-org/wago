@@ -422,7 +422,7 @@ func typesOfVals(vals []wasm.ValType) []machineType {
 // depth returns the number of logical operands (valent-block roots) on the stack.
 func (f *fn) depth() int {
 	n := 0
-	for cur := f.s.head.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
+	for cur := f.s.prev(f.s.head); cur != f.s.head; cur = f.s.prev(baseOfValentBlock(cur)) {
 		n++
 	}
 	return n
@@ -432,7 +432,7 @@ func (f *fn) depth() int {
 // The returned scratch slice is valid only until the next helper using f.tmpRoots.
 func (f *fn) rootsBottomToTop() []*elem {
 	rs := f.tmpRoots[:0]
-	for cur := f.s.head.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
+	for cur := f.s.prev(f.s.head); cur != f.s.head; cur = f.s.prev(baseOfValentBlock(cur)) {
 		rs = append(rs, cur)
 	}
 	for i, j := 0, len(rs)-1; i < j; i, j = i+1, j-1 {
@@ -702,7 +702,7 @@ func (f *fn) setDepthTypes(types []machineType) {
 }
 
 func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
-	f.s.head.prev, f.s.head.next = f.s.head, f.s.head
+	f.s.head.prev, f.s.head.next = sentinelNodeID, sentinelNodeID
 	slot := 0
 	for i, typ := range types {
 		value := f.pushValue(storage{kind: stSlot, typ: typ, slot: uint32(slot)})
@@ -1641,7 +1641,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 		if i < len(eh.refResults) && eh.refResults[i] {
 			e.st.setEHRoot(true)
 		}
-		e = e.prev
+		e = f.s.prev(e)
 	}
 }
 

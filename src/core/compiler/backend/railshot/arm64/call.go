@@ -1752,7 +1752,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	for i := p - 1; i >= 0; i-- {
 		argRoots[i] = cur
 		if i > 0 {
-			cur = baseOfValentBlock(cur).prev
+			cur = f.s.prev(baseOfValentBlock(cur))
 		}
 	}
 
@@ -1932,7 +1932,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	for i := p - 1; i >= 0; i-- {
 		argRoots[i] = cur
 		if i > 0 {
-			cur = baseOfValentBlock(cur).prev
+			cur = f.s.prev(baseOfValentBlock(cur))
 		}
 	}
 	type deferredMixedArg struct {

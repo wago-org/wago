@@ -64,7 +64,7 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 			return r
 		}
 	}
-	for e := f.s.head.next; e != f.s.head; e = e.next {
+	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
 		if e.kind == ekValue && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spillF(e)

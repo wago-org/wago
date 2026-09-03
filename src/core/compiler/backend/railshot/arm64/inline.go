@@ -951,8 +951,8 @@ func (f *fn) inlineBody(body []byte) error {
 // slot's contents (mirrors realizeLocalRefs, over a range).
 func (f *fn) realizeInlineRange(lo, hi int) {
 	inRange := func(idx int) bool { return idx >= lo && idx < hi }
-	for e := f.s.head.next; e != f.s.head; {
-		next := e.next
+	for e := f.s.next(f.s.head); e != f.s.head; {
+		next := f.s.next(e)
 		switch {
 		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && inRange(e.st.index()):
 			f.materializeByType(e)

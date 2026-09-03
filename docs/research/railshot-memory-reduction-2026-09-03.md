@@ -332,6 +332,19 @@ rounding makes the 3,928-byte observed delta slightly larger than the raw
 the same allocation class. The five-sample timing ranges overlap, so this is a
 retained-memory result rather than an emulated latency claim.
 
+The post-sidecar ARM64 allocation profile makes the next priority clear:
+operand-arena allocation accounts for roughly three quarters of Railshot-owned
+allocation space. The first NodeID stage replaces only the physical stack's
+previous/next pointers with 32-bit chunk/slot coordinates. Chunk growth cannot
+invalidate a coordinate, lookup needs no map or allocation, and the bounded
+8,192-node chunk size leaves ample room in the 16-bit slot field. `elem` falls
+from 64 to 56 bytes. Native `json-as` allocation falls from 206,928 to 196,688
+B/op and `many_funcs` from 78,040 to 75,992 B/op, both with unchanged allocation
+counts. Six interleaved `GOGC=off` pairs on `many_funcs` had mixed latency signs
+and a roughly +0.7% median delta. The remaining two deferred-child pointers
+still make the backing scannable; converting those through the same coordinate
+domain is the next structural stage, not a parallel compiler path.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so

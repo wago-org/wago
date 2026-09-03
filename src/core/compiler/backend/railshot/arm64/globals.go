@@ -119,11 +119,11 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 // by condenseInto, so realizing them here would force a wasteful copy-out +
 // copy-back. Refs BELOW it still need x's pre-set value and are realized.
 func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
-	for e := f.s.head.next; e != f.s.head; {
+	for e := f.s.next(f.s.head); e != f.s.head; {
 		if e == skipFrom {
 			break
 		}
-		next := e.next
+		next := f.s.next(e)
 		switch {
 		case e.kind == ekValue && e.st.kind == stGlobReg && e.st.idx == x:
 			f.materialize(e)

@@ -691,12 +691,12 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 		_ = r.JumpTo(save)
 		return false, nil
 	}
-	b := baseOfValentBlock(cond).prev
+	b := f.s.prev(baseOfValentBlock(cond))
 	if b == f.s.head {
 		_ = r.JumpTo(save)
 		return false, nil
 	}
-	a := baseOfValentBlock(b).prev
+	a := f.s.prev(baseOfValentBlock(b))
 	if a == f.s.head {
 		_ = r.JumpTo(save)
 		return false, nil
@@ -884,7 +884,7 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 		}
 		return false, nil
 	}
-	left := baseOfValentBlock(right).prev
+	left := f.s.prev(baseOfValentBlock(right))
 	f.realizeLocalRefs(x, left)
 	f.fbinInto(pr, vop, 0, f64)
 	f.markLocalDirty(x)
@@ -930,7 +930,7 @@ func (f *fn) tryFminmaxLocalSet(r *wasm.Reader, f64, isMax bool) (bool, error) {
 		}
 		return false, nil
 	}
-	left := baseOfValentBlock(right).prev
+	left := f.s.prev(baseOfValentBlock(right))
 	f.realizeLocalRefs(x, left)
 	f.fminmaxInto(pr, f64, isMax)
 	f.markLocalDirty(x)
@@ -1032,11 +1032,11 @@ func mtI32OrWide(wide bool) machineType {
 // not both integer (floats/v128 have no CSEL here) or the block shape is
 // unexpected, so the caller falls back to the materialized-boolean path.
 func (f *fn) trySelectOnFlags(cond *elem) bool {
-	bRoot := baseOfValentBlock(cond).prev
+	bRoot := f.s.prev(baseOfValentBlock(cond))
 	if bRoot == f.s.head {
 		return false
 	}
-	aRoot := baseOfValentBlock(bRoot).prev
+	aRoot := f.s.prev(baseOfValentBlock(bRoot))
 	if aRoot == f.s.head {
 		return false
 	}
@@ -1079,11 +1079,11 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 	// inside that block are consumed directly into x's register by condenseInto, so
 	// realizing them here would force the wasteful copy-out + copy-back. Refs BELOW
 	// it still need x's pre-set value and are realized.
-	for e := f.s.head.next; e != f.s.head; {
+	for e := f.s.next(f.s.head); e != f.s.head; {
 		if e == skipFrom {
 			break
 		}
-		next := e.next
+		next := f.s.next(e)
 		switch {
 		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
 			f.materializeByType(e)

@@ -13,7 +13,7 @@ func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
 	if got, want := unsafe.Sizeof(storage{}), uintptr(24); got != want {
 		t.Fatalf("storage size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(elem{}), uintptr(64); got != want {
+	if got, want := unsafe.Sizeof(elem{}), uintptr(56); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(stack{}), uintptr(72); got != want {

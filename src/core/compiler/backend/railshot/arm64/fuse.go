@@ -70,7 +70,7 @@ func (f *fn) flushBelow(node *elem) int {
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
 	base := baseOfValentBlock(node)
 	var below []*elem
-	for cur := base.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
+	for cur := f.s.prev(base); cur != f.s.head; cur = f.s.prev(baseOfValentBlock(cur)) {
 		below = append(below, cur)
 	}
 	for i, j := 0, len(below)-1; i < j; i, j = i+1, j-1 {
