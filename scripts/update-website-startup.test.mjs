@@ -27,8 +27,8 @@ test("renders matched architecture panels with relative bars", () => {
   assert.equal(matches(html, /data-startup-arch-panel=/g), 2);
   assert.match(html, /data-startup-arch-target="arm64"/);
   assert.match(html, /data-startup-arch-target="amd64"/);
-  assert.match(html, />wago multi-pass</);
-  assert.match(html, />wago single-pass</);
+  assert.match(html, />wago<span class="rank__mode">multi-pass<\/span>/);
+  assert.match(html, />wago<span class="rank__mode">single-pass<\/span>/);
   assert.doesNotMatch(html, />Dragline</);
   assert.doesNotMatch(html, />Railshot</);
   assert.match(html, /Apple M4 Max, darwin\/arm64/);

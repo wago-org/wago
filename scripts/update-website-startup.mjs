@@ -77,10 +77,15 @@ function renderPanel(w, index, runtimes, arch) {
   const body = rows
     .map((r, i) => {
       const isWago = r.name === "railshot" || r.name === "dragline";
+      const label = r.name === "railshot"
+        ? `wago<span class="rank__mode">single-pass</span>`
+        : r.name === "dragline"
+          ? `wago<span class="rank__mode">multi-pass</span>`
+          : `${esc(runtimes[r.name]?.label ?? r.name)}<span class="rank__tag">${esc(tagOf(r.name))}</span>`;
       const fill = r.name === "dragline" ? "vs__fill--dragline" : isWago ? "vs__fill--railshot" : "vs__fill--wazero";
       const rowClass = isWago ? "rank__row rank__row--wago" : "rank__row";
       return `                                <div class="${rowClass}">
-                                    <span class="rank__name">${esc(runtimes[r.name]?.label ?? r.name)}${isWago ? "" : `<span class="rank__tag">${esc(tagOf(r.name))}</span>`}</span>
+                                    <span class="rank__name">${label}</span>
                                     <span class="vs__track"><span class="vs__fill ${fill}" data-bar data-value="${r.ms}" data-width="${wds[i]}"></span></span>
                                     <span class="rank__val">${fmtMs(r.ms)}</span>
                                 </div>`;
