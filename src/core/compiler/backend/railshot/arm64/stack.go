@@ -17,7 +17,9 @@ func (s *stack) nodeMemory() (used, reserved uint64) {
 		}
 	}
 	size := uint64(unsafe.Sizeof(elem{}))
-	return used * size, reserved * size
+	coldSize := uint64(unsafe.Sizeof(elemCold{}))
+	return used*size + uint64(len(s.cold))*coldSize,
+		reserved*size + uint64(cap(s.cold))*coldSize
 }
 
 // The operand stack and its element model — ported from WARP's Stack /
@@ -140,8 +142,14 @@ type storage struct {
 	gcRoot bool // value may contain a collector-owned gc.Ref and must be mapped at safepoints
 	facts  valueFacts
 	slot   int
-	idx    int   // local/global index for stLocalRef/stGlobalRef
-	cval   int64 // constant value/bits for stConst
+	idx    int    // local/global index for stLocalRef/stGlobalRef
+	cval   int64  // constant value/bits for stConst
+	cold   uint32 // index+1 into stack.cold for custom plugin values
+}
+
+// elemCold contains state used only by custom plugin values. Keeping it out of
+// storage removes a pointer and slice header from every ordinary operand node.
+type elemCold struct {
 	custom *coreplugins.CustomType
 	vregs  []Reg
 }
@@ -210,6 +218,7 @@ func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
 // resuming geometric chunks, so an underestimate cannot regress legacy retention.
 type stack struct {
 	chunks           [][]elem
+	cold             []elemCold
 	cur              int
 	head             *elem
 	nextChunkCap     int
@@ -287,7 +296,30 @@ func (s *stack) initSentinel() {
 // called (its code is already emitted). alloc rezeroes every reused chunk slot,
 // so no stale fields survive.
 func (s *stack) reset() {
+	clear(s.cold[:cap(s.cold)])
+	s.cold = s.cold[:0]
 	s.initSentinel()
+}
+
+func (s *stack) elemCold(e *elem) *elemCold {
+	if e.st.cold == 0 {
+		return nil
+	}
+	return &s.cold[e.st.cold-1]
+}
+
+func (s *stack) setElemCold(e *elem, custom *coreplugins.CustomType, vregs []Reg) {
+	if e.st.cold == 0 {
+		s.cold = append(s.cold, elemCold{})
+		e.st.cold = uint32(len(s.cold))
+	}
+	*s.elemCold(e) = elemCold{custom: custom, vregs: vregs}
+}
+
+func (s *stack) clearElemCold(e *elem) {
+	if cold := s.elemCold(e); cold != nil {
+		*cold = elemCold{}
+	}
 }
 
 func (s *stack) hasUnusedChunks() bool { return s.cur+1 < len(s.chunks) }

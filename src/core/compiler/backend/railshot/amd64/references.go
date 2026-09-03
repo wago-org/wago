@@ -17,6 +17,9 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 	fact := f.gcRefFact(e)
 	st.gcRoot = st.gcRoot || e.st.gcRoot
 	putGCRefFact(&st, fact)
+	if st.typ == mtCustom {
+		st.cold = e.st.cold
+	}
 	e.st = st
 }
 
@@ -25,5 +28,6 @@ func (f *fn) pushValue(st storage) *elem {
 }
 
 func (f *fn) erase(e *elem) {
+	f.s.clearElemCold(e)
 	f.s.erase(e)
 }

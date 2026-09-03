@@ -745,6 +745,8 @@ func (sc *scratch) finishStackWorker() {
 	sc.clearNodeReferences()
 	_, retained := sc.stack.nodeMemory()
 	sc.nodeScratchDiscarded += retained
+	clear(sc.stack.cold[:cap(sc.stack.cold)])
+	sc.stack.cold = nil
 	sc.stack.chunks = nil
 	sc.stack.head = nil
 	sc.stack.cur = 0

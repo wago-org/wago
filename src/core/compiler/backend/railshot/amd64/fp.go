@@ -81,13 +81,14 @@ func (f *fn) spillF(e *elem) {
 	defer func() { f.stats.addGCSpillReloadBytes(f.a.Len() - before) }()
 	r := e.st.reg
 	if e.st.typ == mtCustom {
-		chunks := int((e.st.custom.Size() + 31) / 32)
+		cold := f.s.elemCold(e)
+		chunks := int((cold.custom.Size() + 31) / 32)
 		slot := f.allocSpillSlots(chunks * 4)
-		for i, reg := range e.st.vregs {
+		for i, reg := range cold.vregs {
 			f.a.YMovdquStoreDisp(RSP, f.spillOff(slot+i*4), reg)
 			f.fregUser[reg] = nil
 		}
-		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: slot, custom: e.st.custom})
+		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: slot})
 		return
 	}
 	if e.st.typ == mtV128 {

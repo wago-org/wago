@@ -53,7 +53,7 @@ func (f *fn) discardTree(e *elem) {
 	switch e.st.kind {
 	case stReg:
 		if e.st.typ == mtCustom {
-			for _, reg := range e.st.vregs {
+			for _, reg := range f.s.elemCold(e).vregs {
 				f.releaseF(reg)
 			}
 		} else if e.st.typ.isXMM() {
@@ -82,7 +82,7 @@ func (f *fn) releaseDroppedValue(e *elem) {
 	switch e.st.kind {
 	case stReg:
 		if e.st.typ == mtCustom {
-			for _, reg := range e.st.vregs {
+			for _, reg := range f.s.elemCold(e).vregs {
 				f.releaseF(reg)
 			}
 		} else if e.st.typ.isXMM() {

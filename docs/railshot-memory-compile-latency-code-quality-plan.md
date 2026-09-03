@@ -12,7 +12,7 @@ The work should happen in this order:
 2. Eliminate failed first compilation attempts.
 3. Bound and discard per-worker high-water memory.
 4. Make GC-root planning adaptive.
-5. Replace the pointer-rich 112-byte operand node with compact IDs.
+5. Replace the remaining pointer-rich operand node with compact IDs.
 6. Add costed tree selection, rematerialization, and a tiny machine window.
 7. Gradually retire the old representation behind whole-function eligibility.
 
@@ -30,7 +30,7 @@ A follow-up audit at `779e5e65842359c1c7b169f1af299097853a71ad` found several ad
 - Resolve module invariants once, narrow compiler-only indexes, flatten parallel metadata, and apply retention limits per scratch buffer.
 - Retire default-off experiments and mature rollback switches that fail the normal qualification gates. Compiler mechanisms should replace old state, not accumulate beside it.
 
-The implementation currently includes nineteen general cuts from that audit:
+The implementation currently includes twenty general cuts from that audit:
 
 1. Module hint scanning always retains exact touched-global records instead of a dense function-by-global matrix, and the fixed hint record drops from 200 to 152 bytes. On a synthetic 1,024-function/1,024-global shape with one touched global per function, this changed the ARM64 hint benchmark from approximately 5.47 MB and 0.64 ms per operation to 0.24 MB and 0.12 ms per operation. This is a targeted stress result, not a full-corpus claim.
 2. Module-wide synchronous-host-call classification is computed once per module, and the bounded module-global pin list replaces a per-function `globals`-sized membership bitmap.
@@ -51,6 +51,7 @@ The implementation currently includes nineteen general cuts from that audit:
 17. Worker exit now snapshots the node/control ledger into a pointer-free scalar record and clears the worker's `scratch` pointer before the join. This makes every other compiler-only buffer—local-state tables, temporary root slices, assembler recorders, branch maps, trap-site vectors, and feature-specific sidecars—unreachable as soon as its worker finishes. The join retains only code/literal arenas, compact function results, scalar feature flags, and the resource snapshot that it actually consumes. This is an ownership change with no opcode, function-shape, or corpus-dependent selection.
 18. Inline planning now retains a dense 32-bit local-function index plus compact records and type sidecars only for callees that pass the existing semantic and target-cost admission. Previously, enabling inlining allocated a pointer-rich target record and local/result type capacity for every function as soon as any function contained a call. The retained target shrinks from 120 to 64 bytes on ARM64 and from 144 to 56 bytes on AMD64; a non-target now costs four pointer-free bytes. On the 301-function `many_funcs` fixture, which has three generally admitted leaf callees, full ARM64 compile allocation fell from approximately 122.6 to 103.4 KiB/op (-15.6%) and Linux/AMD64 from 125.2 to 95.9 KiB/op (-23.4%). Allocation count rises by two for the separated sidecars; an interleaved ARM64 binary screen was effectively flat to slightly faster (about 206.1 versus 208.0 microseconds median). Candidate selection, O(1) lookup, and generated code are unchanged; the representation never examines corpus identity.
 19. Control frames now keep merge-only local and GC-fact snapshots in a lazy scratch sidecar indexed by nesting depth, while common booleans share one flag word and a write-only loop-growth flag is gone. This reduces `ctrlFrame` from 368 to 312 bytes on ARM64 (-15.2%) and from 408 to 312 bytes on AMD64 (-23.5%). The sidecar grows with maximum live control depth rather than total blocks and is cleared between functions and released with worker scratch before the parallel join. On the generated 128-deep scalar-control benchmark, Linux/AMD64 allocation fell from approximately 209.5 to 190.0 KiB/op (-9.3%) with the same 154 allocations. Candidate-free `many_funcs` saves 64 B/op on ARM64 and roughly 96 B/op on the full Linux/AMD64 compile path. A merge-heavy `json-as` compile saves about 703 B/op on ARM64 while adding one lazy allocation; Linux/AMD64 pays about 512 B/op and one allocation, the bounded cost of avoiding four scanned slice headers in every frame. Serial/parallel corpus parity and deterministic-artifact tests cover the depth-index ownership boundary. Selection depends only on whether semantic merge state exists; no module, function, producer, hash, or corpus identity participates.
+20. Custom plugin type pointers and variable-length register bundles now live in a lazy operand sidecar instead of every value's common `storage`. The ordinary storage record falls from 64 to 40 bytes (-37.5%) and `elem` from 112 to 88 bytes (-21.4%) on both architectures; the sidecar is allocated only when custom machine-code lowering actually produces a custom value, is included in the node-resource ledger, cleared between functions, and released before the parallel join. ARM64 `many_funcs` falls from 103,372 to 95,192 B/op (-7.9%) and `json-as` from 398,962 to 341,409 B/op (-14.4%), with allocation counts unchanged. Five 500 ms native ARM64 samples also moved median compile time from 256.96 to 248.83 microseconds on `many_funcs` and from 1.096 to 1.044 milliseconds on `json-as`. Full Linux/AMD64 compile allocation falls from roughly 157.4 to 149.2 KiB/op on `many_funcs` (-5.2%) and from 439.4 to 381.8 KiB/op on `json-as` (-13.1%). Wide custom-value execution tests cover register ownership, spills, multiple results, and sidecar clearing. Lowering and selection are unchanged, and the representation has no workload-identity selector.
 
 An interleaved three-pair ARM64 `many_funcs` screen with metrics disabled retained 42 allocs/op and 159,001–159,003 B/op; median compile time moved from 215.98 µs to 215.65 µs. This clears the initial zero-overhead screen, but the larger benchmark matrix remains the acceptance authority.
 
@@ -76,7 +77,7 @@ That leaves four current structural cliffs.
 
 ### The hot operand node is much too large and too scannable
 
-The common `elem` is currently 112 bytes on both architectures. It contains four direct `*elem` links, while its embedded storage includes rare pointer-bearing fields such as a custom-type pointer and a register slice.
+At the reviewed snapshot, the common `elem` was 112 bytes on both architectures. The reconciliation work above has moved its rare custom-type pointer and register slice into a lazy sidecar, reducing it to 88 bytes. Its four direct `*elem` links remain the next source of size, pointer scanning, and pointer-stability constraints.
 
 Because links are pointers, nodes need stable addresses, which in turn encourages chunked arenas whose high-water capacity is retained when the stack resets. The current reset rewinds the arena but does not discard its previously grown chunks.
 

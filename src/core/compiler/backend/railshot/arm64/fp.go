@@ -80,12 +80,13 @@ func (f *fn) spillF(e *elem) {
 	defer func() { f.stats.addGCSpillReloadBytes(f.a.Len() - before) }()
 	r := e.st.reg
 	if e.st.typ == mtCustom {
-		slot := f.allocSpillSlots(int(e.st.custom.Size() / 8))
-		for i, reg := range e.st.vregs {
+		cold := f.s.elemCold(e)
+		slot := f.allocSpillSlots(int(cold.custom.Size() / 8))
+		for i, reg := range cold.vregs {
 			f.a.StrQ(SP, f.spillOff(slot+i*2), reg)
 			f.fregUser[reg] = nil
 		}
-		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: slot, custom: e.st.custom})
+		f.replaceStorage(e, storage{kind: stSlot, typ: mtCustom, slot: slot})
 		return
 	}
 	if e.st.typ == mtV128 {

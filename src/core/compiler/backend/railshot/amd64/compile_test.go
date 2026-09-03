@@ -178,7 +178,7 @@ func TestFunctionResultTypesUseBoundedScratch(t *testing.T) {
 
 func TestHintSizedScratchRemovesFixedArenaBacking(t *testing.T) {
 	saved := uintptr(defaultStackArenaCap-minStackArenaCap) * unsafe.Sizeof(elem{})
-	if want := uintptr(24 << 10); saved < want {
+	if want := uintptr(20 << 10); saved < want {
 		t.Fatalf("initial arena saving = %d bytes, want at least %d", saved, want)
 	}
 	sc := newScratchWithStackCap(minStackArenaCap)

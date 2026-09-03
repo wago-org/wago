@@ -55,7 +55,8 @@ func (c *pluginARM64Context) InputCustom(index int) ([]a64.Reg, error) {
 	}
 	e := c.paramElems[index]
 	want := c.paramCustom[index]
-	if e.kind != ekValue || e.st.typ != mtCustom || e.st.custom == nil || !e.st.custom.Equal(want) {
+	cold := c.f.s.elemCold(e)
+	if e.kind != ekValue || e.st.typ != mtCustom || cold == nil || cold.custom == nil || !cold.custom.Equal(want) {
 		return nil, fmt.Errorf("arm64 plugin custom input %d has incompatible custom type", index)
 	}
 	regs := c.f.materializePluginCustom(e)
@@ -65,7 +66,7 @@ func (c *pluginARM64Context) InputCustom(index int) ([]a64.Reg, error) {
 		c.f.fpinned = c.f.fpinned.add(reg)
 		c.vector = c.vector.add(reg)
 	}
-	e.st.vregs = nil
+	cold.vregs = nil
 	c.customRead[index] = true
 	return out, nil
 }
@@ -201,13 +202,14 @@ func (c *pluginARM64Context) OutputCustom(regs ...a64.Reg) error {
 }
 
 func (f *fn) materializePluginCustom(e *elem) []Reg {
+	cold := f.s.elemCold(e)
 	if e.st.kind == stReg {
-		return e.st.vregs
+		return cold.vregs
 	}
-	if e.st.kind != stSlot || e.st.custom == nil {
+	if e.st.kind != stSlot || cold == nil || cold.custom == nil {
 		panic("arm64: cannot materialize custom plugin value")
 	}
-	count := int(e.st.custom.Size() / 16)
+	count := int(cold.custom.Size() / 16)
 	regs := make([]Reg, count)
 	var avoid regMask
 	for i := 0; i < count; i++ {
@@ -222,8 +224,8 @@ func (f *fn) materializePluginCustom(e *elem) []Reg {
 		f.fregUser[regs[i]] = e
 	}
 	e.st.kind, e.st.typ, e.st.reg = stReg, mtCustom, regs[0]
-	e.st.vregs = regs
-	return e.st.vregs
+	cold.vregs = regs
+	return cold.vregs
 }
 
 func (c *pluginARM64Context) finish(resultWidth int32) {
@@ -315,7 +317,8 @@ func (f *fn) emitPluginARM64Custom(lowering *plugincodegen.Lowering, inputWidths
 	for i, typ := range customInputs {
 		e := ctx.paramElems[i]
 		if !typ.IsZero() {
-			if e.kind != ekValue || e.st.typ != mtCustom || e.st.custom == nil || !e.st.custom.Equal(typ) {
+			cold := f.s.elemCold(e)
+			if e.kind != ekValue || e.st.typ != mtCustom || cold == nil || cold.custom == nil || !cold.custom.Equal(typ) {
 				return fmt.Errorf("arm64 plugin custom input %d has incompatible custom type", i)
 			}
 			continue
@@ -366,15 +369,15 @@ func (f *fn) emitPluginARM64Custom(lowering *plugincodegen.Lowering, inputWidths
 	}
 	for _, root := range ctx.paramElems {
 		if root.st.typ == mtCustom {
-			for _, reg := range root.st.vregs {
+			for _, reg := range f.s.elemCold(root).vregs {
 				f.releaseF(reg)
 			}
 		}
 		f.erase(root)
 	}
 	if customOutput != nil {
-		st := storage{kind: stReg, typ: mtCustom, reg: ctx.customRegs[0], custom: customOutput, vregs: append([]Reg(nil), ctx.customRegs...)}
-		e := f.pushValue(st)
+		e := f.pushValue(storage{kind: stReg, typ: mtCustom, reg: ctx.customRegs[0]})
+		f.s.setElemCold(e, customOutput, append([]Reg(nil), ctx.customRegs...))
 		for _, reg := range ctx.customRegs {
 			ctx.vector = ctx.vector.remove(reg)
 			f.fpinned = f.fpinned.remove(reg)

@@ -37,6 +37,26 @@ func TestNewStackWithCapSizesFirstChunk(t *testing.T) {
 	}
 }
 
+func TestStackCustomSidecarIsLazyAndCleared(t *testing.T) {
+	s := newStackWithCap(minStackArenaCap)
+	_, ordinaryReserved := s.nodeMemory()
+	e := s.pushValue(storage{kind: stReg, typ: mtCustom})
+	s.setElemCold(e, nil, []Reg{1, 2})
+	if e.st.cold == 0 || len(s.cold) != 1 {
+		t.Fatalf("custom sidecar index=%d len=%d, want nonzero and 1", e.st.cold, len(s.cold))
+	}
+	if _, reserved := s.nodeMemory(); reserved <= ordinaryReserved {
+		t.Fatalf("reserved node memory = %d, want more than ordinary %d", reserved, ordinaryReserved)
+	}
+	s.reset()
+	if len(s.cold) != 0 {
+		t.Fatalf("reset custom sidecars = %d, want 0", len(s.cold))
+	}
+	if stale := s.cold[:cap(s.cold)][0]; stale.custom != nil || stale.vregs != nil {
+		t.Fatalf("reset retained custom sidecar pointers: %+v", stale)
+	}
+}
+
 func TestHintedStackGrowthMatchesLegacyRetention(t *testing.T) {
 	const (
 		firstCap = 386

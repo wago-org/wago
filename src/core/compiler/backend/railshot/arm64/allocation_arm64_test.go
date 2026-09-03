@@ -32,7 +32,7 @@ func TestModuleScratchUsesBoundedStackArenaHintArm64(t *testing.T) {
 	// allocation reduction rather than a runtime.MemStats sample, which would be
 	// vulnerable to unrelated test-process allocation noise.
 	savedBytes := uintptr(defaultStackArenaCap-gotCap) * unsafe.Sizeof(elem{})
-	if minimum := uintptr(24 << 10); savedBytes < minimum {
+	if minimum := uintptr(20 << 10); savedBytes < minimum {
 		t.Fatalf("initial arena saving = %d bytes, want at least %d", savedBytes, minimum)
 	}
 }
