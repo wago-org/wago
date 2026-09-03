@@ -36,6 +36,15 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 	}
 }
 
+func TestARM64StructuredCallLocalResidencyPlatform(t *testing.T) {
+	if arm64StructuredPinsLocalsAcrossCalls(corecompiler.Target{GOOS: "windows", GOARCH: "arm64"}) {
+		t.Fatal("Windows ARM64 pinned structured locals across calls")
+	}
+	if !arm64StructuredPinsLocalsAcrossCalls(corecompiler.Target{GOOS: "darwin", GOARCH: "arm64"}) {
+		t.Fatal("Darwin ARM64 lost structured local residency")
+	}
+}
+
 func TestARM64FloatConstantUsesImmediateAndPreservesNegativeZero(t *testing.T) {
 	var a arm64.Asm
 	emitARM64FloatConstant(&a, 3, math.Float64bits(1), true)
@@ -410,18 +419,6 @@ func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {
 	trapCaller := &railssa.StackFunc{ImportedFuncs: 1, Instrs: []railssa.StackInstr{{Kind: wasm.InstrCall}, {Kind: wasm.InstrUnreachable}}}
 	if arm64RailMachCandidate(trapCaller, true, nil) {
 		t.Fatal("SIMD-module imported trap call was admitted across the mixed-emitter ABI")
-	}
-}
-
-func TestARM64WindowsUsesStructuredFinalizer(t *testing.T) {
-	stack := &railssa.StackFunc{}
-	windows := corecompiler.Target{GOOS: "windows", GOARCH: "arm64"}
-	linux := corecompiler.Target{GOOS: "linux", GOARCH: "arm64"}
-	if arm64RailMachCandidateForTarget(stack, false, nil, windows) {
-		t.Fatal("Windows ARM64 admitted RailMach")
-	}
-	if !arm64RailMachCandidateForTarget(stack, false, nil, linux) {
-		t.Fatal("Linux ARM64 rejected RailMach")
 	}
 }
 

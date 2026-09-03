@@ -56,13 +56,6 @@ func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, _ []ra
 	return true
 }
 
-// Keep Windows ARM64 on the structured finalizer until the private RailMach
-// call stack is qualified against that platform's native entry and exception
-// ABI. Both ARM64 Unix targets retain RailMach.
-func arm64RailMachCandidateForTarget(stack *railssa.StackFunc, moduleHasV128 bool, contracts []railmach.ABIContract, target corecompiler.Target) bool {
-	return target.GOOS != "windows" && arm64RailMachCandidate(stack, moduleHasV128, contracts)
-}
-
 var arm64StackLocalRegisters = [...]arm64.Reg{arm64.X19, arm64.X20, arm64.X21, arm64.X22, arm64.X23}
 var arm64OperandStackRegisters = [...]arm64.Reg{arm64.X9, arm64.X10, arm64.X11, arm64.X12, arm64.X13, arm64.X14, arm64.X15}
 var arm64DeepSIMDOperandStackRegisters = [...]arm64.Reg{
@@ -312,7 +305,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		functionRequiresMOPS := input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index)
 		requiresMOPS = requiresMOPS || functionRequiresMOPS
 		var nativePlan *nativeBackendPlan
-		if arm64RailMachCandidateForTarget(fn.Structured, compilationPlan.HasV128, moduleContracts, input.Target) {
+		if arm64RailMachCandidate(fn.Structured, compilationPlan.HasV128, moduleContracts) {
 			if nativePlanner == nil {
 				nativePlanner = new(nativeBackendPlanner)
 			}
@@ -652,7 +645,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				return functionError(m, i, "lower", err)
 			}
 			var nativePlan *nativeBackendPlan
-			if arm64RailMachCandidateForTarget(fn.Structured, compilation.HasV128, contracts, input.Target) {
+			if arm64RailMachCandidate(fn.Structured, compilation.HasV128, contracts) {
 				if worker.native == nil {
 					worker.native = &nativeBackendPlanner{parallelCandidates: true}
 				}
@@ -767,7 +760,7 @@ func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 		}
 	}
 	if fn.Stack != nil {
-		code, entry, relocs, err := emitARM64Stack(fn, plan, target.HasFeature(corecompiler.TargetFeatureARM64MOPS), observations, contracts, scratch, metrics, metadata)
+		code, entry, relocs, err := emitARM64Stack(fn, plan, target, target.HasFeature(corecompiler.TargetFeatureARM64MOPS), observations, contracts, scratch, metrics, metadata)
 		return code, entry, relocs, false, err
 	}
 	if len(fn.Params) > len(arm64ParamRegisters) {
@@ -7701,7 +7694,7 @@ func arm64StructuredLocalOverwrittenBeforeRead(instrs []railssa.StackInstr, call
 	return false
 }
 
-func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, observations *compilerprofile.Module, contracts []railmach.ABIContract, scratch []byte, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []arm64CallReloc, error) {
+func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, target corecompiler.Target, mops bool, observations *compilerprofile.Module, contracts []railmach.ABIContract, scratch []byte, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []arm64CallReloc, error) {
 	sf := fn.Stack
 	v128StackRegisters := arm64V128StackRegisters[:]
 	callRelocs := make([]arm64CallReloc, 0, 2)
@@ -7732,7 +7725,10 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 	}
 	hasGeneralCall := false
 	generalCallCount := uint32(0)
-	pinLocalsAcrossCalls := true
+	// Windows ARM64 uses a conservative structured-call boundary until its
+	// private native-entry ABI is qualified for register-resident locals. Stack
+	// homes keep every local authoritative across both direct and host calls.
+	pinLocalsAcrossCalls := arm64StructuredPinsLocalsAcrossCalls(target)
 	hasMemoryAccess := false
 	hasMemoryGrow := false
 	memoryLoads, memoryStores := uint32(0), uint32(0)
@@ -11752,6 +11748,10 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		}
 	}
 	return a.B, internalOffset, callRelocs, nil
+}
+
+func arm64StructuredPinsLocalsAcrossCalls(target corecompiler.Target) bool {
+	return target.GOOS != "windows"
 }
 
 func arm64StructuredRegisterModes(hasV128, hasGeneralCall, pinLocalsAcrossCalls, _ bool, gpLocals, fpLocals, maxStack int) (operandStack, full bool) {
