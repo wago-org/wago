@@ -176,7 +176,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	observedCodeExpansion := false
 	moduleDependencies, functionCacheEnabled := functionArtifactDependencies(input, m, functionCache)
 	compilationPlan := calleeFirstCompilationPlan(m)
-	uniformStructured, err := arm64RequiresUniformStructuredFinalizer(m, input.Target, compilationPlan.HasV128)
+	uniformStructured, err := arm64RequiresUniformStructuredFinalizer(input.Source, input.Target, compilationPlan.HasV128)
 	if err != nil {
 		return corecompiler.Output{}, err
 	}
@@ -533,13 +533,17 @@ func arm64DirectPreparedClass(class railmach.ABIClass) bool {
 // finalizer, but not yet a qualified edge between them. If any function in a
 // module requires structured lowering, keep the whole module on that finalizer
 // so generated calls cannot cross an unverified mixed-emitter boundary.
-func arm64RequiresUniformStructuredFinalizer(m *wasm.Module, target corecompiler.Target, moduleHasV128 bool) (bool, error) {
+func arm64RequiresUniformStructuredFinalizer(source []byte, target corecompiler.Target, moduleHasV128 bool) (bool, error) {
 	if target.GOOS != "windows" {
 		return false, nil
 	}
+	probe, err := wasm.DecodeModule(source)
+	if err != nil {
+		return false, nil
+	}
 	var scratch railssa.StackFunc
-	for i := range m.Code {
-		fn, err := buildCompilerFunc(m, i, &scratch)
+	for i := range probe.Code {
+		fn, err := buildCompilerFunc(probe, i, &scratch)
 		if err != nil {
 			// Preserve the ordinary lowering failure and replay identity. The main
 			// compilation pass will report it with the established stage name.
@@ -648,7 +652,7 @@ type parallelARM64Worker struct {
 
 func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corecompiler.Output, error) {
 	compilation := calleeFirstCompilationPlan(m)
-	uniformStructured, err := arm64RequiresUniformStructuredFinalizer(m, input.Target, compilation.HasV128)
+	uniformStructured, err := arm64RequiresUniformStructuredFinalizer(input.Source, input.Target, compilation.HasV128)
 	if err != nil {
 		return corecompiler.Output{}, err
 	}
@@ -11161,6 +11165,22 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, target corecom
 			}
 		case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 			useMOPS := mops && arm64ProfileSelectsMOPS(observations, fn.Index, instr.Offset)
+			if target.GOOS == "windows" && instr.Kind == wasm.InstrMemoryFill && instrIndex >= 3 && len(stackTypes) >= 3 {
+				dst, value, length := sf.Instrs[instrIndex-3], sf.Instrs[instrIndex-2], sf.Instrs[instrIndex-1]
+				if dst.Kind == wasm.InstrLocalTee && value.Kind == wasm.InstrI32Const && length.Kind == wasm.InstrLocalGet &&
+					int(dst.U32()) < len(sf.Locals) && sf.Locals[dst.U32()] == wasm.I32 &&
+					int(length.U32()) < len(sf.Locals) && sf.Locals[length.U32()] == wasm.I32 {
+					if !localLoad(int(dst.U32()), arm64.X0) || !localLoad(int(length.U32()), arm64.X2) {
+						return nil, 0, nil, fmt.Errorf("byte %d: forwarded memory.fill local is not encodable", instr.Offset)
+					}
+					a.MovImm64(arm64.X1, value.U64())
+					if err := emitARM64BulkMemoryRegisters(&a, instr.Kind, instr.Offset, useMOPS, fn.Index, metadata, recordBulkMemoryTrap); err != nil {
+						return nil, 0, nil, fmt.Errorf("byte %d: %w", instr.Offset, err)
+					}
+					stackTypes = stackTypes[:len(stackTypes)-3]
+					continue
+				}
+			}
 			if err := emitARM64StackBulkMemory(&a, instr, &stackTypes, stackLoad, useMOPS, fn.Index, metadata, recordBulkMemoryTrap); err != nil {
 				return nil, 0, nil, fmt.Errorf("byte %d: %w", instr.Offset, err)
 			}
