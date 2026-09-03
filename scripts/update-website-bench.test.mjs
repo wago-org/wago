@@ -18,7 +18,6 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
     const arm64 = join(work, "arm64.json");
     const generalAMD64 = join(work, "general-amd64.json");
     const generalARM64 = join(work, "general-arm64.json");
-    const rssAMD64 = join(work, "rss-amd64.json");
     await writeFile(index, `<!doctype html>
 <body>
             <!-- ░░░ PERFORMANCE ░░░ -->
@@ -62,22 +61,14 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
     };
     await writeFile(amd64, JSON.stringify({ goos: "linux", goarch: "amd64", metrics }));
     await writeFile(arm64, JSON.stringify({ goos: "darwin", goarch: "arm64", metrics }));
-    await writeFile(generalAMD64, JSON.stringify({ ...general, goos: "linux" }));
+    await writeFile(generalAMD64, JSON.stringify(general));
     await writeFile(generalARM64, JSON.stringify(general));
-    await writeFile(rssAMD64, JSON.stringify({ version: 1, samples: [
-      ...[["railshot-native", 100, 140], ["dragline-native", 110, 170], ["wazero", 120, 220],
-        ["cranelift", 140, 300], ["v8", 160, 360], ["wavm", 180, 420]].flatMap(([engine, tiny, large]) => [
-        { module: "tiny.wasm", engine, peak_rss_bytes: tiny },
-        { module: "large.wasm", engine, peak_rss_bytes: large },
-      ]),
-    ] }));
 
     const benchmarkEnv = {
       WAGO_BENCH_JSON_AMD64: amd64,
       WAGO_BENCH_JSON_ARM64: arm64,
       WAGO_GENERAL_JSON_AMD64: generalAMD64,
       WAGO_GENERAL_JSON_ARM64: generalARM64,
-      WAGO_COMPILE_RSS_JSON_AMD64: rssAMD64,
     };
 
     runUpdater(work, benchmarkEnv);
@@ -86,25 +77,13 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
     runUpdater(work, { ...benchmarkEnv, WAGO_BENCH_UPDATE_ARCH: "amd64" });
     assertDOMContract(await readFile(index, "utf8"));
 
-    const missingRSS = invokeUpdater(work, {
-      ...benchmarkEnv,
-      WAGO_COMPILE_RSS_JSON_AMD64: "",
-      WAGO_BENCH_UPDATE_ARCH: "amd64",
-    });
-    assert.notEqual(missingRSS.status, 0);
-    assert.match(missingRSS.stderr, /Linux general benchmark requires isolated compileRSS samples/);
   } finally {
     await rm(work, { recursive: true, force: true });
   }
 });
 
 function runUpdater(websiteDir, extraEnv = {}) {
-  const result = invokeUpdater(websiteDir, extraEnv);
-  assert.equal(result.status, 0, result.stderr || result.stdout);
-}
-
-function invokeUpdater(websiteDir, extraEnv = {}) {
-  return spawnSync(process.execPath, [updater], {
+  const result = spawnSync(process.execPath, [updater], {
     cwd: root,
     env: {
       ...process.env,
@@ -114,6 +93,7 @@ function invokeUpdater(websiteDir, extraEnv = {}) {
     },
     encoding: "utf8",
   });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
 }
 
 function assertDOMContract(html) {
@@ -123,26 +103,24 @@ function assertDOMContract(html) {
   assert.equal(matches(html, /class="vs__specs"/g), 2);
   assert.equal(matches(html, /id="perf-(?:amd64|arm64)-tab-memory"/g), 2);
   assert.equal(matches(html, /data-engine-toggles/g), 2);
-  assert.equal(matches(html, /data-engine-toggle=/g), 12);
+  assert.equal(matches(html, /data-engine-toggle=/g), 6);
   assert.equal(matches(html, /data-engine-row/g), 20);
-  assert.match(html, /Compile memory growth/);
-  assert.match(html, /Mean peak RSS above tiny module · fresh process/);
-  assert.doesNotMatch(html, /Compile heap/);
-  const rssStart = html.indexOf("Compile memory growth");
-  const rssEnd = html.indexOf('<div class="vs__row" data-engine-row>', rssStart);
-  const rssRow = html.slice(rssStart, rssEnd);
-  for (const engine of ["railshot", "dragline", "wazero", "wasmtime", "v8", "wavm"]) {
-    assert.match(rssRow, new RegExp(`data-engine="${engine}"`));
+  assert.match(html, /Compile heap/);
+  assert.match(html, /Go heap bytes allocated per full compile · geometric mean/);
+  assert.doesNotMatch(html, /Compile memory growth|process RSS/);
+  const heapStart = html.indexOf("Compile heap");
+  const heapEnd = html.indexOf('<div class="vs__row" data-engine-row>', heapStart);
+  const heapRow = html.slice(heapStart, heapEnd);
+  for (const engine of ["railshot", "dragline", "wazero"]) {
+    assert.match(heapRow, new RegExp(`data-engine="${engine}"`));
   }
-  assert.match(rssRow, /data-engine="railshot"[\s\S]*?data-value="20"/);
-  assert.match(html, /Corpus summaries · lower is better/);
+  assert.doesNotMatch(html, /data-engine="(?:wasmtime|v8|wavm)"|data-engine-toggle="(?:wasmtime|v8|wavm)"/);
+  assert.match(html, /Three Go engines/);
+  assert.match(html, /Corpus geometric means · lower is better/);
   assert.match(html, /End-to-end latency/);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);
   assert.match(html, /class="vs__stage"/);
   assert.match(html, /data-engine-toggle="dragline"/);
-  assert.match(html, /data-engine-toggle="wasmtime"/);
-  assert.match(html, /data-engine-toggle="v8"/);
-  assert.match(html, /data-engine-toggle="wavm"/);
   assert.doesNotMatch(html, /class="[^"]*"[^>]+class="/);
 }
 

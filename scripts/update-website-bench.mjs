@@ -28,9 +28,6 @@ const ENGINES = [
   { id: "railshot", label: "Railshot" },
   { id: "dragline", label: "Dragline" },
   { id: "wazero", label: "wazero" },
-  { id: "wasmtime", label: "Wasmtime", sub: "Cranelift" },
-  { id: "v8", label: "V8", sub: "Liftoff + TurboFan" },
-  { id: "wavm", label: "WAVM", sub: "LLVM" },
 ];
 
 const benchmarkSets = await loadBenchmarkSets();
@@ -253,14 +250,6 @@ async function loadRunMetrics(path, fallbackArch = "") {
       : process.env.WAGO_GENERAL_JSON_ARM64 || join(root, "bench", "out", "arm64", "general.json"),
   );
   const generalRaw = (await exists(generalPath)) ? JSON.parse(await readFile(generalPath, "utf8")) : null;
-  const compileRSSPath = arch === "amd64"
-    ? process.env.WAGO_COMPILE_RSS_JSON_AMD64
-    : process.env.WAGO_COMPILE_RSS_JSON_ARM64;
-  if (generalRaw && compileRSSPath) {
-    const directRSS = JSON.parse(await readFile(resolve(compileRSSPath), "utf8"));
-    if (!Array.isArray(directRSS.samples)) throw new Error(`direct RSS report ${compileRSSPath} has no samples`);
-    generalRaw.compileRSS = directRSS.samples;
-  }
   if (generalRaw?.goarch && generalRaw.goarch !== arch) {
     throw new Error(`general benchmark architecture ${generalRaw.goarch} does not match ${arch}`);
   }
@@ -276,53 +265,21 @@ function buildGeneralSummary(metrics, raw) {
     ["railshot-native", "railshot"],
     ["dragline-native", "dragline"],
     ["wazero", "wazero"],
-    ["cranelift", "wasmtime"],
-    ["v8", "v8"],
-    ["wavm", "wavm"],
   ]);
   const compile = new Map();
-  const compileRSSByEngine = new Map();
-  if (raw.goos === "linux" && !Array.isArray(raw.compileRSS)) {
-    throw new Error("Linux general benchmark requires isolated compileRSS samples");
-  }
   for (const report of raw.compile ?? []) {
-    const module = basenameWithoutWasm(report.wasm_path);
     const byEngine = new Map();
     for (const run of report.runs ?? []) {
       const engine = compileNames.get(run.engine);
       if (!engine) continue;
-      const values = byEngine.get(engine) ?? { wall: [], rss: [] };
+      const values = byEngine.get(engine) ?? { wall: [] };
       values.wall.push(Number(run.wall_nanos));
-      values.rss.push(Number(run.peak_rss_bytes));
       byEngine.set(engine, values);
     }
     for (const [engine, values] of byEngine) {
-      const aggregate = compile.get(engine) ?? { wall: [], rss: [] };
+      const aggregate = compile.get(engine) ?? { wall: [] };
       aggregate.wall.push(median(values.wall));
-      aggregate.rss.push(median(values.rss));
       compile.set(engine, aggregate);
-      const modules = compileRSSByEngine.get(engine) ?? new Map();
-      modules.set(module, values.rss);
-      compileRSSByEngine.set(engine, modules);
-    }
-  }
-  if (Array.isArray(raw.compileRSS)) {
-    compileRSSByEngine.clear();
-    for (const sample of raw.compileRSS) {
-      const engine = compileNames.get(sample.engine);
-      const rss = Number(sample.peak_rss_bytes);
-      if (!engine || !(rss > 0)) continue;
-      const modules = compileRSSByEngine.get(engine) ?? new Map();
-      const module = basenameWithoutWasm(sample.module);
-      const values = modules.get(module) ?? [];
-      values.push(rss);
-      modules.set(module, values);
-      compileRSSByEngine.set(engine, modules);
-    }
-    for (const engine of compileNames.values()) {
-      if (compileRSSByEngine.get(engine)?.size !== raw.compile.length) {
-        throw new Error(`general benchmark has incomplete direct RSS samples for ${engine}`);
-      }
     }
   }
   const runtime = raw.runtime ?? raw.wasmtimeRuntime ?? [];
@@ -343,15 +300,13 @@ function buildGeneralSummary(metrics, raw) {
     externalRuntimeMetric(runtime, id, "exec", "tiny", "add"),
   ]));
   const compileTime = Object.fromEntries([...compile].map(([engine, values]) => [engine, geomean(values.wall)]));
-  const compileMemoryGrowth = Object.fromEntries([...compileRSSByEngine].map(([engine, modules]) => {
-    const baseline = median(modules.get("tiny") ?? []);
-    if (!(baseline > 0)) throw new Error(`general benchmark has no tiny-module RSS baseline for ${engine}`);
-    const growth = [...modules.values()].map((values) => Math.max(0, median(values) - baseline));
-    return [engine, mean(growth)];
-  }));
   return [
     ["Compile mean", "Corpus geometric mean · fresh process", "ns", compileTime],
-    ["Compile memory growth", "Mean peak RSS above tiny module · fresh process", "bytes", compileMemoryGrowth],
+    ["Compile heap", "Go heap bytes allocated per full compile · geometric mean", "bytes", {
+      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes"),
+      dragline: metricGeomean(metrics, "DraglineCompileFull/", false, "bytes"),
+      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes"),
+    }],
     ["Instantiate mean", "Runnable corpus geometric mean", "ns", instantiate],
     ["Execution mean", "Runnable corpus geometric mean", "ns", execution],
     ["Call latency", "tiny.add host → Wasm", "ns", tinyCall],
@@ -418,10 +373,6 @@ function median(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-}
-
-function mean(values) {
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 }
 
 function geomean(values) {
@@ -572,13 +523,13 @@ function renderSection(tabs, sets) {
   const out = `            <section id="performance" class="section">
                 <div class="eyebrow eyebrow--center">Performance</div>
                 <h2 class="section__title">
-                    Six engines,
+                    Three Go engines,
                     <span class="section__title-accent">one corpus</span>
                 </h2>
                 <p class="section__lead">
-                    Select any combination of Railshot, Dragline, wazero,
-                    Wasmtime, V8, and WAVM. Every published row uses the same
-                    workload on the selected AMD64 or ARM64 machine.
+                    Select any combination of Railshot, Dragline, and wazero.
+                    Every published row uses the same workload on the selected
+                    AMD64 or ARM64 machine.
                 </p>
                 <div class="vs">
                     <div class="vs__body">
@@ -760,7 +711,7 @@ function renderGeneralPanel(tab, index, summary, arch) {
                         id="perf-${arch}-panel-${tab.id}"
                         aria-labelledby="perf-${arch}-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
                     >
-                        <div class="vs__generalkicker">Corpus summaries · lower is better</div>
+                        <div class="vs__generalkicker">Corpus geometric means · lower is better</div>
 ${rows}
                     </div>`;
 }
