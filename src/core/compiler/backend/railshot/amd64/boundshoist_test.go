@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"encoding/binary"
+	"slices"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -25,6 +26,7 @@ func TestLoopHoistScanSuppliesLoopFacts(t *testing.T) {
 	body := []byte{
 		0x20, 0x00, 0x28, 0x02, 0x00, // local.get 0; i32.load
 		0x21, 0x02, // local.set 2
+		0x21, 0x02, // duplicate local.set 2 must not enlarge retained facts
 		0x40, 0x00, // memory.grow 0
 		0x02, 0x40, 0x21, 0x03, 0x0b, // block; local.set 3; end
 		0x0b, // loop end
@@ -39,10 +41,8 @@ func TestLoopHoistScanSuppliesLoopFacts(t *testing.T) {
 	if gotGrow != wantGrow || len(gotSet) != len(wantSet) {
 		t.Fatalf("hoist loop facts = %v/%v, want %v/%v", gotSet, gotGrow, wantSet, wantGrow)
 	}
-	for local := range wantSet {
-		if !gotSet[local] {
-			t.Fatalf("hoist loop facts missed local %d: got %v, want %v", local, gotSet, wantSet)
-		}
+	if !slices.Equal(gotSet, wantSet) {
+		t.Fatalf("hoist loop facts = %v, want %v", gotSet, wantSet)
 	}
 	if bodyReader.Offset() != 0 || hoistReader.Offset() != 0 {
 		t.Fatalf("loop scanners did not restore readers: body=%d hoist=%d", bodyReader.Offset(), hoistReader.Offset())
@@ -60,13 +60,13 @@ func TestLoopScansDecodeTryTableAndRejectPartialFindings(t *testing.T) {
 	}
 	for _, scan := range []struct {
 		name string
-		fn   func(*wasm.Reader) (map[uint32]bool, bool)
+		fn   func(*wasm.Reader) ([]uint16, bool)
 	}{
-		{name: "facts", fn: func(r *wasm.Reader) (map[uint32]bool, bool) {
+		{name: "facts", fn: func(r *wasm.Reader) ([]uint16, bool) {
 			set, _, valid := scanLoopBody(r, nil)
 			return set, valid
 		}},
-		{name: "hoist", fn: func(r *wasm.Reader) (map[uint32]bool, bool) {
+		{name: "hoist", fn: func(r *wasm.Reader) ([]uint16, bool) {
 			_, _, _, set, valid := scanLoopHoistable(r, nil)
 			return set, valid
 		}},
@@ -74,7 +74,7 @@ func TestLoopScansDecodeTryTableAndRejectPartialFindings(t *testing.T) {
 		t.Run(scan.name, func(t *testing.T) {
 			r := wasm.NewReader(body)
 			set, valid := scan.fn(r)
-			if !valid || len(set) != 3 || !set[1] || !set[2] || !set[3] {
+			if !valid || !slices.Equal(set, []uint16{1, 2, 3}) {
 				t.Fatalf("try_table scan = %v valid=%v", set, valid)
 			}
 			if r.Offset() != 0 {
@@ -105,10 +105,10 @@ func TestLoopScansMixedMemoryWidthImmediateBoundaries(t *testing.T) {
 		0x0b,
 	}
 	set, grow, valid := scanLoopBody(wasm.NewReader(body), m)
-	if !valid || grow || len(set) != 1 || !set[2] {
+	if !valid || grow || !slices.Equal(set, []uint16{2}) {
 		t.Fatalf("mixed-width fact scan = set=%v grow=%v valid=%v", set, grow, valid)
 	}
-	if cands, n, grow, set, valid := scanLoopHoistable(wasm.NewReader(body), m); !valid || len(cands) != 0 || n != 0 || grow || len(set) != 1 || !set[2] {
+	if cands, n, grow, set, valid := scanLoopHoistable(wasm.NewReader(body), m); !valid || len(cands) != 0 || n != 0 || grow || !slices.Equal(set, []uint16{2}) {
 		t.Fatalf("mixed-width hoist scan = cands=%v n=%d set=%v grow=%v valid=%v", cands, n, set, grow, valid)
 	}
 }
@@ -122,7 +122,7 @@ func TestMemory64LoopDoesNotVersionWithoutElision(t *testing.T) {
 	r := wasm.NewReader(body)
 	m := &wasm.Module{Memories: []wasm.MemType{{Limits: wasm.Limits{Min: 1, Addr64: true}}}}
 	cands, elidable, grow, set, valid := scanLoopHoistable(r, m)
-	if !valid || len(cands) != 0 || elidable != 0 || grow || len(set) != 1 || !set[1] {
+	if !valid || len(cands) != 0 || elidable != 0 || grow || !slices.Equal(set, []uint16{1}) {
 		t.Fatalf("memory64 scan = cands %v n=%d grow=%v set=%v valid=%v", cands, elidable, grow, set, valid)
 	}
 	if r.Offset() != 0 {

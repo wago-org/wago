@@ -4,6 +4,7 @@ package amd64
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -80,7 +81,9 @@ type ctrlFrameMerge struct {
 	baseGCFacts   []shared.GCRefFact
 	paramGCFacts  []shared.GCRefFact
 	resultGCFacts []shared.GCRefFact
-	loopSetLocals map[uint32]bool
+	loopSetStart  uint32
+	loopSetCount  uint16
+	loopSetKnown  bool
 	eh            *ctrlFrameEH
 }
 
@@ -274,11 +277,30 @@ func (f *fn) frameResultGCFacts(fr *ctrlFrame) []shared.GCRefFact {
 	return nil
 }
 
-func (f *fn) frameLoopSetLocals(fr *ctrlFrame) map[uint32]bool {
-	if cold := f.ctrlMerge(fr); cold != nil {
-		return cold.loopSetLocals
+func (f *fn) frameLoopSetLocals(fr *ctrlFrame) []uint16 {
+	if cold := f.ctrlMerge(fr); cold != nil && cold.loopSetKnown {
+		start := int(cold.loopSetStart)
+		return f.loopSetLocals[start : start+int(cold.loopSetCount)]
 	}
 	return nil
+}
+
+func (f *fn) setFrameLoopSetLocals(fr *ctrlFrame, locals []uint16) {
+	if locals == nil || uint64(len(f.loopSetLocals)) > uint64(^uint32(0)) {
+		return
+	}
+	start := len(f.loopSetLocals)
+	f.loopSetLocals = append(f.loopSetLocals, locals...)
+	cold := f.ensureCtrlMerge(fr)
+	cold.loopSetStart, cold.loopSetCount, cold.loopSetKnown = uint32(start), uint16(len(locals)), true
+}
+
+func loopSetsLocal(locals []uint16, index uint32) bool {
+	if index > uint32(^uint16(0)) {
+		return false
+	}
+	_, ok := slices.BinarySearch(locals, uint16(index))
+	return ok
 }
 
 func (f *fn) convergeFrameBranchState(fr *ctrlFrame) {
@@ -967,10 +989,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		// eligible loops do not pay for two immediate walks.
 		valid := false
 		if f.opt(optLoopPrecheck) && f.memSizeReg != regNone && !f.inVersionedLoop {
-			cands, elidable, hasGrow, setLocals, scanOK := scanLoopHoistableWithClassifier(r, f.m, f.classifier)
+			cands, elidable, hasGrow, setLocals, scanOK := scanLoopHoistableWithClassifier(r, f.m, f.classifier, f.loopScanLocals)
+			f.loopScanLocals = setLocals
 			valid = scanOK
 			if setLocals != nil {
-				f.ensureCtrlMerge(&fr).loopSetLocals = setLocals
+				f.setFrameLoopSetLocals(&fr, setLocals)
 			}
 			if scanOK && len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
 				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands, setLocals) {
@@ -978,10 +1001,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				}
 			}
 		} else {
-			setLocals, _, scanOK := scanLoopBodyWithClassifier(r, f.m, f.classifier) // reader restored
+			setLocals, _, scanOK := scanLoopBodyWithClassifier(r, f.m, f.classifier, f.loopScanLocals) // reader restored
+			f.loopScanLocals = setLocals
 			valid = scanOK
 			if setLocals != nil {
-				f.ensureCtrlMerge(&fr).loopSetLocals = setLocals
+				f.setFrameLoopSetLocals(&fr, setLocals)
 			}
 		}
 		if valid {

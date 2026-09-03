@@ -291,6 +291,16 @@ general pattern for other temporary index sets: retain a compact sorted segment
 when mutation is batch-built and lookup happens later, instead of paying a Go
 hash table per structured region.
 
+AMD64 now uses the same representation in both its ordinary loop scan and the
+combined versioning/hoist scan. Its exact GC-reference invalidation walks the
+compact modified-local segment, while invariant membership remains binary
+search. Range metadata exactly replaces the former map pointer, leaving the
+232-byte cold control-merge record unchanged. Emulated `json-as` compilation
+falls from roughly 208,980 to 198,659 B/op (-4.9%) and from 908 to 748
+allocations; `many_funcs` stays in the same allocation class and timing samples
+overlap. The default-off loop-versioning experiment does not receive a new
+admission path; only its shared fact representation changes.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so

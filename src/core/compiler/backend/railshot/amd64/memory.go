@@ -642,7 +642,8 @@ func (f *fn) boundsHoistable(kind uint8, idx uint32) bool {
 	}
 	for i := len(f.ctrl) - 1; i >= 0; i-- {
 		if f.ctrl[i].kind == cfLoop {
-			return !f.frameLoopSetLocals(&f.ctrl[i])[idx]
+			cold := f.ctrlMerge(&f.ctrl[i])
+			return cold != nil && cold.loopSetKnown && !loopSetsLocal(f.frameLoopSetLocals(&f.ctrl[i]), idx)
 		}
 	}
 	return false // not inside a loop

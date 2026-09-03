@@ -532,12 +532,12 @@ func (f *fn) installGCRefFacts(source []shared.GCRefFact) {
 	f.invalidateGCResolvedObject()
 }
 
-func (f *fn) invalidateLoopModifiedGCRefFacts(modified map[uint32]bool) {
+func (f *fn) invalidateLoopModifiedGCRefFacts(modified []uint16) {
 	isModified := func(local int) bool {
 		if local < f.localBase {
 			return false
 		}
-		return modified[uint32(local-f.localBase)]
+		return loopSetsLocal(modified, uint32(local-f.localBase))
 	}
 	// A loop header is a join with a backedge. Mutable field observations from
 	// straight-line entry can never dominate a later iteration. Immutable cached
@@ -549,7 +549,7 @@ func (f *fn) invalidateLoopModifiedGCRefFacts(modified map[uint32]bool) {
 	if !f.gcRefFactsEnabled() {
 		return
 	}
-	for local := range modified {
+	for _, local := range modified {
 		idx := int(local) + f.localBase
 		if idx >= 0 && idx < len(f.localGCRefFacts) {
 			f.localGCRefFacts[idx] = shared.GCRefFact{}

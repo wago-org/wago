@@ -104,23 +104,33 @@ func walkLoopBodyWithClassifier(r *wasm.Reader, m *wasm.Module, classifier wasm.
 // scanLoopBody records locals assigned anywhere in one loop and whether the loop
 // grows memory. valid is false on any classifier failure; callers must then
 // discard all findings and conservatively clear loop-sensitive facts.
-func scanLoopBody(r *wasm.Reader, m *wasm.Module) (setLocals map[uint32]bool, hasGrow, valid bool) {
-	return scanLoopBodyWithClassifier(r, m, wasm.NewModuleInstructionClassifier(m, true))
+func scanLoopBody(r *wasm.Reader, m *wasm.Module) (setLocals []uint16, hasGrow, valid bool) {
+	return scanLoopBodyWithClassifier(r, m, wasm.NewModuleInstructionClassifier(m, true), nil)
 }
 
-func scanLoopBodyWithClassifier(r *wasm.Reader, m *wasm.Module, classifier wasm.ModuleInstructionClassifier) (setLocals map[uint32]bool, hasGrow, valid bool) {
-	setLocals = map[uint32]bool{}
+func scanLoopBodyWithClassifier(r *wasm.Reader, m *wasm.Module, classifier wasm.ModuleInstructionClassifier, dst []uint16) (setLocals []uint16, hasGrow, valid bool) {
+	setLocals = dst[:0]
+	if setLocals == nil {
+		setLocals = []uint16{}
+	}
+	indexesValid := true
 	valid = walkLoopBodyWithClassifier(r, m, classifier, func(_ byte, imm wasm.InstructionImmediate) {
 		switch imm.Kind {
 		case wasm.InstrLocalSet, wasm.InstrLocalTee:
-			setLocals[imm.Index] = true
+			if imm.Index > uint32(^uint16(0)) {
+				indexesValid = false
+				return
+			}
+			setLocals = append(setLocals, uint16(imm.Index))
 		case wasm.InstrMemoryGrow:
 			hasGrow = true
 		}
 	})
-	if !valid {
+	if !valid || !indexesValid {
 		return nil, false, false
 	}
+	slices.Sort(setLocals)
+	setLocals = slices.Compact(setLocals)
 	return setLocals, hasGrow, true
 }
 
@@ -131,12 +141,16 @@ func scanLoopBodyWithClassifier(r *wasm.Reader, m *wasm.Module, classifier wasm.
 // whether the loop grows memory, and an explicit validity result. A classifier
 // failure returns no candidates or local findings. Memory64 still returns mutation
 // and grow facts but no candidates until memAddr64 consumes a carry-safe certificate.
-func scanLoopHoistable(r *wasm.Reader, m *wasm.Module) (cands []hoistCand, elidable int, hasGrow bool, setLocals map[uint32]bool, valid bool) {
-	return scanLoopHoistableWithClassifier(r, m, wasm.NewModuleInstructionClassifier(m, true))
+func scanLoopHoistable(r *wasm.Reader, m *wasm.Module) (cands []hoistCand, elidable int, hasGrow bool, setLocals []uint16, valid bool) {
+	return scanLoopHoistableWithClassifier(r, m, wasm.NewModuleInstructionClassifier(m, true), nil)
 }
 
-func scanLoopHoistableWithClassifier(r *wasm.Reader, m *wasm.Module, classifier wasm.ModuleInstructionClassifier) (cands []hoistCand, elidable int, hasGrow bool, setLocals map[uint32]bool, valid bool) {
-	setLocals = map[uint32]bool{}
+func scanLoopHoistableWithClassifier(r *wasm.Reader, m *wasm.Module, classifier wasm.ModuleInstructionClassifier, dst []uint16) (cands []hoistCand, elidable int, hasGrow bool, setLocals []uint16, valid bool) {
+	setLocals = dst[:0]
+	if setLocals == nil {
+		setLocals = []uint16{}
+	}
+	indexesValid := true
 	memory64 := false
 	if m != nil {
 		if mt, ok := m.MemoryType(0); ok {
@@ -153,7 +167,11 @@ func scanLoopHoistableWithClassifier(r *wasm.Reader, m *wasm.Module, classifier 
 		case wasm.InstrLocalGet:
 			curGet = int64(imm.Index)
 		case wasm.InstrLocalSet, wasm.InstrLocalTee:
-			setLocals[imm.Index] = true
+			if imm.Index > uint32(^uint16(0)) {
+				indexesValid = false
+				return
+			}
+			setLocals = append(setLocals, uint16(imm.Index))
 		case wasm.InstrMemoryGrow:
 			hasGrow = true
 		}
@@ -179,16 +197,18 @@ func scanLoopHoistableWithClassifier(r *wasm.Reader, m *wasm.Module, classifier 
 		}
 		prevGet = curGet
 	})
-	if !valid {
+	if !valid || !indexesValid {
 		return nil, 0, false, nil, false
 	}
+	slices.Sort(setLocals)
+	setLocals = slices.Compact(setLocals)
 	if memory64 {
 		// memAddr64 does not consume elideBases and must retain both carry checks.
 		// Keep the shared scan's mutation/grow facts, but do not version the loop.
 		return nil, 0, hasGrow, setLocals, true
 	}
 	for b, ext := range maxExt {
-		if !setLocals[b] && !poison[b] { // invariant, never set in the loop, all accesses sized
+		if !loopSetsLocal(setLocals, b) && !poison[b] { // invariant, never set in the loop, all accesses sized
 			cands = append(cands, hoistCand{base: b, extent: ext})
 			elidable += acc[b]
 		}
@@ -219,7 +239,7 @@ var loopPrecheckMinChecks = func() int {
 // are compiled from the same bytecode via bodyLoop; the reader ends past the
 // loop's `end`. Returns false if the loop shape is not versioned here (caller
 // falls back to the normal loop lowering).
-func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []machineType, res0 machineType, cands []hoistCand, setLocals map[uint32]bool) bool {
+func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []machineType, res0 machineType, cands []hoistCand, setLocals []uint16) bool {
 	// v1 scope: void loops only (no params/results to stage and merge across the
 	// two entries), and never nest a versioned loop inside another (bounds code
 	// growth remains at 2×).
@@ -328,11 +348,11 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 // enterLoopFrame replicates opBlock's cfLoop header for a versioned body: fix the
 // frame's base/height from the (already-flushed) entry, converge locals eagerly,
 // align the loop top, and push the frame.
-func (f *fn) enterLoopFrame(resultTypes []machineType, res0 machineType, setLocals map[uint32]bool) {
+func (f *fn) enterLoopFrame(resultTypes []machineType, res0 machineType, setLocals []uint16) {
 	rN := len(resultTypes)
 	fr := ctrlFrame{kind: cfLoop, resultN: rN, branchN: 0, elseSite: -1, res0: res0, types: resultTypes}
 	if setLocals != nil {
-		f.ensureCtrlMerge(&fr).loopSetLocals = setLocals
+		f.setFrameLoopSetLocals(&fr, setLocals)
 	}
 	fr.height = f.depth()
 	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()...)

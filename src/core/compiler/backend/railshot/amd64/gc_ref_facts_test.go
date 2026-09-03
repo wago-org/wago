@@ -203,7 +203,7 @@ func TestStructuredGCReferenceFactIntersectionAndLoopSubset(t *testing.T) {
 		t.Fatalf("contradictory join retained array length: %+v", joined[0])
 	}
 	f.installGCRefFacts([]shared.GCRefFact{left, left})
-	f.invalidateLoopModifiedGCRefFacts(map[uint32]bool{0: true})
+	f.invalidateLoopModifiedGCRefFacts([]uint16{0})
 	if !f.localGCRefFacts[0].IsZero() || f.localGCRefFacts[1].IsZero() || f.localGCRefFacts[1].Freshness() != shared.GCPublished {
 		t.Fatalf("loop subset invalidation/publication = %+v", f.localGCRefFacts)
 	}
@@ -232,7 +232,7 @@ func TestLoopHeaderClearsMutableFieldForwarding(t *testing.T) {
 	if !f.gcLastField.valid {
 		t.Fatal("loop-invariant immutable field forwarding was discarded")
 	}
-	f.invalidateLoopModifiedGCRefFacts(map[uint32]bool{1: true})
+	f.invalidateLoopModifiedGCRefFacts([]uint16{1})
 	if f.gcLastField.valid {
 		t.Fatal("immutable field forwarding survived result-local mutation")
 	}
