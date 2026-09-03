@@ -18,6 +18,7 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
     const arm64 = join(work, "arm64.json");
     const generalAMD64 = join(work, "general-amd64.json");
     const generalARM64 = join(work, "general-arm64.json");
+    const rssAMD64 = join(work, "rss-amd64.json");
     await writeFile(index, `<!doctype html>
 <body>
             <!-- ░░░ PERFORMANCE ░░░ -->
@@ -32,14 +33,24 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
       "Exec/tiny.add": { ns: 3 }, "DraglineExec/tiny.add": { ns: 2 }, "WazeroExec/tiny.add": { ns: 4 },
     };
     const general = {
-      compile: [{ runs: [
-        { engine: "railshot-native", wall_nanos: 10, peak_rss_bytes: 100 },
-        { engine: "dragline-native", wall_nanos: 12, peak_rss_bytes: 110 },
-        { engine: "wazero", wall_nanos: 15, peak_rss_bytes: 120 },
-        { engine: "cranelift", wall_nanos: 20, peak_rss_bytes: 140 },
-        { engine: "v8", wall_nanos: 8, peak_rss_bytes: 160 },
-        { engine: "wavm", wall_nanos: 30, peak_rss_bytes: 180 },
-      ] }],
+      compile: [
+        { wasm_path: "/tmp/tiny.wasm", runs: [
+          { engine: "railshot-native", wall_nanos: 10, peak_rss_bytes: 100 },
+          { engine: "dragline-native", wall_nanos: 12, peak_rss_bytes: 110 },
+          { engine: "wazero", wall_nanos: 15, peak_rss_bytes: 120 },
+          { engine: "cranelift", wall_nanos: 20, peak_rss_bytes: 140 },
+          { engine: "v8", wall_nanos: 8, peak_rss_bytes: 160 },
+          { engine: "wavm", wall_nanos: 30, peak_rss_bytes: 180 },
+        ] },
+        { wasm_path: "/tmp/large.wasm", runs: [
+          { engine: "railshot-native", wall_nanos: 20, peak_rss_bytes: 120 },
+          { engine: "dragline-native", wall_nanos: 24, peak_rss_bytes: 150 },
+          { engine: "wazero", wall_nanos: 30, peak_rss_bytes: 180 },
+          { engine: "cranelift", wall_nanos: 40, peak_rss_bytes: 240 },
+          { engine: "v8", wall_nanos: 16, peak_rss_bytes: 260 },
+          { engine: "wavm", wall_nanos: 60, peak_rss_bytes: 380 },
+        ] },
+      ],
       runtime: [
         { engine: "cranelift", stage: "instantiate", module: "tiny.wasm", ns_per_op: 14 },
         { engine: "cranelift", stage: "exec", module: "tiny.wasm", export: "add", ns_per_op: 5 },
@@ -51,14 +62,22 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
     };
     await writeFile(amd64, JSON.stringify({ goos: "linux", goarch: "amd64", metrics }));
     await writeFile(arm64, JSON.stringify({ goos: "darwin", goarch: "arm64", metrics }));
-    await writeFile(generalAMD64, JSON.stringify(general));
+    await writeFile(generalAMD64, JSON.stringify({ ...general, goos: "linux" }));
     await writeFile(generalARM64, JSON.stringify(general));
+    await writeFile(rssAMD64, JSON.stringify({ version: 1, samples: [
+      ...[["railshot-native", 100, 140], ["dragline-native", 110, 170], ["wazero", 120, 220],
+        ["cranelift", 140, 300], ["v8", 160, 360], ["wavm", 180, 420]].flatMap(([engine, tiny, large]) => [
+        { module: "tiny.wasm", engine, peak_rss_bytes: tiny },
+        { module: "large.wasm", engine, peak_rss_bytes: large },
+      ]),
+    ] }));
 
     const benchmarkEnv = {
       WAGO_BENCH_JSON_AMD64: amd64,
       WAGO_BENCH_JSON_ARM64: arm64,
       WAGO_GENERAL_JSON_AMD64: generalAMD64,
       WAGO_GENERAL_JSON_ARM64: generalARM64,
+      WAGO_COMPILE_RSS_JSON_AMD64: rssAMD64,
     };
 
     runUpdater(work, benchmarkEnv);
@@ -66,13 +85,26 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
 
     runUpdater(work, { ...benchmarkEnv, WAGO_BENCH_UPDATE_ARCH: "amd64" });
     assertDOMContract(await readFile(index, "utf8"));
+
+    const missingRSS = invokeUpdater(work, {
+      ...benchmarkEnv,
+      WAGO_COMPILE_RSS_JSON_AMD64: "",
+      WAGO_BENCH_UPDATE_ARCH: "amd64",
+    });
+    assert.notEqual(missingRSS.status, 0);
+    assert.match(missingRSS.stderr, /Linux general benchmark requires isolated compileRSS samples/);
   } finally {
     await rm(work, { recursive: true, force: true });
   }
 });
 
 function runUpdater(websiteDir, extraEnv = {}) {
-  const result = spawnSync(process.execPath, [updater], {
+  const result = invokeUpdater(websiteDir, extraEnv);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+}
+
+function invokeUpdater(websiteDir, extraEnv = {}) {
+  return spawnSync(process.execPath, [updater], {
     cwd: root,
     env: {
       ...process.env,
@@ -82,7 +114,6 @@ function runUpdater(websiteDir, extraEnv = {}) {
     },
     encoding: "utf8",
   });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
 }
 
 function assertDOMContract(html) {
@@ -94,15 +125,17 @@ function assertDOMContract(html) {
   assert.equal(matches(html, /data-engine-toggles/g), 2);
   assert.equal(matches(html, /data-engine-toggle=/g), 12);
   assert.equal(matches(html, /data-engine-row/g), 20);
-  assert.match(html, /Compile process RSS/);
-  assert.match(html, /Peak resident set · fresh compile process/);
+  assert.match(html, /Compile memory growth/);
+  assert.match(html, /Mean peak RSS above tiny module · fresh process/);
   assert.doesNotMatch(html, /Compile heap/);
-  const rssStart = html.indexOf("Compile process RSS");
+  const rssStart = html.indexOf("Compile memory growth");
   const rssEnd = html.indexOf('<div class="vs__row" data-engine-row>', rssStart);
   const rssRow = html.slice(rssStart, rssEnd);
   for (const engine of ["railshot", "dragline", "wazero", "wasmtime", "v8", "wavm"]) {
     assert.match(rssRow, new RegExp(`data-engine="${engine}"`));
   }
+  assert.match(rssRow, /data-engine="railshot"[\s\S]*?data-value="20"/);
+  assert.match(html, /Corpus summaries · lower is better/);
   assert.match(html, /End-to-end latency/);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);
   assert.match(html, /class="vs__stage"/);
