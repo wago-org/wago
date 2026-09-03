@@ -261,6 +261,9 @@ func TestFuncrefElementArtifactRequirements(t *testing.T) {
 	})
 
 	t.Run("legacy segment initializes non-null table", func(t *testing.T) {
+		if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
+			t.Skip("typed function reference execution backend is unavailable")
+		}
 		module := wasmtest.Module(
 			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -325,6 +328,9 @@ func TestFuncrefElementArtifactRequirements(t *testing.T) {
 	})
 
 	t.Run("non-null expression segment", func(t *testing.T) {
+		if !supportsCompleteCore3Backend(runtime.GOOS, runtime.GOARCH) {
+			t.Skip("typed function reference execution backend is unavailable")
+		}
 		module := nonNullFuncrefElementModule()
 		compiled, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithBoundsChecks(BoundsChecksExplicit).Compile(module)
 		if err != nil {
