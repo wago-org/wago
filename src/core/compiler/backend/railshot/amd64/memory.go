@@ -338,7 +338,7 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	if aliasPinned && !needAdd {
 		ea, eaOwned = f.materializeRead(e) // a pinned local's reg is read in place
 		if !eaOwned {
-			borrow = e.st.idx
+			borrow = e.st.index()
 		}
 	} else {
 		ea, eaOwned = f.materialize(e), true
@@ -767,7 +767,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 			e = f.pushReg(out, mtI32)
 		}
 		if f.opt(optValueFacts) && !wide {
-			e.st.facts = factUpper32Zero
+			e.st.setValueFacts(factUpper32Zero)
 		}
 		return nil
 	}
@@ -776,7 +776,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		ea, eaOwned, borrow, disp := f.memAddr64(off, size)
 		st := memRefStorage(ea, disp, size, signed, wide, borrow)
 		if f.opt(optValueFacts) && !wide {
-			st.facts = factUpper32Zero
+			st.setValueFacts(factUpper32Zero)
 		}
 		e := f.pushValue(st)
 		if eaOwned {
@@ -812,7 +812,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if f.opt(optValueFacts) && !wide {
 		// Every i32 load writes a 32-bit destination, including sign-extending
 		// byte/word forms, so the physical register upper half is known zero.
-		st.facts = factUpper32Zero
+		st.setValueFacts(factUpper32Zero)
 	}
 	e := f.pushValue(st)
 	if eaOwned {
@@ -938,7 +938,7 @@ func localAddressKey(e *elem) (int, bool) {
 	}
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:
-		return e.st.idx, true
+		return e.st.index(), true
 	default:
 		return 0, false
 	}

@@ -610,7 +610,7 @@ func (f *fn) refFunc(r *wasm.Reader) error {
 		return err
 	}
 	if f.gcTypeSubtypingRefTest {
-		f.pushValue(storage{kind: stFuncRef, typ: mtI64, idx: int(idx)})
+		f.pushValue(storage{kind: stFuncRef, typ: mtI64, idx: idx})
 		return nil
 	}
 	ref := f.allocReg(0)

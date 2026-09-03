@@ -380,7 +380,7 @@ func (f *fn) currentLogicalTypes() []machineType { return f.logicalTypes(f.roots
 func gcRootFlags(roots []*elem) []bool {
 	var flags []bool
 	for i, root := range roots {
-		if root.kind != ekValue || !root.st.gcRoot {
+		if root.kind != ekValue || !root.st.hasGCRoot() {
 			continue
 		}
 		if flags == nil {
@@ -439,13 +439,13 @@ func (f *fn) installLoopParameterGCRefFacts(paramN int, facts []shared.GCRefFact
 		return
 	}
 	for i, root := range roots[len(roots)-paramN:] {
-		if root.kind == ekValue && root.st.gcRoot {
+		if root.kind == ekValue && root.st.hasGCRoot() {
 			fact := shared.GCRefFact{}
 			if i < len(facts) {
 				fact = facts[i]
 			}
 			putGCRefFact(&root.st, fact)
-			root.st.gcRoot = true
+			root.st.setGCRoot(true)
 		}
 	}
 }
@@ -460,7 +460,7 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 	}
 	resultRoots := roots[len(roots)-n:]
 	for i, root := range resultRoots {
-		if root.kind != ekValue || !root.st.gcRoot {
+		if root.kind != ekValue || !root.st.hasGCRoot() {
 			continue
 		}
 		cold := f.ensureCtrlMerge(fr)
@@ -549,7 +549,7 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 	gcRoots := f.tmpGCRoots[:0]
 	gcFacts := f.tmpGCFacts[:0]
 	for _, root := range roots {
-		gcRoots = append(gcRoots, root.kind == ekValue && root.st.gcRoot)
+		gcRoots = append(gcRoots, root.kind == ekValue && root.st.hasGCRoot())
 		gcFacts = append(gcFacts, f.gcRefFact(root))
 	}
 	f.tmpGCRoots = gcRoots
@@ -706,7 +706,7 @@ func (f *fn) setDepth(l int) {
 	gcFacts := f.tmpGCFacts[:0]
 	for _, root := range roots[:l] {
 		types = append(types, root.st.typ)
-		gcRoots = append(gcRoots, root.kind == ekValue && root.st.gcRoot)
+		gcRoots = append(gcRoots, root.kind == ekValue && root.st.hasGCRoot())
 		gcFacts = append(gcFacts, f.gcRefFact(root))
 	}
 	f.tmpTypes = types
@@ -729,7 +729,7 @@ func (f *fn) setDepthTypesWithGCInfo(types []machineType, gcRoots []bool, gcFact
 	for i, typ := range types {
 		value := f.pushValue(storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 		if i < len(gcRoots) {
-			value.st.gcRoot = gcRoots[i]
+			value.st.setGCRoot(gcRoots[i])
 		}
 		if i < len(gcFacts) {
 			putGCRefFact(&value.st, gcFacts[i])
@@ -1415,7 +1415,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 	e := f.s.back()
 	for i := len(fr.resultTypes()) - 1; i >= 0; i-- {
 		if i < len(eh.refResults) && eh.refResults[i] {
-			e.st.ehRoot = true
+			e.st.setEHRoot(true)
 		}
 		e = e.prev
 	}
@@ -1589,7 +1589,7 @@ func (f *fn) opEnd() error {
 				result = f.pushReg(mergeReg, fr.res0)
 			}
 			if len(resultGCRoots) != 0 {
-				result.st.gcRoot = resultGCRoots[0]
+				result.st.setGCRoot(resultGCRoots[0])
 			}
 			if len(resultGCFacts) != 0 {
 				putGCRefFact(&result.st, resultGCFacts[0])

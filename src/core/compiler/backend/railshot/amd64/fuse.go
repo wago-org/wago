@@ -240,7 +240,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	case stSlot:
 		f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slotIndex()), w)
 	case stLocalRef:
-		f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.idx), w)
+		f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.index()), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
 			f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)

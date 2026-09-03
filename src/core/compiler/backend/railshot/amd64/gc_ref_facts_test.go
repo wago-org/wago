@@ -357,7 +357,8 @@ func TestTeeSpillElisionDoesNotReuseGCReferenceHome(t *testing.T) {
 
 	stats := &CodegenStats{}
 	f := fn{a: &encoderamd64.Asm{}, s: newStack(), stats: stats}
-	e := f.pushValue(storage{kind: stReg, typ: mtI64, reg: RAX, gcRoot: true})
+	e := f.pushValue(storage{kind: stReg, typ: mtI64, reg: RAX})
+	e.st.setGCRoot(true)
 	f.regUser[RAX] = e
 	want := shared.ExactGCRefFact(3, 11, shared.GCHeapArray).
 		WithNullability(shared.GCKnownNonNull).

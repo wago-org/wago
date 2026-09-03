@@ -40,7 +40,7 @@ func (f *fn) materializeV128(e *elem) Reg {
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.a.VMovdquLoadDisp(x, RSP, f.localAddr(e.st.idx))
+		f.a.VMovdquLoadDisp(x, RSP, f.localAddr(e.st.index()))
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:
@@ -560,7 +560,7 @@ func v128LocalAlias(e *elem) (int, bool) {
 	}
 	switch e.st.kind {
 	case stLocalRef, stLocalReg:
-		return e.st.idx, true
+		return e.st.index(), true
 	case stReg:
 		if e.st.cval > 0 {
 			return int(e.st.cval) - 1, true
@@ -583,7 +583,7 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
 			// The following SIMD opcode consumes this top-of-stack read before
 			// the older tee value can be released. Model it as a borrowed local
 			// register so three-operand instructions read it in place.
-			f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: e.st.reg, idx: x})
+			f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: e.st.reg, idx: uint32(x)})
 			f.stats.peep("simd-local-forward")
 			return true
 		}
@@ -661,7 +661,7 @@ func (f *fn) finishShuffleSink(dst Reg, local int, tee bool) {
 	f.markLocalDirty(local)
 	f.stats.peep("v128-local-sink")
 	if tee {
-		f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: dst, idx: local})
+		f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: dst, idx: uint32(local)})
 	}
 }
 
@@ -817,7 +817,7 @@ func (f *fn) v128StackMem(e *elem) (int32, bool) {
 	}
 	switch e.st.kind {
 	case stLocalRef:
-		return f.localAddr(e.st.idx), true
+		return f.localAddr(e.st.index()), true
 	case stSlot:
 		return f.spillOff(e.st.slotIndex()), true
 	default:
@@ -944,7 +944,7 @@ func (f *fn) tryV128BinLocalSet(r *wasm.Reader, op func(dst, s1, s2 Reg)) bool {
 	f.markLocalDirty(x)
 	f.stats.peep("v128-local-sink")
 	if nb == 0x22 { // local.tee keeps the value on the stack
-		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
 	}
 	return true
 }

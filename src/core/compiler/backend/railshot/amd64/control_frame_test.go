@@ -55,7 +55,7 @@ func TestGCRootFlagsAvoidsAllFalseBacking(t *testing.T) {
 		t.Fatalf("all-false roots = %v, want nil", got)
 	}
 	roots[1].kind = ekValue
-	roots[1].st.gcRoot = true
+	roots[1].st.setGCRoot(true)
 	got := gcRootFlags(roots)
 	if len(got) != len(roots) || got[0] || !got[1] || got[2] {
 		t.Fatalf("roots = %v, want [false true false]", got)

@@ -62,7 +62,7 @@ func (f *fn) gcKnownArrayIndexInBounds(object, index *elem) (indexValue, length 
 }
 
 func gcRefFact(e *elem) shared.GCRefFact {
-	if e == nil || e.kind != ekValue || !e.st.gcRoot {
+	if e == nil || e.kind != ekValue || !e.st.hasGCRoot() {
 		return shared.GCRefFact{}
 	}
 	if e.st.kind == stConst && e.st.cval == 0 {
@@ -102,7 +102,7 @@ func putGCRefFact(st *storage, fact shared.GCRefFact) {
 		return
 	}
 	if st.kind == stConst && st.cval == 0 && fact.Nullability() == shared.GCKnownNull {
-		st.gcRoot = true
+		st.setGCRoot(true)
 		return
 	}
 	// Clear the bounded array-length payload before replacing a fact. The
@@ -118,7 +118,7 @@ func putGCRefFact(st *storage, fact shared.GCRefFact) {
 		return
 	}
 	bits, arrayLen := fact.Packed()
-	st.gcRoot = true
+	st.setGCRoot(true)
 	st.cval = int64(bits)
 	if arrayLen == 0 {
 		return
@@ -127,7 +127,7 @@ func putGCRefFact(st *storage, fact shared.GCRefFact) {
 	case stLocalRef, stLocalReg:
 		st.slot = uint32(arrayLen)
 	default:
-		st.idx = int(arrayLen)
+		st.idx = uint32(arrayLen)
 	}
 }
 
@@ -135,7 +135,7 @@ func (f *fn) markGCRefFact(e *elem, fact shared.GCRefFact) {
 	if e == nil || e.kind != ekValue {
 		return
 	}
-	e.st.gcRoot = true
+	e.st.setGCRoot(true)
 	if !f.gcRefFactsEnabled() {
 		return
 	}
@@ -758,7 +758,7 @@ func gcLocalProvenance(e *elem) (int, bool) {
 	}
 	switch e.st.kind {
 	case stLocalRef, stLocalReg:
-		return e.st.idx, true
+		return e.st.index(), true
 	case stReg:
 		if e.st.slot > 0 {
 			return e.st.slotIndex() - 1, true
@@ -857,11 +857,11 @@ func (f *fn) pushGCCachedLocal(local int) *elem {
 	var value *elem
 	if pr, _, ok := f.pinReg(local); ok {
 		f.recoverLocal(local)
-		value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[local], reg: pr, idx: local})
+		value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[local], reg: pr, idx: uint32(local)})
 	} else {
-		value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[local], idx: local})
+		value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[local], idx: uint32(local)})
 	}
-	value.st.gcRoot = f.gcFrameLocal(local)
+	value.st.setGCRoot(f.gcFrameLocal(local))
 	f.markLocalGetExactGCType(value, local)
 	return value
 }
@@ -972,7 +972,7 @@ func (f *fn) refineTopLocalExactGCType(typeIndex uint32) {
 	if e == nil || e.kind != ekValue || (e.st.kind != stLocalRef && e.st.kind != stLocalReg) {
 		return
 	}
-	local := e.st.idx
+	local := e.st.index()
 	if local >= 0 && local < len(f.localGCRefFacts) {
 		fact := f.localGCRefFacts[local].WithExactType(typeIndex, f.gcHeapClassForType(typeIndex)).WithNullability(shared.GCKnownNonNull)
 		f.localGCRefFacts[local] = fact

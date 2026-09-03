@@ -329,9 +329,10 @@ count or execution benefit does not clear a declared threshold.
    broad screen confirmed that its isolated code-size win did not qualify it.
    Either promote the remaining paths against the standard gates or delete
    them. Do not let an indefinite experiment become a permanent alternate path.
-4. **Host-width operand indexes and separate root booleans:** ARM64 now stores
-   exact 32-bit indexes and packs GC/EH root state beside value facts, reducing
-   its common operand node from 72 to 64 bytes without changing selection.
+4. **Host-width operand indexes and separate root booleans:** both backends now
+   store exact 32-bit indexes and pack GC/EH root state beside value facts,
+   reducing each common operand node from 72 to 64 bytes without changing
+   selection.
 5. **Mature rollback environment switches:** the production Railshot packages
    currently reference 138 distinct `WAGO_*` variables. Preserve a small number
    of safety-critical or public controls; migrate measurement-only toggles to

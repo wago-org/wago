@@ -778,9 +778,9 @@ type tailDeferredArg struct {
 // full-machine-word staging sequence as its exact code-shape oracle.
 func (f *fn) loadCallLocalInt(dst Reg, st storage) {
 	if compactI32CallsEnabled {
-		f.loadFrameInt(dst, f.localAddr(st.idx), st.typ)
+		f.loadFrameInt(dst, f.localAddr(st.index()), st.typ)
 	} else {
-		f.a.Load64(dst, RSP, f.localAddr(st.idx))
+		f.a.Load64(dst, RSP, f.localAddr(st.index()))
 	}
 }
 
@@ -873,7 +873,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			case stSlot:
 				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slotIndex()), arg.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(arg.target, RSP, f.localAddr(arg.root.st.idx), arg.root.st.typ == mtF64)
+				f.a.FLoadDisp(arg.target, RSP, f.localAddr(arg.root.st.index()), arg.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -969,7 +969,7 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 	}
 	flags := f.tmpGCRoots2[:0]
 	for _, root := range roots[:n] {
-		flags = append(flags, root.kind == ekValue && root.st.gcRoot)
+		flags = append(flags, root.kind == ekValue && root.st.hasGCRoot())
 	}
 	f.tmpGCRoots2 = flags
 	return flags
@@ -1185,7 +1185,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 			f.pinned = f.pinned.remove(res[j])
 			value = f.pushReg(res[j], rt)
 		}
-		value.st.gcRoot = gcFrameRefType(f.m, ft.Results[j])
+		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[j]))
 	}
 	// Arbitrary host code can synchronously re-enter this instance and grow its
 	// memory. Reload after reconstructing the operand stack so the continuation
@@ -1549,7 +1549,7 @@ func (f *fn) finishWrapperResultsWithRoots(belowTypes []machineType, belowGCRoot
 			f.pinned = f.pinned.remove(regs[i])
 			value = f.pushReg(regs[i], typ)
 		}
-		value.st.gcRoot = gcFrameRefType(f.m, results[i])
+		value.st.setGCRoot(gcFrameRefType(f.m, results[i]))
 	}
 }
 
@@ -1683,7 +1683,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	hidden := len(roots) - paramCount
 	slot := 0
 	for i, root := range roots {
-		if i < hidden && root.kind == ekValue && root.st.gcRoot {
+		if i < hidden && root.kind == ekValue && root.st.hasGCRoot() {
 			off := f.spillOff(slot)
 			if off < 0 {
 				plan.Exact = false
@@ -1835,13 +1835,13 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	if rN == 1 && resHint < 0 {
 		f.pinned = f.pinned.remove(resReg)
 		value := f.pushReg(resReg, mtOf(ft.Results[0]))
-		value.st.gcRoot = gcFrameRefType(f.m, ft.Results[0])
+		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[0]))
 	}
 	if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
 			value := f.pushReg(reg, mtOf(ft.Results[i]))
-			value.st.gcRoot = gcFrameRefType(f.m, ft.Results[i])
+			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
 		}
 	}
 	return returnOffset
@@ -1971,7 +1971,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			case stSlot:
 				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(da.target, RSP, f.localAddr(da.root.st.idx), da.root.st.typ == mtF64)
+				f.a.FLoadDisp(da.target, RSP, f.localAddr(da.root.st.index()), da.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -2018,13 +2018,13 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.pinned = f.pinned.remove(resReg)
 			value = f.pushReg(resReg, rt)
 		}
-		value.st.gcRoot = gcFrameRefType(f.m, ft.Results[0])
+		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[0]))
 	}
 	if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
 			value := f.pushReg(reg, mtOf(ft.Results[i]))
-			value.st.gcRoot = gcFrameRefType(f.m, ft.Results[i])
+			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
 		}
 	}
 }

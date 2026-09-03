@@ -655,7 +655,7 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact bool) error
 	f.sc.gcFinalCastStubSites = append(f.sc.gcFinalCastStubSites, site)
 	f.stats.call("gcnative")
 	result := f.pushReg(RAX, mtI64)
-	result.st.gcRoot = true
+	result.st.setGCRoot(true)
 	return nil
 }
 
@@ -705,7 +705,7 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 	f.stats.call("gcnative")
 	f.a.Load32(RAX, RAX, int32(gc.PayloadOffset+fieldOffset))
 	result := f.pushReg(RAX, mtI64)
-	result.st.gcRoot = true
+	result.st.setGCRoot(true)
 	return nil
 }
 
@@ -887,7 +887,7 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
 	f.sc.gcArrayRefGetSites = append(f.sc.gcArrayRefGetSites, site)
 	f.stats.call("gcnative")
 	result := f.pushReg(RAX, mtI64)
-	result.st.gcRoot = true
+	result.st.setGCRoot(true)
 	return nil
 }
 

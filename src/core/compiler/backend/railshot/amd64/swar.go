@@ -74,8 +74,8 @@ func matchSWARPack4(left, right *elem) *elem {
 			return nil
 		}
 		if local < 0 {
-			local, source = leaf.st.idx, leaf
-		} else if leaf.st.idx != local {
+			local, source = leaf.st.index(), leaf
+		} else if leaf.st.index() != local {
 			return nil
 		}
 		bit := uint8(1 << (shift / 8))
@@ -105,7 +105,7 @@ func (f *fn) tryMulHighU(r *wasm.Reader, a1 int) (bool, error) {
 		(root.arg0.st.kind != stLocalRef && root.arg0.st.kind != stLocalReg) {
 		return false, nil
 	}
-	a := root.arg0.st.idx
+	a := root.arg0.st.index()
 	if a < f.localBase {
 		return false, nil
 	}
@@ -151,9 +151,9 @@ func (f *fn) tryMulHighU(r *wasm.Reader, a1 int) (bool, error) {
 		f.replaceStorage(root.arg1, zeroStorage(mtI64))
 	} else if pr, _, ok := f.pinReg(b); ok {
 		f.recoverLocal(b)
-		f.replaceStorage(root.arg1, storage{kind: stLocalReg, typ: mtI64, reg: pr, idx: b})
+		f.replaceStorage(root.arg1, storage{kind: stLocalReg, typ: mtI64, reg: pr, idx: uint32(b)})
 	} else {
-		f.replaceStorage(root.arg1, storage{kind: stLocalRef, typ: mtI64, idx: b})
+		f.replaceStorage(root.arg1, storage{kind: stLocalRef, typ: mtI64, idx: uint32(b)})
 	}
 	root.op = opMulHighU
 	labelDeferredNode(root)

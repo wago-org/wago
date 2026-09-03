@@ -115,7 +115,7 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// the upper 32 bits on x86-64) is a no-op. The semantic fact survives bounded
 	// Valent materialization and spills, but local/global reads and signed loads
 	// begin unknown and therefore cannot trigger this consumer.
-	cleanZExt := node.op == opZExt32 && node.arg0.st.facts.has(factUpper32Zero)
+	cleanZExt := node.op == opZExt32 && node.arg0.st.valueFacts().has(factUpper32Zero)
 	src, srcOwned := f.materializeRead(node.arg0)
 	result := dest
 	if result == regNone {
@@ -766,7 +766,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		case stSlot:
 			f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slotIndex()), w)
 		case stLocalRef:
-			f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.idx), w)
+			f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.index()), w)
 		case stMemRef:
 			if memRefFoldable(right.st, w) {
 				f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
@@ -1001,7 +1001,7 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 	case stSlot:
 		f.a.Load64(dest, RSP, f.spillOff(e.st.slotIndex()))
 	case stLocalRef:
-		f.loadFrameInt(dest, f.localAddr(e.st.idx), e.st.typ)
+		f.loadFrameInt(dest, f.localAddr(e.st.index()), e.st.typ)
 	case stLocalReg, stGlobReg:
 		if e.st.reg != dest {
 			f.moveInt(dest, e.st.reg, e.st.typ) // copy from the pinned local/global; never release it
@@ -1053,7 +1053,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	case stSlot:
 		f.a.AluRM(enc.rm, dest, RSP, f.spillOff(right.st.slotIndex()), w)
 	case stLocalRef:
-		f.a.AluRM(enc.rm, dest, RSP, f.localAddr(right.st.idx), w)
+		f.a.AluRM(enc.rm, dest, RSP, f.localAddr(right.st.index()), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
 			f.a.AluIdx(enc.rm, dest, RBX, right.st.reg, right.st.memDisp(), w) // op dest, [mem]
@@ -1128,7 +1128,7 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 	case stSlot:
 		f.a.ImulRM(dest, RSP, f.spillOff(right.st.slotIndex()), w)
 	case stLocalRef:
-		f.a.ImulRM(dest, RSP, f.localAddr(right.st.idx), w)
+		f.a.ImulRM(dest, RSP, f.localAddr(right.st.index()), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
 			f.a.ImulIdx(dest, RBX, right.st.reg, right.st.memDisp(), w)

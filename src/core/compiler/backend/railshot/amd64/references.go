@@ -15,7 +15,7 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 	// spills. Preserve collector-root identity and structured semantic facts;
 	// raw resolved addresses live in separate fn state and are never copied here.
 	fact := f.gcRefFact(e)
-	st.gcRoot = st.gcRoot || e.st.gcRoot
+	st.setGCRoot(st.hasGCRoot() || e.st.hasGCRoot())
 	putGCRefFact(&st, fact)
 	if st.typ == mtCustom {
 		st.cold = e.st.cold
