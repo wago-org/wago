@@ -26,6 +26,11 @@ importer still retains the owner. With no downstream importer, owner close can
 release the table, which releases the consumer and completes both physical
 teardowns.
 
+The transferred-attachment record stays live through the consumer's complete
+memory teardown. This is required for shared memory zero, which uses a separate
+threaded-control release branch. Removing the record earlier can detach the
+same import twice and consume another live instance's importer count.
+
 `TestReverseCloseReexportChainReleasesFuncrefCycle` checks the reduced graph and
 all instance root counts. Its modules use direct Core 2 binary fixtures so the
 test also builds under TinyGo and runs on targets without complete Core 3

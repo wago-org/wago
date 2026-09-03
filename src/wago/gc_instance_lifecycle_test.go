@@ -2,6 +2,7 @@ package wago
 
 import (
 	"context"
+	"encoding/binary"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -107,6 +108,18 @@ func funcrefCycleConsumerModule() []byte {
 	)
 }
 
+func sharedMemoryObserverModule() []byte {
+	memoryImport := append(wasmtest.Name("link"), wasmtest.Name("state_memory")...)
+	memoryImport = append(memoryImport, byte(wasm.ExternMem), 0x03, 0x01, 0x02)
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("load", byte(wasm.ExternFunc), 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0xfe, 0x10, 0x02, 0x00, 0x0b}))),
+	)
+}
+
 func TestReverseCloseReexportChainReleasesFuncrefCycle(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
@@ -185,5 +198,71 @@ func TestReverseCloseReexportChainReleasesFuncrefCycle(t *testing.T) {
 		if state.PhysicalResources || state.ResourceRoots != 0 {
 			t.Errorf("instance %d after reverse close: physical=%v roots=%d", i, state.PhysicalResources, state.ResourceRoots)
 		}
+	}
+}
+
+func TestThreadedMemoryReleasePreservesTransferredAttachment(t *testing.T) {
+	if !SupportedFeatures().IsEnabled(CoreFeatureThreads) {
+		t.Skip("threads backend is unavailable")
+	}
+	config := NewRuntimeConfig().
+		WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).
+		WithBoundsChecks(BoundsChecksExplicit)
+	rt := NewRuntime(WithRuntimeConfig(config))
+	defer rt.Close()
+	compile := func(binary []byte) *Module {
+		module, err := rt.Compile(binary)
+		if err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		return module
+	}
+	module := compile(sharedMemoryObserverModule())
+	defer module.Close()
+	memory, err := NewSharedMemory(1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary.LittleEndian.PutUint32(memory.UnsafeBytes(), 0x12345678)
+	observer, err := rt.Instantiate(context.Background(), module, WithImports(Imports{
+		"link.state_memory": memory,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	transferred, err := rt.Instantiate(context.Background(), module, WithImports(Imports{
+		"link.state_memory": memory,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	transferred.transferImportedMemoryAttachment(memory)
+	if err := transferred.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	state := memory.state.Load()
+	state.mu.Lock()
+	importers := state.importerCount()
+	state.mu.Unlock()
+	if importers != 1 {
+		t.Fatalf("shared memory importers after transferred release = %d, want observer only", importers)
+	}
+	if err := memory.Close(); err == nil {
+		t.Fatal("shared memory closed while observer remains attached")
+	}
+	result, err := observer.Invoke("load")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := AsI32(result[0]); got != 0x12345678 {
+		t.Fatalf("observer load after transferred close = %#x, want %#x", got, int32(0x12345678))
+	}
+	if err := observer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := memory.Close(); err != nil {
+		t.Fatalf("close memory after observer: %v", err)
 	}
 }
