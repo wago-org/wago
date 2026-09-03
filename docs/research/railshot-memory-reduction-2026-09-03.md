@@ -459,6 +459,16 @@ are neutral to favorable, while global-free `many_funcs` stays exactly at
 75,992 B/op and 40 allocations. This is unconditional ownership repair, not a
 global-count or workload selector.
 
+AMD64 now uses the same lifetime and packed-state representation. Its physical
+registers occupy only four low bits, and every global accessor, call
+spill/reload path, module-boundary synchronizer, and GC native-stub preservation
+loop decodes the register before use. Emulated Linux/AMD64 `json-as` falls from
+185,120 to 182,400 B/op and from 544 to 459 allocations, exactly matching the
+ARM64 reduction; eight `GOGC=off` timing samples are favorable. Global-free
+`many_funcs` remains exactly 70,480 B/op and 35 allocations. Focused packed
+state, GC, and allocation-free reuse tests pass with the complete backend
+suite. The scratch ownership is unconditional on both targets.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so

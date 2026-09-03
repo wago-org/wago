@@ -49,8 +49,10 @@ func (f *fn) invalidateGlobalsCache() {
 // is value-pinned (a hot mutable int global in a call-free function). See
 // assignPinnedLocals / loadPinnedGlobals / storePinnedGlobals.
 func (f *fn) pinnedGlobalValueReg(x uint32) (Reg, bool) {
-	if int(x) < len(f.globalReg) && f.globalReg[x] != regNone {
-		return f.globalReg[x], true
+	if int(x) < len(f.globalReg) {
+		if reg := globalRegValue(f.globalReg[x]); reg != regNone {
+			return reg, true
+		}
 	}
 	return regNone, false
 }
@@ -186,7 +188,7 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		f.condenseInto(e, reg)
 		f.release(reg)
 		f.erase(e)
-		f.globalDirty[x] = true
+		f.globalReg[x] |= globalRegDirty
 		return nil
 	}
 	rg := f.materialize(f.popValue())

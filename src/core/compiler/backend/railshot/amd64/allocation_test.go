@@ -14,10 +14,10 @@ import (
 func TestModuleGlobalMembershipUsesBorrowedBoundedPins(t *testing.T) {
 	const nGlobals = 4096
 	f := fn{
-		m:           &wasm.Module{Globals: make([]wasm.Global, nGlobals)},
-		globalReg:   make([]Reg, nGlobals),
-		globalDirty: make([]bool, nGlobals),
+		m:         &wasm.Module{Globals: make([]wasm.Global, nGlobals)},
+		globalReg: make([]Reg, nGlobals),
 	}
+	f.initGlobalRegs(nGlobals)
 	pins := []moduleGlobalPin{{global: 123, reg: moduleGlobalRegs[0]}}
 	if allocs := testing.AllocsPerRun(100, func() {
 		f.installModuleGlobals(pins)
@@ -26,6 +26,18 @@ func TestModuleGlobalMembershipUsesBorrowedBoundedPins(t *testing.T) {
 	}
 	if !f.isModuleGlobal(123) || f.isModuleGlobal(124) {
 		t.Fatalf("module-global membership mismatch")
+	}
+	f.globalReg[123] |= globalRegDirty
+	if got := globalRegValue(f.globalReg[123]); got != moduleGlobalRegs[0] || !globalRegIsDirty(f.globalReg[123]) {
+		t.Fatalf("packed global register = %d/%v", got, globalRegIsDirty(f.globalReg[123]))
+	}
+	backing := &f.globalReg[0]
+	f.globalReg = f.globalReg[:0]
+	if allocs := testing.AllocsPerRun(100, func() { f.initGlobalRegs(nGlobals) }); allocs != 0 {
+		t.Fatalf("global register scratch reuse allocations = %v, want 0", allocs)
+	}
+	if &f.globalReg[0] != backing || f.globalReg[123] != regNone {
+		t.Fatal("global register scratch was not reused and cleared")
 	}
 }
 
