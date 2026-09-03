@@ -345,6 +345,16 @@ and a roughly +0.7% median delta. The remaining two deferred-child pointers
 still make the backing scannable; converting those through the same coordinate
 domain is the next structural stage, not a parallel compiler path.
 
+The identical AMD64 physical-link prototype saved the same 2,048 B/op on
+`many_funcs` and 10,240 B/op on `json-as`, but it did not pass the compile-time
+gate. Six alternated `GOGC=off` pairs in one Linux/AMD64 emulation environment
+showed an approximately 4% median `json-as` regression. The prototype was
+removed. This is not native-target proof, but it is enough to reject a default
+change in the absence of contrary native evidence. AMD64 should not grow a
+target-specific workload switch; its next attempt should remove all node
+pointers and reduce lookup cost structurally, then qualify that one uniform
+representation on native AMD64.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so
