@@ -1156,7 +1156,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
-	slotOf := f.tmpSlots[:0]
+	slotOf := f.tmpStackSlots[:0]
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
@@ -1164,11 +1164,11 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 			typ = root.typ
 		}
 		types = append(types, typ)
-		slotOf = append(slotOf, slotTop)
+		slotOf = append(slotOf, uint32(slotTop))
 		slotTop += typ.stackSlots()
 	}
 	f.tmpTypes = types
-	f.tmpSlots = slotOf
+	f.tmpStackSlots = slotOf
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -1200,7 +1200,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	argSlot, ctrlSlot := 0, 0
 	if p > 0 {
-		argSlot = slotOf[d-p]
+		argSlot = int(slotOf[d-p])
 	}
 	for i := 0; i < p; i++ {
 		mt := mtOf(ft.Params[i])
@@ -1489,7 +1489,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
-	slotOf := f.tmpSlots[:0]
+	slotOf := f.tmpStackSlots[:0]
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
@@ -1497,11 +1497,11 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 			typ = root.typ
 		}
 		types = append(types, typ)
-		slotOf = append(slotOf, slotTop)
+		slotOf = append(slotOf, uint32(slotTop))
 		slotTop += typ.stackSlots()
 	}
 	f.tmpTypes = types
-	f.tmpSlots = slotOf
+	f.tmpStackSlots = slotOf
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -1520,7 +1520,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	}
 	argOff := f.spillOff(resultSlot) // p==0: unused, but a valid in-frame address
 	if p > 0 {
-		argOff = f.spillOff(slotOf[d-p])
+		argOff = f.spillOff(int(slotOf[d-p]))
 	}
 	f.spillLocalsForCall()
 	f.storeModuleGlobals(X9) // cross-instance boundary: shared globals must be cell-coherent
@@ -2401,7 +2401,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
-	slotOf := f.tmpSlots[:0]
+	slotOf := f.tmpStackSlots[:0]
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
@@ -2409,11 +2409,11 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 			typ = root.typ
 		}
 		types = append(types, typ)
-		slotOf = append(slotOf, slotTop)
+		slotOf = append(slotOf, uint32(slotTop))
 		slotTop += typ.stackSlots()
 	}
 	f.tmpTypes = types
-	f.tmpSlots = slotOf
+	f.tmpStackSlots = slotOf
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -2455,7 +2455,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.storeModuleGlobals(X9)         // same-instance callee's offset-0 prologue reloads from cells
 	argOff := f.spillOff(resultSlot) // p==0: unused, but a valid in-frame address
 	if p > 0 {
-		argOff = f.spillOff(slotOf[d-p])
+		argOff = f.spillOff(int(slotOf[d-p]))
 	}
 	f.spillLocalsForCall()
 	f.a.LeaSP(X0, argOff)                 // args = &first arg slot
@@ -2530,7 +2530,7 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
-	slotOf := f.tmpSlots[:0]
+	slotOf := f.tmpStackSlots[:0]
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
@@ -2538,11 +2538,11 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 			typ = root.typ
 		}
 		types = append(types, typ)
-		slotOf = append(slotOf, slotTop)
+		slotOf = append(slotOf, uint32(slotTop))
 		slotTop += typ.stackSlots()
 	}
 	f.tmpTypes = types
-	f.tmpSlots = slotOf
+	f.tmpStackSlots = slotOf
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -2566,7 +2566,7 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	}
 	argOff := f.spillOff(resultSlot) // p==0: unused, but a valid in-frame address
 	if p > 0 {
-		argOff = f.spillOff(slotOf[d-p])
+		argOff = f.spillOff(int(slotOf[d-p]))
 	}
 	// Store dirty pinned locals BEFORE the call-setup writes below: a pinned
 	// local may be clobbered by the setup itself. Lazy reload on the next read —

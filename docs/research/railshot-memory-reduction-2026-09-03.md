@@ -253,6 +253,17 @@ each target. Native ARM64 median time improves slightly and emulated AMD64
 samples overlap. Ordinary `many_funcs` and `json-as` remain in the same
 allocator classes. No rank or admission policy changed.
 
+Call staging also retained a host-width slot prefix for every live operand,
+despite consuming those values only as bounded native-frame spill indexes. Both
+backends now retain `uint32` prefixes and reconstruct `int` only at address-use
+sites. A generated synchronous-host-call function with 1,000 values live below
+the call falls from 309,029 to 296,741 B/op on ARM64 and from 453,538 to 441,250
+B/op on Linux/AMD64, removing one geometric-growth allocation on each target.
+Five-sample timings overlap; ordinary `many_funcs` and `json-as` remain in the
+same size classes, and matched corpus hashes are identical. Oversized functions
+remain rejected by the architecture's native-frame check before any compiled
+artifact is published.
+
 ### 3. Easy repeated work exists today
 
 Both backends call `moduleUsesSyncHostCalls` inside every function attempt. That

@@ -399,7 +399,7 @@ type transient struct {
 	tmpGCRoots2   []bool
 	tmpFlushTypes []machineType
 	tmpRegs       []Reg
-	tmpSlots      []int
+	tmpStackSlots []uint32 // operand slot prefixes; successful native frames fit uint32 exactly
 	tmpMoves      []regMove
 	tmpLabels     []uint32
 	tmpDeferred   []deferredArg
