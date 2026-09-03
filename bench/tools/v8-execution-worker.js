@@ -20,13 +20,17 @@ if (options.has("measure-instantiate")) {
     iterations, elapsed_ns: Math.round(elapsed), ns_per_op: elapsed / iterations });
 }
 
-const instance = new WebAssembly.Instance(module, imports);
 const init = options.get("init");
-if (init) instance.exports[init]();
 const exportName = required("export");
+const rawArgs = (options.get("args") || "").split(",").filter(Boolean);
+const probe = new WebAssembly.Instance(module, imports);
+if (init) probe.exports[init]();
+const callArgs = resolveCallArgs(probe.exports[exportName], rawArgs);
+
+const instance = new WebAssembly.Instance(module, imports);
+if (init) instance.exports[init]();
 const fn = instance.exports[exportName];
 if (typeof fn !== "function") throw new Error(`${exportName} is not a function`);
-const callArgs = (options.get("args") || "").split(",").filter(Boolean).map(Number);
 const invoke = (n) => {
   const started = performance.now();
   let result;
@@ -39,6 +43,28 @@ const iterations = calibrate(invoke, targetNs, 2 ** 40);
 const elapsed = invoke(iterations);
 append({ engine: "v8", stage: "exec", module: required("module"), export: exportName,
   round, iterations, elapsed_ns: Math.round(elapsed), ns_per_op: elapsed / iterations });
+
+// JavaScript exposes i64 parameters as BigInt but the standard reflection API
+// does not expose an exported function's signature. Probe Number/BigInt
+// combinations on a disposable instance so the timed instance remains clean.
+// Incorrect combinations fail during argument conversion, before guest code
+// executes; the successful combination is then reused for every timed call.
+function resolveCallArgs(target, args) {
+  if (typeof target !== "function") throw new Error(`${exportName} is not a function`);
+  if (args.length > 16) throw new Error("too many arguments to resolve safely");
+  let lastError;
+  for (let mask = 0; mask < 2 ** args.length; mask++) {
+    const candidate = args.map((value, index) =>
+      mask & (1 << index) ? BigInt(value) : Number(value));
+    try {
+      target(...candidate);
+      return candidate;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
 
 function parseArgs(args) {
   const out = new Map();

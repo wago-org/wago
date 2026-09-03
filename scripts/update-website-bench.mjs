@@ -308,7 +308,7 @@ function buildGeneralSummary(metrics, raw) {
   const compileTime = Object.fromEntries([...compile].map(([engine, values]) => [engine, geomean(values.wall)]));
   return [
     ["Compile mean", "Corpus geometric mean · fresh process", "ns", compileTime],
-    ["Compile heap", "Full compile allocation bytes/op", "bytes", {
+    ["Compile heap", "Go heap allocation bytes/op · full compile", "bytes", {
       railshot: metricGeomean(metrics, "CompileFull/", false, "bytes"),
       dragline: metricGeomean(metrics, "DraglineCompileFull/", false, "bytes"),
       wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes"),
