@@ -367,6 +367,29 @@ conversion should include register-user tables and other transient node owners,
 allowing a flat movable `[]ValueNode` and one-index access. Merely replacing
 stored pointers while preserving pointer-shaped APIs is not balanced enough.
 
+A sampled allocation profile also attributed about 4 MiB of repeated
+`json-as` allocation to ARM64 finalizer peepholes, whose mixed
+`map[int]bool` holds both branch-target sites and rare synthetic markers. A
+prototype moved ordinary target sites to a sorted compact slice while retaining
+the map only for rare markers. It saved just 240 B/op on `json-as`, increased
+allocation count from 770 to 774 through slice growth, and regressed native
+`GOGC=off` compile time by roughly 6%; `many_funcs` saved 648 B/op and three
+allocations but also slowed. The prototype was removed. The profile label
+included caller-owned finalizer growth and did not establish that the hash map
+was the actionable payload; future finalizer cuts need retained-size evidence,
+not attribution alone.
+
+The global-hint accumulator's dense eligibility byte was easier to remove
+without a tradeoff. Eligibility now occupies the unused high bit of its
+separate epoch mark, while the hotness score retains all 32 bits and therefore
+keeps exact saturation and ranking. Comparisons mask the bit, and rollover of
+the remaining 31-bit epoch clears the marks before reuse. On the existing
+1,024-function/1,024-global sparse-use hint benchmark, allocation falls from
+93,208 to 92,184 B/op and from 20 to 19 allocations, exactly one byte per global
+plus the removed backing allocation. Eight native ARM64 `GOGC=off` timing
+samples overlap. This is one representation for both targets and all modules;
+it does not depend on the number of touched globals beyond ordinary sizing.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so
