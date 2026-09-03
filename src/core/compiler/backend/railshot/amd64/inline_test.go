@@ -15,6 +15,24 @@ import (
 
 var vI32 = wasm.I32 // shorthand for the hand-built test bodies below
 
+func TestInlineTargetPlanWithoutCandidatesDoesNotAllocateAMD64(t *testing.T) {
+	m := modFuncs(t,
+		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
+		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
+	)
+	hints := []funcHints{{hasCall: true}, {hasCall: true}}
+	policy := currentCodegenPolicy()
+	var targets inlineTargetTable
+	if allocs := testing.AllocsPerRun(100, func() {
+		targets = buildInlineTargets(m, hints, policy)
+	}); allocs != 0 {
+		t.Fatalf("candidate-free inline plan allocations = %.0f, want 0", allocs)
+	}
+	if !targets.empty() {
+		t.Fatal("candidate-free inline plan is not empty")
+	}
+}
+
 // TestAnalyzeInlineCandidates builds a small module exercising each candidacy
 // outcome: a tiny leaf (candidate, two call sites), a recursive function
 // (non-leaf via a self call), an oversized leaf (too big), and the caller.
@@ -304,6 +322,12 @@ func TestCompactInlinePrunesTransitiveOmissionAMD64(t *testing.T) {
 	if targets.target(2) == nil || !targets.omitStandaloneBody(2, false) {
 		t.Fatal("leaf child was not retained as an omittable inline target")
 	}
+	if got, want := len(targets.data.targets), 1; got != want {
+		t.Fatalf("retained inline target records = %d, want %d", got, want)
+	}
+	if got, want := len(targets.data.slots), len(m.Code); got != want {
+		t.Fatalf("inline target slots = %d, want %d", got, want)
+	}
 }
 
 func TestCompactInlineRetainsNestedCallPlanningAMD64(t *testing.T) {
@@ -400,7 +424,9 @@ func TestCompactInlineAdmitsTinySingleUseLeafAMD64(t *testing.T) {
 }
 
 func TestFinalizeOmittedInlineEntriesRejectsResidualCallAMD64(t *testing.T) {
-	targets := inlineTargetTable{targets: []inlineTarget{{}, {valid: true, omitStandalone: true}}}
+	targets := inlineTargetTable{data: &inlineTargetData{
+		slots: []uint32{0, 1}, targets: []inlineTarget{{globalIdx: 1, omitStandalone: true}},
+	}}
 	err := finalizeOmittedInlineEntriesAMD64(
 		[]int{0, 12}, []int{4, 12},
 		[][]callReloc{{{target: 1, internal: true}}, nil},

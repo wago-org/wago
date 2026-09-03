@@ -100,7 +100,7 @@ func TestWorkerStackArenaCapDoesNotMultiplyLargeHint(t *testing.T) {
 func TestInlineTargetsKeepLegacyStackArenaCap(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: []byte{0x0b}}}}
 	hints := []funcHints{{stackArenaNodes: 1}}
-	targets := inlineTargetTable{targets: []inlineTarget{{valid: true}}}
+	targets := inlineTargetTable{data: &inlineTargetData{slots: []uint32{1}, targets: []inlineTarget{{}}}}
 	if got := serialStackArenaCap(m, hints, targets, false); got != defaultStackArenaCap {
 		t.Fatalf("serial inline stack arena cap = %d, want %d", got, defaultStackArenaCap)
 	}

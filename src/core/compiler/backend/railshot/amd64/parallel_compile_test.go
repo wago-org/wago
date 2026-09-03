@@ -22,6 +22,12 @@ func TestParallelFuncResultSizeAMD64(t *testing.T) {
 	}
 }
 
+func TestInlineTargetSizeAMD64(t *testing.T) {
+	if got, want := unsafe.Sizeof(inlineTarget{}), uintptr(56); got != want {
+		t.Fatalf("inlineTarget size = %d, want %d", got, want)
+	}
+}
+
 func TestCompileWorkersDeterministic(t *testing.T) {
 	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
 	for _, name := range []string{
