@@ -1146,7 +1146,7 @@ func (p supportPass) exprBytes(body []byte, context string) error {
 
 func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr int) (bool, error) {
 	ctx := func() string { return instructionContext(context, instr) }
-	skipBlockType := func() error {
+	skipValType := func(block bool) error {
 		b, err := r.Byte()
 		if err != nil {
 			return err
@@ -1157,7 +1157,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			}
 			return nil
 		}
-		if b == 0x40 || b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c {
+		if b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c || block && b == 0x40 {
 			return nil
 		}
 		if isRefTypeLeadByte(b) {
@@ -1177,6 +1177,9 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			}
 			return p.unsupported("value type", fmt.Sprintf("0x%02x", b), ctx())
 		}
+		if !block {
+			return p.unsupported("value type", fmt.Sprintf("0x%02x", b), ctx())
+		}
 		// Multi-value block type: the first byte was part of a signed LEB. The
 		// validator has already checked that it resolves to a valid type.
 		for b&0x80 != 0 {
@@ -1187,38 +1190,6 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			}
 		}
 		return nil
-	}
-	skipValType := func() error {
-		b, err := r.Byte()
-		if err != nil {
-			return err
-		}
-		if b == 0x7b {
-			if !p.feat.SIMD {
-				return p.unsupported("value type", "v128 (simd disabled)", ctx())
-			}
-			return nil
-		}
-		if b == 0x7f || b == 0x7e || b == 0x7d || b == 0x7c {
-			return nil
-		}
-		if isRefTypeLeadByte(b) && p.feat.ReferenceTypes {
-			if b == 0x63 || b == 0x64 {
-				heap, err := r.S33()
-				if err != nil {
-					return err
-				}
-				exceptionHeap := heap == -23 || heap == -12
-				if !((p.feat.ExceptionReferences && exceptionHeap) || p.supportedNullReferenceHeap(heap) || p.supportedGCHeap(heap) || (p.feat.TypedFunctionReferences && p.supportedTypedFuncHeap(heap))) {
-					return p.unsupported("value type", fmt.Sprintf("ref heap %d (typed-function-references/exception-references disabled or unsupported)", heap), ctx())
-				}
-				return nil
-			}
-			if p.supportedValType(wasm.RefVal(wasm.AbsRef(wasm.AbsHeapType(b)))) {
-				return nil
-			}
-		}
-		return p.unsupported("value type", fmt.Sprintf("0x%02x", b), ctx())
 	}
 	switch op {
 	case 0x00, 0x01, 0x05, 0x0f, 0x1a, 0x1b,
@@ -1238,7 +1209,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 	case 0x0b:
 		return true, nil
 	case 0x02, 0x03, 0x04:
-		return false, skipBlockType()
+		return false, skipValType(true)
 	case 0x08: // throw tagidx
 		if _, err := r.U32(); err != nil {
 			return false, err
@@ -1253,7 +1224,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 		}
 		return false, nil
 	case 0x1f: // try_table blocktype vec(catch)
-		if err := skipBlockType(); err != nil {
+		if err := skipValType(true); err != nil {
 			return false, err
 		}
 		n, err := r.U32()
@@ -1332,7 +1303,7 @@ func (p supportPass) instrByte(r *wasm.Reader, op byte, context string, instr in
 			return false, err
 		}
 		for i := uint32(0); i < n; i++ {
-			if err := skipValType(); err != nil {
+			if err := skipValType(false); err != nil {
 				return false, err
 			}
 		}

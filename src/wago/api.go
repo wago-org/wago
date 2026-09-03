@@ -3145,73 +3145,6 @@ func (c *Compiled) validate() error {
 		}
 		return nil
 	}
-	validateElementValues := func(kind string, seg int, elem ElemInit) error {
-		refType := normalizedElemRefType(elem.RefType)
-		if refType != ValFuncRef && refType != ValExternRef && refType != ValExnRef && refType != ValI31Ref && refType != ValAnyRef {
-			return fmt.Errorf("compiled metadata invalid: %s element %d has unsupported reference type %s", kind, seg, refType)
-		}
-		required, err := c.elemExactType(elem)
-		if err != nil {
-			return fmt.Errorf("compiled metadata invalid: %s element %d exact type: %w", kind, seg, err)
-		}
-		for k, value := range elem.Values {
-			if len(value.Expr) != 0 {
-				if value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has multiple initializer forms", kind, seg, k)
-				}
-				gcConstExpr := c.requiredFeatures.IsEnabled(CoreFeatureGC) || c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
-				if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid GC expression", kind, seg, k)
-				}
-				if err := c.validateGCConstExpr(value.Expr, required, len(c.Globals)); err != nil {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d GC expression: %w", kind, seg, k, err)
-				}
-				continue
-			}
-			if value.HasGlobal {
-				if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d global %d is unavailable or mutable", kind, seg, k, value.GlobalIndex)
-				}
-				if value.I31Wrap {
-					if refType != ValI31Ref || c.Globals[value.GlobalIndex].Type != ValI32 {
-						return fmt.Errorf("compiled metadata invalid: %s element %d value %d i31 global type mismatch", kind, seg, k)
-					}
-					continue
-				}
-				actual, actualErr := c.globalExactType(int(value.GlobalIndex))
-				if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d global type mismatch", kind, seg, k)
-				}
-				continue
-			}
-			if value.I31Wrap {
-				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has i31 wrapper without global", kind, seg, k)
-			}
-			if value.Null {
-				if required.Kind != ValueTypeReference || !required.Ref.Nullable {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d is null for a non-null type", kind, seg, k)
-				}
-				continue
-			}
-			if refType == ValI31Ref {
-				if value.FuncIndex&1 == 0 {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid i31 immediate", kind, seg, k)
-				}
-				continue
-			}
-			if refType != ValFuncRef {
-				return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, seg, k, refType)
-			}
-			if int(value.FuncIndex) >= totalFuncs {
-				return fmt.Errorf("compiled metadata invalid: %s element %d function %d index %d out of range", kind, seg, k, value.FuncIndex)
-			}
-			actual, actualErr := c.functionRefExactType(value.FuncIndex)
-			if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
-				return fmt.Errorf("compiled metadata invalid: %s element %d value %d function type mismatch", kind, seg, k)
-			}
-		}
-		return nil
-	}
 	for seg, el := range c.Elems {
 		refType := normalizedElemRefType(el.RefType)
 		if el.Mode != ElemModeActive {
@@ -3235,7 +3168,7 @@ func (c *Compiled) validate() error {
 		if err := validateOffset("element", seg, el.Offset, offsetType, constExprElementOffset); err != nil {
 			return err
 		}
-		if err := validateElementValues("active", seg, el); err != nil {
+		if err := c.validateElementValues("active", seg, el); err != nil {
 			return err
 		}
 	}
@@ -3251,7 +3184,7 @@ func (c *Compiled) validate() error {
 		} else if mode != ElemModePassive {
 			return fmt.Errorf("compiled metadata invalid: element-state slot %d has mode %d", seg, mode)
 		}
-		if err := validateElementValues("element-state", seg, el); err != nil {
+		if err := c.validateElementValues("element-state", seg, el); err != nil {
 			return err
 		}
 	}
@@ -3290,6 +3223,74 @@ func (c *Compiled) validate() error {
 	}
 	if err := c.validateArenaFootprint(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (c *Compiled) validateElementValues(kind string, seg int, elem ElemInit) error {
+	refType := normalizedElemRefType(elem.RefType)
+	if refType != ValFuncRef && refType != ValExternRef && refType != ValExnRef && refType != ValI31Ref && refType != ValAnyRef {
+		return fmt.Errorf("compiled metadata invalid: %s element %d has unsupported reference type %s", kind, seg, refType)
+	}
+	required, err := c.elemExactType(elem)
+	if err != nil {
+		return fmt.Errorf("compiled metadata invalid: %s element %d exact type: %w", kind, seg, err)
+	}
+	for k, value := range elem.Values {
+		if len(value.Expr) != 0 {
+			if value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has multiple initializer forms", kind, seg, k)
+			}
+			gcConstExpr := c.requiredFeatures.IsEnabled(CoreFeatureGC) || c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
+			if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid GC expression", kind, seg, k)
+			}
+			if err := c.validateGCConstExpr(value.Expr, required, len(c.Globals)); err != nil {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d GC expression: %w", kind, seg, k, err)
+			}
+			continue
+		}
+		if value.HasGlobal {
+			if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d global %d is unavailable or mutable", kind, seg, k, value.GlobalIndex)
+			}
+			if value.I31Wrap {
+				if refType != ValI31Ref || c.Globals[value.GlobalIndex].Type != ValI32 {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d i31 global type mismatch", kind, seg, k)
+				}
+				continue
+			}
+			actual, actualErr := c.globalExactType(int(value.GlobalIndex))
+			if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d global type mismatch", kind, seg, k)
+			}
+			continue
+		}
+		if value.I31Wrap {
+			return fmt.Errorf("compiled metadata invalid: %s element %d value %d has i31 wrapper without global", kind, seg, k)
+		}
+		if value.Null {
+			if required.Kind != ValueTypeReference || !required.Ref.Nullable {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d is null for a non-null type", kind, seg, k)
+			}
+			continue
+		}
+		if refType == ValI31Ref {
+			if value.FuncIndex&1 == 0 {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid i31 immediate", kind, seg, k)
+			}
+			continue
+		}
+		if refType != ValFuncRef {
+			return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, seg, k, refType)
+		}
+		if int(value.FuncIndex) >= len(c.importFuncSigs)+len(c.Funcs) {
+			return fmt.Errorf("compiled metadata invalid: %s element %d function %d index %d out of range", kind, seg, k, value.FuncIndex)
+		}
+		actual, actualErr := c.functionRefExactType(value.FuncIndex)
+		if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+			return fmt.Errorf("compiled metadata invalid: %s element %d value %d function type mismatch", kind, seg, k)
+		}
 	}
 	return nil
 }
@@ -3437,29 +3438,8 @@ func (c *Compiled) validateCodecMetadata() error {
 			if err := checkOffset(kind, i, elem.Offset, offsetType, constExprElementOffset); err != nil {
 				return err
 			}
-			refType := normalizedElemRefType(elem.RefType)
-			for j, value := range elem.Values {
-				if len(value.Expr) != 0 {
-					required, err := c.elemExactType(elem)
-					if err != nil {
-						return fmt.Errorf("compiled metadata invalid: %s element %d exact type: %w", kind, i, err)
-					}
-					gcConstExpr := c.requiredFeatures.IsEnabled(CoreFeatureGC) || c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
-					if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
-						return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid GC expression", kind, i, j)
-					}
-					if err := c.validateGCConstExpr(value.Expr, required, len(c.Globals)); err != nil {
-						return fmt.Errorf("compiled metadata invalid: %s element %d value %d GC expression: %w", kind, i, j, err)
-					}
-					continue
-				}
-				if value.HasGlobal || value.Null || refType == ValFuncRef {
-					continue
-				}
-				if refType == ValI31Ref && value.FuncIndex&1 == 1 {
-					continue
-				}
-				return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, i, j, refType)
+			if err := c.validateElementValues(kind, i, elem); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -4268,7 +4248,7 @@ func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invoca
 
 func (in *Instance) invokeEntry(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted bool) ([]uint64, error) {
 	if in == nil {
-		return nil, nilInstanceInvokeError(export)
+		return nil, nilInstanceInvokeError()
 	}
 	// Close hooks run after the invocation gate is published and may probe that
 	// later calls fail closed. Check the gate before waiting for the per-instance
@@ -4278,7 +4258,7 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 	if in.invocationState.Load()&instanceInvocationClosed != 0 {
 		return nil, fmt.Errorf("invoke %q: instance is closed", export)
 	}
-	if in.guestStorageBorrowed() {
+	if state := in.pluginState.Load(); state != nil && state.guestStorageBorrow.Load() != 0 {
 		return nil, fmt.Errorf("invoke %q: guest storage is borrowed: %w", export, ErrPermissionDenied)
 	}
 	state := in.ensurePluginState()
@@ -4293,8 +4273,8 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 }
 
 //go:noinline
-func nilInstanceInvokeError(export string) error {
-	return fmt.Errorf("invoke %q: instance is nil", export)
+func nilInstanceInvokeError() error {
+	return errors.New("instance is nil")
 }
 
 func (in *Instance) invokeWithToken(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {

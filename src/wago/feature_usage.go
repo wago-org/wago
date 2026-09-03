@@ -646,14 +646,14 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		}
 	}
 	for _, g := range c.GlobalImports {
-		out |= requiredFeaturesForStoredValueType(c, g.Type, g.HasValueType, g.ValueTypeIndex)
+		out |= requiredFeaturesForStoredType(c, g.Type, g.HasValueType, g.ValueTypeIndex, false)
 		if g.Mutable {
 			out |= CoreFeatureMutableGlobal
 		}
 	}
 	for _, g := range c.Globals {
 		out |= requiredFeaturesForConstExprBytes(g.InitExpr, len(c.GlobalImports))
-		out |= requiredFeaturesForStoredValueType(c, g.Type, g.HasValueType, g.ValueTypeIndex)
+		out |= requiredFeaturesForStoredType(c, g.Type, g.HasValueType, g.ValueTypeIndex, false)
 	}
 	for _, index := range c.GlobalExports {
 		if index >= 0 && index < len(c.Globals) && c.Globals[index].Mutable {
@@ -676,21 +676,22 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 		out |= CoreFeatureReferenceTypes
 	}
 	for i := 0; i < c.tableCount(); i++ {
-		out |= requiredFeaturesForStoredTableType(c, i)
+		def := c.tableDef(i)
+		out |= requiredFeaturesForStoredType(c, c.tableElementType(i), def.HasValueType, def.ValueTypeIndex, true)
 		if c.tableDef(i).Addr64 {
 			out |= CoreFeatureTable64
 		}
 	}
 	for _, elem := range c.Elems {
 		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
-		out |= requiredFeaturesForStoredElementType(c, elem)
+		out |= requiredFeaturesForStoredType(c, normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, !elem.HasValueType)
 		if elem.RefType == ValExternRef || elem.TableIndex != 0 {
 			out |= CoreFeatureReferenceTypes
 		}
 	}
 	for _, elem := range c.passiveElems {
 		out |= requiredFeaturesForConstExprBytes(elem.Offset.Expr, len(c.GlobalImports))
-		out |= requiredFeaturesForStoredElementType(c, elem)
+		out |= requiredFeaturesForStoredType(c, normalizedElemRefType(elem.RefType), elem.HasValueType, elem.ValueTypeIndex, !elem.HasValueType)
 		if elem.RefType == ValExternRef {
 			out |= CoreFeatureReferenceTypes
 		}
@@ -704,36 +705,18 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	return out
 }
 
-func requiredFeaturesForStoredValueType(c *Compiled, abi ValType, hasExact bool, exactIndex uint32) CoreFeatures {
+func requiredFeaturesForStoredType(c *Compiled, abi ValType, hasExact bool, exactIndex uint32, mvpFuncref bool) CoreFeatures {
 	if hasExact && uint64(exactIndex) < uint64(len(c.ValueTypes)) {
-		return requiredFeaturesForTypeDescriptor(c.ValueTypes[exactIndex])
-	}
-	return requiredFeaturesForPublicValType(abi)
-}
-
-func requiredFeaturesForStoredTableType(c *Compiled, index int) CoreFeatures {
-	def := c.tableDef(index)
-	if def.HasValueType && uint64(def.ValueTypeIndex) < uint64(len(c.ValueTypes)) {
-		exact := c.ValueTypes[def.ValueTypeIndex]
-		if exact.Kind == ValueTypeReference && exact.Ref.Nullable && !exact.Ref.Exact && !exact.Ref.Heap.Defined && exact.Ref.Heap.Abstract == AbstractHeapFunc {
-			return 0 // nullable funcref tables are an MVP shape
+		exact := c.ValueTypes[exactIndex]
+		if mvpFuncref && exact.Kind == ValueTypeReference && exact.Ref.Nullable && !exact.Ref.Exact && !exact.Ref.Heap.Defined && exact.Ref.Heap.Abstract == AbstractHeapFunc {
+			return 0 // nullable funcref storage is an MVP shape
 		}
 		return requiredFeaturesForTypeDescriptor(exact)
 	}
-	if c.tableElementType(index) == ValFuncRef {
+	if mvpFuncref && abi == ValFuncRef {
 		return 0
 	}
-	return requiredFeaturesForPublicValType(c.tableElementType(index))
-}
-
-func requiredFeaturesForStoredElementType(c *Compiled, elem ElemInit) CoreFeatures {
-	if elem.HasValueType && uint64(elem.ValueTypeIndex) < uint64(len(c.ValueTypes)) {
-		return requiredFeaturesForTypeDescriptor(c.ValueTypes[elem.ValueTypeIndex])
-	}
-	if normalizedElemRefType(elem.RefType) == ValFuncRef {
-		return 0
-	}
-	return requiredFeaturesForPublicValType(normalizedElemRefType(elem.RefType))
+	return requiredFeaturesForPublicValType(abi)
 }
 
 func requiredFeaturesForTypeDescriptors(types []ValueTypeDescriptor) CoreFeatures {

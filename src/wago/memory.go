@@ -353,10 +353,15 @@ func (m *Memory) validateLimits(min, max uint64, hasMax, addr64, shared bool) er
 		return fmt.Errorf("memory has not been exported for import")
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	if s.has(memoryStateClosed) || m.jm == nil {
+		s.mu.Unlock()
+		return fmt.Errorf("memory owner is closed")
+	}
 	providerAddr64, addrKnown := s.has(memoryStateAddr64), s.has(memoryStateAddrKnown)
 	providerShared := s.has(memoryStateWasmShared)
 	limitsKnown, providerHasMax, providerMax := s.has(memoryStateLimitsKnown), s.has(memoryStateDeclaredHasMax), s.declaredMaximum()
+	actualMin, actualMax := uint64(m.jm.CurrentPages()), uint64(m.jm.MaxPages())
+	s.mu.Unlock()
 	if shared && !providerShared {
 		return fmt.Errorf("import requires shared memory, but provider is not shared")
 	}
@@ -370,11 +375,6 @@ func (m *Memory) validateLimits(min, max uint64, hasMax, addr64, shared bool) er
 		}
 		return fmt.Errorf("address form mismatch: provider is memory%d, import requires memory%d", providerBits, importBits)
 	}
-	if s.has(memoryStateClosed) || m.jm == nil {
-		return fmt.Errorf("memory owner is closed")
-	}
-	jm := m.jm
-	actualMin, actualMax := uint64(jm.CurrentPages()), uint64(jm.MaxPages())
 	if actualMin < min {
 		return fmt.Errorf("memory current minimum %d pages is below required %d", actualMin, min)
 	}
@@ -406,12 +406,12 @@ func (m *Memory) importShape() (guarded, shared bool) {
 		return guarded, false
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	shared = s.has(memoryStateShared)
 	if !s.has(memoryStateClosed) && m.jm != nil {
 		base, _ := m.jm.ReserveRange()
 		guarded = base != 0
 	}
+	s.mu.Unlock()
 	return guarded, shared
 }
 
@@ -428,11 +428,13 @@ func (m *Memory) currentPages() (uint32, bool) {
 		return jm.CurrentPages(), true
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.has(memoryStateClosed) || m.jm == nil {
+		s.mu.Unlock()
 		return 0, false
 	}
-	return m.jm.CurrentPages(), true
+	pages := m.jm.CurrentPages()
+	s.mu.Unlock()
+	return pages, true
 }
 
 func (m *Memory) jobMemory() *coreruntime.JobMemory {

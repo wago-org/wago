@@ -13,26 +13,20 @@ import (
 // represent. The low-level Go API remains available for v128 and reference
 // values.
 func ValidateSignature(params, results []wago.ValType) error {
-	for index, typ := range params {
-		if !isCLIValueType(typ) {
-			return fmt.Errorf("parameter %d is %s; command-line invocation supports only i32, i64, f32, and f64", index, typ)
-		}
+	if err := validateSignatureValues("parameter", params); err != nil {
+		return err
 	}
-	for index, typ := range results {
-		if !isCLIValueType(typ) {
-			return fmt.Errorf("result %d is %s; command-line invocation supports only i32, i64, f32, and f64", index, typ)
-		}
-	}
-	return nil
+	return validateSignatureValues("result", results)
 }
 
-func isCLIValueType(typ wago.ValType) bool {
-	switch typ {
-	case wago.ValI32, wago.ValI64, wago.ValF32, wago.ValF64:
-		return true
-	default:
-		return false
+func validateSignatureValues(kind string, types []wago.ValType) error {
+	for index, typ := range types {
+		if typ <= wago.ValF64 {
+			continue
+		}
+		return fmt.Errorf("%s %d is %s; unsupported", kind, index, typ)
 	}
+	return nil
 }
 
 func ParseArgs(values []string, params []wago.ValType) ([]uint64, error) {

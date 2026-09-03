@@ -94,3 +94,8 @@ was visible. Values are median deltas:
 
 No measured path has a meaningful regression. No measured path added an
 allocation.
+
+The exact Linux/amd64 TinyGo 0.41.1 minimal release is 2,316,568 bytes. This is
+1,912 bytes (+0.08%) above the 2,314,656-byte baseline and 432 bytes below the
+unchanged 2,317,000-byte budget. Shared artifact validation and compact
+support-pass decoding keep the correctness checks within that limit.
