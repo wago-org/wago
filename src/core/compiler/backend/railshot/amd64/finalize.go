@@ -192,11 +192,11 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		return 0, err
 	}
 	for i := range f.relocs {
-		mapped, err := mapAMD64FinalOffset(result.Offsets, f.relocs[i].at, len(result.Code), "call relocation")
+		mapped, err := mapAMD64FinalOffset(result.Offsets, int(f.relocs[i].at), len(result.Code), "call relocation")
 		if err != nil {
 			return 0, err
 		}
-		f.relocs[i].at = mapped
+		f.relocs[i].at = compactCallRelocField(mapped)
 	}
 	if len(f.literalWords) != 0 {
 		keyCount := int(f.literalWords[0])

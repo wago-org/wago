@@ -165,8 +165,8 @@ func compactSharedAdapterTailsAMD64(code []byte, oldLen int, entry, internalEntr
 			deleted := end - keepEnd
 			removed += deleted
 			for j := range relocs[i] {
-				if relocs[i][j].at >= int(info.endOff) {
-					relocs[i][j].at -= deleted
+				if relocs[i][j].at >= info.endOff {
+					relocs[i][j].at -= uint32(deleted)
 				}
 			}
 			remapModuleLiteralPlanAMD64(literalWords, literalOffsets, i, int(info.endOff), deleted)

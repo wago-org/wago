@@ -322,6 +322,16 @@ record saving. `many_funcs` has no retained direct-call relocation backing and
 is unchanged. This applies uniformly to every direct call and changes no call
 admission or code-selection policy.
 
+AMD64 now uses the same 12-byte record for direct calls and its existing shared
+GC-stub calls. The stub discriminator remains explicit and is checked before the
+otherwise-unused function target, while sites and real function targets cross
+one checked narrowing boundary. Emulated Linux/AMD64 `json-as` falls from
+approximately 197,577 to 193,649 B/op with the same 748 allocations; allocator
+rounding makes the 3,928-byte observed delta slightly larger than the raw
+12-byte-per-record payload reduction. Relocation-free `many_funcs` remains in
+the same allocation class. The five-sample timing ranges overlap, so this is a
+retained-memory result rather than an emulated latency claim.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so

@@ -1933,7 +1933,8 @@ func finalizeOmittedInlineEntriesAMD64(entry, internalEntry []int, relocs [][]ca
 	}
 	for caller := range relocs {
 		for _, rl := range relocs[caller] {
-			if rl.target >= 0 && rl.target < len(entry) && targets.omitStandaloneBody(rl.target, hostAdapters[rl.target]) {
+			target := int(rl.target)
+			if rl.gcStub == gcSharedStubNone && rl.target != invalidCallRelocField && target < len(entry) && targets.omitStandaloneBody(target, hostAdapters[target]) {
 				return fmt.Errorf("amd64: function %d retains relocation to omitted inline body %d", caller, rl.target)
 			}
 		}
@@ -1957,10 +1958,10 @@ func patchModuleRelocs(code []byte, entry, internalEntry []int, relocs [][]callR
 			return fmt.Errorf("amd64: invalid function %d entry %#x for %d-byte code image", i, base, len(code))
 		}
 		for _, rl := range relocs[i] {
-			if rl.at < 0 || base > len(code)-4 || rl.at > len(code)-base-4 {
+			if rl.at == invalidCallRelocField || base > len(code)-4 || uint64(rl.at) > uint64(len(code)-base-4) {
 				return fmt.Errorf("amd64: invalid relocation site %#x in function %d for %d-byte code image", rl.at, i, len(code))
 			}
-			site := base + rl.at
+			site := base + int(rl.at)
 			target := 0
 			if rl.gcStub != gcSharedStubNone {
 				if stubBase < 0 || stubBase > len(code) || rl.gcStub >= gcSharedStubMax || stubOffsets[rl.gcStub] < 0 || stubOffsets[rl.gcStub] > len(code)-stubBase {
@@ -1968,15 +1969,16 @@ func patchModuleRelocs(code []byte, entry, internalEntry []int, relocs [][]callR
 				}
 				target = stubBase + stubOffsets[rl.gcStub]
 			} else {
-				if rl.target < 0 || rl.target >= len(entry) {
+				targetIndex := int(rl.target)
+				if rl.target == invalidCallRelocField || targetIndex >= len(entry) {
 					return fmt.Errorf("amd64: invalid call relocation target %d for function %d", rl.target, i)
 				}
-				target = entry[rl.target]
+				target = entry[targetIndex]
 				if rl.internal {
-					if rl.target >= len(internalEntry) {
+					if targetIndex >= len(internalEntry) {
 						return fmt.Errorf("amd64: missing internal entry for call relocation target %d in function %d", rl.target, i)
 					}
-					target = internalEntry[rl.target]
+					target = internalEntry[targetIndex]
 				}
 				if target < 0 || target > len(code) {
 					return fmt.Errorf("amd64: invalid call relocation target entry %#x for function %d", target, i)
