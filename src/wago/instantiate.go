@@ -202,11 +202,11 @@ func enforceMemoryPageQuota(c *Compiled, imports Imports, limit uint32) error {
 			if !ok {
 				continue // the normal linker reports the missing import.
 			}
-			jm := memory.jobMemory()
-			if jm == nil {
+			currentPages, ok := memory.currentPages()
+			if !ok {
 				continue // the normal linker reports the closed owner.
 			}
-			pages = uint64(jm.CurrentPages())
+			pages = uint64(currentPages)
 		}
 		if pages > uint64(limit) {
 			return &runtime.ResourceLimitError{

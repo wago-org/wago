@@ -272,6 +272,26 @@ func TestRecursiveHostReentry(t *testing.T) {
 	}
 }
 
+func TestNilTargetHostReentryFailsClosed(t *testing.T) {
+	c := MustCompile(voidI32ImportCallerModule())
+	defer c.Close()
+	var reentryErr error
+	in, err := Instantiate(c, Imports{"env.log": HostFunc(func(caller HostModule, _, _ []uint64) {
+		var target *Instance
+		_, reentryErr = target.InvokeFromHost(context.Background(), caller, "missing")
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("g", I32(1)); err != nil {
+		t.Fatalf("invoke host callback: %v", err)
+	}
+	if reentryErr == nil || !strings.Contains(reentryErr.Error(), "instance is nil") {
+		t.Fatalf("nil-target host re-entry = %v, want instance-is-nil error", reentryErr)
+	}
+}
+
 func TestConcurrentPublicInvokeWaitsForParkedHostCallback(t *testing.T) {
 	funcImport := append(wasmtest.Name("env"), wasmtest.Name("host")...)
 	funcImport = append(funcImport, 0x00, 0x00)

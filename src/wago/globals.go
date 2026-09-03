@@ -70,6 +70,9 @@ func (im Imports) global(key string) (GlobalImport, bool) {
 	case GlobalImport:
 		return g, true
 	case *Global:
+		if g == nil {
+			return GlobalImport{}, false
+		}
 		return GlobalImport{Type: g.Type, Mutable: g.Mutable, Global: g}, true
 	default:
 		return GlobalImport{}, false

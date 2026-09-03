@@ -4258,6 +4258,9 @@ func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invoca
 }
 
 func (in *Instance) invokeEntry(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted bool) ([]uint64, error) {
+	if in == nil {
+		return nil, nilInstanceInvokeError(export)
+	}
 	// Close hooks run after the invocation gate is published and may probe that
 	// later calls fail closed. Check the gate before waiting for the per-instance
 	// serialization lock so such a probe cannot deadlock behind the activation
@@ -4278,6 +4281,11 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		state.invokeMu.Unlock()
 	}()
 	return in.invokeWithToken(export, args, contexts, id, true, alreadyAdmitted, nil)
+}
+
+//go:noinline
+func nilInstanceInvokeError(export string) error {
+	return fmt.Errorf("invoke %q: instance is nil", export)
 }
 
 func (in *Instance) invokeWithToken(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {

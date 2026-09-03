@@ -52,6 +52,30 @@ func TestNormalizeMemorySizesBoundaries(t *testing.T) {
 	}
 }
 
+func TestJobMemoryRejectsNegativeSizes(t *testing.T) {
+	tests := []struct {
+		name string
+		new  func() (*JobMemory, error)
+	}{
+		{"fixed", func() (*JobMemory, error) { return NewJobMemory(-1) }},
+		{"growable initial", func() (*JobMemory, error) { return NewJobMemoryGrowable(-1, 0) }},
+		{"growable maximum", func() (*JobMemory, error) { return NewJobMemoryGrowable(0, -1) }},
+		{"acquired initial", func() (*JobMemory, error) { return AcquireJobMemoryGrowable(-1, 0) }},
+		{"acquired maximum", func() (*JobMemory, error) { return AcquireJobMemoryGrowable(0, -1) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			jm, err := test.new()
+			if jm != nil {
+				_ = jm.Close()
+			}
+			if err == nil {
+				t.Fatal("negative memory size was accepted")
+			}
+		})
+	}
+}
+
 func TestJobMemoryBasedataControl(t *testing.T) {
 	j, err := NewJobMemoryGrowable(128, 65536)
 	if err != nil {

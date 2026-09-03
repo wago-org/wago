@@ -42,6 +42,26 @@ func TestCompiledGlobalIndexHelpers(t *testing.T) {
 	}
 }
 
+func TestImportedGlobalRejectsTypedNil(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(wasmtest.GlobalImportEntry("env", "global", wasm.I32, false))),
+	)
+	c, err := Compile(nil, mod)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	in, err := Instantiate(c, Imports{"env.global": (*Global)(nil)})
+	if in != nil {
+		_ = in.Close()
+		t.Fatal("typed-nil global import returned an instance")
+	}
+	if err == nil {
+		t.Fatal("typed-nil global import was accepted")
+	}
+}
+
 func TestCompileGlobalMetadataNumericInits(t *testing.T) {
 	f32bits := uint32(0x7fc12345)
 	f64bits := uint64(0x7ff80000deadbeef)
