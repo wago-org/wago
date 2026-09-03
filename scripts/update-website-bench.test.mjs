@@ -102,8 +102,8 @@ function assertDOMContract(html) {
   assert.equal(matches(html, /class="vs__toprow"/g), 2);
   assert.equal(matches(html, /class="vs__specs"/g), 2);
   assert.equal(matches(html, /id="perf-(?:amd64|arm64)-tab-memory"/g), 2);
-  assert.equal(matches(html, /data-engine-toggles/g), 2);
-  assert.equal(matches(html, /data-engine-toggle=/g), 6);
+  assert.equal(matches(html, /data-engine-toggles/g), 0);
+  assert.equal(matches(html, /data-engine-toggle=/g), 0);
   assert.equal(matches(html, /data-engine-row/g), 20);
   assert.match(html, /Compile heap/);
   assert.match(html, /Go heap bytes allocated per full compile · geometric mean/);
@@ -120,7 +120,6 @@ function assertDOMContract(html) {
   assert.match(html, /End-to-end latency/);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);
   assert.match(html, /class="vs__stage"/);
-  assert.match(html, /data-engine-toggle="dragline"/);
   assert.doesNotMatch(html, /class="[^"]*"[^>]+class="/);
 }
 

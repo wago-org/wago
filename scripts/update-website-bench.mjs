@@ -607,7 +607,6 @@ function renderExistingArchitecture(tabs, set) {
 function renderArchitecturePanel(tabs, set, index) {
   const arch = set.arch || "host";
   const spec = [set.goos, set.arch, set.cpu, set.commit ? `wago ${set.commit}` : ""].filter(Boolean).join(" · ");
-  const engineButtons = ENGINES.map((engine) => `                            <button class="vs__enginebtn" type="button" aria-pressed="true" data-engine-toggle="${engine.id}"><i class="vs__dot vs__dot--${engine.id}"></i><span>${engine.label}</span></button>`).join("\n");
   const out = `                    <div
                         class="vs__archpanel"
                         role="tabpanel"
@@ -618,11 +617,8 @@ function renderArchitecturePanel(tabs, set, index) {
 ${renderComparison(tabs, set)}
                         </div>
                         <div class="vs__specs">${esc(spec)}</div>
-                        <div class="vs__side vs__side--backend vs__engines" role="group" aria-label="Engines to compare" data-engine-toggles>
-${engineButtons}
-                        </div>
                     </div>`;
-  for (const marker of ["vs__archpanel", "vs__backendstage", "data-engine-toggles", "vs__main", "vs__toprow", "vs__tabs", "vs__specs"]) {
+  for (const marker of ["vs__archpanel", "vs__backendstage", "vs__main", "vs__toprow", "vs__tabs", "vs__specs"]) {
     if (!out.includes(marker)) {
       throw new Error(`benchmark architecture renderer lost required ${marker} markup`);
     }
