@@ -26,7 +26,7 @@ func TestInlineTargetPlanWithoutCandidatesDoesNotAllocateArm64(t *testing.T) {
 		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
 		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
 	)
-	hints := []funcHints{{hasCall: true}, {hasCall: true}}
+	hints := []funcHints{{flags: hintHasCall}, {flags: hintHasCall}}
 	policy := currentCodegenPolicy()
 	var targets inlineTargetTable
 	if allocs := testing.AllocsPerRun(100, func() {
@@ -127,7 +127,7 @@ func TestInlineTargetsRejectEHArm64(t *testing.T) {
 		funcDef{body: []byte{0x00, 0x0b}},
 	)
 	policy := shared.DefaultCodegenPolicy(currentCodegenPolicy().Selection)
-	hints := []funcHints{{hasCall: true}, {moduleEH: true, inlineCallSites: 1}}
+	hints := []funcHints{{flags: hintHasCall}, {flags: hintModuleEH, inlineCallSites: 1}}
 	if target := buildInlineTargets(m, hints, policy).target(1); target != nil {
 		t.Fatal("ordinary policy admitted EH inline target")
 	}
@@ -178,8 +178,8 @@ func TestCompactInlinePrunesTransitiveOmissionArm64(t *testing.T) {
 	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
 	policy.MaxCompactInlineBodyBytes = 12
 	hints := []funcHints{
-		{hasCall: true},
-		{localCount: 1, hasCall: true, inlineCallSites: 1, directCallRefs: 1},
+		{flags: hintHasCall},
+		{localCount: 1, flags: hintHasCall, inlineCallSites: 1, directCallRefs: 1},
 		{localCount: 1, inlineCallSites: 1, directCallRefs: 1},
 	}
 	targets := buildInlineTargets(m, hints, policy)
@@ -309,7 +309,7 @@ func TestInlineDeadBodyProofRejectsTailAndLoopReferencesArm64(t *testing.T) {
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 	)
 	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
-	base := []funcHints{{hasCall: true}, {localCount: 1, inlineCallSites: 1, directCallRefs: 1}}
+	base := []funcHints{{flags: hintHasCall}, {localCount: 1, inlineCallSites: 1, directCallRefs: 1}}
 	if targets := buildInlineTargets(m, base, policy); !targets.omitStandaloneBody(1, false) {
 		t.Fatal("single ordinary non-loop call did not prove standalone body dead")
 	}
@@ -319,7 +319,7 @@ func TestInlineDeadBodyProofRejectsTailAndLoopReferencesArm64(t *testing.T) {
 		t.Fatal("tail-call reference permitted standalone body omission")
 	}
 	loop := slices.Clone(base)
-	loop[1].hasInlineLoopCall = true
+	loop[1].flags.set(hintHasInlineLoopCall)
 	if targets := buildInlineTargets(m, loop, policy); targets.omitStandaloneBody(1, false) {
 		t.Fatal("ARM64 loop-site exclusion permitted standalone body omission")
 	}

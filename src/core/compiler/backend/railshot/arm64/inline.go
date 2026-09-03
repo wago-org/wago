@@ -536,7 +536,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 	}
 	hasCall := false
 	for i := range allHints {
-		if allHints[i].hasCall {
+		if allHints[i].flags.has(hintHasCall) {
 			hasCall = true
 			break
 		}
@@ -609,7 +609,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			touchesGlob:    facts.touchesGlobal,
 			hasCtrl:        facts.hasControlFlow,
 			omitStandalone: policy.CompactNative &&
-				h.inlineCallSites == 1 && h.directCallRefs == 1 && !h.hasInlineLoopCall,
+				h.inlineCallSites == 1 && h.directCallRefs == 1 && !h.flags.has(hintHasInlineLoopCall),
 		})
 		data.slots[i] = uint32(len(data.targets))
 	}
@@ -629,22 +629,22 @@ func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy Codeg
 		return nil, inlineFacts{}, false
 	}
 	h := allHints[i]
-	if h.moduleEH {
+	if h.flags.has(hintModuleEH) {
 		return nil, inlineFacts{}, false
 	}
 	facts := inlineFacts{
 		bodyBytes:      len(body),
-		hasLoop:        h.hasLoop,
-		hasControlFlow: h.hasControlFlow,
+		hasLoop:        h.flags.has(hintHasLoop),
+		hasControlFlow: h.flags.has(hintHasControlFlow),
 		touchesGlobal:  h.globalCount != 0,
-		touchesMem:     h.touchesMemory || h.usesBulkMem,
+		touchesMem:     h.flags.has(hintTouchesMemory | hintUsesBulkMem),
 		params:         len(ft.Params),
 		results:        len(ft.Results),
 		declaredLocals: int(h.localCount) - len(ft.Params),
 		callSites:      int(h.inlineCallSites),
 		regABIIntOnly:  sigFitsRegABI(ft) && sigIsIntOnly(ft),
 	}
-	if h.hasCall {
+	if h.flags.has(hintHasCall) {
 		facts.calleeCount = 1
 	}
 	return ft, facts, inlineOK(facts, policy)

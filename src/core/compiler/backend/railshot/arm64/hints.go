@@ -47,6 +47,33 @@ func weightedBranchPath(weight int64) int64 {
 	return weight * branchHintWeight
 }
 
+type funcHintFlags uint16
+
+const (
+	hintHasCall funcHintFlags = 1 << iota
+	hintCallsSelf
+	hintHasLoop
+	hintTouchesMemory
+	hintHasInlineLoopCall
+	hintUsesBulkMem
+	hintMutatesTable
+	hintHasControlFlow
+	hintModuleEH
+	hintHasStackSinkFusion
+)
+
+func (f funcHintFlags) has(flag funcHintFlags) bool { return f&flag != 0 }
+
+func (f *funcHintFlags) set(flag funcHintFlags) { *f |= flag }
+
+func (f *funcHintFlags) assign(flag funcHintFlags, value bool) {
+	if value {
+		*f |= flag
+	} else {
+		*f &^= flag
+	}
+}
+
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
 	// entryInitialized marks locals whose first access in the straight-line entry
@@ -67,17 +94,8 @@ type funcHints struct {
 	localCount         uint16
 	inlineCallSites    uint16 // saturated ordinary direct call sites targeting this local function
 	stackArenaDiscount uint16 // possible scanned nodes removed by bounded lookahead peepholes
-	directCallRefs     uint8  // saturated call + return_call references targeting this local function
-	hasCall            bool   // any direct or indirect call
-	callsSelf          bool   // a direct call to the function's own index
-	hasLoop            bool   // structured loop (X12/X13 may be borrowed by loop promotion)
-	touchesMemory      bool   // any linear-memory op
-	hasInlineLoopCall  bool   // an ordinary direct call site is nested in a loop
-	usesBulkMem        bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
-	mutatesTable       bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
-	hasControlFlow     bool   // control opcode relevant to inline splice framing
-	moduleEH           bool   // module-wide: reserve the active exception-handler register
-	hasStackSinkFusion bool   // lowering may allocate fewer nodes than the scan; retain the legacy arena
+	flags              funcHintFlags
+	directCallRefs     uint8 // saturated call + return_call references targeting this local function
 }
 
 // funcHintView reconstructs scan/compile slices on the stack. Only funcHints is
@@ -290,7 +308,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 	// Programmatic decoded bodies are uncommon and can exercise context-sensitive
 	// folds that the production byte scan accounts for. Keep their legacy arena.
 	if shared.StackArenaHintsEnabled {
-		h.hasStackSinkFusion = true
+		h.flags.set(hintHasStackSinkFusion)
 	}
 	// walk returns whether the subtree contains a call. curLoop identifies the
 	// innermost enclosing loop whose globals are being considered for eligibility.
@@ -301,25 +319,28 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		for i := range instrs {
 			in := &instrs[i]
 			if gcOrAtomicInstructionMayCall(in.Kind) {
-				sub, h.hasCall = true, true
+				sub = true
+				h.flags.set(hintHasCall)
 			}
 			if shared.InstructionNeedsInlineBoundary(0, in.Kind) {
-				h.hasControlFlow = true
+				h.flags.set(hintHasControlFlow)
 				if in.Kind == wasm.InstrLoop {
-					h.hasLoop = true
+					h.flags.set(hintHasLoop)
 				}
 			}
 			if shared.InstructionNeedsEHFrame(0, in.Kind) {
-				h.moduleEH = true
+				h.flags.set(hintModuleEH)
 			}
 			switch in.Kind {
 			case wasm.InstrCall, wasm.InstrReturnCall, wasm.InstrCallRef, wasm.InstrReturnCallRef:
-				sub, h.hasCall = true, true
+				sub = true
+				h.flags.set(hintHasCall)
 				if in.Kind == wasm.InstrCall && in.Index == selfIdx {
-					h.callsSelf = true
+					h.flags.set(hintCallsSelf)
 				}
 			case wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect:
-				sub, h.hasCall = true, true
+				sub = true
+				h.flags.set(hintHasCall)
 			case wasm.InstrLocalGet:
 				if int(in.Index) < nLocals {
 					addHotness(h.localScore, in.Index, w)
@@ -359,14 +380,14 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 					sub = true
 				}
 			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
-				h.usesBulkMem, h.touchesMemory = true, true
+				h.flags.set(hintUsesBulkMem | hintTouchesMemory)
 				h.memOps++
 			case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
 				wasm.InstrTableGrow, wasm.InstrTableFill:
-				h.mutatesTable = true
+				h.flags.set(hintMutatesTable)
 			default:
 				if instrTouchesMemory(in.Kind) {
-					h.touchesMemory = true
+					h.flags.set(hintTouchesMemory)
 					h.memOps++
 				}
 			}
@@ -564,7 +585,7 @@ func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nG
 		return s.h, err
 	}
 	if called {
-		s.h.hasCall = true
+		s.h.flags.set(hintHasCall)
 	}
 	if term != 0x0b || s.r.has() {
 		return s.h, s.r.err(wasm.ErrInvalidInstruction, s.r.off())
@@ -617,10 +638,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 		}
 		if shared.InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) {
-			s.h.hasControlFlow = true
+			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
 			if op == 0x03 {
-				s.h.hasLoop = true
+				s.h.flags.set(hintHasLoop)
 			}
 		}
 		switch op {
@@ -650,7 +671,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 				subHasCall = subHasCall || calls
 			case 0x03: // loop
-				s.h.hasLoop = true
+				s.h.flags.set(hintHasLoop)
 				loop := s.elig.push()
 				calls, term, err := s.scanExpr(depth+1, loopDepth+1, loop, false, pathWeight)
 				if err != nil {
@@ -692,7 +713,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 				subHasCall = subHasCall || callsThen || callsElse
 				if next, ok := s.r.Peek(); ok && (next == 0x21 || next == 0x22) {
-					s.h.hasStackSinkFusion = true
+					s.h.flags.set(hintHasStackSinkFusion)
 				}
 			}
 		case 0x10, 0x12: // call, return_call
@@ -702,9 +723,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
-			s.h.hasCall, subHasCall = true, true
+			s.h.flags.set(hintHasCall)
+			subHasCall = true
 			if op == 0x10 && imm.Index == s.selfIdx {
-				s.h.callsSelf = true
+				s.h.flags.set(hintCallsSelf)
 			}
 			s.noteDirectCallRef(imm.Index, op == 0x10, loopDepth != 0)
 		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
@@ -714,7 +736,8 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
-			s.h.hasCall, subHasCall = true, true
+			s.h.flags.set(hintHasCall)
+			subHasCall = true
 		case 0x20, 0x21, 0x22: // local.get/set/tee
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -770,30 +793,32 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			s.noteStackArenaOp(op, &imm)
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
-				s.h.hasControlFlow = true
+				s.h.flags.set(hintHasControlFlow)
 			}
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
-				s.h.moduleEH = true
+				s.h.flags.set(hintModuleEH)
 			}
 			if op == 0xfb {
 				// Collector-backed GC instructions may enter the synchronous Go
 				// helper bridge. Preserve LR and use call-safe local state for the
 				// whole family; direct-only subopcodes pay only the frame-record cost.
-				s.h.hasCall, subHasCall = true, true
+				s.h.flags.set(hintHasCall)
+				subHasCall = true
 			}
 			switch imm.Kind {
 			case wasm.InstrMemoryAtomicNotify, wasm.InstrMemoryAtomicWait32, wasm.InstrMemoryAtomicWait64:
-				s.h.hasCall, subHasCall = true, true
+				s.h.flags.set(hintHasCall)
+				subHasCall = true
 			}
 			if imm.TouchesMemory {
-				s.h.touchesMemory = true
+				s.h.flags.set(hintTouchesMemory)
 				s.h.memOps++
 			}
 			if imm.UsesBulkMemory {
-				s.h.usesBulkMem = true
+				s.h.flags.set(hintUsesBulkMem)
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
-			s.h.moduleEH = true
+			s.h.flags.set(hintModuleEH)
 			s.h.addStackArenaNodes(2) // entry flush/rebuild allowance.
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
@@ -807,7 +832,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			subHasCall = subHasCall || calls
 		case 0x08, 0x0a: // throw, throw_ref
-			s.h.moduleEH = true
+			s.h.flags.set(hintModuleEH)
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
@@ -822,27 +847,27 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			s.noteStackArenaOp(op, &imm)
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
-				s.h.hasControlFlow = true
+				s.h.flags.set(hintHasControlFlow)
 			}
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
-				s.h.moduleEH = true
+				s.h.flags.set(hintModuleEH)
 			}
 			if imm.TouchesMemory {
-				s.h.touchesMemory = true
+				s.h.flags.set(hintTouchesMemory)
 				s.h.memOps++
 			}
 			if imm.UsesBulkMemory {
-				s.h.usesBulkMem = true
+				s.h.flags.set(hintUsesBulkMem)
 			}
 		}
 		if shared.StackArenaHintsEnabled {
 			if !prevConstOK && (prevOp == 0x41 || prevOp == 0x42) &&
 				(op >= 0x6a && op <= 0x78 || op >= 0x7c && op <= 0x8a) {
-				s.h.hasStackSinkFusion = true
+				s.h.flags.set(hintHasStackSinkFusion)
 			}
 			if stackFlowTerminatorOpcode(op) {
 				if next, ok := s.r.Peek(); ok && next != 0x0b && next != 0x05 {
-					s.h.hasStackSinkFusion = true
+					s.h.flags.set(hintHasStackSinkFusion)
 				}
 			}
 			s.h.addStackArenaDiscount(stackAlgebraicDiscountOpcode(op, prevOp, prevPrevOp, prevIndex, prevPrevIndex, prevConst, prevConstOK))
@@ -866,7 +891,7 @@ func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline, inLoop boo
 		target.inlineCallSites++
 	}
 	if inline && inLoop {
-		target.hasInlineLoopCall = true
+		target.flags.set(hintHasInlineLoopCall)
 	}
 }
 
@@ -897,7 +922,7 @@ func (s *byteBodyScanner) classifyInstructionInto(op byte, imm *wasm.Instruction
 		}
 	}
 	if err == nil && isTableMutation(imm.Kind) {
-		s.h.mutatesTable = true
+		s.h.flags.set(hintMutatesTable)
 	}
 	return err
 }
@@ -920,12 +945,12 @@ func (s *byteBodyScanner) noteStackArenaOp(op byte, imm *wasm.InstructionImmedia
 		s.h.addStackArenaNodes(1)
 	}
 	if op == 0xfd {
-		s.h.hasStackSinkFusion = true
+		s.h.flags.set(hintHasStackSinkFusion)
 	}
 	if stackSinkFusionOpcode(op) {
 		next, ok := s.r.Peek()
 		if ok && (next == 0x21 || next == 0x22) {
-			s.h.hasStackSinkFusion = true
+			s.h.flags.set(hintHasStackSinkFusion)
 		}
 	}
 }

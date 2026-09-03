@@ -11,7 +11,7 @@ import (
 )
 
 func TestFuncHintsSizeArm64(t *testing.T) {
-	const want = 48
+	const want = 40
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
 	}
@@ -28,12 +28,12 @@ func TestTableMutationHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scanBodyBytes: %v", err)
 	}
-	if !h.mutatesTable {
+	if !h.flags.has(hintMutatesTable) {
 		t.Fatal("table.set was not recorded as a table mutation")
 	}
 
 	ast := wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableGrow}}}
-	if h := scanBody(ast, 0, 0, 0); !h.mutatesTable {
+	if h := scanBody(ast, 0, 0, 0); !h.flags.has(hintMutatesTable) {
 		t.Fatal("AST table.grow was not recorded as a table mutation")
 	}
 }
@@ -49,8 +49,8 @@ func TestGCHelperHintScannersMarkNativeCalls(t *testing.T) {
 		{Kind: wasm.InstrArrayNewDefault, Index: 0},
 		{Kind: wasm.InstrDrop},
 	}}, 0, 0, 0)
-	if !byteHints.hasCall || !astHints.hasCall {
-		t.Fatalf("array helper call hints byte/AST = %v/%v, want true/true", byteHints.hasCall, astHints.hasCall)
+	if !byteHints.flags.has(hintHasCall) || !astHints.flags.has(hintHasCall) {
+		t.Fatalf("array helper call hints byte/AST = %v/%v, want true/true", byteHints.flags.has(hintHasCall), astHints.flags.has(hintHasCall))
 	}
 }
 
@@ -60,8 +60,8 @@ func TestASTExceptionHintsReserveHandlerState(t *testing.T) {
 		{Kind: wasm.InstrArrayNewDefault, Index: 0},
 	}}
 	h := scanBody(ast, 0, 0, 0)
-	if !h.moduleEH || !h.hasControlFlow || !h.hasCall {
-		t.Fatalf("AST exception hints = EH:%v control:%v call:%v, want all true", h.moduleEH, h.hasControlFlow, h.hasCall)
+	if !h.flags.has(hintModuleEH) || !h.flags.has(hintHasControlFlow) || !h.flags.has(hintHasCall) {
+		t.Fatalf("AST exception hints = EH:%v control:%v call:%v, want all true", h.flags.has(hintModuleEH), h.flags.has(hintHasControlFlow), h.flags.has(hintHasCall))
 	}
 }
 
@@ -70,14 +70,14 @@ func TestLoopHintReservesLoopScratchPins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scanBodyBytes: %v", err)
 	}
-	if !h.hasLoop {
+	if !h.flags.has(hintHasLoop) {
 		t.Fatal("structured loop was not recorded")
 	}
 	straight, err := scanBodyBytes([]byte{0x01, 0x0b}, 0, 0, 0) // nop; end
 	if err != nil {
 		t.Fatalf("straight scanBodyBytes: %v", err)
 	}
-	if straight.hasLoop {
+	if straight.flags.has(hintHasLoop) {
 		t.Fatal("straight-line body was classified as a loop")
 	}
 }
@@ -122,7 +122,7 @@ func TestScanBodyBytesDiscountsAlgebraicIdentitiesArm64(t *testing.T) {
 	if h.stackArenaDiscount != 3 {
 		t.Fatalf("algebraic discount = %d, want 3", h.stackArenaDiscount)
 	}
-	if !h.hasStackSinkFusion {
+	if !h.flags.has(hintHasStackSinkFusion) {
 		t.Fatal("multibyte identity constant did not retain legacy sizing")
 	}
 }
@@ -132,14 +132,14 @@ func TestScanBodyBytesDetectsDeadCodeAfterTerminatorArm64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !h.hasStackSinkFusion {
+	if !h.flags.has(hintHasStackSinkFusion) {
 		t.Fatal("dead instructions after unreachable were not detected")
 	}
 	terminalOnly, err := scanBodyBytes([]byte{0x00, 0x0b}, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if terminalOnly.hasStackSinkFusion {
+	if terminalOnly.flags.has(hintHasStackSinkFusion) {
 		t.Fatal("terminal unreachable was marked as followed by dead code")
 	}
 }
@@ -168,7 +168,7 @@ func TestScanBodyBytesDetectsSIMDFusionRiskArm64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !h.hasStackSinkFusion {
+	if !h.flags.has(hintHasStackSinkFusion) {
 		t.Fatal("SIMD body did not select legacy arena sizing")
 	}
 }
@@ -185,7 +185,7 @@ func TestScanBodyBytesDetectsStackSinkFusionArm64(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !h.hasStackSinkFusion {
+	if !h.flags.has(hintHasStackSinkFusion) {
 		t.Fatal("float local sink fusion was not detected")
 	}
 }
@@ -309,8 +309,8 @@ func TestInlineBoundaryParityBytesArm64(t *testing.T) {
 		if err := scanInlineFactsBytes(body, &facts); err != nil {
 			t.Fatalf("inline scan opcode %#x: %v", op, err)
 		}
-		if !h.hasControlFlow || !facts.hasControlFlow {
-			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.hasControlFlow, facts.hasControlFlow)
+		if !h.flags.has(hintHasControlFlow) || !facts.hasControlFlow {
+			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.flags.has(hintHasControlFlow), facts.hasControlFlow)
 		}
 	}
 }

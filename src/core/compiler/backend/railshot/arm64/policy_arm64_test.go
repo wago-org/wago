@@ -145,7 +145,7 @@ func TestFunctionStartPaddingPolicyArm64(t *testing.T) {
 	selection := currentCodegenPolicy().Selection
 	ordinary := shared.DefaultCodegenPolicy(selection)
 	compact := shared.CompactCodegenPolicy(selection)
-	hot := funcHints{hasLoop: true}
+	hot := funcHints{flags: hintHasLoop}
 	for _, test := range []struct {
 		name      string
 		off       int

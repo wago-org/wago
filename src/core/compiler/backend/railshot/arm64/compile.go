@@ -445,7 +445,7 @@ func alignmentPadding(off int, log2 uint8) int {
 // choice. Ordinary code keeps addressable entries aligned and admits statically hot
 // or large bodies only when their Wasm size can amortize the exact padding.
 func functionStartPadding(off, bodyBytes int, hostAdapter bool, hints funcHints, policy CodegenPolicy) int {
-	flags := boolFlag(hostAdapter, layoutHostAdapter) | boolFlag(hints.hasLoop, layoutHasLoop) | boolFlag(hints.hasCall, layoutHasCall) | boolFlag(hints.callsSelf, layoutCallsSelf)
+	flags := boolFlag(hostAdapter, layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) | boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf)
 	return functionStartPaddingFlags(off, bodyBytes, flags, policy)
 }
 
@@ -616,7 +616,7 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 	capHint := minStackArenaCap
 	legacyRetained := defaultStackArenaCap
 	for i := range hints {
-		if hints[i].hasStackSinkFusion {
+		if hints[i].flags.has(hintHasStackSinkFusion) {
 			return defaultStackArenaCap
 		}
 		nodes := int(hints[i].stackArenaNodes)
@@ -1411,7 +1411,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					results[i] = funcResult{layoutFlags: layoutOmitted}
 					continue
 				}
-				layoutFlags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(allHints[i].hasLoop, layoutHasLoop) | boolFlag(allHints[i].hasCall, layoutHasCall) | boolFlag(allHints[i].callsSelf, layoutCallsSelf)
+				layoutFlags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(allHints[i].flags.has(hintHasLoop), layoutHasLoop) | boolFlag(allHints[i].flags.has(hintHasCall), layoutHasCall) | boolFlag(allHints[i].flags.has(hintCallsSelf), layoutCallsSelf)
 				hints := hintSidecar.view(allHints[i])
 				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTable, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, ws.scratch)
 				allHints[i] = funcHints{}
@@ -1723,7 +1723,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		h.localStart = uint32(localAt)
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs
-		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
+		h.flags.assign(hintHasInlineLoopCall, allHints[i].flags.has(hintHasInlineLoopCall))
 		var err error
 		h, err = scanFuncBodyIntoModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), m.BranchHintsForFunc(uint32(importedFuncs+i)), h, &eligibilityTracker, m, &classifier, allHints, importedFuncs, &sparseAccum)
 		if err != nil {
@@ -1731,9 +1731,9 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs
-		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
+		h.flags.assign(hintHasInlineLoopCall, allHints[i].flags.has(hintHasInlineLoopCall))
 		localAt += nLocals
-		moduleEH = moduleEH || h.moduleEH
+		moduleEH = moduleEH || h.flags.has(hintModuleEH)
 		allHints[i] = h.funcHints
 		start := len(sparseGlobals)
 		sparseGlobals = sparseAccum.AppendTo(sparseGlobals)
@@ -1748,7 +1748,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	}
 	if moduleEH {
 		for i := range allHints {
-			allHints[i].moduleEH = true
+			allHints[i].flags.set(hintModuleEH)
 		}
 	}
 	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, sparseGlobals: sparseGlobals}, agg, nil
@@ -1761,7 +1761,7 @@ func computeImmutableTableHint(m *wasm.Module, allHints []funcHints, policy Code
 		m.ImportedTableCount() == 0 && len(m.Tables) == 1 && !moduleExportsTable(m)
 	if immutableLocalTable {
 		for i := range allHints {
-			if allHints[i].mutatesTable {
+			if allHints[i].flags.has(hintMutatesTable) {
 				immutableLocalTable = false
 				break
 			}
@@ -2049,7 +2049,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if !policy.EnabledOption(optEntryInitElision) || gcFrameRoots != nil && gcFrameRoots.Candidate {
 		entryInitialized = 0
 	}
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.hasLoop, gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.moduleEH, regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins, threadedMemory0: mt0.Shared, entryInitialized: entryInitialized, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.hasControlFlow}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins, threadedMemory0: mt0.Shared, entryInitialized: entryInitialized, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow)}
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient
@@ -2086,14 +2086,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.localSlot[i] = f.nLocalSlots
 		f.nLocalSlots += mt.stackSlots()
 	}
-	hasCall := hints.hasCall
-	touchesMemory := hints.touchesMemory
+	hasCall := hints.flags.has(hintHasCall)
+	touchesMemory := hints.flags.has(hintTouchesMemory)
 	// A private prepared entry establishes X26 and preserves the full Go
 	// callee-saved set, so small integer functions need not be leaves. Keep host
 	// imports, memory-touching functions, module-pinned globals, and EH state on
 	// the adapter. A module-level memory alone is harmless when this function's
 	// bounded scan proves that its body never reads, writes, or grows memory.
-	directPrepared := policy.EnabledOption(optRegABI) && preparedDirectIntSig(ft) && !touchesMemory && len(modGlobals) == 0 && !hints.moduleEH &&
+	directPrepared := policy.EnabledOption(optRegABI) && preparedDirectIntSig(ft) && !touchesMemory && len(modGlobals) == 0 && !hints.flags.has(hintModuleEH) &&
 		m.ImportedFuncCount() == 0 && (m.MemCount() == 0 || !hasCall) && len(c.BodyBytes) <= 96 && nLocals <= 8
 	// Auto-inlining: collect the callees this caller will splice (before the pin
 	// setup below, which the plan can influence). A spliced memory-touching callee
@@ -2110,7 +2110,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		touchesMemory = true
 	}
 	effectiveHints := *hints
-	effectiveHints.hasCall = hasCall
+	effectiveHints.flags.assign(hintHasCall, hasCall)
 	f.preserveCallerPins = preservesCallerPins(ft, nLocals, effectiveHints.funcHints)
 	if f.preserveCallerPins {
 		// Keep this leaf out of every register a direct caller may use for a
@@ -2149,10 +2149,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		// additional hot locals while the normal allocator still retains seven
 		// ordinary transient GPRs plus its two scratch-floor registers in the
 		// largest current scalar leaf.
-		if !hints.hasLoop {
+		if !hints.flags.has(hintHasLoop) {
 			gpPool = append(gpPool, X12, X13)
 		}
-		if !hints.usesBulkMem && len(m.Tables) == 0 {
+		if !hints.flags.has(hintUsesBulkMem) && len(m.Tables) == 0 {
 			gpPool = append(gpPool, X14)
 		}
 	}
@@ -2166,7 +2166,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// memory.copy turned its permutation loop into an infinite loop). The pre-scan
 	// already records this exact class; reserve only the colliding helper registers
 	// and retain the rest of the call-free pin pool.
-	if hints.usesBulkMem {
+	if hints.flags.has(hintUsesBulkMem) {
 		gpPool = withoutReg(withoutReg(withoutReg(gpPool, X9), X10), X11)
 	}
 	// Memory-touching call-makers with imports or tables retain the conservative
@@ -2176,7 +2176,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// register ABI, whose STACK_REG path explicitly spills dirty pins and lazily
 	// recovers them. Keeping pins for that auditable class removes the dominant
 	// local-slot traffic in recursive memory kernels such as memory_tree.
-	safeMemoryCallPins := hints.callsSelf && m.ImportedFuncCount() == 0 && len(m.Tables) == 0
+	safeMemoryCallPins := hints.flags.has(hintCallsSelf) && m.ImportedFuncCount() == 0 && len(m.Tables) == 0
 	if touchesMemory && hasCall && !safeMemoryCallPins {
 		gpPool = nil
 	}
@@ -2230,8 +2230,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		globalHints = hints.sparseGlobals
 	}
 	f.installModuleGlobals(modGlobals)
-	intervalRegion := pinLocals && regABI && !hasCall && !hints.hasControlFlow &&
-		!hints.usesBulkMem && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
+	intervalRegion := pinLocals && regABI && !hasCall && !hints.flags.has(hintHasControlFlow) &&
+		!hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
 	if intervalRegion {
 		gpPool = nil // regional assignments supersede whole-function GP pins
 	}
@@ -2275,7 +2275,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.resultFloat = rt.isFloat()
 		f.resultF64 = rt == mtF64
 	}
-	f.lazyZero = hints.callsSelf && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
+	f.lazyZero = hints.flags.has(hintCallsSelf) && touchesMemory && len(c.BodyBytes) <= 192 && nLocals-len(ft.Params) <= 8
 
 	// Auto-inlining: reserve each spliced callee's locals past f.nLocals (after all
 	// nLocals-dependent setup above, so zeroDeclaredLocals/skipFence/lazyZero see the
@@ -2339,7 +2339,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 // incoming argument registers while every caller-pinned register is reserved.
 // Consequently it cannot observe or modify caller state outside X0..X7/X16/X17.
 func preservesCallerPins(ft *wasm.CompType, nLocals int, h funcHints) bool {
-	if !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || nLocals != len(ft.Params) || h.hasCall || h.touchesMemory {
+	if !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || nLocals != len(ft.Params) || h.flags.has(hintHasCall) || h.flags.has(hintTouchesMemory) {
 		return false
 	}
 	if h.globalCount != 0 {
