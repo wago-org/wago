@@ -749,7 +749,7 @@ func readDirectFuncExprBytes(r *reader, stack []exprSkipFrame, widths memargWidt
 		if err != nil {
 			return nil, stack, false, err
 		}
-		if imm.Kind == InstrMemoryInit || imm.Kind == InstrDataDrop {
+		if imm.Kind == InstrMemoryInit || imm.Kind == InstrDataDrop || imm.Kind == InstrArrayNewData || imm.Kind == InstrArrayInitData {
 			usesDataCountInstr = true
 		}
 		switch op {
