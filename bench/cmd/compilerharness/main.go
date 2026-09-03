@@ -45,6 +45,7 @@ type engineConfig struct {
 	Workers     int      `json:"workers,omitempty"`
 	Args        []string `json:"args,omitempty"`
 	VersionArgs []string `json:"version_args"`
+	Artifact    string   `json:"artifact,omitempty"`
 	Required    bool     `json:"required,omitempty"`
 }
 
@@ -54,6 +55,7 @@ type resolvedEngine struct {
 	args             []string
 	executableSHA256 string
 	builtin          bool
+	artifact         string
 }
 
 type report struct {
@@ -173,7 +175,7 @@ func main() {
 			if err != nil {
 				fail("stat artifact for "+engine.name, err)
 			}
-			codeBytes, err := nativeCodeBytes(artifact, engine.builtin)
+			codeBytes, err := nativeCodeBytes(artifact, engine.builtin, engine.artifact)
 			if err != nil {
 				fail("measure native code for "+engine.name, err)
 			}
@@ -235,7 +237,7 @@ func resolveEngine(engine engineConfig) (resolvedEngine, string, error) {
 		}
 		version = strings.TrimSpace(string(output))
 	}
-	return resolvedEngine{name: engine.Name, command: path, args: engine.Args, executableSHA256: digest}, version, nil
+	return resolvedEngine{name: engine.Name, command: path, args: engine.Args, executableSHA256: digest, artifact: engine.Artifact}, version, nil
 }
 
 func executableSHA256(path string) (string, error) {
@@ -347,7 +349,7 @@ func newRunReport(round, order int, engine string, wall time.Duration, state *os
 	}
 }
 
-func nativeCodeBytes(path string, builtin bool) (uint64, error) {
+func nativeCodeBytes(path string, builtin bool, artifact string) (uint64, error) {
 	if builtin {
 		value, err := os.ReadFile(path + ".native-code-bytes")
 		if err != nil {
@@ -358,6 +360,9 @@ func nativeCodeBytes(path string, builtin bool) (uint64, error) {
 			return 0, err
 		}
 		return bytes, nil
+	}
+	if artifact == "opaque" {
+		return 0, nil
 	}
 	file, err := elf.Open(path)
 	if err != nil {
@@ -407,8 +412,8 @@ func readConfig(path string) (config, error) {
 		}
 		seen[engine.Name] = true
 		if engine.Builtin != "" {
-			if engine.Command != "" || len(engine.Args) != 0 || len(engine.VersionArgs) != 0 {
-				return config{}, fmt.Errorf("engine %s builtin cannot declare command, args, or version_args", engine.Name)
+			if engine.Command != "" || len(engine.Args) != 0 || len(engine.VersionArgs) != 0 || engine.Artifact != "" {
+				return config{}, fmt.Errorf("engine %s builtin cannot declare command, args, version_args, or artifact", engine.Name)
 			}
 			if engine.Builtin != "dragline" && engine.Builtin != "railshot" && engine.Builtin != "wazero" {
 				return config{}, fmt.Errorf("engine %s has unknown builtin %q", engine.Name, engine.Builtin)
@@ -426,6 +431,9 @@ func readConfig(path string) (config, error) {
 		}
 		if engine.Target != "" {
 			return config{}, fmt.Errorf("engine %s external command cannot declare a builtin target", engine.Name)
+		}
+		if engine.Artifact != "" && engine.Artifact != "elf" && engine.Artifact != "opaque" {
+			return config{}, fmt.Errorf("engine %s has unknown artifact format %q", engine.Name, engine.Artifact)
 		}
 		if engine.Workers != 0 {
 			return config{}, fmt.Errorf("engine %s external command cannot declare workers", engine.Name)

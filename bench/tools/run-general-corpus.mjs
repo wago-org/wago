@@ -28,30 +28,33 @@ try {
     compileReports.push(JSON.parse(await readFile(reportPath, "utf8")));
   }
 
-  const runtimePath = join(work, "wasmtime-runtime.jsonl");
-  for (let round = 0; round < options.runtimeRounds; round++) {
-    console.error(`Wasmtime runtime round ${round + 1}/${options.runtimeRounds}`);
-    for (const module of manifest.modules) {
-      if (!Array.isArray(module.exec) || module.exec.length === 0) continue;
-      for (let i = 0; i < module.exec.length; i++) {
-        const entry = module.exec[i];
-        const args = [
-          "-module", join(benchDir, "corpus", module.file),
-          "-export", entry.export,
-          "-args", (entry.args ?? []).join(","),
-          "-round", String(round),
-          "-benchtime-ns", String(options.benchtimeNs),
-          "-out", runtimePath,
-        ];
-        if (module.init) args.push("-init", module.init);
-        if (i === 0) args.push("-measure-instantiate");
-        run(options.wasmtimeWorker, args);
+  for (const worker of options.runtimeWorkers) {
+    const runtimePath = join(work, `${worker.engine}-runtime.jsonl`);
+    for (let round = 0; round < options.runtimeRounds; round++) {
+      console.error(`${worker.label} runtime round ${round + 1}/${options.runtimeRounds}`);
+      for (const module of manifest.modules) {
+        if (!Array.isArray(module.exec) || module.exec.length === 0) continue;
+        for (let i = 0; i < module.exec.length; i++) {
+          const entry = module.exec[i];
+          const args = [
+            ...worker.prefix,
+            "-module", join(benchDir, "corpus", module.file),
+            "-export", entry.export,
+            "-args", (entry.args ?? []).join(","),
+            "-round", String(round),
+            "-benchtime-ns", String(options.benchtimeNs),
+            "-out", runtimePath,
+          ];
+          if (module.init) args.push("-init", module.init);
+          if (i === 0) args.push("-measure-instantiate");
+          run(worker.command, args);
+        }
       }
     }
-  }
-  const runtimeText = await readFile(runtimePath, "utf8");
-  for (const line of runtimeText.split("\n")) {
-    if (line.trim()) runtimeRows.push(JSON.parse(line));
+    const runtimeText = await readFile(runtimePath, "utf8");
+    for (const line of runtimeText.split("\n")) {
+      if (line.trim()) runtimeRows.push(JSON.parse(line));
+    }
   }
   await writeFile(options.out, `${JSON.stringify({
     version: 1,
@@ -63,9 +66,9 @@ try {
     runtimeRounds: options.runtimeRounds,
     benchtimeNs: options.benchtimeNs,
     compile: compileReports,
-    wasmtimeRuntime: runtimeRows,
+    runtime: runtimeRows,
   }, null, 2)}\n`);
-  console.log(`wrote ${options.out}: ${compileReports.length} modules, ${runtimeRows.length} Wasmtime runtime samples`);
+  console.log(`wrote ${options.out}: ${compileReports.length} modules, ${runtimeRows.length} external runtime samples`);
 } finally {
   await rm(work, { recursive: true, force: true });
 }
@@ -83,7 +86,11 @@ function parseArgs(args) {
   };
   return {
     compilerHarness: required("compiler-harness"),
-    wasmtimeWorker: required("wasmtime-worker"),
+    runtimeWorkers: [
+      { engine: "wasmtime", label: "Wasmtime", command: required("wasmtime-worker"), prefix: [] },
+      { engine: "v8", label: "V8", command: values.get("v8") ?? "v8", prefix: [resolve(values.get("v8-worker") ?? join(here, "v8-execution-worker.js")), "--"] },
+      { engine: "wavm", label: "WAVM", command: required("wavm-worker"), prefix: [] },
+    ],
     config: resolve(values.get("config") ?? join(benchDir, "dragline-railshot-cranelift.json")),
     manifest: resolve(values.get("manifest") ?? join(benchDir, "corpus", "manifest.json")),
     out: required("out"),
@@ -102,12 +109,12 @@ function positiveInt(value) {
 }
 
 function usage() {
-  console.error("usage: run-general-corpus.mjs --compiler-harness BIN --wasmtime-worker BIN --out FILE [--commit SHA] [--cpu NAME] [--config FILE] [--manifest FILE] [--compile-rounds N] [--runtime-rounds N] [--benchtime-ns N]");
+  console.error("usage: run-general-corpus.mjs --compiler-harness BIN --wasmtime-worker BIN --wavm-worker BIN --out FILE [--v8 BIN] [--v8-worker FILE] [--commit SHA] [--cpu NAME] [--config FILE] [--manifest FILE] [--compile-rounds N] [--runtime-rounds N] [--benchtime-ns N]");
   process.exit(2);
 }
 
 function run(command, args) {
-  const result = spawnSync(command, args, { cwd: benchDir, encoding: "utf8" });
+  const result = spawnSync(command, args, { cwd: resolve(benchDir, ".."), encoding: "utf8" });
   if (result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} failed:\n${result.stderr || result.stdout}`);
   }

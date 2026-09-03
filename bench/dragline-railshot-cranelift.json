@@ -26,6 +26,22 @@
       "args": ["compile", "-O", "opt-level=2,regalloc-algorithm=backtracking", "-o", "{artifact}", "{wasm}"],
       "version_args": ["--version"],
       "required": true
+    },
+    {
+      "name": "v8",
+      "command": "v8",
+      "args": ["bench/tools/v8-compile-worker.js", "--", "{wasm}", "{artifact}"],
+      "version_args": ["--version"],
+      "artifact": "opaque",
+      "required": true
+    },
+    {
+      "name": "wavm",
+      "command": "wavm",
+      "args": ["compile", "{wasm}", "{artifact}"],
+      "version_args": ["version"],
+      "artifact": "opaque",
+      "required": true
     }
   ]
 }

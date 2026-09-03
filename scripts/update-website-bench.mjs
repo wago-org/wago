@@ -24,9 +24,13 @@ const benchFile = resolve(process.env.WAGO_BENCH_IN || join(root, "bench", ".ben
 const websiteDir = resolve(process.env.WAGO_WEBSITE_DIR || join(root, "..", "website"));
 const indexPath = join(websiteDir, "index.html");
 const requestedUpdateArch = process.env.WAGO_BENCH_UPDATE_ARCH || "";
-const BACKENDS = [
+const ENGINES = [
   { id: "railshot", label: "Railshot" },
   { id: "dragline", label: "Dragline" },
+  { id: "wazero", label: "wazero" },
+  { id: "wasmtime", label: "Wasmtime", sub: "Cranelift" },
+  { id: "v8", label: "V8", sub: "Liftoff + TurboFan" },
+  { id: "wavm", label: "WAVM", sub: "LLVM" },
 ];
 
 const benchmarkSets = await loadBenchmarkSets();
@@ -256,7 +260,7 @@ async function loadRunMetrics(path, fallbackArch = "") {
     throw new Error(`general benchmark commit ${generalRaw.commit} does not match ${run.commit}`);
   }
   const general = generalRaw ? buildGeneralSummary(metrics, generalRaw) : null;
-  return { metrics, general, source: path, arch, goos: run.goos || "", commit: run.commit || "", cpu: run.cpu || "" };
+  return { metrics, general, external: generalRaw, source: path, arch, goos: run.goos || "", commit: run.commit || "", cpu: run.cpu || "" };
 }
 
 function buildGeneralSummary(metrics, raw) {
@@ -265,6 +269,8 @@ function buildGeneralSummary(metrics, raw) {
     ["dragline-native", "dragline"],
     ["wazero", "wazero"],
     ["cranelift", "wasmtime"],
+    ["v8", "v8"],
+    ["wavm", "wavm"],
   ]);
   const compile = new Map();
   for (const report of raw.compile ?? []) {
@@ -303,26 +309,35 @@ function buildGeneralSummary(metrics, raw) {
       if (aggregate) aggregate.rss = values;
     }
   }
-  const runtime = raw.wasmtimeRuntime ?? [];
+  const runtime = raw.runtime ?? raw.wasmtimeRuntime ?? [];
+  const runtimeValues = (stage, grouped = false) => Object.fromEntries(
+    ENGINES.map(({ id }) => [id,
+      id === "railshot" ? metricGeomean(metrics, stage === "instantiate" ? "Instantiate/" : "Exec/", grouped) :
+      id === "dragline" ? metricGeomean(metrics, stage === "instantiate" ? "DraglineInstantiate/" : "DraglineExec/", grouped) :
+      id === "wazero" ? metricGeomean(metrics, stage === "instantiate" ? "WazeroInstantiate/" : "WazeroExec/", grouped) :
+      externalRuntimeGeomean(runtime, stage, grouped, id),
+    ]),
+  );
+  const instantiate = runtimeValues("instantiate");
+  const execution = runtimeValues("exec", true);
+  const tinyCall = Object.fromEntries(ENGINES.map(({ id }) => [id,
+    id === "railshot" ? Number(metrics.get("Exec/tiny.add")?.ns ?? 0) :
+    id === "dragline" ? Number(metrics.get("DraglineExec/tiny.add")?.ns ?? 0) :
+    id === "wazero" ? Number(metrics.get("WazeroExec/tiny.add")?.ns ?? 0) :
+    externalRuntimeMetric(runtime, id, "exec", "tiny", "add"),
+  ]));
+  const compileTime = Object.fromEntries([...compile].map(([engine, values]) => [engine, geomean(values.wall)]));
   return [
-    ["Compile time", "Fresh-process wall time", "ns", Object.fromEntries(
-      [...compile].map(([engine, values]) => [engine, geomean(values.wall)]),
-    )],
-    ["Compile memory", "Fresh-process peak RSS", "bytes", Object.fromEntries(
+    ["Compile mean", "Corpus geometric mean · fresh process", "ns", compileTime],
+    ["Compile memory", "Corpus geometric mean · peak RSS", "bytes", Object.fromEntries(
       [...compile].map(([engine, values]) => [engine, geomean(values.rss)]),
     )],
-    ["Instantiate time", "Runnable corpus", "ns", {
-      railshot: metricGeomean(metrics, "Instantiate/"),
-      dragline: metricGeomean(metrics, "DraglineInstantiate/"),
-      wazero: metricGeomean(metrics, "WazeroInstantiate/"),
-      wasmtime: externalRuntimeGeomean(runtime, "instantiate"),
-    }],
-    ["Execution time", "Runnable corpus", "ns", {
-      railshot: metricGeomean(metrics, "Exec/", true),
-      dragline: metricGeomean(metrics, "DraglineExec/", true),
-      wazero: metricGeomean(metrics, "WazeroExec/", true),
-      wasmtime: externalRuntimeGeomean(runtime, "exec", true),
-    }],
+    ["Instantiate mean", "Runnable corpus geometric mean", "ns", instantiate],
+    ["Execution mean", "Runnable corpus geometric mean", "ns", execution],
+    ["Call latency", "tiny.add host → Wasm", "ns", tinyCall],
+    ["End-to-end latency", "Compile + instantiate corpus means", "ns", Object.fromEntries(
+      ENGINES.map(({ id }) => [id, Number(compileTime[id] ?? 0) + Number(instantiate[id] ?? 0)]),
+    )],
   ].map(([label, sub, kind, values]) => ({ label, sub, kind, values }));
 }
 
@@ -339,10 +354,10 @@ function metricGeomean(metrics, prefix, groupExports = false) {
   return geomean([...groups.values()].map(geomean));
 }
 
-function externalRuntimeGeomean(rows, stage, groupExports = false) {
+function externalRuntimeGeomean(rows, stage, groupExports = false, engine = "wasmtime") {
   const samples = new Map();
   for (const row of rows) {
-    if (row.stage !== stage || !(Number(row.ns_per_op) > 0)) continue;
+    if (normalizedExternalEngine(row.engine) !== engine || row.stage !== stage || !(Number(row.ns_per_op) > 0)) continue;
     const module = basenameWithoutWasm(row.module);
     const key = groupExports ? `${module}.${row.export}` : module;
     const values = samples.get(key) ?? [];
@@ -359,6 +374,19 @@ function externalRuntimeGeomean(rows, stage, groupExports = false) {
     modules.set(module, values);
   }
   return geomean([...modules.values()].map(geomean));
+}
+
+function normalizedExternalEngine(engine) {
+  return engine === "cranelift" ? "wasmtime" : engine;
+}
+
+function externalRuntimeMetric(rows, engine, stage, module, exportName = "") {
+  const values = (rows ?? [])
+    .filter((row) => normalizedExternalEngine(row.engine) === engine && row.stage === stage &&
+      basenameWithoutWasm(row.module) === module && (!exportName || row.export === exportName))
+    .map((row) => Number(row.ns_per_op))
+    .filter((value) => value > 0);
+  return median(values);
 }
 
 function basenameWithoutWasm(path) {
@@ -520,14 +548,13 @@ function renderSection(tabs, sets) {
   const out = `            <section id="performance" class="section">
                 <div class="eyebrow eyebrow--center">Performance</div>
                 <h2 class="section__title">
-                    Two compilers,
+                    Six engines,
                     <span class="section__title-accent">one corpus</span>
                 </h2>
                 <p class="section__lead">
-                    Compare Railshot's direct single-pass compiler and the
-                    experimental optimizing Dragline backend against wazero's
-                    compiler backend. Every published row uses the same
-                    workload on the selected architecture.
+                    Select any combination of Railshot, Dragline, wazero,
+                    Wasmtime, V8, and WAVM. Every published row uses the same
+                    workload on the selected AMD64 or ARM64 machine.
                 </p>
                 <div class="vs">
                     <div class="vs__body">
@@ -540,7 +567,7 @@ ${archPanels}
                     </div>
                 </div>
                 <p class="vs__foot">
-                    ${foot} Rows appear only when the selected backend completes
+                    ${foot} Rows appear only when an engine completes
                     the workload. Numbers shift as the engine evolves — see the
                     <a href="https://github.com/wago-org/wago/tree/main/bench" target="_blank" rel="noopener">benchmark corpus &amp; methodology</a>.
                 </p>
@@ -562,35 +589,29 @@ function renderArchitecture(tabs, set, index) {
   return renderArchitecturePanel(tabs, set, index);
 }
 
-function renderBackend(tabs, set, backend, index) {
+function renderComparison(tabs, set) {
   const arch = set.arch || "host";
   const tablist = tabs
     .map(
       (t, i) => `                            <button
                             class="vs__tab"
                             role="tab"
-                            id="perf-${arch}-${backend.id}-tab-${t.id}"
-                            aria-controls="perf-${arch}-${backend.id}-panel-${t.id}"
+                            id="perf-${arch}-tab-${t.id}"
+                            aria-controls="perf-${arch}-panel-${t.id}"
                             aria-selected="${i === 0 ? "true" : "false"}"
                             tabindex="${i === 0 ? "0" : "-1"}"
                         >${esc(t.label)}</button>`
     )
     .join("\n");
-  const panels = tabs.map((t, i) => renderPanel(t, i, set, arch, backend.id)).join("\n");
+  const panels = tabs.map((t, i) => renderPanel(t, i, set, arch)).join("\n");
   return `                        <div
                             class="vs__backendpanel"
-                            role="tabpanel"
-                            id="backend-panel-${arch}-${backend.id}"
-                            aria-labelledby="backend-tab-${arch}-${backend.id}"${index === 0 ? "" : "\n                            hidden"}
+                            id="engine-panel-${arch}"
                         >
                             <div class="vs__main">
                                 <div class="vs__toprow">
                                     <div class="vs__tabs" role="tablist" aria-label="Benchmark categories" data-tabs>
 ${tablist}
-                                    </div>
-                                    <div class="vs__legend">
-                                        <span class="vs__key"><i class="vs__dot vs__dot--wago"></i>${backend.label}</span>
-                                        <span class="vs__key"><i class="vs__dot vs__dot--wazero"></i>wazero</span>
                                     </div>
                                 </div>
 ${panels}
@@ -611,8 +632,7 @@ function renderExistingArchitecture(tabs, set) {
 function renderArchitecturePanel(tabs, set, index) {
   const arch = set.arch || "host";
   const spec = [set.goos, set.arch, set.cpu, set.commit ? `wago ${set.commit}` : ""].filter(Boolean).join(" · ");
-  const backendTabs = BACKENDS.map((backend, i) => `                            <button class="vs__archbtn" role="tab" id="backend-tab-${arch}-${backend.id}" aria-controls="backend-panel-${arch}-${backend.id}" aria-selected="${i === 0 ? "true" : "false"}" tabindex="${i === 0 ? "0" : "-1"}">${backend.label}</button>`).join("\n");
-  const backendPanels = BACKENDS.map((backend, i) => renderBackend(tabs, set, backend, i)).join("\n");
+  const engineButtons = ENGINES.map((engine) => `                            <button class="vs__enginebtn" type="button" aria-pressed="true" data-engine-toggle="${engine.id}"><i class="vs__dot vs__dot--${engine.id}"></i><span>${engine.label}</span></button>`).join("\n");
   const out = `                    <div
                         class="vs__archpanel"
                         role="tabpanel"
@@ -620,14 +640,14 @@ function renderArchitecturePanel(tabs, set, index) {
                         aria-labelledby="arch-tab-${arch}"${index === 0 ? "" : "\n                        hidden"}
                     >
                         <div class="vs__backendstage">
-${backendPanels}
+${renderComparison(tabs, set)}
                         </div>
                         <div class="vs__specs">${esc(spec)}</div>
-                        <div class="vs__side vs__side--backend" role="tablist" aria-label="Compiler backend" data-backend-toggle>
-${backendTabs}
+                        <div class="vs__side vs__side--backend vs__engines" role="group" aria-label="Engines to compare" data-engine-toggles>
+${engineButtons}
                         </div>
                     </div>`;
-  for (const marker of ["vs__archpanel", "vs__backendstage", "data-backend-toggle", "vs__main", "vs__toprow", "vs__tabs", "vs__specs"]) {
+  for (const marker of ["vs__archpanel", "vs__backendstage", "data-engine-toggles", "vs__main", "vs__toprow", "vs__tabs", "vs__specs"]) {
     if (!out.includes(marker)) {
       throw new Error(`benchmark architecture renderer lost required ${marker} markup`);
     }
@@ -660,16 +680,16 @@ function replacePerformanceFoot(html) {
   const foot = `                <p class="vs__foot">
                     Measured separately on each listed architecture; compare
                     values within an architecture, not across machines. Rows
-                    appear only when the selected backend completes the workload. Numbers
+                    appear only when an engine completes the workload. Numbers
                     shift as the engine evolves — see the
                     <a href="https://github.com/wago-org/wago/tree/main/bench" target="_blank" rel="noopener">benchmark corpus &amp; methodology</a>.
                 </p>`;
   return `${html.slice(0, start)}${foot}${html.slice(end + 4)}`;
 }
 
-function renderPanel(tab, index, set, arch, backend) {
+function renderPanel(tab, index, set, arch) {
   if (tab.id === "general" && set.general) {
-    return renderGeneralPanel(tab, index, set.general, arch, backend);
+    return renderGeneralPanel(tab, index, set.general, arch);
   }
   const metrics = set.metrics;
   const dvMax = Math.max(1, ...tab.items.filter((i) => i.dv).map((i) => i.bytes));
@@ -679,8 +699,8 @@ function renderPanel(tab, index, set, arch, backend) {
       const r = buildDVRow(item, metrics);
       return { group: false, html: r ? renderDVRow(r, dvMax, 24) : null };
     }
-    const r = buildRow(item, metrics, backend);
-    return { group: false, html: r ? renderRow(r, 24) : null };
+    const r = buildEngineRow(item, set, tab.id);
+    return { group: false, html: r ? renderEngineRow(r, 24) : null };
   });
   const body = parts
     .filter((part, i) => {
@@ -696,50 +716,86 @@ function renderPanel(tab, index, set, arch, backend) {
   return `                    <div
                         class="vs__panel"
                         role="tabpanel"
-                        id="perf-${arch}-${backend}-panel-${tab.id}"
-                        aria-labelledby="perf-${arch}-${backend}-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
+                        id="perf-${arch}-panel-${tab.id}"
+                        aria-labelledby="perf-${arch}-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
                     >
 ${body}
                     </div>`;
 }
 
-function renderGeneralPanel(tab, index, summary, arch, backend) {
-  const engines = [
-    { id: "railshot", label: "Railshot" },
-    { id: "dragline", label: "Dragline" },
-    { id: "wazero", label: "wazero" },
-    { id: "wasmtime", label: "Wasmtime", sub: "Cranelift" },
-  ];
-  const cards = summary.map((metric) => {
-    const max = Math.max(1, ...engines.map((engine) => Number(metric.values[engine.id] ?? 0)));
-    const format = metric.kind === "bytes" ? fmtBytes : fmtNs;
-    const bars = engines.map((engine) => {
-      const value = Number(metric.values[engine.id] ?? 0);
-      const width = value > 0 ? Math.max(5, Math.round(value / max * 100)) : 0;
-      return `                                <div class="vs__gitem${engine.id === backend ? " vs__gitem--selected" : ""}">
-                                    <span class="vs__glabel">${engine.label}${engine.sub ? `<small>${engine.sub}</small>` : ""}</span>
-                                    <span class="vs__gtrack"><span class="vs__gfill vs__gfill--${engine.id}" data-bar data-general-bar data-width="${width}"></span></span>
-                                    <span class="vs__gvalue">${value > 0 ? format(value) : "—"}</span>
-                                </div>`;
-    }).join("\n");
-    return `                        <article class="vs__metriccard">
-                            <div class="vs__metrichead"><strong>${esc(metric.label)}</strong><span>${esc(metric.sub)}</span></div>
-                            <div class="vs__gbars">
-${bars}
-                            </div>
-                        </article>`;
-  }).join("\n");
+function renderGeneralPanel(tab, index, summary, arch) {
+  const rows = summary.map((metric) => renderEngineRow({
+    label: metric.label,
+    sub: metric.sub,
+    kind: metric.kind,
+    values: ENGINES.map((engine) => ({ engine, value: Number(metric.values[engine.id] ?? 0) })).filter((entry) => entry.value > 0),
+  }, 24)).join("\n");
   return `                    <div
-                        class="vs__panel vs__panel--general"
+                        class="vs__panel"
                         role="tabpanel"
-                        id="perf-${arch}-${backend}-panel-${tab.id}"
-                        aria-labelledby="perf-${arch}-${backend}-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
+                        id="perf-${arch}-panel-${tab.id}"
+                        aria-labelledby="perf-${arch}-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
                     >
                         <div class="vs__generalkicker">Corpus geometric mean · lower is better</div>
-                        <div class="vs__generalgrid">
-${cards}
-                        </div>
+${rows}
                     </div>`;
+}
+
+function buildEngineRow(spec, set, tabID) {
+  const kind = spec.kind ?? "ns";
+  const pick = (metric) => kind === "bytes" ? metric.bytes : kind === "count" ? metric.allocs : metric.ns;
+  const values = [];
+  for (const engine of ENGINES) {
+    let value = 0;
+    if (engine.id === "railshot" || engine.id === "dragline" || engine.id === "wazero") {
+      const key = engine.id === "wazero" ? spec.wazeroKey : backendMetricKey(spec.wagoKey, engine.id);
+      const metric = key ? set.metrics.get(key) : null;
+      value = metric ? pick(metric) : 0;
+    } else if (kind === "ns") {
+      value = externalRowMetric(set.external, engine.id, tabID, spec.wagoKey);
+    }
+    if (value > 0) values.push({ engine, value });
+  }
+  return values.length ? { label: spec.label, sub: spec.sub, kind, values } : null;
+}
+
+function externalRowMetric(raw, engine, tabID, key) {
+  if (!raw) return 0;
+  const runtime = raw.runtime ?? raw.wasmtimeRuntime ?? [];
+  if (tabID === "compile") {
+    const module = key.replace(/^CompileFull\//, "");
+    const report = (raw.compile ?? []).find((candidate) => basenameWithoutWasm(candidate.wasm_path) === module);
+    const values = (report?.runs ?? [])
+      .filter((run) => normalizedExternalEngine(run.engine) === engine)
+      .map((run) => Number(run.wall_nanos)).filter((value) => value > 0);
+    return median(values);
+  }
+  if (tabID === "instantiate") {
+    return externalRuntimeMetric(runtime, engine, "instantiate", key.replace(/^Instantiate\//, ""));
+  }
+  if (tabID === "exec") {
+    const tail = key.replace(/^Exec\//, "");
+    const dot = tail.indexOf(".");
+    return externalRuntimeMetric(runtime, engine, "exec", tail.slice(0, dot), tail.slice(dot + 1));
+  }
+  return 0;
+}
+
+function renderEngineRow(row, indent) {
+  const pad = " ".repeat(indent);
+  const max = Math.max(1, ...row.values.map(({ value }) => value));
+  const format = row.kind === "bytes" ? fmtBytes : row.kind === "count" ? fmtCount : fmtNs;
+  const lines = row.values.map(({ engine, value }) => `${pad}        <div class="vs__line" data-engine="${engine.id}">
+${pad}            <span class="vs__engine">${esc(engine.label)}</span>
+${pad}            <span class="vs__track"><span class="vs__fill vs__fill--${engine.id}" data-bar data-value="${value}" data-width="${barWidth(value, max)}"></span></span>
+${pad}            <span class="vs__val">${format(value)}</span>
+${pad}        </div>`).join("\n");
+  return `${pad}<div class="vs__row" data-engine-row>
+${pad}    <div class="vs__meta"><span class="vs__label">${esc(row.label)}</span><span class="vs__sub">${esc(row.sub)}</span></div>
+${pad}    <div class="vs__bars">
+${lines}
+${pad}    </div>
+${pad}</div>`;
 }
 
 function renderGroup(title) {

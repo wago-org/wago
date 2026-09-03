@@ -36,16 +36,24 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
         { engine: "dragline-native", wall_nanos: 12, peak_rss_bytes: 110 },
         { engine: "wazero", wall_nanos: 15, peak_rss_bytes: 120 },
         { engine: "cranelift", wall_nanos: 20, peak_rss_bytes: 140 },
+        { engine: "v8", wall_nanos: 8, peak_rss_bytes: 160 },
+        { engine: "wavm", wall_nanos: 30, peak_rss_bytes: 180 },
       ] }],
       compileRSS: [
         { engine: "railshot-native", peak_rss_bytes: 2048 },
         { engine: "dragline-native", peak_rss_bytes: 3072 },
         { engine: "wazero", peak_rss_bytes: 4096 },
         { engine: "cranelift", peak_rss_bytes: 5120 },
+        { engine: "v8", peak_rss_bytes: 6144 },
+        { engine: "wavm", peak_rss_bytes: 7168 },
       ],
-      wasmtimeRuntime: [
-        { stage: "instantiate", module: "tiny.wasm", ns_per_op: 14 },
-        { stage: "exec", module: "tiny.wasm", export: "add", ns_per_op: 5 },
+      runtime: [
+        { engine: "cranelift", stage: "instantiate", module: "tiny.wasm", ns_per_op: 14 },
+        { engine: "cranelift", stage: "exec", module: "tiny.wasm", export: "add", ns_per_op: 5 },
+        { engine: "v8", stage: "instantiate", module: "tiny.wasm", ns_per_op: 7 },
+        { engine: "v8", stage: "exec", module: "tiny.wasm", export: "add", ns_per_op: 2 },
+        { engine: "wavm", stage: "instantiate", module: "tiny.wasm", ns_per_op: 18 },
+        { engine: "wavm", stage: "exec", module: "tiny.wasm", export: "add", ns_per_op: 6 },
       ],
     };
     await writeFile(amd64, JSON.stringify({ goos: "linux", goarch: "amd64", metrics }));
@@ -86,17 +94,20 @@ function runUpdater(websiteDir, extraEnv = {}) {
 
 function assertDOMContract(html) {
   assert.equal(matches(html, /class="vs__archpanel"/g), 2);
-  assert.equal(matches(html, /class="vs__main"/g), 4);
-  assert.equal(matches(html, /class="vs__toprow"/g), 4);
+  assert.equal(matches(html, /class="vs__main"/g), 2);
+  assert.equal(matches(html, /class="vs__toprow"/g), 2);
   assert.equal(matches(html, /class="vs__specs"/g), 2);
-  assert.equal(matches(html, /id="perf-(?:amd64|arm64)-(?:railshot|dragline)-tab-memory"/g), 4);
-  assert.equal(matches(html, /class="vs__generalgrid"/g), 4);
-  assert.equal(matches(html, /data-bar data-general-bar data-width=/g), 64);
+  assert.equal(matches(html, /id="perf-(?:amd64|arm64)-tab-memory"/g), 2);
+  assert.equal(matches(html, /data-engine-toggles/g), 2);
+  assert.equal(matches(html, /data-engine-toggle=/g), 12);
+  assert.equal(matches(html, /data-engine-row/g), 16);
+  assert.match(html, /End-to-end latency/);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);
   assert.match(html, /class="vs__stage"/);
-  assert.equal(matches(html, /vs__glabel">Wasmtime<small>Cranelift<\/small>/g), 16);
-  assert.equal(matches(html, /class="vs__gvalue">2 KB<\/span>/g), 4);
-  assert.doesNotMatch(html, /wazero's\s+Cranelift|vs__dot--wazero"><\/i>Cranelift/);
+  assert.match(html, /data-engine-toggle="dragline"/);
+  assert.match(html, /data-engine-toggle="wasmtime"/);
+  assert.match(html, /data-engine-toggle="v8"/);
+  assert.match(html, /data-engine-toggle="wavm"/);
   assert.doesNotMatch(html, /class="[^"]*"[^>]+class="/);
 }
 
