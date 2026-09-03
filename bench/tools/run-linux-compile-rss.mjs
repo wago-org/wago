@@ -23,7 +23,7 @@ try {
       const rss = join(work, "peak-rss-kib.txt");
       const [command, args] = compilerCommand(engine, wasm, artifact);
       const result = spawnSync(options.timeCommand, ["-f", "%M", "-o", rss, "--", command, ...args], {
-        cwd: benchDir,
+        cwd: resolve(benchDir, ".."),
         encoding: "utf8",
       });
       if (result.status !== 0) {
