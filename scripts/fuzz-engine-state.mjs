@@ -204,12 +204,13 @@ async function loadGenerator(filename) {
   };
 }
 
-class WorkerClient {
-  constructor(command, timeoutMs) {
+export class WorkerClient {
+  constructor(command, timeoutMs, args = []) {
     this.timeoutMs = timeoutMs;
     this.pending = new Map();
     this.stderr = "";
-    this.process = spawn(command, [], { stdio: ["pipe", "pipe", "pipe"] });
+    this.timeoutError = null;
+    this.process = spawn(command, args, { stdio: ["pipe", "pipe", "pipe"] });
     this.process.stderr.setEncoding("utf8");
     this.process.stderr.on("data", (chunk) => {
       this.stderr = (this.stderr + chunk).slice(-65536);
@@ -264,10 +265,13 @@ class WorkerClient {
   }
 
   request(request) {
+    if (this.timeoutError) return Promise.reject(this.timeoutError);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(request.id);
-        reject(new Error(`Railshot case ${request.id} exceeded ${this.timeoutMs} ms`));
+        this.timeoutError = new Error(`Railshot case ${request.id} exceeded ${this.timeoutMs} ms`);
+        reject(this.timeoutError);
+        this.process.kill("SIGKILL");
       }, this.timeoutMs);
       this.pending.set(request.id, { resolve, reject, timer });
       this.process.stdin.write(`${JSON.stringify(request)}\n`, (error) => {
@@ -281,8 +285,9 @@ class WorkerClient {
   }
 
   async close() {
-    if (!this.process.stdin.destroyed) this.process.stdin.end();
+    if (!this.timeoutError && !this.process.stdin.destroyed) this.process.stdin.end();
     const result = await this.exited;
+    if (this.timeoutError) return;
     if (result.error) throw result.error;
     if (result.code !== 0) throw new Error(`Railshot worker failed${this.stderr ? `: ${this.stderr.trim()}` : ""}`);
   }

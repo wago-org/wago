@@ -67,6 +67,12 @@ is limited to 8,192 entries. Observation is limited to 2 memory pages and 32
 table entries. These limits match the Starshine engine-state profile and keep
 memory use predictable.
 
+If a Railshot case exceeds `--timeout-ms`, the driver kills the persistent
+worker and writes the case as the first failure. Killing the worker makes the
+deadline effective even when native Wasm execution cannot return to the worker
+protocol. The lane stops after its first failure, so it does not restart that
+worker.
+
 The exact cycle includes the original execution and proposal leaves. It also
 forces 15 broader module shapes:
 

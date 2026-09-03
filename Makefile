@@ -92,6 +92,7 @@ lint-staticcheck:
 lint-website-generator:
 	node --test scripts/update-website-bench.test.mjs
 	node --test scripts/engine-state-oracle.test.mjs
+	node --test scripts/fuzz-engine-state.test.mjs
 
 .PHONY: docs-check
 docs-check: ## Validate local paths and anchors in tracked Markdown files
