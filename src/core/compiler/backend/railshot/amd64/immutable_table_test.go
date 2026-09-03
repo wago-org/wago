@@ -74,10 +74,9 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("exported-table hints: %v", err)
 	}
-	for i := range hints {
-		if _, ok := (&fn{immutableTables: hints[i].immutableTables}).immutableTable(0); ok {
-			t.Fatalf("function %d specialized an externally mutable exported table", i)
-		}
+	immutableTables := computeImmutableTableHints(m, hints, currentCodegenPolicy())
+	if _, ok := (&fn{immutableTables: immutableTables}).immutableTable(0); ok {
+		t.Fatal("module specialized an externally mutable exported table")
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 )
 
 func TestFuncHintsSizeArm64(t *testing.T) {
-	const want = 152
+	const want = 128
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
 	}
@@ -378,10 +378,8 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("exported-table hints: %v", err)
 	}
-	for i := range hints {
-		if hints[i].immutableLocalTable {
-			t.Fatalf("function %d specialized an externally mutable exported table", i)
-		}
+	if immutableTable := computeImmutableTableHint(m, hints, currentCodegenPolicy()); immutableTable.local {
+		t.Fatal("module specialized an externally mutable exported table")
 	}
 }
 

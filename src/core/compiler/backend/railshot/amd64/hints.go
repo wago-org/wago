@@ -84,12 +84,6 @@ type funcHints struct {
 	hasSIMD            bool // body contains an 0xfd SIMD instruction
 	hasStackSinkFusion bool // lowering may allocate fewer nodes than the scan; retain the legacy arena
 
-	// immutableTables is derived after the one-pass per-function scans have been
-	// aggregated (computeModuleHints). Each admitted table is local, unexported,
-	// never mutated, and contains only same-module functions, so indirect calls may
-	// use the internal register ABI without a run-time home/tag fork.
-	immutableTables []immutableTableHint
-
 	// Loop-weighted hotness: local.get/global.get = 1×, set/tee = 2×, ×loopWeight
 	// per enclosing loop level.
 	localScore []uint32

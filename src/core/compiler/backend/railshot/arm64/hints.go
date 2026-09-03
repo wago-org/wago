@@ -76,16 +76,6 @@ type funcHints struct {
 	moduleEH           bool   // module-wide: reserve the active exception-handler register
 	hasStackSinkFusion bool   // lowering may allocate fewer nodes than the scan; retain the legacy arena
 
-	// immutableLocalTable is derived after the one-pass per-function scans have
-	// been aggregated. The table must also be private (an exported table can be
-	// mutated by another importing instance). Every non-null entry is then a
-	// same-module function and can use the internal register ABI without a
-	// run-time home-tag fork.
-	immutableLocalTable bool
-	immutableTableType  uint64
-	immutableTableTyped bool
-	monomorphicTarget   int // local function index when every non-null entry is identical; -1 otherwise
-
 	// Loop-weighted hotness: local.get/global.get = 1×, set/tee = 2×, ×loopWeight
 	// per enclosing loop level.
 	localScore []uint32
@@ -110,6 +100,15 @@ type funcHints struct {
 	// low for unusual control flow.
 	stackArenaNodes    uint32
 	stackArenaDiscount uint16 // possible scanned nodes removed by bounded lookahead peepholes
+}
+
+// immutableTableHint is one module-owned proof shared by every function
+// compilation. It must not be copied into the retained per-function summaries.
+type immutableTableHint struct {
+	local             bool
+	typeKey           uint64
+	typed             bool
+	monomorphicTarget int
 }
 
 func (h funcHints) touchesGlobal() bool {
