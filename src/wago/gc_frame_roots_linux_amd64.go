@@ -96,6 +96,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRo
 	var safepointBase uint32
 functions:
 	for function := range m.Code {
+		mayCollect := gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, &classifier)
+		if !mayCollect {
+			continue // RootNone: no safepoint can observe this frame.
+		}
 		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), &classifier) {
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
@@ -104,7 +108,6 @@ functions:
 			return reject("function %d has no validated signature", function)
 		}
 		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedRoots[function]}
-		mayCollect := gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, &classifier)
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if collectorFrameRefType(m, t) {
