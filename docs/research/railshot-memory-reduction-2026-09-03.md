@@ -29,10 +29,11 @@ Recommended order:
 5. Retire unshipped/default-off experiments and old rollback switches.
 6. Replace corpus-tuned thresholds with explicit, architecture-derived costs.
 
-The first implementation slice accompanying this report already applies the
-general, code-neutral items: exact sparse retained global hints, a 120-byte
+The first implementation slices accompanying this report already apply the
+general, code-neutral items: exact sparse retained global hints, a 64-byte
 `funcHints` record instead of 200 bytes after moving immutable-table proofs to
-module-owned storage and the dense global accumulator to scan-only scratch, one
+module-owned storage, moving the dense global accumulator to scan-only scratch,
+and replacing three retained slice headers with checked 32-bit sidecar ranges; one
 module-level synchronous-host-call
 classification, reuse of the validated local count on every attempt, and the
 bounded module-global pin list in place of a per-function dense membership
@@ -45,6 +46,15 @@ from 416 to 368 bytes on ARM64. A generated 128-deep scalar-block benchmark
 dropped from 283 to 155 allocations per AMD64 compile and from about 229.7 KiB
 to 209.8 KiB; median latency was effectively flat across the before/after local
 screens.
+
+The compact hint-range slice reduced the fixed record from 120 to 64 bytes on
+both architectures. On ARM64, the 1,024-function sparse-global stress benchmark
+dropped from 208,088 to 134,168 B/op and from 24 to 21 allocations. Full
+`many_funcs` compilation dropped from 150,776 to 125,240 B/op and from 42 to 39
+allocations. Five-sample default-GC medians moved by +0.4%, within the 1.5%
+investigation gate; with GC disabled the median improved by 1.3%. Native-code
+hashes for many-function, global-heavy, indirect-dispatch, and json-as fixtures
+were identical to the parent revision.
 
 This is a staged reduction, not satisfaction of the 32--48-byte common-record
 target. Index-width, further retention work, sidecar pooling, and policy deletion

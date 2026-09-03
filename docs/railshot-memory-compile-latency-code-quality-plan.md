@@ -30,7 +30,7 @@ A follow-up audit at `779e5e65842359c1c7b169f1af299097853a71ad` found several ad
 - Resolve module invariants once, narrow compiler-only indexes, flatten parallel metadata, and apply retention limits per scratch buffer.
 - Retire default-off experiments and mature rollback switches that fail the normal qualification gates. Compiler mechanisms should replace old state, not accumulate beside it.
 
-The implementation starts with eight code-identical cuts from that audit:
+The implementation starts with nine code-identical cuts from that audit:
 
 1. Module hint scanning always retains exact touched-global records instead of a dense function-by-global matrix, and the fixed hint record drops from 200 to 152 bytes. On a synthetic 1,024-function/1,024-global shape with one touched global per function, this changed the ARM64 hint benchmark from approximately 5.47 MB and 0.64 ms per operation to 0.24 MB and 0.12 ms per operation. This is a targeted stress result, not a full-corpus claim.
 2. Module-wide synchronous-host-call classification is computed once per module, and the bounded module-global pin list replaces a per-function `globals`-sized membership bitmap.
@@ -40,6 +40,7 @@ The implementation starts with eight code-identical cuts from that audit:
 6. The default-off AMD64 `call-next-use` experiment is also retired. Its bounded post-call bytecode rescan and alternate spill policy bought only 0.10% aggregate execution, with a worst focused result of 0.84%, while disabling it improved compile time by 0.25% and left compile allocation unchanged. The removal deletes a net 168 AMD64 backend lines and two per-function masks; matched Linux/AMD64 artifacts for recursive-call, many-function, and float fixtures remain byte-identical. Calls now have one general dirty-local spill policy rather than a dormant alternate path.
 7. Immutable-table proofs are now retained once per module instead of copied into every function summary. This removes one slice header from AMD64 summaries and four module-wide scalar fields from ARM64 summaries, reducing `funcHints` from 152 to 128 bytes on both architectures. The `many_funcs` full-compile benchmark falls from 220,625 to 212,433 B/op (-3.7%) with allocation count unchanged; an eight-sample local screen showed no latency regression. Matched many-function, float, and indirect-dispatch artifacts remain byte-identical.
 8. The reusable dense global-hint accumulator is now explicit scan scratch rather than a pointer field retained in every finished summary. This reduces `funcHints` from 128 to 120 bytes and removes one scanned pointer per function. The 1,024-function sparse-global stress benchmark falls from 216,280 to 208,088 B/op (-3.8%) with the same 24 allocations and unchanged steady-state latency; the smaller `many_funcs` allocation remains in the same Go size class. Matched many-function, global-heavy, and indirect-dispatch artifacts remain byte-identical.
+9. Retained local-score, last-use, and sparse-global slice headers are replaced by checked 32-bit ranges into module-owned sidecars. Stack-local views reconstruct the slices only while scanning or compiling a function, and the compile boundary passes that larger view by pointer to avoid a Go ABI copy cliff. This reduces `funcHints` from 120 to 64 bytes on both architectures (-46.7%) and removes the temporary per-function sparse-range array. On ARM64, the 1,024-function sparse-global stress benchmark falls from 208,088 to 134,168 B/op (-35.5%) and from 24 to 21 allocations; `many_funcs` falls from 150,776 to 125,240 B/op (-16.9%) and from 42 to 39 allocations. Five-sample default-GC medians moved from 216.54 to 217.38 microseconds (+0.4%); with GC disabled they moved from 217.12 to 214.31 microseconds (-1.3%). Matched `many_funcs`, `globals`, `dispatch`, and `json-as` native-code hashes remain identical.
 
 An interleaved three-pair ARM64 `many_funcs` screen with metrics disabled retained 42 allocs/op and 159,001–159,003 B/op; median compile time moved from 215.98 µs to 215.65 µs. This clears the initial zero-overhead screen, but the larger benchmark matrix remains the acceptance authority.
 
@@ -73,9 +74,9 @@ Pointer-free backing matters independently of raw byte size: Go does not scan th
 
 ### The hint plane retains too much per-function structure
 
-`funcHints` is currently 200 bytes per function, before accounting for its referenced local/global score and last-use arrays. Its fields include several slice headers and sidecars for local scores, global scores, last gets, global eligibility, sparse globals, and immutable table information.
+At the reviewed `b40f0305` snapshot, `funcHints` was 200 bytes per function before its referenced local/global score and last-use arrays. The reconciliation work above has since reduced the retained record to 64 bytes and moved variable-length data into contiguous module-owned sidecars.
 
-The current module hint construction allocates local-score storage proportional to the sum of locals, and a dense global-score and eligibility matrix when `functions × globals <= 1<<20`. At the cutoff, those two global arrays alone occupy roughly:
+At that snapshot, module hint construction allocated local-score storage proportional to the sum of locals and a dense global-score and eligibility matrix when `functions × globals <= 1<<20`. The dense retained matrix has since been removed; this estimate records the eliminated cliff:
 
 ```text
 1,048,576 × 4 bytes  global scores

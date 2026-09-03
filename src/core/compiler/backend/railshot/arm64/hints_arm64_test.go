@@ -11,7 +11,7 @@ import (
 )
 
 func TestFuncHintsSizeArm64(t *testing.T) {
-	const want = 120
+	const want = 64
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
 	}
@@ -374,7 +374,7 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 	}
 
 	m.Exports = append(m.Exports, wasm.Export{Name: "table", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}})
-	hints, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
+	hints, _, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
 	if err != nil {
 		t.Fatalf("exported-table hints: %v", err)
 	}

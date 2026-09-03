@@ -13,7 +13,7 @@ import (
 
 func TestModuleScratchUsesBoundedStackArenaHintArm64(t *testing.T) {
 	m := mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{0x00, 0x41, 0x2a, 0x0b})
-	hints, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
+	hints, _, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount())
 	if err != nil {
 		t.Fatalf("compute hints: %v", err)
 	}

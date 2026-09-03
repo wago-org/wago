@@ -535,7 +535,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			bodyBytes:      len(body),
 			hasLoop:        h.hasLoop,
 			hasControlFlow: h.hasControlFlow,
-			touchesGlobal:  h.touchesGlobal(),
+			touchesGlobal:  h.globalCount != 0,
 			touchesMem:     h.touchesMemory || h.usesBulkMem,
 			params:         len(ft.Params),
 			results:        len(ft.Results),

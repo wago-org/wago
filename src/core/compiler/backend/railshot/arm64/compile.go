@@ -1100,7 +1100,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if opts.Stats != nil || explainEnabled {
 		hintStart = time.Now()
 	}
-	allHints, globalScores, err := computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, policy)
+	allHints, hintSidecar, globalScores, err := computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, policy)
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
 	}
@@ -1140,7 +1140,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		ms = &ModuleStats{}
 	}
 	if ms != nil {
-		hintHeaderBytes, hintSidecarBytes := funcHintStorageBytes(allHints)
+		hintHeaderBytes, hintSidecarBytes := funcHintStorageBytes(allHints, hintSidecar)
 		*ms = ModuleStats{
 			Funcs:            make([]*CodegenStats, n),
 			ModuleGlobalPins: moduleGlobalPinInfos(modGlobals),
@@ -1237,8 +1237,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 				return nil, fmt.Errorf("arm64: grow code image: %w", err)
 			}
 			sc.asm.B = tail
-			hints := allHints[i]
-			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, hints, immutableTable, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, sc)
+			hints := hintSidecar.view(allHints[i])
+			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTable, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, sc)
 			allHints[i] = funcHints{}
 			if err != nil {
 				return nil, fmt.Errorf("arm64: function %d: %w", i, err)
@@ -1309,12 +1309,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		return &a64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, immutableTable, modGlobals, hostAdapters, inlineTargets, calleePreservesPins, policy, ms, guardMode, boundsFacts, importedFuncs)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, calleePreservesPins, policy, ms, guardMode, boundsFacts, importedFuncs)
 }
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, immutableTable immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, calleePreservesPins []bool, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*a64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, hintSidecar funcHintSidecar, immutableTable immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, calleePreservesPins []bool, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*a64.CompiledModule, error) {
 	n := len(m.Code)
 	if ms != nil {
 		for i := range m.Code {
@@ -1357,7 +1357,8 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					continue
 				}
 				layoutFlags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(allHints[i].hasLoop, layoutHasLoop) | boolFlag(allHints[i].hasCall, layoutHasCall) | boolFlag(allHints[i].callsSelf, layoutCallsSelf)
-				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, allHints[i], immutableTable, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, ws.scratch)
+				hints := hintSidecar.view(allHints[i])
+				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTable, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, ws.scratch)
 				allHints[i] = funcHints{}
 				if err != nil {
 					results[i].err = err
@@ -1617,28 +1618,16 @@ var moduleGlobalRegs = []Reg{X25, X24, X23}
 // bar (an aggregate score of one loop-level use in several functions) keeps the
 // reservation from costing pin-pool registers on modules that barely touch
 // globals.
-func computeFuncHints(m *wasm.Module, funcIdx int, nGlobals int, importedFuncs int) (funcHints, error) {
-	ft, ok := m.LocalFuncType(funcIdx)
-	if !ok {
-		return funcHints{}, fmt.Errorf("unknown function type")
-	}
-	nLocals, err := countLocals(ft.Params, m.Code[funcIdx].Locals)
-	if err != nil {
-		return funcHints{}, err
-	}
-	return scanFuncBody(m.Code[funcIdx], nLocals, nGlobals, uint32(importedFuncs+funcIdx), m.BranchHintsForFunc(uint32(importedFuncs+funcIdx)), m)
-}
-
 // computeModuleHints scans every function body ONCE, returning per-function hints
 // plus the module-wide aggregated global scores. The scan uses one reusable dense
 // accumulator and retains only the globals each function actually touches. This
 // avoids both a second body pass and a functions-by-globals retained matrix. The
 // standalone computeModuleGlobalScores is retained as the parity oracle in tests.
-func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHints, []int64, error) {
+func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHints, funcHintSidecar, []int64, error) {
 	return computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, currentCodegenPolicy())
 }
 
-func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, policy CodegenPolicy) ([]funcHints, []int64, error) {
+func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, policy CodegenPolicy) ([]funcHints, funcHintSidecar, []int64, error) {
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
 	localCounts := make([]int, n)
@@ -1646,22 +1635,23 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
 		if !ok {
-			return nil, nil, fmt.Errorf("function %d hints: unknown function type", i)
+			return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: unknown function type", i)
 		}
 		count, err := countLocals(ft.Params, m.Code[i].Locals)
 		if err != nil {
-			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
+			return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
 		if count > int(^uint(0)>>1)-totalLocals {
-			return nil, nil, fmt.Errorf("function hint locals overflow")
+			return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint locals overflow")
 		}
 		localCounts[i] = count
 		totalLocals += count
 	}
+	if uint64(totalLocals) > uint64(^uint32(0)) {
+		return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint local sidecar exceeds 32-bit index capacity")
+	}
 	localScores := make([]uint32, totalLocals)
 	localLastGets := make([]uint32, totalLocals)
-	type hintRange struct{ start, end int }
-	sparseRanges := make([]hintRange, n)
 	var sparseGlobals []shared.GlobalHint
 	var sparseAccum shared.GlobalHintAccumulator
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
@@ -1678,36 +1668,38 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		h := funcHintsWithStorage(localScores[localAt : localAt+nLocals])
 		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
+		h.localStart = uint32(localAt)
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs
 		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
 		var err error
 		h, err = scanFuncBodyIntoModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), m.BranchHintsForFunc(uint32(importedFuncs+i)), h, &eligibilityTracker, m, &classifier, allHints, importedFuncs, &sparseAccum)
 		if err != nil {
-			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
+			return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs
 		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
 		localAt += nLocals
 		moduleEH = moduleEH || h.moduleEH
-		allHints[i] = h
+		allHints[i] = h.funcHints
 		start := len(sparseGlobals)
 		sparseGlobals = sparseAccum.AppendTo(sparseGlobals)
-		sparseRanges[i] = hintRange{start: start, end: len(sparseGlobals)}
+		if uint64(len(sparseGlobals)) > uint64(^uint32(0)) {
+			return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint global sidecar exceeds 32-bit index capacity")
+		}
+		allHints[i].globalStart = uint32(start)
+		allHints[i].globalCount = uint32(len(sparseGlobals) - start)
 		for _, gh := range sparseGlobals[start:] {
 			agg[gh.Index] += int64(gh.Score)
 		}
-	}
-	for i, r := range sparseRanges {
-		allHints[i].sparseGlobals = sparseGlobals[r.start:r.end]
 	}
 	if moduleEH {
 		for i := range allHints {
 			allHints[i].moduleEH = true
 		}
 	}
-	return allHints, agg, nil
+	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, sparseGlobals: sparseGlobals}, agg, nil
 }
 
 // computeImmutableTableHint derives the module-owned table proof after the
@@ -1919,7 +1911,7 @@ var errRegExhausted = errors.New("arm64: no register available to spill")
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
-func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, inlineTargets inlineTargetTable, calleePreservesPins []bool, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, inlineTargets inlineTargetTable, calleePreservesPins []bool, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	var compileStart time.Time
 	if stats != nil {
 		stats.FunctionAttempts++
@@ -1964,7 +1956,7 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	return
 }
 
-func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, calleePreservesPins []bool, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, calleePreservesPins []bool, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
@@ -2062,9 +2054,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if inlinePlanTouchesMemory(inlinedCallees) {
 		touchesMemory = true
 	}
-	effectiveHints := hints
+	effectiveHints := *hints
 	effectiveHints.hasCall = hasCall
-	f.preserveCallerPins = preservesCallerPins(ft, nLocals, effectiveHints)
+	f.preserveCallerPins = preservesCallerPins(ft, nLocals, effectiveHints.funcHints)
 	if f.preserveCallerPins {
 		// Keep this leaf out of every register a direct caller may use for a
 		// pinned local or merge value. Its parameters stay in X0..X7 below; all
@@ -2301,7 +2293,7 @@ func preservesCallerPins(ft *wasm.CompType, nLocals int, h funcHints) bool {
 	if !sigFitsRegABI(ft) || !sigIsIntOnly(ft) || nLocals != len(ft.Params) || h.hasCall || h.touchesMemory {
 		return false
 	}
-	if h.touchesGlobal() {
+	if h.globalCount != 0 {
 		return false
 	}
 	return true

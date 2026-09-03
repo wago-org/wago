@@ -12,13 +12,13 @@ import (
 )
 
 func TestFuncHintsSize(t *testing.T) {
-	const want = 120
+	const want = 64
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
 	}
 }
 
-func globalHint(h funcHints, index uint32) (score uint32, eligible bool) {
+func globalHint(h funcHintView, index uint32) (score uint32, eligible bool) {
 	for _, hint := range h.sparseGlobals {
 		if hint.Index == index {
 			return hint.Score, hint.Eligible
@@ -580,7 +580,7 @@ func TestComputeModuleHintsMatchesGlobalScoreOracle(t *testing.T) {
 		m.Code = append(m.Code, wasm.Func{BodyBytes: b, Locals: wasm.Locals{Runs: []wasm.LocalRun{{Count: 1, Type: wasm.I32}}}})
 	}
 
-	allHints, agg, err := computeModuleHints(m, m.GlobalCount(), 0, nil, false)
+	allHints, sidecar, agg, err := computeModuleHints(m, m.GlobalCount(), 0, nil, false)
 	if err != nil {
 		t.Fatalf("computeModuleHints: %v", err)
 	}
@@ -597,20 +597,24 @@ func TestComputeModuleHintsMatchesGlobalScoreOracle(t *testing.T) {
 		}
 	}
 	for i := range m.Code {
-		want, err := computeFuncHints(m, i, m.GlobalCount(), 0)
-		if err != nil {
-			t.Fatalf("computeFuncHints %d: %v", i, err)
-		}
-		if !intervalRegionHintStorageEligible(true, len(m.Code[i].BodyBytes), want.nLocals, false) {
-			want.localLastGet = nil
-		}
-		if !reflect.DeepEqual(allHints[i], want) {
-			t.Fatalf("func %d cached hints = %+v, want %+v", i, allHints[i], want)
-		}
 		ft, _ := m.LocalFuncType(i)
 		wantLocals, err := countLocals(ft.Params, m.Code[i].Locals)
 		if err != nil {
 			t.Fatalf("countLocals %d: %v", i, err)
+		}
+		want, err := scanBodyBytes(m.Code[i].BodyBytes, wantLocals, m.GlobalCount(), uint32(i))
+		if err != nil {
+			t.Fatalf("scanBodyBytes %d: %v", i, err)
+		}
+		if !intervalRegionHintStorageEligible(true, len(m.Code[i].BodyBytes), want.nLocals, false) {
+			want.localLastGet = nil
+		}
+		got := sidecar.view(allHints[i])
+		got.localStart = 0
+		got.lastGetStartPlus1 = 0
+		got.globalStart = 0
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("func %d cached hints = %+v, want %+v", i, got, want)
 		}
 		if allHints[i].nLocals != wantLocals {
 			t.Fatalf("func %d nLocals = %d, want %d", i, allHints[i].nLocals, wantLocals)

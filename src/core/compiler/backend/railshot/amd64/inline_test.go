@@ -212,7 +212,7 @@ func TestInlineBrOnNullRespectsCalleeBoundaryAMD64(t *testing.T) {
 			funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x00, 0x10, 0x01, 0x1a, 0x41, 0x01, 0x0b}},
 			funcDef{body: []byte{0x00, 0xd0, 0x70, 0xd5, 0x00, 0x1a, 0x0b}},
 		)
-		hints, _, err := computeModuleHints(m, 0, 0, nil, false)
+		hints, _, _, err := computeModuleHints(m, 0, 0, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}

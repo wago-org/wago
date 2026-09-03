@@ -21,7 +21,7 @@ func intervalRegionHintStorageEligible(enabled bool, bodyLen, nLocals int, modul
 // prepareIntervalRegion discovers profitable integer local lifetimes in one
 // call-free straight-line body. Storage is worker scratch and capped by
 // locals/body size; unsupported shapes keep the existing lowering.
-func (f *fn) prepareIntervalRegion(body []byte, hints funcHints) bool {
+func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 	if !intervalRegionHintStorageEligible(f.opt(optIntervalRegionPins), len(body), f.nLocals, f.moduleEH) ||
 		len(hints.localScore) != f.nLocals || len(hints.localLastGet) != f.nLocals {
 		return false
