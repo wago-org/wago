@@ -281,8 +281,7 @@ type fn struct {
 	// cell around each internal call for coherence, so only globals accessed in a
 	// CALL-FREE loop are pinned there (the spill/reload lands on out-of-loop calls).
 	// regNone when g is not pinned. See globals.go / assignPinnedLocals.
-	globalReg   []Reg
-	globalDirty []bool // value-pinned global g was written → needs epilogue write-back
+	globalReg []Reg // high bit records a dirty value pin; physical registers are below 32
 
 	// moduleGlobals is the bounded module-owned set of MODULE-pinned globals. Every
 	// function holds each global's live value in the SAME reserved register, making it a
@@ -2105,9 +2104,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	sc.asm.Grow(asmCapForBody(len(c.BodyBytes)))
 	globalIdx := m.ImportedFuncCount() + funcIdx
 	f := &sc.fnState
-	localType, localSlot, locals := f.localType, f.localSlot, f.locals
+	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow)}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow)}
 	// Small call sets already grow into tiny exact size classes, while an inline
 	// may erase their only relocation. Reserve only once geometric growth would
 	// require several backing arrays; append remains the correctness fallback.
@@ -2544,15 +2543,7 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	// Module-pinned globals (installModuleGlobals) already occupy globalReg
 	// entries; keep them and size for whichever view is larger.
 	if len(f.globalReg) < f.m.GlobalCount() {
-		gr := make([]Reg, f.m.GlobalCount())
-		for i := range gr {
-			gr[i] = regNone
-		}
-		copy(gr, f.globalReg)
-		f.globalReg = gr
-		gd := make([]bool, f.m.GlobalCount())
-		copy(gd, f.globalDirty)
-		f.globalDirty = gd
+		f.initGlobalRegs(f.m.GlobalCount())
 	}
 	// The GP pin pool is shared by hot INT locals and hot globals, both holding their
 	// VALUE in the register (WARP's model). A global is a candidate only when it is a
@@ -2706,6 +2697,30 @@ func (f *fn) globalIs64(g int) bool {
 	return wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I64)
 }
 
+const globalRegDirty Reg = 1 << 7
+
+func globalRegValue(state Reg) Reg {
+	if state == regNone {
+		return regNone
+	}
+	return state &^ globalRegDirty
+}
+
+func globalRegIsDirty(state Reg) bool {
+	return state != regNone && state&globalRegDirty != 0
+}
+
+func (f *fn) initGlobalRegs(n int) {
+	if cap(f.globalReg) < n {
+		f.globalReg = make([]Reg, n)
+	} else {
+		f.globalReg = f.globalReg[:n]
+	}
+	for i := range f.globalReg {
+		f.globalReg[i] = regNone
+	}
+}
+
 // installModuleGlobals records the module-wide global→register pins on this
 // function (every function in the module shares the same assignment).
 func (f *fn) installModuleGlobals(pins []moduleGlobalPin) {
@@ -2714,15 +2729,7 @@ func (f *fn) installModuleGlobals(pins []moduleGlobalPin) {
 	}
 	nG := f.m.GlobalCount()
 	if len(f.globalReg) < nG {
-		gr := make([]Reg, nG)
-		for i := range gr {
-			gr[i] = regNone
-		}
-		copy(gr, f.globalReg)
-		f.globalReg = gr
-		gd := make([]bool, nG)
-		copy(gd, f.globalDirty)
-		f.globalDirty = gd
+		f.initGlobalRegs(nG)
 	}
 	f.moduleGlobals = pins
 	for _, p := range pins {
@@ -2745,7 +2752,8 @@ func (f *fn) isModuleGlobal(g int) bool {
 // offset-0 prologue reloads). Register-ABI calls and returns carry nothing.
 // scratch must be a register safe to clobber at the call site.
 func (f *fn) deriveModuleGlobals() {
-	for g, reg := range f.globalReg {
+	for g, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg == regNone || !f.isModuleGlobal(g) {
 			continue
 		}
@@ -2760,7 +2768,8 @@ func (f *fn) deriveModuleGlobals() {
 }
 
 func (f *fn) storeModuleGlobals(scratch Reg) {
-	for g, reg := range f.globalReg {
+	for g, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg == regNone || !f.isModuleGlobal(g) {
 			continue
 		}
@@ -2786,7 +2795,8 @@ func (f *fn) derivePinnedGlobals() {
 // Fixed-register sequences use it to restore their narrow scratch bank without
 // touching unrelated value pins.
 func (f *fn) derivePinnedGlobalsIn(regs regMask) {
-	for g, reg := range f.globalReg {
+	for g, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg == regNone || f.isModuleGlobal(g) || !regs.has(reg) {
 			continue
 		}
@@ -2811,8 +2821,9 @@ func (f *fn) storePinnedGlobals(dirtyOnly bool) {
 
 // storePinnedGlobalsIn writes only globals assigned to registers in regs.
 func (f *fn) storePinnedGlobalsIn(regs regMask, dirtyOnly bool) {
-	for g, reg := range f.globalReg {
-		if reg == regNone || f.isModuleGlobal(g) || !regs.has(reg) || (dirtyOnly && !f.globalDirty[g]) {
+	for g, state := range f.globalReg {
+		reg := globalRegValue(state)
+		if reg == regNone || f.isModuleGlobal(g) || !regs.has(reg) || (dirtyOnly && !globalRegIsDirty(state)) {
 			continue
 		}
 		t := f.allocReg(maskOf(reg, X0))

@@ -446,6 +446,19 @@ allocations. Six `GOGC=off` timing samples are neutral to favorable, and the
 complete backend suite passes. As on ARM64, only actual semantic root or fact
 state allocates the secondary arena.
 
+ARM64's dense global-register table was scratch in intent but not in lifetime:
+resetting the reusable `fn` dropped its backing, so every function in a module
+with globals allocated and initialized another table. The compiler now carries
+that backing across resets, reslices it, and fills it with `regNone` before
+installing the next function's module and value pins. The register byte's unused
+high bit also stores the dirty value-pin flag, deleting the parallel dense
+`[]bool`; all physical AArch64 registers fit in five bits and the all-ones
+`regNone` sentinel remains distinct. Native `json-as` falls from 188,840 to
+186,120 B/op and from 544 to 459 allocations. Eight `GOGC=off` timing samples
+are neutral to favorable, while global-free `many_funcs` stays exactly at
+75,992 B/op and 40 allocations. This is unconditional ownership repair, not a
+global-count or workload selector.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so
