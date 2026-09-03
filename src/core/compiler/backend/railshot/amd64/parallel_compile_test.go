@@ -4,17 +4,23 @@ package amd64
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
 )
+
+func TestParallelFuncResultSizeAMD64(t *testing.T) {
+	if got, want := unsafe.Sizeof(funcResult{}), uintptr(104); got != want {
+		t.Fatalf("funcResult size = %d, want %d", got, want)
+	}
+}
 
 func TestCompileWorkersDeterministic(t *testing.T) {
 	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
@@ -82,16 +88,6 @@ func equalWorkerModuleStatsAMD64(a, b *ModuleStats) bool {
 		aCopy.Funcs[i], bCopy.Funcs[i] = &aFunc, &bFunc
 	}
 	return reflect.DeepEqual(&aCopy, &bCopy)
-}
-
-func TestCompileWorkersLowestIndexError(t *testing.T) {
-	results := make([]funcResult, 8)
-	results[7].err = errors.New("late index")
-	results[2].err = errors.New("first index")
-	idx, err := firstFuncError(results)
-	if idx != 2 || err == nil || err.Error() != "first index" {
-		t.Fatalf("firstFuncError = (%d, %v), want (2, first index)", idx, err)
-	}
 }
 
 func BenchmarkCompileModuleCompactionAMD64(b *testing.B) {

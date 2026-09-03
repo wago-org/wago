@@ -1,5 +1,7 @@
 package shared
 
+import "sync"
+
 // ResolveWorkers caps a requested per-function worker count to the process and
 // module limits. Values <= 1 preserve the serial fast path.
 func ResolveWorkers(requested, functions, gomaxprocs int) int {
@@ -40,16 +42,35 @@ func ModuleEntries(functions int) (entry, internal []int) {
 	return entries[:functions:functions], entries[functions:]
 }
 
-// FirstErrorIndex returns the first function error in source order. Parallel
-// compilers use it after all workers join so diagnostics never depend on
-// scheduling order.
-func FirstErrorIndex(functions int, errorAt func(int) error) (int, error) {
-	for i := 0; i < functions; i++ {
-		if err := errorAt(i); err != nil {
-			return i, err
-		}
+// LowestIndexError retains only the lowest-indexed function error produced by
+// parallel compilation. Keeping this once per module avoids an error interface
+// in every per-function result while preserving deterministic diagnostics.
+type LowestIndexError struct {
+	mu    sync.Mutex
+	index int
+	err   error
+}
+
+func (e *LowestIndexError) Reset(limit int) {
+	e.index, e.err = limit, nil
+}
+
+func (e *LowestIndexError) Record(index int, err error) {
+	if err == nil {
+		return
 	}
-	return 0, nil
+	e.mu.Lock()
+	if index < e.index {
+		e.index, e.err = index, err
+	}
+	e.mu.Unlock()
+}
+
+func (e *LowestIndexError) Result() (int, error) {
+	e.mu.Lock()
+	index, err := e.index, e.err
+	e.mu.Unlock()
+	return index, err
 }
 
 // ModuleGlobalPinInfo is the architecture-neutral display form of one

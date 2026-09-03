@@ -716,22 +716,19 @@ type workerState struct {
 }
 
 // funcResult is one independently compiled local function. worker/start/end
-// identify its owned bytes after the worker pool joins; relocs is independently
-// owned by the fn compiler state (it is not backed by scratch).
+// identify its owned bytes after the worker pool joins. Relocations are written
+// directly to the module-owned per-function slice because each worker owns one
+// function index at a time.
 type funcResult struct {
-	worker         int
-	start          int
-	end            int
-	bodyBytes      int
-	layoutFlags    uint8
-	internalOff    int
-	directPrepared bool
-	adapterTail    adapterTailInfo
-	adapter        sharedAdapterInfo
-	trapBody       sharedTrapBodyInfo
-	relocs         []callReloc
-	omitted        bool
-	err            error
+	worker      int
+	start       int
+	end         int
+	bodyBytes   int
+	layoutFlags uint8
+	internalOff int
+	adapterTail adapterTailInfo
+	adapter     sharedAdapterInfo
+	trapBody    sharedTrapBodyInfo
 }
 
 const (
@@ -739,6 +736,8 @@ const (
 	layoutHasLoop
 	layoutHasCall
 	layoutCallsSelf
+	layoutDirectPrepared
+	layoutOmitted
 )
 
 func markDirectPrepared(bits []uint64, n, bit int) []uint64 {
@@ -1334,7 +1333,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		states[i].scratch.classifier = classifier
 	}
 	results := make([]funcResult, n)
-	var next atomic.Int64
+	var work struct {
+		next     atomic.Int64
+		failures shared.LowestIndexError
+	}
+	work.failures.Reset(n)
 	var wg sync.WaitGroup
 	wg.Add(workers)
 	for workerID := range states {
@@ -1342,7 +1345,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			defer wg.Done()
 			ws := &states[workerID]
 			for {
-				i := int(next.Add(1) - 1)
+				i := int(work.next.Add(1) - 1)
 				if i >= n {
 					return
 				}
@@ -1353,7 +1356,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
 					st.peep("inline-dead-body")
 					allHints[i] = funcHints{}
-					results[i] = funcResult{omitted: true}
+					results[i] = funcResult{layoutFlags: layoutOmitted}
 					continue
 				}
 				layoutFlags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(allHints[i].hasLoop, layoutHasLoop) | boolFlag(allHints[i].hasCall, layoutHasCall) | boolFlag(allHints[i].callsSelf, layoutCallsSelf)
@@ -1361,12 +1364,14 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTable, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, ws.scratch)
 				allHints[i] = funcHints{}
 				if err != nil {
-					results[i].err = err
+					work.failures.Record(i, err)
 					continue
 				}
+				relocs[i] = rl
+				layoutFlags |= boolFlag(ws.scratch.directPrepared, layoutDirectPrepared)
 				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
-				result := funcResult{worker: workerID, start: start, end: len(ws.arena), bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: layoutFlags, internalOff: internalOff, directPrepared: ws.scratch.directPrepared, relocs: rl}
+				result := funcResult{worker: workerID, start: start, end: len(ws.arena), bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: layoutFlags, internalOff: internalOff}
 				if policy.CompactNative {
 					if policy.EnabledOption(optSharedAdapters) {
 						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
@@ -1385,7 +1390,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}(workerID)
 	}
 	wg.Wait()
-	if i, err := firstFuncError(results); err != nil {
+	if i, err := work.failures.Result(); err != nil {
 		return nil, fmt.Errorf("arm64: function %d: %w", i, err)
 	}
 
@@ -1403,7 +1408,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	var trapBodyCluster sharedTrapBodyCluster
 	for i := range results {
 		r := &results[i]
-		if r.omitted {
+		if r.layoutFlags&layoutOmitted != 0 {
 			continue
 		}
 		if pad := functionStartPaddingFlags(len(code), r.bodyBytes, r.layoutFlags, policy); pad != 0 {
@@ -1411,10 +1416,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 		entry[i] = len(code)
 		internalEntry[i] = len(code) + r.internalOff
-		if r.directPrepared {
+		if r.layoutFlags&layoutDirectPrepared != 0 {
 			directPrepared = markDirectPrepared(directPrepared, n, i)
 		}
-		relocs[i] = r.relocs
 		if adapterTails != nil && r.adapterTail.returnOff != 0 {
 			r.adapterTail.function = uint32(i)
 			adapterTails = append(adapterTails, r.adapterTail)
@@ -1523,10 +1527,6 @@ func patchCallRelocs(code []byte, entry, internalEntry []int, relocs [][]callRel
 		}
 	}
 	return nil
-}
-
-func firstFuncError(results []funcResult) (int, error) {
-	return shared.FirstErrorIndex(len(results), func(i int) error { return results[i].err })
 }
 
 func finalizeModuleNativeSize(ms *ModuleStats, codeLen, moduleOther, mappedBytes int) {
