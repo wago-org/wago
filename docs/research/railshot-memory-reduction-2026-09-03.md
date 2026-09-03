@@ -105,6 +105,14 @@ This is a staged reduction, not satisfaction of the 32--48-byte common-record
 target. Index-width, further retention work, sidecar pooling, and policy deletion
 remain subject to the gates below.
 
+A smaller initial control-merge reserve was measured and rejected. Reducing the
+ARM64 reserve from 16 records to four left `many_funcs` unchanged at about
+78,088 B/op and 40 allocations, but made merge-heavy `json-as` grow through two
+intermediate backings: allocation increased from about 255,747 to 258,819 B/op
+and from 936 to 938 objects. The fixed reserve is therefore not an easy cut.
+Further control-memory work should split independently cold feature families or
+narrow exact domains instead of trading retained capacity for allocation churn.
+
 The first worker-lifecycle implementation keeps the initial operand chunk and
 ratchets overflow retention to the just-completed function's actual chunk use.
 Repeated large functions therefore reuse backing, while a smaller successor
