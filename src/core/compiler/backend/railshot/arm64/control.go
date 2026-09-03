@@ -31,6 +31,7 @@ import (
 var errBadLabel = fmt.Errorf("arm64: br label out of range")
 
 type ctrlKind uint8
+type ctrlFlags uint16
 
 const (
 	cfFunc ctrlKind = iota
@@ -40,18 +41,22 @@ const (
 	cfTry
 )
 
+const (
+	ctrlHasElse ctrlFlags = 1 << iota
+	ctrlEntryUnreachable
+	ctrlEndReachable
+	ctrlRegMerge1
+	ctrlLoopHasCall
+	ctrlLoopHasNested
+	ctrlLoopHasTable
+)
+
 // ctrlFrame is one open control construct (or the implicit function frame).
 type ctrlFrame struct {
-	kind          ctrlKind
-	res0          machineType // first result's machine type (valid when resultN >= 1)
-	hasElse       bool
-	entryUnreach  bool
-	endReachable  bool
-	regMerge1     bool // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
-	loopHasGrow   bool
-	loopHasCall   bool
-	loopHasNested bool
-	loopHasTable  bool
+	kind       ctrlKind
+	res0       machineType // first result's machine type (valid when resultN >= 1)
+	flags      ctrlFlags
+	mergeIndex uint32 // index+1 into scratch.ctrlMerges; zero has no cold merge state
 
 	height          int // operand depth at the frame's result base
 	paramN, resultN int
@@ -82,15 +87,33 @@ type ctrlFrame struct {
 	// merge for blocks/ifs), fixed by the first edge; entryState is a cfIf
 	// header snapshot — the else body's entry state, and the cond-false edge's
 	// state for an if without else.
-	branchState []locState
-	entryState  []locState
-	coldEdges   []coldEdge // deferred non-empty unlikely br_if edges targeting this frame
+	coldEdges []coldEdge // deferred non-empty unlikely br_if edges targeting this frame
 
 	// Exception-handling state is cold for ordinary control constructs. Keep one
 	// pointer in the common frame and allocate the sidecar only for a try_table or
 	// a branch target that receives a reference-carrying catch.
 	eh *ctrlFrameEH
 }
+
+func (fr *ctrlFrame) has(flag ctrlFlags) bool { return fr.flags&flag != 0 }
+
+func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
+	if enabled {
+		fr.flags |= flag
+	} else {
+		fr.flags &^= flag
+	}
+}
+
+// ctrlFrameMerge contains local-state agreement needed only by control frames
+// in call-making functions with pinned locals. Keeping it in a compact scratch
+// sidecar removes two scanned slice headers from every ordinary frame.
+type ctrlFrameMerge struct {
+	branchState []locState
+	entryState  []locState
+}
+
+const initialCtrlMergeCapacity = 16
 
 type ctrlFrameEH struct {
 	// cfTry only: one fixed native-stack handler record plus an ordered catch
@@ -108,6 +131,103 @@ func (fr *ctrlFrame) ensureEH() *ctrlFrameEH {
 		fr.eh = new(ctrlFrameEH)
 	}
 	return fr.eh
+}
+
+func (f *fn) ctrlMerge(fr *ctrlFrame) *ctrlFrameMerge {
+	if fr.mergeIndex == 0 {
+		return nil
+	}
+	return &f.scratchState().ctrlMerges[fr.mergeIndex-1]
+}
+
+func (f *fn) ensureCtrlMerge(fr *ctrlFrame) *ctrlFrameMerge {
+	if merge := f.ctrlMerge(fr); merge != nil {
+		return merge
+	}
+	sc := f.scratchState()
+	if sc.ctrlMerges == nil {
+		sc.ctrlMerges = make([]ctrlFrameMerge, 0, initialCtrlMergeCapacity)
+	}
+	sc.ctrlMerges = append(sc.ctrlMerges, ctrlFrameMerge{})
+	fr.mergeIndex = uint32(len(sc.ctrlMerges))
+	return &sc.ctrlMerges[fr.mergeIndex-1]
+}
+
+func (f *fn) releaseCtrlMerge(fr *ctrlFrame) {
+	if fr.mergeIndex == 0 {
+		return
+	}
+	sc := f.scratchState()
+	merge := &sc.ctrlMerges[fr.mergeIndex-1]
+	*merge = ctrlFrameMerge{}
+}
+
+// pushCtrl reuses a cold-merge slot previously assigned to this nesting depth.
+// Control frames are stack-disciplined, so depth is a stable bounded owner and
+// the sidecar arena grows with maximum depth rather than total blocks compiled.
+func (f *fn) pushCtrl(fr *ctrlFrame) {
+	depth := len(f.ctrl)
+	if depth < cap(f.ctrl) {
+		stale := f.ctrl[:cap(f.ctrl)][depth].mergeIndex
+		switch {
+		case fr.mergeIndex == 0:
+			fr.mergeIndex = stale
+		case stale != 0 && stale != fr.mergeIndex:
+			sc := f.scratchState()
+			fresh := fr.mergeIndex
+			sc.ctrlMerges[stale-1] = sc.ctrlMerges[fresh-1]
+			sc.ctrlMerges[fresh-1] = ctrlFrameMerge{}
+			if int(fresh) == len(sc.ctrlMerges) {
+				sc.ctrlMerges = sc.ctrlMerges[:len(sc.ctrlMerges)-1]
+			}
+			fr.mergeIndex = stale
+		}
+	}
+	f.ctrl = append(f.ctrl, *fr)
+}
+
+func (f *fn) frameBranchState(fr *ctrlFrame) []locState {
+	if merge := f.ctrlMerge(fr); merge != nil {
+		return merge.branchState
+	}
+	return nil
+}
+
+func (f *fn) frameEntryState(fr *ctrlFrame) []locState {
+	if merge := f.ctrlMerge(fr); merge != nil {
+		return merge.entryState
+	}
+	return nil
+}
+
+func (f *fn) setFrameBranchState(fr *ctrlFrame, state []locState) {
+	if state != nil {
+		f.ensureCtrlMerge(fr).branchState = state
+	}
+}
+
+func (f *fn) setFrameEntryState(fr *ctrlFrame, state []locState) {
+	if state != nil {
+		f.ensureCtrlMerge(fr).entryState = state
+	}
+}
+
+func (f *fn) convergeFrameBranchState(fr *ctrlFrame) {
+	state := f.frameBranchState(fr)
+	f.convergeEdgeTo(&state)
+	f.setFrameBranchState(fr, state)
+}
+
+func (f *fn) convergeFrameBranchStateWithDead(fr *ctrlFrame, deadGP, deadFP regMask) {
+	state := f.frameBranchState(fr)
+	f.convergeEdgeToWithDead(&state, deadGP, deadFP)
+	f.setFrameBranchState(fr, state)
+}
+
+func (f *fn) convergeFrameEntryState(fr *ctrlFrame) {
+	state := f.frameEntryState(fr)
+	f.convergeEdgeTo(&state)
+	f.setFrameEntryState(fr, state)
 }
 
 type ehCatchClause struct {
@@ -135,7 +255,7 @@ type loopPin struct {
 // two caller-saved registers only for a simple call-free loop; slots remain the
 // canonical representation outside the loop.
 func (f *fn) activateLoopPins(fr *ctrlFrame) {
-	if !f.opt(optLoopRegionPins) || fr.kind != cfLoop || fr.loopHasCall || fr.loopHasNested || fr.loopHasTable {
+	if !f.opt(optLoopRegionPins) || fr.kind != cfLoop || fr.has(ctrlLoopHasCall) || fr.has(ctrlLoopHasNested) || fr.has(ctrlLoopHasTable) {
 		return
 	}
 	for _, r := range []Reg{X12, X13} {
@@ -649,7 +769,7 @@ func (f *fn) convergeBranchLocals(fr *ctrlFrame) {
 	if fr.kind == cfFunc {
 		return
 	}
-	f.convergeEdgeTo(&fr.branchState)
+	f.convergeFrameBranchState(fr)
 }
 
 // branchJump emits the jump for a branch that targets frame fr.
@@ -674,7 +794,7 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 		sc.retSites = append(sc.retSites, f.a.Branch())
 	default:
 		f.appendEndSite(&fr.ends, f.a.Branch())
-		fr.endReachable = true
+		fr.set(ctrlEndReachable, true)
 	}
 }
 
@@ -697,7 +817,7 @@ func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
 		return true
 	case cfBlock, cfIf:
 		f.appendEndSite(&fr.condEnds, f.a.Bcond(cc)) // patched to the block end (imm19)
-		fr.endReachable = true
+		fr.set(ctrlEndReachable, true)
 		return true
 	}
 	return false // cfFunc: the guarded form carries the singleRegResult load
@@ -718,7 +838,7 @@ func (f *fn) zeroBranchJump(fr *ctrlFrame, condition Reg) bool {
 		return true
 	case cfBlock, cfIf:
 		f.appendEndSite(&fr.condEnds, f.a.Cbnz32(condition))
-		fr.endReachable = true
+		fr.set(ctrlEndReachable, true)
 		return true
 	}
 	return false
@@ -811,7 +931,8 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			return err
 		}
 	}
-	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, entryUnreach: f.unreachable, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if kind == cfLoop {
 		fr.branchN = pN
 	} else {
@@ -821,9 +942,13 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// → mergeFReg) carries that value in a register across all its edges (fall-
 	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
-	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128
+	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
 	if kind == cfLoop && !f.unreachable {
-		fr.loopSetLocals, fr.loopHasGrow, fr.loopHasCall, fr.loopHasNested, fr.loopHasTable = scanLoopBodyWithClassifier(r, f.classifier) // P6.2 + region-pin foundation (reader restored)
+		var hasCall, hasNested, hasTable bool
+		fr.loopSetLocals, _, hasCall, hasNested, hasTable = scanLoopBodyWithClassifier(r, f.classifier) // P6.2 + region-pin foundation (reader restored)
+		fr.set(ctrlLoopHasCall, hasCall)
+		fr.set(ctrlLoopHasNested, hasNested)
+		fr.set(ctrlLoopHasTable, hasTable)
 		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
 		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
 		// check to elide) and not while already inside a versioned body.
@@ -836,11 +961,12 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 	}
 	if f.unreachable {
-		f.ctrl = append(f.ctrl, fr)
+		f.pushCtrl(&fr)
+		f.releaseCtrlMerge(&fr)
 		return nil
 	}
 	if kind == cfIf {
-		f.convergeEdgeTo(&fr.entryState) // header snapshot: else entry / cond-false edge state
+		f.convergeFrameEntryState(&fr) // header snapshot: else entry / cond-false edge state
 		if isFusableCompare(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
@@ -858,7 +984,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 						f.release(creg)
 					}
 					f.stats.peep("zero-branch")
-					f.ctrl = append(f.ctrl, fr)
+					f.pushCtrl(&fr)
 					return nil
 				}
 			}
@@ -867,7 +993,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
 			f.captureGCFrameShape(&fr)
 			fr.elseSite = f.a.Bcond(invertCond(cc)) // to else/end when false
-			f.ctrl = append(f.ctrl, fr)
+			f.pushCtrl(&fr)
 			return nil
 		}
 		creg, cOwned := f.materializeRead(f.popValue()) // the test only reads: a pinned local needs no copy
@@ -894,7 +1020,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			// reload OUT of the body — a lazy (lsMem) loop target would push the
 			// reload into every iteration instead.
 			f.reconcileLocals()
-			f.convergeEdgeTo(&fr.branchState) // records the all-lsStackReg target
+			f.convergeFrameBranchState(&fr) // records the all-lsStackReg target
 		}
 		f.flush()
 		if kind == cfLoop {
@@ -903,7 +1029,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			f.emitInterruptCheck()
 		}
 	}
-	f.ctrl = append(f.ctrl, fr)
+	f.pushCtrl(&fr)
 	if kind == cfLoop && !f.unreachable {
 		f.activateLoopPins(&f.ctrl[len(f.ctrl)-1])
 	}
@@ -1090,7 +1216,8 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	if n > maxEHCatches {
 		return fmt.Errorf("bounded exception handling supports at most %d catches per try_table", maxEHCatches)
 	}
-	fr := ctrlFrame{kind: cfTry, paramN: len(paramTypes), resultN: len(resultTypes), branchN: len(resultTypes), elseSite: -1, entryUnreach: f.unreachable, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	fr := ctrlFrame{kind: cfTry, paramN: len(paramTypes), resultN: len(resultTypes), branchN: len(resultTypes), elseSite: -1, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	fr.set(ctrlEntryUnreachable, f.unreachable)
 	eh := fr.ensureEH()
 	for i := uint32(0); i < n; i++ {
 		kindByte, err := r.Byte()
@@ -1157,13 +1284,13 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
 			f.ctrl[clause.frame].ensureEH().refResults[clause.payloadN-1] = true
 		}
-		f.ctrl[clause.frame].regMerge1 = false
+		f.ctrl[clause.frame].set(ctrlRegMerge1, false)
 		eh.catches = append(eh.catches, clause)
 	}
 	fr.height = f.depth() - fr.paramN
 	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
 	if f.unreachable {
-		f.ctrl = append(f.ctrl, fr)
+		f.pushCtrl(&fr)
 		return nil
 	}
 	if f.ehTryDepth >= maxEHTryRecords {
@@ -1194,7 +1321,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	f.st64(X16, ehTargetOff, X17)
 	f.st64(X16, ehSavedLinMemOff, linMemReg)
 	f.a.MovReg64(ehReg, X16)
-	f.ctrl = append(f.ctrl, fr)
+	f.pushCtrl(&fr)
 	return nil
 }
 
@@ -1290,7 +1417,7 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 		}
 		f.ld64(reg, SP, off)
 	}
-	if target.regMerge1 && clause.payloadN == 1 {
+	if target.has(ctrlRegMerge1) && clause.payloadN == 1 {
 		if clause.scalarN == 0 {
 			f.leaDisp(mergeReg, SP, rootOff, true)
 		} else if clause.payloadType[0].isFloat() {
@@ -1401,7 +1528,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 
 func (f *fn) opElse() error {
 	fr := &f.ctrl[len(f.ctrl)-1]
-	if fr.entryUnreach {
+	if fr.has(ctrlEntryUnreachable) {
 		return nil
 	}
 	if f.unreachable {
@@ -1411,31 +1538,33 @@ func (f *fn) opElse() error {
 		// (#68's root cause was skipping this). Converge to the end's recorded
 		// state; as the chronologically first end edge it usually fixes it.
 		f.recordGCBranchResults(fr, fr.resultN)
-		f.convergeEdgeTo(&fr.branchState)
-		if fr.regMerge1 {
+		f.convergeFrameBranchState(fr)
+		if fr.has(ctrlRegMerge1) {
 			f.reconcileMerge1(fr) // then-branch result → mergeReg
 		} else {
 			f.flush()
 		}
 		f.appendEndSite(&fr.ends, f.a.Branch())
-		fr.endReachable = true
+		fr.set(ctrlEndReachable, true)
 	}
 	f.a.PatchBranch19(fr.elseSite, f.a.Len()) // the false edge is a B.cond (imm19)
 	fr.elseSite = -1
-	fr.hasElse = true
+	fr.set(ctrlHasElse, true)
 	f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.paramTypes), frameGCRootFlags(fr.baseGCRoots, fr.paramGCRoots))
 	// The else body is entered via the if's false edge: locals are exactly in the
 	// header-snapshot state (no code).
-	f.setLocalsState(fr.entryState)
+	f.setLocalsState(f.frameEntryState(fr))
 	return nil
 }
 
 func (f *fn) opEnd(r *wasm.Reader) error {
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
+	branchState := f.frameBranchState(&fr)
+	entryState := f.frameEntryState(&fr)
 	// ctrl backing is reused across functions. Clear the popped slot so its
 	// variable-sized type and loop-analysis slices do not stay live in scratch.
-	f.ctrl[last] = ctrlFrame{}
+	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
 	if len(fr.loopPins) != 0 {
 		f.activeLoopPins = nil // this frame's pins leave scope with the pop
@@ -1476,17 +1605,18 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 			// Merge edge: converge to the end's recorded state (or fix it).
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
 			// fall-through's state simply flows out.
-			deadGP, deadFP := f.planForwardMergeDeadLocals(r, fr.branchState, nil)
-			f.convergeEdgeToWithDead(&fr.branchState, deadGP, deadFP)
+			deadGP, deadFP := f.planForwardMergeDeadLocals(r, branchState, nil)
+			f.convergeFrameBranchStateWithDead(&fr, deadGP, deadFP)
+			branchState = f.frameBranchState(&fr)
 		}
-		if fr.regMerge1 {
+		if fr.has(ctrlRegMerge1) {
 			f.reconcileMerge1(&fr) // result → mergeReg, operands below → slots
 		} else {
 			f.flush() // results at [height, height+resultN)
 		}
 	}
 	// An if without else: the cond-false path reaches end with params == results.
-	if fr.kind == cfIf && !fr.hasElse && !fr.entryUnreach {
+	if fr.kind == cfIf && !fr.has(ctrlHasElse) && !fr.has(ctrlEntryUnreachable) {
 		for i := 0; i < len(fr.paramGCRoots) && i < fr.resultN; i++ {
 			if len(fr.resultGCRoots) < fr.resultN {
 				fr.resultGCRoots = append(fr.resultGCRoots, make([]bool, fr.resultN-len(fr.resultGCRoots))...)
@@ -1497,12 +1627,12 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		// edges fixed a stronger end state (or a regMerge1 passthrough needs its
 		// value in mergeReg), a stub on this edge converges it. The then
 		// fall-through jumps over the stub.
-		deadGP, deadFP := f.planForwardMergeDeadLocals(r, fr.branchState, fr.entryState)
+		deadGP, deadFP := f.planForwardMergeDeadLocals(r, branchState, entryState)
 		needLoads := false
-		if f.usesCalls && fr.branchState != nil && fr.entryState != nil {
+		if f.usesCalls && branchState != nil && entryState != nil {
 			for x := 0; x < f.nLocals; x++ {
 				reg, isFloat, ok := f.pinReg(x)
-				if !ok || fr.branchState[x] != lsStackReg || fr.entryState[x] != lsMem {
+				if !ok || branchState[x] != lsStackReg || entryState[x] != lsMem {
 					continue
 				}
 				dead := deadGP.has(reg)
@@ -1516,11 +1646,11 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 			}
 		}
 		skip := -1
-		if (fr.regMerge1 || needLoads) && fallthroughReachable {
+		if (fr.has(ctrlRegMerge1) || needLoads) && fallthroughReachable {
 			skip = f.a.Branch()
 		}
 		f.a.PatchBranch19(fr.elseSite, f.a.Len()) // the false edge is a B.cond (imm19)
-		if fr.regMerge1 {
+		if fr.has(ctrlRegMerge1) {
 			slot := slotsOfTypes(fr.baseTypes)
 			if fr.res0.isFloat() {
 				f.fld(mergeFReg, SP, f.spillOff(slot), fr.res0 == mtF64) // passthrough → mergeFReg
@@ -1530,12 +1660,13 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		}
 		// Converge the cond-false edge from the header snapshot into the end state
 		// (records it when this is the only end edge).
-		f.setLocalsState(fr.entryState)
-		f.convergeEdgeToWithDead(&fr.branchState, deadGP, deadFP)
+		f.setLocalsState(entryState)
+		f.convergeFrameBranchStateWithDead(&fr, deadGP, deadFP)
+		branchState = f.frameBranchState(&fr)
 		if skip != -1 {
 			f.a.PatchBranch26(skip, f.a.Len()) // the skip is an unconditional B (imm26)
 		}
-		fr.endReachable = true
+		fr.set(ctrlEndReachable, true)
 	}
 	if fr.kind == cfLoop && len(fr.coldEdges) != 0 {
 		skip := -1
@@ -1566,7 +1697,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 			f.a.PatchBranch19(fr.coldEdges[i].site, f.a.Len())
 			f.a.B = append(f.a.B, fr.coldEdges[i].code...)
 			fr.ends = append(fr.ends, f.a.Branch())
-			fr.endReachable = true
+			fr.set(ctrlEndReachable, true)
 		}
 		if skip != -1 {
 			f.a.PatchBranch26(skip, f.a.Len())
@@ -1578,13 +1709,13 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	for _, site := range fr.condEnds {
 		f.a.PatchBranch19(site, f.a.Len()) // fr.condEnds are B.cond sites (imm19)
 	}
-	endReachable := fallthroughReachable || fr.endReachable
+	endReachable := fallthroughReachable || fr.has(ctrlEndReachable)
 	f.unreachable = !endReachable
 	if endReachable {
 		if fr.kind != cfLoop {
-			f.setLocalsState(fr.branchState) // merge: what every edge guaranteed
+			f.setLocalsState(branchState) // merge: what every edge guaranteed
 		}
-		if fr.regMerge1 {
+		if fr.has(ctrlRegMerge1) {
 			// Every reaching edge left the result in the merge register (int→mergeReg,
 			// float→mergeFReg) and the operands below in canonical slots [0, height).
 			f.setDepthTypesWithGCRoots(fr.baseTypes, fr.baseGCRoots)
@@ -1602,7 +1733,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		}
 		f.markEHReferenceResults(&fr)
 	}
-	if fr.kind == cfTry && !fr.entryUnreach {
+	if fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
 		recordOff := f.ehRecordOff(fr.ensureEH().recordIndex)
 		if endReachable {
 			f.ld64(ehReg, SP, recordOff+ehPrevOff)
@@ -1619,8 +1750,9 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	}
 	// The popped frame no longer owns these temporary buffers. Recycle them for
 	// later frames at the same or a shallower nesting depth.
-	f.freeLocStateBuf(fr.branchState)
-	f.freeLocStateBuf(fr.entryState)
+	f.freeLocStateBuf(branchState)
+	f.freeLocStateBuf(entryState)
+	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(fr.ends)
 	f.freeEndsBuf(fr.condEnds)
 	return nil
@@ -1636,7 +1768,7 @@ func (f *fn) branchToFrame(fi int) {
 	f.convergeBranchLocals(fr)
 	a, d := fr.branchN, f.depth()
 	f.flush()
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
 		f.moveBranchValues(fr, d, a)
@@ -1694,7 +1826,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	// branches or PC-relative ops — so the bytes can be relocated freely below.
 	mark := f.a.Len()
 	f.storeLoopPinsLeaving(fi)
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
 		f.moveBranchValues(fr, d, a)
@@ -1764,7 +1896,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	f.st64(SP, f.spillOff(refSlot), ref)
 	f.release(ref)
 	over := f.zeroBranch(ref, true, false)
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
 		f.moveBranchValues(fr, d, fr.branchN)
@@ -1800,7 +1932,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	f.ld64(condition, SP, f.spillOff(refSlot))
 	f.release(condition)
 	over := f.zeroBranch(condition, true, true)
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
 		f.moveBranchValues(fr, d, fr.branchN)
@@ -1835,7 +1967,7 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 		skipCond = condNE
 	}
 	over := f.zeroBranch(matched, false, skipCond == condE)
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
 		f.moveBranchValues(fr, d, fr.branchN)
@@ -1892,7 +2024,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	emitCase := func(labelIdx uint32) {
 		fr := &f.ctrl[len(f.ctrl)-1-int(labelIdx)]
 		f.convergeBranchLocals(fr) // post-reconcile state records/no-op converges (no code, no flags)
-		if fr.regMerge1 {
+		if fr.has(ctrlRegMerge1) {
 			f.branchEdgeToMerge1(fr, d)
 		} else {
 			f.moveBranchValues(fr, d, fr.branchN)

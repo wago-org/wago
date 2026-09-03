@@ -267,13 +267,13 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
-	f.mergeGCRefFactsInto(&fr.branchGCFacts)
+	f.mergeFrameBranchGCFacts(fr)
 	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
 	k := f.flushBelow(top)
 	cc := f.condenseToFlags(top)
 	a := fr.branchN
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, k)
 	} else {
 		f.moveBranchValues(fr, k, a)

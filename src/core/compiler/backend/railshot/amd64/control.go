@@ -21,6 +21,7 @@ import (
 var errBadLabel = fmt.Errorf("amd64: br label out of range")
 
 type ctrlKind uint8
+type ctrlFlags uint16
 
 const (
 	cfFunc ctrlKind = iota
@@ -30,16 +31,20 @@ const (
 	cfTry
 )
 
+const (
+	ctrlHasElse ctrlFlags = 1 << iota
+	ctrlEntryUnreachable
+	ctrlEndReachable
+	ctrlRegMerge1
+	ctrlResultGCFactsSet
+)
+
 // ctrlFrame is one open control construct (or the implicit function frame).
 type ctrlFrame struct {
-	kind             ctrlKind
-	res0             machineType // first result's machine type (valid when resultN >= 1)
-	hasElse          bool
-	entryUnreach     bool
-	endReachable     bool
-	regMerge1        bool // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
-	resultGCFactsSet bool
-	loopHasGrow      bool
+	kind       ctrlKind
+	res0       machineType // first result's machine type (valid when resultN >= 1)
+	flags      ctrlFlags
+	mergeIndex uint32 // index+1 into scratch.ctrlMerges; zero has no cold merge state
 
 	height          int // operand depth at the frame's result base
 	paramN, resultN int
@@ -68,16 +73,34 @@ type ctrlFrame struct {
 	// merge for blocks/ifs), fixed by the first edge; entryState is a cfIf
 	// header snapshot — the else body's entry state, and the cond-false edge's
 	// state for an if without else.
-	branchState   []locState
-	entryState    []locState
-	branchGCFacts []shared.GCRefFact
-	entryGCFacts  []shared.GCRefFact
-
 	// Exception-handling state is cold for ordinary control constructs. Keep one
 	// pointer in the common frame and allocate the sidecar only for a try_table or
 	// a branch target that receives a reference-carrying catch.
 	eh *ctrlFrameEH
 }
+
+func (fr *ctrlFrame) has(flag ctrlFlags) bool { return fr.flags&flag != 0 }
+
+func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
+	if enabled {
+		fr.flags |= flag
+	} else {
+		fr.flags &^= flag
+	}
+}
+
+// ctrlFrameMerge contains local-state and GC-fact agreement needed only by
+// frames that actually merge pinned locals or reference facts. Keeping it in a
+// compact scratch sidecar removes four scanned slice headers from every
+// ordinary frame.
+type ctrlFrameMerge struct {
+	branchState   []locState
+	entryState    []locState
+	branchGCFacts []shared.GCRefFact
+	entryGCFacts  []shared.GCRefFact
+}
+
+const initialCtrlMergeCapacity = 16
 
 type ctrlFrameEH struct {
 	// cfTry only: one of a bounded set of fixed six-slot native-stack records
@@ -95,6 +118,129 @@ func (fr *ctrlFrame) ensureEH() *ctrlFrameEH {
 		fr.eh = new(ctrlFrameEH)
 	}
 	return fr.eh
+}
+
+func (f *fn) ctrlMerge(fr *ctrlFrame) *ctrlFrameMerge {
+	if fr.mergeIndex == 0 {
+		return nil
+	}
+	return &f.scratchState().ctrlMerges[fr.mergeIndex-1]
+}
+
+func (f *fn) ensureCtrlMerge(fr *ctrlFrame) *ctrlFrameMerge {
+	if merge := f.ctrlMerge(fr); merge != nil {
+		return merge
+	}
+	sc := f.scratchState()
+	if sc.ctrlMerges == nil {
+		sc.ctrlMerges = make([]ctrlFrameMerge, 0, initialCtrlMergeCapacity)
+	}
+	sc.ctrlMerges = append(sc.ctrlMerges, ctrlFrameMerge{})
+	fr.mergeIndex = uint32(len(sc.ctrlMerges))
+	return &sc.ctrlMerges[fr.mergeIndex-1]
+}
+
+func (f *fn) releaseCtrlMerge(fr *ctrlFrame) {
+	if fr.mergeIndex == 0 {
+		return
+	}
+	sc := f.scratchState()
+	merge := &sc.ctrlMerges[fr.mergeIndex-1]
+	*merge = ctrlFrameMerge{}
+}
+
+// pushCtrl reuses a cold-merge slot previously assigned to this nesting depth.
+// Control frames are stack-disciplined, so depth is a stable bounded owner and
+// the sidecar arena grows with maximum depth rather than total blocks compiled.
+func (f *fn) pushCtrl(fr *ctrlFrame) {
+	depth := len(f.ctrl)
+	if depth < cap(f.ctrl) {
+		stale := f.ctrl[:cap(f.ctrl)][depth].mergeIndex
+		switch {
+		case fr.mergeIndex == 0:
+			fr.mergeIndex = stale
+		case stale != 0 && stale != fr.mergeIndex:
+			sc := f.scratchState()
+			fresh := fr.mergeIndex
+			sc.ctrlMerges[stale-1] = sc.ctrlMerges[fresh-1]
+			sc.ctrlMerges[fresh-1] = ctrlFrameMerge{}
+			if int(fresh) == len(sc.ctrlMerges) {
+				sc.ctrlMerges = sc.ctrlMerges[:len(sc.ctrlMerges)-1]
+			}
+			fr.mergeIndex = stale
+		}
+	}
+	f.ctrl = append(f.ctrl, *fr)
+}
+
+func (f *fn) frameBranchState(fr *ctrlFrame) []locState {
+	if merge := f.ctrlMerge(fr); merge != nil {
+		return merge.branchState
+	}
+	return nil
+}
+
+func (f *fn) frameEntryState(fr *ctrlFrame) []locState {
+	if merge := f.ctrlMerge(fr); merge != nil {
+		return merge.entryState
+	}
+	return nil
+}
+
+func (f *fn) frameBranchGCFacts(fr *ctrlFrame) []shared.GCRefFact {
+	if merge := f.ctrlMerge(fr); merge != nil {
+		return merge.branchGCFacts
+	}
+	return nil
+}
+
+func (f *fn) frameEntryGCFacts(fr *ctrlFrame) []shared.GCRefFact {
+	if merge := f.ctrlMerge(fr); merge != nil {
+		return merge.entryGCFacts
+	}
+	return nil
+}
+
+func (f *fn) setFrameBranchState(fr *ctrlFrame, state []locState) {
+	if state != nil {
+		f.ensureCtrlMerge(fr).branchState = state
+	}
+}
+
+func (f *fn) setFrameEntryState(fr *ctrlFrame, state []locState) {
+	if state != nil {
+		f.ensureCtrlMerge(fr).entryState = state
+	}
+}
+
+func (f *fn) setFrameBranchGCFacts(fr *ctrlFrame, facts []shared.GCRefFact) {
+	if facts != nil {
+		f.ensureCtrlMerge(fr).branchGCFacts = facts
+	}
+}
+
+func (f *fn) setFrameEntryGCFacts(fr *ctrlFrame, facts []shared.GCRefFact) {
+	if facts != nil {
+		f.ensureCtrlMerge(fr).entryGCFacts = facts
+	}
+}
+
+func (f *fn) convergeFrameBranchState(fr *ctrlFrame) {
+	state := f.frameBranchState(fr)
+	f.convergeEdgeTo(&state)
+	f.setFrameBranchState(fr, state)
+}
+
+func (f *fn) convergeFrameEntryState(fr *ctrlFrame) {
+	state := f.frameEntryState(fr)
+	f.convergeEdgeTo(&state)
+	f.setFrameEntryState(fr, state)
+}
+
+func (f *fn) mergeFrameBranchGCFacts(fr *ctrlFrame) {
+	facts := f.frameBranchGCFacts(fr)
+	f.mergeGCRefFactsInto(&facts)
+	f.setFrameBranchGCFacts(fr, facts)
 }
 
 type ehCatchClause struct {
@@ -266,11 +412,11 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 	if len(fr.resultGCFacts) < n {
 		fr.resultGCFacts = make([]shared.GCRefFact, n)
 	}
-	if !fr.resultGCFactsSet {
+	if !fr.has(ctrlResultGCFactsSet) {
 		for i, root := range resultRoots {
 			fr.resultGCFacts[i] = f.gcRefFact(root)
 		}
-		fr.resultGCFactsSet = true
+		fr.set(ctrlResultGCFactsSet, true)
 		return
 	}
 	for i, root := range resultRoots {
@@ -685,7 +831,7 @@ func (f *fn) convergeBranchLocals(fr *ctrlFrame) {
 	if fr.kind == cfFunc {
 		return
 	}
-	f.convergeEdgeTo(&fr.branchState)
+	f.convergeFrameBranchState(fr)
 }
 
 // branchJump emits the jump for a branch that targets frame fr.
@@ -707,7 +853,7 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 		f.sc.retSites = append(f.sc.retSites, f.a.JmpPlaceholder())
 	default:
 		f.frameAddEnd(fr, f.a.JmpPlaceholder())
-		fr.endReachable = true
+		fr.set(ctrlEndReachable, true)
 	}
 }
 
@@ -725,7 +871,8 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else if op == 0x04 {
 		kind = cfIf
 	}
-	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, entryUnreach: f.unreachable, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if kind == cfLoop {
 		fr.branchN = pN
 	} else {
@@ -735,9 +882,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// → mergeFReg) carries that value in a register across all its edges (fall-
 	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
-	fr.regMerge1 = f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128
+	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
 	if kind == cfIf && !f.unreachable {
-		fr.entryGCFacts = f.snapshotGCRefFacts()
+		f.setFrameEntryGCFacts(&fr, f.snapshotGCRefFacts())
 	}
 	if kind == cfLoop && !f.unreachable {
 		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
@@ -749,14 +896,14 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if f.opt(optLoopPrecheck) && f.memSizeReg != regNone && !f.inVersionedLoop {
 			cands, elidable, hasGrow, setLocals, scanOK := scanLoopHoistableWithClassifier(r, f.m, f.classifier)
 			valid = scanOK
-			fr.loopSetLocals, fr.loopHasGrow = setLocals, hasGrow
+			fr.loopSetLocals = setLocals
 			if scanOK && len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
 				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands, setLocals) {
 					return nil
 				}
 			}
 		} else {
-			fr.loopSetLocals, fr.loopHasGrow, valid = scanLoopBodyWithClassifier(r, f.m, f.classifier) // reader restored
+			fr.loopSetLocals, _, valid = scanLoopBodyWithClassifier(r, f.m, f.classifier) // reader restored
 		}
 		if valid {
 			f.invalidateLoopModifiedGCRefFacts(fr.loopSetLocals)
@@ -765,14 +912,15 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			// unreachable after validation, but never trust partial scan state.
 			f.clearLocalExactGCTypes()
 		}
-		fr.branchGCFacts = f.snapshotGCRefFacts()
+		f.setFrameBranchGCFacts(&fr, f.snapshotGCRefFacts())
 	}
 	if f.unreachable {
-		f.ctrl = append(f.ctrl, fr)
+		f.pushCtrl(&fr)
+		f.releaseCtrlMerge(&fr)
 		return nil
 	}
 	if kind == cfIf {
-		f.convergeEdgeTo(&fr.entryState) // header snapshot: else entry / cond-false edge state
+		f.convergeFrameEntryState(&fr) // header snapshot: else entry / cond-false edge state
 		if isFusableCompare(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
@@ -781,7 +929,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
 			f.captureGCFrameShape(&fr)
 			fr.elseSite = f.a.JccPlaceholder(invertCond(cc)) // to else/end when false
-			f.ctrl = append(f.ctrl, fr)
+			f.pushCtrl(&fr)
 			return nil
 		}
 		creg, cOwned := f.materializeRead(f.popValue()) // TEST only reads: a pinned local needs no copy
@@ -803,7 +951,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			// reload OUT of the body — a lazy (lsMem) loop target would push the
 			// reload into every iteration instead.
 			f.reconcileLocals()
-			f.convergeEdgeTo(&fr.branchState) // records the all-lsStackReg target
+			f.convergeFrameBranchState(&fr) // records the all-lsStackReg target
 			f.flush()
 			// Canonical slots separate the runtime value from fact storage. Install
 			// only declared parameter facts after the flush so a first-entry
@@ -819,7 +967,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			f.emitInterruptCheck(RSI) // RSI freed by the flush() above; poll once per iteration
 		}
 	}
-	f.ctrl = append(f.ctrl, fr)
+	f.pushCtrl(&fr)
 	return nil
 }
 
@@ -882,7 +1030,8 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	if n > maxEHCatches {
 		return fmt.Errorf("bounded exception handling supports at most %d catches per try_table", maxEHCatches)
 	}
-	fr := ctrlFrame{kind: cfTry, paramN: len(paramTypes), resultN: len(resultTypes), branchN: len(resultTypes), elseSite: -1, entryUnreach: f.unreachable, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	fr := ctrlFrame{kind: cfTry, paramN: len(paramTypes), resultN: len(resultTypes), branchN: len(resultTypes), elseSite: -1, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	fr.set(ctrlEntryUnreachable, f.unreachable)
 	eh := fr.ensureEH()
 	for i := uint32(0); i < n; i++ {
 		kindByte, err := r.Byte()
@@ -952,17 +1101,17 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		// The exception edge can arrive with only the conservative local-fact state
 		// established before try_table. Intersect it at registration time just like
 		// an ordinary branch; the out-of-line route restores physical locals only.
-		f.mergeGCRefFactsInto(&f.ctrl[clause.frame].branchGCFacts)
+		f.mergeFrameBranchGCFacts(&f.ctrl[clause.frame])
 		// Catch dispatch writes canonical slots before jumping. Keep the target on
 		// that representation instead of the ordinary single-result register merge.
-		f.ctrl[clause.frame].regMerge1 = false
+		f.ctrl[clause.frame].set(ctrlRegMerge1, false)
 		eh.catches = append(eh.catches, clause)
 	}
 	fr.height = f.depth() - fr.paramN
 	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
 	f.captureGCFrameShape(&fr)
 	if f.unreachable {
-		f.ctrl = append(f.ctrl, fr)
+		f.pushCtrl(&fr)
 		return nil
 	}
 	if f.ehTryDepth >= maxEHTryRecords {
@@ -992,7 +1141,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	f.a.Store64(R11, ehTargetOff, RAX)
 	f.a.Store64(R11, ehSavedRBXOff, RBX)
 	f.a.MovReg64(RBP, R11)
-	f.ctrl = append(f.ctrl, fr)
+	f.pushCtrl(&fr)
 	return nil
 }
 
@@ -1092,7 +1241,7 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 		}
 		f.a.Load64(reg, RSP, off)
 	}
-	if target.regMerge1 && clause.payloadN == 1 {
+	if target.has(ctrlRegMerge1) && clause.payloadN == 1 {
 		if clause.scalarN == 0 {
 			f.a.LeaRsp(mergeReg, rootOff)
 		} else if clause.payloadType[0].isFloat() {
@@ -1194,7 +1343,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 
 func (f *fn) opElse() error {
 	fr := &f.ctrl[len(f.ctrl)-1]
-	if fr.entryUnreach {
+	if fr.has(ctrlEntryUnreachable) {
 		return nil
 	}
 	if f.unreachable {
@@ -1204,31 +1353,35 @@ func (f *fn) opElse() error {
 		// (#68's root cause was skipping this). Converge to the end's recorded
 		// state; as the chronologically first end edge it usually fixes it.
 		f.recordGCBranchResults(fr, fr.resultN)
-		f.mergeGCRefFactsInto(&fr.branchGCFacts)
-		f.convergeEdgeTo(&fr.branchState)
-		if fr.regMerge1 {
+		f.mergeFrameBranchGCFacts(fr)
+		f.convergeFrameBranchState(fr)
+		if fr.has(ctrlRegMerge1) {
 			f.reconcileMerge1(fr) // then-branch result → mergeReg
 		} else {
 			f.flush()
 		}
 		f.frameAddEnd(fr, f.a.JmpPlaceholder())
-		fr.endReachable = true
+		fr.set(ctrlEndReachable, true)
 	}
 	f.a.PatchRel32(fr.elseSite, f.a.Len())
 	fr.elseSite = -1
-	fr.hasElse = true
+	fr.set(ctrlHasElse, true)
 	f.setDepthTypesWithGCInfo(f.frameDepthTypes(fr.baseTypes, fr.paramTypes), frameGCRootFlags(fr.baseGCRoots, fr.paramGCRoots), f.frameGCFacts(fr.baseGCFacts, fr.paramGCFacts))
 	// The else body is entered via the if's false edge: locals are exactly in the
 	// header-snapshot state (no code).
-	f.setLocalsState(fr.entryState)
-	f.installGCRefFacts(fr.entryGCFacts)
+	f.setLocalsState(f.frameEntryState(fr))
+	f.installGCRefFacts(f.frameEntryGCFacts(fr))
 	return nil
 }
 
 func (f *fn) opEnd() error {
 	last := len(f.ctrl) - 1
 	fr := f.ctrl[last]
-	f.ctrl[last] = ctrlFrame{}
+	branchState := f.frameBranchState(&fr)
+	entryState := f.frameEntryState(&fr)
+	branchGCFacts := f.frameBranchGCFacts(&fr)
+	entryGCFacts := f.frameEntryGCFacts(&fr)
+	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
 
 	if fr.kind == cfFunc {
@@ -1246,20 +1399,22 @@ func (f *fn) opEnd() error {
 	if fallthroughReachable {
 		f.recordGCBranchResults(&fr, fr.resultN)
 		if fr.kind != cfLoop {
-			f.mergeGCRefFactsInto(&fr.branchGCFacts)
+			f.mergeFrameBranchGCFacts(&fr)
+			branchGCFacts = f.frameBranchGCFacts(&fr)
 			// Merge edge: converge to the end's recorded state (or fix it).
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
 			// fall-through's state simply flows out.
-			f.convergeEdgeTo(&fr.branchState)
+			f.convergeFrameBranchState(&fr)
+			branchState = f.frameBranchState(&fr)
 		}
-		if fr.regMerge1 {
+		if fr.has(ctrlRegMerge1) {
 			f.reconcileMerge1(&fr) // result → mergeReg, operands below → slots
 		} else {
 			f.flush() // results at [height, height+resultN)
 		}
 	}
 	// An if without else: the cond-false path reaches end with params == results.
-	if fr.kind == cfIf && !fr.hasElse && !fr.entryUnreach {
+	if fr.kind == cfIf && !fr.has(ctrlHasElse) && !fr.has(ctrlEntryUnreachable) {
 		for i := 0; i < len(fr.paramGCRoots) && i < fr.resultN; i++ {
 			if len(fr.resultGCRoots) < fr.resultN {
 				fr.resultGCRoots = append(fr.resultGCRoots, make([]bool, fr.resultN-len(fr.resultGCRoots))...)
@@ -1269,7 +1424,7 @@ func (f *fn) opEnd() error {
 				if len(fr.resultGCFacts) < fr.resultN {
 					fr.resultGCFacts = append(fr.resultGCFacts, make([]shared.GCRefFact, fr.resultN-len(fr.resultGCFacts))...)
 				}
-				if fr.resultGCFactsSet {
+				if fr.has(ctrlResultGCFactsSet) {
 					fr.resultGCFacts[i] = shared.MergeGCRefFacts(fr.resultGCFacts[i], fr.paramGCFacts[i])
 				} else {
 					fr.resultGCFacts[i] = fr.paramGCFacts[i]
@@ -1277,27 +1432,27 @@ func (f *fn) opEnd() error {
 			}
 		}
 		if f.gcRefFactsEnabled() && fr.resultN != 0 {
-			fr.resultGCFactsSet = true
+			fr.set(ctrlResultGCFactsSet, true)
 		}
 		// The cond-false edge arrives in the header-snapshot state; if then-side
 		// edges fixed a stronger end state (or a regMerge1 passthrough needs its
 		// value in mergeReg), a stub on this edge converges it. The then
 		// fall-through jumps over the stub.
 		needLoads := false
-		if f.usesCalls && fr.branchState != nil && fr.entryState != nil {
+		if f.usesCalls && branchState != nil && entryState != nil {
 			for i := range f.pinnedLocals {
-				if fr.branchState[i] == lsStackReg && fr.entryState[i] == lsMem {
+				if branchState[i] == lsStackReg && entryState[i] == lsMem {
 					needLoads = true
 					break
 				}
 			}
 		}
 		skip := -1
-		if (fr.regMerge1 || needLoads) && fallthroughReachable {
+		if (fr.has(ctrlRegMerge1) || needLoads) && fallthroughReachable {
 			skip = f.a.JmpPlaceholder()
 		}
 		f.a.PatchRel32(fr.elseSite, f.a.Len())
-		if fr.regMerge1 {
+		if fr.has(ctrlRegMerge1) {
 			slot := slotsOfTypes(fr.baseTypes)
 			if fr.res0.isFloat() {
 				f.a.FLoadDisp(mergeFReg, RSP, f.spillOff(slot), fr.res0 == mtF64) // passthrough → mergeFReg
@@ -1307,26 +1462,28 @@ func (f *fn) opEnd() error {
 		}
 		// Converge the cond-false edge from the header snapshot into the end state
 		// (records it when this is the only end edge).
-		f.setLocalsState(fr.entryState)
-		f.installGCRefFacts(fr.entryGCFacts)
-		f.mergeGCRefFactsInto(&fr.branchGCFacts)
-		f.convergeEdgeTo(&fr.branchState)
+		f.setLocalsState(entryState)
+		f.installGCRefFacts(entryGCFacts)
+		f.mergeFrameBranchGCFacts(&fr)
+		branchGCFacts = f.frameBranchGCFacts(&fr)
+		f.convergeFrameBranchState(&fr)
+		branchState = f.frameBranchState(&fr)
 		if skip != -1 {
 			f.a.PatchRel32(skip, f.a.Len())
 		}
-		fr.endReachable = true
+		fr.set(ctrlEndReachable, true)
 	}
 	for _, site := range fr.ends {
 		f.a.PatchRel32(site, f.a.Len())
 	}
-	endReachable := fallthroughReachable || fr.endReachable
+	endReachable := fallthroughReachable || fr.has(ctrlEndReachable)
 	f.unreachable = !endReachable
 	if endReachable {
 		if fr.kind != cfLoop {
-			f.setLocalsState(fr.branchState) // merge: what every edge guaranteed
-			f.installGCRefFacts(fr.branchGCFacts)
+			f.setLocalsState(branchState) // merge: what every edge guaranteed
+			f.installGCRefFacts(branchGCFacts)
 		}
-		if fr.regMerge1 {
+		if fr.has(ctrlRegMerge1) {
 			// Every reaching edge left the result in the merge register (int→mergeReg,
 			// float→mergeFReg) and the operands below in canonical slots [0, height).
 			f.setDepthTypesWithGCInfo(fr.baseTypes, fr.baseGCRoots, fr.baseGCFacts)
@@ -1347,7 +1504,7 @@ func (f *fn) opEnd() error {
 		}
 		f.markEHReferenceResults(&fr)
 	}
-	if fr.kind == cfTry && !fr.entryUnreach {
+	if fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
 		recordOff := f.ehRecordOff(fr.ensureEH().recordIndex)
 		if fallthroughReachable {
 			f.a.Load64(RBP, RSP, recordOff+ehPrevOff)
@@ -1364,10 +1521,11 @@ func (f *fn) opEnd() error {
 	}
 	// The frame is popped and its buffers are dead — recycle them for the next
 	// frame pushed at this or a shallower depth.
-	f.freeLocStateBuf(fr.branchState)
-	f.freeLocStateBuf(fr.entryState)
-	f.freeGCRefFactBuf(fr.branchGCFacts)
-	f.freeGCRefFactBuf(fr.entryGCFacts)
+	f.freeLocStateBuf(branchState)
+	f.freeLocStateBuf(entryState)
+	f.freeGCRefFactBuf(branchGCFacts)
+	f.freeGCRefFactBuf(entryGCFacts)
+	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(fr.ends)
 	return nil
 }
@@ -1378,11 +1536,11 @@ func (f *fn) opEnd() error {
 // path and opReturn's inlined-callee routing. The caller sets f.unreachable.
 func (f *fn) branchToFrame(fi int) {
 	fr := &f.ctrl[fi]
-	f.mergeGCRefFactsInto(&fr.branchGCFacts)
+	f.mergeFrameBranchGCFacts(fr)
 	f.convergeBranchLocals(fr)
 	a, d := fr.branchN, f.depth()
 	f.flush()
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
 		f.moveBranchValues(fr, d, a)
@@ -1427,7 +1585,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		return nil
 	}
 	fr := &f.ctrl[fi]
-	f.mergeGCRefFactsInto(&fr.branchGCFacts)
+	f.mergeFrameBranchGCFacts(fr)
 	f.convergeBranchLocals(fr)
 	a, d := fr.branchN, f.depth()
 	f.flush()
@@ -1436,7 +1594,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		f.release(creg)
 	}
 	over := f.a.JccPlaceholder(condE)
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
 		f.moveBranchValues(fr, d, a)
@@ -1470,7 +1628,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	}
 	ref := f.materialize(f.popValue())
 	fr := &f.ctrl[fi]
-	f.mergeGCRefFactsInto(&fr.branchGCFacts)
+	f.mergeFrameBranchGCFacts(fr)
 	f.convergeBranchLocals(fr)
 	d := f.depth()
 	f.flush()
@@ -1479,7 +1637,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	f.a.TestSelf(ref, true)
 	f.release(ref)
 	over := f.a.JccPlaceholder(condNE)
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
 		f.moveBranchValues(fr, d, fr.branchN)
@@ -1518,7 +1676,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	result := f.pushReg(ref, mtI64)
 	f.markGCRefFact(result, fact.WithNullability(shared.GCKnownNonNull))
 	fr := &f.ctrl[fi]
-	f.mergeGCRefFactsInto(&fr.branchGCFacts)
+	f.mergeFrameBranchGCFacts(fr)
 	f.convergeBranchLocals(fr)
 	allTypes := append([]machineType(nil), f.currentLogicalTypes()...)
 	d := len(allTypes)
@@ -1529,7 +1687,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	f.a.TestSelf(condition, true)
 	f.release(condition)
 	over := f.a.JccPlaceholder(condE)
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
 		f.moveBranchValues(fr, d, fr.branchN)
@@ -1556,7 +1714,7 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
-	f.mergeGCRefFactsInto(&fr.branchGCFacts)
+	f.mergeFrameBranchGCFacts(fr)
 	f.convergeBranchLocals(fr)
 	d := f.depth()
 	f.flush()
@@ -1569,7 +1727,7 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 		skipCond = condNE
 	}
 	over := f.a.JccPlaceholder(skipCond)
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
 		f.moveBranchValues(fr, d, fr.branchN)
@@ -1626,9 +1784,9 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 	// compile-time state — so case bodies can be emitted in any order and shared.
 	emitCase := func(labelIdx uint32) {
 		fr := &f.ctrl[len(f.ctrl)-1-int(labelIdx)]
-		f.mergeGCRefFactsInto(&fr.branchGCFacts)
+		f.mergeFrameBranchGCFacts(fr)
 		f.convergeBranchLocals(fr) // post-reconcile state records/no-op converges (no code, no flags)
-		if fr.regMerge1 {
+		if fr.has(ctrlRegMerge1) {
 			f.branchEdgeToMerge1(fr, d)
 		} else {
 			f.moveBranchValues(fr, d, fr.branchN)

@@ -144,7 +144,7 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 		t.Fatalf("released loop pins left mask/state = %#v, %v, %v", f.pinnedLocalMask, f.locals[0].state, f.locals[1].state)
 	}
 
-	blocked := &ctrlFrame{kind: cfLoop, loopHasCall: true, loopSetLocals: map[uint32]bool{0: true}}
+	blocked := &ctrlFrame{kind: cfLoop, flags: ctrlLoopHasCall, loopSetLocals: map[uint32]bool{0: true}}
 	f.activateLoopPins(blocked)
 	if len(blocked.loopPins) != 0 {
 		t.Fatal("call-containing loop received region pins")

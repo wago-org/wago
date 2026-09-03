@@ -313,7 +313,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	// stay live across them and the bytes can be relocated below.
 	mark := f.a.Len()
 	f.storeLoopPinsLeaving(fi)
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, k)
 	} else {
 		f.moveBranchValues(fr, k, a)

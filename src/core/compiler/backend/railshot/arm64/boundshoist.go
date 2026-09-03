@@ -237,11 +237,11 @@ func (f *fn) enterLoopFrame(resultTypes []machineType, res0 machineType) {
 	fr.height = f.depth()
 	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()...)
 	f.reconcileLocals()
-	f.convergeEdgeTo(&fr.branchState)
+	f.convergeFrameBranchState(&fr)
 	f.flush()
 	f.alignCode(f.policy.LoopAlignLog2)
 	fr.loopStart = f.a.Len()
-	f.ctrl = append(f.ctrl, fr)
+	f.pushCtrl(&fr)
 }
 
 // loadLocalValue loads local x's current value into reg (from its pinned register

@@ -907,10 +907,10 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
 		elseSite:    -1,
 		height:      f.depth(),
 	}
-	fr.regMerge1 = f.regMerge && rN == 1 && t.res0 != mtNone && t.res0 != mtV128
+	fr.set(ctrlRegMerge1, f.regMerge && rN == 1 && t.res0 != mtNone && t.res0 != mtV128)
 	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()...)
 	f.flush()
-	f.ctrl = append(f.ctrl, fr)
+	f.pushCtrl(&fr)
 
 	prevRet := f.inlineRetFrame
 	f.inlineRetFrame = len(f.ctrl) - 1

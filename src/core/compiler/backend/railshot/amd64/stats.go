@@ -288,13 +288,14 @@ func workerScratchStats(sc *scratch) shared.WorkerScratchStats {
 	}
 	_, retained := sc.stack.nodeMemory()
 	frameBytes := uint64(unsafe.Sizeof(ctrlFrame{}))
+	mergeBytes := uint64(unsafe.Sizeof(ctrlFrameMerge{}))
 	return shared.WorkerScratchStats{
 		NodeReserved: sc.nodeScratchReserved, NodePeak: sc.nodeScratchPeak,
 		NodeRetained: retained, NodeDiscarded: sc.nodeScratchDiscarded,
 		ControlReserved:  uint64(sc.controlScratchReserved) * frameBytes,
-		ControlPeak:      uint64(sc.controlScratchPeak) * frameBytes,
-		ControlRetained:  uint64(cap(sc.ctrl)) * frameBytes,
-		ControlDiscarded: uint64(sc.controlScratchDiscarded) * frameBytes,
+		ControlPeak:      uint64(sc.controlScratchPeak)*frameBytes + uint64(sc.controlMergePeak)*mergeBytes,
+		ControlRetained:  uint64(cap(sc.ctrl))*frameBytes + uint64(cap(sc.ctrlMerges))*mergeBytes,
+		ControlDiscarded: uint64(sc.controlScratchDiscarded)*frameBytes + uint64(sc.controlMergeDiscarded)*mergeBytes,
 	}
 }
 
