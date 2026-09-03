@@ -240,6 +240,28 @@ func TestEffectiveDraglinePlatformBoundsMode(t *testing.T) {
 	}
 }
 
+func TestEffectivePlatformCompiler(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		compiler     CompilerEngine
+		guardBuilt   bool
+		goos, goarch string
+		want         CompilerEngine
+	}{
+		{"windows-arm64-guard-dragline", CompilerDragline, true, "windows", "arm64", CompilerRailshot},
+		{"windows-arm64-ordinary-dragline", CompilerDragline, false, "windows", "arm64", CompilerDragline},
+		{"windows-amd64-guard-dragline", CompilerDragline, true, "windows", "amd64", CompilerDragline},
+		{"darwin-arm64-guard-dragline", CompilerDragline, true, "darwin", "arm64", CompilerDragline},
+		{"windows-arm64-guard-railshot", CompilerRailshot, true, "windows", "arm64", CompilerRailshot},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := effectivePlatformCompiler(test.compiler, test.guardBuilt, test.goos, test.goarch); got != test.want {
+				t.Fatalf("effective platform compiler = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestConfigSignalsBasedRequiresBuildTag(t *testing.T) {
 	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
 	_, err := Compile(cfg, signExtModule())

@@ -1143,6 +1143,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 }
 
 func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features, instructions map[string]*registeredInstruction, selectedFunctions []uint32) (*Compiled, error) {
+	compilerEngine := effectivePlatformCompiler(cfg.compiler, guardPageBuilt, goruntime.GOOS, goruntime.GOARCH)
 	if cfg.maxModuleBytes != 0 && uint64(len(wasmBytes)) > cfg.maxModuleBytes {
 		return nil, &wruntime.ResourceLimitError{
 			Resource:  "module bytes",
@@ -1302,7 +1303,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 		// metadata-only product recognized the module.
 		gcStructProduct = stagedGCStructGeneric
 	}
-	if cfg.compiler == CompilerDragline && !gcStructProduct.requiresHelpers() && requirements.gcRefRuntimeHelper {
+	if compilerEngine == CompilerDragline && !gcStructProduct.requiresHelpers() && requirements.gcRefRuntimeHelper {
 		// Dragline currently lowers dynamic collector-reference tests and casts
 		// through the shared parked helper ABI on both targets. Provision its
 		// control context even when the module has no declared struct/array type.
@@ -1449,7 +1450,7 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 	// Architectures that always use the sync-host dispatcher can compile host
 	// defaults up front; others defer returning imports until link time.
 	boundsMode := effectiveCompileBoundsMode(cfg.boundsChecks, m)
-	boundsMode = effectiveDraglinePlatformBoundsMode(cfg.compiler, boundsMode, goruntime.GOOS, goruntime.GOARCH)
+	boundsMode = effectiveDraglinePlatformBoundsMode(compilerEngine, boundsMode, goruntime.GOOS, goruntime.GOARCH)
 	elide := boundsMode == BoundsChecksSignalsBased
 	importedFuncs := m.ImportedFuncCount()
 	dynamicBindings := make([]railshotImportBinding, importedFuncs)
@@ -1503,8 +1504,8 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 		configurationFingerprint = cfg.CompilerConfigurationFingerprint()
 	}
 	compilerInput := corecompiler.Input{Module: m, FunctionWorkers: workers, Source: wasmBytes, Runtime: corecompiler.RuntimeContract{ABIRevision: runtimeabi.Revision}, Target: target, Objective: cfg.objective, Bounds: corecompiler.BoundsMode(boundsMode), ConfigurationFingerprint: configurationFingerprint, Profile: cfg.compilerProfile, HostEffects: compilerHostEffectBindings(m, cfg.hostEffects), SelectedFunctions: selectedFunctions}
-	cm, err := router.Compile(cfg.compiler, compilerInput)
-	if err != nil && cfg.compiler == CompilerDragline && cfg.compilerFallback == CompilerFallbackRailshot {
+	cm, err := router.Compile(compilerEngine, compilerInput)
+	if err != nil && compilerEngine == CompilerDragline && cfg.compilerFallback == CompilerFallbackRailshot {
 		var unsupported *dragline.UnsupportedError
 		var resourceLimit *dragline.ResourceLimitError
 		if errors.As(err, &unsupported) || errors.As(err, &resourceLimit) {
@@ -2282,6 +2283,17 @@ func effectiveDraglinePlatformBoundsMode(compiler CompilerEngine, mode BoundsChe
 		return BoundsChecksExplicit
 	}
 	return mode
+}
+
+// effectivePlatformCompiler keeps an unqualified optional runtime product from
+// selecting a backend whose execution ABI it cannot safely host. Windows ARM64
+// guard-page binaries retain full functionality through Railshot; ordinary
+// Windows ARM64 binaries and every other supported target retain Dragline.
+func effectivePlatformCompiler(compiler CompilerEngine, guardBuilt bool, goos, goarch string) CompilerEngine {
+	if compiler == CompilerDragline && guardBuilt && goos == "windows" && goarch == "arm64" {
+		return CompilerRailshot
+	}
+	return compiler
 }
 
 func moduleInitialMemoryPages(m *wasm.Module) (uint64, bool) {
