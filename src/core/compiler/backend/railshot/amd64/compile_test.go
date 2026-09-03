@@ -240,9 +240,16 @@ func TestParallelControlFrameScratchDoesNotMultiplyOutlier(t *testing.T) {
 		t.Fatalf("finished worker control scratch retained/discarded = %d/%d, want 0/%d",
 			stats.Compile.ControlScratchRetained, stats.Compile.ControlScratchDiscarded, stats.Compile.ControlScratchPeak)
 	}
+	if stats.Compile.NodeScratchRetained != 0 || stats.Compile.NodeScratchDiscarded < stats.Compile.NodeScratchReserved {
+		t.Fatalf("finished worker node scratch retained/discarded = %d/%d, want zero and at least reserved %d",
+			stats.Compile.NodeScratchRetained, stats.Compile.NodeScratchDiscarded, stats.Compile.NodeScratchReserved)
+	}
 	t.Logf("control scratch: reserved=%d peak-envelope=%d retained=%d former-reservation=%d",
 		stats.Compile.ControlScratchReserved, stats.Compile.ControlScratchPeak,
 		stats.Compile.ControlScratchRetained, oldReservation)
+	t.Logf("node scratch: reserved=%d peak-envelope=%d retained=%d discarded=%d",
+		stats.Compile.NodeScratchReserved, stats.Compile.NodeScratchPeak,
+		stats.Compile.NodeScratchRetained, stats.Compile.NodeScratchDiscarded)
 }
 
 func TestAsmCapForBodyClamps(t *testing.T) {

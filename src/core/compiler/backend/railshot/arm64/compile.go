@@ -728,6 +728,18 @@ func (sc *scratch) finishStackFunction() {
 	sc.nodeScratchDiscarded += sc.stack.finishFunction()
 }
 
+// finishStackWorker releases every pointer-rich node chunk after a parallel
+// worker's final function. The join needs only worker code arenas and scalar
+// metadata; operand nodes cannot be reused again.
+func (sc *scratch) finishStackWorker() {
+	sc.clearNodeReferences()
+	_, retained := sc.stack.nodeMemory()
+	sc.nodeScratchDiscarded += retained
+	sc.stack.chunks = nil
+	sc.stack.head = nil
+	sc.stack.cur = 0
+}
+
 // workerState owns every mutable buffer used by one parallel compiler worker.
 // arena is append-only until all workers join. Results retain offsets into it,
 // never slices, because a later append may reallocate the arena.
@@ -1365,6 +1377,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		go func(workerID int) {
 			defer wg.Done()
 			ws := &states[workerID]
+			defer ws.scratch.finishStackWorker()
 			defer ws.scratch.finishControlWorker()
 			for {
 				i := int(work.next.Add(1) - 1)
