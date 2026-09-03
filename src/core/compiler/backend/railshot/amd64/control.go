@@ -48,10 +48,9 @@ type ctrlFrame struct {
 
 	height          int // operand depth at the frame's result base
 	paramN, resultN int
-	branchN         int   // values transferred on a branch to this label
-	loopStart       int   // cfLoop: backward target byte offset
-	ends            []int // cfBlock/cfIf: forward jmp sites to patch to end
-	elseSite        int   // cfIf: the jz site (to else/end), -1 once patched
+	branchN         int // values transferred on a branch to this label
+	loopStart       int // cfLoop: backward target byte offset
+	elseSite        int // cfIf: the jz site (to else/end), -1 once patched
 	baseTypes       []machineType
 	paramTypes      []machineType
 	resultTypes     []machineType
@@ -78,9 +77,10 @@ func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
 }
 
 // ctrlFrameMerge contains feature-specific state needed only by frames that
-// merge pinned locals, track GC roots/facts, or analyze loops. Keeping it in
+// merge pinned locals, track GC roots/facts, patch branches, or analyze loops. Keeping it in
 // compact scratch removes pointer-rich fields from ordinary frames.
 type ctrlFrameMerge struct {
+	ends          []int // cfBlock/cfIf: forward jmp sites to patch to end
 	branchState   []locState
 	entryState    []locState
 	branchGCFacts []shared.GCRefFact
@@ -222,6 +222,13 @@ func (f *fn) setFrameEntryGCFacts(fr *ctrlFrame, facts []shared.GCRefFact) {
 func (f *fn) frameBaseGCRoots(fr *ctrlFrame) []bool {
 	if cold := f.ctrlMerge(fr); cold != nil {
 		return cold.baseGCRoots
+	}
+	return nil
+}
+
+func (f *fn) frameEnds(fr *ctrlFrame) []int {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.ends
 	}
 	return nil
 }
@@ -1448,6 +1455,7 @@ func (f *fn) opEnd() error {
 	baseGCFacts := f.frameBaseGCFacts(&fr)
 	paramGCFacts := f.frameParamGCFacts(&fr)
 	resultGCFacts := f.frameResultGCFacts(&fr)
+	ends := f.frameEnds(&fr)
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
 
@@ -1544,7 +1552,7 @@ func (f *fn) opEnd() error {
 		}
 		fr.set(ctrlEndReachable, true)
 	}
-	for _, site := range fr.ends {
+	for _, site := range ends {
 		f.a.PatchRel32(site, f.a.Len())
 	}
 	endReachable := fallthroughReachable || fr.has(ctrlEndReachable)
@@ -1597,7 +1605,7 @@ func (f *fn) opEnd() error {
 	f.freeGCRefFactBuf(branchGCFacts)
 	f.freeGCRefFactBuf(entryGCFacts)
 	f.releaseCtrlMerge(&fr)
-	f.freeEndsBuf(fr.ends)
+	f.freeEndsBuf(ends)
 	return nil
 }
 

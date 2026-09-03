@@ -317,14 +317,15 @@ func (f *fn) freeLocStateBuf(b []locState) {
 // slice on pop (freeEndsBuf) bounds live buffers by nesting depth rather than
 // total frame count.
 func (f *fn) frameAddEnd(fr *ctrlFrame, site int) {
-	if fr.ends == nil {
+	cold := f.ensureCtrlMerge(fr)
+	if cold.ends == nil {
 		if n := len(f.endsPool); n > 0 {
-			fr.ends = f.endsPool[n-1][:0]
+			cold.ends = f.endsPool[n-1][:0]
 			f.endsPool[n-1] = nil
 			f.endsPool = f.endsPool[:n-1]
 		}
 	}
-	fr.ends = append(fr.ends, site)
+	cold.ends = append(cold.ends, site)
 }
 
 func (f *fn) freeEndsBuf(b []int) {

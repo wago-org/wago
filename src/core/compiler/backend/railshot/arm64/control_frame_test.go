@@ -8,10 +8,10 @@ import (
 )
 
 func TestCtrlFrameSize(t *testing.T) {
-	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(184); got != want {
+	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(136); got != want {
 		t.Fatalf("ctrlFrame size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(176); got != want {
+	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(224); got != want {
 		t.Fatalf("ctrlFrameMerge size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(ctrlFrameEH{}), uintptr(48); got != want {
