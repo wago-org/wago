@@ -176,6 +176,10 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	observedCodeExpansion := false
 	moduleDependencies, functionCacheEnabled := functionArtifactDependencies(input, m, functionCache)
 	compilationPlan := calleeFirstCompilationPlan(m)
+	uniformStructured, err := arm64RequiresUniformStructuredFinalizer(m, input.Target, compilationPlan.HasV128)
+	if err != nil {
+		return corecompiler.Output{}, err
+	}
 	helperSafepointBases, err := allocatingHelperSafepointBases(m, compilationPlan.Order)
 	if err != nil {
 		return corecompiler.Output{}, err
@@ -305,7 +309,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		functionRequiresMOPS := input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index)
 		requiresMOPS = requiresMOPS || functionRequiresMOPS
 		var nativePlan *nativeBackendPlan
-		if arm64RailMachCandidate(fn.Structured, compilationPlan.HasV128, moduleContracts) {
+		if !uniformStructured && arm64RailMachCandidate(fn.Structured, compilationPlan.HasV128, moduleContracts) {
 			if nativePlanner == nil {
 				nativePlanner = new(nativeBackendPlanner)
 			}
@@ -533,6 +537,27 @@ func arm64PublishedContract(contract railmach.ABIContract, target corecompiler.T
 	return contract
 }
 
+// Windows ARM64 has a qualified structured finalizer and a qualified RailMach
+// finalizer, but not yet a qualified edge between them. If any function in a
+// module requires structured lowering, keep the whole module on that finalizer
+// so generated calls cannot cross an unverified mixed-emitter boundary.
+func arm64RequiresUniformStructuredFinalizer(m *wasm.Module, target corecompiler.Target, moduleHasV128 bool) (bool, error) {
+	if target.GOOS != "windows" {
+		return false, nil
+	}
+	var scratch railssa.StackFunc
+	for i := range m.Code {
+		fn, err := buildCompilerFunc(m, i, &scratch)
+		if err != nil {
+			return false, functionError(m, i, "windows-finalizer-admission", err)
+		}
+		if !arm64RailMachCandidate(fn.Structured, moduleHasV128, nil) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func arm64DirectPreparedLeafClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedLeaf
 }
@@ -629,6 +654,10 @@ type parallelARM64Worker struct {
 
 func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corecompiler.Output, error) {
 	compilation := calleeFirstCompilationPlan(m)
+	uniformStructured, err := arm64RequiresUniformStructuredFinalizer(m, input.Target, compilation.HasV128)
+	if err != nil {
+		return corecompiler.Output{}, err
+	}
 	results := make([]parallelARM64Result, len(m.Code))
 	contracts := make([]railmach.ABIContract, len(m.Code))
 	host := compilerHostEffectContracts(input.HostEffects)
@@ -643,7 +672,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 		refined = make([]bool, len(m.Code))
 		attempted = make([]bool, len(m.Code))
 	}
-	err := runCompilationComponents(compilation, input.FunctionWorkers, func(workerIndex int, members []int) error {
+	err = runCompilationComponents(compilation, input.FunctionWorkers, func(workerIndex int, members []int) error {
 		worker := &workers[workerIndex]
 		for _, i := range members {
 			if hotRecursiveComponent(input, m, compilation, i) && !attempted[i] {
@@ -657,7 +686,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				return functionError(m, i, "lower", err)
 			}
 			var nativePlan *nativeBackendPlan
-			if arm64RailMachCandidate(fn.Structured, compilation.HasV128, contracts) {
+			if !uniformStructured && arm64RailMachCandidate(fn.Structured, compilation.HasV128, contracts) {
 				if worker.native == nil {
 					worker.native = &nativeBackendPlanner{parallelCandidates: true}
 				}
