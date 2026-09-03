@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"debug/elf"
 	"encoding/hex"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tetratelabs/wazero"
 	"github.com/wago-org/wago/src/wago"
 )
 
@@ -265,6 +267,9 @@ func builtinCompilerVersion(name string) string {
 }
 
 func runBuiltinCompiler(name, target string, workers int, wasmPath, artifactPath string) error {
+	if name == "wazero" {
+		return runBuiltinWazeroCompiler(wasmPath, artifactPath)
+	}
 	var compiler wago.CompilerEngine
 	switch name {
 	case "dragline":
@@ -303,6 +308,31 @@ func runBuiltinCompiler(name, target string, workers int, wasmPath, artifactPath
 	}
 	if err := os.WriteFile(artifactPath+".native-code-bytes", []byte(strconv.Itoa(compiled.CodeSize())), 0o644); err != nil {
 		return fmt.Errorf("write native code size: %w", err)
+	}
+	return nil
+}
+
+func runBuiltinWazeroCompiler(wasmPath, artifactPath string) error {
+	source, err := os.ReadFile(wasmPath)
+	if err != nil {
+		return fmt.Errorf("read Wasm: %w", err)
+	}
+	ctx := context.Background()
+	runtime := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
+	defer runtime.Close(ctx)
+	compiled, err := runtime.CompileModule(ctx, source)
+	if err != nil {
+		return fmt.Errorf("compile: %w", err)
+	}
+	defer compiled.Close(ctx)
+	// wazero does not expose a serializable compiler artifact. The harness still
+	// needs a concrete output so its fresh-process latency and peak-RSS protocol
+	// remains identical to the other engines.
+	if err := os.WriteFile(artifactPath, nil, 0o644); err != nil {
+		return fmt.Errorf("write artifact marker: %w", err)
+	}
+	if err := os.WriteFile(artifactPath+".native-code-bytes", []byte("0"), 0o644); err != nil {
+		return fmt.Errorf("write native code size marker: %w", err)
 	}
 	return nil
 }
@@ -380,13 +410,13 @@ func readConfig(path string) (config, error) {
 			if engine.Command != "" || len(engine.Args) != 0 || len(engine.VersionArgs) != 0 {
 				return config{}, fmt.Errorf("engine %s builtin cannot declare command, args, or version_args", engine.Name)
 			}
-			if engine.Builtin != "dragline" && engine.Builtin != "railshot" {
+			if engine.Builtin != "dragline" && engine.Builtin != "railshot" && engine.Builtin != "wazero" {
 				return config{}, fmt.Errorf("engine %s has unknown builtin %q", engine.Name, engine.Builtin)
 			}
 			if engine.Workers < 0 {
 				return config{}, fmt.Errorf("engine %s has negative worker count", engine.Name)
 			}
-			if target := normalizedBuiltinTarget(engine.Target); target != "compat" && target != "native" {
+			if target := normalizedBuiltinTarget(engine.Target); engine.Builtin != "wazero" && target != "compat" && target != "native" {
 				return config{}, fmt.Errorf("engine %s has unknown builtin target %q", engine.Name, target)
 			}
 			continue

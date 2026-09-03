@@ -491,6 +491,9 @@ func TestDraglineF32RoundTripFastPath(t *testing.T) {
 // compare. Go groups repeated -count samples by sub-benchmark, so experiments
 // that require alternating order need an external round driver.
 func BenchmarkRailshotDraglineISAExec(b *testing.B) {
+	if !*includeISABenchmarks {
+		b.Skip("pass -wago.bench.isa to include the generated ISA corpus")
+	}
 	modules := readManifest(b, "isa-manifest.json")
 	compilers := []wago.CompilerEngine{wago.CompilerRailshot, wago.CompilerDragline}
 	if os.Getenv("WAGO_DRAGLINE_BENCH_ORDER") == "dragline-first" {
@@ -514,6 +517,9 @@ func BenchmarkRailshotDraglineISAExec(b *testing.B) {
 // BenchmarkRailshotTieredDraglineISAExec applies the same release gate after a
 // live Railshot instance publishes the Dragline tier behind stable thunks.
 func BenchmarkRailshotTieredDraglineISAExec(b *testing.B) {
+	if !*includeISABenchmarks {
+		b.Skip("pass -wago.bench.isa to include the generated ISA corpus")
+	}
 	modules := readManifest(b, "isa-manifest.json")
 	compilers := []wago.CompilerEngine{wago.CompilerRailshot, wago.CompilerDragline}
 	if os.Getenv("WAGO_DRAGLINE_BENCH_ORDER") == "dragline-first" {
@@ -630,6 +636,9 @@ func benchmarkISAExport(b *testing.B, compiler wago.CompilerEngine, m corpusModu
 // bytes alongside latency; execution benchmarks intentionally keep this setup
 // outside their timed regions.
 func BenchmarkRailshotDraglineISACompile(b *testing.B) {
+	if !*includeISABenchmarks {
+		b.Skip("pass -wago.bench.isa to include the generated ISA corpus")
+	}
 	modules := readManifest(b, "isa-manifest.json")
 	for _, m := range modules {
 		if !draglineAdmittedISAModules[m.name()] {

@@ -35,11 +35,36 @@ func TestReadConfigIsStrict(t *testing.T) {
 	if _, err := readConfig(path); err != nil {
 		t.Fatal(err)
 	}
+	wazeroConfig := `{"version":2,"engines":[{"name":"wazero","builtin":"wazero","required":true}]}`
+	if err := os.WriteFile(path, []byte(wazeroConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readConfig(path); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(path, []byte(valid[:len(valid)-1]+`,"unknown":true}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := readConfig(path); err == nil {
 		t.Fatal("unknown config field accepted")
+	}
+}
+
+func TestBuiltinWazeroCompilerWritesHarnessMarkers(t *testing.T) {
+	wasmPath := filepath.Join(t.TempDir(), "input.wasm")
+	artifactPath := filepath.Join(t.TempDir(), "output.marker")
+	module := []byte{0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00}
+	if err := os.WriteFile(wasmPath, module, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runBuiltinCompiler("wazero", "compat", 0, wasmPath, artifactPath); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(artifactPath); err != nil || info.Size() != 0 {
+		t.Fatalf("artifact marker = %v, %v", info, err)
+	}
+	if code, err := os.ReadFile(artifactPath + ".native-code-bytes"); err != nil || string(code) != "0" {
+		t.Fatalf("native code marker = %q, %v", code, err)
 	}
 }
 

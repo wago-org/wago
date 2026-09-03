@@ -242,7 +242,139 @@ async function loadRunMetrics(path, fallbackArch = "") {
   for (const [key, m] of Object.entries(run.metrics ?? {})) {
     metrics.set(key, { ns: Number(m.ns ?? 0), bytes: Number(m.bytes ?? 0), allocs: Number(m.allocs ?? 0) });
   }
-  return { metrics, source: path, arch: run.goarch || fallbackArch, goos: run.goos || "", commit: run.commit || "" };
+  const arch = run.goarch || fallbackArch;
+  const generalPath = resolve(
+    arch === "amd64"
+      ? process.env.WAGO_GENERAL_JSON_AMD64 || join(root, "bench", "out", "amd64", "general.json")
+      : process.env.WAGO_GENERAL_JSON_ARM64 || join(root, "bench", "out", "arm64", "general.json"),
+  );
+  const generalRaw = (await exists(generalPath)) ? JSON.parse(await readFile(generalPath, "utf8")) : null;
+  if (generalRaw?.goarch && generalRaw.goarch !== arch) {
+    throw new Error(`general benchmark architecture ${generalRaw.goarch} does not match ${arch}`);
+  }
+  if (generalRaw?.commit && run.commit && !String(run.commit).startsWith(generalRaw.commit) && !String(generalRaw.commit).startsWith(run.commit)) {
+    throw new Error(`general benchmark commit ${generalRaw.commit} does not match ${run.commit}`);
+  }
+  const general = generalRaw ? buildGeneralSummary(metrics, generalRaw) : null;
+  return { metrics, general, source: path, arch, goos: run.goos || "", commit: run.commit || "", cpu: run.cpu || "" };
+}
+
+function buildGeneralSummary(metrics, raw) {
+  const compileNames = new Map([
+    ["railshot-native", "railshot"],
+    ["dragline-native", "dragline"],
+    ["wazero", "wazero"],
+    ["cranelift", "wasmtime"],
+  ]);
+  const compile = new Map();
+  for (const report of raw.compile ?? []) {
+    const byEngine = new Map();
+    for (const run of report.runs ?? []) {
+      const engine = compileNames.get(run.engine);
+      if (!engine) continue;
+      const values = byEngine.get(engine) ?? { wall: [], rss: [] };
+      values.wall.push(Number(run.wall_nanos));
+      values.rss.push(Number(run.peak_rss_bytes));
+      byEngine.set(engine, values);
+    }
+    for (const [engine, values] of byEngine) {
+      const aggregate = compile.get(engine) ?? { wall: [], rss: [] };
+      aggregate.wall.push(median(values.wall));
+      aggregate.rss.push(median(values.rss));
+      compile.set(engine, aggregate);
+    }
+  }
+  if (Array.isArray(raw.compileRSS)) {
+    const rssByEngine = new Map();
+    for (const sample of raw.compileRSS) {
+      const engine = compileNames.get(sample.engine);
+      if (!engine || !(Number(sample.peak_rss_bytes) > 0)) continue;
+      const values = rssByEngine.get(engine) ?? [];
+      values.push(Number(sample.peak_rss_bytes));
+      rssByEngine.set(engine, values);
+    }
+    for (const engine of compileNames.values()) {
+      if (rssByEngine.get(engine)?.length !== raw.compile.length) {
+        throw new Error(`general benchmark has incomplete direct RSS samples for ${engine}`);
+      }
+    }
+    for (const [engine, values] of rssByEngine) {
+      const aggregate = compile.get(engine);
+      if (aggregate) aggregate.rss = values;
+    }
+  }
+  const runtime = raw.wasmtimeRuntime ?? [];
+  return [
+    ["Compile time", "Fresh-process wall time", "ns", Object.fromEntries(
+      [...compile].map(([engine, values]) => [engine, geomean(values.wall)]),
+    )],
+    ["Compile memory", "Fresh-process peak RSS", "bytes", Object.fromEntries(
+      [...compile].map(([engine, values]) => [engine, geomean(values.rss)]),
+    )],
+    ["Instantiate time", "Runnable corpus", "ns", {
+      railshot: metricGeomean(metrics, "Instantiate/"),
+      dragline: metricGeomean(metrics, "DraglineInstantiate/"),
+      wazero: metricGeomean(metrics, "WazeroInstantiate/"),
+      wasmtime: externalRuntimeGeomean(runtime, "instantiate"),
+    }],
+    ["Execution time", "Runnable corpus", "ns", {
+      railshot: metricGeomean(metrics, "Exec/", true),
+      dragline: metricGeomean(metrics, "DraglineExec/", true),
+      wazero: metricGeomean(metrics, "WazeroExec/", true),
+      wasmtime: externalRuntimeGeomean(runtime, "exec", true),
+    }],
+  ].map(([label, sub, kind, values]) => ({ label, sub, kind, values }));
+}
+
+function metricGeomean(metrics, prefix, groupExports = false) {
+  const groups = new Map();
+  for (const [key, metric] of metrics) {
+    if (!key.startsWith(prefix) || !(metric.ns > 0)) continue;
+    const tail = key.slice(prefix.length);
+    const group = groupExports ? tail.split(".", 1)[0] : tail;
+    const values = groups.get(group) ?? [];
+    values.push(metric.ns);
+    groups.set(group, values);
+  }
+  return geomean([...groups.values()].map(geomean));
+}
+
+function externalRuntimeGeomean(rows, stage, groupExports = false) {
+  const samples = new Map();
+  for (const row of rows) {
+    if (row.stage !== stage || !(Number(row.ns_per_op) > 0)) continue;
+    const module = basenameWithoutWasm(row.module);
+    const key = groupExports ? `${module}.${row.export}` : module;
+    const values = samples.get(key) ?? [];
+    values.push(Number(row.ns_per_op));
+    samples.set(key, values);
+  }
+  const entries = new Map([...samples].map(([key, values]) => [key, median(values)]));
+  if (!groupExports) return geomean([...entries.values()]);
+  const modules = new Map();
+  for (const [key, value] of entries) {
+    const module = key.split(".", 1)[0];
+    const values = modules.get(module) ?? [];
+    values.push(value);
+    modules.set(module, values);
+  }
+  return geomean([...modules.values()].map(geomean));
+}
+
+function basenameWithoutWasm(path) {
+  return String(path).replaceAll("\\", "/").split("/").at(-1).replace(/\.wasm$/, "");
+}
+
+function median(values) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function geomean(values) {
+  const positive = values.filter((value) => value > 0);
+  return positive.length ? Math.exp(positive.reduce((sum, value) => sum + Math.log(value), 0) / positive.length) : 0;
 }
 
 function parseBench(text) {
@@ -444,7 +576,7 @@ function renderBackend(tabs, set, backend, index) {
                         >${esc(t.label)}</button>`
     )
     .join("\n");
-  const panels = tabs.map((t, i) => renderPanel(t, i, set.metrics, arch, backend.id)).join("\n");
+  const panels = tabs.map((t, i) => renderPanel(t, i, set, arch, backend.id)).join("\n");
   return `                        <div
                             class="vs__backendpanel"
                             role="tabpanel"
@@ -535,7 +667,11 @@ function replacePerformanceFoot(html) {
   return `${html.slice(0, start)}${foot}${html.slice(end + 4)}`;
 }
 
-function renderPanel(tab, index, metrics, arch, backend) {
+function renderPanel(tab, index, set, arch, backend) {
+  if (tab.id === "general" && set.general) {
+    return renderGeneralPanel(tab, index, set.general, arch, backend);
+  }
+  const metrics = set.metrics;
   const dvMax = Math.max(1, ...tab.items.filter((i) => i.dv).map((i) => i.bytes));
   const parts = tab.items.map((item) => {
     if (item.group) return { group: true, html: renderGroup(item.group) };
@@ -564,6 +700,45 @@ function renderPanel(tab, index, metrics, arch, backend) {
                         aria-labelledby="perf-${arch}-${backend}-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
                     >
 ${body}
+                    </div>`;
+}
+
+function renderGeneralPanel(tab, index, summary, arch, backend) {
+  const engines = [
+    { id: "railshot", label: "Railshot" },
+    { id: "dragline", label: "Dragline" },
+    { id: "wazero", label: "wazero" },
+    { id: "wasmtime", label: "Wasmtime", sub: "Cranelift" },
+  ];
+  const cards = summary.map((metric) => {
+    const max = Math.max(1, ...engines.map((engine) => Number(metric.values[engine.id] ?? 0)));
+    const format = metric.kind === "bytes" ? fmtBytes : fmtNs;
+    const bars = engines.map((engine) => {
+      const value = Number(metric.values[engine.id] ?? 0);
+      const height = value > 0 ? Math.max(5, Math.round(value / max * 100)) : 0;
+      return `                                <div class="vs__vitem${engine.id === backend ? " vs__vitem--selected" : ""}">
+                                    <span class="vs__vvalue">${value > 0 ? format(value) : "—"}</span>
+                                    <span class="vs__vtrack"><span class="vs__vfill vs__vfill--${engine.id}" data-vbar data-height="${height}"></span></span>
+                                    <span class="vs__vlabel">${engine.label}${engine.sub ? `<small>${engine.sub}</small>` : ""}</span>
+                                </div>`;
+    }).join("\n");
+    return `                        <article class="vs__metriccard">
+                            <div class="vs__metrichead"><strong>${esc(metric.label)}</strong><span>${esc(metric.sub)}</span></div>
+                            <div class="vs__vbars">
+${bars}
+                            </div>
+                        </article>`;
+  }).join("\n");
+  return `                    <div
+                        class="vs__panel vs__panel--general"
+                        role="tabpanel"
+                        id="perf-${arch}-${backend}-panel-${tab.id}"
+                        aria-labelledby="perf-${arch}-${backend}-tab-${tab.id}"${index === 0 ? "" : "\n                        hidden"}
+                    >
+                        <div class="vs__generalkicker">Corpus geometric mean · lower is better</div>
+                        <div class="vs__generalgrid">
+${cards}
+                        </div>
                     </div>`;
 }
 

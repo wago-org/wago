@@ -97,10 +97,58 @@ static uint64_t calibrate(wasmtime_context_t *context,
   }
 }
 
+static void instantiate_once(wasm_engine_t *engine,
+                             const wasmtime_module_t *module) {
+  wasmtime_store_t *store = wasmtime_store_new(engine, NULL, NULL);
+  if (store == NULL)
+    fail("cannot create instantiation store");
+  wasmtime_context_t *context = wasmtime_store_context(store);
+  wasmtime_linker_t *linker = wasmtime_linker_new(engine);
+  if (linker == NULL)
+    fail("cannot create instantiation linker");
+  check_error(wasmtime_linker_define_unknown_imports_as_default_values(
+                  linker, context, module),
+              NULL);
+  wasmtime_instance_t instance;
+  wasm_trap_t *trap = NULL;
+  check_error(wasmtime_linker_instantiate(linker, context, module, &instance,
+                                          &trap),
+              trap);
+  wasmtime_linker_delete(linker);
+  wasmtime_store_delete(store);
+}
+
+static uint64_t run_instantiations(wasm_engine_t *engine,
+                                   const wasmtime_module_t *module,
+                                   uint64_t iterations) {
+  uint64_t started = now_ns();
+  for (uint64_t i = 0; i < iterations; i++)
+    instantiate_once(engine, module);
+  return now_ns() - started;
+}
+
+static uint64_t calibrate_instantiations(wasm_engine_t *engine,
+                                         const wasmtime_module_t *module,
+                                         uint64_t target_ns) {
+  uint64_t iterations = 1;
+  for (;;) {
+    uint64_t elapsed = run_instantiations(engine, module, iterations);
+    if (elapsed >= target_ns / 10 || iterations >= (1ull << 30)) {
+      if (elapsed == 0)
+        return iterations;
+      long double scaled = (long double)iterations * (long double)target_ns /
+                           (long double)elapsed;
+      return scaled < 1 ? 1 : (uint64_t)scaled;
+    }
+    iterations *= 10;
+  }
+}
+
 int main(int argc, char **argv) {
   const char *module_path = NULL, *init_name = NULL, *export_name = NULL;
   const char *args_text = NULL, *out_path = NULL;
   int round = 0;
+  bool measure_instantiate = false;
   uint64_t target_ns = 100000000;
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-module") == 0 && ++i < argc)
@@ -117,6 +165,8 @@ int main(int argc, char **argv) {
       target_ns = strtoull(argv[i], NULL, 10);
     else if (strcmp(argv[i], "-out") == 0 && ++i < argc)
       out_path = argv[i];
+    else if (strcmp(argv[i], "-measure-instantiate") == 0)
+      measure_instantiate = true;
     else
       fail("invalid arguments");
   }
@@ -136,6 +186,24 @@ int main(int argc, char **argv) {
   wasmtime_module_t *module = NULL;
   check_error(wasmtime_module_new(engine, wasm, wasm_size, &module), NULL);
   free(wasm);
+  FILE *output = fopen(out_path, "a");
+  if (output == NULL)
+    fail("cannot open output");
+  if (measure_instantiate) {
+    instantiate_once(engine, module);
+    uint64_t instantiate_iterations =
+        calibrate_instantiations(engine, module, target_ns);
+    uint64_t instantiate_elapsed =
+        run_instantiations(engine, module, instantiate_iterations);
+    fprintf(output,
+            "{\"engine\":\"cranelift\",\"stage\":\"instantiate\","
+            "\"module\":\"%s\",\"round\":%d,\"iterations\":%" PRIu64
+            ",\"elapsed_ns\":%" PRIu64 ",\"ns_per_op\":%.9Lf}\n",
+            module_path, round, instantiate_iterations, instantiate_elapsed,
+            (long double)instantiate_elapsed /
+                (long double)instantiate_iterations);
+    fflush(output);
+  }
   wasmtime_store_t *store = wasmtime_store_new(engine, NULL, NULL);
   wasmtime_context_t *context = wasmtime_store_context(store);
   wasmtime_linker_t *linker = wasmtime_linker_new(engine);
@@ -189,11 +257,8 @@ int main(int argc, char **argv) {
                                   value_count, target_ns);
   uint64_t elapsed = run_calls(context, &function, values, original, nargs,
                                value_count, iterations);
-  FILE *output = fopen(out_path, "a");
-  if (output == NULL)
-    fail("cannot open output");
   fprintf(output,
-          "{\"engine\":\"cranelift\",\"module\":\"%s\","
+          "{\"engine\":\"cranelift\",\"stage\":\"exec\",\"module\":\"%s\","
           "\"export\":\"%s\",\"round\":%d,\"iterations\":%" PRIu64
           ",\"elapsed_ns\":%" PRIu64 ",\"ns_per_op\":%.9Lf}\n",
           module_path, export_name, round, iterations, elapsed,
