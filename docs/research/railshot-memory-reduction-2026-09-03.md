@@ -56,6 +56,19 @@ investigation gate; with GC disabled the median improved by 1.3%. Native-code
 hashes for many-function, global-heavy, indirect-dispatch, and json-as fixtures
 were identical to the parent revision.
 
+Subsequent exact width, ordering, and flag packing reduced the retained summary
+to 40 bytes on both architectures. ARM64 now packs its first-64-locals
+entry-initialization bitmap into the unused high bits of the existing local-score
+sidecar. The existing declared-local initialization loop reads those bits while
+it already visits each local. This reduces the ARM64 record again to 32 bytes
+without adding storage, an allocation, a separate scan, or a workload selector.
+Local hotness retains 31 exact bits,
+which is far beyond every current threshold; its arithmetic saturates at that
+limit and all consumers mask the metadata bit. Full `many_funcs` compilation
+drops by 2,560 B/op and `json-as` by 384 B/op, while an interleaved six-pair
+GC-off timing screen is effectively unchanged and matched native-code hashes
+remain identical.
+
 ARM64 then removed a duplicate host-width local-count array by writing the
 validated count directly into the compact summary before scanning. The
 1,024-function stress case dropped again from 134,168 to 125,976 B/op and from

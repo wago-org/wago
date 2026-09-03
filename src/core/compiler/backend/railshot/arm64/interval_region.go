@@ -28,7 +28,7 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 
 	kept := 0
 	for x := 0; x < f.nLocals; x++ {
-		if (f.localType[x] == mtI32 || f.localType[x] == mtI64) && hints.localLastGet[x] != 0 && hints.localScore[x] >= 2 {
+		if (f.localType[x] == mtI32 || f.localType[x] == mtI64) && hints.localLastGet[x] != 0 && localHotness(hints.localScore[x]) >= 2 {
 			kept++
 		}
 	}
@@ -47,7 +47,7 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 // free. A busy file is left to ordinary lowering; spilling merely to recreate
 // the cache would defeat its purpose.
 func (f *fn) activateIntervalLocal(x, pos int, load bool) {
-	if x < 0 || x >= len(f.intervalLast) || f.intervalLast[x] == 0 || f.intervalScore[x] < 2 ||
+	if x < 0 || x >= len(f.intervalLast) || f.intervalLast[x] == 0 || localHotness(f.intervalScore[x]) < 2 ||
 		(f.localType[x] != mtI32 && f.localType[x] != mtI64) || uint32(pos) > f.intervalLast[x] || f.locals[x].reg != regNone {
 		return
 	}
@@ -83,7 +83,7 @@ func (f *fn) claimIntervalReg(x int) Reg {
 		}
 		return regNone
 	}
-	return f.evictIntervalLocalBelow(0, int(f.intervalScore[x]))
+	return f.evictIntervalLocalBelow(0, int(localHotness(f.intervalScore[x])))
 }
 
 // takeFinalIntervalGet transfers a dying local's register directly to the
@@ -114,7 +114,7 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 		if x < 0 || avoid.has(Reg(reg)) || f.pinned.has(Reg(reg)) || f.intervalLocalHasMemBorrow(x) {
 			continue
 		}
-		score := int(f.intervalScore[x])
+		score := int(localHotness(f.intervalScore[x]))
 		if score < scoreLimit && score < bestScore {
 			best, bestScore = x, score
 		}
