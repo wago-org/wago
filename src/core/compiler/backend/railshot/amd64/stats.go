@@ -279,16 +279,37 @@ func (ms *ModuleStats) addNodeScratchStats(sc *scratch) {
 	if ms == nil || sc == nil {
 		return
 	}
+	ms.addWorkerScratchStats(workerScratchStats(sc))
+}
+
+func workerScratchStats(sc *scratch) shared.WorkerScratchStats {
+	if sc == nil {
+		return shared.WorkerScratchStats{}
+	}
 	_, retained := sc.stack.nodeMemory()
-	ms.Compile.NodeScratchReserved += sc.nodeScratchReserved
-	ms.Compile.NodeScratchPeak += sc.nodeScratchPeak
-	ms.Compile.NodeScratchRetained += retained
-	ms.Compile.NodeScratchDiscarded += sc.nodeScratchDiscarded
 	frameBytes := uint64(unsafe.Sizeof(ctrlFrame{}))
-	ms.Compile.ControlScratchReserved += uint64(sc.controlScratchReserved) * frameBytes
-	ms.Compile.ControlScratchPeak += uint64(sc.controlScratchPeak) * frameBytes
-	ms.Compile.ControlScratchRetained += uint64(cap(sc.ctrl)) * frameBytes
-	ms.Compile.ControlScratchDiscarded += uint64(sc.controlScratchDiscarded) * frameBytes
+	return shared.WorkerScratchStats{
+		NodeReserved: sc.nodeScratchReserved, NodePeak: sc.nodeScratchPeak,
+		NodeRetained: retained, NodeDiscarded: sc.nodeScratchDiscarded,
+		ControlReserved:  uint64(sc.controlScratchReserved) * frameBytes,
+		ControlPeak:      uint64(sc.controlScratchPeak) * frameBytes,
+		ControlRetained:  uint64(cap(sc.ctrl)) * frameBytes,
+		ControlDiscarded: uint64(sc.controlScratchDiscarded) * frameBytes,
+	}
+}
+
+func (ms *ModuleStats) addWorkerScratchStats(s shared.WorkerScratchStats) {
+	if ms == nil {
+		return
+	}
+	ms.Compile.NodeScratchReserved += s.NodeReserved
+	ms.Compile.NodeScratchPeak += s.NodePeak
+	ms.Compile.NodeScratchRetained += s.NodeRetained
+	ms.Compile.NodeScratchDiscarded += s.NodeDiscarded
+	ms.Compile.ControlScratchReserved += s.ControlReserved
+	ms.Compile.ControlScratchPeak += s.ControlPeak
+	ms.Compile.ControlScratchRetained += s.ControlRetained
+	ms.Compile.ControlScratchDiscarded += s.ControlDiscarded
 }
 
 func (s *CodegenStats) setUnpinnedRetry() {

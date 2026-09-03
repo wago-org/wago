@@ -47,3 +47,18 @@ type CompileResourceStats struct {
 	ControlScratchRetained  uint64
 	ControlScratchDiscarded uint64
 }
+
+// WorkerScratchStats is the scalar handoff retained after one parallel compiler
+// worker releases its scratch object. It deliberately contains no slice, map, or
+// pointer fields, so final module assembly cannot keep worker scratch reachable.
+type WorkerScratchStats struct {
+	NodeReserved  uint64
+	NodePeak      uint64
+	NodeRetained  uint64
+	NodeDiscarded uint64
+
+	ControlReserved  uint64
+	ControlPeak      uint64
+	ControlRetained  uint64
+	ControlDiscarded uint64
+}

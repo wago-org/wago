@@ -744,8 +744,9 @@ func (sc *scratch) finishStackWorker() {
 // arena is append-only until all workers join. Results retain offsets into it,
 // never slices, because a later append may reallocate the arena.
 type workerState struct {
-	scratch *scratch
-	arena   []byte
+	scratch      *scratch
+	scratchStats shared.WorkerScratchStats
+	arena        []byte
 }
 
 // funcResult is one independently compiled local function. worker/start/end
@@ -1377,8 +1378,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		go func(workerID int) {
 			defer wg.Done()
 			ws := &states[workerID]
-			defer ws.scratch.finishStackWorker()
-			defer ws.scratch.finishControlWorker()
+			defer func() {
+				ws.scratch.finishControlWorker()
+				ws.scratch.finishStackWorker()
+				ws.scratchStats = workerScratchStats(ws.scratch)
+				ws.scratch = nil
+			}()
 			for {
 				i := int(work.next.Add(1) - 1)
 				if i >= n {
@@ -1502,7 +1507,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	finalizeModuleNativeSize(ms, len(code), moduleOther, 0)
 	if ms != nil {
 		for i := range states {
-			ms.addNodeScratchStats(states[i].scratch)
+			ms.addWorkerScratchStats(states[i].scratchStats)
 		}
 	}
 	ms.finalizeCompileResourceStats()
