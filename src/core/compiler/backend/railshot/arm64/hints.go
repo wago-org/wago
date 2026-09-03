@@ -49,36 +49,35 @@ func weightedBranchPath(weight int64) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	localCount         uint16
-	hasCall            bool   // any direct or indirect call
-	callsSelf          bool   // a direct call to the function's own index
-	hasLoop            bool   // structured loop (X12/X13 may be borrowed by loop promotion)
-	touchesMemory      bool   // any linear-memory op
-	inlineCallSites    uint16 // saturated ordinary direct call sites targeting this local function
-	directCallRefs     uint8  // saturated call + return_call references targeting this local function
-	hasInlineLoopCall  bool   // an ordinary direct call site is nested in a loop
-	memOps             uint32 // scalar/vector/bulk linear-memory instructions
-	usesBulkMem        bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
-	mutatesTable       bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
-	hasControlFlow     bool   // control opcode relevant to inline splice framing
-	moduleEH           bool   // module-wide: reserve the active exception-handler register
-	hasStackSinkFusion bool   // lowering may allocate fewer nodes than the scan; retain the legacy arena
-
 	// entryInitialized marks locals whose first access in the straight-line entry
 	// prefix is local.set/tee, making their declared zero unobservable.
 	entryInitialized uint64
 
+	memOps      uint32 // scalar/vector/bulk linear-memory instructions
 	localStart  uint32
 	globalStart uint32
 	globalCount uint32
-
 	// stackArenaNodes is a conservative pre-scan estimate of operand-stack elem
 	// allocations while compiling this body. It lets compileFunc avoid reserving
 	// arena nodes for long immediates (notably v128.const payload bytes) while the
 	// stack's heap fallback still preserves pointer stability if the estimate is
 	// low for unusual control flow.
-	stackArenaNodes    uint32
+	stackArenaNodes uint32
+
+	localCount         uint16
+	inlineCallSites    uint16 // saturated ordinary direct call sites targeting this local function
 	stackArenaDiscount uint16 // possible scanned nodes removed by bounded lookahead peepholes
+	directCallRefs     uint8  // saturated call + return_call references targeting this local function
+	hasCall            bool   // any direct or indirect call
+	callsSelf          bool   // a direct call to the function's own index
+	hasLoop            bool   // structured loop (X12/X13 may be borrowed by loop promotion)
+	touchesMemory      bool   // any linear-memory op
+	hasInlineLoopCall  bool   // an ordinary direct call site is nested in a loop
+	usesBulkMem        bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
+	mutatesTable       bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	hasControlFlow     bool   // control opcode relevant to inline splice framing
+	moduleEH           bool   // module-wide: reserve the active exception-handler register
+	hasStackSinkFusion bool   // lowering may allocate fewer nodes than the scan; retain the legacy arena
 }
 
 // funcHintView reconstructs scan/compile slices on the stack. Only funcHints is
