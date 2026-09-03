@@ -66,11 +66,6 @@ type ctrlFrame struct {
 	baseTypes       []machineType
 	paramTypes      []machineType
 	resultTypes     []machineType
-
-	// Exception-handling state is cold for ordinary control constructs. Keep one
-	// pointer in the common frame and allocate the sidecar only for a try_table or
-	// a branch target that receives a reference-carrying catch.
-	eh *ctrlFrameEH
 }
 
 func (fr *ctrlFrame) has(flag ctrlFlags) bool { return fr.flags&flag != 0 }
@@ -97,6 +92,7 @@ type ctrlFrameMerge struct {
 	loopSetLocals map[uint32]bool
 	loopPins      []loopPin
 	coldEdges     []coldEdge
+	eh            *ctrlFrameEH
 }
 
 const initialCtrlMergeCapacity = 16
@@ -112,11 +108,19 @@ type ctrlFrameEH struct {
 	refResults  [3]bool
 }
 
-func (fr *ctrlFrame) ensureEH() *ctrlFrameEH {
-	if fr.eh == nil {
-		fr.eh = new(ctrlFrameEH)
+func (f *fn) frameEH(fr *ctrlFrame) *ctrlFrameEH {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.eh
 	}
-	return fr.eh
+	return nil
+}
+
+func (f *fn) ensureFrameEH(fr *ctrlFrame) *ctrlFrameEH {
+	cold := f.ensureCtrlMerge(fr)
+	if cold.eh == nil {
+		cold.eh = new(ctrlFrameEH)
+	}
+	return cold.eh
 }
 
 func (f *fn) ctrlMerge(fr *ctrlFrame) *ctrlFrameMerge {
@@ -1287,7 +1291,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	}
 	fr := ctrlFrame{kind: cfTry, paramN: len(paramTypes), resultN: len(resultTypes), branchN: len(resultTypes), elseSite: -1, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
 	fr.set(ctrlEntryUnreachable, f.unreachable)
-	eh := fr.ensureEH()
+	eh := f.ensureFrameEH(&fr)
 	for i := uint32(0); i < n; i++ {
 		kindByte, err := r.Byte()
 		if err != nil {
@@ -1351,7 +1355,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			return fmt.Errorf("bounded exception handler payload arity mismatch")
 		}
 		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
-			f.ctrl[clause.frame].ensureEH().refResults[clause.payloadN-1] = true
+			f.ensureFrameEH(&f.ctrl[clause.frame]).refResults[clause.payloadN-1] = true
 		}
 		f.ctrl[clause.frame].set(ctrlRegMerge1, false)
 		eh.catches = append(eh.catches, clause)
@@ -1528,7 +1532,7 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 }
 
 func (f *fn) emitEHHandler(fr *ctrlFrame) {
-	eh := fr.ensureEH()
+	eh := f.ensureFrameEH(fr)
 	recordOff := f.ehRecordOff(eh.recordIndex)
 	handlerPos := f.a.Len()
 	if !f.a.PatchAdr(eh.targetSite, handlerPos) {
@@ -1583,12 +1587,13 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 }
 
 func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
-	if fr.eh == nil {
+	eh := f.frameEH(fr)
+	if eh == nil {
 		return
 	}
 	e := f.s.back()
 	for i := len(fr.resultTypes) - 1; i >= 0; i-- {
-		if i < len(fr.eh.refResults) && fr.eh.refResults[i] {
+		if i < len(eh.refResults) && eh.refResults[i] {
 			e.st.ehRoot = true
 		}
 		e = e.prev
@@ -1814,7 +1819,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		f.markEHReferenceResults(&fr)
 	}
 	if fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
-		recordOff := f.ehRecordOff(fr.ensureEH().recordIndex)
+		recordOff := f.ehRecordOff(f.ensureFrameEH(&fr).recordIndex)
 		if endReachable {
 			f.ld64(ehReg, SP, recordOff+ehPrevOff)
 		}
