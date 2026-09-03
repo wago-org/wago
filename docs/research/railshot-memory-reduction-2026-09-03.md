@@ -272,6 +272,16 @@ results. Store the first error out-of-band instead of one interface in every
 result. This is analogous to Cranelift's pooled compact entity lists and does not
 alter scheduling or output ownership.
 
+The error interface and duplicate relocation header have since moved out of
+each result. ARM64 now also narrows the remaining worker identity, worker-arena
+range, body length, and internal-entry offset to checked 32-bit fields, reducing
+`funcResult` from 88 to 64 bytes. A per-worker code arena above 4 GiB is rejected
+before append rather than truncated. Four-worker native benchmarks reduce
+`many_funcs` by about 6.8 KiB/op and `json-as` by about 1.8 KiB/op with unchanged
+median allocation counts and compile timings within the normal investigation
+gate. AMD64 retains the analogous host-width fields and should be converted only
+with the same explicit range proof.
+
 ### 6. Scratch retention should be per buffer, not per worker as a whole
 
 The scratch object retains more than twenty variable-capacity buffers, including

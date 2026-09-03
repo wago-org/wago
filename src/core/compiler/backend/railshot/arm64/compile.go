@@ -765,15 +765,33 @@ type workerState struct {
 // directly to the module-owned per-function slice because each worker owns one
 // function index at a time.
 type funcResult struct {
-	worker      int
-	start       int
-	end         int
-	bodyBytes   int
+	worker      uint32
+	start       uint32
+	end         uint32
+	bodyBytes   uint32
 	layoutFlags uint8
-	internalOff int
+	internalOff uint32
 	adapterTail adapterTailInfo
 	adapter     sharedAdapterInfo
 	trapBody    sharedTrapBodyInfo
+}
+
+func compactFuncResultRange(start, size int) (uint32, uint32, bool) {
+	if start < 0 || size < 0 {
+		return 0, 0, false
+	}
+	end := uint64(start) + uint64(size)
+	if end > uint64(^uint32(0)) {
+		return 0, 0, false
+	}
+	return uint32(start), uint32(end), true
+}
+
+func compactFuncResultValue(value int) (uint32, bool) {
+	if value < 0 || uint64(value) > uint64(^uint32(0)) {
+		return 0, false
+	}
+	return uint32(value), true
 }
 
 const (
@@ -1418,11 +1436,22 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					work.failures.Record(i, err)
 					continue
 				}
+				start := len(ws.arena)
+				compactStart, compactEnd, ok := compactFuncResultRange(start, len(fnCode))
+				if !ok {
+					work.failures.Record(i, fmt.Errorf("arm64: parallel worker code exceeds 4 GiB"))
+					continue
+				}
+				bodyBytes, bodyOK := compactFuncResultValue(len(m.Code[i].BodyBytes))
+				compactInternalOff, internalOK := compactFuncResultValue(internalOff)
+				if !bodyOK || !internalOK {
+					work.failures.Record(i, fmt.Errorf("arm64: parallel function metadata exceeds 32-bit range"))
+					continue
+				}
 				relocs[i] = rl
 				layoutFlags |= boolFlag(ws.scratch.directPrepared, layoutDirectPrepared)
-				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
-				result := funcResult{worker: workerID, start: start, end: len(ws.arena), bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: layoutFlags, internalOff: internalOff}
+				result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, bodyBytes: bodyBytes, layoutFlags: layoutFlags, internalOff: compactInternalOff}
 				if policy.CompactNative {
 					if policy.EnabledOption(optSharedAdapters) {
 						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
@@ -1462,11 +1491,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		if r.layoutFlags&layoutOmitted != 0 {
 			continue
 		}
-		if pad := functionStartPaddingFlags(len(code), r.bodyBytes, r.layoutFlags, policy); pad != 0 {
+		if pad := functionStartPaddingFlags(len(code), int(r.bodyBytes), r.layoutFlags, policy); pad != 0 {
 			code = append(code, alignPad[:pad]...)
 		}
 		entry[i] = len(code)
-		internalEntry[i] = len(code) + r.internalOff
+		internalEntry[i] = len(code) + int(r.internalOff)
 		if r.layoutFlags&layoutDirectPrepared != 0 {
 			directPrepared = markDirectPrepared(directPrepared, n, i)
 		}
@@ -1478,7 +1507,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			r.adapter.function = uint32(i)
 			adapters = append(adapters, r.adapter)
 		}
-		fnCode := states[r.worker].arena[r.start:r.end]
+		fnCode := states[int(r.worker)].arena[int(r.start):int(r.end)]
 		if r.layoutFlags&layoutHostAdapter != 0 {
 			trapBodyCluster.reset()
 		}
