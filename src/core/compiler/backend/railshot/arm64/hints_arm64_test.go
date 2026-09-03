@@ -17,6 +17,27 @@ func TestFuncHintsSizeArm64(t *testing.T) {
 	}
 }
 
+func TestModuleHintsCountLocalDirectCallRelocations(t *testing.T) {
+	m := &wasm.Module{
+		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		FuncTypes: []wasm.TypeIdx{
+			{Index: 0},
+			{Index: 0},
+		},
+		Code: []wasm.Func{
+			{BodyBytes: []byte{0x10, 0x01, 0x10, 0x01, 0x0b}},
+			{BodyBytes: []byte{0x0b}},
+		},
+	}
+	hints, _, _, err := computeModuleHints(m, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := hints[0].callRelocSites; got != 2 {
+		t.Fatalf("call relocation sites = %d, want 2", got)
+	}
+}
+
 func TestEntryInitializedSharesLocalScoreStorageArm64(t *testing.T) {
 	scores := make([]uint32, 2)
 	h := funcHintsWithStorage(scores)

@@ -406,6 +406,21 @@ neutral to favorable on both screens, while division-free `many_funcs` is
 unchanged. This removes general compile-time machinery without changing the
 existing constant-division admission or generated algorithm.
 
+ARM64's direct-call relocation profile then exposed geometric slice growth that
+could use the already-completed body scan. The 32-byte function summary had two
+padding bytes, now occupied by a saturated count of local direct-call sites.
+Functions with at least eight sites reserve their compact 12-byte records once;
+smaller sets keep append growth because optional inlining can erase their only
+relocation and they cross too few allocator size classes to repay a reserve. An
+initial reserve-for-any-call prototype demonstrated that boundary directly:
+`many_funcs` gained 48 B/op and one allocation because a small call set was
+inlined, so that form was removed. With the bounded target-cost rule,
+`many_funcs` returns exactly to 75,992 B/op and 40 allocations, while native
+`json-as` falls from 191,496 to 190,248 B/op and from 567 to 544 allocations.
+Six `GOGC=off` timing samples overlap. Counts saturate conservatively and append
+remains the correctness fallback. The rule uses only decoded local-call count
+and target record-growth cost, never module or workload identity.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so

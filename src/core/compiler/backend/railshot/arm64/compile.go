@@ -2005,6 +2005,10 @@ type regExhausted struct{}
 // pinning off) from a genuine compile error (propagate).
 var errRegExhausted = errors.New("arm64: no register available to spill")
 
+// Below this count, an optionally inlined call can erase the only relocation
+// and ordinary append growth crosses too few size classes to repay a reserve.
+const minPreallocatedCallRelocs = 8
+
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
@@ -2091,6 +2095,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, locals := f.localType, f.localSlot, f.locals
 	mt0, _ := m.MemoryType(0)
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow)}
+	// Small call sets already grow into tiny exact size classes, while an inline
+	// may erase their only relocation. Reserve only once geometric growth would
+	// require several backing arrays; append remains the correctness fallback.
+	if hints.callRelocSites >= minPreallocatedCallRelocs {
+		f.relocs = make([]callReloc, 0, hints.callRelocSites)
+	}
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient

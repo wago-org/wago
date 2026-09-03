@@ -91,7 +91,8 @@ type funcHints struct {
 	inlineCallSites    uint16 // saturated ordinary direct call sites targeting this local function
 	stackArenaDiscount uint16 // possible scanned nodes removed by bounded lookahead peepholes
 	flags              funcHintFlags
-	directCallRefs     uint8 // saturated call + return_call references targeting this local function
+	directCallRefs     uint8  // saturated call + return_call references targeting this local function
+	callRelocSites     uint16 // saturated direct calls emitted by this function before optional inlining
 }
 
 // funcHintView reconstructs scan/compile slices on the stack. Only funcHints is
@@ -894,6 +895,9 @@ func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline, inLoop boo
 	local := int(globalIdx) - s.importedFuncs
 	if local < 0 || local >= len(s.moduleHints) {
 		return
+	}
+	if s.h.callRelocSites != ^uint16(0) {
+		s.h.callRelocSites++
 	}
 	target := &s.moduleHints[local]
 	if target.directCallRefs != ^uint8(0) {
