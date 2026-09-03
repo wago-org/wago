@@ -650,7 +650,7 @@ func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 	}
 	switch runtime.GOARCH {
 	case "amd64":
-		for _, name := range []string{"affine-lea", "call-next-use", "tee-spill-elide", "v128-sink"} {
+		for _, name := range []string{"affine-lea", "tee-spill-elide", "v128-sink"} {
 			wantOff[name] = true
 		}
 	}

@@ -387,7 +387,6 @@ var catalog = []Definition{
 	both("entry-arg-pins", "Entry argument pins", "keep entry arguments in incoming registers"),
 	arm64("x8-pin", "X8 scratch pin", "pin a scratch value in call-free functions"),
 	both("ext-fp-pins", "Extended float pins", "use the larger floating-point register pool"),
-	amd64Off("call-next-use", "Call next-use", "skip dead pinned-local stores before calls"),
 	arm64("merge-next-use", "Merge next-use", "keep dead forward-merge locals lazy with bounded post-merge lookahead"),
 	amd64Off("affine-lea", "Affine LEA", "fold bounded affine index trees into scaled addressing"),
 	amd64("tree-order", "Valent tree ordering", "schedule bounded commutative trees by register need"),

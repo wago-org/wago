@@ -32,7 +32,6 @@ func TestMeasuredLowValueOptimizationsDefaultOff(t *testing.T) {
 	wantOff := map[string]map[string]bool{
 		"amd64": {
 			"affine-lea":      true,
-			"call-next-use":   true,
 			"loop-precheck":   true,
 			"tee-spill-elide": true,
 			"v128-sink":       true,

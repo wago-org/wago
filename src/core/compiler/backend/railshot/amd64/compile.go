@@ -168,11 +168,6 @@ var v128LocalSinkEnabled = envDefaultOff(os.Getenv("WAGO_V128_SINK"))
 // WAGO_AMD64_NO_V128_CONST_CACHE=1 disables both uses for A/B.
 var v128ConstCacheEnabled = os.Getenv("WAGO_AMD64_NO_V128_CONST_CACHE") != "1"
 
-// callNextUseEnabled skips stores of dirty pinned locals whose next bounded
-// post-call access overwrites the local before reading it. It is default-off;
-// WAGO_AMD64_CALL_NEXT_USE=1 opts in for focused measurement.
-var callNextUseEnabled = envDefaultOff(os.Getenv("WAGO_AMD64_CALL_NEXT_USE"))
-
 // affineLeaEnabled extends scaled-index LEA selection across one-level affine
 // base/index subtrees, folding their constants into the LEA displacement.
 // It is default-off; WAGO_AMD64_AFFINE_LEA=1 opts in for focused measurement.
@@ -281,10 +276,6 @@ type fn struct {
 	usesWide   bool
 	classifier wasm.ModuleInstructionClassifier
 	moduleEH   bool
-	// Bounded post-call next-use state. Pinned registers are numbered 0..15,
-	// so two uint16 masks fit in the bool cluster's existing alignment padding.
-	callDeadGP uint16
-	callDeadFP uint16
 	// Number of commutative self-update spill opportunities seen in this function.
 	// The first keeps the conservative form; repeated pressure selects the denser
 	// register form without perturbing one-off sites in otherwise cold functions.

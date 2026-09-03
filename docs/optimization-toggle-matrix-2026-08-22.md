@@ -8,7 +8,7 @@
 - Fail-closed result: `arm64/stack-reg` (4 nonzero exits; samples on/off=4/4); `amd64/reg-abi` (4 nonzero exits; samples on/off=4/4); `amd64/stack-reg` (4 nonzero exits; samples on/off=4/4).
 - The strongest broadly visible execution wins are ARM64 `reg-abi` (+20.42% disabled penalty), AMD64 `v128-const-cache` (+6.09%), branch folding (+2.30% ARM64 / +3.39% AMD64), AMD64 `inline` (+2.27%), and vector pins (+2.56% ARM64 / +1.84% AMD64).
 - The clearest cost/benefit review target is `loop-precheck`: disabling it cuts full-compile allocation bytes by 6.38% on ARM64 and 6.09% on AMD64 and improves compile time by 5.36% / 3.05%, while broad execution changes only +0.21% / +0.11%; focused rows still lose as much as 3.72% / 2.88%, so this is a default/removal investigation, not an immediate deletion.
-- The cleanest low-consequence implementation candidates are ARM64 `v128-const-cache`, shared `v128-sink`, AMD64 `affine-lea`, AMD64 `call-next-use`, and the default-off experimental `inline-loop-callees`. Each needs focused code-size and hit-count evidence before removal.
+- The cleanest low-consequence implementation candidates were ARM64 `v128-const-cache`, shared `v128-sink`, AMD64 `affine-lea`, AMD64 `call-next-use`, and the default-off experimental `inline-loop-callees`. The ARM64 cache/sink and AMD64 call-next-use paths have since been retired after their focused screens failed the normal gates.
 - Follow-up implemented: `loop-precheck` and `v128-sink` now default off on both architectures; ARM64 also defaults `deep-fp-pins` off; AMD64 also defaults `call-next-use`, `affine-lea`, `tee-spill-elide`, and, at this historical checkpoint, `commute-self-update` off. The already-off `inline-loop-callees` override and its unreachable backend paths were removed.
 - Requalification on 2026-08-29 changed `commute-self-update` to handle the first eligible site through a direct lowering instead of the generic relocation path. The new same-process real-corpus A/B improves execution 3.55% geomean, removes 67.0% of measured backend spills, and leaves compile allocation unchanged, so AMD64 now defaults it on. The original table below remains the record of the older implementation and must not be read as current default policy.
 - Follow-up catalog audit: formerly environment-only families were screened as public flags. Paired screening kept the high-value SIMD/SWAR and focused register/code-selection wins on and defaulted AMD64 `gc-ref-facts` off while retaining it as a GC-workload opt-in. The failed `fcmp-fuse` experiment was subsequently retired rather than kept as a permanent alternate path.
@@ -25,7 +25,7 @@ through the existing runtime/project optimization map.
 | Architecture | Newly default-off options | Removed surface |
 |---|---|---|
 | ARM64 | `loop-precheck` | `inline-loop-callees`, `v128-const-cache`, `v128-sink`, `deep-fp-pins`, `fcmp-fuse` |
-| AMD64 | `affine-lea`, `call-next-use`, `gc-ref-facts`, `loop-precheck`, `tee-spill-elide`, `v128-sink` | `inline-loop-callees`, `fcmp-fuse` |
+| AMD64 | `affine-lea`, `gc-ref-facts`, `loop-precheck`, `tee-spill-elide`, `v128-sink` | `inline-loop-callees`, `fcmp-fuse`, `call-next-use` |
 
 The final bundle was measured using two separately compiled benchmark binaries:
 one at original commit `ef129fdbb820`, and one at current commit `20936e8621bc`.
@@ -79,6 +79,19 @@ manifest/schema entry, and experiment-only primitive test on both architectures.
 The ordinary eager float comparison path and semantic execution coverage for all
 ordered comparisons, `if`, `br_if`, and NaN inputs remain. This is a code-size and
 maintenance reduction; it is not claimed as a compile-heap win.
+
+### Follow-on AMD64 call-next-use removal
+
+AMD64 `call-next-use` was removed after its paired removal screen showed only a
+0.10% aggregate execution benefit, a worst focused slowdown of 0.84%, unchanged
+compile allocation, and 0.25% better compile time when disabled. That does not
+clear the execution gate for retaining a second call-spill policy.
+
+The deletion removes the bounded post-call bytecode rescan, two per-function
+register masks, the alternate call-spill branch, public option, environment
+control, schema entry, and focused alternate-path test. Calls now always use the
+canonical dirty-local spill rule. This is a general policy simplification: it
+does not inspect producer identity, function names, indexes, or corpus membership.
 
 ### Follow-on ARM64 deep-float-pin removal
 
@@ -243,7 +256,7 @@ matrix does not measure generated native-code bytes.
 | `value-facts` | on | no | +0.12% | -0.28% | -0.00% | `memory_tree.run` +9.64% | 0.74% | retain |
 | `entry-arg-pins` | on | no | +0.10% | -0.23% | +0.00% | `utf-as-simd.validateN` +1.57% | 0.75% | removal-screen |
 | `ext-fp-pins` | on | no | +1.11% | -0.02% | -0.00% | `utf-as-simd.validateN` +20.40% | 0.83% | retain |
-| `call-next-use` | on | no | +0.10% | -0.25% | -0.00% | `json-as-simd.serializeN` +0.84% | 0.69% | removal-screen |
+| `call-next-use` | on | no | +0.10% | -0.25% | -0.00% | `json-as-simd.serializeN` +0.84% | 0.69% | retired after failed screening |
 | `affine-lea` | on | no | -0.07% | -0.66% | -0.00% | `memory.sum` +0.60% | 0.84% | removal-screen |
 | `tree-order` | on | no | +0.02% | +0.04% | -0.00% | `sha256.hashN` +1.79% | 0.75% | removal-screen |
 | `assoc-tree` | on | no | +0.25% | +0.28% | +0.00% | `xjb-mulhi.runN` +6.78% | 0.85% | retain |
@@ -325,7 +338,7 @@ For Wago's low-memory direction, this deserves the first focused follow-up. The 
 1. **ARM64 `v128-const-cache`.** Disabling is execution-neutral (-0.06%, worst slowdown +0.78%) and improves full compile time by 1.36%, with no compile-memory change. The same feature is emphatically valuable on AMD64 (+6.09% aggregate, +186.23% on `utf-as-simd.validateN`), so only the ARM64 implementation is a candidate.
 2. **Shared `v128-sink`.** It is neutral on both architectures (+0.07% aggregate on each; worst disabled penalties +1.10% ARM64 and +0.96% AMD64) and does not reduce compile memory. The static explainer shows this path fires heavily on SIMD code, which makes its lack of measured execution effect notable. Measure native bytes and a longer SIMD-only run; if those are also flat, deleting the sink machinery would remove several target-specific lowering branches and tests.
 3. **AMD64 `affine-lea`.** Disabling is execution-neutral (-0.07%, worst +0.60%) and compile-time-positive (-0.66%), with no memory movement. It is a bounded local matcher with focused tests, so removal is contained. Re-run the dedicated affine fixture and record native instruction bytes before deleting it.
-4. **AMD64 `call-next-use`.** Disabling changes aggregate execution by +0.10%, worst +0.84%, while improving compile time by 0.25%. The bounded call-liveness scan is more code than the measured result justifies. A static hit count plus a call-heavy focused run should decide it.
+4. **AMD64 `call-next-use`.** Retired after disabling changed aggregate execution by +0.10%, worst +0.84%, while improving compile time by 0.25%. The bounded call-liveness scan and alternate spill policy were more code than the measured result justified.
 5. **Experimental `inline-loop-callees`.** It is default-off. On AMD64, keeping it off is execution-neutral (+0.01% off versus on), 0.62% faster to compile, and 0.49% lower in compile bytes. ARM64 is noisier and has one +2.51% focused difference, but the broad result is +0.12%. If there is no near-term plan to ship it, removing the catalog surface and opt-in path is simpler than carrying a dormant experimental branch.
 
 ### Weak candidates, not first cuts
@@ -1520,6 +1533,9 @@ Use the larger floating-point register pool. Selected default: **on**; experimen
 #### `call-next-use` — Call next-use
 
 Skip dead pinned-local stores before calls. Selected default: **on**; experimental: **no**; triage: **removal-screen**.
+
+This table records the historical benchmark state. The option was subsequently
+defaulted off and then retired after failing its removal screen.
 
 | Metric | Enabled geomean | Disabled geomean | Disabled delta | Median sample spread |
 |---|---:|---:|---:|---:|
