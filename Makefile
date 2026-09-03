@@ -378,18 +378,18 @@ bench-website: ## Update ../website performance numbers from the last benchmark 
 
 # Cross-runtime startup-latency sweep (full process, exec→exit) over the
 # committed work-twins in bench/startup/twins, across every runtime found on the
-# machine → bench/out/startup.json. See bench/startup/runtimes.json for the
+# machine → bench/startup/startup-<arch>.json. See bench/startup/runtimes.json for the
 # runtime list and *_BIN env overrides; a missing runtime is skipped.
 .PHONY: bench-startup
-bench-startup: ## Run the cross-runtime startup-latency sweep and write bench/startup/startup.json
-	node bench/startup/run.mjs
+bench-startup: ## Run the cross-runtime startup-latency sweep for the host architecture
+	node bench/startup/run.mjs --out bench/startup/startup-$$(go env GOARCH).json
 
 # Website checkout (sibling by default); override for a worktree:
 #   make site WEBSITE_DIR=/abs/path/to/website
 WEBSITE_DIR ?= ../website
 
 .PHONY: startup-website
-startup-website: ## Update the website startup-latency numbers from bench/startup/startup.json
+startup-website: ## Update website end-to-end numbers from both architecture captures
 	WAGO_WEBSITE_DIR=$(WEBSITE_DIR) scripts/update-website-startup.mjs
 
 # One command to rebuild the whole website from committed data — startup +

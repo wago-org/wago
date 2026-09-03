@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Cross-runtime startup-latency sweep → bench/out/startup.json.
+// Cross-runtime startup-latency sweep → one architecture-specific JSON file.
 //
 // Times the whole process (exec → load → compile → instantiate → run _start →
 // exit) for each committed work-twin in bench/startup/twins/ across every
@@ -13,8 +13,7 @@
 // (scripts/update-website-startup.mjs) consumes the JSON this writes.
 //
 // Usage:
-//   node bench/startup/run.mjs                 # full sweep → bench/out/startup.json
-//   node bench/startup/run.mjs --out x.json    # write elsewhere
+//   node bench/startup/run.mjs --out x.json    # write one architecture capture
 //   WARMUP=5 MINRUNS=30 node bench/startup/run.mjs
 //   WAGO_BIN=/path/to/wago V8_BIN=/path/to/v8 WASM3_BIN=... node bench/startup/run.mjs
 
@@ -27,7 +26,8 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..", "..");
 const cfg = JSON.parse(await readFile(join(HERE, "runtimes.json"), "utf8"));
-const outPath = resolve(argOf("--out") || join(HERE, "startup.json"));
+const architecture = process.arch === "x64" ? "amd64" : process.arch;
+const outPath = resolve(argOf("--out") || join(HERE, `startup-${architecture}.json`));
 const WARMUP = process.env.WARMUP || "5";
 const MINRUNS = process.env.MINRUNS || "30";
 
@@ -75,10 +75,15 @@ for (const w of cfg.workloads) {
 
 const data = {
   generated: new Date().toISOString().slice(0, 10),
+  sourceCommit: gitCommit(),
   machine: process.env.STARTUP_MACHINE || cpuName(),
   method: `hyperfine -N --warmup ${WARMUP} --min-runs ${MINRUNS}; cold caches (full process, exec→exit)`,
   unit: "ms",
-  runtimes: Object.fromEntries(cfg.order.map((n) => [n, { tag: cfg.runtimes[n].tag }])),
+  architecture,
+  runtimes: Object.fromEntries(cfg.order.map((n) => [n, {
+    label: cfg.runtimes[n].label ?? n,
+    tag: cfg.runtimes[n].tag,
+  }])),
   workloads,
 };
 
@@ -106,6 +111,10 @@ function cpuName() {
   const r = spawnSync("sh", ["-c", "grep -m1 'model name' /proc/cpuinfo | cut -d: -f2"], { encoding: "utf8" });
   const cpu = (r.stdout || "").trim();
   return cpu ? `${cpu}, ${process.platform}/${process.arch}` : `${process.platform}/${process.arch}`;
+}
+function gitCommit() {
+  const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8" });
+  return r.status === 0 ? r.stdout.trim() : "";
 }
 function round(v, d) { const f = 10 ** d; return Math.round(v * f) / f; }
 function fail(msg) { console.error("startup sweep:", msg); process.exit(1); }

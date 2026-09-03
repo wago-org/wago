@@ -527,8 +527,8 @@ function renderSection(tabs, sets) {
                     <span class="section__title-accent">one corpus</span>
                 </h2>
                 <p class="section__lead">
-                    Select any combination of Railshot, Dragline, and wazero.
-                    Every published row uses the same workload on the selected
+                    Compare Railshot, Dragline, and wazero directly.
+                    Every published row uses the same workload on the shown
                     AMD64 or ARM64 machine.
                 </p>
                 <div class="vs">

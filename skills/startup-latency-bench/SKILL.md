@@ -6,8 +6,9 @@ compile → instantiate → execute → exit for one real-world binary across a 
 of interpreters and JITs.
 
 > **Automated now:** the multi-workload sweep that feeds the website's Startup
-> section is scripted in `bench/startup/` — `make bench-startup` writes
-> `bench/startup/startup.json`, and `make site` regenerates the website from it
+> section is scripted in `bench/startup/` — run `make bench-startup` on ARM64
+> and AMD64 to write `startup-<arch>.json`; `make site` regenerates the website
+> from both captures
 > (via `scripts/update-website-startup.mjs`). This skill documents the method
 > and the twin construction behind that harness; read it when adding a workload
 > or debugging a runtime's numbers.
@@ -78,7 +79,8 @@ Sanity: `wasm-tools print /tmp/json-startup.wasm | grep -c '(import'` must be 0.
 
 ## 2. Get the runtimes
 
-- **wago runtime**:
+- **wago runtime** (run once with `--railshot` and once with `--dragline`; use
+  an isolated `WAGO_CONFIG` with Dragline enabled):
   `go build -tags wago_runtime -o /tmp/bin/wago ./cli/wago`
   (matches `make build-runtime-standard`).
 - **wasmtime, wazero, wasmer, wavm**: upstream release binaries.
@@ -96,11 +98,11 @@ Run hyperfine once per module (`M=/tmp/json-startup.wasm`, then the noop):
 
 ```sh
 hyperfine -N --warmup 5 --min-runs 30 --export-json out.json \
-  -n wago              "/tmp/bin/wago run $M" \
+  -n railshot          "/tmp/bin/wago run --railshot $M" \
+  -n dragline          "/tmp/bin/wago run --dragline $M" \
   -n wasmtime          "wasmtime run -C cache=n $M" \
   -n wazero            "wazero run $M" \
   -n wasmer-cranelift  "wasmer run --disable-cache $M" \
-  -n wasmer-singlepass "wasmer run --disable-cache -s $M" \
   -n wavm              "wavm run --abi=bare --function=_start $M" \
   -n wasm3             "wasm3 $M" \
   -n iwasm             "iwasm $M" \

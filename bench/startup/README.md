@@ -21,13 +21,14 @@ for the performance section).
   to the corresponding `bench/corpus/rust/*.rs` kernel). The `json-as` twin is
   AssemblyScript; see `skills/startup-latency-bench` for its build.
 - `run.mjs` — the sweep. Skips any runtime whose binary isn't found and still
-  writes the rest. Emits `startup.json`.
-- `startup.json` — the dataset the website generator consumes (committed).
+  writes the rest. Run it once per architecture.
+- `startup-arm64.json` and `startup-amd64.json` — the matched datasets the
+  website generator consumes (committed). Both include Railshot and Dragline.
 
 ## Run it
 
 ```sh
-make bench-startup                 # → bench/startup/startup.json
+make bench-startup                 # → bench/startup/startup-$(go env GOARCH).json
 # or point at specific binaries:
 V8_BIN=… WASM3_BIN=… IWASM_BIN=… node bench/startup/run.mjs
 ```
@@ -42,11 +43,14 @@ make startup-website
 
 ## Method
 
-`hyperfine -N --warmup 5 --min-runs 30`, cold caches. Each workload is one
-hyperfine invocation with one named command per runtime, so all engines are
-timed back-to-back under identical conditions. The website panel sorts each
-workload ascending and scales bar widths against the slowest non-LLVM runtime
-(wavm's LLVM compile is an outlier that would otherwise flatten every bar).
+`hyperfine -N --warmup 5 --min-runs 30`, cold caches. Run the same runtime set
+on both architectures. Each workload is one hyperfine invocation with one
+named command per runtime, so all engines are timed back-to-back under
+identical conditions. The website panel sorts each workload ascending and
+scales bar widths against the slowest non-LLVM runtime (wavm's LLVM compile is
+an outlier that would otherwise flatten every bar). Wago's runtime binary is
+measured twice, once with `--railshot` and once with `--dragline`; enable the
+experimental Dragline setting in an isolated benchmark configuration first.
 
 See `skills/startup-latency-bench/SKILL.md` for the twin construction, the
 cold-cache gotchas per runtime, and how to attribute wago's own startup.
