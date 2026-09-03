@@ -72,14 +72,28 @@ type ctrlFrame struct {
 	branchGCFacts []shared.GCRefFact
 	entryGCFacts  []shared.GCRefFact
 
+	// Exception-handling state is cold for ordinary control constructs. Keep one
+	// pointer in the common frame and allocate the sidecar only for a try_table or
+	// a branch target that receives a reference-carrying catch.
+	eh *ctrlFrameEH
+}
+
+type ctrlFrameEH struct {
 	// cfTry only: one of a bounded set of fixed six-slot native-stack records
 	// plus an ordered compile-time catch dispatch table. Scalar exceptions carry
 	// at most two payload words; reference catches copy those words into a fixed
 	// rooted exception slot before exposing its stable frame-relative address.
-	ehTargetSite  int
-	ehRecordIndex int
-	ehCatches     []ehCatchClause
-	ehRefResults  [3]bool // branch-result positions that carry rooted exception identities
+	targetSite  int
+	recordIndex int
+	catches     []ehCatchClause
+	refResults  [3]bool // branch-result positions that carry rooted exception identities
+}
+
+func (fr *ctrlFrame) ensureEH() *ctrlFrameEH {
+	if fr.eh == nil {
+		fr.eh = new(ctrlFrameEH)
+	}
+	return fr.eh
 }
 
 type ehCatchClause struct {
@@ -161,9 +175,15 @@ func slotOfLogicalTypes(types []machineType, logical int) int {
 func (f *fn) currentLogicalTypes() []machineType { return f.logicalTypes(f.rootsBottomToTop()) }
 
 func gcRootFlags(roots []*elem) []bool {
-	flags := make([]bool, len(roots))
+	var flags []bool
 	for i, root := range roots {
-		flags[i] = root.kind == ekValue && root.st.gcRoot
+		if root.kind != ekValue || !root.st.gcRoot {
+			continue
+		}
+		if flags == nil {
+			flags = make([]bool, len(roots))
+		}
+		flags[i] = true
 	}
 	return flags
 }
@@ -229,12 +249,15 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 	if n > len(roots) {
 		return
 	}
-	if len(fr.resultGCRoots) < n {
-		fr.resultGCRoots = make([]bool, n)
-	}
 	resultRoots := roots[len(roots)-n:]
 	for i, root := range resultRoots {
-		fr.resultGCRoots[i] = fr.resultGCRoots[i] || (root.kind == ekValue && root.st.gcRoot)
+		if root.kind != ekValue || !root.st.gcRoot {
+			continue
+		}
+		if len(fr.resultGCRoots) < n {
+			fr.resultGCRoots = make([]bool, n)
+		}
+		fr.resultGCRoots[i] = true
 	}
 	if !f.gcRefFactsEnabled() {
 		return
@@ -255,6 +278,9 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 }
 
 func frameGCRootFlags(base, suffix []bool) []bool {
+	if len(base)+len(suffix) == 0 {
+		return nil
+	}
 	flags := make([]bool, 0, len(base)+len(suffix))
 	flags = append(flags, base...)
 	flags = append(flags, suffix...)
@@ -856,6 +882,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		return fmt.Errorf("bounded exception handling supports at most %d catches per try_table", maxEHCatches)
 	}
 	fr := ctrlFrame{kind: cfTry, paramN: len(paramTypes), resultN: len(resultTypes), branchN: len(resultTypes), elseSite: -1, entryUnreach: f.unreachable, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	eh := fr.ensureEH()
 	for i := uint32(0); i < n; i++ {
 		kindByte, err := r.Byte()
 		if err != nil {
@@ -919,7 +946,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			return fmt.Errorf("bounded exception handler payload arity mismatch")
 		}
 		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
-			f.ctrl[clause.frame].ehRefResults[clause.payloadN-1] = true
+			f.ctrl[clause.frame].ensureEH().refResults[clause.payloadN-1] = true
 		}
 		// The exception edge can arrive with only the conservative local-fact state
 		// established before try_table. Intersect it at registration time just like
@@ -928,7 +955,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		// Catch dispatch writes canonical slots before jumping. Keep the target on
 		// that representation instead of the ordinary single-result register merge.
 		f.ctrl[clause.frame].regMerge1 = false
-		fr.ehCatches = append(fr.ehCatches, clause)
+		eh.catches = append(eh.catches, clause)
 	}
 	fr.height = f.depth() - fr.paramN
 	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
@@ -940,12 +967,12 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	if f.ehTryDepth >= maxEHTryRecords {
 		return fmt.Errorf("bounded exception handling supports at most %d nested try_table records", maxEHTryRecords)
 	}
-	fr.ehRecordIndex = f.ehTryDepth
+	eh.recordIndex = f.ehTryDepth
 	f.ehTryDepth++
 	f.reconcileLocals()
 	f.flush()
-	for i := range fr.ehCatches {
-		clause := &fr.ehCatches[i]
+	for i := range eh.catches {
+		clause := &eh.catches[i]
 		if clause.kind != wasm.CatchRef && clause.kind != wasm.CatchAllRef {
 			continue
 		}
@@ -956,11 +983,11 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		}
 		f.stats.peep("eh-root-init")
 	}
-	recordOff := f.ehRecordOff(fr.ehRecordIndex)
+	recordOff := f.ehRecordOff(eh.recordIndex)
 	f.a.LeaRsp(R11, recordOff)
 	f.a.Store64(R11, ehPrevOff, RBP)
 	f.a.Store64(R11, ehSavedRSPOff, RSP)
-	fr.ehTargetSite = f.a.LeaRipPlaceholder(RAX)
+	eh.targetSite = f.a.LeaRipPlaceholder(RAX)
 	f.a.Store64(R11, ehTargetOff, RAX)
 	f.a.Store64(R11, ehSavedRBXOff, RBX)
 	f.a.MovReg64(RBP, R11)
@@ -1102,16 +1129,17 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 }
 
 func (f *fn) emitEHHandler(fr *ctrlFrame) {
-	recordOff := f.ehRecordOff(fr.ehRecordIndex)
+	eh := fr.ensureEH()
+	recordOff := f.ehRecordOff(eh.recordIndex)
 	handlerPos := f.a.Len()
-	f.a.PatchRel32(fr.ehTargetSite, handlerPos)
+	f.a.PatchRel32(eh.targetSite, handlerPos)
 	// A throw may arrive from a foreign instance with its RBX installed. The
 	// record owns the target handler and restores its basedata before dispatch.
 	f.a.Load64(RBX, RSP, recordOff+ehSavedRBXOff)
 
-	dispatchN := len(fr.ehCatches)
-	for i := range fr.ehCatches {
-		clause := &fr.ehCatches[i]
+	dispatchN := len(eh.catches)
+	for i := range eh.catches {
+		clause := &eh.catches[i]
 		if clause.kind == wasm.CatchAll {
 			clause.matchSite = f.a.JmpPlaceholder()
 			dispatchN = i + 1
@@ -1144,16 +1172,19 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	f.trapAlways(trapUnhandledException)
 
 	for i := 0; i < dispatchN; i++ {
-		clause := &fr.ehCatches[i]
+		clause := &eh.catches[i]
 		f.a.PatchRel32(clause.matchSite, f.a.Len())
 		f.emitEHCatchRoute(fr, clause, recordOff)
 	}
 }
 
 func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
+	if fr.eh == nil {
+		return
+	}
 	e := f.s.back()
 	for i := len(fr.resultTypes) - 1; i >= 0; i-- {
-		if i < len(fr.ehRefResults) && fr.ehRefResults[i] {
+		if i < len(fr.eh.refResults) && fr.eh.refResults[i] {
 			e.st.ehRoot = true
 		}
 		e = e.prev
@@ -1316,7 +1347,7 @@ func (f *fn) opEnd() error {
 		f.markEHReferenceResults(&fr)
 	}
 	if fr.kind == cfTry && !fr.entryUnreach {
-		recordOff := f.ehRecordOff(fr.ehRecordIndex)
+		recordOff := f.ehRecordOff(fr.ensureEH().recordIndex)
 		if fallthroughReachable {
 			f.a.Load64(RBP, RSP, recordOff+ehPrevOff)
 		}

@@ -30,11 +30,12 @@ A follow-up audit at `779e5e65842359c1c7b169f1af299097853a71ad` found several ad
 - Resolve module invariants once, narrow compiler-only indexes, flatten parallel metadata, and apply retention limits per scratch buffer.
 - Retire default-off experiments and mature rollback switches that fail the normal qualification gates. Compiler mechanisms should replace old state, not accumulate beside it.
 
-The implementation starts with two code-identical cuts from that audit:
+The implementation starts with four code-identical cuts from that audit:
 
 1. Module hint scanning always retains exact touched-global records instead of a dense function-by-global matrix, and the fixed hint record drops from 200 to 152 bytes. On a synthetic 1,024-function/1,024-global shape with one touched global per function, this changed the ARM64 hint benchmark from approximately 5.47 MB and 0.64 ms per operation to 0.24 MB and 0.12 ms per operation. This is a targeted stress result, not a full-corpus claim.
 2. Module-wide synchronous-host-call classification is computed once per module, and the bounded module-global pin list replaces a per-function `globals`-sized membership bitmap.
 3. The existing opt-in statistics path now exposes a shared compile-resource ledger for hint headers and sidecars, function attempts, failed-attempt input/node/code bytes, and failed-attempt time. Timing is explicitly excluded from deterministic stats comparisons; all byte and count fields remain deterministic.
+4. The first control-stack cut moves EH-only state behind a lazy semantic sidecar, reducing every ordinary `ctrlFrame` by 40 bytes: 472 to 432 bytes on AMD64 and 416 to 376 bytes on ARM64. Scalar control frames also stop allocating all-false GC-root vectors. On a generated 128-deep scalar-block benchmark, AMD64 allocations fell from 283 to 155 per compile, median latency improved by 5.8%, and allocated bytes moved from roughly 229.7 KiB to 228.3 KiB. This is an adversarial shape result, not completion of the 32–48-byte control-frame target.
 
 An interleaved three-pair ARM64 `many_funcs` screen with metrics disabled retained 42 allocs/op and 159,001–159,003 B/op; median compile time moved from 215.98 µs to 215.65 µs. This clears the initial zero-overhead screen, but the larger benchmark matrix remains the acceptance authority.
 
@@ -616,6 +617,8 @@ Output:
 - No reference-home initialization solely for root reporting.
 
 This should cover most scalar functions.
+
+The first behavior-preserving step is already in place at the control-frame level: root-flag backing is allocated only after an actual reference root appears. An all-scalar frame retains `nil`, including branch-result tracking, while the existing exact per-position representation remains unchanged once any root is present. This removes one allocation per nested scalar block in the dedicated deep-control stress benchmark; it does not yet replace whole-function root analysis.
 
 ## 7.2 `RootAllCanonical`
 

@@ -35,9 +35,15 @@ general, code-neutral items: exact sparse retained global hints, a 152-byte
 classification, reuse of the validated local count on every attempt, and the
 bounded module-global pin list in place of a per-function dense membership
 bitmap. The follow-up statistics slice adds deterministic retained-hint and
-failed-attempt byte accounting plus opt-in stage timing. The larger `ctrlFrame`,
-index-width, retention, and policy-deletion work remains subject to the gates
-below.
+failed-attempt byte accounting plus opt-in stage timing. The first control-stack
+slice then moves EH-only state into a lazy sidecar, shrinking the common frame
+from 472 to 432 bytes on AMD64 and 416 to 376 bytes on ARM64, and avoids backing
+allocations for all-false scalar GC-root vectors. A generated 128-deep scalar
+block benchmark dropped from 283 to 155 allocations per AMD64 compile and from
+about 229.7 KiB to 228.3 KiB; median latency improved by 5.8% in the same local screen.
+This is a staged reduction, not satisfaction of the 32--48-byte common-record
+target. Index-width, retention, further sidecar pooling, and policy deletion
+remain subject to the gates below.
 
 ## Primary-source facts
 
@@ -74,11 +80,12 @@ Wago speedup. The gates below remain necessary.
 
 ### 1. `ctrlFrame` is a larger pointer-rich hot record than the plan recognizes
 
-AMD64's common control-frame record contains fifteen slice headers and one map,
-including type vectors, GC-root vectors, GC-fact vectors, local-state snapshots,
-and EH catches. ARM64 has the same structural issue, with additional cold-edge
-and loop-pin lists. Every ordinary `block`, `loop`, and `if` pays for the cold
-GC, EH, loop, and merge fields even when none are used.
+At the inspected base, AMD64's common control-frame record contained fifteen
+slice headers and one map, including type vectors, GC-root vectors, GC-fact
+vectors, local-state snapshots, and EH catches. ARM64 had the same structural
+issue, with additional cold-edge and loop-pin lists. The first staged cut has
+removed EH fields from ordinary records, but every ordinary `block`, `loop`, and
+`if` still pays for cold GC, loop, and merge fields even when none are used.
 
 Sources: [AMD64 `ctrlFrame`](../../src/core/compiler/backend/railshot/amd64/control.go#L34),
 [ARM64 `ctrlFrame`](../../src/core/compiler/backend/railshot/arm64/control.go#L44).

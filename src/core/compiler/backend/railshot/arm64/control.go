@@ -85,14 +85,28 @@ type ctrlFrame struct {
 	entryState  []locState
 	coldEdges   []coldEdge // deferred non-empty unlikely br_if edges targeting this frame
 
+	// Exception-handling state is cold for ordinary control constructs. Keep one
+	// pointer in the common frame and allocate the sidecar only for a try_table or
+	// a branch target that receives a reference-carrying catch.
+	eh *ctrlFrameEH
+}
+
+type ctrlFrameEH struct {
 	// cfTry only: one fixed native-stack handler record plus an ordered catch
 	// dispatch table. Scalar exceptions carry at most two payload words; reference
 	// catches copy those words into a fixed rooted exception slot before exposing
 	// its stable frame-relative address.
-	ehTargetSite  int
-	ehRecordIndex int
-	ehCatches     []ehCatchClause
-	ehRefResults  [3]bool
+	targetSite  int
+	recordIndex int
+	catches     []ehCatchClause
+	refResults  [3]bool
+}
+
+func (fr *ctrlFrame) ensureEH() *ctrlFrameEH {
+	if fr.eh == nil {
+		fr.eh = new(ctrlFrameEH)
+	}
+	return fr.eh
 }
 
 type ehCatchClause struct {
@@ -240,9 +254,15 @@ func slotOfLogicalTypes(types []machineType, logical int) int {
 func (f *fn) currentLogicalTypes() []machineType { return f.logicalTypes(f.rootsBottomToTop()) }
 
 func gcRootFlags(roots []*elem) []bool {
-	flags := make([]bool, len(roots))
+	var flags []bool
 	for i, root := range roots {
-		flags[i] = root.kind == ekValue && root.st.gcRoot
+		if root.kind != ekValue || !root.st.gcRoot {
+			continue
+		}
+		if flags == nil {
+			flags = make([]bool, len(roots))
+		}
+		flags[i] = true
 	}
 	return flags
 }
@@ -267,11 +287,14 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 	if n > len(roots) {
 		return
 	}
-	if len(fr.resultGCRoots) < n {
-		fr.resultGCRoots = make([]bool, n)
-	}
 	for i, root := range roots[len(roots)-n:] {
-		fr.resultGCRoots[i] = fr.resultGCRoots[i] || (root.kind == ekValue && root.st.gcRoot)
+		if root.kind != ekValue || !root.st.gcRoot {
+			continue
+		}
+		if len(fr.resultGCRoots) < n {
+			fr.resultGCRoots = make([]bool, n)
+		}
+		fr.resultGCRoots[i] = true
 	}
 }
 
@@ -1067,6 +1090,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		return fmt.Errorf("bounded exception handling supports at most %d catches per try_table", maxEHCatches)
 	}
 	fr := ctrlFrame{kind: cfTry, paramN: len(paramTypes), resultN: len(resultTypes), branchN: len(resultTypes), elseSite: -1, entryUnreach: f.unreachable, res0: res0, paramTypes: paramTypes, resultTypes: resultTypes}
+	eh := fr.ensureEH()
 	for i := uint32(0); i < n; i++ {
 		kindByte, err := r.Byte()
 		if err != nil {
@@ -1130,10 +1154,10 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			return fmt.Errorf("bounded exception handler payload arity mismatch")
 		}
 		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
-			f.ctrl[clause.frame].ehRefResults[clause.payloadN-1] = true
+			f.ctrl[clause.frame].ensureEH().refResults[clause.payloadN-1] = true
 		}
 		f.ctrl[clause.frame].regMerge1 = false
-		fr.ehCatches = append(fr.ehCatches, clause)
+		eh.catches = append(eh.catches, clause)
 	}
 	fr.height = f.depth() - fr.paramN
 	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
@@ -1144,12 +1168,12 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	if f.ehTryDepth >= maxEHTryRecords {
 		return fmt.Errorf("bounded exception handling supports at most %d nested try_table records", maxEHTryRecords)
 	}
-	fr.ehRecordIndex = f.ehTryDepth
+	eh.recordIndex = f.ehTryDepth
 	f.ehTryDepth++
 	f.reconcileLocals()
 	f.flush()
-	for i := range fr.ehCatches {
-		clause := &fr.ehCatches[i]
+	for i := range eh.catches {
+		clause := &eh.catches[i]
 		if clause.kind != wasm.CatchRef && clause.kind != wasm.CatchAllRef {
 			continue
 		}
@@ -1159,13 +1183,13 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		}
 		f.stats.peep("eh-root-init")
 	}
-	recordOff := f.ehRecordOff(fr.ehRecordIndex)
+	recordOff := f.ehRecordOff(eh.recordIndex)
 	f.leaDisp(X16, SP, recordOff, true)
 	f.st64(X16, ehPrevOff, ehReg)
 	f.a.AddImm64(X17, SP, 0)
 	f.st64(X16, ehSavedSPOff, X17)
-	fr.ehTargetSite = f.a.Adr(X17)
-	f.recordPCRelative(fr.ehTargetSite)
+	eh.targetSite = f.a.Adr(X17)
+	f.recordPCRelative(eh.targetSite)
 	f.st64(X16, ehTargetOff, X17)
 	f.st64(X16, ehSavedLinMemOff, linMemReg)
 	f.a.MovReg64(ehReg, X16)
@@ -1307,9 +1331,10 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 }
 
 func (f *fn) emitEHHandler(fr *ctrlFrame) {
-	recordOff := f.ehRecordOff(fr.ehRecordIndex)
+	eh := fr.ensureEH()
+	recordOff := f.ehRecordOff(eh.recordIndex)
 	handlerPos := f.a.Len()
-	if !f.a.PatchAdr(fr.ehTargetSite, handlerPos) {
+	if !f.a.PatchAdr(eh.targetSite, handlerPos) {
 		panic("arm64: exception handler ADR out of range")
 	}
 	f.ld64(linMemReg, SP, recordOff+ehSavedLinMemOff)
@@ -1319,9 +1344,9 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	f.deriveModuleGlobals()
 	f.derivePinnedGlobals()
 
-	dispatchN := len(fr.ehCatches)
-	for i := range fr.ehCatches {
-		clause := &fr.ehCatches[i]
+	dispatchN := len(eh.catches)
+	for i := range eh.catches {
+		clause := &eh.catches[i]
 		if clause.kind == wasm.CatchAll || clause.kind == wasm.CatchAllRef {
 			clause.matchSite = f.a.Branch()
 			dispatchN = i + 1
@@ -1350,7 +1375,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	f.trapAlways(trapUnhandledException)
 
 	for i := 0; i < dispatchN; i++ {
-		clause := &fr.ehCatches[i]
+		clause := &eh.catches[i]
 		if clause.kind == wasm.CatchAll || clause.kind == wasm.CatchAllRef {
 			f.a.PatchBranch26(clause.matchSite, f.a.Len())
 		} else {
@@ -1361,9 +1386,12 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 }
 
 func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
+	if fr.eh == nil {
+		return
+	}
 	e := f.s.back()
 	for i := len(fr.resultTypes) - 1; i >= 0; i-- {
-		if i < len(fr.ehRefResults) && fr.ehRefResults[i] {
+		if i < len(fr.eh.refResults) && fr.eh.refResults[i] {
 			e.st.ehRoot = true
 		}
 		e = e.prev
@@ -1574,7 +1602,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		f.markEHReferenceResults(&fr)
 	}
 	if fr.kind == cfTry && !fr.entryUnreach {
-		recordOff := f.ehRecordOff(fr.ehRecordIndex)
+		recordOff := f.ehRecordOff(fr.ensureEH().recordIndex)
 		if endReachable {
 			f.ld64(ehReg, SP, recordOff+ehPrevOff)
 		}
