@@ -232,6 +232,17 @@ passes, and matched corpus hashes are identical. Narrowing and flattening
 remaining relocations is still a hypothesis and should be rejected if checks
 add measurable compile time.
 
+The per-function GP pin candidate was another host-width record hidden in
+scratch: one Boolean before an `int` index made the otherwise scalar record 24
+bytes. Both backends now retain the exact validated index as `uint32` and order
+the fields into a 12-byte pointer-free record. Ranking and admission are
+unchanged. In a generated 4,000-integer-local compile, geometric slice growth
+makes the measured saving roughly 137.2 KiB/op on each architecture: 397,714 to
+260,512 B/op on ARM64 and 478,312 to 341,112 B/op on Linux/AMD64, with allocation
+counts unchanged. Five-sample stress timings improved slightly, focused backend
+tests pass, and matched corpus hashes are identical. This suggests auditing
+scratch element layout is at least as important as auditing the slice headers.
+
 ### 3. Easy repeated work exists today
 
 Both backends call `moduleUsesSyncHostCalls` inside every function attempt. That

@@ -19,6 +19,9 @@ func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
 	if got, want := unsafe.Sizeof(localDef{}), uintptr(4); got != want {
 		t.Fatalf("local definition size = %d, want %d", got, want)
 	}
+	if got, want := unsafe.Sizeof(gpCand{}), uintptr(12); got != want {
+		t.Fatalf("GP candidate size = %d, want %d", got, want)
+	}
 }
 
 func TestStorageMetadataFieldsAreIndependentArm64(t *testing.T) {

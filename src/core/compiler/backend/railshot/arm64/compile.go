@@ -418,9 +418,9 @@ type storeForward struct {
 }
 
 type gpCand struct {
-	global bool
-	idx    int
 	score  uint32
+	idx    uint32
+	global bool
 }
 
 type deferredArg struct {
@@ -2522,7 +2522,7 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	gp := f.tmpGpCand[:0]
 	for i := 0; i < f.nLocals; i++ {
 		if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
-			gp = append(gp, gpCand{idx: i, score: localHotness(scores[i])})
+			gp = append(gp, gpCand{idx: uint32(i), score: localHotness(scores[i])})
 		}
 	}
 	loopMin := uint32(loopWeight(1))
@@ -2535,7 +2535,7 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		if !ok || !gt.Mutable || !isIntValType(wasm.GlobalValueType(gt)) {
 			continue
 		}
-		gp = append(gp, gpCand{global: true, idx: g, score: gh.Score})
+		gp = append(gp, gpCand{global: true, idx: uint32(g), score: gh.Score})
 	}
 	slices.SortFunc(gp, func(a, b gpCand) int {
 		if a.score != b.score {
@@ -2547,7 +2547,7 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 			}
 			return 1
 		}
-		return a.idx - b.idx
+		return cmp.Compare(a.idx, b.idx)
 	})
 	f.tmpGpCand = gp
 	for k, c := range gp {
@@ -2561,11 +2561,12 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		if k >= len(pinnedLocalRegs) && c.score == 0 {
 			break
 		}
+		idx := int(c.idx)
 		if c.global {
-			f.globalReg[c.idx] = gpPool[k]
+			f.globalReg[idx] = gpPool[k]
 			f.stats.addPinnedGlobalValue()
 		} else {
-			f.locals[c.idx].reg = gpPool[k]
+			f.locals[idx].reg = gpPool[k]
 			f.stats.addPinnedLocal()
 		}
 		f.pinnedLocalMask = f.pinnedLocalMask.add(gpPool[k])

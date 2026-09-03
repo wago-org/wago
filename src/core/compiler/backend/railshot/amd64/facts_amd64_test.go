@@ -16,6 +16,9 @@ func TestValueFactsAndRootsFitCompactStorageAMD64(t *testing.T) {
 	if got, want := unsafe.Sizeof(elem{}), uintptr(64); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
+	if got, want := unsafe.Sizeof(gpCand{}), uintptr(12); got != want {
+		t.Fatalf("GP candidate size = %d, want %d", got, want)
+	}
 }
 
 func TestStorageMetadataFieldsAreIndependentAMD64(t *testing.T) {
