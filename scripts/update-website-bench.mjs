@@ -715,16 +715,16 @@ function renderGeneralPanel(tab, index, summary, arch, backend) {
     const format = metric.kind === "bytes" ? fmtBytes : fmtNs;
     const bars = engines.map((engine) => {
       const value = Number(metric.values[engine.id] ?? 0);
-      const height = value > 0 ? Math.max(5, Math.round(value / max * 100)) : 0;
-      return `                                <div class="vs__vitem${engine.id === backend ? " vs__vitem--selected" : ""}">
-                                    <span class="vs__vvalue">${value > 0 ? format(value) : "—"}</span>
-                                    <span class="vs__vtrack"><span class="vs__vfill vs__vfill--${engine.id}" data-vbar data-height="${height}"></span></span>
-                                    <span class="vs__vlabel">${engine.label}${engine.sub ? `<small>${engine.sub}</small>` : ""}</span>
+      const width = value > 0 ? Math.max(5, Math.round(value / max * 100)) : 0;
+      return `                                <div class="vs__gitem${engine.id === backend ? " vs__gitem--selected" : ""}">
+                                    <span class="vs__glabel">${engine.label}${engine.sub ? `<small>${engine.sub}</small>` : ""}</span>
+                                    <span class="vs__gtrack"><span class="vs__gfill vs__gfill--${engine.id}" data-bar data-general-bar data-width="${width}"></span></span>
+                                    <span class="vs__gvalue">${value > 0 ? format(value) : "—"}</span>
                                 </div>`;
     }).join("\n");
     return `                        <article class="vs__metriccard">
                             <div class="vs__metrichead"><strong>${esc(metric.label)}</strong><span>${esc(metric.sub)}</span></div>
-                            <div class="vs__vbars">
+                            <div class="vs__gbars">
 ${bars}
                             </div>
                         </article>`;

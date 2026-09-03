@@ -91,11 +91,11 @@ function assertDOMContract(html) {
   assert.equal(matches(html, /class="vs__specs"/g), 2);
   assert.equal(matches(html, /id="perf-(?:amd64|arm64)-(?:railshot|dragline)-tab-memory"/g), 4);
   assert.equal(matches(html, /class="vs__generalgrid"/g), 4);
-  assert.equal(matches(html, /data-vbar data-height=/g), 64);
+  assert.equal(matches(html, /data-bar data-general-bar data-width=/g), 64);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);
   assert.match(html, /class="vs__stage"/);
-  assert.equal(matches(html, /vs__vlabel">Wasmtime<small>Cranelift<\/small>/g), 16);
-  assert.equal(matches(html, /class="vs__vvalue">2 KB<\/span>/g), 4);
+  assert.equal(matches(html, /vs__glabel">Wasmtime<small>Cranelift<\/small>/g), 16);
+  assert.equal(matches(html, /class="vs__gvalue">2 KB<\/span>/g), 4);
   assert.doesNotMatch(html, /wazero's\s+Cranelift|vs__dot--wazero"><\/i>Cranelift/);
   assert.doesNotMatch(html, /class="[^"]*"[^>]+class="/);
 }
