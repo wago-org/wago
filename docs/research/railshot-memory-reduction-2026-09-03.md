@@ -30,9 +30,10 @@ Recommended order:
 6. Replace corpus-tuned thresholds with explicit, architecture-derived costs.
 
 The first implementation slice accompanying this report already applies the
-general, code-neutral items: exact sparse retained global hints, a 128-byte
+general, code-neutral items: exact sparse retained global hints, a 120-byte
 `funcHints` record instead of 200 bytes after moving immutable-table proofs to
-module-owned storage, one module-level synchronous-host-call
+module-owned storage and the dense global accumulator to scan-only scratch, one
+module-level synchronous-host-call
 classification, reuse of the validated local count on every attempt, and the
 bounded module-global pin list in place of a per-function dense membership
 bitmap. The follow-up statistics slice adds deterministic retained-hint and

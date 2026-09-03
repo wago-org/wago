@@ -12,7 +12,7 @@ import (
 )
 
 func TestFuncHintsSize(t *testing.T) {
-	const want = 128
+	const want = 120
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
 	}

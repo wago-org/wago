@@ -2066,7 +2066,6 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		nLocals := allHints[i].nLocals
 		sparseAccum.Reset(nGlobals)
 		h := funcHintsWithStorage(localScores[localAt : localAt+nLocals])
-		h.globalAccum = &sparseAccum
 		if intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), nLocals, moduleEH) {
 			h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
 			intervalAt += nLocals
@@ -2074,13 +2073,12 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		h.nLocals = nLocals
 		h.inlineCallSites = allHints[i].inlineCallSites
 		var err error
-		h, err = scanFuncBodyIntoMemory64WithModuleCalls(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, &classifier, gcTypeLayouts, gcStructHelpers, allHints, importedFuncs)
+		h, err = scanFuncBodyIntoMemory64WithModuleCalls(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, &classifier, gcTypeLayouts, gcStructHelpers, allHints, importedFuncs, &sparseAccum)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
 		localAt += nLocals
-		h.globalAccum = nil
 		allHints[i] = h
 		moduleHasTailCall = moduleHasTailCall || h.hasTailCall
 		moduleEH = moduleEH || h.moduleEH

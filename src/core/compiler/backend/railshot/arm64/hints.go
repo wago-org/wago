@@ -91,7 +91,6 @@ type funcHints struct {
 	// global accessed inside a call-free loop, where pinning cannot move coherence
 	// traffic into that loop.
 	sparseGlobals []shared.GlobalHint
-	globalAccum   *shared.GlobalHintAccumulator
 
 	// stackArenaNodes is a conservative pre-scan estimate of operand-stack elem
 	// allocations while compiling this body. It lets compileFunc avoid reserving
@@ -146,8 +145,6 @@ func newFuncHints(nLocals, nGlobals int) funcHints {
 	h := funcHintsWithStorage(make([]uint32, nLocals))
 	h.localLastGet = make([]uint32, nLocals)
 	h.nLocals = nLocals
-	h.globalAccum = new(shared.GlobalHintAccumulator)
-	h.globalAccum.Reset(nGlobals)
 	return h
 }
 
@@ -155,11 +152,8 @@ func funcHintsWithStorage(localScore []uint32) funcHints {
 	return funcHints{localScore: localScore}
 }
 
-func (h funcHints) finishGlobalHints() funcHints {
-	if h.globalAccum != nil {
-		h.sparseGlobals = h.globalAccum.AppendTo(h.sparseGlobals[:0])
-		h.globalAccum = nil
-	}
+func finishGlobalHints(h funcHints, accum *shared.GlobalHintAccumulator) funcHints {
+	h.sparseGlobals = accum.AppendTo(h.sparseGlobals[:0])
 	return h
 }
 
@@ -175,16 +169,12 @@ func addHotness(scores []uint32, idx uint32, delta int64) {
 	}
 }
 
-func (h *funcHints) addGlobalHotness(idx uint32, delta int64) {
-	if h.globalAccum != nil {
-		h.globalAccum.Add(idx, delta)
-	}
+func addGlobalHotness(accum *shared.GlobalHintAccumulator, idx uint32, delta int64) {
+	accum.Add(idx, delta)
 }
 
-func (h *funcHints) markGlobalEligible(idx uint32) {
-	if h.globalAccum != nil {
-		h.globalAccum.MarkEligible(idx)
-	}
+func markGlobalEligible(accum *shared.GlobalHintAccumulator, idx uint32) {
+	accum.MarkEligible(idx)
 }
 
 type globalEligibilityTracker struct {
@@ -253,19 +243,17 @@ func (t *globalEligibilityTracker) pop(frame int) {
 func scanFuncBody(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, m *wasm.Module) (funcHints, error) {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	h, err := scanFuncBodyInto(fn, nLocals, nGlobals, selfIdx, branchHints, h, &elig, m)
-	return h.finishGlobalHints(), err
+	var accum shared.GlobalHintAccumulator
+	accum.Reset(nGlobals)
+	h, err := scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, &elig, m, nil, nil, 0, &accum)
+	return finishGlobalHints(h, &accum), err
 }
 
-func scanFuncBodyInto(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
-	return scanFuncBodyIntoModule(fn, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, nil, 0)
-}
-
-func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
+func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator) (funcHints, error) {
 	if len(fn.BodyBytes) != 0 {
-		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, classifier, moduleHints, importedFuncs)
+		return scanBodyBytesIntoModule(fn.BodyBytes, fn.LocalDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, classifier, moduleHints, importedFuncs, globalHints)
 	}
-	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig), nil
+	return scanBodyInto(fn.Body, nLocals, nGlobals, selfIdx, h, elig, globalHints), nil
 }
 
 // scanBody performs the AST pre-scan walk. selfIdx is the function's global
@@ -273,7 +261,9 @@ func scanFuncBodyIntoModule(fn wasm.Func, nLocals, nGlobals int, selfIdx uint32,
 func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHints {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	return scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig).finishGlobalHints()
+	var accum shared.GlobalHintAccumulator
+	accum.Reset(nGlobals)
+	return finishGlobalHints(scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig, &accum), &accum)
 }
 
 func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
@@ -292,7 +282,7 @@ func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
 	}
 }
 
-func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) funcHints {
+func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker, globalHints *shared.GlobalHintAccumulator) funcHints {
 	elig.reset()
 	// Programmatic decoded bodies are uncommon and can exercise context-sensitive
 	// folds that the production byte scan accounts for. Keep their legacy arena.
@@ -338,9 +328,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 			case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
 				if int(in.Index) < nGlobals {
 					if in.Kind == wasm.InstrGlobalSet {
-						h.addGlobalHotness(in.Index, 2*w)
+						addGlobalHotness(globalHints, in.Index, 2*w)
 					} else {
-						h.addGlobalHotness(in.Index, w)
+						addGlobalHotness(globalHints, in.Index, w)
 					}
 					elig.add(curLoop, in.Index)
 				}
@@ -350,7 +340,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 					sub = true // call inside: its globals are not eligible
 				} else {
 					for _, g := range elig.globalsIn(loop) {
-						h.markGlobalEligible(g)
+						markGlobalEligible(globalHints, g)
 					}
 				}
 				elig.pop(loop)
@@ -550,15 +540,13 @@ func scanBodyBytes(body []byte, nLocals int, nGlobals int, selfIdx uint32) (func
 func scanBodyBytesWithHints(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint) (funcHints, error) {
 	h := newFuncHints(nLocals, nGlobals)
 	elig := newGlobalEligibilityTracker(nGlobals)
-	h, err := scanBodyBytesInto(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, &elig, nil)
-	return h.finishGlobalHints(), err
+	var accum shared.GlobalHintAccumulator
+	accum.Reset(nGlobals)
+	h, err := scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, &elig, nil, nil, nil, 0, &accum)
+	return finishGlobalHints(h, &accum), err
 }
 
-func scanBodyBytesInto(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module) (funcHints, error) {
-	return scanBodyBytesIntoModule(body, localDeclBytes, nLocals, nGlobals, selfIdx, branchHints, h, elig, m, nil, nil, 0)
-}
-
-func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int) (funcHints, error) {
+func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nGlobals int, selfIdx uint32, branchHints []wasm.BranchHint, h funcHints, elig *globalEligibilityTracker, m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, moduleHints []funcHints, importedFuncs int, globalHints *shared.GlobalHintAccumulator) (funcHints, error) {
 	elig.reset()
 	r := wasm.ReaderFrom(body)
 	var cached wasm.ModuleInstructionClassifier
@@ -567,7 +555,7 @@ func scanBodyBytesIntoModule(body []byte, localDeclBytes uint32, nLocals int, nG
 	} else {
 		cached = wasm.NewModuleInstructionClassifier(m, true)
 	}
-	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, m: m, classifier: cached, moduleHints: moduleHints, importedFuncs: importedFuncs, entryPrefix: true}
+	s := byteBodyScanner{r: byteScanReader{Reader: r}, h: h, nLocals: nLocals, nGlobals: nGlobals, selfIdx: selfIdx, localDeclBytes: localDeclBytes, branchHints: branchHints, elig: elig, globalHints: globalHints, m: m, classifier: cached, moduleHints: moduleHints, importedFuncs: importedFuncs, entryPrefix: true}
 	called, term, err := s.scanExpr(0, 0, -1, false, 1)
 	if err != nil {
 		return s.h, err
@@ -590,6 +578,7 @@ type byteBodyScanner struct {
 	localDeclBytes uint32
 	branchHints    []wasm.BranchHint
 	elig           *globalEligibilityTracker
+	globalHints    *shared.GlobalHintAccumulator
 	m              *wasm.Module
 	classifier     wasm.ModuleInstructionClassifier
 	moduleHints    []funcHints
@@ -671,7 +660,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					subHasCall = true
 				} else {
 					for _, g := range s.elig.globalsIn(loop) {
-						s.h.markGlobalEligible(g)
+						markGlobalEligible(s.globalHints, g)
 					}
 				}
 				s.elig.pop(loop)
@@ -764,9 +753,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			idx := imm.Index
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
-					s.h.addGlobalHotness(idx, 2*pathWeight*loopWeight(loopDepth))
+					addGlobalHotness(s.globalHints, idx, 2*pathWeight*loopWeight(loopDepth))
 				} else {
-					s.h.addGlobalHotness(idx, pathWeight*loopWeight(loopDepth))
+					addGlobalHotness(s.globalHints, idx, pathWeight*loopWeight(loopDepth))
 				}
 				s.elig.add(curLoop, idx)
 			}

@@ -1676,14 +1676,13 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		nLocals := localCounts[i]
 		sparseAccum.Reset(nGlobals)
 		h := funcHintsWithStorage(localScores[localAt : localAt+nLocals])
-		h.globalAccum = &sparseAccum
 		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs
 		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
 		var err error
-		h, err = scanFuncBodyIntoModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), m.BranchHintsForFunc(uint32(importedFuncs+i)), h, &eligibilityTracker, m, &classifier, allHints, importedFuncs)
+		h, err = scanFuncBodyIntoModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), m.BranchHintsForFunc(uint32(importedFuncs+i)), h, &eligibilityTracker, m, &classifier, allHints, importedFuncs, &sparseAccum)
 		if err != nil {
 			return nil, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
@@ -1692,7 +1691,6 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		h.hasInlineLoopCall = allHints[i].hasInlineLoopCall
 		localAt += nLocals
 		moduleEH = moduleEH || h.moduleEH
-		h.globalAccum = nil
 		allHints[i] = h
 		start := len(sparseGlobals)
 		sparseGlobals = sparseAccum.AppendTo(sparseGlobals)
