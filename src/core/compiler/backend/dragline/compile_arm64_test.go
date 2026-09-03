@@ -44,13 +44,6 @@ func TestARM64StructuredCallLocalResidencyPlatform(t *testing.T) {
 	if !arm64StructuredPinsLocalsAcrossCalls(corecompiler.Target{GOOS: "darwin", GOARCH: "arm64"}) {
 		t.Fatal("Darwin ARM64 lost structured local residency")
 	}
-	private := railmach.ABIContract{Class: railmach.ABIPreparedLeaf, GPRClobbers: 3}
-	if got := arm64PublishedContract(private, windows); got != (railmach.ABIContract{}) {
-		t.Fatalf("Windows ARM64 published private contract %#v", got)
-	}
-	if got := arm64PublishedContract(private, corecompiler.Target{GOOS: "darwin", GOARCH: "arm64"}); got != private {
-		t.Fatalf("Darwin ARM64 private contract = %#v, want %#v", got, private)
-	}
 }
 
 func TestARM64FloatConstantUsesImmediateAndPreservesNegativeZero(t *testing.T) {

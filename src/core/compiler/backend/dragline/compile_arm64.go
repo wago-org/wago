@@ -241,7 +241,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			if cacheErr == nil && hit {
 				requiresMOPS = requiresMOPS || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64MOPS)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64MOPS)%64)) != 0
 				requiresSHA2 = requiresSHA2 || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64SHA2)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64SHA2)%64)) != 0
-				moduleContracts[i] = arm64PublishedContract(railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}, input.Target)
+				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
 				if !captureGC && artifact.ContextFreeLoop {
 					contextFreeLoopPrepared = markARM64DirectPrepared(contextFreeLoopPrepared, len(m.Code), i)
 				}
@@ -334,7 +334,6 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			if i < len(seedCandidates) && seedCandidates[i] {
 				publishedContract = seedContracts[i]
 			}
-			publishedContract = arm64PublishedContract(publishedContract, input.Target)
 			moduleContracts[i] = publishedContract
 		}
 		var plan *railssa.EmissionPlan
@@ -495,7 +494,11 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		if int(reloc.target) >= len(internal) {
 			return corecompiler.Output{}, fmt.Errorf("dragline: call target %d is unavailable", reloc.target)
 		}
-		delta := internal[reloc.target] - reloc.at
+		target := internal[reloc.target]
+		if uniformStructured {
+			target = entries[reloc.target]
+		}
+		delta := target - reloc.at
 		if delta&3 != 0 || delta < -(1<<27) || delta >= 1<<27 {
 			return corecompiler.Output{}, fmt.Errorf("dragline: call target %d is out of range", reloc.target)
 		}
@@ -526,17 +529,6 @@ func arm64DirectPreparedClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt || class == railmach.ABIPreparedIndirect || class == railmach.ABIPreparedCall || class == railmach.ABIPreparedLeaf
 }
 
-// Windows generated-to-generated calls stay on the canonical wrapper ABI.
-// RailMach functions still use their verified private contract internally, but
-// that contract is not published to callers until the Windows foreign-stack
-// call boundary is qualified end to end.
-func arm64PublishedContract(contract railmach.ABIContract, target corecompiler.Target) railmach.ABIContract {
-	if target.GOOS == "windows" && arm64DirectPreparedClass(contract.Class) {
-		return railmach.ABIContract{}
-	}
-	return contract
-}
-
 // Windows ARM64 has a qualified structured finalizer and a qualified RailMach
 // finalizer, but not yet a qualified edge between them. If any function in a
 // module requires structured lowering, keep the whole module on that finalizer
@@ -549,7 +541,9 @@ func arm64RequiresUniformStructuredFinalizer(m *wasm.Module, target corecompiler
 	for i := range m.Code {
 		fn, err := buildCompilerFunc(m, i, &scratch)
 		if err != nil {
-			return false, functionError(m, i, "windows-finalizer-admission", err)
+			// Preserve the ordinary lowering failure and replay identity. The main
+			// compilation pass will report it with the established stage name.
+			return false, nil
 		}
 		if !arm64RailMachCandidate(fn.Structured, moduleHasV128, nil) {
 			return true, nil
@@ -711,7 +705,6 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				if i < len(candidates) && candidates[i] {
 					published = seeds[i]
 				}
-				published = arm64PublishedContract(published, input.Target)
 				contracts[i] = published
 			}
 			var plan *railssa.EmissionPlan
@@ -780,7 +773,11 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 		if int(reloc.target) >= len(internal) {
 			return corecompiler.Output{}, fmt.Errorf("dragline: call target %d is unavailable", reloc.target)
 		}
-		delta := internal[reloc.target] - reloc.at
+		target := internal[reloc.target]
+		if uniformStructured {
+			target = entries[reloc.target]
+		}
+		delta := target - reloc.at
 		if delta&3 != 0 || delta < -(1<<27) || delta >= 1<<27 {
 			return corecompiler.Output{}, fmt.Errorf("dragline: call target %d is out of range", reloc.target)
 		}
@@ -10732,7 +10729,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, target corecom
 			if callBoundary && !calleePreservesPinned {
 				spillPinnedV128Locals()
 			}
-			if err := emitARM64StackCall(&a, sf, instr, &stackTypes, stackLoad, stackStore, stackOff, &callRelocs, fn.Index, metadata); err != nil {
+			if err := emitARM64StackCall(&a, sf, instr, &stackTypes, stackLoad, stackStore, stackOff, target.GOOS == "windows", &callRelocs, fn.Index, metadata); err != nil {
 				return nil, 0, nil, fmt.Errorf("byte %d: %w", instr.Offset, err)
 			}
 			if !arm64StructuredCanDeferPromotedGlobalReload(sf.Instrs, instrIndex) && !reloadPromotedGlobal(true) {
@@ -13034,6 +13031,7 @@ func emitARM64BulkFillLoop(a *arm64.Asm, dst, pattern, n arm64.Reg) bool {
 
 func emitARM64StackCall(a *arm64.Asm, sf *railssa.StackFunc, instr railssa.StackInstr, stack *[]wasm.ValType,
 	load func(int, arm64.Reg) bool, store func(int, arm64.Reg) bool, stackOff func(int) uint32,
+	publicDirectCalls bool,
 	relocs *[]arm64CallReloc, function uint32,
 	metadata *functionEmissionMetadata,
 ) error {
@@ -13069,6 +13067,19 @@ func emitARM64StackCall(a *arm64.Asm, sf *railssa.StackFunc, instr railssa.Stack
 			a.LdpPost(arm64.X8, arm64.XZR, arm64.SP, 16)
 			a.LdpPost(arm64.X26, arm64.X9, arm64.SP, 16)
 			arm64CopyDraglineInstanceContext(a, arm64.X26, arm64.X9)
+			types = types[:base]
+			if instr.HasResult() {
+				types = append(types, instr.ValueType())
+			}
+			*stack = types
+			return nil
+		}
+		if publicDirectCalls {
+			a.LeaSP(arm64.X0, int32(stackOff(base)))
+			a.MovReg64(arm64.X1, arm64.X26)
+			a.LeaSP(arm64.X3, int32(stackOff(base)))
+			*relocs = append(*relocs, arm64CallReloc{at: a.Bl(), target: instr.U32() - sf.ImportedFuncs})
+			metadata.recordSafepoint(a.Len())
 			types = types[:base]
 			if instr.HasResult() {
 				types = append(types, instr.ValueType())
