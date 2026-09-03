@@ -200,7 +200,7 @@ func (f *fn) materialize(e *elem) Reg {
 		r := f.allocReg(0)
 		f.ld64(r, linMemReg, -int32(offFuncRefDescPtr))
 		f.trapIfZero(r, true, true, trapIndirectOOB)
-		f.leaDisp(r, r, int32((e.st.idx+1)*runtime.FuncRefDescBytes), true)
+		f.leaDisp(r, r, int32((e.st.index()+1)*runtime.FuncRefDescBytes), true)
 		f.occupy(e, r)
 		return r
 	case stSlot:
@@ -216,7 +216,7 @@ func (f *fn) materialize(e *elem) Reg {
 			panic("arm64: v128 local requires NEON materialization")
 		}
 		r := f.allocReg(0)
-		f.ld64(r, SP, f.localOff(e.st.idx))
+		f.ld64(r, SP, f.localOff(e.st.index()))
 		f.occupy(e, r)
 		return r
 	case stLocalReg:

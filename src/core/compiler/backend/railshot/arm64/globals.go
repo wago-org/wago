@@ -75,7 +75,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		if wasm.EqualValType(gtv, wasm.I64) {
 			typ = mtI64
 		}
-		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, idx: int(x)})
+		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, idx: x})
 		return nil
 	}
 	cell := f.globalCellPtr(x) // cached, pinned — read the value into a separate reg
@@ -83,7 +83,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 	case gtv.Kind() == wasm.ValRef:
 		dst := f.allocReg(0)
 		f.ld64(dst, cell, 0)
-		f.pushReg(dst, mtI64).st.gcRoot = f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, gtv)
+		f.pushReg(dst, mtI64).st.setGCRoot(f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, gtv))
 	case wasm.EqualValType(gtv, wasm.I64):
 		dst := f.allocReg(0)
 		f.ld64(dst, cell, 0)
@@ -125,7 +125,7 @@ func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
 		}
 		next := e.next
 		switch {
-		case e.kind == ekValue && e.st.kind == stGlobReg && uint32(e.st.idx) == x:
+		case e.kind == ekValue && e.st.kind == stGlobReg && e.st.idx == x:
 			f.materialize(e)
 		case e.kind == ekDeferred && subtreeRefsGlobal(e, x):
 			f.condense(e, regNone)
@@ -141,7 +141,7 @@ func subtreeRefsGlobal(e *elem, x uint32) bool {
 		return false
 	}
 	if e.kind == ekValue {
-		return e.st.kind == stGlobReg && uint32(e.st.idx) == x
+		return e.st.kind == stGlobReg && e.st.idx == x
 	}
 	if e.kind == ekDeferred {
 		return subtreeRefsGlobal(e.arg0, x) || subtreeRefsGlobal(e.arg1, x)

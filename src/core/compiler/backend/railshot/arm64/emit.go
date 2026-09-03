@@ -123,7 +123,7 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// the upper 32 bits on AArch64) is a no-op. The semantic fact survives bounded
 	// Valent materialization and spills, but local/global reads and signed loads
 	// begin unknown and therefore cannot trigger this consumer.
-	cleanZExt := node.op == opZExt32 && node.arg0.st.facts.has(factUpper32Zero)
+	cleanZExt := node.op == opZExt32 && node.arg0.st.valueFacts().has(factUpper32Zero)
 	src := f.materialize(node.arg0)
 	result := src
 	if dest != regNone && dest != src {
@@ -891,7 +891,7 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			f.release(t)
 		case stLocalRef:
 			t := f.allocReg(maskOf(L))
-			f.ld64(t, SP, f.localOff(right.st.idx))
+			f.ld64(t, SP, f.localOff(right.st.index()))
 			f.cmpRR(L, t, w)
 			f.release(t)
 		case stMemRef:
@@ -1247,7 +1247,7 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 	case stSlot:
 		f.ld64(dest, SP, f.spillOff(e.st.slotIndex()))
 	case stLocalRef:
-		f.ld64(dest, SP, f.localOff(e.st.idx))
+		f.ld64(dest, SP, f.localOff(e.st.index()))
 	case stLocalReg, stGlobReg:
 		if e.st.reg != dest {
 			f.a.MovReg64(dest, e.st.reg) // copy from the pinned local/global; never release it
@@ -1283,7 +1283,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		f.release(t)
 	case stLocalRef:
 		t := f.allocReg(maskOf(dest))
-		f.ld64(t, SP, f.localOff(right.st.idx))
+		f.ld64(t, SP, f.localOff(right.st.index()))
 		f.aluRR(enc.op, dest, t, w)
 		f.release(t)
 	case stMemRef:
@@ -1460,7 +1460,7 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 		f.release(t)
 	case stLocalRef:
 		t := f.allocReg(maskOf(dest))
-		f.ld64(t, SP, f.localOff(right.st.idx))
+		f.ld64(t, SP, f.localOff(right.st.index()))
 		f.mulRR(dest, t, w)
 		f.release(t)
 	case stMemRef:

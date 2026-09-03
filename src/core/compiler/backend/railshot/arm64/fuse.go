@@ -243,7 +243,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	case stLocalRef:
 		// arm64 has no memory operand: LDR the local from its frame slot, then compare.
 		t := f.allocReg(maskOf(L))
-		f.ld64(t, SP, f.localOff(right.st.idx))
+		f.ld64(t, SP, f.localOff(right.st.index()))
 		f.cmpRR(L, t, w)
 		f.release(t)
 	case stMemRef:

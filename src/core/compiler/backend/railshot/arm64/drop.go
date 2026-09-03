@@ -26,7 +26,7 @@ func (f *fn) treeDiscardable(e *elem) bool {
 		return deferredOpDiscardable(e.op) && f.treeDiscardable(e.arg0) &&
 			(e.arg1 == nil || f.treeDiscardable(e.arg1))
 	}
-	if e.st.ehRoot {
+	if e.st.hasEHRoot() {
 		return false
 	}
 	// In guard mode the deferred load itself is the bounds trap. Explicit mode
@@ -68,7 +68,7 @@ func (f *fn) discardTree(e *elem) {
 }
 
 func (f *fn) releaseDroppedValue(e *elem) {
-	if e.st.ehRoot {
+	if e.st.hasEHRoot() {
 		root, owned := f.materializeRead(e)
 		for off := int32(0); off < ehRootSlots*8; off += 8 {
 			f.st64(root, off, ZR)

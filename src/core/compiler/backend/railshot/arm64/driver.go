@@ -149,24 +149,24 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		f.activateIntervalLocal(int(x), r.Offset(), true)
 		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
 			value = f.pushReg(reg, f.localType[x])
-			value.st.gcRoot = f.gcFrameLocal(int(x))
+			value.st.setGCRoot(f.gcFrameLocal(int(x)))
 			f.applyFactsForLocal(value, int(x))
 			break
 		}
 		if f.localConstZero(int(x)) {
 			if pr, _, ok := f.pinReg(int(x)); ok {
 				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
-				value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+				value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
 			} else {
 				value = f.pushValue(zeroStorage(f.localType[x]))
 			}
 		} else if pr, _, ok := f.pinReg(int(x)); ok {
 			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
-			value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+			value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
 		} else {
-			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
+			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: x})
 		}
-		value.st.gcRoot = f.gcFrameLocal(int(x))
+		value.st.setGCRoot(f.gcFrameLocal(int(x)))
 		f.applyFactsForLocal(value, int(x))
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
@@ -890,7 +890,7 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 	f.markLocalDirty(x)
 	f.stats.peep("float-local-sink")
 	if op == 0x22 {
-		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
 	}
 	return true, nil
 }
@@ -937,7 +937,7 @@ func (f *fn) tryFminmaxLocalSet(r *wasm.Reader, f64, isMax bool) (bool, error) {
 	f.stats.peep("float-minmax-local-sink")
 	result := f.s.back()
 	if op == 0x22 {
-		f.replaceStorage(result, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+		f.replaceStorage(result, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
 	} else {
 		f.erase(result)
 	}
@@ -960,7 +960,7 @@ func (f *fn) emitSelect() {
 	f.pinned = f.pinned.add(condReg)
 	b := f.popValue()
 	a := f.popValue()
-	gcRoot := (a.kind == ekValue && a.st.gcRoot) || (b.kind == ekValue && b.st.gcRoot)
+	gcRoot := (a.kind == ekValue && a.st.hasGCRoot()) || (b.kind == ekValue && b.st.hasGCRoot())
 
 	// V registers have no CSEL fold worth branching around here, so for the
 	// value-copy cases we branch: skip the copy when cond != 0 (keep a). Scalar
@@ -1015,7 +1015,7 @@ func (f *fn) emitSelect() {
 	f.pinned = f.pinned.remove(bReg)
 	f.release(condReg)
 	f.release(bReg)
-	f.pushReg(aReg, mtI32OrWide(w)).st.gcRoot = gcRoot
+	f.pushReg(aReg, mtI32OrWide(w)).st.setGCRoot(gcRoot)
 }
 
 func mtI32OrWide(wide bool) machineType {
@@ -1048,7 +1048,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	// Materialize both branches into owned registers BEFORE the compare: their loads
 	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
 	// are pinned so condensing the compare's operands cannot spill them.
-	gcRoot := (aRoot.kind == ekValue && aRoot.st.gcRoot) || (bRoot.kind == ekValue && bRoot.st.gcRoot)
+	gcRoot := (aRoot.kind == ekValue && aRoot.st.hasGCRoot()) || (bRoot.kind == ekValue && bRoot.st.hasGCRoot())
 	aReg := f.materialize(aRoot)
 	f.pinned = f.pinned.add(aReg)
 	bReg := f.materialize(bRoot)
@@ -1061,7 +1061,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	f.release(bReg)
 	f.erase(bRoot)
 	f.erase(aRoot)
-	f.pushReg(aReg, mtI32OrWide(w)).st.gcRoot = gcRoot
+	f.pushReg(aReg, mtI32OrWide(w)).st.setGCRoot(gcRoot)
 	return true
 }
 
@@ -1085,7 +1085,7 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 		}
 		next := e.next
 		switch {
-		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == x:
+		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
 			f.materializeByType(e)
 		case e.kind == ekValue && e.st.kind == stMemRef && (e.st.memBorrow() == x || e.st.memAliasLocal() == x):
 			// A deferred load derived from x must execute before x is overwritten.
@@ -1105,7 +1105,7 @@ func subtreeRefsLocal(e *elem, x int) bool {
 		return false
 	}
 	if e.kind == ekValue {
-		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == x
+		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x)
 	}
 	if e.kind == ekDeferred {
 		return subtreeRefsLocal(e.arg0, x) || subtreeRefsLocal(e.arg1, x)
@@ -1126,7 +1126,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	}
 	// Capture the semantic result before condensing or moving it. Every assignment
 	// replaces the current straight-line version of the local.
-	f.setFactsForLocal(x, e.st.facts)
+	f.setFactsForLocal(x, e.st.valueFacts())
 	// In-place self-update `local.set $x (binop (local.get $x) …)`: let condenseInto
 	// consume the top expression straight into x's register instead of pre-copying
 	// its (local.get $x) operand. condenseBinary handles an operand aliasing dest.
@@ -1151,7 +1151,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.release(pr)
 		f.markLocalDirty(x) // value now lives (only) in the register
 		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x}) // borrowed ref stays
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)}) // borrowed ref stays
 		} else {
 			f.erase(e)
 		}
@@ -1175,7 +1175,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 		f.markLocalDirty(x)
 		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
 		} else {
 			f.erase(e)
 		}
@@ -1197,7 +1197,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 		f.markLocalDirty(x)
 		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
 		} else {
 			f.erase(e)
 		}

@@ -108,7 +108,7 @@ func memRefStorage(ea Reg, disp int32, size int, signed, wide bool, borrow, alia
 	if aliasLocal >= 0 {
 		sidx |= (aliasLocal + 1) << 10
 	}
-	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: sidx, cval: int64(borrow + 1)}
+	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: uint32(sidx), cval: int64(borrow + 1)}
 }
 
 func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow, aliasLocal int) storage {
@@ -121,14 +121,15 @@ func fmemRefStorage(ea Reg, disp int32, f64 bool, borrow, aliasLocal int) storag
 	if aliasLocal >= 0 {
 		size |= (aliasLocal + 1) << 10
 	}
-	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: size, cval: int64(borrow + 1)}
+	return storage{kind: stMemRef, typ: typ, reg: ea, slot: uint32(disp), idx: uint32(size), cval: int64(borrow + 1)}
 }
 
 func (st storage) memDisp() int32     { return int32(st.slot) }
 func (st storage) slotIndex() int     { return int(st.slot) }
-func (st storage) memSize() int       { return st.idx & 0xff }
+func (st storage) index() int         { return int(st.idx) }
+func (st storage) memSize() int       { return int(st.idx & 0xff) }
 func (st storage) memSigned() bool    { return st.idx&0x100 != 0 }
-func (st storage) memAliasLocal() int { return (st.idx >> 10) - 1 }
+func (st storage) memAliasLocal() int { return int(st.idx>>10) - 1 }
 
 // memBorrow returns the local whose pinned register serves as this deferred
 // load's address, or -1 when the address register is owned.
@@ -136,16 +137,14 @@ func (st storage) memBorrow() int { return int(st.cval) - 1 }
 
 // storage records where a value lives and its machine type.
 type storage struct {
-	kind   storageKind
-	typ    machineType
-	reg    Reg
-	ehRoot bool // frame-relative rooted exception identity; clear its three-word record on drop
-	gcRoot bool // value may contain a collector-owned gc.Ref and must be mapped at safepoints
-	facts  valueFacts
-	slot   uint32 // spill-slot index, or int32 displacement bits for stMemRef
-	cold   uint32 // index+1 into stack.cold for custom plugin values
-	idx    int    // local/global index, or packed stMemRef metadata
-	cval   int64  // constant value/bits for stConst
+	cval int64  // constant value/bits for stConst
+	slot uint32 // spill-slot index, or int32 displacement bits for stMemRef
+	cold uint32 // index+1 into stack.cold for custom plugin values
+	idx  uint32 // local/global/function index, or packed stMemRef metadata
+	kind storageKind
+	typ  machineType
+	reg  Reg
+	meta uint8 // semantic value facts and root-state bits
 }
 
 // elemCold contains state used only by custom plugin values. Keeping it out of
@@ -519,7 +518,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
 	if f.opt(optValueFacts) {
-		node.st.facts = deferredResultFacts(op, typ)
+		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
 	node.arg0, node.arg1 = left, right
 	node.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
@@ -691,7 +690,7 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	node := f.s.alloc()
 	node.kind, node.op, node.typ = ekDeferred, op, typ
 	if f.opt(optValueFacts) {
-		node.st.facts = deferredResultFacts(op, typ)
+		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
 	node.arg0 = operand
 	node.deferDepth = 1 + deferDepthOf(operand)

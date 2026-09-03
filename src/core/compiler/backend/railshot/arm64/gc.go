@@ -65,9 +65,9 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		nullable := sub == 21
 		if heap >= 0 {
 			top := f.s.back()
-			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.kind == ekValue && top.st.kind == stFuncRef && top.st.idx >= f.m.ImportedFuncCount() && top.st.idx < len(f.m.FuncTypes) {
+			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.kind == ekValue && top.st.kind == stFuncRef && top.st.idx >= uint32(f.m.ImportedFuncCount()) && top.st.idx < uint32(len(f.m.FuncTypes)) {
 				f.popValue()
-				actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[top.st.idx]), false)
+				actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[top.st.index()]), false)
 				required := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
 				matched := int64(0)
 				if f.m.ReferenceTypeSubtype(actual, required) {
@@ -132,16 +132,16 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if f.gcTypeSubtypingRefTest && heap >= 0 {
 			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc {
 				value := f.popValue()
-				gcRoot := value.st.gcRoot
+				gcRoot := value.st.hasGCRoot()
 				ref := f.materialize(value)
 				f.emitLocalFunctionSubtypeIdentityCheck(ref, uint32(heap), sub == 23, exactTarget, trapCastFailure)
-				f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+				f.pushReg(ref, mtI64).st.setGCRoot(gcRoot)
 				return nil
 			}
 		}
 		if !moduleHasCollectorTypes(f.m) {
 			value := f.popValue()
-			gcRoot := value.st.gcRoot
+			gcRoot := value.st.hasGCRoot()
 			ref := f.materialize(value)
 			nullable := sub == 23
 			var done int
@@ -165,7 +165,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			if nullable {
 				f.a.PatchBranch19(done, f.a.Len())
 			}
-			f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+			f.pushReg(ref, mtI64).st.setGCRoot(gcRoot)
 			return nil
 		}
 		if !f.gcStructHelpers {
@@ -202,7 +202,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 			if !f.a.OrrImm32(value, value, 1) {
 				panic("arm64: i31 tag immediate is not encodable")
 			}
-			f.pushReg(value, mtI64).st.gcRoot = f.tracksGCFrameRoots()
+			f.pushReg(value, mtI64).st.setGCRoot(f.tracksGCFrameRoots())
 		case 29: // i31.get_s
 			f.trapIfZero(value, false, true, trapNullReference)
 			f.a.AsrImm(value, value, 1, true)
@@ -782,12 +782,12 @@ func (f *fn) emitGCBranchCast(sub uint32, r *wasm.Reader) error {
 		return err
 	}
 	original := f.popValue()
-	gcRoot := original.st.gcRoot
+	gcRoot := original.st.hasGCRoot()
 	value := f.materialize(original)
 	copyReg := f.allocReg(maskOf(value))
 	f.a.MovReg64(copyReg, value)
-	f.pushReg(value, mtI64).st.gcRoot = gcRoot
-	f.pushReg(copyReg, mtI64).st.gcRoot = gcRoot
+	f.pushReg(value, mtI64).st.setGCRoot(gcRoot)
+	f.pushReg(copyReg, mtI64).st.setGCRoot(gcRoot)
 	f.pushValue(storage{kind: stConst, typ: mtI64, cval: target})
 	nullable := int64(0)
 	if flags&2 != 0 {
@@ -862,7 +862,7 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 	hidden := len(roots) - paramCount
 	slot := 0
 	for i, root := range roots {
-		if i < hidden && root.kind == ekValue && root.st.gcRoot {
+		if i < hidden && root.kind == ekValue && root.st.hasGCRoot() {
 			off := f.spillOff(slot)
 			if off < 0 {
 				plan.Exact = false

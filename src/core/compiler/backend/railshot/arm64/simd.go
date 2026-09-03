@@ -44,7 +44,7 @@ func (f *fn) materializeV128(e *elem) Reg {
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.a.LdrQ(x, SP, f.localOff(e.st.idx))
+		f.a.LdrQ(x, SP, f.localOff(e.st.index()))
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:

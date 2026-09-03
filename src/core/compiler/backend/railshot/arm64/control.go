@@ -448,7 +448,7 @@ func (f *fn) currentLogicalTypes() []machineType { return f.logicalTypes(f.roots
 func gcRootFlags(roots []*elem) []bool {
 	var flags []bool
 	for i, root := range roots {
-		if root.kind != ekValue || !root.st.gcRoot {
+		if root.kind != ekValue || !root.st.hasGCRoot() {
 			continue
 		}
 		if flags == nil {
@@ -485,7 +485,7 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 		return
 	}
 	for i, root := range roots[len(roots)-n:] {
-		if root.kind != ekValue || !root.st.gcRoot {
+		if root.kind != ekValue || !root.st.hasGCRoot() {
 			continue
 		}
 		cold := f.ensureCtrlMerge(fr)
@@ -550,7 +550,7 @@ func (f *fn) flush() {
 	if f.tracksGCFrameRoots() {
 		gcRoots = f.tmpGCRoots[:0]
 		for _, root := range roots {
-			gcRoots = append(gcRoots, root.kind == ekValue && root.st.gcRoot)
+			gcRoots = append(gcRoots, root.kind == ekValue && root.st.hasGCRoot())
 		}
 		f.tmpGCRoots = gcRoots
 	}
@@ -672,7 +672,7 @@ func (f *fn) setDepth(l int) {
 	for _, root := range roots[:l] {
 		types = append(types, root.st.typ)
 		if gcRoots != nil {
-			gcRoots = append(gcRoots, root.kind == ekValue && root.st.gcRoot)
+			gcRoots = append(gcRoots, root.kind == ekValue && root.st.hasGCRoot())
 		}
 	}
 	f.tmpTypes = types
@@ -692,7 +692,7 @@ func (f *fn) setDepthTypesWithGCRoots(types []machineType, gcRoots []bool) {
 	for i, typ := range types {
 		value := f.pushValue(storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 		if i < len(gcRoots) {
-			value.st.gcRoot = gcRoots[i]
+			value.st.setGCRoot(gcRoots[i])
 		}
 		slot += typ.stackSlots()
 	}
@@ -1610,7 +1610,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 	e := f.s.back()
 	for i := len(fr.resultTypes()) - 1; i >= 0; i-- {
 		if i < len(eh.refResults) && eh.refResults[i] {
-			e.st.ehRoot = true
+			e.st.setEHRoot(true)
 		}
 		e = e.prev
 	}
@@ -1827,7 +1827,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 				result = f.pushReg(mergeReg, fr.res0)
 			}
 			if len(resultGCRoots) != 0 {
-				result.st.gcRoot = resultGCRoots[0]
+				result.st.setGCRoot(resultGCRoots[0])
 			}
 		} else {
 			f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.resultTypes()), frameGCRootFlags(baseGCRoots, resultGCRoots))
@@ -1979,7 +1979,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 
 func (f *fn) brOnNull(r *wasm.Reader) error {
 	value := f.popValue()
-	gcRoot := value.st.gcRoot
+	gcRoot := value.st.hasGCRoot()
 	ref := f.materialize(value)
 	idx, err := r.U32()
 	if err != nil {
@@ -2006,15 +2006,15 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	f.a.PatchBranch19(over, f.a.Len())
 	fallthroughRef := f.allocReg(0)
 	f.ld64(fallthroughRef, SP, f.spillOff(refSlot))
-	f.pushReg(fallthroughRef, mtI64).st.gcRoot = gcRoot
+	f.pushReg(fallthroughRef, mtI64).st.setGCRoot(gcRoot)
 	return nil
 }
 
 func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	value := f.popValue()
-	gcRoot := value.st.gcRoot
+	gcRoot := value.st.hasGCRoot()
 	ref := f.materialize(value)
-	f.pushReg(ref, mtI64).st.gcRoot = gcRoot
+	f.pushReg(ref, mtI64).st.setGCRoot(gcRoot)
 	idx, err := r.U32()
 	if err != nil {
 		return err

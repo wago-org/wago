@@ -14,8 +14,8 @@ func (f *fn) replaceStorage(e *elem, st storage) {
 	// Replacements move the same semantic value between registers, locals, and
 	// spills. Preserve collector-root identity and semantic provenance unless a
 	// producer explicitly marks a newly-created value.
-	st.gcRoot = st.gcRoot || e.st.gcRoot
-	st.facts |= e.st.facts
+	st.setGCRoot(st.hasGCRoot() || e.st.hasGCRoot())
+	st.setValueFacts(st.valueFacts() | e.st.valueFacts())
 	if st.typ == mtCustom {
 		st.cold = e.st.cold
 	}

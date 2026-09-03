@@ -327,20 +327,23 @@ count or execution benefit does not clear a declared threshold.
    GC-ref facts are compiled into production but disabled by default.
    AMD64 `affine-lea` was subsequently retired after its dedicated fixture and
    broad screen confirmed that its isolated code-size win did not qualify it.
-   Either promote them against the standard gates or delete them. Do not let an
-   indefinite experiment become a permanent alternate path.
-4. **Mature rollback environment switches:** the production Railshot packages
+   Either promote the remaining paths against the standard gates or delete
+   them. Do not let an indefinite experiment become a permanent alternate path.
+4. **Host-width operand indexes and separate root booleans:** ARM64 now stores
+   exact 32-bit indexes and packs GC/EH root state beside value facts, reducing
+   its common operand node from 72 to 64 bytes without changing selection.
+5. **Mature rollback environment switches:** the production Railshot packages
    currently reference 138 distinct `WAGO_*` variables. Preserve a small number
    of safety-critical or public controls; migrate measurement-only toggles to
    test-only policy construction, then delete old package globals and branches.
    `CodegenPolicy.Selection` already provides a per-compilation bitset and is the
    natural single owner. Sources: [optimization selection](../../src/core/compiler/optimization/catalog.go#L69),
    [codegen policy](../../src/core/compiler/backend/railshot/shared/policy.go#L5).
-5. **Duplicated architecture-neutral code:** hint aggregation, eligibility
+6. **Duplicated architecture-neutral code:** hint aggregation, eligibility
    tracking, compact metadata records, and resource accounting should live in
    `shared`. Keep target selection and emission in the architecture packages.
 
-Items 3–5 primarily reduce binary size and code-quality burden; they should not
+Items 3, 5, and 6 primarily reduce binary size and code-quality burden; they should not
 be claimed as compile-heap wins without measurements.
 
 ## Measurement gates for these additions

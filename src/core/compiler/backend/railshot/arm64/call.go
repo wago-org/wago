@@ -655,8 +655,8 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 		return fmt.Errorf("return_call_ref: type %d exceeds bounded native identity", typeIdx)
 	}
 	refValue := f.popValue()
-	if refValue.kind == ekValue && refValue.st.kind == stFuncRef && refValue.st.idx >= 0 && refValue.st.idx < f.m.ImportedFuncCount() {
-		importIndex := refValue.st.idx
+	if refValue.kind == ekValue && refValue.st.kind == stFuncRef && refValue.st.idx < uint32(f.m.ImportedFuncCount()) {
+		importIndex := refValue.st.index()
 		if f.importBindings != nil && importIndex < len(f.importBindings) {
 			binding := f.importBindings[importIndex]
 			if binding.Dynamic || binding.CrossInstance {
@@ -1111,7 +1111,7 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 	}
 	flags := f.tmpGCRoots2[:0]
 	for _, root := range roots[:n] {
-		flags = append(flags, root.kind == ekValue && root.st.gcRoot)
+		flags = append(flags, root.kind == ekValue && root.st.hasGCRoot())
 	}
 	f.tmpGCRoots2 = flags
 	return flags
@@ -1298,7 +1298,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 			f.pinned = f.pinned.remove(res[j])
 			value = f.pushReg(res[j], rt)
 		}
-		value.st.gcRoot = f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, ft.Results[j])
+		value.st.setGCRoot(f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, ft.Results[j]))
 	}
 	// Arbitrary host code can synchronously re-enter this instance and grow its
 	// memory. Reload after reconstructing the operand stack so the continuation
@@ -1686,7 +1686,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	hidden := len(roots) - paramCount
 	slot := 0
 	for i, root := range roots {
-		if i < hidden && root.kind == ekValue && root.st.gcRoot {
+		if i < hidden && root.kind == ekValue && root.st.hasGCRoot() {
 			off := f.spillOff(slot)
 			if off < 0 {
 				plan.Exact = false
@@ -1796,7 +1796,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		case stSlot:
 			f.ld64(da.target, SP, f.spillOff(da.root.st.slotIndex()))
 		case stLocalRef:
-			f.ld64(da.target, SP, f.localOff(da.root.st.idx))
+			f.ld64(da.target, SP, f.localOff(da.root.st.index()))
 		}
 	}
 	f.tmpDeferred = deferred[:0]
@@ -2022,7 +2022,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 			case stSlot:
 				f.fld(da.target, SP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
 			case stLocalRef:
-				f.fld(da.target, SP, f.localOff(da.root.st.idx), da.root.st.typ == mtF64)
+				f.fld(da.target, SP, f.localOff(da.root.st.index()), da.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -2032,7 +2032,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		case stSlot:
 			f.ld64(da.target, SP, f.spillOff(da.root.st.slotIndex()))
 		case stLocalRef:
-			f.ld64(da.target, SP, f.localOff(da.root.st.idx))
+			f.ld64(da.target, SP, f.localOff(da.root.st.index()))
 		}
 	}
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
@@ -2652,7 +2652,7 @@ func (f *fn) finishWrapperResultsWithRoots(belowTypes []machineType, belowGCRoot
 			f.pinned = f.pinned.remove(regs[i])
 			value = f.pushReg(regs[i], typ)
 		}
-		value.st.gcRoot = f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, results[i])
+		value.st.setGCRoot(f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, results[i]))
 	}
 }
 

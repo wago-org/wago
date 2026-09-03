@@ -9,15 +9,36 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func TestValueFactsFitExistingStoragePaddingArm64(t *testing.T) {
-	if got, want := unsafe.Sizeof(storage{}), uintptr(32); got != want {
+func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
+	if got, want := unsafe.Sizeof(storage{}), uintptr(24); got != want {
 		t.Fatalf("storage size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(elem{}), uintptr(72); got != want {
+	if got, want := unsafe.Sizeof(elem{}), uintptr(64); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(localDef{}), uintptr(4); got != want {
 		t.Fatalf("local definition size = %d, want %d", got, want)
+	}
+}
+
+func TestStorageMetadataFieldsAreIndependentArm64(t *testing.T) {
+	var st storage
+	st.setGCRoot(true)
+	st.setEHRoot(true)
+	st.setValueFacts(factUpper32Zero | factBoolean)
+	if !st.hasGCRoot() || !st.hasEHRoot() {
+		t.Fatalf("setting facts cleared roots: meta=%#x", st.meta)
+	}
+	if got := st.valueFacts(); got != factUpper32Zero|factBoolean {
+		t.Fatalf("value facts = %#x, want upper-zero and boolean", got)
+	}
+	st.setValueFacts(0)
+	if !st.hasGCRoot() || !st.hasEHRoot() {
+		t.Fatalf("clearing facts cleared roots: meta=%#x", st.meta)
+	}
+	st.setGCRoot(false)
+	if st.hasGCRoot() || !st.hasEHRoot() {
+		t.Fatalf("clearing GC root changed another field: meta=%#x", st.meta)
 	}
 }
 
@@ -48,7 +69,7 @@ func TestCompareCarriesBooleanFactArm64(t *testing.T) {
 	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
 	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
 	f.pushBinOp(opLtU, mtI32)
-	if got := f.s.back().st.facts; !got.has(factUpper32Zero | factBoolean) {
+	if got := f.s.back().st.valueFacts(); !got.has(factUpper32Zero | factBoolean) {
 		t.Fatalf("compare facts = %#x, want upper-zero and boolean", got)
 	}
 }
