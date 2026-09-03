@@ -7811,11 +7811,6 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 		}
 		return -1
 	}
-	globalAccesses := uint32(0)
-	for _, uses := range globalUses {
-		globalAccesses += uint32(uses)
-	}
-	cacheGlobalDescriptors := globalAccesses >= 2
 	operandStackRegisters, deepSIMDRegisterStack := arm64StructuredOperandStackRegisters(sf.HasV128, hasGeneralCall, sf.MaxStack)
 	if !hasGeneralCall {
 		scalarLocalRegisters := arm64MixedScalarLocalRegisters[:]
@@ -8069,13 +8064,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, mops bool, obs
 			a.Add64(arm64.X25, arm64.X26, arm64.X25)
 		}
 	}
-	if cacheGlobalDescriptors {
-		a.Ldur64(arm64.X28, arm64.X26, -int32(abi.GlobalsPtrOffset))
-	}
 	loadGlobalDescriptor := func(dst arm64.Reg, index uint32) bool {
-		if cacheGlobalDescriptors {
-			return a.Load64(dst, arm64.X28, index*8)
-		}
 		a.Ldur64(dst, arm64.X26, -int32(abi.GlobalsPtrOffset))
 		return a.Load64(dst, dst, index*8)
 	}

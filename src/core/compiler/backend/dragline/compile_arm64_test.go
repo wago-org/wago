@@ -16,6 +16,7 @@ import (
 	compilerprofile "github.com/wago-org/wago/src/core/compiler/profile"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/encoder/arm64"
+	"github.com/wago-org/wago/src/core/runtime/abi"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -906,6 +907,11 @@ func TestARM64StructuredStoresResidentScalarsDirectly(t *testing.T) {
 	}
 	if copies := bytes.Count(compiled.Code, []byte{0xe9, 0x03, 0x07, 0xaa}); copies != 0 { // mov x9, x7
 		t.Fatalf("resident global address copied to operand stack %d times", copies)
+	}
+	var reserved arm64.Asm
+	reserved.Ldur64(arm64.X28, arm64.X26, -int32(abi.GlobalsPtrOffset))
+	if bytes.Contains(compiled.Code, reserved.B) {
+		t.Fatal("structured global access clobbers Go's reserved X28/g register")
 	}
 	boundsBranches := 0
 	for offset := 0; offset+4 <= len(compiled.Code); offset += 4 {

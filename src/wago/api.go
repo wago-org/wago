@@ -1449,13 +1449,6 @@ func compileWithFrontendFeaturesAndInstructionsSelected(cfg *RuntimeConfig, wasm
 	// Architectures that always use the sync-host dispatcher can compile host
 	// defaults up front; others defer returning imports until link time.
 	boundsMode := effectiveCompileBoundsMode(cfg.boundsChecks, m)
-	if cfg.compiler == CompilerDragline && goruntime.GOOS == "windows" && goruntime.GOARCH == "arm64" {
-		// Windows ARM64's VEH lazy-page continuation is not yet qualified for
-		// Dragline's private call ABI. Keep the whole target on explicit bounds
-		// and classic growable memory; this is a platform contract, not a
-		// module- or workload-specific fallback.
-		boundsMode = BoundsChecksExplicit
-	}
 	elide := boundsMode == BoundsChecksSignalsBased
 	importedFuncs := m.ImportedFuncCount()
 	dynamicBindings := make([]railshotImportBinding, importedFuncs)
