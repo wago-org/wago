@@ -157,8 +157,7 @@ const (
 // elem is one node on the operand stack: a value, a deferred operation, or a
 // control-frame marker. Deferred nodes carry their opcode and operand links.
 type elem struct {
-	kind elemKind
-	st   storage // valid when kind == ekValue
+	st storage // valid when kind == ekValue
 
 	// Intrusive doubly-linked list (physical stack order).
 	prev, next *elem
@@ -171,8 +170,9 @@ type elem struct {
 	arg0, arg1 *elem
 
 	// Deferred operation payload.
-	op  wOp
-	typ machineType // result type of a deferred op
+	op   wOp
+	typ  machineType // result type of a deferred op
+	kind elemKind
 
 	// deferDepth is the height of this deferred subtree (1 + max child height;
 	// leaves/values are 0). Used to cap how deep a tree condense() may recurse so a
