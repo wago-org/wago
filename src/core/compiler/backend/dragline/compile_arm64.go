@@ -56,6 +56,13 @@ func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, _ []ra
 	return true
 }
 
+// Keep Windows ARM64 on the structured finalizer until the private RailMach
+// call stack is qualified against that platform's native entry and exception
+// ABI. Both ARM64 Unix targets retain RailMach.
+func arm64RailMachCandidateForTarget(stack *railssa.StackFunc, moduleHasV128 bool, contracts []railmach.ABIContract, target corecompiler.Target) bool {
+	return target.GOOS != "windows" && arm64RailMachCandidate(stack, moduleHasV128, contracts)
+}
+
 var arm64StackLocalRegisters = [...]arm64.Reg{arm64.X19, arm64.X20, arm64.X21, arm64.X22, arm64.X23}
 var arm64OperandStackRegisters = [...]arm64.Reg{arm64.X9, arm64.X10, arm64.X11, arm64.X12, arm64.X13, arm64.X14, arm64.X15}
 var arm64DeepSIMDOperandStackRegisters = [...]arm64.Reg{
@@ -305,7 +312,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		functionRequiresMOPS := input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index)
 		requiresMOPS = requiresMOPS || functionRequiresMOPS
 		var nativePlan *nativeBackendPlan
-		if arm64RailMachCandidate(fn.Structured, compilationPlan.HasV128, moduleContracts) {
+		if arm64RailMachCandidateForTarget(fn.Structured, compilationPlan.HasV128, moduleContracts, input.Target) {
 			if nativePlanner == nil {
 				nativePlanner = new(nativeBackendPlanner)
 			}
@@ -645,7 +652,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				return functionError(m, i, "lower", err)
 			}
 			var nativePlan *nativeBackendPlan
-			if arm64RailMachCandidate(fn.Structured, compilation.HasV128, contracts) {
+			if arm64RailMachCandidateForTarget(fn.Structured, compilation.HasV128, contracts, input.Target) {
 				if worker.native == nil {
 					worker.native = &nativeBackendPlanner{parallelCandidates: true}
 				}

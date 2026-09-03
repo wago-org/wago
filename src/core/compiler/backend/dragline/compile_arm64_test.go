@@ -413,6 +413,18 @@ func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {
 	}
 }
 
+func TestARM64WindowsUsesStructuredFinalizer(t *testing.T) {
+	stack := &railssa.StackFunc{}
+	windows := corecompiler.Target{GOOS: "windows", GOARCH: "arm64"}
+	linux := corecompiler.Target{GOOS: "linux", GOARCH: "arm64"}
+	if arm64RailMachCandidateForTarget(stack, false, nil, windows) {
+		t.Fatal("Windows ARM64 admitted RailMach")
+	}
+	if !arm64RailMachCandidateForTarget(stack, false, nil, linux) {
+		t.Fatal("Linux ARM64 rejected RailMach")
+	}
+}
+
 func TestARM64UnboundedLoopStaysOffGoStack(t *testing.T) {
 	plan := &nativeBackendPlan{
 		Stack:   &railssa.StackFunc{MaxLoopDepth: 1},
