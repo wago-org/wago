@@ -87,9 +87,17 @@ type funcHints struct {
 	// arena nodes for long immediates (notably v128.const payload bytes) while the
 	// stack's heap fallback still preserves pointer stability if the estimate is
 	// low for unusual control flow.
-	stackArenaNodes    uint32
-	stackArenaDiscount uint16 // possible scanned nodes removed by bounded lookahead peepholes
+	stackArenaNodes uint32
+	// stackArenaDiscount packs a 15-bit bounded discount plus the deep variable-
+	// shift pressure flag. The prediction stays in existing storage
+	// rather than growing the 64-byte retained function header.
+	stackArenaDiscount uint16
 }
+
+const (
+	stackArenaDiscountMask = uint16(1<<15 - 1)
+	deepVariableShiftFlag  = uint16(1 << 15)
+)
 
 // funcHintView reconstructs scan/compile slices on the stack. Only funcHints is
 // retained per function; all variable-length data lives in one module sidecar.
@@ -139,12 +147,23 @@ func (h *funcHints) addStackArenaDiscount(n uint16) {
 	if !shared.StackArenaHintsEnabled {
 		return
 	}
-	if ^uint16(0)-h.stackArenaDiscount < n {
-		h.stackArenaDiscount = ^uint16(0)
+	flags := h.stackArenaDiscount &^ stackArenaDiscountMask
+	discount := h.stackArenaDiscount & stackArenaDiscountMask
+	if stackArenaDiscountMask-discount < n {
+		discount = stackArenaDiscountMask
 	} else {
-		h.stackArenaDiscount += n
+		discount += n
 	}
+	h.stackArenaDiscount = flags | discount
 }
+
+func (h *funcHints) noteDeepVariableShift() { h.stackArenaDiscount |= deepVariableShiftFlag }
+
+func (h funcHints) hasDeepVariableShift() bool {
+	return h.stackArenaDiscount&deepVariableShiftFlag != 0
+}
+
+func (h funcHints) arenaDiscount() uint16 { return h.stackArenaDiscount & stackArenaDiscountMask }
 
 func (h *funcHints) noteControlDepth(depth int) {
 	if depth >= 255 {
@@ -681,6 +700,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 	var prevIndex, prevPrevIndex uint32
 	var prevConst int64
 	var prevConstOK bool
+	var variableShiftDepth uint8
 	for {
 		op, err := s.r.byte()
 		if err != nil {
@@ -927,6 +947,16 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.usesBulkMem = true
 			}
 		}
+		if variableShiftOpcode(op) && prevOp != 0x41 && prevOp != 0x42 {
+			if variableShiftDepth < maxDeferDepth {
+				variableShiftDepth++
+			}
+			if variableShiftDepth >= maxDeferDepth {
+				s.h.noteDeepVariableShift()
+			}
+		} else if op != 0x20 { // local.get may supply the next variable shift count.
+			variableShiftDepth = 0
+		}
 		if shared.StackArenaHintsEnabled {
 			if !prevConstOK && (prevOp == 0x41 || prevOp == 0x42) &&
 				(op >= 0x6a && op <= 0x78 || op >= 0x7c && op <= 0x8a) {
@@ -943,6 +973,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			prevConst, prevConstOK = curConst, curConstOK
 		}
 	}
+}
+
+func variableShiftOpcode(op byte) bool {
+	return op >= 0x74 && op <= 0x78 || op >= 0x86 && op <= 0x8a
 }
 
 func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline bool) {

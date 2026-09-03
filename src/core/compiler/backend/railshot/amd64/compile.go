@@ -267,6 +267,7 @@ type fn struct {
 	pinnedLocals     []int // indices of register-pinned locals (fixed after assignPinnedLocals)
 	pinnedLocalMask  regMask
 	fpinnedLocalMask regMask
+	pinRelinquished  bool // a dedicated GP local register may temporarily have an allocator owner
 
 	// WARP STACK_REG lazy-spill model for pinned locals in CALL-MAKING functions
 	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
@@ -735,7 +736,7 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 		if fnCap > capHint {
 			capHint = fnCap
 		}
-		effectiveNodes := nodes - int(hints[i].stackArenaDiscount)
+		effectiveNodes := nodes - int(hints[i].arenaDiscount())
 		if effectiveNodes < 1 {
 			effectiveNodes = 1
 		}
@@ -2616,13 +2617,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		gpPool = withoutReg(gpPool, mg.reg) // module-pinned global registers
 		f.reserved = f.reserved.add(mg.reg)
 	}
-	// Cap pins so the reserved scratch four (RAX/RDX/RCX/R8) always stay
-	// allocatable — WARP's resScratchRegsGPR floor. Deeper pressure (nested
-	// RHS-relocation hazards) degrades gracefully to spill slots via
-	// allocRegOrNone's fallback in condenseBinary.
+	// Preserve the established pin budget for ordinary functions. Deep variable-
+	// shift trees reserve a wider transient floor because every active local is
+	// commonly borrowed by the tree; all other functions can relinquish a pin
+	// lazily at the exact exhaustion point.
 	maxPins := len(gpAlloc) - numScratchGP
 	if f.memSizeReg != regNone {
-		maxPins-- // R15 is reserved out of the allocatable file too
+		maxPins--
+	}
+	if hints.hasDeepVariableShift() {
+		maxPins = gpPinLimit(f.reserved, 9)
 	}
 	if len(gpPool) > maxPins {
 		gpPool = gpPool[:maxPins]
@@ -2907,6 +2911,23 @@ func gpPinPool(pool []Reg, regABI bool, nParams int, callFree, entryArgPins bool
 		}
 	}
 	return append(pool, RBP)
+}
+
+// gpPinLimit leaves the requested target-derived transient floor after every
+// module role has been removed. Function and workload identity are deliberately
+// absent: callers choose the floor from lowering obligations observed by the
+// existing body scan.
+func gpPinLimit(reserved regMask, minTransientGP int) int {
+	available := 0
+	for _, r := range gpAlloc {
+		if !reserved.has(r) {
+			available++
+		}
+	}
+	if available <= minTransientGP {
+		return 0
+	}
+	return available - minTransientGP
 }
 
 // withoutReg returns pool with r removed (order preserved).

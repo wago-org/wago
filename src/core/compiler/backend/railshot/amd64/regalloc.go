@@ -104,7 +104,56 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 			return r
 		}
 	}
+	// A pinned local is a cache, not a semantic reservation. At the exact
+	// exhaustion point, home one non-borrowed GP local and lend its register to the
+	// current lowering step. recoverLocal evicts any borrower before restoring the
+	// local. This bounded relinquishment avoids recompiling the whole function.
+	if r := f.relinquishPinnedLocal(avoid); r != regNone {
+		return r
+	}
 	return regNone
+}
+
+func (f *fn) relinquishPinnedLocal(avoid regMask) Reg {
+	block := avoid.union(f.pinned).union(f.reserved)
+	for i := len(f.pinnedLocals) - 1; i >= 0; i-- {
+		x := f.pinnedLocals[i]
+		d := f.locals[x]
+		if d.isFloat || d.state == lsConstZero || block.has(d.reg) || f.regUser[d.reg] != nil {
+			continue
+		}
+		borrowed := false
+		for e := f.s.head.next; e != f.s.head; e = e.next {
+			if subtreeRefsLocal(e, x) || subtreeBorrowsLocalAddress(e, x) {
+				borrowed = true
+				break
+			}
+		}
+		if borrowed {
+			continue
+		}
+		if d.state == lsReg {
+			f.storeFrameInt(f.localAddr(x), d.reg, d.typ)
+		}
+		f.locals[x].state = lsMem
+		f.pinRelinquished = true
+		if f.stats != nil {
+			f.stats.PinRelinquishments++
+		}
+		f.stats.peep("pin-relinquish")
+		return d.reg
+	}
+	return regNone
+}
+
+func subtreeBorrowsLocalAddress(e *elem, x int) bool {
+	if e == nil {
+		return false
+	}
+	if e.kind == ekValue {
+		return e.st.kind == stMemRef && e.st.memBorrow() == x
+	}
+	return e.kind == ekDeferred && (subtreeBorrowsLocalAddress(e.arg0, x) || subtreeBorrowsLocalAddress(e.arg1, x))
 }
 
 // spillIfUsed evicts register r's occupant to a frame slot if one is resident,

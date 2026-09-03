@@ -29,6 +29,43 @@ func TestModuleGlobalMembershipUsesBorrowedBoundedPins(t *testing.T) {
 	}
 }
 
+func TestGPPinLimitReservesTransientLoweringRegisters(t *testing.T) {
+	if got, want := gpPinLimit(0, 8), len(gpAlloc)-8; got != want {
+		t.Fatalf("pin limit without module reservations = %d, want %d", got, want)
+	}
+	reserved := maskOf(R12, R13, R14, R15)
+	if got, want := gpPinLimit(reserved, 8), len(gpAlloc)-12; got != want {
+		t.Fatalf("pin limit with four module registers = %d, want %d", got, want)
+	}
+}
+
+func TestCompileRegisterPressureCorpusAvoidsRetry(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
+	for _, name := range []string{"regexmatch.wasm", "ruby.wasm", "sqlite3.wasm"} {
+		t.Run(name, func(t *testing.T) {
+			m := readParallelTestModule(t, filepath.Join(root, name))
+			var stats ModuleStats
+			cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Stats: &stats})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cm.CodeImage != nil {
+				_ = cm.CodeImage.Close()
+			}
+			if got := stats.Compile.RetryFunctions; got != 0 {
+				t.Fatalf("register-pressure retries = %d, want zero", got)
+			}
+			relinquishments := 0
+			for _, fs := range stats.Funcs {
+				relinquishments += fs.PinRelinquishments
+			}
+			if relinquishments == 0 {
+				t.Fatal("expected at least one bounded pin relinquishment")
+			}
+		})
+	}
+}
+
 func TestCompileModuleHintLocalCountAllocationAndCodeIdentity(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
 	tests := []struct {

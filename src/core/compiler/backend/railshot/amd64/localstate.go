@@ -100,6 +100,9 @@ func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 }
 
 func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
+	if f.pinRelinquished && !isFloat && f.regUser[reg] != nil {
+		f.spillIfUsed(reg)
+	}
 	if f.localType[x] == mtV128 {
 		f.a.VMovdquLoadDisp(reg, RSP, f.localAddr(x))
 	} else if isFloat {
@@ -145,7 +148,7 @@ func (f *fn) recoverLocal(x int) {
 		f.materializeZeroLocal(x, false)
 		return
 	}
-	if !f.usesCalls {
+	if !f.usesCalls && f.locals[x].state != lsMem {
 		return
 	}
 	if f.locals[x].state == lsMem {
@@ -156,7 +159,7 @@ func (f *fn) recoverLocal(x int) {
 
 // markLocalDirty records that pinned local x was just written (value only in reg).
 func (f *fn) markLocalDirty(x int) {
-	if f.usesCalls || f.lazyZero || len(f.intervalReg) != 0 {
+	if f.usesCalls || f.lazyZero || len(f.intervalReg) != 0 || f.locals[x].state == lsMem {
 		f.locals[x].state = lsReg
 	}
 }

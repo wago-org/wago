@@ -1028,6 +1028,9 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		// condenseInto may temporarily mark pr as an owned result for deferred
 		// expressions; clear that ownership because pinned-local registers are not
 		// allocator scratch registers.
+		if f.pinRelinquished && f.regUser[pr] != nil {
+			f.spillIfUsed(pr)
+		}
 		f.condenseInto(e, pr)
 		f.release(pr)
 		f.markLocalDirty(x) // value now lives (only) in the register

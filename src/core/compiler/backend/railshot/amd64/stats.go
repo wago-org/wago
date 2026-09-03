@@ -204,6 +204,7 @@ type CodegenStats struct {
 	// Pins.
 	PinnedLocals       int // integer/float locals given a dedicated register
 	PinnedGlobalsValue int // hot mutable-int globals value-pinned in this function
+	PinRelinquishments int // pinned GP locals temporarily homed at exact exhaustion points
 
 	// UnpinnedRetry is set when the pinned compile exhausted the register file
 	// (a pathologically deep expression tree) and the function was recompiled with
@@ -664,8 +665,8 @@ func (s *CodegenStats) report() string {
 		s.Encoding.AluImm32Acc+s.Encoding.TestImm32Acc)
 	fmt.Fprintf(&b, "    alloc: flushes=%d flushBelow=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
-	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
-		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)
+	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d relinquish=%d\n",
+		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue, s.PinRelinquishments)
 	if s.InlineSiteBytes != 0 {
 		fmt.Fprintf(&b, "    inline-site-bytes: %d\n", s.InlineSiteBytes)
 	}

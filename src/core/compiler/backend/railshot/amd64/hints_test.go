@@ -18,6 +18,48 @@ func TestFuncHintsSize(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesDetectsDeepVariableShiftPressure(t *testing.T) {
+	shiftChain := func(depth int, constantCount bool) []byte {
+		body := []byte{0x20, 0x00} // local.get 0: accumulator
+		for range depth {
+			if constantCount {
+				body = append(body, 0x41, 0x01) // i32.const 1
+			} else {
+				body = append(body, 0x20, 0x01) // local.get 1
+			}
+			body = append(body, 0x74) // i32.shl
+		}
+		return append(body, 0x0b)
+	}
+	for _, tc := range []struct {
+		name string
+		body []byte
+		want bool
+	}{
+		{name: "below cap", body: shiftChain(maxDeferDepth-1, false)},
+		{name: "at cap", body: shiftChain(maxDeferDepth, false), want: true},
+		{name: "constant counts", body: shiftChain(maxDeferDepth+2, true)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, err := scanBodyBytes(tc.body, 2, 0, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := h.hasDeepVariableShift(); got != tc.want {
+				t.Fatalf("deep variable shift = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	var h funcHints
+	h.addStackArenaDiscount(7)
+	h.noteDeepVariableShift()
+	h.addStackArenaDiscount(5)
+	if got := h.arenaDiscount(); got != 12 || !h.hasDeepVariableShift() {
+		t.Fatalf("packed discount/pressure = %d/%v, want 12/true", got, h.hasDeepVariableShift())
+	}
+}
+
 func globalHint(h funcHintView, index uint32) (score uint32, eligible bool) {
 	for _, hint := range h.sparseGlobals {
 		if hint.Index == index {
