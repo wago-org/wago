@@ -69,6 +69,15 @@ drops by 2,560 B/op and `json-as` by 384 B/op, while an interleaved six-pair
 GC-off timing screen is effectively unchanged and matched native-code hashes
 remain identical.
 
+AMD64 applies the same exact packing and direct consumption, reducing its
+retained summary from 40 to 32 bytes as well. Emulated Linux/AMD64 full-compile
+allocation drops by 2,560 B/op on `many_funcs` and about 384 B/op on `json-as`,
+with allocation counts unchanged. Six-pair interleaved GC-off medians are
+effectively flat on both modules, and matched corpus plus entry-initialization
+native-code hashes remain identical. The representation is unconditional on
+both targets and is selected by no producer, module, function, hash, or corpus
+identity.
+
 ARM64 then removed a duplicate host-width local-count array by writing the
 validated count directly into the compact summary before scanning. The
 1,024-function stress case dropped again from 134,168 to 125,976 B/op and from

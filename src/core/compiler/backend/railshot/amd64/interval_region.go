@@ -31,7 +31,7 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 	f.tmpIntervalReg = assigned
 	kept := 0
 	for x := 0; x < f.nLocals; x++ {
-		if (f.localType[x] == mtI32 || f.localType[x] == mtI64) && hints.localLastGet[x] != 0 && hints.localScore[x] >= 2 {
+		if (f.localType[x] == mtI32 || f.localType[x] == mtI64) && hints.localLastGet[x] != 0 && localHotness(hints.localScore[x]) >= 2 {
 			assigned[x] = RSP // compact eligibility marker; RSP is never allocatable.
 			kept++
 		}
@@ -99,7 +99,7 @@ func (f *fn) claimIntervalReg(x int) Reg {
 		}
 		return regNone
 	}
-	return f.evictIntervalLocalBelow(0, int(f.intervalScore[x]))
+	return f.evictIntervalLocalBelow(0, int(localHotness(f.intervalScore[x])))
 }
 
 // takeFinalIntervalGet transfers a dying local's register directly to the
@@ -140,7 +140,7 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 		}
 		s := 0
 		if x < len(f.intervalScore) {
-			s = int(f.intervalScore[x])
+			s = int(localHotness(f.intervalScore[x]))
 		}
 		if s < scoreLimit && s < bestScore {
 			best, bestScore = x, s

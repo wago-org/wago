@@ -72,11 +72,6 @@ func (f *funcHintFlags) assign(flag funcHintFlags, value bool) {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	// entryInitialized marks locals (up to 64) whose first access in the
-	// function's straight-line entry prefix is local.set/tee. Their Wasm zero
-	// value cannot be observed, so the prologue may skip initializing them.
-	entryInitialized uint64
-
 	gcResolverSites   uint32 // conservative direct scalar/length resolver site count
 	localStart        uint32
 	lastGetStartPlus1 uint32 // zero when interval-region side storage was not retained
@@ -116,10 +111,11 @@ const (
 // retained per function; all variable-length data lives in one module sidecar.
 type funcHintView struct {
 	funcHints
-	nLocals       int
-	localScore    []uint32
-	localLastGet  []uint32
-	sparseGlobals []shared.GlobalHint
+	entryInitialized uint64 // scan-local view; compilation decodes bits during pin planning
+	nLocals          int
+	localScore       []uint32
+	localLastGet     []uint32
+	sparseGlobals    []shared.GlobalHint
 }
 
 type funcHintSidecar struct {
@@ -201,6 +197,21 @@ func funcHintsWithStorage(localScore []uint32) funcHintView {
 	return funcHintView{nLocals: len(localScore), localScore: localScore}
 }
 
+const (
+	localScoreEntryInitialized = uint32(1 << 31)
+	localScoreHotnessMask      = localScoreEntryInitialized - 1
+)
+
+func localHotness(score uint32) uint32 { return score & localScoreHotnessMask }
+
+func (h *funcHintView) markEntryInitialized(idx uint32) {
+	if idx >= 64 || int(idx) >= len(h.localScore) {
+		return
+	}
+	h.entryInitialized |= uint64(1) << idx
+	h.localScore[idx] |= localScoreEntryInitialized
+}
+
 func finishGlobalHints(h funcHintView, accum *shared.GlobalHintAccumulator) funcHintView {
 	h.sparseGlobals = accum.AppendTo(h.sparseGlobals[:0])
 	h.globalCount = uint32(len(h.sparseGlobals))
@@ -211,11 +222,11 @@ func addHotness(scores []uint32, idx uint32, delta int64) {
 	if int(idx) >= len(scores) || delta <= 0 {
 		return
 	}
-	const max = ^uint32(0)
-	if uint64(scores[idx])+uint64(delta) >= uint64(max) {
-		scores[idx] = max
+	flags, score := scores[idx]&^localScoreHotnessMask, localHotness(scores[idx])
+	if uint64(score)+uint64(delta) >= uint64(localScoreHotnessMask) {
+		scores[idx] = flags | localScoreHotnessMask
 	} else {
-		scores[idx] += uint32(delta)
+		scores[idx] = flags | (score + uint32(delta))
 	}
 }
 
@@ -875,7 +886,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					if s.entrySeen&bit == 0 {
 						s.entrySeen |= bit
 						if op != 0x20 {
-							s.h.entryInitialized |= bit
+							s.h.markEntryInitialized(idx)
 						}
 					}
 				}

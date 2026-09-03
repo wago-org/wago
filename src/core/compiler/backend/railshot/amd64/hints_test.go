@@ -12,9 +12,27 @@ import (
 )
 
 func TestFuncHintsSize(t *testing.T) {
-	const want = 40
+	const want = 32
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
+	}
+}
+
+func TestEntryInitializedSharesLocalScoreStorage(t *testing.T) {
+	scores := make([]uint32, 2)
+	h := funcHintsWithStorage(scores)
+	h.markEntryInitialized(1)
+	if h.entryInitialized != uint64(1)<<1 {
+		t.Fatalf("scan-local entry initialized = %#x, want bit 1", h.entryInitialized)
+	}
+	addHotness(scores, 1, 7)
+	if got := localHotness(scores[1]); got != 7 {
+		t.Fatalf("local hotness = %d, want 7", got)
+	}
+	scores[1] = localScoreEntryInitialized | localScoreHotnessMask
+	addHotness(scores, 1, 1)
+	if got := scores[1]; got != localScoreEntryInitialized|localScoreHotnessMask {
+		t.Fatalf("saturated packed score = %#x", got)
 	}
 }
 

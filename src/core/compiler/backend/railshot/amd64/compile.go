@@ -301,23 +301,22 @@ type fn struct {
 	// spillFloor temporarily reserves a low spill-slot range while wide-stack
 	// canonicalization stages values above both their old homes and destinations.
 	spillFloor              int
-	subRspAt                int    // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
-	addRspAt                int    // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
-	adapterReturnOff        int    // offset immediately after this function's root adapter CALL
-	adapterEndOff           int    // end of the wrapper before internal-entry alignment
-	adapterReturnReferenced bool   // cross-tail reuse embeds the local return PC; keep that tail local
-	trapBodyOff             int    // complete shared trap body start; zero when not emitted
-	trapBodyEnd             int    // complete shared trap body end before any literal pool
-	guardMode               bool   // elide inline bounds checks; rely on guard-page + SIGSEGV trap
-	boundsFacts             bool   // P6.1 straight-line bounds-check elision enabled (explicit mode)
-	interruptible           bool   // emit context-cancellation polls at entries and loop headers
-	lazyZero                bool   // defer declared-local zeroing for small call+memory functions
-	entryInitialized        uint64 // locals proven assigned before first entry-prefix read
-	skipFence               bool   // call-free leaf with a provably small frame: no stack-fence check
-	frameElided             bool   // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
-	threadedMemory0         bool   // route shared memory zero through the private instance directory
-	hasLoop                 bool   // retain loop alignment until it becomes a relaxable fragment
-	hasJumpTableData        bool   // typed embedded data is remapped, but branches retain fixed widths
+	subRspAt                int  // byte offset of the prologue's SubRsp imm32 (patched with frameSize)
+	addRspAt                int  // byte offset of the epilogue's AddRsp imm32 (patched with frameSize)
+	adapterReturnOff        int  // offset immediately after this function's root adapter CALL
+	adapterEndOff           int  // end of the wrapper before internal-entry alignment
+	adapterReturnReferenced bool // cross-tail reuse embeds the local return PC; keep that tail local
+	trapBodyOff             int  // complete shared trap body start; zero when not emitted
+	trapBodyEnd             int  // complete shared trap body end before any literal pool
+	guardMode               bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
+	boundsFacts             bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
+	interruptible           bool // emit context-cancellation polls at entries and loop headers
+	lazyZero                bool // defer declared-local zeroing for small call+memory functions
+	skipFence               bool // call-free leaf with a provably small frame: no stack-fence check
+	frameElided             bool // register-homed call-free reg-ABI leaf: frameSize is 0 (see elideRegisterOnlyFrame)
+	threadedMemory0         bool // route shared memory zero through the private instance directory
+	hasLoop                 bool // retain loop alignment until it becomes a relaxable fragment
+	hasJumpTableData        bool // typed embedded data is remapped, but branches retain fixed widths
 
 	// memSizeReg caches the linear-memory size in bytes ([RBX-bdCurBytes]) in a
 	// dedicated register for the whole module (WARP's REGS::memSize, which reserves
@@ -2514,13 +2513,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		sc.localRefTailBound = true
 	}
 	globalIdx := m.ImportedFuncCount() + funcIdx
-	entryInitialized := hints.entryInitialized
-	if gcFrameRoots != nil && gcFrameRoots.Candidate {
-		// Conservative root maps may publish a reference local before its first
-		// Wasm assignment. Keep every declared slot zero-initialized so a reused
-		// foreign stack cannot expose a stale compact handle at that safepoint.
-		entryInitialized = 0
-	}
 	f := &sc.fnState
 	policy := sc.policy
 	if !policy.Valid() {
@@ -2529,7 +2521,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	sc.asm.CompactAccumulatorImmediates = compactAccumulatorImmediatePolicy(policy)
 	localType, localSlot, localGCRefFacts, locals := f.localType, f.localSlot, f.localGCRefFacts, f.locals
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, entryInitialized: entryInitialized, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), gcSharedResolver: hints.flags.has(hintGCSharedResolver), classifier: sc.classifier}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), gcSharedResolver: hints.flags.has(hintGCSharedResolver), classifier: sc.classifier}
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
 	f.literalWords = f.literalWords[:0]
@@ -2791,7 +2783,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		// state beyond RBX is required. Keep this deliberately leaf-only: a local
 		// callee could itself expect the module memory-size cache to be live.
 		sc.directPrepared = volatilePrepared
-		internalOff, err := f.emitRegABI(c, hostAdapter, hints.flags.has(hintHasFloatConst), hints.flags.has(hintHasSIMD))
+		internalOff, err := f.emitRegABI(c, hostAdapter, hints.flags.has(hintHasFloatConst), hints.flags.has(hintHasSIMD), hints.localScore)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -2811,7 +2803,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		return f.a.B, f.relocs, internalOff, nil
 	}
 
-	f.prologue()
+	f.prologue(hints.localScore)
 	if !preloadScanGatesEnabled || hints.flags.has(hintHasFloatConst) {
 		f.preloadFloatConsts(c.BodyBytes)
 	}
@@ -3057,7 +3049,7 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	gp := f.tmpGpCand[:0]
 	for i := 0; i < f.nLocals; i++ {
 		if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
-			gp = append(gp, gpCand{idx: i, score: scores[i]})
+			gp = append(gp, gpCand{idx: i, score: localHotness(scores[i])})
 		}
 	}
 	loopMin := uint32(loopWeight(1))
@@ -3121,8 +3113,8 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		}
 	}
 	slices.SortFunc(fc, func(a, b int) int {
-		if scores[a] != scores[b] {
-			if scores[a] > scores[b] {
+		if localHotness(scores[a]) != localHotness(scores[b]) {
+			if localHotness(scores[a]) > localHotness(scores[b]) {
 				return -1
 			}
 			return 1
@@ -3279,7 +3271,7 @@ func (f *fn) storePinnedGlobals(dirtyOnly bool) {
 // linMem in RBX (moved from RSI per WARP's convention), stash trap/results in the
 // RSP-relative header, load params into their register or slot, zero declared
 // locals.
-func (f *fn) prologue() {
+func (f *fn) prologue(localScores []uint32) {
 	a := f.a
 	f.subRspAt = len(a.B) + 3         // SubRsp opcode is 3 bytes (48 81 EC), then imm32
 	a.SubRsp(0)                       // frame; imm32 patched after body
@@ -3330,7 +3322,7 @@ func (f *fn) prologue() {
 	if rdiParamOff >= 0 {
 		a.Load64(RDI, RDI, rdiParamOff)
 	}
-	f.zeroDeclaredLocals()
+	f.zeroDeclaredLocals(localScores)
 	f.derivePinnedGlobals()
 	f.deriveModuleGlobals() // offset-0 entry: cells → module-pinned registers
 }
@@ -3339,15 +3331,16 @@ func (f *fn) prologue() {
 // old eager zeroing path; small call+memory functions use WARP-style lazy zero,
 // where reads materialize zero on demand and control-flow reconciliation stores it
 // to the frame before paths diverge when required.
-func (f *fn) zeroDeclaredLocals() {
+func (f *fn) zeroDeclaredLocals(localScores []uint32) {
 	if f.nLocals <= f.nParams {
 		return
 	}
 	if !f.lazyZero {
+		entryInitElision := f.gcFrameRoots == nil || !f.gcFrameRoots.Candidate
 		a := f.a
 		a.XorSelf32(RAX)
 		for i := f.nParams; i < f.nLocals; i++ {
-			if i < 64 && f.entryInitialized&(uint64(1)<<uint(i)) != 0 {
+			if entryInitElision && i < 64 && localScores[i]&localScoreEntryInitialized != 0 {
 				continue
 			}
 			if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
@@ -3385,7 +3378,7 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 // the internal entry takes args in GP/XMM registers and returns its single result
 // in RAX or XMM0.
 // Returns the internal entry's offset within the function's code.
-func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) (int, error) {
+func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, localScores []uint32) (int, error) {
 	a := f.a
 	np, rN := f.nParams, len(f.ft.Results)
 
@@ -3493,7 +3486,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool) 
 			gp++
 		}
 	}
-	f.zeroDeclaredLocals()
+	f.zeroDeclaredLocals(localScores)
 	if !preloadScanGatesEnabled || hasFloatConst {
 		f.preloadFloatConsts(c.BodyBytes)
 	}
