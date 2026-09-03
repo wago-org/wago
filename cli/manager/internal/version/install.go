@@ -28,6 +28,9 @@ func installVersion(d wagopaths.Dirs, ver string, profile wagopaths.Profile, bui
 
 func installVersionContext(ctx context.Context, d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, offer, showLocation bool, use string) {
 	installName := releaseAssetVersion(ver)
+	if err := validateVersionStorageName(installName); err != nil {
+		fatal("version install: %v", err)
+	}
 	dest := d.RuntimeBinary(installName, string(profile), string(build))
 	if installedPath, _, _, installed := installedRuntime(d, installName, profile, build); installed {
 		// A rolling channel (canary/nightly) re-fetches even when present — the
