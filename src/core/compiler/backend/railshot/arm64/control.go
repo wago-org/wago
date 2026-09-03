@@ -42,7 +42,17 @@ const (
 
 // ctrlFrame is one open control construct (or the implicit function frame).
 type ctrlFrame struct {
-	kind            ctrlKind
+	kind          ctrlKind
+	res0          machineType // first result's machine type (valid when resultN >= 1)
+	hasElse       bool
+	entryUnreach  bool
+	endReachable  bool
+	regMerge1     bool // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
+	loopHasGrow   bool
+	loopHasCall   bool
+	loopHasNested bool
+	loopHasTable  bool
+
 	height          int // operand depth at the frame's result base
 	paramN, resultN int
 	branchN         int   // values transferred on a branch to this label
@@ -50,11 +60,6 @@ type ctrlFrame struct {
 	ends            []int // cfBlock/cfIf: forward B sites to patch to end
 	condEnds        []int // cfBlock/cfIf: forward B.cond sites (imm19) to patch to end (empty-edge br_if fast path)
 	elseSite        int   // cfIf: the false-edge B.cond site (to else/end), -1 once patched
-	hasElse         bool
-	entryUnreach    bool
-	endReachable    bool
-	regMerge1       bool        // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
-	res0            machineType // first result's machine type (valid when resultN >= 1)
 	baseTypes       []machineType
 	paramTypes      []machineType
 	resultTypes     []machineType
@@ -67,14 +72,10 @@ type ctrlFrame struct {
 	// base NOT in loopSetLocals is loop-invariant (a callee cannot touch a caller
 	// local), so its bounds check is hoistable. nil for non-loops / unreachable.
 	loopSetLocals map[uint32]bool
-	loopHasGrow   bool
 	// Loop-region allocation eligibility is collected in the same bounded scan
 	// used by bounds hoisting. Promotion is enabled only once every exit edge is
 	// modeled; these facts keep the eligibility decision one-pass and conservative.
-	loopHasCall   bool
-	loopHasNested bool
-	loopHasTable  bool
-	loopPins      []loopPin
+	loopPins []loopPin
 
 	// Per-frame pinned-local merge agreement (convergeEdgeTo): branchState is the
 	// recorded state at this frame's branch target (loop top for loops, the end

@@ -33,34 +33,35 @@ const (
 // ctrlFrame is one open control construct (or the implicit function frame).
 type ctrlFrame struct {
 	kind             ctrlKind
-	height           int // operand depth at the frame's result base
-	paramN, resultN  int
-	branchN          int   // values transferred on a branch to this label
-	loopStart        int   // cfLoop: backward target byte offset
-	ends             []int // cfBlock/cfIf: forward jmp sites to patch to end
-	elseSite         int   // cfIf: the jz site (to else/end), -1 once patched
+	res0             machineType // first result's machine type (valid when resultN >= 1)
 	hasElse          bool
 	entryUnreach     bool
 	endReachable     bool
-	regMerge1        bool        // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
-	res0             machineType // first result's machine type (valid when resultN >= 1)
-	baseTypes        []machineType
-	paramTypes       []machineType
-	resultTypes      []machineType
-	baseGCRoots      []bool
-	paramGCRoots     []bool
-	resultGCRoots    []bool
-	baseGCFacts      []shared.GCRefFact
-	paramGCFacts     []shared.GCRefFact
-	resultGCFacts    []shared.GCRefFact
+	regMerge1        bool // single-result block/if: value lives in a register (mergeReg/mergeFReg) at edges, not a slot
 	resultGCFactsSet bool
+	loopHasGrow      bool
+
+	height          int // operand depth at the frame's result base
+	paramN, resultN int
+	branchN         int   // values transferred on a branch to this label
+	loopStart       int   // cfLoop: backward target byte offset
+	ends            []int // cfBlock/cfIf: forward jmp sites to patch to end
+	elseSite        int   // cfIf: the jz site (to else/end), -1 once patched
+	baseTypes       []machineType
+	paramTypes      []machineType
+	resultTypes     []machineType
+	baseGCRoots     []bool
+	paramGCRoots    []bool
+	resultGCRoots   []bool
+	baseGCFacts     []shared.GCRefFact
+	paramGCFacts    []shared.GCRefFact
+	resultGCFacts   []shared.GCRefFact
 
 	// cfLoop only (P6.2 foundation): locals set anywhere in the loop body, and
 	// whether the body grows memory — from a scan-ahead at the loop header. A local
 	// base NOT in loopSetLocals is loop-invariant (a callee cannot touch a caller
 	// local), so its bounds check is hoistable. nil for non-loops / unreachable.
 	loopSetLocals map[uint32]bool
-	loopHasGrow   bool
 
 	// Per-frame pinned-local merge agreement (convergeEdgeTo): branchState is the
 	// recorded state at this frame's branch target (loop top for loops, the end

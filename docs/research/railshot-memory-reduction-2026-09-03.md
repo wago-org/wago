@@ -36,11 +36,13 @@ classification, reuse of the validated local count on every attempt, and the
 bounded module-global pin list in place of a per-function dense membership
 bitmap. The follow-up statistics slice adds deterministic retained-hint and
 failed-attempt byte accounting plus opt-in stage timing. The first control-stack
-slice then moves EH-only state into a lazy sidecar, shrinking the common frame
-from 472 to 432 bytes on AMD64 and 416 to 376 bytes on ARM64, and avoids backing
-allocations for all-false scalar GC-root vectors. A generated 128-deep scalar
-block benchmark dropped from 283 to 155 allocations per AMD64 compile and from
-about 229.7 KiB to 228.3 KiB; median latency improved by 5.8% in the same local screen.
+slice then moves EH-only state into a lazy sidecar, groups scalar fields to
+remove alignment holes, and avoids backing allocations for all-false scalar
+GC-root vectors. The common frame shrinks from 472 to 408 bytes on AMD64 and
+from 416 to 368 bytes on ARM64. A generated 128-deep scalar-block benchmark
+dropped from 283 to 155 allocations per AMD64 compile and from about 229.7 KiB
+to 209.8 KiB; median latency was effectively flat across the before/after local
+screens.
 This is a staged reduction, not satisfaction of the 32--48-byte common-record
 target. Index-width, retention, further sidecar pooling, and policy deletion
 remain subject to the gates below.
