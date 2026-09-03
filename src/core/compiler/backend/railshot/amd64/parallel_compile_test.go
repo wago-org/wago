@@ -17,8 +17,27 @@ import (
 )
 
 func TestParallelFuncResultSizeAMD64(t *testing.T) {
-	if got, want := unsafe.Sizeof(funcResult{}), uintptr(104); got != want {
+	if got, want := unsafe.Sizeof(funcResult{}), uintptr(72); got != want {
 		t.Fatalf("funcResult size = %d, want %d", got, want)
+	}
+}
+
+func TestCompactFuncResultRangeAMD64(t *testing.T) {
+	start, end, ok := compactFuncResultRange(int(^uint32(0))-7, 7)
+	if !ok || start != ^uint32(0)-7 || end != ^uint32(0) {
+		t.Fatalf("boundary range = (%d, %d, %v)", start, end, ok)
+	}
+	if _, _, ok := compactFuncResultRange(int(^uint32(0))-7, 8); ok {
+		t.Fatal("overflowing worker range accepted")
+	}
+	if _, _, ok := compactFuncResultRange(-1, 1); ok {
+		t.Fatal("negative worker range accepted")
+	}
+	if value, ok := compactFuncResultValue(int(^uint32(0))); !ok || value != ^uint32(0) {
+		t.Fatalf("boundary value = (%d, %v)", value, ok)
+	}
+	if _, ok := compactFuncResultValue(int(uint64(^uint32(0)) + 1)); ok {
+		t.Fatal("overflowing metadata value accepted")
 	}
 }
 

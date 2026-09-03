@@ -279,8 +279,12 @@ range, body length, and internal-entry offset to checked 32-bit fields, reducing
 before append rather than truncated. Four-worker native benchmarks reduce
 `many_funcs` by about 6.8 KiB/op and `json-as` by about 1.8 KiB/op with unchanged
 median allocation counts and compile timings within the normal investigation
-gate. AMD64 retains the analogous host-width fields and should be converted only
-with the same explicit range proof.
+gate. AMD64 now uses the same checked representation, including its two literal
+pool indexes, reducing its record from 104 to 72 bytes. That removes exactly
+9,632 bytes of result payload for 301 functions and 1,536 bytes for 48 functions.
+Emulated four-worker full-compile allocation was consistently lower but too
+scheduler-dependent for a precise aggregate claim; the record size and boundary
+tests are the architecture-independent evidence.
 
 ### 6. Scratch retention should be per buffer, not per worker as a whole
 

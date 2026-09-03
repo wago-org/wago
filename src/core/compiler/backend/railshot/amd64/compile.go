@@ -960,17 +960,35 @@ type workerState struct {
 // directly to the module-owned per-function slice because each worker owns one
 // function index at a time.
 type funcResult struct {
-	worker       int
-	start        int
-	end          int
-	internalOff  int
-	bodyBytes    int
+	worker       uint32
+	start        uint32
+	end          uint32
+	internalOff  uint32
+	bodyBytes    uint32
 	layoutFlags  uint8
 	adapterTail  adapterTailInfo
 	adapter      sharedAdapterInfo
 	trapBody     sharedTrapBodyInfoAMD64
-	literalStart int
-	literalEnd   int
+	literalStart uint32
+	literalEnd   uint32
+}
+
+func compactFuncResultRange(start, size int) (uint32, uint32, bool) {
+	if start < 0 || size < 0 {
+		return 0, 0, false
+	}
+	end := uint64(start) + uint64(size)
+	if end > uint64(^uint32(0)) {
+		return 0, 0, false
+	}
+	return uint32(start), uint32(end), true
+}
+
+func compactFuncResultValue(value int) (uint32, bool) {
+	if value < 0 || uint64(value) > uint64(^uint32(0)) {
+		return 0, false
+	}
+	return uint32(value), true
 }
 
 func markDirectPrepared(bits []uint64, n, bit int) []uint64 {
@@ -1703,16 +1721,24 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					work.failures.Record(i, err)
 					continue
 				}
+				start := len(ws.arena)
+				compactStart, compactEnd, codeOK := compactFuncResultRange(start, len(fnCode))
+				literalStart := len(ws.literals)
+				compactLiteralStart, compactLiteralEnd, literalOK := compactFuncResultRange(literalStart, len(ws.scratch.fnState.literalWords))
+				bodyBytes, bodyOK := compactFuncResultValue(len(m.Code[i].BodyBytes))
+				compactInternalOff, internalOK := compactFuncResultValue(internalOff)
+				if !codeOK || !literalOK || !bodyOK || !internalOK {
+					work.failures.Record(i, fmt.Errorf("amd64: parallel function metadata exceeds 32-bit range"))
+					continue
+				}
 				relocs[i] = rl
 				ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
-				start := len(ws.arena)
 				ws.arena = append(ws.arena, fnCode...)
 				flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
 					boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
 					boolFlag(ws.scratch.directPrepared, layoutDirectPrepared)
-				literalStart := len(ws.literals)
 				ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
-				result := funcResult{worker: workerID, start: start, end: len(ws.arena), internalOff: internalOff, bodyBytes: len(m.Code[i].BodyBytes), layoutFlags: flags, literalStart: literalStart, literalEnd: len(ws.literals)}
+				result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, internalOff: compactInternalOff, bodyBytes: bodyBytes, layoutFlags: flags, literalStart: compactLiteralStart, literalEnd: compactLiteralEnd}
 				if policy.CompactNative {
 					if policy.EnabledOption(optSharedAdapters) {
 						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
@@ -1760,11 +1786,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			}
 			continue
 		}
-		if pad := functionStartPaddingFlags(len(code), r.bodyBytes, r.layoutFlags, policy); pad != 0 {
+		if pad := functionStartPaddingFlags(len(code), int(r.bodyBytes), r.layoutFlags, policy); pad != 0 {
 			code = append(code, alignPad[:pad]...)
 		}
 		entry[i] = len(code)
-		internalEntry[i] = len(code) + r.internalOff
+		internalEntry[i] = len(code) + int(r.internalOff)
 		if r.layoutFlags&layoutDirectPrepared != 0 {
 			directPrepared = markDirectPrepared(directPrepared, n, i)
 		}
@@ -1777,13 +1803,13 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			adapters = append(adapters, r.adapter)
 		}
 		if literalOffsets != nil {
-			literalWords = append(literalWords, states[r.worker].literals[r.literalStart:r.literalEnd]...)
+			literalWords = append(literalWords, states[int(r.worker)].literals[int(r.literalStart):int(r.literalEnd)]...)
 			if uint64(len(literalWords)) > math.MaxUint32 {
 				return nil, fmt.Errorf("amd64: module literal metadata exceeds uint32")
 			}
 			literalOffsets[i+1] = uint32(len(literalWords))
 		}
-		fnCode := states[r.worker].arena[r.start:r.end]
+		fnCode := states[int(r.worker)].arena[int(r.start):int(r.end)]
 		if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && policy.CompactNative {
 			var st *CodegenStats
 			if ms != nil {
