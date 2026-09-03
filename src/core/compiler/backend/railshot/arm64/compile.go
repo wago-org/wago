@@ -405,6 +405,7 @@ type transient struct {
 	tmpDeferred   []deferredArg
 	tmpGpCand     []gpCand
 	tmpLocalIndex []uint16
+	loopSetLocals []uint16
 	edgeScratch   []byte
 }
 
@@ -702,6 +703,7 @@ func (sc *scratch) reset() {
 	sc.directPrepared = false
 	sc.retSites = sc.retSites[:0]
 	sc.ctrl = sc.ctrl[:0]
+	sc.transient.loopSetLocals = sc.transient.loopSetLocals[:0]
 	clear(sc.ctrlMerges[:cap(sc.ctrlMerges)])
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]

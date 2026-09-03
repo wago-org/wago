@@ -279,24 +279,26 @@ native bytes. This is a useful ordering result: eliminate avoidable arena churn
 before undertaking the larger pointer-to-ID migration, so that migration is
 measured against an honest allocation baseline.
 
-### 3. Easy repeated work exists today
+The same profile attributed another sampled megabyte to the per-loop
+`map[uint32]bool` used only to retain modified-local membership. On ARM64 this is
+now a sorted, deduplicated segment of one reusable `[]uint16` arena; open control
+frames retain only a 32-bit start, 16-bit count, and validity bit. Validation
+already limits function locals to 65,535, and an unknown scan remains
+conservative rather than looking invariant. Native `json-as` falls from roughly
+222,498 to 211,923 B/op (-4.8%) and from 935 to 770 allocations, with overlapping
+timings; `many_funcs` stays in the same allocation class. This is a reusable
+general pattern for other temporary index sets: retain a compact sorted segment
+when mutation is batch-built and lookup happens later, instead of paying a Go
+hash table per structured region.
 
-Both backends call `moduleUsesSyncHostCalls` inside every function attempt. That
-helper scans every imported function signature. On a module with `F` local
-functions and `I` imports, this creates avoidable `O(F*I)` work, and a failed
-register attempt repeats it. Compute the effective value once at module setup
-and pass the resolved boolean.
+### 3. Repeated-work audit
 
-Sources: [AMD64 call site](../../src/core/compiler/backend/railshot/amd64/compile.go#L2408),
-[AMD64 module scan](../../src/core/compiler/backend/railshot/amd64/call.go#L934),
-[ARM64 call site](../../src/core/compiler/backend/railshot/arm64/compile.go#L1933).
-
-The function pre-scan already computes `nLocals`, yet each compile attempt calls
-`countLocals` again. Use the validated hint count when hints are authoritative,
-keeping the old calculation only for AST/test fallback.
-
-Sources: [module hint local count](../../src/core/compiler/backend/railshot/amd64/compile.go#L1980),
-[attempt recount](../../src/core/compiler/backend/railshot/amd64/compile.go#L2354).
+Two earlier repeated-work candidates are already gone in current source, so
+they must not be planned or implemented again. Module setup resolves effective
+synchronous-host-call use once before dispatching functions, and function
+attempts consume the validated hint's local count—including retries—instead of
+recounting local declarations. The current profile points to operand backing and
+structured-region scratch, not either of those old scans.
 
 These are the safest first PRs: no generated-code decision needs to change.
 

@@ -76,6 +76,21 @@ func TestLoopPrecheckScannerConsumesMixedMemoryWidthImmediatesArm64(t *testing.T
 	}
 }
 
+func TestLoopBodyScannerCompactsModifiedLocalsArm64(t *testing.T) {
+	body := []byte{0x21, 0x03, 0x22, 0x01, 0x21, 0x03, 0x0b}
+	classifier := wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)
+	got, _, _, _, _ := scanLoopBodyWithClassifier(wasm.NewReader(body), classifier, []uint16{9})
+	want := []uint16{9, 1, 3}
+	if len(got) != len(want) {
+		t.Fatalf("modified locals = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("modified locals = %v, want %v", got, want)
+		}
+	}
+}
+
 func TestLoopPrecheckExecAndSlowTrapArm64(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	m := modMem(t, 1, i32, i32, readLoopBodyArm64)

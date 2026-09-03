@@ -4,6 +4,7 @@ package arm64
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -88,7 +89,9 @@ type ctrlFrameMerge struct {
 	baseGCRoots   []bool
 	paramGCRoots  []bool
 	resultGCRoots []bool
-	loopSetLocals map[uint32]bool
+	loopSetStart  uint32
+	loopSetCount  uint16
+	loopSetKnown  bool
 	loopPins      []loopPin
 	coldEdges     []coldEdge
 	eh            *ctrlFrameEH
@@ -253,11 +256,20 @@ func (f *fn) frameResultGCRoots(fr *ctrlFrame) []bool {
 	return nil
 }
 
-func (f *fn) frameLoopSetLocals(fr *ctrlFrame) map[uint32]bool {
-	if cold := f.ctrlMerge(fr); cold != nil {
-		return cold.loopSetLocals
+func (f *fn) frameLoopSetLocals(fr *ctrlFrame) []uint16 {
+	if cold := f.ctrlMerge(fr); cold != nil && cold.loopSetKnown {
+		start := int(cold.loopSetStart)
+		return f.loopSetLocals[start : start+int(cold.loopSetCount)]
 	}
 	return nil
+}
+
+func loopSetsLocal(locals []uint16, index uint32) bool {
+	if index > uint32(^uint16(0)) {
+		return false
+	}
+	_, ok := slices.BinarySearch(locals, uint16(index))
+	return ok
 }
 
 func (f *fn) frameLoopPins(fr *ctrlFrame) []loopPin {
@@ -325,12 +337,15 @@ func (f *fn) activateLoopPins(fr *ctrlFrame) {
 	if !f.opt(optLoopRegionPins) || fr.kind != cfLoop || fr.has(ctrlLoopHasCall) || fr.has(ctrlLoopHasNested) || fr.has(ctrlLoopHasTable) {
 		return
 	}
+	setLocals := f.frameLoopSetLocals(fr)
+	if setLocals == nil {
+		return
+	}
 	for _, r := range []Reg{X12, X13} {
 		best := -1
-		setLocals := f.frameLoopSetLocals(fr)
 		pins := f.frameLoopPins(fr)
 		for x := 0; x < f.nLocals; x++ {
-			if f.localType[x] != mtI32 && f.localType[x] != mtI64 || f.locals[x].reg != regNone || !setLocals[uint32(x)] {
+			if f.localType[x] != mtI32 && f.localType[x] != mtI64 || f.locals[x].reg != regNone || !loopSetsLocal(setLocals, uint32(x)) {
 				continue
 			}
 			already := false
@@ -957,14 +972,18 @@ func (f *fn) alignLoopHeader() {
 // locals it sets and whether it grows memory, calls, nests loops, or uses a
 // br_table. The module-aware classifier keeps mixed memory-width immediates
 // synchronized. Any unexpected decode failure returns conservative facts.
-func scanLoopBody(r *wasm.Reader, m *wasm.Module) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
-	return scanLoopBodyWithClassifier(r, wasm.NewModuleInstructionClassifier(m, true))
+func scanLoopBody(r *wasm.Reader, m *wasm.Module) (setLocals []uint16, hasGrow, hasCall, hasNested, hasTable bool) {
+	return scanLoopBodyWithClassifier(r, wasm.NewModuleInstructionClassifier(m, true), nil)
 }
 
-func scanLoopBodyWithClassifier(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier) (setLocals map[uint32]bool, hasGrow, hasCall, hasNested, hasTable bool) {
+func scanLoopBodyWithClassifier(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, dst []uint16) (setLocals []uint16, hasGrow, hasCall, hasNested, hasTable bool) {
 	start := r.Offset()
 	defer func() { _ = r.JumpTo(start) }()
-	setLocals = map[uint32]bool{}
+	base := len(dst)
+	setLocals = dst
+	if setLocals == nil {
+		setLocals = []uint16{}
+	}
 	depth := 0
 	var imm wasm.InstructionImmediate
 	for {
@@ -977,7 +996,10 @@ func scanLoopBodyWithClassifier(r *wasm.Reader, classifier wasm.ModuleInstructio
 		}
 		switch imm.Kind {
 		case wasm.InstrLocalSet, wasm.InstrLocalTee:
-			setLocals[imm.Index] = true
+			if imm.Index > uint32(^uint16(0)) {
+				return nil, true, true, true, true
+			}
+			setLocals = append(setLocals, uint16(imm.Index))
 		case wasm.InstrMemoryGrow:
 			hasGrow = true
 		case wasm.InstrCall, wasm.InstrCallIndirect:
@@ -993,6 +1015,10 @@ func scanLoopBodyWithClassifier(r *wasm.Reader, classifier wasm.ModuleInstructio
 			depth++
 		case 0x0b:
 			if depth == 0 {
+				modified := setLocals[base:]
+				slices.Sort(modified)
+				modified = slices.Compact(modified)
+				setLocals = setLocals[:base+len(modified)]
 				return
 			}
 			depth--
@@ -1031,9 +1057,12 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
 	if kind == cfLoop && !f.unreachable {
 		var hasCall, hasNested, hasTable bool
-		setLocals, _, hasCall, hasNested, hasTable := scanLoopBodyWithClassifier(r, f.classifier) // P6.2 + region-pin foundation (reader restored)
+		base := len(f.loopSetLocals)
+		setLocals, _, hasCall, hasNested, hasTable := scanLoopBodyWithClassifier(r, f.classifier, f.loopSetLocals) // P6.2 + region-pin foundation (reader restored)
 		if setLocals != nil {
-			f.ensureCtrlMerge(&fr).loopSetLocals = setLocals
+			f.loopSetLocals = setLocals
+			cold := f.ensureCtrlMerge(&fr)
+			cold.loopSetStart, cold.loopSetCount, cold.loopSetKnown = uint32(base), uint16(len(setLocals)-base), true
 		}
 		fr.set(ctrlLoopHasCall, hasCall)
 		fr.set(ctrlLoopHasNested, hasNested)
