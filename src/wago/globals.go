@@ -105,6 +105,16 @@ type globalOwner struct {
 	retained map[*Instance]*retainedInstanceRoot
 }
 
+func (g *Global) instanceOwner() *Instance {
+	if g == nil || g.owner == nil {
+		return nil
+	}
+	g.owner.mu.Lock()
+	owner := g.owner.instance
+	g.owner.mu.Unlock()
+	return owner
+}
+
 // NewGlobalI32/I64/F32/F64/V128 construct a host-owned wasm global of the named
 // type. Close releases its storage when no instance can access it anymore.
 func NewGlobalI32(v int32, mutable bool) *Global   { return newGlobal(ValI32, I32(v), V128{}, mutable) }

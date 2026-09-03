@@ -320,7 +320,6 @@ func (in *Instance) releaseResources() {
 	detachImportedGlobals(in)
 	detachImportedTables(in)
 	detachImportedTags(in)
-	transferredImportAttachments.Delete(in)
 	if in.gc != nil {
 		closeCollector := func() {
 			if table := in.existingGCRefTestTableState(); table != nil {
@@ -362,14 +361,14 @@ func (in *Instance) releaseResources() {
 				memoryJM := memory.jobMemory()
 				memory.ownerClosed()
 				runtime.ReleaseJobMemory(memoryJM)
-			} else if detachedMemories.add(memory) {
+			} else if detachedMemories.add(memory) && !in.ownsTransferredMemoryAttachment(memory) {
 				memory.detachImporter()
 			}
 		}
 	}
 	if in.c.threadedMemory0() {
 		runtime.ReleaseJobMemory(in.jm)
-		if in.memory != nil && detachedMemories.add(in.memory) {
+		if in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
 			in.memory.detachImporter()
 		}
 	} else if in.ownsMem {
@@ -377,9 +376,10 @@ func (in *Instance) releaseResources() {
 			in.memory.ownerClosed()
 		}
 		runtime.ReleaseJobMemory(in.jm)
-	} else if in.memory != nil && detachedMemories.add(in.memory) {
+	} else if in.memory != nil && detachedMemories.add(in.memory) && !in.ownsTransferredMemoryAttachment(in.memory) {
 		in.memory.detachImporter()
 	}
+	transferredImportAttachments.Delete(in)
 	runtime.ReleaseEngine(in.eng)
 	if in.rt != nil {
 		in.rt.unregisterInstance(in)

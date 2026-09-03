@@ -108,12 +108,13 @@ func (lifetime referenceLifetime) snapshot() referenceLifetimeSnapshot {
 	}
 }
 
-// transferredImportAttachmentState records table/global attachments whose
-// persistent roots took over an importing instance's lifetime obligation.
+// transferredImportAttachmentState records storage attachments whose persistent
+// roots took over an importing instance's lifetime obligation.
 type transferredImportAttachmentState struct {
-	mu      sync.Mutex
-	tables  map[*Table]struct{}
-	globals map[*Global]struct{}
+	mu       sync.Mutex
+	memories map[*Memory]struct{}
+	tables   map[*Table]struct{}
+	globals  map[*Global]struct{}
 }
 
 var transferredImportAttachments sync.Map // map[*Instance]*transferredImportAttachmentState
@@ -122,6 +123,37 @@ func transferredImportState(in *Instance) *transferredImportAttachmentState {
 	state := &transferredImportAttachmentState{}
 	actual, _ := transferredImportAttachments.LoadOrStore(in, state)
 	return actual.(*transferredImportAttachmentState)
+}
+
+func (in *Instance) transferImportedMemoryAttachment(memory *Memory) {
+	if in == nil || memory == nil {
+		return
+	}
+	state := transferredImportState(in)
+	state.mu.Lock()
+	if state.memories == nil {
+		state.memories = make(map[*Memory]struct{})
+	}
+	_, exists := state.memories[memory]
+	if !exists {
+		state.memories[memory] = struct{}{}
+	}
+	state.mu.Unlock()
+	if !exists {
+		memory.detachImporter()
+	}
+}
+
+func (in *Instance) ownsTransferredMemoryAttachment(memory *Memory) bool {
+	value, ok := transferredImportAttachments.Load(in)
+	if !ok {
+		return false
+	}
+	state := value.(*transferredImportAttachmentState)
+	state.mu.Lock()
+	_, ok = state.memories[memory]
+	state.mu.Unlock()
+	return ok
 }
 
 func (in *Instance) transferImportedGlobalAttachment(global *Global) {
