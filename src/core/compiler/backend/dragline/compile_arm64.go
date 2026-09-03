@@ -180,6 +180,11 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	if err != nil {
 		return corecompiler.Output{}, err
 	}
+	if uniformStructured {
+		// Artifact identity does not encode the module-wide finalizer choice.
+		// Avoid reusing a homogeneous RailMach artifact in a structured module.
+		functionCacheEnabled = false
+	}
 	helperSafepointBases, err := allocatingHelperSafepointBases(m, compilationPlan.Order)
 	if err != nil {
 		return corecompiler.Output{}, err
@@ -11165,14 +11170,19 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, target corecom
 			}
 		case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 			useMOPS := mops && arm64ProfileSelectsMOPS(observations, fn.Index, instr.Offset)
-			if target.GOOS == "windows" && instr.Kind == wasm.InstrMemoryFill && instrIndex >= 3 && len(stackTypes) >= 3 {
+			if target.GOOS == "windows" && instr.Kind == wasm.InstrMemoryFill && instrIndex >= 6 && len(stackTypes) >= 3 {
+				dstBase, dstOffset, dstAdd := sf.Instrs[instrIndex-6], sf.Instrs[instrIndex-5], sf.Instrs[instrIndex-4]
 				dst, value, length := sf.Instrs[instrIndex-3], sf.Instrs[instrIndex-2], sf.Instrs[instrIndex-1]
-				if dst.Kind == wasm.InstrLocalTee && value.Kind == wasm.InstrI32Const && length.Kind == wasm.InstrLocalGet &&
+				if dstBase.Kind == wasm.InstrLocalGet && dstOffset.Kind == wasm.InstrI32Const && dstAdd.Kind == wasm.InstrI32Add &&
+					dst.Kind == wasm.InstrLocalTee && value.Kind == wasm.InstrI32Const && length.Kind == wasm.InstrLocalGet &&
+					int(dstBase.U32()) < len(sf.Locals) && sf.Locals[dstBase.U32()] == wasm.I32 &&
 					int(dst.U32()) < len(sf.Locals) && sf.Locals[dst.U32()] == wasm.I32 &&
 					int(length.U32()) < len(sf.Locals) && sf.Locals[length.U32()] == wasm.I32 {
-					if !localLoad(int(dst.U32()), arm64.X0) || !localLoad(int(length.U32()), arm64.X2) {
+					if !localLoad(int(dstBase.U32()), arm64.X0) || !localLoad(int(length.U32()), arm64.X2) {
 						return nil, 0, nil, fmt.Errorf("byte %d: forwarded memory.fill local is not encodable", instr.Offset)
 					}
+					a.MovImm64(arm64.X16, dstOffset.U64())
+					a.Add32(arm64.X0, arm64.X0, arm64.X16)
 					a.MovImm64(arm64.X1, value.U64())
 					if err := emitARM64BulkMemoryRegisters(&a, instr.Kind, instr.Offset, useMOPS, fn.Index, metadata, recordBulkMemoryTrap); err != nil {
 						return nil, 0, nil, fmt.Errorf("byte %d: %w", instr.Offset, err)
