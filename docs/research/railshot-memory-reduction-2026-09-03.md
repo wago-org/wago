@@ -390,6 +390,22 @@ plus the removed backing allocation. Eight native ARM64 `GOGC=off` timing
 samples overlap. This is one representation for both targets and all modules;
 it does not depend on the number of touched globals beyond ordinary sizing.
 
+Constant-division magic-number derivation was another profile-visible source
+that could be deleted rather than pooled. The old architecture-neutral helper
+constructed several `math/big.Int` values for each qualifying divisor. Its
+largest numerator is `2^127`, while the proposed quotient is strictly below
+`2^64`; one `bits.Div64` therefore computes the same quotient and remainder
+without heap storage. The doubled proposed multiplier is needed only modulo the
+selected 32- or 64-bit width, and the doubled-remainder comparison is expressed
+as `rem >= divisor-rem` to avoid overflow. A deterministic test compares the
+entire result tuple with the former big-integer construction for more than
+20,000 random and boundary divisors. Native ARM64 `json-as` falls from 196,680
+to 191,496 B/op and from 770 to 567 allocations; emulated Linux/AMD64 falls from
+193,648 to 188,448 B/op and from 748 to 544 allocations. Timing samples are
+neutral to favorable on both screens, while division-free `many_funcs` is
+unchanged. This removes general compile-time machinery without changing the
+existing constant-division admission or generated algorithm.
+
 ### 3. Repeated-work audit
 
 Two earlier repeated-work candidates are already gone in current source, so
