@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/arm64"
@@ -60,8 +61,22 @@ func TestCompileWorkersSizeSharedAdaptersDeterministicArm64(t *testing.T) {
 
 func equalWorkerModuleStatsARM64(a, b *ModuleStats) bool {
 	aCopy, bCopy := *a, *b
+	aCopy.Funcs = append([]*CodegenStats(nil), a.Funcs...)
+	bCopy.Funcs = append([]*CodegenStats(nil), b.Funcs...)
 	aCopy.NativeSize.CompilerCodeArenaBytes = 0
 	bCopy.NativeSize.CompilerCodeArenaBytes = 0
+	aCopy.Compile.StageNanos = [shared.CompileStageCount]uint64{}
+	bCopy.Compile.StageNanos = [shared.CompileStageCount]uint64{}
+	aCopy.Compile.RetryNanos, bCopy.Compile.RetryNanos = 0, 0
+	for i := range aCopy.Funcs {
+		if aCopy.Funcs[i] == nil || bCopy.Funcs[i] == nil {
+			continue
+		}
+		aFunc, bFunc := *aCopy.Funcs[i], *bCopy.Funcs[i]
+		aFunc.CompileNanos, bFunc.CompileNanos = 0, 0
+		aFunc.RetryNanos, bFunc.RetryNanos = 0, 0
+		aCopy.Funcs[i], bCopy.Funcs[i] = &aFunc, &bFunc
+	}
 	return reflect.DeepEqual(&aCopy, &bCopy)
 }
 

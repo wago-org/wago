@@ -131,6 +131,13 @@ func TestExecRegHeavyUnpinnedRetry(t *testing.T) {
 	if !ms.Funcs[0].UnpinnedRetry {
 		t.Fatalf("expected UnpinnedRetry (register-pressure recompile) to fire")
 	}
+	if got := ms.Compile.FunctionAttempts; got != 2 {
+		t.Fatalf("function attempts = %d, want 2", got)
+	}
+	if ms.Compile.RetryFunctions != 1 || ms.Compile.RetryInputBytes != uint64(len(m.Code[0].BodyBytes)) ||
+		ms.Compile.RetryNodeBytes == 0 || ms.Compile.RetryCodeBytes == 0 || ms.Compile.RetryNanos == 0 {
+		t.Fatalf("incomplete failed-attempt ledger: %+v", ms.Compile)
+	}
 
 	// Correctness: p0=5, all counts=1 → acc = 5 << depth.
 	args := make([]uint64, nParams)

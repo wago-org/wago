@@ -3,9 +3,30 @@
 package arm64
 
 import (
+	"unsafe"
+
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func funcHintStorageBytes(hints []funcHints) (headers, sidecars uint64) {
+	headers = uint64(cap(hints)) * uint64(unsafe.Sizeof(funcHints{}))
+	var localScores, localLastGets, globals int
+	for i := range hints {
+		if localScores == 0 && len(hints[i].localScore) != 0 {
+			localScores = cap(hints[i].localScore)
+		}
+		if localLastGets == 0 && len(hints[i].localLastGet) != 0 {
+			localLastGets = cap(hints[i].localLastGet)
+		}
+		if globals == 0 && len(hints[i].sparseGlobals) != 0 {
+			globals = cap(hints[i].sparseGlobals)
+		}
+	}
+	sidecars = uint64(localScores+localLastGets)*uint64(unsafe.Sizeof(uint32(0))) +
+		uint64(globals)*uint64(unsafe.Sizeof(shared.GlobalHint{}))
+	return
+}
 
 // Function pre-scan (OPTIMIZATIONS.md "FuncHints"): one allocation-conscious
 // walk collects call/memory shape and loop-weighted hotness scores for register

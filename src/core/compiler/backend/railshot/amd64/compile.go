@@ -13,6 +13,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	plugincodegen "github.com/wago-org/wago/codegen/amd64"
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
@@ -1235,9 +1236,17 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	entry, internalEntry := shared.ModuleEntries(n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
+	var hintStart time.Time
+	if opts.Stats != nil || explainEnabled {
+		hintStart = time.Now()
+	}
 	allHints, globalScores, err := computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
+	}
+	var hintNanos uint64
+	if !hintStart.IsZero() {
+		hintNanos = uint64(time.Since(hintStart))
 	}
 	resolverSites := 0
 	for i := range allHints {
@@ -1274,13 +1283,19 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		ms = &ModuleStats{}
 	}
 	if ms != nil {
+		hintHeaderBytes, hintSidecarBytes := funcHintStorageBytes(allHints)
 		// A stats sink is reusable across compiles. Reset the complete module-level
 		// attribution, including optional analyses that may be unavailable for the
 		// next module, before installing this compile's deterministic destinations.
 		*ms = ModuleStats{
 			Funcs:            make([]*CodegenStats, n),
 			ModuleGlobalPins: moduleGlobalPinInfos(modGlobals),
+			Compile: shared.CompileResourceStats{
+				HintHeaderBytes:  hintHeaderBytes,
+				HintSidecarBytes: hintSidecarBytes,
+			},
 		}
+		ms.Compile.StageNanos[shared.CompileStageHints] = hintNanos
 		// Inline-candidate detection (report only; no codegen change yet). Failure
 		// to analyze is non-fatal — it never blocks a compile.
 		if rep, ierr := analyzeInlineCandidates(m, policy); ierr == nil {
@@ -1501,6 +1516,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if err := patchModuleLiteralRelocs(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals); err != nil {
 			return nil, err
 		}
+		ms.finalizeCompileResourceStats()
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
@@ -1725,6 +1741,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		return nil, err
 	}
 	finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd, len(literalCode), 0)
+	ms.finalizeCompileResourceStats()
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
@@ -2314,6 +2331,12 @@ var errRegExhausted = errors.New("amd64: no register available to spill")
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
 func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, inlineTargets inlineTargetTable, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	var compileStart time.Time
+	if stats != nil {
+		stats.FunctionAttempts++
+		compileStart = time.Now()
+		defer func() { stats.CompileNanos += uint64(time.Since(compileStart)) }()
+	}
 	if gcFrameRoots != nil && gcFrameRoots.Candidate {
 		gcFrameRoots.Exact = true
 		gcFrameRoots.Safepoints = gcFrameRoots.Safepoints[:0]
@@ -2331,7 +2354,17 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	}
 	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, inlineTargets, sc)
 	if errors.Is(err, errRegExhausted) {
+		if stats != nil {
+			used, _ := sc.stack.nodeMemory()
+			stats.RetryInputBytes += uint64(len(m.Code[funcIdx].BodyBytes))
+			stats.RetryNodeBytes += used
+			stats.RetryCodeBytes += uint64(len(sc.asm.B))
+			stats.RetryNanos += uint64(time.Since(compileStart))
+		}
 		resetFuncStats(stats)
+		if stats != nil {
+			stats.FunctionAttempts++
+		}
 		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, false, inlineTargets, sc)
 		if err == nil {
 			stats.setUnpinnedRetry()

@@ -4,10 +4,36 @@ package arm64
 
 import (
 	"bytes"
+	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func TestCompileResourceStatsArm64(t *testing.T) {
+	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0x00, 0x20, 0x00, 0x0b})
+	var stats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
+		t.Fatal(err)
+	}
+	wantHeaders := uint64(len(m.Code)) * uint64(unsafe.Sizeof(funcHints{}))
+	if got := stats.Compile.HintHeaderBytes; got != wantHeaders {
+		t.Fatalf("hint header bytes = %d, want %d", got, wantHeaders)
+	}
+	if got, want := stats.Compile.HintSidecarBytes, uint64(2*unsafe.Sizeof(uint32(0))); got != want {
+		t.Fatalf("hint sidecar bytes = %d, want %d", got, want)
+	}
+	if stats.Compile.FunctionAttempts != 1 || stats.Funcs[0].FunctionAttempts != 1 {
+		t.Fatalf("function attempts module/function = %d/%d, want 1/1", stats.Compile.FunctionAttempts, stats.Funcs[0].FunctionAttempts)
+	}
+	if stats.Compile.RetryFunctions != 0 || stats.Compile.RetryNanos != 0 {
+		t.Fatalf("unexpected retry stats: %+v", stats.Compile)
+	}
+	if report := stats.String(); !strings.Contains(report, "hint-headers=152B hint-sidecars=8B attempts=1 retries=0") {
+		t.Fatalf("resource report missing ledger: %q", report)
+	}
+}
 
 // compileWithStats compiles m collecting per-function codegen stats and returns
 // the module stats. guard selects guard-page-style bounds elision vs explicit

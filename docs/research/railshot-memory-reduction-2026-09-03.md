@@ -34,8 +34,10 @@ general, code-neutral items: exact sparse retained global hints, a 152-byte
 `funcHints` record instead of 200 bytes, one module-level synchronous-host-call
 classification, reuse of the validated local count on every attempt, and the
 bounded module-global pin list in place of a per-function dense membership
-bitmap. The larger `ctrlFrame`, index-width, retention, and policy-deletion work
-remains subject to the gates below.
+bitmap. The follow-up statistics slice adds deterministic retained-hint and
+failed-attempt byte accounting plus opt-in stage timing. The larger `ctrlFrame`,
+index-width, retention, and policy-deletion work remains subject to the gates
+below.
 
 ## Primary-source facts
 

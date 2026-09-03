@@ -34,6 +34,9 @@ The implementation starts with two code-identical cuts from that audit:
 
 1. Module hint scanning always retains exact touched-global records instead of a dense function-by-global matrix, and the fixed hint record drops from 200 to 152 bytes. On a synthetic 1,024-function/1,024-global shape with one touched global per function, this changed the ARM64 hint benchmark from approximately 5.47 MB and 0.64 ms per operation to 0.24 MB and 0.12 ms per operation. This is a targeted stress result, not a full-corpus claim.
 2. Module-wide synchronous-host-call classification is computed once per module, and the bounded module-global pin list replaces a per-function `globals`-sized membership bitmap.
+3. The existing opt-in statistics path now exposes a shared compile-resource ledger for hint headers and sidecars, function attempts, failed-attempt input/node/code bytes, and failed-attempt time. Timing is explicitly excluded from deterministic stats comparisons; all byte and count fields remain deterministic.
+
+An interleaved three-pair ARM64 `many_funcs` screen with metrics disabled retained 42 allocs/op and 159,001–159,003 B/op; median compile time moved from 215.98 µs to 215.65 µs. This clears the initial zero-overhead screen, but the larger benchmark matrix remains the acceptance authority.
 
 The policy boundary is explicit: production may select work from validated semantics, effects, bounded resource estimates, and target costs. It must never select an optimization from producer identity, module or function names, function indexes, benchmark membership, hashes, or memorized body bytes. A corpus may validate a general mechanism; it may not activate one.
 

@@ -12,6 +12,7 @@ import (
 	"sort"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -1067,9 +1068,17 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	entry, internalEntry := shared.ModuleEntries(n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
+	var hintStart time.Time
+	if opts.Stats != nil || explainEnabled {
+		hintStart = time.Now()
+	}
 	allHints, globalScores, err := computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, policy)
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
+	}
+	var hintNanos uint64
+	if !hintStart.IsZero() {
+		hintNanos = uint64(time.Since(hintStart))
 	}
 	modGlobals := pickModuleGlobals(m, nGlobals, globalScores)
 	hostAdapters, err := shared.HostAdapterSet(m)
@@ -1102,8 +1111,16 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		ms = &ModuleStats{}
 	}
 	if ms != nil {
-		ms.Funcs = make([]*CodegenStats, n)
-		ms.ModuleGlobalPins = moduleGlobalPinInfos(modGlobals)
+		hintHeaderBytes, hintSidecarBytes := funcHintStorageBytes(allHints)
+		*ms = ModuleStats{
+			Funcs:            make([]*CodegenStats, n),
+			ModuleGlobalPins: moduleGlobalPinInfos(modGlobals),
+			Compile: shared.CompileResourceStats{
+				HintHeaderBytes:  hintHeaderBytes,
+				HintSidecarBytes: hintSidecarBytes,
+			},
+		}
+		ms.Compile.StageNanos[shared.CompileStageHints] = hintNanos
 		// Inline-candidate detection (report only; no codegen change yet). Failure
 		// to analyze is non-fatal — it never blocks a compile.
 		if rep, ierr := analyzeInlineCandidates(m, policy); ierr == nil {
@@ -1254,6 +1271,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
 			return nil, err
 		}
+		ms.finalizeCompileResourceStats()
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
 		}
@@ -1412,6 +1430,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		return nil, err
 	}
 	finalizeModuleNativeSize(ms, len(code), moduleOther, 0)
+	ms.finalizeCompileResourceStats()
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
@@ -1863,6 +1882,12 @@ var errRegExhausted = errors.New("arm64: no register available to spill")
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
 func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints funcHints, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, inlineTargets inlineTargetTable, calleePreservesPins []bool, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
+	var compileStart time.Time
+	if stats != nil {
+		stats.FunctionAttempts++
+		compileStart = time.Now()
+		defer func() { stats.CompileNanos += uint64(time.Since(compileStart)) }()
+	}
 	if gcFrameRoots != nil && gcFrameRoots.Candidate {
 		gcFrameRoots.Exact = true
 		gcFrameRoots.Safepoints = gcFrameRoots.Safepoints[:0]
@@ -1872,7 +1897,17 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	}
 	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, gcFrameRoots, customInstructions, stats, true, inlineTargets, calleePreservesPins, policy, sc)
 	if errors.Is(err, errRegExhausted) {
+		if stats != nil {
+			used, _ := sc.stack.nodeMemory()
+			stats.RetryInputBytes += uint64(len(m.Code[funcIdx].BodyBytes))
+			stats.RetryNodeBytes += used
+			stats.RetryCodeBytes += uint64(len(sc.asm.B))
+			stats.RetryNanos += uint64(time.Since(compileStart))
+		}
 		resetFuncStats(stats)
+		if stats != nil {
+			stats.FunctionAttempts++
+		}
 		if gcFrameRoots != nil && gcFrameRoots.Candidate {
 			gcFrameRoots.Exact = true
 			gcFrameRoots.Safepoints = gcFrameRoots.Safepoints[:0]

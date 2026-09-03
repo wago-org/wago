@@ -3,9 +3,22 @@
 package amd64
 
 import (
+	"unsafe"
+
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	coreplugins "github.com/wago-org/wago/src/core/plugins"
 )
+
+func (s *stack) nodeMemory() (used, reserved uint64) {
+	for i := range s.chunks {
+		reserved += uint64(cap(s.chunks[i]))
+		if i <= s.cur {
+			used += uint64(len(s.chunks[i]))
+		}
+	}
+	size := uint64(unsafe.Sizeof(elem{}))
+	return used * size, reserved * size
+}
 
 // The operand stack and its element model — ported from WARP's Stack /
 // StackElement / StackType / VariableStorage (warp/src/core/compiler/common/).
