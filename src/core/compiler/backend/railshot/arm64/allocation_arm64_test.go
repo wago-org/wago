@@ -185,6 +185,16 @@ func TestModuleGlobalMembershipUsesBorrowedBoundedPinsArm64(t *testing.T) {
 	}
 }
 
+func TestGPPinLimitReservesTransientLoweringRegistersArm64(t *testing.T) {
+	if got, want := gpPinLimit(0), len(gpAlloc)-4; got != want {
+		t.Fatalf("pin limit without module reservations = %d, want %d", got, want)
+	}
+	reserved := maskOf(X23, X24, X25, X27)
+	if got, want := gpPinLimit(reserved), len(gpAlloc)-8; got != want {
+		t.Fatalf("pin limit with four module registers = %d, want %d", got, want)
+	}
+}
+
 func TestHintSizedModuleStackArenaExecArm64(t *testing.T) {
 	m := mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{0x00, 0x41, 0x2a, 0x0b})
 	if got := runArm64(t, m); got != 42 {
@@ -251,8 +261,16 @@ func TestExecRegHeavyShiftChainArm64(t *testing.T) {
 	const nParams = 8
 	for _, depth := range []int{7, 15, 20, 40, 100} {
 		m := regHeavyShiftChainArm64(t, nParams, depth)
-		if _, err := CompileModuleWith(m, CompileOptions{}); err != nil {
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+		if err != nil {
 			t.Fatalf("depth %d: compile: %v", depth, err)
+		}
+		if cm.CodeImage != nil {
+			_ = cm.CodeImage.Close()
+		}
+		if stats.Compile.RetryFunctions != 0 {
+			t.Fatalf("depth %d: production retries = %d, want zero", depth, stats.Compile.RetryFunctions)
 		}
 		args := make([]uint64, nParams)
 		args[0] = 5

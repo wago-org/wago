@@ -2147,24 +2147,18 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		gpPool = withoutReg(gpPool, mg.reg) // module-pinned global registers
 		f.reserved = f.reserved.add(mg.reg)
 	}
-	// Cap pins so the reserved scratch (X1/X0) always stay allocatable — WARP's
-	// resScratchRegsGPR floor. Deeper pressure (nested RHS-relocation hazards)
-	// degrades gracefully to spill slots via allocRegOrNone's fallback in
-	// condenseBinary.
-	maxPins := len(gpAlloc) - numScratchGP
-	if f.memSizeReg != regNone {
-		maxPins-- // X27 is reserved out of the allocatable file too
-	}
+	// Leave enough unreserved registers for the widest ordinary lowering step:
+	// three protected inputs/temporaries plus one result. This is a target-derived
+	// bound over the allocatable file after module roles are removed, not a
+	// workload heuristic. The allocator may still use these registers normally;
+	// whole-function pins alone cannot consume them.
+	maxPins := gpPinLimit(f.reserved)
 	if len(gpPool) > maxPins {
 		gpPool = gpPool[:maxPins]
 	}
-	// A pathologically register-heavy expression tree can pin its whole spine and
-	// exhaust the file even under the scratch floor (condenseShift/condenseBinary
-	// pin one register per nesting level). When that happens the first attempt
-	// panics with errRegExhausted and compileFunc recompiles with pinLocals=false:
-	// dropping every local/global VALUE pin frees the entire neutral file for
-	// scratch. Pinning is a pure speed optimization, so the unpinned compile is
-	// always correct.
+	// Keep the unpinned attempt as a temporary correctness oracle for pressure
+	// beyond the target-derived floor. Production qualification requires this path
+	// to remain unused; a hit records its complete failed-attempt cost in stats.
 	if !pinLocals || nLocals > 64 {
 		gpPool = nil
 	}
@@ -2379,6 +2373,24 @@ func gpPinPoolWithPolicy(pool []Reg, regABI bool, nParams int, callFree bool, po
 		pool = append(pool, X9, X10, X11)
 	}
 	return append(pool, X15)
+}
+
+// gpPinLimit leaves enough of the target's unreserved allocatable file for the
+// widest ordinary lowering step: three protected inputs/temporaries plus one
+// result. Whole-function pins are optional; transient lowering must not retry a
+// function merely because module roles made the physical file smaller.
+func gpPinLimit(reserved regMask) int {
+	const minTransientGP = 4
+	available := 0
+	for _, r := range gpAlloc {
+		if !reserved.has(r) {
+			available++
+		}
+	}
+	if available <= minTransientGP {
+		return 0
+	}
+	return available - minTransientGP
 }
 
 // withoutReg returns pool with r removed (order preserved).

@@ -63,6 +63,22 @@ validated count directly into the compact summary before scanning. The
 from 39 to 38 allocations. This follows function structure only and introduces
 no workload or corpus-specific admission path.
 
+The first retry-elimination slice found both remaining ARM64 corpus retries had
+the same structural cause: three module-global registers plus the memory-size
+register reduced the allocatable file, while 17 optional whole-function pins
+left only three transient registers. Ordinary lowering can simultaneously
+protect three inputs or temporaries and request a result. A target-derived limit
+now reserves four unreserved registers after module roles are removed. It uses
+only the architecture's register obligations, never workload identity.
+
+Across every module in `bench/corpus`, retry count fell to zero. Ruby attempts
+fell from 17,454 to 17,452, eliminating 4,299 input bytes, 109,648 node bytes,
+and 4,060 emitted bytes from failed attempts. The successful first attempts keep
+16 pins rather than recompiling with all pins disabled, shrinking Ruby's native
+image by 2,592 bytes. Five one-shot compile medians moved from 608.95 to 610.21
+milliseconds (+0.2%). The old retry remains only as a measured oracle until the
+adversarial pressure suite and AMD64 also demonstrate zero production hits.
+
 This is a staged reduction, not satisfaction of the 32--48-byte common-record
 target. Index-width, further retention work, sidecar pooling, and policy deletion
 remain subject to the gates below.
