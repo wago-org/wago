@@ -117,6 +117,19 @@ func (r *Registrar) HostCallers() (*CallerResolver, error) {
 	return a, nil
 }
 
+// HostCallerInvoker returns a revocable handle that may synchronously re-enter
+// only the guest instance making the active host call. It cannot retain,
+// discover, close, or invoke any other instance.
+func (r *Registrar) HostCallerInvoker() (*CallerInvoker, error) {
+	if _, err := r.authorize(AuthorityHostCallerInvoke); err != nil {
+		return nil, err
+	}
+	a := &CallerInvoker{}
+	r.activate = append(r.activate, a.activate)
+	r.revoke = append(r.revoke, a.close)
+	return a, nil
+}
+
 type RuntimeCloseObserver struct{ reg *Registrar }
 
 func (r *Registrar) RuntimeCloseObserver() (*RuntimeCloseObserver, error) {

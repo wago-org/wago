@@ -51,6 +51,7 @@ type Authority string
 const (
 	AuthorityHostImportDefine             Authority = "host.import.define"
 	AuthorityHostCallerIdentify           Authority = "host.caller.identify"
+	AuthorityHostCallerInvoke             Authority = "host.caller.invoke"
 	AuthorityHostArgumentsRead            Authority = "host.arguments.read"
 	AuthorityRuntimeCloseObserve          Authority = "runtime.close.observe"
 	AuthorityModuleSourceTransform        Authority = "module.source.transform"
@@ -71,7 +72,7 @@ const (
 
 func validAuthority(a Authority) bool {
 	switch a {
-	case AuthorityHostImportDefine, AuthorityHostCallerIdentify, AuthorityHostArgumentsRead,
+	case AuthorityHostImportDefine, AuthorityHostCallerIdentify, AuthorityHostCallerInvoke, AuthorityHostArgumentsRead,
 		AuthorityRuntimeCloseObserve, AuthorityModuleSourceTransform, AuthorityModuleCompileObserve,
 		AuthorityModuleCloseObserve,
 		AuthorityInstanceInstantiateIntercept, AuthorityInstanceInstantiateObserve,
