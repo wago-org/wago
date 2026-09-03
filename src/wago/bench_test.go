@@ -1257,6 +1257,22 @@ func BenchmarkInvokeLegacyHostFuncVoid(b *testing.B) {
 	benchIntSink = calls
 }
 
+func BenchmarkHostReentryDepthAccounting(b *testing.B) {
+	id := newInvocationID()
+	if _, ok := acquireHostReentryDepth(id); !ok {
+		b.Fatal("warm host re-entry depth acquire failed")
+	}
+	releaseHostReentryDepth(id)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, ok := acquireHostReentryDepth(id); !ok {
+			b.Fatal("host re-entry depth acquire failed")
+		}
+		releaseHostReentryDepth(id)
+	}
+}
+
 func BenchmarkInvokeHostFuncDirect(b *testing.B) {
 	c := benchMustCompile(b, benchReturningImportModule())
 	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })}})

@@ -27,8 +27,10 @@ type HostModule interface {
 // InvokeFromHost invokes an export while caller is an active synchronous host
 // callback. The HostModule carries an unforgeable, callback-scoped invocation
 // identity. If that call chain re-enters a parked Instance, Wago supplies an
-// isolated native stack and call buffers for the nested activation. Retained or
-// unrelated HostModule values fail closed.
+// isolated native stack and call buffers for the nested activation. One
+// invocation may have at most four active InvokeFromHost calls; a fifth call
+// returns an error wrapping ErrPermissionDenied. Retained or unrelated
+// HostModule values fail closed.
 func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, export string, args ...uint64) (results []uint64, err error) {
 	var active *Instance
 	var id invocationID
@@ -53,9 +55,66 @@ func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, expor
 		}
 	}
 	contexts := invocationContextSetFor(ctx)
+	depth, ok := acquireHostReentryDepth(id)
+	if !ok {
+		return nil, fmt.Errorf("wago: host re-entry depth %d exceeds limit %d: %w", depth+1, maxHostReentryDepth, ErrPermissionDenied)
+	}
+	defer releaseHostReentryDepth(id)
 	results, err = in.invokeWithToken(export, args, contexts, id, false, false, reservation)
 	return results, contextInterruptError(ctx, err)
 }
+
+// hostReentryDepths retains its small map for allocation-free ordinary reuse.
+// A burst above the retained-chain cap discards the backing map after all
+// active chains unwind, so process-wide memory does not retain its high-water
+// capacity.
+var hostReentryDepths struct {
+	sync.Mutex
+	values        map[invocationID]uint8
+	resetWhenIdle bool
+}
+
+func acquireHostReentryDepth(id invocationID) (uint8, bool) {
+	hostReentryDepths.Lock()
+	defer hostReentryDepths.Unlock()
+	if hostReentryDepths.values == nil {
+		hostReentryDepths.values = make(map[invocationID]uint8)
+	}
+	depth := hostReentryDepths.values[id]
+	if depth >= maxHostReentryDepth {
+		return depth, false
+	}
+	depth++
+	hostReentryDepths.values[id] = depth
+	if len(hostReentryDepths.values) > maxRetainedHostReentryChains {
+		hostReentryDepths.resetWhenIdle = true
+	}
+	return depth, true
+}
+
+func releaseHostReentryDepth(id invocationID) {
+	hostReentryDepths.Lock()
+	defer hostReentryDepths.Unlock()
+	depth := hostReentryDepths.values[id]
+	if depth <= 1 {
+		delete(hostReentryDepths.values, id)
+		if hostReentryDepths.resetWhenIdle && len(hostReentryDepths.values) == 0 {
+			hostReentryDepths.values = nil
+			hostReentryDepths.resetWhenIdle = false
+		}
+	} else {
+		hostReentryDepths.values[id] = depth - 1
+	}
+}
+
+// Every re-entry level owns another native stack, control frame, and call
+// buffers. Four remains useful for component cycles while rejecting before
+// TinyGo's smaller host stack can corrupt its task-stack canary on supported
+// low-footprint targets.
+const (
+	maxHostReentryDepth          = 4
+	maxRetainedHostReentryChains = 64
+)
 
 // ExternRefHostModule is the optional reference-store surface implemented by the
 // HostModule value wago passes to callbacks. Keeping it separate preserves the
