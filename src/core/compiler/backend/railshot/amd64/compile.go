@@ -680,6 +680,9 @@ type scratch struct {
 	jumpTableFragments      []jumpTableFragment
 	localRefs               amd64.LocalRefRecorder
 	offsetMap               shared.WideOffsetMap
+	nodeScratchReserved     uint64
+	nodeScratchPeak         uint64
+	nodeScratchDiscarded    uint64
 	transient
 }
 
@@ -703,7 +706,9 @@ func newScratch() *scratch {
 }
 
 func newScratchWithStackCap(stackCap int) *scratch {
-	return &scratch{stack: newStackWithCap(stackCap), asm: &amd64.Asm{}}
+	stack := newStackWithCap(stackCap)
+	_, reserved := stack.nodeMemory()
+	return &scratch{stack: stack, asm: &amd64.Asm{}, nodeScratchReserved: reserved, nodeScratchPeak: reserved}
 }
 
 // maxScratchFunctionResults bounds owner-local signature lowering storage.
@@ -856,6 +861,30 @@ func (sc *scratch) reset() {
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]
 	}
+}
+
+// clearNodeReferences severs scratch-owned links into operand-arena chunks before
+// finishFunction drops unused chunk headers. Pointer-bearing slice backings are
+// scanned to capacity by Go, so clearing only their current length would retain
+// nodes from an earlier giant function.
+func (sc *scratch) clearNodeReferences() {
+	clear(sc.fnState.regUser[:])
+	clear(sc.fnState.fregUser[:])
+	clear(sc.transient.tmpRoots[:cap(sc.transient.tmpRoots)])
+	clear(sc.transient.tmpBelow[:cap(sc.transient.tmpBelow)])
+	clear(sc.transient.tmpDeferred[:cap(sc.transient.tmpDeferred)])
+}
+
+func (sc *scratch) finishStackFunction() {
+	_, reserved := sc.stack.nodeMemory()
+	if reserved > sc.nodeScratchPeak {
+		sc.nodeScratchPeak = reserved
+	}
+	if !sc.stack.hasUnusedChunks() {
+		return
+	}
+	sc.clearNodeReferences()
+	sc.nodeScratchDiscarded += sc.stack.finishFunction()
 }
 
 // workerState owns every mutable buffer used by one parallel compiler worker.
@@ -1516,6 +1545,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		if err := patchModuleLiteralRelocs(code, entry, literalWords, literalOffsets, literalBase, moduleLiterals); err != nil {
 			return nil, err
 		}
+		ms.setNodeScratchStats(sc)
 		ms.finalizeCompileResourceStats()
 		if explainEnabled && ms != nil {
 			fmt.Fprint(os.Stderr, ms.String())
@@ -1741,6 +1771,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		return nil, err
 	}
 	finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd, len(literalCode), 0)
+	if ms != nil {
+		for i := range states {
+			ms.addNodeScratchStats(states[i].scratch)
+		}
+	}
 	ms.finalizeCompileResourceStats()
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
@@ -2369,6 +2404,9 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		if err == nil {
 			stats.setUnpinnedRetry()
 		}
+	}
+	if len(sc.stack.chunks) > 1 {
+		sc.finishStackFunction()
 	}
 	return
 }

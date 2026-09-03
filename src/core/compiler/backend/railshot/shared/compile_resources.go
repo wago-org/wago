@@ -29,6 +29,11 @@ type CompileResourceStats struct {
 	RetryCodeBytes   uint64
 	RetryNanos       uint64
 
+	// NodeScratchReserved is the sum of workers' initial operand-node backing.
+	// Peak is the sum of each worker's individual high-water (an envelope, not a
+	// claim that every worker peaked simultaneously). Retained is the backing left
+	// when compilation finishes; Discarded is cumulative backing released after a
+	// smaller successor no longer used a worker's overflow chunks.
 	NodeScratchReserved  uint64
 	NodeScratchPeak      uint64
 	NodeScratchRetained  uint64

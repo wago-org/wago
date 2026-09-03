@@ -290,6 +290,46 @@ func (s *stack) reset() {
 	s.initSentinel()
 }
 
+func (s *stack) hasUnusedChunks() bool { return s.cur+1 < len(s.chunks) }
+
+// finishFunction releases arena chunks that the just-completed function did not
+// reach. This keeps repeated large functions allocation-free, while a smaller
+// successor ratchets a worker's retained high-water back down to that function's
+// actual demand. Before dropping slice headers, clear retained backing so stale
+// node links cannot keep discarded pointer-rich chunks reachable from the first
+// chunk.
+func (s *stack) finishFunction() (discarded uint64) {
+	keep := s.cur + 1
+	if !s.hasUnusedChunks() {
+		return 0
+	}
+	for i := 0; i < keep; i++ {
+		clear(s.chunks[i][:cap(s.chunks[i])])
+	}
+	elemBytes := uint64(unsafe.Sizeof(elem{}))
+	for i := keep; i < len(s.chunks); i++ {
+		discarded += uint64(cap(s.chunks[i])) * elemBytes
+		s.chunks[i] = nil
+	}
+	s.chunks = s.chunks[:keep]
+	s.resetGrowthCaps()
+	s.initSentinel()
+	return discarded
+}
+
+func (s *stack) resetGrowthCaps() {
+	s.nextChunkCap, s.nextGeometricCap = stackArenaGrowthCaps(cap(s.chunks[0]))
+	for range s.chunks[1:] {
+		s.nextChunkCap = s.nextGeometricCap
+		if s.nextGeometricCap < maxStackChunkCap {
+			s.nextGeometricCap *= 2
+			if s.nextGeometricCap > maxStackChunkCap {
+				s.nextGeometricCap = maxStackChunkCap
+			}
+		}
+	}
+}
+
 func stackArenaCapForBody(bodyLen, nLocals int) int {
 	return stackArenaCapForHints(bodyLen, nLocals, 0)
 }

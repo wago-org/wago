@@ -235,6 +235,28 @@ func (ms *ModuleStats) finalizeCompileResourceStats() {
 	}
 }
 
+func (ms *ModuleStats) setNodeScratchStats(sc *scratch) {
+	if ms == nil {
+		return
+	}
+	ms.Compile.NodeScratchReserved = 0
+	ms.Compile.NodeScratchPeak = 0
+	ms.Compile.NodeScratchRetained = 0
+	ms.Compile.NodeScratchDiscarded = 0
+	ms.addNodeScratchStats(sc)
+}
+
+func (ms *ModuleStats) addNodeScratchStats(sc *scratch) {
+	if ms == nil || sc == nil {
+		return
+	}
+	_, retained := sc.stack.nodeMemory()
+	ms.Compile.NodeScratchReserved += sc.nodeScratchReserved
+	ms.Compile.NodeScratchPeak += sc.nodeScratchPeak
+	ms.Compile.NodeScratchRetained += retained
+	ms.Compile.NodeScratchDiscarded += sc.nodeScratchDiscarded
+}
+
 func (s *CodegenStats) setUnpinnedRetry() {
 	if s != nil {
 		s.UnpinnedRetry = true
@@ -470,6 +492,9 @@ func (ms *ModuleStats) String() string {
 		fmt.Fprintf(&b, "compile-retries: input=%dB nodes=%dB code=%dB time=%dns\n",
 			ms.Compile.RetryInputBytes, ms.Compile.RetryNodeBytes, ms.Compile.RetryCodeBytes, ms.Compile.RetryNanos)
 	}
+	fmt.Fprintf(&b, "compile-node-scratch: reserved=%dB peak-envelope=%dB retained=%dB discarded=%dB\n",
+		ms.Compile.NodeScratchReserved, ms.Compile.NodeScratchPeak,
+		ms.Compile.NodeScratchRetained, ms.Compile.NodeScratchDiscarded)
 	fmt.Fprintf(&b, "native: total=%d functions=%d function-align=%d module-other=%d dead-reserved=%d\n",
 		ms.NativeSize.TotalBytes, ms.NativeSize.FunctionBytes, ms.NativeSize.FunctionAlignmentBytes,
 		ms.NativeSize.ModuleOtherBytes, ms.NativeSize.DeadReservationBytes())

@@ -5,6 +5,7 @@ package amd64
 import (
 	"slices"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -63,6 +64,113 @@ func TestSubDefaultHintPreservesGeometricGrowth(t *testing.T) {
 	want := []int{101, 202, 404, 808, 1616}
 	if got := stackChunkCaps(s); !slices.Equal(got, want) {
 		t.Fatalf("sub-default growth = %v, want %v", got, want)
+	}
+}
+
+func TestStackFinishFunctionRatchetsUnusedOverflow(t *testing.T) {
+	const nodes = 2_000
+	s := newStackWithCap(minStackArenaCap)
+	for i := 1; i < nodes; i++ {
+		s.alloc()
+	}
+	wantCapacity := retainedStackArenaCapacity(s)
+	if got := s.finishFunction(); got != 0 {
+		t.Fatalf("first giant discarded %d bytes, want 0", got)
+	}
+	overflow := &s.chunks[1][0]
+
+	s.reset()
+	for i := 1; i < nodes; i++ {
+		s.alloc()
+	}
+	if got := &s.chunks[1][0]; got != overflow {
+		t.Fatal("repeated giant did not reuse overflow backing")
+	}
+	if got := s.finishFunction(); got != 0 {
+		t.Fatalf("repeated giant discarded %d bytes, want 0", got)
+	}
+
+	s.reset()
+	for i := 1; i < 4; i++ {
+		s.alloc()
+	}
+	oldChunks := s.chunks
+	overflowCapacity := retainedStackArenaCapacity(s) - cap(s.chunks[0])
+	wantDiscarded := uint64(overflowCapacity) * uint64(unsafe.Sizeof(elem{}))
+	if got := s.finishFunction(); got != wantDiscarded {
+		t.Fatalf("tiny successor discarded %d bytes, want %d", got, wantDiscarded)
+	}
+	if len(s.chunks) != 1 {
+		t.Fatalf("retained chunks = %d, want 1", len(s.chunks))
+	}
+	for i := 1; i < len(oldChunks); i++ {
+		if oldChunks[i] != nil {
+			t.Fatalf("discarded chunk %d still has a slice header", i)
+		}
+	}
+	if stale := s.chunks[0][:cap(s.chunks[0])][1]; stale.prev != nil || stale.next != nil || stale.arg0 != nil || stale.arg1 != nil {
+		t.Fatal("retained backing still points at prior-function nodes")
+	}
+
+	for i := 1; i < nodes; i++ {
+		s.alloc()
+	}
+	if got := retainedStackArenaCapacity(s); got != wantCapacity {
+		t.Fatalf("regrown capacity = %d, want %d", got, wantCapacity)
+	}
+}
+
+func TestScratchClearNodeReferences(t *testing.T) {
+	e := &elem{}
+	sc := scratch{}
+	sc.fnState.regUser[0] = e
+	sc.fnState.fregUser[0] = e
+	sc.transient.tmpRoots = make([]*elem, 1, 4)
+	sc.transient.tmpRoots[:cap(sc.transient.tmpRoots)][3] = e
+	sc.transient.tmpBelow = make([]*elem, 1, 4)
+	sc.transient.tmpBelow[:cap(sc.transient.tmpBelow)][3] = e
+	sc.transient.tmpDeferred = make([]deferredArg, 1, 4)
+	sc.transient.tmpDeferred[:cap(sc.transient.tmpDeferred)][3].root = e
+
+	sc.clearNodeReferences()
+	if sc.fnState.regUser[0] != nil || sc.fnState.fregUser[0] != nil {
+		t.Fatal("register-user table retained an operand node")
+	}
+	if sc.transient.tmpRoots[:cap(sc.transient.tmpRoots)][3] != nil ||
+		sc.transient.tmpBelow[:cap(sc.transient.tmpBelow)][3] != nil ||
+		sc.transient.tmpDeferred[:cap(sc.transient.tmpDeferred)][3].root != nil {
+		t.Fatal("pointer-bearing scratch capacity retained an operand node")
+	}
+}
+
+func TestScratchNodeResourceStats(t *testing.T) {
+	const nodes = 2_000
+	sc := newScratchWithStackCap(minStackArenaCap)
+	for i := 1; i < nodes; i++ {
+		sc.stack.alloc()
+	}
+	peakCapacity := retainedStackArenaCapacity(sc.stack)
+	sc.finishStackFunction()
+	sc.stack.reset()
+	for i := 1; i < 4; i++ {
+		sc.stack.alloc()
+	}
+	sc.finishStackFunction()
+
+	elemBytes := uint64(unsafe.Sizeof(elem{}))
+	ms := &ModuleStats{}
+	ms.setNodeScratchStats(sc)
+	if got, want := ms.Compile.NodeScratchReserved, uint64(minStackArenaCap)*elemBytes; got != want {
+		t.Fatalf("initial node scratch = %d, want %d", got, want)
+	}
+	if got, want := ms.Compile.NodeScratchPeak, uint64(peakCapacity)*elemBytes; got != want {
+		t.Fatalf("peak node scratch = %d, want %d", got, want)
+	}
+	if got, want := ms.Compile.NodeScratchRetained, uint64(minStackArenaCap)*elemBytes; got != want {
+		t.Fatalf("retained node scratch = %d, want %d", got, want)
+	}
+	if got, want := ms.Compile.NodeScratchDiscarded, uint64(peakCapacity-minStackArenaCap)*elemBytes; got != want {
+		t.Fatalf("discarded node scratch = %d, want %d", got, want)
 	}
 }
 

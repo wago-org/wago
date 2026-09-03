@@ -67,6 +67,10 @@ func equalWorkerModuleStatsAMD64(a, b *ModuleStats) bool {
 	bCopy.NativeSize.CompilerCodeArenaBytes = 0
 	aCopy.Compile.StageNanos = [shared.CompileStageCount]uint64{}
 	bCopy.Compile.StageNanos = [shared.CompileStageCount]uint64{}
+	aCopy.Compile.NodeScratchReserved, bCopy.Compile.NodeScratchReserved = 0, 0
+	aCopy.Compile.NodeScratchPeak, bCopy.Compile.NodeScratchPeak = 0, 0
+	aCopy.Compile.NodeScratchRetained, bCopy.Compile.NodeScratchRetained = 0, 0
+	aCopy.Compile.NodeScratchDiscarded, bCopy.Compile.NodeScratchDiscarded = 0, 0
 	aCopy.Compile.RetryNanos, bCopy.Compile.RetryNanos = 0, 0
 	for i := range aCopy.Funcs {
 		if aCopy.Funcs[i] == nil || bCopy.Funcs[i] == nil {

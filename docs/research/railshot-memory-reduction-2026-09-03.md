@@ -43,9 +43,23 @@ from 416 to 368 bytes on ARM64. A generated 128-deep scalar-block benchmark
 dropped from 283 to 155 allocations per AMD64 compile and from about 229.7 KiB
 to 209.8 KiB; median latency was effectively flat across the before/after local
 screens.
+
 This is a staged reduction, not satisfaction of the 32--48-byte common-record
-target. Index-width, retention, further sidecar pooling, and policy deletion
+target. Index-width, further retention work, sidecar pooling, and policy deletion
 remain subject to the gates below.
+
+The first worker-lifecycle implementation keeps the initial operand chunk and
+ratchets overflow retention to the just-completed function's actual chunk use.
+Repeated large functions therefore reuse backing, while a smaller successor
+releases the unused suffix. The rare shrink transition explicitly clears every
+scratch-owned `*elem` path and retained chunk capacity before removing slice
+headers; ordinary one-chunk functions take no cleanup call. The resource ledger
+now exposes initial reservation, per-worker peak envelope, final retention, and
+cumulative discarded bytes. A Linux/AMD64 `many_funcs` screen stayed at 36
+allocations and about 158,968 B/op, with eight-run medians of 341.9 microseconds
+before and 344.0 microseconds after, a 0.6% movement inside the 1.5% investigation
+gate. Giant-lane scheduling and byte-weighted
+admission are not yet implemented.
 
 ## Primary-source facts
 

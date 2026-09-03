@@ -34,7 +34,7 @@ The implementation starts with four code-identical cuts from that audit:
 
 1. Module hint scanning always retains exact touched-global records instead of a dense function-by-global matrix, and the fixed hint record drops from 200 to 152 bytes. On a synthetic 1,024-function/1,024-global shape with one touched global per function, this changed the ARM64 hint benchmark from approximately 5.47 MB and 0.64 ms per operation to 0.24 MB and 0.12 ms per operation. This is a targeted stress result, not a full-corpus claim.
 2. Module-wide synchronous-host-call classification is computed once per module, and the bounded module-global pin list replaces a per-function `globals`-sized membership bitmap.
-3. The existing opt-in statistics path now exposes a shared compile-resource ledger for hint headers and sidecars, function attempts, failed-attempt input/node/code bytes, and failed-attempt time. Timing is explicitly excluded from deterministic stats comparisons; all byte and count fields remain deterministic.
+3. The existing opt-in statistics path now exposes a shared compile-resource ledger for hint headers and sidecars, function attempts, failed-attempt input/node/code bytes, and failed-attempt time. Timing is explicitly excluded from deterministic stats comparisons. Hint and retry byte/count fields remain deterministic; worker scratch retention fields intentionally report actual worker topology and scheduling and are excluded from serial/parallel artifact-stat comparisons.
 4. The first control-stack cuts move EH-only state behind a lazy semantic sidecar, group scalar fields to remove alignment holes, and stop allocating all-false GC-root vectors. Together they reduce every ordinary `ctrlFrame` from 472 to 408 bytes on AMD64 and from 416 to 368 bytes on ARM64. On a generated 128-deep scalar-block benchmark, AMD64 allocations fell from 283 to 155 per compile and allocated bytes moved from roughly 229.7 KiB to 209.8 KiB; median latency was effectively flat across the before/after local screens. This is an adversarial shape result, not completion of the 32–48-byte control-frame target.
 
 An interleaved three-pair ARM64 `many_funcs` screen with metrics disabled retained 42 allocs/op and 159,001–159,003 B/op; median compile time moved from 215.98 µs to 215.65 µs. This clears the initial zero-overhead screen, but the larger benchmark matrix remains the acceptance authority.
@@ -512,6 +512,10 @@ discard:
 Use hysteresis so a sequence of moderately large functions does not repeatedly allocate and release the same backing.
 
 Because pointer stability is only needed during a function’s compilation, overflow chunks can be dropped immediately after that function completes.
+
+The first lifecycle step now ratchets retained overflow to the most recently completed function's actual chunk demand. Consecutive large functions reuse their backing without regrowth; once a smaller successor uses fewer chunks, the unused suffix is released. The shrink path clears the retained chunks, register-user tables, root scratch, and deferred-argument scratch to capacity before dropping slice headers, so stale `*elem` links cannot keep the pointer-rich overflow reachable. Ordinary one-chunk functions do not enter the cleanup path. The compile-resource ledger reports initial node reservation, the sum of per-worker peak envelopes, final retained bytes, and cumulative discarded bytes.
+
+A Linux/AMD64 `many_funcs` screen remained at 36 allocs/op and about 158,968 B/op; the final eight-run medians were 341.9 µs before and 344.0 µs after, a 0.6% movement inside the 1.5% investigation gate. Direct arena tests prove that repeated 2,000-node functions reuse overflow backing, while a following four-node function releases every unused chunk and restores the original growth sequence. Full giant-lane scheduling and the weighted byte semaphore remain future Phase 3 work.
 
 ## 6.2 Add a dedicated giant-function lane
 
