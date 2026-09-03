@@ -122,7 +122,7 @@ var manifestFeatureNames = stringSet(
 )
 
 var manifestOptimizationNames = stringSet(
-	"affine-lea", "assoc-tree", "bmi2-rorx", "bounds-facts", "branch-fold",
+	"assoc-tree", "bmi2-rorx", "bounds-facts", "branch-fold",
 	"commute-self-update", "compact-i32-frame",
 	"dead-gc-new", "entry-arg-pins", "entry-init-elision", "ext-fp-pins",
 	"frame-elide", "frame-elide-reghomed", "gc-native-alloc",

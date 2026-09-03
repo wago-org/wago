@@ -322,9 +322,11 @@ count or execution benefit does not clear a declared threshold.
 
 1. **Repeated module scans:** resolve synchronous-host-call mode once.
 2. **Per-function `moduleGlobal []bool`:** use the bounded pin list/mask.
-3. **Default-off experiments with no active qualification:** `affine-lea`,
-   `tee-spill-elide`, `v128-sink`, `loop-precheck`, and exact
+3. **Default-off experiments with no active qualification:** `tee-spill-elide`,
+   `v128-sink`, `loop-precheck`, and exact
    GC-ref facts are compiled into production but disabled by default.
+   AMD64 `affine-lea` was subsequently retired after its dedicated fixture and
+   broad screen confirmed that its isolated code-size win did not qualify it.
    Either promote them against the standard gates or delete them. Do not let an
    indefinite experiment become a permanent alternate path.
 4. **Mature rollback environment switches:** the production Railshot packages

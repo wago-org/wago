@@ -62,7 +62,6 @@
             "enum": [
               "accumulator-immediate",
               "addr-zext-elim",
-              "affine-lea",
               "assoc-tree",
               "bmi2-rorx",
               "bounds-facts",

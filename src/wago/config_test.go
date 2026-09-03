@@ -650,7 +650,7 @@ func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 	}
 	switch runtime.GOARCH {
 	case "amd64":
-		for _, name := range []string{"affine-lea", "tee-spill-elide", "v128-sink"} {
+		for _, name := range []string{"tee-spill-elide", "v128-sink"} {
 			wantOff[name] = true
 		}
 	}
@@ -662,6 +662,9 @@ func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 		}
 		if info.Name == "deep-fp-pins" {
 			t.Fatal("removed deep-fp-pins optimization is still exposed")
+		}
+		if info.Name == "affine-lea" {
+			t.Fatal("removed affine-lea optimization is still exposed")
 		}
 		if runtime.GOARCH == "arm64" && info.Name == "v128-sink" {
 			t.Fatal("removed ARM64 v128-sink optimization is still exposed")

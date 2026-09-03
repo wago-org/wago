@@ -25,7 +25,6 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("branch-fold", &branchFoldEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
 	optimization.Bind("ext-fp-pins", &extendedFPPinsEnabled),
-	optimization.Bind("affine-lea", &affineLeaEnabled),
 	optimization.Bind("tree-order", &treeOrderEnabled),
 	optimization.Bind("assoc-tree", &associativeTreeEnabled),
 	optimization.Bind("bmi2-rorx", &bmi2RorxEnabled),
@@ -73,7 +72,6 @@ var (
 	optBranchFold           = optimizationBindings.Option("branch-fold")
 	optEntryArgPins         = optimizationBindings.Option("entry-arg-pins")
 	optExtendedFPPins       = optimizationBindings.Option("ext-fp-pins")
-	optAffineLEA            = optimizationBindings.Option("affine-lea")
 	optTreeOrder            = optimizationBindings.Option("tree-order")
 	optAssocTree            = optimizationBindings.Option("assoc-tree")
 	optBMI2Rorx             = optimizationBindings.Option("bmi2-rorx")
