@@ -248,6 +248,53 @@ func sharedAtomicWaitNotifyModule() []byte {
 	)
 }
 
+func unsharedAtomicWaitNotifyModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I64}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x01})), // unshared memory32, min=1, max=1
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("notify", 0, 0),
+			wasmtest.ExportEntry("wait32", 0, 1),
+			wasmtest.ExportEntry("wait64", 0, 2),
+			wasmtest.ExportEntry("memory", 2, 0),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0xfe, 0x00, 0x02, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfe, 0x01, 0x02, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfe, 0x02, 0x03, 0x00, 0x0b}),
+		)),
+	)
+}
+
+func importedUnsharedAtomicWaitNotifyModule() []byte {
+	memoryImport := append(wasmtest.Name("env"), wasmtest.Name("memory")...)
+	memoryImport = append(memoryImport, 0x02, 0x01, 0x01, 0x01) // unshared memory32, min=1, max=1
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I64}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(memoryImport)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("notify", 0, 0),
+			wasmtest.ExportEntry("wait32", 0, 1),
+			wasmtest.ExportEntry("wait64", 0, 2),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0xfe, 0x00, 0x02, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfe, 0x01, 0x02, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfe, 0x02, 0x03, 0x00, 0x0b}),
+		)),
+	)
+}
+
 func TestThreadsAtomicRMWAddExecutesOnSharedMemory(t *testing.T) {
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	compiled, err := Compile(config, sharedAtomicAddModule())
@@ -861,6 +908,74 @@ func TestThreadsAtomicWaitNotifyExecutesAcrossInstances(t *testing.T) {
 		t.Fatalf("zero-timeout wait64 = %v, %v", out, err)
 	}
 	assertNoMemoryWaiters(t, memory)
+}
+
+func assertUnsharedAtomicWaitNotifySemantics(t *testing.T, instance *Instance) {
+	t.Helper()
+	assertTrap := func(t *testing.T, export string, want TrapCode, args ...uint64) {
+		t.Helper()
+		_, err := instance.Invoke(export, args...)
+		var trap *TrapError
+		if !errors.As(err, &trap) || trap.Code != want {
+			t.Fatalf("%s%v error = %v, want %s", export, args, err, want)
+		}
+	}
+	out, err := instance.Invoke("notify", I32(0), I32(0))
+	if err != nil || len(out) != 1 || AsI32(out[0]) != 0 {
+		t.Fatalf("notify = %v, %v; want 0", out, err)
+	}
+	assertTrap(t, "notify", TrapLinMemOutOfBounds, I32(65536), I32(0))
+	assertTrap(t, "notify", TrapAtomicUnaligned, I32(1), I32(0))
+
+	// Alignment is checked before the unshared-memory condition. Once aligned,
+	// wait traps for an unshared memory before loading or checking its bounds.
+	assertTrap(t, "wait32", TrapAtomicUnaligned, I32(1), I32(1), I64(0))
+	assertTrap(t, "wait32", TrapExpectedSharedMemory, I32(65536), I32(1), I64(0))
+	assertTrap(t, "wait32", TrapExpectedSharedMemory, I32(0), I32(1), I64(0))
+	assertTrap(t, "wait64", TrapAtomicUnaligned, I32(4), I64(1), I64(0))
+	assertTrap(t, "wait64", TrapExpectedSharedMemory, I32(65536), I64(1), I64(0))
+	assertTrap(t, "wait64", TrapExpectedSharedMemory, I32(0), I64(1), I64(0))
+}
+
+func TestThreadsAtomicWaitNotifyOnUnsharedMemory(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	compiled, err := Compile(config, unsharedAtomicWaitNotifyModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+
+	t.Run("local", func(t *testing.T) { assertUnsharedAtomicWaitNotifySemantics(t, instance) })
+	if _, err := instance.ExportedMemory("memory"); err != nil {
+		t.Fatalf("export memory: %v", err)
+	}
+	t.Run("exported", func(t *testing.T) { assertUnsharedAtomicWaitNotifySemantics(t, instance) })
+}
+
+func TestThreadsAtomicWaitNotifyOnImportedUnsharedMemory(t *testing.T) {
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
+	compiled, err := Compile(config, importedUnsharedAtomicWaitNotifyModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	memory, err := NewMemory(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer memory.Close()
+	instance, err := Instantiate(compiled, Imports{"env.memory": memory})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+
+	assertUnsharedAtomicWaitNotifySemantics(t, instance)
 }
 
 func TestThreadsAtomicWaitHelperAdmissionSurvivesArtifactRoundTrip(t *testing.T) {

@@ -1032,12 +1032,21 @@ func unsafeDirectTailImportBitset(m *wasm.Module) ([]uint64, error) {
 }
 
 func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode) error {
-	if m == nil || m.ImportedMemCount() != 1 || len(m.Memories) != 0 || m.MemCount() != 1 {
-		return fmt.Errorf("threads currently require exactly one imported shared memory")
+	if m == nil || m.MemCount() != 1 {
+		return fmt.Errorf("threads currently require exactly one memory, shared or unshared")
 	}
 	mt, _ := m.MemoryType(0)
-	if !mt.Shared || mt.Limits.Addr64 || !mt.Limits.HasMax {
-		return fmt.Errorf("threads currently require shared memory32 with an exact maximum")
+	if mt.Limits.Addr64 {
+		if mt.Shared {
+			return fmt.Errorf("threads currently do not support shared memory64")
+		}
+		return fmt.Errorf("threads currently require memory32")
+	}
+	if mt.Shared && (m.ImportedMemCount() != 1 || len(m.Memories) != 0) {
+		return fmt.Errorf("threads currently require shared memory to be imported")
+	}
+	if mt.Shared && !mt.Limits.HasMax {
+		return fmt.Errorf("threads currently require shared memory with an exact maximum")
 	}
 	if bounds != BoundsChecksExplicit {
 		return fmt.Errorf("threads currently require explicit bounds checks")
