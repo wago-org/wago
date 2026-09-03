@@ -124,11 +124,13 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 		},
 		nLocals: 4,
 	}
-	fr := &ctrlFrame{kind: cfLoop, loopSetLocals: map[uint32]bool{0: true, 1: true, 2: true, 3: true}}
+	fr := &ctrlFrame{kind: cfLoop}
+	f.ensureCtrlMerge(fr).loopSetLocals = map[uint32]bool{0: true, 1: true, 2: true, 3: true}
 	f.activateLoopPins(fr)
-	if len(fr.loopPins) != 2 || fr.loopPins[0].local != 0 || fr.loopPins[1].local != 1 ||
+	pins := f.frameLoopPins(fr)
+	if len(pins) != 2 || pins[0].local != 0 || pins[1].local != 1 ||
 		!f.pinnedLocalMask.has(X12) || !f.pinnedLocalMask.has(X13) || len(f.a.B) == 0 {
-		t.Fatalf("activated loop pins = %#v, mask = %#v, code = %d", fr.loopPins, f.pinnedLocalMask, len(f.a.B))
+		t.Fatalf("activated loop pins = %#v, mask = %#v, code = %d", pins, f.pinnedLocalMask, len(f.a.B))
 	}
 	if f.locals[0].state != lsReg || f.locals[1].state != lsStackReg {
 		t.Fatalf("pin states = %v, %v", f.locals[0].state, f.locals[1].state)
@@ -144,9 +146,10 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 		t.Fatalf("released loop pins left mask/state = %#v, %v, %v", f.pinnedLocalMask, f.locals[0].state, f.locals[1].state)
 	}
 
-	blocked := &ctrlFrame{kind: cfLoop, flags: ctrlLoopHasCall, loopSetLocals: map[uint32]bool{0: true}}
+	blocked := &ctrlFrame{kind: cfLoop, flags: ctrlLoopHasCall}
+	f.ensureCtrlMerge(blocked).loopSetLocals = map[uint32]bool{0: true}
 	f.activateLoopPins(blocked)
-	if len(blocked.loopPins) != 0 {
+	if len(f.frameLoopPins(blocked)) != 0 {
 		t.Fatal("call-containing loop received region pins")
 	}
 }

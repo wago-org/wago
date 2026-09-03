@@ -336,7 +336,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 		edge := append([]byte(nil), f.a.B[mark:]...)
 		f.a.B = f.a.B[:mark]
 		site := f.a.Bcond(cc)
-		fr.coldEdges = append(fr.coldEdges, coldEdge{site: site, code: edge})
+		f.appendFrameColdEdge(fr, coldEdge{site: site, code: edge})
 		return nil
 	}
 	// Non-empty edge: insert the skip guard right after the CMP (keeping the flag

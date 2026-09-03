@@ -68,26 +68,6 @@ type ctrlFrame struct {
 	baseTypes       []machineType
 	paramTypes      []machineType
 	resultTypes     []machineType
-	baseGCRoots     []bool
-	paramGCRoots    []bool
-	resultGCRoots   []bool
-
-	// cfLoop only (P6.2 foundation): locals set anywhere in the loop body, and
-	// whether the body grows memory — from a scan-ahead at the loop header. A local
-	// base NOT in loopSetLocals is loop-invariant (a callee cannot touch a caller
-	// local), so its bounds check is hoistable. nil for non-loops / unreachable.
-	loopSetLocals map[uint32]bool
-	// Loop-region allocation eligibility is collected in the same bounded scan
-	// used by bounds hoisting. Promotion is enabled only once every exit edge is
-	// modeled; these facts keep the eligibility decision one-pass and conservative.
-	loopPins []loopPin
-
-	// Per-frame pinned-local merge agreement (convergeEdgeTo): branchState is the
-	// recorded state at this frame's branch target (loop top for loops, the end
-	// merge for blocks/ifs), fixed by the first edge; entryState is a cfIf
-	// header snapshot — the else body's entry state, and the cond-false edge's
-	// state for an if without else.
-	coldEdges []coldEdge // deferred non-empty unlikely br_if edges targeting this frame
 
 	// Exception-handling state is cold for ordinary control constructs. Keep one
 	// pointer in the common frame and allocate the sidecar only for a try_table or
@@ -105,12 +85,18 @@ func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
 	}
 }
 
-// ctrlFrameMerge contains local-state agreement needed only by control frames
-// in call-making functions with pinned locals. Keeping it in a compact scratch
-// sidecar removes two scanned slice headers from every ordinary frame.
+// ctrlFrameMerge contains feature-specific state needed only by frames that
+// merge pinned locals, track GC roots, hoist/pin loops, or defer cold edges.
+// Keeping it in compact scratch removes pointer-rich fields from ordinary frames.
 type ctrlFrameMerge struct {
-	branchState []locState
-	entryState  []locState
+	branchState   []locState
+	entryState    []locState
+	baseGCRoots   []bool
+	paramGCRoots  []bool
+	resultGCRoots []bool
+	loopSetLocals map[uint32]bool
+	loopPins      []loopPin
+	coldEdges     []coldEdge
 }
 
 const initialCtrlMergeCapacity = 16
@@ -212,6 +198,53 @@ func (f *fn) setFrameEntryState(fr *ctrlFrame, state []locState) {
 	}
 }
 
+func (f *fn) frameBaseGCRoots(fr *ctrlFrame) []bool {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.baseGCRoots
+	}
+	return nil
+}
+
+func (f *fn) frameParamGCRoots(fr *ctrlFrame) []bool {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.paramGCRoots
+	}
+	return nil
+}
+
+func (f *fn) frameResultGCRoots(fr *ctrlFrame) []bool {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.resultGCRoots
+	}
+	return nil
+}
+
+func (f *fn) frameLoopSetLocals(fr *ctrlFrame) map[uint32]bool {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.loopSetLocals
+	}
+	return nil
+}
+
+func (f *fn) frameLoopPins(fr *ctrlFrame) []loopPin {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.loopPins
+	}
+	return nil
+}
+
+func (f *fn) frameColdEdges(fr *ctrlFrame) []coldEdge {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.coldEdges
+	}
+	return nil
+}
+
+func (f *fn) appendFrameColdEdge(fr *ctrlFrame, edge coldEdge) {
+	cold := f.ensureCtrlMerge(fr)
+	cold.coldEdges = append(cold.coldEdges, edge)
+}
+
 func (f *fn) convergeFrameBranchState(fr *ctrlFrame) {
 	state := f.frameBranchState(fr)
 	f.convergeEdgeTo(&state)
@@ -260,12 +293,14 @@ func (f *fn) activateLoopPins(fr *ctrlFrame) {
 	}
 	for _, r := range []Reg{X12, X13} {
 		best := -1
+		setLocals := f.frameLoopSetLocals(fr)
+		pins := f.frameLoopPins(fr)
 		for x := 0; x < f.nLocals; x++ {
-			if f.localType[x] != mtI32 && f.localType[x] != mtI64 || f.locals[x].reg != regNone || !fr.loopSetLocals[uint32(x)] {
+			if f.localType[x] != mtI32 && f.localType[x] != mtI64 || f.locals[x].reg != regNone || !setLocals[uint32(x)] {
 				continue
 			}
 			already := false
-			for _, p := range fr.loopPins {
+			for _, p := range pins {
 				if p.local == x {
 					already = true
 					break
@@ -278,8 +313,10 @@ func (f *fn) activateLoopPins(fr *ctrlFrame) {
 		if best < 0 {
 			break
 		}
-		fr.loopPins = append(fr.loopPins, loopPin{best, r})
-		f.activeLoopPins = fr.loopPins // O(1) pinReg index; this is the only frame with pins
+		cold := f.ensureCtrlMerge(fr)
+		cold.loopPins = append(cold.loopPins, loopPin{best, r})
+		pins = cold.loopPins
+		f.activeLoopPins = pins // O(1) pinReg index; this is the only frame with pins
 		f.pinnedLocalMask = f.pinnedLocalMask.add(r)
 		if f.locals[best].state == lsConstZero {
 			f.a.MovImm64(r, 0)
@@ -293,14 +330,14 @@ func (f *fn) activateLoopPins(fr *ctrlFrame) {
 
 func (f *fn) storeLoopPinsLeaving(target int) {
 	for i := len(f.ctrl) - 1; i > target; i-- {
-		for _, p := range f.ctrl[i].loopPins {
+		for _, p := range f.frameLoopPins(&f.ctrl[i]) {
 			f.st64(SP, f.localOff(p.local), p.reg)
 		}
 	}
 }
 
 func (f *fn) releaseLoopPins(fr *ctrlFrame) {
-	for _, p := range fr.loopPins {
+	for _, p := range f.frameLoopPins(fr) {
 		f.st64(SP, f.localOff(p.local), p.reg)
 		f.pinnedLocalMask = f.pinnedLocalMask.remove(p.reg)
 		f.locals[p.local].state = lsMem
@@ -396,8 +433,13 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 	if fr.height < 0 || fr.height+fr.paramN > len(roots) {
 		return
 	}
-	fr.baseGCRoots = gcRootFlags(roots[:fr.height])
-	fr.paramGCRoots = gcRootFlags(roots[fr.height : fr.height+fr.paramN])
+	base := gcRootFlags(roots[:fr.height])
+	params := gcRootFlags(roots[fr.height : fr.height+fr.paramN])
+	if base != nil || params != nil {
+		cold := f.ensureCtrlMerge(fr)
+		cold.baseGCRoots = base
+		cold.paramGCRoots = params
+	}
 }
 
 func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
@@ -412,10 +454,11 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 		if root.kind != ekValue || !root.st.gcRoot {
 			continue
 		}
-		if len(fr.resultGCRoots) < n {
-			fr.resultGCRoots = make([]bool, n)
+		cold := f.ensureCtrlMerge(fr)
+		if len(cold.resultGCRoots) < n {
+			cold.resultGCRoots = make([]bool, n)
 		}
-		fr.resultGCRoots[i] = true
+		cold.resultGCRoots[i] = true
 	}
 }
 
@@ -945,7 +988,10 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
 	if kind == cfLoop && !f.unreachable {
 		var hasCall, hasNested, hasTable bool
-		fr.loopSetLocals, _, hasCall, hasNested, hasTable = scanLoopBodyWithClassifier(r, f.classifier) // P6.2 + region-pin foundation (reader restored)
+		setLocals, _, hasCall, hasNested, hasTable := scanLoopBodyWithClassifier(r, f.classifier) // P6.2 + region-pin foundation (reader restored)
+		if setLocals != nil {
+			f.ensureCtrlMerge(&fr).loopSetLocals = setLocals
+		}
 		fr.set(ctrlLoopHasCall, hasCall)
 		fr.set(ctrlLoopHasNested, hasNested)
 		fr.set(ctrlLoopHasTable, hasTable)
@@ -1550,7 +1596,7 @@ func (f *fn) opElse() error {
 	f.a.PatchBranch19(fr.elseSite, f.a.Len()) // the false edge is a B.cond (imm19)
 	fr.elseSite = -1
 	fr.set(ctrlHasElse, true)
-	f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.paramTypes), frameGCRootFlags(fr.baseGCRoots, fr.paramGCRoots))
+	f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.paramTypes), frameGCRootFlags(f.frameBaseGCRoots(fr), f.frameParamGCRoots(fr)))
 	// The else body is entered via the if's false edge: locals are exactly in the
 	// header-snapshot state (no code).
 	f.setLocalsState(f.frameEntryState(fr))
@@ -1562,11 +1608,16 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	fr := f.ctrl[last]
 	branchState := f.frameBranchState(&fr)
 	entryState := f.frameEntryState(&fr)
+	baseGCRoots := f.frameBaseGCRoots(&fr)
+	paramGCRoots := f.frameParamGCRoots(&fr)
+	resultGCRoots := f.frameResultGCRoots(&fr)
+	loopPins := f.frameLoopPins(&fr)
+	coldEdges := f.frameColdEdges(&fr)
 	// ctrl backing is reused across functions. Clear the popped slot so its
 	// variable-sized type and loop-analysis slices do not stay live in scratch.
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
-	if len(fr.loopPins) != 0 {
+	if len(loopPins) != 0 {
 		f.activeLoopPins = nil // this frame's pins leave scope with the pop
 	}
 
@@ -1578,14 +1629,14 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 				f.flush() // results land in slots [0, resultN)
 			}
 		}
-		if len(fr.coldEdges) != 0 {
+		if len(coldEdges) != 0 {
 			skip := -1
 			if !f.unreachable {
 				skip = f.a.Branch()
 			}
-			for i := range fr.coldEdges {
-				f.a.PatchBranch19(fr.coldEdges[i].site, f.a.Len())
-				f.a.B = append(f.a.B, fr.coldEdges[i].code...)
+			for i := range coldEdges {
+				f.a.PatchBranch19(coldEdges[i].site, f.a.Len())
+				f.a.B = append(f.a.B, coldEdges[i].code...)
 				f.branchJump(&fr) // branch from the cold edge to the shared epilogue
 			}
 			if skip != -1 {
@@ -1601,6 +1652,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	}
 	if fallthroughReachable {
 		f.recordGCBranchResults(&fr, fr.resultN)
+		resultGCRoots = f.frameResultGCRoots(&fr)
 		if fr.kind != cfLoop {
 			// Merge edge: converge to the end's recorded state (or fix it).
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
@@ -1617,11 +1669,12 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	}
 	// An if without else: the cond-false path reaches end with params == results.
 	if fr.kind == cfIf && !fr.has(ctrlHasElse) && !fr.has(ctrlEntryUnreachable) {
-		for i := 0; i < len(fr.paramGCRoots) && i < fr.resultN; i++ {
-			if len(fr.resultGCRoots) < fr.resultN {
-				fr.resultGCRoots = append(fr.resultGCRoots, make([]bool, fr.resultN-len(fr.resultGCRoots))...)
+		for i := 0; i < len(paramGCRoots) && i < fr.resultN; i++ {
+			if len(resultGCRoots) < fr.resultN {
+				resultGCRoots = append(resultGCRoots, make([]bool, fr.resultN-len(resultGCRoots))...)
+				f.ensureCtrlMerge(&fr).resultGCRoots = resultGCRoots
 			}
-			fr.resultGCRoots[i] = fr.resultGCRoots[i] || fr.paramGCRoots[i]
+			resultGCRoots[i] = resultGCRoots[i] || paramGCRoots[i]
 		}
 		// The cond-false edge arrives in the header-snapshot state; if then-side
 		// edges fixed a stronger end state (or a regMerge1 passthrough needs its
@@ -1668,14 +1721,14 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		}
 		fr.set(ctrlEndReachable, true)
 	}
-	if fr.kind == cfLoop && len(fr.coldEdges) != 0 {
+	if fr.kind == cfLoop && len(coldEdges) != 0 {
 		skip := -1
 		if fallthroughReachable {
 			skip = f.a.Branch()
 		}
-		for i := range fr.coldEdges {
-			f.a.PatchBranch19(fr.coldEdges[i].site, f.a.Len())
-			f.a.B = append(f.a.B, fr.coldEdges[i].code...)
+		for i := range coldEdges {
+			f.a.PatchBranch19(coldEdges[i].site, f.a.Len())
+			f.a.B = append(f.a.B, coldEdges[i].code...)
 			f.a.PatchBranch26(f.a.Branch(), fr.loopStart)
 		}
 		if skip != -1 {
@@ -1686,16 +1739,16 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	// hinted false path therefore falls through at its source; only the unlikely
 	// true edge reaches these fragments. Each fragment branches to the target
 	// below along with ordinary forward edges.
-	if fr.kind != cfLoop && len(fr.coldEdges) != 0 {
+	if fr.kind != cfLoop && len(coldEdges) != 0 {
 		// A normal fall-through must not execute a cold reconciliation fragment.
 		// Its skip and every cold-edge jump converge at the target below.
 		skip := -1
 		if fallthroughReachable {
 			skip = f.a.Branch()
 		}
-		for i := range fr.coldEdges {
-			f.a.PatchBranch19(fr.coldEdges[i].site, f.a.Len())
-			f.a.B = append(f.a.B, fr.coldEdges[i].code...)
+		for i := range coldEdges {
+			f.a.PatchBranch19(coldEdges[i].site, f.a.Len())
+			f.a.B = append(f.a.B, coldEdges[i].code...)
 			fr.ends = append(fr.ends, f.a.Branch())
 			fr.set(ctrlEndReachable, true)
 		}
@@ -1718,18 +1771,18 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		if fr.has(ctrlRegMerge1) {
 			// Every reaching edge left the result in the merge register (int→mergeReg,
 			// float→mergeFReg) and the operands below in canonical slots [0, height).
-			f.setDepthTypesWithGCRoots(fr.baseTypes, fr.baseGCRoots)
+			f.setDepthTypesWithGCRoots(fr.baseTypes, baseGCRoots)
 			var result *elem
 			if fr.res0.isFloat() {
 				result = f.pushFReg(mergeFReg, fr.res0)
 			} else {
 				result = f.pushReg(mergeReg, fr.res0)
 			}
-			if len(fr.resultGCRoots) != 0 {
-				result.st.gcRoot = fr.resultGCRoots[0]
+			if len(resultGCRoots) != 0 {
+				result.st.gcRoot = resultGCRoots[0]
 			}
 		} else {
-			f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.resultTypes), frameGCRootFlags(fr.baseGCRoots, fr.resultGCRoots))
+			f.setDepthTypesWithGCRoots(f.frameDepthTypes(fr.baseTypes, fr.resultTypes), frameGCRootFlags(baseGCRoots, resultGCRoots))
 		}
 		f.markEHReferenceResults(&fr)
 	}
@@ -1862,7 +1915,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		edge := append([]byte(nil), f.a.B[mark:]...)
 		f.a.B = f.a.B[:mark]
 		site := f.a.Bcond(condNE)
-		fr.coldEdges = append(fr.coldEdges, coldEdge{site: site, code: edge})
+		f.appendFrameColdEdge(fr, coldEdge{site: site, code: edge})
 		return nil
 	}
 	// Non-empty edge: the edge is already emitted at [mark:]; insert the skip guard

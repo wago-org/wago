@@ -330,7 +330,10 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 // align the loop top, and push the frame.
 func (f *fn) enterLoopFrame(resultTypes []machineType, res0 machineType, setLocals map[uint32]bool) {
 	rN := len(resultTypes)
-	fr := ctrlFrame{kind: cfLoop, resultN: rN, branchN: 0, elseSite: -1, res0: res0, resultTypes: resultTypes, loopSetLocals: setLocals}
+	fr := ctrlFrame{kind: cfLoop, resultN: rN, branchN: 0, elseSite: -1, res0: res0, resultTypes: resultTypes}
+	if setLocals != nil {
+		f.ensureCtrlMerge(&fr).loopSetLocals = setLocals
+	}
 	fr.height = f.depth()
 	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()...)
 	f.captureGCFrameShape(&fr)

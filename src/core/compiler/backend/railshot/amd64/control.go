@@ -55,18 +55,6 @@ type ctrlFrame struct {
 	baseTypes       []machineType
 	paramTypes      []machineType
 	resultTypes     []machineType
-	baseGCRoots     []bool
-	paramGCRoots    []bool
-	resultGCRoots   []bool
-	baseGCFacts     []shared.GCRefFact
-	paramGCFacts    []shared.GCRefFact
-	resultGCFacts   []shared.GCRefFact
-
-	// cfLoop only (P6.2 foundation): locals set anywhere in the loop body, and
-	// whether the body grows memory — from a scan-ahead at the loop header. A local
-	// base NOT in loopSetLocals is loop-invariant (a callee cannot touch a caller
-	// local), so its bounds check is hoistable. nil for non-loops / unreachable.
-	loopSetLocals map[uint32]bool
 
 	// Per-frame pinned-local merge agreement (convergeEdgeTo): branchState is the
 	// recorded state at this frame's branch target (loop top for loops, the end
@@ -89,15 +77,21 @@ func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
 	}
 }
 
-// ctrlFrameMerge contains local-state and GC-fact agreement needed only by
-// frames that actually merge pinned locals or reference facts. Keeping it in a
-// compact scratch sidecar removes four scanned slice headers from every
-// ordinary frame.
+// ctrlFrameMerge contains feature-specific state needed only by frames that
+// merge pinned locals, track GC roots/facts, or analyze loops. Keeping it in
+// compact scratch removes pointer-rich fields from ordinary frames.
 type ctrlFrameMerge struct {
 	branchState   []locState
 	entryState    []locState
 	branchGCFacts []shared.GCRefFact
 	entryGCFacts  []shared.GCRefFact
+	baseGCRoots   []bool
+	paramGCRoots  []bool
+	resultGCRoots []bool
+	baseGCFacts   []shared.GCRefFact
+	paramGCFacts  []shared.GCRefFact
+	resultGCFacts []shared.GCRefFact
+	loopSetLocals map[uint32]bool
 }
 
 const initialCtrlMergeCapacity = 16
@@ -225,6 +219,55 @@ func (f *fn) setFrameEntryGCFacts(fr *ctrlFrame, facts []shared.GCRefFact) {
 	}
 }
 
+func (f *fn) frameBaseGCRoots(fr *ctrlFrame) []bool {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.baseGCRoots
+	}
+	return nil
+}
+
+func (f *fn) frameParamGCRoots(fr *ctrlFrame) []bool {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.paramGCRoots
+	}
+	return nil
+}
+
+func (f *fn) frameResultGCRoots(fr *ctrlFrame) []bool {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.resultGCRoots
+	}
+	return nil
+}
+
+func (f *fn) frameBaseGCFacts(fr *ctrlFrame) []shared.GCRefFact {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.baseGCFacts
+	}
+	return nil
+}
+
+func (f *fn) frameParamGCFacts(fr *ctrlFrame) []shared.GCRefFact {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.paramGCFacts
+	}
+	return nil
+}
+
+func (f *fn) frameResultGCFacts(fr *ctrlFrame) []shared.GCRefFact {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.resultGCFacts
+	}
+	return nil
+}
+
+func (f *fn) frameLoopSetLocals(fr *ctrlFrame) map[uint32]bool {
+	if cold := f.ctrlMerge(fr); cold != nil {
+		return cold.loopSetLocals
+	}
+	return nil
+}
+
 func (f *fn) convergeFrameBranchState(fr *ctrlFrame) {
 	state := f.frameBranchState(fr)
 	f.convergeEdgeTo(&state)
@@ -340,20 +383,26 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 	if fr.height < 0 || fr.height+fr.paramN > len(roots) {
 		return
 	}
-	fr.baseGCRoots = gcRootFlags(roots[:fr.height])
-	fr.paramGCRoots = gcRootFlags(roots[fr.height : fr.height+fr.paramN])
+	baseRoots := gcRootFlags(roots[:fr.height])
+	paramRoots := gcRootFlags(roots[fr.height : fr.height+fr.paramN])
+	if baseRoots != nil || paramRoots != nil {
+		cold := f.ensureCtrlMerge(fr)
+		cold.baseGCRoots = baseRoots
+		cold.paramGCRoots = paramRoots
+	}
 	if !f.gcRefFactsEnabled() {
 		return
 	}
-	fr.baseGCFacts = make([]shared.GCRefFact, fr.height)
+	cold := f.ensureCtrlMerge(fr)
+	cold.baseGCFacts = make([]shared.GCRefFact, fr.height)
 	for i, root := range roots[:fr.height] {
 		fact := f.gcRefFact(root)
 		if fact.Freshness() == shared.GCFreshUnpublished {
 			fact = fact.WithFreshness(shared.GCPublished)
 		}
-		fr.baseGCFacts[i] = fact
+		cold.baseGCFacts[i] = fact
 	}
-	fr.paramGCFacts = make([]shared.GCRefFact, fr.paramN)
+	cold.paramGCFacts = make([]shared.GCRefFact, fr.paramN)
 	if fr.kind == cfLoop {
 		// opBlock replaces these slots with facts reconstructed from the declared
 		// loop parameter ValTypes. Never copy first-entry dynamic facts here.
@@ -364,7 +413,7 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 		if fact.Freshness() == shared.GCFreshUnpublished {
 			fact = fact.WithFreshness(shared.GCPublished)
 		}
-		fr.paramGCFacts[i] = fact
+		cold.paramGCFacts[i] = fact
 	}
 }
 
@@ -401,26 +450,28 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 		if root.kind != ekValue || !root.st.gcRoot {
 			continue
 		}
-		if len(fr.resultGCRoots) < n {
-			fr.resultGCRoots = make([]bool, n)
+		cold := f.ensureCtrlMerge(fr)
+		if len(cold.resultGCRoots) < n {
+			cold.resultGCRoots = make([]bool, n)
 		}
-		fr.resultGCRoots[i] = true
+		cold.resultGCRoots[i] = true
 	}
 	if !f.gcRefFactsEnabled() {
 		return
 	}
-	if len(fr.resultGCFacts) < n {
-		fr.resultGCFacts = make([]shared.GCRefFact, n)
+	cold := f.ensureCtrlMerge(fr)
+	if len(cold.resultGCFacts) < n {
+		cold.resultGCFacts = make([]shared.GCRefFact, n)
 	}
 	if !fr.has(ctrlResultGCFactsSet) {
 		for i, root := range resultRoots {
-			fr.resultGCFacts[i] = f.gcRefFact(root)
+			cold.resultGCFacts[i] = f.gcRefFact(root)
 		}
 		fr.set(ctrlResultGCFactsSet, true)
 		return
 	}
 	for i, root := range resultRoots {
-		fr.resultGCFacts[i] = shared.MergeGCRefFacts(fr.resultGCFacts[i], f.gcRefFact(root))
+		cold.resultGCFacts[i] = shared.MergeGCRefFacts(cold.resultGCFacts[i], f.gcRefFact(root))
 	}
 }
 
@@ -896,17 +947,23 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if f.opt(optLoopPrecheck) && f.memSizeReg != regNone && !f.inVersionedLoop {
 			cands, elidable, hasGrow, setLocals, scanOK := scanLoopHoistableWithClassifier(r, f.m, f.classifier)
 			valid = scanOK
-			fr.loopSetLocals = setLocals
+			if setLocals != nil {
+				f.ensureCtrlMerge(&fr).loopSetLocals = setLocals
+			}
 			if scanOK && len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
 				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands, setLocals) {
 					return nil
 				}
 			}
 		} else {
-			fr.loopSetLocals, _, valid = scanLoopBodyWithClassifier(r, f.m, f.classifier) // reader restored
+			setLocals, _, scanOK := scanLoopBodyWithClassifier(r, f.m, f.classifier) // reader restored
+			valid = scanOK
+			if setLocals != nil {
+				f.ensureCtrlMerge(&fr).loopSetLocals = setLocals
+			}
 		}
 		if valid {
-			f.invalidateLoopModifiedGCRefFacts(fr.loopSetLocals)
+			f.invalidateLoopModifiedGCRefFacts(f.frameLoopSetLocals(&fr))
 		} else {
 			// A failed prewalk cannot prove any local invariant. This should be
 			// unreachable after validation, but never trust partial scan state.
@@ -956,7 +1013,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			// Canonical slots separate the runtime value from fact storage. Install
 			// only declared parameter facts after the flush so a first-entry
 			// ref.null constant cannot have its zero payload overwritten by metadata.
-			copy(fr.paramGCFacts, staticParamFacts)
+			copy(f.frameParamGCFacts(&fr), staticParamFacts)
 			f.installLoopParameterGCRefFacts(pN, staticParamFacts)
 		} else {
 			f.flush()
@@ -1366,7 +1423,11 @@ func (f *fn) opElse() error {
 	f.a.PatchRel32(fr.elseSite, f.a.Len())
 	fr.elseSite = -1
 	fr.set(ctrlHasElse, true)
-	f.setDepthTypesWithGCInfo(f.frameDepthTypes(fr.baseTypes, fr.paramTypes), frameGCRootFlags(fr.baseGCRoots, fr.paramGCRoots), f.frameGCFacts(fr.baseGCFacts, fr.paramGCFacts))
+	f.setDepthTypesWithGCInfo(
+		f.frameDepthTypes(fr.baseTypes, fr.paramTypes),
+		frameGCRootFlags(f.frameBaseGCRoots(fr), f.frameParamGCRoots(fr)),
+		f.frameGCFacts(f.frameBaseGCFacts(fr), f.frameParamGCFacts(fr)),
+	)
 	// The else body is entered via the if's false edge: locals are exactly in the
 	// header-snapshot state (no code).
 	f.setLocalsState(f.frameEntryState(fr))
@@ -1381,6 +1442,12 @@ func (f *fn) opEnd() error {
 	entryState := f.frameEntryState(&fr)
 	branchGCFacts := f.frameBranchGCFacts(&fr)
 	entryGCFacts := f.frameEntryGCFacts(&fr)
+	baseGCRoots := f.frameBaseGCRoots(&fr)
+	paramGCRoots := f.frameParamGCRoots(&fr)
+	resultGCRoots := f.frameResultGCRoots(&fr)
+	baseGCFacts := f.frameBaseGCFacts(&fr)
+	paramGCFacts := f.frameParamGCFacts(&fr)
+	resultGCFacts := f.frameResultGCFacts(&fr)
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
 
@@ -1398,6 +1465,8 @@ func (f *fn) opEnd() error {
 	fallthroughReachable := !f.unreachable
 	if fallthroughReachable {
 		f.recordGCBranchResults(&fr, fr.resultN)
+		resultGCRoots = f.frameResultGCRoots(&fr)
+		resultGCFacts = f.frameResultGCFacts(&fr)
 		if fr.kind != cfLoop {
 			f.mergeFrameBranchGCFacts(&fr)
 			branchGCFacts = f.frameBranchGCFacts(&fr)
@@ -1415,19 +1484,21 @@ func (f *fn) opEnd() error {
 	}
 	// An if without else: the cond-false path reaches end with params == results.
 	if fr.kind == cfIf && !fr.has(ctrlHasElse) && !fr.has(ctrlEntryUnreachable) {
-		for i := 0; i < len(fr.paramGCRoots) && i < fr.resultN; i++ {
-			if len(fr.resultGCRoots) < fr.resultN {
-				fr.resultGCRoots = append(fr.resultGCRoots, make([]bool, fr.resultN-len(fr.resultGCRoots))...)
+		for i := 0; i < len(paramGCRoots) && i < fr.resultN; i++ {
+			if len(resultGCRoots) < fr.resultN {
+				resultGCRoots = append(resultGCRoots, make([]bool, fr.resultN-len(resultGCRoots))...)
+				f.ensureCtrlMerge(&fr).resultGCRoots = resultGCRoots
 			}
-			fr.resultGCRoots[i] = fr.resultGCRoots[i] || fr.paramGCRoots[i]
+			resultGCRoots[i] = resultGCRoots[i] || paramGCRoots[i]
 			if f.gcRefFactsEnabled() {
-				if len(fr.resultGCFacts) < fr.resultN {
-					fr.resultGCFacts = append(fr.resultGCFacts, make([]shared.GCRefFact, fr.resultN-len(fr.resultGCFacts))...)
+				if len(resultGCFacts) < fr.resultN {
+					resultGCFacts = append(resultGCFacts, make([]shared.GCRefFact, fr.resultN-len(resultGCFacts))...)
+					f.ensureCtrlMerge(&fr).resultGCFacts = resultGCFacts
 				}
 				if fr.has(ctrlResultGCFactsSet) {
-					fr.resultGCFacts[i] = shared.MergeGCRefFacts(fr.resultGCFacts[i], fr.paramGCFacts[i])
+					resultGCFacts[i] = shared.MergeGCRefFacts(resultGCFacts[i], paramGCFacts[i])
 				} else {
-					fr.resultGCFacts[i] = fr.paramGCFacts[i]
+					resultGCFacts[i] = paramGCFacts[i]
 				}
 			}
 		}
@@ -1486,21 +1557,21 @@ func (f *fn) opEnd() error {
 		if fr.has(ctrlRegMerge1) {
 			// Every reaching edge left the result in the merge register (int→mergeReg,
 			// float→mergeFReg) and the operands below in canonical slots [0, height).
-			f.setDepthTypesWithGCInfo(fr.baseTypes, fr.baseGCRoots, fr.baseGCFacts)
+			f.setDepthTypesWithGCInfo(fr.baseTypes, baseGCRoots, baseGCFacts)
 			var result *elem
 			if fr.res0.isFloat() {
 				result = f.pushFReg(mergeFReg, fr.res0)
 			} else {
 				result = f.pushReg(mergeReg, fr.res0)
 			}
-			if len(fr.resultGCRoots) != 0 {
-				result.st.gcRoot = fr.resultGCRoots[0]
+			if len(resultGCRoots) != 0 {
+				result.st.gcRoot = resultGCRoots[0]
 			}
-			if len(fr.resultGCFacts) != 0 {
-				putGCRefFact(&result.st, fr.resultGCFacts[0])
+			if len(resultGCFacts) != 0 {
+				putGCRefFact(&result.st, resultGCFacts[0])
 			}
 		} else {
-			f.setDepthTypesWithGCInfo(f.frameDepthTypes(fr.baseTypes, fr.resultTypes), frameGCRootFlags(fr.baseGCRoots, fr.resultGCRoots), f.frameGCFacts(fr.baseGCFacts, fr.resultGCFacts))
+			f.setDepthTypesWithGCInfo(f.frameDepthTypes(fr.baseTypes, fr.resultTypes), frameGCRootFlags(baseGCRoots, resultGCRoots), f.frameGCFacts(baseGCFacts, resultGCFacts))
 		}
 		f.markEHReferenceResults(&fr)
 	}
