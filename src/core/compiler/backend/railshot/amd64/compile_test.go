@@ -236,6 +236,10 @@ func TestParallelControlFrameScratchDoesNotMultiplyOutlier(t *testing.T) {
 	if stats.Compile.ControlScratchPeak >= oldReservation {
 		t.Fatalf("parallel control peak envelope = %d, want below former reservation %d", stats.Compile.ControlScratchPeak, oldReservation)
 	}
+	if stats.Compile.ControlScratchRetained != 0 || stats.Compile.ControlScratchDiscarded != stats.Compile.ControlScratchPeak {
+		t.Fatalf("finished worker control scratch retained/discarded = %d/%d, want 0/%d",
+			stats.Compile.ControlScratchRetained, stats.Compile.ControlScratchDiscarded, stats.Compile.ControlScratchPeak)
+	}
 	t.Logf("control scratch: reserved=%d peak-envelope=%d retained=%d former-reservation=%d",
 		stats.Compile.ControlScratchReserved, stats.Compile.ControlScratchPeak,
 		stats.Compile.ControlScratchRetained, oldReservation)

@@ -538,6 +538,7 @@ type scratch struct {
 	nodeScratchDiscarded    uint64
 	controlScratchReserved  int
 	controlScratchPeak      int
+	controlScratchDiscarded int
 	transient
 }
 
@@ -570,6 +571,18 @@ func (sc *scratch) noteControlScratch() {
 	if capacity := cap(sc.ctrl); capacity > sc.controlScratchPeak {
 		sc.controlScratchPeak = capacity
 	}
+}
+
+// finishControlWorker releases pointer-rich control frames before the parallel
+// join allocates the final module image. No later phase reuses worker scratch.
+func (sc *scratch) finishControlWorker() {
+	capacity := cap(sc.ctrl)
+	if capacity == 0 {
+		return
+	}
+	clear(sc.ctrl[:capacity])
+	sc.ctrl = nil
+	sc.controlScratchDiscarded += capacity
 }
 
 // maxScratchFunctionResults bounds owner-local signature lowering storage.
@@ -1352,6 +1365,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		go func(workerID int) {
 			defer wg.Done()
 			ws := &states[workerID]
+			defer ws.scratch.finishControlWorker()
 			for {
 				i := int(work.next.Add(1) - 1)
 				if i >= n {

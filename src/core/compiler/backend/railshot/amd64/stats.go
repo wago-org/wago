@@ -271,6 +271,7 @@ func (ms *ModuleStats) setNodeScratchStats(sc *scratch) {
 	ms.Compile.ControlScratchReserved = 0
 	ms.Compile.ControlScratchPeak = 0
 	ms.Compile.ControlScratchRetained = 0
+	ms.Compile.ControlScratchDiscarded = 0
 	ms.addNodeScratchStats(sc)
 }
 
@@ -287,6 +288,7 @@ func (ms *ModuleStats) addNodeScratchStats(sc *scratch) {
 	ms.Compile.ControlScratchReserved += uint64(sc.controlScratchReserved) * frameBytes
 	ms.Compile.ControlScratchPeak += uint64(sc.controlScratchPeak) * frameBytes
 	ms.Compile.ControlScratchRetained += uint64(cap(sc.ctrl)) * frameBytes
+	ms.Compile.ControlScratchDiscarded += uint64(sc.controlScratchDiscarded) * frameBytes
 }
 
 func (s *CodegenStats) setUnpinnedRetry() {
@@ -520,8 +522,9 @@ func (ms *ModuleStats) String() string {
 	fmt.Fprintf(&b, "compile-node-scratch: reserved=%dB peak-envelope=%dB retained=%dB discarded=%dB\n",
 		ms.Compile.NodeScratchReserved, ms.Compile.NodeScratchPeak,
 		ms.Compile.NodeScratchRetained, ms.Compile.NodeScratchDiscarded)
-	fmt.Fprintf(&b, "compile-control-scratch: reserved=%dB peak-envelope=%dB retained=%dB\n",
-		ms.Compile.ControlScratchReserved, ms.Compile.ControlScratchPeak, ms.Compile.ControlScratchRetained)
+	fmt.Fprintf(&b, "compile-control-scratch: reserved=%dB peak-envelope=%dB retained=%dB discarded=%dB\n",
+		ms.Compile.ControlScratchReserved, ms.Compile.ControlScratchPeak,
+		ms.Compile.ControlScratchRetained, ms.Compile.ControlScratchDiscarded)
 	fmt.Fprintf(&b, "native: total=%d functions=%d function-align=%d module-other=%d dead-reserved=%d\n",
 		ms.NativeSize.TotalBytes, ms.NativeSize.FunctionBytes, ms.NativeSize.FunctionAlignmentBytes,
 		ms.NativeSize.ModuleOtherBytes, ms.NativeSize.DeadReservationBytes())

@@ -42,7 +42,8 @@ type CompileResourceStats struct {
 	// ControlScratch fields use the same summed-worker envelope convention for
 	// pointer-rich control-frame backing. Unlike node chunks, control backing is
 	// currently retained until the module compile finishes.
-	ControlScratchReserved uint64
-	ControlScratchPeak     uint64
-	ControlScratchRetained uint64
+	ControlScratchReserved  uint64
+	ControlScratchPeak      uint64
+	ControlScratchRetained  uint64
+	ControlScratchDiscarded uint64
 }
