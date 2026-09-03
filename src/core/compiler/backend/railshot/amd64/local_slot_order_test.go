@@ -4,11 +4,34 @@ package amd64
 
 import (
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
+
+func TestLocalSlotPackedDomain(t *testing.T) {
+	refs := encamd64.LocalRefRecorder{Locals: 1}
+	f := fn{a: &encamd64.Asm{LocalRefs: &refs}, localSlot: []uint32{0x12340}}
+	if got, want := unsafe.Sizeof(f.localSlot[0]), uintptr(4); got != want {
+		t.Fatalf("local slot width = %d, want %d", got, want)
+	}
+	wantOff := int32(f.frameHeaderBytes() + 0x12340)
+	for range 255 {
+		if got := f.localAddr(0); got != wantOff {
+			t.Fatalf("local offset = %#x, want %#x", got, wantOff)
+		}
+		refs.Pending = false // stand in for the encoder consuming this mark.
+	}
+	if got := f.localRefCount(0); got != 255 || refs.Overflow {
+		t.Fatalf("reference count/overflow = %d/%v, want 255/false", got, refs.Overflow)
+	}
+	f.localAddr(0)
+	if !refs.Overflow || f.localRefCount(0) != 255 {
+		t.Fatalf("saturated reference count/overflow = %d/%v, want 255/true", f.localRefCount(0), refs.Overflow)
+	}
+}
 
 func localSlotOrderModule(t *testing.T) *wasm.Module {
 	// Locals 8..27 are equally hot. The eight lowest indexes take the available
@@ -102,7 +125,7 @@ func TestLocalSlotOrderSkipsGCFrameRootFunctions(t *testing.T) {
 		a:                  &encamd64.Asm{LocalRefs: &refs},
 		nLocals:            2,
 		localType:          []machineType{mtI64, mtI64},
-		localSlot:          []int{0, int(uint64(1)<<32 | 128)},
+		localSlot:          []uint32{0, uint32(1)<<localSlotRefShift | 128},
 		compactFrameHeader: true,
 		gcFrameRoots:       plan,
 		stats:              &CodegenStats{},
@@ -126,7 +149,7 @@ func TestLocalSlotOrderExcludesMultiSlotHomes(t *testing.T) {
 		a:                  &a,
 		nLocals:            2,
 		localType:          []machineType{mtV128, mtV128},
-		localSlot:          []int{0, int(uint64(1)<<32 | 128)},
+		localSlot:          []uint32{0, uint32(1)<<localSlotRefShift | 128},
 		compactFrameHeader: true,
 	}
 	if got := f.packLocalSlots(1); got != 0 {

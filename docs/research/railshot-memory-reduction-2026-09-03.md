@@ -217,11 +217,20 @@ its stored homes. A generated 4,000-local compile saves exactly 16,384 B/op
 (414,098 to 397,714, with 38 allocations unchanged); ordinary `many_funcs` and
 `json-as` save 32 and 120 B/op because their shorter arrays straddle only nearby
 allocator size classes. Five-sample stress timings overlap and matched corpus
-hashes are identical. AMD64 is not mechanically mirrored: its current word
-also packs a local-reference count in the high 32 bits, so a split sidecar must
-first prove a net memory benefit. Narrowing and flattening remaining relocations
-is still a hypothesis and should be rejected if checks add measurable compile
-time.
+hashes are identical.
+
+AMD64 now uses a target-specific but equally bounded packing rather than a
+second sidecar: accepted frame offsets occupy the low 24 bits of each `uint32`,
+and the compact finalizer's exact reference count occupies the high eight. The
+native stack-fence limit is roughly 256 KiB, versus a 16 MiB packed-offset
+domain. The finalizer stores at most 255 rewrite sites; a 256th reference marks
+the recorder inexact and disables reordering. A generated 4,000-local compile
+saves the same 16,384 B/op (494,696 to 478,312, with 42 allocations unchanged),
+while `many_funcs` and `json-as` save 32 and 120 B/op in both ordinary and
+compact-finalizer modes. Emulated timings overlap, focused slot-order execution
+passes, and matched corpus hashes are identical. Narrowing and flattening
+remaining relocations is still a hypothesis and should be rejected if checks
+add measurable compile time.
 
 ### 3. Easy repeated work exists today
 

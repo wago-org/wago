@@ -735,7 +735,7 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 		zeroFacts := targets.localZeroFacts(t)
 		for i, lt := range localTypes {
 			f.localType = append(f.localType, lt)
-			f.localSlot = append(f.localSlot, 8*f.nLocalSlots)
+			f.localSlot = append(f.localSlot, uint32(8*f.nLocalSlots))
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
 			if f.gcRefFactsEnabled() {

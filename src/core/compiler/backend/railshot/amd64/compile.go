@@ -244,7 +244,7 @@ type fn struct {
 	nParams             int
 	nLocals             int                // params + declared locals
 	localType           []machineType      // per-local machine type
-	localSlot           []int              // per-local byte offset within the local-frame area
+	localSlot           []uint32           // low 24 bits: byte offset; high 8 bits: bounded local-reference count
 	localGCRefFacts     []shared.GCRefFact // semantic facts for compact refs; no raw addresses
 	nextGCRefIdentity   uint32             // bounded constructor identity, zero means unavailable
 	gcOpcodeBarrier     bool               // current 0xfb opcode emits real barrier work
@@ -1053,17 +1053,29 @@ func (f *fn) prepareCompactGCFrameHeader(plan *shared.GCFrameRootPlan) bool {
 	return true
 }
 
+const (
+	// Accepted native frames are bounded below 256 KiB. Keep ample offset
+	// headroom while using the remaining byte for the finalizer's 255-site cap.
+	localSlotOffsetMask uint32 = 1<<24 - 1
+	localSlotRefShift          = 24
+)
+
 func (f *fn) localOff(i int) int32 {
-	return int32(f.frameHeaderBytes() + int(uint32(f.localSlot[i])))
+	return int32(f.frameHeaderBytes() + int(f.localSlot[i]&localSlotOffsetMask))
 }
 func (f *fn) localAddr(i int) int32 {
 	off := f.localOff(i)
 	if f.a.LocalRefs != nil {
-		slot := uint64(f.localSlot[i])
-		count := uint32(slot >> 32)
-		if count != ^uint32(0) {
+		slot := f.localSlot[i]
+		count := uint8(slot >> localSlotRefShift)
+		if count == ^uint8(0) {
+			// The finalizer records at most 255 sites. A further reference
+			// cannot participate in an exact rewrite, so conservatively
+			// disable local-slot packing for this function.
+			f.a.LocalRefs.Overflow = true
+		} else {
 			count++
-			f.localSlot[i] = int(uint64(count)<<32 | uint64(uint32(slot)))
+			f.localSlot[i] = uint32(count)<<localSlotRefShift | slot&localSlotOffsetMask
 		}
 		f.a.LocalRefs.Mark(uint32(i))
 	}
@@ -2595,7 +2607,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	recBase, recLength, _ := nativeGCRecGroup(m, m.FuncTypes[funcIdx].Index)
 	f.seedFinalGCParameterTypes(ft.Params, recBase, recLength)
 	if cap(f.localSlot) < nLocals {
-		f.localSlot = make([]int, nLocals)
+		f.localSlot = make([]uint32, nLocals)
 	} else {
 		f.localSlot = f.localSlot[:nLocals]
 	}
@@ -2620,13 +2632,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	localBytes := 0
 	for i, mt := range f.localType {
+		// Validation caps a function at 65,535 locals, so its pre-inline local
+		// area fits exactly in the packed offset. Synthetic locals are checked
+		// together below before code generation consumes any home.
 		if compactI32Frame && mt == mtI32 {
-			f.localSlot[i] = localBytes
+			f.localSlot[i] = uint32(localBytes)
 			localBytes += 4
 			continue
 		}
 		localBytes = (localBytes + 7) &^ 7
-		f.localSlot[i] = localBytes
+		f.localSlot[i] = uint32(localBytes)
 		localBytes += 8 * mt.stackSlots()
 	}
 	f.nLocalSlots = (localBytes + 7) / 8
@@ -2799,6 +2814,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// caller's own locals only). Extends the frame's local arrays with unpinned
 	// scratch; the splice at each call site binds/zeroes them.
 	f.reserveInlineLocals(inlinedCallees, inlineTargets)
+	if uint64(f.nLocalSlots)*8 > uint64(localSlotOffsetMask) {
+		return nil, nil, 0, fmt.Errorf("amd64: local frame %d bytes exceeds packed offset range %d", 8*f.nLocalSlots, localSlotOffsetMask)
+	}
 	if symbolicLocalSlotPackingPolicy(policy) && sc.localRefTailBound && !moduleEH && gcFrameRoots == nil &&
 		len(inlinedCallees) == 0 && sc.localRefs.Reset(f.nLocals, maxAMD64LocalRefSites) {
 		sc.asm.LocalRefs = &sc.localRefs
@@ -2909,9 +2927,9 @@ func (f *fn) packLocalSlots(siteBudget int) int {
 		if best < 0 {
 			continue
 		}
-		donorSlot, bestSlot := uint64(f.localSlot[donor]), uint64(f.localSlot[best])
-		f.localSlot[donor] = int(donorSlot&0xffffffff00000000 | bestSlot&0xffffffff)
-		f.localSlot[best] = int(bestSlot&0xffffffff00000000 | donorSlot&0xffffffff)
+		donorSlot, bestSlot := f.localSlot[donor], f.localSlot[best]
+		f.localSlot[donor] = donorSlot&^localSlotOffsetMask | bestSlot&localSlotOffsetMask
+		f.localSlot[best] = bestSlot&^localSlotOffsetMask | donorSlot&localSlotOffsetMask
 		siteBudget -= int(bestCount)
 		swaps++
 	}
@@ -2921,7 +2939,7 @@ func (f *fn) packLocalSlots(siteBudget int) int {
 	return swaps
 }
 
-func (f *fn) localRefCount(local int) uint32 { return uint32(uint64(f.localSlot[local]) >> 32) }
+func (f *fn) localRefCount(local int) uint32 { return f.localSlot[local] >> localSlotRefShift }
 
 // finalizeStats fills the per-function size counters from final compiler state
 // (no-op when collection is off). Per-event counters are incremented at their
