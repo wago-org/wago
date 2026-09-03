@@ -26,6 +26,7 @@ try {
       wasm,
     ]);
     compileReports.push(JSON.parse(await readFile(reportPath, "utf8")));
+    await writeReport();
   }
 
   for (const worker of options.runtimeWorkers) {
@@ -55,7 +56,15 @@ try {
     for (const line of runtimeText.split("\n")) {
       if (line.trim()) runtimeRows.push(JSON.parse(line));
     }
+    await writeReport();
   }
+  await writeReport();
+  console.log(`wrote ${options.out}: ${compileReports.length} modules, ${runtimeRows.length} external runtime samples`);
+} finally {
+  await rm(work, { recursive: true, force: true });
+}
+
+async function writeReport() {
   await writeFile(options.out, `${JSON.stringify({
     version: 1,
     commit: options.commit,
@@ -68,9 +77,6 @@ try {
     compile: compileReports,
     runtime: runtimeRows,
   }, null, 2)}\n`);
-  console.log(`wrote ${options.out}: ${compileReports.length} modules, ${runtimeRows.length} external runtime samples`);
-} finally {
-  await rm(work, { recursive: true, force: true });
 }
 
 function parseArgs(args) {
