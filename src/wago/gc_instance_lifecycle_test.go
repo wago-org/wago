@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -54,27 +55,71 @@ func TestRuntimeGCInstanceCloseReleasesHostThunk(t *testing.T) {
 	}
 }
 
+func funcrefCycleTableImport() []byte {
+	out := append(wasmtest.Name("link"), wasmtest.Name("state_table")...)
+	return append(out, byte(wasm.ExternTable), 0x70, 0x01, 0x04, 0x08)
+}
+
+func funcrefCycleMemoryImport() []byte {
+	out := append(wasmtest.Name("link"), wasmtest.Name("state_memory")...)
+	return append(out, byte(wasm.ExternMem), 0x01, 0x01, 0x02)
+}
+
+func funcrefCycleOwnerModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x04, 0x08})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x01, 0x01, 0x02})),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.I32, true, []byte{0x41, 0x00, 0x0b}))),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("state_table", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("state_memory", byte(wasm.ExternMem), 0),
+			wasmtest.ExportEntry("state_global_i32", byte(wasm.ExternGlobal), 0),
+		)),
+	)
+}
+
+func funcrefCycleRelayModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(2, wasmtest.Vec(
+			funcrefCycleTableImport(),
+			funcrefCycleMemoryImport(),
+			wasmtest.GlobalImportEntry("link", "state_global_i32", wasm.I32, true),
+		)),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("state_table", byte(wasm.ExternTable), 0),
+			wasmtest.ExportEntry("state_memory", byte(wasm.ExternMem), 0),
+			wasmtest.ExportEntry("state_global_i32", byte(wasm.ExternGlobal), 0),
+		)),
+	)
+}
+
+func funcrefCycleConsumerModule() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(2, wasmtest.Vec(
+			funcrefCycleTableImport(),
+			funcrefCycleMemoryImport(),
+			wasmtest.GlobalImportEntry("link", "state_global_i32", wasm.I32, true),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x01, 0x00})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))),
+	)
+}
+
 func TestReverseCloseReexportChainReleasesFuncrefCycle(t *testing.T) {
-	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)))
+	rt := NewRuntime()
 	defer rt.Close()
-	ownerModule := mustCompileWat(rt, t, `(module
-		(table (export "state_table") 4 8 funcref)
-		(memory (export "state_memory") 1 2)
-		(global (export "state_global_i32") (mut i32) (i32.const 0)))`)
-	relayModule := mustCompileWat(rt, t, `(module
-		(import "link" "state_table" (table 4 8 funcref))
-		(import "link" "state_memory" (memory 1 2))
-		(import "link" "state_global_i32" (global (mut i32)))
-		(export "state_table" (table 0))
-		(export "state_memory" (memory 0))
-		(export "state_global_i32" (global 0)))`)
-	consumerModule := mustCompileWat(rt, t, `(module
-		(type $unary (func (param i32) (result i32)))
-		(import "link" "state_table" (table 4 8 funcref))
-		(import "link" "state_memory" (memory 1 2))
-		(import "link" "state_global_i32" (global (mut i32)))
-		(func $identity (type $unary) (local.get 0))
-		(elem (i32.const 0) func $identity))`)
+	compile := func(binary []byte) *Module {
+		module, err := rt.Compile(binary)
+		if err != nil {
+			t.Fatalf("compile: %v", err)
+		}
+		return module
+	}
+	ownerModule := compile(funcrefCycleOwnerModule())
+	relayModule := compile(funcrefCycleRelayModule())
+	consumerModule := compile(funcrefCycleConsumerModule())
 	defer ownerModule.Close()
 	defer relayModule.Close()
 	defer consumerModule.Close()

@@ -27,6 +27,8 @@ release the table, which releases the consumer and completes both physical
 teardowns.
 
 `TestReverseCloseReexportChainReleasesFuncrefCycle` checks the reduced graph and
-all instance root counts. The exact generated graph passed 5,000 repeated
-worker requests after the fix. The complete 1,000,000-case differential run
-then passed without filling the range table.
+all instance root counts. Its modules use direct Core 2 binary fixtures so the
+test also builds under TinyGo and runs on targets without complete Core 3
+support. The exact generated graph passed 5,000 repeated worker requests after
+the fix. The complete 1,000,000-case differential run then passed without
+filling the range table.
