@@ -49,7 +49,7 @@ func weightedBranchPath(weight int64) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	nLocals            int
+	localCount         uint16
 	hasCall            bool   // any direct or indirect call
 	callsSelf          bool   // a direct call to the function's own index
 	hasLoop            bool   // structured loop (X12/X13 may be borrowed by loop promotion)
@@ -57,7 +57,7 @@ type funcHints struct {
 	inlineCallSites    uint16 // saturated ordinary direct call sites targeting this local function
 	directCallRefs     uint8  // saturated call + return_call references targeting this local function
 	hasInlineLoopCall  bool   // an ordinary direct call site is nested in a loop
-	memOps             int    // scalar/vector/bulk linear-memory instructions
+	memOps             uint32 // scalar/vector/bulk linear-memory instructions
 	usesBulkMem        bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
 	mutatesTable       bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
 	hasControlFlow     bool   // control opcode relevant to inline splice framing
@@ -85,6 +85,7 @@ type funcHints struct {
 // retained per function; all variable-length data lives in one module sidecar.
 type funcHintView struct {
 	funcHints
+	nLocals       int
 	localScore    []uint32
 	localLastGet  []uint32
 	sparseGlobals []shared.GlobalHint
@@ -97,12 +98,14 @@ type funcHintSidecar struct {
 }
 
 func (s funcHintSidecar) view(h funcHints) funcHintView {
+	nLocals := int(h.localCount)
 	localStart := int(h.localStart)
-	localEnd := localStart + h.nLocals
+	localEnd := localStart + nLocals
 	globalStart := int(h.globalStart)
 	globalEnd := globalStart + int(h.globalCount)
 	return funcHintView{
 		funcHints:     h,
+		nLocals:       nLocals,
 		localScore:    s.localScore[localStart:localEnd],
 		localLastGet:  s.localLastGet[localStart:localEnd],
 		sparseGlobals: s.sparseGlobals[globalStart:globalEnd],
@@ -143,12 +146,13 @@ func (h *funcHints) addStackArenaDiscount(n uint16) {
 func newFuncHints(nLocals, nGlobals int) funcHintView {
 	h := funcHintsWithStorage(make([]uint32, nLocals))
 	h.localLastGet = make([]uint32, nLocals)
+	h.localCount = uint16(nLocals)
 	h.nLocals = nLocals
 	return h
 }
 
 func funcHintsWithStorage(localScore []uint32) funcHintView {
-	return funcHintView{localScore: localScore}
+	return funcHintView{nLocals: len(localScore), localScore: localScore}
 }
 
 func finishGlobalHints(h funcHintView, accum *shared.GlobalHintAccumulator) funcHintView {

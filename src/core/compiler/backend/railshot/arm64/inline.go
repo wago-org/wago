@@ -555,7 +555,7 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 			continue
 		}
 		candidateCount++
-		add := allHints[i].nLocals + len(ft.Results)
+		add := int(allHints[i].localCount) + len(ft.Results)
 		if add < 0 || typeCount > int(^uint32(0))-add {
 			// Inlining is optional. Fall back to direct calls instead of retaining a
 			// sidecar whose compact 32-bit ranges cannot represent this module.
@@ -640,7 +640,7 @@ func inlineTargetFacts(m *wasm.Module, allHints []funcHints, i int, policy Codeg
 		touchesMem:     h.touchesMemory || h.usesBulkMem,
 		params:         len(ft.Params),
 		results:        len(ft.Results),
-		declaredLocals: h.nLocals - len(ft.Params),
+		declaredLocals: int(h.localCount) - len(ft.Params),
 		callSites:      int(h.inlineCallSites),
 		regABIIntOnly:  sigFitsRegABI(ft) && sigIsIntOnly(ft),
 	}

@@ -620,7 +620,7 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 			return defaultStackArenaCap
 		}
 		nodes := int(hints[i].stackArenaNodes)
-		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, nodes)
+		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), int(hints[i].localCount), nodes)
 		if fnCap > maxInitialStackArenaCap || fnCap < nodes {
 			return defaultStackArenaCap
 		}
@@ -1213,7 +1213,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	for i := range allHints {
 		ft, ok := m.LocalFuncType(i)
 		if ok {
-			calleePreservesPins[i] = preservesCallerPins(ft, allHints[i].nLocals, allHints[i])
+			calleePreservesPins[i] = preservesCallerPins(ft, int(allHints[i].localCount), allHints[i])
 		}
 	}
 	// AArch64 lowering is close to four native bytes per Wasm opcode plus
@@ -1695,7 +1695,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		if count > int(^uint(0)>>1)-totalLocals {
 			return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint locals overflow")
 		}
-		allHints[i].nLocals = count
+		allHints[i].localCount = uint16(count)
 		totalLocals += count
 	}
 	if uint64(totalLocals) > uint64(^uint32(0)) {
@@ -1714,11 +1714,12 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	localAt := 0
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
-		nLocals := allHints[i].nLocals
+		nLocals := int(allHints[i].localCount)
 		sparseAccum.Reset(nGlobals)
 		h := funcHintsWithStorage(localScores[localAt : localAt+nLocals])
 		h.localLastGet = localLastGets[localAt : localAt+nLocals]
 		h.nLocals = nLocals
+		h.localCount = uint16(nLocals)
 		h.localStart = uint32(localAt)
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs

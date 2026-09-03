@@ -41,7 +41,7 @@ func loopWeight(depth int) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	nLocals       int
+	localCount    uint16
 	hasCall       bool // any direct or indirect call
 	hasTailCall   bool // any return_call/return_call_indirect/return_call_ref
 	callsSelf     bool // a direct call to the function's own index
@@ -56,8 +56,8 @@ type funcHints struct {
 	// inlineCallSites packs a saturated 7-bit ordinary-call count plus a high
 	// bit recording any return_call reference to this local function.
 	inlineCallSites  uint8
-	gcResolverSites  int  // conservative direct scalar/length resolver site count
-	gcSharedResolver bool // module decision: shared island beats one-site inline crossover
+	gcResolverSites  uint32 // conservative direct scalar/length resolver site count
+	gcSharedResolver bool   // module decision: shared island beats one-site inline crossover
 
 	// Inline-candidacy signals, gathered in the same pre-scan so buildInlineTargets
 	// needs no second body walk. hasControlFlow matches scanInlineFactsBytes's set
@@ -103,6 +103,7 @@ const (
 // retained per function; all variable-length data lives in one module sidecar.
 type funcHintView struct {
 	funcHints
+	nLocals       int
 	localScore    []uint32
 	localLastGet  []uint32
 	sparseGlobals []shared.GlobalHint
@@ -115,17 +116,19 @@ type funcHintSidecar struct {
 }
 
 func (s funcHintSidecar) view(h funcHints) funcHintView {
+	nLocals := int(h.localCount)
 	localStart := int(h.localStart)
-	localEnd := localStart + h.nLocals
+	localEnd := localStart + nLocals
 	var localLastGet []uint32
 	if h.lastGetStartPlus1 != 0 {
 		lastGetStart := int(h.lastGetStartPlus1 - 1)
-		localLastGet = s.localLastGet[lastGetStart : lastGetStart+h.nLocals]
+		localLastGet = s.localLastGet[lastGetStart : lastGetStart+nLocals]
 	}
 	globalStart := int(h.globalStart)
 	globalEnd := globalStart + int(h.globalCount)
 	return funcHintView{
 		funcHints:     h,
+		nLocals:       nLocals,
 		localScore:    s.localScore[localStart:localEnd],
 		localLastGet:  localLastGet,
 		sparseGlobals: s.sparseGlobals[globalStart:globalEnd],
@@ -176,12 +179,13 @@ func (h *funcHints) noteControlDepth(depth int) {
 func newFuncHints(nLocals, nGlobals int) funcHintView {
 	h := funcHintsWithStorage(make([]uint32, nLocals))
 	h.localLastGet = make([]uint32, nLocals)
+	h.localCount = uint16(nLocals)
 	h.nLocals = nLocals
 	return h
 }
 
 func funcHintsWithStorage(localScore []uint32) funcHintView {
-	return funcHintView{localScore: localScore}
+	return funcHintView{nLocals: len(localScore), localScore: localScore}
 }
 
 func finishGlobalHints(h funcHintView, accum *shared.GlobalHintAccumulator) funcHintView {

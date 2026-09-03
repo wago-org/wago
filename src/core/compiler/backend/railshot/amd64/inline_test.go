@@ -312,8 +312,8 @@ func TestCompactInlinePrunesTransitiveOmissionAMD64(t *testing.T) {
 	policy.MaxCompactInlineBodyBytes = 12
 	hints := []funcHints{
 		{hasCall: true},
-		{nLocals: 1, hasCall: true, inlineCallSites: 1},
-		{nLocals: 1, inlineCallSites: 1},
+		{localCount: 1, hasCall: true, inlineCallSites: 1},
+		{localCount: 1, inlineCallSites: 1},
 	}
 	targets := buildInlineTargets(m, hints, policy)
 	if targets.target(1) != nil {
@@ -443,7 +443,7 @@ func TestInlineDeadBodyProofRejectsTailReferenceAMD64(t *testing.T) {
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 	)
 	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
-	base := []funcHints{{hasCall: true}, {nLocals: 1, inlineCallSites: 1}}
+	base := []funcHints{{hasCall: true}, {localCount: 1, inlineCallSites: 1}}
 	if targets := buildInlineTargets(m, base, policy); !targets.omitStandaloneBody(1, false) {
 		t.Fatal("single ordinary call did not prove standalone body dead")
 	}

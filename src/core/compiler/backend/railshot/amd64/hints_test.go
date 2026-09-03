@@ -12,7 +12,7 @@ import (
 )
 
 func TestFuncHintsSize(t *testing.T) {
-	const want = 64
+	const want = 56
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
 	}
@@ -658,8 +658,8 @@ func TestComputeModuleHintsMatchesGlobalScoreOracle(t *testing.T) {
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("func %d cached hints = %+v, want %+v", i, got, want)
 		}
-		if allHints[i].nLocals != wantLocals {
-			t.Fatalf("func %d nLocals = %d, want %d", i, allHints[i].nLocals, wantLocals)
+		if allHints[i].localCount != uint16(wantLocals) {
+			t.Fatalf("func %d localCount = %d, want %d", i, allHints[i].localCount, wantLocals)
 		}
 	}
 }

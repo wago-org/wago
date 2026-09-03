@@ -770,7 +770,7 @@ func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 			return defaultStackArenaCap
 		}
 		nodes := int(hints[i].stackArenaNodes)
-		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, nodes)
+		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), int(hints[i].localCount), nodes)
 		if fnCap > maxInitialStackArenaCap || fnCap < nodes {
 			return defaultStackArenaCap
 		}
@@ -1341,7 +1341,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	immutableTables := computeImmutableTableHints(m, allHints, policy)
 	resolverSites := 0
 	for i := range allHints {
-		resolverSites += allHints[i].gcResolverSites
+		resolverSites += int(allHints[i].gcResolverSites)
 	}
 	// A one-entry address certificate can collapse a single function's repeated
 	// candidate sites to one real resolution. Compile that narrow shape inline
@@ -2093,7 +2093,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		if count > int(^uint(0)>>1)-totalLocals {
 			return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint locals overflow")
 		}
-		allHints[i].nLocals = count
+		allHints[i].localCount = uint16(count)
 		totalLocals += count
 		if intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), count, moduleEH) {
 			if count > int(^uint(0)>>1)-intervalLocals {
@@ -2122,10 +2122,11 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 	intervalAt := 0
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
-		nLocals := allHints[i].nLocals
+		nLocals := int(allHints[i].localCount)
 		sparseAccum.Reset(nGlobals)
 		h := funcHintsWithStorage(localScores[localAt : localAt+nLocals])
 		h.nLocals = nLocals
+		h.localCount = uint16(nLocals)
 		h.localStart = uint32(localAt)
 		if intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), nLocals, moduleEH) {
 			h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
