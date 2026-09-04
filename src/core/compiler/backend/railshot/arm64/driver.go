@@ -709,12 +709,12 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 		_ = r.JumpTo(save)
 		return false, nil
 	}
-	b := f.s.prev(baseOfValentBlock(cond))
+	b := f.s.prev(f.s.baseOfValentBlock(cond))
 	if b == f.s.head {
 		_ = r.JumpTo(save)
 		return false, nil
 	}
-	a := f.s.prev(baseOfValentBlock(b))
+	a := f.s.prev(f.s.baseOfValentBlock(b))
 	if a == f.s.head {
 		_ = r.JumpTo(save)
 		return false, nil
@@ -730,7 +730,7 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 	}
 	// Refs below the select still require x's old value; refs in its three
 	// operand blocks are consumed before the final CSEL overwrites dest.
-	f.realizeLocalRefs(x, baseOfValentBlock(a))
+	f.realizeLocalRefs(x, f.s.baseOfValentBlock(a))
 	w := at.is64() || bt.is64()
 	if isFusableCompare(cond) {
 		aReg := f.materialize(a)
@@ -902,7 +902,7 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 		}
 		return false, nil
 	}
-	left := f.s.prev(baseOfValentBlock(right))
+	left := f.s.prev(f.s.baseOfValentBlock(right))
 	f.realizeLocalRefs(x, left)
 	f.fbinInto(pr, vop, 0, f64)
 	f.markLocalDirty(x)
@@ -948,7 +948,7 @@ func (f *fn) tryFminmaxLocalSet(r *wasm.Reader, f64, isMax bool) (bool, error) {
 		}
 		return false, nil
 	}
-	left := f.s.prev(baseOfValentBlock(right))
+	left := f.s.prev(f.s.baseOfValentBlock(right))
 	f.realizeLocalRefs(x, left)
 	f.fminmaxInto(pr, f64, isMax)
 	f.markLocalDirty(x)
@@ -1050,11 +1050,11 @@ func mtI32OrWide(wide bool) machineType {
 // not both integer (floats/v128 have no CSEL here) or the block shape is
 // unexpected, so the caller falls back to the materialized-boolean path.
 func (f *fn) trySelectOnFlags(cond *elem) bool {
-	bRoot := f.s.prev(baseOfValentBlock(cond))
+	bRoot := f.s.prev(f.s.baseOfValentBlock(cond))
 	if bRoot == f.s.head {
 		return false
 	}
-	aRoot := f.s.prev(baseOfValentBlock(bRoot))
+	aRoot := f.s.prev(f.s.baseOfValentBlock(bRoot))
 	if aRoot == f.s.head {
 		return false
 	}
@@ -1110,7 +1110,7 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 			// memBorrow covers an in-place pinned address; memAliasLocal also covers
 			// the owned zero-extension copy used for wasm i32 addresses.
 			f.materializeByType(e)
-		case e.kind == ekDeferred && subtreeRefsLocal(e, x):
+		case e.kind == ekDeferred && subtreeRefsLocal(f.s, e, x):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -1118,7 +1118,7 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 }
 
 // subtreeRefsLocal reports whether the valent block rooted at e reads local x.
-func subtreeRefsLocal(e *elem, x int) bool {
+func subtreeRefsLocal(s *stack, e *elem, x int) bool {
 	if e == nil {
 		return false
 	}
@@ -1126,7 +1126,7 @@ func subtreeRefsLocal(e *elem, x int) bool {
 		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x)
 	}
 	if e.kind == ekDeferred {
-		return subtreeRefsLocal(e.arg0, x) || subtreeRefsLocal(e.arg1, x)
+		return subtreeRefsLocal(s, s.arg0(e), x) || subtreeRefsLocal(s, s.arg1(e), x)
 	}
 	return false
 }
@@ -1153,7 +1153,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		binarySink := (isBinALU(e.op) || isShift(e.op)) && (!tee || f.opt(optTeeSink))
 		unarySink := (isUnary(e.op) || isConvert(e.op)) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
 		if binarySink || unarySink {
-			skipFrom = baseOfValentBlock(e)
+			skipFrom = f.s.baseOfValentBlock(e)
 		}
 	}
 	f.realizeLocalRefs(x, skipFrom)

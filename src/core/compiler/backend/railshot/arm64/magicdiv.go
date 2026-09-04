@@ -32,7 +32,7 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	// orthogonal, so no register needs to be avoided here.
 	res := f.allocReg(maskOf())
 	f.pinned = f.pinned.add(res)
-	f.condenseInto(node.arg0, res) // res = n (dividend)
+	f.condenseInto(f.s.arg0(node), res) // res = n (dividend)
 
 	if signed {
 		f.divConstSigned(res, c, w, wantRem)

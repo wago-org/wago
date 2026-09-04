@@ -987,7 +987,7 @@ func (f *fn) realizeInlineRange(lo, hi int) {
 			f.materializeByType(e)
 		case e.kind == ekValue && e.st.kind == stMemRef && (inRange(e.st.memBorrow()) || inRange(e.st.memAliasLocal())):
 			f.materializeByType(e)
-		case e.kind == ekDeferred && subtreeRefsLocalRange(e, lo, hi):
+		case e.kind == ekDeferred && subtreeRefsLocalRange(f.s, e, lo, hi):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -996,7 +996,7 @@ func (f *fn) realizeInlineRange(lo, hi int) {
 
 // subtreeRefsLocalRange reports whether the valent block rooted at e reads any
 // local in [lo, hi).
-func subtreeRefsLocalRange(e *elem, lo, hi int) bool {
+func subtreeRefsLocalRange(s *stack, e *elem, lo, hi int) bool {
 	if e == nil {
 		return false
 	}
@@ -1004,7 +1004,7 @@ func subtreeRefsLocalRange(e *elem, lo, hi int) bool {
 		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.index() >= lo && e.st.index() < hi
 	}
 	if e.kind == ekDeferred {
-		return subtreeRefsLocalRange(e.arg0, lo, hi) || subtreeRefsLocalRange(e.arg1, lo, hi)
+		return subtreeRefsLocalRange(s, s.arg0(e), lo, hi) || subtreeRefsLocalRange(s, s.arg1(e), lo, hi)
 	}
 	return false
 }

@@ -24,17 +24,20 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 	if !swarMaskTestEnabled || node == nil || node.op != opEqz {
 		return 0, false
 	}
-	inner := node.arg0
-	if inner == nil || inner.kind != ekDeferred || inner.op != opAnd ||
-		inner.arg1 == nil || inner.arg1.kind != ekValue || inner.arg1.st.kind != stConst ||
-		inner.arg1.st.cval == 0 {
+	inner := f.s.arg0(node)
+	if inner == nil || inner.kind != ekDeferred || inner.op != opAnd {
+		return 0, false
+	}
+	innerRight := f.s.arg1(inner)
+	if innerRight == nil || innerRight.kind != ekValue || innerRight.st.kind != stConst ||
+		innerRight.st.cval == 0 {
 		return 0, false
 	}
 
-	x, owned := f.materializeRead(inner.arg0)
+	x, owned := f.materializeRead(f.s.arg0(inner))
 	f.pinned = f.pinned.add(x)
 	wide := inner.typ.is64()
-	c := uint64(inner.arg1.st.cval)
+	c := uint64(innerRight.st.cval)
 	testOff := f.a.Len()
 	emitted := false
 	if wide {
@@ -68,9 +71,9 @@ func (f *fn) flushBelow(node *elem) int {
 	f.stats.addFlushBelow()
 	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
-	base := baseOfValentBlock(node)
+	base := f.s.baseOfValentBlock(node)
 	var below []*elem
-	for cur := f.s.prev(base); cur != f.s.head; cur = f.s.prev(baseOfValentBlock(cur)) {
+	for cur := f.s.prev(base); cur != f.s.head; cur = f.s.prev(f.s.baseOfValentBlock(cur)) {
 		below = append(below, cur)
 	}
 	for i, j := 0, len(below)-1; i < j; i, j = i+1, j-1 {
@@ -141,8 +144,8 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	// the stFlags kill switch (WAGO_NO_STFLAGS) as the A/B oracle.
 	invert := false
 	if f.opt(optSTFlags) {
-		for node.op == opEqz && isFusableCompare(node.arg0) {
-			inner := node.arg0
+		for node.op == opEqz && isFusableCompare(f.s.arg0(node)) {
+			inner := f.s.arg0(node)
 			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
 			f.stats.peep("eqz-fold")
 			node = inner
@@ -166,7 +169,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		// CMP #0 does not write its operand, so a register-resident value (a pinned
 		// local — e.g. a loop counter — or an owned temp) is tested in place with no
 		// copy, mirroring the relational path below.
-		a := node.arg0
+		a := f.s.arg0(node)
 		var L Reg
 		ownedL := false
 		switch {
@@ -195,7 +198,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	cc := applyInvert(condOf(node.op))
 	// CMP does not write its left operand, so a register-resident left (an owned
 	// temp or a pinned local) can be compared in place — no copy needed.
-	left := node.arg0
+	left := f.s.arg0(node)
 	var L Reg
 	ownedL := false
 	switch {
@@ -207,7 +210,7 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		L, ownedL = f.materialize(left), true
 	}
 	f.pinned = f.pinned.add(L)
-	right := node.arg1
+	right := f.s.arg1(node)
 	if right.isDeferred() {
 		// condense rewrites the existing operand node in place; keep that owner
 		// instead of allocating a duplicate register-value node.
@@ -270,10 +273,13 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 // CBZ/CBNZ directly without materializing NZCV. Deferred arithmetic/mask trees
 // stay on condenseToFlags so their existing fused covers remain authoritative.
 func (f *fn) condenseSimpleEqzOperand(node *elem) (reg Reg, owned, wide, ok bool) {
-	if node == nil || node.op != opEqz || node.arg0 == nil || node.arg0.kind != ekValue {
+	if node == nil || node.op != opEqz {
 		return 0, false, false, false
 	}
-	a := node.arg0
+	a := f.s.arg0(node)
+	if a == nil || a.kind != ekValue {
+		return 0, false, false, false
+	}
 	switch {
 	case a.st.kind == stLocalReg || a.st.kind == stGlobReg:
 		reg = a.st.reg

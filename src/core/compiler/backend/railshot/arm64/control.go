@@ -523,7 +523,7 @@ func typesOfVals(vals []wasm.ValType) []machineType {
 // depth returns the number of logical operands (valent-block roots) on the stack.
 func (f *fn) depth() int {
 	n := 0
-	for cur := f.s.prev(f.s.head); cur != f.s.head; cur = f.s.prev(baseOfValentBlock(cur)) {
+	for cur := f.s.prev(f.s.head); cur != f.s.head; cur = f.s.prev(f.s.baseOfValentBlock(cur)) {
 		n++
 	}
 	return n
@@ -533,7 +533,7 @@ func (f *fn) depth() int {
 // The returned scratch slice is valid only until the next helper using f.tmpRoots.
 func (f *fn) rootsBottomToTop() []*elem {
 	rs := f.tmpRoots[:0]
-	for cur := f.s.prev(f.s.head); cur != f.s.head; cur = f.s.prev(baseOfValentBlock(cur)) {
+	for cur := f.s.prev(f.s.head); cur != f.s.head; cur = f.s.prev(f.s.baseOfValentBlock(cur)) {
 		rs = append(rs, cur)
 	}
 	for i, j := 0, len(rs)-1; i < j; i, j = i+1, j-1 {
@@ -1336,7 +1336,7 @@ func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
 	if cond == nil {
 		return false, fmt.Errorf("arm64: if without condition")
 	}
-	f.realizeLocalRefs(x, baseOfValentBlock(cond))
+	f.realizeLocalRefs(x, f.s.baseOfValentBlock(cond))
 	creg, cOwned := f.materializeRead(f.popValue())
 	var toElse int
 	if f.opt(optZeroBranch) {

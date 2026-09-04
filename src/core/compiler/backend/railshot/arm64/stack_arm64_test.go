@@ -170,7 +170,7 @@ func TestStackFinishFunctionRetainsBoundedReusableOverflowArm64(t *testing.T) {
 			t.Fatalf("discarded chunk %d still has a slice header", i)
 		}
 	}
-	if stale := s.chunks[0][:cap(s.chunks[0])][1]; stale.prev != nilNodeID || stale.next != nilNodeID || stale.arg0 != nil || stale.arg1 != nil {
+	if stale := s.chunks[0][:cap(s.chunks[0])][1]; stale.prev != nilNodeID || stale.next != nilNodeID || stale.arg0 != nilNodeID || stale.arg1 != nilNodeID {
 		t.Fatal("retained backing still points at prior-function nodes")
 	}
 }

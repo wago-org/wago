@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"reflect"
 	"testing"
 	"unsafe"
 
@@ -13,7 +14,7 @@ func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
 	if got, want := unsafe.Sizeof(storage{}), uintptr(24); got != want {
 		t.Fatalf("storage size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(elem{}), uintptr(56); got != want {
+	if got, want := unsafe.Sizeof(elem{}), uintptr(48); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(stack{}), uintptr(72); got != want {
@@ -33,6 +34,28 @@ func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
 	}
 	if got, want := unsafe.Sizeof(finalizerFragment{}), uintptr(12); got != want {
 		t.Fatalf("finalizer fragment size = %d, want %d", got, want)
+	}
+}
+
+func TestOperandNodeBackingIsPointerFreeArm64(t *testing.T) {
+	var visit func(reflect.Type) bool
+	visit = func(typ reflect.Type) bool {
+		switch typ.Kind() {
+		case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func, reflect.Interface, reflect.String, reflect.UnsafePointer:
+			return true
+		case reflect.Array:
+			return visit(typ.Elem())
+		case reflect.Struct:
+			for i := 0; i < typ.NumField(); i++ {
+				if visit(typ.Field(i).Type) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if visit(reflect.TypeFor[elem]()) {
+		t.Fatal("operand node contains a Go-scanned pointer field")
 	}
 }
 

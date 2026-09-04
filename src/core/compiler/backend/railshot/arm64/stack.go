@@ -176,7 +176,7 @@ type elem struct {
 	// the right/second. This is the explicit-child form of WARP's implicit
 	// sibling-over-the-physical-stack layout — architecturally equivalent (still a
 	// deferred tree condensed by the same allocator), simpler for nesting.
-	arg0, arg1 *elem
+	arg0, arg1 nodeID
 
 	// Deferred operation payload.
 	op   wOp
@@ -402,6 +402,8 @@ func (s *stack) node(id nodeID) *elem {
 
 func (s *stack) prev(e *elem) *elem { return s.node(e.prev) }
 func (s *stack) next(e *elem) *elem { return s.node(e.next) }
+func (s *stack) arg0(e *elem) *elem { return s.node(e.arg0) }
+func (s *stack) arg1(e *elem) *elem { return s.node(e.arg1) }
 
 // alloc returns a stable ID and fresh zeroed node from the arena.
 func (s *stack) alloc() (nodeID, *elem) {
@@ -426,7 +428,8 @@ func (s *stack) alloc() (nodeID, *elem) {
 		panic("arm64: operand arena exceeds compact chunk domain")
 	}
 	slot := len(*chunk) - 1
-	return nodeID(uint32(s.cur)<<16 | uint32(slot+1)), &(*chunk)[slot]
+	id := nodeID(uint32(s.cur)<<16 | uint32(slot+1))
+	return id, &(*chunk)[slot]
 }
 
 // push appends e as the new top of the stack and returns it.
@@ -465,10 +468,10 @@ func (s *stack) erase(e *elem) {
 // baseOfValentBlock walks the left spine of the valent block rooted at `root`
 // down to its deepest leaf — the physical bottom of the block. Mirrors WARP's
 // findBaseOfValentBlock.
-func baseOfValentBlock(root *elem) *elem {
+func (s *stack) baseOfValentBlock(root *elem) *elem {
 	top := root
 	for top.isDeferred() {
-		top = top.arg0
+		top = s.arg0(top)
 	}
 	return top
 }
@@ -477,8 +480,10 @@ func baseOfValentBlock(root *elem) *elem {
 // the right operand is the current top block, the left is the block below it. No
 // machine code is emitted; the op condenses later when a sink forces it.
 func (f *fn) pushBinOp(op wOp, typ machineType) {
-	right := f.s.back()
-	left := f.s.prev(baseOfValentBlock(right))
+	rightID := f.s.head.prev
+	right := f.s.node(rightID)
+	leftID := f.s.baseOfValentBlock(right).prev
+	left := f.s.node(leftID)
 	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
 	if right.kind == ekValue && right.st.kind == stConst &&
 		left.kind == ekValue && left.st.kind == stConst {
@@ -530,7 +535,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	if f.opt(optValueFacts) {
 		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
-	node.arg0, node.arg1 = left, right
+	node.arg0, node.arg1 = leftID, rightID
 	node.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
 	f.s.push(id, node)
 }
@@ -680,7 +685,8 @@ func log2u(v uint64) int {
 // popcnt/eqz). typ carries the operand width; compare-style results become i32
 // when condensed.
 func (f *fn) pushUnOp(op wOp, typ machineType) {
-	operand := f.s.back()
+	operandID := f.s.head.prev
+	operand := f.s.node(operandID)
 	// Constant-fold clz/ctz/popcnt/eqz and the width conversions over a constant.
 	if operand.kind == ekValue && operand.st.kind == stConst {
 		if v, rtyp, ok := foldUnaryConst(op, operand.st.cval, typ); ok {
@@ -698,7 +704,7 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	if f.opt(optValueFacts) {
 		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
-	node.arg0 = operand
+	node.arg0 = operandID
 	node.deferDepth = 1 + deferDepthOf(operand)
 	f.s.push(id, node)
 }
