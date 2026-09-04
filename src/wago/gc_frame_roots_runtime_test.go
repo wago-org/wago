@@ -146,15 +146,15 @@ func TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall(t *testing.T) {
 		LiveCallLocalMasks: []uint64{1},
 		LocalIndexes:       []uint32{0},
 		LocalOffsets:       []uint32{16},
-		Safepoints: []shared.GCFrameSafepointPlan{{
-			Offsets: []uint32{16},
-		}},
-		LiveLocalMasks: []uint64{1},
+		LiveLocalMasks:     []uint64{1},
 		Callsites: []shared.GCFrameCallsitePlan{
 			{ReturnOffset: 4, Offsets: []uint32{16}},
 			{ReturnOffset: 8, Offsets: []uint32{16}},
 			{ReturnOffset: 12, StackAdjust: 64, Offsets: []uint32{16}},
 		},
+	}
+	if !plan.AppendSafepoint([]uint32{16}) {
+		t.Fatal("failed to append safepoint")
 	}
 	if !validGCModuleFrameRootPlan(&shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{plan}}) {
 		t.Fatal("one logical call with three native return paths was rejected")
@@ -163,14 +163,17 @@ func TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall(t *testing.T) {
 
 func TestGCModuleFrameRootPlanDerivesDenseSafepointIDs(t *testing.T) {
 	plan := func(base uint32) *shared.GCFrameRootPlan {
-		return &shared.GCFrameRootPlan{
+		plan := &shared.GCFrameRootPlan{
 			Candidate:      true,
 			Exact:          true,
 			FrameBytes:     8,
 			SafepointBase:  base,
 			LiveLocalMasks: []uint64{0},
-			Safepoints:     []shared.GCFrameSafepointPlan{{}},
 		}
+		if !plan.AppendSafepoint(nil) {
+			t.Fatal("failed to append safepoint")
+		}
+		return plan
 	}
 	if !validGCModuleFrameRootPlan(&shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{plan(shared.GCSafepointIDMax - 1)}}) {
 		t.Fatal("maximum derived safepoint ID was rejected")

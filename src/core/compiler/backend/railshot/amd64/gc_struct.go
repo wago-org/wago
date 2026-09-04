@@ -740,7 +740,7 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 
 func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 	plan := f.gcFrameRoots
-	id := plan.SafepointBase + uint32(len(plan.Safepoints)+1)
+	id := plan.SafepointBase + uint32(plan.SafepointCount()+1)
 	if id == 0 || id > shared.GCSafepointIDMax {
 		plan.Exact = false
 		return 0
@@ -750,15 +750,16 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		plan.Exact = false
 		return id
 	}
-	siteIndex := len(plan.Safepoints)
+	siteIndex := plan.SafepointCount()
 	if siteIndex >= len(plan.LiveLocalMasks) {
 		plan.Exact = false
 		return id
 	}
-	offsets := make([]uint32, 0, len(plan.LocalOffsets)+len(plan.FixedOffsets))
+	builder := plan.BeginSafepoint()
 	if !plan.VisitLiveLocals(siteIndex, false, func(root int) {
-		offsets = append(offsets, plan.LocalOffsets[root])
+		builder.AppendOffset(plan.LocalOffsets[root])
 	}) {
+		builder.Abort()
 		plan.Exact = false
 		return id
 	}
@@ -768,16 +769,29 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		if i < hidden && root.kind == ekValue && root.st.hasGCRoot() {
 			off := f.spillOff(slot)
 			if off < 0 {
+				builder.Abort()
 				plan.Exact = false
 				return id
 			}
-			offsets = append(offsets, uint32(off))
+			builder.AppendOffset(uint32(off))
 		}
 		slot += rootMachineType(root).stackSlots()
 	}
-	offsets = append(offsets, plan.FixedOffsets...)
+	for _, off := range plan.FixedOffsets {
+		builder.AppendOffset(off)
+	}
+	offsets, ok := builder.Offsets()
+	if !ok {
+		builder.Abort()
+		plan.Exact = false
+		return id
+	}
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{Offsets: offsets})
+	if !builder.Commit() {
+		builder.Abort()
+		plan.Exact = false
+		return id
+	}
 	f.stats.addGCRootMapBytes(8 + len(offsets)*4)
 	return id
 }

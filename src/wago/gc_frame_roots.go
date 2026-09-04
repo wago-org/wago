@@ -224,10 +224,10 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 		if plan == nil {
 			continue // proven non-collecting function; no active-frame map is needed
 		}
-		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || len(plan.LiveLocalMasks) != len(plan.Safepoints) || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > shared.GCFrameTrackedLocalLimit {
+		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || len(plan.LiveLocalMasks) != plan.SafepointCount() || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > shared.GCFrameTrackedLocalLimit {
 			return false
 		}
-		active := len(plan.Safepoints) != 0 || len(plan.Callsites) != 0
+		active := plan.SafepointCount() != 0 || len(plan.Callsites) != 0
 		if active && plan.FrameBytes < 8 {
 			return false
 		}
@@ -243,14 +243,16 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 			previousReturn = callsite.ReturnOffset
 			totalCallsites++
 		}
-		for i := range plan.Safepoints {
-			safepoint := &plan.Safepoints[i]
+		if !plan.VisitSafepoints(func(i int, offsets []uint32) bool {
 			id64 := uint64(plan.SafepointBase) + uint64(i) + 1
-			if id64 == 0 || id64 > uint64(shared.GCSafepointIDMax) || (totalSafepoints != 0 && uint32(id64) <= previousID) || !validGCFrameOffsets(safepoint.Offsets, plan.FrameBytes) {
+			if id64 == 0 || id64 > uint64(shared.GCSafepointIDMax) || (totalSafepoints != 0 && uint32(id64) <= previousID) || !validGCFrameOffsets(offsets, plan.FrameBytes) {
 				return false
 			}
 			previousID = uint32(id64)
 			totalSafepoints++
+			return true
+		}) {
+			return false
 		}
 	}
 	return totalSafepoints != 0 || totalCallsites != 0

@@ -46,14 +46,6 @@ func DecodeGCDispatch(payload uint32) (helper, safepoint uint32) {
 	return payload & GCHelperIDMask, payload >> GCSafepointIDShift
 }
 
-// GCFrameSafepointPlan names the direct mutable native slots visible at one
-// allocating helper transition. Its ID is dense and derives from the owning
-// function's SafepointBase plus its slice index. Offsets are relative to
-// post-prologue RSP and include admitted locals followed by operand spill slots.
-type GCFrameSafepointPlan struct {
-	Offsets []uint32
-}
-
 // GCFrameCallsitePlan names caller-frame roots at the native return PC after a
 // direct self-call. ReturnOffset is function-relative and stable in serialized
 // artifacts.
@@ -78,12 +70,111 @@ type GCFrameRootPlan struct {
 	LiveLocalMasks     []uint64 // low word per reachable allocating site
 	LiveCallLocalMasks []uint64 // low word per reachable native call
 	LiveMaskExtraWords []uint64 // flat remaining words: allocations, then calls
-	Safepoints         []GCFrameSafepointPlan
-	Callsites          []GCFrameCallsitePlan
+	// SafepointData stores each allocating site's root offsets as a count word
+	// followed by that site's offsets. One pointer-free arena replaces one slice
+	// header and backing allocation per site; safepointCount is the checked number
+	// of records in the stream.
+	SafepointData  []uint32
+	safepointCount uint32
+	Callsites      []GCFrameCallsitePlan
 	// AdapterReturnOffset is relative to the function's public Entry. It may
 	// point beyond the function-owned bytes into a module-level adapter island.
 	AdapterReturnOffset uint32
 	SafepointBase       uint32
+}
+
+// ResetSafepoints retains the flat arena for another compile attempt.
+func (p *GCFrameRootPlan) ResetSafepoints() {
+	p.SafepointData = p.SafepointData[:0]
+	p.safepointCount = 0
+}
+
+// GCFrameSafepointBuilder owns one incomplete record in a root plan. Its
+// unexported state prevents callers from committing or aborting an arbitrary
+// prefix of the flat stream.
+type GCFrameSafepointBuilder struct {
+	plan  *GCFrameRootPlan
+	start int
+}
+
+// BeginSafepoint starts one offset record. Abort must be called if the producer
+// cannot finish it.
+func (p *GCFrameRootPlan) BeginSafepoint() GCFrameSafepointBuilder {
+	b := GCFrameSafepointBuilder{plan: p, start: len(p.SafepointData)}
+	p.SafepointData = append(p.SafepointData, 0)
+	return b
+}
+
+func (b *GCFrameSafepointBuilder) AppendOffset(offset uint32) {
+	if b.plan != nil {
+		b.plan.SafepointData = append(b.plan.SafepointData, offset)
+	}
+}
+
+func (b *GCFrameSafepointBuilder) Offsets() ([]uint32, bool) {
+	if b.plan == nil || b.start < 0 || b.start >= len(b.plan.SafepointData) {
+		return nil, false
+	}
+	return b.plan.SafepointData[b.start+1:], true
+}
+
+func (b *GCFrameSafepointBuilder) Commit() bool {
+	p := b.plan
+	if p == nil || b.start < 0 || b.start >= len(p.SafepointData) || p.safepointCount == ^uint32(0) {
+		return false
+	}
+	n := len(p.SafepointData) - b.start - 1
+	if uint64(n) > uint64(^uint32(0)) {
+		return false
+	}
+	p.SafepointData[b.start] = uint32(n)
+	p.safepointCount++
+	b.plan = nil
+	return true
+}
+
+func (b *GCFrameSafepointBuilder) Abort() {
+	if b.plan != nil && b.start >= 0 && b.start <= len(b.plan.SafepointData) {
+		b.plan.SafepointData = b.plan.SafepointData[:b.start]
+	}
+	b.plan = nil
+}
+
+func (p *GCFrameRootPlan) SafepointCount() int { return int(p.safepointCount) }
+
+// AppendSafepoint appends one complete record. Streaming backend producers use
+// BeginSafepoint directly to avoid a temporary offsets allocation.
+func (p *GCFrameRootPlan) AppendSafepoint(offsets []uint32) bool {
+	b := p.BeginSafepoint()
+	for _, off := range offsets {
+		b.AppendOffset(off)
+	}
+	if !b.Commit() {
+		b.Abort()
+		return false
+	}
+	return true
+}
+
+// VisitSafepoints validates and visits the complete flat stream in ID order.
+func (p *GCFrameRootPlan) VisitSafepoints(visit func(index int, offsets []uint32) bool) bool {
+	if p == nil || visit == nil {
+		return false
+	}
+	pos := 0
+	for i := uint32(0); i < p.safepointCount; i++ {
+		if pos >= len(p.SafepointData) {
+			return false
+		}
+		n := uint64(p.SafepointData[pos])
+		pos++
+		end := uint64(pos) + n
+		if end > uint64(len(p.SafepointData)) || !visit(int(i), p.SafepointData[pos:int(end)]) {
+			return false
+		}
+		pos = int(end)
+	}
+	return pos == len(p.SafepointData)
 }
 
 // TracksLocal reports whether index belongs to the sorted collector-local

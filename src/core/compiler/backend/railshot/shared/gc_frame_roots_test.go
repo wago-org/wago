@@ -10,14 +10,29 @@ func TestGCFrameRootPlanFootprint(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) != 8 {
 		t.Skip("64-bit fixed-footprint assertion")
 	}
-	if got := unsafe.Sizeof(GCFrameRootPlan{}); got != 208 {
-		t.Fatalf("GCFrameRootPlan size=%d, want 208", got)
+	if got := unsafe.Sizeof(GCFrameRootPlan{}); got != 216 {
+		t.Fatalf("GCFrameRootPlan size=%d, want 216", got)
 	}
 	if got := unsafe.Sizeof(GCModuleFrameRootPlan{}); got != 40 {
 		t.Fatalf("GCModuleFrameRootPlan size=%d, want 40", got)
 	}
-	if got := unsafe.Sizeof(GCFrameSafepointPlan{}); got != 24 {
-		t.Fatalf("GCFrameSafepointPlan size=%d, want 24", got)
+}
+
+func TestGCFrameSafepointStream(t *testing.T) {
+	var plan GCFrameRootPlan
+	if !plan.AppendSafepoint([]uint32{8, 24}) || !plan.AppendSafepoint(nil) || plan.SafepointCount() != 2 {
+		t.Fatalf("safepoint stream = %#v, count %d", plan.SafepointData, plan.SafepointCount())
+	}
+	var got [][]uint32
+	if !plan.VisitSafepoints(func(_ int, offsets []uint32) bool {
+		got = append(got, append([]uint32(nil), offsets...))
+		return true
+	}) || len(got) != 2 || len(got[0]) != 2 || got[0][0] != 8 || got[0][1] != 24 || len(got[1]) != 0 {
+		t.Fatalf("visited safepoints = %#v", got)
+	}
+	plan.SafepointData[0] = ^uint32(0)
+	if plan.VisitSafepoints(func(int, []uint32) bool { return true }) {
+		t.Fatal("malformed safepoint stream was accepted")
 	}
 }
 
