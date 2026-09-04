@@ -525,10 +525,6 @@ type deferredMixedArg struct {
 // appended via alignPad[:pad] to avoid allocating a temporary per function.
 var alignPad [16]byte
 
-// preloadScanGatesEnabled skips constant-cache body walks when the existing
-// one-pass hints prove that the relevant instruction family is absent.
-var preloadScanGatesEnabled = true
-
 func align16(n int) int { return (n + 15) &^ 15 }
 
 const (
@@ -2925,10 +2921,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 
 	f.prologue(hints.localScore)
-	if !preloadScanGatesEnabled || hints.flags.has(hintHasFloatConst) {
+	if hints.flags.has(hintHasFloatConst) {
 		f.preloadFloatConsts(c.BodyBytes)
 	}
-	if !preloadScanGatesEnabled || hints.flags.has(hintHasSIMD) {
+	if hints.flags.has(hintHasSIMD) {
 		f.preloadV128Consts(c.BodyBytes)
 	}
 	if err := f.runBody(c); err != nil {
@@ -3623,10 +3619,10 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 		}
 	}
 	f.zeroDeclaredLocals(localScores)
-	if !preloadScanGatesEnabled || hasFloatConst {
+	if hasFloatConst {
 		f.preloadFloatConsts(c.BodyBytes)
 	}
-	if !preloadScanGatesEnabled || hasSIMD {
+	if hasSIMD {
 		f.preloadV128Consts(c.BodyBytes)
 	}
 	f.derivePinnedGlobals()

@@ -693,6 +693,12 @@ The remaining low-risk cleanup seam is therefore mature rollback plumbing, not a
 third default-off compiler. Move measurement-only overrides from package-global
 environment variables to per-compilation test policy as each optimization completes
 its current qualification; preserve public behavior and native-code parity while
-deleting the old branch. This should be handled in small families because the 121
+deleting the old branch. This should be handled in small families because the 118
 controls include diagnostics, safety or feature switches, and resource budgets that
 must not be removed as if they were equivalent peephole toggles.
+
+The same rule applies to test-only globals. AMD64's `preloadScanGatesEnabled`
+could only disable the production one-pass float/SIMD hint gates and force both
+constant-pool scans for every function. Removing that alternate mode leaves exact
+integer, float, and SIMD scan-count tests, eliminates four dead branch arms, and
+preserves all corpus native-code hashes.
