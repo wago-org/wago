@@ -148,7 +148,7 @@ func TestAMD64StructuredScalarResidencySelectsHotIntegerLocals(t *testing.T) {
 	uses := []uint32{2, 100, 9, 50, 7, 6, 5, 4}
 	assigned := make([]amd64.Reg, len(locals))
 	pinned := make([]bool, len(locals))
-	amd64PinHotStructuredScalarLocals(locals, uses, assigned, pinned)
+	amd64PinHotStructuredScalarLocals(amd64StackLocalRegisters[:], locals, uses, assigned, pinned)
 	for local, register := range map[int]amd64.Reg{0: amd64.R9, 2: amd64.R12, 4: amd64.R13, 5: amd64.R14, 6: amd64.R15, 7: amd64.R8} {
 		if !pinned[local] || assigned[local] != register {
 			t.Fatalf("local %d: assigned=%v pinned=%v", local, assigned, pinned)
@@ -156,6 +156,44 @@ func TestAMD64StructuredScalarResidencySelectsHotIntegerLocals(t *testing.T) {
 	}
 	if pinned[1] || pinned[3] {
 		t.Fatalf("non-integer local pinned: %v", pinned)
+	}
+	clear(assigned)
+	clear(pinned)
+	amd64PinHotStructuredScalarLocals(amd64StackLocalRegisters[:4], locals, uses, assigned, pinned)
+	for local, register := range map[int]amd64.Reg{2: amd64.R12, 4: amd64.R13, 5: amd64.R14, 6: amd64.R15} {
+		if !pinned[local] || assigned[local] != register {
+			t.Fatalf("nonvolatile local %d: assigned=%v pinned=%v", local, assigned, pinned)
+		}
+	}
+	if pinned[0] || pinned[7] {
+		t.Fatalf("call-bearing allocation used argument registers: %v", pinned)
+	}
+}
+
+func TestAMD64StructuredScalarResidencyPinsHotSubsetWithoutSIMD(t *testing.T) {
+	body := []byte{
+		0x01, 0x06, 0x7f, // six i32 locals plus the i32 parameter
+		0x03, 0x40, 0x20, 0x00, 0x1a, 0x0b, // structured loop using parameter 0
+		0x41, 0x07, 0x21, 0x00, // replace parameter 0 outside the loop
+		0x20, 0x00, 0x0b,
+	}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var pinned amd64.Asm
+	pinned.MovReg64(amd64.R12, amd64.RAX)
+	if !bytes.Contains(output.Code, pinned.B) {
+		t.Fatalf("structured scalar function did not pin its hot parameter: %x", output.Code)
+	}
+	var directSet, directGet amd64.Asm
+	directSet.MovReg64(amd64.R12, amd64.RDI)
+	directGet.MovReg64(amd64.RDI, amd64.R12)
+	if !bytes.Contains(output.Code, directSet.B) || !bytes.Contains(output.Code, directGet.B) {
+		t.Fatalf("structured pinned local still round-trips through scratch: %x", output.Code)
 	}
 }
 

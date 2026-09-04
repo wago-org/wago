@@ -3721,8 +3721,8 @@ func amd64StructuredLoadEnd(sf *railssa.StackFunc, instructionID int) (uint64, b
 	return uint64(instruction.U32()) + size, true
 }
 
-func amd64PinHotStructuredScalarLocals(locals []wasm.ValType, uses []uint32, localRegisters []amd64.Reg, localPinned []bool) {
-	for _, register := range amd64StackLocalRegisters {
+func amd64PinHotStructuredScalarLocals(registers []amd64.Reg, locals []wasm.ValType, uses []uint32, localRegisters []amd64.Reg, localPinned []bool) {
+	for _, register := range registers {
 		best := -1
 		for local, typ := range locals {
 			if localPinned[local] || uses[local] == 0 || typ != wasm.I32 && typ != wasm.I64 {
@@ -3793,6 +3793,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		}
 	}
 	hasGeneralCall := false
+	generalCallCount := uint32(0)
 	hasNonCallHelper := false
 	hasMemoryAccess := false
 	hasMemoryGrow := false
@@ -3812,6 +3813,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			instr.Kind == wasm.InstrBrOnCast || instr.Kind == wasm.InstrBrOnCastFail ||
 			instr.Kind == wasm.InstrAnyConvertExtern || instr.Kind == wasm.InstrExternConvertAny {
 			hasGeneralCall = true
+			if instr.Kind == wasm.InstrCall || instr.Kind == wasm.InstrCallIndirect {
+				generalCallCount++
+			}
 			if instr.Kind != wasm.InstrCall && instr.Kind != wasm.InstrCallIndirect {
 				hasNonCallHelper = true
 			}
@@ -3838,11 +3842,26 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		for i := range localPinned {
 			localPinned[i] = true
 		}
-	} else if sf.HasV128 && !hasNonCallHelper && len(sf.Params) <= 4 {
+	} else if !hasNonCallHelper && len(sf.Params) <= 4 {
 		for i := range localRegisters {
 			localRegisters[i] = 0
 		}
-		amd64PinHotStructuredScalarLocals(sf.Locals, scalarLocalUses, localRegisters, localPinned)
+		scalarRegisters := amd64StackLocalRegisters[:]
+		if hasGeneralCall && !sf.HasV128 {
+			// R8 and R9 carry direct-call arguments. Keep long-lived locals in
+			// the nonvolatile subset, and charge each selected local for its
+			// save/reload around every remaining machine call.
+			scalarRegisters = scalarRegisters[:4]
+			spillCost := generalCallCount * 2
+			for local := range scalarLocalUses {
+				if scalarLocalUses[local] <= spillCost {
+					scalarLocalUses[local] = 0
+				} else {
+					scalarLocalUses[local] -= spillCost
+				}
+			}
+		}
+		amd64PinHotStructuredScalarLocals(scalarRegisters, sf.Locals, scalarLocalUses, localRegisters, localPinned)
 		constantSelected := make([]bool, len(simdConstants))
 		for slot := 0; slot < 8; slot++ {
 			bestLocal := -1
@@ -5236,7 +5255,10 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 				if localFloat[instr.U32()] {
 					a.MovXmmToGpr(amd64.R10, localRegisters[instr.U32()], sf.Locals[instr.U32()] == wasm.F64)
 				} else {
-					a.MovReg64(amd64.R10, localRegisters[instr.U32()])
+					if err := push(sf.Locals[instr.U32()], localRegisters[instr.U32()]); err != nil {
+						return nil, 0, nil, err
+					}
+					continue
 				}
 			} else {
 				a.LoadRsp64(amd64.R10, localOff(int(instr.U32())))
@@ -5267,21 +5289,23 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 				}
 				continue
 			}
-			typ, err := pop(amd64.R10)
+			value := amd64.R10
+			if localPinned[instr.U32()] && !localFloat[instr.U32()] {
+				value = localRegisters[instr.U32()]
+			}
+			typ, err := pop(value)
 			if err != nil {
 				return nil, 0, nil, err
 			}
 			if localPinned[instr.U32()] {
 				if localFloat[instr.U32()] {
-					a.MovGprToXmm(localRegisters[instr.U32()], amd64.R10, sf.Locals[instr.U32()] == wasm.F64)
-				} else {
-					a.MovReg64(localRegisters[instr.U32()], amd64.R10)
+					a.MovGprToXmm(localRegisters[instr.U32()], value, sf.Locals[instr.U32()] == wasm.F64)
 				}
 			} else {
-				a.StoreRsp64(localOff(int(instr.U32())), amd64.R10)
+				a.StoreRsp64(localOff(int(instr.U32())), value)
 			}
 			if instr.Kind == wasm.InstrLocalTee {
-				if err := push(typ, amd64.R10); err != nil {
+				if err := push(typ, value); err != nil {
 					return nil, 0, nil, err
 				}
 			}
