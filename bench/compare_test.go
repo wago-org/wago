@@ -44,6 +44,45 @@ func BenchmarkWazeroCompile(b *testing.B) {
 	}
 }
 
+// BenchmarkWazeroInstantiate times fresh instances of an already-compiled
+// corpus module, matching BenchmarkInstantiate.
+func BenchmarkWazeroInstantiate(b *testing.B) {
+	ctx := context.Background()
+	for _, m := range loadCorpus(b) {
+		if !m.supports("Instantiate") {
+			continue
+		}
+		b.Run(m.name(), func(b *testing.B) {
+			r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
+			defer r.Close(ctx)
+			if _, err := r.NewHostModuleBuilder("env").
+				NewFunctionBuilder().WithFunc(func(uint32, uint32, uint32, uint32) {}).Export("abort").
+				Instantiate(ctx); err != nil {
+				b.Fatal(err)
+			}
+			compiled, err := r.CompileModule(ctx, m.bytes)
+			if err != nil {
+				b.Skipf("wazero cannot compile %s: %v", m.name(), err)
+			}
+			defer compiled.Close(ctx)
+			probe, err := r.InstantiateModule(ctx, compiled, wazero.NewModuleConfig())
+			if err != nil {
+				b.Skipf("wazero cannot instantiate %s: %v", m.name(), err)
+			}
+			probe.Close(ctx)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				instance, err := r.InstantiateModule(ctx, compiled, wazero.NewModuleConfig())
+				if err != nil {
+					b.Fatal(err)
+				}
+				instance.Close(ctx)
+			}
+		})
+	}
+}
+
 // BenchmarkWazeroExec times the host->wasm call through wazero for the same exec
 // entries wago's BenchmarkExec uses, for a like-for-like execution comparison.
 func BenchmarkWazeroExec(b *testing.B) {

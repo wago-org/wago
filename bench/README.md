@@ -144,6 +144,9 @@ and `benchpub -warp <harness>` shells out to **WARP**'s native harness for both
 compile and exec. Build `vb_bench` from an independent
 [WARP checkout](https://github.com/wago-org/warp), apply the same benchmark
 configuration used for the published comparison, and pass its path explicitly.
+Corpus instantiation is paired as well: `BenchmarkInstantiate` reuses Wago's
+compiled module and `BenchmarkWazeroInstantiate` reuses wazero's compiled
+module, then each measures a fresh instance with equivalent supported imports.
 Two extra charts are produced:
 
 - `compile-engines.svg` — compile time per module, wago vs wazero vs WARP. Where
