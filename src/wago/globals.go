@@ -515,11 +515,24 @@ func (g *Global) Close() error {
 	return err
 }
 
+// accessMetadata returns canonical storage metadata and rejects public-field edits.
+// Owner type and mutability are fixed when the cell is created.
+func (g *Global) accessMetadata() (ValType, bool, bool) {
+	if g == nil {
+		return 0, false, false
+	}
+	if g.owner != nil {
+		return g.owner.typ, g.owner.mutable, g.Type == g.owner.typ && g.Mutable == g.owner.mutable
+	}
+	return g.Type, g.Mutable, true
+}
+
 // Get returns the global's current numeric scalar value as raw bits (decode
 // with AsI32/etc). It returns zero for reference globals so descriptor addresses
 // never cross the public boundary. For v128 globals use GetV128.
 func (g *Global) Get() uint64 {
-	if g == nil || isReferenceValType(g.Type) {
+	typ, _, valid := g.accessMetadata()
+	if !valid || isReferenceValType(typ) {
 		return 0
 	}
 	end, ok := g.beginOwnerAccess()
@@ -530,18 +543,19 @@ func (g *Global) Get() uint64 {
 	if g.owner != nil {
 		g.owner.mu.Lock()
 		defer g.owner.mu.Unlock()
-		if g.owner.closed || len(g.cell) < globalCellSize(g.Type) {
+		if g.owner.closed || len(g.cell) < globalCellSize(typ) {
 			return 0
 		}
 	}
-	return readGlobalObject(g, g.Type)
+	return readGlobalObject(g, typ)
 }
 
 // GetV128 returns the global's current v128 value. Non-v128 globals return the
-// low scalar bits in bytes 0..7 for debugging convenience; callers should prefer
-// Type metadata when choosing this accessor.
+// low scalar bits in bytes 0..7 for debugging convenience. Reference globals
+// and inconsistent public metadata return zero.
 func (g *Global) GetV128() V128 {
-	if g == nil {
+	typ, _, valid := g.accessMetadata()
+	if !valid || isReferenceValType(typ) {
 		return V128{}
 	}
 	end, ok := g.beginOwnerAccess()
@@ -552,7 +566,7 @@ func (g *Global) GetV128() V128 {
 	if g.owner != nil {
 		g.owner.mu.Lock()
 		defer g.owner.mu.Unlock()
-		if g.owner.closed || len(g.cell) < globalCellSize(g.Type) {
+		if g.owner.closed || len(g.cell) < globalCellSize(typ) {
 			return V128{}
 		}
 	}
@@ -562,31 +576,32 @@ func (g *Global) GetV128() V128 {
 // Set updates a mutable host-owned scalar global; bits are interpreted as the
 // global's type. For v128 globals use SetV128.
 func (g *Global) Set(bits uint64) error {
-	if g == nil {
-		return fmt.Errorf("global is nil")
+	typ, mutable, valid := g.accessMetadata()
+	if !valid {
+		return fmt.Errorf("global owner metadata is invalid")
 	}
 	end, ok := g.beginOwnerAccess()
 	if !ok {
 		return fmt.Errorf("global owner instance is closed")
 	}
 	defer end()
-	if !g.Mutable {
+	if !mutable {
 		return fmt.Errorf("global is immutable")
 	}
-	if g.Type == ValV128 {
+	if typ == ValV128 {
 		return fmt.Errorf("global is v128; use SetV128")
 	}
-	if isReferenceValType(g.Type) {
+	if isReferenceValType(typ) {
 		return fmt.Errorf("global is a reference type; use an instance typed accessor")
 	}
 	if g.owner != nil {
 		g.owner.mu.Lock()
 		defer g.owner.mu.Unlock()
-		if g.owner.closed || len(g.cell) < globalCellSize(g.Type) {
+		if g.owner.closed || len(g.cell) < globalCellSize(typ) {
 			return fmt.Errorf("global storage is closed")
 		}
 	}
-	writeGlobalObject(g, g.Type, bits)
+	writeGlobalObject(g, typ, bits)
 	return nil
 }
 
@@ -749,19 +764,20 @@ func (g *Global) setValueNoLease(v Value) error {
 
 // SetV128 updates a mutable host-owned v128 global.
 func (g *Global) SetV128(v V128) error {
-	if g == nil {
-		return fmt.Errorf("global is nil")
+	typ, mutable, valid := g.accessMetadata()
+	if !valid {
+		return fmt.Errorf("global owner metadata is invalid")
 	}
 	end, ok := g.beginOwnerAccess()
 	if !ok {
 		return fmt.Errorf("global owner instance is closed")
 	}
 	defer end()
-	if !g.Mutable {
+	if !mutable {
 		return fmt.Errorf("global is immutable")
 	}
-	if g.Type != ValV128 {
-		return fmt.Errorf("global is %s, not v128", g.Type)
+	if typ != ValV128 {
+		return fmt.Errorf("global is %s, not v128", typ)
 	}
 	if g.owner != nil {
 		g.owner.mu.Lock()

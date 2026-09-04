@@ -24,3 +24,13 @@ remain shared by identity. Cost: one map copy per non-nil import set; no call-pa
 allocation is added.
 
 Validation: import snapshot, function re-export, and table-close tests pass.
+
+## 4. Use canonical global storage types
+
+Numeric and vector accessors reject inconsistent public metadata and use the
+owner's fixed type and mutability. Both numeric getters return zero for reference
+cells, including GetV128. Setters reject these cells without changing storage.
+The check adds no allocations or new locks.
+
+Validation: global metadata mutation, opaque reference access, and global tests
+pass (`go test ./src/wago -run 'Test(GlobalRejectsMetadataMutation|ReferenceGlobalScalarAccessIsOpaque|.*Global)'`).
