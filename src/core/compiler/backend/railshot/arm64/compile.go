@@ -567,7 +567,7 @@ type scratch struct {
 	directPrepared bool
 	relocs         []callReloc
 
-	retSites                []int
+	retSiteHead             uint32 // word index+1; links live in unresolved B immediates
 	ctrl                    []ctrlFrame
 	ctrlMerges              []ctrlFrameMerge
 	ctrlRoots               []ctrlFrameRoots
@@ -804,7 +804,7 @@ func (sc *scratch) reset() {
 	sc.asm.LogicalMoveImmediates = 0
 	sc.asm.CompactMoveImmediates32 = 0
 	sc.directPrepared = false
-	sc.retSites = sc.retSites[:0]
+	sc.retSiteHead = 0
 	sc.ctrl = sc.ctrl[:0]
 	sc.transient.loopSetLocals = sc.transient.loopSetLocals[:0]
 	clear(sc.ctrlMerges[:cap(sc.ctrlMerges)])
@@ -2567,11 +2567,29 @@ func (f *fn) runBody(c *wasm.Func) error {
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}
-	for _, s := range sc.retSites {
-		// return/br-to-function sites are unconditional B placeholders (imm26).
-		f.a.PatchBranch26(s, f.a.Len())
-	}
+	f.patchReturnSites()
 	return nil
+}
+
+func (f *fn) appendReturnSite(site int) {
+	if site < 0 || site&3 != 0 || site/4 >= 1<<26-1 {
+		panic("arm64: return site exceeds intrusive branch-chain range")
+	}
+	sc := f.scratchState()
+	word := rdWord(f.a.B, site)
+	wrWord(f.a.B, site, word&0xfc000000|sc.retSiteHead)
+	sc.retSiteHead = uint32(site/4 + 1)
+}
+
+func (f *fn) patchReturnSites() {
+	sc := f.scratchState()
+	for head := sc.retSiteHead; head != 0; {
+		site := int(head-1) * 4
+		word := rdWord(f.a.B, site)
+		head = word & 0x03ffffff
+		wrWord(f.a.B, site, word&0xfc000000)
+		f.a.PatchBranch26(site, f.a.Len())
+	}
 }
 
 // assignPinnedLocals dedicates registers to the hottest integer locals (by the

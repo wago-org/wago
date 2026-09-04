@@ -1070,7 +1070,7 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 				f.a.Load64(RAX, RSP, f.spillOff(0))
 			}
 		}
-		f.sc.retSites = append(f.sc.retSites, f.a.JmpPlaceholder())
+		f.appendReturnSite(f.a.JmpPlaceholder())
 	default:
 		f.frameAddEnd(fr, f.a.JmpPlaceholder())
 		fr.set(ctrlEndReachable, true)
@@ -2202,7 +2202,7 @@ func (f *fn) opReturn() error {
 	}
 	if f.singleRegResult {
 		f.placeSingleResult() // result straight to RAX/XMM0; epilogue does not reload
-		f.sc.retSites = append(f.sc.retSites, f.a.JmpPlaceholder())
+		f.appendReturnSite(f.a.JmpPlaceholder())
 		f.unreachable = true
 		return nil
 	}
@@ -2210,7 +2210,7 @@ func (f *fn) opReturn() error {
 	a, d := fr.resultN, f.depth()
 	f.flush()
 	f.moveBranchValues(fr, d, a)
-	f.sc.retSites = append(f.sc.retSites, f.a.JmpPlaceholder())
+	f.appendReturnSite(f.a.JmpPlaceholder())
 	f.unreachable = true
 	return nil
 }

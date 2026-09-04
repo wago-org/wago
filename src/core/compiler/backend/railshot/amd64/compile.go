@@ -397,8 +397,8 @@ type fn struct {
 	ehRootCount int         // compile-time assigned fixed exception roots; bounded by maxEHRootRecords
 
 	// sc holds per-function scratch whose backing is reused across the module:
-	// retSites, brFoldSites and trapSites live there so each function rewinds their
-	// lengths (sc.reset) rather than reallocating. See scratch.
+	// The intrusive return chain, brFoldSites and trapSites live there so each
+	// function rewinds their state (sc.reset) rather than reallocating. See scratch.
 	sc *scratch
 
 	// Loop bounds-check hoisting (WAGO_LOOP_PRECHECK, boundshoist.go). elideBases
@@ -700,8 +700,8 @@ type scratch struct {
 	// arrays are retained and reused across every function in the module instead of
 	// being reallocated per function; reset() only rewinds their lengths. trapSites
 	// is indexed by trap code (a small dense enum), replacing a per-function map.
-	retSites                []int
-	tailFrameSites          []int // AddRsp imm32 sites emitted before tail jumps
+	retSiteHead             uint32 // displacement offset+1; links live in unresolved rel32 fields
+	tailFrameSites          []int  // AddRsp imm32 sites emitted before tail jumps
 	brFoldSites             []int
 	gcArrayLenStubSites     []int
 	gcFinalCastStubSites    []int
@@ -949,7 +949,7 @@ func (sc *scratch) reset() {
 		sc.asm.ResetRel32Recorder(0)
 	}
 	sc.directPrepared = false
-	sc.retSites = sc.retSites[:0]
+	sc.retSiteHead = 0
 	sc.tailFrameSites = sc.tailFrameSites[:0]
 	sc.brFoldSites = sc.brFoldSites[:0]
 	sc.jumpTableFragments = sc.jumpTableFragments[:0]
@@ -3072,10 +3072,26 @@ func (f *fn) runBody(c *wasm.Func) error {
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}
-	for _, s := range f.sc.retSites {
-		f.a.PatchRel32(s, f.a.Len())
-	}
+	f.patchReturnSites()
 	return nil
+}
+
+func (f *fn) appendReturnSite(site int) {
+	if site < 0 || uint64(site) >= uint64(^uint32(0)) || site+4 > len(f.a.B) {
+		panic("amd64: return site exceeds intrusive branch-chain range")
+	}
+	sc := f.scratchState()
+	binary.LittleEndian.PutUint32(f.a.B[site:site+4], sc.retSiteHead)
+	sc.retSiteHead = uint32(site + 1)
+}
+
+func (f *fn) patchReturnSites() {
+	sc := f.scratchState()
+	for head := sc.retSiteHead; head != 0; {
+		site := int(head - 1)
+		head = binary.LittleEndian.Uint32(f.a.B[site : site+4])
+		f.a.PatchRel32(site, f.a.Len())
+	}
 }
 
 // assignPinnedLocals dedicates registers to the hottest integer locals (by the

@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
 func TestCtrlFrameSize(t *testing.T) {
@@ -154,6 +155,24 @@ func TestBoundedPinCandidateOrderingArm64(t *testing.T) {
 	}
 	if len(locals) != 2 || locals[0] != 1 || locals[1] != 2 {
 		t.Fatalf("local candidates = %v, want [1 2]", locals)
+	}
+}
+
+func TestIntrusiveReturnPatchChainArm64(t *testing.T) {
+	a := &a64.Asm{}
+	f := fn{a: a, sc: &scratch{asm: a}}
+	sites := make([]int, 3)
+	for i := range sites {
+		sites[i] = a.Branch()
+		f.appendReturnSite(sites[i])
+	}
+	target := a.Len()
+	f.patchReturnSites()
+	for _, site := range sites {
+		got, ok := branchTarget(site, rdWord(a.B, site))
+		if !ok || got != target {
+			t.Fatalf("return at %d targets %d/%v, want %d/true", site, got, ok, target)
+		}
 	}
 }
 

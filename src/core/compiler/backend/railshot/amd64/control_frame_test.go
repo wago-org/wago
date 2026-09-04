@@ -3,10 +3,12 @@
 package amd64
 
 import (
+	"encoding/binary"
 	"testing"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	x86 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
 func TestCtrlFrameSize(t *testing.T) {
@@ -154,6 +156,24 @@ func TestBoundedPinCandidateOrderingAMD64(t *testing.T) {
 	}
 	if len(locals) != 2 || locals[0] != 1 || locals[1] != 2 {
 		t.Fatalf("local candidates = %v, want [1 2]", locals)
+	}
+}
+
+func TestIntrusiveReturnPatchChainAMD64(t *testing.T) {
+	a := &x86.Asm{}
+	f := fn{a: a, sc: &scratch{asm: a}}
+	sites := make([]int, 3)
+	for i := range sites {
+		sites[i] = a.JmpPlaceholder()
+		f.appendReturnSite(sites[i])
+	}
+	target := a.Len()
+	f.patchReturnSites()
+	for _, site := range sites {
+		displacement := int(int32(binary.LittleEndian.Uint32(a.B[site : site+4])))
+		if got := site + 4 + displacement; got != target {
+			t.Fatalf("return at %d targets %d, want %d", site, got, target)
+		}
 	}
 }
 

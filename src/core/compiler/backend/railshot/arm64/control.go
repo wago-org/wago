@@ -1026,8 +1026,7 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 				f.ld64(X0, SP, f.spillOff(0))
 			}
 		}
-		sc := f.scratchState()
-		sc.retSites = append(sc.retSites, f.a.Branch())
+		f.appendReturnSite(f.a.Branch())
 	default:
 		f.appendFrameEnd(fr, f.a.Branch(), false)
 		fr.set(ctrlEndReachable, true)
@@ -2450,8 +2449,7 @@ func (f *fn) opReturn() error {
 	}
 	if f.singleRegResult {
 		f.placeSingleResult() // result straight to X0/V0; epilogue does not reload
-		sc := f.scratchState()
-		sc.retSites = append(sc.retSites, f.a.Branch())
+		f.appendReturnSite(f.a.Branch())
 		f.unreachable = true
 		return nil
 	}
@@ -2459,8 +2457,7 @@ func (f *fn) opReturn() error {
 	a, d := fr.resultN, f.depth()
 	f.flush()
 	f.moveBranchValues(fr, d, a)
-	sc := f.scratchState()
-	sc.retSites = append(sc.retSites, f.a.Branch())
+	f.appendReturnSite(f.a.Branch())
 	f.unreachable = true
 	return nil
 }
