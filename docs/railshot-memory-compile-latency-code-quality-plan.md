@@ -144,7 +144,7 @@ That leaves four current structural cliffs.
 
 ### The hot operand node is much too large and too scannable
 
-At the reviewed snapshot, the common `elem` was 112 bytes on both architectures. The reconciliation work above has moved its rare custom-type pointer and register slice into a lazy sidecar, narrowed spill-slot payloads and indexes, packed root metadata, and removed alignment waste. This reduces it to 64 bytes on both architectures. Its four direct `*elem` links remain the next source of size, pointer scanning, and pointer-stability constraints.
+At the reviewed snapshot, the common `elem` was 112 bytes on both architectures. The reconciliation work above has moved its rare custom-type pointer and register slice into a lazy sidecar, narrowed spill-slot payloads and indexes, packed root metadata, and removed alignment waste. This reduces it to 64 bytes on AMD64 and 56 bytes on ARM64, where the physical stack links are compact arena IDs. AMD64 still has four direct `*elem` links and ARM64 retains two deferred-child pointers; those links remain the next source of size, pointer scanning, and pointer-stability constraints.
 
 Because links are pointers, nodes need stable addresses, which in turn encourages chunked arenas. Reset rewinds the arena; the function boundary retains reusable backing up to a fixed 1 MiB per-worker ceiling and immediately discards any giant-function suffix above it. The pointer-rich representation itself remains the larger structural cost.
 
