@@ -112,6 +112,44 @@ func TestLateSSAExitMotionsCopiesIntoColderSuccessor(t *testing.T) {
 	}
 }
 
+func TestLateSSAExitPreservesV128EdgeTransfer(t *testing.T) {
+	f := &Func{
+		Target: TargetARM64,
+		Insts:  []Inst{{Op: wasm.InstrBr}, {Op: wasm.InstrReturn}},
+		VRegs: []VRegData{
+			{},
+			{Bank: BankFPR, Type: TypeV128, Flags: VRegInitial},
+			{Bank: BankFPR, Type: TypeV128, Flags: VRegBlockParam},
+		},
+		Blocks: []Block{{InstStart: 0, InstCount: 1, Weight: 10}, {InstStart: 1, InstCount: 1, Weight: 1}},
+		Edges:  []Edge{{From: 0, To: 1}},
+		Transfers: []EdgeTransfer{{
+			Src: 1, Dst: 2, Edge: 0, From: 0, To: 1, Weight: 1, Type: TypeV128,
+		}},
+	}
+	allocation := &Allocation{
+		Locations: []Location{
+			{},
+			{Kind: LocationRegister, Bank: BankFPR, Index: 0},
+			{Kind: LocationSpill, Bank: BankFPR, Index: 0},
+		},
+		Intervals: []LiveInterval{
+			{Reg: 1, Start: 0, End: 6, Bank: BankFPR},
+			{Reg: 2, Start: 6, End: 11, Bank: BankFPR},
+		},
+		InstructionPositions: []uint32{0, 1},
+		SpillSlots:           2,
+		FrameBytes:           16,
+	}
+	exit, err := LateSSAExit(f, allocation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(exit.Moves) != 1 || exit.Moves[0].Reg != 1 || exit.Moves[0].Bank != BankFPR || f.VRegs[exit.Moves[0].Reg].Type != TypeV128 {
+		t.Fatalf("vector edge moves = %#v", exit.Moves)
+	}
+}
+
 func countNonemptyEdgeCopies(exit *SSAExit) int {
 	count := 0
 	for _, moves := range exit.EdgeMoves {

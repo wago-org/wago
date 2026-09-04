@@ -32,8 +32,12 @@ type ABIContract struct {
 	// RegisterResults is the source-ordered result prefix returned in private
 	// result GPRs. Remaining results use the caller-owned result area.
 	RegisterResults uint8
-	HasCall         bool
-	MayCollect      bool
+	// VectorResultMask marks register-result ordinals carried in the target's
+	// FP/vector bank. Scalar results retain the established convention while
+	// v128 never round-trips through a GPR pair.
+	VectorResultMask uint8
+	HasCall          bool
+	MayCollect       bool
 }
 
 // PrivateResultRegisters is the source-ordered GPR result prefix shared by
@@ -121,7 +125,10 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 	// directly in V0 on ARM64. Other results retain the source-ordered GPR
 	// prefix shared by both native targets.
 	for index, result := range f.Results[:registerResults] {
-		if directARM64 && len(f.Results) == 1 && f.VRegs[result].Bank == BankFPR {
+		if f.VRegs[result].Type == TypeV128 {
+			contract.VectorResultMask |= 1 << index
+			contract.FPRClobbers |= uint64(1) << index
+		} else if directARM64 && len(f.Results) == 1 && f.VRegs[result].Bank == BankFPR {
 			contract.FPRClobbers |= uint64(1) << index
 		} else {
 			contract.GPRClobbers |= uint64(1) << index
@@ -251,7 +258,7 @@ func PruneSkippedDefinitionClobbers(f *Func, allocation *GreedyAllocation, contr
 	directARM64 := directPreparedARM64Contract(f, allocation)
 	for index, result := range f.Results[:registerResults] {
 		bank := BankGPR
-		if directARM64 && len(f.Results) == 1 && f.VRegs[result].Bank == BankFPR {
+		if contract.VectorResultMask&(1<<index) != 0 || directARM64 && len(f.Results) == 1 && f.VRegs[result].Bank == BankFPR {
 			bank = BankFPR
 		}
 		mark(Location{Kind: LocationRegister, Bank: bank, Index: uint16(index)}, false)
@@ -464,7 +471,7 @@ func FrameForAllocation(contract ABIContract, allocation *GreedyAllocation, maxC
 	if allocation == nil {
 		return FrameRequirements{}, FrameLayout{}, fmt.Errorf("railmach: frame requires an allocation")
 	}
-	if contract.RegisterResults > PrivateResultRegisters || uint16(contract.RegisterResults) > contract.Results {
+	if contract.RegisterResults > PrivateResultRegisters || uint16(contract.RegisterResults) > contract.Results || contract.VectorResultMask&^uint8(lowMask(contract.RegisterResults)) != 0 {
 		return FrameRequirements{}, FrameLayout{}, fmt.Errorf("railmach: invalid private result convention: %d register results for %d results", contract.RegisterResults, contract.Results)
 	}
 	requirements := FrameRequirements{SpillSlots: allocation.SpillSlots, CalleeGPRs: contract.CalleeGPRs, CalleeFPRs: contract.CalleeFPRs}

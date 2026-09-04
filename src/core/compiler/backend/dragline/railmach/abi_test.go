@@ -125,6 +125,22 @@ func TestAnalyzeABIUsesTypedARM64FPResultRegister(t *testing.T) {
 	}
 }
 
+func TestAnalyzeABIKeepsV128ResultInVectorBank(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}, []byte{
+		0x20, 0x00, 0x20, 0x01, 0xfd, 0x51, 0x0b,
+	})
+	for _, target := range []Target{TargetAMD64, TargetARM64} {
+		f, allocation, metadata := buildABITest(t, target, m)
+		contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if contract.RegisterResults != 1 || contract.VectorResultMask != 1 || contract.FPRClobbers&1 == 0 || contract.GPRClobbers&1 != 0 {
+			t.Fatalf("%s vector result contract = %#v", target, contract)
+		}
+	}
+}
+
 func TestFrameForAllocationUsesRegisterPrefixForMultipleResults(t *testing.T) {
 	allocation := new(GreedyAllocation)
 	requirements, layout, err := FrameForAllocation(ABIContract{Results: 6, RegisterResults: 4}, allocation, 0)
@@ -136,6 +152,9 @@ func TestFrameForAllocationUsesRegisterPrefixForMultipleResults(t *testing.T) {
 	}
 	if _, _, err := FrameForAllocation(ABIContract{Results: 2, RegisterResults: 3}, allocation, 8); err == nil {
 		t.Fatal("invalid multi-result register prefix was accepted")
+	}
+	if _, _, err := FrameForAllocation(ABIContract{Results: 1, RegisterResults: 1, VectorResultMask: 2}, allocation, 0); err == nil {
+		t.Fatal("out-of-prefix vector result mask was accepted")
 	}
 }
 
