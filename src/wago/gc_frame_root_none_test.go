@@ -54,9 +54,10 @@ func gcFrameRootNoneModule(tb testing.TB, functions int) *wasm.Module {
 
 func TestGCFrameRootPlanOmitsNonCollectingFunction(t *testing.T) {
 	m := gcFrameRootNoneModule(t, 2)
-	plan := newGCFrameRootPlan(m, true)
-	if plan == nil || plan.Diagnostic != "" {
-		t.Fatalf("module root plan = %+v", plan)
+	var diagnostic string
+	plan := newGCFrameRootPlan(m, true, &diagnostic)
+	if plan == nil || diagnostic != "" {
+		t.Fatalf("module root plan = %+v, diagnostic = %q", plan, diagnostic)
 	}
 	if got := plan.Function(0); got != nil {
 		t.Fatalf("non-collecting leaf root plan = %+v, want nil", got)
@@ -66,19 +67,65 @@ func TestGCFrameRootPlanOmitsNonCollectingFunction(t *testing.T) {
 	}
 }
 
+func TestGCFrameRootPlanDiagnosticIsSeparateFailureState(t *testing.T) {
+	diagnostic := "stale"
+	if plan := newGCFrameRootPlan(nil, false, &diagnostic); plan != nil || diagnostic != "" {
+		t.Fatalf("disabled root plan = %+v, diagnostic = %q", plan, diagnostic)
+	}
+	if plan := newGCFrameRootPlan(nil, true, &diagnostic); plan != nil || diagnostic == "" {
+		t.Fatalf("invalid root plan = %+v, diagnostic = %q", plan, diagnostic)
+	}
+}
+
 var gcFrameRootPlanSink *shared.GCModuleFrameRootPlan
+
+func BenchmarkGCFrameRootPlanSingleFunction(b *testing.B) {
+	for _, tc := range []struct {
+		name       string
+		collecting bool
+	}{
+		{name: "root-none"},
+		{name: "collecting", collecting: true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			var m *wasm.Module
+			if tc.collecting {
+				m = gcFrameRootCollectingModule(b, 1)
+			} else {
+				m = gcFrameRootNoneModule(b, 1)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for range b.N {
+				gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil)
+			}
+		})
+	}
+}
 
 func BenchmarkGCFrameRootPlanManyNonCollectingFunctions(b *testing.B) {
 	m := gcFrameRootNoneModule(b, 1024)
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		gcFrameRootPlanSink = newGCFrameRootPlan(m, true)
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil)
 	}
 }
 
 func gcFrameRootCollectingModule(tb testing.TB, functions int) *wasm.Module {
 	tb.Helper()
+	binary := gcFrameRootCollectingBinary(functions)
+	m, err := wasm.DecodeModule(binary)
+	if err == nil {
+		err = wasm.ValidateModule(m)
+	}
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return m
+}
+
+func gcFrameRootCollectingBinary(functions int) []byte {
 	funcs := make([][]byte, functions)
 	codes := make([][]byte, functions)
 	for i := range funcs {
@@ -91,7 +138,7 @@ func gcFrameRootCollectingModule(tb testing.TB, functions int) *wasm.Module {
 		}
 		codes[i] = append(wasmtest.ULEB(uint32(len(body))), body...)
 	}
-	binary := wasmtest.Module(
+	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5f, 0x00}, // empty struct type
 			wasmtest.FuncType(nil, nil),
@@ -99,14 +146,49 @@ func gcFrameRootCollectingModule(tb testing.TB, functions int) *wasm.Module {
 		wasmtest.Section(3, wasmtest.Vec(funcs...)),
 		wasmtest.Section(10, wasmtest.Vec(codes...)),
 	)
-	m, err := wasm.DecodeModule(binary)
-	if err == nil {
-		err = wasm.ValidateModule(m)
+}
+
+func gcFrameRootNoneGCBinary() []byte {
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x00}, // empty struct type keeps exact GC planning enabled
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
+	)
+}
+
+func BenchmarkCompileSingleRootNoneFunction(b *testing.B) {
+	binary := gcFrameRootNoneGCBinary()
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		compiled, err := Compile(config, binary)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := compiled.Close(); err != nil {
+			b.Fatal(err)
+		}
 	}
-	if err != nil {
-		tb.Fatal(err)
+}
+
+func BenchmarkCompileSingleCollectingFunction(b *testing.B) {
+	binary := gcFrameRootCollectingBinary(1)
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		compiled, err := Compile(config, binary)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := compiled.Close(); err != nil {
+			b.Fatal(err)
+		}
 	}
-	return m
 }
 
 func BenchmarkGCFrameRootPlanManyCollectingFunctions(b *testing.B) {
@@ -114,6 +196,6 @@ func BenchmarkGCFrameRootPlanManyCollectingFunctions(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		gcFrameRootPlanSink = newGCFrameRootPlan(m, true)
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil)
 	}
 }

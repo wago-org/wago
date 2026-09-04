@@ -25,11 +25,11 @@ func TestShareAdapterTailsRemapsModuleOffsetsAMD64(t *testing.T) {
 		{function: 1, returnOff: 5, endOff: 14},
 		{function: 2, returnOff: 5, endOff: 14},
 	}
-	roots := &shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{
+	roots := testGCModuleRootPlansAMD64(t,
 		testGCPlanWithCallsites(t, 0, [2]uint32{15, 0}),
 		testGCPlanWithCallsites(t, 0, [2]uint32{15, 0}),
 		testGCPlanWithCallsites(t, 0, [2]uint32{15, 0}),
-	}}
+	)
 	literalWords := []uint64{0, uint64(15) << 32, 0, uint64(15) << 32, 0, uint64(15) << 32}
 	literalOffsets := []uint32{0, 2, 4, 6}
 
@@ -65,6 +65,33 @@ func TestShareAdapterTailsRemapsModuleOffsetsAMD64(t *testing.T) {
 	if !bytes.Equal(got[len(got)-islandBytes:], template[5:14]) {
 		t.Fatal("shared tail differs from exact template")
 	}
+}
+
+func testGCModuleRootPlansAMD64(t testing.TB, plans ...*shared.GCFrameRootPlan) *shared.GCModuleFrameRootPlan {
+	t.Helper()
+	module := shared.NewGCModuleFrameRootPlan(len(plans))
+	count := 0
+	for function, plan := range plans {
+		if plan != nil {
+			if !module.MarkFunction(function) {
+				t.Fatalf("mark function root plan %d", function)
+			}
+			count++
+		}
+	}
+	if !module.ReserveFunctions(count) {
+		t.Fatalf("reserve %d function root plans", count)
+	}
+	for function, plan := range plans {
+		if plan != nil {
+			dst, ok := module.BeginFunction(function)
+			if !ok {
+				t.Fatalf("begin function root plan %d", function)
+			}
+			*dst = *plan
+		}
+	}
+	return module
 }
 
 func equalIntsAMD64(a, b []int) bool {

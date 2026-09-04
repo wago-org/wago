@@ -13,8 +13,53 @@ func TestGCFrameRootPlanFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(GCFrameRootPlan{}); got != 152 {
 		t.Fatalf("GCFrameRootPlan size=%d, want 152", got)
 	}
-	if got := unsafe.Sizeof(GCModuleFrameRootPlan{}); got != 40 {
-		t.Fatalf("GCModuleFrameRootPlan size=%d, want 40", got)
+	if got := unsafe.Sizeof(GCModuleFrameRootPlan{}); got != 48 {
+		t.Fatalf("GCModuleFrameRootPlan size=%d, want 48", got)
+	}
+}
+
+func TestGCModuleFrameRootPlanSparseOwnership(t *testing.T) {
+	module := NewGCModuleFrameRootPlan(4)
+	if !module.MarkFunction(1) || !module.MarkFunction(3) || !module.FunctionPending(1) || module.FunctionPending(2) || !module.ReserveFunctions(2) {
+		t.Fatal("failed to prepare sparse function plans")
+	}
+	first, firstOK := module.BeginFunction(1)
+	second, secondOK := module.BeginFunction(3)
+	if !firstOK || !secondOK {
+		t.Fatal("failed to add sparse function plans")
+	}
+	*first = GCFrameRootPlan{Candidate: true, FrameBytes: 16}
+	*second = GCFrameRootPlan{Candidate: true, FrameBytes: 32}
+	if module.FunctionCount() != 4 || module.Function(0) != nil || module.Function(2) != nil ||
+		module.Function(1).FrameBytes != 16 || module.Function(3).FrameBytes != 32 {
+		t.Fatalf("sparse module plan lookup is invalid")
+	}
+	if _, ok := module.BeginFunction(1); ok {
+		t.Fatal("duplicate function plan was accepted")
+	}
+	if _, ok := module.BeginFunction(4); ok {
+		t.Fatal("duplicate or out-of-range function plan was accepted")
+	}
+	if module.FunctionPending(1) || module.FunctionPending(3) {
+		t.Fatal("populated function plans remain pending")
+	}
+}
+
+func TestGCModuleFrameRootPlanBeginRequiresReservation(t *testing.T) {
+	module := NewGCModuleFrameRootPlan(2)
+	if !module.MarkFunction(0) || !module.MarkFunction(1) || !module.ReserveFunctions(1) {
+		t.Fatal("failed to prepare under-reserved module plan")
+	}
+	first, ok := module.BeginFunction(0)
+	if !ok {
+		t.Fatal("first reserved function plan was rejected")
+	}
+	if _, ok := module.BeginFunction(1); ok {
+		t.Fatal("function plan growth beyond the stable reservation was accepted")
+	}
+	first.FrameBytes = 24
+	if module.Function(0) != first || module.Function(0).FrameBytes != 24 {
+		t.Fatal("reserved function plan address was not stable")
 	}
 }
 

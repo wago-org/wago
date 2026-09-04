@@ -27,6 +27,23 @@ func gcFrameFixedOffsets(rootMap *nativeabi.FunctionRootMap) []uint32 {
 	return offsets
 }
 
+func gcFramePrepareModuleRootPlan(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier) (*shared.GCModuleFrameRootPlan, error) {
+	module := shared.NewGCModuleFrameRootPlan(len(m.Code))
+	collectingFunctions := 0
+	for function := range m.Code {
+		if gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, classifier) {
+			if !module.MarkFunction(function) {
+				return nil, fmt.Errorf("function %d root plan ownership is invalid", function)
+			}
+			collectingFunctions++
+		}
+	}
+	if !module.ReserveFunctions(collectingFunctions) {
+		return nil, fmt.Errorf("root plan capacity %d is invalid", collectingFunctions)
+	}
+	return module, nil
+}
+
 // collectorFrameRefType classifies reference types represented by the Wasm GC
 // collector. It deliberately excludes funcref, externref, and exnref. Indexed
 // heap types are resolved in the containing module, including recursive groups;
@@ -235,12 +252,16 @@ func gcFrameCollectorElementExprSafe(expr wasm.Expr) bool {
 }
 
 func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
-	if module == nil || len(module.Functions) == 0 {
+	if module == nil || module.FunctionCount() == 0 {
 		return false
 	}
 	totalSafepoints, totalCallsites := 0, 0
 	var previousID uint32
-	for _, plan := range module.Functions {
+	for function := 0; function < module.FunctionCount(); function++ {
+		if module.FunctionPending(function) {
+			return false // fail closed if a producer omitted a collecting function
+		}
+		plan := module.Function(function)
 		if plan == nil {
 			continue // proven non-collecting function; no active-frame map is needed
 		}

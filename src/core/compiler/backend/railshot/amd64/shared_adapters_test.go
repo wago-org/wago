@@ -5,7 +5,6 @@ package amd64
 import (
 	"testing"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	encoder "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
@@ -40,10 +39,10 @@ func TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64(t *testing.T)
 		1, 1, 2, 16, uint64(31) << 32,
 	}
 	literalOffsets := []uint32{0, 5, 10}
-	roots := &shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{
+	roots := testGCModuleRootPlansAMD64(t,
 		testGCPlanWithCallsites(t, 29, [2]uint32{30, 0}),
 		testGCPlanWithCallsites(t, 29, [2]uint32{30, 0}),
-	}}
+	)
 	stats := &ModuleStats{Funcs: []*CodegenStats{
 		{CodeBytes: len(first), NativeSize: NativeFunctionSizeReport{TotalBytes: len(first), HostAdapterBytes: 30, InternalFunctionBytes: 5}},
 		{CodeBytes: len(second), NativeSize: NativeFunctionSizeReport{TotalBytes: len(second), HostAdapterBytes: 30, InternalFunctionBytes: 5}},
@@ -62,11 +61,11 @@ func TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64(t *testing.T)
 	if relocs[0][0].at != 13 || relocs[1][0].at != 13 || uint32(literalWords[4]>>32) != 13 || uint32(literalWords[9]>>32) != 13 {
 		t.Fatalf("call/literal remap = relocs %v/%v literals %d/%d", relocs[0], relocs[1], literalWords[4]>>32, literalWords[9]>>32)
 	}
-	if testGCCallsiteReturn(t, roots.Functions[0], 0) != 12 || testGCCallsiteReturn(t, roots.Functions[1], 0) != 12 {
-		t.Fatalf("GC callsite remap = %v/%v", roots.Functions[0].CallsiteData, roots.Functions[1].CallsiteData)
+	if testGCCallsiteReturn(t, roots.Function(0), 0) != 12 || testGCCallsiteReturn(t, roots.Function(1), 0) != 12 {
+		t.Fatalf("GC callsite remap = %v/%v", roots.Function(0).CallsiteData, roots.Function(1).CallsiteData)
 	}
-	if roots.Functions[0].AdapterReturnOffset != 60 || roots.Functions[1].AdapterReturnOffset != 43 {
-		t.Fatalf("shared adapter return offsets = %d/%d, want 60/43", roots.Functions[0].AdapterReturnOffset, roots.Functions[1].AdapterReturnOffset)
+	if roots.Function(0).AdapterReturnOffset != 60 || roots.Function(1).AdapterReturnOffset != 43 {
+		t.Fatalf("shared adapter return offsets = %d/%d, want 60/43", roots.Function(0).AdapterReturnOffset, roots.Function(1).AdapterReturnOffset)
 	}
 	if got[58] != 0xff || got[59] != 0xd5 {
 		t.Fatalf("shared call bytes = % x, want ff d5", got[58:60])

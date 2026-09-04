@@ -30,10 +30,10 @@ func TestShareAdapterTailsRemapsModuleOffsetsArm64(t *testing.T) {
 		{function: 0, returnOff: 4, endOff: 16},
 		{function: 1, returnOff: 4, endOff: 16},
 	}
-	roots := &shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{
+	roots := testGCModuleRootPlansARM64(t,
 		testGCPlanWithCallsites(t, 0, [2]uint32{20, 0}),
 		testGCPlanWithCallsites(t, 0, [2]uint32{20, 0}),
-	}}
+	)
 
 	got, islandBytes, err := shareAdapterTails(code, entry, internal, relocs, infos, roots, nil)
 	if err != nil {
@@ -70,6 +70,33 @@ func TestShareAdapterTailsRemapsModuleOffsetsArm64(t *testing.T) {
 			t.Fatalf("shared tail word %d = %#x, want %#x", i, gotWord, want)
 		}
 	}
+}
+
+func testGCModuleRootPlansARM64(t testing.TB, plans ...*shared.GCFrameRootPlan) *shared.GCModuleFrameRootPlan {
+	t.Helper()
+	module := shared.NewGCModuleFrameRootPlan(len(plans))
+	count := 0
+	for function, plan := range plans {
+		if plan != nil {
+			if !module.MarkFunction(function) {
+				t.Fatalf("mark function root plan %d", function)
+			}
+			count++
+		}
+	}
+	if !module.ReserveFunctions(count) {
+		t.Fatalf("reserve %d function root plans", count)
+	}
+	for function, plan := range plans {
+		if plan != nil {
+			dst, ok := module.BeginFunction(function)
+			if !ok {
+				t.Fatalf("begin function root plan %d", function)
+			}
+			*dst = *plan
+		}
+	}
+	return module
 }
 
 func TestAdapterTailInfoRejectsEmbeddedReturnPCArm64(t *testing.T) {

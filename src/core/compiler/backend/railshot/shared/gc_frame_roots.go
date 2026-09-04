@@ -283,11 +283,72 @@ func (p *GCFrameRootPlan) TracksLocal(index uint32) bool {
 	return i < len(p.Locals) && p.Locals[i].Index == index
 }
 
-// GCModuleFrameRootPlan owns one independent function plan per local function.
-// Distinct entries allow parallel code generation without shared mutation.
+// GCModuleFrameRootPlan owns one independent plan for every collecting local
+// function. The pointer-free dense index preserves O(1) lookup without retaining
+// one scanned pointer per RootNone function, while the sparse arena removes one
+// heap allocation per retained plan. The arena is complete before parallel code
+// generation begins, so returned plan addresses remain stable while workers
+// mutate distinct entries.
 type GCModuleFrameRootPlan struct {
-	Functions  []*GCFrameRootPlan
-	Diagnostic string // compile-only fail-closed admission explanation
+	functionPlanIndexes []uint32 // sparse arena index + 1; zero means RootNone
+	functions           []GCFrameRootPlan
+}
+
+const pendingGCFrameRootPlan = ^uint32(0)
+
+func NewGCModuleFrameRootPlan(functionCount int) *GCModuleFrameRootPlan {
+	if functionCount < 0 {
+		functionCount = 0
+	}
+	return &GCModuleFrameRootPlan{functionPlanIndexes: make([]uint32, functionCount)}
+}
+
+// MarkFunction records a semantic non-RootNone decision before the more
+// expensive plan pass. This lets the caller reserve the sparse arena exactly
+// while using the final dense index itself as the temporary pointer-free
+// decision vector.
+func (p *GCModuleFrameRootPlan) MarkFunction(index int) bool {
+	if p == nil || index < 0 || index >= len(p.functionPlanIndexes) || p.functionPlanIndexes[index] != 0 {
+		return false
+	}
+	p.functionPlanIndexes[index] = pendingGCFrameRootPlan
+	return true
+}
+
+// FunctionPending reports whether index was classified as non-RootNone but has
+// not yet been populated by BeginFunction.
+func (p *GCModuleFrameRootPlan) FunctionPending(index int) bool {
+	return p != nil && index >= 0 && index < len(p.functionPlanIndexes) && p.functionPlanIndexes[index] == pendingGCFrameRootPlan
+}
+
+// ReserveFunctions reserves the sparse plan arena before any function begins.
+func (p *GCModuleFrameRootPlan) ReserveFunctions(count int) bool {
+	if p == nil || count < 0 || uint64(count) >= uint64(pendingGCFrameRootPlan) || len(p.functions) != 0 || cap(p.functions) != 0 {
+		return false
+	}
+	p.functions = make([]GCFrameRootPlan, 0, count)
+	return true
+}
+
+// BeginFunction appends one pending plan and returns its stable address. A
+// complete reservation is required first: refusing growth makes every address
+// returned during module planning stable through parallel code generation.
+func (p *GCModuleFrameRootPlan) BeginFunction(index int) (*GCFrameRootPlan, bool) {
+	if p == nil || index < 0 || index >= len(p.functionPlanIndexes) || p.functionPlanIndexes[index] != pendingGCFrameRootPlan || len(p.functions) >= cap(p.functions) || uint64(len(p.functions)) >= uint64(pendingGCFrameRootPlan-1) {
+		return nil, false
+	}
+	p.functions = append(p.functions, GCFrameRootPlan{})
+	p.functionPlanIndexes[index] = uint32(len(p.functions))
+	return &p.functions[len(p.functions)-1], true
+}
+
+// FunctionCount returns the local-function population, including RootNone
+// entries. It is the dense iteration bound for callers that need source indexes.
+func (p *GCModuleFrameRootPlan) FunctionCount() int {
+	if p == nil {
+		return 0
+	}
+	return len(p.functionPlanIndexes)
 }
 
 func (p *GCFrameRootPlan) rootMaskWordsPerSite() int {
@@ -408,8 +469,12 @@ func (p *GCFrameRootPlan) VisitLiveLocals(site int, call bool, visit func(root i
 }
 
 func (p *GCModuleFrameRootPlan) Function(index int) *GCFrameRootPlan {
-	if p == nil || index < 0 || index >= len(p.Functions) {
+	if p == nil || index < 0 || index >= len(p.functionPlanIndexes) {
 		return nil
 	}
-	return p.Functions[index]
+	sparse := p.functionPlanIndexes[index]
+	if sparse == 0 || uint64(sparse) > uint64(len(p.functions)) {
+		return nil
+	}
+	return &p.functions[int(sparse-1)]
 }

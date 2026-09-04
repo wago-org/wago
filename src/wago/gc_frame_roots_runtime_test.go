@@ -156,8 +156,18 @@ func TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall(t *testing.T) {
 	if !plan.AppendSafepoint([]uint32{16}) {
 		t.Fatal("failed to append safepoint")
 	}
-	if !validGCModuleFrameRootPlan(&shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{plan}}) {
+	if !validGCModuleFrameRootPlan(gcModuleFrameRootPlanForTest(t, plan)) {
 		t.Fatal("one logical call with three native return paths was rejected")
+	}
+}
+
+func TestGCModuleFrameRootPlanRejectsPendingFunction(t *testing.T) {
+	module := shared.NewGCModuleFrameRootPlan(1)
+	if !module.MarkFunction(0) {
+		t.Fatal("failed to mark collecting function")
+	}
+	if validGCModuleFrameRootPlan(module) {
+		t.Fatal("module with an unpopulated collecting function was accepted")
 	}
 }
 
@@ -177,15 +187,42 @@ func TestGCModuleFrameRootPlanDerivesDenseSafepointIDs(t *testing.T) {
 		}
 		return plan
 	}
-	if !validGCModuleFrameRootPlan(&shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{plan(shared.GCSafepointIDMax - 1)}}) {
+	if !validGCModuleFrameRootPlan(gcModuleFrameRootPlanForTest(t, plan(shared.GCSafepointIDMax-1))) {
 		t.Fatal("maximum derived safepoint ID was rejected")
 	}
-	if validGCModuleFrameRootPlan(&shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{plan(shared.GCSafepointIDMax)}}) {
+	if validGCModuleFrameRootPlan(gcModuleFrameRootPlanForTest(t, plan(shared.GCSafepointIDMax))) {
 		t.Fatal("derived safepoint ID above the dispatch domain was accepted")
 	}
-	if validGCModuleFrameRootPlan(&shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{plan(0), plan(0)}}) {
+	if validGCModuleFrameRootPlan(gcModuleFrameRootPlanForTest(t, plan(0), plan(0))) {
 		t.Fatal("overlapping derived safepoint ID ranges were accepted")
 	}
+}
+
+func gcModuleFrameRootPlanForTest(t testing.TB, plans ...*shared.GCFrameRootPlan) *shared.GCModuleFrameRootPlan {
+	t.Helper()
+	module := shared.NewGCModuleFrameRootPlan(len(plans))
+	count := 0
+	for function, plan := range plans {
+		if plan != nil {
+			if !module.MarkFunction(function) {
+				t.Fatalf("mark function root plan %d", function)
+			}
+			count++
+		}
+	}
+	if !module.ReserveFunctions(count) {
+		t.Fatalf("reserve %d function root plans", count)
+	}
+	for function, plan := range plans {
+		if plan != nil {
+			dst, ok := module.BeginFunction(function)
+			if !ok {
+				t.Fatalf("begin function root plan %d", function)
+			}
+			*dst = *plan
+		}
+	}
+	return module
 }
 
 func TestNormalizeAdapterReturnOffsets(t *testing.T) {

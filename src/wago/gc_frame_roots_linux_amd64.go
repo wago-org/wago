@@ -17,12 +17,18 @@ import (
 // arenas for larger configured populations. Dead-at-all-sites locals are
 // removed before variable-sized per-site vectors are emitted. Each function
 // gets independent compile state so workers may populate maps in parallel.
-func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRootPlan {
+func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string) *shared.GCModuleFrameRootPlan {
+	if diagnostic != nil {
+		*diagnostic = ""
+	}
 	if !exactRoots {
 		return nil
 	}
 	reject := func(format string, args ...any) *shared.GCModuleFrameRootPlan {
-		return &shared.GCModuleFrameRootPlan{Diagnostic: fmt.Sprintf(format, args...)}
+		if diagnostic != nil {
+			*diagnostic = fmt.Sprintf(format, args...)
+		}
+		return nil
 	}
 	if m == nil || len(m.Code) == 0 {
 		return reject("generic GC module has no local function bodies")
@@ -80,19 +86,24 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRo
 	if err != nil {
 		return reject("exception root maps: %v", err)
 	}
-	modulePlan := &shared.GCModuleFrameRootPlan{Functions: make([]*shared.GCFrameRootPlan, len(m.Code))}
+	modulePlan, err := gcFramePrepareModuleRootPlan(m, &classifier)
+	if err != nil {
+		return reject("%v", err)
+	}
 	var safepointBase uint32
 	ehMapIndex := 0
-functions:
 	for function := range m.Code {
-		var fixedOffsets []uint32
+		hasFixedRoots := false
 		if ehMapIndex < len(ehMaps) && ehMaps[ehMapIndex].LocalFunction == uint32(function) {
-			fixedOffsets = gcFrameFixedOffsets(&ehMaps[ehMapIndex])
+			hasFixedRoots = true
 			ehMapIndex++
 		}
-		mayCollect := gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, &classifier)
-		if !mayCollect {
+		if !modulePlan.FunctionPending(function) {
 			continue // RootNone: no safepoint can observe this frame.
+		}
+		var fixedOffsets []uint32
+		if hasFixedRoots {
+			fixedOffsets = gcFrameFixedOffsets(&ehMaps[ehMapIndex-1])
 		}
 		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), &classifier) {
 			return reject("function %d contains an unsupported native call or frame shape", function)
@@ -101,7 +112,11 @@ functions:
 		if !ok {
 			return reject("function %d has no validated signature", function)
 		}
-		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedOffsets}
+		plan, ok := modulePlan.BeginFunction(function)
+		if !ok {
+			return reject("function %d root plan ownership is invalid", function)
+		}
+		*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedOffsets}
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if collectorFrameRefType(m, t) {
@@ -120,18 +135,12 @@ functions:
 		}
 		for _, t := range ft.Params {
 			if !add(t) {
-				if !mayCollect {
-					continue functions
-				}
 				return reject("function %d exceeds %d tracked collector locals", function, shared.GCFrameTrackedLocalLimit)
 			}
 		}
 		for _, run := range m.Code[function].Locals.Runs {
 			for i := uint32(0); i < run.Count; i++ {
 				if !add(run.Type) {
-					if !mayCollect {
-						continue functions
-					}
 					return reject("function %d exceeds %d tracked collector locals", function, shared.GCFrameTrackedLocalLimit)
 				}
 			}
@@ -156,7 +165,6 @@ functions:
 		if !plan.SetLiveMasks(liveMasks.words, liveMasks.allocationN, liveMasks.callN) {
 			return reject("function %d has malformed exact local liveness masks", function)
 		}
-		modulePlan.Functions[function] = plan
 		safepointBase += uint32(liveMasks.allocationN)
 	}
 	if ehMapIndex != len(ehMaps) {

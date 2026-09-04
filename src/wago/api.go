@@ -1416,7 +1416,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	collectorReferenceCallBoundary := moduleHasCollectorReferenceCallBoundary(m)
 	gcAllocationSites := moduleHasGCAllocationSites(m)
 	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary
-	gcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots)
+	var gcFrameRootDiagnostic string
+	gcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots, &gcFrameRootDiagnostic)
 	indexedFunctionRefTest, indexedFunctionRefCast := requirements.indexedFuncRefTest, requirements.indexedFuncRefCast
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
@@ -2024,22 +2025,24 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	validGCFrameRoots := validGCModuleFrameRootPlan(gcFrameRoots)
 	if validGCFrameRoots && (gcAllocationSites || genericGCExecution && !collectorReferenceCallBoundary) {
 		hasAllocationSafepoint := false
-		for _, plan := range gcFrameRoots.Functions {
+		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
+			plan := gcFrameRoots.Function(function)
 			hasAllocationSafepoint = hasAllocationSafepoint || plan != nil && plan.SafepointCount() != 0
 		}
 		validGCFrameRoots = hasAllocationSafepoint
 	}
 	if exactNativeGCRoots && !validGCFrameRoots {
 		diagnostic := "native backend did not produce complete exact root maps"
-		if gcFrameRoots != nil && gcFrameRoots.Diagnostic != "" {
-			diagnostic = gcFrameRoots.Diagnostic
+		if gcFrameRootDiagnostic != "" {
+			diagnostic = gcFrameRootDiagnostic
 		}
 		compiled.setGCRootAdmissionFailure(diagnostic)
 	}
 	if validGCFrameRoots {
 		rootMap := &compiledGCFrameRoots{}
 		var offsetInterner gcFrameOffsetInterner
-		for function, plan := range gcFrameRoots.Functions {
+		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
+			plan := gcFrameRoots.Function(function)
 			if plan == nil {
 				continue
 			}
