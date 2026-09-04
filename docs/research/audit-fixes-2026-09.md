@@ -14,3 +14,13 @@ same owned image, without a second native-code copy.
 Validation: `go test ./src/wago -run
 'Test(UnmarshalOwnsArtifactBytes|Compiled(ReadFrom|Sections)|MarshalRoundTrips)'
 checks buffer reuse, section framing, and the owned-image path.
+
+## 3. Snapshot low-level import bindings
+
+Instantiation makes one shallow copy before validation. Binding, re-export
+lookup, and resource teardown retain that same copy. Mutation or deletion in
+caller maps after return cannot change an instance's bindings. Resource objects
+remain shared by identity. Cost: one map copy per non-nil import set; no call-path
+allocation is added.
+
+Validation: import snapshot, function re-export, and table-close tests pass.

@@ -442,3 +442,24 @@ func reexportProducerModule() []byte {
 		)),
 	)
 }
+
+func TestInstantiateSnapshotsImports(t *testing.T) {
+	c := MustCompile(importedFunctionReexportModule())
+	defer c.Close()
+	imports := Imports{"env.step": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })}
+	in, err := Instantiate(c, imports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	imports["env.step"] = HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 9 })
+	out, err := in.Invoke("forward", 41)
+	if err != nil || len(out) != 1 || out[0] != 42 {
+		t.Fatalf("Invoke after map replacement = %v, %v", out, err)
+	}
+	delete(imports, "env.step")
+	out, err = in.Invoke("forward", 41)
+	if err != nil || len(out) != 1 || out[0] != 42 {
+		t.Fatalf("Invoke after map deletion = %v, %v", out, err)
+	}
+}

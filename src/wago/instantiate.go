@@ -117,6 +117,14 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 }
 
 func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, moduleUse *Module) (*Instance, error) {
+	// Keep validation, native linking, public lookup, and teardown on one binding set.
+	if opts.Imports != nil {
+		imports := make(Imports, len(opts.Imports))
+		for key, value := range opts.Imports {
+			imports[key] = value
+		}
+		opts.Imports = imports
+	}
 	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports, moduleUse: moduleUse}
 	defer b.releaseModuleUse()
 	if c == nil {
