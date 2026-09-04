@@ -4250,6 +4250,14 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		return cachedReg
 	}
 	cacheV128 := func(index int, reg amd64.Reg) {
+		if findVectorStackCache(index) < 0 {
+			for cache, candidate := range vectorStackCacheRegisters[:vectorStackCacheEntries] {
+				if candidate == reg && vectorStackCache[cache] < 0 {
+					vectorStackCache[cache] = index
+					return
+				}
+			}
+		}
 		cachedReg := reserveV128(index)
 		if reg != cachedReg {
 			a.VMovdqu(cachedReg, reg)
@@ -4424,6 +4432,19 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 				a.TestSelf(amd64.RAX, typ == wasm.I64)
 				stackTypes = append(stackTypes, wasm.I32)
 				pendingConditionAt, pendingCondition = instrIndex+1, amd64.CondE
+				continue
+			}
+		}
+		if reachable && instrIndex+1 < len(sf.Instrs) && len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 &&
+			instr.Kind == wasm.InstrLocalGet && int(instr.U32()) < len(sf.Locals) && sf.Locals[instr.U32()] == wasm.V128 && localPinned[instr.U32()] {
+			operation, ok := sf.SIMDImmediateAt(uint32(instrIndex + 1))
+			if ok && amd64DirectSIMDBinaryKind(operation.Kind) {
+				base := len(stackTypes) - 1
+				lhs := takeV128(base, 0)
+				emitAMD64DirectSIMDBinary(&a, operation.Kind, lhs, lhs, localRegisters[instr.U32()])
+				cacheV128(base, lhs)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+				instrIndex++
 				continue
 			}
 		}
