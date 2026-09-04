@@ -247,7 +247,11 @@ func TestAMD64RailMachUsesAllocatedMemoryAddressesDirectly(t *testing.T) {
 	}
 	allocation.Locations[1].Index = 5
 	if amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, false) {
-		t.Fatal("callee-saved address bypassed its scratch copy")
+		t.Fatal("live callee-saved address bypassed its scratch copy")
+	}
+	allocation.Intervals = append(allocation.Intervals, railmach.LiveInterval{Reg: 1, Start: 0, End: 6, Bank: railmach.BankGPR})
+	if !amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, false) {
+		t.Fatal("dead callee-saved address required a scratch copy")
 	}
 	allocation.Locations[1].Index = 2
 	if amd64RailMachCanUseMemoryAddressDirectly(&plan, 2, 0, 0, false) || amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, math.MaxInt32+1, false) || amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, true) {
