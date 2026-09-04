@@ -903,6 +903,26 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	v.rd.reset(body.body)
 	r := &v.rd
 	var op directOp // reused across the loop; decodeDirectOp overwrites it each step
+	facts := v.analysisFacts()
+	if facts != nil {
+		facts.recordDepths(len(v.vals), len(v.ctrls))
+		for {
+			if len(v.ctrls) == 0 {
+				if r.has() {
+					return &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
+				}
+				return nil
+			}
+			if err := v.decodeDirectOp(r, widths, multiMemory, &op); err != nil {
+				return err
+			}
+			facts.observeDirect(&op)
+			if err := v.stepDirectOp(&op); err != nil {
+				return err
+			}
+			facts.recordDepths(len(v.vals), len(v.ctrls))
+		}
+	}
 	for {
 		if len(v.ctrls) == 0 {
 			if r.has() {
