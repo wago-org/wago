@@ -53,7 +53,7 @@ func (t Toolchain) Switch(name, profileValue, buildValue string) {
 		t.ChooseInstalled()
 		return
 	}
-	profile, build := activeProfile(t.Dirs), activeBuild(t.Dirs)
+	_, profile, build := activeTuple(t.Dirs)
 	var err error
 	if profileValue != "" {
 		profile, err = wagopaths.ParseProfile(profileValue)
@@ -75,7 +75,7 @@ func (t Toolchain) Switch(name, profileValue, buildValue string) {
 
 func (t Toolchain) Update(request UpdateRequest) {
 	args := request.Args
-	active := activeVersion(t.Dirs)
+	active, profile, build := activeTuple(t.Dirs)
 	if len(args) == 0 && !request.Nightly && !request.Canary {
 		if automation.NoInput() {
 			if !isRollingChannel(active) {
@@ -94,7 +94,6 @@ func (t Toolchain) Update(request UpdateRequest) {
 	if err != nil {
 		fatal("version update: %v", err)
 	}
-	profile, build := activeProfile(t.Dirs), activeBuild(t.Dirs)
 	if request.Profile != "" {
 		profile, err = wagopaths.ParseProfile(request.Profile)
 		if err != nil {

@@ -205,3 +205,17 @@ compilation and conformance decoding select their grammar before validation.
 Validation: runtime, frontend, and Wasm suites pass with pinned WABT and the
 pinned official interpreter. The grammar matrix covers explicit/padded zero
 indexes across eight instruction forms and all three decode/validate paths.
+
+## 17. Publish one active installation record
+
+Runtime version, profile, and build now use one validated, bounded JSON record,
+written by durable atomic replacement under a cross-process lock. Readers load
+one tuple. Legacy files are migration inputs only; clearing selection writes a
+tombstone with standard/normal defaults, so neither legacy state nor a removed
+runtime's profile/build can carry into the next selection. Plugin path construction also
+uses one tuple per path. Invalid profile/build input fails before publication.
+
+Validation: version race tests pass, including concurrent writers/readers,
+publication failure, legacy migration, and invalid records. Version and plugin
+suites pass with TMPDIR inside the repository, where temporary Go modules can
+use normal Git VCS stamping.

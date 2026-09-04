@@ -32,7 +32,8 @@ func offerUseInstallation(d wagopaths.Dirs, ver string, profile wagopaths.Profil
 }
 
 func finishVersionInstall(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, mode string) {
-	if activeVersion(d) == ver && activeProfile(d) == profile && activeBuild(d) == build {
+	active, currentProfile, currentBuild := activeTuple(d)
+	if active == ver && currentProfile == profile && currentBuild == build {
 		return
 	}
 	offerUseInstallation(d, ver, profile, build, mode)
@@ -115,7 +116,7 @@ func vmChooseInstalled(d wagopaths.Dirs) {
 }
 
 func installedVersionPicker(d wagopaths.Dirs, vers []string) *tui.Picker {
-	active, currentProfile, currentBuild := activeVersion(d), activeProfile(d), activeBuild(d)
+	active, currentProfile, currentBuild := activeTuple(d)
 	items := make([]tui.Item, 0, len(vers))
 	cursor := 0
 	profileWidth := 0
@@ -359,12 +360,7 @@ func removeInstalledVersion(d wagopaths.Dirs, ver string) error {
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
-	if activeVersion(d) == ver {
-		_ = os.Remove(d.ConfigFile("active-version"))
-		_ = os.Remove(d.ConfigFile("active-profile"))
-		_ = os.Remove(d.ConfigFile("active-build"))
-	}
-	return nil
+	return clearActiveInstallation(d, ver)
 }
 
 func uninstallVersionPicker(d wagopaths.Dirs, versions []string) *tui.MultiSelect {

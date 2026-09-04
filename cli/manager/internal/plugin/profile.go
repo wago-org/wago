@@ -11,17 +11,26 @@ import (
 func runnerProfile() string  { return "standard" }
 func runnerBuildTag() string { return "wago_runtime" }
 
-func pluginRuntimeVersion() string {
+func pluginActiveRuntime() (string, wagopaths.Build) {
 	dirs := wagopaths.DirsFor(managerVersion())
-	if active := managerversion.ActiveVersion(dirs); active != "" {
-		return active
+	version, _, build, err := managerversion.ActiveInstallation(dirs)
+	if err != nil {
+		fatal("read active installation: %v", err)
 	}
-	return managerVersion()
+	if version == "" {
+		version = managerVersion()
+	}
+	return version, build
+}
+
+func pluginRuntimeVersion() string {
+	version, _ := pluginActiveRuntime()
+	return version
 }
 
 func pluginBuildDefaultVariant() string {
-	dirs := wagopaths.DirsFor(managerVersion())
-	return string(managerversion.ActiveBuild(dirs))
+	_, build := pluginActiveRuntime()
+	return string(build)
 }
 
 func pluginBuildConfig() pluginbuild.Config {

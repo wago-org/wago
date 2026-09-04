@@ -31,12 +31,12 @@ func resolvePluginEnvironment() (pluginEnvironment, error) {
 	}, nil
 }
 
-func pluginBuildVariant() string {
+func pluginBuildVariantWithDefault(fallback string) string {
 	switch value := strings.ToLower(strings.TrimSpace(os.Getenv("WAGO_RUNTIME_BUILD"))); value {
 	case string(wagopaths.BuildNormal), string(wagopaths.BuildTiny):
 		return value
 	}
-	return pluginBuildDefaultVariant()
+	return fallback
 }
 
 func pluginBuildProfile() string {
@@ -52,12 +52,14 @@ func localPluginBuildDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(wd, ".wago", "builds", pluginRuntimeVersion(), pluginBuildProfile(), pluginBuildVariant()), nil
+	version, build := pluginActiveRuntime()
+	return filepath.Join(wd, ".wago", "builds", version, pluginBuildProfile(), pluginBuildVariantWithDefault(string(build))), nil
 }
 
 func globalPluginBuildDir() string {
-	dirs := wagopaths.DirsFor(pluginRuntimeVersion())
-	return filepath.Join(dirs.Versions, pluginRuntimeVersion(), pluginBuildProfile(), pluginBuildVariant(), "plugins")
+	version, build := pluginActiveRuntime()
+	dirs := wagopaths.DirsFor(version)
+	return filepath.Join(dirs.Versions, version, pluginBuildProfile(), pluginBuildVariantWithDefault(string(build)), "plugins")
 }
 
 func buildDirFor(global bool) (string, error) {

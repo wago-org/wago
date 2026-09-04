@@ -34,34 +34,6 @@ func installedVersions(d wagopaths.Dirs) []string {
 	return vers
 }
 
-func activeVersion(d wagopaths.Dirs) string {
-	b, err := os.ReadFile(d.ConfigFile("active-version"))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(b))
-}
-
-func activeProfile(d wagopaths.Dirs) wagopaths.Profile {
-	b, err := os.ReadFile(d.ConfigFile("active-profile"))
-	if err == nil {
-		if profile, parseErr := wagopaths.ParseProfile(strings.TrimSpace(string(b))); parseErr == nil {
-			return profile
-		}
-	}
-	return wagopaths.ProfileStandard
-}
-
-func activeBuild(d wagopaths.Dirs) wagopaths.Build {
-	b, err := os.ReadFile(d.ConfigFile("active-build"))
-	if err == nil {
-		if build, parseErr := wagopaths.ParseBuild(strings.TrimSpace(string(b))); parseErr == nil {
-			return build
-		}
-	}
-	return wagopaths.BuildNormal
-}
-
 func validateVersionStorageName(name string) error {
 	if name == "" || name == "." || name == ".." || name[len(name)-1] == '.' {
 		return fmt.Errorf("invalid version %q: use letters, digits, '.', '-', '+', '@', or '_'", name)
@@ -145,33 +117,16 @@ func installedRuntime(d wagopaths.Dirs, ver string, requestedProfile wagopaths.P
 }
 
 func activeRunner(d wagopaths.Dirs) (path, version string, profile wagopaths.Profile, build wagopaths.Build, ok bool) {
-	version = activeVersion(d)
+	state, err := readActiveInstallation(d)
+	if err != nil {
+		return "", "", "", "", false
+	}
+	version, profile, build = state.Version, state.Profile, state.Build
 	if version == "" {
 		return "", "", "", "", false
 	}
-	profile = activeProfile(d)
-	build = activeBuild(d)
 	path, profile, build, ok = installedRuntime(d, version, profile, build)
 	return path, version, profile, build, ok
-}
-
-func setActiveInstallation(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) error {
-	if err := validateVersionStorageName(ver); err != nil {
-		return err
-	}
-	if err := d.Ensure(); err != nil {
-		return err
-	}
-	if err := os.WriteFile(d.ConfigFile("active-version"), []byte(ver+"\n"), 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(d.ConfigFile("active-profile"), []byte(string(profile)+"\n"), 0o644); err != nil {
-		return err
-	}
-	if err := os.WriteFile(d.ConfigFile("active-build"), []byte(string(build)+"\n"), 0o644); err != nil {
-		return err
-	}
-	return nil
 }
 
 func setActiveVersion(d wagopaths.Dirs, ver string) error {
@@ -218,7 +173,7 @@ func vmList(d wagopaths.Dirs) {
 		fmt.Println(dim("no versions installed; run: wago version install --latest --use"))
 		return
 	}
-	active, profile, build := activeVersion(d), activeProfile(d), activeBuild(d)
+	active, profile, build := activeTuple(d)
 	for _, v := range vers {
 		marker := "  "
 		if v == active {
@@ -249,32 +204,25 @@ func installedProfiles(d wagopaths.Dirs, ver string) []string {
 }
 
 func vmCurrent(d wagopaths.Dirs) {
+	version, profile, build := activeTuple(d)
 	if automation.JSON() {
-		version := activeVersion(d)
-		ui.PrintJSON(map[string]any{
-			"active": version != "", "version": version,
-			"profile": string(activeProfile(d)), "build": string(activeBuild(d)),
-		})
+		ui.PrintJSON(map[string]any{"active": version != "", "version": version, "profile": string(profile), "build": string(build)})
 		return
 	}
-	if a := activeVersion(d); a != "" {
-		fmt.Printf("%s %s %s\n", a, activeProfile(d), activeBuild(d))
+	if version != "" {
+		fmt.Printf("%s %s %s\n", version, profile, build)
 		return
 	}
 	fmt.Println(dim("no active version set; run: wago version install --latest --use"))
 }
 
 func vmWhich(d wagopaths.Dirs) {
-	a := activeVersion(d)
-	if a == "" {
-		fatal("version which: no active version set")
-	}
-	path, _, _, _, ok := activeRunner(d)
+	path, version, profile, build, ok := activeRunner(d)
 	if !ok {
 		fatal("version which: active runtime is not installed")
 	}
 	if automation.JSON() {
-		ui.PrintJSON(map[string]string{"path": path, "version": a, "profile": string(activeProfile(d)), "build": string(activeBuild(d))})
+		ui.PrintJSON(map[string]string{"path": path, "version": version, "profile": string(profile), "build": string(build)})
 		return
 	}
 	fmt.Println(path)
