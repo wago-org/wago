@@ -99,6 +99,44 @@ type CallerResolver struct {
 	rt atomic.Pointer[Runtime]
 }
 
+// CallerInvoker is a revocable synchronous re-entry handle for the exact guest
+// making an active host call. The HostModule token supplies both instance
+// identity and callback lifetime; forged, retained, and cross-runtime tokens
+// fail closed.
+type CallerInvoker struct {
+	rt atomic.Pointer[Runtime]
+}
+
+func (r *CallerInvoker) activate(rt *Runtime) {
+	if r == nil || rt == nil {
+		return
+	}
+	r.rt.Store(rt)
+	rt.callerResolverActive.Store(true)
+}
+
+func (r *CallerInvoker) close() error {
+	if r != nil {
+		r.rt.Store(nil)
+	}
+	return nil
+}
+
+// Invoke synchronously invokes an export on the active calling guest. Nested
+// execution uses Wago's isolated re-entry stack and inherits cancellation from
+// ctx. The authority expires when the outer host callback returns.
+func (r *CallerInvoker) Invoke(ctx context.Context, caller HostModule, export string, args ...uint64) ([]uint64, error) {
+	if r == nil {
+		return nil, fmt.Errorf("wago: nil caller invoker: %w", ErrPermissionDenied)
+	}
+	rt := r.rt.Load()
+	h, ok := caller.(instanceHostModule)
+	if rt == nil || !ok || !h.valid() || h.in == nil || h.in.rt != rt {
+		return nil, fmt.Errorf("wago: caller invocation requires an active host call from the owning runtime: %w", ErrPermissionDenied)
+	}
+	return h.in.InvokeFromHost(ctx, caller, export, args...)
+}
+
 func (r *CallerResolver) activate(rt *Runtime) {
 	if r == nil || rt == nil {
 		return

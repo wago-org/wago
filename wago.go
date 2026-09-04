@@ -21,6 +21,7 @@ type (
 	AuthorityScope                  = impl.AuthorityScope
 	Bits                            = impl.Bits
 	BoundsCheckMode                 = impl.BoundsCheckMode
+	CallerInvoker                   = impl.CallerInvoker
 	CallerResolver                  = impl.CallerResolver
 	Capability                      = impl.Capability
 	CapabilityOption                = impl.CapabilityOption
@@ -217,6 +218,7 @@ const (
 	AuthorityCoreModuleCompile                 = impl.AuthorityCoreModuleCompile
 	AuthorityHostArgumentsRead                 = impl.AuthorityHostArgumentsRead
 	AuthorityHostCallerIdentify                = impl.AuthorityHostCallerIdentify
+	AuthorityHostCallerInvoke                  = impl.AuthorityHostCallerInvoke
 	AuthorityHostImportDefine                  = impl.AuthorityHostImportDefine
 	AuthorityInstanceCloseObserve              = impl.AuthorityInstanceCloseObserve
 	AuthorityInstanceInstantiateIntercept      = impl.AuthorityInstanceInstantiateIntercept
