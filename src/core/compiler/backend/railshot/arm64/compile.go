@@ -1277,7 +1277,6 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	// P6.1 elision is on unless disabled per-compile (opts) or globally (env).
 	boundsFacts := policy.EnabledOption(optBoundsFacts) && !opts.NoBoundsFacts
 	n := len(m.Code)
-	relocs := make([][]callReloc, n)
 	entry, internalEntry := shared.ModuleEntries(n)
 	importedFuncs := m.ImportedFuncCount()
 	nGlobals := m.GlobalCount()
@@ -1373,6 +1372,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	workers := shared.ResolveWorkers(opts.Workers, n, runtime.GOMAXPROCS(0))
 	if workers <= 1 {
+		relocs := newCallRelocTable(n, relocCap)
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
 		expandedLowering := expandedStackLowering(opts)
@@ -1415,7 +1415,6 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 		}
 		var trapBodyCluster sharedTrapBodyCluster
-		relocArena := make([]callReloc, 0, relocCap)
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		for i := range m.Code {
 			var st *CodegenStats
@@ -1425,6 +1424,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 			if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
 				st.peep("inline-dead-body")
+				if !relocs.appendFunction(i, nil) {
+					return nil, fmt.Errorf("arm64: module call relocations exceed 32-bit range")
+				}
 				continue
 			}
 			// Align and reserve before lowering so the assembler can emit straight
@@ -1470,9 +1472,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			if sc.directPrepared {
 				directPrepared = markDirectPrepared(directPrepared, n, i)
 			}
-			relocStart := len(relocArena)
-			relocArena = append(relocArena, rl...)
-			relocs[i] = relocArena[relocStart:]
+			if !relocs.appendFunction(i, rl) {
+				return nil, fmt.Errorf("arm64: module call relocations exceed 32-bit range")
+			}
 			if !codeBuffer.CommitTail(fnCode) {
 				if err := codeBuffer.Append(fnCode); err != nil {
 					return nil, fmt.Errorf("arm64: grow code image: %w", err)
@@ -1486,25 +1488,25 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		moduleOther := 0
 		if adapters != nil {
 			var sharedBytes int
-			sharedBytes, err = shareAdaptersCodeBuffer(codeBuffer, entry, internalEntry, relocs, adapters, opts.GCFrameRoots, ms)
+			sharedBytes, err = shareAdaptersCodeBuffer(codeBuffer, entry, internalEntry, &relocs, adapters, opts.GCFrameRoots, ms)
 			if err != nil {
 				return nil, err
 			}
 			moduleOther += sharedBytes
 		} else if adapterTails != nil {
 			var sharedBytes int
-			sharedBytes, err = shareAdapterTailsCodeBuffer(codeBuffer, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
+			sharedBytes, err = shareAdapterTailsCodeBuffer(codeBuffer, entry, internalEntry, &relocs, adapterTails, opts.GCFrameRoots, ms)
 			if err != nil {
 				return nil, err
 			}
 			moduleOther += sharedBytes
 		}
 		code := codeBuffer.Bytes()
-		if err := finalizeOmittedInlineEntries(entry, internalEntry, relocs, hostAdapters, inlineTargets); err != nil {
+		if err := finalizeOmittedInlineEntries(entry, internalEntry, &relocs, hostAdapters, inlineTargets); err != nil {
 			return nil, err
 		}
 		finalizeModuleNativeSize(ms, len(code), moduleOther, len(codeBuffer.Mapping()))
-		if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
+		if err := patchCallRelocs(code, entry, internalEntry, &relocs); err != nil {
 			return nil, err
 		}
 		ms.setNodeScratchStats(sc)
@@ -1516,12 +1518,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		return &a64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, policy, ms, guardMode, boundsFacts, importedFuncs)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, policy, ms, guardMode, boundsFacts, importedFuncs)
 }
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, relocs [][]callReloc, allHints []funcHints, hintSidecar funcHintSidecar, immutableTable immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*a64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, allHints []funcHints, hintSidecar funcHintSidecar, immutableTable immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*a64.CompiledModule, error) {
 	n := len(m.Code)
 	if ms != nil {
 		for i := range m.Code {
@@ -1628,6 +1630,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if i, err := work.failures.Result(); err != nil {
 		return nil, fmt.Errorf("arm64: function %d: %w", i, err)
 	}
+	relocs := parallelCallRelocTable(results, states)
 
 	code := make([]byte, 0, codeCap)
 	var directPrepared []uint64
@@ -1661,7 +1664,6 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			adapters = append(adapters, sharedAdapterInfo{function: uint32(i), callOff: r.adapterOff, endOff: r.adapterEnd})
 		}
 		fnCode := states[int(r.worker)].arena[int(r.start):int(r.end)]
-		relocs[i] = states[int(r.worker)].relocs[int(r.relocStart):int(r.relocEnd)]
 		if r.layoutFlags&layoutHostAdapter != 0 {
 			trapBodyCluster.reset()
 		}
@@ -1678,7 +1680,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if adapters != nil {
 		var err error
 		var sharedBytes int
-		code, sharedBytes, err = shareAdapters(code, entry, internalEntry, relocs, adapters, opts.GCFrameRoots, ms)
+		code, sharedBytes, err = shareAdapters(code, entry, internalEntry, &relocs, adapters, opts.GCFrameRoots, ms)
 		if err != nil {
 			return nil, err
 		}
@@ -1686,16 +1688,16 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	} else if adapterTails != nil {
 		var err error
 		var sharedBytes int
-		code, sharedBytes, err = shareAdapterTails(code, entry, internalEntry, relocs, adapterTails, opts.GCFrameRoots, ms)
+		code, sharedBytes, err = shareAdapterTails(code, entry, internalEntry, &relocs, adapterTails, opts.GCFrameRoots, ms)
 		if err != nil {
 			return nil, err
 		}
 		moduleOther += sharedBytes
 	}
-	if err := finalizeOmittedInlineEntries(entry, internalEntry, relocs, hostAdapters, inlineTargets); err != nil {
+	if err := finalizeOmittedInlineEntries(entry, internalEntry, &relocs, hostAdapters, inlineTargets); err != nil {
 		return nil, err
 	}
-	if err := patchCallRelocs(code, entry, internalEntry, relocs); err != nil {
+	if err := patchCallRelocs(code, entry, internalEntry, &relocs); err != nil {
 		return nil, err
 	}
 	finalizeModuleNativeSize(ms, len(code), moduleOther, 0)
@@ -1716,7 +1718,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 // closed. Entry metadata remains structurally valid by aliasing omitted logical
 // functions to one retained internal entry; the proof guarantees it is never
 // observed by Wasm or the host.
-func finalizeOmittedInlineEntries(entry, internalEntry []int, relocs [][]callReloc, hostAdapters []bool, targets inlineTargetTable) error {
+func finalizeOmittedInlineEntries(entry, internalEntry []int, relocs *callRelocTable, hostAdapters []bool, targets inlineTargetTable) error {
 	if len(entry) == 0 {
 		return nil
 	}
@@ -1730,8 +1732,12 @@ func finalizeOmittedInlineEntries(entry, internalEntry []int, relocs [][]callRel
 	if anchor < 0 {
 		return fmt.Errorf("arm64: every local function was marked as an omitted inline body")
 	}
-	for caller := range relocs {
-		for _, rl := range relocs[caller] {
+	for caller := 0; caller < relocs.functions(); caller++ {
+		functionRelocs := relocs.serialFunction(caller)
+		if relocs.results != nil {
+			functionRelocs = relocs.parallelFunction(caller)
+		}
+		for _, rl := range functionRelocs {
 			target := int(rl.target)
 			if rl.target != invalidCallRelocField && target < len(entry) && targets.omitStandaloneBody(target, hostAdapters[target]) {
 				return fmt.Errorf("arm64: function %d retains relocation to omitted inline body %d", caller, rl.target)
@@ -1747,14 +1753,18 @@ func finalizeOmittedInlineEntries(entry, internalEntry []int, relocs [][]callRel
 	return nil
 }
 
-func patchCallRelocs(code []byte, entry, internalEntry []int, relocs [][]callReloc) error {
-	if len(entry) < len(relocs) {
-		return fmt.Errorf("arm64: relocation entry table has %d functions, want at least %d", len(entry), len(relocs))
+func patchCallRelocs(code []byte, entry, internalEntry []int, relocs *callRelocTable) error {
+	if len(entry) < relocs.functions() {
+		return fmt.Errorf("arm64: relocation entry table has %d functions, want at least %d", len(entry), relocs.functions())
 	}
 	asm := &a64.Asm{B: code}
-	for i := range relocs {
+	for i := 0; i < relocs.functions(); i++ {
 		base := entry[i]
-		for _, rl := range relocs[i] {
+		functionRelocs := relocs.serialFunction(i)
+		if relocs.results != nil {
+			functionRelocs = relocs.parallelFunction(i)
+		}
+		for _, rl := range functionRelocs {
 			if rl.at == invalidCallRelocField || base < 0 || base > len(code)-4 || uint64(rl.at) > uint64(len(code)-base-4) {
 				return fmt.Errorf("arm64: invalid relocation site %#x in function %d for %d-byte code image", rl.at, i, len(code))
 			}

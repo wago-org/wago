@@ -341,7 +341,7 @@ func TestFinalizeOmittedInlineEntriesRejectsResidualCallArm64(t *testing.T) {
 	}}
 	err := finalizeOmittedInlineEntries(
 		[]int{0, 12}, []int{4, 12},
-		[][]callReloc{{{target: 1, internal: true}}, nil},
+		testCallRelocTable(t, []callReloc{{target: 1, internal: true}}, nil),
 		[]bool{true, false}, targets,
 	)
 	if err == nil {

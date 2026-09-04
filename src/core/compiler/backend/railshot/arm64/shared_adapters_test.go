@@ -28,7 +28,7 @@ func TestCompactSharedAdaptersRemapsCallsAndGCReturnsArm64(t *testing.T) {
 	code := append(append([]byte(nil), first...), second...)
 	entry := []int{0, len(first)}
 	internal := []int{24, len(first) + 24}
-	relocs := [][]callReloc{{{at: 24}}, {{at: 24}}}
+	relocs := testCallRelocTable(t, []callReloc{{at: 24}}, []callReloc{{at: 24}})
 	infos := []sharedAdapterInfo{
 		{function: 0, callOff: 16, endOff: 24},
 		{function: 1, callOff: 16, endOff: 24},
@@ -52,8 +52,8 @@ func TestCompactSharedAdaptersRemapsCallsAndGCReturnsArm64(t *testing.T) {
 	if entry[0] != 0 || entry[1] != 12 || internal[0] != 8 || internal[1] != 20 {
 		t.Fatalf("entry/internal remap = %v/%v, want [0 12]/[8 20]", entry, internal)
 	}
-	if relocs[0][0].at != 8 || relocs[1][0].at != 8 || testGCCallsiteReturn(t, roots.Function(0), 0) != 8 || testGCCallsiteReturn(t, roots.Function(1), 0) != 8 {
-		t.Fatalf("internal metadata remap = relocs %v/%v callsites %v/%v", relocs[0], relocs[1], roots.Function(0).CallsiteData, roots.Function(1).CallsiteData)
+	if relocs.function(0)[0].at != 8 || relocs.function(1)[0].at != 8 || testGCCallsiteReturn(t, roots.Function(0), 0) != 8 || testGCCallsiteReturn(t, roots.Function(1), 0) != 8 {
+		t.Fatalf("internal metadata remap = relocs %v/%v callsites %v/%v", relocs.function(0), relocs.function(1), roots.Function(0).CallsiteData, roots.Function(1).CallsiteData)
 	}
 	if roots.Function(0).AdapterReturnOffset != 44 || roots.Function(1).AdapterReturnOffset != 32 {
 		t.Fatalf("shared adapter return offsets = %d/%d, want 44/32", roots.Function(0).AdapterReturnOffset, roots.Function(1).AdapterReturnOffset)

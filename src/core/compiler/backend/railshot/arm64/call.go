@@ -51,6 +51,76 @@ type callReloc struct {
 	internal bool   // target the callee's register-ABI internal entry (else offset 0)
 }
 
+// callRelocTable stores every module relocation in source-function order. One
+// pointer-free offset per function replaces a retained slice header per
+// function; function slices are reconstructed only while finalizing the module.
+type callRelocTable struct {
+	offsets []uint32
+	data    []callReloc
+	next    uint32
+	results []funcResult
+	states  []workerState
+}
+
+func parallelCallRelocTable(results []funcResult, states []workerState) callRelocTable {
+	return callRelocTable{results: results, states: states}
+}
+
+func newCallRelocTable(functions, capacity int) callRelocTable {
+	if functions == 0 {
+		return callRelocTable{}
+	}
+	return callRelocTable{
+		offsets: make([]uint32, functions+1),
+		data:    make([]callReloc, 0, capacity),
+	}
+}
+
+func (t *callRelocTable) appendFunction(index int, relocs []callReloc) bool {
+	if index < 0 || uint64(index) != uint64(t.next) || index+1 >= len(t.offsets) || uint64(len(t.data))+uint64(len(relocs)) > uint64(^uint32(0)) {
+		return false
+	}
+	t.data = append(t.data, relocs...)
+	t.offsets[index+1] = uint32(len(t.data))
+	t.next++
+	return true
+}
+
+func (t callRelocTable) function(index int) []callReloc {
+	if t.results != nil {
+		return t.parallelFunction(index)
+	}
+	return t.serialFunction(index)
+}
+
+func (t callRelocTable) serialFunction(index int) []callReloc {
+	if index < 0 || index+1 >= len(t.offsets) {
+		return nil
+	}
+	return t.data[t.offsets[index]:t.offsets[index+1]]
+}
+
+func (t callRelocTable) parallelFunction(index int) []callReloc {
+	if index < 0 || index >= len(t.results) {
+		return nil
+	}
+	r := t.results[index]
+	if r.layoutFlags&layoutOmitted != 0 || int(r.worker) >= len(t.states) {
+		return nil
+	}
+	return t.states[int(r.worker)].relocs[int(r.relocStart):int(r.relocEnd)]
+}
+
+func (t callRelocTable) functions() int {
+	if t.results != nil {
+		return len(t.results)
+	}
+	if len(t.offsets) == 0 {
+		return 0
+	}
+	return len(t.offsets) - 1
+}
+
 const invalidCallRelocField = ^uint32(0)
 
 func (f *fn) compactCallRelocField(value int) uint32 {

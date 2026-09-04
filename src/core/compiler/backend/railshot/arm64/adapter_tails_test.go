@@ -25,7 +25,7 @@ func TestShareAdapterTailsRemapsModuleOffsetsArm64(t *testing.T) {
 	}
 	entry := []int{0, 24}
 	internal := []int{16, 40}
-	relocs := [][]callReloc{{{at: 20}}, {{at: 20}}}
+	relocs := testCallRelocTable(t, []callReloc{{at: 20}}, []callReloc{{at: 20}})
 	infos := []adapterTailInfo{
 		{function: 0, returnOff: 4, endOff: 16},
 		{function: 1, returnOff: 4, endOff: 16},
@@ -48,9 +48,10 @@ func TestShareAdapterTailsRemapsModuleOffsetsArm64(t *testing.T) {
 	if want := []int{8, 24}; internal[0] != want[0] || internal[1] != want[1] {
 		t.Fatalf("internal entries = %v, want %v", internal, want)
 	}
-	for i := range relocs {
-		if relocs[i][0].at != 12 || testGCCallsiteReturn(t, roots.Function(i), 0) != 12 {
-			t.Fatalf("function %d offsets: reloc=%d callsite=%d, want 12,12", i, relocs[i][0].at, testGCCallsiteReturn(t, roots.Function(i), 0))
+	for i := 0; i < relocs.functions(); i++ {
+		functionRelocs := relocs.function(i)
+		if functionRelocs[0].at != 12 || testGCCallsiteReturn(t, roots.Function(i), 0) != 12 {
+			t.Fatalf("function %d offsets: reloc=%d callsite=%d, want 12,12", i, functionRelocs[0].at, testGCCallsiteReturn(t, roots.Function(i), 0))
 		}
 	}
 	if word := binary.LittleEndian.Uint32(got[0:]); word != 0x94000002 {
