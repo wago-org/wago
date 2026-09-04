@@ -1003,7 +1003,7 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 			return fmt.Errorf("i31 execution product flag requires the recorded GC feature")
 		}
 		c.ensureCodeCache()
-		c.codeCache.stagedFeatures |= CoreFeatureGC
+		c.codeCache.stagedFeatures |= c.requiredFeatures & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
 		c.codeCache.gcI31Product = stagedGCI31ProductCore
 	}
 	if required&compiledAtomicWaitExecution != 0 {

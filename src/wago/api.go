@@ -1465,13 +1465,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.gcCodeTelemetry.TotalBytes = uint64(len(code))
 	}
 	constExprCtx := &constExprCompileContext{module: m, types: c.Types, converter: typeConverter}
-	if gcI31Product == stagedGCI31ProductTableGlobalInitializer {
-		init, err := stagedGCI31TableInitializer(m)
-		if err != nil {
-			return nil, fmt.Errorf("compile: staged i31 table initializer: %w", err)
-		}
-		c.memoryDir.gcI31TableInit = init
-	}
 	if gcStructProduct != 0 && gcStructProduct != stagedGCStructGeneric {
 		gcGlobals, err := stagedGCStructGlobalInitializers(m)
 		if err != nil {
@@ -1754,9 +1747,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	for i := range m.Tables {
 		tableIndex := importedTables + i
 		if m.Tables[i].Init == nil {
-			continue
-		}
-		if c.memoryDir.gcI31TableInit != nil && c.memoryDir.gcI31TableInit.TableIndex == uint32(tableIndex) {
 			continue
 		}
 		initBody := m.Tables[i].Init.BodyBytes
