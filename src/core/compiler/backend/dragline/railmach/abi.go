@@ -170,10 +170,11 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 }
 
 // directPreparedAMD64IntegerContract admits bounded all-integer functions to
-// AMD64's private register entry. Five parameters cover the allocator's caller
-// register set without exposing the context-adjacent scratch registers.
+// AMD64's private register entry. The private ABI has eight argument registers;
+// the final three are reserved from allocation, so the entry parallel move can
+// consume them without colliding with a durable value home.
 func directPreparedAMD64IntegerContract(f *Func, allocation *GreedyAllocation) bool {
-	if f == nil || allocation == nil || f.Target != TargetAMD64 || f.ParamCount == 0 || f.ParamCount > 5 || len(f.Results) > 1 {
+	if f == nil || allocation == nil || f.Target != TargetAMD64 || f.ParamCount == 0 || f.ParamCount > 8 || len(f.Results) > 1 {
 		return false
 	}
 	if len(f.Results) == 1 && f.VRegs[f.Results[0]].Bank != BankGPR {
