@@ -5,6 +5,7 @@ package dragline
 import (
 	"bytes"
 	"encoding/binary"
+	"math"
 	"testing"
 
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
@@ -231,6 +232,26 @@ func TestAMD64RailMachSpillForwardingRetainsLiveHomes(t *testing.T) {
 	}
 	if forward, elideStore := amd64RailMachForwardPendingSpill(&plan, 0, 3, 14); forward || elideStore {
 		t.Fatalf("unused spill forwarding = (%v, %v), want (false, false)", forward, elideStore)
+	}
+}
+
+func TestAMD64RailMachUsesAllocatedMemoryAddressesDirectly(t *testing.T) {
+	allocation := railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{
+		{},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 2},
+		{Kind: railmach.LocationSpill, Bank: railmach.BankGPR, Index: 0},
+	}}}
+	plan := nativeBackendPlan{Allocation: &allocation}
+	if !amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, math.MaxInt32, false) {
+		t.Fatal("allocated address with encodable offset required a scratch copy")
+	}
+	allocation.Locations[1].Index = 5
+	if amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, false) {
+		t.Fatal("callee-saved address bypassed its scratch copy")
+	}
+	allocation.Locations[1].Index = 2
+	if amd64RailMachCanUseMemoryAddressDirectly(&plan, 2, 0, 0, false) || amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, math.MaxInt32+1, false) || amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, true) {
+		t.Fatal("unsafe memory address bypassed its scratch copy")
 	}
 }
 

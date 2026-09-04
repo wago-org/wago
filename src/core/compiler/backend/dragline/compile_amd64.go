@@ -711,6 +711,11 @@ func amd64RailMachForwardPendingSpill(plan *nativeBackendPlan, instructionID uin
 	return false, false
 }
 
+func amd64RailMachCanUseMemoryAddressDirectly(plan *nativeBackendPlan, value railmach.VReg, position uint32, offset uint32, aliasesLoadResult bool) bool {
+	location := plan.Allocation.LocationAt(value, position)
+	return !aliasesLoadResult && offset <= math.MaxInt32 && location.Kind == railmach.LocationRegister && location.Index < 5
+}
+
 func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
 	if plan == nil || plan.Stack == nil || plan.CFG == nil || plan.Semantic == nil || plan.Machine == nil || plan.Allocation == nil || plan.Schedule == nil || plan.Exit == nil {
 		return nil, 0, false, nil
@@ -2166,13 +2171,18 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						storeSrc = amd64.RDI
 					}
 				}
-				a.MovReg32(amd64.R10, lhs)
+				address := amd64.R10
+				aliasesLoadResult := !store && instruction.Result != 0 && plan.Machine.VRegs[instruction.Result].Bank == railmach.BankGPR && lhs == dst
+				if amd64RailMachCanUseMemoryAddressDirectly(plan, operands[0].Reg, currentPosition, uint32(instruction.Aux), aliasesLoadResult) {
+					address = lhs
+				} else {
+					a.MovReg32(address, lhs)
+				}
 				endOffset := uint64(uint32(instruction.Aux)) + uint64(size)
 				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, endOffset) {
-					emitAMD64RailMachBoundsCheck(&a, plan, amd64.R10, endOffset, instruction.Source, &coldTrapPatches)
+					emitAMD64RailMachBoundsCheck(&a, plan, address, endOffset, instruction.Source, &coldTrapPatches)
 				}
 				disp := int32(uint32(instruction.Aux))
-				address := amd64.R10
 				if uint32(instruction.Aux) > math.MaxInt32 {
 					a.MovImm64(amd64.R11, uint64(uint32(instruction.Aux)))
 					a.AluRR(0x01, address, amd64.R11, true)
