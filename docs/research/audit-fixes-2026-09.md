@@ -131,3 +131,13 @@ cross-build with Go 1.22.12; the shared test passes on Windows/amd64 under Wine.
 Validation: Windows/amd64 guard-tag cross-build passes. The new grown-page store
 regression passes under Wine with frame elision enabled and disabled. Native
 Windows execution remains a CI requirement; Wine is not native Windows coverage.
+
+## 20. Retain source backups when rollback fails
+
+Both installer and manager publication join the publish and restore errors.
+When restore fails, deferred cleanup keeps the only backup and the error reports
+its exact path. Successful publication or restoration still removes the backup.
+The manager's publication step now has a local rename seam for fault injection.
+
+Validation: installer/manager source tests pass, including separate injected
+publish and restore failures and verification of the retained old contents.

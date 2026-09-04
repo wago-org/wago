@@ -675,12 +675,17 @@ func (i *installer) saveSourceUsing(source string, rename pathRenamer, crossDevi
 		return err
 	}
 	var backupRoot, backup string
+	removeBackup := true
 	if _, err := os.Stat(i.srcDir); err == nil {
 		backupRoot, err = os.MkdirTemp(filepath.Dir(i.srcDir), ".wago-source-backup-")
 		if err != nil {
 			return err
 		}
-		defer os.RemoveAll(backupRoot)
+		defer func() {
+			if removeBackup {
+				_ = os.RemoveAll(backupRoot)
+			}
+		}()
 		backup = filepath.Join(backupRoot, "source")
 		if err := rename(i.srcDir, backup); err != nil {
 			return err
@@ -690,7 +695,10 @@ func (i *installer) saveSourceUsing(source string, rename pathRenamer, crossDevi
 	}
 	if err := movePathUsing(source, i.srcDir, rename, crossDevice); err != nil {
 		if backup != "" {
-			_ = rename(backup, i.srcDir)
+			if restoreErr := rename(backup, i.srcDir); restoreErr != nil {
+				removeBackup = false
+				err = errors.Join(err, fmt.Errorf("restore source failed; backup retained at %s: %w", backup, restoreErr))
+			}
 		}
 		return fmt.Errorf("save Wago source: %w", err)
 	}

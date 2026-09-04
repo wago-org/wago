@@ -850,3 +850,43 @@ func TestInstallerVerificationIsBounded(t *testing.T) {
 		t.Fatalf("verification took %s", elapsed.Round(time.Millisecond))
 	}
 }
+
+func TestSourceRollbackRetainsBackup(t *testing.T) {
+	root := t.TempDir()
+	source, dest := filepath.Join(root, "new"), filepath.Join(root, "installed")
+	for _, dir := range []string{source, dest} {
+		if err := os.Mkdir(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dest, "marker"), []byte("old"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	publishErr, restoreErr := errors.New("publish failed"), errors.New("restore failed")
+	calls := 0
+	rename := func(from, to string) error {
+		calls++
+		switch calls {
+		case 2:
+			return publishErr
+		case 3:
+			return restoreErr
+		}
+		return os.Rename(from, to)
+	}
+	err := (&installer{out: &bytes.Buffer{}, srcDir: dest}).saveSourceUsing(source, rename, func(error) bool { return false })
+	if !errors.Is(err, publishErr) || !errors.Is(err, restoreErr) {
+		t.Fatalf("missing failure cause: %v", err)
+	}
+	backups, globErr := filepath.Glob(filepath.Join(root, ".wago-source-backup-*", "*"))
+	if globErr != nil || len(backups) != 1 {
+		t.Fatalf("backups = %v, %v", backups, globErr)
+	}
+	if !strings.Contains(err.Error(), backups[0]) {
+		t.Fatalf("backup path absent from error: %v", err)
+	}
+	data, readErr := os.ReadFile(filepath.Join(backups[0], "marker"))
+	if readErr != nil || string(data) != "old" {
+		t.Fatalf("backup contents = %q, %v", data, readErr)
+	}
+}
