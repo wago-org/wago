@@ -307,9 +307,13 @@ jobs:
         shell: pwsh
         run: |
           go build ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go build -tags wago_runtime ./cli/...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test -count=1 ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test -count=1 -tags wago_runtime ./cli/...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # Guard-page (signals-based) mode is behind a build tag, so `make test`
       # never exercises it — which is how a broken SIGSEGV fault->trap handler
@@ -324,9 +328,11 @@ jobs:
         shell: pwsh
         run: |
           go test -v -count=1 -tags wago_guardpage ./src/core/runtime ./src/wago/
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location bench
           try {
             go test -v -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Pop-Location
           }

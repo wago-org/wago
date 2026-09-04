@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/wago-org/wago/internal/managedrelease"
 	"io"
 	"net/http"
 	"net/url"
@@ -168,20 +169,35 @@ func (i *installer) run() error {
 			return err
 		}
 	}
-	if reinstallMode != "minimal" {
-		if err := i.cleanExisting(reinstallMode); err != nil {
+	installed := filepath.Join(i.binDir, executableName("wago"))
+	release, err := managedrelease.Prepare(installed, i.version, func(binary, source string) error {
+		if err := managedrelease.CopyFile(managerPath, binary); err != nil {
 			return err
 		}
-	}
-	installed := filepath.Join(i.binDir, executableName("wago"))
-	if err := i.installManager(managerPath, installed); err != nil {
+		legacy := i.srcDir
+		i.srcDir = source
+		defer func() { i.srcDir = legacy }()
+		return i.saveSource(sourceDir)
+	}, i.verify)
+	if err != nil {
 		return err
 	}
-	if err := i.saveSource(sourceDir); err != nil {
+	installerExecutable, err := os.Executable()
+	if err != nil {
 		return err
 	}
-	if err := i.verify(installed); err != nil {
-		return err
+	// The installer also supplies the stable dispatcher, so older manager
+	// payloads can use the paired source through WAGO_SRC without a new build.
+	bootstrap := func() (func() error, error) {
+		return managedrelease.BootstrapLauncher(release, installerExecutable, installed)
+	}
+	if err := managedrelease.Publish(release, bootstrap, nil); err != nil {
+		return fmt.Errorf("publish manager release (pair retained at %s): %w", release.Directory, err)
+	}
+	if reinstallMode != "minimal" {
+		if err := i.cleanReinstallData(reinstallMode); err != nil {
+			return err
+		}
 	}
 
 	pathReady, configFile := i.offerPathSetup()
@@ -255,7 +271,7 @@ func (i *installer) plan() {
 	fmt.Fprintf(i.out, "\n%sPlan%s\n", s.bold, s.reset)
 	i.detail("Version", i.version)
 	i.detail("Command", displayPath(filepath.Join(i.binDir, executableName("wago")), i.home))
-	i.detail("Source", displayPath(i.srcDir, i.home))
+	i.detail("Source", displayPath(filepath.Join(i.binDir, ".wago-releases"), i.home))
 	fmt.Fprintf(i.out, "\n%sDry run · no changes made.%s\n", s.dim, s.reset)
 }
 
@@ -633,19 +649,6 @@ func (i *installer) buildManager(sourceDir, target string) error {
 	}
 	i.done("Built Wago")
 	return nil
-}
-
-func (i *installer) cleanExisting(mode string) error {
-	i.begin("Cleaning existing Wago installation")
-	if err := cleanPlatformInstall(mode, i.home, i.binDir, i.srcDir, i.dataDir, i.configDir, i.cacheDir); err != nil {
-		return fmt.Errorf("clean existing installation: %w", err)
-	}
-	i.done("Cleaned existing Wago installation")
-	return nil
-}
-
-func (i *installer) installManager(source, target string) error {
-	return i.installManagerUsing(source, target, os.Rename, isCrossDeviceError)
 }
 
 type pathRenamer func(string, string) error

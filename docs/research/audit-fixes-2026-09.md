@@ -330,3 +330,93 @@ standalone cancellation test passes (38.6 s including cold compilation). Windows
 AMD64 entry runs under Wine; Darwin ARM64 and Linux ARM64 cross-build. Single
 100 ms samples: Engine.Call 9.38 -> 18.71 ns/op; InvokeAddOne 103.7 -> 106.2 ns/op;
 both retain zero B/op and zero allocations.
+
+## 18. Publish manager and source as one release
+
+Installation and self-update prepare an immutable binary/source pair, verify it,
+sync it, and switch one versioned selection record under a process lock. A
+stable dispatcher runs the selected payload; executable-path resolution keeps
+renamed symlinks and caller-supplied argv[0] in manager mode. Tests use directory
+aliases on Linux too and compare canonical source paths. Source lookup follows the running
+payload's own directory. Older running managers retain their original source.
+The current and previous release remain available for rollback. Successful
+publication prunes older pairs only after acquiring an exclusive lease; running
+processes hold shared leases. Unix dispatch preserves the lease descriptor across
+exec; Windows holds it while waiting for its child. New payloads also pin their
+own release. Retirement renames the directory under the exclusive lease before
+removal, closing the launch/prune race. Unpublished recovery and legacy data are
+excluded. Tests retain live source through four further updates, then prove the
+next update returns to two pairs after process exit on Linux and Windows/Wine.
+Selected-release lookup plus lease acquisition/close measures 38.5–66.4 µs,
+5.1 KB, and 59 allocations per manager startup on Linux/amd64 Go 1.27.1; this
+adds no runtime hot-path work or background worker. Windows atomic-record reads
+permit pathname replacement and retry transient sharing conflicts for at most
+32 attempts with 10 ms waits, preserving persistent errors. This fixes a Wine
+concurrency failure also reproduced before the lease change. Failed
+bootstrap restores the old selection and retains staged recovery data. Release
+publication also restores the selection if root-directory sync or writing the
+published marker fails. First-publication rollback removes the new pointer;
+later-publication rollback restores its prior bytes. Marker-failure tests prove
+that retry succeeds and subsequent updates can prune the retried release. A
+failure syncing an already-written marker reports that the manager is selected.
+Bootstrap returns an undo action for its launcher replacement. Pre-commit
+rollback runs that action under the publication lock even if pointer restoration
+fails. First installations remove their new dispatcher; legacy and managed
+installations restore prior launcher bytes and permissions from the retained
+`previous-launcher` backup. Tests cover bootstrap and later marker failures for
+all three states, plus an undo failure that reports the exact backup path.
+Reinstall
+cleanup compares configured and physical ancestry by filesystem identity,
+preserving protected releases and their directory aliases across symlinks and
+Windows case variants. Configured bin/source symlinks beneath the cleanup root
+also survive when their targets are outside that root, including aliases in
+parent components. Both outward-alias regressions lose the configured paths
+before this fix and preserve them afterward while obsolete root data is removed.
+Alias, case-variant, and nested-cache cleanup regressions pass on Linux and Wine.
+All uninstall modes remove manager release artifacts without deleting unrelated
+launcher-directory siblings. Minimal mode preserves separately installed
+runtimes. Windows removal waits for the actual payload, which can differ from
+the launcher. Tests cover all modes at default/custom locations and deferred
+Windows payload removal. Preparation, publication, and uninstall now share one
+coordinator. Uninstall preserves that file and its ancestors until destructive
+cleanup ends, then renames and removes the lock while holding it. Waiters reject
+the retired inode; only nonrecursive empty-directory removal follows retirement,
+so a later installation survives. Windows lock handles permit rename/deletion.
+The deferred PowerShell worker takes the same byte-range lock, checks its file
+identity against the scheduling process, and follows the same retirement order.
+It also includes managed paths that a publisher can create before the worker
+starts. Tests cover preparation and uninstall waiting for publication, stale
+waiters, and preserving a later installation. Linux race checks and Windows/Wine
+lock and synchronous uninstall tests pass. Native Windows CI covers the actual
+PowerShell worker; Wine's PowerShell stub emits no output for a Write-Output
+probe and cannot run those integration tests locally. These locks add no runtime
+hot-path work or persistent coordinator after a completed uninstall.
+Native Windows CI additionally exposed short-path aliases during recursive
+cleanup and directory renames blocked by a held child lease. The worker expands
+8.3 paths before coordinator comparisons. Pruning first renames the lease to a
+retirement marker, closes it, then renames the containing directory. Failed
+retirement can resume from the marker; transient Windows sharing conflicts have
+a bounded 320 ms retry budget. Marker-resumption and full publication/lease
+suites pass with the race detector and on Windows/Wine.
+The Windows CI build/test and guard steps now stop on each failed native command.
+This prevents a later passing command from hiding an earlier package failure.
+Before starting a deferred worker, uninstall creates a synced pending marker
+while holding the coordinator. Both preparation and publication reject that
+marker, including during the handoff before the worker acquires the lock. The
+worker takes ownership before waiting for the parent and preserves the marker
+until destructive cleanup finishes. Failed process start rolls back only a
+new marker; an earlier cleanup intent survives another scheduling failure.
+The worker then removes the marker before retiring the held lock. A failed
+cleanup retains its marker and reports pending cleanup to later installers.
+The handoff regression shows both preparation writes and publication occur
+without the gate, then verifies both are blocked with it. Linux race and
+Windows/Wine pending-marker, rollback, and worker-start-failure checks pass.
+
+Validation: publication/rollback, concurrent reader/writer, source-pinning and
+Unix dispatch tests pass with the race detector. Windows publication tests pass
+under Wine; the complete Wine installer flow passes with Go 1.27.1 and checks
+the selected binary/source pair. Installer, manager, plugin build, version and self-update suites pass
+with TMPDIR inside the repository. All three CI standalone TinyGo gates pass
+with pinned TinyGo 0.41.1 and Go 1.22.12 (94.7 s combined). Local TinyGo 0.42.0
+fails tasks builds with a duplicate tinygo_task_exit linker symbol on both this
+branch and unchanged main. Threaded TinyGo cancellation passes.

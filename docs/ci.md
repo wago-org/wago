@@ -45,7 +45,9 @@ This is a tooling distinction, not a second test suite: `make spec2` selects
 package tests that ordinary `go test ./...` also discovers. All six targets run the shared
 single-P, parallel-fault, unrelated-fault chaining, public API, and
 corpus-differential guard-page gates. Windows runs the equivalent Go commands
-directly from PowerShell rather than through Make.
+directly from PowerShell rather than through Make. Each native command in the
+Windows build/test and guard steps checks `$LASTEXITCODE` immediately. A later
+passing command must not hide an earlier package, compiler, or guard failure.
 The Windows guard step runs both core runtime and public API tests, including
 ARM64 page-commit allocation-failure and native return-state checks.
 

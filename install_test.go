@@ -6,6 +6,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -423,7 +424,21 @@ func TestWineInstallerCompletesNativeInstallFlow(t *testing.T) {
 			t.Fatalf("Wine install output missing %q:\n%s", fragment, text)
 		}
 	}
-	for _, path := range []string{filepath.Join(binDir, "wago.exe"), filepath.Join(srcDir, "go.mod")} {
+	selection, err := os.ReadFile(filepath.Join(binDir, ".wago-release.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record struct {
+		Release string `json:"release"`
+	}
+	if err := json.Unmarshal(selection, &record); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(record.Release, "release-") || filepath.Base(record.Release) != record.Release {
+		t.Fatalf("invalid selected release: %q", record.Release)
+	}
+	releaseDir := filepath.Join(binDir, ".wago-releases", record.Release)
+	for _, path := range []string{filepath.Join(binDir, "wago.exe"), filepath.Join(releaseDir, "wago.exe"), filepath.Join(releaseDir, "src", "go.mod")} {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("Wine install did not create %s: %v", path, err)
 		}

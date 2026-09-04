@@ -28,6 +28,7 @@ import (
 
 	"github.com/wago-org/wago/cli/internal/ui"
 	"github.com/wago-org/wago/internal/atomicfile"
+	"github.com/wago-org/wago/internal/managedrelease"
 )
 
 const (
@@ -645,6 +646,9 @@ func ModuleDir() (string, error) {
 	if d := os.Getenv("WAGO_SRC"); d != "" {
 		return d, nil
 	}
+	if source := managedrelease.Source(); source != "" {
+		return source, nil
+	}
 	// Inside a wago checkout (e.g. hacking on wago itself)? Use it.
 	command := exec.Command("go", "env", "GOMOD")
 	automation.ConfigureCommand(command)
@@ -668,6 +672,9 @@ func ModuleDir() (string, error) {
 // installedWagoSource returns the wago source the installer places at ~/.wago/src,
 // or "" if it isn't a wago checkout.
 func InstalledSource() string {
+	if source := managedrelease.Source(); source != "" {
+		return source
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""

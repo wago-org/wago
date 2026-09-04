@@ -6,9 +6,36 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 )
 
-func Read(path string, limit int64) ([]byte, error) {
+func Read(path string, limit int64) ([]byte, error) { return read(path, limit, false) }
+
+var errSnapshotChanged = errors.New("regular file changed while opening snapshot")
+
+// ReadAtomicSnapshot accepts replacement of the pathname after opening, while
+// requiring the opened regular file to remain unchanged. Use only for records
+// whose writers publish by atomic replacement. It never needs directory writes.
+func ReadAtomicSnapshot(path string, limit int64) ([]byte, error) {
+	var lastErr error
+	for attempt := 0; attempt < 32; attempt++ {
+		data, err := read(path, limit, true)
+		lastErr = err
+		if errors.Is(err, errSnapshotChanged) {
+			continue
+		}
+		if transientSnapshotError(err) {
+			// Windows can deny an open briefly while an atomic replacement runs.
+			// Bound the retry budget and preserve the last error if contention persists.
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		return data, err
+	}
+	return nil, fmt.Errorf("%s: %w", path, lastErr)
+}
+
+func read(path string, limit int64, snapshot bool) ([]byte, error) {
 	if limit < 0 || limit == int64(^uint64(0)>>1) {
 		return nil, fmt.Errorf("invalid file byte limit")
 	}
@@ -31,6 +58,9 @@ func Read(path string, limit int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if snapshot && opened.Mode().IsRegular() && !os.SameFile(opened, linked) {
+		return nil, errSnapshotChanged
+	}
 	if !opened.Mode().IsRegular() || !os.SameFile(opened, linked) {
 		return nil, fmt.Errorf("%s is not a stable regular file", path)
 	}
@@ -45,6 +75,15 @@ func Read(path string, limit int64) ([]byte, error) {
 		return nil, fmt.Errorf("%s exceeds byte limit %d", path, limit)
 	}
 	after, statErr := file.Stat()
+	if snapshot {
+		if statErr != nil {
+			return nil, statErr
+		}
+		if after.Size() != opened.Size() || !after.ModTime().Equal(opened.ModTime()) || int64(len(data)) != after.Size() {
+			return nil, fmt.Errorf("%s changed while reading", path)
+		}
+		return data, nil
+	}
 	current, linkErr := os.Lstat(path)
 	if err := errors.Join(statErr, linkErr); err != nil {
 		return nil, err

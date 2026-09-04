@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/wago-org/wago/internal/managedrelease"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -28,7 +29,8 @@ func ParseMode(value string) (Mode, error) {
 }
 
 func Targets(dirs wagopaths.Dirs, executable string, mode Mode) []string {
-	var candidates []string
+	executable = managedrelease.Launcher(executable)
+	candidates := managedrelease.RemovalTargets(executable)
 	switch mode {
 	case Full:
 		if root := selectedWagoRoot(dirs, executable); root != "" {
@@ -92,6 +94,9 @@ func selectedWagoRoot(dirs wagopaths.Dirs, executable string) string {
 }
 
 func InstalledSourcePath() string {
+	if source := managedrelease.Source(); source != "" {
+		return source
+	}
 	source := os.Getenv("WAGO_SRC_DIR")
 	if source != "" {
 		if _, err := os.Stat(source); err == nil {
@@ -186,6 +191,49 @@ func RemoveManagedPath(path string) error {
 		return fmt.Errorf("refusing unsafe path %q", path)
 	}
 	return os.RemoveAll(clean)
+}
+
+// Keep the coordinator and its parent directories linked until all destructive
+// work finishes. Retiring it earlier would let a new publisher bypass the lock.
+func removeManagedPathKeepingLock(path, lockPath string) error {
+	clean := filepath.Clean(path)
+	if !safeManagedPath(clean) {
+		return fmt.Errorf("refusing unsafe path %q", path)
+	}
+	if pathContains(clean, lockPath) && pathContains(lockPath, clean) {
+		return nil
+	}
+	if !pathContains(clean, lockPath) {
+		return os.RemoveAll(clean)
+	}
+	entries, err := os.ReadDir(clean)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if err := removeManagedPathKeepingLock(filepath.Join(clean, entry.Name()), lockPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func emptyCleanupDirs(lockPath string, targets []string, installationDir string) []string {
+	var dirs []string
+	for dir := filepath.Dir(lockPath); ; dir = filepath.Dir(dir) {
+		covered := dir == installationDir
+		for _, target := range targets {
+			covered = covered || pathContains(target, dir)
+		}
+		if !covered || !safeManagedPath(dir) {
+			break
+		}
+		dirs = append(dirs, dir)
+	}
+	return dirs
 }
 
 func removeEmptyInstallationDir(path string) error {

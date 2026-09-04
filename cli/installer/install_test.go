@@ -145,7 +145,7 @@ func TestInstallerDryRunPresentation(t *testing.T) {
 	separator := string(os.PathSeparator)
 	want := "Welcome to Wago! Let’s get you set up.\n\n" +
 		"Install location: ~" + separator + ".wago" + separator + "bin\n\n" +
-		"Plan\n  Version  canary\n  Command  ~" + separator + ".wago" + separator + "bin" + separator + executableName("wago") + "\n  Source   ~" + separator + ".wago" + separator + "src\n\n" +
+		"Plan\n  Version  canary\n  Command  ~" + separator + ".wago" + separator + "bin" + separator + executableName("wago") + "\n  Source   ~" + separator + ".wago" + separator + "bin" + separator + ".wago-releases\n\n" +
 		"Dry run · no changes made.\n"
 	if got := output.String(); got != want {
 		t.Fatalf("dry-run output:\n--- got ---\n%s--- want ---\n%s", got, want)
