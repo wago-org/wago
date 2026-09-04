@@ -277,3 +277,23 @@ limits, metadata limits, shared nested budgets and overflow. One-iteration
 100,000-type measurements: 28,970,512 -> 17,621,464 B/op and 100,057 -> 25
 allocations; 13.24 -> 14.23 ms. These samples establish the allocation reduction,
 not a speed improvement.
+
+## 5. Authenticate and release Linux signal ownership
+
+Installation negotiates signals 35..64, preferring an ignored signal and then a
+Go dispatcher; libc-reserved signals and unrelated native handlers are excluded.
+Go preinstalls dispatchers across this range, so sharing a dispatcher preserves
+os/signal use rather than claiming exclusive ownership. Queued broadcasts and
+kernel timers carry a random process cookie and a non-reused request sequence.
+Both handlers require the exact active token before interrupting a guest. Late
+timer deliveries cannot affect a later call using the same trap address.
+
+The full flags, mask, and restorer are preserved. Every unowned delivery chains
+to the prior dispatcher. Final code unmapping restores the complete action only
+while it still matches Wago's installed action. Timer deletion does not drain
+unrelated pending signals. Request storage grows by 512 fixed bytes (64 tokens).
+
+Validation: race-enabled isolated-process tests pass for os/signal notification
+during installation and after final unmap, exact action restoration, reinstallation,
+and token changes on trap reuse. Deadline/cancellation tests pass. Linux ARM64
+and Windows AMD64 runtime test binaries cross-build.

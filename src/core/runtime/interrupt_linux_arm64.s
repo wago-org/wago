@@ -5,19 +5,26 @@
 // SA_SIGINFO handler: R0=signal, R1=*siginfo, R2=*ucontext.
 // Linux arm64 ucontext has saved X9 at +256, X26 at +392, SP at +432, and
 // PC at +440. Generated Wasm pins linMem in X26; [linMem-104] is its active
-// trap pointer. interruptRequest is {trap uintptr, ack u32, refs u32}, 16 bytes.
+// trap pointer. interruptRequest is {trap uintptr, ack u32, refs u32}, 24 bytes.
 TEXT ·interruptSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	MOVD	R0, R3                      // preserve signal arguments for chaining
 	MOVD	R1, R4
 	MOVD	R2, R5
 	MOVD	R2, R7                      // saved ucontext
 	MOVW	8(R4), R11
-	CMPW	$-6, R11                   // only Wago's tgkill broadcast is ours
+	CMPW	$-1, R11                   // SI_QUEUE
+	BEQ	check_cookie
+	CMPW	$-2, R11                   // SI_TIMER
+	BNE	chain_unowned
+check_cookie:
+	MOVWU	28(R4), R11
+	MOVWU	·interruptCookie(SB), R12
+	CMP	R11, R12
 	BEQ	check_pc
-	CMPW	$-2, R11                   // per-thread deadline timer
-	BEQ	check_pc
+chain_unowned:
 	MOVD	·interruptOldHandler(SB), R11
-	CBZ	R11, handler_return
+	CMP	$1, R11
+	BLS	handler_return
 	MOVD	R3, R0
 	MOVD	R4, R1
 	MOVD	R5, R2
@@ -71,10 +78,15 @@ linmem_match:
 	MOVD	$·interruptRequests(SB), R9
 	MOVD	$64, R12
 request_loop:
-	MOVD	0(R9), R13
+	LDAR	(R9), R13                   // acquire trap publication before token
 	CMP	R13, R10
+	BNE	request_next
+	MOVD	24(R4), R14
+	MOVD	16(R9), R13
+	CMP	R13, R14
 	BEQ	request_match
-	ADD	$16, R9
+request_next:
+	ADD	$24, R9
 	SUB	$1, R12
 	CBNZ	R12, request_loop
 	B	reader_release
