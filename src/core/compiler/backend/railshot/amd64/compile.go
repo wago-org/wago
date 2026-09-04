@@ -192,6 +192,15 @@ const mergeReg = RBP
 // pinned-float-local (12-15).
 const mergeFReg Reg = 11
 
+type functionRepresentationLimit uint8
+
+const (
+	functionRepresentationOK functionRepresentationLimit = iota
+	functionRepresentationReturnSite
+	functionRepresentationFrameEnd
+	functionRepresentationCallReloc
+)
+
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
@@ -201,11 +210,12 @@ type fn struct {
 	ft            *wasm.CompType // this function's signature
 	gcTypeLayouts []codegen.GCTypeLayout
 	transient
-	globalIdx          int
-	traceFuncIdx       uint32
-	tracePCBase        uint32
-	wasmPC             uint32
-	customInstructions map[uint32]CustomInstruction
+	globalIdx           int
+	traceFuncIdx        uint32
+	tracePCBase         uint32
+	wasmPC              uint32
+	customInstructions  map[uint32]CustomInstruction
+	representationLimit functionRepresentationLimit
 
 	nParams             int
 	nLocals             int           // params + declared locals
@@ -1958,7 +1968,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	finalizeModuleNativeSizeAMD64(ms, len(code), functionsEnd, len(literalCode), 0)
 	if ms != nil {
 		for i := range states {
-			ms.addWorkerScratchStats(states[i].scratchStats)
+			ms.Compile.AddWorkerScratch(states[i].scratchStats)
 		}
 	}
 	ms.finalizeCompileResourceStats()
@@ -3058,7 +3068,8 @@ func (f *fn) runBody(c *wasm.Func) error {
 
 func (f *fn) appendReturnSite(site int) {
 	if site < 0 || uint64(site) >= uint64(^uint32(0)) || site+4 > len(f.a.B) {
-		panic("amd64: return site exceeds intrusive branch-chain range")
+		f.setRepresentationLimit(functionRepresentationReturnSite)
+		return
 	}
 	sc := f.scratchState()
 	binary.LittleEndian.PutUint32(f.a.B[site:site+4], sc.retSiteHead)

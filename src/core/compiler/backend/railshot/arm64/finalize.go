@@ -273,7 +273,10 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		f.relocs[i].at = compactCallRelocField(mapped)
+		if uint64(mapped) >= uint64(invalidCallRelocField) {
+			return 0, fmt.Errorf("arm64 finalizer: call relocation offset %#x exceeds compact domain", mapped)
+		}
+		f.relocs[i].at = uint32(mapped)
 	}
 	if f.adapterReturnOff != 0 {
 		mapped, err := mapFinalOffset(offsets, f.adapterReturnOff, len(code), "adapter return")

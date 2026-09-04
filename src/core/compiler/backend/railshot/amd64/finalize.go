@@ -199,7 +199,10 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		f.relocs[i].at = compactCallRelocField(mapped)
+		if uint64(mapped) >= uint64(invalidCallRelocField) {
+			return 0, fmt.Errorf("amd64 finalizer: call relocation offset %#x exceeds compact domain", mapped)
+		}
+		f.relocs[i].at = uint32(mapped)
 	}
 	if len(f.literalWords) != 0 {
 		keyCount := int(f.literalWords[0])

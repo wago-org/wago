@@ -124,6 +124,15 @@ const mergeReg = X15
 // temp, not a pinned-float-local (V8-V14).
 const mergeFReg Reg = 15
 
+type functionRepresentationLimit uint8
+
+const (
+	functionRepresentationOK functionRepresentationLimit = iota
+	functionRepresentationReturnSite
+	functionRepresentationFrameEnd
+	functionRepresentationCallReloc
+)
+
 // fn holds the per-function code-generation state — the port's equivalent of
 // WARP's Compiler/backend working set. One is created per compiled function.
 type fn struct {
@@ -135,10 +144,11 @@ type fn struct {
 	gcTypeLayouts []codegen.GCTypeLayout
 	classifier    wasm.ModuleInstructionClassifier
 	transient
-	traceFuncIdx       uint32
-	tracePCBase        uint32
-	wasmPC             uint32
-	customInstructions map[uint32]railcore.CustomInstruction
+	traceFuncIdx        uint32
+	tracePCBase         uint32
+	wasmPC              uint32
+	customInstructions  map[uint32]railcore.CustomInstruction
+	representationLimit functionRepresentationLimit
 
 	nParams     int
 	nLocals     int           // params + declared locals
@@ -1697,7 +1707,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	finalizeModuleNativeSize(ms, len(code), moduleOther, 0)
 	if ms != nil {
 		for i := range states {
-			ms.addWorkerScratchStats(states[i].scratchStats)
+			ms.Compile.AddWorkerScratch(states[i].scratchStats)
 		}
 	}
 	ms.finalizeCompileResourceStats()
@@ -2592,7 +2602,8 @@ func (f *fn) runBody(c *wasm.Func) error {
 
 func (f *fn) appendReturnSite(site int) {
 	if site < 0 || site&3 != 0 || site/4 >= 1<<26-1 {
-		panic("arm64: return site exceeds intrusive branch-chain range")
+		f.setRepresentationLimit(functionRepresentationReturnSite)
+		return
 	}
 	sc := f.scratchState()
 	word := rdWord(f.a.B, site)

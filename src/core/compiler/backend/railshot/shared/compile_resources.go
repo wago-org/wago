@@ -62,3 +62,16 @@ type WorkerScratchStats struct {
 	ControlRetained  uint64
 	ControlDiscarded uint64
 }
+
+// AddWorkerScratch merges one worker's pointer-free scratch snapshot into the
+// module resource ledger.
+func (s *CompileResourceStats) AddWorkerScratch(w WorkerScratchStats) {
+	s.NodeScratchReserved += w.NodeReserved
+	s.NodeScratchPeak += w.NodePeak
+	s.NodeScratchRetained += w.NodeRetained
+	s.NodeScratchDiscarded += w.NodeDiscarded
+	s.ControlScratchReserved += w.ControlReserved
+	s.ControlScratchPeak += w.ControlPeak
+	s.ControlScratchRetained += w.ControlRetained
+	s.ControlScratchDiscarded += w.ControlDiscarded
+}

@@ -250,7 +250,7 @@ func (ms *ModuleStats) addNodeScratchStats(sc *scratch) {
 	if ms == nil || sc == nil {
 		return
 	}
-	ms.addWorkerScratchStats(workerScratchStats(sc))
+	ms.Compile.AddWorkerScratch(workerScratchStats(sc))
 }
 
 func workerScratchStats(sc *scratch) shared.WorkerScratchStats {
@@ -269,20 +269,6 @@ func workerScratchStats(sc *scratch) shared.WorkerScratchStats {
 		ControlRetained:  uint64(cap(sc.ctrl))*frameBytes + uint64(cap(sc.ctrlMerges))*mergeBytes + uint64(cap(sc.ctrlRoots))*rootBytes,
 		ControlDiscarded: uint64(sc.controlScratchDiscarded)*frameBytes + uint64(sc.controlMergeDiscarded)*mergeBytes + uint64(sc.controlRootDiscarded)*rootBytes,
 	}
-}
-
-func (ms *ModuleStats) addWorkerScratchStats(s shared.WorkerScratchStats) {
-	if ms == nil {
-		return
-	}
-	ms.Compile.NodeScratchReserved += s.NodeReserved
-	ms.Compile.NodeScratchPeak += s.NodePeak
-	ms.Compile.NodeScratchRetained += s.NodeRetained
-	ms.Compile.NodeScratchDiscarded += s.NodeDiscarded
-	ms.Compile.ControlScratchReserved += s.ControlReserved
-	ms.Compile.ControlScratchPeak += s.ControlPeak
-	ms.Compile.ControlScratchRetained += s.ControlRetained
-	ms.Compile.ControlScratchDiscarded += s.ControlDiscarded
 }
 
 func (s *CodegenStats) setUnpinnedRetry() {

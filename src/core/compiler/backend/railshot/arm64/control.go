@@ -348,7 +348,10 @@ func (f *fn) appendFrameEnd(fr *ctrlFrame, site int, conditional bool) {
 		panic("arm64: forward end site on loop frame")
 	}
 	cold := f.ensureCtrlMerge(fr)
-	packed := packFrameEndSite(site, conditional)
+	packed := f.packFrameEndSite(site, conditional)
+	if packed == 0 {
+		return
+	}
 	if cold.loopSetStart == 0 {
 		cold.loopSetStart = packed
 		return

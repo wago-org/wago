@@ -18,6 +18,27 @@ func (f *fn) body(code []byte) error {
 	return f.bodyLoop(&r, 0)
 }
 
+func (f *fn) setRepresentationLimit(limit functionRepresentationLimit) {
+	if f.representationLimit == functionRepresentationOK {
+		f.representationLimit = limit
+	}
+}
+
+func (f *fn) representationError() error {
+	var field string
+	switch f.representationLimit {
+	case functionRepresentationReturnSite:
+		field = "return-site branch chain"
+	case functionRepresentationFrameEnd:
+		field = "forward control-end offset"
+	case functionRepresentationCallReloc:
+		field = "call relocation"
+	default:
+		field = "unknown field"
+	}
+	return fmt.Errorf("amd64: function %s exceeds compact representation limit", field)
+}
+
 // bodyLoop drives the opcode switch until the control stack shrinks to minCtrl.
 // The function body runs with minCtrl=0 (until the function frame's end). An
 // inlined callee with control flow runs with minCtrl = the depth just below its
@@ -69,6 +90,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		if err != nil {
 			return err
 		}
+	}
+	if f.representationLimit != functionRepresentationOK {
+		return f.representationError()
 	}
 	return nil
 }

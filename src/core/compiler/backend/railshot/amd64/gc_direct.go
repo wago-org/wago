@@ -510,7 +510,7 @@ func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes ui
 	f.a.MovImm32(RDX, int32(localType))
 	f.a.MovImm32(RCX, int32(requiredBytes))
 	site := f.a.CallRel32()
-	f.relocs = append(f.relocs, newGCStubCallReloc(site, gcSharedStubResolveObject))
+	f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubResolveObject))
 	f.stats.call("gcnative-leaf")
 	f.stats.peep("gc-shared-resolve-call")
 

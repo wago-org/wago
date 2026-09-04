@@ -37,15 +37,28 @@ func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
 }
 
 func TestCompactCallRelocFieldArm64(t *testing.T) {
-	if got, want := compactCallRelocField(int(invalidCallRelocField-1)), invalidCallRelocField-1; got != want {
+	f := fn{}
+	if got, want := f.compactCallRelocField(int(invalidCallRelocField-1)), invalidCallRelocField-1; got != want {
 		t.Fatalf("compact call relocation field = %d, want %d", got, want)
 	}
-	defer func() {
-		if recover() == nil {
-			t.Fatal("negative call relocation field accepted")
-		}
-	}()
-	compactCallRelocField(-1)
+	if got := f.compactCallRelocField(-1); got != 0 || f.representationLimit != functionRepresentationCallReloc {
+		t.Fatalf("negative call relocation field = %d, limit = %d", got, f.representationLimit)
+	}
+	if got := f.representationError().Error(); got != "arm64: function call relocation exceeds compact representation limit" {
+		t.Fatalf("call relocation error = %q", got)
+	}
+}
+
+func TestCompactControlOffsetsFailClosedArm64(t *testing.T) {
+	f := fn{}
+	f.appendReturnSite(-1)
+	if f.representationLimit != functionRepresentationReturnSite {
+		t.Fatalf("return-site limit = %d", f.representationLimit)
+	}
+	f = fn{}
+	if got := f.packFrameEndSite(-1, false); got != 0 || f.representationLimit != functionRepresentationFrameEnd {
+		t.Fatalf("frame-end field = %d, limit = %d", got, f.representationLimit)
+	}
 }
 
 func TestCompactTrapBranchDomainArm64(t *testing.T) {

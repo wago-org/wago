@@ -53,17 +53,18 @@ type callReloc struct {
 
 const invalidCallRelocField = ^uint32(0)
 
-func compactCallRelocField(value int) uint32 {
+func (f *fn) compactCallRelocField(value int) uint32 {
 	if value < 0 || uint64(value) >= uint64(invalidCallRelocField) {
-		panic("arm64: call relocation field exceeds compact domain")
+		f.setRepresentationLimit(functionRepresentationCallReloc)
+		return 0
 	}
 	return uint32(value)
 }
 
-func newCallReloc(at, target int, internal bool) callReloc {
+func (f *fn) newCallReloc(at, target int, internal bool) callReloc {
 	return callReloc{
-		at:       compactCallRelocField(at),
-		target:   compactCallRelocField(target),
+		at:       f.compactCallRelocField(at),
+		target:   f.compactCallRelocField(target),
 		internal: internal,
 	}
 }
@@ -307,7 +308,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 	if f.opt(optRegABI) && targetRegisterABI {
 		jump := func() {
 			site := f.a.Branch()
-			f.relocs = append(f.relocs, newCallReloc(site, target, true))
+			f.relocs = append(f.relocs, f.newCallReloc(site, target, true))
 		}
 		if callerRegisterABI {
 			f.emitTailRegisterJump(ft, jump)
@@ -320,7 +321,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		}
 		f.emitTailWrapperJump(ft, func() {
 			site := f.a.Branch()
-			f.relocs = append(f.relocs, newCallReloc(site, target, false))
+			f.relocs = append(f.relocs, f.newCallReloc(site, target, false))
 		})
 	}
 	f.unreachable = true
@@ -1647,7 +1648,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	f.stats.call(callKindWrapper)
 	f.emitWrapperCall(ft, func() {
 		site := f.a.Bl()
-		f.relocs = append(f.relocs, newCallReloc(site, localIdx, false))
+		f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, false))
 	})
 	finishRoots()
 	return nil
@@ -1826,7 +1827,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	var returnOffset uint32
 	if localIdx >= 0 {
 		site := f.a.Bl()
-		f.relocs = append(f.relocs, newCallReloc(site, localIdx, true))
+		f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, true))
 		returnOffset = uint32(site + 4)
 	} else {
 		f.a.Blr(indirect)
@@ -2057,7 +2058,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 	var returnOffset uint32
 	if localIdx >= 0 {
 		site := f.a.Bl()
-		f.relocs = append(f.relocs, newCallReloc(site, localIdx, true))
+		f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, true))
 		returnOffset = uint32(site + 4)
 	} else {
 		f.a.Blr(indirect)

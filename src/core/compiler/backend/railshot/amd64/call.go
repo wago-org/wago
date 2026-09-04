@@ -53,23 +53,24 @@ type callReloc struct {
 
 const invalidCallRelocField = ^uint32(0)
 
-func compactCallRelocField(value int) uint32 {
+func (f *fn) compactCallRelocField(value int) uint32 {
 	if value < 0 || uint64(value) >= uint64(invalidCallRelocField) {
-		panic("amd64: call relocation field exceeds compact domain")
+		f.setRepresentationLimit(functionRepresentationCallReloc)
+		return 0
 	}
 	return uint32(value)
 }
 
-func newCallReloc(at, target int, internal bool) callReloc {
+func (f *fn) newCallReloc(at, target int, internal bool) callReloc {
 	return callReloc{
-		at:       compactCallRelocField(at),
-		target:   compactCallRelocField(target),
+		at:       f.compactCallRelocField(at),
+		target:   f.compactCallRelocField(target),
 		internal: internal,
 	}
 }
 
-func newGCStubCallReloc(at int, stub gcSharedStubKind) callReloc {
-	return callReloc{at: compactCallRelocField(at), gcStub: stub}
+func (f *fn) newGCStubCallReloc(at int, stub gcSharedStubKind) callReloc {
+	return callReloc{at: f.compactCallRelocField(at), gcStub: stub}
 }
 
 // intArgRegs is the integer argument/result register order for the internal
@@ -541,7 +542,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		f.stats.call("tail-direct")
 		f.emitTailRegisterJump(ft, func() {
 			site := f.a.JmpPlaceholder()
-			f.relocs = append(f.relocs, newCallReloc(site, int(idx)-imported, true))
+			f.relocs = append(f.relocs, f.newCallReloc(site, int(idx)-imported, true))
 		})
 		f.unreachable = true
 		return nil
@@ -567,7 +568,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 func (f *fn) emitTailWrapperJump(ft *wasm.CompType, target int) {
 	f.emitTailWrapperJumpVia(ft, func() {
 		site := f.a.JmpPlaceholder()
-		f.relocs = append(f.relocs, newCallReloc(site, target, false))
+		f.relocs = append(f.relocs, f.newCallReloc(site, target, false))
 	})
 }
 
@@ -1666,7 +1667,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	f.stats.call(callKindWrapper)
 	f.emitWrapperCall(ft, func() {
 		site := f.a.CallRel32()
-		f.relocs = append(f.relocs, newCallReloc(site, localIdx, false))
+		f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, false))
 	})
 	finishRoots()
 	return nil
@@ -1812,7 +1813,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	var returnOffset uint32
 	if localIdx >= 0 {
 		site := f.a.CallRel32()
-		f.relocs = append(f.relocs, newCallReloc(site, localIdx, true))
+		f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, true))
 		returnOffset = uint32(site + 4)
 	} else {
 		f.a.CallReg(callTarget)
@@ -2010,7 +2011,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
 	site := f.a.CallRel32()
-	f.relocs = append(f.relocs, newCallReloc(site, localIdx, true))
+	f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, true))
 
 	// Capture integer results out of RAX/RDX before the reload below reuses them as
 	// scratch. A float result stays in XMM0 (never a pin target, so reload-safe).

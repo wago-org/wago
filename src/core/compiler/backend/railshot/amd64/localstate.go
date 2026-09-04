@@ -329,7 +329,8 @@ func (f *fn) frameAddEnd(fr *ctrlFrame, site int) {
 		panic("amd64: forward end site on loop frame")
 	}
 	if site < 0 || uint64(site) >= uint64(^uint32(0)) {
-		panic("amd64: forward end site exceeds compact offset range")
+		f.setRepresentationLimit(functionRepresentationFrameEnd)
+		return
 	}
 	cold := f.ensureCtrlMerge(fr)
 	packed := uint32(site + 1) // zero remains the inline-site sentinel

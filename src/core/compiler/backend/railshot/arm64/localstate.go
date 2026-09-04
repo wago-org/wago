@@ -342,9 +342,10 @@ func (f *fn) freeLocStateBuf(b packedLocStates) {
 
 const frameEndConditional uint32 = 1 << 31
 
-func packFrameEndSite(site int, conditional bool) uint32 {
+func (f *fn) packFrameEndSite(site int, conditional bool) uint32 {
 	if site < 0 || site >= int(frameEndConditional)-1 {
-		panic("arm64: forward end site exceeds compact offset range")
+		f.setRepresentationLimit(functionRepresentationFrameEnd)
+		return 0
 	}
 	packed := uint32(site + 1) // zero remains the inline-site sentinel
 	if conditional {
