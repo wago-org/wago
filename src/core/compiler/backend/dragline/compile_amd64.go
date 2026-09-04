@@ -3652,7 +3652,8 @@ func planAMD64StructuredLocalMemoryChecks(sf *railssa.StackFunc) ([]uint64, []bo
 				}
 				continue
 			}
-			if instruction.Kind != wasm.InstrLocalGet && instruction.Kind != wasm.InstrLocalTee && instruction.Kind != wasm.InstrDrop {
+			effects := railssa.InstructionEffects(sf, uint32(next))
+			if effects.Writes != 0 || effects.Flags != 0 || effects.Traps != 0 {
 				break
 			}
 		}
@@ -3676,7 +3677,8 @@ func planAMD64StructuredLocalMemoryChecks(sf *railssa.StackFunc) ([]uint64, []bo
 				}
 				continue
 			}
-			if instruction.Kind != wasm.InstrLocalGet && instruction.Kind != wasm.InstrLocalTee && instruction.Kind != wasm.InstrDrop {
+			effects := railssa.InstructionEffects(sf, uint32(next))
+			if effects.Writes != 0 || effects.Flags != 0 || effects.Traps != 0 {
 				break
 			}
 		}

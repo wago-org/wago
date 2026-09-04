@@ -339,6 +339,16 @@ func classifyInstruction(f *StackFunc, source uint32, instruction StackInstr) In
 	return meta
 }
 
+// InstructionEffects reports the canonical effects for one compact stack
+// instruction. Backends use this when a local lowering proof needs to preserve
+// the same trap and side-effect barriers as the semantic pipeline.
+func InstructionEffects(f *StackFunc, source uint32) InstructionMetadata {
+	if f == nil || int(source) >= len(f.Instrs) {
+		return InstructionMetadata{Flags: EffectMayTrap | EffectMayThrow}
+	}
+	return classifyInstruction(f, source, f.Instrs[source])
+}
+
 func VerifyMetadata(f *StackFunc, metadata *Metadata) error {
 	if f == nil || metadata == nil || len(metadata.Instructions) != len(f.Instrs) {
 		return fmt.Errorf("railssa: metadata length mismatch")

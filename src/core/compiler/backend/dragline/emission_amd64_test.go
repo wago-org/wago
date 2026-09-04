@@ -385,6 +385,35 @@ func TestAMD64StructuredCoalescesStraightLineLocalBoundsChecks(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredCoalescesLocalBoundsChecksAcrossPureArithmetic(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0xfd, 0x00, 0x04, 0x00, 0x1a,
+			0x41, 0x01, 0x41, 0x02, 0x6a, 0x1a,
+			0x20, 0x00, 0xfd, 0x00, 0x04, 0x10, 0x1a,
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ends, elided := planAMD64StructuredLocalMemoryChecks(stack)
+	if ends[1] != 32 || !elided[8] {
+		t.Fatalf("coalesced checks across arithmetic: ends=%v elided=%v", ends, elided)
+	}
+}
+
 func compileAMD64EmissionTest(t *testing.T, source []byte) corecompiler.Output {
 	t.Helper()
 	m, err := wasm.DecodeModule(source)
