@@ -308,7 +308,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	if setDst != regNone {
 		f.a.Cset32(setDst, cc)
 	}
-	a := fr.branchN
+	a := fr.branchArity()
 	// Emit the edge and measure it. The edge helpers emit only LDR/STR/MOV, which
 	// are position-independent AND leave NZCV untouched — so the compare's flags
 	// stay live across them and the bytes can be relocated below.

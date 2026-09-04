@@ -3036,7 +3036,7 @@ func (f *fn) runBody(c *wasm.Func) error {
 	// Seed the control-frame stack from scratch's retained backing so its
 	// (large-struct) array is reused across functions rather than regrown to peak
 	// nesting depth for every one; sc.ctrl is written back below to keep the cap.
-	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), baseTypeStart: uint32(f.controlBaseTypeN), types: resultTypes})
+	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: uint32(len(resultTypes)), types: resultTypes})
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}

@@ -928,7 +928,7 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
 	fr := ctrlFrame{
 		kind:        cfBlock,
 		resultN:     rN,
-		branchN:     rN,
+		branchN:     uint32(rN),
 		types:       resultTypes,
 		res0:        t.res0,
 		controlSite: -1,

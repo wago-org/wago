@@ -2591,7 +2591,7 @@ func (f *fn) runBody(c *wasm.Func) error {
 	if len(resultTypes) <= len(sc.functionResultTypeArena) {
 		f.controlBaseTypeN = uint8(len(resultTypes))
 	}
-	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), baseTypeStart: uint32(f.controlBaseTypeN), types: resultTypes})
+	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: uint32(len(resultTypes)), types: resultTypes})
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}

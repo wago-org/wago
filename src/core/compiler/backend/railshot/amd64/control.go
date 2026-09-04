@@ -45,14 +45,31 @@ type ctrlFrame struct {
 	res0       machineType // first result's machine type (valid when resultN >= 1)
 	flags      ctrlFlags
 	mergeIndex uint32 // index+1 into scratch.ctrlMerges; zero has no cold merge state
+	branchN    uint32 // values transferred on a branch to this label
+	baseTypes  uint16 // fixed-arena start in low byte, count in high byte
 
 	height          int // operand depth at the frame's result base
 	paramN, resultN int
-	branchN         int // values transferred on a branch to this label
-	controlSite     int // cfLoop: backward target; cfIf: false-edge branch, -1 once patched
-	baseTypeStart   uint32
-	baseTypeCount   uint32
+	controlSite     int           // cfLoop: backward target; cfIf: false-edge branch, -1 once patched
 	types           []machineType // parameters followed by results; split by paramN/resultN
+}
+
+func (fr *ctrlFrame) branchArity() int { return int(fr.branchN) }
+
+func (fr *ctrlFrame) baseTypeStart() int { return int(uint8(fr.baseTypes)) }
+
+func (fr *ctrlFrame) baseTypeCount() int {
+	if fr.has(ctrlColdBaseTypes) {
+		return len(fr.types) - fr.paramN - fr.resultN
+	}
+	return int(uint8(fr.baseTypes >> 8))
+}
+
+func (fr *ctrlFrame) setBaseTypeRange(start, count int) {
+	if uint(start) > 255 || uint(count) > 255 {
+		panic("amd64: control base-type range exceeds packed storage")
+	}
+	fr.baseTypes = uint16(uint8(start)) | uint16(uint8(count))<<8
 }
 
 func (fr *ctrlFrame) has(flag ctrlFlags) bool { return fr.flags&flag != 0 }
@@ -245,7 +262,7 @@ func (f *fn) frameBaseGCRoots(fr *ctrlFrame) []bool {
 func (fr *ctrlFrame) appendParameterTypes(dst []machineType) []machineType {
 	start := 0
 	if fr.has(ctrlColdBaseTypes) {
-		start = int(fr.baseTypeCount)
+		start = fr.baseTypeCount()
 	}
 	return append(dst, fr.types[start:start+fr.paramN]...)
 }
@@ -256,7 +273,7 @@ func (fr *ctrlFrame) appendResultTypes(dst []machineType) []machineType {
 	}
 	start := fr.paramN
 	if fr.has(ctrlColdBaseTypes) {
-		start += int(fr.baseTypeCount)
+		start += fr.baseTypeCount()
 	}
 	return append(dst, fr.types[start:start+fr.resultN]...)
 }
@@ -264,11 +281,10 @@ func (fr *ctrlFrame) appendResultTypes(dst []machineType) []machineType {
 func (f *fn) setFrameBaseTypes(fr *ctrlFrame, types []machineType) {
 	fr.set(ctrlBaseTypesSet, true)
 	start := int(f.controlBaseTypeN)
-	fr.baseTypeCount = uint32(len(types))
 	storage := f.scratchState().functionResultTypeArena[:]
 	if start+len(types) <= len(storage) {
 		copy(storage[start:], types)
-		fr.baseTypeStart = uint32(start)
+		fr.setBaseTypeRange(start, len(types))
 		f.controlBaseTypeN += uint8(len(types))
 		return
 	}
@@ -290,10 +306,10 @@ func (f *fn) setFrameBaseTypes(fr *ctrlFrame, types []machineType) {
 
 func (f *fn) frameBaseTypes(fr *ctrlFrame) []machineType {
 	if fr.has(ctrlColdBaseTypes) {
-		return fr.types[:fr.baseTypeCount]
+		return fr.types[:fr.baseTypeCount()]
 	}
-	start := int(fr.baseTypeStart)
-	return f.scratchState().functionResultTypeArena[start : start+int(fr.baseTypeCount)]
+	start := fr.baseTypeStart()
+	return f.scratchState().functionResultTypeArena[start : start+fr.baseTypeCount()]
 }
 
 func (f *fn) releaseFrameBaseTypes(fr *ctrlFrame) {
@@ -303,8 +319,8 @@ func (f *fn) releaseFrameBaseTypes(fr *ctrlFrame) {
 	if fr.has(ctrlColdBaseTypes) {
 		return
 	}
-	start := int(fr.baseTypeStart)
-	end := start + int(fr.baseTypeCount)
+	start := fr.baseTypeStart()
+	end := start + fr.baseTypeCount()
 	if end != int(f.controlBaseTypeN) {
 		panic(fmt.Sprintf("amd64: control base-type arena released out of order: range [%d,%d), top %d", start, end, f.controlBaseTypeN))
 	}
@@ -927,9 +943,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if kind == cfLoop {
-		fr.branchN = pN
+		fr.branchN = uint32(pN)
 	} else {
-		fr.branchN = rN
+		fr.branchN = uint32(rN)
 	}
 	// Phase 2/3: a block or if producing exactly one result (int → mergeReg, float
 	// → mergeFReg) carries that value in a register across all its edges (fall-
@@ -1051,7 +1067,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	if frameTypes == nil && res0 != mtNone {
 		rN = 1
 	}
-	fr := ctrlFrame{kind: cfTry, paramN: pN, resultN: rN, branchN: rN, controlSite: -1, res0: res0, types: frameTypes}
+	fr := ctrlFrame{kind: cfTry, paramN: pN, resultN: rN, branchN: uint32(rN), controlSite: -1, res0: res0, types: frameTypes}
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	eh := f.ensureFrameEH(&fr)
 	for i := uint32(0); i < n; i++ {
@@ -1113,7 +1129,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		if clause.frame < 0 {
 			return errBadLabel
 		}
-		if f.ctrl[clause.frame].branchN != clause.payloadN {
+		if f.ctrl[clause.frame].branchArity() != clause.payloadN {
 			return fmt.Errorf("bounded exception handler payload arity mismatch")
 		}
 		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
@@ -1538,7 +1554,7 @@ func (f *fn) opEnd() error {
 func (f *fn) branchToFrame(fi int) {
 	fr := &f.ctrl[fi]
 	f.convergeBranchLocals(fr)
-	a, d := fr.branchN, f.depth()
+	a, d := fr.branchArity(), f.depth()
 	f.flush()
 	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
@@ -1586,7 +1602,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	}
 	fr := &f.ctrl[fi]
 	f.convergeBranchLocals(fr)
-	a, d := fr.branchN, f.depth()
+	a, d := fr.branchArity(), f.depth()
 	f.flush()
 	f.a.TestSelf(creg, false)
 	if cOwned {
@@ -1626,7 +1642,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
-		f.moveBranchValues(fr, d, fr.branchN)
+		f.moveBranchValues(fr, d, fr.branchArity())
 	}
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
@@ -1663,7 +1679,7 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
-		f.moveBranchValues(fr, d, fr.branchN)
+		f.moveBranchValues(fr, d, fr.branchArity())
 	}
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
@@ -1702,7 +1718,7 @@ func (f *fn) brOnCastResult(idx uint32, branchOnMatch bool) error {
 	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {
-		f.moveBranchValues(fr, d, fr.branchN)
+		f.moveBranchValues(fr, d, fr.branchArity())
 	}
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
@@ -1760,7 +1776,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		if fr.has(ctrlRegMerge1) {
 			f.branchEdgeToMerge1(fr, d)
 		} else {
-			f.moveBranchValues(fr, d, fr.branchN)
+			f.moveBranchValues(fr, d, fr.branchArity())
 		}
 		f.branchJump(fr)
 	}
