@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -16,12 +17,14 @@ import (
 // If an immediate is malformed, compilation falls back to source order. The
 // normal lowering pass then reports the precise staged error.
 type compilationPlan struct {
-	Order     []int
-	Component []int
-	Recursive []bool
-	Level     []uint32
-	HasV128   bool
-	PeakBytes uint64
+	Order           []int
+	Component       []int
+	Recursive       []bool
+	Level           []uint32
+	SignalGuardFree []bool
+	LocalCalls      []bool
+	HasV128         bool
+	PeakBytes       uint64
 }
 
 func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
@@ -35,25 +38,57 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 		recursive := make([]bool, count)
 		levels := make([]uint32, count)
 		hasV128 := false
+		signalGuardFree := make([]bool, count)
+		localCalls := make([]bool, count)
 		if count == 1 {
+			signalGuardFree[0] = true
 			reader := wasm.NewReader(m.Code[0].BodyBytes)
 			classifier := wasm.NewModuleInstructionClassifier(m, false)
+			denseTargets, denseTargetsOK := nativeDenseLocalTableTargets(m)
 			var immediate wasm.InstructionImmediate
 			for reader.HasNext() {
 				opcode, err := reader.Byte()
 				if err != nil || classifier.ClassifyInto(reader, opcode, &immediate) != nil {
+					signalGuardFree[0] = false
 					break
 				}
 				hasV128 = hasV128 || opcode == 0xfd
-				recursive[0] = recursive[0] || immediate.Kind == wasm.InstrCall && int(immediate.Index) == m.ImportedFuncCount()
+				if immediate.Kind == wasm.InstrInvalid && (opcode == 0x05 || opcode == 0x0b) {
+					continue
+				}
+				if immediate.Kind == wasm.InstrCall {
+					if int(immediate.Index) == m.ImportedFuncCount() {
+						recursive[0] = true
+						localCalls[0] = true
+					} else {
+						signalGuardFree[0] = false
+					}
+				} else if immediate.Kind == wasm.InstrCallIndirect && denseTargetsOK {
+					localCalls[0] = true
+					for _, target := range denseTargets {
+						if int(target) != m.ImportedFuncCount() {
+							signalGuardFree[0] = false
+							break
+						}
+						recursive[0] = true
+					}
+				} else if opcode == 0xfd || !railssa.ContextFreeTrapFreeKind(immediate.Kind) {
+					signalGuardFree[0] = false
+				}
 			}
 		}
-		return compilationPlan{Order: order, Component: components, Recursive: recursive, Level: levels, HasV128: hasV128, PeakBytes: sliceBytes(order) + sliceBytes(components) + sliceBytes(recursive) + sliceBytes(levels)}
+		return compilationPlan{Order: order, Component: components, Recursive: recursive, Level: levels, SignalGuardFree: signalGuardFree, LocalCalls: localCalls, HasV128: hasV128, PeakBytes: sliceBytes(order) + sliceBytes(components) + sliceBytes(recursive) + sliceBytes(levels) + sliceBytes(signalGuardFree) + sliceBytes(localCalls)}
 	}
 
 	edges := make([][]int, count)
+	localCalls := make([]bool, count)
+	localSignalGuardFree := make([]bool, count)
+	for i := range localSignalGuardFree {
+		localSignalGuardFree[i] = true
+	}
 	imported := m.ImportedFuncCount()
 	classifier := wasm.NewModuleInstructionClassifier(m, false)
+	denseTargets, denseTargetsOK := nativeDenseLocalTableTargets(m)
 	hasV128 := false
 	for caller := range m.Code {
 		reader := wasm.NewReader(m.Code[caller].BodyBytes)
@@ -67,11 +102,29 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 				return compilationPlan{Order: order, Component: components, Recursive: recursive, Level: levels, PeakBytes: sliceBytes(order) + sliceBytes(components) + sliceBytes(recursive) + sliceBytes(levels) + callGraphEdgeBytes(edges)}
 			}
 			hasV128 = hasV128 || opcode == 0xfd
+			if immediate.Kind == wasm.InstrInvalid && (opcode == 0x05 || opcode == 0x0b) {
+				continue
+			}
 			if immediate.Kind == wasm.InstrCall {
 				callee := int(immediate.Index) - imported
 				if callee >= 0 && callee < count {
+					localCalls[caller] = true
 					edges[caller] = append(edges[caller], callee)
+				} else {
+					localSignalGuardFree[caller] = false
 				}
+			} else if immediate.Kind == wasm.InstrCallIndirect && denseTargetsOK {
+				localCalls[caller] = true
+				for _, target := range denseTargets {
+					callee := int(target) - imported
+					if callee >= 0 && callee < count {
+						edges[caller] = append(edges[caller], callee)
+					} else {
+						localSignalGuardFree[caller] = false
+					}
+				}
+			} else if opcode == 0xfd || !railssa.ContextFreeTrapFreeKind(immediate.Kind) {
+				localSignalGuardFree[caller] = false
 			}
 		}
 		slices.Sort(edges[caller])
@@ -150,9 +203,39 @@ func calleeFirstCompilationPlan(m *wasm.Module) compilationPlan {
 		}
 		levels[caller] = componentLevels[callerComponent]
 	}
+	signalGuardFree := signalGuardFreeCallClosures(result, components, edges, localSignalGuardFree)
 	peakBytes := sliceBytes(order) + sliceBytes(components) + sliceBytes(recursive) + sliceBytes(levels) + callGraphEdgeBytes(edges) +
-		sliceBytes(indices) + sliceBytes(lowlink) + sliceBytes(onStack) + sliceBytes(stack)
-	return compilationPlan{Order: result, Component: components, Recursive: recursive, Level: levels, HasV128: hasV128, PeakBytes: peakBytes}
+		sliceBytes(signalGuardFree) + sliceBytes(localSignalGuardFree) + sliceBytes(localCalls) + sliceBytes(indices) + sliceBytes(lowlink) + sliceBytes(onStack) + sliceBytes(stack)
+	return compilationPlan{Order: result, Component: components, Recursive: recursive, Level: levels, SignalGuardFree: signalGuardFree, LocalCalls: localCalls, HasV128: hasV128, PeakBytes: peakBytes}
+}
+
+// signalGuardFreeCallClosures proves that a local function and every function
+// reachable through its closed local call graph cannot access linear memory.
+// The caller separately proves closed indirect-call tables; SCCs make recursive
+// closures all-or-nothing.
+func signalGuardFreeCallClosures(order, components []int, edges [][]int, local []bool) []bool {
+	signalGuardFree := make([]bool, len(local))
+	for start := 0; start < len(order); {
+		component := components[order[start]]
+		end := start + 1
+		for end < len(order) && components[order[end]] == component {
+			end++
+		}
+		safe := true
+		for _, member := range order[start:end] {
+			safe = safe && local[member]
+			for _, callee := range edges[member] {
+				if components[callee] != component && !signalGuardFree[callee] {
+					safe = false
+				}
+			}
+		}
+		for _, member := range order[start:end] {
+			signalGuardFree[member] = safe
+		}
+		start = end
+	}
+	return signalGuardFree
 }
 
 type compilationComponent struct {

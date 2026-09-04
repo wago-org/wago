@@ -366,8 +366,9 @@ type Output struct {
 	// DirectTrapPrepared is the subset of DirectPrepared whose private entry is
 	// call-free but may materialize a trap through the instance trap cell.
 	DirectTrapPrepared []uint64
-	// ContextFreeLoopPrepared marks functions whose wrapper can safely bypass
-	// guard activation while retaining the interruptible foreign-stack transition.
+	// ContextFreeLoopPrepared marks functions whose complete local call closure
+	// cannot access linear memory, so its wrapper can safely bypass signal-guard
+	// activation while retaining the interruptible foreign-stack transition.
 	ContextFreeLoopPrepared []uint64
 
 	GCCallsites            []GCFrameCallsite

@@ -97,6 +97,38 @@ func ContextFreeTrapFree(f *StackFunc, localCallsAreInlined bool) bool {
 	return true
 }
 
+// ContextFreeTrapFreeKind reports whether a scalar instruction is independent
+// of guest instance state and cannot trap. Call-graph planning uses this
+// conservative raw-bytecode predicate before StackFunc construction. Keep this
+// as an explicit allowlist: an instruction absent from the effect table must not
+// silently become eligible when a proposal adds a new stateful operation.
+func ContextFreeTrapFreeKind(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrNop, wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf,
+		wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn,
+		wasm.InstrDrop, wasm.InstrSelect,
+		wasm.InstrLocalGet, wasm.InstrLocalSet, wasm.InstrLocalTee,
+		wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const:
+		return true
+	}
+	if kind >= wasm.InstrI32Eqz && kind <= wasm.InstrF64Ge {
+		return true
+	}
+	if kind >= wasm.InstrI32Clz && kind <= wasm.InstrI32Mul ||
+		kind >= wasm.InstrI32And && kind <= wasm.InstrI32Rotr ||
+		kind >= wasm.InstrI64Clz && kind <= wasm.InstrI64Mul ||
+		kind >= wasm.InstrI64And && kind <= wasm.InstrI64Rotr ||
+		kind >= wasm.InstrF32Abs && kind <= wasm.InstrF64Copysign ||
+		kind == wasm.InstrI32WrapI64 ||
+		kind >= wasm.InstrI64ExtendI32S && kind <= wasm.InstrI64ExtendI32U ||
+		kind >= wasm.InstrF32ConvertI32S && kind <= wasm.InstrF64PromoteF32 ||
+		kind >= wasm.InstrI32ReinterpretF32 && kind <= wasm.InstrI64Extend32S ||
+		kind >= wasm.InstrI32TruncSatF32S && kind <= wasm.InstrI64TruncSatF64U {
+		return true
+	}
+	return false
+}
+
 func BuildMetadata(f *StackFunc, reuse *Metadata) (*Metadata, error) {
 	if f == nil {
 		return nil, fmt.Errorf("railssa: metadata requires a function")

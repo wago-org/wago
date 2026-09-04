@@ -276,6 +276,7 @@ func TestIntegerMemoryAndControlEncodings(t *testing.T) {
 		{"tzcnt 32", func(a *Asm) { a.Tzcnt(RAX, RCX, false) }, []byte{0xf3, 0x0f, 0xbc, 0xc1}},
 		{"popcnt 64", func(a *Asm) { a.Popcnt(RAX, R9, true) }, []byte{0xf3, 0x49, 0x0f, 0xb8, 0xc1}},
 		{"mov register 64", func(a *Asm) { a.MovReg64(R9, R8) }, []byte{0x4d, 0x89, 0xc1}},
+		{"bswap 32", func(a *Asm) { a.Bswap32(R9) }, []byte{0x41, 0x0f, 0xc9}},
 		{"xchg 64", func(a *Asm) { a.Xchg64(R8, R9) }, []byte{0x4d, 0x87, 0xc1}},
 		{"lock xadd 32", func(a *Asm) { a.LockXaddIdx32(R10, R11, R9, 8) }, []byte{0xf0, 0x47, 0x0f, 0xc1, 0x4c, 0x1a, 0x08}},
 		{"lock inc 64", func(a *Asm) { a.LockInc64(R10, 0x1234) }, []byte{0xf0, 0x49, 0xff, 0x82, 0x34, 0x12, 0x00, 0x00}},

@@ -59,6 +59,7 @@ type nativeBackendPlan struct {
 	BackendAttempts   uint8
 	IPRARefinedCalls  uint32
 	SignalsBounds     bool
+	AMD64BMI2         bool
 	// AMD64MemoryBoundEnd is the access end offset subtracted from the stable
 	// memory-0 byte length cached in the final allocatable GPR. Zero disables
 	// the cache.
@@ -1341,6 +1342,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		Machine: machine, Selection: selection, DAG: dag, Schedule: schedule, Allocation: allocation, Exit: exit, PostRA: postRA,
 		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
+		AMD64BMI2:      target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
 		PostRAPairWith: p.postRAPairWith, PostRASkip: p.postRASkip,
 		PostRAForwardFrom:   p.postRAForwardFrom,
 		PostRAFusionWith:    p.postRAFusionWith,
@@ -1351,13 +1353,26 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	}
 	p.plan.ImmediateProducer = p.immediateProducer
 	p.plan.ImmediateSkip = p.immediateSkip
-	if machine.Target == railmach.TargetARM64 && len(p.postRASkip) == len(machine.Insts) {
+	if (machine.Target == railmach.TargetARM64 || machine.Target == railmach.TargetAMD64) && len(p.postRASkip) == len(machine.Insts) {
 		for _, rewrite := range postRA.Rewrites {
 			var source railmach.VReg
 			var members [10]uint32
 			memberCount := 0
 			switch rewrite.Kind {
+			case railmach.RewriteAMD64ByteSwap:
+				if machine.Target != railmach.TargetAMD64 {
+					continue
+				}
+				verifiedSource, verifiedMembers, ok := railmach.VerifyARM64ByteSwapChain(machine, schedule, rewrite.Second)
+				if !ok {
+					continue
+				}
+				source, memberCount = verifiedSource, len(verifiedMembers)
+				copy(members[:], verifiedMembers[:])
 			case railmach.RewriteARM64ByteSwap:
+				if machine.Target != railmach.TargetARM64 {
+					continue
+				}
 				verifiedSource, verifiedMembers, ok := railmach.VerifyARM64ByteSwapChain(machine, schedule, rewrite.Second)
 				if !ok {
 					continue
@@ -1384,7 +1399,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			finalLocation := allocation.LocationAt(machine.Insts[activeMembers[memberCount-1]].Result, finalPosition*6+2)
 			if sourceLocation.Kind != railmach.LocationRegister || sourceLocation.Bank != railmach.BankGPR ||
 				finalLocation.Kind != railmach.LocationRegister || finalLocation.Bank != railmach.BankGPR ||
-				rewrite.Kind == railmach.RewriteARM64ByteSwap && (firstLocation.Kind != railmach.LocationRegister || firstLocation.Bank != railmach.BankGPR || finalLocation != firstLocation) ||
+				(rewrite.Kind == railmach.RewriteARM64ByteSwap || rewrite.Kind == railmach.RewriteAMD64ByteSwap) && (firstLocation.Kind != railmach.LocationRegister || firstLocation.Bank != railmach.BankGPR || finalLocation != firstLocation) ||
 				rewrite.Kind == railmach.RewriteARM64Narrow16To8 && finalLocation != sourceLocation {
 				continue
 			}
@@ -1897,6 +1912,10 @@ func (p *nativeBackendPlanner) preparePostRAScratch(target railmach.Target, inst
 		case railmach.RewriteAMD64MemoryFold:
 			if target == railmach.TargetAMD64 {
 				needsSkip, needsMemory = true, true
+			}
+		case railmach.RewriteAMD64ByteSwap:
+			if target == railmach.TargetAMD64 {
+				needsSkip = true
 			}
 		case railmach.RewriteARM64RepeatedAdd:
 			if target == railmach.TargetARM64 {

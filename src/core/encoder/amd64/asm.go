@@ -525,6 +525,15 @@ func (a *Asm) MovReg64(dst, src Reg) {
 	a.emit(a.rex(true, src >= 8, false, dst >= 8), 0x89, 0xC0|((byte(src)&7)<<3)|byte(dst&7))
 }
 
+// Bswap32 reverses the four bytes in the low 32-bit word and zeroes the high
+// word, matching the architectural write semantics of every 32-bit GPR op.
+func (a *Asm) Bswap32(reg Reg) {
+	if reg >= 8 {
+		a.emit(a.rex(false, false, false, true))
+	}
+	a.emit(0x0f, 0xc8|byte(reg&7))
+}
+
 // MovReg32 copies a 32-bit register and zeroes the destination's upper half.
 func (a *Asm) MovReg32(dst, src Reg) {
 	if dst >= 8 || src >= 8 {

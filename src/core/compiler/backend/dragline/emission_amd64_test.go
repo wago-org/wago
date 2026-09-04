@@ -139,6 +139,26 @@ func TestAMD64RailMachRecognizesPreparedSingleArgumentCall(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachTracksBMI2OnlyForFoldedRotates(t *testing.T) {
+	plan := &nativeBackendPlan{
+		AMD64BMI2:         true,
+		Machine:           &railmach.Func{Insts: []railmach.Inst{{Op: wasm.InstrI32Rotr}}},
+		ImmediateProducer: []uint32{0},
+	}
+	if !amd64RailMachMayUseBMI2(plan) {
+		t.Fatal("BMI2 folded rotate was not tracked")
+	}
+	plan.ImmediateProducer[0] = ^uint32(0)
+	if amd64RailMachMayUseBMI2(plan) {
+		t.Fatal("non-folded rotate was marked as requiring BMI2")
+	}
+	plan.ImmediateProducer[0] = 0
+	plan.AMD64BMI2 = false
+	if amd64RailMachMayUseBMI2(plan) {
+		t.Fatal("baseline target was marked as requiring BMI2")
+	}
+}
+
 func TestAMD64RailMachCallArgumentsBreakRegisterCycle(t *testing.T) {
 	var got amd64.Asm
 	amd64EmitRailMachCallArguments(&got, []amd64RailMachCallArgument{
@@ -351,11 +371,20 @@ func TestAMD64RailMachUsesAllocatedMemoryAddressesDirectly(t *testing.T) {
 	if amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, false) {
 		t.Fatal("live callee-saved address bypassed its scratch copy")
 	}
+	plan.SignalsBounds = true
+	if !amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, false) {
+		t.Fatal("signal-bounded callee-saved address required a scratch copy")
+	}
+	plan.SignalsBounds = false
 	allocation.Intervals = append(allocation.Intervals, railmach.LiveInterval{Reg: 1, Start: 0, End: 6, Bank: railmach.BankGPR})
 	if !amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, false) {
 		t.Fatal("dead callee-saved address required a scratch copy")
 	}
+	if !amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, true) {
+		t.Fatal("dead address aliased by its load result required a scratch copy")
+	}
 	allocation.Locations[1].Index = 2
+	allocation.Intervals[0].End = 12
 	if amd64RailMachCanUseMemoryAddressDirectly(&plan, 2, 0, 0, false) || amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, math.MaxInt32+1, false) || amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, true) {
 		t.Fatal("unsafe memory address bypassed its scratch copy")
 	}

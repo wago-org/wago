@@ -100,18 +100,23 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 	internal := make([]int, len(m.Code))
 	var directPrepared []uint64
 	var directLeafPrepared []uint64
+	var signalGuardFreePrepared []uint64
 	var callRelocs []amd64CallReloc
 	var gcCallsites []corecompiler.GCFrameCallsite
 	var gcRoots []uint32
 	var gcSafepoints []corecompiler.GCFrameSafepoint
 	var gcSafepointRoots []uint32
 	var gcAdapterReturnOffsets []uint32
+	requiresBMI2 := false
 	var stackScratch railssa.StackFunc
 	var emissionPlanner railssa.EmissionPlanner
 	var nativePlanner *nativeBackendPlanner
 	observedCodeExpansion := false
 	moduleDependencies, functionCacheEnabled := functionArtifactDependencies(input, m, functionCache)
 	compilationPlan := calleeFirstCompilationPlan(m)
+	if !captureGC {
+		signalGuardFreePrepared = amd64SignalGuardFreePrepared(compilationPlan.SignalGuardFree, compilationPlan.LocalCalls, selected)
+	}
 	helperSafepointBases, err := allocatingHelperSafepointBases(m, compilationPlan.Order)
 	if err != nil {
 		return corecompiler.Output{}, err
@@ -171,6 +176,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		if cacheable {
 			artifact, hit, cacheErr := functionCache.Get(artifactIdentity)
 			if cacheErr == nil && hit {
+				requiresBMI2 = requiresBMI2 || artifact.RequiredISA[uint16(corecompiler.TargetFeatureAMD64BMI2)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureAMD64BMI2)%64)) != 0
 				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
 				if !captureGC && amd64DirectPreparedClass(moduleContracts[i].Class) {
 					directPrepared = markAMD64DirectPrepared(directPrepared, len(m.Code), i)
@@ -209,7 +215,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				observedCodeExpansion = true
 				code = append(code, artifact.Code...)
 				if metrics != nil {
-					persistent := sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(compilationPlan.Recursive) + sliceBytes(moduleContracts) + sliceBytes(seedContracts) + sliceBytes(seedScores) + sliceBytes(seedCandidates) + sliceBytes(refinedRecursive) + sliceBytes(attemptedRecursive)
+					persistent := sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(signalGuardFreePrepared) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(compilationPlan.Recursive) + sliceBytes(moduleContracts) + sliceBytes(seedContracts) + sliceBytes(seedScores) + sliceBytes(seedCandidates) + sliceBytes(refinedRecursive) + sliceBytes(attemptedRecursive)
 					metrics.observe(persistent + row.PeakLiveBytes)
 				}
 				continue
@@ -312,14 +318,17 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			}
 		}
 		plan = applyBoundsMode(input.Bounds, plan, nativePlan)
+		functionRequiresBMI2 := amd64RailMachMayUseBMI2(nativePlan)
 		body, internalOffset, relocs, railMachFinalized, err := emitAMD64(fn, plan, nativePlan, emitMetrics, capture)
 		if err != nil {
 			return corecompiler.Output{}, functionError(m, i, "emit", err)
 		}
 		if !railMachFinalized {
+			functionRequiresBMI2 = false
 			publishedContract = railmach.ABIContract{}
 			moduleContracts[i] = railmach.ABIContract{}
 		}
+		requiresBMI2 = requiresBMI2 || functionRequiresBMI2
 		if !captureGC && railMachFinalized && amd64DirectPreparedClass(publishedContract.Class) {
 			directPrepared = markAMD64DirectPrepared(directPrepared, len(m.Code), i)
 		}
@@ -352,6 +361,9 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		}
 		if cacheable {
 			artifact := corecompiler.NewFunctionArtifact(artifactIdentity, body)
+			if functionRequiresBMI2 {
+				artifact.RequiredISA[uint16(corecompiler.TargetFeatureAMD64BMI2)/64] |= uint64(1) << (uint16(corecompiler.TargetFeatureAMD64BMI2) % 64)
+			}
 			artifact.PrivateEntry = uint32(internalOffset)
 			artifact.Sources = emissionMetadata.Sources
 			artifact.Traps = emissionMetadata.Traps
@@ -392,7 +404,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		observedCodeExpansion = true
 		code = append(code, body...)
 		if metrics != nil {
-			persistent := sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(compilationPlan.Recursive) + sliceBytes(moduleContracts) + sliceBytes(seedContracts) + sliceBytes(seedScores) + sliceBytes(seedCandidates) + sliceBytes(refinedRecursive) + sliceBytes(attemptedRecursive)
+			persistent := sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(signalGuardFreePrepared) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(compilationPlan.Recursive) + sliceBytes(moduleContracts) + sliceBytes(seedContracts) + sliceBytes(seedScores) + sliceBytes(seedCandidates) + sliceBytes(refinedRecursive) + sliceBytes(attemptedRecursive)
 			metrics.observe(persistent + row.PeakLiveBytes)
 		}
 	}
@@ -417,9 +429,34 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		metrics.FinalizeNanos = elapsedNanos(finalizeStart)
 		metrics.TotalNanos = elapsedNanos(totalStart)
 		metrics.NativeBytes = uint64(len(code))
-		metrics.observe(sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(moduleContracts))
+		metrics.observe(sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(signalGuardFreePrepared) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(moduleContracts))
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, ContextFreeLoopPrepared: signalGuardFreePrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresBMI2: requiresBMI2}, nil
+}
+
+func amd64RailMachMayUseBMI2(plan *nativeBackendPlan) bool {
+	if plan == nil || plan.Machine == nil || !plan.AMD64BMI2 || len(plan.ImmediateProducer) != len(plan.Machine.Insts) {
+		return false
+	}
+	for instructionID, instruction := range plan.Machine.Insts {
+		if plan.ImmediateProducer[instructionID] == ^uint32(0) {
+			continue
+		}
+		if instruction.Op == wasm.InstrI32Rotl || instruction.Op == wasm.InstrI32Rotr || instruction.Op == wasm.InstrI64Rotl || instruction.Op == wasm.InstrI64Rotr {
+			return true
+		}
+	}
+	return false
+}
+
+func amd64SignalGuardFreePrepared(proven, localCalls, selected []bool) []uint64 {
+	var bits []uint64
+	for index, safe := range proven {
+		if safe && localCalls[index] && (selected == nil || selected[index]) {
+			bits = markAMD64DirectPrepared(bits, len(proven), index)
+		}
+	}
+	return bits
 }
 
 func markAMD64DirectPrepared(bits []uint64, functions, index int) []uint64 {
@@ -436,6 +473,33 @@ func amd64DirectPreparedLeafClass(class railmach.ABIClass) bool {
 
 func amd64DirectPreparedClass(class railmach.ABIClass) bool {
 	return amd64DirectPreparedLeafClass(class) || class == railmach.ABIPreparedCall
+}
+
+func amd64RailMachByteSwapSource(plan *nativeBackendPlan, first uint32) (railmach.VReg, amd64.Reg, bool) {
+	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.PostRA == nil || len(plan.PostRASkip) != len(plan.Machine.Insts) {
+		return 0, 0, false
+	}
+	for _, rewrite := range plan.PostRA.Rewrites {
+		if rewrite.First != first || rewrite.Kind != railmach.RewriteAMD64ByteSwap {
+			continue
+		}
+		source, members, ok := railmach.VerifyARM64ByteSwapChain(plan.Machine, plan.Schedule, rewrite.Second)
+		if !ok || members[0] != first || plan.PostRASkip[first] {
+			return 0, 0, false
+		}
+		for _, instructionID := range members[1:] {
+			if !plan.PostRASkip[instructionID] {
+				return 0, 0, false
+			}
+		}
+		result := plan.Machine.Insts[members[len(members)-1]].Result
+		location := plan.Allocation.Locations[result]
+		if location.Kind != railmach.LocationRegister || location.Bank != railmach.BankGPR {
+			return 0, 0, false
+		}
+		return source, amd64RailMachPhysical(location), true
+	}
+	return 0, 0, false
 }
 
 func amd64RailMachDirectCallClass(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) railmach.ABIClass {
@@ -540,6 +604,7 @@ type parallelAMD64Result struct {
 	relocs         []amd64CallReloc
 	directPrepared bool
 	directLeaf     bool
+	requiresBMI2   bool
 }
 
 type parallelAMD64Worker struct {
@@ -619,7 +684,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 			if !railMachFinalized {
 				contracts[i] = railmach.ABIContract{}
 			}
-			results[i] = parallelAMD64Result{body: body, internalOffset: internalOffset, relocs: relocs, directPrepared: railMachFinalized && amd64DirectPreparedClass(contracts[i].Class), directLeaf: railMachFinalized && amd64DirectPreparedLeafClass(contracts[i].Class)}
+			results[i] = parallelAMD64Result{body: body, internalOffset: internalOffset, relocs: relocs, directPrepared: railMachFinalized && amd64DirectPreparedClass(contracts[i].Class), directLeaf: railMachFinalized && amd64DirectPreparedLeafClass(contracts[i].Class), requiresBMI2: railMachFinalized && amd64RailMachMayUseBMI2(nativePlan)}
 		}
 		return nil
 	})
@@ -632,12 +697,15 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 	var callRelocs []amd64CallReloc
 	var directPrepared []uint64
 	var directLeafPrepared []uint64
+	requiresBMI2 := false
+	signalGuardFreePrepared := amd64SignalGuardFreePrepared(compilation.SignalGuardFree, compilation.LocalCalls, nil)
 	for _, i := range compilation.Order {
 		for len(code)&15 != 0 {
 			code = append(code, 0x90)
 		}
 		entries[i] = len(code)
 		result := &results[i]
+		requiresBMI2 = requiresBMI2 || result.requiresBMI2
 		if result.directPrepared {
 			directPrepared = markAMD64DirectPrepared(directPrepared, len(m.Code), i)
 		}
@@ -664,7 +732,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 	if len(code) == 0 {
 		code = []byte{0xc3}
 	}
-	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared}, nil
+	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, ContextFreeLoopPrepared: signalGuardFreePrepared, RequiresBMI2: requiresBMI2}, nil
 }
 
 func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeBackendPlan, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []amd64CallReloc, bool, error) {
@@ -820,8 +888,9 @@ func amd64RailMachForwardPendingSpill(plan *nativeBackendPlan, instructionID uin
 
 func amd64RailMachCanUseMemoryAddressDirectly(plan *nativeBackendPlan, value railmach.VReg, position uint32, offset uint32, aliasesLoadResult bool) bool {
 	location := plan.Allocation.LocationAt(value, position)
-	return !aliasesLoadResult && offset <= math.MaxInt32 && location.Kind == railmach.LocationRegister &&
-		(location.Index < 5 || amd64RailMachValueDiesAt(plan, value, position+6))
+	dies := amd64RailMachValueDiesAt(plan, value, position+6)
+	return (!aliasesLoadResult || dies) && offset <= math.MaxInt32 && location.Kind == railmach.LocationRegister &&
+		(location.Index < 5 || plan.SignalsBounds || dies)
 }
 
 func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
@@ -1352,6 +1421,16 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			if instruction.Op != wasm.InstrCall && instruction.Op != wasm.InstrCallIndirect && instruction.Result != 0 &&
 				plan.Allocation.LocationAt(instruction.Result, currentPosition).Kind == railmach.LocationSpill && !fusedComparison {
 				pendingSpill = instruction.Result
+			}
+			if source, destination, ok := amd64RailMachByteSwapSource(plan, instructionID); ok {
+				if destination != reg(source) {
+					a.MovReg32(destination, reg(source))
+				}
+				a.Bswap32(destination)
+				if metrics != nil {
+					metrics.PostRARewrites++
+				}
+				continue
 			}
 			divisionRHSSaved := false
 			shiftRCXSaved := false
@@ -2657,6 +2736,21 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if instruction.Op >= wasm.InstrI32Shl && instruction.Op <= wasm.InstrI32Rotr || instruction.Op >= wasm.InstrI64Shl && instruction.Op <= wasm.InstrI64Rotr {
+				if producer != ^uint32(0) && plan.AMD64BMI2 && (instruction.Op == wasm.InstrI32Rotl || instruction.Op == wasm.InstrI64Rotl || instruction.Op == wasm.InstrI32Rotr || instruction.Op == wasm.InstrI64Rotr) && dst != lhs {
+					count := byte(plan.Machine.Insts[producer].Aux)
+					if instruction.Op == wasm.InstrI32Rotl || instruction.Op == wasm.InstrI64Rotl {
+						width := byte(32)
+						if wide {
+							width = 64
+						}
+						count = (width - count) & (width - 1)
+					}
+					a.Rorx(dst, lhs, count, wide)
+					if shiftRCXRestore {
+						a.MovReg64(amd64.RCX, amd64.R11)
+					}
+					continue
+				}
 				out := dst
 				if out == amd64.RCX {
 					out = amd64.R10
@@ -3273,8 +3367,10 @@ func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID,
 	if err != nil {
 		return err
 	}
-	if address != amd64.R10 {
+	directAddress := plan.SignalsBounds && uint32(load.Aux) <= math.MaxInt32 && address != dst
+	if address != amd64.R10 && !directAddress {
 		a.MovReg32(amd64.R10, address)
+		address = amd64.R10
 	}
 	if lhs == amd64.RSI && dst != lhs {
 		// A spilled lhs is materialized in RSI, which the explicit bounds
@@ -3287,11 +3383,11 @@ func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID,
 		width = 8
 	}
 	endOffset := uint64(uint32(load.Aux)) + width
-	emitAMD64RailMachBoundsCheck(a, plan, amd64.R10, endOffset, load.Source, coldTraps, false)
+	emitAMD64RailMachBoundsCheck(a, plan, address, endOffset, load.Source, coldTraps, false)
 	displacement := int32(uint32(load.Aux))
 	if uint32(load.Aux) > math.MaxInt32 {
 		a.MovImm64(amd64.R11, uint64(uint32(load.Aux)))
-		a.AluRR(0x01, amd64.R10, amd64.R11, true)
+		a.AluRR(0x01, address, amd64.R11, true)
 		displacement = 0
 	}
 	if dst != lhs {
@@ -3312,7 +3408,7 @@ func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID,
 	default:
 		return fmt.Errorf("RailMach consumer %d cannot fold integer memory", consumerID)
 	}
-	a.AluIdx(opcode, dst, amd64.RBX, amd64.R10, displacement, wide)
+	a.AluIdx(opcode, dst, amd64.RBX, address, displacement, wide)
 	return nil
 }
 
@@ -3327,8 +3423,10 @@ func emitAMD64FoldedFloatMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID, c
 	if err != nil {
 		return err
 	}
-	if address != amd64.R10 {
+	directAddress := plan.SignalsBounds && uint32(load.Aux) <= math.MaxInt32
+	if address != amd64.R10 && !directAddress {
 		a.MovReg32(amd64.R10, address)
+		address = amd64.R10
 	}
 	width := uint64(4)
 	f64 := load.Op == wasm.InstrF64Load
@@ -3336,11 +3434,11 @@ func emitAMD64FoldedFloatMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID, c
 		width = 8
 	}
 	endOffset := uint64(uint32(load.Aux)) + width
-	emitAMD64RailMachBoundsCheck(a, plan, amd64.R10, endOffset, load.Source, coldTraps, false)
+	emitAMD64RailMachBoundsCheck(a, plan, address, endOffset, load.Source, coldTraps, false)
 	disp := int32(uint32(load.Aux))
 	if uint32(load.Aux) > math.MaxInt32 {
 		a.MovImm64(amd64.R11, uint64(uint32(load.Aux)))
-		a.AluRR(0x01, amd64.R10, amd64.R11, true)
+		a.AluRR(0x01, address, amd64.R11, true)
 		disp = 0
 	}
 	opcode := byte(0x58)
@@ -3355,7 +3453,7 @@ func emitAMD64FoldedFloatMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID, c
 	default:
 		return fmt.Errorf("RailMach consumer %d cannot fold float memory", consumerID)
 	}
-	a.VFMemIdx(opcode, dst, lhs, amd64.RBX, amd64.R10, disp, f64)
+	a.VFMemIdx(opcode, dst, lhs, amd64.RBX, address, disp, f64)
 	return nil
 }
 

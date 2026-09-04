@@ -124,9 +124,9 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		resultWide:          wide,
 	}
 	// Signal-backed instances normally require the guarded wrapper entry. A
-	// compiler-proven context-free loop can retain the ordinary interruptible
-	// foreign-stack wrapper because it cannot take a memory signal, while direct
-	// leaf/trap entries carry their own narrower proofs.
+	// compiler-proven signal-guard-free call closure can retain the ordinary
+	// interruptible foreign-stack wrapper because it cannot take a memory signal,
+	// while direct leaf/trap entries carry their own narrower proofs.
 	contextFreeLoopCandidate := contextFreeLoopPreparedEntry(in.c.InternalEntry[ic.li])
 	directEntryCandidate := !in.tierable() && scalarFast && preparedPrivateEntryEnabled &&
 		preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) &&

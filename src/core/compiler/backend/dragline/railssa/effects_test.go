@@ -76,6 +76,25 @@ func TestContextFreeTrapFree(t *testing.T) {
 	}
 }
 
+func TestContextFreeTrapFreeKindIsConservative(t *testing.T) {
+	for _, kind := range []wasm.InstrKind{wasm.InstrI32Add, wasm.InstrF64Mul, wasm.InstrLocalTee, wasm.InstrBrIf} {
+		if !ContextFreeTrapFreeKind(kind) {
+			t.Fatalf("%s was not classified as context-free and trap-free", kind)
+		}
+	}
+	for _, kind := range []wasm.InstrKind{
+		wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrReturnCall,
+		wasm.InstrI32Load, wasm.InstrGlobalGet, wasm.InstrTableGet,
+		wasm.InstrI32AtomicLoad, wasm.InstrStructGet,
+		wasm.InstrI32DivU, wasm.InstrI32TruncF32S,
+		wasm.InstrUnreachable, wasm.InstrV128Load,
+	} {
+		if ContextFreeTrapFreeKind(kind) {
+			t.Fatalf("%s was classified as context-free and trap-free", kind)
+		}
+	}
+}
+
 func TestVerifyMetadataRejectsLostTrapOrder(t *testing.T) {
 	f := &StackFunc{Instrs: []StackInstr{{Kind: wasm.InstrUnreachable, Offset: 2}}}
 	metadata := &Metadata{Instructions: []InstructionMetadata{{Offset: 2, Epoch: 0, Traps: TrapUnreachable, Flags: EffectMayTrap}}, Epochs: 1}

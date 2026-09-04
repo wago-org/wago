@@ -263,6 +263,14 @@ func TestVerifyARM64ByteSwapChain(t *testing.T) {
 	if !ok || source != 1 || members != [5]uint32{1, 3, 5, 6, 7} {
 		t.Fatalf("byte swap = source %d, members %v, ok %t", source, members, ok)
 	}
+	selection := &SelectionPlan{Selections: make([]Selection, len(f.Insts))}
+	postRA := &PostRAPlan{Rewrites: []Rewrite{{First: 1, Second: 7, Kind: RewriteAMD64ByteSwap}}, ScanLimit: PostRAScanLimit}
+	if err := VerifyPostRAPlan(TargetAMD64, f, selection, schedule, postRA); err != nil {
+		t.Fatalf("AMD64 byte swap rewrite rejected: %v", err)
+	}
+	if err := VerifyPostRAPlan(TargetARM64, f, selection, schedule, postRA); err == nil {
+		t.Fatal("AMD64 byte swap rewrite accepted on ARM64")
+	}
 	f.Insts[4].Aux = 23
 	if _, _, ok := VerifyARM64ByteSwapChain(f, schedule, 7); ok {
 		t.Fatal("byte swap accepted rotate by 23")

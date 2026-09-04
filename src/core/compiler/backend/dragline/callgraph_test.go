@@ -37,6 +37,9 @@ func TestCalleeFirstCompilationOrder(t *testing.T) {
 	if !plan.Recursive[3] || !plan.Recursive[4] || plan.Recursive[2] {
 		t.Fatalf("recursive components = %v", plan.Recursive)
 	}
+	if !slices.Equal(plan.SignalGuardFree, []bool{true, true, true, true, true}) {
+		t.Fatalf("signal-guard-free closures = %v", plan.SignalGuardFree)
+	}
 }
 
 func TestCalleeFirstCompilationPlanMarksSelfRecursion(t *testing.T) {
@@ -69,6 +72,63 @@ func TestCalleeFirstCompilationPlanRecordsModuleSIMD(t *testing.T) {
 	}
 	if plan := calleeFirstCompilationPlan(m); !plan.HasV128 {
 		t.Fatal("SIMD module was not recorded in compilation plan")
+	}
+}
+
+func TestCalleeFirstCompilationPlanRejectsTransitiveMemoryAccess(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x10, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0x41, 0x00, 0x28, 0x02, 0x00, 0x1a, 0x0b}),
+			wasmtest.Code([]byte{0x01, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	plan := calleeFirstCompilationPlan(m)
+	if !slices.Equal(plan.SignalGuardFree, []bool{false, false, true}) {
+		t.Fatalf("signal-guard-free closures = %v, want [false false true]", plan.SignalGuardFree)
+	}
+}
+
+func TestCalleeFirstCompilationPlanProvesClosedIndirectCallTable(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x00, 0x02})),
+		wasmtest.Section(9, wasmtest.Vec([]byte{0x00, 0x41, 0x00, 0x0b, 0x02, 0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0, 0x20, 1, 0x6b, 0x0b}),
+			wasmtest.Code([]byte{0x20, 1, 0x20, 2, 0x20, 0, 0x11, 0, 0, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	plan := calleeFirstCompilationPlan(m)
+	if !slices.Equal(plan.SignalGuardFree, []bool{true, true, true}) {
+		t.Fatalf("signal-guard-free closures = %v", plan.SignalGuardFree)
+	}
+	m.Exports = append(m.Exports, wasm.Export{Index: wasm.ExternIdx{Kind: wasm.ExternTable}})
+	plan = calleeFirstCompilationPlan(m)
+	if plan.SignalGuardFree[2] {
+		t.Fatal("dispatcher with externally mutable table was proved signal-guard-free")
 	}
 }
 

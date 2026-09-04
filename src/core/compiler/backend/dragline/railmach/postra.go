@@ -22,6 +22,7 @@ const (
 	RewritePhysicalRename
 	RewriteLoadStoreForward
 	RewriteAMD64MemoryFold
+	RewriteAMD64ByteSwap
 	RewriteARM64CompareBranch
 	RewriteARM64CondIncrement
 	RewriteARM64RepeatedAdd
@@ -154,6 +155,13 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 			reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: combination.Producer, Second: combination.Consumer, Kind: RewriteARM64CompareBranch})
 		} else if !adjacent && physicalFlagsRenameable(target, f, schedule, combination.Producer, combination.Consumer, position, uses) {
 			reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: combination.Producer, Second: combination.Consumer, Kind: RewritePhysicalRename})
+		}
+	}
+	if target == TargetAMD64 {
+		for _, final := range schedule.Order {
+			if _, members, ok := verifyARM64ByteSwapChain(f, schedule, final, position, uses); ok {
+				reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: members[0], Second: final, Kind: RewriteAMD64ByteSwap})
+			}
 		}
 	}
 	if target == TargetARM64 {
@@ -873,10 +881,10 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 		uses[result]++
 	}
 	for id, rewrite := range plan.Rewrites {
-		if rewrite.Kind == RewriteInvalid || int(rewrite.First) >= len(f.Insts) || rewrite.Second != ^uint32(0) && (int(rewrite.Second) >= len(f.Insts) || rewrite.Second <= rewrite.First || rewrite.Second-rewrite.First > PostRAScanLimit && rewrite.Kind != RewriteAMD64FusionRepair && rewrite.Kind != RewritePhysicalRename && rewrite.Kind != RewriteARM64CompareBranch && rewrite.Kind != RewriteARM64RepeatedAdd && rewrite.Kind != RewriteARM64ByteWiden && rewrite.Kind != RewriteARM64ByteSwap && rewrite.Kind != RewriteARM64Narrow16To8) {
+		if rewrite.Kind == RewriteInvalid || int(rewrite.First) >= len(f.Insts) || rewrite.Second != ^uint32(0) && (int(rewrite.Second) >= len(f.Insts) || rewrite.Second <= rewrite.First || rewrite.Second-rewrite.First > PostRAScanLimit && rewrite.Kind != RewriteAMD64FusionRepair && rewrite.Kind != RewriteAMD64ByteSwap && rewrite.Kind != RewritePhysicalRename && rewrite.Kind != RewriteARM64CompareBranch && rewrite.Kind != RewriteARM64RepeatedAdd && rewrite.Kind != RewriteARM64ByteWiden && rewrite.Kind != RewriteARM64ByteSwap && rewrite.Kind != RewriteARM64Narrow16To8) {
 			return fmt.Errorf("railmach: invalid post-RA rewrite %d: %#v", id, rewrite)
 		}
-		if target == TargetAMD64 && (rewrite.Kind == RewriteARM64Pair || rewrite.Kind == RewriteARM64PrePostIndex || rewrite.Kind == RewriteARM64CompareBranch || rewrite.Kind == RewriteARM64CondIncrement || rewrite.Kind == RewriteARM64RepeatedAdd || rewrite.Kind == RewriteARM64ByteWiden || rewrite.Kind == RewriteARM64ByteSwap || rewrite.Kind == RewriteARM64Narrow16To8) || target == TargetARM64 && (rewrite.Kind == RewriteAMD64LEA || rewrite.Kind == RewriteAMD64FusionRepair || rewrite.Kind == RewriteAMD64FixedRepair || rewrite.Kind == RewriteAMD64MemoryFold) {
+		if target == TargetAMD64 && (rewrite.Kind == RewriteARM64Pair || rewrite.Kind == RewriteARM64PrePostIndex || rewrite.Kind == RewriteARM64CompareBranch || rewrite.Kind == RewriteARM64CondIncrement || rewrite.Kind == RewriteARM64RepeatedAdd || rewrite.Kind == RewriteARM64ByteWiden || rewrite.Kind == RewriteARM64ByteSwap || rewrite.Kind == RewriteARM64Narrow16To8) || target == TargetARM64 && (rewrite.Kind == RewriteAMD64LEA || rewrite.Kind == RewriteAMD64FusionRepair || rewrite.Kind == RewriteAMD64FixedRepair || rewrite.Kind == RewriteAMD64MemoryFold || rewrite.Kind == RewriteAMD64ByteSwap) {
 			return fmt.Errorf("railmach: cross-target post-RA rewrite %d: %#v", id, rewrite)
 		}
 		if rewrite.Kind == RewriteAMD64FusionRepair && position[rewrite.Second] == position[rewrite.First]+1 {
@@ -949,6 +957,11 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 		if rewrite.Kind == RewriteARM64ByteSwap {
 			if _, members, ok := VerifyARM64ByteSwapChain(f, schedule, rewrite.Second); !ok || members[0] != rewrite.First {
 				return fmt.Errorf("railmach: illegal ARM64 byte swap %d: %#v", id, rewrite)
+			}
+		}
+		if rewrite.Kind == RewriteAMD64ByteSwap {
+			if _, members, ok := VerifyARM64ByteSwapChain(f, schedule, rewrite.Second); !ok || members[0] != rewrite.First {
+				return fmt.Errorf("railmach: illegal AMD64 byte swap %d: %#v", id, rewrite)
 			}
 		}
 		if rewrite.Kind == RewriteARM64Narrow16To8 {

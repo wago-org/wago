@@ -326,8 +326,9 @@ func (in *Instance) preparedIsolatedEligible() bool {
 }
 
 // preparedContextFreeIsolatedEligible applies the isolated-state test without
-// rejecting signal bounds. Compiler-proven context-free functions cannot touch
-// memory, so they do not require guard-fault activation for this invocation.
+// rejecting signal bounds. Compiler-proven signal-guard-free call closures
+// cannot touch memory, so they do not require guard-fault activation for this
+// invocation.
 func (in *Instance) preparedContextFreeIsolatedEligible() bool {
 	if in == nil || in.c == nil || in.memoryDir != nil || in.nativeControlIsShared() || in.syncMode {
 		return false

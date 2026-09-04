@@ -1,9 +1,9 @@
-# Dragline ARM64 execution research
+# Dragline execution research
 
-Research snapshot: 2026-09-01. Upstream source comparisons are pinned to
+Research snapshot: 2026-09-04. Upstream source comparisons are pinned to
 Wasmtime `e6a948e3` and regalloc2 `2fe490bc`. The prioritized work is based on
 current source inspection; retained implementation results below use paired
-local measurements on the target ARM64 machine.
+local measurements on the named target machine.
 
 > **Current policy (2026-09-02):** corpora are measurement and correctness
 > gates only. Module names, export names, function indices, body hashes, and
@@ -11,11 +11,53 @@ local measurements on the target ARM64 machine.
 > exact BLAKE, fannkuch, nbody, JSON, matmul, Mandelbrot, and SHA-256 paths have
 > been removed. Whole-function recurrence/parser substitutions are disabled
 > while they are replaced by reusable IR-, dataflow-, and control-flow-level
-> transformations. Historical measurements below describe experiments and must
-> not be read as current benchmark results; the non-ISA corpus requires a fresh
-> run after this policy cleanup.
+> transformations. Historical ARM64 measurements below describe experiments and
+> must not be read as current benchmark results; the fresh AMD64 gate is recorded
+> separately below.
 
-## Conclusion
+## Current AMD64 application gate
+
+The September 4 AMD64 pass retains only general runtime and code-generation
+rules. It does not inspect module names, exports, function indexes, hashes, or
+corpus-specific byte strings. The retained changes are:
+
+- a transitive call-graph proof that lets signal-bounded, memory-independent
+  local call closures skip guard activation while retaining the interruptible
+  foreign-stack transition;
+- scalar AMD64 `BSWAP` realization for the existing verified byte-swap dataflow
+  rewrite;
+- BMI2 `RORX` selection for non-destructive immediate rotates, with the exact
+  ISA requirement propagated through serial, parallel, and cached compilation;
+  and
+- direct reuse of allocated i32 address registers for signal-bounded scalar and
+  folded loads when aliasing and liveness make it safe.
+
+The release measurement ran on an AMD Ryzen 7 7800X3D with Go 1.22.2 and
+Wasmtime/Cranelift 46.0.1. Both engines were pinned to CPU 7. Each of 36 runnable
+exports from 30 non-ISA application modules ran for five alternating 500 ms
+rounds. The primary aggregate pairs engines within each round, folds multiple
+exports equally inside their module, then gives every module equal geometric
+weight.
+
+| AMD64 execution aggregate | Dragline relative to Cranelift |
+| --- | ---: |
+| Five-round paired module-equal throughput geomean | **95.41%** |
+| Median of the five module-equal throughput rounds | **95.07%** |
+| Paired round range | 94.90%–96.97% |
+| Ratio of independently pooled per-export medians | 94.79% |
+
+The paired aggregate is the release gate because engine order alternates and
+same-round ratios cancel machine-frequency drift. The independently pooled
+median is recorded as a secondary conservative view. The earlier unoptimized
+AMD64 screening run measured 91.43% of Cranelift throughput; run lengths differ,
+so that figure is directional rather than an exact A/B delta.
+
+The widest remaining module gaps are SIMD/string applications: `utf-as-simd`
+(54.49% of Cranelift throughput), `blake-as-simd` (55.51%), `json-as-simd`
+(56.01%), `json-as` (62.06%), and `utf-as` (66.97%). They remain roadmap input,
+not dispatch keys for specialized emission.
+
+## ARM64 conclusion
 
 The largest visible architectural gap is not an isolated ARM64 peephole. It is
 that Dragline's optimizing RailMach path has no `v128` machine type, register
