@@ -1077,8 +1077,7 @@ func isValueMul(s *stack, e *elem) bool {
 		return false
 	}
 	arg0, arg1 := s.arg0(e), s.arg1(e)
-	return e != nil && e.kind == ekDeferred && e.op == opMul &&
-		arg0 != nil && arg0.kind == ekValue &&
+	return arg0 != nil && arg0.kind == ekValue &&
 		arg1 != nil && arg1.kind == ekValue
 }
 
