@@ -26,7 +26,7 @@ A follow-up audit at `779e5e65842359c1c7b169f1af299097853a71ad` found several ad
 
 - AMD64 already labels deferred trees with bounded register demand and uses it for semantics-safe evaluation ordering. Extend that analysis into pre-emission pressure prediction; do not build a second tree-labeling mechanism.
 - Both backends already have a fixed 24-operation machine window for ABI shuffles. Generalize it only when counters identify missed machine-level combinations; do not add a parallel window.
-- Compact pointer-rich `ctrlFrame` records before or alongside operand-node conversion. The implemented split now leaves ordinary frames at 104 bytes on both architectures; further control-state work should target measured sidecar high-water rather than restoring cold fields to the common record.
+- Compact pointer-rich `ctrlFrame` records before or alongside operand-node conversion. The implemented split now leaves ordinary frames at 88 bytes on both architectures; further control-state work should target measured sidecar high-water rather than restoring cold fields to the common record.
 - Resolve module invariants once, narrow compiler-only indexes, flatten parallel metadata, and apply retention limits per scratch buffer.
 - Retire default-off experiments and mature rollback switches that fail the normal qualification gates. Compiler mechanisms should replace old state, not accumulate beside it.
 

@@ -51,10 +51,12 @@ type LowestIndexError struct {
 	err   error
 }
 
+// Reset clears the result and sets the exclusive function-index limit.
 func (e *LowestIndexError) Reset(limit int) {
 	e.index, e.err = limit, nil
 }
 
+// Record retains err when index is lower than every previously recorded index.
 func (e *LowestIndexError) Record(index int, err error) {
 	if err == nil {
 		return
@@ -66,6 +68,7 @@ func (e *LowestIndexError) Record(index int, err error) {
 	e.mu.Unlock()
 }
 
+// Result returns the lowest recorded function index and its error.
 func (e *LowestIndexError) Result() (int, error) {
 	e.mu.Lock()
 	index, err := e.index, e.err
