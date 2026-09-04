@@ -3051,11 +3051,14 @@ func amd64RailMachRotatedZeroTestLatch(plan *nativeBackendPlan, block, backedge 
 			return 0, 0, false
 		}
 	}
-	src, dst := plan.Allocation.Locations[latchCounter], plan.Allocation.Locations[headerCounter]
-	if src != dst || src.Kind != railmach.LocationRegister || src.Bank != railmach.BankGPR {
+	// The backedge moves execute before the rotated test, so test the phi's
+	// destination rather than requiring the allocator to coalesce it with the
+	// latch definition.
+	dst := plan.Allocation.Locations[headerCounter]
+	if dst.Kind != railmach.LocationRegister || dst.Bank != railmach.BankGPR {
 		return 0, 0, false
 	}
-	return latchCounter, uint32(plan.Machine.Edges[exitEdge].To), true
+	return headerCounter, uint32(plan.Machine.Edges[exitEdge].To), true
 }
 
 func nativeAMD64MemoryFoldSource(plan *nativeBackendPlan, consumer uint32) (uint32, bool) {
