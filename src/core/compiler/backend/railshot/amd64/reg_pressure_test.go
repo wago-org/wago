@@ -116,7 +116,7 @@ func TestCompileWrapperResultsWithThreePinnedGlobals(t *testing.T) {
 	}
 }
 
-// TestExecRegHeavyAvoidsRetry is the regression for register exhaustion: the
+// TestExecRegHeavyUsesOneCompileAttempt is the regression for register exhaustion: the
 // target-derived transient floor must compile a register-heavy nested-shift tree
 // on its first attempt and preserve the result.
 func TestExecRegHeavyUsesOneCompileAttempt(t *testing.T) {
