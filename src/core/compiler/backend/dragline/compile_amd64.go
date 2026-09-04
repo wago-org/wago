@@ -3771,6 +3771,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		}
 	}
 	hasGeneralCall := false
+	hasNonCallHelper := false
 	hasMemoryAccess := false
 	hasMemoryGrow := false
 	observeSIMDConstant := func(value [16]byte) {
@@ -3789,6 +3790,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			instr.Kind == wasm.InstrBrOnCast || instr.Kind == wasm.InstrBrOnCastFail ||
 			instr.Kind == wasm.InstrAnyConvertExtern || instr.Kind == wasm.InstrExternConvertAny {
 			hasGeneralCall = true
+			if instr.Kind != wasm.InstrCall && instr.Kind != wasm.InstrCallIndirect {
+				hasNonCallHelper = true
+			}
 		}
 		if (instr.Kind == wasm.InstrLocalGet || instr.Kind == wasm.InstrLocalSet || instr.Kind == wasm.InstrLocalTee) &&
 			int(instr.U32()) < len(sf.Locals) {
@@ -3807,12 +3811,12 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		hasMemoryGrow = hasMemoryGrow || instr.Kind == wasm.InstrMemoryGrow
 	}
 	cacheMemorySize := hasMemoryAccess && !hasMemoryGrow && !hasGeneralCall
-	registerLocals := !sf.HasV128 && !hasGeneralCall && len(sf.Params) <= 4 && gpLocals <= len(amd64StackLocalRegisters) && fpLocals <= 8
+	registerLocals := !sf.HasV128 && !hasNonCallHelper && len(sf.Params) <= 4 && gpLocals <= len(amd64StackLocalRegisters) && fpLocals <= 8
 	if registerLocals {
 		for i := range localPinned {
 			localPinned[i] = true
 		}
-	} else if sf.HasV128 && !hasGeneralCall && len(sf.Params) <= 4 {
+	} else if sf.HasV128 && !hasNonCallHelper && len(sf.Params) <= 4 {
 		for i := range localRegisters {
 			localRegisters[i] = 0
 		}
@@ -3995,6 +3999,41 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	}
 	if cacheMemorySize {
 		a.Load64(amd64.RBP, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+	}
+	spillPinnedLocals := func() {
+		for local, pinned := range localPinned {
+			if !pinned {
+				continue
+			}
+			switch sf.Locals[local] {
+			case wasm.V128:
+				a.VMovdquStoreDisp(amd64.RSP, localOff(local), localRegisters[local])
+			case wasm.F32, wasm.F64:
+				a.FStoreDisp(amd64.RSP, localOff(local), localRegisters[local], sf.Locals[local] == wasm.F64)
+			default:
+				a.StoreRsp64(localOff(local), localRegisters[local])
+			}
+		}
+	}
+	restorePinnedLocals := func() {
+		for local, pinned := range localPinned {
+			if !pinned {
+				continue
+			}
+			switch sf.Locals[local] {
+			case wasm.V128:
+				a.VMovdquLoadDisp(localRegisters[local], amd64.RSP, localOff(local))
+			case wasm.F32, wasm.F64:
+				a.FLoadDisp(localRegisters[local], amd64.RSP, localOff(local), sf.Locals[local] == wasm.F64)
+			case wasm.I32:
+				a.LoadRsp32(localRegisters[local], localOff(local))
+			default:
+				a.LoadRsp64(localRegisters[local], localOff(local))
+			}
+		}
+		for _, constant := range simdConstants {
+			materializeSIMDConstant(constant.reg, constant.bytes)
+		}
 	}
 	stackTypes := make([]wasm.ValType, 0, sf.MaxStack)
 	localMemoryCheckEnds, localMemoryChecksElided := planAMD64StructuredLocalMemoryChecks(sf)
@@ -5692,7 +5731,13 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 				err = emitAMD64StackFloat(&a, instr.Kind, &stackTypes, loadScalar, cacheScalar, discardScalar, fn.Index, instr.Offset, metadata)
 				pruneScalarStackCache()
 			} else if instr.Kind == wasm.InstrCall || instr.Kind == wasm.InstrCallIndirect {
+				if instr.Inline() == wasm.InstrInvalid {
+					spillPinnedLocals()
+				}
 				err = emitAMD64StackCall(&a, sf, instr, &stackTypes, stackOff, &callRelocs, fn.Index, metadata)
+				if err == nil && instr.Inline() == wasm.InstrInvalid {
+					restorePinnedLocals()
+				}
 			} else {
 				err = emitAMD64StackInteger(&a, instr.Kind, &stackTypes, scalarOperand, cacheScalar, discardScalar, fn.Index, instr.Offset, metadata)
 			}

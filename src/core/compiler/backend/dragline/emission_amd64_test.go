@@ -170,6 +170,29 @@ func TestAMD64StructuredSIMDHighRegistersRespectStackPressure(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredPreservesPinnedLocalsAcrossCall(t *testing.T) {
+	callee := wasmtest.Code([]byte{0x20, 0x00, 0x0b})
+	callerBody := []byte{
+		0x01, 0x01, 0x7b, // one v128 local forces structured emission
+		0xfd, 0x0c, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1a, // v128.const 0; drop
+		0x20, 0x00, 0x10, 0x00, 0x1a, // call 0(local.get 0); drop
+		0x20, 0x00, 0x0b, // return the pinned parameter
+	}
+	caller := append(wasmtest.ULEB(uint32(len(callerBody))), callerBody...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(callee, caller)),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var save, restore amd64.Asm
+	save.StoreRsp64(0, amd64.R12)
+	restore.LoadRsp32(amd64.R12, 0)
+	if !bytes.Contains(output.Code, save.B) || !bytes.Contains(output.Code, restore.B) {
+		t.Fatalf("structured call did not save and restore its pinned local: %x", output.Code)
+	}
+}
+
 func TestAMD64RailMachSpillForwardingRetainsLiveHomes(t *testing.T) {
 	allocation := railmach.GreedyAllocation{Allocation: railmach.Allocation{Intervals: []railmach.LiveInterval{
 		{Reg: 1, Start: 3, End: 14, Bank: railmach.BankFPR},
