@@ -22,17 +22,33 @@ func TestCtrlFrameSize(t *testing.T) {
 	}
 }
 
+func TestPackedLocStatesArm64(t *testing.T) {
+	states := make(packedLocStates, packedLocStateBytes(9))
+	want := []locState{lsReg, lsStackReg, lsMem, lsConstZero, lsConstZero, lsMem, lsStackReg, lsReg, lsMem}
+	for i, state := range want {
+		states.set(i, state)
+	}
+	for i, state := range want {
+		if got := states.get(i); got != state {
+			t.Fatalf("state %d = %d, want %d", i, got, state)
+		}
+	}
+	if got, wantBytes := len(states), 3; got != wantBytes {
+		t.Fatalf("packed bytes = %d, want %d", got, wantBytes)
+	}
+}
+
 func TestPushCtrlReusesMergeSlotAtDepth(t *testing.T) {
 	f := fn{ctrl: make([]ctrlFrame, 0, 1)}
 	first := ctrlFrame{}
-	f.ensureCtrlMerge(&first).branchState = make([]locState, 1)
+	f.ensureCtrlMerge(&first).branchState = make(packedLocStates, 1)
 	f.ensureCtrlRoots(&first).base = []bool{true}
 	f.pushCtrl(&first)
 	f.releaseCtrlMerge(&f.ctrl[0])
 	f.ctrl = f.ctrl[:0]
 
 	next := ctrlFrame{}
-	f.ensureCtrlMerge(&next).branchState = make([]locState, 2)
+	f.ensureCtrlMerge(&next).branchState = make(packedLocStates, 2)
 	f.ensureCtrlRoots(&next).base = []bool{false, true}
 	f.pushCtrl(&next)
 

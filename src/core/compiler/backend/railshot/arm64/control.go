@@ -84,8 +84,8 @@ func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
 type ctrlFrameMerge struct {
 	ends         []int // cfBlock/cfIf: forward B sites to patch to end
 	condEnds     []int // cfBlock/cfIf: forward B.cond sites (imm19) to patch to end
-	branchState  []locState
-	entryState   []locState
+	branchState  packedLocStates
+	entryState   packedLocStates
 	loopSetStart uint32
 	loopSetCount uint16
 	loopSetKnown bool
@@ -215,27 +215,27 @@ func (f *fn) pushCtrl(fr *ctrlFrame) {
 	f.ctrl = append(f.ctrl, *fr)
 }
 
-func (f *fn) frameBranchState(fr *ctrlFrame) []locState {
+func (f *fn) frameBranchState(fr *ctrlFrame) packedLocStates {
 	if merge := f.ctrlMerge(fr); merge != nil {
 		return merge.branchState
 	}
 	return nil
 }
 
-func (f *fn) frameEntryState(fr *ctrlFrame) []locState {
+func (f *fn) frameEntryState(fr *ctrlFrame) packedLocStates {
 	if merge := f.ctrlMerge(fr); merge != nil {
 		return merge.entryState
 	}
 	return nil
 }
 
-func (f *fn) setFrameBranchState(fr *ctrlFrame, state []locState) {
+func (f *fn) setFrameBranchState(fr *ctrlFrame, state packedLocStates) {
 	if state != nil {
 		f.ensureCtrlMerge(fr).branchState = state
 	}
 }
 
-func (f *fn) setFrameEntryState(fr *ctrlFrame, state []locState) {
+func (f *fn) setFrameEntryState(fr *ctrlFrame, state packedLocStates) {
 	if state != nil {
 		f.ensureCtrlMerge(fr).entryState = state
 	}
@@ -1797,7 +1797,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		if f.usesCalls && branchState != nil && entryState != nil {
 			for x := 0; x < f.nLocals; x++ {
 				reg, isFloat, ok := f.pinReg(x)
-				if !ok || branchState[x] != lsStackReg || entryState[x] != lsMem {
+				if !ok || branchState.get(x) != lsStackReg || entryState.get(x) != lsMem {
 					continue
 				}
 				dead := deadGP.has(reg)

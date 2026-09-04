@@ -389,7 +389,7 @@ func (f *fn) opt(option optimization.Option) bool {
 // each compile. Embedding it keeps hot call sites terse while making ownership
 // and lifetime a single assignment instead of a list of parallel fields.
 type transient struct {
-	lsPool        [][]locState
+	lsPool        []packedLocStates
 	endsPool      [][]int
 	tmpRoots      []*elem
 	tmpTypes      []machineType

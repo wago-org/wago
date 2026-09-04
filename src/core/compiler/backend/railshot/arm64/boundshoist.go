@@ -159,11 +159,11 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 	f.reconcileLocals()
 	f.flush()
 	entryTypes := append([]machineType(nil), f.currentLogicalTypes()...)
-	var entryLocals []locState
+	var entryLocals packedLocStates
 	if f.usesCalls {
-		entryLocals = make([]locState, f.nLocals)
-		for x := range entryLocals {
-			entryLocals[x] = f.locals[x].state
+		entryLocals = make(packedLocStates, packedLocStateBytes(f.nLocals))
+		for x := 0; x < f.nLocals; x++ {
+			entryLocals.set(x, f.locals[x].state)
 		}
 	}
 
