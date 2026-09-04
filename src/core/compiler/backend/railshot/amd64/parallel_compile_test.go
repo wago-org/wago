@@ -106,14 +106,12 @@ func equalWorkerModuleStatsAMD64(a, b *ModuleStats) bool {
 	aCopy.Compile.ControlScratchPeak, bCopy.Compile.ControlScratchPeak = 0, 0
 	aCopy.Compile.ControlScratchRetained, bCopy.Compile.ControlScratchRetained = 0, 0
 	aCopy.Compile.ControlScratchDiscarded, bCopy.Compile.ControlScratchDiscarded = 0, 0
-	aCopy.Compile.RetryNanos, bCopy.Compile.RetryNanos = 0, 0
 	for i := range aCopy.Funcs {
 		if aCopy.Funcs[i] == nil || bCopy.Funcs[i] == nil {
 			continue
 		}
 		aFunc, bFunc := *aCopy.Funcs[i], *bCopy.Funcs[i]
 		aFunc.CompileNanos, bFunc.CompileNanos = 0, 0
-		aFunc.RetryNanos, bFunc.RetryNanos = 0, 0
 		aCopy.Funcs[i], bCopy.Funcs[i] = &aFunc, &bFunc
 	}
 	return reflect.DeepEqual(&aCopy, &bCopy)

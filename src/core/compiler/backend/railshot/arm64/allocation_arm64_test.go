@@ -289,8 +289,8 @@ func regHeavyShiftChainArm64(t *testing.T, nParams, depth int) *wasm.Module {
 // nested-shift tree must compile (via the deferred-tree depth cap breaking it into
 // register-sized segments, or the pinning-off retry) instead of failing to link,
 // and must still compute the right value. Depths past ~14 used to hard-fail with
-// "no register available to spill". Covers amd64's TestExecRegHeavyUnpinnedRetry
-// and TestExecRegHeavyDeepCapped.
+// "no register available to spill". Covers amd64's one-attempt register-pressure
+// and deep-tree-cap regressions.
 func TestExecRegHeavyShiftChainArm64(t *testing.T) {
 	const nParams = 8
 	for _, depth := range []int{7, 15, 20, 40, 100} {
@@ -303,8 +303,8 @@ func TestExecRegHeavyShiftChainArm64(t *testing.T) {
 		if cm.CodeImage != nil {
 			_ = cm.CodeImage.Close()
 		}
-		if stats.Compile.RetryFunctions != 0 {
-			t.Fatalf("depth %d: production retries = %d, want zero", depth, stats.Compile.RetryFunctions)
+		if stats.Compile.FunctionAttempts != 1 || stats.Funcs[0].FunctionAttempts != 1 {
+			t.Fatalf("depth %d: function attempts module/function = %d/%d, want 1/1", depth, stats.Compile.FunctionAttempts, stats.Funcs[0].FunctionAttempts)
 		}
 		args := make([]uint64, nParams)
 		args[0] = 5

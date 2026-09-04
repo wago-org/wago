@@ -178,33 +178,11 @@ type CodegenStats struct {
 	PinnedGlobalsValue int // hot mutable-int globals value-pinned in this function
 	PinRelinquishments int // pinned locals temporarily homed at exact exhaustion points
 
-	// UnpinnedRetry is set when the pinned compile exhausted the register file
-	// (a pathologically deep expression tree) and the function was recompiled with
-	// local pinning disabled — a diagnostic flag for such register-heavy functions.
-	UnpinnedRetry    bool
 	CompileNanos     uint64
 	FunctionAttempts uint64
-	RetryInputBytes  uint64
-	RetryNodeBytes   uint64
-	RetryCodeBytes   uint64
-	RetryNanos       uint64
 
 	// Peephole/instruction-selection rewrites that fired, by stable name.
 	Peephole map[string]int
-}
-
-// resetFuncStats clears every accumulated counter/map of s, keeping only its
-// identity (FuncIdx, Name), so a recompile of the same function (the pinning-off
-// retry) starts from a clean slate instead of double-counting the failed attempt.
-func resetFuncStats(s *CodegenStats) {
-	if s == nil {
-		return
-	}
-	idx, name := s.FuncIdx, s.Name
-	attempts, compileNanos := s.FunctionAttempts, s.CompileNanos
-	retryInput, retryNodes, retryCode, retryNanos := s.RetryInputBytes, s.RetryNodeBytes, s.RetryCodeBytes, s.RetryNanos
-	*s = CodegenStats{FuncIdx: idx, Name: name, FunctionAttempts: attempts, CompileNanos: compileNanos,
-		RetryInputBytes: retryInput, RetryNodeBytes: retryNodes, RetryCodeBytes: retryCode, RetryNanos: retryNanos}
 }
 
 func (ms *ModuleStats) finalizeCompileResourceStats() {
@@ -213,21 +191,13 @@ func (ms *ModuleStats) finalizeCompileResourceStats() {
 	}
 	c := &ms.Compile
 	c.StageNanos[shared.CompileStageFunctions] = 0
-	c.FunctionAttempts, c.RetryFunctions = 0, 0
-	c.RetryInputBytes, c.RetryNodeBytes, c.RetryCodeBytes, c.RetryNanos = 0, 0, 0, 0
+	c.FunctionAttempts = 0
 	for _, s := range ms.Funcs {
 		if s == nil {
 			continue
 		}
 		c.StageNanos[shared.CompileStageFunctions] += s.CompileNanos
 		c.FunctionAttempts += s.FunctionAttempts
-		if s.UnpinnedRetry {
-			c.RetryFunctions++
-		}
-		c.RetryInputBytes += s.RetryInputBytes
-		c.RetryNodeBytes += s.RetryNodeBytes
-		c.RetryCodeBytes += s.RetryCodeBytes
-		c.RetryNanos += s.RetryNanos
 	}
 }
 
@@ -268,12 +238,6 @@ func workerScratchStats(sc *scratch) shared.WorkerScratchStats {
 		ControlPeak:      uint64(sc.controlScratchPeak)*frameBytes + uint64(sc.controlMergePeak)*mergeBytes + uint64(sc.controlRootPeak)*rootBytes,
 		ControlRetained:  uint64(cap(sc.ctrl))*frameBytes + uint64(cap(sc.ctrlMerges))*mergeBytes + uint64(cap(sc.ctrlRoots))*rootBytes,
 		ControlDiscarded: uint64(sc.controlScratchDiscarded)*frameBytes + uint64(sc.controlMergeDiscarded)*mergeBytes + uint64(sc.controlRootDiscarded)*rootBytes,
-	}
-}
-
-func (s *CodegenStats) setUnpinnedRetry() {
-	if s != nil {
-		s.UnpinnedRetry = true
 	}
 }
 
@@ -486,14 +450,10 @@ func (ms *ModuleStats) String() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "=== codegen explain: %d function(s) ===\n", len(ms.Funcs))
-	fmt.Fprintf(&b, "compile: hints=%dns functions=%dns finalize=%dns hint-headers=%dB hint-sidecars=%dB attempts=%d retries=%d\n",
+	fmt.Fprintf(&b, "compile: hints=%dns functions=%dns finalize=%dns hint-headers=%dB hint-sidecars=%dB attempts=%d\n",
 		ms.Compile.StageNanos[shared.CompileStageHints], ms.Compile.StageNanos[shared.CompileStageFunctions],
 		ms.Compile.StageNanos[shared.CompileStageFinalize], ms.Compile.HintHeaderBytes,
-		ms.Compile.HintSidecarBytes, ms.Compile.FunctionAttempts, ms.Compile.RetryFunctions)
-	if ms.Compile.RetryFunctions != 0 {
-		fmt.Fprintf(&b, "compile-retries: input=%dB nodes=%dB code=%dB time=%dns\n",
-			ms.Compile.RetryInputBytes, ms.Compile.RetryNodeBytes, ms.Compile.RetryCodeBytes, ms.Compile.RetryNanos)
-	}
+		ms.Compile.HintSidecarBytes, ms.Compile.FunctionAttempts)
 	fmt.Fprintf(&b, "compile-node-scratch: reserved=%dB peak-envelope=%dB retained=%dB discarded=%dB\n",
 		ms.Compile.NodeScratchReserved, ms.Compile.NodeScratchPeak,
 		ms.Compile.NodeScratchRetained, ms.Compile.NodeScratchDiscarded)
@@ -626,10 +586,6 @@ func (s *CodegenStats) report() string {
 		s.NativeSize.DeadReservationBytes(), s.NativeSize.LiteralPoolBytes)
 	if s.FinalizerFallback != "" {
 		fmt.Fprintf(&b, "    finalizer-fallback: %s\n", s.FinalizerFallback)
-	}
-	if s.UnpinnedRetry {
-		fmt.Fprintf(&b, "    retry: attempts=%d input=%dB nodes=%dB code=%dB time=%dns\n",
-			s.FunctionAttempts, s.RetryInputBytes, s.RetryNodeBytes, s.RetryCodeBytes, s.RetryNanos)
 	}
 	fmt.Fprintf(&b, "    rel32: sites=%d recorded=%d overflow=%t\n", s.Rel32Sites, s.Rel32Recorded, s.Rel32Overflow)
 	fmt.Fprintf(&b, "    encoding: memory-disp0=%d memory-disp8=%d memory-disp32=%d memory-disp-bytes=%d frame-disp0=%d frame-disp8=%d frame-disp32=%d frame-disp-bytes=%d\n",

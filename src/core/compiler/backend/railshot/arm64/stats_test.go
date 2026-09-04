@@ -27,10 +27,7 @@ func TestCompileResourceStatsArm64(t *testing.T) {
 	if stats.Compile.FunctionAttempts != 1 || stats.Funcs[0].FunctionAttempts != 1 {
 		t.Fatalf("function attempts module/function = %d/%d, want 1/1", stats.Compile.FunctionAttempts, stats.Funcs[0].FunctionAttempts)
 	}
-	if stats.Compile.RetryFunctions != 0 || stats.Compile.RetryNanos != 0 {
-		t.Fatalf("unexpected retry stats: %+v", stats.Compile)
-	}
-	if report := stats.String(); !strings.Contains(report, "hint-headers=32B hint-sidecars=8B attempts=1 retries=0") {
+	if report := stats.String(); !strings.Contains(report, "hint-headers=32B hint-sidecars=8B attempts=1") {
 		t.Fatalf("resource report missing ledger: %q", report)
 	}
 }

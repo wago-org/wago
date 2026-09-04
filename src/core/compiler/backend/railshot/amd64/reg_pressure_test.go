@@ -119,7 +119,7 @@ func TestCompileWrapperResultsWithThreePinnedGlobals(t *testing.T) {
 // TestExecRegHeavyAvoidsRetry is the regression for register exhaustion: the
 // target-derived transient floor must compile a register-heavy nested-shift tree
 // on its first attempt and preserve the result.
-func TestExecRegHeavyAvoidsRetry(t *testing.T) {
+func TestExecRegHeavyUsesOneCompileAttempt(t *testing.T) {
 	const nParams, depth = 8, 7
 	m := regHeavyShiftChain(t, nParams, depth)
 
@@ -127,8 +127,8 @@ func TestExecRegHeavyAvoidsRetry(t *testing.T) {
 	if _, err := CompileModuleWith(m, CompileOptions{Stats: ms}); err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	if ms.Funcs[0].UnpinnedRetry || ms.Compile.FunctionAttempts != 1 || ms.Compile.RetryFunctions != 0 {
-		t.Fatalf("unexpected register-pressure retry: %+v", ms.Compile)
+	if ms.Compile.FunctionAttempts != 1 || ms.Funcs[0].FunctionAttempts != 1 {
+		t.Fatalf("function attempts module/function = %d/%d, want 1/1", ms.Compile.FunctionAttempts, ms.Funcs[0].FunctionAttempts)
 	}
 
 	// Correctness: p0=5, all counts=1 → acc = 5 << depth.

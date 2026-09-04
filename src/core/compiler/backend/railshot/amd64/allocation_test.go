@@ -51,7 +51,7 @@ func TestGPPinLimitReservesTransientLoweringRegisters(t *testing.T) {
 	}
 }
 
-func TestCompileRegisterPressureCorpusAvoidsRetry(t *testing.T) {
+func TestCompileRegisterPressureCorpusUsesOneAttemptPerFunction(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
 	for _, name := range []string{"regexmatch.wasm", "ruby.wasm", "sqlite3.wasm"} {
 		t.Run(name, func(t *testing.T) {
@@ -64,8 +64,8 @@ func TestCompileRegisterPressureCorpusAvoidsRetry(t *testing.T) {
 			if cm.CodeImage != nil {
 				_ = cm.CodeImage.Close()
 			}
-			if got := stats.Compile.RetryFunctions; got != 0 {
-				t.Fatalf("register-pressure retries = %d, want zero", got)
+			if got, want := stats.Compile.FunctionAttempts, uint64(len(m.Code)); got != want {
+				t.Fatalf("function attempts = %d, want %d", got, want)
 			}
 			relinquishments := 0
 			for _, fs := range stats.Funcs {

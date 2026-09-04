@@ -23,11 +23,6 @@ type CompileResourceStats struct {
 	HintSidecarBytes uint64
 
 	FunctionAttempts uint64
-	RetryFunctions   uint64
-	RetryInputBytes  uint64
-	RetryNodeBytes   uint64
-	RetryCodeBytes   uint64
-	RetryNanos       uint64
 
 	// NodeScratchReserved is the sum of workers' initial operand-node backing.
 	// Peak is the sum of each worker's individual high-water (an envelope, not a
