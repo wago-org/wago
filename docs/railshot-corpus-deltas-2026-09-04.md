@@ -17,6 +17,27 @@ Each value is the median of five samples with a 200 ms Go benchmark target using
 
 The heap and allocation aggregate is the sum of per-module medians, useful as a fixed-corpus score; it is not a claim that all modules are live simultaneously.
 
+## Execution-gate reconciliation
+
+The sequential corpus screen exposed every row above the plan's 3% investigation threshold. Eight fresh alternating-process pairs on each native host separate repeatable code effects from sweep-order noise:
+
+| Architecture | Export | Sequential screen | Alternating median | Disposition |
+|---|---|---:|---:|---|
+| ARM64 | `globals.accumulate` | +6.0% | -2.07% | Screening noise; generated code is unchanged. |
+| ARM64 | `many_funcs.run` | +4.4% | +0.63% | Screening noise; generated code is unchanged. |
+| ARM64 | `crc32.hashN` | +4.1% | +0.08% | Screening noise; generated code is unchanged. |
+| ARM64 | `raytrace.render` | +4.9% | -0.15% | Screening noise; generated code is unchanged. |
+| AMD64 | `many_funcs.run` | +5.1% | +0.19% | Screening noise; generated code is unchanged. |
+| ARM64 | `utf-as.convertN` | +17.4% | +17.41% | Accepted generality trade described below. |
+| AMD64 | `utf-as.convertN` | +14.2% | +14.30% | Accepted generality trade described below. |
+| ARM64 | `swar-pack-parse.runN` | +30.1% | +30.53% | Accepted synthetic-fixture trade described below. |
+| AMD64 | `swar-pack-parse.runN` | +26.1% | +26.44% | Accepted synthetic-fixture trade described below. |
+| AMD64 | `xjb-mulhi.mulhi` | +7.3% | +7.42% | Accepted synthetic primitive trade; its complete `runN` workload is +0.1%. |
+
+The repeatable regressions are the already-recorded consequence of deleting the producer-shaped `swar-idioms` family in implementation item 72 of the memory plan. Its widen, pack, parse, and multiply-high recognizers appeared only in json-as, utf-as, and the two synthetic fixtures; no independent producer used them. Keeping those recursive tree matchers, private deferred operations, target emitters, public policy, and producer-focused tests would violate this project's explicit requirement to avoid corpus-specific or producer-specific optimization paths. The branch therefore accepts the visible affected-row cost in exchange for deleting 1,621 lines and retaining one general compiler path.
+
+With the directly affected scalar UTF and synthetic combined SWAR row removed, the sequential execution geomean is +0.38% on ARM64 and -0.19% on AMD64. Removing the synthetic AMD64 multiply-high primitive as well gives -0.41% on AMD64. Every other initially positive >3% row resolves to within +0.63% under alternating measurement. This satisfies the plan's requirement to investigate large regressions and states the explicit trade supporting the three retained exceptions.
+
 ## ARM64: compilation, allocated heap, and generated machine code
 
 | Corpus | Compile main | Compile tip | Delta | Heap main | Heap tip | Delta | Allocs main | Allocs tip | Native main | Native tip | Delta |
