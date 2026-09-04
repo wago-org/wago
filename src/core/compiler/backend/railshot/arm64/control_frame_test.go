@@ -114,12 +114,16 @@ func TestFrameEndSitesInlineFirstArm64(t *testing.T) {
 	fr := ctrlFrame{kind: cfBlock}
 	f.appendFrameEnd(&fr, 4, false)
 	f.appendFrameEnd(&fr, 12, true)
-	first, overflow := f.frameEndSites(&fr)
+	f.appendFrameEnd(&fr, 20, false)
+	first, second, overflow := f.frameEndSites(&fr)
 	if first != 5 {
 		t.Fatalf("first packed end site = %#x, want %#x", first, uint32(5))
 	}
-	if len(overflow) != 1 || overflow[0] != frameEndConditional|13 {
-		t.Fatalf("overflow packed end sites = %#x, want [%#x]", overflow, frameEndConditional|13)
+	if second != frameEndConditional|13 {
+		t.Fatalf("second packed end site = %#x, want %#x", second, frameEndConditional|13)
+	}
+	if len(overflow) != 1 || overflow[0] != 21 {
+		t.Fatalf("overflow packed end sites = %#x, want [0x15]", overflow)
 	}
 }
 

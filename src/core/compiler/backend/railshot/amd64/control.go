@@ -336,18 +336,21 @@ func (f *fn) releaseFrameBaseTypes(fr *ctrlFrame) {
 	f.controlBaseTypeN = uint8(start)
 }
 
-func (f *fn) frameEndSites(fr *ctrlFrame) (uint32, []uint32) {
+func (f *fn) frameEndSites(fr *ctrlFrame) (uint32, uint32, []uint32) {
 	if fr.kind != cfLoop {
 		if cold := f.ctrlMerge(fr); cold != nil {
-			return cold.loopSetStart, cold.ends
+			return cold.loopSetStart, uint32(fr.loopStart), cold.ends
 		}
 	}
-	return 0, nil
+	return 0, 0, nil
 }
 
-func (f *fn) patchFrameEndSites(first uint32, overflow []uint32) {
+func (f *fn) patchFrameEndSites(first, second uint32, overflow []uint32) {
 	if first != 0 {
 		f.a.PatchRel32(int(first-1), f.a.Len())
+	}
+	if second != 0 {
+		f.a.PatchRel32(int(second-1), f.a.Len())
 	}
 	for _, packed := range overflow {
 		f.a.PatchRel32(int(packed-1), f.a.Len())
@@ -1624,7 +1627,7 @@ func (f *fn) opEnd() error {
 	baseGCFacts := f.frameBaseGCFacts(&fr)
 	paramGCFacts := f.frameParamGCFacts(&fr)
 	resultGCFacts := f.frameResultGCFacts(&fr)
-	firstEnd, ends := f.frameEndSites(&fr)
+	firstEnd, secondEnd, ends := f.frameEndSites(&fr)
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
 
@@ -1721,7 +1724,7 @@ func (f *fn) opEnd() error {
 		}
 		fr.set(ctrlEndReachable, true)
 	}
-	f.patchFrameEndSites(firstEnd, ends)
+	f.patchFrameEndSites(firstEnd, secondEnd, ends)
 	endReachable := fallthroughReachable || fr.has(ctrlEndReachable)
 	f.unreachable = !endReachable
 	if endReachable {

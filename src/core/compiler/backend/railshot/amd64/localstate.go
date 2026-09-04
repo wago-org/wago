@@ -327,6 +327,10 @@ func (f *fn) frameAddEnd(fr *ctrlFrame, site int) {
 		cold.loopSetStart = packed
 		return
 	}
+	if fr.loopStart == 0 {
+		fr.loopStart = int(packed)
+		return
+	}
 	if cold.ends == nil {
 		if n := len(f.endsPool); n > 0 {
 			cold.ends = f.endsPool[n-1][:0]

@@ -329,21 +329,28 @@ func (f *fn) appendFrameEnd(fr *ctrlFrame, site int, conditional bool) {
 		cold.loopSetStart = packed
 		return
 	}
+	if fr.loopStart == 0 {
+		fr.loopStart = int(packed)
+		return
+	}
 	f.appendEndSite(&cold.ends, packed)
 }
 
-func (f *fn) frameEndSites(fr *ctrlFrame) (uint32, []uint32) {
+func (f *fn) frameEndSites(fr *ctrlFrame) (uint32, uint32, []uint32) {
 	if fr.kind != cfLoop {
 		if cold := f.ctrlMerge(fr); cold != nil {
-			return cold.loopSetStart, cold.ends
+			return cold.loopSetStart, uint32(fr.loopStart), cold.ends
 		}
 	}
-	return 0, nil
+	return 0, 0, nil
 }
 
-func (f *fn) patchFrameEndSites(first uint32, overflow []uint32) {
+func (f *fn) patchFrameEndSites(first, second uint32, overflow []uint32) {
 	if first != 0 {
 		f.patchFrameEndSite(first)
+	}
+	if second != 0 {
+		f.patchFrameEndSite(second)
 	}
 	for _, packed := range overflow {
 		f.patchFrameEndSite(packed)
@@ -1819,7 +1826,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	baseGCRoots := f.frameBaseGCRoots(&fr)
 	paramGCRoots := f.frameParamGCRoots(&fr)
 	resultGCRoots := f.frameResultGCRoots(&fr)
-	firstEnd, ends := f.frameEndSites(&fr)
+	firstEnd, secondEnd, ends := f.frameEndSites(&fr)
 	loopPins := f.frameLoopPins(&fr)
 	coldEdges := f.frameColdEdges(&fr)
 	// ctrl backing is reused across functions. Clear the popped slot so its
@@ -1959,14 +1966,14 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 			f.a.PatchBranch19(coldEdges[i].site, f.a.Len())
 			f.a.B = append(f.a.B, coldEdges[i].code...)
 			f.appendFrameEnd(&fr, f.a.Branch(), false)
-			firstEnd, ends = f.frameEndSites(&fr)
+			firstEnd, secondEnd, ends = f.frameEndSites(&fr)
 			fr.set(ctrlEndReachable, true)
 		}
 		if skip != -1 {
 			f.a.PatchBranch26(skip, f.a.Len())
 		}
 	}
-	f.patchFrameEndSites(firstEnd, ends)
+	f.patchFrameEndSites(firstEnd, secondEnd, ends)
 	endReachable := fallthroughReachable || fr.has(ctrlEndReachable)
 	f.unreachable = !endReachable
 	if endReachable {
