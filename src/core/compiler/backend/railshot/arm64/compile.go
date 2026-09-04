@@ -892,11 +892,11 @@ type funcResult struct {
 	relocStart  uint32
 	relocEnd    uint32
 	bodyBytes   uint32
-	layoutFlags uint8
 	internalOff uint32
-	adapterTail adapterTailInfo
-	adapter     sharedAdapterInfo
+	adapterOff  uint32 // shared-adapter call or adapter-tail return offset
+	adapterEnd  uint32
 	trapBody    sharedTrapBodyInfo
+	layoutFlags uint8
 }
 
 func compactFuncResultRange(start, size int) (uint32, uint32, bool) {
@@ -1612,9 +1612,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, bodyBytes: bodyBytes, layoutFlags: layoutFlags, internalOff: compactInternalOff}
 				if policy.CompactNative {
 					if policy.EnabledOption(optSharedAdapters) {
-						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
+						info := ws.scratch.fnState.sharedAdapterInfo()
+						result.adapterOff, result.adapterEnd = info.callOff, info.endOff
 					} else {
-						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
+						info := ws.scratch.fnState.adapterTailInfo()
+						result.adapterOff, result.adapterEnd = info.returnOff, info.endOff
 					}
 					if policy.EnabledOption(optSharedTrapBody) {
 						result.trapBody = ws.scratch.fnState.sharedTrapBodyInfo()
@@ -1657,13 +1659,11 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		if r.layoutFlags&layoutDirectPrepared != 0 {
 			directPrepared = markDirectPrepared(directPrepared, n, i)
 		}
-		if adapterTails != nil && r.adapterTail.returnOff != 0 {
-			r.adapterTail.function = uint32(i)
-			adapterTails = append(adapterTails, r.adapterTail)
+		if adapterTails != nil && r.adapterOff != 0 {
+			adapterTails = append(adapterTails, adapterTailInfo{function: uint32(i), returnOff: r.adapterOff, endOff: r.adapterEnd})
 		}
-		if adapters != nil && r.adapter.endOff != 0 {
-			r.adapter.function = uint32(i)
-			adapters = append(adapters, r.adapter)
+		if adapters != nil && r.adapterEnd != 0 {
+			adapters = append(adapters, sharedAdapterInfo{function: uint32(i), callOff: r.adapterOff, endOff: r.adapterEnd})
 		}
 		fnCode := states[int(r.worker)].arena[int(r.start):int(r.end)]
 		relocs[i] = states[int(r.worker)].relocs[int(r.relocStart):int(r.relocEnd)]

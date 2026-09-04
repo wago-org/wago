@@ -17,7 +17,7 @@ import (
 )
 
 func TestParallelFuncResultSizeArm64(t *testing.T) {
-	if got, want := unsafe.Sizeof(funcResult{}), uintptr(72); got != want {
+	if got, want := unsafe.Sizeof(funcResult{}), uintptr(48); got != want {
 		t.Fatalf("funcResult size = %d, want %d", got, want)
 	}
 }
