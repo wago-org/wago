@@ -89,6 +89,29 @@ func TestDependencyDAGAndScheduleCandidates(t *testing.T) {
 	}
 }
 
+func TestAMD64ScheduleInstructionLatencyUsesOpcodeCosts(t *testing.T) {
+	tests := []struct {
+		op   wasm.InstrKind
+		want uint16
+	}{
+		{wasm.InstrI32Add, 1},
+		{wasm.InstrI32Mul, 3},
+		{wasm.InstrI64Load, 4},
+		{wasm.InstrF64ConvertI64S, 5},
+		{wasm.InstrF64Div, 14},
+		{wasm.InstrI64RemU, 16},
+		{wasm.InstrF64Sqrt, 18},
+	}
+	for _, test := range tests {
+		if got := scheduleInstructionLatency(TargetAMD64, test.op, 1); got != test.want {
+			t.Errorf("%s latency = %d, want %d", test.op, got, test.want)
+		}
+	}
+	if got := scheduleInstructionLatency(TargetARM64, wasm.InstrF64Sqrt, 2); got != 2 {
+		t.Fatalf("ARM64 latency = %d, want selection fallback 2", got)
+	}
+}
+
 func TestDependencyDAGUsesRefinedHeapAliases(t *testing.T) {
 	f := &Func{
 		Target: TargetARM64,

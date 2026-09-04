@@ -880,7 +880,8 @@ func schedulePriority(f *Func, selection *SelectionPlan, instruction uint32, kin
 		return -int64(instruction)
 	case ScheduleKindLatencyFusion:
 		selection := selection.Selections[instruction]
-		priority := int64(selection.Cost.Latency)*1024 + int64(selection.Cost.ResourceCost)*32
+		latency := scheduleInstructionLatency(f.Target, f.Insts[instruction].Op, selection.Cost.Latency)
+		priority := int64(latency)*1024 + int64(selection.Cost.ResourceCost)*32
 		if selection.ResultForm == FormFlags {
 			priority += 1 << 20
 		}
@@ -891,6 +892,51 @@ func schedulePriority(f *Func, selection *SelectionPlan, instruction uint32, kin
 		return int64(uses-defines)*1024 - int64(instruction)
 	default:
 		return -int64(instruction)
+	}
+}
+
+// scheduleInstructionLatency refines the rule-form cost for operations whose
+// latency is intrinsic to the opcode rather than its register encoding. The
+// selection table deliberately shares one generic register rule across most
+// scalar operations, so without this refinement the latency candidate treats
+// a move, multiply, conversion, division, and square root as equivalent.
+func scheduleInstructionLatency(target Target, op wasm.InstrKind, fallback uint16) uint16 {
+	latency := max(fallback, 1)
+	if target != TargetAMD64 {
+		return latency
+	}
+	switch op {
+	case wasm.InstrF32Sqrt, wasm.InstrF64Sqrt:
+		return max(latency, 18)
+	case wasm.InstrF32Div, wasm.InstrF64Div:
+		return max(latency, 14)
+	case wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
+		wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU:
+		return max(latency, 16)
+	case wasm.InstrF32ConvertI32S, wasm.InstrF32ConvertI32U,
+		wasm.InstrF32ConvertI64S, wasm.InstrF32ConvertI64U,
+		wasm.InstrF64ConvertI32S, wasm.InstrF64ConvertI32U,
+		wasm.InstrF64ConvertI64S, wasm.InstrF64ConvertI64U,
+		wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U,
+		wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
+		wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U,
+		wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U:
+		return max(latency, 5)
+	case wasm.InstrF32Mul, wasm.InstrF64Mul:
+		return max(latency, 4)
+	case wasm.InstrF32Add, wasm.InstrF64Add, wasm.InstrF32Sub, wasm.InstrF64Sub,
+		wasm.InstrI32Mul, wasm.InstrI64Mul:
+		return max(latency, 3)
+	case wasm.InstrI32Load, wasm.InstrI64Load, wasm.InstrF32Load, wasm.InstrF64Load,
+		wasm.InstrI32Load8S, wasm.InstrI32Load8U, wasm.InstrI32Load16S, wasm.InstrI32Load16U,
+		wasm.InstrI64Load8S, wasm.InstrI64Load8U, wasm.InstrI64Load16S, wasm.InstrI64Load16U,
+		wasm.InstrI64Load32S, wasm.InstrI64Load32U:
+		if target == TargetAMD64 {
+			return max(latency, 4)
+		}
+		return max(latency, 3)
+	default:
+		return latency
 	}
 }
 

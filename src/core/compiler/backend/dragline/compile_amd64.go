@@ -29,25 +29,10 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, moduleHasDe
 	if !railMachCandidate(stack, moduleHasV128) {
 		return false
 	}
-	if moduleHasDenseGlobals {
-		// Dense mutable-global modules still expose incomplete value flow across
-		// allocator helper calls. Keep their verified structured product.
-		return false
-	}
-	if stack.MaxLoopDepth != 0 && len(stack.Results) == 1 && stack.Results[0] == wasm.I64 {
-		for _, instruction := range stack.Instrs {
-			if instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect {
-				// Recursive loop kernels returning i64 still expose an incomplete
-				// AMD64 call-result edge contract. Keep their verified structured
-				// product while scalar leaf broadword loops use RailMach.
-				return false
-			}
-		}
-	}
-	if len(stack.Params) == 0 && len(stack.Instrs) > 1024 {
-		// Large parameterless decoder and allocator functions still expose
-		// incomplete AMD64 value flow at loop edges. Keep their verified
-		// structured product until that contract is proved end to end.
+	if moduleHasDenseGlobals && stack.MaxLoopDepth > 1 {
+		// Dense mutable-global functions with nested loops still expose
+		// incomplete global-backed edge flow. Single-loop and acyclic functions
+		// use the verified RailMach path; nested loops retain structured lowering.
 		return false
 	}
 	if len(stack.Instrs) > 512 {
@@ -68,6 +53,25 @@ var amd64StackLocalRegisters = [...]amd64.Reg{amd64.R12, amd64.R13, amd64.R14, a
 type amd64CallReloc struct {
 	at     int
 	target uint32
+}
+
+type amd64SIMDConstant struct {
+	bytes [16]byte
+	reg   amd64.Reg
+	uses  uint32
+}
+
+type amd64FloatConstantPatch struct {
+	at     int
+	target int
+	bits   uint64
+	f64    bool
+}
+
+type amd64SIMDConstantPatch struct {
+	at     int
+	target int
+	bytes  [16]byte
 }
 
 func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, functionCache *corecompiler.FunctionArtifactCache) (corecompiler.Output, error) {
@@ -782,6 +786,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			shrinkGPRs |= uint64(1) << region.Physical
 		}
 	}
+	cachedGlobalIndex, cachesGlobal := nativeAMD64CachedGlobal(plan.Machine)
 	var currentOperands []railmach.Operand
 	var currentResult railmach.VReg
 	var currentPosition uint32
@@ -827,7 +832,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		}
 	}
 	var a amd64.Asm
-	defer func() { metrics.observe(sliceBytes(a.B)) }()
+	floatConstantPatches := make([]amd64FloatConstantPatch, 0, 4)
+	defer func() { metrics.observe(sliceBytes(a.B) + sliceBytes(floatConstantPatches)) }()
 	a.Push(amd64.RCX)
 	a.MovReg64(amd64.RBX, amd64.RSI)
 	for index, typ := range plan.Stack.Params[:min(len(plan.Stack.Params), len(amd64ParamRegisters))] {
@@ -887,6 +893,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			calleeSaveOffset += 8
 		}
 	}
+	if cachesGlobal {
+		a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
+		a.Load64(amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister], amd64.R10, int32(cachedGlobalIndex)*8)
+		a.Load64(amd64RailMachGPRRegisters[nativeAMD64CachedGlobalValueRegister], amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister], 0)
+	}
 	paramBase := amd64.RDI
 	if !directPrepared {
 		for value := railmach.VReg(1); int(value) < len(plan.Machine.VRegs); value++ {
@@ -943,6 +954,25 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	}
 	blockOffsets := plan.BlockOffsets
 	patches := plan.BranchPatches[:0]
+	coldTrapPatches := plan.ColdTrapPatches[:0]
+	memoryCheckEnds := plan.MemoryCheckEnds
+	memoryCheckTouched := plan.MemoryCheckTouched[:0]
+	resetMemoryChecks := func() {
+		for _, address := range memoryCheckTouched {
+			memoryCheckEnds[address] = 0
+		}
+		memoryCheckTouched = memoryCheckTouched[:0]
+	}
+	memoryChecked := func(address railmach.VReg, end uint64) bool {
+		if memoryCheckEnds[address] >= end {
+			return true
+		}
+		if memoryCheckEnds[address] == 0 {
+			memoryCheckTouched = append(memoryCheckTouched, address)
+		}
+		memoryCheckEnds[address] = end
+		return false
+	}
 	var pendingSpill railmach.VReg
 	helperOrdinal := uint32(0)
 	flushPendingSpill := func() error {
@@ -1010,12 +1040,39 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			a.Pop(amd64.RAX)
 		}
 	}
+	previousLayoutBlock := -1
 	for layoutIndex := range plan.Schedule.BlockRanges {
 		blockID := layoutIndex
 		if plan.Layout != nil {
 			blockID = int(plan.Layout.Order[layoutIndex])
 		}
+		if !amd64RailMachCarriesMemoryChecks(plan, previousLayoutBlock, blockID) {
+			resetMemoryChecks()
+		}
+		previousLayoutBlock = blockID
+		layoutSuccessor := ^uint32(0)
+		if layoutIndex+1 < len(plan.Schedule.BlockRanges) {
+			layoutSuccessor = uint32(layoutIndex + 1)
+			if plan.Layout != nil {
+				layoutSuccessor = uint32(plan.Layout.Order[layoutIndex+1])
+			}
+		}
+		branchesToLayoutSuccessor := func(edge uint32) bool {
+			return edge < uint32(len(plan.Machine.Edges)) && uint32(plan.Machine.Edges[edge].To) == layoutSuccessor
+		}
+		edgeNeedsOutgoingMoves := func(edge uint32) bool {
+			moveRange := plan.Exit.EdgeMoves[edge]
+			for _, move := range plan.Exit.Moves[moveRange.Start : moveRange.Start+moveRange.Count] {
+				if move.Placement == railmach.PlacePredecessorEnd || move.Placement == railmach.PlaceSplitEdge {
+					return true
+				}
+			}
+			return false
+		}
 		blockRange := plan.Schedule.BlockRanges[blockID]
+		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockLoopHeader) != 0 {
+			a.AlignLoop()
+		}
 		blockOffsets[blockID] = a.Len()
 		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockExit) != 0 {
 			continue
@@ -1776,18 +1833,25 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 					*relocs = append(*relocs, amd64CallReloc{at: a.CallRel32(), target: uint32(instruction.Aux) - plan.Stack.ImportedFuncs})
 					metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 0)
-					amd64StagePrivateCallResults(&a, instruction, callOffset)
+					if instruction.ResultCount() > 1 {
+						amd64StagePrivateCallResults(&a, instruction, callOffset)
+					}
 				}
 				if imported || instruction.ResultCount() > 1 {
 					if err := amd64MaterializeCallResults(&a, plan, instruction, callOffset, currentPosition); err != nil {
 						return nil, 0, true, err
 					}
 				} else if instruction.Result != 0 {
-					dst := reg(instruction.Result)
-					if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
-						a.MovGprToXmm(dst, amd64.RAX, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
-					} else if dst != amd64.RAX {
-						a.MovReg64(dst, amd64.RAX)
+					location := plan.Allocation.LocationAt(instruction.Result, currentPosition)
+					if location.Kind != railmach.LocationInvalid {
+						src := amd64.RAX
+						if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
+							a.MovGprToXmm(13, amd64.RAX, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
+							src = 13
+						}
+						if err := amd64RailMachWriteLocation(&a, plan, instruction.Result, location, src); err != nil {
+							return nil, 0, true, err
+						}
 					}
 				}
 				if imported {
@@ -1839,7 +1903,12 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if instruction.Op == wasm.InstrF32Const || instruction.Op == wasm.InstrF64Const {
-				emitAMD64FloatBits(&a, dst, instruction.Aux, instruction.Op == wasm.InstrF64Const)
+				f64 := instruction.Op == wasm.InstrF64Const
+				if instruction.Aux == 0 {
+					a.VPxor(dst, dst, dst)
+				} else {
+					floatConstantPatches = append(floatConstantPatches, amd64FloatConstantPatch{at: a.MovsRipPlaceholder(dst, f64), bits: instruction.Aux, f64: f64})
+				}
 				continue
 			}
 			if instruction.Op == wasm.InstrMemorySize {
@@ -1847,15 +1916,27 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if instruction.Op == wasm.InstrGlobalGet {
+				if cachesGlobal && uint32(instruction.Aux) == cachedGlobalIndex {
+					cached := amd64RailMachGPRRegisters[nativeAMD64CachedGlobalValueRegister]
+					if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
+						a.MovGprToXmm(dst, cached, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
+					} else if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeI32 {
+						a.MovReg32(dst, cached)
+					} else {
+						a.MovReg64(dst, cached)
+					}
+					continue
+				}
+				descriptor := amd64.R10
 				a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
 				a.Load64(amd64.R10, amd64.R10, int32(uint32(instruction.Aux))*8)
 				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
-					a.Load64(amd64.R11, amd64.R10, 0)
+					a.Load64(amd64.R11, descriptor, 0)
 					a.MovGprToXmm(dst, amd64.R11, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
 				} else if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeI32 {
-					a.Load32(dst, amd64.R10, 0)
+					a.Load32(dst, descriptor, 0)
 				} else {
-					a.Load64(dst, amd64.R10, 0)
+					a.Load64(dst, descriptor, 0)
 				}
 				continue
 			}
@@ -1916,14 +1997,23 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			producer := immediateProducer[instructionID]
 			if instruction.Op == wasm.InstrGlobalSet {
-				a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
-				a.Load64(amd64.R10, amd64.R10, int32(uint32(instruction.Aux))*8)
+				descriptor := amd64.R10
+				if cachesGlobal && uint32(instruction.Aux) == cachedGlobalIndex {
+					descriptor = amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister]
+				} else {
+					a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
+					a.Load64(amd64.R10, amd64.R10, int32(uint32(instruction.Aux))*8)
+				}
 				src := lhs
 				if plan.Machine.VRegs[operands[0].Reg].Bank == railmach.BankFPR {
 					a.MovXmmToGpr(amd64.R11, src, plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeF64)
 					src = amd64.R11
 				}
-				a.Store64(amd64.R10, 0, src)
+				if cachesGlobal && uint32(instruction.Aux) == cachedGlobalIndex {
+					a.MovReg64(amd64RailMachGPRRegisters[nativeAMD64CachedGlobalValueRegister], src)
+					src = amd64RailMachGPRRegisters[nativeAMD64CachedGlobalValueRegister]
+				}
+				a.Store64(descriptor, 0, src)
 				continue
 			}
 			if instruction.Op == wasm.InstrMemoryGrow {
@@ -2016,21 +2106,24 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 				}
 				a.MovReg32(amd64.R10, lhs)
-				if !railMachElidesBoundsCheck(plan, instruction.Source) {
-					a.MovReg64(amd64.R11, amd64.R10)
-					endOffset := uint64(uint32(instruction.Aux)) + uint64(size)
-					if endOffset <= math.MaxInt32 {
-						a.AluRI(0, amd64.R11, int32(endOffset), true)
-					} else {
-						a.MovImm64(amd64.RSI, endOffset)
-						a.AluRR(0x01, amd64.R11, amd64.RSI, true)
-					}
+				endOffset := uint64(uint32(instruction.Aux)) + uint64(size)
+				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, endOffset) {
 					a.Load64(amd64.RSI, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
-					a.Cmp64(amd64.R11, amd64.RSI)
-					inBounds := a.JccPlaceholder(amd64.CondBE)
-					metadata.recordTrap(a.Len(), wasmOffset, 3)
-					amd64EmitTrap(&a, 3, fn.Index, wasmOffset)
-					a.PatchRel32(inBounds, a.Len())
+					if endOffset != 0 && endOffset <= math.MaxInt32 && endOffset <= plan.Stack.MemoryMinBytes {
+						a.AluRI(5, amd64.RSI, int32(endOffset), true)
+						a.Cmp64(amd64.R10, amd64.RSI)
+					} else {
+						a.MovReg64(amd64.R11, amd64.R10)
+						if endOffset <= math.MaxInt32 {
+							a.AluRI(0, amd64.R11, int32(endOffset), true)
+						} else {
+							a.MovImm64(amd64.RSI, endOffset)
+							a.AluRR(0x01, amd64.R11, amd64.RSI, true)
+							a.Load64(amd64.RSI, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+						}
+						a.Cmp64(amd64.R11, amd64.RSI)
+					}
+					coldTrapPatches = append(coldTrapPatches, nativeBranchPatch{At: a.JccPlaceholder(amd64.CondA), Target: wasmOffset, Code: 3})
 				}
 				disp := int32(uint32(instruction.Aux))
 				address := amd64.R10
@@ -2110,13 +2203,18 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if amd64DirectFloatBinaryKind(instruction.Op) {
-				rhs := reg(operands[1].Reg)
-				if dst == rhs && dst != lhs {
-					emitAMD64DirectFloatBinary(&a, instruction.Op, 15, lhs, rhs)
-					a.FMov(dst, 15, instruction.Op >= wasm.InstrF64Add)
-				} else {
-					emitAMD64DirectFloatBinary(&a, instruction.Op, dst, lhs, rhs)
+				if memoryFold {
+					if err := emitAMD64FoldedFloatMemory(&a, plan, foldedLoadID, instructionID, lhs, dst, fn.Index, metadata, &coldTrapPatches); err != nil {
+						return nil, 0, true, err
+					}
+					if metrics != nil {
+						metrics.PostRARewrites++
+						metrics.MemoryFolds++
+					}
+					continue
 				}
+				rhs := reg(operands[1].Reg)
+				emitAMD64DirectFloatBinary(&a, instruction.Op, dst, lhs, rhs)
 				continue
 			}
 			if instruction.Op == wasm.InstrF32Copysign || instruction.Op == wasm.InstrF64Copysign {
@@ -2371,7 +2469,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if memoryFold {
-				if err := emitAMD64FoldedIntegerMemory(&a, plan, foldedLoadID, instructionID, lhs, dst, wide, fn.Index, metadata); err != nil {
+				if err := emitAMD64FoldedIntegerMemory(&a, plan, foldedLoadID, instructionID, lhs, dst, wide, fn.Index, metadata, &coldTrapPatches); err != nil {
 					return nil, 0, true, err
 				}
 				if metrics != nil {
@@ -2490,6 +2588,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				if caseIndex != len(labels)-1 {
 					a.MovImm32(amd64.R11, int32(caseIndex))
 					a.Cmp32(selector, amd64.R11)
+					if !edgeNeedsOutgoingMoves(edge) {
+						patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(amd64.CondE), Target: uint32(plan.Machine.Edges[edge].To)})
+						continue
+					}
 					next := a.JccPlaceholder(amd64.CondNE)
 					if err := emitAMD64RailMachEdgeMoves(&a, plan, edge); err != nil {
 						return nil, 0, true, err
@@ -2500,7 +2602,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					if err := emitAMD64RailMachEdgeMoves(&a, plan, edge); err != nil {
 						return nil, 0, true, err
 					}
-					patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: uint32(plan.Machine.Edges[edge].To)})
+					if !branchesToLayoutSuccessor(edge) {
+						patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: uint32(plan.Machine.Edges[edge].To)})
+					}
 				}
 			}
 			continue
@@ -2536,6 +2640,35 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				a.TestSelf(condition, false)
 			}
+			trueMoves := edgeNeedsOutgoingMoves(trueEdge)
+			falseMoves := edgeNeedsOutgoingMoves(falseEdge)
+			if !falseMoves {
+				// Branch directly to a move-free false successor. The true edge
+				// either falls through in layout order or retains only its own
+				// necessary edge moves and jump.
+				patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(falseCondition), Target: uint32(plan.Machine.Edges[falseEdge].To)})
+				if trueMoves {
+					if err := emitAMD64RailMachEdgeMoves(&a, plan, trueEdge); err != nil {
+						return nil, 0, true, err
+					}
+				}
+				if !branchesToLayoutSuccessor(trueEdge) {
+					patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: uint32(plan.Machine.Edges[trueEdge].To)})
+				}
+				continue
+			}
+			if !trueMoves {
+				// Invert the test so a move-free true successor can be targeted
+				// directly while the false edge realizes its moves locally.
+				patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(falseCondition ^ 1), Target: uint32(plan.Machine.Edges[trueEdge].To)})
+				if err := emitAMD64RailMachEdgeMoves(&a, plan, falseEdge); err != nil {
+					return nil, 0, true, err
+				}
+				if !branchesToLayoutSuccessor(falseEdge) {
+					patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: uint32(plan.Machine.Edges[falseEdge].To)})
+				}
+				continue
+			}
 			falseSite := a.JccPlaceholder(falseCondition)
 			if err := emitAMD64RailMachEdgeMoves(&a, plan, trueEdge); err != nil {
 				return nil, 0, true, err
@@ -2545,19 +2678,26 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			if err := emitAMD64RailMachEdgeMoves(&a, plan, falseEdge); err != nil {
 				return nil, 0, true, err
 			}
-			patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: uint32(plan.Machine.Edges[falseEdge].To)})
+			if !branchesToLayoutSuccessor(falseEdge) {
+				patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: uint32(plan.Machine.Edges[falseEdge].To)})
+			}
 			continue
 		}
 		if edgeCount == 1 {
 			if err := emitAMD64RailMachEdgeMoves(&a, plan, first); err != nil {
 				return nil, 0, true, err
 			}
-			patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: uint32(plan.Machine.Edges[first].To)})
+			if !branchesToLayoutSuccessor(first) {
+				patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: uint32(plan.Machine.Edges[first].To)})
+			}
 		} else if edgeCount != 0 {
 			return nil, 0, true, fmt.Errorf("RailMach block %d has unsupported %d-way control", blockID, edgeCount)
 		}
 	}
 	plan.BranchPatches = patches
+	resetMemoryChecks()
+	plan.MemoryCheckEnds = memoryCheckEnds
+	plan.MemoryCheckTouched = memoryCheckTouched
 	for _, patch := range patches {
 		if int(patch.Target) >= len(blockOffsets) {
 			return nil, 0, true, fmt.Errorf("RailMach branch target %d is unavailable", patch.Target)
@@ -2630,7 +2770,52 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		a.AddRsp(int32(plan.Frame.TotalBytes))
 	}
 	a.Ret()
+	for _, trap := range coldTrapPatches {
+		a.PatchRel32(trap.At, a.Len())
+		metadata.recordTrap(a.Len(), trap.Target, uint32(trap.Code))
+		amd64EmitTrap(&a, uint32(trap.Code), fn.Index, trap.Target)
+	}
+	for index := range floatConstantPatches {
+		constant := &floatConstantPatches[index]
+		target := -1
+		for previous := range floatConstantPatches[:index] {
+			if floatConstantPatches[previous].bits == constant.bits && floatConstantPatches[previous].f64 == constant.f64 {
+				target = floatConstantPatches[previous].target
+				break
+			}
+		}
+		if target >= 0 {
+			constant.target = target
+			a.PatchRel32(constant.at, target)
+			continue
+		}
+		target = a.Len()
+		if constant.f64 {
+			var encoded [8]byte
+			binary.LittleEndian.PutUint64(encoded[:], constant.bits)
+			a.EmitBytes(encoded[:])
+		} else {
+			var encoded [4]byte
+			binary.LittleEndian.PutUint32(encoded[:], uint32(constant.bits))
+			a.EmitBytes(encoded[:])
+		}
+		constant.target = target
+		a.PatchRel32(constant.at, target)
+	}
+	plan.ColdTrapPatches = coldTrapPatches
 	return a.B, internalOffset, true, nil
+}
+
+// amd64RailMachCarriesMemoryChecks permits exact SSA-address bounds facts to
+// cross a laid-out block boundary only when the current block's sole entry is
+// the block emitted immediately before it. Linear memory cannot shrink, so a
+// successful check remains valid along that straight-line edge.
+func amd64RailMachCarriesMemoryChecks(plan *nativeBackendPlan, previous, current int) bool {
+	if plan == nil || plan.CFG == nil || previous < 0 || current < 0 || current >= len(plan.CFG.Blocks) {
+		return false
+	}
+	block := plan.CFG.Blocks[current]
+	return block.PredCount == 1 && int(block.PredStart) < len(plan.CFG.Preds) && int(plan.CFG.Preds[block.PredStart]) == previous
 }
 
 func amd64IntegerComparisonCond(kind wasm.InstrKind) (amd64.Cond, bool) {
@@ -2691,7 +2876,7 @@ func nativeAMD64MemoryFoldSource(plan *nativeBackendPlan, consumer uint32) (uint
 	return producer, producer < consumer && int(producer) < len(plan.Machine.Insts)
 }
 
-func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID, consumerID uint32, lhs, dst amd64.Reg, wide bool, functionIndex uint32, metadata *functionEmissionMetadata) error {
+func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID, consumerID uint32, lhs, dst amd64.Reg, wide bool, functionIndex uint32, metadata *functionEmissionMetadata, coldTraps *[]nativeBranchPatch) error {
 	load, consumer := plan.Machine.Insts[loadID], plan.Machine.Insts[consumerID]
 	loadOperands := plan.Machine.InstructionOperands(loadID)
 	if len(loadOperands) != 1 {
@@ -2725,11 +2910,8 @@ func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID,
 	}
 	a.Load64(amd64.RSI, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
 	a.Cmp64(amd64.R11, amd64.RSI)
-	inBounds := a.JccPlaceholder(amd64.CondBE)
 	wasmOffset := railMachWasmOffset(plan, load.Source)
-	metadata.recordTrap(a.Len(), wasmOffset, 3)
-	amd64EmitTrap(a, 3, functionIndex, wasmOffset)
-	a.PatchRel32(inBounds, a.Len())
+	*coldTraps = append(*coldTraps, nativeBranchPatch{At: a.JccPlaceholder(amd64.CondA), Target: wasmOffset, Code: 3})
 	displacement := int32(uint32(load.Aux))
 	if uint32(load.Aux) > math.MaxInt32 {
 		a.MovImm64(amd64.R11, uint64(uint32(load.Aux)))
@@ -2755,6 +2937,66 @@ func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID,
 		return fmt.Errorf("RailMach consumer %d cannot fold integer memory", consumerID)
 	}
 	a.AluIdx(opcode, dst, amd64.RBX, amd64.R10, displacement, wide)
+	return nil
+}
+
+func emitAMD64FoldedFloatMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID, consumerID uint32, lhs, dst amd64.Reg, functionIndex uint32, metadata *functionEmissionMetadata, coldTraps *[]nativeBranchPatch) error {
+	load, consumer := plan.Machine.Insts[loadID], plan.Machine.Insts[consumerID]
+	loadOperands := plan.Machine.InstructionOperands(loadID)
+	if len(loadOperands) != 1 {
+		return fmt.Errorf("RailMach folded float load %d has %d operands", loadID, len(loadOperands))
+	}
+	loadPosition := plan.Allocation.InstructionPositions[loadID]*6 + 2
+	address, err := amd64RailMachReadLocation(a, plan, loadOperands[0].Reg, plan.Allocation.LocationAt(loadOperands[0].Reg, loadPosition), amd64.R10, 0)
+	if err != nil {
+		return err
+	}
+	if address != amd64.R10 {
+		a.MovReg32(amd64.R10, address)
+	}
+	width := uint64(4)
+	f64 := load.Op == wasm.InstrF64Load
+	if f64 {
+		width = 8
+	}
+	endOffset := uint64(uint32(load.Aux)) + width
+	if !railMachElidesBoundsCheck(plan, load.Source) {
+		a.Load64(amd64.RSI, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+		if endOffset != 0 && endOffset <= math.MaxInt32 && endOffset <= plan.Stack.MemoryMinBytes {
+			a.AluRI(5, amd64.RSI, int32(endOffset), true)
+			a.Cmp64(amd64.R10, amd64.RSI)
+		} else {
+			a.MovReg64(amd64.R11, amd64.R10)
+			if endOffset <= math.MaxInt32 {
+				a.AluRI(0, amd64.R11, int32(endOffset), true)
+			} else {
+				a.MovImm64(amd64.RSI, endOffset)
+				a.AluRR(0x01, amd64.R11, amd64.RSI, true)
+				a.Load64(amd64.RSI, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+			}
+			a.Cmp64(amd64.R11, amd64.RSI)
+		}
+		*coldTraps = append(*coldTraps, nativeBranchPatch{At: a.JccPlaceholder(amd64.CondA), Target: railMachWasmOffset(plan, load.Source), Code: 3})
+	}
+	disp := int32(uint32(load.Aux))
+	if uint32(load.Aux) > math.MaxInt32 {
+		a.MovImm64(amd64.R11, uint64(uint32(load.Aux)))
+		a.AluRR(0x01, amd64.R10, amd64.R11, true)
+		disp = 0
+	}
+	opcode := byte(0x58)
+	switch consumer.Op {
+	case wasm.InstrF32Sub, wasm.InstrF64Sub:
+		opcode = 0x5c
+	case wasm.InstrF32Mul, wasm.InstrF64Mul:
+		opcode = 0x59
+	case wasm.InstrF32Div, wasm.InstrF64Div:
+		opcode = 0x5e
+	case wasm.InstrF32Add, wasm.InstrF64Add:
+	default:
+		return fmt.Errorf("RailMach consumer %d cannot fold float memory", consumerID)
+	}
+	a.VFMemIdx(opcode, dst, lhs, amd64.RBX, amd64.R10, disp, f64)
 	return nil
 }
 
@@ -3180,6 +3422,105 @@ type amd64StackControl struct {
 	seenElse        bool
 }
 
+func planAMD64StructuredLocalMemoryChecks(sf *railssa.StackFunc) ([]uint64, []bool) {
+	ends := make([]uint64, len(sf.Instrs))
+	elided := make([]bool, len(sf.Instrs))
+	for instructionID := range sf.Instrs {
+		local, ok := amd64StructuredLoadAddressLocal(sf, instructionID)
+		if !ok || elided[instructionID] {
+			continue
+		}
+		end, ok := amd64StructuredLoadEnd(sf, instructionID)
+		if !ok {
+			continue
+		}
+		maxEnd := end
+		for next := instructionID + 1; next < len(sf.Instrs); next++ {
+			instruction := sf.Instrs[next]
+			if nativeControlInstruction(instruction.Kind) || railmach.IsCall(instruction.Kind) || instruction.Kind == wasm.InstrMemoryGrow {
+				break
+			}
+			if (instruction.Kind == wasm.InstrLocalSet || instruction.Kind == wasm.InstrLocalTee) && instruction.U32() == local {
+				break
+			}
+			nextLocal, sameLocal := amd64StructuredLoadAddressLocal(sf, next)
+			nextEnd, load := amd64StructuredLoadEnd(sf, next)
+			if load {
+				if !sameLocal || nextLocal != local {
+					break
+				}
+				if nextEnd > maxEnd {
+					maxEnd = nextEnd
+				}
+				continue
+			}
+			if instruction.Kind != wasm.InstrLocalGet && instruction.Kind != wasm.InstrLocalTee && instruction.Kind != wasm.InstrDrop {
+				break
+			}
+		}
+		if maxEnd == end {
+			continue
+		}
+		ends[instructionID] = maxEnd
+		for next := instructionID + 1; next < len(sf.Instrs); next++ {
+			instruction := sf.Instrs[next]
+			if nativeControlInstruction(instruction.Kind) || railmach.IsCall(instruction.Kind) || instruction.Kind == wasm.InstrMemoryGrow ||
+				(instruction.Kind == wasm.InstrLocalSet || instruction.Kind == wasm.InstrLocalTee) && instruction.U32() == local {
+				break
+			}
+			nextLocal, sameLocal := amd64StructuredLoadAddressLocal(sf, next)
+			if followerEnd, load := amd64StructuredLoadEnd(sf, next); load {
+				if !sameLocal || nextLocal != local {
+					break
+				}
+				if followerEnd <= maxEnd {
+					elided[next] = true
+				}
+				continue
+			}
+			if instruction.Kind != wasm.InstrLocalGet && instruction.Kind != wasm.InstrLocalTee && instruction.Kind != wasm.InstrDrop {
+				break
+			}
+		}
+	}
+	return ends, elided
+}
+
+func amd64StructuredLoadAddressLocal(sf *railssa.StackFunc, instructionID int) (uint32, bool) {
+	if instructionID == 0 || instructionID >= len(sf.Instrs) {
+		return 0, false
+	}
+	previous := sf.Instrs[instructionID-1]
+	if previous.Kind != wasm.InstrLocalGet && previous.Kind != wasm.InstrLocalTee || int(previous.U32()) >= len(sf.Locals) || sf.Locals[previous.U32()] != wasm.I32 {
+		return 0, false
+	}
+	return previous.U32(), true
+}
+
+func amd64StructuredLoadEnd(sf *railssa.StackFunc, instructionID int) (uint64, bool) {
+	instruction := sf.Instrs[instructionID]
+	if instruction.Kind == wasm.InstrV128Load {
+		descriptor, ok := sf.SIMDImmediateAt(uint32(instructionID))
+		if !ok || descriptor.MemArg.Offset > math.MaxUint64-16 {
+			return 0, false
+		}
+		return descriptor.MemArg.Offset + 16, true
+	}
+	if !amd64MemoryStackKind(instruction.Kind) || instruction.Kind >= wasm.InstrI32Store && instruction.Kind <= wasm.InstrI64Store32 {
+		return 0, false
+	}
+	size := uint64(4)
+	switch instruction.Kind {
+	case wasm.InstrI64Load, wasm.InstrF64Load:
+		size = 8
+	case wasm.InstrI32Load8S, wasm.InstrI32Load8U, wasm.InstrI64Load8S, wasm.InstrI64Load8U:
+		size = 1
+	case wasm.InstrI32Load16S, wasm.InstrI32Load16U, wasm.InstrI64Load16S, wasm.InstrI64Load16U:
+		size = 2
+	}
+	return uint64(instruction.U32()) + size, true
+}
+
 func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []amd64CallReloc, error) {
 	sf := fn.Stack
 	callRelocs := make([]amd64CallReloc, 0, 2)
@@ -3187,6 +3528,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	localFloat := make([]bool, len(sf.Locals))
 	localPinned := make([]bool, len(sf.Locals))
 	vectorLocalUses := make([]uint32, len(sf.Locals))
+	var simdConstants []amd64SIMDConstant
 	gpLocals, fpLocals := 0, 0
 	for i, typ := range sf.Locals {
 		if typ == wasm.V128 {
@@ -3206,7 +3548,18 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		}
 	}
 	hasGeneralCall := false
-	for _, instr := range sf.Instrs {
+	hasMemoryAccess := false
+	hasMemoryGrow := false
+	observeSIMDConstant := func(value [16]byte) {
+		for i := range simdConstants {
+			if simdConstants[i].bytes == value {
+				simdConstants[i].uses++
+				return
+			}
+		}
+		simdConstants = append(simdConstants, amd64SIMDConstant{bytes: value, uses: 1})
+	}
+	for instrIndex, instr := range sf.Instrs {
 		if (instr.Kind == wasm.InstrCall || instr.Kind == wasm.InstrCallIndirect) && instr.Inline() == wasm.InstrInvalid ||
 			instr.Kind == wasm.InstrElemDrop || instr.Kind == wasm.InstrStructGet || instr.Kind == wasm.InstrStructSet ||
 			instr.Kind == wasm.InstrArrayGet || instr.Kind == wasm.InstrArraySet || instr.Kind == wasm.InstrArrayFill || instr.Kind == wasm.InstrRefCast ||
@@ -3218,7 +3571,15 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			int(instr.U32()) < len(sf.Locals) && sf.Locals[instr.U32()] == wasm.V128 {
 			vectorLocalUses[instr.U32()]++
 		}
+		if instr.Kind == wasm.InstrV128Const {
+			if descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex)); ok {
+				observeSIMDConstant(descriptor.Bytes)
+			}
+		}
+		hasMemoryAccess = hasMemoryAccess || amd64MemoryStackKind(instr.Kind) || instr.Kind == wasm.InstrV128Load || instr.Kind == wasm.InstrV128Store || instr.Kind == wasm.InstrV128Store64Lane
+		hasMemoryGrow = hasMemoryGrow || instr.Kind == wasm.InstrMemoryGrow
 	}
+	cacheMemorySize := hasMemoryAccess && !hasMemoryGrow && !hasGeneralCall
 	registerLocals := !sf.HasV128 && !hasGeneralCall && len(sf.Params) <= 4 && gpLocals <= len(amd64StackLocalRegisters) && fpLocals <= 8
 	if registerLocals {
 		for i := range localPinned {
@@ -3228,19 +3589,51 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		for i, typ := range sf.Locals {
 			localPinned[i] = (typ == wasm.I32 || typ == wasm.I64) && localRegisters[i] != 0
 		}
+		constantSelected := make([]bool, len(simdConstants))
 		for slot := 0; slot < 8; slot++ {
-			best := -1
+			bestLocal := -1
 			for i, uses := range vectorLocalUses {
-				if sf.Locals[i] == wasm.V128 && !localPinned[i] && uses != 0 && (best < 0 || uses > vectorLocalUses[best]) {
-					best = i
+				if sf.Locals[i] == wasm.V128 && !localPinned[i] && uses != 0 && (bestLocal < 0 || uses > vectorLocalUses[bestLocal]) {
+					bestLocal = i
 				}
 			}
-			if best < 0 {
+			bestConstant := -1
+			for i := range simdConstants {
+				if !constantSelected[i] && simdConstants[i].uses > 1 && (bestConstant < 0 || simdConstants[i].uses > simdConstants[bestConstant].uses) {
+					bestConstant = i
+				}
+			}
+			localScore := uint64(0)
+			if bestLocal >= 0 {
+				localScore = uint64(vectorLocalUses[bestLocal])
+			}
+			constantScore := uint64(0)
+			if bestConstant >= 0 {
+				// Both a resident vector local and a resident constant avoid one
+				// memory access now that uncached constants use the RIP pool.
+				constantScore = uint64(simdConstants[bestConstant].uses - 1)
+			}
+			if localScore == 0 && constantScore == 0 {
 				break
 			}
-			localPinned[best] = true
-			localRegisters[best] = amd64.Reg(8 + slot)
+			reg := amd64.Reg(8 + slot)
+			if constantScore > localScore {
+				constantSelected[bestConstant] = true
+				simdConstants[bestConstant].reg = reg
+			} else {
+				localPinned[bestLocal] = true
+				localRegisters[bestLocal] = reg
+			}
 		}
+		selected := simdConstants[:0]
+		for i := range simdConstants {
+			if constantSelected[i] {
+				selected = append(selected, simdConstants[i])
+			}
+		}
+		simdConstants = selected
+	} else {
+		simdConstants = simdConstants[:0]
 	}
 	stackSlots := uint64(sf.MaxStack)
 	if sf.HasV128 {
@@ -3251,6 +3644,35 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		return nil, 0, nil, err
 	}
 	var a amd64.Asm
+	simdConstantPatches := make([]amd64SIMDConstantPatch, 0, 8)
+	materializeSIMDConstant := func(reg amd64.Reg, value [16]byte) {
+		if value == [16]byte{} {
+			a.VPxor(reg, reg, reg)
+			return
+		}
+		simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(reg), bytes: value})
+	}
+	shuffleSIMDConstant := func(dst, src amd64.Reg, value [16]byte) {
+		simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.VPshufbRipPlaceholder(dst, src), bytes: value})
+	}
+	simdConstantOperand := func(kind wasm.InstrKind, dst, src amd64.Reg, value [16]byte) {
+		patch := amd64SIMDConstantPatch{bytes: value}
+		switch kind {
+		case wasm.InstrV128And:
+			patch.at = a.VPandRipPlaceholder(dst, src)
+		case wasm.InstrV128Or:
+			patch.at = a.VPorRipPlaceholder(dst, src)
+		case wasm.InstrV128Xor:
+			patch.at = a.VPxorRipPlaceholder(dst, src)
+		case wasm.InstrI8x16SubSatU:
+			patch.at = a.VPsubusbRipPlaceholder(dst, src)
+		case wasm.InstrI8x16Eq:
+			patch.at = a.VPcmpeqbRipPlaceholder(dst, src)
+		case wasm.InstrI16x8Eq:
+			patch.at = a.VPcmpeqwRipPlaceholder(dst, src)
+		}
+		simdConstantPatches = append(simdConstantPatches, patch)
+	}
 	if metrics != nil {
 		metrics.FrameBytes = frameBytes
 	}
@@ -3337,34 +3759,18 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			}
 		}
 	}
-	for _, instr := range sf.Instrs {
-		if instr.Kind != wasm.InstrF32Abs && instr.Kind != wasm.InstrF32Neg && instr.Kind != wasm.InstrF64Abs && instr.Kind != wasm.InstrF64Neg {
-			continue
-		}
-		f64 := instr.Kind == wasm.InstrF64Abs || instr.Kind == wasm.InstrF64Neg
-		neg := instr.Kind == wasm.InstrF32Neg || instr.Kind == wasm.InstrF64Neg
-		if f64 {
-			value := uint64(0x7fffffffffffffff)
-			if neg {
-				value = uint64(1) << 63
-			}
-			a.MovImm64(amd64.RAX, value)
-		} else {
-			value := int32(0x7fffffff)
-			if neg {
-				value = int32(-2147483648)
-			}
-			a.MovImm32(amd64.RAX, value)
-		}
-		a.MovGprToXmm(7, amd64.RAX, f64)
-		break
+	for _, constant := range simdConstants {
+		materializeSIMDConstant(constant.reg, constant.bytes)
 	}
-
+	if cacheMemorySize {
+		a.Load64(amd64.RBP, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+	}
 	stackTypes := make([]wasm.ValType, 0, sf.MaxStack)
+	localMemoryCheckEnds, localMemoryChecksElided := planAMD64StructuredLocalMemoryChecks(sf)
 	controls := make([]amd64StackControl, 0, 8)
 	functionPatches := make([]int, 0, 2)
 	defer func() {
-		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localPinned) + sliceBytes(vectorLocalUses) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(controls) + sliceBytes(functionPatches)
+		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localPinned) + sliceBytes(vectorLocalUses) + sliceBytes(simdConstants) + sliceBytes(simdConstantPatches) + sliceBytes(localMemoryCheckEnds) + sliceBytes(localMemoryChecksElided) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(controls) + sliceBytes(functionPatches)
 		for i := range controls {
 			workspace += sliceBytes(controls[i].patches)
 		}
@@ -3373,11 +3779,190 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	reachable := true
 	localSlots := railssa.TypeSlots(sf.Locals)
 	stackOff := func(index int) int32 { return int32(localSlots+railssa.TypeSlotOffset(stackTypes, index)) * 8 }
+	vectorStackCacheRegisters := [12]amd64.Reg{4, 5, 6, 7}
+	vectorStackCacheEntries := 4
+	var highVectorRegisterUsed [8]bool
+	for local, pinned := range localPinned {
+		if pinned && sf.Locals[local] == wasm.V128 && localRegisters[local] >= 8 {
+			highVectorRegisterUsed[localRegisters[local]-8] = true
+		}
+	}
+	for _, constant := range simdConstants {
+		if constant.reg >= 8 {
+			highVectorRegisterUsed[constant.reg-8] = true
+		}
+	}
+	for index, used := range highVectorRegisterUsed {
+		if !used {
+			vectorStackCacheRegisters[vectorStackCacheEntries] = amd64.Reg(index + 8)
+			vectorStackCacheEntries++
+		}
+	}
+	var vectorStackCache [12]int
+	for index := range vectorStackCache {
+		vectorStackCache[index] = -1
+	}
+	scalarStackCacheRegisters := [...]amd64.Reg{amd64.RDI, amd64.RSI, amd64.RBP}
+	scalarStackCacheEntries := len(scalarStackCacheRegisters)
+	if cacheMemorySize {
+		scalarStackCacheEntries--
+	}
+	scalarStackCache := [...]int{-1, -1, -1}
+	findVectorStackCache := func(index int) int {
+		for i, cached := range vectorStackCache[:vectorStackCacheEntries] {
+			if cached == index {
+				return i
+			}
+		}
+		return -1
+	}
+	cachedV128 := func(index int) (amd64.Reg, bool) {
+		cache := findVectorStackCache(index)
+		if cache < 0 {
+			return 0, false
+		}
+		return vectorStackCacheRegisters[cache], true
+	}
+	flushVectorStackCache := func() {
+		for i, index := range vectorStackCache[:vectorStackCacheEntries] {
+			if index < 0 {
+				continue
+			}
+			a.VMovdquStoreDisp(amd64.RSP, stackOff(index), vectorStackCacheRegisters[i])
+			vectorStackCache[i] = -1
+		}
+	}
+	flushScalarStackCache := func() {
+		for i, index := range scalarStackCache[:scalarStackCacheEntries] {
+			if index < 0 {
+				continue
+			}
+			a.StoreRsp64(stackOff(index), scalarStackCacheRegisters[i])
+			scalarStackCache[i] = -1
+		}
+	}
+	findScalarStackCache := func(index int) int {
+		for i, cached := range scalarStackCache[:scalarStackCacheEntries] {
+			if cached == index {
+				return i
+			}
+		}
+		return -1
+	}
+	scalarOperand := func(index int, scratch amd64.Reg) amd64.Reg {
+		if cache := findScalarStackCache(index); cache >= 0 {
+			return scalarStackCacheRegisters[cache]
+		}
+		a.LoadRsp64(scratch, stackOff(index))
+		return scratch
+	}
+	loadScalar := func(index int, reg amd64.Reg) {
+		operand := scalarOperand(index, reg)
+		if operand != reg {
+			a.MovReg64(reg, operand)
+		}
+	}
+	cacheScalar := func(index int, reg amd64.Reg) {
+		cache := findScalarStackCache(index)
+		if cache < 0 {
+			for i, cached := range scalarStackCache[:scalarStackCacheEntries] {
+				if cached < 0 {
+					cache = i
+					break
+				}
+			}
+		}
+		if cache < 0 {
+			cache = 0
+			for i := 1; i < scalarStackCacheEntries; i++ {
+				if scalarStackCache[i] < scalarStackCache[cache] {
+					cache = i
+				}
+			}
+			a.StoreRsp64(stackOff(scalarStackCache[cache]), scalarStackCacheRegisters[cache])
+		}
+		cachedReg := scalarStackCacheRegisters[cache]
+		if reg != cachedReg {
+			a.MovReg64(cachedReg, reg)
+		}
+		scalarStackCache[cache] = index
+	}
+	discardScalar := func(index int) {
+		if cache := findScalarStackCache(index); cache >= 0 {
+			scalarStackCache[cache] = -1
+		}
+	}
+	loadV128 := func(index int, reg amd64.Reg) {
+		if cache := findVectorStackCache(index); cache >= 0 {
+			if cachedReg := vectorStackCacheRegisters[cache]; reg != cachedReg {
+				a.VMovdqu(reg, cachedReg)
+			}
+			return
+		}
+		a.VMovdquLoadDisp(reg, amd64.RSP, stackOff(index))
+	}
+	takeV128 := func(index int, scratch amd64.Reg) amd64.Reg {
+		if cache := findVectorStackCache(index); cache >= 0 {
+			reg := vectorStackCacheRegisters[cache]
+			vectorStackCache[cache] = -1
+			return reg
+		}
+		a.VMovdquLoadDisp(scratch, amd64.RSP, stackOff(index))
+		return scratch
+	}
+	reserveV128 := func(index int) amd64.Reg {
+		cache := findVectorStackCache(index)
+		if cache < 0 {
+			for i, cached := range vectorStackCache[:vectorStackCacheEntries] {
+				if cached < 0 {
+					cache = i
+					break
+				}
+			}
+		}
+		if cache < 0 {
+			cache = 0
+			for i := 1; i < vectorStackCacheEntries; i++ {
+				if vectorStackCache[i] < vectorStackCache[cache] {
+					cache = i
+				}
+			}
+			a.VMovdquStoreDisp(amd64.RSP, stackOff(vectorStackCache[cache]), vectorStackCacheRegisters[cache])
+		}
+		cachedReg := vectorStackCacheRegisters[cache]
+		vectorStackCache[cache] = index
+		return cachedReg
+	}
+	cacheV128 := func(index int, reg amd64.Reg) {
+		cachedReg := reserveV128(index)
+		if reg != cachedReg {
+			a.VMovdqu(cachedReg, reg)
+		}
+	}
+	discardV128 := func(index int) {
+		if cache := findVectorStackCache(index); cache >= 0 {
+			vectorStackCache[cache] = -1
+		}
+	}
+	pruneVectorStackCache := func() {
+		for i, index := range vectorStackCache[:vectorStackCacheEntries] {
+			if index >= len(stackTypes) || index >= 0 && stackTypes[index] != wasm.V128 {
+				vectorStackCache[i] = -1
+			}
+		}
+	}
+	pruneScalarStackCache := func() {
+		for i, index := range scalarStackCache[:scalarStackCacheEntries] {
+			if index >= len(stackTypes) || index >= 0 && stackTypes[index] == wasm.V128 {
+				scalarStackCache[i] = -1
+			}
+		}
+	}
 	push := func(typ wasm.ValType, reg amd64.Reg) error {
 		if len(stackTypes) >= int(sf.MaxStack) {
 			return fmt.Errorf("operand stack exceeds declared maximum")
 		}
-		a.StoreRsp64(stackOff(len(stackTypes)), reg)
+		cacheScalar(len(stackTypes), reg)
 		stackTypes = append(stackTypes, typ)
 		return nil
 	}
@@ -3387,15 +3972,16 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		}
 		index := len(stackTypes) - 1
 		typ := stackTypes[index]
+		loadScalar(index, reg)
+		discardScalar(index)
 		stackTypes = stackTypes[:index]
-		a.LoadRsp64(reg, stackOff(index))
 		return typ, nil
 	}
 	pushV128 := func(reg amd64.Reg) error {
 		if len(stackTypes) >= int(sf.MaxStack) {
 			return fmt.Errorf("operand stack exceeds declared maximum")
 		}
-		a.VMovdquStoreDisp(amd64.RSP, stackOff(len(stackTypes)), reg)
+		cacheV128(len(stackTypes), reg)
 		stackTypes = append(stackTypes, wasm.V128)
 		return nil
 	}
@@ -3404,8 +3990,11 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			return fmt.Errorf("operand stack v128 mismatch")
 		}
 		index := len(stackTypes) - 1
+		value := takeV128(index, reg)
+		if value != reg {
+			a.VMovdqu(reg, value)
+		}
 		stackTypes = stackTypes[:index]
-		a.VMovdquLoadDisp(reg, amd64.RSP, stackOff(index))
 		return nil
 	}
 	callGCHelper := func(helper, safepoint, args, results uint32) error {
@@ -3429,10 +4018,82 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			a.StoreRsp64(stackOff(dst), amd64.R11)
 		}
 	}
+	residentSIMDConstant := func(value [16]byte) bool {
+		for _, constant := range simdConstants {
+			if constant.bytes == value {
+				return true
+			}
+		}
+		return false
+	}
 
 	for instrIndex := 0; instrIndex < len(sf.Instrs); instrIndex++ {
 		instr := sf.Instrs[instrIndex]
 		metadata.recordSource(a.Len(), instr.Offset)
+		flushScalar := instr.IsElse() || instr.Kind == wasm.InstrBlock || instr.Kind == wasm.InstrLoop || instr.Kind == wasm.InstrIf ||
+			instr.Kind == wasm.InstrInvalid || instr.Kind == wasm.InstrReturn || instr.Kind == wasm.InstrBr || instr.Kind == wasm.InstrBrIf || instr.Kind == wasm.InstrBrTable ||
+			instr.Kind == wasm.InstrCall || instr.Kind == wasm.InstrCallIndirect || instr.Kind == wasm.InstrMemoryCopy || instr.Kind == wasm.InstrMemoryFill ||
+			instr.Kind == wasm.InstrUnreachable || instr.Kind == wasm.InstrElemDrop ||
+			instr.Kind == wasm.InstrStructNew || instr.Kind == wasm.InstrStructNewDefault || instr.Kind == wasm.InstrStructGet || instr.Kind == wasm.InstrStructGetS || instr.Kind == wasm.InstrStructGetU || instr.Kind == wasm.InstrStructSet ||
+			instr.Kind == wasm.InstrArrayNew || instr.Kind == wasm.InstrArrayNewDefault || instr.Kind == wasm.InstrArrayNewFixed || instr.Kind == wasm.InstrArrayNewData || instr.Kind == wasm.InstrArrayNewElem ||
+			instr.Kind == wasm.InstrArrayGet || instr.Kind == wasm.InstrArrayGetS || instr.Kind == wasm.InstrArrayGetU || instr.Kind == wasm.InstrArraySet || instr.Kind == wasm.InstrArrayLen ||
+			instr.Kind == wasm.InstrArrayFill || instr.Kind == wasm.InstrArrayCopy || instr.Kind == wasm.InstrArrayInitData || instr.Kind == wasm.InstrArrayInitElem ||
+			instr.Kind == wasm.InstrRefTest || instr.Kind == wasm.InstrRefCast ||
+			instr.Kind == wasm.InstrBrOnCast || instr.Kind == wasm.InstrBrOnCastFail || instr.Kind == wasm.InstrAnyConvertExtern || instr.Kind == wasm.InstrExternConvertAny
+		if flushScalar {
+			flushScalarStackCache()
+		}
+		flushVector := flushScalar || instr.Kind == wasm.InstrMemoryGrow
+		if flushVector {
+			flushVectorStackCache()
+		}
+		if reachable && instr.Kind == wasm.InstrI32Const && instrIndex+1 < len(sf.Instrs) && len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 {
+			operation, ok := sf.SIMDImmediateAt(uint32(instrIndex + 1))
+			if ok && (operation.Kind == wasm.InstrI16x8Shl || operation.Kind == wasm.InstrI16x8ShrU || operation.Kind == wasm.InstrI32x4Shl || operation.Kind == wasm.InstrI32x4ShrU) {
+				base := len(stackTypes) - 1
+				value := takeV128(base, 0)
+				mask := uint32(15)
+				if operation.Kind == wasm.InstrI32x4Shl || operation.Kind == wasm.InstrI32x4ShrU {
+					mask = 31
+				}
+				count := byte(uint32(instr.U64()) & mask)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+				switch operation.Kind {
+				case wasm.InstrI16x8Shl:
+					a.VPsllwImm(value, value, count)
+				case wasm.InstrI16x8ShrU:
+					a.VPsrlwImm(value, value, count)
+				case wasm.InstrI32x4Shl:
+					a.VPslldImm(value, value, count)
+				case wasm.InstrI32x4ShrU:
+					a.VPsrldImm(value, value, count)
+				}
+				cacheV128(base, value)
+				instrIndex++
+				continue
+			}
+		}
+		if reachable && instr.Kind == wasm.InstrV128Const && instrIndex+1 < len(sf.Instrs) && len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 {
+			constant, constantOK := sf.SIMDImmediateAt(uint32(instrIndex))
+			operation, operationOK := sf.SIMDImmediateAt(uint32(instrIndex + 1))
+			if constantOK && operationOK && !residentSIMDConstant(constant.Bytes) &&
+				(operation.Kind == wasm.InstrV128And || operation.Kind == wasm.InstrV128Or || operation.Kind == wasm.InstrV128Xor ||
+					operation.Kind == wasm.InstrI8x16SubSatU || operation.Kind == wasm.InstrI8x16Eq || operation.Kind == wasm.InstrI16x8Eq) {
+				base := len(stackTypes) - 1
+				lhs := takeV128(base, 0)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+				if constant.Bytes == [16]byte{} && (operation.Kind == wasm.InstrV128And || operation.Kind == wasm.InstrV128Or || operation.Kind == wasm.InstrV128Xor || operation.Kind == wasm.InstrI8x16SubSatU) {
+					if operation.Kind == wasm.InstrV128And {
+						a.VPxor(lhs, lhs, lhs)
+					}
+				} else {
+					simdConstantOperand(operation.Kind, lhs, lhs, constant.Bytes)
+				}
+				cacheV128(base, lhs)
+				instrIndex++
+				continue
+			}
+		}
 		if reachable && instrIndex+3 < len(sf.Instrs) &&
 			instr.Kind == wasm.InstrLocalGet && sf.Locals[instr.U32()] == wasm.V128 &&
 			sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalGet && sf.Locals[sf.Instrs[instrIndex+1].U32()] == wasm.V128 &&
@@ -4072,6 +4733,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			reachable = false
 		case wasm.InstrDrop:
 			if len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 {
+				discardV128(len(stackTypes) - 1)
 				stackTypes = stackTypes[:len(stackTypes)-1]
 			} else if _, err := pop(amd64.R10); err != nil {
 				return nil, 0, nil, err
@@ -4103,13 +4765,18 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			}
 		case wasm.InstrLocalSet, wasm.InstrLocalTee:
 			if sf.Locals[instr.U32()] == wasm.V128 {
-				if err := popV128(0); err != nil {
-					return nil, 0, nil, err
+				if len(stackTypes) == 0 || stackTypes[len(stackTypes)-1] != wasm.V128 {
+					return nil, 0, nil, fmt.Errorf("operand stack v128 mismatch")
 				}
-				reg := amd64.Reg(0)
+				index := len(stackTypes) - 1
+				reg := takeV128(index, 0)
+				stackTypes = stackTypes[:index]
 				if localPinned[instr.U32()] {
-					reg = localRegisters[instr.U32()]
-					a.VMovdqu(reg, 0)
+					dst := localRegisters[instr.U32()]
+					if dst != reg {
+						a.VMovdqu(dst, reg)
+					}
+					reg = dst
 				} else {
 					a.VMovdquStoreDisp(amd64.RSP, localOff(int(instr.U32())), reg)
 				}
@@ -4595,15 +5262,19 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 				if !ok {
 					return nil, 0, nil, fmt.Errorf("byte %d: SIMD descriptor is unavailable", instr.Offset)
 				}
-				err = emitAMD64StackSIMD(&a, descriptor, instr, &stackTypes, stackOff, fn.Index, metadata)
+				err = emitAMD64StackSIMD(&a, descriptor, instr, &stackTypes, stackOff, cachedV128, reserveV128, loadV128, cacheV128, loadScalar, cacheScalar, discardScalar, materializeSIMDConstant, shuffleSIMDConstant, simdConstants, cacheMemorySize, fn.Index, localMemoryCheckEnds[instrIndex], plan.ElidesBoundsCheck(uint32(instrIndex)) || localMemoryChecksElided[instrIndex], metadata)
+				pruneVectorStackCache()
+				pruneScalarStackCache()
 			} else if amd64MemoryStackKind(instr.Kind) {
-				err = emitAMD64StackMemory(&a, instr, &stackTypes, stackOff, fn.Index, plan.ElidesBoundsCheck(uint32(instrIndex)), metadata)
+				err = emitAMD64StackMemory(&a, instr, &stackTypes, loadScalar, cacheScalar, discardScalar, cacheMemorySize, fn.Index, localMemoryCheckEnds[instrIndex], plan.ElidesBoundsCheck(uint32(instrIndex)) || localMemoryChecksElided[instrIndex], metadata)
+				pruneScalarStackCache()
 			} else if amd64FloatStackKind(instr.Kind) {
-				err = emitAMD64StackFloat(&a, instr.Kind, &stackTypes, stackOff, fn.Index, instr.Offset, metadata)
+				err = emitAMD64StackFloat(&a, instr.Kind, &stackTypes, loadScalar, cacheScalar, discardScalar, fn.Index, instr.Offset, metadata)
+				pruneScalarStackCache()
 			} else if instr.Kind == wasm.InstrCall || instr.Kind == wasm.InstrCallIndirect {
 				err = emitAMD64StackCall(&a, sf, instr, &stackTypes, stackOff, &callRelocs, fn.Index, metadata)
 			} else {
-				err = emitAMD64StackInteger(&a, instr.Kind, &stackTypes, stackOff, fn.Index, instr.Offset, metadata)
+				err = emitAMD64StackInteger(&a, instr.Kind, &stackTypes, scalarOperand, cacheScalar, discardScalar, fn.Index, instr.Offset, metadata)
 			}
 			if err != nil {
 				return nil, 0, nil, fmt.Errorf("byte %d: %w", instr.Offset, err)
@@ -4613,6 +5284,8 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	if len(controls) != 0 {
 		return nil, 0, nil, fmt.Errorf("unterminated structured control")
 	}
+	flushVectorStackCache()
+	flushScalarStackCache()
 	functionReachable := reachable || len(functionPatches) != 0
 	for _, site := range functionPatches {
 		a.PatchRel32(site, a.Len())
@@ -4631,6 +5304,25 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		a.AddRsp(int32(frameBytes))
 	}
 	a.Ret()
+	for index := range simdConstantPatches {
+		constant := &simdConstantPatches[index]
+		target := -1
+		for previous := range simdConstantPatches[:index] {
+			if simdConstantPatches[previous].bytes == constant.bytes {
+				target = simdConstantPatches[previous].target
+				break
+			}
+		}
+		if target < 0 {
+			for a.Len()&15 != 0 {
+				a.EmitBytes([]byte{0})
+			}
+			target = a.Len()
+			a.EmitBytes(constant.bytes[:])
+		}
+		constant.target = target
+		a.PatchRel32(constant.at, target)
+	}
 	return a.B, internalOffset, callRelocs, nil
 }
 
@@ -4854,22 +5546,39 @@ func amd64DirectFloatBinaryKind(kind wasm.InstrKind) bool {
 
 func emitAMD64DirectFloatBinary(a *amd64.Asm, kind wasm.InstrKind, dst, lhs, rhs amd64.Reg) {
 	f64 := kind >= wasm.InstrF64Add
-	if dst != lhs {
-		a.FMov(dst, lhs, f64)
-	}
 	switch kind {
 	case wasm.InstrF32Add, wasm.InstrF64Add:
-		a.FAdd(dst, rhs, f64)
+		a.VFAdd(dst, lhs, rhs, f64)
 	case wasm.InstrF32Sub, wasm.InstrF64Sub:
-		a.FSub(dst, rhs, f64)
+		a.VFSub(dst, lhs, rhs, f64)
 	case wasm.InstrF32Mul, wasm.InstrF64Mul:
-		a.FMul(dst, rhs, f64)
+		a.VFMul(dst, lhs, rhs, f64)
 	case wasm.InstrF32Div, wasm.InstrF64Div:
-		a.FDiv(dst, rhs, f64)
+		a.VFDiv(dst, lhs, rhs, f64)
 	case wasm.InstrF32Min, wasm.InstrF64Min:
-		emitAMD64WasmMinMax(a, dst, rhs, f64, false)
+		out := dst
+		if out == rhs && out != lhs {
+			out = 15
+		}
+		if out != lhs {
+			a.FMov(out, lhs, f64)
+		}
+		emitAMD64WasmMinMax(a, out, rhs, f64, false)
+		if out != dst {
+			a.FMov(dst, out, f64)
+		}
 	case wasm.InstrF32Max, wasm.InstrF64Max:
-		emitAMD64WasmMinMax(a, dst, rhs, f64, true)
+		out := dst
+		if out == rhs && out != lhs {
+			out = 15
+		}
+		if out != lhs {
+			a.FMov(out, lhs, f64)
+		}
+		emitAMD64WasmMinMax(a, out, rhs, f64, true)
+		if out != dst {
+			a.FMov(dst, out, f64)
+		}
 	}
 }
 
@@ -5182,18 +5891,20 @@ func emitAMD64StackCall(a *amd64.Asm, sf *railssa.StackFunc, instr railssa.Stack
 }
 
 func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor, instr railssa.StackInstr,
-	stack *[]wasm.ValType, stackOff func(int) int32, function uint32, metadata *functionEmissionMetadata,
+	stack *[]wasm.ValType, stackOff func(int) int32, cachedV func(int) (amd64.Reg, bool), reserveV func(int) amd64.Reg, loadV, storeV, loadScalar, storeScalar func(int, amd64.Reg), discardScalar func(int),
+	materializeConstant func(amd64.Reg, [16]byte), shuffleConstant func(amd64.Reg, amd64.Reg, [16]byte), constants []amd64SIMDConstant, cachedMemorySize bool, function uint32, plannedCheckEnd uint64, elideBounds bool, metadata *functionEmissionMetadata,
 ) error {
 	types := *stack
-	loadV := func(index int, reg amd64.Reg) { a.VMovdquLoadDisp(reg, amd64.RSP, stackOff(index)) }
-	storeV := func(index int, reg amd64.Reg) { a.VMovdquStoreDisp(amd64.RSP, stackOff(index), reg) }
 	materialize := func(reg amd64.Reg, bytes [16]byte) {
-		a.MovImm64(amd64.RAX, binary.LittleEndian.Uint64(bytes[:8]))
-		a.MovGprToXmm(reg, amd64.RAX, true)
-		if hi := binary.LittleEndian.Uint64(bytes[8:]); hi != 0 {
-			a.MovImm64(amd64.RAX, hi)
-			a.Pinsrq(reg, amd64.RAX, 1)
+		materializeConstant(reg, bytes)
+	}
+	constantRegister := func(value [16]byte) (amd64.Reg, bool) {
+		for _, constant := range constants {
+			if constant.bytes == value {
+				return constant.reg, true
+			}
 		}
+		return 0, false
 	}
 	checkMemory := func(address amd64.Reg, size uint64) {
 		if descriptor.MemArg.Offset > math.MaxUint64-size {
@@ -5202,10 +5913,22 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 			return
 		}
 		a.MovReg32(amd64.R11, address)
-		a.MovImm64(amd64.RAX, descriptor.MemArg.Offset+size)
-		a.Add64(amd64.R11, amd64.RAX)
-		a.Load64(amd64.RAX, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
-		a.Cmp64(amd64.R11, amd64.RAX)
+		end := descriptor.MemArg.Offset + size
+		if plannedCheckEnd != 0 {
+			end = plannedCheckEnd
+		}
+		if end <= math.MaxInt32 {
+			a.AluRI(0, amd64.R11, int32(end), true)
+		} else {
+			a.MovImm64(amd64.RAX, end)
+			a.Add64(amd64.R11, amd64.RAX)
+		}
+		bound := amd64.RBP
+		if !cachedMemorySize {
+			a.Load64(amd64.RAX, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+			bound = amd64.RAX
+		}
+		a.Cmp64(amd64.R11, bound)
 		inBounds := a.JccPlaceholder(amd64.CondBE)
 		metadata.recordTrap(a.Len(), instr.Offset, 3)
 		amd64EmitTrap(a, 3, function, instr.Offset)
@@ -5213,21 +5936,30 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 	}
 	effectiveAddress := func(address amd64.Reg) {
 		a.MovReg32(amd64.R10, address)
-		a.Add64(amd64.R10, amd64.RBX)
-		if descriptor.MemArg.Offset != 0 {
+		if descriptor.MemArg.Offset <= math.MaxInt32 {
+			a.LeaScaled(amd64.R10, amd64.RBX, amd64.R10, 0, int32(descriptor.MemArg.Offset))
+		} else {
+			a.Add64(amd64.R10, amd64.RBX)
 			a.MovImm64(amd64.R11, descriptor.MemArg.Offset)
 			a.Add64(amd64.R10, amd64.R11)
 		}
+	}
+	vectorOperand := func(index int, scratch amd64.Reg) amd64.Reg {
+		if reg, ok := cachedV(index); ok {
+			return reg
+		}
+		loadV(index, scratch)
+		return scratch
 	}
 	binaryOp := func(op func(amd64.Reg, amd64.Reg, amd64.Reg)) error {
 		if len(types) < 2 || types[len(types)-2] != wasm.V128 || types[len(types)-1] != wasm.V128 {
 			return fmt.Errorf("SIMD binary operand mismatch")
 		}
 		base := len(types) - 2
-		loadV(base, 0)
-		loadV(base+1, 1)
-		op(0, 0, 1)
-		storeV(base, 0)
+		lhs := vectorOperand(base, 0)
+		rhs := vectorOperand(base+1, 1)
+		op(lhs, lhs, rhs)
+		storeV(base, lhs)
 		types = append(types[:base], wasm.V128)
 		return nil
 	}
@@ -5258,41 +5990,54 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 
 	switch descriptor.Kind {
 	case wasm.InstrV128Const:
-		materialize(0, descriptor.Bytes)
-		storeV(len(types), 0)
+		if reg, ok := constantRegister(descriptor.Bytes); ok {
+			storeV(len(types), reg)
+		} else {
+			dst := reserveV(len(types))
+			materialize(dst, descriptor.Bytes)
+		}
 		types = append(types, wasm.V128)
 	case wasm.InstrV128Load:
 		if len(types) < 1 || types[len(types)-1] != wasm.I32 {
 			return fmt.Errorf("SIMD load operand mismatch")
 		}
 		base := len(types) - 1
-		a.LoadRsp32(amd64.R10, stackOff(base))
-		checkMemory(amd64.R10, 16)
+		loadScalar(base, amd64.R10)
+		discardScalar(base)
+		if !elideBounds {
+			checkMemory(amd64.R10, 16)
+		}
 		effectiveAddress(amd64.R10)
-		a.VMovdquLoadDisp(0, amd64.R10, 0)
-		storeV(base, 0)
+		dst := reserveV(base)
+		a.VMovdquLoadDisp(dst, amd64.R10, 0)
 		types[base] = wasm.V128
 	case wasm.InstrV128Store:
 		if len(types) < 2 || types[len(types)-2] != wasm.I32 || types[len(types)-1] != wasm.V128 {
 			return fmt.Errorf("SIMD store operand mismatch")
 		}
 		base := len(types) - 2
-		a.LoadRsp32(amd64.R10, stackOff(base))
-		loadV(base+1, 0)
-		checkMemory(amd64.R10, 16)
+		loadScalar(base, amd64.R10)
+		discardScalar(base)
+		value := vectorOperand(base+1, 0)
+		if !elideBounds {
+			checkMemory(amd64.R10, 16)
+		}
 		effectiveAddress(amd64.R10)
-		a.VMovdquStoreDisp(amd64.R10, 0, 0)
+		a.VMovdquStoreDisp(amd64.R10, 0, value)
 		types = types[:base]
 	case wasm.InstrV128Store64Lane:
 		if len(types) < 2 || types[len(types)-2] != wasm.I32 || types[len(types)-1] != wasm.V128 {
 			return fmt.Errorf("SIMD lane store operand mismatch")
 		}
 		base := len(types) - 2
-		a.LoadRsp32(amd64.R10, stackOff(base))
-		loadV(base+1, 0)
-		checkMemory(amd64.R10, 8)
+		loadScalar(base, amd64.R10)
+		discardScalar(base)
+		value := vectorOperand(base+1, 0)
+		if !elideBounds {
+			checkMemory(amd64.R10, 8)
+		}
 		effectiveAddress(amd64.R10)
-		a.Pextrq(amd64.R11, 0, byte(descriptor.Lane))
+		a.Pextrq(amd64.R11, value, byte(descriptor.Lane))
 		a.Store64(amd64.R10, 0, amd64.R11)
 		types = types[:base]
 	case wasm.InstrV128And:
@@ -5337,16 +6082,8 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		}
 	case wasm.InstrI16x8GeU:
 		if err := binaryOp(func(dst, lhs, rhs amd64.Reg) {
-			var sign [16]byte
-			for i := 1; i < 16; i += 2 {
-				sign[i] = 0x80
-			}
-			materialize(2, sign)
-			a.VPxor(lhs, lhs, 2)
-			a.VPxor(rhs, rhs, 2)
-			a.VPcmpgtw(dst, rhs, lhs)
-			a.VPcmpeqw(2, 2, 2)
-			a.VPxor(dst, dst, 2)
+			a.VPmaxuw(2, lhs, rhs)
+			a.VPcmpeqw(dst, 2, lhs)
 		}); err != nil {
 			return err
 		}
@@ -5379,18 +6116,18 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 			return fmt.Errorf("SIMD extmul operand underflow")
 		}
 		base := len(types) - 2
-		loadV(base, 0)
-		loadV(base+1, 1)
+		lhs := vectorOperand(base, 0)
+		rhs := vectorOperand(base+1, 1)
 		a.VPxor(2, 2, 2)
 		if descriptor.Kind == wasm.InstrI16x8ExtmulHighI8x16U {
-			a.VPunpckhbw(0, 0, 2)
-			a.VPunpckhbw(1, 1, 2)
+			a.VPunpckhbw(lhs, lhs, 2)
+			a.VPunpckhbw(rhs, rhs, 2)
 		} else {
-			a.VPunpcklbw(0, 0, 2)
-			a.VPunpcklbw(1, 1, 2)
+			a.VPunpcklbw(lhs, lhs, 2)
+			a.VPunpcklbw(rhs, rhs, 2)
 		}
-		a.VPmullw(0, 0, 1)
-		storeV(base, 0)
+		a.VPmullw(lhs, lhs, rhs)
+		storeV(base, lhs)
 		types = append(types[:base], wasm.V128)
 	case wasm.InstrI32x4DotI16x8S:
 		if err := binaryOp(a.VPmaddwd); err != nil {
@@ -5401,12 +6138,12 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 			return fmt.Errorf("SIMD unary operand underflow")
 		}
 		base := len(types) - 1
-		loadV(base, 0)
+		value := vectorOperand(base, 0)
 		a.VPxor(2, 2, 2)
-		a.VPunpckhwd(1, 0, 2)
-		a.VPunpcklwd(0, 0, 2)
-		a.VPhaddd(0, 0, 1)
-		storeV(base, 0)
+		a.VPunpckhwd(1, value, 2)
+		a.VPunpcklwd(value, value, 2)
+		a.VPhaddd(value, value, 1)
+		storeV(base, value)
 	case wasm.InstrI8x16Swizzle:
 		if err := binaryOp(a.VPshufb); err != nil {
 			return err
@@ -5416,77 +6153,78 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 			return fmt.Errorf("SIMD shuffle operand underflow")
 		}
 		base := len(types) - 2
-		loadV(base, 0)
-		loadV(base+1, 1)
+		lhs := vectorOperand(base, 0)
+		rhs := vectorOperand(base+1, 1)
 		left, right := amd64ShuffleMasks(descriptor.Bytes)
-		materialize(2, left)
-		a.VPshufb(2, 0, 2)
-		materialize(3, right)
-		a.VPshufb(3, 1, 3)
-		a.VPor(0, 2, 3)
-		storeV(base, 0)
+		shuffleConstant(2, lhs, left)
+		shuffleConstant(3, rhs, right)
+		a.VPor(lhs, 2, 3)
+		storeV(base, lhs)
 		types = append(types[:base], wasm.V128)
 	case wasm.InstrV128AnyTrue:
 		if len(types) < 1 || types[len(types)-1] != wasm.V128 {
 			return fmt.Errorf("SIMD reduction operand mismatch")
 		}
 		base := len(types) - 1
-		loadV(base, 0)
-		a.VPtest(0, 0)
+		value := vectorOperand(base, 0)
+		a.VPtest(value, value)
 		a.SetccReg(amd64.CondNE, amd64.RAX)
-		a.StoreRsp32(stackOff(base), amd64.RAX)
+		storeScalar(base, amd64.RAX)
 		types[base] = wasm.I32
 	case wasm.InstrI8x16Bitmask, wasm.InstrI16x8Bitmask:
 		if len(types) < 1 || types[len(types)-1] != wasm.V128 {
 			return fmt.Errorf("SIMD bitmask operand mismatch")
 		}
 		base := len(types) - 1
-		loadV(base, 0)
+		value := vectorOperand(base, 0)
 		if descriptor.Kind == wasm.InstrI16x8Bitmask {
-			a.VPacksswb(0, 0, 0)
+			a.VPacksswb(value, value, value)
 		}
-		a.VPmovmskb(amd64.RAX, 0)
+		a.VPmovmskb(amd64.RAX, value)
 		if descriptor.Kind == wasm.InstrI16x8Bitmask {
 			a.AluRI(4, amd64.RAX, 0xff, false)
 		}
-		a.StoreRsp32(stackOff(base), amd64.RAX)
+		storeScalar(base, amd64.RAX)
 		types[base] = wasm.I32
 	case wasm.InstrI32x4ExtractLane:
 		if len(types) < 1 || types[len(types)-1] != wasm.V128 {
 			return fmt.Errorf("SIMD extract operand mismatch")
 		}
 		base := len(types) - 1
-		loadV(base, 0)
-		a.Pextrd(amd64.RAX, 0, byte(descriptor.Lane))
-		a.StoreRsp32(stackOff(base), amd64.RAX)
+		value := vectorOperand(base, 0)
+		a.Pextrd(amd64.RAX, value, byte(descriptor.Lane))
+		storeScalar(base, amd64.RAX)
 		types[base] = wasm.I32
 	case wasm.InstrI32x4Splat:
 		if len(types) < 1 || types[len(types)-1] != wasm.I32 {
 			return fmt.Errorf("SIMD splat operand mismatch")
 		}
 		base := len(types) - 1
-		a.LoadRsp32(amd64.RAX, stackOff(base))
-		a.MovGprToXmm(0, amd64.RAX, false)
-		a.Pshufd(0, 0, 0)
-		storeV(base, 0)
+		loadScalar(base, amd64.RAX)
+		discardScalar(base)
+		dst := reserveV(base)
+		a.MovGprToXmm(dst, amd64.RAX, false)
+		a.Pshufd(dst, dst, 0)
 		types[base] = wasm.V128
 	case wasm.InstrI32x4ReplaceLane:
 		if len(types) < 2 || types[len(types)-2] != wasm.V128 || types[len(types)-1] != wasm.I32 {
 			return fmt.Errorf("SIMD replace operand mismatch")
 		}
 		base := len(types) - 2
-		loadV(base, 0)
-		a.LoadRsp32(amd64.RAX, stackOff(base+1))
-		a.Pinsrd(0, amd64.RAX, byte(descriptor.Lane))
-		storeV(base, 0)
+		value := vectorOperand(base, 0)
+		loadScalar(base+1, amd64.RAX)
+		discardScalar(base + 1)
+		a.Pinsrd(value, amd64.RAX, byte(descriptor.Lane))
+		storeV(base, value)
 		types = append(types[:base], wasm.V128)
 	case wasm.InstrI16x8Shl, wasm.InstrI16x8ShrU, wasm.InstrI32x4Shl, wasm.InstrI32x4ShrU:
 		if len(types) < 2 || types[len(types)-2] != wasm.V128 || types[len(types)-1] != wasm.I32 {
 			return fmt.Errorf("SIMD shift operand mismatch")
 		}
 		base := len(types) - 2
-		loadV(base, 0)
-		a.LoadRsp32(amd64.RAX, stackOff(base+1))
+		value := vectorOperand(base, 0)
+		loadScalar(base+1, amd64.RAX)
+		discardScalar(base + 1)
 		mask := int32(15)
 		if descriptor.Kind == wasm.InstrI32x4Shl || descriptor.Kind == wasm.InstrI32x4ShrU {
 			mask = 31
@@ -5495,15 +6233,15 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		a.MovGprToXmm(1, amd64.RAX, true)
 		switch descriptor.Kind {
 		case wasm.InstrI16x8Shl:
-			a.VPsllw(0, 0, 1)
+			a.VPsllw(value, value, 1)
 		case wasm.InstrI16x8ShrU:
-			a.VPsrlw(0, 0, 1)
+			a.VPsrlw(value, value, 1)
 		case wasm.InstrI32x4Shl:
-			a.VPslld(0, 0, 1)
+			a.VPslld(value, value, 1)
 		case wasm.InstrI32x4ShrU:
-			a.VPsrld(0, 0, 1)
+			a.VPsrld(value, value, 1)
 		}
-		storeV(base, 0)
+		storeV(base, value)
 		types = append(types[:base], wasm.V128)
 	default:
 		return fmt.Errorf("unsupported structured SIMD instruction %s", descriptor.Kind)
@@ -5542,7 +6280,9 @@ func amd64CopyDraglineInstanceContext(a *amd64.Asm, targetLinMem, context amd64.
 	a.Store64(targetLinMem, -int32(abi.TierEntriesPtrOffset), amd64.RAX)
 }
 
-func emitAMD64StackMemory(a *amd64.Asm, instr railssa.StackInstr, stack *[]wasm.ValType, stackOff func(int) int32, function uint32, elideBounds bool, metadata *functionEmissionMetadata) error {
+func emitAMD64StackMemory(a *amd64.Asm, instr railssa.StackInstr, stack *[]wasm.ValType,
+	load, storeValue func(int, amd64.Reg), discard func(int), cachedMemorySize bool, function uint32, plannedCheckEnd uint64, elideBounds bool, metadata *functionEmissionMetadata,
+) error {
 	types := *stack
 	store := instr.Kind >= wasm.InstrI32Store && instr.Kind <= wasm.InstrI64Store32
 	need := 1
@@ -5591,12 +6331,25 @@ func emitAMD64StackMemory(a *amd64.Asm, instr railssa.StackInstr, stack *[]wasm.
 	if store {
 		addrIndex--
 	}
-	a.LoadRsp32(amd64.RAX, stackOff(addrIndex))
+	load(addrIndex, amd64.RAX)
 	if !elideBounds {
 		a.MovReg64(amd64.R10, amd64.RAX)
-		a.AluRI(0, amd64.R10, int32(uint64(instr.U32())+uint64(size)), true)
-		a.Load64(amd64.R11, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
-		a.Cmp64(amd64.R10, amd64.R11)
+		end := uint64(instr.U32()) + uint64(size)
+		if plannedCheckEnd != 0 {
+			end = plannedCheckEnd
+		}
+		if end <= math.MaxInt32 {
+			a.AluRI(0, amd64.R10, int32(end), true)
+		} else {
+			a.MovImm64(amd64.R11, end)
+			a.Add64(amd64.R10, amd64.R11)
+		}
+		bound := amd64.RBP
+		if !cachedMemorySize {
+			a.Load64(amd64.R11, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+			bound = amd64.R11
+		}
+		a.Cmp64(amd64.R10, bound)
 		inBounds := a.JccPlaceholder(amd64.CondBE)
 		metadata.recordTrap(a.Len(), instr.Offset, 3)
 		amd64EmitTrap(a, 3, function, instr.Offset)
@@ -5605,7 +6358,9 @@ func emitAMD64StackMemory(a *amd64.Asm, instr railssa.StackInstr, stack *[]wasm.
 	disp := int32(instr.U32())
 	if store {
 		valueIndex := len(types) - 1
-		a.LoadRsp64(amd64.R10, stackOff(valueIndex))
+		load(valueIndex, amd64.R10)
+		discard(valueIndex)
+		discard(addrIndex)
 		if typ == wasm.F32 || typ == wasm.F64 {
 			a.MovGprToXmm(0, amd64.R10, typ == wasm.F64)
 			a.FStoreIdx(amd64.RBX, amd64.RAX, 0, disp, typ == wasm.F64)
@@ -5621,26 +6376,30 @@ func emitAMD64StackMemory(a *amd64.Asm, instr railssa.StackInstr, stack *[]wasm.
 	} else {
 		a.LoadIdx(amd64.R10, amd64.RBX, amd64.RAX, disp, size, signed, typ == wasm.I64)
 	}
-	a.StoreRsp64(stackOff(addrIndex), amd64.R10)
+	discard(addrIndex)
+	storeValue(addrIndex, amd64.R10)
 	types[addrIndex] = typ
 	*stack = types
 	return nil
 }
 
-func emitAMD64StackFloat(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValType, stackOff func(int) int32, function, wasmOffset uint32, metadata *functionEmissionMetadata) error {
+func emitAMD64StackFloat(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValType,
+	load, store func(int, amd64.Reg), discard func(int), function, wasmOffset uint32, metadata *functionEmissionMetadata,
+) error {
 	types := *stack
 	if len(types) < 1 {
 		return fmt.Errorf("operand stack underflow")
 	}
 	top := len(types) - 1
-	a.LoadRsp64(amd64.RAX, stackOff(top))
+	load(top, amd64.RAX)
 	if kind >= wasm.InstrF32Eq && kind <= wasm.InstrF64Ge {
 		if len(types) < 2 {
 			return fmt.Errorf("operand stack underflow")
 		}
 		lhs := len(types) - 2
 		f64 := kind >= wasm.InstrF64Eq
-		a.LoadRsp64(amd64.R10, stackOff(lhs))
+		load(lhs, amd64.R10)
+		discard(top)
 		a.MovGprToXmm(0, amd64.R10, f64)
 		a.MovGprToXmm(1, amd64.RAX, f64)
 		a.Ucomis(0, 1, f64)
@@ -5667,7 +6426,7 @@ func emitAMD64StackFloat(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValTyp
 			a.XorSelf32(amd64.RAX)
 		}
 		a.PatchRel32(orderedDone, a.Len())
-		a.StoreRsp64(stackOff(lhs), amd64.RAX)
+		store(lhs, amd64.RAX)
 		types[lhs] = wasm.I32
 		*stack = types[:top]
 		return nil
@@ -5793,8 +6552,9 @@ func emitAMD64StackFloat(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValTyp
 				return fmt.Errorf("operand stack underflow")
 			}
 			lhs := len(types) - 2
-			a.LoadRsp64(amd64.RAX, stackOff(lhs))
-			a.LoadRsp64(amd64.R10, stackOff(top))
+			load(lhs, amd64.RAX)
+			load(top, amd64.R10)
+			discard(top)
 			if kind == wasm.InstrF32Copysign || kind == wasm.InstrF64Copysign {
 				a.ShiftImm(4, amd64.RAX, 1, f64)
 				a.ShiftImm(5, amd64.RAX, 1, f64)
@@ -5806,7 +6566,7 @@ func emitAMD64StackFloat(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValTyp
 					a.ShiftImm(4, amd64.R10, 31, false)
 				}
 				a.AluRR(0x09, amd64.RAX, amd64.R10, f64)
-				a.StoreRsp64(stackOff(lhs), amd64.RAX)
+				store(lhs, amd64.RAX)
 				*stack = types[:top]
 				return nil
 			}
@@ -5829,12 +6589,12 @@ func emitAMD64StackFloat(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValTyp
 				return fmt.Errorf("unsupported structured float instruction %s", kind)
 			}
 			a.MovXmmToGpr(amd64.RAX, 0, f64)
-			a.StoreRsp64(stackOff(lhs), amd64.RAX)
+			store(lhs, amd64.RAX)
 			*stack = types[:top]
 			return nil
 		}
 	}
-	a.StoreRsp64(stackOff(top), amd64.RAX)
+	store(top, amd64.RAX)
 	*stack = types
 	return nil
 }
@@ -6073,7 +6833,9 @@ func emitAMD64TruncSatI64(a *amd64.Asm, src amd64.Reg, f64, unsigned bool) {
 	a.PatchRel32(nonpositiveDone, a.Len())
 }
 
-func emitAMD64StackInteger(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValType, stackOff func(int) int32, function, wasmOffset uint32, metadata *functionEmissionMetadata) error {
+func emitAMD64StackInteger(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValType,
+	source func(int, amd64.Reg) amd64.Reg, store func(int, amd64.Reg), discard func(int), function, wasmOffset uint32, metadata *functionEmissionMetadata,
+) error {
 	types := *stack
 	wide := kind >= wasm.InstrI64Eqz && kind <= wasm.InstrI64GeU ||
 		kind >= wasm.InstrI64Clz && kind <= wasm.InstrI64Rotr
@@ -6081,52 +6843,65 @@ func emitAMD64StackInteger(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValT
 		return fmt.Errorf("operand stack underflow")
 	}
 	top := len(types) - 1
-	a.LoadRsp64(amd64.RAX, stackOff(top))
+	value := source(top, amd64.RAX)
 	switch kind {
 	case wasm.InstrI64ExtendI32S:
-		a.Movsxd(amd64.RAX, amd64.RAX)
+		a.Movsxd(value, value)
 		types[top] = wasm.I64
-		a.StoreRsp64(stackOff(top), amd64.RAX)
+		store(top, value)
 		*stack = types
 		return nil
 	case wasm.InstrI32Extend8S, wasm.InstrI64Extend8S:
-		a.Movsx8(amd64.RAX, amd64.RAX, kind == wasm.InstrI64Extend8S)
-		a.StoreRsp64(stackOff(top), amd64.RAX)
+		a.Movsx8(value, value, kind == wasm.InstrI64Extend8S)
+		store(top, value)
 		return nil
 	case wasm.InstrI32Extend16S, wasm.InstrI64Extend16S:
-		a.Movsx16(amd64.RAX, amd64.RAX, kind == wasm.InstrI64Extend16S)
-		a.StoreRsp64(stackOff(top), amd64.RAX)
+		a.Movsx16(value, value, kind == wasm.InstrI64Extend16S)
+		store(top, value)
 		return nil
 	case wasm.InstrI64Extend32S:
-		a.Movsxd(amd64.RAX, amd64.RAX)
-		a.StoreRsp64(stackOff(top), amd64.RAX)
+		a.Movsxd(value, value)
+		store(top, value)
 		return nil
 	case wasm.InstrI32Eqz, wasm.InstrI64Eqz:
-		a.TestSelf(amd64.RAX, wide)
-		a.SetccReg(amd64.CondE, amd64.RAX)
+		a.TestSelf(value, wide)
+		a.SetccReg(amd64.CondE, value)
 		types[top] = wasm.I32
-		a.StoreRsp64(stackOff(top), amd64.RAX)
+		store(top, value)
 		*stack = types
 		return nil
 	case wasm.InstrI32Clz, wasm.InstrI64Clz:
-		a.Lzcnt(amd64.RAX, amd64.RAX, wide)
-		a.StoreRsp64(stackOff(top), amd64.RAX)
+		a.Lzcnt(value, value, wide)
+		store(top, value)
 		return nil
 	case wasm.InstrI32Ctz, wasm.InstrI64Ctz:
-		a.Tzcnt(amd64.RAX, amd64.RAX, wide)
-		a.StoreRsp64(stackOff(top), amd64.RAX)
+		a.Tzcnt(value, value, wide)
+		store(top, value)
 		return nil
 	case wasm.InstrI32Popcnt, wasm.InstrI64Popcnt:
-		a.Popcnt(amd64.RAX, amd64.RAX, wide)
-		a.StoreRsp64(stackOff(top), amd64.RAX)
+		a.Popcnt(value, value, wide)
+		store(top, value)
 		return nil
 	}
 	if len(types) < 2 {
 		return fmt.Errorf("operand stack underflow")
 	}
 	lhsIndex, rhsIndex := len(types)-2, len(types)-1
-	a.LoadRsp64(amd64.RAX, stackOff(lhsIndex))
-	a.LoadRsp64(amd64.R10, stackOff(rhsIndex))
+	lhs := source(lhsIndex, amd64.RAX)
+	rhs := source(rhsIndex, amd64.R10)
+	discard(rhsIndex)
+	switch kind {
+	case wasm.InstrI32DivS, wasm.InstrI64DivS, wasm.InstrI32RemS, wasm.InstrI64RemS,
+		wasm.InstrI32DivU, wasm.InstrI64DivU, wasm.InstrI32RemU, wasm.InstrI64RemU:
+		if lhs != amd64.RAX {
+			a.MovReg64(amd64.RAX, lhs)
+			lhs = amd64.RAX
+		}
+		if rhs != amd64.R10 {
+			a.MovReg64(amd64.R10, rhs)
+			rhs = amd64.R10
+		}
+	}
 	switch kind {
 	case wasm.InstrI32Eq, wasm.InstrI64Eq, wasm.InstrI32Ne, wasm.InstrI64Ne,
 		wasm.InstrI32LtS, wasm.InstrI64LtS, wasm.InstrI32LtU, wasm.InstrI64LtU,
@@ -6134,9 +6909,9 @@ func emitAMD64StackInteger(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValT
 		wasm.InstrI32LeS, wasm.InstrI64LeS, wasm.InstrI32LeU, wasm.InstrI64LeU,
 		wasm.InstrI32GeS, wasm.InstrI64GeS, wasm.InstrI32GeU, wasm.InstrI64GeU:
 		if wide {
-			a.Cmp64(amd64.RAX, amd64.R10)
+			a.Cmp64(lhs, rhs)
 		} else {
-			a.Cmp32(amd64.RAX, amd64.R10)
+			a.Cmp32(lhs, rhs)
 		}
 		cond := amd64.CondE
 		switch kind {
@@ -6159,24 +6934,24 @@ func emitAMD64StackInteger(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValT
 		case wasm.InstrI32GeU, wasm.InstrI64GeU:
 			cond = amd64.CondAE
 		}
-		a.SetccReg(cond, amd64.RAX)
+		a.SetccReg(cond, lhs)
 		types[lhsIndex] = wasm.I32
 	case wasm.InstrI32Add, wasm.InstrI64Add:
-		a.AluRR(0x01, amd64.RAX, amd64.R10, wide)
+		a.AluRR(0x01, lhs, rhs, wide)
 	case wasm.InstrI32Sub, wasm.InstrI64Sub:
-		a.AluRR(0x29, amd64.RAX, amd64.R10, wide)
+		a.AluRR(0x29, lhs, rhs, wide)
 	case wasm.InstrI32Mul, wasm.InstrI64Mul:
-		a.ImulRM(amd64.RAX, amd64.RSP, stackOff(rhsIndex), wide)
+		a.ImulRR(lhs, rhs, wide)
 	case wasm.InstrI32And, wasm.InstrI64And:
-		a.AluRR(0x21, amd64.RAX, amd64.R10, wide)
+		a.AluRR(0x21, lhs, rhs, wide)
 	case wasm.InstrI32Or, wasm.InstrI64Or:
-		a.AluRR(0x09, amd64.RAX, amd64.R10, wide)
+		a.AluRR(0x09, lhs, rhs, wide)
 	case wasm.InstrI32Xor, wasm.InstrI64Xor:
-		a.AluRR(0x31, amd64.RAX, amd64.R10, wide)
+		a.AluRR(0x31, lhs, rhs, wide)
 	case wasm.InstrI32Shl, wasm.InstrI64Shl, wasm.InstrI32ShrS, wasm.InstrI64ShrS,
 		wasm.InstrI32ShrU, wasm.InstrI64ShrU, wasm.InstrI32Rotl, wasm.InstrI64Rotl,
 		wasm.InstrI32Rotr, wasm.InstrI64Rotr:
-		a.MovReg64(amd64.RCX, amd64.R10)
+		a.MovReg64(amd64.RCX, rhs)
 		digit := byte(4)
 		switch kind {
 		case wasm.InstrI32ShrS, wasm.InstrI64ShrS:
@@ -6188,11 +6963,14 @@ func emitAMD64StackInteger(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValT
 		case wasm.InstrI32Rotr, wasm.InstrI64Rotr:
 			digit = 1
 		}
-		a.ShiftCL(digit, amd64.RAX, wide)
+		a.ShiftCL(digit, lhs, wide)
 	case wasm.InstrI32DivS, wasm.InstrI64DivS, wasm.InstrI32RemS, wasm.InstrI64RemS:
-		amd64TrapDivZero(a, amd64.R10, wide, function, wasmOffset, metadata)
-		a.AluRI(7, amd64.R10, -1, wide)
+		amd64TrapDivZero(a, rhs, wide, function, wasmOffset, metadata)
+		a.AluRI(7, rhs, -1, wide)
 		notMinusOne := a.JccPlaceholder(amd64.CondNE)
+		if lhs != amd64.RAX {
+			a.MovReg64(amd64.RAX, lhs)
+		}
 		var done int
 		if kind == wasm.InstrI32DivS || kind == wasm.InstrI64DivS {
 			// x / -1 is exactly -x. NEG also identifies INT_MIN via OF, avoiding
@@ -6211,23 +6989,28 @@ func emitAMD64StackInteger(a *amd64.Asm, kind wasm.InstrKind, stack *[]wasm.ValT
 		}
 		a.PatchRel32(notMinusOne, a.Len())
 		a.Cdq(wide)
-		a.Idiv(amd64.R10, wide)
+		a.Idiv(rhs, wide)
 		a.PatchRel32(done, a.Len())
 		if kind == wasm.InstrI32RemS || kind == wasm.InstrI64RemS {
 			a.MovReg64(amd64.RAX, amd64.RDX)
 		}
+		lhs = amd64.RAX
 	case wasm.InstrI32DivU, wasm.InstrI64DivU, wasm.InstrI32RemU, wasm.InstrI64RemU:
-		amd64TrapDivZero(a, amd64.R10, wide, function, wasmOffset, metadata)
+		amd64TrapDivZero(a, rhs, wide, function, wasmOffset, metadata)
+		if lhs != amd64.RAX {
+			a.MovReg64(amd64.RAX, lhs)
+		}
 		a.XorSelf32(amd64.RDX)
-		a.Div(amd64.R10, wide)
+		a.Div(rhs, wide)
 		if kind == wasm.InstrI32RemU || kind == wasm.InstrI64RemU {
 			a.MovReg64(amd64.RAX, amd64.RDX)
 		}
+		lhs = amd64.RAX
 	default:
 		return fmt.Errorf("unsupported structured integer instruction %s", kind)
 	}
+	store(lhsIndex, lhs)
 	*stack = types[:len(types)-1]
-	a.StoreRsp64(stackOff(lhsIndex), amd64.RAX)
 	return nil
 }
 

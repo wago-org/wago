@@ -601,6 +601,30 @@ func (a *Asm) VPxorMemDisp(dst, s1, base Reg, disp int32) {
 	a.vex3MemDisp(vexMap0F, 0b01, 0xEF, dst, s1, true, base, disp)
 }
 
+func (a *Asm) VPandRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F, 0b01, 0xDB, dst, s1)
+}
+
+func (a *Asm) VPorRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F, 0b01, 0xEB, dst, s1)
+}
+
+func (a *Asm) VPxorRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F, 0b01, 0xEF, dst, s1)
+}
+
+func (a *Asm) VPsubusbRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F, 0b01, 0xD8, dst, s1)
+}
+
+func (a *Asm) VPcmpeqbRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F, 0b01, 0x74, dst, s1)
+}
+
+func (a *Asm) VPcmpeqwRipPlaceholder(dst, s1 Reg) int {
+	return a.vex3MemRipPlaceholder(vexMap0F, 0b01, 0x75, dst, s1)
+}
+
 func (a *Asm) VPshufb(dst, s1, s2 Reg) { a.vex3RRRMap(vexMap0F38, 0b01, 0x00, dst, s1, s2) }
 func (a *Asm) VPshufbRipPlaceholder(dst, s1 Reg) int {
 	return a.vex3MemRipPlaceholder(vexMap0F38, 0b01, 0x00, dst, s1)

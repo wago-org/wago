@@ -739,6 +739,20 @@ func planInstructionsAdjacent(schedule *railmach.Schedule, first, second uint32)
 }
 
 func nativeScheduleScoreBetter(objective corecompiler.OptimizationObjective, target railmach.Target, instructions int, usesFPR bool, candidate, retained railmach.ScheduleScore) bool {
+	if objective == corecompiler.ObjectiveSpeed && target == railmach.TargetAMD64 && usesFPR && instructions >= 64 {
+		latencyWithoutDebt := func(latency, other railmach.ScheduleScore) bool {
+			return latency.Kind == railmach.ScheduleKindLatencyFusion &&
+				latency.WeightedSpillDebt <= other.WeightedSpillDebt &&
+				latency.CopyCycles <= other.CopyCycles && latency.PhysicalCopies <= other.PhysicalCopies &&
+				latency.FixedRepairs <= other.FixedRepairs && latency.BrokenFusions <= other.BrokenFusions
+		}
+		if latencyWithoutDebt(candidate, retained) {
+			return true
+		}
+		if latencyWithoutDebt(retained, candidate) {
+			return false
+		}
+	}
 	if objective == corecompiler.ObjectiveSpeed && target == railmach.TargetARM64 && usesFPR && instructions >= 256 && instructions < 1024 {
 		latencyWithinBound := func(latency, other railmach.ScheduleScore) bool {
 			spillWithinBound := other.WeightedSpillDebt > ^uint64(0)/3 || latency.WeightedSpillDebt <= other.WeightedSpillDebt*3
@@ -929,6 +943,11 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		return nil, err
 	}
 	defaultGreedy := railmach.DefaultGreedyConfig(machineTarget)
+	if nativeAMD64CachesGlobals(machine) {
+		// The final two allocatable GPRs map to RBP/R12. Reserve them for one
+		// hot global's write-through value and immutable descriptor.
+		defaultGreedy.Linear.GPRs = nativeAMD64CachedGlobalValueRegister
+	}
 	if machineTarget == railmach.TargetARM64 {
 		defaultGreedy.Linear.FPRs = nativeARM64AllocatableFPRs(machine)
 	}
@@ -1203,6 +1222,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if nativeARM64PreparedIndirect(stack, machine, allocation) {
 		contract.Class = railmach.ABIPreparedIndirect
 	}
+	if nativeAMD64CachesGlobals(machine) {
+		contract.GPRClobbers |= uint64(1)<<nativeAMD64GlobalsRegister | uint64(1)<<nativeAMD64CachedGlobalValueRegister
+		contract.CalleeGPRs |= uint64(1)<<nativeAMD64GlobalsRegister | uint64(1)<<nativeAMD64CachedGlobalValueRegister
+	}
 	if nativeARM64CachesGlobals(machine) {
 		contract.GPRClobbers |= uint64(1) << nativeARM64GlobalsRegister
 		contract.CalleeGPRs |= uint64(1) << nativeARM64GlobalsRegister
@@ -1463,12 +1486,54 @@ func nativeARM64AllocatableFPRs(machine *railmach.Func) uint8 {
 }
 
 const (
+	nativeAMD64CachedGlobalValueRegister            = 8
+	nativeAMD64GlobalsRegister                      = 9
 	nativeARM64SecondCachedGlobalDescriptorRegister = 15
 	nativeARM64SecondCachedGlobalValueRegister      = 16
 	nativeARM64CachedGlobalDescriptorRegister       = 17
 	nativeARM64CachedGlobalValueRegister            = 18
 	nativeARM64GlobalsRegister                      = 19
 )
+
+func nativeAMD64CachesGlobals(machine *railmach.Func) bool {
+	_, ok := nativeAMD64CachedGlobal(machine)
+	return ok
+}
+
+func nativeAMD64CachedGlobal(machine *railmach.Func) (uint32, bool) {
+	if machine == nil || machine.Target != railmach.TargetAMD64 {
+		return 0, false
+	}
+	for _, instruction := range machine.Insts {
+		if railmach.IsCall(instruction.Op) {
+			return 0, false
+		}
+	}
+	bestIndex, bestWeight := uint32(0), uint32(0)
+	for _, candidate := range machine.Insts {
+		if candidate.Op != wasm.InstrGlobalGet && candidate.Op != wasm.InstrGlobalSet {
+			continue
+		}
+		index, weightedUses := uint32(candidate.Aux), uint32(0)
+		for _, block := range machine.Blocks {
+			for instructionID := block.InstStart; instructionID < block.InstStart+block.InstCount; instructionID++ {
+				instruction := machine.Insts[instructionID]
+				if (instruction.Op != wasm.InstrGlobalGet && instruction.Op != wasm.InstrGlobalSet) || uint32(instruction.Aux) != index {
+					continue
+				}
+				if weightedUses > ^uint32(0)-block.Weight {
+					weightedUses = ^uint32(0)
+					break
+				}
+				weightedUses += block.Weight
+			}
+		}
+		if weightedUses > bestWeight || weightedUses == bestWeight && index < bestIndex {
+			bestIndex, bestWeight = index, weightedUses
+		}
+	}
+	return bestIndex, bestWeight >= 16
+}
 
 func nativeARM64CachesGlobals(machine *railmach.Func) bool {
 	if machine == nil || machine.Target != railmach.TargetARM64 {

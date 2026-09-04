@@ -23,28 +23,131 @@ func TestAMD64ShuffleMasksSelectExactlyOneInput(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredSIMDConstantsUseDeduplicatedRIPPool(t *testing.T) {
+	constant := [16]byte{1, 3, 5, 7, 9, 11, 13, 15, 2, 4, 6, 8, 10, 12, 14, 16}
+	body := []byte{0xfd, 0x0c}
+	body = append(body, constant[:]...)
+	body = append(body, 0xfd, 0x0c)
+	body = append(body, constant[:]...)
+	body = append(body, 0xfd, 0x51, 0x0b) // v128.xor; end
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	if got := bytes.Count(output.Code, constant[:]); got != 1 {
+		t.Fatalf("SIMD constant pool copies = %d, want 1", got)
+	}
+}
+
+func TestAMD64StructuredShuffleUsesRIPMaskOperands(t *testing.T) {
+	body := []byte{0x20, 0x00, 0x20, 0x01, 0xfd, 0x0d}
+	for lane := byte(0); lane < 16; lane++ {
+		body = append(body, lane)
+	}
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	if got := countAMD64VPshufbRIP(output.Code); got != 2 {
+		t.Fatalf("RIP-relative vpshufb instructions = %d, want 2", got)
+	}
+}
+
+func TestAMD64StructuredCoalescesStraightLineLocalBoundsChecks(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0xfd, 0x00, 0x04, 0x00, 0x1a,
+			0x20, 0x00, 0xfd, 0x00, 0x04, 0x10, 0x1a,
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ends, elided := planAMD64StructuredLocalMemoryChecks(stack)
+	if ends[1] != 32 || !elided[4] {
+		t.Fatalf("coalesced checks: ends=%v elided=%v", ends, elided)
+	}
+}
+
+func compileAMD64EmissionTest(t *testing.T, source []byte) corecompiler.Output {
+	t.Helper()
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	output, err := (Compiler{}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return output
+}
+
+func countAMD64VPshufbRIP(code []byte) int {
+	count := 0
+	for i := 0; i+4 < len(code); i++ {
+		if code[i] == 0xc4 && code[i+1] == 0xe2 && code[i+3] == 0x00 && code[i+4]&0xc7 == 0x05 {
+			count++
+		}
+	}
+	return count
+}
+
 func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T) {
 	stack := &railssa.StackFunc{HasReferences: true}
 	if !amd64RailMachCandidate(stack, false, false) {
 		t.Fatal("ordinary scalar candidate was rejected")
 	}
-	if amd64RailMachCandidate(stack, false, true) {
-		t.Fatal("dense-global leaf was admitted")
+	if !amd64RailMachCandidate(stack, false, true) {
+		t.Fatal("dense-global leaf was rejected")
 	}
 	stack.Instrs = []railssa.StackInstr{{Kind: wasm.InstrGlobalGet}, {Kind: wasm.InstrCall}}
-	if amd64RailMachCandidate(stack, false, true) {
-		t.Fatal("acyclic dense-global call helper was admitted")
+	if !amd64RailMachCandidate(stack, false, true) {
+		t.Fatal("acyclic dense-global call helper was rejected")
 	}
 	stack.MaxLoopDepth = 1
+	if !amd64RailMachCandidate(stack, false, true) {
+		t.Fatal("single-loop dense-global call helper was rejected")
+	}
+	stack.MaxLoopDepth = 2
 	if amd64RailMachCandidate(stack, false, true) {
-		t.Fatal("cyclic dense-global call helper was admitted")
+		t.Fatal("nested-loop dense-global call helper was admitted")
 	}
 	stack.MaxLoopDepth = 0
+	stack.HasReferences = false
 	stack.Instrs = make([]railssa.StackInstr, 1025)
+	if !amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("large acyclic parameterless function was rejected")
+	}
+	stack.MaxLoopDepth = 2
 	if amd64RailMachCandidate(stack, false, false) {
-		t.Fatal("large parameterless function was admitted")
+		t.Fatal("large nested-loop parameterless function was admitted")
 	}
 	stack.Params = []wasm.ValType{wasm.I32}
+	stack.MaxLoopDepth = 0
 	if !amd64RailMachCandidate(stack, false, false) {
 		t.Fatal("large parameterized scalar candidate was rejected")
 	}
@@ -54,14 +157,14 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 	}
 }
 
-func TestAMD64RailMachAdmissionKeepsRecursiveI64LoopStructured(t *testing.T) {
+func TestAMD64RailMachAdmissionAcceptsRecursiveI64Loop(t *testing.T) {
 	stack := &railssa.StackFunc{
 		MaxLoopDepth: 1,
 		Results:      []wasm.ValType{wasm.I64},
-		Instrs:       []railssa.StackInstr{{Kind: wasm.InstrCall}},
+		Instrs:       []railssa.StackInstr{{Kind: wasm.InstrCall}, {Kind: wasm.InstrI64Add}},
 	}
-	if amd64RailMachCandidate(stack, false, false) {
-		t.Fatal("recursive i64 loop was admitted")
+	if !amd64RailMachCandidate(stack, false, false) {
+		t.Fatal("recursive i64 loop was rejected")
 	}
 }
 

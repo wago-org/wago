@@ -1060,6 +1060,10 @@ func memoryAccessBytes(kind wasm.InstrKind) uint64 {
 		return 4
 	case wasm.InstrI64Load, wasm.InstrF64Load, wasm.InstrI64Store, wasm.InstrF64Store:
 		return 8
+	case wasm.InstrV128Load, wasm.InstrV128Store:
+		return 16
+	case wasm.InstrV128Store64Lane:
+		return 8
 	default:
 		return 0
 	}

@@ -102,6 +102,29 @@ func TestNativeARM64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
 	}
 }
 
+func TestNativeAMD64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
+	machine := &railmach.Func{Target: railmach.TargetAMD64, Insts: []railmach.Inst{
+		{Op: wasm.InstrGlobalGet}, {Op: wasm.InstrGlobalSet}, {Op: wasm.InstrGlobalGet},
+	}, Blocks: []railmach.Block{{InstCount: 3, Weight: 1}}}
+	if nativeAMD64CachesGlobals(machine) {
+		t.Fatal("cold global accesses enabled the AMD64 descriptor cache")
+	}
+	machine.Insts = append(machine.Insts, railmach.Inst{Op: wasm.InstrGlobalGet})
+	machine.Blocks[0].InstCount = 4
+	machine.Blocks[0].Weight = 4
+	if index, ok := nativeAMD64CachedGlobal(machine); !ok || index != 0 {
+		t.Fatalf("hot cached global = %d, %t; want 0, true", index, ok)
+	}
+	machine.Insts = append(machine.Insts, railmach.Inst{Op: wasm.InstrCall})
+	if nativeAMD64CachesGlobals(machine) {
+		t.Fatal("call-crossing function enabled the AMD64 descriptor cache")
+	}
+	machine.Target = railmach.TargetARM64
+	if nativeAMD64CachesGlobals(machine) {
+		t.Fatal("ARM64 function enabled the AMD64 descriptor cache")
+	}
+}
+
 func TestNativeBackendPlannerBuildsCompleteRailMachProduct(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),

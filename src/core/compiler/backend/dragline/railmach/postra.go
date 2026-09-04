@@ -704,7 +704,8 @@ func arm64CondIncrementable(f *Func, producerID, consumerID uint32, uses []uint3
 
 func amd64FoldableLoadConsumer(f *Func, loadID, consumerID uint32, uses []uint32) bool {
 	load, consumer := f.Insts[loadID], f.Insts[consumerID]
-	if (load.Op != wasm.InstrI32Load && load.Op != wasm.InstrI64Load) || load.Result == 0 || int(load.Result) >= len(uses) || uses[load.Result] != 1 {
+	if (load.Op != wasm.InstrI32Load && load.Op != wasm.InstrI64Load && load.Op != wasm.InstrF32Load && load.Op != wasm.InstrF64Load) ||
+		load.Result == 0 || int(load.Result) >= len(uses) || uses[load.Result] != 1 {
 		return false
 	}
 	switch consumer.Op {
@@ -714,6 +715,14 @@ func amd64FoldableLoadConsumer(f *Func, loadID, consumerID uint32, uses []uint32
 		}
 	case wasm.InstrI64Add, wasm.InstrI64Sub, wasm.InstrI64And, wasm.InstrI64Or, wasm.InstrI64Xor:
 		if load.Op != wasm.InstrI64Load {
+			return false
+		}
+	case wasm.InstrF32Add, wasm.InstrF32Sub, wasm.InstrF32Mul, wasm.InstrF32Div:
+		if load.Op != wasm.InstrF32Load {
+			return false
+		}
+	case wasm.InstrF64Add, wasm.InstrF64Sub, wasm.InstrF64Mul, wasm.InstrF64Div:
+		if load.Op != wasm.InstrF64Load {
 			return false
 		}
 	default:
