@@ -269,10 +269,13 @@ type fn struct {
 	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
 	// Call-free functions keep locals permanently in registers (locals[].state unused).
-	usesCalls  bool
-	usesWide   bool
-	classifier wasm.ModuleInstructionClassifier
-	moduleEH   bool
+	usesCalls bool
+	usesWide  bool
+	// controlBaseTypeN partitions the fixed function-result scratch: function
+	// results occupy its prefix and open control-frame bases use the remaining tail.
+	controlBaseTypeN uint8
+	classifier       wasm.ModuleInstructionClassifier
+	moduleEH         bool
 	// Number of commutative self-update spill opportunities seen in this function.
 	// The first keeps the conservative form; repeated pressure selects the denser
 	// register form without perturbing one-off sites in otherwise cold functions.
@@ -3013,10 +3016,13 @@ func (f *fn) finalizeStats(codeLen int) {
 func (f *fn) runBody(c *wasm.Func) error {
 	sc := f.scratchState()
 	resultTypes := lowerFunctionResultTypes(sc, f.ft.Results)
+	if len(resultTypes) <= len(sc.functionResultTypeArena) {
+		f.controlBaseTypeN = uint8(len(resultTypes))
+	}
 	// Seed the control-frame stack from scratch's retained backing so its
 	// (large-struct) array is reused across functions rather than regrown to peak
 	// nesting depth for every one; sc.ctrl is written back below to keep the cap.
-	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), types: resultTypes})
+	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), baseTypeStart: uint32(f.controlBaseTypeN), types: resultTypes})
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}

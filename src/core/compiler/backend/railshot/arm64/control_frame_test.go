@@ -10,7 +10,7 @@ import (
 )
 
 func TestCtrlFrameSize(t *testing.T) {
-	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(104); got != want {
+	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(88); got != want {
 		t.Fatalf("ctrlFrame size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(160); got != want {
@@ -39,6 +39,74 @@ func TestScalarBlockResultUsesInlineFrameTypeArm64(t *testing.T) {
 	if len(got) != 1 || got[0] != mtI32 {
 		t.Fatalf("inline result types = %v, want [i32]", got)
 	}
+}
+
+func TestControlBaseTypeArenaArm64(t *testing.T) {
+	var f fn
+	outer := ctrlFrame{}
+	inner := ctrlFrame{}
+	f.setFrameBaseTypes(&outer, []machineType{mtI32, mtV128})
+	f.setFrameBaseTypes(&inner, []machineType{mtF64})
+	f.releaseFrameBaseTypes(&ctrlFrame{}) // unreachable frames never acquire arena storage
+
+	if got := f.frameBaseTypes(&outer); len(got) != 2 || got[0] != mtI32 || got[1] != mtV128 {
+		t.Fatalf("outer base types = %v, want [i32 v128]", got)
+	}
+	if got := f.frameBaseTypes(&inner); len(got) != 1 || got[0] != mtF64 {
+		t.Fatalf("inner base types = %v, want [f64]", got)
+	}
+
+	f.releaseFrameBaseTypes(&inner)
+	f.releaseFrameBaseTypes(&outer)
+	if f.controlBaseTypeN != 0 {
+		t.Fatalf("released arena length = %d, want 0", f.controlBaseTypeN)
+	}
+	reused := ctrlFrame{}
+	f.setFrameBaseTypes(&reused, []machineType{mtI64, mtF32})
+	if got := f.frameBaseTypes(&reused); len(got) != 2 || got[0] != mtI64 || got[1] != mtF32 {
+		t.Fatalf("reused base types = %v, want [i64 f32]", got)
+	}
+}
+
+func TestControlBaseTypeArenaColdFallbackArm64(t *testing.T) {
+	f := fn{controlBaseTypeN: uint8(maxScratchFunctionResults)}
+	fr := ctrlFrame{resultN: 1, res0: mtI64}
+	f.setFrameBaseTypes(&fr, []machineType{mtI32})
+	if !fr.has(ctrlColdBaseTypes) {
+		t.Fatal("overflow frame did not use cold type storage")
+	}
+	if got := f.frameBaseTypes(&fr); len(got) != 1 || got[0] != mtI32 {
+		t.Fatalf("cold base types = %v, want [i32]", got)
+	}
+	if got := fr.appendResultTypes(nil); len(got) != 1 || got[0] != mtI64 {
+		t.Fatalf("cold result types = %v, want [i64]", got)
+	}
+	f.releaseFrameBaseTypes(&fr)
+	if f.controlBaseTypeN != uint8(maxScratchFunctionResults) {
+		t.Fatalf("cold release changed arena length to %d", f.controlBaseTypeN)
+	}
+	typed := ctrlFrame{paramN: 1, resultN: 2, types: []machineType{mtF32, mtI32, mtF64}}
+	f.setFrameBaseTypes(&typed, []machineType{mtV128})
+	if got := typed.appendParameterTypes(nil); len(got) != 1 || got[0] != mtF32 {
+		t.Fatalf("cold parameter types = %v, want [f32]", got)
+	}
+	if got := typed.appendResultTypes(nil); len(got) != 2 || got[0] != mtI32 || got[1] != mtF64 {
+		t.Fatalf("cold multi-result types = %v, want [i32 f64]", got)
+	}
+}
+
+func TestControlBaseTypeArenaRejectsOutOfOrderReleaseArm64(t *testing.T) {
+	var f fn
+	outer := ctrlFrame{}
+	inner := ctrlFrame{}
+	f.setFrameBaseTypes(&outer, []machineType{mtI32})
+	f.setFrameBaseTypes(&inner, []machineType{mtI64})
+	defer func() {
+		if recover() == nil {
+			t.Fatal("out-of-order release did not panic")
+		}
+	}()
+	f.releaseFrameBaseTypes(&outer)
 }
 
 func TestPackedLocStatesArm64(t *testing.T) {

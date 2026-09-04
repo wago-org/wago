@@ -911,7 +911,7 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
 		height:   f.depth(),
 	}
 	fr.set(ctrlRegMerge1, f.regMerge && rN == 1 && t.res0 != mtNone && t.res0 != mtV128)
-	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()...)
+	f.setFrameBaseTypes(&fr, f.currentLogicalTypes())
 	f.flush()
 	f.pushCtrl(&fr)
 

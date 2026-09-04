@@ -185,6 +185,9 @@ type fn struct {
 	// in its register (dirty), in both register+slot (clean), or only in its slot.
 	// Call-free functions keep locals permanently in registers (locals[].state unused).
 	usesCalls bool
+	// controlBaseTypeN partitions the fixed function-result scratch: function
+	// results occupy its prefix and open control-frame bases use the remaining tail.
+	controlBaseTypeN uint8
 	// localFactsEnabled admits assignment-version facts only in straight-line
 	// bodies. Facts reuse an otherwise-unused byte in each localDef.
 	localFactsEnabled bool
@@ -2511,7 +2514,10 @@ func (f *fn) finalizeStats(codeLen int) {
 func (f *fn) runBody(c *wasm.Func) error {
 	sc := f.scratchState()
 	resultTypes := lowerFunctionResultTypes(sc, f.ft.Results)
-	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), types: resultTypes})
+	if len(resultTypes) <= len(sc.functionResultTypeArena) {
+		f.controlBaseTypeN = uint8(len(resultTypes))
+	}
+	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), baseTypeStart: uint32(f.controlBaseTypeN), types: resultTypes})
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}

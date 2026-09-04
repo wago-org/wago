@@ -234,7 +234,7 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramN, resultN int, frameType
 func (f *fn) enterLoopFrame(resultN int, frameTypes []machineType, res0 machineType) {
 	fr := ctrlFrame{kind: cfLoop, resultN: resultN, branchN: 0, elseSite: -1, res0: res0, types: frameTypes}
 	fr.height = f.depth()
-	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()...)
+	f.setFrameBaseTypes(&fr, f.currentLogicalTypes())
 	f.reconcileLocals()
 	f.convergeFrameBranchState(&fr)
 	f.flush()

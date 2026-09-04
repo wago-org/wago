@@ -50,6 +50,8 @@ const (
 	ctrlLoopHasCall
 	ctrlLoopHasNested
 	ctrlLoopHasTable
+	ctrlBaseTypesSet
+	ctrlColdBaseTypes
 )
 
 // ctrlFrame is one open control construct (or the implicit function frame).
@@ -64,7 +66,8 @@ type ctrlFrame struct {
 	branchN         int // values transferred on a branch to this label
 	loopStart       int // cfLoop: backward target byte offset
 	elseSite        int // cfIf: the false-edge B.cond site (to else/end), -1 once patched
-	baseTypes       []machineType
+	baseTypeStart   uint32
+	baseTypeCount   uint32
 	types           []machineType // parameters followed by results; split by paramN/resultN
 }
 
@@ -249,14 +252,72 @@ func (f *fn) frameBaseGCRoots(fr *ctrlFrame) []bool {
 }
 
 func (fr *ctrlFrame) appendParameterTypes(dst []machineType) []machineType {
-	return append(dst, fr.types[:fr.paramN]...)
+	start := 0
+	if fr.has(ctrlColdBaseTypes) {
+		start = int(fr.baseTypeCount)
+	}
+	return append(dst, fr.types[start:start+fr.paramN]...)
 }
 
 func (fr *ctrlFrame) appendResultTypes(dst []machineType) []machineType {
-	if fr.resultN == 1 && fr.types == nil {
+	if fr.resultN == 1 && fr.types == nil && !fr.has(ctrlColdBaseTypes) {
 		return append(dst, fr.res0)
 	}
-	return append(dst, fr.types[fr.paramN:fr.paramN+fr.resultN]...)
+	start := fr.paramN
+	if fr.has(ctrlColdBaseTypes) {
+		start += int(fr.baseTypeCount)
+	}
+	return append(dst, fr.types[start:start+fr.resultN]...)
+}
+
+func (f *fn) setFrameBaseTypes(fr *ctrlFrame, types []machineType) {
+	fr.set(ctrlBaseTypesSet, true)
+	start := int(f.controlBaseTypeN)
+	fr.baseTypeCount = uint32(len(types))
+	storage := f.scratchState().functionResultTypeArena[:]
+	if start+len(types) <= len(storage) {
+		copy(storage[start:], types)
+		fr.baseTypeStart = uint32(start)
+		f.controlBaseTypeN += uint8(len(types))
+		return
+	}
+
+	// Unusually wide/deep control uses the frame's existing cold type backing.
+	// This preserves exact semantics without growing persistent worker state.
+	all := make([]machineType, len(types)+fr.paramN+fr.resultN)
+	copy(all, types)
+	sig := all[len(types):]
+	copy(sig, fr.types[:fr.paramN])
+	if fr.resultN == 1 && fr.types == nil {
+		sig[fr.paramN] = fr.res0
+	} else {
+		copy(sig[fr.paramN:], fr.types[fr.paramN:fr.paramN+fr.resultN])
+	}
+	fr.types = all
+	fr.set(ctrlColdBaseTypes, true)
+}
+
+func (f *fn) frameBaseTypes(fr *ctrlFrame) []machineType {
+	if fr.has(ctrlColdBaseTypes) {
+		return fr.types[:fr.baseTypeCount]
+	}
+	start := int(fr.baseTypeStart)
+	return f.scratchState().functionResultTypeArena[start : start+int(fr.baseTypeCount)]
+}
+
+func (f *fn) releaseFrameBaseTypes(fr *ctrlFrame) {
+	if !fr.has(ctrlBaseTypesSet) {
+		return
+	}
+	if fr.has(ctrlColdBaseTypes) {
+		return
+	}
+	start := int(fr.baseTypeStart)
+	end := start + int(fr.baseTypeCount)
+	if end != int(f.controlBaseTypeN) {
+		panic(fmt.Sprintf("arm64: control base-type arena released out of order: range [%d,%d), top %d", start, end, f.controlBaseTypeN))
+	}
+	f.controlBaseTypeN = uint8(start)
 }
 
 func (f *fn) frameEnds(fr *ctrlFrame) []int {
@@ -580,7 +641,7 @@ func (f *fn) moveBranchValues(fr *ctrlFrame, d, a int) {
 	}
 	types := f.currentLogicalTypes()
 	fromSlot := slotOfLogicalTypes(types, d-a)
-	toSlot := slotsOfTypes(fr.baseTypes)
+	toSlot := slotsOfTypes(f.frameBaseTypes(fr))
 	nSlots := slotOfLogicalTypes(types, d) - fromSlot
 	f.moveSlots(fromSlot, toSlot, nSlots)
 }
@@ -595,7 +656,7 @@ func (f *fn) frameDepthTypes(base, suffix []machineType) []machineType {
 
 func (f *fn) frameDepthTypesForFrame(fr *ctrlFrame, parameters bool) []machineType {
 	out := f.tmpTypes[:0]
-	out = append(out, fr.baseTypes...)
+	out = append(out, f.frameBaseTypes(fr)...)
 	if parameters {
 		out = fr.appendParameterTypes(out)
 	} else {
@@ -1144,7 +1205,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			if f.opt(optZeroBranch) && eqzZeroBranchEnabled {
 				if creg, cOwned, wide, ok := f.condenseSimpleEqzOperand(cond); ok {
 					fr.height = f.depth() - pN
-					fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+					f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
 					f.captureGCFrameShape(&fr)
 					if wide {
 						fr.elseSite = f.a.Cbnz64(creg)
@@ -1161,7 +1222,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			}
 			cc := f.condenseToFlags(cond)
 			fr.height = f.depth() - pN
-			fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+			f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
 			f.captureGCFrameShape(&fr)
 			fr.elseSite = f.a.Bcond(invertCond(cc)) // to else/end when false
 			f.pushCtrl(&fr)
@@ -1169,7 +1230,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 		creg, cOwned := f.materializeRead(f.popValue()) // the test only reads: a pinned local needs no copy
 		fr.height = f.depth() - pN
-		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+		f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
 		f.captureGCFrameShape(&fr)
 		f.flush()
 		if f.opt(optZeroBranch) {
@@ -1184,7 +1245,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 	} else {
 		fr.height = f.depth() - pN
-		fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+		f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
 		f.captureGCFrameShape(&fr)
 		if kind == cfLoop {
 			// Loop tops converge eagerly (all lsStackReg): hoists any post-call
@@ -1463,7 +1524,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		eh.catches = append(eh.catches, clause)
 	}
 	fr.height = f.depth() - fr.paramN
-	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()[:fr.height]...)
+	f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
 	if f.unreachable {
 		f.pushCtrl(&fr)
 		return nil
@@ -1602,7 +1663,7 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 			loadPayload(mergeReg, 0)
 		}
 	} else {
-		toSlot := slotsOfTypes(target.baseTypes)
+		toSlot := slotsOfTypes(f.frameBaseTypes(target))
 		for i := 0; i < clause.payloadN; i++ {
 			loadPayload(X16, i)
 			f.st64(SP, f.spillOff(toSlot+i), X16)
@@ -1836,7 +1897,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		}
 		f.a.PatchBranch19(fr.elseSite, f.a.Len()) // the false edge is a B.cond (imm19)
 		if fr.has(ctrlRegMerge1) {
-			slot := slotsOfTypes(fr.baseTypes)
+			slot := slotsOfTypes(f.frameBaseTypes(&fr))
 			if fr.res0.isFloat() {
 				f.fld(mergeFReg, SP, f.spillOff(slot), fr.res0 == mtF64) // passthrough → mergeFReg
 			} else {
@@ -1905,7 +1966,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		if fr.has(ctrlRegMerge1) {
 			// Every reaching edge left the result in the merge register (int→mergeReg,
 			// float→mergeFReg) and the operands below in canonical slots [0, height).
-			f.setDepthTypesWithGCRoots(fr.baseTypes, baseGCRoots)
+			f.setDepthTypesWithGCRoots(f.frameBaseTypes(&fr), baseGCRoots)
 			var result *elem
 			if fr.res0.isFloat() {
 				result = f.pushFReg(mergeFReg, fr.res0)
@@ -1942,6 +2003,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)
 	f.freeEndsBuf(condEnds)
+	f.releaseFrameBaseTypes(&fr)
 	return nil
 }
 

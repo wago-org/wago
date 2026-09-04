@@ -354,7 +354,7 @@ func (f *fn) enterLoopFrame(resultN int, frameTypes []machineType, res0 machineT
 		f.setFrameLoopSetLocals(&fr, setLocals)
 	}
 	fr.height = f.depth()
-	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()...)
+	f.setFrameBaseTypes(&fr, f.currentLogicalTypes())
 	f.captureGCFrameShape(&fr)
 	f.setFrameBranchGCFacts(&fr, f.snapshotGCRefFacts())
 	f.reconcileLocals()
