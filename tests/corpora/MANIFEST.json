@@ -573,7 +573,7 @@
     },
     {
       "artifact": "qoi/qoi.wasm",
-      "artifact_sha256": "43c02e792acd08c9844e2a2ff4af28610917645836081384cc652452a502a84c",
+      "artifact_sha256": "5f2e9bab7254dde3ae7488dee3ee82aafab26f0004ad3930a7b03a414758a5ea",
       "abi": "core",
       "source": {
         "repository": "https://github.com/phoboslab/qoi.git",
@@ -611,7 +611,7 @@
     },
     {
       "artifact": "qoi/qoi.wasm",
-      "artifact_sha256": "43c02e792acd08c9844e2a2ff4af28610917645836081384cc652452a502a84c",
+      "artifact_sha256": "5f2e9bab7254dde3ae7488dee3ee82aafab26f0004ad3930a7b03a414758a5ea",
       "abi": "core",
       "source": {
         "repository": "https://github.com/phoboslab/qoi.git",
@@ -673,7 +673,6 @@
         "c"
       ],
       "id": "lz4/compress",
-      "known_issue": "wago JIT miscompiles LZ4_compress_default: -O1+ builds trap with a false linear-memory OOB in LZ4_compress_fast_extState while wasmtime returns the correct 3421; -O0 builds silently return a wrong size (75). See tests/corpora/README.md \"Known runtime findings\".",
       "invoke": {
         "export": "lz4_compress_run",
         "output_ptr_export": "lz4_output_ptr"
@@ -711,7 +710,6 @@
         "c"
       ],
       "id": "lz4/decompress",
-      "known_issue": "Blocked on the same LZ4 wago JIT discrepancy as lz4/compress; re-enable together once fixed.",
       "invoke": {
         "export": "lz4_decompress_run",
         "args": [
@@ -736,7 +734,7 @@
     {
       "id": "zlib/inflate",
       "artifact": "zlib/zlib.wasm",
-      "artifact_sha256": "001205efe2a3d5336926cc8ee39f943735487dcc1c93332059360e2e733e5a67",
+      "artifact_sha256": "6d0c2a8cfb07c3b3cfef75d742a25cbd3f81a64b9786ac0e1cac6b58b5d7f92e",
       "abi": "core",
       "source": {
         "repository": "https://github.com/madler/zlib.git",
@@ -779,7 +777,7 @@
     {
       "id": "zstd/decompress",
       "artifact": "zstd/zstd.wasm",
-      "artifact_sha256": "b9613ec859e80e7cd3f995b30404534dadf34502a60eacf6289014ed2e4c8c4f",
+      "artifact_sha256": "d59854de5e69e02b595ca57a2fd1a70417380ce6841b424c6205f5b882763a9f",
       "abi": "core",
       "source": {
         "repository": "https://github.com/facebook/zstd.git",

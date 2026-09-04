@@ -86,14 +86,25 @@ checked in so the suite needs no toolchain at run time:
   generated from checked-in `corpus/as/` entrypoints. Rebuild just those
   reproducibly with `AS_ROOT=... SIMD_ONLY=1 sh corpus/build-as.sh`.
 
+- **`semantic` programs** — the checksum-pinned CoreMark, BLAKE3, QOI, LZ4,
+  zlib, and Zstandard artifacts under `../tests/corpora`. The benchmark manifest
+  references these files in place so performance measurements and the exact
+  execution-oracle suite cannot drift onto different binaries. They participate
+  in decode, validate, full compile, instantiate, and paired Wago/wazero exec
+  measurements. The exec adapter reads the authoritative inputs and vectors
+  directly from `tests/corpora/MANIFEST.json`, and verifies each exact oracle
+  before timing it. Run `make test-semantic-corpus` for their standalone result
+  checks. LZ4 compression and decompression are enabled in both suites.
+
   The `real-large` tier is whole real-world programs — the `wasm3` interpreter,
   the `lua` (Lua 5.4) interpreter and the `sqlite3` (SQLite 3.46) engine committed
   directly, plus the multi-megabyte `ruby` (Ruby 3.3, ~16 MiB, ~17k functions) and
-  `esbuild` (Go→wasm bundler, ~12 MiB) fetched into `corpus/vendor/` by
-  `corpus/fetch.sh` (gitignored; referenced by manifest `path` and skipped when
-  absent). All carry host imports the backend can't compile yet, so they run
-  `Decode`/`Validate` only — the tier that shows where wago's byte-backed
-  decode/validate path spends time on very large inputs.
+  `esbuild` (Go→wasm bundler, ~12 MiB). Wago benchmarks their full compile path.
+  Their command execution is an optional compatibility integration rather than
+  a core-runtime benchmark: run the Emscripten plugin suite with
+  `WAGO_CORPUS_DIR=/path/to/wago/bench/corpus go test ./...` from the plugin
+  checkout to exercise regexmatch, wasm3, Lua, SQLite, Ruby, and esbuild with
+  checked workload results.
 
 - **`isa` micro-suite** — opt-in via `-wago.bench.isa`, `benchpub -isa`, or
   `make bench BENCH_ISA=1`. It has one exported function per *individual opcode* (i32/i64
@@ -134,6 +145,9 @@ and `benchpub -warp <harness>` shells out to **WARP**'s native harness for both
 compile and exec. Build `vb_bench` from an independent
 [WARP checkout](https://github.com/wago-org/warp), apply the same benchmark
 configuration used for the published comparison, and pass its path explicitly.
+Corpus instantiation is paired as well: `BenchmarkInstantiate` reuses Wago's
+compiled module and `BenchmarkWazeroInstantiate` reuses wazero's compiled
+module, then each measures a fresh instance with equivalent supported imports.
 Two extra charts are produced:
 
 - `compile-engines.svg` — compile time per module, wago vs wazero vs WARP. Where

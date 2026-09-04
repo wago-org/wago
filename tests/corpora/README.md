@@ -67,38 +67,33 @@ both to reproduce the exact oracle. A per-case `timeout_ms` bound prevents a
 miscompiled guest from hanging the suite; `InvokeContext` interrupts runaway
 native loops.
 
-## Known runtime findings
+## Runtime findings
 
 A case whose `known_issue` field is set is **skipped by the execution gate** with
 that message rather than silently dropped: the pinned artifact, oracle, and
-build script stay checked in, so clearing the field (once the issue is fixed)
+build script stay checked in, so clearing the field once an issue is fixed
 re-enables the case verbatim.
 
-- **lz4/compress, lz4/decompress** — a wago JIT discrepancy with the upstream
-  LZ4 block API. wasmtime returns the correct compressed size (`3421`) at every
-  optimization level, while wago's JIT: traps with a false linear-memory OOB
-  (`LZ4_compress_fast_extState`) on `-O1`/`-O2`/`-Os` builds, and silently
-  returns a wrong size (`75`) on an `-O0` build. Reproduced on Darwin/arm64
-  with default (explicit) bounds checks, with 2 MiB and larger guest memories,
-  and with the guest stack relocated away from data, so it is not a runner
-  layout problem. This is exactly the class of bug the corpus exists to
-  surface; the pinned `lz4.wasm` (SHA-256 `00edcd94…`) is a ready reproducer.
+The previously recorded LZ4 JIT discrepancy no longer reproduces. Compression
+and decompression are enabled and checked against their exact size and byte
+oracles on every supported corpus-test platform.
 
 ## Rebuilding an artifact
 
-Artifacts are checked in so the suite needs no toolchain at run time. To
-rebuild one (after reviewing a port change or re-pinning upstream), run its
-build script; it stages into a temp directory, compares SHA-256 against the
-checked-in artifact, and never overwrites in place:
+Artifacts are checked in so the suite needs no toolchain at run time. To verify
+one after rebuilding, run its build script; it stages into a temp directory,
+compares SHA-256 against the checked-in artifact, and does not overwrite it by
+default:
 
 ```sh
 tests/corpora/coremark/build.sh   # needs wasi-sdk (WASI_SDK=/path/to/wasi-sdk)
 ```
 
-After a deliberate change, update `MANIFEST.json`'s `artifact_sha256` and
-re-record provenance. `build.sh` failing with a digest mismatch is intentional:
-it means the checked-in bytes and the manifest pin disagree and must be
-reviewed, not silently accepted.
+After reviewing a deliberate port or upstream change, rebuild with `UPDATE=1`
+to replace that artifact, then update `MANIFEST.json`'s `artifact_sha256` and
+re-record provenance. A default build failing with a digest mismatch is
+intentional: it means the checked-in bytes and manifest pin disagree and must
+be reviewed, not silently accepted.
 
 ## Provenance discipline
 
@@ -113,13 +108,11 @@ pinned upstream translation units.
 
 Current cases: CoreMark (self-validating CRC), BLAKE3 (105 published-vector
 checks across hash/keyed/derive modes), QOI (exact encode + decode versus a
-native reference), zlib inflate (exact decode of a native-encoded stream), and
-zstd decompress (exact decode of a native-encoded frame). LZ4
-(compress/decompress round-trip) is checked in with its oracle and build script
-but skipped pending the wago JIT fix recorded in "Known runtime findings"
-above. Planned next, following the same pattern: JSONTestSuite classification,
-Stockfish `perft` node counts, and a 6502 emulator running the Klaus functional
-test.
+native reference), LZ4 (compress/decompress round-trip), zlib inflate (exact
+decode of a native-encoded stream), and zstd decompress (exact decode of a
+native-encoded frame). Planned next, following the same pattern: JSONTestSuite
+classification, Stockfish `perft` node counts, and a 6502 emulator running the
+Klaus functional test.
 WASI-Preview-1 cases are a later tranche gated on the external `wago-org/wasi`
 host plugin; the manifest `abi` field is reserved for them (`core` is the only
 admitted value today).

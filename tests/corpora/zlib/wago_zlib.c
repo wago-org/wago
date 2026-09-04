@@ -39,6 +39,7 @@ zlib_inflate_run(uint32_t comp_len)
     z_stream strm;
     int      ret;
 
+    wago_allocator_reset();
     memset(&strm, 0, sizeof(strm));
     ret = inflateInit(&strm);
     if (ret != Z_OK)
