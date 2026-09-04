@@ -18,6 +18,31 @@ func TestFuncHintsSize(t *testing.T) {
 	}
 }
 
+func TestFuncHintPackedResolverAndRelocationCounts(t *testing.T) {
+	var h funcHints
+	for range 3 {
+		h.addGCResolverSite()
+	}
+	for range 5 {
+		h.addCallRelocSite()
+	}
+	if got := h.gcResolverSiteCount(); got != 3 {
+		t.Fatalf("resolver sites = %d, want 3", got)
+	}
+	if got := h.callRelocSiteCount(); got != 5 {
+		t.Fatalf("relocation sites = %d, want 5", got)
+	}
+	h.gcResolverAndRelocs = gcResolverSiteMask | uint32(^uint8(0))<<24
+	h.addGCResolverSite()
+	h.addCallRelocSite()
+	if got := h.gcResolverSiteCount(); got != gcResolverSiteMask {
+		t.Fatalf("saturated resolver sites = %d, want %d", got, gcResolverSiteMask)
+	}
+	if got := h.callRelocSiteCount(); got != ^uint8(0) {
+		t.Fatalf("saturated relocation sites = %d, want %d", got, ^uint8(0))
+	}
+}
+
 func TestEntryInitializedSharesLocalScoreStorage(t *testing.T) {
 	scores := make([]uint32, 2)
 	h := funcHintsWithStorage(scores)

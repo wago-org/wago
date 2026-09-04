@@ -72,11 +72,13 @@ func (f *funcHintFlags) assign(flag funcHintFlags, value bool) {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	gcResolverSites   uint32 // conservative direct scalar/length resolver site count
-	localStart        uint32
-	lastGetStartPlus1 uint32 // zero when interval-region side storage was not retained
-	globalStart       uint32
-	globalCount       uint32
+	// gcResolverAndRelocs packs a saturated 24-bit conservative GC resolver-site
+	// count plus an 8-bit outgoing local-call relocation reservation hint.
+	gcResolverAndRelocs uint32
+	localStart          uint32
+	lastGetStartPlus1   uint32 // zero when interval-region side storage was not retained
+	globalStart         uint32
+	globalCount         uint32
 
 	// stackArenaNodes is a conservative pre-scan estimate of operand-stack elem
 	// allocations while compiling this body. It lets compileFunc avoid reserving
@@ -101,6 +103,23 @@ type funcHints struct {
 	// bit recording any return_call reference to this local function.
 	inlineCallSites uint8
 }
+
+const gcResolverSiteMask = uint32(1<<24 - 1)
+
+func (h *funcHints) addGCResolverSite() {
+	if h.gcResolverAndRelocs&gcResolverSiteMask != gcResolverSiteMask {
+		h.gcResolverAndRelocs++
+	}
+}
+
+func (h *funcHints) addCallRelocSite() {
+	if h.gcResolverAndRelocs>>24 != ^uint32(0)>>24 {
+		h.gcResolverAndRelocs += 1 << 24
+	}
+}
+
+func (h funcHints) gcResolverSiteCount() uint32 { return h.gcResolverAndRelocs & gcResolverSiteMask }
+func (h funcHints) callRelocSiteCount() uint8   { return uint8(h.gcResolverAndRelocs >> 24) }
 
 const (
 	stackArenaDiscountMask = uint16(1<<15 - 1)
@@ -486,11 +505,11 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 				h.flags.set(hintUsesBulkMem | hintTouchesMemory)
 			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
 				if directGCResolverInstruction(m, gcTypeLayouts, in.Kind, in.Index, in.Index2) {
-					h.gcResolverSites++
+					h.addGCResolverSite()
 				}
 			case wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen:
 				if directGCResolverInstruction(m, gcTypeLayouts, in.Kind, in.Index, in.Index2) {
-					h.gcResolverSites++
+					h.addGCResolverSite()
 				}
 			case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
 				wasm.InstrTableGrow, wasm.InstrTableFill:
@@ -937,7 +956,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				case wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet,
 					wasm.InstrArrayGet, wasm.InstrArrayGetS, wasm.InstrArrayGetU, wasm.InstrArraySet, wasm.InstrArrayLen:
 					if directGCResolverInstruction(s.m, s.gcTypeLayouts, imm.Kind, imm.Index, imm.Index2) {
-						s.h.gcResolverSites++
+						s.h.addGCResolverSite()
 					}
 				}
 			}
@@ -1018,6 +1037,7 @@ func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline bool) {
 	if local < 0 || local >= len(s.moduleHints) {
 		return
 	}
+	s.h.addCallRelocSite()
 	target := &s.moduleHints[local]
 	if !inline {
 		target.inlineCallSites |= 0x80

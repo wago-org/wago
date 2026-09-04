@@ -645,6 +645,7 @@ type scratch struct {
 	policy            CodegenPolicy
 	classifier        wasm.ModuleInstructionClassifier
 	fnState           fn // per-function compiler state, reused across the module
+	relocs            []callReloc
 
 	// Per-function jump-site accumulators. Held here (not on fn) so their backing
 	// arrays are retained and reused across every function in the module instead of
@@ -968,18 +969,20 @@ type workerState struct {
 	scratch      *scratch
 	scratchStats shared.WorkerScratchStats
 	arena        []byte
+	relocs       []callReloc
 	literals     []uint64
 	usesBMI2     bool
 }
 
 // funcResult is one independently compiled local function. worker/start/end
-// identify its owned bytes after the worker pool joins. Relocations are written
-// directly to the module-owned per-function slice because each worker owns one
-// function index at a time.
+// identify its owned bytes after the worker pool joins. relocStart/relocEnd name
+// the function's records in its worker's append-only relocation arena.
 type funcResult struct {
 	worker       uint32
 	start        uint32
 	end          uint32
+	relocStart   uint32
+	relocEnd     uint32
 	internalOff  uint32
 	bodyBytes    uint32
 	layoutFlags  uint8
@@ -1375,6 +1378,13 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
+	relocCap := 0
+	for i := range allHints {
+		relocCap += int(allHints[i].callRelocSiteCount())
+	}
+	if relocCap < minPreallocatedCallRelocs {
+		relocCap = 0
+	}
 	var hintNanos uint64
 	if !hintStart.IsZero() {
 		hintNanos = uint64(time.Since(hintStart))
@@ -1382,7 +1392,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	immutableTables := computeImmutableTableHints(m, allHints, policy)
 	resolverSites := 0
 	for i := range allHints {
-		resolverSites += int(allHints[i].gcResolverSites)
+		resolverSites += int(allHints[i].gcResolverSiteCount())
 	}
 	// A one-entry address certificate can collapse a single function's repeated
 	// candidate sites to one real resolution. Compile that narrow shape inline
@@ -1506,6 +1516,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 		}
 		var trapBodyCluster sharedTrapBodyClusterAMD64
+		relocArena := make([]callReloc, 0, relocCap)
 		for i := range m.Code {
 			var st *CodegenStats
 			if ms != nil {
@@ -1575,7 +1586,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			if sc.directPrepared {
 				directPrepared = markDirectPrepared(directPrepared, n, i)
 			}
-			relocs[i] = rl
+			relocStart := len(relocArena)
+			relocArena = append(relocArena, rl...)
+			relocs[i] = relocArena[relocStart:]
 			if literalOffsets != nil {
 				literalWords = append(literalWords, sc.fnState.literalWords...)
 				if uint64(len(literalWords)) > math.MaxUint32 {
@@ -1760,14 +1773,20 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					work.failures.Record(i, fmt.Errorf("amd64: parallel function metadata exceeds 32-bit range"))
 					continue
 				}
-				relocs[i] = rl
+				relocStart := len(ws.relocs)
+				compactRelocStart, compactRelocEnd, relocOK := compactFuncResultRange(relocStart, len(rl))
+				if !relocOK {
+					work.failures.Record(i, fmt.Errorf("amd64: parallel worker relocations exceed 32-bit range"))
+					continue
+				}
+				ws.relocs = append(ws.relocs, rl...)
 				ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
 				ws.arena = append(ws.arena, fnCode...)
 				flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
 					boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
 					boolFlag(ws.scratch.directPrepared, layoutDirectPrepared)
 				ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
-				result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, internalOff: compactInternalOff, bodyBytes: bodyBytes, layoutFlags: flags, literalStart: compactLiteralStart, literalEnd: compactLiteralEnd}
+				result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, internalOff: compactInternalOff, bodyBytes: bodyBytes, layoutFlags: flags, literalStart: compactLiteralStart, literalEnd: compactLiteralEnd}
 				if policy.CompactNative {
 					if policy.EnabledOption(optSharedAdapters) {
 						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
@@ -1839,6 +1858,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			literalOffsets[i+1] = uint32(len(literalWords))
 		}
 		fnCode := states[int(r.worker)].arena[int(r.start):int(r.end)]
+		relocs[i] = states[int(r.worker)].relocs[int(r.relocStart):int(r.relocEnd)]
 		if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && policy.CompactNative {
 			var st *CodegenStats
 			if ms != nil {
@@ -2475,6 +2495,10 @@ type regExhausted struct{}
 // pinning off) from a genuine compile error (propagate).
 var errRegExhausted = errors.New("amd64: no register available to spill")
 
+// Below this count, optional inlining can erase the only relocation and an
+// eager arena reserve crosses too few target size classes to repay itself.
+const minPreallocatedCallRelocs = 8
+
 // compileFunc compiles one function, retrying with local pinning disabled if the
 // first (pinned) attempt exhausts the register file. Pinning is a pure speed
 // optimization, so the unpinned recompile is always correct.
@@ -2579,6 +2603,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, localGCRefFacts, locals, globalReg := f.localType, f.localSlot, f.localGCRefFacts, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), gcSharedResolver: hints.flags.has(hintGCSharedResolver), classifier: sc.classifier}
+	f.relocs = sc.relocs[:0]
+	if count := int(hints.callRelocSiteCount()); count >= minPreallocatedCallRelocs && cap(f.relocs) < count {
+		f.relocs = make([]callReloc, 0, count)
+	}
 	f.v128Pool = f.v128Pool[:0]
 	f.poolSites = f.poolSites[:0]
 	f.literalWords = f.literalWords[:0]
@@ -2586,6 +2614,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient
+		sc.relocs = f.relocs
 	}()
 	f.syncHostCalls = syncHostCalls
 	f.syncHostSlots = syncHostSlots

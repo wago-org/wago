@@ -516,6 +516,7 @@ type scratch struct {
 	fnState        fn       // per-function compiler state, reused across the module
 	classifier     wasm.ModuleInstructionClassifier
 	directPrepared bool
+	relocs         []callReloc
 
 	retSites                []int
 	ctrl                    []ctrlFrame
@@ -772,16 +773,18 @@ type workerState struct {
 	scratch      *scratch
 	scratchStats shared.WorkerScratchStats
 	arena        []byte
+	relocs       []callReloc
 }
 
 // funcResult is one independently compiled local function. worker/start/end
-// identify its owned bytes after the worker pool joins. Relocations are written
-// directly to the module-owned per-function slice because each worker owns one
-// function index at a time.
+// identify its owned bytes after the worker pool joins. relocStart/relocEnd name
+// the function's records in its worker's append-only relocation arena.
 type funcResult struct {
 	worker      uint32
 	start       uint32
 	end         uint32
+	relocStart  uint32
+	relocEnd    uint32
 	bodyBytes   uint32
 	layoutFlags uint8
 	internalOff uint32
@@ -1180,6 +1183,13 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
 	}
+	relocCap := 0
+	for i := range allHints {
+		relocCap += int(allHints[i].callRelocSites)
+	}
+	if relocCap < minPreallocatedCallRelocs {
+		relocCap = 0
+	}
 	var hintNanos uint64
 	if !hintStart.IsZero() {
 		hintNanos = uint64(time.Since(hintStart))
@@ -1285,6 +1295,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 		}
 		var trapBodyCluster sharedTrapBodyCluster
+		relocArena := make([]callReloc, 0, relocCap)
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 		for i := range m.Code {
 			var st *CodegenStats
@@ -1341,7 +1352,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			if sc.directPrepared {
 				directPrepared = markDirectPrepared(directPrepared, n, i)
 			}
-			relocs[i] = rl
+			relocStart := len(relocArena)
+			relocArena = append(relocArena, rl...)
+			relocs[i] = relocArena[relocStart:]
 			if !codeBuffer.CommitTail(fnCode) {
 				if err := codeBuffer.Append(fnCode); err != nil {
 					return nil, fmt.Errorf("arm64: grow code image: %w", err)
@@ -1462,10 +1475,16 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					work.failures.Record(i, fmt.Errorf("arm64: parallel function metadata exceeds 32-bit range"))
 					continue
 				}
-				relocs[i] = rl
+				relocStart := len(ws.relocs)
+				compactRelocStart, compactRelocEnd, relocOK := compactFuncResultRange(relocStart, len(rl))
+				if !relocOK {
+					work.failures.Record(i, fmt.Errorf("arm64: parallel worker relocations exceed 32-bit range"))
+					continue
+				}
+				ws.relocs = append(ws.relocs, rl...)
 				layoutFlags |= boolFlag(ws.scratch.directPrepared, layoutDirectPrepared)
 				ws.arena = append(ws.arena, fnCode...)
-				result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, bodyBytes: bodyBytes, layoutFlags: layoutFlags, internalOff: compactInternalOff}
+				result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, bodyBytes: bodyBytes, layoutFlags: layoutFlags, internalOff: compactInternalOff}
 				if policy.CompactNative {
 					if policy.EnabledOption(optSharedAdapters) {
 						result.adapter = ws.scratch.fnState.sharedAdapterInfo()
@@ -1522,6 +1541,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			adapters = append(adapters, r.adapter)
 		}
 		fnCode := states[int(r.worker)].arena[int(r.start):int(r.end)]
+		relocs[i] = states[int(r.worker)].relocs[int(r.relocStart):int(r.relocEnd)]
 		if r.layoutFlags&layoutHostAdapter != 0 {
 			trapBodyCluster.reset()
 		}
@@ -2107,15 +2127,18 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
 	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleePreservesPins: calleePreservesPins, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow)}
-	// Small call sets already grow into tiny exact size classes, while an inline
-	// may erase their only relocation. Reserve only once geometric growth would
-	// require several backing arrays; append remains the correctness fallback.
-	if hints.callRelocSites >= minPreallocatedCallRelocs {
+	// Relocations are transient until the module owner copies them into its flat
+	// arena. Reuse one function buffer instead of allocating one backing per
+	// caller; larger decoded call counts can still reserve the exact target-cost
+	// threshold without retaining one buffer per function.
+	f.relocs = sc.relocs[:0]
+	if hints.callRelocSites >= minPreallocatedCallRelocs && cap(f.relocs) < int(hints.callRelocSites) {
 		f.relocs = make([]callReloc, 0, hints.callRelocSites)
 	}
 	defer func() {
 		sc.ctrl = f.ctrl
 		sc.transient = f.transient
+		sc.relocs = f.relocs
 	}()
 	f.storeForwardOK = policy.EnabledOption(optStoreForward) && len(c.BodyBytes) <= 256 && nLocals <= 8
 	f.syncHostCalls = syncHostCalls
