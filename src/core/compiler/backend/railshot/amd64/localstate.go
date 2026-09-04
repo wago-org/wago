@@ -297,18 +297,28 @@ func (f *fn) newLocStateBuf() []locState {
 		f.lsPool[i] = f.lsPool[last]
 		f.lsPool[last] = nil
 		f.lsPool = f.lsPool[:last]
+		f.lsPoolBytes -= cap(b)
 		return b[:n]
 	}
 	if last := len(f.lsPool) - 1; last >= 0 {
+		b := f.lsPool[last]
 		f.lsPool[last] = nil
 		f.lsPool = f.lsPool[:last]
+		f.lsPoolBytes -= cap(b)
 	}
 	return make([]locState, n)
 }
 
 func (f *fn) freeLocStateBuf(b []locState) {
-	if n := len(f.pinnedLocals); cap(b) >= n && n > 0 && len(f.lsPool) < maxRetainedLocStateBufs {
+	if n := len(f.pinnedLocals); cap(b) >= n && n > 0 && len(f.lsPool) < maxRetainedLocStateBufs && f.lsPoolBytes+cap(b) <= maxRetainedLocStateBytes {
+		if len(f.lsPool) == cap(f.lsPool) {
+			newCap := min(max(16, 2*cap(f.lsPool)), maxRetainedLocStateBufs)
+			pool := make([][]locState, len(f.lsPool), newCap)
+			copy(pool, f.lsPool)
+			f.lsPool = pool
+		}
 		f.lsPool = append(f.lsPool, b[:cap(b)])
+		f.lsPoolBytes += cap(b)
 	}
 }
 

@@ -251,6 +251,35 @@ func TestLocStatePoolRetentionIsBoundedArm64(t *testing.T) {
 	if got := len(f.lsPool); got != maxRetainedLocStateBufs {
 		t.Fatalf("retained local-state buffers = %d, want %d", got, maxRetainedLocStateBufs)
 	}
+	if got := f.lsPoolBytes; got != maxRetainedLocStateBufs {
+		t.Fatalf("retained local-state bytes = %d, want %d", got, maxRetainedLocStateBufs)
+	}
+	if got := cap(f.lsPool); got != maxRetainedLocStateBufs {
+		t.Fatalf("retained local-state header capacity = %d, want %d", got, maxRetainedLocStateBufs)
+	}
+
+	f.lsPool = nil
+	f.lsPoolBytes = 0
+	f.freeLocStateBuf(make(packedLocStates, 1, maxRetainedLocStateBytes))
+	f.freeLocStateBuf(make(packedLocStates, 1))
+	if got := len(f.lsPool); got != 1 {
+		t.Fatalf("payload-bounded local-state buffers = %d, want 1", got)
+	}
+	if got := f.lsPoolBytes; got != maxRetainedLocStateBytes {
+		t.Fatalf("payload-bounded local-state bytes = %d, want %d", got, maxRetainedLocStateBytes)
+	}
+	_ = f.newLocStateBuf()
+	if f.lsPoolBytes != 0 {
+		t.Fatalf("local-state bytes after reuse = %d, want 0", f.lsPoolBytes)
+	}
+
+	f.nLocals = 8
+	f.lsPool = []packedLocStates{make(packedLocStates, 1)}
+	f.lsPoolBytes = 1
+	_ = f.newLocStateBuf()
+	if f.lsPoolBytes != 0 {
+		t.Fatalf("local-state bytes after undersized eviction = %d, want 0", f.lsPoolBytes)
+	}
 }
 
 func TestEndSitePoolRetentionIsBoundedArm64(t *testing.T) {

@@ -383,6 +383,7 @@ func (f *fn) opt(option optimization.Option) bool {
 // and lifetime a single assignment instead of a list of parallel fields.
 type transient struct {
 	lsPool        []packedLocStates
+	lsPoolBytes   int
 	endsPool      [][]uint32
 	tmpRoots      []*elem
 	tmpTypes      []machineType
@@ -776,10 +777,15 @@ const maxHintedControlFrames = 64
 // receives them; append remains the correctness fallback.
 const maxWorkerInitialControlFrames = 8
 
-// A live control frame can own entry and branch snapshots. Retain enough
-// buffers for the bounded ordinary-worker depth, but do not let an exceptional
-// function permanently grow this pointer-rich pool.
-const maxRetainedLocStateBufs = 2 * maxWorkerInitialControlFrames
+// A live control frame can own entry and branch snapshots. Branch tables can
+// need thousands of tiny snapshots, so bound their pointer-rich headers and
+// payload independently instead of forcing repeated allocation behind a small
+// entry-count limit. Explicit slice growth keeps the backing at or below the
+// header ceiling, so the two limits retain at most 224 KiB per worker.
+const (
+	maxRetainedLocStateBufs  = 4096
+	maxRetainedLocStateBytes = 128 << 10
+)
 
 // Forward-edge overflow starts only after the inline sites. Bound both the
 // number and size of recycled buffers so a deeply branched function cannot set

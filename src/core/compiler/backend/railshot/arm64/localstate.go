@@ -319,21 +319,31 @@ func (f *fn) newLocStateBuf() packedLocStates {
 		f.lsPool[i] = f.lsPool[last]
 		f.lsPool[last] = nil
 		f.lsPool = f.lsPool[:last]
+		f.lsPoolBytes -= cap(b)
 		return b[:n]
 	}
 	// No retained buffer is large enough. Drop one undersized entry before
 	// replacing it so the module-wide pool is bounded by maximum simultaneous
 	// control depth, not by the number of different local counts encountered.
 	if last := len(f.lsPool) - 1; last >= 0 {
+		b := f.lsPool[last]
 		f.lsPool[last] = nil
 		f.lsPool = f.lsPool[:last]
+		f.lsPoolBytes -= cap(b)
 	}
 	return make(packedLocStates, n)
 }
 
 func (f *fn) freeLocStateBuf(b packedLocStates) {
-	if cap(b) >= packedLocStateBytes(f.nLocals) && f.nLocals > 0 && len(f.lsPool) < maxRetainedLocStateBufs {
+	if cap(b) >= packedLocStateBytes(f.nLocals) && f.nLocals > 0 && len(f.lsPool) < maxRetainedLocStateBufs && f.lsPoolBytes+cap(b) <= maxRetainedLocStateBytes {
+		if len(f.lsPool) == cap(f.lsPool) {
+			newCap := min(max(16, 2*cap(f.lsPool)), maxRetainedLocStateBufs)
+			pool := make([]packedLocStates, len(f.lsPool), newCap)
+			copy(pool, f.lsPool)
+			f.lsPool = pool
+		}
 		f.lsPool = append(f.lsPool, b[:cap(b)])
+		f.lsPoolBytes += cap(b)
 	}
 }
 
