@@ -951,6 +951,11 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		// The final two allocatable GPRs map to RBP/R12. Reserve them for one
 		// hot global's write-through value and immutable descriptor.
 		defaultGreedy.Linear.GPRs = nativeAMD64CachedGlobalValueRegister
+	} else if nativeAMD64CachesGlobalDescriptors(machine) {
+		// R12 retains the immutable global-descriptor array. Functions containing
+		// calls cannot safely cache a mutable value, but still avoid reloading the
+		// array from the instance context at every global access.
+		defaultGreedy.Linear.GPRs = nativeAMD64GlobalsRegister
 	} else if cachesAMD64MemoryBound {
 		// R12 retains the stable memory-0 upper bound for the hottest access
 		// width/offset, leaving the first nine GPRs available to allocation.
@@ -1230,9 +1235,13 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if nativeARM64PreparedIndirect(stack, machine, allocation) {
 		contract.Class = railmach.ABIPreparedIndirect
 	}
+	if nativeAMD64CachesGlobalDescriptors(machine) {
+		contract.GPRClobbers |= uint64(1) << nativeAMD64GlobalsRegister
+		contract.CalleeGPRs |= uint64(1) << nativeAMD64GlobalsRegister
+	}
 	if nativeAMD64CachesGlobals(machine) {
-		contract.GPRClobbers |= uint64(1)<<nativeAMD64GlobalsRegister | uint64(1)<<nativeAMD64CachedGlobalValueRegister
-		contract.CalleeGPRs |= uint64(1)<<nativeAMD64GlobalsRegister | uint64(1)<<nativeAMD64CachedGlobalValueRegister
+		contract.GPRClobbers |= uint64(1) << nativeAMD64CachedGlobalValueRegister
+		contract.CalleeGPRs |= uint64(1) << nativeAMD64CachedGlobalValueRegister
 	}
 	if cachesAMD64MemoryBound {
 		contract.GPRClobbers |= uint64(1) << nativeAMD64MemoryBoundRegister
@@ -1511,7 +1520,7 @@ const (
 func (p *nativeBackendPlanner) nativeAMD64CachedMemoryBound(stack *railssa.StackFunc, machine *railmach.Func, emission *railssa.EmissionPlan, pressure *railssa.PressurePlan) (uint64, bool) {
 	// Large functions use regional allocation, whose bounded reload fragments
 	// are deliberately more valuable than one globally reserved bound register.
-	if stack == nil || machine == nil || pressure == nil || p.signalsBounds || machine.Target != railmach.TargetAMD64 || nativeAMD64CachesGlobals(machine) || stack.MemoryMinBytes == 0 || len(machine.Insts) >= 512 {
+	if stack == nil || machine == nil || pressure == nil || p.signalsBounds || machine.Target != railmach.TargetAMD64 || nativeAMD64CachesGlobalDescriptors(machine) || stack.MemoryMinBytes == 0 || len(machine.Insts) >= 512 {
 		return 0, false
 	}
 	for _, instruction := range machine.Insts {
@@ -1576,6 +1585,20 @@ func (p *nativeBackendPlanner) nativeAMD64CachedMemoryBound(stack *railssa.Stack
 func nativeAMD64CachesGlobals(machine *railmach.Func) bool {
 	_, ok := nativeAMD64CachedGlobal(machine)
 	return ok
+}
+
+func nativeAMD64CachesGlobalDescriptors(machine *railmach.Func) bool {
+	if machine == nil || machine.Target != railmach.TargetAMD64 {
+		return false
+	}
+	uses, hasCall := 0, false
+	for _, instruction := range machine.Insts {
+		hasCall = hasCall || railmach.IsCall(instruction.Op)
+		if instruction.Op == wasm.InstrGlobalGet || instruction.Op == wasm.InstrGlobalSet {
+			uses++
+		}
+	}
+	return nativeAMD64CachesGlobals(machine) || hasCall && uses >= 4
 }
 
 func nativeAMD64CachedGlobal(machine *railmach.Func) (uint32, bool) {

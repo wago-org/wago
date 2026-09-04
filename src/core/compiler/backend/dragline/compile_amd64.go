@@ -921,6 +921,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		}
 	}
 	cachedGlobalIndex, cachesGlobal := nativeAMD64CachedGlobal(plan.Machine)
+	cachesGlobalDescriptors := nativeAMD64CachesGlobalDescriptors(plan.Machine) && !cachesGlobal
 	var currentOperands []railmach.Operand
 	var currentResult railmach.VReg
 	var currentPosition uint32
@@ -973,6 +974,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		}
 	}
 	var a amd64.Asm
+	reloadGlobalDescriptors := func() {
+		if cachesGlobalDescriptors {
+			a.Load64(amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister], amd64.RBX, -int32(abi.GlobalsPtrOffset))
+		}
+	}
 	floatConstantPatches := make([]amd64FloatConstantPatch, 0, 4)
 	materializeFloatConstant := func(dst amd64.Reg, bits uint64, f64 bool) {
 		if bits == 0 {
@@ -1044,6 +1050,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			calleeSaveOffset += 8
 		}
 	}
+	reloadGlobalDescriptors()
 	if cachesGlobal {
 		a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
 		a.Load64(amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister], amd64.R10, int32(cachedGlobalIndex)*8)
@@ -1516,6 +1523,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				if err := emitAMD64RailMachRoots(&a, plan, instruction.Source, currentPosition, true); err != nil {
 					return nil, 0, true, err
 				}
+				reloadGlobalDescriptors()
 				continue
 			}
 			if instruction.Op == wasm.InstrStructGet || instruction.Op == wasm.InstrStructGetS || instruction.Op == wasm.InstrStructGetU {
@@ -1961,6 +1969,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				if err := emitAMD64RailMachRoots(&a, plan, instruction.Source, currentPosition, true); err != nil {
 					return nil, 0, true, err
 				}
+				reloadGlobalDescriptors()
 				continue
 			}
 			if instruction.Op == wasm.InstrCall {
@@ -2063,6 +2072,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				if err := emitAMD64RailMachRoots(&a, plan, instruction.Source, currentPosition, true); err != nil {
 					return nil, 0, true, err
 				}
+				reloadGlobalDescriptors()
 				continue
 			}
 			if instruction.Op == wasm.InstrMemoryCopy || instruction.Op == wasm.InstrMemoryFill {
@@ -2131,7 +2141,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					continue
 				}
 				descriptor := amd64.R10
-				a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
+				if cachesGlobalDescriptors {
+					a.MovReg64(amd64.R10, amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister])
+				} else {
+					a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
+				}
 				a.Load64(amd64.R10, amd64.R10, int32(uint32(instruction.Aux))*8)
 				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 					a.Load64(amd64.R11, descriptor, 0)
@@ -2204,7 +2218,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				if cachesGlobal && uint32(instruction.Aux) == cachedGlobalIndex {
 					descriptor = amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister]
 				} else {
-					a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
+					if cachesGlobalDescriptors {
+						a.MovReg64(amd64.R10, amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister])
+					} else {
+						a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
+					}
 					a.Load64(amd64.R10, amd64.R10, int32(uint32(instruction.Aux))*8)
 				}
 				src := lhs

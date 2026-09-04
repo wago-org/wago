@@ -106,12 +106,21 @@ func TestNativeAMD64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
 	machine := &railmach.Func{Target: railmach.TargetAMD64, Insts: []railmach.Inst{
 		{Op: wasm.InstrGlobalGet}, {Op: wasm.InstrGlobalSet}, {Op: wasm.InstrGlobalGet},
 	}, Blocks: []railmach.Block{{InstCount: 3, Weight: 1}}}
+	if nativeAMD64CachesGlobalDescriptors(machine) {
+		t.Fatal("three global accesses enabled the AMD64 descriptor-array cache")
+	}
 	if nativeAMD64CachesGlobals(machine) {
 		t.Fatal("cold global accesses enabled the AMD64 descriptor cache")
 	}
 	machine.Insts = append(machine.Insts, railmach.Inst{Op: wasm.InstrGlobalGet})
 	machine.Blocks[0].InstCount = 4
+	if nativeAMD64CachesGlobalDescriptors(machine) {
+		t.Fatal("four cold global accesses enabled the AMD64 descriptor-array cache")
+	}
 	machine.Blocks[0].Weight = 4
+	if !nativeAMD64CachesGlobalDescriptors(machine) {
+		t.Fatal("four global accesses did not enable the AMD64 descriptor-array cache")
+	}
 	if index, ok := nativeAMD64CachedGlobal(machine); !ok || index != 0 {
 		t.Fatalf("hot cached global = %d, %t; want 0, true", index, ok)
 	}
@@ -119,7 +128,13 @@ func TestNativeAMD64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
 	if nativeAMD64CachesGlobals(machine) {
 		t.Fatal("call-crossing function enabled the AMD64 descriptor cache")
 	}
+	if !nativeAMD64CachesGlobalDescriptors(machine) {
+		t.Fatal("call-crossing function disabled the AMD64 descriptor-array cache")
+	}
 	machine.Target = railmach.TargetARM64
+	if nativeAMD64CachesGlobalDescriptors(machine) {
+		t.Fatal("ARM64 function enabled the AMD64 descriptor-array cache")
+	}
 	if nativeAMD64CachesGlobals(machine) {
 		t.Fatal("ARM64 function enabled the AMD64 descriptor cache")
 	}
