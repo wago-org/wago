@@ -48,7 +48,7 @@ func (f *fn) allocReg(avoid regMask) Reg {
 	if r == regNone {
 		// Recoverable under extreme register pressure: compileFunc catches this and
 		// recompiles the function without local pinning, freeing the whole file.
-		panic(regExhausted{})
+		panic(regExhausted{class: "GP"})
 	}
 	return r
 }

@@ -2154,7 +2154,7 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 
 // regExhausted is the internal sentinel raised when a lowering step blocks the
 // whole register file after every spillable value has been homed.
-type regExhausted struct{}
+type regExhausted struct{ class string }
 
 // Below this count, an optionally inlined call can erase the only relocation
 // and ordinary append growth crosses too few size classes to repay a reserve.
@@ -2189,8 +2189,8 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTable immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, gcFrameRoots *shared.GCFrameRootPlan, customInstructions map[uint32]railcore.CustomInstruction, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, calleePreservesPins []bool, policy CodegenPolicy, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			if _, ok := r.(regExhausted); ok {
-				err = fmt.Errorf("arm64: no register available after applying the transient register floor")
+			if exhausted, ok := r.(regExhausted); ok {
+				err = fmt.Errorf("arm64: no %s register available after applying the transient register floor", exhausted.class)
 				return
 			}
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {

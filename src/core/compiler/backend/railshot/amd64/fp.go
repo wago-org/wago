@@ -75,7 +75,7 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 	if r := f.relinquishPinnedFLocal(avoid); r != regNone {
 		return r
 	}
-	panic(regExhausted{})
+	panic(regExhausted{class: "FP/vector"})
 }
 
 func (f *fn) relinquishPinnedFLocal(avoid regMask) Reg {

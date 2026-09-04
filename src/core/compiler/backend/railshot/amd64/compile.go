@@ -2539,7 +2539,7 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 
 // regExhausted is the internal sentinel raised when a lowering step blocks the
 // whole register file even after spillable values and optional pins are homed.
-type regExhausted struct{}
+type regExhausted struct{ class string }
 
 // Below this count, optional inlining can erase the only relocation and an
 // eager arena reserve crosses too few target size classes to repay itself.
@@ -2582,8 +2582,8 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, pinLocals bool, inlineTargets inlineTargetTable, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			if _, ok := r.(regExhausted); ok {
-				err = fmt.Errorf("amd64: no register available after spilling optional pins")
+			if exhausted, ok := r.(regExhausted); ok {
+				err = fmt.Errorf("amd64: no %s register available after spilling optional pins", exhausted.class)
 				return
 			}
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
