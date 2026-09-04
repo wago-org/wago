@@ -30,13 +30,14 @@ type execEntry struct {
 }
 
 type corpusModule struct {
-	File     string      `json:"file"`
-	Path     string      `json:"path"`     // optional: reference a wasm in place (relative to bench/)
-	Category string      `json:"category"` // micro/loop/.../real/real-large
-	Desc     string      `json:"desc"`
-	Stages   []string    `json:"stages"` // optional: stages this module supports (default: all)
-	Init     string      `json:"init"`   // optional: export to call once after instantiate, before exec (e.g. AssemblyScript's _initialize; wago has no start section)
-	Exec     []execEntry `json:"exec"`
+	File         string      `json:"file"`
+	Path         string      `json:"path"`     // optional: reference a wasm in place (relative to bench/)
+	Category     string      `json:"category"` // micro/loop/.../real/real-large
+	Desc         string      `json:"desc"`
+	Stages       []string    `json:"stages"` // optional: stages this module supports (default: all)
+	Init         string      `json:"init"`   // optional: export to call once after instantiate, before exec (e.g. AssemblyScript's _initialize; wago has no start section)
+	Exec         []execEntry `json:"exec"`
+	SemanticExec []string    `json:"semantic_exec"` // exact case IDs from tests/corpora/MANIFEST.json
 
 	bytes []byte
 	avail bool // false when an optional referenced path is missing
@@ -392,7 +393,7 @@ func BenchmarkExec(b *testing.B) {
 
 func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 	for _, m := range loadCorpus(b) {
-		if len(m.Exec) == 0 || !m.supports("Exec") {
+		if (len(m.Exec) == 0 && len(m.SemanticExec) == 0) || !m.supports("Exec") {
 			continue
 		}
 		c, err := cfg.Compile(m.bytes)
@@ -427,6 +428,27 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					if _, err := fn.Invoke(args...); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+		for _, semantic := range semanticExecCases(b, m) {
+			if err := runSemanticOracle(semantic); err != nil {
+				b.Fatalf("%s oracle: %v", semantic.ID, err)
+			}
+			prepared, err := prepareWagoSemanticExec(in, semantic)
+			if err != nil {
+				b.Fatalf("%s prepare: %v", semantic.ID, err)
+			}
+			b.Run(m.name()+"."+semantic.Invoke.Export, func(b *testing.B) {
+				b.ReportAllocs()
+				if err := prepared.invoke(); err != nil {
+					b.Fatalf("warmup invoke: %v", err)
+				}
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					if err := prepared.invoke(); err != nil {
 						b.Fatal(err)
 					}
 				}

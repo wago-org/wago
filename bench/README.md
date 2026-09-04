@@ -90,10 +90,11 @@ checked in so the suite needs no toolchain at run time:
   zlib, and Zstandard artifacts under `../tests/corpora`. The benchmark manifest
   references these files in place so performance measurements and the exact
   execution-oracle suite cannot drift onto different binaries. They participate
-  in decode, validate, full compile, and instantiate measurements; run
-  `make test-semantic-corpus` for their result checks. LZ4 remains in the
-  pipeline measurements while its known execution discrepancy is recorded by
-  the semantic manifest.
+  in decode, validate, full compile, instantiate, and paired Wago/wazero exec
+  measurements. The exec adapter reads the authoritative inputs and vectors
+  directly from `tests/corpora/MANIFEST.json`, and verifies each exact oracle
+  before timing it. Run `make test-semantic-corpus` for their standalone result
+  checks. LZ4 compression and decompression are enabled in both suites.
 
   The `real-large` tier is whole real-world programs — the `wasm3` interpreter,
   the `lua` (Lua 5.4) interpreter and the `sqlite3` (SQLite 3.46) engine committed

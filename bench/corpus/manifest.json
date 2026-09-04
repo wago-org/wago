@@ -38,12 +38,12 @@
     { "file": "blake-as-simd.wasm", "category": "real-simd", "desc": "AssemblyScript blake-as SIMD: BLAKE3 hash of a 4 KiB buffer", "init": "_initialize", "exec": [{ "export": "hashN", "args": [100] }] },
     { "file": "utf-as-simd.wasm", "category": "real-simd", "desc": "AssemblyScript utf-as SIMD: UTF-8 length and validation of mixed text", "init": "_initialize", "exec": [{ "export": "convertN", "args": [200] }, { "export": "validateN", "args": [200] }] },
 
-    { "path": "../tests/corpora/coremark/coremark.wasm", "category": "semantic", "desc": "CoreMark 1.0 integer, list, matrix, and state-machine workload; exact execution oracle lives in tests/corpora/MANIFEST.json" },
-    { "path": "../tests/corpora/blake3/blake3.wasm", "category": "semantic", "desc": "BLAKE3 reference implementation with published hash, keyed-hash, and key-derivation vectors" },
-    { "path": "../tests/corpora/qoi/qoi.wasm", "category": "semantic", "desc": "QOI image encode/decode with exact byte and pixel oracles" },
-    { "path": "../tests/corpora/lz4/lz4.wasm", "category": "semantic", "desc": "LZ4 compression/decompression artifact retained despite its separately tracked Wago execution issue" },
-    { "path": "../tests/corpora/zlib/zlib.wasm", "category": "semantic", "desc": "zlib inflate workload with an exact output oracle" },
-    { "path": "../tests/corpora/zstd/zstd.wasm", "category": "semantic", "desc": "Zstandard decompression workload with an exact output oracle" },
+    { "path": "../tests/corpora/coremark/coremark.wasm", "category": "semantic", "desc": "CoreMark 1.0 integer, list, matrix, and state-machine workload", "semantic_exec": ["coremark/2k-performance"] },
+    { "path": "../tests/corpora/blake3/blake3.wasm", "category": "semantic", "desc": "BLAKE3 reference implementation with published hash, keyed-hash, and key-derivation vectors", "semantic_exec": ["blake3/hash", "blake3/keyed_hash", "blake3/derive_key"] },
+    { "path": "../tests/corpora/qoi/qoi.wasm", "category": "semantic", "desc": "QOI image encode/decode with exact byte and pixel oracles", "semantic_exec": ["qoi/encode", "qoi/decode"] },
+    { "path": "../tests/corpora/lz4/lz4.wasm", "category": "semantic", "desc": "LZ4 compression/decompression with exact size and byte oracles", "semantic_exec": ["lz4/compress", "lz4/decompress"] },
+    { "path": "../tests/corpora/zlib/zlib.wasm", "category": "semantic", "desc": "zlib inflate workload with an exact output oracle", "semantic_exec": ["zlib/inflate"] },
+    { "path": "../tests/corpora/zstd/zstd.wasm", "category": "semantic", "desc": "Zstandard decompression workload with an exact output oracle", "semantic_exec": ["zstd/decompress"] },
 
     { "file": "lua.wasm",         "category": "real-large",   "desc": "Lua 5.4 interpreter (emscripten build, ~270 KiB); decode+validate+compile (running needs the emscripten JS runtime — SjLj trampolines, resize_heap)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },
     { "file": "sqlite3.wasm",     "category": "real-large",   "desc": "SQLite 3.46 engine (official wasm, ~920 KiB); decode+validate+compile (imports env.memory, so it needs an imported linear memory to instantiate)", "stages": ["Decode", "Validate", "Compile", "CompileFull"] },

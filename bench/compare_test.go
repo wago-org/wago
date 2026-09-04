@@ -88,7 +88,7 @@ func BenchmarkWazeroInstantiate(b *testing.B) {
 func BenchmarkWazeroExec(b *testing.B) {
 	ctx := context.Background()
 	for _, m := range loadCorpus(b) {
-		if len(m.Exec) == 0 || !m.avail {
+		if (len(m.Exec) == 0 && len(m.SemanticExec) == 0) || !m.avail {
 			continue
 		}
 		r := wazero.NewRuntimeWithConfig(ctx, wazero.NewRuntimeConfigCompiler())
@@ -137,6 +137,25 @@ func BenchmarkWazeroExec(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					if _, err := fn.Call(ctx, args...); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+		for _, semantic := range semanticExecCases(b, m) {
+			prepared, err := prepareWazeroSemanticExec(ctx, mod, semantic)
+			if err != nil {
+				r.Close(ctx)
+				b.Fatalf("%s prepare: %v", semantic.ID, err)
+			}
+			b.Run(m.name()+"."+semantic.Invoke.Export, func(b *testing.B) {
+				b.ReportAllocs()
+				if err := prepared.invoke(ctx); err != nil {
+					b.Fatalf("warmup call: %v", err)
+				}
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					if err := prepared.invoke(ctx); err != nil {
 						b.Fatal(err)
 					}
 				}

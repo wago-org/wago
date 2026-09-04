@@ -49,6 +49,21 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       metrics[`Instantiate/${name}`] = { ns: 30, bytes: 3, allocs: 1 };
       metrics[`WazeroInstantiate/${name}`] = { ns: 60, bytes: 6, allocs: 2 };
     }
+    for (const name of [
+      "coremark.coremark_run",
+      "blake3.blake3_hash",
+      "blake3.blake3_keyed_hash",
+      "blake3.blake3_derive_key",
+      "qoi.qoi_encode_run",
+      "qoi.qoi_decode_run",
+      "lz4.lz4_compress_run",
+      "lz4.lz4_decompress_run",
+      "zlib.zlib_inflate_run",
+      "zstd.zstd_decompress_run",
+    ]) {
+      metrics[`Exec/${name}`] = { ns: 40 };
+      metrics[`WazeroExec/${name}`] = { ns: 80 };
+    }
     const general = {
       compile: [
         { wasm_path: "/tmp/tiny.wasm", runs: [
@@ -137,10 +152,12 @@ function assertDOMContract(html) {
   assert.doesNotMatch(html, /Go allocs|allocation objects/i);
   assert.equal(matches(html, /data-engine-toggles/g), 0);
   assert.equal(matches(html, /data-engine-toggle=/g), 0);
-  assert.equal(matches(html, /data-engine-row/g), 62);
-  assert.equal(matches(html, /class="vs__delta /g), 62);
+  assert.equal(matches(html, /data-engine-row/g), 82);
+  assert.equal(matches(html, /class="vs__delta /g), 82);
   assert.equal(matches(html, /Semantic corpus — full compile/g), 2);
-  for (const label of ["CoreMark", "BLAKE3", "QOI", "LZ4", "zlib", "Zstandard"]) {
+  assert.equal(matches(html, /Semantic corpus — exact-oracle workloads/g), 2);
+  assert.equal(matches(html, /<span class="vs__label">CoreMark<\/span>/g), 6);
+  for (const label of ["BLAKE3", "QOI", "LZ4", "zlib", "Zstandard"]) {
     assert.equal(matches(html, new RegExp(`<span class="vs__label">${label}</span>`, "g")), 4);
   }
   for (const arch of ["amd64", "arm64"]) {
