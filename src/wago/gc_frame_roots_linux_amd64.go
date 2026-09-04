@@ -8,7 +8,6 @@ import (
 	railamd64 "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/nativeabi"
 )
 
 // newGCFrameRootPlan admits bounded exact native-root call graphs. Direct local
@@ -81,24 +80,16 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRo
 	if err != nil {
 		return reject("exception root maps: %v", err)
 	}
-	var fixedRoots [][]uint32
-	if len(ehMaps) != 0 {
-		fixedRoots = make([][]uint32, len(m.Code))
-	}
-	for i := range ehMaps {
-		if int(ehMaps[i].LocalFunction) >= len(fixedRoots) {
-			return reject("exception root map function %d is out of range", ehMaps[i].LocalFunction)
-		}
-		for _, slot := range ehMaps[i].Slots {
-			if slot.Kind == nativeabi.RootGCRef {
-				fixedRoots[ehMaps[i].LocalFunction] = append(fixedRoots[ehMaps[i].LocalFunction], slot.Offset)
-			}
-		}
-	}
 	modulePlan := &shared.GCModuleFrameRootPlan{Functions: make([]*shared.GCFrameRootPlan, len(m.Code))}
 	var safepointBase uint32
+	ehMapIndex := 0
 functions:
 	for function := range m.Code {
+		var fixedOffsets []uint32
+		if ehMapIndex < len(ehMaps) && ehMaps[ehMapIndex].LocalFunction == uint32(function) {
+			fixedOffsets = gcFrameFixedOffsets(&ehMaps[ehMapIndex])
+			ehMapIndex++
+		}
 		mayCollect := gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, &classifier)
 		if !mayCollect {
 			continue // RootNone: no safepoint can observe this frame.
@@ -109,10 +100,6 @@ functions:
 		ft, ok := m.LocalFuncType(function)
 		if !ok {
 			return reject("function %d has no validated signature", function)
-		}
-		var fixedOffsets []uint32
-		if fixedRoots != nil {
-			fixedOffsets = fixedRoots[function]
 		}
 		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedOffsets}
 		slot, local := 0, uint32(0)
@@ -171,6 +158,9 @@ functions:
 		}
 		modulePlan.Functions[function] = plan
 		safepointBase += uint32(liveMasks.allocationN)
+	}
+	if ehMapIndex != len(ehMaps) {
+		return reject("exception root map function %d is out of range", ehMaps[ehMapIndex].LocalFunction)
 	}
 	return modulePlan
 }

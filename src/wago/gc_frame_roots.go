@@ -5,7 +5,27 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/nativeabi"
 )
+
+func gcFrameFixedOffsets(rootMap *nativeabi.FunctionRootMap) []uint32 {
+	gcRoots := 0
+	for _, slot := range rootMap.Slots {
+		if slot.Kind == nativeabi.RootGCRef {
+			gcRoots++
+		}
+	}
+	if gcRoots == 0 {
+		return nil
+	}
+	offsets := make([]uint32, 0, gcRoots)
+	for _, slot := range rootMap.Slots {
+		if slot.Kind == nativeabi.RootGCRef {
+			offsets = append(offsets, slot.Offset)
+		}
+	}
+	return offsets
+}
 
 // collectorFrameRefType classifies reference types represented by the Wasm GC
 // collector. It deliberately excludes funcref, externref, and exnref. Indexed

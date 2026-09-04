@@ -8,8 +8,26 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/nativeabi"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestGCFrameFixedOffsetsRetainsOnlyCollectorRoots(t *testing.T) {
+	rootMap := nativeabi.FunctionRootMap{Slots: []nativeabi.RootSlot{
+		{Offset: 8, Kind: nativeabi.RootFuncRef},
+		{Offset: 16, Kind: nativeabi.RootGCRef},
+		{Offset: 24, Kind: nativeabi.RootFuncRef},
+		{Offset: 32, Kind: nativeabi.RootGCRef},
+	}}
+	got := gcFrameFixedOffsets(&rootMap)
+	if len(got) != 2 || cap(got) != 2 || got[0] != 16 || got[1] != 32 {
+		t.Fatalf("collector offsets = %v (cap %d), want [16 32] with exact capacity", got, cap(got))
+	}
+	rootMap.Slots = rootMap.Slots[:1]
+	if got := gcFrameFixedOffsets(&rootMap); got != nil {
+		t.Fatalf("non-collector offsets = %v, want nil", got)
+	}
+}
 
 func gcFrameRootNoneModule(tb testing.TB, functions int) *wasm.Module {
 	tb.Helper()
