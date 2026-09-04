@@ -37,10 +37,42 @@ const (
 	TypeI64
 	TypeF32
 	TypeF64
+	TypeV128
 	TypeRef
 )
 
 func (t MachineType) IsWideGPR() bool { return t == TypeI64 || t == TypeRef }
+func (t MachineType) IsVector() bool  { return t == TypeV128 }
+
+// SpillSlotUnits returns the number of eight-byte frame units required by one
+// value. Vector homes occupy an aligned pair so target finalizers can issue one
+// 128-bit load/store without widening or aliasing an adjacent scalar home.
+func (t MachineType) SpillSlotUnits() uint16 {
+	if t == TypeV128 {
+		return 2
+	}
+	return 1
+}
+
+func (t MachineType) SpillAlignment() uint16 {
+	if t == TypeV128 {
+		return 16
+	}
+	return 8
+}
+
+// ValidBank reports the physical register bank required by the machine type.
+// BankFPR denotes the architecture's shared floating-point/vector register bank.
+func (t MachineType) ValidBank(bank Bank) bool {
+	switch t {
+	case TypeI32, TypeI64, TypeRef:
+		return bank == BankGPR
+	case TypeF32, TypeF64, TypeV128:
+		return bank == BankFPR
+	default:
+		return false
+	}
+}
 
 type Bank uint8
 
@@ -499,6 +531,8 @@ func machineType(typ wasm.ValType) (MachineType, Bank, error) {
 		return TypeF32, BankFPR, nil
 	case wasm.F64:
 		return TypeF64, BankFPR, nil
+	case wasm.V128:
+		return TypeV128, BankFPR, nil
 	default:
 		return TypeInvalid, BankInvalid, fmt.Errorf("unsupported value type %s", typ)
 	}
@@ -545,6 +579,12 @@ func Verify(f *Func) error {
 	for id, transfer := range f.Transfers {
 		if transfer.Src == 0 || transfer.Dst == 0 || int(transfer.Edge) >= len(f.Edges) || int(transfer.Src) >= len(f.VRegs) || int(transfer.Dst) >= len(f.VRegs) || f.VRegs[transfer.Src].Type != transfer.Type || f.VRegs[transfer.Dst].Type != transfer.Type || f.Edges[transfer.Edge].From != transfer.From || f.Edges[transfer.Edge].To != transfer.To {
 			return fmt.Errorf("railmach: transfer %d is invalid", id)
+		}
+	}
+	for reg := VReg(1); int(reg) < len(f.VRegs); reg++ {
+		data := f.VRegs[reg]
+		if data.Type == TypeInvalid || !data.Type.ValidBank(data.Bank) {
+			return fmt.Errorf("railmach: vreg %d has invalid type/bank %d/%d", reg, data.Type, data.Bank)
 		}
 	}
 	for _, result := range f.Results {

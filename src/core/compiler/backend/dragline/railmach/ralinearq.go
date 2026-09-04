@@ -57,8 +57,36 @@ type activeInterval struct {
 }
 
 type spillInterval struct {
-	end  uint32
-	slot uint16
+	end   uint32
+	slot  uint16
+	units uint8
+}
+
+func takeFreeSpillUnits(free []uint16, units uint16) (uint16, []uint16, bool) {
+	if len(free) == 0 {
+		return 0, free, false
+	}
+	slices.Sort(free)
+	if units == 1 {
+		return free[0], free[1:], true
+	}
+	for i := 0; i+1 < len(free); i++ {
+		if free[i]&1 == 0 && free[i+1] == free[i]+1 {
+			slot := free[i]
+			copy(free[i:], free[i+2:])
+			return slot, free[:len(free)-2], true
+		}
+	}
+	return 0, free, false
+}
+
+func reserveSpillUnits(next *uint16, units uint16) uint16 {
+	if units == 2 && *next&1 != 0 {
+		*next++
+	}
+	slot := *next
+	*next += units
+	return slot
 }
 
 // linearQScratch retains the dense liveness tables and bounded worklists used
@@ -298,7 +326,9 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 		kept := spillActive[:0]
 		for _, item := range spillActive {
 			if item.end < position {
-				spillFree = append(spillFree, item.slot)
+				for unit := uint8(0); unit < item.units; unit++ {
+					spillFree = append(spillFree, item.slot+uint16(unit))
+				}
 			} else {
 				kept = append(kept, item)
 			}
@@ -307,16 +337,13 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 	}
 	spill := func(interval LiveInterval) Location {
 		expireSpills(interval.Start)
-		var slot uint16
-		if len(spillFree) != 0 {
-			slices.Sort(spillFree)
-			slot = spillFree[0]
-			spillFree = spillFree[1:]
-		} else {
-			slot = nextSpill
-			nextSpill++
+		units := f.VRegs[interval.Reg].Type.SpillSlotUnits()
+		slot, remaining, ok := takeFreeSpillUnits(spillFree, units)
+		spillFree = remaining
+		if !ok {
+			slot = reserveSpillUnits(&nextSpill, units)
 		}
-		spillActive = append(spillActive, spillInterval{end: interval.End, slot: slot})
+		spillActive = append(spillActive, spillInterval{end: interval.End, slot: slot, units: uint8(units)})
 		return Location{Kind: LocationSpill, Bank: interval.Bank, Index: slot}
 	}
 	for _, interval := range reuse.Intervals {
@@ -508,7 +535,8 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 				return fmt.Errorf("railmach: vreg %d has invalid register location %#v", interval.Reg, location)
 			}
 		case LocationSpill:
-			if location.Index >= allocation.SpillSlots {
+			units := f.VRegs[interval.Reg].Type.SpillSlotUnits()
+			if uint32(location.Index)+uint32(units) > uint32(allocation.SpillSlots) || units == 2 && location.Index&1 != 0 {
 				return fmt.Errorf("railmach: vreg %d has invalid spill location %#v", interval.Reg, location)
 			}
 		case LocationRematerialize:
@@ -552,10 +580,14 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 				}
 				registerReg[bank][location.Index], registerEnd[bank][location.Index] = interval.Reg, interval.End
 			case LocationSpill:
-				if previous := spillReg[location.Index]; previous != 0 && interval.Start <= spillEnd[location.Index] {
-					return fmt.Errorf("railmach: overlapping vregs %d and %d share spill %d", previous, interval.Reg, location.Index)
+				units := f.VRegs[interval.Reg].Type.SpillSlotUnits()
+				for unit := uint16(0); unit < units; unit++ {
+					slot := location.Index + unit
+					if previous := spillReg[slot]; previous != 0 && interval.Start <= spillEnd[slot] {
+						return fmt.Errorf("railmach: overlapping vregs %d and %d share spill %d", previous, interval.Reg, slot)
+					}
+					spillReg[slot], spillEnd[slot] = interval.Reg, interval.End
 				}
-				spillReg[location.Index], spillEnd[location.Index] = interval.Reg, interval.End
 			}
 		}
 	} else {
@@ -569,7 +601,7 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 				if la.Kind == LocationRegister && lb.Kind == LocationRegister && la.Bank == lb.Bank && la.Index == lb.Index {
 					return fmt.Errorf("railmach: overlapping vregs %d and %d share register %d", a.Reg, b.Reg, la.Index)
 				}
-				if la.Kind == LocationSpill && lb.Kind == LocationSpill && la.Index == lb.Index {
+				if la.Kind == LocationSpill && lb.Kind == LocationSpill && spillLocationsOverlap(la.Index, f.VRegs[a.Reg].Type, lb.Index, f.VRegs[b.Reg].Type) {
 					return fmt.Errorf("railmach: overlapping vregs %d and %d share spill %d", a.Reg, b.Reg, la.Index)
 				}
 			}
@@ -589,6 +621,12 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 		return fmt.Errorf("railmach: frame bytes %d disagree with %d spill slots", allocation.FrameBytes, allocation.SpillSlots)
 	}
 	return nil
+}
+
+func spillLocationsOverlap(a uint16, aType MachineType, b uint16, bType MachineType) bool {
+	aEnd := uint32(a) + uint32(aType.SpillSlotUnits())
+	bEnd := uint32(b) + uint32(bType.SpillSlotUnits())
+	return uint32(a) < bEnd && uint32(b) < aEnd
 }
 
 func allocationInterval(intervals []LiveInterval, reg VReg) (LiveInterval, bool) {

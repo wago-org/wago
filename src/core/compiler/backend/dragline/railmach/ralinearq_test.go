@@ -27,6 +27,37 @@ func TestAllocateLinearQSpillsUnderPressure(t *testing.T) {
 	}
 }
 
+func TestAllocateLinearQUsesAlignedV128SpillHomes(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}, []byte{
+		0x20, 0x00,
+		0x20, 0x01,
+		0xfd, 0x51,
+		0x0b,
+	})
+	f := buildMachineTest(t, TargetARM64, m)
+	config := LinearQConfig{GPRs: 1, FPRs: 1}
+	allocation, err := AllocateLinearQ(f, config, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for reg, location := range allocation.Locations {
+		if location.Kind != LocationSpill || f.VRegs[reg].Type != TypeV128 {
+			continue
+		}
+		found = true
+		if location.Index&1 != 0 || uint32(location.Index)+2 > uint32(allocation.SpillSlots) {
+			t.Fatalf("v128 spill r%d = %#v within %d slots", reg, location, allocation.SpillSlots)
+		}
+	}
+	if !found || allocation.SpillSlots < 2 || allocation.FrameBytes < 16 {
+		t.Fatalf("allocation lacks 16-byte vector home: slots=%d frame=%d locations=%#v", allocation.SpillSlots, allocation.FrameBytes, allocation.Locations)
+	}
+	if err := VerifyAllocation(f, allocation, config); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAllocateLinearQWeightsInstructionUsesByBlockFrequency(t *testing.T) {
 	f := buildMachineTest(t, TargetARM64, machineModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x20, 0x00,

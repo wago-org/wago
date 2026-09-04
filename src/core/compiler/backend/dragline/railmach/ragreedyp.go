@@ -384,7 +384,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 			}
 		}
 	}
-	recolorGreedySpills(reuse)
+	recolorGreedySpills(f, reuse)
 	if config.MaxStage >= 4 {
 		// Rebuild exact physical occupants in increasing live-range order. Greedy
 		// promotion mutates locations and links in priority order; regional
@@ -627,8 +627,8 @@ func planRegionalFragments(f *Func, schedule *Schedule, config GreedyConfig, all
 					if !ok {
 						continue
 					}
-					slot := allocation.SpillSlots
-					allocation.SpillSlots++
+					units := f.VRegs[victim].Type.SpillSlotUnits()
+					slot := reserveSpillUnits(&allocation.SpillSlots, units)
 					allocation.FrameBytes = (uint32(allocation.SpillSlots)*8 + 15) &^ 15
 					allocation.Fragments = append(allocation.Fragments, AllocationFragment{
 						Reg: interval.Reg, Start: start, End: end, Victim: victim, VictimSlot: slot,
@@ -949,10 +949,11 @@ func intervalsOverlap(a, b LiveInterval) bool {
 	return !(a.End < b.Start || b.End < a.Start)
 }
 
-func recolorGreedySpills(allocation *GreedyAllocation) {
+func recolorGreedySpills(f *Func, allocation *GreedyAllocation) {
 	type activeSpill struct {
-		end  uint32
-		slot uint16
+		end   uint32
+		slot  uint16
+		units uint16
 	}
 	active := make([]activeSpill, 0, 8)
 	free := make([]uint16, 0, 8)
@@ -964,23 +965,24 @@ func recolorGreedySpills(allocation *GreedyAllocation) {
 		kept := active[:0]
 		for _, item := range active {
 			if item.end < interval.Start {
-				free = append(free, item.slot)
+				for unit := uint16(0); unit < item.units; unit++ {
+					free = append(free, item.slot+unit)
+				}
 			} else {
 				kept = append(kept, item)
 			}
 		}
 		active = kept
-		var slot uint16
-		if len(free) != 0 {
-			slices.Sort(free)
-			slot, free = free[0], free[1:]
-		} else {
-			slot, next = next, next+1
+		units := f.VRegs[interval.Reg].Type.SpillSlotUnits()
+		slot, remaining, ok := takeFreeSpillUnits(free, units)
+		free = remaining
+		if !ok {
+			slot = reserveSpillUnits(&next, units)
 		}
 		location := allocation.Locations[interval.Reg]
 		location.Index = slot
 		allocation.Locations[interval.Reg] = location
-		active = append(active, activeSpill{end: interval.End, slot: slot})
+		active = append(active, activeSpill{end: interval.End, slot: slot, units: units})
 	}
 	allocation.SpillSlots = next
 	allocation.FrameBytes = (uint32(next)*8 + 15) &^ 15

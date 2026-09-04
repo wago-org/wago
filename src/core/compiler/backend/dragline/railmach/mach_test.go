@@ -62,6 +62,33 @@ func TestDenseRecordSizes(t *testing.T) {
 	}
 }
 
+func TestBuildPreservesV128InFPRBank(t *testing.T) {
+	body := []byte{0xfd, 0x0c}
+	body = append(body, make([]byte, 16)...)
+	body = append(body, 0x0b)
+	m := machineModule(nil, []wasm.ValType{wasm.V128}, body)
+	for _, target := range []Target{TargetAMD64, TargetARM64} {
+		f := buildMachineTest(t, target, m)
+		if len(f.Results) != 1 {
+			t.Fatalf("%s results = %#v", target, f.Results)
+		}
+		result := f.VRegs[f.Results[0]]
+		if result.Type != TypeV128 || result.Bank != BankFPR || !result.Type.IsVector() {
+			t.Fatalf("%s v128 result = %#v", target, result)
+		}
+		if err := Verify(f); err != nil {
+			t.Fatalf("%s verify: %v", target, err)
+		}
+	}
+}
+
+func TestVerifyRejectsMachineTypeInWrongBank(t *testing.T) {
+	f := &Func{Target: TargetARM64, VRegs: []VRegData{{}, {Type: TypeV128, Bank: BankGPR}}}
+	if err := Verify(f); err == nil || !strings.Contains(err.Error(), "invalid type/bank") {
+		t.Fatalf("Verify wrong-bank v128 = %v", err)
+	}
+}
+
 func TestBuildPreservesBlockArgumentsAndSourceOrder(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x20, 0x00,
