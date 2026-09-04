@@ -60,6 +60,7 @@ const (
 	hintHasControlFlow
 	hintModuleEH
 	hintHasStackSinkFusion
+	hintHasFloatConst
 )
 
 func (f funcHintFlags) has(flag funcHintFlags) bool { return f&flag != 0 }
@@ -343,6 +344,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if in.Kind == wasm.InstrF32Const || in.Kind == wasm.InstrF64Const {
+				h.flags.set(hintHasFloatConst)
+			}
 			if gcOrAtomicInstructionMayCall(in.Kind) {
 				sub = true
 				h.flags.set(hintHasCall)
@@ -653,6 +657,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		curIndex := ^uint32(0)
 		var curConst int64
 		curConstOK := false
+		if op == 0x43 || op == 0x44 {
+			s.h.flags.set(hintHasFloatConst)
+		}
 		if shared.StackArenaHintsEnabled && (op == 0x41 || op == 0x42) {
 			if b, ok := s.r.Peek(); ok && b&0x80 == 0 {
 				curConst = int64(b & 0x7f)

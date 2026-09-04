@@ -702,3 +702,11 @@ could only disable the production one-pass float/SIMD hint gates and force both
 constant-pool scans for every function. Removing that alternate mode leaves exact
 integer, float, and SIMD scan-count tests, eliminates four dead branch arms, and
 preserves all corpus native-code hashes.
+
+ARM64 had the complementary omission: its bounded float-constant cache rescanned
+every call-free body even when the existing summary scan had seen no float
+constant. A spare `funcHints` flag now records that semantic fact in both byte and
+decoded-body scanners and gates the prepass without changing the 32-byte summary.
+Six interleaved native `many_funcs` pairs improve full-compiler time by 3.69% geomean across
+ordinary and compact modes, with unchanged bytes and allocations; all 64 corpus
+native-code hashes remain identical.

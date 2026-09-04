@@ -2517,7 +2517,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 
 	if regABI {
-		internalOff, err := f.emitRegABI(c, hostAdapter, hints.localScore)
+		internalOff, err := f.emitRegABI(c, hostAdapter, hints.localScore, hints.flags.has(hintHasFloatConst))
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -2537,7 +2537,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 
 	f.prologue(hints.localScore)
-	f.preloadFloatConsts(c.BodyBytes)
+	if hints.flags.has(hintHasFloatConst) {
+		f.preloadFloatConsts(c.BodyBytes)
+	}
 	if err := f.runBody(c); err != nil {
 		return nil, nil, 0, err
 	}
@@ -3214,7 +3216,7 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 // the internal entry takes args in GP/V registers and returns its single result
 // in X0/V0, or two integer results in X0/X1.
 // Returns the internal entry's offset within the function's code.
-func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32) (int, error) {
+func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, hasFloatConst bool) (int, error) {
 	a := f.a
 	np, rN := f.nParams, len(f.ft.Results)
 
@@ -3340,7 +3342,9 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32) (i
 	f.stats.peepN("machine-swap-chain", swapChains)
 	f.tmpMoves = moves[:0]
 	f.zeroDeclaredLocals(localScores)
-	f.preloadFloatConsts(c.BodyBytes)
+	if hasFloatConst {
+		f.preloadFloatConsts(c.BodyBytes)
+	}
 	f.derivePinnedGlobals()
 	if err := f.runBody(c); err != nil {
 		return 0, err

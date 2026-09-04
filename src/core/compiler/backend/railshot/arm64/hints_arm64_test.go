@@ -17,6 +17,32 @@ func TestFuncHintsSizeArm64(t *testing.T) {
 	}
 }
 
+func TestScanBodyBytesFloatConstHintArm64(t *testing.T) {
+	integer, err := scanBodyBytes([]byte{0x41, 0x00, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if integer.flags.has(hintHasFloatConst) {
+		t.Fatal("integer body reported a float constant")
+	}
+	for _, body := range [][]byte{
+		{0x43, 0, 0, 0, 0, 0x0b},
+		{0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0x0b},
+	} {
+		h, err := scanBodyBytes(body, 0, 0, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !h.flags.has(hintHasFloatConst) {
+			t.Fatalf("float body %x did not report a float constant", body)
+		}
+	}
+	decoded := scanBody(wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrF32Const}}}, 0, 0, 0)
+	if !decoded.flags.has(hintHasFloatConst) {
+		t.Fatal("decoded float body did not report a float constant")
+	}
+}
+
 func TestControlDepthHintCountsNestedFramesArm64(t *testing.T) {
 	h, err := scanBodyBytes([]byte{
 		0x02, 0x40, // block
