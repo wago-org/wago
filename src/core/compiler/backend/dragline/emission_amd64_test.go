@@ -11,6 +11,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railmach"
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	"github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -138,6 +139,22 @@ func TestAMD64ShuffleMasksSelectExactlyOneInput(t *testing.T) {
 	wantRight := [16]byte{0x80, 0, 0x80, 1, 0x80, 2, 0x80, 3, 0x80, 4, 0x80, 5, 0x80, 6, 0x80, 15}
 	if !bytes.Equal(left[:], wantLeft[:]) || !bytes.Equal(right[:], wantRight[:]) {
 		t.Fatalf("shuffle masks = %x / %x, want %x / %x", left, right, wantLeft, wantRight)
+	}
+}
+
+func TestAMD64StructuredScalarResidencySelectsHotIntegerLocals(t *testing.T) {
+	locals := []wasm.ValType{wasm.I32, wasm.V128, wasm.I64, wasm.F32, wasm.I32, wasm.I64, wasm.I32, wasm.I32}
+	uses := []uint32{2, 100, 9, 50, 7, 6, 5, 4}
+	assigned := make([]amd64.Reg, len(locals))
+	pinned := make([]bool, len(locals))
+	amd64PinHotStructuredScalarLocals(locals, uses, assigned, pinned)
+	for local, register := range map[int]amd64.Reg{0: amd64.R9, 2: amd64.R12, 4: amd64.R13, 5: amd64.R14, 6: amd64.R15, 7: amd64.R8} {
+		if !pinned[local] || assigned[local] != register {
+			t.Fatalf("local %d: assigned=%v pinned=%v", local, assigned, pinned)
+		}
+	}
+	if pinned[1] || pinned[3] {
+		t.Fatalf("non-integer local pinned: %v", pinned)
 	}
 }
 

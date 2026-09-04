@@ -3650,12 +3650,41 @@ func amd64StructuredLoadEnd(sf *railssa.StackFunc, instructionID int) (uint64, b
 	return uint64(instruction.U32()) + size, true
 }
 
+func amd64PinHotStructuredScalarLocals(locals []wasm.ValType, uses []uint32, localRegisters []amd64.Reg, localPinned []bool) {
+	for _, register := range amd64StackLocalRegisters {
+		best := -1
+		for local, typ := range locals {
+			if localPinned[local] || uses[local] == 0 || typ != wasm.I32 && typ != wasm.I64 {
+				continue
+			}
+			if best < 0 || uses[local] > uses[best] {
+				best = local
+			}
+		}
+		if best < 0 {
+			return
+		}
+		localRegisters[best] = register
+		localPinned[best] = true
+	}
+}
+
+func amd64StructuredLocalsPinned(localPinned []bool, locals ...uint32) bool {
+	for _, local := range locals {
+		if int(local) >= len(localPinned) || !localPinned[local] {
+			return false
+		}
+	}
+	return true
+}
+
 func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []amd64CallReloc, error) {
 	sf := fn.Stack
 	callRelocs := make([]amd64CallReloc, 0, 2)
 	localRegisters := make([]amd64.Reg, len(sf.Locals))
 	localFloat := make([]bool, len(sf.Locals))
 	localPinned := make([]bool, len(sf.Locals))
+	scalarLocalUses := make([]uint32, len(sf.Locals))
 	vectorLocalUses := make([]uint32, len(sf.Locals))
 	var simdConstants []amd64SIMDConstant
 	gpLocals, fpLocals := 0, 0
@@ -3697,8 +3726,12 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			hasGeneralCall = true
 		}
 		if (instr.Kind == wasm.InstrLocalGet || instr.Kind == wasm.InstrLocalSet || instr.Kind == wasm.InstrLocalTee) &&
-			int(instr.U32()) < len(sf.Locals) && sf.Locals[instr.U32()] == wasm.V128 {
-			vectorLocalUses[instr.U32()]++
+			int(instr.U32()) < len(sf.Locals) {
+			if sf.Locals[instr.U32()] == wasm.V128 {
+				vectorLocalUses[instr.U32()]++
+			} else {
+				scalarLocalUses[instr.U32()]++
+			}
 		}
 		if instr.Kind == wasm.InstrV128Const {
 			if descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex)); ok {
@@ -3715,9 +3748,10 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			localPinned[i] = true
 		}
 	} else if sf.HasV128 && !hasGeneralCall && len(sf.Params) <= 4 {
-		for i, typ := range sf.Locals {
-			localPinned[i] = (typ == wasm.I32 || typ == wasm.I64) && localRegisters[i] != 0
+		for i := range localRegisters {
+			localRegisters[i] = 0
 		}
+		amd64PinHotStructuredScalarLocals(sf.Locals, scalarLocalUses, localRegisters, localPinned)
 		constantSelected := make([]bool, len(simdConstants))
 		for slot := 0; slot < 8; slot++ {
 			bestLocal := -1
@@ -3901,7 +3935,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	pendingConditionAt := -1
 	pendingCondition := amd64.Cond(0)
 	defer func() {
-		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localPinned) + sliceBytes(vectorLocalUses) + sliceBytes(simdConstants) + sliceBytes(simdConstantPatches) + sliceBytes(localMemoryCheckEnds) + sliceBytes(localMemoryChecksElided) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(controls) + sliceBytes(functionPatches)
+		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localPinned) + sliceBytes(scalarLocalUses) + sliceBytes(vectorLocalUses) + sliceBytes(simdConstants) + sliceBytes(simdConstantPatches) + sliceBytes(localMemoryCheckEnds) + sliceBytes(localMemoryChecksElided) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(controls) + sliceBytes(functionPatches)
 		for i := range controls {
 			workspace += sliceBytes(controls[i].patches)
 		}
@@ -4178,6 +4212,36 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		if flushVector {
 			flushVectorStackCache()
 		}
+		if !registerLocals && reachable && instrIndex+3 < len(sf.Instrs) && instr.Kind == wasm.InstrLocalGet &&
+			(sf.Instrs[instrIndex+3].Kind == wasm.InstrIf || sf.Instrs[instrIndex+3].Kind == wasm.InstrBrIf) {
+			comparison := sf.Instrs[instrIndex+2]
+			condition, comparisonOK := amd64IntegerComparisonCond(comparison.Kind)
+			lhs := instr.U32()
+			if comparisonOK && int(lhs) < len(sf.Locals) && localPinned[lhs] && (sf.Locals[lhs] == wasm.I32 || sf.Locals[lhs] == wasm.I64) {
+				rhs := sf.Instrs[instrIndex+1]
+				emitted := false
+				if rhs.Kind == wasm.InstrLocalGet && int(rhs.U32()) < len(sf.Locals) && localPinned[rhs.U32()] && sf.Locals[rhs.U32()] == sf.Locals[lhs] {
+					if sf.Locals[lhs] == wasm.I64 {
+						a.Cmp64(localRegisters[lhs], localRegisters[rhs.U32()])
+					} else {
+						a.Cmp32(localRegisters[lhs], localRegisters[rhs.U32()])
+					}
+					emitted = true
+				} else if (rhs.Kind == wasm.InstrI32Const || rhs.Kind == wasm.InstrI64Const) && rhs.ValueType() == sf.Locals[lhs] &&
+					(sf.Locals[lhs] == wasm.I32 || int64(rhs.U64()) == int64(int32(rhs.U64()))) {
+					a.AluRI(7, localRegisters[lhs], int32(rhs.U64()), sf.Locals[lhs] == wasm.I64)
+					emitted = true
+				}
+				if emitted {
+					stackTypes = append(stackTypes, wasm.I32)
+					pendingConditionAt, pendingCondition = instrIndex+3, condition
+					metadata.recordSource(a.Len(), rhs.Offset)
+					metadata.recordSource(a.Len(), comparison.Offset)
+					instrIndex += 2
+					continue
+				}
+			}
+		}
 		if reachable && instrIndex+1 < len(sf.Instrs) && (sf.Instrs[instrIndex+1].Kind == wasm.InstrIf || sf.Instrs[instrIndex+1].Kind == wasm.InstrBrIf) {
 			if condition, comparison := amd64IntegerComparisonCond(instr.Kind); comparison {
 				rhsType, err := pop(amd64.R10)
@@ -4294,6 +4358,39 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 				}
 				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+3].Offset)
 				instrIndex += 3
+				continue
+			}
+		}
+		if reachable && instrIndex+2 < len(sf.Instrs) &&
+			instr.Kind == wasm.InstrLocalGet && sf.Locals[instr.U32()] == wasm.V128 &&
+			sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalGet && sf.Locals[sf.Instrs[instrIndex+1].U32()] == wasm.V128 {
+			descriptor, ok := sf.SIMDImmediateAt(uint32(instrIndex + 2))
+			if ok && (amd64DirectSIMDBinaryKind(descriptor.Kind) || descriptor.Kind == wasm.InstrI8x16Shuffle) {
+				loadLocal := func(local uint32, scratch amd64.Reg) amd64.Reg {
+					if localPinned[local] {
+						return localRegisters[local]
+					}
+					a.VMovdquLoadDisp(scratch, amd64.RSP, localOff(int(local)))
+					return scratch
+				}
+				lhs := loadLocal(instr.U32(), 0)
+				rhs := loadLocal(sf.Instrs[instrIndex+1].U32(), 1)
+				dst := reserveV128(len(stackTypes))
+				if descriptor.Kind == wasm.InstrI8x16Shuffle {
+					left, right := amd64ShuffleMasks(descriptor.Bytes)
+					shuffleSIMDConstant(2, lhs, left)
+					shuffleSIMDConstant(3, rhs, right)
+					a.VPor(dst, 2, 3)
+				} else {
+					emitAMD64DirectSIMDBinary(&a, descriptor.Kind, dst, lhs, rhs)
+				}
+				if len(stackTypes) >= int(sf.MaxStack) {
+					return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
+				}
+				stackTypes = append(stackTypes, wasm.V128)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+2].Offset)
+				instrIndex += 2
 				continue
 			}
 		}
@@ -4656,6 +4753,76 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			a.VFSub(localRegisters[sf.Instrs[instrIndex+4].U32()], localRegisters[instr.U32()], 0, f64)
 			instrIndex += 4
 			continue
+		}
+		if !registerLocals && reachable && instrIndex+3 < len(sf.Instrs) &&
+			instr.Kind == wasm.InstrLocalGet && sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalGet &&
+			amd64DirectIntegerBinaryKind(sf.Instrs[instrIndex+2].Kind) &&
+			(sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalSet || sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee) {
+			lhs, rhs, dst := instr.U32(), sf.Instrs[instrIndex+1].U32(), sf.Instrs[instrIndex+3].U32()
+			if amd64StructuredLocalsPinned(localPinned, lhs, rhs, dst) && sf.Locals[lhs] == sf.Locals[rhs] && sf.Locals[dst] == sf.Locals[lhs] &&
+				(sf.Locals[lhs] == wasm.I32 || sf.Locals[lhs] == wasm.I64) && (dst == lhs || dst != rhs) {
+				kind := sf.Instrs[instrIndex+2].Kind
+				emitAMD64DirectIntegerBinary(&a, kind, localRegisters[dst], localRegisters[lhs], localRegisters[rhs])
+				if sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee {
+					if err := push(sf.Locals[dst], localRegisters[dst]); err != nil {
+						return nil, 0, nil, err
+					}
+				}
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+2].Offset)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+3].Offset)
+				instrIndex += 3
+				continue
+			}
+		}
+		if !registerLocals && reachable && instrIndex+3 < len(sf.Instrs) && instr.Kind == wasm.InstrLocalGet &&
+			(sf.Instrs[instrIndex+1].Kind == wasm.InstrI32Const || sf.Instrs[instrIndex+1].Kind == wasm.InstrI64Const) &&
+			(sf.Instrs[instrIndex+2].Kind == wasm.InstrI32Add || sf.Instrs[instrIndex+2].Kind == wasm.InstrI64Add ||
+				sf.Instrs[instrIndex+2].Kind == wasm.InstrI32Sub || sf.Instrs[instrIndex+2].Kind == wasm.InstrI64Sub) &&
+			(sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalSet || sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee) {
+			src, dst := instr.U32(), sf.Instrs[instrIndex+3].U32()
+			kind, value := sf.Instrs[instrIndex+2].Kind, sf.Instrs[instrIndex+1].U64()
+			wide := kind == wasm.InstrI64Add || kind == wasm.InstrI64Sub
+			if amd64StructuredLocalsPinned(localPinned, src, dst) && sf.Locals[src] == sf.Instrs[instrIndex+1].ValueType() && sf.Locals[dst] == sf.Locals[src] &&
+				(sf.Locals[src] == wasm.I32 || sf.Locals[src] == wasm.I64) && (!wide || int64(value) == int64(int32(value))) {
+				dstReg := localRegisters[dst]
+				if dstReg != localRegisters[src] {
+					a.MovReg64(dstReg, localRegisters[src])
+				}
+				digit := byte(0)
+				if kind == wasm.InstrI32Sub || kind == wasm.InstrI64Sub {
+					digit = 5
+				}
+				a.AluRI(digit, dstReg, int32(value), wide)
+				if sf.Instrs[instrIndex+3].Kind == wasm.InstrLocalTee {
+					if err := push(sf.Locals[dst], dstReg); err != nil {
+						return nil, 0, nil, err
+					}
+				}
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+2].Offset)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+3].Offset)
+				instrIndex += 3
+				continue
+			}
+		}
+		if !registerLocals && reachable && instrIndex+1 < len(sf.Instrs) && instr.Kind == wasm.InstrLocalGet &&
+			sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalSet {
+			src, dst := instr.U32(), sf.Instrs[instrIndex+1].U32()
+			if amd64StructuredLocalsPinned(localPinned, src, dst) &&
+				(sf.Locals[src] == wasm.I32 || sf.Locals[src] == wasm.I64) && sf.Locals[dst] == sf.Locals[src] {
+				if localRegisters[dst] != localRegisters[src] {
+					a.MovReg64(localRegisters[dst], localRegisters[src])
+				}
+				if sf.Instrs[instrIndex+1].Kind == wasm.InstrLocalTee {
+					if err := push(sf.Locals[dst], localRegisters[dst]); err != nil {
+						return nil, 0, nil, err
+					}
+				}
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+				instrIndex++
+				continue
+			}
 		}
 		if instr.IsElse() {
 			if len(controls) == 0 || controls[len(controls)-1].kind != wasm.InstrIf {
