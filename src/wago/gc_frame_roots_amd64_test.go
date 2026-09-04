@@ -62,6 +62,45 @@ func gcHiddenOperandRootModule() []byte {
 	)
 }
 
+func gcDeepHiddenOperandRootModule(depth int) []byte {
+	body := append([]byte{0x41}, wasmtest.SLEB32(73)...)
+	body = append(body, 0xfb, 0x00, 0x00) // struct.new 0; keep the reference hidden on the operand stack.
+	for range depth {
+		body = append(body, 0x02, 0x40) // block
+	}
+	body = append(body, 0xfb, 0x01, 0x00, 0x1a) // collecting struct.new_default 0; drop
+	for range depth {
+		body = append(body, 0x0b)
+	}
+	body = append(body, 0xfb, 0x02, 0x00, 0x00, 0x0b) // hidden struct.get 0 0; end
+	return wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x01, 0x7f, 0x01},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+}
+
+func BenchmarkGCDeepControlFrameRootCompilation(b *testing.B) {
+	data := gcDeepHiddenOperandRootModule(128)
+	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		compiled, err := Compile(cfg, data)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := compiled.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
 func gcTryTableHiddenOperandRootModule() []byte {
 	body := append([]byte{0x41}, wasmtest.SLEB32(73)...)
 	body = append(body,

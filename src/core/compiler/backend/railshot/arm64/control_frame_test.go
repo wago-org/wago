@@ -6,6 +6,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
@@ -17,11 +18,52 @@ func TestCtrlFrameSize(t *testing.T) {
 	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(136); got != want {
 		t.Fatalf("ctrlFrameMerge size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(ctrlFrameRoots{}), uintptr(72); got != want {
+	if got, want := unsafe.Sizeof(ctrlFrameRoots{}), uintptr(24); got != want {
 		t.Fatalf("ctrlFrameRoots size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(ctrlFrameEH{}), uintptr(48); got != want {
 		t.Fatalf("ctrlFrameEH size = %d, want %d", got, want)
+	}
+}
+
+func TestControlGCRootSegmentsShareBackingArm64(t *testing.T) {
+	var f fn
+	fr := ctrlFrame{height: 2, paramN: 2, resultN: 2}
+	flags := f.ensureFrameGCRootFlags(&fr)
+	flags[1], flags[2] = true, true
+	fr.set(ctrlHasBaseGCRoots, true)
+	fr.set(ctrlHasParamGCRoots, true)
+	f.setFrameResultGCRoot(&fr, 1)
+
+	base, params, results := f.frameBaseGCRoots(&fr), f.frameParamGCRoots(&fr), f.frameResultGCRoots(&fr)
+	if len(base) != 2 || base[0] || !base[1] {
+		t.Fatalf("base roots = %v, want [false true]", base)
+	}
+	if len(params) != 2 || !params[0] || params[1] {
+		t.Fatalf("parameter roots = %v, want [true false]", params)
+	}
+	if len(results) != 2 || results[0] || !results[1] {
+		t.Fatalf("result roots = %v, want [false true]", results)
+	}
+}
+
+func TestCaptureControlGCRootSegmentsArm64(t *testing.T) {
+	f := fn{s: newStack(), gcFrameRoots: &shared.GCFrameRootPlan{Candidate: true}}
+	base := f.s.pushValue(storage{})
+	base.st.setGCRoot(true)
+	param := f.s.pushValue(storage{})
+	param.st.setGCRoot(true)
+	fr := ctrlFrame{height: 1, paramN: 1, resultN: 1}
+	f.captureGCFrameShape(&fr)
+
+	if got := f.frameBaseGCRoots(&fr); len(got) != 1 || !got[0] {
+		t.Fatalf("base roots = %v, want [true]", got)
+	}
+	if got := f.frameParamGCRoots(&fr); len(got) != 1 || !got[0] {
+		t.Fatalf("parameter roots = %v, want [true]", got)
+	}
+	if got := f.frameResultGCRoots(&fr); got != nil {
+		t.Fatalf("result roots = %v, want nil", got)
 	}
 }
 
@@ -197,16 +239,18 @@ func TestPackedLocStatesArm64(t *testing.T) {
 
 func TestPushCtrlReusesMergeSlotAtDepth(t *testing.T) {
 	f := fn{ctrl: make([]ctrlFrame, 0, 1)}
-	first := ctrlFrame{}
+	first := ctrlFrame{height: 1}
 	f.ensureCtrlMerge(&first).branchState = make(packedLocStates, 1)
-	f.ensureCtrlRoots(&first).base = []bool{true}
+	first.set(ctrlHasBaseGCRoots, true)
+	f.ensureCtrlRoots(&first).flags = []bool{true}
 	f.pushCtrl(&first)
 	f.releaseCtrlMerge(&f.ctrl[0])
 	f.ctrl = f.ctrl[:0]
 
-	next := ctrlFrame{}
+	next := ctrlFrame{height: 2}
 	f.ensureCtrlMerge(&next).branchState = make(packedLocStates, 2)
-	f.ensureCtrlRoots(&next).base = []bool{false, true}
+	next.set(ctrlHasBaseGCRoots, true)
+	f.ensureCtrlRoots(&next).flags = []bool{false, true}
 	f.pushCtrl(&next)
 
 	if got, want := len(f.scratchState().ctrlMerges), 1; got != want {

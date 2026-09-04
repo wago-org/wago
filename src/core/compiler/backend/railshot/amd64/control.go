@@ -37,6 +37,9 @@ const (
 	ctrlRegMerge1
 	ctrlBaseTypesSet
 	ctrlColdBaseTypes
+	ctrlHasBaseGCRoots
+	ctrlHasParamGCRoots
+	ctrlHasResultGCRoots
 )
 
 // ctrlFrame is one open control construct (or the implicit function frame).
@@ -98,9 +101,7 @@ type ctrlFrameMerge struct {
 // root tracking reaches structured control. Scalar merges and fact-only control
 // do not retain its scanned slice headers.
 type ctrlFrameRoots struct {
-	baseGCRoots   []bool
-	paramGCRoots  []bool
-	resultGCRoots []bool
+	flags []bool // base, parameters, then results
 }
 
 const initialCtrlMergeCapacity = 16
@@ -253,8 +254,11 @@ func (f *fn) setFrameEntryState(fr *ctrlFrame, state []locState) {
 }
 
 func (f *fn) frameBaseGCRoots(fr *ctrlFrame) []bool {
-	if roots := f.ctrlRoots(fr); roots != nil {
-		return roots.baseGCRoots
+	if !fr.has(ctrlHasBaseGCRoots) {
+		return nil
+	}
+	if roots := f.ctrlRoots(fr); roots != nil && len(roots.flags) >= fr.height {
+		return roots.flags[:fr.height]
 	}
 	return nil
 }
@@ -349,17 +353,41 @@ func (f *fn) patchFrameEndSites(first, second uint32, overflow []uint32) {
 }
 
 func (f *fn) frameParamGCRoots(fr *ctrlFrame) []bool {
-	if roots := f.ctrlRoots(fr); roots != nil {
-		return roots.paramGCRoots
+	if !fr.has(ctrlHasParamGCRoots) {
+		return nil
+	}
+	if roots := f.ctrlRoots(fr); roots != nil && len(roots.flags) >= fr.height+fr.paramN {
+		return roots.flags[fr.height : fr.height+fr.paramN]
 	}
 	return nil
 }
 
 func (f *fn) frameResultGCRoots(fr *ctrlFrame) []bool {
-	if roots := f.ctrlRoots(fr); roots != nil {
-		return roots.resultGCRoots
+	if !fr.has(ctrlHasResultGCRoots) {
+		return nil
+	}
+	if roots := f.ctrlRoots(fr); roots != nil && len(roots.flags) >= fr.height+fr.paramN+fr.resultN {
+		start := fr.height + fr.paramN
+		return roots.flags[start : start+fr.resultN]
 	}
 	return nil
+}
+
+func (f *fn) ensureFrameGCRootFlags(fr *ctrlFrame) []bool {
+	roots := f.ensureCtrlRoots(fr)
+	n := fr.height + fr.paramN + fr.resultN
+	if len(roots.flags) < n {
+		flags := make([]bool, n)
+		copy(flags, roots.flags)
+		roots.flags = flags
+	}
+	return roots.flags[:n]
+}
+
+func (f *fn) setFrameResultGCRoot(fr *ctrlFrame, index int) {
+	flags := f.ensureFrameGCRootFlags(fr)
+	flags[fr.height+fr.paramN+index] = true
+	fr.set(ctrlHasResultGCRoots, true)
 }
 
 func (f *fn) convergeFrameBranchState(fr *ctrlFrame) {
@@ -471,12 +499,23 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 	if fr.height < 0 || fr.height+fr.paramN > len(roots) {
 		return
 	}
-	baseRoots := gcRootFlags(roots[:fr.height])
-	paramRoots := gcRootFlags(roots[fr.height : fr.height+fr.paramN])
-	if baseRoots != nil || paramRoots != nil {
-		rootState := f.ensureCtrlRoots(fr)
-		rootState.baseGCRoots = baseRoots
-		rootState.paramGCRoots = paramRoots
+	var flags []bool
+	for i, root := range roots[:fr.height+fr.paramN] {
+		if root.kind != ekValue || !root.st.hasGCRoot() {
+			continue
+		}
+		if flags == nil {
+			flags = make([]bool, fr.height+fr.paramN+fr.resultN)
+		}
+		flags[i] = true
+		if i < fr.height {
+			fr.set(ctrlHasBaseGCRoots, true)
+		} else {
+			fr.set(ctrlHasParamGCRoots, true)
+		}
+	}
+	if flags != nil {
+		f.ensureCtrlRoots(fr).flags = flags
 	}
 }
 
@@ -493,11 +532,7 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 		if root.kind != ekValue || !root.st.hasGCRoot() {
 			continue
 		}
-		rootState := f.ensureCtrlRoots(fr)
-		if len(rootState.resultGCRoots) < n {
-			rootState.resultGCRoots = make([]bool, n)
-		}
-		rootState.resultGCRoots[i] = true
+		f.setFrameResultGCRoot(fr, i)
 	}
 }
 
@@ -1455,12 +1490,11 @@ func (f *fn) opEnd() error {
 	// An if without else: the cond-false path reaches end with params == results.
 	if fr.kind == cfIf && !fr.has(ctrlHasElse) && !fr.has(ctrlEntryUnreachable) {
 		for i := 0; i < len(paramGCRoots) && i < fr.resultN; i++ {
-			if len(resultGCRoots) < fr.resultN {
-				resultGCRoots = append(resultGCRoots, make([]bool, fr.resultN-len(resultGCRoots))...)
-				f.ensureCtrlRoots(&fr).resultGCRoots = resultGCRoots
+			if paramGCRoots[i] {
+				f.setFrameResultGCRoot(&fr, i)
 			}
-			resultGCRoots[i] = resultGCRoots[i] || paramGCRoots[i]
 		}
+		resultGCRoots = f.frameResultGCRoots(&fr)
 		// The cond-false edge arrives in the header-snapshot state; if then-side
 		// edges fixed a stronger end state (or a regMerge1 passthrough needs its
 		// value in mergeReg), a stub on this edge converges it. The then
