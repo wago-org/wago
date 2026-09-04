@@ -253,6 +253,22 @@ func TestLocStatePoolRetentionIsBoundedArm64(t *testing.T) {
 	}
 }
 
+func TestEndSitePoolRetentionIsBoundedArm64(t *testing.T) {
+	var f fn
+	for range maxRetainedEndsBufs + 3 {
+		f.freeEndsBuf(make([]uint32, 0, 1))
+	}
+	if got := len(f.endsPool); got != maxRetainedEndsBufs {
+		t.Fatalf("retained end-site buffers = %d, want %d", got, maxRetainedEndsBufs)
+	}
+
+	f.endsPool = nil
+	f.freeEndsBuf(make([]uint32, 0, maxRetainedEndsBufSites+1))
+	if f.endsPool != nil {
+		t.Fatal("oversized end-site buffer was retained")
+	}
+}
+
 func TestReserveLocalScratchArm64(t *testing.T) {
 	sc := &scratch{}
 	sc.reserveLocalScratch(7)

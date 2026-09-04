@@ -307,6 +307,36 @@ func TestStructuredGCReferenceFactIntersectionAndLoopSubset(t *testing.T) {
 	f.freeGCRefFactBuf(joined)
 }
 
+func TestGCRefFactPoolRetentionIsBounded(t *testing.T) {
+	enableGCRefFacts(t)
+	f := fn{localGCRefFacts: make([]shared.GCRefFact, 1)}
+	f.localGCRefFacts[0] = shared.ExactGCRefFact(1, 1, shared.GCHeapStruct)
+	reused := f.snapshotGCRefFacts()
+	f.freeGCRefFactBuf(reused)
+	f.localGCRefFacts[0] = shared.ExactGCRefFact(2, 2, shared.GCHeapArray)
+	reused = f.snapshotGCRefFacts()
+	if typ, exact := reused[0].ExactType(); !exact || typ != 2 {
+		t.Fatalf("reused GC-fact buffer retained stale value: %+v", reused[0])
+	}
+	f.freeGCRefFactBuf(reused)
+	f.gcFactPool = nil
+	f.localGCRefFacts[0] = shared.GCRefFact{}
+
+	for range maxRetainedGCRefFactBufs + 3 {
+		f.freeGCRefFactBuf(make([]shared.GCRefFact, 1))
+	}
+	if got := len(f.gcFactPool); got != maxRetainedGCRefFactBufs {
+		t.Fatalf("retained GC-fact buffers = %d, want %d", got, maxRetainedGCRefFactBufs)
+	}
+
+	f.gcFactPool = nil
+	f.localGCRefFacts = make([]shared.GCRefFact, maxRetainedGCRefFactEntries+1)
+	f.freeGCRefFactBuf(make([]shared.GCRefFact, len(f.localGCRefFacts)))
+	if f.gcFactPool != nil {
+		t.Fatal("oversized GC-fact buffer was retained")
+	}
+}
+
 func TestLoopHeaderClearsMutableFieldForwarding(t *testing.T) {
 	enableGCRefFacts(t)
 	f := fn{

@@ -922,6 +922,19 @@ const maxWorkerInitialControlFrames = 8
 // function permanently grow this pointer-rich pool.
 const maxRetainedLocStateBufs = 2 * maxWorkerInitialControlFrames
 
+// Forward-edge overflow starts only at a frame's third site. Keep enough small
+// buffers for ordinary worker depth, but never retain a many-branch outlier.
+const (
+	maxRetainedEndsBufs     = maxWorkerInitialControlFrames
+	maxRetainedEndsBufSites = 256
+
+	// GC facts are opt-in and can snapshot the whole local table twice per frame.
+	// Wide/deep functions still allocate exactly what correctness needs, then
+	// release exceptional backings instead of retaining their product.
+	maxRetainedGCRefFactBufs    = 2 * maxWorkerInitialControlFrames
+	maxRetainedGCRefFactEntries = maxInitialStackArenaCap
+)
+
 // moduleControlFrameCap sizes the serial compiler's reusable control stack from
 // the same one-pass bytecode hints. Parallel workers grow independently so one
 // deeply nested function does not multiply its pointer-rich backing by every

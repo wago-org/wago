@@ -781,6 +781,14 @@ const maxWorkerInitialControlFrames = 8
 // function permanently grow this pointer-rich pool.
 const maxRetainedLocStateBufs = 2 * maxWorkerInitialControlFrames
 
+// Forward-edge overflow starts only after the inline sites. Bound both the
+// number and size of recycled buffers so a deeply branched function cannot set
+// persistent worker high-water for the rest of module compilation.
+const (
+	maxRetainedEndsBufs     = maxWorkerInitialControlFrames
+	maxRetainedEndsBufSites = 256
+)
+
 // moduleControlFrameCap sizes the serial compiler's reusable control stack from
 // the same one-pass bytecode hints. Zero preserves lazy allocation for
 // straight-line, incomplete, AST-only, or unusually deep modules.

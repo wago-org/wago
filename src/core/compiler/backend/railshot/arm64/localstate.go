@@ -362,7 +362,7 @@ func (f *fn) appendEndSite(sites *[]uint32, site uint32) {
 }
 
 func (f *fn) freeEndsBuf(b []uint32) {
-	if cap(b) > 0 {
+	if capacity := cap(b); capacity > 0 && capacity <= maxRetainedEndsBufSites && len(f.endsPool) < maxRetainedEndsBufs {
 		f.endsPool = append(f.endsPool, b[:0])
 	}
 }

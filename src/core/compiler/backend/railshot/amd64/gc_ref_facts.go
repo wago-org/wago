@@ -490,9 +490,12 @@ func (f *fn) newGCRefFactBuf() []shared.GCRefFact {
 }
 
 func (f *fn) freeGCRefFactBuf(b []shared.GCRefFact) {
-	if cap(b) >= len(f.localGCRefFacts) && len(f.localGCRefFacts) != 0 {
-		clear(b)
-		f.gcFactPool = append(f.gcFactPool, b[:cap(b)])
+	if capacity := cap(b); capacity >= len(f.localGCRefFacts) && len(f.localGCRefFacts) != 0 &&
+		capacity <= maxRetainedGCRefFactEntries && len(f.gcFactPool) < maxRetainedGCRefFactBufs {
+		// snapshotGCRefFacts overwrites the complete logical length before the
+		// buffer is observable again. GCRefFact is pointer-free, so stale scalar
+		// bits neither affect semantics nor extend Go heap reachability.
+		f.gcFactPool = append(f.gcFactPool, b[:capacity])
 	}
 }
 
