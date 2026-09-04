@@ -83,7 +83,26 @@ func ValidateModuleWithConfig(m *Module, features ValidationFeatures, workers in
 	return validateModuleWithWorkersFeaturesAndLimits(m, nil, workers, features, limits)
 }
 
+// ValidateModuleWithAnalysis validates a module and gathers transient,
+// architecture-neutral facts during the same function-body walk. analysis is
+// cleared on failure and is valid only when this function returns nil.
+func ValidateModuleWithAnalysis(m *Module, features ValidationFeatures, workers int, limits ValidationLimits, analysis *ValidatedModuleAnalysis) error {
+	return validateModuleWithWorkersFeaturesAndLimitsAnalysis(m, nil, workers, features, limits, analysis)
+}
+
 func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits) error {
+	return validateModuleWithWorkersFeaturesAndLimitsAnalysis(m, direct, workers, features, limits, nil)
+}
+
+func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits, analysis *ValidatedModuleAnalysis) (err error) {
+	if analysis != nil {
+		analysis.reset(len(m.Code))
+		defer func() {
+			if err != nil {
+				*analysis = ValidatedModuleAnalysis{}
+			}
+		}()
+	}
 	if limits.MaxFunctionLocals == 0 {
 		limits.MaxFunctionLocals = DefaultMaxFunctionLocals
 	}
@@ -100,13 +119,24 @@ func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidat
 	// collector can otherwise lose a short-lived heap validator while nested
 	// decoding allocates, leaving its inline operand/control stacks reclaimed
 	// during validation.
-	v := moduleValidator{m: m, funcIndex: -1, direct: direct, features: features, limits: limits}
+	v := moduleValidator{
+		m:                m,
+		funcIndex:        -1,
+		direct:           direct,
+		features:         features,
+		limits:           limits,
+		analysis:         analysis,
+		analysisFuncBase: m.ImportedFuncCount(),
+	}
 	if err := v.validateModule(); err != nil {
 		runtime.KeepAlive(m)
 		runtime.KeepAlive(direct)
 		return err
 	}
-	err := v.validateFunctions(workers)
+	err = v.validateFunctions(workers)
+	if err == nil && analysis != nil {
+		analysis.finish()
+	}
 	// TinyGo's conservative collector needs the metadata owners to remain live
 	// while validators consume their nested byte slices and type views.
 	runtime.KeepAlive(m)
@@ -150,11 +180,20 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 	if !ok {
 		return v.err(ErrUnknownType, "function type")
 	}
-	fv.beginFunc(abs)
-	if len(fn.BodyBytes) != 0 {
-		return fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory)
+	if v.analysis != nil {
+		v.analysis.Funcs[localIndex] = ValidatedFuncFacts{BodyBytes: saturatingUint32(len(fn.BodyBytes))}
 	}
-	return fv.validateFunc(*fn, ft)
+	fv.beginFunc(abs)
+	var err error
+	if len(fn.BodyBytes) != 0 {
+		err = fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory)
+	} else {
+		err = fv.validateFunc(*fn, ft)
+	}
+	if err == nil && v.analysis != nil {
+		v.analysis.Funcs[localIndex].LocalCount = uint16(fv.localCount)
+	}
+	return err
 }
 
 // validateFunctionsParallel is split from the serial path so its goroutine
@@ -219,6 +258,10 @@ type moduleValidator struct {
 	direct    *directValidationEnv
 	features  ValidationFeatures
 	limits    ValidationLimits
+	analysis  *ValidatedModuleAnalysis
+	// analysisFuncBase converts the absolute funcIndex already carried by a
+	// funcValidator into the caller-owned declared-function summary index.
+	analysisFuncBase int
 
 	// declaredFuncBits is the module validation context's declared function-
 	// reference set. The inline word keeps the common <=64-function module from
@@ -985,6 +1028,17 @@ func (v *funcValidator) verr(c ValidationErrorCode, d string) error {
 	return &ValidationError{Code: c, Func: v.funcIndex, Detail: d}
 }
 
+func (v *funcValidator) analysisFacts() *ValidatedFuncFacts {
+	if v.moduleValidator == nil || v.analysis == nil {
+		return nil
+	}
+	index := v.funcIndex - v.analysisFuncBase
+	if index < 0 || index >= len(v.analysis.Funcs) {
+		return nil
+	}
+	return &v.analysis.Funcs[index]
+}
+
 // beginFunc resets the per-function operand/control stacks so a single
 // funcValidator can be reused across every function body in a module. Reusing
 // the value and control slices keeps their capacity between functions, avoiding
@@ -1034,7 +1088,9 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	return err
 }
 func (v *funcValidator) top() *ctrlFrame { return &v.ctrls[len(v.ctrls)-1] }
-func (v *funcValidator) push(t ValType)  { v.vals = append(v.vals, val{t: t}) }
+func (v *funcValidator) push(t ValType) {
+	v.vals = append(v.vals, val{t: t})
+}
 func (v *funcValidator) pushAll(ts []ValType) {
 	for _, t := range ts {
 		v.push(t)
