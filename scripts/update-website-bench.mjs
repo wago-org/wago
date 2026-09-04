@@ -229,10 +229,15 @@ const updateArch = requestedUpdateArch || (
     : ""
 );
 const perfAnchor = "            <!-- ░░░ PERFORMANCE ░░░ -->";
-const archAnchor = "            <!-- ░░░ ARCHITECTURE ░░░ -->";
 const perfStart = html.indexOf(perfAnchor);
-const archStart = html.indexOf(archAnchor, perfStart + perfAnchor.length);
-if (perfStart < 0 || archStart < 0) {
+const nextSectionAnchors = [
+  "            <!-- ░░░ ARCHITECTURE ░░░ -->",
+  "            <!-- ░░░ PLUGINS ░░░ -->",
+];
+const perfEnd = Math.min(...nextSectionAnchors
+  .map((anchor) => html.indexOf(anchor, perfStart + perfAnchor.length))
+  .filter((offset) => offset >= 0));
+if (perfStart < 0 || !Number.isFinite(perfEnd)) {
   throw new Error("could not find website performance section to replace");
 }
 let updated;
@@ -249,7 +254,7 @@ if (updateArch) {
   updated = replacePerformanceFoot(updated);
 } else {
   const section = renderSection(TABS, benchmarkSets);
-  updated = `${html.slice(0, perfStart)}${perfAnchor}\n${section}${html.slice(archStart)}`;
+  updated = `${html.slice(0, perfStart)}${perfAnchor}\n${section}${html.slice(perfEnd)}`;
 }
 
 await writeFile(indexPath, updated);

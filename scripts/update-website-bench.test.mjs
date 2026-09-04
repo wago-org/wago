@@ -20,8 +20,8 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
 <body>
             <!-- ░░░ PERFORMANCE ░░░ -->
             <section id="performance"></section>
-            <!-- ░░░ ARCHITECTURE ░░░ -->
-            <section id="architecture"></section>
+            <!-- ░░░ PLUGINS ░░░ -->
+            <section id="packages"></section>
 </body>
 `);
     await writeFile(amd64, JSON.stringify({ goos: "linux", goarch: "amd64", metrics: {} }));
