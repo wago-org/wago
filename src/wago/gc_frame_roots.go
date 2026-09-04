@@ -486,13 +486,14 @@ func validGCFrameLocals(locals []shared.GCFrameLocal, frameBytes uint32) bool {
 	if len(locals) != 0 && frameBytes < 8 {
 		return false
 	}
-	var previous uint32
+	var previousIndex, previousOffset uint32
 	for i, local := range locals {
 		off := local.Offset
-		if off%8 != 0 || off > frameBytes-8 || (i != 0 && off <= previous) {
+		if off%8 != 0 || off > frameBytes-8 ||
+			(i != 0 && (local.Index <= previousIndex || off <= previousOffset)) {
 			return false
 		}
-		previous = off
+		previousIndex, previousOffset = local.Index, off
 	}
 	return true
 }

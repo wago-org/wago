@@ -171,6 +171,17 @@ func TestGCModuleFrameRootPlanRejectsPendingFunction(t *testing.T) {
 	}
 }
 
+func TestValidGCFrameLocalsRequiresStrictIndexOrder(t *testing.T) {
+	for _, locals := range [][]shared.GCFrameLocal{
+		{{Index: 2, Offset: 16}, {Index: 2, Offset: 24}},
+		{{Index: 3, Offset: 16}, {Index: 1, Offset: 24}},
+	} {
+		if validGCFrameLocals(locals, 64) {
+			t.Fatalf("validGCFrameLocals accepted unsorted indexes: %#v", locals)
+		}
+	}
+}
+
 func TestGCModuleFrameRootPlanDerivesDenseSafepointIDs(t *testing.T) {
 	plan := func(base uint32) *shared.GCFrameRootPlan {
 		plan := &shared.GCFrameRootPlan{
