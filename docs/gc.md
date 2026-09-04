@@ -233,11 +233,12 @@ nursery, existing-card, card-mark, and slow-helper cases from current collector
 metadata. This keeps card growth, foreign/stale refs, malformed metadata, unknown
 subtypes, and every required Tiny shade on the shared cold path.
 
-Reference `array.fill` with a statically proven null/i31 child uses the guarded
-`Collector.ArrayFillNoBarrier` helper. It performs the same complete range, type, and
-value preflight as ordinary fill and rejects an object child before the first write.
-All other reference fill/copy/init operations retain exact post-write destination
-range barriers, overlap-safe copy, and trap atomicity. Throughput `array.init_elem`
+Reference `array.fill` uses the ordinary checked helper and retains its exact
+post-write destination range barrier. The guarded `Collector.ArrayFillNoBarrier`
+compatibility helper remains available to runtime callers that can prove a null or
+i31 child; it performs the same complete range, type, and value preflight and rejects
+an object child before the first write. Reference fill/copy/init operations retain
+overlap-safe copy and trap atomicity. Throughput `array.init_elem`
 preflights the complete retained segment, then performs type-compatible prevalidated
 stores with a deferred barrier and publishes one exact destination range after all
 writes. No collection can occur between preflight and publication; explicit
