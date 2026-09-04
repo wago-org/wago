@@ -312,12 +312,21 @@ func (f *fn) freeLocStateBuf(b []locState) {
 	}
 }
 
-// frameAddEnd appends a forward-jump site to a frame's end-patch list, drawing
-// the backing slice from endsPool on first use. Frames are LIFO, so returning the
-// slice on pop (freeEndsBuf) bounds live buffers by nesting depth rather than
-// total frame count.
+// frameAddEnd stores the first forward-jump site in the loop-analysis word that
+// non-loop frames do not use. Only overflow draws backing from endsPool.
 func (f *fn) frameAddEnd(fr *ctrlFrame, site int) {
+	if fr.kind == cfLoop {
+		panic("amd64: forward end site on loop frame")
+	}
+	if site < 0 || uint64(site) >= uint64(^uint32(0)) {
+		panic("amd64: forward end site exceeds compact offset range")
+	}
 	cold := f.ensureCtrlMerge(fr)
+	packed := uint32(site + 1) // zero remains the inline-site sentinel
+	if cold.loopSetStart == 0 {
+		cold.loopSetStart = packed
+		return
+	}
 	if cold.ends == nil {
 		if n := len(f.endsPool); n > 0 {
 			cold.ends = f.endsPool[n-1][:0]
@@ -325,10 +334,10 @@ func (f *fn) frameAddEnd(fr *ctrlFrame, site int) {
 			f.endsPool = f.endsPool[:n-1]
 		}
 	}
-	cold.ends = append(cold.ends, site)
+	cold.ends = append(cold.ends, packed)
 }
 
-func (f *fn) freeEndsBuf(b []int) {
+func (f *fn) freeEndsBuf(b []uint32) {
 	if cap(b) > 0 {
 		f.endsPool = append(f.endsPool, b[:0])
 	}

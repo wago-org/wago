@@ -468,7 +468,7 @@ func (f *fn) opt(option optimization.Option) bool {
 type transient struct {
 	lsPool         [][]locState
 	gcFactPool     [][]shared.GCRefFact
-	endsPool       [][]int
+	endsPool       [][]uint32
 	tmpRoots       []*elem
 	tmpTypes       []machineType
 	tmpTypes2      []machineType

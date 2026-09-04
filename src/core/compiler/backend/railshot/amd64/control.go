@@ -73,10 +73,10 @@ func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
 // merge pinned locals, track GC roots/facts, patch branches, or analyze loops. Keeping it in
 // compact scratch removes pointer-rich fields from ordinary frames.
 type ctrlFrameMerge struct {
-	ends         []int // cfBlock/cfIf: forward jmp sites to patch to end
+	ends         []uint32 // overflow after the first forward-end site
 	branchState  []locState
 	entryState   []locState
-	loopSetStart uint32
+	loopSetStart uint32 // loop: modified-local range; other frames: first packed end site
 	loopSetCount uint16
 	loopSetKnown bool
 	eh           *ctrlFrameEH
@@ -336,11 +336,22 @@ func (f *fn) releaseFrameBaseTypes(fr *ctrlFrame) {
 	f.controlBaseTypeN = uint8(start)
 }
 
-func (f *fn) frameEnds(fr *ctrlFrame) []int {
-	if cold := f.ctrlMerge(fr); cold != nil {
-		return cold.ends
+func (f *fn) frameEndSites(fr *ctrlFrame) (uint32, []uint32) {
+	if fr.kind != cfLoop {
+		if cold := f.ctrlMerge(fr); cold != nil {
+			return cold.loopSetStart, cold.ends
+		}
 	}
-	return nil
+	return 0, nil
+}
+
+func (f *fn) patchFrameEndSites(first uint32, overflow []uint32) {
+	if first != 0 {
+		f.a.PatchRel32(int(first-1), f.a.Len())
+	}
+	for _, packed := range overflow {
+		f.a.PatchRel32(int(packed-1), f.a.Len())
+	}
 }
 
 func (f *fn) frameParamGCRoots(fr *ctrlFrame) []bool {
@@ -1613,7 +1624,7 @@ func (f *fn) opEnd() error {
 	baseGCFacts := f.frameBaseGCFacts(&fr)
 	paramGCFacts := f.frameParamGCFacts(&fr)
 	resultGCFacts := f.frameResultGCFacts(&fr)
-	ends := f.frameEnds(&fr)
+	firstEnd, ends := f.frameEndSites(&fr)
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
 
@@ -1710,9 +1721,7 @@ func (f *fn) opEnd() error {
 		}
 		fr.set(ctrlEndReachable, true)
 	}
-	for _, site := range ends {
-		f.a.PatchRel32(site, f.a.Len())
-	}
+	f.patchFrameEndSites(firstEnd, ends)
 	endReachable := fallthroughReachable || fr.has(ctrlEndReachable)
 	f.unreachable = !endReachable
 	if endReachable {

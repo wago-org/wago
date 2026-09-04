@@ -109,6 +109,20 @@ func TestControlBaseTypeArenaRejectsOutOfOrderReleaseAMD64(t *testing.T) {
 	f.releaseFrameBaseTypes(&outer)
 }
 
+func TestFrameEndSitesInlineFirstAMD64(t *testing.T) {
+	var f fn
+	fr := ctrlFrame{kind: cfBlock}
+	f.frameAddEnd(&fr, 4)
+	f.frameAddEnd(&fr, 12)
+	first, overflow := f.frameEndSites(&fr)
+	if first != 5 {
+		t.Fatalf("first packed end site = %d, want 5", first)
+	}
+	if len(overflow) != 1 || overflow[0] != 13 {
+		t.Fatalf("overflow packed end sites = %v, want [13]", overflow)
+	}
+}
+
 func TestPushCtrlReusesMergeSlotAtDepth(t *testing.T) {
 	f := fn{ctrl: make([]ctrlFrame, 0, 1)}
 	first := ctrlFrame{}

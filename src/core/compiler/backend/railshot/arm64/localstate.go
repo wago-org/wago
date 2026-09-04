@@ -337,7 +337,20 @@ func (f *fn) freeLocStateBuf(b packedLocStates) {
 	}
 }
 
-func (f *fn) appendEndSite(sites *[]int, site int) {
+const frameEndConditional uint32 = 1 << 31
+
+func packFrameEndSite(site int, conditional bool) uint32 {
+	if site < 0 || site >= int(frameEndConditional)-1 {
+		panic("arm64: forward end site exceeds compact offset range")
+	}
+	packed := uint32(site + 1) // zero remains the inline-site sentinel
+	if conditional {
+		packed |= frameEndConditional
+	}
+	return packed
+}
+
+func (f *fn) appendEndSite(sites *[]uint32, site uint32) {
 	if *sites == nil {
 		if n := len(f.endsPool); n > 0 {
 			*sites = f.endsPool[n-1][:0]
@@ -348,7 +361,7 @@ func (f *fn) appendEndSite(sites *[]int, site int) {
 	*sites = append(*sites, site)
 }
 
-func (f *fn) freeEndsBuf(b []int) {
+func (f *fn) freeEndsBuf(b []uint32) {
 	if cap(b) > 0 {
 		f.endsPool = append(f.endsPool, b[:0])
 	}

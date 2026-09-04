@@ -13,7 +13,7 @@ func TestCtrlFrameSize(t *testing.T) {
 	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(88); got != want {
 		t.Fatalf("ctrlFrame size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(160); got != want {
+	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(136); got != want {
 		t.Fatalf("ctrlFrameMerge size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(ctrlFrameRoots{}), uintptr(72); got != want {
@@ -107,6 +107,20 @@ func TestControlBaseTypeArenaRejectsOutOfOrderReleaseArm64(t *testing.T) {
 		}
 	}()
 	f.releaseFrameBaseTypes(&outer)
+}
+
+func TestFrameEndSitesInlineFirstArm64(t *testing.T) {
+	var f fn
+	fr := ctrlFrame{kind: cfBlock}
+	f.appendFrameEnd(&fr, 4, false)
+	f.appendFrameEnd(&fr, 12, true)
+	first, overflow := f.frameEndSites(&fr)
+	if first != 5 {
+		t.Fatalf("first packed end site = %#x, want %#x", first, uint32(5))
+	}
+	if len(overflow) != 1 || overflow[0] != frameEndConditional|13 {
+		t.Fatalf("overflow packed end sites = %#x, want [%#x]", overflow, frameEndConditional|13)
+	}
 }
 
 func TestPackedLocStatesArm64(t *testing.T) {

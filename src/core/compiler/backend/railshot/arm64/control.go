@@ -85,11 +85,10 @@ func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
 // merge pinned locals, track GC roots, patch branches, hoist/pin loops, or defer cold edges.
 // Keeping it in compact scratch removes pointer-rich fields from ordinary frames.
 type ctrlFrameMerge struct {
-	ends         []int // cfBlock/cfIf: forward B sites to patch to end
-	condEnds     []int // cfBlock/cfIf: forward B.cond sites (imm19) to patch to end
+	ends         []uint32 // overflow after the first packed forward-end site
 	branchState  packedLocStates
 	entryState   packedLocStates
-	loopSetStart uint32
+	loopSetStart uint32 // loop: modified-local range; other frames: first packed end site
 	loopSetCount uint16
 	loopSetKnown bool
 	loopPins     []loopPin
@@ -320,26 +319,44 @@ func (f *fn) releaseFrameBaseTypes(fr *ctrlFrame) {
 	f.controlBaseTypeN = uint8(start)
 }
 
-func (f *fn) frameEnds(fr *ctrlFrame) []int {
-	if cold := f.ctrlMerge(fr); cold != nil {
-		return cold.ends
-	}
-	return nil
-}
-
-func (f *fn) frameCondEnds(fr *ctrlFrame) []int {
-	if cold := f.ctrlMerge(fr); cold != nil {
-		return cold.condEnds
-	}
-	return nil
-}
-
 func (f *fn) appendFrameEnd(fr *ctrlFrame, site int, conditional bool) {
+	if fr.kind == cfLoop {
+		panic("arm64: forward end site on loop frame")
+	}
 	cold := f.ensureCtrlMerge(fr)
+	packed := packFrameEndSite(site, conditional)
+	if cold.loopSetStart == 0 {
+		cold.loopSetStart = packed
+		return
+	}
+	f.appendEndSite(&cold.ends, packed)
+}
+
+func (f *fn) frameEndSites(fr *ctrlFrame) (uint32, []uint32) {
+	if fr.kind != cfLoop {
+		if cold := f.ctrlMerge(fr); cold != nil {
+			return cold.loopSetStart, cold.ends
+		}
+	}
+	return 0, nil
+}
+
+func (f *fn) patchFrameEndSites(first uint32, overflow []uint32) {
+	if first != 0 {
+		f.patchFrameEndSite(first)
+	}
+	for _, packed := range overflow {
+		f.patchFrameEndSite(packed)
+	}
+}
+
+func (f *fn) patchFrameEndSite(packed uint32) {
+	conditional := packed&frameEndConditional != 0
+	site := int(packed&^frameEndConditional) - 1
 	if conditional {
-		f.appendEndSite(&cold.condEnds, site)
+		f.a.PatchBranch19(site, f.a.Len())
 	} else {
-		f.appendEndSite(&cold.ends, site)
+		f.a.PatchBranch26(site, f.a.Len())
 	}
 }
 
@@ -1802,8 +1819,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	baseGCRoots := f.frameBaseGCRoots(&fr)
 	paramGCRoots := f.frameParamGCRoots(&fr)
 	resultGCRoots := f.frameResultGCRoots(&fr)
-	ends := f.frameEnds(&fr)
-	condEnds := f.frameCondEnds(&fr)
+	firstEnd, ends := f.frameEndSites(&fr)
 	loopPins := f.frameLoopPins(&fr)
 	coldEdges := f.frameColdEdges(&fr)
 	// ctrl backing is reused across functions. Clear the popped slot so its
@@ -1942,21 +1958,15 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		for i := range coldEdges {
 			f.a.PatchBranch19(coldEdges[i].site, f.a.Len())
 			f.a.B = append(f.a.B, coldEdges[i].code...)
-			cold := f.ensureCtrlMerge(&fr)
-			cold.ends = append(cold.ends, f.a.Branch())
-			ends = cold.ends
+			f.appendFrameEnd(&fr, f.a.Branch(), false)
+			firstEnd, ends = f.frameEndSites(&fr)
 			fr.set(ctrlEndReachable, true)
 		}
 		if skip != -1 {
 			f.a.PatchBranch26(skip, f.a.Len())
 		}
 	}
-	for _, site := range ends {
-		f.a.PatchBranch26(site, f.a.Len()) // fr.ends are unconditional B sites (imm26)
-	}
-	for _, site := range condEnds {
-		f.a.PatchBranch19(site, f.a.Len()) // fr.condEnds are B.cond sites (imm19)
-	}
+	f.patchFrameEndSites(firstEnd, ends)
 	endReachable := fallthroughReachable || fr.has(ctrlEndReachable)
 	f.unreachable = !endReachable
 	if endReachable {
@@ -2002,7 +2012,6 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	f.freeLocStateBuf(entryState)
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)
-	f.freeEndsBuf(condEnds)
 	f.releaseFrameBaseTypes(&fr)
 	return nil
 }

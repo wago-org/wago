@@ -393,7 +393,7 @@ func (f *fn) opt(option optimization.Option) bool {
 // and lifetime a single assignment instead of a list of parallel fields.
 type transient struct {
 	lsPool        []packedLocStates
-	endsPool      [][]int
+	endsPool      [][]uint32
 	tmpRoots      []*elem
 	tmpTypes      []machineType
 	tmpTypes2     []machineType
