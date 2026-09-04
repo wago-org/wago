@@ -395,6 +395,23 @@ func TestAMD64StructuredShuffleUsesRIPMaskOperands(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredCombinesVectorLocalWithConstantWithoutCopy(t *testing.T) {
+	body := []byte{0x20, 0x00, 0xfd, 0x0c} // local.get 0; v128.const
+	body = append(body, bytes.Repeat([]byte{0x7f}, 16)...)
+	body = append(body, 0xfd, 0x4e, 0x0b) // v128.and; end
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var redundant amd64.Asm
+	redundant.VMovdqu(4, 8)
+	if bytes.Contains(output.Code, redundant.B) {
+		t.Fatalf("structured local/constant operation copied its pinned local: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredCoalescesStraightLineLocalBoundsChecks(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),

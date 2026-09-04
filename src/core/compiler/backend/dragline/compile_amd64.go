@@ -4334,13 +4334,17 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			a.StoreRsp64(stackOff(dst), amd64.R11)
 		}
 	}
-	residentSIMDConstant := func(value [16]byte) bool {
+	residentSIMDConstantRegister := func(value [16]byte) (amd64.Reg, bool) {
 		for _, constant := range simdConstants {
 			if constant.bytes == value {
-				return true
+				return constant.reg, true
 			}
 		}
-		return false
+		return 0, false
+	}
+	residentSIMDConstant := func(value [16]byte) bool {
+		_, ok := residentSIMDConstantRegister(value)
+		return ok
 	}
 
 	for instrIndex := 0; instrIndex < len(sf.Instrs); instrIndex++ {
@@ -4420,6 +4424,39 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 				a.TestSelf(amd64.RAX, typ == wasm.I64)
 				stackTypes = append(stackTypes, wasm.I32)
 				pendingConditionAt, pendingCondition = instrIndex+1, amd64.CondE
+				continue
+			}
+		}
+		if reachable && instrIndex+2 < len(sf.Instrs) && instr.Kind == wasm.InstrLocalGet &&
+			int(instr.U32()) < len(sf.Locals) && sf.Locals[instr.U32()] == wasm.V128 && sf.Instrs[instrIndex+1].Kind == wasm.InstrV128Const {
+			constant, constantOK := sf.SIMDImmediateAt(uint32(instrIndex + 1))
+			operation, operationOK := sf.SIMDImmediateAt(uint32(instrIndex + 2))
+			if constantOK && operationOK && amd64SIMDConstantBinaryKind(operation.Kind) {
+				if len(stackTypes) >= int(sf.MaxStack) {
+					return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
+				}
+				src := amd64.Reg(0)
+				if localPinned[instr.U32()] {
+					src = localRegisters[instr.U32()]
+				} else {
+					a.VMovdquLoadDisp(src, amd64.RSP, localOff(int(instr.U32())))
+				}
+				dst := reserveV128(len(stackTypes))
+				if constant.Bytes == [16]byte{} && (operation.Kind == wasm.InstrV128And || operation.Kind == wasm.InstrV128Or || operation.Kind == wasm.InstrV128Xor || operation.Kind == wasm.InstrI8x16SubSatU) {
+					if operation.Kind == wasm.InstrV128And {
+						a.VPxor(dst, dst, dst)
+					} else if dst != src {
+						a.VMovdqu(dst, src)
+					}
+				} else if rhs, ok := residentSIMDConstantRegister(constant.Bytes); ok {
+					emitAMD64DirectSIMDBinary(&a, operation.Kind, dst, src, rhs)
+				} else {
+					simdConstantOperand(operation.Kind, dst, src, constant.Bytes)
+				}
+				stackTypes = append(stackTypes, wasm.V128)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+1].Offset)
+				metadata.recordSource(a.Len(), sf.Instrs[instrIndex+2].Offset)
+				instrIndex += 2
 				continue
 			}
 		}
@@ -6099,7 +6136,17 @@ func amd64DirectFloatUnaryKind(kind wasm.InstrKind) bool {
 func amd64DirectSIMDBinaryKind(kind wasm.InstrKind) bool {
 	switch kind {
 	case wasm.InstrV128And, wasm.InstrV128Andnot, wasm.InstrV128Or, wasm.InstrV128Xor,
-		wasm.InstrI8x16SubSatU, wasm.InstrI16x8Sub, wasm.InstrI32x4Add:
+		wasm.InstrI8x16Eq, wasm.InstrI16x8Eq, wasm.InstrI8x16SubSatU, wasm.InstrI16x8Sub, wasm.InstrI32x4Add:
+		return true
+	default:
+		return false
+	}
+}
+
+func amd64SIMDConstantBinaryKind(kind wasm.InstrKind) bool {
+	switch kind {
+	case wasm.InstrV128And, wasm.InstrV128Or, wasm.InstrV128Xor,
+		wasm.InstrI8x16Eq, wasm.InstrI16x8Eq, wasm.InstrI8x16SubSatU:
 		return true
 	default:
 		return false
@@ -6116,6 +6163,10 @@ func emitAMD64DirectSIMDBinary(a *amd64.Asm, kind wasm.InstrKind, dst, lhs, rhs 
 		a.VPor(dst, lhs, rhs)
 	case wasm.InstrV128Xor:
 		a.VPxor(dst, lhs, rhs)
+	case wasm.InstrI8x16Eq:
+		a.VPcmpeqb(dst, lhs, rhs)
+	case wasm.InstrI16x8Eq:
+		a.VPcmpeqw(dst, lhs, rhs)
 	case wasm.InstrI8x16SubSatU:
 		a.VPsubusb(dst, lhs, rhs)
 	case wasm.InstrI16x8Sub:
