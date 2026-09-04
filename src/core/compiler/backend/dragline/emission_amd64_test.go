@@ -178,6 +178,29 @@ func TestAMD64FloatZeroMaterializationUsesZeroIdiom(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachFloatRematerializationUsesConstantPool(t *testing.T) {
+	const bits = uint64(0x3ff8000000000000)
+	machine := &railmach.Func{
+		Insts: []railmach.Inst{{Op: wasm.InstrF64Const, Aux: bits, Result: 1}},
+		VRegs: []railmach.VRegData{{}, {Def: 0, Type: railmach.TypeF64, Bank: railmach.BankFPR}},
+	}
+	plan := &nativeBackendPlan{Machine: machine}
+	var a amd64.Asm
+	called := false
+	reg, err := amd64RailMachReadLocationWithFloatConstant(&a, plan, 1, railmach.Location{Kind: railmach.LocationRematerialize, Bank: railmach.BankFPR}, 12, 0, func(dst amd64.Reg, got uint64, f64 bool) {
+		called = true
+		if dst != 12 || got != bits || !f64 {
+			t.Fatalf("constant pool materialization = (dst %d, bits %#x, f64 %v)", dst, got, f64)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reg != 12 || !called {
+		t.Fatalf("rematerialized register = %d, callback called = %v", reg, called)
+	}
+}
+
 func TestAMD64StructuredSIMDConstantsUseDeduplicatedRIPPool(t *testing.T) {
 	constant := [16]byte{1, 3, 5, 7, 9, 11, 13, 15, 2, 4, 6, 8, 10, 12, 14, 16}
 	body := []byte{0xfd, 0x0c}

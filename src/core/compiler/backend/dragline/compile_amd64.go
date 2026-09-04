@@ -852,6 +852,16 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	}
 	var a amd64.Asm
 	floatConstantPatches := make([]amd64FloatConstantPatch, 0, 4)
+	materializeFloatConstant := func(dst amd64.Reg, bits uint64, f64 bool) {
+		if bits == 0 {
+			a.VPxor(dst, dst, dst)
+			return
+		}
+		floatConstantPatches = append(floatConstantPatches, amd64FloatConstantPatch{at: a.MovsRipPlaceholder(dst, f64), bits: bits, f64: f64})
+	}
+	readLocation := func(value railmach.VReg, location railmach.Location, scratch amd64.Reg, stackDelta uint32) (amd64.Reg, error) {
+		return amd64RailMachReadLocationWithFloatConstant(&a, plan, value, location, scratch, stackDelta, materializeFloatConstant)
+	}
 	defer func() { metrics.observe(sliceBytes(a.B) + sliceBytes(floatConstantPatches)) }()
 	a.Push(amd64.RCX)
 	a.MovReg64(amd64.RBX, amd64.RSI)
@@ -1013,7 +1023,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			slot := railmach.Location{Kind: railmach.LocationSpill, Bank: fragment.Location.Bank, Index: fragment.VictimSlot}
-			if _, err := amd64RailMachReadLocation(&a, plan, fragment.Victim, slot, amd64RailMachPhysical(fragment.Location), 0); err != nil {
+			if _, err := readLocation(fragment.Victim, slot, amd64RailMachPhysical(fragment.Location), 0); err != nil {
 				return err
 			}
 		}
@@ -1167,7 +1177,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						return nil, 0, true, err
 					}
 				}
-				if _, err := amd64RailMachReadLocation(&a, plan, fragment.Reg, plan.Allocation.Locations[fragment.Reg], dst, 0); err != nil {
+				if _, err := readLocation(fragment.Reg, plan.Allocation.Locations[fragment.Reg], dst, 0); err != nil {
 					return nil, 0, true, err
 				}
 			}
@@ -1187,7 +1197,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					if operand.Flags&railmach.OperandColdRemat != 0 {
 						location = railmach.Location{Kind: railmach.LocationRematerialize, Bank: operand.Bank}
 					}
-					if _, err := amd64RailMachReadLocation(&a, plan, operand.Reg, location, reg(operand.Reg), 0); err != nil {
+					if _, err := readLocation(operand.Reg, location, reg(operand.Reg), 0); err != nil {
 						return nil, 0, true, err
 					}
 				}
@@ -1311,7 +1321,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						if data.Bank == railmach.BankFPR {
 							scratch = 12
 						}
-						value, err := amd64RailMachReadLocation(&a, plan, operand.Reg, plan.Allocation.LocationAt(operand.Reg, currentPosition), scratch, 0)
+						value, err := readLocation(operand.Reg, plan.Allocation.LocationAt(operand.Reg, currentPosition), scratch, 0)
 						if err != nil {
 							return nil, 0, true, err
 						}
@@ -3209,6 +3219,10 @@ func amd64RailMachReadValueAt(a *amd64.Asm, plan *nativeBackendPlan, value railm
 }
 
 func amd64RailMachReadLocation(a *amd64.Asm, plan *nativeBackendPlan, value railmach.VReg, location railmach.Location, scratch amd64.Reg, stackDelta uint32) (amd64.Reg, error) {
+	return amd64RailMachReadLocationWithFloatConstant(a, plan, value, location, scratch, stackDelta, nil)
+}
+
+func amd64RailMachReadLocationWithFloatConstant(a *amd64.Asm, plan *nativeBackendPlan, value railmach.VReg, location railmach.Location, scratch amd64.Reg, stackDelta uint32, materializeFloatConstant func(amd64.Reg, uint64, bool)) (amd64.Reg, error) {
 	data := plan.Machine.VRegs[value]
 	switch location.Kind {
 	case railmach.LocationRegister:
@@ -3238,7 +3252,12 @@ func amd64RailMachReadLocation(a *amd64.Asm, plan *nativeBackendPlan, value rail
 		case wasm.InstrI64Const, wasm.InstrRefNull:
 			a.MovImm64(scratch, definition.Aux)
 		case wasm.InstrF32Const, wasm.InstrF64Const:
-			emitAMD64FloatBits(a, scratch, definition.Aux, definition.Op == wasm.InstrF64Const)
+			f64 := definition.Op == wasm.InstrF64Const
+			if materializeFloatConstant != nil {
+				materializeFloatConstant(scratch, definition.Aux, f64)
+			} else {
+				emitAMD64FloatBits(a, scratch, definition.Aux, f64)
+			}
 		case wasm.InstrI32WrapI64, wasm.InstrI64ExtendI32U, wasm.InstrI64ExtendI32S,
 			wasm.InstrI32Extend8S, wasm.InstrI32Extend16S,
 			wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:
