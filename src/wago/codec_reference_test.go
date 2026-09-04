@@ -157,6 +157,15 @@ func TestCompiledCodecRequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 
 	blob, err = (&Compiled{}).MarshalBinary()
 	if err != nil {
+		t.Fatalf("marshal forged i31-product fixture: %v", err)
+	}
+	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionI31Product)
+	if err := decoded.UnmarshalBinary(blob); err == nil || !strings.Contains(err.Error(), "requires the recorded GC feature") {
+		t.Fatalf("forged i31 execution product error = %v, want fail-closed GC rejection", err)
+	}
+
+	blob, err = (&Compiled{}).MarshalBinary()
+	if err != nil {
 		t.Fatalf("marshal forged generic-GC fixture: %v", err)
 	}
 	binary.LittleEndian.PutUint64(blob[len(blob)-9:len(blob)-1], compiledGCExecutionGenericArray)

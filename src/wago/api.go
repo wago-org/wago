@@ -2271,6 +2271,13 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, constExprCtx
 					out[i] = RefInit{Null: true}
 					continue
 				}
+				// A direct ref.i31 evaluates to tagged bits. Preserve its semantic
+				// expression when the declared segment type is a supertype such as
+				// anyref; FuncIndex is reserved for function-reference payloads here.
+				if isI31ReferenceConstExprResult(result) {
+					out[i] = RefInit{Expr: append([]byte(nil), body...)}
+					continue
+				}
 			}
 			payload, err := wasm.ParseElementExpr(ex)
 			if err != nil {
@@ -2294,6 +2301,10 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, constExprCtx
 
 func isNullReferenceConstExprResult(result constExprResult) bool {
 	return result.vtype.Kind() == wasm.ValRef && result.bits == 0 && result.GlobalIndex < 0 && result.FuncIndex < 0
+}
+
+func isI31ReferenceConstExprResult(result constExprResult) bool {
+	return isI31RefType(result.vtype) && result.bits != 0 && result.GlobalIndex < 0 && result.FuncIndex < 0
 }
 
 func funcrefExprPayload(e wasm.Expr) (uint32, error) {

@@ -21,7 +21,7 @@ const (
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
 	// low range; reserving the top nine bits avoids growing artifacts.
-	compiledGCExecutionI31ConstExpr       uint64 = 1 << 55
+	compiledGCExecutionI31Product         uint64 = 1 << 55
 	compiledFuncRefContextHeader          uint64 = 1 << 56
 	compiledDynamicFuncrefEscape          uint64 = 1 << 57
 	compiledRegisterABIDisabled           uint64 = 1 << 58
@@ -30,7 +30,7 @@ const (
 	compiledGCExecutionDynamicFuncRefTest uint64 = 1 << 61
 	compiledGCExecutionGenericStruct      uint64 = 1 << 62
 	compiledGCExecutionGenericArray       uint64 = 1 << 63
-	compiledGCExecutionMask                      = compiledGCExecutionI31ConstExpr | compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
+	compiledGCExecutionMask                      = compiledGCExecutionI31Product | compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
 
 	// Import names are attacker-controlled artifact metadata. Bound the decoded
 	// string headers plus exact-name sidecar independently of the encoded section
@@ -78,25 +78,6 @@ func compiledMetadataUsesSIMD(c *Compiled) bool {
 		case CompositeTypeArray:
 			if !typ.Array.Storage.Packed && typ.Array.Storage.Value.Kind == ValueTypeV128 {
 				return true
-			}
-		}
-	}
-	return false
-}
-
-func compiledHasDeferredI31ElementExpr(c *Compiled) bool {
-	if c == nil {
-		return false
-	}
-	for _, elems := range [][]ElemInit{c.Elems, c.passiveElems} {
-		for _, elem := range elems {
-			if normalizedElemRefType(elem.RefType) != ValI31Ref {
-				continue
-			}
-			for _, value := range elem.Values {
-				if len(value.Expr) != 0 {
-					return true
-				}
 			}
 		}
 	}
@@ -358,8 +339,8 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	w.tags(c)
 	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
-	if c.stagedGCI31Product() != 0 && compiledHasDeferredI31ElementExpr(c) {
-		required |= compiledGCExecutionI31ConstExpr
+	if c.stagedGCI31Product() != 0 {
+		required |= compiledGCExecutionI31Product
 	}
 	if c.stagedGCStructProduct() == stagedGCStructGeneric {
 		required |= compiledGCExecutionGenericStruct
@@ -1017,9 +998,9 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
 		c.codeCache.flags |= compiledCacheDynamicFuncRefTest
 	}
-	if gcExecution&compiledGCExecutionI31ConstExpr != 0 {
-		if !c.requiredFeatures.IsEnabled(CoreFeatureGC) || !compiledHasDeferredI31ElementExpr(c) {
-			return fmt.Errorf("deferred i31 element execution flag requires a recorded GC expression")
+	if gcExecution&compiledGCExecutionI31Product != 0 {
+		if !c.requiredFeatures.IsEnabled(CoreFeatureGC) {
+			return fmt.Errorf("i31 execution product flag requires the recorded GC feature")
 		}
 		c.ensureCodeCache()
 		c.codeCache.stagedFeatures |= CoreFeatureGC

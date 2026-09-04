@@ -88,27 +88,32 @@ func TestStagedGCI31CoreExecutionAndPublicCategory(t *testing.T) {
 	}
 }
 
-func TestStagedGCI31CoreCodecLosesAdmission(t *testing.T) {
+func TestStagedGCI31CorePublicArtifactPreservesAdmission(t *testing.T) {
 	c, err := compileStagedGCI31(stagedGCI31CoreBytes(t))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := marshalCompiled(c)
+	blob, err := c.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("i31 core codec=%d", len(blob))
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+	loaded, err := LoadTrustedArtifact(blob)
+	if err != nil {
 		t.Fatal(err)
 	}
 	defer loaded.Close()
-	if loaded.stagedGCI31Product() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
+	if loaded.stagedGCI31Product() != stagedGCI31ProductCore || !loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
 		t.Fatalf("codec inherited i31 admission: product=%v features=%v", loaded.stagedGCI31Product(), loaded.stagedFeatures())
 	}
-	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
+	in, err := instantiateCore(loaded, InstantiateOptions{})
+	if err != nil {
 		t.Fatalf("codec-loaded i31 instantiate = %v", err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("get_globals"); err != nil || len(got) != 2 || got[0] != 2 || got[1] != 3 {
+		t.Fatalf("codec-loaded globals=%v err=%v", got, err)
 	}
 }
 

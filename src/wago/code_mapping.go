@@ -40,7 +40,7 @@ type compiledCodeCache struct {
 	gcTypeSubtypingProduct stagedGCTypeSubtypingProduct // exact first gc/type-subtyping no-object product; never serialized
 	gcStructProduct        stagedGCStructProduct        // exact products stay compile-only; codec reload may restore generic helper admission
 	gcArrayProduct         stagedGCArrayProduct         // exact products stay compile-only; codec reload may restore generic helper admission
-	gcI31Product           stagedGCI31Product           // exact non-allocating i31 boundary; never serialized
+	gcI31Product           stagedGCI31Product           // exact non-allocating i31 boundary; persisted as a semantic execution bit
 	flags                  compiledCodeCacheFlags       // compact compile-only native dispatch and memory preferences
 	// The low 32 bits are compile-only CoreFeatures. The high 32 bits retain the
 	// direct-Instantiation native stack capacity without growing this sidecar.
