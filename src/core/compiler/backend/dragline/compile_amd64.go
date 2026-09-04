@@ -890,7 +890,7 @@ func amd64RailMachCanUseMemoryAddressDirectly(plan *nativeBackendPlan, value rai
 	location := plan.Allocation.LocationAt(value, position)
 	dies := amd64RailMachValueDiesAt(plan, value, position+6)
 	return (!aliasesLoadResult || dies) && offset <= math.MaxInt32 && location.Kind == railmach.LocationRegister &&
-		(location.Index < 5 || plan.SignalsBounds && plan.AMD64SignalAddressReuse || dies)
+		(location.Index < 5 || plan.SignalsBounds || dies)
 }
 
 func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
@@ -3367,7 +3367,7 @@ func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID,
 	if err != nil {
 		return err
 	}
-	directAddress := plan.SignalsBounds && plan.AMD64SignalAddressReuse && uint32(load.Aux) <= math.MaxInt32 && address != dst
+	directAddress := plan.SignalsBounds && uint32(load.Aux) <= math.MaxInt32 && address != dst
 	if address != amd64.R10 && !directAddress {
 		a.MovReg32(amd64.R10, address)
 		address = amd64.R10
@@ -3423,7 +3423,7 @@ func emitAMD64FoldedFloatMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID, c
 	if err != nil {
 		return err
 	}
-	directAddress := plan.SignalsBounds && plan.AMD64SignalAddressReuse && uint32(load.Aux) <= math.MaxInt32
+	directAddress := plan.SignalsBounds && uint32(load.Aux) <= math.MaxInt32
 	if address != amd64.R10 && !directAddress {
 		a.MovReg32(amd64.R10, address)
 		address = amd64.R10

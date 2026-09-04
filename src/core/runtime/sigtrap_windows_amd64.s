@@ -48,6 +48,11 @@ scan:
 	MOVQ	152(R15), R11           // saved RSP
 	SUBQ	$40, R11                // page + padding + retry PC
 	MOVQ	AX, 0(R11)
+	// Windows uses R8 while transferring control to the continuation thunk.
+	// Carry the faulting value explicitly so the thunk can restore the exact
+	// register file before retrying the memory instruction.
+	MOVQ	184(R15), AX            // CONTEXT.R8
+	MOVQ	AX, 8(R11)
 	MOVQ	248(R15), AX            // faulting RIP
 	MOVQ	AX, 32(R11)             // RET target after the commit
 	MOVQ	R11, 152(R15)
@@ -86,7 +91,7 @@ done:
 // live across a memory access, commit one Wasm page, then RET to the faulting
 // instruction saved by VEH. Entry SP points at {page, pad[3], retryPC}.
 TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
-	SUBQ	$200, SP                // 32 shadow + GP/flags + XMM0..5; call-aligned
+	LEAQ	-200(SP), SP            // 32 shadow + GP/flags + XMM0..5; call-aligned
 	MOVQ	AX, 32(SP)
 	MOVQ	CX, 40(SP)
 	MOVQ	DX, 48(SP)
@@ -97,6 +102,8 @@ TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
 	PUSHFQ
 	POPQ	AX
 	MOVQ	AX, 88(SP)
+	MOVQ	208(SP), AX            // faulting R8 carried by the VEH frame
+	MOVQ	AX, 56(SP)             // replace Windows' continuation-time R8
 	MOVOU	X0, 96(SP)
 	MOVOU	X1, 112(SP)
 	MOVOU	X2, 128(SP)
@@ -127,7 +134,7 @@ TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
 	MOVQ	64(SP), R9
 	MOVQ	72(SP), R10
 	MOVQ	80(SP), R11
-	ADDQ	$232, SP                // frame + header before retryPC
+	LEAQ	232(SP), SP             // frame + header before retryPC; keep flags
 	RET
 commitfailed:
 	MOVQ	-104(BX), AX

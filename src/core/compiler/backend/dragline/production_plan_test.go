@@ -227,18 +227,6 @@ func TestNativeBackendPlannerBuildsCompleteRailMachProduct(t *testing.T) {
 	t.Logf("RailSSA retained capacity: %#v", breakdown)
 }
 
-func TestAMD64SignalAddressReuseRespectsFaultContinuationABI(t *testing.T) {
-	if !amd64SignalAddressReuseSupported(corecompiler.Target{GOOS: "linux", GOARCH: "amd64"}) {
-		t.Fatal("Linux AMD64 signal address reuse was disabled")
-	}
-	if amd64SignalAddressReuseSupported(corecompiler.Target{GOOS: "windows", GOARCH: "amd64"}) {
-		t.Fatal("Windows AMD64 signal address reuse bypassed the canonical fault boundary")
-	}
-	if amd64SignalAddressReuseSupported(corecompiler.Target{GOOS: "linux", GOARCH: "arm64"}) {
-		t.Fatal("non-AMD64 target enabled AMD64 signal address reuse")
-	}
-}
-
 func TestNativeBackendPlannerReservesVerifiedCollectorRootSlots(t *testing.T) {
 	importEntry := append(wasmtest.Name("env"), wasmtest.Name("tick")...)
 	importEntry = append(importEntry, 0)

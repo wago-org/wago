@@ -372,13 +372,8 @@ func TestAMD64RailMachUsesAllocatedMemoryAddressesDirectly(t *testing.T) {
 		t.Fatal("live callee-saved address bypassed its scratch copy")
 	}
 	plan.SignalsBounds = true
-	plan.AMD64SignalAddressReuse = true
 	if !amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, false) {
 		t.Fatal("signal-bounded callee-saved address required a scratch copy")
-	}
-	plan.AMD64SignalAddressReuse = false
-	if amd64RailMachCanUseMemoryAddressDirectly(&plan, 1, 0, 0, false) {
-		t.Fatal("platform-constrained signal address bypassed its scratch copy")
 	}
 	plan.SignalsBounds = false
 	allocation.Intervals = append(allocation.Intervals, railmach.LiveInterval{Reg: 1, Start: 0, End: 6, Bank: railmach.BankGPR})

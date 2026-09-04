@@ -60,11 +60,6 @@ type nativeBackendPlan struct {
 	IPRARefinedCalls  uint32
 	SignalsBounds     bool
 	AMD64BMI2         bool
-	// AMD64SignalAddressReuse permits a faulting linear-memory instruction to
-	// consume its allocated address register directly. Windows guard-page growth
-	// resumes through a VEH continuation and does not preserve this wider live
-	// register set, so Windows retains the canonical R10 address boundary.
-	AMD64SignalAddressReuse bool
 	// AMD64MemoryBoundEnd is the access end offset subtracted from the stable
 	// memory-0 byte length cached in the final allocatable GPR. Zero disables
 	// the cache.
@@ -160,10 +155,6 @@ type nativeBackendPlanner struct {
 	signalsBounds       bool
 	candidateScratch    *[2]nativeCandidateWorkspace
 	plan                nativeBackendPlan
-}
-
-func amd64SignalAddressReuseSupported(target corecompiler.Target) bool {
-	return target.GOARCH == "amd64" && target.GOOS != "windows"
 }
 
 type nativeCandidateWorkspace struct {
@@ -1352,7 +1343,6 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64BMI2:               target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
-		AMD64SignalAddressReuse: amd64SignalAddressReuseSupported(target),
 		PostRAPairWith:          p.postRAPairWith, PostRASkip: p.postRASkip,
 		PostRAForwardFrom:   p.postRAForwardFrom,
 		PostRAFusionWith:    p.postRAFusionWith,
