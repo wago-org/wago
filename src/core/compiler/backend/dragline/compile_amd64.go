@@ -29,7 +29,7 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, moduleHasDe
 	if !railMachCandidate(stack, moduleHasV128) {
 		return false
 	}
-	if moduleHasDenseGlobals && stack.MaxLoopDepth > 1 {
+	if moduleHasDenseGlobals && stack.MaxLoopDepth > 1 && amd64StructuredUsesGlobals(stack) {
 		// Dense mutable-global functions with nested loops still expose
 		// incomplete global-backed edge flow. Single-loop and acyclic functions
 		// use the verified RailMach path; nested loops retain structured lowering.
@@ -46,6 +46,15 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, moduleHasDe
 		}
 	}
 	return true
+}
+
+func amd64StructuredUsesGlobals(stack *railssa.StackFunc) bool {
+	for _, instruction := range stack.Instrs {
+		if instruction.Kind == wasm.InstrGlobalGet || instruction.Kind == wasm.InstrGlobalSet {
+			return true
+		}
+	}
+	return false
 }
 
 var amd64StackLocalRegisters = [...]amd64.Reg{amd64.R12, amd64.R13, amd64.R14, amd64.R15, amd64.R8, amd64.R9}
@@ -527,7 +536,7 @@ func amd64RailMachFastSingleArgumentCall(plan *nativeBackendPlan, instructionID 
 }
 
 func amd64RailMachPrivateRegisterCall(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst, operands []railmach.Operand, position uint32) bool {
-	if plan == nil || plan.Machine == nil || plan.Allocation == nil || len(operands) == 0 || len(operands) > 5 || instruction.ResultCount() > 1 ||
+	if plan == nil || plan.Machine == nil || plan.Allocation == nil || len(operands) == 0 || len(operands) > len(amd64ParamRegisters) || instruction.ResultCount() > 1 ||
 		!amd64DirectPreparedClass(amd64RailMachDirectCallClass(plan, instructionID, instruction)) {
 		return false
 	}
@@ -4008,6 +4017,31 @@ func amd64PinHotStructuredScalarLocals(registers []amd64.Reg, locals []wasm.ValT
 	}
 }
 
+// amd64StructuredOverwrittenLocals proves the declared locals whose implicit
+// zero value is killed on the entry straight-line path before it can be read.
+// Stop at the first control boundary: this intentionally leaves opportunities
+// inside structured regions to a future CFG-aware analysis rather than
+// speculating about which branch executes.
+func amd64StructuredOverwrittenLocals(sf *railssa.StackFunc) []bool {
+	overwritten := make([]bool, len(sf.Locals))
+	seen := make([]bool, len(sf.Locals))
+	for _, instruction := range sf.Instrs {
+		switch instruction.Kind {
+		case wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf, wasm.InstrInvalid,
+			wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn, wasm.InstrUnreachable:
+			return overwritten
+		case wasm.InstrLocalGet, wasm.InstrLocalSet, wasm.InstrLocalTee:
+			local := instruction.U32()
+			if int(local) >= len(sf.Locals) || seen[local] {
+				continue
+			}
+			seen[local] = true
+			overwritten[local] = instruction.Kind != wasm.InstrLocalGet
+		}
+	}
+	return overwritten
+}
+
 func amd64StructuredSIMDHighRegisterWorthwhile(slot int, score uint64, maxStack uint32) bool {
 	if slot < 6 {
 		return true
@@ -4041,6 +4075,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	localPinned := make([]bool, len(sf.Locals))
 	scalarLocalUses := make([]uint32, len(sf.Locals))
 	vectorLocalUses := make([]uint32, len(sf.Locals))
+	overwrittenLocals := amd64StructuredOverwrittenLocals(sf)
 	var simdConstants []amd64SIMDConstant
 	gpLocals, fpLocals := 0, 0
 	for i, typ := range sf.Locals {
@@ -4285,6 +4320,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		a.XorSelf32(amd64.RAX)
 	}
 	for i := len(sf.Params); i < len(sf.Locals); i++ {
+		if overwrittenLocals[i] {
+			continue
+		}
 		if localPinned[i] {
 			if sf.Locals[i] == wasm.V128 {
 				a.VPxor(localRegisters[i], localRegisters[i], localRegisters[i])
@@ -4351,7 +4389,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	pendingConditionAt := -1
 	pendingCondition := amd64.Cond(0)
 	defer func() {
-		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localPinned) + sliceBytes(scalarLocalUses) + sliceBytes(vectorLocalUses) + sliceBytes(simdConstants) + sliceBytes(simdConstantPatches) + sliceBytes(localMemoryCheckEnds) + sliceBytes(localMemoryChecksElided) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(controls) + sliceBytes(functionPatches)
+		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localPinned) + sliceBytes(scalarLocalUses) + sliceBytes(vectorLocalUses) + sliceBytes(overwrittenLocals) + sliceBytes(simdConstants) + sliceBytes(simdConstantPatches) + sliceBytes(localMemoryCheckEnds) + sliceBytes(localMemoryChecksElided) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(controls) + sliceBytes(functionPatches)
 		for i := range controls {
 			workspace += sliceBytes(controls[i].patches)
 		}
@@ -4380,8 +4418,10 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		}
 	}
 	var vectorStackCache [12]int
+	var vectorLocalCache [12]int
 	for index := range vectorStackCache {
 		vectorStackCache[index] = -1
+		vectorLocalCache[index] = -1
 	}
 	scalarStackCacheRegisters := [...]amd64.Reg{amd64.RDI, amd64.RSI, amd64.RBP}
 	scalarStackCacheEntries := len(scalarStackCacheRegisters)
@@ -4389,6 +4429,43 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		scalarStackCacheEntries--
 	}
 	scalarStackCache := [...]int{-1, -1, -1}
+	scalarLocalCache := [...]int{-1, -1, -1}
+	findScalarLocalCache := func(local int) int {
+		// Mixed scalar/SIMD functions place substantially more pressure on this
+		// shared cache. Keep their scalar locals frame-backed until the caches can
+		// make independent eviction decisions.
+		if sf.HasV128 {
+			return -1
+		}
+		for i, cached := range scalarLocalCache[:scalarStackCacheEntries] {
+			if cached == local {
+				return i
+			}
+		}
+		return -1
+	}
+	clearScalarLocalRegister := func(reg amd64.Reg) {
+		for i, candidate := range scalarStackCacheRegisters[:scalarStackCacheEntries] {
+			if candidate == reg {
+				scalarLocalCache[i] = -1
+				return
+			}
+		}
+	}
+	cacheScalarLocal := func(local int, reg amd64.Reg) {
+		if sf.HasV128 {
+			return
+		}
+		if previous := findScalarLocalCache(local); previous >= 0 {
+			scalarLocalCache[previous] = -1
+		}
+		for i, candidate := range scalarStackCacheRegisters[:scalarStackCacheEntries] {
+			if candidate == reg {
+				scalarLocalCache[i] = local
+				return
+			}
+		}
+	}
 	findVectorStackCache := func(index int) int {
 		for i, cached := range vectorStackCache[:vectorStackCacheEntries] {
 			if cached == index {
@@ -4397,11 +4474,42 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		}
 		return -1
 	}
+	findVectorLocalCache := func(local int) int {
+		for i, cached := range vectorLocalCache[:vectorStackCacheEntries] {
+			if cached == local {
+				return i
+			}
+		}
+		return -1
+	}
+	clearVectorLocalRegister := func(reg amd64.Reg) {
+		for i, candidate := range vectorStackCacheRegisters[:vectorStackCacheEntries] {
+			if candidate == reg {
+				vectorLocalCache[i] = -1
+				return
+			}
+		}
+	}
+	cacheVectorLocal := func(local int, reg amd64.Reg) {
+		if previous := findVectorLocalCache(local); previous >= 0 {
+			vectorLocalCache[previous] = -1
+		}
+		for i, candidate := range vectorStackCacheRegisters[:vectorStackCacheEntries] {
+			if candidate == reg {
+				vectorLocalCache[i] = local
+				return
+			}
+		}
+	}
 	cachedV128 := func(index int) (amd64.Reg, bool) {
 		cache := findVectorStackCache(index)
 		if cache < 0 {
 			return 0, false
 		}
+		// SIMD lowering is allowed to select the cached operand as its destructive
+		// destination. Its frame home remains authoritative, but a local-value
+		// alias in this physical register cannot survive that access.
+		clearVectorLocalRegister(vectorStackCacheRegisters[cache])
 		return vectorStackCacheRegisters[cache], true
 	}
 	flushVectorStackCache := func() {
@@ -4412,6 +4520,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			a.VMovdquStoreDisp(amd64.RSP, stackOff(index), vectorStackCacheRegisters[i])
 			vectorStackCache[i] = -1
 		}
+		for i := range vectorLocalCache[:vectorStackCacheEntries] {
+			vectorLocalCache[i] = -1
+		}
 	}
 	flushScalarStackCache := func() {
 		for i, index := range scalarStackCache[:scalarStackCacheEntries] {
@@ -4420,6 +4531,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			}
 			a.StoreRsp64(stackOff(index), scalarStackCacheRegisters[i])
 			scalarStackCache[i] = -1
+		}
+		for i := range scalarLocalCache[:scalarStackCacheEntries] {
+			scalarLocalCache[i] = -1
 		}
 	}
 	findScalarStackCache := func(index int) int {
@@ -4432,8 +4546,10 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	}
 	scalarOperand := func(index int, scratch amd64.Reg) amd64.Reg {
 		if cache := findScalarStackCache(index); cache >= 0 {
+			scalarLocalCache[cache] = -1
 			return scalarStackCacheRegisters[cache]
 		}
+		clearScalarLocalRegister(scratch)
 		a.LoadRsp64(scratch, stackOff(index))
 		return scratch
 	}
@@ -4463,6 +4579,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			a.StoreRsp64(stackOff(scalarStackCache[cache]), scalarStackCacheRegisters[cache])
 		}
 		cachedReg := scalarStackCacheRegisters[cache]
+		scalarLocalCache[cache] = -1
 		if reg != cachedReg {
 			a.MovReg64(cachedReg, reg)
 		}
@@ -4476,16 +4593,19 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	loadV128 := func(index int, reg amd64.Reg) {
 		if cache := findVectorStackCache(index); cache >= 0 {
 			if cachedReg := vectorStackCacheRegisters[cache]; reg != cachedReg {
+				clearVectorLocalRegister(reg)
 				a.VMovdqu(reg, cachedReg)
 			}
 			return
 		}
+		clearVectorLocalRegister(reg)
 		a.VMovdquLoadDisp(reg, amd64.RSP, stackOff(index))
 	}
 	takeV128 := func(index int, scratch amd64.Reg) amd64.Reg {
 		if cache := findVectorStackCache(index); cache >= 0 {
 			reg := vectorStackCacheRegisters[cache]
 			vectorStackCache[cache] = -1
+			clearVectorLocalRegister(reg)
 			return reg
 		}
 		a.VMovdquLoadDisp(scratch, amd64.RSP, stackOff(index))
@@ -4511,6 +4631,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			a.VMovdquStoreDisp(amd64.RSP, stackOff(vectorStackCache[cache]), vectorStackCacheRegisters[cache])
 		}
 		cachedReg := vectorStackCacheRegisters[cache]
+		clearVectorLocalRegister(cachedReg)
 		vectorStackCache[cache] = index
 		return cachedReg
 	}
@@ -5570,6 +5691,10 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 					if err := pushV128(localRegisters[instr.U32()]); err != nil {
 						return nil, 0, nil, err
 					}
+				} else if cache := findVectorLocalCache(int(instr.U32())); cache >= 0 {
+					if err := pushV128(vectorStackCacheRegisters[cache]); err != nil {
+						return nil, 0, nil, err
+					}
 				} else {
 					if len(stackTypes) >= int(sf.MaxStack) {
 						return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
@@ -5589,6 +5714,11 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 					}
 					continue
 				}
+			} else if cache := findScalarLocalCache(int(instr.U32())); cache >= 0 {
+				if err := push(sf.Locals[instr.U32()], scalarStackCacheRegisters[cache]); err != nil {
+					return nil, 0, nil, err
+				}
+				continue
 			} else {
 				a.LoadRsp64(amd64.R10, localOff(int(instr.U32())))
 			}
@@ -5615,6 +5745,11 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 					if err := pushV128(reg); err != nil {
 						return nil, 0, nil, err
 					}
+					if !localPinned[instr.U32()] {
+						cacheVectorLocal(int(instr.U32()), vectorStackCacheRegisters[findVectorStackCache(len(stackTypes)-1)])
+					}
+				} else if !localPinned[instr.U32()] {
+					cacheVectorLocal(int(instr.U32()), reg)
 				}
 				continue
 			}
@@ -5636,6 +5771,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			if instr.Kind == wasm.InstrLocalTee {
 				if err := push(typ, value); err != nil {
 					return nil, 0, nil, err
+				}
+				if !localPinned[instr.U32()] {
+					cacheScalarLocal(int(instr.U32()), scalarStackCacheRegisters[findScalarStackCache(len(stackTypes)-1)])
 				}
 			}
 		case wasm.InstrGlobalGet:

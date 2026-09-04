@@ -684,6 +684,37 @@ func TestAMD64RailMachAdmissionKeepsUnprovedModuleShapesStructured(t *testing.T)
 	}
 }
 
+func TestAMD64RailMachDenseGlobalGateOnlyAppliesToGlobalUsers(t *testing.T) {
+	withoutGlobals := &railssa.StackFunc{MaxLoopDepth: 2, Instrs: []railssa.StackInstr{{Kind: wasm.InstrI64Add}}}
+	if !amd64RailMachCandidate(withoutGlobals, false, true) {
+		t.Fatal("global-free nested loop was rejected in a dense-global module")
+	}
+	withGlobals := &railssa.StackFunc{MaxLoopDepth: 2, Instrs: []railssa.StackInstr{{Kind: wasm.InstrGlobalGet}}}
+	if amd64RailMachCandidate(withGlobals, false, true) {
+		t.Fatal("global-backed nested loop was admitted in a dense-global module")
+	}
+}
+
+func TestAMD64StructuredOverwrittenLocalsStopsAtControlBoundary(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		instrs []railssa.StackInstr
+		want   bool
+	}{
+		{name: "entry write", instrs: []railssa.StackInstr{{Kind: wasm.InstrLocalSet}}, want: true},
+		{name: "entry read", instrs: []railssa.StackInstr{{Kind: wasm.InstrLocalGet}}},
+		{name: "write after control", instrs: []railssa.StackInstr{{Kind: wasm.InstrLoop}, {Kind: wasm.InstrLocalSet}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			stack := &railssa.StackFunc{Locals: []wasm.ValType{wasm.V128}, Instrs: test.instrs}
+			overwritten := amd64StructuredOverwrittenLocals(stack)
+			if len(overwritten) != 1 || overwritten[0] != test.want {
+				t.Fatalf("overwritten locals = %v, want %t", overwritten, test.want)
+			}
+		})
+	}
+}
+
 func TestAMD64RailMachAdmissionAcceptsRecursiveI64Loop(t *testing.T) {
 	stack := &railssa.StackFunc{
 		MaxLoopDepth: 1,
