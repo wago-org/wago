@@ -1070,7 +1070,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			return false
 		}
 		blockRange := plan.Schedule.BlockRanges[blockID]
-		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockLoopHeader) != 0 {
+		alignBlock := plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockLoopHeader) != 0
+		for edge := range plan.Machine.Edges {
+			if alignBlock || uint32(plan.Machine.Edges[edge].From) != uint32(blockID) {
+				continue
+			}
+			_, _, alignBlock = amd64RailMachRotatedZeroTestLatch(plan, uint32(blockID), uint32(edge))
+		}
+		if alignBlock {
 			a.AlignLoop()
 		}
 		blockOffsets[blockID] = a.Len()
@@ -2684,6 +2691,18 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			continue
 		}
 		if edgeCount == 1 {
+			if counter, exit, rotated := amd64RailMachRotatedZeroTestLatch(plan, uint32(blockID), first); rotated {
+				if err := emitAMD64RailMachEdgeMoves(&a, plan, first); err != nil {
+					return nil, 0, true, err
+				}
+				counterLocation := plan.Allocation.Locations[counter]
+				a.TestSelf(amd64RailMachPhysical(counterLocation), false)
+				patches = append(patches, nativeBranchPatch{At: a.JccPlaceholder(amd64.CondNE), Target: uint32(blockID)})
+				if exit != layoutSuccessor {
+					patches = append(patches, nativeBranchPatch{At: a.JmpPlaceholder(), Target: exit})
+				}
+				continue
+			}
 			if err := emitAMD64RailMachEdgeMoves(&a, plan, first); err != nil {
 				return nil, 0, true, err
 			}
@@ -2866,6 +2885,118 @@ func nativeAMD64FusionProducer(plan *nativeBackendPlan, consumer uint32) (uint32
 	}
 	producer := plan.PostRAFusionWith[consumer] - 1
 	return producer, producer < consumer && int(producer) < len(plan.Machine.Insts)
+}
+
+// amd64RailMachRotatedZeroTestLatch recognizes a recurrence whose loop header
+// only tests one i32 value for zero. The first iteration still enters through
+// that header, while later iterations test the transferred latch value directly
+// and branch back to the body. Explicit-bounds compilation deliberately admits
+// only canonical countdown loops; rotating a longer memory-dependent pointer
+// latch can otherwise lengthen its critical path.
+func amd64RailMachRotatedZeroTestLatch(plan *nativeBackendPlan, block, backedge uint32) (counter railmach.VReg, exit uint32, ok bool) {
+	if plan == nil || plan.Machine == nil || plan.CFG == nil || plan.Semantic == nil || plan.Schedule == nil || plan.Allocation == nil || plan.Exit == nil ||
+		plan.Stack == nil || int(backedge) >= len(plan.Machine.Edges) {
+		return 0, 0, false
+	}
+	// On AMD64 the loop-stream detector and taken-branch predictor already
+	// handle larger bodies well. Keep rotation to compact latches, where deleting
+	// the extra header branch is a clear front-end reduction rather than a code
+	// layout tradeoff for a long dependency chain.
+	if int(block) >= len(plan.Schedule.BlockRanges) || plan.Schedule.BlockRanges[block].Count > 8 {
+		return 0, 0, false
+	}
+	moveRange := plan.Exit.EdgeMoves[backedge]
+	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
+		move := plan.Exit.Moves[index]
+		if move.Placement != railmach.PlacePredecessorEnd && move.Placement != railmach.PlaceSplitEdge {
+			return 0, 0, false
+		}
+	}
+	header := uint32(plan.Machine.Edges[backedge].To)
+	if int(header) >= len(plan.Machine.Blocks) || plan.Machine.Blocks[header].Flags&uint16(railssa.BlockLoopHeader) == 0 || int(header) >= len(plan.CFG.Blocks) {
+		return 0, 0, false
+	}
+	headerCFG := plan.CFG.Blocks[header]
+	if headerCFG.InstCount == 0 {
+		return 0, 0, false
+	}
+	terminatorIndex := headerCFG.InstStart + headerCFG.InstCount - 1
+	terminator := plan.Stack.Instrs[terminatorIndex]
+	if terminator.Kind != wasm.InstrBrIf {
+		return 0, 0, false
+	}
+	semanticID := plan.Semantic.InstructionMap[terminatorIndex]
+	if semanticID == 0 {
+		return 0, 0, false
+	}
+	consumerID := semanticID - 1
+	producerID, fused := nativeAMD64FusionProducer(plan, consumerID)
+	if !fused || plan.Machine.Insts[producerID].Op != wasm.InstrI32Eqz {
+		return 0, 0, false
+	}
+	if int(header) >= len(plan.Schedule.BlockRanges) {
+		return 0, 0, false
+	}
+	headerRange := plan.Schedule.BlockRanges[header]
+	for _, instructionID := range plan.Schedule.Order[headerRange.Start : headerRange.Start+headerRange.Count] {
+		if instructionID == producerID || instructionID == consumerID {
+			continue
+		}
+		instruction := plan.Machine.Insts[instructionID]
+		if instruction.Result == 0 || plan.Machine.VRegs[instruction.Result].Flags&railmach.VRegElided == 0 {
+			return 0, 0, false
+		}
+	}
+	conditionOperands := plan.Machine.InstructionOperands(producerID)
+	if len(conditionOperands) != 1 {
+		return 0, 0, false
+	}
+	headerCounter := conditionOperands[0].Reg
+	first, second, count := nativeBlockEdgePair(plan, header)
+	if count != 2 {
+		return 0, 0, false
+	}
+	bodyEdge, exitEdge := first, second
+	if uint32(plan.Machine.Edges[bodyEdge].To) != block {
+		bodyEdge, exitEdge = exitEdge, bodyEdge
+	}
+	if uint32(plan.Machine.Edges[bodyEdge].To) != block || plan.Exit.EdgeMoves[bodyEdge].Count != 0 || plan.Exit.EdgeMoves[exitEdge].Count != 0 {
+		return 0, 0, false
+	}
+	var latchCounter railmach.VReg
+	for _, transfer := range plan.Machine.Transfers {
+		if transfer.Edge == backedge && transfer.Dst == headerCounter {
+			if latchCounter != 0 {
+				return 0, 0, false
+			}
+			latchCounter = transfer.Src
+		}
+	}
+	if latchCounter == 0 || int(latchCounter) >= len(plan.Machine.VRegs) || plan.Machine.VRegs[latchCounter].Type != railmach.TypeI32 {
+		return 0, 0, false
+	}
+	if !plan.SignalsBounds {
+		data := plan.Machine.VRegs[latchCounter]
+		if data.Def%6 != 3 {
+			return 0, 0, false
+		}
+		definition := data.Def / 6
+		if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Op != wasm.InstrI32Sub {
+			return 0, 0, false
+		}
+		operands := plan.Machine.InstructionOperands(definition)
+		if len(operands) != 2 || operands[0].Reg != headerCounter {
+			return 0, 0, false
+		}
+		if one, constant := nativeIntegerConstant(plan, operands[1].Reg); !constant || one != 1 {
+			return 0, 0, false
+		}
+	}
+	src, dst := plan.Allocation.Locations[latchCounter], plan.Allocation.Locations[headerCounter]
+	if src != dst || src.Kind != railmach.LocationRegister || src.Bank != railmach.BankGPR {
+		return 0, 0, false
+	}
+	return latchCounter, uint32(plan.Machine.Edges[exitEdge].To), true
 }
 
 func nativeAMD64MemoryFoldSource(plan *nativeBackendPlan, consumer uint32) (uint32, bool) {

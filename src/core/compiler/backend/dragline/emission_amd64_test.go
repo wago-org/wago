@@ -4,6 +4,7 @@ package dragline
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
@@ -12,6 +13,72 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestAMD64RailMachRotatesCanonicalCountdownLoop(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x02, 0x40, // block
+			0x03, 0x40, // loop
+			0x20, 0x00, 0x45, 0x0d, 0x01, // break when counter == 0
+			0x20, 0x00, 0x41, 0x01, 0x6b, 0x21, 0x00, // counter--
+			0x0c, 0x00, 0x0b, 0x0b, // continue; end loop/block
+			0x20, 0x00, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := (&nativeBackendPlanner{}).Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotated := false
+	var rotatedBlock, rotatedEdge uint32
+	for edge, candidate := range plan.Machine.Edges {
+		_, _, ok := amd64RailMachRotatedZeroTestLatch(plan, uint32(candidate.From), uint32(edge))
+		if ok {
+			rotated = true
+			rotatedBlock, rotatedEdge = uint32(candidate.From), uint32(edge)
+		}
+	}
+	if !rotated {
+		t.Fatal("canonical countdown loop was not rotated")
+	}
+	native, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("countdown finalization = used %t, err %v", used, err)
+	}
+	backwardJNE := false
+	for offset := 0; offset+6 <= len(native); offset++ {
+		if native[offset] == 0x0f && native[offset+1] == 0x85 && int32(binary.LittleEndian.Uint32(native[offset+2:])) < 0 {
+			backwardJNE = true
+			break
+		}
+	}
+	if !backwardJNE {
+		t.Fatal("rotated countdown has no backward JNE")
+	}
+	oldCount := plan.Schedule.BlockRanges[rotatedBlock].Count
+	plan.Schedule.BlockRanges[rotatedBlock].Count = 9
+	if _, _, ok := amd64RailMachRotatedZeroTestLatch(plan, rotatedBlock, rotatedEdge); ok {
+		t.Fatal("large countdown body was rotated")
+	}
+	plan.Schedule.BlockRanges[rotatedBlock].Count = oldCount
+}
 
 func TestAMD64ShuffleMasksSelectExactlyOneInput(t *testing.T) {
 	lanes := [16]byte{0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 15, 31}
