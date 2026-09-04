@@ -3745,6 +3745,15 @@ func amd64StructuredSIMDHighRegisterWorthwhile(slot int, score uint64, maxStack 
 	return score >= uint64(max(maxStack, 1))*8
 }
 
+func emitAMD64StructuredVectorSelect(a *amd64.Asm, condition, lhs, rhs amd64.Reg) {
+	a.TestSelf(condition, false)
+	keepLHS := a.JccPlaceholder(amd64.CondNE)
+	if lhs != rhs {
+		a.VMovdqu(lhs, rhs)
+	}
+	a.PatchRel32(keepLHS, a.Len())
+}
+
 func amd64StructuredLocalsPinned(localPinned []bool, locals ...uint32) bool {
 	for _, local := range locals {
 		if int(local) >= len(localPinned) || !localPinned[local] {
@@ -5694,17 +5703,14 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 				return nil, 0, nil, err
 			}
 			if len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 {
-				if err := popV128(1); err != nil {
-					return nil, 0, nil, err
-				}
-				if err := popV128(0); err != nil {
-					return nil, 0, nil, err
-				}
-				a.TestSelf(amd64.R11, false)
-				keepLHS := a.JccPlaceholder(amd64.CondNE)
-				a.VMovdqu(0, 1)
-				a.PatchRel32(keepLHS, a.Len())
-				if err := pushV128(0); err != nil {
+				rhsIndex := len(stackTypes) - 1
+				rhs := takeV128(rhsIndex, 1)
+				stackTypes = stackTypes[:rhsIndex]
+				lhsIndex := len(stackTypes) - 1
+				lhs := takeV128(lhsIndex, 0)
+				stackTypes = stackTypes[:lhsIndex]
+				emitAMD64StructuredVectorSelect(&a, amd64.R11, lhs, rhs)
+				if err := pushV128(lhs); err != nil {
 					return nil, 0, nil, err
 				}
 				continue

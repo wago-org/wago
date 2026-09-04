@@ -214,6 +214,18 @@ func TestAMD64StructuredVectorTeeDoesNotCopyBack(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredVectorSelectUsesExistingRegisters(t *testing.T) {
+	var got, want amd64.Asm
+	emitAMD64StructuredVectorSelect(&got, amd64.R11, 4, 5)
+	want.TestSelf(amd64.R11, false)
+	keepLHS := want.JccPlaceholder(amd64.CondNE)
+	want.VMovdqu(4, 5)
+	want.PatchRel32(keepLHS, want.Len())
+	if !bytes.Equal(got.B, want.B) {
+		t.Fatalf("vector select = %x, want %x", got.B, want.B)
+	}
+}
+
 func TestAMD64RailMachSpillForwardingRetainsLiveHomes(t *testing.T) {
 	allocation := railmach.GreedyAllocation{Allocation: railmach.Allocation{Intervals: []railmach.LiveInterval{
 		{Reg: 1, Start: 3, End: 14, Bank: railmach.BankFPR},
