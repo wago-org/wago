@@ -1662,7 +1662,7 @@ func (f *fn) consumeGCFrameCallsite() {
 	if plan == nil || !plan.Candidate {
 		return
 	}
-	if f.gcCallsiteIndex >= len(plan.LiveCallLocalMasks) {
+	if f.gcCallsiteIndex >= plan.CallMaskCount() {
 		plan.Exact = false
 		return
 	}
@@ -1676,7 +1676,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	}
 	siteIndex := f.gcCallsiteIndex
 	f.gcCallsiteIndex++
-	if siteIndex >= len(plan.LiveCallLocalMasks) {
+	if siteIndex >= plan.CallMaskCount() {
 		plan.Exact = false
 		return nil, false
 	}

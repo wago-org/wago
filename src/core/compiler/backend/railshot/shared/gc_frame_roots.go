@@ -52,14 +52,18 @@ func DecodeGCDispatch(payload uint32) (helper, safepoint uint32) {
 // callsites, and final frame size. It remains compile-only until flattened into
 // the validated codec metadata.
 type GCFrameRootPlan struct {
-	Candidate          bool
-	Exact              bool
-	FrameBytes         uint32
-	Locals             []GCFrameLocal
-	FixedOffsets       []uint32 // conservative always-live roots such as EH payload records
-	LiveLocalMasks     []uint64 // low word per reachable allocating site
-	LiveCallLocalMasks []uint64 // low word per reachable native call
-	LiveMaskExtraWords []uint64 // flat remaining words: allocations, then calls
+	Candidate    bool
+	Exact        bool
+	FrameBytes   uint32
+	Locals       []GCFrameLocal
+	FixedOffsets []uint32 // conservative always-live roots such as EH payload records
+	// LiveMaskWords is one site-major, pointer-free arena. Allocating sites come
+	// first, followed by native calls; every site occupies rootMaskWordsPerSite
+	// words. The explicit counts avoid retaining two more slice headers and
+	// backing allocations in every collecting function.
+	liveMaskWords       []uint64
+	allocationMaskCount uint32
+	callMaskCount       uint32
 	// SafepointData stores each allocating site's root offsets as a count word
 	// followed by that site's offsets. One pointer-free arena replaces one slice
 	// header and backing allocation per site; safepointCount is the checked number
@@ -286,38 +290,67 @@ type GCModuleFrameRootPlan struct {
 	Diagnostic string // compile-only fail-closed admission explanation
 }
 
-func (p *GCFrameRootPlan) rootMaskExtraWordsPerSite() int {
-	if p == nil || len(p.Locals) <= 64 {
-		return 0
+func (p *GCFrameRootPlan) rootMaskWordsPerSite() int {
+	if p == nil || len(p.Locals) == 0 {
+		return 1
 	}
-	return (len(p.Locals)+63)/64 - 1
+	return (len(p.Locals) + 63) / 64
 }
 
-// ValidLiveMasks reports whether the flat extra-word arena matches both
-// low-word streams and the function's bounded collector-local count.
+// AllocationMaskCount returns the number of exact allocating-site masks.
+func (p *GCFrameRootPlan) AllocationMaskCount() int {
+	if p == nil {
+		return 0
+	}
+	return int(p.allocationMaskCount)
+}
+
+// CallMaskCount returns the number of logical Wasm-call masks. One logical
+// call may later produce multiple native return-path callsites.
+func (p *GCFrameRootPlan) CallMaskCount() int {
+	if p == nil {
+		return 0
+	}
+	return int(p.callMaskCount)
+}
+
+// SetLiveMasks installs one complete site-major mask arena.
+func (p *GCFrameRootPlan) SetLiveMasks(words []uint64, allocationSites, callSites int) bool {
+	if p == nil || allocationSites < 0 || callSites < 0 || uint64(allocationSites) > uint64(^uint32(0)) || uint64(callSites) > uint64(^uint32(0)) {
+		return false
+	}
+	sites := uint64(allocationSites) + uint64(callSites)
+	if len(p.Locals) > GCFrameTrackedLocalLimit || sites*uint64(p.rootMaskWordsPerSite()) != uint64(len(words)) {
+		return false
+	}
+	p.liveMaskWords = words
+	p.allocationMaskCount = uint32(allocationSites)
+	p.callMaskCount = uint32(callSites)
+	return true
+}
+
+// ValidLiveMasks reports whether the site-major arena matches both site counts
+// and the function's bounded collector-local count.
 func (p *GCFrameRootPlan) ValidLiveMasks() bool {
 	if p == nil || len(p.Locals) > GCFrameTrackedLocalLimit {
 		return false
 	}
-	extra := p.rootMaskExtraWordsPerSite()
-	return len(p.LiveMaskExtraWords) == (len(p.LiveLocalMasks)+len(p.LiveCallLocalMasks))*extra
+	sites := uint64(p.allocationMaskCount) + uint64(p.callMaskCount)
+	return sites*uint64(p.rootMaskWordsPerSite()) == uint64(len(p.liveMaskWords))
 }
 
-func rootMaskContains(low []uint64, extra []uint64, extraPerSite, site, root int) bool {
-	if site < 0 || site >= len(low) || root < 0 {
+func rootMaskContains(words []uint64, wordsPerSite, siteCount, site, root int) bool {
+	if site < 0 || site >= siteCount || root < 0 {
 		return false
 	}
 	word, bit := root/64, uint(root%64)
-	if word == 0 {
-		return low[site]&(uint64(1)<<bit) != 0
-	}
-	index := site*extraPerSite + word - 1
-	return word <= extraPerSite && index >= 0 && index < len(extra) && extra[index]&(uint64(1)<<bit) != 0
+	index := site*wordsPerSite + word
+	return word < wordsPerSite && index >= 0 && index < len(words) && words[index]&(uint64(1)<<bit) != 0
 }
 
 // LocalLiveAt reports whether collector local root is live at allocating site.
 func (p *GCFrameRootPlan) LocalLiveAt(site, root int) bool {
-	return p != nil && root < len(p.Locals) && rootMaskContains(p.LiveLocalMasks, p.LiveMaskExtraWords, p.rootMaskExtraWordsPerSite(), site, root)
+	return p != nil && root < len(p.Locals) && rootMaskContains(p.liveMaskWords, p.rootMaskWordsPerSite(), p.AllocationMaskCount(), site, root)
 }
 
 // CallLocalLiveAt reports whether collector local root is live at native call.
@@ -325,12 +358,12 @@ func (p *GCFrameRootPlan) CallLocalLiveAt(site, root int) bool {
 	if p == nil || root >= len(p.Locals) {
 		return false
 	}
-	extra := p.rootMaskExtraWordsPerSite()
-	start := len(p.LiveLocalMasks) * extra
-	if start > len(p.LiveMaskExtraWords) {
+	wordsPerSite := p.rootMaskWordsPerSite()
+	start := p.AllocationMaskCount() * wordsPerSite
+	if start < 0 || start > len(p.liveMaskWords) {
 		return false
 	}
-	return rootMaskContains(p.LiveCallLocalMasks, p.LiveMaskExtraWords[start:], extra, site, root)
+	return rootMaskContains(p.liveMaskWords[start:], wordsPerSite, p.CallMaskCount(), site, root)
 }
 
 // VisitLiveLocals calls visit with each retained-slice index live at one
@@ -340,14 +373,14 @@ func (p *GCFrameRootPlan) VisitLiveLocals(site int, call bool, visit func(root i
 	if p == nil || visit == nil {
 		return false
 	}
-	masks := p.LiveLocalMasks
-	extraPerSite := p.rootMaskExtraWordsPerSite()
-	extraStart := 0
+	wordsPerSite := p.rootMaskWordsPerSite()
+	siteCount := p.AllocationMaskCount()
+	start := 0
 	if call {
-		masks = p.LiveCallLocalMasks
-		extraStart = len(p.LiveLocalMasks) * extraPerSite
+		siteCount = p.CallMaskCount()
+		start = p.AllocationMaskCount() * wordsPerSite
 	}
-	if site < 0 || site >= len(masks) {
+	if site < 0 || site >= siteCount {
 		return false
 	}
 	visitWord := func(word int, value uint64) bool {
@@ -362,15 +395,12 @@ func (p *GCFrameRootPlan) VisitLiveLocals(site int, call bool, visit func(root i
 		}
 		return true
 	}
-	if !visitWord(0, masks[site]) {
+	base := start + site*wordsPerSite
+	if base < 0 || base+wordsPerSite > len(p.liveMaskWords) {
 		return false
 	}
-	base := extraStart + site*extraPerSite
-	if base < 0 || base+extraPerSite > len(p.LiveMaskExtraWords) {
-		return false
-	}
-	for word := 1; word <= extraPerSite; word++ {
-		if !visitWord(word, p.LiveMaskExtraWords[base+word-1]) {
+	for word := 0; word < wordsPerSite; word++ {
+		if !visitWord(word, p.liveMaskWords[base+word]) {
 			return false
 		}
 	}

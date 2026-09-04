@@ -224,7 +224,7 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 		if plan == nil {
 			continue // proven non-collecting function; no active-frame map is needed
 		}
-		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || len(plan.LiveLocalMasks) != plan.SafepointCount() || len(plan.Locals) > shared.GCFrameTrackedLocalLimit {
+		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || plan.AllocationMaskCount() != plan.SafepointCount() || len(plan.Locals) > shared.GCFrameTrackedLocalLimit {
 			return false
 		}
 		active := plan.SafepointCount() != 0 || plan.CallsiteCount() != 0

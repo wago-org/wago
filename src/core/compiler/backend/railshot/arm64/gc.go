@@ -847,7 +847,7 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		return id
 	}
 	siteIndex := plan.SafepointCount()
-	if siteIndex >= len(plan.LiveLocalMasks) {
+	if siteIndex >= plan.AllocationMaskCount() {
 		plan.Exact = false
 		return id
 	}

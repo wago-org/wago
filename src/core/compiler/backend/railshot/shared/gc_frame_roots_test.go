@@ -10,8 +10,8 @@ func TestGCFrameRootPlanFootprint(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) != 8 {
 		t.Skip("64-bit fixed-footprint assertion")
 	}
-	if got := unsafe.Sizeof(GCFrameRootPlan{}); got != 192 {
-		t.Fatalf("GCFrameRootPlan size=%d, want 192", got)
+	if got := unsafe.Sizeof(GCFrameRootPlan{}); got != 152 {
+		t.Fatalf("GCFrameRootPlan size=%d, want 152", got)
 	}
 	if got := unsafe.Sizeof(GCModuleFrameRootPlan{}); got != 40 {
 		t.Fatalf("GCModuleFrameRootPlan size=%d, want 40", got)
@@ -60,10 +60,10 @@ func TestGCFrameCallsiteStream(t *testing.T) {
 
 func TestGCFrameRootPlanWideMaskWords(t *testing.T) {
 	plan := &GCFrameRootPlan{
-		Locals:             make([]GCFrameLocal, 65),
-		LiveLocalMasks:     []uint64{1},
-		LiveCallLocalMasks: []uint64{2},
-		LiveMaskExtraWords: []uint64{1, 1},
+		Locals:              make([]GCFrameLocal, 65),
+		liveMaskWords:       []uint64{1, 1, 2, 1},
+		allocationMaskCount: 1,
+		callMaskCount:       1,
 	}
 	if !plan.ValidLiveMasks() {
 		t.Fatal("valid 65-root two-word plan rejected")
@@ -82,24 +82,28 @@ func TestGCFrameRootPlanWideMaskWords(t *testing.T) {
 	if !slices.Equal(allocations, []int{0, 64}) || !slices.Equal(calls, []int{1, 64}) {
 		t.Fatalf("live-mask iteration = allocations %v, calls %v", allocations, calls)
 	}
-	plan.LiveMaskExtraWords = plan.LiveMaskExtraWords[:1]
+	plan.liveMaskWords = plan.liveMaskWords[:3]
 	if plan.ValidLiveMasks() {
 		t.Fatal("truncated two-word allocation arena accepted")
 	}
 	if plan.VisitLiveLocals(0, true, func(int) {}) {
 		t.Fatal("truncated call-mask arena accepted by iteration")
 	}
+	plan.allocationMaskCount = 4
+	if plan.CallLocalLiveAt(0, 0) {
+		t.Fatal("out-of-range call-mask offset was accepted")
+	}
 }
 
 func TestGCFrameRootPlanTrackedVectorMask(t *testing.T) {
 	const roots = 1025
-	extraWords := (roots+63)/64 - 1
+	wordCount := (roots + 63) / 64
 	plan := &GCFrameRootPlan{
-		Locals:             make([]GCFrameLocal, roots),
-		LiveLocalMasks:     []uint64{0},
-		LiveMaskExtraWords: make([]uint64, extraWords),
+		Locals:              make([]GCFrameLocal, roots),
+		liveMaskWords:       make([]uint64, wordCount),
+		allocationMaskCount: 1,
 	}
-	plan.LiveMaskExtraWords[extraWords-1] = 1
+	plan.liveMaskWords[wordCount-1] = 1
 	if !plan.ValidLiveMasks() || !plan.LocalLiveAt(0, roots-1) {
 		t.Fatal("bounded vector mask lost its highest root")
 	}
@@ -137,24 +141,19 @@ var gcFrameVisitSink int
 
 func BenchmarkGCFrameRootPlanVisitsDisjointWideSites(b *testing.B) {
 	const roots = 10_000
-	extraPerSite := (roots+63)/64 - 1
+	wordCount := (roots + 63) / 64
 	plan := GCFrameRootPlan{
-		Candidate:          true,
-		Locals:             make([]GCFrameLocal, roots),
-		LiveLocalMasks:     make([]uint64, roots),
-		LiveCallLocalMasks: make([]uint64, roots),
-		LiveMaskExtraWords: make([]uint64, roots*extraPerSite*2),
+		Candidate:           true,
+		Locals:              make([]GCFrameLocal, roots),
+		liveMaskWords:       make([]uint64, roots*wordCount*2),
+		allocationMaskCount: roots,
+		callMaskCount:       roots,
 	}
 	for root := 0; root < roots; root++ {
 		plan.Locals[root] = GCFrameLocal{Index: uint32(root), Offset: uint32(root * 8)}
-		if root < 64 {
-			plan.LiveLocalMasks[root] = uint64(1) << uint(root)
-			plan.LiveCallLocalMasks[root] = uint64(1) << uint(root)
-		} else {
-			word := root/64 - 1
-			plan.LiveMaskExtraWords[root*extraPerSite+word] = uint64(1) << uint(root%64)
-			plan.LiveMaskExtraWords[(roots+root)*extraPerSite+word] = uint64(1) << uint(root%64)
-		}
+		word := root / 64
+		plan.liveMaskWords[root*wordCount+word] = uint64(1) << uint(root%64)
+		plan.liveMaskWords[(roots+root)*wordCount+word] = uint64(1) << uint(root%64)
 	}
 	b.ReportAllocs()
 	b.ResetTimer()

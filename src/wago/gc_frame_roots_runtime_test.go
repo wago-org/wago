@@ -140,12 +140,13 @@ func TestGCNativeFrameRootsARM64ForeignWrapperStackAdjustment(t *testing.T) {
 
 func TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall(t *testing.T) {
 	plan := &shared.GCFrameRootPlan{
-		Candidate:          true,
-		Exact:              true,
-		FrameBytes:         64,
-		LiveCallLocalMasks: []uint64{1},
-		Locals:             []shared.GCFrameLocal{{Index: 0, Offset: 16}},
-		LiveLocalMasks:     []uint64{1},
+		Candidate:  true,
+		Exact:      true,
+		FrameBytes: 64,
+		Locals:     []shared.GCFrameLocal{{Index: 0, Offset: 16}},
+	}
+	if !plan.SetLiveMasks([]uint64{1, 1}, 1, 1) {
+		t.Fatal("failed to set live masks")
 	}
 	for _, site := range [][2]uint32{{4, 0}, {8, 0}, {12, 64}} {
 		if !plan.AppendCallsite(site[0], site[1], []uint32{16}) {
@@ -163,11 +164,13 @@ func TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall(t *testing.T) {
 func TestGCModuleFrameRootPlanDerivesDenseSafepointIDs(t *testing.T) {
 	plan := func(base uint32) *shared.GCFrameRootPlan {
 		plan := &shared.GCFrameRootPlan{
-			Candidate:      true,
-			Exact:          true,
-			FrameBytes:     8,
-			SafepointBase:  base,
-			LiveLocalMasks: []uint64{0},
+			Candidate:     true,
+			Exact:         true,
+			FrameBytes:    8,
+			SafepointBase: base,
+		}
+		if !plan.SetLiveMasks([]uint64{0}, 1, 0) {
+			t.Fatal("failed to set live masks")
 		}
 		if !plan.AppendSafepoint(nil) {
 			t.Fatal("failed to append safepoint")

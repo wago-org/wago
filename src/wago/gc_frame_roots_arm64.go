@@ -144,28 +144,27 @@ functions:
 		if !arm64GCFrameBodySafe(m, m.Code[function].BodyBytes, &classifier, collectorBoundary) {
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
-		var liveMasks, callMasks []uint64
-		var maskExtra gcFrameLivenessExtra
+		var liveMasks gcFrameLiveMasks
 		if arm64BodyUsesEH(m.Code[function].BodyBytes, &classifier) {
-			liveMasks, callMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.Locals), &maskExtra, &classifier)
+			liveMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.Locals), &classifier)
 		} else {
-			liveMasks, err = gcFrameLocalLivenessWithClassifier(m.Code[function].BodyBytes, plan.Locals, &callMasks, &maskExtra, &classifier)
+			liveMasks, err = gcFrameLocalLivenessArenaWithClassifier(m.Code[function].BodyBytes, plan.Locals, &classifier)
 		}
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
-		plan.Locals, liveMasks, callMasks, _, err = gcFrameCompactLiveLocals(plan.Locals, liveMasks, callMasks, &maskExtra)
+		plan.Locals, liveMasks, _, err = gcFrameCompactLiveLocalsArena(plan.Locals, liveMasks)
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
-		if uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
+		if uint64(safepointBase)+uint64(liveMasks.allocationN) > uint64(shared.GCSafepointIDMax) {
 			return reject("function %d exceeds the dense safepoint ID bound", function)
 		}
-		plan.LiveLocalMasks = liveMasks
-		plan.LiveCallLocalMasks = callMasks
-		plan.LiveMaskExtraWords = maskExtra.words
+		if !plan.SetLiveMasks(liveMasks.words, liveMasks.allocationN, liveMasks.callN) {
+			return reject("function %d has malformed exact local liveness masks", function)
+		}
 		module.Functions[function] = plan
-		safepointBase += uint32(len(liveMasks))
+		safepointBase += uint32(liveMasks.allocationN)
 	}
 	return module
 }
@@ -347,8 +346,8 @@ func arm64BodyUsesEH(body []byte, classifier *wasm.ModuleInstructionClassifier) 
 	return false
 }
 
-func arm64GCFrameConservativeMasks(body []byte, localRoots int, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) (allocations, calls []uint64, err error) {
-	return gcFrameAllLiveMasksWithClassifier(body, localRoots, extra, classifier)
+func arm64GCFrameConservativeMasks(body []byte, localRoots int, classifier *wasm.ModuleInstructionClassifier) (gcFrameLiveMasks, error) {
+	return gcFrameAllLiveMasksArenaWithClassifier(body, localRoots, classifier)
 }
 
 func arm64GCFunctionTableMonomorphic(m *wasm.Module) bool {

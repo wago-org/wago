@@ -2502,7 +2502,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 		if f.gcFrameRoots != nil {
 			f.gcFrameRoots.FrameBytes = uint32(f.frameSize())
-			if f.gcCallsiteIndex != len(f.gcFrameRoots.LiveCallLocalMasks) {
+			if f.gcCallsiteIndex != f.gcFrameRoots.CallMaskCount() {
 				f.gcFrameRoots.Exact = false
 			}
 		}
@@ -2529,7 +2529,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	if f.gcFrameRoots != nil {
 		f.gcFrameRoots.FrameBytes = uint32(f.frameSize())
-		if f.gcCallsiteIndex != len(f.gcFrameRoots.LiveCallLocalMasks) {
+		if f.gcCallsiteIndex != f.gcFrameRoots.CallMaskCount() {
 			f.gcFrameRoots.Exact = false
 		}
 	}

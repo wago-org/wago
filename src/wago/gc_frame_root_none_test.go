@@ -58,3 +58,44 @@ func BenchmarkGCFrameRootPlanManyNonCollectingFunctions(b *testing.B) {
 		gcFrameRootPlanSink = newGCFrameRootPlan(m, true)
 	}
 }
+
+func gcFrameRootCollectingModule(tb testing.TB, functions int) *wasm.Module {
+	tb.Helper()
+	funcs := make([][]byte, functions)
+	codes := make([][]byte, functions)
+	for i := range funcs {
+		funcs[i] = wasmtest.ULEB(1)
+		body := []byte{
+			0x01, 0x01, 0x63, 0x00, // one (ref null type 0) local
+			0xfb, 0x01, 0x00, 0x1a, // struct.new_default 0; drop
+			0x10, 0x00, // call function 0
+			0x20, 0x00, 0x1a, 0x0b, // local.get 0; drop; end
+		}
+		codes[i] = append(wasmtest.ULEB(uint32(len(body))), body...)
+	}
+	binary := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x00}, // empty struct type
+			wasmtest.FuncType(nil, nil),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(funcs...)),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
+	)
+	m, err := wasm.DecodeModule(binary)
+	if err == nil {
+		err = wasm.ValidateModule(m)
+	}
+	if err != nil {
+		tb.Fatal(err)
+	}
+	return m
+}
+
+func BenchmarkGCFrameRootPlanManyCollectingFunctions(b *testing.B) {
+	m := gcFrameRootCollectingModule(b, 1024)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true)
+	}
+}
