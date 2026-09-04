@@ -1893,10 +1893,10 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 // directCalleePreservesPins returns the module-precomputed leaf classification
 // for one direct target. This is compile-time only; execution stays a plain BL.
 func (f *fn) directCalleePreservesPins(localIdx int) bool {
-	if localIdx < 0 || localIdx >= len(f.calleePreservesPins) {
+	if localIdx < 0 || localIdx >= len(f.calleeHints) {
 		return false
 	}
-	return f.calleePreservesPins[localIdx]
+	return f.calleeHints[localIdx].flags.has(hintPreservesCallerPins)
 }
 
 // emitMixedRegisterCall uses the register ABI for signatures containing floats.

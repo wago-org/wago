@@ -62,6 +62,7 @@ const (
 	hintHasStackSinkFusion
 	hintHasFloatConst
 	hintIntervalRegionStorage
+	hintPreservesCallerPins
 )
 
 func (f funcHintFlags) has(flag funcHintFlags) bool { return f&flag != 0 }

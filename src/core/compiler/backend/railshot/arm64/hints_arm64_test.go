@@ -17,6 +17,21 @@ func TestFuncHintsSizeArm64(t *testing.T) {
 	}
 }
 
+func TestDirectCalleePreservesPinsUsesRetainedHint(t *testing.T) {
+	hints := make([]funcHints, 2)
+	hints[1].flags.set(hintPreservesCallerPins)
+	f := fn{calleeHints: hints}
+	if f.directCalleePreservesPins(0) {
+		t.Fatal("unmarked callee preserves pins")
+	}
+	if !f.directCalleePreservesPins(1) {
+		t.Fatal("marked callee does not preserve pins")
+	}
+	if f.directCalleePreservesPins(-1) || f.directCalleePreservesPins(len(hints)) {
+		t.Fatal("out-of-range callee preserves pins")
+	}
+}
+
 func TestScanBodyBytesFloatConstHintArm64(t *testing.T) {
 	integer, err := scanBodyBytes([]byte{0x41, 0x00, 0x0b}, 0, 0, 0)
 	if err != nil {
