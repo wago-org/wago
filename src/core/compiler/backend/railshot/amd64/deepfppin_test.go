@@ -106,3 +106,46 @@ func TestFPPinRelinquishmentAvoidsRetry(t *testing.T) {
 		t.Fatalf("relinquishment state = local:%v active:%v stats:%+v", f.locals[local].state, f.pinRelinquished, stats)
 	}
 }
+
+func TestRelinquishedFPPinWriteEvictsBorrower(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		typ  machineType
+	}{{"f64", mtF64}, {"v128", mtV128}} {
+		t.Run(tc.name, func(t *testing.T) {
+			typ := tc.typ
+			const local = 0
+			f := fn{
+				a:                &encoderamd64.Asm{},
+				s:                newStack(),
+				localType:        []machineType{typ},
+				localSlot:        []uint32{0},
+				locals:           []localDef{{reg: 12, isFloat: true, state: lsMem}},
+				pinnedLocals:     []int{local},
+				fpinnedLocalMask: regMask(0).add(12),
+				pinRelinquished:  true,
+				stats:            &CodegenStats{},
+			}
+
+			borrower := f.pushFReg(12, typ)
+			f.pushFReg(1, typ) // value for local.set
+			f.setLocal(nil, local, false)
+			if borrower.st.kind != stSlot {
+				t.Fatalf("borrower storage after local.set = %v, want spill slot", borrower.st.kind)
+			}
+			if f.fregUser[12] != nil {
+				t.Fatalf("relinquished XMM register still owns %#v", f.fregUser[12])
+			}
+
+			var reg Reg
+			if typ == mtV128 {
+				reg = f.materializeV128(borrower)
+			} else {
+				reg = f.materializeF(borrower)
+			}
+			if reg == regNone || borrower.st.kind != stReg {
+				t.Fatalf("borrower was not reloadable: reg=%v storage=%v", reg, borrower.st.kind)
+			}
+		})
+	}
+}

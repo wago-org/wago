@@ -234,7 +234,7 @@ type fn struct {
 	pinnedLocals     []int // indices of register-pinned locals (fixed after assignPinnedLocals)
 	pinnedLocalMask  regMask
 	fpinnedLocalMask regMask
-	pinRelinquished  bool // a dedicated GP local register may temporarily have an allocator owner
+	pinRelinquished  bool // a dedicated local register may temporarily have an allocator owner
 
 	// WARP STACK_REG lazy-spill model for pinned locals in CALL-MAKING functions
 	// (usesCalls). locals[i].state tracks whether the live value of pinned local i is
@@ -1390,7 +1390,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		return nil, fmt.Errorf("amd64: synchronous host slot capacity %d is outside %d..%d", opts.SyncHostSlots, coreruntime.MaxHostArity, coreruntime.MaxSyncHostSlots)
 	}
 	// This is a module invariant. Resolve it once rather than rescanning imports
-	// for every function (and again on an unpinned retry).
+	// for every function.
 	opts.SyncHostCalls = opts.SyncHostCalls || opts.GCStructHelpers || opts.GCArrayHelpers || moduleUsesSyncHostCalls(m, opts.ImportBindings)
 	selection, err := optimizationBindings.ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas)
 	if err != nil {
@@ -2599,7 +2599,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	c := &m.Code[funcIdx]
 	// Module hint construction already validated and counted the parameters and
-	// local runs. Reuse that result, including on an unpinned retry.
+	// local runs. Reuse that result.
 	nLocals := hints.nLocals
 
 	sc.reset()

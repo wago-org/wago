@@ -1254,7 +1254,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		return nil, fmt.Errorf("arm64: synchronous host slot capacity %d is outside %d..%d", opts.SyncHostSlots, coreruntime.MaxHostArity, coreruntime.MaxSyncHostSlots)
 	}
 	// This is a module invariant. Resolve it once rather than rescanning imports
-	// for every function (and again on an unpinned retry).
+	// for every function.
 	opts.SyncHostCalls = opts.SyncHostCalls || opts.GCStructHelpers || opts.GCArrayHelpers || moduleUsesSyncHostCalls(m, opts.ImportBindings)
 	selection, err := optimizationBindings.ResolveSnapshot(opts.Optimizations, opts.OptimizationSnapshot, opts.OptimizationDeltas)
 	if err != nil {
@@ -2206,7 +2206,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	}
 	c := &m.Code[funcIdx]
 	// Module hint construction already validated and counted the parameters and
-	// local runs. Reuse that result, including on an unpinned retry.
+	// local runs. Reuse that result.
 	nLocals := hints.nLocals
 
 	sc.reset()
@@ -2766,8 +2766,8 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		fpPinLimit = 23
 	}
 	if !pinLocals || f.nLocals > 64 {
-		// Very wide signatures are cold ABI stress shapes, and an unpinned
-		// register-pressure retry must release the V-register pins as well as GP.
+		// Keep very wide signatures canonical so optional V-register pins cannot
+		// consume the transient register floor.
 		fpPinLimit = 0
 	}
 	var fcStorage [32]uint16 // bounded by the 32-register architectural V file

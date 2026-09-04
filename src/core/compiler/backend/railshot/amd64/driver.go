@@ -741,6 +741,7 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 	}
 	left := baseOfValentBlock(right).prev
 	f.realizeLocalRefs(x, left)
+	f.evictRelinquishedFReg(pr)
 	f.fbinInto(pr, vop, memOp, f64)
 	f.markLocalDirty(x)
 	f.stats.peep("float-local-sink")
@@ -1022,6 +1023,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if pr, _, ok := f.pinReg(x); ok && f.localType[x] == mtV128 {
 		// Register-pinned v128 local: 128-bit move into its XMM register (the
 		// scalar FMov below would drop the upper 64 bits).
+		f.evictRelinquishedFReg(pr)
 		if e.kind == ekValue && e.st.kind == stLocalReg {
 			if e.st.reg != pr {
 				f.a.VMovdqu(pr, e.st.reg) // borrowed v128 local → direct move
@@ -1043,6 +1045,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	}
 	if pr, isFloat, ok := f.pinReg(x); ok && isFloat {
 		// Register-pinned float local: move the value into its XMM register.
+		f.evictRelinquishedFReg(pr)
 		f64 := f.localType[x] == mtF64
 		if e.kind == ekValue && e.st.kind == stLocalReg {
 			if e.st.reg != pr {

@@ -286,8 +286,8 @@ func regHeavyShiftChainArm64(t *testing.T, nParams, depth int) *wasm.Module {
 }
 
 // TestExecRegHeavyShiftChainArm64 is the register-pressure regression: a deep
-// nested-shift tree must compile (via the deferred-tree depth cap breaking it into
-// register-sized segments, or the pinning-off retry) instead of failing to link,
+// nested-shift tree must compile via the deferred-tree depth cap breaking it into
+// register-sized segments instead of failing to link,
 // and must still compute the right value. Depths past ~14 used to hard-fail with
 // "no register available to spill". Covers amd64's one-attempt register-pressure
 // and deep-tree-cap regressions.

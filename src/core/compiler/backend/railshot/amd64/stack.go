@@ -199,8 +199,7 @@ func deferDepthOf(e *elem) int16 {
 // level, so an unbounded left-spine (e.g. a long chain of variable shifts or
 // adds) exhausts the register file. When a new node would exceed this, the deeper
 // operand is condensed now, breaking the chain into register-sized segments. Set
-// well under the neutral-register count so the segment always fits (even on the
-// pinning-off recompile).
+// well under the neutral-register count so the segment always fits in one pass.
 const maxDeferDepth = 6
 
 // isDeferred reports whether e is an un-emitted operation.

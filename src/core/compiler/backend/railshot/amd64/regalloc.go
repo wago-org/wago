@@ -51,8 +51,7 @@ func (f *fn) release(r Reg) {
 func (f *fn) allocReg(avoid regMask) Reg {
 	r := f.allocRegOrNone(avoid)
 	if r == regNone {
-		// Recoverable under extreme register pressure: compileFunc catches this and
-		// recompiles the function without local pinning, freeing the whole file.
+		// Register exhaustion is reported through compileFunc's ordinary error path.
 		panic(regExhausted{class: "GP"})
 	}
 	return r

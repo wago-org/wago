@@ -100,12 +100,10 @@ func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 }
 
 func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
-	if f.pinRelinquished {
-		if isFloat {
-			if u := f.fregUser[reg]; u != nil {
-				f.spillF(u)
-			}
-		} else if f.regUser[reg] != nil {
+	if isFloat {
+		f.evictRelinquishedFReg(reg)
+	} else if f.pinRelinquished {
+		if f.regUser[reg] != nil {
 			f.spillIfUsed(reg)
 		}
 	}
@@ -115,6 +113,17 @@ func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
 		f.a.FLoadDisp(reg, RSP, f.localAddr(x), f.localType[x] == mtF64)
 	} else {
 		f.loadFrameInt(reg, f.localAddr(x), f.localType[x])
+	}
+}
+
+// evictRelinquishedFReg preserves a live temporary that borrowed a dedicated
+// XMM local register after the local was homed under pressure. Every later
+// restoration or rewrite of that local must call this before clobbering reg.
+func (f *fn) evictRelinquishedFReg(reg Reg) {
+	if f.pinRelinquished {
+		if u := f.fregUser[reg]; u != nil {
+			f.spillF(u)
+		}
 	}
 }
 

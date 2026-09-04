@@ -16,7 +16,7 @@ import (
 // one register per level. With the loop making the params hot enough to pin, a
 // large-enough depth exhausts the register file — the exact shape that made
 // json-as/sqlite fail to link ("no register available to spill"). The module also
-// serves as the correctness oracle for the unpinned recompile.
+// serves as the correctness oracle for single-pass pressure handling.
 func regHeavyShiftChain(t *testing.T, nParams, depth int) *wasm.Module {
 	t.Helper()
 	params := make([]wasm.ValType, nParams)
