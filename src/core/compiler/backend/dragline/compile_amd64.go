@@ -3529,7 +3529,9 @@ func amd64RailMachReadLocationWithFloatConstant(a *amd64.Asm, plan *nativeBacken
 		if offset > math.MaxInt32 {
 			return 0, fmt.Errorf("RailMach spill load offset %d is not encodable", offset)
 		}
-		if data.Bank == railmach.BankFPR {
+		if data.Type == railmach.TypeV128 {
+			a.VMovdquLoadDisp(scratch, amd64.RSP, int32(offset))
+		} else if data.Bank == railmach.BankFPR {
 			a.FLoadDisp(scratch, amd64.RSP, int32(offset), data.Type == railmach.TypeF64)
 		} else if data.Type == railmach.TypeI32 {
 			a.LoadRsp32(scratch, int32(offset))
@@ -3660,7 +3662,9 @@ func amd64RailMachWriteLocation(a *amd64.Asm, plan *nativeBackendPlan, value rai
 		if dst == src {
 			return nil
 		}
-		if data.Bank == railmach.BankFPR {
+		if data.Type == railmach.TypeV128 {
+			a.VMovdqu(dst, src)
+		} else if data.Bank == railmach.BankFPR {
 			a.FMov(dst, src, data.Type == railmach.TypeF64)
 		} else if data.Type == railmach.TypeI32 {
 			a.MovReg32(dst, src)
@@ -3673,7 +3677,9 @@ func amd64RailMachWriteLocation(a *amd64.Asm, plan *nativeBackendPlan, value rai
 		if offset > math.MaxInt32 {
 			return fmt.Errorf("RailMach spill store offset %d is not encodable", offset)
 		}
-		if data.Bank == railmach.BankFPR {
+		if data.Type == railmach.TypeV128 {
+			a.VMovdquStoreDisp(amd64.RSP, int32(offset), src)
+		} else if data.Bank == railmach.BankFPR {
 			a.FStoreDisp(amd64.RSP, int32(offset), src, data.Type == railmach.TypeF64)
 		} else if data.Type == railmach.TypeI32 {
 			a.StoreRsp32(int32(offset), src)
