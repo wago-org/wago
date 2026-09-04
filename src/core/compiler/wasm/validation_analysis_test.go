@@ -58,7 +58,7 @@ func TestValidateModuleWithAnalysisSerialParallelParity(t *testing.T) {
 	if len(serial.Funcs) != 2 {
 		t.Fatalf("function facts = %d, want 2", len(serial.Funcs))
 	}
-	wantFlags := wasm.ValidatedFuncHasControl | wasm.ValidatedFuncHasLoop | wasm.ValidatedFuncHasDirectCall
+	wantFlags := wasm.ValidatedFuncHasControl | wasm.ValidatedFuncHasLoop | wasm.ValidatedFuncHasDirectCall | wasm.ValidatedFuncMayCollect
 	for i, facts := range serial.Funcs {
 		if facts.Flags != wantFlags {
 			t.Errorf("function %d flags = %#x, want %#x", i, facts.Flags, wantFlags)

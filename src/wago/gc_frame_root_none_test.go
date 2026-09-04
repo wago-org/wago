@@ -3,6 +3,7 @@
 package wago
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
@@ -11,6 +12,32 @@ import (
 	"github.com/wago-org/wago/src/core/nativeabi"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestGCFrameRootPlanValidationAnalysisParity(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		m    *wasm.Module
+	}{
+		{name: "root-none", m: gcFrameRootNoneModule(t, 3)},
+		{name: "collecting", m: gcFrameRootCollectingModule(t, 3)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var analysis wasm.ValidatedModuleAnalysis
+			if err := wasm.ValidateModuleWithAnalysis(tc.m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, &analysis); err != nil {
+				t.Fatal(err)
+			}
+			var legacyDiagnostic, analysisDiagnostic string
+			legacy := newGCFrameRootPlan(tc.m, true, &legacyDiagnostic, nil)
+			fromAnalysis := newGCFrameRootPlan(tc.m, true, &analysisDiagnostic, &analysis)
+			if legacyDiagnostic != analysisDiagnostic || !reflect.DeepEqual(legacy, fromAnalysis) {
+				t.Fatalf("root plans differ:\nlegacy:   %#v (%q)\nanalysis: %#v (%q)", legacy, legacyDiagnostic, fromAnalysis, analysisDiagnostic)
+			}
+			if got, want := moduleHasGCAllocationSitesWithValidation(tc.m, &analysis), moduleHasGCAllocationSites(tc.m); got != want {
+				t.Fatalf("allocation-site fact = %v, want %v", got, want)
+			}
+		})
+	}
+}
 
 func TestGCFrameFixedOffsetsRetainsOnlyCollectorRoots(t *testing.T) {
 	rootMap := nativeabi.FunctionRootMap{Slots: []nativeabi.RootSlot{
@@ -55,7 +82,7 @@ func gcFrameRootNoneModule(tb testing.TB, functions int) *wasm.Module {
 func TestGCFrameRootPlanOmitsNonCollectingFunction(t *testing.T) {
 	m := gcFrameRootNoneModule(t, 2)
 	var diagnostic string
-	plan := newGCFrameRootPlan(m, true, &diagnostic)
+	plan := newGCFrameRootPlan(m, true, &diagnostic, nil)
 	if plan == nil || diagnostic != "" {
 		t.Fatalf("module root plan = %+v, diagnostic = %q", plan, diagnostic)
 	}
@@ -72,10 +99,10 @@ func TestGCFrameRootPlanOmitsNonCollectingFunction(t *testing.T) {
 
 func TestGCFrameRootPlanDiagnosticIsSeparateFailureState(t *testing.T) {
 	diagnostic := "stale"
-	if plan := newGCFrameRootPlan(nil, false, &diagnostic); plan != nil || diagnostic != "" {
+	if plan := newGCFrameRootPlan(nil, false, &diagnostic, nil); plan != nil || diagnostic != "" {
 		t.Fatalf("disabled root plan = %+v, diagnostic = %q", plan, diagnostic)
 	}
-	if plan := newGCFrameRootPlan(nil, true, &diagnostic); plan != nil || diagnostic == "" {
+	if plan := newGCFrameRootPlan(nil, true, &diagnostic, nil); plan != nil || diagnostic == "" {
 		t.Fatalf("invalid root plan = %+v, diagnostic = %q", plan, diagnostic)
 	}
 }
@@ -108,12 +135,12 @@ func TestGCFrameRootPlanUsesBoundedConservativeLocals(t *testing.T) {
 		return m
 	}
 
-	narrow := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit), true, nil).Function(0)
+	narrow := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit), true, nil, nil).Function(0)
 	if narrow == nil || !narrow.Conservative || len(narrow.Locals) != gcFrameConservativeLocalLimit ||
 		narrow.AllocationMaskCount() != 1 || !narrow.LocalLiveAt(0, gcFrameConservativeLocalLimit-1) {
 		t.Fatalf("narrow root plan = %+v, want %d conservative roots", narrow, gcFrameConservativeLocalLimit)
 	}
-	wide := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit+1), true, nil).Function(0)
+	wide := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit+1), true, nil, nil).Function(0)
 	if wide == nil || wide.Conservative || len(wide.Locals) != 0 || wide.AllocationMaskCount() != 1 {
 		t.Fatalf("wide root plan = %+v, want exact compaction of dead locals", wide)
 	}
@@ -139,7 +166,7 @@ func BenchmarkGCFrameRootPlanSingleFunction(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for range b.N {
-				gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil)
+				gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil, nil)
 			}
 		})
 	}
@@ -150,7 +177,7 @@ func BenchmarkGCFrameRootPlanManyNonCollectingFunctions(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil)
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil, nil)
 	}
 }
 
@@ -262,6 +289,6 @@ func BenchmarkGCFrameRootPlanManyCollectingFunctions(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil)
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, nil, nil)
 	}
 }
