@@ -36,10 +36,7 @@ func TestIdentityFinalizerPreservesBytesAndMetadata(t *testing.T) {
 
 	code := []byte{0x48, 0x81, 0xec, 0, 0, 0, 0, 0xe8, 0, 0, 0, 0, 0xc3}
 	original := append([]byte(nil), code...)
-	plan := &shared.GCFrameRootPlan{
-		AdapterReturnOffset: 12,
-		Callsites:           []shared.GCFrameCallsitePlan{{ReturnOffset: 12}},
-	}
+	plan := testGCPlanWithCallsites(t, 12, [2]uint32{12, 0})
 	f := fn{
 		a:                &amd64enc.Asm{B: code},
 		relocs:           []callReloc{{at: 8}},
@@ -55,10 +52,10 @@ func TestIdentityFinalizerPreservesBytesAndMetadata(t *testing.T) {
 		t.Fatalf("identity finalizer changed bytes: %x != %x", f.a.B, original)
 	}
 	if internal != 7 || f.relocs[0].at != 8 || f.adapterReturnOff != 12 ||
-		plan.AdapterReturnOffset != 12 || plan.Callsites[0].ReturnOffset != 12 {
+		plan.AdapterReturnOffset != 12 || testGCCallsiteReturn(t, plan, 0) != 12 {
 		t.Fatalf("metadata changed: internal=%d reloc=%d adapter=%d gc-adapter=%d gc-call=%d",
 			internal, f.relocs[0].at, f.adapterReturnOff,
-			plan.AdapterReturnOffset, plan.Callsites[0].ReturnOffset)
+			plan.AdapterReturnOffset, testGCCallsiteReturn(t, plan, 0))
 	}
 }
 

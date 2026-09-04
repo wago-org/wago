@@ -147,11 +147,11 @@ func TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall(t *testing.T) {
 		LocalIndexes:       []uint32{0},
 		LocalOffsets:       []uint32{16},
 		LiveLocalMasks:     []uint64{1},
-		Callsites: []shared.GCFrameCallsitePlan{
-			{ReturnOffset: 4, Offsets: []uint32{16}},
-			{ReturnOffset: 8, Offsets: []uint32{16}},
-			{ReturnOffset: 12, StackAdjust: 64, Offsets: []uint32{16}},
-		},
+	}
+	for _, site := range [][2]uint32{{4, 0}, {8, 0}, {12, 64}} {
+		if !plan.AppendCallsite(site[0], site[1], []uint32{16}) {
+			t.Fatal("failed to append callsite")
+		}
 	}
 	if !plan.AppendSafepoint([]uint32{16}) {
 		t.Fatal("failed to append safepoint")

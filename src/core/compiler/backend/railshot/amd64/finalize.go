@@ -238,12 +238,20 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 			}
 			plan.AdapterReturnOffset = uint32(mapped)
 		}
-		for i := range plan.Callsites {
-			mapped, err := mapAMD64FinalOffset(result.Offsets, int(plan.Callsites[i].ReturnOffset), len(result.Code), "GC call return")
-			if err != nil {
-				return 0, err
+		var callsiteErr error
+		if !plan.VisitCallsites(func(_ int, callsite shared.GCFrameCallsite) bool {
+			var mapped int
+			mapped, callsiteErr = mapAMD64FinalOffset(result.Offsets, int(callsite.ReturnOffset()), len(result.Code), "GC call return")
+			if callsiteErr != nil {
+				return false
 			}
-			plan.Callsites[i].ReturnOffset = uint32(mapped)
+			callsite.SetReturnOffset(uint32(mapped))
+			return true
+		}) {
+			if callsiteErr != nil {
+				return 0, callsiteErr
+			}
+			return 0, fmt.Errorf("amd64: malformed GC callsite stream")
 		}
 	}
 	if frameDeleted != 0 && f.stats != nil {

@@ -301,12 +301,20 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 			}
 			plan.AdapterReturnOffset = uint32(mapped)
 		}
-		for i := range plan.Callsites {
-			mapped, err := mapFinalOffset(offsets, int(plan.Callsites[i].ReturnOffset), len(code), "GC call return")
-			if err != nil {
-				return 0, err
+		var callsiteErr error
+		if !plan.VisitCallsites(func(_ int, callsite shared.GCFrameCallsite) bool {
+			var mapped int
+			mapped, callsiteErr = mapFinalOffset(offsets, int(callsite.ReturnOffset()), len(code), "GC call return")
+			if callsiteErr != nil {
+				return false
 			}
-			plan.Callsites[i].ReturnOffset = uint32(mapped)
+			callsite.SetReturnOffset(uint32(mapped))
+			return true
+		}) {
+			if callsiteErr != nil {
+				return 0, callsiteErr
+			}
+			return 0, fmt.Errorf("arm64: malformed GC callsite stream")
 		}
 	}
 	if len(code) != oldLen {

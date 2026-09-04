@@ -36,6 +36,28 @@ func TestGCFrameSafepointStream(t *testing.T) {
 	}
 }
 
+func TestGCFrameCallsiteStream(t *testing.T) {
+	var plan GCFrameRootPlan
+	if !plan.AppendCallsite(24, 0, []uint32{8, 16}) || !plan.AppendCallsite(40, 64, nil) || plan.CallsiteCount() != 2 {
+		t.Fatalf("callsite stream = %#v, count %d", plan.CallsiteData, plan.CallsiteCount())
+	}
+	first, ok := plan.Callsite(0)
+	if !ok || first.ReturnOffset() != 24 || first.StackAdjust() != 0 || len(first.Offsets()) != 2 {
+		t.Fatalf("first callsite = %#v, %v", first, ok)
+	}
+	if !plan.ShiftCallsiteReturnOffsets(32, 8) {
+		t.Fatal("valid callsite shift failed")
+	}
+	second, ok := plan.Callsite(1)
+	if !ok || second.ReturnOffset() != 32 || second.StackAdjust() != 64 || len(second.Offsets()) != 0 {
+		t.Fatalf("second callsite = %#v, %v", second, ok)
+	}
+	plan.CallsiteData[2] = ^uint32(0)
+	if plan.VisitCallsites(func(int, GCFrameCallsite) bool { return true }) {
+		t.Fatal("malformed callsite stream was accepted")
+	}
+}
+
 func TestGCFrameRootPlanWideMaskWords(t *testing.T) {
 	plan := &GCFrameRootPlan{
 		LocalIndexes:       make([]uint32, 65),

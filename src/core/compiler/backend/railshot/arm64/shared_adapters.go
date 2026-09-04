@@ -202,11 +202,7 @@ func compactSharedAdapters(code []byte, oldLen int, entry, internalEntry []int, 
 			}
 			if roots != nil {
 				if plan := roots.Function(i); plan != nil {
-					for j := range plan.Callsites {
-						if plan.Callsites[j].ReturnOffset >= info.endOff {
-							plan.Callsites[j].ReturnOffset -= uint32(deleted)
-						}
-					}
+					plan.ShiftCallsiteReturnOffsets(info.endOff, uint32(deleted))
 				}
 			}
 			if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {

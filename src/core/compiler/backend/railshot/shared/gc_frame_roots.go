@@ -46,15 +46,6 @@ func DecodeGCDispatch(payload uint32) (helper, safepoint uint32) {
 	return payload & GCHelperIDMask, payload >> GCSafepointIDShift
 }
 
-// GCFrameCallsitePlan names caller-frame roots at the native return PC after a
-// direct self-call. ReturnOffset is function-relative and stable in serialized
-// artifacts.
-type GCFrameCallsitePlan struct {
-	ReturnOffset uint32
-	StackAdjust  uint32
-	Offsets      []uint32
-}
-
 // GCFrameRootPlan is an optional compile-time handshake for exact-typed native
 // roots in one candidate function. The caller precomputes collector-reference
 // local indexes/offsets; architecture backends add site-specific operand spills,
@@ -76,11 +67,105 @@ type GCFrameRootPlan struct {
 	// of records in the stream.
 	SafepointData  []uint32
 	safepointCount uint32
-	Callsites      []GCFrameCallsitePlan
+	callsiteCount  uint32
+	CallsiteData   []uint32
 	// AdapterReturnOffset is relative to the function's public Entry. It may
 	// point beyond the function-owned bytes into a module-level adapter island.
 	AdapterReturnOffset uint32
 	SafepointBase       uint32
+}
+
+// GCFrameCallsite names caller-frame roots at a native return PC. Its view is
+// valid only during VisitCallsites; setters update the owning flat stream.
+type GCFrameCallsite struct{ data []uint32 }
+
+func (c GCFrameCallsite) ReturnOffset() uint32     { return c.data[0] }
+func (c GCFrameCallsite) SetReturnOffset(v uint32) { c.data[0] = v }
+func (c GCFrameCallsite) StackAdjust() uint32      { return c.data[1] }
+func (c GCFrameCallsite) Offsets() []uint32        { return c.data[3:] }
+
+func (p *GCFrameRootPlan) ResetCallsites() {
+	p.CallsiteData = p.CallsiteData[:0]
+	p.callsiteCount = 0
+}
+
+// AppendCallsite retains one complete callsite without a per-site slice header
+// or offset backing. Return offsets remain mutable through VisitCallsites so
+// native finalization can remap them in place.
+func (p *GCFrameRootPlan) AppendCallsite(returnOffset, stackAdjust uint32, offsets []uint32) bool {
+	if p.callsiteCount == ^uint32(0) || uint64(len(offsets)) > uint64(^uint32(0)) {
+		return false
+	}
+	p.CallsiteData = append(p.CallsiteData, returnOffset, stackAdjust, uint32(len(offsets)))
+	p.CallsiteData = append(p.CallsiteData, offsets...)
+	p.callsiteCount++
+	return true
+}
+
+// RecordCallsite is the fail-closed compiler form of AppendCallsite.
+func (p *GCFrameRootPlan) RecordCallsite(returnOffset, stackAdjust uint32, offsets []uint32) {
+	if !p.AppendCallsite(returnOffset, stackAdjust, offsets) {
+		p.Exact = false
+	}
+}
+
+func (p *GCFrameRootPlan) CallsiteCount() int { return int(p.callsiteCount) }
+
+func (p *GCFrameRootPlan) Callsite(index int) (result GCFrameCallsite, ok bool) {
+	if index < 0 || index >= p.CallsiteCount() {
+		return result, false
+	}
+	ok = p.VisitCallsites(func(i int, callsite GCFrameCallsite) bool {
+		if i == index {
+			result = callsite
+			return false
+		}
+		return true
+	})
+	// VisitCallsites reports false when the visitor stops at the requested site.
+	if len(result.data) != 0 {
+		return result, true
+	}
+	return result, ok
+}
+
+func (p *GCFrameRootPlan) VisitCallsites(visit func(index int, callsite GCFrameCallsite) bool) bool {
+	if p == nil || visit == nil {
+		return false
+	}
+	pos := 0
+	for i := uint32(0); i < p.callsiteCount; i++ {
+		if pos+3 > len(p.CallsiteData) {
+			return false
+		}
+		n := uint64(p.CallsiteData[pos+2])
+		end := uint64(pos+3) + n
+		if end > uint64(len(p.CallsiteData)) || !visit(int(i), GCFrameCallsite{data: p.CallsiteData[pos:int(end)]}) {
+			return false
+		}
+		pos = int(end)
+	}
+	return pos == len(p.CallsiteData)
+}
+
+// ShiftCallsiteReturnOffsets applies a code deletion to every return PC at or
+// after start. Malformed streams and underflow fail exact-root admission.
+func (p *GCFrameRootPlan) ShiftCallsiteReturnOffsets(start, deleted uint32) bool {
+	ok := p.VisitCallsites(func(_ int, callsite GCFrameCallsite) bool {
+		off := callsite.ReturnOffset()
+		if off < start {
+			return true
+		}
+		if off < deleted {
+			return false
+		}
+		callsite.SetReturnOffset(off - deleted)
+		return true
+	})
+	if !ok {
+		p.Exact = false
+	}
+	return ok
 }
 
 // ResetSafepoints retains the flat arena for another compile attempt.

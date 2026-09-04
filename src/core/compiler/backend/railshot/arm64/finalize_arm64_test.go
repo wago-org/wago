@@ -35,13 +35,7 @@ func TestIdentityFinalizerRemapsAllArm64Metadata(t *testing.T) {
 		nativeCompactionEnabled = beforeCompact
 	})
 
-	plan := &shared.GCFrameRootPlan{
-		AdapterReturnOffset: 12,
-		Callsites: []shared.GCFrameCallsitePlan{
-			{ReturnOffset: 16},
-			{ReturnOffset: 24, StackAdjust: 64},
-		},
-	}
+	plan := testGCPlanWithCallsites(t, 12, [2]uint32{16, 0}, [2]uint32{24, 64})
 	sc := &scratch{asm: &a64.Asm{B: make([]byte, 32)}, finalizerMarkers: map[int]bool{finalizerMarkerKey(28, markerDeadHole): true}}
 	f := fn{
 		a:                sc.asm,
@@ -60,8 +54,8 @@ func TestIdentityFinalizerRemapsAllArm64Metadata(t *testing.T) {
 	if internal != 8 || f.adapterReturnOff != 12 || plan.AdapterReturnOffset != 12 {
 		t.Fatalf("entry/adapter offsets changed: internal=%d adapter=%d plan=%d", internal, f.adapterReturnOff, plan.AdapterReturnOffset)
 	}
-	if f.relocs[0].at != 4 || f.relocs[1].at != 20 || plan.Callsites[0].ReturnOffset != 16 || plan.Callsites[1].ReturnOffset != 24 {
-		t.Fatalf("relocation/callsite offsets changed: relocs=%#v callsites=%#v", f.relocs, plan.Callsites)
+	if f.relocs[0].at != 4 || f.relocs[1].at != 20 || testGCCallsiteReturn(t, plan, 0) != 16 || testGCCallsiteReturn(t, plan, 1) != 24 {
+		t.Fatalf("relocation/callsite offsets changed: relocs=%#v callsite-data=%#v", f.relocs, plan.CallsiteData)
 	}
 }
 

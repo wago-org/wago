@@ -1134,7 +1134,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	f.a.CallMem(R8, hcTrampoline)
 	if recordRoots {
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(len(f.a.B)), Offsets: rootOffsets})
+		f.gcFrameRoots.RecordCallsite(uint32(len(f.a.B)), 0, rootOffsets)
 	}
 	if nativeAllocDone >= 0 {
 		f.a.PatchRel32(nativeAllocDone, f.a.Len())
@@ -1473,7 +1473,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		f.a.CallReg(RAX)
 	}
 	if recordRoots {
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(len(f.a.B)), StackAdjust: stackAdjust, Offsets: rootOffsets})
+		f.gcFrameRoots.RecordCallsite(uint32(len(f.a.B)), stackAdjust, rootOffsets)
 	}
 
 	if b.Dynamic {
@@ -1650,7 +1650,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 			f.gcFrameRoots.Exact = false
 			return
 		}
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
+		f.gcFrameRoots.RecordCallsite(uint32(f.relocs[relocBase].at+4), 0, rootOffsets)
 	}
 	if f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))) {
 		if sigIsIntOnly(ft) {
@@ -1689,7 +1689,14 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		return nil, false
 	}
 	f.materializeGCFrameLocalsAt(siteIndex, true)
-	offsets := make([]uint32, 0, len(plan.LocalOffsets)+len(plan.FixedOffsets))
+	offsets := f.tmpGCOffsets[:0]
+	defer func() {
+		if uint64(cap(offsets))*4 <= shared.MaxRetainedGCCallsiteOffsetBytes {
+			f.tmpGCOffsets = offsets[:0]
+		} else {
+			f.tmpGCOffsets = nil
+		}
+	}()
 	if !plan.VisitLiveLocals(siteIndex, true, func(root int) {
 		offsets = append(offsets, plan.LocalOffsets[root])
 	}) {
@@ -2143,7 +2150,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.pinned = f.pinned.remove(home)
 		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -2160,10 +2167,8 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.release(code)
 		sameReturn, crossReturn := f.emitIndirectCallHomeAware(ft, home, targetContext)
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites,
-				shared.GCFrameCallsitePlan{ReturnOffset: sameReturn, Offsets: rootOffsets},
-				shared.GCFrameCallsitePlan{ReturnOffset: crossReturn, StackAdjust: 64, Offsets: rootOffsets},
-			)
+			f.gcFrameRoots.RecordCallsite(sameReturn, 0, rootOffsets)
+			f.gcFrameRoots.RecordCallsite(crossReturn, 64, rootOffsets)
 		}
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
@@ -2177,10 +2182,8 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	f.release(code)
 	sameReturn, crossReturn := f.emitIndirectCallHomeAware(ft, home, targetContext)
 	if recordRoots {
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites,
-			shared.GCFrameCallsitePlan{ReturnOffset: sameReturn, Offsets: rootOffsets},
-			shared.GCFrameCallsitePlan{ReturnOffset: crossReturn, StackAdjust: 64, Offsets: rootOffsets},
-		)
+		f.gcFrameRoots.RecordCallsite(sameReturn, 0, rootOffsets)
+		f.gcFrameRoots.RecordCallsite(crossReturn, 64, rootOffsets)
 	}
 	return nil
 }
@@ -2687,7 +2690,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.stats.peep("monomorphic-call-indirect")
 		returnOffset := f.emitRegisterCallVia(ft, -1, tableHint.monomorphicTarget, regNone)
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		return nil
 	}
@@ -2708,7 +2711,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.stats.peep("immutable-local-call-indirect")
 		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -2751,7 +2754,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.pinned = f.pinned.remove(home)
 		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -2768,10 +2771,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.release(kind)
 		sameReturn, crossReturn := f.emitIndirectCallHomeAware(ft, home, targetContext)
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites,
-				shared.GCFrameCallsitePlan{ReturnOffset: sameReturn, Offsets: rootOffsets},
-				shared.GCFrameCallsitePlan{ReturnOffset: crossReturn, StackAdjust: 64, Offsets: rootOffsets},
-			)
+			f.gcFrameRoots.RecordCallsite(sameReturn, 0, rootOffsets)
+			f.gcFrameRoots.RecordCallsite(crossReturn, 64, rootOffsets)
 		}
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
@@ -2787,10 +2788,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 
 	sameReturn, crossReturn := f.emitIndirectCallHomeAware(ft, home, targetContext)
 	if recordRoots {
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites,
-			shared.GCFrameCallsitePlan{ReturnOffset: sameReturn, Offsets: rootOffsets},
-			shared.GCFrameCallsitePlan{ReturnOffset: crossReturn, StackAdjust: 64, Offsets: rootOffsets},
-		)
+		f.gcFrameRoots.RecordCallsite(sameReturn, 0, rootOffsets)
+		f.gcFrameRoots.RecordCallsite(crossReturn, 64, rootOffsets)
 	}
 	return nil
 }

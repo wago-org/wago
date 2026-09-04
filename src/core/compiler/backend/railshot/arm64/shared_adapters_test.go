@@ -35,8 +35,8 @@ func TestCompactSharedAdaptersRemapsCallsAndGCReturnsArm64(t *testing.T) {
 		{function: 1, callOff: 16, endOff: 24},
 	}
 	roots := &shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{
-		{AdapterReturnOffset: 20, Callsites: []shared.GCFrameCallsitePlan{{ReturnOffset: 24}}},
-		{AdapterReturnOffset: 20, Callsites: []shared.GCFrameCallsitePlan{{ReturnOffset: 24}}},
+		testGCPlanWithCallsites(t, 20, [2]uint32{24, 0}),
+		testGCPlanWithCallsites(t, 20, [2]uint32{24, 0}),
 	}}
 	stats := &ModuleStats{Funcs: []*CodegenStats{
 		{CodeBytes: len(first), NativeSize: NativeFunctionSizeReport{TotalBytes: len(first), HostAdapterBytes: 24, InternalFunctionBytes: 4}},
@@ -53,8 +53,8 @@ func TestCompactSharedAdaptersRemapsCallsAndGCReturnsArm64(t *testing.T) {
 	if entry[0] != 0 || entry[1] != 12 || internal[0] != 8 || internal[1] != 20 {
 		t.Fatalf("entry/internal remap = %v/%v, want [0 12]/[8 20]", entry, internal)
 	}
-	if relocs[0][0].at != 8 || relocs[1][0].at != 8 || roots.Functions[0].Callsites[0].ReturnOffset != 8 || roots.Functions[1].Callsites[0].ReturnOffset != 8 {
-		t.Fatalf("internal metadata remap = relocs %v/%v callsites %v/%v", relocs[0], relocs[1], roots.Functions[0].Callsites, roots.Functions[1].Callsites)
+	if relocs[0][0].at != 8 || relocs[1][0].at != 8 || testGCCallsiteReturn(t, roots.Functions[0], 0) != 8 || testGCCallsiteReturn(t, roots.Functions[1], 0) != 8 {
+		t.Fatalf("internal metadata remap = relocs %v/%v callsites %v/%v", relocs[0], relocs[1], roots.Functions[0].CallsiteData, roots.Functions[1].CallsiteData)
 	}
 	if roots.Functions[0].AdapterReturnOffset != 44 || roots.Functions[1].AdapterReturnOffset != 32 {
 		t.Fatalf("shared adapter return offsets = %d/%d, want 44/32", roots.Functions[0].AdapterReturnOffset, roots.Functions[1].AdapterReturnOffset)

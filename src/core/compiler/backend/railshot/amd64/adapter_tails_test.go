@@ -26,9 +26,9 @@ func TestShareAdapterTailsRemapsModuleOffsetsAMD64(t *testing.T) {
 		{function: 2, returnOff: 5, endOff: 14},
 	}
 	roots := &shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{
-		{Callsites: []shared.GCFrameCallsitePlan{{ReturnOffset: 15}}},
-		{Callsites: []shared.GCFrameCallsitePlan{{ReturnOffset: 15}}},
-		{Callsites: []shared.GCFrameCallsitePlan{{ReturnOffset: 15}}},
+		testGCPlanWithCallsites(t, 0, [2]uint32{15, 0}),
+		testGCPlanWithCallsites(t, 0, [2]uint32{15, 0}),
+		testGCPlanWithCallsites(t, 0, [2]uint32{15, 0}),
 	}}
 	literalWords := []uint64{0, uint64(15) << 32, 0, uint64(15) << 32, 0, uint64(15) << 32}
 	literalOffsets := []uint32{0, 2, 4, 6}
@@ -47,8 +47,8 @@ func TestShareAdapterTailsRemapsModuleOffsetsAMD64(t *testing.T) {
 		t.Fatalf("internal entries = %v, want %v", internal, want)
 	}
 	for i := range relocs {
-		if relocs[i][0].at != 11 || roots.Function(i).Callsites[0].ReturnOffset != 11 {
-			t.Fatalf("function %d offsets: reloc=%d callsite=%d, want 11,11", i, relocs[i][0].at, roots.Function(i).Callsites[0].ReturnOffset)
+		if relocs[i][0].at != 11 || testGCCallsiteReturn(t, roots.Function(i), 0) != 11 {
+			t.Fatalf("function %d offsets: reloc=%d callsite=%d, want 11,11", i, relocs[i][0].at, testGCCallsiteReturn(t, roots.Function(i), 0))
 		}
 		if site := uint32(literalWords[2*i+1] >> 32); site != 11 {
 			t.Fatalf("function %d literal site = %d, want 11", i, site)

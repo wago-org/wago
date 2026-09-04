@@ -365,6 +365,7 @@ type transient struct {
 	tmpTypes2      []machineType
 	tmpGCRoots     []bool
 	tmpGCRoots2    []bool
+	tmpGCOffsets   []uint32
 	tmpFlushTypes  []machineType
 	tmpRegs        []Reg
 	tmpStackSlots  []uint32 // operand slot prefixes; successful native frames fit uint32 exactly
@@ -2169,7 +2170,7 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 	if gcFrameRoots != nil && gcFrameRoots.Candidate {
 		gcFrameRoots.Exact = true
 		gcFrameRoots.ResetSafepoints()
-		gcFrameRoots.Callsites = gcFrameRoots.Callsites[:0]
+		gcFrameRoots.ResetCallsites()
 		gcFrameRoots.FrameBytes = 0
 		gcFrameRoots.AdapterReturnOffset = 0
 	}
@@ -2189,7 +2190,7 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		if gcFrameRoots != nil && gcFrameRoots.Candidate {
 			gcFrameRoots.Exact = true
 			gcFrameRoots.ResetSafepoints()
-			gcFrameRoots.Callsites = gcFrameRoots.Callsites[:0]
+			gcFrameRoots.ResetCallsites()
 			gcFrameRoots.FrameBytes = 0
 			gcFrameRoots.AdapterReturnOffset = 0
 		}

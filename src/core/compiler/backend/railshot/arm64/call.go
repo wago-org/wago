@@ -1244,7 +1244,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	f.ld64(X16, X11, hcTrampoline)
 	f.a.Blr(X16)
 	if recordRoots {
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.a.Len()), Offsets: rootOffsets})
+		f.gcFrameRoots.RecordCallsite(uint32(f.a.Len()), 0, rootOffsets)
 	}
 	f.reloadLocalsForCall()
 
@@ -1584,7 +1584,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		if b.Dynamic {
 			stackAdjust = 64
 		}
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.a.Len()), StackAdjust: stackAdjust, Offsets: rootOffsets})
+		f.gcFrameRoots.RecordCallsite(uint32(f.a.Len()), stackAdjust, rootOffsets)
 	}
 
 	if b.Dynamic {
@@ -1625,7 +1625,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 			f.gcFrameRoots.Exact = false
 			return
 		}
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
+		f.gcFrameRoots.RecordCallsite(uint32(f.relocs[relocBase].at+4), 0, rootOffsets)
 	}
 	if f.opt(optRegABI) && stagedTailRegisterABI(ft, f.stagedTailDescriptors) {
 		if sigIsIntOnly(ft) {
@@ -1686,7 +1686,14 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		return nil, false
 	}
 	f.materializeGCFrameLocalsAt(siteIndex, true)
-	offsets := make([]uint32, 0, len(plan.LocalOffsets)+len(plan.FixedOffsets))
+	offsets := f.tmpGCOffsets[:0]
+	defer func() {
+		if uint64(cap(offsets))*4 <= shared.MaxRetainedGCCallsiteOffsetBytes {
+			f.tmpGCOffsets = offsets[:0]
+		} else {
+			f.tmpGCOffsets = nil
+		}
+	}()
 	if !plan.VisitLiveLocals(siteIndex, true, func(root int) {
 		offsets = append(offsets, plan.LocalOffsets[root])
 	}) {
@@ -2172,7 +2179,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 			returnOffset = f.emitRegisterCallVia(ft, -1, false, -1, code)
 		}
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -2293,7 +2300,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 			if len(f.relocs) != relocBase+1 {
 				f.gcFrameRoots.Exact = false
 			} else {
-				f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
+				f.gcFrameRoots.RecordCallsite(uint32(f.relocs[relocBase].at+4), 0, rootOffsets)
 			}
 		}
 		return nil
@@ -2337,7 +2344,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 			returnOffset = f.emitRegisterCallVia(ft, -1, false, -1, code)
 		}
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		done := f.a.Branch()
 		f.a.PatchBranch19(wrapper, f.a.Len())
@@ -2451,7 +2458,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.ld64(X16, linMemReg, -int32(offSpillRegion))
 	f.a.Blr(X16)
 	if recordRoots {
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.a.Len()), Offsets: rootOffsets})
+		f.gcFrameRoots.RecordCallsite(uint32(f.a.Len()), 0, rootOffsets)
 	}
 	jdone := f.a.Branch()
 	// Cross-instance: preserve the caller's invariants (+ one alignment pad), copy
@@ -2478,7 +2485,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 		// Four 16-byte records preserve caller invariants while the foreign
 		// wrapper runs. Frame walking adds this adjustment to recover the
 		// caller's stable post-prologue SP.
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.a.Len()), StackAdjust: 64, Offsets: rootOffsets})
+		f.gcFrameRoots.RecordCallsite(uint32(f.a.Len()), 64, rootOffsets)
 	}
 	f.a.LdpPost(X13, X12, SP, 16)
 	f.a.LdpPost(X27, ehReg, SP, 16)

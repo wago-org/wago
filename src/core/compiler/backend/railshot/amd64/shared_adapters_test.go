@@ -41,8 +41,8 @@ func TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64(t *testing.T)
 	}
 	literalOffsets := []uint32{0, 5, 10}
 	roots := &shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{
-		{AdapterReturnOffset: 29, Callsites: []shared.GCFrameCallsitePlan{{ReturnOffset: 30}}},
-		{AdapterReturnOffset: 29, Callsites: []shared.GCFrameCallsitePlan{{ReturnOffset: 30}}},
+		testGCPlanWithCallsites(t, 29, [2]uint32{30, 0}),
+		testGCPlanWithCallsites(t, 29, [2]uint32{30, 0}),
 	}}
 	stats := &ModuleStats{Funcs: []*CodegenStats{
 		{CodeBytes: len(first), NativeSize: NativeFunctionSizeReport{TotalBytes: len(first), HostAdapterBytes: 30, InternalFunctionBytes: 5}},
@@ -62,8 +62,8 @@ func TestCompactSharedAdaptersRemapsCallsLiteralsAndGCReturnsAMD64(t *testing.T)
 	if relocs[0][0].at != 13 || relocs[1][0].at != 13 || uint32(literalWords[4]>>32) != 13 || uint32(literalWords[9]>>32) != 13 {
 		t.Fatalf("call/literal remap = relocs %v/%v literals %d/%d", relocs[0], relocs[1], literalWords[4]>>32, literalWords[9]>>32)
 	}
-	if roots.Functions[0].Callsites[0].ReturnOffset != 12 || roots.Functions[1].Callsites[0].ReturnOffset != 12 {
-		t.Fatalf("GC callsite remap = %v/%v", roots.Functions[0].Callsites, roots.Functions[1].Callsites)
+	if testGCCallsiteReturn(t, roots.Functions[0], 0) != 12 || testGCCallsiteReturn(t, roots.Functions[1], 0) != 12 {
+		t.Fatalf("GC callsite remap = %v/%v", roots.Functions[0].CallsiteData, roots.Functions[1].CallsiteData)
 	}
 	if roots.Functions[0].AdapterReturnOffset != 60 || roots.Functions[1].AdapterReturnOffset != 43 {
 		t.Fatalf("shared adapter return offsets = %d/%d, want 60/43", roots.Functions[0].AdapterReturnOffset, roots.Functions[1].AdapterReturnOffset)
