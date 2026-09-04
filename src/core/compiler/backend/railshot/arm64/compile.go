@@ -48,11 +48,6 @@ var valueFactsEnabled = os.Getenv("WAGO_ARM64_NOPROVENANCE") != "1"
 // targets stay conservative. WAGO_ARM64_NO_MERGE_NEXT_USE=1 restores eager loads.
 var mergeNextUseEnabled = os.Getenv("WAGO_ARM64_NO_MERGE_NEXT_USE") != "1"
 
-// sharedTrapUnwindEnabled lets compact functions replace repeated
-// terminal trap-unwind tails with one function-local cold tail. The hot trap
-// checks and ordinary layouts are unchanged.
-var sharedTrapUnwindEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_TRAP_UNWIND") != "1"
-
 // sharedAdaptersEnabled lets compact code replace byte-identical register-ABI
 // host adapters with eight-byte function-local target thunks plus one cold
 // module copy. WAGO_ARM64_NO_SHARED_ADAPTERS=1 retains adapter-tail sharing.

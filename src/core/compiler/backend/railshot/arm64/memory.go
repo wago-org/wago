@@ -202,7 +202,7 @@ func (f *fn) emitTrapStubs() {
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
 	compact := f.policy.CompactNative
 	groups := 0
-	if (sharedTrapUnwindEnabled || f.opt(optSharedTrapBody)) && compact {
+	if compact {
 		for code := uint32(1); code <= trapAtomicUnaligned; code++ {
 			sites := f.scratchState().trapSites[code]
 			if len(sites) == 0 {
@@ -228,7 +228,7 @@ func (f *fn) emitTrapStubs() {
 	}
 	// Two 16-byte unwind tails cost 32 bytes. Two B sites plus one tail cost 24,
 	// and the extra branch is confined to a terminal cold path.
-	shareUnwind := sharedTrapUnwindEnabled && compact && groups >= 2
+	shareUnwind := compact && groups >= 2
 	sharedUnwind := -1
 	sharedTails := 0
 	if shareUnwind {
