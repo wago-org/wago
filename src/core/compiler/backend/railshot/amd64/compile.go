@@ -244,6 +244,7 @@ type fn struct {
 	gcLastField         gcStructFieldFact
 	gcResolved          gcResolvedObject
 	gcSharedResolver    bool
+	gcDeferResolver     bool
 	gcHandleResolutions int
 	nLocalSlots         int // total local frame slots in 8-byte units
 
@@ -1478,15 +1479,17 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	for i := range allHints {
 		resolverSites += int(allHints[i].gcResolverSiteCount())
 	}
-	// A one-entry address certificate can collapse a single function's repeated
-	// candidate sites to one real resolution. Compile that narrow shape inline
-	// first and select the module island only when lowering proves at least two
-	// resolutions remain. Multi-function modules retain the measured static
-	// crossover because caches cannot cross function boundaries.
-	deferSingleFuncGCResolverDecision := gcSharedStubsEnabled && gcResolveReuseEnabled && n == 1 && resolverSites >= 2
-	useSharedGCResolver := gcSharedStubsEnabled && resolverSites >= 2 && !deferSingleFuncGCResolverDecision
+	// A one-entry address certificate can collapse repeated candidates to one
+	// real resolution. Single-function reuse starts inline and switches to the
+	// shared resolver only if lowering reaches a second real site; this keeps the
+	// low-site crossover without compiling the function twice.
+	deferSingleFuncGCResolver := gcSharedStubsEnabled && gcResolveReuseEnabled && n == 1 && resolverSites >= 2
+	useSharedGCResolver := gcSharedStubsEnabled && resolverSites >= 2 && !deferSingleFuncGCResolver
 	for i := range allHints {
 		allHints[i].flags.assign(hintGCSharedResolver, useSharedGCResolver)
+	}
+	if deferSingleFuncGCResolver {
+		allHints[0].flags.set(hintGCDeferredResolver)
 	}
 	modGlobals := pickModuleGlobals(m, nGlobals, globalScores)
 	hostAdapters, err := shared.HostAdapterSet(m)
@@ -1656,11 +1659,6 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			sc.localRefTailBound = false
 			hints := hintSidecar.view(allHints[i])
 			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc)
-			if err == nil && deferSingleFuncGCResolverDecision && sc.fnState.gcHandleResolutions >= 2 {
-				hints.flags.set(hintGCSharedResolver)
-				resetFuncStats(st)
-				fnCode, rl, internalOff, err = compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc)
-			}
 			allHints[i] = funcHints{}
 			if err != nil {
 				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
@@ -2698,7 +2696,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	sc.asm.CompactAccumulatorImmediates = compactAccumulatorImmediatePolicy(policy)
 	localType, localSlot, localGCRefFacts, locals, globalReg := f.localType, f.localSlot, f.localGCRefFacts, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), gcSharedResolver: hints.flags.has(hintGCSharedResolver), classifier: sc.classifier}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
 	f.relocs = sc.relocs[:0]
 	if count := int(hints.callRelocSiteCount()); count >= minPreallocatedCallRelocs && cap(f.relocs) < count {
 		f.relocs = make([]callReloc, 0, count)

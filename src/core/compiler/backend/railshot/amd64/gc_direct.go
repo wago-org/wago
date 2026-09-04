@@ -477,6 +477,10 @@ func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, l
 		return f.gcResolved.reg, func() {}
 	}
 	f.invalidateGCResolvedObject()
+	if f.gcDeferResolver && f.gcHandleResolutions != 0 {
+		f.gcSharedResolver = true
+		f.gcDeferResolver = false
+	}
 	if f.gcSharedResolver {
 		obj, done = f.emitSharedCheckedGCObject(object, localType, requiredBytes)
 	} else {

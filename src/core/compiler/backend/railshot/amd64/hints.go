@@ -56,6 +56,7 @@ const (
 	hintHasFloatConst
 	hintHasSIMD
 	hintHasStackSinkFusion
+	hintGCDeferredResolver
 )
 
 func (f funcHintFlags) has(flag funcHintFlags) bool { return f&flag != 0 }

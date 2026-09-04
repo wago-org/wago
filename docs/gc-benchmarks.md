@@ -505,13 +505,19 @@ qualification measured a 229-byte shared resolver body. One candidate site remai
 inline at 351 native bytes because an unconditional island would produce 453 bytes.
 With reuse disabled, eight sites use the shared form at 821 versus 1,669 bytes
 (-50.8%); 128 sites use 7,301 versus 24,349 bytes (-70.0%). With reuse enabled, a
-single-function module is first lowered inline and selects the island only if at
-least two emitted resolutions remain. The eight-site straight-line fixture therefore
-compiles as one resolution plus seven certified reuses at 452 bytes versus 821 bytes
-with eight shared resolutions (-44.9%). An eight-distinct-object, one-function audit
-still selects the island and measures 949 versus 1,806 inline bytes (-47.5%). Module
-telemetry records shared body bytes/call sites, and per-function telemetry records
-emitted versus reused resolutions.
+single-function module starts inline and switches to the shared resolver only when
+lowering reaches a second actual resolution. This avoids the former whole-function
+second compilation. The eight-site straight-line fixture therefore compiles once as
+one resolution plus seven certified reuses, retaining its byte-identical 451-byte
+code with no shared island. On September 4, 2026, an eight-distinct-object fixture
+compiled as one inline resolution plus seven shared calls in 1,076 bytes, versus 948
+bytes for the former two-attempt result and 1,798 bytes fully inline. Twelve
+interleaved native Ryzen 7 7800X3D pairs reduced compile time from 34.38 to 21.79
+microseconds (-36.64%), allocation from 30.52 to 28.97 KiB/op (-5.09%), and
+allocations from 87 to 75 (-13.79%). The +128-byte focused code-size trade removes
+the full retry while remaining roughly 40% smaller than fully inline resolution.
+Module telemetry records shared body bytes/call sites, and per-function telemetry
+records emitted versus reused resolutions.
 
 A post-audit set of ten CPU-0-pinned 500 ms execution samples measured medians of
 317.0 ns/op for the default inline+reuse path, 341.85 ns/op with reuse disabled, and
@@ -523,6 +529,12 @@ stripped `wago_runtime` TinyGo build was 2,096,928 bytes at the baseline SHA and
 compiled-code cache and runtime collector/instance/view layouts do not grow. This
 fixture proves the intended dense straight-line case; it does not claim every static
 shared-stub site is dynamically hot.
+
+A September 4 follow-up of twelve CPU-0-pinned 500 ms pairs after removing the
+single-function retry measured 430.4 versus 435.8 ns/op for the same repeated-access
+native execution fixture (`p=0.124`), with 0 B/op and 0 allocs/op in both builds.
+The generated code for that path is byte-identical; the result is an execution
+neutrality check, not a new runtime-speed claim.
 
 ### Issue #300 baseline report
 
