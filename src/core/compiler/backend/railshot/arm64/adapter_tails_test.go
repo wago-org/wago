@@ -49,7 +49,7 @@ func TestShareAdapterTailsRemapsModuleOffsetsArm64(t *testing.T) {
 		t.Fatalf("internal entries = %v, want %v", internal, want)
 	}
 	for i := 0; i < relocs.functions(); i++ {
-		functionRelocs := relocs.function(i)
+		functionRelocs := relocs.serialFunction(i)
 		if functionRelocs[0].at != 12 || testGCCallsiteReturn(t, roots.Function(i), 0) != 12 {
 			t.Fatalf("function %d offsets: reloc=%d callsite=%d, want 12,12", i, functionRelocs[0].at, testGCCallsiteReturn(t, roots.Function(i), 0))
 		}

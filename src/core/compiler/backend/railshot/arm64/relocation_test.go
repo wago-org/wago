@@ -100,7 +100,7 @@ func TestCallRelocTableRequiresFunctionOrder(t *testing.T) {
 	if !table.appendFunction(0, []callReloc{{target: 1}}) || !table.appendFunction(1, nil) {
 		t.Fatal("rejected ordered functions")
 	}
-	if got := table.function(0); len(got) != 1 || got[0].target != 1 {
+	if got := table.serialFunction(0); len(got) != 1 || got[0].target != 1 {
 		t.Fatalf("function 0 relocations = %+v", got)
 	}
 	if table.appendFunction(1, nil) {

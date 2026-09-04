@@ -86,13 +86,9 @@ func (t *callRelocTable) appendFunction(index int, relocs []callReloc) bool {
 	return true
 }
 
-func (t callRelocTable) function(index int) []callReloc {
-	if t.results != nil {
-		return t.parallelFunction(index)
-	}
-	return t.serialFunction(index)
-}
-
+// Hot finalization loops intentionally hoist the mode test and call these
+// accessors directly. A combined accessor did not inline and cost 2.55% on the
+// native many-functions compile benchmark.
 func (t callRelocTable) serialFunction(index int) []callReloc {
 	if index < 0 || index+1 >= len(t.offsets) {
 		return nil
