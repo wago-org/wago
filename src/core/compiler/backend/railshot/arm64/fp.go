@@ -28,6 +28,9 @@ func floatBits(v float64, f64 bool) uint64 {
 
 func (f *fn) occupyF(e *elem, r Reg) {
 	f.fregUser[r] = e
+	if e.isDeferred() {
+		f.s.removePendingDeferred()
+	}
 	e.st.kind, e.st.reg = stReg, r
 	e.setElemKind(ekValue)
 }

@@ -1482,7 +1482,9 @@ func (f *fn) consumeBlockBelow(node *elem) {
 	for {
 		prev := f.s.prev(e)
 		isBase := e == base
+		id := f.s.prev(e).next
 		f.erase(e)
+		f.s.recycle(id, e)
 		if isBase {
 			break
 		}

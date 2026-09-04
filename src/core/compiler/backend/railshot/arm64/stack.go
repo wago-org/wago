@@ -12,7 +12,7 @@ import (
 func (s *stack) nodeMemory() (used, reserved uint64) {
 	for i := range s.chunks {
 		reserved += uint64(cap(s.chunks[i]))
-		if i <= s.cur {
+		if i <= int(s.cur) {
 			used += uint64(len(s.chunks[i]))
 		}
 	}
@@ -230,6 +230,11 @@ func deferDepthOf(e *elem) int16 {
 // well under the neutral-register count so the segment always fits in one pass.
 const maxDeferDepth = 6
 
+const (
+	defaultPendingNodes = 32
+	maxPendingNodes     = 64
+)
+
 // isDeferred reports whether e is an un-emitted operation.
 func (e *elem) isDeferred() bool { return e.elemKind() == ekDeferred }
 
@@ -241,10 +246,13 @@ func (e *elem) isDeferred() bool { return e.elemKind() == ekDeferred }
 type stack struct {
 	chunks           [][]elem
 	cold             []elemCold
-	cur              int
 	head             *elem
+	freeHead         nodeID
+	cur              uint16
 	nextChunkCap     uint16
 	nextGeometricCap uint16
+	pendingDeferred  uint8
+	maxPending       uint8
 }
 
 const (
@@ -310,6 +318,9 @@ func (s *stack) initSentinel() {
 	*chunk = append((*chunk)[:0], elem{})
 	s.head = &(*chunk)[0]
 	s.head.prev, s.head.next = sentinelNodeID, sentinelNodeID
+	s.freeHead = nilNodeID
+	s.pendingDeferred = 0
+	s.maxPending = 0
 }
 
 // reset rewinds the stack to empty for reuse by the next function in a module
@@ -419,10 +430,20 @@ func (s *stack) arg1(e *elem) *elem { return s.node(e.child1ID()) }
 
 // alloc returns a stable ID and fresh zeroed node from the arena.
 func (s *stack) alloc() (nodeID, *elem) {
+	if s.freeHead != nilNodeID {
+		id := s.freeHead
+		e := s.node(id)
+		s.freeHead = e.prev
+		*e = elem{}
+		return id, e
+	}
 	chunk := &s.chunks[s.cur]
 	if len(*chunk) == cap(*chunk) {
+		if s.cur == ^uint16(0) {
+			panic("arm64: operand arena exceeds compact chunk domain")
+		}
 		s.cur++
-		if s.cur == len(s.chunks) {
+		if int(s.cur) == len(s.chunks) {
 			s.chunks = append(s.chunks, make([]elem, 0, int(s.nextChunkCap)))
 			s.nextChunkCap = s.nextGeometricCap
 			if s.nextGeometricCap < maxStackChunkCap {
@@ -436,12 +457,17 @@ func (s *stack) alloc() (nodeID, *elem) {
 		*chunk = (*chunk)[:0]
 	}
 	*chunk = append(*chunk, elem{})
-	if s.cur >= 1<<16 {
-		panic("arm64: operand arena exceeds compact chunk domain")
-	}
 	slot := len(*chunk) - 1
 	id := nodeID(uint32(s.cur)<<16 | uint32(slot+1))
 	return id, &(*chunk)[slot]
+}
+
+// recycle makes an already-unlinked node available to the next allocation.
+// IDs, unlike pointers, remain stable when an arena slot is reused. Callers
+// must not retain a reference to e after this point.
+func (s *stack) recycle(id nodeID, e *elem) {
+	e.prev, e.next = s.freeHead, nilNodeID
+	s.freeHead = id
 }
 
 // push appends e as the new top of the stack and returns it.
@@ -450,6 +476,15 @@ func (s *stack) push(id nodeID, e *elem) *elem {
 	last := s.node(lastID)
 	e.prev, e.next = lastID, sentinelNodeID
 	last.next, s.head.prev = id, id
+	if e.isDeferred() {
+		if s.pendingDeferred == maxPendingNodes {
+			panic("arm64: pending operand packet exceeds hard node limit")
+		}
+		s.pendingDeferred++
+		if s.pendingDeferred > s.maxPending {
+			s.maxPending = s.pendingDeferred
+		}
+	}
 	return e
 }
 
@@ -472,8 +507,47 @@ func (s *stack) back() *elem {
 // erase unlinks e from the physical list (used when a node is condensed away or
 // consumed). It does not touch parent/sibling links.
 func (s *stack) erase(e *elem) {
+	if e.isDeferred() {
+		s.removePendingDeferred()
+	}
 	s.prev(e).next, s.next(e).prev = e.next, e.prev
 	e.prev, e.next = nilNodeID, nilNodeID
+}
+
+func (s *stack) removePendingDeferred() {
+	if s.pendingDeferred == 0 {
+		panic("arm64: pending operand packet accounting underflow")
+	}
+	s.pendingDeferred--
+}
+
+func (s *stack) oldestDeferredRoot() *elem {
+	var oldest *elem
+	for root := s.back(); root != nil; {
+		if root.isDeferred() {
+			oldest = root
+		}
+		root = s.prev(s.baseOfValentBlock(root))
+		if root == s.head {
+			break
+		}
+	}
+	return oldest
+}
+
+func (f *fn) boundPendingPacket() {
+	for f.s.pendingDeferred >= defaultPendingNodes {
+		root := f.s.oldestDeferredRoot()
+		if root == nil {
+			panic("arm64: pending operand packet has no deferred root")
+		}
+		before := f.s.pendingDeferred
+		f.materialize(root)
+		if f.s.pendingDeferred >= before {
+			panic("arm64: pending operand packet did not make progress")
+		}
+		f.stats.peep("pending-packet-cap")
+	}
 }
 
 // --- deferred-tree navigation (WARP: getFirstOperand / findBaseOfValentBlock) ---
@@ -543,6 +617,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	if deferDepthOf(right) >= maxDeferDepth {
 		f.materialize(right)
 	}
+	f.boundPendingPacket()
 	id, node := f.s.alloc()
 	node.st.typ = typ
 	node.setElemKind(ekDeferred)
@@ -714,6 +789,7 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	if deferDepthOf(operand) >= maxDeferDepth {
 		f.materialize(operand) // cap deferred-tree height (see pushBinOp)
 	}
+	f.boundPendingPacket()
 	id, node := f.s.alloc()
 	node.st.typ = typ
 	node.setElemKind(ekDeferred)

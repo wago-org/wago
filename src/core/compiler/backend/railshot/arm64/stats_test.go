@@ -47,6 +47,30 @@ func compileWithStats(t *testing.T, m *wasm.Module, guard bool) *ModuleStats {
 	return &ms
 }
 
+func TestPendingPacketIsBoundedArm64(t *testing.T) {
+	const roots = 96
+	body := make([]byte, 1, 1+roots*6+roots+1)
+	for range roots {
+		body = append(body, 0x20, 0x00, 0x20, 0x01, 0x6a) // local.get 0; local.get 1; i32.add
+	}
+	for range roots {
+		body = append(body, 0x1a) // drop
+	}
+	body = append(body, 0x0b)
+	m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32}, nil, body)
+	stats := compileWithStats(t, m, false)
+	s := stats.Funcs[0]
+	if s.FunctionAttempts != 1 {
+		t.Fatalf("function attempts = %d, want 1", s.FunctionAttempts)
+	}
+	if s.Peephole["pending-packet-cap"] == 0 {
+		t.Fatal("pending packet did not reach its soft cap")
+	}
+	if s.MaxPendingNodes > defaultPendingNodes {
+		t.Fatalf("max pending nodes = %d, want <= %d", s.MaxPendingNodes, defaultPendingNodes)
+	}
+}
+
 func TestCodegenStatsPeepholesArm64(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}

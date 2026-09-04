@@ -123,11 +123,12 @@ type CodegenStats struct {
 	Name    string // name-section / export name, or "" if anonymous
 
 	// Size.
-	CodeBytes     int                      // emitted machine-code length
-	FrameBytes    int                      // stack frame size (sub sp, N)
-	MaxSpillSlots int                      // high-water operand spill slots
-	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
-	NativeSize    shared.NativeFunctionSizeReport
+	CodeBytes       int                      // emitted machine-code length
+	FrameBytes      int                      // stack frame size (sub sp, N)
+	MaxSpillSlots   int                      // high-water operand spill slots
+	MaxPendingNodes int                      // high-water deferred nodes in the bounded operand packet
+	GCCodeBytes     shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
+	NativeSize      shared.NativeFunctionSizeReport
 	// FinalizerFallback is the fail-closed reason a compact function kept
 	// its maximal-safe encoding instead of applying an available compaction plan.
 	FinalizerFallback string `json:"finalizer_fallback,omitempty"`

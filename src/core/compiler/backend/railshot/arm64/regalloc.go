@@ -17,6 +17,9 @@ const regNone Reg = 0xFF
 // (select width, result marshaling) see the correct machine type.
 func (f *fn) occupy(e *elem, r Reg) {
 	f.regUser[r] = e
+	if e.isDeferred() {
+		f.s.removePendingDeferred()
+	}
 	e.st.kind, e.st.reg = stReg, r
 	e.setElemKind(ekValue)
 }

@@ -2606,6 +2606,7 @@ func (f *fn) finalizeStats(codeLen int) {
 	s.peepN("compact-move-immediate32", f.a.CompactMoveImmediates32)
 	s.FrameBytes = f.frameSize()
 	s.MaxSpillSlots = f.maxSpill
+	s.MaxPendingNodes = int(f.s.maxPending)
 }
 
 // runBody opens the function control frame, lowers the body, and patches every
