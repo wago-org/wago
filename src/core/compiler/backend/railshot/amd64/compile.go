@@ -3,14 +3,12 @@
 package amd64
 
 import (
-	"cmp"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
 	"os"
 	"runtime"
-	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -483,8 +481,6 @@ type transient struct {
 	tmpLabels      []uint32
 	tmpDeferred    []deferredArg
 	tmpBelow       []*elem
-	tmpGpCand      []gpCand
-	tmpLocalIndex  []uint16
 	loopScanLocals []uint16
 	loopSetLocals  []uint16
 	tmpIntervalReg []Reg
@@ -499,6 +495,56 @@ type gpCand struct {
 	score  uint32
 	idx    uint32
 	global bool
+}
+
+func gpCandBefore(a, b gpCand) bool {
+	if a.score != b.score {
+		return a.score > b.score
+	}
+	if a.global != b.global {
+		return !a.global // tie: prefer a local value over a global pointer
+	}
+	return a.idx < b.idx
+}
+
+func insertGPCandidate(top []gpCand, candidate gpCand, limit int) []gpCand {
+	position := len(top)
+	for i := range top {
+		if gpCandBefore(candidate, top[i]) {
+			position = i
+			break
+		}
+	}
+	if position >= limit {
+		return top
+	}
+	if len(top) < limit {
+		top = append(top, gpCand{})
+	}
+	copy(top[position+1:], top[position:len(top)-1])
+	top[position] = candidate
+	return top
+}
+
+func insertLocalCandidate(top []uint16, candidate uint16, scores []uint32, limit int) []uint16 {
+	position := len(top)
+	candidateScore := localHotness(scores[candidate])
+	for i, local := range top {
+		score := localHotness(scores[local])
+		if candidateScore > score || candidateScore == score && candidate < local {
+			position = i
+			break
+		}
+	}
+	if position >= limit {
+		return top
+	}
+	if len(top) < limit {
+		top = append(top, 0)
+	}
+	copy(top[position+1:], top[position:len(top)-1])
+	top[position] = candidate
+	return top
 }
 
 // deferredArg is a call argument (const/slot/localRef) staged into its target
@@ -3136,10 +3182,14 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	// mutable int accessed inside a loop (score >= one loop level): WARP pins only int
 	// globals as values, and the loop gate ensures the per-iteration memory traffic it
 	// removes outweighs the one-time prologue load + epilogue write-back.
-	gp := f.tmpGpCand[:0]
+	var gpStorage [32]gpCand // no target can dedicate more than its physical register file
+	if len(gpPool) > len(gpStorage) {
+		panic("amd64: GP pin pool exceeds architectural register file")
+	}
+	gp := gpStorage[:0]
 	for i := 0; i < f.nLocals; i++ {
 		if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
-			gp = append(gp, gpCand{idx: uint32(i), score: localHotness(scores[i])})
+			gp = insertGPCandidate(gp, gpCand{idx: uint32(i), score: localHotness(scores[i])}, len(gpPool))
 		}
 	}
 	loopMin := uint32(loopWeight(1))
@@ -3152,24 +3202,8 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		if !ok || !gt.Mutable || !isIntValType(wasm.GlobalValueType(gt)) {
 			continue
 		}
-		gp = append(gp, gpCand{global: true, idx: uint32(g), score: gh.Score})
+		gp = insertGPCandidate(gp, gpCand{global: true, idx: uint32(g), score: gh.Score}, len(gpPool))
 	}
-	f.tmpGpCand = gp
-	slices.SortStableFunc(gp, func(a, b gpCand) int {
-		if a.score != b.score {
-			if a.score > b.score { // descending score
-				return -1
-			}
-			return 1
-		}
-		if a.global != b.global {
-			if a.global {
-				return 1 // tie: prefer a local (value) over a global (pointer)
-			}
-			return -1
-		}
-		return cmp.Compare(a.idx, b.idx)
-	})
 	for k, c := range gp {
 		if k >= len(gpPool) {
 			break
@@ -3197,25 +3231,18 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	// Float locals use the separate XMM pin pool. Call-free functions also pin hot
 	// v128 locals here (same pool, full 128-bit): every XMM is caller-saved, so a
 	// v128 pin is confined to the call-free class (pinV128).
-	fc := f.tmpLocalIndex[:0]
-	for i := 0; i < f.nLocals; i++ {
-		if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
-			fc = append(fc, uint16(i))
-		}
-	}
-	slices.SortFunc(fc, func(a, b uint16) int {
-		ai, bi := int(a), int(b)
-		if localHotness(scores[ai]) != localHotness(scores[bi]) {
-			if localHotness(scores[ai]) > localHotness(scores[bi]) {
-				return -1
-			}
-			return 1
-		}
-		return cmp.Compare(a, b)
-	})
-	f.tmpLocalIndex = fc
 	if fpPinLimit > len(pinnedFLocalRegs) {
 		fpPinLimit = len(pinnedFLocalRegs)
+	}
+	var fcStorage [32]uint16 // bounded by the 16-register architectural XMM file
+	if fpPinLimit > len(fcStorage) {
+		panic("amd64: FP pin limit exceeds architectural register file")
+	}
+	fc := fcStorage[:0]
+	for i := 0; i < f.nLocals; i++ {
+		if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
+			fc = insertLocalCandidate(fc, uint16(i), scores, fpPinLimit)
+		}
 	}
 	for k, local := range fc {
 		if k >= fpPinLimit {

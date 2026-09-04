@@ -109,7 +109,7 @@ func TestControlBaseTypeArenaRejectsOutOfOrderReleaseArm64(t *testing.T) {
 	f.releaseFrameBaseTypes(&outer)
 }
 
-func TestFrameEndSitesInlineFirstArm64(t *testing.T) {
+func TestFrameEndSitesInlinePairArm64(t *testing.T) {
 	var f fn
 	fr := ctrlFrame{kind: cfBlock}
 	f.appendFrameEnd(&fr, 4, false)
@@ -124,6 +124,36 @@ func TestFrameEndSitesInlineFirstArm64(t *testing.T) {
 	}
 	if len(overflow) != 1 || overflow[0] != 21 {
 		t.Fatalf("overflow packed end sites = %#x, want [0x15]", overflow)
+	}
+}
+
+func TestBoundedPinCandidateOrderingArm64(t *testing.T) {
+	var storage [3]gpCand
+	top := storage[:0]
+	for _, candidate := range []gpCand{
+		{global: true, idx: 0, score: 5},
+		{idx: 0, score: 5},
+		{global: true, idx: 1, score: 9},
+		{idx: 2, score: 9},
+		{idx: 1, score: 1},
+	} {
+		top = insertGPCandidate(top, candidate, len(storage))
+	}
+	want := []gpCand{{idx: 2, score: 9}, {global: true, idx: 1, score: 9}, {idx: 0, score: 5}}
+	for i := range want {
+		if top[i] != want[i] {
+			t.Fatalf("GP candidate %d = %+v, want %+v", i, top[i], want[i])
+		}
+	}
+
+	scores := []uint32{3, 9, 9, 1}
+	var localsStorage [2]uint16
+	locals := localsStorage[:0]
+	for _, local := range []uint16{3, 2, 0, 1} {
+		locals = insertLocalCandidate(locals, local, scores, len(localsStorage))
+	}
+	if len(locals) != 2 || locals[0] != 1 || locals[1] != 2 {
+		t.Fatalf("local candidates = %v, want [1 2]", locals)
 	}
 }
 
