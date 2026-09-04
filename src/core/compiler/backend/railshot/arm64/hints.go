@@ -785,6 +785,20 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 			}
 		case 0x10, 0x12: // call, return_call
+			idx, err := s.r.U32()
+			if err != nil {
+				return true, 0, err
+			}
+			if shared.StackArenaHintsEnabled {
+				s.h.addStackArenaNodes(1)
+			}
+			s.h.flags.set(hintHasCall)
+			subHasCall = true
+			if op == 0x10 && idx == s.selfIdx {
+				s.h.flags.set(hintCallsSelf)
+			}
+			s.noteDirectCallRef(idx, op == 0x10, loopDepth != 0)
+		case 0x11, 0x13: // indirect calls
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
@@ -793,30 +807,26 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.noteStackArenaOp(op, &imm)
 			s.h.flags.set(hintHasCall)
 			subHasCall = true
-			if op == 0x10 && imm.Index == s.selfIdx {
-				s.h.flags.set(hintCallsSelf)
-			}
-			s.noteDirectCallRef(imm.Index, op == 0x10, loopDepth != 0)
-		case 0x11, 0x13, 0x14, 0x15: // indirect/ref calls
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
-			if err != nil {
+		case 0x14, 0x15: // call_ref, return_call_ref
+			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
+			if shared.StackArenaHintsEnabled {
+				s.h.addStackArenaNodes(1)
+			}
 			s.h.flags.set(hintHasCall)
 			subHasCall = true
 		case 0x20, 0x21, 0x22: // local.get/set/tee
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
+			idx, err := s.r.U32()
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
+			if shared.StackArenaHintsEnabled && op == 0x20 {
+				s.h.addStackArenaNodes(1)
+			}
 			if op == 0x22 {
 				s.h.addStackArenaDiscount(stackLookaheadDiscountOpcode(prevOp))
 			}
-			idx := imm.Index
 			curIndex = idx
 			if int(idx) < s.nLocals {
 				if s.entryPrefix && idx < 64 {
@@ -838,13 +848,13 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				}
 			}
 		case 0x23, 0x24: // global.get/set
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
+			idx, err := s.r.U32()
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
-			idx := imm.Index
+			if shared.StackArenaHintsEnabled && op == 0x23 {
+				s.h.addStackArenaNodes(1)
+			}
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
 					addGlobalHotness(s.globalHints, idx, 2*pathWeight*loopWeight(loopDepth))
@@ -852,6 +862,54 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					addGlobalHotness(s.globalHints, idx, pathWeight*loopWeight(loopDepth))
 				}
 				s.elig.add(curLoop, idx)
+			}
+		case 0x41: // i32.const
+			if _, err := s.r.I32(); err != nil {
+				return true, 0, err
+			}
+			if shared.StackArenaHintsEnabled {
+				s.h.addStackArenaNodes(1)
+			}
+		case 0x42: // i64.const
+			if _, err := s.r.I64(); err != nil {
+				return true, 0, err
+			}
+			if shared.StackArenaHintsEnabled {
+				s.h.addStackArenaNodes(1)
+			}
+		case 0x43: // f32.const
+			if _, err := s.r.Bytes(4); err != nil {
+				return true, 0, err
+			}
+			if shared.StackArenaHintsEnabled {
+				s.h.addStackArenaNodes(1)
+			}
+		case 0x44: // f64.const
+			if _, err := s.r.Bytes(8); err != nil {
+				return true, 0, err
+			}
+			if shared.StackArenaHintsEnabled {
+				s.h.addStackArenaNodes(1)
+			}
+		case 0x0c, 0x0d: // br, br_if
+			if _, err := s.r.U32(); err != nil {
+				return true, 0, err
+			}
+		case 0x25, 0x26: // table.get/set
+			if _, err := s.r.U32(); err != nil {
+				return true, 0, err
+			}
+			if op == 0x25 && shared.StackArenaHintsEnabled {
+				s.h.addStackArenaNodes(1)
+			} else if op == 0x26 {
+				s.h.flags.set(hintMutatesTable)
+			}
+		case 0xd2, 0xd5, 0xd6: // ref.func, br_on_null, br_on_non_null
+			if _, err := s.r.U32(); err != nil {
+				return true, 0, err
+			}
+			if shared.StackArenaHintsEnabled {
+				s.h.addStackArenaNodes(1)
 			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0xfc, 0xfd, 0xfe, 0xfb:
 			var imm wasm.InstructionImmediate
@@ -900,15 +958,18 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 			}
 			subHasCall = subHasCall || calls
-		case 0x08, 0x0a: // throw, throw_ref
+		case 0x08: // throw
 			s.h.flags.set(hintModuleEH)
-			var imm wasm.InstructionImmediate
-			err := s.classifyInstructionInto(op, &imm)
-			if err != nil {
+			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
+		case 0x0a: // throw_ref
+			s.h.flags.set(hintModuleEH)
 		default:
+			if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
+				s.noteImmediateFreeStackArenaOp(op)
+				break
+			}
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
@@ -1018,6 +1079,21 @@ func (s *byteBodyScanner) noteStackArenaOp(op byte, imm *wasm.InstructionImmedia
 	}
 	if op == 0xfd {
 		s.h.flags.set(hintHasStackSinkFusion)
+	}
+	if stackSinkFusionOpcode(op) {
+		next, ok := s.r.Peek()
+		if ok && (next == 0x21 || next == 0x22) {
+			s.h.flags.set(hintHasStackSinkFusion)
+		}
+	}
+}
+
+func (s *byteBodyScanner) noteImmediateFreeStackArenaOp(op byte) {
+	if !shared.StackArenaHintsEnabled {
+		return
+	}
+	if op == 0x1b || op == 0xd1 || op >= 0x45 && op <= 0xc4 {
+		s.h.addStackArenaNodes(1)
 	}
 	if stackSinkFusionOpcode(op) {
 		next, ok := s.r.Peek()
