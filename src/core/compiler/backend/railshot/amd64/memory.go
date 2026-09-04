@@ -646,7 +646,7 @@ func (f *fn) inLoop() bool {
 }
 
 func (f *fn) memoryAddr64(memoryIndex uint32) bool {
-	mt, ok := f.m.MemoryType(memoryIndex)
+	mt, ok := f.memoryType(memoryIndex)
 	return ok && mt.Limits.Addr64
 }
 
