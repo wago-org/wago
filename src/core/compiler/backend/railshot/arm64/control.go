@@ -109,7 +109,6 @@ type ctrlFrameMerge struct {
 	entryState   packedLocStates
 	loopSetStart uint32 // loop: modified-local range; other frames: first packed end site
 	loopSetMeta  uint32 // loop: count + known bit; other frames: second packed end site
-	loopPins     []loopPin
 	coldEdges    []coldEdge
 	eh           *ctrlFrameEH
 }
@@ -450,8 +449,11 @@ func loopSetsLocal(locals []uint16, index uint32) bool {
 }
 
 func (f *fn) frameLoopPins(fr *ctrlFrame) []loopPin {
-	if cold := f.ctrlMerge(fr); cold != nil {
-		return cold.loopPins
+	if fr.mergeIndex != 0 {
+		sc := f.scratchState()
+		if sc.loopPinOwner == fr.mergeIndex {
+			return sc.loopPins
+		}
 	}
 	return nil
 }
@@ -539,10 +541,14 @@ func (f *fn) activateLoopPins(fr *ctrlFrame) {
 		if best < 0 {
 			break
 		}
-		cold := f.ensureCtrlMerge(fr)
-		cold.loopPins = append(cold.loopPins, loopPin{best, r})
-		pins = cold.loopPins
-		f.activeLoopPins = pins // O(1) pinReg index; this is the only frame with pins
+		sc := f.scratchState()
+		if sc.loopPinOwner == 0 {
+			f.ensureCtrlMerge(fr)
+			sc.loopPinOwner = fr.mergeIndex
+			sc.loopPins = sc.loopPins[:0]
+		}
+		sc.loopPins = append(sc.loopPins, loopPin{best, r})
+		pins = sc.loopPins
 		f.pinnedLocalMask = f.pinnedLocalMask.add(r)
 		if f.locals[best].state == lsConstZero {
 			f.a.MovImm64(r, 0)
@@ -562,8 +568,8 @@ func (f *fn) storeLoopPinsLeaving(target int) {
 	}
 }
 
-func (f *fn) releaseLoopPins(fr *ctrlFrame) {
-	for _, p := range f.frameLoopPins(fr) {
+func (f *fn) releaseLoopPins(pins []loopPin) {
+	for _, p := range pins {
 		f.st64(SP, f.localOff(p.local), p.reg)
 		f.pinnedLocalMask = f.pinnedLocalMask.remove(p.reg)
 		f.locals[p.local].state = lsMem
@@ -1883,7 +1889,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
 	if len(loopPins) != 0 {
-		f.activeLoopPins = nil // this frame's pins leave scope with the pop
+		f.scratchState().loopPinOwner = 0 // this frame's pins leave scope with the pop
 	}
 
 	if fr.kind == cfFunc {
@@ -1913,7 +1919,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 
 	fallthroughReachable := !f.unreachable
 	if fr.kind == cfLoop && fallthroughReachable {
-		f.releaseLoopPins(&fr)
+		f.releaseLoopPins(loopPins)
 	}
 	if fallthroughReachable {
 		f.recordGCBranchResults(&fr, fr.resultN)
@@ -2065,6 +2071,10 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	// later frames at the same or a shallower nesting depth.
 	f.freeLocStateBuf(branchState)
 	f.freeLocStateBuf(entryState)
+	if len(loopPins) != 0 {
+		sc := f.scratchState()
+		sc.loopPins = sc.loopPins[:0]
+	}
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)
 	f.releaseFrameBaseTypes(&fr)

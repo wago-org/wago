@@ -287,14 +287,7 @@ type fn struct {
 	branchHints         []wasm.BranchHint
 	branchHintLocalDecl uint32
 	branchHintUnlikely  bool
-	// activeLoopPins is an O(1) index for pinReg: the loopPins of the one frame
-	// that currently has any. Only a simple (call-free, non-nested) innermost loop
-	// pins locals, so at most one frame's loopPins are live at a time — scanning
-	// every ctrl frame per local access was O(depth) and dominated compilation of
-	// deeply-nested functions (60% of esbuild's compile). Set on activateLoopPins,
-	// cleared when that frame is popped in opEnd.
-	activeLoopPins []loopPin
-	unreachable    bool // in dead code after an unconditional branch/trap
+	unreachable         bool // in dead code after an unconditional branch/trap
 
 	// Call state (Phase 4).
 	relocs []callReloc // direct-call (BL) sites to patch at module layout
@@ -551,6 +544,8 @@ type scratch struct {
 	ctrl                    []ctrlFrame
 	ctrlMerges              []ctrlFrameMerge
 	ctrlRoots               []ctrlFrameRoots
+	loopPins                []loopPin // reusable backing owned by the one active simple loop
+	loopPinOwner            uint32    // ctrlMerges index+1; zero when no pins are active
 	functionResultTypeArena [maxScratchFunctionResults]machineType
 	trapSites               [trapAtomicUnaligned + 1][]trapSite
 	branchTargets           []uint64
@@ -818,6 +813,8 @@ func (sc *scratch) reset() {
 	sc.directPrepared = false
 	sc.retSiteHead = 0
 	sc.ctrl = sc.ctrl[:0]
+	sc.loopPins = sc.loopPins[:0]
+	sc.loopPinOwner = 0
 	sc.transient.loopSetLocals = sc.transient.loopSetLocals[:0]
 	clear(sc.ctrlMerges[:cap(sc.ctrlMerges)])
 	clear(sc.ctrlRoots[:cap(sc.ctrlRoots)])
