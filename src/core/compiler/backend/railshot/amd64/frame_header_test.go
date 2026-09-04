@@ -18,38 +18,16 @@ func TestRegisterABIElidesWrapperFrameHeaderAMD64(t *testing.T) {
 		0x20, 0x0d, 0x1a, // local.get 13; drop
 		0x0b,
 	}})
-	before := compactRegABIFrameHeader
-	t.Cleanup(func() { compactRegABIFrameHeader = before })
-	compile := func(enabled bool) (*ModuleStats, int) {
-		compactRegABIFrameHeader = enabled
-		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if cm.CodeImage != nil {
-			defer cm.CodeImage.Close()
-		}
-		return &stats, len(cm.Code)
-	}
-	rollback, rollbackBytes := compile(false)
-	enabled, enabledBytes := compile(true)
-	if got := enabled.Funcs[0].Peephole["frame-header-elide"]; got != 1 {
-		t.Fatalf("frame-header-elide hits = %d, want 1", got)
-	}
-	if got, want := enabled.Funcs[0].FrameBytes, rollback.Funcs[0].FrameBytes-16; got != want {
-		t.Fatalf("enabled frame = %d, want rollback %d - 16 = %d", got, rollback.Funcs[0].FrameBytes, want)
-	}
-	if enabledBytes >= rollbackBytes {
-		t.Fatalf("enabled code = %d bytes, rollback = %d", enabledBytes, rollbackBytes)
-	}
-	compactRegABIFrameHeader = true
-	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 1})
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cm.CodeImage != nil {
 		defer cm.CodeImage.Close()
+	}
+	if got := stats.Funcs[0].Peephole["frame-header-elide"]; got != 1 {
+		t.Fatalf("frame-header-elide hits = %d, want 1", got)
 	}
 	_ = runCompiledAmd64u(t, cm)
 }

@@ -10,11 +10,6 @@ import (
 
 func TestFrameElidesRegisterOnlyVoidLeafAMD64(t *testing.T) {
 	m := modFuncs(t, funcDef{body: []byte{0x00, 0x0b}})
-	beforeCompactHeader := compactRegABIFrameHeader
-	t.Cleanup(func() {
-		compactRegABIFrameHeader = beforeCompactHeader
-	})
-	compactRegABIFrameHeader = false
 	compile := func(enabled bool) (*ModuleStats, int) {
 		var stats ModuleStats
 		cm, err := CompileModuleWith(m, CompileOptions{

@@ -65,12 +65,6 @@ var smallFrameAdjustEnabled = os.Getenv("WAGO_ARM64_NOSMALLFRAME") != "1"
 // preserveCallerPins-only gate for A/B and rollback checks.
 var frameElideRegHomed = os.Getenv("WAGO_ARM64_NO_FRAME_ELIDE_REGHOMED") != "1"
 
-// compactRegABIFrameHeader removes the wrapper-only spare/results-pointer
-// header from register-ABI internal frames. The host adapter preserves its
-// results pointer in its own LR/X3 record; wrapper-ABI functions retain the
-// header. Keep the switch for corpus A/B and immediate rollback.
-var compactRegABIFrameHeader = os.Getenv("WAGO_ARM64_NO_COMPACT_REGABI_FRAME") != "1"
-
 // inlineCallFreeHintsEnabled lets frame/register planning use the post-inline
 // fact that no native call remains. Disable only for A/B and rollback checks.
 var inlineCallFreeHintsEnabled = os.Getenv("WAGO_ARM64_NO_INLINE_CALLFREE") != "1"
@@ -2349,7 +2343,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// below the internal frame, while direct internal and tail paths return in
 	// registers. EH and GC frame plans retain the established fixed layout until
 	// their independently generated offset tables become header-relative.
-	f.compactFrameHeader = compactRegABIFrameHeader && regABI && !f.moduleEH
+	f.compactFrameHeader = regABI && !f.moduleEH
 	if f.compactFrameHeader && !f.prepareCompactGCFrameHeader(gcFrameRoots) {
 		f.compactFrameHeader = false
 	}

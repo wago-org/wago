@@ -6,11 +6,6 @@ import "testing"
 
 func TestFrameElidesRegisterOnlyVoidLeafArm64(t *testing.T) {
 	m := modFuncs(t, funcDef{body: []byte{0x00, 0x0b}})
-	beforeCompactHeader := compactRegABIFrameHeader
-	t.Cleanup(func() {
-		compactRegABIFrameHeader = beforeCompactHeader
-	})
-	compactRegABIFrameHeader = false
 	var stats ModuleStats
 	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
 	if err != nil {

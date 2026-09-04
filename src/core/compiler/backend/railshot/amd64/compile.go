@@ -39,12 +39,6 @@ var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 // for differential A/B testing.
 var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 
-// compactRegABIFrameHeader removes the wrapper-only spare/results-pointer
-// header from ordinary register-ABI internal frames. Tail-call lowering still
-// has wrapper-transfer paths that consume the header, so it remains excluded.
-// Keep the switch for corpus A/B and immediate rollback.
-var compactRegABIFrameHeader = os.Getenv("WAGO_AMD64_NO_COMPACT_REGABI_FRAME") != "1"
-
 // nativeGCStructAllocEnabled consumes collector-reserved handle runs and nursery
 // chunks for admitted struct and array constructors. Rooted Go helpers remain the
 // collection/refill path. Keep one differential kill switch for qualification.
@@ -2741,7 +2735,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// RCX below the internal frame and direct calls return in registers. Retain the
 	// established header for tail transfer, EH, and GC-frame paths whose auxiliary
 	// offset protocols still refer to that fixed layout.
-	f.compactFrameHeader = compactRegABIFrameHeader && regABI && !hints.flags.has(hintHasTailCall) && !moduleEH
+	f.compactFrameHeader = regABI && !hints.flags.has(hintHasTailCall) && !moduleEH
 	if f.compactFrameHeader && !f.prepareCompactGCFrameHeader(gcFrameRoots) {
 		f.compactFrameHeader = false
 	}

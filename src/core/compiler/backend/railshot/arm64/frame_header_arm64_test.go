@@ -19,30 +19,16 @@ func TestRegisterABIElidesWrapperFrameHeaderArm64(t *testing.T) {
 		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
 		funcDef{body: callee},
 	)
-	before := compactRegABIFrameHeader
-	t.Cleanup(func() { compactRegABIFrameHeader = before })
-	compile := func(enabled bool) (*ModuleStats, int) {
-		compactRegABIFrameHeader = enabled
-		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if cm.CodeImage != nil {
-			defer cm.CodeImage.Close()
-		}
-		return &stats, len(cm.Code)
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
+	if err != nil {
+		t.Fatal(err)
 	}
-	rollback, rollbackBytes := compile(false)
-	enabled, enabledBytes := compile(true)
-	if got := enabled.Funcs[0].Peephole["frame-header-elide"]; got != 1 {
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	if got := stats.Funcs[0].Peephole["frame-header-elide"]; got != 1 {
 		t.Fatalf("frame-header-elide hits = %d, want 1", got)
-	}
-	if got, want := enabled.Funcs[0].FrameBytes, rollback.Funcs[0].FrameBytes-16; got != want {
-		t.Fatalf("enabled frame = %d, want rollback %d - 16 = %d", got, rollback.Funcs[0].FrameBytes, want)
-	}
-	if enabledBytes >= rollbackBytes {
-		t.Fatalf("enabled code = %d bytes, rollback = %d", enabledBytes, rollbackBytes)
 	}
 	_ = runArm64Internal2(t, m, 0, 0)
 }

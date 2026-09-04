@@ -1600,7 +1600,9 @@ their independent LR/X3 record, while direct internal calls return in registers.
 Wrapper-ABI functions retain the established header. EH functions and functions
 with a GC frame plan are conservatively excluded until their separately generated
 offset tables become explicitly header-relative.
-`WAGO_ARM64_NO_COMPACT_REGABI_FRAME=1` is the exact rollback oracle.
+During qualification, `WAGO_ARM64_NO_COMPACT_REGABI_FRAME=1` restored the
+wrapper-sized header. That rollback has since been retired; the semantic wrapper,
+EH, and incompatible GC-plan exclusions remain.
 
 Across the 36-module ARM64 Size suite, aggregate function-frame reservation falls
 from 2,183,536 to 1,778,416 bytes (-405,120, -18.55%). Raw native bytes fall from
@@ -1621,7 +1623,8 @@ AMD64 applies the same wrapper-header ownership rule, with an additional
 conservative exclusion for any function containing a tail call because its
 wrapper-transfer paths still consume `frResultsOff`. EH and GC-frame functions
 also retain the fixed header. `WAGO_AMD64_NO_COMPACT_REGABI_FRAME=1` is the exact
-rollback oracle.
+rollback oracle used during qualification. That switch has since been retired;
+the semantic tail-call, wrapper, EH, and incompatible GC-plan exclusions remain.
 
 Across the 36-module AMD64 Size suite, aggregate function-frame reservation falls
 from 2,351,952 to 1,947,072 bytes (-404,880, -17.21%). More importantly for the
