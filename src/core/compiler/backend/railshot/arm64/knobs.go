@@ -47,7 +47,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
-	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
 	optimization.Bind("loop-region-pins", &loopRegionPinsEnabled),
 	optimization.Bind("immutable-poly-fastpath", &immutableLocalPolyFastPath),
 	optimization.Bind("legacy-fp-pins", &legacyFPPinsEnabled),
@@ -94,7 +93,6 @@ var (
 	optV128Pins              = optimizationBindings.Option("v128-pins")
 	optRegABI                = optimizationBindings.Option("reg-abi")
 	optInline                = optimizationBindings.Option("inline")
-	optLoopPrecheck          = optimizationBindings.Option("loop-precheck")
 	optLoopRegionPins        = optimizationBindings.Option("loop-region-pins")
 	optImmutablePolyFastPath = optimizationBindings.Option("immutable-poly-fastpath")
 	optLegacyFPPins          = optimizationBindings.Option("legacy-fp-pins")

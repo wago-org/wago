@@ -39,7 +39,7 @@ ops, CMOV, and fixed division registers are replaced with AArch64 forms.
 | Select lowering | `cmov`/flags-based select | Present; `CSEL` and flags path |
 | Jump-table br_table | Large br_table uses indirect jump table | Present; `ADR/LDR/BR` jump table |
 | Bounds facts | Straight-line bounds-check certificates elide covered checks | Present |
-| Loop precheck | Version loops to hoist invariant-base bounds checks | Present |
+| Loop precheck | Version loops to hoist invariant-base bounds checks | Removed after cost/benefit qualification |
 | Guard-page mode | Elide inline checks when runtime guard pages are active | Present on Linux and Darwin arm64 |
 | Small bulk memory | Constant copy/fill unroll and small dynamic 8-byte chunks | Tuned: compile-time copy/fill specialization extends through 64 B using load-all/store-all overlap-safe chunks, following Go's ARM64 `runtime.memmove` medium-copy shape without taking a runtime call. Dynamic lengths below 64 B use 8-byte chunks; 64 B and above use NEON. In the generated ISA corpus, the 64 B specialization reduced 256-operation calls to ~365 ns forward copy, ~371 ns overlapping backward copy, and ~265 ns fill; wazero measured ~400 ns, ~401 ns, and ~2,378 ns respectively. |
 | Large bulk memory | `rep movs/stos` for large copy/fill | Tuned: arm64 dynamic copy/fill uses 64-byte unrolled NEON groups, then 32-byte, 16-byte, 8-byte, and byte tails. On Apple M4 Max, 4 KiB copy improved from ~96 ns to ~57.6 ns and fill from ~94.5 ns to ~54.2 ns, with zero allocations. |

@@ -417,7 +417,6 @@ var catalog = []Definition{
 	both("v128-pins", "Vector pins", "pin hot vector locals in registers"),
 	both("reg-abi", "Register ABI", "use Wago's internal register calling convention"),
 	both("inline", "Inlining", "inline eligible callees"),
-	bothOff("loop-precheck", "Loop prechecks", "hoist invariant bounds checks before loops"),
 	experimentalArm64("loop-region-pins", "Loop-region pins", "pin loop-carried values across loop regions"),
 	experimentalArm64("immutable-poly-fastpath", "Polymorphic table fast path", "specialize polymorphic immutable-table calls"),
 	experimentalArm64("legacy-fp-pins", "Legacy float pins", "use the legacy floating-point pin allocator"),

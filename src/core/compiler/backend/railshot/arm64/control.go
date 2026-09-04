@@ -1204,16 +1204,6 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		fr.set(ctrlLoopHasCall, hasCall)
 		fr.set(ctrlLoopHasNested, hasNested)
 		fr.set(ctrlLoopHasTable, hasTable)
-		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
-		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
-		// check to elide) and not while already inside a versioned body.
-		if f.opt(optLoopPrecheck) && !f.memoryAddr64(0) && f.memSizeReg != regNone && !f.inVersionedLoop {
-			if cands, elidable, hasGrow := scanLoopHoistableWithClassifier(r, f.m, f.classifier); len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
-				if f.compileVersionedLoop(r, pN, rN, frameTypes, res0, cands) {
-					return nil
-				}
-			}
-		}
 	}
 	if f.unreachable {
 		f.pushCtrl(&fr)

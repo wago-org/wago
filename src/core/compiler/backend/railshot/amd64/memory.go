@@ -370,13 +370,6 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	if f.guardMode {
 		return ea, eaOwned, borrow, disp
 	}
-	// Loop-precheck fast body: a loop-invariant base local proven in bounds by the
-	// pre-loop check needs no per-access check (memBytes only grows). See
-	// boundshoist.go.
-	if f.elideBases != nil && bcKind == 1 && f.elideBases[bcIdx] {
-		f.stats.addBoundsHoistable()
-		return ea, eaOwned, borrow, disp
-	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
 	// same-source check in this straight-line region already proved this access
 	// in-bounds. Sound because linear memory only grows and the certificate is

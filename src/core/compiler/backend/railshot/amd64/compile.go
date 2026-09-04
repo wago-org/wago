@@ -394,14 +394,6 @@ type fn struct {
 	// function rewinds their state (sc.reset) rather than reallocating. See scratch.
 	sc *scratch
 
-	// Loop bounds-check hoisting (WAGO_LOOP_PRECHECK, boundshoist.go). elideBases
-	// holds the loop-invariant address-source locals whose inline bounds check is
-	// elided while the FAST version of a versioned loop body is being compiled
-	// (nil otherwise). inVersionedLoop guards against nesting a versioned loop
-	// inside another (v1 caps code growth at 2×).
-	elideBases      map[uint32]bool
-	inVersionedLoop bool
-
 	// Call state (Phase 4).
 	relocs []callReloc // CallRel32 sites to patch at module layout
 

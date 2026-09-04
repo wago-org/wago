@@ -644,37 +644,11 @@ func TestRuntimeConfigRejectsDisabledStackFence(t *testing.T) {
 	}
 }
 
-func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
-	wantOff := map[string]bool{
-		"loop-precheck": true,
-	}
-	seen := make(map[string]bool, len(wantOff))
+func TestMeasuredLowValueOptimizationsAreRemoved(t *testing.T) {
 	for _, info := range NewRuntimeConfig().OptimizationInfos() {
-		if info.Name == "inline-loop-callees" {
-			t.Fatal("removed inline-loop-callees optimization is still exposed")
-		}
-		if info.Name == "deep-fp-pins" {
-			t.Fatal("removed deep-fp-pins optimization is still exposed")
-		}
-		if info.Name == "affine-lea" {
-			t.Fatal("removed affine-lea optimization is still exposed")
-		}
-		if info.Name == "tee-spill-elide" {
-			t.Fatal("removed tee-spill-elide optimization is still exposed")
-		}
-		if info.Name == "v128-sink" {
-			t.Fatal("removed v128-sink optimization is still exposed")
-		}
-		if wantOff[info.Name] {
-			seen[info.Name] = true
-			if info.On || info.Default {
-				t.Errorf("%s default state = on:%v catalog:%v, want both false", info.Name, info.On, info.Default)
-			}
-		}
-	}
-	for name := range wantOff {
-		if !seen[name] {
-			t.Errorf("default-off optimization %s is not exposed", name)
+		switch info.Name {
+		case "inline-loop-callees", "deep-fp-pins", "affine-lea", "tee-spill-elide", "v128-sink", "loop-precheck":
+			t.Fatalf("removed optimization %s is still exposed", info.Name)
 		}
 	}
 }

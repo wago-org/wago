@@ -129,7 +129,7 @@ var manifestOptimizationNames = stringSet(
 	"gc-ref-facts",
 	"immutable-poly-fastpath", "immutable-table", "immutable-table-type", "inline",
 	"inline-callfree", "interval-region-pins", "leaf-scratch-pins", "legacy-fp-pins",
-	"legacy-gp-pins", "loop-precheck", "loop-region-pins", "magic-div",
+	"legacy-gp-pins", "loop-region-pins", "magic-div",
 	"mul-add-fuse", "multi-bounds-cert",
 	"olddest-rhs-sink", "reg-abi", "reg-merge", "small-frame", "st-flags",
 	"shared-adapters", "shared-trap-body", "simd-superopt", "stack-fence", "stack-reg",

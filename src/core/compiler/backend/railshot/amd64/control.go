@@ -1110,31 +1110,10 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		f.setFrameEntryGCFacts(&fr, f.snapshotGCRefFacts())
 	}
 	if kind == cfLoop && !f.unreachable {
-		// P6.2 loop versioning: hoist invariant-base bounds checks out of the loop
-		// via a precheck + fast/slow bodies. Explicit mode only (guard has no inline
-		// check to elide) and not while already inside a versioned body. The hoist
-		// scan also supplies the loop-local/grow facts needed by the normal path, so
-		// eligible loops do not pay for two immediate walks.
-		valid := false
-		if f.opt(optLoopPrecheck) && f.memSizeReg != regNone && !f.inVersionedLoop {
-			cands, elidable, hasGrow, setLocals, scanOK := scanLoopHoistableWithClassifier(r, f.m, f.classifier, f.loopScanLocals)
-			f.loopScanLocals = setLocals
-			valid = scanOK
-			if setLocals != nil {
-				f.setFrameLoopSetLocals(&fr, setLocals)
-			}
-			if scanOK && len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
-				if f.compileVersionedLoop(r, pN, rN, frameTypes, res0, cands, setLocals) {
-					return nil
-				}
-			}
-		} else {
-			setLocals, _, scanOK := scanLoopBodyWithClassifier(r, f.m, f.classifier, f.loopScanLocals) // reader restored
-			f.loopScanLocals = setLocals
-			valid = scanOK
-			if setLocals != nil {
-				f.setFrameLoopSetLocals(&fr, setLocals)
-			}
+		setLocals, _, valid := scanLoopBodyWithClassifier(r, f.m, f.classifier, f.loopScanLocals) // reader restored
+		f.loopScanLocals = setLocals
+		if setLocals != nil {
+			f.setFrameLoopSetLocals(&fr, setLocals)
 		}
 		if valid {
 			f.invalidateLoopModifiedGCRefFacts(f.frameLoopSetLocals(&fr))

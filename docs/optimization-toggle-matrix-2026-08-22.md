@@ -9,7 +9,7 @@
 - The strongest broadly visible execution wins are ARM64 `reg-abi` (+20.42% disabled penalty), AMD64 `v128-const-cache` (+6.09%), branch folding (+2.30% ARM64 / +3.39% AMD64), AMD64 `inline` (+2.27%), and vector pins (+2.56% ARM64 / +1.84% AMD64).
 - The clearest cost/benefit review target is `loop-precheck`: disabling it cuts full-compile allocation bytes by 6.38% on ARM64 and 6.09% on AMD64 and improves compile time by 5.36% / 3.05%, while broad execution changes only +0.21% / +0.11%; focused rows still lose as much as 3.72% / 2.88%, so this is a default/removal investigation, not an immediate deletion.
 - The cleanest low-consequence implementation candidates were ARM64 `v128-const-cache`, shared `v128-sink`, AMD64 `affine-lea`, AMD64 `call-next-use`, and the default-off experimental `inline-loop-callees`. Both vector-sink implementations, the ARM64 constant cache, and the AMD64 affine-LEA/call-next-use paths have since been retired after their focused screens failed the normal gates.
-- Follow-up implemented: `loop-precheck` now defaults off on both architectures; at this historical checkpoint ARM64 also defaulted `deep-fp-pins` off and AMD64 defaulted `commute-self-update` off. The already-off `v128-sink`, `inline-loop-callees`, and failed `call-next-use`, `affine-lea`, and `tee-spill-elide` paths were removed.
+- Follow-up implemented: `loop-precheck` first defaulted off on both architectures and was subsequently removed because its duplicated loop compiler did not justify its compile-resource cost. At this historical checkpoint ARM64 also defaulted `deep-fp-pins` off and AMD64 defaulted `commute-self-update` off. The already-off `v128-sink`, `inline-loop-callees`, and failed `call-next-use`, `affine-lea`, and `tee-spill-elide` paths were removed.
 - Requalification on 2026-08-29 changed `commute-self-update` to handle the first eligible site through a direct lowering instead of the generic relocation path. The new same-process real-corpus A/B improves execution 3.55% geomean, removes 67.0% of measured backend spills, and leaves compile allocation unchanged, so AMD64 now defaults it on. The original table below remains the record of the older implementation and must not be read as current default policy.
 - Follow-up catalog audit: formerly environment-only families were screened as public flags. Paired screening kept the high-value SIMD/SWAR and focused register/code-selection wins on and defaulted AMD64 `gc-ref-facts` off while retaining it as a GC-workload opt-in. The failed `fcmp-fuse` experiment was subsequently retired rather than kept as a permanent alternate path.
 - In an exact original-commit versus current-commit rerun, the complete branch changed execution by **-0.10% ARM64 / +0.14% AMD64**, while improving compile time by **5.22% / 4.04%**, compile allocation bytes by **6.38% / 9.69%**, and compile allocation counts by **2.93% / 15.51%**.
@@ -24,8 +24,8 @@ through the existing runtime/project optimization map.
 
 | Architecture | Newly default-off options | Removed surface |
 |---|---|---|
-| ARM64 | `loop-precheck` | `inline-loop-callees`, `v128-const-cache`, `v128-sink`, `deep-fp-pins`, `fcmp-fuse` |
-| AMD64 | `gc-ref-facts`, `loop-precheck` | `v128-sink`, `inline-loop-callees`, `fcmp-fuse`, `call-next-use`, `affine-lea`, `tee-spill-elide` |
+| ARM64 | none | `loop-precheck`, `inline-loop-callees`, `v128-const-cache`, `v128-sink`, `deep-fp-pins`, `fcmp-fuse` |
+| AMD64 | `gc-ref-facts` | `loop-precheck`, `v128-sink`, `inline-loop-callees`, `fcmp-fuse`, `call-next-use`, `affine-lea`, `tee-spill-elide` |
 
 The final bundle was measured using two separately compiled benchmark binaries:
 one at original commit `ef129fdbb820`, and one at current commit `20936e8621bc`.
@@ -46,8 +46,9 @@ non-default configuration path and confounding small-module compile timing.
 
 These percentages are **new default versus old default**. The execution geomean
 is effectively flat, while the compile-resource reduction is large and repeats
-on both machines. The focused `fannkuch` loss is the retained reason to leave
-`loop-precheck` available as an explicit opt-in instead of deleting it.
+on both machines. The focused `fannkuch` loss originally motivated retaining an
+explicit opt-in, but the duplicated loop compiler was subsequently removed: its
+narrow benefit did not justify permanent alternate lowering and policy surface.
 
 ### Follow-on ARM64 vector-cache removal
 
@@ -331,7 +332,11 @@ No performance aggregate is reported for a state whose process failed; its compi
 | ARM64 | +0.21% | **-5.36%** | **-6.38%** | +3.72% (`globals.accumulate`) |
 | AMD64 | +0.11% | **-3.05%** | **-6.09%** | +2.88% (`fannkuch.run`) |
 
-For Wago's low-memory direction, this deserves the first focused follow-up. The likely choices are: make it default-off, reduce its per-function analysis state, or narrow admission to loops where a precheck is proven to remove enough dynamic checks. Immediate deletion would discard real 3–4% focused wins, but the present all-functions cost is disproportionate to the broad aggregate.
+For Wago's low-memory direction, this received the first focused follow-up. It
+was first made default-off, then removed after the broader implementation audit:
+the 3–4% focused wins did not justify retaining a second loop-body compiler,
+duplicated native code, and permanent public policy surface for a roughly
+0.1–0.2% broad effect.
 
 ### Plausible low-consequence removals
 

@@ -28,36 +28,6 @@ func TestCatalogRegistrationIsUniqueAndArchitectureScoped(t *testing.T) {
 	}
 }
 
-func TestMeasuredLowValueOptimizationsDefaultOff(t *testing.T) {
-	wantOff := map[string]map[string]bool{
-		"amd64": {
-			"loop-precheck": true,
-		},
-		"arm64": {
-			"loop-precheck": true,
-		},
-	}
-	for arch, names := range wantOff {
-		seen := map[string]bool{}
-		for _, definition := range ForArch(arch) {
-			if definition.Name == "inline-loop-callees" {
-				t.Fatalf("%s still registers removed inline-loop-callees", arch)
-			}
-			if names[definition.Name] {
-				seen[definition.Name] = true
-				if definition.Default {
-					t.Errorf("%s %s defaults on", arch, definition.Name)
-				}
-			}
-		}
-		for name := range names {
-			if !seen[name] {
-				t.Errorf("%s default-off optimization %s is not registered", arch, name)
-			}
-		}
-	}
-}
-
 func TestDeepFPPinsAreRemoved(t *testing.T) {
 	if _, ok := Lookup("arm64", "deep-fp-pins"); ok {
 		t.Fatal("arm64 still exposes measured-low-value deep float pins")

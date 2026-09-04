@@ -54,8 +54,8 @@ in dependent loops, while 7,483 corpus sites remove 4,800 native bytes beyond
 the old exact-mask rule. `BenchmarkExecCommuteSelfUpdate`,
 `BenchmarkCompileCommuteSelfUpdate`, and `BenchmarkAMD64Low32MaskInstruction`
 are the permanent A/B watchpoints. Default-off float-compare fusion, vector
-sinking, loop prechecks, tee-spill reuse, call next-use, affine LEA, and BMI2
-RORX were remeasured and remain rejected or opt-in.
+sinking, loop prechecks, tee-spill reuse, call next-use, and affine LEA were
+remeasured and removed; BMI2 RORX remains rejected and opt-in.
 
 **Scalar float mask and copysign lowering (2026-08-29).** AMD64 implicit
 abs/neg/copysign masks now use the existing RIP-relative constant pool instead of
@@ -260,10 +260,10 @@ runtime families; a complete class/target truth table keeps narrowing tests and 
 dynamic. Ordinary loop headers discard mutable field forwarding, publish surviving
 fresh locals, and retain immutable cached results only across invariant locals. Loop
 versioning is memory32-only, zero-extends host-produced i32 bases before precheck
-arithmetic, and is disabled for candidate native GC root plans because their validated
-allocation/call liveness streams are linear in original Wasm order. Facts, load
-forwarding, and loop-precheck subprocess oracles compare exact results and trap codes
-under both switch states.
+arithmetic. The later loop-versioning experiment was removed after its broad
+execution benefit failed to justify duplicated code generation and compile-resource
+cost. Facts and load-forwarding subprocess oracles continue to compare exact results
+and trap codes under both switch states.
 
 **Executed WasmGC helper counters (2026-08-02).** The diagnostic
 `wago_gcstats` build tag exposes `Instance.SetGCHelperStatsTracking(true)` and
@@ -1137,8 +1137,8 @@ flushes ALL deferred loads — keep same-base provably-disjoint ones, plan P2.1)
 **pure-tree `drop` discard** (P2.2) · ~~**const-fold pack** — compares/eqz/clz/ctz/
 popcnt/extensions (P2.3)~~ ✅ DONE (including bounded narrow-load/shift mask elision) · ~~**same-operand
 int compare identities** (P2.4)~~ ✅ DONE. Then: **limited multi-result register ABI** (RAX,RDX / XMM0,XMM1 —
-unblocks multi-value, with `regMerge2`, P5.3) · **straight-line bounds facts** +
-**hybrid loop precheck** (explicit mode; the TinyGo story, P6.1–.2) · **store
+unblocks multi-value, with `regMerge2`, P5.3) · **straight-line bounds facts**
+(P6.1; the measured hybrid loop-precheck experiment was later removed) · **store
 combining** (explicit-only, cold-path sequential replay for trap semantics, P6.3) ·
 **CPUID probe** (JIT'd stub, zero deps) gating **BMI2 shifts** + `smallBulkMax`
 tuning (P6.5) · **immutable-global const folding** for locals; imported-global

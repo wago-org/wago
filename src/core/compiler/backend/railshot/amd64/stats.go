@@ -184,7 +184,7 @@ type CodegenStats struct {
 	// Bounds / traps.
 	BoundsChecks            int // inline memory-OOB checks emitted (P6 elides these)
 	BoundsChecksElidable    int // subset of BoundsChecks a straight-line certificate covers (P6.1 sizing; count-only)
-	BoundsChecksInLoop      int // subset emitted inside a loop on a keyable base (P6.2 loop-precheck ceiling; count-only)
+	BoundsChecksInLoop      int // subset emitted inside a loop on a keyable base; count-only
 	BoundsChecksHoistable   int // subset on a loop-INVARIANT local base (not set in the loop) — the P6.2 hoistable target; count-only
 	TrapStubs               int // shared cold trap stubs emitted (one per trap code used)
 	TrapGroups              int // distinct source-function groups across trap stubs

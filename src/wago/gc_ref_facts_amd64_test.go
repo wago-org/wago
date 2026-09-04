@@ -996,7 +996,6 @@ func TestGCRefFactsSemanticDifferential(t *testing.T) {
 			if strings.HasPrefix(entry, "WAGO_AMD64_NO_GC_REF_FACTS=") ||
 				strings.HasPrefix(entry, "WAGO_AMD64_NO_EXACT_GC_REF_FACTS=") ||
 				strings.HasPrefix(entry, "WAGO_AMD64_NO_GC_LOAD_FORWARDING=") ||
-				strings.HasPrefix(entry, "WAGO_LOOP_PRECHECK=") ||
 				strings.HasPrefix(entry, childEnv+"=") {
 				continue
 			}
@@ -1033,7 +1032,6 @@ func TestGCRefFactsSemanticDifferential(t *testing.T) {
 		{name: "GC facts", enabled: "WAGO_AMD64_NO_GC_REF_FACTS=0", disabled: "WAGO_AMD64_NO_GC_REF_FACTS=1"},
 		{name: "GC facts compatibility alias", enabled: "WAGO_AMD64_NO_EXACT_GC_REF_FACTS=0", disabled: "WAGO_AMD64_NO_EXACT_GC_REF_FACTS=1"},
 		{name: "GC load forwarding", enabled: "WAGO_AMD64_NO_GC_LOAD_FORWARDING=0", disabled: "WAGO_AMD64_NO_GC_LOAD_FORWARDING=1"},
-		{name: "loop precheck", enabled: "WAGO_LOOP_PRECHECK=1", disabled: "WAGO_LOOP_PRECHECK=0"},
 	} {
 		on, off := run(knob.enabled), run(knob.disabled)
 		onJSON, _ := json.Marshal(on)

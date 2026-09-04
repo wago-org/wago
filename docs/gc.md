@@ -229,15 +229,12 @@ reuse, `WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1` disables the constant-index sequence, a
 `WAGO_AMD64_NO_GC_REF_FACTS=1` disables the semantic optimizer as a whole and avoids
 allocating its local/control fact tables. `WAGO_AMD64_NO_EXACT_GC_REF_FACTS=1` is
 accepted as a compatibility alias for review and older A/B commands. The permanent
-subprocess oracle also compares exact results and trap codes with facts, load
-forwarding, and loop prechecks independently enabled and disabled.
-
-Loop bounds versioning remains memory32-only: prechecks zero-extend invariant i32
-bases before native-width arithmetic, and memory64 loops retain their carry-safe
-per-access checks until `memAddr64` has an explicit elision certificate. Functions
-with candidate native GC frame-root plans are not versioned because duplicating a
-loop body would otherwise duplicate allocation/call sites without remapping the
-validated linear liveness streams.
+subprocess oracle also compares exact results and trap codes with facts and load
+forwarding independently enabled and disabled. The loop-versioning experiment was
+removed after its broad execution benefit failed to justify duplicated lowering,
+native code, and compile-resource cost; all memory32 and memory64 loops now retain
+their ordinary per-access checks unless straight-line bounds facts or guard pages
+provide the existing explicit certificate.
 
 Dead allocation remains bounded and postfix. Direct struct/fixed-array drops can
 remove complete nested `struct.new`/`array.new_fixed` trees only while every reserved

@@ -614,12 +614,12 @@ producer-independent correctness proof.
 
 1. **Repeated module scans:** resolve synchronous-host-call mode once.
 2. **Per-function `moduleGlobal []bool`:** use the bounded pin list/mask.
-3. **Default-off experiments with no active qualification:** `loop-precheck` and exact
-   GC-ref facts are compiled into production but disabled by default.
-   AMD64 `v128-sink`, `affine-lea`, and `tee-spill-elide` were subsequently
-   retired after their focused fixtures and broad screens failed the normal gates.
-   Either promote the remaining paths against the standard gates or delete
-   them. Do not let an indefinite experiment become a permanent alternate path.
+3. **Default-off experiments with no active qualification:** loop prechecks,
+   AMD64 `v128-sink`, `affine-lea`, and `tee-spill-elide` were retired after
+   their focused fixtures and broad screens failed the normal gates. Exact
+   GC-ref facts remain compiled into production but disabled by default; either
+   promote that path against the standard gates or delete it. Do not let an
+   indefinite experiment become a permanent alternate path.
 4. **Host-width operand indexes and separate root booleans:** both backends now
    store exact 32-bit indexes and pack GC/EH root state beside value facts,
    reducing each common operand node from 72 to 64 bytes without changing

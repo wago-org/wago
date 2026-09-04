@@ -90,7 +90,6 @@
               "legacy-gp-pins",
               "load-pair",
               "local-slot-order",
-              "loop-precheck",
               "loop-region-pins",
               "magic-div",
               "merge-next-use",
