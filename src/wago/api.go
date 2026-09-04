@@ -1083,6 +1083,21 @@ func compileWithFrontendFeatures(cfg *RuntimeConfig, wasmBytes []byte, features 
 	return compileWithFrontendFeaturesAndInstructions(cfg, wasmBytes, features, nil)
 }
 
+func narrowFrontendFeatures(features *frontend.Features, requiredByModule CoreFeatures) {
+	if !requiredByModule.IsEnabled(CoreFeatureTypedFunctionReferences) && !requiredByModule.IsEnabled(CoreFeatureGC) {
+		features.TypedFunctionReferences = false
+		features.TypedTailCalls = false
+	}
+	if !requiredByModule.IsEnabled(CoreFeatureTailCall) {
+		features.TailCalls = false
+		features.TypedTailCalls = false
+	}
+	if !requiredByModule.IsEnabled(CoreFeatureExceptionHandling) {
+		features.ExceptionHandling = false
+		features.ExceptionReferences = false
+	}
+}
+
 func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []byte, features frontend.Features, instructions map[string]*registeredInstruction) (*Compiled, error) {
 	if cfg.maxModuleBytes != 0 && uint64(len(wasmBytes)) > cfg.maxModuleBytes {
 		return nil, &wruntime.ResourceLimitError{
@@ -1096,20 +1111,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
-	requirements := analyzeModuleRequirements(m)
-	requiredByModule := requirements.features
-	if !requiredByModule.IsEnabled(CoreFeatureTypedFunctionReferences) && !requiredByModule.IsEnabled(CoreFeatureGC) {
-		features.TypedFunctionReferences = false
-		features.TypedTailCalls = false
-	}
-	if !requiredByModule.IsEnabled(CoreFeatureTailCall) {
-		features.TailCalls = false
-		features.TypedTailCalls = false
-	}
-	if !requiredByModule.IsEnabled(CoreFeatureExceptionHandling) {
-		features.ExceptionHandling = false
-		features.ExceptionReferences = false
-	}
 	workers := functionWorkersForModule(m, cfg.functionWorkers)
 	validationFeatures := wasm.ValidationFeatures{
 		CompactImports:       features.MultiMemory,
@@ -1117,19 +1118,25 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		ExtendedConstGlobals: features.ExtendedConstGlobals,
 		GCConstExpr:          features.GCStructProducts || features.GCArrayProducts || features.GCI31Products,
 	}
-	if err := wasm.ValidateModuleWithConfig(m, validationFeatures, workers, wasm.ValidationLimits{
+	var validationAnalysis wasm.ValidatedModuleAnalysis
+	if err := wasm.ValidateModuleWithAnalysis(m, validationFeatures, workers, wasm.ValidationLimits{
 		MaxFunctionLocals:    cfg.maxFunctionLocals,
 		MaxMemoriesPerModule: cfg.maxMemoriesPerModule,
-	}); err != nil {
+	}, &validationAnalysis); err != nil {
 		// Proposal-aware decoding can expose a structurally unsupported module to
 		// validation before the validator has complete proposal subtyping rules.
 		// Compile must still fail clearly as unsupported rather than mislabeling a
 		// valid proposal module as an ordinary core type error.
+		requirements := analyzeModuleRequirements(m)
+		narrowFrontendFeatures(&features, requirements.features)
 		if unsupported := frontend.RejectUnsupportedWithFeatures(m, features); unsupported != nil && isUnsupportedProposalError(unsupported) {
 			return nil, fmt.Errorf("compile: %w", unsupported)
 		}
 		return nil, fmt.Errorf("validate: %w", err)
 	}
+	requirements := analyzeModuleRequirementsWithValidation(m, &validationAnalysis)
+	requiredByModule := requirements.features
+	narrowFrontendFeatures(&features, requiredByModule)
 	if requiredByModule.IsEnabled(CoreFeatureThreads) {
 		if err := validateThreadedExecutionBoundary(m, cfg.boundsChecks); err != nil {
 			return nil, fmt.Errorf("compile: %w", err)
@@ -1371,7 +1378,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		return nil, fmt.Errorf("gc array descriptors: %w", err)
 	}
 	moduleFacts := requirements.moduleFacts
-	if err := frontend.RejectUnsupportedWithFeaturesAndFacts(m, features, moduleFacts); err != nil {
+	if err := frontend.RejectUnsupportedWithFeaturesFactsAndValidation(m, features, moduleFacts, &validationAnalysis); err != nil {
 		return nil, fmt.Errorf("compile: %w", err)
 	}
 	var unsafeDirectTailImports []uint64

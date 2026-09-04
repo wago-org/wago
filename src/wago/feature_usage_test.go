@@ -2,6 +2,9 @@ package wago
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -9,6 +12,42 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestValidatedAnalysisRequirementsCorpusParity(t *testing.T) {
+	paths, err := filepath.Glob("../../bench/corpus/*.wasm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	compared := 0
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m, err := wasm.DecodeModule(data)
+		if err != nil {
+			continue
+		}
+		var analysis wasm.ValidatedModuleAnalysis
+		if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{
+			CompactImports:       true,
+			MultiMemory:          true,
+			ExtendedConstGlobals: true,
+			GCConstExpr:          true,
+		}, 1, wasm.ValidationLimits{}, &analysis); err != nil {
+			continue
+		}
+		want := analyzeModuleRequirements(m)
+		got := analyzeModuleRequirementsWithValidation(m, &analysis)
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s requirements differ:\nvalidation: %#v\nlegacy:     %#v", filepath.Base(path), got, want)
+		}
+		compared++
+	}
+	if compared < 50 {
+		t.Fatalf("compared %d validated corpus modules, want at least 50", compared)
+	}
+}
 
 func typedBottomElementModule(heap wasm.AbsHeapType, declarative bool) []byte {
 	flags := byte(0x05) // passive, typed expression elements
