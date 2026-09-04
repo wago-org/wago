@@ -193,6 +193,26 @@ func TestAMD64StructuredPreservesPinnedLocalsAcrossCall(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredVectorTeeDoesNotCopyBack(t *testing.T) {
+	body := []byte{
+		0x01, 0x01, 0x7b, // one v128 local
+		0x20, 0x00, 0x22, 0x01, 0x20, 0x01, 0xfd, 0x51, 0x0b, // tee local 1, then xor the stack and local copies
+	}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var inverse amd64.Asm
+	inverse.VMovdqu(9, 4)
+	inverse.VMovdqu(4, 9)
+	if bytes.Contains(output.Code, inverse.B) {
+		t.Fatalf("vector local.tee copied its value back into the source register: %x", output.Code)
+	}
+}
+
 func TestAMD64RailMachSpillForwardingRetainsLiveHomes(t *testing.T) {
 	allocation := railmach.GreedyAllocation{Allocation: railmach.Allocation{Intervals: []railmach.LiveInterval{
 		{Reg: 1, Start: 3, End: 14, Bank: railmach.BankFPR},

@@ -5235,7 +5235,6 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 					if dst != reg {
 						a.VMovdqu(dst, reg)
 					}
-					reg = dst
 				} else {
 					a.VMovdquStoreDisp(amd64.RSP, localOff(int(instr.U32())), reg)
 				}
