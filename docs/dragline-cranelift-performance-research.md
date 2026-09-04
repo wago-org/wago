@@ -30,7 +30,10 @@ corpus-specific byte strings. The retained changes are:
   ISA requirement propagated through serial, parallel, and cached compilation;
   and
 - direct reuse of allocated i32 address registers for signal-bounded scalar and
-  folded loads when aliasing and liveness make it safe.
+  folded loads when aliasing and liveness make it safe on Unix AMD64 targets.
+  Windows keeps the canonical `R10D` copy because its guard-page growth path
+  resumes through a VEH continuation; native CI proved that widening the live
+  register boundary there can lose an unrelated address across a page commit.
 
 The release measurement ran on an AMD Ryzen 7 7800X3D with Go 1.22.2 and
 Wasmtime/Cranelift 46.0.1. Both engines were pinned to CPU 7. Each of 36 runnable
