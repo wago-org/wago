@@ -1713,7 +1713,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		}
 		slot += rootMachineType(root).stackSlots()
 	}
-	offsets = append(offsets, plan.FixedOffsets...)
+	offsets = append(offsets, plan.FixedOffsets()...)
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
 	return offsets, true
 }

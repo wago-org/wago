@@ -108,7 +108,10 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string) *sh
 		if !ok {
 			return reject("function %d root plan ownership is invalid", function)
 		}
-		*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedOffsets}
+		*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase}
+		if !plan.SetFixedOffsets(fixedOffsets) {
+			return reject("function %d has invalid fixed root offsets", function)
+		}
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if collectorFrameRefType(m, t) {

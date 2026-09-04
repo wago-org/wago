@@ -52,11 +52,10 @@ func DecodeGCDispatch(payload uint32) (helper, safepoint uint32) {
 // callsites, and final frame size. It remains compile-only until flattened into
 // the validated codec metadata.
 type GCFrameRootPlan struct {
-	Candidate    bool
-	Exact        bool
-	FrameBytes   uint32
-	Locals       []GCFrameLocal
-	FixedOffsets []uint32 // conservative always-live roots such as EH payload records
+	Candidate  bool
+	Exact      bool
+	FrameBytes uint32
+	Locals     []GCFrameLocal
 	// LiveMaskWords is one site-major, pointer-free arena. Allocating sites come
 	// first, followed by native calls; every site occupies rootMaskWordsPerSite
 	// words. The explicit counts avoid retaining two more slice headers and
@@ -64,18 +63,43 @@ type GCFrameRootPlan struct {
 	liveMaskWords       []uint64
 	allocationMaskCount uint32
 	callMaskCount       uint32
-	// SafepointData stores each allocating site's root offsets as a count word
-	// followed by that site's offsets. One pointer-free arena replaces one slice
-	// header and backing allocation per site; safepointCount is the checked number
-	// of records in the stream.
-	SafepointData  []uint32
-	safepointCount uint32
-	callsiteCount  uint32
-	CallsiteData   []uint32
+	// SafepointData owns conservative always-live roots as a fixed prefix, then
+	// each allocating site's root offsets as a count word followed by that site's
+	// offsets. Sharing this pointer-free arena avoids a slice header in every plan;
+	// safepointCount is the checked number of records after the fixed prefix.
+	SafepointData    []uint32
+	fixedOffsetCount uint32
+	safepointCount   uint32
+	callsiteCount    uint32
+	CallsiteData     []uint32
 	// AdapterReturnOffset is relative to the function's public Entry. It may
 	// point beyond the function-owned bytes into a module-level adapter island.
 	AdapterReturnOffset uint32
 	SafepointBase       uint32
+}
+
+// SetFixedOffsets transfers ownership of the conservative always-live roots to
+// the prefix of the safepoint arena. It is valid only before site emission.
+func (p *GCFrameRootPlan) SetFixedOffsets(offsets []uint32) bool {
+	if p == nil || len(p.SafepointData) != 0 || p.fixedOffsetCount != 0 || p.safepointCount != 0 || p.callsiteCount != 0 || uint64(len(offsets)) > uint64(^uint32(0)) {
+		return false
+	}
+	p.SafepointData = offsets
+	p.fixedOffsetCount = uint32(len(offsets))
+	return true
+}
+
+// FixedOffsets returns the conservative always-live prefix. A malformed
+// private count returns nil; VisitSafepoints provides the fail-closed check.
+func (p *GCFrameRootPlan) FixedOffsets() []uint32 {
+	if p == nil || uint64(p.fixedOffsetCount) > uint64(len(p.SafepointData)) {
+		return nil
+	}
+	return p.SafepointData[:p.fixedOffsetCount:p.fixedOffsetCount]
+}
+
+func (p *GCFrameRootPlan) HasFixedOffsets() bool {
+	return p != nil && p.fixedOffsetCount != 0
 }
 
 // GCFrameLocal keeps one collector-reference local's validated Wasm index and
@@ -178,9 +202,16 @@ func (p *GCFrameRootPlan) ShiftCallsiteReturnOffsets(start, deleted uint32) bool
 	return ok
 }
 
-// ResetSafepoints retains the flat arena for another compile attempt.
+// ResetSafepoints retains the fixed root prefix and flat arena for another
+// compile attempt.
 func (p *GCFrameRootPlan) ResetSafepoints() {
-	p.SafepointData = p.SafepointData[:0]
+	if uint64(p.fixedOffsetCount) > uint64(len(p.SafepointData)) {
+		p.SafepointData = nil
+		p.fixedOffsetCount = 0
+		p.Exact = false
+	} else {
+		p.SafepointData = p.SafepointData[:p.fixedOffsetCount]
+	}
 	p.safepointCount = 0
 }
 
@@ -256,7 +287,10 @@ func (p *GCFrameRootPlan) VisitSafepoints(visit func(index int, offsets []uint32
 	if p == nil || visit == nil {
 		return false
 	}
-	pos := 0
+	if uint64(p.fixedOffsetCount) > uint64(len(p.SafepointData)) {
+		return false
+	}
+	pos := int(p.fixedOffsetCount)
 	for i := uint32(0); i < p.safepointCount; i++ {
 		if pos >= len(p.SafepointData) {
 			return false

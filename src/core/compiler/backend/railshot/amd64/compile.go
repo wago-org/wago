@@ -1093,7 +1093,7 @@ func (f *fn) prepareCompactGCFrameHeader(plan *shared.GCFrameRootPlan) bool {
 	if plan == nil {
 		return true
 	}
-	if !plan.Candidate || len(plan.FixedOffsets) != 0 {
+	if !plan.Candidate || plan.HasFixedOffsets() {
 		return false
 	}
 	for _, local := range plan.Locals {

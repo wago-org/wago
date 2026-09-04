@@ -777,7 +777,7 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 		}
 		slot += rootMachineType(root).stackSlots()
 	}
-	for _, off := range plan.FixedOffsets {
+	for _, off := range plan.FixedOffsets() {
 		builder.AppendOffset(off)
 	}
 	offsets, ok := builder.Offsets()

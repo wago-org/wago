@@ -54,7 +54,10 @@ func TestRegisterABICompactHeaderRemapsGCFrameLocalsArm64(t *testing.T) {
 	if f.prepareCompactGCFrameHeader(bad) {
 		t.Fatal("out-of-range collector-local plan admitted")
 	}
-	withFixed := &shared.GCFrameRootPlan{Candidate: true, FixedOffsets: []uint32{16}}
+	withFixed := &shared.GCFrameRootPlan{Candidate: true}
+	if !withFixed.SetFixedOffsets([]uint32{16}) {
+		t.Fatal("failed to set fixed roots")
+	}
 	if f.prepareCompactGCFrameHeader(withFixed) {
 		t.Fatal("fixed-root plan admitted")
 	}

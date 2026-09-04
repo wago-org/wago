@@ -10,8 +10,8 @@ func TestGCFrameRootPlanFootprint(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) != 8 {
 		t.Skip("64-bit fixed-footprint assertion")
 	}
-	if got := unsafe.Sizeof(GCFrameRootPlan{}); got != 152 {
-		t.Fatalf("GCFrameRootPlan size=%d, want 152", got)
+	if got := unsafe.Sizeof(GCFrameRootPlan{}); got != 136 {
+		t.Fatalf("GCFrameRootPlan size=%d, want 136", got)
 	}
 	if got := unsafe.Sizeof(GCModuleFrameRootPlan{}); got != 48 {
 		t.Fatalf("GCModuleFrameRootPlan size=%d, want 48", got)
@@ -78,6 +78,41 @@ func TestGCFrameSafepointStream(t *testing.T) {
 	plan.SafepointData[0] = ^uint32(0)
 	if plan.VisitSafepoints(func(int, []uint32) bool { return true }) {
 		t.Fatal("malformed safepoint stream was accepted")
+	}
+}
+
+func TestGCFrameSafepointStreamRetainsFixedPrefix(t *testing.T) {
+	plan := GCFrameRootPlan{Exact: true}
+	if !plan.SetFixedOffsets([]uint32{8, 24}) || !slices.Equal(plan.FixedOffsets(), []uint32{8, 24}) {
+		t.Fatalf("fixed roots = %#v", plan.FixedOffsets())
+	}
+	if !plan.AppendSafepoint([]uint32{16}) {
+		t.Fatal("failed to append safepoint after fixed roots")
+	}
+	fixed := plan.FixedOffsets()
+	fixed = append(fixed, 32)
+	if !slices.Equal(fixed, []uint32{8, 24, 32}) {
+		t.Fatalf("appended fixed-root view = %#v", fixed)
+	}
+	if !plan.VisitSafepoints(func(_ int, offsets []uint32) bool {
+		return slices.Equal(offsets, []uint32{16})
+	}) {
+		t.Fatal("fixed root prefix was parsed as or overwrote safepoint data")
+	}
+	plan.ResetSafepoints()
+	if !plan.Exact || plan.SafepointCount() != 0 || !slices.Equal(plan.FixedOffsets(), []uint32{8, 24}) || len(plan.SafepointData) != 2 {
+		t.Fatalf("reset plan = exact %v count %d fixed %#v data %#v", plan.Exact, plan.SafepointCount(), plan.FixedOffsets(), plan.SafepointData)
+	}
+	if plan.SetFixedOffsets([]uint32{32}) {
+		t.Fatal("fixed roots were replaced after ownership transfer")
+	}
+	plan.fixedOffsetCount = uint32(len(plan.SafepointData) + 1)
+	if plan.VisitSafepoints(func(int, []uint32) bool { return true }) {
+		t.Fatal("malformed fixed root prefix was accepted")
+	}
+	plan.ResetSafepoints()
+	if plan.Exact {
+		t.Fatal("malformed fixed root prefix survived reset")
 	}
 }
 
