@@ -21,21 +21,15 @@ func TestCtrlFrameSize(t *testing.T) {
 	if got, want := unsafe.Sizeof(ctrlFrameRoots{}), uintptr(72); got != want {
 		t.Fatalf("ctrlFrameRoots size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(ctrlFrameFacts{}), uintptr(192); got != want {
-		t.Fatalf("ctrlFrameFacts size = %d, want %d", got, want)
-	}
 	if got, want := unsafe.Sizeof(ctrlFrameEH{}), uintptr(48); got != want {
 		t.Fatalf("ctrlFrameEH size = %d, want %d", got, want)
 	}
 }
 
-func TestControlGCSidecarsAreIndependentAMD64(t *testing.T) {
+func TestControlGCRootSidecarAMD64(t *testing.T) {
 	var f fn
 	fr := ctrlFrame{}
 	f.ensureCtrlRoots(&fr).baseGCRoots = []bool{true}
-	if f.scratchState().ctrlFacts != nil {
-		t.Fatal("root-only frame allocated GC-fact sidecar")
-	}
 	if got := f.frameBaseGCRoots(&fr); len(got) != 1 || !got[0] {
 		t.Fatalf("root-only sidecar = %v, want [true]", got)
 	}
@@ -43,12 +37,12 @@ func TestControlGCSidecarsAreIndependentAMD64(t *testing.T) {
 
 func TestScalarBlockResultUsesInlineFrameTypeAMD64(t *testing.T) {
 	var f fn
-	params, results, types, facts, res0, err := f.blockType(wasm.NewReader([]byte{0x7f}))
+	params, results, types, res0, err := f.blockType(wasm.NewReader([]byte{0x7f}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if params != nil || results != nil || types != nil || facts != nil || res0 != mtI32 {
-		t.Fatalf("scalar block type = %v/%v/%v/%v/%v, want nil/nil/nil/nil/i32", params, results, types, facts, res0)
+	if params != nil || results != nil || types != nil || res0 != mtI32 {
+		t.Fatalf("scalar block type = %v/%v/%v/%v, want nil/nil/nil/i32", params, results, types, res0)
 	}
 	fr := ctrlFrame{resultN: 1, res0: res0}
 	var storage [1]machineType

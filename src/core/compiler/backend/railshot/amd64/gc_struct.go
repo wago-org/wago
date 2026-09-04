@@ -822,27 +822,9 @@ func (f *fn) emitGCI31(sub uint32) error {
 	return nil
 }
 
-func (f *fn) publishGCReferenceParams(params []wasm.ValType) {
-	roots := f.rootsBottomToTop()
-	if len(params) > len(roots) {
-		return
-	}
-	start := len(roots) - len(params)
-	for i, typ := range params {
-		if typ.Kind() == wasm.ValRef {
-			f.publishGCRef(roots[start+i])
-		}
-	}
-}
-
 func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) error {
-	if gcHelperMayAllocate(helper) {
-		// Reference constructor operands become children of another object. They
-		// cease to be unique even though the newly returned parent is unpublished.
-		f.publishGCReferenceParams(params)
-	}
-	// Every parked helper may run collector work. Compact semantic facts remain
-	// valid, but the separate raw resolver certificate does not.
+	// Every parked helper may run collector work, so the transient raw resolver
+	// certificate does not survive it.
 	f.invalidateGCResolvedObject()
 	before := f.a.Len()
 	defer func() {

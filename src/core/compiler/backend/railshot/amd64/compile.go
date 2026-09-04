@@ -446,8 +446,6 @@ type transient struct {
 	tmpTypes2      []machineType
 	tmpGCRoots     []bool
 	tmpGCRoots2    []bool
-	tmpGCFacts     []shared.GCRefFact
-	tmpGCFacts2    []shared.GCRefFact
 	tmpFlushTypes  []machineType
 	tmpRegs        []Reg
 	tmpStackSlots  []uint32 // operand slot prefixes; successful native frames fit uint32 exactly
@@ -690,7 +688,6 @@ type scratch struct {
 	ctrl                    []ctrlFrame // control-frame stack backing; reused across functions
 	ctrlMerges              []ctrlFrameMerge
 	ctrlRoots               []ctrlFrameRoots
-	ctrlFacts               []ctrlFrameFacts
 	functionResultTypeArena [maxScratchFunctionResults]machineType
 	pinnedLocals            []int // pinned-local index backing; reused across functions
 	brTableStubAt           []int // duplicate-heavy jump-table target positions by control depth
@@ -707,8 +704,6 @@ type scratch struct {
 	controlMergeDiscarded   uint32
 	controlRootPeak         uint32
 	controlRootDiscarded    uint32
-	controlFactPeak         uint32
-	controlFactDiscarded    uint32
 	transient
 }
 
@@ -765,9 +760,6 @@ func (sc *scratch) noteControlScratch() {
 	if capacity := uint32(cap(sc.ctrlRoots)); capacity > sc.controlRootPeak {
 		sc.controlRootPeak = capacity
 	}
-	if capacity := uint32(cap(sc.ctrlFacts)); capacity > sc.controlFactPeak {
-		sc.controlFactPeak = capacity
-	}
 }
 
 // finishControlWorker releases pointer-rich control frames before the parallel
@@ -787,11 +779,6 @@ func (sc *scratch) finishControlWorker() {
 		clear(sc.ctrlRoots[:capacity])
 		sc.ctrlRoots = nil
 		sc.controlRootDiscarded += uint32(capacity)
-	}
-	if capacity := cap(sc.ctrlFacts); capacity != 0 {
-		clear(sc.ctrlFacts[:capacity])
-		sc.ctrlFacts = nil
-		sc.controlFactDiscarded += uint32(capacity)
 	}
 }
 
@@ -918,12 +905,6 @@ const (
 const (
 	maxRetainedEndsBufs     = maxWorkerInitialControlFrames
 	maxRetainedEndsBufSites = 256
-
-	// GC facts are opt-in and can snapshot the whole local table twice per frame.
-	// Wide/deep functions still allocate exactly what correctness needs, then
-	// release exceptional backings instead of retaining their product.
-	maxRetainedGCRefFactBufs    = 2 * maxWorkerInitialControlFrames
-	maxRetainedGCRefFactEntries = maxInitialStackArenaCap
 )
 
 // moduleControlFrameCap sizes the serial compiler's reusable control stack from
@@ -985,8 +966,6 @@ func (sc *scratch) reset() {
 	clear(sc.ctrlMerges[:cap(sc.ctrlMerges)])
 	clear(sc.ctrlRoots[:cap(sc.ctrlRoots)])
 	sc.ctrlRoots = sc.ctrlRoots[:0]
-	clear(sc.ctrlFacts[:cap(sc.ctrlFacts)])
-	sc.ctrlFacts = sc.ctrlFacts[:0]
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]
 	}

@@ -12,11 +12,9 @@ package amd64
 
 func (f *fn) replaceStorage(e *elem, st storage) {
 	// Replacements move the same semantic value between registers, locals, and
-	// spills. Preserve collector-root identity and structured semantic facts;
-	// raw resolved addresses live in separate fn state and are never copied here.
-	fact := f.gcRefFact(e)
+	// spills. Preserve collector-root identity; raw resolved addresses live in
+	// separate function state and are never copied here.
 	st.setGCRoot(st.hasGCRoot() || e.st.hasGCRoot())
-	putGCRefFact(&st, fact)
 	if st.typ == mtCustom {
 		st.cold = e.st.cold
 	}

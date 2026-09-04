@@ -5,7 +5,6 @@ package amd64
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -32,11 +31,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			return err
 		}
 		f.prepareStoreForward(op)
-		f.prepareGCLoadResultCapture(op)
 		f.prepareGCResolvedObject(op)
 		switch op {
 		case 0x00: // unreachable
-			f.clearLocalExactGCTypes()
 			if !f.unreachable {
 				// Deferred operations before unreachable have already executed in
 				// Wasm evaluation order and may trap (notably div/rem). Materialize
@@ -50,7 +47,6 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		case 0x02, 0x03, 0x04: // block / loop / if
 			err = f.opBlock(r, op)
 		case 0x1f: // try_table
-			f.clearLocalExactGCTypes()
 			err = f.opTryTable(r)
 		case 0x05: // else
 			err = f.opElse()
@@ -61,7 +57,6 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		case 0x0e: // br_table
 			err = f.opBrTable(r)
 		case 0x0f: // return
-			f.publishAllFreshGCRefs()
 			err = f.opReturn()
 		default:
 			if f.unreachable {
@@ -87,27 +82,21 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x0a: // throw_ref
 		return f.opThrowRef()
 	case 0x10: // call
-		f.publishAllFreshGCRefs()
 		f.invalidateGCMutableLoadFacts()
 		return f.callOp(r)
 	case 0x11: // call_indirect
-		f.publishAllFreshGCRefs()
 		f.invalidateGCMutableLoadFacts()
 		return f.callIndirect(r)
 	case 0x12: // return_call
-		f.publishAllFreshGCRefs()
 		f.invalidateGCResolvedObject()
 		return f.returnCall(r)
 	case 0x13: // return_call_indirect
-		f.publishAllFreshGCRefs()
 		f.invalidateGCResolvedObject()
 		return f.returnCallIndirect(r)
 	case 0x14: // call_ref
-		f.publishAllFreshGCRefs()
 		f.invalidateGCMutableLoadFacts()
 		return f.callRef(r)
 	case 0x15: // return_call_ref
-		f.publishAllFreshGCRefs()
 		f.invalidateGCResolvedObject()
 		return f.returnCallRef(r)
 
@@ -157,7 +146,6 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
 			value = f.pushReg(reg, f.localType[x])
 			value.st.setGCRoot(f.gcFrameLocal(int(x)))
-			f.markLocalGetExactGCType(value, int(x))
 			break
 		}
 		if f.localConstZero(int(x)) {
@@ -174,7 +162,6 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: x})
 		}
 		value.st.setGCRoot(f.gcFrameLocal(int(x)))
-		f.markLocalGetExactGCType(value, int(x))
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
@@ -184,12 +171,10 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x23: // global.get
 		return f.globalGet(r)
 	case 0x24: // global.set
-		f.publishGCRef(f.s.back())
 		return f.globalSet(r)
 	case 0x25: // table.get
 		return f.tableGet(r)
 	case 0x26: // table.set
-		f.publishGCRef(f.s.back())
 		return f.tableSet(r)
 
 	// i32 comparisons / eqz
@@ -758,7 +743,6 @@ func (f *fn) emitSelect() {
 	b := f.popValue()
 	a := f.popValue()
 	gcRoot := (a.kind == ekValue && a.st.hasGCRoot()) || (b.kind == ekValue && b.st.hasGCRoot())
-	gcFact := shared.MergeGCRefFacts(f.gcRefFact(a), f.gcRefFact(b))
 
 	// XMM operands have no cmov, so branch. Scalar floats use scalar moves;
 	// v128 uses a full-vector copy. Integer operands use cmov.
@@ -816,7 +800,6 @@ func (f *fn) emitSelect() {
 	f.release(bReg)
 	result := f.pushReg(aReg, mtI32OrWide(w))
 	result.st.setGCRoot(gcRoot)
-	putGCRefFact(&result.st, gcFact)
 }
 
 func mtI32OrWide(wide bool) machineType {
@@ -850,7 +833,6 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
 	// are pinned so condensing the compare's operands cannot spill them.
 	gcRoot := (aRoot.kind == ekValue && aRoot.st.hasGCRoot()) || (bRoot.kind == ekValue && bRoot.st.hasGCRoot())
-	gcFact := shared.MergeGCRefFacts(f.gcRefFact(aRoot), f.gcRefFact(bRoot))
 	aReg := f.materialize(aRoot)
 	f.pinned = f.pinned.add(aReg)
 	bReg := f.materialize(bRoot)
@@ -865,7 +847,6 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	f.erase(aRoot)
 	result := f.pushReg(aReg, mtI32OrWide(w))
 	result.st.setGCRoot(gcRoot)
-	putGCRefFact(&result.st, gcFact)
 	return true
 }
 
@@ -975,8 +956,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	f.invalidateBoundsCertFor(1, uint32(x))
 	f.clearV128LocalAliases(x)
 	e := f.s.back()
-	f.captureGCLoadResultLocal(e, x)
-	gcFact, hasGCExactType := f.setLocalExactGCType(x, e)
+	f.invalidateGCLoadFactsForLocal(x)
 	if e != nil && e.kind == ekValue && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
 	}
@@ -1010,9 +990,6 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.markLocalDirty(x) // value now lives (only) in the register
 		if tee {
 			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)}) // borrowed ref stays
-			if hasGCExactType {
-				f.markGCRefFact(e, gcFact)
-			}
 		} else {
 			f.erase(e)
 		}
@@ -1101,9 +1078,5 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if !tee {
 		f.erase(e)
 		f.release(r)
-	} else {
-		if hasGCExactType {
-			f.markGCRefFact(e, gcFact)
-		}
 	}
 }
