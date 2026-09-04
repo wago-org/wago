@@ -383,6 +383,57 @@ func TestAMD64RailMachConsumesMaskedInductionBoundsElision(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachSignalsElideFoldedMemoryBoundsCheck(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x01, 0x20, 0x00, 0x28, 0x02, 0x00, 0x6a, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := (&nativeBackendPlanner{}).Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	folded := false
+	for _, producer := range plan.PostRAMemoryFrom {
+		folded = folded || producer != 0
+	}
+	if !folded {
+		t.Fatal("fixture produced no folded memory operand")
+	}
+	var explicitMetadata, signalsMetadata functionEmissionMetadata
+	explicit, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, &explicitMetadata)
+	if err != nil || !used {
+		t.Fatalf("explicit RailMach emission: used=%v err=%v", used, err)
+	}
+	signalsPlan := *plan
+	signalsPlan.SignalsBounds = true
+	signals, _, used, err := emitAMD64RailMach(fn, &signalsPlan, nil, nil, &signalsMetadata)
+	if err != nil || !used {
+		t.Fatalf("signals RailMach emission: used=%v err=%v", used, err)
+	}
+	if len(explicitMetadata.Traps) == 0 || len(signalsMetadata.Traps) != 0 || len(signals) >= len(explicit) {
+		t.Fatalf("folded bounds emission: explicit bytes/traps=%d/%d signals=%d/%d", len(explicit), len(explicitMetadata.Traps), len(signals), len(signalsMetadata.Traps))
+	}
+}
+
 func TestAMD64RailMachFinalizesSaturatingConversion(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.I32}))),

@@ -59,6 +59,10 @@ type nativeBackendPlan struct {
 	BackendAttempts   uint8
 	IPRARefinedCalls  uint32
 	SignalsBounds     bool
+	// AMD64MemoryBoundEnd is the access end offset subtracted from the stable
+	// memory-0 byte length cached in the final allocatable GPR. Zero disables
+	// the cache.
+	AMD64MemoryBoundEnd uint64
 
 	BlockOffsets        []int
 	BranchPatches       []nativeBranchPatch
@@ -145,7 +149,9 @@ type nativeBackendPlanner struct {
 	immediateUses       []uint32
 	deadGCReservations  []bool
 	noBarrierGCStores   []bool
+	amd64MemoryBounds   []nativeAMD64MemoryBoundUse
 	parallelCandidates  bool
+	signalsBounds       bool
 	candidateScratch    *[2]nativeCandidateWorkspace
 	plan                nativeBackendPlan
 }
@@ -154,6 +160,11 @@ type nativeCandidateWorkspace struct {
 	schedule   railmach.Schedule
 	allocation railmach.GreedyAllocation
 	exit       railmach.SSAExit
+}
+
+type nativeAMD64MemoryBoundUse struct {
+	end    uint64
+	weight uint64
 }
 
 type nativeCandidateRef struct {
@@ -243,7 +254,7 @@ func (p *nativeBackendPlanner) capacityBreakdown() (ssa, machine, native uint64)
 			machine += railmach.PipelineCapacityBytes(nil, nil, nil, &candidate.schedule, &candidate.allocation, &candidate.exit, nil, nil, nil)
 		}
 	}
-	native = sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches) + sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.postRAPairWith) + sliceBytes(p.postRASkip) + sliceBytes(p.postRAForwardFrom) + sliceBytes(p.postRAFusionWith) + sliceBytes(p.postRAMemoryFrom) + sliceBytes(p.postRARepeatFirst) + sliceBytes(p.postRAPreIndex) + sliceBytes(p.postRAPostIndexWith) + sliceBytes(p.immediateProducer) + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses) + sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots) + sliceBytes(p.gcValues)
+	native = sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches) + sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.postRAPairWith) + sliceBytes(p.postRASkip) + sliceBytes(p.postRAForwardFrom) + sliceBytes(p.postRAFusionWith) + sliceBytes(p.postRAMemoryFrom) + sliceBytes(p.postRARepeatFirst) + sliceBytes(p.postRAPreIndex) + sliceBytes(p.postRAPostIndexWith) + sliceBytes(p.immediateProducer) + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses) + sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.amd64MemoryBounds) + sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots) + sliceBytes(p.gcValues)
 	return ssa, machine, native
 }
 
@@ -926,10 +937,15 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		return nil, err
 	}
 	defaultGreedy := railmach.DefaultGreedyConfig(machineTarget)
+	amd64MemoryBoundEnd, cachesAMD64MemoryBound := p.nativeAMD64CachedMemoryBound(stack, machine, emission, pressure)
 	if nativeAMD64CachesGlobals(machine) {
 		// The final two allocatable GPRs map to RBP/R12. Reserve them for one
 		// hot global's write-through value and immutable descriptor.
 		defaultGreedy.Linear.GPRs = nativeAMD64CachedGlobalValueRegister
+	} else if cachesAMD64MemoryBound {
+		// R12 retains the stable memory-0 upper bound for the hottest access
+		// width/offset, leaving the first nine GPRs available to allocation.
+		defaultGreedy.Linear.GPRs = nativeAMD64MemoryBoundRegister
 	}
 	if machineTarget == railmach.TargetARM64 {
 		defaultGreedy.Linear.FPRs = nativeARM64AllocatableFPRs(machine)
@@ -1209,6 +1225,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		contract.GPRClobbers |= uint64(1)<<nativeAMD64GlobalsRegister | uint64(1)<<nativeAMD64CachedGlobalValueRegister
 		contract.CalleeGPRs |= uint64(1)<<nativeAMD64GlobalsRegister | uint64(1)<<nativeAMD64CachedGlobalValueRegister
 	}
+	if cachesAMD64MemoryBound {
+		contract.GPRClobbers |= uint64(1) << nativeAMD64MemoryBoundRegister
+		contract.CalleeGPRs |= uint64(1) << nativeAMD64MemoryBoundRegister
+	}
 	if nativeARM64CachesGlobals(machine) {
 		contract.GPRClobbers |= uint64(1) << nativeARM64GlobalsRegister
 		contract.CalleeGPRs |= uint64(1) << nativeARM64GlobalsRegister
@@ -1302,7 +1322,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		Stack: stack, CFG: cfg, Semantic: semantic,
 		Machine: machine, Selection: selection, DAG: dag, Schedule: schedule, Allocation: allocation, Exit: exit, PostRA: postRA,
 		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts,
-		Simplified: simplified, IPRARefinedCalls: refinedCalls,
+		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		PostRAPairWith: p.postRAPairWith, PostRASkip: p.postRASkip,
 		PostRAForwardFrom:   p.postRAForwardFrom,
 		PostRAFusionWith:    p.postRAFusionWith,
@@ -1471,12 +1491,71 @@ func nativeARM64AllocatableFPRs(machine *railmach.Func) uint8 {
 const (
 	nativeAMD64CachedGlobalValueRegister            = 8
 	nativeAMD64GlobalsRegister                      = 9
+	nativeAMD64MemoryBoundRegister                  = 9
 	nativeARM64SecondCachedGlobalDescriptorRegister = 15
 	nativeARM64SecondCachedGlobalValueRegister      = 16
 	nativeARM64CachedGlobalDescriptorRegister       = 17
 	nativeARM64CachedGlobalValueRegister            = 18
 	nativeARM64GlobalsRegister                      = 19
 )
+
+func (p *nativeBackendPlanner) nativeAMD64CachedMemoryBound(stack *railssa.StackFunc, machine *railmach.Func, emission *railssa.EmissionPlan, pressure *railssa.PressurePlan) (uint64, bool) {
+	// Large functions use regional allocation, whose bounded reload fragments
+	// are deliberately more valuable than one globally reserved bound register.
+	if stack == nil || machine == nil || pressure == nil || p.signalsBounds || machine.Target != railmach.TargetAMD64 || nativeAMD64CachesGlobals(machine) || stack.MemoryMinBytes == 0 || len(machine.Insts) >= 512 {
+		return 0, false
+	}
+	for _, instruction := range machine.Insts {
+		if railmach.IsCall(instruction.Op) || instruction.Op == wasm.InstrMemoryGrow {
+			return 0, false
+		}
+	}
+	p.amd64MemoryBounds = p.amd64MemoryBounds[:0]
+	for blockID, block := range machine.Blocks {
+		for instructionID := block.InstStart; instructionID < block.InstStart+block.InstCount; instructionID++ {
+			instruction := machine.Insts[instructionID]
+			size, _, _, memory := nativeMemoryAccess(instruction.Op)
+			if !memory || emission != nil && emission.ElidesBoundsCheck(instruction.Source) {
+				continue
+			}
+			end := uint64(uint32(instruction.Aux)) + uint64(size)
+			if end == 0 || end > uint64(^uint32(0)>>1) || end > stack.MemoryMinBytes {
+				continue
+			}
+			found := false
+			for index := range p.amd64MemoryBounds {
+				if p.amd64MemoryBounds[index].end == end {
+					p.amd64MemoryBounds[index].weight += uint64(machine.Blocks[blockID].Weight)
+					found = true
+					break
+				}
+			}
+			if !found {
+				p.amd64MemoryBounds = append(p.amd64MemoryBounds, nativeAMD64MemoryBoundUse{end: end, weight: uint64(machine.Blocks[blockID].Weight)})
+			}
+		}
+	}
+	best := nativeAMD64MemoryBoundUse{}
+	for _, candidate := range p.amd64MemoryBounds {
+		if candidate.weight > best.weight || candidate.weight == best.weight && candidate.end < best.end {
+			best = candidate
+		}
+	}
+	peakGPR, usesFPR := uint16(0), false
+	for _, block := range pressure.Blocks {
+		peakGPR = max(peakGPR, block.PeakGPR)
+	}
+	for _, value := range machine.VRegs {
+		usesFPR = usesFPR || value.Bank == railmach.BankFPR
+	}
+	// Avoid taking a tenth GPR from exceptionally dense integer flow. Floating
+	// functions additionally need one common access end: mixed displacements
+	// create enough address pressure that a partial cache loses to allocation.
+	if best.weight < 16 || peakGPR >= 32 || usesFPR && len(p.amd64MemoryBounds) != 1 {
+		return 0, false
+	}
+	return best.end, true
+}
 
 func nativeAMD64CachesGlobals(machine *railmach.Func) bool {
 	_, ok := nativeAMD64CachedGlobal(machine)

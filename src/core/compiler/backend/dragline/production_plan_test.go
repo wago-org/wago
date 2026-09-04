@@ -125,6 +125,46 @@ func TestNativeAMD64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
 	}
 }
 
+func TestNativeAMD64CachedMemoryBoundSelectsHotAccessEnd(t *testing.T) {
+	p := new(nativeBackendPlanner)
+	stack := &railssa.StackFunc{MemoryMinBytes: 1 << 16}
+	machine := &railmach.Func{
+		Target: railmach.TargetAMD64,
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Load, Aux: 0},
+			{Op: wasm.InstrI64Load, Aux: 0},
+			{Op: wasm.InstrF64Store, Aux: 0},
+		},
+		Blocks: []railmach.Block{
+			{InstStart: 0, InstCount: 1, Weight: 1},
+			{InstStart: 1, InstCount: 2, Weight: 8},
+		},
+	}
+	pressure := &railssa.PressurePlan{Blocks: make([]railssa.BlockPressure, len(machine.Blocks))}
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); !ok || end != 8 {
+		t.Fatalf("cached memory bound = (%d, %t), want (8, true)", end, ok)
+	}
+	p.signalsBounds = true
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); ok || end != 0 {
+		t.Fatalf("signals-based cached memory bound = (%d, %t), want disabled", end, ok)
+	}
+	p.signalsBounds = false
+	machine.VRegs = []railmach.VRegData{{Bank: railmach.BankFPR}}
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); ok || end != 0 {
+		t.Fatalf("mixed floating access cached memory bound = (%d, %t), want disabled", end, ok)
+	}
+	machine.VRegs = nil
+	pressure.Blocks[0].PeakGPR = 32
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); ok || end != 0 {
+		t.Fatalf("high-pressure cached memory bound = (%d, %t), want disabled", end, ok)
+	}
+	pressure.Blocks[0].PeakGPR = 0
+	machine.Insts = append(machine.Insts, railmach.Inst{Op: wasm.InstrMemoryGrow})
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); ok || end != 0 {
+		t.Fatalf("growing function cached memory bound = (%d, %t), want disabled", end, ok)
+	}
+}
+
 func TestNativeBackendPlannerBuildsCompleteRailMachProduct(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
