@@ -909,6 +909,11 @@ const maxHintedControlFrames = 64
 // receives them; append remains the correctness fallback.
 const maxWorkerInitialControlFrames = 8
 
+// A live control frame can own entry and branch snapshots. Retain enough
+// buffers for the bounded ordinary-worker depth, but do not let an exceptional
+// function permanently grow this pointer-rich pool.
+const maxRetainedLocStateBufs = 2 * maxWorkerInitialControlFrames
+
 // moduleControlFrameCap sizes the serial compiler's reusable control stack from
 // the same one-pass bytecode hints. Parallel workers grow independently so one
 // deeply nested function does not multiply its pointer-rich backing by every

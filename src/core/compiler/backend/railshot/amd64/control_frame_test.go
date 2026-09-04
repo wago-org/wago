@@ -227,3 +227,13 @@ func TestGCRootFlagsAvoidsAllFalseBacking(t *testing.T) {
 		t.Fatalf("roots = %v, want [false true false]", got)
 	}
 }
+
+func TestLocStatePoolRetentionIsBoundedAMD64(t *testing.T) {
+	f := fn{pinnedLocals: []int{0}}
+	for range maxRetainedLocStateBufs + 3 {
+		f.freeLocStateBuf(make([]locState, 1))
+	}
+	if got := len(f.lsPool); got != maxRetainedLocStateBufs {
+		t.Fatalf("retained local-state buffers = %d, want %d", got, maxRetainedLocStateBufs)
+	}
+}

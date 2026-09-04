@@ -332,7 +332,7 @@ func (f *fn) newLocStateBuf() packedLocStates {
 }
 
 func (f *fn) freeLocStateBuf(b packedLocStates) {
-	if cap(b) >= packedLocStateBytes(f.nLocals) && f.nLocals > 0 {
+	if cap(b) >= packedLocStateBytes(f.nLocals) && f.nLocals > 0 && len(f.lsPool) < maxRetainedLocStateBufs {
 		f.lsPool = append(f.lsPool, b[:cap(b)])
 	}
 }

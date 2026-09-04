@@ -307,7 +307,7 @@ func (f *fn) newLocStateBuf() []locState {
 }
 
 func (f *fn) freeLocStateBuf(b []locState) {
-	if n := len(f.pinnedLocals); cap(b) >= n && n > 0 {
+	if n := len(f.pinnedLocals); cap(b) >= n && n > 0 && len(f.lsPool) < maxRetainedLocStateBufs {
 		f.lsPool = append(f.lsPool, b[:cap(b)])
 	}
 }
