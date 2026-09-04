@@ -173,8 +173,8 @@ func TestGCSharedMultipleHeterogeneousTables(t *testing.T) {
 		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
 			providerCode, consumerCode := providerBase, consumerBase
 			if codec {
-				providerCode = roundTripCompiled(t, providerBase)
-				consumerCode = roundTripCompiled(t, consumerBase)
+				providerCode = publicArtifactRoundTrip(t, providerBase)
+				consumerCode = publicArtifactRoundTrip(t, consumerBase)
 				defer providerCode.Close()
 				defer consumerCode.Close()
 			}
@@ -320,8 +320,8 @@ func TestGCSharedTableAliasesGrowthCollectionCodecAndCloseOrder(t *testing.T) {
 		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
 			providerCode, consumerCode := providerBase, consumerBase
 			if codec {
-				providerCode = roundTripCompiled(t, providerBase)
-				consumerCode = roundTripCompiled(t, consumerBase)
+				providerCode = publicArtifactRoundTrip(t, providerBase)
+				consumerCode = publicArtifactRoundTrip(t, consumerBase)
 				defer providerCode.Close()
 				defer consumerCode.Close()
 			}

@@ -89,6 +89,13 @@ func TestExecuteRejectsWrongInvokeArguments(t *testing.T) {
 	}
 }
 
+func TestExecuteRejectsV128ResultWithoutPanicking(t *testing.T) {
+	err := execute(v128ResultModule(), wago.PluginSet{}, Options{DeferBoundsChecks: true}, []string{"program"})
+	if err == nil || !strings.Contains(err.Error(), "result 0 is v128") {
+		t.Fatalf("execute error = %v", err)
+	}
+}
+
 func TestExecuteAppliesOptimizationKnobs(t *testing.T) {
 	knob := wago.NewRuntimeConfig().OptimizationInfos()[0]
 	config, err := runtimeConfig(Options{DeferBoundsChecks: true, OptimizationKnobs: map[string]bool{knob.Name: !knob.On}})
@@ -160,6 +167,19 @@ func mainAndOtherModule() []byte {
 		3, 2, 1, 0,
 		7, 16, 2, 4, 'm', 'a', 'i', 'n', 0, 0, 5, 'o', 't', 'h', 'e', 'r', 0, 0,
 		10, 6, 1, 4, 0, 0x41, 7, 0x0b,
+	}
+}
+
+func v128ResultModule() []byte {
+	return []byte{
+		'\x00', 'a', 's', 'm', 1, 0, 0, 0,
+		1, 5, 1, 0x60, 0, 1, 0x7b,
+		3, 2, 1, 0,
+		7, 5, 1, 1, 'v', 0, 0,
+		10, 22, 1, 20, 0, 0xfd, 0x0c,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0,
+		0x0b,
 	}
 }
 

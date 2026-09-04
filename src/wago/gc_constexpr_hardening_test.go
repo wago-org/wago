@@ -139,7 +139,7 @@ func TestGCConstExprStoresFunctionReferences(t *testing.T) {
 		t.Fatalf("compile function-reference GC constants: %v", err)
 	}
 	defer compiled.Close()
-	loaded := roundTripCompiled(t, compiled)
+	loaded := publicArtifactRoundTrip(t, compiled)
 	defer loaded.Close()
 	for _, candidate := range []*Compiled{compiled, loaded} {
 		in, err := instantiateCore(candidate, InstantiateOptions{GC: GCConfig{CollectEveryAlloc: true, VerifyAfterCollect: true}})

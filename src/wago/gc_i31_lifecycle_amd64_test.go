@@ -4,7 +4,6 @@ package wago
 
 import (
 	"encoding/hex"
-	"strings"
 	"testing"
 	"unsafe"
 )
@@ -107,21 +106,41 @@ func TestStagedGCI31RemainingProductsLifecycle(t *testing.T) {
 					t.Fatalf("anyref globals=%v err=%v", got, err)
 				}
 			}
-			blob, err := marshalCompiled(c)
+			blob, err := c.MarshalBinary()
 			if err != nil {
 				t.Fatal(err)
 			}
 			t.Logf("%s product: wasm=%d code=%d codec=%d", product, len(data), len(c.code), len(blob))
-			var loaded Compiled
-			if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+			loaded, err := LoadTrustedArtifact(blob)
+			if err != nil {
 				t.Fatal(err)
 			}
 			defer loaded.Close()
-			if loaded.stagedGCI31Product() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) || (loaded.memoryDir != nil && loaded.memoryDir.gcI31TableInit != nil) {
+			if loaded.stagedGCI31Product() != stagedGCI31ProductCore || !loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
 				t.Fatalf("codec inherited i31 admission: product=%v features=%v init=%v", loaded.stagedGCI31Product(), loaded.stagedFeatures(), loaded.memoryDir.gcI31TableInit)
 			}
-			if _, err := instantiateCore(&loaded, InstantiateOptions{Imports: imports}); err == nil || !strings.Contains(err.Error(), "required feature") {
+			loadedInstance, err := instantiateCore(loaded, InstantiateOptions{Imports: imports})
+			if err != nil {
 				t.Fatalf("codec-loaded instantiate=%v", err)
+			}
+			defer loadedInstance.Close()
+			switch product {
+			case stagedGCI31ProductTable, stagedGCI31ProductAnyTable:
+				if got, err := loadedInstance.Invoke("get", I32(0)); err != nil || len(got) != 1 || got[0] != 999 {
+					t.Fatalf("codec-loaded table value=%v err=%v", got, err)
+				}
+			case stagedGCI31ProductTableGlobalInitializer:
+				if got, err := loadedInstance.Invoke("get", I32(2)); err != nil || len(got) != 1 || got[0] != 42 {
+					t.Fatalf("codec-loaded table global initializer=%v err=%v", got, err)
+				}
+			case stagedGCI31ProductGlobalInitializer:
+				if got, err := loadedInstance.Invoke("get"); err != nil || len(got) != 1 || got[0] != 42 {
+					t.Fatalf("codec-loaded global initializer=%v err=%v", got, err)
+				}
+			case stagedGCI31ProductAnyGlobal:
+				if got, err := loadedInstance.Invoke("get_globals"); err != nil || len(got) != 2 || got[0] != 1234 || got[1] != 5678 {
+					t.Fatalf("codec-loaded anyref globals=%v err=%v", got, err)
+				}
 			}
 		})
 	}

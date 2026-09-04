@@ -44,6 +44,9 @@ func (in *Instance) InvokeFromHost(ctx context.Context, caller HostModule, expor
 	if active == nil || id == 0 {
 		return nil, fmt.Errorf("wago: re-entry requires the active host caller: %w", ErrPermissionDenied)
 	}
+	if in == nil {
+		return nil, fmt.Errorf("wago: re-entry target instance is nil")
+	}
 	if active.guestStorageBorrowed() {
 		return nil, fmt.Errorf("wago: re-entry is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}

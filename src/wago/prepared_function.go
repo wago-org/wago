@@ -120,7 +120,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		resultWide:          wide,
 	}
-	if scalarFast && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
+	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
 		fn.privateFast = true
 		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
 		if (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {

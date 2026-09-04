@@ -339,6 +339,7 @@ const (
 	TrapCastFailure                            = impl.TrapCastFailure
 	TrapDivOverflow                            = impl.TrapDivOverflow
 	TrapDivZero                                = impl.TrapDivZero
+	TrapExpectedSharedMemory                   = impl.TrapExpectedSharedMemory
 	TrapIndirectOutOfBounds                    = impl.TrapIndirectOutOfBounds
 	TrapIndirectWrongSig                       = impl.TrapIndirectWrongSig
 	TrapInterrupted                            = impl.TrapInterrupted

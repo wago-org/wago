@@ -56,8 +56,11 @@ type stagedGCStructDelta struct {
 func compileStagedGCStruct(data []byte) (*Compiled, error) {
 	cfg := NewRuntimeConfig()
 	features := cfg.frontendFeatures()
+	features.ReferenceTypes = true
 	features.TypedFunctionReferences = true
 	features.GCStructProducts = true
+	features.GCI31Products = true
+	features.NullReferenceProducts = true
 	return compileWithFrontendFeatures(cfg, data, features)
 }
 

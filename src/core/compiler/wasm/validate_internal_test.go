@@ -1239,7 +1239,7 @@ func TestValidatorCoverageProposalNegativeBranches(t *testing.T) {
 		for _, op := range []uint32{0, 72, 73, 74, 75, 76, 77, 78} {
 			_ = atomicCmpxchgEffect(op)
 		}
-		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Limits: Limits{Min: 1}}}}, nil), Instruction{Kind: InstrI32AtomicLoad}, ErrInvalidSharedMemory)
+		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Limits: Limits{Min: 1}}}}, nil), Instruction{Kind: InstrI32AtomicLoad}, ErrInvalidAlignment)
 		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: 1, HasMax: true}}}}, nil), Instruction{Kind: InstrI32AtomicLoad, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidator(&Module{Memories: []MemType{{Shared: true, Limits: Limits{Min: 1, Max: 1, HasMax: true}}}}, nil), Instruction{Kind: InstrInvalid}, ErrUnsupportedValidationOpcode)
 	})
@@ -1572,8 +1572,8 @@ func TestValidatorCoverageLastPassBranches(t *testing.T) {
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64, I32, I64), Instruction{Kind: InstrMemoryAtomicWait32, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I64), Instruction{Kind: InstrI32AtomicStore, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
 		expectStepErr(t, coverageFuncValidatorWithStack(shared, I32), Instruction{Kind: InstrAtomicCmpxchg, ext: &instrExt{MemArg: MemArg{Align: 2}}}, ErrTypeMismatch)
-		if _, err := coverageFuncValidator(shared, nil).checkSharedMemArg(MemArg{Mem: ptr(MemIdx(0))}, 0); err != nil {
-			t.Fatalf("explicit memory shared arg: %v", err)
+		if _, err := coverageFuncValidator(shared, nil).checkAtomicMemArg(MemArg{Mem: ptr(MemIdx(0))}, 0); err != nil {
+			t.Fatalf("explicit memory atomic arg: %v", err)
 		}
 		gm := &Module{Types: []RecType{arrayType(field(I32, Var)), structType([]FieldType{field(I32, Var)}, TypeMetadata{}), ft(nil, nil)}, DataCount: ptr(uint32(1)), Data: []Data{{Mode: DataMode{Kind: DataPassive}}}, Elements: []Elem{{Mode: ElemMode{Kind: ElemPassive}, Kind: ElemKind{Kind: ElemFuncExprs, Exprs: []Expr{{Instrs: []Instruction{{Kind: InstrRefNull, ext: &instrExt{RefType: AbsRef(HeapFunc)}}}}}}}}}
 		if err := coverageFuncValidatorWithStack(gm, I32).step(&Instruction{Kind: InstrStructNew, Index: 1}); err != nil {

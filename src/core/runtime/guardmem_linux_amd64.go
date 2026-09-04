@@ -37,6 +37,9 @@ const wasmPageBytes = 1 << 16
 // compiled in signals-based bounds mode (the amd64 backend's guard mode, which
 // elides the inline bounds checks and relies on the guard-page fault instead).
 func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
+	if err := validateGuardedJobMemorySizes(linBytes, maxBytes); err != nil {
+		return nil, err
+	}
 	// Place linMem on a page boundary (basedata sits in the page just below it) so
 	// that, because wasm linear memory is always a multiple of the 64 KiB wasm
 	// page, linMem+linBytes lands exactly on a guard page. An access at offset
@@ -112,6 +115,9 @@ func init() { guardReleaseHook = releaseGuardedJobMemory }
 // cached reservation can back any request — only the committed initial region and
 // the basedata size caches differ, which rearmGuarded installs.
 func AcquireJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
+	if err := validateGuardedJobMemorySizes(linBytes, maxBytes); err != nil {
+		return nil, err
+	}
 	jobMemoryGuardedCache.Lock()
 	j := jobMemoryGuardedCache.j
 	jobMemoryGuardedCache.j = nil

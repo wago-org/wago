@@ -55,6 +55,59 @@ func TestVersionManagerState(t *testing.T) {
 	}
 }
 
+func TestVersionStorageRejectsPathTraversal(t *testing.T) {
+	root := t.TempDir()
+	d := wagopaths.Dirs{
+		Config:   filepath.Join(root, "config"),
+		Data:     filepath.Join(root, "data"),
+		Versions: filepath.Join(root, "data", "versions"),
+		Cache:    filepath.Join(root, "cache"),
+	}
+	outside := filepath.Join(root, "data", "outside")
+	if err := os.MkdirAll(filepath.Join(outside, "standard", "normal"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(outside, "keep")
+	if err := os.WriteFile(marker, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "standard", "normal", "wago-runtime"), []byte("outside"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	unsafeNames := []string{
+		"../outside", ".", "..", "/outside", `C:\outside`, "nested/version", `nested\version`,
+		" version", "version ", "version\n", "version:", "version*", "version?", `version"`,
+		"version<", "version>", "version|", "version.", "CON", "con.txt", "AUX", "NUL",
+		"COM1", "com9.release", "LPT1", "lpt9.release",
+	}
+	for _, name := range unsafeNames {
+		if _, _, _, ok := installedRuntime(d, name, wagopaths.ProfileStandard, wagopaths.BuildNormal); ok {
+			t.Errorf("installedRuntime accepted unsafe version %q", name)
+		}
+		if err := setActiveInstallation(d, name, wagopaths.ProfileStandard, wagopaths.BuildNormal); err == nil {
+			t.Errorf("setActiveInstallation accepted unsafe version %q", name)
+		}
+	}
+	if _, err := os.Stat(d.Config); !os.IsNotExist(err) {
+		t.Fatalf("invalid active version mutated config directory: %v", err)
+	}
+	if err := removeInstalledVersion(d, "../outside"); err == nil {
+		t.Fatal("path-traversing uninstall succeeded")
+	}
+	if data, err := os.ReadFile(marker); err != nil || string(data) != "keep" {
+		t.Fatalf("path-traversing uninstall changed outside data: %q, %v", data, err)
+	}
+	for _, name := range []string{
+		"v1.2.3", "v1.2.3-rc.1+build", "canary", "nightly-20260712-deadbee",
+		"nightly@0123456789abcdef0123456789abcdef01234567", "release_candidate",
+	} {
+		if err := validateVersionStorageName(name); err != nil {
+			t.Errorf("valid version %q rejected: %v", name, err)
+		}
+	}
+}
+
 func TestProfileInstallationState(t *testing.T) {
 	root := t.TempDir()
 	d := wagopaths.Dirs{

@@ -369,9 +369,12 @@ func (v *funcValidator) step(in *Instruction) error {
 		// non-null and remains a subtype of funcref for Release 2 consumers.
 		v.push(RefVal(Ref(false, IndexedHeap(typeIdx), false)))
 	case InstrRefIsNull:
-		_, err := v.pop()
+		x, err := v.pop()
 		if err != nil {
 			return err
+		}
+		if !x.unknown && x.t.Kind() != ValRef {
+			return v.verr(ErrTypeMismatch, "ref.is_null")
 		}
 		v.push(I32)
 	case InstrRefEq:
@@ -784,19 +787,10 @@ func (v *funcValidator) checkMemArg(ma MemArg, natural uint32) (ValType, error) 
 	return I32, nil
 }
 
-func (v *funcValidator) checkSharedMemArg(ma MemArg, natural uint32) (ValType, error) {
+func (v *funcValidator) checkAtomicMemArg(ma MemArg, natural uint32) (ValType, error) {
 	addr, err := v.checkMemArg(ma, natural)
 	if err != nil {
 		return ValType{}, err
-	}
-	idx := uint32(0)
-	if ma.Mem != nil {
-		idx = uint32(*ma.Mem)
-	}
-	flags, _ := v.memoryProperties(idx) // existence was checked by checkMemArg above.
-	if flags&externTypeShared == 0 {
-		// Atomic memory instructions are valid only for shared memories.
-		return ValType{}, v.verr(ErrInvalidSharedMemory, "atomic memory instruction")
 	}
 	if ma.Align != natural {
 		return ValType{}, v.verr(ErrInvalidAlignment, "atomic memory instruction requires natural alignment")

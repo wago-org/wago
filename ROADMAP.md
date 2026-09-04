@@ -324,9 +324,10 @@ current optimization priorities. The Core 3.0 implementation ledger is
 
 - [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1/SSE4.2 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
 - [x] [Threads & atomics](docs/threads-atomics-plan.md) — bounded experimental
-  product on Linux/macOS amd64/arm64 with explicit bounds, one exact-max imported
-  shared memory32, true distinct-instance native overlap, the full classic atomic
-  matrix, and bounded wait/notify. Broader shared-everything threads, growth,
+  product on Linux/macOS amd64/arm64 with explicit bounds and one memory32;
+  shared memory must be an exact-max import, while unshared memory can be local
+  or imported. It includes true distinct-instance native overlap, the full classic
+  atomic matrix, and bounded wait/notify. Broader shared-everything threads, growth,
   memory64/multi-memory, signal bounds, mutable global imports, GC/EH, and
   snapshots remain deliberately outside this product. Same-instance entry is
   accepted but serialized around the instance's reusable invocation state.
