@@ -158,6 +158,18 @@ func TestAMD64StructuredScalarResidencySelectsHotIntegerLocals(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredSIMDHighRegistersRespectStackPressure(t *testing.T) {
+	if !amd64StructuredSIMDHighRegisterWorthwhile(5, 0, 10) {
+		t.Fatal("the base six resident registers must remain available")
+	}
+	if amd64StructuredSIMDHighRegisterWorthwhile(6, 47, 6) {
+		t.Fatal("a low-reuse value displaced a register needed by the vector stack")
+	}
+	if !amd64StructuredSIMDHighRegisterWorthwhile(6, 80, 10) {
+		t.Fatal("a high-reuse value did not earn an additional resident register")
+	}
+}
+
 func TestAMD64RailMachSpillForwardingRetainsLiveHomes(t *testing.T) {
 	allocation := railmach.GreedyAllocation{Allocation: railmach.Allocation{Intervals: []railmach.LiveInterval{
 		{Reg: 1, Start: 3, End: 14, Bank: railmach.BankFPR},

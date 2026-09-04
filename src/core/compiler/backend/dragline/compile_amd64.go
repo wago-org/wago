@@ -3727,6 +3727,13 @@ func amd64PinHotStructuredScalarLocals(locals []wasm.ValType, uses []uint32, loc
 	}
 }
 
+func amd64StructuredSIMDHighRegisterWorthwhile(slot int, score uint64, maxStack uint32) bool {
+	if slot < 6 {
+		return true
+	}
+	return score >= uint64(max(maxStack, 1))*8
+}
+
 func amd64StructuredLocalsPinned(localPinned []bool, locals ...uint32) bool {
 	for _, local := range locals {
 		if int(local) >= len(localPinned) || !localPinned[local] {
@@ -3835,6 +3842,9 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 				constantScore = uint64(simdConstants[bestConstant].uses - 1)
 			}
 			if localScore == 0 && constantScore == 0 {
+				break
+			}
+			if !amd64StructuredSIMDHighRegisterWorthwhile(slot, max(localScore, constantScore), sf.MaxStack) {
 				break
 			}
 			reg := amd64.Reg(8 + slot)
