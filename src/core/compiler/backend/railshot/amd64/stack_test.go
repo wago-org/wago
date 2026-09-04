@@ -7,6 +7,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -87,63 +88,71 @@ func TestSubDefaultHintPreservesGeometricGrowth(t *testing.T) {
 	}
 }
 
-func TestStackFinishFunctionRatchetsUnusedOverflow(t *testing.T) {
+func TestStackFinishFunctionRetainsBoundedReusableOverflow(t *testing.T) {
 	const nodes = 2_000
 	s := newStackWithCap(minStackArenaCap)
 	for i := 1; i < nodes; i++ {
 		s.alloc()
 	}
 	wantCapacity := retainedStackArenaCapacity(s)
+	if got := uint64(wantCapacity) * uint64(unsafe.Sizeof(elem{})); got >= shared.MaxRetainedStackArenaBytes {
+		t.Fatalf("ordinary backing = %d bytes, want below retention limit", got)
+	}
 	if got := s.finishFunction(); got != 0 {
-		t.Fatalf("first giant discarded %d bytes, want 0", got)
+		t.Fatalf("ordinary function discarded %d bytes, want 0", got)
 	}
 	overflow := &s.chunks[1][0]
+
+	s.reset()
+	for i := 1; i < 4; i++ {
+		s.alloc()
+	}
+	if got := s.finishFunction(); got != 0 {
+		t.Fatalf("tiny successor discarded %d bytes within budget", got)
+	}
 
 	s.reset()
 	for i := 1; i < nodes; i++ {
 		s.alloc()
 	}
 	if got := &s.chunks[1][0]; got != overflow {
-		t.Fatal("repeated giant did not reuse overflow backing")
+		t.Fatal("recurring ordinary demand did not reuse overflow backing")
 	}
 	if got := s.finishFunction(); got != 0 {
-		t.Fatalf("repeated giant discarded %d bytes, want 0", got)
+		t.Fatalf("recurring ordinary function discarded %d bytes, want 0", got)
 	}
 
+	giantNodes := int(shared.MaxRetainedStackArenaBytes/uint64(unsafe.Sizeof(elem{}))) + maxStackChunkCap
 	s.reset()
-	for i := 1; i < 4; i++ {
+	for i := 1; i < giantNodes; i++ {
 		s.alloc()
 	}
 	oldChunks := s.chunks
-	overflowCapacity := retainedStackArenaCapacity(s) - cap(s.chunks[0])
-	wantDiscarded := uint64(overflowCapacity) * uint64(unsafe.Sizeof(elem{}))
-	if got := s.finishFunction(); got != 0 {
-		t.Fatalf("first tiny successor discarded %d bytes, want hysteresis", got)
+	oldCapacity := retainedStackArenaCapacity(s)
+	keepCapacity := 0
+	keep := 0
+	for i := range s.chunks {
+		chunkBytes := uint64(cap(s.chunks[i])) * uint64(unsafe.Sizeof(elem{}))
+		if i != 0 && uint64(keepCapacity)*uint64(unsafe.Sizeof(elem{}))+chunkBytes > shared.MaxRetainedStackArenaBytes {
+			break
+		}
+		keepCapacity += cap(s.chunks[i])
+		keep = i + 1
 	}
-	s.reset()
-	for i := 1; i < 4; i++ {
-		s.alloc()
-	}
+	wantDiscarded := uint64(oldCapacity-keepCapacity) * uint64(unsafe.Sizeof(elem{}))
 	if got := s.finishFunction(); got != wantDiscarded {
-		t.Fatalf("tiny successor discarded %d bytes, want %d", got, wantDiscarded)
+		t.Fatalf("giant overflow discarded %d bytes, want %d", got, wantDiscarded)
 	}
-	if len(s.chunks) != 1 {
-		t.Fatalf("retained chunks = %d, want 1", len(s.chunks))
+	if len(s.chunks) != keep {
+		t.Fatalf("retained chunks = %d, want %d", len(s.chunks), keep)
 	}
-	for i := 1; i < len(oldChunks); i++ {
+	for i := keep; i < len(oldChunks); i++ {
 		if oldChunks[i] != nil {
 			t.Fatalf("discarded chunk %d still has a slice header", i)
 		}
 	}
 	if stale := s.chunks[0][:cap(s.chunks[0])][1]; stale.prev != nil || stale.next != nil || stale.arg0 != nil || stale.arg1 != nil {
 		t.Fatal("retained backing still points at prior-function nodes")
-	}
-
-	for i := 1; i < nodes; i++ {
-		s.alloc()
-	}
-	if got := retainedStackArenaCapacity(s); got != wantCapacity {
-		t.Fatalf("regrown capacity = %d, want %d", got, wantCapacity)
 	}
 }
 
@@ -171,23 +180,14 @@ func TestScratchClearNodeReferences(t *testing.T) {
 }
 
 func TestScratchNodeResourceStats(t *testing.T) {
-	const nodes = 2_000
+	nodes := int(shared.MaxRetainedStackArenaBytes/uint64(unsafe.Sizeof(elem{}))) + maxStackChunkCap
 	sc := newScratchWithStackCap(minStackArenaCap)
 	for i := 1; i < nodes; i++ {
 		sc.stack.alloc()
 	}
 	peakCapacity := retainedStackArenaCapacity(sc.stack)
 	sc.finishStackFunction()
-	sc.stack.reset()
-	for i := 1; i < 4; i++ {
-		sc.stack.alloc()
-	}
-	sc.finishStackFunction()
-	sc.stack.reset()
-	for i := 1; i < 4; i++ {
-		sc.stack.alloc()
-	}
-	sc.finishStackFunction()
+	retainedCapacity := retainedStackArenaCapacity(sc.stack)
 
 	elemBytes := uint64(unsafe.Sizeof(elem{}))
 	ms := &ModuleStats{}
@@ -198,10 +198,10 @@ func TestScratchNodeResourceStats(t *testing.T) {
 	if got, want := ms.Compile.NodeScratchPeak, uint64(peakCapacity)*elemBytes; got != want {
 		t.Fatalf("peak node scratch = %d, want %d", got, want)
 	}
-	if got, want := ms.Compile.NodeScratchRetained, uint64(minStackArenaCap)*elemBytes; got != want {
+	if got, want := ms.Compile.NodeScratchRetained, uint64(retainedCapacity)*elemBytes; got != want {
 		t.Fatalf("retained node scratch = %d, want %d", got, want)
 	}
-	if got, want := ms.Compile.NodeScratchDiscarded, uint64(peakCapacity-minStackArenaCap)*elemBytes; got != want {
+	if got, want := ms.Compile.NodeScratchDiscarded, uint64(peakCapacity-retainedCapacity)*elemBytes; got != want {
 		t.Fatalf("discarded node scratch = %d, want %d", got, want)
 	}
 }

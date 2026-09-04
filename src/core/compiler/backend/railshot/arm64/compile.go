@@ -843,7 +843,7 @@ func (sc *scratch) reset() {
 }
 
 // clearNodeReferences severs scratch-owned links into operand-arena chunks before
-// finishFunction drops unused chunk headers. Pointer-bearing slice backings are
+// finishFunction drops over-budget chunk headers. Pointer-bearing slice backings are
 // scanned to capacity by Go, so clearing only their current length would retain
 // nodes from an earlier giant function.
 func (sc *scratch) clearNodeReferences() {
@@ -858,7 +858,7 @@ func (sc *scratch) finishStackFunction() {
 	if reserved > sc.nodeScratchPeak {
 		sc.nodeScratchPeak = reserved
 	}
-	if !sc.stack.hasUnusedChunks() {
+	if reserved <= shared.MaxRetainedStackArenaBytes {
 		return
 	}
 	sc.clearNodeReferences()
