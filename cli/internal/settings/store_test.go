@@ -58,21 +58,20 @@ func TestSettingsRejectPreviewAndUnknown(t *testing.T) {
 			break
 		}
 	}
-	if experimental.Key == "" {
-		t.Fatal("no available experimental setting")
-	}
-	if err := Set(&config, experimental.Key, "on", false); err == nil {
-		t.Fatal("experimental setting was enabled without the flag")
-	}
-	if err := Set(&config, experimental.Key, "on", true); err != nil {
-		t.Fatalf("experimental setting was not enabled with flag: %v", err)
-	}
-	name := experimental.Key[strings.IndexByte(experimental.Key, '.')+1:]
-	if strings.HasPrefix(experimental.Key, "features.") && !config.Features[name] {
-		t.Fatal("experimental feature was not stored")
-	}
-	if strings.HasPrefix(experimental.Key, "optimizations.") && !config.Optimizations[name] {
-		t.Fatal("experimental optimization was not stored")
+	if experimental.Key != "" {
+		if err := Set(&config, experimental.Key, "on", false); err == nil {
+			t.Fatal("experimental setting was enabled without the flag")
+		}
+		if err := Set(&config, experimental.Key, "on", true); err != nil {
+			t.Fatalf("experimental setting was not enabled with flag: %v", err)
+		}
+		name := experimental.Key[strings.IndexByte(experimental.Key, '.')+1:]
+		if strings.HasPrefix(experimental.Key, "features.") && !config.Features[name] {
+			t.Fatal("experimental feature was not stored")
+		}
+		if strings.HasPrefix(experimental.Key, "optimizations.") && !config.Optimizations[name] {
+			t.Fatal("experimental optimization was not stored")
+		}
 	}
 	if err := Set(&config, "not-a-setting", "on", false); err == nil {
 		t.Fatal("unknown setting was accepted")

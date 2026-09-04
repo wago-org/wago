@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -218,6 +219,9 @@ func TestExtractOpensArchiveOnce(t *testing.T) {
 }
 
 func TestExtractUsesOpenedArchiveAfterPathReplacement(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not permit replacing an open archive path")
+	}
 	archive := writeArchive(t, []zipEntry{{name: "root/go.mod", data: "module original.example/test\n"}})
 	replacement := writeArchive(t, []zipEntry{{name: "replacement/README.md", data: "wrong archive\n"}})
 	target := filepath.Join(t.TempDir(), "out")

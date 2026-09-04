@@ -656,11 +656,16 @@ func TestMeasuredLowValueOptimizationsAreRemoved(t *testing.T) {
 var defaultRuntimeConfigAllocationSink *RuntimeConfig
 
 func TestDefaultRuntimeConfigAllocationBudget(t *testing.T) {
+	maxConfigAllocs := 1.0
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		// Go's Windows/ARM64 environment lookup currently adds two allocations.
+		maxConfigAllocs = 3
+	}
 	configAllocs := testing.AllocsPerRun(1000, func() {
 		defaultRuntimeConfigAllocationSink = NewRuntimeConfig()
 	})
-	if configAllocs > 1 {
-		t.Fatalf("NewRuntimeConfig allocations = %.0f, want <= 1", configAllocs)
+	if configAllocs > maxConfigAllocs {
+		t.Fatalf("NewRuntimeConfig allocations = %.0f, want <= %.0f", configAllocs, maxConfigAllocs)
 	}
 
 	module := benchAddOneModule()
