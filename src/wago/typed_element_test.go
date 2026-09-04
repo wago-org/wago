@@ -274,7 +274,7 @@ func TestTypedElementMetadataStaysBoundedAndRoundTripsCodec(t *testing.T) {
 	if passive.NeedsFuncRefDescs {
 		t.Fatal("externref-only element metadata requested funcref descriptors")
 	}
-	_ = roundTripCompiled(t, active)
+	_ = publicArtifactRoundTrip(t, active)
 	if unsafe.Sizeof(Compiled{}) != 784 || unsafe.Sizeof(Table{}) != 64 || unsafe.Sizeof(Global{}) != 40 || unsafe.Sizeof(referenceStore{}) != 120 {
 		t.Fatalf("layout changed: Compiled=%d Instance=%d Table=%d Global=%d referenceStore=%d", unsafe.Sizeof(Compiled{}), unsafe.Sizeof(Instance{}), unsafe.Sizeof(Table{}), unsafe.Sizeof(Global{}), unsafe.Sizeof(referenceStore{}))
 	}

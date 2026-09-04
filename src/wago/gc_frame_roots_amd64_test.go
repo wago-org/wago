@@ -141,7 +141,7 @@ func TestGCEHNativeFrameRoots(t *testing.T) {
 	if compiled.genericGCFrameRoots() == nil {
 		t.Fatal("EH module lost native collection admission")
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -319,7 +319,7 @@ func TestGCTableRootsInsideInvocation(t *testing.T) {
 	if compiled.genericGCFrameRoots() == nil {
 		t.Fatal("collector table module lost native collection admission")
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -374,7 +374,7 @@ func TestGCIndirectNativeFrameRoots(t *testing.T) {
 	if plan == nil || len(plan.callsites) != 1 || len(plan.callsites[0].offsets) != 1 {
 		t.Fatalf("indirect native root map = %+v", plan)
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -531,7 +531,7 @@ func TestGCHostReentryNativeFrameRoots(t *testing.T) {
 		{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, ForceMajorEveryMinor: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096},
 		{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true},
 	}
-	reloaded := roundTripCompiled(t, compiled)
+	reloaded := publicArtifactRoundTrip(t, compiled)
 	defer reloaded.Close()
 	for _, candidate := range []*Compiled{compiled, reloaded} {
 		for _, cfg := range profiles {
@@ -601,7 +601,7 @@ func TestGCMultiFunctionNativeFrameRoots(t *testing.T) {
 		t.Fatalf("multi-function native root map = %+v", plan)
 	}
 	cfg := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -720,7 +720,7 @@ func TestGCRecursiveNativeFrameRoots(t *testing.T) {
 			}
 		})
 	}
-	loaded := roundTripCompiled(t, compiled)
+	loaded := publicArtifactRoundTrip(t, compiled)
 	defer loaded.Close()
 	if roots := loaded.genericGCFrameRoots(); roots == nil || len(roots.callsites) != 1 {
 		t.Fatalf("reloaded recursive root map = %+v", roots)
@@ -1015,7 +1015,7 @@ func TestGCSingleNativeFrameRootWidths(t *testing.T) {
 			if plan == nil || len(plan.safepoints) != 1 || len(plan.safepoints[0].offsets) != int(roots) || plan.safepoints[0].offsets[0] != 16 || plan.safepoints[0].offsets[roots-1] != wantLast {
 				t.Fatalf("%d-root plan = %+v", roots, plan)
 			}
-			loaded := roundTripCompiled(t, compiled)
+			loaded := publicArtifactRoundTrip(t, compiled)
 			defer loaded.Close()
 			gcCfg := GCConfig{Profile: GCProfileThroughput, StressNurseryBytes: 64, CollectEveryAlloc: true, VerifyAfterCollect: true, ThroughputHeapBytes: 4096, ThroughputPageBytes: 4096}
 			for _, candidate := range []*Compiled{compiled, loaded} {
@@ -1039,7 +1039,7 @@ func TestGCRepeatedFrameRootMapsShareStorageAfterCodec(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -1166,7 +1166,7 @@ func TestGCLocalStartUsesExactNativeFrameRoots(t *testing.T) {
 	if plan := compiled.genericGCFrameRoots(); plan == nil || len(plan.safepoints) != 1 {
 		t.Fatalf("local-start root map = %+v", plan)
 	}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -1194,7 +1194,7 @@ func TestGCWideCallerNativeFrameRootsRewrite(t *testing.T) {
 		t.Fatalf("wide caller root map = %+v", plan)
 	}
 	cfg := GCConfig{Profile: GCProfileTiny, TinyHeapBytes: 64, TinyBlockBytes: 32, TinyCollectEveryAlloc: true, TinyStepEveryAlloc: true, VerifyAfterCollect: true}
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}
@@ -1368,7 +1368,7 @@ func TestGCSingleNativeFrameRootsPersistThroughCodec(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	loaded := roundTripCompiled(t, compiled)
+	loaded := publicArtifactRoundTrip(t, compiled)
 	defer loaded.Close()
 	if loaded.genericGCFrameRoots() == nil {
 		t.Fatal("codec reload lost validated native frame-root admission")

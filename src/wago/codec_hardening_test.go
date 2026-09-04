@@ -326,7 +326,7 @@ func TestCompiledCodecAcceptsStructuralReferenceGlobalsAndRejectsLiveBits(t *tes
 			Globals:       []GlobalDef{{Type: ValExternRef}},
 		},
 	} {
-		_ = roundTripCompiled(t, c)
+		_ = publicArtifactRoundTrip(t, c)
 	}
 	if _, err := (&Compiled{Globals: []GlobalDef{{Type: ValExternRef, Bits: 0x1234}}}).MarshalBinary(); err == nil || !strings.Contains(err.Error(), "non-null externref") {
 		t.Fatalf("MarshalBinary live externref error = %v, want fail-closed rejection", err)

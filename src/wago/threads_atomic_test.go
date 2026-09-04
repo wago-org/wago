@@ -985,7 +985,7 @@ func TestThreadsAtomicWaitHelperAdmissionSurvivesArtifactRoundTrip(t *testing.T)
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	loaded := roundTripCompiled(t, compiled)
+	loaded := publicArtifactRoundTrip(t, compiled)
 	if loaded != compiled {
 		defer loaded.Close()
 	}

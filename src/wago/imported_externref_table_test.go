@@ -275,7 +275,7 @@ func TestImportedExternrefTablePersistenceAndFootprintBoundaries(t *testing.T) {
 		t.Fatalf("Compile persistence fixture: %v", err)
 	}
 	defer compiled.Close()
-	_ = roundTripCompiled(t, compiled)
+	_ = publicArtifactRoundTrip(t, compiled)
 	if got := unsafe.Sizeof(Table{}); got != 64 {
 		t.Fatalf("Table size = %d, want 64", got)
 	}

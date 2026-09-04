@@ -116,12 +116,12 @@ func TestCompiledCodecRejectsLiveAndMalformedReferenceMetadata(t *testing.T) {
 
 func TestCompiledCodecRequiredFeatureBitsAreExactAndFailClosed(t *testing.T) {
 	fixture := structuralReferenceCodecFixture()
-	loaded := roundTripCompiled(t, fixture)
+	loaded := publicArtifactRoundTrip(t, fixture)
 	want := CoreFeatureMutableGlobal | CoreFeatureMultiValue | CoreFeatureBulkMemoryOperations | CoreFeatureReferenceTypes
 	if got := CoreFeatures(loaded.requiredFeatures); got != want {
 		t.Fatalf("required features = %s, want %s", got, want)
 	}
-	if got := CoreFeatures(roundTripCompiled(t, &Compiled{}).requiredFeatures); got != 0 {
+	if got := CoreFeatures(publicArtifactRoundTrip(t, &Compiled{}).requiredFeatures); got != 0 {
 		t.Fatalf("scalar required features = %s, want none", got)
 	}
 
@@ -183,7 +183,7 @@ func TestCompiledCodecCompileRecordsUsedFeatureFamilies(t *testing.T) {
 			if got := CoreFeatures(compiled.requiredFeatures); got != tc.want {
 				t.Fatalf("compiled required features = %s, want %s", got, tc.want)
 			}
-			loaded := roundTripCompiled(t, compiled)
+			loaded := publicArtifactRoundTrip(t, compiled)
 			if got := CoreFeatures(loaded.requiredFeatures); got != tc.want {
 				t.Fatalf("loaded required features = %s, want %s", got, tc.want)
 			}
