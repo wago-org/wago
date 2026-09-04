@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -4088,6 +4089,10 @@ func (c *Compiled) ReadFrom(r io.Reader) (int64, error) {
 // It may replace receiver state before instantiation; replacement is rejected
 // while instances of the receiver are live.
 func (c *Compiled) ReadFromWithLimits(r io.Reader, limits ArtifactLimits) (int64, error) {
+	return c.readFromWithLimits(r, limits, -1)
+}
+
+func (c *Compiled) readFromWithLimits(r io.Reader, limits ArtifactLimits, exactBytes int64) (int64, error) {
 	if c == nil {
 		return 0, errors.New("wago: compiled module is nil")
 	}
@@ -4096,6 +4101,9 @@ func (c *Compiled) ReadFromWithLimits(r io.Reader, limits ArtifactLimits) (int64
 		return n, err
 	}
 	defer image.Close()
+	if exactBytes >= 0 && n != exactBytes {
+		return n, fmt.Errorf("trailing %d byte(s) after compiled sections", exactBytes-n)
+	}
 	if err := finishDecodedCompiled(&decoded); err != nil {
 		return n, err
 	}
@@ -4125,14 +4133,8 @@ func (c *Compiled) UnmarshalBinary(data []byte) error {
 	if data[4] != wagoVersion {
 		return fmt.Errorf("wago module version %d unsupported (want %d)", data[4], wagoVersion)
 	}
-	var decoded Compiled
-	if err := unmarshalCompiled(&decoded, data[5:]); err != nil {
-		return err
-	}
-	if err := finishDecodedCompiled(&decoded); err != nil {
-		return err
-	}
-	return c.replaceDecoded(decoded)
+	_, err := c.readFromWithLimits(bytes.NewReader(data), DefaultArtifactLimits(), int64(len(data)))
+	return err
 }
 
 func finishDecodedCompiled(decoded *Compiled) error {
