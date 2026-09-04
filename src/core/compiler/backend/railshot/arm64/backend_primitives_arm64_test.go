@@ -48,9 +48,9 @@ func TestBackendPrimitiveHelpers(t *testing.T) {
 	if got := zeroStorage(mtI64); got.kind != stConst || got.typ != mtI64 || got.cval != 0 {
 		t.Fatalf("zero storage = %#v", got)
 	}
-	f := &fn{sc: &scratch{loopPins: []loopPin{{local: 0, reg: X12}}, loopPinOwner: 1}, locals: []localDef{{reg: X2}, {reg: Reg(3), isFloat: true}}}
-	if reg, isFloat, ok := f.pinReg(0); !ok || reg != X12 || isFloat {
-		t.Fatalf("loop pin = %v, %v, %v", reg, isFloat, ok)
+	f := &fn{locals: []localDef{{reg: X2}, {reg: Reg(3), isFloat: true}}}
+	if reg, isFloat, ok := f.pinReg(0); !ok || reg != X2 || isFloat {
+		t.Fatalf("integer pin = %v, %v, %v", reg, isFloat, ok)
 	}
 	if reg, isFloat, ok := f.pinReg(1); !ok || reg != Reg(3) || !isFloat {
 		t.Fatalf("float pin = %v, %v, %v", reg, isFloat, ok)
@@ -105,59 +105,6 @@ func TestCrossInstanceAndMixedRegisterCallLowering(t *testing.T) {
 	registerArgs.emitMixedRegisterCall(5, twoIntResults)
 	if registerArgs.depth() != 2 || len(registerArgs.relocs) != 1 || len(registerArgs.a.B) == 0 {
 		t.Fatalf("mixed register-arg result stack/code = depth %d, relocs %d, code %d", registerArgs.depth(), len(registerArgs.relocs), len(registerArgs.a.B))
-	}
-}
-
-func TestLoopRegionPinLifecycle(t *testing.T) {
-	saved := loopRegionPinsEnabled
-	loopRegionPinsEnabled = true
-	t.Cleanup(func() { loopRegionPinsEnabled = saved })
-	f := &fn{
-		a:         &a64.Asm{},
-		localType: []machineType{mtI32, mtI64, mtF32, mtI32},
-		localSlot: []uint32{0, 1, 2, 3},
-		locals: []localDef{
-			{reg: regNone, state: lsConstZero},
-			{reg: regNone, state: lsMem},
-			{reg: regNone, isFloat: true, state: lsMem},
-			{reg: X5, state: lsMem},
-		},
-		nLocals: 4,
-	}
-	fr := &ctrlFrame{kind: cfLoop}
-	f.loopSetLocals = []uint16{0, 1, 2, 3}
-	merge := f.ensureCtrlMerge(fr)
-	merge.setLoopSet(0, 4)
-	f.activateLoopPins(fr)
-	pins := f.frameLoopPins(fr)
-	if len(pins) != 2 || pins[0].local != 0 || pins[1].local != 1 ||
-		!f.pinnedLocalMask.has(X12) || !f.pinnedLocalMask.has(X13) || len(f.a.B) == 0 {
-		t.Fatalf("activated loop pins = %#v, mask = %#v, code = %d", pins, f.pinnedLocalMask, len(f.a.B))
-	}
-	if f.locals[0].state != lsReg || f.locals[1].state != lsStackReg {
-		t.Fatalf("pin states = %v, %v", f.locals[0].state, f.locals[1].state)
-	}
-	if got := f.frameLoopPins(&ctrlFrame{mergeIndex: fr.mergeIndex + 1}); len(got) != 0 {
-		t.Fatalf("unrelated frame sees loop pins = %#v", got)
-	}
-	f.ctrl = []ctrlFrame{{}, *fr}
-	before := len(f.a.B)
-	f.storeLoopPinsLeaving(-1)
-	if len(f.a.B) <= before {
-		t.Fatal("leaving loop did not store loop pins")
-	}
-	f.releaseLoopPins(pins)
-	if f.pinnedLocalMask.has(X12) || f.pinnedLocalMask.has(X13) || f.locals[0].state != lsMem || f.locals[1].state != lsMem {
-		t.Fatalf("released loop pins left mask/state = %#v, %v, %v", f.pinnedLocalMask, f.locals[0].state, f.locals[1].state)
-	}
-
-	blocked := &ctrlFrame{kind: cfLoop, flags: ctrlLoopHasCall}
-	f.loopSetLocals = append(f.loopSetLocals, 0)
-	merge = f.ensureCtrlMerge(blocked)
-	merge.setLoopSet(4, 1)
-	f.activateLoopPins(blocked)
-	if len(f.frameLoopPins(blocked)) != 0 {
-		t.Fatal("call-containing loop received region pins")
 	}
 }
 

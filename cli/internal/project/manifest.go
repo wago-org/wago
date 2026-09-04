@@ -127,7 +127,7 @@ var manifestOptimizationNames = stringSet(
 	"dead-gc-new", "entry-arg-pins", "entry-init-elision", "ext-fp-pins",
 	"frame-elide", "frame-elide-reghomed", "gc-native-alloc",
 	"immutable-table", "immutable-table-type", "inline",
-	"inline-callfree", "interval-region-pins", "leaf-scratch-pins", "loop-region-pins",
+	"inline-callfree", "interval-region-pins", "leaf-scratch-pins",
 	"magic-div",
 	"mul-add-fuse", "multi-bounds-cert",
 	"olddest-rhs-sink", "reg-abi", "reg-merge", "small-frame", "st-flags",

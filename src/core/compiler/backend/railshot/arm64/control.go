@@ -47,9 +47,6 @@ const (
 	ctrlEntryUnreachable
 	ctrlEndReachable
 	ctrlRegMerge1
-	ctrlLoopHasCall
-	ctrlLoopHasNested
-	ctrlLoopHasTable
 	ctrlBaseTypesSet
 	ctrlColdBaseTypes
 	ctrlHasBaseGCRoots
@@ -448,16 +445,6 @@ func loopSetsLocal(locals []uint16, index uint32) bool {
 	return ok
 }
 
-func (f *fn) frameLoopPins(fr *ctrlFrame) []loopPin {
-	if fr.mergeIndex != 0 {
-		sc := f.scratchState()
-		if sc.loopPinOwner == fr.mergeIndex {
-			return sc.loopPins
-		}
-	}
-	return nil
-}
-
 func (f *fn) frameColdEdges(fr *ctrlFrame) []coldEdge {
 	if cold := f.ctrlMerge(fr); cold != nil {
 		return cold.coldEdges
@@ -502,78 +489,6 @@ type ehCatchClause struct {
 type coldEdge struct {
 	site int
 	code []byte
-}
-
-type loopPin struct {
-	local int
-	reg   Reg
-}
-
-// activateLoopPins is the deliberately narrow v1 region allocator. It borrows
-// two caller-saved registers only for a simple call-free loop; slots remain the
-// canonical representation outside the loop.
-func (f *fn) activateLoopPins(fr *ctrlFrame) {
-	if !f.opt(optLoopRegionPins) || fr.kind != cfLoop || fr.has(ctrlLoopHasCall) || fr.has(ctrlLoopHasNested) || fr.has(ctrlLoopHasTable) {
-		return
-	}
-	setLocals := f.frameLoopSetLocals(fr)
-	if setLocals == nil {
-		return
-	}
-	for _, r := range []Reg{X12, X13} {
-		best := -1
-		pins := f.frameLoopPins(fr)
-		for x := 0; x < f.nLocals; x++ {
-			if f.localType[x] != mtI32 && f.localType[x] != mtI64 || f.locals[x].reg != regNone || !loopSetsLocal(setLocals, uint32(x)) {
-				continue
-			}
-			already := false
-			for _, p := range pins {
-				if p.local == x {
-					already = true
-					break
-				}
-			}
-			if !already && best < 0 {
-				best = x
-			}
-		}
-		if best < 0 {
-			break
-		}
-		sc := f.scratchState()
-		if sc.loopPinOwner == 0 {
-			f.ensureCtrlMerge(fr)
-			sc.loopPinOwner = fr.mergeIndex
-			sc.loopPins = sc.loopPins[:0]
-		}
-		sc.loopPins = append(sc.loopPins, loopPin{best, r})
-		pins = sc.loopPins
-		f.pinnedLocalMask = f.pinnedLocalMask.add(r)
-		if f.locals[best].state == lsConstZero {
-			f.a.MovImm64(r, 0)
-			f.locals[best].state = lsReg
-		} else {
-			f.ld64(r, SP, f.localOff(best))
-			f.locals[best].state = lsStackReg
-		}
-	}
-}
-
-func (f *fn) storeLoopPinsLeaving(target int) {
-	for i := len(f.ctrl) - 1; i > target; i-- {
-		for _, p := range f.frameLoopPins(&f.ctrl[i]) {
-			f.st64(SP, f.localOff(p.local), p.reg)
-		}
-	}
-}
-
-func (f *fn) releaseLoopPins(pins []loopPin) {
-	for _, p := range pins {
-		f.st64(SP, f.localOff(p.local), p.reg)
-		f.pinnedLocalMask = f.pinnedLocalMask.remove(p.reg)
-		f.locals[p.local].state = lsMem
-	}
 }
 
 // --- operand-stack canonicalization ---
@@ -1166,16 +1081,11 @@ func (f *fn) alignLoopHeader() {
 
 // --- control opcodes ---
 
-// scanLoopBody scans a loop body ahead from the reader's current position (the
-// body start, just past the blocktype) to the matching `end`, recording the
-// locals it sets and whether it grows memory, calls, nests loops, or uses a
-// br_table. The module-aware classifier keeps mixed memory-width immediates
-// synchronized. Any unexpected decode failure returns conservative facts.
-func scanLoopBody(r *wasm.Reader, m *wasm.Module) (setLocals []uint16, hasGrow, hasCall, hasNested, hasTable bool) {
-	return scanLoopBodyWithClassifier(r, wasm.NewModuleInstructionClassifier(m, true), nil)
-}
-
-func scanLoopBodyWithClassifier(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, dst []uint16) (setLocals []uint16, hasGrow, hasCall, hasNested, hasTable bool) {
+// scanLoopSetLocals scans a loop body ahead from the reader's current position
+// (the body start, just past the blocktype) to the matching `end`, recording the
+// locals it sets. The module-aware classifier keeps mixed memory-width
+// immediates synchronized. Any unexpected decode failure returns no proof.
+func scanLoopSetLocals(r *wasm.Reader, classifier wasm.ModuleInstructionClassifier, dst []uint16) (setLocals []uint16) {
 	start := r.Offset()
 	defer func() { _ = r.JumpTo(start) }()
 	base := len(dst)
@@ -1188,29 +1098,20 @@ func scanLoopBodyWithClassifier(r *wasm.Reader, classifier wasm.ModuleInstructio
 	for {
 		op, err := r.Byte()
 		if err != nil {
-			return nil, true, true, true, true
+			return nil
 		}
 		if err := classifier.ClassifyInto(r, op, &imm); err != nil {
-			return nil, true, true, true, true
+			return nil
 		}
 		switch imm.Kind {
 		case wasm.InstrLocalSet, wasm.InstrLocalTee:
 			if imm.Index > uint32(^uint16(0)) {
-				return nil, true, true, true, true
+				return nil
 			}
 			setLocals = append(setLocals, uint16(imm.Index))
-		case wasm.InstrMemoryGrow:
-			hasGrow = true
-		case wasm.InstrCall, wasm.InstrCallIndirect:
-			hasCall = true
-		case wasm.InstrBrTable:
-			hasTable = true
 		}
 		switch op {
 		case 0x02, 0x03, 0x04, 0x1f:
-			if op == 0x03 {
-				hasNested = true
-			}
 			depth++
 		case 0x0b:
 			if depth == 0 {
@@ -1258,17 +1159,13 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
 	if kind == cfLoop && !f.unreachable {
-		var hasCall, hasNested, hasTable bool
 		base := len(f.loopSetLocals)
-		setLocals, _, hasCall, hasNested, hasTable := scanLoopBodyWithClassifier(r, f.classifier, f.loopSetLocals) // P6.2 + region-pin foundation (reader restored)
+		setLocals := scanLoopSetLocals(r, f.classifier, f.loopSetLocals)
 		if setLocals != nil {
 			f.loopSetLocals = setLocals
 			cold := f.ensureCtrlMerge(&fr)
 			cold.setLoopSet(uint32(base), uint16(len(setLocals)-base))
 		}
-		fr.set(ctrlLoopHasCall, hasCall)
-		fr.set(ctrlLoopHasNested, hasNested)
-		fr.set(ctrlLoopHasTable, hasTable)
 	}
 	if f.unreachable {
 		f.pushCtrl(&fr)
@@ -1340,9 +1237,6 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 	}
 	f.pushCtrl(&fr)
-	if kind == cfLoop && !f.unreachable {
-		f.activateLoopPins(&f.ctrl[len(f.ctrl)-1])
-	}
 	return nil
 }
 
@@ -1882,15 +1776,11 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	paramGCRoots := f.frameParamGCRoots(&fr)
 	resultGCRoots := f.frameResultGCRoots(&fr)
 	firstEnd, secondEnd, ends := f.frameEndSites(&fr)
-	loopPins := f.frameLoopPins(&fr)
 	coldEdges := f.frameColdEdges(&fr)
 	// ctrl backing is reused across functions. Clear the popped slot so its
 	// variable-sized type and loop-analysis slices do not stay live in scratch.
 	f.ctrl[last] = ctrlFrame{mergeIndex: fr.mergeIndex}
 	f.ctrl = f.ctrl[:len(f.ctrl)-1]
-	if len(loopPins) != 0 {
-		f.scratchState().loopPinOwner = 0 // this frame's pins leave scope with the pop
-	}
 
 	if fr.kind == cfFunc {
 		if !f.unreachable {
@@ -1918,9 +1808,6 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	}
 
 	fallthroughReachable := !f.unreachable
-	if fr.kind == cfLoop && fallthroughReachable {
-		f.releaseLoopPins(loopPins)
-	}
 	if fallthroughReachable {
 		f.recordGCBranchResults(&fr, fr.resultN)
 		resultGCRoots = f.frameResultGCRoots(&fr)
@@ -2071,10 +1958,6 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 	// later frames at the same or a shallower nesting depth.
 	f.freeLocStateBuf(branchState)
 	f.freeLocStateBuf(entryState)
-	if len(loopPins) != 0 {
-		sc := f.scratchState()
-		sc.loopPins = sc.loopPins[:0]
-	}
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)
 	f.releaseFrameBaseTypes(&fr)
@@ -2087,7 +1970,6 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 // path and opReturn's inlined-callee routing. The caller sets f.unreachable.
 func (f *fn) branchToFrame(fi int) {
 	fr := &f.ctrl[fi]
-	f.storeLoopPinsLeaving(fi)
 	f.convergeBranchLocals(fr)
 	a, d := fr.branchArity(), f.depth()
 	f.flush()
@@ -2144,11 +2026,10 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 	if cOwned {
 		f.release(creg)
 	}
-	// Emit the edge (loop-pin stores + value moves) first and measure it. The edge
+	// Emit the value-move edge first and measure it. The edge
 	// helpers emit only straight-line, position-independent LDR/STR/MOV — no
 	// branches or PC-relative ops — so the bytes can be relocated freely below.
 	mark := f.a.Len()
-	f.storeLoopPinsLeaving(fi)
 	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, d)
 	} else {

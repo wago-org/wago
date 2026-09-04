@@ -416,7 +416,6 @@ var catalog = []Definition{
 	both("v128-pins", "Vector pins", "pin hot vector locals in registers"),
 	both("reg-abi", "Register ABI", "use Wago's internal register calling convention"),
 	both("inline", "Inlining", "inline eligible callees"),
-	experimentalArm64("loop-region-pins", "Loop-region pins", "pin loop-carried values across loop regions"),
 	both("stack-fence", "Stack fence", "emit the stack-overflow guard fence"),
 	both("stack-reg", "Stack register", "keep the guest stack pointer in a register"),
 }
@@ -425,28 +424,12 @@ func both(name, label, description string) Definition {
 	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: []string{"amd64", "arm64"}}
 }
 
-func bothOff(name, label, description string) Definition {
-	return Definition{Name: name, Label: label, Description: description, Architectures: []string{"amd64", "arm64"}}
-}
-
 func amd64(name, label, description string) Definition {
 	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: []string{"amd64"}}
 }
 
-func amd64Off(name, label, description string) Definition {
-	return Definition{Name: name, Label: label, Description: description, Architectures: []string{"amd64"}}
-}
-
 func arm64(name, label, description string) Definition {
 	return Definition{Name: name, Label: label, Description: description, Default: true, Architectures: []string{"arm64"}}
-}
-
-func arm64Off(name, label, description string) Definition {
-	return Definition{Name: name, Label: label, Description: description, Architectures: []string{"arm64"}}
-}
-
-func experimentalArm64(name, label, description string) Definition {
-	return Definition{Name: name, Label: label, Description: description, Experimental: true, Architectures: []string{"arm64"}}
 }
 
 func experimentalAMD64(name, label, description string) Definition {

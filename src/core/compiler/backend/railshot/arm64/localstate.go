@@ -64,15 +64,6 @@ type localDef struct {
 // pinReg returns local x's dedicated register (GP or V/FP), whether it is a float
 // register, and whether x is pinned at all.
 func (f *fn) pinReg(x int) (reg Reg, isFloat, ok bool) {
-	// Loop pins live in exactly one ctrl frame at a time (see scratch.loopPins);
-	// scan that small set (≤ region-register count) instead of every ctrl frame.
-	if f.sc != nil && f.sc.loopPinOwner != 0 {
-		for _, p := range f.sc.loopPins {
-			if p.local == x {
-				return p.reg, false, true
-			}
-		}
-	}
 	if x < 0 || x >= len(f.locals) {
 		return regNone, false, false
 	}

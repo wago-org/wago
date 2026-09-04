@@ -461,17 +461,6 @@ func envDefaultOn(v string) bool {
 	}
 }
 
-// envDefaultOff parses a default-off (opt-in) boolean knob: only an explicit
-// 1/true/on/yes enables it.
-func envDefaultOff(v string) bool {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "1", "true", "on", "yes":
-		return true
-	default:
-		return false
-	}
-}
-
 // inlineTarget is a callee that will be spliced at its call sites: a straight-line
 // leaf with an int-only register-ABI signature and a small body.
 type inlineTarget struct {

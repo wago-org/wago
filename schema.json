@@ -86,7 +86,6 @@
               "leaf-scratch-pins",
               "load-pair",
               "local-slot-order",
-              "loop-region-pins",
               "magic-div",
               "merge-next-use",
               "mul-add-fuse",

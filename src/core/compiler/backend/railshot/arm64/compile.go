@@ -29,11 +29,6 @@ import (
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
 var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 
-// loopRegionPinsEnabled gates the one-pass, call-free-loop local promotion
-// experiment. It remains opt-in until candidate scoring proves it improves the
-// corpus: WAGO_ARM64_LOOP_PINS=1 enables it.
-var loopRegionPinsEnabled = os.Getenv("WAGO_ARM64_LOOP_PINS") == "1"
-
 // uxtwAddEnabled gates folding i64.add(x, i64.extend_i32_u(y)) into a single
 // UXTW extended-register add. On by default; WAGO_ARM64_NOUXTW=1 disables it for
 // A/B measurement.
@@ -544,8 +539,6 @@ type scratch struct {
 	ctrl                    []ctrlFrame
 	ctrlMerges              []ctrlFrameMerge
 	ctrlRoots               []ctrlFrameRoots
-	loopPins                []loopPin // reusable backing owned by the one active simple loop
-	loopPinOwner            uint32    // ctrlMerges index+1; zero when no pins are active
 	functionResultTypeArena [maxScratchFunctionResults]machineType
 	trapSites               [trapAtomicUnaligned + 1][]trapSite
 	branchTargets           []uint64
@@ -813,8 +806,6 @@ func (sc *scratch) reset() {
 	sc.directPrepared = false
 	sc.retSiteHead = 0
 	sc.ctrl = sc.ctrl[:0]
-	sc.loopPins = sc.loopPins[:0]
-	sc.loopPinOwner = 0
 	sc.transient.loopSetLocals = sc.transient.loopSetLocals[:0]
 	clear(sc.ctrlMerges[:cap(sc.ctrlMerges)])
 	clear(sc.ctrlRoots[:cap(sc.ctrlRoots)])
