@@ -60,29 +60,39 @@ func TestComputeModuleHintsCompactsIntervalLastGets(t *testing.T) {
 		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
 		FuncTypes: make([]wasm.TypeIdx, 2),
 		Code: []wasm.Func{
-			{Locals: wasm.Locals{Runs: []wasm.LocalRun{{Count: 64, Type: wasm.I32}}}, BodyBytes: []byte{0x0b}},
-			{Locals: wasm.Locals{Runs: []wasm.LocalRun{{Count: 32, Type: wasm.I32}}}, BodyBytes: longBody},
+			{Locals: wasm.Locals{Runs: []wasm.LocalRun{{Count: 100, Type: wasm.I32}}}, BodyBytes: []byte{0x0b}},
+			{Locals: wasm.Locals{Runs: []wasm.LocalRun{{Count: 100, Type: wasm.I32}}}, BodyBytes: longBody},
 		},
 	}
 	hints, sidecar, _, err := computeModuleHints(m, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := len(sidecar.localScore), 96; got != want {
+	if got, want := len(sidecar.localScore), 164; got != want {
 		t.Fatalf("local scores = %d, want %d", got, want)
 	}
-	if got, want := len(sidecar.localLastGet), 34; got != want {
+	ineligible := sidecar.view(hints[0])
+	if got, want := ineligible.nLocals, 100; got != want {
+		t.Fatalf("ineligible local count = %d, want %d", got, want)
+	}
+	if got, want := len(ineligible.localScore), 64; got != want {
+		t.Fatalf("ineligible retained scores = %d, want %d", got, want)
+	}
+	if got, want := len(sidecar.localLastGet), 102; got != want {
 		t.Fatalf("compact last gets = %d, want %d", got, want)
 	}
 	if got, want := int(sidecar.localLastGetRangeCount), 1; got != want {
 		t.Fatalf("compact last-get ranges = %d, want %d", got, want)
 	}
-	if got := sidecar.view(hints[0]).localLastGet; got != nil {
+	if got := ineligible.localLastGet; got != nil {
 		t.Fatalf("ineligible function retained last gets: %v", got)
 	}
 	eligible := sidecar.view(hints[1]).localLastGet
-	if got, want := len(eligible), 32; got != want {
+	if got, want := len(eligible), 100; got != want {
 		t.Fatalf("eligible function last gets = %d, want %d", got, want)
+	}
+	if got, want := len(sidecar.view(hints[1]).localScore), 100; got != want {
+		t.Fatalf("eligible function retained scores = %d, want %d", got, want)
 	}
 	if eligible[0] == 0 {
 		t.Fatal("eligible function lost scanned local.get offset")
@@ -120,6 +130,19 @@ func TestComputeModuleHintsKeepsCheaperDenseLastGets(t *testing.T) {
 	}
 }
 
+func TestCompileWideLocalWithCompactScoresArm64(t *testing.T) {
+	m := mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{
+		0x01, 0x64, 0x7f, // 100 i32 locals
+		0x20, 0x63, 0x0b, // local.get 99; end
+	})
+	if _, err := CompileModule(m); err != nil {
+		t.Fatal(err)
+	}
+	if got := runArm64(t, m); got != 0 {
+		t.Fatalf("local 99 = %d, want 0", got)
+	}
+}
+
 func BenchmarkComputeModuleHintsSparseGlobalUse(b *testing.B) {
 	const count = 1024
 	body := []byte{0x03, 0x40, 0x23, 0x7b, 0x1a, 0x0b, 0x0b} // loop { global.get 123; drop }
@@ -145,10 +168,10 @@ func BenchmarkComputeModuleHintsSparseGlobalUse(b *testing.B) {
 	}
 }
 
-func BenchmarkComputeModuleHintsSparseIntervalLastGets(b *testing.B) {
+func BenchmarkComputeModuleHintsSparseLocalHints(b *testing.B) {
 	const (
 		functions = 1024
-		locals    = 64
+		locals    = 256
 	)
 	m := &wasm.Module{
 		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},

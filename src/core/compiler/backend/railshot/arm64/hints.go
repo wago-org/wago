@@ -61,6 +61,7 @@ const (
 	hintModuleEH
 	hintHasStackSinkFusion
 	hintHasFloatConst
+	hintIntervalRegionStorage
 )
 
 func (f funcHintFlags) has(flag funcHintFlags) bool { return f&flag != 0 }
@@ -118,10 +119,18 @@ type funcHintSidecar struct {
 	localLastGetRangeCount uint32
 }
 
+func retainedLocalScoreCount(h funcHints) int {
+	n := int(h.localCount)
+	if n > 64 && !h.flags.has(hintIntervalRegionStorage) {
+		return 64
+	}
+	return n
+}
+
 func (s funcHintSidecar) view(h funcHints) funcHintView {
 	nLocals := int(h.localCount)
 	localStart := int(h.localStart)
-	localEnd := localStart + nLocals
+	localEnd := localStart + retainedLocalScoreCount(h)
 	var localLastGet []uint32
 	if s.localLastGetRangeCount == 0 && len(s.localLastGet) == len(s.localScore) {
 		localLastGet = s.localLastGet[localStart:localEnd]

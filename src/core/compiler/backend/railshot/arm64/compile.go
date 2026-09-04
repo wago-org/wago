@@ -1880,10 +1880,11 @@ func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHint
 func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, policy CodegenPolicy) ([]funcHints, funcHintSidecar, []int64, error) {
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
-	totalLocals := 0
+	totalScores := 0
 	intervalLocals := 0
 	intervalFunctions := 0
 	moduleEH := m.TagCount() != 0
+	storageModuleEH := moduleEH
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
 		if !ok {
@@ -1893,12 +1894,18 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		if err != nil {
 			return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: %w", i, err)
 		}
-		if count > int(^uint(0)>>1)-totalLocals {
+		intervalStorage := intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), count, storageModuleEH)
+		scoreCount := count
+		if count > 64 && !intervalStorage {
+			scoreCount = 64
+		}
+		if scoreCount > int(^uint(0)>>1)-totalScores {
 			return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint locals overflow")
 		}
 		allHints[i].localCount = uint16(count)
-		totalLocals += count
-		if intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), count, moduleEH) {
+		allHints[i].flags.assign(hintIntervalRegionStorage, intervalStorage)
+		totalScores += scoreCount
+		if intervalStorage {
 			if count > int(^uint(0)>>1)-intervalLocals {
 				return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint interval locals overflow")
 			}
@@ -1906,18 +1913,18 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 			intervalFunctions++
 		}
 	}
-	if uint64(totalLocals) > uint64(^uint32(0)) || uint64(intervalLocals) > uint64(^uint32(0)) {
+	if uint64(totalScores) > uint64(^uint32(0)) || uint64(intervalLocals) > uint64(^uint32(0)) {
 		return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint local sidecar exceeds 32-bit index capacity")
 	}
-	localScores := make([]uint32, totalLocals)
+	localScores := make([]uint32, totalScores)
 	// Dense storage needs no per-function index. Use sparse ranges only when
 	// their index plus eligible-local payload is strictly smaller, so this
 	// representation cannot increase retained last-get bytes on modules where
 	// most functions qualify for interval regions.
-	denseLastGets := uint64(totalLocals) * 4
+	denseLastGets := uint64(totalScores) * 4
 	sparseLastGets := uint64(intervalLocals)*4 + uint64(intervalFunctions)*8
 	compactLastGets := sparseLastGets < denseLastGets
-	lastGetCount := totalLocals
+	lastGetCount := totalScores
 	if compactLastGets {
 		lastGetCount = intervalLocals + intervalFunctions*2
 	}
@@ -1929,28 +1936,32 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	if nGlobals > 0 && n > 0 {
 		agg = make([]int64, nGlobals)
 	}
-	localAt := 0
+	scoreAt := 0
 	intervalAt := intervalFunctions * 2
 	intervalRangeAt := 0
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		nLocals := int(allHints[i].localCount)
+		intervalStorage := allHints[i].flags.has(hintIntervalRegionStorage)
+		scoreCount := retainedLocalScoreCount(allHints[i])
 		sparseAccum.Reset(nGlobals)
-		h := funcHintsWithStorage(localScores[localAt : localAt+nLocals])
+		h := funcHintsWithStorage(localScores[scoreAt : scoreAt+scoreCount])
 		if compactLastGets {
-			if intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), nLocals, moduleEH) {
+			if intervalStorage {
 				h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
-				localLastGets[intervalRangeAt] = uint32(localAt)
+				localLastGets[intervalRangeAt] = uint32(scoreAt)
 				localLastGets[intervalRangeAt+1] = uint32(intervalAt)
 				intervalRangeAt += 2
 				intervalAt += nLocals
 			}
 		} else {
-			h.localLastGet = localLastGets[localAt : localAt+nLocals]
+			if intervalStorage {
+				h.localLastGet = localLastGets[scoreAt : scoreAt+nLocals]
+			}
 		}
 		h.nLocals = nLocals
 		h.localCount = uint16(nLocals)
-		h.localStart = uint32(localAt)
+		h.localStart = uint32(scoreAt)
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs
 		h.flags.assign(hintHasInlineLoopCall, allHints[i].flags.has(hintHasInlineLoopCall))
@@ -1962,7 +1973,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs
 		h.flags.assign(hintHasInlineLoopCall, allHints[i].flags.has(hintHasInlineLoopCall))
-		localAt += nLocals
+		h.flags.assign(hintIntervalRegionStorage, intervalStorage)
+		scoreAt += scoreCount
 		moduleEH = moduleEH || h.flags.has(hintModuleEH)
 		allHints[i] = h.funcHints
 		start := len(sparseGlobals)
@@ -2728,9 +2740,11 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		panic("arm64: GP pin pool exceeds architectural register file")
 	}
 	gp := gpStorage[:0]
-	for i := 0; i < f.nLocals; i++ {
-		if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
-			gp = insertGPCandidate(gp, gpCand{idx: uint32(i), score: localHotness(scores[i])}, len(gpPool))
+	if len(gpPool) != 0 {
+		for i := 0; i < f.nLocals; i++ {
+			if f.localType[i] == mtI32 || f.localType[i] == mtI64 {
+				gp = insertGPCandidate(gp, gpCand{idx: uint32(i), score: localHotness(scores[i])}, len(gpPool))
+			}
 		}
 	}
 	loopMin := uint32(loopWeight(1))
@@ -2771,9 +2785,11 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	// preserve the low 64 bits, so a v128 pin is confined to the call-free class.
 	pinV128 := f.opt(optV128Pins) && !hasCall
 	hotV128Candidates := 0
-	for i := 0; i < f.nLocals; i++ {
-		if pinV128 && f.localType[i] == mtV128 && localHotness(scores[i]) > 0 {
-			hotV128Candidates++
+	if pinLocals && f.nLocals <= 64 {
+		for i := 0; i < f.nLocals; i++ {
+			if pinV128 && f.localType[i] == mtV128 && localHotness(scores[i]) > 0 {
+				hotV128Candidates++
+			}
 		}
 	}
 	fpPinLimit := len(pinnedFLocalRegs)
@@ -2807,9 +2823,11 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		panic("arm64: FP pin limit exceeds architectural register file")
 	}
 	fc := fcStorage[:0]
-	for i := 0; i < f.nLocals; i++ {
-		if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
-			fc = insertLocalCandidate(fc, uint16(i), scores, fpPinLimit)
+	if fpPinLimit != 0 {
+		for i := 0; i < f.nLocals; i++ {
+			if f.localType[i].isFloat() || (pinV128 && f.localType[i] == mtV128) {
+				fc = insertLocalCandidate(fc, uint16(i), scores, fpPinLimit)
+			}
 		}
 	}
 	for k, local := range fc {

@@ -27,6 +27,19 @@ func TestComputeModuleHintsRetainsOnlyTouchedGlobals(t *testing.T) {
 	}
 }
 
+func TestCompileWideLocalWithCompactScores(t *testing.T) {
+	m := mod1(t, nil, []wasm.ValType{wasm.I32}, []byte{
+		0x01, 0x64, 0x7f, // 100 i32 locals
+		0x20, 0x63, 0x0b, // local.get 99; end
+	})
+	if _, err := CompileModule(m); err != nil {
+		t.Fatal(err)
+	}
+	if got := runAmd64(t, m); got != 0 {
+		t.Fatalf("local 99 = %d, want 0", got)
+	}
+}
+
 func sparseGlobalHintModule(count int, body []byte) *wasm.Module {
 	globals := make([]wasm.Global, count)
 	for i := range globals {
@@ -42,5 +55,30 @@ func sparseGlobalHintModule(count int, body []byte) *wasm.Module {
 		FuncTypes: funcTypes,
 		Globals:   globals,
 		Code:      code,
+	}
+}
+
+func BenchmarkComputeModuleHintsSparseLocalHints(b *testing.B) {
+	const (
+		functions = 1024
+		locals    = 256
+	)
+	m := &wasm.Module{
+		Types:     []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},
+		FuncTypes: make([]wasm.TypeIdx, functions),
+		Code:      make([]wasm.Func, functions),
+	}
+	for i := range m.Code {
+		m.Code[i] = wasm.Func{
+			Locals:    wasm.Locals{Runs: []wasm.LocalRun{{Count: locals, Type: wasm.I32}}},
+			BodyBytes: []byte{0x0b},
+		}
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		if _, _, _, err := computeModuleHints(m, 0, 0, nil, false); err != nil {
+			b.Fatal(err)
+		}
 	}
 }

@@ -53,10 +53,18 @@ func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 	intervalRegionPinsEnabled = true
 
 	m := intervalRegionModule(t)
-	m.FuncTypes = append(m.FuncTypes, m.FuncTypes[0])
+	longBody := make([]byte, minIntervalRegionBody+1)
+	for i := range longBody[:len(longBody)-4] {
+		longBody[i] = 0x01 // nop
+	}
+	copy(longBody[len(longBody)-4:], []byte{0x20, 0x00, 0x1a, 0x0b}) // local.get 0; drop; end
+	m.FuncTypes = append(m.FuncTypes, m.FuncTypes[0], m.FuncTypes[0])
 	m.Code = append(m.Code, wasm.Func{
 		Locals:    wasm.Locals{Runs: []wasm.LocalRun{{Count: 100, Type: wasm.I32}}},
 		BodyBytes: []byte{0x0b},
+	}, wasm.Func{
+		Locals:    wasm.Locals{Runs: []wasm.LocalRun{{Count: 100, Type: wasm.I32}}},
+		BodyBytes: longBody,
 	})
 	hints, sidecar, _, err := computeModuleHints(m, 0, 0, nil, false)
 	if err != nil {
@@ -65,7 +73,21 @@ func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 	if got := len(sidecar.view(hints[0]).localLastGet); got != 20 {
 		t.Fatalf("candidate last-get storage = %d locals, want 20", got)
 	}
-	if got := sidecar.view(hints[1]).localLastGet; got != nil {
+	ineligible := sidecar.view(hints[1])
+	if got, want := ineligible.nLocals, 100; got != want {
+		t.Fatalf("ineligible local count = %d, want %d", got, want)
+	}
+	if got, want := len(ineligible.localScore), 64; got != want {
+		t.Fatalf("ineligible retained scores = %d, want %d", got, want)
+	}
+	if got := ineligible.localLastGet; got != nil {
 		t.Fatalf("ineligible function reserved %d last-get entries", len(got))
+	}
+	eligible := sidecar.view(hints[2])
+	if got, want := len(eligible.localScore), 100; got != want {
+		t.Fatalf("wide candidate retained scores = %d, want %d", got, want)
+	}
+	if got, want := len(eligible.localLastGet), 100; got != want {
+		t.Fatalf("wide candidate last-get storage = %d, want %d", got, want)
 	}
 }
