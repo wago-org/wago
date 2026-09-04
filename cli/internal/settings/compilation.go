@@ -12,6 +12,10 @@ import (
 // runtime defaults for one compilation.
 type CompilationRequest struct {
 	Arch                   string
+	Backend                string
+	Target                 string
+	Fallback               string
+	Objective              string
 	Core                   string
 	Parallel               string
 	DeferredBoundsChecking *bool
@@ -21,6 +25,10 @@ type CompilationRequest struct {
 // CompilationSelection is the immutable, architecture-filtered result of
 // settings precedence for one runtime compilation configuration.
 type CompilationSelection struct {
+	Backend                wago.CompilerEngine
+	Target                 wago.CompilerTargetMode
+	Fallback               wago.CompilerFallback
+	Objective              wago.OptimizationObjective
 	Core                   int
 	FunctionWorkers        int
 	DeferredBoundsChecking bool
@@ -54,6 +62,28 @@ func ResolveCompilation(request CompilationRequest) (CompilationSelection, error
 // ResolveCompilationFrom resolves a supplied settings snapshot. It is the test
 // surface for precedence; production callers normally use ResolveCompilation.
 func ResolveCompilationFrom(config Config, configured bool, request CompilationRequest) (CompilationSelection, error) {
+	backend, err := resolveBackend(request.Backend)
+	if err != nil {
+		return CompilationSelection{}, err
+	}
+	if backend == wago.CompilerDragline && !config.Experimental["dragline"] {
+		return CompilationSelection{}, fmt.Errorf("dragline is experimental; enable it with `wago config --enable dragline --experimental`")
+	}
+	target, err := resolveTarget(request.Target)
+	if err != nil {
+		return CompilationSelection{}, err
+	}
+	fallback, err := resolveFallback(request.Fallback)
+	if err != nil {
+		return CompilationSelection{}, err
+	}
+	if fallback == wago.CompilerFallbackRailshot && backend != wago.CompilerDragline {
+		return CompilationSelection{}, fmt.Errorf("--compiler-fallback=railshot requires --backend=dragline")
+	}
+	objective, err := resolveObjective(request.Objective)
+	if err != nil {
+		return CompilationSelection{}, err
+	}
 	core, err := resolveCore(request.Core)
 	if err != nil {
 		return CompilationSelection{}, err
@@ -99,7 +129,7 @@ func ResolveCompilationFrom(config Config, configured bool, request CompilationR
 		}
 	}
 	return CompilationSelection{
-		Core: core, FunctionWorkers: workers, DeferredBoundsChecking: deferred,
+		Backend: backend, Target: target, Fallback: fallback, Objective: objective, Core: core, FunctionWorkers: workers, DeferredBoundsChecking: deferred,
 		Features: features, Optimizations: optimizations,
 	}, nil
 }
@@ -108,6 +138,10 @@ func ResolveCompilationFrom(config Config, configured bool, request CompilationR
 // all precedence and architecture filtering have completed.
 func (selection CompilationSelection) RuntimeConfig() *wago.RuntimeConfig {
 	config := wago.NewRuntimeConfig().
+		WithCompiler(selection.Backend).
+		WithCompilerTarget(selection.Target).
+		WithCompilerFallback(selection.Fallback).
+		WithOptimizationObjective(selection.Objective).
 		WithDeferBoundsChecks(selection.DeferredBoundsChecking).
 		WithFunctionWorkers(selection.FunctionWorkers).
 		WithOptimizations(selection.Optimizations)
@@ -123,6 +157,52 @@ func (selection CompilationSelection) RuntimeConfig() *wago.RuntimeConfig {
 		}
 	}
 	return config
+}
+
+func resolveTarget(value string) (wago.CompilerTargetMode, error) {
+	switch value {
+	case "", "compat":
+		return wago.TargetCompatibility, nil
+	case "native":
+		return wago.TargetNative, nil
+	default:
+		return 0, fmt.Errorf("unknown --target %q (want: compat, native)", value)
+	}
+}
+
+func resolveFallback(value string) (wago.CompilerFallback, error) {
+	switch value {
+	case "", "none":
+		return wago.CompilerFallbackNone, nil
+	case "railshot":
+		return wago.CompilerFallbackRailshot, nil
+	default:
+		return 0, fmt.Errorf("unknown --compiler-fallback %q (want: none, railshot)", value)
+	}
+}
+
+func resolveObjective(value string) (wago.OptimizationObjective, error) {
+	switch value {
+	case "", "speed":
+		return wago.OptimizeSpeed, nil
+	case "balanced":
+		return wago.OptimizeBalanced, nil
+	case "size":
+		return wago.OptimizeSize, nil
+	default:
+		return 0, fmt.Errorf("unknown --objective %q (want: speed, balanced, size)", value)
+	}
+}
+
+func resolveBackend(value string) (wago.CompilerEngine, error) {
+	switch value {
+	case "", "railshot":
+		return wago.CompilerRailshot, nil
+	case "dragline":
+		return wago.CompilerDragline, nil
+	default:
+		return 0, fmt.Errorf("unknown --backend %q (want: railshot, dragline)", value)
+	}
 }
 
 func resolveCore(value string) (int, error) {

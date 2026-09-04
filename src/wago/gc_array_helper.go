@@ -7,35 +7,37 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
 
 const (
-	gcArrayAllocDefault        uint32 = 16
-	gcArrayGet                 uint32 = 17
-	gcArrayGetS                uint32 = 18
-	gcArrayGetU                uint32 = 19
-	gcArraySet                 uint32 = 20
-	gcArrayLen                 uint32 = 21
-	gcArrayAllocFixed          uint32 = 22
-	gcArrayAllocUniform        uint32 = 23
-	gcArrayAllocData           uint32 = 24
-	gcArrayAllocElem           uint32 = 25
-	gcArrayDropElem            uint32 = 26
-	gcArrayFill                uint32 = 27
-	gcArrayCopy                uint32 = 28
-	gcArrayInitData            uint32 = 29
-	gcArrayInitElem            uint32 = 30
-	gcArrayAllocFixedV128Spill uint32 = 31
+	gcArrayAllocDefault        uint32 = codegen.GCHelperArrayAllocDefault
+	gcArrayGet                 uint32 = codegen.GCHelperArrayGet
+	gcArrayGetS                uint32 = codegen.GCHelperArrayGetS
+	gcArrayGetU                uint32 = codegen.GCHelperArrayGetU
+	gcArraySet                 uint32 = codegen.GCHelperArraySet
+	gcArrayLen                 uint32 = codegen.GCHelperArrayLen
+	gcArrayAllocFixed          uint32 = codegen.GCHelperArrayAllocFixed
+	gcArrayAllocUniform        uint32 = codegen.GCHelperArrayAllocUniform
+	gcArrayAllocData           uint32 = codegen.GCHelperArrayAllocData
+	gcArrayAllocElem           uint32 = codegen.GCHelperArrayAllocElem
+	gcArrayDropElem            uint32 = codegen.GCHelperArrayDropElem
+	gcArrayFill                uint32 = codegen.GCHelperArrayFill
+	gcArrayCopy                uint32 = codegen.GCHelperArrayCopy
+	gcArrayInitData            uint32 = codegen.GCHelperArrayInitData
+	gcArrayInitElem            uint32 = codegen.GCHelperArrayInitElem
+	gcArrayAllocFixedV128Spill uint32 = codegen.GCHelperArrayAllocFixedV128Spill
 	gcArrayAllocDefaultNative  uint32 = 32
 	gcArrayAllocUniformNative  uint32 = 33
 	gcArrayAllocFixedNative    uint32 = 34
 	gcArrayFillNoBarrier       uint32 = 35
-	gcArrayCheckDefault        uint32 = 36
-	gcArrayCheckUniform        uint32 = 37
-	gcArrayCheckData           uint32 = 38
-	gcArrayCheckFixed          uint32 = 39
+	gcArrayCheckDefault        uint32 = codegen.GCHelperArrayCheckDefault
+	gcArrayCheckUniform        uint32 = codegen.GCHelperArrayCheckUniform
+	gcArrayCheckData           uint32 = codegen.GCHelperArrayCheckData
+	gcArrayCheckFixed          uint32 = codegen.GCHelperArrayCheckFixed
+	gcArraySetNoBarrier        uint32 = codegen.GCHelperArraySetNoBarrier
 )
 
 func gcArrayElementStorage(kind gc.StorageKind) bool {
@@ -55,7 +57,7 @@ func (in *Instance) dispatchGCHelper(helper uint32, args, results []uint64) {
 }
 
 func (in *Instance) dispatchGCHelperParked(ctrl uintptr, helper, safepoint uint32, args, results []uint64) {
-	if helper < gcArrayAllocDefault {
+	if gcHelperUsesStructDispatcher(helper) {
 		in.dispatchGCStructHelperParked(ctrl, helper, safepoint, args, results)
 		return
 	}
@@ -705,7 +707,7 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 				}
 			}
 		}
-	case gcArraySet:
+	case gcArraySet, gcArraySetNoBarrier:
 		if len(args) < 4 {
 			panic(gcStructHelperError{err: fmt.Errorf("gc array set helper arity = %d, want at least 4", len(args))})
 		}
@@ -724,7 +726,14 @@ func (in *Instance) dispatchGCArrayHelperParked(ctrl uintptr, helper, safepoint 
 		}
 		exact := int(typeID) < len(in.c.Types) && in.c.Types[typeID].Final
 		value := arrayStoredValue(typeID, args[2:2+valueSlots])
-		actual, matched, err := in.gc.ArraySetTyped(ref, required, exact, uint32(args[1]), value)
+		var actual gc.TypeID
+		var matched bool
+		var err error
+		if helper == gcArraySetNoBarrier {
+			actual, matched, err = in.gc.ArraySetTypedNoBarrier(ref, required, exact, uint32(args[1]), value)
+		} else {
+			actual, matched, err = in.gc.ArraySetTyped(ref, required, exact, uint32(args[1]), value)
+		}
 		if err != nil {
 			if strings.Contains(err.Error(), "index out of range") {
 				panic(gcStructHelperTrap{code: coreruntime.TrapBuiltin})

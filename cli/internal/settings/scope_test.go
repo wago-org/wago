@@ -119,6 +119,37 @@ func TestLocalRuntimeOverrideIsSparse(t *testing.T) {
 	}
 }
 
+func TestLocalExperimentalOptInIsSparse(t *testing.T) {
+	dir := enterSettingsTestDir(t)
+	t.Setenv("WAGO_CONFIG", filepath.Join(t.TempDir(), "settings.json"))
+	writeTestManifest(t, dir)
+	target, err := Open(false, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := target.Set("dragline", "on", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := target.Save(); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := project.Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	experimental := manifest[localField].(map[string]any)["experimental"].(map[string]any)
+	if len(experimental) != 1 || experimental["dragline"] != true {
+		t.Fatalf("local experimental settings = %#v", experimental)
+	}
+	resolved, configured, err := LoadConfigured()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configured || !resolved.Experimental["dragline"] {
+		t.Fatalf("resolved experimental settings = %#v, configured=%v", resolved.Experimental, configured)
+	}
+}
+
 func TestLocalSettingsSavePreservesConcurrentManifestUpdate(t *testing.T) {
 	dir := enterSettingsTestDir(t)
 	t.Setenv("WAGO_CONFIG", filepath.Join(t.TempDir(), "settings.json"))

@@ -27,7 +27,7 @@ BENCH_ISA ?= 0
 STARSHINE_WASM ?=
 # Per-engine -bench filters. wago = the stage suite + the _wago comparisons;
 # wazero = every benchmark carrying "azero" (BenchmarkWazero* and *_wazero).
-WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Exec)$$|_wago$$
+WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|CompileFull|DraglineCompileFull|Instantiate|DraglineInstantiate|Exec|DraglineExec|WazeroCompile|WazeroInstantiate|WazeroExec)$$|_wago$$
 WAZERO_BENCH_RE ?= [Ww]azero
 BENCH_ISA_GO_FLAG     := $(if $(filter 1 true yes,$(BENCH_ISA)),-wago.bench.isa,)
 BENCH_ISA_BENCHPUB_FLAG := $(if $(filter 1 true yes,$(BENCH_ISA)),-isa,)
@@ -258,6 +258,10 @@ TINYGO ?= tinygo
 # switched stack, so wago under TinyGo wants the cooperative scheduler. See
 # docs/tinygo.md.
 TINYGO_SCHEDULER ?= tasks
+# TinyGo cannot statically size every goroutine reached through the public API
+# test harness. Give only that harness a roomy fallback stack; release binaries
+# continue to use TinyGo's normal per-goroutine sizing.
+TINYGO_TEST_STACK_SIZE ?= 1mb
 # Stamped into the manager and runners via -ldflags -X. Release workflows pass
 # the git tag; 0.0.0 is the pre-release default until the first tag.
 WAGO_VERSION ?= 0.0.0
@@ -311,7 +315,7 @@ tinygo-build: ## Build the Minimal runtime with TinyGo (no cgo, debug) -> ./wago
 
 .PHONY: tinygo-test
 tinygo-test: ## Run the runtime + public-API suites under TinyGo
-	$(TINYGO) test -v -scheduler=$(TINYGO_SCHEDULER) ./src/core/runtime/ ./src/wago/
+	$(TINYGO) test -v -scheduler=$(TINYGO_SCHEDULER) -stack-size=$(TINYGO_TEST_STACK_SIZE) ./src/core/runtime/ ./src/wago/
 
 .PHONY: cover
 cover: ## Run all five public gates with merged cross-package coverage
@@ -382,18 +386,18 @@ bench-website: ## Update ../website performance numbers from the last benchmark 
 
 # Cross-runtime startup-latency sweep (full process, exec→exit) over the
 # committed work-twins in bench/startup/twins, across every runtime found on the
-# machine → bench/out/startup.json. See bench/startup/runtimes.json for the
+# machine → bench/startup/startup-<arch>.json. See bench/startup/runtimes.json for the
 # runtime list and *_BIN env overrides; a missing runtime is skipped.
 .PHONY: bench-startup
-bench-startup: ## Run the cross-runtime startup-latency sweep and write bench/startup/startup.json
-	node bench/startup/run.mjs
+bench-startup: ## Run the cross-runtime startup-latency sweep for the host architecture
+	node bench/startup/run.mjs --out bench/startup/startup-$$(go env GOARCH).json
 
 # Website checkout (sibling by default); override for a worktree:
 #   make site WEBSITE_DIR=/abs/path/to/website
 WEBSITE_DIR ?= ../website
 
 .PHONY: startup-website
-startup-website: ## Update the website startup-latency numbers from bench/startup/startup.json
+startup-website: ## Update website end-to-end numbers from both architecture captures
 	WAGO_WEBSITE_DIR=$(WEBSITE_DIR) scripts/update-website-startup.mjs
 
 # One command to rebuild the whole website from committed data — startup +

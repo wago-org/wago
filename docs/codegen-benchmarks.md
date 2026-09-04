@@ -32,6 +32,16 @@ go test . -run '^$' -bench 'BenchmarkCompile/(sqlite3|ruby|esbuild)$' \
 benchstat /tmp/railshot-before.txt /tmp/railshot-after.txt
 ```
 
+The publishable corpus run measures both compiler engines with matching public
+pipeline names: `BenchmarkCompileFull` / `BenchmarkDraglineCompileFull`,
+`BenchmarkInstantiate` / `BenchmarkDraglineInstantiate`, and `BenchmarkExec` /
+`BenchmarkDraglineExec`, paired with wazero compile, instantiate, and execution
+rows. Dragline sub-benchmarks explicitly skip modules outside
+its strict feature boundary; the website publisher omits an unpaired row instead
+of substituting Railshot data. Use `bench/cmd/benchpub` so all retained samples
+and the measured commit are recorded in one `bench.json` per architecture; the
+website machine rail displays that commit beside the host details.
+
 ## Compile-memory reference (2026-07-17)
 
 Apple M4 Max, darwin/arm64, explicit bounds. `main` and the compile-memory

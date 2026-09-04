@@ -24,24 +24,30 @@ func TestLocalRootClearsOverrides(t *testing.T) {
 
 func TestExperimentalPreviewIsGeneratedFromRuntimeFeatures(t *testing.T) {
 	catalog := settings.Experimental()
-	found := false
+	foundGC, foundDragline := false, false
 	for _, setting := range catalog {
 		if setting.Key == "features.gc" {
-			found = true
+			foundGC = true
 			if !setting.Experimental {
 				t.Fatal("WasmGC should remain experimental")
 			}
 		}
+		if setting.Key == "experimental.dragline" {
+			foundDragline = true
+			if setting.Label != "Dragline compiler" || !setting.Experimental || !setting.Available {
+				t.Fatalf("Dragline preview = %#v", setting)
+			}
+		}
 	}
-	if !found {
-		t.Fatal("WasmGC preview is missing")
+	if !foundGC || !foundDragline {
+		t.Fatalf("experimental previews: WasmGC=%v Dragline=%v", foundGC, foundDragline)
 	}
 }
 
 func TestPrintIncludesExperimentalSectionOnRequest(t *testing.T) {
 	var output bytes.Buffer
 	Print(&output, settings.Default(), true, settings.ScopeLocal, "./wago.json", []settings.Override{{Key: "features.simd", Base: "false", Value: "true"}})
-	for _, want := range []string{"Wago configuration", "WebAssembly features", "Compiler optimizations", "Experimental preview", "gc", "override"} {
+	for _, want := range []string{"Wago configuration", "WebAssembly features", "Compiler optimizations", "Experimental preview", "dragline", "gc", "override"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("output missing %q:\n%s", want, output.String())
 		}

@@ -30,7 +30,10 @@ type PreparedFunction struct {
 	resultWide          []bool
 	privateFast         bool
 	isolatedFast        bool
+	privateLifetime     bool
 	directIntFast       bool
+	directLeafIntFast   bool
+	directTrapIntFast   bool
 }
 
 func (c *Compiled) directPreparedAt(local int) bool {
@@ -106,7 +109,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 	fn := &PreparedFunction{
 		in:                  in,
 		export:              export,
-		entry:               in.base + uintptr(in.c.Entry[ic.li]),
+		entry:               in.wrapperEntry(ic.li),
 		paramSlots:          ic.paramSlots,
 		resultSlots:         ic.resultSlots,
 		scalarWideMask:      scalarWideMask,
@@ -120,11 +123,24 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		resultWide:          wide,
 	}
-	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
-		fn.privateFast = true
-		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
+	// Signal-backed instances normally require the guarded wrapper entry. A
+	// compiler-proven signal-guard-free call closure can retain the ordinary
+	// interruptible foreign-stack wrapper because it cannot take a memory signal,
+	// while direct leaf/trap entries carry their own narrower proofs.
+	contextFreeLoopCandidate := contextFreeLoopPreparedEntry(in.c.InternalEntry[ic.li])
+	directEntryCandidate := !in.tierable() && scalarFast && preparedPrivateEntryEnabled &&
+		preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) &&
+		in.c.directPreparedAt(ic.li) &&
+		(directLeafPreparedEntry(in.c.InternalEntry[ic.li]) || directTrapPreparedEntry(in.c.InternalEntry[ic.li]))
+	privateEligible := in.preparedPrivateEligible()
+	if preparedCallEnabled && !in.tierable() && scalarFast && preparedPrivateEntryEnabled && (privateEligible || directEntryCandidate || contextFreeLoopCandidate) {
+		fn.privateFast = privateEligible || contextFreeLoopCandidate
+		fn.isolatedFast = preparedIsolatedEntryEnabled && (in.preparedIsolatedEligible() || contextFreeLoopCandidate && in.preparedContextFreeIsolatedEligible())
+		fn.privateLifetime = contextFreeLoopCandidate && !privateEligible
 		if (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
 			fn.directIntFast = true
+			fn.directLeafIntFast = directLeafPreparedEntry(in.c.InternalEntry[ic.li])
+			fn.directTrapIntFast = directTrapPreparedEntry(in.c.InternalEntry[ic.li])
 			fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 		}
 	}
@@ -182,6 +198,9 @@ func (fn *PreparedFunction) Invoke2(a0, a1 uint64) ([]uint64, error) {
 
 // Invoke3 calls a prepared export with three argument slots.
 func (fn *PreparedFunction) Invoke3(a0, a1, a2 uint64) ([]uint64, error) {
+	if fn != nil && fn.in != nil && fn.paramSlots == 3 && fn.directTrapIntFast {
+		return fn.invokeDirectTrapIntFixed(a0, a1, a2, 0)
+	}
 	return fn.invokeFixed(3, a0, a1, a2, 0)
 }
 
@@ -196,6 +215,9 @@ func (fn *PreparedFunction) invokeFixed(count int, a0, a1, a2, a3 uint64) ([]uin
 	}
 	if count != fn.paramSlots {
 		return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", fn.export, fn.paramSlots, count)
+	}
+	if fn.directTrapIntFast {
+		return fn.invokeDirectTrapIntFixed(a0, a1, a2, a3)
 	}
 	if fn.directIntFast {
 		return fn.invokeDirectIntFixed(a0, a1, a2, a3)
@@ -286,7 +308,12 @@ func (fn *PreparedFunction) invokeGeneral(args []uint64) ([]uint64, error) {
 
 func (fn *PreparedFunction) invokeScalar(args []uint64) ([]uint64, error) {
 	in := fn.in
-	if fn.privateFast {
+	if fn.privateLifetime {
+		if err := in.beginPrivateInvocation(); err != nil {
+			return nil, fmt.Errorf("wago: invoke prepared function: %w", err)
+		}
+		defer in.endPrivateInvocation()
+	} else if fn.privateFast {
 		if in.isLogicallyClosed() {
 			return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
 		}

@@ -13,6 +13,7 @@ func TestPortIntEncodings(t *testing.T) {
 		{"add x0,x1,x2,lsl#3", func(a *Asm) { a.AddShifted(X0, X1, X2, 3, false) }, 0x8b020c20},
 		{"add x0,x1,w2,uxtw", func(a *Asm) { a.AddExtUXTW(X0, X1, X2) }, 0x8b224020},
 		{"add x25,x25,w19,uxtw", func(a *Asm) { a.AddExtUXTW(X25, X25, X19) }, 0x8b334339},
+		{"uxtl v31.8h,v31.8b", func(a *Asm) { a.NeonUxtl8h(31, 31) }, 0x2f08a7ff},
 		{"adds w0,w1,w2", func(a *Asm) { a.Adds32(X0, X1, X2) }, 0x2b020020},
 		{"sxtw x0,w1", func(a *Asm) { a.Sxtw(X0, X1) }, 0x93407c20},
 		{"sxtb w0,w1", func(a *Asm) { a.Sxtb(X0, X1, true) }, 0x13001c20},
@@ -33,6 +34,7 @@ func TestPortIntEncodings(t *testing.T) {
 		{"clz x0,x1", func(a *Asm) { a.Clz(X0, X1, false) }, 0xdac01020},
 		{"rbit w0,w1", func(a *Asm) { a.Rbit(X0, X1, true) }, 0x5ac00020},
 		{"rbit x0,x1", func(a *Asm) { a.Rbit(X0, X1, false) }, 0xdac00020},
+		{"rev w0,w1", func(a *Asm) { a.Rev32(X0, X1) }, 0x5ac00820},
 		{"sdiv w0,w1,w2", func(a *Asm) { a.Sdiv32(X0, X1, X2) }, 0x1ac20c20},
 		{"sdiv x0,x1,x2", func(a *Asm) { a.Sdiv64(X0, X1, X2) }, 0x9ac20c20},
 		{"udiv w0,w1,w2", func(a *Asm) { a.Udiv32(X0, X1, X2) }, 0x1ac20820},
@@ -46,6 +48,7 @@ func TestPortIntEncodings(t *testing.T) {
 		{"smull x0,w1,w2", func(a *Asm) { a.Smull(X0, X1, X2) }, 0x9b227c20},
 		{"umull x0,w1,w2", func(a *Asm) { a.Umull(X0, X1, X2) }, 0x9ba27c20},
 		{"csel w0,w1,w2,eq", func(a *Asm) { a.Csel32(X0, X1, X2, CondEQ) }, 0x1a820020},
+		{"ccmp w1,w2,#2,ls", func(a *Asm) { a.CcmpReg32(X1, X2, 2, CondLS) }, 0x7a429022},
 		{"tst x1,x2", func(a *Asm) { a.TstReg(X1, X2, false) }, 0xea02003f},
 		{"tst w1,w2", func(a *Asm) { a.TstReg(X1, X2, true) }, 0x6a02003f},
 		{"tst x1,#0x8080808080808080", func(a *Asm) {
@@ -84,12 +87,29 @@ func TestPortFPEncodings(t *testing.T) {
 		{"fmul s0,s1,s2", func(a *Asm) { a.Fmul(X0, X1, X2, false) }, 0x1e220820},
 		{"fdiv s0,s1,s2", func(a *Asm) { a.Fdiv(X0, X1, X2, false) }, 0x1e221820},
 		{"fsqrt s0,s1", func(a *Asm) { a.Fsqrt(X0, X1, false) }, 0x1e21c020},
+		{"fabs s0,s1", func(a *Asm) { a.Fabs(X0, X1, false) }, 0x1e20c020},
+		{"fabs d0,d1", func(a *Asm) { a.Fabs(X0, X1, true) }, 0x1e60c020},
 		{"fmin s0,s1,s2", func(a *Asm) { a.Fmin(X0, X1, X2, false) }, 0x1e225820},
 		{"fmax s0,s1,s2", func(a *Asm) { a.Fmax(X0, X1, X2, false) }, 0x1e224820},
 		{"fmov s0,s1", func(a *Asm) { a.FmovReg(X0, X1, false) }, 0x1e204020},
 		{"fmov d0,d1", func(a *Asm) { a.FmovReg(X0, X1, true) }, 0x1e604020},
 		{"fmov s0,w1", func(a *Asm) { a.FmovFromGpr(X0, X1, false) }, 0x1e270020},
 		{"fmov d0,x1", func(a *Asm) { a.FmovFromGpr(X0, X1, true) }, 0x9e670020},
+		{"fmov d0,#1.0", func(a *Asm) {
+			if !a.FmovImm(X0, 0x3ff0000000000000, true) {
+				t.Fatal("f64 1.0 immediate was rejected")
+			}
+		}, 0x1e6e1000},
+		{"fmov d3,#-1.0", func(a *Asm) {
+			if !a.FmovImm(X3, 0xbff0000000000000, true) {
+				t.Fatal("f64 -1.0 immediate was rejected")
+			}
+		}, 0x1e7e1003},
+		{"fmov s7,#2.0", func(a *Asm) {
+			if !a.FmovImm(X7, 0x40000000, false) {
+				t.Fatal("f32 2.0 immediate was rejected")
+			}
+		}, 0x1e201007},
 		{"fmov w0,s1", func(a *Asm) { a.FmovToGpr(X0, X1, false) }, 0x1e260020},
 		{"fmov x0,d1", func(a *Asm) { a.FmovToGpr(X0, X1, true) }, 0x9e660020},
 		{"fcmp s0,s1", func(a *Asm) { a.Fcmp(X0, X1, false) }, 0x1e212000},
@@ -102,6 +122,10 @@ func TestPortFPEncodings(t *testing.T) {
 		{"fcvtzs x0,s1", func(a *Asm) { a.Fcvtzs(X0, X1, false, true) }, 0x9e380020},
 		{"fcvtzs w0,d1", func(a *Asm) { a.Fcvtzs(X0, X1, true, false) }, 0x1e780020},
 		{"fcvtzs x0,d1", func(a *Asm) { a.Fcvtzs(X0, X1, true, true) }, 0x9e780020},
+		{"fcvtzu w0,s1", func(a *Asm) { a.Fcvtzu(X0, X1, false, false) }, 0x1e390020},
+		{"fcvtzu x0,s1", func(a *Asm) { a.Fcvtzu(X0, X1, false, true) }, 0x9e390020},
+		{"fcvtzu w0,d1", func(a *Asm) { a.Fcvtzu(X0, X1, true, false) }, 0x1e790020},
+		{"fcvtzu x0,d1", func(a *Asm) { a.Fcvtzu(X0, X1, true, true) }, 0x9e790020},
 		{"scvtf s0,w1", func(a *Asm) { a.Scvtf(X0, X1, false, false) }, 0x1e220020},
 		{"scvtf d0,w1", func(a *Asm) { a.Scvtf(X0, X1, true, false) }, 0x1e620020},
 		{"scvtf s0,x1", func(a *Asm) { a.Scvtf(X0, X1, false, true) }, 0x9e220020},
@@ -126,6 +150,15 @@ func TestPortFPEncodings(t *testing.T) {
 				t.Errorf("%s: got %#08x, want %#08x", c.name, got, c.want)
 			}
 		})
+	}
+	for _, c := range []struct {
+		bits uint64
+		f64  bool
+	}{{0, true}, {0x3ff199999999999a, true}, {0x3f8ccccd, false}} {
+		var a Asm
+		if a.FmovImm(X0, c.bits, c.f64) || len(a.B) != 0 {
+			t.Fatalf("unencodable FP immediate %#x (f64=%t) was emitted", c.bits, c.f64)
+		}
 	}
 }
 
@@ -198,6 +231,30 @@ func TestPortDispAddressing(t *testing.T) {
 	}
 }
 
+func TestPreIndexScalarMemoryEncoding(t *testing.T) {
+	var load Asm
+	if !load.LoadPreIndex(X0, X1, 7, 4, false, false) || word(&load) != 0xb8407c20 {
+		t.Fatalf("ldr w0,[x1,#7]! = %x", load.B)
+	}
+	var store Asm
+	if !store.StorePreIndex(X1, X2, -8, 8) || word(&store) != 0xf81f8c22 {
+		t.Fatalf("str x2,[x1,#-8]! = %x", store.B)
+	}
+	if load.LoadPreIndex(X0, X1, 256, 4, false, false) || store.StorePreIndex(X1, X2, -257, 8) {
+		t.Fatal("out-of-range pre-index displacement accepted")
+	}
+	var postLoad, postStore Asm
+	if !postLoad.LoadPostIndex(X0, X1, 7, 4, false, false) || word(&postLoad) != 0xb8407420 {
+		t.Fatalf("ldr w0, [x1], #7 = %#x", word(&postLoad))
+	}
+	if !postStore.StorePostIndex(X1, X2, -8, 8) || word(&postStore) != 0xf81f8422 {
+		t.Fatalf("str x2, [x1], #-8 = %#x", word(&postStore))
+	}
+	if postLoad.LoadPostIndex(X0, X1, 256, 4, false, false) || postStore.StorePostIndex(X1, X2, -257, 8) {
+		t.Fatal("out-of-range post-index displacement accepted")
+	}
+}
+
 func TestIndexedMemoryAddressingFallbacks(t *testing.T) {
 	for _, dense := range []bool{false, true} {
 		for _, tc := range []struct {
@@ -245,6 +302,7 @@ func TestPortNeon16bLogical(t *testing.T) {
 		{"eor v0.16b,v1.16b,v2.16b", func(a *Asm) { a.Eor16b(X0, X1, X2) }, 0x6e221c20},
 		{"mvn v0.16b,v1.16b", func(a *Asm) { a.NeonNot16b(X0, X1) }, 0x6e205820},
 		{"bsl v0.16b,v1.16b,v2.16b", func(a *Asm) { a.NeonBsl16b(X0, X1, X2) }, 0x6e621c20},
+		{"bit v0.16b,v1.16b,v2.16b", func(a *Asm) { a.NeonBit16b(X0, X1, X2) }, 0x6ea21c20},
 		{"cnt v0.16b,v1.16b", func(a *Asm) { a.NeonCntB(X0, X1) }, 0x4e205820},
 		{"umaxv b0,v1.16b", func(a *Asm) { a.NeonUmaxvB(X0, X1) }, 0x6e30a820},
 		{"addv b0,v1.16b", func(a *Asm) { a.NeonAddvB(X0, X1) }, 0x4e31b820},
@@ -335,6 +393,12 @@ func TestPortNeon16bLogical(t *testing.T) {
 		{"sshr v3.2d,v4.2d,#63", func(a *Asm) { a.NeonSshrD(X3, X4, 63) }, 0x4f410483},
 		{"sli v3.4s,v4.4s,#24", func(a *Asm) { a.NeonSliS(X3, X4, 24) }, 0x6f385483},
 		{"rev32 v3.8h,v4.8h", func(a *Asm) { a.NeonRev32H(X3, X4) }, 0x6e600883},
+		{"rev x5,x5", func(a *Asm) { a.Rev64(X5, X5) }, 0xdac00ca5},
+		{"rev32 v3.16b,v4.16b", func(a *Asm) { a.NeonRev32B(X3, X4) }, 0x6e200883},
+		{"sha256h q0,q1,v2.4s", func(a *Asm) { a.SHA256H(X0, X1, X2) }, 0x5e024020},
+		{"sha256h2 q3,q4,v5.4s", func(a *Asm) { a.SHA256H2(X3, X4, X5) }, 0x5e055083},
+		{"sha256su0 v6.4s,v7.4s", func(a *Asm) { a.SHA256SU0(X6, X7) }, 0x5e2828e6},
+		{"sha256su1 v8.4s,v9.4s,v10.4s", func(a *Asm) { a.SHA256SU1(X8, X9, X10) }, 0x5e0a6128},
 		{"zip1 v3.2d,v4.2d,v5.2d", func(a *Asm) { a.NeonZip1D(X3, X4, X5) }, 0x4ec53883},
 		{"zip2 v3.2d,v4.2d,v5.2d", func(a *Asm) { a.NeonZip2D(X3, X4, X5) }, 0x4ec57883},
 		{"ext v0.16b,v1.16b,v2.16b,#13", func(a *Asm) { a.NeonExt16b(X0, X1, X2, 13) }, 0x6e026820},

@@ -106,6 +106,29 @@ func (r *Reader) S33() (int64, error)  { v, err := r.leb128(true, 33); return in
 func (r *Reader) I32() (int32, error)  { v, err := r.leb128(true, 32); return int32(uint32(v)), err }
 func (r *Reader) I64() (int64, error)  { v, err := r.leb128(true, 64); return int64(v), err }
 
+// RefTypeForNull consumes the heap-type immediate of ref.null. This exposes
+// the frontend's canonical pointer-free type representation to byte-backed
+// compiler consumers without making them duplicate the signed heap encoding.
+func (r *Reader) RefTypeForNull() (RefType, error) {
+	exact := false
+	if b, ok := r.Peek(); ok && b == 0x62 {
+		_, _ = r.Byte()
+		exact = true
+	}
+	if b, ok := r.Peek(); !exact && ok && (b == 0x64 || b >= 0x69 && b <= 0x74) {
+		_, _ = r.Byte()
+		return Ref(true, AbsHeap(AbsHeapType(b)), exact), nil
+	}
+	index, err := r.S33()
+	if err != nil {
+		return RefType{}, err
+	}
+	if index < 0 || index > int64(^uint32(0)) {
+		return RefType{}, &DecodeError{Code: ErrInvalidType, Offset: r.pos}
+	}
+	return Ref(true, IndexedHeap(TypeIdx{Index: uint32(index)}), exact), nil
+}
+
 func (r *Reader) Peek() (byte, bool) {
 	if r.pos >= len(r.data) {
 		return 0, false

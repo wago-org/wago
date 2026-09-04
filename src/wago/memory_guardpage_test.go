@@ -89,6 +89,34 @@ func TestImportedMemoryGuardPage(t *testing.T) {
 	}
 }
 
+func TestDraglineImportedMemoryGuardPage(t *testing.T) {
+	cfg := NewRuntimeConfig().WithCompiler(CompilerDragline).WithBoundsChecks(BoundsChecksSignalsBased)
+	c, err := Compile(cfg, importMemModule())
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	defer c.Close()
+	mem, err := NewMemory(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mem.Close()
+	in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.mem": mem}})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	if _, err := in.Invoke("store", I32(8), I32(0xCAFE)); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := in.Invoke("load", I32(8)); err != nil || len(got) != 1 || AsI32(got[0]) != 0xCAFE {
+		t.Fatalf("guarded load = %v, %v", got, err)
+	}
+	if _, err := in.Invoke("load", I32(1<<20)); err == nil {
+		t.Fatal("out-of-bounds Dragline load did not trap through the guard page")
+	}
+}
+
 // TestImportedMemoryGuardPageCrossInstance shares a guard-page memory between two
 // signals-based instances: A owns it, B imports A's export, and writes are
 // mutually visible through the one guarded reservation.

@@ -5,6 +5,7 @@ package wago
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"runtime"
@@ -217,6 +218,50 @@ func TestEffectiveCompileBoundsModeZeroMemoryARM64Fallback(t *testing.T) {
 	}
 }
 
+func TestEffectiveDraglinePlatformBoundsMode(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		compiler     CompilerEngine
+		mode         BoundsCheckMode
+		goos, goarch string
+		want         BoundsCheckMode
+	}{
+		{"windows-arm64-dragline-signals", CompilerDragline, BoundsChecksSignalsBased, "windows", "arm64", BoundsChecksExplicit},
+		{"windows-arm64-dragline-explicit", CompilerDragline, BoundsChecksExplicit, "windows", "arm64", BoundsChecksExplicit},
+		{"windows-amd64-dragline", CompilerDragline, BoundsChecksSignalsBased, "windows", "amd64", BoundsChecksSignalsBased},
+		{"darwin-arm64-dragline", CompilerDragline, BoundsChecksSignalsBased, "darwin", "arm64", BoundsChecksSignalsBased},
+		{"windows-arm64-railshot", CompilerRailshot, BoundsChecksSignalsBased, "windows", "arm64", BoundsChecksSignalsBased},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := effectiveDraglinePlatformBoundsMode(test.compiler, test.mode, test.goos, test.goarch); got != test.want {
+				t.Fatalf("effective platform bounds mode = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestEffectivePlatformCompiler(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		compiler     CompilerEngine
+		guardBuilt   bool
+		goos, goarch string
+		want         CompilerEngine
+	}{
+		{"windows-arm64-guard-dragline", CompilerDragline, true, "windows", "arm64", CompilerRailshot},
+		{"windows-arm64-ordinary-dragline", CompilerDragline, false, "windows", "arm64", CompilerDragline},
+		{"windows-amd64-guard-dragline", CompilerDragline, true, "windows", "amd64", CompilerDragline},
+		{"darwin-arm64-guard-dragline", CompilerDragline, true, "darwin", "arm64", CompilerDragline},
+		{"windows-arm64-guard-railshot", CompilerRailshot, true, "windows", "arm64", CompilerRailshot},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := effectivePlatformCompiler(test.compiler, test.guardBuilt, test.goos, test.goarch); got != test.want {
+				t.Fatalf("effective platform compiler = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestConfigSignalsBasedRequiresBuildTag(t *testing.T) {
 	cfg := NewRuntimeConfig().WithBoundsChecks(BoundsChecksSignalsBased)
 	_, err := Compile(cfg, signExtModule())
@@ -346,8 +391,8 @@ func TestCoreFeaturesV3ReleaseScopeAndAdmission(t *testing.T) {
 		if !errors.As(err, &unsupported) {
 			t.Fatalf("CoreFeaturesV3 Validate = %v, want platform UnsupportedFeatureError", err)
 		}
-		if unsupported.Requested != CoreFeaturesV3&^SupportedFeatures() {
-			t.Fatalf("unsupported Core 3 features = %s, want %s", unsupported.Requested, CoreFeaturesV3&^SupportedFeatures())
+		if unsupported.Requested != CoreFeaturesV3&^platformCoreFeatures() {
+			t.Fatalf("unsupported Core 3 features = %s, want %s", unsupported.Requested, CoreFeaturesV3&^platformCoreFeatures())
 		}
 	}
 }
@@ -466,6 +511,60 @@ func TestConfigTypedErrors(t *testing.T) {
 func TestConfigValidateAndIntrospection(t *testing.T) {
 	if err := NewRuntimeConfig().Validate(); err != nil {
 		t.Fatalf("default config should validate: %v", err)
+	}
+	if got := NewRuntimeConfig().WithCompilerTarget(TargetNative).CompilerTarget(); got != TargetNative {
+		t.Fatalf("compiler target = %s, want native", got)
+	}
+	if err := NewRuntimeConfig().WithCompilerTarget(CompilerTargetMode(99)).Validate(); err == nil || !strings.Contains(err.Error(), "unsupported compiler target") {
+		t.Fatalf("invalid compiler target error = %v", err)
+	}
+	if err := NewRuntimeConfig().WithCompilerFallback(CompilerFallbackRailshot).Validate(); err == nil || !strings.Contains(err.Error(), "requires the Dragline compiler") {
+		t.Fatalf("invalid fallback/compiler combination error = %v", err)
+	}
+	if err := NewRuntimeConfig().WithCompiler(CompilerDragline).WithCompilerFallback(CompilerFallbackRailshot).Validate(); err != nil {
+		t.Fatalf("valid whole-module fallback: %v", err)
+	}
+	if got := NewRuntimeConfig().WithOptimizationObjective(OptimizeSize).OptimizationObjective(); got != OptimizeSize {
+		t.Fatalf("optimization objective = %s, want size", got)
+	}
+	if err := NewRuntimeConfig().WithOptimizationObjective(OptimizationObjective(99)).Validate(); err == nil || !strings.Contains(err.Error(), "unsupported optimization objective") {
+		t.Fatalf("invalid objective error = %v", err)
+	}
+	if err := NewRuntimeConfig().WithFunctionArtifactCache(NewFunctionArtifactCache(1024)).Validate(); err == nil || !strings.Contains(err.Error(), "requires the Dragline compiler") {
+		t.Fatalf("function cache with Railshot error = %v", err)
+	}
+	hostKey := HostImport{Module: "env", Name: "clock"}
+	hostInput := map[HostImport]HostEffectContract{hostKey: {Reads: HostHeapGlobal}}
+	hostConfig := NewRuntimeConfig().WithCompiler(CompilerDragline).WithCompilerHostEffects(hostInput)
+	hostInput[hostKey] = HostEffectContract{Writes: HostHeapUnknown}
+	if got := hostConfig.CompilerHostEffects()[hostKey]; got.Reads != HostHeapGlobal || got.Writes != 0 {
+		t.Fatalf("compiler host effects were not snapshotted: %#v", got)
+	}
+	hostCopy := hostConfig.CompilerHostEffects()
+	hostCopy[hostKey] = HostEffectContract{}
+	if hostConfig.CompilerHostEffects()[hostKey].Reads != HostHeapGlobal {
+		t.Fatal("compiler host effect getter exposed mutable storage")
+	}
+	if err := hostConfig.Validate(); err != nil {
+		t.Fatalf("valid compiler host effects: %v", err)
+	}
+	if err := NewRuntimeConfig().WithCompilerHostEffects(map[HostImport]HostEffectContract{hostKey: {}}).Validate(); err == nil || !strings.Contains(err.Error(), "require the Dragline compiler") {
+		t.Fatalf("host effects with Railshot error = %v", err)
+	}
+	invalidHost := HostEffectContract{Reads: HostHeapMask(1 << 15)}
+	if err := NewRuntimeConfig().WithCompiler(CompilerDragline).WithCompilerHostEffects(map[HostImport]HostEffectContract{hostKey: invalidHost}).Validate(); err == nil || !strings.Contains(err.Error(), "invalid host effect contract") {
+		t.Fatalf("invalid host effect bits error = %v", err)
+	}
+	profile := &CompilerProfile{Version: 1, ModuleHash: sha256.Sum256([]byte("module")), Source: "static", Phase: "startup", FunctionCounts: []uint64{9}}
+	profiled := NewRuntimeConfig().WithCompilerProfile(profile)
+	profile.FunctionCounts[0] = 1
+	gotProfile := profiled.CompilerProfile()
+	if gotProfile == nil || gotProfile.FunctionCounts[0] != 9 {
+		t.Fatalf("compiler profile was not snapshotted: %#v", gotProfile)
+	}
+	gotProfile.FunctionCounts[0] = 2
+	if profiled.CompilerProfile().FunctionCounts[0] != 9 {
+		t.Fatal("compiler profile getter exposed mutable configuration storage")
 	}
 	if err := NewRuntimeConfig().WithFunctionWorkers(-1).Validate(); err == nil || !strings.Contains(err.Error(), "non-negative") {
 		t.Fatalf("negative function workers should fail validation, got %v", err)
@@ -683,6 +782,9 @@ func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 var defaultRuntimeConfigAllocationSink *RuntimeConfig
 
 func TestDefaultRuntimeConfigAllocationBudget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows environment lookup allocates inside the standard library")
+	}
 	configAllocs := testing.AllocsPerRun(1000, func() {
 		defaultRuntimeConfigAllocationSink = NewRuntimeConfig()
 	})
@@ -815,6 +917,33 @@ func TestFunctionWorkersImportedCodeAndSerialization(t *testing.T) {
 	defer loaded.Close()
 	if !loaded.dynamicImports {
 		t.Fatal("serialized imported module lost dynamic dispatch metadata")
+	}
+}
+
+func TestDraglineFunctionWorkersPreserveExactArtifact(t *testing.T) {
+	module := benchImportedModule(64, 16)
+	compile := func(workers int) *Compiled {
+		t.Helper()
+		compiled, err := NewRuntimeConfig().WithCompiler(CompilerDragline).WithBoundsChecks(BoundsChecksExplicit).WithFunctionWorkers(workers).Compile(module)
+		if err != nil {
+			t.Fatalf("workers=%d compile: %v", workers, err)
+		}
+		return compiled
+	}
+	serial := compile(1)
+	defer serial.Close()
+	parallel := compile(8)
+	defer parallel.Close()
+	serialArtifact, err := serial.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parallelArtifact, err := parallel.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(parallelArtifact, serialArtifact) {
+		t.Fatal("Dragline function-worker policy changed serialized output")
 	}
 }
 

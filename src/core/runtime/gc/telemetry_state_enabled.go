@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+const telemetryPauseSubBuckets = 16
+const telemetryPauseBuckets = 1 + 63*telemetryPauseSubBuckets
+
 // Telemetry is reusable, bounded, and not concurrency-safe. Attach one recorder
 // within one Collector enabled through Config.Telemetry. Serialize
 // Snapshot/Reset with collector mutation.

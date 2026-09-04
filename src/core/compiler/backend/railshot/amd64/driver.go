@@ -5,7 +5,7 @@ package amd64
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -787,7 +787,7 @@ func (f *fn) emitSelect() {
 	b := f.popValue()
 	a := f.popValue()
 	gcRoot := (a.kind == ekValue && a.st.gcRoot) || (b.kind == ekValue && b.st.gcRoot)
-	gcFact := shared.MergeGCRefFacts(f.gcRefFact(a), f.gcRefFact(b))
+	gcFact := codegen.MergeGCRefFacts(f.gcRefFact(a), f.gcRefFact(b))
 
 	// XMM operands have no cmov, so branch. Scalar floats use scalar moves;
 	// v128 uses a full-vector copy. Integer operands use cmov.
@@ -879,7 +879,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
 	// are pinned so condensing the compare's operands cannot spill them.
 	gcRoot := (aRoot.kind == ekValue && aRoot.st.gcRoot) || (bRoot.kind == ekValue && bRoot.st.gcRoot)
-	gcFact := shared.MergeGCRefFacts(f.gcRefFact(aRoot), f.gcRefFact(bRoot))
+	gcFact := codegen.MergeGCRefFacts(f.gcRefFact(aRoot), f.gcRefFact(bRoot))
 	aReg := f.materialize(aRoot)
 	f.pinned = f.pinned.add(aReg)
 	bReg := f.materialize(bRoot)

@@ -232,6 +232,152 @@
       ]
     },
     {
+      "file": "isa_cmp_i32.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_cmp_i32)",
+      "exec": [
+        {
+          "export": "eqz",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "eq",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "ne",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "lt_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "lt_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "gt_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "gt_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "le_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "le_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "ge_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "ge_u",
+          "args": [
+            2048
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_cmp_i64.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_cmp_i64)",
+      "exec": [
+        {
+          "export": "eqz",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "eq",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "ne",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "lt_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "lt_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "gt_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "gt_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "le_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "le_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "ge_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "ge_u",
+          "args": [
+            2048
+          ]
+        }
+      ]
+    },
+    {
       "file": "isa_f32.wasm",
       "category": "isa",
       "desc": "ISA micro: per-opcode latency (isa_f32)",
@@ -268,6 +414,12 @@
         },
         {
           "export": "max",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "copysign",
           "args": [
             2048
           ]
@@ -358,6 +510,12 @@
           ]
         },
         {
+          "export": "copysign",
+          "args": [
+            2048
+          ]
+        },
+        {
           "export": "sqrt",
           "args": [
             2048
@@ -395,6 +553,92 @@
         },
         {
           "export": "nearest",
+          "args": [
+            2048
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_cmp_f32.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_cmp_f32)",
+      "exec": [
+        {
+          "export": "eq",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "ne",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "lt",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "gt",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "le",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "ge",
+          "args": [
+            2048
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_cmp_f64.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_cmp_f64)",
+      "exec": [
+        {
+          "export": "eq",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "ne",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "lt",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "gt",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "le",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "ge",
           "args": [
             2048
           ]
@@ -444,6 +688,127 @@
         },
         {
           "export": "store_i32_stride",
+          "args": [
+            1024
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_mem_narrow.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_mem_narrow)",
+      "exec": [
+        {
+          "export": "f32_load",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i32_load8_s",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i32_load8_u",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i32_load16_s",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i32_load16_u",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i64_load8_s",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i64_load8_u",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i64_load16_s",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i64_load16_u",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i64_load32_s",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i64_load32_u",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "f32_store",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i32_store8",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i32_store16",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i64_store8",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i64_store16",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "i64_store32",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "memory_size",
+          "args": [
+            1024
+          ]
+        },
+        {
+          "export": "memory_grow_zero",
           "args": [
             1024
           ]
@@ -635,6 +1000,200 @@
         },
         {
           "export": "reinterpret_f64",
+          "args": [
+            2048
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_cvt_mvp.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_cvt_mvp)",
+      "exec": [
+        {
+          "export": "i32_wrap_i64",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i32_trunc_f32_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i32_trunc_f32_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i32_trunc_f64_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i32_trunc_f64_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i64_extend_i32_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i64_extend_i32_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i64_trunc_f32_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i64_trunc_f32_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i64_trunc_f64_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i64_trunc_f64_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "f32_convert_i32_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "f32_convert_i32_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "f32_convert_i64_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "f32_convert_i64_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "f32_demote_f64",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "f64_convert_i32_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "f64_convert_i32_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "f64_convert_i64_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "f64_convert_i64_u",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "f64_promote_f32",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i32_reinterpret_f32",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i64_reinterpret_f64",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "f32_reinterpret_i32",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "f64_reinterpret_i64",
+          "args": [
+            2048
+          ]
+        }
+      ]
+    },
+    {
+      "file": "isa_signext.wasm",
+      "category": "isa",
+      "desc": "ISA micro: per-opcode latency (isa_signext)",
+      "exec": [
+        {
+          "export": "i32_extend8_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i32_extend16_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i64_extend8_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i64_extend16_s",
+          "args": [
+            2048
+          ]
+        },
+        {
+          "export": "i64_extend32_s",
           "args": [
             2048
           ]

@@ -1097,6 +1097,7 @@ type Compiled struct {
 	// registerABIDisabled keeps descriptor publication aligned with the actual
 	// compile policy. False preserves legacy hand-built Compiled behavior.
 	registerABIDisabled bool
+	compiler            CompilerEngine
 	requiredFeatures    CoreFeatures
 	importFuncSigs      []FuncSig
 
@@ -1124,22 +1125,57 @@ type Compiled struct {
 	requiresBMI2       bool
 	requiresAVX2       bool
 	requiresAVX512     bool
-	syncHostSlots      uint16
+	requiresARM64MOPS  bool
+	requiresARM64SHA2  bool
 	// independentInstances allows instances without cross-instance Wasm imports
 	// to use instance-local native execution leases. It is intentionally not
 	// serialized because it is runtime policy rather than a module property.
 	independentInstances bool
+	syncHostSlots        uint16
 }
 
-// The sign bit of a fresh compilation's internal-entry offset carries the
-// optional direct-prepared selection without growing Compiled. Native code
-// offsets are non-negative and bounded far below the host int range. The codec
-// strips this compile-only bit, so decoded artifacts retain the wrapper fallback.
+// Compiler reports the engine that produced this module. The zero value is
+// Railshot, preserving compatibility with legacy hand-built Compiled values.
+func (c *Compiled) Compiler() CompilerEngine {
+	if c == nil {
+		return CompilerRailshot
+	}
+	return c.compiler
+}
+
+// The high bits of a fresh compilation's internal-entry offset carry optional
+// direct-prepared entry selections without growing
+// Compiled. Native code offsets are non-negative and bounded far below the host
+// int range. The codec strips these compile-only bits, so decoded artifacts
+// retain the wrapper fallback.
 var directPreparedEntryMask = ^(^uint(0) >> 1)
+var directLeafPreparedEntryMask = directPreparedEntryMask >> 1
+var directTrapPreparedEntryMask = directLeafPreparedEntryMask >> 1
+var contextFreeLoopPreparedEntryMask = directTrapPreparedEntryMask >> 1
 
 func markDirectPreparedEntry(off int) int { return int(uint(off) | directPreparedEntryMask) }
-func directPreparedEntry(off int) bool    { return uint(off)&directPreparedEntryMask != 0 }
-func internalEntryOffset(off int) int     { return int(uint(off) &^ directPreparedEntryMask) }
+func markDirectLeafPreparedEntry(off int) int {
+	return int(uint(off) | directPreparedEntryMask | directLeafPreparedEntryMask)
+}
+func markDirectTrapPreparedEntry(off int) int {
+	return int(uint(off) | directPreparedEntryMask | directTrapPreparedEntryMask)
+}
+func markContextFreeLoopPreparedEntry(off int) int {
+	return int(uint(off) | contextFreeLoopPreparedEntryMask)
+}
+func directPreparedEntry(off int) bool { return uint(off)&directPreparedEntryMask != 0 }
+func directLeafPreparedEntry(off int) bool {
+	return uint(off)&directLeafPreparedEntryMask != 0
+}
+func directTrapPreparedEntry(off int) bool {
+	return uint(off)&directTrapPreparedEntryMask != 0
+}
+func contextFreeLoopPreparedEntry(off int) bool {
+	return uint(off)&contextFreeLoopPreparedEntryMask != 0
+}
+func internalEntryOffset(off int) int {
+	return int(uint(off) &^ (directPreparedEntryMask | directLeafPreparedEntryMask | directTrapPreparedEntryMask | contextFreeLoopPreparedEntryMask))
+}
 
 // RequiresBMI2 reports whether compilation selected BMI2 instructions.
 func (c *Compiled) RequiresBMI2() bool { return c != nil && c.requiresBMI2 }
@@ -1149,6 +1185,14 @@ func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
 
 // RequiresAVX512 reports whether compilation selected an AVX-512 plugin lowering.
 func (c *Compiled) RequiresAVX512() bool { return c != nil && c.requiresAVX512 }
+
+// RequiresARM64MOPS reports whether compilation selected ARM FEAT_MOPS
+// memory-copy or memory-set instructions.
+func (c *Compiled) RequiresARM64MOPS() bool { return c != nil && c.requiresARM64MOPS }
+
+// RequiresARM64SHA2 reports whether compilation selected ARM FEAT_SHA256
+// instructions.
+func (c *Compiled) RequiresARM64SHA2() bool { return c != nil && c.requiresARM64SHA2 }
 
 type validateMemo struct {
 	once                     sync.Once
@@ -1160,12 +1204,22 @@ type validateMemo struct {
 	// zero entry retains the legacy first-dot interpretation for hand-built
 	// Compiled values; source compilation always records an exact nonzero end.
 	importModuleEnds []uint64
+	// nativeCloneFunctions marks a compact, non-standalone Dragline image. The
+	// sorted original-Wasm indexes must match InstallDraglineTier exactly.
+	nativeCloneFunctions []uint32
 
 	// Fresh low-level compilation records runtime-only quotas here for a later
 	// package-level Instantiate without growing Compiled. Decoded cache artifacts
 	// receive the destination Runtime's current policy through InstantiateOptions.
 	memoryLimitPages         uint32
 	maxInstanceMetadataBytes uint64
+}
+
+func (c *Compiled) compactNativeFunctions() []uint32 {
+	if c == nil || c.validateMemo == nil {
+		return nil
+	}
+	return c.validateMemo.nativeCloneFunctions
 }
 
 // validateCached returns the metadata-validation result, running the full check

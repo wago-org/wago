@@ -51,6 +51,20 @@ func TestOptimizationFlags(t *testing.T) {
 	}
 }
 
+func TestBackendOverride(t *testing.T) {
+	got, err := BackendOverride(command.NewContext(nil, map[string]string{"backend": "dragline"}, nil))
+	if err != nil || got != "dragline" {
+		t.Fatalf("canonical override = %q, %v", got, err)
+	}
+	got, err = BackendOverride(command.NewContext(nil, nil, map[string]bool{"dragline": true}))
+	if err != nil || got != "dragline" {
+		t.Fatalf("alias override = %q, %v", got, err)
+	}
+	if _, err := BackendOverride(command.NewContext(nil, nil, map[string]bool{"railshot": true, "dragline": true})); err == nil {
+		t.Fatal("conflicting backend aliases accepted")
+	}
+}
+
 func TestSettingsCatalogMatchesActiveBackendKnobs(t *testing.T) {
 	backend := map[string]bool{}
 	for _, knob := range wago.NewRuntimeConfig().OptimizationInfos() {
@@ -387,6 +401,29 @@ func TestRunExecGCHeapOverride(t *testing.T) {
 		map[string]string{"core": "3", "gc-heap": "32MiB"},
 		nil,
 	))
+}
+
+func TestRunExecDraglineValueMode(t *testing.T) {
+	t.Setenv("WAGO_BARE", "1")
+	configPath := filepath.Join(t.TempDir(), "settings.json")
+	t.Setenv("WAGO_CONFIG", configPath)
+	config := settings.Default()
+	if err := settings.Set(&config, "dragline", "on", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := settings.SaveFile(configPath, config); err != nil {
+		t.Fatal(err)
+	}
+	wasm := []byte{'\x00', 'a', 's', 'm', 1, 0, 0, 0,
+		1, 5, 1, 0x60, 0, 1, 0x7f,
+		3, 2, 1, 0,
+		7, 5, 1, 1, 'f', 0, 0,
+		10, 6, 1, 4, 0, 0x41, 7, 0x0b}
+	path := filepath.Join(t.TempDir(), "f.wasm")
+	if err := os.WriteFile(path, wasm, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	implementation{environment: testEnvironment{}}.Run(command.NewContext([]string{path}, map[string]string{"backend": "dragline"}, nil))
 }
 
 func TestRunExecProgramMode(t *testing.T) {

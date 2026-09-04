@@ -24,8 +24,11 @@ type Environment interface {
 func Command(environment Environment) *command.Cmd {
 	flags := []command.Flag{
 		{Name: "output", Short: "o", Arg: "<file>", Help: "output path (default: input name with .wago extension)"},
+		{Name: "target", Arg: "<mode>", Help: "compiler target: compat | native (default compat)"},
+		{Name: "objective", Arg: "<name>", Help: "compiler objective: speed | balanced | size (default speed)"},
 		runcmd.ParallelFlag(),
 	}
+	flags = append(flags, runcmd.BackendFlags()...)
 	flags = append(flags, environment.ProfileFlags()...)
 	knobs := append(runcmd.DeferredBoundsCheckingFlags(), runcmd.OptimizationFlags()...)
 	parserFlags := append(append([]command.Flag(nil), flags...), knobs...)
@@ -55,6 +58,10 @@ func (cmd implementation) Run(c *command.Ctx) {
 	if err != nil {
 		ui.Usage("build: %v", err)
 	}
+	backend, err := runcmd.BackendOverride(c)
+	if err != nil {
+		ui.Usage("build: %v", err)
+	}
 	input := singleFileArg(c.Args)
 	output := c.Str("output")
 	if output == "" {
@@ -62,7 +69,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 		output = strings.TrimSuffix(input, ext) + ".wago"
 	}
 	selection, err := settings.ResolveCompilation(settings.CompilationRequest{
-		Arch: runtime.GOARCH, Parallel: c.Str("parallel"), DeferredBoundsChecking: deferredBoundsChecking, Optimizations: optimizations,
+		Arch: runtime.GOARCH, Backend: backend, Target: c.Str("target"), Fallback: c.Str("compiler-fallback"), Objective: c.Str("objective"), Parallel: c.Str("parallel"), DeferredBoundsChecking: deferredBoundsChecking, Optimizations: optimizations,
 	})
 	if err != nil {
 		if settings.IsCompilationSettingsError(err) {
@@ -72,7 +79,7 @@ func (cmd implementation) Run(c *command.Ctx) {
 	}
 	if automation.DryRun() {
 		plan := map[string]any{
-			"input": input, "output": output, "parallel": c.Str("parallel"),
+			"input": input, "output": output, "backend": selection.Backend.String(), "target": selection.Target.String(), "objective": selection.Objective.String(), "fallback": selection.Fallback.String(), "parallel": c.Str("parallel"),
 			"functionWorkers": selection.FunctionWorkers, "deferredBoundsChecking": selection.DeferredBoundsChecking,
 		}
 		if len(selection.Optimizations) != 0 {

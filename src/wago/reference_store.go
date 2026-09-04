@@ -405,6 +405,9 @@ type gcHostActivation struct {
 	ctrl         uintptr
 	callsite     uint32
 	noFrame      bool
+	rootPlan     *compiledGCFrameRoots
+	codeBase     uintptr
+	codeBytes    uintptr
 	savedControl gcHostSavedControl
 }
 
@@ -443,16 +446,16 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 		return false
 	}
 	state := r.suspended
-	if state != nil && state.hostRootPlan != nil {
+	if state != nil {
 		for i := int(state.hostActivationCount) - 1; i >= 0; i-- {
 			activation := &state.hostActivations[i]
 			if activation.noFrame {
 				continue
 			}
-			if int(activation.callsite) >= len(state.hostRootPlan.callsites) {
+			if activation.rootPlan == nil || int(activation.callsite) >= len(activation.rootPlan.callsites) {
 				panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation callsite %d is unavailable", activation.callsite)})
 			}
-			callsite := &state.hostRootPlan.callsites[activation.callsite]
+			callsite := &activation.rootPlan.callsites[activation.callsite]
 			chain := gcNativeFrameRoots{
 				owner:                r.owner,
 				base:                 activation.base,
@@ -460,10 +463,10 @@ func (r *gcNativeFrameRoots) RangeClassifiedRootRefs(sink gc.ClassifiedRootRefSi
 				frameBytes:           callsite.frameBytes,
 				frameLayout:          r.frameLayout,
 				allowExternalReturn:  r.allowExternalReturn,
-				codeBase:             state.hostCodeBase,
-				codeBytes:            state.hostCodeBytes,
-				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
-				callsites:            state.hostRootPlan.callsites,
+				codeBase:             activation.codeBase,
+				codeBytes:            activation.codeBytes,
+				adapterReturnOffsets: activation.rootPlan.adapterReturnOffsets,
+				callsites:            activation.rootPlan.callsites,
 			}
 			if !chain.rangeChain(nil, classifiedRootSink{sink: sink, class: gc.RootNativeFrame}) {
 				return false
@@ -494,16 +497,16 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 		return false
 	}
 	state := r.suspended
-	if state != nil && state.hostRootPlan != nil {
+	if state != nil {
 		for i := int(state.hostActivationCount) - 1; i >= 0; i-- {
 			activation := &state.hostActivations[i]
 			if activation.noFrame {
 				continue
 			}
-			if int(activation.callsite) >= len(state.hostRootPlan.callsites) {
+			if activation.rootPlan == nil || int(activation.callsite) >= len(activation.rootPlan.callsites) {
 				panic(gcStructHelperError{err: fmt.Errorf("generic GC host activation callsite %d is unavailable", activation.callsite)})
 			}
-			callsite := &state.hostRootPlan.callsites[activation.callsite]
+			callsite := &activation.rootPlan.callsites[activation.callsite]
 			chain := gcNativeFrameRoots{
 				owner:                r.owner,
 				base:                 activation.base,
@@ -511,10 +514,10 @@ func (r *gcNativeFrameRoots) walk(fn func(gc.RootSlot) bool, sink gc.RootRefSink
 				frameBytes:           callsite.frameBytes,
 				frameLayout:          r.frameLayout,
 				allowExternalReturn:  r.allowExternalReturn,
-				codeBase:             state.hostCodeBase,
-				codeBytes:            state.hostCodeBytes,
-				adapterReturnOffsets: state.hostRootPlan.adapterReturnOffsets,
-				callsites:            state.hostRootPlan.callsites,
+				codeBase:             activation.codeBase,
+				codeBytes:            activation.codeBytes,
+				adapterReturnOffsets: activation.rootPlan.adapterReturnOffsets,
+				callsites:            activation.rootPlan.callsites,
 			}
 			if !chain.rangeChain(fn, sink) {
 				return false
@@ -660,20 +663,30 @@ func (r *gcNativeFrameRoots) rangeChain(fn func(gc.RootSlot) bool, sink gc.RootR
 		retWord := unsafe.Slice((*byte)(offHeapPtr(base+uintptr(frameBytes)+returnPCBias)), 8)
 		retPC := uintptr(binary.LittleEndian.Uint64(retWord))
 		if retPC < codeBase || retPC-codeBase >= codeBytes {
-			if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
-				return true
-			}
-			foreign := owner.refStore.gcFrameOwner(retPC, owner.gc)
-			if foreign == nil {
-				if r.allowExternalReturn {
+			if compiled, generationBase := owner.compilerGenerationForPC(retPC); compiled != nil && compiled.genericGCFrameRoots() != nil {
+				plan := compiled.genericGCFrameRoots()
+				codeBase, codeBytes = generationBase, uintptr(len(compiled.code))
+				adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
+			} else {
+				if owner == nil || owner.refStore == nil || !owner.refStore.ownsGCCollector(owner.gc) {
 					return true
 				}
-				panic(gcStructHelperError{err: fmt.Errorf("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC)})
+				foreign := owner.refStore.gcFrameOwner(retPC, owner.gc)
+				if foreign == nil {
+					if r.allowExternalReturn {
+						return true
+					}
+					panic(gcStructHelperError{err: fmt.Errorf("generic GC foreign return PC %#x has no Runtime GC-domain owner", retPC)})
+				}
+				owner = foreign
+				compiled, generationBase := foreign.compilerGenerationForPC(retPC)
+				if compiled == nil || compiled.genericGCFrameRoots() == nil {
+					panic(gcStructHelperError{err: fmt.Errorf("generic GC foreign return PC %#x has no compiler generation root map", retPC)})
+				}
+				plan := compiled.genericGCFrameRoots()
+				codeBase, codeBytes = generationBase, uintptr(len(compiled.code))
+				adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
 			}
-			owner = foreign
-			plan := foreign.c.genericGCFrameRoots()
-			codeBase, codeBytes = foreign.base, uintptr(len(foreign.c.code))
-			adapterReturnOffsets, callsites = plan.adapterReturnOffsets, plan.callsites
 		}
 		rel := uint32(retPC - codeBase)
 		for _, adapterReturn := range adapterReturnOffsets {
@@ -743,9 +756,6 @@ type gcPublicState struct {
 	hostResultRootSlots   [gcHostActivationLimit][2]uint32
 	hostResultRootsMade   [gcHostActivationLimit]uint8
 	hostResultRootCount   [gcHostActivationLimit]uint8
-	hostRootPlan          *compiledGCFrameRoots
-	hostCodeBase          uintptr
-	hostCodeBytes         uintptr
 }
 
 func (s *gcPublicState) resultCapacity() uint32 {
@@ -1220,10 +1230,10 @@ func (s *referenceStore) gcFrameOwner(pc uintptr, collector *gc.Collector) *Inst
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for candidate, state := range s.instances {
-		if state == nil || state.resourcesReleased || candidate == nil || candidate.gc != collector || candidate.c == nil || candidate.c.genericGCFrameRoots() == nil {
+		if state == nil || state.resourcesReleased || candidate == nil || candidate.gc != collector || candidate.c == nil {
 			continue
 		}
-		if pc >= candidate.base && pc-candidate.base < uintptr(len(candidate.c.code)) {
+		if compiled, _ := candidate.compilerGenerationForPC(pc); compiled != nil && compiled.genericGCFrameRoots() != nil {
 			return candidate
 		}
 	}
@@ -2622,7 +2632,10 @@ func (s *referenceStore) issueExternref(value any) (uint64, error) {
 	}
 }
 
-type releasedExternrefMarker struct{ reserved byte }
+type releasedExternrefMarker struct {
+	//lint:ignore U1000 keeps the marker non-zero-sized so its address is unique
+	reserved byte
+}
 
 var releasedExternrefValue = &releasedExternrefMarker{}
 
@@ -2820,7 +2833,7 @@ func (s *referenceStore) canonicalFuncrefOwnerLocked(source *Instance, descripto
 				return nil, 0, false
 			}
 			entry := source.funcRefDescs[off : off+coreruntime.FuncRefDescBytes]
-			expectedCode := uint64(ex.inst.base) + uint64(ex.inst.c.Entry[ex.localIdx])
+			expectedCode := uint64(ex.inst.wrapperEntry(ex.localIdx))
 			home := binary.LittleEndian.Uint64(entry[coreruntime.TableEntryHomeLinMemOffset:])
 			home &^= abi.FuncRefInternalHomeTag | abi.FuncRefCrossInstanceHomeTag | abi.FuncRefLocalWrapperHomeTag
 			if binary.LittleEndian.Uint64(entry[coreruntime.TableEntryCodePtrOffset:]) != expectedCode ||

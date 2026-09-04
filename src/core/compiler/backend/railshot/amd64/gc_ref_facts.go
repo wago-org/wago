@@ -3,7 +3,7 @@
 package amd64
 
 import (
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -29,7 +29,7 @@ type gcStructFieldFact struct {
 	fieldIndex  uint32
 	constType   machineType
 	constBits   int64
-	constFact   shared.GCRefFact
+	constFact   codegen.GCRefFact
 }
 
 type gcResolvedObject struct {
@@ -58,15 +58,15 @@ func (f *fn) gcKnownArrayIndexInBounds(object, index *elem) (indexValue, length 
 	i, constant := gcKnownI32Const(index)
 	fact := f.gcRefFact(object)
 	length, known := fact.KnownArrayLength()
-	return i, length, constant && known && fact.Nullability() == shared.GCKnownNonNull && i < length
+	return i, length, constant && known && fact.Nullability() == codegen.GCKnownNonNull && i < length
 }
 
-func gcRefFact(e *elem) shared.GCRefFact {
+func gcRefFact(e *elem) codegen.GCRefFact {
 	if e == nil || e.kind != ekValue || !e.st.gcRoot {
-		return shared.GCRefFact{}
+		return codegen.GCRefFact{}
 	}
 	if e.st.kind == stConst && e.st.cval == 0 {
-		return shared.NewGCRefFact(shared.GCKnownNull, shared.GCHeapUnknown)
+		return codegen.NewGCRefFact(codegen.GCKnownNull, codegen.GCHeapUnknown)
 	}
 	arrayLen := uint64(0)
 	switch e.st.kind {
@@ -79,7 +79,7 @@ func gcRefFact(e *elem) shared.GCRefFact {
 			arrayLen = uint64(e.st.idx)
 		}
 	}
-	return shared.GCRefFactFromPacked(uint64(e.st.cval), arrayLen)
+	return codegen.GCRefFactFromPacked(uint64(e.st.cval), arrayLen)
 }
 
 func (f *fn) gcRefFactsEnabled() bool {
@@ -90,18 +90,18 @@ func (f *fn) gcLoadForwarding() bool {
 	return f.gcRefFactsEnabled() && gcLoadForwardingEnabled
 }
 
-func (f *fn) gcRefFact(e *elem) shared.GCRefFact {
+func (f *fn) gcRefFact(e *elem) codegen.GCRefFact {
 	if !f.gcRefFactsEnabled() {
-		return shared.GCRefFact{}
+		return codegen.GCRefFact{}
 	}
 	return gcRefFact(e)
 }
 
-func putGCRefFact(st *storage, fact shared.GCRefFact) {
+func putGCRefFact(st *storage, fact codegen.GCRefFact) {
 	if st == nil {
 		return
 	}
-	if st.kind == stConst && st.cval == 0 && fact.Nullability() == shared.GCKnownNull {
+	if st.kind == stConst && st.cval == 0 && fact.Nullability() == codegen.GCKnownNull {
 		st.gcRoot = true
 		return
 	}
@@ -131,7 +131,7 @@ func putGCRefFact(st *storage, fact shared.GCRefFact) {
 	}
 }
 
-func (f *fn) markGCRefFact(e *elem, fact shared.GCRefFact) {
+func (f *fn) markGCRefFact(e *elem, fact codegen.GCRefFact) {
 	if e == nil || e.kind != ekValue {
 		return
 	}
@@ -142,70 +142,70 @@ func (f *fn) markGCRefFact(e *elem, fact shared.GCRefFact) {
 	putGCRefFact(&e.st, fact)
 }
 
-func gcHeapClassMatches(source shared.GCHeapClass, target wasm.AbsHeapType) (match, known bool) {
+func gcHeapClassMatches(source codegen.GCHeapClass, target wasm.AbsHeapType) (match, known bool) {
 	if target == wasm.HeapNone || target == wasm.HeapNoFunc || target == wasm.HeapNoExtern {
 		return false, true
 	}
-	if source == shared.GCHeapUnknown {
+	if source == codegen.GCHeapUnknown {
 		return false, false
 	}
 	switch target {
 	case wasm.HeapAny:
 		switch source {
-		case shared.GCHeapAny, shared.GCHeapEq, shared.GCHeapI31, shared.GCHeapStruct, shared.GCHeapArray:
+		case codegen.GCHeapAny, codegen.GCHeapEq, codegen.GCHeapI31, codegen.GCHeapStruct, codegen.GCHeapArray:
 			return true, true
-		case shared.GCHeapFunc, shared.GCHeapExtern:
+		case codegen.GCHeapFunc, codegen.GCHeapExtern:
 			return false, true
 		}
 	case wasm.HeapEq:
 		switch source {
-		case shared.GCHeapEq, shared.GCHeapI31, shared.GCHeapStruct, shared.GCHeapArray:
+		case codegen.GCHeapEq, codegen.GCHeapI31, codegen.GCHeapStruct, codegen.GCHeapArray:
 			return true, true
-		case shared.GCHeapAny:
+		case codegen.GCHeapAny:
 			return false, false
-		case shared.GCHeapFunc, shared.GCHeapExtern:
+		case codegen.GCHeapFunc, codegen.GCHeapExtern:
 			return false, true
 		}
 	case wasm.HeapI31:
 		switch source {
-		case shared.GCHeapI31:
+		case codegen.GCHeapI31:
 			return true, true
-		case shared.GCHeapAny, shared.GCHeapEq:
+		case codegen.GCHeapAny, codegen.GCHeapEq:
 			return false, false
 		default:
 			return false, true
 		}
 	case wasm.HeapStruct:
 		switch source {
-		case shared.GCHeapStruct:
+		case codegen.GCHeapStruct:
 			return true, true
-		case shared.GCHeapAny, shared.GCHeapEq:
+		case codegen.GCHeapAny, codegen.GCHeapEq:
 			return false, false
 		default:
 			return false, true
 		}
 	case wasm.HeapArray:
 		switch source {
-		case shared.GCHeapArray:
+		case codegen.GCHeapArray:
 			return true, true
-		case shared.GCHeapAny, shared.GCHeapEq:
+		case codegen.GCHeapAny, codegen.GCHeapEq:
 			return false, false
 		default:
 			return false, true
 		}
 	case wasm.HeapFunc:
-		return source == shared.GCHeapFunc, true
+		return source == codegen.GCHeapFunc, true
 	case wasm.HeapExtern:
-		return source == shared.GCHeapExtern, true
+		return source == codegen.GCHeapExtern, true
 	}
 	return false, false
 }
 
-func (f *fn) gcRefFactMatchesTarget(fact shared.GCRefFact, heap int64, nullable, exactTarget bool) (match, known bool) {
-	if fact.Nullability() == shared.GCKnownNull {
+func (f *fn) gcRefFactMatchesTarget(fact codegen.GCRefFact, heap int64, nullable, exactTarget bool) (match, known bool) {
+	if fact.Nullability() == codegen.GCKnownNull {
 		return nullable, true
 	}
-	if fact.Nullability() != shared.GCKnownNonNull {
+	if fact.Nullability() != codegen.GCKnownNonNull {
 		return false, false
 	}
 	if heap >= 0 {
@@ -223,53 +223,53 @@ func (f *fn) gcRefFactMatchesTarget(fact shared.GCRefFact, heap int64, nullable,
 	return gcHeapClassMatches(fact.HeapClass(), wasm.AbsHeapType(byte(heap)&0x7f))
 }
 
-func (f *fn) gcRefFactMatchesHeap(fact shared.GCRefFact, heap int64, nullable bool) (match, known bool) {
+func (f *fn) gcRefFactMatchesHeap(fact codegen.GCRefFact, heap int64, nullable bool) (match, known bool) {
 	return f.gcRefFactMatchesTarget(fact, heap, nullable, false)
 }
 
-func gcHeapClassForValType(m *wasm.Module, typ wasm.ValType) shared.GCHeapClass {
+func gcHeapClassForValType(m *wasm.Module, typ wasm.ValType) codegen.GCHeapClass {
 	if typ.Kind() != wasm.ValRef {
-		return shared.GCHeapUnknown
+		return codegen.GCHeapUnknown
 	}
 	heap := typ.Ref().Heap()
 	if heap.Kind() == wasm.HeapAbs {
 		switch heap.Abs() {
 		case wasm.HeapAny:
-			return shared.GCHeapAny
+			return codegen.GCHeapAny
 		case wasm.HeapEq:
-			return shared.GCHeapEq
+			return codegen.GCHeapEq
 		case wasm.HeapI31:
-			return shared.GCHeapI31
+			return codegen.GCHeapI31
 		case wasm.HeapStruct:
-			return shared.GCHeapStruct
+			return codegen.GCHeapStruct
 		case wasm.HeapArray:
-			return shared.GCHeapArray
+			return codegen.GCHeapArray
 		case wasm.HeapFunc, wasm.HeapNoFunc:
-			return shared.GCHeapFunc
+			return codegen.GCHeapFunc
 		case wasm.HeapExtern, wasm.HeapNoExtern:
-			return shared.GCHeapExtern
+			return codegen.GCHeapExtern
 		}
-		return shared.GCHeapUnknown
+		return codegen.GCHeapUnknown
 	}
 	var index uint32
 	switch heap.Kind() {
 	case wasm.HeapTypeIndex:
 		idx := heap.Type()
 		if idx.Rec {
-			return shared.GCHeapUnknown
+			return codegen.GCHeapUnknown
 		}
 		index = idx.Index
 	case wasm.HeapDefType:
 		group, member, _, ok := heap.Def()
 		if !ok || m == nil || int(group) >= len(m.Types) || member >= uint32(len(m.Types[group].SubTypes)) {
-			return shared.GCHeapUnknown
+			return codegen.GCHeapUnknown
 		}
 		for i := uint32(0); i < group; i++ {
 			index += uint32(len(m.Types[i].SubTypes))
 		}
 		index += member
 	default:
-		return shared.GCHeapUnknown
+		return codegen.GCHeapUnknown
 	}
 	if m != nil {
 		want := index
@@ -280,34 +280,34 @@ func gcHeapClassForValType(m *wasm.Module, typ wasm.ValType) shared.GCHeapClass 
 			}
 			switch m.Types[i].SubTypes[want].Comp.Kind {
 			case wasm.CompStruct:
-				return shared.GCHeapStruct
+				return codegen.GCHeapStruct
 			case wasm.CompArray:
-				return shared.GCHeapArray
+				return codegen.GCHeapArray
 			case wasm.CompFunc:
-				return shared.GCHeapFunc
+				return codegen.GCHeapFunc
 			}
 			break
 		}
 	}
-	return shared.GCHeapUnknown
+	return codegen.GCHeapUnknown
 }
 
-func zeroGCRefFactForValType(m *wasm.Module, typ wasm.ValType) shared.GCRefFact {
+func zeroGCRefFactForValType(m *wasm.Module, typ wasm.ValType) codegen.GCRefFact {
 	if typ.Kind() != wasm.ValRef {
-		return shared.GCRefFact{}
+		return codegen.GCRefFact{}
 	}
-	return shared.NewGCRefFact(shared.GCKnownNull, gcHeapClassForValType(m, typ))
+	return codegen.NewGCRefFact(codegen.GCKnownNull, gcHeapClassForValType(m, typ))
 }
 
-func (f *fn) declaredGCRefFact(typ wasm.ValType) shared.GCRefFact {
+func (f *fn) declaredGCRefFact(typ wasm.ValType) codegen.GCRefFact {
 	if !f.gcRefFactsEnabled() || typ.Kind() != wasm.ValRef {
-		return shared.GCRefFact{}
+		return codegen.GCRefFact{}
 	}
-	nullability := shared.GCNullUnknown
+	nullability := codegen.GCNullUnknown
 	if !typ.Ref().Nullable() {
-		nullability = shared.GCKnownNonNull
+		nullability = codegen.GCKnownNonNull
 	}
-	fact := shared.NewGCRefFact(nullability, gcHeapClassForValType(f.m, typ))
+	fact := codegen.NewGCRefFact(nullability, gcHeapClassForValType(f.m, typ))
 	heap := typ.Ref().Heap()
 	var index uint32
 	switch heap.Kind() {
@@ -338,37 +338,37 @@ func (f *fn) declaredGCRefFact(typ wasm.ValType) shared.GCRefFact {
 	return fact
 }
 
-func (f *fn) gcHeapClassForType(typeIndex uint32) shared.GCHeapClass {
+func (f *fn) gcHeapClassForType(typeIndex uint32) codegen.GCHeapClass {
 	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompStruct); ok && layout.Type != nil {
-		return shared.GCHeapStruct
+		return codegen.GCHeapStruct
 	}
 	if layout, ok := f.gcTypeLayout(typeIndex, wasm.CompArray); ok && layout.Type != nil {
-		return shared.GCHeapArray
+		return codegen.GCHeapArray
 	}
 	if typ, ok := f.stagedGCType(typeIndex); ok {
 		switch typ.Comp.Kind {
 		case wasm.CompStruct:
-			return shared.GCHeapStruct
+			return codegen.GCHeapStruct
 		case wasm.CompArray:
-			return shared.GCHeapArray
+			return codegen.GCHeapArray
 		case wasm.CompFunc:
-			return shared.GCHeapFunc
+			return codegen.GCHeapFunc
 		}
 	}
-	return shared.GCHeapUnknown
+	return codegen.GCHeapUnknown
 }
 
 func (f *fn) nextGCIdentity() uint32 {
-	if f.nextGCRefIdentity >= shared.MaxGCRefFactIdentity {
+	if f.nextGCRefIdentity >= codegen.MaxGCRefFactIdentity {
 		return 0
 	}
 	f.nextGCRefIdentity++
 	return f.nextGCRefIdentity
 }
 
-func (f *fn) constructorGCRefFact(typeIndex uint32, arrayLength *uint32) shared.GCRefFact {
-	fact := shared.ExactGCRefFact(typeIndex, f.nextGCIdentity(), f.gcHeapClassForType(typeIndex)).
-		WithFreshness(shared.GCFreshUnpublished)
+func (f *fn) constructorGCRefFact(typeIndex uint32, arrayLength *uint32) codegen.GCRefFact {
+	fact := codegen.ExactGCRefFact(typeIndex, f.nextGCIdentity(), f.gcHeapClassForType(typeIndex)).
+		WithFreshness(codegen.GCFreshUnpublished)
 	if int(typeIndex) < len(f.gcTypeLayouts) {
 		fact = fact.WithPointerFree(f.gcTypeLayouts[typeIndex].PointerFree)
 	}
@@ -386,15 +386,16 @@ func (f *fn) markTopConstructorGCRefFact(typeIndex uint32, arrayLength *uint32) 
 	}
 }
 
+//lint:ignore U1000 retained for exact-type propagation entry points
 func (f *fn) markExactGCType(e *elem, typeIndex uint32) {
 	fact := f.gcRefFact(e)
-	fact = fact.WithExactType(typeIndex, fact.HeapClass()).WithNullability(shared.GCKnownNonNull)
+	fact = fact.WithExactType(typeIndex, fact.HeapClass()).WithNullability(codegen.GCKnownNonNull)
 	f.markGCRefFact(e, fact)
 }
 
 func (f *fn) markTopExactGCType(typeIndex uint32) {
 	if f.gcRefFactsEnabled() {
-		fact := f.gcRefFact(f.s.back()).WithExactType(typeIndex, f.gcHeapClassForType(typeIndex)).WithNullability(shared.GCKnownNonNull)
+		fact := f.gcRefFact(f.s.back()).WithExactType(typeIndex, f.gcHeapClassForType(typeIndex)).WithNullability(codegen.GCKnownNonNull)
 		f.markGCRefFact(f.s.back(), fact)
 	}
 }
@@ -407,9 +408,9 @@ func (f *fn) seedFinalGCParameterTypes(params []wasm.ValType, recBase, recLength
 		if local >= len(f.localGCRefFacts) || typ.Kind() != wasm.ValRef {
 			continue
 		}
-		nullability := shared.GCNullUnknown
+		nullability := codegen.GCNullUnknown
 		if !typ.Ref().Nullable() {
-			nullability = shared.GCKnownNonNull
+			nullability = codegen.GCKnownNonNull
 		}
 		heap := typ.Ref().Heap()
 		var index uint32
@@ -436,7 +437,7 @@ func (f *fn) seedFinalGCParameterTypes(params []wasm.ValType, recBase, recLength
 			continue
 		}
 		if target, ok := f.stagedGCType(index); ok && target.Final && (target.Comp.Kind == wasm.CompStruct || target.Comp.Kind == wasm.CompArray) {
-			fact := shared.ExactGCRefFact(index, 0, f.gcHeapClassForType(index)).WithNullability(nullability).WithFreshness(shared.GCPublished)
+			fact := codegen.ExactGCRefFact(index, 0, f.gcHeapClassForType(index)).WithNullability(nullability).WithFreshness(codegen.GCPublished)
 			if int(index) < len(f.gcTypeLayouts) {
 				fact = fact.WithPointerFree(f.gcTypeLayouts[index].PointerFree)
 			}
@@ -454,9 +455,9 @@ func (f *fn) markLocalGetExactGCType(e *elem, local int) {
 	}
 }
 
-func (f *fn) setLocalExactGCType(local int, source *elem) (shared.GCRefFact, bool) {
+func (f *fn) setLocalExactGCType(local int, source *elem) (codegen.GCRefFact, bool) {
 	if !f.gcRefFactsEnabled() || local < 0 || local >= len(f.localGCRefFacts) {
-		return shared.GCRefFact{}, false
+		return codegen.GCRefFact{}, false
 	}
 	fact := f.gcRefFact(source)
 	f.localGCRefFacts[local] = fact
@@ -473,7 +474,7 @@ func (f *fn) clearLocalExactGCTypes() {
 	f.invalidateGCResolvedObject()
 }
 
-func (f *fn) newGCRefFactBuf() []shared.GCRefFact {
+func (f *fn) newGCRefFactBuf() []codegen.GCRefFact {
 	n := len(f.localGCRefFacts)
 	for i := len(f.gcFactPool) - 1; i >= 0; i-- {
 		b := f.gcFactPool[i]
@@ -486,17 +487,17 @@ func (f *fn) newGCRefFactBuf() []shared.GCRefFact {
 		f.gcFactPool = f.gcFactPool[:last]
 		return b[:n]
 	}
-	return make([]shared.GCRefFact, n)
+	return make([]codegen.GCRefFact, n)
 }
 
-func (f *fn) freeGCRefFactBuf(b []shared.GCRefFact) {
+func (f *fn) freeGCRefFactBuf(b []codegen.GCRefFact) {
 	if cap(b) >= len(f.localGCRefFacts) && len(f.localGCRefFacts) != 0 {
 		clear(b)
 		f.gcFactPool = append(f.gcFactPool, b[:cap(b)])
 	}
 }
 
-func (f *fn) snapshotGCRefFacts() []shared.GCRefFact {
+func (f *fn) snapshotGCRefFacts() []codegen.GCRefFact {
 	if !f.gcRefFactsEnabled() || len(f.localGCRefFacts) == 0 {
 		return nil
 	}
@@ -505,7 +506,7 @@ func (f *fn) snapshotGCRefFacts() []shared.GCRefFact {
 	return b
 }
 
-func (f *fn) mergeGCRefFactsInto(target *[]shared.GCRefFact) {
+func (f *fn) mergeGCRefFactsInto(target *[]codegen.GCRefFact) {
 	if !f.gcRefFactsEnabled() {
 		return
 	}
@@ -514,11 +515,11 @@ func (f *fn) mergeGCRefFactsInto(target *[]shared.GCRefFact) {
 		return
 	}
 	for i := range f.localGCRefFacts {
-		(*target)[i] = shared.MergeGCRefFacts((*target)[i], f.localGCRefFacts[i])
+		(*target)[i] = codegen.MergeGCRefFacts((*target)[i], f.localGCRefFacts[i])
 	}
 }
 
-func (f *fn) installGCRefFacts(source []shared.GCRefFact) {
+func (f *fn) installGCRefFacts(source []codegen.GCRefFact) {
 	if !f.gcRefFactsEnabled() {
 		return
 	}
@@ -552,15 +553,15 @@ func (f *fn) invalidateLoopModifiedGCRefFacts(modified map[uint32]bool) {
 	for local := range modified {
 		idx := int(local) + f.localBase
 		if idx >= 0 && idx < len(f.localGCRefFacts) {
-			f.localGCRefFacts[idx] = shared.GCRefFact{}
+			f.localGCRefFacts[idx] = codegen.GCRefFact{}
 			f.invalidateGCLoadFactsForLocal(idx)
 		}
 	}
 	// A previous iteration may publish an otherwise invariant constructor without
 	// assigning its local. Identity/type facts remain valid, but freshness does not.
 	for i, fact := range f.localGCRefFacts {
-		if fact.Freshness() == shared.GCFreshUnpublished {
-			f.localGCRefFacts[i] = fact.WithFreshness(shared.GCPublished)
+		if fact.Freshness() == codegen.GCFreshUnpublished {
+			f.localGCRefFacts[i] = fact.WithFreshness(codegen.GCPublished)
 		}
 	}
 }
@@ -571,14 +572,14 @@ func (f *fn) publishGCIdentity(identity uint32) {
 	}
 	for i, fact := range f.localGCRefFacts {
 		if fact.Identity() == identity {
-			f.localGCRefFacts[i] = fact.WithFreshness(shared.GCPublished)
+			f.localGCRefFacts[i] = fact.WithFreshness(codegen.GCPublished)
 		}
 	}
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue {
 			fact := f.gcRefFact(e)
 			if fact.Identity() == identity {
-				putGCRefFact(&e.st, fact.WithFreshness(shared.GCPublished))
+				putGCRefFact(&e.st, fact.WithFreshness(codegen.GCPublished))
 			}
 		}
 	}
@@ -597,19 +598,19 @@ func (f *fn) publishGCStoredChild(parent, child *elem) {
 	}
 }
 
-func (f *fn) recordGCBarrierState(state shared.GCBarrierState) {
+func (f *fn) recordGCBarrierState(state codegen.GCBarrierState) {
 	switch state {
-	case shared.GCBarrierNoBarrier:
+	case codegen.GCBarrierNoBarrier:
 		f.stats.peep("gc-barrier-none")
-	case shared.GCBarrierYoungParent:
+	case codegen.GCBarrierYoungParent:
 		f.stats.peep("gc-barrier-young-parent")
-	case shared.GCBarrierKnownOldChild:
+	case codegen.GCBarrierKnownOldChild:
 		f.stats.peep("gc-barrier-known-old-child")
-	case shared.GCBarrierExistingCard:
+	case codegen.GCBarrierExistingCard:
 		f.stats.peep("gc-barrier-existing-card")
-	case shared.GCBarrierCardMark:
+	case codegen.GCBarrierCardMark:
 		f.stats.peep("gc-barrier-card-mark")
-	case shared.GCBarrierSlowBarrier:
+	case codegen.GCBarrierSlowBarrier:
 		f.stats.peep("gc-barrier-slow")
 	}
 }
@@ -619,15 +620,15 @@ func (f *fn) publishAllFreshGCRefs() {
 		return
 	}
 	for i, fact := range f.localGCRefFacts {
-		if fact.Freshness() == shared.GCFreshUnpublished {
-			f.localGCRefFacts[i] = fact.WithFreshness(shared.GCPublished)
+		if fact.Freshness() == codegen.GCFreshUnpublished {
+			f.localGCRefFacts[i] = fact.WithFreshness(codegen.GCPublished)
 		}
 	}
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue {
 			fact := f.gcRefFact(e)
-			if fact.Freshness() == shared.GCFreshUnpublished {
-				putGCRefFact(&e.st, fact.WithFreshness(shared.GCPublished))
+			if fact.Freshness() == codegen.GCFreshUnpublished {
+				putGCRefFact(&e.st, fact.WithFreshness(codegen.GCPublished))
 			}
 		}
 	}
@@ -641,13 +642,13 @@ func (f *fn) invalidateGCGenerationFacts() {
 		return
 	}
 	for i, fact := range f.localGCRefFacts {
-		f.localGCRefFacts[i] = fact.WithGeneration(shared.GCGenerationUnknown)
+		f.localGCRefFacts[i] = fact.WithGeneration(codegen.GCGenerationUnknown)
 	}
 	for e := f.s.head.next; e != f.s.head; e = e.next {
 		if e.kind == ekValue {
 			fact := f.gcRefFact(e)
 			if !fact.IsZero() {
-				putGCRefFact(&e.st, fact.WithGeneration(shared.GCGenerationUnknown))
+				putGCRefFact(&e.st, fact.WithGeneration(codegen.GCGenerationUnknown))
 			}
 		}
 	}
@@ -922,20 +923,20 @@ func (f *fn) observeGCStructSet(object *elem, typeIndex, fieldIndex uint32) {
 	}
 	fact := f.localGCRefFacts[local]
 	knownType, exact := fact.ExactType()
-	if !exact || knownType != typeIndex || fact.Freshness() != shared.GCFreshUnpublished || fact.Identity() == 0 {
+	if !exact || knownType != typeIndex || fact.Freshness() != codegen.GCFreshUnpublished || fact.Identity() == 0 {
 		return
 	}
 	f.gcLastField = gcStructFieldFact{valid: true, fromStore: true, local: local, resultLocal: -1, identity: fact.Identity(), typeIndex: typeIndex, fieldIndex: fieldIndex}
 }
 
-func (f *fn) topGCLocalFact() (local int, fact shared.GCRefFact, ok bool) {
+func (f *fn) topGCLocalFact() (local int, fact codegen.GCRefFact, ok bool) {
 	if !f.gcRefFactsEnabled() {
-		return 0, shared.GCRefFact{}, false
+		return 0, codegen.GCRefFact{}, false
 	}
 	e := f.s.back()
 	local, ok = gcLocalProvenance(e)
 	if !ok || local < 0 || local >= len(f.localGCRefFacts) {
-		return 0, shared.GCRefFact{}, false
+		return 0, codegen.GCRefFact{}, false
 	}
 	fact = f.localGCRefFacts[local]
 	return local, fact, !fact.IsZero()
@@ -958,7 +959,7 @@ func (f *fn) refineGCDereferencedObject(object *elem) {
 	if !ok || local < 0 || local >= len(f.localGCRefFacts) {
 		return
 	}
-	fact := f.localGCRefFacts[local].WithNullability(shared.GCKnownNonNull)
+	fact := f.localGCRefFacts[local].WithNullability(codegen.GCKnownNonNull)
 	f.localGCRefFacts[local] = fact
 	f.markGCRefFact(object, fact)
 	f.stats.peep("gc-deref-nonnull-refine")
@@ -974,7 +975,7 @@ func (f *fn) refineTopLocalExactGCType(typeIndex uint32) {
 	}
 	local := e.st.idx
 	if local >= 0 && local < len(f.localGCRefFacts) {
-		fact := f.localGCRefFacts[local].WithExactType(typeIndex, f.gcHeapClassForType(typeIndex)).WithNullability(shared.GCKnownNonNull)
+		fact := f.localGCRefFacts[local].WithExactType(typeIndex, f.gcHeapClassForType(typeIndex)).WithNullability(codegen.GCKnownNonNull)
 		f.localGCRefFacts[local] = fact
 		putGCRefFact(&e.st, fact)
 	}

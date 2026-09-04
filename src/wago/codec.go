@@ -20,7 +20,13 @@ const (
 
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
-	// low range; reserving the top nine bits avoids growing artifacts.
+	// low range; reserving the top fifteen bits avoids growing artifacts.
+	compiledCompilerDragline              uint64 = 1 << 49
+	compiledCPUFeatureARM64SHA2           uint64 = 1 << 50
+	compiledCPUFeatureARM64MOPS           uint64 = 1 << 51
+	compiledSourceIdentity                uint64 = 1 << 52
+	compiledTierable                      uint64 = 1 << 53
+	compiledRailshotFunctionCounters      uint64 = 1 << 54
 	compiledGCExecutionI31Product         uint64 = 1 << 55
 	compiledFuncRefContextHeader          uint64 = 1 << 56
 	compiledDynamicFuncrefEscape          uint64 = 1 << 57
@@ -357,6 +363,12 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	if c.requiresBMI2 {
 		required |= compiledCPUFeatureBMI2
 	}
+	if c.requiresARM64MOPS {
+		required |= compiledCPUFeatureARM64MOPS
+	}
+	if c.requiresARM64SHA2 {
+		required |= compiledCPUFeatureARM64SHA2
+	}
 	if c.needsFuncRefContextHeader {
 		required |= compiledFuncRefContextHeader
 	}
@@ -366,7 +378,23 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	if c.registerABIDisabled {
 		required |= compiledRegisterABIDisabled
 	}
+	if c.compiler == CompilerDragline {
+		required |= compiledCompilerDragline
+	}
+	if c.hasFunctionCounters() {
+		required |= compiledRailshotFunctionCounters
+	}
+	if c.isTierable() {
+		required |= compiledTierable
+	}
+	if c.codeCache != nil && c.codeCache.sourceHashAvailable && (c.isTierable() || c.compiler == CompilerDragline) {
+		required |= compiledSourceIdentity
+	}
 	w.u64(required)
+	if required&(compiledSourceIdentity|compiledRailshotFunctionCounters) != 0 {
+		hash := c.profileSourceHash()
+		w.bytes(hash[:])
+	}
 	sizes.Features += int64(len(w.buf) - start)
 	start = len(w.buf)
 	if required&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0 || c.hasCollectorReferenceCallBoundary() {
@@ -959,10 +987,37 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 	}
 	gcExecution := required & compiledGCExecutionMask
 	c.requiresBMI2 = required&compiledCPUFeatureBMI2 != 0
+	c.requiresARM64MOPS = required&compiledCPUFeatureARM64MOPS != 0
+	c.requiresARM64SHA2 = required&compiledCPUFeatureARM64SHA2 != 0
 	c.needsFuncRefContextHeader = required&compiledFuncRefContextHeader != 0
 	c.dynamicFuncrefEscape = required&compiledDynamicFuncrefEscape != 0
 	c.registerABIDisabled = required&compiledRegisterABIDisabled != 0
-	c.requiredFeatures = CoreFeatures(required &^ (compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2))
+	functionCounters := required&compiledRailshotFunctionCounters != 0
+	tierable := required&compiledTierable != 0
+	sourceIdentity := required&compiledSourceIdentity != 0
+	if required&compiledCompilerDragline != 0 {
+		c.compiler = CompilerDragline
+	}
+	c.requiredFeatures = CoreFeatures(required &^ (compiledSourceIdentity | compiledTierable | compiledRailshotFunctionCounters | compiledCompilerDragline | compiledFuncRefContextHeader | compiledDynamicFuncrefEscape | compiledRegisterABIDisabled | compiledAtomicWaitExecution | compiledGCExecutionMask | compiledCPUFeatureBMI2 | compiledCPUFeatureARM64MOPS | compiledCPUFeatureARM64SHA2))
+	// Function-counter artifacts from the preceding format always carried this
+	// hash even before the explicit source-identity bit was introduced.
+	if sourceIdentity || functionCounters {
+		hash, readErr := r.bytesLabel("compiler source hash")
+		if readErr != nil {
+			return readErr
+		}
+		if len(hash) != 32 {
+			return fmt.Errorf("compiler source hash has %d bytes, want 32", len(hash))
+		}
+		c.ensureCodeCache()
+		c.codeCache.sourceHashAvailable = true
+		copy(c.codeCache.sourceHash[:], hash)
+	}
+	if functionCounters || tierable {
+		c.ensureCodeCache()
+		c.codeCache.functionCounters = functionCounters
+		c.codeCache.tierable = tierable
+	}
 	genericNativeGC := gcExecution&(compiledGCExecutionGenericStruct|compiledGCExecutionGenericArray) != 0
 	if genericNativeGC || c.hasCollectorReferenceCallBoundary() {
 		label := "native GC call-boundary"

@@ -1,0 +1,136 @@
+{
+  "generated": "2026-09-03",
+  "sourceCommit": "65b1a67b5045513f108784848a26a05fcbd5bfa3",
+  "machine": "AMD Ryzen 7 7800X3D, linux/amd64, CPU 7 pinned",
+  "method": "hyperfine -N --warmup 5 --min-runs 30; cold caches (full process, exec→exit)",
+  "unit": "ms",
+  "architecture": "amd64",
+  "runtimes": {
+    "railshot": {
+      "label": "wago single-pass",
+      "tag": "wago"
+    },
+    "dragline": {
+      "label": "wago multi-pass",
+      "tag": "wago"
+    },
+    "wazero": {
+      "label": "wazero",
+      "tag": "JIT"
+    },
+    "wasmtime": {
+      "label": "wasmtime",
+      "tag": "JIT"
+    },
+    "wasmer": {
+      "label": "wasmer",
+      "tag": "JIT"
+    },
+    "v8": {
+      "label": "v8",
+      "tag": "JIT"
+    },
+    "wasm3": {
+      "label": "wasm3",
+      "tag": "interp"
+    },
+    "wasmi": {
+      "label": "wasmi",
+      "tag": "interp"
+    },
+    "iwasm": {
+      "label": "iwasm",
+      "tag": "interp"
+    },
+    "wavm": {
+      "label": "wavm",
+      "tag": "LLVM"
+    }
+  },
+  "workloads": [
+    {
+      "id": "json-as",
+      "label": "json-as",
+      "desc": "AssemblyScript JSON serialize + parse (SWAR)",
+      "results": {
+        "railshot": 10.832,
+        "dragline": 11.608,
+        "wazero": 10.613,
+        "wasmtime": 18.444,
+        "wasmer": 21.976,
+        "v8": 11.861,
+        "wavm": 267.009
+      }
+    },
+    {
+      "id": "nbody",
+      "label": "nbody",
+      "desc": "Benchmarks-Game N-body leapfrog integrator (f64)",
+      "results": {
+        "railshot": 33.772,
+        "dragline": 56.642,
+        "wazero": 38.873,
+        "wasmtime": 30.108,
+        "wasmer": 34.478,
+        "v8": 44.806,
+        "wavm": 50.244
+      }
+    },
+    {
+      "id": "spectralnorm",
+      "label": "spectralnorm",
+      "desc": "Benchmarks-Game power iteration (f64)",
+      "results": {
+        "railshot": 8.371,
+        "dragline": 11.047,
+        "wazero": 4.718,
+        "wasmtime": 6.557,
+        "wasmer": 9.913,
+        "v8": 16.614,
+        "wavm": 50.832
+      }
+    },
+    {
+      "id": "quicksort",
+      "label": "quicksort",
+      "desc": "recursive in-place int sort",
+      "results": {
+        "railshot": 13.892,
+        "dragline": 23.096,
+        "wazero": 11.997,
+        "wasmtime": 11.922,
+        "wasmer": 15.333,
+        "v8": 17.801,
+        "wavm": 137.332
+      }
+    },
+    {
+      "id": "raytrace",
+      "label": "raytrace",
+      "desc": "recursive Whitted ray tracer (f64)",
+      "results": {
+        "railshot": 13.061,
+        "dragline": 31.616,
+        "wazero": 8.644,
+        "wasmtime": 11.495,
+        "wasmer": 15.171,
+        "v8": 17.539,
+        "wavm": 40.304
+      }
+    },
+    {
+      "id": "sha256",
+      "label": "sha256",
+      "desc": "64-round SHA-256, integer rotate/xor",
+      "results": {
+        "railshot": 7.115,
+        "dragline": 11.404,
+        "wazero": 2.725,
+        "wasmtime": 5.354,
+        "wasmer": 8.734,
+        "v8": 13.836,
+        "wavm": 32.854
+      }
+    }
+  ]
+}

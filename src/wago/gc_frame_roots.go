@@ -3,49 +3,38 @@ package wago
 import (
 	"fmt"
 
+	corecompiler "github.com/wago-org/wago/src/core/compiler"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+const gcNativeFrameRootLimit = shared.GCFrameRootLimit
+
+func (in *Instance) gcCompilerCallsite(pc uintptr) (*compiledGCFrameRoots, uintptr, uintptr, int) {
+	compiled, codeBase := in.compilerGenerationForPC(pc)
+	if compiled == nil {
+		return nil, 0, 0, -1
+	}
+	plan := compiled.genericGCFrameRoots()
+	if plan == nil {
+		return nil, 0, 0, -1
+	}
+	rel := uint32(pc - codeBase)
+	for i := range plan.callsites {
+		if plan.callsites[i].returnOffset == rel {
+			return plan, codeBase, uintptr(len(compiled.code)), i
+		}
+	}
+	return nil, 0, 0, -1
+}
 
 // collectorFrameRefType classifies reference types represented by the Wasm GC
 // collector. It deliberately excludes funcref, externref, and exnref. Indexed
 // heap types are resolved in the containing module, including recursive groups;
 // unresolved shapes fail closed by requesting GC handling.
 func collectorFrameRefType(m *wasm.Module, t wasm.ValType) bool {
-	if t.Kind() != wasm.ValRef {
-		return false
-	}
-	heap := t.Ref().Heap()
-	switch heap.Kind() {
-	case wasm.HeapAbs:
-		switch heap.Abs() {
-		case wasm.HeapAny, wasm.HeapEq, wasm.HeapI31, wasm.HeapStruct, wasm.HeapArray, wasm.HeapNone:
-			return true
-		default:
-			return false
-		}
-	case wasm.HeapDefType:
-		kind, valid := heap.DefCompKind()
-		if !valid {
-			return true
-		}
-		return kind == wasm.CompStruct || kind == wasm.CompArray
-	case wasm.HeapTypeIndex:
-		if m == nil {
-			return true
-		}
-		index := heap.Type().Index
-		for _, group := range m.Types {
-			if index < uint32(len(group.SubTypes)) {
-				kind := group.SubTypes[index].Comp.Kind
-				return kind == wasm.CompStruct || kind == wasm.CompArray
-			}
-			index -= uint32(len(group.SubTypes))
-		}
-		return true
-	default:
-		return true
-	}
+	return codegen.IsCollectorReferenceType(m, t)
 }
 
 func collectorObjectFrameRefType(m *wasm.Module, t wasm.ValType) bool {
@@ -143,6 +132,100 @@ func moduleHasGCAllocationSites(m *wasm.Module) bool {
 		}
 	}
 	return false
+}
+
+func moduleHasCollectorReferenceFrames(m *wasm.Module) bool {
+	if m == nil {
+		return false
+	}
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	for local := range m.Code {
+		if !gcFrameBodyMayCollectWithClassifier(m.Code[local].BodyBytes, &classifier) {
+			continue
+		}
+		ft, ok := m.LocalFuncType(local)
+		if !ok || ft == nil {
+			return true
+		}
+		for _, typ := range ft.Params {
+			if collectorFrameRefType(m, typ) {
+				return true
+			}
+		}
+		for _, typ := range ft.Results {
+			if collectorFrameRefType(m, typ) {
+				return true
+			}
+		}
+		for _, run := range m.Code[local].Locals.Runs {
+			if collectorFrameRefType(m, run.Type) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func draglineGCFrameRoots(output corecompiler.Output) (*compiledGCFrameRoots, error) {
+	if output.Engine != corecompiler.EngineDragline {
+		return nil, fmt.Errorf("GC frame roots require dragline output")
+	}
+	if len(output.GCCallsites) == 0 && len(output.GCSafepoints) == 0 {
+		return nil, fmt.Errorf("dragline produced no GC root metadata")
+	}
+	rootMap := &compiledGCFrameRoots{
+		callsites:  make([]compiledGCFrameCallsite, 0, len(output.GCCallsites)),
+		safepoints: make([]compiledGCFrameSafepoint, 0, len(output.GCSafepoints)),
+	}
+	for index, offset := range output.GCAdapterReturnOffsets {
+		if offset == 0 || uint64(offset) >= uint64(len(output.Code)) || index != 0 && offset <= output.GCAdapterReturnOffsets[index-1] {
+			return nil, fmt.Errorf("dragline GC adapter return offset %d is malformed", index)
+		}
+	}
+	rootMap.adapterReturnOffsets = append(rootMap.adapterReturnOffsets, output.GCAdapterReturnOffsets...)
+	var interner gcFrameOffsetInterner
+	safepointRootEnd := uint64(0)
+	previousID := uint32(0)
+	for index, safepoint := range output.GCSafepoints {
+		nextRootEnd := uint64(safepoint.RootStart) + uint64(safepoint.RootCount)
+		if uint64(safepoint.RootStart) != safepointRootEnd || nextRootEnd > uint64(len(output.GCSafepointRoots)) || safepoint.ID == 0 || safepoint.ID > shared.GCSafepointIDMax || index != 0 && safepoint.ID <= previousID || safepoint.FrameBytes < 8 || safepoint.FrameBytes > 1<<31-1 {
+			return nil, fmt.Errorf("dragline GC safepoint %d is malformed", index)
+		}
+		offsets := output.GCSafepointRoots[safepoint.RootStart:nextRootEnd]
+		if len(offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(offsets, safepoint.FrameBytes) {
+			return nil, fmt.Errorf("dragline GC safepoint %d roots are malformed", index)
+		}
+		rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: safepoint.ID, frameBytes: safepoint.FrameBytes, offsets: interner.intern(offsets, true)})
+		safepointRootEnd = nextRootEnd
+		previousID = safepoint.ID
+	}
+	if safepointRootEnd != uint64(len(output.GCSafepointRoots)) {
+		return nil, fmt.Errorf("dragline GC safepoint root slab is not canonically packed")
+	}
+	rootEnd := uint64(0)
+	previousReturn := uint32(0)
+	for index, callsite := range output.GCCallsites {
+		nextRootEnd := uint64(callsite.RootStart) + uint64(callsite.RootCount)
+		if uint64(callsite.RootStart) != rootEnd || nextRootEnd > uint64(len(output.GCRoots)) || callsite.ReturnOffset == 0 || uint64(callsite.ReturnOffset) >= uint64(len(output.Code)) || index != 0 && callsite.ReturnOffset <= previousReturn || callsite.FrameBytes < 8 || callsite.FrameBytes > 1<<31-1 || callsite.StackAdjust&7 != 0 || callsite.StackAdjust > 1<<20 {
+			return nil, fmt.Errorf("dragline GC callsite %d is malformed", index)
+		}
+		offsets := output.GCRoots[callsite.RootStart:nextRootEnd]
+		if len(offsets) > gcNativeFrameRootLimit || !validGCFrameOffsets(offsets, callsite.FrameBytes) {
+			return nil, fmt.Errorf("dragline GC callsite %d roots are malformed", index)
+		}
+		rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{
+			returnOffset: callsite.ReturnOffset,
+			frameBytes:   callsite.FrameBytes,
+			stackAdjust:  callsite.StackAdjust,
+			offsets:      interner.intern(offsets, true),
+		})
+		rootEnd = nextRootEnd
+		previousReturn = callsite.ReturnOffset
+	}
+	if rootEnd != uint64(len(output.GCRoots)) {
+		return nil, fmt.Errorf("dragline GC root slab is not canonically packed")
+	}
+	return rootMap, nil
 }
 
 // GCNativeRootAdmission describes whether a compiled generic-GC module can

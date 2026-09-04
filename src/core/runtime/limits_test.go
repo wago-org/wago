@@ -8,12 +8,18 @@ import (
 )
 
 type inlineOnlyEngineLayout struct {
-	stack       []byte
-	stackTop    uintptr
+	//lint:ignore U1000 fields intentionally model Engine's exact prior memory layout
+	stack []byte
+	//lint:ignore U1000 fields intentionally model Engine's exact prior memory layout
+	stackTop uintptr
+	//lint:ignore U1000 fields intentionally model Engine's exact prior memory layout
 	preparedInt tinygoPreparedIntState
-	inUse       bool
-	args        [maxHostArity]uint64
-	results     [maxHostArity]uint64
+	//lint:ignore U1000 fields intentionally model Engine's exact prior memory layout
+	inUse bool
+	//lint:ignore U1000 fields intentionally model Engine's exact prior memory layout
+	args [maxHostArity]uint64
+	//lint:ignore U1000 fields intentionally model Engine's exact prior memory layout
+	results [maxHostArity]uint64
 }
 
 func TestInstantiateArenaNeedAccountsExplicitHostControlFrame(t *testing.T) {

@@ -14,6 +14,7 @@ type moduleRequirements struct {
 	indexedFuncRefTest   bool
 	indexedFuncRefCast   bool
 	arm64GCRefTestHelper bool
+	gcRefRuntimeHelper   bool
 }
 
 // moduleRequiredFeatures records optional core features that remain execution
@@ -35,6 +36,7 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 	atomicWaitHelpers := false
 	indexedFuncRefTest, indexedFuncRefCast := false, false
 	arm64GCRefTestHelper := false
+	gcRefRuntimeHelper := false
 	if frontend.ModuleNonCodeRequiresSIMD(m) {
 		out |= CoreFeatureSIMD
 	}
@@ -166,7 +168,7 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 			out |= requiredFeaturesForValType(local.Type)
 		}
 		if len(fn.BodyBytes) != 0 {
-			out |= requiredFeaturesAndSegmentCountsForBodyBytes(fn.BodyBytes, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers, m, &indexedFuncRefTest, &indexedFuncRefCast, &arm64GCRefTestHelper, &bodyClassifier)
+			out |= requiredFeaturesAndSegmentCountsForBodyBytes(fn.BodyBytes, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers, m, &indexedFuncRefTest, &indexedFuncRefCast, &arm64GCRefTestHelper, &gcRefRuntimeHelper, &bodyClassifier)
 		} else if len(fn.Body.Instrs) != 0 {
 			programmaticCode = true
 			instrsModuleRequirements(fn.Body.Instrs, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers)
@@ -184,6 +186,7 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 		indexedFuncRefTest:   indexedFuncRefTest,
 		indexedFuncRefCast:   indexedFuncRefCast,
 		arm64GCRefTestHelper: arm64GCRefTestHelper,
+		gcRefRuntimeHelper:   gcRefRuntimeHelper,
 	}
 }
 
@@ -333,10 +336,10 @@ func requiredFeaturesForBareValueTypeByte(encoded byte) (CoreFeatures, bool) {
 
 func requiredFeaturesForBodyBytes(body []byte) CoreFeatures {
 	elemStateCount, dataStateCount := 0, 0
-	return requiredFeaturesAndSegmentCountsForBodyBytes(body, &elemStateCount, &dataStateCount, nil, nil, nil, nil, nil, nil, nil)
+	return requiredFeaturesAndSegmentCountsForBodyBytes(body, &elemStateCount, &dataStateCount, nil, nil, nil, nil, nil, nil, nil, nil)
 }
 
-func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, dataStateCount *int, facts *frontend.ModuleFacts, atomicWaitHelpers *bool, m *wasm.Module, indexedFuncRefTest, indexedFuncRefCast, arm64GCRefTestHelper *bool, classifier *wasm.ModuleInstructionClassifier) CoreFeatures {
+func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, dataStateCount *int, facts *frontend.ModuleFacts, atomicWaitHelpers *bool, m *wasm.Module, indexedFuncRefTest, indexedFuncRefCast, arm64GCRefTestHelper, gcRefRuntimeHelper *bool, classifier *wasm.ModuleInstructionClassifier) CoreFeatures {
 	var out CoreFeatures
 	r := wasm.NewReader(body)
 	if classifier == nil {
@@ -490,9 +493,12 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 			break
 		}
 		segmentStateCount(imm.Kind, imm.Index, imm.Index2, elemStateCount, dataStateCount)
+		if imm.Kind == wasm.InstrElemDrop && gcRefRuntimeHelper != nil {
+			*gcRefRuntimeHelper = true
+		}
 		recordModuleRequirementFact(imm.Kind, imm.Index, facts, atomicWaitHelpers)
 		if op == 0xfb {
-			recordRefTypeRequirements(m, imm.Kind, &probe, indexedFuncRefTest, indexedFuncRefCast, arm64GCRefTestHelper)
+			recordRefTypeRequirements(m, imm.Kind, &probe, indexedFuncRefTest, indexedFuncRefCast, arm64GCRefTestHelper, gcRefRuntimeHelper)
 		}
 		out |= requiredFeaturesForInstructionKind(imm.Kind)
 		if imm.Kind == wasm.InstrCallIndirect && imm.Index2 != 0 {
@@ -502,9 +508,12 @@ func requiredFeaturesAndSegmentCountsForBodyBytes(body []byte, elemStateCount, d
 	return out
 }
 
-func recordRefTypeRequirements(m *wasm.Module, kind wasm.InstrKind, probe *wasm.Reader, refTest, refCast, arm64GCRefTestHelper *bool) {
+func recordRefTypeRequirements(m *wasm.Module, kind wasm.InstrKind, probe *wasm.Reader, refTest, refCast, arm64GCRefTestHelper, gcRefRuntimeHelper *bool) {
 	if m == nil || (kind != wasm.InstrRefTest && kind != wasm.InstrRefCast) {
 		return
+	}
+	if gcRefRuntimeHelper != nil {
+		*gcRefRuntimeHelper = true
 	}
 	subopcode, err := probe.U32()
 	if err != nil || (subopcode != 20 && subopcode != 21 && subopcode != 22 && subopcode != 23) {

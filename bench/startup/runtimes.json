@@ -1,7 +1,8 @@
 {
   "_comment": "Cross-runtime startup-latency sweep config. Each runtime: how to invoke it on a module ({wasm} is substituted) and its engine `tag` for the website. `bin` is the default binary; override any path with the UPPERCASE env var in `env` (e.g. WAGO_BIN=/path/to/wago). Cold-cache flags matter \u2014 see skills/startup-latency-bench. A runtime whose binary isn't found is skipped with a warning (the sweep still writes the rest).",
   "order": [
-    "wago",
+    "railshot",
+    "dragline",
     "wazero",
     "wasmtime",
     "wasmer",
@@ -12,12 +13,25 @@
     "wavm"
   ],
   "runtimes": {
-    "wago": {
-      "tag": "native",
+    "railshot": {
+      "label": "wago single-pass",
+      "tag": "wago",
       "bin": "wago",
       "env": "WAGO_BIN",
       "args": [
         "run",
+        "--railshot",
+        "{wasm}"
+      ]
+    },
+    "dragline": {
+      "label": "wago multi-pass",
+      "tag": "wago",
+      "bin": "wago",
+      "env": "WAGO_BIN",
+      "args": [
+        "run",
+        "--dragline",
         "{wasm}"
       ]
     },
@@ -48,7 +62,6 @@
       "args": [
         "run",
         "--disable-cache",
-        "-s",
         "{wasm}"
       ]
     },

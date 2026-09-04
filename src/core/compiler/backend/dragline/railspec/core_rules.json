@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": 1,
+  "rules": [
+    {"id":"generic-register","go_name":"GenericRegister","targets":["amd64","arm64"],"forms":["register"],"native_bytes":4,"latency":1,"uops":1,"verified":true},
+    {"id":"amd64-imm32","go_name":"AMD64Imm32","targets":["amd64"],"forms":["register","signed-imm32"],"native_bytes":6,"latency":1,"uops":1,"verified":true},
+    {"id":"amd64-shift-cl","go_name":"AMD64ShiftCL","targets":["amd64"],"forms":["register","fixed-gpr-1"],"native_bytes":3,"latency":1,"uops":1,"verified":true},
+    {"id":"amd64-div-fixed","go_name":"AMD64DivFixed","targets":["amd64"],"forms":["fixed-gpr-0","register"],"native_bytes":4,"latency":16,"uops":4,"verified":true},
+    {"id":"arm64-imm12","go_name":"ARM64Imm12","targets":["arm64"],"forms":["register","unsigned-imm12"],"native_bytes":4,"latency":1,"uops":1,"verified":true},
+    {"id":"folded-memory-address","go_name":"FoldedMemoryAddress","targets":["amd64","arm64"],"forms":["address","register"],"native_bytes":4,"latency":4,"uops":1,"verified":true},
+    {"id":"compare-branch-flags","go_name":"CompareBranchFlags","targets":["amd64","arm64"],"forms":["register","register","flags"],"native_bytes":6,"latency":1,"uops":1,"verified":true}
+  ]
+}

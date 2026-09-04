@@ -252,6 +252,8 @@ func ManifestPath() string {
 }
 
 // sortedModuleIDs returns the manifest module ids in deterministic order.
+//
+//lint:ignore U1000 retained for deterministic corpus tooling and reports
 func sortedModuleIDs(m *Manifest) []string {
 	ids := make([]string, len(m.Modules))
 	for i, mod := range m.Modules {

@@ -32,6 +32,7 @@ func classifyExprOpAfterOpcodeWithFeatures(r *reader, op byte, imm *InstructionI
 	return classifyExprOpAfterOpcodeWithWidths(r, op, imm, fixedMemargWidths(memarg64), multiMemory)
 }
 
+//lint:ignore U1000 retained for callers that do not prebuild an instruction classifier
 func classifyExprOpAfterOpcodeWithModuleFeatures(r *reader, op byte, imm *InstructionImmediate, m *Module, multiMemory bool) (directOpKind, error) {
 	return classifyExprOpAfterOpcodeWithWidths(r, op, imm, moduleMemargWidths(m), multiMemory)
 }

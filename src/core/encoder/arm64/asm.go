@@ -109,6 +109,54 @@ func (a *Asm) word(w uint32) {
 // Len is the current code length in bytes (also the offset of the next word).
 func (a *Asm) Len() int { return len(a.B) }
 
+// LdrQLiteral emits an LDR Qt literal with a placeholder displacement and
+// returns its byte offset for PatchLdrQLiteral.
+func (a *Asm) LdrQLiteral(dst Reg) int {
+	at := a.Len()
+	a.word(0x9c000000 | uint32(dst))
+	return at
+}
+
+// PatchLdrQLiteral points an LDR Qt literal at a four-byte-aligned target in
+// the signed imm19 range.
+func (a *Asm) PatchLdrQLiteral(at, target int) bool {
+	delta := target - at
+	if at < 0 || at+4 > len(a.B) || delta&3 != 0 || delta < -(1<<20) || delta >= 1<<20 {
+		return false
+	}
+	word := a.wordAt(at)
+	word = word&^uint32(0x7ffff<<5) | (uint32(int32(delta)>>2)&0x7ffff)<<5
+	a.B[at] = byte(word)
+	a.B[at+1] = byte(word >> 8)
+	a.B[at+2] = byte(word >> 16)
+	a.B[at+3] = byte(word >> 24)
+	return true
+}
+
+// MOPS copy/set operations use an architecturally required three-instruction
+// prologue/main/epilogue sequence. Registers are updated in place and must be
+// distinct, ordinary X registers; SP and XZR are not legal operands.
+func (a *Asm) mops3(base, stageBit uint32, dst, srcOrValue, count Reg) bool {
+	if dst > X30 || srcOrValue > X30 || count > X30 || dst == srcOrValue || dst == count || srcOrValue == count {
+		return false
+	}
+	fields := uint32(dst) | uint32(count)<<5 | uint32(srcOrValue)<<16
+	a.word(base | fields)
+	a.word(base | stageBit | fields)
+	a.word(base | stageBit<<1 | fields)
+	return true
+}
+
+// MopsCopy emits CPYP/CPYM/CPYE, the overlap-safe FEAT_MOPS copy sequence.
+func (a *Asm) MopsCopy(dst, src, count Reg) bool {
+	return a.mops3(0x1d000400, 0x00400000, dst, src, count)
+}
+
+// MopsSet emits SETP/SETM/SETE. The low byte of value is replicated.
+func (a *Asm) MopsSet(dst, count, value Reg) bool {
+	return a.mops3(0x19c00400, 0x00004000, dst, value, count)
+}
+
 // wordAt reads the 32-bit word at byte offset pos.
 func (a *Asm) wordAt(pos int) uint32 {
 	return uint32(a.B[pos]) | uint32(a.B[pos+1])<<8 | uint32(a.B[pos+2])<<16 | uint32(a.B[pos+3])<<24
@@ -384,6 +432,24 @@ func (a *Asm) StpOffset(rt, rt2, rn Reg, imm int32) {
 	a.word(0xA9000000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
 }
 
+// StpOffset32 stores wt,wt2 at [rn, #imm] without modifying rn.
+// imm is a BYTE offset, a signed multiple of 4 in [-256, 252].
+func (a *Asm) StpOffset32(rt, rt2, rn Reg, imm int32) {
+	a.word(0x29000000 | uint32((imm/4)&0x7F)<<15 | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
+// StpQOffset stores two 128-bit vector registers at [rn, #imm].
+// imm is a BYTE offset, a signed multiple of 16 in [-1024, 1008].
+func (a *Asm) StpQOffset(rt, rt2, rn Reg, imm int32) {
+	a.word(0xAD000000 | uint32((imm/16)&0x7F)<<15 | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
+// StpOffsetF64 stores two scalar D registers at [rn, #imm]. imm is a byte
+// offset and must be a signed multiple of 8 in the architectural imm7 range.
+func (a *Asm) StpOffsetF64(rt, rt2, rn Reg, imm int32) {
+	a.word(0x6D000000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
 // LdpOffset loads rt,rt2 from [rn, #imm] without modifying rn.
 func (a *Asm) LdpOffset(rt, rt2, rn Reg, imm int32) {
 	a.word(0xA9400000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
@@ -393,6 +459,18 @@ func (a *Asm) LdpOffset(rt, rt2, rn Reg, imm int32) {
 // imm is a BYTE offset, a signed multiple of 4 in [-256, 252].
 func (a *Asm) LdpOffset32(rt, rt2, rn Reg, imm int32) {
 	a.word(0x29400000 | uint32((imm/4)&0x7F)<<15 | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
+// LdpOffsetF32 encodes a scalar S-register pair. imm is a byte offset and must
+// be a signed multiple of 4 in the architectural imm7 range.
+func (a *Asm) LdpOffsetF32(rt, rt2, rn Reg, imm int32) {
+	a.word(0x2D400000 | uint32((imm/4)&0x7F)<<15 | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
+// LdpOffsetF64 encodes a scalar D-register pair. imm is a byte offset and must
+// be a signed multiple of 8 in the architectural imm7 range.
+func (a *Asm) LdpOffsetF64(rt, rt2, rn Reg, imm int32) {
+	a.word(0x6D400000 | a.pairImm7(imm) | r(rt2)<<10 | r(rn)<<5 | r(rt))
 }
 
 // LdpPost loads rt,rt2 from [rn], #imm (post-index, writes rn back).
@@ -423,6 +501,11 @@ func (a *Asm) And64(rd, rn, rm Reg) { a.word(0x8A000000 | r(rm)<<16 | r(rn)<<5 |
 func (a *Asm) Orr64(rd, rn, rm Reg) { a.word(0xAA000000 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
 func (a *Asm) Eor64(rd, rn, rm Reg) { a.word(0xCA000000 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
 
+// Eor64Lsr is Rd = Rn ^ (Rm >> shift).
+func (a *Asm) Eor64Lsr(rd, rn, rm Reg, shift uint8) {
+	a.word(0xCA400000 | r(rm)<<16 | uint32(shift&63)<<10 | r(rn)<<5 | r(rd))
+}
+
 // --- Variable shifts (LSLV/LSRV/ASRV: shift Rn by Rm mod width) ---
 
 func (a *Asm) Lslv32(rd, rn, rm Reg) { a.word(0x1AC02000 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
@@ -445,6 +528,23 @@ func (a *Asm) Cset64(rd Reg, c Cond) {
 }
 func (a *Asm) Cset32(rd Reg, c Cond) {
 	a.word(0x1A800400 | r(XZR)<<16 | uint32(c.Invert())<<12 | r(XZR)<<5 | r(rd))
+}
+
+// Cinc32 is Rd = cond ? Rn+1 : Rn, encoded as CSINC with inverted condition.
+func (a *Asm) Cinc32(rd, rn Reg, c Cond) {
+	a.word(0x1A800400 | r(rn)<<16 | uint32(c.Invert())<<12 | r(rn)<<5 | r(rd))
+}
+
+// Bfi copies width bits from rn into rd starting at lsb. These bounded helpers
+// are used for the scalar copysign sign-bit insertion.
+func (a *Asm) Bfi64(rd, rn Reg, lsb, width uint8) {
+	immr, imms := uint32((-int(lsb))&63), uint32(width-1)
+	a.word(0xB3400000 | immr<<16 | imms<<10 | r(rn)<<5 | r(rd))
+}
+
+func (a *Asm) Bfi32(rd, rn Reg, lsb, width uint8) {
+	immr, imms := uint32((-int(lsb))&31), uint32(width-1)
+	a.word(0x33000000 | immr<<16 | imms<<10 | r(rn)<<5 | r(rd))
 }
 
 // --- Logical (bitmask immediate) ---

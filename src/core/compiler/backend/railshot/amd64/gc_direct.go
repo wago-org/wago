@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -709,7 +709,7 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 	return nil
 }
 
-func (f *fn) emitDirectGCStructRefSetNoBarrier(typeIndex, fieldOffset uint32, state shared.GCBarrierState) bool {
+func (f *fn) emitDirectGCStructRefSetNoBarrier(typeIndex, fieldOffset uint32, state codegen.GCBarrierState) bool {
 	valueRoot := f.s.back()
 	if valueRoot == nil {
 		return false
@@ -771,7 +771,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
 	return err
 }
 
-func (f *fn) emitDirectGCArrayRefSetNoBarrier(typeIndex uint32, state shared.GCBarrierState) bool {
+func (f *fn) emitDirectGCArrayRefSetNoBarrier(typeIndex uint32, state codegen.GCBarrierState) bool {
 	valueRoot := f.s.back()
 	if valueRoot == nil {
 		return false

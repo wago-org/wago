@@ -21,8 +21,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, _ uintpt
 	if in == nil || ctrl == 0 || dispatch&gcStructDispatchBit != 0 {
 		return gcHostActivationToken{}
 	}
-	plan := in.c.genericGCFrameRoots()
-	if plan == nil {
+	if in.c == nil || in.c.genericGCFrameRoots() == nil {
 		return gcHostActivationToken{}
 	}
 	_, gcBridge := in.pluginGCHostSignature(dispatch)
@@ -39,20 +38,8 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, _ uintpt
 	if savedSP == 0 {
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host activation has invalid saved SP %#x", savedSP)})
 	}
-	findCallsite := func(pc uintptr) int {
-		if pc < in.base || pc-in.base >= uintptr(len(in.c.code)) {
-			return -1
-		}
-		rel := uint32(pc - in.base)
-		for i := range plan.callsites {
-			if plan.callsites[i].returnOffset == rel {
-				return i
-			}
-		}
-		return -1
-	}
 	thunkAdjust := uintptr(0)
-	callsite := findCallsite(retPC)
+	plan, codeBase, codeBytes, callsite := in.gcCompilerCallsite(retPC)
 	if callsite < 0 {
 		// Dynamic/owned sync thunks reserve 32 bytes and preserve their incoming
 		// module LR at SP+16. Their host-stub LR may itself be in the code blob but
@@ -62,7 +49,7 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, _ uintpt
 		}
 		retPC = uintptr(binary.LittleEndian.Uint64(unsafe.Slice((*byte)(offHeapPtr(savedSP+16)), 8)))
 		thunkAdjust = 32
-		callsite = findCallsite(retPC)
+		plan, codeBase, codeBytes, callsite = in.gcCompilerCallsite(retPC)
 	}
 	if callsite < 0 && !gcBridge {
 		panic(gcStructHelperError{err: fmt.Errorf("generic GC arm64 host activation return PC %#x has no callsite map", retPC)})
@@ -85,14 +72,14 @@ func (in *Instance) pushGCHostActivation(ctrl uintptr, dispatch uint32, _ uintpt
 		}
 		activation.base = savedSP + adjust
 		activation.callsite = uint32(callsite)
+		activation.rootPlan = plan
+		activation.codeBase = codeBase
+		activation.codeBytes = codeBytes
 	}
 	for i := range activation.savedControl {
 		activation.savedControl[i] = binary.LittleEndian.Uint64(control[i*8:])
 	}
 	state.hostActivationCount++
-	state.hostRootPlan = plan
-	state.hostCodeBase = in.base
-	state.hostCodeBytes = uintptr(len(in.c.code))
 	return gcHostActivationToken{state: state, index: index}
 }
 
@@ -113,9 +100,4 @@ func (in *Instance) popGCHostActivation(token gcHostActivationToken) {
 	}
 	*activation = gcHostActivation{}
 	state.hostActivationCount--
-	if state.hostActivationCount == 0 {
-		state.hostRootPlan = nil
-		state.hostCodeBase = 0
-		state.hostCodeBytes = 0
-	}
 }

@@ -11,189 +11,211 @@ package wago
 import impl "github.com/wago-org/wago/src/wago"
 
 type (
-	AbstractHeapType                = impl.AbstractHeapType
-	ArtifactLimits                  = impl.ArtifactLimits
-	ArtifactSectionSizes            = impl.ArtifactSectionSizes
-	Authority                       = impl.Authority
-	AuthorityGrant                  = impl.AuthorityGrant
-	AuthorityMode                   = impl.AuthorityMode
-	AuthorityRequest                = impl.AuthorityRequest
-	AuthorityScope                  = impl.AuthorityScope
-	Bits                            = impl.Bits
-	BoundsCheckMode                 = impl.BoundsCheckMode
-	CallerInvoker                   = impl.CallerInvoker
-	CallerResolver                  = impl.CallerResolver
-	Capability                      = impl.Capability
-	CapabilityOption                = impl.CapabilityOption
-	Compatibility                   = impl.Compatibility
-	CompilationIdentity             = impl.CompilationIdentity
-	Compiled                        = impl.Compiled
-	CompilerInstructionRegistrar    = impl.CompilerInstructionRegistrar
-	CompilerTypeRegistrar           = impl.CompilerTypeRegistrar
-	CompositeTypeKind               = impl.CompositeTypeKind
-	ContractBinding                 = impl.ContractBinding
-	ContractMode                    = impl.ContractMode
-	ContractRef                     = impl.ContractRef
-	ContractRequirement             = impl.ContractRequirement
-	ContractSpec                    = impl.ContractSpec
-	CoreFeatures                    = impl.CoreFeatures
-	CoreFuncRefFactory              = impl.CoreFuncRefFactory
-	CoreInstanceInstantiator        = impl.CoreInstanceInstantiator
-	CoreModuleCompiler              = impl.CoreModuleCompiler
-	CustomSignature                 = impl.CustomSignature
-	CustomType                      = impl.CustomType
-	CustomTypeSpec                  = impl.CustomTypeSpec
-	DataInit                        = impl.DataInit
-	DefinedTypeDescriptor           = impl.DefinedTypeDescriptor
-	Dirs                            = impl.Dirs
-	ElemInit                        = impl.ElemInit
-	ElemMode                        = impl.ElemMode
-	ExitError                       = impl.ExitError
-	ExternRef                       = impl.ExternRef
-	ExternRefHostModule             = impl.ExternRefHostModule
-	FeatureInfo                     = impl.FeatureInfo
-	FieldTypeDescriptor             = impl.FieldTypeDescriptor
-	FuncRef                         = impl.FuncRef
-	FuncSig                         = impl.FuncSig
-	FunctionMetadata                = impl.FunctionMetadata
-	GCAllocatorKind                 = impl.GCAllocatorKind
-	GCBenchmarkConfiguration        = impl.GCBenchmarkConfiguration
-	GCBenchmarkTelemetryReport      = impl.GCBenchmarkTelemetryReport
-	GCConfig                        = impl.GCConfig
-	GCHelperStats                   = impl.GCHelperStats
-	GCHostModule                    = impl.GCHostModule
-	GCManagedHeapTelemetry          = impl.GCManagedHeapTelemetry
-	GCMemoryDomains                 = impl.GCMemoryDomains
-	GCNativeCodeTelemetry           = impl.GCNativeCodeTelemetry
-	GCNativeRootAdmission           = impl.GCNativeRootAdmission
-	GCProfile                       = impl.GCProfile
-	GCRef                           = impl.GCRef
-	GCRuntimeKind                   = impl.GCRuntimeKind
-	GCTelemetry                     = impl.GCTelemetry
-	GCTelemetrySnapshot             = impl.GCTelemetrySnapshot
-	Global                          = impl.Global
-	GlobalDef                       = impl.GlobalDef
-	GlobalImport                    = impl.GlobalImport
-	GlobalImportDef                 = impl.GlobalImportDef
-	GlobalMetadata                  = impl.GlobalMetadata
-	GuardPageUnavailableError       = impl.GuardPageUnavailableError
-	GuestArgumentsAccess            = impl.GuestArgumentsAccess
-	GuestGCArrayAllocatorHostModule = impl.GuestGCArrayAllocatorHostModule
-	GuestGCArrayInfo                = impl.GuestGCArrayInfo
-	GuestGCArrayStorage             = impl.GuestGCArrayStorage
-	GuestGCRef                      = impl.GuestGCRef
-	GuestMemoryAddressType          = impl.GuestMemoryAddressType
-	GuestMemoryInfo                 = impl.GuestMemoryInfo
-	GuestStorage                    = impl.GuestStorage
-	GuestStorageAccess              = impl.GuestStorageAccess
-	GuestStorageHostModule          = impl.GuestStorageHostModule
-	Handle                          = impl.Handle
-	HandleTable                     = impl.HandleTable
-	HeapTypeDescriptor              = impl.HeapTypeDescriptor
-	HostExit                        = impl.HostExit
-	HostFunc                        = impl.HostFunc
-	HostFuncRef                     = impl.HostFuncRef
-	HostImportRegistrar             = impl.HostImportRegistrar
-	HostModule                      = impl.HostModule
-	HostTrap                        = impl.HostTrap
-	I31Ref                          = impl.I31Ref
-	ImplementationLimitError        = impl.ImplementationLimitError
-	ImportFuncBuilder               = impl.ImportFuncBuilder
-	ImportKind                      = impl.ImportKind
-	ImportModuleBuilder             = impl.ImportModuleBuilder
-	ImportOverridePolicy            = impl.ImportOverridePolicy
-	ImportSpec                      = impl.ImportSpec
-	Imports                         = impl.Imports
-	Instance                        = impl.Instance
-	InstanceCloseEvent              = impl.InstanceCloseEvent
-	InstanceCloseObserver           = impl.InstanceCloseObserver
-	InstanceExport                  = impl.InstanceExport
-	InstanceIdentity                = impl.InstanceIdentity
-	InstanceInstantiateInterceptor  = impl.InstanceInstantiateInterceptor
-	InstanceInstantiateObserver     = impl.InstanceInstantiateObserver
-	InstanceInvokeInterceptor       = impl.InstanceInvokeInterceptor
-	InstanceInvokeObserver          = impl.InstanceInvokeObserver
-	InstanceManager                 = impl.InstanceManager
-	Instantiable                    = impl.Instantiable
-	InstantiateOption               = impl.InstantiateOption
-	InstantiateOptions              = impl.InstantiateOptions
-	InstantiateOrigin               = impl.InstantiateOrigin
-	InstantiationErrorEvent         = impl.InstantiationErrorEvent
-	InstantiationEvent              = impl.InstantiationEvent
-	InstantiationRequest            = impl.InstantiationRequest
-	InstructionContext              = impl.InstructionContext
-	InstructionHandler              = impl.InstructionHandler
-	InstructionLowerer              = impl.InstructionLowerer
-	InstructionSpec                 = impl.InstructionSpec
-	InvocationEvent                 = impl.InvocationEvent
-	InvocationRequest               = impl.InvocationRequest
-	LowerValue                      = impl.LowerValue
-	LoweringContext                 = impl.LoweringContext
-	ManagedInstance                 = impl.ManagedInstance
-	Memory                          = impl.Memory
-	MemoryMetadata                  = impl.MemoryMetadata
-	Module                          = impl.Module
-	ModuleCloseEvent                = impl.ModuleCloseEvent
-	ModuleCloseObserver             = impl.ModuleCloseObserver
-	ModuleCompileErrorEvent         = impl.ModuleCompileErrorEvent
-	ModuleCompileObserver           = impl.ModuleCompileObserver
-	ModuleCompiledEvent             = impl.ModuleCompiledEvent
-	ModuleIdentity                  = impl.ModuleIdentity
-	ModuleMetadata                  = impl.ModuleMetadata
-	ModuleSourceContext             = impl.ModuleSourceContext
-	ModuleSourceDigest              = impl.ModuleSourceDigest
-	ModuleSourceTransformer         = impl.ModuleSourceTransformer
-	ModuleView                      = impl.ModuleView
-	NativeMemoryStats               = impl.NativeMemoryStats
-	OffsetInit                      = impl.OffsetInit
-	OperationIdentity               = impl.OperationIdentity
-	OptKnobInfo                     = impl.OptKnobInfo
-	PackedType                      = impl.PackedType
-	PassiveDataInit                 = impl.PassiveDataInit
-	Plugin                          = impl.Plugin
-	PluginDefinition                = impl.PluginDefinition
-	PluginError                     = impl.PluginError
-	PluginLifecycle                 = impl.PluginLifecycle
-	PluginPhase                     = impl.PluginPhase
-	PluginPlan                      = impl.PluginPlan
-	PluginPlanEntry                 = impl.PluginPlanEntry
-	PluginProvenance                = impl.PluginProvenance
-	PluginProvider                  = impl.PluginProvider
-	PluginRequirement               = impl.PluginRequirement
-	PluginSelection                 = impl.PluginSelection
-	PluginSet                       = impl.PluginSet
-	Policy                          = impl.Policy
-	PreparedCompile                 = impl.PreparedCompile
-	PreparedFunction                = impl.PreparedFunction
-	ProviderCatalogDocument         = impl.ProviderCatalogDocument
-	ProviderCatalogEntry            = impl.ProviderCatalogEntry
-	RefInit                         = impl.RefInit
-	ReferenceTypeDescriptor         = impl.ReferenceTypeDescriptor
-	Registrar                       = impl.Registrar
-	Resource                        = impl.Resource
-	ResourceLimitError              = impl.ResourceLimitError
-	Runtime                         = impl.Runtime
-	RuntimeCloseEvent               = impl.RuntimeCloseEvent
-	RuntimeCloseObserver            = impl.RuntimeCloseObserver
-	RuntimeConfig                   = impl.RuntimeConfig
-	RuntimeOption                   = impl.RuntimeOption
-	RuntimeResourceStats            = impl.RuntimeResourceStats
-	Stability                       = impl.Stability
-	StorageTypeDescriptor           = impl.StorageTypeDescriptor
-	Table                           = impl.Table
-	TableMetadata                   = impl.TableMetadata
-	Tag                             = impl.Tag
-	TagMetadata                     = impl.TagMetadata
-	TrapCode                        = impl.TrapCode
-	TrapError                       = impl.TrapError
-	TrapFrame                       = impl.TrapFrame
-	UnsupportedFeatureError         = impl.UnsupportedFeatureError
-	V128                            = impl.V128
-	ValType                         = impl.ValType
-	Value                           = impl.Value
-	ValueTypeDescriptor             = impl.ValueTypeDescriptor
-	ValueTypeKind                   = impl.ValueTypeKind
-	WasmType                        = impl.WasmType
+	AbstractHeapType                  = impl.AbstractHeapType
+	ArtifactLimits                    = impl.ArtifactLimits
+	ArtifactSectionSizes              = impl.ArtifactSectionSizes
+	Authority                         = impl.Authority
+	AuthorityGrant                    = impl.AuthorityGrant
+	AuthorityMode                     = impl.AuthorityMode
+	AuthorityRequest                  = impl.AuthorityRequest
+	AuthorityScope                    = impl.AuthorityScope
+	Bits                              = impl.Bits
+	BoundsCheckMode                   = impl.BoundsCheckMode
+	CallerInvoker                     = impl.CallerInvoker
+	CallerResolver                    = impl.CallerResolver
+	Capability                        = impl.Capability
+	CapabilityOption                  = impl.CapabilityOption
+	Compatibility                     = impl.Compatibility
+	CompilationIdentity               = impl.CompilationIdentity
+	Compiled                          = impl.Compiled
+	CompilerEngine                    = impl.CompilerEngine
+	CompilerFallback                  = impl.CompilerFallback
+	CompilerInstructionRegistrar      = impl.CompilerInstructionRegistrar
+	CompilerNativeFunctionOpportunity = impl.CompilerNativeFunctionOpportunity
+	CompilerNativeSelectionPolicy     = impl.CompilerNativeSelectionPolicy
+	CompilerProfile                   = impl.CompilerProfile
+	CompilerProfileEdgeCount          = impl.CompilerProfileEdgeCount
+	CompilerProfilePhase              = impl.CompilerProfilePhase
+	CompilerProfileSite               = impl.CompilerProfileSite
+	CompilerProfileTargetCount        = impl.CompilerProfileTargetCount
+	CompilerProfileTargetHistogram    = impl.CompilerProfileTargetHistogram
+	CompilerTargetMode                = impl.CompilerTargetMode
+	CompilerTierPlan                  = impl.CompilerTierPlan
+	CompilerTierPolicy                = impl.CompilerTierPolicy
+	CompilerTypeRegistrar             = impl.CompilerTypeRegistrar
+	CompositeTypeKind                 = impl.CompositeTypeKind
+	ContractBinding                   = impl.ContractBinding
+	ContractMode                      = impl.ContractMode
+	ContractRef                       = impl.ContractRef
+	ContractRequirement               = impl.ContractRequirement
+	ContractSpec                      = impl.ContractSpec
+	CoreFeatures                      = impl.CoreFeatures
+	CoreFuncRefFactory                = impl.CoreFuncRefFactory
+	CoreInstanceInstantiator          = impl.CoreInstanceInstantiator
+	CoreModuleCompiler                = impl.CoreModuleCompiler
+	CustomSignature                   = impl.CustomSignature
+	CustomType                        = impl.CustomType
+	CustomTypeSpec                    = impl.CustomTypeSpec
+	DataInit                          = impl.DataInit
+	DefinedTypeDescriptor             = impl.DefinedTypeDescriptor
+	Dirs                              = impl.Dirs
+	DraglineResourceLimitError        = impl.DraglineResourceLimitError
+	DraglineUnsupportedError          = impl.DraglineUnsupportedError
+	ElemInit                          = impl.ElemInit
+	ElemMode                          = impl.ElemMode
+	ExitError                         = impl.ExitError
+	ExternRef                         = impl.ExternRef
+	ExternRefHostModule               = impl.ExternRefHostModule
+	FeatureInfo                       = impl.FeatureInfo
+	FieldTypeDescriptor               = impl.FieldTypeDescriptor
+	FuncRef                           = impl.FuncRef
+	FuncSig                           = impl.FuncSig
+	FunctionArtifactCache             = impl.FunctionArtifactCache
+	FunctionCacheStats                = impl.FunctionCacheStats
+	FunctionMetadata                  = impl.FunctionMetadata
+	GCAllocatorKind                   = impl.GCAllocatorKind
+	GCBenchmarkConfiguration          = impl.GCBenchmarkConfiguration
+	GCBenchmarkTelemetryReport        = impl.GCBenchmarkTelemetryReport
+	GCConfig                          = impl.GCConfig
+	GCHelperStats                     = impl.GCHelperStats
+	GCHostModule                      = impl.GCHostModule
+	GCManagedHeapTelemetry            = impl.GCManagedHeapTelemetry
+	GCMemoryDomains                   = impl.GCMemoryDomains
+	GCNativeCodeTelemetry             = impl.GCNativeCodeTelemetry
+	GCNativeRootAdmission             = impl.GCNativeRootAdmission
+	GCProfile                         = impl.GCProfile
+	GCRef                             = impl.GCRef
+	GCRuntimeKind                     = impl.GCRuntimeKind
+	GCTelemetry                       = impl.GCTelemetry
+	GCTelemetrySnapshot               = impl.GCTelemetrySnapshot
+	Global                            = impl.Global
+	GlobalDef                         = impl.GlobalDef
+	GlobalImport                      = impl.GlobalImport
+	GlobalImportDef                   = impl.GlobalImportDef
+	GlobalMetadata                    = impl.GlobalMetadata
+	GuardPageUnavailableError         = impl.GuardPageUnavailableError
+	GuestArgumentsAccess              = impl.GuestArgumentsAccess
+	GuestGCArrayAllocatorHostModule   = impl.GuestGCArrayAllocatorHostModule
+	GuestGCArrayInfo                  = impl.GuestGCArrayInfo
+	GuestGCArrayStorage               = impl.GuestGCArrayStorage
+	GuestGCRef                        = impl.GuestGCRef
+	GuestMemoryAddressType            = impl.GuestMemoryAddressType
+	GuestMemoryInfo                   = impl.GuestMemoryInfo
+	GuestStorage                      = impl.GuestStorage
+	GuestStorageAccess                = impl.GuestStorageAccess
+	GuestStorageHostModule            = impl.GuestStorageHostModule
+	Handle                            = impl.Handle
+	HandleTable                       = impl.HandleTable
+	HeapTypeDescriptor                = impl.HeapTypeDescriptor
+	HostEffectContract                = impl.HostEffectContract
+	HostEffectFlags                   = impl.HostEffectFlags
+	HostExit                          = impl.HostExit
+	HostFunc                          = impl.HostFunc
+	HostFuncRef                       = impl.HostFuncRef
+	HostHeapMask                      = impl.HostHeapMask
+	HostImport                        = impl.HostImport
+	HostImportRegistrar               = impl.HostImportRegistrar
+	HostModule                        = impl.HostModule
+	HostTrap                          = impl.HostTrap
+	I31Ref                            = impl.I31Ref
+	ImplementationLimitError          = impl.ImplementationLimitError
+	ImportFuncBuilder                 = impl.ImportFuncBuilder
+	ImportKind                        = impl.ImportKind
+	ImportModuleBuilder               = impl.ImportModuleBuilder
+	ImportOverridePolicy              = impl.ImportOverridePolicy
+	ImportSpec                        = impl.ImportSpec
+	Imports                           = impl.Imports
+	Instance                          = impl.Instance
+	InstanceCloseEvent                = impl.InstanceCloseEvent
+	InstanceCloseObserver             = impl.InstanceCloseObserver
+	InstanceExport                    = impl.InstanceExport
+	InstanceIdentity                  = impl.InstanceIdentity
+	InstanceInstantiateInterceptor    = impl.InstanceInstantiateInterceptor
+	InstanceInstantiateObserver       = impl.InstanceInstantiateObserver
+	InstanceInvokeInterceptor         = impl.InstanceInvokeInterceptor
+	InstanceInvokeObserver            = impl.InstanceInvokeObserver
+	InstanceManager                   = impl.InstanceManager
+	Instantiable                      = impl.Instantiable
+	InstantiateOption                 = impl.InstantiateOption
+	InstantiateOptions                = impl.InstantiateOptions
+	InstantiateOrigin                 = impl.InstantiateOrigin
+	InstantiationErrorEvent           = impl.InstantiationErrorEvent
+	InstantiationEvent                = impl.InstantiationEvent
+	InstantiationRequest              = impl.InstantiationRequest
+	InstructionContext                = impl.InstructionContext
+	InstructionHandler                = impl.InstructionHandler
+	InstructionLowerer                = impl.InstructionLowerer
+	InstructionSpec                   = impl.InstructionSpec
+	InvocationEvent                   = impl.InvocationEvent
+	InvocationRequest                 = impl.InvocationRequest
+	LowerValue                        = impl.LowerValue
+	LoweringContext                   = impl.LoweringContext
+	ManagedInstance                   = impl.ManagedInstance
+	Memory                            = impl.Memory
+	MemoryMetadata                    = impl.MemoryMetadata
+	Module                            = impl.Module
+	ModuleCloseEvent                  = impl.ModuleCloseEvent
+	ModuleCloseObserver               = impl.ModuleCloseObserver
+	ModuleCompileErrorEvent           = impl.ModuleCompileErrorEvent
+	ModuleCompileObserver             = impl.ModuleCompileObserver
+	ModuleCompiledEvent               = impl.ModuleCompiledEvent
+	ModuleIdentity                    = impl.ModuleIdentity
+	ModuleMetadata                    = impl.ModuleMetadata
+	ModuleSourceContext               = impl.ModuleSourceContext
+	ModuleSourceDigest                = impl.ModuleSourceDigest
+	ModuleSourceTransformer           = impl.ModuleSourceTransformer
+	ModuleView                        = impl.ModuleView
+	NativeMemoryStats                 = impl.NativeMemoryStats
+	OffsetInit                        = impl.OffsetInit
+	OperationIdentity                 = impl.OperationIdentity
+	OptKnobInfo                       = impl.OptKnobInfo
+	OptimizationObjective             = impl.OptimizationObjective
+	PackedType                        = impl.PackedType
+	PassiveDataInit                   = impl.PassiveDataInit
+	Plugin                            = impl.Plugin
+	PluginDefinition                  = impl.PluginDefinition
+	PluginError                       = impl.PluginError
+	PluginLifecycle                   = impl.PluginLifecycle
+	PluginPhase                       = impl.PluginPhase
+	PluginPlan                        = impl.PluginPlan
+	PluginPlanEntry                   = impl.PluginPlanEntry
+	PluginProvenance                  = impl.PluginProvenance
+	PluginProvider                    = impl.PluginProvider
+	PluginRequirement                 = impl.PluginRequirement
+	PluginSelection                   = impl.PluginSelection
+	PluginSet                         = impl.PluginSet
+	Policy                            = impl.Policy
+	PreparedCompile                   = impl.PreparedCompile
+	PreparedFunction                  = impl.PreparedFunction
+	ProviderCatalogDocument           = impl.ProviderCatalogDocument
+	ProviderCatalogEntry              = impl.ProviderCatalogEntry
+	RefInit                           = impl.RefInit
+	ReferenceTypeDescriptor           = impl.ReferenceTypeDescriptor
+	Registrar                         = impl.Registrar
+	Resource                          = impl.Resource
+	ResourceLimitError                = impl.ResourceLimitError
+	Runtime                           = impl.Runtime
+	RuntimeCloseEvent                 = impl.RuntimeCloseEvent
+	RuntimeCloseObserver              = impl.RuntimeCloseObserver
+	RuntimeConfig                     = impl.RuntimeConfig
+	RuntimeOption                     = impl.RuntimeOption
+	RuntimeResourceStats              = impl.RuntimeResourceStats
+	Stability                         = impl.Stability
+	StorageTypeDescriptor             = impl.StorageTypeDescriptor
+	Table                             = impl.Table
+	TableMetadata                     = impl.TableMetadata
+	Tag                               = impl.Tag
+	TagMetadata                       = impl.TagMetadata
+	TrapCode                          = impl.TrapCode
+	TrapError                         = impl.TrapError
+	TrapFrame                         = impl.TrapFrame
+	UnsupportedFeatureError           = impl.UnsupportedFeatureError
+	V128                              = impl.V128
+	ValType                           = impl.ValType
+	Value                             = impl.Value
+	ValueTypeDescriptor               = impl.ValueTypeDescriptor
+	ValueTypeKind                     = impl.ValueTypeKind
+	WasmType                          = impl.WasmType
 )
 
 const (
@@ -243,6 +265,13 @@ const (
 	CapMetricsWrite                            = impl.CapMetricsWrite
 	CapNetworkOutbound                         = impl.CapNetworkOutbound
 	CapTimerRead                               = impl.CapTimerRead
+	CompilerDragline                           = impl.CompilerDragline
+	CompilerFallbackNone                       = impl.CompilerFallbackNone
+	CompilerFallbackRailshot                   = impl.CompilerFallbackRailshot
+	CompilerProfileRare                        = impl.CompilerProfileRare
+	CompilerProfileStartup                     = impl.CompilerProfileStartup
+	CompilerProfileSteady                      = impl.CompilerProfileSteady
+	CompilerRailshot                           = impl.CompilerRailshot
 	CompositeTypeArray                         = impl.CompositeTypeArray
 	CompositeTypeFunction                      = impl.CompositeTypeFunction
 	CompositeTypeStruct                        = impl.CompositeTypeStruct
@@ -308,6 +337,20 @@ const (
 	GuestMemory64                              = impl.GuestMemory64
 	GuestStorageRead                           = impl.GuestStorageRead
 	GuestStorageWrite                          = impl.GuestStorageWrite
+	HostEffectMayAllocate                      = impl.HostEffectMayAllocate
+	HostEffectMayCollect                       = impl.HostEffectMayCollect
+	HostEffectMayGrow                          = impl.HostEffectMayGrow
+	HostEffectMayReenter                       = impl.HostEffectMayReenter
+	HostEffectMayThrow                         = impl.HostEffectMayThrow
+	HostHeapGCArray                            = impl.HostHeapGCArray
+	HostHeapGCHeader                           = impl.HostHeapGCHeader
+	HostHeapGCStruct                           = impl.HostHeapGCStruct
+	HostHeapGlobal                             = impl.HostHeapGlobal
+	HostHeapImportState                        = impl.HostHeapImportState
+	HostHeapLinearMemory                       = impl.HostHeapLinearMemory
+	HostHeapRuntimeState                       = impl.HostHeapRuntimeState
+	HostHeapTable                              = impl.HostHeapTable
+	HostHeapUnknown                            = impl.HostHeapUnknown
 	ImportFunc                                 = impl.ImportFunc
 	ImportGlobal                               = impl.ImportGlobal
 	ImportMemory                               = impl.ImportMemory
@@ -320,6 +363,9 @@ const (
 	MaxNativeStackBytes                        = impl.MaxNativeStackBytes
 	MinNativeStackBytes                        = impl.MinNativeStackBytes
 	NoPluginOverrides                          = impl.NoPluginOverrides
+	OptimizeBalanced                           = impl.OptimizeBalanced
+	OptimizeSize                               = impl.OptimizeSize
+	OptimizeSpeed                              = impl.OptimizeSpeed
 	PackedTypeI16                              = impl.PackedTypeI16
 	PackedTypeI8                               = impl.PackedTypeI8
 	PluginPhaseAuthorize                       = impl.PluginPhaseAuthorize
@@ -333,6 +379,8 @@ const (
 	ProviderCatalogFile                        = impl.ProviderCatalogFile
 	ProviderCatalogSchemaURI                   = impl.ProviderCatalogSchemaURI
 	Stable                                     = impl.Stable
+	TargetCompatibility                        = impl.TargetCompatibility
+	TargetNative                               = impl.TargetNative
 	TrapAtomicUnaligned                        = impl.TrapAtomicUnaligned
 	TrapBuiltin                                = impl.TrapBuiltin
 	TrapCalledFnNotLinked                      = impl.TrapCalledFnNotLinked
@@ -404,6 +452,10 @@ func CaptureGCMemoryDomains(compilerHeapBytes uint64, executableJITBytes uint64,
 
 func Compile(args ...any) (*Compiled, error) { return impl.Compile(args...) }
 
+func CompileNativeClone(cfg *RuntimeConfig, wasmBytes []byte, plan CompilerTierPlan) (*Compiled, error) {
+	return impl.CompileNativeClone(cfg, wasmBytes, plan)
+}
+
 func CompileWithConfig(cfg *RuntimeConfig, wasmBytes []byte) (*Compiled, error) {
 	return impl.CompileWithConfig(cfg, wasmBytes)
 }
@@ -460,6 +512,10 @@ func NewBits(width int32, littleEndian []byte) (Bits, error) {
 	return impl.NewBits(width, littleEndian)
 }
 
+func NewFunctionArtifactCache(maxBytes uint64) *FunctionArtifactCache {
+	return impl.NewFunctionArtifactCache(maxBytes)
+}
+
 func NewGCBenchmarkTelemetryReport(name string) GCBenchmarkTelemetryReport {
 	return impl.NewGCBenchmarkTelemetryReport(name)
 }
@@ -509,6 +565,14 @@ func OptKnobs() []OptKnobInfo { return impl.OptKnobs() }
 func OptimizationInfos() []OptKnobInfo { return impl.OptimizationInfos() }
 
 func OptimizationInfosForArch(arch string) []OptKnobInfo { return impl.OptimizationInfosForArch(arch) }
+
+func PlanCompilerNativeClones(profile CompilerProfile, importedFunctions uint32, directCalls [][]uint32, opportunities []CompilerNativeFunctionOpportunity, policy CompilerNativeSelectionPolicy) (CompilerTierPlan, error) {
+	return impl.PlanCompilerNativeClones(profile, importedFunctions, directCalls, opportunities, policy)
+}
+
+func PlanCompilerTier(profile CompilerProfile, importedFunctions uint32, directCalls [][]uint32, policy CompilerTierPolicy) (CompilerTierPlan, error) {
+	return impl.PlanCompilerTier(profile, importedFunctions, directCalls, policy)
+}
 
 func ProcessNativeMemoryStats() NativeMemoryStats { return impl.ProcessNativeMemoryStats() }
 

@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -65,6 +65,8 @@ type hoistCand struct {
 // try_table catch vectors, br_table labels, SIMD/atomic forms, and memory64
 // offsets therefore cannot desynchronize this scan. No partial findings escape
 // on failure.
+//
+//lint:ignore U1000 retained for callers that do not prebuild an instruction classifier
 func walkLoopBody(r *wasm.Reader, m *wasm.Module, visit func(op byte, imm wasm.InstructionImmediate)) bool {
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	return walkLoopBodyWithClassifier(r, m, classifier, visit)
@@ -240,9 +242,9 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 	entryTypes := append([]machineType(nil), f.currentLogicalTypes()...)
 	entryRoots := f.rootsBottomToTop()
 	entryGCRoots := gcRootFlags(entryRoots)
-	var entryStackFacts []shared.GCRefFact
+	var entryStackFacts []codegen.GCRefFact
 	if f.gcRefFactsEnabled() {
-		entryStackFacts = make([]shared.GCRefFact, len(entryRoots))
+		entryStackFacts = make([]codegen.GCRefFact, len(entryRoots))
 		for i, root := range entryRoots {
 			entryStackFacts[i] = f.gcRefFact(root)
 		}
