@@ -263,12 +263,10 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 		return false
 	}
 	// RailMach's scalar edge-refinement identity is complete, but its machine
-	// value contract intentionally has no 128-bit register class yet. Keep mixed
-	// SIMD/branch-cast functions on the structured SIMD emitter.
-	if stack.HasV128 && len(stack.BranchCasts) != 0 {
-		return false
-	}
-	if stack.HasV128 && structuredV128ManagedCandidate(stack) {
+	// value contract intentionally has no 128-bit register class yet. Keep every
+	// function containing a typed v128 value on the structured SIMD emitter,
+	// including functions whose v128 locals are otherwise unused.
+	if stackHasV128Value(stack) {
 		return false
 	}
 	if stack.HasReferences {
@@ -415,6 +413,17 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 		return false
 	}
 	return true
+}
+
+func stackHasV128Value(stack *railssa.StackFunc) bool {
+	for _, types := range [][]wasm.ValType{stack.Params, stack.Results, stack.Locals, stack.Globals, stack.ResultTypes} {
+		for _, typ := range types {
+			if typ == wasm.V128 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // structuredBranchCastCandidate retains edge-specific refined reference types
