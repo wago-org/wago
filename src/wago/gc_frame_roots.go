@@ -224,14 +224,14 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 		if plan == nil {
 			continue // proven non-collecting function; no active-frame map is needed
 		}
-		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || len(plan.LiveLocalMasks) != plan.SafepointCount() || len(plan.LocalIndexes) != len(plan.LocalOffsets) || len(plan.LocalOffsets) > shared.GCFrameTrackedLocalLimit {
+		if !plan.Candidate || !plan.Exact || !plan.ValidLiveMasks() || len(plan.LiveLocalMasks) != plan.SafepointCount() || len(plan.Locals) > shared.GCFrameTrackedLocalLimit {
 			return false
 		}
 		active := plan.SafepointCount() != 0 || plan.CallsiteCount() != 0
 		if active && plan.FrameBytes < 8 {
 			return false
 		}
-		if active && !validGCFrameOffsets(plan.LocalOffsets, plan.FrameBytes) {
+		if active && !validGCFrameLocals(plan.Locals, plan.FrameBytes) {
 			return false
 		}
 		var previousReturn uint32
@@ -433,6 +433,21 @@ func validGCFrameOffsets(offsets []uint32, frameBytes uint32) bool {
 	}
 	var previous uint32
 	for i, off := range offsets {
+		if off%8 != 0 || off > frameBytes-8 || (i != 0 && off <= previous) {
+			return false
+		}
+		previous = off
+	}
+	return true
+}
+
+func validGCFrameLocals(locals []shared.GCFrameLocal, frameBytes uint32) bool {
+	if len(locals) != 0 && frameBytes < 8 {
+		return false
+	}
+	var previous uint32
+	for i, local := range locals {
+		off := local.Offset
 		if off%8 != 0 || off > frameBytes-8 || (i != 0 && off <= previous) {
 			return false
 		}

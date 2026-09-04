@@ -10,8 +10,8 @@ func TestGCFrameRootPlanFootprint(t *testing.T) {
 	if unsafe.Sizeof(uintptr(0)) != 8 {
 		t.Skip("64-bit fixed-footprint assertion")
 	}
-	if got := unsafe.Sizeof(GCFrameRootPlan{}); got != 216 {
-		t.Fatalf("GCFrameRootPlan size=%d, want 216", got)
+	if got := unsafe.Sizeof(GCFrameRootPlan{}); got != 192 {
+		t.Fatalf("GCFrameRootPlan size=%d, want 192", got)
 	}
 	if got := unsafe.Sizeof(GCModuleFrameRootPlan{}); got != 40 {
 		t.Fatalf("GCModuleFrameRootPlan size=%d, want 40", got)
@@ -60,8 +60,7 @@ func TestGCFrameCallsiteStream(t *testing.T) {
 
 func TestGCFrameRootPlanWideMaskWords(t *testing.T) {
 	plan := &GCFrameRootPlan{
-		LocalIndexes:       make([]uint32, 65),
-		LocalOffsets:       make([]uint32, 65),
+		Locals:             make([]GCFrameLocal, 65),
 		LiveLocalMasks:     []uint64{1},
 		LiveCallLocalMasks: []uint64{2},
 		LiveMaskExtraWords: []uint64{1, 1},
@@ -96,7 +95,7 @@ func TestGCFrameRootPlanTrackedVectorMask(t *testing.T) {
 	const roots = 1025
 	extraWords := (roots+63)/64 - 1
 	plan := &GCFrameRootPlan{
-		LocalOffsets:       make([]uint32, roots),
+		Locals:             make([]GCFrameLocal, roots),
 		LiveLocalMasks:     []uint64{0},
 		LiveMaskExtraWords: make([]uint64, extraWords),
 	}
@@ -104,7 +103,7 @@ func TestGCFrameRootPlanTrackedVectorMask(t *testing.T) {
 	if !plan.ValidLiveMasks() || !plan.LocalLiveAt(0, roots-1) {
 		t.Fatal("bounded vector mask lost its highest root")
 	}
-	plan.LocalOffsets = make([]uint32, GCFrameTrackedLocalLimit+1)
+	plan.Locals = make([]GCFrameLocal, GCFrameTrackedLocalLimit+1)
 	if plan.ValidLiveMasks() {
 		t.Fatal("over-limit vector mask accepted")
 	}
@@ -113,11 +112,11 @@ func TestGCFrameRootPlanTrackedVectorMask(t *testing.T) {
 func TestGCFrameRootPlanTracksWideLocalPopulation(t *testing.T) {
 	// Even indexes retain a wide population while leaving in-range misses to
 	// exercise both outcomes across the configured uint16 local-index space.
-	indexes := make([]uint32, (GCFrameTrackedLocalLimit+1)/2)
-	for i := range indexes {
-		indexes[i] = uint32(i * 2)
+	locals := make([]GCFrameLocal, (GCFrameTrackedLocalLimit+1)/2)
+	for i := range locals {
+		locals[i].Index = uint32(i * 2)
 	}
-	plan := &GCFrameRootPlan{Candidate: true, LocalIndexes: indexes}
+	plan := &GCFrameRootPlan{Candidate: true, Locals: locals}
 	for _, index := range []uint32{0, 2, GCFrameTrackedLocalLimit - 1} {
 		if !plan.TracksLocal(index) {
 			t.Fatalf("retained local %d not found", index)
@@ -141,14 +140,13 @@ func BenchmarkGCFrameRootPlanVisitsDisjointWideSites(b *testing.B) {
 	extraPerSite := (roots+63)/64 - 1
 	plan := GCFrameRootPlan{
 		Candidate:          true,
-		LocalIndexes:       make([]uint32, roots),
-		LocalOffsets:       make([]uint32, roots),
+		Locals:             make([]GCFrameLocal, roots),
 		LiveLocalMasks:     make([]uint64, roots),
 		LiveCallLocalMasks: make([]uint64, roots),
 		LiveMaskExtraWords: make([]uint64, roots*extraPerSite*2),
 	}
 	for root := 0; root < roots; root++ {
-		plan.LocalIndexes[root], plan.LocalOffsets[root] = uint32(root), uint32(root*8)
+		plan.Locals[root] = GCFrameLocal{Index: uint32(root), Offset: uint32(root * 8)}
 		if root < 64 {
 			plan.LiveLocalMasks[root] = uint64(1) << uint(root)
 			plan.LiveCallLocalMasks[root] = uint64(1) << uint(root)

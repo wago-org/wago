@@ -72,17 +72,14 @@ type gcFrameLivenessExtra struct {
 
 // gcFrameCompactLiveLocals removes collector locals that are dead at every
 // collecting site and returns the maximum population live at any one site.
-// Masks remain site-major and exact; the returned local slices preserve their
+// Masks remain site-major and exact; the returned local slice preserves its
 // original frame order.
 // Keep this large compile-time helper out of newGCFrameRootPlan. TinyGo's size
 // optimizer otherwise inlines it and grows the minimal runtime substantially.
 //
 //go:noinline
-func gcFrameCompactLiveLocals(indexes, offsets []uint32, allocations, calls []uint64, extra *gcFrameLivenessExtra) ([]uint32, []uint32, []uint64, []uint64, int, error) {
-	if len(indexes) != len(offsets) {
-		return nil, nil, nil, nil, 0, fmt.Errorf("GC local liveness index/offset count mismatch")
-	}
-	wordCount := (len(indexes) + 63) / 64
+func gcFrameCompactLiveLocals(locals []shared.GCFrameLocal, allocations, calls []uint64, extra *gcFrameLivenessExtra) ([]shared.GCFrameLocal, []uint64, []uint64, int, error) {
+	wordCount := (len(locals) + 63) / 64
 	if wordCount == 0 {
 		wordCount = 1
 	}
@@ -93,7 +90,7 @@ func gcFrameCompactLiveLocals(indexes, offsets []uint32, allocations, calls []ui
 		extraWords = extra.words
 	}
 	if len(extraWords) != totalSites*extraPerSite {
-		return nil, nil, nil, nil, 0, fmt.Errorf("GC local liveness extra-word arena has %d words, want %d", len(extraWords), totalSites*extraPerSite)
+		return nil, nil, nil, 0, fmt.Errorf("GC local liveness extra-word arena has %d words, want %d", len(extraWords), totalSites*extraPerSite)
 	}
 	lowAt := func(site int) uint64 {
 		if site < len(allocations) {
@@ -119,21 +116,19 @@ func gcFrameCompactLiveLocals(indexes, offsets []uint32, allocations, calls []ui
 	// Every set bit in a site belongs to the union. Retain a direct old-to-new
 	// mapping so reconstruction visits arena words and live bits rather than
 	// rescanning the complete retained union at every site.
-	remap := make([]uint32, len(indexes))
+	remap := make([]uint32, len(locals))
 	kept := 0
-	for root := range indexes {
+	for root := range locals {
 		if union[root/64]&(uint64(1)<<uint(root%64)) != 0 {
 			remap[root] = uint32(kept)
 			kept++
 		}
 	}
-	compactedIndexes := make([]uint32, kept)
-	compactedOffsets := make([]uint32, kept)
+	compactedLocals := make([]shared.GCFrameLocal, kept)
 	compacted := 0
-	for root := range indexes {
+	for root := range locals {
 		if union[root/64]&(uint64(1)<<uint(root%64)) != 0 {
-			compactedIndexes[compacted] = indexes[root]
-			compactedOffsets[compacted] = offsets[root]
+			compactedLocals[compacted] = locals[root]
 			compacted++
 		}
 	}
@@ -175,7 +170,7 @@ func gcFrameCompactLiveLocals(indexes, offsets []uint32, allocations, calls []ui
 	if extra != nil {
 		extra.words = newExtra
 	}
-	return compactedIndexes, compactedOffsets, allocations, calls, maximum, nil
+	return compactedLocals, allocations, calls, maximum, nil
 }
 
 // gcFrameLocalLiveness computes architecture-independent exact backwards local
@@ -186,18 +181,18 @@ func gcFrameCompactLiveLocals(indexes, offsets []uint32, allocations, calls []ui
 // bounded nodes-by-words arena rather than per-node heap bitsets. The tracked
 // population may exceed the final per-site root limit; compaction and admission
 // apply that limit after this exact analysis.
-func gcFrameLocalLiveness(body []byte, indexes []uint32, callMasks *[]uint64, extra *gcFrameLivenessExtra) ([]uint64, error) {
+func gcFrameLocalLiveness(body []byte, locals []shared.GCFrameLocal, callMasks *[]uint64, extra *gcFrameLivenessExtra) ([]uint64, error) {
 	classifier := wasm.NewModuleInstructionClassifier(nil, true)
-	return gcFrameLocalLivenessWithClassifier(body, indexes, callMasks, extra, &classifier)
+	return gcFrameLocalLivenessWithClassifier(body, locals, callMasks, extra, &classifier)
 }
 
-func gcFrameLocalLivenessWithClassifier(body []byte, indexes []uint32, callMasks *[]uint64, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) ([]uint64, error) {
-	if len(indexes) > shared.GCFrameTrackedLocalLimit {
-		return nil, fmt.Errorf("GC local liveness tracks %d locals, limit %d", len(indexes), shared.GCFrameTrackedLocalLimit)
+func gcFrameLocalLivenessWithClassifier(body []byte, locals []shared.GCFrameLocal, callMasks *[]uint64, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) ([]uint64, error) {
+	if len(locals) > shared.GCFrameTrackedLocalLimit {
+		return nil, fmt.Errorf("GC local liveness tracks %d locals, limit %d", len(locals), shared.GCFrameTrackedLocalLimit)
 	}
-	bits := make(map[uint32]uint32, len(indexes))
-	for i, index := range indexes {
-		bits[index] = uint32(i)
+	bits := make(map[uint32]uint32, len(locals))
+	for i, local := range locals {
+		bits[local.Index] = uint32(i)
 	}
 
 	r := wasm.NewReader(body)
@@ -414,7 +409,7 @@ func gcFrameLocalLivenessWithClassifier(body []byte, indexes []uint32, callMasks
 		case gcLiveStop:
 		}
 	}
-	wordCount := (len(indexes) + 63) / 64
+	wordCount := (len(locals) + 63) / 64
 	if wordCount == 0 {
 		wordCount = 1
 	}

@@ -110,11 +110,10 @@ functions:
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if collectorFrameRefType(m, t) {
-				if len(plan.LocalOffsets) == shared.GCFrameTrackedLocalLimit {
+				if len(plan.Locals) == shared.GCFrameTrackedLocalLimit {
 					return false
 				}
-				plan.LocalIndexes = append(plan.LocalIndexes, local)
-				plan.LocalOffsets = append(plan.LocalOffsets, uint32(shared.ARM64FrameHeaderBytes+slot*8))
+				plan.Locals = append(plan.Locals, shared.GCFrameLocal{Index: local, Offset: uint32(shared.ARM64FrameHeaderBytes + slot*8)})
 			}
 			if wasm.EqualValType(t, wasm.V128) {
 				slot += 2
@@ -148,14 +147,14 @@ functions:
 		var liveMasks, callMasks []uint64
 		var maskExtra gcFrameLivenessExtra
 		if arm64BodyUsesEH(m.Code[function].BodyBytes, &classifier) {
-			liveMasks, callMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.LocalIndexes), &maskExtra, &classifier)
+			liveMasks, callMasks, err = arm64GCFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.Locals), &maskExtra, &classifier)
 		} else {
-			liveMasks, err = gcFrameLocalLivenessWithClassifier(m.Code[function].BodyBytes, plan.LocalIndexes, &callMasks, &maskExtra, &classifier)
+			liveMasks, err = gcFrameLocalLivenessWithClassifier(m.Code[function].BodyBytes, plan.Locals, &callMasks, &maskExtra, &classifier)
 		}
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
-		plan.LocalIndexes, plan.LocalOffsets, liveMasks, callMasks, _, err = gcFrameCompactLiveLocals(plan.LocalIndexes, plan.LocalOffsets, liveMasks, callMasks, &maskExtra)
+		plan.Locals, liveMasks, callMasks, _, err = gcFrameCompactLiveLocals(plan.Locals, liveMasks, callMasks, &maskExtra)
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}

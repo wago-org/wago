@@ -144,8 +144,7 @@ func TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall(t *testing.T) {
 		Exact:              true,
 		FrameBytes:         64,
 		LiveCallLocalMasks: []uint64{1},
-		LocalIndexes:       []uint32{0},
-		LocalOffsets:       []uint32{16},
+		Locals:             []shared.GCFrameLocal{{Index: 0, Offset: 16}},
 		LiveLocalMasks:     []uint64{1},
 	}
 	for _, site := range [][2]uint32{{4, 0}, {8, 0}, {12, 64}} {

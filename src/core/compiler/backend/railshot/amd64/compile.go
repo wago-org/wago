@@ -1093,16 +1093,16 @@ func (f *fn) prepareCompactGCFrameHeader(plan *shared.GCFrameRootPlan) bool {
 	if plan == nil {
 		return true
 	}
-	if !plan.Candidate || len(plan.FixedOffsets) != 0 || len(plan.LocalIndexes) != len(plan.LocalOffsets) {
+	if !plan.Candidate || len(plan.FixedOffsets) != 0 {
 		return false
 	}
-	for _, index := range plan.LocalIndexes {
-		if int(index) >= f.nLocals {
+	for _, local := range plan.Locals {
+		if int(local.Index) >= f.nLocals {
 			return false
 		}
 	}
-	for i, index := range plan.LocalIndexes {
-		plan.LocalOffsets[i] = uint32(f.localOff(int(index)))
+	for i := range plan.Locals {
+		plan.Locals[i].Offset = uint32(f.localOff(int(plan.Locals[i].Index)))
 	}
 	return true
 }

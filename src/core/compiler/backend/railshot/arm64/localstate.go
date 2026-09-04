@@ -175,7 +175,7 @@ func (f *fn) materializeGCFrameLocalsAt(site int, call bool) {
 		return
 	}
 	if !f.gcFrameRoots.VisitLiveLocals(site, call, func(root int) {
-		index := f.gcFrameRoots.LocalIndexes[root]
+		index := f.gcFrameRoots.Locals[root].Index
 		x := int(index)
 		if x < 0 || x >= f.nLocals {
 			f.gcFrameRoots.Exact = false

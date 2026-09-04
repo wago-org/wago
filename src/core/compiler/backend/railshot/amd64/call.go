@@ -1698,7 +1698,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		}
 	}()
 	if !plan.VisitLiveLocals(siteIndex, true, func(root int) {
-		offsets = append(offsets, plan.LocalOffsets[root])
+		offsets = append(offsets, plan.Locals[root].Offset)
 	}) {
 		plan.Exact = false
 		return nil, false

@@ -854,7 +854,7 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 	f.materializeGCFrameLocalsAt(siteIndex, false)
 	builder := plan.BeginSafepoint()
 	if !plan.VisitLiveLocals(siteIndex, false, func(root int) {
-		builder.AppendOffset(plan.LocalOffsets[root])
+		builder.AppendOffset(plan.Locals[root].Offset)
 	}) {
 		builder.Abort()
 		plan.Exact = false

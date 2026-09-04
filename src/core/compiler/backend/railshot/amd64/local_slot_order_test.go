@@ -120,7 +120,7 @@ func TestLocalSlotOrderSkipsGCFrameRootFunctions(t *testing.T) {
 		Limit:  1,
 		Locals: 2,
 	}
-	plan := &shared.GCFrameRootPlan{Candidate: true, LocalIndexes: []uint32{1}, LocalOffsets: []uint32{128}}
+	plan := &shared.GCFrameRootPlan{Candidate: true, Locals: []shared.GCFrameLocal{{Index: 1, Offset: 128}}}
 	f := fn{
 		a:                  &encamd64.Asm{LocalRefs: &refs},
 		nLocals:            2,
@@ -133,8 +133,8 @@ func TestLocalSlotOrderSkipsGCFrameRootFunctions(t *testing.T) {
 	if got := f.packLocalSlots(1); got != 0 {
 		t.Fatalf("GC frame-root local slot swaps = %d, want 0", got)
 	}
-	if got := f.localOff(1); got != 128 || plan.LocalOffsets[0] != 128 {
-		t.Fatalf("GC frame-root local home changed: frame=%d metadata=%d", got, plan.LocalOffsets[0])
+	if got := f.localOff(1); got != 128 || plan.Locals[0].Offset != 128 {
+		t.Fatalf("GC frame-root local home changed: frame=%d metadata=%d", got, plan.Locals[0].Offset)
 	}
 }
 

@@ -35,9 +35,8 @@ func TestRegisterABIElidesWrapperFrameHeaderArm64(t *testing.T) {
 
 func TestRegisterABICompactHeaderRemapsGCFrameLocalsArm64(t *testing.T) {
 	plan := &shared.GCFrameRootPlan{
-		Candidate:    true,
-		LocalIndexes: []uint32{1},
-		LocalOffsets: []uint32{24},
+		Candidate: true,
+		Locals:    []shared.GCFrameLocal{{Index: 1, Offset: 24}},
 	}
 	f := fn{
 		nLocals:            2,
@@ -48,10 +47,10 @@ func TestRegisterABICompactHeaderRemapsGCFrameLocalsArm64(t *testing.T) {
 	if !f.prepareCompactGCFrameHeader(plan) {
 		t.Fatal("valid collector-local plan rejected")
 	}
-	if got := plan.LocalOffsets[0]; got != 8 {
+	if got := plan.Locals[0].Offset; got != 8 {
 		t.Fatalf("remapped root offset = %d, want 8", got)
 	}
-	bad := &shared.GCFrameRootPlan{Candidate: true, LocalIndexes: []uint32{2}, LocalOffsets: []uint32{32}}
+	bad := &shared.GCFrameRootPlan{Candidate: true, Locals: []shared.GCFrameLocal{{Index: 2, Offset: 32}}}
 	if f.prepareCompactGCFrameHeader(bad) {
 		t.Fatal("out-of-range collector-local plan admitted")
 	}
