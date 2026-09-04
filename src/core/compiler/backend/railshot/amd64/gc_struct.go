@@ -200,11 +200,11 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		if field.Storage().Val().Kind() == wasm.ValRef {
 			if layout, final, layoutOK := f.gcStructFieldLayout(typeIndex, fieldIndex); layoutOK && final && layout.CollectorRef && layout.Size == 4 {
 				f.gcOpcodeBarrier = true
-				f.recordGCBarrierState(shared.GCBarrierSlowBarrier)
+				f.stats.peep("gc-barrier-slow")
 				return f.emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, layout.Offset, field.Storage().Val())
 			}
 			f.gcOpcodeBarrier = true
-			f.recordGCBarrierState(shared.GCBarrierSlowBarrier)
+			f.stats.peep("gc-barrier-slow")
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(fieldIndex)})

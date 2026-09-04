@@ -5,7 +5,6 @@ package amd64
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc"
 )
@@ -30,7 +29,6 @@ const (
 	gcArrayAllocDefaultNative  uint32 = 32
 	gcArrayAllocUniformNative  uint32 = 33
 	gcArrayAllocFixedNative    uint32 = 34
-	gcArrayFillNoBarrier       uint32 = 35
 	gcArrayCheckDefault        uint32 = 36
 	gcArrayCheckUniform        uint32 = 37
 	gcArrayCheckData           uint32 = 38
@@ -269,12 +267,12 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		if target, found := f.stagedGCType(typeIndex); found && target.Final && field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
 			f.gcOpcodeBarrier = true
-			f.recordGCBarrierState(shared.GCBarrierSlowBarrier)
+			f.stats.peep("gc-barrier-slow")
 			return f.emitNativeCardSafeArrayRefSet(typeIndex, valueType)
 		}
 		if field.Storage().Val().Kind() == wasm.ValRef {
 			f.gcOpcodeBarrier = true
-			f.recordGCBarrierState(shared.GCBarrierSlowBarrier)
+			f.stats.peep("gc-barrier-slow")
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
@@ -297,10 +295,10 @@ func (f *fn) emitGCArray(sub uint32, r *wasm.Reader) error {
 		}
 		helper := uint32(gcArrayFill)
 		if field.Storage().Val().Kind() == wasm.ValRef && gcFrameRefType(f.m, field.Storage().Val()) {
-			f.recordGCBarrierState(shared.GCBarrierSlowBarrier)
+			f.stats.peep("gc-barrier-slow")
 			f.gcOpcodeBarrier = true
 		} else {
-			f.recordGCBarrierState(shared.GCBarrierNoBarrier)
+			f.stats.peep("gc-barrier-none")
 		}
 		f.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(typeIndex)})
 		object := wasm.RefVal(wasm.Ref(true, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false))
