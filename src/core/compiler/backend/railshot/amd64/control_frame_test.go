@@ -7,6 +7,7 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x86 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
@@ -18,11 +19,44 @@ func TestCtrlFrameSize(t *testing.T) {
 	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(88); got != want {
 		t.Fatalf("ctrlFrameMerge size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(ctrlFrameGC{}), uintptr(192); got != want {
-		t.Fatalf("ctrlFrameGC size = %d, want %d", got, want)
+	if got, want := unsafe.Sizeof(ctrlFrameRoots{}), uintptr(72); got != want {
+		t.Fatalf("ctrlFrameRoots size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(ctrlFrameFacts{}), uintptr(192); got != want {
+		t.Fatalf("ctrlFrameFacts size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(ctrlFrameEH{}), uintptr(48); got != want {
 		t.Fatalf("ctrlFrameEH size = %d, want %d", got, want)
+	}
+}
+
+func TestControlGCSidecarsAreIndependentAMD64(t *testing.T) {
+	saved := exactGCRefFactsEnabled
+	exactGCRefFactsEnabled = false
+	t.Cleanup(func() { exactGCRefFactsEnabled = saved })
+	var f fn
+	fr := ctrlFrame{}
+	f.ensureCtrlRoots(&fr).baseGCRoots = []bool{true}
+	if f.scratchState().ctrlFacts != nil {
+		t.Fatal("root-only frame allocated GC-fact sidecar")
+	}
+	if got := f.frameBaseGCRoots(&fr); len(got) != 1 || !got[0] {
+		t.Fatalf("root-only sidecar = %v, want [true]", got)
+	}
+
+	exactGCRefFactsEnabled = true
+	var combined fn
+	combinedFrame := ctrlFrame{}
+	combined.ensureCtrlRoots(&combinedFrame).baseGCRoots = []bool{true}
+	combined.ensureCtrlFacts(&combinedFrame).baseGCFacts = []shared.GCRefFact{shared.NewGCRefFact(shared.GCKnownNonNull, shared.GCHeapStruct)}
+	if combined.scratchState().ctrlRoots != nil {
+		t.Fatal("facts-enabled frame allocated separate root sidecar")
+	}
+	if got := combined.frameBaseGCRoots(&combinedFrame); len(got) != 1 || !got[0] {
+		t.Fatalf("combined root sidecar = %v, want [true]", got)
+	}
+	if got := combined.frameBaseGCFacts(&combinedFrame); len(got) != 1 || got[0].HeapClass() != shared.GCHeapStruct {
+		t.Fatalf("fact sidecar = %v, want one struct fact", got)
 	}
 }
 
@@ -178,17 +212,20 @@ func TestIntrusiveReturnPatchChainAMD64(t *testing.T) {
 }
 
 func TestPushCtrlReusesMergeSlotAtDepth(t *testing.T) {
+	enableGCRefFacts(t)
 	f := fn{ctrl: make([]ctrlFrame, 0, 1)}
 	first := ctrlFrame{}
 	f.ensureCtrlMerge(&first).branchState = make([]locState, 1)
-	f.ensureCtrlGC(&first).baseGCRoots = []bool{true}
+	f.ensureCtrlRoots(&first).baseGCRoots = []bool{true}
+	f.ensureCtrlFacts(&first).baseGCFacts = []shared.GCRefFact{shared.NewGCRefFact(shared.GCKnownNonNull, shared.GCHeapStruct)}
 	f.pushCtrl(&first)
 	f.releaseCtrlMerge(&f.ctrl[0])
 	f.ctrl = f.ctrl[:0]
 
 	next := ctrlFrame{}
 	f.ensureCtrlMerge(&next).branchState = make([]locState, 2)
-	f.ensureCtrlGC(&next).baseGCRoots = []bool{false, true}
+	f.ensureCtrlRoots(&next).baseGCRoots = []bool{false, true}
+	f.ensureCtrlFacts(&next).baseGCFacts = []shared.GCRefFact{shared.NewGCRefFact(shared.GCKnownNonNull, shared.GCHeapArray)}
 	f.pushCtrl(&next)
 
 	if got, want := len(f.scratchState().ctrlMerges), 1; got != want {
@@ -206,12 +243,18 @@ func TestPushCtrlReusesMergeSlotAtDepth(t *testing.T) {
 	if got := f.frameBaseGCRoots(&f.ctrl[0]); len(got) != 2 || got[0] || !got[1] {
 		t.Fatalf("moved GC roots = %v, want [false true]", got)
 	}
+	if got := f.frameBaseGCFacts(&f.ctrl[0]); len(got) != 1 || got[0].HeapClass() != shared.GCHeapArray {
+		t.Fatalf("moved GC facts = %v, want one array fact", got)
+	}
 	f.releaseCtrlMerge(&next)
 	if got := f.frameBranchState(&f.ctrl[0]); got != nil {
 		t.Fatalf("released branch state = %v, want nil", got)
 	}
 	if got := f.frameBaseGCRoots(&f.ctrl[0]); got != nil {
 		t.Fatalf("released GC roots = %v, want nil", got)
+	}
+	if got := f.frameBaseGCFacts(&f.ctrl[0]); got != nil {
+		t.Fatalf("released GC facts = %v, want nil", got)
 	}
 }
 

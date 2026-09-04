@@ -700,7 +700,8 @@ type scratch struct {
 	trapSites               [trapMax + 1][]trapSite
 	ctrl                    []ctrlFrame // control-frame stack backing; reused across functions
 	ctrlMerges              []ctrlFrameMerge
-	ctrlGC                  []ctrlFrameGC
+	ctrlRoots               []ctrlFrameRoots
+	ctrlFacts               []ctrlFrameFacts
 	functionResultTypeArena [maxScratchFunctionResults]machineType
 	pinnedLocals            []int // pinned-local index backing; reused across functions
 	brTableStubAt           []int // duplicate-heavy jump-table target positions by control depth
@@ -715,8 +716,10 @@ type scratch struct {
 	controlScratchDiscarded int
 	controlMergePeak        uint32
 	controlMergeDiscarded   uint32
-	controlGCPeak           uint32
-	controlGCDiscarded      uint32
+	controlRootPeak         uint32
+	controlRootDiscarded    uint32
+	controlFactPeak         uint32
+	controlFactDiscarded    uint32
 	transient
 }
 
@@ -773,8 +776,11 @@ func (sc *scratch) noteControlScratch() {
 	if capacity := uint32(cap(sc.ctrlMerges)); capacity > sc.controlMergePeak {
 		sc.controlMergePeak = capacity
 	}
-	if capacity := uint32(cap(sc.ctrlGC)); capacity > sc.controlGCPeak {
-		sc.controlGCPeak = capacity
+	if capacity := uint32(cap(sc.ctrlRoots)); capacity > sc.controlRootPeak {
+		sc.controlRootPeak = capacity
+	}
+	if capacity := uint32(cap(sc.ctrlFacts)); capacity > sc.controlFactPeak {
+		sc.controlFactPeak = capacity
 	}
 }
 
@@ -791,10 +797,15 @@ func (sc *scratch) finishControlWorker() {
 		sc.ctrlMerges = nil
 		sc.controlMergeDiscarded += uint32(capacity)
 	}
-	if capacity := cap(sc.ctrlGC); capacity != 0 {
-		clear(sc.ctrlGC[:capacity])
-		sc.ctrlGC = nil
-		sc.controlGCDiscarded += uint32(capacity)
+	if capacity := cap(sc.ctrlRoots); capacity != 0 {
+		clear(sc.ctrlRoots[:capacity])
+		sc.ctrlRoots = nil
+		sc.controlRootDiscarded += uint32(capacity)
+	}
+	if capacity := cap(sc.ctrlFacts); capacity != 0 {
+		clear(sc.ctrlFacts[:capacity])
+		sc.ctrlFacts = nil
+		sc.controlFactDiscarded += uint32(capacity)
 	}
 }
 
@@ -968,8 +979,10 @@ func (sc *scratch) reset() {
 	sc.transient.loopScanLocals = sc.transient.loopScanLocals[:0]
 	sc.transient.loopSetLocals = sc.transient.loopSetLocals[:0]
 	clear(sc.ctrlMerges[:cap(sc.ctrlMerges)])
-	clear(sc.ctrlGC[:cap(sc.ctrlGC)])
-	sc.ctrlGC = sc.ctrlGC[:0]
+	clear(sc.ctrlRoots[:cap(sc.ctrlRoots)])
+	sc.ctrlRoots = sc.ctrlRoots[:0]
+	clear(sc.ctrlFacts[:cap(sc.ctrlFacts)])
+	sc.ctrlFacts = sc.ctrlFacts[:0]
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]
 	}

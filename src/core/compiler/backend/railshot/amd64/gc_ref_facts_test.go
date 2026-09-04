@@ -90,6 +90,58 @@ func BenchmarkGCRefFactsWideLocals(b *testing.B) {
 	b.ReportMetric(float64(len(benchCompiledSink.Code)), "code-bytes")
 }
 
+func gcRootControlModule(t testing.TB, controlDepth int) *wasm.Module {
+	t.Helper()
+	body := []byte{0x00, 0xd0, 0x00} // no locals; ref.null 0
+	for range controlDepth {
+		body = append(body, 0x02, 0x40) // block [] -> [] with the ref below its base
+	}
+	for range controlDepth {
+		body = append(body, 0x0b)
+	}
+	body = append(body, 0x1a, 0x41, 0x00, 0x0b) // drop; i32.const 0; function end
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatalf("decode GC-root control module: %v", err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("validate GC-root control module: %v", err)
+	}
+	return m
+}
+
+func BenchmarkGCRootControlSidecar(b *testing.B) {
+	benchmarkGCRootControlSidecar(b, false)
+}
+
+func BenchmarkGCRootFactControlSidecars(b *testing.B) {
+	benchmarkGCRootControlSidecar(b, true)
+}
+
+func benchmarkGCRootControlSidecar(b *testing.B, facts bool) {
+	b.Helper()
+	m := gcRootControlModule(b, 8)
+	opts := CompileOptions{Optimizations: map[string]bool{"gc-ref-facts": facts}, Workers: 1}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		cm, err := CompileModuleWith(m, opts)
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchCompiledSink = cm
+	}
+	b.ReportMetric(float64(len(benchCompiledSink.Code)), "code-bytes")
+}
+
 func enableGCRefFacts(t *testing.T) {
 	t.Helper()
 	before := exactGCRefFactsEnabled

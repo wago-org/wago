@@ -282,14 +282,15 @@ func workerScratchStats(sc *scratch) shared.WorkerScratchStats {
 	_, retained := sc.stack.nodeMemory()
 	frameBytes := uint64(unsafe.Sizeof(ctrlFrame{}))
 	mergeBytes := uint64(unsafe.Sizeof(ctrlFrameMerge{}))
-	gcBytes := uint64(unsafe.Sizeof(ctrlFrameGC{}))
+	rootBytes := uint64(unsafe.Sizeof(ctrlFrameRoots{}))
+	factBytes := uint64(unsafe.Sizeof(ctrlFrameFacts{}))
 	return shared.WorkerScratchStats{
 		NodeReserved: sc.nodeScratchReserved, NodePeak: sc.nodeScratchPeak,
 		NodeRetained: retained, NodeDiscarded: sc.nodeScratchDiscarded,
 		ControlReserved:  uint64(sc.controlScratchReserved) * frameBytes,
-		ControlPeak:      uint64(sc.controlScratchPeak)*frameBytes + uint64(sc.controlMergePeak)*mergeBytes + uint64(sc.controlGCPeak)*gcBytes,
-		ControlRetained:  uint64(cap(sc.ctrl))*frameBytes + uint64(cap(sc.ctrlMerges))*mergeBytes + uint64(cap(sc.ctrlGC))*gcBytes,
-		ControlDiscarded: uint64(sc.controlScratchDiscarded)*frameBytes + uint64(sc.controlMergeDiscarded)*mergeBytes + uint64(sc.controlGCDiscarded)*gcBytes,
+		ControlPeak:      uint64(sc.controlScratchPeak)*frameBytes + uint64(sc.controlMergePeak)*mergeBytes + uint64(sc.controlRootPeak)*rootBytes + uint64(sc.controlFactPeak)*factBytes,
+		ControlRetained:  uint64(cap(sc.ctrl))*frameBytes + uint64(cap(sc.ctrlMerges))*mergeBytes + uint64(cap(sc.ctrlRoots))*rootBytes + uint64(cap(sc.ctrlFacts))*factBytes,
+		ControlDiscarded: uint64(sc.controlScratchDiscarded)*frameBytes + uint64(sc.controlMergeDiscarded)*mergeBytes + uint64(sc.controlRootDiscarded)*rootBytes + uint64(sc.controlFactDiscarded)*factBytes,
 	}
 }
 
