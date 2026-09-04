@@ -1561,9 +1561,10 @@ the Ryzen 7 7800X3D host.
 ARM64 frame elision previously required exactly one register result even though
 a call-free void register-ABI leaf has the same proof: with no spills, EH state,
 inlined-local extension, v128 frame traffic, or unpinned scalar local, no frame
-address is observed. The proof now admits void leaves under
-`WAGO_ARM64_NO_FRAME_ELIDE_VOID=1` rollback while retaining every existing
-exclusion. Host adapters keep their independent LR/results-pointer record.
+address is observed. During qualification,
+`WAGO_ARM64_NO_FRAME_ELIDE_VOID=1` restored the result-bearing-only rule; that
+subset rollback has since been retired while every semantic exclusion remains.
+Host adapters keep their independent LR/results-pointer record.
 
 The 36-module Size suite falls from 77,027,052 to 77,023,468 bytes. Exactly 448
 void functions elide one small ARM64 frame reservation, saving 3,584 bytes.
@@ -1575,8 +1576,10 @@ finalizer validation pass.
 
 ## AMD64 call-free void frame elision
 
-AMD64 applies the same register-only void-leaf proof under
-`WAGO_AMD64_NO_FRAME_ELIDE_VOID=1` rollback. Its existing finalizer deletes the
+AMD64 applies the same register-only void-leaf proof. During qualification,
+`WAGO_AMD64_NO_FRAME_ELIDE_VOID=1` disabled only this result-shape subset; that
+rollback has since been retired, while the public `frame-elide` policy remains
+the complete per-compilation oracle. Its existing finalizer deletes the
 zero-sized seven-byte frame adjustments and may unlock adjacent branch
 shortening; all call, spill, EH, v128, extended-inline-local, and unpinned-local
 exclusions remain unchanged.

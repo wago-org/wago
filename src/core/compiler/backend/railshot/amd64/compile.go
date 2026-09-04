@@ -39,8 +39,6 @@ var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 // for differential A/B testing.
 var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 
-var frameElideVoid = os.Getenv("WAGO_AMD64_NO_FRAME_ELIDE_VOID") != "1"
-
 // compactRegABIFrameHeader removes the wrapper-only spare/results-pointer
 // header from ordinary register-ABI internal frames. Tail-call lowering still
 // has wrapper-transfer paths that consume the header, so it remains excluded.
@@ -1178,7 +1176,7 @@ func (f *fn) frameSize() int {
 // after the body (maxSpill final); returns whether it elided.
 func (f *fn) elideRegisterOnlyFrame() bool {
 	voidResult := len(f.ft.Results) == 0
-	registerResult := f.singleRegResult || frameElideVoid && voidResult
+	registerResult := f.singleRegResult || voidResult
 	if !f.opt(optFrameElide) || !registerResult || f.moduleEH || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
