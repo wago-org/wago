@@ -158,6 +158,17 @@ func TestAMD64StructuredScalarResidencySelectsHotIntegerLocals(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachSpillForwardingRequiresLastUse(t *testing.T) {
+	allocation := railmach.GreedyAllocation{Allocation: railmach.Allocation{Intervals: []railmach.LiveInterval{
+		{Reg: 1, Start: 3, End: 14, Bank: railmach.BankFPR},
+		{Reg: 2, Start: 9, End: 30, Bank: railmach.BankFPR},
+	}}}
+	plan := nativeBackendPlan{Allocation: &allocation}
+	if !amd64RailMachValueDiesAt(&plan, 1, 14) || amd64RailMachValueDiesAt(&plan, 2, 14) || amd64RailMachValueDiesAt(&plan, 3, 99) {
+		t.Fatal("spill forwarding accepted a value that remains live")
+	}
+}
+
 func TestAMD64StructuredSIMDConstantsUseDeduplicatedRIPPool(t *testing.T) {
 	constant := [16]byte{1, 3, 5, 7, 9, 11, 13, 15, 2, 4, 6, 8, 10, 12, 14, 16}
 	body := []byte{0xfd, 0x0c}

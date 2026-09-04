@@ -690,6 +690,18 @@ func measureAMD64PostRABaseline(fn *railssa.Func, plan *nativeBackendPlan) (int,
 	return len(code), nil
 }
 
+func amd64RailMachValueDiesAt(plan *nativeBackendPlan, value railmach.VReg, position uint32) bool {
+	if plan == nil || plan.Allocation == nil {
+		return false
+	}
+	for _, interval := range plan.Allocation.Intervals {
+		if interval.Reg == value {
+			return interval.End <= position
+		}
+	}
+	return false
+}
+
 func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
 	if plan == nil || plan.Stack == nil || plan.CFG == nil || plan.Semantic == nil || plan.Machine == nil || plan.Allocation == nil || plan.Schedule == nil || plan.Exit == nil {
 		return nil, 0, false, nil
@@ -790,6 +802,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	var currentOperands []railmach.Operand
 	var currentResult railmach.VReg
 	var currentPosition uint32
+	var forwardedSpill railmach.VReg
 	reg := func(value railmach.VReg) amd64.Reg {
 		location := plan.Allocation.LocationAt(value, currentPosition)
 		bank := plan.Machine.VRegs[value].Bank
@@ -802,6 +815,12 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				return amd64FPRRegisters[location.Index]
 			}
 			return amd64RailMachGPRRegisters[location.Index]
+		}
+		if value == forwardedSpill {
+			if bank == railmach.BankFPR {
+				return 12
+			}
+			return amd64.RDI
 		}
 		if value == currentResult {
 			if bank == railmach.BankFPR {
@@ -1105,10 +1124,20 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 		}
 		for _, instructionID := range plan.Schedule.Order[blockRange.Start : blockRange.Start+blockRange.Count] {
+			nextPosition := plan.Allocation.InstructionPositions[instructionID]*6 + 2
+			forwardedSpill = 0
+			if pendingSpill != 0 && plan.Machine.VRegs[pendingSpill].Bank == railmach.BankFPR && !skipInstruction[instructionID] && (len(plan.PostRASkip) == 0 || !plan.PostRASkip[instructionID]) &&
+				!nativeControlInstruction(plan.Machine.Insts[instructionID].Op) && amd64RailMachValueDiesAt(plan, pendingSpill, nextPosition) {
+				for _, operand := range plan.Machine.InstructionOperands(instructionID) {
+					if operand.Reg == pendingSpill && operand.Flags&railmach.OperandColdRemat == 0 {
+						forwardedSpill, pendingSpill = pendingSpill, 0
+						break
+					}
+				}
+			}
 			if err := flushPendingSpill(); err != nil {
 				return nil, 0, true, err
 			}
-			nextPosition := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 			if err := restoreRegionalVictims(nextPosition, ^uint32(0)); err != nil {
 				return nil, 0, true, err
 			}
@@ -1144,7 +1173,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			if instruction.Op != wasm.InstrCall && instruction.Op != wasm.InstrCallIndirect {
 				for operandIndex, operand := range operands {
-					if memoryFold && plan.Machine.Insts[foldedLoadID].Result == operand.Reg {
+					if operand.Reg == forwardedSpill || memoryFold && plan.Machine.Insts[foldedLoadID].Result == operand.Reg {
 						continue
 					}
 					duplicate := false
@@ -1164,7 +1193,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 			}
 			_, fusedComparison := nativeAMD64FusionConsumer(plan, instructionID)
-			if instruction.Op != wasm.InstrCall && instruction.Op != wasm.InstrCallIndirect && instruction.Result != 0 && plan.Allocation.Locations[instruction.Result].Kind == railmach.LocationSpill && !fusedComparison {
+			if instruction.Op != wasm.InstrCall && instruction.Op != wasm.InstrCallIndirect && instruction.Result != 0 &&
+				plan.Allocation.LocationAt(instruction.Result, currentPosition).Kind == railmach.LocationSpill && !fusedComparison {
 				pendingSpill = instruction.Result
 			}
 			divisionRHSSaved := false
