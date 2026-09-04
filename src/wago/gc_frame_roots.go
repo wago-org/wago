@@ -245,10 +245,11 @@ func validGCModuleFrameRootPlan(module *shared.GCModuleFrameRootPlan) bool {
 		}
 		for i := range plan.Safepoints {
 			safepoint := &plan.Safepoints[i]
-			if safepoint.ID == 0 || safepoint.ID > shared.GCSafepointIDMax || (totalSafepoints != 0 && safepoint.ID <= previousID) || !validGCFrameOffsets(safepoint.Offsets, plan.FrameBytes) {
+			id64 := uint64(plan.SafepointBase) + uint64(i) + 1
+			if id64 == 0 || id64 > uint64(shared.GCSafepointIDMax) || (totalSafepoints != 0 && uint32(id64) <= previousID) || !validGCFrameOffsets(safepoint.Offsets, plan.FrameBytes) {
 				return false
 			}
-			previousID = safepoint.ID
+			previousID = uint32(id64)
 			totalSafepoints++
 		}
 	}

@@ -874,7 +874,7 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 	}
 	offsets = append(offsets, plan.FixedOffsets...)
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
-	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{ID: id, Offsets: offsets})
+	plan.Safepoints = append(plan.Safepoints, shared.GCFrameSafepointPlan{Offsets: offsets})
 	f.stats.addGCRootMapBytes(8 + len(offsets)*4)
 	return id
 }

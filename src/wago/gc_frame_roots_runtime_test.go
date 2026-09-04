@@ -147,7 +147,6 @@ func TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall(t *testing.T) {
 		LocalIndexes:       []uint32{0},
 		LocalOffsets:       []uint32{16},
 		Safepoints: []shared.GCFrameSafepointPlan{{
-			ID:      1,
 			Offsets: []uint32{16},
 		}},
 		LiveLocalMasks: []uint64{1},
@@ -159,6 +158,28 @@ func TestGCModuleFrameRootPlanAllowsMultipleNativePathsPerCall(t *testing.T) {
 	}
 	if !validGCModuleFrameRootPlan(&shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{plan}}) {
 		t.Fatal("one logical call with three native return paths was rejected")
+	}
+}
+
+func TestGCModuleFrameRootPlanDerivesDenseSafepointIDs(t *testing.T) {
+	plan := func(base uint32) *shared.GCFrameRootPlan {
+		return &shared.GCFrameRootPlan{
+			Candidate:      true,
+			Exact:          true,
+			FrameBytes:     8,
+			SafepointBase:  base,
+			LiveLocalMasks: []uint64{0},
+			Safepoints:     []shared.GCFrameSafepointPlan{{}},
+		}
+	}
+	if !validGCModuleFrameRootPlan(&shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{plan(shared.GCSafepointIDMax - 1)}}) {
+		t.Fatal("maximum derived safepoint ID was rejected")
+	}
+	if validGCModuleFrameRootPlan(&shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{plan(shared.GCSafepointIDMax)}}) {
+		t.Fatal("derived safepoint ID above the dispatch domain was accepted")
+	}
+	if validGCModuleFrameRootPlan(&shared.GCModuleFrameRootPlan{Functions: []*shared.GCFrameRootPlan{plan(0), plan(0)}}) {
+		t.Fatal("overlapping derived safepoint ID ranges were accepted")
 	}
 }
 

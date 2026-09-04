@@ -16,6 +16,9 @@ func TestGCFrameRootPlanFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(GCModuleFrameRootPlan{}); got != 40 {
 		t.Fatalf("GCModuleFrameRootPlan size=%d, want 40", got)
 	}
+	if got := unsafe.Sizeof(GCFrameSafepointPlan{}); got != 24 {
+		t.Fatalf("GCFrameSafepointPlan size=%d, want 24", got)
+	}
 }
 
 func TestGCFrameRootPlanWideMaskWords(t *testing.T) {

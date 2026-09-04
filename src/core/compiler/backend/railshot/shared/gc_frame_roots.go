@@ -47,10 +47,10 @@ func DecodeGCDispatch(payload uint32) (helper, safepoint uint32) {
 }
 
 // GCFrameSafepointPlan names the direct mutable native slots visible at one
-// allocating helper transition. Offsets are relative to post-prologue RSP and
-// include admitted local slots followed by live operand spill slots.
+// allocating helper transition. Its ID is dense and derives from the owning
+// function's SafepointBase plus its slice index. Offsets are relative to
+// post-prologue RSP and include admitted locals followed by operand spill slots.
 type GCFrameSafepointPlan struct {
-	ID      uint32
 	Offsets []uint32
 }
 
