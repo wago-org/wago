@@ -42,6 +42,42 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
   }
 });
 
+test("benchmark regeneration publishes paired semantic corpus rows", async () => {
+  const work = await mkdtemp(join(tmpdir(), "wago-bench-site-semantic-"));
+  try {
+    const index = join(work, "index.html");
+    const amd64 = join(work, "amd64.json");
+    const arm64 = join(work, "arm64.json");
+    await writeFile(index, `<!doctype html>
+<body>
+            <!-- ░░░ PERFORMANCE ░░░ -->
+            <section id="performance"></section>
+            <!-- ░░░ ARCHITECTURE ░░░ -->
+            <section id="architecture"></section>
+</body>
+`);
+    const metrics = {};
+    for (const name of ["coremark", "blake3", "qoi", "lz4", "zlib", "zstd"]) {
+      metrics[`CompileFull/${name}`] = { ns: 100, bytes: 10, allocs: 1 };
+      metrics[`WazeroCompile/${name}`] = { ns: 200, bytes: 20, allocs: 2 };
+    }
+    await writeFile(amd64, JSON.stringify({ goos: "linux", goarch: "amd64", metrics }));
+    await writeFile(arm64, JSON.stringify({ goos: "darwin", goarch: "arm64", metrics }));
+
+    runUpdater(work, {
+      WAGO_BENCH_JSON_AMD64: amd64,
+      WAGO_BENCH_JSON_ARM64: arm64,
+    });
+    const html = await readFile(index, "utf8");
+    assert.equal(matches(html, /Semantic corpus — full compile/g), 2);
+    for (const label of ["CoreMark", "BLAKE3", "QOI", "LZ4", "zlib", "Zstandard"]) {
+      assert.equal(matches(html, new RegExp(`vs__label">${label}<`, "g")), 2);
+    }
+  } finally {
+    await rm(work, { recursive: true, force: true });
+  }
+});
+
 function runUpdater(websiteDir, extraEnv = {}) {
   const result = spawnSync(process.execPath, [updater], {
     cwd: root,

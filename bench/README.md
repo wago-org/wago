@@ -86,14 +86,24 @@ checked in so the suite needs no toolchain at run time:
   generated from checked-in `corpus/as/` entrypoints. Rebuild just those
   reproducibly with `AS_ROOT=... SIMD_ONLY=1 sh corpus/build-as.sh`.
 
+- **`semantic` programs** — the checksum-pinned CoreMark, BLAKE3, QOI, LZ4,
+  zlib, and Zstandard artifacts under `../tests/corpora`. The benchmark manifest
+  references these files in place so performance measurements and the exact
+  execution-oracle suite cannot drift onto different binaries. They participate
+  in decode, validate, full compile, and instantiate measurements; run
+  `make test-semantic-corpus` for their result checks. LZ4 remains in the
+  pipeline measurements while its known execution discrepancy is recorded by
+  the semantic manifest.
+
   The `real-large` tier is whole real-world programs — the `wasm3` interpreter,
   the `lua` (Lua 5.4) interpreter and the `sqlite3` (SQLite 3.46) engine committed
   directly, plus the multi-megabyte `ruby` (Ruby 3.3, ~16 MiB, ~17k functions) and
-  `esbuild` (Go→wasm bundler, ~12 MiB) fetched into `corpus/vendor/` by
-  `corpus/fetch.sh` (gitignored; referenced by manifest `path` and skipped when
-  absent). All carry host imports the backend can't compile yet, so they run
-  `Decode`/`Validate` only — the tier that shows where wago's byte-backed
-  decode/validate path spends time on very large inputs.
+  `esbuild` (Go→wasm bundler, ~12 MiB). Wago benchmarks their full compile path.
+  Their command execution is an optional compatibility integration rather than
+  a core-runtime benchmark: run the Emscripten plugin suite with
+  `WAGO_CORPUS_DIR=/path/to/wago/bench/corpus go test ./...` from the plugin
+  checkout to exercise regexmatch, wasm3, Lua, SQLite, Ruby, and esbuild with
+  checked workload results.
 
 - **`isa` micro-suite** — opt-in via `-wago.bench.isa`, `benchpub -isa`, or
   `make bench BENCH_ISA=1`. It has one exported function per *individual opcode* (i32/i64

@@ -102,6 +102,13 @@ const TABS = [
       rs("json-as", "JSON SWAR", "Compile/json-as", "WazeroCompile/json-as"),
       rs("blake-as", "BLAKE3 SWAR", "Compile/blake-as", "WazeroCompile/blake-as"),
       rs("utf-as", "UTF SWAR transcode", "Compile/utf-as", "WazeroCompile/utf-as"),
+      grp("Semantic corpus — full compile: decode + validate + codegen"),
+      rs("CoreMark", "integer, lists, matrix, state machine", "CompileFull/coremark", "WazeroCompile/coremark"),
+      rs("BLAKE3", "published hash vectors", "CompileFull/blake3", "WazeroCompile/blake3"),
+      rs("QOI", "image encode/decode", "CompileFull/qoi", "WazeroCompile/qoi"),
+      rs("LZ4", "compression library", "CompileFull/lz4", "WazeroCompile/lz4"),
+      rs("zlib", "DEFLATE library", "CompileFull/zlib", "WazeroCompile/zlib"),
+      rs("Zstandard", "decompression library", "CompileFull/zstd", "WazeroCompile/zstd"),
       // Real-world interpreters/engines. These carry WASI/host imports so they
       // can't yet be executed here, but the backend compiles them — so this is a
       // like-for-like FULL-compile race (decode + validate + codegen) vs wazero's
