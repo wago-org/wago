@@ -184,12 +184,28 @@ func validateLayer(layer localLayer) error {
 	if err := ValidateFeatureValues(layer.Features); err != nil {
 		return err
 	}
-	if err := ValidateOptimizationValues(layer.Optimizations); err != nil {
+	if err := validateLocalOptimizationValues(layer.Optimizations); err != nil {
 		return err
 	}
 	if layer.Runtime != nil && layer.Runtime.Parallel != nil {
 		if err := ValidateParallel(*layer.Runtime.Parallel); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func validateLocalOptimizationValues(values map[string]bool) error {
+	for name, enabled := range values {
+		setting, ok := Lookup("optimizations." + name)
+		if !ok || setting.kind != optimizationSettingKind {
+			if project.IsRetiredOptimizationName(name) {
+				continue
+			}
+			return fmt.Errorf("unknown optimization setting %q", name)
+		}
+		if enabled && !setting.Available {
+			return fmt.Errorf("optimization setting %q is unavailable", name)
 		}
 	}
 	return nil
@@ -201,7 +217,10 @@ func applyLayer(config *Config, layer localLayer) {
 		setting.SetValue(config, value)
 	}
 	for name, value := range layer.Optimizations {
-		setting, _ := Lookup("optimizations." + name)
+		setting, ok := Lookup("optimizations." + name)
+		if !ok { // Retired v1 names are accepted compatibility no-ops.
+			continue
+		}
 		setting.SetValue(config, value)
 	}
 	if layer.Runtime == nil {

@@ -125,6 +125,25 @@ func TestManifestValidationAcceptsCataloguedOptimizationFamilies(t *testing.T) {
 	}
 }
 
+func TestManifestValidationAcceptsRetiredV1OptimizationNames(t *testing.T) {
+	optimizations := map[string]any{}
+	for i, name := range []string{
+		"affine-lea", "call-next-use", "fcmp-fuse", "gc-ref-facts",
+		"immutable-poly-fastpath", "legacy-fp-pins", "legacy-gp-pins",
+		"loop-precheck", "loop-region-pins", "swar-idioms",
+		"tee-spill-elide", "v128-sink",
+	} {
+		optimizations[name] = i%2 == 0
+	}
+	manifest := map[string]any{
+		"$schema":  SchemaURI,
+		"settings": map[string]any{"optimizations": optimizations},
+	}
+	if err := ValidateManifest(manifest); err != nil {
+		t.Fatalf("previously valid v1 manifest was rejected: %v", err)
+	}
+}
+
 func validTestPackage() map[string]any {
 	return map[string]any{
 		"module": "github.com/acme/example", "version": "1.2.3", "name": "Example",

@@ -167,6 +167,30 @@ func TestExplicitLocalRequiresManifest(t *testing.T) {
 	}
 }
 
+func TestLocalSettingsIgnoreRetiredV1Optimizations(t *testing.T) {
+	dir := enterSettingsTestDir(t)
+	t.Setenv("WAGO_CONFIG", filepath.Join(t.TempDir(), "settings.json"))
+	writeTestManifest(t, dir)
+	manifest, err := project.Read(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest[localField] = map[string]any{"optimizations": map[string]any{
+		"swar-idioms":  true,
+		"gc-ref-facts": false,
+	}}
+	if err := project.Write(dir, manifest); err != nil {
+		t.Fatal(err)
+	}
+	target, err := Open(false, false)
+	if err != nil {
+		t.Fatalf("open previous v1 local settings: %v", err)
+	}
+	if _, ok := target.Config().Optimizations["swar-idioms"]; ok {
+		t.Fatal("retired optimization was retained in the active compiler selection")
+	}
+}
+
 func enterSettingsTestDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
