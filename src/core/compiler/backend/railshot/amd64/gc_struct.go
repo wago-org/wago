@@ -842,8 +842,7 @@ func (f *fn) callGCStructHelper(helper uint32, params, results []wasm.ValType) e
 		f.publishGCReferenceParams(params)
 	}
 	// Every parked helper may run collector work. Compact semantic facts remain
-	// valid, but generation and the separate raw resolver certificate do not.
-	f.invalidateGCGenerationFacts()
+	// valid, but the separate raw resolver certificate does not.
 	f.invalidateGCResolvedObject()
 	before := f.a.Len()
 	defer func() {

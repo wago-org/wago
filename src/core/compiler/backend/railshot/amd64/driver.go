@@ -88,32 +88,26 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		return f.opThrowRef()
 	case 0x10: // call
 		f.publishAllFreshGCRefs()
-		f.invalidateGCGenerationFacts()
 		f.invalidateGCMutableLoadFacts()
 		return f.callOp(r)
 	case 0x11: // call_indirect
 		f.publishAllFreshGCRefs()
-		f.invalidateGCGenerationFacts()
 		f.invalidateGCMutableLoadFacts()
 		return f.callIndirect(r)
 	case 0x12: // return_call
 		f.publishAllFreshGCRefs()
-		f.invalidateGCGenerationFacts()
 		f.invalidateGCResolvedObject()
 		return f.returnCall(r)
 	case 0x13: // return_call_indirect
 		f.publishAllFreshGCRefs()
-		f.invalidateGCGenerationFacts()
 		f.invalidateGCResolvedObject()
 		return f.returnCallIndirect(r)
 	case 0x14: // call_ref
 		f.publishAllFreshGCRefs()
-		f.invalidateGCGenerationFacts()
 		f.invalidateGCMutableLoadFacts()
 		return f.callRef(r)
 	case 0x15: // return_call_ref
 		f.publishAllFreshGCRefs()
-		f.invalidateGCGenerationFacts()
 		f.invalidateGCResolvedObject()
 		return f.returnCallRef(r)
 

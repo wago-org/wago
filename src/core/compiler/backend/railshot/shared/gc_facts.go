@@ -1,16 +1,17 @@
 package shared
 
 // GCRefFact is the backend-neutral, bounded semantic fact carried for one
-// compact WasmGC reference. The first word packs type/class, identity,
-// nullability, freshness, generation, and pointer-free state. The second word
-// stores a known array length as length+1 so every u32 length is representable.
+// compact WasmGC reference. Two 32-bit words pack type/class, identity,
+// nullability, freshness, and pointer-free state. A third word stores a known
+// array length; an independent packed bit makes every u32 length representable.
 //
 // It deliberately contains no raw object address. Backends may pair it with a
 // separate short-lived resolver certificate whose safepoint invalidation rules
 // are stricter than these semantic facts.
 type GCRefFact struct {
-	bits     uint64
-	arrayLen uint64
+	bitsLo   uint32
+	bitsHi   uint32
+	arrayLen uint32
 }
 
 type GCNullability uint8
@@ -77,21 +78,13 @@ func SelectGCBulkBarrier(destination GCRefFact, storesReferences bool) GCBarrier
 	return GCBarrierSlowBarrier
 }
 
-type GCGeneration uint8
-
-const (
-	GCGenerationUnknown GCGeneration = iota
-	GCGenerationYoung
-	GCGenerationOld
-)
-
 const (
 	gcFactPayloadMask   = uint64(1<<32) - 1
 	gcFactIdentityShift = 32
 	gcFactIdentityMask  = uint64(1<<20) - 1
 	gcFactNullShift     = 52
 	gcFactFreshShift    = 54
-	gcFactGenShift      = 56
+	gcFactArrayLenKnown = uint64(1) << 56
 	gcFactPointerFree   = uint64(1) << 58
 	gcFactExact         = uint64(1) << 59
 	gcFactHeapShift     = 60
@@ -103,116 +96,140 @@ const MaxGCRefFactIdentity = uint32(gcFactIdentityMask)
 
 func NewGCRefFact(nullability GCNullability, heap GCHeapClass) GCRefFact {
 	var f GCRefFact
-	f.bits = uint64(nullability)<<gcFactNullShift | uint64(heap)<<gcFactHeapShift
+	f.setBits(uint64(nullability)<<gcFactNullShift | uint64(heap)<<gcFactHeapShift)
 	return f
 }
 
 func ExactGCRefFact(typeIndex, identity uint32, heap GCHeapClass) GCRefFact {
 	f := NewGCRefFact(GCKnownNonNull, heap)
-	f.bits |= gcFactExact | uint64(typeIndex)
+	f.setBits(f.bits() | gcFactExact | uint64(typeIndex))
 	return f.WithIdentity(identity)
 }
 
 func GCRefFactFromPacked(bits, arrayLen uint64) GCRefFact {
-	return GCRefFact{bits: bits, arrayLen: arrayLen}
+	var f GCRefFact
+	if arrayLen != 0 {
+		f.arrayLen = uint32(arrayLen - 1)
+		bits |= gcFactArrayLenKnown
+	}
+	f.setBits(bits)
+	return f
 }
 
-func (f GCRefFact) Packed() (bits, arrayLen uint64) { return f.bits, f.arrayLen }
+func (f GCRefFact) bits() uint64 { return uint64(f.bitsHi)<<32 | uint64(f.bitsLo) }
 
-func (f GCRefFact) IsZero() bool { return f.bits == 0 && f.arrayLen == 0 }
+func (f *GCRefFact) setBits(bits uint64) {
+	f.bitsLo = uint32(bits)
+	f.bitsHi = uint32(bits >> 32)
+}
+
+func (f GCRefFact) Packed() (bits, arrayLen uint64) {
+	bits = f.bits() &^ gcFactArrayLenKnown
+	if f.bits()&gcFactArrayLenKnown != 0 {
+		arrayLen = uint64(f.arrayLen) + 1
+	}
+	return
+}
+
+func (f GCRefFact) IsZero() bool { return f.bitsLo == 0 && f.bitsHi == 0 && f.arrayLen == 0 }
 
 func (f GCRefFact) Nullability() GCNullability {
-	return GCNullability((f.bits >> gcFactNullShift) & 3)
+	return GCNullability((f.bits() >> gcFactNullShift) & 3)
 }
 
 func (f GCRefFact) HeapClass() GCHeapClass {
-	return GCHeapClass((f.bits >> gcFactHeapShift) & 15)
+	return GCHeapClass((f.bits() >> gcFactHeapShift) & 15)
 }
 
 func (f GCRefFact) ExactType() (uint32, bool) {
-	return uint32(f.bits & gcFactPayloadMask), f.bits&gcFactExact != 0
+	bits := f.bits()
+	return uint32(bits & gcFactPayloadMask), bits&gcFactExact != 0
 }
 
 func (f GCRefFact) Identity() uint32 {
-	return uint32((f.bits >> gcFactIdentityShift) & gcFactIdentityMask)
+	return uint32((f.bits() >> gcFactIdentityShift) & gcFactIdentityMask)
 }
 
 func (f GCRefFact) Freshness() GCFreshness {
-	return GCFreshness((f.bits >> gcFactFreshShift) & 3)
+	return GCFreshness((f.bits() >> gcFactFreshShift) & 3)
 }
 
-func (f GCRefFact) Generation() GCGeneration {
-	return GCGeneration((f.bits >> gcFactGenShift) & 3)
-}
-
-func (f GCRefFact) PointerFree() bool { return f.bits&gcFactPointerFree != 0 }
+func (f GCRefFact) PointerFree() bool { return f.bits()&gcFactPointerFree != 0 }
 
 func (f GCRefFact) KnownArrayLength() (uint32, bool) {
-	if f.arrayLen == 0 {
+	if f.bits()&gcFactArrayLenKnown == 0 {
 		return 0, false
 	}
-	return uint32(f.arrayLen - 1), true
+	return f.arrayLen, true
 }
 
 func (f GCRefFact) WithNullability(v GCNullability) GCRefFact {
-	f.bits &^= uint64(3) << gcFactNullShift
-	f.bits |= uint64(v) << gcFactNullShift
+	bits := f.bits()
+	bits &^= uint64(3) << gcFactNullShift
+	bits |= uint64(v) << gcFactNullShift
+	f.setBits(bits)
 	return f
 }
 
 func (f GCRefFact) WithHeapClass(v GCHeapClass) GCRefFact {
-	f.bits &^= uint64(15) << gcFactHeapShift
-	f.bits |= uint64(v) << gcFactHeapShift
+	bits := f.bits()
+	bits &^= uint64(15) << gcFactHeapShift
+	bits |= uint64(v) << gcFactHeapShift
+	f.setBits(bits)
 	return f
 }
 
 func (f GCRefFact) WithExactType(typeIndex uint32, heap GCHeapClass) GCRefFact {
-	f.bits &^= gcFactPayloadMask | (uint64(15) << gcFactHeapShift)
-	f.bits |= gcFactExact | uint64(typeIndex) | uint64(heap)<<gcFactHeapShift
+	bits := f.bits()
+	bits &^= gcFactPayloadMask | (uint64(15) << gcFactHeapShift)
+	bits |= gcFactExact | uint64(typeIndex) | uint64(heap)<<gcFactHeapShift
+	f.setBits(bits)
 	return f
 }
 
 func (f GCRefFact) WithoutExactType() GCRefFact {
-	f.bits &^= gcFactExact | gcFactPayloadMask
+	f.setBits(f.bits() &^ (gcFactExact | gcFactPayloadMask))
 	return f
 }
 
 func (f GCRefFact) WithIdentity(identity uint32) GCRefFact {
-	f.bits &^= gcFactIdentityMask << gcFactIdentityShift
+	bits := f.bits()
+	bits &^= gcFactIdentityMask << gcFactIdentityShift
 	if identity <= MaxGCRefFactIdentity {
-		f.bits |= uint64(identity) << gcFactIdentityShift
+		bits |= uint64(identity) << gcFactIdentityShift
 	}
+	f.setBits(bits)
 	return f
 }
 
 func (f GCRefFact) WithFreshness(v GCFreshness) GCRefFact {
-	f.bits &^= uint64(3) << gcFactFreshShift
-	f.bits |= uint64(v) << gcFactFreshShift
-	return f
-}
-
-func (f GCRefFact) WithGeneration(v GCGeneration) GCRefFact {
-	f.bits &^= uint64(3) << gcFactGenShift
-	f.bits |= uint64(v) << gcFactGenShift
+	bits := f.bits()
+	bits &^= uint64(3) << gcFactFreshShift
+	bits |= uint64(v) << gcFactFreshShift
+	f.setBits(bits)
 	return f
 }
 
 func (f GCRefFact) WithPointerFree(v bool) GCRefFact {
+	bits := f.bits()
 	if v {
-		f.bits |= gcFactPointerFree
+		bits |= gcFactPointerFree
 	} else {
-		f.bits &^= gcFactPointerFree
+		bits &^= gcFactPointerFree
 	}
+	f.setBits(bits)
 	return f
 }
 
 func (f GCRefFact) WithKnownArrayLength(length uint32) GCRefFact {
-	f.arrayLen = uint64(length) + 1
+	f.arrayLen = length
+	f.setBits(f.bits() | gcFactArrayLenKnown)
 	return f
 }
 
 func (f GCRefFact) WithoutKnownArrayLength() GCRefFact {
 	f.arrayLen = 0
+	f.setBits(f.bits() &^ gcFactArrayLenKnown)
 	return f
 }
 
@@ -255,9 +272,6 @@ func MergeGCRefFacts(a, b GCRefFact) GCRefFact {
 			out = out.WithFreshness(GCPublished)
 		case freshA == freshB:
 			out = out.WithFreshness(freshA)
-		}
-		if a.Generation() == b.Generation() {
-			out = out.WithGeneration(a.Generation())
 		}
 	} else if a.Freshness() == GCPublished || b.Freshness() == GCPublished ||
 		(a.Freshness() == GCFreshUnpublished && b.Freshness() == GCFreshUnpublished) {

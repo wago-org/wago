@@ -1,18 +1,26 @@
 package shared
 
-import "testing"
+import (
+	"testing"
+	"unsafe"
+)
+
+func TestGCRefFactSize(t *testing.T) {
+	if got := unsafe.Sizeof(GCRefFact{}); got != 12 {
+		t.Fatalf("GCRefFact size = %d, want 12", got)
+	}
+}
 
 func TestGCRefFactRoundTripAndMerge(t *testing.T) {
 	f := ExactGCRefFact(^uint32(0), 7, GCHeapArray).
 		WithFreshness(GCFreshUnpublished).
-		WithGeneration(GCGenerationYoung).
 		WithPointerFree(true).
 		WithKnownArrayLength(^uint32(0))
 	if typ, ok := f.ExactType(); !ok || typ != ^uint32(0) {
 		t.Fatalf("exact type = %d,%v", typ, ok)
 	}
 	if f.Identity() != 7 || f.Nullability() != GCKnownNonNull || f.HeapClass() != GCHeapArray ||
-		f.Freshness() != GCFreshUnpublished || f.Generation() != GCGenerationYoung || !f.PointerFree() {
+		f.Freshness() != GCFreshUnpublished || !f.PointerFree() {
 		t.Fatalf("fact round trip = %+v", f)
 	}
 	if length, ok := f.KnownArrayLength(); !ok || length != ^uint32(0) {
@@ -53,7 +61,7 @@ func TestGCRefFactRoundTripAndMerge(t *testing.T) {
 
 func BenchmarkMergeGCRefFacts(b *testing.B) {
 	left := ExactGCRefFact(7, 9, GCHeapArray).WithFreshness(GCFreshUnpublished).WithKnownArrayLength(64)
-	right := left.WithGeneration(GCGenerationYoung)
+	right := left
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		_ = MergeGCRefFacts(left, right)
@@ -66,12 +74,6 @@ func TestGCBarrierSelection(t *testing.T) {
 	if got := SelectGCStoreBarrier(parent, child); got != GCBarrierSlowBarrier {
 		t.Fatalf("unknown-generation fresh parent selected %v, want slow barrier", got)
 	}
-	if got := SelectGCStoreBarrier(parent.WithGeneration(GCGenerationYoung), child); got != GCBarrierSlowBarrier {
-		t.Fatalf("unvalidated young-parent generation selected %v, want slow barrier", got)
-	}
-	if got := SelectGCStoreBarrier(parent, child.WithGeneration(GCGenerationOld)); got != GCBarrierSlowBarrier {
-		t.Fatalf("unvalidated old-child generation selected %v, want slow barrier", got)
-	}
 	nullChild := NewGCRefFact(GCKnownNull, GCHeapStruct)
 	if got := SelectGCStoreBarrier(parent, nullChild); got != GCBarrierNoBarrier {
 		t.Fatalf("null child selected %v", got)
@@ -82,9 +84,6 @@ func TestGCBarrierSelection(t *testing.T) {
 	}
 	if got := SelectGCBulkBarrier(parent.WithPointerFree(true), false); got != GCBarrierNoBarrier {
 		t.Fatalf("pointer-free bulk selected %v", got)
-	}
-	if got := SelectGCBulkBarrier(parent.WithGeneration(GCGenerationYoung), true); got != GCBarrierSlowBarrier {
-		t.Fatalf("unvalidated young bulk destination selected %v, want slow barrier", got)
 	}
 	for _, state := range []GCBarrierState{GCBarrierYoungParent, GCBarrierKnownOldChild, GCBarrierExistingCard, GCBarrierCardMark, GCBarrierSlowBarrier} {
 		if !state.NeedsBarrier() {

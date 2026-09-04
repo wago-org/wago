@@ -636,23 +636,6 @@ func (f *fn) publishAllFreshGCRefs() {
 	}
 }
 
-func (f *fn) invalidateGCGenerationFacts() {
-	if !f.gcRefFactsEnabled() {
-		return
-	}
-	for i, fact := range f.localGCRefFacts {
-		f.localGCRefFacts[i] = fact.WithGeneration(shared.GCGenerationUnknown)
-	}
-	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue {
-			fact := f.gcRefFact(e)
-			if !fact.IsZero() {
-				putGCRefFact(&e.st, fact.WithGeneration(shared.GCGenerationUnknown))
-			}
-		}
-	}
-}
-
 func (f *fn) invalidateGCLoadFactsForLocal(local int) {
 	if f.gcLastArrayLen.valid && (f.gcLastArrayLen.local == local || f.gcLastArrayLen.resultLocal == local) {
 		f.gcLastArrayLen.valid = false
