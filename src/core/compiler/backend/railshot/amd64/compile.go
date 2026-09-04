@@ -2801,13 +2801,12 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if len(gpPool) > maxPins {
 		gpPool = gpPool[:maxPins]
 	}
-	// A pathologically register-heavy expression tree can pin its whole spine and
-	// exhaust the file even under the scratch floor (condenseShift/condenseBinary
-	// pin one register per nesting level). When that happens the first attempt
-	// panics with errRegExhausted and compileFunc recompiles with pinLocals=false:
-	// dropping every local/global VALUE pin frees the entire neutral file for
-	// scratch. Pinning is a pure speed optimization, so the unpinned compile is
-	// always correct.
+	// A wide local table can expose enough borrowed scalar/vector values at once to
+	// consume the transient floor. Keep those functions canonical from the start;
+	// this is a validated resource bound, not a failed-attempt retry.
+	if nLocals > 64 {
+		pinLocals = false
+	}
 	if !pinLocals {
 		gpPool = nil
 	}
@@ -2832,7 +2831,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if !pinLocals {
 		fpPinLimit = 0
 	}
-	intervalRegion := regABI && !hasCall && !hints.flags.has(hintHasControlFlow) && !hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
+	intervalRegion := pinLocals && regABI && !hasCall && !hints.flags.has(hintHasControlFlow) && !hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
 	if intervalRegion {
 		gpPool = nil // regional GP assignments supersede whole-function GP pins
 	}

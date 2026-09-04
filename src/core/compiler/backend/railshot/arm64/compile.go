@@ -2397,8 +2397,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		gpPool = gpPool[:maxPins]
 	}
 	// Keep the unpinned attempt as a temporary correctness oracle for pressure
-	// beyond the target-derived floor. Production qualification requires this path
-	// to remain unused; a hit records its complete failed-attempt cost in stats.
+	// Wide local tables begin canonical so their many borrowed values cannot consume
+	// the target-derived transient floor. There is no failed-attempt retry.
 	if !pinLocals || nLocals > 64 {
 		gpPool = nil
 	}
