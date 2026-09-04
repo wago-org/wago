@@ -704,8 +704,9 @@ func TestCompilerFunctionCacheInvalidatesOnlyInlineCallers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(metrics.Functions) != 3 || runtime.GOOS == "windows" && (metrics.Functions[0].CacheHit || metrics.Functions[1].CacheHit || metrics.Functions[2].CacheHit) ||
-		runtime.GOOS != "windows" && (metrics.Functions[0].CacheHit || metrics.Functions[1].CacheHit || !metrics.Functions[2].CacheHit) {
+	uniformStructured := runtime.GOOS == "windows" && runtime.GOARCH == "arm64"
+	if len(metrics.Functions) != 3 || uniformStructured && (metrics.Functions[0].CacheHit || metrics.Functions[1].CacheHit || metrics.Functions[2].CacheHit) ||
+		!uniformStructured && (metrics.Functions[0].CacheHit || metrics.Functions[1].CacheHit || !metrics.Functions[2].CacheHit) {
 		t.Fatalf("inline dependency cache metrics = %#v", metrics.Functions)
 	}
 	want, err := (Compiler{}).Compile(changed)
