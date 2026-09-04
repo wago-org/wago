@@ -850,6 +850,9 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 	if err != nil {
 		return err
 	}
+	if err := c.validateInternalEntries(true); err != nil {
+		return err
+	}
 	n, err := r.uvar()
 	if err != nil {
 		return err

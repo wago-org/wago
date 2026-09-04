@@ -3028,6 +3028,9 @@ func (c *Compiled) validate() error {
 			return fmt.Errorf("compiled metadata invalid: Entry[%d] offset %d out of code range %d", i, off, len(c.code))
 		}
 	}
+	if err := c.validateInternalEntries(false); err != nil {
+		return err
+	}
 	totalFuncs := c.NumImports + len(c.Funcs)
 	if len(c.FuncTypeID) != totalFuncs {
 		return fmt.Errorf("compiled metadata invalid: FuncTypeID length %d != function count %d", len(c.FuncTypeID), totalFuncs)
@@ -4095,6 +4098,9 @@ func (c *Compiled) validateSerializableLocked() error {
 	}
 	if c.NumImports > 0 && !c.dynamicImports {
 		return errors.New("wago: imported-function code lacks dynamic dispatch metadata")
+	}
+	if err := c.validateInternalEntries(false); err != nil {
+		return err
 	}
 	return c.validateCodecMetadata()
 }

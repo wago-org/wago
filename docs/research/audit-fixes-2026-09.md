@@ -95,3 +95,16 @@ Module.Compiled, signatures, and nested containers. One 100 ms amd64 sample:
 small compile 12,202 -> 14,660 B/op, 52 -> 67 allocations; runtime instantiation
 stays 1,520 B/op and 10 allocations. Snapshot copy alone: 1,560 B/op, 14
 allocations, about 498 ns/op. Timing samples are not a throughput claim.
+
+## 13. Validate internal native entry offsets
+
+Marshal and instantiate validate internal-directory length and every normalized
+offset against code size. Decode also rejects negative wire entries, so artifacts
+cannot enable compile-only direct-prepared markers. The empty legacy directory
+remains supported. Fresh compiler markers are stripped by serialization.
+
+Validation: internal-entry boundary/marker tests and focused codec tests pass.
+The shared ARM64 element fixture now builds on every ARM64 runtime target,
+including Windows. Native Windows CI exposed that its earlier Unix-only test
+file made two existing Windows test files fail to compile. The Windows ARM64
+backend test binary now cross-builds with the unchanged helper body.
