@@ -172,8 +172,10 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			artifact, hit, cacheErr := functionCache.Get(artifactIdentity)
 			if cacheErr == nil && hit {
 				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
-				if !captureGC && amd64DirectPreparedLeafClass(moduleContracts[i].Class) {
+				if !captureGC && amd64DirectPreparedClass(moduleContracts[i].Class) {
 					directPrepared = markAMD64DirectPrepared(directPrepared, len(m.Code), i)
+				}
+				if !captureGC && amd64DirectPreparedLeafClass(moduleContracts[i].Class) {
 					directLeafPrepared = markAMD64DirectPrepared(directLeafPrepared, len(m.Code), i)
 				}
 				if row != nil {
@@ -318,8 +320,10 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			publishedContract = railmach.ABIContract{}
 			moduleContracts[i] = railmach.ABIContract{}
 		}
-		if !captureGC && railMachFinalized && amd64DirectPreparedLeafClass(publishedContract.Class) {
+		if !captureGC && railMachFinalized && amd64DirectPreparedClass(publishedContract.Class) {
 			directPrepared = markAMD64DirectPrepared(directPrepared, len(m.Code), i)
+		}
+		if !captureGC && railMachFinalized && amd64DirectPreparedLeafClass(publishedContract.Class) {
 			directLeafPrepared = markAMD64DirectPrepared(directLeafPrepared, len(m.Code), i)
 		}
 		if captureGC {
@@ -430,11 +434,40 @@ func amd64DirectPreparedLeafClass(class railmach.ABIClass) bool {
 	return class == railmach.ABITinyDirect || class == railmach.ABIPreparedInt
 }
 
+func amd64DirectPreparedClass(class railmach.ABIClass) bool {
+	return amd64DirectPreparedLeafClass(class) || class == railmach.ABIPreparedCall
+}
+
+func amd64RailMachDirectCallClass(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) railmach.ABIClass {
+	if plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall {
+		return 0
+	}
+	target := uint32(instruction.Aux)
+	if target < plan.Stack.ImportedFuncs {
+		return 0
+	}
+	if target == plan.Stack.FunctionIndex && amd64DirectPreparedClass(plan.ABI.Class) {
+		return plan.ABI.Class
+	}
+	for _, call := range plan.Calls {
+		if call.Instruction == instructionID && call.Callee == target && !call.Conservative {
+			return call.Class
+		}
+	}
+	return 0
+}
+
+func amd64RailMachFastSingleArgumentCall(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) bool {
+	return instruction.OperandCount == 1 && instruction.ResultCount() <= 1 &&
+		amd64DirectPreparedClass(amd64RailMachDirectCallClass(plan, instructionID, instruction))
+}
+
 type parallelAMD64Result struct {
 	body           []byte
 	internalOffset int
 	relocs         []amd64CallReloc
 	directPrepared bool
+	directLeaf     bool
 }
 
 type parallelAMD64Worker struct {
@@ -514,7 +547,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 			if !railMachFinalized {
 				contracts[i] = railmach.ABIContract{}
 			}
-			results[i] = parallelAMD64Result{body: body, internalOffset: internalOffset, relocs: relocs, directPrepared: railMachFinalized && amd64DirectPreparedLeafClass(contracts[i].Class)}
+			results[i] = parallelAMD64Result{body: body, internalOffset: internalOffset, relocs: relocs, directPrepared: railMachFinalized && amd64DirectPreparedClass(contracts[i].Class), directLeaf: railMachFinalized && amd64DirectPreparedLeafClass(contracts[i].Class)}
 		}
 		return nil
 	})
@@ -535,6 +568,8 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 		result := &results[i]
 		if result.directPrepared {
 			directPrepared = markAMD64DirectPrepared(directPrepared, len(m.Code), i)
+		}
+		if result.directLeaf {
 			directLeafPrepared = markAMD64DirectPrepared(directLeafPrepared, len(m.Code), i)
 		}
 		internal[i] = len(code) + result.internalOffset
@@ -905,7 +940,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	a.Ret()
 	a.Align16()
 	internalOffset := a.Len()
-	directPrepared := amd64DirectPreparedLeafClass(plan.ABI.Class)
+	directPrepared := amd64DirectPreparedClass(plan.ABI.Class)
 	if len(plan.Stack.Instrs) != 0 {
 		metadata.recordSource(internalOffset, plan.Stack.Instrs[0].Offset)
 	}
@@ -1845,6 +1880,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				imported := uint32(instruction.Aux) < plan.Stack.ImportedFuncs
 				callOffset := int32(plan.Frame.CallAreaOffset)
+				fastSingleArgumentCall := amd64RailMachFastSingleArgumentCall(plan, instructionID, instruction)
 				if imported {
 					emitAMD64ExternalCallFPRSave(&a, plan, false)
 				}
@@ -1861,14 +1897,24 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						a.MovXmmToGpr(amd64.R11, src, plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF64)
 						src = amd64.R11
 					}
-					a.StoreRsp64(callOffset+int32(index*8), src)
-				}
-				a.LeaRsp(amd64.RDI, callOffset)
-				for index, operand := range operands[:min(len(operands), len(amd64ParamRegisters))] {
-					if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
-						a.LoadRsp32(amd64ParamRegisters[index], callOffset+int32(index*8))
+					if fastSingleArgumentCall {
+						if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 {
+							a.MovReg32(amd64.RAX, src)
+						} else {
+							a.MovReg64(amd64.RAX, src)
+						}
 					} else {
-						a.LoadRsp64(amd64ParamRegisters[index], callOffset+int32(index*8))
+						a.StoreRsp64(callOffset+int32(index*8), src)
+					}
+				}
+				if !fastSingleArgumentCall {
+					a.LeaRsp(amd64.RDI, callOffset)
+					for index, operand := range operands[:min(len(operands), len(amd64ParamRegisters))] {
+						if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
+							a.LoadRsp32(amd64ParamRegisters[index], callOffset+int32(index*8))
+						} else {
+							a.LoadRsp64(amd64ParamRegisters[index], callOffset+int32(index*8))
+						}
 					}
 				}
 				if imported {

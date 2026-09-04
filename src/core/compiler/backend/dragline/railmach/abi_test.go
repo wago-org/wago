@@ -55,7 +55,7 @@ func TestAnalyzeABIAndRefineDirectCall(t *testing.T) {
 	}
 }
 
-func TestAnalyzeABIUsesPreparedIntegerContractForBoundedARM64Recursion(t *testing.T) {
+func TestAnalyzeABIUsesPreparedSingleArgumentContractForBoundedRecursion(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}, []byte{
 		0x20, 0x00, 0x41, 0x02, 0x48, 0x04, 0x7e,
 		0x20, 0x00, 0xac, 0x05,
@@ -66,7 +66,7 @@ func TestAnalyzeABIUsesPreparedIntegerContractForBoundedARM64Recursion(t *testin
 	for _, tc := range []struct {
 		target Target
 		want   ABIClass
-	}{{TargetARM64, ABIPreparedCall}, {TargetAMD64, ABIGeneral}} {
+	}{{TargetARM64, ABIPreparedCall}, {TargetAMD64, ABIPreparedCall}} {
 		f, allocation, metadata := buildABITest(t, tc.target, m)
 		contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
 		if err != nil {

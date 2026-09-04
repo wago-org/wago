@@ -147,6 +147,10 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 	switch {
 	case !contract.HasCall && len(f.Insts) <= 4 && hasDirectRegisterParams(f, allocation):
 		contract.Class = ABITinyDirect
+	case directPreparedAMD64SingleArgumentContract(f, allocation) && contract.HasCall:
+		contract.Class = ABIPreparedCall
+	case directPreparedAMD64SingleArgumentContract(f, allocation):
+		contract.Class = ABIPreparedInt
 	case directPreparedIntegerContract(f, allocation, contract) && contract.HasCall:
 		contract.Class = ABIPreparedCall
 	case directPreparedIntegerContract(f, allocation, contract):
@@ -163,6 +167,28 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		contract.Class = ABIGeneral
 	}
 	return contract, calls, nil
+}
+
+// directPreparedAMD64SingleArgumentContract admits a general one-argument
+// integer function to AMD64's private register entry. A single incoming value
+// cannot form a parallel-assignment cycle, so the prologue can safely move or
+// spill RAX into the allocator-selected initial location.
+func directPreparedAMD64SingleArgumentContract(f *Func, allocation *GreedyAllocation) bool {
+	if f == nil || allocation == nil || f.Target != TargetAMD64 || f.ParamCount != 1 || len(f.Results) > 1 {
+		return false
+	}
+	if len(f.Results) == 1 && f.VRegs[f.Results[0]].Bank != BankGPR {
+		return false
+	}
+	for value := VReg(1); int(value) < len(f.VRegs); value++ {
+		data := f.VRegs[value]
+		if data.Flags&VRegInitial == 0 || data.InitialLocal != 0 {
+			continue
+		}
+		location := allocation.Locations[value]
+		return data.Bank == BankGPR && location.Bank == BankGPR && (location.Kind == LocationRegister || location.Kind == LocationSpill)
+	}
+	return false
 }
 
 // PruneSkippedDefinitionClobbers removes physical-register writes attributed

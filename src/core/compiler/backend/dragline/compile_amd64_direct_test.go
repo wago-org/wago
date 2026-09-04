@@ -68,6 +68,59 @@ func TestAMD64PublishesDirectPreparedLeafAcrossCompilerPaths(t *testing.T) {
 	}
 }
 
+func TestAMD64PublishesPreparedCallWithoutLeafMetadata(t *testing.T) {
+	importEntry := append(wasmtest.Name("env"), wasmtest.Name("tick")...)
+	importEntry = append(importEntry, 0)
+	importEntry = append(importEntry, wasmtest.ULEB(0)...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x10, 0x00, 0x20, 0x00, 0x0b}))),
+	)
+	module, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(module); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := corecompiler.Input{Module: module, Source: source, Target: target, ConfigurationFingerprint: [32]byte{2}}
+	assertDirectCall := func(t *testing.T, output corecompiler.Output) {
+		t.Helper()
+		if len(output.DirectPrepared) == 0 || output.DirectPrepared[0]&1 == 0 {
+			t.Fatal("AMD64 output omitted prepared-call metadata")
+		}
+		if len(output.DirectLeafPrepared) != 0 && output.DirectLeafPrepared[0]&1 != 0 {
+			t.Fatal("AMD64 call-bearing function was published as a direct leaf")
+		}
+	}
+	for _, workers := range []int{1, 2} {
+		input.FunctionWorkers = workers
+		output, err := (Compiler{}).Compile(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertDirectCall(t, output)
+	}
+	input.FunctionWorkers = 1
+	compiler := Compiler{FunctionCache: corecompiler.NewFunctionArtifactCache(1 << 20)}
+	for range 2 {
+		output, err := compiler.Compile(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertDirectCall(t, output)
+	}
+}
+
 func TestAMD64StructuredWritesSIMDBinaryDirectlyToTeeLocal(t *testing.T) {
 	source := []byte{
 		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,

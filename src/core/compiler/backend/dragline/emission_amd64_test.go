@@ -124,6 +124,21 @@ func TestAMD64RailMachUsesDependencyBreakingVEXFloatConversionAndSqrt(t *testing
 	}
 }
 
+func TestAMD64RailMachRecognizesPreparedSingleArgumentCall(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Stack: &railssa.StackFunc{FunctionIndex: 2, ImportedFuncs: 1},
+		Calls: []railmach.CallContract{{Instruction: 7, Callee: 3, Class: railmach.ABIPreparedCall}},
+	}
+	instruction := railmach.Inst{Op: wasm.InstrCall, Aux: uint64(1)<<32 | 3, OperandCount: 1, Result: 1}
+	if !amd64RailMachFastSingleArgumentCall(plan, 7, instruction) {
+		t.Fatal("prepared single-argument call did not select the register path")
+	}
+	plan.Calls[0].Conservative = true
+	if amd64RailMachFastSingleArgumentCall(plan, 7, instruction) {
+		t.Fatal("conservative call selected the register-only path")
+	}
+}
+
 func containsAMD64VEXOpcode(code []byte, opcode byte) bool {
 	for offset := 0; offset+4 < len(code); offset++ {
 		if code[offset] == 0xc4 && code[offset+3] == opcode {
