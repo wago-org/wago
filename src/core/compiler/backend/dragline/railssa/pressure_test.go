@@ -87,6 +87,54 @@ func TestPressureShapePlansPureLoopInvariantWithoutRaisingPeak(t *testing.T) {
 	}
 }
 
+func TestPressureShapeDoesNotHoistLoopParameterUse(t *testing.T) {
+	m := scalarModule([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x41, 0x00,
+		0x21, 0x01,
+		0x03, 0x40,
+		0x20, 0x01,
+		0x41, 0x04,
+		0x6a,
+		0x1a,
+		0x20, 0x01,
+		0x41, 0x01,
+		0x6a,
+		0x22, 0x01,
+		0x20, 0x00,
+		0x49,
+		0x0d, 0x00,
+		0x0b,
+		0x41, 0x00,
+		0x0b,
+	})
+	f, cfg, flow, semantic, metadata, simplified := buildSimplifyTest(t, m)
+	plan, err := PressureShape(f, cfg, flow, semantic, metadata, simplified, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loopParameterUse := ^uint32(0)
+	for instructionID, instruction := range semantic.Insts {
+		if instruction.Op != wasm.InstrI32Add {
+			continue
+		}
+		for _, operand := range semantic.Operands(uint32(instructionID)) {
+			operand = resolveAlias(simplified.Aliases, operand)
+			value := flow.Values[operand]
+			if value.Kind == FlowValueBlockParam && cfg.Blocks[value.Block].Flags&BlockLoopHeader != 0 {
+				loopParameterUse = uint32(instructionID)
+			}
+		}
+	}
+	if loopParameterUse == ^uint32(0) {
+		t.Fatal("fixture produced no addition using a loop parameter")
+	}
+	for _, move := range plan.LICM {
+		if move.Instruction == loopParameterUse {
+			t.Fatalf("LICM move %#v hoists a loop-parameter use", move)
+		}
+	}
+}
+
 func TestPressureShapeSeparatesRematerializableColdUse(t *testing.T) {
 	typeSec := wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})))
 	funcSec := wasmtest.Section(3, wasmtest.Vec([]byte{0}))

@@ -131,6 +131,11 @@ func PressureShape(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *SemanticFu
 		directUseCount: directUseCount, directUseBlock: directUseBlock, directUseInstruction: directUseInstruction, valueBlock: valueBlock, gprDelta: gprDelta,
 		fprDelta: fprDelta, positionBlock: positionBlock, rematerializable: rematerializable, maxUseWeight: maxUseWeight,
 	}
+	for value, record := range flow.Values {
+		if record.Kind == FlowValueBlockParam {
+			valueBlock[value] = record.Block
+		}
+	}
 	for block, record := range semantic.Blocks {
 		for semanticID := record.InstStart; semanticID < record.InstStart+record.InstCount; semanticID++ {
 			instruction := semantic.Insts[semanticID]
