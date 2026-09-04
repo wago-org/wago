@@ -2014,7 +2014,7 @@ reference-payload leader. The public Core 3 feature bit remains disabled.
 3. `src/core/nativeabi` now defines dependency-neutral native root maps shared by compiler
    and runtime. Maps identify a local function, minimum post-prologue frame prefix, strictly
    ordered aligned slots, and one of two ownership kinds: compact collector `gc.Ref` or
-   funcref producer-lifecycle identity. `src/core/runtime/gc` exposes and validates the same
+   funcref producer-lifecycle identity. `src/core/runtime/gc/native` exposes and validates the same
    contract; malformed function indexes, order, kinds, alignment, duplicates, and frame
    bounds reject before scanning. The amd64 builder derives slots from the fixed EH records:
    four seven-word handlers (224 bytes) plus four three-word roots (96 bytes), a 320-byte

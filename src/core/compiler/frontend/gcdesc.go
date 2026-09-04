@@ -5,7 +5,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // BuildGCTypeDescs lowers decoded Wasm GC recursive type groups into runtime GC

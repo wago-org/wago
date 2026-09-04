@@ -64,10 +64,10 @@ func (c *Collector) NewTypeCanonicalization(types []TypeID) (*TypeCanonicalizati
 	return &TypeCanonicalization{collector: c, types: append([]TypeID(nil), types...)}, nil
 }
 
-// RefTest implements the collector-owned portion of ordinary WebAssembly
-// ref.test. It accepts only compact refs owned by this collector, never public
-// tokens. Invalid, stale, forged, or closed-collector object refs return an
-// error instead of being classified as a failed test.
+// RefTest implements the native portion of WebAssembly ref.test. The trusted
+// adapter must establish collector ownership before passing compact words.
+// This ABI can check liveness and bounds, but raw words do not carry identity
+// or generation. Go callers must use the checked parent gc package.
 func (c *Collector) RefTest(r Ref, target RefTestTarget) (bool, error) {
 	return c.refTest(r, target, nil)
 }

@@ -20,7 +20,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 type GCConfig = gc.Config

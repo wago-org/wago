@@ -6,7 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // offHeapPtr reinterprets a known off-heap address — JIT arena / table-descriptor

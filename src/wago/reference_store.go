@@ -13,7 +13,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // referenceStore owns public reference tokens. Runtime-created instances share

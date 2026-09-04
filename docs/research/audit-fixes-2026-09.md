@@ -420,3 +420,26 @@ with TMPDIR inside the repository. All three CI standalone TinyGo gates pass
 with pinned TinyGo 0.41.1 and Go 1.22.12 (94.7 s combined). Local TinyGo 0.42.0
 fails tasks builds with a duplicate tinygo_task_exit linker symbol on both this
 branch and unchanged main. Threaded TinyGo cancellation passes.
+
+## 19. Check GC owner and generation at Go boundaries
+
+The parent gc package now exposes opaque collector-bound references. The raw
+32-bit implementation and its tests moved to gc/native for trusted compiler/JIT
+adapters. Checked constructors, accessors, initializers, roots, globals, tables,
+tests and casts validate owner and generation before forwarding. Egress wraps
+native words with the current generation. Descriptor field slices are copied.
+A generation table is enabled only for checked heaps; wrap retires the handle.
+The checked `Profile` method preserves the native nil-receiver behavior and
+returns `ProfileThroughput`. Its regression panics before the guard and passes
+afterward; this adds no allocation or retained state.
+
+Validation: both profiles reject foreign and stale refs; ingress/egress and
+portable-immediate tests pass. Native and checked suites pass with the race
+checker and with wagodebug/wago_gcstats. Core runtime/compiler race checks and
+the full public API race suite pass (GORACE=atexit_sleep_ms=0 avoids a one-second
+exit delay in each conformance subprocess). Checked StructGet measured 51.22
+ns/op with zero B/op and zero allocations. Native array-allocation samples span
+69.14–115.3 ns before and 61.54–90.29 ns after on the shared host; both retain
+zero B/op and zero allocations. No latency claim follows from these noisy
+samples. The native Collector struct grows 1128 -> 1136 bytes on AMD64; checked
+refs use 24 bytes and their generation table uses 8 bytes per handle.

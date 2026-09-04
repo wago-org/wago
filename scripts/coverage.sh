@@ -42,8 +42,8 @@ measure() {
 	(cd "$dir" && go test -count=1 -covermode=atomic -coverpkg=./... \
 		-coverprofile="$profiles/normal.out" ./... >/dev/null)
 	(cd "$dir" && go test -count=1 -tags wago_gcstats -covermode=atomic \
-		-coverpkg=./src/core/runtime/gc -coverprofile="$profiles/gcstats.out" \
-		./src/core/runtime/gc >/dev/null)
+		-coverpkg=./src/core/runtime/gc/... -coverprofile="$profiles/gcstats.out" \
+		./src/core/runtime/gc/... >/dev/null)
 	(cd "$dir" && go test -count=1 -tags wago_guardpage -covermode=atomic \
 		-coverpkg=./... -coverprofile="$profiles/guard-root.out" ./src/wago/ >/dev/null)
 	(cd "$dir/bench" && go test -count=1 -tags wago_guardpage \

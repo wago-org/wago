@@ -13,7 +13,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestStagedFirstNullReferenceProductExecution(t *testing.T) {

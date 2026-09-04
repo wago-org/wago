@@ -9,7 +9,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // InstantiateOptions configures instance creation from a *Compiled.

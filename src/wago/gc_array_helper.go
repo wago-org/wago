@@ -8,7 +8,7 @@ import (
 	"unsafe"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const (

@@ -2,7 +2,7 @@
 
 package wago
 
-import "github.com/wago-org/wago/src/core/runtime/gc"
+import "github.com/wago-org/wago/src/core/runtime/gc/native"
 
 func (in *Instance) gcCollectFrameRoots(public *gcPublicState) gcNativeFrameRoots {
 	return gcCollectFrameRoots(in, public, gcNativeFrameLayoutAMD64, false)

@@ -11,7 +11,7 @@ bytes.
 Collector timing and counters are compiled only with `wago_gcstats`:
 
 ```sh
-go test -tags wago_gcstats ./src/core/runtime/gc
+go test -tags wago_gcstats ./src/core/runtime/gc/...
 go test -tags wago_gcstats ./src/wago
 ```
 
@@ -250,7 +250,7 @@ Run collector telemetry and executed helper tracking together when dynamic path
 attribution is required:
 
 ```sh
-go test -tags wago_gcstats ./src/core/runtime/gc \
+go test -tags wago_gcstats ./src/core/runtime/gc/native \
   -run '^$' -bench '^BenchmarkGC' -benchmem -count=10
 
 go test -tags wago_gcstats ./src/wago \

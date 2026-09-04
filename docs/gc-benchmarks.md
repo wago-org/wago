@@ -39,10 +39,10 @@ Correctness and allocation checks:
 ```sh
 go test ./src/core/compiler/backend/railshot/shared
 go test ./src/core/compiler/backend/railshot/amd64
-go test ./src/core/runtime/gc
-go test -tags wagodebug ./src/core/runtime/gc
-go test -tags wago_gcstats ./src/core/runtime/gc
-go test -race ./src/core/runtime/gc
+go test ./src/core/runtime/gc/...
+go test -tags wagodebug ./src/core/runtime/gc/...
+go test -tags wago_gcstats ./src/core/runtime/gc/...
+go test -race ./src/core/runtime/gc/...
 ```
 
 The authoritative official Core 3 qualification additionally requires a Release 3
@@ -56,14 +56,14 @@ Permanent microbenchmarks:
 go test ./src/wago -run '^$' \
   -bench '^BenchmarkGC(RefCastInstruction|StructGetInstruction|RefCastNonFinalInstruction|StructGetNonFinalInstruction|InstructionLoopControl)$' \
   -benchmem -benchtime=500ms -count=10 -cpu=1
-go test ./src/core/runtime/gc -run '^$' \
+go test ./src/core/runtime/gc/native -run '^$' \
   -bench '^BenchmarkArrayBulk/(reference-fill|reference-fill-no-barrier)-(16|256|4096)$' \
   -benchmem -count=10
-go test ./src/core/runtime/gc -run '^$' \
+go test ./src/core/runtime/gc/native -run '^$' \
   -bench '^BenchmarkGCSubtypeInterval$' -benchmem -count=10
-go test ./src/core/runtime/gc -run '^$' \
+go test ./src/core/runtime/gc/native -run '^$' \
   -bench '^BenchmarkArrayDeferredReferenceBatch$' -benchmem -count=10 -cpu=1
-go test ./src/core/runtime/gc -run '^$' \
+go test ./src/core/runtime/gc/native -run '^$' \
   -bench '^BenchmarkGCBarrierStateMatrix$' -benchmem -count=10 -cpu=1
 ```
 
@@ -164,7 +164,8 @@ footprint measurements are documented in
 it covers the Throughput and Tiny collectors that exist today and the collector
 directions explicitly recorded in issues #302–#321.
 
-The benchmark source is `src/core/runtime/gc/matrix_bench_test.go`. Benchmark
+Native benchmarks moved to `gc/native`; use the original `gc` path for
+pre-boundary historical checkouts. The benchmark source is `src/core/runtime/gc/native/matrix_bench_test.go`. Benchmark
 names and custom metric names are stable machine-facing identifiers. Change them
 only when the represented workload or unit changes.
 
@@ -325,11 +326,11 @@ Start with correctness on the candidate checkout. Tags are independent products;
 run all applicable combinations before benchmarking:
 
 ```sh
-go test ./src/core/runtime/gc
-go test -tags wagodebug ./src/core/runtime/gc
-go test -tags wago_gcstats ./src/core/runtime/gc
-go test -tags 'wagodebug wago_gcstats' ./src/core/runtime/gc
-go test -race ./src/core/runtime/gc
+go test ./src/core/runtime/gc/...
+go test -tags wagodebug ./src/core/runtime/gc/...
+go test -tags wago_gcstats ./src/core/runtime/gc/...
+go test -tags 'wagodebug wago_gcstats' ./src/core/runtime/gc/...
+go test -race ./src/core/runtime/gc/...
 ```
 
 Use a detached temporary worktree for the baseline so the active working tree is
@@ -368,17 +369,17 @@ CPU_PREFIX=()
 
 for i in $(seq 1 10); do
   if [ $((i % 2)) -eq 1 ]; then
-    (cd "$BEFORE_DIR" && GOMAXPROCS=1 "${CPU_PREFIX[@]}" go test ./src/core/runtime/gc \
+    (cd "$BEFORE_DIR" && GOMAXPROCS=1 "${CPU_PREFIX[@]}" go test ./src/core/runtime/gc/native \
       -run '^$' -bench "$REGEX" -benchmem -benchtime=200ms -count=1) \
       >> /tmp/gc-before.txt
-    GOMAXPROCS=1 "${CPU_PREFIX[@]}" go test ./src/core/runtime/gc \
+    GOMAXPROCS=1 "${CPU_PREFIX[@]}" go test ./src/core/runtime/gc/native \
       -run '^$' -bench "$REGEX" -benchmem -benchtime=200ms -count=1 \
       >> /tmp/gc-after.txt
   else
-    GOMAXPROCS=1 "${CPU_PREFIX[@]}" go test ./src/core/runtime/gc \
+    GOMAXPROCS=1 "${CPU_PREFIX[@]}" go test ./src/core/runtime/gc/native \
       -run '^$' -bench "$REGEX" -benchmem -benchtime=200ms -count=1 \
       >> /tmp/gc-after.txt
-    (cd "$BEFORE_DIR" && GOMAXPROCS=1 "${CPU_PREFIX[@]}" go test ./src/core/runtime/gc \
+    (cd "$BEFORE_DIR" && GOMAXPROCS=1 "${CPU_PREFIX[@]}" go test ./src/core/runtime/gc/native \
       -run '^$' -bench "$REGEX" -benchmem -benchtime=200ms -count=1) \
       >> /tmp/gc-before.txt
   fi
@@ -859,7 +860,7 @@ existing one-word case.
 Run the retained lifetime and policy A/B matrix with:
 
 ```sh
-go test ./src/core/runtime/gc -run '^$' \
+go test ./src/core/runtime/gc/native -run '^$' \
   -bench '^(BenchmarkThroughputObjectLifetimes|BenchmarkThroughputMixedLifetimeGraph|BenchmarkThroughputMixedLifetimeFullGCPressure|BenchmarkThroughputZeroSurvivalPolicy)$' \
   -benchmem -count=5
 ```
@@ -1126,8 +1127,8 @@ Do not run the complete matrix casually on a busy development machine. First
 compile without executing benchmarks:
 
 ```sh
-go test ./src/core/runtime/gc -run '^$'
-go test -tags wago_gcstats ./src/core/runtime/gc -run '^$'
+go test ./src/core/runtime/gc/native -run '^$'
+go test -tags wago_gcstats ./src/core/runtime/gc/native -run '^$'
 ```
 
 Ordinary `TestGC*WorkloadSmoke` tests execute one correctness cycle through
@@ -1138,7 +1139,7 @@ To validate timing plumbing cheaply, select exact sub-benchmarks and force a
 fixed iteration count. For example:
 
 ```sh
-go test ./src/core/runtime/gc -run '^$' \
+go test ./src/core/runtime/gc/native -run '^$' \
   -bench '^BenchmarkGCCollectionMatrix/throughput-minor/dense-array-refs/survival=50$' \
   -benchtime=2x
 ```
@@ -1148,7 +1149,7 @@ process to one physical CPU, record the CPU/kernel/Go revision, and run multiple
 interleaved samples:
 
 ```sh
-taskset -c 2 go test -tags wago_gcstats ./src/core/runtime/gc \
+taskset -c 2 go test -tags wago_gcstats ./src/core/runtime/gc/native \
   -run '^$' -bench '^BenchmarkGC' -benchmem -count=10 -timeout=30m \
   | tee gc-matrix.txt
 ```
@@ -1156,7 +1157,7 @@ taskset -c 2 go test -tags wago_gcstats ./src/core/runtime/gc \
 Go's JSON event stream can be retained alongside ordinary benchmark text:
 
 ```sh
-taskset -c 2 go test -tags wago_gcstats ./src/core/runtime/gc \
+taskset -c 2 go test -tags wago_gcstats ./src/core/runtime/gc/native \
   -run '^$' -bench '^BenchmarkGC' -benchmem -count=10 -timeout=30m -json \
   > gc-matrix.json
 ```
@@ -1172,7 +1173,7 @@ perf stat -r 10 -e \
 instructions,cycles,branches,branch-misses,L1-dcache-loads,L1-dcache-load-misses,\
 LLC-loads,LLC-load-misses,iTLB-loads,iTLB-load-misses,dTLB-loads,dTLB-load-misses,\
 minor-faults,major-faults \
-taskset -c 2 go test ./src/core/runtime/gc \
+taskset -c 2 go test ./src/core/runtime/gc/native \
   -run '^$' -bench '^BenchmarkGCCollectionMatrix$' -benchtime=1x
 ```
 
