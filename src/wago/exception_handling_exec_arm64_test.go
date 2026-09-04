@@ -456,3 +456,16 @@ func BenchmarkStagedExceptionHandlingCatch(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkStagedExceptionHandlingCompile(b *testing.B) {
+	data := stagedExceptionHandlingGeneralModule()
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		compiled := compileStagedExceptionHandling(b, data)
+		if err := compiled.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

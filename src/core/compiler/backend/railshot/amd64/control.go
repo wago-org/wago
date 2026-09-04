@@ -111,9 +111,9 @@ type ctrlFrameEH struct {
 	// plus an ordered compile-time catch dispatch table. Scalar exceptions carry
 	// at most two payload words; reference catches copy those words into a fixed
 	// rooted exception slot before exposing its stable frame-relative address.
-	targetSite  int
-	recordIndex int
 	catches     []ehCatchClause
+	targetSite  uint32
+	recordIndex uint8
 	refResults  [3]bool // branch-result positions that carry rooted exception identities
 }
 
@@ -1188,7 +1188,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	if f.ehTryDepth >= maxEHTryRecords {
 		return fmt.Errorf("bounded exception handling supports at most %d nested try_table records", maxEHTryRecords)
 	}
-	eh.recordIndex = f.ehTryDepth
+	eh.recordIndex = uint8(f.ehTryDepth)
 	f.ehTryDepth++
 	f.reconcileLocals()
 	f.flush()
@@ -1204,11 +1204,11 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		}
 		f.stats.peep("eh-root-init")
 	}
-	recordOff := f.ehRecordOff(eh.recordIndex)
+	recordOff := f.ehRecordOff(int(eh.recordIndex))
 	f.a.LeaRsp(R11, recordOff)
 	f.a.Store64(R11, ehPrevOff, RBP)
 	f.a.Store64(R11, ehSavedRSPOff, RSP)
-	eh.targetSite = f.a.LeaRipPlaceholder(RAX)
+	eh.targetSite = uint32(f.a.LeaRipPlaceholder(RAX))
 	f.a.Store64(R11, ehTargetOff, RAX)
 	f.a.Store64(R11, ehSavedRBXOff, RBX)
 	f.a.MovReg64(RBP, R11)
@@ -1351,9 +1351,9 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 
 func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	eh := f.ensureFrameEH(fr)
-	recordOff := f.ehRecordOff(eh.recordIndex)
+	recordOff := f.ehRecordOff(int(eh.recordIndex))
 	handlerPos := f.a.Len()
-	f.a.PatchRel32(eh.targetSite, handlerPos)
+	f.a.PatchRel32(int(eh.targetSite), handlerPos)
 	// A throw may arrive from a foreign instance with its RBX installed. The
 	// record owns the target handler and restores its basedata before dispatch.
 	f.a.Load64(RBX, RSP, recordOff+ehSavedRBXOff)
@@ -1557,7 +1557,7 @@ func (f *fn) opEnd() error {
 		f.markEHReferenceResults(&fr)
 	}
 	if fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
-		recordOff := f.ehRecordOff(f.ensureFrameEH(&fr).recordIndex)
+		recordOff := f.ehRecordOff(int(f.ensureFrameEH(&fr).recordIndex))
 		if fallthroughReachable {
 			f.a.Load64(RBP, RSP, recordOff+ehPrevOff)
 		}

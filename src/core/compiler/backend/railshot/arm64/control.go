@@ -138,9 +138,9 @@ type ctrlFrameEH struct {
 	// dispatch table. Scalar exceptions carry at most two payload words; reference
 	// catches copy those words into a fixed rooted exception slot before exposing
 	// its stable frame-relative address.
-	targetSite  int
-	recordIndex int
 	catches     []ehCatchClause
+	targetSite  uint32
+	recordIndex uint8
 	refResults  [3]bool
 }
 
@@ -1604,7 +1604,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	if f.ehTryDepth >= maxEHTryRecords {
 		return fmt.Errorf("bounded exception handling supports at most %d nested try_table records", maxEHTryRecords)
 	}
-	eh.recordIndex = f.ehTryDepth
+	eh.recordIndex = uint8(f.ehTryDepth)
 	f.ehTryDepth++
 	f.reconcileLocals()
 	f.flush()
@@ -1619,13 +1619,13 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		}
 		f.stats.peep("eh-root-init")
 	}
-	recordOff := f.ehRecordOff(eh.recordIndex)
+	recordOff := f.ehRecordOff(int(eh.recordIndex))
 	f.leaDisp(X16, SP, recordOff, true)
 	f.st64(X16, ehPrevOff, ehReg)
 	f.a.AddImm64(X17, SP, 0)
 	f.st64(X16, ehSavedSPOff, X17)
-	eh.targetSite = f.a.Adr(X17)
-	f.recordPCRelative(eh.targetSite)
+	eh.targetSite = uint32(f.a.Adr(X17))
+	f.recordPCRelative(int(eh.targetSite))
 	f.st64(X16, ehTargetOff, X17)
 	f.st64(X16, ehSavedLinMemOff, linMemReg)
 	f.a.MovReg64(ehReg, X16)
@@ -1768,9 +1768,9 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 
 func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	eh := f.ensureFrameEH(fr)
-	recordOff := f.ehRecordOff(eh.recordIndex)
+	recordOff := f.ehRecordOff(int(eh.recordIndex))
 	handlerPos := f.a.Len()
-	if !f.a.PatchAdr(eh.targetSite, handlerPos) {
+	if !f.a.PatchAdr(int(eh.targetSite), handlerPos) {
 		panic("arm64: exception handler ADR out of range")
 	}
 	f.ld64(linMemReg, SP, recordOff+ehSavedLinMemOff)
@@ -2046,7 +2046,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		f.markEHReferenceResults(&fr)
 	}
 	if fr.kind == cfTry && !fr.has(ctrlEntryUnreachable) {
-		recordOff := f.ehRecordOff(f.ensureFrameEH(&fr).recordIndex)
+		recordOff := f.ehRecordOff(int(f.ensureFrameEH(&fr).recordIndex))
 		if endReachable {
 			f.ld64(ehReg, SP, recordOff+ehPrevOff)
 		}
