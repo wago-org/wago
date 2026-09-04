@@ -154,6 +154,28 @@ func TestAMD64RailMachCallArgumentsBreakRegisterCycle(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachUsesRegisterTupleOnlyWhenEveryArgumentIsResident(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Stack: &railssa.StackFunc{FunctionIndex: 2, ImportedFuncs: 1},
+		Calls: []railmach.CallContract{{Instruction: 7, Callee: 3, Class: railmach.ABIPreparedCall}},
+		Machine: &railmach.Func{VRegs: []railmach.VRegData{
+			{}, {Bank: railmach.BankGPR, Type: railmach.TypeI32}, {Bank: railmach.BankGPR, Type: railmach.TypeI32},
+		}},
+		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{
+			{}, {Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 1}, {Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 0},
+		}}},
+	}
+	instruction := railmach.Inst{Op: wasm.InstrCall, Aux: uint64(1)<<32 | 3, OperandCount: 2, Result: 3}
+	operands := []railmach.Operand{{Reg: 1}, {Reg: 2}}
+	if !amd64RailMachPrivateRegisterCall(plan, 7, instruction, operands, 0) {
+		t.Fatal("resident prepared tuple did not select register arguments")
+	}
+	plan.Allocation.Locations[2].Kind = railmach.LocationSpill
+	if amd64RailMachPrivateRegisterCall(plan, 7, instruction, operands, 0) {
+		t.Fatal("spilled tuple bypassed the canonical call vector")
+	}
+}
+
 func containsAMD64VEXOpcode(code []byte, opcode byte) bool {
 	for offset := 0; offset+4 < len(code); offset++ {
 		if code[offset] == 0xc4 && code[offset+3] == opcode {

@@ -462,6 +462,23 @@ func amd64RailMachFastSingleArgumentCall(plan *nativeBackendPlan, instructionID 
 		amd64DirectPreparedClass(amd64RailMachDirectCallClass(plan, instructionID, instruction))
 }
 
+func amd64RailMachPrivateRegisterCall(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst, operands []railmach.Operand, position uint32) bool {
+	if plan == nil || plan.Machine == nil || plan.Allocation == nil || len(operands) == 0 || len(operands) > 5 || instruction.ResultCount() > 1 ||
+		!amd64DirectPreparedClass(amd64RailMachDirectCallClass(plan, instructionID, instruction)) {
+		return false
+	}
+	if len(operands) == 1 {
+		return amd64RailMachFastSingleArgumentCall(plan, instructionID, instruction)
+	}
+	for _, operand := range operands {
+		location := plan.Allocation.LocationAt(operand.Reg, position)
+		if plan.Machine.VRegs[operand.Reg].Bank != railmach.BankGPR || location.Kind != railmach.LocationRegister || location.Bank != railmach.BankGPR || int(location.Index) >= len(amd64RailMachGPRRegisters) {
+			return false
+		}
+	}
+	return true
+}
+
 type amd64RailMachCallArgument struct {
 	src amd64.Reg
 	dst amd64.Reg
@@ -1952,10 +1969,12 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				imported := uint32(instruction.Aux) < plan.Stack.ImportedFuncs
 				callOffset := int32(plan.Frame.CallAreaOffset)
-				fastSingleArgumentCall := amd64RailMachFastSingleArgumentCall(plan, instructionID, instruction)
+				privateRegisterCall := amd64RailMachPrivateRegisterCall(plan, instructionID, instruction, operands, currentPosition)
 				if imported {
 					emitAMD64ExternalCallFPRSave(&a, plan, false)
 				}
+				var privateArguments [len(amd64ParamRegisters)]amd64RailMachCallArgument
+				privateArgumentCount := 0
 				for index, operand := range operands {
 					scratch := amd64.RSI
 					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR {
@@ -1969,17 +1988,16 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						a.MovXmmToGpr(amd64.R11, src, plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF64)
 						src = amd64.R11
 					}
-					if fastSingleArgumentCall {
-						if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 {
-							a.MovReg32(amd64.RAX, src)
-						} else {
-							a.MovReg64(amd64.RAX, src)
-						}
+					if privateRegisterCall {
+						privateArguments[privateArgumentCount] = amd64RailMachCallArgument{src: src, dst: amd64ParamRegisters[index], i32: plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32}
+						privateArgumentCount++
 					} else {
 						a.StoreRsp64(callOffset+int32(index*8), src)
 					}
 				}
-				if !fastSingleArgumentCall {
+				if privateRegisterCall {
+					amd64EmitRailMachCallArguments(&a, privateArguments[:privateArgumentCount])
+				} else {
 					a.LeaRsp(amd64.RDI, callOffset)
 					for index, operand := range operands[:min(len(operands), len(amd64ParamRegisters))] {
 						if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
