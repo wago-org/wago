@@ -16,6 +16,30 @@ import (
 	encoder "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
+var parallelStackOutlierSinkArm64 *encoder.CompiledModule
+
+func BenchmarkRailshotCompileParallelStackOutliersArm64(b *testing.B) {
+	body := make([]byte, 1, 1+(64<<10)*3+1) // no locals
+	for range 64 << 10 {
+		body = append(body, 0x41, 0x00, 0x1a) // i32.const 0; drop
+	}
+	body = append(body, 0x0b)
+	defs := make([]funcDef, 8)
+	for i := range defs {
+		defs[i].body = body
+	}
+	m := modFuncs(b, defs...)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		cm, err := CompileModuleWith(m, CompileOptions{Workers: 4})
+		if err != nil {
+			b.Fatal(err)
+		}
+		parallelStackOutlierSinkArm64 = cm
+	}
+}
+
 func TestParallelFuncResultSizeArm64(t *testing.T) {
 	if got, want := unsafe.Sizeof(funcResult{}), uintptr(48); got != want {
 		t.Fatalf("funcResult size = %d, want %d", got, want)

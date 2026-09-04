@@ -48,6 +48,19 @@ func BenchmarkRailshotCompileParallelControlOutlier(b *testing.B) {
 	}
 }
 
+func BenchmarkRailshotCompileParallelStackOutliers(b *testing.B) {
+	m := benchParallelStackOutlierModule(b, 8, 64<<10)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		cm, err := CompileModuleWith(m, CompileOptions{Workers: 4})
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchCompiledSink = cm
+	}
+}
+
 func BenchmarkRailshotCompileALUHeavy(b *testing.B) {
 	m := benchALUHeavyModule(b)
 	benchmarkCompileModule(b, m)
@@ -183,6 +196,20 @@ func benchParallelControlOutlierModule(tb testing.TB, functions, depth int) *was
 	}
 	m.Code[0] = deep
 	return m
+}
+
+func benchParallelStackOutlierModule(tb testing.TB, functions, nodes int) *wasm.Module {
+	tb.Helper()
+	body := make([]byte, 1, 1+nodes*3+1) // no locals
+	for range nodes {
+		body = append(body, 0x41, 0x00, 0x1a) // i32.const 0; drop
+	}
+	body = append(body, 0x0b)
+	defs := make([]benchFuncDef, functions)
+	for i := range defs {
+		defs[i].body = body
+	}
+	return benchDecodeValidateModule(tb, benchModuleBytes(defs, false))
 }
 
 func benchALUHeavyModule(tb testing.TB) *wasm.Module {
