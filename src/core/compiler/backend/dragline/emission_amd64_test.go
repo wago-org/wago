@@ -139,6 +139,21 @@ func TestAMD64RailMachRecognizesPreparedSingleArgumentCall(t *testing.T) {
 	}
 }
 
+func TestAMD64RailMachCallArgumentsBreakRegisterCycle(t *testing.T) {
+	var got amd64.Asm
+	amd64EmitRailMachCallArguments(&got, []amd64RailMachCallArgument{
+		{src: amd64.RCX, dst: amd64.RAX, i32: true},
+		{src: amd64.RAX, dst: amd64.RCX, i32: true},
+	})
+	var want amd64.Asm
+	want.MovReg64(amd64.RSI, amd64.RAX)
+	want.MovReg32(amd64.RAX, amd64.RCX)
+	want.MovReg32(amd64.RCX, amd64.RSI)
+	if !bytes.Equal(got.B, want.B) {
+		t.Fatalf("cycle assignment = %x, want %x", got.B, want.B)
+	}
+}
+
 func containsAMD64VEXOpcode(code []byte, opcode byte) bool {
 	for offset := 0; offset+4 < len(code); offset++ {
 		if code[offset] == 0xc4 && code[offset+3] == opcode {

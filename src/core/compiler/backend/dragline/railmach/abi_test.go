@@ -78,6 +78,21 @@ func TestAnalyzeABIUsesPreparedSingleArgumentContractForBoundedRecursion(t *test
 	}
 }
 
+func TestAnalyzeABIUsesPreparedAMD64MultiArgumentContract(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x20, 0x00, 0x20, 0x01, 0x6a, 0x20, 0x02, 0x6a,
+		0x41, 0x00, 0x6a, 0x41, 0x00, 0x6a, 0x0b,
+	})
+	f, allocation, metadata := buildABITest(t, TargetAMD64, m)
+	contract, _, err := AnalyzeABI(f, allocation, metadata, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contract.Class != ABIPreparedInt {
+		t.Fatalf("AMD64 multi-argument contract = %v, want %v", contract.Class, ABIPreparedInt)
+	}
+}
+
 func TestAnalyzeABIUsesTypedARM64FPResultRegister(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.F64}, []wasm.ValType{wasm.F64}, []byte{
 		0x20, 0x00,

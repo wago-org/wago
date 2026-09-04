@@ -462,6 +462,61 @@ func amd64RailMachFastSingleArgumentCall(plan *nativeBackendPlan, instructionID 
 		amd64DirectPreparedClass(amd64RailMachDirectCallClass(plan, instructionID, instruction))
 }
 
+type amd64RailMachCallArgument struct {
+	src amd64.Reg
+	dst amd64.Reg
+	i32 bool
+}
+
+func amd64EmitRailMachCallArguments(a *amd64.Asm, arguments []amd64RailMachCallArgument) {
+	var pending [len(amd64ParamRegisters)]amd64RailMachCallArgument
+	n := 0
+	for _, argument := range arguments {
+		if argument.src != argument.dst {
+			pending[n] = argument
+			n++
+		}
+	}
+	emit := func(argument amd64RailMachCallArgument) {
+		if argument.i32 {
+			a.MovReg32(argument.dst, argument.src)
+		} else {
+			a.MovReg64(argument.dst, argument.src)
+		}
+	}
+	remove := func(index int) {
+		copy(pending[index:n-1], pending[index+1:n])
+		n--
+	}
+	for n != 0 {
+		safe := -1
+		for index := 0; index < n; index++ {
+			destinationIsSource := false
+			for other := 0; other < n; other++ {
+				destinationIsSource = destinationIsSource || pending[other].src == pending[index].dst
+			}
+			if !destinationIsSource {
+				safe = index
+				break
+			}
+		}
+		if safe >= 0 {
+			emit(pending[safe])
+			remove(safe)
+			continue
+		}
+		saved := pending[0].dst
+		a.MovReg64(amd64.RSI, saved)
+		emit(pending[0])
+		remove(0)
+		for index := 0; index < n; index++ {
+			if pending[index].src == saved {
+				pending[index].src = amd64.RSI
+			}
+		}
+	}
+}
+
 type parallelAMD64Result struct {
 	body           []byte
 	internalOffset int
@@ -987,7 +1042,31 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 		}
 	}
-	for local := uint16(0); int(local) < len(plan.Stack.Locals); local++ {
+	firstLocal := uint16(0)
+	if directPrepared {
+		var arguments [len(amd64ParamRegisters)]amd64RailMachCallArgument
+		argumentCount := 0
+		for local := uint16(0); local < plan.Machine.ParamCount; local++ {
+			for value := railmach.VReg(1); int(value) < len(plan.Machine.VRegs); value++ {
+				data := plan.Machine.VRegs[value]
+				location := plan.Allocation.Locations[value]
+				if data.Flags&railmach.VRegInitial == 0 || data.InitialLocal != local || location.Kind != railmach.LocationRegister && location.Kind != railmach.LocationSpill {
+					continue
+				}
+				src := amd64ParamRegisters[local]
+				if location.Kind == railmach.LocationRegister {
+					arguments[argumentCount] = amd64RailMachCallArgument{src: src, dst: reg(value), i32: data.Type == railmach.TypeI32}
+					argumentCount++
+				} else if err := amd64RailMachStoreValue(&a, plan, value, src); err != nil {
+					return nil, 0, true, err
+				}
+				break
+			}
+		}
+		amd64EmitRailMachCallArguments(&a, arguments[:argumentCount])
+		firstLocal = plan.Machine.ParamCount
+	}
+	for local := firstLocal; int(local) < len(plan.Stack.Locals); local++ {
 		for value := railmach.VReg(1); int(value) < len(plan.Machine.VRegs); value++ {
 			data := plan.Machine.VRegs[value]
 			location := plan.Allocation.Locations[value]
@@ -1002,14 +1081,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				dst = reg(value)
 			}
 			if local < plan.Machine.ParamCount {
-				if directPrepared {
-					src := amd64ParamRegisters[local]
-					if location.Kind == railmach.LocationRegister && dst != src {
-						a.MovReg64(dst, src)
-					} else if location.Kind == railmach.LocationSpill {
-						dst = src
-					}
-				} else if data.Bank == railmach.BankFPR {
+				if data.Bank == railmach.BankFPR {
 					a.Load64(amd64.R10, paramBase, int32(local)*8)
 					a.MovGprToXmm(dst, amd64.R10, data.Type == railmach.TypeF64)
 				} else if data.Type == railmach.TypeI32 {
