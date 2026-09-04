@@ -1881,6 +1881,9 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
 	totalLocals := 0
+	intervalLocals := 0
+	intervalFunctions := 0
+	moduleEH := m.TagCount() != 0
 	for i := range m.Code {
 		ft, ok := m.LocalFuncType(i)
 		if !ok {
@@ -1895,12 +1898,34 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		}
 		allHints[i].localCount = uint16(count)
 		totalLocals += count
+		if intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), count, moduleEH) {
+			if count > int(^uint(0)>>1)-intervalLocals {
+				return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint interval locals overflow")
+			}
+			intervalLocals += count
+			intervalFunctions++
+		}
 	}
-	if uint64(totalLocals) > uint64(^uint32(0)) {
+	if uint64(totalLocals) > uint64(^uint32(0)) || uint64(intervalLocals) > uint64(^uint32(0)) {
 		return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint local sidecar exceeds 32-bit index capacity")
 	}
 	localScores := make([]uint32, totalLocals)
-	localLastGets := make([]uint32, totalLocals)
+	// Dense storage needs no per-function index. Use sparse ranges only when
+	// their index plus eligible-local payload is strictly smaller, so this
+	// representation cannot increase retained last-get bytes on modules where
+	// most functions qualify for interval regions.
+	denseLastGets := uint64(totalLocals) * 4
+	sparseLastGets := uint64(intervalLocals)*4 + uint64(intervalFunctions)*8
+	compactLastGets := sparseLastGets < denseLastGets
+	lastGetCount := totalLocals
+	if compactLastGets {
+		lastGetCount = intervalLocals
+	}
+	localLastGets := make([]uint32, lastGetCount)
+	var localLastGetRanges []uint64
+	if compactLastGets && intervalFunctions != 0 {
+		localLastGetRanges = make([]uint64, 0, intervalFunctions)
+	}
 	var sparseGlobals []shared.GlobalHint
 	var sparseAccum shared.GlobalHintAccumulator
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
@@ -1908,14 +1933,22 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	if nGlobals > 0 && n > 0 {
 		agg = make([]int64, nGlobals)
 	}
-	moduleEH := m.TagCount() != 0
 	localAt := 0
+	intervalAt := 0
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		nLocals := int(allHints[i].localCount)
 		sparseAccum.Reset(nGlobals)
 		h := funcHintsWithStorage(localScores[localAt : localAt+nLocals])
-		h.localLastGet = localLastGets[localAt : localAt+nLocals]
+		if compactLastGets {
+			if intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), nLocals, moduleEH) {
+				h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
+				localLastGetRanges = append(localLastGetRanges, uint64(uint32(localAt))<<32|uint64(uint32(intervalAt)))
+				intervalAt += nLocals
+			}
+		} else {
+			h.localLastGet = localLastGets[localAt : localAt+nLocals]
+		}
 		h.nLocals = nLocals
 		h.localCount = uint16(nLocals)
 		h.localStart = uint32(localAt)
@@ -1949,7 +1982,12 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 			allHints[i].flags.set(hintModuleEH)
 		}
 	}
-	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, sparseGlobals: sparseGlobals}, agg, nil
+	return allHints, funcHintSidecar{
+		localScore:         localScores,
+		localLastGet:       localLastGets,
+		localLastGetRanges: localLastGetRanges,
+		sparseGlobals:      sparseGlobals,
+	}, agg, nil
 }
 
 // computeImmutableTableHint derives the module-owned table proof after the

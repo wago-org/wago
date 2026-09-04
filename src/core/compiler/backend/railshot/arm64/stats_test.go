@@ -21,13 +21,13 @@ func TestCompileResourceStatsArm64(t *testing.T) {
 	if got := stats.Compile.HintHeaderBytes; got != wantHeaders {
 		t.Fatalf("hint header bytes = %d, want %d", got, wantHeaders)
 	}
-	if got, want := stats.Compile.HintSidecarBytes, uint64(2*unsafe.Sizeof(uint32(0))); got != want {
+	if got, want := stats.Compile.HintSidecarBytes, uint64(unsafe.Sizeof(uint32(0))); got != want {
 		t.Fatalf("hint sidecar bytes = %d, want %d", got, want)
 	}
 	if stats.Compile.FunctionAttempts != 1 || stats.Funcs[0].FunctionAttempts != 1 {
 		t.Fatalf("function attempts module/function = %d/%d, want 1/1", stats.Compile.FunctionAttempts, stats.Funcs[0].FunctionAttempts)
 	}
-	if report := stats.String(); !strings.Contains(report, "hint-headers=32B hint-sidecars=8B attempts=1") {
+	if report := stats.String(); !strings.Contains(report, "hint-headers=32B hint-sidecars=4B attempts=1") {
 		t.Fatalf("resource report missing ledger: %q", report)
 	}
 }

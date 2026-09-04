@@ -16,12 +16,17 @@ var intervalRegionOrder = [...]Reg{
 	X7, X6, X5, X4, X3, X2,
 }
 
+func intervalRegionHintStorageEligible(enabled bool, bodyLen, nLocals int, moduleEH bool) bool {
+	return enabled && !moduleEH &&
+		bodyLen >= minIntervalRegionBody && bodyLen <= maxIntervalRegionBody &&
+		nLocals >= minIntervalRegionLocals && nLocals <= maxIntervalRegionLocals
+}
+
 // prepareIntervalRegion discovers profitable integer-local lifetimes in one
 // call-free straight-line body. Storage is worker scratch and capped by body and
 // local counts; unsupported shapes keep the existing whole-function allocator.
 func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
-	if !f.opt(optIntervalRegionPins) || len(body) < minIntervalRegionBody || len(body) > maxIntervalRegionBody ||
-		f.nLocals < minIntervalRegionLocals || f.nLocals > maxIntervalRegionLocals || f.moduleEH ||
+	if !intervalRegionHintStorageEligible(f.opt(optIntervalRegionPins), len(body), f.nLocals, f.moduleEH) ||
 		len(hints.localScore) != f.nLocals || len(hints.localLastGet) != f.nLocals {
 		return false
 	}
