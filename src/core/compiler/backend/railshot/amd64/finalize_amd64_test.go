@@ -14,6 +14,16 @@ import (
 	amd64enc "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
+func TestFinalizerRejectsJumpTableFragmentOverflowAMD64(t *testing.T) {
+	before := nativeFinalizerEnabled
+	nativeFinalizerEnabled = true
+	t.Cleanup(func() { nativeFinalizerEnabled = before })
+	f := fn{sc: &scratch{fragmentOverflow: true}}
+	if _, err := f.finalizeNativeCode(0); err == nil {
+		t.Fatal("finalizer accepted an overflowing compact jump-table fragment offset")
+	}
+}
+
 func TestIdentityFinalizerPreservesBytesAndMetadata(t *testing.T) {
 	oldEnabled := nativeFinalizerEnabled
 	oldCompact := nativeCompactionEnabled
@@ -437,7 +447,7 @@ func TestFinalizerRemapsJumpTableData(t *testing.T) {
 	sc := &scratch{
 		brFoldSites: []int{over},
 		jumpTableFragments: []jumpTableFragment{{
-			start: tablePos, end: tablePos + 4, kind: jumpTableFragmentDeltas,
+			start: uint32(tablePos), end: uint32(tablePos + 4), kind: jumpTableFragmentDeltas,
 		}},
 	}
 	f := fn{a: a, sc: sc, subRspAt: subSite, addRspAt: addSite, frameElided: true, hasJumpTableData: true}
@@ -481,7 +491,7 @@ func TestFinalizerRelaxesBranchAroundJumpTableData(t *testing.T) {
 	a.PatchRel32(branch, a.Len())
 	f := fn{
 		a:                  a,
-		sc:                 &scratch{jumpTableFragments: []jumpTableFragment{{start: tableStart, end: tableStart + 4, kind: jumpTableFragmentIDs}}},
+		sc:                 &scratch{jumpTableFragments: []jumpTableFragment{{start: uint32(tableStart), end: uint32(tableStart + 4), kind: jumpTableFragmentIDs}}},
 		nLocalSlots:        16,
 		hasJumpTableData:   true,
 		compactFrameHeader: true,

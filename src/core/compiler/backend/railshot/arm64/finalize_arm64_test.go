@@ -12,6 +12,16 @@ import (
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
+func TestFinalizerRejectsFragmentOffsetOverflowArm64(t *testing.T) {
+	before := nativeFinalizerEnabled
+	nativeFinalizerEnabled = true
+	t.Cleanup(func() { nativeFinalizerEnabled = before })
+	f := fn{sc: &scratch{fragmentOverflow: true}}
+	if _, err := f.finalizeNativeCode(0); err == nil {
+		t.Fatal("finalizer accepted an overflowing compact fragment offset")
+	}
+}
+
 func TestIdentityFinalizerRemapsAllArm64Metadata(t *testing.T) {
 	before := nativeFinalizerEnabled
 	beforeValidate := nativeFinalizerValidate

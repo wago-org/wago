@@ -565,6 +565,7 @@ type scratch struct {
 	branchNextN             uint8
 	singleBitTestN          uint8
 	deadHoleOverflow        bool
+	fragmentOverflow        bool
 	hasBranchTargets        bool
 	hasPCRelative           bool
 	offsetMap               shared.OffsetMap
@@ -827,6 +828,7 @@ func (sc *scratch) reset() {
 	sc.branchTargets = nil
 	clear(sc.finalizerMarkers)
 	sc.finalFragments = sc.finalFragments[:0]
+	sc.fragmentOverflow = false
 	sc.deadHoleN = 0
 	sc.branchNextN = 0
 	sc.singleBitTestN = 0

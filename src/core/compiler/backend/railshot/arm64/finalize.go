@@ -83,8 +83,8 @@ const (
 )
 
 type finalizerFragment struct {
-	start int
-	end   int
+	start uint32
+	end   uint32
 	kind  finalizerFragmentKind
 }
 
@@ -94,10 +94,10 @@ type finalizerFragmentCursor struct {
 }
 
 func (c *finalizerFragmentCursor) at(pc int) (finalizerFragment, bool) {
-	for c.index < len(c.fragments) && pc >= c.fragments[c.index].end {
+	for c.index < len(c.fragments) && pc >= int(c.fragments[c.index].end) {
 		c.index++
 	}
-	if c.index == len(c.fragments) || pc < c.fragments[c.index].start {
+	if c.index == len(c.fragments) || pc < int(c.fragments[c.index].start) {
 		return finalizerFragment{}, false
 	}
 	return c.fragments[c.index], true
@@ -156,7 +156,11 @@ func (f *fn) recordFinalizerFragment(start, end int, kind finalizerFragmentKind)
 		return
 	}
 	sc := f.scratchState()
-	sc.finalFragments = append(sc.finalFragments, finalizerFragment{start: start, end: end, kind: kind})
+	if start < 0 || uint64(end) > uint64(^uint32(0)) {
+		sc.fragmentOverflow = true
+		return
+	}
+	sc.finalFragments = append(sc.finalFragments, finalizerFragment{start: uint32(start), end: uint32(end), kind: kind})
 }
 
 func (f *fn) recordPCRelative(off int) {
@@ -221,6 +225,9 @@ func loopCompactionLimitArm64(policy CodegenPolicy) int {
 func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	if !nativeFinalizerEnabled {
 		return internalOff, nil
+	}
+	if f.scratchState().fragmentOverflow {
+		return 0, fmt.Errorf("arm64 finalizer: fragment offset exceeds 32-bit function domain")
 	}
 	if nativeFinalizerValidate {
 		if err := f.validateFinalizerInventory(internalOff); err != nil {
@@ -468,7 +475,7 @@ func (f *fn) compactNativeCode(offsets *shared.OffsetMap, deletions []shared.Del
 		if inFragment && fragment.kind == fragmentOpaqueData {
 			// Compact target-ID bytes are data, not instructions or relocations.
 		} else if inFragment && fragment.kind == fragmentJumpData {
-			word, err = remapJumpTableWord(word, fragment.start, offsets)
+			word, err = remapJumpTableWord(word, int(fragment.start), offsets)
 		} else if isPCRelativeWord(word) {
 			word, err = remapPCRelativeWord(word, src, dst, offsets)
 		}

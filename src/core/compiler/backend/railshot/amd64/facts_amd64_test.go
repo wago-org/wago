@@ -28,6 +28,9 @@ func TestValueFactsAndRootsFitCompactStorageAMD64(t *testing.T) {
 	if got, want := unsafe.Sizeof(gpCand{}), uintptr(12); got != want {
 		t.Fatalf("GP candidate size = %d, want %d", got, want)
 	}
+	if got, want := unsafe.Sizeof(jumpTableFragment{}), uintptr(12); got != want {
+		t.Fatalf("jump-table fragment size = %d, want %d", got, want)
+	}
 }
 
 func TestCompactCallRelocFieldAMD64(t *testing.T) {

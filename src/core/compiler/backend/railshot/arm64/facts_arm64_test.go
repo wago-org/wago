@@ -31,6 +31,9 @@ func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
 	if got, want := unsafe.Sizeof(gpCand{}), uintptr(12); got != want {
 		t.Fatalf("GP candidate size = %d, want %d", got, want)
 	}
+	if got, want := unsafe.Sizeof(finalizerFragment{}), uintptr(12); got != want {
+		t.Fatalf("finalizer fragment size = %d, want %d", got, want)
+	}
 }
 
 func TestCompactCallRelocFieldArm64(t *testing.T) {

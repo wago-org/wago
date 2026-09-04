@@ -629,9 +629,18 @@ const (
 // and case stubs. The finalizer never decodes them as instructions; delta
 // tables are explicitly remapped when surrounding code shrinks.
 type jumpTableFragment struct {
-	start int
-	end   int
+	start uint32
+	end   uint32
 	kind  jumpTableFragmentKind
+}
+
+func (f *fn) recordJumpTableFragment(start, end int, kind jumpTableFragmentKind) {
+	sc := f.scratchState()
+	if start < 0 || end < start || uint64(end) > uint64(^uint32(0)) {
+		sc.fragmentOverflow = true
+		return
+	}
+	sc.jumpTableFragments = append(sc.jumpTableFragments, jumpTableFragment{start: uint32(start), end: uint32(end), kind: kind})
 }
 
 type scratch struct {
@@ -640,6 +649,7 @@ type scratch struct {
 	directPrepared    bool
 	rel32TailBound    bool // Rel32Sites uses the current function buffer's uncommitted tail
 	localRefTailBound bool // localRefs uses caller-owned compiler-arena tail scratch
+	fragmentOverflow  bool
 	policy            CodegenPolicy
 	classifier        wasm.ModuleInstructionClassifier
 	fnState           fn // per-function compiler state, reused across the module
@@ -928,6 +938,7 @@ func (sc *scratch) reset() {
 	sc.tailFrameSites = sc.tailFrameSites[:0]
 	sc.brFoldSites = sc.brFoldSites[:0]
 	sc.jumpTableFragments = sc.jumpTableFragments[:0]
+	sc.fragmentOverflow = false
 	sc.gcArrayLenStubSites = sc.gcArrayLenStubSites[:0]
 	sc.gcFinalCastStubSites = sc.gcFinalCastStubSites[:0]
 	sc.gcDefinedTestStubSites = sc.gcDefinedTestStubSites[:0]

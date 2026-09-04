@@ -1856,9 +1856,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 				f.a.B = append(f.a.B, byte(compactStubAt[lbl]-1))
 			}
 			vectorPos := f.a.Len()
-			f.sc.jumpTableFragments = append(f.sc.jumpTableFragments, jumpTableFragment{
-				start: tablePos, end: vectorPos, kind: jumpTableFragmentIDs,
-			})
+			f.recordJumpTableFragment(tablePos, vectorPos, jumpTableFragmentIDs)
 			for range uniqueN {
 				f.a.JmpPlaceholder()
 			}
@@ -1887,9 +1885,7 @@ func (f *fn) opBrTable(r *wasm.Reader) error {
 		for range labels {
 			f.a.B = append(f.a.B, 0, 0, 0, 0) // placeholder entries
 		}
-		f.sc.jumpTableFragments = append(f.sc.jumpTableFragments, jumpTableFragment{
-			start: tablePos, end: f.a.Len(), kind: jumpTableFragmentDeltas,
-		})
+		f.recordJumpTableFragment(tablePos, f.a.Len(), jumpTableFragmentDeltas)
 		if brTableSmallLabelsUnique(labels) {
 			defIdx := -1
 			for i, lbl := range labels {
