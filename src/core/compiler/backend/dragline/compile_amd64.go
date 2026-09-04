@@ -5301,14 +5301,17 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			}
 		case wasm.InstrLocalGet:
 			if sf.Locals[instr.U32()] == wasm.V128 {
-				reg := amd64.Reg(0)
 				if localPinned[instr.U32()] {
-					reg = localRegisters[instr.U32()]
+					if err := pushV128(localRegisters[instr.U32()]); err != nil {
+						return nil, 0, nil, err
+					}
 				} else {
-					a.VMovdquLoadDisp(reg, amd64.RSP, localOff(int(instr.U32())))
-				}
-				if err := pushV128(reg); err != nil {
-					return nil, 0, nil, err
+					if len(stackTypes) >= int(sf.MaxStack) {
+						return nil, 0, nil, fmt.Errorf("operand stack exceeds declared maximum")
+					}
+					dst := reserveV128(len(stackTypes))
+					a.VMovdquLoadDisp(dst, amd64.RSP, localOff(int(instr.U32())))
+					stackTypes = append(stackTypes, wasm.V128)
 				}
 				continue
 			}

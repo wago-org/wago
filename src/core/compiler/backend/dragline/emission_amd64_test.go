@@ -434,6 +434,27 @@ func TestAMD64StructuredUsesPinnedVectorLocalAsBinaryOperand(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredLoadsUnpinnedVectorLocalIntoStackCache(t *testing.T) {
+	body := []byte{0x01, 0x09, 0x7b} // nine v128 locals
+	for local := byte(1); local < 9; local++ {
+		body = append(body, 0x20, local, 0x1a) // local.get; drop keeps the first eight locals hotter
+	}
+	body = append(body, 0x20, 0x09, 0x0b) // return the unpinned ninth local
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var redundant amd64.Asm
+	redundant.VMovdquLoadDisp(0, amd64.RSP, 9*16)
+	redundant.VMovdqu(4, 0)
+	if bytes.Contains(output.Code, redundant.B) {
+		t.Fatalf("structured local load copied through scratch before the stack cache: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredCoalescesStraightLineLocalBoundsChecks(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),
