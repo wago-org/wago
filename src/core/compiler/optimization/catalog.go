@@ -418,7 +418,6 @@ var catalog = []Definition{
 	both("reg-abi", "Register ABI", "use Wago's internal register calling convention"),
 	both("inline", "Inlining", "inline eligible callees"),
 	experimentalArm64("loop-region-pins", "Loop-region pins", "pin loop-carried values across loop regions"),
-	experimentalArm64("immutable-poly-fastpath", "Polymorphic table fast path", "specialize polymorphic immutable-table calls"),
 	experimentalArm64("legacy-fp-pins", "Legacy float pins", "use the legacy floating-point pin allocator"),
 	experimentalArm64("legacy-gp-pins", "Legacy integer pins", "use the legacy integer pin allocator"),
 	both("stack-fence", "Stack fence", "emit the stack-overflow guard fence"),

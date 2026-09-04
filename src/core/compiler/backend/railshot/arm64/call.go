@@ -32,13 +32,6 @@ var regABIEnabled = os.Getenv("WAGO_ARM64_NOREGABI") != "1"
 // noStackFence skips the per-entry stack-overflow fence check (A/B measurement).
 var noStackFence = os.Getenv("WAGO_ARM64_NOFENCE") == "1"
 
-// immutableLocalPolyFastPath gates the polymorphic immutable-local call_indirect
-// fast path (see callIndirect). It is OFF: that path does not preserve the stack
-// fence for deeply self-recursive targets and faults instead of trapping. Set
-// WAGO_ARM64_IMMUTABLE_POLY_FASTPATH=1 only for A/B measurement of the lost
-// specialization; it reintroduces the spec call_indirect runaway crash.
-var immutableLocalPolyFastPath = os.Getenv("WAGO_ARM64_IMMUTABLE_POLY_FASTPATH") == "1"
-
 // noStackReg disables the WARP STACK_REG lazy local model (reverts to spill-all/
 // reload-all around calls, no branch reconcile) — A/B measurement.
 var noStackReg = os.Getenv("WAGO_ARM64_NOSTACKREG") == "1"
@@ -2305,38 +2298,6 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		}
 		return nil
 	}
-	// NOTE: the polymorphic immutable-local fast path (register-ABI Blr of the
-	// entry's runtime code pointer) is disabled — it is incorrect for the stack
-	// fence. Under the register pressure of a large module it can enter a deeply
-	// self-recursive target (spec call_indirect.wast $runaway / $mutual-runaway)
-	// without the per-frame fence check tripping, so unbounded recursion faults
-	// the foreign stack (Go "split stack overflow") instead of trapping "call
-	// stack exhausted". The monomorphic fast path above (a direct call to the
-	// proven internal entry, which carries the fence) is unaffected; polymorphic
-	// entries fall through to emitIndirectCallHomeAware below, which enters the
-	// callee's offset-0 entry with the correct per-execution control words
-	// (including the stack fence). Verified: spec1 passes and spec2/3 no longer
-	// crash. Re-enable only with an entry pointer that preserves the fence.
-	if f.opt(optImmutablePolyFastPath) && tableIdx == 0 && f.immutableLocalTable && sigFitsRegABI(ft) && sigIsIntOnly(ft) {
-		home := f.allocReg(maskOf(idxReg, code))
-		f.ld64(home, idxReg, 24)
-		kind := f.descriptorEntryKind(home, maskOf(idxReg, code, home))
-		f.stripDescriptorHomeTags(home)
-		f.cmpImm(kind, uint32(abi.FuncRefInternalTagValue), true)
-		f.trapIf(condNE, trapIndirectSig)
-		f.cmpRR(home, linMemReg, true)
-		f.trapIf(condNE, trapIndirectSig)
-		f.release(kind)
-		f.release(home)
-		f.pinned = f.pinned.remove(idxReg).add(code)
-		f.release(idxReg)
-		f.stats.peep("immutable-local-call-indirect")
-		f.emitRegisterCallVia(ft, -1, false, -1, code)
-		f.pinned = f.pinned.remove(code)
-		f.release(code)
-		return nil
-	}
-
 	home := f.allocReg(maskOf(idxReg, code))
 	f.ld64(home, idxReg, 24) // entry home linMem base
 	canonical := f.allocReg(maskOf(idxReg, code, home))

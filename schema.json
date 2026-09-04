@@ -79,7 +79,6 @@
               "gc-native-alloc",
               "gc-ref-facts",
               "i64-mask32",
-              "immutable-poly-fastpath",
               "immutable-table",
               "immutable-table-type",
               "inline",
