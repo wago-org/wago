@@ -83,7 +83,7 @@ func decodeSection(m *Module, r *reader, id byte) error {
 		}
 		m.Customs = append(m.Customs, CustomSec{Name: name, Data: ownedPayload})
 	case secType:
-		v, err := readVec(r, decodeRecType)
+		v, err := decodeTypeSection(r)
 		if err != nil {
 			return err
 		}
@@ -328,6 +328,9 @@ func decodeTypeMetadata(r *reader) (TypeMetadata, error) {
 	}
 }
 func decodeSubType(r *reader) (SubType, error) {
+	if err := r.reserveType(); err != nil {
+		return SubType{}, err
+	}
 	b, ok := r.peek()
 	if !ok {
 		return SubType{}, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
@@ -520,6 +523,9 @@ func decodeExternTypeKind(r *reader, kind ExternKind) (ExternType, error) {
 func decodeImports(r *reader) ([]Import, bool, error) {
 	n, err := r.u32()
 	if err != nil {
+		return nil, false, err
+	}
+	if err := reserveDecodedSlice[Import](r, n); err != nil {
 		return nil, false, err
 	}
 	capHint := boundedVecCap(n, r.left())

@@ -353,6 +353,7 @@ func NewRuntimeConfig() *RuntimeConfig {
 		optimizationDeltas:   optimizationDeltas,
 		trustedOptimizations: true,
 		maxMemoryPages:       defaultMaxMemoryPages,
+		maxModuleBytes:       64 << 20,
 		maxFunctionLocals:    DefaultMaxFunctionLocals,
 		maxMemoriesPerModule: DefaultMaxMemoriesPerModule,
 		boundsChecks:         bounds,
@@ -483,7 +484,8 @@ func (c *RuntimeConfig) WithMaxInstanceMetadataBytes(bytes uint64) *RuntimeConfi
 }
 
 // WithMaxModuleBytes caps input Wasm bytes accepted by compilation. Zero is
-// unbounded. This is a cheap front-door compile resource quota.
+// unbounded. The default is 64 MiB. Decode-time type and metadata limits still
+// apply independently. This is a cheap front-door compile resource quota.
 func (c *RuntimeConfig) WithMaxModuleBytes(bytes uint64) *RuntimeConfig {
 	n := *c
 	n.maxModuleBytes = bytes

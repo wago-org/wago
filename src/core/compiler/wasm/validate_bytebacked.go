@@ -96,7 +96,12 @@ func DecodeModuleByteBacked(data []byte) (*DecodedByteBackedModule, error) {
 
 // DecodeModuleByteBackedWithFeatures selects wire grammar from explicit features.
 func DecodeModuleByteBackedWithFeatures(data []byte, features ValidationFeatures) (*DecodedByteBackedModule, error) {
-	dm, err := decodeDirectModuleFeatures(data, features)
+	return DecodeModuleByteBackedWithLimits(data, features, DecodeLimits{})
+}
+
+// DecodeModuleByteBackedWithLimits selects wire features and metadata limits.
+func DecodeModuleByteBackedWithLimits(data []byte, features ValidationFeatures, limits DecodeLimits) (*DecodedByteBackedModule, error) {
+	dm, err := decodeDirectModuleLimited(data, features, limits)
 	if err != nil {
 		return nil, err
 	}
@@ -186,21 +191,17 @@ func directExpr(e directConstExpr) Expr {
 	return Expr{BodyBytes: e.body}
 }
 
-func decodeDirectModule(data []byte) (*directModule, error) {
-	return decodeDirectModuleFeatures(data, ValidationFeatures{MultiMemory: true})
-}
-
-func decodeDirectModuleFeatures(data []byte, features ValidationFeatures) (*directModule, error) {
-	dm, err := decodeDirectModuleInner(data, features)
+func decodeDirectModuleLimited(data []byte, features ValidationFeatures, limits DecodeLimits) (*directModule, error) {
+	dm, err := decodeDirectModuleInnerLimits(data, features, limits)
 	runtime.KeepAlive(data)
 	return dm, err
 }
 
-func decodeDirectModuleInner(data []byte, features ValidationFeatures) (*directModule, error) {
+func decodeDirectModuleInnerLimits(data []byte, features ValidationFeatures, limits DecodeLimits) (*directModule, error) {
 	// Keep the top-level cursor in this frame. TinyGo's conservative collector
 	// can otherwise lose the heap-allocated reader while its backing slice is
 	// still being consumed across allocation-heavy section decoding.
-	var r reader
+	r := reader{budget: newDecodeBudget(limits)}
 	r.reset(data)
 	magic, err := r.bytes(4)
 	if err != nil {
@@ -219,7 +220,7 @@ func decodeDirectModuleInner(data []byte, features ValidationFeatures) (*directM
 	dm := &directModule{}
 	var lastOrder uint8
 	var seen uint16 // standard section IDs are the dense range 1..13
-	var sub reader
+	sub := reader{budget: r.budget}
 	for r.has() {
 		id, err := r.byte()
 		if err != nil {
@@ -297,8 +298,20 @@ func decodeDirectModuleInner(data []byte, features ValidationFeatures) (*directM
 }
 
 func (dm *directModule) decodeDirectCustomSection(r *reader) error {
+	if err := r.reserve(1, 512); err != nil {
+		return err
+	}
 	name, err := r.name()
 	if err != nil {
+		return err
+	}
+	// Opaque tool metadata retains one payload copy. Only the structured
+	// formats expand compact entries into maps and decoded records.
+	width := uint64(2) // owned bytes plus allocator rounding
+	if name == "name" || name == branchHintSectionName {
+		width = 128
+	}
+	if err := r.reserve(uint64(r.left()), width); err != nil {
 		return err
 	}
 	payload, err := r.bytes(r.left())
@@ -338,6 +351,9 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 func decodeDirectTableSection(dm *directModule, r *reader) error {
 	n, err := r.u32()
 	if err != nil {
+		return err
+	}
+	if err := reserveDecodedSlice[Table](r, n); err != nil {
 		return err
 	}
 	capHint := boundedVecCap(n, r.left())
@@ -380,6 +396,9 @@ func decodeDirectGlobalSection(dm *directModule, r *reader) error {
 	if err != nil {
 		return err
 	}
+	if err := reserveDecodedSlice[Global](r, n); err != nil {
+		return err
+	}
 	capHint := boundedVecCap(n, r.left())
 	dm.m.Globals = make([]Global, 0, capHint)
 	dm.direct.globalInits = make([]directConstExpr, 0, capHint)
@@ -401,6 +420,9 @@ func decodeDirectGlobalSection(dm *directModule, r *reader) error {
 func decodeDirectDataSection(dm *directModule, r *reader) error {
 	n, err := r.u32()
 	if err != nil {
+		return err
+	}
+	if err := reserveDecodedSlice[Data](r, n); err != nil {
 		return err
 	}
 	capHint := boundedVecCap(n, r.left())
@@ -462,6 +484,9 @@ func decodeDirectData(r *reader) (Data, directConstExpr, error) {
 func decodeDirectElementSection(dm *directModule, r *reader) error {
 	n, err := r.u32()
 	if err != nil {
+		return err
+	}
+	if err := reserveDecodedSlice[Elem](r, n); err != nil {
 		return err
 	}
 	capHint := boundedVecCap(n, r.left())
@@ -625,6 +650,9 @@ func readDirectFuncIdxSummary(r *reader, de *directElem) error {
 		return err
 	}
 	de.elemLen = n
+	if err := reserveDecodedSlice[FuncIdx](r, n); err != nil {
+		return err
+	}
 	capHint := boundedVecCap(n, r.left())
 	de.funcs = make([]FuncIdx, 0, capHint)
 	for i := uint32(0); i < n; i++ {
@@ -645,6 +673,9 @@ func readDirectFuncIdxSummary(r *reader, de *directElem) error {
 func readDirectConstExprVec(r *reader) ([]directConstExpr, error) {
 	n, err := r.u32()
 	if err != nil {
+		return nil, err
+	}
+	if err := reserveDecodedSlice[Expr](r, n); err != nil {
 		return nil, err
 	}
 	capHint := boundedVecCap(n, r.left())
@@ -698,9 +729,15 @@ func decodeDirectCodeSectionWithWidths(r *reader, widths memargWidths, multiMemo
 	if err != nil {
 		return nil, false, err
 	}
+	if err := reserveDecodedSlice[Func](r, n); err != nil {
+		return nil, false, err
+	}
 	capHint := boundedVecCap(n, r.left())
 	out := make([]Func, 0, capHint)
-	var sub reader
+	sub := reader{budget: r.budget}
+	if err := r.reserve(uint64(min(r.left(), maxInstructionNestingDepth)), 32); err != nil {
+		return nil, false, err
+	}
 	var frames []exprSkipFrame
 	usesDataCountInstr := false
 	for i := uint32(0); i < n; i++ {

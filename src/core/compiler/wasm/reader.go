@@ -6,8 +6,9 @@ import (
 )
 
 type reader struct {
-	data []byte
-	pos  int
+	data   []byte
+	pos    int
+	budget *decodeBudget
 }
 
 func newReader(data []byte) *reader { return &reader{data: data} }
@@ -119,12 +120,18 @@ func (r *reader) name() (string, error) {
 	if !utf8.Valid(b) {
 		return "", &DecodeError{Code: ErrInvalidSection, Offset: start}
 	}
+	if err := r.reserve(uint64(len(b)), 2); err != nil {
+		return "", err
+	}
 	return string(b), nil
 }
 
 func readVec[T any](r *reader, fn func(*reader) (T, error)) ([]T, error) {
 	n, err := r.u32()
 	if err != nil {
+		return nil, err
+	}
+	if err := reserveDecodedSlice[T](r, n); err != nil {
 		return nil, err
 	}
 	capHint := boundedVecCap(n, r.left())

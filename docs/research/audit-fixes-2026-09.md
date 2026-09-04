@@ -252,3 +252,28 @@ Validation: runtime suite passes with pinned conformance tools. Budget tests
 cover aggregate collections, nested signature expansion, overflow-safe charging,
 and refusal before the metadata payload is read. The conservative reservations
 can reject metadata before its actual heap footprint reaches the stated limit.
+
+## 9. Flatten singleton types and bound decoding
+
+Implicit recursive type groups share a flat subtype slab. Decode limits default
+to 100,000 types and 256 MiB of aggregate metadata reservations. The byte-backed
+API accepts explicit limits; nested readers share the same budget. Reservations
+cover vector growth, parallel decode sidecars, structured custom metadata, and
+bounded instruction nesting state. Opaque custom sections reserve their owned
+payload plus allocator rounding; only structured name/branch-hint sections use
+the expansion allowance. A 3 MiB debug-section regression checks admission and
+explicit budget exhaustion. Public compilation defaults to a 64 MiB
+input limit; explicitly setting its input limit to zero does not remove decode
+limits. The embedded validator reader grows by one pointer (8 bytes on AMD64).
+The flattened-type converter's Windows allocation check runs in a fresh test
+process because AllocsPerRun reads process-wide allocation counters. Its exact
+one-result-allocation limit is unchanged. The parent requires a successful exit
+and an explicit passing-test record. The unchanged check passed 20 isolated
+Windows/Wine runs; the child-process form passed ten further runs alongside
+the large artifact regression, and Linux converter checks passed ten runs.
+
+Validation: Wasm and runtime suites pass. Tests cover singleton/explicit group
+limits, metadata limits, shared nested budgets and overflow. One-iteration
+100,000-type measurements: 28,970,512 -> 17,621,464 B/op and 100,057 -> 25
+allocations; 13.24 -> 14.23 ms. These samples establish the allocation reduction,
+not a speed improvement.
