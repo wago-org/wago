@@ -193,3 +193,15 @@ Validation: Wasm package tests pass. Single-iteration AMD64 measurements with
 Doubling both dimensions now takes about 1.96x time instead of 3.97x. Temporary
 allocation changes from 1,232 B to 107,872/206,176 B (one 4-byte index per import,
 plus allocator rounding and validator state); 7 -> 8 allocations.
+
+## 12. Decode memory immediates with explicit features
+
+Feature-aware AST and byte-backed decoders now use the selected multi-memory
+feature for scalar, SIMD, atomic, and bulk memory immediates. V2 requires literal
+reserved zero bytes; V3 permits explicit memory indexes even with one memory.
+Syntax-only decoder and backend walkers accept the grammar superset. Public
+compilation and conformance decoding select their grammar before validation.
+
+Validation: runtime, frontend, and Wasm suites pass with pinned WABT and the
+pinned official interpreter. The grammar matrix covers explicit/padded zero
+indexes across eight instruction forms and all three decode/validate paths.

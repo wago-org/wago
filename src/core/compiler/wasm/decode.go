@@ -37,9 +37,19 @@ func lookupSectionOrder(id byte) (uint8, bool) {
 // DecodeModule decodes a WebAssembly binary into the compact module
 // representation used by validation and lowering. Function bodies and const
 // expressions retain their raw bytecode; DecodeModule does not materialize a
-// structured function-body instruction tree.
+// structured function-body instruction tree. This syntax-only entry accepts
+// Core 3 memory grammar; validation applies the selected feature policy.
 func DecodeModule(data []byte) (*Module, error) {
 	dm, err := DecodeModuleByteBacked(data)
+	if err != nil {
+		return nil, err
+	}
+	return dm.Module, nil
+}
+
+// DecodeModuleWithFeatures decodes using explicit feature-dependent wire grammar.
+func DecodeModuleWithFeatures(data []byte, features ValidationFeatures) (*Module, error) {
+	dm, err := DecodeModuleByteBackedWithFeatures(data, features)
 	if err != nil {
 		return nil, err
 	}

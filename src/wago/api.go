@@ -1093,7 +1093,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			Limit:     cfg.maxModuleBytes,
 		}
 	}
-	m, err := wasm.DecodeModule(wasmBytes)
+	m, err := wasm.DecodeModuleWithFeatures(wasmBytes, wasm.ValidationFeatures{MultiMemory: features.MultiMemory})
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}

@@ -1,6 +1,7 @@
 package frontend
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -544,7 +545,7 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 		},
 		{
 			name:         "unsupported explicit memarg index",
-			wantCategory: "memory",
+			wantCategory: "decode",
 			mod: wasmtest.Module(
 				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
 				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -587,6 +588,13 @@ func TestDecodeValidateSupportPassScansRawBodies(t *testing.T) {
 			if tc.wantCategory == "" {
 				if err != nil {
 					t.Fatalf("DecodeValidate: %v", err)
+				}
+				return
+			}
+			if tc.wantCategory == "decode" {
+				var de *wasm.DecodeError
+				if !errors.As(err, &de) || de.Code != wasm.ErrInvalidInstruction {
+					t.Fatalf("expected invalid wire grammar: %v", err)
 				}
 				return
 			}
@@ -754,7 +762,7 @@ func TestRejectUnsupportedExplicitMemargIndex(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x28, 0x42, 0x00, 0x00, 0x0b}))),
 	)
 	_, err := DecodeValidate(mod)
-	assertErrContains(t, err, "unsupported memory explicit index 0 at function 0 instruction 1")
+	assertErrContains(t, err, "decode: wasm decode: invalid instruction")
 }
 
 func TestRejectUnsupportedSIMDExplicitMemargIndex(t *testing.T) {
@@ -788,7 +796,7 @@ func TestRejectUnsupportedSIMDExplicitMemargIndex(t *testing.T) {
 				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 			)
 			_, err := DecodeValidate(mod)
-			assertErrContains(t, err, "unsupported memory explicit index 0")
+			assertErrContains(t, err, "decode: wasm decode: invalid instruction")
 		})
 	}
 }

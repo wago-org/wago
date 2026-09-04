@@ -79,7 +79,7 @@ func ValidateByteBackedModuleWithConfig(data []byte, features ValidationFeatures
 }
 
 func validateByteBackedModule(data []byte, workers int, features ValidationFeatures, limits ValidationLimits) error {
-	dm, err := DecodeModuleByteBacked(data)
+	dm, err := DecodeModuleByteBackedWithFeatures(data, features)
 	if err != nil {
 		return err
 	}
@@ -91,7 +91,12 @@ func validateByteBackedModule(data []byte, workers int, features ValidationFeatu
 // and BodyBytes, while Body is left empty. Call ValidateDecodedByteBackedModule
 // before handing the module to lowering or execution paths.
 func DecodeModuleByteBacked(data []byte) (*DecodedByteBackedModule, error) {
-	dm, err := decodeDirectModule(data)
+	return DecodeModuleByteBackedWithFeatures(data, ValidationFeatures{MultiMemory: true})
+}
+
+// DecodeModuleByteBackedWithFeatures selects wire grammar from explicit features.
+func DecodeModuleByteBackedWithFeatures(data []byte, features ValidationFeatures) (*DecodedByteBackedModule, error) {
+	dm, err := decodeDirectModuleFeatures(data, features)
 	if err != nil {
 		return nil, err
 	}
@@ -182,12 +187,16 @@ func directExpr(e directConstExpr) Expr {
 }
 
 func decodeDirectModule(data []byte) (*directModule, error) {
-	dm, err := decodeDirectModuleInner(data)
+	return decodeDirectModuleFeatures(data, ValidationFeatures{MultiMemory: true})
+}
+
+func decodeDirectModuleFeatures(data []byte, features ValidationFeatures) (*directModule, error) {
+	dm, err := decodeDirectModuleInner(data, features)
 	runtime.KeepAlive(data)
 	return dm, err
 }
 
-func decodeDirectModuleInner(data []byte) (*directModule, error) {
+func decodeDirectModuleInner(data []byte, features ValidationFeatures) (*directModule, error) {
 	// Keep the top-level cursor in this frame. TinyGo's conservative collector
 	// can otherwise lose the heap-allocated reader while its backing slice is
 	// still being consumed across allocation-heavy section decoding.
@@ -252,7 +261,7 @@ func decodeDirectModuleInner(data []byte) (*directModule, error) {
 		case secElement:
 			err = decodeDirectElementSection(dm, &sub)
 		case secCode:
-			dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSectionWithModule(&sub, &dm.m, dm.m.MemCount() > 1)
+			dm.m.Code, dm.usesDataCountInstr, err = decodeDirectCodeSectionWithModule(&sub, &dm.m, features.MultiMemory)
 			dm.seenCode = true
 		case secData:
 			err = decodeDirectDataSection(dm, &sub)
@@ -939,6 +948,7 @@ type directOp struct {
 }
 
 func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemory bool, out *directOp) error {
+	widths.multiMemory = multiMemory
 	op, err := r.byte()
 	if err != nil {
 		*out = directOp{}
@@ -1123,7 +1133,7 @@ func (v *funcValidator) decodeDirectOp(r *reader, widths memargWidths, multiMemo
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfc:
-		in, err := decodeFC(r)
+		in, err := decodeFCWithMultiMemory(r, multiMemory)
 		*out = directOp{kind: directInstr, instr: in}
 		return err
 	case 0xfd:
