@@ -2616,7 +2616,9 @@ polling, and conditional reference branches now emit `CBZ/CBNZ` directly. Each
 site is annotated where the semantic check is produced; no finalized-byte
 pattern matching is involved. The trap form records the `CBZ/CBNZ` imm19 site in
 the existing shared-stub patch list, so trap attribution and cold-stub sharing
-remain unchanged. `WAGO_ARM64_NO_DIRECT_ZERO_BRANCH=1` restores `CMP+B.cond`.
+remain unchanged. During qualification,
+`WAGO_ARM64_NO_DIRECT_ZERO_BRANCH=1` restored `CMP+B.cond`; that rollback and
+its alternate helper branches have since been retired.
 
 The exact 36-module ARM64 Size suite selects 24,531 sites and falls from
 75,339,552 to 75,241,428 native bytes (-98,124, -0.130%). Ruby contributes

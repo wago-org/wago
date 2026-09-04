@@ -10,8 +10,6 @@ import (
 )
 
 func TestDirectZeroBranchEncodingArm64(t *testing.T) {
-	before := directZeroBranchEnabled
-	t.Cleanup(func() { directZeroBranchEnabled = before })
 	for _, test := range []struct {
 		name   string
 		wide   bool
@@ -23,20 +21,14 @@ func TestDirectZeroBranchEncodingArm64(t *testing.T) {
 		{"cbnz64", true, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			emit := func(enabled bool) (int, int) {
-				directZeroBranchEnabled = enabled
-				stats := &CodegenStats{}
-				f := fn{a: &encoderarm64.Asm{}, stats: stats}
-				f.zeroBranch(X0, test.wide, test.onZero)
-				return len(f.a.B), stats.Peephole["direct-zero-branch"]
+			stats := &CodegenStats{}
+			f := fn{a: &encoderarm64.Asm{}, stats: stats}
+			f.zeroBranch(X0, test.wide, test.onZero)
+			if got := len(f.a.B); got != 4 {
+				t.Fatalf("direct zero branch = %d bytes, want 4", got)
 			}
-			long, longHits := emit(false)
-			short, shortHits := emit(true)
-			if long-short != 4 {
-				t.Fatalf("CMP+B.cond delta = %d bytes, want 4", long-short)
-			}
-			if longHits != 0 || shortHits != 1 {
-				t.Fatalf("direct-zero-branch hits = %d/%d, want 0/1", longHits, shortHits)
+			if got := stats.Peephole["direct-zero-branch"]; got != 1 {
+				t.Fatalf("direct-zero-branch hits = %d, want 1", got)
 			}
 		})
 	}

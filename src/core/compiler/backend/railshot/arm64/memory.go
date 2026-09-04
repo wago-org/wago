@@ -133,15 +133,8 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 // an explicit compiler-authored test whose next consumer is this branch, so no
 // later instruction observes the CMP flags removed by the compact form.
 func (f *fn) zeroBranch(reg Reg, wide, onZero bool) int {
-	if directZeroBranchEnabled {
-		f.stats.peep("direct-zero-branch")
-		return f.emitZeroBranch(reg, wide, onZero)
-	}
-	f.cmpImm(reg, 0, wide)
-	if onZero {
-		return f.a.Bcond(condE)
-	}
-	return f.a.Bcond(condNE)
+	f.stats.peep("direct-zero-branch")
+	return f.emitZeroBranch(reg, wide, onZero)
 }
 
 func (f *fn) emitZeroBranch(reg Reg, wide, onZero bool) int {
@@ -158,15 +151,6 @@ func (f *fn) emitZeroBranch(reg Reg, wide, onZero bool) int {
 }
 
 func (f *fn) trapIfZero(reg Reg, wide, onZero bool, code uint32) {
-	if !directZeroBranchEnabled {
-		f.cmpImm(reg, 0, wide)
-		if onZero {
-			f.trapIf(condE, code)
-		} else {
-			f.trapIf(condNE, code)
-		}
-		return
-	}
 	if code == trapMemOOB {
 		f.stats.addBoundsCheck()
 	}
