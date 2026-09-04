@@ -59,9 +59,9 @@ type compilerCompiledState struct {
 	memoryDir    compiledMemoryDirectory
 }
 
-// compilerCompiledOwner keeps the public result and its fixed private state in
-// one allocation. Compiled is first so its pointer is also the allocation base;
-// the existing finalizer and Close paths can install and clear ownership on c.
+// compilerCompiledOwner groups the staging value and fixed private state in
+// one allocation. Compiled is first for staging finalizer ownership. Publication
+// moves the public view out and clears the staging value; private state stays.
 type compilerCompiledOwner struct {
 	Compiled
 	state compilerCompiledState
@@ -521,6 +521,56 @@ func (c *Compiled) checkOpen() error {
 	return nil
 }
 
+// mapCodeLocked installs one exact-length readable view. Callers hold the cache
+// lock; the compiler also calls this before publishing either metadata view.
+func (c *Compiled) mapCodeLocked() error {
+	cc := c.codeCache
+	if cc.mem != nil {
+		return nil
+	}
+	codeLen := len(c.code)
+	image, err := coreruntime.NewCodeBuffer(codeLen)
+	if err != nil {
+		return err
+	}
+	defer image.Close()
+	if err := image.Append(c.code); err != nil {
+		return err
+	}
+	mem, base, err := image.Take()
+	if err != nil {
+		return err
+	}
+	cc.mem, cc.base = mem, base
+	// The mapping can be page-rounded; code and artifact sizes must stay exact.
+	c.code = mem[:codeLen:codeLen]
+	return nil
+}
+
+// publishCompilerCompiled maps heap-backed parallel output before snapshotting.
+// Both published views share one RW image; activation seals and registers it.
+// Clear the embedded staging value:
+// its allocation remains live through pointers to the grouped private state.
+func publishCompilerCompiled(c *Compiled) (*Compiled, error) {
+	if len(c.code) != 0 {
+		c.codeCache.mu.Lock()
+		err := c.mapCodeLocked()
+		c.codeCache.mu.Unlock()
+		if err != nil {
+			_ = c.Close()
+			return nil, fmt.Errorf("compile: map code image: %w", err)
+		}
+	}
+	goruntime.SetFinalizer(c, nil)
+	published := new(Compiled)
+	*published = *c
+	*c = Compiled{}
+	// Keep the finalizer outside the cache/memo owner to avoid a finalizer cycle.
+	goruntime.SetFinalizer(published, func(c *Compiled) { _ = c.Close() })
+	published.freezeExecution()
+	return published, nil
+}
+
 func (c *Compiled) acquireCode() (uintptr, error) {
 	c.ensureCodeCache()
 	cc := c.codeCache
@@ -529,20 +579,10 @@ func (c *Compiled) acquireCode() (uintptr, error) {
 	if cc.closed {
 		return 0, fmt.Errorf("compiled module is closed")
 	}
-	if cc.mem == nil {
-		codeLen := len(c.code)
-		mem, base, err := coreruntime.MapCode(c.code)
-		if err != nil {
-			return 0, err
-		}
-		cc.mem, cc.base = mem, base
-		// Keep one exact-length readable view of the machine code by moving Code
-		// onto the RX mapping. MapCode's mmap slice is page-rounded; exposing that
-		// padding would change codec bytes and binding-independent declarations.
-		// The original Go-heap backing can now be reclaimed.
-		c.code = mem[:codeLen:codeLen]
+	if err := c.mapCodeLocked(); err != nil {
+		return 0, err
 	}
-	if cc.flags&compiledCacheWritableCode != 0 && !cc.sealed {
+	if !cc.sealed {
 		if err := coreruntime.SealCode(cc.mem); err != nil {
 			return 0, err
 		}
@@ -600,6 +640,7 @@ func (c *Compiled) replaceDecoded(decoded Compiled) error {
 	}
 	*c = decoded
 	installCompiledFinalizer(c)
+	c.freezeExecution()
 	return nil
 }
 

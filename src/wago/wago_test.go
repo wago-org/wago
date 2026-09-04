@@ -645,7 +645,7 @@ func TestInstantiateGCCollectorLifecycle(t *testing.T) {
 	}
 	in.Close()
 
-	funcOnly := *c
+	funcOnly := *mutableCompiledFixture(c)
 	funcOnly.GCTypeDescs = []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc}}
 	in, err = Instantiate(&funcOnly, InstantiateOptions{})
 	if err != nil {
@@ -656,6 +656,7 @@ func TestInstantiateGCCollectorLifecycle(t *testing.T) {
 	}
 	in.Close()
 
+	c = mutableCompiledFixture(c)
 	c.GCTypeDescs = representativeGCTypeDescs(t)
 	in, err = Instantiate(c, InstantiateOptions{})
 	if err != nil {
@@ -672,6 +673,7 @@ func TestInstantiateWithOptionsGCConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	c = mutableCompiledFixture(c)
 	c.GCTypeDescs = representativeGCTypeDescs(t)
 	in, err := Instantiate(c, InstantiateOptions{GC: gc.Config{Profile: gc.ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}})
 	if err != nil {
@@ -685,7 +687,7 @@ func TestInstantiateWithOptionsGCConfig(t *testing.T) {
 	}
 	in.Close()
 
-	funcOnly := *c
+	funcOnly := *mutableCompiledFixture(c)
 	funcOnly.GCTypeDescs = []gc.TypeDesc{{ID: 0, Kind: gc.KindFunc}}
 	in, err = Instantiate(&funcOnly, InstantiateOptions{GC: gc.Config{Profile: gc.ProfileTiny, TinyHeapBytes: 4096, TinyBlockBytes: 16}})
 	if err != nil {

@@ -117,6 +117,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 }
 
 func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, moduleUse *Module) (*Instance, error) {
+	defer goruntime.KeepAlive(c)
 	// Keep validation, native linking, public lookup, and teardown on one binding set.
 	if opts.Imports != nil {
 		imports := make(Imports, len(opts.Imports))
@@ -136,6 +137,8 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	c = c.freezeExecution()
+	b.c = c
 	if err := c.preflightImportBindings(opts.Imports); err != nil {
 		return nil, err
 	}

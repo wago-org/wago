@@ -2083,7 +2083,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		compiled.codeCache.stagedFeatures |= CoreFeatureGC
 		compiled.codeCache.gcI31Product = gcI31Product
 	}
-	return compiled, nil
+	return publishCompilerCompiled(compiled)
 }
 
 func normalizeAdapterReturnOffsets(offsets []uint32) []uint32 {
@@ -2622,15 +2622,16 @@ func MustCompile(wasmBytes []byte) *Compiled {
 }
 
 // ExportedFunctions returns the names of the module's exported functions, sorted.
-func (c *Compiled) ExportedFunctions() []string { return sortedKeys(c.Exports) }
+func (c *Compiled) ExportedFunctions() []string { return sortedKeys(c.executionView().Exports) }
 
 // ExportedGlobals returns the names of the module's exported globals, sorted.
-func (c *Compiled) ExportedGlobals() []string { return sortedKeys(c.GlobalExports) }
+func (c *Compiled) ExportedGlobals() []string { return sortedKeys(c.executionView().GlobalExports) }
 
 // MemoryImport returns the "module.name" key when the module imports exactly one
 // memory. Modules with zero or multiple memory imports return false; use
 // MemoryImports for the complete ordered list.
 func (c *Compiled) MemoryImport() (string, bool) {
+	c = c.executionView()
 	if c == nil || c.memoryImportCount() != 1 {
 		return "", false
 	}
@@ -2642,6 +2643,7 @@ func (c *Compiled) MemoryImport() (string, bool) {
 // Duplicate keys are preserved because distinct declarations may alias the same
 // host memory once indexed execution is admitted.
 func (c *Compiled) MemoryImports() []string {
+	c = c.executionView()
 	if c == nil {
 		return nil
 	}
@@ -2658,6 +2660,7 @@ func (c *Compiled) MemoryImports() []string {
 // table. Instantiate then requires a *Table for that key. Modules with zero or
 // multiple table imports return false; use TableImports for the complete list.
 func (c *Compiled) TableImport() (string, bool) {
+	c = c.executionView()
 	if c == nil {
 		return "", false
 	}
@@ -2671,6 +2674,7 @@ func (c *Compiled) TableImport() (string, bool) {
 // Duplicate keys are preserved because two declarations may intentionally alias
 // the same shared table object.
 func (c *Compiled) TableImports() []string {
+	c = c.executionView()
 	if c == nil {
 		return nil
 	}
@@ -2706,6 +2710,7 @@ func sortedKeys(m map[string]int) []string {
 
 // Signature returns the parameter and result types of an exported function.
 func (c *Compiled) Signature(export string) (params, results []ValType, err error) {
+	c = c.executionView()
 	if c == nil {
 		return nil, nil, fmt.Errorf("compiled module is nil")
 	}
@@ -2721,18 +2726,19 @@ func (c *Compiled) Signature(export string) (params, results []ValType, err erro
 			return nil, nil, fmt.Errorf("export %q imported function index %d has no signature", export, gfi)
 		}
 		sig := c.importFuncSigs[gfi]
-		return sig.Params, sig.Results, nil
+		return append([]ValType(nil), sig.Params...), append([]ValType(nil), sig.Results...), nil
 	}
 	li := gfi - c.NumImports
 	if li < 0 || li >= len(c.Funcs) {
 		return nil, nil, fmt.Errorf("export %q function index %d out of range", export, gfi)
 	}
-	return c.Funcs[li].Params, c.Funcs[li].Results, nil
+	return append([]ValType(nil), c.Funcs[li].Params...), append([]ValType(nil), c.Funcs[li].Results...), nil
 }
 
 // SignatureDescriptor returns the exact structural parameter and result types
 // of an exported function. Indexed references resolve against TypeDefinitions.
 func (c *Compiled) SignatureDescriptor(export string) (params, results []ValueTypeDescriptor, err error) {
+	c = c.executionView()
 	if c == nil {
 		return nil, nil, fmt.Errorf("compiled module is nil")
 	}
@@ -2765,6 +2771,7 @@ func (c *Compiled) SignatureDescriptor(export string) (params, results []ValueTy
 // TypeDefinitions returns a copy of the compiled module's flattened structural
 // type graph.
 func (c *Compiled) TypeDefinitions() []DefinedTypeDescriptor {
+	c = c.executionView()
 	if c == nil {
 		return nil
 	}
@@ -2773,6 +2780,7 @@ func (c *Compiled) TypeDefinitions() []DefinedTypeDescriptor {
 
 // FuncName returns the name-section name for a global function index.
 func (c *Compiled) FuncName(funcIdx uint32) (string, bool) {
+	c = c.executionView()
 	if c == nil || c.Names == nil {
 		return "", false
 	}
@@ -2783,6 +2791,7 @@ func (c *Compiled) FuncName(funcIdx uint32) (string, bool) {
 // index (that is, an index into Compiled.Funcs rather than wasm's global
 // function-index space).
 func (c *Compiled) LocalFuncName(localIdx int) (string, bool) {
+	c = c.executionView()
 	if c == nil || localIdx < 0 {
 		return "", false
 	}
@@ -2792,6 +2801,7 @@ func (c *Compiled) LocalFuncName(localIdx int) (string, bool) {
 // FuncDebugName returns a stable display name for a global function index,
 // preferring the wasm name section and falling back to exports or funcN.
 func (c *Compiled) FuncDebugName(funcIdx uint32) string {
+	c = c.executionView()
 	if name, ok := c.FuncName(funcIdx); ok && name != "" {
 		return name
 	}
@@ -3944,6 +3954,9 @@ const wagoMagic = "WAGO"
 const wagoVersion = 2
 
 // MarshalBinary serializes the precompiled module to a ".wago" blob.
+// Published modules serialize their frozen execution metadata; edits to the
+// public metadata do not change the artifact. Unpublished values use their
+// current metadata.
 //
 // Signals-based (guard-page) modules cannot be serialized: their code has the
 // inline bounds checks elided and is only safe against a guard-page memory,
@@ -3956,6 +3969,8 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 	c.ensureCodeCache()
 	c.codeCache.mu.Lock()
 	defer c.codeCache.mu.Unlock()
+	defer goruntime.KeepAlive(c)
+	c = c.executionView()
 	if err := c.validateSerializableLocked(); err != nil {
 		return nil, err
 	}
@@ -3965,6 +3980,7 @@ func (c *Compiled) MarshalBinary() ([]byte, error) {
 // WriteTo streams a sectioned ".wago" artifact to w. Native code is written
 // directly from its readable image; only the smaller metadata section is
 // buffered. The returned count includes bytes accepted before an error.
+// Metadata follows the same snapshot contract as MarshalBinary.
 func (c *Compiled) WriteTo(w io.Writer) (int64, error) {
 	if c == nil {
 		return 0, errors.New("wago: compiled module is nil")
@@ -3975,6 +3991,8 @@ func (c *Compiled) WriteTo(w io.Writer) (int64, error) {
 	c.ensureCodeCache()
 	c.codeCache.mu.Lock()
 	defer c.codeCache.mu.Unlock()
+	defer goruntime.KeepAlive(c)
+	c = c.executionView()
 	if err := c.validateSerializableLocked(); err != nil {
 		return 0, err
 	}
@@ -4039,7 +4057,8 @@ func (c *Compiled) WriteCodeTo(w io.Writer) (int64, error) {
 }
 
 // ArtifactSectionSizes reports exact encoded byte attribution without
-// materializing the complete artifact.
+// materializing the complete artifact. It measures the same metadata snapshot
+// as MarshalBinary and WriteTo.
 func (c *Compiled) ArtifactSectionSizes() (ArtifactSectionSizes, error) {
 	if c == nil {
 		return ArtifactSectionSizes{}, errors.New("wago: compiled module is nil")
@@ -4047,6 +4066,8 @@ func (c *Compiled) ArtifactSectionSizes() (ArtifactSectionSizes, error) {
 	c.ensureCodeCache()
 	c.codeCache.mu.Lock()
 	defer c.codeCache.mu.Unlock()
+	defer goruntime.KeepAlive(c)
+	c = c.executionView()
 	if err := c.validateSerializableLocked(); err != nil {
 		return ArtifactSectionSizes{}, err
 	}

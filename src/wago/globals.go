@@ -1028,7 +1028,8 @@ type compiledTagDef struct {
 
 // Compiled owns emitted machine code plus instantiate-time metadata. Native
 // bytes are intentionally private; use CodeSize or WriteCodeTo for diagnostics.
-// Function exports remain isolated in the public Exports map. Call Close when
+// Public metadata is a compatibility view; changing it after compilation or
+// loading does not change the private execution snapshot. Call Close when
 // no new instances are needed; existing instances retain their executable image
 // until they close.
 type Compiled struct {
@@ -1167,6 +1168,8 @@ func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
 func (c *Compiled) RequiresAVX512() bool { return c != nil && c.requiresAVX512 }
 
 type validateMemo struct {
+	execution *Compiled // private deeply owned execution metadata
+
 	once                     sync.Once
 	err                      error
 	gcFrameRoots             *compiledGCFrameRoots // immutable compiled/codec native safepoint and callsite map
@@ -1187,6 +1190,7 @@ type validateMemo struct {
 // validateCached returns the metadata-validation result, running the full check
 // once per compiler-produced Compiled and every time for a hand-constructed one.
 func (c *Compiled) validateCached() error {
+	c = c.executionView()
 	if c == nil || c.validateMemo == nil {
 		return c.validate()
 	}
@@ -1219,21 +1223,27 @@ func (c *Compiled) memorySizeBytes() (initial, max int) {
 
 // ImportedGlobalCount returns the number of imported globals at the front of
 // the wasm global-index space.
-func (c *Compiled) ImportedGlobalCount() int { return len(c.GlobalImports) }
+func (c *Compiled) ImportedGlobalCount() int { return len(c.executionView().GlobalImports) }
 
 // LocalGlobalCount returns the number of module-defined globals.
-func (c *Compiled) LocalGlobalCount() int { return len(c.Globals) - len(c.GlobalImports) }
+func (c *Compiled) LocalGlobalCount() int {
+	c = c.executionView()
+	return len(c.Globals) - len(c.GlobalImports)
+}
 
 // GlobalSlot maps a wasm global index to its pointer-table byte offset.
 func (c *Compiled) GlobalSlot(idx int) int { return idx * 8 }
 
 // ExportedGlobal returns metadata for a named exported global.
 func (c *Compiled) ExportedGlobal(name string) (GlobalDef, bool) {
+	c = c.executionView()
 	idx, ok := c.GlobalExports[name]
 	if !ok || idx < 0 || idx >= len(c.Globals) {
 		return GlobalDef{}, false
 	}
-	return c.Globals[idx], true
+	def := c.Globals[idx]
+	def.InitExpr = append([]byte(nil), def.InitExpr...)
+	return def, true
 }
 
 func (c *Compiled) globalExactType(index int) (ValueTypeDescriptor, error) {

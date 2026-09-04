@@ -396,7 +396,7 @@ func TestMarshalGlobalScalarAndV128RoundTrip(t *testing.T) {
 		t.Fatalf("gv = % x, %v; want % x", got, err, vec)
 	}
 
-	scalar := *c
+	scalar := *mutableCompiledFixture(c)
 	scalar.Globals = []GlobalDef{{Type: ValI32, Bits: I32(1)}, {Type: ValI64, Bits: I64(2)}}
 	scalar.GlobalExports = map[string]int{}
 	compact, err := scalar.MarshalBinary()

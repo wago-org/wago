@@ -13,10 +13,11 @@ import (
 // capabilities it requires, and lightweight metadata). rt.Compile returns one;
 // rt.Instantiate consumes one.
 type Module struct {
-	rt      *Runtime
-	c       *Compiled
-	imports []ImportSpec
-	reqCaps []Capability
+	rt           *Runtime
+	c            *Compiled
+	compiledView *Compiled
+	imports      []ImportSpec
+	reqCaps      []Capability
 	// importIdentities is populated only when a declared component contains a
 	// dot and the flat binding namespace can therefore be ambiguous.
 	importIdentities map[string]importBindingKey
@@ -220,7 +221,8 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 }
 
 func buildModule(c *Compiled, bindings moduleBindings) *Module {
-	m := &Module{rt: bindings.rt, c: c, independentInstances: bindings.independentInstances}
+	m := &Module{rt: bindings.rt, c: c.freezeExecution(), compiledView: c, independentInstances: bindings.independentInstances}
+	c = m.c
 	if bindings.moduleIdentity {
 		m.identity.Store(&moduleIdentityToken{})
 	}
@@ -346,7 +348,12 @@ func (m *Module) moduleIdentity() ModuleIdentity {
 }
 
 // Compiled returns the underlying low-level compiled module.
-func (m *Module) Compiled() *Compiled { return m.c }
+func (m *Module) Compiled() *Compiled {
+	if m.compiledView != nil {
+		return m.compiledView
+	}
+	return m.c
+}
 
 // Exports returns the module's exported function names, sorted.
 func (m *Module) Exports() []string { return m.c.ExportedFunctions() }
