@@ -29,6 +29,26 @@ const maxGCFrameBranchTargets = maxGCFrameLivenessArenaBytes / 4
 
 const maxGCFrameLivenessWorkWords = maxGCFrameLivenessArenaBytes / 8
 
+// Four conservative local roots and a 512 root-byte budget bound additional
+// guest retention and serialized offsets while avoiding a pointer-rich CFG and
+// backwards dataflow for common narrow-root functions. A root-free collecting
+// function has no retention cost and always uses the cheap site-counting path.
+// Fixed EH payload roots are accounted independently and remain always live.
+const (
+	gcFrameConservativeLocalLimit    = 4
+	gcFrameConservativeRootByteLimit = 512
+)
+
+func gcFramePreferConservativeMasks(localRoots, bodyBytes int) bool {
+	if localRoots < 0 || bodyBytes < 0 {
+		return false
+	}
+	if localRoots == 0 {
+		return true
+	}
+	return localRoots <= gcFrameConservativeLocalLimit && bodyBytes <= gcFrameConservativeRootByteLimit/localRoots
+}
+
 func gcFrameLivenessArenaFits(nodes, words int) bool {
 	return nodes >= 0 && words > 0 && (nodes == 0 || words <= maxGCFrameLivenessArenaBytes/8/nodes)
 }

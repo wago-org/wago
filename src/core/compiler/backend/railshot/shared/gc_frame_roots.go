@@ -52,10 +52,11 @@ func DecodeGCDispatch(payload uint32) (helper, safepoint uint32) {
 // callsites, and final frame size. It remains compile-only until flattened into
 // the validated codec metadata.
 type GCFrameRootPlan struct {
-	Candidate  bool
-	Exact      bool
-	FrameBytes uint32
-	Locals     []GCFrameLocal
+	Candidate    bool
+	Exact        bool
+	Conservative bool // local masks retain every tracked local at each site
+	FrameBytes   uint32
+	Locals       []GCFrameLocal
 	// LiveMaskWords is one site-major, pointer-free arena. Allocating sites come
 	// first, followed by native calls; every site occupies rootMaskWordsPerSite
 	// words. The explicit counts avoid retaining two more slice headers and

@@ -150,7 +150,8 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string) *sh
 		}
 		var liveMasks gcFrameLiveMasks
 		var err error
-		if bodyUsesEH(m.Code[function].BodyBytes, &classifier) {
+		plan.Conservative = bodyUsesEH(m.Code[function].BodyBytes, &classifier) || gcFramePreferConservativeMasks(len(plan.Locals), len(m.Code[function].BodyBytes))
+		if plan.Conservative {
 			liveMasks, err = gcFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.Locals), &classifier)
 		} else {
 			liveMasks, err = gcFrameLocalLivenessArenaWithClassifier(m.Code[function].BodyBytes, plan.Locals, &classifier)

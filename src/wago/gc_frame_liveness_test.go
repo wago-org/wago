@@ -41,6 +41,23 @@ func gcFrameTestRootPlan(locals []shared.GCFrameLocal, masks gcFrameLiveMasks) s
 	return plan
 }
 
+func TestGCFrameConservativeModeAdmissionIsBounded(t *testing.T) {
+	for roots := 0; roots <= gcFrameConservativeLocalLimit+1; roots++ {
+		if got, want := gcFramePreferConservativeMasks(roots, 1), roots <= gcFrameConservativeLocalLimit; got != want {
+			t.Fatalf("roots %d conservative admission = %v, want %v", roots, got, want)
+		}
+	}
+	if gcFramePreferConservativeMasks(-1, 1) || gcFramePreferConservativeMasks(1, -1) {
+		t.Fatal("negative root or body count admitted")
+	}
+	if !gcFramePreferConservativeMasks(0, gcFrameConservativeRootByteLimit*2) {
+		t.Fatal("root-free function rejected by conservative site-counting path")
+	}
+	if gcFramePreferConservativeMasks(4, gcFrameConservativeRootByteLimit/4+1) {
+		t.Fatal("root-byte budget overflow admitted")
+	}
+}
+
 func TestGCFrameLocalLivenessIsArchitectureIndependent(t *testing.T) {
 	tests := []struct {
 		name    string

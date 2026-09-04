@@ -1259,8 +1259,8 @@ func TestGCSingleNativeFrameRootsCollectInsideInvocation(t *testing.T) {
 	}
 	defer compiled.Close()
 	plan := compiled.genericGCFrameRoots()
-	if plan == nil || len(plan.safepoints) != 2 || len(plan.safepoints[0].offsets) != 0 || len(plan.safepoints[1].offsets) != 1 || plan.safepoints[1].offsets[0] != 24 || plan.safepoints[1].frameBytes == 0 {
-		t.Fatalf("native GC frame-root plan = %+v, want dead local omitted at site 1 and live local offset 24 at site 2", plan)
+	if plan == nil || len(plan.safepoints) != 2 || len(plan.safepoints[0].offsets) != 1 || plan.safepoints[0].offsets[0] != 24 || len(plan.safepoints[1].offsets) != 1 || plan.safepoints[1].offsets[0] != 24 || plan.safepoints[1].frameBytes == 0 {
+		t.Fatalf("native GC frame-root plan = %+v, want bounded conservative local offset 24 at both sites", plan)
 	}
 	want := []uint64{0x0706050403020100, 0x0f0e0d0c0b0a0908}
 	profiles := []struct {
@@ -1337,6 +1337,7 @@ func BenchmarkGCSingleNativeFrameRoots(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+	b.ReportMetric(float64(compiled.CodeSize()), "code-B")
 }
 
 func TestGCSingleNativeFrameRootsPublishHiddenOperandRoot(t *testing.T) {

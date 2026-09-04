@@ -65,6 +65,9 @@ func TestGCFrameRootPlanOmitsNonCollectingFunction(t *testing.T) {
 	if got := plan.Function(1); got == nil || !got.Candidate || !got.Exact {
 		t.Fatalf("collecting caller root plan = %+v, want exact candidate", got)
 	}
+	if got := plan.Function(1); got == nil || !got.Conservative {
+		t.Fatalf("collecting caller root plan = %+v, want conservative narrow-root mode", got)
+	}
 }
 
 func TestGCFrameRootPlanDiagnosticIsSeparateFailureState(t *testing.T) {
@@ -74,6 +77,45 @@ func TestGCFrameRootPlanDiagnosticIsSeparateFailureState(t *testing.T) {
 	}
 	if plan := newGCFrameRootPlan(nil, true, &diagnostic); plan != nil || diagnostic == "" {
 		t.Fatalf("invalid root plan = %+v, diagnostic = %q", plan, diagnostic)
+	}
+}
+
+func TestGCFrameRootPlanUsesBoundedConservativeLocals(t *testing.T) {
+	build := func(roots uint32) *wasm.Module {
+		t.Helper()
+		body := []byte{0x01}
+		body = append(body, wasmtest.ULEB(roots)...)
+		body = append(body,
+			0x63, 0x00, // roots x (ref null type 0)
+			0xfb, 0x01, 0x00, 0x1a, // struct.new_default 0; drop
+			0x0b,
+		)
+		binary := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(
+				[]byte{0x5f, 0x00},
+				wasmtest.FuncType(nil, nil),
+			)),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+			wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+		)
+		m, err := wasm.DecodeModule(binary)
+		if err == nil {
+			err = wasm.ValidateModule(m)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+
+	narrow := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit), true, nil).Function(0)
+	if narrow == nil || !narrow.Conservative || len(narrow.Locals) != gcFrameConservativeLocalLimit ||
+		narrow.AllocationMaskCount() != 1 || !narrow.LocalLiveAt(0, gcFrameConservativeLocalLimit-1) {
+		t.Fatalf("narrow root plan = %+v, want %d conservative roots", narrow, gcFrameConservativeLocalLimit)
+	}
+	wide := newGCFrameRootPlan(build(gcFrameConservativeLocalLimit+1), true, nil).Function(0)
+	if wide == nil || wide.Conservative || len(wide.Locals) != 0 || wide.AllocationMaskCount() != 1 {
+		t.Fatalf("wide root plan = %+v, want exact compaction of dead locals", wide)
 	}
 }
 
