@@ -90,7 +90,7 @@ type funcHints struct {
 	// low for unusual control flow.
 	stackArenaNodes uint32
 
-	localCount         uint16
+	localCount         uint16 // complete parameter-plus-declared-local population
 	inlineCallSites    uint16 // saturated ordinary direct call sites targeting this local function
 	stackArenaDiscount uint16 // possible scanned nodes removed by bounded lookahead peepholes
 	flags              funcHintFlags

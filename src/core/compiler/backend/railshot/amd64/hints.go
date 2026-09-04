@@ -92,7 +92,7 @@ type funcHints struct {
 	// shift pressure flag. The prediction stays in existing storage
 	// rather than growing the 64-byte retained function header.
 	stackArenaDiscount uint16
-	localCount         uint16
+	localCount         uint16 // complete parameter-plus-declared-local population
 	// flags retain exact call, memory, control, inline-candidacy, and scan-gating
 	// facts in the word defined above; no fact is reconstructed heuristically.
 	flags funcHintFlags

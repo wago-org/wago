@@ -1535,18 +1535,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.policy = policy
 		sc.classifier = classifier
-		maxLocals := 0
-		for i := range allHints {
-			if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
-				continue
-			}
-			ft, ok := m.LocalFuncType(i)
-			if !ok {
-				continue
-			}
-			maxLocals = max(maxLocals, len(ft.Params)+int(allHints[i].localCount))
-		}
-		sc.reserveLocalScratch(maxLocals)
+		sc.reserveLocalScratch(serialLocalScratchCapacity(allHints, inlineTargets, hostAdapters))
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.reserveControlFrames(ctrlCap)
 		}
@@ -1721,6 +1710,18 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, hintSidecar, immutableTables, modGlobals, hostAdapters, inlineTargets, policy, ms, guardMode, boundsFacts, importedFuncs)
+}
+
+func serialLocalScratchCapacity(allHints []funcHints, inlineTargets inlineTargetTable, hostAdapters []bool) int {
+	maxLocals := 0
+	for i := range allHints {
+		if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
+			continue
+		}
+		// localCount is the complete parameter-plus-declared-local population.
+		maxLocals = max(maxLocals, int(allHints[i].localCount))
+	}
+	return maxLocals
 }
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
@@ -2290,7 +2291,36 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		allHints[i].flags.assign(hintHasTailCall, moduleHasTailCall)
 		allHints[i].flags.assign(hintModuleEH, moduleEH)
 	}
+	if moduleEH && !storageModuleEH {
+		localScores = compactEHLocalScores(allHints, localScores)
+		localLastGets = nil
+	}
 	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, sparseGlobals: sparseGlobals}, agg, nil
+}
+
+// compactEHLocalScores drops interval-only storage when a tagless try_table or
+// throw makes the module-wide EH requirement visible during the fused body
+// scan. This rare-path copy avoids adding a second body pass to ordinary
+// modules while allowing the oversized transient backing to be collected.
+func compactEHLocalScores(allHints []funcHints, scores []uint32) []uint32 {
+	total := 0
+	for i := range allHints {
+		total += min(int(allHints[i].localCount), 64)
+		allHints[i].flags.assign(hintIntervalRegionStorage, false)
+	}
+	if total == len(scores) {
+		return scores
+	}
+	compact := make([]uint32, total)
+	at := 0
+	for i := range allHints {
+		count := min(int(allHints[i].localCount), 64)
+		start := int(allHints[i].localStart)
+		copy(compact[at:at+count], scores[start:start+count])
+		allHints[i].localStart = uint32(at)
+		at += count
+	}
+	return compact
 }
 
 // computeImmutableTableHints derives module-owned immutable-table proofs after
