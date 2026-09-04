@@ -297,3 +297,36 @@ Validation: race-enabled isolated-process tests pass for os/signal notification
 during installation and after final unmap, exact action restoration, reinstallation,
 and token changes on trap reuse. Deadline/cancellation tests pass. Linux ARM64
 and Windows AMD64 runtime test binaries cross-build.
+
+## 6. Release the Go processor during foreign execution
+
+Standard-Go entry, resume, and prepared integer transitions now record a
+scannable Go-stack boundary with entersyscall, run the non-splitting assembly
+leaf, restore the Go stack, and reacquire a P with exitsyscall. Host callbacks
+run after reacquisition. This permits cancellation callbacks and Go GC to run
+when every execution thread is in Wasm. No new per-call allocation is added.
+Slice owners remain live through native return and the full host-resume loop.
+Raw address arguments retain their caller-owned stable-storage contract.
+`TestForeignCallRetainsBufferOwners` uses bounded native calls with concurrent
+GC and detects premature buffer finalizers before the fix. Normal and prepared
+calls pass afterward. Three 100 ms Linux/amd64 samples keep zero allocations:
+Engine.Call measures 19.9–20.8 ns before and 21.8–22.5 ns after; host round trips
+measure 105.5–106.4 ns before and 105.5–116.3 ns after. Retention sits outside
+the host loop; these short samples are not a throughput claim.
+
+TinyGo's threads scheduler can publish cancellation concurrently. Other TinyGo
+schedulers now reject cancelable native calls before entry with an explicit
+scheduler error; they cannot promise concurrent cancellation. Ordinary calls
+remain available. The obsolete informational GC-stall test was replaced by a
+bounded 40 ms foreign-call test that requires GC progress with one P.
+Callback-context tests retain lifetime and entry-path coverage with background
+parents on cooperative TinyGo schedulers, and explicitly require cancelable
+calls to fail before entering host code. Threaded cancellation has a separate
+standalone gate; the full TinyGo suite keeps the tasks scheduler for GC safety.
+
+Validation: full runtime/wago suites pass; cooperative-target cancellation tests
+pass; the one-P boundary test passes with the race detector. The TinyGo threads
+standalone cancellation test passes (38.6 s including cold compilation). Windows
+AMD64 entry runs under Wine; Darwin ARM64 and Linux ARM64 cross-build. Single
+100 ms samples: Engine.Call 9.38 -> 18.71 ns/op; InvokeAddOne 103.7 -> 106.2 ns/op;
+both retain zero B/op and zero allocations.

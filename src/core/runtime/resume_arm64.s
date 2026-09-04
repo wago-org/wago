@@ -9,7 +9,7 @@
 // callee-saved state, SP, and LR from the control frame and RETs to the wasm
 // resume address. When the resumed wasm finishes or parks again it jumps to this
 // function's epilogue through the basedata re-entry cells.
-TEXT ·resumeNative(SB), NOSPLIT, $0-16
+TEXT ·resumeNativeRaw(SB), NOSPLIT, $0-16
 	MOVD ctrl+0(FP), R9
 	MOVD foreignStackTop+8(FP), R10
 

@@ -8,7 +8,12 @@ generated Wasm on either architecture.
 ## Execution contract
 
 Ordinary native entries publish no activation and do not lock their goroutine
-to an OS thread. Generated Wasm already keeps its linear-memory base in a fixed
+to an OS thread. Standard Go records a scannable syscall boundary and releases
+the P during native execution, then reacquires it before Go host callbacks.
+Call sites keep their slice owners live until native return, including the
+complete host park/resume loop. Raw `uintptr` arguments still require stable
+storage whose owner the caller retains.
+Generated Wasm already keeps its linear-memory base in a fixed
 register (RBX on amd64, X26 on arm64), and basedata stores the active trap-cell
 pointer at a fixed negative offset. The signal handler therefore derives all
 per-invocation state from the saved CPU context.
@@ -83,8 +88,8 @@ cancellation or the deadline actually fires.
 
 Deadline contexts alone lock their goroutine for the duration of the call and
 arm a `timer_create(CLOCK_MONOTONIC, SIGEV_THREAD_ID)` timer for that Linux TID.
-Kernel delivery breaks an uninstrumented native loop even if the Go runtime is
-waiting for that loop during stop-the-world GC. After the deadline, the timer
+Kernel delivery can interrupt an uninstrumented native loop independently of
+Go callback scheduling. After the deadline, the timer
 retries at a short interval and is deleted before the goroutine is unlocked.
 The timer reuses the request-table match, so nested Wasm entered by a host
 callback is not mistaken for the deadline's target. Setup failures return an
@@ -123,3 +128,10 @@ larger.
 The request publication test observes repeated slot reuse through atomic loads;
 it detects a published trap paired with an older token without sending signals.
 Publication changes add no table storage or generated-Wasm instructions.
+
+## Cooperative targets
+
+Standard Go uses the same syscall boundary on macOS, Windows, and the
+`wago_target_tinygo` build, so cooperative trap publication has a runnable Go
+processor. TinyGo requires `-scheduler=threads` for cancelable native calls.
+Other TinyGo schedulers reject those calls before native entry.

@@ -54,9 +54,8 @@ func TestImportedFunctionReexportForwardsInvokeCallTrapAndState(t *testing.T) {
 }
 
 func TestImportedFunctionReexportCloseInterruptsDelegatedExecution(t *testing.T) {
-	if !nativeCancellationSupported() {
-		t.Skip("native cancellation requires amd64 or arm64")
-	}
+	// Close runs while execution is blocked in the Go host callback, so even
+	// a cooperative scheduler can publish the interrupt before native resume.
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	defer func() {

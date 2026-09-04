@@ -5,7 +5,7 @@ package runtime
 // enterNativeInt enters a register-ABI integer leaf on the Engine foreign stack.
 // RBX carries linMem, RAX/RCX/RDX/R8 carry up to four arguments, and RAX returns
 // the optional scalar result.
-func enterNativeInt(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
+func enterNativeIntRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
 
 // EnterPreparedInt performs only the native transition. Callers must inspect
 // PreparedIntTrapCode immediately afterward and consume any non-zero trap.

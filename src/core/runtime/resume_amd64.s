@@ -17,7 +17,7 @@
 //
 // The deep wasm frames below the save area are untouched while Go runs (Go
 // executes on the goroutine stack), so the parked stack is intact on resume.
-TEXT ·resumeNative(SB), NOSPLIT, $0-16
+TEXT ·resumeNativeRaw(SB), NOSPLIT, $0-16
 	MOVQ ctrl+0(FP), R9            // read args before altering SP (FP still valid)
 	MOVQ foreignStackTop+8(FP), R10
 

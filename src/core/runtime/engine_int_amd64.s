@@ -3,7 +3,7 @@
 #include "textflag.h"
 
 // func enterNativeInt(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
-TEXT ·enterNativeInt(SB), NOSPLIT, $0-64
+TEXT ·enterNativeIntRaw(SB), NOSPLIT, $0-64
 	MOVQ code+0(FP), R11
 	MOVQ foreignStackTop+48(FP), R10
 	SUBQ $32, R10

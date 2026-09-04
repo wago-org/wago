@@ -4249,9 +4249,7 @@ func invocationContextSetFor(ctx context.Context) (contexts invocationContextSet
 		return contexts
 	}
 	contexts.callback = ctx
-	if nativeCancellationSupported() {
-		contexts.interrupt = ctx
-	}
+	contexts.interrupt = ctx
 	return contexts
 }
 
@@ -4261,7 +4259,9 @@ func invocationContextSetFor(ctx context.Context) (contexts invocationContextSet
 // safepoint on other supported targets, and returns ctx.Err() (e.g.
 // context.DeadlineExceeded) instead of blocking on a runaway guest.
 //
-// Native cancellation is available on amd64/arm64; on Linux/amd64 it uses a
+// Native cancellation is available on amd64/arm64 with standard Go or TinyGo
+// using -scheduler=threads. Other TinyGo schedulers reject cancelable native
+// calls before entry. On Linux/amd64 with standard Go it uses a
 // thread-directed signal and CPU-context rewrite with no generated-code polls.
 // Other supported targets use function-entry and loop-header safepoints. A nil
 // or already-cancelled ctx is handled up front; a Background context (Done() ==
@@ -4618,7 +4618,7 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts i
 // nativeCancellationSupported reports whether this target has either
 // signal/context interruption or compiler-emitted cancellation polls.
 func nativeCancellationSupported() bool {
-	return goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64"
+	return (goruntime.GOARCH == "amd64" || goruntime.GOARCH == "arm64") && wruntime.NativeCancellationSchedulerAvailable()
 }
 
 // startCancellationWatch arms the native safepoints for a high-level
@@ -4626,7 +4626,10 @@ func nativeCancellationSupported() bool {
 func noOpCancellationWatch() {}
 
 func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []byte) (func(), error) {
-	if !nativeCancellationSupported() || cancel == nil || len(activeTrap) < 4 {
+	if cancel != nil && cancel.Done() != nil && !nativeCancellationSupported() {
+		return nil, fmt.Errorf("wago: native context cancellation requires a concurrent scheduler (TinyGo: -scheduler=threads)")
+	}
+	if cancel == nil || len(activeTrap) < 4 {
 		return noOpCancellationWatch, nil
 	}
 	done := make(chan struct{})
