@@ -7013,6 +7013,10 @@ func emitAMD64WasmMinMax(a *amd64.Asm, lhs, rhs amd64.Reg, f64, max bool) {
 }
 
 func emitAMD64FloatBits(a *amd64.Asm, xmm amd64.Reg, bits uint64, f64 bool) {
+	if bits == 0 {
+		a.VPxor(xmm, xmm, xmm)
+		return
+	}
 	if f64 {
 		a.MovImm64(amd64.R10, bits)
 	} else {

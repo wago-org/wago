@@ -169,6 +169,15 @@ func TestAMD64RailMachSpillForwardingRequiresLastUse(t *testing.T) {
 	}
 }
 
+func TestAMD64FloatZeroMaterializationUsesZeroIdiom(t *testing.T) {
+	var zero, nonzero amd64.Asm
+	emitAMD64FloatBits(&zero, 12, 0, true)
+	emitAMD64FloatBits(&nonzero, 12, 1, true)
+	if zero.Len() >= nonzero.Len() {
+		t.Fatalf("zero materialization = %d bytes, nonzero = %d", zero.Len(), nonzero.Len())
+	}
+}
+
 func TestAMD64StructuredSIMDConstantsUseDeduplicatedRIPPool(t *testing.T) {
 	constant := [16]byte{1, 3, 5, 7, 9, 11, 13, 15, 2, 4, 6, 8, 10, 12, 14, 16}
 	body := []byte{0xfd, 0x0c}
