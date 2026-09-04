@@ -382,22 +382,23 @@ func (f *fn) opt(option optimization.Option) bool {
 // each compile. Embedding it keeps hot call sites terse while making ownership
 // and lifetime a single assignment instead of a list of parallel fields.
 type transient struct {
-	lsPool        []packedLocStates
-	lsPoolBytes   int
-	endsPool      [][]uint32
-	tmpRoots      []*elem
-	tmpTypes      []machineType
-	tmpTypes2     []machineType
-	tmpGCRoots    []bool
-	tmpGCRoots2   []bool
-	tmpFlushTypes []machineType
-	tmpRegs       []Reg
-	tmpStackSlots []uint32 // operand slot prefixes; successful native frames fit uint32 exactly
-	tmpMoves      []regMove
-	tmpLabels     []uint32
-	tmpDeferred   []deferredArg
-	loopSetLocals []uint16
-	edgeScratch   []byte
+	lsPool         []packedLocStates
+	lsPoolBytes    int
+	inlineBasePool map[int]int
+	endsPool       [][]uint32
+	tmpRoots       []*elem
+	tmpTypes       []machineType
+	tmpTypes2      []machineType
+	tmpGCRoots     []bool
+	tmpGCRoots2    []bool
+	tmpFlushTypes  []machineType
+	tmpRegs        []Reg
+	tmpStackSlots  []uint32 // operand slot prefixes; successful native frames fit uint32 exactly
+	tmpMoves       []regMove
+	tmpLabels      []uint32
+	tmpDeferred    []deferredArg
+	loopSetLocals  []uint16
+	edgeScratch    []byte
 }
 
 type storeForward struct {

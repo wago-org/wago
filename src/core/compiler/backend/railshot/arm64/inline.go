@@ -38,6 +38,14 @@ const inlineMaxBodyBytes = 160
 // to estimate the saved bytes in the report, so an approximate constant is fine.
 const inlineCallSeqBytes = 24
 
+// Keep the common distinct-target set on the stack. The fixed bound caps
+// linear comparisons; callers above it retain exact behavior through a map.
+const inlineLinearSeenTargets = 8
+
+// Reuse ordinary caller base maps across functions without allowing one caller
+// with a very large inline plan to establish module-lifetime map high-water.
+const maxRetainedInlineBases = 64
+
 // inlineDeadBodyEnabled is the rollout/measurement oracle for module-layout
 // omission of fully spliced, non-addressable compact callees.
 var inlineDeadBodyEnabled = os.Getenv("WAGO_INLINE_DEAD_BODY") != "0"
@@ -709,7 +717,15 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 		return
 	}
 	f.inlineTargets = targets
-	f.inlineBase = make(map[int]int, len(callees))
+	if len(callees) <= maxRetainedInlineBases {
+		clear(f.inlineBasePool)
+		if f.inlineBasePool == nil {
+			f.inlineBasePool = make(map[int]int, len(callees))
+		}
+		f.inlineBase = f.inlineBasePool
+	} else {
+		f.inlineBase = make(map[int]int, len(callees))
+	}
 	for _, t := range callees {
 		base := len(f.localType)
 		for _, lt := range targets.localTypes(t) {
@@ -734,7 +750,9 @@ func collectInlinedCallees(caller *wasm.Func, targets inlineTargetTable) []*inli
 		return nil
 	}
 	var out []*inlineTarget
-	var seen map[int]bool
+	var smallSeen [inlineLinearSeenTargets]int
+	seenN := 0
+	var largeSeen map[int]struct{}
 	r := wasm.NewReader(caller.BodyBytes)
 	var imm wasm.InstructionImmediate
 	for r.HasNext() {
@@ -749,13 +767,35 @@ func collectInlinedCallees(caller *wasm.Func, targets inlineTargetTable) []*inli
 			continue
 		}
 		t := targets.target(int(imm.Index))
-		if t == nil || seen[t.globalIdx] {
+		if t == nil {
 			continue
 		}
-		if seen == nil {
-			seen = map[int]bool{}
+		duplicate := false
+		if largeSeen != nil {
+			_, duplicate = largeSeen[t.globalIdx]
+		} else {
+			for _, globalIdx := range smallSeen[:seenN] {
+				if globalIdx == t.globalIdx {
+					duplicate = true
+					break
+				}
+			}
 		}
-		seen[t.globalIdx] = true
+		if duplicate {
+			continue
+		}
+		if largeSeen != nil {
+			largeSeen[t.globalIdx] = struct{}{}
+		} else if seenN < len(smallSeen) {
+			smallSeen[seenN] = t.globalIdx
+			seenN++
+		} else {
+			largeSeen = make(map[int]struct{}, 2*len(smallSeen))
+			for _, globalIdx := range smallSeen {
+				largeSeen[globalIdx] = struct{}{}
+			}
+			largeSeen[t.globalIdx] = struct{}{}
+		}
 		out = append(out, t)
 	}
 	return out

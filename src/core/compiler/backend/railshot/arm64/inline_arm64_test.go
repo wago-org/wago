@@ -15,6 +15,52 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func TestCollectInlinedCalleesDeduplicatesPastStackSetArm64(t *testing.T) {
+	const targetsN = inlineLinearSeenTargets + 1
+	data := &inlineTargetData{slots: make([]uint32, targetsN), targets: make([]inlineTarget, targetsN)}
+	body := make([]byte, 0, 2*(targetsN+1)+1)
+	for i := range targetsN {
+		data.slots[i] = uint32(i + 1)
+		data.targets[i].globalIdx = i
+		body = append(body, 0x10, byte(i))
+	}
+	body = append(body, 0x10, 0, 0x0b)
+	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
+	got := collectInlinedCallees(&wasm.Func{BodyBytes: body}, targets)
+	if len(got) != targetsN {
+		t.Fatalf("distinct inline targets = %d, want %d", len(got), targetsN)
+	}
+	for i, target := range got {
+		if target.globalIdx != i {
+			t.Fatalf("inline target %d = %d, want %d", i, target.globalIdx, i)
+		}
+	}
+}
+
+func TestInlineBasePoolRetentionIsBoundedArm64(t *testing.T) {
+	targetsData := &inlineTargetData{targets: make([]inlineTarget, maxRetainedInlineBases+1)}
+	callees := make([]*inlineTarget, len(targetsData.targets))
+	for i := range targetsData.targets {
+		targetsData.targets[i].globalIdx = i
+		callees[i] = &targetsData.targets[i]
+	}
+	targets := inlineTargetTable{data: targetsData}
+	var f fn
+	f.reserveInlineLocals(callees[:1], targets)
+	if allocs := testing.AllocsPerRun(100, func() {
+		f.reserveInlineLocals(callees[:1], targets)
+	}); allocs != 0 {
+		t.Fatalf("reused inline base allocations = %.0f, want 0", allocs)
+	}
+	f.reserveInlineLocals(callees, targets)
+	if got := len(f.inlineBase); got != len(callees) {
+		t.Fatalf("ephemeral inline bases = %d, want %d", got, len(callees))
+	}
+	if got := len(f.inlineBasePool); got != 1 {
+		t.Fatalf("retained inline bases after oversized plan = %d, want 1", got)
+	}
+}
+
 func TestInlineTargetSizeArm64(t *testing.T) {
 	if got, want := unsafe.Sizeof(inlineTarget{}), uintptr(64); got != want {
 		t.Fatalf("inlineTarget size = %d, want %d", got, want)
