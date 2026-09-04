@@ -615,11 +615,10 @@ producer-independent correctness proof.
 1. **Repeated module scans:** resolve synchronous-host-call mode once.
 2. **Per-function `moduleGlobal []bool`:** use the bounded pin list/mask.
 3. **Default-off experiments with no active qualification:** loop prechecks,
-   AMD64 `v128-sink`, `affine-lea`, and `tee-spill-elide` were retired after
-   their focused fixtures and broad screens failed the normal gates. Exact
-   GC-ref facts remain compiled into production but disabled by default; either
-   promote that path against the standard gates or delete it. Do not let an
-   indefinite experiment become a permanent alternate path.
+   AMD64 `v128-sink`, `affine-lea`, `tee-spill-elide`, and exact GC-reference
+   facts were retired after their focused fixtures and broad screens failed the
+   normal gates. Do not let an indefinite experiment become a permanent
+   alternate path.
 4. **Host-width operand indexes and separate root booleans:** both backends now
    store exact 32-bit indexes and pack GC/EH root state beside value facts,
    reducing each common operand node from 72 to 64 bytes without changing
@@ -653,3 +652,32 @@ be claimed as compile-heap wins without measurements.
 All benchmark thresholds must be based on shape-generated stress modules plus the
 full heterogeneous corpus. A corpus may validate a general policy, but it must
 never select the policy.
+
+## September 4 production-policy re-audit
+
+After the GC-fact removal, production Railshot source references 121 distinct
+`WAGO_*` controls, down from the earlier 138-count audit. No production condition
+compares a module name, function name, producer name, benchmark name, body hash, or
+memorized body byte sequence. Named workloads appear in rationale comments and
+tests, not selector inputs.
+
+Only two catalog entries remain explicitly experimental:
+
+- AMD64 `bmi2-rorx` is not a dormant workload path. The public runtime enables it
+  only after host CPUID proves BMI2, and selection depends on the target feature
+  plus a constant rotate shape. Its prior broad result was neutral but its focused
+  SHA-256 result exceeded noise; removing the public CPU/cache contract requires a
+  fresh native qualification rather than a mechanical deletion.
+- ARM64 `loop-region-pins` remains opt-in. It is driven by structured loop effects
+  and register availability rather than identity, and its prior screen showed a
+  substantial execution win alongside mixed regressions and a small compile cost.
+  It should be requalified for promotion or deletion, but is not an evidence-free
+  easy cut.
+
+The remaining low-risk cleanup seam is therefore mature rollback plumbing, not a
+third default-off compiler. Move measurement-only overrides from package-global
+environment variables to per-compilation test policy as each optimization completes
+its current qualification; preserve public behavior and native-code parity while
+deleting the old branch. This should be handled in small families because the 121
+controls include diagnostics, safety or feature switches, and resource budgets that
+must not be removed as if they were equivalent peephole toggles.
