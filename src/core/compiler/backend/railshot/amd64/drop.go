@@ -19,11 +19,11 @@ func (f *fn) dropValue() {
 }
 
 func (f *fn) treeDiscardable(e *elem) bool {
-	if e == nil || e.kind == ekSkip || e.kind == ekBlock {
+	if e == nil {
 		return false
 	}
-	if e.kind == ekDeferred {
-		return deferredOpDiscardable(e.op) && f.treeDiscardable(e.arg0) &&
+	if e.isDeferred() {
+		return deferredOpDiscardable(e.deferredOp()) && f.treeDiscardable(e.arg0) &&
 			(e.arg1 == nil || f.treeDiscardable(e.arg1))
 	}
 	if e.st.hasEHRoot() {
@@ -42,7 +42,7 @@ func deferredOpDiscardable(op wOp) bool {
 }
 
 func (f *fn) discardTree(e *elem) {
-	if e.kind == ekDeferred {
+	if e.isDeferred() {
 		if e.arg1 != nil {
 			f.discardTree(e.arg1)
 		}

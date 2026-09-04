@@ -118,9 +118,9 @@ func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
 		}
 		next := e.next
 		switch {
-		case e.kind == ekValue && e.st.kind == stGlobReg && e.st.idx == x:
+		case e.isValue() && e.st.kind == stGlobReg && e.st.idx == x:
 			f.materialize(e)
-		case e.kind == ekDeferred && subtreeRefsGlobal(e, x):
+		case e.isDeferred() && subtreeRefsGlobal(e, x):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -133,10 +133,10 @@ func subtreeRefsGlobal(e *elem, x uint32) bool {
 	if e == nil {
 		return false
 	}
-	if e.kind == ekValue {
+	if e.isValue() {
 		return e.st.kind == stGlobReg && e.st.idx == x
 	}
-	if e.kind == ekDeferred {
+	if e.isDeferred() {
 		return subtreeRefsGlobal(e.arg0, x) || subtreeRefsGlobal(e.arg1, x)
 	}
 	return false
@@ -181,7 +181,7 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		// condenseInto consume the top expression straight into x's register instead
 		// of pre-copying its (global.get $x) operand (mirrors setLocal's skipFrom).
 		var skipFrom *elem
-		if e != nil && e.isDeferred() && isBinALU(e.op) {
+		if e != nil && e.isDeferred() && isBinALU(e.deferredOp()) {
 			skipFrom = baseOfValentBlock(e)
 		}
 		f.realizeGlobalRefs(x, skipFrom)

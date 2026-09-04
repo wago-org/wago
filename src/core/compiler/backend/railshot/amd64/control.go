@@ -417,8 +417,8 @@ type ehCatchClause struct {
 
 func rootMachineType(root *elem) machineType {
 	typ := root.st.typ
-	if root.kind == ekDeferred && root.typ != mtNone {
-		typ = root.typ
+	if root.isDeferred() && root.valueType() != mtNone {
+		typ = root.valueType()
 	}
 	return typ
 }
@@ -483,7 +483,7 @@ func (f *fn) currentLogicalTypes() []machineType { return f.logicalTypes(f.roots
 func gcRootFlags(roots []*elem) []bool {
 	var flags []bool
 	for i, root := range roots {
-		if root.kind != ekValue || !root.st.hasGCRoot() {
+		if !root.isValue() || !root.st.hasGCRoot() {
 			continue
 		}
 		if flags == nil {
@@ -501,7 +501,7 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 	}
 	var flags []bool
 	for i, root := range roots[:fr.height+fr.paramN] {
-		if root.kind != ekValue || !root.st.hasGCRoot() {
+		if !root.isValue() || !root.st.hasGCRoot() {
 			continue
 		}
 		if flags == nil {
@@ -529,7 +529,7 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 	}
 	resultRoots := roots[len(roots)-n:]
 	for i, root := range resultRoots {
-		if root.kind != ekValue || !root.st.hasGCRoot() {
+		if !root.isValue() || !root.st.hasGCRoot() {
 			continue
 		}
 		f.setFrameResultGCRoot(fr, i)
@@ -597,7 +597,7 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 	roots := f.rootsBottomToTop()
 	gcRoots := f.tmpGCRoots[:0]
 	for _, root := range roots {
-		gcRoots = append(gcRoots, root.kind == ekValue && root.st.hasGCRoot())
+		gcRoots = append(gcRoots, root.isValue() && root.st.hasGCRoot())
 	}
 	f.tmpGCRoots = gcRoots
 	if f.flushWideStack(roots, gcRoots, stageRegisterPressure) {
@@ -611,7 +611,7 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 			panic("custom value cannot cross a control-flow or ordinary call boundary")
 		}
 		types = append(types, typ)
-		if root.kind == ekValue && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
+		if root.isValue() && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue // already canonical
 		}
@@ -622,7 +622,7 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 			slot += 2
 			continue
 		}
-		if root.kind == ekValue && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
+		if root.isValue() && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
 			if root.st.typ.isFloat() {
 				f.a.FStoreDisp(RSP, f.spillOff(slot), root.st.reg, true)
 			} else {
@@ -631,7 +631,7 @@ func (f *fn) flushWithPressure(stageRegisterPressure bool) {
 			slot++
 			continue
 		}
-		if root.kind == ekValue && root.st.typ.isFloat() {
+		if root.isValue() && root.st.typ.isFloat() {
 			x := f.materializeF(root)
 			f.a.FStoreDisp(RSP, f.spillOff(slot), x, true) // 8B store
 			f.releaseF(x)
@@ -662,7 +662,7 @@ func (f *fn) flushWideStack(roots []*elem, gcRoots []bool, stageRegisterPressure
 	for _, root := range roots {
 		typ := rootMachineType(root)
 		types = append(types, typ)
-		if root.kind == ekValue && root.st.kind == stSlot && root.st.slotIndex() < total {
+		if root.isValue() && root.st.kind == stSlot && root.st.slotIndex() < total {
 			needsStage = true
 		}
 		if typ.isFloat() || typ.isV128() {
@@ -751,7 +751,7 @@ func (f *fn) setDepth(l int) {
 	gcRoots := f.tmpGCRoots[:0]
 	for _, root := range roots[:l] {
 		types = append(types, root.st.typ)
-		gcRoots = append(gcRoots, root.kind == ekValue && root.st.hasGCRoot())
+		gcRoots = append(gcRoots, root.isValue() && root.st.hasGCRoot())
 	}
 	f.tmpTypes = types
 	f.tmpGCRoots = gcRoots

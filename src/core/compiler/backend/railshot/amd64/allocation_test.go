@@ -215,8 +215,8 @@ func TestStackArenaOverflowKeepsExistingPointersStable(t *testing.T) {
 	for i := 0; i < defaultStackArenaCap+8; i++ {
 		s.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i + 2)})
 	}
-	if first.kind != ekValue || first.st.cval != 1 {
-		t.Fatalf("first arena elem changed after overflow: kind=%v cval=%d", first.kind, first.st.cval)
+	if !first.isValue() || first.st.cval != 1 {
+		t.Fatalf("first arena elem changed after overflow: kind=%v cval=%d", first.elemKind(), first.st.cval)
 	}
 	if s.head.next != first {
 		t.Fatal("first elem is no longer linked after arena overflow")

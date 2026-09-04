@@ -223,7 +223,7 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 	nullable := sub == 21
 	if heap >= 0 {
 		top := f.s.back()
-		if top != nil && top.kind == ekValue && top.st.kind == stConst && top.st.cval == 0 {
+		if top != nil && top.isValue() && top.st.kind == stConst && top.st.cval == 0 {
 			f.popValue()
 			matched := int64(0)
 			if nullable {
@@ -232,7 +232,7 @@ func (f *fn) emitGCI31Test(sub uint32, r *wasm.Reader) error {
 			f.pushValue(storage{kind: stConst, typ: mtI32, cval: matched})
 			return nil
 		}
-		if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.kind == ekValue && top.st.kind == stFuncRef && top.st.idx >= uint32(f.m.ImportedFuncCount()) && top.st.idx < uint32(len(f.m.FuncTypes)) {
+		if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.isValue() && top.st.kind == stFuncRef && top.st.idx >= uint32(f.m.ImportedFuncCount()) && top.st.idx < uint32(len(f.m.FuncTypes)) {
 			f.popValue()
 			actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[top.st.index()]), false)
 			required := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
@@ -518,7 +518,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	}
 	f.flush()
 	value := f.s.back()
-	if value == f.s.head || value.kind != ekValue || value.st.kind != stSlot {
+	if value == f.s.head || !value.isValue() || value.st.kind != stSlot {
 		return fmt.Errorf("amd64: dynamic function ref.test lost canonical operand")
 	}
 	f.a.Load64(RAX, RSP, f.spillOff(value.st.slotIndex()))
@@ -591,7 +591,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	f.reloadConditionalGCPinnedLocals(savedLocals[:len(f.pinnedLocals)])
 	f.flush()
 	result := f.s.back()
-	if result == f.s.head || result.kind != ekValue || result.st.kind != stSlot {
+	if result == f.s.head || !result.isValue() || result.st.kind != stSlot {
 		return fmt.Errorf("amd64: dynamic function ref.test lost canonical result")
 	}
 	done := f.a.JmpPlaceholder()
@@ -766,7 +766,7 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 	hidden := len(roots) - paramCount
 	slot := 0
 	for i, root := range roots {
-		if i < hidden && root.kind == ekValue && root.st.hasGCRoot() {
+		if i < hidden && root.isValue() && root.st.hasGCRoot() {
 			off := f.spillOff(slot)
 			if off < 0 {
 				builder.Abort()

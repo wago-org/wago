@@ -3,7 +3,7 @@
 package amd64
 
 func markGCReference(e *elem) {
-	if e != nil && e.kind == ekValue {
+	if e != nil && e.isValue() {
 		e.st.setGCRoot(true)
 	}
 }

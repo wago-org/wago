@@ -13,7 +13,7 @@ func TestValueFactsAndRootsFitCompactStorageAMD64(t *testing.T) {
 	if got, want := unsafe.Sizeof(storage{}), uintptr(24); got != want {
 		t.Fatalf("storage size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(elem{}), uintptr(64); got != want {
+	if got, want := unsafe.Sizeof(elem{}), uintptr(56); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(stack{}), uintptr(72); got != want {
@@ -30,6 +30,43 @@ func TestValueFactsAndRootsFitCompactStorageAMD64(t *testing.T) {
 	}
 	if got, want := unsafe.Sizeof(jumpTableFragment{}), uintptr(12); got != want {
 		t.Fatalf("jump-table fragment size = %d, want %d", got, want)
+	}
+}
+
+func TestDeferredMetadataSharesCompactStorageAMD64(t *testing.T) {
+	if stMemRef >= deferredStorageKind {
+		t.Fatalf("value storage kinds overlap deferred tag: %d >= %d", stMemRef, deferredStorageKind)
+	}
+	var e elem
+	e.setElemKind(ekDeferred)
+	e.setDeferredOp(opRotr)
+	e.setValueType(mtI64)
+	e.setDeferredDepth(maxDeferDepth)
+	e.setRegisterNeed(maxDeferDepth + 1)
+	e.st.setValueFacts(factUpper32Zero | factBoolean)
+	e.st.setGCRoot(true)
+	e.st.setEHRoot(true)
+	if got := e.elemKind(); got != ekDeferred {
+		t.Fatalf("kind = %v, want deferred", got)
+	}
+	if got := e.deferredOp(); got != opRotr {
+		t.Fatalf("opcode = %v, want rotr", got)
+	}
+	if got := e.valueType(); got != mtI64 {
+		t.Fatalf("type = %v, want i64", got)
+	}
+	if got := e.deferredDepth(); got != maxDeferDepth {
+		t.Fatalf("depth = %d, want %d", got, maxDeferDepth)
+	}
+	if got := e.registerNeed(); got != maxDeferDepth+1 {
+		t.Fatalf("register need = %d, want %d", got, maxDeferDepth+1)
+	}
+	if got := e.st.valueFacts(); got != factUpper32Zero|factBoolean || !e.st.hasGCRoot() || !e.st.hasEHRoot() {
+		t.Fatalf("value metadata = %#x, want facts and both roots", e.st.meta)
+	}
+	e.setElemKind(ekValue)
+	if got := e.st.valueFacts(); got != factUpper32Zero|factBoolean || !e.st.hasGCRoot() || !e.st.hasEHRoot() {
+		t.Fatalf("kind transition changed value metadata: %#x", e.st.meta)
 	}
 }
 

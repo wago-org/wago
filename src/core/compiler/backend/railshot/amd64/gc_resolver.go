@@ -59,7 +59,7 @@ func (f *fn) gcResolvedRegister() Reg {
 }
 
 func gcLocalProvenance(e *elem) (int, bool) {
-	if e == nil || e.kind != ekValue {
+	if e == nil || !e.isValue() {
 		return 0, false
 	}
 	switch e.st.kind {
@@ -74,7 +74,7 @@ func gcLocalProvenance(e *elem) (int, bool) {
 }
 
 func markGCLocalProvenance(e *elem, local int) {
-	if e != nil && e.kind == ekValue && e.st.kind == stReg && local >= 0 {
+	if e != nil && e.isValue() && e.st.kind == stReg && local >= 0 {
 		e.st.slot = uint32(local + 1)
 	}
 }

@@ -835,7 +835,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	for i, typ := range ft.Params {
 		mt := mtOf(typ)
 		root := roots[i]
-		resident := root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef))
+		resident := root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef))
 		if mt.isFloat() {
 			target := fpArgRegs[fp]
 			if resident {
@@ -986,7 +986,7 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 	}
 	flags := f.tmpGCRoots2[:0]
 	for _, root := range roots[:n] {
-		flags = append(flags, root.kind == ekValue && root.st.hasGCRoot())
+		flags = append(flags, root.isValue() && root.st.hasGCRoot())
 	}
 	f.tmpGCRoots2 = flags
 	return flags
@@ -1046,8 +1046,8 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
+		if root.isDeferred() && root.valueType() != mtNone {
+			typ = root.valueType()
 		}
 		types = append(types, typ)
 		slotOf = append(slotOf, uint32(slotTop))
@@ -1389,8 +1389,8 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
+		if root.isDeferred() && root.valueType() != mtNone {
+			typ = root.valueType()
 		}
 		types = append(types, typ)
 		slotOf = append(slotOf, uint32(slotTop))
@@ -1707,7 +1707,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	hidden := len(roots) - paramCount
 	slot := 0
 	for i, root := range roots {
-		if i < hidden && root.kind == ekValue && root.st.hasGCRoot() {
+		if i < hidden && root.isValue() && root.st.hasGCRoot() {
 			off := f.spillOff(slot)
 			if off < 0 {
 				plan.Exact = false
@@ -1766,7 +1766,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	deferred := f.tmpDeferred[:0]
 	for i := 0; i < p; i++ {
 		root := argRoots[i]
-		if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
+		if root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
 			reg := f.materialize(root) // stMemRef → emits the deferred load into its addr reg
 			f.pinned = f.pinned.add(reg)
 			moves = append(moves, regMove{dst: intArgRegs[i], src: reg})
@@ -1932,7 +1932,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	for i, t := range ft.Params {
 		mt := mtOf(t)
 		root := argRoots[i]
-		regResident := root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef))
+		regResident := root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef))
 		if mt.isFloat() {
 			target := fpArgRegs[fp]
 			if regResident {
@@ -2137,8 +2137,8 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		types := make([]machineType, len(roots))
 		for i, root := range roots {
 			types[i] = root.st.typ
-			if root.kind == ekDeferred && root.typ != mtNone {
-				types[i] = root.typ
+			if root.isDeferred() && root.valueType() != mtNone {
+				types[i] = root.valueType()
 			}
 		}
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
@@ -2741,8 +2741,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		types := make([]machineType, len(roots))
 		for i, root := range roots {
 			types[i] = root.st.typ
-			if root.kind == ekDeferred && root.typ != mtNone {
-				types[i] = root.typ
+			if root.isDeferred() && root.valueType() != mtNone {
+				types[i] = root.valueType()
 			}
 		}
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
@@ -2812,8 +2812,8 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
+		if root.isDeferred() && root.valueType() != mtNone {
+			typ = root.valueType()
 		}
 		types = append(types, typ)
 		slotOf = append(slotOf, uint32(slotTop))
@@ -2938,8 +2938,8 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
+		if root.isDeferred() && root.valueType() != mtNone {
+			typ = root.valueType()
 		}
 		types = append(types, typ)
 		slotOf = append(slotOf, uint32(slotTop))

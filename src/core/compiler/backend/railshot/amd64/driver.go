@@ -759,7 +759,7 @@ func (f *fn) emitSelect() {
 	// branches are integers, emit the compare's CMP and a CMOV on its flags directly
 	// — skipping the SETcc + MOVZX + TEST that materializing the boolean costs. The
 	// compare is condensed last (right before the CMOV), so its flags are live.
-	if top := f.s.back(); isFusableCompare(top) && !top.typ.isFloat() && f.trySelectOnFlags(top) {
+	if top := f.s.back(); isFusableCompare(top) && !top.valueType().isFloat() && f.trySelectOnFlags(top) {
 		return
 	}
 	cond := f.popValue()
@@ -767,12 +767,12 @@ func (f *fn) emitSelect() {
 	f.pinned = f.pinned.add(condReg)
 	b := f.popValue()
 	a := f.popValue()
-	gcRoot := (a.kind == ekValue && a.st.hasGCRoot()) || (b.kind == ekValue && b.st.hasGCRoot())
+	gcRoot := (a.isValue() && a.st.hasGCRoot()) || (b.isValue() && b.st.hasGCRoot())
 
 	// XMM operands have no cmov, so branch. Scalar floats use scalar moves;
 	// v128 uses a full-vector copy. Integer operands use cmov.
-	aV128 := a.kind == ekValue && a.st.typ.isV128()
-	bV128 := b.kind == ekValue && b.st.typ.isV128()
+	aV128 := a.isValue() && a.st.typ.isV128()
+	bV128 := b.isValue() && b.st.typ.isV128()
 	if aV128 || bV128 {
 		aX := f.materializeV128(a)
 		f.fpinned = f.fpinned.add(aX)
@@ -789,8 +789,8 @@ func (f *fn) emitSelect() {
 		return
 	}
 
-	aFloat := a.kind == ekValue && a.st.typ.isFloat()
-	bFloat := b.kind == ekValue && b.st.typ.isFloat()
+	aFloat := a.isValue() && a.st.typ.isFloat()
+	bFloat := b.isValue() && b.st.typ.isFloat()
 	if aFloat || bFloat {
 		typ := a.st.typ
 		if !typ.isFloat() {
@@ -812,7 +812,7 @@ func (f *fn) emitSelect() {
 		return
 	}
 
-	w := (a.kind == ekValue && a.st.typ.is64()) || (b.kind == ekValue && b.st.typ.is64())
+	w := (a.isValue() && a.st.typ.is64()) || (b.isValue() && b.st.typ.is64())
 	bReg := f.materialize(b)
 	f.pinned = f.pinned.add(bReg)
 	aReg := f.materialize(a)
@@ -857,7 +857,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	// Materialize both branches into owned registers BEFORE the compare: their loads
 	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
 	// are pinned so condensing the compare's operands cannot spill them.
-	gcRoot := (aRoot.kind == ekValue && aRoot.st.hasGCRoot()) || (bRoot.kind == ekValue && bRoot.st.hasGCRoot())
+	gcRoot := (aRoot.isValue() && aRoot.st.hasGCRoot()) || (bRoot.isValue() && bRoot.st.hasGCRoot())
 	aReg := f.materialize(aRoot)
 	f.pinned = f.pinned.add(aReg)
 	bReg := f.materialize(bRoot)
@@ -895,13 +895,13 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 		}
 		next := e.next
 		switch {
-		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
+		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
 			f.materializeByType(e)
-		case e.kind == ekValue && e.st.kind == stMemRef && e.st.memBorrow() == x:
+		case e.isValue() && e.st.kind == stMemRef && e.st.memBorrow() == x:
 			// A deferred load addressing through x's pinned register: emit it
 			// before x is overwritten.
 			f.materializeByType(e)
-		case e.kind == ekDeferred && subtreeRefsLocal(e, x):
+		case e.isDeferred() && subtreeRefsLocal(e, x):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -913,10 +913,10 @@ func subtreeRefsLocal(e *elem, x int) bool {
 	if e == nil {
 		return false
 	}
-	if e.kind == ekValue {
+	if e.isValue() {
 		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x)
 	}
-	if e.kind == ekDeferred {
+	if e.isDeferred() {
 		return subtreeRefsLocal(e.arg0, x) || subtreeRefsLocal(e.arg1, x)
 	}
 	return false
@@ -982,7 +982,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	f.clearV128LocalAliases(x)
 	e := f.s.back()
 	f.invalidateGCLoadFactsForLocal(x)
-	if e != nil && e.kind == ekValue && e.st.typ == mtCustom {
+	if e != nil && e.isValue() && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
 	}
 	// In-place self-update `local.set $x (op (local.get $x) …)`: let condenseInto
@@ -992,8 +992,8 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	// Shifts join the binary case; unary/convert and the tee form are gated (arm64).
 	var skipFrom *elem
 	if e != nil && e.isDeferred() {
-		binarySink := (isBinALU(e.op) || isShift(e.op)) && (!tee || f.opt(optTeeSink))
-		unarySink := (isUnary(e.op) || isConvert(e.op)) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
+		binarySink := (isBinALU(e.deferredOp()) || isShift(e.deferredOp())) && (!tee || f.opt(optTeeSink))
+		unarySink := (isUnary(e.deferredOp()) || isConvert(e.deferredOp())) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
 		if binarySink || unarySink {
 			skipFrom = baseOfValentBlock(e)
 		}
@@ -1024,7 +1024,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		// Register-pinned v128 local: 128-bit move into its XMM register (the
 		// scalar FMov below would drop the upper 64 bits).
 		f.evictRelinquishedFReg(pr)
-		if e.kind == ekValue && e.st.kind == stLocalReg {
+		if e.isValue() && e.st.kind == stLocalReg {
 			if e.st.reg != pr {
 				f.a.VMovdqu(pr, e.st.reg) // borrowed v128 local → direct move
 			}
@@ -1047,7 +1047,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		// Register-pinned float local: move the value into its XMM register.
 		f.evictRelinquishedFReg(pr)
 		f64 := f.localType[x] == mtF64
-		if e.kind == ekValue && e.st.kind == stLocalReg {
+		if e.isValue() && e.st.kind == stLocalReg {
 			if e.st.reg != pr {
 				f.a.FMov(pr, e.st.reg, f64) // borrowed float local → direct move
 			}

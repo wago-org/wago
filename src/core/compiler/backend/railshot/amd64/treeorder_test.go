@@ -10,10 +10,10 @@ import (
 
 func TestTreeRegisterNeed(t *testing.T) {
 	leaf := func(kind storageKind) *elem {
-		return &elem{kind: ekValue, st: storage{kind: kind, typ: mtI32}}
+		return testValueElem(storage{kind: kind, typ: mtI32})
 	}
 	node := func(left, right *elem) *elem {
-		e := &elem{kind: ekDeferred, op: opAdd, typ: mtI32, arg0: left, arg1: right}
+		e := testDeferredElem(opAdd, mtI32, left, right)
 		labelDeferredNode(e)
 		return e
 	}
@@ -22,8 +22,8 @@ func TestTreeRegisterNeed(t *testing.T) {
 	if got := treeRegisterNeed(balanced); got != 3 {
 		t.Fatalf("balanced register need = %d, want 3", got)
 	}
-	if balanced.regNeed != 3 {
-		t.Fatalf("balanced stored register need = %d, want 3", balanced.regNeed)
+	if balanced.registerNeed() != 3 {
+		t.Fatalf("balanced stored register need = %d, want 3", balanced.registerNeed())
 	}
 	unbalanced := node(balanced, leaf(stConst))
 	if got := treeRegisterNeed(unbalanced); got != 3 {
@@ -35,7 +35,7 @@ func TestTreeRegisterNeed(t *testing.T) {
 	if treeReorderSafe(node(balanced, leaf(stMemRef))) {
 		t.Fatal("tree containing a deferred load must preserve trap order")
 	}
-	trapping := &elem{kind: ekDeferred, op: opDivS, typ: mtI32, arg0: leaf(stReg), arg1: leaf(stReg)}
+	trapping := testDeferredElem(opDivS, mtI32, leaf(stReg), leaf(stReg))
 	if treeReorderSafe(trapping) {
 		t.Fatal("tree containing division must preserve trap order")
 	}

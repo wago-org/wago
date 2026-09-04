@@ -723,7 +723,7 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
 	f.flush()
 	value := f.s.back()
 	object := value.prev
-	if value == f.s.head || object == f.s.head || value.kind != ekValue || object.kind != ekValue || value.st.kind != stSlot || object.st.kind != stSlot {
+	if value == f.s.head || object == f.s.head || !value.isValue() || !object.isValue() || value.st.kind != stSlot || object.st.kind != stSlot {
 		return fmt.Errorf("amd64: native nursery struct reference store lost canonical operands")
 	}
 	f.a.Load64(RAX, RSP, f.spillOff(object.st.slotIndex()))
@@ -762,7 +762,7 @@ func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValT
 	value := f.s.back()
 	index := value.prev
 	object := index.prev
-	if value == f.s.head || index == f.s.head || object == f.s.head || value.kind != ekValue || index.kind != ekValue || object.kind != ekValue || value.st.kind != stSlot || index.st.kind != stSlot || object.st.kind != stSlot {
+	if value == f.s.head || index == f.s.head || object == f.s.head || !value.isValue() || !index.isValue() || !object.isValue() || value.st.kind != stSlot || index.st.kind != stSlot || object.st.kind != stSlot {
 		return fmt.Errorf("amd64: native nursery array reference store lost canonical operands")
 	}
 	f.a.Load64(RAX, RSP, f.spillOff(object.st.slotIndex()))

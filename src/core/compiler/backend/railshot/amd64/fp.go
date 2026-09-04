@@ -27,10 +27,10 @@ func floatBits(v float64, f64 bool) uint64 {
 
 func (f *fn) occupyF(e *elem, r Reg) {
 	f.fregUser[r] = e
-	if e.kind == ekDeferred && e.typ != mtNone {
-		e.st.typ = e.typ
+	if e.isDeferred() && e.valueType() != mtNone {
+		e.st.typ = e.valueType()
 	}
-	e.kind = ekValue
+	e.setElemKind(ekValue)
 	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
 }
 
@@ -64,7 +64,7 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 		}
 	}
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
+		if e.isValue() && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spillF(e)
 			return r
@@ -193,10 +193,10 @@ func (f *fn) materializeF(e *elem) Reg {
 // This avoids the movsd-to-scratch that materializeF emits for a pinned local when
 // the value is only being read — the dominant per-op float overhead.
 func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
-	if e.kind == ekValue && e.st.kind == stLocalReg {
+	if e.isValue() && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
-	if e.kind == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls {
+	if e.isValue() && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls {
 		if r, ok := f.floatConstReg(e.st); ok {
 			return r, false
 		}
@@ -343,7 +343,7 @@ func (f *fn) fconst(bits uint64, typ machineType) {
 // foldFloatMem reports whether e is a deferred float load of the given width that
 // can be folded directly as an SSE r/m operand (addsd/mulsd/subsd/divsd xmm, [mem]).
 func foldFloatMem(e *elem, f64 bool) bool {
-	return e.kind == ekValue && e.st.kind == stMemRef && e.st.typ.isFloat() && e.st.memSize() == fsize(f64)
+	return e.isValue() && e.st.kind == stMemRef && e.st.typ.isFloat() && e.st.memSize() == fsize(f64)
 }
 
 // fMemCommutable reports whether an SSE arithmetic memOp is commutative, so its

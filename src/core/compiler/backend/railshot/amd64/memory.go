@@ -733,7 +733,7 @@ func (f *fn) cleanMemory32Address(e *elem) bool {
 	if !f.opt(optAddrZExtElim) || e == nil {
 		return false
 	}
-	if e.kind != ekValue || e.st.typ != mtI32 {
+	if !e.isValue() || e.st.typ != mtI32 {
 		return false
 	}
 	switch e.st.kind {
@@ -790,7 +790,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	// Do not move a later extent proof earlier for shared memory: another agent
 	// may grow it between the two loads, so an early check could spuriously trap.
 	if f.boundsFacts && !f.guardMode && !f.threadedMemory0 && int64(off32)+int64(size) <= 0x7fffffff {
-		if top := f.s.back(); top != nil && top.kind == ekValue {
+		if top := f.s.back(); top != nil && top.isValue() {
 			kind, idx := boundsSource(top.st)
 			currentExtent := int32(off32) + int32(size)
 			if kind != 0 && !f.boundsCertCovers(kind, idx, currentExtent) {
@@ -859,7 +859,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// 64-bit imm-store sign-extends imm32, which is wrong for an arbitrary
 	// 64-bit pattern; narrower stores truncate to the low `size` bytes exactly
 	// like a materialized constant would (i64.store8/16/32 route here too).
-	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 		f.stats.peep("store-imm")
 		v := top.st.cval
 		f.erase(top)
@@ -879,7 +879,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// low byte. Keep SETcc's upper-register garbage dead and omit MOVZX; the byte
 	// store cannot observe it. Pending loads were materialized above, preserving
 	// pre-store reads and trap order before this dedicated sink condenses the tree.
-	if top := f.s.back(); size == 1 && f.opt(optStore8Flags) && isFusableCompare(top) && !top.typ.isFloat() {
+	if top := f.s.back(); size == 1 && f.opt(optStore8Flags) && isFusableCompare(top) && !top.valueType().isFloat() {
 		// condenseToFlags may recursively lower div/rem or a variable shift. Those
 		// paths temporarily claim and then unpin x86's fixed-role registers; because
 		// the pin mask is not reference-counted, nesting would drop this outer
@@ -930,7 +930,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 // or ok=false if e is not a local reference. Store forwarding keys the address on
 // a local identity, not a physical register.
 func localAddressKey(e *elem) (int, bool) {
-	if e == nil || e.kind != ekValue {
+	if e == nil || !e.isValue() {
 		return 0, false
 	}
 	switch e.st.kind {
@@ -1151,7 +1151,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		return err
 	}
 	if dstMemory == 0 && srcMemory == 0 && !f.memoryAddr64(0) {
-		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.stats.peep("memcopy-unroll")
 				f.memoryCopyConst(int(n), dstMemory, srcMemory)
@@ -1305,7 +1305,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		return err
 	}
 	if memoryIndex == 0 && !f.memoryAddr64(0) {
-		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.memoryFillConst(int(n), memoryIndex)
 				return nil

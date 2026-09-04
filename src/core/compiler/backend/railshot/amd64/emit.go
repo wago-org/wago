@@ -57,17 +57,17 @@ const (
 func (f *fn) condense(node *elem, dest Reg) Reg {
 	f.stats.addCondense()
 	switch {
-	case isBinALU(node.op):
+	case isBinALU(node.deferredOp()):
 		return f.condenseBinary(node, dest)
-	case isShift(node.op):
+	case isShift(node.deferredOp()):
 		return f.condenseShift(node, dest)
-	case isCompare(node.op) || node.op == opEqz:
+	case isCompare(node.deferredOp()) || node.deferredOp() == opEqz:
 		return f.condenseCompare(node, dest)
-	case isUnary(node.op):
+	case isUnary(node.deferredOp()):
 		return f.condenseUnary(node, dest)
-	case isConvert(node.op):
+	case isConvert(node.deferredOp()):
 		return f.condenseConvert(node, dest)
-	case isDivRem(node.op):
+	case isDivRem(node.deferredOp()):
 		return f.condenseDivRem(node, dest)
 	}
 	panic("amd64: unsupported deferred op")
@@ -82,7 +82,7 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// the upper 32 bits on x86-64) is a no-op. The semantic fact survives bounded
 	// Valent materialization and spills, but local/global reads and signed loads
 	// begin unknown and therefore cannot trigger this consumer.
-	cleanZExt := node.op == opZExt32 && node.arg0.st.valueFacts().has(factUpper32Zero)
+	cleanZExt := node.deferredOp() == opZExt32 && node.arg0.st.valueFacts().has(factUpper32Zero)
 	src, srcOwned := f.materializeRead(node.arg0)
 	result := dest
 	if result == regNone {
@@ -92,7 +92,7 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 			result = f.allocReg(maskOf(src))
 		}
 	}
-	switch node.op {
+	switch node.deferredOp() {
 	case opZExt32:
 		if cleanZExt && result == src {
 			f.stats.peep("ext-elim") // upper 32 already zero; the mov would be a no-op
@@ -104,16 +104,16 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	case opSExt32:
 		f.a.Movsxd(result, src)
 	case opSExt8:
-		f.a.Movsx8(result, src, node.typ.is64())
+		f.a.Movsx8(result, src, node.valueType().is64())
 	case opSExt16:
-		f.a.Movsx16(result, src, node.typ.is64())
+		f.a.Movsx16(result, src, node.valueType().is64())
 	}
 	if srcOwned && result != src {
 		f.release(src)
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
-	node.op = opNone
+	node.setDeferredOp(opNone)
 	return result
 }
 
@@ -121,7 +121,7 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 // and mul: compute the left operand into dest, then fold the right operand in
 // place (const→imm, memory→r/m, reg→reg).
 func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
-	w := node.typ.is64()
+	w := node.valueType().is64()
 	left := node.arg0
 	right := node.arg1
 	if r := f.tryXorByteMask(node, left, right, dest); r != regNone {
@@ -137,7 +137,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// their expression evaluation in bytecode order: commuting a deferred tree
 	// can extend a local read across an interval eviction and observe a reused
 	// register. The ordinary allocator has no such position-based ownership.
-	if len(f.intervalReg) == 0 && node.op.commutative() && left.kind == ekDeferred &&
+	if len(f.intervalReg) == 0 && node.deferredOp().commutative() && left.isDeferred() &&
 		treeRegisterNeed(left) > treeRegisterNeed(right) &&
 		treeReorderSafe(left) && treeReorderSafe(right) {
 		f.stats.peep("tree-order-candidate")
@@ -153,9 +153,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// owned-register right accumulates into that register and folds the memory as an
 	// r/m operand — `add rr,[m]` — instead of loading [m] into dest then adding rr
 	// (the mirror of the memory-on-the-right case already folded by applyALU).
-	if node.op.commutative() && left.kind == ekValue {
-		swapConst := left.st.kind == stConst && !(right.kind == ekValue && right.st.kind == stConst)
-		swapMem := commuteMemLeftEnabled && right.kind == ekValue && right.st.kind == stReg &&
+	if node.deferredOp().commutative() && left.isValue() {
+		swapConst := left.st.kind == stConst && !(right.isValue() && right.st.kind == stConst)
+		swapMem := commuteMemLeftEnabled && right.isValue() && right.st.kind == stReg &&
 			(left.st.kind == stSlot || left.st.kind == stLocalRef || left.st.kind == stMemRef)
 		if swapConst || swapMem {
 			left, right = right, left
@@ -168,7 +168,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// Scaled-index fusion: add(x, shl(y, k∈1..3)) → `lea dest,[x + y*2ᵏ]` — one
 	// instruction replacing shl+add. The common AssemblyScript array-address
 	// shape (`base + (i << log2size)`).
-	if node.op == opAdd {
+	if node.deferredOp() == opAdd {
 		if r := f.tryLeaScaledAdd(node, left, right, dest); r != regNone {
 			return r
 		}
@@ -177,7 +177,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// Strength-reduce x * {3,5,9} to a single LEA `[x + x*{2,4,8}]` (base == index
 	// == x), replacing an IMUL by a small constant. The multiplier sits on the
 	// right after the commutative swap above.
-	if node.op == opMul {
+	if node.deferredOp() == opMul {
 		if r := f.tryLeaMul(node, left, right, dest); r != regNone {
 			return r
 		}
@@ -198,8 +198,8 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// The register is already occupied, so ordinary allocation cannot reuse it.
 	// Exclude x86's fixed-role registers: a div/rem/shift inside the other operand
 	// may claim one of those directly even while it is occupied.
-	commuteSelfUpdate := node.op.commutative() && dest != regNone && dest != RAX && dest != RDX && dest != RCX &&
-		right.kind == ekValue &&
+	commuteSelfUpdate := node.deferredOp().commutative() && dest != regNone && dest != RAX && dest != RDX && dest != RCX &&
+		right.isValue() &&
 		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) &&
 		right.st.reg == dest
 	if commuteSelfUpdate {
@@ -214,16 +214,16 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		if left.isDeferred() {
 			f.condense(left, regNone)
 		}
-		if node.op == opMul {
+		if node.deferredOp() == opMul {
 			f.applyMul(dest, left, w)
 		} else {
-			f.applyALU(aluTable[node.op], dest, left, w)
+			f.applyALU(aluTable[node.deferredOp()], dest, left, w)
 		}
 		f.pinned = f.pinned.remove(dest)
 		f.stats.peep("commute-self-update")
 		f.consumeBlockBelow(node)
 		f.occupy(node, dest)
-		node.op = opNone
+		node.setDeferredOp(opNone)
 		return dest
 	}
 
@@ -248,7 +248,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 				avoid = avoid.union(maskOf(dest))
 			}
 			if safe := f.allocRegOrNone(avoid); safe != regNone {
-				f.moveInt(safe, rr, node.typ)
+				f.moveInt(safe, rr, node.valueType())
 				f.release(rr)
 				rr = safe
 				f.pinned = f.pinned.add(rr)
@@ -300,16 +300,16 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		//    preceding copy for).
 		//  - in-place: reuse an owned-register left as the destination, so the op
 		//    accumulates in place with no preceding mov.
-		if node.op == opAdd && left.kind == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg) && leaRightOK(right) {
+		if node.deferredOp() == opAdd && left.isValue() && (left.st.kind == stLocalReg || left.st.kind == stGlobReg) && leaRightOK(right) {
 			dest = f.allocReg(0)
 			f.emitLeaAdd(dest, left.st.reg, right, w)
 			f.release(rightReleaseAfter)
 			f.consumeBlockBelow(node)
 			f.occupy(node, dest)
-			node.op = opNone
+			node.setDeferredOp(opNone)
 			return dest
 		}
-		if left.kind == ekValue && left.st.kind == stReg {
+		if left.isValue() && left.st.kind == stReg {
 			dest = left.st.reg // in-place accumulate (no mov)
 		} else {
 			dest = f.allocReg(0)
@@ -317,10 +317,10 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	}
 	f.pinned = f.pinned.add(dest)
 	f.condenseInto(left, dest)
-	if node.op == opMul {
+	if node.deferredOp() == opMul {
 		f.applyMul(dest, right, w)
 	} else {
-		f.applyALU(aluTable[node.op], dest, right, w)
+		f.applyALU(aluTable[node.deferredOp()], dest, right, w)
 	}
 	f.pinned = f.pinned.remove(dest)
 	if pinnedRight != regNone {
@@ -330,7 +330,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 
 	f.consumeBlockBelow(node)
 	f.occupy(node, dest)
-	node.op = opNone
+	node.setDeferredOp(opNone)
 	return dest
 }
 
@@ -339,24 +339,24 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 // byte produces the masked result directly and removes the 32-bit AND. CRC table
 // indices use this twice per inner iteration.
 func (f *fn) tryXorByteMask(node, left, right *elem, dest Reg) Reg {
-	if node.op != opAnd || node.typ != mtI32 {
+	if node.deferredOp() != opAnd || node.valueType() != mtI32 {
 		return regNone
 	}
 	var xor *elem
 	switch {
-	case right.kind == ekValue && right.st.kind == stConst && right.st.cval == 255:
+	case right.isValue() && right.st.kind == stConst && right.st.cval == 255:
 		xor = left
-	case left.kind == ekValue && left.st.kind == stConst && left.st.cval == 255:
+	case left.isValue() && left.st.kind == stConst && left.st.cval == 255:
 		xor = right
 	default:
 		return regNone
 	}
-	if xor == nil || xor.kind != ekDeferred || xor.op != opXor || xor.typ != mtI32 {
+	if xor == nil || !xor.isDeferred() || xor.deferredOp() != opXor || xor.valueType() != mtI32 {
 		return regNone
 	}
 	byteArg, other := xor.arg0, xor.arg1
 	isByteLoad := func(e *elem) bool {
-		return e != nil && e.kind == ekValue && e.st.kind == stMemRef &&
+		return e != nil && e.isValue() && e.st.kind == stMemRef &&
 			e.st.typ == mtI32 && e.st.memSize() == 1 && !e.st.memSigned()
 	}
 	if !isByteLoad(byteArg) {
@@ -365,7 +365,7 @@ func (f *fn) tryXorByteMask(node, left, right *elem, dest Reg) Reg {
 			return regNone
 		}
 	}
-	if other == nil || other.kind != ekValue {
+	if other == nil || !other.isValue() {
 		return regNone
 	}
 	// The byte load may be the left operand. Only commute it past values whose
@@ -395,18 +395,18 @@ func (f *fn) tryXorByteMask(node, left, right *elem, dest Reg) Reg {
 	f.stats.peep("xor-byte-mask")
 	f.consumeBlockBelow(node)
 	f.occupy(node, out)
-	node.op = opNone
+	node.setDeferredOp(opNone)
 	return out
 }
 
 // shlByConst123 reports whether e is a deferred shl of node-typ t by a constant
 // masked count in 1..3 (an LEA-encodable scale), returning the count.
 func shlByConst123(e *elem, t machineType) (int, bool) {
-	if e == nil || e.kind != ekDeferred || e.op != opShl || e.typ != t {
+	if e == nil || !e.isDeferred() || e.deferredOp() != opShl || e.valueType() != t {
 		return 0, false
 	}
 	c := e.arg1
-	if c == nil || c.kind != ekValue || c.st.kind != stConst {
+	if c == nil || !c.isValue() || c.st.kind != stConst {
 		return 0, false
 	}
 	mask := int64(31)
@@ -428,16 +428,16 @@ func leaOperandSafe(e *elem) bool {
 	if e == nil {
 		return false
 	}
-	if e.kind == ekValue {
+	if e.isValue() {
 		return true
 	}
-	if e.kind != ekDeferred {
+	if !e.isDeferred() {
 		return false
 	}
-	if isBinALU(e.op) {
+	if isBinALU(e.deferredOp()) {
 		return leaOperandSafe(e.arg0) && leaOperandSafe(e.arg1)
 	}
-	if isShift(e.op) && e.arg1 != nil && e.arg1.kind == ekValue && e.arg1.st.kind == stConst {
+	if isShift(e.deferredOp()) && e.arg1 != nil && e.arg1.isValue() && e.arg1.st.kind == stConst {
 		return leaOperandSafe(e.arg0)
 	}
 	return false
@@ -447,12 +447,12 @@ func leaOperandSafe(e *elem) bool {
 // scaled-index LEA. Returns the result register, or regNone when the shape
 // doesn't match.
 func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
-	w := node.typ.is64()
+	w := node.valueType().is64()
 	shl := right
-	k, ok := shlByConst123(shl, node.typ)
+	k, ok := shlByConst123(shl, node.valueType())
 	if !ok {
 		shl = left
-		if k, ok = shlByConst123(shl, node.typ); !ok {
+		if k, ok = shlByConst123(shl, node.valueType()); !ok {
 			return regNone
 		}
 	}
@@ -503,7 +503,7 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, dest)
-	node.op = opNone
+	node.setDeferredOp(opNone)
 	return dest
 }
 
@@ -513,7 +513,7 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 // operand here could hard-clobber RAX/RDX/RCX under the LEA (same hazard as
 // tryLeaScaledAdd guards against).
 func (f *fn) tryLeaMul(node, left, right *elem, dest Reg) Reg {
-	if right.kind != ekValue || right.st.kind != stConst {
+	if !right.isValue() || right.st.kind != stConst {
 		return regNone
 	}
 	var scaleLog uint8
@@ -527,10 +527,10 @@ func (f *fn) tryLeaMul(node, left, right *elem, dest Reg) Reg {
 	default:
 		return regNone
 	}
-	if left.kind != ekValue {
+	if !left.isValue() {
 		return regNone
 	}
-	w := node.typ.is64()
+	w := node.valueType().is64()
 	x, xOwned := f.materializeRead(left) // LEA never writes its sources; a pinned local reads in place
 	if dest == regNone {
 		if xOwned {
@@ -545,13 +545,13 @@ func (f *fn) tryLeaMul(node, left, right *elem, dest Reg) Reg {
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, dest)
-	node.op = opNone
+	node.setDeferredOp(opNone)
 	return dest
 }
 
 // leaRightOK reports whether the right add operand can be an LEA index/displacement.
 func leaRightOK(right *elem) bool {
-	if right.kind != ekValue {
+	if !right.isValue() {
 		return false
 	}
 	switch right.st.kind {
@@ -581,19 +581,19 @@ func (f *fn) emitLeaAdd(dst, base Reg, right *elem, w bool) {
 // immediate shift; a variable count must live in CL (x86 constraint), so it is
 // forced into RCX and the value is shifted by CL.
 func (f *fn) condenseShift(node *elem, dest Reg) Reg {
-	w := node.typ.is64()
-	digit := shiftDigit(node.op)
+	w := node.valueType().is64()
+	digit := shiftDigit(node.deferredOp())
 	left := node.arg0
 	right := node.arg1
 
-	if right.kind == ekValue && right.st.kind == stConst {
-		if f.opt(optBMI2Rorx) && (node.op == opRotr || node.op == opRotl) {
+	if right.isValue() && right.st.kind == stConst {
+		if f.opt(optBMI2Rorx) && (node.deferredOp() == opRotr || node.deferredOp() == opRotl) {
 			mask := int64(31)
 			if w {
 				mask = 63
 			}
 			count := right.st.cval & mask
-			if node.op == opRotl {
+			if node.deferredOp() == opRotl {
 				count = (-count) & mask
 			}
 			if dest != regNone {
@@ -612,7 +612,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 			f.pinned = f.pinned.remove(dest)
 			f.consumeBlockBelow(node)
 			f.occupy(node, dest)
-			node.op = opNone
+			node.setDeferredOp(opNone)
 			f.stats.peep("bmi2-rorx")
 			return dest
 		}
@@ -629,7 +629,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		f.pinned = f.pinned.remove(dest)
 		f.consumeBlockBelow(node)
 		f.occupy(node, dest)
-		node.op = opNone
+		node.setDeferredOp(opNone)
 		return dest
 	}
 
@@ -645,7 +645,7 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	cnt := f.materialize(right)
 	if cnt != RCX {
 		f.spillIfUsed(RCX)
-		f.moveInt(RCX, cnt, node.typ)
+		f.moveInt(RCX, cnt, node.valueType())
 		f.release(cnt)
 	}
 	f.pinned = f.pinned.add(RCX)
@@ -655,13 +655,13 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	f.pinned = f.pinned.remove(val)
 	result := val
 	if dest != regNone && dest != val {
-		f.moveInt(dest, val, node.typ)
+		f.moveInt(dest, val, node.valueType())
 		f.release(val)
 		result = dest
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
-	node.op = opNone
+	node.setDeferredOp(opNone)
 	return result
 }
 
@@ -678,10 +678,10 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		f.a.SetccReg(cc, result)
 		f.occupy(node, result)
 		node.st.typ = mtI32
-		node.op = opNone
+		node.setDeferredOp(opNone)
 		return result
 	}
-	w := node.typ.is64()
+	w := node.valueType().is64()
 	left := node.arg0
 
 	// cmp/test read the left comparand read-only, so a borrowed pinned-local/global
@@ -693,8 +693,8 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	// live pinned register afterwards would read a post-write value. When L is a
 	// borrowed register the trailing setcc must not clobber it, so the boolean lands
 	// in a separate register (dest or a fresh temp) instead of reusing L.
-	inPlaceOK := node.op == opEqz ||
-		(node.arg1.kind == ekValue && node.arg1.st.kind == stConst)
+	inPlaceOK := node.deferredOp() == opEqz ||
+		(node.arg1.isValue() && node.arg1.st.kind == stConst)
 	var L Reg
 	ownL := true
 	if inPlaceOK {
@@ -705,11 +705,11 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	f.pinned = f.pinned.add(L)
 
 	var cc Cond
-	if node.op == opEqz {
+	if node.deferredOp() == opEqz {
 		cc = condE
 		f.a.TestSelf(L, w)
 	} else {
-		cc = condOf(node.op)
+		cc = condOf(node.deferredOp())
 		right := node.arg1
 		if right.isDeferred() {
 			// condense rewrites the existing operand node in place.
@@ -772,19 +772,19 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
 	node.st.typ = mtI32 // relational result is always i32
-	node.op = opNone
+	node.setDeferredOp(opNone)
 	return result
 }
 
 // condenseUnary lowers clz/ctz/popcnt (lzcnt/tzcnt/popcnt reg,reg).
 func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
-	w := node.typ.is64()
+	w := node.valueType().is64()
 	// lzcnt/tzcnt/popcnt read their source read-only, so a register-resident source
 	// (a pinned local or owned temp) can feed the op directly — no copy.
 	arg := node.arg0
 	var src Reg
 	srcOwned := true
-	if arg.kind == ekValue && (arg.st.kind == stLocalReg || arg.st.kind == stGlobReg) {
+	if arg.isValue() && (arg.st.kind == stLocalReg || arg.st.kind == stGlobReg) {
 		src, srcOwned = arg.st.reg, false // pinned local/global: read directly, never release
 	} else {
 		src = f.materialize(arg)
@@ -798,7 +798,7 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 			result = f.allocReg(0)
 		}
 	}
-	switch node.op {
+	switch node.deferredOp() {
 	case opClz:
 		f.a.Lzcnt(result, src, w)
 	case opCtz:
@@ -811,7 +811,7 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
-	node.op = opNone
+	node.setDeferredOp(opNone)
 	return result
 }
 
@@ -820,14 +820,14 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 // division traps: divide-by-zero (all four ops) and the signed INT_MIN/-1
 // overflow (div_s only; rem_s must instead yield 0 without faulting).
 func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
-	w := node.typ.is64()
-	signed := node.op == opDivS || node.op == opRemS
-	wantRem := node.op == opRemS || node.op == opRemU
+	w := node.valueType().is64()
+	signed := node.deferredOp() == opDivS || node.deferredOp() == opRemS
+	wantRem := node.deferredOp() == opRemS || node.deferredOp() == opRemU
 	left := node.arg0
 	right := node.arg1
 
 	// Constant divisor: strength-reduce to shifts / multiply-high, avoiding idiv.
-	if right.kind == ekValue && right.st.kind == stConst {
+	if right.isValue() && right.st.kind == stConst {
 		if r, ok := f.tryDivByConst(node, dest, right.st.cval); ok {
 			return r
 		}
@@ -897,11 +897,11 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 	result := src
 	if dest != regNone && dest != src {
 		result = dest
-		f.moveInt(dest, src, node.typ)
+		f.moveInt(dest, src, node.valueType())
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
-	node.op = opNone
+	node.setDeferredOp(opNone)
 	return result
 }
 
@@ -1006,7 +1006,7 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 }
 
 func isI64Low32Mask(e *elem) bool {
-	return e != nil && e.kind == ekValue && e.st.kind == stConst &&
+	return e != nil && e.isValue() && e.st.kind == stConst &&
 		e.st.typ == mtI64 && uint64(e.st.cval) <= 0xffffffff
 }
 
@@ -1021,10 +1021,10 @@ func (f *fn) tryMulConstThreeOp(node, left, right *elem, dest Reg, w bool) Reg {
 	if !mul3opEnabled {
 		return regNone
 	}
-	if !(left.kind == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg)) {
+	if !(left.isValue() && (left.st.kind == stLocalReg || left.st.kind == stGlobReg)) {
 		return regNone
 	}
-	if !(right.kind == ekValue && right.st.kind == stConst) || !fitsImm32(right.st.cval) {
+	if !(right.isValue() && right.st.kind == stConst) || !fitsImm32(right.st.cval) {
 		return regNone
 	}
 	src := left.st.reg
@@ -1036,7 +1036,7 @@ func (f *fn) tryMulConstThreeOp(node, left, right *elem, dest Reg, w bool) Reg {
 	f.stats.peep("mul3-imm")
 	f.consumeBlockBelow(node)
 	f.occupy(node, d)
-	node.op = opNone
+	node.setDeferredOp(opNone)
 	return d
 }
 

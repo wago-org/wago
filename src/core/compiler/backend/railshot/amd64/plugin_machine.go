@@ -50,7 +50,7 @@ func (c *pluginAMD64Context) InputCustom(index int) ([]x86.Reg, error) {
 	e := c.paramElems[index]
 	want := c.paramCustom[index]
 	cold := c.f.s.elemCold(e)
-	if e.kind != ekValue || e.st.typ != mtCustom || cold == nil || cold.custom == nil || !cold.custom.Equal(want) {
+	if !e.isValue() || e.st.typ != mtCustom || cold == nil || cold.custom == nil || !cold.custom.Equal(want) {
 		return nil, fmt.Errorf("amd64 plugin custom input %d has incompatible custom type", index)
 	}
 	regs := c.f.materializePluginCustom(e)
@@ -322,7 +322,7 @@ func (f *fn) emitPluginAMD64(lowering *plugincodegen.Lowering, inputWidths []int
 	ctx := &pluginAMD64Context{f: f, paramSlots: make([]int, paramCount), paramWidth: inputWidths, output: regNone}
 	for i := range ctx.paramSlots {
 		e := roots[base+i]
-		if e.kind != ekValue || e.st.kind != stSlot || e.st.typ != mtI32 {
+		if !e.isValue() || e.st.kind != stSlot || e.st.typ != mtI32 {
 			return fmt.Errorf("amd64 plugin input %d is not a canonical i32 slot", i)
 		}
 		ctx.paramSlots[i] = e.st.slotIndex()
@@ -373,12 +373,12 @@ func (f *fn) emitPluginAMD64Custom(lowering *plugincodegen.Lowering, inputWidths
 		e := ctx.paramElems[i]
 		if !typ.IsZero() {
 			cold := f.s.elemCold(e)
-			if e.kind != ekValue || e.st.typ != mtCustom || cold == nil || cold.custom == nil || !cold.custom.Equal(typ) {
+			if !e.isValue() || e.st.typ != mtCustom || cold == nil || cold.custom == nil || !cold.custom.Equal(typ) {
 				return fmt.Errorf("amd64 plugin custom input %d has incompatible custom type", i)
 			}
 			continue
 		}
-		if e.kind != ekValue || e.st.typ != mtI32 {
+		if !e.isValue() || e.st.typ != mtI32 {
 			return fmt.Errorf("amd64 plugin input %d is not i32", i)
 		}
 		r := f.materialize(e)

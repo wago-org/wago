@@ -384,8 +384,8 @@ func (f *fn) callGCArrayFixedSpill(typeIndex, count uint32, resultType wasm.ValT
 	firstSlot := 0
 	for i := 0; i < first; i++ {
 		typ := roots[i].st.typ
-		if roots[i].kind == ekDeferred && roots[i].typ != mtNone {
-			typ = roots[i].typ
+		if roots[i].isDeferred() && roots[i].valueType() != mtNone {
+			typ = roots[i].valueType()
 		}
 		firstSlot += typ.stackSlots()
 	}
@@ -414,7 +414,7 @@ func nativeGCStaticArraySize(f *fn, layout nativeGCArrayAllocLayout) (length uin
 	if value != nil {
 		value = value.prev // trailing type-index constant was pushed before admission
 	}
-	if value == nil || value.kind != ekValue || value.st.kind != stConst || value.st.typ != mtI32 {
+	if value == nil || !value.isValue() || value.st.kind != stConst || value.st.typ != mtI32 {
 		return 0, 0, false
 	}
 	length = uint32(value.st.cval)

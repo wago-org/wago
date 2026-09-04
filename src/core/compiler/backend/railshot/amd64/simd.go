@@ -555,7 +555,7 @@ func (f *fn) v128ShuffleMask(dst, src Reg, lo, hi uint64) {
 }
 
 func v128LocalAlias(e *elem) (int, bool) {
-	if e == nil || e.kind != ekValue || e.st.typ != mtV128 {
+	if e == nil || !e.isValue() || e.st.typ != mtV128 {
 		return 0, false
 	}
 	switch e.st.kind {
@@ -576,7 +576,7 @@ func v128LocalAlias(e *elem) (int, bool) {
 // register value directly and avoid an L1 load.
 func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
 	for e := f.s.back(); e != nil && e != f.s.head; e = e.prev {
-		if e.kind != ekValue || e.st.kind != stReg || e.st.typ != mtV128 || e.st.cval != int64(x+1) {
+		if !e.isValue() || e.st.kind != stReg || e.st.typ != mtV128 || e.st.cval != int64(x+1) {
 			continue
 		}
 		if immediateSIMD {
@@ -601,7 +601,7 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
 // remain valid expression operands; they simply no longer represent x.
 func (f *fn) clearV128LocalAliases(x int) {
 	for e := f.s.back(); e != nil && e != f.s.head; e = e.prev {
-		if e.kind == ekValue && e.st.kind == stReg && e.st.typ == mtV128 && e.st.cval == int64(x+1) {
+		if e.isValue() && e.st.kind == stReg && e.st.typ == mtV128 && e.st.cval == int64(x+1) {
 			e.st.cval = 0
 		}
 	}
@@ -716,7 +716,7 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 // VEX op. A pinned v128 local is used in place (no copy, not owned); anything else
 // is materialized into an owned scratch.
 func (f *fn) operandRegV128(e *elem) (Reg, bool) {
-	if e.kind == ekValue && e.st.kind == stLocalReg {
+	if e.isValue() && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
 	return f.materializeV128(e), true
@@ -751,7 +751,7 @@ func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) {
 }
 
 func (f *fn) v128StackMem(e *elem) (int32, bool) {
-	if e == nil || e.kind != ekValue || e.st.typ != mtV128 {
+	if e == nil || !e.isValue() || e.st.typ != mtV128 {
 		return 0, false
 	}
 	switch e.st.kind {
@@ -1113,7 +1113,7 @@ func (f *fn) v128Shift(op func(dst, s1, s2 Reg), opImm func(dst, src Reg, imm by
 }
 
 func (f *fn) v128ShiftCount(countElem *elem, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, imm byte), countMask int32) {
-	if countElem.kind == ekValue && countElem.st.kind == stConst {
+	if countElem.isValue() && countElem.st.kind == stConst {
 		x := f.materializeV128(f.popValue())
 		opImm(x, x, byte(countElem.st.cval&int64(countMask)))
 		f.stats.peep("simd-shift-imm")
@@ -1144,7 +1144,7 @@ func (f *fn) v128ShiftCount(countElem *elem, op func(dst, s1, s2 Reg), opImm fun
 func (f *fn) i32x4ShrU(r *wasm.Reader) {
 	countElem := f.popValue()
 	value := f.s.back()
-	if valueLocal, valueAlias := v128LocalAlias(value); countElem.kind == ekValue &&
+	if valueLocal, valueAlias := v128LocalAlias(value); countElem.isValue() &&
 		countElem.st.kind == stConst && valueAlias {
 		save := r.Offset()
 		localOp, err1 := r.Byte()
@@ -1202,7 +1202,7 @@ func bcastByte(b byte) uint64 { return uint64(b) * 0x0101010101010101 }
 func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), kind int) {
 	signed := kind == i8ShiftShrS
 	countElem := f.popValue()
-	if countElem.kind == ekValue && countElem.st.kind == stConst {
+	if countElem.isValue() && countElem.st.kind == stConst {
 		f.i8x16ShiftConst(kind, byte(countElem.st.cval&7))
 		return
 	}

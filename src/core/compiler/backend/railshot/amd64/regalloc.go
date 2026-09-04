@@ -18,10 +18,10 @@ const regNone Reg = 0xFF
 func (f *fn) occupy(e *elem, r Reg) {
 	local, hasLocal := gcLocalProvenance(e)
 	f.regUser[r] = e
-	if e.kind == ekDeferred && e.typ != mtNone {
-		e.st.typ = e.typ
+	if e.isDeferred() && e.valueType() != mtNone {
+		e.st.typ = e.valueType()
 	}
-	e.kind = ekValue
+	e.setElemKind(ekValue)
 	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
 	e.st.idx, e.st.slot = 0, 0
 	if hasLocal {
@@ -76,7 +76,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	// Spill a victim: the deepest (bottom-most) stack value in a register — it is
 	// used furthest in the future, WARP's spill heuristic approximated by depth.
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stReg && !block.has(e.st.reg) {
+		if e.isValue() && e.st.kind == stReg && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spill(e)
 			return r
@@ -85,7 +85,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	// Under high pressure, a pending deferred load holds an address register: emit
 	// its load and spill the result to free the register.
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stMemRef && !block.has(e.st.reg) {
+		if e.isValue() && e.st.kind == stMemRef && !block.has(e.st.reg) {
 			r := e.st.reg
 			if e.st.typ.isFloat() {
 				x := f.allocFReg(0)
@@ -147,10 +147,10 @@ func subtreeBorrowsLocalAddress(e *elem, x int) bool {
 	if e == nil {
 		return false
 	}
-	if e.kind == ekValue {
+	if e.isValue() {
 		return e.st.kind == stMemRef && e.st.memBorrow() == x
 	}
-	return e.kind == ekDeferred && (subtreeBorrowsLocalAddress(e.arg0, x) || subtreeBorrowsLocalAddress(e.arg1, x))
+	return e.isDeferred() && (subtreeBorrowsLocalAddress(e.arg0, x) || subtreeBorrowsLocalAddress(e.arg1, x))
 }
 
 // spillIfUsed evicts register r's occupant to a frame slot if one is resident,
@@ -220,7 +220,7 @@ func (f *fn) allocSpillSlots(n int) int {
 func (f *fn) curSpillSlot() int {
 	used := f.spillFloor
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stSlot {
+		if e.isValue() && e.st.kind == stSlot {
 			end := e.st.slotIndex() + e.st.typ.stackSlots()
 			if end > used {
 				used = end
@@ -305,7 +305,7 @@ func (f *fn) materialize(e *elem) Reg {
 // emitted before anything that could write the local (no deferral, no
 // local.set in between).
 func (f *fn) materializeRead(e *elem) (Reg, bool) {
-	if e.kind == ekValue && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) {
+	if e.isValue() && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) {
 		return e.st.reg, false
 	}
 	return f.materialize(e), true
@@ -353,7 +353,7 @@ func (f *fn) materializeByType(e *elem) Reg {
 // pre-write value (WARP's load-before-store ordering).
 func (f *fn) materializePendingLoads() {
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stMemRef {
+		if e.isValue() && e.st.kind == stMemRef {
 			f.stats.addForcedLoad()
 			f.materializeByType(e)
 		}
