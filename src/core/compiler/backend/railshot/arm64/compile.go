@@ -1426,7 +1426,6 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			}
 			if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
 				st.peep("inline-dead-body")
-				allHints[i] = funcHints{}
 				continue
 			}
 			// Align and reserve before lowering so the assembler can emit straight
@@ -1447,7 +1446,6 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			sc.asm.B = tail
 			hints := hintSidecar.view(allHints[i])
 			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTable, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, sc)
-			allHints[i] = funcHints{}
 			if err != nil {
 				return nil, fmt.Errorf("arm64: function %d: %w", i, err)
 			}
@@ -1576,14 +1574,12 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				}
 				if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
 					st.peep("inline-dead-body")
-					allHints[i] = funcHints{}
 					results[i] = funcResult{layoutFlags: layoutOmitted}
 					continue
 				}
 				layoutFlags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(allHints[i].flags.has(hintHasLoop), layoutHasLoop) | boolFlag(allHints[i].flags.has(hintHasCall), layoutHasCall) | boolFlag(allHints[i].flags.has(hintCallsSelf), layoutCallsSelf)
 				hints := hintSidecar.view(allHints[i])
 				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTable, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.GCFrameRoots.Function(i), opts.CustomInstructions, st, inlineTargets, calleePreservesPins, policy, ws.scratch)
-				allHints[i] = funcHints{}
 				if err != nil {
 					work.failures.Record(i, err)
 					continue
@@ -2396,7 +2392,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if len(gpPool) > maxPins {
 		gpPool = gpPool[:maxPins]
 	}
-	// Keep the unpinned attempt as a temporary correctness oracle for pressure
 	// Wide local tables begin canonical so their many borrowed values cannot consume
 	// the target-derived transient floor. There is no failed-attempt retry.
 	if !pinLocals || nLocals > 64 {

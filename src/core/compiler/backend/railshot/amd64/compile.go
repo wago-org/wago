@@ -1585,7 +1585,6 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				if literalOffsets != nil {
 					literalOffsets[i+1] = uint32(len(literalWords))
 				}
-				allHints[i] = funcHints{}
 				continue
 			}
 			// Align and reserve before lowering so the assembler can emit straight
@@ -1617,7 +1616,6 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			sc.localRefTailBound = false
 			hints := hintSidecar.view(allHints[i])
 			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, sc)
-			allHints[i] = funcHints{}
 			if err != nil {
 				return nil, fmt.Errorf("amd64: function %d: %w", i, err)
 			}
@@ -1786,7 +1784,6 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				}
 				if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
 					st.peep("inline-dead-body")
-					allHints[i] = funcHints{}
 					results[i] = funcResult{layoutFlags: layoutOmitted}
 					continue
 				}
@@ -1810,7 +1807,6 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				}
 				hints := hintSidecar.view(allHints[i])
 				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, ws.scratch)
-				allHints[i] = funcHints{}
 				if err != nil {
 					work.failures.Record(i, err)
 					continue
