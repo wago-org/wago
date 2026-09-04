@@ -83,9 +83,6 @@ var (
 	// loadPairEnabled combines exact adjacent full-width scalar loads into LDP.
 	// WAGO_ARM64_NO_LOAD_PAIR=1 is the A/B oracle and rollback switch.
 	loadPairEnabled = os.Getenv("WAGO_ARM64_NO_LOAD_PAIR") != "1"
-	// singleBitBranchEnabled lets the bounded finalizer replace an explicitly
-	// recorded one-bit TST+B.cond with TBZ/TBNZ when the final target fits imm14.
-	singleBitBranchEnabled = os.Getenv("WAGO_ARM64_NO_SINGLE_BIT_BRANCH") != "1"
 
 	// mulAddFuseEnabled gates MADD/MSUB fusion of add(c, a*b)/sub(c, a*b) into a
 	// single multiply-add/-subtract. WAGO_NO_MULADD=1 is the A/B oracle.

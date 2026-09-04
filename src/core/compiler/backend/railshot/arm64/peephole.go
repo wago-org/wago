@@ -89,7 +89,7 @@ type singleBitTestSite struct {
 }
 
 func (f *fn) recordSingleBitTest(off int, reg Reg, bit uint8) {
-	if !singleBitBranchEnabled || !nativeFinalizerEnabled || !f.compactNative() {
+	if !f.opt(optBranchFold) || !nativeFinalizerEnabled || !f.compactNative() {
 		return
 	}
 	sc := f.scratchState()

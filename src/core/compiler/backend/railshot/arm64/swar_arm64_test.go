@@ -21,6 +21,10 @@ func swarMaskBranchBodyArm64() []byte {
 	return append(b, 0x04, 0x7f, 0x41, 0x01, 0x05, 0x41, 0x00, 0x0b, 0x0b)
 }
 
+func singleBitMaskBranchBodyArm64() []byte {
+	return []byte{0x00, 0x20, 0x00, 0x42, 0x08, 0x83, 0x50, 0x04, 0x7f, 0x41, 0x01, 0x05, 0x41, 0x00, 0x0b, 0x0b}
+}
+
 func TestSWARMaskTestFusionArm64(t *testing.T) {
 	i64, i32 := []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}
 	m := mod1(t, i64, i32, swarMaskEqzBodyArm64())
@@ -72,6 +76,27 @@ func TestSWARMaskBranchFusionArm64(t *testing.T) {
 		got := uint32(runArm64Internal2(t, m, uintptr(x), 0))
 		if got != want {
 			t.Fatalf("x=%#x: got %d, want %d", x, got, want)
+		}
+	}
+}
+
+func TestSingleBitBranchUsesBranchFoldPolicyArm64(t *testing.T) {
+	m := mod1(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I32}, singleBitMaskBranchBodyArm64())
+	for _, enabled := range []bool{false, true} {
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Optimizations: map[string]bool{"branch-fold": enabled}})
+		if err != nil {
+			t.Fatalf("branch-fold=%t: %v", enabled, err)
+		}
+		if cm.CodeImage != nil {
+			defer cm.CodeImage.Close()
+		}
+		want := 0
+		if enabled {
+			want = 1
+		}
+		if got := stats.Funcs[0].Peephole["single-bit-test-branch"]; got != want {
+			t.Fatalf("branch-fold=%t: single-bit-test-branch = %d, want %d (all: %v)", enabled, got, want, stats.Funcs[0].Peephole)
 		}
 	}
 }
