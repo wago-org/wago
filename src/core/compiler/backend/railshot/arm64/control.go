@@ -1215,7 +1215,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if isFusableCompare(f.s.back()) {
 			cond := f.s.back()
 			f.flushBelow(cond)
-			if f.opt(optZeroBranch) && eqzZeroBranchEnabled {
+			if f.opt(optZeroBranch) {
 				if creg, cOwned, wide, ok := f.condenseSimpleEqzOperand(cond); ok {
 					fr.height = f.depth() - pN
 					f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
@@ -2086,7 +2086,7 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		f.moveBranchValues(fr, d, a)
 	}
 	if f.a.Len() == mark {
-		if f.opt(optZeroBranch) && emptyZeroBranchEnabled && f.policy.CompactNative {
+		if f.opt(optZeroBranch) && f.policy.CompactNative {
 			f.a.B = f.a.B[:testAt]
 			if f.opt(optBranchFold) && f.zeroBranchJump(fr, creg) {
 				f.stats.peep("zero-branch")

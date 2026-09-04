@@ -67,11 +67,7 @@ var (
 	// zeroBranchEnabled selects CBZ/CBNZ for flag-dead i32 control tests instead
 	// of materializing NZCV with CMP before B.cond. The kill switch is the A/B
 	// oracle for the one-word lowering.
-	zeroBranchEnabled = os.Getenv("WAGO_ARM64_NO_ZERO_BRANCH") != "1"
-	// emptyZeroBranchEnabled extends zero-branch selection during native compaction
-	// br_if edges after codegen proves that no reconciliation bytes were emitted.
-	emptyZeroBranchEnabled  = os.Getenv("WAGO_ARM64_NO_EMPTY_ZERO_BRANCH") != "1"
-	eqzZeroBranchEnabled    = os.Getenv("WAGO_ARM64_NO_EQZ_ZERO_BRANCH") != "1"
+	zeroBranchEnabled       = os.Getenv("WAGO_ARM64_NO_ZERO_BRANCH") != "1"
 	directZeroBranchEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_ZERO_BRANCH") != "1"
 	// logicalMoveImmediateEnabled lets constant materialization use the one-word
 	// ORR-from-zero-register alias when the value is a logical immediate.

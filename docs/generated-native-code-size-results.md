@@ -2514,8 +2514,9 @@ and Embedded, an empty edge replaces the just-emitted `CMP Wn,#0` plus
 `B.cond` with one `CBNZ Wn,target`; function-result fallbacks use `CBZ` around
 the existing result-transfer branch. Non-empty edges retain CMP because their
 reconciliation may overwrite the condition register while preserving NZCV.
-`WAGO_ARM64_NO_EMPTY_ZERO_BRANCH=1` restores the first zero-branch checkpoint,
-and the broader `WAGO_ARM64_NO_ZERO_BRANCH=1` restores both zero-branch slices.
+During qualification, `WAGO_ARM64_NO_EMPTY_ZERO_BRANCH=1` restored the first
+zero-branch checkpoint. That subset rollback has since been retired; the public
+`zero-branch` policy restores the complete older lowering per compilation.
 
 This extension selects another 128,552 sites. The exact 36-module Size image
 falls from 76,541,576 to 76,027,480 (-514,096, -0.672%). Ruby contributes
@@ -2545,7 +2546,9 @@ hands that register directly to `CBZ/CBNZ` at an `if` edge. Previously the
 fused-compare path emitted `CMP reg,#0` and a separate `B.cond`. Deferred
 arithmetic and mask trees remain on the established flag-based covers, so this
 change does not displace mask-test, relational, or floating-point fusion.
-`WAGO_ARM64_NO_EQZ_ZERO_BRANCH=1` restores the preceding checkpoint exactly.
+During qualification, `WAGO_ARM64_NO_EQZ_ZERO_BRANCH=1` restored the preceding
+checkpoint. That subset rollback has since been retired; the public
+`zero-branch` policy remains the exact complete oracle.
 
 The exact 36-module Size suite adds 178,159 zero-branch selections and falls
 from 76,027,480 to 75,339,552 native bytes (-687,928, -0.905%). Ruby contributes
