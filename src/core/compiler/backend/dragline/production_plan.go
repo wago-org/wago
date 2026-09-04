@@ -251,23 +251,6 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 	if stack == nil {
 		return false
 	}
-	if stack.MaxLoopDepth != 0 {
-		calls := 0
-		for _, instruction := range stack.Instrs {
-			if instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect {
-				calls++
-			}
-		}
-		largeModule := stack.Module != nil && len(stack.Module.Code) > 256
-		if (moduleHasV128 || largeModule) && calls > 1 && len(stack.Instrs) > 256 {
-			// In SIMD modules, large loop values that cross several local calls
-			// still expose an incomplete RailMach edge/live-range contract even
-			// when the caller itself is scalar. Retain the same bounded policy
-			// for large modules so admission cannot multiply compile latency.
-			// Small scalar-only modules use complete scalar edge refinement.
-			return false
-		}
-	}
 	// RailMach's scalar edge-refinement identity is complete, but its machine
 	// value contract intentionally has no 128-bit register class yet. Keep mixed
 	// SIMD/branch-cast functions on the structured SIMD emitter.

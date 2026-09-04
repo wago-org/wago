@@ -536,7 +536,7 @@ func TestRailMachAdmitsScalarFunctionInSIMDModule(t *testing.T) {
 	}
 }
 
-func TestRailMachLoopProfitabilityBoundsLargeMultiCallAdmission(t *testing.T) {
+func TestRailMachAdmitsLargeMultiCallScalarFunctions(t *testing.T) {
 	for _, test := range []struct {
 		name        string
 		simd        bool
@@ -544,8 +544,8 @@ func TestRailMachLoopProfitabilityBoundsLargeMultiCallAdmission(t *testing.T) {
 		want        bool
 	}{
 		{name: "scalar", want: true},
-		{name: "simd", simd: true, want: false},
-		{name: "large_module", moduleFuncs: 257, want: false},
+		{name: "simd", simd: true, want: true},
+		{name: "large_module", moduleFuncs: 257, want: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			stack := &railssa.StackFunc{MaxLoopDepth: 1, HasV128: test.simd, Instrs: make([]railssa.StackInstr, 257)}
