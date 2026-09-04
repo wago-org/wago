@@ -3,12 +3,43 @@
 package arm64
 
 import (
+	"reflect"
 	"testing"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestParallelModuleHintsMatchSerialArm64(t *testing.T) {
+	for _, name := range []string{"json-as-simd.wasm", "lua.wasm", "sqlite3.wasm"} {
+		t.Run(name, func(t *testing.T) {
+			m := readParallelTestModuleArm64(t, "../../../../../../bench/corpus/"+name)
+			policy := currentCodegenPolicy()
+			serial, serialSidecar, serialGlobals, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parallel, parallelSidecar, parallelGlobals, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 4, policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(parallel, serial) {
+				for i := range serial {
+					if parallel[i] != serial[i] {
+						t.Fatalf("function %d hints differ:\nparallel: %#v\nserial:   %#v", i, parallel[i], serial[i])
+					}
+				}
+			}
+			if !reflect.DeepEqual(parallelSidecar, serialSidecar) {
+				t.Fatalf("sidecars differ: parallel scores=%d last=%d globals=%d; serial scores=%d last=%d globals=%d", len(parallelSidecar.localScore), len(parallelSidecar.localLastGet), len(parallelSidecar.sparseGlobals), len(serialSidecar.localScore), len(serialSidecar.localLastGet), len(serialSidecar.sparseGlobals))
+			}
+			if !reflect.DeepEqual(parallelGlobals, serialGlobals) {
+				t.Fatal("module global scores differ")
+			}
+		})
+	}
+}
 
 func TestFuncHintsSizeArm64(t *testing.T) {
 	const want = 32
