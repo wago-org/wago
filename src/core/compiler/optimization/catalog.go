@@ -365,7 +365,6 @@ func (b *Bindings) deltasMatchLocked(overrides, deltas map[string]bool) bool {
 var catalog = []Definition{
 	both("bounds-facts", "Bounds facts", "straight-line bounds-check elision"),
 	both("simd-superopt", "SIMD superoptimization", "recognize bounded multi-operation SIMD sequences"),
-	both("swar-idioms", "SWAR idioms", "recognize bounded open-coded packed-byte algorithms"),
 	both("interval-region-pins", "Interval-region pins", "reuse registers across bounded straight-line local lifetimes"),
 	both("magic-div", "Magic division", "lower constant integer division through multiply-high sequences"),
 	both("shared-trap-body", "Shared trap bodies", "share repeated cold trap bodies in size-oriented code"),

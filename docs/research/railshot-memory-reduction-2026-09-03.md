@@ -581,12 +581,17 @@ That does not mean all policy is workload-independent:
   general, but the constant is corpus-fitted rather than derived from a cost
   model. Sources: [AMD64 threshold](../../src/core/compiler/backend/railshot/amd64/compile.go#L2255),
   [ARM64 threshold](../../src/core/compiler/backend/railshot/arm64/compile.go#L1795).
-- The handwritten SWAR recognizers explicitly target producer-emitted sequences
-  described as `json-as`, `utf-as`, or `xjb-as` shapes. They match exact semantic
-  expression patterns rather than identities, so they are usable by any module,
-  but they are bespoke paths and increase maintenance surface. Sources:
-  [AMD64 SWAR rules](../../src/core/compiler/backend/railshot/amd64/swar.go#L5),
-  [ARM64 SWAR rules](../../src/core/compiler/backend/railshot/arm64/swar.go#L5).
+- The handwritten SWAR recognizers explicitly targeted producer-emitted sequences
+  described as `json-as`, `utf-as`, or `xjb-as` shapes. A current full-corpus
+  `CodegenStats` census found widen/pack/parse hits only in json-as, utf-as, and
+  their synthetic fixture, plus multiply-high only in the xjb-mulhi fixture. The
+  paths were removed rather than retained without independent-producer evidence.
+  Five native ARM64 500 ms samples measure the cost at +14.5% for the real
+  utf-as scalar conversion and +29.6% for the synthetic combined pack/parse
+  loop. The non-synthetic execution-corpus geomean moves +0.8% in a shorter
+  five-sample watchpoint; excluding the directly affected utf-as export leaves
+  +0.4%. This is therefore an explicit generality and maintenance decision, not
+  a performance claim.
 - Some general gates were selected because named corpus workloads regressed,
   for example leaf-only inlining. The condition itself is a general semantic
   class, which is acceptable, but its constants still need adversarial and
@@ -601,10 +606,9 @@ Use this rule going forward:
 
 Replace `extraBar` with an explicit benefit/cost estimate: dynamic weighted
 global accesses saved versus prologue/epilogue traffic and the opportunity cost
-of reserving a register across every function. Move surviving SWAR/SIMD patterns
-into the planned generated matcher, name them by semantics, and require a
-producer-independent correctness proof. Delete patterns whose corpus-wide hit
-count or execution benefit does not clear a declared threshold.
+of reserving a register across every function. Move surviving SIMD patterns into
+the planned generated matcher, name them by semantics, and require a
+producer-independent correctness proof.
 
 ## Things that can be cut easily
 

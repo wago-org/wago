@@ -12,7 +12,6 @@ import (
 var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
-	optimization.Bind("swar-idioms", &swarIdiomsEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
 	optimization.Bind("magic-div", &magicDivEnabled),
 	optimization.Bind("shared-trap-body", &sharedTrapBodyEnabled),
@@ -58,7 +57,6 @@ var optimizationBindings = optimization.NewBindings("amd64",
 var (
 	optBoundsFacts          = optimizationBindings.Option("bounds-facts")
 	optSIMDSuperopt         = optimizationBindings.Option("simd-superopt")
-	optSWARIdioms           = optimizationBindings.Option("swar-idioms")
 	optIntervalRegionPins   = optimizationBindings.Option("interval-region-pins")
 	optMagicDiv             = optimizationBindings.Option("magic-div")
 	optSharedTrapBody       = optimizationBindings.Option("shared-trap-body")

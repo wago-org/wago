@@ -535,28 +535,6 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 		f.stats.peep("same-operand")
 		return
 	}
-	if op == opOr && typ == mtI64 && f.opt(optSWARIdioms) {
-		if source := matchSWARPack4(left, right); source != nil {
-			id, node := f.s.alloc()
-			node.kind, node.op, node.typ = ekDeferred, opSWARPack4, mtI64
-			node.arg0 = source
-			node.deferDepth = 1 + deferDepthOf(source)
-			f.s.push(id, node)
-			f.stats.peep("swar-pack4")
-			return
-		}
-	}
-	if op == opShrU && typ == mtI64 && f.opt(optSWARIdioms) && isSWARConst(right, 32) {
-		if mul10 := matchSWARParse4(left); mul10 != nil {
-			id, node := f.s.alloc()
-			node.kind, node.op, node.typ = ekDeferred, opSWARParse4, mtI64
-			node.arg0 = mul10
-			node.deferDepth = 1 + deferDepthOf(mul10)
-			f.s.push(id, node)
-			f.stats.peep("swar-parse4")
-			return
-		}
-	}
 	// Cap deferred-tree height: condense the deeper operand now if deferring this
 	// op would push the subtree past maxDeferDepth, so the tree condense() later
 	// walks never pins more registers than the file holds. Rare on real code
@@ -723,10 +701,6 @@ func log2u(v uint64) int {
 // when condensed.
 func (f *fn) pushUnOp(op wOp, typ machineType) {
 	operand := f.s.back()
-	if op == opWrap && (f.trySWARPack4(operand) || operand.kind == ekDeferred && operand.op == opSWARParse4) {
-		operand.typ = mtI32
-		return
-	}
 	// Constant-fold clz/ctz/popcnt/eqz and the width conversions over a constant.
 	if operand.kind == ekValue && operand.st.kind == stConst {
 		if v, rtyp, ok := foldUnaryConst(op, operand.st.cval, typ); ok {

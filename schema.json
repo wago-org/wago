@@ -109,7 +109,6 @@
               "store-forward",
               "store-load-fwd",
               "store8-flags",
-              "swar-idioms",
               "tee-sink",
               "three-op-sink",
               "tree-order",

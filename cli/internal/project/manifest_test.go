@@ -109,7 +109,7 @@ func TestManifestValidationRejectsUnknownNestedAndMalformedFields(t *testing.T) 
 func TestManifestValidationAcceptsCataloguedOptimizationFamilies(t *testing.T) {
 	optimizations := map[string]any{}
 	for _, name := range []string{
-		"simd-superopt", "swar-idioms", "interval-region-pins", "magic-div",
+		"simd-superopt", "interval-region-pins", "magic-div",
 		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse",
 		"entry-init-elision", "v128-direct-results", "dead-gc-new", "gc-ref-facts",
 		"gc-native-alloc",

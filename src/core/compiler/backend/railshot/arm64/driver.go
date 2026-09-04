@@ -177,12 +177,6 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			// Specialized tee rewrites bypass setLocal. Invalidate first; a failed
 			// match falls through and installs the exact source fact below.
 			f.setFactsForLocal(int(x)+f.localBase, 0)
-			if done, err := f.tryMulHighU(r, int(x)+f.localBase); done || err != nil {
-				return err
-			}
-			if done, err := f.trySWARWiden4(r, int(x)+f.localBase); done || err != nil {
-				return err
-			}
 			if done, err := f.tryTeeCompareBrIf(r, int(x)+f.localBase); done || err != nil {
 				return err
 			}

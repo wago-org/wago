@@ -98,7 +98,6 @@ func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
 	want := map[string][]string{
 		"amd64": {
 			"simd-superopt",
-			"swar-idioms",
 			"interval-region-pins",
 			"magic-div",
 			"shared-trap-body",
@@ -109,7 +108,6 @@ func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
 		},
 		"arm64": {
 			"simd-superopt",
-			"swar-idioms",
 			"interval-region-pins",
 			"magic-div",
 			"shared-trap-body",

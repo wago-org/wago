@@ -693,20 +693,10 @@ see `docs/amd64-arm64-backend-status.md` for parity status. Landed, in rough ord
   (`const-fold` / `same-operand` counters), so no node/SETcc is emitted (`fold.go`).
 - **Packed-word mask tests** — Lamport-style `(word & laneMask) == 0` predicates
   lower directly to `TEST` (amd64) or `TST` (arm64), avoiding the temporary masked
-  value (`swar-mask-test`). The earlier recursive known-bits estimator was removed:
-  its four utf-as mask-elision hits blocked a second, more valuable `swar-widen4`
-  selection and added a general constant-RHS compile tax. The direct fusion has no
-  solver, cache, persistent IR, or tree walk; `WAGO_NO_SWAR_MASK_TEST=1` is its A/B
-  oracle.
-- **Curated broadword idioms** — Minotaur's offline-discovery/online-selection split is
-  adopted without putting an SMT solver or e-graph in the JIT. Exact, bounded bytecode
-  matchers recognize (1) utf-as's four-byte-to-four-u16 SWAR widening tree and lower it
-  to `UXTL` on arm64 or `VPUNPCKLBW` on amd64, (2) its inverse four-u16-low-byte pack
-  tree and lower it to `XTN` or `VPSHUFB`, and (3) xjb-as's function-tail unsigned
-  64x64 multiply-high expansion and lower it to `UMULH` or the native `RDX:RAX` `MUL`.
-  The widening matcher proves its overwritten temporary dead before rewriting; the
-  multiply matcher requires the final function `end`. `WAGO_NO_SWAR_IDIOMS=1` disables
-  both for correctness and performance A/B checks.
+  value (`swar-mask-test`). The direct fusion has no solver, cache, persistent IR,
+  or tree walk; `WAGO_NO_SWAR_MASK_TEST=1` is its A/B oracle. Earlier recursive
+  known-bits analysis and producer-shaped SWAR widen/pack/parse and multiply-high
+  recognizers were removed after corpus censuses found no independent-producer hits.
 - **Bounded SIMD superops** — the same offline-discovery/online-selection split now
   covers exact adjacent Wasm SIMD operations without retaining a SIMD IR. The first
   selectors fold `v128.not; v128.and` to one `VPANDN`/`BIC`, and fold
@@ -934,19 +924,16 @@ focused instruction-throughput result, not a whole-library claim: five matched 1
 The complete official SIMD proposal suite remains green at 470 modules and 24,325
 assertions with zero failures, skips, or gaps on linux/amd64.
 
-### Known-bits and SWAR probe compile-cost removal (2026-08-05)
+### Known-bits and producer-shaped SWAR removal (2026-09-03)
 
-The recursive known-bits mask simplifier was removed after an exact PR-head A/B.
-It fired only four times in the representative corpus, all in utf-as, and those
-rewrites prevented a second `swar-widen4` selector from seeing its exact source
-shape. Direct packed-mask `TEST`/`TST` fusion remains; it does not recursively
-walk deferred trees.
-
-The SWAR pack/parse probes now inspect the two existing operands and allocate an
-arena node only after a match. Previously every candidate OR (and ARM64 shift)
-passed a temporary 112-byte `elem` through a non-inlined rewriting matcher, making
-the temporary escape even on a near miss. Focused tests require a non-matching pack
-probe to remain allocation-free on both backends.
+The recursive known-bits mask simplifier was removed after it fired only four
+times in the representative corpus, all in utf-as. A later full-corpus census
+found the handwritten SWAR widen/pack/parse and multiply-high recognizers only in
+json-as, utf-as, their focused synthetic fixture, and the xjb-mulhi fixture. With
+no independent-producer hits, the recognizers, internal operations, emitters,
+public optimization flag, and focused tests were removed. Direct packed-mask
+`TEST`/`TST` fusion remains because it is a small general instruction-selection
+rule rather than a producer sequence.
 
 Backend compile measurements used exact `main`, PR-head, and optimized binaries
 with `GOMAXPROCS=1`. The Apple M4 Max rows are five interleaved 300 ms samples;
