@@ -663,7 +663,7 @@ never select the policy.
 ## September 4 production-policy re-audit
 
 After the GC-fact and mature compact-encoding rollback removals, production
-Railshot source references 117 distinct `WAGO_*` controls, down from the earlier
+Railshot source references 115 distinct `WAGO_*` controls, down from the earlier
 138-count audit. No production condition
 compares a module name, function name, producer name, benchmark name, body hash, or
 memorized body byte sequence. Named workloads appear in rationale comments and
@@ -693,7 +693,7 @@ The remaining low-risk cleanup seam is therefore mature rollback plumbing, not a
 third default-off compiler. Move measurement-only overrides from package-global
 environment variables to per-compilation test policy as each optimization completes
 its current qualification; preserve public behavior and native-code parity while
-deleting the old branch. This should be handled in small families because the 117
+deleting the old branch. This should be handled in small families because the 115
 controls include diagnostics, safety or feature switches, and resource budgets that
 must not be removed as if they were equivalent peephole toggles.
 

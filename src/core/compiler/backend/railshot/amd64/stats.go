@@ -43,13 +43,6 @@ var (
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
 	// compactI32FrameEnabled packs i32 locals in admitted kernels.
 	compactI32FrameEnabled = os.Getenv("WAGO_NO_COMPACT_I32_FRAME") != "1"
-	// compactI32ControlFlowEnabled extends that typed-slot layout through structured
-	// control flow. Calls remain excluded because some argument-staging paths use
-	// intentionally full-width local loads.
-	compactI32ControlFlowEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_I32_CONTROL") != "1"
-	// compactI32CallsEnabled admits call-making functions after every deferred
-	// local argument load has selected its width from the local's machine type.
-	compactI32CallsEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_I32_CALLS") != "1"
 	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings on
 	// the explicit native-compaction path.
 	accumulatorImmediateEnabled = os.Getenv("WAGO_AMD64_NO_ACCUMULATOR_IMMEDIATE") != "1"

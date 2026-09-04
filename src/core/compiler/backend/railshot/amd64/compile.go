@@ -2699,7 +2699,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			i32Locals++
 		}
 	}
-	compactI32Frame := f.opt(optCompactI32Frame) && (!hints.flags.has(hintHasCall) || compactI32CallsEnabled) && (!hints.flags.has(hintHasControlFlow) || compactI32ControlFlowEnabled) && !moduleEH && gcFrameRoots == nil && i32Locals >= 2
+	compactI32Frame := f.opt(optCompactI32Frame) && !moduleEH && gcFrameRoots == nil && i32Locals >= 2
 	if compactI32Frame {
 		f.stats.peep("compact-i32-frame")
 	}

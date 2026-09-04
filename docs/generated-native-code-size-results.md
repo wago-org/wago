@@ -1642,8 +1642,9 @@ control flow. Control joins and ordinary local traffic already use typed
 branches and loops. Call-making functions stay excluded: several argument-
 staging paths deliberately load a full machine word from a local home. EH and
 GC-frame layouts remain excluded as before.
-`WAGO_AMD64_NO_COMPACT_I32_CONTROL=1` restores the previous straight-line-only
-admission rule.
+During qualification, `WAGO_AMD64_NO_COMPACT_I32_CONTROL=1` restored the
+previous straight-line-only admission rule. That narrower rollback has since
+been retired; the `compact-i32-frame` policy remains the complete oracle.
 
 Across the 36-module AMD64 Size suite, aggregate function-frame reservation falls
 from 1,947,072 to 1,926,848 bytes (-20,224). Raw native bytes fall from 68,509,167
@@ -1663,8 +1664,10 @@ argument paths select `Load32` versus `Load64` from the local's machine type, so
 adjacent four-byte i32 homes cannot leak into an argument's upper half. Inline-
 reserved locals remain naturally word-sized beyond the packed caller region.
 EH and GC-frame functions retain their established layout.
-`WAGO_AMD64_NO_COMPACT_I32_CALLS=1` restores both the former admission rule and
-the former full-width argument loads as an exact code-shape oracle.
+During qualification, `WAGO_AMD64_NO_COMPACT_I32_CALLS=1` restored both the
+former admission rule and the former full-width argument loads. That narrower
+rollback has since been retired; the `compact-i32-frame` policy remains the
+complete code-shape oracle.
 
 Across the 36-module AMD64 Size suite, aggregate function-frame reservation falls
 from 1,926,848 to 1,429,168 bytes (-497,680, -25.83%). Raw native bytes fall from

@@ -794,15 +794,10 @@ type tailDeferredArg struct {
 	float  bool
 }
 
-// loadCallLocalInt selects a typed local load when call-making functions may
-// use packed i32 homes. The rollback path intentionally preserves the former
-// full-machine-word staging sequence as its exact code-shape oracle.
+// loadCallLocalInt selects the local's exact width so packed adjacent i32 homes
+// cannot leak into an argument's upper half.
 func (f *fn) loadCallLocalInt(dst Reg, st storage) {
-	if compactI32CallsEnabled {
-		f.loadFrameInt(dst, f.localAddr(st.index()), st.typ)
-	} else {
-		f.a.Load64(dst, RSP, f.localAddr(st.index()))
-	}
+	f.loadFrameInt(dst, f.localAddr(st.index()), st.typ)
 }
 
 // discardEHHandlersForTail removes every handler owned by the current function.
