@@ -45,6 +45,51 @@ func exactGCRefFactModule(t testing.TB, controlBoundary bool) *wasm.Module {
 	return m
 }
 
+func gcRefFactWideLocalModule(t testing.TB, localCount uint32, controlDepth int) *wasm.Module {
+	t.Helper()
+	body := []byte{0x01} // one local declaration run
+	body = append(body, wasmtest.ULEB(localCount)...)
+	body = append(body, 0x63, 0x00) // (ref null 0)
+	for range controlDepth {
+		body = append(body, 0x02, 0x40) // block [] -> []
+	}
+	for range controlDepth {
+		body = append(body, 0x0b)
+	}
+	body = append(body, 0x41, 0x00, 0x0b) // i32.const 0; function end
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			[]byte{0x5f, 0x00},
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+		)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(append(wasmtest.ULEB(uint32(len(body))), body...))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatalf("decode wide-local GC-fact module: %v", err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatalf("validate wide-local GC-fact module: %v", err)
+	}
+	return m
+}
+
+func BenchmarkGCRefFactsWideLocals(b *testing.B) {
+	m := gcRefFactWideLocalModule(b, 1024, 8)
+	opts := CompileOptions{Optimizations: map[string]bool{"gc-ref-facts": true}, Workers: 1}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		cm, err := CompileModuleWith(m, opts)
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchCompiledSink = cm
+	}
+	b.ReportMetric(float64(len(benchCompiledSink.Code)), "code-bytes")
+}
+
 func enableGCRefFacts(t *testing.T) {
 	t.Helper()
 	before := exactGCRefFactsEnabled
