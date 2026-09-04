@@ -37,7 +37,7 @@ func MeasurePipelineCapacity(cfg *CFG, locals *LocalSSA, flow *ValueFlow, semant
 		bytes.ValueFlow = capacityBytes(flow.Values) + capacityBytes(flow.Params) + capacityBytes(flow.EdgeArgs) + capacityBytes(flow.EntryStacks) + capacityBytes(flow.ExitStacks) + capacityBytes(flow.EntryDepths) + capacityBytes(flow.ExitDepths) + capacityBytes(flow.InstructionValues) + capacityBytes(flow.LocalDefinitionValues) + capacityBytes(flow.Reachable) + capacityBytes(flow.phi) + capacityBytes(flow.ready) + capacityBytes(flow.before) + capacityBytes(flow.merge) + capacityBytes(flow.stack)
 	}
 	if semantic != nil {
-		bytes.Semantic = capacityBytes(semantic.Insts) + capacityBytes(semantic.Args) + capacityBytes(semantic.Blocks) + capacityBytes(semantic.InstructionMap) + capacityBytes(semantic.stack)
+		bytes.Semantic = capacityBytes(semantic.Insts) + capacityBytes(semantic.Args) + capacityBytes(semantic.SIMD) + capacityBytes(semantic.Blocks) + capacityBytes(semantic.InstructionMap) + capacityBytes(semantic.stack)
 	}
 	if metadata != nil {
 		bytes.Metadata = capacityBytes(metadata.Instructions)

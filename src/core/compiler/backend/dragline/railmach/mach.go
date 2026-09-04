@@ -157,11 +157,11 @@ type MemoryAccess struct {
 	Instruction   uint32
 	BoundsProof   uint32
 	TrapSite      uint32
-	MemoryIndex   uint16
+	MemoryIndex   uint32
 	SemanticWidth uint8
 	EncodedWidth  uint8
 	Alignment     uint8
-	_             [5]byte
+	_             uint8
 }
 
 // ResultCount returns the number of consecutive VReg definitions. Multi-result
@@ -216,6 +216,7 @@ type Func struct {
 	Transfers  []EdgeTransfer
 	Results    []VReg
 	Memory     []MemoryAccess
+	SIMD       []railssa.SemanticSIMDImmediate
 }
 
 func (f *Func) InstructionOperands(id uint32) []Operand {
@@ -266,7 +267,8 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 	transfers := resize(reuse.Transfers, len(flow.EdgeArgs))[:0]
 	results := reuse.Results[:0]
 	memory := reuse.Memory[:0]
-	*reuse = Func{Target: target, ParamCount: flow.ParamCount, Insts: insts, Operands: operands, VRegs: vregs, Blocks: blocks, Edges: edges, Transfers: transfers, Results: results, Memory: memory}
+	simd := reuse.SIMD[:0]
+	*reuse = Func{Target: target, ParamCount: flow.ParamCount, Insts: insts, Operands: operands, VRegs: vregs, Blocks: blocks, Edges: edges, Transfers: transfers, Results: results, Memory: memory, SIMD: simd}
 	for id, edge := range cfg.Edges {
 		reuse.Edges[id] = Edge{From: edge.From, To: edge.To, Kind: edge.Kind}
 	}
@@ -331,6 +333,19 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 					Instruction: uint32(len(reuse.Insts)) - 1, TrapSite: instruction.Source,
 					SemanticWidth: width, EncodedWidth: width, Alignment: 1,
 				})
+			}
+			if immediate, ok := semantic.SIMDImmediateAt(semanticID); ok {
+				reuse.SIMD = append(reuse.SIMD, immediate)
+				if width := simdMemoryWidth(instruction.Op); width != 0 {
+					if len(args) == 0 {
+						return nil, fmt.Errorf("railmach: SIMD memory instruction %d has no address", semanticID)
+					}
+					reuse.Memory = append(reuse.Memory, MemoryAccess{
+						Offset: immediate.Offset, AddressValue: reuse.Operands[instruction.OperandStart].Reg,
+						Instruction: uint32(len(reuse.Insts)) - 1, TrapSite: instruction.Source, MemoryIndex: immediate.MemoryIndex,
+						SemanticWidth: width, EncodedWidth: width, Alignment: 1,
+					})
+				}
 			}
 			for ordinal := uint32(0); ordinal < instruction.ResultCount(); ordinal++ {
 				result := instruction.Result + VReg(ordinal)
@@ -682,6 +697,23 @@ func Verify(f *Func) error {
 		}
 		memoryIndex++
 	}
+	previous = 0
+	for index, immediate := range f.SIMD {
+		if int(immediate.Instruction) >= len(f.Insts) || index != 0 && immediate.Instruction <= previous || !wasm.IsSIMDValidationInstructionKind(f.Insts[immediate.Instruction].Op) && !IsSelectedOpcode(f.Insts[immediate.Instruction].Op) {
+			return fmt.Errorf("railmach: SIMD immediate %d has invalid instruction identity", index)
+		}
+		previous = immediate.Instruction
+	}
+	simdIndex := 0
+	for instructionID, instruction := range f.Insts {
+		if !wasm.IsSIMDValidationInstructionKind(instruction.Op) {
+			continue
+		}
+		if simdIndex >= len(f.SIMD) || f.SIMD[simdIndex].Instruction != uint32(instructionID) {
+			return fmt.Errorf("railmach: SIMD instruction %d has no immediate descriptor", instructionID)
+		}
+		simdIndex++
+	}
 	return nil
 }
 
@@ -689,7 +721,29 @@ func memoryOpcodeWidth(kind MOpcode) uint8 {
 	if width := selectedMemoryWidth(kind); width != 0 {
 		return width
 	}
-	return scalarMemoryWidth(kind)
+	if width := scalarMemoryWidth(kind); width != 0 {
+		return width
+	}
+	return simdMemoryWidth(kind)
+}
+
+func simdMemoryWidth(kind MOpcode) uint8 {
+	switch kind {
+	case wasm.InstrV128Load8Splat, wasm.InstrV128Load8Lane, wasm.InstrV128Store8Lane:
+		return 1
+	case wasm.InstrV128Load16Splat, wasm.InstrV128Load16Lane, wasm.InstrV128Store16Lane:
+		return 2
+	case wasm.InstrV128Load32Splat, wasm.InstrV128Load32Zero, wasm.InstrV128Load32Lane, wasm.InstrV128Store32Lane:
+		return 4
+	case wasm.InstrV128Load8x8S, wasm.InstrV128Load8x8U, wasm.InstrV128Load16x4S, wasm.InstrV128Load16x4U,
+		wasm.InstrV128Load32x2S, wasm.InstrV128Load32x2U, wasm.InstrV128Load64Splat, wasm.InstrV128Load64Zero,
+		wasm.InstrV128Load64Lane, wasm.InstrV128Store64Lane:
+		return 8
+	case wasm.InstrV128Load, wasm.InstrV128Store:
+		return 16
+	default:
+		return 0
+	}
 }
 
 func scalarMemoryWidth(kind MOpcode) uint8 {
@@ -756,7 +810,8 @@ func CapacityBytes(f *Func) uint64 {
 		uint64(cap(f.Edges))*uint64(unsafe.Sizeof(Edge{})) +
 		uint64(cap(f.Transfers))*uint64(unsafe.Sizeof(EdgeTransfer{})) +
 		uint64(cap(f.Results))*uint64(unsafe.Sizeof(VReg(0))) +
-		uint64(cap(f.Memory))*uint64(unsafe.Sizeof(MemoryAccess{}))
+		uint64(cap(f.Memory))*uint64(unsafe.Sizeof(MemoryAccess{})) +
+		uint64(cap(f.SIMD))*uint64(unsafe.Sizeof(railssa.SemanticSIMDImmediate{}))
 }
 
 func resize[T any](values []T, length int) []T {

@@ -123,6 +123,9 @@ func TestBuildPreservesV128InFPRBank(t *testing.T) {
 	m := machineModule(nil, []wasm.ValType{wasm.V128}, body)
 	for _, target := range []Target{TargetAMD64, TargetARM64} {
 		f := buildMachineTest(t, target, m)
+		if len(f.SIMD) != 1 || f.SIMD[0].Bytes != [16]byte{} || f.SIMD[0].Class != wasm.SIMDEffectConst {
+			t.Fatalf("%s SIMD constant = %#v", target, f.SIMD)
+		}
 		if len(f.Results) != 1 {
 			t.Fatalf("%s results = %#v", target, f.Results)
 		}
@@ -133,6 +136,29 @@ func TestBuildPreservesV128InFPRBank(t *testing.T) {
 		if err := Verify(f); err != nil {
 			t.Fatalf("%s verify: %v", target, err)
 		}
+	}
+}
+
+func TestBuildPreservesSparseSIMDMemorySemantics(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0xfd, 0x07, 0x00, 0x09, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	f := buildMachineTest(t, TargetARM64, m)
+	if len(f.SIMD) != 1 || f.SIMD[0].Offset != 9 || f.SIMD[0].Class != wasm.SIMDEffectLoad {
+		t.Fatalf("SIMD immediate = %#v", f.SIMD)
+	}
+	if len(f.Memory) != 1 || f.Memory[0].SemanticWidth != 1 || f.Memory[0].EncodedWidth != 1 || f.Memory[0].Offset != 9 || f.Memory[0].AddressValue == 0 {
+		t.Fatalf("SIMD memory access = %#v", f.Memory)
 	}
 }
 

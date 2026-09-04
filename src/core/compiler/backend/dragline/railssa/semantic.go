@@ -27,6 +27,20 @@ type SemanticInst struct {
 	Op       wasm.InstrKind
 }
 
+// SemanticSIMDImmediate retains uncommon vector payload without putting Go
+// pointers or sixteen-byte constants in every semantic instruction.
+type SemanticSIMDImmediate struct {
+	Bytes        [16]byte
+	Offset       uint64
+	Instruction  uint32
+	Subopcode    uint32
+	MemoryIndex  uint32
+	Class        wasm.SIMDEffectClass
+	Lane         uint8
+	NaturalAlign uint8
+	_            uint8
+}
+
 // ResultCount returns the number of consecutive FlowValue definitions. Call
 // arity is encoded in Aux's high word after semantic operands have captured the
 // parameter count; all other value-producing instructions remain scalar.
@@ -51,6 +65,7 @@ type SemanticBlock struct {
 type SemanticFunc struct {
 	Insts  []SemanticInst
 	Args   []FlowValueID
+	SIMD   []SemanticSIMDImmediate
 	Blocks []SemanticBlock
 
 	// InstructionMap stores semantic instruction ID + 1, or zero when the
@@ -63,6 +78,22 @@ func (s *SemanticFunc) Operands(id uint32) []FlowValueID {
 	instruction := s.Insts[id]
 	start := int(instruction.ArgStart)
 	return s.Args[start : start+int(instruction.ArgLen)]
+}
+
+func (s *SemanticFunc) SIMDImmediateAt(instruction uint32) (SemanticSIMDImmediate, bool) {
+	lo, hi := 0, len(s.SIMD)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if s.SIMD[mid].Instruction < instruction {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo < len(s.SIMD) && s.SIMD[lo].Instruction == instruction {
+		return s.SIMD[lo], true
+	}
+	return SemanticSIMDImmediate{}, false
 }
 
 // BuildSemanticFunc converts stabilized operand-stack value flow into compact
@@ -99,11 +130,12 @@ func BuildSemanticFunc(f *StackFunc, cfg *CFG, flow *ValueFlow, reuse *SemanticF
 	args := resizeClear(reuse.Args, argCount)[:0]
 	blocks := resizeClear(reuse.Blocks, len(cfg.Blocks))
 	instructionMap := resizeClear(reuse.InstructionMap, len(f.Instrs))
+	simd := reuse.SIMD[:0]
 	stack := reuse.stack[:0]
 	if cap(stack) < int(flow.MaxStack) {
 		stack = make([]FlowValueID, 0, flow.MaxStack)
 	}
-	*reuse = SemanticFunc{Insts: insts, Args: args, Blocks: blocks, InstructionMap: instructionMap, stack: stack}
+	*reuse = SemanticFunc{Insts: insts, Args: args, SIMD: simd, Blocks: blocks, InstructionMap: instructionMap, stack: stack}
 
 	for blockIndex, record := range cfg.Blocks {
 		block := BlockID(blockIndex)
@@ -138,6 +170,21 @@ func BuildSemanticFunc(f *StackFunc, cfg *CFG, flow *ValueFlow, reuse *SemanticF
 						return nil, fmt.Errorf("railssa: semantic branch cast %d has no immediate", source)
 					}
 					aux = immediate.Target
+				} else if wasm.IsSIMDValidationInstructionKind(instruction.Kind) {
+					descriptor, ok := f.SIMDImmediateAt(source)
+					if !ok {
+						return nil, fmt.Errorf("railssa: semantic SIMD instruction %d has no immediate", source)
+					}
+					memoryIndex := uint32(0)
+					if descriptor.MemArg.Mem != nil {
+						memoryIndex = uint32(*descriptor.MemArg.Mem)
+					}
+					aux = descriptor.MemArg.Offset
+					reuse.SIMD = append(reuse.SIMD, SemanticSIMDImmediate{
+						Bytes: descriptor.Bytes, Offset: descriptor.MemArg.Offset, Instruction: uint32(len(reuse.Insts)),
+						Subopcode: descriptor.Subopcode, MemoryIndex: memoryIndex, Class: descriptor.Class,
+						Lane: uint8(descriptor.Lane), NaturalAlign: descriptor.NaturalAlign,
+					})
 				}
 				item := SemanticInst{Aux: aux, ArgStart: uint32(len(reuse.Args)), ArgLen: uint16(arity), Result: result, Source: source, Op: instruction.Kind}
 				reuse.Args = append(reuse.Args, reuse.stack[len(reuse.stack)-arity:]...)
@@ -413,6 +460,21 @@ func VerifySemanticFunc(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *Seman
 				return fmt.Errorf("railssa: semantic instruction %d has invalid result %d", id, result)
 			}
 		}
+	}
+	previous := uint32(0)
+	for index, immediate := range semantic.SIMD {
+		if int(immediate.Instruction) >= len(semantic.Insts) || index != 0 && immediate.Instruction <= previous || !wasm.IsSIMDValidationInstructionKind(semantic.Insts[immediate.Instruction].Op) {
+			return fmt.Errorf("railssa: semantic SIMD immediate %d has invalid identity", index)
+		}
+		descriptor, ok := f.SIMDImmediateAt(semantic.Insts[immediate.Instruction].Source)
+		memoryIndex := uint32(0)
+		if ok && descriptor.MemArg.Mem != nil {
+			memoryIndex = uint32(*descriptor.MemArg.Mem)
+		}
+		if !ok || descriptor.Subopcode != immediate.Subopcode || descriptor.MemArg.Offset != immediate.Offset || memoryIndex != immediate.MemoryIndex || descriptor.Class != immediate.Class || uint8(descriptor.Lane) != immediate.Lane || descriptor.NaturalAlign != immediate.NaturalAlign || descriptor.Bytes != immediate.Bytes {
+			return fmt.Errorf("railssa: semantic SIMD immediate %d differs from its source", index)
+		}
+		previous = immediate.Instruction
 	}
 	return nil
 }
