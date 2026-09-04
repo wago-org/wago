@@ -46,7 +46,6 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("gc-native-alloc", &nativeGCStructAllocEnabled),
 	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
-	optimization.Bind("v128-sink", &v128LocalSinkEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
 	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
@@ -91,7 +90,6 @@ var (
 	optGCNativeAlloc        = optimizationBindings.Option("gc-native-alloc")
 	optV128ConstCache       = optimizationBindings.Option("v128-const-cache")
 	optV128Pins             = optimizationBindings.Option("v128-pins")
-	optV128Sink             = optimizationBindings.Option("v128-sink")
 	optRegABI               = optimizationBindings.Option("reg-abi")
 	optInline               = optimizationBindings.Option("inline")
 	optLoopPrecheck         = optimizationBindings.Option("loop-precheck")

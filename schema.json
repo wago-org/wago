@@ -117,7 +117,6 @@
               "v128-const-cache",
               "v128-direct-results",
               "v128-pins",
-              "v128-sink",
               "value-facts",
               "vex-float-mem",
               "x8-pin",

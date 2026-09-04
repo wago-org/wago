@@ -648,13 +648,6 @@ func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 	wantOff := map[string]bool{
 		"loop-precheck": true,
 	}
-	switch runtime.GOARCH {
-	case "amd64":
-		for _, name := range []string{"v128-sink"} {
-			wantOff[name] = true
-		}
-	}
-
 	seen := make(map[string]bool, len(wantOff))
 	for _, info := range NewRuntimeConfig().OptimizationInfos() {
 		if info.Name == "inline-loop-callees" {
@@ -669,8 +662,8 @@ func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 		if info.Name == "tee-spill-elide" {
 			t.Fatal("removed tee-spill-elide optimization is still exposed")
 		}
-		if runtime.GOARCH == "arm64" && info.Name == "v128-sink" {
-			t.Fatal("removed ARM64 v128-sink optimization is still exposed")
+		if info.Name == "v128-sink" {
+			t.Fatal("removed v128-sink optimization is still exposed")
 		}
 		if wantOff[info.Name] {
 			seen[info.Name] = true

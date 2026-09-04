@@ -151,13 +151,6 @@ var multiBoundsCertEnabled = os.Getenv("WAGO_AMD64_SINGLE_BOUNDS_CERT") != "1"
 // Default ON; WAGO_AMD64_NO_V128_PINS=1 restores the spill-per-op path for A/B.
 var v128LocalPinsEnabled = os.Getenv("WAGO_AMD64_NO_V128_PINS") != "1"
 
-// v128LocalSinkEnabled peeps `local.set/tee $x (v128bin (local.get $x) …)` into a
-// pinned v128 local and computes the op straight into x's XMM register (one
-// 3-operand VEX instruction, no accumulator copy and no result-to-pin move) — the
-// amd64 analog of arm64's v128 local sink. It is default-off after the broad
-// ARM64/AMD64 toggle matrix found no execution benefit. WAGO_V128_SINK=1 opts in.
-var v128LocalSinkEnabled = envDefaultOff(os.Getenv("WAGO_V128_SINK"))
-
 // v128ConstCacheEnabled reserves an XMM register for each repeated v128.const
 // value in a call-free function and materializes it once at entry, so a loop over
 // a constant operand (the isa_simd reductions, bitselect masks, …) copies it from
