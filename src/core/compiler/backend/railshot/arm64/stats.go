@@ -81,9 +81,6 @@ var (
 	// sharedTrapBodyEnabled lets compact trap groups share the complete
 	// terminal trap record/writeback/unwind body within one function.
 	sharedTrapBodyEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_TRAP_BODY") != "1"
-	// moduleSharedTrapBodyEnabled lets internal functions replace byte-identical
-	// complete trap bodies with one B thunk and one module cold-island copy.
-	moduleSharedTrapBodyEnabled = os.Getenv("WAGO_ARM64_NO_MODULE_SHARED_TRAP_BODY") != "1"
 	// loadPairEnabled combines exact adjacent full-width scalar loads into LDP.
 	// WAGO_ARM64_NO_LOAD_PAIR=1 is the A/B oracle and rollback switch.
 	loadPairEnabled = os.Getenv("WAGO_ARM64_NO_LOAD_PAIR") != "1"

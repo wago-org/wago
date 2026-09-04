@@ -1479,7 +1479,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			if hostAdapters[i] {
 				trapBodyCluster.reset()
 			}
-			if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && policy.CompactNative {
+			if policy.EnabledOption(optSharedTrapBody) && policy.CompactNative {
 				fnCode = trapBodyCluster.share(codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfo(), st)
 			}
 			if sc.directPrepared {
@@ -1628,7 +1628,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					} else {
 						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
 					}
-					if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled {
+					if policy.EnabledOption(optSharedTrapBody) {
 						result.trapBody = ws.scratch.fnState.sharedTrapBodyInfo()
 					}
 				}
@@ -1682,7 +1682,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		if r.layoutFlags&layoutHostAdapter != 0 {
 			trapBodyCluster.reset()
 		}
-		if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && policy.CompactNative {
+		if policy.EnabledOption(optSharedTrapBody) && policy.CompactNative {
 			var st *CodegenStats
 			if ms != nil {
 				st = ms.Funcs[i]

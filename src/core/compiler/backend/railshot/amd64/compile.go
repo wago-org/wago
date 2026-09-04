@@ -1635,7 +1635,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 				}
 				literalOffsets[i+1] = uint32(len(literalWords))
 			}
-			if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && policy.CompactNative {
+			if policy.EnabledOption(optSharedTrapBody) && policy.CompactNative {
 				fnCode = trapBodyCluster.shareFunction(hostAdapters[i], codeBuffer.Bytes(), fnCode, entry[i], sc.fnState.sharedTrapBodyInfoAMD64(), st)
 			}
 			if !codeBuffer.CommitTail(fnCode) {
@@ -1832,7 +1832,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 					} else {
 						result.adapterTail = ws.scratch.fnState.adapterTailInfo()
 					}
-					if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled {
+					if policy.EnabledOption(optSharedTrapBody) {
 						result.trapBody = ws.scratch.fnState.sharedTrapBodyInfoAMD64()
 					}
 				}
@@ -1898,7 +1898,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		}
 		fnCode := states[int(r.worker)].arena[int(r.start):int(r.end)]
 		relocs[i] = states[int(r.worker)].relocs[int(r.relocStart):int(r.relocEnd)]
-		if policy.EnabledOption(optSharedTrapBody) && moduleSharedTrapBodyEnabled && policy.CompactNative {
+		if policy.EnabledOption(optSharedTrapBody) && policy.CompactNative {
 			var st *CodegenStats
 			if ms != nil {
 				st = ms.Funcs[i]

@@ -49,9 +49,6 @@ var (
 	// sharedTrapBodyEnabled lets compact trap groups share the invariant
 	// trap-cell stores and native-stack unwind within one compiled function.
 	sharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_SHARED_TRAP_BODY") != "1"
-	// moduleSharedTrapBodyEnabled lets later internal functions replace an exact
-	// complete trap-body copy with one near jump to a retained cold body.
-	moduleSharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_MODULE_SHARED_TRAP_BODY") != "1"
 	// compactLowPinEnabled makes RBP the first integer-local pin only for
 	// call-free, straight-line compact functions. The register set and pin
 	// count stay unchanged; this is an encoded-size tie-break experiment.
