@@ -116,14 +116,14 @@ func decodeFinalizerMarker(key int) (off int, marker finalizerMarker, ok bool) {
 }
 
 func (f *fn) recordFinalizerMarker(off int, marker finalizerMarker) {
-	if !nativeFinalizerEnabled {
+	if !nativeFinalizerEnabled || !nativeFinalizerValidate {
 		return
 	}
 	sc := f.scratchState()
-	if sc.branchTargets == nil {
-		sc.branchTargets = make(map[int]bool, 16)
+	if sc.finalizerMarkers == nil {
+		sc.finalizerMarkers = make(map[int]bool, 16)
 	}
-	sc.branchTargets[finalizerMarkerKey(off, marker)] = true
+	sc.finalizerMarkers[finalizerMarkerKey(off, marker)] = true
 }
 
 func (f *fn) recordJumpTableData(start, end int) {
@@ -160,6 +160,9 @@ func (f *fn) recordFinalizerFragment(start, end int, kind finalizerFragmentKind)
 }
 
 func (f *fn) recordPCRelative(off int) {
+	if nativeFinalizerEnabled {
+		f.scratchState().hasPCRelative = true
+	}
 	f.recordFinalizerMarker(off, markerPCRelative)
 }
 
@@ -328,12 +331,8 @@ func (f *fn) buildCompactionPlan(deletions []shared.DeletedRange) ([]shared.Dele
 		return true
 	}
 	sc := f.scratchState()
-	for key := range sc.branchTargets {
-		_, marker, ok := decodeFinalizerMarker(key)
-		if !ok {
-			continue
-		}
-		if marker == markerPluginStart || marker == markerPluginEnd {
+	for _, fragment := range sc.finalFragments {
+		if fragment.kind == fragmentPlugin {
 			return f.rejectCompaction("plugin-fragment")
 		}
 	}
@@ -489,16 +488,8 @@ func (f *fn) compactionNeedsReencode() bool {
 	if len(f.relocs) != 0 {
 		return true
 	}
-	for key := range f.scratchState().branchTargets {
-		if key >= 0 {
-			return true
-		}
-		_, marker, ok := decodeFinalizerMarker(key)
-		if ok && (marker == markerJumpDataStart || marker == markerJumpDataEnd || marker == markerOpaqueDataStart || marker == markerOpaqueDataEnd || marker == markerPCRelative) {
-			return true
-		}
-	}
-	return false
+	sc := f.scratchState()
+	return sc.hasBranchTargets || sc.hasPCRelative || len(sc.finalFragments) != 0
 }
 
 func isPCRelativeWord(word uint32) bool {
@@ -614,7 +605,7 @@ func (f *fn) validateFinalizerInventory(internalOff int) error {
 		return fmt.Errorf("arm64 identity finalizer: %w", err)
 	}
 	var jumpStarts, jumpEnds, pluginStarts, pluginEnds, dataStarts, dataEnds int
-	for encoded := range sc.branchTargets {
+	for encoded := range sc.finalizerMarkers {
 		off, marker, ok := decodeFinalizerMarker(encoded)
 		if !ok {
 			continue
@@ -661,7 +652,7 @@ func (f *fn) validateFinalizerInventory(internalOff int) error {
 }
 
 func (f *fn) validatePCRelativeInventory() error {
-	markers := f.scratchState().branchTargets
+	markers := f.scratchState().finalizerMarkers
 	opaque := false
 	for pc := 0; pc+4 <= len(f.a.B); pc += 4 {
 		if finalizerOpaqueAt(markers, pc, &opaque) {

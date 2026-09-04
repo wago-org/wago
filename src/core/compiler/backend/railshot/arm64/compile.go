@@ -573,8 +573,10 @@ type scratch struct {
 	ctrlRoots               []ctrlFrameRoots
 	functionResultTypeArena [maxScratchFunctionResults]machineType
 	trapSites               [trapAtomicUnaligned + 1][]trapSite
-	branchTargets           map[int]bool
-	brTableStubAt           []int // duplicate-heavy jump-table target positions by control depth
+	branchTargets           []uint64
+	branchTargetInline      [64]uint64   // one bit per instruction; covers 16 KiB of native code
+	finalizerMarkers        map[int]bool // validation-only inventory
+	brTableStubAt           []int        // duplicate-heavy jump-table target positions by control depth
 	finalFragments          []finalizerFragment
 	deadHoleSites           [maxFinalizerDeletions]int
 	branchNextSites         [maxFinalizerDeletions]int
@@ -583,6 +585,8 @@ type scratch struct {
 	branchNextN             uint8
 	singleBitTestN          uint8
 	deadHoleOverflow        bool
+	hasBranchTargets        bool
+	hasPCRelative           bool
 	offsetMap               shared.OffsetMap
 	nodeScratchReserved     uint64
 	nodeScratchPeak         uint64
@@ -813,12 +817,15 @@ func (sc *scratch) reset() {
 	for i := range sc.trapSites {
 		sc.trapSites[i] = sc.trapSites[i][:0]
 	}
-	clear(sc.branchTargets)
+	sc.branchTargets = nil
+	clear(sc.finalizerMarkers)
 	sc.finalFragments = sc.finalFragments[:0]
 	sc.deadHoleN = 0
 	sc.branchNextN = 0
 	sc.singleBitTestN = 0
 	sc.deadHoleOverflow = false
+	sc.hasBranchTargets = false
+	sc.hasPCRelative = false
 }
 
 // clearNodeReferences severs scratch-owned links into operand-arena chunks before

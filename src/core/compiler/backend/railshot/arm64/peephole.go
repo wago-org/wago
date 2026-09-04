@@ -44,11 +44,18 @@ func (f *fn) finalizePeepholes() {
 		return
 	}
 	sc := f.scratchState()
-	targets := sc.branchTargets
-	if targets == nil {
-		targets = make(map[int]bool, 16)
-		sc.branchTargets = targets
+	instructions := n / 4
+	words := (instructions + 63) / 64
+	var targets []uint64
+	if words <= len(sc.branchTargetInline) {
+		targets = sc.branchTargetInline[:words]
+		clear(targets)
+	} else {
+		// A giant function gets exact ephemeral backing. Do not retain its
+		// high-water in module or parallel-worker scratch.
+		targets = make([]uint64, words)
 	}
+	sc.branchTargets = targets
 	fragments := finalizerFragmentCursor{fragments: sc.finalFragments}
 	for pc := 0; pc < n; pc += 4 {
 		if _, opaque := fragments.at(pc); compact && f.opaqueFragments && opaque {
@@ -59,7 +66,8 @@ func (f *fn) finalizePeepholes() {
 			return
 		}
 		if t, ok := branchTarget(pc, w); ok {
-			targets[t] = true
+			sc.hasBranchTargets = true
+			branchTargetAdd(targets, t, n)
 			if compact && t == pc+4 && w&0xFC000000 != 0x94000000 {
 				f.recordBranchNext(pc)
 			}
@@ -95,11 +103,27 @@ func (f *fn) recordSingleBitTest(off int, reg Reg, bit uint8) {
 // foldSingleBitBranches consumes only candidates explicitly recorded by the
 // masked-eqz lowering. The final target is now known, so an adjacent TST plus
 // EQ/NE branch can become TBZ/TBNZ when the tighter imm14 range permits it.
-func (f *fn) foldSingleBitBranches(b []byte, n int, targets map[int]bool) {
+func branchTargetAdd(targets []uint64, off, n int) {
+	if off < 0 || off >= n || off&3 != 0 {
+		return
+	}
+	word := off >> 8
+	targets[word] |= uint64(1) << ((off >> 2) & 63)
+}
+
+func branchTargeted(targets []uint64, off int) bool {
+	if off < 0 || off&3 != 0 {
+		return false
+	}
+	word := off >> 8
+	return word < len(targets) && targets[word]&(uint64(1)<<((off>>2)&63)) != 0
+}
+
+func (f *fn) foldSingleBitBranches(b []byte, n int, targets []uint64) {
 	sc := f.scratchState()
 	for _, site := range sc.singleBitTests[:sc.singleBitTestN] {
 		test, branch := site.off, site.off+4
-		if test < 0 || branch+4 > n || targets[branch] || int(sc.deadHoleN) == len(sc.deadHoleSites) {
+		if test < 0 || branch+4 > n || branchTargeted(targets, branch) || int(sc.deadHoleN) == len(sc.deadHoleSites) {
 			continue
 		}
 		w := rdWord(b, branch)
@@ -152,7 +176,7 @@ func (f *fn) foldSingleBitBranches(b []byte, n int, targets map[int]bool) {
 // B that becomes a NOP): an external entrant would otherwise see a NOP where it
 // expected a branch. We prove that by collecting every PC-relative branch
 // target first and only folding pairs whose middle word is not among them.
-func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
+func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
 	compact := nativeFinalizerEnabled && f.compactNative()
 	fragments := finalizerFragmentCursor{fragments: f.scratchState().finalFragments}
 	for pc := 0; pc+8 <= n; pc += 4 {
@@ -165,7 +189,7 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
 			continue
 		}
 		mid := pc + 4
-		if targets[mid] {
+		if branchTargeted(targets, mid) {
 			continue // something jumps to the middle word — cannot NOP it
 		}
 		wm := rdWord(b, mid)
@@ -201,7 +225,7 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets map[int]bool) {
 // Correct because the two instructions are adjacent (nothing rewrites the slot or
 // SP between them) and only fired when nothing branches to the load: an external
 // entrant that skipped the store must genuinely load from memory.
-func (f *fn) forwardStoreLoads(b []byte, n int, targets map[int]bool) {
+func (f *fn) forwardStoreLoads(b []byte, n int, targets []uint64) {
 	compact := nativeFinalizerEnabled && f.compactNative()
 	fragments := finalizerFragmentCursor{fragments: f.scratchState().finalFragments}
 	for pc := 0; pc+8 <= n; pc += 4 {
@@ -214,13 +238,13 @@ func (f *fn) forwardStoreLoads(b []byte, n int, targets map[int]bool) {
 	}
 }
 
-func (f *fn) forwardStoreLoadAt(b []byte, n, pc int, targets map[int]bool, recordHole bool) bool {
+func (f *fn) forwardStoreLoadAt(b []byte, n, pc int, targets []uint64, recordHole bool) bool {
 	rs, k, w64, ok := spStoreImm(rdWord(b, pc))
 	if !ok {
 		return false
 	}
 	ld := pc + 4
-	if ld+4 > n || targets[ld] {
+	if ld+4 > n || branchTargeted(targets, ld) {
 		return false // a branch lands on the load — it must read memory
 	}
 	rd, k2, w642, ok := spLoadImm(rdWord(b, ld))
