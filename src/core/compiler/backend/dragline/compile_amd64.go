@@ -6543,8 +6543,8 @@ func emitAMD64StackSIMD(a *amd64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		base := len(types) - 2
 		lhs := vectorOperand(base, 0)
 		rhs := vectorOperand(base+1, 1)
-		op(lhs, lhs, rhs)
-		storeV(base, lhs)
+		dst := reserveV(base)
+		op(dst, lhs, rhs)
 		types = append(types[:base], wasm.V128)
 		return nil
 	}

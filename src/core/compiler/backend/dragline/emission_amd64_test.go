@@ -455,6 +455,26 @@ func TestAMD64StructuredLoadsUnpinnedVectorLocalIntoStackCache(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredWritesReloadedSIMDBinaryIntoStackCache(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128, wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x20, 0x01, // local.get 1
+			0x02, 0x40, 0x0b, // empty block canonicalizes the live stack prefix
+			0xfd, 0x4e, // v128.and
+			0x0b,
+		}))),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	var redundant amd64.Asm
+	redundant.VMovdqu(4, 0)
+	if bytes.Contains(output.Code, redundant.B) {
+		t.Fatalf("structured SIMD result copied from scratch into its stack cache: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredCoalescesStraightLineLocalBoundsChecks(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),
