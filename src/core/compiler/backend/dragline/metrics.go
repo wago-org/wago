@@ -4,10 +4,11 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railmach"
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 16
+const MetricsVersion = 17
 
 // Metrics contains one deterministic row per compiled function plus module
 // totals. Timings are observational; all counts and byte sizes are exact for
@@ -44,6 +45,10 @@ type FunctionMetrics struct {
 	ScheduleCandidates         uint8                             `json:"schedule_candidates"`
 	SelectionCombinations      uint32                            `json:"selection_combinations"`
 	Dependencies               uint32                            `json:"dependencies"`
+	ScheduleReadySteps         uint32                            `json:"schedule_ready_steps"`
+	ScheduleReadyWidthTotal    uint64                            `json:"schedule_ready_width_total"`
+	ScheduleReadyWidthMax      uint32                            `json:"schedule_ready_width_max"`
+	ScheduleCriticalPathCost   uint64                            `json:"schedule_critical_path_cost"`
 	LiveSegments               uint32                            `json:"live_segments"`
 	IPRARefinedCalls           uint32                            `json:"ipra_refined_calls"`
 	WeightedSpillDebt          uint64                            `json:"weighted_spill_debt"`
@@ -121,6 +126,12 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 	metrics.ScheduleCandidates = plan.BackendAttempts * 3
 	metrics.SelectionCombinations = uint32(len(plan.Selection.Combinations))
 	metrics.Dependencies = uint32(len(plan.DAG.Dependencies))
+	if freedom, err := railmach.MeasureScheduleFreedom(plan.Machine, plan.Selection, plan.DAG); err == nil {
+		metrics.ScheduleReadySteps = freedom.ReadySteps
+		metrics.ScheduleReadyWidthTotal = freedom.ReadyWidthTotal
+		metrics.ScheduleReadyWidthMax = freedom.ReadyWidthMax
+		metrics.ScheduleCriticalPathCost = freedom.CriticalPathCost
+	}
 	metrics.LiveSegments = uint32(len(plan.Allocation.Intervals) + len(plan.Allocation.Fragments))
 	metrics.IPRARefinedCalls = plan.IPRARefinedCalls
 	metrics.WeightedSpillDebt = plan.Score.WeightedSpillDebt
