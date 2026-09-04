@@ -78,6 +78,7 @@ qoi_encode_run(void)
     int      out_len = 0;
     void    *encoded;
 
+    wago_allocator_reset();
     fill_pattern(rgba_buf);
     desc.width      = WQOI_W;
     desc.height     = WQOI_H;
@@ -99,6 +100,7 @@ qoi_decode_run(uint32_t qoi_len)
     void    *decoded;
     uint32_t px_len;
 
+    wago_allocator_reset();
     decoded = qoi_decode(input_buf, (int)qoi_len, &desc, WQOI_CHANNELS);
     if (decoded == NULL)
         return 0;

@@ -80,19 +80,20 @@ oracles on every supported corpus-test platform.
 
 ## Rebuilding an artifact
 
-Artifacts are checked in so the suite needs no toolchain at run time. To
-rebuild one (after reviewing a port change or re-pinning upstream), run its
-build script; it stages into a temp directory, compares SHA-256 against the
-checked-in artifact, and never overwrites in place:
+Artifacts are checked in so the suite needs no toolchain at run time. To verify
+one after rebuilding, run its build script; it stages into a temp directory,
+compares SHA-256 against the checked-in artifact, and does not overwrite it by
+default:
 
 ```sh
 tests/corpora/coremark/build.sh   # needs wasi-sdk (WASI_SDK=/path/to/wasi-sdk)
 ```
 
-After a deliberate change, update `MANIFEST.json`'s `artifact_sha256` and
-re-record provenance. `build.sh` failing with a digest mismatch is intentional:
-it means the checked-in bytes and the manifest pin disagree and must be
-reviewed, not silently accepted.
+After reviewing a deliberate port or upstream change, rebuild with `UPDATE=1`
+to replace that artifact, then update `MANIFEST.json`'s `artifact_sha256` and
+re-record provenance. A default build failing with a digest mismatch is
+intentional: it means the checked-in bytes and manifest pin disagree and must
+be reviewed, not silently accepted.
 
 ## Provenance discipline
 

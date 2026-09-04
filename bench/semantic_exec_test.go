@@ -69,6 +69,9 @@ func TestCorpusSemanticExec(t *testing.T) {
 				if err := runSemanticOracle(semantic); err != nil {
 					t.Fatal(err)
 				}
+				if err := semanticcorpus.RunRepeated(semanticCorpusRoot, semantic, 40); err != nil {
+					t.Fatalf("same-instance repetition: %v", err)
+				}
 			})
 		}
 	}

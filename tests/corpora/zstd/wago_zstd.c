@@ -36,7 +36,9 @@ zstd_output_ptr(void)
 uint32_t
 zstd_decompress_run(uint32_t comp_len)
 {
-    size_t d = ZSTD_decompress(output_buf, WZSTD_OUT_LEN, input_buf, comp_len);
+    size_t d;
+    wago_allocator_reset();
+    d = ZSTD_decompress(output_buf, WZSTD_OUT_LEN, input_buf, comp_len);
     if (ZSTD_isError(d))
         return 0;
     return (uint32_t)d;

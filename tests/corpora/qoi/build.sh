@@ -42,8 +42,13 @@ cp "$here"/wago_qoi.c "$stage"/
 
 got=$(shasum -a 256 "$stage/qoi.wasm" | awk '{print $1}')
 want=$(shasum -a 256 "$here/qoi.wasm" | awk '{print $1}')
-if [ "$got" != "$want" ]; then
+if [ "$got" != "$want" ] && [ "${UPDATE:-0}" != 1 ]; then
 	printf 'qoi: rebuilt artifact differs from the checked-in artifact\n  got  %s\n  want %s\nreview the diff before re-pinning the manifest digest\n' "$got" "$want" >&2
 	exit 1
+fi
+if [ "$got" != "$want" ]; then
+	cp "$stage/qoi.wasm" "$here/qoi.wasm"
+	printf 'qoi: updated artifact to %s; update MANIFEST.json after review\n' "$got"
+	exit 0
 fi
 printf 'qoi: verified %s\n' "$got"

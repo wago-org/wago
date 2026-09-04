@@ -50,8 +50,13 @@ cp "$here"/wago_zlib.c "$stage"/
 
 got=$(shasum -a 256 "$stage/zlib.wasm" | awk '{print $1}')
 want=$(shasum -a 256 "$here/zlib.wasm" | awk '{print $1}')
-if [ "$got" != "$want" ]; then
+if [ "$got" != "$want" ] && [ "${UPDATE:-0}" != 1 ]; then
 	printf 'zlib: rebuilt artifact differs from the checked-in artifact\n  got  %s\n  want %s\nreview the diff before re-pinning the manifest digest\n' "$got" "$want" >&2
 	exit 1
+fi
+if [ "$got" != "$want" ]; then
+	cp "$stage/zlib.wasm" "$here/zlib.wasm"
+	printf 'zlib: updated artifact to %s; update MANIFEST.json after review\n' "$got"
+	exit 0
 fi
 printf 'zlib: verified %s\n' "$got"

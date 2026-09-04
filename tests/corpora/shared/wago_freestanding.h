@@ -15,6 +15,7 @@ void *wago_malloc(size_t n);
 void  wago_free(void *p);
 void *wago_calloc(size_t count, size_t size);
 void *wago_realloc(void *p, size_t n);
+void  wago_allocator_reset(void);
 
 /* libc-compatible aliases over the same bounded bump arena. Libraries that
  * allocate through malloc/calloc/free (zlib, zstd) resolve to these instead of

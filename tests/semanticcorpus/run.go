@@ -47,6 +47,41 @@ func Run(root string, mod Module) error {
 	return nil
 }
 
+// RunRepeated executes and checks the same semantic case repeatedly on one
+// instance. It catches porting layers that pass once but retain or exhaust
+// guest state when used as a steady-state workload.
+func RunRepeated(root string, mod Module, repetitions int) error {
+	if repetitions <= 0 {
+		return fmt.Errorf("repetitions must be positive")
+	}
+	timeout := time.Duration(mod.Limits.TimeoutMS) * time.Millisecond
+	wasm, err := readArtifact(root, mod)
+	if err != nil {
+		return err
+	}
+	compiled, err := wago.Compile(nil, wasm)
+	if err != nil {
+		return fmt.Errorf("compile: %w", err)
+	}
+	inst, err := wago.Instantiate(compiled, wago.InstantiateOptions{})
+	if err != nil {
+		return fmt.Errorf("instantiate: %w", err)
+	}
+	defer inst.Close()
+	for i := 0; i < repetitions; i++ {
+		if mod.Invoke.Vectors != nil {
+			if _, err := runVectorCasesOnInstance(inst, mod, mod.Invoke.Vectors, timeout); err != nil {
+				return fmt.Errorf("repetition %d: %w", i+1, err)
+			}
+			continue
+		}
+		if _, err := runOnInstance(inst, mod, timeout); err != nil {
+			return fmt.Errorf("repetition %d: %w", i+1, err)
+		}
+	}
+	return nil
+}
+
 type outcome struct {
 	results []uint64
 	memory  [][]byte
@@ -71,9 +106,13 @@ func runInstance(compiled *wago.Compiled, mod Module, timeout time.Duration) (*o
 		return nil, fmt.Errorf("instantiate: %w", err)
 	}
 	defer inst.Close()
+	return runOnInstance(inst, mod, timeout)
+}
 
+func runOnInstance(inst *wago.Instance, mod Module, timeout time.Duration) (*outcome, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	var err error
 
 	if mod.Invoke.Input != "" {
 		inputBase := uint32(0)
@@ -187,9 +226,13 @@ func runVectorCases(compiled *wago.Compiled, mod Module, v *Vectors, timeout tim
 		return nil, fmt.Errorf("instantiate: %w", err)
 	}
 	defer inst.Close()
+	return runVectorCasesOnInstance(inst, mod, v, timeout)
+}
 
+func runVectorCasesOnInstance(inst *wago.Instance, mod Module, v *Vectors, timeout time.Duration) ([][]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+	var err error
 
 	inputOffset := v.InputOffset
 	if v.InputPtrExport != "" {
