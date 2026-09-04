@@ -188,17 +188,16 @@ the performance corpus.
   `isa_mem_narrow` module is now 15,160 versus 14,932 bytes, a 1.5% increase
   and within the plan's 10–15% growth ceiling; it was 27,576 bytes before
   RailMach consumed the already-verified bounds certificates.
-- Release binary footprint: the refreshed 2026-09-01 Linux/AMD64 release-profile
-  run with Go 1.22.12 and TinyGo 0.41.1 measures 9,724,056 bytes for Standard,
-  9,412,760 bytes for Minimal, and 3,496,720 bytes for TinyGo Minimal. Relative
-  to current `main`, carrying the selectable Dragline compiler adds 1,630,208,
-  1,630,208, and 880,584 bytes respectively. The measured product ceilings are
-  9,790,000, 9,480,000, and 3,525,000 bytes, leaving 65,944, 67,240, and 28,280
-  bytes of headroom. The manager measures 7,782,552 bytes and remains within its
-  unchanged 9,000,000-byte ceiling.
-- Native AMD64 execution performance: ⬜ not measured on native AMD64 hardware;
-  the bounded SIMD lowering cross-compiles for AMD64, but translated SIMD
-  execution cannot pass the host AVX feature gate on this ARM64 machine.
+- Release binary footprint: the refreshed 2026-09-04 Linux/AMD64 release-profile
+  run with Go 1.22.2 and TinyGo 0.41.1 measures 9,863,320 bytes for Standard,
+  9,552,024 bytes for Minimal, and 3,178,096 bytes for TinyGo Minimal. The
+  measured product ceilings are 9,900,000, 9,590,000, and 3,525,000 bytes,
+  leaving 36,680, 37,976, and 346,904 bytes of headroom. The manager measures
+  7,794,840 bytes and remains within its unchanged 9,000,000-byte ceiling.
+- Native AMD64 execution performance: ✅ a Ryzen 7 7800X3D five-round,
+  500 ms alternating run across 36 exports in 30 non-ISA modules measures
+  Dragline at 95.58% of Wasmtime/Cranelift throughput by paired module-equal
+  geometric mean. Every aggregate round is between 95.39% and 95.92%.
 - Curated applications: ✅ 30/36 execute and match Railshot; `regexmatch`,
   `wasm3`, Lua, SQLite, Ruby, and esbuild additionally compile but need their
   host environments to run. All 36 available artifacts are admitted. The three
