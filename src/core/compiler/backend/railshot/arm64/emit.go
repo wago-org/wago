@@ -866,8 +866,8 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		cc = condOf(node.op)
 		right := node.arg1
 		if right.isDeferred() {
-			rr := f.condense(right, regNone)
-			right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
+			// condense rewrites the existing operand node in place.
+			f.condense(right, regNone)
 		}
 		switch right.st.kind {
 		case stConst:

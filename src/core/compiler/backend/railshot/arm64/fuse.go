@@ -209,8 +209,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	f.pinned = f.pinned.add(L)
 	right := node.arg1
 	if right.isDeferred() {
-		rr := f.condense(right, regNone)
-		right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
+		// condense rewrites the existing operand node in place; keep that owner
+		// instead of allocating a duplicate register-value node.
+		f.condense(right, regNone)
 	}
 	switch right.st.kind {
 	case stConst:
