@@ -159,6 +159,25 @@ func TestAMD64StructuredSIMDConstantsUseDeduplicatedRIPPool(t *testing.T) {
 	}
 }
 
+func TestAMD64StructuredFusesIntegerComparisonIntoControl(t *testing.T) {
+	body := []byte{
+		0x01, 0x01, 0x7b, // one v128 local forces structured SIMD emission
+		0x20, 0x00, 0x41, 0x0a, 0x49, // local.get 0; i32.const 10; i32.lt_u
+		0x04, 0x40, 0x01, 0x0b, // if; nop; end
+		0x20, 0x00, 0x0b, // local.get 0; end
+	}
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	output := compileAMD64EmissionTest(t, source)
+	if bytes.Contains(output.Code, []byte{0x0f, 0x92}) {
+		t.Fatalf("structured comparison materialized a boolean before control: %x", output.Code)
+	}
+}
+
 func TestAMD64StructuredShuffleUsesRIPMaskOperands(t *testing.T) {
 	body := []byte{0x20, 0x00, 0x20, 0x01, 0xfd, 0x0d}
 	for lane := byte(0); lane < 16; lane++ {

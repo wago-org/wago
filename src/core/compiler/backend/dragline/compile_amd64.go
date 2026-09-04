@@ -3909,6 +3909,8 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	localMemoryCheckEnds, localMemoryChecksElided := planAMD64StructuredLocalMemoryChecks(sf)
 	controls := make([]amd64StackControl, 0, 8)
 	functionPatches := make([]int, 0, 2)
+	pendingConditionAt := -1
+	pendingCondition := amd64.Cond(0)
 	defer func() {
 		workspace := fn.CapacityBytes() + sliceBytes(callRelocs) + sliceBytes(localRegisters) + sliceBytes(localFloat) + sliceBytes(localPinned) + sliceBytes(vectorLocalUses) + sliceBytes(simdConstants) + sliceBytes(simdConstantPatches) + sliceBytes(localMemoryCheckEnds) + sliceBytes(localMemoryChecksElided) + sliceBytes(a.B) + sliceBytes(stackTypes) + sliceBytes(controls) + sliceBytes(functionPatches)
 		for i := range controls {
@@ -4170,8 +4172,8 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 	for instrIndex := 0; instrIndex < len(sf.Instrs); instrIndex++ {
 		instr := sf.Instrs[instrIndex]
 		metadata.recordSource(a.Len(), instr.Offset)
-		flushScalar := instr.IsElse() || instr.Kind == wasm.InstrBlock || instr.Kind == wasm.InstrLoop || instr.Kind == wasm.InstrIf ||
-			instr.Kind == wasm.InstrInvalid || instr.Kind == wasm.InstrReturn || instr.Kind == wasm.InstrBr || instr.Kind == wasm.InstrBrIf || instr.Kind == wasm.InstrBrTable ||
+		flushScalar := instr.IsElse() || instr.Kind == wasm.InstrBlock || instr.Kind == wasm.InstrLoop ||
+			instr.Kind == wasm.InstrInvalid || instr.Kind == wasm.InstrReturn || instr.Kind == wasm.InstrBr || instr.Kind == wasm.InstrBrTable ||
 			instr.Kind == wasm.InstrCall || instr.Kind == wasm.InstrCallIndirect || instr.Kind == wasm.InstrMemoryCopy || instr.Kind == wasm.InstrMemoryFill ||
 			instr.Kind == wasm.InstrUnreachable || instr.Kind == wasm.InstrElemDrop ||
 			instr.Kind == wasm.InstrStructNew || instr.Kind == wasm.InstrStructNewDefault || instr.Kind == wasm.InstrStructGet || instr.Kind == wasm.InstrStructGetS || instr.Kind == wasm.InstrStructGetU || instr.Kind == wasm.InstrStructSet ||
@@ -4186,6 +4188,36 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		flushVector := flushScalar || instr.Kind == wasm.InstrMemoryGrow
 		if flushVector {
 			flushVectorStackCache()
+		}
+		if reachable && instrIndex+1 < len(sf.Instrs) && (sf.Instrs[instrIndex+1].Kind == wasm.InstrIf || sf.Instrs[instrIndex+1].Kind == wasm.InstrBrIf) {
+			if condition, comparison := amd64IntegerComparisonCond(instr.Kind); comparison {
+				rhsType, err := pop(amd64.R10)
+				if err != nil {
+					return nil, 0, nil, err
+				}
+				lhsType, err := pop(amd64.RAX)
+				if err != nil || lhsType != rhsType {
+					return nil, 0, nil, fmt.Errorf("comparison operand mismatch")
+				}
+				if lhsType == wasm.I64 {
+					a.Cmp64(amd64.RAX, amd64.R10)
+				} else {
+					a.Cmp32(amd64.RAX, amd64.R10)
+				}
+				stackTypes = append(stackTypes, wasm.I32)
+				pendingConditionAt, pendingCondition = instrIndex+1, condition
+				continue
+			}
+			if instr.Kind == wasm.InstrI32Eqz || instr.Kind == wasm.InstrI64Eqz {
+				typ, err := pop(amd64.RAX)
+				if err != nil {
+					return nil, 0, nil, err
+				}
+				a.TestSelf(amd64.RAX, typ == wasm.I64)
+				stackTypes = append(stackTypes, wasm.I32)
+				pendingConditionAt, pendingCondition = instrIndex+1, amd64.CondE
+				continue
+			}
 		}
 		if reachable && instr.Kind == wasm.InstrI32Const && instrIndex+1 < len(sf.Instrs) && len(stackTypes) != 0 && stackTypes[len(stackTypes)-1] == wasm.V128 {
 			operation, ok := sf.SIMDImmediateAt(uint32(instrIndex + 1))
@@ -4661,12 +4693,20 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 		case wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf:
 			control := amd64StackControl{kind: instr.Kind, depth: len(stackTypes), result: instr.HasResult(), resultType: instr.ValueType(), falsePatch: -1, parentReachable: reachable}
 			if instr.Kind == wasm.InstrIf && reachable {
-				if _, err := pop(amd64.R10); err != nil {
-					return nil, 0, nil, err
+				condition := amd64.CondNE
+				if pendingConditionAt == instrIndex {
+					stackTypes = stackTypes[:len(stackTypes)-1]
+					condition, pendingConditionAt = pendingCondition, -1
+				} else {
+					if _, err := pop(amd64.R10); err != nil {
+						return nil, 0, nil, err
+					}
+					a.TestSelf(amd64.R10, false)
 				}
+				flushScalarStackCache()
+				flushVectorStackCache()
 				control.depth = len(stackTypes)
-				a.TestSelf(amd64.R10, false)
-				control.falsePatch = a.JccPlaceholder(amd64.CondE)
+				control.falsePatch = a.JccPlaceholder(condition ^ 1)
 			}
 			if instr.Kind == wasm.InstrLoop {
 				a.Align16()
@@ -4717,10 +4757,19 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 			}
 			if int(instr.U32()) == len(controls) {
 				conditional := instr.Kind == wasm.InstrBrIf
+				condition := amd64.CondNE
 				if conditional {
-					if _, err := pop(amd64.R10); err != nil {
-						return nil, 0, nil, err
+					if pendingConditionAt == instrIndex {
+						stackTypes = stackTypes[:len(stackTypes)-1]
+						condition, pendingConditionAt = pendingCondition, -1
+					} else {
+						if _, err := pop(amd64.R10); err != nil {
+							return nil, 0, nil, err
+						}
+						a.TestSelf(amd64.R10, false)
 					}
+					flushScalarStackCache()
+					flushVectorStackCache()
 				}
 				if len(sf.Results) == 1 {
 					if len(stackTypes) == 0 {
@@ -4729,8 +4778,7 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 					moveStackValue(len(stackTypes)-1, 0, sf.Results[0])
 				}
 				if conditional {
-					a.TestSelf(amd64.R10, false)
-					functionPatches = append(functionPatches, a.JccPlaceholder(amd64.CondNE))
+					functionPatches = append(functionPatches, a.JccPlaceholder(condition))
 				} else {
 					functionPatches = append(functionPatches, a.JmpPlaceholder())
 					reachable = false
@@ -4749,14 +4797,22 @@ func emitAMD64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, metrics *Funct
 				return nil
 			}
 			if instr.Kind == wasm.InstrBrIf {
-				if _, err := pop(amd64.R10); err != nil {
-					return nil, 0, nil, err
+				condition := amd64.CondNE
+				if pendingConditionAt == instrIndex {
+					stackTypes = stackTypes[:len(stackTypes)-1]
+					condition, pendingConditionAt = pendingCondition, -1
+				} else {
+					if _, err := pop(amd64.R10); err != nil {
+						return nil, 0, nil, err
+					}
+					a.TestSelf(amd64.R10, false)
 				}
+				flushScalarStackCache()
+				flushVectorStackCache()
 				if err := moveResult(); err != nil {
 					return nil, 0, nil, err
 				}
-				a.TestSelf(amd64.R10, false)
-				site := a.JccPlaceholder(amd64.CondNE)
+				site := a.JccPlaceholder(condition)
 				if target.kind == wasm.InstrLoop {
 					a.PatchRel32(site, target.start)
 				} else {
