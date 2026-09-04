@@ -56,9 +56,7 @@ func TestV128ConstCacheIsAMD64Only(t *testing.T) {
 }
 
 func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
-	wantDefaultOff := map[string]map[string]bool{
-		"amd64": {"gc-ref-facts": true},
-	}
+	wantDefaultOff := map[string]map[string]bool{}
 	want := map[string][]string{
 		"amd64": {
 			"simd-superopt",
@@ -67,7 +65,6 @@ func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
 			"shared-trap-body",
 			"shared-adapters",
 			"dead-gc-new",
-			"gc-ref-facts",
 			"gc-native-alloc",
 		},
 		"arm64": {
@@ -94,7 +91,7 @@ func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"dead-gc-new", "gc-ref-facts", "gc-native-alloc"} {
+	for _, name := range []string{"dead-gc-new", "gc-native-alloc"} {
 		if _, ok := Lookup("arm64", name); ok {
 			t.Errorf("arm64 exposes amd64-only optimization %q", name)
 		}

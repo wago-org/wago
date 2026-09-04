@@ -77,7 +77,6 @@
               "frame-elide",
               "frame-elide-reghomed",
               "gc-native-alloc",
-              "gc-ref-facts",
               "i64-mask32",
               "immutable-table",
               "immutable-table-type",

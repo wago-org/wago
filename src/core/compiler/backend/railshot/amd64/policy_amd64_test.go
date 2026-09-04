@@ -85,7 +85,7 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkAMD64(t *testing.T) {
 func TestHiddenOptimizationFamiliesUsePerCompilePolicyAMD64(t *testing.T) {
 	names := []string{
 		"simd-superopt", "interval-region-pins", "magic-div",
-		"shared-trap-body", "shared-adapters", "dead-gc-new", "gc-ref-facts", "gc-native-alloc",
+		"shared-trap-body", "shared-adapters", "dead-gc-new", "gc-native-alloc",
 	}
 	overrides := make(map[string]bool, len(names))
 	for _, name := range names {

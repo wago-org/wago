@@ -164,15 +164,15 @@ the same four-sample ABBA procedure. The complete detailed captures remain under
 | AMD64 | `shared-trap-body` | +0.02% | +0.02% | +0.00% | +0.68% | keep; size-only |
 | AMD64 | `shared-adapters` | +0.10% | -0.32% | +0.00% | +1.11% | keep; size-only |
 | AMD64 | `dead-gc-new` | -0.11% | +0.22% | -0.00% | +0.77% | keep pending GC workload |
-| AMD64 | `gc-ref-facts` | -0.02% | **-4.10%** | **-3.83%** | +0.81% | default off; GC opt-in |
+| AMD64 | `gc-ref-facts` | -0.02% | **-4.10%** | **-3.83%** | +0.81% | retired; broad value did not justify alternate compiler |
 | AMD64 | `gc-native-alloc` | +0.05% | +0.11% | -0.00% | +0.65% | keep pending GC workload |
 
 `gc-ref-facts=false` also reduces compile allocations by **11.66%** in this
 corpus. That broad footprint result is stronger than its flat non-GC execution
 screen, but it does not erase the earlier GC-specific benefit: the documented
 MoonBit WasmGC run improved from 191.401 to 188.752 us/op with facts enabled.
-The family therefore remains available as an explicit workload choice rather
-than being deleted. Size-only trap/adapter sharing is retained because this
+The family was subsequently deleted rather than retained as an explicit workload
+choice. Size-only trap/adapter sharing is retained because this
 matrix does not measure generated native-code bytes.
 
 ## Environment

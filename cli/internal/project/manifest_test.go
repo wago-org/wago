@@ -111,7 +111,7 @@ func TestManifestValidationAcceptsCataloguedOptimizationFamilies(t *testing.T) {
 	for _, name := range []string{
 		"simd-superopt", "interval-region-pins", "magic-div",
 		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse",
-		"entry-init-elision", "v128-direct-results", "dead-gc-new", "gc-ref-facts",
+		"entry-init-elision", "v128-direct-results", "dead-gc-new",
 		"gc-native-alloc",
 	} {
 		optimizations[name] = false

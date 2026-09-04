@@ -39,15 +39,6 @@ var regMergeEnabled = os.Getenv("WAGO_REG_MERGE") != "0"
 // for differential A/B testing.
 var deadGCNewEnabled = os.Getenv("WAGO_AMD64_NO_DEAD_GC_NEW") != "1"
 
-// exactGCRefFactsEnabled propagates exact non-null reference facts through
-// locals inside conservative straight-line structured regions. It removes only
-// casts already proved by a successful prior cast or exact constructor. It is
-// default-off after broad compile-resource measurement; WAGO_AMD64_GC_REF_FACTS=1
-// opts in, while the legacy NO variables remain rollback overrides.
-var exactGCRefFactsEnabled = envDefaultOff(os.Getenv("WAGO_AMD64_GC_REF_FACTS")) &&
-	os.Getenv("WAGO_AMD64_NO_GC_REF_FACTS") != "1" &&
-	os.Getenv("WAGO_AMD64_NO_EXACT_GC_REF_FACTS") != "1"
-
 var frameElideVoid = os.Getenv("WAGO_AMD64_NO_FRAME_ELIDE_VOID") != "1"
 
 // compactRegABIFrameHeader removes the wrapper-only spare/results-pointer
@@ -760,16 +751,13 @@ func (sc *scratch) reserveControlFrames(capacity int) {
 	sc.controlScratchPeak = capacity
 }
 
-func (sc *scratch) reserveLocalScratch(capacity int, gcFacts bool) {
+func (sc *scratch) reserveLocalScratch(capacity int) {
 	if capacity <= 0 {
 		return
 	}
 	sc.fnState.localType = make([]machineType, 0, capacity)
 	sc.fnState.localSlot = make([]uint32, 0, capacity)
 	sc.fnState.locals = make([]localDef, 0, capacity)
-	if gcFacts {
-		sc.fnState.localGCRefFacts = make([]shared.GCRefFact, 0, capacity)
-	}
 }
 
 func (sc *scratch) noteControlScratch() {
@@ -910,7 +898,7 @@ func workerStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inline
 }
 
 func expandedStackLowering(opts CompileOptions, policy CodegenPolicy) bool {
-	return policy.EnabledOption(optGCRefFacts) || len(opts.CustomInstructions) != 0 || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers
+	return len(opts.CustomInstructions) != 0 || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers
 }
 
 const maxHintedControlFrames = 64
@@ -1588,7 +1576,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			maxLocals = max(maxLocals, len(ft.Params)+int(allHints[i].localCount))
 		}
-		sc.reserveLocalScratch(maxLocals, policy.EnabledOption(optGCRefFacts))
+		sc.reserveLocalScratch(maxLocals)
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.reserveControlFrames(ctrlCap)
 		}
@@ -2723,18 +2711,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	} else {
 		f.localType = f.localType[:nLocals]
 	}
-	if policy.EnabledOption(optGCRefFacts) {
-		if cap(f.localGCRefFacts) < nLocals {
-			f.localGCRefFacts = make([]shared.GCRefFact, nLocals)
-		} else {
-			f.localGCRefFacts = f.localGCRefFacts[:nLocals]
-			clear(f.localGCRefFacts)
-		}
-	} else {
-		// The facts-off oracle must remove the optimizer's local table and all
-		// control snapshots, not merely suppress consumers of retained storage.
-		f.localGCRefFacts = nil
-	}
+	// Exact reference facts were retired after their broad execution result was
+	// neutral while their local table materially increased compile resources.
+	f.localGCRefFacts = nil
 	i := 0
 	for _, p := range ft.Params {
 		f.localType[i] = mtOf(p)

@@ -215,22 +215,12 @@ interval containment. Canonical representative remapping retains parent traversa
 The interval replaces the former `typeIndex` table byte-for-byte, keeping permanent
 per-type memory and the 1,120-byte collector layout unchanged.
 
-A repeated dynamic `array.len` or immutable `struct.get` can reuse the value only
-when the first result is captured by the immediately following local assignment and
-both source and result locals remain unchanged. This bounded result-local scheme adds
-no hidden frame slot or reserved register. Immutable field caches survive unrelated
-mutable stores and calls; mutable caches retain stricter alias/publication/unknown-
-effect invalidation. A constructor-known length plus constant index also selects a
-constant-displacement array get/set sequence. It validates the immutable Aux length
-against the semantic fact and asks the handle resolver for the complete constant
-extent, removing the scale and duplicate dynamic extent sequence without trusting
-malformed metadata. `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1` disables only repeated-load
-reuse, `WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1` disables the constant-index sequence, and
-`WAGO_AMD64_NO_GC_REF_FACTS=1` disables the semantic optimizer as a whole and avoids
-allocating its local/control fact tables. `WAGO_AMD64_NO_EXACT_GC_REF_FACTS=1` is
-accepted as a compatibility alias for review and older A/B commands. The permanent
-subprocess oracle also compares exact results and trap codes with facts and load
-forwarding independently enabled and disabled. The loop-versioning experiment was
+A former reference-fact experiment forwarded repeated dynamic `array.len` and
+immutable `struct.get` results and used constructor-known lengths to specialize
+constant-index array accesses. It was retired after broad measurement found neutral
+execution and materially worse compile resources. The general one-entry resolved-
+address cache remains and is invalidated at calls, allocations, merges, loop edges,
+and unknown effects. The loop-versioning experiment was
 removed after its broad execution benefit failed to justify duplicated lowering,
 native code, and compile-resource cost; all memory32 and memory64 loops now retain
 their ordinary per-access checks unless straight-line bounds facts or guard pages
@@ -302,12 +292,9 @@ A nursery child behind an unremembered old/large parent, a cardless old/large ar
 every Tiny parent, and malformed metadata retain the unchanged helper with the full
 remembered-set/card or incremental barrier. Conditional
 lowering preserves hot pinned registers and emits local reloads only on the fallback
-edge. Non-final declarations normally retain helper lowering. On AMD64, the
-opt-in `gc-ref-facts` policy can specialize a scalar `struct.get` declared through
-an open supertype when the receiver is proved to have one exact final subtype and
-both layouts have the same field offset and scalar representation. The generated
-check then uses the exact final runtime type and avoids the synchronous helper.
-Unknown dynamic subtypes, `v128`, bulk operations, and barrier states that require
+edge. Non-final declarations retain helper lowering. The former exact-reference-
+fact specialization for open `struct.get` was retired with its default-off alternate
+compiler path. Unknown dynamic subtypes, `v128`, bulk operations, and barrier states that require
 metadata growth retain helper lowering. Current scalar
 end-to-end measurements are 227.9–229.4 ns/op for struct set/get, 218.2–219.9 ns/op
 for struct get, and 265.2–265.6 ns/op for array set/get; final cast/reference-struct

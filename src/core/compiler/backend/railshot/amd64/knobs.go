@@ -42,7 +42,6 @@ var optimizationBindings = optimization.NewBindings("amd64",
 	optimization.Bind("i64-mask32", &i64Mask32Enabled),
 	optimization.Bind("accumulator-immediate", &accumulatorImmediateEnabled),
 	optimization.Bind("dead-gc-new", &deadGCNewEnabled),
-	optimization.Bind("gc-ref-facts", &exactGCRefFactsEnabled),
 	optimization.Bind("gc-native-alloc", &nativeGCStructAllocEnabled),
 	optimization.Bind("v128-const-cache", &v128ConstCacheEnabled),
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
@@ -85,7 +84,6 @@ var (
 	optI64Mask32            = optimizationBindings.Option("i64-mask32")
 	optAccumulatorImmediate = optimizationBindings.Option("accumulator-immediate")
 	optDeadGCNew            = optimizationBindings.Option("dead-gc-new")
-	optGCRefFacts           = optimizationBindings.Option("gc-ref-facts")
 	optGCNativeAlloc        = optimizationBindings.Option("gc-native-alloc")
 	optV128ConstCache       = optimizationBindings.Option("v128-const-cache")
 	optV128Pins             = optimizationBindings.Option("v128-pins")

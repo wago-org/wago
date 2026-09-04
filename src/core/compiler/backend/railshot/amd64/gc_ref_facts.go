@@ -83,7 +83,7 @@ func gcRefFact(e *elem) shared.GCRefFact {
 }
 
 func (f *fn) gcRefFactsEnabled() bool {
-	return f.opt(optGCRefFacts)
+	return false
 }
 
 func (f *fn) gcLoadForwarding() bool {

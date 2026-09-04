@@ -8,7 +8,6 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -115,13 +114,6 @@ func TestGCTypeSubtypingUsesExpandedStackLowering(t *testing.T) {
 	}
 	if !expandedStackLowering(CompileOptions{GCTypeSubtypingRefTest: true}, CodegenPolicy{}) {
 		t.Fatal("GC subtype helper did not report expanded stack lowering")
-	}
-	selection, err := optimizationBindings.ResolveSnapshot(map[string]bool{"gc-ref-facts": true}, OptimizationSnapshot{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !expandedStackLowering(CompileOptions{}, shared.DefaultCodegenPolicy(selection)) {
-		t.Fatal("GC reference facts did not report expanded stack lowering")
 	}
 }
 

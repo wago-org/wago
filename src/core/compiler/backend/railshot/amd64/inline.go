@@ -493,10 +493,9 @@ type inlineTarget struct {
 // but few inline targets, so one 32-bit slot per function is materially smaller
 // than one target (and four slice headers) per function.
 type inlineTargetData struct {
-	slots     []uint32 // local function index -> targets index + 1; zero is not admitted
-	targets   []inlineTarget
-	types     []machineType
-	zeroFacts []shared.GCRefFact
+	slots   []uint32 // local function index -> targets index + 1; zero is not admitted
+	targets []inlineTarget
+	types   []machineType
 }
 
 // inlineTargetInvalid marks a candidate pruned after construction. Keeping its
@@ -530,13 +529,6 @@ func (ts inlineTargetTable) localTypes(t *inlineTarget) []machineType {
 
 func (ts inlineTargetTable) resultTypes(t *inlineTarget) []machineType {
 	return ts.data.types[t.localTypeEnd:t.resultTypeEnd:t.resultTypeEnd]
-}
-
-func (ts inlineTargetTable) localZeroFacts(t *inlineTarget) []shared.GCRefFact {
-	if len(ts.data.zeroFacts) == 0 {
-		return nil
-	}
-	return ts.data.zeroFacts[t.typeStart:t.localTypeEnd:t.localTypeEnd]
 }
 
 func (ts inlineTargetTable) omitStandaloneBody(localIdx int, hostAdapter bool) bool {
@@ -596,9 +588,6 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		targets: make([]inlineTarget, 0, candidateCount),
 		types:   make([]machineType, 0, typeCount),
 	}
-	if policy.EnabledOption(optGCRefFacts) {
-		data.zeroFacts = make([]shared.GCRefFact, 0, typeCount)
-	}
 	targets := inlineTargetTable{first: importedFuncs, data: data, classifier: wasm.NewModuleInstructionClassifier(m, true)}
 	for i := range m.Code {
 		ft, facts, ok := inlineTargetFacts(m, allHints, i, policy)
@@ -609,24 +598,15 @@ func buildInlineTargets(m *wasm.Module, allHints []funcHints, policy CodegenPoli
 		localStart := len(data.types)
 		for _, p := range ft.Params {
 			data.types = append(data.types, mtOf(p))
-			if policy.EnabledOption(optGCRefFacts) {
-				data.zeroFacts = append(data.zeroFacts, zeroGCRefFactForValType(m, p))
-			}
 		}
 		for _, run := range m.Code[i].Locals.Runs {
 			for k := 0; k < int(run.Count); k++ {
 				data.types = append(data.types, mtOf(run.Type))
-				if policy.EnabledOption(optGCRefFacts) {
-					data.zeroFacts = append(data.zeroFacts, zeroGCRefFactForValType(m, run.Type))
-				}
 			}
 		}
 		localEnd := len(data.types)
 		for _, result := range ft.Results {
 			data.types = append(data.types, mtOf(result))
-			if policy.EnabledOption(optGCRefFacts) {
-				data.zeroFacts = append(data.zeroFacts, shared.GCRefFact{})
-			}
 		}
 		resultEnd := len(data.types)
 		res0 := mtNone
@@ -748,19 +728,11 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 	for _, t := range callees {
 		base := len(f.localType)
 		localTypes := targets.localTypes(t)
-		zeroFacts := targets.localZeroFacts(t)
-		for i, lt := range localTypes {
+		for _, lt := range localTypes {
 			f.localType = append(f.localType, lt)
 			f.localSlot = append(f.localSlot, uint32(8*f.nLocalSlots))
 			f.nLocalSlots += lt.stackSlots()
 			f.locals = append(f.locals, localDef{reg: regNone, typ: lt, state: lsMem})
-			if f.gcRefFactsEnabled() {
-				fact := shared.GCRefFact{}
-				if i < len(zeroFacts) {
-					fact = zeroFacts[i]
-				}
-				f.localGCRefFacts = append(f.localGCRefFacts, fact)
-			}
 		}
 		f.inlineBase[t.globalIdx] = base
 	}
@@ -923,7 +895,6 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 	nLocals := int(t.localTypeEnd - t.typeStart)
 	params := int(t.params)
 	localTypes := f.inlineTargets.localTypes(t)
-	zeroFacts := f.inlineTargets.localZeroFacts(t)
 	// The p args are the top operands (deepest = param 0). Pop each into its param
 	// local. setLocal takes the absolute index (localBase is still 0 here).
 	for i := params - 1; i >= 0; i-- {
@@ -939,13 +910,6 @@ func (f *fn) bindInlineParams(t *inlineTarget, base int) {
 			}
 			f.locals[local].state = lsMem
 			f.invalidateGCLoadFactsForLocal(local)
-			if f.gcRefFactsEnabled() && local < len(f.localGCRefFacts) {
-				fact := shared.GCRefFact{}
-				if i < len(zeroFacts) {
-					fact = zeroFacts[i]
-				}
-				f.localGCRefFacts[local] = fact
-			}
 		}
 		f.release(z)
 	}
