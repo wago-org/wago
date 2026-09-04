@@ -27,6 +27,10 @@ const (
 	ValidatedFuncUsesTableGrow
 	ValidatedFuncUsesRefFunc
 	ValidatedFuncUsesAtomicWait
+	ValidatedFuncMayAllocate
+	ValidatedFuncMayCollect
+	ValidatedFuncDynamicReferenceCall
+	ValidatedFuncUsesNonAtomicMemory
 	// ValidatedFuncNeedsDetailedRequirements marks an instruction whose exact
 	// persisted feature or footprint facts need more than the fixed summary.
 	ValidatedFuncNeedsDetailedRequirements
@@ -117,17 +121,17 @@ func (f *ValidatedFuncFacts) observe(kind InstrKind) {
 	case InstrLoop:
 		f.Flags |= ValidatedFuncHasControl | ValidatedFuncHasLoop
 	case InstrCall:
-		f.Flags |= ValidatedFuncHasDirectCall
+		f.Flags |= ValidatedFuncHasDirectCall | ValidatedFuncMayCollect
 	case InstrReturnCall:
-		f.Flags |= ValidatedFuncHasDirectCall | ValidatedFuncHasTailCall | ValidatedFuncHasControl
+		f.Flags |= ValidatedFuncHasDirectCall | ValidatedFuncHasTailCall | ValidatedFuncHasControl | ValidatedFuncMayCollect
 	case InstrCallIndirect:
-		f.Flags |= ValidatedFuncHasIndirectCall
+		f.Flags |= ValidatedFuncHasIndirectCall | ValidatedFuncMayCollect
 	case InstrReturnCallIndirect:
-		f.Flags |= ValidatedFuncHasIndirectCall | ValidatedFuncHasTailCall | ValidatedFuncHasControl
+		f.Flags |= ValidatedFuncHasIndirectCall | ValidatedFuncHasTailCall | ValidatedFuncHasControl | ValidatedFuncMayCollect
 	case InstrCallRef:
-		f.Flags |= ValidatedFuncHasCallRef | ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesTypedFunctionReferences | ValidatedFuncNeedsDetailedAdmission
+		f.Flags |= ValidatedFuncHasCallRef | ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesTypedFunctionReferences | ValidatedFuncNeedsDetailedAdmission | ValidatedFuncMayCollect
 	case InstrReturnCallRef:
-		f.Flags |= ValidatedFuncHasCallRef | ValidatedFuncHasTailCall | ValidatedFuncHasControl | ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesTypedFunctionReferences | ValidatedFuncNeedsDetailedAdmission
+		f.Flags |= ValidatedFuncHasCallRef | ValidatedFuncHasTailCall | ValidatedFuncHasControl | ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesTypedFunctionReferences | ValidatedFuncNeedsDetailedAdmission | ValidatedFuncMayCollect
 	case InstrGlobalGet, InstrGlobalSet:
 		f.Flags |= ValidatedFuncTouchesGlobal
 	case InstrTableGet, InstrTableSet, InstrTableSize, InstrTableGrow,
@@ -164,7 +168,7 @@ func (f *ValidatedFuncFacts) observe(kind InstrKind) {
 		f.Flags |= ValidatedFuncUsesRefFunc
 	}
 	if IsCoreAtomicInstructionKind(kind) {
-		f.Flags |= ValidatedFuncUsesThreads | ValidatedFuncNeedsDetailedAdmission | ValidatedFuncTouchesMemory
+		f.Flags |= ValidatedFuncUsesThreads | ValidatedFuncNeedsDetailedAdmission
 	}
 	if kind >= InstrV128Load && kind < numInstrKinds {
 		f.Flags |= ValidatedFuncUsesSIMD
@@ -178,16 +182,29 @@ func (f *ValidatedFuncFacts) observe(kind InstrKind) {
 	if kind >= InstrRefGetDesc && kind <= InstrExternConvertAny {
 		f.Flags |= ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesGC | ValidatedFuncNeedsDetailedAdmission
 	}
-	if kind == InstrMemorySize || kind == InstrMemoryGrow || kind == InstrMemoryInit || kind == InstrMemoryCopy || kind == InstrMemoryFill {
+	if instructionTouchesMemory(kind) {
 		f.Flags |= ValidatedFuncTouchesMemory
+		if !IsCoreAtomicInstructionKind(kind) {
+			f.Flags |= ValidatedFuncUsesNonAtomicMemory
+		}
 	}
-	if (kind >= InstrV128Load && kind <= InstrV128Store) ||
-		(kind >= InstrV128Load8Lane && kind <= InstrV128Load64Zero) {
-		f.Flags |= ValidatedFuncTouchesMemory
+	switch kind {
+	case InstrStructNew, InstrStructNewDefault,
+		InstrArrayNew, InstrArrayNewDefault, InstrArrayNewFixed, InstrArrayNewData, InstrArrayNewElem:
+		f.Flags |= ValidatedFuncMayAllocate | ValidatedFuncMayCollect
 	}
+}
+
+func instructionTouchesMemory(kind InstrKind) bool {
 	if effect := opEffects[kind]; effect.cat == effLoad || effect.cat == effStore {
-		f.Flags |= ValidatedFuncTouchesMemory
+		return true
 	}
+	if IsCoreAtomicInstructionKind(kind) || kind == InstrMemorySize || kind == InstrMemoryGrow ||
+		kind == InstrMemoryInit || kind == InstrMemoryCopy || kind == InstrMemoryFill {
+		return true
+	}
+	return kind >= InstrV128Load && kind <= InstrV128Store ||
+		kind >= InstrV128Load8Lane && kind <= InstrV128Load64Zero
 }
 
 func (f *ValidatedFuncFacts) observeValType(typ ValType) {

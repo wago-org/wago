@@ -920,6 +920,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 			if err := v.stepDirectOp(&op); err != nil {
 				return err
 			}
+			v.recordValidatedCallFacts(facts, &op)
 			facts.recordDepths(len(v.vals), len(v.ctrls))
 		}
 	}
@@ -935,6 +936,33 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 		}
 		if err := v.stepDirectOp(&op); err != nil {
 			return err
+		}
+	}
+}
+
+func (v *funcValidator) recordValidatedCallFacts(facts *ValidatedFuncFacts, op *directOp) {
+	if op.kind != directInstr {
+		return
+	}
+	switch op.instr.Kind {
+	case InstrCallIndirect, InstrReturnCallIndirect, InstrCallRef, InstrReturnCallRef:
+	default:
+		return
+	}
+	ft, ok := v.m.TypeFunc(op.instr.Index)
+	if !ok {
+		return
+	}
+	for _, typ := range ft.Params {
+		if typ.Kind() == ValRef {
+			facts.Flags |= ValidatedFuncDynamicReferenceCall
+			return
+		}
+	}
+	for _, typ := range ft.Results {
+		if typ.Kind() == ValRef {
+			facts.Flags |= ValidatedFuncDynamicReferenceCall
+			return
 		}
 	}
 }

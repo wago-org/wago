@@ -17,7 +17,7 @@ import (
 // arenas for larger configured populations. Dead-at-all-sites locals are
 // removed before variable-sized per-site vectors are emitted. Each function
 // gets independent compile state so workers may populate maps in parallel.
-func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string) *shared.GCModuleFrameRootPlan {
+func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string, analysis *wasm.ValidatedModuleAnalysis) *shared.GCModuleFrameRootPlan {
 	if diagnostic != nil {
 		*diagnostic = ""
 	}
@@ -86,7 +86,7 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string) *sh
 	if err != nil {
 		return reject("exception root maps: %v", err)
 	}
-	modulePlan, err := gcFramePrepareModuleRootPlan(m, &classifier)
+	modulePlan, err := gcFramePrepareModuleRootPlan(m, &classifier, analysis)
 	if err != nil {
 		return reject("%v", err)
 	}

@@ -177,6 +177,13 @@ func moduleDynamicFuncrefEscape(m *wasm.Module) bool {
 	return false
 }
 
+func moduleDynamicFuncrefEscapeWithValidation(m *wasm.Module, analysis *wasm.ValidatedModuleAnalysis) bool {
+	if analysis.ValidFor(m) {
+		return analysis.Flags&wasm.ValidatedFuncDynamicReferenceCall != 0
+	}
+	return moduleDynamicFuncrefEscape(m)
+}
+
 func compileArgs(args []any) (*RuntimeConfig, []byte, error) {
 	switch len(args) {
 	case 1:
@@ -1032,7 +1039,7 @@ func unsafeDirectTailImportBitset(m *wasm.Module) ([]uint64, error) {
 	return bits, nil
 }
 
-func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode) error {
+func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, analyses ...*wasm.ValidatedModuleAnalysis) error {
 	if m == nil || m.MemCount() != 1 {
 		return fmt.Errorf("threads currently require exactly one memory, shared or unshared")
 	}
@@ -1059,6 +1066,12 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode) e
 		if imp := &m.Imports[i]; imp.Type.Kind == wasm.ExternGlobal && imp.Type.GlobalType().Mutable {
 			return fmt.Errorf("threads currently reject mutable global imports")
 		}
+	}
+	if len(analyses) != 0 && analyses[0].ValidFor(m) {
+		if analyses[0].Flags&wasm.ValidatedFuncUsesNonAtomicMemory == 0 {
+			return nil
+		}
+		// Preserve the exact instruction and function diagnostic on rejection.
 	}
 	for function, fn := range m.Code {
 		r := wasm.NewReader(fn.BodyBytes)
@@ -1138,7 +1151,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	requiredByModule := requirements.features
 	narrowFrontendFeatures(&features, requiredByModule)
 	if requiredByModule.IsEnabled(CoreFeatureThreads) {
-		if err := validateThreadedExecutionBoundary(m, cfg.boundsChecks); err != nil {
+		if err := validateThreadedExecutionBoundary(m, cfg.boundsChecks, &validationAnalysis); err != nil {
 			return nil, fmt.Errorf("compile: %w", err)
 		}
 	}
@@ -1400,10 +1413,10 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	pressureAt, pressure := compileMemoryPressure(len(wasmBytes))
 	genericGCExecution := gcStructProduct == stagedGCStructGeneric || gcArrayProduct == stagedGCArrayProductNewData || gcArrayProduct == stagedGCArrayProductNewElem || gcArrayProduct == stagedGCArrayProductGeneric
 	collectorReferenceCallBoundary := moduleHasCollectorReferenceCallBoundary(m)
-	gcAllocationSites := moduleHasGCAllocationSites(m)
+	gcAllocationSites := moduleHasGCAllocationSitesWithValidation(m, &validationAnalysis)
 	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary
 	var gcFrameRootDiagnostic string
-	gcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots, &gcFrameRootDiagnostic)
+	gcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots, &gcFrameRootDiagnostic, &validationAnalysis)
 	indexedFunctionRefTest, indexedFunctionRefCast := requirements.indexedFuncRefTest, requirements.indexedFuncRefCast
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
@@ -1460,7 +1473,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if exactNativeGCRoots || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscapeWithValidation(m, &validationAnalysis), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
 	c.codeCache.setNativeStackBytes(cfg.nativeStackBytes)
 	if c.validateMemo != nil {
 		c.validateMemo.memoryLimitPages = cfg.maxMemoryPages
