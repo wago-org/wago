@@ -41,9 +41,6 @@ var (
 	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check — the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
-	// boundsRangeEnabled lets a first scalar load certify later fixed-offset loads
-	// in the same pure straight-line range. Kept separate for A/B measurement.
-	boundsRangeEnabled = os.Getenv("WAGO_NO_BOUNDS_RANGE") != "1"
 	// compactI32FrameEnabled packs i32 locals in admitted kernels.
 	compactI32FrameEnabled = os.Getenv("WAGO_NO_COMPACT_I32_FRAME") != "1"
 	// compactI32ControlFlowEnabled extends that typed-slot layout through structured

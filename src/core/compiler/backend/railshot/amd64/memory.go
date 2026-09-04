@@ -789,7 +789,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	rangeExtent := int32(0)
 	// Do not move a later extent proof earlier for shared memory: another agent
 	// may grow it between the two loads, so an early check could spuriously trap.
-	if boundsRangeEnabled && f.boundsFacts && !f.guardMode && !f.threadedMemory0 && int64(off32)+int64(size) <= 0x7fffffff {
+	if f.boundsFacts && !f.guardMode && !f.threadedMemory0 && int64(off32)+int64(size) <= 0x7fffffff {
 		if top := f.s.back(); top != nil && top.kind == ekValue {
 			kind, idx := boundsSource(top.st)
 			currentExtent := int32(off32) + int32(size)
