@@ -161,7 +161,7 @@ vex-float-mem, multi-bounds-cert, immutable-table, immutable-table-type,
 inline-callfree, store-forward, frame-elide, frame-elide-reghomed,
 small-frame, v128-const-cache, v128-pins, v128-sink, reg-abi, inline,
 loop-precheck, loop-region-pins,
-immutable-poly-fastpath, legacy-fp-pins, legacy-gp-pins, stack-fence,
+immutable-poly-fastpath, stack-fence,
 stack-reg
 ```
 

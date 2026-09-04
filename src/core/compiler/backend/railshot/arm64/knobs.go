@@ -48,8 +48,6 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
 	optimization.Bind("loop-region-pins", &loopRegionPinsEnabled),
-	optimization.Bind("legacy-fp-pins", &legacyFPPinsEnabled),
-	optimization.Bind("legacy-gp-pins", &legacyGPPinsEnabled),
 	optimization.BindInverted("stack-fence", &noStackFence),
 	optimization.BindInverted("stack-reg", &noStackReg),
 )
@@ -93,8 +91,6 @@ var (
 	optRegABI             = optimizationBindings.Option("reg-abi")
 	optInline             = optimizationBindings.Option("inline")
 	optLoopRegionPins     = optimizationBindings.Option("loop-region-pins")
-	optLegacyFPPins       = optimizationBindings.Option("legacy-fp-pins")
-	optLegacyGPPins       = optimizationBindings.Option("legacy-gp-pins")
 	optStackFence         = optimizationBindings.Option("stack-fence")
 	optStackReg           = optimizationBindings.Option("stack-reg")
 )

@@ -34,6 +34,14 @@ func TestDeepFPPinsAreRemoved(t *testing.T) {
 	}
 }
 
+func TestLegacyPinsAreRemoved(t *testing.T) {
+	for _, name := range []string{"legacy-fp-pins", "legacy-gp-pins"} {
+		if _, ok := Lookup("arm64", name); ok {
+			t.Errorf("arm64 still exposes retired optimization %q", name)
+		}
+	}
+}
+
 func TestV128ConstCacheIsAMD64Only(t *testing.T) {
 	if _, ok := Lookup("arm64", "v128-const-cache"); ok {
 		t.Fatal("arm64 still exposes the measured-low-value v128 constant cache")

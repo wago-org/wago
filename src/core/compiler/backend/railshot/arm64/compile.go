@@ -111,8 +111,6 @@ var linearStoreForwardEnabled = os.Getenv("WAGO_ARM64_NOMEMFWD") != "1"
 // the immediately preceding code shape; keep them package-init constants so a
 // parent/child corpus run can A/B one compiler mechanism per fresh process.
 var (
-	legacyGPPinsEnabled     = os.Getenv("WAGO_ARM64_LEGACY_GPPINS") == "1"
-	legacyFPPinsEnabled     = os.Getenv("WAGO_ARM64_LEGACY_FPPINS") == "1"
 	extendedFPPinsEnabled   = os.Getenv("WAGO_ARM64_NO_EXTFPPINS") != "1"
 	threeOperandSinkEnabled = os.Getenv("WAGO_ARM64_NO3OPSINK") != "1"
 	oldDestRHSSinkEnabled   = os.Getenv("WAGO_ARM64_NO_OLDDEST_RHS") != "1"
@@ -2666,7 +2664,7 @@ func gpPinPool(pool []Reg, regABI bool, nParams int, callFree bool) []Reg {
 
 func gpPinPoolWithPolicy(pool []Reg, regABI bool, nParams int, callFree bool, policy CodegenPolicy) []Reg {
 	pool = append(pool, pinnedLocalRegs...) // X19-X23
-	if callFree && !policy.EnabledOption(optLegacyGPPins) {
+	if callFree {
 		pool = append(pool, X24, X25)
 		// X8 is neither an internal integer argument (X0-X7) nor a fixed-role
 		// backend scratch. A leaf can dedicate it to one more hot local without
@@ -2788,9 +2786,7 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 	}
 	fpPinLimit := len(pinnedFLocalRegs)
 	deepV128Pins := false
-	if f.opt(optLegacyFPPins) && fpPinLimit > 4 {
-		fpPinLimit = 4
-	} else if !f.opt(optExtendedFPPins) && fpPinLimit > basePinnedFLocalRegs {
+	if !f.opt(optExtendedFPPins) && fpPinLimit > basePinnedFLocalRegs {
 		fpPinLimit = basePinnedFLocalRegs
 	} else if !hasCall && hotV128Candidates >= 24 {
 		// Wide vector kernels have short expression trees but large named v128

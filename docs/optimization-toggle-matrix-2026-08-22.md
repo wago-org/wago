@@ -12,6 +12,7 @@
 - Follow-up implemented: `loop-precheck` first defaulted off on both architectures and was subsequently removed because its duplicated loop compiler did not justify its compile-resource cost. At this historical checkpoint ARM64 also defaulted `deep-fp-pins` off and AMD64 defaulted `commute-self-update` off. The already-off `v128-sink`, `inline-loop-callees`, and failed `call-next-use`, `affine-lea`, and `tee-spill-elide` paths were removed.
 - Requalification on 2026-08-29 changed `commute-self-update` to handle the first eligible site through a direct lowering instead of the generic relocation path. The new same-process real-corpus A/B improves execution 3.55% geomean, removes 67.0% of measured backend spills, and leaves compile allocation unchanged, so AMD64 now defaults it on. The original table below remains the record of the older implementation and must not be read as current default policy.
 - Follow-up catalog audit: formerly environment-only families were screened as public flags. Paired screening kept the high-value SIMD/SWAR and focused register/code-selection wins on and defaulted AMD64 `gc-ref-facts` off while retaining it as a GC-workload opt-in. The failed `fcmp-fuse` experiment was subsequently retired rather than kept as a permanent alternate path.
+- The default-off ARM64 `legacy-fp-pins` and `legacy-gp-pins` rollback allocators were subsequently retired. Their tables below remain historical measurements, not current configuration surface.
 - In an exact original-commit versus current-commit rerun, the complete branch changed execution by **-0.10% ARM64 / +0.14% AMD64**, while improving compile time by **5.22% / 4.04%**, compile allocation bytes by **6.38% / 9.69%**, and compile allocation counts by **2.93% / 15.51%**.
 - Percentages below are **disabled versus enabled**. Positive execution time means disabling made execution slower (the optimization helped); negative means disabling made execution faster.
 - This is a broad screening matrix, not automatic deletion authority. Correctness/safety responsibilities, native-code size, static hit counts, and focused reruns still gate removal.
@@ -24,7 +25,7 @@ through the existing runtime/project optimization map.
 
 | Architecture | Newly default-off options | Removed surface |
 |---|---|---|
-| ARM64 | none | `loop-precheck`, `inline-loop-callees`, `v128-const-cache`, `v128-sink`, `deep-fp-pins`, `fcmp-fuse` |
+| ARM64 | none | `loop-precheck`, `inline-loop-callees`, `v128-const-cache`, `v128-sink`, `deep-fp-pins`, `fcmp-fuse`, `legacy-fp-pins`, `legacy-gp-pins` |
 | AMD64 | `gc-ref-facts` | `loop-precheck`, `v128-sink`, `inline-loop-callees`, `fcmp-fuse`, `call-next-use`, `affine-lea`, `tee-spill-elide` |
 
 The final bundle was measured using two separately compiled benchmark binaries:
