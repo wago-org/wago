@@ -668,6 +668,13 @@ compares a module name, function name, producer name, benchmark name, body hash,
 memorized body byte sequence. Named workloads appear in rationale comments and
 tests, not selector inputs.
 
+That boundary is now checked by `TestProductionPolicyRejectsWorkloadIdentity`.
+The test parses all AMD64, ARM64, and shared production Go sources independent of
+host build tags. It rejects workload/corpus string literals, name-section reads
+outside diagnostic naming, hashing imports, and byte-prefix/suffix/containment
+matching. Exact byte equality remains available to native-code deduplication, while
+instruction optimizations continue to operate on decoded semantics and immediates.
+
 Only two catalog entries remain explicitly experimental:
 
 - AMD64 `bmi2-rorx` is not a dormant workload path. The public runtime enables it
