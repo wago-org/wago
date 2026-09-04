@@ -32,7 +32,7 @@ func validationAnalysisModule(t *testing.T) *wasm.Module {
 }
 
 func TestValidatedFuncFactsSize(t *testing.T) {
-	if got, want := unsafe.Sizeof(wasm.ValidatedFuncFacts{}), uintptr(24); got != want {
+	if got, want := unsafe.Sizeof(wasm.ValidatedFuncFacts{}), uintptr(32); got != want {
 		t.Fatalf("ValidatedFuncFacts size = %d, want %d", got, want)
 	}
 }
@@ -48,6 +48,12 @@ func TestValidateModuleWithAnalysisSerialParallelParity(t *testing.T) {
 	}
 	if !reflect.DeepEqual(serial, parallel) {
 		t.Fatalf("parallel analysis differs:\nserial:  %#v\nparallel: %#v", serial, parallel)
+	}
+	if !serial.ValidFor(m) || !parallel.ValidFor(m) {
+		t.Fatal("successful analyses do not identify their validated module")
+	}
+	if serial.ValidFor(validationAnalysisModule(t)) {
+		t.Fatal("analysis accepted a different module with the same shape")
 	}
 	if len(serial.Funcs) != 2 {
 		t.Fatalf("function facts = %d, want 2", len(serial.Funcs))

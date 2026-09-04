@@ -96,7 +96,7 @@ func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidat
 
 func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits, analysis *ValidatedModuleAnalysis) (err error) {
 	if analysis != nil {
-		analysis.reset(len(m.Code))
+		analysis.reset(m)
 		defer func() {
 			if err != nil {
 				*analysis = ValidatedModuleAnalysis{}
