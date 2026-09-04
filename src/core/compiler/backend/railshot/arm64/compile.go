@@ -542,6 +542,7 @@ type scratch struct {
 	asm            *a64.Asm // the AArch64 encoder byte buffer
 	fnState        fn       // per-function compiler state, reused across the module
 	classifier     wasm.ModuleInstructionClassifier
+	moduleTypes    moduleTypeCache
 	directPrepared bool
 	relocs         []callReloc
 
@@ -1376,6 +1377,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		totalBody += len(m.Code[i].BodyBytes)
 	}
 	codeCap := shared.TaperedModuleCodeCapacity(totalBody, n, 32, 28, 768<<10)
+	moduleTypes := buildModuleTypeCache(m, totalBody)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	if workers <= 1 {
 		relocs := newCallRelocTable(n, relocCap)
@@ -1384,6 +1386,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		expandedLowering := expandedStackLowering(opts)
 		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.classifier = classifier
+		sc.moduleTypes = moduleTypes
 		sc.reserveLocalScratch(serialLocalScratchCapacity(allHints, inlineTargets, hostAdapters))
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.reserveControlFrames(ctrlCap)
@@ -1513,7 +1516,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		return &a64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared}, nil
 	}
 
-	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, policy, ms, guardMode, boundsFacts, importedFuncs)
+	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, importedFuncs)
 }
 
 func serialLocalScratchCapacity(allHints []funcHints, inlineTargets inlineTargetTable, hostAdapters []bool) int {
@@ -1530,7 +1533,7 @@ func serialLocalScratchCapacity(allHints []funcHints, inlineTargets inlineTarget
 
 // compileModuleParallel is split from CompileModuleWith so the goroutine closure
 // and its captured state cannot escape into or add allocations to the serial path.
-func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, allHints []funcHints, hintSidecar funcHintSidecar, immutableTable immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*a64.CompiledModule, error) {
+func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap int, entry, internalEntry []int, allHints []funcHints, hintSidecar funcHintSidecar, immutableTable immutableTableHint, modGlobals []moduleGlobalPin, hostAdapters []bool, inlineTargets inlineTargetTable, moduleTypes moduleTypeCache, policy CodegenPolicy, ms *ModuleStats, guardMode, boundsFacts bool, importedFuncs int) (*a64.CompiledModule, error) {
 	n := len(m.Code)
 	if ms != nil {
 		for i := range m.Code {
@@ -1549,6 +1552,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	for i := range states {
 		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
 		states[i].scratch.classifier = classifier
+		states[i].scratch.moduleTypes = moduleTypes
 		if ctrlCap != 0 {
 			states[i].scratch.reserveControlFrames(ctrlCap)
 		}
@@ -2969,7 +2973,7 @@ func (f *fn) assignPinnedLocals(scores []uint32, globalHints []shared.GlobalHint
 		if gh.Score < loopMin || f.isModuleGlobal(g) || hasCall && !gh.Eligible {
 			continue
 		}
-		gt, ok := f.m.GlobalTypeByIndex(gh.Index)
+		gt, ok := f.globalType(gh.Index)
 		if !ok || !gt.Mutable || !isIntValType(wasm.GlobalValueType(gt)) {
 			continue
 		}
@@ -3087,7 +3091,7 @@ func (f *fn) pinLeafRegABIIntParams() {
 // register, once, in the prologue (linMemReg = linMem must already be set). A no-op when
 // no globals are pinned. Every later access reads/writes through the register.
 func (f *fn) globalIs64(g int) bool {
-	gt, _ := f.m.GlobalTypeByIndex(uint32(g))
+	gt, _ := f.globalType(uint32(g))
 	return wasm.EqualValType(wasm.GlobalValueType(gt), wasm.I64)
 }
 
