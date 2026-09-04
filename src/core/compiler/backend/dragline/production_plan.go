@@ -267,7 +267,7 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 	// value contract intentionally has no 128-bit register class yet. Keep every
 	// function containing a typed v128 value on the structured SIMD emitter,
 	// including functions whose v128 locals are otherwise unused.
-	if stackHasV128Value(stack) {
+	if stackHasV128Value(stack) || stack.HasV128 && len(stack.BranchCasts) != 0 {
 		return false
 	}
 	if stack.HasReferences {

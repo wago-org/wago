@@ -596,6 +596,17 @@ func TestRailMachAdmitsScalarFunctionInSIMDModule(t *testing.T) {
 	}
 }
 
+func TestRailMachRejectsMixedSIMDBranchCastFunction(t *testing.T) {
+	stack := &railssa.StackFunc{
+		HasV128:       true,
+		HasReferences: true,
+		BranchCasts:   []railssa.BranchCastImmediate{{}},
+	}
+	if railMachCandidate(stack, true) {
+		t.Fatal("mixed SIMD/branch-cast function entered scalar RailMach")
+	}
+}
+
 func TestRailMachAdmitsLargeMultiCallScalarFunctions(t *testing.T) {
 	for _, test := range []struct {
 		name        string
