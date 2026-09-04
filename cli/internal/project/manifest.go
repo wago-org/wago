@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wago-org/wago/internal/jsonstrict"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -66,6 +67,9 @@ func readManifest(dir string) (map[string]any, error) {
 }
 
 func decodeManifest(data []byte, dir string) (map[string]any, error) {
+	if err := jsonstrict.ValidateUniqueJSON(data); err != nil {
+		return nil, fmt.Errorf("%s: %w", DisplayPath(dir), err)
+	}
 	manifest := map[string]any{}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	if err := decoder.Decode(&manifest); err != nil {

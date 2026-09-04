@@ -152,3 +152,15 @@ their own operation. This uses the audit's explicit public-wait alternative.
 
 Validation: race-enabled close tests pass. All 32 waiters observe ErrCallbackPanic
 from a blocked close owner; a cancelled wait remains cancellable.
+
+## 15. Reject ambiguous project JSON fields
+
+The OAuth unique-key validator now lives in internal/jsonstrict and is reused
+by project readers. Typed validation follows struct fields while preserving
+case-sensitive map keys and RawMessage/configuration subtrees. Exact duplicate
+keys are rejected everywhere; typed lock-field case variants are rejected too.
+Registry wrappers preserve existing callers and behavior.
+
+Validation: project and registry suites pass. Added tests cover repeated plugin
+and grant fields, case-folded grant fields, duplicate nested configuration keys,
+and distinct case-sensitive map/configuration keys.

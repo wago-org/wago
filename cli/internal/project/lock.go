@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/wago-org/wago/internal/jsonstrict"
 	"io"
 	"os"
 	"path/filepath"
@@ -154,6 +155,9 @@ func readLock(dir string) (LockDocument, error) {
 }
 
 func DecodeLock(data []byte) (LockDocument, error) {
+	if err := jsonstrict.ValidateTypedJSON(data, LockDocument{}); err != nil {
+		return LockDocument{}, err
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var document LockDocument
