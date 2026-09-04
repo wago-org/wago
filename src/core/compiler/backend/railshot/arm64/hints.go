@@ -40,19 +40,20 @@ func weightedBranchPath(weight int64) int64 {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	nLocals           int
-	hasCall           bool   // any direct or indirect call
-	callsSelf         bool   // a direct call to the function's own index
-	hasLoop           bool   // structured loop (X12/X13 may be borrowed by loop promotion)
-	touchesMemory     bool   // any linear-memory op
-	inlineCallSites   uint16 // saturated ordinary direct call sites targeting this local function
-	directCallRefs    uint8  // saturated call + return_call references targeting this local function
-	hasInlineLoopCall bool   // an ordinary direct call site is nested in a loop
-	memOps            int    // scalar/vector/bulk linear-memory instructions
-	usesBulkMem       bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
-	mutatesTable      bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
-	hasControlFlow    bool   // control opcode relevant to inline splice framing
-	moduleEH          bool   // module-wide: reserve the active exception-handler register
+	nLocals            int
+	hasCall            bool   // any direct or indirect call
+	callsSelf          bool   // a direct call to the function's own index
+	hasLoop            bool   // structured loop (X12/X13 may be borrowed by loop promotion)
+	touchesMemory      bool   // any linear-memory op
+	inlineCallSites    uint16 // saturated ordinary direct call sites targeting this local function
+	directCallRefs     uint8  // saturated call + return_call references targeting this local function
+	hasInlineLoopCall  bool   // an ordinary direct call site is nested in a loop
+	memOps             int    // scalar/vector/bulk linear-memory instructions
+	usesBulkMem        bool   // memory.copy/fill (explicit LDRB/STRB copy/fill loop clobbers X16/X17 + call scratch)
+	mutatesTable       bool   // table.set/init/copy/grow/fill; excludes immutable local-table call_indirect specialization
+	hasControlFlow     bool   // control opcode relevant to inline splice framing
+	moduleEH           bool   // module-wide: reserve the active exception-handler register
+	hasStackSinkFusion bool   // lowering may allocate fewer nodes than the scan; retain the legacy arena
 
 	// immutableLocalTable is derived after the one-pass per-function scans have
 	// been aggregated. The table must also be private (an exported table can be
@@ -92,7 +93,30 @@ type funcHints struct {
 	// arena nodes for long immediates (notably v128.const payload bytes) while the
 	// stack's heap fallback still preserves pointer stability if the estimate is
 	// low for unusual control flow.
-	stackArenaNodes int
+	stackArenaNodes    uint32
+	stackArenaDiscount uint16 // possible scanned nodes removed by bounded lookahead peepholes
+}
+
+func (h *funcHints) addStackArenaNodes(n uint32) {
+	if !shared.StackArenaHintsEnabled {
+		return
+	}
+	if ^uint32(0)-h.stackArenaNodes < n {
+		h.stackArenaNodes = ^uint32(0)
+	} else {
+		h.stackArenaNodes += n
+	}
+}
+
+func (h *funcHints) addStackArenaDiscount(n uint16) {
+	if !shared.StackArenaHintsEnabled {
+		return
+	}
+	if ^uint16(0)-h.stackArenaDiscount < n {
+		h.stackArenaDiscount = ^uint16(0)
+	} else {
+		h.stackArenaDiscount += n
+	}
 }
 
 func newFuncHints(nLocals, nGlobals int) funcHints {
@@ -242,6 +266,11 @@ func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
 
 func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHints, elig *globalEligibilityTracker) funcHints {
 	elig.reset()
+	// Programmatic decoded bodies are uncommon and can exercise context-sensitive
+	// folds that the production byte scan accounts for. Keep their legacy arena.
+	if shared.StackArenaHintsEnabled {
+		h.hasStackSinkFusion = true
+	}
 	// walk returns whether the subtree contains a call. curLoop identifies the
 	// innermost enclosing loop whose globals are being considered for eligibility.
 	var walk func(instrs []wasm.Instruction, depth int, curLoop int) bool
@@ -545,10 +574,26 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
 	}
 	subHasCall := false
+	var prevOp, prevPrevOp byte
+	var prevIndex, prevPrevIndex uint32
+	var prevConst int64
+	var prevConstOK bool
 	for {
 		op, err := s.r.byte()
 		if err != nil {
 			return true, 0, err
+		}
+		curIndex := ^uint32(0)
+		var curConst int64
+		curConstOK := false
+		if shared.StackArenaHintsEnabled && (op == 0x41 || op == 0x42) {
+			if b, ok := s.r.Peek(); ok && b&0x80 == 0 {
+				curConst = int64(b & 0x7f)
+				if b&0x40 != 0 {
+					curConst |= ^int64(0x7f)
+				}
+				curConstOK = true
+			}
 		}
 		if shared.InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) {
 			s.h.hasControlFlow = true
@@ -559,17 +604,17 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		}
 		switch op {
 		case 0x0b: // end
-			s.h.stackArenaNodes += 2 // flush/rebuild allowance for the closing edge.
+			s.h.addStackArenaNodes(2) // flush/rebuild allowance for the closing edge.
 			return subHasCall, op, nil
 		case 0x05: // else
-			s.h.stackArenaNodes += 2 // then-edge flush plus else-entry rebuild.
+			s.h.addStackArenaNodes(2) // then-edge flush plus else-entry rebuild.
 			if stopAtElse {
 				return subHasCall, op, nil
 			}
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x02, 0x03, 0x04: // block, loop, if
 			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
-			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
+			s.h.addStackArenaNodes(2) // entry flush/rebuild allowance.
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
@@ -625,6 +670,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 				}
 				subHasCall = subHasCall || callsThen || callsElse
+				if next, ok := s.r.Peek(); ok && (next == 0x21 || next == 0x22) {
+					s.h.hasStackSinkFusion = true
+				}
 			}
 		case 0x10, 0x12: // call, return_call
 			var imm wasm.InstructionImmediate
@@ -653,7 +701,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
+			if op == 0x22 {
+				s.h.addStackArenaDiscount(stackLookaheadDiscountOpcode(prevOp))
+			}
 			idx := imm.Index
+			curIndex = idx
 			if int(idx) < s.nLocals {
 				if s.entryPrefix && idx < 64 {
 					bit := uint64(1) << idx
@@ -721,7 +773,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
 			s.h.moduleEH = true
-			s.h.stackArenaNodes += 2 // entry flush/rebuild allowance.
+			s.h.addStackArenaNodes(2) // entry flush/rebuild allowance.
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
@@ -761,6 +813,21 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if imm.UsesBulkMemory {
 				s.h.usesBulkMem = true
 			}
+		}
+		if shared.StackArenaHintsEnabled {
+			if !prevConstOK && (prevOp == 0x41 || prevOp == 0x42) &&
+				(op >= 0x6a && op <= 0x78 || op >= 0x7c && op <= 0x8a) {
+				s.h.hasStackSinkFusion = true
+			}
+			if stackFlowTerminatorOpcode(op) {
+				if next, ok := s.r.Peek(); ok && next != 0x0b && next != 0x05 {
+					s.h.hasStackSinkFusion = true
+				}
+			}
+			s.h.addStackArenaDiscount(stackAlgebraicDiscountOpcode(op, prevOp, prevPrevOp, prevIndex, prevPrevIndex, prevConst, prevConstOK))
+			prevPrevOp, prevPrevIndex = prevOp, prevIndex
+			prevOp, prevIndex = op, curIndex
+			prevConst, prevConstOK = curConst, curConstOK
 		}
 	}
 }
@@ -825,8 +892,88 @@ func isTableMutation(kind wasm.InstrKind) bool {
 }
 
 func (s *byteBodyScanner) noteStackArenaOp(op byte, imm *wasm.InstructionImmediate) {
+	if !shared.StackArenaHintsEnabled {
+		return
+	}
 	if stackArenaOpAllocates(op, imm) {
-		s.h.stackArenaNodes++
+		s.h.addStackArenaNodes(1)
+	}
+	if op == 0xfd {
+		s.h.hasStackSinkFusion = true
+	}
+	if stackSinkFusionOpcode(op) {
+		next, ok := s.r.Peek()
+		if ok && (next == 0x21 || next == 0x22) {
+			s.h.hasStackSinkFusion = true
+		}
+	}
+}
+
+func stackSinkFusionOpcode(op byte) bool {
+	return op == 0x1b || op == 0x1c || op >= 0x92 && op <= 0x97 || op >= 0xa0 && op <= 0xa5
+}
+
+func stackLookaheadDiscountOpcode(op byte) uint16 {
+	switch op {
+	case 0x83: // i64.and
+		return 12
+	case 0x88: // i64.shr_u
+		return 32
+	default:
+		return 0
+	}
+}
+
+func stackFlowTerminatorOpcode(op byte) bool {
+	switch op {
+	case 0x00, 0x08, 0x0a, 0x0c, 0x0e, 0x0f, 0x12, 0x13, 0x15:
+		return true
+	default:
+		return false
+	}
+}
+
+func stackAlgebraicDiscountOpcode(op, prevOp, prevPrevOp byte, prevIndex, prevPrevIndex uint32, prevConst int64, prevConstOK bool) uint16 {
+	if prevConstOK && algebraicIdentityOpcode(op, prevOp, prevConst) || op == 0xa7 && prevOp == 0x84 {
+		return 1
+	}
+	if prevOp == 0x20 && prevPrevOp == 0x20 && prevIndex == prevPrevIndex && sameOperandSimplifiesOpcode(op) {
+		return 1
+	}
+	return 0
+}
+
+func algebraicIdentityOpcode(op, constOp byte, c int64) bool {
+	if constOp != 0x41 && constOp != 0x42 {
+		return false
+	}
+	switch op {
+	case 0x6a, 0x6b, 0x72, 0x73, 0x7c, 0x7d, 0x84, 0x85:
+		return c == 0
+	case 0x74, 0x75, 0x76, 0x77, 0x78:
+		return c&31 == 0
+	case 0x86, 0x87, 0x88, 0x89, 0x8a:
+		return c&63 == 0
+	case 0x6c, 0x6e, 0x7e, 0x80:
+		return c == 1
+	case 0x71:
+		return int32(c) == -1
+	case 0x83:
+		return c == -1
+	default:
+		return false
+	}
+}
+
+func sameOperandSimplifiesOpcode(op byte) bool {
+	if op >= 0x46 && op <= 0x4f || op >= 0x51 && op <= 0x5a {
+		return true
+	}
+	switch op {
+	case 0x6b, 0x71, 0x72, 0x73, 0x7d, 0x83, 0x84, 0x85:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -849,10 +996,22 @@ func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {
 		0x99, 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6,
 		0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf, 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf,
 		0xc0, 0xc1, 0xc2, 0xc3, 0xc4,
-		0xd0, 0xd1, 0xd2, 0xd3:
+		0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6:
 		return true
 	case 0xfc:
 		return imm.Subopcode <= 7 || imm.Subopcode == 15 || imm.Subopcode == 16 // trunc_sat/table.grow/table.size push.
+	case 0xfe:
+		switch imm.Kind {
+		case wasm.InstrAtomicFence,
+			wasm.InstrI32AtomicStore, wasm.InstrI64AtomicStore,
+			wasm.InstrI32AtomicStore8, wasm.InstrI32AtomicStore16,
+			wasm.InstrI64AtomicStore8, wasm.InstrI64AtomicStore16, wasm.InstrI64AtomicStore32:
+			return false
+		default:
+			return true // loads, wait/notify, RMW, and cmpxchg push one result.
+		}
+	case 0xfb:
+		return true // GC/reference operations push at most one native result; result-free forms are safe overestimates.
 	case 0xfd:
 		switch imm.Subopcode {
 		case 11, 88, 89, 90, 91: // v128.store and v128.store{8,16,32,64}_lane push no result.

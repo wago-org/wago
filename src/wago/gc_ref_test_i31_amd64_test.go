@@ -4,7 +4,6 @@ package wago
 
 import (
 	"encoding/hex"
-	"strings"
 	"testing"
 )
 
@@ -78,21 +77,26 @@ func TestStagedGCI31RefTestLifecycleClosure(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	blob, err := marshalCompiled(c)
+	blob, err := c.MarshalBinary()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("i31 ref.test codec=%d", len(blob))
-	var loaded Compiled
-	if err := unmarshalCompiled(&loaded, blob[5:]); err != nil {
+	loaded, err := LoadTrustedArtifact(blob)
+	if err != nil {
 		t.Fatal(err)
 	}
 	defer loaded.Close()
-	if loaded.stagedGCI31Product() != 0 || loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
+	if loaded.stagedGCI31Product() != stagedGCI31ProductCore || !loaded.stagedFeatures().IsEnabled(CoreFeatureGC) {
 		t.Fatalf("codec inherited ref.test admission: product=%v features=%v", loaded.stagedGCI31Product(), loaded.stagedFeatures())
 	}
-	if _, err := instantiateCore(&loaded, InstantiateOptions{}); err == nil || !strings.Contains(err.Error(), "required feature") {
+	in, err := instantiateCore(loaded, InstantiateOptions{})
+	if err != nil {
 		t.Fatalf("codec-loaded ref.test instantiate = %v", err)
+	}
+	defer in.Close()
+	if got, err := in.Invoke("i31", I32(-1)); err != nil || len(got) != 1 || got[0] != 2 {
+		t.Fatalf("codec-loaded ref.test = %v, %v; want [2], nil", got, err)
 	}
 
 	unknown := append([]byte(nil), data...)

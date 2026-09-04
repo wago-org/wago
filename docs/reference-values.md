@@ -1002,6 +1002,13 @@ index entries even when they use the same key. The same metadata is reconstructe
 from codec-v26-loaded modules. `Module.Imports` exposes the corresponding exact
 function signatures, global types/mutability, and table types/limits.
 
+Read-only table diagnostics support state comparison without creating retained
+reference tokens. `Table.EntryIsNull` reports portable table occupancy.
+`Instance.TableFunctionIndex` relates a non-null entry in an exported funcref
+table to its exact Wasm function index. These methods are outside the guest/JIT
+hot path and callers must not race them with guest table mutation. The
+[engine-state differential lane](engine-state-fuzzing.md) uses both operations.
+
 Cross-link teardown is locked as one ownership proof: a producer may be logically
 closed while a consumer still imports a reference global, duplicate aliases of
 one funcref table, and an externref table. The consumer continues to call and

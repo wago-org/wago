@@ -9,7 +9,30 @@ import (
 	"github.com/wago-org/wago"
 )
 
+// ValidateSignature rejects values that the command-line text format cannot
+// represent. The low-level Go API remains available for v128 and reference
+// values.
+func ValidateSignature(params, results []wago.ValType) error {
+	if err := validateSignatureValues("parameter", params); err != nil {
+		return err
+	}
+	return validateSignatureValues("result", results)
+}
+
+func validateSignatureValues(kind string, types []wago.ValType) error {
+	for index, typ := range types {
+		if typ <= wago.ValF64 {
+			continue
+		}
+		return fmt.Errorf("%s %d is %s; unsupported", kind, index, typ)
+	}
+	return nil
+}
+
 func ParseArgs(values []string, params []wago.ValType) ([]uint64, error) {
+	if err := ValidateSignature(params, nil); err != nil {
+		return nil, err
+	}
 	if len(values) != len(params) {
 		return nil, fmt.Errorf("expected %d arg(s), got %d", len(params), len(values))
 	}

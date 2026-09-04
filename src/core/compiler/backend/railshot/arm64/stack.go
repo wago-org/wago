@@ -192,11 +192,15 @@ func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
 
 // stack is the operand stack: a sentinel-terminated doubly-linked list with a
 // bump arena of elems (never freed mid-function; that matches single-pass usage
-// and keeps *elem pointers stable).
+// and keeps *elem pointers stable). Sub-default hints preserve direct doubling.
+// At or above 256, growth fills to the next legacy cumulative boundary before
+// resuming geometric chunks, so an underestimate cannot regress legacy retention.
 type stack struct {
-	chunks [][]elem
-	cur    int
-	head   *elem
+	chunks           [][]elem
+	cur              int
+	head             *elem
+	nextChunkCap     int
+	nextGeometricCap int
 }
 
 const (
@@ -211,9 +215,49 @@ func newStackWithCap(capHint int) *stack {
 	if capHint < minStackArenaCap {
 		capHint = minStackArenaCap
 	}
-	s := &stack{chunks: [][]elem{make([]elem, 0, capHint)}}
+	next, geometric := stackArenaGrowthCaps(capHint)
+	s := &stack{
+		chunks:           [][]elem{make([]elem, 0, capHint)},
+		nextChunkCap:     next,
+		nextGeometricCap: geometric,
+	}
 	s.initSentinel()
 	return s
+}
+
+func stackArenaGrowthCaps(firstCap int) (next, geometric int) {
+	if firstCap < defaultStackArenaCap {
+		next = firstCap * 2
+		if next > maxStackChunkCap {
+			next = maxStackChunkCap
+		}
+		geometric = next * 2
+		if geometric > maxStackChunkCap {
+			geometric = maxStackChunkCap
+		}
+		return next, geometric
+	}
+	total, geometric := defaultStackArenaCap, defaultStackArenaCap*2
+	for total < firstCap {
+		total += geometric
+		if geometric < maxStackChunkCap {
+			geometric *= 2
+			if geometric > maxStackChunkCap {
+				geometric = maxStackChunkCap
+			}
+		}
+	}
+	if remainder := total - firstCap; remainder > 0 {
+		return remainder, geometric
+	}
+	next = geometric
+	if geometric < maxStackChunkCap {
+		geometric *= 2
+		if geometric > maxStackChunkCap {
+			geometric = maxStackChunkCap
+		}
+	}
+	return next, geometric
 }
 
 func (s *stack) initSentinel() {
@@ -253,11 +297,14 @@ func (s *stack) alloc() *elem {
 	if len(*chunk) == cap(*chunk) {
 		s.cur++
 		if s.cur == len(s.chunks) {
-			nextCap := cap(*chunk) * 2
-			if nextCap > maxStackChunkCap {
-				nextCap = maxStackChunkCap
+			s.chunks = append(s.chunks, make([]elem, 0, s.nextChunkCap))
+			s.nextChunkCap = s.nextGeometricCap
+			if s.nextGeometricCap < maxStackChunkCap {
+				s.nextGeometricCap *= 2
+				if s.nextGeometricCap > maxStackChunkCap {
+					s.nextGeometricCap = maxStackChunkCap
+				}
 			}
-			s.chunks = append(s.chunks, make([]elem, 0, nextCap))
 		}
 		chunk = &s.chunks[s.cur]
 		*chunk = (*chunk)[:0]

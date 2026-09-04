@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"encoding/binary"
+	"fmt"
 	"sync"
 	"unsafe"
 
@@ -80,6 +81,9 @@ func NewJobMemory(linBytes int) (*JobMemory, error) {
 // exposes only initialBytes as in-bounds linear memory. memory.grow raises the
 // size cache up to maxBytes without any remap, so the base pointer never moves.
 func NewJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
+	if err := validateJobMemorySizes(initialBytes, maxBytes); err != nil {
+		return nil, err
+	}
 	initialBytes, maxBytes, reserveBytes := normalizeMemorySizes(initialBytes, maxBytes)
 	mem, err := mmapRWReserve(basedataSize + reserveBytes)
 	if err != nil {
@@ -92,6 +96,13 @@ func NewJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
 		return nil, err
 	}
 	return j, nil
+}
+
+func validateJobMemorySizes(initialBytes, maxBytes int) error {
+	if initialBytes < 0 || maxBytes < 0 {
+		return fmt.Errorf("runtime: negative linear-memory size: initial %d maximum %d", initialBytes, maxBytes)
+	}
+	return nil
 }
 
 func normalizeMemorySizes(initialBytes, maxBytes int) (int, int, int) {
@@ -140,6 +151,9 @@ func (j *JobMemory) reset(initialBytes, maxBytes, reserveBytes int, clearMem boo
 // modules, whose reservation is the full ~4 GiB logical max, reuse the mapping
 // instead of paying a fresh mmap+munmap of that range on every instantiate.
 func AcquireJobMemoryGrowable(initialBytes, maxBytes int) (*JobMemory, error) {
+	if err := validateJobMemorySizes(initialBytes, maxBytes); err != nil {
+		return nil, err
+	}
 	initialBytes, maxBytes, reserveBytes := normalizeMemorySizes(initialBytes, maxBytes)
 	need := basedataSize + reserveBytes
 	jobMemoryCache.Lock()

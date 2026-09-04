@@ -396,10 +396,55 @@ func retainProducerRootsInImportedTablesMode(in *Instance, finalization bool) bo
 		}
 		if rooted {
 			in.transferImportedTableAttachment(table)
+			in.transferImportedAttachmentsFromOwner(table.instanceOwner())
 			retained = true
 		}
 	}
 	return retained
+}
+
+// transferImportedAttachmentsFromOwner breaks a closed consumer/owner cycle
+// after one of the owner's tables has taken over the consumer's lifetime. The
+// table keeps the consumer callable while any open importer keeps the owner
+// live. If no importer remains, closing the owner can release the table and in
+// turn release the consumer.
+func (in *Instance) transferImportedAttachmentsFromOwner(owner *Instance) {
+	if in == nil || in.c == nil || owner == nil {
+		return
+	}
+	var memories importDedup[*Memory]
+	for memoryIndex := 0; memoryIndex < in.c.memoryCount(); memoryIndex++ {
+		def := in.c.memoryDef(memoryIndex)
+		if def.ImportKey == "" {
+			continue
+		}
+		var memory *Memory
+		if memoryIndex == 0 {
+			memory = in.memory
+		} else if in.memoryDir != nil && memoryIndex < len(in.memoryDir.memories) {
+			memory = in.memoryDir.memories[memoryIndex]
+		}
+		if memory != nil && memories.add(memory) && memory.instanceOwner() == owner {
+			in.transferImportedMemoryAttachment(memory)
+		}
+	}
+
+	var globals importDedup[*Global]
+	for _, imp := range in.c.GlobalImports {
+		provided, ok := in.imports.global(imp.Module + "." + imp.Name)
+		if ok && provided.Global != nil && globals.add(provided.Global) && provided.Global.instanceOwner() == owner {
+			in.transferImportedGlobalAttachment(provided.Global)
+		}
+	}
+
+	var tables importDedup[*Table]
+	for tableIndex := 0; tableIndex < in.c.tableImportCount(); tableIndex++ {
+		def, _ := in.c.tableImportAt(tableIndex)
+		table, ok := in.imports.table(def.Key)
+		if ok && table != nil && tables.add(table) && table.instanceOwner() == owner {
+			in.transferImportedTableAttachment(table)
+		}
+	}
 }
 
 // importedFuncrefProducerRoots snapshots roots from every imported persistent

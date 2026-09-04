@@ -675,8 +675,9 @@ type scratch struct {
 	gcArrayAllocStubSites   []gcArrayAllocStubSite
 	trapSites               [trapMax + 1][]trapSite
 	ctrl                    []ctrlFrame // control-frame stack backing; reused across functions
-	pinnedLocals            []int       // pinned-local index backing; reused across functions
-	brTableStubAt           []int       // duplicate-heavy jump-table target positions by control depth
+	functionResultTypeArena [maxScratchFunctionResults]machineType
+	pinnedLocals            []int // pinned-local index backing; reused across functions
+	brTableStubAt           []int // duplicate-heavy jump-table target positions by control depth
 	jumpTableFragments      []jumpTableFragment
 	localRefs               amd64.LocalRefRecorder
 	offsetMap               shared.WideOffsetMap
@@ -707,26 +708,105 @@ func newScratchWithStackCap(stackCap int) *scratch {
 	return &scratch{stack: newStackWithCap(stackCap), asm: &amd64.Asm{}}
 }
 
+// maxScratchFunctionResults bounds owner-local signature lowering storage.
+// Standard Go keeps 64 entries; TinyGo keeps none to protect release size.
+// Signatures above the active bound allocate for that function only.
+const maxScratchFunctionResults = shared.FunctionResultScratchCapacity
+
+// maxInitialStackArenaCap bounds speculative operand-node storage retained by
+// one serial compiler scratch. Larger functions still grow through stable
+// chunks. This removes geometric growth for ordinary large functions without
+// letting one pathological hint reserve an unbounded first chunk.
+const maxInitialStackArenaCap = shared.MaxInitialStackArenaCapacity
+
 // moduleStackArenaCap chooses the first operand-stack chunk reused across the
-// module. The one-pass function pre-scan already counts arena-producing nodes,
-// so small modules need not reserve the legacy 256-element chunk. Chunk growth
-// remains the conservative overflow path; incomplete hints retain the legacy
-// capacity to avoid predictable growth churn.
+// serial module compile. The one-pass function pre-scan already counts
+// arena-producing nodes, so use its largest bounded estimate instead of forcing
+// large functions through the legacy 256-element geometric growth path.
 func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
-	if len(hints) != len(m.Code) {
+	if !shared.StackArenaHintsEnabled || len(hints) != len(m.Code) || moduleHasMultiValueResults(m) {
 		return defaultStackArenaCap
 	}
 	capHint := minStackArenaCap
+	legacyRetained := defaultStackArenaCap
 	for i := range hints {
-		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, hints[i].stackArenaNodes)
-		if fnCap >= defaultStackArenaCap {
+		if hints[i].hasStackSinkFusion {
+			return defaultStackArenaCap
+		}
+		nodes := int(hints[i].stackArenaNodes)
+		fnCap := stackArenaCapForHints(len(m.Code[i].BodyBytes), hints[i].nLocals, nodes)
+		if fnCap > maxInitialStackArenaCap || fnCap < nodes {
 			return defaultStackArenaCap
 		}
 		if fnCap > capHint {
 			capHint = fnCap
 		}
+		effectiveNodes := nodes - int(hints[i].stackArenaDiscount)
+		if effectiveNodes < 1 {
+			effectiveNodes = 1
+		}
+		if retained := legacyStackArenaRetained(effectiveNodes); retained > legacyRetained {
+			legacyRetained = retained
+		}
+	}
+	if capHint >= legacyRetained {
+		return defaultStackArenaCap
 	}
 	return capHint
+}
+
+// legacyStackArenaRetained returns the total node capacity held by the legacy
+// 256/512/... chunk sequence for a raw node hint. It stops once the total is
+// already above any admissible direct first chunk.
+func legacyStackArenaRetained(nodes int) int {
+	total, next := defaultStackArenaCap, defaultStackArenaCap*2
+	for total < nodes && total <= maxInitialStackArenaCap {
+		total += next
+		if next < maxStackChunkCap {
+			next *= 2
+			if next > maxStackChunkCap {
+				next = maxStackChunkCap
+			}
+		}
+	}
+	return total
+}
+
+func moduleHasMultiValueResults(m *wasm.Module) bool {
+	for i := range m.Types {
+		for j := range m.Types[i].SubTypes {
+			ct := &m.Types[i].SubTypes[j].Comp
+			if ct.Kind == wasm.CompFunc && len(ct.Results) > 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// serialStackArenaCap keeps the legacy growth path when lowering may expand one
+// scanned instruction into uncounted nodes. This applies to spliced inline
+// bodies, extension-owned custom recipes, and GC helper argument construction.
+func serialStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inlineTargetTable, expandedLowering bool) int {
+	if !inlineTargets.empty() || expandedLowering {
+		return defaultStackArenaCap
+	}
+	return moduleStackArenaCap(m, hints)
+}
+
+// workerStackArenaCap avoids multiplying one large function's initial arena by
+// every parallel worker. Each worker keeps the established bounded growth path
+// and allocates larger chunks only when it actually receives such a function.
+func workerStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inlineTargetTable, expandedLowering bool) int {
+	capHint := serialStackArenaCap(m, hints, inlineTargets, expandedLowering)
+	if capHint > defaultStackArenaCap {
+		return defaultStackArenaCap
+	}
+	return capHint
+}
+
+func expandedStackLowering(opts CompileOptions, policy CodegenPolicy) bool {
+	return policy.EnabledOption(optGCRefFacts) || len(opts.CustomInstructions) != 0 || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers
 }
 
 const maxHintedControlFrames = 64
@@ -1258,7 +1338,8 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if workers <= 1 {
 		// Keep the serial compiler as a distinct fast path: one reusable scratch,
 		// no goroutines, channels, atomics, worker metadata, or intermediate arena.
-		sc := newScratchWithStackCap(moduleStackArenaCap(m, allHints))
+		expandedLowering := expandedStackLowering(opts, policy)
+		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.policy = policy
 		sc.classifier = classifier
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
@@ -1456,7 +1537,8 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if symbolicLocalSlotPackingPolicy(policy) {
 		arenaCap += amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
 	}
-	stackCap := moduleStackArenaCap(m, allHints)
+	expandedLowering := expandedStackLowering(opts, policy)
+	stackCap := workerStackArenaCap(m, allHints, inlineTargets, expandedLowering)
 	ctrlCap := moduleControlFrameCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
@@ -2753,11 +2835,12 @@ func (f *fn) finalizeStats(codeLen int) {
 // runBody opens the function control frame, lowers the body, and patches every
 // return/br-to-function site to the (current) epilogue position.
 func (f *fn) runBody(c *wasm.Func) error {
-	resultTypes := typesOfVals(f.ft.Results)
+	sc := f.scratchState()
+	resultTypes := lowerFunctionResultTypes(sc, f.ft.Results)
 	// Seed the control-frame stack from scratch's retained backing so its
 	// (large-struct) array is reused across functions rather than regrown to peak
 	// nesting depth for every one; sc.ctrl is written back below to keep the cap.
-	f.ctrl = append(f.sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes})
+	f.ctrl = append(sc.ctrl[:0], ctrlFrame{kind: cfFunc, resultN: len(resultTypes), branchN: len(resultTypes), resultTypes: resultTypes})
 	if err := f.body(c.BodyBytes); err != nil {
 		return err
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/wago-org/wago/cli/internal/command"
 	"github.com/wago-org/wago/cli/internal/settings"
 	"github.com/wago-org/wago/cli/internal/ui"
+	"github.com/wago-org/wago/cli/internal/wasmcall"
 	"github.com/wago-org/wago/cli/runtime/internal/artifactcache"
 )
 
@@ -120,7 +121,13 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 		runStart(runtime, module, gc, configuredGC)
 		return
 	}
-	params, results, _ := compiled.Signature(export)
+	params, results, err := compiled.Signature(export)
+	if err != nil {
+		ui.Fatal("run: %v", err)
+	}
+	if err := wasmcall.ValidateSignature(params, results); err != nil {
+		ui.Fatal("run: %v", err)
+	}
 	values := mustParseArgs(positionals[1:], params)
 	instance, err := instantiate(runtime, module, gc, configuredGC)
 	if err != nil {

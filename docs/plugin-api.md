@@ -222,11 +222,37 @@ the same callback returns the same context. Nested re-entry receives a distinct
 context and does not shorten the outer callback's lifetime.
 
 Invocation contexts deliberately expose no parent context values. Plugins must
-pass explicit dependencies instead of using context values as an ambient data
-channel. Calls without a cancellable public parent, including raw `Invoke`,
-prepared calls, and start-time callbacks, receive a live callback-scoped context
-without a deadline. Forged, expired, cross-Runtime, and low-level callers are
-rejected with `ErrPermissionDenied`.
+pass explicit dependencies instead of using context values as ambient data.
+Calls without a cancellable public parent, including raw `Invoke`, prepared
+calls, and start-time callbacks, receive a live callback-scoped context without
+a deadline. Forged, expired, cross-Runtime, and low-level callers are rejected
+with `ErrPermissionDenied`.
+
+## Active caller re-entry
+
+A plugin granted `host.caller.invoke` may synchronously invoke an export on the
+exact guest making its active host call. This is intended for callback ABIs such
+as Emscripten trampolines; it does not grant instance discovery, retention,
+close, or invocation outside that callback:
+
+```go
+invoker, err := reg.HostCallerInvoker()
+if err != nil {
+    return err
+}
+
+module.Func("callback", func(caller wago.HostModule, params, results []uint64) {
+    nested, err := invoker.Invoke(context.Background(), caller, "host_callback", params...)
+    if err != nil {
+        panic(wago.HostTrap{Err: err})
+    }
+    copy(results, nested)
+})
+```
+
+The caller token expires when the host function returns. Re-entry uses Wago's
+isolated native stack and call buffers and remains subject to the outer
+invocation's cancellation and normal recursion limits.
 
 ## Exact authorities and scopes
 
@@ -237,6 +263,7 @@ parent, wildcard, descendant, or future authority.
 |---|---|
 | `host.import.define` | Define host functions in specifically granted import modules. |
 | `host.caller.identify` | Resolve the exact active instance and its callback-scoped invocation cancellation/deadline during a synchronous host call. |
+| `host.caller.invoke` | Synchronously invoke an export on the exact guest making the active host call. |
 | `host.arguments.read` | Read guest arguments exposed by the host. |
 | `runtime.close.observe` | Observe logical runtime close. |
 | `module.source.transform` | Replace module bytes before compilation. |

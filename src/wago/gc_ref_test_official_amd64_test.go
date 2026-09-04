@@ -156,6 +156,7 @@ func compileStagedGCRefTestAccounting(data []byte) (*Compiled, error) {
 	features.TypedFunctionReferences = true
 	if product, ok := stagedGCStructExecutionProduct(data); ok && (product == stagedGCStructRefTestConcrete || product == stagedGCStructRefTestAbstract) {
 		features.GCStructProducts = true
+		features.NullReferenceProducts = true
 		if product == stagedGCStructRefTestAbstract {
 			features.GCArrayProducts = true
 			features.GCI31Products = true

@@ -331,6 +331,9 @@ func vmUpdate(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wag
 }
 
 func vmUpdateContext(ctx context.Context, d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build, use string, force bool) {
+	if err := validateVersionStorageName(ver); err != nil {
+		fatal("version update: %v", err)
+	}
 	dest := d.RuntimeBinary(ver, string(profile), string(build))
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version update: %v", err)

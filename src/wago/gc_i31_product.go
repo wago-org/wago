@@ -7,9 +7,9 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// stagedGCI31Product identifies exact compile-only gc/i31 products. i31 values
-// share the compact gc.Ref word internally, but this product marker is separate
-// from collector-backed struct/array ownership and is never serialized.
+// stagedGCI31Product identifies exact non-allocating gc/i31 products. i31 values
+// share the compact gc.Ref word internally; artifacts persist the semantic need
+// for this execution product independently of initializer representation.
 type stagedGCI31Product uint8
 
 const (

@@ -184,6 +184,55 @@ func tableTestExpectTrap(t *testing.T, err error, code TrapCode) {
 	}
 }
 
+func TestTableFunctionIndexReportsStableRelations(t *testing.T) {
+	mod := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		tableTestFuncSection(0, 0),
+		wasmtest.Section(4, wasmtest.Vec([]byte{0x70, 0x01, 0x03, 0x03})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("f0", 0, 0),
+			wasmtest.ExportEntry("f1", 0, 1),
+			wasmtest.ExportEntry("table", 1, 0),
+		)),
+		wasmtest.Section(9, wasmtest.Vec(tableTestActiveElem(1, 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code(tableTestBody(tableTestI32Const(7))),
+			wasmtest.Code(tableTestBody(tableTestI32Const(42))),
+		)),
+	)
+	in := tableTestInstantiate(t, mod)
+	defer in.Close()
+	table, err := in.ExportedTable("table")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if null, err := table.EntryIsNull(0); err != nil || !null {
+		t.Fatalf("EntryIsNull(0) = %v, %v; want true, nil", null, err)
+	}
+	if null, err := table.EntryIsNull(1); err != nil || null {
+		t.Fatalf("EntryIsNull(1) = %v, %v; want false, nil", null, err)
+	}
+	if _, err := table.EntryIsNull(3); err == nil {
+		t.Fatal("EntryIsNull(out of bounds) succeeded")
+	}
+
+	if _, nonNull, err := in.TableFunctionIndex("table", 0); err != nil || nonNull {
+		t.Fatalf("TableFunctionIndex(null) = _, %v, %v; want null", nonNull, err)
+	}
+	for entry, want := range []uint32{0, 1} {
+		got, nonNull, err := in.TableFunctionIndex("table", uint64(entry+1))
+		if err != nil || !nonNull || got != want {
+			t.Fatalf("TableFunctionIndex(%d) = %d, %v, %v; want %d, true, nil", entry+1, got, nonNull, err, want)
+		}
+	}
+	if _, _, err := in.TableFunctionIndex("table", 3); err == nil {
+		t.Fatal("TableFunctionIndex(out of bounds) succeeded")
+	}
+	if _, _, err := in.TableFunctionIndex("missing", 0); err == nil {
+		t.Fatal("TableFunctionIndex(missing export) succeeded")
+	}
+}
+
 func tableInitializerModule(initExpr []byte, activeElems ...[]byte) []byte {
 	sections := [][]byte{
 		wasmtest.Section(1, wasmtest.Vec(
@@ -1376,7 +1425,7 @@ func TestImportedThenLocalFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 		(func (export "local-size") (result i32) (table.size $local))
 		(func (export "grow-local") (result i32)
 			(ref.null func) (i32.const 1) (table.grow $local)))`))
-	_ = roundTripCompiled(t, consumerCompiled)
+	_ = publicArtifactRoundTrip(t, consumerCompiled)
 	tooSmall, err := NewTable(1, 2)
 	if err != nil {
 		t.Fatalf("NewTable tooSmall: %v", err)
@@ -1556,7 +1605,7 @@ func TestMultipleImportedFuncrefTablesExecuteAndExportExactly(t *testing.T) {
 	if err := rt.Close(); err != nil {
 		t.Fatalf("close metadata runtime: %v", err)
 	}
-	_ = roundTripCompiled(t, consumerCompiled)
+	_ = publicArtifactRoundTrip(t, consumerCompiled)
 	consumer, err := Instantiate(consumerCompiled, Imports{"a.table": tableA, "b.table": tableB})
 	if err != nil {
 		t.Fatalf("Instantiate multiple imported tables: %v", err)
@@ -1972,7 +2021,7 @@ func TestCompiledCodecPreservesTableExportNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compile: %v", err)
 	}
-	loaded := roundTripCompiled(t, compiled)
+	loaded := publicArtifactRoundTrip(t, compiled)
 	if got, ok := loaded.tableExports["table"]; !ok || got != 0 {
 		t.Fatalf("loaded table export metadata = %#v, want table -> 0", loaded.tableExports)
 	}
@@ -3301,7 +3350,7 @@ func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
 		if got := c.extraTables[0]; got.Size != 2 || got.Max != 4 {
 			t.Fatalf("table 1 metadata = %#v, want size/max 2/4", got)
 		}
-		_ = roundTripCompiled(t, c)
+		_ = publicArtifactRoundTrip(t, c)
 		inst, err := Instantiate(c)
 		if err != nil {
 			t.Fatalf("Instantiate: %v", err)
@@ -3326,7 +3375,7 @@ func TestCompileRejectsUnsupportedTableIndexes(t *testing.T) {
 		if got := c.extraTables[0]; got.Size != 2 || got.Max != 4 {
 			t.Fatalf("local table 1 metadata = %#v, want size/max 2/4", got)
 		}
-		_ = roundTripCompiled(t, c)
+		_ = publicArtifactRoundTrip(t, c)
 	})
 	cases := []struct {
 		name    string

@@ -83,6 +83,9 @@ func executeModule(runtime *wago.Runtime, module *wago.Module, options Options, 
 	if err != nil {
 		return err
 	}
+	if err := wasmcall.ValidateSignature(params, results); err != nil {
+		return err
+	}
 	values := []uint64(nil)
 	if invoke != "_start" {
 		callArgs := args

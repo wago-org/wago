@@ -54,7 +54,7 @@ func TestMemory64ARM64ExecutionAndCodec(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
-	for _, candidate := range []*Compiled{compiled, roundTripCompiled(t, compiled)} {
+	for _, candidate := range []*Compiled{compiled, publicArtifactRoundTrip(t, compiled)} {
 		if candidate != compiled {
 			defer candidate.Close()
 		}

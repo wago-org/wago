@@ -65,6 +65,7 @@ func pkgAddMany(specs []string, options pkgOpts) {
 			progress.Begin("Fetching selected plugins")
 		}
 	}
+	var installedLock project.LockDocument
 	err = withPluginMutationLock(pluginContext(options.ctx), src, func(mutation *project.Mutation) error {
 		manifest, err := mutation.ReadManifest()
 		if err != nil {
@@ -100,7 +101,11 @@ func pkgAddMany(specs []string, options pkgOpts) {
 		printPluginPlanWarnings(reviewed.Warnings)
 		progress.Finish("Permissions checked")
 		progress.Begin("Building plugin runtime")
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose)
+		if err := stageAndPublishLockedState(mutation, src, buildDir, manifest, reviewed.Lock, options.verbose); err != nil {
+			return err
+		}
+		installedLock = reviewed.Lock
+		return nil
 	})
 	if err != nil {
 		progress.Fail("Plugin install failed")
@@ -109,7 +114,54 @@ func pkgAddMany(specs []string, options pkgOpts) {
 	if !options.global {
 		project.EnsureGitignore(".wago/")
 	}
+	reportCompletedPluginInstalls(context.WithoutCancel(pluginContext(options.ctx)), specs, installedLock, registry.RecordInstallContext)
 	progress.Finish(fmt.Sprintf("Installed %d plugin%s in %s", len(specs), plural(len(specs)), time.Since(started).Round(time.Millisecond)))
+}
+
+func reportCompletedPluginInstalls(ctx context.Context, specs []string, lock project.LockDocument, record func(context.Context, string, string)) {
+	sources := make(map[string]project.PluginSource, len(specs))
+	seenPlugins := make(map[string]struct{}, len(lock.Plugins))
+	var visit func(string)
+	visit = func(id string) {
+		if _, seen := seenPlugins[id]; seen {
+			return
+		}
+		seenPlugins[id] = struct{}{}
+		entry, ok := lock.Plugins[id]
+		if !ok {
+			return
+		}
+		if entry.Source.Module != "" && entry.Source.Version != "" {
+			sources[entry.Source.Module] = entry.Source
+		}
+		dependencies := make([]string, 0, len(entry.Dependencies))
+		for dependency := range entry.Dependencies {
+			dependencies = append(dependencies, dependency)
+		}
+		for _, binding := range entry.Bindings {
+			dependencies = append(dependencies, binding.Providers...)
+		}
+		sort.Strings(dependencies)
+		for _, dependency := range dependencies {
+			visit(dependency)
+		}
+	}
+	for _, spec := range specs {
+		id, _, err := parsePluginSpec(spec)
+		if err != nil {
+			continue
+		}
+		visit(id)
+	}
+	modules := make([]string, 0, len(sources))
+	for module := range sources {
+		modules = append(modules, module)
+	}
+	sort.Strings(modules)
+	for _, module := range modules {
+		source := sources[module]
+		record(ctx, source.Module, source.Version)
+	}
 }
 
 func pkgRemove(name string, options pkgOpts) {

@@ -17,7 +17,7 @@ func TestCompilerRecordsFunctionFailureReplay(t *testing.T) {
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfb, 0x09, 0x00, 0x00, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x1a, 0x0b}))),
 	)
 	m, err := wasm.DecodeModule(source)
 	if err != nil {
@@ -49,7 +49,7 @@ func TestCompilerPreservesFailureWhenReplaySinkFails(t *testing.T) {
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
 		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("f", 0, 0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0xfb, 0x09, 0x00, 0x00, 0x0b}))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x23, 0x00, 0x1a, 0x0b}))),
 	)
 	m, err := wasm.DecodeModule(source)
 	if err != nil {

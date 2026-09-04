@@ -21,6 +21,7 @@ type (
 	AuthorityScope                    = impl.AuthorityScope
 	Bits                              = impl.Bits
 	BoundsCheckMode                   = impl.BoundsCheckMode
+	CallerInvoker                     = impl.CallerInvoker
 	CallerResolver                    = impl.CallerResolver
 	Capability                        = impl.Capability
 	CapabilityOption                  = impl.CapabilityOption
@@ -239,6 +240,7 @@ const (
 	AuthorityCoreModuleCompile                 = impl.AuthorityCoreModuleCompile
 	AuthorityHostArgumentsRead                 = impl.AuthorityHostArgumentsRead
 	AuthorityHostCallerIdentify                = impl.AuthorityHostCallerIdentify
+	AuthorityHostCallerInvoke                  = impl.AuthorityHostCallerInvoke
 	AuthorityHostImportDefine                  = impl.AuthorityHostImportDefine
 	AuthorityInstanceCloseObserve              = impl.AuthorityInstanceCloseObserve
 	AuthorityInstanceInstantiateIntercept      = impl.AuthorityInstanceInstantiateIntercept
@@ -385,6 +387,7 @@ const (
 	TrapCastFailure                            = impl.TrapCastFailure
 	TrapDivOverflow                            = impl.TrapDivOverflow
 	TrapDivZero                                = impl.TrapDivZero
+	TrapExpectedSharedMemory                   = impl.TrapExpectedSharedMemory
 	TrapIndirectOutOfBounds                    = impl.TrapIndirectOutOfBounds
 	TrapIndirectWrongSig                       = impl.TrapIndirectWrongSig
 	TrapInterrupted                            = impl.TrapInterrupted

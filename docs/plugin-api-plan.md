@@ -90,6 +90,7 @@ display only; granting a parent or wildcard is invalid.
 |---|---|
 | `host.import.define` | Define guest host functions in the named import modules. |
 | `host.caller.identify` | Resolve the exact active instance during a synchronous host call. |
+| `host.caller.invoke` | Synchronously invoke an export on the exact guest making the active host call. |
 | `host.arguments.read` | Read the guest argument vector exposed by the host. |
 | `runtime.close.observe` | Observe logical runtime shutdown. |
 | `module.source.transform` | Replace module bytes before compilation. |

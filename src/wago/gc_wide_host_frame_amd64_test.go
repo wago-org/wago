@@ -55,7 +55,7 @@ func TestWideGCStructHelperUsesCheckedExtendedHostFrame(t *testing.T) {
 	for _, codec := range []bool{false, true} {
 		compiled := base
 		if codec {
-			compiled = roundTripCompiled(t, base)
+			compiled = publicArtifactRoundTrip(t, base)
 			defer compiled.Close()
 			if compiled.syncHostSlots != base.syncHostSlots || compiled.hostCtrlFrameBytes() != base.hostCtrlFrameBytes() {
 				t.Fatalf("codec capacity/frame = %d/%d, want %d/%d", compiled.syncHostSlots, compiled.hostCtrlFrameBytes(), base.syncHostSlots, base.hostCtrlFrameBytes())

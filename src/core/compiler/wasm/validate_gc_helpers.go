@@ -343,6 +343,16 @@ func storageValType(st StorageType, signedGet bool) ValType {
 	return I32
 }
 
+func packedFieldGet(kind InstrKind) bool {
+	switch kind {
+	case InstrStructGetS, InstrStructGetU, InstrStructAtomicGetS, InstrStructAtomicGetU,
+		InstrArrayGetS, InstrArrayGetU:
+		return true
+	default:
+		return false
+	}
+}
+
 func valTypeDefaultable(t ValType) bool {
 	return t.Kind() != ValRef || t.Ref().Nullable()
 }

@@ -466,7 +466,9 @@ func TestRuntimeRegressionPortResourceFootprintRemainsBounded(t *testing.T) {
 	if baseFDs >= 0 && gotFDs > baseFDs+1 {
 		t.Fatalf("file descriptors grew from %d to %d after repeated instances", baseFDs, gotFDs)
 	}
-	if baseMaps >= 0 && gotMaps > baseMaps+4 {
+	// The race runtime adds shadow-memory mappings lazily. Their count is not a
+	// stable leak signal, so retain the mapping check in ordinary test binaries.
+	if !raceDetectorEnabled && baseMaps >= 0 && gotMaps > baseMaps+4 {
 		t.Fatalf("memory mappings grew from %d to %d after repeated instances", baseMaps, gotMaps)
 	}
 }

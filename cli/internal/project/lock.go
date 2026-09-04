@@ -31,6 +31,7 @@ const (
 var knownAuthorities = map[string]struct{}{
 	"host.import.define":             {},
 	"host.caller.identify":           {},
+	"host.caller.invoke":             {},
 	"host.arguments.read":            {},
 	"runtime.close.observe":          {},
 	"module.source.transform":        {},

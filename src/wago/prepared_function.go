@@ -133,7 +133,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		in.c.directPreparedAt(ic.li) &&
 		(directLeafPreparedEntry(in.c.InternalEntry[ic.li]) || directTrapPreparedEntry(in.c.InternalEntry[ic.li]))
 	privateEligible := in.preparedPrivateEligible()
-	if !in.tierable() && scalarFast && preparedPrivateEntryEnabled && (privateEligible || directEntryCandidate || contextFreeLoopCandidate) {
+	if preparedCallEnabled && !in.tierable() && scalarFast && preparedPrivateEntryEnabled && (privateEligible || directEntryCandidate || contextFreeLoopCandidate) {
 		fn.privateFast = privateEligible || contextFreeLoopCandidate
 		fn.isolatedFast = preparedIsolatedEntryEnabled && (in.preparedIsolatedEligible() || contextFreeLoopCandidate && in.preparedContextFreeIsolatedEligible())
 		fn.privateLifetime = contextFreeLoopCandidate && !privateEligible

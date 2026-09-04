@@ -162,6 +162,9 @@ func TestScanBodyBytesStackArenaHintSkipsSIMDStores(t *testing.T) {
 	if storeHints.stackArenaNodes != endOnly.stackArenaNodes {
 		t.Fatalf("SIMD store stack arena nodes = %d, want end-only baseline %d", storeHints.stackArenaNodes, endOnly.stackArenaNodes)
 	}
+	if !storeHints.hasStackSinkFusion {
+		t.Fatal("SIMD body did not select legacy arena sizing")
+	}
 
 	body = []byte{
 		0xfd, 0x54, 0x00, 0x00, 0x0f, // v128.load8_lane align=1 offset=0 lane=15
@@ -173,6 +176,122 @@ func TestScanBodyBytesStackArenaHintSkipsSIMDStores(t *testing.T) {
 	}
 	if loadHints.stackArenaNodes != endOnly.stackArenaNodes+1 {
 		t.Fatalf("SIMD load-lane stack arena nodes = %d, want %d", loadHints.stackArenaNodes, endOnly.stackArenaNodes+1)
+	}
+}
+
+func TestScanBodyBytesStackArenaHintCountsAtomics(t *testing.T) {
+	for _, kind := range []wasm.InstrKind{wasm.InstrAtomicFence, wasm.InstrI32AtomicStore, wasm.InstrI64AtomicStore32} {
+		if stackArenaOpAllocates(0xfe, &wasm.InstructionImmediate{Kind: kind}) {
+			t.Fatalf("result-free atomic %v counted as arena allocation", kind)
+		}
+	}
+	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte{
+		0x41, 0x00, // i32.const address
+		0xfe, 0x10, 0x02, 0x00, // i32.atomic.load align=4 offset=0
+		0x1a, 0x0b, // drop; end
+	}
+	h, err := scanBodyBytes(body, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := endOnly.stackArenaNodes + 2; h.stackArenaNodes != want {
+		t.Fatalf("atomic stack arena nodes = %d, want %d", h.stackArenaNodes, want)
+	}
+}
+
+func TestScanBodyBytesDiscountsAlgebraicIdentities(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, 0x41, 0x00, 0x6a, 0x1a, // x + 0; drop
+		0x20, 0x00, 0x41, 0x01, 0x6a, 0x1a, // x + 1; drop (not an identity)
+		0x20, 0x00, 0x20, 0x00, 0x6b, 0x1a, // x - x; drop
+		0x20, 0x00, 0x41, 0x20, 0x74, 0x1a, // i32.shl by 32; drop
+		0x20, 0x00, 0x42, 0xc0, 0x00, 0x86, 0x1a, // i64.shl by 64; drop
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 1, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.stackArenaDiscount != 3 {
+		t.Fatalf("algebraic discount = %d, want 3", h.stackArenaDiscount)
+	}
+	if !h.hasStackSinkFusion {
+		t.Fatal("multibyte identity constant did not retain legacy sizing")
+	}
+}
+
+func TestScanBodyBytesDetectsDeadCodeAfterTerminator(t *testing.T) {
+	h, err := scanBodyBytes([]byte{0x00, 0x41, 0x00, 0x1a, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.hasStackSinkFusion {
+		t.Fatal("dead instructions after unreachable were not detected")
+	}
+	terminalOnly, err := scanBodyBytes([]byte{0x00, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if terminalOnly.hasStackSinkFusion {
+		t.Fatal("terminal unreachable was marked as followed by dead code")
+	}
+}
+
+func TestScanBodyBytesDiscountsSWARLookaheadCandidates(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, 0x42, 0x00, 0x83, 0x22, 0x01, 0x1a, // i64.and; local.tee
+		0x20, 0x00, 0x42, 0x20, 0x88, 0x22, 0x01, 0x1a, // i64.shr_u; local.tee
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 2, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.stackArenaDiscount != 44 {
+		t.Fatalf("SWAR lookahead discount = %d, want 44", h.stackArenaDiscount)
+	}
+}
+
+func TestScanBodyBytesDetectsStackSinkFusion(t *testing.T) {
+	body := []byte{
+		0x20, 0x00, // local.get 0
+		0x20, 0x01, // local.get 1
+		0x92,       // f32.add
+		0x21, 0x02, // local.set 2
+		0x0b,
+	}
+	h, err := scanBodyBytes(body, 3, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.hasStackSinkFusion {
+		t.Fatal("float local sink fusion was not detected")
+	}
+}
+
+func TestScanBodyBytesStackArenaHintCountsReferenceResults(t *testing.T) {
+	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte{
+		0x20, 0x00, // local.get 0
+		0xd4,       // ref.as_non_null
+		0x1a,       // drop
+		0x41, 0x00, // i32.const 0
+		0xfb, 0x1c, // ref.i31
+		0x1a, 0x0b, // drop; end
+	}
+	h, err := scanBodyBytes(body, 1, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := endOnly.stackArenaNodes + 4; h.stackArenaNodes != want {
+		t.Fatalf("reference stack arena nodes = %d, want %d", h.stackArenaNodes, want)
 	}
 }
 
@@ -191,8 +310,8 @@ func TestScanBodyBytesStackArenaHintSkipsSIMDImmediateBytes(t *testing.T) {
 		t.Fatalf("scanFuncBody: %v", err)
 	}
 	legacy := stackArenaCapForBody(len(m.Code[0].BodyBytes), nLocals)
-	hinted := stackArenaCapForHints(len(m.Code[0].BodyBytes), nLocals, h.stackArenaNodes)
-	if h.stackArenaNodes == 0 || h.stackArenaNodes >= len(m.Code[0].BodyBytes)/2 {
+	hinted := stackArenaCapForHints(len(m.Code[0].BodyBytes), nLocals, int(h.stackArenaNodes))
+	if h.stackArenaNodes == 0 || int(h.stackArenaNodes) >= len(m.Code[0].BodyBytes)/2 {
 		t.Fatalf("stack arena node hint = %d, body bytes = %d", h.stackArenaNodes, len(m.Code[0].BodyBytes))
 	}
 	if hinted >= legacy {

@@ -41,10 +41,10 @@ weight.
 
 | AMD64 execution aggregate | Dragline relative to Cranelift |
 | --- | ---: |
-| Five-round paired module-equal throughput geomean | **95.41%** |
-| Median of the five module-equal throughput rounds | **95.07%** |
-| Paired round range | 94.90%–96.97% |
-| Ratio of independently pooled per-export medians | 94.79% |
+| Five-round paired module-equal throughput geomean | **95.58%** |
+| Median of the five module-equal throughput rounds | **95.41%** |
+| Paired round range | 95.39%–95.92% |
+| Ratio of independently pooled per-export medians | 95.43% |
 
 The paired aggregate is the release gate because engine order alternates and
 same-round ratios cancel machine-frequency drift. The independently pooled
@@ -53,8 +53,8 @@ AMD64 screening run measured 91.43% of Cranelift throughput; run lengths differ,
 so that figure is directional rather than an exact A/B delta.
 
 The widest remaining module gaps are SIMD/string applications: `utf-as-simd`
-(54.49% of Cranelift throughput), `blake-as-simd` (55.51%), `json-as-simd`
-(56.01%), `json-as` (62.06%), and `utf-as` (66.97%). They remain roadmap input,
+(54.50% of Cranelift throughput), `json-as-simd` (55.01%), `blake-as-simd`
+(55.23%), `json-as` (62.19%), and `utf-as` (67.28%). They remain roadmap input,
 not dispatch keys for specialized emission.
 
 ## ARM64 conclusion
