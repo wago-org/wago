@@ -78,6 +78,27 @@ func TestCompileRegisterPressureCorpusUsesOneAttemptPerFunction(t *testing.T) {
 	}
 }
 
+func TestWideMixedLocalsUseOneCompileAttempt(t *testing.T) {
+	path := filepath.Join("..", "..", "..", "..", "..", "..", "tests", "regressions", "fuzzcases", "1797d.wasm")
+	m := readParallelTestModule(t, path)
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	if got, want := stats.Compile.FunctionAttempts, uint64(len(m.Code)); got != want {
+		t.Fatalf("function attempts = %d, want %d", got, want)
+	}
+	for i, function := range stats.Funcs {
+		if function.FunctionAttempts != 1 {
+			t.Fatalf("function %d attempts = %d, want 1", i, function.FunctionAttempts)
+		}
+	}
+}
+
 func TestCompileModuleHintLocalCountAllocationAndCodeIdentity(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
 	tests := []struct {
