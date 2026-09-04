@@ -264,12 +264,15 @@ func (f *fn) frameBaseGCRoots(fr *ctrlFrame) []bool {
 	return nil
 }
 
-func (fr *ctrlFrame) parameterTypes() []machineType {
-	return fr.types[:fr.paramN]
+func (fr *ctrlFrame) appendParameterTypes(dst []machineType) []machineType {
+	return append(dst, fr.types[:fr.paramN]...)
 }
 
-func (fr *ctrlFrame) resultTypes() []machineType {
-	return fr.types[fr.paramN : fr.paramN+fr.resultN]
+func (fr *ctrlFrame) appendResultTypes(dst []machineType) []machineType {
+	if fr.resultN == 1 && fr.types == nil {
+		return append(dst, fr.res0)
+	}
+	return append(dst, fr.types[fr.paramN:fr.paramN+fr.resultN]...)
 }
 
 func (f *fn) frameEnds(fr *ctrlFrame) []int {
@@ -587,6 +590,18 @@ func (f *fn) frameDepthTypes(base, suffix []machineType) []machineType {
 	return out
 }
 
+func (f *fn) frameDepthTypesForFrame(fr *ctrlFrame, parameters bool) []machineType {
+	out := f.tmpTypes[:0]
+	out = append(out, fr.baseTypes...)
+	if parameters {
+		out = fr.appendParameterTypes(out)
+	} else {
+		out = fr.appendResultTypes(out)
+	}
+	f.tmpTypes = out
+	return out
+}
+
 // flush materializes every operand into canonical frame slots, condensing
 // deferred nodes, then rebuilds the stack model as canonical slot entries with
 // all registers freed. v128 values occupy two adjacent 8-byte slots.
@@ -861,8 +876,7 @@ func (f *fn) blockType(r *wasm.Reader) (params, results, frameTypes []machineTyp
 	if isValByte(b) {
 		_, _ = r.Byte()
 		mt := valByteMT(b)
-		frameTypes = []machineType{mt}
-		return nil, frameTypes, frameTypes, nil, mt, nil
+		return nil, nil, nil, nil, mt, nil
 	}
 	if b == 0x63 || b == 0x64 { // ref null <heaptype> / ref <heaptype>
 		_, _ = r.Byte()
@@ -872,8 +886,7 @@ func (f *fn) blockType(r *wasm.Reader) (params, results, frameTypes []machineTyp
 		if _, e := r.S33(); e != nil {
 			return nil, nil, nil, nil, mtNone, e
 		}
-		frameTypes = []machineType{mtI64}
-		return nil, frameTypes, frameTypes, nil, mtI64, nil
+		return nil, nil, nil, nil, mtI64, nil
 	}
 	x, e := r.I64()
 	if e != nil {
@@ -997,6 +1010,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		return err
 	}
 	pN, rN := len(paramTypes), len(resultTypes)
+	if frameTypes == nil && res0 != mtNone {
+		rN = 1
+	}
 	kind := cfBlock
 	if op == 0x03 {
 		kind = cfLoop
@@ -1033,7 +1049,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 				f.setFrameLoopSetLocals(&fr, setLocals)
 			}
 			if scanOK && len(cands) > 0 && !hasGrow && elidable >= loopPrecheckMinChecks {
-				if f.compileVersionedLoop(r, paramTypes, resultTypes, res0, cands, setLocals) {
+				if f.compileVersionedLoop(r, pN, rN, frameTypes, res0, cands, setLocals) {
 					return nil
 				}
 			}
@@ -1170,7 +1186,11 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	if n > maxEHCatches {
 		return fmt.Errorf("bounded exception handling supports at most %d catches per try_table", maxEHCatches)
 	}
-	fr := ctrlFrame{kind: cfTry, paramN: len(paramTypes), resultN: len(resultTypes), branchN: len(resultTypes), elseSite: -1, res0: res0, types: frameTypes}
+	pN, rN := len(paramTypes), len(resultTypes)
+	if frameTypes == nil && res0 != mtNone {
+		rN = 1
+	}
+	fr := ctrlFrame{kind: cfTry, paramN: pN, resultN: rN, branchN: rN, elseSite: -1, res0: res0, types: frameTypes}
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	eh := f.ensureFrameEH(&fr)
 	for i := uint32(0); i < n; i++ {
@@ -1474,7 +1494,7 @@ func (f *fn) markEHReferenceResults(fr *ctrlFrame) {
 		return
 	}
 	e := f.s.back()
-	for i := len(fr.resultTypes()) - 1; i >= 0; i-- {
+	for i := fr.resultN - 1; i >= 0; i-- {
 		if i < len(eh.refResults) && eh.refResults[i] {
 			e.st.setEHRoot(true)
 		}
@@ -1508,7 +1528,7 @@ func (f *fn) opElse() error {
 	fr.elseSite = -1
 	fr.set(ctrlHasElse, true)
 	f.setDepthTypesWithGCInfo(
-		f.frameDepthTypes(fr.baseTypes, fr.parameterTypes()),
+		f.frameDepthTypesForFrame(fr, true),
 		frameGCRootFlags(f.frameBaseGCRoots(fr), f.frameParamGCRoots(fr)),
 		f.frameGCFacts(f.frameBaseGCFacts(fr), f.frameParamGCFacts(fr)),
 	)
@@ -1656,7 +1676,7 @@ func (f *fn) opEnd() error {
 				putGCRefFact(&result.st, resultGCFacts[0])
 			}
 		} else {
-			f.setDepthTypesWithGCInfo(f.frameDepthTypes(fr.baseTypes, fr.resultTypes()), frameGCRootFlags(baseGCRoots, resultGCRoots), f.frameGCFacts(baseGCFacts, resultGCFacts))
+			f.setDepthTypesWithGCInfo(f.frameDepthTypesForFrame(&fr, false), frameGCRootFlags(baseGCRoots, resultGCRoots), f.frameGCFacts(baseGCFacts, resultGCFacts))
 		}
 		f.markEHReferenceResults(&fr)
 	}

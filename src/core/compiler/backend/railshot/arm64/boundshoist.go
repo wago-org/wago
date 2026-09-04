@@ -145,10 +145,10 @@ var loopPrecheckMinChecks = func() int {
 // are compiled from the same bytecode via bodyLoop; the reader ends past the
 // loop's `end`. Returns false if the loop shape is not versioned here (caller
 // falls back to the normal loop lowering).
-func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []machineType, res0 machineType, cands []hoistCand) bool {
+func (f *fn) compileVersionedLoop(r *wasm.Reader, paramN, resultN int, frameTypes []machineType, res0 machineType, cands []hoistCand) bool {
 	// v1 scope: void loops only (no params to stage across the two entries), and
 	// never nest a versioned loop inside another (bounds code growth to 2×).
-	if len(paramTypes) != 0 || f.inVersionedLoop {
+	if paramN != 0 || f.inVersionedLoop {
 		return false
 	}
 	bodyStart := r.Offset()
@@ -200,7 +200,7 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 	// FAST body: invariant-base checks elided.
 	f.inVersionedLoop = true
 	f.elideBases = elide
-	f.enterLoopFrame(resultTypes, res0)
+	f.enterLoopFrame(resultN, frameTypes, res0)
 	if err := f.bodyLoop(r, preLoopCtrl); err != nil {
 		panic(err) // decode/lowering error inside the fast body
 	}
@@ -219,7 +219,7 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 	f.setDepthTypes(entryTypes)
 	f.setLocalsState(entryLocals)
 	f.unreachable = false
-	f.enterLoopFrame(resultTypes, res0)
+	f.enterLoopFrame(resultN, frameTypes, res0)
 	if err := f.bodyLoop(r, preLoopCtrl); err != nil {
 		panic(err)
 	}
@@ -231,9 +231,8 @@ func (f *fn) compileVersionedLoop(r *wasm.Reader, paramTypes, resultTypes []mach
 // enterLoopFrame replicates opBlock's cfLoop header for a versioned body: fix the
 // frame's base/height from the (already-flushed) entry, converge locals eagerly,
 // align the loop top, and push the frame.
-func (f *fn) enterLoopFrame(resultTypes []machineType, res0 machineType) {
-	rN := len(resultTypes)
-	fr := ctrlFrame{kind: cfLoop, resultN: rN, branchN: 0, elseSite: -1, res0: res0, types: resultTypes}
+func (f *fn) enterLoopFrame(resultN int, frameTypes []machineType, res0 machineType) {
+	fr := ctrlFrame{kind: cfLoop, resultN: resultN, branchN: 0, elseSite: -1, res0: res0, types: frameTypes}
 	fr.height = f.depth()
 	fr.baseTypes = append([]machineType(nil), f.currentLogicalTypes()...)
 	f.reconcileLocals()

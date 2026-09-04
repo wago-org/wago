@@ -5,6 +5,8 @@ package arm64
 import (
 	"testing"
 	"unsafe"
+
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 func TestCtrlFrameSize(t *testing.T) {
@@ -19,6 +21,23 @@ func TestCtrlFrameSize(t *testing.T) {
 	}
 	if got, want := unsafe.Sizeof(ctrlFrameEH{}), uintptr(48); got != want {
 		t.Fatalf("ctrlFrameEH size = %d, want %d", got, want)
+	}
+}
+
+func TestScalarBlockResultUsesInlineFrameTypeArm64(t *testing.T) {
+	var f fn
+	params, results, types, res0, err := f.blockType(wasm.NewReader([]byte{0x7f}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if params != nil || results != nil || types != nil || res0 != mtI32 {
+		t.Fatalf("scalar block type = %v/%v/%v/%v, want nil/nil/nil/i32", params, results, types, res0)
+	}
+	fr := ctrlFrame{resultN: 1, res0: res0}
+	var storage [1]machineType
+	got := fr.appendResultTypes(storage[:0])
+	if len(got) != 1 || got[0] != mtI32 {
+		t.Fatalf("inline result types = %v, want [i32]", got)
 	}
 }
 
