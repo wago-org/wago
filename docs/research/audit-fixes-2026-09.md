@@ -141,3 +141,14 @@ The manager's publication step now has a local rename seam for fault injection.
 
 Validation: installer/manager source tests pass, including separate injected
 publish and restore failures and verification of the retained old contents.
+
+## 11. Expose close-operation completion
+
+Instance.Close now documents its prompt return when another caller owns closure.
+Instance.WaitClosed waits with a context and returns the active operation's same
+result. It does not initiate closure or promise physical release while guest
+calls or retained references remain. Callbacks use Close and must not wait for
+their own operation. This uses the audit's explicit public-wait alternative.
+
+Validation: race-enabled close tests pass. All 32 waiters observe ErrCallbackPanic
+from a blocked close owner; a cancelled wait remains cancellable.
