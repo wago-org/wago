@@ -1,6 +1,6 @@
 # Railshot corpus deltas versus main — September 4, 2026
 
-This is the review snapshot for PR #560: current `main` `01c7971d` versus `d3265e41`. The final tip-only changes after the measured compiler commit are tests and documentation; they do not change production compiler or runtime code.
+This is the full review-table snapshot for PR #560: current `main` `01c7971d` versus `d3265e41`. The final branch adds two independently qualified representation changes after this table: bounded conservative native-root planning and AMD64 operand-variant packing. Neither changes generated machine code; their incremental compile and heap results are recorded below and in the implementation plan.
 
 Each value is the median of five samples with a 200 ms Go benchmark target using prebuilt test binaries. Compile is the backend `BenchmarkCompile` stage over an already decoded and validated module. Heap is allocated bytes per compile (`B/op`), not peak live RSS. Native bytes are the complete generated module image. Execution covers every export declared by the default corpus manifest; unavailable execution stages are absent rather than estimated.
 
@@ -16,6 +16,12 @@ Each value is the median of five samples with a 200 ms Go benchmark target using
 | AMD64 | -16.88% | 60.20 MiB -> 41.65 MiB (-30.82%) | 400,102 -> 40,399 (-359,703) | 69,675,879 -> 69,683,590 (+7,711) | +0.84% |
 
 The heap and allocation aggregate is the sum of per-module medians, useful as a fixed-corpus score; it is not a claim that all modules are live simultaneously.
+
+## Post-snapshot final cuts
+
+The final AMD64 node layout keeps all four direct pointers and packs only metadata that is dead in the alternate value/deferred variant. It reduces the common node from 64 to 56 bytes. Five alternating native `GOGC=off` pairs across the same 36 compile modules improve compile-time geomean by 0.56%, reduce heap geomean by 5.78%, and leave allocation counts unchanged. Eight longer pairs over nine large/hot modules are statistically flat at +0.11% compile-time geomean while reducing heap by 6.18%; Ruby and esbuild are individually flat. All 64 corpus modules retain identical native-code length and SHA-256.
+
+The final root planner uses conservative local masks only for collecting functions with at most four collector-reference locals and `roots * body bytes <= 512`; larger functions retain exact CFG/dataflow analysis. Eight alternating native pairs reduce the 1,024-function collecting planner by 27.73% on ARM64 and 27.22% on AMD64, and reduce planner heap by 52.74% and 52.42%. Complete single-function compilation is flat on ARM64 and 6.47% faster on AMD64, saving one allocation on both. The measured AMD64 native execution fixture remains allocation-free, improves 1.24%, and keeps the identical 860-byte code image.
 
 ## Execution-gate reconciliation
 
