@@ -2,6 +2,14 @@
 
 package amd64
 
+func markGCReference(e *elem) {
+	if e != nil && e.kind == ekValue {
+		e.st.setGCRoot(true)
+	}
+}
+
+func (f *fn) markTopGCReference() { markGCReference(f.s.back()) }
+
 // Stack values that alias mutable module state (locals/globals) are realized
 // before that state is overwritten by scanning the operand stack directly
 // (realizeLocalRefs in driver.go, realizeGlobalRefs in globals.go). Those scans

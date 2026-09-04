@@ -47,15 +47,6 @@ var frameElideVoid = os.Getenv("WAGO_AMD64_NO_FRAME_ELIDE_VOID") != "1"
 // Keep the switch for corpus A/B and immediate rollback.
 var compactRegABIFrameHeader = os.Getenv("WAGO_AMD64_NO_COMPACT_REGABI_FRAME") != "1"
 
-// gcLoadForwardingEnabled keeps the bounded result-local array.len and immutable
-// struct.get cache independently A/B-testable from the semantic fact engine.
-var gcLoadForwardingEnabled = os.Getenv("WAGO_AMD64_NO_GC_LOAD_FORWARDING") != "1"
-
-// gcKnownArrayBoundsEnabled lets a constructor-known length plus constant index
-// remove the redundant logical Aux comparison from direct array.get/set. The
-// physical object-extent hardening check remains. Keep an independent A/B switch.
-var gcKnownArrayBoundsEnabled = os.Getenv("WAGO_AMD64_NO_GC_KNOWN_BOUNDS") != "1"
-
 // nativeGCStructAllocEnabled consumes collector-reserved handle runs and nursery
 // chunks for admitted struct and array constructors. Rooted Go helpers remain the
 // collection/refill path. Keep one differential kill switch for qualification.
@@ -2696,8 +2687,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 			i++
 		}
 	}
-	recBase, recLength, _ := nativeGCRecGroup(m, m.FuncTypes[funcIdx].Index)
-	f.seedFinalGCParameterTypes(ft.Params, recBase, recLength)
 	if cap(f.localSlot) < nLocals {
 		f.localSlot = make([]uint32, nLocals)
 	} else {

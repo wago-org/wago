@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
@@ -1651,18 +1650,6 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	if fi < 0 {
 		return errBadLabel
 	}
-	fact := f.gcRefFact(f.s.back())
-	if fact.Nullability() == shared.GCKnownNonNull {
-		f.stats.peep("gc-null-check-elide")
-		return nil
-	}
-	if fact.Nullability() == shared.GCKnownNull {
-		f.dropValue()
-		f.branchToFrame(fi)
-		f.unreachable = true
-		f.stats.peep("gc-null-check-elide")
-		return nil
-	}
 	ref := f.materialize(f.popValue())
 	fr := &f.ctrl[fi]
 	f.convergeBranchLocals(fr)
@@ -1683,7 +1670,7 @@ func (f *fn) brOnNull(r *wasm.Reader) error {
 	fallthroughRef := f.allocReg(0)
 	f.a.Load64(fallthroughRef, RSP, f.spillOff(refSlot))
 	result := f.pushReg(fallthroughRef, mtI64)
-	f.markGCRefFact(result, fact.WithNullability(shared.GCKnownNonNull))
+	markGCReference(result)
 	return nil
 }
 
@@ -1696,21 +1683,9 @@ func (f *fn) brOnNonNull(r *wasm.Reader) error {
 	if fi < 0 {
 		return errBadLabel
 	}
-	fact := f.gcRefFact(f.s.back())
-	if fact.Nullability() == shared.GCKnownNull {
-		f.dropValue()
-		f.stats.peep("gc-null-check-elide")
-		return nil
-	}
-	if fact.Nullability() == shared.GCKnownNonNull {
-		f.branchToFrame(fi)
-		f.unreachable = true
-		f.stats.peep("gc-null-check-elide")
-		return nil
-	}
 	ref := f.materialize(f.popValue())
 	result := f.pushReg(ref, mtI64)
-	f.markGCRefFact(result, fact.WithNullability(shared.GCKnownNonNull))
+	markGCReference(result)
 	fr := &f.ctrl[fi]
 	f.convergeBranchLocals(fr)
 	allTypes := append([]machineType(nil), f.currentLogicalTypes()...)

@@ -174,39 +174,15 @@ mutable-fact invalidation, and all unknown opcodes clear it before lowering. Con
 `WAGO_AMD64_NO_GC_SHARED_STUBS=1` and `WAGO_AMD64_NO_GC_RESOLVE_REUSE=1` restore
 inline/no-reuse differential paths.
 
-### Structured semantic facts and late barriers
+### GC roots, barriers, and resolved addresses
 
-AMD64's structured fact engine stores no object address. A bounded
-`shared.GCRefFact` records nullability, abstract heap class or exact flattened type,
-a bounded identity, freshness/publication, generation, pointer-free layout, and an
-optional constant array length. The same compact fact moves through Valent stack
-storage and locals. Control frames snapshot and intersect local and stack facts at
-structured joins; loops reuse one shared-classifier prewalk of the existing body bytes
-so `try_table`, vector immediates, memory64 offsets, and malformed scans cannot create
-partial invariance claims. Loop parameters are rebuilt from declared ValTypes rather
-than first-entry identities. At every loop-header backedge join, modified locals are
-cleared, surviving fresh locals become published, and mutable field-forwarding windows
-are discarded; immutable field results survive only when both source and result locals
-are invariant. `try_table` and synthetic inline frames capture hidden operand-root
-shape before flushing, and every catch clause intersects its conservative local facts
-into the target just like an ordinary branch. Exact type and nullability remain
-independent: a nullable exact value can prove a nullable cast, but a non-null cast is
-elided only when the fact also proves non-null. Exact defined targets compare canonical
-structural identity rather than raw module-local indexes: equivalent duplicate types
-match, while proper subtypes still fail an exact cast. Private collectors create a
-canonical local map only when duplicate GC heap types require it; ordinary unique-type
-modules retain the identity-map footprint. `any` and `eq` heap classes are upper
-bounds rather than exact runtime families, so narrowing tests/casts remain dynamic
-until an i31/struct/array fact is exact. Distinct identities lose alias-sensitive
-state, and any multi-edge freshness merge is treated as published. Calls and
-allocating helpers may clear generation facts but do not invalidate compact identity.
-
-This semantic state is intentionally separate from the one-entry resolved-object
-certificate. The latter owns a native register containing a raw payload address and
-is invalidated at safepoints, helper/host/Wasm calls, allocations, control/EH/tail
-edges, loop edges, local replacement, and unknown effects. Collection may relocate an
-object without changing its compact handle, so retaining the semantic fact while
-dropping the address is required rather than optional.
+The former AMD64 structured-reference fact experiment was retired after broad
+qualification found neutral execution and materially worse compile resources. GC
+references now carry only the root bit required by exact frame planning. Reference
+stores use the conservative barrier unless an independent native lowering proves a
+no-barrier case. A separate one-entry resolved-address certificate may reuse a native
+payload address only within a mechanically safepoint-free straight-line region; calls,
+allocations, control edges, local replacement, and unknown effects invalidate it.
 
 Dynamic subtype checks use the collector's validated descriptor forest. Each
 canonical type owns one packed DFS `[pre,post]` interval; a four-parent shallow walk

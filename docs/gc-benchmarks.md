@@ -56,8 +56,6 @@ Permanent microbenchmarks:
 go test ./src/wago -run '^$' \
   -bench '^BenchmarkGC(RefCastInstruction|StructGetInstruction|RefCastNonFinalInstruction|StructGetNonFinalInstruction|InstructionLoopControl)$' \
   -benchmem -benchtime=500ms -count=10 -cpu=1
-go test ./src/core/compiler/backend/railshot/shared -run '^$' \
-  -bench '^BenchmarkMergeGCRefFacts$' -benchmem -count=10
 go test ./src/core/runtime/gc -run '^$' \
   -bench '^BenchmarkArrayBulk/(reference-fill|reference-fill-no-barrier)-(16|256|4096)$' \
   -benchmem -count=10
@@ -81,15 +79,15 @@ function returns its loop counter. `BenchmarkGCInstructionLoopControl` measures
 the shared loop and counter-update floor. It is not an exact value to subtract because the two GC
 instructions require different operand-loading work.
 
-For a retained compiler/JIT result, also run the real Dew/Starshine workload A/B with
-`WAGO_AMD64_NO_GC_REF_FACTS=1`, record `gc-ref-test-fold`,
-`gc-ref-cast-elide`, `gc-array-len-elide`, `gc-struct-set-get-forward`, every
-`gc-barrier-*` state, `hostsync`/`gcnative` transitions, generated GC barrier/helper
-bytes, linked bytes, compile B/op and allocations, fresh and sustained execution,
-and collector card/scanned-slot telemetry. Barrier matrices must include nursery,
-remembered old, unremembered old, large, and Tiny parents with null, i31, old, and
-young object children. No barrier result is acceptable without forced collection and
-shadow-edge verification after each write family.
+For a retained compiler/JIT result, also run the real Dew/Starshine workload and
+record every `gc-barrier-*` state, `hostsync`/`gcnative` transition, generated GC
+barrier/helper bytes, linked bytes, compile B/op and allocations, fresh and sustained
+execution, and collector card/scanned-slot telemetry. The retired semantic-fact,
+load-forwarding, and known-array-bounds paths are historical baselines rather than
+alternate production policies. Barrier matrices must include nursery, remembered
+old, unremembered old, large, and Tiny parents with null, i31, old, and young object
+children. No barrier result is acceptable without forced collection and shadow-edge
+verification after each write family.
 
 A standalone generated workload can be retained outside the repository and measured
 through:
@@ -102,10 +100,8 @@ go test ./src/wago -run '^$' -bench '^BenchmarkGCOptimizationWorkload$' \
   -benchmem -benchtime=100x -count=7 -cpu=1
 ```
 
-Run interleaved processes with `WAGO_AMD64_NO_GC_REF_FACTS=1` (or its
-compatibility alias `WAGO_AMD64_NO_EXACT_GC_REF_FACTS=1`),
-`WAGO_AMD64_NO_GC_LOAD_FORWARDING=1`, `WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1`,
-`WAGO_AMD64_NO_DEAD_GC_NEW=1`, or `WAGO_GC_SUBTYPE_INTERVALS=0` as relevant.
+Run interleaved processes with `WAGO_AMD64_NO_DEAD_GC_NEW=1` or
+`WAGO_GC_SUBTYPE_INTERVALS=0` as relevant.
 The benchmark requires a zero-argument export, uses deterministic no-op imports,
 requires an exact comma-separated result vector (`none` for no results) on every
 iteration, maintains a checksum only as a secondary anti-elision guard, and reports
@@ -118,9 +114,9 @@ null-reference fill samples measured median ordinary/no-barrier pairs of
 37.43/33.80 ns at 16 elements, 53.96/51.39 ns at 256, and 158.2/155.9 ns at
 4,096, all allocation-free.
 
-The completion pass added actual bounded result-local load reuse and packed subtype
-intervals. A repeated `array.len` code-size fixture emits 353 bytes with forwarding
-versus 539 with `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1`. Three 200 ms subtype samples
+The retired completion pass added bounded result-local load reuse and packed subtype
+intervals. Its repeated `array.len` code-size fixture emitted 353 bytes with forwarding
+versus 539 with the former `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1` control. Three 200 ms subtype samples
 are neutral at depth 1 (9.70/9.75 ns/op interval/parent median), improve depth 16
 68.69→19.00 ns/op, and depth 256 1,113→18.12 ns/op, all allocation-free. A seven-
 round `GOMAXPROCS=1`, 100-iteration MoonBit WasmGC JSON A/B measured facts at
@@ -132,8 +128,8 @@ hardware before claiming a broad speedup.
 
 The August 10 tertiary review added constant-index known-length array get/set,
 checked dead dynamic arrays, and a complete barrier-parent benchmark. The paired
-constant-index set/get fixture emits 1,029 bytes versus 1,084 with
-`WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1`. Request-changes qualification then replaced the
+constant-index set/get fixture emitted 1,029 bytes versus 1,084 with the former
+`WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1` control. Request-changes qualification then replaced the
 size-only dead-array preflight with allocation reservation so occupied bounded heaps
 retain allocation/exhaustion parity. Updated constructor-family bytes are 128/142 for
 default, 164/178 for numeric uniform, and 200/214 for data arrays
