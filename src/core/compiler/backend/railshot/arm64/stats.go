@@ -19,6 +19,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -49,9 +50,6 @@ var (
 	// swarMaskTestEnabled gates direct packed-word mask-test fusion.
 	// WAGO_NO_SWAR_MASK_TEST=1 is the A/B oracle.
 	swarMaskTestEnabled = os.Getenv("WAGO_NO_SWAR_MASK_TEST") != "1"
-	// swarIdiomsEnabled gates exact, bounded recognition of open-coded packed-byte
-	// algorithms. WAGO_NO_SWAR_IDIOMS=1 is the A/B oracle.
-	swarIdiomsEnabled = os.Getenv("WAGO_NO_SWAR_IDIOMS") != "1"
 	// simdSuperoptEnabled gates exact bounded selection of multi-op Wasm SIMD
 	// sequences. WAGO_NO_SIMD_SUPEROPT=1 is the A/B oracle.
 	simdSuperoptEnabled = os.Getenv("WAGO_NO_SIMD_SUPEROPT") != "1"
@@ -66,19 +64,10 @@ var (
 	// first straight-line access is a set/tee. The kill switch is the A/B oracle.
 	entryInitElisionEnabled = os.Getenv("WAGO_ARM64_NO_ENTRY_INIT_ELISION") != "1"
 
-	// fcmpFuseEnabled gates float compare→branch fusion (FCMP + B.cond instead of
-	// FCMP + CSET + branch). It is default-off after paired screening;
-	// WAGO_FCMP_FUSE=1 opts in and WAGO_NO_FCMP_FUSE=1 rolls it back.
-	fcmpFuseEnabled = envDefaultOff(os.Getenv("WAGO_FCMP_FUSE")) && os.Getenv("WAGO_NO_FCMP_FUSE") != "1"
 	// zeroBranchEnabled selects CBZ/CBNZ for flag-dead i32 control tests instead
 	// of materializing NZCV with CMP before B.cond. The kill switch is the A/B
 	// oracle for the one-word lowering.
 	zeroBranchEnabled = os.Getenv("WAGO_ARM64_NO_ZERO_BRANCH") != "1"
-	// emptyZeroBranchEnabled extends zero-branch selection during native compaction
-	// br_if edges after codegen proves that no reconciliation bytes were emitted.
-	emptyZeroBranchEnabled  = os.Getenv("WAGO_ARM64_NO_EMPTY_ZERO_BRANCH") != "1"
-	eqzZeroBranchEnabled    = os.Getenv("WAGO_ARM64_NO_EQZ_ZERO_BRANCH") != "1"
-	directZeroBranchEnabled = os.Getenv("WAGO_ARM64_NO_DIRECT_ZERO_BRANCH") != "1"
 	// logicalMoveImmediateEnabled lets constant materialization use the one-word
 	// ORR-from-zero-register alias when the value is a logical immediate.
 	logicalMoveImmediateEnabled = os.Getenv("WAGO_ARM64_NO_LOGICAL_MOVE_IMMEDIATE") != "1"
@@ -91,15 +80,9 @@ var (
 	// sharedTrapBodyEnabled lets compact trap groups share the complete
 	// terminal trap record/writeback/unwind body within one function.
 	sharedTrapBodyEnabled = os.Getenv("WAGO_ARM64_NO_SHARED_TRAP_BODY") != "1"
-	// moduleSharedTrapBodyEnabled lets internal functions replace byte-identical
-	// complete trap bodies with one B thunk and one module cold-island copy.
-	moduleSharedTrapBodyEnabled = os.Getenv("WAGO_ARM64_NO_MODULE_SHARED_TRAP_BODY") != "1"
 	// loadPairEnabled combines exact adjacent full-width scalar loads into LDP.
 	// WAGO_ARM64_NO_LOAD_PAIR=1 is the A/B oracle and rollback switch.
 	loadPairEnabled = os.Getenv("WAGO_ARM64_NO_LOAD_PAIR") != "1"
-	// singleBitBranchEnabled lets the bounded finalizer replace an explicitly
-	// recorded one-bit TST+B.cond with TBZ/TBNZ when the final target fits imm14.
-	singleBitBranchEnabled = os.Getenv("WAGO_ARM64_NO_SINGLE_BIT_BRANCH") != "1"
 
 	// mulAddFuseEnabled gates MADD/MSUB fusion of add(c, a*b)/sub(c, a*b) into a
 	// single multiply-add/-subtract. WAGO_NO_MULADD=1 is the A/B oracle.
@@ -140,11 +123,12 @@ type CodegenStats struct {
 	Name    string // name-section / export name, or "" if anonymous
 
 	// Size.
-	CodeBytes     int                      // emitted machine-code length
-	FrameBytes    int                      // stack frame size (sub sp, N)
-	MaxSpillSlots int                      // high-water operand spill slots
-	GCCodeBytes   shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
-	NativeSize    shared.NativeFunctionSizeReport
+	CodeBytes       int                      // emitted machine-code length
+	FrameBytes      int                      // stack frame size (sub sp, N)
+	MaxSpillSlots   int                      // high-water operand spill slots
+	MaxPendingNodes int                      // high-water deferred nodes in the bounded operand packet
+	GCCodeBytes     shared.GCNativeCodeBytes // diagnostic WasmGC byte attribution
+	NativeSize      shared.NativeFunctionSizeReport
 	// FinalizerFallback is the fail-closed reason a compact function kept
 	// its maximal-safe encoding instead of applying an available compaction plan.
 	FinalizerFallback string `json:"finalizer_fallback,omitempty"`
@@ -169,7 +153,7 @@ type CodegenStats struct {
 	// Bounds / traps.
 	BoundsChecks          int // inline memory-OOB checks emitted (P6 elides these)
 	BoundsChecksElidable  int // subset of BoundsChecks a straight-line certificate covers (P6.1 sizing; count-only)
-	BoundsChecksInLoop    int // subset emitted inside a loop on a keyable base (P6.2 loop-precheck ceiling; count-only)
+	BoundsChecksInLoop    int // subset emitted inside a loop on a keyable base; count-only
 	BoundsChecksHoistable int // subset on a loop-INVARIANT local base (not set in the loop) â the P6.2 hoistable target; count-only
 	TrapStubs             int // shared cold trap stubs emitted (one per trap code used)
 	TrapGroups            int // distinct source-function groups across trap stubs
@@ -182,29 +166,66 @@ type CodegenStats struct {
 	PinnedLocals       int // integer/float locals given a dedicated register
 	PinnedGlobalsValue int // hot mutable-int globals value-pinned in this function
 
-	// UnpinnedRetry is set when the pinned compile exhausted the register file
-	// (a pathologically deep expression tree) and the function was recompiled with
-	// local pinning disabled â a diagnostic flag for such register-heavy functions.
-	UnpinnedRetry bool
+	CompileNanos     uint64
+	FunctionAttempts uint64
 
 	// Peephole/instruction-selection rewrites that fired, by stable name.
 	Peephole map[string]int
 }
 
-// resetFuncStats clears every accumulated counter/map of s, keeping only its
-// identity (FuncIdx, Name), so a recompile of the same function (the pinning-off
-// retry) starts from a clean slate instead of double-counting the failed attempt.
-func resetFuncStats(s *CodegenStats) {
-	if s == nil {
+func (ms *ModuleStats) finalizeCompileResourceStats() {
+	if ms == nil {
 		return
 	}
-	idx, name := s.FuncIdx, s.Name
-	*s = CodegenStats{FuncIdx: idx, Name: name}
+	c := &ms.Compile
+	c.StageNanos[shared.CompileStageFunctions] = 0
+	c.FunctionAttempts = 0
+	for _, s := range ms.Funcs {
+		if s == nil {
+			continue
+		}
+		c.StageNanos[shared.CompileStageFunctions] += s.CompileNanos
+		c.FunctionAttempts += s.FunctionAttempts
+	}
 }
 
-func (s *CodegenStats) setUnpinnedRetry() {
-	if s != nil {
-		s.UnpinnedRetry = true
+func (ms *ModuleStats) setNodeScratchStats(sc *scratch) {
+	if ms == nil {
+		return
+	}
+	ms.Compile.NodeScratchReserved = 0
+	ms.Compile.NodeScratchPeak = 0
+	ms.Compile.NodeScratchRetained = 0
+	ms.Compile.NodeScratchDiscarded = 0
+	ms.Compile.ControlScratchReserved = 0
+	ms.Compile.ControlScratchPeak = 0
+	ms.Compile.ControlScratchRetained = 0
+	ms.Compile.ControlScratchDiscarded = 0
+	ms.addNodeScratchStats(sc)
+}
+
+func (ms *ModuleStats) addNodeScratchStats(sc *scratch) {
+	if ms == nil || sc == nil {
+		return
+	}
+	ms.Compile.AddWorkerScratch(workerScratchStats(sc))
+}
+
+func workerScratchStats(sc *scratch) shared.WorkerScratchStats {
+	if sc == nil {
+		return shared.WorkerScratchStats{}
+	}
+	_, retained := sc.stack.nodeMemory()
+	frameBytes := uint64(unsafe.Sizeof(ctrlFrame{}))
+	mergeBytes := uint64(unsafe.Sizeof(ctrlFrameMerge{}))
+	rootBytes := uint64(unsafe.Sizeof(ctrlFrameRoots{}))
+	return shared.WorkerScratchStats{
+		NodeReserved: sc.nodeScratchReserved, NodePeak: sc.nodeScratchPeak,
+		NodeRetained: retained, NodeDiscarded: sc.nodeScratchDiscarded,
+		ControlReserved:  uint64(sc.controlScratchReserved) * frameBytes,
+		ControlPeak:      uint64(sc.controlScratchPeak)*frameBytes + uint64(sc.controlMergePeak)*mergeBytes + uint64(sc.controlRootsPeak)*rootBytes,
+		ControlRetained:  uint64(cap(sc.ctrl))*frameBytes + uint64(cap(sc.ctrlMerges))*mergeBytes + uint64(cap(sc.ctrlRoots))*rootBytes,
+		ControlDiscarded: uint64(sc.controlScratchDiscarded)*frameBytes + uint64(sc.controlMergeDiscarded)*mergeBytes + uint64(sc.controlRootsDiscarded)*rootBytes,
 	}
 }
 
@@ -412,6 +433,7 @@ type ModuleStats struct {
 	ModuleGlobalPins []ModuleGlobalPinInfo
 	Inline           *InlineReport // inline-candidate detection (nil if not analyzed)
 	NativeSize       shared.NativeSizeReport
+	Compile          shared.CompileResourceStats
 }
 
 // NativeFunctionSizeReport and NativeSizeReport are shared by both Railshot
@@ -428,6 +450,16 @@ func (ms *ModuleStats) String() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "=== codegen explain: %d function(s) ===\n", len(ms.Funcs))
+	fmt.Fprintf(&b, "compile: hints=%dns functions=%dns finalize=%dns hint-headers=%dB hint-sidecars=%dB attempts=%d\n",
+		ms.Compile.StageNanos[shared.CompileStageHints], ms.Compile.StageNanos[shared.CompileStageFunctions],
+		ms.Compile.StageNanos[shared.CompileStageFinalize], ms.Compile.HintHeaderBytes,
+		ms.Compile.HintSidecarBytes, ms.Compile.FunctionAttempts)
+	fmt.Fprintf(&b, "compile-node-scratch: reserved=%dB peak-envelope=%dB retained=%dB discarded=%dB\n",
+		ms.Compile.NodeScratchReserved, ms.Compile.NodeScratchPeak,
+		ms.Compile.NodeScratchRetained, ms.Compile.NodeScratchDiscarded)
+	fmt.Fprintf(&b, "compile-control-scratch: reserved=%dB peak-envelope=%dB retained=%dB discarded=%dB\n",
+		ms.Compile.ControlScratchReserved, ms.Compile.ControlScratchPeak,
+		ms.Compile.ControlScratchRetained, ms.Compile.ControlScratchDiscarded)
 	fmt.Fprintf(&b, "native: total=%d functions=%d function-align=%d module-other=%d dead-reserved=%d\n",
 		ms.NativeSize.TotalBytes, ms.NativeSize.FunctionBytes, ms.NativeSize.FunctionAlignmentBytes,
 		ms.NativeSize.ModuleOtherBytes, ms.NativeSize.DeadReservationBytes())

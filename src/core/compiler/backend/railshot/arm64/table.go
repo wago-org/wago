@@ -470,7 +470,7 @@ func (f *fn) tableGet(r *wasm.Reader) error {
 	f.pinned = f.pinned.remove(entry)
 	f.release(entry)
 	f.release(tbl)
-	f.pushReg(slot, mtI64).st.gcRoot = f.tracksGCFrameRoots() && f.tableIsGCFrameRef(tableIdx)
+	f.pushReg(slot, mtI64).st.setGCRoot(f.tracksGCFrameRoots() && f.tableIsGCFrameRef(tableIdx))
 	return nil
 }
 
@@ -527,7 +527,7 @@ func (f *fn) refFunc(r *wasm.Reader) error {
 		return err
 	}
 	if f.gcTypeSubtypingRefTest {
-		f.pushValue(storage{kind: stFuncRef, typ: mtI64, idx: int(idx)})
+		f.pushValue(storage{kind: stFuncRef, typ: mtI64, idx: idx})
 		return nil
 	}
 	ref := f.allocReg(0)
@@ -547,10 +547,10 @@ func (f *fn) refIsNull() {
 
 func (f *fn) refAsNonNull() {
 	value := f.popValue()
-	root := value.st.gcRoot
+	root := value.st.hasGCRoot()
 	ref := f.materialize(value)
 	f.trapIfZero(ref, true, true, trapNullReference)
-	f.pushReg(ref, mtI64).st.gcRoot = root
+	f.pushReg(ref, mtI64).st.setGCRoot(root)
 }
 
 func (f *fn) refEq() {

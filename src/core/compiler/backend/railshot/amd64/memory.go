@@ -8,6 +8,22 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+// memAccessSize returns the byte width of a plain scalar memory instruction.
+func memAccessSize(op byte) int {
+	switch op {
+	case 0x2c, 0x2d, 0x30, 0x31, 0x3a, 0x3c:
+		return 1
+	case 0x2e, 0x2f, 0x32, 0x33, 0x3b, 0x3d:
+		return 2
+	case 0x28, 0x2a, 0x34, 0x35, 0x36, 0x38, 0x3e:
+		return 4
+	case 0x29, 0x2b, 0x37, 0x39:
+		return 8
+	default:
+		return 0
+	}
+}
+
 // Linear-memory access: scalar loads/stores with a linear bounds check, plus
 // memory.size/grow. Ported from WARP's memory lowering, adapted to wago's runtime
 // memory ABI (the same one src/core/encoder/amd64 targets): the linear-memory base is
@@ -59,7 +75,7 @@ type rcxZeroSite struct {
 }
 
 func (f *fn) rcxZero32Placeholder() rcxZeroSite {
-	if directJecxzEnabled && f.policy.CompactNative {
+	if f.policy.CompactNative {
 		f.stats.peep("direct-jecxz")
 		return rcxZeroSite{off: f.a.JcxzPlaceholder(false), compact: true}
 	}
@@ -157,7 +173,14 @@ func (f *fn) trapAlways(code uint32) {
 }
 
 func (f *fn) trapSite(branch int) trapSite {
-	return trapSite{branch: branch, function: f.traceFuncIdx, pc: f.wasmPC}
+	return trapSite{branch: compactTrapBranch(branch), function: f.traceFuncIdx, pc: f.wasmPC}
+}
+
+func compactTrapBranch(branch int) uint32 {
+	if branch < 0 || uint64(branch) >= uint64(^uint32(0)) {
+		panic("amd64: trap branch offset exceeds 32-bit function domain")
+	}
+	return uint32(branch)
 }
 
 // emitTrapStubs emits one trap stub per trap code used by this function and
@@ -207,13 +230,13 @@ func (f *fn) emitTrapStubs() {
 				pos := f.a.Len()
 				f.a.MovImm32(RAX, int32(first.pc))
 				commonJump = f.a.JmpPlaceholder()
-				f.a.PatchRel32(first.branch, pos)
+				f.a.PatchRel32(int(first.branch), pos)
 			}
 			common := f.a.Len()
 			if len(group) != 1 {
 				f.a.MovImm32(RAX, -1)
 				for _, site := range group {
-					f.a.PatchRel32(site.branch, common)
+					f.a.PatchRel32(int(site.branch), common)
 				}
 			}
 			f.storeModuleGlobals(RSI)
@@ -250,14 +273,14 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 			f.a.MovImm32(RCX, int32(first.function+1))
 			f.a.MovImm32(RDX, int32(code))
 			for _, site := range group {
-				f.a.PatchRel32(site.branch, pos)
+				f.a.PatchRel32(int(site.branch), pos)
 			}
 			f.stats.addTrapGroup()
 			emitted++
 			if emitted < groupCount {
-				group[0].branch = f.a.JmpPlaceholder()
+				group[0].branch = compactTrapBranch(f.a.JmpPlaceholder())
 			} else {
-				group[0].branch = -1
+				group[0].branch = ^uint32(0)
 			}
 			start = end
 		}
@@ -281,8 +304,8 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 			for end < len(sites) && sites[end].function == sites[start].function {
 				end++
 			}
-			if sites[start].branch >= 0 {
-				f.a.PatchRel32(sites[start].branch, common)
+			if sites[start].branch != ^uint32(0) {
+				f.a.PatchRel32(int(sites[start].branch), common)
 			}
 			start = end
 		}
@@ -338,7 +361,7 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	if aliasPinned && !needAdd {
 		ea, eaOwned = f.materializeRead(e) // a pinned local's reg is read in place
 		if !eaOwned {
-			borrow = e.st.idx
+			borrow = e.st.index()
 		}
 	} else {
 		ea, eaOwned = f.materialize(e), true
@@ -363,13 +386,6 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	if f.guardMode {
 		return ea, eaOwned, borrow, disp
 	}
-	// Loop-precheck fast body: a loop-invariant base local proven in bounds by the
-	// pre-loop check needs no per-access check (memBytes only grows). See
-	// boundshoist.go.
-	if f.elideBases != nil && bcKind == 1 && f.elideBases[bcIdx] {
-		f.stats.addBoundsHoistable()
-		return ea, eaOwned, borrow, disp
-	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
 	// same-source check in this straight-line region already proved this access
 	// in-bounds. Sound because linear memory only grows and the certificate is
@@ -392,9 +408,6 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	f.boundsCertUpdate(bcKind, bcIdx, leaDisp)
 	if bcKind != 0 && f.inLoop() {
 		f.stats.addBoundsInLoop()
-	}
-	if f.boundsHoistable(bcKind, bcIdx) {
-		f.stats.addBoundsHoistable()
 	}
 	f.pinned = f.pinned.add(ea)
 	t := f.allocReg(0)
@@ -632,22 +645,6 @@ func (f *fn) inLoop() bool {
 	return false
 }
 
-// boundsHoistable reports whether a check on address source (kind,idx) is
-// hoistable out of its innermost enclosing loop: a LOCAL base that is
-// loop-invariant (not set anywhere in that loop, per the loop-header scan).
-// Globals are excluded — a callee can change a global but never a caller local.
-func (f *fn) boundsHoistable(kind uint8, idx uint32) bool {
-	if kind != 1 { // locals only
-		return false
-	}
-	for i := len(f.ctrl) - 1; i >= 0; i-- {
-		if f.ctrl[i].kind == cfLoop {
-			return !f.ctrl[i].loopSetLocals[idx]
-		}
-	}
-	return false // not inside a loop
-}
-
 func (f *fn) memoryAddr64(memoryIndex uint32) bool {
 	mt, ok := f.m.MemoryType(memoryIndex)
 	return ok && mt.Limits.Addr64
@@ -736,7 +733,7 @@ func (f *fn) cleanMemory32Address(e *elem) bool {
 	if !f.opt(optAddrZExtElim) || e == nil {
 		return false
 	}
-	if e.kind != ekValue || e.st.typ != mtI32 {
+	if !e.isValue() || e.st.typ != mtI32 {
 		return false
 	}
 	switch e.st.kind {
@@ -767,7 +764,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 			e = f.pushReg(out, mtI32)
 		}
 		if f.opt(optValueFacts) && !wide {
-			e.st.facts = factUpper32Zero
+			e.st.setValueFacts(factUpper32Zero)
 		}
 		return nil
 	}
@@ -776,7 +773,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		ea, eaOwned, borrow, disp := f.memAddr64(off, size)
 		st := memRefStorage(ea, disp, size, signed, wide, borrow)
 		if f.opt(optValueFacts) && !wide {
-			st.facts = factUpper32Zero
+			st.setValueFacts(factUpper32Zero)
 		}
 		e := f.pushValue(st)
 		if eaOwned {
@@ -792,8 +789,8 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	rangeExtent := int32(0)
 	// Do not move a later extent proof earlier for shared memory: another agent
 	// may grow it between the two loads, so an early check could spuriously trap.
-	if boundsRangeEnabled && f.boundsFacts && !f.guardMode && !f.threadedMemory0 && int64(off32)+int64(size) <= 0x7fffffff {
-		if top := f.s.back(); top != nil && top.kind == ekValue {
+	if f.boundsFacts && !f.guardMode && !f.threadedMemory0 && int64(off32)+int64(size) <= 0x7fffffff {
+		if top := f.s.back(); top != nil && top.isValue() {
 			kind, idx := boundsSource(top.st)
 			currentExtent := int32(off32) + int32(size)
 			if kind != 0 && !f.boundsCertCovers(kind, idx, currentExtent) {
@@ -812,7 +809,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if f.opt(optValueFacts) && !wide {
 		// Every i32 load writes a 32-bit destination, including sign-extending
 		// byte/word forms, so the physical register upper half is known zero.
-		st.facts = factUpper32Zero
+		st.setValueFacts(factUpper32Zero)
 	}
 	e := f.pushValue(st)
 	if eaOwned {
@@ -862,7 +859,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// 64-bit imm-store sign-extends imm32, which is wrong for an arbitrary
 	// 64-bit pattern; narrower stores truncate to the low `size` bytes exactly
 	// like a materialized constant would (i64.store8/16/32 route here too).
-	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+	if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 		f.stats.peep("store-imm")
 		v := top.st.cval
 		f.erase(top)
@@ -882,7 +879,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// low byte. Keep SETcc's upper-register garbage dead and omit MOVZX; the byte
 	// store cannot observe it. Pending loads were materialized above, preserving
 	// pre-store reads and trap order before this dedicated sink condenses the tree.
-	if top := f.s.back(); size == 1 && f.opt(optStore8Flags) && isFusableCompare(top) && !top.typ.isFloat() {
+	if top := f.s.back(); size == 1 && f.opt(optStore8Flags) && isFusableCompare(top) && !top.valueType().isFloat() {
 		// condenseToFlags may recursively lower div/rem or a variable shift. Those
 		// paths temporarily claim and then unpin x86's fixed-role registers; because
 		// the pin mask is not reference-counted, nesting would drop this outer
@@ -933,12 +930,12 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 // or ok=false if e is not a local reference. Store forwarding keys the address on
 // a local identity, not a physical register.
 func localAddressKey(e *elem) (int, bool) {
-	if e == nil || e.kind != ekValue {
+	if e == nil || !e.isValue() {
 		return 0, false
 	}
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:
-		return e.st.idx, true
+		return e.st.index(), true
 	default:
 		return 0, false
 	}
@@ -1154,7 +1151,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		return err
 	}
 	if dstMemory == 0 && srcMemory == 0 && !f.memoryAddr64(0) {
-		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.stats.peep("memcopy-unroll")
 				f.memoryCopyConst(int(n), dstMemory, srcMemory)
@@ -1308,7 +1305,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		return err
 	}
 	if memoryIndex == 0 && !f.memoryAddr64(0) {
-		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if top := f.s.back(); top != nil && top.isValue() && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.memoryFillConst(int(n), memoryIndex)
 				return nil

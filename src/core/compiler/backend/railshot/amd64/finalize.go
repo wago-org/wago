@@ -174,6 +174,9 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 	if !nativeFinalizerEnabled {
 		return internalOff, nil
 	}
+	if f.scratchState().fragmentOverflow {
+		return 0, fmt.Errorf("amd64 finalizer: jump-table fragment exceeds 32-bit function domain")
+	}
 	oldLen := len(f.a.B)
 	result, frameDeleted, holeDeleted, err := f.finalizeFrameAdjustments()
 	if err != nil {
@@ -192,11 +195,14 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 		return 0, err
 	}
 	for i := range f.relocs {
-		mapped, err := mapAMD64FinalOffset(result.Offsets, f.relocs[i].at, len(result.Code), "call relocation")
+		mapped, err := mapAMD64FinalOffset(result.Offsets, int(f.relocs[i].at), len(result.Code), "call relocation")
 		if err != nil {
 			return 0, err
 		}
-		f.relocs[i].at = mapped
+		if uint64(mapped) >= uint64(invalidCallRelocField) {
+			return 0, fmt.Errorf("amd64 finalizer: call relocation offset %#x exceeds compact domain", mapped)
+		}
+		f.relocs[i].at = uint32(mapped)
 	}
 	if len(f.literalWords) != 0 {
 		keyCount := int(f.literalWords[0])
@@ -235,12 +241,20 @@ func (f *fn) finalizeNativeCode(internalOff int) (int, error) {
 			}
 			plan.AdapterReturnOffset = uint32(mapped)
 		}
-		for i := range plan.Callsites {
-			mapped, err := mapAMD64FinalOffset(result.Offsets, int(plan.Callsites[i].ReturnOffset), len(result.Code), "GC call return")
-			if err != nil {
-				return 0, err
+		var callsiteErr error
+		if !plan.VisitCallsites(func(_ int, callsite shared.GCFrameCallsite) bool {
+			var mapped int
+			mapped, callsiteErr = mapAMD64FinalOffset(result.Offsets, int(callsite.ReturnOffset()), len(result.Code), "GC call return")
+			if callsiteErr != nil {
+				return false
 			}
-			plan.Callsites[i].ReturnOffset = uint32(mapped)
+			callsite.SetReturnOffset(uint32(mapped))
+			return true
+		}) {
+			if callsiteErr != nil {
+				return 0, callsiteErr
+			}
+			return 0, fmt.Errorf("amd64: malformed GC callsite stream")
 		}
 	}
 	if frameDeleted != 0 && f.stats != nil {
@@ -600,30 +614,31 @@ func (f *fn) finalizeFrameAdjustments() (amd64FinalizeResult, int, int, error) {
 	// opaque and move unchanged; signed i32 entries are relative to the table
 	// base and must follow both the base and their code targets.
 	for _, fragment := range f.sc.jumpTableFragments {
-		if fragment.start < 0 || fragment.end < fragment.start || fragment.end > len(f.a.B) {
+		start, end := int(fragment.start), int(fragment.end)
+		if end < start || end > len(f.a.B) {
 			return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: invalid jump-table fragment [%d,%d)", fragment.start, fragment.end)
 		}
 		for _, deletion := range deletions {
 			deletionStart := int(deletion.Off)
 			deletionEnd := deletionStart + int(deletion.Len)
-			if deletionStart < fragment.end && fragment.start < deletionEnd {
+			if deletionStart < end && start < deletionEnd {
 				return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: deletion [%d,%d) intersects jump-table fragment [%d,%d)", deletionStart, deletionEnd, fragment.start, fragment.end)
 			}
 		}
-		newBase, baseOK := offsets.Map(fragment.start)
-		newEnd, endOK := offsets.Map(fragment.end)
-		if !baseOK || !endOK || newEnd-newBase != fragment.end-fragment.start {
+		newBase, baseOK := offsets.Map(start)
+		newEnd, endOK := offsets.Map(end)
+		if !baseOK || !endOK || newEnd-newBase != end-start {
 			return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: jump-table fragment [%d,%d) does not map intact", fragment.start, fragment.end)
 		}
 		switch fragment.kind {
 		case jumpTableFragmentIDs:
 			continue
 		case jumpTableFragmentDeltas:
-			if (fragment.end-fragment.start)&3 != 0 {
+			if (end-start)&3 != 0 {
 				return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: unaligned jump-table fragment [%d,%d)", fragment.start, fragment.end)
 			}
-			for at := fragment.start; at < fragment.end; at += 4 {
-				oldTarget := fragment.start + int(int32(binary.LittleEndian.Uint32(f.a.B[at:])))
+			for at := start; at < end; at += 4 {
+				oldTarget := start + int(int32(binary.LittleEndian.Uint32(f.a.B[at:])))
 				newTarget, targetOK := offsets.Map(oldTarget)
 				if !targetOK {
 					return amd64FinalizeResult{}, 0, 0, fmt.Errorf("amd64 finalizer: jump-table target %d intersects deleted code", oldTarget)

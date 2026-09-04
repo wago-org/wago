@@ -3,21 +3,153 @@
 package arm64
 
 import (
+	"reflect"
 	"testing"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func TestValueFactsFitExistingStoragePaddingArm64(t *testing.T) {
-	if got, want := unsafe.Sizeof(storage{}), uintptr(64); got != want {
+func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
+	if got, want := unsafe.Sizeof(storage{}), uintptr(24); got != want {
 		t.Fatalf("storage size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(elem{}), uintptr(112); got != want {
+	if got, want := unsafe.Sizeof(elem{}), uintptr(32); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(stack{}), uintptr(72); got != want {
+		t.Fatalf("stack size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(trapSite{}), uintptr(12); got != want {
+		t.Fatalf("trapSite size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(callReloc{}), uintptr(12); got != want {
+		t.Fatalf("callReloc size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(localDef{}), uintptr(4); got != want {
 		t.Fatalf("local definition size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(gpCand{}), uintptr(12); got != want {
+		t.Fatalf("GP candidate size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(finalizerFragment{}), uintptr(12); got != want {
+		t.Fatalf("finalizer fragment size = %d, want %d", got, want)
+	}
+}
+
+func TestOperandNodeBackingIsPointerFreeArm64(t *testing.T) {
+	var visit func(reflect.Type) bool
+	visit = func(typ reflect.Type) bool {
+		switch typ.Kind() {
+		case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func, reflect.Interface, reflect.String, reflect.UnsafePointer:
+			return true
+		case reflect.Array:
+			return visit(typ.Elem())
+		case reflect.Struct:
+			for i := 0; i < typ.NumField(); i++ {
+				if visit(typ.Field(i).Type) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	if visit(reflect.TypeFor[elem]()) {
+		t.Fatal("operand node contains a Go-scanned pointer field")
+	}
+}
+
+func TestCompactOperandNodeVariantPayloadArm64(t *testing.T) {
+	e := elem{}
+	e.st.typ = mtI64
+	e.st.setValueFacts(factUpper32Zero | factBoolean)
+	e.setElemKind(ekDeferred)
+	e.setDeferredOp(opRotr)
+	e.setDeferredDepth(6)
+	e.setChildren(nodeID(0x12340056), nodeID(0x789000ab))
+
+	if got := e.elemKind(); got != ekDeferred {
+		t.Fatalf("kind = %v, want deferred", got)
+	}
+	if got := e.deferredOp(); got != opRotr {
+		t.Fatalf("op = %v, want rotr", got)
+	}
+	if got := e.deferredDepth(); got != 6 {
+		t.Fatalf("depth = %d, want 6", got)
+	}
+	if got := e.child0ID(); got != nodeID(0x12340056) {
+		t.Fatalf("child 0 = %#x", got)
+	}
+	if got := e.child1ID(); got != nodeID(0x789000ab) {
+		t.Fatalf("child 1 = %#x", got)
+	}
+	if e.st.typ != mtI64 || e.st.valueFacts() != factUpper32Zero|factBoolean {
+		t.Fatalf("shared type/facts changed: typ=%v meta=%#x", e.st.typ, e.st.meta)
+	}
+
+	e.st.setGCRoot(true)
+	e.st.setEHRoot(true)
+	e.setElemKind(ekValue)
+	if e.elemKind() != ekValue || !e.st.hasGCRoot() || !e.st.hasEHRoot() {
+		t.Fatalf("value kind changed root metadata: kind=%v meta=%#x", e.elemKind(), e.st.meta)
+	}
+}
+
+func TestCompactCallRelocFieldArm64(t *testing.T) {
+	f := fn{}
+	if got, want := f.compactCallRelocField(int(invalidCallRelocField-1)), invalidCallRelocField-1; got != want {
+		t.Fatalf("compact call relocation field = %d, want %d", got, want)
+	}
+	if got := f.compactCallRelocField(-1); got != 0 || f.representationLimit != functionRepresentationCallReloc {
+		t.Fatalf("negative call relocation field = %d, limit = %d", got, f.representationLimit)
+	}
+	if got := f.representationError().Error(); got != "arm64: function call relocation exceeds compact representation limit" {
+		t.Fatalf("call relocation error = %q", got)
+	}
+}
+
+func TestCompactControlOffsetsFailClosedArm64(t *testing.T) {
+	f := fn{}
+	f.appendReturnSite(-1)
+	if f.representationLimit != functionRepresentationReturnSite {
+		t.Fatalf("return-site limit = %d", f.representationLimit)
+	}
+	f = fn{}
+	if got := f.packFrameEndSite(-1, false); got != 0 || f.representationLimit != functionRepresentationFrameEnd {
+		t.Fatalf("frame-end field = %d, limit = %d", got, f.representationLimit)
+	}
+}
+
+func TestCompactTrapBranchDomainArm64(t *testing.T) {
+	if got, want := compactTrapBranch(int(^uint32(0))), ^uint32(0); got != want {
+		t.Fatalf("compact trap branch = %d, want %d", got, want)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("negative trap branch offset accepted")
+		}
+	}()
+	compactTrapBranch(-1)
+}
+
+func TestStorageMetadataFieldsAreIndependentArm64(t *testing.T) {
+	var st storage
+	st.setGCRoot(true)
+	st.setEHRoot(true)
+	st.setValueFacts(factUpper32Zero | factBoolean)
+	if !st.hasGCRoot() || !st.hasEHRoot() {
+		t.Fatalf("setting facts cleared roots: meta=%#x", st.meta)
+	}
+	if got := st.valueFacts(); got != factUpper32Zero|factBoolean {
+		t.Fatalf("value facts = %#x, want upper-zero and boolean", got)
+	}
+	st.setValueFacts(0)
+	if !st.hasGCRoot() || !st.hasEHRoot() {
+		t.Fatalf("clearing facts cleared roots: meta=%#x", st.meta)
+	}
+	st.setGCRoot(false)
+	if st.hasGCRoot() || !st.hasEHRoot() {
+		t.Fatalf("clearing GC root changed another field: meta=%#x", st.meta)
 	}
 }
 
@@ -48,7 +180,7 @@ func TestCompareCarriesBooleanFactArm64(t *testing.T) {
 	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
 	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
 	f.pushBinOp(opLtU, mtI32)
-	if got := f.s.back().st.facts; !got.has(factUpper32Zero | factBoolean) {
+	if got := f.s.back().st.valueFacts(); !got.has(factUpper32Zero | factBoolean) {
 		t.Fatalf("compare facts = %#x, want upper-zero and boolean", got)
 	}
 }

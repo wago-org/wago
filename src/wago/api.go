@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/internal/functionworkers"
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -1394,7 +1395,8 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	collectorReferenceCallBoundary := moduleHasCollectorReferenceCallBoundary(m)
 	gcAllocationSites := moduleHasGCAllocationSites(m)
 	exactNativeGCRoots := genericGCExecution || collectorReferenceCallBoundary
-	gcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots)
+	var gcFrameRootDiagnostic string
+	gcFrameRoots := newGCFrameRootPlan(m, exactNativeGCRoots, &gcFrameRootDiagnostic)
 	indexedFunctionRefTest, indexedFunctionRefCast := requirements.indexedFuncRefTest, requirements.indexedFuncRefCast
 	indexedFunctionRefOps := indexedFunctionRefTest || indexedFunctionRefCast
 	dynamicFuncRefTest := indexedFunctionRefTest && !gcTypeSubtypingProduct.usesRefTest() && !gcTypeSubtypingProduct.usesRuntimeFunctionIdentity()
@@ -1997,22 +1999,24 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	validGCFrameRoots := validGCModuleFrameRootPlan(gcFrameRoots)
 	if validGCFrameRoots && (gcAllocationSites || genericGCExecution && !collectorReferenceCallBoundary) {
 		hasAllocationSafepoint := false
-		for _, plan := range gcFrameRoots.Functions {
-			hasAllocationSafepoint = hasAllocationSafepoint || plan != nil && len(plan.Safepoints) != 0
+		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
+			plan := gcFrameRoots.Function(function)
+			hasAllocationSafepoint = hasAllocationSafepoint || plan != nil && plan.SafepointCount() != 0
 		}
 		validGCFrameRoots = hasAllocationSafepoint
 	}
 	if exactNativeGCRoots && !validGCFrameRoots {
 		diagnostic := "native backend did not produce complete exact root maps"
-		if gcFrameRoots != nil && gcFrameRoots.Diagnostic != "" {
-			diagnostic = gcFrameRoots.Diagnostic
+		if gcFrameRootDiagnostic != "" {
+			diagnostic = gcFrameRootDiagnostic
 		}
 		compiled.setGCRootAdmissionFailure(diagnostic)
 	}
 	if validGCFrameRoots {
 		rootMap := &compiledGCFrameRoots{}
 		var offsetInterner gcFrameOffsetInterner
-		for function, plan := range gcFrameRoots.Functions {
+		for function := 0; function < gcFrameRoots.FunctionCount(); function++ {
+			plan := gcFrameRoots.Function(function)
 			if plan == nil {
 				continue
 			}
@@ -2020,12 +2024,14 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 			if plan.AdapterReturnOffset != 0 {
 				rootMap.adapterReturnOffsets = append(rootMap.adapterReturnOffsets, functionBase+plan.AdapterReturnOffset)
 			}
-			for i := range plan.Safepoints {
-				rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: plan.Safepoints[i].ID, frameBytes: plan.FrameBytes, offsets: offsetInterner.intern(plan.Safepoints[i].Offsets, true)})
-			}
-			for i := range plan.Callsites {
-				rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: functionBase + plan.Callsites[i].ReturnOffset, frameBytes: plan.FrameBytes, stackAdjust: plan.Callsites[i].StackAdjust, offsets: offsetInterner.intern(plan.Callsites[i].Offsets, true)})
-			}
+			_ = plan.VisitSafepoints(func(i int, offsets []uint32) bool {
+				rootMap.safepoints = append(rootMap.safepoints, compiledGCFrameSafepoint{id: plan.SafepointBase + uint32(i) + 1, frameBytes: plan.FrameBytes, offsets: offsetInterner.intern(offsets, true)})
+				return true
+			})
+			_ = plan.VisitCallsites(func(_ int, callsite shared.GCFrameCallsite) bool {
+				rootMap.callsites = append(rootMap.callsites, compiledGCFrameCallsite{returnOffset: functionBase + callsite.ReturnOffset(), frameBytes: plan.FrameBytes, stackAdjust: callsite.StackAdjust(), offsets: offsetInterner.intern(callsite.Offsets(), true)})
+				return true
+			})
 		}
 		rootMap.adapterReturnOffsets = normalizeAdapterReturnOffsets(rootMap.adapterReturnOffsets)
 		compiled.validateMemo.gcFrameRoots = rootMap

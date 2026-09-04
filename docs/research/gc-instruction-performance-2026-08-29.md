@@ -59,7 +59,7 @@ The retained specialization checks all of these compile-time conditions:
 - the ordinary checked native resolver can validate the exact final runtime type
   and required object extent.
 
-With `WAGO_AMD64_GC_REF_FACTS=1`, seven samples of
+With the former reference-fact prototype enabled, seven samples of
 `BenchmarkGCStructGetNonFinalInstruction` changed from a 78.67 ns/op default
 median to a 2.680 ns/op median. This is a 96.6% reduction for the focused case.
 Explain output changes from two synchronous helper sites (constructor plus get) to
@@ -69,9 +69,10 @@ allocations/op in the warmed benchmark. Focused generated code grows from 749 to
 906 bytes (**+157 bytes, +21.0%**) because the one-site module replaces a compact
 helper call with the complete checked native resolver path.
 
-The optimization remains behind the existing default-off `gc-ref-facts` policy.
-Promoting that full policy still requires broad compile-memory and real-workload
-qualification; this microbenchmark alone does not justify changing its default.
+The optimization was subsequently retired. Its broad execution result was neutral,
+while disabling it improved compile time by 4.10%, allocation bytes by 3.83%, and
+allocation count by 11.66%. This focused microbenchmark did not justify retaining a
+permanent workload-selectable alternate compiler.
 
 ## Remaining opportunities
 

@@ -50,8 +50,10 @@ func (f *fn) invalidateGlobalsCache() {
 // is value-pinned (a hot mutable int global in a call-free function). See
 // assignPinnedLocals / loadPinnedGlobals / storePinnedGlobals.
 func (f *fn) pinnedGlobalValueReg(x uint32) (Reg, bool) {
-	if int(x) < len(f.globalReg) && f.globalReg[x] != regNone {
-		return f.globalReg[x], true
+	if int(x) < len(f.globalReg) {
+		if reg := globalRegValue(f.globalReg[x]); reg != regNone {
+			return reg, true
+		}
 	}
 	return regNone, false
 }
@@ -75,7 +77,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 		if wasm.EqualValType(gtv, wasm.I64) {
 			typ = mtI64
 		}
-		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, idx: int(x)})
+		f.pushValue(storage{kind: stGlobReg, typ: typ, reg: reg, idx: x})
 		return nil
 	}
 	cell := f.globalCellPtr(x) // cached, pinned — read the value into a separate reg
@@ -83,7 +85,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 	case gtv.Kind() == wasm.ValRef:
 		dst := f.allocReg(0)
 		f.ld64(dst, cell, 0)
-		f.pushReg(dst, mtI64).st.gcRoot = f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, gtv)
+		f.pushReg(dst, mtI64).st.setGCRoot(f.tracksGCFrameRoots() && arm64GCFrameRefType(f.m, gtv))
 	case wasm.EqualValType(gtv, wasm.I64):
 		dst := f.allocReg(0)
 		f.ld64(dst, cell, 0)
@@ -119,15 +121,15 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 // by condenseInto, so realizing them here would force a wasteful copy-out +
 // copy-back. Refs BELOW it still need x's pre-set value and are realized.
 func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
-	for e := f.s.head.next; e != f.s.head; {
+	for e := f.s.next(f.s.head); e != f.s.head; {
 		if e == skipFrom {
 			break
 		}
-		next := e.next
+		next := f.s.next(e)
 		switch {
-		case e.kind == ekValue && e.st.kind == stGlobReg && uint32(e.st.idx) == x:
+		case e.elemKind() == ekValue && e.st.kind == stGlobReg && e.st.idx == x:
 			f.materialize(e)
-		case e.kind == ekDeferred && subtreeRefsGlobal(e, x):
+		case e.elemKind() == ekDeferred && subtreeRefsGlobal(f.s, e, x):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -136,15 +138,15 @@ func (f *fn) realizeGlobalRefs(x uint32, skipFrom *elem) {
 
 // subtreeRefsGlobal reports whether the valent block rooted at e reads
 // value-pinned global x.
-func subtreeRefsGlobal(e *elem, x uint32) bool {
+func subtreeRefsGlobal(s *stack, e *elem, x uint32) bool {
 	if e == nil {
 		return false
 	}
-	if e.kind == ekValue {
-		return e.st.kind == stGlobReg && uint32(e.st.idx) == x
+	if e.elemKind() == ekValue {
+		return e.st.kind == stGlobReg && e.st.idx == x
 	}
-	if e.kind == ekDeferred {
-		return subtreeRefsGlobal(e.arg0, x) || subtreeRefsGlobal(e.arg1, x)
+	if e.elemKind() == ekDeferred {
+		return subtreeRefsGlobal(s, s.arg0(e), x) || subtreeRefsGlobal(s, s.arg1(e), x)
 	}
 	return false
 }
@@ -194,14 +196,14 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		// condenseInto consume the top expression straight into x's register instead
 		// of pre-copying its (global.get $x) operand (mirrors setLocal's skipFrom).
 		var skipFrom *elem
-		if e != nil && e.isDeferred() && isBinALU(e.op) {
-			skipFrom = baseOfValentBlock(e)
+		if e != nil && e.isDeferred() && isBinALU(e.deferredOp()) {
+			skipFrom = f.s.baseOfValentBlock(e)
 		}
 		f.realizeGlobalRefs(x, skipFrom)
 		f.condenseInto(e, reg)
 		f.release(reg)
 		f.erase(e)
-		f.globalDirty[x] = true
+		f.globalReg[x] |= globalRegDirty
 		return nil
 	}
 	rg := f.materialize(f.popValue())

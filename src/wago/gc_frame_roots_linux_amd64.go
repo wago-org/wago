@@ -8,7 +8,6 @@ import (
 	railamd64 "github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/nativeabi"
 )
 
 // newGCFrameRootPlan admits bounded exact native-root call graphs. Direct local
@@ -18,12 +17,18 @@ import (
 // arenas for larger configured populations. Dead-at-all-sites locals are
 // removed before variable-sized per-site vectors are emitted. Each function
 // gets independent compile state so workers may populate maps in parallel.
-func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRootPlan {
+func newGCFrameRootPlan(m *wasm.Module, exactRoots bool, diagnostic *string) *shared.GCModuleFrameRootPlan {
+	if diagnostic != nil {
+		*diagnostic = ""
+	}
 	if !exactRoots {
 		return nil
 	}
 	reject := func(format string, args ...any) *shared.GCModuleFrameRootPlan {
-		return &shared.GCModuleFrameRootPlan{Diagnostic: fmt.Sprintf(format, args...)}
+		if diagnostic != nil {
+			*diagnostic = fmt.Sprintf(format, args...)
+		}
+		return nil
 	}
 	if m == nil || len(m.Code) == 0 {
 		return reject("generic GC module has no local function bodies")
@@ -81,21 +86,25 @@ func newGCFrameRootPlan(m *wasm.Module, exactRoots bool) *shared.GCModuleFrameRo
 	if err != nil {
 		return reject("exception root maps: %v", err)
 	}
-	fixedRoots := make([][]uint32, len(m.Code))
-	for i := range ehMaps {
-		if int(ehMaps[i].LocalFunction) >= len(fixedRoots) {
-			return reject("exception root map function %d is out of range", ehMaps[i].LocalFunction)
-		}
-		for _, slot := range ehMaps[i].Slots {
-			if slot.Kind == nativeabi.RootGCRef {
-				fixedRoots[ehMaps[i].LocalFunction] = append(fixedRoots[ehMaps[i].LocalFunction], slot.Offset)
-			}
-		}
+	modulePlan, err := gcFramePrepareModuleRootPlan(m, &classifier)
+	if err != nil {
+		return reject("%v", err)
 	}
-	modulePlan := &shared.GCModuleFrameRootPlan{Functions: make([]*shared.GCFrameRootPlan, len(m.Code))}
 	var safepointBase uint32
-functions:
+	ehMapIndex := 0
 	for function := range m.Code {
+		hasFixedRoots := false
+		if ehMapIndex < len(ehMaps) && ehMaps[ehMapIndex].LocalFunction == uint32(function) {
+			hasFixedRoots = true
+			ehMapIndex++
+		}
+		if !modulePlan.FunctionPending(function) {
+			continue // RootNone: no safepoint can observe this frame.
+		}
+		var fixedOffsets []uint32
+		if hasFixedRoots {
+			fixedOffsets = gcFrameFixedOffsets(&ehMaps[ehMapIndex-1])
+		}
 		if bodyHasUnsupportedNativeFrames(m, m.Code[function].BodyBytes, importedFunctions, len(m.Code), &classifier) {
 			return reject("function %d contains an unsupported native call or frame shape", function)
 		}
@@ -103,16 +112,21 @@ functions:
 		if !ok {
 			return reject("function %d has no validated signature", function)
 		}
-		plan := &shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase, FixedOffsets: fixedRoots[function]}
-		mayCollect := gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, &classifier)
+		plan, ok := modulePlan.BeginFunction(function)
+		if !ok {
+			return reject("function %d root plan ownership is invalid", function)
+		}
+		*plan = shared.GCFrameRootPlan{Candidate: true, Exact: true, SafepointBase: safepointBase}
+		if !plan.SetFixedOffsets(fixedOffsets) {
+			return reject("function %d has invalid fixed root offsets", function)
+		}
 		slot, local := 0, uint32(0)
 		add := func(t wasm.ValType) bool {
 			if collectorFrameRefType(m, t) {
-				if len(plan.LocalOffsets) == shared.GCFrameTrackedLocalLimit {
+				if len(plan.Locals) == shared.GCFrameTrackedLocalLimit {
 					return false
 				}
-				plan.LocalIndexes = append(plan.LocalIndexes, local)
-				plan.LocalOffsets = append(plan.LocalOffsets, uint32(shared.AMD64FrameHeaderBytes+slot*8))
+				plan.Locals = append(plan.Locals, shared.GCFrameLocal{Index: local, Offset: uint32(shared.AMD64FrameHeaderBytes + slot*8)})
 			}
 			if wasm.EqualValType(t, wasm.V128) {
 				slot += 2
@@ -124,45 +138,41 @@ functions:
 		}
 		for _, t := range ft.Params {
 			if !add(t) {
-				if !mayCollect {
-					continue functions
-				}
 				return reject("function %d exceeds %d tracked collector locals", function, shared.GCFrameTrackedLocalLimit)
 			}
 		}
 		for _, run := range m.Code[function].Locals.Runs {
 			for i := uint32(0); i < run.Count; i++ {
 				if !add(run.Type) {
-					if !mayCollect {
-						continue functions
-					}
 					return reject("function %d exceeds %d tracked collector locals", function, shared.GCFrameTrackedLocalLimit)
 				}
 			}
 		}
-		var liveMasks, callMasks []uint64
-		var maskExtra gcFrameLivenessExtra
+		var liveMasks gcFrameLiveMasks
 		var err error
-		if bodyUsesEH(m.Code[function].BodyBytes, &classifier) {
-			liveMasks, callMasks, err = gcFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.LocalIndexes), &maskExtra, &classifier)
+		plan.Conservative = bodyUsesEH(m.Code[function].BodyBytes, &classifier) || gcFramePreferConservativeMasks(len(plan.Locals), len(m.Code[function].BodyBytes))
+		if plan.Conservative {
+			liveMasks, err = gcFrameConservativeMasks(m.Code[function].BodyBytes, len(plan.Locals), &classifier)
 		} else {
-			liveMasks, err = gcFrameLocalLivenessWithClassifier(m.Code[function].BodyBytes, plan.LocalIndexes, &callMasks, &maskExtra, &classifier)
+			liveMasks, err = gcFrameLocalLivenessArenaWithClassifier(m.Code[function].BodyBytes, plan.Locals, &classifier)
 		}
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
-		plan.LocalIndexes, plan.LocalOffsets, liveMasks, callMasks, _, err = gcFrameCompactLiveLocals(plan.LocalIndexes, plan.LocalOffsets, liveMasks, callMasks, &maskExtra)
+		plan.Locals, liveMasks, _, err = gcFrameCompactLiveLocalsArena(plan.Locals, liveMasks)
 		if err != nil {
 			return reject("function %d exact local liveness: %v", function, err)
 		}
-		if uint64(safepointBase)+uint64(len(liveMasks)) > uint64(shared.GCSafepointIDMax) {
+		if uint64(safepointBase)+uint64(liveMasks.allocationN) > uint64(shared.GCSafepointIDMax) {
 			return reject("function %d exceeds the dense safepoint ID bound", function)
 		}
-		plan.LiveLocalMasks = liveMasks
-		plan.LiveCallLocalMasks = callMasks
-		plan.LiveMaskExtraWords = maskExtra.words
-		modulePlan.Functions[function] = plan
-		safepointBase += uint32(len(liveMasks))
+		if !plan.SetLiveMasks(liveMasks.words, liveMasks.allocationN, liveMasks.callN) {
+			return reject("function %d has malformed exact local liveness masks", function)
+		}
+		safepointBase += uint32(liveMasks.allocationN)
+	}
+	if ehMapIndex != len(ehMaps) {
+		return reject("exception root map function %d is out of range", ehMaps[ehMapIndex].LocalFunction)
 	}
 	return modulePlan
 }
@@ -297,8 +307,8 @@ func bodyUsesEH(body []byte, classifier *wasm.ModuleInstructionClassifier) bool 
 	return false
 }
 
-func gcFrameConservativeMasks(body []byte, localRoots int, extra *gcFrameLivenessExtra, classifier *wasm.ModuleInstructionClassifier) (allocations, calls []uint64, err error) {
-	return gcFrameAllLiveMasksWithClassifier(body, localRoots, extra, classifier)
+func gcFrameConservativeMasks(body []byte, localRoots int, classifier *wasm.ModuleInstructionClassifier) (gcFrameLiveMasks, error) {
+	return gcFrameAllLiveMasksArenaWithClassifier(body, localRoots, classifier)
 }
 
 func gcFrameHostCallABI(ft *wasm.CompType) bool {

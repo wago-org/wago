@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x64 "github.com/wago-org/wago/src/core/encoder/amd64"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -477,6 +476,10 @@ func (f *fn) emitDirectGCObject(object *elem, localType, requiredBytes uint32, l
 		return f.gcResolved.reg, func() {}
 	}
 	f.invalidateGCResolvedObject()
+	if f.gcDeferResolver && f.gcHandleResolutions != 0 {
+		f.gcSharedResolver = true
+		f.gcDeferResolver = false
+	}
 	if f.gcSharedResolver {
 		obj, done = f.emitSharedCheckedGCObject(object, localType, requiredBytes)
 	} else {
@@ -507,7 +510,7 @@ func (f *fn) emitSharedCheckedGCObject(object *elem, localType, requiredBytes ui
 	f.a.MovImm32(RDX, int32(localType))
 	f.a.MovImm32(RCX, int32(requiredBytes))
 	site := f.a.CallRel32()
-	f.relocs = append(f.relocs, callReloc{at: site, gcStub: gcSharedStubResolveObject})
+	f.relocs = append(f.relocs, f.newGCStubCallReloc(site, gcSharedStubResolveObject))
 	f.stats.call("gcnative-leaf")
 	f.stats.peep("gc-shared-resolve-call")
 
@@ -655,7 +658,7 @@ func (f *fn) emitNativeDefinedCast(typeIndex uint32, nullable, exact bool) error
 	f.sc.gcFinalCastStubSites = append(f.sc.gcFinalCastStubSites, site)
 	f.stats.call("gcnative")
 	result := f.pushReg(RAX, mtI64)
-	result.st.gcRoot = true
+	result.st.setGCRoot(true)
 	return nil
 }
 
@@ -705,32 +708,8 @@ func (f *fn) emitNativeFinalCastStructRefGet(typeIndex, fieldOffset uint32, null
 	f.stats.call("gcnative")
 	f.a.Load32(RAX, RAX, int32(gc.PayloadOffset+fieldOffset))
 	result := f.pushReg(RAX, mtI64)
-	result.st.gcRoot = true
+	result.st.setGCRoot(true)
 	return nil
-}
-
-func (f *fn) emitDirectGCStructRefSetNoBarrier(typeIndex, fieldOffset uint32, state shared.GCBarrierState) bool {
-	valueRoot := f.s.back()
-	if valueRoot == nil {
-		return false
-	}
-	objectRoot := baseOfValentBlock(valueRoot).prev
-	local, hasLocal := gcLocalProvenance(objectRoot)
-	f.flush()
-	oldFloor := f.spillFloor
-	f.spillFloor = f.curSpillSlot()
-	value := f.popValue()
-	object := f.popValue()
-	required := gc.PayloadOffset + fieldOffset + 4
-	obj, done := f.emitDirectGCObject(object, typeIndex, required, local, hasLocal)
-	child := f.materialize(value)
-	f.a.StoreIdx(obj, RSP, child, int32(gc.PayloadOffset+fieldOffset), 4)
-	f.release(child)
-	done()
-	f.spillFloor = oldFloor
-	f.recordGCBarrierState(state)
-	f.stats.peep("gc-barrier-elide")
-	return true
 }
 
 func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffset uint32, valueType wasm.ValType) error {
@@ -744,11 +723,11 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
 	f.flush()
 	value := f.s.back()
 	object := value.prev
-	if value == f.s.head || object == f.s.head || value.kind != ekValue || object.kind != ekValue || value.st.kind != stSlot || object.st.kind != stSlot {
+	if value == f.s.head || object == f.s.head || !value.isValue() || !object.isValue() || value.st.kind != stSlot || object.st.kind != stSlot {
 		return fmt.Errorf("amd64: native nursery struct reference store lost canonical operands")
 	}
-	f.a.Load64(RAX, RSP, f.spillOff(object.st.slot))
-	f.a.Load64(RSI, RSP, f.spillOff(value.st.slot))
+	f.a.Load64(RAX, RSP, f.spillOff(object.st.slotIndex()))
+	f.a.Load64(RSI, RSP, f.spillOff(value.st.slotIndex()))
 	required := uint64(gc.PayloadOffset) + uint64(fieldOffset) + 4
 	if required > math.MaxInt32 {
 		return fmt.Errorf("amd64: final struct reference store extent %d exceeds native immediate", required)
@@ -771,54 +750,6 @@ func (f *fn) emitNativeBarrierSafeStructRefSet(typeIndex, fieldIndex, fieldOffse
 	return err
 }
 
-func (f *fn) emitDirectGCArrayRefSetNoBarrier(typeIndex uint32, state shared.GCBarrierState) bool {
-	valueRoot := f.s.back()
-	if valueRoot == nil {
-		return false
-	}
-	indexRoot := baseOfValentBlock(valueRoot).prev
-	if indexRoot == nil {
-		return false
-	}
-	objectRoot := baseOfValentBlock(indexRoot).prev
-	local, hasLocal := gcLocalProvenance(objectRoot)
-	f.flush()
-	oldFloor := f.spillFloor
-	f.spillFloor = f.curSpillSlot()
-	value := f.popValue()
-	indexValue := f.popValue()
-	object := f.popValue()
-	obj, done := f.emitDirectGCObject(object, typeIndex, gc.PayloadOffset, local, hasLocal)
-	index := f.materialize(indexValue)
-	f.a.MovRegReg32(index, index) // Wasm i32 indexes ignore dirty host-result high bits.
-	f.pinned = f.pinned.add(index)
-	tmp := f.allocReg(maskOf(obj, index))
-	f.pinned = f.pinned.add(tmp)
-	f.a.Load32(tmp, obj, 8)
-	f.a.Cmp32(index, tmp)
-	f.trapIf(condAE, trapBuiltin)
-	f.a.ImulRI(index, 4, true)
-	f.a.Load32(tmp, obj, 4)
-	end := f.allocReg(maskOf(obj, index, tmp))
-	f.pinned = f.pinned.add(end)
-	f.a.MovReg64(end, index)
-	f.a.AluRI(0, end, int32(gc.PayloadOffset)+4, true)
-	f.a.Cmp64(end, tmp)
-	f.trapIf(condA, trapCastFailure)
-	f.pinned = f.pinned.remove(end)
-	f.pinned = f.pinned.remove(tmp)
-	child := f.materialize(value)
-	f.a.StoreIdx(obj, index, child, int32(gc.PayloadOffset), 4)
-	f.release(child)
-	f.pinned = f.pinned.remove(index)
-	f.release(index)
-	done()
-	f.spillFloor = oldFloor
-	f.recordGCBarrierState(state)
-	f.stats.peep("gc-barrier-elide")
-	return true
-}
-
 func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValType) error {
 	var savedLocals [16]locState
 	if len(f.pinnedLocals) > len(savedLocals) {
@@ -831,12 +762,12 @@ func (f *fn) emitNativeCardSafeArrayRefSet(typeIndex uint32, valueType wasm.ValT
 	value := f.s.back()
 	index := value.prev
 	object := index.prev
-	if value == f.s.head || index == f.s.head || object == f.s.head || value.kind != ekValue || index.kind != ekValue || object.kind != ekValue || value.st.kind != stSlot || index.st.kind != stSlot || object.st.kind != stSlot {
+	if value == f.s.head || index == f.s.head || object == f.s.head || !value.isValue() || !index.isValue() || !object.isValue() || value.st.kind != stSlot || index.st.kind != stSlot || object.st.kind != stSlot {
 		return fmt.Errorf("amd64: native nursery array reference store lost canonical operands")
 	}
-	f.a.Load64(RAX, RSP, f.spillOff(object.st.slot))
-	f.a.Load64(RCX, RSP, f.spillOff(index.st.slot))
-	f.a.Load64(RSI, RSP, f.spillOff(value.st.slot))
+	f.a.Load64(RAX, RSP, f.spillOff(object.st.slotIndex()))
+	f.a.Load64(RCX, RSP, f.spillOff(index.st.slotIndex()))
+	f.a.Load64(RSI, RSP, f.spillOff(value.st.slotIndex()))
 	f.a.MovImm32(RDX, int32(typeIndex))
 	site := f.a.CallRel32()
 	f.sc.gcArrayRefSetStubSites = append(f.sc.gcArrayRefSetStubSites, site)
@@ -887,7 +818,7 @@ func (f *fn) emitNativeFinalArrayRefGet(typeIndex uint32) error {
 	f.sc.gcArrayRefGetSites = append(f.sc.gcArrayRefGetSites, site)
 	f.stats.call("gcnative")
 	result := f.pushReg(RAX, mtI64)
-	result.st.gcRoot = true
+	result.st.setGCRoot(true)
 	return nil
 }
 
@@ -995,7 +926,8 @@ func (f *fn) emitNativeArrayAllocStub(site gcArrayAllocStubSite) {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1286,7 +1218,8 @@ func (f *fn) emitNativeStructAllocStub(typeIndex uint32) {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1480,7 +1413,8 @@ func (f *fn) emitNativeFinalCastArrayLenStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1574,7 +1508,8 @@ func (f *fn) emitNativeDefinedTypeCheckStub(test bool) {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1724,7 +1659,8 @@ func (f *fn) emitNativeFinalArrayRefGetStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1815,7 +1751,8 @@ func (f *fn) emitNativeFinalCastStructRefResolverStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -1903,7 +1840,8 @@ func (f *fn) emitNativeBarrierSafeStructRefSetStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -2043,7 +1981,8 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 			preserve[reg-R9] = true
 		}
 	}
-	for _, reg := range f.globalReg {
+	for _, state := range f.globalReg {
+		reg := globalRegValue(state)
 		if reg >= R9 && reg <= R11 {
 			preserve[reg-R9] = true
 		}
@@ -2215,23 +2154,8 @@ func (f *fn) emitNativeCardSafeArrayRefSetStub() {
 
 func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) bool {
 	off, scalar, final, ok := f.directGCStructLayout(typeIndex, fieldIndex)
-	if !ok {
+	if !ok || !final {
 		return false
-	}
-	resolveType := typeIndex
-	if !final {
-		_, knownType, exact := f.topExactGCLocal()
-		if !exact {
-			return false
-		}
-		knownOff, knownScalar, knownFinal, knownOK := f.directGCStructLayout(knownType, fieldIndex)
-		actual := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: knownType}), false)
-		requiredType := wasm.Ref(false, wasm.IndexedHeap(wasm.TypeIdx{Index: typeIndex}), false)
-		if !knownOK || !knownFinal || knownOff != off || knownScalar != scalar || !f.m.ReferenceTypeSubtype(actual, requiredType) {
-			return false
-		}
-		resolveType = knownType
-		f.stats.peep("gc-nonfinal-struct-get-specialize")
 	}
 	local, hasLocal := gcLocalProvenance(f.s.back())
 	f.flush()
@@ -2239,7 +2163,7 @@ func (f *fn) emitDirectGCStructGet(typeIndex, fieldIndex uint32, helper uint32) 
 	f.spillFloor = f.curSpillSlot()
 	object := f.popValue()
 	required := gc.PayloadOffset + off + uint32(scalar.size)
-	obj, done := f.emitDirectGCObject(object, resolveType, required, local, hasLocal)
+	obj, done := f.emitDirectGCObject(object, typeIndex, required, local, hasLocal)
 	disp := int32(gc.PayloadOffset + off)
 	if scalar.typ.isFloat() {
 		x := f.allocFReg(0)

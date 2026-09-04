@@ -45,10 +45,32 @@ var noStackReg = os.Getenv("WAGO_Amd64_NOSTACKREG") == "1"
 // callReloc records a CallRel32 site whose rel32 must be patched to point at the
 // target local function's entry once the module is laid out.
 type callReloc struct {
-	at       int  // byte offset of the rel32 field within this function's code
-	target   int  // target local-function index (into m.Code)
-	internal bool // target the callee's register-ABI internal entry (else offset 0)
+	at       uint32 // byte offset of the rel32 field within this function's code
+	target   uint32 // target local-function index (into m.Code)
+	internal bool   // target the callee's register-ABI internal entry (else offset 0)
 	gcStub   gcSharedStubKind
+}
+
+const invalidCallRelocField = ^uint32(0)
+
+func (f *fn) compactCallRelocField(value int) uint32 {
+	if value < 0 || uint64(value) >= uint64(invalidCallRelocField) {
+		f.setRepresentationLimit(functionRepresentationCallReloc)
+		return 0
+	}
+	return uint32(value)
+}
+
+func (f *fn) newCallReloc(at, target int, internal bool) callReloc {
+	return callReloc{
+		at:       f.compactCallRelocField(at),
+		target:   f.compactCallRelocField(target),
+		internal: internal,
+	}
+}
+
+func (f *fn) newGCStubCallReloc(at int, stub gcSharedStubKind) callReloc {
+	return callReloc{at: f.compactCallRelocField(at), gcStub: stub}
 }
 
 // intArgRegs is the integer argument/result register order for the internal
@@ -254,7 +276,6 @@ func (f *fn) callOp(r *wasm.Reader) error {
 	}
 	if int(idx) < imported {
 		if f.importBindings != nil && int(idx) < len(f.importBindings) && (f.importBindings[idx].Dynamic || f.importBindings[idx].CrossInstance) {
-			f.planCallDeadLocals(r)
 			return f.emitCrossInstanceCall(f.importBindings[idx], ft)
 		}
 		// A module with any returning host import uses the synchronous control
@@ -262,12 +283,10 @@ func (f *fn) callOp(r *wasm.Reader) error {
 		// never both occupy offCustomCtx. Otherwise void imports keep the cheaper
 		// async log-and-replay path.
 		if f.syncHostCalls || len(ft.Results) != 0 {
-			f.planCallDeadLocals(r)
 			return f.callHostSync(int(idx), ft) // synchronous re-entry
 		}
 		return f.callHost(int(idx), ft) // void: async log-and-replay
 	}
-	f.planCallDeadLocals(r)
 	// `call f; local.set x` fusion: an int-only register-ABI call whose single
 	// int result feeds a pinned local moves RAX straight into the local's
 	// register — no intermediate result register, no separate set lowering.
@@ -314,7 +333,7 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) 
 		for i, arg := range args {
 			f.materialize(arg)
 			f.spill(arg)
-			argSlots[i] = arg.st.slot
+			argSlots[i] = arg.st.slotIndex()
 		}
 	}
 
@@ -349,7 +368,7 @@ func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) 
 			if n.Input < 0 || n.Input >= len(argSlots) {
 				return fmt.Errorf("custom instruction input %d out of range", n.Input)
 			}
-			f.pushValue(storage{kind: stSlot, typ: mtI32, slot: argSlots[n.Input]})
+			f.pushValue(storage{kind: stSlot, typ: mtI32, slot: uint32(argSlots[n.Input])})
 			maskTop(n.Width)
 			return nil
 		case CustomInstructionConst:
@@ -523,7 +542,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 		f.stats.call("tail-direct")
 		f.emitTailRegisterJump(ft, func() {
 			site := f.a.JmpPlaceholder()
-			f.relocs = append(f.relocs, callReloc{at: site, target: int(idx) - imported, internal: true})
+			f.relocs = append(f.relocs, f.newCallReloc(site, int(idx)-imported, true))
 		})
 		f.unreachable = true
 		return nil
@@ -549,7 +568,7 @@ func (f *fn) returnCall(r *wasm.Reader) error {
 func (f *fn) emitTailWrapperJump(ft *wasm.CompType, target int) {
 	f.emitTailWrapperJumpVia(ft, func() {
 		site := f.a.JmpPlaceholder()
-		f.relocs = append(f.relocs, callReloc{at: site, target: target})
+		f.relocs = append(f.relocs, f.newCallReloc(site, target, false))
 	})
 }
 
@@ -776,15 +795,10 @@ type tailDeferredArg struct {
 	float  bool
 }
 
-// loadCallLocalInt selects a typed local load when call-making functions may
-// use packed i32 homes. The rollback path intentionally preserves the former
-// full-machine-word staging sequence as its exact code-shape oracle.
+// loadCallLocalInt selects the local's exact width so packed adjacent i32 homes
+// cannot leak into an argument's upper half.
 func (f *fn) loadCallLocalInt(dst Reg, st storage) {
-	if compactI32CallsEnabled {
-		f.loadFrameInt(dst, f.localAddr(st.idx), st.typ)
-	} else {
-		f.a.Load64(dst, RSP, f.localAddr(st.idx))
-	}
+	f.loadFrameInt(dst, f.localAddr(st.index()), st.typ)
 }
 
 // discardEHHandlersForTail removes every handler owned by the current function.
@@ -821,7 +835,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 	for i, typ := range ft.Params {
 		mt := mtOf(typ)
 		root := roots[i]
-		resident := root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef))
+		resident := root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef))
 		if mt.isFloat() {
 			target := fpArgRegs[fp]
 			if resident {
@@ -874,9 +888,9 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 			case stConst:
 				f.loadFConst(arg.target, arg.root.st)
 			case stSlot:
-				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slot), arg.root.st.typ == mtF64)
+				f.a.FLoadDisp(arg.target, RSP, f.spillOff(arg.root.st.slotIndex()), arg.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(arg.target, RSP, f.localAddr(arg.root.st.idx), arg.root.st.typ == mtF64)
+				f.a.FLoadDisp(arg.target, RSP, f.localAddr(arg.root.st.index()), arg.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -884,7 +898,7 @@ func (f *fn) emitTailRegisterJump(ft *wasm.CompType, emitJump func()) {
 		case stConst:
 			f.loadConst(arg.target, arg.root.st)
 		case stSlot:
-			f.a.Load64(arg.target, RSP, f.spillOff(arg.root.st.slot))
+			f.a.Load64(arg.target, RSP, f.spillOff(arg.root.st.slotIndex()))
 		case stLocalRef:
 			f.loadCallLocalInt(arg.target, arg.root.st)
 		}
@@ -972,7 +986,7 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 	}
 	flags := f.tmpGCRoots2[:0]
 	for _, root := range roots[:n] {
-		flags = append(flags, root.kind == ekValue && root.st.gcRoot)
+		flags = append(flags, root.isValue() && root.st.hasGCRoot())
 	}
 	f.tmpGCRoots2 = flags
 	return flags
@@ -1028,19 +1042,19 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
-	slotOf := f.tmpSlots[:0]
+	slotOf := f.tmpStackSlots[:0]
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
+		if root.isDeferred() && root.valueType() != mtNone {
+			typ = root.valueType()
 		}
 		types = append(types, typ)
-		slotOf = append(slotOf, slotTop)
+		slotOf = append(slotOf, uint32(slotTop))
 		slotTop += typ.stackSlots()
 	}
 	f.tmpTypes = types
-	f.tmpSlots = slotOf
+	f.tmpStackSlots = slotOf
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -1070,7 +1084,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	}
 	argSlot, ctrlSlot := 0, 0
 	if p > 0 {
-		argSlot = slotOf[d-p]
+		argSlot = int(slotOf[d-p])
 	}
 	for i := 0; i < p; i++ {
 		mt := mtOf(ft.Params[i])
@@ -1121,7 +1135,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	// trap unwinds the whole native tree in one jump (it never returns here).
 	f.a.CallMem(R8, hcTrampoline)
 	if recordRoots {
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(len(f.a.B)), Offsets: rootOffsets})
+		f.gcFrameRoots.RecordCallsite(uint32(len(f.a.B)), 0, rootOffsets)
 	}
 	if nativeAllocDone >= 0 {
 		f.a.PatchRel32(nativeAllocDone, f.a.Len())
@@ -1188,7 +1202,7 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 			f.pinned = f.pinned.remove(res[j])
 			value = f.pushReg(res[j], rt)
 		}
-		value.st.gcRoot = gcFrameRefType(f.m, ft.Results[j])
+		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[j]))
 	}
 	// Arbitrary host code can synchronously re-enter this instance and grow its
 	// memory. Reload after reconstructing the operand stack so the continuation
@@ -1371,19 +1385,19 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
-	slotOf := f.tmpSlots[:0]
+	slotOf := f.tmpStackSlots[:0]
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
+		if root.isDeferred() && root.valueType() != mtNone {
+			typ = root.valueType()
 		}
 		types = append(types, typ)
-		slotOf = append(slotOf, slotTop)
+		slotOf = append(slotOf, uint32(slotTop))
 		slotTop += typ.stackSlots()
 	}
 	f.tmpTypes = types
-	f.tmpSlots = slotOf
+	f.tmpStackSlots = slotOf
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -1402,7 +1416,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	}
 	argOff := f.spillOff(resultSlot) // p==0: unused, but a valid in-frame address
 	if p > 0 {
-		argOff = f.spillOff(slotOf[d-p])
+		argOff = f.spillOff(int(slotOf[d-p]))
 	}
 	f.spillLocalsForCall()
 	f.storeModuleGlobals(RAX) // cross-instance boundary: shared globals must be cell-coherent
@@ -1460,7 +1474,7 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 		f.a.CallReg(RAX)
 	}
 	if recordRoots {
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(len(f.a.B)), StackAdjust: stackAdjust, Offsets: rootOffsets})
+		f.gcFrameRoots.RecordCallsite(uint32(len(f.a.B)), stackAdjust, rootOffsets)
 	}
 
 	if b.Dynamic {
@@ -1552,7 +1566,7 @@ func (f *fn) finishWrapperResultsWithRoots(belowTypes []machineType, belowGCRoot
 			f.pinned = f.pinned.remove(regs[i])
 			value = f.pushReg(regs[i], typ)
 		}
-		value.st.gcRoot = gcFrameRefType(f.m, results[i])
+		value.st.setGCRoot(gcFrameRefType(f.m, results[i]))
 	}
 }
 
@@ -1637,7 +1651,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 			f.gcFrameRoots.Exact = false
 			return
 		}
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: uint32(f.relocs[relocBase].at + 4), Offsets: rootOffsets})
+		f.gcFrameRoots.RecordCallsite(uint32(f.relocs[relocBase].at+4), 0, rootOffsets)
 	}
 	if f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))) {
 		if sigIsIntOnly(ft) {
@@ -1653,7 +1667,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	f.stats.call(callKindWrapper)
 	f.emitWrapperCall(ft, func() {
 		site := f.a.CallRel32()
-		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx})
+		f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, false))
 	})
 	finishRoots()
 	return nil
@@ -1666,7 +1680,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	}
 	siteIndex := f.gcCallsiteIndex
 	f.gcCallsiteIndex++
-	if siteIndex >= len(plan.LiveCallLocalMasks) {
+	if siteIndex >= plan.CallMaskCount() {
 		plan.Exact = false
 		return nil, false
 	}
@@ -1676,9 +1690,16 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		return nil, false
 	}
 	f.materializeGCFrameLocalsAt(siteIndex, true)
-	offsets := make([]uint32, 0, len(plan.LocalOffsets)+len(plan.FixedOffsets))
+	offsets := f.tmpGCOffsets[:0]
+	defer func() {
+		if uint64(cap(offsets))*4 <= shared.MaxRetainedGCCallsiteOffsetBytes {
+			f.tmpGCOffsets = offsets[:0]
+		} else {
+			f.tmpGCOffsets = nil
+		}
+	}()
 	if !plan.VisitLiveLocals(siteIndex, true, func(root int) {
-		offsets = append(offsets, plan.LocalOffsets[root])
+		offsets = append(offsets, plan.Locals[root].Offset)
 	}) {
 		plan.Exact = false
 		return nil, false
@@ -1686,7 +1707,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	hidden := len(roots) - paramCount
 	slot := 0
 	for i, root := range roots {
-		if i < hidden && root.kind == ekValue && root.st.gcRoot {
+		if i < hidden && root.isValue() && root.st.hasGCRoot() {
 			off := f.spillOff(slot)
 			if off < 0 {
 				plan.Exact = false
@@ -1696,7 +1717,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 		}
 		slot += rootMachineType(root).stackSlots()
 	}
-	offsets = append(offsets, plan.FixedOffsets...)
+	offsets = append(offsets, plan.FixedOffsets()...)
 	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
 	return offsets, true
 }
@@ -1745,7 +1766,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	deferred := f.tmpDeferred[:0]
 	for i := 0; i < p; i++ {
 		root := argRoots[i]
-		if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
+		if root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
 			reg := f.materialize(root) // stMemRef → emits the deferred load into its addr reg
 			f.pinned = f.pinned.add(reg)
 			moves = append(moves, regMove{dst: intArgRegs[i], src: reg})
@@ -1776,7 +1797,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		case stConst:
 			f.loadConst(da.target, da.root.st)
 		case stSlot:
-			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slot))
+			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slotIndex()))
 		case stLocalRef:
 			f.loadCallLocalInt(da.target, da.root.st)
 		}
@@ -1792,7 +1813,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	var returnOffset uint32
 	if localIdx >= 0 {
 		site := f.a.CallRel32()
-		f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+		f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, true))
 		returnOffset = uint32(site + 4)
 	} else {
 		f.a.CallReg(callTarget)
@@ -1838,13 +1859,13 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	if rN == 1 && resHint < 0 {
 		f.pinned = f.pinned.remove(resReg)
 		value := f.pushReg(resReg, mtOf(ft.Results[0]))
-		value.st.gcRoot = gcFrameRefType(f.m, ft.Results[0])
+		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[0]))
 	}
 	if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
 			value := f.pushReg(reg, mtOf(ft.Results[i]))
-			value.st.gcRoot = gcFrameRefType(f.m, ft.Results[i])
+			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
 		}
 	}
 	return returnOffset
@@ -1911,7 +1932,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	for i, t := range ft.Params {
 		mt := mtOf(t)
 		root := argRoots[i]
-		regResident := root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef))
+		regResident := root.isDeferred() || (root.isValue() && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef))
 		if mt.isFloat() {
 			target := fpArgRegs[fp]
 			if regResident {
@@ -1972,9 +1993,9 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			case stConst:
 				f.loadFConst(da.target, da.root.st)
 			case stSlot:
-				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slot), da.root.st.typ == mtF64)
+				f.a.FLoadDisp(da.target, RSP, f.spillOff(da.root.st.slotIndex()), da.root.st.typ == mtF64)
 			case stLocalRef:
-				f.a.FLoadDisp(da.target, RSP, f.localAddr(da.root.st.idx), da.root.st.typ == mtF64)
+				f.a.FLoadDisp(da.target, RSP, f.localAddr(da.root.st.index()), da.root.st.typ == mtF64)
 			}
 			continue
 		}
@@ -1982,7 +2003,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 		case stConst:
 			f.loadConst(da.target, da.root.st)
 		case stSlot:
-			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slot))
+			f.a.Load64(da.target, RSP, f.spillOff(da.root.st.slotIndex()))
 		case stLocalRef:
 			f.loadCallLocalInt(da.target, da.root.st)
 		}
@@ -1990,7 +2011,7 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 	f.setDepthTypesWithGCRoots(belowTypes, belowGCRoots)
 
 	site := f.a.CallRel32()
-	f.relocs = append(f.relocs, callReloc{at: site, target: localIdx, internal: true})
+	f.relocs = append(f.relocs, f.newCallReloc(site, localIdx, true))
 
 	// Capture integer results out of RAX/RDX before the reload below reuses them as
 	// scratch. A float result stays in XMM0 (never a pin target, so reload-safe).
@@ -2021,13 +2042,13 @@ func (f *fn) emitMixedRegisterCall(localIdx int, ft *wasm.CompType) {
 			f.pinned = f.pinned.remove(resReg)
 			value = f.pushReg(resReg, rt)
 		}
-		value.st.gcRoot = gcFrameRefType(f.m, ft.Results[0])
+		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[0]))
 	}
 	if rN == 2 {
 		for i, reg := range pairRes {
 			f.pinned = f.pinned.remove(reg)
 			value := f.pushReg(reg, mtOf(ft.Results[i]))
-			value.st.gcRoot = gcFrameRefType(f.m, ft.Results[i])
+			value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[i]))
 		}
 	}
 }
@@ -2116,8 +2137,8 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		types := make([]machineType, len(roots))
 		for i, root := range roots {
 			types[i] = root.st.typ
-			if root.kind == ekDeferred && root.typ != mtNone {
-				types[i] = root.typ
+			if root.isDeferred() && root.valueType() != mtNone {
+				types[i] = root.valueType()
 			}
 		}
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
@@ -2130,7 +2151,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.pinned = f.pinned.remove(home)
 		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -2147,10 +2168,8 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		f.release(code)
 		sameReturn, crossReturn := f.emitIndirectCallHomeAware(ft, home, targetContext)
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites,
-				shared.GCFrameCallsitePlan{ReturnOffset: sameReturn, Offsets: rootOffsets},
-				shared.GCFrameCallsitePlan{ReturnOffset: crossReturn, StackAdjust: 64, Offsets: rootOffsets},
-			)
+			f.gcFrameRoots.RecordCallsite(sameReturn, 0, rootOffsets)
+			f.gcFrameRoots.RecordCallsite(crossReturn, 64, rootOffsets)
 		}
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
@@ -2164,10 +2183,8 @@ func (f *fn) callRef(r *wasm.Reader) error {
 	f.release(code)
 	sameReturn, crossReturn := f.emitIndirectCallHomeAware(ft, home, targetContext)
 	if recordRoots {
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites,
-			shared.GCFrameCallsitePlan{ReturnOffset: sameReturn, Offsets: rootOffsets},
-			shared.GCFrameCallsitePlan{ReturnOffset: crossReturn, StackAdjust: 64, Offsets: rootOffsets},
-		)
+		f.gcFrameRoots.RecordCallsite(sameReturn, 0, rootOffsets)
+		f.gcFrameRoots.RecordCallsite(crossReturn, 64, rootOffsets)
 	}
 	return nil
 }
@@ -2674,7 +2691,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.stats.peep("monomorphic-call-indirect")
 		returnOffset := f.emitRegisterCallVia(ft, -1, tableHint.monomorphicTarget, regNone)
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		return nil
 	}
@@ -2695,7 +2712,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.stats.peep("immutable-local-call-indirect")
 		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -2724,8 +2741,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		types := make([]machineType, len(roots))
 		for i, root := range roots {
 			types[i] = root.st.typ
-			if root.kind == ekDeferred && root.typ != mtNone {
-				types[i] = root.typ
+			if root.isDeferred() && root.valueType() != mtNone {
+				types[i] = root.valueType()
 			}
 		}
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
@@ -2738,7 +2755,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.pinned = f.pinned.remove(home)
 		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites, shared.GCFrameCallsitePlan{ReturnOffset: returnOffset, Offsets: rootOffsets})
+			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		f.pinned = f.pinned.remove(code)
 		f.release(code)
@@ -2755,10 +2772,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.release(kind)
 		sameReturn, crossReturn := f.emitIndirectCallHomeAware(ft, home, targetContext)
 		if recordRoots {
-			f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites,
-				shared.GCFrameCallsitePlan{ReturnOffset: sameReturn, Offsets: rootOffsets},
-				shared.GCFrameCallsitePlan{ReturnOffset: crossReturn, StackAdjust: 64, Offsets: rootOffsets},
-			)
+			f.gcFrameRoots.RecordCallsite(sameReturn, 0, rootOffsets)
+			f.gcFrameRoots.RecordCallsite(crossReturn, 64, rootOffsets)
 		}
 		f.a.PatchRel32(done, f.a.Len())
 		return nil
@@ -2774,10 +2789,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 
 	sameReturn, crossReturn := f.emitIndirectCallHomeAware(ft, home, targetContext)
 	if recordRoots {
-		f.gcFrameRoots.Callsites = append(f.gcFrameRoots.Callsites,
-			shared.GCFrameCallsitePlan{ReturnOffset: sameReturn, Offsets: rootOffsets},
-			shared.GCFrameCallsitePlan{ReturnOffset: crossReturn, StackAdjust: 64, Offsets: rootOffsets},
-		)
+		f.gcFrameRoots.RecordCallsite(sameReturn, 0, rootOffsets)
+		f.gcFrameRoots.RecordCallsite(crossReturn, 64, rootOffsets)
 	}
 	return nil
 }
@@ -2795,19 +2808,19 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
-	slotOf := f.tmpSlots[:0]
+	slotOf := f.tmpStackSlots[:0]
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
+		if root.isDeferred() && root.valueType() != mtNone {
+			typ = root.valueType()
 		}
 		types = append(types, typ)
-		slotOf = append(slotOf, slotTop)
+		slotOf = append(slotOf, uint32(slotTop))
 		slotTop += typ.stackSlots()
 	}
 	f.tmpTypes = types
-	f.tmpSlots = slotOf
+	f.tmpStackSlots = slotOf
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -2849,7 +2862,7 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	f.storeModuleGlobals(RAX)        // same-instance callee's offset-0 prologue reloads from cells
 	argOff := f.spillOff(resultSlot) // p==0: unused, but a valid in-frame address
 	if p > 0 {
-		argOff = f.spillOff(slotOf[d-p])
+		argOff = f.spillOff(int(slotOf[d-p]))
 	}
 	f.spillLocalsForCall()
 	f.a.LeaRsp(RDI, argOff)                 // args = &first arg slot
@@ -2921,19 +2934,19 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	roots := f.rootsBottomToTop()
 	d := len(roots)
 	types := f.tmpTypes[:0]
-	slotOf := f.tmpSlots[:0]
+	slotOf := f.tmpStackSlots[:0]
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
+		if root.isDeferred() && root.valueType() != mtNone {
+			typ = root.valueType()
 		}
 		types = append(types, typ)
-		slotOf = append(slotOf, slotTop)
+		slotOf = append(slotOf, uint32(slotTop))
 		slotTop += typ.stackSlots()
 	}
 	f.tmpTypes = types
-	f.tmpSlots = slotOf
+	f.tmpStackSlots = slotOf
 	belowTypes := f.tmpTypes2[:0]
 	if cap(belowTypes) < d-p {
 		belowTypes = make([]machineType, 0, d-p)
@@ -2957,7 +2970,7 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	}
 	argOff := f.spillOff(resultSlot) // p==0: unused, but a valid in-frame address
 	if p > 0 {
-		argOff = f.spillOff(slotOf[d-p])
+		argOff = f.spillOff(int(slotOf[d-p]))
 	}
 	// Store dirty pinned locals BEFORE the call-setup writes below: a pinned
 	// local may live in RDI/RSI (clobbered by the setup itself), not just in a

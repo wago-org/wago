@@ -16,16 +16,14 @@ const regNone Reg = 0xFF
 // node, its storage inherits the node's result type so downstream consumers
 // (select width, result marshaling) see the correct machine type.
 func (f *fn) occupy(e *elem, r Reg) {
-	fact := f.gcRefFact(e)
 	local, hasLocal := gcLocalProvenance(e)
 	f.regUser[r] = e
-	if e.kind == ekDeferred && e.typ != mtNone {
-		e.st.typ = e.typ
+	if e.isDeferred() && e.valueType() != mtNone {
+		e.st.typ = e.valueType()
 	}
-	e.kind = ekValue
+	e.setElemKind(ekValue)
 	e.st.kind, e.st.reg, e.st.cval = stReg, r, 0
 	e.st.idx, e.st.slot = 0, 0
-	putGCRefFact(&e.st, fact)
 	if hasLocal {
 		markGCLocalProvenance(e, local)
 	}
@@ -53,9 +51,8 @@ func (f *fn) release(r Reg) {
 func (f *fn) allocReg(avoid regMask) Reg {
 	r := f.allocRegOrNone(avoid)
 	if r == regNone {
-		// Recoverable under extreme register pressure: compileFunc catches this and
-		// recompiles the function without local pinning, freeing the whole file.
-		panic(regExhausted{})
+		// Register exhaustion is reported through compileFunc's ordinary error path.
+		panic(regExhausted{class: "GP"})
 	}
 	return r
 }
@@ -79,7 +76,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	// Spill a victim: the deepest (bottom-most) stack value in a register — it is
 	// used furthest in the future, WARP's spill heuristic approximated by depth.
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stReg && !block.has(e.st.reg) {
+		if e.isValue() && e.st.kind == stReg && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spill(e)
 			return r
@@ -88,7 +85,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	// Under high pressure, a pending deferred load holds an address register: emit
 	// its load and spill the result to free the register.
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stMemRef && !block.has(e.st.reg) {
+		if e.isValue() && e.st.kind == stMemRef && !block.has(e.st.reg) {
 			r := e.st.reg
 			if e.st.typ.isFloat() {
 				x := f.allocFReg(0)
@@ -104,7 +101,56 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 			return r
 		}
 	}
+	// A pinned local is a cache, not a semantic reservation. At the exact
+	// exhaustion point, home one non-borrowed GP local and lend its register to the
+	// current lowering step. recoverLocal evicts any borrower before restoring the
+	// local. This bounded relinquishment avoids recompiling the whole function.
+	if r := f.relinquishPinnedLocal(avoid); r != regNone {
+		return r
+	}
 	return regNone
+}
+
+func (f *fn) relinquishPinnedLocal(avoid regMask) Reg {
+	block := avoid.union(f.pinned).union(f.reserved)
+	for i := len(f.pinnedLocals) - 1; i >= 0; i-- {
+		x := f.pinnedLocals[i]
+		d := f.locals[x]
+		if d.isFloat || d.state == lsConstZero || block.has(d.reg) || f.regUser[d.reg] != nil {
+			continue
+		}
+		borrowed := false
+		for e := f.s.head.next; e != f.s.head; e = e.next {
+			if subtreeRefsLocal(e, x) || subtreeBorrowsLocalAddress(e, x) {
+				borrowed = true
+				break
+			}
+		}
+		if borrowed {
+			continue
+		}
+		if d.state == lsReg {
+			f.storeFrameInt(f.localAddr(x), d.reg, d.typ)
+		}
+		f.locals[x].state = lsMem
+		f.pinRelinquished = true
+		if f.stats != nil {
+			f.stats.PinRelinquishments++
+		}
+		f.stats.peep("pin-relinquish")
+		return d.reg
+	}
+	return regNone
+}
+
+func subtreeBorrowsLocalAddress(e *elem, x int) bool {
+	if e == nil {
+		return false
+	}
+	if e.isValue() {
+		return e.st.kind == stMemRef && e.st.memBorrow() == x
+	}
+	return e.isDeferred() && (subtreeBorrowsLocalAddress(e.arg0, x) || subtreeBorrowsLocalAddress(e.arg1, x))
 }
 
 // spillIfUsed evicts register r's occupant to a frame slot if one is resident,
@@ -149,29 +195,12 @@ func (f *fn) spill(e *elem) {
 		// e is now a plain register value; fall through to spill it.
 	}
 
-	// An unpinned scalar local.tee has already written this exact value to the
-	// local's canonical frame slot. Reuse that home instead of writing an
-	// identical copy to a temporary spill slot. idx is otherwise unused for an
-	// owned stReg and stores local+1; local.set clears the annotation before it
-	// changes the canonical slot.
-	if f.opt(optTeeSpillElide) && e.st.kind == stReg && !e.st.gcRoot && e.st.idx > 0 &&
-		(e.st.typ == mtI32 || e.st.typ == mtI64) {
-		r := e.st.reg
-		local := e.st.idx - 1
-		f.regUser[r] = nil
-		f.replaceStorage(e, storage{kind: stLocalRef, typ: e.st.typ, idx: local})
-		if f.stats != nil {
-			f.stats.peep("tee-spill-elide")
-		}
-		return
-	}
-
 	f.stats.addSpill()
 	r := e.st.reg
 	slot := f.allocSpillSlot()
 	f.a.Store64(RSP, f.spillOff(slot), r)
 	f.regUser[r] = nil
-	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: slot})
+	f.replaceStorage(e, storage{kind: stSlot, typ: e.st.typ, slot: uint32(slot)})
 }
 
 // allocSpillSlot returns the next 8-byte operand spill slot index, growing the frame.
@@ -191,8 +220,8 @@ func (f *fn) allocSpillSlots(n int) int {
 func (f *fn) curSpillSlot() int {
 	used := f.spillFloor
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stSlot {
-			end := e.st.slot + e.st.typ.stackSlots()
+		if e.isValue() && e.st.kind == stSlot {
+			end := e.st.slotIndex() + e.st.typ.stackSlots()
 			if end > used {
 				used = end
 			}
@@ -223,14 +252,14 @@ func (f *fn) materialize(e *elem) Reg {
 		f.a.Load64(r, RBX, -int32(offFuncRefDescPtr))
 		f.a.TestSelf(r, true)
 		f.trapIf(condE, trapIndirectOOB)
-		f.a.LeaDisp(r, r, int32((uint32(e.st.idx)+1)*runtime.FuncRefDescBytes))
+		f.a.LeaDisp(r, r, int32((e.st.idx+1)*runtime.FuncRefDescBytes))
 		f.occupy(e, r)
 		return r
 	case stSlot:
 		f.stats.addReload()
 		r := f.allocReg(0)
 		before := f.a.Len()
-		f.a.Load64(r, RSP, f.spillOff(e.st.slot))
+		f.a.Load64(r, RSP, f.spillOff(e.st.slotIndex()))
 		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
 		f.occupy(e, r)
 		return r
@@ -239,7 +268,7 @@ func (f *fn) materialize(e *elem) Reg {
 			panic("amd64: v128 local requires XMM materialization")
 		}
 		r := f.allocReg(0)
-		f.loadFrameInt(r, f.localAddr(e.st.idx), e.st.typ)
+		f.loadFrameInt(r, f.localAddr(e.st.index()), e.st.typ)
 		f.occupy(e, r)
 		return r
 	case stLocalReg:
@@ -276,7 +305,7 @@ func (f *fn) materialize(e *elem) Reg {
 // emitted before anything that could write the local (no deferral, no
 // local.set in between).
 func (f *fn) materializeRead(e *elem) (Reg, bool) {
-	if e.kind == ekValue && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) {
+	if e.isValue() && (e.st.kind == stLocalReg || e.st.kind == stGlobReg) {
 		return e.st.reg, false
 	}
 	return f.materialize(e), true
@@ -324,7 +353,7 @@ func (f *fn) materializeByType(e *elem) Reg {
 // pre-write value (WARP's load-before-store ordering).
 func (f *fn) materializePendingLoads() {
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stMemRef {
+		if e.isValue() && e.st.kind == stMemRef {
 			f.stats.addForcedLoad()
 			f.materializeByType(e)
 		}

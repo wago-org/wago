@@ -35,12 +35,12 @@ func (f *fn) materializeV128(e *elem) Reg {
 		}
 	case stSlot:
 		x := f.allocFReg(0)
-		f.a.VMovdquLoadDisp(x, RSP, f.spillOff(e.st.slot))
+		f.a.VMovdquLoadDisp(x, RSP, f.spillOff(e.st.slotIndex()))
 		f.occupyF(e, x)
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.a.VMovdquLoadDisp(x, RSP, f.localAddr(e.st.idx))
+		f.a.VMovdquLoadDisp(x, RSP, f.localAddr(e.st.index()))
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:
@@ -555,12 +555,12 @@ func (f *fn) v128ShuffleMask(dst, src Reg, lo, hi uint64) {
 }
 
 func v128LocalAlias(e *elem) (int, bool) {
-	if e == nil || e.kind != ekValue || e.st.typ != mtV128 {
+	if e == nil || !e.isValue() || e.st.typ != mtV128 {
 		return 0, false
 	}
 	switch e.st.kind {
 	case stLocalRef, stLocalReg:
-		return e.st.idx, true
+		return e.st.index(), true
 	case stReg:
 		if e.st.cval > 0 {
 			return int(e.st.cval) - 1, true
@@ -576,14 +576,14 @@ func v128LocalAlias(e *elem) (int, bool) {
 // register value directly and avoid an L1 load.
 func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
 	for e := f.s.back(); e != nil && e != f.s.head; e = e.prev {
-		if e.kind != ekValue || e.st.kind != stReg || e.st.typ != mtV128 || e.st.cval != int64(x+1) {
+		if !e.isValue() || e.st.kind != stReg || e.st.typ != mtV128 || e.st.cval != int64(x+1) {
 			continue
 		}
 		if immediateSIMD {
 			// The following SIMD opcode consumes this top-of-stack read before
 			// the older tee value can be released. Model it as a borrowed local
 			// register so three-operand instructions read it in place.
-			f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: e.st.reg, idx: x})
+			f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: e.st.reg, idx: uint32(x)})
 			f.stats.peep("simd-local-forward")
 			return true
 		}
@@ -601,7 +601,7 @@ func (f *fn) forwardV128Local(x int, immediateSIMD bool) bool {
 // remain valid expression operands; they simply no longer represent x.
 func (f *fn) clearV128LocalAliases(x int) {
 	for e := f.s.back(); e != nil && e != f.s.head; e = e.prev {
-		if e.kind == ekValue && e.st.kind == stReg && e.st.typ == mtV128 && e.st.cval == int64(x+1) {
+		if e.isValue() && e.st.kind == stReg && e.st.typ == mtV128 && e.st.cval == int64(x+1) {
 			e.st.cval = 0
 		}
 	}
@@ -630,41 +630,6 @@ func (f *fn) i8x16Swizzle() {
 	f.pushVReg(src)
 }
 
-func (f *fn) shuffleLocalSink(r *wasm.Reader) (dst Reg, local int, tee, ok bool) {
-	if !f.opt(optV128Sink) {
-		return
-	}
-	save := r.Offset()
-	op, more := r.Peek()
-	if !more || (op != 0x21 && op != 0x22) {
-		return
-	}
-	if _, err := r.Byte(); err != nil {
-		_ = r.JumpTo(save)
-		return regNone, 0, false, false
-	}
-	idx, err := r.U32()
-	if err != nil {
-		_ = r.JumpTo(save)
-		return regNone, 0, false, false
-	}
-	local = int(idx) + f.localBase
-	dst, _, ok = f.pinReg(local)
-	if !ok || local < 0 || local >= len(f.localType) || f.localType[local] != mtV128 {
-		_ = r.JumpTo(save)
-		return regNone, 0, false, false
-	}
-	return dst, local, op == 0x22, true
-}
-
-func (f *fn) finishShuffleSink(dst Reg, local int, tee bool) {
-	f.markLocalDirty(local)
-	f.stats.peep("v128-local-sink")
-	if tee {
-		f.pushValue(storage{kind: stLocalReg, typ: mtV128, reg: dst, idx: local})
-	}
-}
-
 func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 	bElem := f.popValue()
 	aElem := f.popValue()
@@ -684,13 +649,7 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 		f.fpinned = f.fpinned.add(xa)
 		xb, bOwned := f.operandRegV128(bElem)
 		f.fpinned = f.fpinned.add(xb)
-		dst, local, tee, sink := f.shuffleLocalSink(r)
-		if !sink {
-			dst = f.allocFReg(maskOf(xa, xb))
-		} else {
-			f.invalidateBoundsCertFor(1, uint32(local))
-			f.realizeLocalRefs(local, nil)
-		}
+		dst := f.allocFReg(maskOf(xa, xb))
 		native(dst, xa, xb)
 		f.fpinned = f.fpinned.remove(xa).remove(xb)
 		if aOwned && xa != dst {
@@ -700,10 +659,6 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 			f.releaseF(xb)
 		}
 		f.stats.peep("simd-shuffle-native")
-		if sink {
-			f.finishShuffleSink(dst, local, tee)
-			return
-		}
 		f.pushVReg(dst)
 		return
 	}
@@ -717,13 +672,7 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 		}
 		src, owned := f.operandRegV128(aElem)
 		f.fpinned = f.fpinned.add(src)
-		dst, local, tee, sink := f.shuffleLocalSink(r)
-		if !sink {
-			dst = f.allocFReg(maskOf(src))
-		} else {
-			f.invalidateBoundsCertFor(1, uint32(local))
-			f.realizeLocalRefs(local, nil)
-		}
+		dst := f.allocFReg(maskOf(src))
 		f.fpinned = f.fpinned.add(dst)
 		lo, hi := v128MaskBits(mask)
 		f.v128ShuffleMask(dst, src, lo, hi)
@@ -732,10 +681,6 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 			f.releaseF(src)
 		}
 		f.stats.peep("simd-shuffle-same")
-		if sink {
-			f.finishShuffleSink(dst, local, tee)
-			return
-		}
 		f.pushVReg(dst)
 		return
 	}
@@ -771,21 +716,15 @@ func (f *fn) i8x16Shuffle(r *wasm.Reader, lanes [16]byte) {
 // VEX op. A pinned v128 local is used in place (no copy, not owned); anything else
 // is materialized into an owned scratch.
 func (f *fn) operandRegV128(e *elem) (Reg, bool) {
-	if e.kind == ekValue && e.st.kind == stLocalReg {
+	if e.isValue() && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
 	return f.materializeV128(e), true
 }
 
-// v128Bin lowers a two-operand v128 op. When immediately consumed by
-// `local.set/tee $x` into a pinned v128 local, tryV128BinLocalSet emits it in
-// place into $x's XMM register (one instruction, no accumulator copy, no
-// result-to-pin move). Otherwise it copies the left operand (the op writes it) and
-// reads the right in place when it is a pinned local.
+// v128Bin lowers a two-operand v128 op. It copies the left operand when needed
+// and reads the right in place when it is a pinned local.
 func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) {
-	if f.tryV128BinLocalSet(r, op) {
-		return
-	}
 	b := f.popValue()
 	a := f.popValue()
 	xa, aOwned := f.operandRegV128(a)
@@ -812,14 +751,14 @@ func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) {
 }
 
 func (f *fn) v128StackMem(e *elem) (int32, bool) {
-	if e == nil || e.kind != ekValue || e.st.typ != mtV128 {
+	if e == nil || !e.isValue() || e.st.typ != mtV128 {
 		return 0, false
 	}
 	switch e.st.kind {
 	case stLocalRef:
-		return f.localAddr(e.st.idx), true
+		return f.localAddr(e.st.index()), true
 	case stSlot:
-		return f.spillOff(e.st.slot), true
+		return f.spillOff(e.st.slotIndex()), true
 	default:
 		return 0, false
 	}
@@ -840,32 +779,20 @@ func (f *fn) v128BinMem(r *wasm.Reader, op func(dst, s1, s2 Reg), memOp func(dst
 			return
 		}
 	}
-	dst, local, tee, sink := f.shuffleLocalSink(r)
-	if sink {
-		f.invalidateBoundsCertFor(1, uint32(local))
-		f.realizeLocalRefs(local, nil)
-	}
+	dst := regNone
 	if regDisp, secondMem := f.v128StackMem(regElem); secondMem {
-		if !sink {
-			dst = f.allocFReg(0)
-		}
+		dst = f.allocFReg(0)
 		f.a.VMovdquLoadDisp(dst, RSP, regDisp)
 		memOp(dst, dst, RSP, disp)
 		f.erase(right)
 		f.erase(left)
 		f.stats.peep("simd-mem-fold")
-		if sink {
-			f.finishShuffleSink(dst, local, tee)
-			return
-		}
 		f.pushVReg(dst)
 		return
 	}
 	src, owned := f.operandRegV128(regElem)
 	f.fpinned = f.fpinned.add(src)
-	if !sink {
-		dst = f.allocFReg(maskOf(src))
-	}
+	dst = f.allocFReg(maskOf(src))
 	memOp(dst, src, RSP, disp)
 	f.fpinned = f.fpinned.remove(src)
 	f.erase(right)
@@ -874,79 +801,7 @@ func (f *fn) v128BinMem(r *wasm.Reader, op func(dst, s1, s2 Reg), memOp func(dst
 		f.releaseF(src)
 	}
 	f.stats.peep("simd-mem-fold")
-	if sink {
-		f.finishShuffleSink(dst, local, tee)
-		return
-	}
 	f.pushVReg(dst)
-}
-
-// v128BinInto emits op(dst, s1, s2) reading BOTH operands in place — dst is a
-// pinned v128 local's register the result sinks into. A 3-operand VEX op reads
-// both sources before writing dst, so any aliasing among dst/s1/s2 (the
-// accumulator `x = x op y`, or `x = x op x`) is correct.
-func (f *fn) v128BinInto(dst Reg, op func(dst, s1, s2 Reg)) {
-	b := f.popValue()
-	a := f.popValue()
-	s1, o1 := f.operandRegV128(a)
-	f.fpinned = f.fpinned.add(s1)
-	s2, o2 := f.operandRegV128(b)
-	f.fpinned = f.fpinned.remove(s1)
-	op(dst, s1, s2)
-	if o1 && dst != s1 {
-		f.releaseF(s1)
-	}
-	if o2 && dst != s2 {
-		f.releaseF(s2)
-	}
-}
-
-// tryV128BinLocalSet peeps `local.set/tee $x (v128bin A B)` where $x is a
-// register-pinned v128 local and sinks the op straight into $x's register. Returns
-// true when it fired (and consumed the local.set/tee); restores the reader and
-// returns false on any mismatch. Reader errors during lookahead fall back to the
-// eager path (the outer emitFD loop re-reads and surfaces them).
-func (f *fn) tryV128BinLocalSet(r *wasm.Reader, op func(dst, s1, s2 Reg)) bool {
-	if !f.opt(optV128Sink) {
-		return false
-	}
-	save := r.Offset()
-	nb, ok := r.Peek()
-	if !ok || (nb != 0x21 && nb != 0x22) { // local.set / local.tee
-		return false
-	}
-	if _, err := r.Byte(); err != nil {
-		_ = r.JumpTo(save)
-		return false
-	}
-	x32, err := r.U32()
-	if err != nil {
-		_ = r.JumpTo(save)
-		return false
-	}
-	x := int(x32) + f.localBase
-	pr, _, pinned := f.pinReg(x)
-	if !pinned || x < 0 || x >= len(f.localType) || f.localType[x] != mtV128 {
-		_ = r.JumpTo(save)
-		return false
-	}
-	f.invalidateBoundsCertFor(1, uint32(x))
-	right := f.s.back()
-	if right == nil {
-		_ = r.JumpTo(save)
-		return false
-	}
-	// Realize refs to $x below the two operand blocks; the operands themselves are
-	// consumed in place by v128BinInto.
-	left := baseOfValentBlock(right).prev
-	f.realizeLocalRefs(x, left)
-	f.v128BinInto(pr, op)
-	f.markLocalDirty(x)
-	f.stats.peep("v128-local-sink")
-	if nb == 0x22 { // local.tee keeps the value on the stack
-		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
-	}
-	return true
 }
 
 // v128FloatMinMax lowers f32x4/f64x2 min/max with the branchless vectorized
@@ -1258,7 +1113,7 @@ func (f *fn) v128Shift(op func(dst, s1, s2 Reg), opImm func(dst, src Reg, imm by
 }
 
 func (f *fn) v128ShiftCount(countElem *elem, op func(dst, s1, s2 Reg), opImm func(dst, src Reg, imm byte), countMask int32) {
-	if countElem.kind == ekValue && countElem.st.kind == stConst {
+	if countElem.isValue() && countElem.st.kind == stConst {
 		x := f.materializeV128(f.popValue())
 		opImm(x, x, byte(countElem.st.cval&int64(countMask)))
 		f.stats.peep("simd-shift-imm")
@@ -1289,7 +1144,7 @@ func (f *fn) v128ShiftCount(countElem *elem, op func(dst, s1, s2 Reg), opImm fun
 func (f *fn) i32x4ShrU(r *wasm.Reader) {
 	countElem := f.popValue()
 	value := f.s.back()
-	if valueLocal, valueAlias := v128LocalAlias(value); countElem.kind == ekValue &&
+	if valueLocal, valueAlias := v128LocalAlias(value); countElem.isValue() &&
 		countElem.st.kind == stConst && valueAlias {
 		save := r.Offset()
 		localOp, err1 := r.Byte()
@@ -1310,13 +1165,7 @@ func (f *fn) i32x4ShrU(r *wasm.Reader) {
 			srcElem := f.popValue()
 			src, owned := f.operandRegV128(srcElem)
 			f.fpinned = f.fpinned.add(src)
-			out, local, tee, sink := f.shuffleLocalSink(r)
-			if !sink {
-				out = f.allocFReg(maskOf(src))
-			} else {
-				f.invalidateBoundsCertFor(1, uint32(local))
-				f.realizeLocalRefs(local, nil)
-			}
+			out := f.allocFReg(maskOf(src))
 			f.fpinned = f.fpinned.add(out)
 			tmp := f.allocFReg(maskOf(src, out))
 			f.a.VPslldImm(tmp, src, byte(leftCount&31))
@@ -1328,10 +1177,6 @@ func (f *fn) i32x4ShrU(r *wasm.Reader) {
 				f.releaseF(src)
 			}
 			f.stats.peep("simd-rotr-imm")
-			if sink {
-				f.finishShuffleSink(out, local, tee)
-				return
-			}
 			f.pushVReg(out)
 			return
 		}
@@ -1357,7 +1202,7 @@ func bcastByte(b byte) uint64 { return uint64(b) * 0x0101010101010101 }
 func (f *fn) i8x16Shift(op func(dst, s1, s2 Reg), kind int) {
 	signed := kind == i8ShiftShrS
 	countElem := f.popValue()
-	if countElem.kind == ekValue && countElem.st.kind == stConst {
+	if countElem.isValue() && countElem.st.kind == stConst {
 		f.i8x16ShiftConst(kind, byte(countElem.st.cval&7))
 		return
 	}

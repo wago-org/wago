@@ -174,39 +174,15 @@ mutable-fact invalidation, and all unknown opcodes clear it before lowering. Con
 `WAGO_AMD64_NO_GC_SHARED_STUBS=1` and `WAGO_AMD64_NO_GC_RESOLVE_REUSE=1` restore
 inline/no-reuse differential paths.
 
-### Structured semantic facts and late barriers
+### GC roots, barriers, and resolved addresses
 
-AMD64's structured fact engine stores no object address. A bounded
-`shared.GCRefFact` records nullability, abstract heap class or exact flattened type,
-a bounded identity, freshness/publication, generation, pointer-free layout, and an
-optional constant array length. The same compact fact moves through Valent stack
-storage and locals. Control frames snapshot and intersect local and stack facts at
-structured joins; loops reuse one shared-classifier prewalk of the existing body bytes
-so `try_table`, vector immediates, memory64 offsets, and malformed scans cannot create
-partial invariance claims. Loop parameters are rebuilt from declared ValTypes rather
-than first-entry identities. At every loop-header backedge join, modified locals are
-cleared, surviving fresh locals become published, and mutable field-forwarding windows
-are discarded; immutable field results survive only when both source and result locals
-are invariant. `try_table` and synthetic inline frames capture hidden operand-root
-shape before flushing, and every catch clause intersects its conservative local facts
-into the target just like an ordinary branch. Exact type and nullability remain
-independent: a nullable exact value can prove a nullable cast, but a non-null cast is
-elided only when the fact also proves non-null. Exact defined targets compare canonical
-structural identity rather than raw module-local indexes: equivalent duplicate types
-match, while proper subtypes still fail an exact cast. Private collectors create a
-canonical local map only when duplicate GC heap types require it; ordinary unique-type
-modules retain the identity-map footprint. `any` and `eq` heap classes are upper
-bounds rather than exact runtime families, so narrowing tests/casts remain dynamic
-until an i31/struct/array fact is exact. Distinct identities lose alias-sensitive
-state, and any multi-edge freshness merge is treated as published. Calls and
-allocating helpers may clear generation facts but do not invalidate compact identity.
-
-This semantic state is intentionally separate from the one-entry resolved-object
-certificate. The latter owns a native register containing a raw payload address and
-is invalidated at safepoints, helper/host/Wasm calls, allocations, control/EH/tail
-edges, loop edges, local replacement, and unknown effects. Collection may relocate an
-object without changing its compact handle, so retaining the semantic fact while
-dropping the address is required rather than optional.
+The former AMD64 structured-reference fact experiment was retired after broad
+qualification found neutral execution and materially worse compile resources. GC
+references now carry only the root bit required by exact frame planning. Reference
+stores use the conservative barrier unless an independent native lowering proves a
+no-barrier case. A separate one-entry resolved-address certificate may reuse a native
+payload address only within a mechanically safepoint-free straight-line region; calls,
+allocations, control edges, local replacement, and unknown effects invalidate it.
 
 Dynamic subtype checks use the collector's validated descriptor forest. Each
 canonical type owns one packed DFS `[pre,post]` interval; a four-parent shallow walk
@@ -215,29 +191,16 @@ interval containment. Canonical representative remapping retains parent traversa
 The interval replaces the former `typeIndex` table byte-for-byte, keeping permanent
 per-type memory and the 1,120-byte collector layout unchanged.
 
-A repeated dynamic `array.len` or immutable `struct.get` can reuse the value only
-when the first result is captured by the immediately following local assignment and
-both source and result locals remain unchanged. This bounded result-local scheme adds
-no hidden frame slot or reserved register. Immutable field caches survive unrelated
-mutable stores and calls; mutable caches retain stricter alias/publication/unknown-
-effect invalidation. A constructor-known length plus constant index also selects a
-constant-displacement array get/set sequence. It validates the immutable Aux length
-against the semantic fact and asks the handle resolver for the complete constant
-extent, removing the scale and duplicate dynamic extent sequence without trusting
-malformed metadata. `WAGO_AMD64_NO_GC_LOAD_FORWARDING=1` disables only repeated-load
-reuse, `WAGO_AMD64_NO_GC_KNOWN_BOUNDS=1` disables the constant-index sequence, and
-`WAGO_AMD64_NO_GC_REF_FACTS=1` disables the semantic optimizer as a whole and avoids
-allocating its local/control fact tables. `WAGO_AMD64_NO_EXACT_GC_REF_FACTS=1` is
-accepted as a compatibility alias for review and older A/B commands. The permanent
-subprocess oracle also compares exact results and trap codes with facts, load
-forwarding, and loop prechecks independently enabled and disabled.
-
-Loop bounds versioning remains memory32-only: prechecks zero-extend invariant i32
-bases before native-width arithmetic, and memory64 loops retain their carry-safe
-per-access checks until `memAddr64` has an explicit elision certificate. Functions
-with candidate native GC frame-root plans are not versioned because duplicating a
-loop body would otherwise duplicate allocation/call sites without remapping the
-validated linear liveness streams.
+A former reference-fact experiment forwarded repeated dynamic `array.len` and
+immutable `struct.get` results and used constructor-known lengths to specialize
+constant-index array accesses. It was retired after broad measurement found neutral
+execution and materially worse compile resources. The general one-entry resolved-
+address cache remains and is invalidated at calls, allocations, merges, loop edges,
+and unknown effects. The loop-versioning experiment was
+removed after its broad execution benefit failed to justify duplicated lowering,
+native code, and compile-resource cost; all memory32 and memory64 loops now retain
+their ordinary per-access checks unless straight-line bounds facts or guard pages
+provide the existing explicit certificate.
 
 Dead allocation remains bounded and postfix. Direct struct/fixed-array drops can
 remove complete nested `struct.new`/`array.new_fixed` trees only while every reserved
@@ -270,11 +233,12 @@ nursery, existing-card, card-mark, and slow-helper cases from current collector
 metadata. This keeps card growth, foreign/stale refs, malformed metadata, unknown
 subtypes, and every required Tiny shade on the shared cold path.
 
-Reference `array.fill` with a statically proven null/i31 child uses the guarded
-`Collector.ArrayFillNoBarrier` helper. It performs the same complete range, type, and
-value preflight as ordinary fill and rejects an object child before the first write.
-All other reference fill/copy/init operations retain exact post-write destination
-range barriers, overlap-safe copy, and trap atomicity. Throughput `array.init_elem`
+Reference `array.fill` uses the ordinary checked helper and retains its exact
+post-write destination range barrier. The guarded `Collector.ArrayFillNoBarrier`
+compatibility helper remains available to runtime callers that can prove a null or
+i31 child; it performs the same complete range, type, and value preflight and rejects
+an object child before the first write. Reference fill/copy/init operations retain
+overlap-safe copy and trap atomicity. Throughput `array.init_elem`
 preflights the complete retained segment, then performs type-compatible prevalidated
 stores with a deferred barrier and publishes one exact destination range after all
 writes. No collection can occur between preflight and publication; explicit
@@ -305,12 +269,9 @@ A nursery child behind an unremembered old/large parent, a cardless old/large ar
 every Tiny parent, and malformed metadata retain the unchanged helper with the full
 remembered-set/card or incremental barrier. Conditional
 lowering preserves hot pinned registers and emits local reloads only on the fallback
-edge. Non-final declarations normally retain helper lowering. On AMD64, the
-opt-in `gc-ref-facts` policy can specialize a scalar `struct.get` declared through
-an open supertype when the receiver is proved to have one exact final subtype and
-both layouts have the same field offset and scalar representation. The generated
-check then uses the exact final runtime type and avoids the synchronous helper.
-Unknown dynamic subtypes, `v128`, bulk operations, and barrier states that require
+edge. Non-final declarations retain helper lowering. The former exact-reference-
+fact specialization for open `struct.get` was retired with its default-off alternate
+compiler path. Unknown dynamic subtypes, `v128`, bulk operations, and barrier states that require
 metadata growth retain helper lowering. Current scalar
 end-to-end measurements are 227.9–229.4 ns/op for struct set/get, 218.2–219.9 ns/op
 for struct get, and 265.2–265.6 ns/op for array set/get; final cast/reference-struct

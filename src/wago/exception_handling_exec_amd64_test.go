@@ -456,3 +456,46 @@ func BenchmarkStagedExceptionHandlingCatch(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkStagedExceptionHandlingCompile(b *testing.B) {
+	data := stagedExceptionHandlingGeneralModule()
+	b.ReportAllocs()
+	b.SetBytes(int64(len(data)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		compiled := compileStagedExceptionHandling(b, data)
+		if err := compiled.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkGCFrameRootPlanSparseExceptionRoots(b *testing.B) {
+	indexedFuncParam := []byte{0x60, 0x01, 0x64, 0x00, 0x00} // (func (param (ref 0)))
+	body := []byte{0x02, 0x40, 0x1f, 0x40, 0x01, byte(wasm.CatchRef), 0x00, 0x00, 0x01, 0x0b, 0x0b, 0x0b}
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), indexedFuncParam)),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0x00}, []byte{0x00})),
+		wasmtest.Section(13, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code([]byte{0x0b}))),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		b.Fatal(err)
+	}
+	const functions = 1024
+	funcType, code := m.FuncTypes[len(m.FuncTypes)-1], m.Code[len(m.Code)-1]
+	for len(m.Code) < functions {
+		m.FuncTypes = append(m.FuncTypes, funcType)
+		m.Code = append(m.Code, code)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		var diagnostic string
+		gcFrameRootPlanSink = newGCFrameRootPlan(m, true, &diagnostic)
+		if gcFrameRootPlanSink == nil || diagnostic != "" {
+			b.Fatalf("exact root plan = %+v, diagnostic = %q", gcFrameRootPlanSink, diagnostic)
+		}
+	}
+}

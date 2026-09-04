@@ -11,6 +11,94 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+func TestModuleGlobalMembershipUsesBorrowedBoundedPins(t *testing.T) {
+	const nGlobals = 4096
+	f := fn{
+		m:         &wasm.Module{Globals: make([]wasm.Global, nGlobals)},
+		globalReg: make([]Reg, nGlobals),
+	}
+	f.initGlobalRegs(nGlobals)
+	pins := []moduleGlobalPin{{global: 123, reg: moduleGlobalRegs[0]}}
+	if allocs := testing.AllocsPerRun(100, func() {
+		f.installModuleGlobals(pins)
+	}); allocs != 0 {
+		t.Fatalf("module-global membership allocations = %v, want 0", allocs)
+	}
+	if !f.isModuleGlobal(123) || f.isModuleGlobal(124) {
+		t.Fatalf("module-global membership mismatch")
+	}
+	f.globalReg[123] |= globalRegDirty
+	if got := globalRegValue(f.globalReg[123]); got != moduleGlobalRegs[0] || !globalRegIsDirty(f.globalReg[123]) {
+		t.Fatalf("packed global register = %d/%v", got, globalRegIsDirty(f.globalReg[123]))
+	}
+	backing := &f.globalReg[0]
+	f.globalReg = f.globalReg[:0]
+	if allocs := testing.AllocsPerRun(100, func() { f.initGlobalRegs(nGlobals) }); allocs != 0 {
+		t.Fatalf("global register scratch reuse allocations = %v, want 0", allocs)
+	}
+	if &f.globalReg[0] != backing || f.globalReg[123] != regNone {
+		t.Fatal("global register scratch was not reused and cleared")
+	}
+}
+
+func TestGPPinLimitReservesTransientLoweringRegisters(t *testing.T) {
+	if got, want := gpPinLimit(0, 8), len(gpAlloc)-8; got != want {
+		t.Fatalf("pin limit without module reservations = %d, want %d", got, want)
+	}
+	reserved := maskOf(R12, R13, R14, R15)
+	if got, want := gpPinLimit(reserved, 8), len(gpAlloc)-12; got != want {
+		t.Fatalf("pin limit with four module registers = %d, want %d", got, want)
+	}
+}
+
+func TestCompileRegisterPressureCorpusUsesOneAttemptPerFunction(t *testing.T) {
+	root := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
+	for _, name := range []string{"regexmatch.wasm", "ruby.wasm", "sqlite3.wasm"} {
+		t.Run(name, func(t *testing.T) {
+			m := readParallelTestModule(t, filepath.Join(root, name))
+			var stats ModuleStats
+			cm, err := CompileModuleWith(m, CompileOptions{Workers: 1, Stats: &stats})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cm.CodeImage != nil {
+				_ = cm.CodeImage.Close()
+			}
+			if got, want := stats.Compile.FunctionAttempts, uint64(len(m.Code)); got != want {
+				t.Fatalf("function attempts = %d, want %d", got, want)
+			}
+			relinquishments := 0
+			for _, fs := range stats.Funcs {
+				relinquishments += fs.PinRelinquishments
+			}
+			if relinquishments == 0 {
+				t.Fatal("expected at least one bounded pin relinquishment")
+			}
+		})
+	}
+}
+
+func TestWideMixedLocalsUseOneCompileAttempt(t *testing.T) {
+	path := filepath.Join("..", "..", "..", "..", "..", "..", "tests", "regressions", "fuzzcases", "1797d.wasm")
+	m := readParallelTestModule(t, path)
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cm.CodeImage != nil {
+		defer cm.CodeImage.Close()
+	}
+	if got, want := stats.Compile.FunctionAttempts, uint64(len(m.Code)); got != want {
+		t.Fatalf("function attempts = %d, want %d", got, want)
+	}
+	for i, function := range stats.Funcs {
+		if function.FunctionAttempts != 1 {
+			t.Fatalf("function %d attempts = %d, want 1", i, function.FunctionAttempts)
+		}
+	}
+}
+
 func TestCompileModuleHintLocalCountAllocationAndCodeIdentity(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
 	tests := []struct {
@@ -127,8 +215,8 @@ func TestStackArenaOverflowKeepsExistingPointersStable(t *testing.T) {
 	for i := 0; i < defaultStackArenaCap+8; i++ {
 		s.pushValue(storage{kind: stConst, typ: mtI32, cval: int64(i + 2)})
 	}
-	if first.kind != ekValue || first.st.cval != 1 {
-		t.Fatalf("first arena elem changed after overflow: kind=%v cval=%d", first.kind, first.st.cval)
+	if !first.isValue() || first.st.cval != 1 {
+		t.Fatalf("first arena elem changed after overflow: kind=%v cval=%d", first.elemKind(), first.st.cval)
 	}
 	if s.head.next != first {
 		t.Fatal("first elem is no longer linked after arena overflow")

@@ -17,7 +17,7 @@ func invertCond(c Cond) Cond { return c ^ 1 }
 // isFusableCompare reports whether e is a deferred relational/eqz node whose flag
 // result can be branched on directly.
 func isFusableCompare(e *elem) bool {
-	return e != nil && e.kind == ekDeferred && (isCompare(e.op) || e.op == opEqz)
+	return e != nil && e.isDeferred() && (isCompare(e.deferredOp()) || e.deferredOp() == opEqz)
 }
 
 // tryMaskedEqzToFlags recognizes `(x & mask) == 0`, the core reduction used by
@@ -26,12 +26,12 @@ func isFusableCompare(e *elem) bool {
 // without writing the temporary. The helper consumes the two deferred nodes but
 // leaves the outer node for either a branch consumer or SETcc materialization.
 func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
-	if !swarMaskTestEnabled || node == nil || node.op != opEqz {
+	if !swarMaskTestEnabled || node == nil || node.deferredOp() != opEqz {
 		return 0, false
 	}
 	inner := node.arg0
-	if inner == nil || inner.kind != ekDeferred || inner.op != opAnd ||
-		inner.arg1 == nil || inner.arg1.kind != ekValue || inner.arg1.st.kind != stConst ||
+	if inner == nil || !inner.isDeferred() || inner.deferredOp() != opAnd ||
+		inner.arg1 == nil || !inner.arg1.isValue() || inner.arg1.st.kind != stConst ||
 		inner.arg1.st.cval == 0 {
 		return 0, false
 	}
@@ -40,15 +40,15 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 	var x Reg
 	owned := false
 	switch {
-	case left.kind == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg):
+	case left.isValue() && (left.st.kind == stLocalReg || left.st.kind == stGlobReg):
 		x = left.st.reg
-	case left.kind == ekValue && left.st.kind == stReg:
+	case left.isValue() && left.st.kind == stReg:
 		x, owned = left.st.reg, true
 	default:
 		x, owned = f.materialize(left), true
 	}
 	f.pinned = f.pinned.add(x)
-	w := inner.typ.is64()
+	w := inner.valueType().is64()
 	c := inner.arg1.st.cval
 	mask := uint64(c)
 	if !w {
@@ -97,7 +97,7 @@ func (f *fn) flushBelow(node *elem) int {
 	slot := 0
 	for _, root := range below {
 		typ := rootMachineType(root)
-		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
+		if root.isValue() && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue
 		}
@@ -105,35 +105,35 @@ func (f *fn) flushBelow(node *elem) int {
 			x := f.materializeV128(root)
 			f.a.VMovdquStoreDisp(RSP, f.spillOff(slot), x)
 			f.releaseF(x)
-			root.kind = ekValue
-			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: slot})
+			root.setElemKind(ekValue)
+			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: uint32(slot)})
 			slot += 2
 			continue
 		}
-		if root.kind == ekValue && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
+		if root.isValue() && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
 			if root.st.typ.isFloat() {
 				f.a.FStoreDisp(RSP, f.spillOff(slot), root.st.reg, true)
 			} else {
 				f.a.Store64(RSP, f.spillOff(slot), root.st.reg)
 			}
-			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 			slot++
 			continue
 		}
-		if root.kind == ekValue && typ.isFloat() {
+		if root.isValue() && typ.isFloat() {
 			x := f.materializeF(root)
 			f.a.FStoreDisp(RSP, f.spillOff(slot), x, true)
 			f.releaseF(x)
-			root.kind = ekValue
-			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+			root.setElemKind(ekValue)
+			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 			slot++
 			continue
 		}
 		r := f.materialize(root)
 		f.a.Store64(RSP, f.spillOff(slot), r)
 		f.release(r)
-		root.kind = ekValue
-		f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+		root.setElemKind(ekValue)
+		f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 		slot++
 	}
 	if slot > f.maxSpill {
@@ -158,18 +158,13 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	// the stFlags kill switch (WAGO_NO_STFLAGS) as the A/B oracle.
 	invert := false
 	if f.opt(optSTFlags) {
-		for node.op == opEqz && isFusableCompare(node.arg0) {
+		for node.deferredOp() == opEqz && isFusableCompare(node.arg0) {
 			inner := node.arg0
 			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
 			f.stats.peep("eqz-fold")
 			node = inner
 			invert = !invert
 		}
-	}
-	// Ordered float relational nodes (gt/ge/lt/le) lower to UCOMIS + a NaN-safe
-	// condition instead of a materialized boolean. eq/ne are never deferred here.
-	if node.typ.isFloat() {
-		return f.condenseFCompareToFlags(node, invert)
 	}
 	if !invert {
 		if cc, ok := f.tryMaskedEqzToFlags(node); ok {
@@ -183,8 +178,8 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		}
 		return cc
 	}
-	w := node.typ.is64()
-	if node.op == opEqz {
+	w := node.valueType().is64()
+	if node.deferredOp() == opEqz {
 		// TEST does not write its operand, so a register-resident value (a pinned
 		// local — e.g. a loop counter — or an owned temp) is tested in place with no
 		// copy, mirroring the relational path below.
@@ -192,9 +187,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		var L Reg
 		ownedL := false
 		switch {
-		case a.kind == ekValue && (a.st.kind == stLocalReg || a.st.kind == stGlobReg):
+		case a.isValue() && (a.st.kind == stLocalReg || a.st.kind == stGlobReg):
 			L = a.st.reg
-		case a.kind == ekValue && a.st.kind == stReg:
+		case a.isValue() && a.st.kind == stReg:
 			L, ownedL = a.st.reg, true
 		default:
 			L, ownedL = f.materialize(a), true
@@ -207,16 +202,16 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		f.erase(node)
 		return applyInvert(condE)
 	}
-	cc := applyInvert(condOf(node.op))
+	cc := applyInvert(condOf(node.deferredOp()))
 	// CMP does not write its left operand, so a register-resident left (an owned
 	// temp or a pinned local) can be compared in place — no copy needed.
 	left := node.arg0
 	var L Reg
 	ownedL := false
 	switch {
-	case left.kind == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg):
+	case left.isValue() && (left.st.kind == stLocalReg || left.st.kind == stGlobReg):
 		L = left.st.reg
-	case left.kind == ekValue && left.st.kind == stReg:
+	case left.isValue() && left.st.kind == stReg:
 		L, ownedL = left.st.reg, true
 	default:
 		L, ownedL = f.materialize(left), true
@@ -224,8 +219,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	f.pinned = f.pinned.add(L)
 	right := node.arg1
 	if right.isDeferred() {
-		rr := f.condense(right, regNone)
-		right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
+		// condense rewrites the existing operand node in place; keep that owner
+		// instead of allocating a duplicate register-value node.
+		f.condense(right, regNone)
 	}
 	switch right.st.kind {
 	case stConst:
@@ -243,9 +239,9 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	case stLocalReg, stGlobReg:
 		f.cmpRR(L, right.st.reg, w)
 	case stSlot:
-		f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slot), w)
+		f.a.AluRM(cmpRMcode, L, RSP, f.spillOff(right.st.slotIndex()), w)
 	case stLocalRef:
-		f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.idx), w)
+		f.a.AluRM(cmpRMcode, L, RSP, f.localAddr(right.st.index()), w)
 	case stMemRef:
 		if memRefFoldable(right.st, w) {
 			f.a.AluIdx(cmpRMcode, L, RBX, right.st.reg, right.st.memDisp(), w)
@@ -272,13 +268,12 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
-	f.mergeGCRefFactsInto(&fr.branchGCFacts)
 	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
 	k := f.flushBelow(top)
 	cc := f.condenseToFlags(top)
-	a := fr.branchN
+	a := fr.branchArity()
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, k)
 	} else {
 		f.moveBranchValues(fr, k, a)

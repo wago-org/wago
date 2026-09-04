@@ -12,7 +12,7 @@ const minAssociativeDestNeed = 4
 func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 	requestedDest := dest != regNone
 	need := treeRegisterNeed(node)
-	if !associativeOp(node.op) || need < 3 {
+	if !associativeOp(node.deferredOp()) || need < 3 {
 		return regNone
 	}
 	// A destination hint already removes the ordinary path's result copy. Spend
@@ -22,7 +22,7 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 	if requestedDest && need < minAssociativeDestNeed {
 		return regNone
 	}
-	n, first, _, ok := inspectAssociativeTree(node, node.op, node.typ)
+	n, first, _, ok := inspectAssociativeTree(node, node.deferredOp(), node.valueType())
 	if !ok || n < 3 {
 		return regNone
 	}
@@ -34,7 +34,7 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 		// value once and retarget the remaining reads to that pinned copy. Owned
 		// register aliases stay on the ordinary path: changing those would also
 		// require transferring allocator ownership.
-		alias, count, replaceable := associativeDestLeaves(node, node.op, node.typ, dest)
+		alias, count, replaceable := associativeDestLeaves(node, node.deferredOp(), node.valueType(), dest)
 		if count > 1 && !replaceable {
 			return regNone
 		}
@@ -50,15 +50,15 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 	aliasCopy := regNone
 	if repeatedAlias {
 		aliasCopy = f.allocReg(maskOf(dest))
-		f.moveInt(aliasCopy, dest, node.typ)
+		f.moveInt(aliasCopy, dest, node.valueType())
 		f.pinned = f.pinned.add(aliasCopy)
-		replaceAssociativeAliasLeaves(node, node.op, node.typ, first, dest, aliasCopy)
+		replaceAssociativeAliasLeaves(node, node.deferredOp(), node.valueType(), first, dest, aliasCopy)
 	}
 
 	// Start with the most expensive leaf; every remaining leaf is then consumed
 	// directly into the accumulator, so no internal binary result stays live.
 	if dest == regNone {
-		if first.kind == ekValue && first.st.kind == stReg {
+		if first.isValue() && first.st.kind == stReg {
 			dest = first.st.reg
 		} else {
 			dest = f.allocReg(0)
@@ -69,7 +69,7 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 	// A nested condense targeting dest removes its own pin before returning;
 	// restore the accumulator pin before materializing another leaf.
 	f.pinned = f.pinned.add(dest)
-	f.applyAssociativeLeaves(node, node.op, node.typ, first, dest)
+	f.applyAssociativeLeaves(node, node.deferredOp(), node.valueType(), first, dest)
 	f.pinned = f.pinned.remove(dest)
 	if aliasCopy != regNone {
 		f.pinned = f.pinned.remove(aliasCopy)
@@ -81,7 +81,7 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, dest)
-	node.op = opNone
+	node.setDeferredOp(opNone)
 	return dest
 }
 
@@ -90,7 +90,7 @@ func (f *fn) tryAssociativeTree(node *elem, dest Reg) Reg {
 // aliasing leaf can safely seed an in-place accumulator. Several replaceable
 // reads can share one saved copy without changing allocator ownership.
 func associativeDestLeaves(e *elem, op wOp, typ machineType, dest Reg) (leaf *elem, count int, replaceable bool) {
-	if e.kind == ekDeferred && e.op == op && e.typ == typ {
+	if e.isDeferred() && e.deferredOp() == op && e.valueType() == typ {
 		left, ln, ld := associativeDestLeaves(e.arg0, op, typ, dest)
 		right, rn, rd := associativeDestLeaves(e.arg1, op, typ, dest)
 		if ln != 0 {
@@ -108,7 +108,7 @@ func treeRegReplaceable(e *elem, reg Reg) bool {
 	if e == nil {
 		return true
 	}
-	if e.kind == ekValue {
+	if e.isValue() {
 		switch e.st.kind {
 		case stReg:
 			return e.st.reg != reg
@@ -118,12 +118,12 @@ func treeRegReplaceable(e *elem, reg Reg) bool {
 			return true
 		}
 	}
-	return e.kind == ekDeferred &&
+	return e.isDeferred() &&
 		treeRegReplaceable(e.arg0, reg) && treeRegReplaceable(e.arg1, reg)
 }
 
 func replaceAssociativeAliasLeaves(e *elem, op wOp, typ machineType, first *elem, from, to Reg) {
-	if e.kind == ekDeferred && e.op == op && e.typ == typ {
+	if e.isDeferred() && e.deferredOp() == op && e.valueType() == typ {
 		replaceAssociativeAliasLeaves(e.arg0, op, typ, first, from, to)
 		replaceAssociativeAliasLeaves(e.arg1, op, typ, first, from, to)
 		return
@@ -138,13 +138,13 @@ func replaceBorrowedTreeReg(e *elem, from, to Reg) {
 	if e == nil {
 		return
 	}
-	if e.kind == ekValue {
+	if e.isValue() {
 		if (e.st.kind == stLocalReg || e.st.kind == stGlobReg) && e.st.reg == from {
 			e.st.reg = to
 		}
 		return
 	}
-	if e.kind == ekDeferred {
+	if e.isDeferred() {
 		replaceBorrowedTreeReg(e.arg0, from, to)
 		replaceBorrowedTreeReg(e.arg1, from, to)
 	}
@@ -154,14 +154,14 @@ func treeUsesReg(e *elem, reg Reg) bool {
 	if e == nil {
 		return false
 	}
-	if e.kind == ekValue {
+	if e.isValue() {
 		switch e.st.kind {
 		case stReg, stLocalReg, stGlobReg:
 			return e.st.reg == reg
 		}
 		return false
 	}
-	return e.kind == ekDeferred &&
+	return e.isDeferred() &&
 		(treeUsesReg(e.arg0, reg) || treeUsesReg(e.arg1, reg))
 }
 
@@ -172,7 +172,7 @@ func treeAccumulatorSafe(e *elem) bool {
 	if e == nil {
 		return false
 	}
-	if e.kind == ekValue {
+	if e.isValue() {
 		switch e.st.kind {
 		case stConst, stReg, stSlot, stLocalRef, stLocalReg, stGlobalRef, stGlobReg:
 			return true
@@ -180,14 +180,14 @@ func treeAccumulatorSafe(e *elem) bool {
 			return false
 		}
 	}
-	if e.kind != ekDeferred {
+	if !e.isDeferred() {
 		return false
 	}
-	if isShift(e.op) {
-		if e.arg1 == nil || e.arg1.kind != ekValue || e.arg1.st.kind != stConst {
+	if isShift(e.deferredOp()) {
+		if e.arg1 == nil || !e.arg1.isValue() || e.arg1.st.kind != stConst {
 			return false
 		}
-	} else if !(isBinALU(e.op) || isCompare(e.op) || isUnary(e.op) || isConvert(e.op)) {
+	} else if !(isBinALU(e.deferredOp()) || isCompare(e.deferredOp()) || isUnary(e.deferredOp()) || isConvert(e.deferredOp())) {
 		return false
 	}
 	return treeAccumulatorSafe(e.arg0) && (e.arg1 == nil || treeAccumulatorSafe(e.arg1))
@@ -204,7 +204,7 @@ func associativeOp(op wOp) bool {
 // inspectAssociativeTree validates accumulator safety and returns the leaf with
 // the greatest stored register need. Work is bounded by maxDeferDepth.
 func inspectAssociativeTree(e *elem, op wOp, typ machineType) (n int, first *elem, need int16, ok bool) {
-	if e.kind == ekDeferred && e.op == op && e.typ == typ {
+	if e.isDeferred() && e.deferredOp() == op && e.valueType() == typ {
 		ln, lf, lneed, lok := inspectAssociativeTree(e.arg0, op, typ)
 		rn, rf, rneed, rok := inspectAssociativeTree(e.arg1, op, typ)
 		if !lok || !rok {
@@ -222,7 +222,7 @@ func inspectAssociativeTree(e *elem, op wOp, typ machineType) (n int, first *ele
 }
 
 func (f *fn) applyAssociativeLeaves(e *elem, op wOp, typ machineType, first *elem, dest Reg) {
-	if e.kind == ekDeferred && e.op == op && e.typ == typ {
+	if e.isDeferred() && e.deferredOp() == op && e.valueType() == typ {
 		f.applyAssociativeLeaves(e.arg0, op, typ, first, dest)
 		f.applyAssociativeLeaves(e.arg1, op, typ, first, dest)
 		return

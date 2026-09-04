@@ -4,10 +4,33 @@ package arm64
 
 import (
 	"bytes"
+	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func TestCompileResourceStatsArm64(t *testing.T) {
+	m := mod1(t, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{0x00, 0x20, 0x00, 0x0b})
+	var stats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &stats}); err != nil {
+		t.Fatal(err)
+	}
+	wantHeaders := uint64(len(m.Code)) * uint64(unsafe.Sizeof(funcHints{}))
+	if got := stats.Compile.HintHeaderBytes; got != wantHeaders {
+		t.Fatalf("hint header bytes = %d, want %d", got, wantHeaders)
+	}
+	if got, want := stats.Compile.HintSidecarBytes, uint64(unsafe.Sizeof(uint32(0))); got != want {
+		t.Fatalf("hint sidecar bytes = %d, want %d", got, want)
+	}
+	if stats.Compile.FunctionAttempts != 1 || stats.Funcs[0].FunctionAttempts != 1 {
+		t.Fatalf("function attempts module/function = %d/%d, want 1/1", stats.Compile.FunctionAttempts, stats.Funcs[0].FunctionAttempts)
+	}
+	if report := stats.String(); !strings.Contains(report, "hint-headers=32B hint-sidecars=4B attempts=1") {
+		t.Fatalf("resource report missing ledger: %q", report)
+	}
+}
 
 // compileWithStats compiles m collecting per-function codegen stats and returns
 // the module stats. guard selects guard-page-style bounds elision vs explicit
@@ -22,6 +45,30 @@ func compileWithStats(t *testing.T, m *wasm.Module, guard bool) *ModuleStats {
 		t.Fatalf("stats funcs = %d, want %d", len(ms.Funcs), len(m.Code))
 	}
 	return &ms
+}
+
+func TestPendingPacketIsBoundedArm64(t *testing.T) {
+	const roots = 96
+	body := make([]byte, 1, 1+roots*6+roots+1)
+	for range roots {
+		body = append(body, 0x20, 0x00, 0x20, 0x01, 0x6a) // local.get 0; local.get 1; i32.add
+	}
+	for range roots {
+		body = append(body, 0x1a) // drop
+	}
+	body = append(body, 0x0b)
+	m := mod1(t, []wasm.ValType{wasm.I32, wasm.I32}, nil, body)
+	stats := compileWithStats(t, m, false)
+	s := stats.Funcs[0]
+	if s.FunctionAttempts != 1 {
+		t.Fatalf("function attempts = %d, want 1", s.FunctionAttempts)
+	}
+	if s.Peephole["pending-packet-cap"] == 0 {
+		t.Fatal("pending packet did not reach its soft cap")
+	}
+	if s.MaxPendingNodes > defaultPendingNodes {
+		t.Fatalf("max pending nodes = %d, want <= %d", s.MaxPendingNodes, defaultPendingNodes)
+	}
 }
 
 func TestCodegenStatsPeepholesArm64(t *testing.T) {

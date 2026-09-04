@@ -109,9 +109,9 @@ func TestManifestValidationRejectsUnknownNestedAndMalformedFields(t *testing.T) 
 func TestManifestValidationAcceptsCataloguedOptimizationFamilies(t *testing.T) {
 	optimizations := map[string]any{}
 	for _, name := range []string{
-		"simd-superopt", "swar-idioms", "interval-region-pins", "fcmp-fuse", "magic-div",
+		"simd-superopt", "interval-region-pins", "magic-div",
 		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse",
-		"entry-init-elision", "v128-direct-results", "dead-gc-new", "gc-ref-facts",
+		"entry-init-elision", "v128-direct-results", "dead-gc-new",
 		"gc-native-alloc",
 	} {
 		optimizations[name] = false
@@ -122,6 +122,25 @@ func TestManifestValidationAcceptsCataloguedOptimizationFamilies(t *testing.T) {
 	}
 	if err := ValidateManifest(manifest); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestManifestValidationAcceptsRetiredV1OptimizationNames(t *testing.T) {
+	optimizations := map[string]any{}
+	for i, name := range []string{
+		"affine-lea", "call-next-use", "fcmp-fuse", "gc-ref-facts",
+		"immutable-poly-fastpath", "legacy-fp-pins", "legacy-gp-pins",
+		"loop-precheck", "loop-region-pins", "swar-idioms",
+		"tee-spill-elide", "v128-sink",
+	} {
+		optimizations[name] = i%2 == 0
+	}
+	manifest := map[string]any{
+		"$schema":  SchemaURI,
+		"settings": map[string]any{"optimizations": optimizations},
+	}
+	if err := ValidateManifest(manifest); err != nil {
+		t.Fatalf("previously valid v1 manifest was rejected: %v", err)
 	}
 }
 

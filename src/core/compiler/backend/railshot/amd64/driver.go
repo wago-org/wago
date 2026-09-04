@@ -5,7 +5,6 @@ package amd64
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
@@ -17,6 +16,27 @@ import (
 func (f *fn) body(code []byte) error {
 	r := wasm.ReaderFrom(code)
 	return f.bodyLoop(&r, 0)
+}
+
+func (f *fn) setRepresentationLimit(limit functionRepresentationLimit) {
+	if f.representationLimit == functionRepresentationOK {
+		f.representationLimit = limit
+	}
+}
+
+func (f *fn) representationError() error {
+	var field string
+	switch f.representationLimit {
+	case functionRepresentationReturnSite:
+		field = "return-site branch chain"
+	case functionRepresentationFrameEnd:
+		field = "forward control-end offset"
+	case functionRepresentationCallReloc:
+		field = "call relocation"
+	default:
+		field = "unknown field"
+	}
+	return fmt.Errorf("amd64: function %s exceeds compact representation limit", field)
 }
 
 // bodyLoop drives the opcode switch until the control stack shrinks to minCtrl.
@@ -32,11 +52,9 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			return err
 		}
 		f.prepareStoreForward(op)
-		f.prepareGCLoadResultCapture(op)
 		f.prepareGCResolvedObject(op)
 		switch op {
 		case 0x00: // unreachable
-			f.clearLocalExactGCTypes()
 			if !f.unreachable {
 				// Deferred operations before unreachable have already executed in
 				// Wasm evaluation order and may trap (notably div/rem). Materialize
@@ -50,7 +68,6 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		case 0x02, 0x03, 0x04: // block / loop / if
 			err = f.opBlock(r, op)
 		case 0x1f: // try_table
-			f.clearLocalExactGCTypes()
 			err = f.opTryTable(r)
 		case 0x05: // else
 			err = f.opElse()
@@ -61,7 +78,6 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 		case 0x0e: // br_table
 			err = f.opBrTable(r)
 		case 0x0f: // return
-			f.publishAllFreshGCRefs()
 			err = f.opReturn()
 		default:
 			if f.unreachable {
@@ -75,22 +91,10 @@ func (f *fn) bodyLoop(r *wasm.Reader, minCtrl int) error {
 			return err
 		}
 	}
-	return nil
-}
-
-// fcmpMaybeDefer lowers an ordered float compare (gt/ge/lt/le). It defers the
-// compare as a fusable node only when the very next opcode is if (0x04) or br_if
-// (0x0d), so that consumer condenses it directly to UCOMIS + Jcc; otherwise it
-// emits the eager 0/1 boolean. The node therefore never lingers on the operand
-// stack past its immediate branch consumer.
-func (f *fn) fcmpMaybeDefer(r *wasm.Reader, op wOp, f64 bool) {
-	if f.opt(optFCmpFuse) {
-		if next, ok := r.Peek(); ok && (next == 0x04 || next == 0x0d) {
-			f.pushFCompare(op, f64)
-			return
-		}
+	if f.representationLimit != functionRepresentationOK {
+		return f.representationError()
 	}
-	f.fcmp(op, f64)
+	return nil
 }
 
 // emitPlain lowers a single non-control opcode (leaves, arithmetic, memory,
@@ -102,33 +106,21 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x0a: // throw_ref
 		return f.opThrowRef()
 	case 0x10: // call
-		f.publishAllFreshGCRefs()
-		f.invalidateGCGenerationFacts()
 		f.invalidateGCMutableLoadFacts()
 		return f.callOp(r)
 	case 0x11: // call_indirect
-		f.publishAllFreshGCRefs()
-		f.invalidateGCGenerationFacts()
 		f.invalidateGCMutableLoadFacts()
 		return f.callIndirect(r)
 	case 0x12: // return_call
-		f.publishAllFreshGCRefs()
-		f.invalidateGCGenerationFacts()
 		f.invalidateGCResolvedObject()
 		return f.returnCall(r)
 	case 0x13: // return_call_indirect
-		f.publishAllFreshGCRefs()
-		f.invalidateGCGenerationFacts()
 		f.invalidateGCResolvedObject()
 		return f.returnCallIndirect(r)
 	case 0x14: // call_ref
-		f.publishAllFreshGCRefs()
-		f.invalidateGCGenerationFacts()
 		f.invalidateGCMutableLoadFacts()
 		return f.callRef(r)
 	case 0x15: // return_call_ref
-		f.publishAllFreshGCRefs()
-		f.invalidateGCGenerationFacts()
 		f.invalidateGCResolvedObject()
 		return f.returnCallRef(r)
 
@@ -177,48 +169,36 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		f.activateIntervalLocal(int(x), r.Offset(), true)
 		if reg, ok := f.takeFinalIntervalGet(int(x), r.Offset()); ok {
 			value = f.pushReg(reg, f.localType[x])
-			value.st.gcRoot = f.gcFrameLocal(int(x))
-			f.markLocalGetExactGCType(value, int(x))
+			value.st.setGCRoot(f.gcFrameLocal(int(x)))
 			break
 		}
 		if f.localConstZero(int(x)) {
 			if pr, _, ok := f.pinReg(int(x)); ok {
 				f.recoverLocal(int(x)) // materialize the lazy zero into the pinned register
-				value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+				value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
 			} else {
 				value = f.pushValue(zeroStorage(f.localType[x]))
 			}
 		} else if pr, _, ok := f.pinReg(int(x)); ok {
 			f.recoverLocal(int(x)) // reload lazily if it was spilled around a call
-			value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: int(x)})
+			value = f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
 		} else {
-			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: int(x)})
+			value = f.pushValue(storage{kind: stLocalRef, typ: f.localType[x], idx: x})
 		}
-		value.st.gcRoot = f.gcFrameLocal(int(x))
-		f.markLocalGetExactGCType(value, int(x))
+		value.st.setGCRoot(f.gcFrameLocal(int(x)))
 	case 0x21, 0x22: // local.set / local.tee
 		x, err := r.U32()
 		if err != nil {
 			return err
 		}
-		if op == 0x22 {
-			if done, err := f.tryMulHighU(r, int(x)+f.localBase); done || err != nil {
-				return err
-			}
-			if done, err := f.trySWARWiden4(r, int(x)+f.localBase); done || err != nil {
-				return err
-			}
-		}
 		f.setLocal(r, int(x)+f.localBase, op == 0x22) // localBase remaps an inlined callee's locals; 0 otherwise
 	case 0x23: // global.get
 		return f.globalGet(r)
 	case 0x24: // global.set
-		f.publishGCRef(f.s.back())
 		return f.globalSet(r)
 	case 0x25: // table.get
 		return f.tableGet(r)
 	case 0x26: // table.set
-		f.publishGCRef(f.s.back())
 		return f.tableSet(r)
 
 	// i32 comparisons / eqz
@@ -486,26 +466,26 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 	case 0x5c:
 		f.fcmp(opNe, false)
 	case 0x5d:
-		f.fcmpMaybeDefer(r, opLtS, false)
+		f.fcmp(opLtS, false)
 	case 0x5e:
-		f.fcmpMaybeDefer(r, opGtS, false)
+		f.fcmp(opGtS, false)
 	case 0x5f:
-		f.fcmpMaybeDefer(r, opLeS, false)
+		f.fcmp(opLeS, false)
 	case 0x60:
-		f.fcmpMaybeDefer(r, opGeS, false)
+		f.fcmp(opGeS, false)
 	// f64 comparisons
 	case 0x61:
 		f.fcmp(opEq, true)
 	case 0x62:
 		f.fcmp(opNe, true)
 	case 0x63:
-		f.fcmpMaybeDefer(r, opLtS, true)
+		f.fcmp(opLtS, true)
 	case 0x64:
-		f.fcmpMaybeDefer(r, opGtS, true)
+		f.fcmp(opGtS, true)
 	case 0x65:
-		f.fcmpMaybeDefer(r, opLeS, true)
+		f.fcmp(opLeS, true)
 	case 0x66:
-		f.fcmpMaybeDefer(r, opGeS, true)
+		f.fcmp(opGeS, true)
 
 	// f32 unary/binary
 	case 0x8b:
@@ -761,11 +741,12 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 	}
 	left := baseOfValentBlock(right).prev
 	f.realizeLocalRefs(x, left)
+	f.evictRelinquishedFReg(pr)
 	f.fbinInto(pr, vop, memOp, f64)
 	f.markLocalDirty(x)
 	f.stats.peep("float-local-sink")
 	if op == 0x22 {
-		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+		f.pushValue(storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
 	}
 	return true, nil
 }
@@ -778,7 +759,7 @@ func (f *fn) emitSelect() {
 	// branches are integers, emit the compare's CMP and a CMOV on its flags directly
 	// — skipping the SETcc + MOVZX + TEST that materializing the boolean costs. The
 	// compare is condensed last (right before the CMOV), so its flags are live.
-	if top := f.s.back(); isFusableCompare(top) && !top.typ.isFloat() && f.trySelectOnFlags(top) {
+	if top := f.s.back(); isFusableCompare(top) && !top.valueType().isFloat() && f.trySelectOnFlags(top) {
 		return
 	}
 	cond := f.popValue()
@@ -786,13 +767,12 @@ func (f *fn) emitSelect() {
 	f.pinned = f.pinned.add(condReg)
 	b := f.popValue()
 	a := f.popValue()
-	gcRoot := (a.kind == ekValue && a.st.gcRoot) || (b.kind == ekValue && b.st.gcRoot)
-	gcFact := shared.MergeGCRefFacts(f.gcRefFact(a), f.gcRefFact(b))
+	gcRoot := (a.isValue() && a.st.hasGCRoot()) || (b.isValue() && b.st.hasGCRoot())
 
 	// XMM operands have no cmov, so branch. Scalar floats use scalar moves;
 	// v128 uses a full-vector copy. Integer operands use cmov.
-	aV128 := a.kind == ekValue && a.st.typ.isV128()
-	bV128 := b.kind == ekValue && b.st.typ.isV128()
+	aV128 := a.isValue() && a.st.typ.isV128()
+	bV128 := b.isValue() && b.st.typ.isV128()
 	if aV128 || bV128 {
 		aX := f.materializeV128(a)
 		f.fpinned = f.fpinned.add(aX)
@@ -809,8 +789,8 @@ func (f *fn) emitSelect() {
 		return
 	}
 
-	aFloat := a.kind == ekValue && a.st.typ.isFloat()
-	bFloat := b.kind == ekValue && b.st.typ.isFloat()
+	aFloat := a.isValue() && a.st.typ.isFloat()
+	bFloat := b.isValue() && b.st.typ.isFloat()
 	if aFloat || bFloat {
 		typ := a.st.typ
 		if !typ.isFloat() {
@@ -832,7 +812,7 @@ func (f *fn) emitSelect() {
 		return
 	}
 
-	w := (a.kind == ekValue && a.st.typ.is64()) || (b.kind == ekValue && b.st.typ.is64())
+	w := (a.isValue() && a.st.typ.is64()) || (b.isValue() && b.st.typ.is64())
 	bReg := f.materialize(b)
 	f.pinned = f.pinned.add(bReg)
 	aReg := f.materialize(a)
@@ -844,8 +824,7 @@ func (f *fn) emitSelect() {
 	f.release(condReg)
 	f.release(bReg)
 	result := f.pushReg(aReg, mtI32OrWide(w))
-	result.st.gcRoot = gcRoot
-	putGCRefFact(&result.st, gcFact)
+	result.st.setGCRoot(gcRoot)
 }
 
 func mtI32OrWide(wide bool) machineType {
@@ -878,8 +857,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	// Materialize both branches into owned registers BEFORE the compare: their loads
 	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
 	// are pinned so condensing the compare's operands cannot spill them.
-	gcRoot := (aRoot.kind == ekValue && aRoot.st.gcRoot) || (bRoot.kind == ekValue && bRoot.st.gcRoot)
-	gcFact := shared.MergeGCRefFacts(f.gcRefFact(aRoot), f.gcRefFact(bRoot))
+	gcRoot := (aRoot.isValue() && aRoot.st.hasGCRoot()) || (bRoot.isValue() && bRoot.st.hasGCRoot())
 	aReg := f.materialize(aRoot)
 	f.pinned = f.pinned.add(aReg)
 	bReg := f.materialize(bRoot)
@@ -893,8 +871,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	f.erase(bRoot)
 	f.erase(aRoot)
 	result := f.pushReg(aReg, mtI32OrWide(w))
-	result.st.gcRoot = gcRoot
-	putGCRefFact(&result.st, gcFact)
+	result.st.setGCRoot(gcRoot)
 	return true
 }
 
@@ -907,18 +884,6 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 // local.get reads the value at get-time (WARP recoverLocalToReg). A lazy
 // stLocalRef is loaded; a deferred node whose subtree reads x is condensed.
 func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
-	// Owned scalar tee results may use x's frame slot as their spill home. The
-	// register still contains the old value, so invalidating the alias is enough;
-	// if pressure later spills it, spill() will materialize a distinct slot.
-	// Scan the complete physical stack even when skipFrom permits lazy local refs
-	// inside an in-place update to remain deferred.
-	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stReg && e.st.idx == x+1 &&
-			(e.st.typ == mtI32 || e.st.typ == mtI64) {
-			e.st.idx = 0
-		}
-	}
-
 	// skipFrom (non-nil) marks the base of the value-being-set's valent block for
 	// an in-place self-update (`local.set $x (binop (local.get $x) …)`): refs to x
 	// inside that block are consumed directly into x's register by condenseInto, so
@@ -930,13 +895,13 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 		}
 		next := e.next
 		switch {
-		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == x:
+		case e.isValue() && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
 			f.materializeByType(e)
-		case e.kind == ekValue && e.st.kind == stMemRef && e.st.memBorrow() == x:
+		case e.isValue() && e.st.kind == stMemRef && e.st.memBorrow() == x:
 			// A deferred load addressing through x's pinned register: emit it
 			// before x is overwritten.
 			f.materializeByType(e)
-		case e.kind == ekDeferred && subtreeRefsLocal(e, x):
+		case e.isDeferred() && subtreeRefsLocal(e, x):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -948,10 +913,10 @@ func subtreeRefsLocal(e *elem, x int) bool {
 	if e == nil {
 		return false
 	}
-	if e.kind == ekValue {
-		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == x
+	if e.isValue() {
+		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x)
 	}
-	if e.kind == ekDeferred {
+	if e.isDeferred() {
 		return subtreeRefsLocal(e.arg0, x) || subtreeRefsLocal(e.arg1, x)
 	}
 	return false
@@ -1016,9 +981,8 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	f.invalidateBoundsCertFor(1, uint32(x))
 	f.clearV128LocalAliases(x)
 	e := f.s.back()
-	f.captureGCLoadResultLocal(e, x)
-	gcFact, hasGCExactType := f.setLocalExactGCType(x, e)
-	if e != nil && e.kind == ekValue && e.st.typ == mtCustom {
+	f.invalidateGCLoadFactsForLocal(x)
+	if e != nil && e.isValue() && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
 	}
 	// In-place self-update `local.set $x (op (local.get $x) …)`: let condenseInto
@@ -1028,8 +992,8 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	// Shifts join the binary case; unary/convert and the tee form are gated (arm64).
 	var skipFrom *elem
 	if e != nil && e.isDeferred() {
-		binarySink := (isBinALU(e.op) || isShift(e.op)) && (!tee || f.opt(optTeeSink))
-		unarySink := (isUnary(e.op) || isConvert(e.op)) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
+		binarySink := (isBinALU(e.deferredOp()) || isShift(e.deferredOp())) && (!tee || f.opt(optTeeSink))
+		unarySink := (isUnary(e.deferredOp()) || isConvert(e.deferredOp())) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
 		if binarySink || unarySink {
 			skipFrom = baseOfValentBlock(e)
 		}
@@ -1043,14 +1007,14 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		// condenseInto may temporarily mark pr as an owned result for deferred
 		// expressions; clear that ownership because pinned-local registers are not
 		// allocator scratch registers.
+		if f.pinRelinquished && f.regUser[pr] != nil {
+			f.spillIfUsed(pr)
+		}
 		f.condenseInto(e, pr)
 		f.release(pr)
 		f.markLocalDirty(x) // value now lives (only) in the register
 		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x}) // borrowed ref stays
-			if hasGCExactType {
-				f.markGCRefFact(e, gcFact)
-			}
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)}) // borrowed ref stays
 		} else {
 			f.erase(e)
 		}
@@ -1059,7 +1023,8 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if pr, _, ok := f.pinReg(x); ok && f.localType[x] == mtV128 {
 		// Register-pinned v128 local: 128-bit move into its XMM register (the
 		// scalar FMov below would drop the upper 64 bits).
-		if e.kind == ekValue && e.st.kind == stLocalReg {
+		f.evictRelinquishedFReg(pr)
+		if e.isValue() && e.st.kind == stLocalReg {
 			if e.st.reg != pr {
 				f.a.VMovdqu(pr, e.st.reg) // borrowed v128 local → direct move
 			}
@@ -1072,7 +1037,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 		f.markLocalDirty(x)
 		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: pr, idx: x})
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: mtV128, reg: pr, idx: uint32(x)})
 		} else {
 			f.erase(e)
 		}
@@ -1080,8 +1045,9 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	}
 	if pr, isFloat, ok := f.pinReg(x); ok && isFloat {
 		// Register-pinned float local: move the value into its XMM register.
+		f.evictRelinquishedFReg(pr)
 		f64 := f.localType[x] == mtF64
-		if e.kind == ekValue && e.st.kind == stLocalReg {
+		if e.isValue() && e.st.kind == stLocalReg {
 			if e.st.reg != pr {
 				f.a.FMov(pr, e.st.reg, f64) // borrowed float local → direct move
 			}
@@ -1094,7 +1060,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		}
 		f.markLocalDirty(x)
 		if tee {
-			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: x})
+			f.replaceStorage(e, storage{kind: stLocalReg, typ: f.localType[x], reg: pr, idx: uint32(x)})
 		} else {
 			f.erase(e)
 		}
@@ -1139,16 +1105,5 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if !tee {
 		f.erase(e)
 		f.release(r)
-	} else {
-		// stReg.idx is otherwise unused. Remember that the canonical local slot
-		// contains this exact value so a later allocator spill can reuse it.
-		// GC references use idx for semantic fact payloads, so keep them out of
-		// this integer-only alias encoding.
-		if !e.st.gcRoot && (e.st.typ == mtI32 || e.st.typ == mtI64) {
-			e.st.idx = x + 1
-		}
-		if hasGCExactType {
-			f.markGCRefFact(e, gcFact)
-		}
 	}
 }

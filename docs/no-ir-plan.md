@@ -85,11 +85,11 @@ execution path. Railshot is the one and only backend.** The prior framing
   scheduled (P4). Revisit a/b only if (c) measures well but misses cases.
 - **Persistent/general known-bits lattice state** — rejected. A bounded recursive
   estimator was tried, then removed after measurement: its four utf-as mask-elision
-  hits blocked a second `swar-widen4` selection and did not earn their general
+  hits did not earn their general
   constant-RHS compile cost. Direct `(word & laneMask) == 0` flag lowering remains
   as a shape check with no fact propagation; boolean-ness remains subsumed by
-  `stFlags` (P3). Exact SWAR matchers inspect existing operand nodes and allocate
-  only after a hit; near-miss probes must remain allocation-free.
+  `stFlags` (P3). The producer-shaped SWAR matchers were also removed after a
+  full-corpus census found no independent-producer hits.
 - **Persistent SIMD expression trees** — rejected. Exact adjacent SIMD superops use
   bounded bytecode lookahead and immediately select a native lowering; near misses
   restore the reader. This keeps SIMD eager, allocation-free, and outside the scalar

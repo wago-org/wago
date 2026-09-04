@@ -15,6 +15,70 @@ import (
 
 var vI32 = wasm.I32 // shorthand for the hand-built test bodies below
 
+func TestInlineTargetPlanWithoutCandidatesDoesNotAllocateAMD64(t *testing.T) {
+	m := modFuncs(t,
+		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
+		funcDef{body: []byte{0x00, 0x10, 0x01, 0x0b}},
+	)
+	hints := []funcHints{{flags: hintHasCall}, {flags: hintHasCall}}
+	policy := currentCodegenPolicy()
+	var targets inlineTargetTable
+	if allocs := testing.AllocsPerRun(100, func() {
+		targets = buildInlineTargets(m, hints, policy)
+	}); allocs != 0 {
+		t.Fatalf("candidate-free inline plan allocations = %.0f, want 0", allocs)
+	}
+	if !targets.empty() {
+		t.Fatal("candidate-free inline plan is not empty")
+	}
+}
+
+func TestCollectInlinedCalleesDeduplicatesPastStackSetAMD64(t *testing.T) {
+	const targetsN = inlineLinearSeenTargets + 1
+	data := &inlineTargetData{slots: make([]uint32, targetsN), targets: make([]inlineTarget, targetsN)}
+	body := make([]byte, 0, 2*(targetsN+1)+1)
+	for i := range targetsN {
+		data.slots[i] = uint32(i + 1)
+		data.targets[i].globalIdx = i
+		body = append(body, 0x10, byte(i))
+	}
+	body = append(body, 0x10, 0, 0x0b)
+	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
+	got := collectInlinedCallees(&wasm.Func{BodyBytes: body}, targets)
+	if len(got) != targetsN {
+		t.Fatalf("distinct inline targets = %d, want %d", len(got), targetsN)
+	}
+	for i, target := range got {
+		if target.globalIdx != i {
+			t.Fatalf("inline target %d = %d, want %d", i, target.globalIdx, i)
+		}
+	}
+}
+
+func TestInlineBasePoolRetentionIsBoundedAMD64(t *testing.T) {
+	targetsData := &inlineTargetData{targets: make([]inlineTarget, maxRetainedInlineBases+1)}
+	callees := make([]*inlineTarget, len(targetsData.targets))
+	for i := range targetsData.targets {
+		targetsData.targets[i].globalIdx = i
+		callees[i] = &targetsData.targets[i]
+	}
+	targets := inlineTargetTable{data: targetsData}
+	var f fn
+	f.reserveInlineLocals(callees[:1], targets)
+	if allocs := testing.AllocsPerRun(100, func() {
+		f.reserveInlineLocals(callees[:1], targets)
+	}); allocs != 0 {
+		t.Fatalf("reused inline base allocations = %.0f, want 0", allocs)
+	}
+	f.reserveInlineLocals(callees, targets)
+	if got := len(f.inlineBase); got != len(callees) {
+		t.Fatalf("ephemeral inline bases = %d, want %d", got, len(callees))
+	}
+	if got := len(f.inlineBasePool); got != 1 {
+		t.Fatalf("retained inline bases after oversized plan = %d, want 1", got)
+	}
+}
+
 // TestAnalyzeInlineCandidates builds a small module exercising each candidacy
 // outcome: a tiny leaf (candidate, two call sites), a recursive function
 // (non-leaf via a self call), an oversized leaf (too big), and the caller.
@@ -212,7 +276,7 @@ func TestInlineBrOnNullRespectsCalleeBoundaryAMD64(t *testing.T) {
 			funcDef{results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x41, 0x00, 0x10, 0x01, 0x1a, 0x41, 0x01, 0x0b}},
 			funcDef{body: []byte{0x00, 0xd0, 0x70, 0xd5, 0x00, 0x1a, 0x0b}},
 		)
-		hints, _, err := computeModuleHints(m, 0, 0, nil, false)
+		hints, _, _, err := computeModuleHints(m, 0, 0, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -232,7 +296,7 @@ func TestInlineTargetsRejectEHAMD64(t *testing.T) {
 		funcDef{body: []byte{0x00, 0x0b}},
 	)
 	policy := shared.DefaultCodegenPolicy(currentCodegenPolicy().Selection)
-	hints := []funcHints{{hasCall: true}, {moduleEH: true, inlineCallSites: 1}}
+	hints := []funcHints{{flags: hintHasCall}, {flags: hintModuleEH, inlineCallSites: 1}}
 	if target := buildInlineTargets(m, hints, policy).target(1); target != nil {
 		t.Fatal("ordinary policy admitted EH inline target")
 	}
@@ -258,8 +322,8 @@ func TestInlineBoundaryParityAMD64(t *testing.T) {
 		if err := scanInlineFactsBytes(body, &facts); err != nil {
 			t.Fatalf("inline scan opcode %#x: %v", op, err)
 		}
-		if !h.hasControlFlow || !facts.hasControlFlow {
-			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.hasControlFlow, facts.hasControlFlow)
+		if !h.flags.has(hintHasControlFlow) || !facts.hasControlFlow {
+			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.flags.has(hintHasControlFlow), facts.hasControlFlow)
 		}
 	}
 }
@@ -293,9 +357,9 @@ func TestCompactInlinePrunesTransitiveOmissionAMD64(t *testing.T) {
 	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
 	policy.MaxCompactInlineBodyBytes = 12
 	hints := []funcHints{
-		{hasCall: true},
-		{nLocals: 1, hasCall: true, inlineCallSites: 1},
-		{nLocals: 1, inlineCallSites: 1},
+		{flags: hintHasCall},
+		{localCount: 1, flags: hintHasCall, inlineCallSites: 1},
+		{localCount: 1, inlineCallSites: 1},
 	}
 	targets := buildInlineTargets(m, hints, policy)
 	if targets.target(1) != nil {
@@ -303,6 +367,12 @@ func TestCompactInlinePrunesTransitiveOmissionAMD64(t *testing.T) {
 	}
 	if targets.target(2) == nil || !targets.omitStandaloneBody(2, false) {
 		t.Fatal("leaf child was not retained as an omittable inline target")
+	}
+	if got, want := len(targets.data.targets), 1; got != want {
+		t.Fatalf("retained inline target records = %d, want %d", got, want)
+	}
+	if got, want := len(targets.data.slots), len(m.Code); got != want {
+		t.Fatalf("inline target slots = %d, want %d", got, want)
 	}
 }
 
@@ -400,7 +470,9 @@ func TestCompactInlineAdmitsTinySingleUseLeafAMD64(t *testing.T) {
 }
 
 func TestFinalizeOmittedInlineEntriesRejectsResidualCallAMD64(t *testing.T) {
-	targets := inlineTargetTable{targets: []inlineTarget{{}, {valid: true, omitStandalone: true}}}
+	targets := inlineTargetTable{data: &inlineTargetData{
+		slots: []uint32{0, 1}, targets: []inlineTarget{{globalIdx: 1, omitStandalone: true}},
+	}}
 	err := finalizeOmittedInlineEntriesAMD64(
 		[]int{0, 12}, []int{4, 12},
 		[][]callReloc{{{target: 1, internal: true}}, nil},
@@ -417,7 +489,7 @@ func TestInlineDeadBodyProofRejectsTailReferenceAMD64(t *testing.T) {
 		funcDef{params: []wasm.ValType{wasm.I32}, results: []wasm.ValType{wasm.I32}, body: []byte{0x00, 0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}},
 	)
 	policy := shared.CompactCodegenPolicy(currentCodegenPolicy().Selection)
-	base := []funcHints{{hasCall: true}, {nLocals: 1, inlineCallSites: 1}}
+	base := []funcHints{{flags: hintHasCall}, {localCount: 1, inlineCallSites: 1}}
 	if targets := buildInlineTargets(m, base, policy); !targets.omitStandaloneBody(1, false) {
 		t.Fatal("single ordinary call did not prove standalone body dead")
 	}

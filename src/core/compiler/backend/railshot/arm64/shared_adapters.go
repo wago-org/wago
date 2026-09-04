@@ -41,7 +41,7 @@ type sharedAdapterGroup struct {
 	sharedOff   int
 }
 
-func shareAdaptersCodeBuffer(codeBuffer *coreruntime.CodeBuffer, entry, internalEntry []int, relocs [][]callReloc, infos []sharedAdapterInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) (int, error) {
+func shareAdaptersCodeBuffer(codeBuffer *coreruntime.CodeBuffer, entry, internalEntry []int, relocs *callRelocTable, infos []sharedAdapterInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) (int, error) {
 	oldLen := len(codeBuffer.Bytes())
 	groups, infos, sharedBytes := planSharedAdapters(codeBuffer.Bytes(), entry, infos)
 	if sharedBytes == 0 || !adapterTailIslandInRange(oldLen, sharedBytes) {
@@ -61,7 +61,7 @@ func shareAdaptersCodeBuffer(codeBuffer *coreruntime.CodeBuffer, entry, internal
 	return sharedBytes, nil
 }
 
-func shareAdapters(code []byte, entry, internalEntry []int, relocs [][]callReloc, infos []sharedAdapterInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) ([]byte, int, error) {
+func shareAdapters(code []byte, entry, internalEntry []int, relocs *callRelocTable, infos []sharedAdapterInfo, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats) ([]byte, int, error) {
 	oldLen := len(code)
 	groups, infos, sharedBytes := planSharedAdapters(code, entry, infos)
 	if sharedBytes == 0 || !adapterTailIslandInRange(oldLen, sharedBytes) {
@@ -166,7 +166,7 @@ func equalSharedAdapter(a, b []byte, callOff int) bool {
 	return true
 }
 
-func compactSharedAdapters(code []byte, oldLen int, entry, internalEntry []int, relocs [][]callReloc, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats, groups []sharedAdapterGroup, infos []sharedAdapterInfo, sharedBytes int) (int, error) {
+func compactSharedAdapters(code []byte, oldLen int, entry, internalEntry []int, relocs *callRelocTable, roots *shared.GCModuleFrameRootPlan, ms *ModuleStats, groups []sharedAdapterGroup, infos []sharedAdapterInfo, sharedBytes int) (int, error) {
 	for i := range groups {
 		g := &groups[i]
 		if g.count*g.length <= g.count*sharedAdapterThunkBytes+g.length {
@@ -195,18 +195,18 @@ func compactSharedAdapters(code []byte, oldLen int, entry, internalEntry []int, 
 			src = oldEntry + int(info.endOff)
 			deleted := int(info.endOff) - sharedAdapterThunkBytes
 			removed += deleted
-			for j := range relocs[i] {
-				if relocs[i][j].at >= int(info.endOff) {
-					relocs[i][j].at -= deleted
+			functionRelocs := relocs.serialFunction(i)
+			if relocs.results != nil {
+				functionRelocs = relocs.parallelFunction(i)
+			}
+			for j := range functionRelocs {
+				if functionRelocs[j].at >= info.endOff {
+					functionRelocs[j].at -= uint32(deleted)
 				}
 			}
 			if roots != nil {
 				if plan := roots.Function(i); plan != nil {
-					for j := range plan.Callsites {
-						if plan.Callsites[j].ReturnOffset >= info.endOff {
-							plan.Callsites[j].ReturnOffset -= uint32(deleted)
-						}
-					}
+					plan.ShiftCallsiteReturnOffsets(info.endOff, uint32(deleted))
 				}
 			}
 			if ms != nil && i < len(ms.Funcs) && ms.Funcs[i] != nil {

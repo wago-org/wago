@@ -48,9 +48,9 @@ func TestBackendPrimitiveHelpers(t *testing.T) {
 	if got := zeroStorage(mtI64); got.kind != stConst || got.typ != mtI64 || got.cval != 0 {
 		t.Fatalf("zero storage = %#v", got)
 	}
-	f := &fn{locals: []localDef{{reg: X2}, {reg: Reg(3), isFloat: true}}, activeLoopPins: []loopPin{{local: 0, reg: X12}}}
-	if reg, isFloat, ok := f.pinReg(0); !ok || reg != X12 || isFloat {
-		t.Fatalf("loop pin = %v, %v, %v", reg, isFloat, ok)
+	f := &fn{locals: []localDef{{reg: X2}, {reg: Reg(3), isFloat: true}}}
+	if reg, isFloat, ok := f.pinReg(0); !ok || reg != X2 || isFloat {
+		t.Fatalf("integer pin = %v, %v, %v", reg, isFloat, ok)
 	}
 	if reg, isFloat, ok := f.pinReg(1); !ok || reg != Reg(3) || !isFloat {
 		t.Fatalf("float pin = %v, %v, %v", reg, isFloat, ok)
@@ -66,30 +66,6 @@ func TestBackendPrimitiveHelpers(t *testing.T) {
 	left, right, err := readTablePairIndexes(wasm.NewReader([]byte{2, 3}))
 	if err != nil || left != 2 || right != 3 {
 		t.Fatalf("table index pair = %d, %d, %v", left, right, err)
-	}
-}
-
-func TestCondenseDeferredFloatCompareValue(t *testing.T) {
-	for _, tc := range []struct {
-		op  wOp
-		typ machineType
-		dst Reg
-	}{
-		{opGtS, mtF32, regNone},
-		{opLeS, mtF64, X5},
-	} {
-		f := &fn{a: &a64.Asm{}, s: newStack()}
-		f.pushValue(storage{kind: stConst, typ: tc.typ, cval: int64(floatBits(1, tc.typ == mtF64))})
-		f.pushValue(storage{kind: stConst, typ: tc.typ, cval: int64(floatBits(2, tc.typ == mtF64))})
-		f.pushFCompare(tc.op, tc.typ == mtF64)
-		node := f.s.back()
-		got := f.condenseFCompareValue(node, tc.dst)
-		if tc.dst != regNone && got != tc.dst {
-			t.Fatalf("compare result = %v, want %v", got, tc.dst)
-		}
-		if node.kind != ekValue || node.st.typ != mtI32 || node.op != opNone || len(f.a.B) == 0 {
-			t.Fatalf("condensed node = %#v, code = %d bytes", node, len(f.a.B))
-		}
 	}
 }
 
@@ -129,49 +105,6 @@ func TestCrossInstanceAndMixedRegisterCallLowering(t *testing.T) {
 	registerArgs.emitMixedRegisterCall(5, twoIntResults)
 	if registerArgs.depth() != 2 || len(registerArgs.relocs) != 1 || len(registerArgs.a.B) == 0 {
 		t.Fatalf("mixed register-arg result stack/code = depth %d, relocs %d, code %d", registerArgs.depth(), len(registerArgs.relocs), len(registerArgs.a.B))
-	}
-}
-
-func TestLoopRegionPinLifecycle(t *testing.T) {
-	saved := loopRegionPinsEnabled
-	loopRegionPinsEnabled = true
-	t.Cleanup(func() { loopRegionPinsEnabled = saved })
-	f := &fn{
-		a:         &a64.Asm{},
-		localType: []machineType{mtI32, mtI64, mtF32, mtI32},
-		localSlot: []int{0, 1, 2, 3},
-		locals: []localDef{
-			{reg: regNone, state: lsConstZero},
-			{reg: regNone, state: lsMem},
-			{reg: regNone, isFloat: true, state: lsMem},
-			{reg: X5, state: lsMem},
-		},
-		nLocals: 4,
-	}
-	fr := &ctrlFrame{kind: cfLoop, loopSetLocals: map[uint32]bool{0: true, 1: true, 2: true, 3: true}}
-	f.activateLoopPins(fr)
-	if len(fr.loopPins) != 2 || fr.loopPins[0].local != 0 || fr.loopPins[1].local != 1 ||
-		!f.pinnedLocalMask.has(X12) || !f.pinnedLocalMask.has(X13) || len(f.a.B) == 0 {
-		t.Fatalf("activated loop pins = %#v, mask = %#v, code = %d", fr.loopPins, f.pinnedLocalMask, len(f.a.B))
-	}
-	if f.locals[0].state != lsReg || f.locals[1].state != lsStackReg {
-		t.Fatalf("pin states = %v, %v", f.locals[0].state, f.locals[1].state)
-	}
-	f.ctrl = []ctrlFrame{{}, *fr}
-	before := len(f.a.B)
-	f.storeLoopPinsLeaving(-1)
-	if len(f.a.B) <= before {
-		t.Fatal("leaving loop did not store loop pins")
-	}
-	f.releaseLoopPins(fr)
-	if f.pinnedLocalMask.has(X12) || f.pinnedLocalMask.has(X13) || f.locals[0].state != lsMem || f.locals[1].state != lsMem {
-		t.Fatalf("released loop pins left mask/state = %#v, %v, %v", f.pinnedLocalMask, f.locals[0].state, f.locals[1].state)
-	}
-
-	blocked := &ctrlFrame{kind: cfLoop, loopHasCall: true, loopSetLocals: map[uint32]bool{0: true}}
-	f.activateLoopPins(blocked)
-	if len(blocked.loopPins) != 0 {
-		t.Fatal("call-containing loop received region pins")
 	}
 }
 
@@ -431,7 +364,7 @@ func TestDiscardSimpleStorageForms(t *testing.T) {
 	if !f.discardSimple(e) || f.regUser[X0] != nil {
 		t.Fatal("discardSimple did not release a register value")
 	}
-	if (&fn{s: newStack()}).discardSimple(&elem{kind: ekDeferred}) {
+	if (&fn{s: newStack()}).discardSimple(testElem(ekDeferred)) {
 		t.Fatal("discardSimple discarded a deferred node")
 	}
 }

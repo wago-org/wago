@@ -19,14 +19,15 @@ func (f *fn) dropValue() {
 }
 
 func (f *fn) treeDiscardable(e *elem) bool {
-	if e == nil || e.kind == ekSkip || e.kind == ekBlock {
+	if e == nil || e.elemKind() == ekSkip || e.elemKind() == ekBlock {
 		return false
 	}
-	if e.kind == ekDeferred {
-		return deferredOpDiscardable(e.op) && f.treeDiscardable(e.arg0) &&
-			(e.arg1 == nil || f.treeDiscardable(e.arg1))
+	if e.elemKind() == ekDeferred {
+		arg0, arg1 := f.s.arg0(e), f.s.arg1(e)
+		return deferredOpDiscardable(e.deferredOp()) && f.treeDiscardable(arg0) &&
+			(arg1 == nil || f.treeDiscardable(arg1))
 	}
-	if e.st.ehRoot {
+	if e.st.hasEHRoot() {
 		return false
 	}
 	// In guard mode the deferred load itself is the bounds trap. Explicit mode
@@ -42,18 +43,19 @@ func deferredOpDiscardable(op wOp) bool {
 }
 
 func (f *fn) discardTree(e *elem) {
-	if e.kind == ekDeferred {
-		if e.arg1 != nil {
-			f.discardTree(e.arg1)
+	if e.elemKind() == ekDeferred {
+		arg0, arg1 := f.s.arg0(e), f.s.arg1(e)
+		if arg1 != nil {
+			f.discardTree(arg1)
 		}
-		f.discardTree(e.arg0)
+		f.discardTree(arg0)
 		f.erase(e)
 		return
 	}
 	switch e.st.kind {
 	case stReg:
 		if e.st.typ == mtCustom {
-			for _, reg := range e.st.vregs {
+			for _, reg := range f.s.elemCold(e).vregs {
 				f.releaseF(reg)
 			}
 		} else if e.st.typ.isXMM() {
@@ -68,7 +70,7 @@ func (f *fn) discardTree(e *elem) {
 }
 
 func (f *fn) releaseDroppedValue(e *elem) {
-	if e.st.ehRoot {
+	if e.st.hasEHRoot() {
 		root, owned := f.materializeRead(e)
 		for off := int32(0); off < ehRootSlots*8; off += 8 {
 			f.st64(root, off, ZR)
@@ -82,7 +84,7 @@ func (f *fn) releaseDroppedValue(e *elem) {
 	switch e.st.kind {
 	case stReg:
 		if e.st.typ == mtCustom {
-			for _, reg := range e.st.vregs {
+			for _, reg := range f.s.elemCold(e).vregs {
 				f.releaseF(reg)
 			}
 		} else if e.st.typ.isXMM() {

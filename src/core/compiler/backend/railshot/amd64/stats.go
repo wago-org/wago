@@ -19,6 +19,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -40,36 +41,14 @@ var (
 	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check — the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
-	// boundsRangeEnabled lets a first scalar load certify later fixed-offset loads
-	// in the same pure straight-line range. Kept separate for A/B measurement.
-	boundsRangeEnabled = os.Getenv("WAGO_NO_BOUNDS_RANGE") != "1"
 	// compactI32FrameEnabled packs i32 locals in admitted kernels.
 	compactI32FrameEnabled = os.Getenv("WAGO_NO_COMPACT_I32_FRAME") != "1"
-	// compactI32ControlFlowEnabled extends that typed-slot layout through structured
-	// control flow. Calls remain excluded because some argument-staging paths use
-	// intentionally full-width local loads.
-	compactI32ControlFlowEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_I32_CONTROL") != "1"
-	// compactI32CallsEnabled admits call-making functions after every deferred
-	// local argument load has selected its width from the local's machine type.
-	compactI32CallsEnabled = os.Getenv("WAGO_AMD64_NO_COMPACT_I32_CALLS") != "1"
 	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings on
 	// the explicit native-compaction path.
 	accumulatorImmediateEnabled = os.Getenv("WAGO_AMD64_NO_ACCUMULATOR_IMMEDIATE") != "1"
-	// incDecEnabled selects compact INC/DEC for compact Wasm add/sub by
-	// one when CF is not a compiler value. The kill switch is the A/B oracle.
-	incDecEnabled = os.Getenv("WAGO_AMD64_NO_INCDEC") != "1"
-	// directIncDecEnabled extends the same encoding choice to compiler-authored
-	// counters whose next flag consumer is ZF or whose flags are dead.
-	directIncDecEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_INCDEC") != "1"
-	// directJecxzEnabled selects JECXZ for bounded ECX byte-tail guards whose
-	// flags are dead and whose checked targets remain in rel8 range.
-	directJecxzEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_JECXZ") != "1"
 	// sharedTrapBodyEnabled lets compact trap groups share the invariant
 	// trap-cell stores and native-stack unwind within one compiled function.
 	sharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_SHARED_TRAP_BODY") != "1"
-	// moduleSharedTrapBodyEnabled lets later internal functions replace an exact
-	// complete trap-body copy with one near jump to a retained cold body.
-	moduleSharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_MODULE_SHARED_TRAP_BODY") != "1"
 	// compactLowPinEnabled makes RBP the first integer-local pin only for
 	// call-free, straight-line compact functions. The register set and pin
 	// count stay unchanged; this is an encoded-size tie-break experiment.
@@ -78,10 +57,6 @@ var (
 	// compact compilation swap referenced disp32 homes with equal-type zero-reference
 	// low homes during finalization. WAGO_LOCAL_SLOT_ORDER=0 is the rollback.
 	localSlotOrderEnabled = os.Getenv("WAGO_LOCAL_SLOT_ORDER") != "0"
-	// teeSpillElideEnabled reuses an unpinned scalar local.tee's canonical frame
-	// slot when its still-live result must be evicted from a register. It is
-	// default-off; WAGO_TEE_SPILL_ELIDE=1 opts in.
-	teeSpillElideEnabled = envDefaultOff(os.Getenv("WAGO_TEE_SPILL_ELIDE"))
 	// commuteSelfUpdateEnabled makes a non-fixed destination the accumulator for
 	// commutative x=f(y) op x expressions instead of spilling x first.
 	// WAGO_AMD64_NO_COMMUTE_SELF_UPDATE=1 is the A/B oracle.
@@ -104,18 +79,9 @@ var (
 	// singleBitMaskTestEnabled selects BT for one-bit mask predicates in
 	// native compaction. WAGO_AMD64_NO_SINGLE_BIT_MASK_TEST=1 is the A/B oracle.
 	singleBitMaskTestEnabled = os.Getenv("WAGO_AMD64_NO_SINGLE_BIT_MASK_TEST") != "1"
-	// swarIdiomsEnabled gates exact, bounded recognition of open-coded packed-byte
-	// algorithms. WAGO_NO_SWAR_IDIOMS=1 is the A/B oracle.
-	swarIdiomsEnabled = os.Getenv("WAGO_NO_SWAR_IDIOMS") != "1"
 	// simdSuperoptEnabled gates exact bounded selection of multi-op Wasm SIMD
 	// sequences. WAGO_NO_SIMD_SUPEROPT=1 is the A/B oracle.
 	simdSuperoptEnabled = os.Getenv("WAGO_NO_SIMD_SUPEROPT") != "1"
-
-	// fcmpFuseEnabled gates float compare→branch fusion: an ordered float relation
-	// (lt/le/gt/ge) directly before if/br_if lowers to UCOMIS + a NaN-safe Jcc
-	// instead of UCOMIS + SETcc + TEST + Jcc. It is default-off after paired
-	// screening; WAGO_FCMP_FUSE=1 opts in and WAGO_NO_FCMP_FUSE=1 rolls it back.
-	fcmpFuseEnabled = envDefaultOff(os.Getenv("WAGO_FCMP_FUSE")) && os.Getenv("WAGO_NO_FCMP_FUSE") != "1"
 
 	// mul3opEnabled gates three-operand IMUL (dest = src*imm) that folds a borrowed
 	// register source into a constant multiply. WAGO_NO_MUL3=1 is the A/B oracle.
@@ -196,8 +162,8 @@ type CodegenStats struct {
 	// Bounds / traps.
 	BoundsChecks            int // inline memory-OOB checks emitted (P6 elides these)
 	BoundsChecksElidable    int // subset of BoundsChecks a straight-line certificate covers (P6.1 sizing; count-only)
-	BoundsChecksInLoop      int // subset emitted inside a loop on a keyable base (P6.2 loop-precheck ceiling; count-only)
-	BoundsChecksHoistable   int // subset on a loop-INVARIANT local base (not set in the loop) — the P6.2 hoistable target; count-only
+	BoundsChecksInLoop      int // subset emitted inside a loop on a keyable base; count-only
+	BoundsChecksHoistable   int // reserved for cross-target reporting; AMD64 no longer prewalks loops solely to populate it
 	TrapStubs               int // shared cold trap stubs emitted (one per trap code used)
 	TrapGroups              int // distinct source-function groups across trap stubs
 	GCHandleResolutions     int // dynamic compact-handle resolutions emitted
@@ -210,30 +176,68 @@ type CodegenStats struct {
 	// Pins.
 	PinnedLocals       int // integer/float locals given a dedicated register
 	PinnedGlobalsValue int // hot mutable-int globals value-pinned in this function
+	PinRelinquishments int // pinned locals temporarily homed at exact exhaustion points
 
-	// UnpinnedRetry is set when the pinned compile exhausted the register file
-	// (a pathologically deep expression tree) and the function was recompiled with
-	// local pinning disabled — a diagnostic flag for such register-heavy functions.
-	UnpinnedRetry bool
+	CompileNanos     uint64
+	FunctionAttempts uint64
 
 	// Peephole/instruction-selection rewrites that fired, by stable name.
 	Peephole map[string]int
 }
 
-// resetFuncStats clears every accumulated counter/map of s, keeping only its
-// identity (FuncIdx, Name), so a recompile of the same function (the pinning-off
-// retry) starts from a clean slate instead of double-counting the failed attempt.
-func resetFuncStats(s *CodegenStats) {
-	if s == nil {
+func (ms *ModuleStats) finalizeCompileResourceStats() {
+	if ms == nil {
 		return
 	}
-	idx, name := s.FuncIdx, s.Name
-	*s = CodegenStats{FuncIdx: idx, Name: name}
+	c := &ms.Compile
+	c.StageNanos[shared.CompileStageFunctions] = 0
+	c.FunctionAttempts = 0
+	for _, s := range ms.Funcs {
+		if s == nil {
+			continue
+		}
+		c.StageNanos[shared.CompileStageFunctions] += s.CompileNanos
+		c.FunctionAttempts += s.FunctionAttempts
+	}
 }
 
-func (s *CodegenStats) setUnpinnedRetry() {
-	if s != nil {
-		s.UnpinnedRetry = true
+func (ms *ModuleStats) setNodeScratchStats(sc *scratch) {
+	if ms == nil {
+		return
+	}
+	ms.Compile.NodeScratchReserved = 0
+	ms.Compile.NodeScratchPeak = 0
+	ms.Compile.NodeScratchRetained = 0
+	ms.Compile.NodeScratchDiscarded = 0
+	ms.Compile.ControlScratchReserved = 0
+	ms.Compile.ControlScratchPeak = 0
+	ms.Compile.ControlScratchRetained = 0
+	ms.Compile.ControlScratchDiscarded = 0
+	ms.addNodeScratchStats(sc)
+}
+
+func (ms *ModuleStats) addNodeScratchStats(sc *scratch) {
+	if ms == nil || sc == nil {
+		return
+	}
+	ms.Compile.AddWorkerScratch(workerScratchStats(sc))
+}
+
+func workerScratchStats(sc *scratch) shared.WorkerScratchStats {
+	if sc == nil {
+		return shared.WorkerScratchStats{}
+	}
+	_, retained := sc.stack.nodeMemory()
+	frameBytes := uint64(unsafe.Sizeof(ctrlFrame{}))
+	mergeBytes := uint64(unsafe.Sizeof(ctrlFrameMerge{}))
+	rootBytes := uint64(unsafe.Sizeof(ctrlFrameRoots{}))
+	return shared.WorkerScratchStats{
+		NodeReserved: sc.nodeScratchReserved, NodePeak: sc.nodeScratchPeak,
+		NodeRetained: retained, NodeDiscarded: sc.nodeScratchDiscarded,
+		ControlReserved:  uint64(sc.controlScratchReserved) * frameBytes,
+		ControlPeak:      uint64(sc.controlScratchPeak)*frameBytes + uint64(sc.controlMergePeak)*mergeBytes + uint64(sc.controlRootPeak)*rootBytes,
+		ControlRetained:  uint64(cap(sc.ctrl))*frameBytes + uint64(cap(sc.ctrlMerges))*mergeBytes + uint64(cap(sc.ctrlRoots))*rootBytes,
+		ControlDiscarded: uint64(sc.controlScratchDiscarded)*frameBytes + uint64(sc.controlMergeDiscarded)*mergeBytes + uint64(sc.controlRootDiscarded)*rootBytes,
 	}
 }
 
@@ -298,11 +302,6 @@ func (s *CodegenStats) addBoundsElidable() {
 func (s *CodegenStats) addBoundsInLoop() {
 	if s != nil {
 		s.BoundsChecksInLoop++
-	}
-}
-func (s *CodegenStats) addBoundsHoistable() {
-	if s != nil {
-		s.BoundsChecksHoistable++
 	}
 }
 func (s *CodegenStats) addPinnedLocal() {
@@ -437,6 +436,7 @@ type ModuleStats struct {
 	GCSharedStubCallSites int
 	NativeSize            shared.NativeSizeReport
 	Encoding              encoderamd64.EncodingStats
+	Compile               shared.CompileResourceStats
 }
 
 type NativeFunctionSizeReport = shared.NativeFunctionSizeReport
@@ -450,6 +450,16 @@ func (ms *ModuleStats) String() string {
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "=== codegen explain: %d function(s) ===\n", len(ms.Funcs))
+	fmt.Fprintf(&b, "compile: hints=%dns functions=%dns finalize=%dns hint-headers=%dB hint-sidecars=%dB attempts=%d\n",
+		ms.Compile.StageNanos[shared.CompileStageHints], ms.Compile.StageNanos[shared.CompileStageFunctions],
+		ms.Compile.StageNanos[shared.CompileStageFinalize], ms.Compile.HintHeaderBytes,
+		ms.Compile.HintSidecarBytes, ms.Compile.FunctionAttempts)
+	fmt.Fprintf(&b, "compile-node-scratch: reserved=%dB peak-envelope=%dB retained=%dB discarded=%dB\n",
+		ms.Compile.NodeScratchReserved, ms.Compile.NodeScratchPeak,
+		ms.Compile.NodeScratchRetained, ms.Compile.NodeScratchDiscarded)
+	fmt.Fprintf(&b, "compile-control-scratch: reserved=%dB peak-envelope=%dB retained=%dB discarded=%dB\n",
+		ms.Compile.ControlScratchReserved, ms.Compile.ControlScratchPeak,
+		ms.Compile.ControlScratchRetained, ms.Compile.ControlScratchDiscarded)
 	fmt.Fprintf(&b, "native: total=%d functions=%d function-align=%d module-other=%d dead-reserved=%d\n",
 		ms.NativeSize.TotalBytes, ms.NativeSize.FunctionBytes, ms.NativeSize.FunctionAlignmentBytes,
 		ms.NativeSize.ModuleOtherBytes, ms.NativeSize.DeadReservationBytes())
@@ -599,8 +609,8 @@ func (s *CodegenStats) report() string {
 		s.Encoding.AluImm32Acc+s.Encoding.TestImm32Acc)
 	fmt.Fprintf(&b, "    alloc: flushes=%d flushBelow=%d condenses=%d spills=%d reloads=%d forcedLoads=%d\n",
 		s.Flushes, s.FlushBelows, s.Condenses, s.Spills, s.Reloads, s.MemRefsForcedByStore)
-	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
-		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)
+	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d relinquish=%d\n",
+		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue, s.PinRelinquishments)
 	if s.InlineSiteBytes != 0 {
 		fmt.Fprintf(&b, "    inline-site-bytes: %d\n", s.InlineSiteBytes)
 	}

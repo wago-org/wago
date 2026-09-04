@@ -40,69 +40,35 @@ var aluTable = [...]aluEnc{
 func (f *fn) condense(node *elem, dest Reg) Reg {
 	f.stats.addCondense()
 	switch {
-	case node.op == opMulHighU:
-		return f.condenseMulHighU(node, dest)
-	case isBinALU(node.op):
+	case isBinALU(node.deferredOp()):
 		return f.condenseBinary(node, dest)
-	case isShift(node.op):
+	case isShift(node.deferredOp()):
 		return f.condenseShift(node, dest)
-	case isCompare(node.op) || node.op == opEqz:
+	case isCompare(node.deferredOp()) || node.deferredOp() == opEqz:
 		return f.condenseCompare(node, dest)
-	case isUnary(node.op):
+	case isUnary(node.deferredOp()):
 		return f.condenseUnary(node, dest)
-	case isConvert(node.op):
+	case isConvert(node.deferredOp()):
 		return f.condenseConvert(node, dest)
-	case isDivRem(node.op):
+	case isDivRem(node.deferredOp()):
 		return f.condenseDivRem(node, dest)
 	}
 	panic("arm64: unsupported deferred op")
-}
-
-// condenseMulHighU lowers the curated xjb-as multiply-high idiom to AArch64's
-// single unsigned high-half multiply instruction.
-func (f *fn) condenseMulHighU(node *elem, dest Reg) Reg {
-	left, right := node.arg0, node.arg1
-	l, ownL := f.materializeRead(left)
-	f.pinned = f.pinned.add(l)
-	r, ownR := f.materializeRead(right)
-	f.pinned = f.pinned.remove(l)
-
-	result := dest
-	if result == regNone {
-		switch {
-		case ownL:
-			result = l
-		case ownR:
-			result = r
-		default:
-			result = f.allocReg(maskOf(l, r))
-		}
-	}
-	f.a.Umulh(result, l, r)
-	if ownL && result != l {
-		f.release(l)
-	}
-	if ownR && result != r {
-		f.release(r)
-	}
-	f.consumeBlockBelow(node)
-	f.occupy(node, result)
-	node.op = opNone
-	return result
 }
 
 // condenseConvert lowers the integer width conversions (wrap / sign- & zero-
 // extend). Each reads the source register and writes the converted value; the
 // source register can be reused when there is no target hint.
 func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
+	arg0 := f.s.arg0(node)
 	// i32.wrap_i64(i64.extend_i32_{s,u}(x)) is exactly x's low 32 bits. Keep the
 	// i32 carrier canonical with a W-register move, but skip the otherwise useless
 	// sign/zero extension. This occurs frequently in code that widens only for an
 	// intermediate ABI or arithmetic operation before returning to i32.
-	roundTrip := node.op == opWrap && node.arg0.kind == ekDeferred &&
-		(node.arg0.op == opZExt32 || node.arg0.op == opSExt32)
+	roundTrip := node.deferredOp() == opWrap && arg0.elemKind() == ekDeferred &&
+		(arg0.deferredOp() == opZExt32 || arg0.deferredOp() == opSExt32)
 	if roundTrip {
-		src := f.materialize(node.arg0.arg0)
+		src := f.materialize(f.s.arg0(arg0))
 		result := src
 		if dest != regNone {
 			result = dest
@@ -114,7 +80,6 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 		f.stats.peep("extend-wrap-elim")
 		f.consumeBlockBelow(node)
 		f.occupy(node, result)
-		node.op = opNone
 		return result
 	}
 
@@ -123,13 +88,13 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// the upper 32 bits on AArch64) is a no-op. The semantic fact survives bounded
 	// Valent materialization and spills, but local/global reads and signed loads
 	// begin unknown and therefore cannot trigger this consumer.
-	cleanZExt := node.op == opZExt32 && node.arg0.st.facts.has(factUpper32Zero)
-	src := f.materialize(node.arg0)
+	cleanZExt := node.deferredOp() == opZExt32 && arg0.st.valueFacts().has(factUpper32Zero)
+	src := f.materialize(arg0)
 	result := src
 	if dest != regNone && dest != src {
 		result = dest
 	}
-	switch node.op {
+	switch node.deferredOp() {
 	case opZExt32:
 		if cleanZExt && result == src {
 			f.stats.peep("ext-elim") // upper 32 already zero; the mov would be a no-op
@@ -143,16 +108,15 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	case opSExt8:
 		// Encoder width selectors use true for W (32-bit) and false for X
 		// (64-bit), the inverse of machineType.is64().
-		f.a.Sxtb(result, src, !node.typ.is64())
+		f.a.Sxtb(result, src, !node.st.typ.is64())
 	case opSExt16:
-		f.a.Sxth(result, src, !node.typ.is64())
+		f.a.Sxth(result, src, !node.st.typ.is64())
 	}
 	if result != src {
 		f.release(src)
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
-	node.op = opNone
 	return result
 }
 
@@ -161,23 +125,23 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 // place (const→imm, memory→register load, reg→reg). AArch64 is three-operand, so
 // the in-place accumulate is `op Rd,Rn,Rm` with Rd==Rn==dest.
 func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
-	w := node.typ.is64()
-	left := node.arg0
-	right := node.arg1
+	w := node.st.typ.is64()
+	left := f.s.arg0(node)
+	right := f.s.arg1(node)
 
 	// Commutative reassociation (selectInstr): if the left operand is a constant
 	// but the right is not, swap so the constant folds as an immediate rather than
 	// being loaded into dest.
-	if node.op.commutative() &&
-		left.kind == ekValue && left.st.kind == stConst &&
-		!(right.kind == ekValue && right.st.kind == stConst) {
+	if node.deferredOp().commutative() &&
+		left.elemKind() == ekValue && left.st.kind == stConst &&
+		!(right.elemKind() == ekValue && right.st.kind == stConst) {
 		left, right = right, left
 	}
 
 	// MADD/MSUB fusion: add(c, a*b) → MADD (c + a*b), sub(c, a*b) → MSUB (c - a*b)
 	// in one instruction when the multiply is an un-condensed value*value node.
 	// Checked before the LEA/local-sink forms so a*b±c never splits into MUL + ADD.
-	if node.op == opAdd || node.op == opSub {
+	if node.deferredOp() == opAdd || node.deferredOp() == opSub {
 		if r := f.tryMulAddFuse(node, dest, w); r != regNone {
 			return r
 		}
@@ -195,9 +159,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// the destination's local lifetime begins immediately afterwards.  Restrict
 	// it to concrete RHS values so we never change deferred evaluation order or
 	// register-pressure behavior.
-	if f.opt(optThreeOpSink) && dest != regNone && left.kind == ekValue &&
+	if f.opt(optThreeOpSink) && dest != regNone && left.elemKind() == ekValue &&
 		(left.st.kind == stLocalReg || left.st.kind == stGlobReg) &&
-		(right.kind == ekValue || (right.isDeferred() && (isUnary(right.op) || isConvert(right.op)))) {
+		(right.elemKind() == ekValue || (right.isDeferred() && (isUnary(right.deferredOp()) || isConvert(right.deferredOp())))) {
 		if f.tryThreeOperandLocalSink(node, dest, left, right, w) {
 			return dest
 		}
@@ -206,7 +170,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// Scaled-index fusion: add(x, shl(y, k∈1..3)) → `ADD dest, x, y, LSL #k` (the
 	// add-shifted-register form) — one instruction replacing shl+add. The common
 	// AssemblyScript array-address shape (`base + (i << log2size)`).
-	if node.op == opAdd {
+	if node.deferredOp() == opAdd {
 		if r := f.tryLeaScaledAdd(node, left, right, dest); r != regNone {
 			return r
 		}
@@ -218,7 +182,7 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// Strength-reduce x * {3,5,9} to a single add-shifted `[x + x*{2,4,8}]` (base ==
 	// index == x), replacing a MUL by a small constant. The multiplier sits on the
 	// right after the commutative swap above.
-	if node.op == opMul {
+	if node.deferredOp() == opMul {
 		if r := f.tryLeaMul(node, left, right, dest); r != regNone {
 			return r
 		}
@@ -234,20 +198,19 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// overwrite it. Protecting x from allocation while the LHS condenses avoids
 	// both the store and reload without a scratch copy. This shape is pervasive in
 	// the unrolled BLAKE compression round.
-	if f.opt(optOldDestRHSSink) && dest != regNone && right.kind == ekValue &&
+	if f.opt(optOldDestRHSSink) && dest != regNone && right.elemKind() == ekValue &&
 		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) &&
 		right.st.reg == dest {
 		f.pinned = f.pinned.add(dest)
 		lr, owned := f.materializeRead(left)
 		f.pinned = f.pinned.remove(dest)
-		f.aluRR3(node.op, dest, lr, dest, w)
+		f.aluRR3(node.deferredOp(), dest, lr, dest, w)
 		if owned && lr != dest {
 			f.release(lr)
 		}
 		f.stats.peep("old-dest-rhs-sink")
 		f.consumeBlockBelow(node)
 		f.occupy(node, dest)
-		node.op = opNone
 		return dest
 	}
 
@@ -272,7 +235,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 				rr = safe
 				f.pinned = f.pinned.add(rr)
 				pinnedRight = rr
-				right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
+				replacement := elem{st: storage{kind: stReg, typ: node.st.typ, reg: rr}}
+				replacement.setElemKind(ekValue)
+				right = &replacement
 				rightReleaseAfter = rr
 			} else {
 				// Nested hazards can exhaust the hazard-free registers (each level
@@ -312,16 +277,15 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		//    in place would require a preceding copy for).
 		//  - in-place: reuse an owned-register left as the destination, so the op
 		//    accumulates in place with no preceding mov.
-		if node.op == opAdd && left.kind == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg) && leaRightOK(right) {
+		if node.deferredOp() == opAdd && left.elemKind() == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg) && leaRightOK(right) {
 			dest = f.allocReg(0)
 			f.emitLeaAdd(dest, left.st.reg, right, w)
 			f.release(rightReleaseAfter)
 			f.consumeBlockBelow(node)
 			f.occupy(node, dest)
-			node.op = opNone
 			return dest
 		}
-		if left.kind == ekValue && left.st.kind == stReg {
+		if left.elemKind() == ekValue && left.st.kind == stReg {
 			dest = left.st.reg // in-place accumulate (no mov)
 		} else {
 			dest = f.allocReg(0)
@@ -329,10 +293,10 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	}
 	f.pinned = f.pinned.add(dest)
 	f.condenseInto(left, dest)
-	if node.op == opMul {
+	if node.deferredOp() == opMul {
 		f.applyMul(dest, right, w)
 	} else {
-		f.applyALU(aluTable[node.op], dest, right, w)
+		f.applyALU(aluTable[node.deferredOp()], dest, right, w)
 	}
 	f.pinned = f.pinned.remove(dest)
 	if pinnedRight != regNone {
@@ -342,7 +306,6 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 
 	f.consumeBlockBelow(node)
 	f.occupy(node, dest)
-	node.op = opNone
 	return dest
 }
 
@@ -356,18 +319,24 @@ func (f *fn) tryThreeOperandLocalSink(node *elem, dest Reg, left, right *elem, w
 	var rhs Reg
 	ownedRHS := false
 	if right.isDeferred() {
-		if !isUnary(right.op) && !isConvert(right.op) {
+		if !isUnary(right.deferredOp()) && !isConvert(right.deferredOp()) {
 			return false
 		}
 		// A 32-bit consumer needs only the low half of
 		// wrap(extend_i32_{s,u}(x)); when x is a borrowed pin, feed it directly
 		// to the W-form ALU. That W write canonicalizes the result for free.
-		if !w && right.op == opWrap && right.arg0 != nil && right.arg0.isDeferred() &&
-			(right.arg0.op == opZExt32 || right.arg0.op == opSExt32) && right.arg0.arg0 != nil &&
-			right.arg0.arg0.kind == ekValue &&
-			(right.arg0.arg0.st.kind == stLocalReg || right.arg0.arg0.st.kind == stGlobReg) {
-			rhs = right.arg0.arg0.st.reg
-			f.stats.peep("extend-wrap-elim")
+		rightArg := f.s.arg0(right)
+		if !w && right.deferredOp() == opWrap && rightArg != nil && rightArg.isDeferred() &&
+			(rightArg.deferredOp() == opZExt32 || rightArg.deferredOp() == opSExt32) {
+			inner := f.s.arg0(rightArg)
+			if inner != nil && inner.elemKind() == ekValue &&
+				(inner.st.kind == stLocalReg || inner.st.kind == stGlobReg) {
+				rhs = inner.st.reg
+				f.stats.peep("extend-wrap-elim")
+			} else {
+				rhs = f.condense(right, regNone)
+				ownedRHS = true
+			}
 		} else {
 			// dest and the borrowed left source are pinned local/global registers, so
 			// condenseUnary's allocator cannot select either. It realizes the old RHS
@@ -378,11 +347,10 @@ func (f *fn) tryThreeOperandLocalSink(node *elem, dest Reg, left, right *elem, w
 	} else {
 		switch right.st.kind {
 		case stConst:
-			if f.aluImm3(node.op, dest, left.st.reg, right.st.cval, w) {
+			if f.aluImm3(node.deferredOp(), dest, left.st.reg, right.st.cval, w) {
 				f.stats.peep("local-3op-sink")
 				f.consumeBlockBelow(node)
 				f.occupy(node, dest)
-				node.op = opNone
 				return true
 			}
 			// MUL has no immediate encoding, and a non-encodable ALU immediate needs
@@ -399,25 +367,24 @@ func (f *fn) tryThreeOperandLocalSink(node *elem, dest Reg, left, right *elem, w
 		}
 	}
 
-	f.aluRR3(node.op, dest, left.st.reg, rhs, w)
+	f.aluRR3(node.deferredOp(), dest, left.st.reg, rhs, w)
 	if ownedRHS {
 		f.release(rhs)
 	}
 	f.stats.peep("local-3op-sink")
 	f.consumeBlockBelow(node)
 	f.occupy(node, dest)
-	node.op = opNone
 	return true
 }
 
 // shlByConst123 reports whether e is a deferred shl of node-typ t by a constant
 // masked count in 1..3 (an add-shifted-encodable scale), returning the count.
-func shlByConst123(e *elem, t machineType) (int, bool) {
-	if e == nil || e.kind != ekDeferred || e.op != opShl || e.typ != t {
+func shlByConst123(s *stack, e *elem, t machineType) (int, bool) {
+	if e == nil || e.elemKind() != ekDeferred || e.deferredOp() != opShl || e.st.typ != t {
 		return 0, false
 	}
-	c := e.arg1
-	if c == nil || c.kind != ekValue || c.st.kind != stConst {
+	c := s.arg1(e)
+	if c == nil || c.elemKind() != ekValue || c.st.kind != stConst {
 		return 0, false
 	}
 	mask := int64(31)
@@ -434,12 +401,12 @@ func shlByConst123(e *elem, t machineType) (int, bool) {
 // add-shifted-register `ADD dest, x, y, LSL #k`. Returns the result register, or
 // regNone when the shape doesn't match.
 func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
-	w := node.typ.is64()
+	w := node.st.typ.is64()
 	shl, other := right, left
-	k, ok := shlByConst123(shl, node.typ)
+	k, ok := shlByConst123(f.s, shl, node.st.typ)
 	if !ok {
 		shl, other = left, right
-		if k, ok = shlByConst123(shl, node.typ); !ok {
+		if k, ok = shlByConst123(f.s, shl, node.st.typ); !ok {
 			return regNone
 		}
 	}
@@ -447,12 +414,13 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	// values: condensing a deferred operand here could clobber the other operand's
 	// register under pressure. The AS address shape (local/global base + local
 	// index) is concrete by the time the add is built.
-	if other.kind != ekValue || shl.arg0 == nil || shl.arg0.kind != ekValue {
+	shlArg := f.s.arg0(shl)
+	if other.elemKind() != ekValue || shlArg == nil || shlArg.elemKind() != ekValue {
 		return regNone
 	}
 	// The index: read a pinned local in place (add-shifted never writes its
 	// sources); anything else materializes into an owned register.
-	y, yOwned := f.materializeRead(shl.arg0)
+	y, yOwned := f.materializeRead(shlArg)
 	f.pinned = f.pinned.add(y) // survive the base's materialization
 	x, xOwned := f.materializeRead(other)
 	f.pinned = f.pinned.remove(y)
@@ -476,7 +444,6 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, dest)
-	node.op = opNone
 	return dest
 }
 
@@ -488,7 +455,7 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 // register under pressure (the same hazard tryLeaScaledAdd guards against). Only
 // the 64-bit add matches (extend_i32_u produces i64).
 func (f *fn) tryUxtwAdd(node, left, right *elem, dest Reg) Reg {
-	if !f.opt(optUXTWAdd) || !node.typ.is64() {
+	if !f.opt(optUXTWAdd) || !node.st.typ.is64() {
 		return regNone
 	}
 	ext, other := right, left
@@ -498,13 +465,14 @@ func (f *fn) tryUxtwAdd(node, left, right *elem, dest Reg) Reg {
 			return regNone
 		}
 	}
-	if other.kind != ekValue || ext.arg0 == nil || ext.arg0.kind != ekValue {
+	extArg := f.s.arg0(ext)
+	if other.elemKind() != ekValue || extArg == nil || extArg.elemKind() != ekValue {
 		return regNone
 	}
 	// Read the extend source's low 32 bits in place when it's a pinned local; the
 	// extended-register add never writes its sources. Pin it across the other
 	// operand's materialization.
-	y, yOwned := f.materializeRead(ext.arg0)
+	y, yOwned := f.materializeRead(extArg)
 	f.pinned = f.pinned.add(y)
 	x, xOwned := f.materializeRead(other)
 	f.pinned = f.pinned.remove(y)
@@ -528,12 +496,11 @@ func (f *fn) tryUxtwAdd(node, left, right *elem, dest Reg) Reg {
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, dest)
-	node.op = opNone
 	return dest
 }
 
 func isZExt32Deferred(e *elem) bool {
-	return e != nil && e.kind == ekDeferred && e.op == opZExt32
+	return e != nil && e.elemKind() == ekDeferred && e.deferredOp() == opZExt32
 }
 
 // tryLeaMul lowers x * {3,5,9} as a single add-shifted `dest = x + x*{2,4,8}` (base
@@ -542,7 +509,7 @@ func isZExt32Deferred(e *elem) bool {
 // operand here could clobber a register under the add-shifted (same hazard as
 // tryLeaScaledAdd guards against).
 func (f *fn) tryLeaMul(node, left, right *elem, dest Reg) Reg {
-	if right.kind != ekValue || right.st.kind != stConst {
+	if right.elemKind() != ekValue || right.st.kind != stConst {
 		return regNone
 	}
 	var scaleLog uint8
@@ -556,10 +523,10 @@ func (f *fn) tryLeaMul(node, left, right *elem, dest Reg) Reg {
 	default:
 		return regNone
 	}
-	if left.kind != ekValue {
+	if left.elemKind() != ekValue {
 		return regNone
 	}
-	w := node.typ.is64()
+	w := node.st.typ.is64()
 	x, xOwned := f.materializeRead(left) // add-shifted never writes its sources; a pinned local reads in place
 	if dest == regNone {
 		if xOwned {
@@ -574,14 +541,13 @@ func (f *fn) tryLeaMul(node, left, right *elem, dest Reg) Reg {
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, dest)
-	node.op = opNone
 	return dest
 }
 
 // leaRightOK reports whether the right add operand can be an add-shifted index /
 // immediate displacement.
 func leaRightOK(right *elem) bool {
-	if right.kind != ekValue {
+	if right.elemKind() != ekValue {
 		return false
 	}
 	switch right.st.kind {
@@ -685,12 +651,12 @@ func (f *fn) addDisp(dst, base Reg, disp int32, w bool) {
 // (shift any register by any register, taken mod width) — so none of x86's "force
 // the count into CL / spill RCX / pin RCX" dance is needed.
 func (f *fn) condenseShift(node *elem, dest Reg) Reg {
-	w := node.typ.is64()
-	digit := shiftDigit(node.op)
-	left := node.arg0
-	right := node.arg1
+	w := node.st.typ.is64()
+	digit := shiftDigit(node.deferredOp())
+	left := f.s.arg0(node)
+	right := f.s.arg1(node)
 
-	if right.kind == ekValue && right.st.kind == stConst {
+	if right.elemKind() == ekValue && right.st.kind == stConst {
 		if dest == regNone {
 			dest = f.allocReg(0)
 		}
@@ -704,7 +670,6 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 		f.pinned = f.pinned.remove(dest)
 		f.consumeBlockBelow(node)
 		f.occupy(node, dest)
-		node.op = opNone
 		return dest
 	}
 
@@ -716,8 +681,8 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	// register: wasm requires the old count after the value destination is written.
 	// Evaluate left before right (wasm order).
 	val := regNone
-	if dest != regNone && left.kind == ekValue && left.st.kind == stLocalReg && left.st.reg == dest &&
-		!(right.kind == ekValue && right.st.kind == stLocalReg && right.st.reg == dest) {
+	if dest != regNone && left.elemKind() == ekValue && left.st.kind == stLocalReg && left.st.reg == dest &&
+		!(right.elemKind() == ekValue && right.st.kind == stLocalReg && right.st.reg == dest) {
 		val = dest
 	}
 	if val == regNone {
@@ -739,7 +704,6 @@ func (f *fn) condenseShift(node *elem, dest Reg) Reg {
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
-	node.op = opNone
 	return result
 }
 
@@ -823,9 +787,6 @@ func (f *fn) rorv(d, n, m Reg, w bool) {
 // boolean.) AArch64 has no memory operands, so a slot/local-ref/mem-ref right
 // operand is loaded into a register and compared register-register.
 func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
-	if node.typ.isFloat() { // deferred ordered float compare materialized as a value
-		return f.condenseFCompareValue(node, dest)
-	}
 	if cc, ok := f.tryMaskedEqzToFlags(node); ok {
 		result := dest
 		if result == regNone {
@@ -835,11 +796,11 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 		f.a.Cset32(result, cc)
 		f.occupy(node, result)
 		node.st.typ = mtI32
-		node.op = opNone
 		return result
 	}
-	w := node.typ.is64()
-	left := node.arg0
+	w := node.st.typ.is64()
+	left := f.s.arg0(node)
+	right := f.s.arg1(node)
 
 	// cmp reads the left comparand read-only, so a borrowed pinned-local/global
 	// register can feed the compare in place — no copy — provided nothing between
@@ -850,8 +811,8 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	// live pinned register afterwards would read a post-write value. When L is a
 	// borrowed register the trailing cset must not clobber it, so the boolean lands
 	// in a separate register (dest or a fresh temp) instead of reusing L.
-	inPlaceOK := node.op == opEqz ||
-		(node.arg1.kind == ekValue && node.arg1.st.kind == stConst)
+	inPlaceOK := node.deferredOp() == opEqz ||
+		(right.elemKind() == ekValue && right.st.kind == stConst)
 	var L Reg
 	ownL := true
 	if inPlaceOK {
@@ -862,15 +823,14 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	f.pinned = f.pinned.add(L)
 
 	var cc Cond
-	if node.op == opEqz {
+	if node.deferredOp() == opEqz {
 		cc = condE
 		f.cmpImm(L, 0, w) // SUBS XZR, L, #0
 	} else {
-		cc = condOf(node.op)
-		right := node.arg1
+		cc = condOf(node.deferredOp())
 		if right.isDeferred() {
-			rr := f.condense(right, regNone)
-			right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
+			// condense rewrites the existing operand node in place.
+			f.condense(right, regNone)
 		}
 		switch right.st.kind {
 		case stConst:
@@ -889,12 +849,12 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			f.cmpRR(L, right.st.reg, w) // pinned local/global; never release
 		case stSlot:
 			t := f.allocReg(maskOf(L))
-			f.ld64(t, SP, f.spillOff(right.st.slot))
+			f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
 			f.cmpRR(L, t, w)
 			f.release(t)
 		case stLocalRef:
 			t := f.allocReg(maskOf(L))
-			f.ld64(t, SP, f.localOff(right.st.idx))
+			f.ld64(t, SP, f.localOff(right.st.index()))
 			f.cmpRR(L, t, w)
 			f.release(t)
 		case stMemRef:
@@ -933,19 +893,18 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
 	node.st.typ = mtI32 // relational result is always i32
-	node.op = opNone
 	return result
 }
 
 // condenseUnary lowers clz/ctz/popcnt (CLZ; RBIT+CLZ; NEON popcount).
 func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
-	w := node.typ.is64()
+	w := node.st.typ.is64()
 	// clz/ctz/popcnt read their source read-only, so a register-resident source
 	// (a pinned local or owned temp) can feed the op directly — no copy.
-	arg := node.arg0
+	arg := f.s.arg0(node)
 	var src Reg
 	srcOwned := true
-	if arg.kind == ekValue && (arg.st.kind == stLocalReg || arg.st.kind == stGlobReg) {
+	if arg.elemKind() == ekValue && (arg.st.kind == stLocalReg || arg.st.kind == stGlobReg) {
 		src, srcOwned = arg.st.reg, false // pinned local/global: read directly, never release
 	} else {
 		src = f.materialize(arg)
@@ -959,7 +918,7 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 			result = f.allocReg(0)
 		}
 	}
-	switch node.op {
+	switch node.deferredOp() {
 	case opClz:
 		f.a.Clz(result, src, !w)
 	case opCtz:
@@ -975,60 +934,12 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 		f.a.Addv8b(vPop, vPop)        // horizontal sum of the byte lanes
 		f.a.FmovToGpr(result, vPop, false)
 		f.releaseF(vPop)
-	case opSWARWiden4:
-		// Reinterpret the low four bytes as lanes and zero-extend them to four
-		// halfwords. Only the low 64 result bits are transferred back.
-		v := f.allocFReg(0)
-		f.a.FmovFromGpr(v, src, true)
-		f.a.NeonUxtlHfromB(v, v)
-		f.a.FmovToGpr(result, v, true)
-		f.releaseF(v)
-	case opSWARPack4:
-		// XTN truncates four halfword lanes to their low bytes.
-		v := f.allocFReg(0)
-		f.a.FmovFromGpr(v, src, true)
-		f.a.NeonXtnBfromH(v, v)
-		f.a.FmovToGpr(result, v, w)
-		f.releaseF(v)
-	case opSWARParse4:
-		// MADD exposes the first multiply-plus-shift sum. After the mask,
-		// pairs = p0 | p1<<32 exactly, so the second 64-bit multiply and shift
-		// are equivalent to the 32-bit p0*100+p1 MADD. This remains exact for
-		// every i64 input; no decimal-digit range assumption is made.
-		hi := f.allocReg(maskOf(src, result))
-		f.a.LsrImm(hi, src, 16, false)
-		k := f.allocReg(maskOf(src, result, hi))
-		f.a.MovImm32(k, 10)
-		final := result
-		raw := final
-		if raw == regNone || raw == src && !srcOwned {
-			if srcOwned {
-				raw = src
-			} else {
-				raw = f.allocReg(maskOf(src, hi, k))
-			}
-		}
-		f.a.Madd64(raw, src, k, hi)
-		f.andImm(raw, int64(0x0000ffff0000ffff), true)
-		f.a.LsrImm(hi, raw, 32, false)
-		f.a.MovImm32(k, 100)
-		if final == regNone {
-			final = raw
-		}
-		f.a.Madd32(final, raw, k, hi)
-		if final != raw {
-			f.release(raw)
-		}
-		result = final
-		f.release(k)
-		f.release(hi)
 	}
 	if srcOwned && result != src {
 		f.release(src)
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
-	node.op = opNone
 	return result
 }
 
@@ -1040,14 +951,14 @@ func (f *fn) condenseUnary(node *elem, dest Reg) Reg {
 // fixed division registers, x86's spill-RAX/spill-RDX/pin/Cdq dance disappears —
 // three ordinary registers (dividend, divisor, result) suffice.
 func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
-	w := node.typ.is64()
-	signed := node.op == opDivS || node.op == opRemS
-	wantRem := node.op == opRemS || node.op == opRemU
-	left := node.arg0
-	right := node.arg1
+	w := node.st.typ.is64()
+	signed := node.deferredOp() == opDivS || node.deferredOp() == opRemS
+	wantRem := node.deferredOp() == opRemS || node.deferredOp() == opRemU
+	left := f.s.arg0(node)
+	right := f.s.arg1(node)
 
 	// Constant divisor: strength-reduce to shifts / multiply-high, avoiding the divide.
-	if right.kind == ekValue && right.st.kind == stConst {
+	if right.elemKind() == ekValue && right.st.kind == stConst {
 		if r, ok := f.tryDivByConst(node, dest, right.st.cval); ok {
 			return r
 		}
@@ -1108,7 +1019,6 @@ func (f *fn) condenseDivRem(node *elem, dest Reg) Reg {
 
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
-	node.op = opNone
 	return result
 }
 
@@ -1148,10 +1058,13 @@ func (f *fn) madd(d, n, m, ra Reg, w bool) {
 // isValueMul reports whether e is a deferred integer multiply whose two operands
 // are both concrete values (not nested deferred subtrees). Such a mul can fuse
 // into a single MADD/MSUB with a value addend without any nested-subtree consume.
-func isValueMul(e *elem) bool {
-	return e != nil && e.kind == ekDeferred && e.op == opMul &&
-		e.arg0 != nil && e.arg0.kind == ekValue &&
-		e.arg1 != nil && e.arg1.kind == ekValue
+func isValueMul(s *stack, e *elem) bool {
+	if e == nil || e.elemKind() != ekDeferred || e.deferredOp() != opMul {
+		return false
+	}
+	arg0, arg1 := s.arg0(e), s.arg1(e)
+	return arg0 != nil && arg0.elemKind() == ekValue &&
+		arg1 != nil && arg1.elemKind() == ekValue
 }
 
 // tryMulAddFuse fuses add(c, a*b) → MADD (d = c + a*b) and sub(c, a*b) → MSUB
@@ -1165,27 +1078,28 @@ func (f *fn) tryMulAddFuse(node *elem, dest Reg, w bool) Reg {
 		return regNone
 	}
 	var mul, addend *elem
-	switch node.op {
+	arg0, arg1 := f.s.arg0(node), f.s.arg1(node)
+	switch node.deferredOp() {
 	case opAdd:
 		switch {
-		case isValueMul(node.arg1):
-			mul, addend = node.arg1, node.arg0
-		case isValueMul(node.arg0):
-			mul, addend = node.arg0, node.arg1
+		case isValueMul(f.s, arg1):
+			mul, addend = arg1, arg0
+		case isValueMul(f.s, arg0):
+			mul, addend = arg0, arg1
 		}
 	case opSub:
-		if isValueMul(node.arg1) { // c - a*b → MSUB; a*b - c is not representable
-			mul, addend = node.arg1, node.arg0
+		if isValueMul(f.s, arg1) { // c - a*b → MSUB; a*b - c is not representable
+			mul, addend = arg1, arg0
 		}
 	}
-	if mul == nil || addend.kind != ekValue {
+	if mul == nil || addend.elemKind() != ekValue {
 		return regNone
 	}
 	// Three read-only sources; pin each so materializing the next (e.g. a load or
 	// const) cannot reuse it.
-	n, ownN := f.materializeRead(mul.arg0)
+	n, ownN := f.materializeRead(f.s.arg0(mul))
 	f.pinned = f.pinned.add(n)
-	m, ownM := f.materializeRead(mul.arg1)
+	m, ownM := f.materializeRead(f.s.arg1(mul))
 	f.pinned = f.pinned.add(m)
 	ra, ownRa := f.materializeRead(addend)
 	f.pinned = f.pinned.add(ra)
@@ -1193,7 +1107,7 @@ func (f *fn) tryMulAddFuse(node *elem, dest Reg, w bool) Reg {
 	if d == regNone {
 		d = f.allocReg(0)
 	}
-	if node.op == opAdd {
+	if node.deferredOp() == opAdd {
 		f.madd(d, n, m, ra, w)
 	} else {
 		f.msub(d, n, m, ra, w)
@@ -1213,7 +1127,6 @@ func (f *fn) tryMulAddFuse(node *elem, dest Reg, w bool) Reg {
 	f.stats.peep("mul-add-fuse")
 	f.consumeBlockBelow(node)
 	f.occupy(node, d)
-	node.op = opNone
 	return d
 }
 
@@ -1248,9 +1161,9 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 	case stConst:
 		f.loadConst(dest, e.st)
 	case stSlot:
-		f.ld64(dest, SP, f.spillOff(e.st.slot))
+		f.ld64(dest, SP, f.spillOff(e.st.slotIndex()))
 	case stLocalRef:
-		f.ld64(dest, SP, f.localOff(e.st.idx))
+		f.ld64(dest, SP, f.localOff(e.st.index()))
 	case stLocalReg, stGlobReg:
 		if e.st.reg != dest {
 			f.a.MovReg64(dest, e.st.reg) // copy from the pinned local/global; never release it
@@ -1281,12 +1194,12 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		f.aluRR(enc.op, dest, right.st.reg, w) // pinned local/global; never release
 	case stSlot:
 		t := f.allocReg(maskOf(dest))
-		f.ld64(t, SP, f.spillOff(right.st.slot))
+		f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
 		f.aluRR(enc.op, dest, t, w)
 		f.release(t)
 	case stLocalRef:
 		t := f.allocReg(maskOf(dest))
-		f.ld64(t, SP, f.localOff(right.st.idx))
+		f.ld64(t, SP, f.localOff(right.st.index()))
 		f.aluRR(enc.op, dest, t, w)
 		f.release(t)
 	case stMemRef:
@@ -1458,12 +1371,12 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 		f.mulRR(dest, right.st.reg, w) // pinned local/global; never release
 	case stSlot:
 		t := f.allocReg(maskOf(dest))
-		f.ld64(t, SP, f.spillOff(right.st.slot))
+		f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
 		f.mulRR(dest, t, w)
 		f.release(t)
 	case stLocalRef:
 		t := f.allocReg(maskOf(dest))
-		f.ld64(t, SP, f.localOff(right.st.idx))
+		f.ld64(t, SP, f.localOff(right.st.index()))
 		f.mulRR(dest, t, w)
 		f.release(t)
 	case stMemRef:
@@ -1564,12 +1477,14 @@ func (f *fn) fitsAddSubImmediate(v int64) bool {
 // consumeBlockBelow unlinks every physical stack element of node's valent block
 // that sits below node (its operand sub-trees), leaving node as the top.
 func (f *fn) consumeBlockBelow(node *elem) {
-	base := baseOfValentBlock(node)
-	e := node.prev
+	base := f.s.baseOfValentBlock(node)
+	e := f.s.prev(node)
 	for {
-		prev := e.prev
+		prev := f.s.prev(e)
 		isBase := e == base
+		id := f.s.prev(e).next
 		f.erase(e)
+		f.s.recycle(id, e)
 		if isBase {
 			break
 		}

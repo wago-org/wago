@@ -14,6 +14,16 @@ const (
 	// MaxInitialStackArenaCapacity bounds speculative operand-node storage in one
 	// serial compiler scratch. Larger functions use stable fallback chunks.
 	MaxInitialStackArenaCapacity = 2048
+
+	// MaxRetainedStackArenaBytes bounds reusable operand-node backing per compiler
+	// worker. Functions may grow past it for correctness, but the excess is
+	// released at the function boundary rather than becoming worker high-water.
+	MaxRetainedStackArenaBytes = 1 << 20
+
+	// MaxRetainedGCCallsiteOffsetBytes bounds the reusable temporary root-offset
+	// vector per compiler worker. An unusually wide callsite may grow past it for
+	// correctness, but that backing is released after the callsite is recorded.
+	MaxRetainedGCCallsiteOffsetBytes = 32 << 10
 )
 
 // NativeFrameFitsStackFence reports whether a body frame plus fixed entry

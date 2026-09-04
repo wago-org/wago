@@ -16,9 +16,9 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	if c == 0 {
 		return regNone, false // div/rem by zero traps — leave it to the idiv path
 	}
-	w := node.typ.is64()
-	signed := node.op == opDivS || node.op == opRemS
-	wantRem := node.op == opRemU || node.op == opRemS
+	w := node.valueType().is64()
+	signed := node.deferredOp() == opDivS || node.deferredOp() == opRemS
+	wantRem := node.deferredOp() == opRemU || node.deferredOp() == opRemS
 
 	// Decide whether we can handle this divisor before emitting anything, so a
 	// bail-out leaves the operand stack untouched for the idiv fallback.
@@ -51,7 +51,7 @@ func (f *fn) tryDivByConst(node *elem, dest Reg, c int64) (Reg, bool) {
 	}
 	f.consumeBlockBelow(node)
 	f.occupy(node, result)
-	node.op = opNone
+	node.setDeferredOp(opNone)
 	f.stats.peep("div-by-const")
 	return result, true
 }

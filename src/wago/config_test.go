@@ -644,38 +644,11 @@ func TestRuntimeConfigRejectsDisabledStackFence(t *testing.T) {
 	}
 }
 
-func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
-	wantOff := map[string]bool{
-		"loop-precheck": true,
-	}
-	switch runtime.GOARCH {
-	case "amd64":
-		for _, name := range []string{"affine-lea", "call-next-use", "tee-spill-elide", "v128-sink"} {
-			wantOff[name] = true
-		}
-	}
-
-	seen := make(map[string]bool, len(wantOff))
+func TestMeasuredLowValueOptimizationsAreRemoved(t *testing.T) {
 	for _, info := range NewRuntimeConfig().OptimizationInfos() {
-		if info.Name == "inline-loop-callees" {
-			t.Fatal("removed inline-loop-callees optimization is still exposed")
-		}
-		if info.Name == "deep-fp-pins" {
-			t.Fatal("removed deep-fp-pins optimization is still exposed")
-		}
-		if runtime.GOARCH == "arm64" && info.Name == "v128-sink" {
-			t.Fatal("removed ARM64 v128-sink optimization is still exposed")
-		}
-		if wantOff[info.Name] {
-			seen[info.Name] = true
-			if info.On || info.Default {
-				t.Errorf("%s default state = on:%v catalog:%v, want both false", info.Name, info.On, info.Default)
-			}
-		}
-	}
-	for name := range wantOff {
-		if !seen[name] {
-			t.Errorf("default-off optimization %s is not exposed", name)
+		switch info.Name {
+		case "inline-loop-callees", "deep-fp-pins", "affine-lea", "tee-spill-elide", "v128-sink", "loop-precheck":
+			t.Fatalf("removed optimization %s is still exposed", info.Name)
 		}
 	}
 }
@@ -683,11 +656,16 @@ func TestMeasuredLowValueOptimizationsAreDisabledByDefault(t *testing.T) {
 var defaultRuntimeConfigAllocationSink *RuntimeConfig
 
 func TestDefaultRuntimeConfigAllocationBudget(t *testing.T) {
+	maxConfigAllocs := 1.0
+	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
+		// Go's Windows/ARM64 environment lookup currently adds two allocations.
+		maxConfigAllocs = 3
+	}
 	configAllocs := testing.AllocsPerRun(1000, func() {
 		defaultRuntimeConfigAllocationSink = NewRuntimeConfig()
 	})
-	if configAllocs > 1 {
-		t.Fatalf("NewRuntimeConfig allocations = %.0f, want <= 1", configAllocs)
+	if configAllocs > maxConfigAllocs {
+		t.Fatalf("NewRuntimeConfig allocations = %.0f, want <= %.0f", configAllocs, maxConfigAllocs)
 	}
 
 	module := benchAddOneModule()

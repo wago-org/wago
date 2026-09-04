@@ -16,7 +16,7 @@ import (
 // one register per level. With the loop making the params hot enough to pin, a
 // large-enough depth exhausts the register file — the exact shape that made
 // json-as/sqlite fail to link ("no register available to spill"). The module also
-// serves as the correctness oracle for the unpinned recompile.
+// serves as the correctness oracle for single-pass pressure handling.
 func regHeavyShiftChain(t *testing.T, nParams, depth int) *wasm.Module {
 	t.Helper()
 	params := make([]wasm.ValType, nParams)
@@ -116,20 +116,19 @@ func TestCompileWrapperResultsWithThreePinnedGlobals(t *testing.T) {
 	}
 }
 
-// TestExecRegHeavyUnpinnedRetry is the regression for the register-allocator
-// exhaustion: a register-heavy nested-shift tree must compile (via the pinning-off
-// retry) instead of failing to link, and must still compute the right value.
-func TestExecRegHeavyUnpinnedRetry(t *testing.T) {
+// TestExecRegHeavyUsesOneCompileAttempt is the regression for register exhaustion: the
+// target-derived transient floor must compile a register-heavy nested-shift tree
+// on its first attempt and preserve the result.
+func TestExecRegHeavyUsesOneCompileAttempt(t *testing.T) {
 	const nParams, depth = 8, 7
 	m := regHeavyShiftChain(t, nParams, depth)
 
-	// The pinned attempt exhausts the file; assert the fix recompiled it unpinned.
 	ms := &ModuleStats{}
 	if _, err := CompileModuleWith(m, CompileOptions{Stats: ms}); err != nil {
 		t.Fatalf("compile: %v", err)
 	}
-	if !ms.Funcs[0].UnpinnedRetry {
-		t.Fatalf("expected UnpinnedRetry (register-pressure recompile) to fire")
+	if ms.Compile.FunctionAttempts != 1 || ms.Funcs[0].FunctionAttempts != 1 {
+		t.Fatalf("function attempts module/function = %d/%d, want 1/1", ms.Compile.FunctionAttempts, ms.Funcs[0].FunctionAttempts)
 	}
 
 	// Correctness: p0=5, all counts=1 → acc = 5 << depth.

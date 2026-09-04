@@ -155,7 +155,7 @@ SSE/AVX.
 | Compare/branch fusion | Flags-resident compare/eqz for branch consumers | Same optimizer; arm64 emits `CMP`/`CMN` + `B.cond`, with mem refs materialized first |
 | Select fusion | `cmov` / flags-select forms | Same optimizer; arm64 uses `CSEL`/flag reuse where applicable |
 | Straight-line bounds facts | Explicit-bounds duplicate check elision | Same optimizer; arm64 caches mem bytes in `X27` and compares with `CMP` |
-| Loop precheck | Versioned loop prechecks via `WAGO_LOOP_PRECHECK` | Same optimizer; arm64 emits precheck arithmetic with `ADD`/`CMP`/`B.cond` |
+| Loop precheck | Historical versioned-loop experiment | Removed on both targets after cost/benefit qualification |
 | Guard-page bounds elision | Linux amd64 signal guard pages elide inline bounds checks | Linux and Darwin arm64 do the same via `X26` and AArch64 ucontext rewriting |
 | Deferred memory loads | x86 can fold pending loads into ALU/CMP r/m operands | Arm64 keeps deferred loads for dead-load/destination choice but always emits `LDR` before ALU/CMP because A64 has no memory operands |
 | Immediate stores | `mov [mem], imm` / split i64 stores | Arm64 store-immediate path materializes through scratch and stores; still avoids a long-lived value register |

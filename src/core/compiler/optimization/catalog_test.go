@@ -28,56 +28,17 @@ func TestCatalogRegistrationIsUniqueAndArchitectureScoped(t *testing.T) {
 	}
 }
 
-func TestMeasuredLowValueOptimizationsDefaultOff(t *testing.T) {
-	wantOff := map[string]map[string]bool{
-		"amd64": {
-			"affine-lea":      true,
-			"call-next-use":   true,
-			"loop-precheck":   true,
-			"tee-spill-elide": true,
-			"v128-sink":       true,
-		},
-		"arm64": {
-			"loop-precheck": true,
-		},
-	}
-	for arch, names := range wantOff {
-		seen := map[string]bool{}
-		for _, definition := range ForArch(arch) {
-			if definition.Name == "inline-loop-callees" {
-				t.Fatalf("%s still registers removed inline-loop-callees", arch)
-			}
-			if names[definition.Name] {
-				seen[definition.Name] = true
-				if definition.Default {
-					t.Errorf("%s %s defaults on", arch, definition.Name)
-				}
-			}
-		}
-		for name := range names {
-			if !seen[name] {
-				t.Errorf("%s default-off optimization %s is not registered", arch, name)
-			}
-		}
-	}
-}
-
-func TestV128SinkIsAMD64Only(t *testing.T) {
-	if _, ok := Lookup("arm64", "v128-sink"); ok {
-		t.Fatal("arm64 still exposes the measured-low-value vector sink")
-	}
-	definition, ok := Lookup("amd64", "v128-sink")
-	if !ok {
-		t.Fatal("amd64 vector sink was removed before native verification")
-	}
-	if definition.Default {
-		t.Fatal("amd64 vector sink unexpectedly defaults on")
-	}
-}
-
 func TestDeepFPPinsAreRemoved(t *testing.T) {
 	if _, ok := Lookup("arm64", "deep-fp-pins"); ok {
 		t.Fatal("arm64 still exposes measured-low-value deep float pins")
+	}
+}
+
+func TestLegacyPinsAreRemoved(t *testing.T) {
+	for _, name := range []string{"legacy-fp-pins", "legacy-gp-pins"} {
+		if _, ok := Lookup("arm64", name); ok {
+			t.Errorf("arm64 still exposes retired optimization %q", name)
+		}
 	}
 }
 
@@ -95,28 +56,20 @@ func TestV128ConstCacheIsAMD64Only(t *testing.T) {
 }
 
 func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
-	wantDefaultOff := map[string]map[string]bool{
-		"amd64": {"fcmp-fuse": true, "gc-ref-facts": true},
-		"arm64": {"fcmp-fuse": true},
-	}
+	wantDefaultOff := map[string]map[string]bool{}
 	want := map[string][]string{
 		"amd64": {
 			"simd-superopt",
-			"swar-idioms",
 			"interval-region-pins",
-			"fcmp-fuse",
 			"magic-div",
 			"shared-trap-body",
 			"shared-adapters",
 			"dead-gc-new",
-			"gc-ref-facts",
 			"gc-native-alloc",
 		},
 		"arm64": {
 			"simd-superopt",
-			"swar-idioms",
 			"interval-region-pins",
-			"fcmp-fuse",
 			"magic-div",
 			"shared-trap-body",
 			"shared-adapters",
@@ -138,7 +91,7 @@ func TestSubstantialOptimizationFamiliesAreCatalogued(t *testing.T) {
 			}
 		}
 	}
-	for _, name := range []string{"dead-gc-new", "gc-ref-facts", "gc-native-alloc"} {
+	for _, name := range []string{"dead-gc-new", "gc-native-alloc"} {
 		if _, ok := Lookup("arm64", name); ok {
 			t.Errorf("arm64 exposes amd64-only optimization %q", name)
 		}
