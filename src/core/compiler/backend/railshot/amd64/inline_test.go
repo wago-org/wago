@@ -186,8 +186,8 @@ func TestAnalyzeInlineCandidates(t *testing.T) {
 	}
 }
 
-// TestInlineReportInModuleStats verifies the report is populated on ModuleStats
-// during a real compile and rendered in its String() (the WAGO_EXPLAIN path).
+// TestInlineReportInModuleStats verifies ordinary stats avoid the report scan,
+// while an explicitly requested report is populated and rendered in String().
 func TestInlineReportInModuleStats(t *testing.T) {
 	caller := []byte{0x00, 0x41, 0x01, 0x41, 0x02, 0x10, 0x01, 0x0b} // i32.const1;i32.const2;call 1;end
 	leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}         // (i32,i32)->i32 a+b
@@ -197,6 +197,12 @@ func TestInlineReportInModuleStats(t *testing.T) {
 	)
 	var ms ModuleStats
 	if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
+		t.Fatalf("stats-only compile: %v", err)
+	}
+	if ms.Inline != nil {
+		t.Fatalf("stats-only inline report = %#v, want nil", ms.Inline)
+	}
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms, CollectInlineReport: true}); err != nil {
 		t.Fatalf("compile: %v", err)
 	}
 	if ms.Inline == nil {

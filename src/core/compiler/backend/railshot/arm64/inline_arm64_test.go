@@ -132,6 +132,12 @@ func TestInlineLeafExecAndStatsArm64(t *testing.T) {
 	inlineEnabled = true
 	var ms ModuleStats
 	if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms}); err != nil {
+		t.Fatalf("stats-only compile: %v", err)
+	}
+	if ms.Inline != nil {
+		t.Fatalf("stats-only inline report = %#v, want nil", ms.Inline)
+	}
+	if _, err := CompileModuleWith(m, CompileOptions{Stats: &ms, CollectInlineReport: true}); err != nil {
 		t.Fatalf("compile: %v", err)
 	}
 	if ms.Inline == nil || ms.Inline.NumCandidates != 1 {
