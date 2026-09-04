@@ -164,3 +164,19 @@ Registry wrappers preserve existing callers and behavior.
 Validation: project and registry suites pass. Added tests cover repeated plugin
 and grant fields, case-folded grant fields, duplicate nested configuration keys,
 and distinct case-sensitive map/configuration keys.
+
+## 16. Bound project metadata reads and structures
+
+Manifest and lock reads are limited to 4 MiB each; recovery journals to 12 MiB.
+Manifest and lock encoders include their trailing newline in the same 4 MiB
+limit. Exact-limit outputs decode successfully; one byte over is rejected.
+`TestEncodedProjectMetadataIncludesNewlineInLimit` covers both encoders and
+fails before the final-length check. The change does not add an output copy.
+Regular-file reads reject symlinks and detect file identity/size/time changes.
+Unix opens are nonblocking and no-follow, so replacement with a FIFO cannot
+block opening. JSON validation limits depth to 64 and aggregate values to
+100,000 before typed decoding, covering plugins, dependencies, grants, contracts,
+bindings, and arbitrary configuration. Writes enforce the same readable limits.
+
+Validation: regular-file, JSON, and project suites pass, including oversized
+sparse files, FIFO/symlink rejection, nested JSON, and aggregate value limits.

@@ -13,7 +13,7 @@ import (
 // ValidateUniqueJSON validates one JSON value and rejects exactly repeated
 // object members. JSON map keys remain case-sensitive.
 func ValidateUniqueJSON(data []byte) error {
-	return validateUniqueJSON(data, false, nil, nil, false)
+	return validateUniqueJSON(data, false, nil, nil, false, Limits{})
 }
 
 // ValidateUniqueFoldedJSON additionally treats case-folded object member names
@@ -27,13 +27,13 @@ func ValidateUniqueFoldedJSON(data []byte, exactSubtrees ...string) error {
 	for _, field := range exactSubtrees {
 		exact[foldJSONName(field)] = struct{}{}
 	}
-	return validateUniqueJSON(data, true, exact, nil, false)
+	return validateUniqueJSON(data, true, exact, nil, false, Limits{})
 }
 
 // ValidateTypedJSON follows encoding/json struct matching while preserving map
 // and RawMessage key semantics, including arbitrary plugin configuration.
 func ValidateTypedJSON(data []byte, value any) error {
-	return validateUniqueJSON(data, false, nil, reflect.TypeOf(value), true)
+	return validateUniqueJSON(data, false, nil, reflect.TypeOf(value), true, Limits{})
 }
 
 func jsonType(t reflect.Type) reflect.Type {
@@ -75,7 +75,15 @@ func jsonFieldType(t reflect.Type, key string) reflect.Type {
 	return nil
 }
 
-func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]struct{}, rootType reflect.Type, typed bool) error {
+func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]struct{}, rootType reflect.Type, typed bool, limits Limits) error {
+	values := 0
+	chargeValue := func() error {
+		values++
+		if limits.MaxValues > 0 && values > limits.MaxValues {
+			return errors.New("JSON collection count limit exceeded")
+		}
+		return nil
+	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.UseNumber()
 	var frames []uniqueJSONFrame
@@ -99,6 +107,12 @@ func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]st
 		if delimiter, ok := token.(json.Delim); ok {
 			switch delimiter {
 			case '{', '[':
+				if err := chargeValue(); err != nil {
+					return err
+				}
+				if limits.MaxDepth > 0 && len(frames) >= limits.MaxDepth {
+					return errors.New("JSON depth limit exceeded")
+				}
 				if err := beginUniqueJSONValue(frames, &rootStarted); err != nil {
 					return err
 				}
@@ -167,6 +181,9 @@ func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]st
 			continue
 		}
 
+		if err := chargeValue(); err != nil {
+			return err
+		}
 		if err := beginUniqueJSONValue(frames, &rootStarted); err != nil {
 			return err
 		}
@@ -218,4 +235,16 @@ func foldJSONName(name string) string {
 			character = next
 		}
 	}, name)
+}
+
+// Limits bound aggregate JSON values and nesting before typed allocation.
+// Zero fields leave that dimension unbounded.
+type Limits struct{ MaxDepth, MaxValues int }
+
+func ValidateUniqueJSONWithLimits(data []byte, limits Limits) error {
+	return validateUniqueJSON(data, false, nil, nil, false, limits)
+}
+
+func ValidateTypedJSONWithLimits(data []byte, value any, limits Limits) error {
+	return validateUniqueJSON(data, false, nil, reflect.TypeOf(value), true, limits)
 }

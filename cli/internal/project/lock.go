@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/wago-org/wago/internal/jsonstrict"
+	"github.com/wago-org/wago/internal/regularfile"
 	"io"
 	"os"
 	"path/filepath"
@@ -140,7 +141,7 @@ func ReadLock(dir string) (LockDocument, error) {
 }
 
 func readLock(dir string) (LockDocument, error) {
-	data, err := os.ReadFile(LockPath(dir))
+	data, err := regularfile.Read(LockPath(dir), maxProjectMetadataBytes)
 	if os.IsNotExist(err) {
 		return NewLockDocument(), nil
 	}
@@ -155,7 +156,10 @@ func readLock(dir string) (LockDocument, error) {
 }
 
 func DecodeLock(data []byte) (LockDocument, error) {
-	if err := jsonstrict.ValidateTypedJSON(data, LockDocument{}); err != nil {
+	if len(data) > maxProjectMetadataBytes {
+		return LockDocument{}, fmt.Errorf("project lock exceeds byte limit %d", maxProjectMetadataBytes)
+	}
+	if err := jsonstrict.ValidateTypedJSONWithLimits(data, LockDocument{}, projectJSONLimits); err != nil {
 		return LockDocument{}, err
 	}
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -187,7 +191,11 @@ func EncodeLock(document LockDocument) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return append(data, '\n'), nil
+	data = append(data, '\n')
+	if _, err := DecodeLock(data); err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func WriteLock(dir string, document LockDocument) error {
