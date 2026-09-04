@@ -76,6 +76,60 @@ func TestSelectedOpcodeNamespaceIsTargetSpecific(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesV128Foundation(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   []MOpcode
+	}{
+		{"amd64", TargetAMD64, []MOpcode{OpAMD64V128Const, OpAMD64V128Load, OpAMD64V128And, OpAMD64V128Store}},
+		{"arm64", TargetARM64, []MOpcode{OpARM64V128Const, OpARM64V128Load, OpARM64V128And, OpARM64V128Store}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := vectorFoundationFixture(test.target)
+			count, err := SelectTargetOpcodes(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if count != len(test.want) {
+				t.Fatalf("selected %d operations, want %d", count, len(test.want))
+			}
+			for index, want := range test.want {
+				if got := f.Insts[index].Op; got != want {
+					t.Fatalf("instruction %d opcode = %d, want %d", index, got, want)
+				}
+			}
+		})
+	}
+}
+
+func vectorFoundationFixture(target Target) *Func {
+	f := &Func{
+		Target: target,
+		VRegs:  []VRegData{{}, {Type: TypeI32, Bank: BankGPR}, {Type: TypeV128, Bank: BankFPR}, {Type: TypeV128, Bank: BankFPR}, {Type: TypeV128, Bank: BankFPR}},
+		Insts: []Inst{
+			{Op: wasm.InstrV128Const, Result: 2, Source: 1},
+			{Op: wasm.InstrV128Load, Result: 3, Source: 2, Aux: 8, OperandStart: 0, OperandCount: 1},
+			{Op: wasm.InstrV128And, Result: 4, Source: 3, OperandStart: 1, OperandCount: 2},
+			{Op: wasm.InstrV128Store, Source: 4, Aux: 24, OperandStart: 3, OperandCount: 2},
+		},
+		Operands: []Operand{
+			{Reg: 1, Fixed: NoFixedReg, Bank: BankGPR, Flags: OperandUse},
+			{Reg: 2, Fixed: NoFixedReg, Bank: BankFPR, Flags: OperandUse}, {Reg: 3, Fixed: NoFixedReg, Bank: BankFPR, Flags: OperandUse},
+			{Reg: 1, Fixed: NoFixedReg, Bank: BankGPR, Flags: OperandUse}, {Reg: 4, Fixed: NoFixedReg, Bank: BankFPR, Flags: OperandUse},
+		},
+		Blocks: []Block{{InstCount: 4}},
+		Memory: []MemoryAccess{
+			{Instruction: 1, AddressValue: 1, Offset: 8, TrapSite: 2, SemanticWidth: 16, EncodedWidth: 16, Alignment: 1},
+			{Instruction: 3, AddressValue: 1, Offset: 24, TrapSite: 4, SemanticWidth: 16, EncodedWidth: 16, Alignment: 1},
+		},
+	}
+	for index := range f.Insts {
+		f.SIMD = append(f.SIMD, railssa.SemanticSIMDImmediate{Instruction: uint32(index)})
+	}
+	return f
+}
+
 func TestVerifyMemoryAccessIdentityAndWidth(t *testing.T) {
 	f := memoryFixture()
 	if err := Verify(f); err != nil {

@@ -242,6 +242,23 @@ func (f *Func) MemoryAccessAt(instruction uint32) (*MemoryAccess, bool) {
 	return nil, false
 }
 
+// SIMDImmediateAt returns the sparse SIMD payload owned by instruction.
+func (f *Func) SIMDImmediateAt(instruction uint32) (railssa.SemanticSIMDImmediate, bool) {
+	lo, hi := 0, len(f.SIMD)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if f.SIMD[mid].Instruction < instruction {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo < len(f.SIMD) && f.SIMD[lo].Instruction == instruction {
+		return f.SIMD[lo], true
+	}
+	return railssa.SemanticSIMDImmediate{}, false
+}
+
 func Build(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow, semantic *railssa.SemanticFunc, reuse *Func) (*Func, error) {
 	return BuildWithSimplify(target, cfg, flow, semantic, nil, reuse)
 }
@@ -706,7 +723,7 @@ func Verify(f *Func) error {
 	}
 	simdIndex := 0
 	for instructionID, instruction := range f.Insts {
-		if !wasm.IsSIMDValidationInstructionKind(instruction.Op) {
+		if !wasm.IsSIMDValidationInstructionKind(instruction.Op) && !isSelectedSIMDOpcode(instruction.Op) {
 			continue
 		}
 		if simdIndex >= len(f.SIMD) || f.SIMD[simdIndex].Instruction != uint32(instructionID) {
