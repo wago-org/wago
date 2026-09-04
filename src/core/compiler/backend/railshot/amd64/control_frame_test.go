@@ -304,7 +304,4 @@ func TestReserveLocalScratchAMD64(t *testing.T) {
 	if cap(sc.fnState.localType) != 7 || cap(sc.fnState.localSlot) != 7 || cap(sc.fnState.locals) != 7 {
 		t.Fatalf("local scratch capacities = %d/%d/%d, want 7/7/7", cap(sc.fnState.localType), cap(sc.fnState.localSlot), cap(sc.fnState.locals))
 	}
-	if sc.fnState.localGCRefFacts != nil {
-		t.Fatal("local reservation allocated retired GC fact scratch")
-	}
 }

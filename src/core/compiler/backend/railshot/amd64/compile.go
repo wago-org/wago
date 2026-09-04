@@ -225,14 +225,10 @@ type fn struct {
 	customInstructions map[uint32]CustomInstruction
 
 	nParams             int
-	nLocals             int                // params + declared locals
-	localType           []machineType      // per-local machine type
-	localSlot           []uint32           // low 24 bits: byte offset; high 8 bits: bounded local-reference count
-	localGCRefFacts     []shared.GCRefFact // semantic facts for compact refs; no raw addresses
-	nextGCRefIdentity   uint32             // bounded constructor identity, zero means unavailable
-	gcOpcodeBarrier     bool               // current 0xfb opcode emits real barrier work
-	gcLastArrayLen      gcArrayLenFact
-	gcLastField         gcStructFieldFact
+	nLocals             int           // params + declared locals
+	localType           []machineType // per-local machine type
+	localSlot           []uint32      // low 24 bits: byte offset; high 8 bits: bounded local-reference count
+	gcOpcodeBarrier     bool          // current 0xfb opcode emits real barrier work
 	gcResolved          gcResolvedObject
 	gcSharedResolver    bool
 	gcDeferResolver     bool
@@ -444,7 +440,6 @@ type transient struct {
 	lsPool         [][]locState
 	lsPoolBytes    int
 	inlineBasePool map[int]int
-	gcFactPool     [][]shared.GCRefFact
 	endsPool       [][]uint32
 	tmpRoots       []*elem
 	tmpTypes       []machineType
@@ -2682,9 +2677,9 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		policy = currentCodegenPolicy()
 	}
 	sc.asm.CompactAccumulatorImmediates = compactAccumulatorImmediatePolicy(policy)
-	localType, localSlot, localGCRefFacts, locals, globalReg := f.localType, f.localSlot, f.localGCRefFacts, f.locals, f.globalReg
+	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, localGCRefFacts: localGCRefFacts, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, transient: sc.transient, globalIdx: globalIdx, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: custom, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, regMerge: policy.EnabledOption(optRegMerge) && !moduleEH, globalCellReg: regNone, memSizeReg: regNone, immutableTables: immutableTables, stagedTailDescriptors: hints.flags.has(hintHasTailCall), importBindings: importBindings, stats: stats, policy: policy, gcFrameRoots: gcFrameRoots, moduleEH: moduleEH, threadedMemory0: mt0.Shared, hasLoop: hints.flags.has(hintHasLoop), gcSharedResolver: hints.flags.has(hintGCSharedResolver), gcDeferResolver: hints.flags.has(hintGCDeferredResolver), classifier: sc.classifier}
 	f.relocs = sc.relocs[:0]
 	if count := int(hints.callRelocSiteCount()); count >= minPreallocatedCallRelocs && cap(f.relocs) < count {
 		f.relocs = make([]callReloc, 0, count)
@@ -2711,9 +2706,6 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	} else {
 		f.localType = f.localType[:nLocals]
 	}
-	// Exact reference facts were retired after their broad execution result was
-	// neutral while their local table materially increased compile resources.
-	f.localGCRefFacts = nil
 	i := 0
 	for _, p := range ft.Params {
 		f.localType[i] = mtOf(p)

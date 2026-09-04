@@ -85,8 +85,8 @@ func TestGCResolvedHandleReuseAndInvalidation(t *testing.T) {
 		0x0b,
 	}
 	stats = gcResolveReuseStats(t, []byte{0x5e, 0x7f, 0x00}, refTo0TwoI32, arrayBody)
-	if stats.GCHandleResolutions != 1 || stats.GCHandleResolutionReuse != 1 {
-		t.Fatalf("array len/get resolutions = %d reused = %d, want 1/1", stats.GCHandleResolutions, stats.GCHandleResolutionReuse)
+	if stats.GCHandleResolutions != 1 || stats.GCHandleResolutionReuse != 0 {
+		t.Fatalf("array len/get resolutions = %d reused = %d, want 1/0", stats.GCHandleResolutions, stats.GCHandleResolutionReuse)
 	}
 
 	savedDead := deadGCNewEnabled
