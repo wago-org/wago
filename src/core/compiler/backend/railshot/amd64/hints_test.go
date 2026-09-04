@@ -11,6 +11,24 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func TestImmediateFreeStackArenaHintParityAMD64(t *testing.T) {
+	for raw := 0; raw < 256; raw++ {
+		op := byte(raw)
+		if _, ok := wasm.ImmediateFreeInstructionKind(op); !ok {
+			continue
+		}
+		old := byteBodyScanner{r: byteScanReader{Reader: wasm.ReaderFrom([]byte{0x21})}}
+		var imm wasm.InstructionImmediate
+		old.noteStackArenaOp(op, &imm)
+		fast := byteBodyScanner{r: byteScanReader{Reader: wasm.ReaderFrom([]byte{0x21})}}
+		fast.noteImmediateFreeStackArenaOp(op)
+		if old.h.stackArenaNodes != fast.h.stackArenaNodes || old.h.flags != fast.h.flags {
+			t.Fatalf("opcode %#x: fast hint = {nodes:%d flags:%#x}, want {nodes:%d flags:%#x}",
+				op, fast.h.stackArenaNodes, fast.h.flags, old.h.stackArenaNodes, old.h.flags)
+		}
+	}
+}
+
 func TestFuncHintsSize(t *testing.T) {
 	const want = 32
 	if got := unsafe.Sizeof(funcHints{}); got != want {
