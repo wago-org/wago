@@ -568,17 +568,21 @@ func (p supportPass) types() error {
 				return p.unsupported("gc type", "subtyping metadata (gc disabled)", ctx)
 			}
 			if st.Comp.Kind != wasm.CompFunc {
-				if !p.feat.SIMD {
-					switch st.Comp.Kind {
-					case wasm.CompStruct:
-						for fi := range st.Comp.Fields {
-							if storageTypeRequiresSIMD(st.Comp.Fields[fi].Storage()) {
-								return p.unsupported("v128", "simd disabled", fmt.Sprintf("%s field %d", ctx, fi))
+				switch st.Comp.Kind {
+				case wasm.CompStruct:
+					for fi := range st.Comp.Fields {
+						storage := st.Comp.Fields[fi].Storage()
+						if !storage.Packed() {
+							if err := p.valType(storage.Val(), fmt.Sprintf("%s field %d", ctx, fi)); err != nil {
+								return err
 							}
 						}
-					case wasm.CompArray:
-						if storageTypeRequiresSIMD(st.Comp.Array.Storage()) {
-							return p.unsupported("v128", "simd disabled", ctx+" array element")
+					}
+				case wasm.CompArray:
+					storage := st.Comp.Array.Storage()
+					if !storage.Packed() {
+						if err := p.valType(storage.Val(), ctx+" array element"); err != nil {
+							return err
 						}
 					}
 				}
@@ -2195,7 +2199,21 @@ func (p supportPass) supportedValType(v wasm.ValType) bool {
 	if p.feat.SIMD && v.Kind() == wasm.ValVec && wasm.EqualValType(v, wasm.V128) {
 		return true
 	}
-	return p.feat.ReferenceTypes && v.Kind() == wasm.ValRef && (isFuncRef(v.Ref()) || isExternRef(v.Ref()) || p.supportedTypedFuncRef(v.Ref()) || p.supportedStagedExternRef(v.Ref()) || p.supportedExceptionRef(v.Ref()) || p.supportedNullReference(v.Ref()) || p.supportedGCReference(v.Ref()) || p.supportedStructuralTypeRef(v.Ref()))
+	if !p.feat.ReferenceTypes || v.Kind() != wasm.ValRef ||
+		referenceTypeRequiresTypedFunctionReferences(v.Ref()) && !p.feat.TypedFunctionReferences ||
+		referenceTypeRequiresExceptionHandling(v.Ref()) && !p.feat.ExceptionHandling {
+		return false
+	}
+	return isFuncRef(v.Ref()) || isExternRef(v.Ref()) || p.supportedTypedFuncRef(v.Ref()) || p.supportedStagedExternRef(v.Ref()) || p.supportedExceptionRef(v.Ref()) || p.supportedNullReference(v.Ref()) || p.supportedGCReference(v.Ref()) || p.supportedStructuralTypeRef(v.Ref())
+}
+
+func referenceTypeRequiresTypedFunctionReferences(rt wasm.RefType) bool {
+	return rt.Heap().Kind() == wasm.HeapTypeIndex || !rt.Nullable() || rt.Exact()
+}
+
+func referenceTypeRequiresExceptionHandling(rt wasm.RefType) bool {
+	heap := rt.Heap()
+	return heap.Kind() == wasm.HeapAbs && (heap.Abs() == wasm.HeapExn || heap.Abs() == wasm.HeapNoExn)
 }
 
 func (p supportPass) supportedExceptionRef(rt wasm.RefType) bool {
@@ -2282,8 +2300,10 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 		feature := valTypeName(v)
 		if !p.feat.ReferenceTypes {
 			feature += " (reference-types disabled)"
-		} else if p.isTypedFuncRef(v.Ref()) && !p.feat.TypedFunctionReferences {
+		} else if referenceTypeRequiresTypedFunctionReferences(v.Ref()) && !p.feat.TypedFunctionReferences {
 			feature += " (typed-function-references disabled)"
+		} else if referenceTypeRequiresExceptionHandling(v.Ref()) && !p.feat.ExceptionHandling {
+			feature += " (exception-handling disabled)"
 		}
 		return p.unsupported("reference type", feature, context)
 	}
@@ -2292,14 +2312,16 @@ func (p supportPass) valType(v wasm.ValType, context string) error {
 
 func (p supportPass) globalType(v wasm.ValType, context string) error {
 	if v.Kind() == wasm.ValRef {
-		if p.feat.ReferenceTypes && (isFuncRef(v.Ref()) || isExternRef(v.Ref()) || p.supportedTypedFuncRef(v.Ref()) || p.supportedStagedExternRef(v.Ref()) || p.supportedNullReference(v.Ref()) || p.supportedGCReference(v.Ref()) || p.supportedStructuralTypeRef(v.Ref())) {
+		if p.supportedValType(v) {
 			return nil
 		}
 		feature := valTypeName(v)
 		if !p.feat.ReferenceTypes {
 			feature += " (reference-types disabled)"
-		} else if p.isTypedFuncRef(v.Ref()) && !p.feat.TypedFunctionReferences {
+		} else if referenceTypeRequiresTypedFunctionReferences(v.Ref()) && !p.feat.TypedFunctionReferences {
 			feature += " (typed-function-references disabled)"
+		} else if referenceTypeRequiresExceptionHandling(v.Ref()) && !p.feat.ExceptionHandling {
+			feature += " (exception-handling disabled)"
 		}
 		return p.unsupported("global type", feature, context)
 	}

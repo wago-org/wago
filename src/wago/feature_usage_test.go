@@ -85,6 +85,78 @@ func TestTypedBottomElementRequirementsAndAdmission(t *testing.T) {
 	}
 }
 
+func aggregateStorageTypeModule(types ...[]byte) []byte {
+	return wasmtest.Module(wasmtest.Section(1, wasmtest.Vec(types...)))
+}
+
+func TestAggregateStorageTypesRequireIndependentFeatures(t *testing.T) {
+	requireCompleteCore3Backend(t)
+	anyrefStruct := []byte{0x5f, 0x01, byte(wasm.HeapAny), 0x00}
+	exnrefArray := []byte{0x5e, byte(wasm.HeapExn), 0x00}
+	emptyStruct := []byte{0x5f, 0x00}
+	indexedStruct := []byte{0x5f, 0x01, 0x63, 0x00, 0x00} // field (ref null 0)
+
+	for _, tc := range []struct {
+		name     string
+		module   []byte
+		enabled  CoreFeatures
+		required CoreFeatures
+		missing  string
+	}{
+		{
+			name:     "struct-anyref-needs-reference-types",
+			module:   aggregateStorageTypeModule(anyrefStruct),
+			enabled:  CoreFeatureGC,
+			required: CoreFeatureGC | CoreFeatureReferenceTypes,
+			missing:  "reference-types disabled",
+		},
+		{
+			name:     "array-exnref-needs-exception-handling",
+			module:   aggregateStorageTypeModule(exnrefArray),
+			enabled:  CoreFeatureGC | CoreFeatureReferenceTypes,
+			required: CoreFeatureGC | CoreFeatureReferenceTypes | CoreFeatureExceptionHandling,
+			missing:  "exception-handling disabled",
+		},
+		{
+			name:     "indexed-field-needs-typed-function-references",
+			module:   aggregateStorageTypeModule(emptyStruct, indexedStruct),
+			enabled:  CoreFeatureGC | CoreFeatureReferenceTypes,
+			required: CoreFeatureGC | CoreFeatureReferenceTypes | CoreFeatureTypedFunctionReferences,
+			missing:  "typed-function-references disabled",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			decoded, err := wasm.DecodeModule(tc.module)
+			if err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if got := moduleRequiredFeatures(decoded); !got.IsEnabled(tc.required) {
+				t.Fatalf("module required features = %s, want at least %s", got, tc.required)
+			}
+			if compiled, err := NewRuntimeConfig().WithCoreFeatures(tc.enabled).Compile(tc.module); err == nil {
+				compiled.Close()
+				t.Fatalf("compile without %q unexpectedly succeeded", tc.missing)
+			} else if !strings.Contains(err.Error(), tc.missing) {
+				t.Fatalf("compile error = %v, want %q", err, tc.missing)
+			}
+
+			compiled, err := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).Compile(tc.module)
+			if err != nil {
+				t.Fatalf("compile with all features: %v", err)
+			}
+			defer compiled.Close()
+			if got := (&Module{c: compiled}).Metadata().RequiredFeatures; !got.IsEnabled(tc.required) {
+				t.Fatalf("compiled metadata features = %s, want at least %s", got, tc.required)
+			}
+			loaded := publicArtifactRoundTrip(t, compiled)
+			defer loaded.Close()
+			if got := (&Module{c: loaded}).Metadata().RequiredFeatures; !got.IsEnabled(tc.required) {
+				t.Fatalf("loaded metadata features = %s, want at least %s", got, tc.required)
+			}
+		})
+	}
+}
+
 func tableReferenceModule(ref wasm.RefType, imported bool) []byte {
 	tableType := []byte{wasm.MustEncodeValType(wasm.RefVal(ref)), 0x00, 0x00}
 	if !imported {

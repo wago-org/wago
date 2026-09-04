@@ -52,15 +52,7 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 			if sub.HasPrefix || len(sub.Supers) != 0 {
 				out |= CoreFeatureGC
 			}
-			if sub.Comp.Kind != wasm.CompFunc {
-				out |= CoreFeatureGC
-				continue
-			}
-			if len(sub.Comp.Results) > 1 {
-				out |= CoreFeatureMultiValue
-			}
-			out |= requiredFeaturesForValTypes(sub.Comp.Params)
-			out |= requiredFeaturesForValTypes(sub.Comp.Results)
+			out |= requiredFeaturesForCompositeType(sub.Comp)
 		}
 	}
 	for _, im := range m.Imports {
@@ -258,6 +250,33 @@ func requiredFeaturesForValTypes(types []wasm.ValType) CoreFeatures {
 		out |= requiredFeaturesForValType(typ)
 	}
 	return out
+}
+
+func requiredFeaturesForCompositeType(comp wasm.CompType) CoreFeatures {
+	switch comp.Kind {
+	case wasm.CompFunc:
+		out := requiredFeaturesForValTypes(comp.Params) | requiredFeaturesForValTypes(comp.Results)
+		if len(comp.Results) > 1 {
+			out |= CoreFeatureMultiValue
+		}
+		return out
+	case wasm.CompStruct:
+		out := CoreFeatureGC
+		for _, field := range comp.Fields {
+			if storage := field.Storage(); !storage.Packed() {
+				out |= requiredFeaturesForValType(storage.Val())
+			}
+		}
+		return out
+	case wasm.CompArray:
+		out := CoreFeatureGC
+		if storage := comp.Array.Storage(); !storage.Packed() {
+			out |= requiredFeaturesForValType(storage.Val())
+		}
+		return out
+	default:
+		return 0
+	}
 }
 
 func requiredFeaturesForTableRef(ref wasm.RefType) CoreFeatures {
@@ -618,9 +637,18 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	if compiledMetadataUsesSIMD(c) {
 		out |= CoreFeatureSIMD
 	}
+	out |= compiledAggregateStorageRequiredFeatures(c)
 	for _, typ := range c.Types {
-		if !typ.Final || len(typ.Supers) != 0 || typ.Kind == CompositeTypeStruct || typ.Kind == CompositeTypeArray {
+		if !typ.Final || len(typ.Supers) != 0 || typ.HasDescribes || typ.HasDescriptor || typ.Kind == CompositeTypeStruct || typ.Kind == CompositeTypeArray {
 			out |= CoreFeatureGC
+		}
+		switch typ.Kind {
+		case CompositeTypeFunction:
+			out |= requiredFeaturesForTypeDescriptors(typ.Params)
+			out |= requiredFeaturesForTypeDescriptors(typ.Results)
+			if len(typ.Results) > 1 {
+				out |= CoreFeatureMultiValue
+			}
 		}
 	}
 	for _, sig := range c.importFuncSigs {
@@ -701,6 +729,28 @@ func compiledStructuralRequiredFeatures(c *Compiled) CoreFeatures {
 	}
 	for _, data := range c.Data {
 		out |= requiredFeaturesForConstExprBytes(data.Offset.Expr, len(c.GlobalImports))
+	}
+	return out
+}
+
+func compiledAggregateStorageRequiredFeatures(c *Compiled) CoreFeatures {
+	if c == nil {
+		return 0
+	}
+	var out CoreFeatures
+	for _, typ := range c.Types {
+		switch typ.Kind {
+		case CompositeTypeStruct:
+			for _, field := range typ.Fields {
+				if !field.Storage.Packed {
+					out |= requiredFeaturesForTypeDescriptor(field.Storage.Value)
+				}
+			}
+		case CompositeTypeArray:
+			if !typ.Array.Storage.Packed {
+				out |= requiredFeaturesForTypeDescriptor(typ.Array.Storage.Value)
+			}
+		}
 	}
 	return out
 }

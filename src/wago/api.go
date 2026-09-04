@@ -2900,6 +2900,10 @@ func (c *Compiled) validate() error {
 	if c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 		staged |= compiledStructuralRequiredFeatures(c) & CoreFeatureTypedFunctionReferences
 	}
+	// Aggregate storage declarations are fully represented by exact persisted
+	// type metadata. Tag-free EH instructions still require their independent
+	// execution marker and cannot be inferred through this path.
+	staged |= compiledAggregateStorageRequiredFeatures(c) & (CoreFeatureTypedFunctionReferences | CoreFeatureExceptionHandling)
 	if unsupported&^staged != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported&^staged))
 	}
