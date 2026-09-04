@@ -75,7 +75,7 @@ type rcxZeroSite struct {
 }
 
 func (f *fn) rcxZero32Placeholder() rcxZeroSite {
-	if directJecxzEnabled && f.policy.CompactNative {
+	if f.policy.CompactNative {
 		f.stats.peep("direct-jecxz")
 		return rcxZeroSite{off: f.a.JcxzPlaceholder(false), compact: true}
 	}

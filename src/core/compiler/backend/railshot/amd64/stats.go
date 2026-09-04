@@ -56,15 +56,6 @@ var (
 	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings on
 	// the explicit native-compaction path.
 	accumulatorImmediateEnabled = os.Getenv("WAGO_AMD64_NO_ACCUMULATOR_IMMEDIATE") != "1"
-	// incDecEnabled selects compact INC/DEC for compact Wasm add/sub by
-	// one when CF is not a compiler value. The kill switch is the A/B oracle.
-	incDecEnabled = os.Getenv("WAGO_AMD64_NO_INCDEC") != "1"
-	// directIncDecEnabled extends the same encoding choice to compiler-authored
-	// counters whose next flag consumer is ZF or whose flags are dead.
-	directIncDecEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_INCDEC") != "1"
-	// directJecxzEnabled selects JECXZ for bounded ECX byte-tail guards whose
-	// flags are dead and whose checked targets remain in rel8 range.
-	directJecxzEnabled = os.Getenv("WAGO_AMD64_NO_DIRECT_JECXZ") != "1"
 	// sharedTrapBodyEnabled lets compact trap groups share the invariant
 	// trap-cell stores and native-stack unwind within one compiled function.
 	sharedTrapBodyEnabled = os.Getenv("WAGO_AMD64_NO_SHARED_TRAP_BODY") != "1"

@@ -662,8 +662,9 @@ never select the policy.
 
 ## September 4 production-policy re-audit
 
-After the GC-fact removal, production Railshot source references 121 distinct
-`WAGO_*` controls, down from the earlier 138-count audit. No production condition
+After the GC-fact and mature compact-encoding rollback removals, production
+Railshot source references 118 distinct `WAGO_*` controls, down from the earlier
+138-count audit. No production condition
 compares a module name, function name, producer name, benchmark name, body hash, or
 memorized body byte sequence. Named workloads appear in rationale comments and
 tests, not selector inputs.

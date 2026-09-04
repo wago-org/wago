@@ -2472,8 +2472,9 @@ Size and Embedded now lower Wasm integer add/sub by positive or negative one
 to the compact register `INC`/`DEC` forms. These instructions produce the same
 wrapped i32/i64 result and the same status flags except CF; the selection is
 restricted to ordinary Wasm arithmetic, where carry is not compiler state.
-Speed and Balanced retain `ADD/SUB imm8`. `WAGO_AMD64_NO_INCDEC=1` restores the
-former Size encoding exactly.
+Speed and Balanced retain `ADD/SUB imm8`. During qualification,
+`WAGO_AMD64_NO_INCDEC=1` restored the former Size encoding exactly; that mature
+rollback control has since been retired.
 
 The exact 36-module AMD64 Size suite selects 33,368 sites and falls from
 66,123,590 to 66,090,445 native bytes (-33,145, -0.050%). Ruby contributes
@@ -2565,9 +2566,10 @@ counter sites whose carry flag is proved dead: the byte tails of dynamic
 `memory.copy` and `memory.fill`, two table-fill loops, and the asynchronous host
 call log counter. Loop sites consume only ZF in the following `JNE`; the host-log
 site stores the result before any later flag consumer. Speed and Balanced retain
-`ADD/SUB r,1`. `WAGO_AMD64_NO_DIRECT_INCDEC=1` restores this slice without
-disabling the earlier Wasm arithmetic selection, while
-`WAGO_AMD64_NO_INCDEC=1` remains the broad rollback.
+`ADD/SUB r,1`. During qualification, `WAGO_AMD64_NO_DIRECT_INCDEC=1` restored
+this slice without disabling the earlier Wasm arithmetic selection, while
+`WAGO_AMD64_NO_INCDEC=1` was the broad rollback. Both mature controls have since
+been retired.
 
 The exact 36-module AMD64 Size suite selects 7,710 direct sites and falls from
 66,090,445 to 66,082,735 native bytes (-7,710, -0.0117%). Esbuild contributes
@@ -2635,8 +2637,9 @@ targets and dead flags. Size and Embedded now emit `JECXZ rel8` there and close
 the adjacent byte loop with a checked short `JNE`. The fill skip is also a fixed
 short jump, leaving no finalizer-relaxable site inside the already-patched rel8
 interval. Far targets, non-ECX registers, Speed, and Balanced retain
-`TEST+Jcc`. `WAGO_AMD64_NO_DIRECT_JECXZ=1` is byte-for-byte identical to the
-previous checkpoint.
+`TEST+Jcc`. During qualification, `WAGO_AMD64_NO_DIRECT_JECXZ=1` was
+byte-for-byte identical to the previous checkpoint; that mature rollback
+control has since been retired.
 
 The exact 36-module AMD64 Size suite selects 3,152 sites and falls from
 66,082,735 to 66,055,508 native bytes (-27,227, -0.0412%). Esbuild contributes
