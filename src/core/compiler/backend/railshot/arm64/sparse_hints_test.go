@@ -71,10 +71,10 @@ func TestComputeModuleHintsCompactsIntervalLastGets(t *testing.T) {
 	if got, want := len(sidecar.localScore), 96; got != want {
 		t.Fatalf("local scores = %d, want %d", got, want)
 	}
-	if got, want := len(sidecar.localLastGet), 32; got != want {
+	if got, want := len(sidecar.localLastGet), 34; got != want {
 		t.Fatalf("compact last gets = %d, want %d", got, want)
 	}
-	if got, want := len(sidecar.localLastGetRanges), 1; got != want {
+	if got, want := int(sidecar.localLastGetRangeCount), 1; got != want {
 		t.Fatalf("compact last-get ranges = %d, want %d", got, want)
 	}
 	if got := sidecar.view(hints[0]).localLastGet; got != nil {
@@ -110,8 +110,8 @@ func TestComputeModuleHintsKeepsCheaperDenseLastGets(t *testing.T) {
 	if got, want := len(sidecar.localLastGet), len(sidecar.localScore); got != want {
 		t.Fatalf("dense last gets = %d, want %d", got, want)
 	}
-	if len(sidecar.localLastGetRanges) != 0 {
-		t.Fatalf("dense storage retained sparse ranges: %v", sidecar.localLastGetRanges)
+	if sidecar.localLastGetRangeCount != 0 {
+		t.Fatalf("dense storage retained %d sparse ranges", sidecar.localLastGetRangeCount)
 	}
 	for i := range hints {
 		if got, want := len(sidecar.view(hints[i]).localLastGet), 32; got != want {

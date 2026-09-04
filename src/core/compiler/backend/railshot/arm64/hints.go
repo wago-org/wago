@@ -12,7 +12,6 @@ import (
 func funcHintStorageBytes(hints []funcHints, sidecar funcHintSidecar) (headers, sidecars uint64) {
 	headers = uint64(cap(hints)) * uint64(unsafe.Sizeof(funcHints{}))
 	sidecars = uint64(cap(sidecar.localScore)+cap(sidecar.localLastGet))*uint64(unsafe.Sizeof(uint32(0))) +
-		uint64(cap(sidecar.localLastGetRanges))*uint64(unsafe.Sizeof(uint64(0))) +
 		uint64(cap(sidecar.sparseGlobals))*uint64(unsafe.Sizeof(shared.GlobalHint{}))
 	return
 }
@@ -113,10 +112,10 @@ type funcHintView struct {
 }
 
 type funcHintSidecar struct {
-	localScore         []uint32
-	localLastGet       []uint32
-	localLastGetRanges []uint64
-	sparseGlobals      []shared.GlobalHint
+	localScore             []uint32
+	localLastGet           []uint32
+	sparseGlobals          []shared.GlobalHint
+	localLastGetRangeCount uint32
 }
 
 func (s funcHintSidecar) view(h funcHints) funcHintView {
@@ -124,26 +123,26 @@ func (s funcHintSidecar) view(h funcHints) funcHintView {
 	localStart := int(h.localStart)
 	localEnd := localStart + nLocals
 	var localLastGet []uint32
-	if len(s.localLastGet) == len(s.localScore) {
+	if s.localLastGetRangeCount == 0 && len(s.localLastGet) == len(s.localScore) {
 		localLastGet = s.localLastGet[localStart:localEnd]
-	} else if len(s.localLastGetRanges) != 0 {
+	} else if s.localLastGetRangeCount != 0 {
 		// Sparse ranges are ordered by localStart because module hints are
-		// appended in function order. Each packed word names the dense score
-		// offset in its high half and the compact last-get offset in its low
-		// half. Binary search keeps parallel compilation independent of worker
-		// scheduling without retaining one index word for every function.
+		// appended in function order. Each pair at the front of localLastGet
+		// names the dense score offset and its compact last-get offset. Keeping
+		// ranges and values in one backing avoids another slice allocation.
+		// Binary search remains independent of parallel worker scheduling.
 		key := uint32(h.localStart)
-		lo, hi := 0, len(s.localLastGetRanges)
+		lo, hi := 0, int(s.localLastGetRangeCount)
 		for lo < hi {
 			mid := int(uint(lo+hi) >> 1)
-			if uint32(s.localLastGetRanges[mid]>>32) < key {
+			if s.localLastGet[mid*2] < key {
 				lo = mid + 1
 			} else {
 				hi = mid
 			}
 		}
-		if lo < len(s.localLastGetRanges) && uint32(s.localLastGetRanges[lo]>>32) == key {
-			start := int(uint32(s.localLastGetRanges[lo]))
+		if lo < int(s.localLastGetRangeCount) && s.localLastGet[lo*2] == key {
+			start := int(s.localLastGet[lo*2+1])
 			localLastGet = s.localLastGet[start : start+nLocals]
 		}
 	}

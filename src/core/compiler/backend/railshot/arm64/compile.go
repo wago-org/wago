@@ -1919,13 +1919,9 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	compactLastGets := sparseLastGets < denseLastGets
 	lastGetCount := totalLocals
 	if compactLastGets {
-		lastGetCount = intervalLocals
+		lastGetCount = intervalLocals + intervalFunctions*2
 	}
 	localLastGets := make([]uint32, lastGetCount)
-	var localLastGetRanges []uint64
-	if compactLastGets && intervalFunctions != 0 {
-		localLastGetRanges = make([]uint64, 0, intervalFunctions)
-	}
 	var sparseGlobals []shared.GlobalHint
 	var sparseAccum shared.GlobalHintAccumulator
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
@@ -1934,7 +1930,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		agg = make([]int64, nGlobals)
 	}
 	localAt := 0
-	intervalAt := 0
+	intervalAt := intervalFunctions * 2
+	intervalRangeAt := 0
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		nLocals := int(allHints[i].localCount)
@@ -1943,7 +1940,9 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		if compactLastGets {
 			if intervalRegionHintStorageEligible(policy.EnabledOption(optIntervalRegionPins), len(m.Code[i].BodyBytes), nLocals, moduleEH) {
 				h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
-				localLastGetRanges = append(localLastGetRanges, uint64(uint32(localAt))<<32|uint64(uint32(intervalAt)))
+				localLastGets[intervalRangeAt] = uint32(localAt)
+				localLastGets[intervalRangeAt+1] = uint32(intervalAt)
+				intervalRangeAt += 2
 				intervalAt += nLocals
 			}
 		} else {
@@ -1983,10 +1982,10 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		}
 	}
 	return allHints, funcHintSidecar{
-		localScore:         localScores,
-		localLastGet:       localLastGets,
-		localLastGetRanges: localLastGetRanges,
-		sparseGlobals:      sparseGlobals,
+		localScore:             localScores,
+		localLastGet:           localLastGets,
+		sparseGlobals:          sparseGlobals,
+		localLastGetRangeCount: uint32(intervalRangeAt / 2),
 	}, agg, nil
 }
 
