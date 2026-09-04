@@ -15,10 +15,12 @@ type GlobalHint struct {
 // sparse records. One accumulator is reset and reused for every serially scanned
 // function; epoch marks avoid clearing the dense scratch between functions.
 type GlobalHintAccumulator struct {
-	scores  []uint32
-	marks   []uint32
-	epoch   uint32
-	touched []uint32
+	scores        []uint32
+	marks         []uint32
+	epoch         uint32
+	touchedInline [32]uint32
+	touchedN      uint8
+	touchedExtra  []uint32
 }
 
 const (
@@ -37,7 +39,8 @@ func (a *GlobalHintAccumulator) Reset(nGlobals int) {
 		clear(a.marks)
 		a.epoch = 1
 	}
-	a.touched = a.touched[:0]
+	a.touchedN = 0
+	a.touchedExtra = a.touchedExtra[:0]
 }
 
 func (a *GlobalHintAccumulator) touch(index uint32) bool {
@@ -47,7 +50,12 @@ func (a *GlobalHintAccumulator) touch(index uint32) bool {
 	if a.marks[index]&globalHintEpochMask != a.epoch {
 		a.marks[index] = a.epoch
 		a.scores[index] = 0
-		a.touched = append(a.touched, index)
+		if int(a.touchedN) < len(a.touchedInline) {
+			a.touchedInline[a.touchedN] = index
+			a.touchedN++
+		} else {
+			a.touchedExtra = append(a.touchedExtra, index)
+		}
 	}
 	return true
 }
@@ -73,9 +81,27 @@ func (a *GlobalHintAccumulator) MarkEligible(index uint32) {
 // AppendTo appends deterministic index-sorted records to dst. Callers can keep
 // offset ranges while dst grows, then publish slices after the final append.
 func (a *GlobalHintAccumulator) AppendTo(dst []GlobalHint) []GlobalHint {
-	slices.Sort(a.touched)
-	for _, index := range a.touched {
+	inline := a.touchedInline[:a.touchedN]
+	slices.Sort(inline)
+	slices.Sort(a.touchedExtra)
+	appendIndex := func(index uint32) {
 		dst = append(dst, GlobalHint{Index: index, Score: a.scores[index], Eligible: a.marks[index]&globalHintEligible != 0})
+	}
+	i, j := 0, 0
+	for i < len(inline) && j < len(a.touchedExtra) {
+		if inline[i] < a.touchedExtra[j] {
+			appendIndex(inline[i])
+			i++
+		} else {
+			appendIndex(a.touchedExtra[j])
+			j++
+		}
+	}
+	for ; i < len(inline); i++ {
+		appendIndex(inline[i])
+	}
+	for ; j < len(a.touchedExtra); j++ {
+		appendIndex(a.touchedExtra[j])
 	}
 	return dst
 }

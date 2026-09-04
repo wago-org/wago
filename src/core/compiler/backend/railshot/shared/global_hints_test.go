@@ -37,3 +37,20 @@ func TestGlobalHintAccumulatorEligibilityDoesNotLeakAcrossEpochWrap(t *testing.T
 		t.Fatalf("wrapped hints = %+v", got)
 	}
 }
+
+func TestGlobalHintAccumulatorSortsAcrossInlineOverflow(t *testing.T) {
+	var a GlobalHintAccumulator
+	a.Reset(64)
+	for i := uint32(0); i < 40; i++ {
+		a.Add(63-i, int64(i+1))
+	}
+	got := a.AppendTo(nil)
+	if len(got) != 40 {
+		t.Fatalf("hint count = %d, want 40", len(got))
+	}
+	for i := range got {
+		if i > 0 && got[i-1].Index >= got[i].Index {
+			t.Fatalf("hints are not index sorted at %d: %+v", i, got)
+		}
+	}
+}
