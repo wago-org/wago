@@ -158,14 +158,24 @@ func TestAMD64StructuredScalarResidencySelectsHotIntegerLocals(t *testing.T) {
 	}
 }
 
-func TestAMD64RailMachSpillForwardingRequiresLastUse(t *testing.T) {
+func TestAMD64RailMachSpillForwardingRetainsLiveHomes(t *testing.T) {
 	allocation := railmach.GreedyAllocation{Allocation: railmach.Allocation{Intervals: []railmach.LiveInterval{
 		{Reg: 1, Start: 3, End: 14, Bank: railmach.BankFPR},
 		{Reg: 2, Start: 9, End: 30, Bank: railmach.BankFPR},
 	}}}
-	plan := nativeBackendPlan{Allocation: &allocation}
-	if !amd64RailMachValueDiesAt(&plan, 1, 14) || amd64RailMachValueDiesAt(&plan, 2, 14) || amd64RailMachValueDiesAt(&plan, 3, 99) {
-		t.Fatal("spill forwarding accepted a value that remains live")
+	machine := railmach.Func{
+		Insts:    []railmach.Inst{{Op: wasm.InstrF64Add, OperandCount: 2}},
+		Operands: []railmach.Operand{{Reg: 1}, {Reg: 2}},
+	}
+	plan := nativeBackendPlan{Machine: &machine, Allocation: &allocation}
+	if forward, elideStore := amd64RailMachForwardPendingSpill(&plan, 0, 1, 14); !forward || !elideStore {
+		t.Fatalf("last-use spill forwarding = (%v, %v), want (true, true)", forward, elideStore)
+	}
+	if forward, elideStore := amd64RailMachForwardPendingSpill(&plan, 0, 2, 14); !forward || elideStore {
+		t.Fatalf("live spill forwarding = (%v, %v), want (true, false)", forward, elideStore)
+	}
+	if forward, elideStore := amd64RailMachForwardPendingSpill(&plan, 0, 3, 14); forward || elideStore {
+		t.Fatalf("unused spill forwarding = (%v, %v), want (false, false)", forward, elideStore)
 	}
 }
 

@@ -702,6 +702,15 @@ func amd64RailMachValueDiesAt(plan *nativeBackendPlan, value railmach.VReg, posi
 	return false
 }
 
+func amd64RailMachForwardPendingSpill(plan *nativeBackendPlan, instructionID uint32, value railmach.VReg, position uint32) (forward, elideStore bool) {
+	for _, operand := range plan.Machine.InstructionOperands(instructionID) {
+		if operand.Reg == value && operand.Flags&railmach.OperandColdRemat == 0 {
+			return true, amd64RailMachValueDiesAt(plan, value, position)
+		}
+	}
+	return false, false
+}
+
 func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
 	if plan == nil || plan.Stack == nil || plan.CFG == nil || plan.Semantic == nil || plan.Machine == nil || plan.Allocation == nil || plan.Schedule == nil || plan.Exit == nil {
 		return nil, 0, false, nil
@@ -1137,11 +1146,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			nextPosition := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 			forwardedSpill = 0
 			if pendingSpill != 0 && plan.Machine.VRegs[pendingSpill].Bank == railmach.BankFPR && !skipInstruction[instructionID] && (len(plan.PostRASkip) == 0 || !plan.PostRASkip[instructionID]) &&
-				!nativeControlInstruction(plan.Machine.Insts[instructionID].Op) && amd64RailMachValueDiesAt(plan, pendingSpill, nextPosition) {
-				for _, operand := range plan.Machine.InstructionOperands(instructionID) {
-					if operand.Reg == pendingSpill && operand.Flags&railmach.OperandColdRemat == 0 {
-						forwardedSpill, pendingSpill = pendingSpill, 0
-						break
+				!nativeControlInstruction(plan.Machine.Insts[instructionID].Op) {
+				if forward, elideStore := amd64RailMachForwardPendingSpill(plan, instructionID, pendingSpill, nextPosition); forward {
+					forwardedSpill = pendingSpill
+					if elideStore {
+						pendingSpill = 0
 					}
 				}
 			}
