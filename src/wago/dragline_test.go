@@ -4187,6 +4187,51 @@ func TestDraglineStructuredSIMDLoadColdTrap(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachV128FoundationExecution(t *testing.T) {
+	constant := [16]byte{0x80, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	run := []byte{0x41, 0x20, 0x41, 0x00, 0xfd, 0x00, 0x04, 0x00}
+	run = append(run, 0xfd, 0x0c)
+	run = append(run, constant[:]...)
+	run = append(run, 0xfd, 0x51, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+	read := []byte{0x41, 0x20, 0x29, 0x03, 0x00, 0x0b}
+	store := []byte{0x20, 0x00, 0xfd, 0x0c}
+	store = append(store, constant[:]...)
+	store = append(store, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+	wasmBytes := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}), wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(2))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read", 0, 1), wasmtest.ExportEntry("store", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(run), wasmtest.Code(read), wasmtest.Code(store))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), wasmBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	result, err := instance.Invoke("read")
+	want := binary.LittleEndian.Uint64(constant[:8])
+	if err != nil || len(result) != 1 || result[0] != want {
+		t.Fatalf("read after vector store = %#x, %v; want %#x", result, err, want)
+	}
+	if _, err := instance.Invoke("store", I32(65520)); err != nil {
+		t.Fatalf("last in-bounds vector store: %v", err)
+	}
+	_, err = instance.Invoke("store", I32(65521))
+	var trap *TrapError
+	if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
+		t.Fatalf("out-of-bounds vector store = %v; want linear-memory trap", err)
+	}
+}
+
 func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
 	if runtime.GOARCH != "arm64" {
 		t.Skip("Dragline structured SIMD execution is currently ARM64-only")

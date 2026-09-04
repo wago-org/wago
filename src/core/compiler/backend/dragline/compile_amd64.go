@@ -917,6 +917,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	}
 	for _, instruction := range plan.Machine.Insts {
 		switch instruction.Op {
+		case railmach.OpAMD64V128Const, railmach.OpAMD64V128Load, railmach.OpAMD64V128Store,
+			railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -1058,6 +1060,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		}
 	}
 	floatConstantPatches := make([]amd64FloatConstantPatch, 0, 4)
+	simdConstantPatches := make([]amd64SIMDConstantPatch, 0, 2)
 	materializeFloatConstant := func(dst amd64.Reg, bits uint64, f64 bool) {
 		if bits == 0 {
 			a.VPxor(dst, dst, dst)
@@ -1068,7 +1071,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	readLocation := func(value railmach.VReg, location railmach.Location, scratch amd64.Reg, stackDelta uint32) (amd64.Reg, error) {
 		return amd64RailMachReadLocationWithFloatConstant(&a, plan, value, location, scratch, stackDelta, materializeFloatConstant)
 	}
-	defer func() { metrics.observe(sliceBytes(a.B) + sliceBytes(floatConstantPatches)) }()
+	defer func() {
+		metrics.observe(sliceBytes(a.B) + sliceBytes(floatConstantPatches) + sliceBytes(simdConstantPatches))
+	}()
 	a.Push(amd64.RCX)
 	a.MovReg64(amd64.RBX, amd64.RSI)
 	for index, typ := range plan.Stack.Params[:min(len(plan.Stack.Params), len(amd64ParamRegisters))] {
@@ -2195,6 +2200,65 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			dst := reg(instruction.Result)
 			wide := plan.Machine.VRegs[instruction.Result].Type.IsWideGPR()
+			switch instruction.Op {
+			case railmach.OpAMD64V128Const:
+				immediate, ok := plan.Machine.SIMDImmediateAt(instructionID)
+				if !ok {
+					return nil, 0, true, fmt.Errorf("RailMach vector constant %d has no payload", instructionID)
+				}
+				if immediate.Bytes == [16]byte{} {
+					a.VPxor(dst, dst, dst)
+				} else {
+					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(dst), bytes: immediate.Bytes})
+				}
+				continue
+			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector binary operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				switch instruction.Op {
+				case railmach.OpAMD64V128And:
+					a.VPand(dst, lhs, rhs)
+				case railmach.OpAMD64V128Or:
+					a.VPor(dst, lhs, rhs)
+				default:
+					a.VPxor(dst, lhs, rhs)
+				}
+				continue
+			case railmach.OpAMD64V128Load, railmach.OpAMD64V128Store:
+				access, ok := plan.Machine.MemoryAccessAt(instructionID)
+				store := instruction.Op == railmach.OpAMD64V128Store
+				if !ok || access.SemanticWidth != 16 || access.EncodedWidth != 16 || len(operands) != 1 && !store || len(operands) != 2 && store {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector memory operation %d is malformed", instructionID)
+				}
+				if access.Offset > math.MaxUint64-16 {
+					metadata.recordTrap(a.Len(), wasmOffset, 3)
+					amd64EmitTrap(&a, 3, fn.Index, wasmOffset)
+					continue
+				}
+				address := amd64.R10
+				if source := reg(operands[0].Reg); source != address {
+					a.MovReg32(address, source)
+				}
+				end := access.Offset + 16
+				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
+					emitAMD64RailMachBoundsCheck(&a, plan, address, end, instruction.Source, &coldTrapPatches, !store)
+				}
+				disp := int32(0)
+				if access.Offset <= math.MaxInt32 {
+					disp = int32(access.Offset)
+				} else {
+					a.MovImm64(amd64.R11, access.Offset)
+					a.AluRR(0x01, address, amd64.R11, true)
+				}
+				if store {
+					a.VMovdquStoreIdx(amd64.RBX, address, reg(operands[1].Reg), disp)
+				} else {
+					a.VMovdquLoadIdx(dst, amd64.RBX, address, disp)
+				}
+				continue
+			}
 			if instruction.Op == wasm.InstrI32Const || instruction.Op == wasm.InstrI64Const || instruction.Op == wasm.InstrRefNull {
 				if wide {
 					a.MovImm64(dst, instruction.Aux)
@@ -3133,6 +3197,22 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			var encoded [4]byte
 			binary.LittleEndian.PutUint32(encoded[:], uint32(constant.bits))
 			a.EmitBytes(encoded[:])
+		}
+		constant.target = target
+		a.PatchRel32(constant.at, target)
+	}
+	for index := range simdConstantPatches {
+		constant := &simdConstantPatches[index]
+		target := -1
+		for previous := range simdConstantPatches[:index] {
+			if simdConstantPatches[previous].bytes == constant.bytes {
+				target = simdConstantPatches[previous].target
+				break
+			}
+		}
+		if target < 0 {
+			target = a.Len()
+			a.EmitBytes(constant.bytes[:])
 		}
 		constant.target = target
 		a.PatchRel32(constant.at, target)

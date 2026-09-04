@@ -607,6 +607,37 @@ func TestRailMachRejectsMixedSIMDBranchCastFunction(t *testing.T) {
 	}
 }
 
+func TestRailMachAdmitsOnlyV128FoundationBeforeVectorABI(t *testing.T) {
+	foundation := &railssa.StackFunc{
+		HasV128:     true,
+		ResultTypes: []wasm.ValType{wasm.V128},
+		Instrs: []railssa.StackInstr{
+			{Kind: wasm.InstrI32Const}, {Kind: wasm.InstrV128Load}, {Kind: wasm.InstrV128Const},
+			{Kind: wasm.InstrV128Xor}, {Kind: wasm.InstrV128Store},
+		},
+	}
+	if !railMachCandidate(foundation, true) {
+		t.Fatal("internal v128 foundation function did not enter RailMach")
+	}
+	for name, edit := range map[string]func(*railssa.StackFunc){
+		"public result": func(stack *railssa.StackFunc) { stack.Results = []wasm.ValType{wasm.V128} },
+		"vector local":  func(stack *railssa.StackFunc) { stack.Locals = []wasm.ValType{wasm.V128} },
+		"call": func(stack *railssa.StackFunc) {
+			stack.Instrs = append(stack.Instrs, railssa.StackInstr{Kind: wasm.InstrCall})
+		},
+		"later family": func(stack *railssa.StackFunc) { stack.Instrs[2].Kind = wasm.InstrI8x16Add },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := *foundation
+			candidate.Instrs = append([]railssa.StackInstr(nil), foundation.Instrs...)
+			edit(&candidate)
+			if railMachCandidate(&candidate, true) {
+				t.Fatal("incomplete vector contract entered RailMach")
+			}
+		})
+	}
+}
+
 func TestRailMachAdmitsLargeMultiCallScalarFunctions(t *testing.T) {
 	for _, test := range []struct {
 		name        string

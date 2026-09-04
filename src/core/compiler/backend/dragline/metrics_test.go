@@ -650,6 +650,42 @@ func TestCompilerNativeRailMachFloatFinalization(t *testing.T) {
 	}
 }
 
+func TestCompilerNativeRailMachV128FoundationFinalization(t *testing.T) {
+	constant := [16]byte{0x80, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	body := []byte{0x41, 0x20, 0x41, 0x00, 0xfd, 0x00, 0x04, 0x00}
+	body = append(body, 0xfd, 0x0c)
+	body = append(body, constant[:]...)
+	body = append(body, 0xfd, 0x51, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !railMachCandidate(stack, true) {
+		t.Fatalf("v128 foundation was not a candidate: params=%v results=%v locals=%v globals=%v result-types=%v instructions=%v", stack.Params, stack.Results, stack.Locals, stack.Globals, stack.ResultTypes, stack.Instrs)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target, Bounds: corecompiler.BoundsExplicit}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("%s v128 foundation finalization = %#v", runtime.GOARCH, metrics.Functions)
+	}
+}
+
 func TestCompilerNativeRailMachARM64PairFinalization(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I64}))),

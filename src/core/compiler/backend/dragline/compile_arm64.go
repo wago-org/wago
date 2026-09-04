@@ -984,6 +984,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 	}
 	for _, instruction := range plan.Machine.Insts {
 		switch instruction.Op {
+		case railmach.OpARM64V128Const, railmach.OpARM64V128Load, railmach.OpARM64V128Store,
+			railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3415,6 +3417,74 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			}
 			dst := reg(instruction.Result)
 			wide := plan.Machine.VRegs[instruction.Result].Type.IsWideGPR()
+			switch instruction.Op {
+			case railmach.OpARM64V128Const:
+				immediate, ok := plan.Machine.SIMDImmediateAt(instructionID)
+				if !ok {
+					return nil, 0, true, fmt.Errorf("RailMach vector constant %d has no payload", instructionID)
+				}
+				emitARM64SIMDConstant(&a, dst, immediate.Bytes)
+				continue
+			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector binary operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				switch instruction.Op {
+				case railmach.OpARM64V128And:
+					a.NeonAnd16b(dst, lhs, rhs)
+				case railmach.OpARM64V128Or:
+					a.NeonOrr16b(dst, lhs, rhs)
+				default:
+					a.NeonEor16b(dst, lhs, rhs)
+				}
+				continue
+			case railmach.OpARM64V128Load, railmach.OpARM64V128Store:
+				access, ok := plan.Machine.MemoryAccessAt(instructionID)
+				store := instruction.Op == railmach.OpARM64V128Store
+				if !ok || access.SemanticWidth != 16 || access.EncodedWidth != 16 || len(operands) != 1 && !store || len(operands) != 2 && store {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector memory operation %d is malformed", instructionID)
+				}
+				if access.Offset > math.MaxUint64-16 {
+					metadata.recordTrap(a.Len(), wasmOffset, 3)
+					arm64EmitTrap(&a, 3, fn.Index, wasmOffset)
+					continue
+				}
+				lhs := reg(operands[0].Reg)
+				end := access.Offset + 16
+				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
+					bounds := arm64.X8
+					if !cacheMemoryBounds {
+						a.SubImm64(arm64.X17, arm64.X26, abi.ActualLinMemByteSize64Offset)
+						if !a.Load64(arm64.X17, arm64.X17, 0) {
+							return nil, 0, true, fmt.Errorf("RailMach vector memory size load is not encodable")
+						}
+						bounds = arm64.X17
+					}
+					if cacheMemoryLimit {
+						a.CmpReg32(lhs, arm64.X8)
+					} else if emitARM64BoundsLimit(&a, arm64.X17, bounds, end, plan.Stack.MemoryMinBytes) {
+						a.CmpReg32(lhs, arm64.X17)
+					} else {
+						a.MovReg32(arm64.X16, lhs)
+						emitARM64BoundsEnd(&a, arm64.X16, end)
+						a.CmpReg64(arm64.X16, bounds)
+					}
+					if err := emitMemoryTrapBranch(wasmOffset); err != nil {
+						return nil, 0, true, err
+					}
+				}
+				a.AddExtUXTW(arm64.X16, arm64.X26, lhs)
+				if access.Offset != 0 {
+					emitARM64BoundsEnd(&a, arm64.X16, access.Offset)
+				}
+				if store {
+					a.StrQ(arm64.X16, 0, reg(operands[1].Reg))
+				} else {
+					a.LdrQ(dst, arm64.X16, 0)
+				}
+				continue
+			}
 			if instruction.Op == wasm.InstrI32Const || instruction.Op == wasm.InstrI64Const || instruction.Op == wasm.InstrRefNull {
 				a.MovImm64(dst, instruction.Aux)
 				continue

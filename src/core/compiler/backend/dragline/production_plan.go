@@ -263,11 +263,10 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 	if stack == nil {
 		return false
 	}
-	// RailMach's scalar edge-refinement identity is complete, but its machine
-	// value contract intentionally has no 128-bit register class yet. Keep every
-	// function containing a typed v128 value on the structured SIMD emitter,
-	// including functions whose v128 locals are otherwise unused.
-	if stackHasV128Value(stack) || stack.HasV128 && len(stack.BranchCasts) != 0 {
+	if stackHasV128Value(stack) || stackHasSIMDInstruction(stack) {
+		return railMachV128FoundationCandidate(stack)
+	}
+	if stack.HasV128 && len(stack.BranchCasts) != 0 {
 		return false
 	}
 	if stack.HasReferences {
@@ -414,6 +413,52 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 		return false
 	}
 	return true
+}
+
+// railMachV128FoundationCandidate admits the first complete vector slice while
+// the public/private vector ABI and vector callee-save contract are still being
+// finished. This is intentionally source-derived: arbitrary functions composed
+// from constants, full-width memory operations, and bitwise operations qualify.
+func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
+	if stack == nil || stack.HasReferences || len(stack.BranchCasts) != 0 {
+		return false
+	}
+	for _, types := range [][]wasm.ValType{stack.Params, stack.Results, stack.Locals, stack.Globals} {
+		for _, typ := range types {
+			if typ == wasm.V128 {
+				return false
+			}
+		}
+	}
+	hasVectorOperation := false
+	for _, instruction := range stack.Instrs {
+		if instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect || instruction.Kind == wasm.InstrUnreachable {
+			// Reachability is represented by the CFG, which is built after this
+			// inexpensive routing gate. Keep mixed reachable/dead SIMD functions on
+			// the structured oracle until capability routing consumes CFG identity.
+			return false
+		}
+		if !wasm.IsSIMDValidationInstructionKind(instruction.Kind) {
+			continue
+		}
+		hasVectorOperation = true
+		switch instruction.Kind {
+		case wasm.InstrV128Const, wasm.InstrV128Load, wasm.InstrV128Store,
+			wasm.InstrV128And, wasm.InstrV128Or, wasm.InstrV128Xor:
+		default:
+			return false
+		}
+	}
+	return hasVectorOperation
+}
+
+func stackHasSIMDInstruction(stack *railssa.StackFunc) bool {
+	for _, instruction := range stack.Instrs {
+		if wasm.IsSIMDValidationInstructionKind(instruction.Kind) {
+			return true
+		}
+	}
+	return false
 }
 
 func stackHasV128Value(stack *railssa.StackFunc) bool {
@@ -947,6 +992,19 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		return nil, err
 	}
 	defaultGreedy := railmach.DefaultGreedyConfig(machineTarget)
+	if machineHasV128(machine) {
+		// Until callee-save homes become 128-bit, vector values may use only
+		// registers that are volatile on every supported platform ABI.
+		if machineTarget == railmach.TargetAMD64 {
+			defaultGreedy.Linear.FPRs = 6 // XMM0-XMM5 are volatile on Windows and SysV.
+			defaultGreedy.CallerFPRs = 6
+			defaultGreedy.CallerFPRMask = callerRegisterMask(6)
+		} else {
+			defaultGreedy.Linear.FPRs = 16 // V0-V7 and V16-V23 in allocator order.
+			defaultGreedy.CallerFPRs = 16
+			defaultGreedy.CallerFPRMask = callerRegisterMask(16)
+		}
+	}
 	amd64MemoryBoundEnd, cachesAMD64MemoryBound := p.nativeAMD64CachedMemoryBound(stack, machine, emission, pressure)
 	if nativeAMD64CachesGlobals(machine) {
 		// The final two allocatable GPRs map to RBP/R12. Reserve them for one
@@ -962,7 +1020,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		// width/offset, leaving the first nine GPRs available to allocation.
 		defaultGreedy.Linear.GPRs = nativeAMD64MemoryBoundRegister
 	}
-	if machineTarget == railmach.TargetARM64 {
+	if machineTarget == railmach.TargetARM64 && !machineHasV128(machine) {
 		defaultGreedy.Linear.FPRs = nativeARM64AllocatableFPRs(machine)
 	}
 	if nativeARM64CachesGlobals(machine) {
@@ -1495,7 +1553,22 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	p.plan.ColdTrapPatches = p.coldTrapPatches
 	p.plan.MemoryCheckEnds = p.memoryCheckEnds
 	p.plan.MemoryCheckTouched = p.memoryCheckTouched
+	if _, err := railmach.SelectTargetOpcodes(machine); err != nil {
+		return nil, err
+	}
 	return &p.plan, nil
+}
+
+func machineHasV128(machine *railmach.Func) bool {
+	if machine == nil {
+		return false
+	}
+	for _, value := range machine.VRegs {
+		if value.Type == railmach.TypeV128 {
+			return true
+		}
+	}
+	return false
 }
 
 func nativeARM64AllocatableFPRs(machine *railmach.Func) uint8 {
