@@ -100,8 +100,14 @@ func (f *fn) storeLocalReg(x int, reg Reg, isFloat bool) {
 }
 
 func (f *fn) loadLocalReg(x int, reg Reg, isFloat bool) {
-	if f.pinRelinquished && !isFloat && f.regUser[reg] != nil {
-		f.spillIfUsed(reg)
+	if f.pinRelinquished {
+		if isFloat {
+			if u := f.fregUser[reg]; u != nil {
+				f.spillF(u)
+			}
+		} else if f.regUser[reg] != nil {
+			f.spillIfUsed(reg)
+		}
 	}
 	if f.localType[x] == mtV128 {
 		f.a.VMovdquLoadDisp(reg, RSP, f.localAddr(x))

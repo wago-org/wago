@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
 )
 
 // sum5FloatModule is a reg-ABI function with five f64 params
@@ -75,5 +76,33 @@ func TestDeepFPPinsAcrossCall(t *testing.T) {
 	s = compileWithStats(t, m, false).Funcs[0]
 	if s.PinnedLocals != baseFPPins || s.Peephole["deep-fp-local-pin"] != 0 {
 		t.Fatalf("disabled call-making FP pins = %d deep=%d, want %d/0", s.PinnedLocals, s.Peephole["deep-fp-local-pin"], baseFPPins)
+	}
+}
+
+func TestFPPinRelinquishmentAvoidsRetry(t *testing.T) {
+	const local = 0
+	stats := &CodegenStats{}
+	f := fn{
+		a:                &encoderamd64.Asm{},
+		s:                newStack(),
+		localType:        []machineType{mtF64},
+		localSlot:        []uint32{0},
+		locals:           []localDef{{reg: 12, isFloat: true, state: lsReg}},
+		pinnedLocals:     []int{local},
+		fpinnedLocalMask: regMask(0).add(12),
+		stats:            stats,
+		pinRelinquished:  false,
+	}
+	var avoid regMask
+	for r := Reg(0); r < 16; r++ {
+		if r != 12 {
+			avoid = avoid.add(r)
+		}
+	}
+	if got := f.allocFReg(avoid); got != 12 {
+		t.Fatalf("relinquished register = %v, want XMM12", got)
+	}
+	if f.locals[local].state != lsMem || !f.pinRelinquished || stats.PinRelinquishments != 1 || stats.Peephole["fp-pin-relinquish"] != 1 {
+		t.Fatalf("relinquishment state = local:%v active:%v stats:%+v", f.locals[local].state, f.pinRelinquished, stats)
 	}
 }

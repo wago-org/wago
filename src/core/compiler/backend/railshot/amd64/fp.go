@@ -70,9 +70,44 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 			return r
 		}
 	}
-	// Match GP exhaustion: compileFunc retries without local/global value pins,
-	// which frees the extended XMM pin pool under pathological expression pressure.
+	// Float and vector local pins are caches too. Home one at the exact pressure
+	// point instead of recompiling the function without pins.
+	if r := f.relinquishPinnedFLocal(avoid); r != regNone {
+		return r
+	}
 	panic(regExhausted{})
+}
+
+func (f *fn) relinquishPinnedFLocal(avoid regMask) Reg {
+	block := avoid.union(f.fpinned).union(f.fconstMask()).union(f.v128ConstMask())
+	for i := len(f.pinnedLocals) - 1; i >= 0; i-- {
+		x := f.pinnedLocals[i]
+		d := f.locals[x]
+		if !d.isFloat || d.state == lsConstZero || block.has(d.reg) || f.fregUser[d.reg] != nil {
+			continue
+		}
+		borrowed := false
+		for e := f.s.head.next; e != f.s.head; e = e.next {
+			if subtreeRefsLocal(e, x) {
+				borrowed = true
+				break
+			}
+		}
+		if borrowed {
+			continue
+		}
+		if d.state == lsReg {
+			f.storeLocalReg(x, d.reg, true)
+		}
+		f.locals[x].state = lsMem
+		f.pinRelinquished = true
+		if f.stats != nil {
+			f.stats.PinRelinquishments++
+		}
+		f.stats.peep("fp-pin-relinquish")
+		return d.reg
+	}
+	return regNone
 }
 
 // spillF evicts an XMM-resident float/vector value to a fresh frame slot.

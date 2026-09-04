@@ -176,7 +176,7 @@ type CodegenStats struct {
 	// Pins.
 	PinnedLocals       int // integer/float locals given a dedicated register
 	PinnedGlobalsValue int // hot mutable-int globals value-pinned in this function
-	PinRelinquishments int // pinned GP locals temporarily homed at exact exhaustion points
+	PinRelinquishments int // pinned locals temporarily homed at exact exhaustion points
 
 	// UnpinnedRetry is set when the pinned compile exhausted the register file
 	// (a pathologically deep expression tree) and the function was recompiled with

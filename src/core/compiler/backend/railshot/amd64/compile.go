@@ -4,7 +4,6 @@ package amd64
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -2538,23 +2537,16 @@ func pickModuleGlobals(m *wasm.Module, nGlobals int, agg []int64) []moduleGlobal
 	return pins
 }
 
-// regExhausted is the sentinel panic allocReg raises when the register file is
-// fully blocked. compileFunc catches it and recompiles the function without local
-// pinning (see compileFuncAttempt).
+// regExhausted is the internal sentinel raised when a lowering step blocks the
+// whole register file even after spillable values and optional pins are homed.
 type regExhausted struct{}
-
-// errRegExhausted is regExhausted surfaced as an error from a compile attempt, so
-// compileFunc can distinguish a recoverable register-pressure failure (retry with
-// pinning off) from a genuine compile error (propagate).
-var errRegExhausted = errors.New("amd64: no register available to spill")
 
 // Below this count, optional inlining can erase the only relocation and an
 // eager arena reserve crosses too few target size classes to repay itself.
 const minPreallocatedCallRelocs = 8
 
-// compileFunc compiles one function, retrying with local pinning disabled if the
-// first (pinned) attempt exhausts the register file. Pinning is a pure speed
-// optimization, so the unpinned recompile is always correct.
+// compileFunc compiles one function exactly once. Optional local pins are
+// pressure-spillable inside the attempt, so emitted work is never discarded.
 func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx int, hostAdapter, guardMode, boundsFacts, interruptible bool, modGlobals []moduleGlobalPin, hints *funcHintView, immutableTables []immutableTableHint, importBindings []ImportBinding, syncHostCalls bool, syncHostSlots int, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers bool, custom map[uint32]CustomInstruction, gcFrameRoots *shared.GCFrameRootPlan, stats *CodegenStats, inlineTargets inlineTargetTable, sc *scratch) (code []byte, relocs []callReloc, internalOff int, err error) {
 	var compileStart time.Time
 	if stats != nil {
@@ -2578,23 +2570,6 @@ func compileFunc(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, funcIdx i
 		modGlobals = nil
 	}
 	code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTables, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, pinLocals, inlineTargets, sc)
-	if errors.Is(err, errRegExhausted) {
-		if stats != nil {
-			used, _ := sc.stack.nodeMemory()
-			stats.RetryInputBytes += uint64(len(m.Code[funcIdx].BodyBytes))
-			stats.RetryNodeBytes += used
-			stats.RetryCodeBytes += uint64(len(sc.asm.B))
-			stats.RetryNanos += uint64(time.Since(compileStart))
-		}
-		resetFuncStats(stats)
-		if stats != nil {
-			stats.FunctionAttempts++
-		}
-		code, relocs, internalOff, err = compileFuncAttempt(m, gcTypeLayouts, funcIdx, hostAdapter, guardMode, boundsFacts, interruptible, modGlobals, hints, immutableTables, importBindings, syncHostCalls, syncHostSlots, gcTypeSubtypingRefTest, gcStructHelpers, gcArrayHelpers, moduleEH, custom, gcFrameRoots, stats, false, inlineTargets, sc)
-		if err == nil {
-			stats.setUnpinnedRetry()
-		}
-	}
 	if len(sc.stack.chunks) > 1 {
 		sc.finishStackFunction()
 	}
@@ -2608,7 +2583,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(regExhausted); ok {
-				err = errRegExhausted // recoverable: caller retries with pinning off
+				err = fmt.Errorf("amd64: no register available after spilling optional pins")
 				return
 			}
 			if os.Getenv("WAGO_DEBUG_PANIC") == "1" {
