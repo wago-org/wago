@@ -2307,6 +2307,7 @@ func compactEHLocalScores(allHints []funcHints, scores []uint32) []uint32 {
 	for i := range allHints {
 		total += min(int(allHints[i].localCount), 64)
 		allHints[i].flags.assign(hintIntervalRegionStorage, false)
+		allHints[i].lastGetStartPlus1 = 0
 	}
 	if total == len(scores) {
 		return scores
