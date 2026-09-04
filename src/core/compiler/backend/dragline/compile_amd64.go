@@ -2317,7 +2317,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				endOffset := uint64(uint32(instruction.Aux)) + uint64(size)
 				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, endOffset) {
-					emitAMD64RailMachBoundsCheck(&a, plan, address, endOffset, instruction.Source, &coldTrapPatches)
+					emitAMD64RailMachBoundsCheck(&a, plan, address, endOffset, instruction.Source, &coldTrapPatches, !store)
 				}
 				disp := int32(uint32(instruction.Aux))
 				if uint32(instruction.Aux) > math.MaxInt32 {
@@ -3205,27 +3205,40 @@ func nativeAMD64MemoryFoldSource(plan *nativeBackendPlan, consumer uint32) (uint
 	return producer, producer < consumer && int(producer) < len(plan.Machine.Insts)
 }
 
-func emitAMD64RailMachBoundsCheck(a *amd64.Asm, plan *nativeBackendPlan, address amd64.Reg, endOffset uint64, source uint32, coldTraps *[]nativeBranchPatch) {
+func emitAMD64RailMachBoundsCheck(a *amd64.Asm, plan *nativeBackendPlan, address amd64.Reg, endOffset uint64, source uint32, coldTraps *[]nativeBranchPatch, preserveRSI bool) {
 	if railMachElidesBoundsCheck(plan, source) {
 		return
 	}
 	if plan.AMD64MemoryBoundEnd == endOffset {
 		a.Cmp64(address, amd64RailMachGPRRegisters[nativeAMD64MemoryBoundRegister])
+	} else if endOffset != 0 && endOffset <= math.MaxInt32 && endOffset <= plan.Stack.MemoryMinBytes {
+		bound := amd64.RSI
+		if preserveRSI {
+			// An ordinary load can leave another materialized operand in RSI for
+			// its scheduled consumer. Use the second reserved scratch instead of
+			// spilling that value around the overwhelmingly common subtract-bound
+			// check.
+			bound = amd64.R11
+		}
+		a.Load64(bound, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+		a.AluRI(5, bound, int32(endOffset), true)
+		a.Cmp64(address, bound)
 	} else {
+		if preserveRSI {
+			a.Push(amd64.RSI)
+		}
 		a.Load64(amd64.RSI, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
-		if endOffset != 0 && endOffset <= math.MaxInt32 && endOffset <= plan.Stack.MemoryMinBytes {
-			a.AluRI(5, amd64.RSI, int32(endOffset), true)
-			a.Cmp64(address, amd64.RSI)
+		a.MovReg64(amd64.R11, address)
+		if endOffset <= math.MaxInt32 {
+			a.AluRI(0, amd64.R11, int32(endOffset), true)
 		} else {
-			a.MovReg64(amd64.R11, address)
-			if endOffset <= math.MaxInt32 {
-				a.AluRI(0, amd64.R11, int32(endOffset), true)
-			} else {
-				a.MovImm64(amd64.RSI, endOffset)
-				a.AluRR(0x01, amd64.R11, amd64.RSI, true)
-				a.Load64(amd64.RSI, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
-			}
-			a.Cmp64(amd64.R11, amd64.RSI)
+			a.MovImm64(amd64.RSI, endOffset)
+			a.AluRR(0x01, amd64.R11, amd64.RSI, true)
+			a.Load64(amd64.RSI, amd64.RBX, -int32(abi.ActualLinMemByteSize64Offset))
+		}
+		a.Cmp64(amd64.R11, amd64.RSI)
+		if preserveRSI {
+			a.Pop(amd64.RSI)
 		}
 	}
 	*coldTraps = append(*coldTraps, nativeBranchPatch{At: a.JccPlaceholder(amd64.CondA), Target: railMachWasmOffset(plan, source), Code: 3})
@@ -3256,7 +3269,7 @@ func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID,
 		width = 8
 	}
 	endOffset := uint64(uint32(load.Aux)) + width
-	emitAMD64RailMachBoundsCheck(a, plan, amd64.R10, endOffset, load.Source, coldTraps)
+	emitAMD64RailMachBoundsCheck(a, plan, amd64.R10, endOffset, load.Source, coldTraps, false)
 	displacement := int32(uint32(load.Aux))
 	if uint32(load.Aux) > math.MaxInt32 {
 		a.MovImm64(amd64.R11, uint64(uint32(load.Aux)))
@@ -3305,7 +3318,7 @@ func emitAMD64FoldedFloatMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID, c
 		width = 8
 	}
 	endOffset := uint64(uint32(load.Aux)) + width
-	emitAMD64RailMachBoundsCheck(a, plan, amd64.R10, endOffset, load.Source, coldTraps)
+	emitAMD64RailMachBoundsCheck(a, plan, amd64.R10, endOffset, load.Source, coldTraps, false)
 	disp := int32(uint32(load.Aux))
 	if uint32(load.Aux) > math.MaxInt32 {
 		a.MovImm64(amd64.R11, uint64(uint32(load.Aux)))
