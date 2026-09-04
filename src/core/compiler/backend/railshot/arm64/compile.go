@@ -635,6 +635,15 @@ func (sc *scratch) reserveControlFrames(capacity int) {
 	sc.controlScratchPeak = capacity
 }
 
+func (sc *scratch) reserveLocalScratch(capacity int) {
+	if capacity <= 0 {
+		return
+	}
+	sc.fnState.localType = make([]machineType, 0, capacity)
+	sc.fnState.localSlot = make([]uint32, 0, capacity)
+	sc.fnState.locals = make([]localDef, 0, capacity)
+}
+
 func (sc *scratch) noteControlScratch() {
 	if capacity := cap(sc.ctrl); capacity > sc.controlScratchPeak {
 		sc.controlScratchPeak = capacity
@@ -1377,6 +1386,18 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		expandedLowering := expandedStackLowering(opts)
 		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.classifier = classifier
+		maxLocals := 0
+		for i := range allHints {
+			if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
+				continue
+			}
+			ft, ok := m.LocalFuncType(i)
+			if !ok {
+				continue
+			}
+			maxLocals = max(maxLocals, len(ft.Params)+int(allHints[i].localCount))
+		}
+		sc.reserveLocalScratch(maxLocals)
 		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
 			sc.reserveControlFrames(ctrlCap)
 		}

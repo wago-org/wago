@@ -237,3 +237,17 @@ func TestLocStatePoolRetentionIsBoundedAMD64(t *testing.T) {
 		t.Fatalf("retained local-state buffers = %d, want %d", got, maxRetainedLocStateBufs)
 	}
 }
+
+func TestReserveLocalScratchAMD64(t *testing.T) {
+	sc := &scratch{}
+	sc.reserveLocalScratch(7, true)
+	if cap(sc.fnState.localType) != 7 || cap(sc.fnState.localSlot) != 7 || cap(sc.fnState.locals) != 7 || cap(sc.fnState.localGCRefFacts) != 7 {
+		t.Fatalf("local scratch capacities = %d/%d/%d/%d, want 7/7/7/7", cap(sc.fnState.localType), cap(sc.fnState.localSlot), cap(sc.fnState.locals), cap(sc.fnState.localGCRefFacts))
+	}
+
+	sc = &scratch{}
+	sc.reserveLocalScratch(7, false)
+	if sc.fnState.localGCRefFacts != nil {
+		t.Fatal("facts-disabled reservation allocated GC fact scratch")
+	}
+}

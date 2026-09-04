@@ -252,3 +252,11 @@ func TestLocStatePoolRetentionIsBoundedArm64(t *testing.T) {
 		t.Fatalf("retained local-state buffers = %d, want %d", got, maxRetainedLocStateBufs)
 	}
 }
+
+func TestReserveLocalScratchArm64(t *testing.T) {
+	sc := &scratch{}
+	sc.reserveLocalScratch(7)
+	if cap(sc.fnState.localType) != 7 || cap(sc.fnState.localSlot) != 7 || cap(sc.fnState.locals) != 7 {
+		t.Fatalf("local scratch capacities = %d/%d/%d, want 7/7/7", cap(sc.fnState.localType), cap(sc.fnState.localSlot), cap(sc.fnState.locals))
+	}
+}
