@@ -143,7 +143,25 @@ type Inst struct {
 	Result       VReg
 	Source       uint32
 	OperandCount uint16
-	Op           wasm.InstrKind
+	Op           MOpcode
+}
+
+// MemoryAccess is sparse selected-memory metadata. Instruction identifies the
+// owning machine instruction. AddressValue and Offset are shared by the bounds
+// proof and the eventual encoded access; keeping both widths explicit prevents
+// a scalar-to-vector fold from silently widening the architecturally touched
+// bytes.
+type MemoryAccess struct {
+	Offset        uint64
+	AddressValue  VReg
+	Instruction   uint32
+	BoundsProof   uint32
+	TrapSite      uint32
+	MemoryIndex   uint16
+	SemanticWidth uint8
+	EncodedWidth  uint8
+	Alignment     uint8
+	_             [5]byte
 }
 
 // ResultCount returns the number of consecutive VReg definitions. Multi-result
@@ -197,12 +215,30 @@ type Func struct {
 	Edges      []Edge
 	Transfers  []EdgeTransfer
 	Results    []VReg
+	Memory     []MemoryAccess
 }
 
 func (f *Func) InstructionOperands(id uint32) []Operand {
 	instruction := f.Insts[id]
 	start := int(instruction.OperandStart)
 	return f.Operands[start : start+int(instruction.OperandCount)]
+}
+
+// MemoryAccessAt returns the sparse memory descriptor owned by instruction.
+func (f *Func) MemoryAccessAt(instruction uint32) (*MemoryAccess, bool) {
+	lo, hi := 0, len(f.Memory)
+	for lo < hi {
+		mid := int(uint(lo+hi) >> 1)
+		if f.Memory[mid].Instruction < instruction {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	if lo < len(f.Memory) && f.Memory[lo].Instruction == instruction {
+		return &f.Memory[lo], true
+	}
+	return nil, false
 }
 
 func Build(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow, semantic *railssa.SemanticFunc, reuse *Func) (*Func, error) {
@@ -229,7 +265,8 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 	edges := resize(reuse.Edges, len(cfg.Edges))
 	transfers := resize(reuse.Transfers, len(flow.EdgeArgs))[:0]
 	results := reuse.Results[:0]
-	*reuse = Func{Target: target, ParamCount: flow.ParamCount, Insts: insts, Operands: operands, VRegs: vregs, Blocks: blocks, Edges: edges, Transfers: transfers, Results: results}
+	memory := reuse.Memory[:0]
+	*reuse = Func{Target: target, ParamCount: flow.ParamCount, Insts: insts, Operands: operands, VRegs: vregs, Blocks: blocks, Edges: edges, Transfers: transfers, Results: results, Memory: memory}
 	for id, edge := range cfg.Edges {
 		reuse.Edges[id] = Edge{From: edge.From, To: edge.To, Kind: edge.Kind}
 	}
@@ -285,6 +322,16 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 				reuse.Operands = append(reuse.Operands, constraint)
 			}
 			reuse.Insts = append(reuse.Insts, instruction)
+			if width := scalarMemoryWidth(instruction.Op); width != 0 {
+				if len(args) == 0 {
+					return nil, fmt.Errorf("railmach: memory instruction %d has no address", semanticID)
+				}
+				reuse.Memory = append(reuse.Memory, MemoryAccess{
+					Offset: instruction.Aux, AddressValue: reuse.Operands[instruction.OperandStart].Reg,
+					Instruction: uint32(len(reuse.Insts)) - 1, TrapSite: instruction.Source,
+					SemanticWidth: width, EncodedWidth: width, Alignment: 1,
+				})
+			}
 			for ordinal := uint32(0); ordinal < instruction.ResultCount(); ordinal++ {
 				result := instruction.Result + VReg(ordinal)
 				reuse.VRegs[result].Def = (uint32(len(reuse.Insts))-1)*6 + 3
@@ -552,6 +599,12 @@ func Verify(f *Func) error {
 		expectedStart += block.InstCount
 		for id := block.InstStart; id < block.InstStart+block.InstCount; id++ {
 			instruction := f.Insts[id]
+			if IsSelectedOpcode(instruction.Op) {
+				target := SelectedOpcodeTarget(instruction.Op)
+				if target == TargetInvalid || target != f.Target {
+					return fmt.Errorf("railmach: instruction %d selects invalid %s opcode %d", id, f.Target, instruction.Op)
+				}
+			}
 			if seenSource && instruction.Source < lastSource {
 				return fmt.Errorf("railmach: instruction %d violates source-stable order", id)
 			}
@@ -592,7 +645,66 @@ func Verify(f *Func) error {
 			return fmt.Errorf("railmach: invalid result vreg %d", result)
 		}
 	}
+	previous := uint32(0)
+	for index, access := range f.Memory {
+		if int(access.Instruction) >= len(f.Insts) || index != 0 && access.Instruction <= previous {
+			return fmt.Errorf("railmach: memory access %d has invalid instruction identity", index)
+		}
+		instruction := f.Insts[access.Instruction]
+		operands := f.InstructionOperands(access.Instruction)
+		if len(operands) == 0 || access.AddressValue == 0 || access.AddressValue != operands[0].Reg {
+			return fmt.Errorf("railmach: memory access %d checks a different address", index)
+		}
+		if access.Offset != instruction.Aux {
+			return fmt.Errorf("railmach: memory access %d checks a different constant offset", index)
+		}
+		if access.TrapSite != instruction.Source {
+			return fmt.Errorf("railmach: memory access %d has a different trap source", index)
+		}
+		if access.SemanticWidth == 0 || access.EncodedWidth != access.SemanticWidth {
+			return fmt.Errorf("railmach: memory access %d touches %d bytes for %d-byte semantics", index, access.EncodedWidth, access.SemanticWidth)
+		}
+		if access.Alignment == 0 || access.Alignment&(access.Alignment-1) != 0 || access.Alignment > access.EncodedWidth {
+			return fmt.Errorf("railmach: memory access %d has invalid %d-byte alignment", index, access.Alignment)
+		}
+		if memoryOpcodeWidth(instruction.Op) != access.SemanticWidth {
+			return fmt.Errorf("railmach: memory access %d disagrees with its opcode", index)
+		}
+		previous = access.Instruction
+	}
+	memoryIndex := 0
+	for instructionID, instruction := range f.Insts {
+		if memoryOpcodeWidth(instruction.Op) == 0 {
+			continue
+		}
+		if memoryIndex >= len(f.Memory) || f.Memory[memoryIndex].Instruction != uint32(instructionID) {
+			return fmt.Errorf("railmach: generic memory instruction %d has no access descriptor", instructionID)
+		}
+		memoryIndex++
+	}
 	return nil
+}
+
+func memoryOpcodeWidth(kind MOpcode) uint8 {
+	if width := selectedMemoryWidth(kind); width != 0 {
+		return width
+	}
+	return scalarMemoryWidth(kind)
+}
+
+func scalarMemoryWidth(kind MOpcode) uint8 {
+	switch kind {
+	case wasm.InstrI32Load8S, wasm.InstrI32Load8U, wasm.InstrI64Load8S, wasm.InstrI64Load8U, wasm.InstrI32Store8, wasm.InstrI64Store8:
+		return 1
+	case wasm.InstrI32Load16S, wasm.InstrI32Load16U, wasm.InstrI64Load16S, wasm.InstrI64Load16U, wasm.InstrI32Store16, wasm.InstrI64Store16:
+		return 2
+	case wasm.InstrI32Load, wasm.InstrF32Load, wasm.InstrI64Load32S, wasm.InstrI64Load32U, wasm.InstrI32Store, wasm.InstrF32Store, wasm.InstrI64Store32:
+		return 4
+	case wasm.InstrI64Load, wasm.InstrF64Load, wasm.InstrI64Store, wasm.InstrF64Store:
+		return 8
+	default:
+		return 0
+	}
 }
 
 // ScheduleSourceStable validates and returns the existing source order. It is
@@ -643,7 +755,8 @@ func CapacityBytes(f *Func) uint64 {
 		uint64(cap(f.Blocks))*uint64(unsafe.Sizeof(Block{})) +
 		uint64(cap(f.Edges))*uint64(unsafe.Sizeof(Edge{})) +
 		uint64(cap(f.Transfers))*uint64(unsafe.Sizeof(EdgeTransfer{})) +
-		uint64(cap(f.Results))*uint64(unsafe.Sizeof(VReg(0)))
+		uint64(cap(f.Results))*uint64(unsafe.Sizeof(VReg(0))) +
+		uint64(cap(f.Memory))*uint64(unsafe.Sizeof(MemoryAccess{}))
 }
 
 func resize[T any](values []T, length int) []T {

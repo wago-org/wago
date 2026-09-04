@@ -267,6 +267,12 @@ func ApplyAddressFolding(f *Func, flow *railssa.ValueFlow, semantic *railssa.Sem
 		consumerOperands[0].Reg = base
 		consumerOperands[0].Bank = f.VRegs[base].Bank
 		consumer.Aux = uint64(original + added)
+		access, ok := f.MemoryAccessAt(combination.Consumer)
+		if !ok {
+			return 0, fmt.Errorf("railmach: address fold consumer %d has no memory descriptor", combination.Consumer)
+		}
+		access.AddressValue = base
+		access.Offset = consumer.Aux
 		f.VRegs[producer.Result].Flags |= VRegElided
 		committed++
 	}

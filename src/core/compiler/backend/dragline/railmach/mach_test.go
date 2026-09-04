@@ -62,6 +62,60 @@ func TestDenseRecordSizes(t *testing.T) {
 	}
 }
 
+func TestSelectedOpcodeNamespaceIsTargetSpecific(t *testing.T) {
+	if IsSelectedOpcode(wasm.InstrV128Load) || !IsSelectedOpcode(OpAMD64V128Load) || !IsSelectedOpcode(OpARM64V128Load) {
+		t.Fatal("selected opcode namespace overlaps generic Wasm operations")
+	}
+	if SelectedOpcodeTarget(OpAMD64V128Load) != TargetAMD64 || SelectedOpcodeTarget(OpARM64V128Load) != TargetARM64 {
+		t.Fatal("selected vector forms have the wrong target")
+	}
+	f := memoryFixture()
+	f.Insts[0].Op = OpAMD64V128Load
+	if err := Verify(f); err == nil || !strings.Contains(err.Error(), "invalid arm64 opcode") {
+		t.Fatalf("Verify cross-target selected opcode = %v", err)
+	}
+}
+
+func TestVerifyMemoryAccessIdentityAndWidth(t *testing.T) {
+	f := memoryFixture()
+	if err := Verify(f); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		edit func(*Func)
+		want string
+	}{
+		{"widened access", func(f *Func) { f.Memory[0].EncodedWidth = 16 }, "touches 16 bytes"},
+		{"different address", func(f *Func) { f.Memory[0].AddressValue = 2 }, "different address"},
+		{"different offset", func(f *Func) { f.Memory[0].Offset++ }, "different constant offset"},
+		{"different trap", func(f *Func) { f.Memory[0].TrapSite++ }, "different trap source"},
+		{"invalid alignment", func(f *Func) { f.Memory[0].Alignment = 3 }, "invalid 3-byte alignment"},
+		{"missing descriptor", func(f *Func) { f.Memory = nil }, "no access descriptor"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := memoryFixture()
+			test.edit(candidate)
+			if err := Verify(candidate); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Verify = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func memoryFixture() *Func {
+	return &Func{
+		Target:   TargetARM64,
+		VRegs:    []VRegData{{}, {Type: TypeI32, Bank: BankGPR}, {Type: TypeI32, Bank: BankGPR}},
+		Operands: []Operand{{Reg: 1, Fixed: NoFixedReg, Bank: BankGPR, Flags: OperandUse}},
+		Insts:    []Inst{{Op: wasm.InstrI32Load, Aux: 24, Result: 2, OperandCount: 1, Source: 7}},
+		Blocks:   []Block{{InstCount: 1}},
+		Memory:   []MemoryAccess{{Instruction: 0, AddressValue: 1, Offset: 24, TrapSite: 7, SemanticWidth: 4, EncodedWidth: 4, Alignment: 1}},
+	}
+}
+
 func TestBuildPreservesV128InFPRBank(t *testing.T) {
 	body := []byte{0xfd, 0x0c}
 	body = append(body, make([]byte, 16)...)
