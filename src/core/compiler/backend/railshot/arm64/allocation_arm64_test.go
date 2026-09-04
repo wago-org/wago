@@ -29,6 +29,36 @@ func TestModuleScratchUsesBoundedStackArenaHintArm64(t *testing.T) {
 
 }
 
+func TestModuleControlFrameCapIsExactAndLazyArm64(t *testing.T) {
+	m := &wasm.Module{Code: make([]wasm.Func, 2)}
+	if got := moduleControlFrameCap(m, []funcHints{{}, {}}); got != 0 {
+		t.Fatalf("straight-line control cap = %d, want lazy zero", got)
+	}
+	if got := moduleControlFrameCap(m, []funcHints{{maxControlDepth: 2}, {maxControlDepth: 4}}); got != 5 {
+		t.Fatalf("nested control cap = %d, want 5", got)
+	}
+}
+
+func TestModuleControlFrameCapFallsBackConservativelyArm64(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{}}}
+	if got := moduleControlFrameCap(m, nil); got != 0 {
+		t.Fatalf("incomplete hints cap = %d, want zero fallback", got)
+	}
+	if got := moduleControlFrameCap(m, []funcHints{{maxControlDepth: maxHintedControlFrames}}); got != 0 {
+		t.Fatalf("deep control cap = %d, want zero fallback", got)
+	}
+}
+
+func TestWorkerControlFrameCapBoundsModuleOutlierArm64(t *testing.T) {
+	m := &wasm.Module{Code: make([]wasm.Func, 3)}
+	if got := workerControlFrameCap(m, []funcHints{{maxControlDepth: 2}, {maxControlDepth: 3}, {maxControlDepth: 40}}); got != maxWorkerInitialControlFrames {
+		t.Fatalf("worker control cap = %d, want %d", got, maxWorkerInitialControlFrames)
+	}
+	if got := workerControlFrameCap(m, []funcHints{{maxControlDepth: 2}, {maxControlDepth: 3}, {maxControlDepth: 4}}); got != 5 {
+		t.Fatalf("ordinary worker control cap = %d, want 5", got)
+	}
+}
+
 func TestModuleStackArenaCapFallsBackForMultiValueTypesArm64(t *testing.T) {
 	m := &wasm.Module{
 		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32, wasm.I64}}}}}},

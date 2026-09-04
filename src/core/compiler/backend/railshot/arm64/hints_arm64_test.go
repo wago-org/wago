@@ -17,6 +17,41 @@ func TestFuncHintsSizeArm64(t *testing.T) {
 	}
 }
 
+func TestControlDepthHintCountsNestedFramesArm64(t *testing.T) {
+	h, err := scanBodyBytes([]byte{
+		0x02, 0x40, // block
+		0x04, 0x40, // if
+		0x03, 0x40, // loop
+		0x0e, 0x01, 0x00, 0x00, // br_table 0 0; does not open a frame
+		0x0b, 0x05, 0x0b, 0x0b, 0x0b,
+	}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.maxControlDepth != 3 {
+		t.Fatalf("max control depth = %d, want 3", h.maxControlDepth)
+	}
+}
+
+func TestControlDepthHintSaturatesArm64(t *testing.T) {
+	var h funcHints
+	h.noteControlDepth(254)
+	h.noteControlDepth(300)
+	if h.maxControlDepth != 255 {
+		t.Fatalf("saturated max control depth = %d, want 255", h.maxControlDepth)
+	}
+}
+
+func TestControlDepthHintLeavesStraightLineLazyArm64(t *testing.T) {
+	h, err := scanBodyBytes([]byte{0x41, 0x00, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.maxControlDepth != 0 {
+		t.Fatalf("max control depth = %d, want 0", h.maxControlDepth)
+	}
+}
+
 func TestModuleHintsCountLocalDirectCallRelocations(t *testing.T) {
 	m := &wasm.Module{
 		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc}}}}},

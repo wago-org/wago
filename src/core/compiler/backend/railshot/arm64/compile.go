@@ -573,6 +573,15 @@ func newScratchWithStackCap(stackCap int) *scratch {
 	return &scratch{stack: stack, asm: &a64.Asm{}, nodeScratchReserved: reserved, nodeScratchPeak: reserved}
 }
 
+func (sc *scratch) reserveControlFrames(capacity int) {
+	if capacity <= 0 {
+		return
+	}
+	sc.ctrl = make([]ctrlFrame, 0, capacity)
+	sc.controlScratchReserved = capacity
+	sc.controlScratchPeak = capacity
+}
+
 func (sc *scratch) noteControlScratch() {
 	if capacity := cap(sc.ctrl); capacity > sc.controlScratchPeak {
 		sc.controlScratchPeak = capacity
@@ -704,6 +713,40 @@ func workerStackArenaCap(m *wasm.Module, hints []funcHints, inlineTargets inline
 
 func expandedStackLowering(opts CompileOptions) bool {
 	return len(opts.CustomInstructions) != 0 || opts.GCTypeSubtypingRefTest || opts.GCStructHelpers || opts.GCArrayHelpers
+}
+
+const maxHintedControlFrames = 64
+
+// maxWorkerInitialControlFrames bounds speculative pointer-rich control backing
+// retained by every parallel worker. Deeper functions grow only the worker that
+// receives them; append remains the correctness fallback.
+const maxWorkerInitialControlFrames = 8
+
+// moduleControlFrameCap sizes the serial compiler's reusable control stack from
+// the same one-pass bytecode hints. Zero preserves lazy allocation for
+// straight-line, incomplete, AST-only, or unusually deep modules.
+func moduleControlFrameCap(m *wasm.Module, hints []funcHints) int {
+	if len(hints) != len(m.Code) {
+		return 0
+	}
+	maxDepth := 0
+	for i := range hints {
+		if depth := int(hints[i].maxControlDepth); depth > maxDepth {
+			maxDepth = depth
+		}
+	}
+	if maxDepth == 0 || maxDepth >= maxHintedControlFrames {
+		return 0
+	}
+	return maxDepth + 1 // implicit function frame
+}
+
+func workerControlFrameCap(m *wasm.Module, hints []funcHints) int {
+	capHint := moduleControlFrameCap(m, hints)
+	if capHint > maxWorkerInitialControlFrames {
+		return maxWorkerInitialControlFrames
+	}
+	return capHint
 }
 
 func (sc *scratch) reset() {
@@ -1273,6 +1316,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 		expandedLowering := expandedStackLowering(opts)
 		sc := newScratchWithStackCap(serialStackArenaCap(m, allHints, inlineTargets, expandedLowering))
 		sc.classifier = classifier
+		if ctrlCap := moduleControlFrameCap(m, allHints); ctrlCap != 0 {
+			sc.reserveControlFrames(ctrlCap)
+		}
 		codeBuffer, err := coreruntime.NewCodeBuffer(codeCap)
 		if err != nil {
 			return nil, fmt.Errorf("arm64: allocate code image: %w", err)
@@ -1414,6 +1460,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	arenaCap := (codeCap + workers - 1) / workers
 	expandedLowering := expandedStackLowering(opts)
 	stackCap := workerStackArenaCap(m, allHints, inlineTargets, expandedLowering)
+	ctrlCap := workerControlFrameCap(m, allHints)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	var pressureBytes atomic.Int64
@@ -1421,6 +1468,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	for i := range states {
 		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
 		states[i].scratch.classifier = classifier
+		if ctrlCap != 0 {
+			states[i].scratch.reserveControlFrames(ctrlCap)
+		}
 	}
 	results := make([]funcResult, n)
 	var work struct {

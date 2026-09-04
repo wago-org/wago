@@ -91,8 +91,12 @@ type funcHints struct {
 	inlineCallSites    uint16 // saturated ordinary direct call sites targeting this local function
 	stackArenaDiscount uint16 // possible scanned nodes removed by bounded lookahead peepholes
 	flags              funcHintFlags
-	directCallRefs     uint8  // saturated call + return_call references targeting this local function
-	callRelocSites     uint16 // saturated direct calls emitted by this function before optional inlining
+	directCallRefs     uint8 // saturated call + return_call references targeting this local function
+	// maxControlDepth is the greatest simultaneously open structured-control
+	// depth, excluding the implicit function frame. It occupies alignment padding;
+	// 255 is a saturated fallback sentinel.
+	maxControlDepth uint8
+	callRelocSites  uint16 // saturated direct calls emitted by this function before optional inlining
 }
 
 // funcHintView reconstructs scan/compile slices on the stack. Only funcHints is
@@ -155,6 +159,14 @@ func (h *funcHints) addStackArenaDiscount(n uint16) {
 		h.stackArenaDiscount = ^uint16(0)
 	} else {
 		h.stackArenaDiscount += n
+	}
+}
+
+func (h *funcHints) noteControlDepth(depth int) {
+	if depth >= 255 {
+		h.maxControlDepth = 255
+	} else if d := uint8(depth); d > h.maxControlDepth {
+		h.maxControlDepth = d
 	}
 }
 
@@ -670,6 +682,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		case 0x02, 0x03, 0x04: // block, loop, if
 			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
 			s.h.addStackArenaNodes(2) // entry flush/rebuild allowance.
+			s.h.noteControlDepth(depth + 1)
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
@@ -833,6 +846,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		case 0x1f: // try_table: blocktype, catch vector, body
 			s.h.flags.set(hintModuleEH)
 			s.h.addStackArenaNodes(2) // entry flush/rebuild allowance.
+			s.h.noteControlDepth(depth + 1)
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}
