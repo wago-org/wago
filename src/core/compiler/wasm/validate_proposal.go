@@ -131,7 +131,7 @@ func (v *funcValidator) validateCatchPayload(c Catch) error {
 	}
 	var params []ValType
 	if c.Kind == CatchTag || c.Kind == CatchRef {
-		if int(c.Tag) >= v.m.TagCount() {
+		if int(c.Tag) >= (len(v.importsOfKind(ExternTag)) + len(v.m.Tags)) {
 			return v.verr(ErrUnknownTag, "catch")
 		}
 		ft, ok := v.tagFuncType(uint32(c.Tag))
@@ -168,15 +168,12 @@ func (v *funcValidator) validateCatchPayload(c Catch) error {
 }
 
 func (v *moduleValidator) tagFuncType(idx uint32) (*CompType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternTag {
-			if n == idx {
-				ft := v.funcTypeFromTypeIdx(im.Type.TagType().Type)
-				return ft, ft != nil
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternTag)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		ft := v.funcTypeFromTypeIdx(im.Type.TagType().Type)
+		return ft, ft != nil
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Tags) {

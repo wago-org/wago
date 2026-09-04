@@ -180,3 +180,16 @@ bindings, and arbitrary configuration. Writes enforce the same readable limits.
 
 Validation: regular-file, JSON, and project suites pass, including oversized
 sparse files, FIFO/symlink rejection, nested JSON, and aggregate value limits.
+
+## 8. Index imports once during validation
+
+All five import kinds share one compact uint32 index allocation. Instruction
+lookups and validator index counts now take constant time. The indexes are built
+before parallel body validation and remain immutable. Interleaved import order
+is preserved. No indexes or cache are retained after validation.
+
+Validation: Wasm package tests pass. Single-iteration AMD64 measurements with
+25,000/50,000 imports and calls: before 416/1,652 ms; after 1.05/2.06 ms.
+Doubling both dimensions now takes about 1.96x time instead of 3.97x. Temporary
+allocation changes from 1,232 B to 107,872/206,176 B (one 4-byte index per import,
+plus allocator rounding and validator state); 7 -> 8 allocations.
