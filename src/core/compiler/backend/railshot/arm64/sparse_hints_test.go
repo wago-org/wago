@@ -59,7 +59,7 @@ func BenchmarkComputeModuleHintsSparseGlobalUse(b *testing.B) {
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		if _, _, _, err := computeModuleHints(m, m.GlobalCount(), 0); err != nil {
 			b.Fatal(err)
 		}
