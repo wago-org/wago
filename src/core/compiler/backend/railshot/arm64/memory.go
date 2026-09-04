@@ -656,7 +656,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
 	if f.opt(optLoadPair) && !f.memoryAddr64(0) && !f.guardMode && !f.threadedMemory0 && !signed &&
 		(size == 4 && !wide || size == 8 && wide) && addrOK {
-		if first := f.s.back(); first != nil && first.kind == ekValue && first.st.kind == stMemRef &&
+		if first := f.s.back(); first != nil && first.elemKind() == ekValue && first.st.kind == stMemRef &&
 			first.st.memAliasLocal() == addrLocal && first.st.memSize() == size &&
 			!first.st.memSigned() && first.st.typ.is64() == wide &&
 			disp == first.st.memDisp()+int32(size) {
@@ -735,7 +735,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// (low32 at disp, high32 at disp+4); narrower stores truncate to the low `size`
 	// bytes exactly like a materialized constant would (i64.store8/16/32 route here
 	// too).
-	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 		f.stats.peep("store-imm")
 		v := top.st.cval
 		f.erase(top)
@@ -844,7 +844,7 @@ func (f *fn) invalidateStoreForward() {
 }
 
 func localAddressKey(e *elem) (int, bool) {
-	if e == nil || e.kind != ekValue {
+	if e == nil || e.elemKind() != ekValue {
 		return 0, false
 	}
 	switch e.st.kind {
@@ -1153,7 +1153,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		return err
 	}
 	if !f.memoryAddr64(dstMemory) && !f.memoryAddr64(srcMemory) {
-		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.stats.peep("memcopy-unroll")
 				f.memoryCopyConst(int(n), dstMemory, srcMemory)
@@ -1264,7 +1264,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		return err
 	}
 	if !f.memoryAddr64(memoryIndex) {
-		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.memoryFillConst(int(n), memoryIndex)
 				return nil

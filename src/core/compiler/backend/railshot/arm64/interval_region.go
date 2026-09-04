@@ -142,7 +142,7 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 
 func (f *fn) intervalLocalHasMemBorrow(x int) bool {
 	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
-		if e.kind == ekValue && e.st.kind == stMemRef && e.st.memBorrow() == x {
+		if e.elemKind() == ekValue && e.st.kind == stMemRef && e.st.memBorrow() == x {
 			return true
 		}
 	}
@@ -151,7 +151,7 @@ func (f *fn) intervalLocalHasMemBorrow(x int) bool {
 
 func (f *fn) demoteIntervalLocalRefs(x int) {
 	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
-		if e.kind == ekValue && e.st.kind == stLocalReg && e.st.idx == uint32(x) {
+		if e.elemKind() == ekValue && e.st.kind == stLocalReg && e.st.idx == uint32(x) {
 			e.st.kind = stLocalRef
 			e.st.reg = regNone
 		}

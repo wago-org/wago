@@ -970,7 +970,7 @@ func (f *fn) emitSelect() {
 	// branches are integers, emit the compare's CMP and a CSEL on its flags directly
 	// — skipping the Cset + TEST that materializing the boolean costs. The compare is
 	// condensed last (right before the CSEL), so its NZCV flags are live.
-	if top := f.s.back(); isFusableCompare(top) && !top.typ.isFloat() && f.trySelectOnFlags(top) {
+	if top := f.s.back(); isFusableCompare(top) && !top.st.typ.isFloat() && f.trySelectOnFlags(top) {
 		return
 	}
 	cond := f.popValue()
@@ -978,13 +978,13 @@ func (f *fn) emitSelect() {
 	f.pinned = f.pinned.add(condReg)
 	b := f.popValue()
 	a := f.popValue()
-	gcRoot := (a.kind == ekValue && a.st.hasGCRoot()) || (b.kind == ekValue && b.st.hasGCRoot())
+	gcRoot := (a.elemKind() == ekValue && a.st.hasGCRoot()) || (b.elemKind() == ekValue && b.st.hasGCRoot())
 
 	// V registers have no CSEL fold worth branching around here, so for the
 	// value-copy cases we branch: skip the copy when cond != 0 (keep a). Scalar
 	// floats use scalar FMOV; v128 uses a full-vector copy. Integer operands use CSEL.
-	aV128 := a.kind == ekValue && a.st.typ.isV128()
-	bV128 := b.kind == ekValue && b.st.typ.isV128()
+	aV128 := a.elemKind() == ekValue && a.st.typ.isV128()
+	bV128 := b.elemKind() == ekValue && b.st.typ.isV128()
 	if aV128 || bV128 {
 		aX := f.materializeV128(a)
 		f.fpinned = f.fpinned.add(aX)
@@ -1000,8 +1000,8 @@ func (f *fn) emitSelect() {
 		return
 	}
 
-	aFloat := a.kind == ekValue && a.st.typ.isFloat()
-	bFloat := b.kind == ekValue && b.st.typ.isFloat()
+	aFloat := a.elemKind() == ekValue && a.st.typ.isFloat()
+	bFloat := b.elemKind() == ekValue && b.st.typ.isFloat()
 	if aFloat || bFloat {
 		typ := a.st.typ
 		if !typ.isFloat() {
@@ -1022,7 +1022,7 @@ func (f *fn) emitSelect() {
 		return
 	}
 
-	w := (a.kind == ekValue && a.st.typ.is64()) || (b.kind == ekValue && b.st.typ.is64())
+	w := (a.elemKind() == ekValue && a.st.typ.is64()) || (b.elemKind() == ekValue && b.st.typ.is64())
 	bReg := f.materialize(b)
 	f.pinned = f.pinned.add(bReg)
 	aReg := f.materialize(a)
@@ -1066,7 +1066,7 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	// Materialize both branches into owned registers BEFORE the compare: their loads
 	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
 	// are pinned so condensing the compare's operands cannot spill them.
-	gcRoot := (aRoot.kind == ekValue && aRoot.st.hasGCRoot()) || (bRoot.kind == ekValue && bRoot.st.hasGCRoot())
+	gcRoot := (aRoot.elemKind() == ekValue && aRoot.st.hasGCRoot()) || (bRoot.elemKind() == ekValue && bRoot.st.hasGCRoot())
 	aReg := f.materialize(aRoot)
 	f.pinned = f.pinned.add(aReg)
 	bReg := f.materialize(bRoot)
@@ -1103,14 +1103,14 @@ func (f *fn) realizeLocalRefs(x int, skipFrom *elem) {
 		}
 		next := f.s.next(e)
 		switch {
-		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
+		case e.elemKind() == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x):
 			f.materializeByType(e)
-		case e.kind == ekValue && e.st.kind == stMemRef && (e.st.memBorrow() == x || e.st.memAliasLocal() == x):
+		case e.elemKind() == ekValue && e.st.kind == stMemRef && (e.st.memBorrow() == x || e.st.memAliasLocal() == x):
 			// A deferred load derived from x must execute before x is overwritten.
 			// memBorrow covers an in-place pinned address; memAliasLocal also covers
 			// the owned zero-extension copy used for wasm i32 addresses.
 			f.materializeByType(e)
-		case e.kind == ekDeferred && subtreeRefsLocal(f.s, e, x):
+		case e.elemKind() == ekDeferred && subtreeRefsLocal(f.s, e, x):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -1122,10 +1122,10 @@ func subtreeRefsLocal(s *stack, e *elem, x int) bool {
 	if e == nil {
 		return false
 	}
-	if e.kind == ekValue {
+	if e.elemKind() == ekValue {
 		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.idx == uint32(x)
 	}
-	if e.kind == ekDeferred {
+	if e.elemKind() == ekDeferred {
 		return subtreeRefsLocal(s, s.arg0(e), x) || subtreeRefsLocal(s, s.arg1(e), x)
 	}
 	return false
@@ -1136,7 +1136,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.invalidateBoundsCert() // the certified base local changed value
 	}
 	e := f.s.back()
-	if e != nil && e.kind == ekValue && e.st.typ == mtCustom {
+	if e != nil && e.elemKind() == ekValue && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
 	}
 	if e != nil && e.isDeferred() {
@@ -1150,8 +1150,8 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	// its (local.get $x) operand. condenseBinary handles an operand aliasing dest.
 	var skipFrom *elem
 	if e != nil && e.isDeferred() {
-		binarySink := (isBinALU(e.op) || isShift(e.op)) && (!tee || f.opt(optTeeSink))
-		unarySink := (isUnary(e.op) || isConvert(e.op)) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
+		binarySink := (isBinALU(e.deferredOp()) || isShift(e.deferredOp())) && (!tee || f.opt(optTeeSink))
+		unarySink := (isUnary(e.deferredOp()) || isConvert(e.deferredOp())) && f.opt(optUnarySink) && (!tee || f.opt(optTeeSink))
 		if binarySink || unarySink {
 			skipFrom = f.s.baseOfValentBlock(e)
 		}
@@ -1180,7 +1180,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		// bits). A pinned-local source is moved directly; anything else is
 		// materialized first (materializeV128 never returns the pin, so the move is
 		// always to a distinct register).
-		if e.kind == ekValue && e.st.kind == stLocalReg {
+		if e.elemKind() == ekValue && e.st.kind == stLocalReg {
 			if e.st.reg != pr {
 				f.a.NeonMov16b(pr, e.st.reg)
 			}
@@ -1202,7 +1202,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	if pr, isFloat, ok := f.pinReg(x); ok && isFloat {
 		// Register-pinned float local: move the value into its V register.
 		f64 := f.localType[x] == mtF64
-		if e.kind == ekValue && e.st.kind == stLocalReg {
+		if e.elemKind() == ekValue && e.st.kind == stLocalReg {
 			if e.st.reg != pr {
 				f.a.FmovReg(pr, e.st.reg, f64) // borrowed float local → direct move
 			}

@@ -66,7 +66,7 @@ func (f *fn) materializeV128(e *elem) Reg {
 // register-to-register copy materializeV128 emits for a pinned local when the value
 // is only being read.
 func (f *fn) operandRegV128(e *elem) (reg Reg, owned bool) {
-	if e.kind == ekValue && e.st.kind == stLocalReg {
+	if e.elemKind() == ekValue && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
 	return f.materializeV128(e), true

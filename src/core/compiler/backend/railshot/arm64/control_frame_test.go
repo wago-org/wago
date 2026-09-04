@@ -281,11 +281,11 @@ func TestPushCtrlReusesMergeSlotAtDepth(t *testing.T) {
 }
 
 func TestGCRootFlagsAvoidsAllFalseBacking(t *testing.T) {
-	roots := []*elem{{kind: ekValue}, {kind: ekDeferred}, {kind: ekValue}}
+	roots := []*elem{testElem(ekValue), testElem(ekDeferred), testElem(ekValue)}
 	if got := gcRootFlags(roots); got != nil {
 		t.Fatalf("all-false roots = %v, want nil", got)
 	}
-	roots[1].kind = ekValue
+	roots[1].setElemKind(ekValue)
 	roots[1].st.setGCRoot(true)
 	got := gcRootFlags(roots)
 	if len(got) != len(roots) || got[0] || !got[1] || got[2] {

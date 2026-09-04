@@ -364,7 +364,7 @@ func TestDiscardSimpleStorageForms(t *testing.T) {
 	if !f.discardSimple(e) || f.regUser[X0] != nil {
 		t.Fatal("discardSimple did not release a register value")
 	}
-	if (&fn{s: newStack()}).discardSimple(&elem{kind: ekDeferred}) {
+	if (&fn{s: newStack()}).discardSimple(testElem(ekDeferred)) {
 		t.Fatal("discardSimple discarded a deferred node")
 	}
 }

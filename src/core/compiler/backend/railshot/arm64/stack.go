@@ -166,28 +166,40 @@ const (
 // elem is one node on the operand stack: a value, a deferred operation, or a
 // control-frame marker. Deferred nodes carry their opcode and operand links.
 type elem struct {
-	st storage // valid when kind == ekValue
+	// st is the variant payload. Concrete values use it as storage. Deferred
+	// nodes reuse cval for two child IDs and slot for opcode plus tree depth;
+	// those fields are otherwise dead for the variant. typ and the low metadata
+	// bits retain their ordinary value meaning in both variants.
+	st storage
 
 	// Intrusive doubly-linked list (physical stack order).
 	prev, next nodeID
+}
 
-	// Deferred-action tree (valid when kind == ekDeferred): the two operand
-	// sub-tree roots. arg0 is the left/first operand (deeper on the stack), arg1
-	// the right/second. This is the explicit-child form of WARP's implicit
-	// sibling-over-the-physical-stack layout — architecturally equivalent (still a
-	// deferred tree condensed by the same allocator), simpler for nesting.
-	arg0, arg1 nodeID
+const (
+	elemKindShift = 6
+	elemKindMask  = uint8(0x3 << elemKindShift)
+)
 
-	// Deferred operation payload.
-	op   wOp
-	typ  machineType // result type of a deferred op
-	kind elemKind
+func (e *elem) elemKind() elemKind { return elemKind(e.st.meta >> elemKindShift) }
+func (e *elem) setElemKind(kind elemKind) {
+	e.st.meta = e.st.meta&^elemKindMask | uint8(kind)<<elemKindShift
+}
 
-	// deferDepth is the height of this deferred subtree (1 + max child height;
-	// leaves/values are 0). Used to cap how deep a tree condense() may recurse so a
-	// pathological left-spine cannot pin one register per level and exhaust the
-	// file — see maxDeferDepth in pushBinOp. Valid only when kind == ekDeferred.
-	deferDepth int16
+func (e *elem) deferredOp() wOp { return wOp(e.st.slot) }
+func (e *elem) setDeferredOp(op wOp) {
+	e.st.slot = e.st.slot&^0xff | uint32(op)
+}
+
+func (e *elem) deferredDepth() int16 { return int16(e.st.slot >> 8) }
+func (e *elem) setDeferredDepth(depth int16) {
+	e.st.slot = uint32(e.deferredOp()) | uint32(uint16(depth))<<8
+}
+
+func (e *elem) child0ID() nodeID { return nodeID(uint32(uint64(e.st.cval))) }
+func (e *elem) child1ID() nodeID { return nodeID(uint32(uint64(e.st.cval) >> 32)) }
+func (e *elem) setChildren(arg0, arg1 nodeID) {
+	e.st.cval = int64(uint64(arg0) | uint64(arg1)<<32)
 }
 
 // nodeID is a stable arena coordinate. The high 16 bits select a chunk and the
@@ -205,8 +217,8 @@ const (
 // deferDepthOf is the subtree height contributed by an operand: its deferDepth
 // when deferred, else 0 (a concrete value is a leaf).
 func deferDepthOf(e *elem) int16 {
-	if e != nil && e.kind == ekDeferred {
-		return e.deferDepth
+	if e != nil && e.elemKind() == ekDeferred {
+		return e.deferredDepth()
 	}
 	return 0
 }
@@ -219,7 +231,7 @@ func deferDepthOf(e *elem) int16 {
 const maxDeferDepth = 6
 
 // isDeferred reports whether e is an un-emitted operation.
-func (e *elem) isDeferred() bool { return e.kind == ekDeferred }
+func (e *elem) isDeferred() bool { return e.elemKind() == ekDeferred }
 
 // stack is the operand stack: a sentinel-terminated doubly-linked list with a
 // bump arena of elems (never freed mid-function; that matches single-pass usage
@@ -402,8 +414,8 @@ func (s *stack) node(id nodeID) *elem {
 
 func (s *stack) prev(e *elem) *elem { return s.node(e.prev) }
 func (s *stack) next(e *elem) *elem { return s.node(e.next) }
-func (s *stack) arg0(e *elem) *elem { return s.node(e.arg0) }
-func (s *stack) arg1(e *elem) *elem { return s.node(e.arg1) }
+func (s *stack) arg0(e *elem) *elem { return s.node(e.child0ID()) }
+func (s *stack) arg1(e *elem) *elem { return s.node(e.child1ID()) }
 
 // alloc returns a stable ID and fresh zeroed node from the arena.
 func (s *stack) alloc() (nodeID, *elem) {
@@ -444,7 +456,8 @@ func (s *stack) push(id nodeID, e *elem) *elem {
 // pushValue pushes a concrete value with the given storage.
 func (s *stack) pushValue(st storage) *elem {
 	id, e := s.alloc()
-	e.kind, e.st = ekValue, st
+	e.st = st
+	e.setElemKind(ekValue)
 	return s.push(id, e)
 }
 
@@ -485,8 +498,8 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	leftID := f.s.baseOfValentBlock(right).prev
 	left := f.s.node(leftID)
 	// Constant-fold when both operands are constants (WARP tryConstantPropagation).
-	if right.kind == ekValue && right.st.kind == stConst &&
-		left.kind == ekValue && left.st.kind == stConst {
+	if right.elemKind() == ekValue && right.st.kind == stConst &&
+		left.elemKind() == ekValue && left.st.kind == stConst {
 		if foldable(op) {
 			f.stats.peep("const-fold")
 			v := foldBin(op, left.st.cval, right.st.cval, typ.is64())
@@ -507,7 +520,7 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 	}
 	// One-constant algebraic simplification + strength reduction (P4): identities
 	// collapse without emitting a node; expensive ops rewrite to cheaper ones.
-	if right.kind == ekValue && right.st.kind == stConst {
+	if right.elemKind() == ekValue && right.st.kind == stConst {
 		if op2, done := f.simplifyConstRHS(op, typ, left, right); done {
 			f.stats.peep("alu-identity")
 			return
@@ -531,12 +544,14 @@ func (f *fn) pushBinOp(op wOp, typ machineType) {
 		f.materialize(right)
 	}
 	id, node := f.s.alloc()
-	node.kind, node.op, node.typ = ekDeferred, op, typ
+	node.st.typ = typ
+	node.setElemKind(ekDeferred)
+	node.setDeferredOp(op)
 	if f.opt(optValueFacts) {
 		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
-	node.arg0, node.arg1 = leftID, rightID
-	node.deferDepth = 1 + max16(deferDepthOf(left), deferDepthOf(right))
+	node.setChildren(leftID, rightID)
+	node.setDeferredDepth(1 + max16(deferDepthOf(left), deferDepthOf(right)))
 	f.s.push(id, node)
 }
 
@@ -619,7 +634,7 @@ func (f *fn) simplifyConstRHS(op wOp, typ machineType, left, right *elem) (wOp, 
 // simplifySameOperand handles `local.get x; local.get x; <op>` — both operands
 // reading the same local (borrowed or lazy): sub/xor → 0, and/or → x.
 func (f *fn) simplifySameOperand(op wOp, typ machineType, left, right *elem) bool {
-	if left.kind != ekValue || right.kind != ekValue {
+	if left.elemKind() != ekValue || right.elemKind() != ekValue {
 		return false
 	}
 	sameLocal := (left.st.kind == stLocalRef || left.st.kind == stLocalReg) &&
@@ -657,7 +672,7 @@ func (f *fn) simplifySameOperand(op wOp, typ machineType, left, right *elem) boo
 // memRef keeps its node (the simplification is skipped) rather than growing a
 // full recursive release path for a rare case.
 func (f *fn) discardSimple(left *elem) bool {
-	if left.kind != ekValue {
+	if left.elemKind() != ekValue {
 		return false
 	}
 	switch left.st.kind {
@@ -688,7 +703,7 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 	operandID := f.s.head.prev
 	operand := f.s.node(operandID)
 	// Constant-fold clz/ctz/popcnt/eqz and the width conversions over a constant.
-	if operand.kind == ekValue && operand.st.kind == stConst {
+	if operand.elemKind() == ekValue && operand.st.kind == stConst {
 		if v, rtyp, ok := foldUnaryConst(op, operand.st.cval, typ); ok {
 			f.stats.peep("const-fold")
 			f.erase(operand)
@@ -700,11 +715,13 @@ func (f *fn) pushUnOp(op wOp, typ machineType) {
 		f.materialize(operand) // cap deferred-tree height (see pushBinOp)
 	}
 	id, node := f.s.alloc()
-	node.kind, node.op, node.typ = ekDeferred, op, typ
+	node.st.typ = typ
+	node.setElemKind(ekDeferred)
+	node.setDeferredOp(op)
 	if f.opt(optValueFacts) {
 		node.st.setValueFacts(deferredResultFacts(op, typ))
 	}
-	node.arg0 = operandID
-	node.deferDepth = 1 + deferDepthOf(operand)
+	node.setChildren(operandID, nilNodeID)
+	node.setDeferredDepth(1 + deferDepthOf(operand))
 	f.s.push(id, node)
 }

@@ -14,7 +14,7 @@ func TestValueFactsAndRootsFitCompactStorageArm64(t *testing.T) {
 	if got, want := unsafe.Sizeof(storage{}), uintptr(24); got != want {
 		t.Fatalf("storage size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(elem{}), uintptr(48); got != want {
+	if got, want := unsafe.Sizeof(elem{}), uintptr(32); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(stack{}), uintptr(72); got != want {
@@ -56,6 +56,42 @@ func TestOperandNodeBackingIsPointerFreeArm64(t *testing.T) {
 	}
 	if visit(reflect.TypeFor[elem]()) {
 		t.Fatal("operand node contains a Go-scanned pointer field")
+	}
+}
+
+func TestCompactOperandNodeVariantPayloadArm64(t *testing.T) {
+	e := elem{}
+	e.st.typ = mtI64
+	e.st.setValueFacts(factUpper32Zero | factBoolean)
+	e.setElemKind(ekDeferred)
+	e.setDeferredOp(opRotr)
+	e.setDeferredDepth(6)
+	e.setChildren(nodeID(0x12340056), nodeID(0x789000ab))
+
+	if got := e.elemKind(); got != ekDeferred {
+		t.Fatalf("kind = %v, want deferred", got)
+	}
+	if got := e.deferredOp(); got != opRotr {
+		t.Fatalf("op = %v, want rotr", got)
+	}
+	if got := e.deferredDepth(); got != 6 {
+		t.Fatalf("depth = %d, want 6", got)
+	}
+	if got := e.child0ID(); got != nodeID(0x12340056) {
+		t.Fatalf("child 0 = %#x", got)
+	}
+	if got := e.child1ID(); got != nodeID(0x789000ab) {
+		t.Fatalf("child 1 = %#x", got)
+	}
+	if e.st.typ != mtI64 || e.st.valueFacts() != factUpper32Zero|factBoolean {
+		t.Fatalf("shared type/facts changed: typ=%v meta=%#x", e.st.typ, e.st.meta)
+	}
+
+	e.st.setGCRoot(true)
+	e.st.setEHRoot(true)
+	e.setElemKind(ekValue)
+	if e.elemKind() != ekValue || !e.st.hasGCRoot() || !e.st.hasEHRoot() {
+		t.Fatalf("value kind changed root metadata: kind=%v meta=%#x", e.elemKind(), e.st.meta)
 	}
 }
 

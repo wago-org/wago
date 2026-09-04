@@ -170,9 +170,15 @@ func TestStackFinishFunctionRetainsBoundedReusableOverflowArm64(t *testing.T) {
 			t.Fatalf("discarded chunk %d still has a slice header", i)
 		}
 	}
-	if stale := s.chunks[0][:cap(s.chunks[0])][1]; stale.prev != nilNodeID || stale.next != nilNodeID || stale.arg0 != nilNodeID || stale.arg1 != nilNodeID {
+	if stale := s.chunks[0][:cap(s.chunks[0])][1]; stale.prev != nilNodeID || stale.next != nilNodeID || stale.child0ID() != nilNodeID || stale.child1ID() != nilNodeID {
 		t.Fatal("retained backing still points at prior-function nodes")
 	}
+}
+
+func testElem(kind elemKind) *elem {
+	e := new(elem)
+	e.setElemKind(kind)
+	return e
 }
 
 func TestScratchClearNodeReferencesArm64(t *testing.T) {

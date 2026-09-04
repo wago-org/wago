@@ -732,7 +732,7 @@ func (f *fn) returnCallRefType(typeIdx uint32) error {
 		return fmt.Errorf("return_call_ref: type %d exceeds bounded native identity", typeIdx)
 	}
 	refValue := f.popValue()
-	if refValue.kind == ekValue && refValue.st.kind == stFuncRef && refValue.st.idx < uint32(f.m.ImportedFuncCount()) {
+	if refValue.elemKind() == ekValue && refValue.st.kind == stFuncRef && refValue.st.idx < uint32(f.m.ImportedFuncCount()) {
 		importIndex := refValue.st.index()
 		if f.importBindings != nil && importIndex < len(f.importBindings) {
 			binding := f.importBindings[importIndex]
@@ -1188,7 +1188,7 @@ func (f *fn) gcFramePrefixRoots(roots []*elem, n int) []bool {
 	}
 	flags := f.tmpGCRoots2[:0]
 	for _, root := range roots[:n] {
-		flags = append(flags, root.kind == ekValue && root.st.hasGCRoot())
+		flags = append(flags, root.elemKind() == ekValue && root.st.hasGCRoot())
 	}
 	f.tmpGCRoots2 = flags
 	return flags
@@ -1237,8 +1237,8 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
+		if root.elemKind() == ekDeferred && root.st.typ != mtNone {
+			typ = root.st.typ
 		}
 		types = append(types, typ)
 		slotOf = append(slotOf, uint32(slotTop))
@@ -1570,8 +1570,8 @@ func (f *fn) emitCrossInstanceCall(b ImportBinding, ft *wasm.CompType) error {
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
+		if root.elemKind() == ekDeferred && root.st.typ != mtNone {
+			typ = root.st.typ
 		}
 		types = append(types, typ)
 		slotOf = append(slotOf, uint32(slotTop))
@@ -1770,7 +1770,7 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 	hidden := len(roots) - paramCount
 	slot := 0
 	for i, root := range roots {
-		if i < hidden && root.kind == ekValue && root.st.hasGCRoot() {
+		if i < hidden && root.elemKind() == ekValue && root.st.hasGCRoot() {
 			off := f.spillOff(slot)
 			if off < 0 {
 				plan.Exact = false
@@ -1830,7 +1830,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 	deferred := f.tmpDeferred[:0]
 	for i := 0; i < p; i++ {
 		root := argRoots[i]
-		if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
+		if root.isDeferred() || (root.elemKind() == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
 			reg := f.materialize(root) // stMemRef → emits the deferred load into its addr reg
 			f.pinned = f.pinned.add(reg)
 			moves = append(moves, regMove{dst: intArgRegs[i], src: reg})
@@ -2017,7 +2017,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 		root := argRoots[i]
 		if mt.isFloat() {
 			target := fpArgRegs[fp]
-			if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
+			if root.isDeferred() || (root.elemKind() == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
 				reg := f.materializeF(root)
 				f.fpinned = f.fpinned.add(reg)
 				fpMoves = append(fpMoves, regMove{dst: target, src: reg})
@@ -2028,7 +2028,7 @@ func (f *fn) emitMixedRegisterCallVia(localIdx int, indirect Reg, ft *wasm.CompT
 			fp++
 		} else {
 			target := intArgRegs[gp]
-			if root.isDeferred() || (root.kind == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
+			if root.isDeferred() || (root.elemKind() == ekValue && (root.st.kind == stReg || root.st.kind == stLocalReg || root.st.kind == stGlobReg || root.st.kind == stMemRef)) {
 				reg := f.materialize(root)
 				f.pinned = f.pinned.add(reg)
 				gpMoves = append(gpMoves, regMove{dst: target, src: reg})
@@ -2392,8 +2392,8 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		gcRoots := gcRootFlags(roots)
 		for i, root := range roots {
 			types[i] = root.st.typ
-			if root.kind == ekDeferred && root.typ != mtNone {
-				types[i] = root.typ
+			if root.elemKind() == ekDeferred && root.st.typ != mtNone {
+				types[i] = root.st.typ
 			}
 		}
 		f.pinned = f.pinned.add(code).add(home).add(targetContext)
@@ -2457,8 +2457,8 @@ func (f *fn) emitIndirectCallHomeAware(ft *wasm.CompType, homeReg, targetContext
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
+		if root.elemKind() == ekDeferred && root.st.typ != mtNone {
+			typ = root.st.typ
 		}
 		types = append(types, typ)
 		slotOf = append(slotOf, uint32(slotTop))
@@ -2586,8 +2586,8 @@ func (f *fn) emitWrapperCall(ft *wasm.CompType, emitCall func()) {
 	slotTop := 0
 	for _, root := range roots {
 		typ := root.st.typ
-		if root.kind == ekDeferred && root.typ != mtNone {
-			typ = root.typ
+		if root.elemKind() == ekDeferred && root.st.typ != mtNone {
+			typ = root.st.typ
 		}
 		types = append(types, typ)
 		slotOf = append(slotOf, uint32(slotTop))

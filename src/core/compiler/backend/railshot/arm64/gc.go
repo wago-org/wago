@@ -65,7 +65,7 @@ func (f *fn) emitFB(r *wasm.Reader) error {
 		nullable := sub == 21
 		if heap >= 0 {
 			top := f.s.back()
-			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.kind == ekValue && top.st.kind == stFuncRef && top.st.idx >= uint32(f.m.ImportedFuncCount()) && top.st.idx < uint32(len(f.m.FuncTypes)) {
+			if _, targetIsFunc := f.m.TypeFunc(uint32(heap)); targetIsFunc && top != nil && top.elemKind() == ekValue && top.st.kind == stFuncRef && top.st.idx >= uint32(f.m.ImportedFuncCount()) && top.st.idx < uint32(len(f.m.FuncTypes)) {
 				f.popValue()
 				actual := wasm.Ref(false, wasm.IndexedHeap(f.m.FuncTypes[top.st.index()]), false)
 				required := wasm.Ref(nullable, wasm.IndexedHeap(wasm.TypeIdx{Index: uint32(heap)}), false)
@@ -600,7 +600,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	savedLocals := append([]localDef(nil), f.locals...)
 	f.flush()
 	valueElem := f.s.back()
-	if valueElem == f.s.head || valueElem.kind != ekValue || valueElem.st.kind != stSlot {
+	if valueElem == f.s.head || valueElem.elemKind() != ekValue || valueElem.st.kind != stSlot {
 		return fmt.Errorf("arm64: dynamic function ref.test lost canonical operand")
 	}
 	value := f.allocReg(0)
@@ -699,7 +699,7 @@ func (f *fn) emitDynamicFunctionSubtypeTest(targetType uint32, nullable bool) er
 	}
 	f.flush()
 	result := f.s.back()
-	if result == f.s.head || result.kind != ekValue || result.st.kind != stSlot {
+	if result == f.s.head || result.elemKind() != ekValue || result.st.kind != stSlot {
 		return fmt.Errorf("arm64: dynamic function ref.test lost canonical result")
 	}
 	done := f.a.Branch()
@@ -863,7 +863,7 @@ func (f *fn) recordGCFrameSafepoint(paramCount int) uint32 {
 	hidden := len(roots) - paramCount
 	slot := 0
 	for i, root := range roots {
-		if i < hidden && root.kind == ekValue && root.st.hasGCRoot() {
+		if i < hidden && root.elemKind() == ekValue && root.st.hasGCRoot() {
 			off := f.spillOff(slot)
 			if off < 0 {
 				builder.Abort()
@@ -958,8 +958,8 @@ func (f *fn) callGCArrayFixedSpill(typeIndex, count uint32, resultType wasm.ValT
 	firstSlot := 0
 	for i := 0; i < first; i++ {
 		typ := roots[i].st.typ
-		if roots[i].kind == ekDeferred && roots[i].typ != mtNone {
-			typ = roots[i].typ
+		if roots[i].elemKind() == ekDeferred && roots[i].st.typ != mtNone {
+			typ = roots[i].st.typ
 		}
 		firstSlot += typ.stackSlots()
 	}

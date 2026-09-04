@@ -983,11 +983,11 @@ func (f *fn) realizeInlineRange(lo, hi int) {
 	for e := f.s.next(f.s.head); e != f.s.head; {
 		next := f.s.next(e)
 		switch {
-		case e.kind == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && inRange(e.st.index()):
+		case e.elemKind() == ekValue && (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && inRange(e.st.index()):
 			f.materializeByType(e)
-		case e.kind == ekValue && e.st.kind == stMemRef && (inRange(e.st.memBorrow()) || inRange(e.st.memAliasLocal())):
+		case e.elemKind() == ekValue && e.st.kind == stMemRef && (inRange(e.st.memBorrow()) || inRange(e.st.memAliasLocal())):
 			f.materializeByType(e)
-		case e.kind == ekDeferred && subtreeRefsLocalRange(f.s, e, lo, hi):
+		case e.elemKind() == ekDeferred && subtreeRefsLocalRange(f.s, e, lo, hi):
 			f.condense(e, regNone)
 		}
 		e = next
@@ -1000,10 +1000,10 @@ func subtreeRefsLocalRange(s *stack, e *elem, lo, hi int) bool {
 	if e == nil {
 		return false
 	}
-	if e.kind == ekValue {
+	if e.elemKind() == ekValue {
 		return (e.st.kind == stLocalRef || e.st.kind == stLocalReg) && e.st.index() >= lo && e.st.index() < hi
 	}
-	if e.kind == ekDeferred {
+	if e.elemKind() == ekDeferred {
 		return subtreeRefsLocalRange(s, s.arg0(e), lo, hi) || subtreeRefsLocalRange(s, s.arg1(e), lo, hi)
 	}
 	return false

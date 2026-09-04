@@ -28,11 +28,8 @@ func floatBits(v float64, f64 bool) uint64 {
 
 func (f *fn) occupyF(e *elem, r Reg) {
 	f.fregUser[r] = e
-	if e.kind == ekDeferred && e.typ != mtNone {
-		e.st.typ = e.typ
-	}
-	e.kind = ekValue
 	e.st.kind, e.st.reg = stReg, r
+	e.setElemKind(ekValue)
 }
 
 func (f *fn) releaseF(r Reg) {
@@ -65,7 +62,7 @@ func (f *fn) allocFReg(avoid regMask) Reg {
 		}
 	}
 	for e := f.s.next(f.s.head); e != f.s.head; e = f.s.next(e) {
-		if e.kind == ekValue && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
+		if e.elemKind() == ekValue && e.st.kind == stReg && e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spillF(e)
 			return r
@@ -156,10 +153,10 @@ func (f *fn) materializeF(e *elem) Reg {
 // This avoids the fmov-to-scratch that materializeF emits for a pinned local when
 // the value is only being read — the dominant per-op float overhead.
 func (f *fn) operandRegF(e *elem) (reg Reg, owned bool) {
-	if e.kind == ekValue && e.st.kind == stLocalReg {
+	if e.elemKind() == ekValue && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
-	if e.kind == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls {
+	if e.elemKind() == ekValue && e.st.kind == stConst && e.st.typ.isFloat() && !f.usesCalls {
 		if r, ok := f.floatConstReg(e.st); ok {
 			return r, false
 		}

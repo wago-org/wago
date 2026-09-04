@@ -498,8 +498,8 @@ type coldEdge struct {
 
 func rootMachineType(root *elem) machineType {
 	typ := root.st.typ
-	if root.kind == ekDeferred && root.typ != mtNone {
-		typ = root.typ
+	if root.elemKind() == ekDeferred && root.st.typ != mtNone {
+		typ = root.st.typ
 	}
 	return typ
 }
@@ -564,7 +564,7 @@ func (f *fn) currentLogicalTypes() []machineType { return f.logicalTypes(f.roots
 func gcRootFlags(roots []*elem) []bool {
 	var flags []bool
 	for i, root := range roots {
-		if root.kind != ekValue || !root.st.hasGCRoot() {
+		if root.elemKind() != ekValue || !root.st.hasGCRoot() {
 			continue
 		}
 		if flags == nil {
@@ -585,7 +585,7 @@ func (f *fn) captureGCFrameShape(fr *ctrlFrame) {
 	}
 	var flags []bool
 	for i, root := range roots[:fr.height+fr.paramN] {
-		if root.kind != ekValue || !root.st.hasGCRoot() {
+		if root.elemKind() != ekValue || !root.st.hasGCRoot() {
 			continue
 		}
 		if flags == nil {
@@ -612,7 +612,7 @@ func (f *fn) recordGCBranchResults(fr *ctrlFrame, n int) {
 		return
 	}
 	for i, root := range roots[len(roots)-n:] {
-		if root.kind != ekValue || !root.st.hasGCRoot() {
+		if root.elemKind() != ekValue || !root.st.hasGCRoot() {
 			continue
 		}
 		f.setFrameResultGCRoot(fr, i)
@@ -685,7 +685,7 @@ func (f *fn) flush() {
 	if f.tracksGCFrameRoots() {
 		gcRoots = f.tmpGCRoots[:0]
 		for _, root := range roots {
-			gcRoots = append(gcRoots, root.kind == ekValue && root.st.hasGCRoot())
+			gcRoots = append(gcRoots, root.elemKind() == ekValue && root.st.hasGCRoot())
 		}
 		f.tmpGCRoots = gcRoots
 	}
@@ -699,9 +699,9 @@ func (f *fn) flush() {
 		if typ == mtCustom {
 			panic("custom value cannot cross a control-flow or ordinary call boundary")
 		}
-		f.stats.addFlushRoot(root.kind == ekDeferred)
+		f.stats.addFlushRoot(root.elemKind() == ekDeferred)
 		types = append(types, typ)
-		if root.kind == ekValue && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
+		if root.elemKind() == ekValue && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue // already canonical
 		}
@@ -712,7 +712,7 @@ func (f *fn) flush() {
 			slot += 2
 			continue
 		}
-		if root.kind == ekValue && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
+		if root.elemKind() == ekValue && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
 			if root.st.typ.isFloat() {
 				f.fst(SP, f.spillOff(slot), root.st.reg, true)
 			} else {
@@ -721,7 +721,7 @@ func (f *fn) flush() {
 			slot++
 			continue
 		}
-		if root.kind == ekValue && root.st.typ.isFloat() {
+		if root.elemKind() == ekValue && root.st.typ.isFloat() {
 			x := f.materializeF(root)
 			f.fst(SP, f.spillOff(slot), x, true) // 8B store
 			f.releaseF(x)
@@ -807,7 +807,7 @@ func (f *fn) setDepth(l int) {
 	for _, root := range roots[:l] {
 		types = append(types, root.st.typ)
 		if gcRoots != nil {
-			gcRoots = append(gcRoots, root.kind == ekValue && root.st.hasGCRoot())
+			gcRoots = append(gcRoots, root.elemKind() == ekValue && root.st.hasGCRoot())
 		}
 	}
 	f.tmpTypes = types
