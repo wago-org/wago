@@ -137,13 +137,18 @@ func TestNativeAMD64CachedMemoryBoundSelectsHotAccessEnd(t *testing.T) {
 		},
 		Blocks: []railmach.Block{
 			{InstStart: 0, InstCount: 1, Weight: 1},
-			{InstStart: 1, InstCount: 2, Weight: 8},
+			{InstStart: 1, InstCount: 2, Weight: 4},
 		},
 	}
 	pressure := &railssa.PressurePlan{Blocks: make([]railssa.BlockPressure, len(machine.Blocks))}
 	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); !ok || end != 8 {
 		t.Fatalf("cached memory bound = (%d, %t), want (8, true)", end, ok)
 	}
+	machine.Insts = append(machine.Insts, make([]railmach.Inst, 30)...)
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); ok || end != 0 {
+		t.Fatalf("large-function cached memory bound = (%d, %t), want disabled", end, ok)
+	}
+	machine.Insts = machine.Insts[:3]
 	p.signalsBounds = true
 	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); ok || end != 0 {
 		t.Fatalf("signals-based cached memory bound = (%d, %t), want disabled", end, ok)

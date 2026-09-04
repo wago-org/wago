@@ -1557,10 +1557,17 @@ func (p *nativeBackendPlanner) nativeAMD64CachedMemoryBound(stack *railssa.Stack
 	for _, value := range machine.VRegs {
 		usesFPR = usesFPR || value.Bank == railmach.BankFPR
 	}
-	// Avoid taking a tenth GPR from exceptionally dense integer flow. Floating
-	// functions additionally need one common access end: mixed displacements
-	// create enough address pressure that a partial cache loses to allocation.
-	if best.weight < 16 || peakGPR >= 32 || usesFPR && len(p.amd64MemoryBounds) != 1 {
+	// Avoid taking a tenth GPR from exceptionally dense integer flow. The usual
+	// weight threshold amortizes the extra saved register and prologue load. Tiny
+	// functions have bounded allocation competition and need the lower threshold
+	// to cover a single hot loop access. Floating functions additionally need one
+	// common access end: mixed displacements create enough address pressure that
+	// a partial cache loses to allocation.
+	minimumWeight := uint64(16)
+	if len(machine.Insts) <= 32 {
+		minimumWeight = 8
+	}
+	if best.weight < minimumWeight || peakGPR >= 32 || usesFPR && len(p.amd64MemoryBounds) != 1 {
 		return 0, false
 	}
 	return best.end, true
