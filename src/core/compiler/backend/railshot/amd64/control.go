@@ -49,8 +49,7 @@ type ctrlFrame struct {
 	height          int // operand depth at the frame's result base
 	paramN, resultN int
 	branchN         int // values transferred on a branch to this label
-	loopStart       int // cfLoop: backward target byte offset
-	elseSite        int // cfIf: the jz site (to else/end), -1 once patched
+	controlSite     int // cfLoop: backward target; cfIf: false-edge branch, -1 once patched
 	baseTypeStart   uint32
 	baseTypeCount   uint32
 	types           []machineType // parameters followed by results; split by paramN/resultN
@@ -70,11 +69,12 @@ func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
 // merge pinned locals, track GC roots, patch branches, or analyze loops. Keeping it in
 // compact scratch removes pointer-rich fields from ordinary frames.
 type ctrlFrameMerge struct {
-	ends         []uint32 // overflow after the first forward-end site
-	branchState  []locState
-	entryState   []locState
-	firstEndSite uint32
-	eh           *ctrlFrameEH
+	ends          []uint32 // overflow after two inline forward-end sites
+	branchState   []locState
+	entryState    []locState
+	firstEndSite  uint32
+	secondEndSite uint32
+	eh            *ctrlFrameEH
 }
 
 // ctrlFrameRoots is allocated as a depth-parallel sidecar only when exact GC
@@ -314,7 +314,7 @@ func (f *fn) releaseFrameBaseTypes(fr *ctrlFrame) {
 func (f *fn) frameEndSites(fr *ctrlFrame) (uint32, uint32, []uint32) {
 	if fr.kind != cfLoop {
 		if cold := f.ctrlMerge(fr); cold != nil {
-			return cold.firstEndSite, uint32(fr.loopStart), cold.ends
+			return cold.firstEndSite, cold.secondEndSite, cold.ends
 		}
 	}
 	return 0, 0, nil
@@ -888,7 +888,7 @@ func (f *fn) convergeBranchLocals(fr *ctrlFrame) {
 func (f *fn) branchJump(fr *ctrlFrame) {
 	switch fr.kind {
 	case cfLoop:
-		f.a.JmpBack(fr.loopStart)
+		f.a.JmpBack(fr.controlSite)
 	case cfFunc:
 		// The caller already converged the result to slot 0 (fr.height == 0); with
 		// the register-return hint the epilogue no longer reloads it, so load it
@@ -924,7 +924,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	} else if op == 0x04 {
 		kind = cfIf
 	}
-	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, res0: res0, types: frameTypes}
+	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if kind == cfLoop {
 		fr.branchN = pN
@@ -950,7 +950,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			fr.height = f.depth() - pN
 			f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
 			f.captureGCFrameShape(&fr)
-			fr.elseSite = f.a.JccPlaceholder(invertCond(cc)) // to else/end when false
+			fr.controlSite = f.a.JccPlaceholder(invertCond(cc)) // to else/end when false
 			f.pushCtrl(&fr)
 			return nil
 		}
@@ -963,7 +963,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if cOwned {
 			f.release(creg)
 		}
-		fr.elseSite = f.a.JccPlaceholder(condE) // jz else/end
+		fr.controlSite = f.a.JccPlaceholder(condE) // jz else/end
 	} else {
 		fr.height = f.depth() - pN
 		f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
@@ -980,7 +980,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		}
 		if kind == cfLoop {
 			f.a.AlignLoop() // padding runs on entry, not per iteration
-			fr.loopStart = f.a.Len()
+			fr.controlSite = f.a.Len()
 			f.emitInterruptCheck(RSI) // RSI freed by the flush() above; poll once per iteration
 		}
 	}
@@ -1051,7 +1051,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	if frameTypes == nil && res0 != mtNone {
 		rN = 1
 	}
-	fr := ctrlFrame{kind: cfTry, paramN: pN, resultN: rN, branchN: rN, elseSite: -1, res0: res0, types: frameTypes}
+	fr := ctrlFrame{kind: cfTry, paramN: pN, resultN: rN, branchN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	eh := f.ensureFrameEH(&fr)
 	for i := uint32(0); i < n; i++ {
@@ -1383,8 +1383,8 @@ func (f *fn) opElse() error {
 		f.frameAddEnd(fr, f.a.JmpPlaceholder())
 		fr.set(ctrlEndReachable, true)
 	}
-	f.a.PatchRel32(fr.elseSite, f.a.Len())
-	fr.elseSite = -1
+	f.a.PatchRel32(fr.controlSite, f.a.Len())
+	fr.controlSite = -1
 	fr.set(ctrlHasElse, true)
 	f.setDepthTypesWithGCRoots(
 		f.frameDepthTypesForFrame(fr, true),
@@ -1462,7 +1462,7 @@ func (f *fn) opEnd() error {
 		if (fr.has(ctrlRegMerge1) || needLoads) && fallthroughReachable {
 			skip = f.a.JmpPlaceholder()
 		}
-		f.a.PatchRel32(fr.elseSite, f.a.Len())
+		f.a.PatchRel32(fr.controlSite, f.a.Len())
 		if fr.has(ctrlRegMerge1) {
 			slot := slotsOfTypes(f.frameBaseTypes(&fr))
 			if fr.res0.isFloat() {

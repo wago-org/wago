@@ -64,8 +64,7 @@ type ctrlFrame struct {
 	height          int // operand depth at the frame's result base
 	paramN, resultN int
 	branchN         int // values transferred on a branch to this label
-	loopStart       int // cfLoop: backward target byte offset
-	elseSite        int // cfIf: the false-edge B.cond site (to else/end), -1 once patched
+	controlSite     int // cfLoop: backward target; cfIf: false-edge branch, -1 once patched
 	baseTypeStart   uint32
 	baseTypeCount   uint32
 	types           []machineType // parameters followed by results; split by paramN/resultN
@@ -85,12 +84,11 @@ func (fr *ctrlFrame) set(flag ctrlFlags, enabled bool) {
 // merge pinned locals, track GC roots, patch branches, hoist/pin loops, or defer cold edges.
 // Keeping it in compact scratch removes pointer-rich fields from ordinary frames.
 type ctrlFrameMerge struct {
-	ends         []uint32 // overflow after the first packed forward-end site
+	ends         []uint32 // overflow after two inline packed forward-end sites
 	branchState  packedLocStates
 	entryState   packedLocStates
 	loopSetStart uint32 // loop: modified-local range; other frames: first packed end site
-	loopSetCount uint16
-	loopSetKnown bool
+	loopSetMeta  uint32 // loop: count + known bit; other frames: second packed end site
 	loopPins     []loopPin
 	coldEdges    []coldEdge
 	eh           *ctrlFrameEH
@@ -106,6 +104,16 @@ type ctrlFrameRoots struct {
 }
 
 const initialCtrlMergeCapacity = 16
+
+const loopSetKnownBit = uint32(1 << 16)
+
+func (m *ctrlFrameMerge) setLoopSet(start uint32, count uint16) {
+	m.loopSetStart = start
+	m.loopSetMeta = uint32(count) | loopSetKnownBit
+}
+
+func (m *ctrlFrameMerge) hasLoopSet() bool  { return m.loopSetMeta&loopSetKnownBit != 0 }
+func (m *ctrlFrameMerge) loopSetCount() int { return int(uint16(m.loopSetMeta)) }
 
 type ctrlFrameEH struct {
 	// cfTry only: one fixed native-stack handler record plus an ordered catch
@@ -329,8 +337,8 @@ func (f *fn) appendFrameEnd(fr *ctrlFrame, site int, conditional bool) {
 		cold.loopSetStart = packed
 		return
 	}
-	if fr.loopStart == 0 {
-		fr.loopStart = int(packed)
+	if cold.loopSetMeta == 0 {
+		cold.loopSetMeta = packed
 		return
 	}
 	f.appendEndSite(&cold.ends, packed)
@@ -339,7 +347,7 @@ func (f *fn) appendFrameEnd(fr *ctrlFrame, site int, conditional bool) {
 func (f *fn) frameEndSites(fr *ctrlFrame) (uint32, uint32, []uint32) {
 	if fr.kind != cfLoop {
 		if cold := f.ctrlMerge(fr); cold != nil {
-			return cold.loopSetStart, uint32(fr.loopStart), cold.ends
+			return cold.loopSetStart, cold.loopSetMeta, cold.ends
 		}
 	}
 	return 0, 0, nil
@@ -382,9 +390,9 @@ func (f *fn) frameResultGCRoots(fr *ctrlFrame) []bool {
 }
 
 func (f *fn) frameLoopSetLocals(fr *ctrlFrame) []uint16 {
-	if cold := f.ctrlMerge(fr); cold != nil && cold.loopSetKnown {
+	if cold := f.ctrlMerge(fr); cold != nil && cold.hasLoopSet() {
 		start := int(cold.loopSetStart)
-		return f.loopSetLocals[start : start+int(cold.loopSetCount)]
+		return f.loopSetLocals[start : start+cold.loopSetCount()]
 	}
 	return nil
 }
@@ -1014,7 +1022,7 @@ func (f *fn) branchJump(fr *ctrlFrame) {
 	case cfLoop:
 		// Backward unconditional branch to the loop top (imm26, ±128 MiB): emit a B
 		// placeholder and patch it immediately since the target is already known.
-		f.a.PatchBranch26(f.a.Branch(), fr.loopStart)
+		f.a.PatchBranch26(f.a.Branch(), fr.controlSite)
 	case cfFunc:
 		// The caller already converged the result to slot 0 (fr.height == 0); with
 		// the register-return hint the epilogue no longer reloads it, so load it
@@ -1045,7 +1053,7 @@ func (f *fn) condBranchJump(fr *ctrlFrame, cc Cond) bool {
 	switch fr.kind {
 	case cfLoop:
 		site := f.a.Bcond(cc)
-		if !f.a.PatchBranch19(site, fr.loopStart) {
+		if !f.a.PatchBranch19(site, fr.controlSite) {
 			f.a.B = f.a.B[:site] // out of imm19 range: undo and let the caller fall back
 			return false
 		}
@@ -1066,7 +1074,7 @@ func (f *fn) zeroBranchJump(fr *ctrlFrame, condition Reg) bool {
 	switch fr.kind {
 	case cfLoop:
 		site := f.a.Cbnz32(condition)
-		if !f.a.PatchBranch19(site, fr.loopStart) {
+		if !f.a.PatchBranch19(site, fr.controlSite) {
 			f.a.B = f.a.B[:site]
 			return false
 		}
@@ -1180,7 +1188,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			return err
 		}
 	}
-	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, elseSite: -1, res0: res0, types: frameTypes}
+	fr := ctrlFrame{kind: kind, paramN: pN, resultN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	if kind == cfLoop {
 		fr.branchN = pN
@@ -1199,7 +1207,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if setLocals != nil {
 			f.loopSetLocals = setLocals
 			cold := f.ensureCtrlMerge(&fr)
-			cold.loopSetStart, cold.loopSetCount, cold.loopSetKnown = uint32(base), uint16(len(setLocals)-base), true
+			cold.setLoopSet(uint32(base), uint16(len(setLocals)-base))
 		}
 		fr.set(ctrlLoopHasCall, hasCall)
 		fr.set(ctrlLoopHasNested, hasNested)
@@ -1221,9 +1229,9 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 					f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
 					f.captureGCFrameShape(&fr)
 					if wide {
-						fr.elseSite = f.a.Cbnz64(creg)
+						fr.controlSite = f.a.Cbnz64(creg)
 					} else {
-						fr.elseSite = f.a.Cbnz32(creg)
+						fr.controlSite = f.a.Cbnz32(creg)
 					}
 					if cOwned {
 						f.release(creg)
@@ -1237,7 +1245,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			fr.height = f.depth() - pN
 			f.setFrameBaseTypes(&fr, f.currentLogicalTypes()[:fr.height])
 			f.captureGCFrameShape(&fr)
-			fr.elseSite = f.a.Bcond(invertCond(cc)) // to else/end when false
+			fr.controlSite = f.a.Bcond(invertCond(cc)) // to else/end when false
 			f.pushCtrl(&fr)
 			return nil
 		}
@@ -1247,11 +1255,11 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		f.captureGCFrameShape(&fr)
 		f.flush()
 		if f.opt(optZeroBranch) {
-			fr.elseSite = f.a.Cbz32(creg) // false edge; flags are dead at this control edge
+			fr.controlSite = f.a.Cbz32(creg) // false edge; flags are dead at this control edge
 			f.stats.peep("zero-branch")
 		} else {
 			f.a.CmpImm32(creg, 0) // CMP creg, #0 — sets NZCV (no x86 test/flag side effect)
-			fr.elseSite = f.a.Bcond(condE)
+			fr.controlSite = f.a.Bcond(condE)
 		}
 		if cOwned {
 			f.release(creg)
@@ -1270,7 +1278,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		f.flush()
 		if kind == cfLoop {
 			f.alignLoopHeader()
-			fr.loopStart = f.a.Len()
+			fr.controlSite = f.a.Len()
 			f.emitInterruptCheck()
 		}
 	}
@@ -1465,7 +1473,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 	if frameTypes == nil && res0 != mtNone {
 		rN = 1
 	}
-	fr := ctrlFrame{kind: cfTry, paramN: pN, resultN: rN, branchN: rN, elseSite: -1, res0: res0, types: frameTypes}
+	fr := ctrlFrame{kind: cfTry, paramN: pN, resultN: rN, branchN: rN, controlSite: -1, res0: res0, types: frameTypes}
 	fr.set(ctrlEntryUnreachable, f.unreachable)
 	eh := f.ensureFrameEH(&fr)
 	for i := uint32(0); i < n; i++ {
@@ -1797,8 +1805,8 @@ func (f *fn) opElse() error {
 		f.appendFrameEnd(fr, f.a.Branch(), false)
 		fr.set(ctrlEndReachable, true)
 	}
-	f.a.PatchBranch19(fr.elseSite, f.a.Len()) // the false edge is a B.cond (imm19)
-	fr.elseSite = -1
+	f.a.PatchBranch19(fr.controlSite, f.a.Len()) // the false edge is a B.cond (imm19)
+	fr.controlSite = -1
 	fr.set(ctrlHasElse, true)
 	f.setDepthTypesWithGCRoots(f.frameDepthTypesForFrame(fr, true), frameGCRootFlags(f.frameBaseGCRoots(fr), f.frameParamGCRoots(fr)))
 	// The else body is entered via the if's false edge: locals are exactly in the
@@ -1907,7 +1915,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		if (fr.has(ctrlRegMerge1) || needLoads) && fallthroughReachable {
 			skip = f.a.Branch()
 		}
-		f.a.PatchBranch19(fr.elseSite, f.a.Len()) // the false edge is a B.cond (imm19)
+		f.a.PatchBranch19(fr.controlSite, f.a.Len()) // the false edge is a B.cond (imm19)
 		if fr.has(ctrlRegMerge1) {
 			slot := slotsOfTypes(f.frameBaseTypes(&fr))
 			if fr.res0.isFloat() {
@@ -1934,7 +1942,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		for i := range coldEdges {
 			f.a.PatchBranch19(coldEdges[i].site, f.a.Len())
 			f.a.B = append(f.a.B, coldEdges[i].code...)
-			f.a.PatchBranch26(f.a.Branch(), fr.loopStart)
+			f.a.PatchBranch26(f.a.Branch(), fr.controlSite)
 		}
 		if skip != -1 {
 			f.a.PatchBranch26(skip, f.a.Len())

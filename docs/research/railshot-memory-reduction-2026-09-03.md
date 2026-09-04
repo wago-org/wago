@@ -660,6 +660,25 @@ All benchmark thresholds must be based on shape-generated stress modules plus th
 full heterogeneous corpus. A corpus may validate a general policy, but it must
 never select the policy.
 
+## September 4 control-site ownership follow-up
+
+The common control frame had retained separate machine-word fields for a loop's
+backward native-code target and an `if` frame's false-edge branch even though the
+validated control kind makes those roles mutually exclusive. A first direct union
+failed the full ARM64 corpus because the false-edge word also secretly held the
+second forward-end patch site; SQLite and Ruby exposed that overlap immediately.
+
+The retained representation makes that third ownership explicit. The common frame
+uses one loop-or-if site and falls from 88 to 80 bytes on both targets. AMD64 stores
+the second forward end in four bytes of existing merge-record padding. ARM64 uses
+the same four-byte merge word for either loop-only modified-local count/validity or
+the non-loop second end site, leaving the cold records at 88 and 136 bytes. The
+native AMD64 128-deep scalar-control benchmark saves about 256 B/op with the same
+90 allocations and shows a directional -0.30% time geomean across eight sequential
+baseline/candidate sample pairs. Both architectures retain identical hashes for all
+64 decodable corpus modules. Further frame shrinking must target the remaining
+integer indexes or type-slice ownership; it cannot assume another site word is free.
+
 ## September 4 production-policy re-audit
 
 After the GC-fact and mature compact-encoding rollback removals, production

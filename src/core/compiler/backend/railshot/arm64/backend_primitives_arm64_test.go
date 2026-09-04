@@ -127,7 +127,7 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 	fr := &ctrlFrame{kind: cfLoop}
 	f.loopSetLocals = []uint16{0, 1, 2, 3}
 	merge := f.ensureCtrlMerge(fr)
-	merge.loopSetCount, merge.loopSetKnown = 4, true
+	merge.setLoopSet(0, 4)
 	f.activateLoopPins(fr)
 	pins := f.frameLoopPins(fr)
 	if len(pins) != 2 || pins[0].local != 0 || pins[1].local != 1 ||
@@ -151,7 +151,7 @@ func TestLoopRegionPinLifecycle(t *testing.T) {
 	blocked := &ctrlFrame{kind: cfLoop, flags: ctrlLoopHasCall}
 	f.loopSetLocals = append(f.loopSetLocals, 0)
 	merge = f.ensureCtrlMerge(blocked)
-	merge.loopSetStart, merge.loopSetCount, merge.loopSetKnown = 4, 1, true
+	merge.setLoopSet(4, 1)
 	f.activateLoopPins(blocked)
 	if len(f.frameLoopPins(blocked)) != 0 {
 		t.Fatal("call-containing loop received region pins")

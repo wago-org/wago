@@ -337,8 +337,8 @@ func (f *fn) frameAddEnd(fr *ctrlFrame, site int) {
 		cold.firstEndSite = packed
 		return
 	}
-	if fr.loopStart == 0 {
-		fr.loopStart = int(packed)
+	if cold.secondEndSite == 0 {
+		cold.secondEndSite = packed
 		return
 	}
 	if cold.ends == nil {

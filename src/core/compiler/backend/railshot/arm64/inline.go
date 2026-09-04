@@ -942,13 +942,13 @@ func (f *fn) inlineBodyCtrl(t *inlineTarget) error {
 	resultTypes := f.inlineTargets.resultTypes(t)
 	rN := len(resultTypes)
 	fr := ctrlFrame{
-		kind:     cfBlock,
-		resultN:  rN,
-		branchN:  rN,
-		types:    resultTypes,
-		res0:     t.res0,
-		elseSite: -1,
-		height:   f.depth(),
+		kind:        cfBlock,
+		resultN:     rN,
+		branchN:     rN,
+		types:       resultTypes,
+		res0:        t.res0,
+		controlSite: -1,
+		height:      f.depth(),
 	}
 	fr.set(ctrlRegMerge1, f.regMerge && rN == 1 && t.res0 != mtNone && t.res0 != mtV128)
 	f.setFrameBaseTypes(&fr, f.currentLogicalTypes())

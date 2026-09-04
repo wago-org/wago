@@ -11,7 +11,7 @@ import (
 )
 
 func TestCtrlFrameSize(t *testing.T) {
-	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(88); got != want {
+	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(80); got != want {
 		t.Fatalf("ctrlFrame size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(136); got != want {
@@ -112,7 +112,7 @@ func TestControlBaseTypeArenaRejectsOutOfOrderReleaseArm64(t *testing.T) {
 
 func TestFrameEndSitesInlinePairArm64(t *testing.T) {
 	var f fn
-	fr := ctrlFrame{kind: cfBlock}
+	fr := ctrlFrame{kind: cfIf, controlSite: 99}
 	f.appendFrameEnd(&fr, 4, false)
 	f.appendFrameEnd(&fr, 12, true)
 	f.appendFrameEnd(&fr, 20, false)
@@ -125,6 +125,9 @@ func TestFrameEndSitesInlinePairArm64(t *testing.T) {
 	}
 	if len(overflow) != 1 || overflow[0] != 21 {
 		t.Fatalf("overflow packed end sites = %#x, want [0x15]", overflow)
+	}
+	if fr.controlSite != 99 {
+		t.Fatalf("if false-edge site = %d, want 99", fr.controlSite)
 	}
 }
 
