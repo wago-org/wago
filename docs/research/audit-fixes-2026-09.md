@@ -108,3 +108,26 @@ The shared ARM64 element fixture now builds on every ARM64 runtime target,
 including Windows. Native Windows CI exposed that its earlier Unix-only test
 file made two existing Windows test files fail to compile. The Windows ARM64
 backend test binary now cross-builds with the unchanged helper body.
+
+## 14. Align Windows guard-commit calls
+
+The AMD64 guard thunk saves flags before adjusting SP, normalizes SP to a
+16-byte boundary, and stores the original synthetic-frame address separately.
+It restores that address and uses LEA when returning so restored flags survive.
+Both framed and frame-elided faults use aligned Windows shadow/call storage.
+The ARM64 commit thunk also saves the interrupted LR across VirtualAlloc and
+restores it before retrying a leaf function's access. Its failure branch passes
+the primary memory base in X9 to the trap landing pad. The saved LR uses the
+remaining eight bytes of the existing 672-byte frame; normal nonfaulting entry
+is unchanged. The successful commit path adds one store and one load.
+Growth tests cover AMD64 frame elision and both ARM64 wrapper/register calling
+conventions. The native ARM64 allocation-failure fixture installs the guard
+handler before injecting a failed commit and checks the defined trap. The
+Windows guard gate includes the core runtime package. Native
+Windows ARM64 CI exposed the missing LR preservation in the engine memory
+fixture after command failures stopped being masked. Both guard test binaries
+cross-build with Go 1.22.12; the shared test passes on Windows/amd64 under Wine.
+
+Validation: Windows/amd64 guard-tag cross-build passes. The new grown-page store
+regression passes under Wine with frame elision enabled and disabled. Native
+Windows execution remains a CI requirement; Wine is not native Windows coverage.

@@ -86,24 +86,35 @@ done:
 // live across a memory access, commit one Wasm page, then RET to the faulting
 // instruction saved by VEH. Entry SP points at {page, pad[3], retryPC}.
 TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
-	SUBQ	$200, SP                // 32 shadow + GP/flags + XMM0..5; call-aligned
+	// Preserve flags before alignment changes them, and preserve a pointer to
+	// the synthetic VEH frame independently of the aligned call frame.
+	LEAQ	-16(SP), SP
+	MOVQ	R11, 0(SP)
+	PUSHFQ
+	POPQ	R11
+	MOVQ	R11, 8(SP)
+	MOVQ	SP, R11
+	ANDQ	$-16, SP
+	SUBQ	$208, SP                // shadow + GP/flags + XMM0..5 + original frame
 	MOVQ	AX, 32(SP)
 	MOVQ	CX, 40(SP)
 	MOVQ	DX, 48(SP)
 	MOVQ	R8, 56(SP)
 	MOVQ	R9, 64(SP)
 	MOVQ	R10, 72(SP)
-	MOVQ	R11, 80(SP)
-	PUSHFQ
-	POPQ	AX
+	MOVQ	0(R11), AX             // original R11
+	MOVQ	AX, 80(SP)
+	MOVQ	8(R11), AX             // original flags
 	MOVQ	AX, 88(SP)
+	LEAQ	16(R11), R11           // original synthetic frame
+	MOVQ	R11, 192(SP)
 	MOVOU	X0, 96(SP)
 	MOVOU	X1, 112(SP)
 	MOVOU	X2, 128(SP)
 	MOVOU	X3, 144(SP)
 	MOVOU	X4, 160(SP)
 	MOVOU	X5, 176(SP)
-	MOVQ	200(SP), CX            // allocation-aligned page from VEH frame
+	MOVQ	0(R11), CX              // allocation-aligned page from VEH frame
 	MOVQ	$65536, DX
 	MOVQ	$0x1000, R8            // MEM_COMMIT
 	MOVQ	$4, R9                 // PAGE_READWRITE
@@ -127,7 +138,8 @@ TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
 	MOVQ	64(SP), R9
 	MOVQ	72(SP), R10
 	MOVQ	80(SP), R11
-	ADDQ	$232, SP                // frame + header before retryPC
+	MOVQ	192(SP), SP            // restore synthetic frame independently of alignment
+	LEAQ	32(SP), SP             // retry PC; leave restored flags unchanged
 	RET
 commitfailed:
 	MOVQ	-104(BX), AX

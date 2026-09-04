@@ -46,6 +46,8 @@ package tests that ordinary `go test ./...` also discovers. All six targets run 
 single-P, parallel-fault, unrelated-fault chaining, public API, and
 corpus-differential guard-page gates. Windows runs the equivalent Go commands
 directly from PowerShell rather than through Make.
+The Windows guard step runs both core runtime and public API tests, including
+ARM64 page-commit allocation-failure and native return-state checks.
 
 Linux/amd64 continues to host architecture-independent lint, TinyGo, and
 binary-size jobs on pull requests and pushes to `main`; coverage runs only for
