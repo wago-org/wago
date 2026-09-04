@@ -54,10 +54,15 @@ func CaptureGCMemoryDomains(compilerHeapBytes, executableJITBytes uint64, heap G
 }
 
 // ArtifactLimits bounds allocation while streaming a compiled artifact.
-// Values must be non-negative; zero rejects a non-empty corresponding section.
+// Values must be non-negative. Zero rejects a non-empty encoded section;
+// MaxDecodedBytes == 0 selects the default decoded-memory budget.
 type ArtifactLimits struct {
 	MaxCodeBytes     int64
 	MaxMetadataBytes int64
+	// MaxDecodedBytes bounds metadata storage, decoded containers and the frozen
+	// execution snapshot using conservative allocation reservations. Native code
+	// is bounded separately by MaxCodeBytes.
+	MaxDecodedBytes int64
 }
 
 // ArtifactSectionSizes attributes bytes in a sectioned compiled artifact.
@@ -83,7 +88,7 @@ type ArtifactSectionSizes struct {
 
 // DefaultArtifactLimits returns the limits used by Compiled.ReadFrom.
 func DefaultArtifactLimits() ArtifactLimits {
-	return ArtifactLimits{MaxCodeBytes: 1 << 30, MaxMetadataBytes: 256 << 20}
+	return ArtifactLimits{MaxCodeBytes: 1 << 30, MaxMetadataBytes: 256 << 20, MaxDecodedBytes: 256 << 20}
 }
 
 const (

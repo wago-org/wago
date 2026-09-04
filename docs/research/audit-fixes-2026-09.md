@@ -230,3 +230,25 @@ prevent a last-release/new-acquire race from clearing a live slot.
 Validation: deadline/cancellation tests pass. Capacity-plus-one admission is
 checked with bounded slot reservations and no guest execution; shared ownership
 is checked through final release. No hot native path gains a lock.
+
+## 10. Bound aggregate artifact metadata allocation
+
+ArtifactLimits adds MaxDecodedBytes (default 256 MiB; zero selects the default).
+One budget covers the metadata input buffer and all decoded collections. Each
+container reserves four times its actual element size before allocation for
+decoded/frozen storage and bounded validation/capacity overhead. Maps, import
+sidecars, and GC-offset interning add their own entry allowances. Nested
+collections and strings are charged separately. Indexed signature expansion is
+charged per use. Native code remains governed independently by MaxCodeBytes.
+A 65,536-function module produces a 2,227,258-byte artifact. Its default-limit
+round trip through ReadFrom and UnmarshalBinary fails with the previous blanket
+1 KiB charge and passes with type-specific reservations; both loaded forms run
+the final export. Mixed-width and nested-budget regressions still reject
+exhausted budgets. Three 100 ms Linux/amd64 Go 1.27.1 decode samples take
+5.60–6.25 ms, about 11.74 MB/op, and 38 allocations. These are allocation
+measurements for the newly admitted artifact, not a throughput comparison.
+
+Validation: runtime suite passes with pinned conformance tools. Budget tests
+cover aggregate collections, nested signature expansion, overflow-safe charging,
+and refusal before the metadata payload is read. The conservative reservations
+can reject metadata before its actual heap footprint reaches the stated limit.
