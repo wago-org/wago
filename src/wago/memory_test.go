@@ -34,6 +34,82 @@ func importMemModule() []byte {
 	)
 }
 
+func TestImportedMemoryRejectsTypedNil(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), importMemModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	in, err := Instantiate(c, Imports{"env.mem": (*Memory)(nil)})
+	if in != nil {
+		_ = in.Close()
+		t.Fatal("typed-nil memory import returned an instance")
+	}
+	if err == nil {
+		t.Fatal("typed-nil memory import was accepted")
+	}
+}
+
+func TestMemoryCloseRacingInstantiationFailsClosed(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), importMemModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	const iterations = 500
+	for i := 0; i < iterations; i++ {
+		memory, err := NewMemory(1, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		start := make(chan struct{})
+		instanceResult := make(chan struct {
+			instance *Instance
+			err      error
+		}, 1)
+		closeResult := make(chan error, 1)
+		go func() {
+			<-start
+			instance, err := Instantiate(c, Imports{"env.mem": memory})
+			instanceResult <- struct {
+				instance *Instance
+				err      error
+			}{instance, err}
+		}()
+		go func() {
+			<-start
+			closeResult <- memory.Close()
+		}()
+		close(start)
+
+		result, closeErr := <-instanceResult, <-closeResult
+		switch {
+		case result.instance != nil:
+			if result.err != nil {
+				t.Fatalf("iteration %d: instance and error returned: %v", i, result.err)
+			}
+			if closeErr == nil {
+				_ = result.instance.Close()
+				t.Fatalf("iteration %d: Memory.Close succeeded with a live importer", i)
+			}
+			if err := result.instance.Close(); err != nil {
+				t.Fatalf("iteration %d: close instance: %v", i, err)
+			}
+			if err := memory.Close(); err != nil {
+				t.Fatalf("iteration %d: close memory after importer: %v", i, err)
+			}
+		case result.err == nil:
+			t.Fatalf("iteration %d: instantiation returned neither instance nor error", i)
+		case closeErr != nil:
+			t.Fatalf("iteration %d: both racing operations failed: instantiate: %v; close: %v", i, result.err, closeErr)
+		case memory.UnsafeBytes() != nil:
+			t.Fatalf("iteration %d: closed memory still has a host view", i)
+		}
+	}
+}
+
 // growMemModule declares its own exported memory (min 1, max 10 pages) plus
 // grow(pages)->prev and store(ptr,val).
 func growMemModule() []byte {

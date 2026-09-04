@@ -932,36 +932,6 @@ func isExactGlobalGetBody(body []byte, index uint32) bool {
 	return err == nil && end == 0x0b && r.BytesLeft() == 0
 }
 
-func moduleUsesTypedTableReferences(m *wasm.Module) bool {
-	if m == nil {
-		return false
-	}
-	for _, rec := range m.Types {
-		if len(rec.SubTypes) > 1 {
-			return true
-		}
-	}
-	check := func(ref wasm.RefType) bool {
-		return ref.Heap().Kind() == wasm.HeapTypeIndex || !ref.Nullable() || ref.Exact()
-	}
-	for _, im := range m.Imports {
-		if im.Type.Kind == wasm.ExternTable && check(im.Type.TableType().Ref) {
-			return true
-		}
-	}
-	for _, table := range m.Tables {
-		if check(table.Type.Ref) {
-			return true
-		}
-	}
-	for _, elem := range m.Elements {
-		if elem.Kind.Kind == wasm.ElemTypedExprs && check(elem.Kind.Ref) {
-			return true
-		}
-	}
-	return false
-}
-
 func directCrossTailRegABI(ft *wasm.CompType) bool {
 	if ft == nil || len(ft.Results) > 2 {
 		return false
@@ -1063,12 +1033,21 @@ func unsafeDirectTailImportBitset(m *wasm.Module) ([]uint64, error) {
 }
 
 func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode) error {
-	if m == nil || m.ImportedMemCount() != 1 || len(m.Memories) != 0 || m.MemCount() != 1 {
-		return fmt.Errorf("threads currently require exactly one imported shared memory")
+	if m == nil || m.MemCount() != 1 {
+		return fmt.Errorf("threads currently require exactly one memory, shared or unshared")
 	}
 	mt, _ := m.MemoryType(0)
-	if !mt.Shared || mt.Limits.Addr64 || !mt.Limits.HasMax {
-		return fmt.Errorf("threads currently require shared memory32 with an exact maximum")
+	if mt.Limits.Addr64 {
+		if mt.Shared {
+			return fmt.Errorf("threads currently do not support shared memory64")
+		}
+		return fmt.Errorf("threads currently require memory32")
+	}
+	if mt.Shared && (m.ImportedMemCount() != 1 || len(m.Memories) != 0) {
+		return fmt.Errorf("threads currently require shared memory to be imported")
+	}
+	if mt.Shared && !mt.Limits.HasMax {
+		return fmt.Errorf("threads currently require shared memory with an exact maximum")
 	}
 	if bounds != BoundsChecksExplicit {
 		return fmt.Errorf("threads currently require explicit bounds checks")
@@ -1119,7 +1098,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	}
 	requirements := analyzeModuleRequirements(m)
 	requiredByModule := requirements.features
-	if !requiredByModule.IsEnabled(CoreFeatureTypedFunctionReferences) && !requiredByModule.IsEnabled(CoreFeatureGC) && !moduleUsesTypedTableReferences(m) {
+	if !requiredByModule.IsEnabled(CoreFeatureTypedFunctionReferences) && !requiredByModule.IsEnabled(CoreFeatureGC) {
 		features.TypedFunctionReferences = false
 		features.TypedTailCalls = false
 	}
@@ -1488,13 +1467,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		c.gcCodeTelemetry.TotalBytes = uint64(len(code))
 	}
 	constExprCtx := &constExprCompileContext{module: m, types: c.Types, converter: typeConverter}
-	if gcI31Product == stagedGCI31ProductTableGlobalInitializer {
-		init, err := stagedGCI31TableInitializer(m)
-		if err != nil {
-			return nil, fmt.Errorf("compile: staged i31 table initializer: %w", err)
-		}
-		c.memoryDir.gcI31TableInit = init
-	}
 	if gcStructProduct != 0 && gcStructProduct != stagedGCStructGeneric {
 		gcGlobals, err := stagedGCStructGlobalInitializers(m)
 		if err != nil {
@@ -1779,9 +1751,6 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if m.Tables[i].Init == nil {
 			continue
 		}
-		if c.memoryDir.gcI31TableInit != nil && c.memoryDir.gcI31TableInit.TableIndex == uint32(tableIndex) {
-			continue
-		}
 		initBody := m.Tables[i].Init.BodyBytes
 		if len(initBody) == 0 {
 			initBody, _ = wasm.EncodeExpr(*m.Tables[i].Init)
@@ -1915,7 +1884,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 				return nil, fmt.Errorf("element %d: %w", i, err)
 			}
 		}
-		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, ValueTypeIndex: internValueType(&c.ValueTypes, exactType), HasValueType: true, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
+		hasValueType := e.Kind.Kind != wasm.ElemFuncs
+		var valueTypeIndex uint32
+		if hasValueType {
+			valueTypeIndex = internValueType(&c.ValueTypes, exactType)
+		}
+		init := ElemInit{TableIndex: uint32(e.Mode.Table), RefType: refType, ValueTypeIndex: valueTypeIndex, HasValueType: hasValueType, Mode: elemModeFromWasm(e.Mode.Kind), Values: values}
 		if i < len(c.passiveElems) {
 			state := init
 			if e.Mode.Kind != wasm.ElemPassive {
@@ -2246,17 +2220,24 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, constExprCtx
 				}
 			}
 			if refType == ValI31Ref {
-				body := ex.BodyBytes
-				if len(body) == 0 {
-					var err error
-					body, err = wasm.EncodeExpr(ex)
-					if err != nil {
-						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d encode: %w", i, err)
+				if len(body) != 0 && body[0] == 0xd0 {
+					result, err := evalConstExprBytesWithContext(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
+					if err == nil && isNullReferenceConstExprResult(result) {
+						out[i] = RefInit{Null: true}
+						continue
 					}
 				}
 				result, matched, err := evalI31ConstExprBytes(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
-				if err != nil || !matched {
+				if err != nil {
 					return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d is not an exact i31 initializer: %v", i, err)
+				}
+				if !matched {
+					result, err = evalConstExprBytesWithContext(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
+					if err != nil || len(result.Expr) == 0 {
+						return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("expression %d is not an exact i31 initializer: %v", i, err)
+					}
+					out[i] = RefInit{Expr: append([]byte(nil), result.Expr...)}
+					continue
 				}
 				if len(result.Expr) != 0 {
 					r := wasm.NewReader(result.Expr)
@@ -2275,9 +2256,24 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, constExprCtx
 				continue
 			}
 			result, exprErr := evalConstExprBytesWithContext(body, wasm.RefVal(e.Kind.Ref), constExprCtx)
-			if exprErr == nil && len(result.Expr) != 0 {
-				out[i] = RefInit{Expr: append([]byte(nil), result.Expr...)}
-				continue
+			if exprErr == nil {
+				if len(result.Expr) != 0 {
+					out[i] = RefInit{Expr: append([]byte(nil), result.Expr...)}
+					continue
+				}
+				// Core 3 element expressions may use a null from any reference
+				// hierarchy. The Release 2 fallback parser only covers func/extern.
+				if isNullReferenceConstExprResult(result) {
+					out[i] = RefInit{Null: true}
+					continue
+				}
+				// A direct ref.i31 evaluates to tagged bits. Preserve its semantic
+				// expression when the declared segment type is a supertype such as
+				// anyref; FuncIndex is reserved for function-reference payloads here.
+				if isI31ReferenceConstExprResult(result) {
+					out[i] = RefInit{Expr: append([]byte(nil), body...)}
+					continue
+				}
 			}
 			payload, err := wasm.ParseElementExpr(ex)
 			if err != nil {
@@ -2297,6 +2293,14 @@ func elementPayloads(m *wasm.Module, types []DefinedTypeDescriptor, constExprCtx
 	default:
 		return 0, ValueTypeDescriptor{}, nil, fmt.Errorf("unsupported element kind %d", e.Kind.Kind)
 	}
+}
+
+func isNullReferenceConstExprResult(result constExprResult) bool {
+	return result.vtype.Kind() == wasm.ValRef && result.bits == 0 && result.GlobalIndex < 0 && result.FuncIndex < 0
+}
+
+func isI31ReferenceConstExprResult(result constExprResult) bool {
+	return isI31RefType(result.vtype) && result.bits != 0 && result.GlobalIndex < 0 && result.FuncIndex < 0
 }
 
 func funcrefExprPayload(e wasm.Expr) (uint32, error) {
@@ -2892,6 +2896,10 @@ func (c *Compiled) validate() error {
 	if c.tableCount() != 0 || len(c.Elems) != 0 || len(c.passiveElems) != 0 {
 		staged |= compiledStructuralRequiredFeatures(c) & CoreFeatureTypedFunctionReferences
 	}
+	// Aggregate storage declarations are fully represented by exact persisted
+	// type metadata. Tag-free EH instructions still require their independent
+	// execution marker and cannot be inferred through this path.
+	staged |= compiledAggregateStorageRequiredFeatures(c) & (CoreFeatureTypedFunctionReferences | CoreFeatureExceptionHandling)
 	if unsupported&^staged != 0 {
 		return fmt.Errorf("compiled metadata invalid: unknown required feature bits 0x%x", uint64(unsupported&^staged))
 	}
@@ -3148,73 +3156,6 @@ func (c *Compiled) validate() error {
 		}
 		return nil
 	}
-	validateElementValues := func(kind string, seg int, elem ElemInit) error {
-		refType := normalizedElemRefType(elem.RefType)
-		if refType != ValFuncRef && refType != ValExternRef && refType != ValExnRef && refType != ValI31Ref && refType != ValAnyRef {
-			return fmt.Errorf("compiled metadata invalid: %s element %d has unsupported reference type %s", kind, seg, refType)
-		}
-		required, err := c.elemExactType(elem)
-		if err != nil {
-			return fmt.Errorf("compiled metadata invalid: %s element %d exact type: %w", kind, seg, err)
-		}
-		for k, value := range elem.Values {
-			if len(value.Expr) != 0 {
-				if value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has multiple initializer forms", kind, seg, k)
-				}
-				gcConstExpr := c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
-				if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid GC expression", kind, seg, k)
-				}
-				if err := c.validateGCConstExpr(value.Expr, required, len(c.Globals)); err != nil {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d GC expression: %w", kind, seg, k, err)
-				}
-				continue
-			}
-			if value.HasGlobal {
-				if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d global %d is unavailable or mutable", kind, seg, k, value.GlobalIndex)
-				}
-				if value.I31Wrap {
-					if refType != ValI31Ref || c.Globals[value.GlobalIndex].Type != ValI32 {
-						return fmt.Errorf("compiled metadata invalid: %s element %d value %d i31 global type mismatch", kind, seg, k)
-					}
-					continue
-				}
-				actual, actualErr := c.globalExactType(int(value.GlobalIndex))
-				if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d global type mismatch", kind, seg, k)
-				}
-				continue
-			}
-			if value.I31Wrap {
-				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has i31 wrapper without global", kind, seg, k)
-			}
-			if value.Null {
-				if required.Kind != ValueTypeReference || !required.Ref.Nullable {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d is null for a non-null type", kind, seg, k)
-				}
-				continue
-			}
-			if refType == ValI31Ref {
-				if value.FuncIndex&1 == 0 {
-					return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid i31 immediate", kind, seg, k)
-				}
-				continue
-			}
-			if refType != ValFuncRef {
-				return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, seg, k, refType)
-			}
-			if int(value.FuncIndex) >= totalFuncs {
-				return fmt.Errorf("compiled metadata invalid: %s element %d function %d index %d out of range", kind, seg, k, value.FuncIndex)
-			}
-			actual, actualErr := c.functionRefExactType(value.FuncIndex)
-			if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
-				return fmt.Errorf("compiled metadata invalid: %s element %d value %d function type mismatch", kind, seg, k)
-			}
-		}
-		return nil
-	}
 	for seg, el := range c.Elems {
 		refType := normalizedElemRefType(el.RefType)
 		if el.Mode != ElemModeActive {
@@ -3238,7 +3179,7 @@ func (c *Compiled) validate() error {
 		if err := validateOffset("element", seg, el.Offset, offsetType, constExprElementOffset); err != nil {
 			return err
 		}
-		if err := validateElementValues("active", seg, el); err != nil {
+		if err := c.validateElementValues("active", seg, el); err != nil {
 			return err
 		}
 	}
@@ -3254,7 +3195,7 @@ func (c *Compiled) validate() error {
 		} else if mode != ElemModePassive {
 			return fmt.Errorf("compiled metadata invalid: element-state slot %d has mode %d", seg, mode)
 		}
-		if err := validateElementValues("element-state", seg, el); err != nil {
+		if err := c.validateElementValues("element-state", seg, el); err != nil {
 			return err
 		}
 	}
@@ -3293,6 +3234,74 @@ func (c *Compiled) validate() error {
 	}
 	if err := c.validateArenaFootprint(); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (c *Compiled) validateElementValues(kind string, seg int, elem ElemInit) error {
+	refType := normalizedElemRefType(elem.RefType)
+	if refType != ValFuncRef && refType != ValExternRef && refType != ValExnRef && refType != ValI31Ref && refType != ValAnyRef {
+		return fmt.Errorf("compiled metadata invalid: %s element %d has unsupported reference type %s", kind, seg, refType)
+	}
+	required, err := c.elemExactType(elem)
+	if err != nil {
+		return fmt.Errorf("compiled metadata invalid: %s element %d exact type: %w", kind, seg, err)
+	}
+	for k, value := range elem.Values {
+		if len(value.Expr) != 0 {
+			if value.HasGlobal || value.Null || value.I31Wrap || value.FuncIndex != 0 {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has multiple initializer forms", kind, seg, k)
+			}
+			gcConstExpr := c.requiredFeatures.IsEnabled(CoreFeatureGC) || c.usesGenericGCExecution() || c.stagedGCStructProduct().requiresExternConversion() || c.stagedGCI31Product() != 0
+			if !gcConstExpr || (refType != ValAnyRef && refType != ValI31Ref && !(refType == ValExternRef && c.stagedGCStructProduct().requiresExternConversion())) {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid GC expression", kind, seg, k)
+			}
+			if err := c.validateGCConstExpr(value.Expr, required, len(c.Globals)); err != nil {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d GC expression: %w", kind, seg, k, err)
+			}
+			continue
+		}
+		if value.HasGlobal {
+			if int(value.GlobalIndex) >= len(c.Globals) || c.Globals[value.GlobalIndex].Mutable {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d global %d is unavailable or mutable", kind, seg, k, value.GlobalIndex)
+			}
+			if value.I31Wrap {
+				if refType != ValI31Ref || c.Globals[value.GlobalIndex].Type != ValI32 {
+					return fmt.Errorf("compiled metadata invalid: %s element %d value %d i31 global type mismatch", kind, seg, k)
+				}
+				continue
+			}
+			actual, actualErr := c.globalExactType(int(value.GlobalIndex))
+			if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d global type mismatch", kind, seg, k)
+			}
+			continue
+		}
+		if value.I31Wrap {
+			return fmt.Errorf("compiled metadata invalid: %s element %d value %d has i31 wrapper without global", kind, seg, k)
+		}
+		if value.Null {
+			if required.Kind != ValueTypeReference || !required.Ref.Nullable {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d is null for a non-null type", kind, seg, k)
+			}
+			continue
+		}
+		if refType == ValI31Ref {
+			if value.FuncIndex&1 == 0 {
+				return fmt.Errorf("compiled metadata invalid: %s element %d value %d has invalid i31 immediate", kind, seg, k)
+			}
+			continue
+		}
+		if refType != ValFuncRef {
+			return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, seg, k, refType)
+		}
+		if int(value.FuncIndex) >= len(c.importFuncSigs)+len(c.Funcs) {
+			return fmt.Errorf("compiled metadata invalid: %s element %d function %d index %d out of range", kind, seg, k, value.FuncIndex)
+		}
+		actual, actualErr := c.functionRefExactType(value.FuncIndex)
+		if actualErr != nil || !valueTypeSubtype(actual, c.Types, required, c.Types) {
+			return fmt.Errorf("compiled metadata invalid: %s element %d value %d function type mismatch", kind, seg, k)
+		}
 	}
 	return nil
 }
@@ -3440,15 +3449,8 @@ func (c *Compiled) validateCodecMetadata() error {
 			if err := checkOffset(kind, i, elem.Offset, offsetType, constExprElementOffset); err != nil {
 				return err
 			}
-			refType := normalizedElemRefType(elem.RefType)
-			for j, value := range elem.Values {
-				if value.HasGlobal || value.Null || refType == ValFuncRef {
-					continue
-				}
-				if refType == ValI31Ref && value.FuncIndex&1 == 1 {
-					continue
-				}
-				return fmt.Errorf("compiled metadata invalid: %s element %d value %d is non-null %s", kind, i, j, refType)
+			if err := c.validateElementValues(kind, i, elem); err != nil {
+				return err
 			}
 		}
 		return nil
@@ -4256,6 +4258,9 @@ func (in *Instance) invokeAdmitted(export string, args []uint64, contexts invoca
 }
 
 func (in *Instance) invokeEntry(export string, args []uint64, contexts invocationContextSet, alreadyAdmitted bool) ([]uint64, error) {
+	if in == nil {
+		return nil, nilInstanceInvokeError()
+	}
 	// Close hooks run after the invocation gate is published and may probe that
 	// later calls fail closed. Check the gate before waiting for the per-instance
 	// serialization lock so such a probe cannot deadlock behind the activation
@@ -4264,7 +4269,7 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 	if in.invocationState.Load()&instanceInvocationClosed != 0 {
 		return nil, fmt.Errorf("invoke %q: instance is closed", export)
 	}
-	if in.guestStorageBorrowed() {
+	if state := in.pluginState.Load(); state != nil && state.guestStorageBorrow.Load() != 0 {
 		return nil, fmt.Errorf("invoke %q: guest storage is borrowed: %w", export, ErrPermissionDenied)
 	}
 	state := in.ensurePluginState()
@@ -4276,6 +4281,11 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		state.invokeMu.Unlock()
 	}()
 	return in.invokeWithToken(export, args, contexts, id, true, alreadyAdmitted, nil)
+}
+
+//go:noinline
+func nilInstanceInvokeError() error {
+	return errors.New("instance is nil")
 }
 
 func (in *Instance) invokeWithToken(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {

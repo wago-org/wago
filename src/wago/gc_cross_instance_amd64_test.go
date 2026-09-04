@@ -193,8 +193,8 @@ func TestGCCrossInstanceCanonicalTypesAcrossReorderedModules(t *testing.T) {
 		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
 			providerCandidate, consumerCandidate := providerCode, consumerCode
 			if codec {
-				providerCandidate = roundTripCompiled(t, providerCode)
-				consumerCandidate = roundTripCompiled(t, consumerCode)
+				providerCandidate = publicArtifactRoundTrip(t, providerCode)
+				consumerCandidate = publicArtifactRoundTrip(t, consumerCode)
 				defer providerCandidate.Close()
 				defer consumerCandidate.Close()
 			}
@@ -283,9 +283,9 @@ func TestGCCrossInstanceMultiHopFrameRootsAndCodec(t *testing.T) {
 		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
 			providerCandidate, relayCandidate, consumerCandidate := providerCode, relayCode, consumerCode
 			if codec {
-				providerCandidate = roundTripCompiled(t, providerCode)
-				relayCandidate = roundTripCompiled(t, relayCode)
-				consumerCandidate = roundTripCompiled(t, consumerCode)
+				providerCandidate = publicArtifactRoundTrip(t, providerCode)
+				relayCandidate = publicArtifactRoundTrip(t, relayCode)
+				consumerCandidate = publicArtifactRoundTrip(t, consumerCode)
 				defer providerCandidate.Close()
 				defer relayCandidate.Close()
 				defer consumerCandidate.Close()

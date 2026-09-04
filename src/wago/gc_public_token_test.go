@@ -81,7 +81,7 @@ func TestGenericGCResultsIssueBoundedHostTokens(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			compiled := base
 			if codec {
-				compiled = roundTripCompiled(t, base)
+				compiled = publicArtifactRoundTrip(t, base)
 				defer compiled.Close()
 			}
 			for _, tc := range []struct {

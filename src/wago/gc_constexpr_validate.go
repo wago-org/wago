@@ -120,6 +120,26 @@ func (c *Compiled) validateGCConstExpr(expr []byte, want ValueTypeDescriptor, gl
 				return err
 			}
 			stack = append(stack, gcConstNumericType(ValueTypeF64))
+		case 0x6a, 0x6b, 0x6c, 0x7c, 0x7d, 0x7e: // integer add/sub/mul
+			required := gcConstNumericType(ValueTypeI32)
+			if op >= 0x7c {
+				required = gcConstNumericType(ValueTypeI64)
+			}
+			right, err := pop()
+			if err != nil {
+				return err
+			}
+			left, err := pop()
+			if err != nil {
+				return err
+			}
+			if err := requireSubtype(left, required, "integer left operand"); err != nil {
+				return err
+			}
+			if err := requireSubtype(right, required, "integer right operand"); err != nil {
+				return err
+			}
+			stack = append(stack, required)
 		case 0xfd:
 			sub, err := r.U32()
 			if err != nil {

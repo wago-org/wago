@@ -3,6 +3,7 @@ package version
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -61,7 +62,48 @@ func activeBuild(d wagopaths.Dirs) wagopaths.Build {
 	return wagopaths.BuildNormal
 }
 
+func validateVersionStorageName(name string) error {
+	if name == "" || name == "." || name == ".." || name[len(name)-1] == '.' {
+		return fmt.Errorf("invalid version %q: use letters, digits, '.', '-', '+', '@', or '_'", name)
+	}
+	for index := 0; index < len(name); index++ {
+		char := name[index]
+		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') || char == '.' || char == '-' ||
+			char == '+' || char == '@' || char == '_') {
+			return fmt.Errorf("invalid version %q: use letters, digits, '.', '-', '+', '@', or '_'", name)
+		}
+	}
+	if windowsReservedVersionName(name) {
+		return fmt.Errorf("invalid version %q: name is reserved on Windows", name)
+	}
+	return nil
+}
+
+func windowsReservedVersionName(name string) bool {
+	base := name
+	if dot := strings.IndexByte(base, '.'); dot >= 0 {
+		base = base[:dot]
+	}
+	if strings.EqualFold(base, "CON") || strings.EqualFold(base, "PRN") ||
+		strings.EqualFold(base, "AUX") || strings.EqualFold(base, "NUL") {
+		return true
+	}
+	return len(base) == 4 && base[3] >= '1' && base[3] <= '9' &&
+		(strings.EqualFold(base[:3], "COM") || strings.EqualFold(base[:3], "LPT"))
+}
+
+func versionDirectory(d wagopaths.Dirs, name string) (string, error) {
+	if err := validateVersionStorageName(name); err != nil {
+		return "", err
+	}
+	return filepath.Join(d.Versions, name), nil
+}
+
 func installedRuntime(d wagopaths.Dirs, ver string, requestedProfile wagopaths.Profile, requestedBuild wagopaths.Build) (string, wagopaths.Profile, wagopaths.Build, bool) {
+	if validateVersionStorageName(ver) != nil {
+		return "", "", "", false
+	}
 	if requestedProfile != "" && requestedBuild != "" {
 		path := d.RuntimeBinary(ver, string(requestedProfile), string(requestedBuild))
 		if fi, err := os.Stat(path); err == nil && !fi.IsDir() {
@@ -114,6 +156,9 @@ func activeRunner(d wagopaths.Dirs) (path, version string, profile wagopaths.Pro
 }
 
 func setActiveInstallation(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) error {
+	if err := validateVersionStorageName(ver); err != nil {
+		return err
+	}
 	if err := d.Ensure(); err != nil {
 		return err
 	}

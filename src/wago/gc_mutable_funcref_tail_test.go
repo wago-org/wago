@@ -133,11 +133,11 @@ func TestGCMutableImportedFuncrefTableReturnCallRef(t *testing.T) {
 	}
 
 	for _, codec := range []bool{false, true} {
-		t.Run(map[bool]string{false: "compiled", true: "codec"}[codec], func(t *testing.T) {
+		t.Run(map[bool]string{false: "compiled", true: "private-payload-codec"}[codec], func(t *testing.T) {
 			providerCandidate, consumerCandidate := providerCode, consumerCode
 			if codec {
-				providerCandidate = roundTripCompiled(t, providerCode)
-				consumerCandidate = roundTripCompiled(t, consumerCode)
+				providerCandidate = privatePayloadRoundTrip(t, providerCode)
+				consumerCandidate = privatePayloadRoundTrip(t, consumerCode)
 				providerCandidate.ensureCodeCache()
 				consumerCandidate.ensureCodeCache()
 				providerCandidate.codeCache.stagedFeatures |= CoreFeatureTailCall

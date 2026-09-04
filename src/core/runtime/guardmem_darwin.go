@@ -26,6 +26,9 @@ func guardedLinOff(base uintptr) int {
 }
 
 func NewJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
+	if err := validateGuardedJobMemorySizes(linBytes, maxBytes); err != nil {
+		return nil, err
+	}
 	mem, err := syscall.Mmap(-1, 0, int(guardReserveBytes), syscall.PROT_NONE, syscall.MAP_ANON|syscall.MAP_PRIVATE)
 	if err != nil {
 		return nil, fmt.Errorf("guard mmap reserve: %w", err)
@@ -81,6 +84,9 @@ func init() {
 }
 
 func AcquireJobMemoryGuarded(linBytes, maxBytes int) (*JobMemory, error) {
+	if err := validateGuardedJobMemorySizes(linBytes, maxBytes); err != nil {
+		return nil, err
+	}
 	jobMemoryGuardedCache.Lock()
 	j := jobMemoryGuardedCache.j
 	jobMemoryGuardedCache.j = nil

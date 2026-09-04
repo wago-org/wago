@@ -54,6 +54,14 @@ func TestTypecheckNegativeDescriptorAndGC(t *testing.T) {
 		m := modWithFunc([]ValType{AnyRef, AnyRef}, nil, Instruction{Kind: InstrLocalGet, Index: 0}, Instruction{Kind: InstrLocalGet, Index: 1}, Instruction{Kind: InstrRefCastDescEq, ext: &instrExt{HeapType: IndexedHeap(TypeIdx{Index: 999})}}, Instruction{Kind: InstrDrop})
 		expectValidateErr(t, m, ErrUnknownType)
 	})
+	t.Run("ref.cast rejects a disjoint reference hierarchy", func(t *testing.T) {
+		m := modWithFunc([]ValType{FuncRef}, nil,
+			Instruction{Kind: InstrLocalGet, Index: 0},
+			Instruction{Kind: InstrRefCast, ext: &instrExt{HeapType: AbsHeap(HeapAny)}},
+			Instruction{Kind: InstrDrop},
+		)
+		expectValidateErr(t, m, ErrTypeMismatch)
+	})
 	t.Run("struct.new rejects descriptor-bearing structs", func(t *testing.T) {
 		expectValidateErr(t, descriptorModule(Instruction{Kind: InstrStructNew, Index: 0}, Instruction{Kind: InstrDrop}), ErrTypeMismatch)
 	})
@@ -77,6 +85,77 @@ func TestTypecheckNegativeDescriptorAndGC(t *testing.T) {
 		}
 		if err := ValidateModule(m); err != nil {
 			t.Fatalf("ValidateModule: %v", err)
+		}
+	})
+	t.Run("plain field gets reject packed storage", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			typ  RecType
+			body []Instruction
+		}{
+			{
+				name: "struct.get",
+				typ:  structType([]FieldType{packedField(PackI8, Var)}, TypeMetadata{}),
+				body: []Instruction{{Kind: InstrStructNewDefault, Index: 0}, {Kind: InstrStructGet, Index: 0, Index2: 0}, {Kind: InstrDrop}},
+			},
+			{
+				name: "struct.atomic.get",
+				typ:  structType([]FieldType{packedField(PackI8, Var)}, TypeMetadata{}),
+				body: []Instruction{{Kind: InstrStructNewDefault, Index: 0}, {Kind: InstrStructAtomicGet, Index: 0, Index2: 0}, {Kind: InstrDrop}},
+			},
+			{
+				name: "array.get",
+				typ:  arrayType(packedField(PackI8, Var)),
+				body: []Instruction{{Kind: InstrI32Const}, {Kind: InstrArrayNewDefault, Index: 0}, {Kind: InstrI32Const}, {Kind: InstrArrayGet, Index: 0}, {Kind: InstrDrop}},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				m := &Module{Types: []RecType{tc.typ, ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: tc.body}}}}
+				expectValidateErr(t, m, ErrTypeMismatch)
+			})
+		}
+	})
+	t.Run("packed field gets reject unpacked storage", func(t *testing.T) {
+		for _, tc := range []struct {
+			name string
+			typ  RecType
+			body []Instruction
+		}{
+			{
+				name: "struct.get_s",
+				typ:  structType([]FieldType{field(I32, Var)}, TypeMetadata{}),
+				body: []Instruction{{Kind: InstrStructNewDefault, Index: 0}, {Kind: InstrStructGetS, Index: 0, Index2: 0}, {Kind: InstrDrop}},
+			},
+			{
+				name: "struct.get_u",
+				typ:  structType([]FieldType{field(I32, Var)}, TypeMetadata{}),
+				body: []Instruction{{Kind: InstrStructNewDefault, Index: 0}, {Kind: InstrStructGetU, Index: 0, Index2: 0}, {Kind: InstrDrop}},
+			},
+			{
+				name: "struct.atomic.get_s",
+				typ:  structType([]FieldType{field(I32, Var)}, TypeMetadata{}),
+				body: []Instruction{{Kind: InstrStructNewDefault, Index: 0}, {Kind: InstrStructAtomicGetS, Index: 0, Index2: 0}, {Kind: InstrDrop}},
+			},
+			{
+				name: "struct.atomic.get_u",
+				typ:  structType([]FieldType{field(I32, Var)}, TypeMetadata{}),
+				body: []Instruction{{Kind: InstrStructNewDefault, Index: 0}, {Kind: InstrStructAtomicGetU, Index: 0, Index2: 0}, {Kind: InstrDrop}},
+			},
+			{
+				name: "array.get_s",
+				typ:  arrayType(field(I32, Var)),
+				body: []Instruction{{Kind: InstrI32Const}, {Kind: InstrArrayNewDefault, Index: 0}, {Kind: InstrI32Const}, {Kind: InstrArrayGetS, Index: 0}, {Kind: InstrDrop}},
+			},
+			{
+				name: "array.get_u",
+				typ:  arrayType(field(I32, Var)),
+				body: []Instruction{{Kind: InstrI32Const}, {Kind: InstrArrayNewDefault, Index: 0}, {Kind: InstrI32Const}, {Kind: InstrArrayGetU, Index: 0}, {Kind: InstrDrop}},
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				m := &Module{Types: []RecType{tc.typ, ft(nil, nil)}, FuncTypes: []TypeIdx{{Index: 1}}, Code: []Func{{Body: Expr{Instrs: tc.body}}}}
+				expectValidateErr(t, m, ErrTypeMismatch)
+			})
 		}
 	})
 }
@@ -116,27 +195,34 @@ func TestTypecheckNegativeAtomicAndMemory(t *testing.T) {
 		badCmpxchg.Memories = shared
 		expectValidateErr(t, badCmpxchg, ErrTypeMismatch)
 	})
-	t.Run("atomic instructions require shared memories", func(t *testing.T) {
+	t.Run("atomic instructions accept unshared memories", func(t *testing.T) {
 		// Atomic memory operators are proposal-valid only when their target memory
-		// is shared; stack shapes here are otherwise valid for the checked opcodes.
+		// exists and their alignment is exactly natural. Wait traps at execution on
+		// an unshared memory, while notify returns zero; both still validate.
 		cases := []struct {
 			name  string
 			instr Instruction
 			body  []Instruction
+			drop  bool
 		}{
-			{"load", Instruction{Kind: InstrI32AtomicLoad}, []Instruction{{Kind: InstrI32Const}}},
-			{"store", Instruction{Kind: InstrI32AtomicStore}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}}},
-			{"rmw", Instruction{Kind: InstrAtomicRmw, AtomicOp: 30}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}}},
-			{"cmpxchg", Instruction{Kind: InstrAtomicCmpxchg, AtomicOp: 72}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrI32Const}}},
-			{"wait", Instruction{Kind: InstrMemoryAtomicWait32}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrI64Const}}},
-			{"notify", Instruction{Kind: InstrMemoryAtomicNotify}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}}},
+			{"load", Instruction{Kind: InstrI32AtomicLoad, ext: &instrExt{MemArg: MemArg{Align: 2}}}, []Instruction{{Kind: InstrI32Const}}, true},
+			{"store", Instruction{Kind: InstrI32AtomicStore, ext: &instrExt{MemArg: MemArg{Align: 2}}}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}}, false},
+			{"rmw", Instruction{Kind: InstrAtomicRmw, AtomicOp: 30, ext: &instrExt{MemArg: MemArg{Align: 2}}}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}}, true},
+			{"cmpxchg", Instruction{Kind: InstrAtomicCmpxchg, AtomicOp: 72, ext: &instrExt{MemArg: MemArg{Align: 2}}}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrI32Const}}, true},
+			{"wait", Instruction{Kind: InstrMemoryAtomicWait32, ext: &instrExt{MemArg: MemArg{Align: 2}}}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}, {Kind: InstrI64Const}}, true},
+			{"notify", Instruction{Kind: InstrMemoryAtomicNotify, ext: &instrExt{MemArg: MemArg{Align: 2}}}, []Instruction{{Kind: InstrI32Const}, {Kind: InstrI32Const}}, true},
 		}
 		for _, tc := range cases {
 			t.Run(tc.name, func(t *testing.T) {
 				body := append(append([]Instruction(nil), tc.body...), tc.instr)
+				if tc.drop {
+					body = append(body, Instruction{Kind: InstrDrop})
+				}
 				m := modWithFunc(nil, nil, body...)
 				m.Memories = []MemType{{Limits: Limits{Min: 1}}}
-				expectValidateErr(t, m, ErrInvalidSharedMemory)
+				if err := ValidateModule(m); err != nil {
+					t.Fatalf("ValidateModule: %v", err)
+				}
 			})
 		}
 	})

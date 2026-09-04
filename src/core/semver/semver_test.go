@@ -65,6 +65,30 @@ func TestCompare(t *testing.T) {
 	}
 }
 
+func TestCompareLargeNumericPrereleaseIdentifiers(t *testing.T) {
+	tests := []struct {
+		a, b string
+	}{
+		{
+			a: "1.0.0-99999999999999999999",
+			b: "1.0.0-100000000000000000000",
+		},
+		{
+			a: "1.0.0-99999999999999999999",
+			b: "1.0.0-1alpha",
+		},
+	}
+	for _, test := range tests {
+		a, b := MustParse(test.a), MustParse(test.b)
+		if got := a.Compare(b); got != -1 {
+			t.Errorf("Compare(%q, %q) = %d, want -1", test.a, test.b, got)
+		}
+		if got := b.Compare(a); got != 1 {
+			t.Errorf("Compare(%q, %q) = %d, want 1", test.b, test.a, got)
+		}
+	}
+}
+
 func TestVersionFormattingAndParserEdges(t *testing.T) {
 	if got := MustParse("v1.2.3-alpha+build.7").String(); got != "1.2.3-alpha+build.7" {
 		t.Fatalf("String = %q", got)

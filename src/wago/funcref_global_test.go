@@ -265,7 +265,7 @@ func TestNullableLocalFuncrefGlobalsRemainOutOfSerializedState(t *testing.T) {
 	c := compileExplicitArtifact(t, nullableLocalFuncrefGlobalsModule())
 	defer c.Close()
 
-	_ = roundTripCompiled(t, c)
+	_ = publicArtifactRoundTrip(t, c)
 }
 
 func TestRelease2NullableFuncrefGlobalSourceGuard(t *testing.T) {

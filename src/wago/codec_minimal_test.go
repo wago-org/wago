@@ -2,7 +2,6 @@ package wago
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/runtime/gc"
@@ -17,7 +16,7 @@ func TestCompiledCodecRoundTripsMultipleEmptyDataSegments(t *testing.T) {
 		},
 	}
 
-	got := roundTripCompiled(t, input)
+	got := publicArtifactRoundTrip(t, input)
 	if len(got.Data) != len(input.Data) {
 		t.Fatalf("Data length = %d, want %d", len(got.Data), len(input.Data))
 	}
@@ -34,7 +33,7 @@ func TestCompiledCodecRoundTripsMultipleEmptyDataSegments(t *testing.T) {
 func TestCompiledCodecRoundTripsTableMaximum(t *testing.T) {
 	input := &Compiled{HasTable: true, TableSize: 2, TableMax: 4}
 
-	got := roundTripCompiled(t, input)
+	got := publicArtifactRoundTrip(t, input)
 	if !got.HasTable || got.TableSize != input.TableSize || got.TableMax != input.TableMax {
 		t.Fatalf("table shape after round trip = HasTable %v size %d max %d, want HasTable true size %d max %d", got.HasTable, got.TableSize, got.TableMax, input.TableSize, input.TableMax)
 	}
@@ -62,7 +61,7 @@ func TestCompiledCodecRoundTripsTableMaximum(t *testing.T) {
 func TestCompiledCodecRoundTripsTableImport(t *testing.T) {
 	input := &Compiled{HasTable: true, tableImport: "env.t", tableImportMin: 2, tableImportMax: 4, tableImportHasMax: true}
 
-	got := roundTripCompiled(t, input)
+	got := publicArtifactRoundTrip(t, input)
 	if got.tableImport != input.tableImport || got.tableImportMin != input.tableImportMin || got.tableImportMax != input.tableImportMax || got.tableImportHasMax != input.tableImportHasMax {
 		t.Fatalf("table import after round trip = %q min %d max %d hasMax %v, want %q min %d max %d hasMax %v", got.tableImport, got.tableImportMin, got.tableImportMax, got.tableImportHasMax, input.tableImport, input.tableImportMin, input.tableImportMax, input.tableImportHasMax)
 	}
@@ -79,7 +78,7 @@ func TestCompiledCodecRoundTripsMultipleEmptyElementSegments(t *testing.T) {
 		},
 	}
 
-	got := roundTripCompiled(t, input)
+	got := publicArtifactRoundTrip(t, input)
 	if len(got.Elems) != len(input.Elems) {
 		t.Fatalf("Elems length = %d, want %d", len(got.Elems), len(input.Elems))
 	}
@@ -105,7 +104,7 @@ func TestCompiledCodecRoundTripsEmptyStrings(t *testing.T) {
 		Exports:        map[string]int{"": 1},
 	})
 
-	got := roundTripCompiled(t, input)
+	got := publicArtifactRoundTrip(t, input)
 	if len(got.Imports) != 1 || got.Imports[0] != "" {
 		t.Fatalf("Imports = %#v, want one empty string", got.Imports)
 	}
@@ -125,7 +124,7 @@ func TestCompiledCodecRoundTripsMinimalGCDescriptor(t *testing.T) {
 	}
 	input := &Compiled{GCTypeDescs: []gc.TypeDesc{desc}}
 
-	got := roundTripCompiled(t, input)
+	got := publicArtifactRoundTrip(t, input)
 	if len(got.GCTypeDescs) != 1 {
 		t.Fatalf("GCTypeDescs length = %d, want 1", len(got.GCTypeDescs))
 	}
@@ -202,7 +201,7 @@ func TestCompiledCodecRoundTripsMixedGCDescriptors(t *testing.T) {
 		t.Fatalf("input validate: %v", err)
 	}
 
-	got := roundTripCompiled(t, input)
+	got := publicArtifactRoundTrip(t, input)
 	if err := got.validate(); err != nil {
 		t.Fatalf("round-tripped validate: %v", err)
 	}
@@ -220,31 +219,47 @@ func TestCompiledCodecRoundTripsMixedGCDescriptors(t *testing.T) {
 	}
 }
 
-func roundTripCompiled(t testing.TB, input *Compiled) *Compiled {
+func publicArtifactRoundTrip(t testing.TB, input *Compiled) *Compiled {
 	t.Helper()
 	encoded, err := input.MarshalBinary()
 	if err != nil {
 		if guardPageBuilt {
 			// Signals-based (guard-page) modules deliberately refuse serialization
-			// (their code embeds the fault-handling bounds elision). The round-trip
-			// is not meaningful under this build tag, so skip it and hand the
-			// original back so the rest of the test still exercises the module.
-			return input
+			// (their code embeds the fault-handling bounds elision). Do not return the
+			// original object from a helper that promises a public artifact load.
+			t.Skipf("public artifact round-trip unavailable in guard-page build: %v", err)
 		}
 		t.Fatalf("MarshalBinary: %v", err)
 	}
-	var got Compiled
-	if err := got.UnmarshalBinary(encoded); err != nil {
-		// Staged products deliberately omit their private admission marker from the
-		// public artifact. Positive codec execution tests still need to exercise the
-		// strict payload decoder; dedicated tests separately assert that public load
-		// rejects the missing marker.
-		if !strings.Contains(err.Error(), "unknown required feature bits") {
-			t.Fatalf("UnmarshalBinary: %v", err)
-		}
-		if err := unmarshalCompiled(&got, encoded[5:]); err != nil {
-			t.Fatalf("private UnmarshalBinary: %v", err)
-		}
+	got, err := LoadTrustedArtifact(encoded)
+	if err != nil {
+		t.Fatalf("LoadTrustedArtifact: %v", err)
 	}
+	return got
+}
+
+// privatePayloadRoundTrip is only for tests that explicitly exercise a staged
+// product whose public artifact admission is intentionally unsupported.
+func privatePayloadRoundTrip(t testing.TB, input *Compiled) *Compiled {
+	t.Helper()
+	encoded, err := marshalCompiled(input)
+	if err != nil {
+		t.Fatalf("marshalCompiled: %v", err)
+	}
+	var got Compiled
+	if err := unmarshalCompiled(&got, encoded[5:]); err != nil {
+		t.Fatalf("unmarshalCompiled: %v", err)
+	}
+	if len(got.tableExports) == 0 {
+		got.tableExports = nil
+	}
+	got.hasTableExportMetadata = true
+	if got.memoryDir == nil {
+		got.memoryDir = &compiledMemoryDirectory{}
+	}
+	if len(got.memoryDir.exports) == 0 {
+		got.memoryDir.exports = nil
+	}
+	got.memoryDir.exactExports = true
 	return &got
 }

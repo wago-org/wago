@@ -19,7 +19,7 @@ var preparedScalarFastEnabled = os.Getenv("WAGO_PREPARED_SCALAR_FAST") != "0"
 // preparedPrivateEntryEnabled lets a PreparedFunction with a private,
 // already-bound native context bypass the process-wide rebinding lease.
 // WAGO_PREPARED_PRIVATE_ENTRY=0 restores the ordinary entry path for A/B.
-var preparedPrivateEntryEnabled = os.Getenv("WAGO_PREPARED_PRIVATE_ENTRY") != "0"
+var preparedPrivateEntryEnabled = preparedCallEnabled && os.Getenv("WAGO_PREPARED_PRIVATE_ENTRY") != "0"
 
 // preparedIsolatedEntryEnabled lets a prepared scalar call whose instance has
 // no host-visible native state enter its instance-owned Engine without taking
@@ -30,7 +30,7 @@ var preparedIsolatedEntryEnabled = os.Getenv("WAGO_PREPARED_ISOLATED_ENTRY") != 
 // invokePrivateEntryEnabled lets the bounded scalar Instance.Invoke path reuse
 // the same already-bound private entry as PreparedFunction. Export resolution
 // remains in Invoke; WAGO_INVOKE_PRIVATE_ENTRY=0 restores the general entry.
-var invokePrivateEntryEnabled = os.Getenv("WAGO_INVOKE_PRIVATE_ENTRY") != "0"
+var invokePrivateEntryEnabled = preparedCallEnabled && os.Getenv("WAGO_INVOKE_PRIVATE_ENTRY") != "0"
 
 // preparedDirectIntEnabled selects register-ABI entry for adapter-free integer
 // scalar leaves. WAGO_PREPARED_DIRECT_INT=0 restores the wrapper adapter.

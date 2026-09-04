@@ -20,7 +20,8 @@ const (
 
 	// Internal CPU/execution bits share the persisted u64 requirement word but
 	// are stripped before exposing CoreFeatures. Public feature bits occupy the
-	// low range; reserving the top eight bits avoids growing artifacts.
+	// low range; reserving the top nine bits avoids growing artifacts.
+	compiledGCExecutionI31Product         uint64 = 1 << 55
 	compiledFuncRefContextHeader          uint64 = 1 << 56
 	compiledDynamicFuncrefEscape          uint64 = 1 << 57
 	compiledRegisterABIDisabled           uint64 = 1 << 58
@@ -29,7 +30,7 @@ const (
 	compiledGCExecutionDynamicFuncRefTest uint64 = 1 << 61
 	compiledGCExecutionGenericStruct      uint64 = 1 << 62
 	compiledGCExecutionGenericArray       uint64 = 1 << 63
-	compiledGCExecutionMask                      = compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
+	compiledGCExecutionMask                      = compiledGCExecutionI31Product | compiledGCExecutionDynamicFuncRefTest | compiledGCExecutionGenericStruct | compiledGCExecutionGenericArray
 
 	// Import names are attacker-controlled artifact metadata. Bound the decoded
 	// string headers plus exact-name sidecar independently of the encoded section
@@ -338,6 +339,9 @@ func marshalCompiledMetadataMeasured(c *Compiled) ([]byte, ArtifactSectionSizes,
 	w.tags(c)
 	mark(&sizes.Tags)
 	required := uint64(compiledStructuralRequiredFeatures(c))
+	if c.stagedGCI31Product() != 0 {
+		required |= compiledGCExecutionI31Product
+	}
 	if c.stagedGCStructProduct() == stagedGCStructGeneric {
 		required |= compiledGCExecutionGenericStruct
 	}
@@ -993,6 +997,14 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 		c.ensureCodeCache()
 		c.codeCache.stagedFeatures |= CoreFeatureTypedFunctionReferences
 		c.codeCache.flags |= compiledCacheDynamicFuncRefTest
+	}
+	if gcExecution&compiledGCExecutionI31Product != 0 {
+		if !c.requiredFeatures.IsEnabled(CoreFeatureGC) {
+			return fmt.Errorf("i31 execution product flag requires the recorded GC feature")
+		}
+		c.ensureCodeCache()
+		c.codeCache.stagedFeatures |= c.requiredFeatures & (CoreFeatureGC | CoreFeatureTypedFunctionReferences)
+		c.codeCache.gcI31Product = stagedGCI31ProductCore
 	}
 	if required&compiledAtomicWaitExecution != 0 {
 		if !c.requiredFeatures.IsEnabled(CoreFeatureThreads) {

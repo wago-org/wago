@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"testing"
@@ -173,4 +174,14 @@ func TestInvocationLeaseStateMachine(t *testing.T) {
 			t.Fatalf("overflow rejection changed state to %#x, want %#x", got, instanceInvocationCount)
 		}
 	})
+}
+
+func TestNilInstanceInvokeFailsClosed(t *testing.T) {
+	var in *Instance
+	if got, err := in.Invoke("missing"); got != nil || err == nil || !strings.Contains(err.Error(), "instance is nil") {
+		t.Fatalf("Invoke on nil instance = %v, %v; want nil result and instance-is-nil error", got, err)
+	}
+	if got, err := in.InvokeContext(context.Background(), "missing"); got != nil || err == nil || !strings.Contains(err.Error(), "instance is nil") {
+		t.Fatalf("InvokeContext on nil instance = %v, %v; want nil result and instance-is-nil error", got, err)
+	}
 }
