@@ -9,16 +9,10 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// TestFloatCompareBranchFusion exercises the fused float-compare→branch path
-// (fcmpMaybeDefer → condenseFCompareToFlags): an ordered float relation
-// (lt/le/gt/ge) directly before `if` or `br_if` lowers to FCMP + a NaN-safe
-// B.cond instead of materializing a boolean. Go's native <,>,<=,>= return false
-// on NaN, matching wasm, so they are the oracle.
-func TestFloatCompareBranchFusion(t *testing.T) {
-	before := fcmpFuseEnabled
-	fcmpFuseEnabled = true
-	t.Cleanup(func() { fcmpFuseEnabled = before })
-
+// TestFloatCompareBranches covers ordered comparisons immediately consumed by
+// if and br_if, including unordered NaN inputs. Go's native <,>,<=,>= return
+// false on NaN, matching Wasm, so they are the oracle.
+func TestFloatCompareBranches(t *testing.T) {
 	fbits32 := func(v float32) uint64 { return uint64(math.Float32bits(v)) }
 	fbits64 := func(v float64) uint64 { return math.Float64bits(v) }
 

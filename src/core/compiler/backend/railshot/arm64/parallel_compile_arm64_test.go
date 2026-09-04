@@ -4,16 +4,66 @@ package arm64
 
 import (
 	"bytes"
-	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/arm64"
 )
+
+var parallelStackOutlierSinkArm64 *encoder.CompiledModule
+
+func BenchmarkRailshotCompileParallelStackOutliersArm64(b *testing.B) {
+	body := make([]byte, 1, 1+(64<<10)*3+1) // no locals
+	for range 64 << 10 {
+		body = append(body, 0x41, 0x00, 0x1a) // i32.const 0; drop
+	}
+	body = append(body, 0x0b)
+	defs := make([]funcDef, 8)
+	for i := range defs {
+		defs[i].body = body
+	}
+	m := modFuncs(b, defs...)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		cm, err := CompileModuleWith(m, CompileOptions{Workers: 4})
+		if err != nil {
+			b.Fatal(err)
+		}
+		parallelStackOutlierSinkArm64 = cm
+	}
+}
+
+func TestParallelFuncResultSizeArm64(t *testing.T) {
+	if got, want := unsafe.Sizeof(funcResult{}), uintptr(48); got != want {
+		t.Fatalf("funcResult size = %d, want %d", got, want)
+	}
+}
+
+func TestCompactFuncResultRangeArm64(t *testing.T) {
+	start, end, ok := compactFuncResultRange(int(^uint32(0))-7, 7)
+	if !ok || start != ^uint32(0)-7 || end != ^uint32(0) {
+		t.Fatalf("boundary range = (%d, %d, %v)", start, end, ok)
+	}
+	if _, _, ok := compactFuncResultRange(int(^uint32(0))-7, 8); ok {
+		t.Fatal("overflowing worker range accepted")
+	}
+	if _, _, ok := compactFuncResultRange(-1, 1); ok {
+		t.Fatal("negative worker range accepted")
+	}
+	if value, ok := compactFuncResultValue(int(^uint32(0))); !ok || value != ^uint32(0) {
+		t.Fatalf("boundary value = (%d, %v)", value, ok)
+	}
+	if _, ok := compactFuncResultValue(int(uint64(^uint32(0)) + 1)); ok {
+		t.Fatal("overflowing metadata value accepted")
+	}
+}
 
 func TestCompileWorkersDeterministicArm64(t *testing.T) {
 	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
@@ -60,19 +110,29 @@ func TestCompileWorkersSizeSharedAdaptersDeterministicArm64(t *testing.T) {
 
 func equalWorkerModuleStatsARM64(a, b *ModuleStats) bool {
 	aCopy, bCopy := *a, *b
+	aCopy.Funcs = append([]*CodegenStats(nil), a.Funcs...)
+	bCopy.Funcs = append([]*CodegenStats(nil), b.Funcs...)
 	aCopy.NativeSize.CompilerCodeArenaBytes = 0
 	bCopy.NativeSize.CompilerCodeArenaBytes = 0
-	return reflect.DeepEqual(&aCopy, &bCopy)
-}
-
-func TestCompileWorkersLowestIndexErrorArm64(t *testing.T) {
-	results := make([]funcResult, 8)
-	results[7].err = errors.New("late index")
-	results[2].err = errors.New("first index")
-	idx, err := firstFuncError(results)
-	if idx != 2 || err == nil || err.Error() != "first index" {
-		t.Fatalf("firstFuncError = (%d, %v), want (2, first index)", idx, err)
+	aCopy.Compile.StageNanos = [shared.CompileStageCount]uint64{}
+	bCopy.Compile.StageNanos = [shared.CompileStageCount]uint64{}
+	aCopy.Compile.NodeScratchReserved, bCopy.Compile.NodeScratchReserved = 0, 0
+	aCopy.Compile.NodeScratchPeak, bCopy.Compile.NodeScratchPeak = 0, 0
+	aCopy.Compile.NodeScratchRetained, bCopy.Compile.NodeScratchRetained = 0, 0
+	aCopy.Compile.NodeScratchDiscarded, bCopy.Compile.NodeScratchDiscarded = 0, 0
+	aCopy.Compile.ControlScratchReserved, bCopy.Compile.ControlScratchReserved = 0, 0
+	aCopy.Compile.ControlScratchPeak, bCopy.Compile.ControlScratchPeak = 0, 0
+	aCopy.Compile.ControlScratchRetained, bCopy.Compile.ControlScratchRetained = 0, 0
+	aCopy.Compile.ControlScratchDiscarded, bCopy.Compile.ControlScratchDiscarded = 0, 0
+	for i := range aCopy.Funcs {
+		if aCopy.Funcs[i] == nil || bCopy.Funcs[i] == nil {
+			continue
+		}
+		aFunc, bFunc := *aCopy.Funcs[i], *bCopy.Funcs[i]
+		aFunc.CompileNanos, bFunc.CompileNanos = 0, 0
+		aCopy.Funcs[i], bCopy.Funcs[i] = &aFunc, &bFunc
 	}
+	return reflect.DeepEqual(&aCopy, &bCopy)
 }
 
 func readParallelTestModuleArm64(t testing.TB, path string) *wasm.Module {

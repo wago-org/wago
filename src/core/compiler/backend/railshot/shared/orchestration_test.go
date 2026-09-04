@@ -2,9 +2,33 @@ package shared
 
 import (
 	"errors"
+	"sync"
 	"testing"
 	"unsafe"
 )
+
+func TestLowestIndexError(t *testing.T) {
+	var errs LowestIndexError
+	errs.Reset(8)
+	first := errors.New("first function error")
+	var wg sync.WaitGroup
+	for _, index := range []int{7, 5, 2, 6} {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := errors.New("later function error")
+			if index == 2 {
+				err = first
+			}
+			errs.Record(index, err)
+		}()
+	}
+	wg.Wait()
+	index, err := errs.Result()
+	if index != 2 || !errors.Is(err, first) {
+		t.Fatalf("lowest error = (%d, %v), want (2, first function error)", index, err)
+	}
+}
 
 func TestResolveWorkers(t *testing.T) {
 	for _, tc := range []struct {
@@ -59,14 +83,5 @@ func TestModuleEntriesUsesOneExactBackingAllocation(t *testing.T) {
 	emptyEntry, emptyInternal := ModuleEntries(0)
 	if emptyEntry == nil || emptyInternal == nil {
 		t.Fatal("zero-function entry tables changed from non-nil empty slices")
-	}
-}
-
-func TestFirstErrorIndex(t *testing.T) {
-	first, second := errors.New("first"), errors.New("second")
-	errs := []error{nil, first, second}
-	idx, err := FirstErrorIndex(len(errs), func(i int) error { return errs[i] })
-	if idx != 1 || !errors.Is(err, first) {
-		t.Fatalf("FirstErrorIndex = %d, %v", idx, err)
 	}
 }

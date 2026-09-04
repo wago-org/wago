@@ -50,7 +50,7 @@ claiming that every opcode spelling is a separate optimization.
 | Scalar FP arithmetic, conversions, rounding, min/max, and bit operations | deferred-action FP templates | **Implemented** | **Implemented**; ARM64 min/max preserves Wasm NaN and signed-zero semantics. |
 | Linear-memory base/index/offset addressing and folded immediate offsets | `emitMemoryLoadStoreWithImmOffset`, load/store emitters | **Implemented** | **Implemented** for AArch64 load/store addressing; no general ALU-memory operand equivalent. |
 | Explicit linear-memory bounds checks and passive/guard-page mode | `emitLinMemBoundsCheck`, config/runtime memory manager | **Implemented** | **Implemented**; Darwin/ARM64 uses signal-backed guard pages. |
-| Bounds-check facts and loop prechecks | Wago extension beyond direct WARP source parity | **Implemented** | **Implemented**; ARM64 has the same A/B controls. |
+| Bounds-check facts | Wago extension beyond direct WARP source parity | **Implemented** | **Implemented**; loop-precheck versioning was removed on both targets after cost/benefit qualification. |
 | Bulk-memory specializations (`copy`, `fill`, `init`) | WARP copy/fill loops and builtins | **Implemented** | **Implemented**; ARM64 uses explicit loops and constant-size helpers where applicable. |
 | Fast function-entry adapters and stack-fence checks | `emitFunctionEntryPoint`, stack checks | **Implemented** | **Implemented**; small call-free leaves may elide the fence. |
 | Builtin/runtime helper calls | `execBuiltinFncCall`, call-dispatch | **Implemented** | **Implemented** through native helpers and no-cgo host-call trampolines. |
@@ -62,7 +62,7 @@ claiming that every opcode spelling is a separate optimization.
 - WARP's x86 general-ALU memory operands and x86 condition-code idioms do not
   have an AArch64 equivalent. ARM64 uses a register load plus orthogonal ALU,
   NZCV flags, and conditional-select instructions instead.
-- Wago's bounds facts, loop prechecks, explain/stats surface, and guarded local
+- Wago's bounds facts, explain/stats surface, and guarded local
   table-entry dispatch are Wago-specific optimization layers, not claims that
   WARP exposes the same switch or implementation shape.
 - WARP's backend source is the reference for compiler structure and local
@@ -81,7 +81,7 @@ claiming that every opcode spelling is a separate optimization.
 | Integer multiply, divide/remainder, shifts, rotates | Fixed-register `RAX`/`RDX` divide and `RCX` variable shifts | **Implemented** | ARM64 uses orthogonal `MUL`, `SDIV`/`UDIV` + `MSUB`, and variable-shift instructions. This eliminates AMD64 fixed-register staging; `magicdiv_arm64_test.go` covers constant-divisor lowering. |
 | Magic-number constant division | `magicdiv.go`, exhaustive tests | **Implemented** | `tryDivByConst` is present and ARM64 has focused execution coverage. Maintain parity testing as the encoder and signed corner cases evolve. |
 | Bounds facts / repeated-check elision | `memory.go`, `bounds_facts_test.go` | **Implemented** | ARM64 tracks certificates in `memory.go`; `WAGO_NO_BOUNDS_FACTS=1` is the A/B kill switch and `bounds_facts_arm64_test.go` covers the ARM64 path. |
-| Loop bounds-precheck hoisting | `boundshoist.go`, `boundshoist_test.go` | **Implemented** | ARM64 has the same precheck pass, enabled by default with `WAGO_LOOP_PRECHECK` and `WAGO_LP_MINCHECKS`; `boundshoist_arm64_test.go` covers the ARM64 path. |
+| Loop bounds-precheck hoisting | Historical `boundshoist.go` experiment | **Removed** | Removed on both targets after broad execution gains failed to justify duplicated loop lowering and compile-resource cost. |
 | Guard-page bounds elision | Guard-page mode omits explicit checks | **Implemented** | On supported ARM64 targets, signal-backed guard pages provide the same no-explicit-check fast path. This is runtime/platform work, not an ISA-codegen optimization. |
 | Memory operands folded into arithmetic / comparisons | x86 addressing modes preserve `stMemRef` through condensation | **Not applicable** | AArch64 load/store instructions cannot be general ALU memory operands. ARM64 materializes a load into a register before the operation, so this AMD64 code-size/performance win has no direct equivalent. |
 | Bulk-memory fast paths | `memory.copy`/`fill` helpers and small-size paths | **Implemented** | ARM64 implements `memory.copy`, `memory.fill`, `memory.init`, and their constant-size helpers; `memexec_arm64_test.go` includes large bulk-memory execution coverage. |
@@ -113,7 +113,7 @@ claiming that every opcode spelling is a separate optimization.
 ## Highest-value follow-ups
 
 1. Maintain the focused ARM64 regression suites as optimization work changes
-   bounds facts, loop prechecks, register merge, folding, inlining, and pinning.
+   bounds facts, register merge, folding, inlining, and pinning.
 2. Expand architecture-neutral Release 2 tests where they add coverage beyond the
    existing native Linux and Darwin ARM64 gates.
 3. Measure synthesized NEON paths (especially movemask, shuffles, and scalar-count

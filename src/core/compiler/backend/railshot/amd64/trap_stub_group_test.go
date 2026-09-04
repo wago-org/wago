@@ -82,7 +82,7 @@ func TestSortTrapSitesByFunction(t *testing.T) {
 		if i != 0 && sites[i-1].function > site.function {
 			t.Fatalf("sites are not sorted at %d: %+v", i, sites)
 		}
-		seen[site.branch] = true
+		seen[int(site.branch)] = true
 	}
 	for _, branch := range []int{10, 20, 30, 40, 50} {
 		if !seen[branch] {

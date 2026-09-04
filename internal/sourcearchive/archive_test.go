@@ -220,7 +220,7 @@ func TestExtractOpensArchiveOnce(t *testing.T) {
 
 func TestExtractUsesOpenedArchiveAfterPathReplacement(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Windows does not permit renaming an archive while its handle is open")
+		t.Skip("Windows does not permit replacing an open archive path")
 	}
 	archive := writeArchive(t, []zipEntry{{name: "root/go.mod", data: "module original.example/test\n"}})
 	replacement := writeArchive(t, []zipEntry{{name: "replacement/README.md", data: "wrong archive\n"}})

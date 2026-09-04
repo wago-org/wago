@@ -3,7 +3,6 @@ package railssa
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/profile"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -36,7 +35,7 @@ type Specialization struct {
 	Writes      HeapMask
 	Flags       EffectFlags
 	Kind        SpecializationKind
-	GCFact      codegen.GCRefFact
+	GCFact      GCRefFact
 }
 
 type SpecializationPlan struct {
@@ -48,7 +47,7 @@ type SpecializationPlan struct {
 type GCValueFact struct {
 	Instruction uint32
 	Result      uint16
-	Fact        codegen.GCRefFact
+	Fact        GCRefFact
 }
 
 // SpecializationInputs groups immutable runtime/profile facts consumed by the
@@ -91,15 +90,15 @@ func ProduceGCValueFacts(f *StackFunc, semantic *SemanticFunc, reuse []GCValueFa
 		if !ok || kind != wasm.CompStruct && kind != wasm.CompArray {
 			return facts, fmt.Errorf("railssa: allocating instruction %d type %d is not a collector composite", semanticID, typeIndex)
 		}
-		if identity == codegen.MaxGCRefFactIdentity {
+		if identity == MaxGCRefFactIdentity {
 			continue
 		}
 		identity++
-		heap := codegen.GCHeapStruct
+		heap := GCHeapStruct
 		if kind == wasm.CompArray {
-			heap = codegen.GCHeapArray
+			heap = GCHeapArray
 		}
-		fact := codegen.ExactGCRefFact(typeIndex, identity, heap).WithFreshness(codegen.GCFreshUnpublished)
+		fact := ExactGCRefFact(typeIndex, identity, heap).WithFreshness(GCFreshUnpublished)
 		if instruction.Op == wasm.InstrArrayNewFixed {
 			fact = fact.WithKnownArrayLength(source.Params())
 		}
@@ -156,7 +155,7 @@ func PlanSpecialization(f *StackFunc, semantic *SemanticFunc, metadata *Metadata
 			if typ, exact := value.Fact.ExactType(); exact {
 				reuse.Entries = append(reuse.Entries, Specialization{Instruction: uint32(semanticID), Target: typ, Result: value.Result, Kind: SpecializeExactGCType, GCFact: value.Fact})
 			}
-			if value.Fact.Freshness() == codegen.GCFreshUnpublished {
+			if value.Fact.Freshness() == GCFreshUnpublished {
 				reuse.Entries = append(reuse.Entries, Specialization{Instruction: uint32(semanticID), Certificate: value.Fact.Identity(), Result: value.Result, Kind: SpecializeFreshObject, GCFact: value.Fact})
 			}
 			gcIndex++
@@ -235,7 +234,7 @@ func VerifySpecialization(f *StackFunc, semantic *SemanticFunc, metadata *Metada
 			}
 		case SpecializeFreshObject:
 			fact, ok := findGCValueFact(inputs.GCValues, entry.Instruction, entry.Result)
-			if !ok || fact.Fact != entry.GCFact || entry.GCFact.Freshness() != codegen.GCFreshUnpublished || entry.GCFact.Identity() == 0 || entry.Certificate != entry.GCFact.Identity() {
+			if !ok || fact.Fact != entry.GCFact || entry.GCFact.Freshness() != GCFreshUnpublished || entry.GCFact.Identity() == 0 || entry.Certificate != entry.GCFact.Identity() {
 				return fmt.Errorf("railssa: unproven fresh-object specialization %d", id)
 			}
 		}
@@ -263,7 +262,7 @@ func validateGCValueFacts(f *StackFunc, semantic *SemanticFunc, facts []GCValueF
 		if !ok || typ.Kind() != wasm.ValRef {
 			return fmt.Errorf("railssa: GC value fact %d does not describe a reference result", index)
 		}
-		if value.Fact.Freshness() == codegen.GCFreshUnpublished && (value.Fact.Identity() == 0 || value.Fact.Nullability() != codegen.GCKnownNonNull || value.Fact.HeapClass() != codegen.GCHeapStruct && value.Fact.HeapClass() != codegen.GCHeapArray) {
+		if value.Fact.Freshness() == GCFreshUnpublished && (value.Fact.Identity() == 0 || value.Fact.Nullability() != GCKnownNonNull || value.Fact.HeapClass() != GCHeapStruct && value.Fact.HeapClass() != GCHeapArray) {
 			return fmt.Errorf("railssa: GC value fact %d has invalid fresh-object proof", index)
 		}
 	}

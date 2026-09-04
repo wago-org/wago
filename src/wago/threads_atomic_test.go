@@ -791,6 +791,14 @@ func TestThreadsAtomicWriteMatrixTrapsBeforeMutation(t *testing.T) {
 }
 
 func TestThreadsDistinctInstancesOverlapInNativeExecution(t *testing.T) {
+	// Generated native code does not participate in Go's asynchronous
+	// scheduler. Keep one P for each guest while both wait at the rendezvous.
+	previousProcs := goruntime.GOMAXPROCS(0)
+	if previousProcs < 2 {
+		goruntime.GOMAXPROCS(2)
+		t.Cleanup(func() { goruntime.GOMAXPROCS(previousProcs) })
+	}
+
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2 | CoreFeatureThreads).WithBoundsChecks(BoundsChecksExplicit)
 	compiled, err := Compile(config, sharedAtomicOverlapModule())
 	if err != nil {
@@ -809,6 +817,10 @@ func TestThreadsDistinctInstancesOverlapInNativeExecution(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// Keep first-use plugin-state allocation and any Go GC it triggers out of
+		// the native-overlap window. A stop-the-world GC cannot suspend a guest
+		// that is deliberately spinning in generated code.
+		instances[i].ensurePluginState()
 		defer instances[i].Close()
 	}
 

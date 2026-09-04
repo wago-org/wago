@@ -57,6 +57,43 @@ func runArm64WrapperWithOptions(t *testing.T, m *wasm.Module, opts CompileOption
 	return binary.LittleEndian.Uint64(results), err
 }
 
+// runArm64WrapperMem is the memory-initializing variant used by load and bounds
+// tests. It keeps the same serialized wrapper ABI as runArm64Wrapper.
+func runArm64WrapperMem(t *testing.T, m *wasm.Module, arg uint32, init func([]byte)) (uint32, error) {
+	t.Helper()
+	cm, err := CompileModule(m)
+	if err != nil {
+		t.Fatalf("arm64 compile: %v", err)
+	}
+	eng, err := coreruntime.NewEngine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer eng.Close()
+	jm, err := coreruntime.NewJobMemory(65536)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer jm.Close()
+	if init != nil {
+		init(jm.CurrentBytes())
+	}
+	ar, err := coreruntime.NewArena(4096)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ar.Close()
+	code, entry, err := coreruntime.MapCode(cm.Code)
+	if err != nil {
+		t.Fatalf("map: %v", err)
+	}
+	defer coreruntime.Unmap(code)
+	serArgs, results, trap := ar.Alloc(16), ar.Alloc(16), ar.Alloc(coreruntime.TrapBufferBytes)
+	binary.LittleEndian.PutUint32(serArgs, arg)
+	err = eng.Call(entry+uintptr(cm.Entry[0]), serArgs, jm.LinearMemory(), trap, results)
+	return binary.LittleEndian.Uint32(results), err
+}
+
 // runArm64u runs function 0 and returns its 64-bit result, failing the test on a
 // trap. Mirrors amd64's runAmd64u.
 func runArm64u(t *testing.T, m *wasm.Module, args ...uint64) uint64 {

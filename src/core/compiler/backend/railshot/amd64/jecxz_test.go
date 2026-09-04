@@ -17,29 +17,18 @@ func TestSizeDirectJecxzBulkTails(t *testing.T) {
 		{"memory.copy", []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00, 0x0b}},
 		{"memory.fill", []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0b, 0x00, 0x0b}},
 	}
-	before := directJecxzEnabled
-	t.Cleanup(func() { directJecxzEnabled = before })
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			m := modMem(t, 1, params, nil, test.body)
-			compile := func(enabled bool) *CodegenStats {
-				directJecxzEnabled = enabled
-				stats := &ModuleStats{}
-				cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: stats, Workers: 1})
-				if err != nil {
-					t.Fatal(err)
-				}
-				if cm.CodeImage != nil {
-					t.Cleanup(func() { cm.CodeImage.Close() })
-				}
-				return stats.Funcs[0]
+			stats := &ModuleStats{}
+			cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: stats, Workers: 1})
+			if err != nil {
+				t.Fatal(err)
 			}
-			long := compile(false)
-			short := compile(true)
-			if got := long.CodeBytes - short.CodeBytes; got < 1 {
-				t.Fatalf("code delta = %d bytes, want at least 1", got)
+			if cm.CodeImage != nil {
+				t.Cleanup(func() { cm.CodeImage.Close() })
 			}
-			if got := short.Peephole["direct-jecxz"]; got != 1 {
+			if got := stats.Funcs[0].Peephole["direct-jecxz"]; got != 1 {
 				t.Fatalf("direct-jecxz hits = %d, want 1", got)
 			}
 		})

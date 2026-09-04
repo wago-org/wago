@@ -7,9 +7,15 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func newGCFrameRootPlan(_ *wasm.Module, exactRoots bool) *shared.GCModuleFrameRootPlan {
+func newGCFrameRootPlan(_ *wasm.Module, exactRoots bool, diagnostic *string) *shared.GCModuleFrameRootPlan {
+	if diagnostic != nil {
+		*diagnostic = ""
+	}
 	if !exactRoots {
 		return nil
 	}
-	return &shared.GCModuleFrameRootPlan{Diagnostic: "exact native GC root maps are unavailable on this build target"}
+	if diagnostic != nil {
+		*diagnostic = "exact native GC root maps are unavailable on this build target"
+	}
+	return nil
 }

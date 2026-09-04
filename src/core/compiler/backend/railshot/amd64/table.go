@@ -5,7 +5,6 @@ package amd64
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -570,31 +569,24 @@ func (f *fn) refNull(r *wasm.Reader) error {
 		return err
 	}
 	value := f.pushValue(storage{kind: stConst, typ: mtI64, cval: 0})
-	gcHeap := codegen.GCHeapUnknown
 	gcReference := false
 	if heap >= 0 {
 		if target, ok := f.stagedGCType(uint32(heap)); ok {
 			switch target.Comp.Kind {
-			case wasm.CompStruct:
-				gcHeap, gcReference = codegen.GCHeapStruct, true
-			case wasm.CompArray:
-				gcHeap, gcReference = codegen.GCHeapArray, true
+			case wasm.CompStruct, wasm.CompArray:
+				gcReference = true
 			}
 		}
 	} else {
 		switch wasm.AbsHeapType(byte(heap) & 0x7f) {
-		case wasm.HeapStruct:
-			gcHeap, gcReference = codegen.GCHeapStruct, true
-		case wasm.HeapArray:
-			gcHeap, gcReference = codegen.GCHeapArray, true
-		case wasm.HeapI31:
-			gcHeap, gcReference = codegen.GCHeapI31, true
+		case wasm.HeapStruct, wasm.HeapArray, wasm.HeapI31:
+			gcReference = true
 		case wasm.HeapAny, wasm.HeapEq, wasm.HeapNone:
 			gcReference = true
 		}
 	}
 	if gcReference {
-		f.markGCRefFact(value, codegen.NewGCRefFact(codegen.GCKnownNull, gcHeap))
+		markGCReference(value)
 	}
 	return nil
 }
@@ -610,7 +602,7 @@ func (f *fn) refFunc(r *wasm.Reader) error {
 		return err
 	}
 	if f.gcTypeSubtypingRefTest {
-		f.pushValue(storage{kind: stFuncRef, typ: mtI64, idx: int(idx)})
+		f.pushValue(storage{kind: stFuncRef, typ: mtI64, idx: idx})
 		return nil
 	}
 	ref := f.allocReg(0)
@@ -623,19 +615,6 @@ func (f *fn) refFunc(r *wasm.Reader) error {
 }
 
 func (f *fn) refIsNull() {
-	fact := f.gcRefFact(f.s.back())
-	switch fact.Nullability() {
-	case codegen.GCKnownNull:
-		f.dropValue()
-		f.pushValue(storage{kind: stConst, typ: mtI32, cval: 1})
-		f.stats.peep("gc-null-check-elide")
-		return
-	case codegen.GCKnownNonNull:
-		f.dropValue()
-		f.pushValue(storage{kind: stConst, typ: mtI32})
-		f.stats.peep("gc-null-check-elide")
-		return
-	}
 	ref := f.materialize(f.popValue())
 	f.a.TestSelf(ref, true)
 	f.a.SetccReg(condE, ref)
@@ -654,22 +633,11 @@ func (f *fn) refEq() {
 }
 
 func (f *fn) refAsNonNull() {
-	fact := f.gcRefFact(f.s.back())
-	if fact.Nullability() == codegen.GCKnownNonNull {
-		f.stats.peep("gc-null-check-elide")
-		return
-	}
-	if fact.Nullability() == codegen.GCKnownNull {
-		f.flush()
-		f.trapAlways(trapNullReference)
-		f.markGCRefFact(f.s.back(), fact.WithNullability(codegen.GCKnownNonNull))
-		return
-	}
 	ref := f.materialize(f.popValue())
 	f.a.TestSelf(ref, true)
 	f.trapIf(condE, trapNullReference)
 	result := f.pushReg(ref, mtI64)
-	f.markGCRefFact(result, fact.WithNullability(codegen.GCKnownNonNull))
+	markGCReference(result)
 }
 
 func (f *fn) snapshotFuncrefDescriptor(ref Reg, slot int) {

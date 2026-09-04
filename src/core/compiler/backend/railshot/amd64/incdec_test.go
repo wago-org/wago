@@ -30,47 +30,27 @@ func TestSizeIncDecImmediateForms(t *testing.T) {
 		{"i64 sub one", wasm.I64, 0x42, 0x7d, 0x01, 0, ^uint64(0)},
 		{"i64 sub minus one", wasm.I64, 0x42, 0x7d, 0x7f, ^uint64(0), 0},
 	}
-	before := incDecEnabled
-	t.Cleanup(func() { incDecEnabled = before })
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			m := mod1(t, []wasm.ValType{test.type_}, []wasm.ValType{test.type_},
 				[]byte{0x00, 0x20, 0x00, test.constOp, test.imm, test.op, 0x0b})
-			compile := func(enabled bool) (*encoderamd64.CompiledModule, *ModuleStats) {
-				incDecEnabled = enabled
-				stats := &ModuleStats{}
-				cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: stats})
-				if err != nil {
-					t.Fatal(err)
-				}
-				t.Cleanup(func() { cm.CodeImage.Close() })
-				return cm, stats
+			stats := &ModuleStats{}
+			cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: stats})
+			if err != nil {
+				t.Fatal(err)
 			}
-			long, longStats := compile(false)
-			short, shortStats := compile(true)
-			if got := longStats.Funcs[0].CodeBytes - shortStats.Funcs[0].CodeBytes; got != 1 {
-				t.Fatalf("code delta = %d, want 1", got)
-			}
-			if got := shortStats.Funcs[0].Peephole["inc-dec"]; got != 1 {
+			t.Cleanup(func() { cm.CodeImage.Close() })
+			if got := stats.Funcs[0].Peephole["inc-dec"]; got != 1 {
 				t.Fatalf("inc-dec hits = %d, want 1", got)
 			}
-			if got := runCompiledAmd64u(t, short, test.arg); got != test.want {
-				t.Fatalf("result = %#x, want %#x (long code %d bytes)", got, test.want, len(long.Code))
+			if got := runCompiledAmd64u(t, cm, test.arg); got != test.want {
+				t.Fatalf("result = %#x, want %#x", got, test.want)
 			}
 		})
 	}
 }
 
 func TestSizeIncDecDirectAdjustments(t *testing.T) {
-	before := incDecEnabled
-	directBefore := directIncDecEnabled
-	t.Cleanup(func() {
-		incDecEnabled = before
-		directIncDecEnabled = directBefore
-	})
-	incDecEnabled = true
-	directIncDecEnabled = true
-
 	tests := []struct {
 		name      string
 		compact   bool
@@ -102,24 +82,5 @@ func TestSizeIncDecDirectAdjustments(t *testing.T) {
 				t.Fatalf("inc-dec-direct hits = %d, want %d", got, test.wantHits)
 			}
 		})
-	}
-}
-
-func TestSizeIncDecDirectRollback(t *testing.T) {
-	before := directIncDecEnabled
-	t.Cleanup(func() { directIncDecEnabled = before })
-	directIncDecEnabled = false
-	stats := &CodegenStats{}
-	f := fn{
-		a:      &encoderamd64.Asm{},
-		policy: shared.CompactCodegenPolicy(currentCodegenPolicy().Selection),
-		stats:  stats,
-	}
-	f.unitAdjust(RCX, false, false)
-	if want := []byte{0x83, 0xe9, 0x01}; !bytes.Equal(f.a.B, want) {
-		t.Fatalf("code = % x, want % x", f.a.B, want)
-	}
-	if got := stats.Peephole["inc-dec-direct"]; got != 0 {
-		t.Fatalf("inc-dec-direct hits = %d, want 0", got)
 	}
 }

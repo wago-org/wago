@@ -37,6 +37,23 @@ const (
 	lsConstZero                 // declared local's initial zero, not materialized yet
 )
 
+// packedLocStates stores the four local merge states in two bits each while
+// retaining stable local-index addressing for region pins whose membership may
+// change across nested control.
+type packedLocStates []byte
+
+func packedLocStateBytes(n int) int { return (n + 3) / 4 }
+
+func (s packedLocStates) get(index int) locState {
+	return locState(s[index>>2] >> (uint(index&3) * 2) & 3)
+}
+
+func (s packedLocStates) set(index int, state locState) {
+	shift := uint(index&3) * 2
+	mask := byte(3 << shift)
+	s[index>>2] = s[index>>2]&^mask | byte(state)<<shift
+}
+
 type localDef struct {
 	facts   valueFacts
 	reg     Reg
@@ -47,13 +64,6 @@ type localDef struct {
 // pinReg returns local x's dedicated register (GP or V/FP), whether it is a float
 // register, and whether x is pinned at all.
 func (f *fn) pinReg(x int) (reg Reg, isFloat, ok bool) {
-	// Loop pins live in exactly one ctrl frame at a time (see activeLoopPins);
-	// scan that small set (≤ region-register count) instead of every ctrl frame.
-	for _, p := range f.activeLoopPins {
-		if p.local == x {
-			return p.reg, false, true
-		}
-	}
 	if x < 0 || x >= len(f.locals) {
 		return regNone, false, false
 	}
@@ -165,7 +175,7 @@ func (f *fn) materializeGCFrameLocalsAt(site int, call bool) {
 		return
 	}
 	if !f.gcFrameRoots.VisitLiveLocals(site, call, func(root int) {
-		index := f.gcFrameRoots.LocalIndexes[root]
+		index := f.gcFrameRoots.Locals[root].Index
 		x := int(index)
 		if x < 0 || x >= f.nLocals {
 			f.gcFrameRoots.Exact = false
@@ -290,35 +300,61 @@ func (f *fn) reconcileLocals() {
 // recorded) — always safe: the merge assumes only the target. The merge point
 // itself must then install the recorded target as the tracked state
 // (setLocalsState).
-func (f *fn) newLocStateBuf() []locState {
+
+func (f *fn) newLocStateBuf() packedLocStates {
+	n := packedLocStateBytes(f.nLocals)
 	for i := len(f.lsPool) - 1; i >= 0; i-- {
 		b := f.lsPool[i]
-		if cap(b) < f.nLocals {
+		if cap(b) < n {
 			continue
 		}
 		last := len(f.lsPool) - 1
 		f.lsPool[i] = f.lsPool[last]
 		f.lsPool[last] = nil
 		f.lsPool = f.lsPool[:last]
-		return b[:f.nLocals]
+		f.lsPoolBytes -= cap(b)
+		return b[:n]
 	}
 	// No retained buffer is large enough. Drop one undersized entry before
 	// replacing it so the module-wide pool is bounded by maximum simultaneous
 	// control depth, not by the number of different local counts encountered.
 	if last := len(f.lsPool) - 1; last >= 0 {
+		b := f.lsPool[last]
 		f.lsPool[last] = nil
 		f.lsPool = f.lsPool[:last]
+		f.lsPoolBytes -= cap(b)
 	}
-	return make([]locState, f.nLocals)
+	return make(packedLocStates, n)
 }
 
-func (f *fn) freeLocStateBuf(b []locState) {
-	if cap(b) >= f.nLocals && f.nLocals > 0 {
+func (f *fn) freeLocStateBuf(b packedLocStates) {
+	if cap(b) >= packedLocStateBytes(f.nLocals) && f.nLocals > 0 && len(f.lsPool) < maxRetainedLocStateBufs && f.lsPoolBytes+cap(b) <= maxRetainedLocStateBytes {
+		if len(f.lsPool) == cap(f.lsPool) {
+			newCap := min(max(16, 2*cap(f.lsPool)), maxRetainedLocStateBufs)
+			pool := make([]packedLocStates, len(f.lsPool), newCap)
+			copy(pool, f.lsPool)
+			f.lsPool = pool
+		}
 		f.lsPool = append(f.lsPool, b[:cap(b)])
+		f.lsPoolBytes += cap(b)
 	}
 }
 
-func (f *fn) appendEndSite(sites *[]int, site int) {
+const frameEndConditional uint32 = 1 << 31
+
+func (f *fn) packFrameEndSite(site int, conditional bool) uint32 {
+	if site < 0 || site >= int(frameEndConditional)-1 {
+		f.setRepresentationLimit(functionRepresentationFrameEnd)
+		return 0
+	}
+	packed := uint32(site + 1) // zero remains the inline-site sentinel
+	if conditional {
+		packed |= frameEndConditional
+	}
+	return packed
+}
+
+func (f *fn) appendEndSite(sites *[]uint32, site uint32) {
 	if *sites == nil {
 		if n := len(f.endsPool); n > 0 {
 			*sites = f.endsPool[n-1][:0]
@@ -329,17 +365,17 @@ func (f *fn) appendEndSite(sites *[]int, site int) {
 	*sites = append(*sites, site)
 }
 
-func (f *fn) freeEndsBuf(b []int) {
-	if cap(b) > 0 {
+func (f *fn) freeEndsBuf(b []uint32) {
+	if capacity := cap(b); capacity > 0 && capacity <= maxRetainedEndsBufSites && len(f.endsPool) < maxRetainedEndsBufs {
 		f.endsPool = append(f.endsPool, b[:0])
 	}
 }
 
-func (f *fn) convergeEdgeTo(target *[]locState) {
+func (f *fn) convergeEdgeTo(target *packedLocStates) {
 	f.convergeEdgeToWithDead(target, 0, 0)
 }
 
-func (f *fn) convergeEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) {
+func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regMask) {
 	// Dirty registers and lazy zeros always materialize to the slot: every
 	// target guarantees at least "slot is current". Non-lazy functions can never
 	// contain lsConstZero and skip that complete local-array scan.
@@ -365,8 +401,8 @@ func (f *fn) convergeEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) 
 	}
 	if *target == nil { // first edge fixes the frame's merge state
 		t := f.newLocStateBuf()
-		for x := range t {
-			t[x] = f.locals[x].state
+		for x := 0; x < f.nLocals; x++ {
+			t.set(x, f.locals[x].state)
 		}
 		*target = t
 		return
@@ -377,13 +413,13 @@ func (f *fn) convergeEdgeToWithDead(target *[]locState, deadGP, deadFP regMask) 
 		if !ok {
 			continue
 		}
-		if t[x] == lsStackReg && f.locals[x].state == lsMem {
+		if t.get(x) == lsStackReg && f.locals[x].state == lsMem {
 			dead := deadGP.has(reg)
 			if isFloat {
 				dead = deadFP.has(reg)
 			}
 			if dead {
-				t[x] = lsMem
+				t.set(x, lsMem)
 				f.stats.peep("merge-dead-reload")
 				continue
 			}
@@ -400,7 +436,7 @@ const maxMergeNextUseOps = shared.MergeNextUseFuel
 // dead before their next read after the merge. It copies the active reader and
 // uses constant storage; uncertainty, nested control, and fuel exhaustion keep
 // the existing eager edge reload.
-func (f *fn) planForwardMergeDeadLocals(r *wasm.Reader, target, source []locState) (deadGP, deadFP regMask) {
+func (f *fn) planForwardMergeDeadLocals(r *wasm.Reader, target, source packedLocStates) (deadGP, deadFP regMask) {
 	if !f.opt(optMergeNextUse) || !f.usesCalls || f.moduleEH || target == nil {
 		return 0, 0
 	}
@@ -409,9 +445,9 @@ func (f *fn) planForwardMergeDeadLocals(r *wasm.Reader, target, source []locStat
 	for x := 0; x < f.nLocals; x++ {
 		state := f.locals[x].state
 		if source != nil {
-			state = source[x]
+			state = source.get(x)
 		}
-		if target[x] != lsStackReg || state != lsMem {
+		if target.get(x) != lsStackReg || state != lsMem {
 			continue
 		}
 		reg, isFloat, ok := f.pinReg(x)
@@ -436,13 +472,13 @@ func (f *fn) planForwardMergeDeadLocals(r *wasm.Reader, target, source []locStat
 
 // setLocalsState installs a merge point's recorded target as the tracked state
 // (no code): every reaching edge guaranteed at least this much.
-func (f *fn) setLocalsState(t []locState) {
+func (f *fn) setLocalsState(t packedLocStates) {
 	if !f.usesCalls || t == nil {
 		return
 	}
 	for x := 0; x < f.nLocals; x++ {
 		if _, _, ok := f.pinReg(x); ok {
-			f.locals[x].state = t[x]
+			f.locals[x].state = t.get(x)
 		}
 	}
 }

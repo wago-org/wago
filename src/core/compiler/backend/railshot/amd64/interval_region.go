@@ -21,7 +21,7 @@ func intervalRegionHintStorageEligible(enabled bool, bodyLen, nLocals int, modul
 // prepareIntervalRegion discovers profitable integer local lifetimes in one
 // call-free straight-line body. Storage is worker scratch and capped by
 // locals/body size; unsupported shapes keep the existing lowering.
-func (f *fn) prepareIntervalRegion(body []byte, hints funcHints) bool {
+func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 	if !intervalRegionHintStorageEligible(f.opt(optIntervalRegionPins), len(body), f.nLocals, f.moduleEH) ||
 		len(hints.localScore) != f.nLocals || len(hints.localLastGet) != f.nLocals {
 		return false
@@ -31,7 +31,7 @@ func (f *fn) prepareIntervalRegion(body []byte, hints funcHints) bool {
 	f.tmpIntervalReg = assigned
 	kept := 0
 	for x := 0; x < f.nLocals; x++ {
-		if (f.localType[x] == mtI32 || f.localType[x] == mtI64) && hints.localLastGet[x] != 0 && hints.localScore[x] >= 2 {
+		if (f.localType[x] == mtI32 || f.localType[x] == mtI64) && hints.localLastGet[x] != 0 && localHotness(hints.localScore[x]) >= 2 {
 			assigned[x] = RSP // compact eligibility marker; RSP is never allocatable.
 			kept++
 		}
@@ -99,7 +99,7 @@ func (f *fn) claimIntervalReg(x int) Reg {
 		}
 		return regNone
 	}
-	return f.evictIntervalLocalBelow(0, int(f.intervalScore[x]))
+	return f.evictIntervalLocalBelow(0, int(localHotness(f.intervalScore[x])))
 }
 
 // takeFinalIntervalGet transfers a dying local's register directly to the
@@ -140,7 +140,7 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 		}
 		s := 0
 		if x < len(f.intervalScore) {
-			s = int(f.intervalScore[x])
+			s = int(localHotness(f.intervalScore[x]))
 		}
 		if s < scoreLimit && s < bestScore {
 			best, bestScore = x, s
@@ -164,7 +164,7 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 
 func (f *fn) intervalLocalHasMemBorrow(x int) bool {
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stMemRef && e.st.memBorrow() == x {
+		if e.isValue() && e.st.kind == stMemRef && e.st.memBorrow() == x {
 			return true
 		}
 	}
@@ -173,7 +173,7 @@ func (f *fn) intervalLocalHasMemBorrow(x int) bool {
 
 func (f *fn) demoteIntervalLocalRefs(x int) {
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.kind == ekValue && e.st.kind == stLocalReg && e.st.idx == x {
+		if e.isValue() && e.st.kind == stLocalReg && e.st.idx == uint32(x) {
 			e.st.kind = stLocalRef
 			e.st.reg = regNone
 		}

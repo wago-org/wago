@@ -9,12 +9,124 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-func TestValueFactsFitExistingStoragePaddingAMD64(t *testing.T) {
-	if got, want := unsafe.Sizeof(storage{}), uintptr(64); got != want {
+func TestValueFactsAndRootsFitCompactStorageAMD64(t *testing.T) {
+	if got, want := unsafe.Sizeof(storage{}), uintptr(24); got != want {
 		t.Fatalf("storage size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(elem{}), uintptr(112); got != want {
+	if got, want := unsafe.Sizeof(elem{}), uintptr(56); got != want {
 		t.Fatalf("elem size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(stack{}), uintptr(72); got != want {
+		t.Fatalf("stack size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(trapSite{}), uintptr(12); got != want {
+		t.Fatalf("trapSite size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(callReloc{}), uintptr(12); got != want {
+		t.Fatalf("callReloc size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(gpCand{}), uintptr(12); got != want {
+		t.Fatalf("GP candidate size = %d, want %d", got, want)
+	}
+	if got, want := unsafe.Sizeof(jumpTableFragment{}), uintptr(12); got != want {
+		t.Fatalf("jump-table fragment size = %d, want %d", got, want)
+	}
+}
+
+func TestDeferredMetadataSharesCompactStorageAMD64(t *testing.T) {
+	if stMemRef >= deferredStorageKind {
+		t.Fatalf("value storage kinds overlap deferred tag: %d >= %d", stMemRef, deferredStorageKind)
+	}
+	var e elem
+	e.setElemKind(ekDeferred)
+	e.setDeferredOp(opRotr)
+	e.setValueType(mtI64)
+	e.setDeferredDepth(maxDeferDepth)
+	e.setRegisterNeed(maxDeferDepth + 1)
+	e.st.setValueFacts(factUpper32Zero | factBoolean)
+	e.st.setGCRoot(true)
+	e.st.setEHRoot(true)
+	if got := e.elemKind(); got != ekDeferred {
+		t.Fatalf("kind = %v, want deferred", got)
+	}
+	if got := e.deferredOp(); got != opRotr {
+		t.Fatalf("opcode = %v, want rotr", got)
+	}
+	if got := e.valueType(); got != mtI64 {
+		t.Fatalf("type = %v, want i64", got)
+	}
+	if got := e.deferredDepth(); got != maxDeferDepth {
+		t.Fatalf("depth = %d, want %d", got, maxDeferDepth)
+	}
+	if got := e.registerNeed(); got != maxDeferDepth+1 {
+		t.Fatalf("register need = %d, want %d", got, maxDeferDepth+1)
+	}
+	if got := e.st.valueFacts(); got != factUpper32Zero|factBoolean || !e.st.hasGCRoot() || !e.st.hasEHRoot() {
+		t.Fatalf("value metadata = %#x, want facts and both roots", e.st.meta)
+	}
+	e.setElemKind(ekValue)
+	if got := e.st.valueFacts(); got != factUpper32Zero|factBoolean || !e.st.hasGCRoot() || !e.st.hasEHRoot() {
+		t.Fatalf("kind transition changed value metadata: %#x", e.st.meta)
+	}
+}
+
+func TestCompactCallRelocFieldAMD64(t *testing.T) {
+	f := fn{}
+	if got, want := f.compactCallRelocField(int(invalidCallRelocField-1)), invalidCallRelocField-1; got != want {
+		t.Fatalf("compact call relocation field = %d, want %d", got, want)
+	}
+	if got := f.compactCallRelocField(-1); got != 0 || f.representationLimit != functionRepresentationCallReloc {
+		t.Fatalf("negative call relocation field = %d, limit = %d", got, f.representationLimit)
+	}
+	if got := f.representationError().Error(); got != "amd64: function call relocation exceeds compact representation limit" {
+		t.Fatalf("call relocation error = %q", got)
+	}
+}
+
+func TestCompactControlOffsetsFailClosedAMD64(t *testing.T) {
+	f := fn{}
+	f.appendReturnSite(-1)
+	if f.representationLimit != functionRepresentationReturnSite {
+		t.Fatalf("return-site limit = %d", f.representationLimit)
+	}
+	f = fn{}
+	fr := ctrlFrame{kind: cfBlock}
+	f.frameAddEnd(&fr, -1)
+	if f.representationLimit != functionRepresentationFrameEnd {
+		t.Fatalf("frame-end limit = %d", f.representationLimit)
+	}
+}
+
+func TestCompactTrapBranchDomainAMD64(t *testing.T) {
+	if got, want := compactTrapBranch(int(^uint32(0)-1)), ^uint32(0)-1; got != want {
+		t.Fatalf("compact trap branch = %d, want %d", got, want)
+	}
+	defer func() {
+		if recover() == nil {
+			t.Fatal("reserved trap branch sentinel accepted")
+		}
+	}()
+	compactTrapBranch(int(^uint32(0)))
+}
+
+func TestStorageMetadataFieldsAreIndependentAMD64(t *testing.T) {
+	var st storage
+	st.setGCRoot(true)
+	st.setEHRoot(true)
+	st.setValueFacts(factUpper32Zero | factBoolean)
+	if !st.hasGCRoot() || !st.hasEHRoot() {
+		t.Fatalf("setting facts cleared roots: meta=%#x", st.meta)
+	}
+	if got := st.valueFacts(); got != factUpper32Zero|factBoolean {
+		t.Fatalf("value facts = %#x, want upper-zero and boolean", got)
+	}
+	st.setValueFacts(0)
+	if !st.hasGCRoot() || !st.hasEHRoot() {
+		t.Fatalf("clearing facts cleared roots: meta=%#x", st.meta)
+	}
+	st.setGCRoot(false)
+	if st.hasGCRoot() || !st.hasEHRoot() {
+		t.Fatalf("clearing GC root changed another field: meta=%#x", st.meta)
 	}
 }
 
@@ -46,7 +158,7 @@ func TestCompareCarriesBooleanFactAMD64(t *testing.T) {
 	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 0})
 	f.pushValue(storage{kind: stLocalRef, typ: mtI32, idx: 1})
 	f.pushBinOp(opLtU, mtI32)
-	if got := f.s.back().st.facts; !got.has(factUpper32Zero | factBoolean) {
+	if got := f.s.back().st.valueFacts(); !got.has(factUpper32Zero | factBoolean) {
 		t.Fatalf("compare facts = %#x, want upper-zero and boolean", got)
 	}
 }

@@ -39,12 +39,12 @@ func (f *fn) materializeV128(e *elem) Reg {
 		}
 	case stSlot:
 		x := f.allocFReg(0)
-		f.a.LdrQ(x, SP, f.spillOff(e.st.slot))
+		f.a.LdrQ(x, SP, f.spillOff(e.st.slotIndex()))
 		f.occupyF(e, x)
 		return x
 	case stLocalRef:
 		x := f.allocFReg(0)
-		f.a.LdrQ(x, SP, f.localOff(e.st.idx))
+		f.a.LdrQ(x, SP, f.localOff(e.st.index()))
 		f.occupyF(e, x)
 		return x
 	case stLocalReg:
@@ -66,7 +66,7 @@ func (f *fn) materializeV128(e *elem) Reg {
 // register-to-register copy materializeV128 emits for a pinned local when the value
 // is only being read.
 func (f *fn) operandRegV128(e *elem) (reg Reg, owned bool) {
-	if e.kind == ekValue && e.st.kind == stLocalReg {
+	if e.elemKind() == ekValue && e.st.kind == stLocalReg {
 		return e.st.reg, false
 	}
 	return f.materializeV128(e), true

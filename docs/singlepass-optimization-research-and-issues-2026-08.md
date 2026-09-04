@@ -155,30 +155,30 @@ The 43 registered definitions are:
 ```text
 bounds-facts, st-flags, store8-flags, reg-merge, tee-sink, unary-sink,
 three-op-sink, olddest-rhs-sink, branch-fold, store-load-fwd, uxtw-add,
-entry-arg-pins, x8-pin, ext-fp-pins, call-next-use,
+entry-arg-pins, x8-pin, ext-fp-pins,
 affine-lea, tree-order, assoc-tree, bmi2-rorx, leaf-scratch-pins,
 vex-float-mem, multi-bounds-cert, immutable-table, immutable-table-type,
 inline-callfree, store-forward, frame-elide, frame-elide-reghomed,
 small-frame, v128-const-cache, v128-pins, v128-sink, reg-abi, inline,
 loop-precheck, loop-region-pins,
-immutable-poly-fastpath, legacy-fp-pins, legacy-gp-pins, stack-fence,
+immutable-poly-fastpath, stack-fence,
 stack-reg
 ```
 
 ### Complete current peephole/explain event vocabulary
 
-These 95 names are the union emitted by current AMD64 and ARM64 source. Candidate
+These 92 names are the union emitted by current AMD64 and ARM64 source. Candidate
 and bookkeeping events are included deliberately so the audit trail is complete:
 
 ```text
 affine-lea-cover, alias-load-kept, all-calls-inlined, alu-identity,
 assoc-tree, assoc-tree-candidate, bmi2-rorx, br-pair-fold, br-table-jump,
-call-dead-local-store, call-local-reload, call-local-reload-fp,
+call-local-reload, call-local-reload-fp,
 call-local-reload-gp, call-local-store, call-localset-fuse, call-result-x0,
 cmp-branch-fuse, cmp-tee-branch-fuse, commute-mem-left, compare-setcc,
 const-fold, deep-fp-local-pin, div-by-const, eh-root-clear, eh-root-init,
 entry-arg-local-pin, eqz-fold, ext-elim, extend-wrap-elim,
-fcmp-branch-fuse, fcmp-value-fallback, fcommute_mem,
+fcommute_mem,
 final-cast-array-len-fuse, final-cast-struct-get-fuse, float-local-sink,
 float-minmax-local-sink, frame-adjust-elide, gc-array-len-repeat,
 gc-dead-new, gc-known-array-len, gc-known-struct-get, gc-ref-cast-elide,

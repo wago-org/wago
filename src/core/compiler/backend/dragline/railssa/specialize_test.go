@@ -4,7 +4,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/wago-org/wago/src/core/compiler/codegen"
 	"github.com/wago-org/wago/src/core/compiler/profile"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -134,7 +133,7 @@ func TestPlanSpecializationRecordsAndReplaysExplicitGCFacts(t *testing.T) {
 	semantic := &SemanticFunc{Insts: []SemanticInst{{Op: wasm.InstrCall, Source: 0, Result: 1, Aux: uint64(1) << 32}}}
 	metadata := &Metadata{Instructions: make([]InstructionMetadata, 1)}
 	simplified := &SimplifyResult{}
-	fact := codegen.ExactGCRefFact(3, 9, codegen.GCHeapStruct).WithFreshness(codegen.GCFreshUnpublished)
+	fact := ExactGCRefFact(3, 9, GCHeapStruct).WithFreshness(GCFreshUnpublished)
 	inputs := SpecializationInputs{GCValues: []GCValueFact{{Instruction: 0, Fact: fact}}}
 	plan, err := PlanSpecialization(f, semantic, metadata, simplified, inputs, nil)
 	if err != nil {
@@ -156,15 +155,15 @@ func TestPlanSpecializationRejectsInvalidGCFacts(t *testing.T) {
 	semantic := &SemanticFunc{Insts: []SemanticInst{{Op: wasm.InstrCall, Source: 0, Result: 1, Aux: uint64(1) << 32}}}
 	metadata := &Metadata{Instructions: make([]InstructionMetadata, 1)}
 	simplified := &SimplifyResult{}
-	for _, fact := range []codegen.GCRefFact{
-		codegen.ExactGCRefFact(3, 0, codegen.GCHeapStruct).WithFreshness(codegen.GCFreshUnpublished),
-		codegen.ExactGCRefFact(3, 1, codegen.GCHeapFunc).WithFreshness(codegen.GCFreshUnpublished),
+	for _, fact := range []GCRefFact{
+		ExactGCRefFact(3, 0, GCHeapStruct).WithFreshness(GCFreshUnpublished),
+		ExactGCRefFact(3, 1, GCHeapFunc).WithFreshness(GCFreshUnpublished),
 	} {
 		if _, err := PlanSpecialization(f, semantic, metadata, simplified, SpecializationInputs{GCValues: []GCValueFact{{Instruction: 0, Fact: fact}}}, nil); err == nil {
 			t.Fatalf("invalid fresh fact accepted: %#v", fact)
 		}
 	}
-	if _, err := PlanSpecialization(f, semantic, metadata, simplified, SpecializationInputs{GCValues: []GCValueFact{{Instruction: 1, Fact: codegen.NewGCRefFact(codegen.GCKnownNull, codegen.GCHeapStruct)}}}, nil); err == nil {
+	if _, err := PlanSpecialization(f, semantic, metadata, simplified, SpecializationInputs{GCValues: []GCValueFact{{Instruction: 1, Fact: NewGCRefFact(GCKnownNull, GCHeapStruct)}}}, nil); err == nil {
 		t.Fatal("out-of-range GC fact accepted")
 	}
 }

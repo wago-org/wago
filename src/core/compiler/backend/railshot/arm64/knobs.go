@@ -12,9 +12,7 @@ import (
 var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("bounds-facts", &boundsFactsEnabled),
 	optimization.Bind("simd-superopt", &simdSuperoptEnabled),
-	optimization.Bind("swar-idioms", &swarIdiomsEnabled),
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
-	optimization.Bind("fcmp-fuse", &fcmpFuseEnabled),
 	optimization.Bind("magic-div", &magicDivEnabled),
 	optimization.Bind("shared-trap-body", &sharedTrapBodyEnabled),
 	optimization.Bind("shared-adapters", &sharedAdaptersEnabled),
@@ -49,62 +47,50 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("v128-pins", &v128LocalPinsEnabled),
 	optimization.Bind("reg-abi", &regABIEnabled),
 	optimization.Bind("inline", &inlineEnabled),
-	optimization.Bind("loop-precheck", &loopPrecheckEnabled),
-	optimization.Bind("loop-region-pins", &loopRegionPinsEnabled),
-	optimization.Bind("immutable-poly-fastpath", &immutableLocalPolyFastPath),
-	optimization.Bind("legacy-fp-pins", &legacyFPPinsEnabled),
-	optimization.Bind("legacy-gp-pins", &legacyGPPinsEnabled),
 	optimization.BindInverted("stack-fence", &noStackFence),
 	optimization.BindInverted("stack-reg", &noStackReg),
 )
 
 var (
-	optBoundsFacts           = optimizationBindings.Option("bounds-facts")
-	optSIMDSuperopt          = optimizationBindings.Option("simd-superopt")
-	optSWARIdioms            = optimizationBindings.Option("swar-idioms")
-	optIntervalRegionPins    = optimizationBindings.Option("interval-region-pins")
-	optFCmpFuse              = optimizationBindings.Option("fcmp-fuse")
-	optMagicDiv              = optimizationBindings.Option("magic-div")
-	optSharedTrapBody        = optimizationBindings.Option("shared-trap-body")
-	optSharedAdapters        = optimizationBindings.Option("shared-adapters")
-	optSTFlags               = optimizationBindings.Option("st-flags")
-	optRegMerge              = optimizationBindings.Option("reg-merge")
-	optTeeSink               = optimizationBindings.Option("tee-sink")
-	optUnarySink             = optimizationBindings.Option("unary-sink")
-	optThreeOpSink           = optimizationBindings.Option("three-op-sink")
-	optOldDestRHSSink        = optimizationBindings.Option("olddest-rhs-sink")
-	optBranchFold            = optimizationBindings.Option("branch-fold")
-	optStoreLoadFwd          = optimizationBindings.Option("store-load-fwd")
-	optUXTWAdd               = optimizationBindings.Option("uxtw-add")
-	optValueFacts            = optimizationBindings.Option("value-facts")
-	optLoadPair              = optimizationBindings.Option("load-pair")
-	optMergeNextUse          = optimizationBindings.Option("merge-next-use")
-	optEntryParamPairs       = optimizationBindings.Option("entry-param-pairs")
-	optEntryZeroPairs        = optimizationBindings.Option("entry-zero-pairs")
-	optEntryArgPins          = optimizationBindings.Option("entry-arg-pins")
-	optX8Pin                 = optimizationBindings.Option("x8-pin")
-	optExtendedFPPins        = optimizationBindings.Option("ext-fp-pins")
-	optLeafScratchPins       = optimizationBindings.Option("leaf-scratch-pins")
-	optImmutableTable        = optimizationBindings.Option("immutable-table")
-	optImmutableTableType    = optimizationBindings.Option("immutable-table-type")
-	optInlineCallFree        = optimizationBindings.Option("inline-callfree")
-	optStoreForward          = optimizationBindings.Option("store-forward")
-	optFrameElideRegHomed    = optimizationBindings.Option("frame-elide-reghomed")
-	optSmallFrame            = optimizationBindings.Option("small-frame")
-	optZeroBranch            = optimizationBindings.Option("zero-branch")
-	optMulAddFuse            = optimizationBindings.Option("mul-add-fuse")
-	optEntryInitElision      = optimizationBindings.Option("entry-init-elision")
-	optV128DirectResults     = optimizationBindings.Option("v128-direct-results")
-	optV128Pins              = optimizationBindings.Option("v128-pins")
-	optRegABI                = optimizationBindings.Option("reg-abi")
-	optInline                = optimizationBindings.Option("inline")
-	optLoopPrecheck          = optimizationBindings.Option("loop-precheck")
-	optLoopRegionPins        = optimizationBindings.Option("loop-region-pins")
-	optImmutablePolyFastPath = optimizationBindings.Option("immutable-poly-fastpath")
-	optLegacyFPPins          = optimizationBindings.Option("legacy-fp-pins")
-	optLegacyGPPins          = optimizationBindings.Option("legacy-gp-pins")
-	optStackFence            = optimizationBindings.Option("stack-fence")
-	optStackReg              = optimizationBindings.Option("stack-reg")
+	optBoundsFacts        = optimizationBindings.Option("bounds-facts")
+	optSIMDSuperopt       = optimizationBindings.Option("simd-superopt")
+	optIntervalRegionPins = optimizationBindings.Option("interval-region-pins")
+	optMagicDiv           = optimizationBindings.Option("magic-div")
+	optSharedTrapBody     = optimizationBindings.Option("shared-trap-body")
+	optSharedAdapters     = optimizationBindings.Option("shared-adapters")
+	optSTFlags            = optimizationBindings.Option("st-flags")
+	optRegMerge           = optimizationBindings.Option("reg-merge")
+	optTeeSink            = optimizationBindings.Option("tee-sink")
+	optUnarySink          = optimizationBindings.Option("unary-sink")
+	optThreeOpSink        = optimizationBindings.Option("three-op-sink")
+	optOldDestRHSSink     = optimizationBindings.Option("olddest-rhs-sink")
+	optBranchFold         = optimizationBindings.Option("branch-fold")
+	optStoreLoadFwd       = optimizationBindings.Option("store-load-fwd")
+	optUXTWAdd            = optimizationBindings.Option("uxtw-add")
+	optValueFacts         = optimizationBindings.Option("value-facts")
+	optLoadPair           = optimizationBindings.Option("load-pair")
+	optMergeNextUse       = optimizationBindings.Option("merge-next-use")
+	optEntryParamPairs    = optimizationBindings.Option("entry-param-pairs")
+	optEntryZeroPairs     = optimizationBindings.Option("entry-zero-pairs")
+	optEntryArgPins       = optimizationBindings.Option("entry-arg-pins")
+	optX8Pin              = optimizationBindings.Option("x8-pin")
+	optExtendedFPPins     = optimizationBindings.Option("ext-fp-pins")
+	optLeafScratchPins    = optimizationBindings.Option("leaf-scratch-pins")
+	optImmutableTable     = optimizationBindings.Option("immutable-table")
+	optImmutableTableType = optimizationBindings.Option("immutable-table-type")
+	optInlineCallFree     = optimizationBindings.Option("inline-callfree")
+	optStoreForward       = optimizationBindings.Option("store-forward")
+	optFrameElideRegHomed = optimizationBindings.Option("frame-elide-reghomed")
+	optSmallFrame         = optimizationBindings.Option("small-frame")
+	optZeroBranch         = optimizationBindings.Option("zero-branch")
+	optMulAddFuse         = optimizationBindings.Option("mul-add-fuse")
+	optEntryInitElision   = optimizationBindings.Option("entry-init-elision")
+	optV128DirectResults  = optimizationBindings.Option("v128-direct-results")
+	optV128Pins           = optimizationBindings.Option("v128-pins")
+	optRegABI             = optimizationBindings.Option("reg-abi")
+	optInline             = optimizationBindings.Option("inline")
+	optStackFence         = optimizationBindings.Option("stack-fence")
+	optStackReg           = optimizationBindings.Option("stack-reg")
 )
 
 type KnobInfo = optimization.Info

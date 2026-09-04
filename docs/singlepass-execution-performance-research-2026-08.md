@@ -794,8 +794,10 @@ forms instead of replaying older branch machinery:
   experiment, so the separate integer/float merge flags were dropped;
 - affine index folding gets first chance only on its measured constant-bearing
   shape. Main's broader safe nested-LEA materialization remains the fallback;
-- `call-next-use` and `affine-lea` are registered in the new runtime-local
+- `call-next-use` and `affine-lea` were registered in the new runtime-local
   optimization catalog rather than restoring the old process-global registry.
+  `call-next-use` was later defaulted off and retired after its removal screen;
+  this paragraph records the historical integration state.
 
 All measurements below used the same Ryzen 7 7800X3D, `GOMAXPROCS=1`, core 2,
 alternating order, and seven or more 200 ms execution samples.

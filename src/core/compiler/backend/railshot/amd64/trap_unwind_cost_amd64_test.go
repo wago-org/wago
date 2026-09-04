@@ -68,20 +68,27 @@ func TestSizeSharesTrapBodiesAcrossFunctionsAMD64(t *testing.T) {
 		funcDef{i32, i32, callee},
 	)
 	for _, workers := range []int{1, 2} {
-		var stats ModuleStats
-		opts := CompileOptions{CompactNative: true, Stats: &stats, Workers: workers}
-		if _, err := CompileModuleWith(m, opts); err != nil {
-			t.Fatal(err)
-		}
-		if got := stats.Funcs[1].Peephole["module-shared-trap-body"] + stats.Funcs[2].Peephole["module-shared-trap-body"]; got != 1 {
-			t.Fatalf("workers=%d module trap shares = %d, want 1", workers, got)
-		}
-		if stats.NativeSize.AccountedBytes() != stats.NativeSize.TotalBytes {
-			t.Fatalf("workers=%d native ledger = %+v", workers, stats.NativeSize)
-		}
-		for _, arg := range []uint64{0, 1, 2} {
-			if _, _, err := runMemAmd64WithOptions(t, m, CompileOptions{CompactNative: true, Workers: workers}, nil, arg); err == nil {
-				t.Fatalf("workers=%d argument %d did not trap through shared body", workers, arg)
+		for _, enabled := range []bool{false, true} {
+			var stats ModuleStats
+			opts := CompileOptions{CompactNative: true, Stats: &stats, Workers: workers, Optimizations: map[string]bool{"shared-trap-body": enabled}}
+			if _, err := CompileModuleWith(m, opts); err != nil {
+				t.Fatal(err)
+			}
+			wantShares := 0
+			if enabled {
+				wantShares = 1
+			}
+			if got := stats.Funcs[1].Peephole["module-shared-trap-body"] + stats.Funcs[2].Peephole["module-shared-trap-body"]; got != wantShares {
+				t.Fatalf("workers=%d enabled=%t module trap shares = %d, want %d", workers, enabled, got, wantShares)
+			}
+			if stats.NativeSize.AccountedBytes() != stats.NativeSize.TotalBytes {
+				t.Fatalf("workers=%d enabled=%t native ledger = %+v", workers, enabled, stats.NativeSize)
+			}
+			for _, arg := range []uint64{0, 1, 2} {
+				runOpts := CompileOptions{CompactNative: true, Workers: workers, Optimizations: map[string]bool{"shared-trap-body": enabled}}
+				if _, _, err := runMemAmd64WithOptions(t, m, runOpts, nil, arg); err == nil {
+					t.Fatalf("workers=%d enabled=%t argument %d did not trap", workers, enabled, arg)
+				}
 			}
 		}
 	}
@@ -104,7 +111,7 @@ func TestSizeSharesCompleteTrapBodyAMD64(t *testing.T) {
 		for code := uint32(1); code <= 3; code++ {
 			branch := a.JccPlaceholder(condNE)
 			sc.trapSites[code] = append(sc.trapSites[code], trapSite{
-				branch: branch, function: 4, pc: code * 10,
+				branch: uint32(branch), function: 4, pc: code * 10,
 			})
 		}
 		f.emitTrapStubs()

@@ -26,12 +26,12 @@ func TestTableMutationHints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scanBodyBytes: %v", err)
 	}
-	if !h.mutatesTable {
+	if !h.flags.has(hintMutatesTable) {
 		t.Fatal("table.set was not recorded as a table mutation")
 	}
 
 	ast := wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrTableGrow}}}
-	if h := scanBody(ast, 0, 0, 0); !h.mutatesTable {
+	if h := scanBody(ast, 0, 0, 0); !h.flags.has(hintMutatesTable) {
 		t.Fatal("AST table.grow was not recorded as a table mutation")
 	}
 }
@@ -70,14 +70,13 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 	// An exported table can be mutated by another importing instance, so the
 	// specialization must not fire.
 	m.Exports = append(m.Exports, wasm.Export{Name: "table", Index: wasm.ExternIdx{Kind: wasm.ExternTable, Index: 0}})
-	hints, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount(), nil, false)
+	hints, _, _, err := computeModuleHints(m, m.GlobalCount(), m.ImportedFuncCount(), nil, false)
 	if err != nil {
 		t.Fatalf("exported-table hints: %v", err)
 	}
-	for i := range hints {
-		if _, ok := (&fn{immutableTables: hints[i].immutableTables}).immutableTable(0); ok {
-			t.Fatalf("function %d specialized an externally mutable exported table", i)
-		}
+	immutableTables := computeImmutableTableHints(m, hints, currentCodegenPolicy())
+	if _, ok := (&fn{immutableTables: immutableTables}).immutableTable(0); ok {
+		t.Fatal("module specialized an externally mutable exported table")
 	}
 }
 

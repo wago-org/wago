@@ -88,7 +88,7 @@ func TestApplyMulMemRefOwnership(t *testing.T) {
 			if tc.borrow >= 0 {
 				f.pinnedLocalMask = maskOf(R12)
 			}
-			right := &elem{kind: ekValue, st: memRefStorage(R12, 0, tc.size, false, false, tc.borrow)}
+			right := testValueElem(memRefStorage(R12, 0, tc.size, false, false, tc.borrow))
 
 			f.applyMul(RAX, right, false)
 

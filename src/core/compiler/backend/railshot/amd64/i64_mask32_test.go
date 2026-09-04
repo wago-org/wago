@@ -29,16 +29,6 @@ func i64Mask32Module(t *testing.T, mask uint64, maskFirst, tee bool) *wasm.Modul
 	return mod1(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, body)
 }
 
-func i64Mask32SWARWiden4Body() []byte {
-	b := []byte{0x01, 0x01, 0x7e, 0x20, 0x00, 0x42}
-	b = append(b, wasmtest.SLEB64(0xffffffff)...)
-	b = append(b, 0x83, 0x22, 0x01, 0x20, 0x01, 0x42, 0x10, 0x86, 0x84, 0x42)
-	b = append(b, wasmtest.SLEB64(0x0000ffff0000ffff)...)
-	b = append(b, 0x83, 0x22, 0x01, 0x20, 0x01, 0x42, 0x08, 0x86, 0x84, 0x42)
-	b = append(b, wasmtest.SLEB64(0x00ff00ff00ff00ff)...)
-	return append(b, 0x83, 0x0b)
-}
-
 func setI64Mask32(t testing.TB, enabled bool) {
 	t.Helper()
 	if !SetOptKnob("i64-mask32", enabled) {
@@ -95,22 +85,5 @@ func TestI64Mask32Lowering(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestI64Mask32PreservesSWARWiden4(t *testing.T) {
-	saved := i64Mask32Enabled
-	defer SetOptKnob("i64-mask32", saved)
-	m := mod1(t, []wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, i64Mask32SWARWiden4Body())
-
-	setI64Mask32(t, true)
-	on := compileWithStats(t, m, false).Funcs[0]
-	setI64Mask32(t, false)
-	off := compileWithStats(t, m, false).Funcs[0]
-	if on.Peephole["swar-widen4"] != 1 || off.Peephole["swar-widen4"] != 1 {
-		t.Fatalf("swar-widen4 enabled/disabled hits = %d/%d, want 1/1", on.Peephole["swar-widen4"], off.Peephole["swar-widen4"])
-	}
-	if on.CodeBytes != off.CodeBytes {
-		t.Fatalf("swar-widen4 code changed with low-32 canonicalization: enabled=%d disabled=%d", on.CodeBytes, off.CodeBytes)
 	}
 }

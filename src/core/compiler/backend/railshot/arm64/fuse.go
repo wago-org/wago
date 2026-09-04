@@ -17,24 +17,27 @@ func invertCond(c Cond) Cond { return c ^ 1 }
 // isFusableCompare reports whether e is a deferred relational/eqz node whose flag
 // result can be branched on directly.
 func isFusableCompare(e *elem) bool {
-	return e != nil && e.kind == ekDeferred && (isCompare(e.op) || e.op == opEqz)
+	return e != nil && e.elemKind() == ekDeferred && (isCompare(e.deferredOp()) || e.deferredOp() == opEqz)
 }
 
 func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
-	if !swarMaskTestEnabled || node == nil || node.op != opEqz {
+	if !swarMaskTestEnabled || node == nil || node.deferredOp() != opEqz {
 		return 0, false
 	}
-	inner := node.arg0
-	if inner == nil || inner.kind != ekDeferred || inner.op != opAnd ||
-		inner.arg1 == nil || inner.arg1.kind != ekValue || inner.arg1.st.kind != stConst ||
-		inner.arg1.st.cval == 0 {
+	inner := f.s.arg0(node)
+	if inner == nil || inner.elemKind() != ekDeferred || inner.deferredOp() != opAnd {
+		return 0, false
+	}
+	innerRight := f.s.arg1(inner)
+	if innerRight == nil || innerRight.elemKind() != ekValue || innerRight.st.kind != stConst ||
+		innerRight.st.cval == 0 {
 		return 0, false
 	}
 
-	x, owned := f.materializeRead(inner.arg0)
+	x, owned := f.materializeRead(f.s.arg0(inner))
 	f.pinned = f.pinned.add(x)
-	wide := inner.typ.is64()
-	c := uint64(inner.arg1.st.cval)
+	wide := inner.st.typ.is64()
+	c := uint64(innerRight.st.cval)
 	testOff := f.a.Len()
 	emitted := false
 	if wide {
@@ -44,7 +47,7 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 	}
 	if !emitted {
 		t := f.allocReg(maskOf(x))
-		f.loadConst(t, storage{kind: stConst, typ: inner.typ, cval: int64(c)})
+		f.loadConst(t, storage{kind: stConst, typ: inner.st.typ, cval: int64(c)})
 		f.a.TstReg(x, t, !wide)
 		f.release(t)
 	} else if c&(c-1) == 0 {
@@ -68,9 +71,9 @@ func (f *fn) flushBelow(node *elem) int {
 	f.stats.addFlushBelow()
 	f.invalidateGlobalsCache() // a following call would clobber the cached cell-ptr register
 	f.invalidateBoundsCert()   // bounds facts are valid only within a straight-line region
-	base := baseOfValentBlock(node)
+	base := f.s.baseOfValentBlock(node)
 	var below []*elem
-	for cur := base.prev; cur != f.s.head; cur = baseOfValentBlock(cur).prev {
+	for cur := f.s.prev(base); cur != f.s.head; cur = f.s.prev(f.s.baseOfValentBlock(cur)) {
 		below = append(below, cur)
 	}
 	for i, j := 0, len(below)-1; i < j; i, j = i+1, j-1 {
@@ -79,8 +82,8 @@ func (f *fn) flushBelow(node *elem) int {
 	slot := 0
 	for _, root := range below {
 		typ := rootMachineType(root)
-		f.stats.addFlushBelowRoot(root.kind == ekDeferred)
-		if root.kind == ekValue && root.st.kind == stSlot && root.st.slot == slot && root.st.typ == typ {
+		f.stats.addFlushBelowRoot(root.elemKind() == ekDeferred)
+		if root.elemKind() == ekValue && root.st.kind == stSlot && root.st.slotIndex() == slot && root.st.typ == typ {
 			slot += typ.stackSlots()
 			continue
 		}
@@ -88,35 +91,32 @@ func (f *fn) flushBelow(node *elem) int {
 			x := f.materializeV128(root)
 			f.a.StrQ(SP, f.spillOff(slot), x)
 			f.releaseF(x)
-			root.kind = ekValue
-			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: slot})
+			f.replaceStorage(root, storage{kind: stSlot, typ: mtV128, slot: uint32(slot)})
 			slot += 2
 			continue
 		}
-		if root.kind == ekValue && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
+		if root.elemKind() == ekValue && (root.st.kind == stLocalReg || root.st.kind == stGlobReg) {
 			if root.st.typ.isFloat() {
 				f.a.StrD(SP, f.spillOff(slot), root.st.reg)
 			} else {
 				f.st64(SP, f.spillOff(slot), root.st.reg)
 			}
-			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 			slot++
 			continue
 		}
-		if root.kind == ekValue && typ.isFloat() {
+		if root.elemKind() == ekValue && typ.isFloat() {
 			x := f.materializeF(root)
 			f.a.StrD(SP, f.spillOff(slot), x)
 			f.releaseF(x)
-			root.kind = ekValue
-			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+			f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 			slot++
 			continue
 		}
 		r := f.materialize(root)
 		f.st64(SP, f.spillOff(slot), r)
 		f.release(r)
-		root.kind = ekValue
-		f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: slot})
+		f.replaceStorage(root, storage{kind: stSlot, typ: typ, slot: uint32(slot)})
 		slot++
 	}
 	if slot > f.maxSpill {
@@ -141,18 +141,13 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	// the stFlags kill switch (WAGO_NO_STFLAGS) as the A/B oracle.
 	invert := false
 	if f.opt(optSTFlags) {
-		for node.op == opEqz && isFusableCompare(node.arg0) {
-			inner := node.arg0
+		for node.deferredOp() == opEqz && isFusableCompare(f.s.arg0(node)) {
+			inner := f.s.arg0(node)
 			f.erase(node) // drop the eqz wrapper; `inner` becomes the top of the block
 			f.stats.peep("eqz-fold")
 			node = inner
 			invert = !invert
 		}
-	}
-	// Ordered float relational nodes (gt/ge/lt/le) lower to FCMP + a NaN-safe
-	// condition instead of a materialized boolean. eq/ne are never deferred here.
-	if node.typ.isFloat() {
-		return f.condenseFCompareToFlags(node, invert)
 	}
 	if !invert {
 		if cc, ok := f.tryMaskedEqzToFlags(node); ok {
@@ -166,18 +161,18 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		}
 		return cc
 	}
-	w := node.typ.is64()
-	if node.op == opEqz {
+	w := node.st.typ.is64()
+	if node.deferredOp() == opEqz {
 		// CMP #0 does not write its operand, so a register-resident value (a pinned
 		// local — e.g. a loop counter — or an owned temp) is tested in place with no
 		// copy, mirroring the relational path below.
-		a := node.arg0
+		a := f.s.arg0(node)
 		var L Reg
 		ownedL := false
 		switch {
-		case a.kind == ekValue && (a.st.kind == stLocalReg || a.st.kind == stGlobReg):
+		case a.elemKind() == ekValue && (a.st.kind == stLocalReg || a.st.kind == stGlobReg):
 			L = a.st.reg
-		case a.kind == ekValue && a.st.kind == stReg:
+		case a.elemKind() == ekValue && a.st.kind == stReg:
 			L, ownedL = a.st.reg, true
 		default:
 			L, ownedL = f.materialize(a), true
@@ -197,25 +192,26 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 		f.erase(node)
 		return applyInvert(condE)
 	}
-	cc := applyInvert(condOf(node.op))
+	cc := applyInvert(condOf(node.deferredOp()))
 	// CMP does not write its left operand, so a register-resident left (an owned
 	// temp or a pinned local) can be compared in place — no copy needed.
-	left := node.arg0
+	left := f.s.arg0(node)
 	var L Reg
 	ownedL := false
 	switch {
-	case left.kind == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg):
+	case left.elemKind() == ekValue && (left.st.kind == stLocalReg || left.st.kind == stGlobReg):
 		L = left.st.reg
-	case left.kind == ekValue && left.st.kind == stReg:
+	case left.elemKind() == ekValue && left.st.kind == stReg:
 		L, ownedL = left.st.reg, true
 	default:
 		L, ownedL = f.materialize(left), true
 	}
 	f.pinned = f.pinned.add(L)
-	right := node.arg1
+	right := f.s.arg1(node)
 	if right.isDeferred() {
-		rr := f.condense(right, regNone)
-		right = &elem{kind: ekValue, st: storage{kind: stReg, typ: node.typ, reg: rr}}
+		// condense rewrites the existing operand node in place; keep that owner
+		// instead of allocating a duplicate register-value node.
+		f.condense(right, regNone)
 	}
 	switch right.st.kind {
 	case stConst:
@@ -242,13 +238,13 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 	case stSlot:
 		// arm64 has no memory operand: LDR the spilled value, then compare reg-reg.
 		t := f.allocReg(maskOf(L))
-		f.ld64(t, SP, f.spillOff(right.st.slot))
+		f.ld64(t, SP, f.spillOff(right.st.slotIndex()))
 		f.cmpRR(L, t, w)
 		f.release(t)
 	case stLocalRef:
 		// arm64 has no memory operand: LDR the local from its frame slot, then compare.
 		t := f.allocReg(maskOf(L))
-		f.ld64(t, SP, f.localOff(right.st.idx))
+		f.ld64(t, SP, f.localOff(right.st.index()))
 		f.cmpRR(L, t, w)
 		f.release(t)
 	case stMemRef:
@@ -274,10 +270,13 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 // CBZ/CBNZ directly without materializing NZCV. Deferred arithmetic/mask trees
 // stay on condenseToFlags so their existing fused covers remain authoritative.
 func (f *fn) condenseSimpleEqzOperand(node *elem) (reg Reg, owned, wide, ok bool) {
-	if node == nil || node.op != opEqz || node.arg0 == nil || node.arg0.kind != ekValue {
+	if node == nil || node.deferredOp() != opEqz {
 		return 0, false, false, false
 	}
-	a := node.arg0
+	a := f.s.arg0(node)
+	if a == nil || a.elemKind() != ekValue {
+		return 0, false, false, false
+	}
 	switch {
 	case a.st.kind == stLocalReg || a.st.kind == stGlobReg:
 		reg = a.st.reg
@@ -286,7 +285,7 @@ func (f *fn) condenseSimpleEqzOperand(node *elem) (reg Reg, owned, wide, ok bool
 	default:
 		reg, owned = f.materialize(a), true
 	}
-	wide = node.typ.is64()
+	wide = node.st.typ.is64()
 	f.consumeBlockBelow(node)
 	f.erase(node)
 	return reg, owned, wide, true
@@ -312,13 +311,12 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 	if setDst != regNone {
 		f.a.Cset32(setDst, cc)
 	}
-	a := fr.branchN
+	a := fr.branchArity()
 	// Emit the edge and measure it. The edge helpers emit only LDR/STR/MOV, which
 	// are position-independent AND leave NZCV untouched — so the compare's flags
 	// stay live across them and the bytes can be relocated below.
 	mark := f.a.Len()
-	f.storeLoopPinsLeaving(fi)
-	if fr.regMerge1 {
+	if fr.has(ctrlRegMerge1) {
 		f.branchEdgeToMerge1(fr, k)
 	} else {
 		f.moveBranchValues(fr, k, a)
@@ -341,7 +339,7 @@ func (f *fn) brIfFusedSet(top *elem, labelIdx uint32, setDst Reg) error {
 		edge := append([]byte(nil), f.a.B[mark:]...)
 		f.a.B = f.a.B[:mark]
 		site := f.a.Bcond(cc)
-		fr.coldEdges = append(fr.coldEdges, coldEdge{site: site, code: edge})
+		f.appendFrameColdEdge(fr, coldEdge{site: site, code: edge})
 		return nil
 	}
 	// Non-empty edge: insert the skip guard right after the CMP (keeping the flag

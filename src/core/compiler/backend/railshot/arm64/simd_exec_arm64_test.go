@@ -19,10 +19,6 @@ func simdConst(v [16]byte) []byte {
 	return append(out, v[:]...)
 }
 
-func simdOp(sub uint32) []byte {
-	return append([]byte{0xfd}, wasmtest.ULEB(sub)...)
-}
-
 func i8x16Bytes(v ...int8) [16]byte {
 	var out [16]byte
 	for i, x := range v {

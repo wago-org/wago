@@ -1,6 +1,6 @@
-package codegen
+package railssa
 
-// GCRefFact is the backend-neutral, bounded semantic fact carried for one
+// GCRefFact is the Dragline-owned, bounded semantic fact carried for one
 // compact WasmGC reference. The first word packs type/class, identity,
 // nullability, freshness, generation, and pointer-free state. The second word
 // stores a known array length as length+1 so every u32 length is representable.

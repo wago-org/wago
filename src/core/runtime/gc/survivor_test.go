@@ -242,23 +242,12 @@ func TestThroughputSurvivorRetainsAuthoritativeCards(t *testing.T) {
 
 func TestThroughputAdaptiveTenuringRespondsToPressureAndPauseTarget(t *testing.T) {
 	c := newTestCollector(t, Config{NurseryBytes: 1024, SurvivorBytes: 512, LargeObjectBytes: 16, ThroughputHeapBytes: 8192, ThroughputPageBytes: 4096, MinorPauseTargetMicros: 1000})
-	for i := 0; i < 190; i++ {
-		ref, err := c.NewStructDefault(0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := c.ForcePromote(ref); err != nil {
-			t.Fatal(err)
-		}
-	}
-	ref, err := c.NewStructDefault(0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	root := Root(ref)
-	if err := c.CollectMinor(Slots{&root}); err != nil {
-		t.Fatal(err)
-	}
+	// Exercise the policy with deterministic pressure rather than depending on
+	// the wall-clock duration of automatic minor collections while filling the
+	// old heap. Slow Darwin runners can legitimately exceed the pause target and
+	// lower the threshold before this assertion observes old-heap pressure.
+	c.throughput.bump = uint32((uint64(c.throughput.limit)*70 + 99) / 100)
+	c.adaptTenuring(0, 0, 0)
 	if c.tenuringThreshold != 3 {
 		t.Fatalf("old-pressure threshold=%d, want 3", c.tenuringThreshold)
 	}

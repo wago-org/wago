@@ -18,65 +18,45 @@ func TestRegisterABIElidesWrapperFrameHeaderAMD64(t *testing.T) {
 		0x20, 0x0d, 0x1a, // local.get 13; drop
 		0x0b,
 	}})
-	before := compactRegABIFrameHeader
-	t.Cleanup(func() { compactRegABIFrameHeader = before })
-	compile := func(enabled bool) (*ModuleStats, int) {
-		compactRegABIFrameHeader = enabled
-		var stats ModuleStats
-		cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if cm.CodeImage != nil {
-			defer cm.CodeImage.Close()
-		}
-		return &stats, len(cm.Code)
-	}
-	rollback, rollbackBytes := compile(false)
-	enabled, enabledBytes := compile(true)
-	if got := enabled.Funcs[0].Peephole["frame-header-elide"]; got != 1 {
-		t.Fatalf("frame-header-elide hits = %d, want 1", got)
-	}
-	if got, want := enabled.Funcs[0].FrameBytes, rollback.Funcs[0].FrameBytes-16; got != want {
-		t.Fatalf("enabled frame = %d, want rollback %d - 16 = %d", got, rollback.Funcs[0].FrameBytes, want)
-	}
-	if enabledBytes >= rollbackBytes {
-		t.Fatalf("enabled code = %d bytes, rollback = %d", enabledBytes, rollbackBytes)
-	}
-	compactRegABIFrameHeader = true
-	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Workers: 1})
+	var stats ModuleStats
+	cm, err := CompileModuleWith(m, CompileOptions{CompactNative: true, Stats: &stats, Workers: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cm.CodeImage != nil {
 		defer cm.CodeImage.Close()
 	}
+	if got := stats.Funcs[0].Peephole["frame-header-elide"]; got != 1 {
+		t.Fatalf("frame-header-elide hits = %d, want 1", got)
+	}
 	_ = runCompiledAmd64u(t, cm)
 }
 
 func TestRegisterABICompactHeaderRemapsGCFrameLocalsAMD64(t *testing.T) {
 	plan := &shared.GCFrameRootPlan{
-		Candidate:    true,
-		LocalIndexes: []uint32{1},
-		LocalOffsets: []uint32{24},
+		Candidate: true,
+		Locals:    []shared.GCFrameLocal{{Index: 1, Offset: 24}},
 	}
 	f := fn{
 		nLocals:            2,
-		localSlot:          []int{0, 8},
+		localSlot:          []uint32{0, 8},
 		localType:          []machineType{mtI32, mtI64},
 		compactFrameHeader: true,
 	}
 	if !f.prepareCompactGCFrameHeader(plan) {
 		t.Fatal("valid collector-local plan rejected")
 	}
-	if got := plan.LocalOffsets[0]; got != 8 {
+	if got := plan.Locals[0].Offset; got != 8 {
 		t.Fatalf("remapped root offset = %d, want 8", got)
 	}
-	bad := &shared.GCFrameRootPlan{Candidate: true, LocalIndexes: []uint32{2}, LocalOffsets: []uint32{32}}
+	bad := &shared.GCFrameRootPlan{Candidate: true, Locals: []shared.GCFrameLocal{{Index: 2, Offset: 32}}}
 	if f.prepareCompactGCFrameHeader(bad) {
 		t.Fatal("out-of-range collector-local plan admitted")
 	}
-	withFixed := &shared.GCFrameRootPlan{Candidate: true, FixedOffsets: []uint32{16}}
+	withFixed := &shared.GCFrameRootPlan{Candidate: true}
+	if !withFixed.SetFixedOffsets([]uint32{16}) {
+		t.Fatal("failed to set fixed roots")
+	}
 	if f.prepareCompactGCFrameHeader(withFixed) {
 		t.Fatal("fixed-root plan admitted")
 	}

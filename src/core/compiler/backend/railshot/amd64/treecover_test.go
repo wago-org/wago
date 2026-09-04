@@ -252,24 +252,22 @@ func TestAssociativeTreeCoverRestoresRepeatedDestinationPin(t *testing.T) {
 
 func TestTreeAccumulatorSafety(t *testing.T) {
 	leaf := func(kind storageKind) *elem {
-		return &elem{kind: ekValue, st: storage{kind: kind, typ: mtI32}}
+		return testValueElem(storage{kind: kind, typ: mtI32})
 	}
-	constantShift := &elem{kind: ekDeferred, op: opShl, typ: mtI32,
-		arg0: leaf(stReg), arg1: leaf(stConst)}
+	constantShift := testDeferredElem(opShl, mtI32, leaf(stReg), leaf(stConst))
 	if !treeAccumulatorSafe(constantShift) {
 		t.Fatal("constant shift should honor a live accumulator")
 	}
-	variableShift := &elem{kind: ekDeferred, op: opShl, typ: mtI32,
-		arg0: leaf(stReg), arg1: leaf(stReg)}
+	variableShift := testDeferredElem(opShl, mtI32, leaf(stReg), leaf(stReg))
 	if treeAccumulatorSafe(variableShift) {
 		t.Fatal("variable shift can evict an RCX accumulator")
 	}
 }
 
 func TestTreeRegReplaceable(t *testing.T) {
-	borrowed := &elem{kind: ekValue, st: storage{kind: stLocalReg, reg: RAX}}
-	owned := &elem{kind: ekValue, st: storage{kind: stReg, reg: RAX}}
-	other := &elem{kind: ekValue, st: storage{kind: stReg, reg: RCX}}
+	borrowed := testValueElem(storage{kind: stLocalReg, reg: RAX})
+	owned := testValueElem(storage{kind: stReg, reg: RAX})
+	other := testValueElem(storage{kind: stReg, reg: RCX})
 	if !treeRegReplaceable(borrowed, RAX) {
 		t.Fatal("borrowed local register should be replaceable")
 	}

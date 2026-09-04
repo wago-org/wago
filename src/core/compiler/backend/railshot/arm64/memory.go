@@ -133,15 +133,8 @@ func (f *fn) trapIf(cc Cond, code uint32) {
 // an explicit compiler-authored test whose next consumer is this branch, so no
 // later instruction observes the CMP flags removed by the compact form.
 func (f *fn) zeroBranch(reg Reg, wide, onZero bool) int {
-	if directZeroBranchEnabled {
-		f.stats.peep("direct-zero-branch")
-		return f.emitZeroBranch(reg, wide, onZero)
-	}
-	f.cmpImm(reg, 0, wide)
-	if onZero {
-		return f.a.Bcond(condE)
-	}
-	return f.a.Bcond(condNE)
+	f.stats.peep("direct-zero-branch")
+	return f.emitZeroBranch(reg, wide, onZero)
 }
 
 func (f *fn) emitZeroBranch(reg Reg, wide, onZero bool) int {
@@ -158,15 +151,6 @@ func (f *fn) emitZeroBranch(reg Reg, wide, onZero bool) int {
 }
 
 func (f *fn) trapIfZero(reg Reg, wide, onZero bool, code uint32) {
-	if !directZeroBranchEnabled {
-		f.cmpImm(reg, 0, wide)
-		if onZero {
-			f.trapIf(condE, code)
-		} else {
-			f.trapIf(condNE, code)
-		}
-		return
-	}
 	if code == trapMemOOB {
 		f.stats.addBoundsCheck()
 	}
@@ -185,7 +169,14 @@ func (f *fn) trapAlways(code uint32) {
 }
 
 func (f *fn) trapSite(branch int) trapSite {
-	return trapSite{branch: branch, function: f.traceFuncIdx, pc: f.wasmPC}
+	return trapSite{branch: compactTrapBranch(branch), function: f.traceFuncIdx, pc: f.wasmPC}
+}
+
+func compactTrapBranch(branch int) uint32 {
+	if branch < 0 || uint64(branch) > uint64(^uint32(0)) {
+		panic("arm64: trap branch offset exceeds 32-bit function domain")
+	}
+	return uint32(branch)
 }
 
 // emitTrapStubs emits one trap stub per trap code used by this function and
@@ -195,7 +186,7 @@ func (f *fn) emitTrapStubs() {
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
 	compact := f.policy.CompactNative
 	groups := 0
-	if (sharedTrapUnwindEnabled || f.opt(optSharedTrapBody)) && compact {
+	if compact {
 		for code := uint32(1); code <= trapAtomicUnaligned; code++ {
 			sites := f.scratchState().trapSites[code]
 			if len(sites) == 0 {
@@ -215,17 +206,13 @@ func (f *fn) emitTrapStubs() {
 	// established local-record/shared-unwind path.
 	sharedBodyInRange := int64(f.a.Len())+int64(groups)*52+64 < 128<<20
 	if f.opt(optSharedTrapBody) && compact && groups >= 2 && sharedBodyInRange {
-		if moduleSharedTrapBodyEnabled {
-			f.emitSharedTrapStubs()
-		} else {
-			f.emitSharedTrapStubsHead()
-		}
+		f.emitSharedTrapStubs()
 		f.stats.peep("shared-trap-body")
 		return
 	}
 	// Two 16-byte unwind tails cost 32 bytes. Two B sites plus one tail cost 24,
 	// and the extra branch is confined to a terminal cold path.
-	shareUnwind := sharedTrapUnwindEnabled && compact && groups >= 2
+	shareUnwind := compact && groups >= 2
 	sharedUnwind := -1
 	sharedTails := 0
 	if shareUnwind {
@@ -259,9 +246,9 @@ func (f *fn) emitTrapStubs() {
 				f.a.MovImm64(X17, uint64(first.pc))
 				commonJump = f.a.Branch()
 				if first.branch&1 != 0 {
-					f.a.PatchBranch26(first.branch&^1, pos)
+					f.a.PatchBranch26(int(first.branch&^1), pos)
 				} else {
-					f.a.PatchBranch19(first.branch, pos)
+					f.a.PatchBranch19(int(first.branch), pos)
 				}
 			}
 			common := f.a.Len()
@@ -269,9 +256,9 @@ func (f *fn) emitTrapStubs() {
 				f.a.MovImm64(X17, uint64(^uint32(0)))
 				for _, site := range group {
 					if site.branch&1 != 0 {
-						f.a.PatchBranch26(site.branch&^1, common)
+						f.a.PatchBranch26(int(site.branch&^1), common)
 					} else {
-						f.a.PatchBranch19(site.branch, common)
+						f.a.PatchBranch19(int(site.branch), common)
 					}
 				}
 			}
@@ -301,52 +288,6 @@ func (f *fn) emitTrapStubs() {
 	}
 }
 
-// emitSharedTrapStubsHead is the exact pre-module-sharing layout retained by
-// WAGO_ARM64_NO_MODULE_SHARED_TRAP_BODY. Keeping the body before its groups
-// makes that switch a byte-exact corpus oracle rather than merely disabling the
-// module compaction pass.
-func (f *fn) emitSharedTrapStubsHead() {
-	common := f.a.Len()
-	f.emitTrapFromRegisters()
-	for code := uint32(1); code <= trapAtomicUnaligned; code++ {
-		sites := f.scratchState().trapSites[code]
-		if len(sites) == 0 {
-			continue
-		}
-		f.stats.addTrapStub()
-		for start := 0; start < len(sites); {
-			end := start + 1
-			for end < len(sites) && sites[end].function == sites[start].function {
-				end++
-			}
-			group := sites[start:end]
-			first := group[0]
-			pos := f.a.Len()
-			pc := uint64(^uint32(0))
-			if len(group) == 1 {
-				pc = uint64(first.pc)
-			}
-			f.a.MovImm64(X17, pc)
-			f.a.MovImm64(X10, uint64(first.function+1))
-			f.a.MovImm64(X11, uint64(code))
-			for _, site := range group {
-				if site.branch&1 != 0 {
-					f.a.PatchBranch26(site.branch&^1, pos)
-				} else {
-					f.a.PatchBranch19(site.branch, pos)
-				}
-			}
-			branch := f.a.Branch()
-			if !f.a.PatchBranch26(branch, common) {
-				f.a.B = f.a.B[:branch]
-				f.emitTrapFromRegisters()
-			}
-			f.stats.addTrapGroup()
-			start = end
-		}
-	}
-}
-
 func (f *fn) emitSharedTrapStubs() {
 	for code := uint32(1); code <= trapAtomicUnaligned; code++ {
 		sites := f.scratchState().trapSites[code]
@@ -371,12 +312,12 @@ func (f *fn) emitSharedTrapStubs() {
 			f.a.MovImm64(X11, uint64(code))
 			for _, site := range group {
 				if site.branch&1 != 0 {
-					f.a.PatchBranch26(site.branch&^1, pos)
+					f.a.PatchBranch26(int(site.branch&^1), pos)
 				} else {
-					f.a.PatchBranch19(site.branch, pos)
+					f.a.PatchBranch19(int(site.branch), pos)
 				}
 			}
-			group[0].branch = f.a.Branch()
+			group[0].branch = compactTrapBranch(f.a.Branch())
 			f.stats.addTrapGroup()
 			start = end
 		}
@@ -392,7 +333,7 @@ func (f *fn) emitSharedTrapStubs() {
 			for end < len(sites) && sites[end].function == sites[start].function {
 				end++
 			}
-			if !f.a.PatchBranch26(sites[start].branch, f.trapBodyOff) {
+			if !f.a.PatchBranch26(int(sites[start].branch), f.trapBodyOff) {
 				panic("arm64: bounded trap body branch exceeded imm26")
 			}
 			start = end
@@ -467,7 +408,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	if aliasPinned && !needAdd {
 		ea, eaOwned = f.materializeRead(e) // a pinned local's reg is read in place
 		if !eaOwned {
-			borrow = e.st.idx
+			borrow = e.st.index()
 		}
 	} else {
 		ea, eaOwned = f.materialize(e), true
@@ -485,13 +426,6 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	}
 
 	if f.guardMode {
-		return ea, eaOwned, borrow, disp
-	}
-	// Loop-precheck fast body: a loop-invariant base local proven in bounds by the
-	// pre-loop check needs no per-access check (memBytes only grows). See
-	// boundshoist.go.
-	if f.elideBases != nil && bcKind == 1 && f.elideBases[bcIdx] {
-		f.stats.addBoundsHoistable()
 		return ea, eaOwned, borrow, disp
 	}
 	// P6.1 straight-line bounds-check elision: skip the check when a prior
@@ -678,7 +612,8 @@ func (f *fn) boundsHoistable(kind uint8, idx uint32) bool {
 	}
 	for i := len(f.ctrl) - 1; i >= 0; i-- {
 		if f.ctrl[i].kind == cfLoop {
-			return !f.ctrl[i].loopSetLocals[idx]
+			cold := f.ctrlMerge(&f.ctrl[i])
+			return cold != nil && cold.hasLoopSet() && !loopSetsLocal(f.frameLoopSetLocals(&f.ctrl[i]), idx)
 		}
 	}
 	return false // not inside a loop
@@ -721,7 +656,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
 	if f.opt(optLoadPair) && !f.memoryAddr64(0) && !f.guardMode && !f.threadedMemory0 && !signed &&
 		(size == 4 && !wide || size == 8 && wide) && addrOK {
-		if first := f.s.back(); first != nil && first.kind == ekValue && first.st.kind == stMemRef &&
+		if first := f.s.back(); first != nil && first.elemKind() == ekValue && first.st.kind == stMemRef &&
 			first.st.memAliasLocal() == addrLocal && first.st.memSize() == size &&
 			!first.st.memSigned() && first.st.typ.is64() == wide &&
 			disp == first.st.memDisp()+int32(size) {
@@ -745,7 +680,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 				f.occupy(first, dst)
 				second := f.pushReg(dst2, first.st.typ)
 				if f.opt(optValueFacts) && !wide {
-					second.st.facts = factUpper32Zero
+					second.st.setValueFacts(factUpper32Zero)
 				}
 				f.stats.peep("load-pair")
 				return nil
@@ -766,7 +701,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if f.opt(optValueFacts) && !wide {
 		// Every i32 load writes a W register, including sign-extending byte/word
 		// forms, so its physical X-register upper half is known zero.
-		st.facts = factUpper32Zero
+		st.setValueFacts(factUpper32Zero)
 	}
 	e := f.pushValue(st)
 	if eaOwned {
@@ -800,7 +735,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	// (low32 at disp, high32 at disp+4); narrower stores truncate to the low `size`
 	// bytes exactly like a materialized constant would (i64.store8/16/32 route here
 	// too).
-	if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+	if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 		f.stats.peep("store-imm")
 		v := top.st.cval
 		f.erase(top)
@@ -909,12 +844,12 @@ func (f *fn) invalidateStoreForward() {
 }
 
 func localAddressKey(e *elem) (int, bool) {
-	if e == nil || e.kind != ekValue {
+	if e == nil || e.elemKind() != ekValue {
 		return 0, false
 	}
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:
-		return e.st.idx, true
+		return e.st.index(), true
 	default:
 		return 0, false
 	}
@@ -1218,7 +1153,7 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 		return err
 	}
 	if !f.memoryAddr64(dstMemory) && !f.memoryAddr64(srcMemory) {
-		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.stats.peep("memcopy-unroll")
 				f.memoryCopyConst(int(n), dstMemory, srcMemory)
@@ -1329,7 +1264,7 @@ func (f *fn) memoryFill(r *wasm.Reader) error {
 		return err
 	}
 	if !f.memoryAddr64(memoryIndex) {
-		if top := f.s.back(); top != nil && top.kind == ekValue && top.st.kind == stConst {
+		if top := f.s.back(); top != nil && top.elemKind() == ekValue && top.st.kind == stConst {
 			if n := uint64(uint32(top.st.cval)); n <= 64 {
 				f.memoryFillConst(int(n), memoryIndex)
 				return nil

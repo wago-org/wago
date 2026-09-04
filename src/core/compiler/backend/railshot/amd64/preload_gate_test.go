@@ -3,10 +3,7 @@
 package amd64
 
 import (
-	"bytes"
 	"testing"
-
-	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
 func TestConstantPreloadScanGates(t *testing.T) {
@@ -31,29 +28,5 @@ func TestConstantPreloadScanGates(t *testing.T) {
 				t.Fatalf("SIMD preload scans = %d, want %d (all %v)", got, tc.wantSIMD, s.Peephole)
 			}
 		})
-	}
-}
-
-func TestConstantPreloadScanGatesKeepCodeIdentity(t *testing.T) {
-	modules := []*wasm.Module{
-		mod1(t, nil, nil, []byte{0x00, 0x41, 1, 0x1a, 0x0b}),
-		mod1(t, nil, nil, []byte{0x00, 0x43, 0, 0, 0x80, 0x3f, 0x1a, 0x0b}),
-		mod1(t, nil, nil, append([]byte{0x00, 0xfd, 12}, append(make([]byte, 16), 0x1a, 0x0b)...)),
-	}
-	defer func(prev bool) { preloadScanGatesEnabled = prev }(preloadScanGatesEnabled)
-	for i, m := range modules {
-		preloadScanGatesEnabled = false
-		base, err := CompileModule(m)
-		if err != nil {
-			t.Fatal(err)
-		}
-		preloadScanGatesEnabled = true
-		got, err := CompileModule(m)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(got.Code, base.Code) {
-			t.Fatalf("module %d native code changed", i)
-		}
 	}
 }

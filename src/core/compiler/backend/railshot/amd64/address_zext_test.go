@@ -106,17 +106,17 @@ func TestCleanMemory32AddressProof(t *testing.T) {
 		want bool
 	}{
 		{name: "nil"},
-		{name: "clean deferred is not concrete", e: &elem{kind: ekDeferred, typ: mtI32, op: opAdd}},
-		{name: "nonclean deferred", e: &elem{kind: ekDeferred, typ: mtI32, op: opSExt8}},
-		{name: "wrong deferred type", e: &elem{kind: ekDeferred, typ: mtI64, op: opAdd}},
-		{name: "i32 constant", e: &elem{kind: ekValue, st: storage{kind: stConst, typ: mtI32}}, want: true},
-		{name: "i32 frame local", e: &elem{kind: ekValue, st: storage{kind: stLocalRef, typ: mtI32}}, want: true},
-		{name: "i64 constant", e: &elem{kind: ekValue, st: storage{kind: stConst, typ: mtI64}}},
-		{name: "owned register", e: &elem{kind: ekValue, st: storage{kind: stReg, typ: mtI32}}},
-		{name: "spill slot", e: &elem{kind: ekValue, st: storage{kind: stSlot, typ: mtI32}}},
-		{name: "borrowed local", e: &elem{kind: ekValue, st: storage{kind: stLocalReg, typ: mtI32}}},
-		{name: "borrowed global", e: &elem{kind: ekValue, st: storage{kind: stGlobReg, typ: mtI32}}},
-		{name: "deferred memory load", e: &elem{kind: ekValue, st: storage{kind: stMemRef, typ: mtI32}}},
+		{name: "clean deferred is not concrete", e: testDeferredElem(opAdd, mtI32, nil, nil)},
+		{name: "nonclean deferred", e: testDeferredElem(opSExt8, mtI32, nil, nil)},
+		{name: "wrong deferred type", e: testDeferredElem(opAdd, mtI64, nil, nil)},
+		{name: "i32 constant", e: testValueElem(storage{kind: stConst, typ: mtI32}), want: true},
+		{name: "i32 frame local", e: testValueElem(storage{kind: stLocalRef, typ: mtI32}), want: true},
+		{name: "i64 constant", e: testValueElem(storage{kind: stConst, typ: mtI64})},
+		{name: "owned register", e: testValueElem(storage{kind: stReg, typ: mtI32})},
+		{name: "spill slot", e: testValueElem(storage{kind: stSlot, typ: mtI32})},
+		{name: "borrowed local", e: testValueElem(storage{kind: stLocalReg, typ: mtI32})},
+		{name: "borrowed global", e: testValueElem(storage{kind: stGlobReg, typ: mtI32})},
+		{name: "deferred memory load", e: testValueElem(storage{kind: stMemRef, typ: mtI32})},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -129,7 +129,7 @@ func TestCleanMemory32AddressProof(t *testing.T) {
 	if !SetOptKnob("addr-zext-elim", false) {
 		t.Fatal("addr-zext-elim is not registered")
 	}
-	if f.cleanMemory32Address(&elem{kind: ekValue, st: storage{kind: stConst, typ: mtI32}}) {
+	if f.cleanMemory32Address(testValueElem(storage{kind: stConst, typ: mtI32})) {
 		t.Fatal("disabled optimization accepted a clean address")
 	}
 }

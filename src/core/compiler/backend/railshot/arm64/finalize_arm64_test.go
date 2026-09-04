@@ -12,6 +12,16 @@ import (
 	a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 )
 
+func TestFinalizerRejectsFragmentOffsetOverflowArm64(t *testing.T) {
+	before := nativeFinalizerEnabled
+	nativeFinalizerEnabled = true
+	t.Cleanup(func() { nativeFinalizerEnabled = before })
+	f := fn{sc: &scratch{fragmentOverflow: true}}
+	if _, err := f.finalizeNativeCode(0); err == nil {
+		t.Fatal("finalizer accepted an overflowing compact fragment offset")
+	}
+}
+
 func TestIdentityFinalizerRemapsAllArm64Metadata(t *testing.T) {
 	before := nativeFinalizerEnabled
 	beforeValidate := nativeFinalizerValidate
@@ -25,14 +35,8 @@ func TestIdentityFinalizerRemapsAllArm64Metadata(t *testing.T) {
 		nativeCompactionEnabled = beforeCompact
 	})
 
-	plan := &shared.GCFrameRootPlan{
-		AdapterReturnOffset: 12,
-		Callsites: []shared.GCFrameCallsitePlan{
-			{ReturnOffset: 16},
-			{ReturnOffset: 24, StackAdjust: 64},
-		},
-	}
-	sc := &scratch{asm: &a64.Asm{B: make([]byte, 32)}, branchTargets: map[int]bool{finalizerMarkerKey(28, markerDeadHole): true}}
+	plan := testGCPlanWithCallsites(t, 12, [2]uint32{16, 0}, [2]uint32{24, 64})
+	sc := &scratch{asm: &a64.Asm{B: make([]byte, 32)}, finalizerMarkers: map[int]bool{finalizerMarkerKey(28, markerDeadHole): true}}
 	f := fn{
 		a:                sc.asm,
 		sc:               sc,
@@ -50,8 +54,8 @@ func TestIdentityFinalizerRemapsAllArm64Metadata(t *testing.T) {
 	if internal != 8 || f.adapterReturnOff != 12 || plan.AdapterReturnOffset != 12 {
 		t.Fatalf("entry/adapter offsets changed: internal=%d adapter=%d plan=%d", internal, f.adapterReturnOff, plan.AdapterReturnOffset)
 	}
-	if f.relocs[0].at != 4 || f.relocs[1].at != 20 || plan.Callsites[0].ReturnOffset != 16 || plan.Callsites[1].ReturnOffset != 24 {
-		t.Fatalf("relocation/callsite offsets changed: relocs=%#v callsites=%#v", f.relocs, plan.Callsites)
+	if f.relocs[0].at != 4 || f.relocs[1].at != 20 || testGCCallsiteReturn(t, plan, 0) != 16 || testGCCallsiteReturn(t, plan, 1) != 24 {
+		t.Fatalf("relocation/callsite offsets changed: relocs=%#v callsite-data=%#v", f.relocs, plan.CallsiteData)
 	}
 }
 
@@ -159,6 +163,44 @@ func TestFinalizePeepholesRecordsBranchToNextArm64(t *testing.T) {
 	}
 	if slices.Contains(sc.branchNextSites[:sc.branchNextN], 4) {
 		t.Error("BL-to-next was incorrectly recorded")
+	}
+}
+
+func TestBranchTargetBitsArm64(t *testing.T) {
+	targets := make([]uint64, 65)
+	const n = 65 * 64 * 4
+	for _, off := range []int{0, 252, 256, n - 4} {
+		branchTargetAdd(targets, off, n)
+		if !branchTargeted(targets, off) {
+			t.Fatalf("target %d was not retained", off)
+		}
+	}
+	for _, off := range []int{-4, 2, n, n + 4} {
+		branchTargetAdd(targets, off, n)
+		if branchTargeted(targets, off) {
+			t.Fatalf("invalid target %d was retained", off)
+		}
+	}
+}
+
+func TestFinalizePeepholesDoesNotRetainGiantBranchTargetBitsArm64(t *testing.T) {
+	beforeFinalizer, beforeCompaction := nativeFinalizerEnabled, nativeCompactionEnabled
+	nativeFinalizerEnabled, nativeCompactionEnabled = true, true
+	t.Cleanup(func() { nativeFinalizerEnabled, nativeCompactionEnabled = beforeFinalizer, beforeCompaction })
+
+	giant := make([]byte, len((scratch{}).branchTargetInline)*64*4+4)
+	wrWord(giant, 0, 0x14000001)
+	sc := &scratch{asm: &a64.Asm{B: giant}}
+	f := fn{a: sc.asm, sc: sc}
+	f.finalizePeepholes()
+	if len(sc.branchTargets) <= len(sc.branchTargetInline) {
+		t.Fatalf("giant target words = %d, want overflow", len(sc.branchTargets))
+	}
+
+	sc.asm.B = make([]byte, 8)
+	f.finalizePeepholes()
+	if len(sc.branchTargets) != 1 || &sc.branchTargets[0] != &sc.branchTargetInline[0] {
+		t.Fatal("small successor retained giant branch-target backing")
 	}
 }
 
@@ -308,7 +350,7 @@ func TestCompactNativeCodeRemapsBranchesAndJumpTableArm64(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		f := fn{a: &a64.Asm{B: code}, sc: &scratch{branchTargets: map[int]bool{20: true}}}
+		f := fn{a: &a64.Asm{B: code}, sc: &scratch{hasBranchTargets: true}}
 		got, err := f.compactNativeCode(&offsets, deletions)
 		if err != nil {
 			t.Fatal(err)
@@ -340,8 +382,8 @@ func TestCompactNativeCodeRemapsBranchesAndJumpTableArm64(t *testing.T) {
 			finalizerMarkerKey(16, markerJumpDataEnd):  true,
 		}
 		f := fn{a: &a64.Asm{B: code}, sc: &scratch{
-			branchTargets:  markers,
-			finalFragments: []finalizerFragment{{start: 8, end: 16, kind: fragmentJumpData}},
+			finalizerMarkers: markers,
+			finalFragments:   []finalizerFragment{{start: 8, end: 16, kind: fragmentJumpData}},
 		}}
 		got, err := f.compactNativeCode(&offsets, deletions)
 		if err != nil {

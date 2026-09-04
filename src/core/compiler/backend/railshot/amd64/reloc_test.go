@@ -24,8 +24,9 @@ func TestPatchModuleRelocsValidatesTablesAndSites(t *testing.T) {
 	}{
 		{name: "entry table", code: make([]byte, 8), relocs: make([][]callReloc, 1), want: "entry table"},
 		{name: "function entry", code: make([]byte, 8), entry: []int{9}, relocs: make([][]callReloc, 1), want: "invalid function 0 entry"},
-		{name: "negative site", code: make([]byte, 8), entry: []int{0}, relocs: [][]callReloc{{{at: -1}}}, want: "invalid relocation site"},
+		{name: "invalid site sentinel", code: make([]byte, 8), entry: []int{0}, relocs: [][]callReloc{{{at: invalidCallRelocField}}}, want: "invalid relocation site"},
 		{name: "truncated site", code: make([]byte, 8), entry: []int{0}, relocs: [][]callReloc{{{at: 5}}}, want: "invalid relocation site"},
+		{name: "invalid target sentinel", code: make([]byte, 8), entry: []int{0}, relocs: [][]callReloc{{{target: invalidCallRelocField}}}, want: "invalid call relocation target"},
 		{name: "missing internal entry", code: make([]byte, 8), entry: []int{0}, relocs: [][]callReloc{{{at: 0, internal: true}}}, want: "missing internal entry"},
 		{name: "missing shared stub", code: make([]byte, 8), entry: []int{0}, relocs: [][]callReloc{{{at: 0, gcStub: gcSharedStubResolveObject}}}, stubBase: -1, want: "missing shared GC stub"},
 	}

@@ -30,6 +30,37 @@ func BenchmarkRailshotCompileMediumControl(b *testing.B) {
 	benchmarkCompileModule(b, m)
 }
 
+func BenchmarkRailshotCompileDeepScalarControl(b *testing.B) {
+	m := benchDeepScalarControlModule(b, 128)
+	benchmarkCompileModule(b, m)
+}
+
+func BenchmarkRailshotCompileParallelControlOutlier(b *testing.B) {
+	m := benchParallelControlOutlierModule(b, 64, 40)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		cm, err := CompileModuleWith(m, CompileOptions{Workers: 4})
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchCompiledSink = cm
+	}
+}
+
+func BenchmarkRailshotCompileParallelStackOutliers(b *testing.B) {
+	m := benchParallelStackOutlierModule(b, 8, 64<<10)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		cm, err := CompileModuleWith(m, CompileOptions{Workers: 4})
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchCompiledSink = cm
+	}
+}
+
 func BenchmarkRailshotCompileALUHeavy(b *testing.B) {
 	m := benchALUHeavyModule(b)
 	benchmarkCompileModule(b, m)
@@ -133,6 +164,52 @@ func benchSmallScalarModule(tb testing.TB) *wasm.Module {
 func benchMediumControlModule(tb testing.TB) *wasm.Module {
 	tb.Helper()
 	return benchDecodeValidateModule(tb, benchMediumControlModuleBytes())
+}
+
+func benchDeepScalarControlModule(tb testing.TB, depth int) *wasm.Module {
+	tb.Helper()
+	body := make([]byte, 0, 4+depth*3)
+	body = append(body, 0x00, 0x41, 0x01) // no locals; i32.const 1 below every block
+	for range depth {
+		body = append(body, 0x02, 0x40) // block with no params or results
+	}
+	for range depth {
+		body = append(body, 0x0b)
+	}
+	body = append(body, 0x0b)
+	return benchDecodeValidateModule(tb, benchModuleBytes([]benchFuncDef{{
+		results: []wasm.ValType{wasm.I32},
+		body:    body,
+	}}, false))
+}
+
+func benchParallelControlOutlierModule(tb testing.TB, functions, depth int) *wasm.Module {
+	tb.Helper()
+	m := benchDeepScalarControlModule(tb, depth)
+	deep, typeIndex := m.Code[0], m.FuncTypes[0]
+	m.Code = make([]wasm.Func, functions)
+	m.FuncTypes = make([]wasm.TypeIdx, functions)
+	for i := range m.Code {
+		m.Code[i] = deep
+		m.Code[i].BodyBytes = []byte{0x41, 0x01, 0x0b}
+		m.FuncTypes[i] = typeIndex
+	}
+	m.Code[0] = deep
+	return m
+}
+
+func benchParallelStackOutlierModule(tb testing.TB, functions, nodes int) *wasm.Module {
+	tb.Helper()
+	body := make([]byte, 1, 1+nodes*3+1) // no locals
+	for range nodes {
+		body = append(body, 0x41, 0x00, 0x1a) // i32.const 0; drop
+	}
+	body = append(body, 0x0b)
+	defs := make([]benchFuncDef, functions)
+	for i := range defs {
+		defs[i].body = body
+	}
+	return benchDecodeValidateModule(tb, benchModuleBytes(defs, false))
 }
 
 func benchALUHeavyModule(tb testing.TB) *wasm.Module {
