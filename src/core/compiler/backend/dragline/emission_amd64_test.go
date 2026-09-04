@@ -80,6 +80,57 @@ func TestAMD64RailMachRotatesCanonicalCountdownLoop(t *testing.T) {
 	plan.Schedule.BlockRanges[rotatedBlock].Count = oldCount
 }
 
+func TestAMD64RailMachUsesDependencyBreakingVEXFloatConversionAndSqrt(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0xb8, // f64.convert_i32_u
+			0x9f, // f64.sqrt
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fn, err := buildCompilerFunc(m, 0, &railssa.StackFunc{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := (&nativeBackendPlanner{}).Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	native, _, used, err := emitAMD64RailMach(fn, plan, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("float finalization = used %t, err %v", used, err)
+	}
+	if !containsAMD64VEXOpcode(native, 0x2a) || !containsAMD64VEXOpcode(native, 0x51) {
+		t.Fatalf("float code lacks VEX conversion/sqrt: %x", native)
+	}
+	if bytes.Contains(native, []byte{0xf2, 0x48, 0x0f, 0x2a}) || bytes.Contains(native, []byte{0xf2, 0x0f, 0x51}) {
+		t.Fatalf("float code retained dependency-carrying legacy conversion/sqrt: %x", native)
+	}
+}
+
+func containsAMD64VEXOpcode(code []byte, opcode byte) bool {
+	for offset := 0; offset+4 < len(code); offset++ {
+		if code[offset] == 0xc4 && code[offset+3] == opcode {
+			return true
+		}
+	}
+	return false
+}
+
 func TestAMD64ShuffleMasksSelectExactlyOneInput(t *testing.T) {
 	lanes := [16]byte{0, 16, 1, 17, 2, 18, 3, 19, 4, 20, 5, 21, 6, 22, 15, 31}
 	left, right := amd64ShuffleMasks(lanes)

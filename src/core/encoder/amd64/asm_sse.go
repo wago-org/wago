@@ -82,6 +82,10 @@ func (a *Asm) vex3RRRMap(opcodeMap, pp, op byte, dst, src1, src2 Reg) {
 }
 
 func (a *Asm) vex3RRRMapL(opcodeMap, pp, op byte, dst, src1, src2 Reg, l byte) {
+	a.vex3RRRMapWL(opcodeMap, pp, op, dst, src1, src2, false, l)
+}
+
+func (a *Asm) vex3RRRMapWL(opcodeMap, pp, op byte, dst, src1, src2 Reg, w bool, l byte) {
 	rBit, bBit := byte(1), byte(1) // inverted REX.R / REX.B
 	if dst >= 8 {
 		rBit = 0
@@ -90,7 +94,10 @@ func (a *Asm) vex3RRRMapL(opcodeMap, pp, op byte, dst, src1, src2 Reg, l byte) {
 		bBit = 0
 	}
 	vvvv := (^byte(src1)) & 0x0F
-	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03)                // W=0
+	byte2 := (vvvv << 3) | ((l & 1) << 2) | (pp & 0x03)
+	if w {
+		byte2 |= 0x80
+	}
 	byte1 := (rBit << 7) | (1 << 6) | (bBit << 5) | (opcodeMap & 0x1F) // X̄=1
 	a.emit(0xC4, byte1, byte2, op, 0xC0|((byte(dst)&7)<<3)|byte(src2&7))
 }
@@ -197,6 +204,14 @@ func (a *Asm) VFAdd(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x58, dst
 func (a *Asm) VFSub(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5C, dst, s1, s2) }
 func (a *Asm) VFMul(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x59, dst, s1, s2) }
 func (a *Asm) VFDiv(dst, s1, s2 Reg, f64 bool) { a.vex3RRR(vexPP(f64), 0x5E, dst, s1, s2) }
+
+// VCvtsi2f converts a signed 32- or 64-bit integer to scalar float while
+// taking the destination's preserved upper lane from merge. Supplying a
+// zero-idiom merge register avoids the false destination dependency of the
+// legacy two-operand CVTSI2SS/CVTSI2SD forms.
+func (a *Asm) VCvtsi2f(dst, merge, gpr Reg, f64, wide bool) {
+	a.vex3RRRMapWL(vexMap0F, vexPP(f64), 0x2A, dst, merge, gpr, wide, 0)
+}
 
 // VFMemIdx emits scalar AVX arithmetic with a folded indexed memory operand:
 // dst = src1 <op> [base+index+disp].

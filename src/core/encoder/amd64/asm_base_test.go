@@ -538,6 +538,7 @@ func TestAdditionalSIMDEncodings(t *testing.T) {
 		{"movss", func(a *Asm) { a.FMov(0, 1, false) }, []byte{0xf3, 0x0f, 0x10, 0xc1}},
 		{"vdivsd", func(a *Asm) { a.VFDiv(0, 1, 2, true) }, []byte{0xc4, 0xe1, 0x73, 0x5e, 0xc2}},
 		{"vsqrtsd", func(a *Asm) { a.VFSqrt(0, 1, 2, true) }, []byte{0xc4, 0xe1, 0x73, 0x51, 0xc2}},
+		{"vcvtsi2sd", func(a *Asm) { a.VCvtsi2f(0, 1, RCX, true, true) }, []byte{0xc4, 0xe1, 0xf3, 0x2a, 0xc1}},
 		{"vcvtdq2ps", func(a *Asm) { a.Vcvtdq2ps(0, 1) }, []byte{0xc4, 0xe1, 0x78, 0x5b, 0xc1}},
 		{"vcvtdq2pd", func(a *Asm) { a.Vcvtdq2pd(0, 1) }, []byte{0xc4, 0xe1, 0x7a, 0xe6, 0xc1}},
 		{"vcvtps2pd", func(a *Asm) { a.Vcvtps2pd(0, 1) }, []byte{0xc4, 0xe1, 0x78, 0x5a, 0xc1}},

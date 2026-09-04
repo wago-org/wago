@@ -2204,6 +2204,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						prefix = 1
 					}
 					a.VSseRRR(prefix, opcode, dst, lhs, 15)
+				} else if instruction.Op == wasm.InstrF32Sqrt || instruction.Op == wasm.InstrF64Sqrt {
+					// VEX makes dst non-destructive. Using the real input as the merge
+					// source avoids both an extra zero idiom and the legacy form's false
+					// dependency on dst's prior upper lane.
+					a.VFSqrt(dst, lhs, lhs, f64)
 				} else {
 					emitAMD64DirectFloatUnary(&a, instruction.Op, dst, lhs, f64)
 				}
@@ -2309,19 +2314,22 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				wasm.InstrF64ConvertI32S, wasm.InstrF64ConvertI32U:
 				f64 := instruction.Op == wasm.InstrF64ConvertI32S || instruction.Op == wasm.InstrF64ConvertI32U
 				unsigned := instruction.Op == wasm.InstrF32ConvertI32U || instruction.Op == wasm.InstrF64ConvertI32U
-				a.Cvtsi2f(dst, lhs, f64, unsigned)
+				a.VPxor(15, 15, 15)
+				a.VCvtsi2f(dst, 15, lhs, f64, unsigned)
 				continue
 			case wasm.InstrF32ConvertI64S, wasm.InstrF32ConvertI64U,
 				wasm.InstrF64ConvertI64S, wasm.InstrF64ConvertI64U:
 				f64 := instruction.Op == wasm.InstrF64ConvertI64S || instruction.Op == wasm.InstrF64ConvertI64U
 				unsigned := instruction.Op == wasm.InstrF32ConvertI64U || instruction.Op == wasm.InstrF64ConvertI64U
 				if !unsigned {
-					a.Cvtsi2f(dst, lhs, f64, true)
+					a.VPxor(15, 15, 15)
+					a.VCvtsi2f(dst, 15, lhs, f64, true)
 					continue
 				}
 				a.TestSelf(lhs, true)
 				large := a.JccPlaceholder(amd64.CondS)
-				a.Cvtsi2f(dst, lhs, f64, true)
+				a.VPxor(15, 15, 15)
+				a.VCvtsi2f(dst, 15, lhs, f64, true)
 				done := a.JmpPlaceholder()
 				a.PatchRel32(large, a.Len())
 				a.MovReg64(amd64.R10, lhs)
@@ -2329,8 +2337,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.MovReg64(amd64.R11, lhs)
 				a.AluRI(4, amd64.R11, 1, true)
 				a.AluRR(0x09, amd64.R10, amd64.R11, true)
-				a.Cvtsi2f(dst, amd64.R10, f64, true)
-				a.FAdd(dst, dst, f64)
+				a.VPxor(15, 15, 15)
+				a.VCvtsi2f(dst, 15, amd64.R10, f64, true)
+				a.VFAdd(dst, dst, dst, f64)
 				a.PatchRel32(done, a.Len())
 				continue
 			}
