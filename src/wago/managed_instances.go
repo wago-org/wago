@@ -355,7 +355,10 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 		}
 		return in.replayHostLog()
 	}
-	stopCancel := in.startCancellationWatch(ctx, in.trap)
+	stopCancel, err := in.startCancellationWatch(ctx, in.trap)
+	if err != nil {
+		return err
+	}
 	defer stopCancel()
 	if in.syncMode {
 		return contextInterruptError(ctx, in.callNativeSyncWithTrapContext(base, in.trap, ctx))

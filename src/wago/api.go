@@ -4413,7 +4413,10 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 	}
 	entry := in.base + uintptr(in.c.Entry[li])
 	if contexts.interrupt != nil {
-		stopCancel := in.startCancellationWatch(contexts.interrupt, in.trap)
+		stopCancel, err := in.startCancellationWatch(contexts.interrupt, in.trap)
+		if err != nil {
+			return nil, err
+		}
 		defer stopCancel()
 	}
 	if in.syncMode {
@@ -4546,7 +4549,11 @@ func (in *Instance) invokeAttachedLocalContext(li int, args []uint64, contexts i
 	}
 	stopCancel := noOpCancellationWatch
 	if contexts.interrupt != nil {
-		stopCancel = in.startCancellationWatch(contexts.interrupt, activeTrap)
+		var err error
+		stopCancel, err = in.startCancellationWatch(contexts.interrupt, activeTrap)
+		if err != nil {
+			return nil, err
+		}
 	}
 	defer stopCancel()
 	if in.syncMode {
@@ -4613,16 +4620,20 @@ func nativeCancellationSupported() bool {
 // context-aware Call. Background contexts keep the zero-goroutine fast path.
 func noOpCancellationWatch() {}
 
-func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []byte) func() {
+func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []byte) (func(), error) {
 	if !nativeCancellationSupported() || cancel == nil || len(activeTrap) < 4 {
-		return func() {}
+		return noOpCancellationWatch, nil
 	}
 	done := make(chan struct{})
 	stopped := make(chan struct{})
 	trap := (*uint32)(unsafe.Pointer(&activeTrap[0]))
 	clearDeadline := noOpCancellationWatch
 	if deadline, ok := cancel.Deadline(); ok {
-		clearDeadline = wruntime.SetInterruptDeadline(activeTrap, deadline)
+		var err error
+		clearDeadline, err = wruntime.SetInterruptDeadline(activeTrap, deadline)
+		if err != nil {
+			return nil, err
+		}
 	}
 	stopCallback := context.AfterFunc(cancel, func() {
 		defer close(stopped)
@@ -4652,7 +4663,7 @@ func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []
 			<-stopped
 		}
 		atomic.CompareAndSwapUint32(trap, uint32(wruntime.TrapInterrupted), 0)
-	}
+	}, nil
 }
 
 // replayHostLog runs the void host imports the last native call logged. Each

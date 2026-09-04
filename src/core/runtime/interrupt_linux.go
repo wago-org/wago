@@ -49,6 +49,7 @@ var (
 	interruptLinearMemoryCache uint32
 	interruptLinearMemoryMu    sync.Mutex
 
+	interruptRequestMu   sync.Mutex
 	interruptInstallOnce sync.Once
 	interruptInstallErr  error
 	interruptSignal      uint32
@@ -312,6 +313,8 @@ func requestInterruptPointer(trapPtr uintptr) bool {
 }
 
 func acquireInterruptRequest(trapPtr uintptr) *interruptRequest {
+	interruptRequestMu.Lock()
+	defer interruptRequestMu.Unlock()
 	start := int((trapPtr >> 4) & (maxInterruptRequests - 1))
 	for probe := 0; probe < maxInterruptRequests; probe++ {
 		request := &interruptRequests[(start+probe)&(maxInterruptRequests-1)]
@@ -325,6 +328,8 @@ func acquireInterruptRequest(trapPtr uintptr) *interruptRequest {
 }
 
 func releaseInterruptRequest(request *interruptRequest, trapPtr uintptr) {
+	interruptRequestMu.Lock()
+	defer interruptRequestMu.Unlock()
 	if atomic.AddUint32(&request.refs, ^uint32(0)) == 0 {
 		atomic.CompareAndSwapUintptr(&request.trap, trapPtr, 0)
 	}
@@ -399,16 +404,16 @@ type interruptItimerspec struct {
 // SetInterruptDeadline takes the slow path only for a context carrying an
 // actual deadline. Pinning that invocation lets a per-thread kernel timer keep
 // working even while Go is stopped for GC; ordinary calls execute none of this.
-func SetInterruptDeadline(trap []byte, deadline time.Time) func() {
+func SetInterruptDeadline(trap []byte, deadline time.Time) (func(), error) {
 	if len(trap) < 4 || deadline.IsZero() {
-		return func() {}
+		return func() {}, nil
 	}
 	goruntime.LockOSThread()
 	trapPtr := slicePtr(trap)
 	request := acquireInterruptRequest(trapPtr)
 	if request == nil {
 		goruntime.UnlockOSThread()
-		return func() {}
+		return nil, &ResourceLimitError{Resource: "native deadline requests", Scope: "process", Used: maxInterruptRequests, Requested: 1, Limit: maxInterruptRequests, Suggestion: "reduce concurrent deadline calls"}
 	}
 	event := interruptSigevent{
 		signo:  int32(atomic.LoadUint32(&interruptSignal)),
@@ -421,7 +426,7 @@ func SetInterruptDeadline(trap []byte, deadline time.Time) func() {
 	if errno != 0 {
 		releaseInterruptRequest(request, trapPtr)
 		goruntime.UnlockOSThread()
-		return func() {}
+		return nil, fmt.Errorf("create native deadline timer: %w", errno)
 	}
 	delay := time.Until(deadline)
 	if delay <= 0 {
@@ -443,13 +448,13 @@ func SetInterruptDeadline(trap []byte, deadline time.Time) func() {
 		_, _, _ = syscall.RawSyscall(syscall.SYS_TIMER_DELETE, uintptr(uint32(timerID)), 0, 0)
 		releaseInterruptRequest(request, trapPtr)
 		goruntime.UnlockOSThread()
-		return func() {}
+		return nil, fmt.Errorf("arm native deadline timer: %w", errno)
 	}
 	return func() {
 		deleteInterruptTimer(timerID)
 		releaseInterruptRequest(request, trapPtr)
 		goruntime.UnlockOSThread()
-	}
+	}, nil
 }
 
 // deleteInterruptTimer blocks the reserved signal on the pinned target thread,

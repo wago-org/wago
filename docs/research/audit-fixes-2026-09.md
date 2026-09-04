@@ -219,3 +219,14 @@ Validation: version race tests pass, including concurrent writers/readers,
 publication failure, legacy migration, and invalid records. Version and plugin
 suites pass with TMPDIR inside the repository, where temporary Go modules can
 use normal Git VCS stamping.
+
+## 7. Fail deadline admission before native entry
+
+Kernel deadline setup now returns errors for request capacity, timer creation,
+and timer arming failures. All public cancellation entry paths propagate these
+errors before native execution. Request ownership updates are serialized to
+prevent a last-release/new-acquire race from clearing a live slot.
+
+Validation: deadline/cancellation tests pass. Capacity-plus-one admission is
+checked with bounded slot reservations and no guest execution; shared ownership
+is checked through final release. No hot native path gains a lock.
