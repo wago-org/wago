@@ -4,7 +4,6 @@ package amd64
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/abi"
@@ -74,9 +73,7 @@ type ctrlFrameMerge struct {
 	ends         []uint32 // overflow after the first forward-end site
 	branchState  []locState
 	entryState   []locState
-	loopSetStart uint32 // loop: modified-local range; other frames: first packed end site
-	loopSetCount uint16
-	loopSetKnown bool
+	firstEndSite uint32
 	eh           *ctrlFrameEH
 }
 
@@ -317,7 +314,7 @@ func (f *fn) releaseFrameBaseTypes(fr *ctrlFrame) {
 func (f *fn) frameEndSites(fr *ctrlFrame) (uint32, uint32, []uint32) {
 	if fr.kind != cfLoop {
 		if cold := f.ctrlMerge(fr); cold != nil {
-			return cold.loopSetStart, uint32(fr.loopStart), cold.ends
+			return cold.firstEndSite, uint32(fr.loopStart), cold.ends
 		}
 	}
 	return 0, 0, nil
@@ -347,32 +344,6 @@ func (f *fn) frameResultGCRoots(fr *ctrlFrame) []bool {
 		return roots.resultGCRoots
 	}
 	return nil
-}
-
-func (f *fn) frameLoopSetLocals(fr *ctrlFrame) []uint16 {
-	if cold := f.ctrlMerge(fr); cold != nil && cold.loopSetKnown {
-		start := int(cold.loopSetStart)
-		return f.loopSetLocals[start : start+int(cold.loopSetCount)]
-	}
-	return nil
-}
-
-func (f *fn) setFrameLoopSetLocals(fr *ctrlFrame, locals []uint16) {
-	if locals == nil || uint64(len(f.loopSetLocals)) > uint64(^uint32(0)) {
-		return
-	}
-	start := len(f.loopSetLocals)
-	f.loopSetLocals = append(f.loopSetLocals, locals...)
-	cold := f.ensureCtrlMerge(fr)
-	cold.loopSetStart, cold.loopSetCount, cold.loopSetKnown = uint32(start), uint16(len(locals)), true
-}
-
-func loopSetsLocal(locals []uint16, index uint32) bool {
-	if index > uint32(^uint16(0)) {
-		return false
-	}
-	_, ok := slices.BinarySearch(locals, uint16(index))
-	return ok
 }
 
 func (f *fn) convergeFrameBranchState(fr *ctrlFrame) {
@@ -965,14 +936,6 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
-	if kind == cfLoop && !f.unreachable {
-		setLocals, _, valid := scanLoopBodyWithClassifier(r, f.m, f.classifier, f.loopScanLocals) // reader restored
-		f.loopScanLocals = setLocals
-		if setLocals != nil {
-			f.setFrameLoopSetLocals(&fr, setLocals)
-		}
-		_ = valid // A failed optional prewalk simply supplies no reusable local set.
-	}
 	if f.unreachable {
 		f.pushCtrl(&fr)
 		f.releaseCtrlMerge(&fr)

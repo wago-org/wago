@@ -185,7 +185,7 @@ type CodegenStats struct {
 	BoundsChecks            int // inline memory-OOB checks emitted (P6 elides these)
 	BoundsChecksElidable    int // subset of BoundsChecks a straight-line certificate covers (P6.1 sizing; count-only)
 	BoundsChecksInLoop      int // subset emitted inside a loop on a keyable base; count-only
-	BoundsChecksHoistable   int // subset on a loop-INVARIANT local base (not set in the loop) — the P6.2 hoistable target; count-only
+	BoundsChecksHoistable   int // reserved for cross-target reporting; AMD64 no longer prewalks loops solely to populate it
 	TrapStubs               int // shared cold trap stubs emitted (one per trap code used)
 	TrapGroups              int // distinct source-function groups across trap stubs
 	GCHandleResolutions     int // dynamic compact-handle resolutions emitted
@@ -374,11 +374,6 @@ func (s *CodegenStats) addBoundsElidable() {
 func (s *CodegenStats) addBoundsInLoop() {
 	if s != nil {
 		s.BoundsChecksInLoop++
-	}
-}
-func (s *CodegenStats) addBoundsHoistable() {
-	if s != nil {
-		s.BoundsChecksHoistable++
 	}
 }
 func (s *CodegenStats) addPinnedLocal() {

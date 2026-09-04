@@ -322,8 +322,8 @@ func (f *fn) freeLocStateBuf(b []locState) {
 	}
 }
 
-// frameAddEnd stores the first forward-jump site in the loop-analysis word that
-// non-loop frames do not use. Only overflow draws backing from endsPool.
+// frameAddEnd stores the first two forward-jump sites inline. Only overflow
+// draws backing from endsPool.
 func (f *fn) frameAddEnd(fr *ctrlFrame, site int) {
 	if fr.kind == cfLoop {
 		panic("amd64: forward end site on loop frame")
@@ -333,8 +333,8 @@ func (f *fn) frameAddEnd(fr *ctrlFrame, site int) {
 	}
 	cold := f.ensureCtrlMerge(fr)
 	packed := uint32(site + 1) // zero remains the inline-site sentinel
-	if cold.loopSetStart == 0 {
-		cold.loopSetStart = packed
+	if cold.firstEndSite == 0 {
+		cold.firstEndSite = packed
 		return
 	}
 	if fr.loopStart == 0 {

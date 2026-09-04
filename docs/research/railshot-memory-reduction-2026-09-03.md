@@ -480,6 +480,13 @@ structured-region scratch, not either of those old scans.
 
 These are the safest first PRs: no generated-code decision needs to change.
 
+The September 4 audit found and removed one later redundant walk: AMD64 still
+classified every loop body, sorted its assigned locals, and retained the result
+after the GC-fact consumer was deleted. Its only remaining reader incremented a
+diagnostic hoistability counter and did not select or omit a bounds check. Removing
+that walk improves the native loop-control compile fixture by about 8.2%, reduces
+its B/op by 5.3%, and removes one allocation with identical corpus native code.
+
 ### 4. Bounded module-global pins still allocate dense per-global state
 
 The module pin set is bounded by the target register list, but each function

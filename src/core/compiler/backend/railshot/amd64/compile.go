@@ -444,8 +444,6 @@ type transient struct {
 	tmpLabels      []uint32
 	tmpDeferred    []deferredArg
 	tmpBelow       []*elem
-	loopScanLocals []uint16
-	loopSetLocals  []uint16
 	tmpIntervalReg []Reg
 	v128Pool       []poolConst // reusable 4/8/16-byte trailing rip-relative constants
 	poolSites      []poolSite  // flat intrusive site lists; no per-constant allocation
@@ -952,8 +950,6 @@ func (sc *scratch) reset() {
 	sc.gcStructAllocStubSites = sc.gcStructAllocStubSites[:0]
 	sc.gcArrayAllocStubSites = sc.gcArrayAllocStubSites[:0]
 	sc.ctrl = sc.ctrl[:0]
-	sc.transient.loopScanLocals = sc.transient.loopScanLocals[:0]
-	sc.transient.loopSetLocals = sc.transient.loopSetLocals[:0]
 	clear(sc.ctrlMerges[:cap(sc.ctrlMerges)])
 	clear(sc.ctrlRoots[:cap(sc.ctrlRoots)])
 	sc.ctrlRoots = sc.ctrlRoots[:0]

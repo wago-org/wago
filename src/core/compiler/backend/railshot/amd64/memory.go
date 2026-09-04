@@ -8,6 +8,22 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+// memAccessSize returns the byte width of a plain scalar memory instruction.
+func memAccessSize(op byte) int {
+	switch op {
+	case 0x2c, 0x2d, 0x30, 0x31, 0x3a, 0x3c:
+		return 1
+	case 0x2e, 0x2f, 0x32, 0x33, 0x3b, 0x3d:
+		return 2
+	case 0x28, 0x2a, 0x34, 0x35, 0x36, 0x38, 0x3e:
+		return 4
+	case 0x29, 0x2b, 0x37, 0x39:
+		return 8
+	default:
+		return 0
+	}
+}
+
 // Linear-memory access: scalar loads/stores with a linear bounds check, plus
 // memory.size/grow. Ported from WARP's memory lowering, adapted to wago's runtime
 // memory ABI (the same one src/core/encoder/amd64 targets): the linear-memory base is
@@ -393,9 +409,6 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	if bcKind != 0 && f.inLoop() {
 		f.stats.addBoundsInLoop()
 	}
-	if f.boundsHoistable(bcKind, bcIdx) {
-		f.stats.addBoundsHoistable()
-	}
 	f.pinned = f.pinned.add(ea)
 	t := f.allocReg(0)
 	f.a.LeaDisp(t, ea, leaDisp) // t = ea + off + size
@@ -630,23 +643,6 @@ func (f *fn) inLoop() bool {
 		}
 	}
 	return false
-}
-
-// boundsHoistable reports whether a check on address source (kind,idx) is
-// hoistable out of its innermost enclosing loop: a LOCAL base that is
-// loop-invariant (not set anywhere in that loop, per the loop-header scan).
-// Globals are excluded — a callee can change a global but never a caller local.
-func (f *fn) boundsHoistable(kind uint8, idx uint32) bool {
-	if kind != 1 { // locals only
-		return false
-	}
-	for i := len(f.ctrl) - 1; i >= 0; i-- {
-		if f.ctrl[i].kind == cfLoop {
-			cold := f.ctrlMerge(&f.ctrl[i])
-			return cold != nil && cold.loopSetKnown && !loopSetsLocal(f.frameLoopSetLocals(&f.ctrl[i]), idx)
-		}
-	}
-	return false // not inside a loop
 }
 
 func (f *fn) memoryAddr64(memoryIndex uint32) bool {
