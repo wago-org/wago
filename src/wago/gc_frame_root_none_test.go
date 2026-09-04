@@ -148,19 +148,43 @@ func gcFrameRootCollectingBinary(functions int) []byte {
 	)
 }
 
-func gcFrameRootNoneGCBinary() []byte {
+func gcFrameRootNoneGCBinary() []byte { return gcFrameRootNoneGCBinaryN(1) }
+
+func gcFrameRootNoneGCBinaryN(functions int) []byte {
+	funcs := make([][]byte, functions)
+	codes := make([][]byte, functions)
+	for i := range funcs {
+		funcs[i] = wasmtest.ULEB(1)
+		codes[i] = wasmtest.Code([]byte{0x0b})
+	}
 	return wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5f, 0x00}, // empty struct type keeps exact GC planning enabled
 			wasmtest.FuncType(nil, nil),
 		)),
-		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x0b}))),
+		wasmtest.Section(3, wasmtest.Vec(funcs...)),
+		wasmtest.Section(10, wasmtest.Vec(codes...)),
 	)
 }
 
 func BenchmarkCompileSingleRootNoneFunction(b *testing.B) {
 	binary := gcFrameRootNoneGCBinary()
+	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		compiled, err := Compile(config, binary)
+		if err != nil {
+			b.Fatal(err)
+		}
+		if err := compiled.Close(); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkCompileManyRootNoneFunctions(b *testing.B) {
+	binary := gcFrameRootNoneGCBinaryN(1024)
 	config := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	b.ReportAllocs()
 	b.ResetTimer()
