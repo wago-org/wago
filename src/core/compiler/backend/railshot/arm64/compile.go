@@ -1203,9 +1203,13 @@ type CompileOptions struct {
 	Codegen codegen.Options
 
 	// Stats, when non-nil, collects per-function codegen counters into it (the
-	// "explain" dashboard, docs/no-ir-plan.md P1). Independent of WAGO_EXPLAIN,
-	// which prints the same dump to stderr. nil = no collection, zero overhead.
+	// codegen dashboard). Independent of WAGO_EXPLAIN, which prints the same dump
+	// to stderr. nil = no collection, zero overhead.
 	Stats *ModuleStats
+	// CollectInlineReport enables the additional whole-module analysis used by
+	// the human-facing inline report. It is intentionally separate from Stats so
+	// ordinary timing and resource collection does not add another body walk.
+	CollectInlineReport bool
 
 	// CustomInstructions are currently handled by portable host fallbacks on
 	// arm64; the field keeps the backend-neutral compile contract identical.
@@ -1341,10 +1345,12 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			},
 		}
 		ms.Compile.StageNanos[shared.CompileStageHints] = hintNanos
-		// Inline-candidate detection (report only; no codegen change yet). Failure
-		// to analyze is non-fatal — it never blocks a compile.
-		if rep, ierr := analyzeInlineCandidates(m, policy); ierr == nil {
-			ms.Inline = rep
+		if opts.CollectInlineReport || explainEnabled {
+			// Inline-candidate detection is report-only. Failure to analyze is
+			// non-fatal because it never changes code generation.
+			if rep, ierr := analyzeInlineCandidates(m, policy); ierr == nil {
+				ms.Inline = rep
+			}
 		}
 	}
 	// Compile scratch reused across every function in the module. The operand
