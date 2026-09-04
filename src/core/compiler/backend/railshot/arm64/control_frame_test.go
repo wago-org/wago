@@ -24,6 +24,9 @@ func TestCtrlFrameSize(t *testing.T) {
 	if got, want := unsafe.Sizeof(ctrlFrameEH{}), uintptr(32); got != want {
 		t.Fatalf("ctrlFrameEH size = %d, want %d", got, want)
 	}
+	if got, want := unsafe.Sizeof(ehCatchClause{}), uintptr(20); got != want {
+		t.Fatalf("ehCatchClause size = %d, want %d", got, want)
+	}
 }
 
 func TestControlGCRootSegmentsShareBackingArm64(t *testing.T) {

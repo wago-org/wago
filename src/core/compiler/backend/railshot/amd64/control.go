@@ -403,14 +403,14 @@ func (f *fn) convergeFrameEntryState(fr *ctrlFrame) {
 }
 
 type ehCatchClause struct {
-	kind        wasm.CatchKind
 	tag         uint32
-	frame       int
-	scalarN     int
-	payloadN    int
+	frame       uint32
+	matchSite   uint32
+	kind        wasm.CatchKind
+	scalarN     uint8
+	payloadN    uint8
+	rootIndex   uint8
 	payloadType [3]machineType
-	rootIndex   int
-	matchSite   int
 }
 
 // --- operand-stack canonicalization ---
@@ -1126,7 +1126,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			if !f.m.ResolveTypeFunc(tagType.Type.Index, &ft) || len(ft.Params) > 2 {
 				return fmt.Errorf("bounded exception handling catch tag %d signature unavailable", clause.tag)
 			}
-			clause.scalarN = len(ft.Params)
+			clause.scalarN = uint8(len(ft.Params))
 			clause.payloadN = clause.scalarN
 			for j, typ := range ft.Params {
 				mt, ok := exceptionPayloadMachineType(f.m, typ)
@@ -1139,7 +1139,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 				if f.ehRootCount >= maxEHRootRecords {
 					return fmt.Errorf("bounded exception handling supports at most %d rooted exception values per function", maxEHRootRecords)
 				}
-				clause.rootIndex = f.ehRootCount
+				clause.rootIndex = uint8(f.ehRootCount)
 				f.ehRootCount++
 				clause.payloadType[clause.payloadN] = mtI64
 				clause.payloadN++
@@ -1149,7 +1149,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			if f.ehRootCount >= maxEHRootRecords {
 				return fmt.Errorf("bounded exception handling supports at most %d rooted exception values per function", maxEHRootRecords)
 			}
-			clause.rootIndex = f.ehRootCount
+			clause.rootIndex = uint8(f.ehRootCount)
 			f.ehRootCount++
 			clause.payloadType[0] = mtI64
 			clause.payloadN = 1
@@ -1160,22 +1160,23 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 		if err != nil {
 			return err
 		}
-		clause.frame = len(f.ctrl) - 1 - int(label)
-		if clause.frame < 0 {
+		frame := len(f.ctrl) - 1 - int(label)
+		if frame < 0 {
 			return errBadLabel
 		}
-		if f.ctrl[clause.frame].branchArity() != clause.payloadN {
+		clause.frame = uint32(frame)
+		if f.ctrl[frame].branchArity() != int(clause.payloadN) {
 			return fmt.Errorf("bounded exception handler payload arity mismatch")
 		}
 		if kind == wasm.CatchRef || kind == wasm.CatchAllRef {
-			f.ensureFrameEH(&f.ctrl[clause.frame]).refResults[clause.payloadN-1] = true
+			f.ensureFrameEH(&f.ctrl[frame]).refResults[clause.payloadN-1] = true
 		}
 		// The exception edge can arrive with only the conservative local-fact state
 		// established before try_table. Intersect it at registration time just like
 		// an ordinary branch; the out-of-line route restores physical locals only.
 		// Catch dispatch writes canonical slots before jumping. Keep the target on
 		// that representation instead of the ordinary single-result register merge.
-		f.ctrl[clause.frame].set(ctrlRegMerge1, false)
+		f.ctrl[frame].set(ctrlRegMerge1, false)
 		eh.catches = append(eh.catches, clause)
 	}
 	fr.height = f.depth() - fr.paramN
@@ -1198,7 +1199,7 @@ func (f *fn) opTryTable(r *wasm.Reader) error {
 			continue
 		}
 		f.a.XorSelf32(RAX)
-		rootOff := f.ehRootOff(clause.rootIndex)
+		rootOff := f.ehRootOff(int(clause.rootIndex))
 		for word := int32(0); word < ehRootSlots*8; word += 8 {
 			f.a.Store64(RSP, rootOff+word, RAX)
 		}
@@ -1289,12 +1290,12 @@ func (f *fn) opThrowRef() error {
 }
 
 func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff int32) {
-	target := &f.ctrl[clause.frame]
+	target := &f.ctrl[int(clause.frame)]
 	f.a.Load64(RBP, RSP, recordOff+ehPrevOff)
 
 	rootOff := int32(0)
 	if clause.kind == wasm.CatchRef || clause.kind == wasm.CatchAllRef {
-		rootOff = f.ehRootOff(clause.rootIndex)
+		rootOff = f.ehRootOff(int(clause.rootIndex))
 		for _, off := range [...]int32{ehTagOff, ehPayload0Off, ehPayload1Off} {
 			f.a.Load64(RAX, RSP, recordOff+off)
 			f.a.Store64(RSP, rootOff+off-ehTagOff, RAX)
@@ -1302,7 +1303,7 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 	}
 
 	loadPayload := func(reg Reg, i int) {
-		if i == clause.scalarN {
+		if i == int(clause.scalarN) {
 			f.a.LeaRsp(reg, rootOff)
 			return
 		}
@@ -1323,7 +1324,7 @@ func (f *fn) emitEHCatchRoute(fr *ctrlFrame, clause *ehCatchClause, recordOff in
 		}
 	} else {
 		toSlot := slotsOfTypes(f.frameBaseTypes(target))
-		for i := 0; i < clause.payloadN; i++ {
+		for i := 0; i < int(clause.payloadN); i++ {
 			loadPayload(RAX, i)
 			f.a.Store64(RSP, f.spillOff(toSlot+i), RAX)
 		}
@@ -1362,7 +1363,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 	for i := range eh.catches {
 		clause := &eh.catches[i]
 		if clause.kind == wasm.CatchAll {
-			clause.matchSite = f.a.JmpPlaceholder()
+			clause.matchSite = uint32(f.a.JmpPlaceholder())
 			dispatchN = i + 1
 			break
 		}
@@ -1370,7 +1371,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 		f.a.Load64(RDX, RBX, -int32(offEHTagDirPtr))
 		f.a.Load64(RDX, RDX, int32(clause.tag*8))
 		f.a.Cmp64(RAX, RDX)
-		clause.matchSite = f.a.JccPlaceholder(condE)
+		clause.matchSite = uint32(f.a.JccPlaceholder(condE))
 	}
 
 	// No clause matched: transfer the exception words into the previous fixed
@@ -1394,7 +1395,7 @@ func (f *fn) emitEHHandler(fr *ctrlFrame) {
 
 	for i := 0; i < dispatchN; i++ {
 		clause := &eh.catches[i]
-		f.a.PatchRel32(clause.matchSite, f.a.Len())
+		f.a.PatchRel32(int(clause.matchSite), f.a.Len())
 		f.emitEHCatchRoute(fr, clause, recordOff)
 	}
 }
