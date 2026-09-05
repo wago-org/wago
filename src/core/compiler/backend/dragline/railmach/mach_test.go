@@ -467,6 +467,58 @@ func TestSelectTargetOpcodesIntegerDivision(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesFloatConversions(t *testing.T) {
+	operations := [14]MOpcode{
+		wasm.InstrF32ConvertI32S, wasm.InstrF32ConvertI32U, wasm.InstrF32ConvertI64S, wasm.InstrF32ConvertI64U,
+		wasm.InstrF32DemoteF64, wasm.InstrF64ConvertI32S, wasm.InstrF64ConvertI32U, wasm.InstrF64ConvertI64S,
+		wasm.InstrF64ConvertI64U, wasm.InstrF64PromoteF32, wasm.InstrI32ReinterpretF32, wasm.InstrI64ReinterpretF64,
+		wasm.InstrF32ReinterpretI32, wasm.InstrF64ReinterpretI64,
+	}
+	inputs := [14]wasm.ValType{
+		wasm.I32, wasm.I32, wasm.I64, wasm.I64, wasm.F64, wasm.I32, wasm.I32,
+		wasm.I64, wasm.I64, wasm.F32, wasm.F32, wasm.F64, wasm.I32, wasm.I64,
+	}
+	results := [14]wasm.ValType{
+		wasm.F32, wasm.F32, wasm.F32, wasm.F32, wasm.F32, wasm.F64, wasm.F64,
+		wasm.F64, wasm.F64, wasm.F64, wasm.I32, wasm.I64, wasm.F32, wasm.F64,
+	}
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [14]MOpcode
+	}{
+		{"amd64", TargetAMD64, [14]MOpcode{
+			OpAMD64F32ConvertI32S, OpAMD64F32ConvertI32U, OpAMD64F32ConvertI64S, OpAMD64F32ConvertI64U,
+			OpAMD64F32DemoteF64, OpAMD64F64ConvertI32S, OpAMD64F64ConvertI32U, OpAMD64F64ConvertI64S,
+			OpAMD64F64ConvertI64U, OpAMD64F64PromoteF32, OpAMD64I32ReinterpretF32, OpAMD64I64ReinterpretF64,
+			OpAMD64F32ReinterpretI32, OpAMD64F64ReinterpretI64,
+		}},
+		{"arm64", TargetARM64, [14]MOpcode{
+			OpARM64F32ConvertI32S, OpARM64F32ConvertI32U, OpARM64F32ConvertI64S, OpARM64F32ConvertI64U,
+			OpARM64F32DemoteF64, OpARM64F64ConvertI32S, OpARM64F64ConvertI32U, OpARM64F64ConvertI64S,
+			OpARM64F64ConvertI64U, OpARM64F64PromoteF32, OpARM64I32ReinterpretF32, OpARM64I64ReinterpretF64,
+			OpARM64F32ReinterpretI32, OpARM64F64ReinterpretI64,
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for index, encoding := range []byte{0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf} {
+				m := machineModule([]wasm.ValType{inputs[index]}, []wasm.ValType{results[index]}, []byte{0x20, 0, encoding, 0x0b})
+				f := buildMachineTest(t, test.target, m)
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operations[index] {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operations[index])
+				}
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesScalarFloatUnary(t *testing.T) {
 	operations := [14]MOpcode{
 		wasm.InstrF32Abs, wasm.InstrF32Neg, wasm.InstrF32Ceil, wasm.InstrF32Floor, wasm.InstrF32Trunc, wasm.InstrF32Nearest, wasm.InstrF32Sqrt,

@@ -1032,6 +1032,12 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32WrapI64, railmach.OpAMD64I64ExtendI32S, railmach.OpAMD64I64ExtendI32U,
 			railmach.OpAMD64I32Extend8S, railmach.OpAMD64I32Extend16S,
 			railmach.OpAMD64I64Extend8S, railmach.OpAMD64I64Extend16S, railmach.OpAMD64I64Extend32S,
+			railmach.OpAMD64F32ConvertI32S, railmach.OpAMD64F32ConvertI32U,
+			railmach.OpAMD64F32ConvertI64S, railmach.OpAMD64F32ConvertI64U, railmach.OpAMD64F32DemoteF64,
+			railmach.OpAMD64F64ConvertI32S, railmach.OpAMD64F64ConvertI32U,
+			railmach.OpAMD64F64ConvertI64S, railmach.OpAMD64F64ConvertI64U, railmach.OpAMD64F64PromoteF32,
+			railmach.OpAMD64I32ReinterpretF32, railmach.OpAMD64I64ReinterpretF64,
+			railmach.OpAMD64F32ReinterpretI32, railmach.OpAMD64F64ReinterpretI64,
 			railmach.OpAMD64F32EqScalar, railmach.OpAMD64F64EqScalar, railmach.OpAMD64F32NeScalar, railmach.OpAMD64F64NeScalar,
 			railmach.OpAMD64F32LtScalar, railmach.OpAMD64F64LtScalar, railmach.OpAMD64F32GtScalar, railmach.OpAMD64F64GtScalar,
 			railmach.OpAMD64F32LeScalar, railmach.OpAMD64F64LeScalar, railmach.OpAMD64F32GeScalar, railmach.OpAMD64F64GeScalar,
@@ -3811,11 +3817,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.MovGprToXmm(dst, amd64.R10, f64)
 				continue
 			}
-			switch instruction.Op {
+			switch semanticOp {
 			case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U,
 				wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U:
-				f64 := instruction.Op == wasm.InstrI32TruncSatF64S || instruction.Op == wasm.InstrI32TruncSatF64U
-				unsigned := instruction.Op == wasm.InstrI32TruncSatF32U || instruction.Op == wasm.InstrI32TruncSatF64U
+				f64 := semanticOp == wasm.InstrI32TruncSatF64S || semanticOp == wasm.InstrI32TruncSatF64U
+				unsigned := semanticOp == wasm.InstrI32TruncSatF32U || semanticOp == wasm.InstrI32TruncSatF64U
 				preservedGPR, preservedFPR := preserveSaturatingTruncScratch(instructionID)
 				a.FMov(15, lhs, f64)
 				emitAMD64TruncSatI32(&a, 15, f64, unsigned)
@@ -3826,8 +3832,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			case wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U,
 				wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U:
-				f64 := instruction.Op == wasm.InstrI64TruncSatF64S || instruction.Op == wasm.InstrI64TruncSatF64U
-				unsigned := instruction.Op == wasm.InstrI64TruncSatF32U || instruction.Op == wasm.InstrI64TruncSatF64U
+				f64 := semanticOp == wasm.InstrI64TruncSatF64S || semanticOp == wasm.InstrI64TruncSatF64U
+				unsigned := semanticOp == wasm.InstrI64TruncSatF32U || semanticOp == wasm.InstrI64TruncSatF64U
 				preservedGPR, preservedFPR := preserveSaturatingTruncScratch(instructionID)
 				a.FMov(15, lhs, f64)
 				emitAMD64TruncSatI64(&a, 15, f64, unsigned)
@@ -3838,8 +3844,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			case wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U,
 				wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U:
-				f64 := instruction.Op == wasm.InstrI32TruncF64S || instruction.Op == wasm.InstrI32TruncF64U
-				unsigned := instruction.Op == wasm.InstrI32TruncF32U || instruction.Op == wasm.InstrI32TruncF64U
+				f64 := semanticOp == wasm.InstrI32TruncF64S || semanticOp == wasm.InstrI32TruncF64U
+				unsigned := semanticOp == wasm.InstrI32TruncF32U || semanticOp == wasm.InstrI32TruncF64U
 				a.FMov(15, lhs, f64)
 				emitAMD64TruncI32(&a, 15, f64, unsigned, fn.Index, wasmOffset, metadata)
 				if dst != amd64.RAX {
@@ -3848,8 +3854,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			case wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U,
 				wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U:
-				f64 := instruction.Op == wasm.InstrI64TruncF64S || instruction.Op == wasm.InstrI64TruncF64U
-				unsigned := instruction.Op == wasm.InstrI64TruncF32U || instruction.Op == wasm.InstrI64TruncF64U
+				f64 := semanticOp == wasm.InstrI64TruncF64S || semanticOp == wasm.InstrI64TruncF64U
+				unsigned := semanticOp == wasm.InstrI64TruncF32U || semanticOp == wasm.InstrI64TruncF64U
 				a.FMov(15, lhs, f64)
 				emitAMD64TruncI64(&a, 15, f64, unsigned, fn.Index, wasmOffset, metadata)
 				if dst != amd64.RAX {
@@ -3876,15 +3882,15 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			case wasm.InstrF32ConvertI32S, wasm.InstrF32ConvertI32U,
 				wasm.InstrF64ConvertI32S, wasm.InstrF64ConvertI32U:
-				f64 := instruction.Op == wasm.InstrF64ConvertI32S || instruction.Op == wasm.InstrF64ConvertI32U
-				unsigned := instruction.Op == wasm.InstrF32ConvertI32U || instruction.Op == wasm.InstrF64ConvertI32U
+				f64 := semanticOp == wasm.InstrF64ConvertI32S || semanticOp == wasm.InstrF64ConvertI32U
+				unsigned := semanticOp == wasm.InstrF32ConvertI32U || semanticOp == wasm.InstrF64ConvertI32U
 				a.VPxor(15, 15, 15)
 				a.VCvtsi2f(dst, 15, lhs, f64, unsigned)
 				continue
 			case wasm.InstrF32ConvertI64S, wasm.InstrF32ConvertI64U,
 				wasm.InstrF64ConvertI64S, wasm.InstrF64ConvertI64U:
-				f64 := instruction.Op == wasm.InstrF64ConvertI64S || instruction.Op == wasm.InstrF64ConvertI64U
-				unsigned := instruction.Op == wasm.InstrF32ConvertI64U || instruction.Op == wasm.InstrF64ConvertI64U
+				f64 := semanticOp == wasm.InstrF64ConvertI64S || semanticOp == wasm.InstrF64ConvertI64U
+				unsigned := semanticOp == wasm.InstrF32ConvertI64U || semanticOp == wasm.InstrF64ConvertI64U
 				if !unsigned {
 					a.VPxor(15, 15, 15)
 					a.VCvtsi2f(dst, 15, lhs, f64, true)

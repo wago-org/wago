@@ -1107,6 +1107,12 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32WrapI64, railmach.OpARM64I64ExtendI32S, railmach.OpARM64I64ExtendI32U,
 			railmach.OpARM64I32Extend8S, railmach.OpARM64I32Extend16S,
 			railmach.OpARM64I64Extend8S, railmach.OpARM64I64Extend16S, railmach.OpARM64I64Extend32S,
+			railmach.OpARM64F32ConvertI32S, railmach.OpARM64F32ConvertI32U,
+			railmach.OpARM64F32ConvertI64S, railmach.OpARM64F32ConvertI64U, railmach.OpARM64F32DemoteF64,
+			railmach.OpARM64F64ConvertI32S, railmach.OpARM64F64ConvertI32U,
+			railmach.OpARM64F64ConvertI64S, railmach.OpARM64F64ConvertI64U, railmach.OpARM64F64PromoteF32,
+			railmach.OpARM64I32ReinterpretF32, railmach.OpARM64I64ReinterpretF64,
+			railmach.OpARM64F32ReinterpretI32, railmach.OpARM64F64ReinterpretI64,
 			railmach.OpARM64F32EqScalar, railmach.OpARM64F64EqScalar, railmach.OpARM64F32NeScalar, railmach.OpARM64F64NeScalar,
 			railmach.OpARM64F32LtScalar, railmach.OpARM64F64LtScalar, railmach.OpARM64F32GtScalar, railmach.OpARM64F64GtScalar,
 			railmach.OpARM64F32LeScalar, railmach.OpARM64F64LeScalar, railmach.OpARM64F32GeScalar, railmach.OpARM64F64GeScalar,
@@ -5098,11 +5104,11 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				a.NeonBit16b(dst, rhs, mask)
 				continue
 			}
-			switch instruction.Op {
+			switch semanticOp {
 			case wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U,
 				wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U:
-				f64 := instruction.Op == wasm.InstrI32TruncSatF64S || instruction.Op == wasm.InstrI32TruncSatF64U
-				if instruction.Op == wasm.InstrI32TruncSatF32U || instruction.Op == wasm.InstrI32TruncSatF64U {
+				f64 := semanticOp == wasm.InstrI32TruncSatF64S || semanticOp == wasm.InstrI32TruncSatF64U
+				if semanticOp == wasm.InstrI32TruncSatF32U || semanticOp == wasm.InstrI32TruncSatF64U {
 					a.Fcvtzu(dst, lhs, f64, false)
 				} else {
 					a.Fcvtzs(dst, lhs, f64, false)
@@ -5110,8 +5116,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				continue
 			case wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U,
 				wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U:
-				f64 := instruction.Op == wasm.InstrI64TruncSatF64S || instruction.Op == wasm.InstrI64TruncSatF64U
-				if instruction.Op == wasm.InstrI64TruncSatF32U || instruction.Op == wasm.InstrI64TruncSatF64U {
+				f64 := semanticOp == wasm.InstrI64TruncSatF64S || semanticOp == wasm.InstrI64TruncSatF64U
+				if semanticOp == wasm.InstrI64TruncSatF32U || semanticOp == wasm.InstrI64TruncSatF64U {
 					a.Fcvtzu(dst, lhs, f64, true)
 				} else {
 					a.Fcvtzs(dst, lhs, f64, true)
@@ -5119,8 +5125,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				continue
 			case wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U,
 				wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U:
-				f64 := instruction.Op == wasm.InstrI32TruncF64S || instruction.Op == wasm.InstrI32TruncF64U
-				unsigned := instruction.Op == wasm.InstrI32TruncF32U || instruction.Op == wasm.InstrI32TruncF64U
+				f64 := semanticOp == wasm.InstrI32TruncF64S || semanticOp == wasm.InstrI32TruncF64U
+				unsigned := semanticOp == wasm.InstrI32TruncF32U || semanticOp == wasm.InstrI32TruncF64U
 				if plan.Simplified.Remaining[instructionID]&railssa.ObligationFiniteConversion == 0 {
 					if unsigned {
 						a.Fcvtzu(dst, lhs, f64, false)
@@ -5137,8 +5143,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				continue
 			case wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U,
 				wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U:
-				f64 := instruction.Op == wasm.InstrI64TruncF64S || instruction.Op == wasm.InstrI64TruncF64U
-				unsigned := instruction.Op == wasm.InstrI64TruncF32U || instruction.Op == wasm.InstrI64TruncF64U
+				f64 := semanticOp == wasm.InstrI64TruncF64S || semanticOp == wasm.InstrI64TruncF64U
+				unsigned := semanticOp == wasm.InstrI64TruncF32U || semanticOp == wasm.InstrI64TruncF64U
 				if plan.Simplified.Remaining[instructionID]&railssa.ObligationFiniteConversion == 0 {
 					if unsigned {
 						a.Fcvtzu(dst, lhs, f64, true)
@@ -5177,8 +5183,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				continue
 			case wasm.InstrF32ConvertI32S, wasm.InstrF32ConvertI32U,
 				wasm.InstrF64ConvertI32S, wasm.InstrF64ConvertI32U:
-				f64 := instruction.Op == wasm.InstrF64ConvertI32S || instruction.Op == wasm.InstrF64ConvertI32U
-				if instruction.Op == wasm.InstrF32ConvertI32U || instruction.Op == wasm.InstrF64ConvertI32U {
+				f64 := semanticOp == wasm.InstrF64ConvertI32S || semanticOp == wasm.InstrF64ConvertI32U
+				if semanticOp == wasm.InstrF32ConvertI32U || semanticOp == wasm.InstrF64ConvertI32U {
 					a.Ucvtf(dst, lhs, f64, false)
 				} else {
 					a.Scvtf(dst, lhs, f64, false)
@@ -5186,8 +5192,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				continue
 			case wasm.InstrF32ConvertI64S, wasm.InstrF32ConvertI64U,
 				wasm.InstrF64ConvertI64S, wasm.InstrF64ConvertI64U:
-				f64 := instruction.Op == wasm.InstrF64ConvertI64S || instruction.Op == wasm.InstrF64ConvertI64U
-				if instruction.Op == wasm.InstrF32ConvertI64U || instruction.Op == wasm.InstrF64ConvertI64U {
+				f64 := semanticOp == wasm.InstrF64ConvertI64S || semanticOp == wasm.InstrF64ConvertI64U
+				if semanticOp == wasm.InstrF32ConvertI64U || semanticOp == wasm.InstrF64ConvertI64U {
 					a.Ucvtf(dst, lhs, f64, true)
 				} else {
 					a.Scvtf(dst, lhs, f64, true)
