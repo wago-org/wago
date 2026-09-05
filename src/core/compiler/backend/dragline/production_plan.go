@@ -958,6 +958,20 @@ func nativeExternalCallFPRMasks(stack *railssa.StackFunc, machine *railmach.Func
 	return all, vector
 }
 
+func nativeMachineHasExternalCall(stack *railssa.StackFunc, machine *railmach.Func) bool {
+	if stack == nil || machine == nil {
+		return false
+	}
+	for _, instruction := range machine.Insts {
+		if instruction.Op == wasm.InstrMemoryGrow ||
+			instruction.Op != wasm.InstrCall && railmach.IsCall(instruction.Op) ||
+			instruction.Op == wasm.InstrCall && uint32(instruction.Aux) < stack.ImportedFuncs {
+			return true
+		}
+	}
+	return false
+}
+
 func nativeMemoryAccess(kind wasm.InstrKind) (size int, signed, store, ok bool) {
 	if kind < wasm.InstrI32Load || kind > wasm.InstrI64Store32 {
 		return 0, false, false, false
@@ -1082,16 +1096,25 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	}
 	defaultGreedy := railmach.DefaultGreedyConfig(machineTarget)
 	if machineHasV128(machine) {
-		// Until callee-save homes become 128-bit, vector values may use only
-		// registers that are volatile on every supported platform ABI.
 		if machineTarget == railmach.TargetAMD64 {
+			// Until callee-save homes become 128-bit, vector values may use only
+			// registers that are volatile on every supported platform ABI.
 			fprs := uint8(6) // XMM0-XMM5 are volatile on Windows and SysV.
 			fprs -= machineAMD64VectorScratchCount(machine)
 			defaultGreedy.Linear.FPRs = fprs
 			defaultGreedy.CallerFPRs = fprs
 			defaultGreedy.CallerFPRMask = callerRegisterMask(fprs)
 		} else {
-			defaultGreedy.Linear.FPRs = 16 // V0-V7 and V16-V23 in allocator order.
+			// V8-V15 require preserving their full Q contents for vector values;
+			// the frame and finalizer already distinguish those saves. Platform
+			// callees preserve only their low halves, so functions with an external
+			// call retain the all-volatile allocation until ARM64 grows the same
+			// around-call Q saves as AMD64. V24-V27 remain finalizer scratch.
+			if nativeMachineHasExternalCall(stack, machine) {
+				defaultGreedy.Linear.FPRs = 16
+			} else {
+				defaultGreedy.Linear.FPRs = 24
+			}
 			defaultGreedy.CallerFPRs = 16
 			defaultGreedy.CallerFPRMask = callerRegisterMask(16)
 		}

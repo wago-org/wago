@@ -64,6 +64,19 @@ func TestNativeARM64AllocatableFPRsRespectReservedRegisters(t *testing.T) {
 	}
 }
 
+func TestNativeMachineHasExternalCall(t *testing.T) {
+	stack := &railssa.StackFunc{ImportedFuncs: 1}
+	if !nativeMachineHasExternalCall(stack, &railmach.Func{Insts: []railmach.Inst{{Op: wasm.InstrCall, Aux: 0}}}) {
+		t.Fatal("imported call was not external")
+	}
+	if nativeMachineHasExternalCall(stack, &railmach.Func{Insts: []railmach.Inst{{Op: wasm.InstrCall, Aux: 1}}}) {
+		t.Fatal("private local call was external")
+	}
+	if !nativeMachineHasExternalCall(stack, &railmach.Func{Insts: []railmach.Inst{{Op: wasm.InstrMemoryGrow}}}) {
+		t.Fatal("runtime helper call was not external")
+	}
+}
+
 func TestNativeARM64CachesGlobalDescriptorsOnlyWhenDense(t *testing.T) {
 	machine := &railmach.Func{Target: railmach.TargetARM64, Insts: []railmach.Inst{
 		{Op: wasm.InstrGlobalGet}, {Op: wasm.InstrGlobalSet}, {Op: wasm.InstrGlobalGet},

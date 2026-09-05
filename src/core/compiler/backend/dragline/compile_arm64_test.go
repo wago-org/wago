@@ -702,6 +702,56 @@ func TestARM64RailMachSIMDConstantsUseDeduplicatedLiteralPool(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachVectorPressureUsesFullWidthCalleeSaves(t *testing.T) {
+	const locals = byte(20)
+	body := make([]byte, 0, 512)
+	for local := byte(0); local < locals; local++ {
+		body = append(body, 0xfd, 0x0c) // v128.const
+		body = append(body, local)
+		body = append(body, make([]byte, 15)...)
+		body = append(body, 0x21, local) // local.set
+	}
+	body = append(body, 0x20, 0x00) // local.get 0
+	for local := byte(1); local < locals; local++ {
+		body = append(body, 0x20, local, 0xfd, 0x51) // local.get; v128.xor
+	}
+	body = append(body, 0x0b)
+	function := append([]byte{0x01, locals, 0x7b}, body...)
+	code := append(wasmtest.ULEB(uint32(len(function))), function...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vectorCalleeSaves := plan.ABI.CalleeFPRs & plan.ABI.VectorFPRs
+	if vectorCalleeSaves == 0 {
+		t.Fatalf("vector pressure used no full-width callee saves: ABI=%#v allocation=%#v", plan.ABI, plan.Allocation.Metrics)
+	}
+	if plan.Frame.CalleeSaveBytes < 16 {
+		t.Fatalf("vector callee-save frame = %#v, want at least one Q-register slot", plan.Frame)
+	}
+}
+
 func TestARM64RailMachUsesSpecializedSIMDShuffle(t *testing.T) {
 	body := []byte{0x20, 0x00, 0x20, 0x00, 0xfd, 0x0d}
 	body = append(body, []byte{2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13}...)
