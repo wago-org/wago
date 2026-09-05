@@ -14,7 +14,7 @@ import (
 
 func TestModuleStackArenaCapUsesSmallestBoundedHint(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: []byte{0x00, 0x41, 0x2a, 0x0b}}}}
-	hints := []funcHints{{stackArenaNodes: 1}}
+	hints := []funcHints{{}}
 
 	if got := moduleStackArenaCap(m, hints); got != minStackArenaCap {
 		t.Fatalf("module stack arena cap = %d, want %d", got, minStackArenaCap)
@@ -33,64 +33,30 @@ func TestModuleStackArenaCapFallsBackForMultiValueTypes(t *testing.T) {
 		Types: []wasm.RecType{{SubTypes: []wasm.SubType{{Comp: wasm.CompType{Kind: wasm.CompFunc, Results: []wasm.ValType{wasm.I32, wasm.I64}}}}}},
 		Code:  []wasm.Func{{BodyBytes: []byte{0x0b}}},
 	}
-	if got := moduleStackArenaCap(m, []funcHints{{stackArenaNodes: 1}}); got != defaultStackArenaCap {
+	if got := moduleStackArenaCap(m, []funcHints{{}}); got != defaultStackArenaCap {
 		t.Fatalf("multi-value stack arena cap = %d, want %d", got, defaultStackArenaCap)
 	}
 }
 
-func TestModuleStackArenaCapFallsBackWhenLookaheadDiscountRemovesBenefit(t *testing.T) {
-	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 1536)}}}
-	hints := []funcHints{{stackArenaNodes: 770, stackArenaDiscount: 300}}
-	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
-		t.Fatalf("discounted stack arena cap = %d, want legacy %d", got, defaultStackArenaCap)
-	}
-}
-
-func TestModuleStackArenaCapFallsBackForDeadCode(t *testing.T) {
-	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 1536)}}}
-	hints := []funcHints{{stackArenaNodes: 770, flags: hintHasStackSinkFusion}}
-	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
-		t.Fatalf("dead-code stack arena cap = %d, want legacy %d", got, defaultStackArenaCap)
-	}
-}
-
-func TestModuleStackArenaCapFallsBackForStackSinkFusion(t *testing.T) {
-	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 1536)}}}
-	hints := []funcHints{{stackArenaNodes: 770, flags: hintHasStackSinkFusion}}
-	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
-		t.Fatalf("stack-sink fusion cap = %d, want legacy %d", got, defaultStackArenaCap)
-	}
-}
-
-func TestModuleStackArenaCapUsesBoundedLargeFunctionHint(t *testing.T) {
-	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, defaultStackArenaCap*2)}}}
-	hints := []funcHints{{stackArenaNodes: defaultStackArenaCap * 2}}
-	want := stackArenaCapForHints(len(m.Code[0].BodyBytes), 0, int(hints[0].stackArenaNodes))
+func TestModuleStackArenaCapUsesCheapBodyBound(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 64)}}}
+	hints := []funcHints{{localCount: 12}}
+	want := stackArenaCapForBody(64, 12)
 	if got := moduleStackArenaCap(m, hints); got != want {
-		t.Fatalf("large-function cap = %d, want hinted %d", got, want)
-	}
-
-	m.Code[0].BodyBytes = make([]byte, maxInitialStackArenaCap*2)
-	hints[0].stackArenaNodes = maxInitialStackArenaCap * 2
-	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
-		t.Fatalf("pathological-function cap = %d, want fallback %d", got, defaultStackArenaCap)
+		t.Fatalf("medium-function cap = %d, want body bound %d", got, want)
 	}
 }
 
-func TestModuleStackArenaCapFallsBackWhenHintExceedsLegacyRetention(t *testing.T) {
-	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 1536)}}}
-	hints := []funcHints{{stackArenaNodes: 768}}
-	if hinted := stackArenaCapForHints(len(m.Code[0].BodyBytes), 0, int(hints[0].stackArenaNodes)); hinted != 1153 {
-		t.Fatalf("test hinted cap = %d, want 1153", hinted)
-	}
-	if got := moduleStackArenaCap(m, hints); got != defaultStackArenaCap {
-		t.Fatalf("over-reserved cap = %d, want legacy %d", got, defaultStackArenaCap)
+func TestModuleStackArenaCapFallsBackWhenBodyBoundReachesDefault(t *testing.T) {
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, defaultStackArenaCap*4/3+1)}}}
+	if got := moduleStackArenaCap(m, []funcHints{{}}); got != defaultStackArenaCap {
+		t.Fatalf("large-function cap = %d, want default %d", got, defaultStackArenaCap)
 	}
 }
 
 func TestWorkerStackArenaCapDoesNotMultiplyLargeHint(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 4096)}}}
-	hints := []funcHints{{stackArenaNodes: 4096}}
+	hints := []funcHints{{}}
 	if got := workerStackArenaCap(m, hints, inlineTargetTable{}, false); got != defaultStackArenaCap {
 		t.Fatalf("worker stack arena cap = %d, want %d", got, defaultStackArenaCap)
 	}
@@ -98,7 +64,7 @@ func TestWorkerStackArenaCapDoesNotMultiplyLargeHint(t *testing.T) {
 
 func TestInlineTargetsKeepLegacyStackArenaCap(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: []byte{0x0b}}}}
-	hints := []funcHints{{stackArenaNodes: 1}}
+	hints := []funcHints{{}}
 	targets := inlineTargetTable{data: &inlineTargetData{slots: []uint32{1}, targets: []inlineTarget{{}}}}
 	if got := serialStackArenaCap(m, hints, targets, false); got != defaultStackArenaCap {
 		t.Fatalf("serial inline stack arena cap = %d, want %d", got, defaultStackArenaCap)
@@ -119,7 +85,7 @@ func TestGCTypeSubtypingUsesExpandedStackLowering(t *testing.T) {
 
 func TestExpandedLoweringKeepsLegacyStackArenaCap(t *testing.T) {
 	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 512)}}}
-	hints := []funcHints{{stackArenaNodes: 256}}
+	hints := []funcHints{{}}
 	if got := serialStackArenaCap(m, hints, inlineTargetTable{}, true); got != defaultStackArenaCap {
 		t.Fatalf("serial expanded-lowering stack arena cap = %d, want %d", got, defaultStackArenaCap)
 	}
@@ -130,7 +96,7 @@ func TestExpandedLoweringKeepsLegacyStackArenaCap(t *testing.T) {
 
 func TestModuleStackArenaCapIsDeterministicAcrossFunctionOrder(t *testing.T) {
 	m1 := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, 24)}, {BodyBytes: make([]byte, 80)}}}
-	h1 := []funcHints{{stackArenaNodes: 8}, {stackArenaNodes: 20}}
+	h1 := []funcHints{{}, {}}
 	m2 := &wasm.Module{Code: []wasm.Func{m1.Code[1], m1.Code[0]}}
 	h2 := []funcHints{h1[1], h1[0]}
 	if got, want := moduleStackArenaCap(m1, h1), moduleStackArenaCap(m2, h2); got != want {

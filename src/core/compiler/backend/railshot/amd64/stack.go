@@ -393,16 +393,16 @@ func (s *stack) resetGrowthCaps() {
 }
 
 func stackArenaCapForBody(bodyLen, nLocals int) int {
-	return stackArenaCapForHints(bodyLen, nLocals, 0)
-}
-
-func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
-	// Node-count estimate used to size the first chunk so a typical function fits
-	// without advancing chunks. Historically one node per body byte; the pre-scan's
-	// opcode-based estimate avoids reserving nodes for long immediates (notably
-	// 16-byte SIMD constants). The chunked arena grows past any underestimate while
-	// preserving pointer stability, so this is a hint, not a bound.
-	return shared.StackArenaCapacity(bodyLen, nLocals, nodeHint)
+	// Most node-producing opcodes are one byte, while locals, constants, calls,
+	// memory operations, and prefixed instructions also carry immediates. Three
+	// nodes per four body bytes is a cheap corpus-backed estimate that avoids the
+	// former per-opcode predictor. Stable chunk growth preserves correctness when
+	// an unusually dense function exceeds it.
+	nodes := bodyLen - bodyLen/4
+	if bodyLen&3 != 0 {
+		nodes--
+	}
+	return nodes + nLocals/4 + 1
 }
 
 // alloc returns a fresh zeroed node from the arena. The returned pointer is

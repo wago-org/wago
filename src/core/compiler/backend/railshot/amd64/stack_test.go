@@ -239,14 +239,11 @@ func TestStackArenaCapForBodyMediumFunction(t *testing.T) {
 	}
 }
 
-func TestStackArenaCapForHintsIgnoresLongImmediates(t *testing.T) {
-	// A body with a few stack-producing opcodes and long immediates should reserve
-	// from the opcode hint, not one arena elem per byte.
-	const bodyLen = 64
-	const nodes = 12
-	want := nodes + nodes/2 + 1
-	if got := stackArenaCapForHints(bodyLen, 0, nodes); got != want {
-		t.Fatalf("stackArenaCapForHints(%d, 0, %d) = %d, want %d", bodyLen, nodes, got, want)
+func TestStackArenaCapForBodyIncludesLocalAllowance(t *testing.T) {
+	const bodyLen, locals = 64, 12
+	want := bodyLen - bodyLen/4 + locals/4 + 1
+	if got := stackArenaCapForBody(bodyLen, locals); got != want {
+		t.Fatalf("stackArenaCapForBody(%d, %d) = %d, want %d", bodyLen, locals, got, want)
 	}
 }
 
