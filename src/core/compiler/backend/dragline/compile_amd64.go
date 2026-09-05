@@ -1023,6 +1023,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32Popcnt, railmach.OpAMD64I64Popcnt,
 			railmach.OpAMD64F32AddScalar, railmach.OpAMD64F64AddScalar, railmach.OpAMD64F32SubScalar, railmach.OpAMD64F64SubScalar,
 			railmach.OpAMD64F32MulScalar, railmach.OpAMD64F64MulScalar, railmach.OpAMD64F32DivScalar, railmach.OpAMD64F64DivScalar,
+			railmach.OpAMD64F32AbsScalar, railmach.OpAMD64F64AbsScalar, railmach.OpAMD64F32NegScalar, railmach.OpAMD64F64NegScalar,
+			railmach.OpAMD64F32CeilScalar, railmach.OpAMD64F64CeilScalar, railmach.OpAMD64F32FloorScalar, railmach.OpAMD64F64FloorScalar,
+			railmach.OpAMD64F32TruncScalar, railmach.OpAMD64F64TruncScalar, railmach.OpAMD64F32NearestScalar, railmach.OpAMD64F64NearestScalar,
+			railmach.OpAMD64F32SqrtScalar, railmach.OpAMD64F64SqrtScalar,
 			railmach.OpAMD64I32WrapI64, railmach.OpAMD64I64ExtendI32S, railmach.OpAMD64I64ExtendI32U,
 			railmach.OpAMD64I32Extend8S, railmach.OpAMD64I32Extend16S,
 			railmach.OpAMD64I64Extend8S, railmach.OpAMD64I64Extend16S, railmach.OpAMD64I64Extend32S,
@@ -3728,15 +3732,15 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.PatchRel32(orderedDone, a.Len())
 				continue
 			}
-			if amd64DirectFloatUnaryKind(instruction.Op) {
-				f64 := instruction.Op >= wasm.InstrF64Abs
-				if instruction.Op == wasm.InstrF32Abs || instruction.Op == wasm.InstrF64Abs || instruction.Op == wasm.InstrF32Neg || instruction.Op == wasm.InstrF64Neg {
+			if amd64DirectFloatUnaryKind(semanticOp) {
+				f64 := semanticOp >= wasm.InstrF64Abs
+				if semanticOp == wasm.InstrF32Abs || semanticOp == wasm.InstrF64Abs || semanticOp == wasm.InstrF32Neg || semanticOp == wasm.InstrF64Neg {
 					mask := uint64(0x7fffffff)
 					opcode := byte(0x54)
 					if f64 {
 						mask = 0x7fffffffffffffff
 					}
-					if instruction.Op == wasm.InstrF32Neg || instruction.Op == wasm.InstrF64Neg {
+					if semanticOp == wasm.InstrF32Neg || semanticOp == wasm.InstrF64Neg {
 						opcode = 0x57
 						if f64 {
 							mask = uint64(1) << 63
@@ -3750,13 +3754,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						prefix = 1
 					}
 					a.VSseRRR(prefix, opcode, dst, lhs, 15)
-				} else if instruction.Op == wasm.InstrF32Sqrt || instruction.Op == wasm.InstrF64Sqrt {
+				} else if semanticOp == wasm.InstrF32Sqrt || semanticOp == wasm.InstrF64Sqrt {
 					// VEX makes dst non-destructive. Using the real input as the merge
 					// source avoids both an extra zero idiom and the legacy form's false
 					// dependency on dst's prior upper lane.
 					a.VFSqrt(dst, lhs, lhs, f64)
 				} else {
-					emitAMD64DirectFloatUnary(&a, instruction.Op, dst, lhs, f64)
+					emitAMD64DirectFloatUnary(&a, semanticOp, dst, lhs, f64)
 				}
 				continue
 			}
@@ -7901,6 +7905,7 @@ func emitAMD64DirectFloatBinary(a *amd64.Asm, kind wasm.InstrKind, dst, lhs, rhs
 }
 
 func amd64DirectFloatUnaryKind(kind wasm.InstrKind) bool {
+	kind = railmach.SemanticOpcode(kind)
 	return kind >= wasm.InstrF32Abs && kind <= wasm.InstrF32Sqrt || kind >= wasm.InstrF64Abs && kind <= wasm.InstrF64Sqrt
 }
 
@@ -7948,6 +7953,7 @@ func emitAMD64DirectSIMDBinary(a *amd64.Asm, kind wasm.InstrKind, dst, lhs, rhs 
 }
 
 func emitAMD64DirectFloatUnary(a *amd64.Asm, kind wasm.InstrKind, dst, src amd64.Reg, f64 bool) {
+	kind = railmach.SemanticOpcode(kind)
 	switch kind {
 	case wasm.InstrF32Abs, wasm.InstrF64Abs:
 		prefix := byte(0)

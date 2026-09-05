@@ -296,6 +296,20 @@ const (
 	OpAMD64F64MulScalar
 	OpAMD64F32DivScalar
 	OpAMD64F64DivScalar
+	OpAMD64F32AbsScalar
+	OpAMD64F64AbsScalar
+	OpAMD64F32NegScalar
+	OpAMD64F64NegScalar
+	OpAMD64F32CeilScalar
+	OpAMD64F64CeilScalar
+	OpAMD64F32FloorScalar
+	OpAMD64F64FloorScalar
+	OpAMD64F32TruncScalar
+	OpAMD64F64TruncScalar
+	OpAMD64F32NearestScalar
+	OpAMD64F64NearestScalar
+	OpAMD64F32SqrtScalar
+	OpAMD64F64SqrtScalar
 	OpAMD64I32WrapI64
 	OpAMD64I64ExtendI32S
 	OpAMD64I64ExtendI32U
@@ -630,6 +644,20 @@ const (
 	OpARM64F64MulScalar
 	OpARM64F32DivScalar
 	OpARM64F64DivScalar
+	OpARM64F32AbsScalar
+	OpARM64F64AbsScalar
+	OpARM64F32NegScalar
+	OpARM64F64NegScalar
+	OpARM64F32CeilScalar
+	OpARM64F64CeilScalar
+	OpARM64F32FloorScalar
+	OpARM64F64FloorScalar
+	OpARM64F32TruncScalar
+	OpARM64F64TruncScalar
+	OpARM64F32NearestScalar
+	OpARM64F64NearestScalar
+	OpARM64F32SqrtScalar
+	OpARM64F64SqrtScalar
 	OpARM64I32WrapI64
 	OpARM64I64ExtendI32S
 	OpARM64I64ExtendI32U
@@ -766,6 +794,34 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrF32Div
 	case OpAMD64F64DivScalar, OpARM64F64DivScalar:
 		return wasm.InstrF64Div
+	case OpAMD64F32AbsScalar, OpARM64F32AbsScalar:
+		return wasm.InstrF32Abs
+	case OpAMD64F64AbsScalar, OpARM64F64AbsScalar:
+		return wasm.InstrF64Abs
+	case OpAMD64F32NegScalar, OpARM64F32NegScalar:
+		return wasm.InstrF32Neg
+	case OpAMD64F64NegScalar, OpARM64F64NegScalar:
+		return wasm.InstrF64Neg
+	case OpAMD64F32CeilScalar, OpARM64F32CeilScalar:
+		return wasm.InstrF32Ceil
+	case OpAMD64F64CeilScalar, OpARM64F64CeilScalar:
+		return wasm.InstrF64Ceil
+	case OpAMD64F32FloorScalar, OpARM64F32FloorScalar:
+		return wasm.InstrF32Floor
+	case OpAMD64F64FloorScalar, OpARM64F64FloorScalar:
+		return wasm.InstrF64Floor
+	case OpAMD64F32TruncScalar, OpARM64F32TruncScalar:
+		return wasm.InstrF32Trunc
+	case OpAMD64F64TruncScalar, OpARM64F64TruncScalar:
+		return wasm.InstrF64Trunc
+	case OpAMD64F32NearestScalar, OpARM64F32NearestScalar:
+		return wasm.InstrF32Nearest
+	case OpAMD64F64NearestScalar, OpARM64F64NearestScalar:
+		return wasm.InstrF64Nearest
+	case OpAMD64F32SqrtScalar, OpARM64F32SqrtScalar:
+		return wasm.InstrF32Sqrt
+	case OpAMD64F64SqrtScalar, OpARM64F64SqrtScalar:
+		return wasm.InstrF64Sqrt
 	case OpAMD64I32WrapI64, OpARM64I32WrapI64:
 		return wasm.InstrI32WrapI64
 	case OpAMD64I64ExtendI32S, OpARM64I64ExtendI32S:
@@ -1122,6 +1178,34 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64F32DivScalar, OpARM64F32DivScalar
 		case wasm.InstrF64Div:
 			amd64, arm64 = OpAMD64F64DivScalar, OpARM64F64DivScalar
+		case wasm.InstrF32Abs:
+			amd64, arm64 = OpAMD64F32AbsScalar, OpARM64F32AbsScalar
+		case wasm.InstrF64Abs:
+			amd64, arm64 = OpAMD64F64AbsScalar, OpARM64F64AbsScalar
+		case wasm.InstrF32Neg:
+			amd64, arm64 = OpAMD64F32NegScalar, OpARM64F32NegScalar
+		case wasm.InstrF64Neg:
+			amd64, arm64 = OpAMD64F64NegScalar, OpARM64F64NegScalar
+		case wasm.InstrF32Ceil:
+			amd64, arm64 = OpAMD64F32CeilScalar, OpARM64F32CeilScalar
+		case wasm.InstrF64Ceil:
+			amd64, arm64 = OpAMD64F64CeilScalar, OpARM64F64CeilScalar
+		case wasm.InstrF32Floor:
+			amd64, arm64 = OpAMD64F32FloorScalar, OpARM64F32FloorScalar
+		case wasm.InstrF64Floor:
+			amd64, arm64 = OpAMD64F64FloorScalar, OpARM64F64FloorScalar
+		case wasm.InstrF32Trunc:
+			amd64, arm64 = OpAMD64F32TruncScalar, OpARM64F32TruncScalar
+		case wasm.InstrF64Trunc:
+			amd64, arm64 = OpAMD64F64TruncScalar, OpARM64F64TruncScalar
+		case wasm.InstrF32Nearest:
+			amd64, arm64 = OpAMD64F32NearestScalar, OpARM64F32NearestScalar
+		case wasm.InstrF64Nearest:
+			amd64, arm64 = OpAMD64F64NearestScalar, OpARM64F64NearestScalar
+		case wasm.InstrF32Sqrt:
+			amd64, arm64 = OpAMD64F32SqrtScalar, OpARM64F32SqrtScalar
+		case wasm.InstrF64Sqrt:
+			amd64, arm64 = OpAMD64F64SqrtScalar, OpARM64F64SqrtScalar
 		case wasm.InstrI32WrapI64:
 			amd64, arm64 = OpAMD64I32WrapI64, OpARM64I32WrapI64
 		case wasm.InstrI64ExtendI32S:

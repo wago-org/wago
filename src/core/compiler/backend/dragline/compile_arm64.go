@@ -1098,6 +1098,10 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32Popcnt, railmach.OpARM64I64Popcnt,
 			railmach.OpARM64F32AddScalar, railmach.OpARM64F64AddScalar, railmach.OpARM64F32SubScalar, railmach.OpARM64F64SubScalar,
 			railmach.OpARM64F32MulScalar, railmach.OpARM64F64MulScalar, railmach.OpARM64F32DivScalar, railmach.OpARM64F64DivScalar,
+			railmach.OpARM64F32AbsScalar, railmach.OpARM64F64AbsScalar, railmach.OpARM64F32NegScalar, railmach.OpARM64F64NegScalar,
+			railmach.OpARM64F32CeilScalar, railmach.OpARM64F64CeilScalar, railmach.OpARM64F32FloorScalar, railmach.OpARM64F64FloorScalar,
+			railmach.OpARM64F32TruncScalar, railmach.OpARM64F64TruncScalar, railmach.OpARM64F32NearestScalar, railmach.OpARM64F64NearestScalar,
+			railmach.OpARM64F32SqrtScalar, railmach.OpARM64F64SqrtScalar,
 			railmach.OpARM64I32WrapI64, railmach.OpARM64I64ExtendI32S, railmach.OpARM64I64ExtendI32U,
 			railmach.OpARM64I32Extend8S, railmach.OpARM64I32Extend16S,
 			railmach.OpARM64I64Extend8S, railmach.OpARM64I64Extend16S, railmach.OpARM64I64Extend32S,
@@ -5062,8 +5066,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				a.Cset32(dst, condition)
 				continue
 			}
-			if arm64DirectFloatUnaryKind(instruction.Op) {
-				emitARM64DirectFloatUnary(&a, instruction.Op, dst, lhs, instruction.Op >= wasm.InstrF64Abs)
+			if arm64DirectFloatUnaryKind(semanticOp) {
+				emitARM64DirectFloatUnary(&a, semanticOp, dst, lhs, semanticOp >= wasm.InstrF64Abs)
 				continue
 			}
 			if instruction.Op == wasm.InstrF32Copysign || instruction.Op == wasm.InstrF64Copysign {
@@ -13829,11 +13833,13 @@ func emitARM64DirectIntegerUnary(a *arm64.Asm, kind wasm.InstrKind, dst, src arm
 }
 
 func arm64DirectFloatUnaryKind(kind wasm.InstrKind) bool {
+	kind = railmach.SemanticOpcode(kind)
 	return kind >= wasm.InstrF32Abs && kind <= wasm.InstrF32Sqrt ||
 		kind >= wasm.InstrF64Abs && kind <= wasm.InstrF64Sqrt
 }
 
 func emitARM64DirectFloatUnary(a *arm64.Asm, kind wasm.InstrKind, dst, src arm64.Reg, f64 bool) {
+	kind = railmach.SemanticOpcode(kind)
 	switch kind {
 	case wasm.InstrF32Abs, wasm.InstrF64Abs:
 		a.NeonFabs(dst, src, f64)

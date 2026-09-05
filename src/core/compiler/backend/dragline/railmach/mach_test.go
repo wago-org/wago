@@ -467,6 +467,48 @@ func TestSelectTargetOpcodesIntegerDivision(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesScalarFloatUnary(t *testing.T) {
+	operations := [14]MOpcode{
+		wasm.InstrF32Abs, wasm.InstrF32Neg, wasm.InstrF32Ceil, wasm.InstrF32Floor, wasm.InstrF32Trunc, wasm.InstrF32Nearest, wasm.InstrF32Sqrt,
+		wasm.InstrF64Abs, wasm.InstrF64Neg, wasm.InstrF64Ceil, wasm.InstrF64Floor, wasm.InstrF64Trunc, wasm.InstrF64Nearest, wasm.InstrF64Sqrt,
+	}
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [14]MOpcode
+	}{
+		{"amd64", TargetAMD64, [14]MOpcode{
+			OpAMD64F32AbsScalar, OpAMD64F32NegScalar, OpAMD64F32CeilScalar, OpAMD64F32FloorScalar, OpAMD64F32TruncScalar, OpAMD64F32NearestScalar, OpAMD64F32SqrtScalar,
+			OpAMD64F64AbsScalar, OpAMD64F64NegScalar, OpAMD64F64CeilScalar, OpAMD64F64FloorScalar, OpAMD64F64TruncScalar, OpAMD64F64NearestScalar, OpAMD64F64SqrtScalar,
+		}},
+		{"arm64", TargetARM64, [14]MOpcode{
+			OpARM64F32AbsScalar, OpARM64F32NegScalar, OpARM64F32CeilScalar, OpARM64F32FloorScalar, OpARM64F32TruncScalar, OpARM64F32NearestScalar, OpARM64F32SqrtScalar,
+			OpARM64F64AbsScalar, OpARM64F64NegScalar, OpARM64F64CeilScalar, OpARM64F64FloorScalar, OpARM64F64TruncScalar, OpARM64F64NearestScalar, OpARM64F64SqrtScalar,
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for index, encoding := range []byte{0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x90, 0x91, 0x99, 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f} {
+				type_ := wasm.F32
+				if index >= 7 {
+					type_ = wasm.F64
+				}
+				m := machineModule([]wasm.ValType{type_}, []wasm.ValType{type_}, []byte{0x20, 0, encoding, 0x0b})
+				f := buildMachineTest(t, test.target, m)
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operations[index] {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operations[index])
+				}
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerComparisons(t *testing.T) {
 	operations := [22]MOpcode{
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,
