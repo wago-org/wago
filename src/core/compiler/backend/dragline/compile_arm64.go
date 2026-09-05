@@ -1031,7 +1031,9 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64I8x16Bitmask, railmach.OpARM64I16x8Bitmask, railmach.OpARM64I32x4Bitmask, railmach.OpARM64I64x2Bitmask,
 			railmach.OpARM64I16x8ExtaddPairwiseI8x16S, railmach.OpARM64I16x8ExtaddPairwiseI8x16U,
 			railmach.OpARM64I32x4ExtaddPairwiseI16x8S, railmach.OpARM64I32x4ExtaddPairwiseI16x8U,
-			railmach.OpARM64I32x4DotI16x8S:
+			railmach.OpARM64I32x4DotI16x8S,
+			railmach.OpARM64F32x4Eq, railmach.OpARM64F32x4Ne, railmach.OpARM64F32x4Lt, railmach.OpARM64F32x4Gt, railmach.OpARM64F32x4Le, railmach.OpARM64F32x4Ge,
+			railmach.OpARM64F64x2Eq, railmach.OpARM64F64x2Ne, railmach.OpARM64F64x2Lt, railmach.OpARM64F64x2Gt, railmach.OpARM64F64x2Le, railmach.OpARM64F64x2Ge:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3787,6 +3789,30 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				a.NeonSmull2SfromH(24, lhs, rhs)
 				a.NeonSmullSfromH(dst, lhs, rhs)
 				a.NeonAddpS(dst, dst, 24)
+				continue
+			case railmach.OpARM64F32x4Eq, railmach.OpARM64F32x4Ne, railmach.OpARM64F32x4Lt,
+				railmach.OpARM64F32x4Gt, railmach.OpARM64F32x4Le, railmach.OpARM64F32x4Ge,
+				railmach.OpARM64F64x2Eq, railmach.OpARM64F64x2Ne, railmach.OpARM64F64x2Lt,
+				railmach.OpARM64F64x2Gt, railmach.OpARM64F64x2Le, railmach.OpARM64F64x2Ge:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector float comparison operand count is %d", len(operands))
+				}
+				predicate := byte(0x00)
+				switch instruction.Op {
+				case railmach.OpARM64F32x4Lt, railmach.OpARM64F64x2Lt:
+					predicate = 0x11
+				case railmach.OpARM64F32x4Gt, railmach.OpARM64F64x2Gt:
+					predicate = 0x1e
+				case railmach.OpARM64F32x4Le, railmach.OpARM64F64x2Le:
+					predicate = 0x12
+				case railmach.OpARM64F32x4Ge, railmach.OpARM64F64x2Ge:
+					predicate = 0x1d
+				}
+				f64 := instruction.Op >= railmach.OpARM64F64x2Eq && instruction.Op <= railmach.OpARM64F64x2Ge
+				a.NeonFcmp(dst, reg(operands[0].Reg), reg(operands[1].Reg), f64, predicate)
+				if instruction.Op == railmach.OpARM64F32x4Ne || instruction.Op == railmach.OpARM64F64x2Ne {
+					a.NeonNot16b(dst, dst)
+				}
 				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
 				railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,

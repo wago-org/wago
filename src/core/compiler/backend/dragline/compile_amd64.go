@@ -964,7 +964,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I8x16Bitmask, railmach.OpAMD64I16x8Bitmask, railmach.OpAMD64I32x4Bitmask, railmach.OpAMD64I64x2Bitmask,
 			railmach.OpAMD64I16x8ExtaddPairwiseI8x16S, railmach.OpAMD64I16x8ExtaddPairwiseI8x16U,
 			railmach.OpAMD64I32x4ExtaddPairwiseI16x8S, railmach.OpAMD64I32x4ExtaddPairwiseI16x8U,
-			railmach.OpAMD64I32x4DotI16x8S:
+			railmach.OpAMD64I32x4DotI16x8S,
+			railmach.OpAMD64F32x4Eq, railmach.OpAMD64F32x4Ne, railmach.OpAMD64F32x4Lt, railmach.OpAMD64F32x4Gt, railmach.OpAMD64F32x4Le, railmach.OpAMD64F32x4Ge,
+			railmach.OpAMD64F64x2Eq, railmach.OpAMD64F64x2Ne, railmach.OpAMD64F64x2Lt, railmach.OpAMD64F64x2Gt, railmach.OpAMD64F64x2Le, railmach.OpAMD64F64x2Ge:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2626,6 +2628,29 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, fmt.Errorf("RailMach selected vector dot operand count is %d", len(operands))
 				}
 				a.VPmaddwd(dst, reg(operands[0].Reg), reg(operands[1].Reg))
+				continue
+			case railmach.OpAMD64F32x4Eq, railmach.OpAMD64F32x4Ne, railmach.OpAMD64F32x4Lt,
+				railmach.OpAMD64F32x4Gt, railmach.OpAMD64F32x4Le, railmach.OpAMD64F32x4Ge,
+				railmach.OpAMD64F64x2Eq, railmach.OpAMD64F64x2Ne, railmach.OpAMD64F64x2Lt,
+				railmach.OpAMD64F64x2Gt, railmach.OpAMD64F64x2Le, railmach.OpAMD64F64x2Ge:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector float comparison operand count is %d", len(operands))
+				}
+				predicate := byte(0x00)
+				switch instruction.Op {
+				case railmach.OpAMD64F32x4Ne, railmach.OpAMD64F64x2Ne:
+					predicate = 0x04
+				case railmach.OpAMD64F32x4Lt, railmach.OpAMD64F64x2Lt:
+					predicate = 0x11
+				case railmach.OpAMD64F32x4Gt, railmach.OpAMD64F64x2Gt:
+					predicate = 0x1e
+				case railmach.OpAMD64F32x4Le, railmach.OpAMD64F64x2Le:
+					predicate = 0x12
+				case railmach.OpAMD64F32x4Ge, railmach.OpAMD64F64x2Ge:
+					predicate = 0x1d
+				}
+				f64 := instruction.Op >= railmach.OpAMD64F64x2Eq && instruction.Op <= railmach.OpAMD64F64x2Ge
+				a.VFCmpPacked(dst, reg(operands[0].Reg), reg(operands[1].Reg), f64, predicate)
 				continue
 			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 				railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,

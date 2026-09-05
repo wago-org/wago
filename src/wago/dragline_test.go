@@ -5044,6 +5044,79 @@ func TestDraglineRailMachVectorPairwiseExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachVectorFloatComparisonExecution(t *testing.T) {
+	f32x4 := func(value float32) (out [16]byte) {
+		bits := math.Float32bits(value)
+		for lane := 0; lane < 4; lane++ {
+			binary.LittleEndian.PutUint32(out[lane*4:], bits)
+		}
+		return
+	}
+	f64x2 := func(value float64) (out [16]byte) {
+		bits := math.Float64bits(value)
+		for lane := 0; lane < 2; lane++ {
+			binary.LittleEndian.PutUint64(out[lane*8:], bits)
+		}
+		return
+	}
+	for _, test := range []struct {
+		name      string
+		subopcode uint32
+		lhs, rhs  [16]byte
+	}{
+		{"f32x4.eq", 65, f32x4(1), f32x4(1)},
+		{"f32x4.ne_nan", 66, f32x4(float32(math.NaN())), f32x4(1)},
+		{"f32x4.lt", 67, f32x4(-1), f32x4(1)},
+		{"f32x4.gt", 68, f32x4(2), f32x4(1)},
+		{"f32x4.le", 69, f32x4(1), f32x4(1)},
+		{"f32x4.ge", 70, f32x4(2), f32x4(1)},
+		{"f64x2.eq", 71, f64x2(1), f64x2(1)},
+		{"f64x2.ne_nan", 72, f64x2(math.NaN()), f64x2(1)},
+		{"f64x2.lt", 73, f64x2(-1), f64x2(1)},
+		{"f64x2.gt", 74, f64x2(2), f64x2(1)},
+		{"f64x2.le", 75, f64x2(1), f64x2(1)},
+		{"f64x2.ge", 76, f64x2(2), f64x2(1)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x41, 0x00, 0xfd, 0x0c}
+			body = append(body, test.lhs[:]...)
+			body = append(body, 0xfd, 0x0c)
+			body = append(body, test.rhs[:]...)
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(test.subopcode)...)
+			body = append(body, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+			read0 := []byte{0x41, 0x00, 0x29, 0x03, 0x00, 0x0b}
+			read8 := []byte{0x41, 0x08, 0x29, 0x03, 0x00, 0x0b}
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read0", 0, 1), wasmtest.ExportEntry("read8", 0, 2))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(read0), wasmtest.Code(read8))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if _, err := instance.Invoke("run"); err != nil {
+				t.Fatal(err)
+			}
+			for _, name := range []string{"read0", "read8"} {
+				result, err := instance.Invoke(name)
+				if err != nil || len(result) != 1 || result[0] != ^uint64(0) {
+					t.Fatalf("%s result = %#x, %v; want all ones", name, result, err)
+				}
+			}
+		})
+	}
+}
+
 func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
 	if runtime.GOARCH != "arm64" {
 		t.Skip("Dragline structured SIMD execution is currently ARM64-only")

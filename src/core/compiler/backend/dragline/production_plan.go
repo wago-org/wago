@@ -491,7 +491,9 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrI8x16Bitmask, wasm.InstrI16x8Bitmask, wasm.InstrI32x4Bitmask, wasm.InstrI64x2Bitmask,
 			wasm.InstrI16x8ExtaddPairwiseI8x16S, wasm.InstrI16x8ExtaddPairwiseI8x16U,
 			wasm.InstrI32x4ExtaddPairwiseI16x8S, wasm.InstrI32x4ExtaddPairwiseI16x8U,
-			wasm.InstrI32x4DotI16x8S:
+			wasm.InstrI32x4DotI16x8S,
+			wasm.InstrF32x4Eq, wasm.InstrF32x4Ne, wasm.InstrF32x4Lt, wasm.InstrF32x4Gt, wasm.InstrF32x4Le, wasm.InstrF32x4Ge,
+			wasm.InstrF64x2Eq, wasm.InstrF64x2Ne, wasm.InstrF64x2Lt, wasm.InstrF64x2Gt, wasm.InstrF64x2Le, wasm.InstrF64x2Ge:
 		default:
 			return false
 		}
