@@ -680,6 +680,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 	if depth > 20000 {
 		return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
 	}
+	hotnessWeight := pathWeight * loopWeight(loopDepth)
 	subHasCall := false
 	var prevOp, prevPrevOp byte
 	var prevIndex, prevPrevIndex uint32
@@ -840,12 +841,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					}
 				}
 				if op == 0x20 {
-					addHotness(s.h.localScore, idx, pathWeight*loopWeight(loopDepth))
+					addHotness(s.h.localScore, idx, hotnessWeight)
 					if int(idx) < len(s.h.localLastGet) {
 						s.h.localLastGet[idx] = uint32(s.r.off())
 					}
 				} else {
-					addHotness(s.h.localScore, idx, 2*pathWeight*loopWeight(loopDepth))
+					addHotness(s.h.localScore, idx, 2*hotnessWeight)
 				}
 			}
 		case 0x23, 0x24: // global.get/set
@@ -858,9 +859,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
-					addGlobalHotness(s.globalHints, idx, 2*pathWeight*loopWeight(loopDepth))
+					addGlobalHotness(s.globalHints, idx, 2*hotnessWeight)
 				} else {
-					addGlobalHotness(s.globalHints, idx, pathWeight*loopWeight(loopDepth))
+					addGlobalHotness(s.globalHints, idx, hotnessWeight)
 				}
 				s.elig.add(curLoop, idx)
 			}
