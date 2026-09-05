@@ -1044,7 +1044,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32Store, railmach.OpAMD64I64Store, railmach.OpAMD64F32Store, railmach.OpAMD64F64Store,
 			railmach.OpAMD64I32Store8, railmach.OpAMD64I32Store16, railmach.OpAMD64I64Store8, railmach.OpAMD64I64Store16, railmach.OpAMD64I64Store32,
 			railmach.OpAMD64I32Const, railmach.OpAMD64I64Const, railmach.OpAMD64F32Const, railmach.OpAMD64F64Const,
-			railmach.OpAMD64GlobalGet, railmach.OpAMD64GlobalSet,
+			railmach.OpAMD64GlobalGet, railmach.OpAMD64GlobalSet, railmach.OpAMD64Select,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -3614,7 +3614,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.PatchRel32(done, a.Len())
 				continue
 			}
-			if instruction.Op == wasm.InstrSelect {
+			if semanticOp == wasm.InstrSelect {
 				rhs := reg(operands[1].Reg)
 				condition := reg(operands[2].Reg)
 				a.TestSelf(condition, false)

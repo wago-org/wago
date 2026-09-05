@@ -1119,7 +1119,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32Store, railmach.OpARM64I64Store, railmach.OpARM64F32Store, railmach.OpARM64F64Store,
 			railmach.OpARM64I32Store8, railmach.OpARM64I32Store16, railmach.OpARM64I64Store8, railmach.OpARM64I64Store16, railmach.OpARM64I64Store32,
 			railmach.OpARM64I32Const, railmach.OpARM64I64Const, railmach.OpARM64F32Const, railmach.OpARM64F64Const,
-			railmach.OpARM64GlobalGet, railmach.OpARM64GlobalSet,
+			railmach.OpARM64GlobalGet, railmach.OpARM64GlobalSet, railmach.OpARM64Select,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -4762,7 +4762,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrSelect {
+			if semanticOp == wasm.InstrSelect {
 				rhs := reg(operands[1].Reg)
 				condition := reg(operands[2].Reg)
 				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
