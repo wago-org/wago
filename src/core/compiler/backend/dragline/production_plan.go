@@ -56,12 +56,13 @@ type nativeBackendPlan struct {
 	HelperSafepointBase uint32
 	// CallArgumentBytes is the fixed caller-owned canonical argument/result
 	// vector prefix. External-call FPR saves follow it in Frame.CallAreaBytes.
-	CallArgumentBytes uint32
-	Score             railmach.ScheduleScore
-	BackendAttempts   uint8
-	IPRARefinedCalls  uint32
-	SignalsBounds     bool
-	AMD64BMI2         bool
+	CallArgumentBytes  uint32
+	Score              railmach.ScheduleScore
+	BackendAttempts    uint8
+	ScheduleCandidates uint8
+	IPRARefinedCalls   uint32
+	SignalsBounds      bool
+	AMD64BMI2          bool
 	// AMD64MemoryBoundEnd is the access end offset subtracted from the stable
 	// memory-0 byte length cached in the final allocatable GPR. Zero disables
 	// the cache.
@@ -1211,12 +1212,20 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	var best railmach.ScheduleScore
 	haveBest := false
 	bestIndex := 0
-	parallelCandidates := p.parallelCandidates && len(machine.Insts) >= 1024
+	fastMachine := railmach.FastMachinePolicy(len(machine.Insts))
+	candidateCount := 3
+	if fastMachine {
+		candidateCount = 1
+	}
+	parallelCandidates := p.parallelCandidates && len(machine.Insts) >= 1024 && !fastMachine
 	// Evaluate the commonly retained source-stable candidate last. Candidate
 	// scoring is order-independent (Kind is the deterministic final tie-break),
 	// so its verified products can be consumed directly when it wins instead of
 	// rebuilding a fourth identical schedule/allocation/exit chain.
 	kinds := [3]railmach.ScheduleKind{railmach.ScheduleKindLatencyFusion, railmach.ScheduleKindPressure, railmach.ScheduleKindSourceStable}
+	if fastMachine {
+		kinds[0] = railmach.ScheduleKindSourceStable
+	}
 	if parallelCandidates {
 		scores, candidateErrs := p.evaluateScheduleCandidates(machine, selection, dag, pressure, defaultGreedy, kinds, true)
 		for index, score := range scores {
@@ -1228,7 +1237,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			}
 		}
 	} else {
-		for _, kind := range kinds {
+		for _, kind := range kinds[:candidateCount] {
 			candidate, candidateErr := railmach.BuildScheduleWithPressure(machine, selection, dag, kind, pressure, &p.schedule)
 			if candidateErr != nil {
 				return nil, candidateErr
@@ -1273,8 +1282,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		}
 	}
 	backendAttempts := uint8(1)
-	if decision := railmach.DecideRetry(0, allocation, exit.Debt); decision.Retry {
+	scheduleCandidates := uint8(candidateCount)
+	if decision := railmach.DecideRetry(0, allocation, exit.Debt); !fastMachine && decision.Retry {
 		backendAttempts = railmach.MaxBackendAttempts
+		scheduleCandidates += 3
 		retryGreedy := defaultGreedy
 		retryGreedy.PreserveGPRCost = 0
 		retryGreedy.PreserveFPRCost = 0
@@ -1565,7 +1576,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	p.plan = nativeBackendPlan{
 		Stack: stack, CFG: cfg, Semantic: semantic,
 		Machine: machine, Selection: selection, DAG: dag, Schedule: schedule, Allocation: allocation, Exit: exit, PostRA: postRA,
-		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, ExternalCallVectorFPRs: externalCallVectorFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts,
+		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, ExternalCallVectorFPRs: externalCallVectorFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts, ScheduleCandidates: scheduleCandidates,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64BMI2:      target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
 		PostRAPairWith: p.postRAPairWith, PostRASkip: p.postRASkip,

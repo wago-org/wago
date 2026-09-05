@@ -140,7 +140,7 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 	metrics.RailMachInstructions = uint32(len(plan.Machine.Insts))
 	metrics.ScheduleKind = uint8(plan.Score.Kind)
 	metrics.BackendAttempts = plan.BackendAttempts
-	metrics.ScheduleCandidates = plan.BackendAttempts * 3
+	metrics.ScheduleCandidates = plan.ScheduleCandidates
 	metrics.SelectionCombinations = uint32(len(plan.Selection.Combinations))
 	metrics.Dependencies = uint32(len(plan.DAG.Dependencies))
 	if freedom, err := railmach.MeasureScheduleFreedom(plan.Machine, plan.Selection, plan.DAG); err == nil {

@@ -36,6 +36,12 @@ const (
 	greedyRegionalMaxInstructions        = 8192
 )
 
+// FastMachinePolicy reports whether a function is large enough that bounded
+// compiler work takes precedence over schedule and regional-allocation search.
+func FastMachinePolicy(instructions int) bool {
+	return instructions >= greedyRegionalMaxInstructions
+}
+
 func DefaultGreedyConfig(target Target) GreedyConfig {
 	linear := DefaultLinearQConfig(target)
 	switch target {
@@ -460,7 +466,7 @@ func greedyEffectiveMaxStage(target Target, functionInstructions int, density, h
 	if target == TargetAMD64 && hasCyclicCall && configured > 3 {
 		return 3
 	}
-	if functionInstructions >= greedyRegionalMaxInstructions && configured > 3 {
+	if FastMachinePolicy(functionInstructions) && configured > 3 {
 		return 3
 	}
 	if density && functionInstructions < greedyRegionalDensityMinInstructions && configured > 3 {

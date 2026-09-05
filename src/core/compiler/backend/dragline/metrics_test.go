@@ -86,14 +86,15 @@ func TestMetricsSummarizesEmitters(t *testing.T) {
 
 func TestRecordNativePlanMetricsKeepsRailSSAAndRailMachDistinct(t *testing.T) {
 	plan := &nativeBackendPlan{
-		Semantic:        &railssa.SemanticFunc{Insts: make([]railssa.SemanticInst, 11), Args: make([]railssa.FlowValueID, 9)},
-		Machine:         &railmach.Func{Insts: make([]railmach.Inst, 2)},
-		Selection:       &railmach.SelectionPlan{Combinations: make([]railmach.Combination, 3)},
-		DAG:             &railmach.DependencyDAG{Dependencies: make([]railmach.Dependency, 8)},
-		Allocation:      &railmach.GreedyAllocation{Allocation: railmach.Allocation{Intervals: make([]railmach.LiveInterval, 4)}, Fragments: make([]railmach.AllocationFragment, 2)},
-		Exit:            &railmach.SSAExit{Debt: railmach.CopyDebt{Physical: 7, Coalesced: 5, Rematerialized: 2}},
-		Simplified:      &railssa.SimplifyResult{},
-		BackendAttempts: 2,
+		Semantic:           &railssa.SemanticFunc{Insts: make([]railssa.SemanticInst, 11), Args: make([]railssa.FlowValueID, 9)},
+		Machine:            &railmach.Func{Insts: make([]railmach.Inst, 2)},
+		Selection:          &railmach.SelectionPlan{Combinations: make([]railmach.Combination, 3)},
+		DAG:                &railmach.DependencyDAG{Dependencies: make([]railmach.Dependency, 8)},
+		Allocation:         &railmach.GreedyAllocation{Allocation: railmach.Allocation{Intervals: make([]railmach.LiveInterval, 4)}, Fragments: make([]railmach.AllocationFragment, 2)},
+		Exit:               &railmach.SSAExit{Debt: railmach.CopyDebt{Physical: 7, Coalesced: 5, Rematerialized: 2}},
+		Simplified:         &railssa.SimplifyResult{},
+		BackendAttempts:    2,
+		ScheduleCandidates: 6,
 	}
 	metrics := FunctionMetrics{}
 	recordNativePlanMetrics(&metrics, plan)
