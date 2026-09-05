@@ -1029,6 +1029,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64F32EqScalar, railmach.OpAMD64F64EqScalar, railmach.OpAMD64F32NeScalar, railmach.OpAMD64F64NeScalar,
 			railmach.OpAMD64F32LtScalar, railmach.OpAMD64F64LtScalar, railmach.OpAMD64F32GtScalar, railmach.OpAMD64F64GtScalar,
 			railmach.OpAMD64F32LeScalar, railmach.OpAMD64F64LeScalar, railmach.OpAMD64F32GeScalar, railmach.OpAMD64F64GeScalar,
+			railmach.OpAMD64I32DivS, railmach.OpAMD64I32DivU, railmach.OpAMD64I32RemS, railmach.OpAMD64I32RemU,
+			railmach.OpAMD64I64DivS, railmach.OpAMD64I64DivU, railmach.OpAMD64I64RemS, railmach.OpAMD64I64RemU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -3887,7 +3889,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.PatchRel32(done, a.Len())
 				continue
 			}
-			if amd64DirectSafeDivKind(instruction.Op) {
+			if amd64DirectSafeDivKind(semanticOp) {
 				if !amd64RailMachDivisionSafe(plan, instructionID, operands) {
 					return nil, 0, false, nil
 				}
@@ -3900,8 +3902,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				if nativeObligationRequired(plan, instructionID, railssa.ObligationNonzeroDivisor) {
 					amd64TrapDivZero(&a, amd64.R10, wide, fn.Index, wasmOffset, metadata)
 				}
-				signed := instruction.Op == wasm.InstrI32DivS || instruction.Op == wasm.InstrI64DivS || instruction.Op == wasm.InstrI32RemS || instruction.Op == wasm.InstrI64RemS
-				remainder := instruction.Op == wasm.InstrI32RemS || instruction.Op == wasm.InstrI64RemS || instruction.Op == wasm.InstrI32RemU || instruction.Op == wasm.InstrI64RemU
+				signed := semanticOp == wasm.InstrI32DivS || semanticOp == wasm.InstrI64DivS || semanticOp == wasm.InstrI32RemS || semanticOp == wasm.InstrI64RemS
+				remainder := semanticOp == wasm.InstrI32RemS || semanticOp == wasm.InstrI64RemS || semanticOp == wasm.InstrI32RemU || semanticOp == wasm.InstrI64RemU
 				if signed && nativeDivisorMayBeMinusOne(plan, operands[1].Reg) {
 					a.AluRI(7, amd64.R10, -1, wide)
 					notMinusOne := a.JccPlaceholder(amd64.CondNE)
@@ -7794,6 +7796,7 @@ func amd64DirectIntegerBinaryKind(kind wasm.InstrKind) bool {
 }
 
 func amd64DirectSafeDivKind(kind wasm.InstrKind) bool {
+	kind = railmach.SemanticOpcode(kind)
 	return kind == wasm.InstrI32DivS || kind == wasm.InstrI32DivU || kind == wasm.InstrI32RemS || kind == wasm.InstrI32RemU ||
 		kind == wasm.InstrI64DivS || kind == wasm.InstrI64DivU || kind == wasm.InstrI64RemS || kind == wasm.InstrI64RemU
 }

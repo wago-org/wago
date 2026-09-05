@@ -1104,6 +1104,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64F32EqScalar, railmach.OpARM64F64EqScalar, railmach.OpARM64F32NeScalar, railmach.OpARM64F64NeScalar,
 			railmach.OpARM64F32LtScalar, railmach.OpARM64F64LtScalar, railmach.OpARM64F32GtScalar, railmach.OpARM64F64GtScalar,
 			railmach.OpARM64F32LeScalar, railmach.OpARM64F64LeScalar, railmach.OpARM64F32GeScalar, railmach.OpARM64F64GeScalar,
+			railmach.OpARM64I32DivS, railmach.OpARM64I32DivU, railmach.OpARM64I32RemS, railmach.OpARM64I32RemU,
+			railmach.OpARM64I64DivS, railmach.OpARM64I64DivU, railmach.OpARM64I64RemS, railmach.OpARM64I64RemU,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -5342,15 +5344,15 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				continue
 			}
 			rhs := reg(operands[1].Reg)
-			if instruction.Op >= wasm.InstrI32DivS && instruction.Op <= wasm.InstrI32RemU || instruction.Op >= wasm.InstrI64DivS && instruction.Op <= wasm.InstrI64RemU {
+			if semanticOp >= wasm.InstrI32DivS && semanticOp <= wasm.InstrI32RemU || semanticOp >= wasm.InstrI64DivS && semanticOp <= wasm.InstrI64RemU {
 				wide := plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeI64
 				if nativeObligationRequired(plan, instructionID, railssa.ObligationNonzeroDivisor) {
 					if err := arm64TrapDivZero(&a, rhs, wide, fn.Index, wasmOffset, metadata); err != nil {
 						return nil, 0, true, err
 					}
 				}
-				signed := instruction.Op == wasm.InstrI32DivS || instruction.Op == wasm.InstrI64DivS || instruction.Op == wasm.InstrI32RemS || instruction.Op == wasm.InstrI64RemS
-				if signed && (instruction.Op == wasm.InstrI32DivS || instruction.Op == wasm.InstrI64DivS) && nativeDivisorMayBeMinusOne(plan, operands[1].Reg) {
+				signed := semanticOp == wasm.InstrI32DivS || semanticOp == wasm.InstrI64DivS || semanticOp == wasm.InstrI32RemS || semanticOp == wasm.InstrI64RemS
+				if signed && (semanticOp == wasm.InstrI32DivS || semanticOp == wasm.InstrI64DivS) && nativeDivisorMayBeMinusOne(plan, operands[1].Reg) {
 					a.MovImm64(arm64.X16, ^uint64(0))
 					if wide {
 						a.CmpReg64(rhs, arm64.X16)
@@ -5386,7 +5388,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				} else {
 					a.Udiv32(arm64.X17, lhs, rhs)
 				}
-				switch instruction.Op {
+				switch semanticOp {
 				case wasm.InstrI32RemS, wasm.InstrI32RemU:
 					a.Msub32(dst, arm64.X17, rhs, lhs)
 				case wasm.InstrI64RemS, wasm.InstrI64RemU:
@@ -13700,11 +13702,13 @@ func arm64IdentityRoundTripUpdate(instrs []railssa.StackInstr, start int) (int, 
 }
 
 func arm64DirectSafeDivKind(kind wasm.InstrKind) bool {
+	kind = railmach.SemanticOpcode(kind)
 	return kind >= wasm.InstrI32DivS && kind <= wasm.InstrI32RemU ||
 		kind >= wasm.InstrI64DivS && kind <= wasm.InstrI64RemU
 }
 
 func emitARM64DirectSafeDiv(a *arm64.Asm, kind wasm.InstrKind, lhs, rhs arm64.Reg) {
+	kind = railmach.SemanticOpcode(kind)
 	wide := kind >= wasm.InstrI64DivS && kind <= wasm.InstrI64RemU
 	signed := kind == wasm.InstrI32DivS || kind == wasm.InstrI32RemS || kind == wasm.InstrI64DivS || kind == wasm.InstrI64RemS
 	if signed {

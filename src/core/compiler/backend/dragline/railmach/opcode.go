@@ -316,6 +316,14 @@ const (
 	OpAMD64F64LeScalar
 	OpAMD64F32GeScalar
 	OpAMD64F64GeScalar
+	OpAMD64I32DivS
+	OpAMD64I32DivU
+	OpAMD64I32RemS
+	OpAMD64I32RemU
+	OpAMD64I64DivS
+	OpAMD64I64DivU
+	OpAMD64I64RemS
+	OpAMD64I64RemU
 	OpAMD64I32Eqz
 	OpAMD64I64Eqz
 	OpAMD64I32Eq
@@ -642,6 +650,14 @@ const (
 	OpARM64F64LeScalar
 	OpARM64F32GeScalar
 	OpARM64F64GeScalar
+	OpARM64I32DivS
+	OpARM64I32DivU
+	OpARM64I32RemS
+	OpARM64I32RemU
+	OpARM64I64DivS
+	OpARM64I64DivU
+	OpARM64I64RemS
+	OpARM64I64RemU
 	OpARM64I32Eqz
 	OpARM64I64Eqz
 	OpARM64I32Eq
@@ -790,6 +806,22 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrF32Ge
 	case OpAMD64F64GeScalar, OpARM64F64GeScalar:
 		return wasm.InstrF64Ge
+	case OpAMD64I32DivS, OpARM64I32DivS:
+		return wasm.InstrI32DivS
+	case OpAMD64I32DivU, OpARM64I32DivU:
+		return wasm.InstrI32DivU
+	case OpAMD64I32RemS, OpARM64I32RemS:
+		return wasm.InstrI32RemS
+	case OpAMD64I32RemU, OpARM64I32RemU:
+		return wasm.InstrI32RemU
+	case OpAMD64I64DivS, OpARM64I64DivS:
+		return wasm.InstrI64DivS
+	case OpAMD64I64DivU, OpARM64I64DivU:
+		return wasm.InstrI64DivU
+	case OpAMD64I64RemS, OpARM64I64RemS:
+		return wasm.InstrI64RemS
+	case OpAMD64I64RemU, OpARM64I64RemU:
+		return wasm.InstrI64RemU
 	case OpAMD64I32Eqz, OpARM64I32Eqz:
 		return wasm.InstrI32Eqz
 	case OpAMD64I64Eqz, OpARM64I64Eqz:
@@ -1130,6 +1162,22 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64F32GeScalar, OpARM64F32GeScalar
 		case wasm.InstrF64Ge:
 			amd64, arm64 = OpAMD64F64GeScalar, OpARM64F64GeScalar
+		case wasm.InstrI32DivS:
+			amd64, arm64 = OpAMD64I32DivS, OpARM64I32DivS
+		case wasm.InstrI32DivU:
+			amd64, arm64 = OpAMD64I32DivU, OpARM64I32DivU
+		case wasm.InstrI32RemS:
+			amd64, arm64 = OpAMD64I32RemS, OpARM64I32RemS
+		case wasm.InstrI32RemU:
+			amd64, arm64 = OpAMD64I32RemU, OpARM64I32RemU
+		case wasm.InstrI64DivS:
+			amd64, arm64 = OpAMD64I64DivS, OpARM64I64DivS
+		case wasm.InstrI64DivU:
+			amd64, arm64 = OpAMD64I64DivU, OpARM64I64DivU
+		case wasm.InstrI64RemS:
+			amd64, arm64 = OpAMD64I64RemS, OpARM64I64RemS
+		case wasm.InstrI64RemU:
+			amd64, arm64 = OpAMD64I64RemU, OpARM64I64RemU
 		case wasm.InstrI32Eqz:
 			amd64, arm64 = OpAMD64I32Eqz, OpARM64I32Eqz
 		case wasm.InstrI64Eqz:
