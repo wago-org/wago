@@ -32,7 +32,7 @@ func validationAnalysisModule(t *testing.T) *wasm.Module {
 }
 
 func TestValidatedFuncFactsSize(t *testing.T) {
-	if got, want := unsafe.Sizeof(wasm.ValidatedFuncFacts{}), uintptr(24); got != want {
+	if got, want := unsafe.Sizeof(wasm.ValidatedFuncFacts{}), uintptr(20); got != want {
 		t.Fatalf("ValidatedFuncFacts size = %d, want %d", got, want)
 	}
 }
