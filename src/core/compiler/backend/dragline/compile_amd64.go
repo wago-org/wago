@@ -1037,6 +1037,12 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64F32LeScalar, railmach.OpAMD64F64LeScalar, railmach.OpAMD64F32GeScalar, railmach.OpAMD64F64GeScalar,
 			railmach.OpAMD64I32DivS, railmach.OpAMD64I32DivU, railmach.OpAMD64I32RemS, railmach.OpAMD64I32RemU,
 			railmach.OpAMD64I64DivS, railmach.OpAMD64I64DivU, railmach.OpAMD64I64RemS, railmach.OpAMD64I64RemU,
+			railmach.OpAMD64I32Load, railmach.OpAMD64I64Load, railmach.OpAMD64F32Load, railmach.OpAMD64F64Load,
+			railmach.OpAMD64I32Load8S, railmach.OpAMD64I32Load8U, railmach.OpAMD64I32Load16S, railmach.OpAMD64I32Load16U,
+			railmach.OpAMD64I64Load8S, railmach.OpAMD64I64Load8U, railmach.OpAMD64I64Load16S, railmach.OpAMD64I64Load16U,
+			railmach.OpAMD64I64Load32S, railmach.OpAMD64I64Load32U,
+			railmach.OpAMD64I32Store, railmach.OpAMD64I64Store, railmach.OpAMD64F32Store, railmach.OpAMD64F64Store,
+			railmach.OpAMD64I32Store8, railmach.OpAMD64I32Store16, railmach.OpAMD64I64Store8, railmach.OpAMD64I64Store16, railmach.OpAMD64I64Store32,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -4688,7 +4694,7 @@ func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID,
 		lhs = dst
 	}
 	width := uint64(4)
-	if load.Op == wasm.InstrI64Load {
+	if railmach.SemanticOpcode(load.Op) == wasm.InstrI64Load {
 		width = 8
 	}
 	endOffset := uint64(uint32(load.Aux)) + width
@@ -4738,7 +4744,7 @@ func emitAMD64FoldedFloatMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID, c
 		address = amd64.R10
 	}
 	width := uint64(4)
-	f64 := load.Op == wasm.InstrF64Load
+	f64 := railmach.SemanticOpcode(load.Op) == wasm.InstrF64Load
 	if f64 {
 		width = 8
 	}

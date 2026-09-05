@@ -551,6 +551,87 @@ func TestSelectTargetOpcodesScalarFloatMinMaxCopysign(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesScalarMemory(t *testing.T) {
+	operations := [23]MOpcode{
+		wasm.InstrI32Load, wasm.InstrI64Load, wasm.InstrF32Load, wasm.InstrF64Load,
+		wasm.InstrI32Load8S, wasm.InstrI32Load8U, wasm.InstrI32Load16S, wasm.InstrI32Load16U,
+		wasm.InstrI64Load8S, wasm.InstrI64Load8U, wasm.InstrI64Load16S, wasm.InstrI64Load16U,
+		wasm.InstrI64Load32S, wasm.InstrI64Load32U,
+		wasm.InstrI32Store, wasm.InstrI64Store, wasm.InstrF32Store, wasm.InstrF64Store,
+		wasm.InstrI32Store8, wasm.InstrI32Store16, wasm.InstrI64Store8, wasm.InstrI64Store16, wasm.InstrI64Store32,
+	}
+	loadTypes := [14]wasm.ValType{
+		wasm.I32, wasm.I64, wasm.F32, wasm.F64,
+		wasm.I32, wasm.I32, wasm.I32, wasm.I32,
+		wasm.I64, wasm.I64, wasm.I64, wasm.I64, wasm.I64, wasm.I64,
+	}
+	storeTypes := [9]wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64, wasm.I32, wasm.I32, wasm.I64, wasm.I64, wasm.I64}
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [23]MOpcode
+	}{
+		{"amd64", TargetAMD64, [23]MOpcode{
+			OpAMD64I32Load, OpAMD64I64Load, OpAMD64F32Load, OpAMD64F64Load,
+			OpAMD64I32Load8S, OpAMD64I32Load8U, OpAMD64I32Load16S, OpAMD64I32Load16U,
+			OpAMD64I64Load8S, OpAMD64I64Load8U, OpAMD64I64Load16S, OpAMD64I64Load16U,
+			OpAMD64I64Load32S, OpAMD64I64Load32U,
+			OpAMD64I32Store, OpAMD64I64Store, OpAMD64F32Store, OpAMD64F64Store,
+			OpAMD64I32Store8, OpAMD64I32Store16, OpAMD64I64Store8, OpAMD64I64Store16, OpAMD64I64Store32,
+		}},
+		{"arm64", TargetARM64, [23]MOpcode{
+			OpARM64I32Load, OpARM64I64Load, OpARM64F32Load, OpARM64F64Load,
+			OpARM64I32Load8S, OpARM64I32Load8U, OpARM64I32Load16S, OpARM64I32Load16U,
+			OpARM64I64Load8S, OpARM64I64Load8U, OpARM64I64Load16S, OpARM64I64Load16U,
+			OpARM64I64Load32S, OpARM64I64Load32U,
+			OpARM64I32Store, OpARM64I64Store, OpARM64F32Store, OpARM64F64Store,
+			OpARM64I32Store8, OpARM64I32Store16, OpARM64I64Store8, OpARM64I64Store16, OpARM64I64Store32,
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for index, operation := range operations {
+				params := []wasm.ValType{wasm.I32}
+				var results []wasm.ValType
+				body := []byte{0x20, 0}
+				if index < len(loadTypes) {
+					results = []wasm.ValType{loadTypes[index]}
+				} else {
+					params = append(params, storeTypes[index-len(loadTypes)])
+					body = append(body, 0x20, 1)
+				}
+				body = append(body, byte(0x28+index), 0, 0, 0x0b)
+				source := wasmtest.Module(
+					wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(params, results))),
+					wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+					wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+					wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+				)
+				m, err := wasm.DecodeModule(source)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := wasm.ValidateModule(m); err != nil {
+					t.Fatal(err)
+				}
+				f := buildMachineTest(t, test.target, m)
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operation {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operation)
+				}
+				if len(f.Memory) != 1 || f.Memory[0].SemanticWidth != scalarMemoryWidth(operation) || f.Memory[0].EncodedWidth != f.Memory[0].SemanticWidth {
+					t.Fatalf("instruction %d memory descriptor = %#v", index, f.Memory)
+				}
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerComparisons(t *testing.T) {
 	operations := [22]MOpcode{
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,

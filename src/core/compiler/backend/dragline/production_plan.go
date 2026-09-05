@@ -1012,6 +1012,7 @@ func nativeMachineHasExternalCall(stack *railssa.StackFunc, machine *railmach.Fu
 }
 
 func nativeMemoryAccess(kind wasm.InstrKind) (size int, signed, store, ok bool) {
+	kind = railmach.SemanticOpcode(kind)
 	if kind < wasm.InstrI32Load || kind > wasm.InstrI64Store32 {
 		return 0, false, false, false
 	}

@@ -260,6 +260,29 @@ const (
 	OpAMD64I16x8RelaxedQ15mulrS
 	OpAMD64I16x8RelaxedDotI8x16I7x16S
 	OpAMD64I32x4RelaxedDotI8x16I7x16AddS
+	OpAMD64I32Load
+	OpAMD64I64Load
+	OpAMD64F32Load
+	OpAMD64F64Load
+	OpAMD64I32Load8S
+	OpAMD64I32Load8U
+	OpAMD64I32Load16S
+	OpAMD64I32Load16U
+	OpAMD64I64Load8S
+	OpAMD64I64Load8U
+	OpAMD64I64Load16S
+	OpAMD64I64Load16U
+	OpAMD64I64Load32S
+	OpAMD64I64Load32U
+	OpAMD64I32Store
+	OpAMD64I64Store
+	OpAMD64F32Store
+	OpAMD64F64Store
+	OpAMD64I32Store8
+	OpAMD64I32Store16
+	OpAMD64I64Store8
+	OpAMD64I64Store16
+	OpAMD64I64Store32
 	OpAMD64I32Add
 	OpAMD64I64Add
 	OpAMD64I32Sub
@@ -614,6 +637,29 @@ const (
 	OpARM64I16x8RelaxedQ15mulrS
 	OpARM64I16x8RelaxedDotI8x16I7x16S
 	OpARM64I32x4RelaxedDotI8x16I7x16AddS
+	OpARM64I32Load
+	OpARM64I64Load
+	OpARM64F32Load
+	OpARM64F64Load
+	OpARM64I32Load8S
+	OpARM64I32Load8U
+	OpARM64I32Load16S
+	OpARM64I32Load16U
+	OpARM64I64Load8S
+	OpARM64I64Load8U
+	OpARM64I64Load16S
+	OpARM64I64Load16U
+	OpARM64I64Load32S
+	OpARM64I64Load32U
+	OpARM64I32Store
+	OpARM64I64Store
+	OpARM64F32Store
+	OpARM64F64Store
+	OpARM64I32Store8
+	OpARM64I32Store16
+	OpARM64I64Store8
+	OpARM64I64Store16
+	OpARM64I64Store32
 	OpARM64I32Add
 	OpARM64I64Add
 	OpARM64I32Sub
@@ -734,6 +780,52 @@ func IsSelectedOpcode(op MOpcode) bool { return op >= selectedOpcodeBase }
 // questions; encoding must continue to switch on the selected opcode itself.
 func SemanticOpcode(op MOpcode) MOpcode {
 	switch op {
+	case OpAMD64I32Load, OpARM64I32Load:
+		return wasm.InstrI32Load
+	case OpAMD64I64Load, OpARM64I64Load:
+		return wasm.InstrI64Load
+	case OpAMD64F32Load, OpARM64F32Load:
+		return wasm.InstrF32Load
+	case OpAMD64F64Load, OpARM64F64Load:
+		return wasm.InstrF64Load
+	case OpAMD64I32Load8S, OpARM64I32Load8S:
+		return wasm.InstrI32Load8S
+	case OpAMD64I32Load8U, OpARM64I32Load8U:
+		return wasm.InstrI32Load8U
+	case OpAMD64I32Load16S, OpARM64I32Load16S:
+		return wasm.InstrI32Load16S
+	case OpAMD64I32Load16U, OpARM64I32Load16U:
+		return wasm.InstrI32Load16U
+	case OpAMD64I64Load8S, OpARM64I64Load8S:
+		return wasm.InstrI64Load8S
+	case OpAMD64I64Load8U, OpARM64I64Load8U:
+		return wasm.InstrI64Load8U
+	case OpAMD64I64Load16S, OpARM64I64Load16S:
+		return wasm.InstrI64Load16S
+	case OpAMD64I64Load16U, OpARM64I64Load16U:
+		return wasm.InstrI64Load16U
+	case OpAMD64I64Load32S, OpARM64I64Load32S:
+		return wasm.InstrI64Load32S
+	case OpAMD64I64Load32U, OpARM64I64Load32U:
+		return wasm.InstrI64Load32U
+	case OpAMD64I32Store, OpARM64I32Store:
+		return wasm.InstrI32Store
+	case OpAMD64I64Store, OpARM64I64Store:
+		return wasm.InstrI64Store
+	case OpAMD64F32Store, OpARM64F32Store:
+		return wasm.InstrF32Store
+	case OpAMD64F64Store, OpARM64F64Store:
+		return wasm.InstrF64Store
+	case OpAMD64I32Store8, OpARM64I32Store8:
+		return wasm.InstrI32Store8
+	case OpAMD64I32Store16, OpARM64I32Store16:
+		return wasm.InstrI32Store16
+	case OpAMD64I64Store8, OpARM64I64Store8:
+		return wasm.InstrI64Store8
+	case OpAMD64I64Store16, OpARM64I64Store16:
+		return wasm.InstrI64Store16
+	case OpAMD64I64Store32, OpARM64I64Store32:
+		return wasm.InstrI64Store32
 	case OpAMD64I32Add, OpARM64I32Add, OpARM64I32Madd:
 		return wasm.InstrI32Add
 	case OpAMD64I64Add, OpARM64I64Add, OpARM64I64Madd:
@@ -984,7 +1076,7 @@ func selectedMemoryWidth(op MOpcode) uint8 {
 		OpAMD64V128Load64Lane, OpAMD64V128Store64Lane, OpARM64V128Load64Lane, OpARM64V128Store64Lane:
 		return 8
 	default:
-		return 0
+		return scalarMemoryWidth(SemanticOpcode(op))
 	}
 }
 
@@ -1130,6 +1222,52 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 		switch instruction.Op {
 		case wasm.InstrV128Const:
 			amd64, arm64 = OpAMD64V128Const, OpARM64V128Const
+		case wasm.InstrI32Load:
+			amd64, arm64 = OpAMD64I32Load, OpARM64I32Load
+		case wasm.InstrI64Load:
+			amd64, arm64 = OpAMD64I64Load, OpARM64I64Load
+		case wasm.InstrF32Load:
+			amd64, arm64 = OpAMD64F32Load, OpARM64F32Load
+		case wasm.InstrF64Load:
+			amd64, arm64 = OpAMD64F64Load, OpARM64F64Load
+		case wasm.InstrI32Load8S:
+			amd64, arm64 = OpAMD64I32Load8S, OpARM64I32Load8S
+		case wasm.InstrI32Load8U:
+			amd64, arm64 = OpAMD64I32Load8U, OpARM64I32Load8U
+		case wasm.InstrI32Load16S:
+			amd64, arm64 = OpAMD64I32Load16S, OpARM64I32Load16S
+		case wasm.InstrI32Load16U:
+			amd64, arm64 = OpAMD64I32Load16U, OpARM64I32Load16U
+		case wasm.InstrI64Load8S:
+			amd64, arm64 = OpAMD64I64Load8S, OpARM64I64Load8S
+		case wasm.InstrI64Load8U:
+			amd64, arm64 = OpAMD64I64Load8U, OpARM64I64Load8U
+		case wasm.InstrI64Load16S:
+			amd64, arm64 = OpAMD64I64Load16S, OpARM64I64Load16S
+		case wasm.InstrI64Load16U:
+			amd64, arm64 = OpAMD64I64Load16U, OpARM64I64Load16U
+		case wasm.InstrI64Load32S:
+			amd64, arm64 = OpAMD64I64Load32S, OpARM64I64Load32S
+		case wasm.InstrI64Load32U:
+			amd64, arm64 = OpAMD64I64Load32U, OpARM64I64Load32U
+		case wasm.InstrI32Store:
+			amd64, arm64 = OpAMD64I32Store, OpARM64I32Store
+		case wasm.InstrI64Store:
+			amd64, arm64 = OpAMD64I64Store, OpARM64I64Store
+		case wasm.InstrF32Store:
+			amd64, arm64 = OpAMD64F32Store, OpARM64F32Store
+		case wasm.InstrF64Store:
+			amd64, arm64 = OpAMD64F64Store, OpARM64F64Store
+		case wasm.InstrI32Store8:
+			amd64, arm64 = OpAMD64I32Store8, OpARM64I32Store8
+		case wasm.InstrI32Store16:
+			amd64, arm64 = OpAMD64I32Store16, OpARM64I32Store16
+		case wasm.InstrI64Store8:
+			amd64, arm64 = OpAMD64I64Store8, OpARM64I64Store8
+		case wasm.InstrI64Store16:
+			amd64, arm64 = OpAMD64I64Store16, OpARM64I64Store16
+		case wasm.InstrI64Store32:
+			amd64, arm64 = OpAMD64I64Store32, OpARM64I64Store32
 		case wasm.InstrI32Add:
 			amd64, arm64 = OpAMD64I32Add, OpARM64I32Add
 		case wasm.InstrI64Add:
