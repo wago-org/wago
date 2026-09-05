@@ -39,7 +39,7 @@ func TestRecordValidatedAnalysisSegmentCounts(t *testing.T) {
 		{Kind: InstrElemDrop, Index: 399},
 		{Kind: InstrTableInit, Index: 9},
 	} {
-		v.recordValidatedAnalysisFacts(&facts, &directOp{kind: directInstr, instr: in}, &counts)
+		v.observeValidatedInstruction(&facts, &in, &counts)
 	}
 	if counts.data != 300 || counts.elem != 400 {
 		t.Fatalf("segment counts = data:%d element:%d, want 300/400", counts.data, counts.elem)

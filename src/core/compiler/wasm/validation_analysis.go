@@ -80,22 +80,48 @@ func (a *ValidatedModuleAnalysis) ValidFor(m *Module) bool {
 	return a != nil && a.valid && a.module == m && len(a.Funcs) == len(m.Code)
 }
 
-func (f *ValidatedFuncFacts) observeInstruction(in *Instruction) {
+func (v *funcValidator) observeValidatedInstruction(f *ValidatedFuncFacts, in *Instruction, segmentCounts *validationSegmentCounts) {
 	f.observe(in.Kind)
 	for _, typ := range in.ValTypes() {
 		f.observeValType(typ)
 	}
 	switch in.Kind {
+	case InstrMemoryInit, InstrDataDrop:
+		segmentCounts.data = max(segmentCounts.data, segmentStateCount(in.Index))
+	case InstrTableInit, InstrElemDrop:
+		segmentCounts.elem = max(segmentCounts.elem, segmentStateCount(in.Index))
 	case InstrCallIndirect, InstrReturnCallIndirect:
 		if in.Index2 != 0 {
 			f.Flags |= ValidatedFuncUsesReferenceTypes
 		}
+		v.observeValidatedDynamicCall(f, in.Index)
+	case InstrCallRef, InstrReturnCallRef:
+		v.observeValidatedDynamicCall(f, in.Index)
 	case InstrRefNull, InstrRefTest, InstrRefCast, InstrBrOnCast, InstrBrOnCastFail:
 		// The heap immediate distinguishes typed function, GC, and exception
 		// references. Keep the fixed summary compact and let these uncommon
 		// functions use the exact existing scanner until a sparse heap sidecar
 		// is justified by measurements.
 		f.Flags |= ValidatedFuncNeedsDetailedRequirements
+	}
+}
+
+func (v *funcValidator) observeValidatedDynamicCall(f *ValidatedFuncFacts, typeIndex uint32) {
+	ft, ok := v.m.TypeFunc(typeIndex)
+	if !ok {
+		return
+	}
+	for _, typ := range ft.Params {
+		if typ.Kind() == ValRef {
+			f.Flags |= ValidatedFuncDynamicReferenceCall
+			return
+		}
+	}
+	for _, typ := range ft.Results {
+		if typ.Kind() == ValRef {
+			f.Flags |= ValidatedFuncDynamicReferenceCall
+			return
+		}
 	}
 }
 
@@ -230,10 +256,8 @@ func (f *ValidatedFuncFacts) observeValType(typ ValType) {
 	}
 }
 
-func (f *ValidatedFuncFacts) observeDirect(op *directOp) {
+func (f *ValidatedFuncFacts) observeStructuredDirect(op *directOp) {
 	switch op.kind {
-	case directInstr:
-		f.observeInstruction(&op.instr)
 	case directBlock:
 		f.observe(InstrBlock)
 		if op.blockType.Kind == BlockVal {
