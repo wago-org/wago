@@ -779,21 +779,6 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				curConstOK = true
 			}
 		}
-		if op == 0x43 || op == 0x44 {
-			s.h.flags.set(hintHasFloatConst)
-		} else if op == 0xfd {
-			s.h.flags.set(hintHasSIMD)
-		}
-		if shared.InstructionNeedsEHFrame(op, wasm.InstrInvalid) {
-			s.h.flags.set(hintModuleEH)
-		}
-		if shared.InstructionNeedsInlineBoundary(op, wasm.InstrInvalid) {
-			s.h.flags.set(hintHasControlFlow)
-			s.entryPrefix = false
-			if op == 0x03 {
-				s.h.flags.set(hintHasLoop)
-			}
-		}
 		switch op {
 		case 0x0b: // end
 			s.h.addStackArenaNodes(2) // flush/rebuild allowance for the closing edge.
@@ -805,6 +790,8 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			return true, op, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 		case 0x0e: // br_table: exact jump-table-data admission hint
+			s.h.flags.set(hintHasControlFlow)
+			s.entryPrefix = false
 			n, err := s.r.U32()
 			if err != nil {
 				return true, 0, err
@@ -821,6 +808,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 		case 0x02, 0x03, 0x04: // block, loop, if
+			s.h.flags.set(hintHasControlFlow)
+			s.entryPrefix = false
+			if op == 0x03 {
+				s.h.flags.set(hintHasLoop)
+			}
 			s.h.addStackArenaNodes(2) // entry flush/rebuild allowance.
 			s.h.noteControlDepth(depth + 1)
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
@@ -973,6 +965,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.addStackArenaNodes(1)
 			}
 		case 0x43: // f32.const
+			s.h.flags.set(hintHasFloatConst)
 			if _, err := s.r.Bytes(4); err != nil {
 				return true, 0, err
 			}
@@ -980,6 +973,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.addStackArenaNodes(1)
 			}
 		case 0x44: // f64.const
+			s.h.flags.set(hintHasFloatConst)
 			if _, err := s.r.Bytes(8); err != nil {
 				return true, 0, err
 			}
@@ -987,9 +981,15 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.addStackArenaNodes(1)
 			}
 		case 0x0c, 0x0d: // br, br_if
+			s.h.flags.set(hintHasControlFlow)
+			s.entryPrefix = false
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
+		case 0x00, 0x0f: // unreachable, return
+			s.h.flags.set(hintHasControlFlow)
+			s.entryPrefix = false
+			s.noteImmediateFreeStackArenaOp(op)
 		case 0x25, 0x26: // table.get/set
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
@@ -1006,6 +1006,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if shared.StackArenaHintsEnabled {
 				s.h.addStackArenaNodes(1)
 			}
+			if op != 0xd2 {
+				s.h.flags.set(hintHasControlFlow)
+				s.entryPrefix = false
+			}
 		case 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f, 0x40, 0xfc, 0xfd, 0xfe, 0xfb:
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -1013,6 +1017,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				return true, 0, err
 			}
 			s.noteStackArenaOp(op, &imm)
+			if op == 0xfd {
+				s.h.flags.set(hintHasSIMD)
+			}
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
 				s.h.flags.set(hintHasControlFlow)
 			}
@@ -1039,6 +1046,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintUsesBulkMem)
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body
+			s.h.flags.set(hintHasControlFlow)
+			s.entryPrefix = false
+			s.h.flags.set(hintModuleEH)
 			s.h.addStackArenaNodes(2) // entry flush/rebuild allowance.
 			s.h.noteControlDepth(depth + 1)
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
