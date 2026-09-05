@@ -576,7 +576,48 @@ type scratch struct {
 	controlMergeDiscarded   int
 	controlRootsPeak        int
 	controlRootsDiscarded   int
+	adapterTemplate         adapterTemplateCache
 	transient
+}
+
+const maxCachedAdapterBytes = 256
+
+// adapterTemplateCache retains one repeated host-adapter shape per worker.
+// Function types alias immutable module storage, so pointer identity is an exact
+// signature key within the scratch's single-module lifetime. The first sighting
+// only records a candidate; the second emits normally and promotes the complete
+// patched adapter. This avoids copying unique shapes while turning longer runs
+// into one bounded byte copy per function.
+type adapterTemplateCache struct {
+	candidate *wasm.CompType
+	typ       *wasm.CompType
+	n         uint16
+	returnOff uint16
+	endOff    uint16
+	code      [maxCachedAdapterBytes]byte
+}
+
+func (c *adapterTemplateCache) lookup(ft *wasm.CompType) (code []byte, returnOff, endOff int, ok bool) {
+	if c.typ != ft || c.n == 0 {
+		return nil, 0, 0, false
+	}
+	return c.code[:c.n], int(c.returnOff), int(c.endOff), true
+}
+
+func (c *adapterTemplateCache) observe(ft *wasm.CompType, code []byte, returnOff, endOff int) {
+	if len(code) > len(c.code) || returnOff <= 4 || returnOff > len(code) || endOff > len(code) {
+		c.candidate = nil
+		return
+	}
+	if c.candidate != ft {
+		c.candidate = ft
+		return
+	}
+	copy(c.code[:], code)
+	c.typ = ft
+	c.n = uint16(len(code))
+	c.returnOff = uint16(returnOff)
+	c.endOff = uint16(endOff)
 }
 
 type trapSite struct {
@@ -3427,6 +3468,63 @@ func (f *fn) emitStackFenceCheck(linMemReg, scratch Reg) {
 	f.trapIf(condB, trapStackFence) // SP below the fence → cold stub
 }
 
+// emitHostAdapter emits the wrapper-to-register ABI bridge and returns the BL
+// site that will be patched to the internal entry after the function body.
+func (f *fn) emitHostAdapter(np, rN int) int {
+	a := f.a
+	a.MovReg64(linMemReg, X1) // linMem → linMemReg: the module-wide invariant the internal entry inherits
+	if f.memSizeReg != regNone {
+		// Offset-0 entry (from Go, or an indirect call): establish the module-wide
+		// memBytes cache before the internal entry runs (which relies on it).
+		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
+	}
+	f.deriveModuleGlobals()   // offset-0 entry: cells → module-pinned registers
+	a.StpPre(LR, X3, SP, -16) // save LR (BL clobbers it) + results ptr; keeps SP 16-aligned
+	gp, fp := 0, 0
+	x0ArgOff := int32(-1) // the arg targeting X0 aliases the serArgs base: load it LAST
+	for i := 0; i < np; i++ {
+		mt := f.localType[i]
+		if mt.isFloat() {
+			a.FLoadDisp(fpArgRegs[fp], X0, int32(8*i), mt == mtF64)
+			fp++
+		} else {
+			if intArgRegs[gp] == X0 {
+				x0ArgOff = int32(8 * i)
+			} else {
+				f.ld64(intArgRegs[gp], X0, int32(8*i))
+			}
+			gp++
+		}
+	}
+	if x0ArgOff >= 0 {
+		f.ld64(X0, X0, x0ArgOff)
+	}
+	adapterCall := a.Bl()
+	f.adapterReturnOff = adapterCall + 4
+	if f.gcFrameRoots != nil {
+		f.gcFrameRoots.AdapterReturnOffset = uint32(adapterCall + 4)
+	}
+	a.LdpPost(LR, X3, SP, 16) // restore LR + results ptr
+	f.storeModuleGlobals(X2)  // Go exit: module-pinned registers → cells (X0 holds the result)
+	if rN == 1 {
+		rt := mtOf(f.ft.Results[0])
+		if rt.isFloat() {
+			a.FStoreDisp(X3, 0, 0, rt == mtF64)
+		} else {
+			f.st64(X3, 0, X0)
+		}
+	} else if rN == 2 {
+		f.st64(X3, 0, X0)
+		f.st64(X3, 8, X1)
+	}
+	a.Ret()
+	f.adapterEndOff = a.Len()
+	if f.stats != nil {
+		f.stats.NativeSize.HostAdapterBytes = a.Len()
+	}
+	return adapterCall
+}
+
 // emitRegABI emits a register-ABI function as [host adapter | internal entry].
 // The adapter at offset 0 keeps the wrapper ABI working for exports/host calls;
 // the internal entry takes args in GP/V registers and returns its single result
@@ -3441,56 +3539,25 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	// register results.
 	gp, fp := 0, 0
 	var adapterCall int
+	cachedAdapter := false
 	if hostAdapter {
-		a.MovReg64(linMemReg, X1) // linMem → linMemReg: the module-wide invariant the internal entry inherits
-		if f.memSizeReg != regNone {
-			// Offset-0 entry (from Go, or an indirect call): establish the module-wide
-			// memBytes cache before the internal entry runs (which relies on it).
-			f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
-		}
-		f.deriveModuleGlobals()   // offset-0 entry: cells → module-pinned registers
-		a.StpPre(LR, X3, SP, -16) // save LR (BL clobbers it) + results ptr; keeps SP 16-aligned
-		gp, fp = 0, 0
-		x0ArgOff := int32(-1) // the arg targeting X0 aliases the serArgs base: load it LAST
-		for i := 0; i < np; i++ {
-			mt := f.localType[i]
-			if mt.isFloat() {
-				a.FLoadDisp(fpArgRegs[fp], X0, int32(8*i), mt == mtF64)
-				fp++
-			} else {
-				if intArgRegs[gp] == X0 {
-					x0ArgOff = int32(8 * i)
-				} else {
-					f.ld64(intArgRegs[gp], X0, int32(8*i))
+		if f.sc != nil {
+			if template, returnOff, endOff, ok := f.sc.adapterTemplate.lookup(f.ft); ok {
+				a.B = append(a.B, template...)
+				f.adapterReturnOff = returnOff
+				f.adapterEndOff = endOff
+				adapterCall = returnOff - 4
+				cachedAdapter = true
+				if f.gcFrameRoots != nil {
+					f.gcFrameRoots.AdapterReturnOffset = uint32(returnOff)
 				}
-				gp++
+				if f.stats != nil {
+					f.stats.NativeSize.HostAdapterBytes = endOff
+				}
 			}
 		}
-		if x0ArgOff >= 0 {
-			f.ld64(X0, X0, x0ArgOff)
-		}
-		adapterCall = a.Bl() // BL internal entry; patched below
-		f.adapterReturnOff = adapterCall + 4
-		if f.gcFrameRoots != nil {
-			f.gcFrameRoots.AdapterReturnOffset = uint32(adapterCall + 4)
-		}
-		a.LdpPost(LR, X3, SP, 16) // restore LR + results ptr
-		f.storeModuleGlobals(X2)  // Go exit: module-pinned registers → cells (X0 holds the result)
-		if rN == 1 {
-			rt := mtOf(f.ft.Results[0])
-			if rt.isFloat() {
-				a.FStoreDisp(X3, 0, 0, rt == mtF64) // V0
-			} else {
-				f.st64(X3, 0, X0)
-			}
-		} else if rN == 2 {
-			f.st64(X3, 0, X0)
-			f.st64(X3, 8, X1)
-		}
-		a.Ret()
-		f.adapterEndOff = a.Len()
-		if f.stats != nil {
-			f.stats.NativeSize.HostAdapterBytes = a.Len()
+		if !cachedAdapter {
+			adapterCall = f.emitHostAdapter(np, rN)
 		}
 	}
 
@@ -3498,7 +3565,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	// every wasm function keeps it pinned, and the adapter establishes it at the
 	// Go boundary — and the trap cell pointer lives in basedata, so the entry
 	// carries no environment setup at all (WARP's model). Args in GP/V regs.
-	if hostAdapter {
+	if hostAdapter && !cachedAdapter {
 		beforeAlign := a.Len()
 		f.alignCode(f.policy.InternalAlignLog2)
 		if f.stats != nil {
@@ -3595,7 +3662,12 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		return 0, err
 	}
 	if hostAdapter {
-		f.a.PatchBranch26(adapterCall, internalOff)
+		if !cachedAdapter {
+			f.a.PatchBranch26(adapterCall, internalOff)
+			if f.sc != nil {
+				f.sc.adapterTemplate.observe(f.ft, f.a.B[:internalOff], f.adapterReturnOff, f.adapterEndOff)
+			}
+		}
 		if f.stats != nil {
 			f.stats.NativeSize.HostAdapterShapeHash = shared.AdapterShapeHash(f.a.B[:f.stats.NativeSize.HostAdapterBytes], adapterCall, 4)
 			f.stats.NativeSize.HostAdapterTailBytes = f.stats.NativeSize.HostAdapterBytes - f.adapterReturnOff
