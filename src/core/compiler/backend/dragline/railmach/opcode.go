@@ -282,6 +282,12 @@ const (
 	OpAMD64I64Rotl
 	OpAMD64I32Rotr
 	OpAMD64I64Rotr
+	OpAMD64I32Clz
+	OpAMD64I64Clz
+	OpAMD64I32Ctz
+	OpAMD64I64Ctz
+	OpAMD64I32Popcnt
+	OpAMD64I64Popcnt
 	OpAMD64I32Eqz
 	OpAMD64I64Eqz
 	OpAMD64I32Eq
@@ -574,6 +580,12 @@ const (
 	OpARM64I64Rotl
 	OpARM64I32Rotr
 	OpARM64I64Rotr
+	OpARM64I32Clz
+	OpARM64I64Clz
+	OpARM64I32Ctz
+	OpARM64I64Ctz
+	OpARM64I32Popcnt
+	OpARM64I64Popcnt
 	OpARM64I32Eqz
 	OpARM64I64Eqz
 	OpARM64I32Eq
@@ -654,6 +666,18 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrI32Rotr
 	case OpAMD64I64Rotr, OpARM64I64Rotr:
 		return wasm.InstrI64Rotr
+	case OpAMD64I32Clz, OpARM64I32Clz:
+		return wasm.InstrI32Clz
+	case OpAMD64I64Clz, OpARM64I64Clz:
+		return wasm.InstrI64Clz
+	case OpAMD64I32Ctz, OpARM64I32Ctz:
+		return wasm.InstrI32Ctz
+	case OpAMD64I64Ctz, OpARM64I64Ctz:
+		return wasm.InstrI64Ctz
+	case OpAMD64I32Popcnt, OpARM64I32Popcnt:
+		return wasm.InstrI32Popcnt
+	case OpAMD64I64Popcnt, OpARM64I64Popcnt:
+		return wasm.InstrI64Popcnt
 	case OpAMD64I32Eqz, OpARM64I32Eqz:
 		return wasm.InstrI32Eqz
 	case OpAMD64I64Eqz, OpARM64I64Eqz:
@@ -926,6 +950,18 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64I32Rotr, OpARM64I32Rotr
 		case wasm.InstrI64Rotr:
 			amd64, arm64 = OpAMD64I64Rotr, OpARM64I64Rotr
+		case wasm.InstrI32Clz:
+			amd64, arm64 = OpAMD64I32Clz, OpARM64I32Clz
+		case wasm.InstrI64Clz:
+			amd64, arm64 = OpAMD64I64Clz, OpARM64I64Clz
+		case wasm.InstrI32Ctz:
+			amd64, arm64 = OpAMD64I32Ctz, OpARM64I32Ctz
+		case wasm.InstrI64Ctz:
+			amd64, arm64 = OpAMD64I64Ctz, OpARM64I64Ctz
+		case wasm.InstrI32Popcnt:
+			amd64, arm64 = OpAMD64I32Popcnt, OpARM64I32Popcnt
+		case wasm.InstrI64Popcnt:
+			amd64, arm64 = OpAMD64I64Popcnt, OpARM64I64Popcnt
 		case wasm.InstrI32Eqz:
 			amd64, arm64 = OpAMD64I32Eqz, OpARM64I32Eqz
 		case wasm.InstrI64Eqz:

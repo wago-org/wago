@@ -1019,6 +1019,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32Shl, railmach.OpAMD64I64Shl, railmach.OpAMD64I32ShrS, railmach.OpAMD64I64ShrS,
 			railmach.OpAMD64I32ShrU, railmach.OpAMD64I64ShrU, railmach.OpAMD64I32Rotl, railmach.OpAMD64I64Rotl,
 			railmach.OpAMD64I32Rotr, railmach.OpAMD64I64Rotr,
+			railmach.OpAMD64I32Clz, railmach.OpAMD64I64Clz, railmach.OpAMD64I32Ctz, railmach.OpAMD64I64Ctz,
+			railmach.OpAMD64I32Popcnt, railmach.OpAMD64I64Popcnt,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -3948,8 +3950,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.SetccReg(amd64.CondE, dst)
 				continue
 			}
-			if amd64DirectIntegerUnaryKind(instruction.Op) {
-				emitAMD64DirectIntegerUnary(&a, instruction.Op, dst, lhs)
+			if amd64DirectIntegerUnaryKind(semanticOp) {
+				emitAMD64DirectIntegerUnary(&a, semanticOp, dst, lhs)
 				continue
 			}
 			switch instruction.Op {
@@ -7789,6 +7791,7 @@ func amd64DirectSafeDivKind(kind wasm.InstrKind) bool {
 }
 
 func amd64DirectIntegerUnaryKind(kind wasm.InstrKind) bool {
+	kind = railmach.SemanticOpcode(kind)
 	return kind == wasm.InstrI32Clz || kind == wasm.InstrI32Ctz || kind == wasm.InstrI32Popcnt ||
 		kind == wasm.InstrI64Clz || kind == wasm.InstrI64Ctz || kind == wasm.InstrI64Popcnt
 }

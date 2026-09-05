@@ -1094,6 +1094,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32Shl, railmach.OpARM64I64Shl, railmach.OpARM64I32ShrS, railmach.OpARM64I64ShrS,
 			railmach.OpARM64I32ShrU, railmach.OpARM64I64ShrU, railmach.OpARM64I32Rotl, railmach.OpARM64I64Rotl,
 			railmach.OpARM64I32Rotr, railmach.OpARM64I64Rotr,
+			railmach.OpARM64I32Clz, railmach.OpARM64I64Clz, railmach.OpARM64I32Ctz, railmach.OpARM64I64Ctz,
+			railmach.OpARM64I32Popcnt, railmach.OpARM64I64Popcnt,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -5209,15 +5211,15 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				a.Cset32(dst, arm64.CondEQ)
 				continue
 			}
-			if arm64DirectIntegerUnaryKind(instruction.Op) {
-				if instruction.Op == wasm.InstrI32Popcnt || instruction.Op == wasm.InstrI64Popcnt {
-					wide := instruction.Op == wasm.InstrI64Popcnt
+			if arm64DirectIntegerUnaryKind(semanticOp) {
+				if semanticOp == wasm.InstrI32Popcnt || semanticOp == wasm.InstrI64Popcnt {
+					wide := semanticOp == wasm.InstrI64Popcnt
 					a.FmovFromGpr(arm64.X16, lhs, wide)
 					a.Cnt8b(arm64.X16, arm64.X16)
 					a.Addv8b(arm64.X16, arm64.X16)
 					a.NeonUmovB(dst, arm64.X16, 0)
 				} else {
-					emitARM64DirectIntegerUnary(&a, instruction.Op, dst, lhs)
+					emitARM64DirectIntegerUnary(&a, semanticOp, dst, lhs)
 				}
 				continue
 			}
@@ -13793,6 +13795,7 @@ func nativeARM64FusionProducer(plan *nativeBackendPlan, consumer uint32) (uint32
 }
 
 func arm64DirectIntegerUnaryKind(kind wasm.InstrKind) bool {
+	kind = railmach.SemanticOpcode(kind)
 	return kind >= wasm.InstrI32Clz && kind <= wasm.InstrI32Popcnt ||
 		kind >= wasm.InstrI64Clz && kind <= wasm.InstrI64Popcnt
 }
