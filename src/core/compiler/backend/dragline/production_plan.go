@@ -1242,7 +1242,12 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			if candidateErr != nil {
 				return nil, candidateErr
 			}
-			candidateAllocation, candidateErr := railmach.AllocateGreedyPForSchedule(machine, candidate, defaultGreedy, &p.allocation)
+			var candidateAllocation *railmach.GreedyAllocation
+			if fastMachine {
+				candidateAllocation, candidateErr = railmach.AllocateFastMachineForSchedule(machine, candidate, defaultGreedy, &p.allocation)
+			} else {
+				candidateAllocation, candidateErr = railmach.AllocateGreedyPForSchedule(machine, candidate, defaultGreedy, &p.allocation)
+			}
 			if candidateErr != nil {
 				return nil, candidateErr
 			}

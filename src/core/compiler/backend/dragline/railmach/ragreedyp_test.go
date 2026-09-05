@@ -87,6 +87,30 @@ func TestAllocateGreedyPPromotesCallCrossingRange(t *testing.T) {
 	}
 }
 
+func TestAllocateFastMachineRetainsVerifiedSpillSets(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
+		0x20, 0x00,
+		0x20, 0x01,
+		0x7c,
+		0x0b,
+	})
+	f, selection, _, dag := buildScheduleTest(t, TargetARM64, m)
+	schedule, err := BuildSchedule(f, selection, dag, ScheduleKindSourceStable, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocation, err := AllocateFastMachineForSchedule(f, schedule, GreedyConfig{Linear: LinearQConfig{GPRs: 1, FPRs: 1}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if allocation.Stage != 0 || allocation.SpillSlots == 0 || len(allocation.SpillSets) == 0 {
+		t.Fatalf("fast allocation stage=%d spill slots=%d sets=%#v", allocation.Stage, allocation.SpillSlots, allocation.SpillSets)
+	}
+	if err := VerifySpillSets(allocation); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDefaultARM64GreedyConfigModelsNoncontiguousCallerFPRs(t *testing.T) {
 	config := DefaultGreedyConfig(TargetARM64)
 	want := lowMask(16) | uint64(0xf)<<24

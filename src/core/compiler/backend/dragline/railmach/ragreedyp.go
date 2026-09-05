@@ -156,6 +156,42 @@ func AllocateGreedyPForSchedule(f *Func, schedule *Schedule, config GreedyConfig
 	return allocateGreedyP(f, schedule, config, reuse)
 }
 
+// AllocateFastMachineForSchedule packages a complete verified RALinearQ
+// allocation for the bounded-work giant-function policy. It retains the spill
+// metadata required by the common ABI, frame, post-RA, and verifier pipeline
+// without running GreedyP promotion, eviction, or regional search.
+func AllocateFastMachineForSchedule(f *Func, schedule *Schedule, config GreedyConfig, reuse *GreedyAllocation) (*GreedyAllocation, error) {
+	if reuse == nil {
+		reuse = new(GreedyAllocation)
+	}
+	spillSets := reuse.SpillSets[:0]
+	spillMembers := reuse.SpillMembers[:0]
+	fragments := reuse.Fragments[:0]
+	base, err := allocateLinearQ(f, schedule, config.Linear, &reuse.Allocation)
+	if err != nil {
+		return nil, err
+	}
+	reuse.Allocation = *base
+	reuse.Stage = 0
+	reuse.Metrics = GreedyMetrics{SpillSlots: uint32(reuse.SpillSlots)}
+	reuse.SpillSets = spillSets
+	reuse.SpillMembers = spillMembers
+	reuse.Fragments = fragments
+	useDensityCost := greedyUsesDensityCost(f)
+	for _, interval := range reuse.Intervals {
+		if reuse.Locations[interval.Reg].Kind == LocationSpill {
+			reuse.Metrics.WeightedDebt += greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost)
+		}
+	}
+	if err := buildSpillSets(reuse); err != nil {
+		return nil, err
+	}
+	if err := verifySpillSetsReusingScratch(reuse); err != nil {
+		return nil, err
+	}
+	return reuse, nil
+}
+
 func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *GreedyAllocation) (*GreedyAllocation, error) {
 	if config.MaxStage > 4 || config.MaxStage == 0 || config.CallerGPRs > config.Linear.GPRs || config.CallerFPRs > config.Linear.FPRs {
 		return nil, fmt.Errorf("railmach: invalid RAGreedyP configuration %#v", config)
