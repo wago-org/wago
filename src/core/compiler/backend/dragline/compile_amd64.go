@@ -1061,6 +1061,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64RefNull, railmach.OpAMD64RefFunc, railmach.OpAMD64RefIsNull, railmach.OpAMD64RefEq, railmach.OpAMD64RefAsNonNull,
 			railmach.OpAMD64RefI31, railmach.OpAMD64I31GetS, railmach.OpAMD64I31GetU,
 			railmach.OpAMD64AnyConvertExtern, railmach.OpAMD64ExternConvertAny,
+			railmach.OpAMD64RefTest, railmach.OpAMD64RefCast, railmach.OpAMD64BrOnCast, railmach.OpAMD64BrOnCastFail,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -1834,13 +1835,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				emitAMD64ExternalCallFPRSave(&a, plan, true)
 				continue
 			}
-			if instruction.Op == wasm.InstrRefTest || instruction.Op == wasm.InstrRefCast || instruction.Op == wasm.InstrBrOnCast || instruction.Op == wasm.InstrBrOnCastFail {
+			if semanticOp == wasm.InstrRefTest || semanticOp == wasm.InstrRefCast || semanticOp == wasm.InstrBrOnCast || semanticOp == wasm.InstrBrOnCastFail {
 				if len(operands) != 1 {
 					return nil, 0, true, fmt.Errorf("RailMach ref.test operand count is %d", len(operands))
 				}
 				heap, nullable, exact := codegen.DecodeGCRefTarget(instruction.Aux)
 				helper := codegen.GCHelperRefTest
-				if instruction.Op == wasm.InstrRefCast {
+				if semanticOp == wasm.InstrRefCast {
 					helper = codegen.GCHelperRefCast
 				}
 				payload, ok := codegen.EncodeGCHelperDispatch(helper, 0)
@@ -1860,7 +1861,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.Load64(amd64.R11, amd64.RBX, -int32(abi.SyncHostCustomContextOffset))
 				dst := reg(instruction.Result)
 				a.Load64(dst, amd64.R11, int32(abi.SyncHostResultsOffset))
-				if instruction.Op == wasm.InstrBrOnCast || instruction.Op == wasm.InstrBrOnCastFail {
+				if semanticOp == wasm.InstrBrOnCast || semanticOp == wasm.InstrBrOnCastFail {
 					a.StoreRsp64(int32(plan.Frame.CallAreaOffset), dst)
 				}
 				emitAMD64ExternalCallFPRSave(&a, plan, true)

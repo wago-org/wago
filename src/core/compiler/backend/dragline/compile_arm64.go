@@ -1136,6 +1136,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64RefNull, railmach.OpARM64RefFunc, railmach.OpARM64RefIsNull, railmach.OpARM64RefEq, railmach.OpARM64RefAsNonNull,
 			railmach.OpARM64RefI31, railmach.OpARM64I31GetS, railmach.OpARM64I31GetU,
 			railmach.OpARM64AnyConvertExtern, railmach.OpARM64ExternConvertAny,
+			railmach.OpARM64RefTest, railmach.OpARM64RefCast, railmach.OpARM64BrOnCast, railmach.OpARM64BrOnCastFail,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -2803,13 +2804,13 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				a.Blr(arm64.X16)
 				continue
 			}
-			if instruction.Op == wasm.InstrRefTest || instruction.Op == wasm.InstrRefCast || instruction.Op == wasm.InstrBrOnCast || instruction.Op == wasm.InstrBrOnCastFail {
+			if semanticOp == wasm.InstrRefTest || semanticOp == wasm.InstrRefCast || semanticOp == wasm.InstrBrOnCast || semanticOp == wasm.InstrBrOnCastFail {
 				if len(operands) != 1 {
 					return nil, 0, true, fmt.Errorf("RailMach ref.test operand count is %d", len(operands))
 				}
 				heap, nullable, exact := codegen.DecodeGCRefTarget(instruction.Aux)
 				helper := codegen.GCHelperRefTest
-				if instruction.Op == wasm.InstrRefCast {
+				if semanticOp == wasm.InstrRefCast {
 					helper = codegen.GCHelperRefCast
 				}
 				payload, ok := codegen.EncodeGCHelperDispatch(helper, 0)
@@ -2846,7 +2847,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				if !a.Load64(dst, arm64.X17, uint32(abi.SyncHostResultsOffset)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC ref.test result offset is not encodable")
 				}
-				if (instruction.Op == wasm.InstrBrOnCast || instruction.Op == wasm.InstrBrOnCastFail) && !a.Store64(dst, arm64.SP, plan.Frame.CallAreaOffset) {
+				if (semanticOp == wasm.InstrBrOnCast || semanticOp == wasm.InstrBrOnCastFail) && !a.Store64(dst, arm64.SP, plan.Frame.CallAreaOffset) {
 					return nil, 0, true, fmt.Errorf("RailMach branch-cast condition offset is not encodable")
 				}
 				continue
