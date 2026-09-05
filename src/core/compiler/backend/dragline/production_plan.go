@@ -960,6 +960,17 @@ func nativeScheduleScoreBetter(objective corecompiler.OptimizationObjective, tar
 	return candidate.BetterThan(retained)
 }
 
+func nativeSegmentedAllocationBetter(candidate, retained railmach.ScheduleScore, candidateAllocation *railmach.GreedyAllocation, retainedMetrics railmach.GreedyMetrics, retainedSpillSlots uint16) bool {
+	return candidateAllocation != nil && len(candidateAllocation.LiveSegmentRanges) != 0 &&
+		candidate.WeightedSpillDebt < retained.WeightedSpillDebt &&
+		candidateAllocation.SpillSlots <= retainedSpillSlots &&
+		candidateAllocation.Metrics.PreservationCost <= retainedMetrics.PreservationCost &&
+		candidate.CopyCycles <= retained.CopyCycles &&
+		candidate.PhysicalCopies <= retained.PhysicalCopies &&
+		candidate.FixedRepairs <= retained.FixedRepairs &&
+		candidate.BrokenFusions <= retained.BrokenFusions
+}
+
 func railMachPhysicalLiveAcross(plan *nativeBackendPlan, instructionID uint32, bank railmach.Bank, physical uint16) bool {
 	position := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 	for _, interval := range plan.Allocation.Intervals {
@@ -1362,6 +1373,33 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			if err != nil {
 				return nil, err
 			}
+			allocation, err = railmach.AllocateGreedyPForSchedule(machine, schedule, bestGreedy, &p.allocation)
+			if err != nil {
+				return nil, err
+			}
+			exit, err = railmach.LateSSAExitVerifiedAllocation(machine, &allocation.Allocation, &p.exit)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	if !fastMachine && best.WeightedSpillDebt != 0 && railmach.CanUseSegmentedLiveness(machine) {
+		retainedMetrics, retainedSpillSlots := allocation.Metrics, allocation.SpillSlots
+		segmentedAllocation, segmentedErr := railmach.AllocateGreedyPSegmentedForSchedule(machine, schedule, bestGreedy, &p.allocation)
+		if segmentedErr != nil {
+			return nil, segmentedErr
+		}
+		segmentedExit, segmentedErr := railmach.LateSSAExitVerifiedAllocation(machine, &segmentedAllocation.Allocation, &p.exit)
+		if segmentedErr != nil {
+			return nil, segmentedErr
+		}
+		segmentedScore, segmentedErr := railmach.ScoreVerifiedScheduleCandidate(machine, selection, schedule, segmentedAllocation, segmentedExit)
+		if segmentedErr != nil {
+			return nil, segmentedErr
+		}
+		if nativeSegmentedAllocationBetter(segmentedScore, best, segmentedAllocation, retainedMetrics, retainedSpillSlots) {
+			allocation, exit, best = segmentedAllocation, segmentedExit, segmentedScore
+		} else {
 			allocation, err = railmach.AllocateGreedyPForSchedule(machine, schedule, bestGreedy, &p.allocation)
 			if err != nil {
 				return nil, err

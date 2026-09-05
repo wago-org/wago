@@ -8,20 +8,29 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
+// CanUseSegmentedLiveness reports whether the staged allocator can model this
+// function without needing loop-aware transfer pricing.
+func CanUseSegmentedLiveness(f *Func) bool {
+	if f == nil || len(f.Blocks) < 2 {
+		return false
+	}
+	for _, block := range f.Blocks {
+		if block.Flags&railssa.BlockLoopHeader != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // buildLiveSegments records only intervals with real CFG-layout holes. The
 // conservative Start/End span remains available for ordering and cost, while
 // allocation conflict checks use this sparse slab when SegmentCount is nonzero.
 func buildLiveSegments(f *Func, schedule *Schedule, allocation *Allocation) error {
-	if len(f.Blocks) < 2 || len(allocation.Intervals) == 0 {
+	if !CanUseSegmentedLiveness(f) || len(allocation.Intervals) == 0 {
+		// Loop-aware holes need to price transfers and allocation changes on hot
+		// backedges. Stage 7B proves the one-location model on acyclic CFGs before
+		// true hot/cold split products are introduced.
 		return nil
-	}
-	for _, block := range f.Blocks {
-		if block.Flags&railssa.BlockLoopHeader != 0 {
-			// Loop-aware holes need to price transfers and allocation changes on
-			// hot backedges. Stage 7B deliberately proves the one-location model
-			// on acyclic CFGs before true hot/cold split products are introduced.
-			return nil
-		}
 	}
 	scratch := &allocation.scratch
 	blockAt := resize(scratch.segmentBlockAt, len(f.Insts)+1)

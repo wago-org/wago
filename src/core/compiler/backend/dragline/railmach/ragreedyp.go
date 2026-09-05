@@ -143,7 +143,7 @@ type GreedyAllocation struct {
 // and stage 3 uses callee-saved regions for ranges crossing calls. Every stage
 // leaves a complete verifiable allocation and can be the configured stop point.
 func AllocateGreedyP(f *Func, config GreedyConfig, reuse *GreedyAllocation) (*GreedyAllocation, error) {
-	return allocateGreedyP(f, nil, config, reuse)
+	return allocateGreedyP(f, nil, config, reuse, false)
 }
 
 // AllocateGreedyPForSchedule improves a complete schedule-aware linear
@@ -153,7 +153,17 @@ func AllocateGreedyPForSchedule(f *Func, schedule *Schedule, config GreedyConfig
 	if schedule == nil {
 		return nil, fmt.Errorf("railmach: scheduled RAGreedyP requires a schedule")
 	}
-	return allocateGreedyP(f, schedule, config, reuse)
+	return allocateGreedyP(f, schedule, config, reuse, false)
+}
+
+// AllocateGreedyPSegmentedForSchedule evaluates the staged acyclic live-range
+// representation through the complete GreedyP allocator. Production treats
+// this as an alternate candidate and retains it only under strict debt gates.
+func AllocateGreedyPSegmentedForSchedule(f *Func, schedule *Schedule, config GreedyConfig, reuse *GreedyAllocation) (*GreedyAllocation, error) {
+	if schedule == nil {
+		return nil, fmt.Errorf("railmach: scheduled segmented RAGreedyP requires a schedule")
+	}
+	return allocateGreedyP(f, schedule, config, reuse, true)
 }
 
 // AllocateFastMachineForSchedule packages a complete verified RALinearQ
@@ -192,7 +202,7 @@ func AllocateFastMachineForSchedule(f *Func, schedule *Schedule, config GreedyCo
 	return reuse, nil
 }
 
-func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *GreedyAllocation) (*GreedyAllocation, error) {
+func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *GreedyAllocation, allowSegments bool) (*GreedyAllocation, error) {
 	if config.MaxStage > 4 || config.MaxStage == 0 || config.CallerGPRs > config.Linear.GPRs || config.CallerFPRs > config.Linear.FPRs {
 		return nil, fmt.Errorf("railmach: invalid RAGreedyP configuration %#v", config)
 	}
@@ -202,7 +212,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 	spillSets := reuse.SpillSets[:0]
 	spillMembers := reuse.SpillMembers[:0]
 	fragments := reuse.Fragments[:0]
-	base, err := allocateLinearQ(f, schedule, config.Linear, &reuse.Allocation, false)
+	base, err := allocateLinearQ(f, schedule, config.Linear, &reuse.Allocation, allowSegments)
 	if err != nil {
 		return nil, err
 	}

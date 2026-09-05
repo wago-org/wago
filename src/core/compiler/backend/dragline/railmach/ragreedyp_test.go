@@ -88,17 +88,26 @@ func TestAllocateGreedyPPromotesCallCrossingRange(t *testing.T) {
 }
 
 func TestAllocateGreedyPLeavesSegmentedLivenessStaged(t *testing.T) {
-	allocation, err := AllocateGreedyP(liveRangeHoleFunc(), GreedyConfig{
+	f := liveRangeHoleFunc()
+	config := GreedyConfig{
 		Linear:     LinearQConfig{GPRs: 1, FPRs: 1},
 		CallerGPRs: 1,
 		CallerFPRs: 1,
 		MaxStage:   3,
-	}, nil)
+	}
+	allocation, err := AllocateGreedyP(f, config, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(allocation.LiveSegments) != 0 || len(allocation.LiveSegmentRanges) != 0 {
 		t.Fatalf("GreedyP activated staged segmented liveness: ranges=%#v segments=%#v", allocation.LiveSegmentRanges, allocation.LiveSegments)
+	}
+	segmented, err := allocateGreedyP(f, nil, config, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(segmented.LiveSegments) != 2 || len(segmented.LiveSegmentRanges) != 1 {
+		t.Fatalf("segmented GreedyP omitted exact holes: ranges=%#v segments=%#v", segmented.LiveSegmentRanges, segmented.LiveSegments)
 	}
 }
 

@@ -611,6 +611,47 @@ func TestNativeScheduleScoreBoundsLargeLatencyPreference(t *testing.T) {
 	}
 }
 
+func TestNativeSegmentedAllocationRequiresStrictDebtWin(t *testing.T) {
+	retained := railmach.ScheduleScore{WeightedSpillDebt: 10, PhysicalCopies: 2, CopyCycles: 1, FixedRepairs: 1}
+	allocation := &railmach.GreedyAllocation{
+		Allocation: railmach.Allocation{SpillSlots: 1, LiveSegmentRanges: []railmach.LiveSegmentRange{{Reg: 1, SegmentCount: 2}}},
+		Metrics:    railmach.GreedyMetrics{PreservationCost: 2},
+	}
+	if !nativeSegmentedAllocationBetter(
+		testScheduleScore(9, 2, 1, 1), retained, allocation,
+		testGreedyMetrics(2), 1,
+	) {
+		t.Fatal("strict segmented debt improvement was rejected")
+	}
+	for name, candidate := range map[string]railmach.ScheduleScore{
+		"equal debt":      testScheduleScore(10, 2, 1, 1),
+		"physical copies": testScheduleScore(9, 3, 1, 1),
+		"copy cycles":     testScheduleScore(9, 2, 2, 1),
+		"fixed repairs":   testScheduleScore(9, 2, 1, 2),
+	} {
+		if nativeSegmentedAllocationBetter(candidate, retained, allocation, testGreedyMetrics(2), 1) {
+			t.Fatalf("segmented candidate with %s was accepted", name)
+		}
+	}
+	allocation.Metrics.PreservationCost = 3
+	if nativeSegmentedAllocationBetter(testScheduleScore(9, 2, 1, 1), retained, allocation, testGreedyMetrics(2), 1) {
+		t.Fatal("segmented candidate with higher preservation cost was accepted")
+	}
+	allocation.Metrics.PreservationCost = 2
+	allocation.SpillSlots = 2
+	if nativeSegmentedAllocationBetter(testScheduleScore(9, 2, 1, 1), retained, allocation, testGreedyMetrics(2), 1) {
+		t.Fatal("segmented candidate with more spill slots was accepted")
+	}
+}
+
+func testScheduleScore(debt uint64, copies, cycles, repairs uint32) railmach.ScheduleScore {
+	return railmach.ScheduleScore{WeightedSpillDebt: debt, PhysicalCopies: copies, CopyCycles: cycles, FixedRepairs: repairs}
+}
+
+func testGreedyMetrics(preservation uint64) railmach.GreedyMetrics {
+	return railmach.GreedyMetrics{PreservationCost: preservation}
+}
+
 func TestNativeScheduleScorePrefersARM64FloatLatencyWithinSpillBound(t *testing.T) {
 	pressure := railmach.ScheduleScore{Kind: railmach.ScheduleKindPressure, WeightedSpillDebt: 300, PhysicalCopies: 38}
 	latency := railmach.ScheduleScore{Kind: railmach.ScheduleKindLatencyFusion, WeightedSpillDebt: 900, PhysicalCopies: 36}
