@@ -919,7 +919,11 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 				return err
 			}
 			if op.kind == directInstr {
-				v.observeValidatedInstruction(facts, &op.instr, segmentCounts)
+				kind := op.instr.Kind
+				facts.Flags |= validatedFuncFlagsByKind[kind]
+				if validatedFuncNeedsPayloadByKind[kind] {
+					v.observeValidatedInstructionPayload(facts, &op.instr, segmentCounts)
+				}
 			} else {
 				facts.observeStructuredDirect(&op)
 			}

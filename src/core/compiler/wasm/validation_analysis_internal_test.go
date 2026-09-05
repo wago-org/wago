@@ -10,6 +10,9 @@ func TestValidatedFuncFlagsTable(t *testing.T) {
 		if got, want := validatedFuncFlagsByKind[kind], facts.Flags; got != want {
 			t.Fatalf("kind %d flags = %#x, want %#x", kind, got, want)
 		}
+		if got, want := validatedFuncNeedsPayloadByKind[kind], validatedInstructionNeedsPayload(kind); got != want {
+			t.Fatalf("kind %d payload observation = %v, want %v", kind, got, want)
+		}
 	}
 }
 
