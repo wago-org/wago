@@ -8391,7 +8391,9 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 		}
 		switch railmach.SemanticOpcode(plan.Machine.Insts[definition].Op) {
 		case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
-			wasm.InstrI32Mul, wasm.InstrI64Mul:
+			wasm.InstrI32Mul, wasm.InstrI64Mul,
+			wasm.InstrI32And, wasm.InstrI64And, wasm.InstrI32Or, wasm.InstrI64Or,
+			wasm.InstrI32Xor, wasm.InstrI64Xor:
 			if len(plan.Machine.Insts) >= 256 {
 				continue
 			}
@@ -8494,7 +8496,9 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 		}
 		switch railmach.SemanticOpcode(plan.Machine.Insts[definition].Op) {
 		case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
-			wasm.InstrI32Mul, wasm.InstrI64Mul:
+			wasm.InstrI32Mul, wasm.InstrI64Mul,
+			wasm.InstrI32And, wasm.InstrI64And, wasm.InstrI32Or, wasm.InstrI64Or,
+			wasm.InstrI32Xor, wasm.InstrI64Xor:
 			if len(plan.Machine.Insts) >= 256 {
 				continue
 			}
@@ -8574,12 +8578,10 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 		rename.chained = true
 		break
 	}
-	// A third, independent recurrence can be renamed when its result has no
-	// ordinary consumer. This covers counters updated alongside a coupled FP
-	// recurrence without weakening the parallel-copy clobber proof above.
-	if rename.destination.Bank != railmach.BankFPR {
-		return rename
-	}
+	// A second independent GPR recurrence can be renamed when its result has no
+	// ordinary consumer. This covers integer accumulators and counters as well
+	// as counters updated alongside a coupled FP recurrence, without weakening
+	// the parallel-copy clobber proof above.
 	for index := moveRange.Start; index < moveRange.Start+moveRange.Count; index++ {
 		move := plan.Exit.Moves[index]
 		if index == candidateMove || rename.chained && index == rename.chainedMove || move.Kind != railmach.MoveCopy ||
@@ -8599,7 +8601,9 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 		}
 		switch railmach.SemanticOpcode(plan.Machine.Insts[definition].Op) {
 		case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
-			wasm.InstrI32Mul, wasm.InstrI64Mul:
+			wasm.InstrI32Mul, wasm.InstrI64Mul,
+			wasm.InstrI32And, wasm.InstrI64And, wasm.InstrI32Or, wasm.InstrI64Or,
+			wasm.InstrI32Xor, wasm.InstrI64Xor:
 			if len(plan.Machine.Insts) >= 256 {
 				continue
 			}

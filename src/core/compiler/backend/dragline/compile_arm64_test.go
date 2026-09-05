@@ -1950,6 +1950,10 @@ func TestARM64RailMachRenamesFinalEdgeMultiply(t *testing.T) {
 	if integer := arm64RailMachEdgeResultRename(plan, 0); !integer.valid || integer.destination.Index != 5 {
 		t.Fatalf("integer edge result rename = %#v", integer)
 	}
+	f.Insts[0].Op = wasm.InstrI64Xor
+	if bitwise := arm64RailMachEdgeResultRename(plan, 0); !bitwise.valid || bitwise.destination.Index != 5 {
+		t.Fatalf("bitwise edge result rename = %#v", bitwise)
+	}
 	f.Insts = append(f.Insts, make([]railmach.Inst, 255)...)
 	if large := arm64RailMachEdgeResultRename(plan, 0); large.valid {
 		t.Fatalf("large integer edge result rename = %#v, want disabled", large)
@@ -2084,6 +2088,68 @@ func TestARM64RailMachPrefersCoupledFPRCopiesOverLaterIntegerCopy(t *testing.T) 
 	f.Operands = append(f.Operands, railmach.Operand{Reg: 7, Bank: railmach.BankGPR})
 	if unsafe := arm64RailMachEdgeResultRename(plan, 0); unsafe.independent {
 		t.Fatalf("independent rename abandoned an ordinary counter use: %#v", unsafe)
+	}
+}
+
+func TestARM64RailMachRenamesTwoIndependentGPREdgeResults(t *testing.T) {
+	f := &railmach.Func{
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI64Xor, Result: 3, OperandStart: 0, OperandCount: 2},
+			{Op: wasm.InstrI32Sub, Result: 5, OperandStart: 2, OperandCount: 2},
+		},
+		Operands: []railmach.Operand{
+			{Reg: 1, Bank: railmach.BankGPR}, {Reg: 2, Bank: railmach.BankGPR},
+			{Reg: 7, Bank: railmach.BankGPR}, {Reg: 8, Bank: railmach.BankGPR},
+		},
+		VRegs: []railmach.VRegData{
+			{},
+			{Type: railmach.TypeI64, Bank: railmach.BankGPR, Flags: railmach.VRegBlockParam},
+			{Type: railmach.TypeI64, Bank: railmach.BankGPR, Flags: railmach.VRegInitial},
+			{Def: 3, Type: railmach.TypeI64, Bank: railmach.BankGPR},
+			{Type: railmach.TypeI64, Bank: railmach.BankGPR, Flags: railmach.VRegBlockParam},
+			{Def: 9, Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegBlockParam},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegBlockParam},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegInitial},
+		},
+		Blocks: []railmach.Block{{InstCount: 2}, {}},
+		Edges:  []railmach.Edge{{From: 0, To: 1}},
+		Transfers: []railmach.EdgeTransfer{
+			{Src: 3, Dst: 4, Edge: 0},
+			{Src: 5, Dst: 6, Edge: 0},
+		},
+	}
+	locations := []railmach.Location{
+		{},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 1},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 2},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 3},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 4},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 5},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 6},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 7},
+		{Kind: railmach.LocationRegister, Bank: railmach.BankGPR, Index: 8},
+	}
+	plan := &nativeBackendPlan{
+		Machine: f,
+		Schedule: &railmach.Schedule{
+			Order: []uint32{0, 1}, BlockRanges: []railmach.MoveRange{{Count: 2}, {Start: 2}}, BlockOf: []railssa.BlockID{0, 0},
+		},
+		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: locations, InstructionPositions: []uint32{0, 1}}},
+		Exit: &railmach.SSAExit{
+			Moves: []railmach.PhysicalMove{
+				{Src: locations[3], Dst: locations[4], Reg: 3, Edge: 0, Kind: railmach.MoveCopy, Placement: railmach.PlacePredecessorEnd, Bank: railmach.BankGPR},
+				{Src: locations[5], Dst: locations[6], Reg: 5, Edge: 0, Kind: railmach.MoveCopy, Placement: railmach.PlacePredecessorEnd, Bank: railmach.BankGPR},
+			},
+			EdgeMoves: []railmach.MoveRange{{Count: 2}},
+		},
+	}
+	rename := arm64RailMachEdgeResultRename(plan, 0)
+	if !rename.valid || rename.instruction != 1 || rename.destination != locations[6] {
+		t.Fatalf("primary GPR recurrence rename = %#v, want instruction 1 to %#v", rename, locations[6])
+	}
+	if !rename.independent || rename.independentInstruction != 0 || rename.independentMove != 0 || rename.independentDestination != locations[4] {
+		t.Fatalf("independent GPR recurrence rename = %#v, want instruction 0 to %#v", rename, locations[4])
 	}
 }
 
