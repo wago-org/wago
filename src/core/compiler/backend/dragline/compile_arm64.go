@@ -1002,7 +1002,9 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64I32x4LtU, railmach.OpARM64I32x4GtU, railmach.OpARM64I32x4LeU, railmach.OpARM64I32x4GeU,
 			railmach.OpARM64I16x8Shl, railmach.OpARM64I16x8ShrS, railmach.OpARM64I16x8ShrU,
 			railmach.OpARM64I32x4Shl, railmach.OpARM64I32x4ShrS, railmach.OpARM64I32x4ShrU,
-			railmach.OpARM64I64x2Shl, railmach.OpARM64I64x2ShrU:
+			railmach.OpARM64I64x2Shl, railmach.OpARM64I64x2ShrU,
+			railmach.OpARM64I8x16Splat, railmach.OpARM64I16x8Splat, railmach.OpARM64I32x4Splat,
+			railmach.OpARM64I64x2Splat, railmach.OpARM64F32x4Splat, railmach.OpARM64F64x2Splat:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3441,6 +3443,27 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					return nil, 0, true, fmt.Errorf("RailMach vector constant %d has no payload", instructionID)
 				}
 				emitARM64SIMDConstant(&a, dst, immediate.Bytes)
+				continue
+			case railmach.OpARM64I8x16Splat, railmach.OpARM64I16x8Splat, railmach.OpARM64I32x4Splat,
+				railmach.OpARM64I64x2Splat, railmach.OpARM64F32x4Splat, railmach.OpARM64F64x2Splat:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector splat operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpARM64I8x16Splat:
+					a.NeonDupGprB(dst, src)
+				case railmach.OpARM64I16x8Splat:
+					a.NeonDupGprH(dst, src)
+				case railmach.OpARM64I32x4Splat:
+					a.NeonDupGprS(dst, src)
+				case railmach.OpARM64I64x2Splat:
+					a.NeonDupGprD(dst, src)
+				case railmach.OpARM64F32x4Splat:
+					a.NeonDupS(dst, src)
+				default:
+					a.NeonDupD(dst, src)
+				}
 				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
 				railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,

@@ -935,7 +935,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GtU, railmach.OpAMD64I32x4LeU, railmach.OpAMD64I32x4GeU,
 			railmach.OpAMD64I16x8Shl, railmach.OpAMD64I16x8ShrS, railmach.OpAMD64I16x8ShrU,
 			railmach.OpAMD64I32x4Shl, railmach.OpAMD64I32x4ShrS, railmach.OpAMD64I32x4ShrU,
-			railmach.OpAMD64I64x2Shl, railmach.OpAMD64I64x2ShrU:
+			railmach.OpAMD64I64x2Shl, railmach.OpAMD64I64x2ShrU,
+			railmach.OpAMD64I8x16Splat, railmach.OpAMD64I16x8Splat, railmach.OpAMD64I32x4Splat,
+			railmach.OpAMD64I64x2Splat, railmach.OpAMD64F32x4Splat, railmach.OpAMD64F64x2Splat:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2227,6 +2229,43 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.VPxor(dst, dst, dst)
 				} else {
 					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(dst), bytes: immediate.Bytes})
+				}
+				continue
+			case railmach.OpAMD64I8x16Splat, railmach.OpAMD64I16x8Splat, railmach.OpAMD64I32x4Splat,
+				railmach.OpAMD64I64x2Splat, railmach.OpAMD64F32x4Splat, railmach.OpAMD64F64x2Splat:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector splat operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpAMD64I8x16Splat:
+					a.MovReg32(amd64.R11, src)
+					a.AluRI(4, amd64.R11, 0xff, false)
+					a.MovImm64(amd64.R10, 0x0101010101010101)
+					a.IMul(amd64.R11, amd64.R10, true)
+					a.MovGprToXmm(dst, amd64.R11, true)
+					a.Punpcklqdq(dst, dst)
+				case railmach.OpAMD64I16x8Splat:
+					a.MovReg32(amd64.R11, src)
+					a.AluRI(4, amd64.R11, 0xffff, false)
+					a.MovImm64(amd64.R10, 0x0001000100010001)
+					a.IMul(amd64.R11, amd64.R10, true)
+					a.MovGprToXmm(dst, amd64.R11, true)
+					a.Punpcklqdq(dst, dst)
+				case railmach.OpAMD64I32x4Splat, railmach.OpAMD64F32x4Splat:
+					if instruction.Op == railmach.OpAMD64I32x4Splat {
+						a.MovGprToXmm(dst, src, false)
+						src = dst
+					}
+					a.Pshufd(dst, src, 0)
+				case railmach.OpAMD64I64x2Splat:
+					a.MovGprToXmm(dst, src, true)
+					a.Punpcklqdq(dst, dst)
+				default:
+					if dst != src {
+						a.VMovdqu(dst, src)
+					}
+					a.Punpcklqdq(dst, dst)
 				}
 				continue
 			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,

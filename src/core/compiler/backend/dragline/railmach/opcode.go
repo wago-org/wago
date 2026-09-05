@@ -83,6 +83,12 @@ const (
 	OpAMD64I32x4ShrU
 	OpAMD64I64x2Shl
 	OpAMD64I64x2ShrU
+	OpAMD64I8x16Splat
+	OpAMD64I16x8Splat
+	OpAMD64I32x4Splat
+	OpAMD64I64x2Splat
+	OpAMD64F32x4Splat
+	OpAMD64F64x2Splat
 	opAMD64SelectedEnd
 )
 
@@ -154,6 +160,12 @@ const (
 	OpARM64I32x4ShrU
 	OpARM64I64x2Shl
 	OpARM64I64x2ShrU
+	OpARM64I8x16Splat
+	OpARM64I16x8Splat
+	OpARM64I32x4Splat
+	OpARM64I64x2Splat
+	OpARM64F32x4Splat
+	OpARM64F64x2Splat
 	opARM64SelectedEnd
 )
 
@@ -198,6 +210,7 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpAMD64I32x4LtU, OpAMD64I32x4GtU, OpAMD64I32x4LeU, OpAMD64I32x4GeU,
 		OpAMD64I16x8Shl, OpAMD64I16x8ShrS, OpAMD64I16x8ShrU,
 		OpAMD64I32x4Shl, OpAMD64I32x4ShrS, OpAMD64I32x4ShrU, OpAMD64I64x2Shl, OpAMD64I64x2ShrU,
+		OpAMD64I8x16Splat, OpAMD64I16x8Splat, OpAMD64I32x4Splat, OpAMD64I64x2Splat, OpAMD64F32x4Splat, OpAMD64F64x2Splat,
 		OpARM64V128Move, OpARM64V128Const, OpARM64V128Load, OpARM64V128Store, OpARM64V128And, OpARM64V128Or, OpARM64V128Xor,
 		OpARM64I8x16Add, OpARM64I8x16AddSatS, OpARM64I8x16AddSatU, OpARM64I8x16Sub, OpARM64I8x16SubSatS, OpARM64I8x16SubSatU,
 		OpARM64I16x8Add, OpARM64I16x8AddSatS, OpARM64I16x8AddSatU, OpARM64I16x8Sub, OpARM64I16x8SubSatS, OpARM64I16x8SubSatU,
@@ -212,7 +225,8 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpARM64I16x8LtU, OpARM64I16x8GtU, OpARM64I16x8LeU, OpARM64I16x8GeU,
 		OpARM64I32x4LtU, OpARM64I32x4GtU, OpARM64I32x4LeU, OpARM64I32x4GeU,
 		OpARM64I16x8Shl, OpARM64I16x8ShrS, OpARM64I16x8ShrU,
-		OpARM64I32x4Shl, OpARM64I32x4ShrS, OpARM64I32x4ShrU, OpARM64I64x2Shl, OpARM64I64x2ShrU:
+		OpARM64I32x4Shl, OpARM64I32x4ShrS, OpARM64I32x4ShrU, OpARM64I64x2Shl, OpARM64I64x2ShrU,
+		OpARM64I8x16Splat, OpARM64I16x8Splat, OpARM64I32x4Splat, OpARM64I64x2Splat, OpARM64F32x4Splat, OpARM64F64x2Splat:
 		return true
 	default:
 		return false
@@ -365,6 +379,18 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64I64x2Shl, OpARM64I64x2Shl
 		case wasm.InstrI64x2ShrU:
 			amd64, arm64 = OpAMD64I64x2ShrU, OpARM64I64x2ShrU
+		case wasm.InstrI8x16Splat:
+			amd64, arm64 = OpAMD64I8x16Splat, OpARM64I8x16Splat
+		case wasm.InstrI16x8Splat:
+			amd64, arm64 = OpAMD64I16x8Splat, OpARM64I16x8Splat
+		case wasm.InstrI32x4Splat:
+			amd64, arm64 = OpAMD64I32x4Splat, OpARM64I32x4Splat
+		case wasm.InstrI64x2Splat:
+			amd64, arm64 = OpAMD64I64x2Splat, OpARM64I64x2Splat
+		case wasm.InstrF32x4Splat:
+			amd64, arm64 = OpAMD64F32x4Splat, OpARM64F32x4Splat
+		case wasm.InstrF64x2Splat:
+			amd64, arm64 = OpAMD64F64x2Splat, OpARM64F64x2Splat
 		default:
 			continue
 		}
