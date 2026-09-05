@@ -620,7 +620,6 @@ func TestRailMachAdmitsV128LocalsButRejectsUnqualifiedBoundaryCases(t *testing.T
 		t.Fatal("internal v128 foundation function did not enter RailMach")
 	}
 	for name, edit := range map[string]func(*railssa.StackFunc){
-		"public result": func(stack *railssa.StackFunc) { stack.Results = []wasm.ValType{wasm.V128} },
 		"call": func(stack *railssa.StackFunc) {
 			stack.Instrs = append(stack.Instrs, railssa.StackInstr{Kind: wasm.InstrCall})
 		},
@@ -633,6 +632,13 @@ func TestRailMachAdmitsV128LocalsButRejectsUnqualifiedBoundaryCases(t *testing.T
 				t.Fatal("incomplete vector contract entered RailMach")
 			}
 		})
+	}
+	boundary := *foundation
+	boundary.Params = []wasm.ValType{wasm.V128}
+	boundary.Locals = []wasm.ValType{wasm.V128}
+	boundary.Results = []wasm.ValType{wasm.V128}
+	if !railMachCandidate(&boundary, true) {
+		t.Fatal("single-result v128 boundary did not enter RailMach")
 	}
 	local := *foundation
 	local.Locals = []wasm.ValType{wasm.V128}

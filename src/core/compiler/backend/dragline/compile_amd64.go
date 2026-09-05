@@ -1156,10 +1156,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	a.Push(amd64.RCX)
 	a.MovReg64(amd64.RBX, amd64.RSI)
 	for index, typ := range plan.Stack.Params[:min(len(plan.Stack.Params), len(amd64ParamRegisters))] {
+		offset := int32(railssa.TypeSlotOffset(plan.Stack.Params, index) * 8)
 		if typ == wasm.I32 || typ == wasm.F32 {
-			a.Load32(amd64ParamRegisters[index], amd64.RDI, int32(index)*8)
+			a.Load32(amd64ParamRegisters[index], amd64.RDI, offset)
 		} else {
-			a.Load64(amd64ParamRegisters[index], amd64.RDI, int32(index)*8)
+			a.Load64(amd64ParamRegisters[index], amd64.RDI, offset)
 		}
 	}
 	if len(plan.Machine.Results) > railmach.PrivateResultRegisters {
@@ -1171,7 +1172,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	}
 	a.Pop(amd64.RDI)
 	for index, result := range plan.Machine.Results[:min(len(plan.Machine.Results), railmach.PrivateResultRegisters)] {
-		if plan.Machine.VRegs[result].Type == railmach.TypeI32 {
+		if plan.Machine.VRegs[result].Type == railmach.TypeV128 {
+			a.VMovdquStoreDisp(amd64.RDI, int32(railssa.TypeSlotOffset(plan.Stack.Results, index)*8), amd64FPRRegisters[index])
+		} else if plan.Machine.VRegs[result].Type == railmach.TypeI32 {
 			a.Store32(amd64.RDI, int32(index*8), amd64RailMachGPRRegisters[index])
 		} else {
 			a.Store64(amd64.RDI, int32(index*8), amd64RailMachGPRRegisters[index])
@@ -1267,13 +1270,16 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				dst = reg(value)
 			}
 			if local < plan.Machine.ParamCount {
-				if data.Bank == railmach.BankFPR {
-					a.Load64(amd64.R10, paramBase, int32(local)*8)
+				offset := int32(railssa.TypeSlotOffset(plan.Stack.Params, int(local)) * 8)
+				if data.Type == railmach.TypeV128 {
+					a.VMovdquLoadDisp(dst, paramBase, offset)
+				} else if data.Bank == railmach.BankFPR {
+					a.Load64(amd64.R10, paramBase, offset)
 					a.MovGprToXmm(dst, amd64.R10, data.Type == railmach.TypeF64)
 				} else if data.Type == railmach.TypeI32 {
-					a.Load32(dst, paramBase, int32(local)*8)
+					a.Load32(dst, paramBase, offset)
 				} else {
-					a.Load64(dst, paramBase, int32(local)*8)
+					a.Load64(dst, paramBase, offset)
 				}
 			} else if data.Type == railmach.TypeV128 {
 				a.VPxor(dst, dst, dst)
@@ -4249,7 +4255,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		if err != nil {
 			return nil, 0, true, err
 		}
-		if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+		if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
+			if result != amd64FPRRegisters[0] {
+				a.VMovdqu(amd64FPRRegisters[0], result)
+			}
+		} else if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
 			a.MovXmmToGpr(amd64.RAX, result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
 		} else if result != amd64.RAX {
 			a.MovReg64(amd64.RAX, result)

@@ -416,17 +416,23 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 }
 
 // railMachV128FoundationCandidate admits vector operations whose machine
-// lowering is complete. Public vector parameters and results, globals, and
-// calls remain on the structured oracle until their boundary contracts are
-// independently qualified. Declared vector locals and block values are internal
-// SSA values and use the same allocation, spill, and edge-transfer machinery as
-// other TypeV128 values.
+// lowering is complete. Vector globals, calls, and mixed multi-result vector
+// signatures remain on the structured oracle until their boundary contracts
+// are independently qualified. Vector parameters, single results, declared
+// locals, and block values use the typed allocation and transfer machinery.
 func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 	if stack == nil || stack.HasReferences || len(stack.BranchCasts) != 0 {
 		return false
 	}
-	for _, types := range [][]wasm.ValType{stack.Params, stack.Results, stack.Globals} {
+	for _, types := range [][]wasm.ValType{stack.Globals} {
 		for _, typ := range types {
+			if typ == wasm.V128 {
+				return false
+			}
+		}
+	}
+	if len(stack.Results) > 1 {
+		for _, typ := range stack.Results {
 			if typ == wasm.V128 {
 				return false
 			}

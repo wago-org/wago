@@ -1254,7 +1254,9 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 	}
 	a.LdpPost(arm64.LR, arm64.X16, arm64.SP, 16)
 	for index, result := range plan.Machine.Results[:min(len(plan.Machine.Results), railmach.PrivateResultRegisters)] {
-		if plan.Machine.VRegs[result].Bank == railmach.BankFPR && len(plan.Machine.Results) == 1 {
+		if plan.Machine.VRegs[result].Type == railmach.TypeV128 {
+			a.StrQ(arm64.X16, int32(railssa.TypeSlotOffset(plan.Stack.Results, index)*8), arm64FPParamRegisters[index])
+		} else if plan.Machine.VRegs[result].Bank == railmach.BankFPR && len(plan.Machine.Results) == 1 {
 			a.FmovToGpr(arm64.X17, arm64FPParamRegisters[0], plan.Machine.VRegs[result].Type == railmach.TypeF64)
 			a.Store64(arm64.X17, arm64.X16, uint32(index*8))
 		} else if plan.Machine.VRegs[result].Type == railmach.TypeI32 {
@@ -1408,6 +1410,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				dst = reg(value)
 			}
 			if local < plan.Machine.ParamCount {
+				offset := railssa.TypeSlotOffset(plan.Stack.Params, int(local)) * 8
 				if plan.ABI.Class == railmach.ABITinyDirect {
 					break
 				}
@@ -1425,17 +1428,19 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					}
 					break
 				}
-				if data.Bank == railmach.BankFPR {
-					if !a.Load64(arm64.X16, arm64.X8, uint32(local)*8) {
+				if data.Type == railmach.TypeV128 {
+					a.LdrQ(dst, arm64.X8, int32(offset))
+				} else if data.Bank == railmach.BankFPR {
+					if !a.Load64(arm64.X16, arm64.X8, offset) {
 						return nil, 0, true, fmt.Errorf("RailMach parameter %d offset is not encodable", local)
 					}
 					a.FmovFromGpr(dst, arm64.X16, data.Type == railmach.TypeF64)
 				} else if data.Type == railmach.TypeI32 {
-					if !a.Load32(dst, arm64.X8, uint32(local)*8) {
+					if !a.Load32(dst, arm64.X8, offset) {
 						return nil, 0, true, fmt.Errorf("RailMach parameter %d offset is not encodable", local)
 					}
 				} else {
-					if !a.Load64(dst, arm64.X8, uint32(local)*8) {
+					if !a.Load64(dst, arm64.X8, offset) {
 						return nil, 0, true, fmt.Errorf("RailMach parameter %d offset is not encodable", local)
 					}
 				}
@@ -5647,7 +5652,11 @@ railMachEpilogue:
 		if err != nil {
 			return nil, 0, true, err
 		}
-		if plan.Machine.VRegs[value].Bank == railmach.BankFPR && arm64DirectPreparedClass(plan.ABI.Class) {
+		if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
+			if result != arm64FPParamRegisters[0] {
+				a.NeonOrr16b(arm64FPParamRegisters[0], result, result)
+			}
+		} else if plan.Machine.VRegs[value].Bank == railmach.BankFPR && arm64DirectPreparedClass(plan.ABI.Class) {
 			if result != arm64FPParamRegisters[0] {
 				a.FmovReg(arm64FPParamRegisters[0], result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
 			}

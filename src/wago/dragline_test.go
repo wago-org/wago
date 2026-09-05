@@ -4338,6 +4338,30 @@ func TestDraglineRailMachV128BlockTransferExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachV128PublicBoundaryExecution(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.V128, wasm.I64}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x01, 0x0b}))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	lo, hi := uint64(0x0706050403020100), uint64(0x0f0e0d0c0b0a0908)
+	result, err := instance.Invoke("run", I32(7), lo, hi, I64(9))
+	if err != nil || len(result) != 2 || result[0] != lo || result[1] != hi {
+		t.Fatalf("v128 identity = %#x, %v; want [%#x %#x]", result, err, lo, hi)
+	}
+}
+
 func TestDraglineRailMachVectorLoadVariantsExecution(t *testing.T) {
 	payload := [16]byte{0x80, 0x7f, 0xfe, 0x01, 0x00, 0xff, 0x34, 0x92, 8, 9, 10, 11, 12, 13, 14, 15}
 	extend8 := func(signed bool) (out [16]byte) {

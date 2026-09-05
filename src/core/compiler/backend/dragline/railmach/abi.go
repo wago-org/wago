@@ -286,6 +286,9 @@ func directPreparedARM64Contract(f *Func, allocation *GreedyAllocation) bool {
 			if data.Flags&VRegInitial == 0 || data.InitialLocal != local {
 				continue
 			}
+			if data.Type == TypeV128 {
+				return false
+			}
 			location := allocation.Locations[value]
 			if location.Bank != data.Bank || location.Kind != LocationRegister && location.Kind != LocationSpill {
 				return false
