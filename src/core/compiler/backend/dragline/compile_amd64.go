@@ -987,7 +987,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64F64x2ConvertLowI32x4S, railmach.OpAMD64F64x2ConvertLowI32x4U,
 			railmach.OpAMD64I32x4TruncSatF32x4S, railmach.OpAMD64I32x4TruncSatF32x4U,
 			railmach.OpAMD64I32x4TruncSatF64x2SZero, railmach.OpAMD64I32x4TruncSatF64x2UZero,
-			railmach.OpAMD64I8x16Popcnt, railmach.OpAMD64I16x8Q15mulrSatS:
+			railmach.OpAMD64I8x16Popcnt, railmach.OpAMD64I16x8Q15mulrSatS,
+			railmach.OpAMD64I8x16Shl, railmach.OpAMD64I8x16ShrS, railmach.OpAMD64I8x16ShrU, railmach.OpAMD64I64x2ShrS:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2981,7 +2982,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GtU, railmach.OpAMD64I32x4LeU, railmach.OpAMD64I32x4GeU,
 				railmach.OpAMD64I16x8Shl, railmach.OpAMD64I16x8ShrS, railmach.OpAMD64I16x8ShrU,
 				railmach.OpAMD64I32x4Shl, railmach.OpAMD64I32x4ShrS, railmach.OpAMD64I32x4ShrU,
-				railmach.OpAMD64I64x2Shl, railmach.OpAMD64I64x2ShrU:
+				railmach.OpAMD64I64x2Shl, railmach.OpAMD64I64x2ShrU,
+				railmach.OpAMD64I8x16Shl, railmach.OpAMD64I8x16ShrS, railmach.OpAMD64I8x16ShrU, railmach.OpAMD64I64x2ShrS:
 				if len(operands) != 2 {
 					return nil, 0, true, fmt.Errorf("RailMach selected vector binary operand count is %d", len(operands))
 				}
@@ -3135,6 +3137,49 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					default:
 						a.VPsrlq(dst, lhs, 5)
 					}
+				case railmach.OpAMD64I8x16Shl, railmach.OpAMD64I8x16ShrS, railmach.OpAMD64I8x16ShrU:
+					a.MovReg32(amd64.R11, rhs)
+					a.AluRI(4, amd64.R11, 7, false)
+					a.MovGprToXmm(3, amd64.R11, true)
+					a.VPor(dst, lhs, lhs)
+					a.VPor(4, lhs, lhs)
+					if instruction.Op == railmach.OpAMD64I8x16ShrS {
+						a.VPunpcklbw(dst, dst, dst)
+						a.VPunpckhbw(4, 4, 4)
+						a.VPsrawImm(dst, dst, 8)
+						a.VPsrawImm(4, 4, 8)
+						a.VPsraw(dst, dst, 3)
+						a.VPsraw(4, 4, 3)
+						a.VPpacksswb(dst, dst, 4)
+					} else {
+						a.VPxor(5, 5, 5)
+						a.VPunpcklbw(dst, dst, 5)
+						a.VPunpckhbw(4, 4, 5)
+						if instruction.Op == railmach.OpAMD64I8x16Shl {
+							a.VPsllw(dst, dst, 3)
+							a.VPsllw(4, 4, 3)
+						} else {
+							a.VPsrlw(dst, dst, 3)
+							a.VPsrlw(4, 4, 3)
+						}
+						a.VPcmpeqw(5, 5, 5)
+						a.VPsrlwImm(5, 5, 8)
+						a.VPand(dst, dst, 5)
+						a.VPand(4, 4, 5)
+						a.VPpackuswb(dst, dst, 4)
+					}
+				case railmach.OpAMD64I64x2ShrS:
+					a.MovReg32(amd64.R11, rhs)
+					a.AluRI(4, amd64.R11, 63, false)
+					a.MovGprToXmm(3, amd64.R11, true)
+					a.VPxor(5, 5, 5)
+					a.VPcmpgtq(4, 5, lhs)
+					a.VPsrlq(dst, lhs, 3)
+					a.MovImm64(amd64.R10, 64)
+					a.AluRR(0x29, amd64.R10, amd64.R11, true)
+					a.MovGprToXmm(5, amd64.R10, true)
+					a.VPsllq(4, 4, 5)
+					a.VPor(dst, dst, 4)
 				}
 				switch instruction.Op {
 				case railmach.OpAMD64I8x16Ne, railmach.OpAMD64I16x8Ne, railmach.OpAMD64I32x4Ne, railmach.OpAMD64I64x2Ne:

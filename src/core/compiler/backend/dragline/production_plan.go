@@ -466,9 +466,10 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrI8x16LtU, wasm.InstrI8x16GtU, wasm.InstrI8x16LeU, wasm.InstrI8x16GeU,
 			wasm.InstrI16x8LtU, wasm.InstrI16x8GtU, wasm.InstrI16x8LeU, wasm.InstrI16x8GeU,
 			wasm.InstrI32x4LtU, wasm.InstrI32x4GtU, wasm.InstrI32x4LeU, wasm.InstrI32x4GeU,
+			wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU,
 			wasm.InstrI16x8Shl, wasm.InstrI16x8ShrS, wasm.InstrI16x8ShrU,
 			wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU,
-			wasm.InstrI64x2Shl, wasm.InstrI64x2ShrU,
+			wasm.InstrI64x2Shl, wasm.InstrI64x2ShrS, wasm.InstrI64x2ShrU,
 			wasm.InstrI8x16Splat, wasm.InstrI16x8Splat, wasm.InstrI32x4Splat,
 			wasm.InstrI64x2Splat, wasm.InstrF32x4Splat, wasm.InstrF64x2Splat,
 			wasm.InstrI8x16ExtractLaneS, wasm.InstrI8x16ExtractLaneU, wasm.InstrI8x16ReplaceLane,
@@ -1656,6 +1657,9 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 			wasm.InstrI8x16Popcnt, wasm.InstrI16x8Q15mulrSatS,
 			railmach.OpAMD64I8x16Popcnt, railmach.OpAMD64I16x8Q15mulrSatS:
 			return 3 // XMM3-XMM5 cover clamp, mask, and conversion temporaries.
+		case wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU, wasm.InstrI64x2ShrS,
+			railmach.OpAMD64I8x16Shl, railmach.OpAMD64I8x16ShrS, railmach.OpAMD64I8x16ShrU, railmach.OpAMD64I64x2ShrS:
+			return 3 // XMM3-XMM5 hold shift counts, widened halves, and masks.
 		case wasm.InstrI16x8ExtmulLowI8x16S, wasm.InstrI16x8ExtmulHighI8x16S,
 			wasm.InstrI16x8ExtmulLowI8x16U, wasm.InstrI16x8ExtmulHighI8x16U,
 			wasm.InstrI32x4ExtmulLowI16x8S, wasm.InstrI32x4ExtmulHighI16x8S,

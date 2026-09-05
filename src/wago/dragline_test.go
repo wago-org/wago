@@ -4326,6 +4326,12 @@ func TestDraglineRailMachIntegerVectorArithmeticAndEqualityExecution(t *testing.
 }
 
 func TestDraglineRailMachIntegerVectorShiftExecution(t *testing.T) {
+	splat8 := func(value byte) (out [16]byte) {
+		for index := range out {
+			out[index] = value
+		}
+		return
+	}
 	splat16 := func(value uint16) (out [16]byte) {
 		for index := 0; index < len(out); index += 2 {
 			binary.LittleEndian.PutUint16(out[index:], value)
@@ -4350,6 +4356,9 @@ func TestDraglineRailMachIntegerVectorShiftExecution(t *testing.T) {
 		count     int32
 		want      uint64
 	}{
+		{"i8x16.shl_masks_count", 107, splat8(0x81), 9, 0x0202020202020202},
+		{"i8x16.shr_s", 108, splat8(0x80), 9, 0xc0c0c0c0c0c0c0c0},
+		{"i8x16.shr_u", 109, splat8(0x80), 9, 0x4040404040404040},
 		{"i16x8.shl_masks_count", 139, splat16(1), 17, 0x0002000200020002},
 		{"i16x8.shr_s", 140, splat16(0x8000), 17, 0xc000c000c000c000},
 		{"i16x8.shr_u", 141, splat16(0x8000), 17, 0x4000400040004000},
@@ -4357,6 +4366,7 @@ func TestDraglineRailMachIntegerVectorShiftExecution(t *testing.T) {
 		{"i32x4.shr_s", 172, splat32(0x80000000), 33, 0xc0000000c0000000},
 		{"i32x4.shr_u", 173, splat32(0x80000000), 33, 0x4000000040000000},
 		{"i64x2.shl_masks_count", 203, splat64(1), 65, 2},
+		{"i64x2.shr_s", 204, splat64(1 << 63), 65, 0xc000000000000000},
 		{"i64x2.shr_u", 205, splat64(1 << 63), 65, 1 << 62},
 	} {
 		t.Run(test.name, func(t *testing.T) {
