@@ -53,6 +53,32 @@ func buildMachineTest(t *testing.T, target Target, m *wasm.Module) *Func {
 	return machine
 }
 
+func TestBuildMarksARM64DefaultFloatLocalRematerializable(t *testing.T) {
+	function := []byte{0x01, 0x01, 0x7c, 0x20, 0x00, 0x0b} // one f64 local; local.get 0
+	code := append(wasmtest.ULEB(uint32(len(function))), function...)
+	m, err := wasm.DecodeModule(wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.F64}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(10, wasmtest.Vec(code)),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	f := buildMachineTest(t, TargetARM64, m)
+	for _, data := range f.VRegs {
+		if data.Flags&VRegInitial != 0 && data.InitialLocal == 0 {
+			if data.Type != TypeF64 || data.Flags&VRegRematerializable == 0 {
+				t.Fatalf("default f64 local = %#v", data)
+			}
+			return
+		}
+	}
+	t.Fatal("default f64 local is unavailable")
+}
+
 func TestSemanticOpcodeTablesCoverSelectedRanges(t *testing.T) {
 	for _, selectedRange := range [][2]MOpcode{
 		{OpAMD64V128Move, opAMD64SelectedEnd},

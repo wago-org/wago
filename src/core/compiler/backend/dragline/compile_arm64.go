@@ -7173,6 +7173,10 @@ func arm64RailMachReadLocation(a *arm64.Asm, plan *nativeBackendPlan, value rail
 		}
 		return scratch, nil
 	case railmach.LocationRematerialize:
+		if data.Flags&railmach.VRegInitial != 0 && data.InitialLocal >= plan.Machine.ParamCount && (data.Type == railmach.TypeF32 || data.Type == railmach.TypeF64) {
+			a.FmovFromGpr(scratch, arm64.XZR, data.Type == railmach.TypeF64)
+			return scratch, nil
+		}
 		instructionID := data.Def / 6
 		if int(instructionID) >= len(plan.Machine.Insts) {
 			return 0, fmt.Errorf("RailMach rematerialization value %d has no definition", value)

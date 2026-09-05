@@ -307,6 +307,12 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 		switch value.Kind {
 		case railssa.FlowValueInitialLocal:
 			data.Flags |= VRegInitial
+			if target == TargetARM64 && value.Local >= uint32(flow.ParamCount) && (typ == TypeF32 || typ == TypeF64) {
+				// Numeric locals beyond the parameter prefix begin as exact zero.
+				// Let allocation rematerialize that value at sparse uses instead of
+				// preserving a function-long FPR home under pressure.
+				data.Flags |= VRegRematerializable
+			}
 			if value.Local > ^uint32(0)>>16 {
 				return nil, &BudgetError{Resource: "initial-local compact identity", Required: uint64(value.Local) + 1, Limit: uint64(^uint16(0)) + 1}
 			}

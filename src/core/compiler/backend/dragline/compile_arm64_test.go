@@ -1737,6 +1737,27 @@ func TestARM64RailMachStoresSpilledWrapWithoutTemporary(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachRematerializesDefaultFloatLocalAsPositiveZero(t *testing.T) {
+	plan := &nativeBackendPlan{
+		Machine: &railmach.Func{
+			Target:     railmach.TargetARM64,
+			ParamCount: 0,
+			VRegs: []railmach.VRegData{
+				{},
+				{Type: railmach.TypeF64, Bank: railmach.BankFPR, Flags: railmach.VRegInitial | railmach.VRegRematerializable, InitialLocal: 0},
+			},
+		},
+	}
+	var a arm64.Asm
+	reg, err := arm64RailMachReadLocation(&a, plan, 1, railmach.Location{Kind: railmach.LocationRematerialize, Bank: railmach.BankFPR}, 31, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reg != 31 || len(a.B) != 4 {
+		t.Fatalf("default f64 rematerialization = register %d code %x", reg, a.B)
+	}
+}
+
 func TestARM64StructuredRegisterModesKeepShallowOperandStackInRegisters(t *testing.T) {
 	operandStack, full := arm64StructuredRegisterModes(false, false, false, false, len(arm64StackLocalRegisters)+1, 0, len(arm64OperandStackRegisters))
 	if !operandStack || full {
