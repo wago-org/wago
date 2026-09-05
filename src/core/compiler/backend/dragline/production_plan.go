@@ -976,7 +976,8 @@ func nativeExternalCallFPRMasks(stack *railssa.StackFunc, machine *railmach.Func
 		return 0, 0
 	}
 	for instructionID, instruction := range machine.Insts {
-		external := instruction.Op != wasm.InstrCall && railmach.IsCall(instruction.Op) || instruction.Op == wasm.InstrCall && uint32(instruction.Aux) < stack.ImportedFuncs
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		external := semanticOp != wasm.InstrCall && railmach.IsCall(instruction.Op) || semanticOp == wasm.InstrCall && uint32(instruction.Aux) < stack.ImportedFuncs
 		if !external {
 			continue
 		}
@@ -1003,9 +1004,10 @@ func nativeMachineHasExternalCall(stack *railssa.StackFunc, machine *railmach.Fu
 		return false
 	}
 	for _, instruction := range machine.Insts {
-		if instruction.Op == wasm.InstrMemoryGrow ||
-			instruction.Op != wasm.InstrCall && railmach.IsCall(instruction.Op) ||
-			instruction.Op == wasm.InstrCall && uint32(instruction.Aux) < stack.ImportedFuncs {
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		if semanticOp == wasm.InstrMemoryGrow ||
+			semanticOp != wasm.InstrCall && railmach.IsCall(instruction.Op) ||
+			semanticOp == wasm.InstrCall && uint32(instruction.Aux) < stack.ImportedFuncs {
 			return true
 		}
 	}
@@ -2399,7 +2401,7 @@ func nativeCallClobberOverrides(machine *railmach.Func, imported uint32, contrac
 	}
 	var overrides []railmach.CallClobber
 	for instructionID, instruction := range machine.Insts {
-		if instruction.Op != wasm.InstrCall || uint32(instruction.Aux) < imported {
+		if railmach.SemanticOpcode(instruction.Op) != wasm.InstrCall || uint32(instruction.Aux) < imported {
 			continue
 		}
 		callee := int(uint32(instruction.Aux) - imported)
@@ -2471,7 +2473,7 @@ func nativeIndirectTarget(plan *nativeBackendPlan, instructionID uint32) (uint32
 		return 0, false
 	}
 	machine := plan.Machine.Insts[instructionID]
-	if machine.Op != wasm.InstrCallIndirect {
+	if railmach.SemanticOpcode(machine.Op) != wasm.InstrCallIndirect {
 		return 0, false
 	}
 	for _, entry := range plan.Specialize.Entries {
@@ -2534,7 +2536,7 @@ func nativeDenseLocalTableTargets(m *wasm.Module) ([]uint32, bool) {
 
 func nativeARM64PreparedIndirect(stack *railssa.StackFunc, machine *railmach.Func, allocation *railmach.GreedyAllocation) bool {
 	if stack == nil || machine == nil || allocation == nil || machine.Target != railmach.TargetARM64 || len(stack.Params) != 3 || len(stack.Results) != 1 ||
-		stack.Params[0] != wasm.I32 || stack.Params[1] != wasm.I32 || stack.Params[2] != wasm.I32 || stack.Results[0] != wasm.I32 || len(machine.Insts) != 1 || machine.Insts[0].Op != wasm.InstrCallIndirect {
+		stack.Params[0] != wasm.I32 || stack.Params[1] != wasm.I32 || stack.Params[2] != wasm.I32 || stack.Results[0] != wasm.I32 || len(machine.Insts) != 1 || railmach.SemanticOpcode(machine.Insts[0].Op) != wasm.InstrCallIndirect {
 		return false
 	}
 	for local := uint16(0); local < machine.ParamCount; local++ {
@@ -2884,7 +2886,8 @@ func nativeCallTargetSafe(plan *nativeBackendPlan, instructionID uint32) bool {
 		// AMD64 platform callees may clobber every XMM. The production frame
 		// carries a bounded save area for the private callee-region registers
 		// represented by ExternalCallFPRs.
-		external := instruction.Op != wasm.InstrCall && railmach.IsCall(instruction.Op) || instruction.Op == wasm.InstrCall && uint32(instruction.Aux) < plan.Stack.ImportedFuncs
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		external := semanticOp != wasm.InstrCall && railmach.IsCall(instruction.Op) || semanticOp == wasm.InstrCall && uint32(instruction.Aux) < plan.Stack.ImportedFuncs
 		if plan.Machine.Target == railmach.TargetAMD64 && external && plan.ExternalCallFPRs&(uint64(1)<<location.Index) == 0 {
 			return false
 		}

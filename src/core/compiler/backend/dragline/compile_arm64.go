@@ -594,7 +594,7 @@ func arm64RailMachTopLevelI32LTGuard(plan *nativeBackendPlan) (lhs, rhs arm64.Re
 	}
 	selfRecursive := false
 	for _, instruction := range plan.Machine.Insts {
-		if instruction.Op == wasm.InstrCall && uint32(instruction.Aux) == plan.Stack.FunctionIndex {
+		if railmach.SemanticOpcode(instruction.Op) == wasm.InstrCall && uint32(instruction.Aux) == plan.Stack.FunctionIndex {
 			selfRecursive = true
 			break
 		}
@@ -1122,6 +1122,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64GlobalGet, railmach.OpARM64GlobalSet, railmach.OpARM64Select,
 			railmach.OpARM64MemorySize, railmach.OpARM64MemoryGrow, railmach.OpARM64MemoryCopy, railmach.OpARM64MemoryFill,
 			railmach.OpARM64If, railmach.OpARM64Br, railmach.OpARM64BrIf, railmach.OpARM64BrTable, railmach.OpARM64Return, railmach.OpARM64Unreachable,
+			railmach.OpARM64Call, railmach.OpARM64CallIndirect,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -2488,7 +2489,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					return nil, 0, true, err
 				}
 			}
-			if instruction.Op != wasm.InstrCall && instruction.Op != wasm.InstrCallIndirect {
+			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect {
 				for operandIndex, operand := range operands {
 					if operandIndex == 1 && immediateProducer[instructionID] != ^uint32(0) {
 						// The selected ARM64 immediate form consumes the literal from
@@ -2512,7 +2513,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 			}
 			_, fusedComparison := nativeARM64FusionConsumer(plan, instructionID)
-			if instruction.Op != wasm.InstrCall && instruction.Op != wasm.InstrCallIndirect && instruction.Result != 0 && plan.Allocation.Locations[instruction.Result].Kind == railmach.LocationSpill && !fusedComparison {
+			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect && instruction.Result != 0 && plan.Allocation.Locations[instruction.Result].Kind == railmach.LocationSpill && !fusedComparison {
 				pendingSpill = instruction.Result
 			}
 			bulkMemory := semanticOp == wasm.InstrMemoryCopy || semanticOp == wasm.InstrMemoryFill
@@ -2525,7 +2526,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					}
 				}
 			}
-			if instruction.Op != wasm.InstrCall && instruction.Op != wasm.InstrCallIndirect {
+			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect {
 				if moveRange, ok := nativeFixedMoveRange(plan, instructionID); ok {
 					if err := emitARM64RailMachMoveRange(&a, plan, moveRange); err != nil {
 						return nil, 0, true, err
@@ -3063,7 +3064,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrCallIndirect {
+			if semanticOp == wasm.InstrCallIndirect {
 				if kinds, ok := arm64RailMachInlineDenseI32Table(plan, instruction); ok {
 					lhs, err := arm64RailMachReadValueAt(&a, plan, operands[0].Reg, arm64.X13, 0)
 					if err != nil {
@@ -3344,7 +3345,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				reloadCachedGlobals()
 				continue
 			}
-			if instruction.Op == wasm.InstrCall {
+			if semanticOp == wasm.InstrCall {
 				skipCall := -1
 				if len(operands) == 2 && instruction.ResultCount() == 0 {
 					if limitGlobal, ok := arm64EarlyReturnI32LEGlobal(plan.Stack.Module, uint32(instruction.Aux), plan.Stack.ImportedFuncs); arm64EnableAlgorithmSpecializations && ok &&
@@ -6468,7 +6469,7 @@ func arm64RailMachSWARParse4(plan *nativeBackendPlan) bool {
 func arm64RailMachDirectCallNeedsRegisterArguments(plan *nativeBackendPlan, instruction railmach.Inst) bool {
 	// RailMach's private entry reloads its initial parameters from the canonical
 	// X8 vector unless that finalizer has a direct register-argument contract.
-	if plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall {
+	if plan == nil || plan.Stack == nil || railmach.SemanticOpcode(instruction.Op) != wasm.InstrCall {
 		return false
 	}
 	target := uint32(instruction.Aux)
@@ -6487,7 +6488,7 @@ func arm64RailMachDirectCallNeedsRegisterArguments(plan *nativeBackendPlan, inst
 }
 
 func arm64RailMachDirectCallStackAdjust(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) uint32 {
-	if plan != nil && plan.Stack != nil && instruction.Op == wasm.InstrCall && uint32(instruction.Aux) == plan.Stack.FunctionIndex {
+	if plan != nil && plan.Stack != nil && railmach.SemanticOpcode(instruction.Op) == wasm.InstrCall && uint32(instruction.Aux) == plan.Stack.FunctionIndex {
 		return 0
 	}
 	if arm64RailMachDirectCallClass(plan, instructionID, instruction) == railmach.ABITinyDirect {
@@ -6671,7 +6672,7 @@ func arm64RailMachInlinesAllTinyCalls(plan *nativeBackendPlan) bool {
 }
 
 func arm64RailMachInlineDenseI32Table(plan *nativeBackendPlan, instruction railmach.Inst) ([]wasm.InstrKind, bool) {
-	if plan == nil || plan.Stack == nil || plan.ABI.Class != railmach.ABIPreparedIndirect || instruction.Op != wasm.InstrCallIndirect || instruction.OperandCount != 3 || instruction.ResultCount() != 1 {
+	if plan == nil || plan.Stack == nil || plan.ABI.Class != railmach.ABIPreparedIndirect || railmach.SemanticOpcode(instruction.Op) != wasm.InstrCallIndirect || instruction.OperandCount != 3 || instruction.ResultCount() != 1 {
 		return nil, false
 	}
 	targets, ok := nativeDenseLocalTableTargets(plan.Stack.Module)
@@ -6690,7 +6691,7 @@ func arm64RailMachInlineDenseI32Table(plan *nativeBackendPlan, instruction railm
 }
 
 func arm64RailMachInlineI32AddImmediate(plan *nativeBackendPlan, instruction railmach.Inst) (int32, bool) {
-	if plan == nil || plan.Stack == nil || plan.Stack.Module == nil || instruction.Op != wasm.InstrCall || instruction.OperandCount != 1 || instruction.ResultCount() != 1 {
+	if plan == nil || plan.Stack == nil || plan.Stack.Module == nil || railmach.SemanticOpcode(instruction.Op) != wasm.InstrCall || instruction.OperandCount != 1 || instruction.ResultCount() != 1 {
 		return 0, false
 	}
 	target := uint32(instruction.Aux)
@@ -6765,7 +6766,7 @@ func arm64RailMachInlineI32AddTree(plan *nativeBackendPlan) (source railmach.VRe
 	for _, instructionID := range plan.Schedule.Order {
 		instruction := plan.Machine.Insts[instructionID]
 		operands := plan.Machine.InstructionOperands(instructionID)
-		switch instruction.Op {
+		switch railmach.SemanticOpcode(instruction.Op) {
 		case wasm.InstrCall:
 			immediate, inline := arm64RailMachInlineI32AddImmediate(plan, instruction)
 			if !inline || len(operands) != 1 || instruction.Result == 0 {
@@ -6803,7 +6804,7 @@ func arm64RailMachInlineI32AddTree(plan *nativeBackendPlan) (source railmach.VRe
 }
 
 func arm64RailMachDirectCallClass(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) railmach.ABIClass {
-	if plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall || uint32(instruction.Aux) < plan.Stack.ImportedFuncs {
+	if plan == nil || plan.Stack == nil || railmach.SemanticOpcode(instruction.Op) != wasm.InstrCall || uint32(instruction.Aux) < plan.Stack.ImportedFuncs {
 		return 0
 	}
 	target := uint32(instruction.Aux)
@@ -6819,7 +6820,7 @@ func arm64RailMachDirectCallClass(plan *nativeBackendPlan, instructionID uint32,
 }
 
 func arm64RailMachDirectCallWritesGlobal(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) bool {
-	if plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall || uint32(instruction.Aux) < plan.Stack.ImportedFuncs {
+	if plan == nil || plan.Stack == nil || railmach.SemanticOpcode(instruction.Op) != wasm.InstrCall || uint32(instruction.Aux) < plan.Stack.ImportedFuncs {
 		return true
 	}
 	for _, call := range plan.Calls {
@@ -6843,7 +6844,7 @@ func arm64RailMachI32Constant(plan *nativeBackendPlan, value railmach.VReg) (uin
 }
 
 func arm64RailMachDirectCallUsesPrivateABI(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) bool {
-	if plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall {
+	if plan == nil || plan.Stack == nil || railmach.SemanticOpcode(instruction.Op) != wasm.InstrCall {
 		return false
 	}
 	target := uint32(instruction.Aux)
@@ -8897,7 +8898,8 @@ func arm64RailMachTargetSafe(plan *nativeBackendPlan) bool {
 		return false
 	}
 	for instructionID, instruction := range plan.Machine.Insts {
-		if (instruction.Op == wasm.InstrCall || instruction.Op == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		if (semanticOp == wasm.InstrCall || semanticOp == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
 			return false
 		}
 		if !railMachTrappingTrunc(instruction.Op) {

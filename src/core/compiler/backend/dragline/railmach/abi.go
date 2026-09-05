@@ -173,7 +173,7 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		contract.HasCall = true
 		contract.MayCollect = contract.MayCollect || meta.Flags&railssa.EffectMayCollect != 0
 		call := CallContract{Instruction: uint32(instructionID), Callee: uint32(instruction.Aux), Class: ABIGeneral, Conservative: true, WritesGlobal: meta.Writes&railssa.HeapGlobal != 0, GPRClobbers: callerGPRs, FPRClobbers: callerFPRs}
-		if instruction.Op == wasm.InstrCall && call.Callee >= importedFunctions {
+		if SemanticOpcode(instruction.Op) == wasm.InstrCall && call.Callee >= importedFunctions {
 			call.Conservative = false
 		}
 		calls = append(calls, call)

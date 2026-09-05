@@ -300,6 +300,8 @@ const (
 	OpAMD64BrTable
 	OpAMD64Return
 	OpAMD64Unreachable
+	OpAMD64Call
+	OpAMD64CallIndirect
 	OpAMD64I32Add
 	OpAMD64I64Add
 	OpAMD64I32Sub
@@ -694,6 +696,8 @@ const (
 	OpARM64BrTable
 	OpARM64Return
 	OpARM64Unreachable
+	OpARM64Call
+	OpARM64CallIndirect
 	OpARM64I32Add
 	OpARM64I64Add
 	OpARM64I32Sub
@@ -894,6 +898,10 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrReturn
 	case OpAMD64Unreachable, OpARM64Unreachable:
 		return wasm.InstrUnreachable
+	case OpAMD64Call, OpARM64Call:
+		return wasm.InstrCall
+	case OpAMD64CallIndirect, OpARM64CallIndirect:
+		return wasm.InstrCallIndirect
 	case OpAMD64I32Add, OpARM64I32Add, OpARM64I32Madd:
 		return wasm.InstrI32Add
 	case OpAMD64I64Add, OpARM64I64Add, OpARM64I64Madd:
@@ -1370,6 +1378,10 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64Return, OpARM64Return
 		case wasm.InstrUnreachable:
 			amd64, arm64 = OpAMD64Unreachable, OpARM64Unreachable
+		case wasm.InstrCall:
+			amd64, arm64 = OpAMD64Call, OpARM64Call
+		case wasm.InstrCallIndirect:
+			amd64, arm64 = OpAMD64CallIndirect, OpARM64CallIndirect
 		case wasm.InstrI32Add:
 			amd64, arm64 = OpAMD64I32Add, OpARM64I32Add
 		case wasm.InstrI64Add:

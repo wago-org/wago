@@ -513,7 +513,7 @@ func amd64RailMachByteSwapSource(plan *nativeBackendPlan, first uint32) (railmac
 }
 
 func amd64RailMachDirectCallClass(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) railmach.ABIClass {
-	if plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall {
+	if plan == nil || plan.Stack == nil || railmach.SemanticOpcode(instruction.Op) != wasm.InstrCall {
 		return 0
 	}
 	target := uint32(instruction.Aux)
@@ -1047,6 +1047,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64GlobalGet, railmach.OpAMD64GlobalSet, railmach.OpAMD64Select,
 			railmach.OpAMD64MemorySize, railmach.OpAMD64MemoryGrow, railmach.OpAMD64MemoryCopy, railmach.OpAMD64MemoryFill,
 			railmach.OpAMD64If, railmach.OpAMD64Br, railmach.OpAMD64BrIf, railmach.OpAMD64BrTable, railmach.OpAMD64Return, railmach.OpAMD64Unreachable,
+			railmach.OpAMD64Call, railmach.OpAMD64CallIndirect,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -1545,7 +1546,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, err
 				}
 			}
-			if instruction.Op != wasm.InstrCall && instruction.Op != wasm.InstrCallIndirect {
+			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect {
 				for operandIndex, operand := range operands {
 					if operand.Reg == forwardedSpill || memoryFold && plan.Machine.Insts[foldedLoadID].Result == operand.Reg {
 						continue
@@ -1567,7 +1568,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 			}
 			_, fusedComparison := nativeAMD64FusionConsumer(plan, instructionID)
-			if instruction.Op != wasm.InstrCall && instruction.Op != wasm.InstrCallIndirect && instruction.Result != 0 &&
+			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect && instruction.Result != 0 &&
 				plan.Allocation.LocationAt(instruction.Result, currentPosition).Kind == railmach.LocationSpill && !fusedComparison {
 				pendingSpill = instruction.Result
 			}
@@ -1608,7 +1609,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					shiftRCXRestore = liveAcrossRCX && !resultInRCX
 				}
 			}
-			if instruction.Op != wasm.InstrCall && instruction.Op != wasm.InstrCallIndirect {
+			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect {
 				if moveRange, ok := nativeFixedMoveRange(plan, instructionID); ok {
 					if err := emitAMD64RailMachMoveRange(&a, plan, moveRange); err != nil {
 						return nil, 0, true, err
@@ -2026,7 +2027,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				emitAMD64ExternalCallFPRSave(&a, plan, true)
 				continue
 			}
-			if instruction.Op == wasm.InstrCallIndirect {
+			if semanticOp == wasm.InstrCallIndirect {
 				if err := emitAMD64RailMachRoots(&a, plan, instruction.Source, currentPosition, false); err != nil {
 					return nil, 0, true, err
 				}
@@ -2202,7 +2203,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				reloadGlobalDescriptors()
 				continue
 			}
-			if instruction.Op == wasm.InstrCall {
+			if semanticOp == wasm.InstrCall {
 				if err := emitAMD64RailMachRoots(&a, plan, instruction.Source, currentPosition, false); err != nil {
 					return nil, 0, true, err
 				}
@@ -5196,7 +5197,8 @@ func amd64RailMachTargetSafe(plan *nativeBackendPlan) bool {
 		if amd64DirectSafeDivKind(instruction.Op) && !amd64RailMachDivisionSafe(plan, uint32(instructionID), operands) {
 			return false
 		}
-		if (instruction.Op == wasm.InstrCall || instruction.Op == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		if (semanticOp == wasm.InstrCall || semanticOp == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
 			return false
 		}
 		trunc := railMachTrappingTrunc(instruction.Op)

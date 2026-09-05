@@ -865,6 +865,63 @@ func TestSelectTargetOpcodesControl(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesCalls(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x01, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x0b}),
+		)),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name     string
+		target   Target
+		direct   MOpcode
+		indirect MOpcode
+	}{
+		{"amd64", TargetAMD64, OpAMD64Call, OpAMD64CallIndirect},
+		{"arm64", TargetARM64, OpARM64Call, OpARM64CallIndirect},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, operation := range []struct {
+				name     string
+				generic  MOpcode
+				selected MOpcode
+			}{{"direct", wasm.InstrCall, test.direct}, {"indirect", wasm.InstrCallIndirect, test.indirect}} {
+				t.Run(operation.name, func(t *testing.T) {
+					f := buildMachineTest(t, test.target, m)
+					call := -1
+					for index := range f.Insts {
+						if f.Insts[index].Op == wasm.InstrCall {
+							call = index
+							break
+						}
+					}
+					if call < 0 {
+						t.Fatal("fixture contains no call")
+					}
+					f.Insts[call].Op = operation.generic
+					if _, err := SelectTargetOpcodes(f); err != nil {
+						t.Fatal(err)
+					}
+					instruction := f.Insts[call]
+					if instruction.Op != operation.selected || SemanticOpcode(instruction.Op) != operation.generic || !IsCall(instruction.Op) || instruction.ResultCount() != 1 {
+						t.Fatalf("selected call = %#v, want %v with one result", instruction, operation.selected)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerComparisons(t *testing.T) {
 	operations := [22]MOpcode{
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,

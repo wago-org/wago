@@ -89,6 +89,7 @@ type VReg uint32
 // helpers are explicit semantic operations, but allocation and scheduling must
 // treat them exactly like calls for clobbers and live-range placement.
 func IsCall(kind wasm.InstrKind) bool {
+	kind = SemanticOpcode(kind)
 	return kind == wasm.InstrCall || kind == wasm.InstrCallIndirect || kind == wasm.InstrStructNew || kind == wasm.InstrStructNewDefault ||
 		kind == wasm.InstrStructGet || kind == wasm.InstrStructGetS || kind == wasm.InstrStructGetU || kind == wasm.InstrStructSet ||
 		kind == wasm.InstrRefTest || kind == wasm.InstrRefCast || kind == wasm.InstrBrOnCast || kind == wasm.InstrBrOnCastFail || kind == wasm.InstrAnyConvertExtern || kind == wasm.InstrExternConvertAny ||
@@ -170,7 +171,8 @@ func (i Inst) ResultCount() uint32 {
 	if i.Result == 0 {
 		return 0
 	}
-	if i.Op == wasm.InstrCall || i.Op == wasm.InstrCallIndirect {
+	semanticOp := SemanticOpcode(i.Op)
+	if semanticOp == wasm.InstrCall || semanticOp == wasm.InstrCallIndirect {
 		return uint32(i.Aux >> 32)
 	}
 	return 1
@@ -581,7 +583,8 @@ func machineBlockDominates(cfg *railssa.CFG, candidate, use railssa.BlockID) boo
 }
 
 func applyTargetConstraint(target Target, instruction *Inst, operand *Operand, index, count int) {
-	switch instruction.Op {
+	semanticOp := SemanticOpcode(instruction.Op)
+	switch semanticOp {
 	case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 		if target == TargetARM64 && index < 3 {
 			operand.Fixed, operand.Flags = uint8(index), operand.Flags|OperandFixed
@@ -590,7 +593,7 @@ func applyTargetConstraint(target Target, instruction *Inst, operand *Operand, i
 		// Dragline's current private scalar ABI exposes eight bank-relative
 		// argument registers. An indirect call's trailing table index is not a
 		// callee argument and remains freely allocatable.
-		if instruction.Op == wasm.InstrStructNew || instruction.Op == wasm.InstrStructNewDefault || instruction.Op == wasm.InstrStructGet || instruction.Op == wasm.InstrStructGetS || instruction.Op == wasm.InstrStructGetU || instruction.Op == wasm.InstrStructSet || instruction.Op == wasm.InstrRefTest || instruction.Op == wasm.InstrRefCast || instruction.Op == wasm.InstrBrOnCast || instruction.Op == wasm.InstrBrOnCastFail || instruction.Op == wasm.InstrAnyConvertExtern || instruction.Op == wasm.InstrExternConvertAny || instruction.Op == wasm.InstrArrayNew || instruction.Op == wasm.InstrArrayNewDefault || instruction.Op == wasm.InstrArrayNewFixed || instruction.Op == wasm.InstrArrayNewData || instruction.Op == wasm.InstrArrayNewElem || instruction.Op == wasm.InstrArrayGet || instruction.Op == wasm.InstrArrayGetS || instruction.Op == wasm.InstrArrayGetU || instruction.Op == wasm.InstrArraySet || instruction.Op == wasm.InstrArrayLen || instruction.Op == wasm.InstrArrayFill || instruction.Op == wasm.InstrArrayCopy || instruction.Op == wasm.InstrArrayInitData || instruction.Op == wasm.InstrArrayInitElem || instruction.Op == wasm.InstrElemDrop || instruction.Op == wasm.InstrCallIndirect && index == count-1 {
+		if semanticOp == wasm.InstrStructNew || semanticOp == wasm.InstrStructNewDefault || semanticOp == wasm.InstrStructGet || semanticOp == wasm.InstrStructGetS || semanticOp == wasm.InstrStructGetU || semanticOp == wasm.InstrStructSet || semanticOp == wasm.InstrRefTest || semanticOp == wasm.InstrRefCast || semanticOp == wasm.InstrBrOnCast || semanticOp == wasm.InstrBrOnCastFail || semanticOp == wasm.InstrAnyConvertExtern || semanticOp == wasm.InstrExternConvertAny || semanticOp == wasm.InstrArrayNew || semanticOp == wasm.InstrArrayNewDefault || semanticOp == wasm.InstrArrayNewFixed || semanticOp == wasm.InstrArrayNewData || semanticOp == wasm.InstrArrayNewElem || semanticOp == wasm.InstrArrayGet || semanticOp == wasm.InstrArrayGetS || semanticOp == wasm.InstrArrayGetU || semanticOp == wasm.InstrArraySet || semanticOp == wasm.InstrArrayLen || semanticOp == wasm.InstrArrayFill || semanticOp == wasm.InstrArrayCopy || semanticOp == wasm.InstrArrayInitData || semanticOp == wasm.InstrArrayInitElem || semanticOp == wasm.InstrElemDrop || semanticOp == wasm.InstrCallIndirect && index == count-1 {
 			return
 		}
 		if index < 8 {
