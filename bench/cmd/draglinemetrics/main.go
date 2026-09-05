@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline"
@@ -17,6 +19,7 @@ import (
 
 func main() {
 	outPath := flag.String("out", "", "write JSON metrics to this path instead of stdout")
+	markdownPath := flag.String("markdown", "", "write a Markdown status projection to this path")
 	codePath := flag.String("code", "", "write the generated native code image to this path")
 	layoutPath := flag.String("layout", "", "write generated entry offsets to this path")
 	replayPath := flag.String("replay", "", "write a replay artifact here if a function fails")
@@ -24,7 +27,7 @@ func main() {
 	boundsMode := flag.String("bounds", "explicit", "bounds mode: explicit or signals")
 	flag.Parse()
 	if flag.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "usage: draglinemetrics [-target compat|native] [-bounds explicit|signals] [-out metrics.json] [-replay failure.json] module.wasm")
+		fmt.Fprintln(os.Stderr, "usage: draglinemetrics [-target compat|native] [-bounds explicit|signals] [-out metrics.json] [-markdown status.md] [-replay failure.json] module.wasm")
 		os.Exit(2)
 	}
 	if *targetMode != "compat" && *targetMode != "native" {
@@ -111,6 +114,55 @@ func main() {
 	if err := encoder.Encode(metrics); err != nil {
 		fail("write metrics", err)
 	}
+	if *markdownPath != "" {
+		markdown, err := os.Create(*markdownPath)
+		if err != nil {
+			fail("create Markdown status", err)
+		}
+		if err := writeMarkdownStatus(markdown, flag.Arg(0), &metrics); err != nil {
+			markdown.Close()
+			fail("write Markdown status", err)
+		}
+		if err := markdown.Close(); err != nil {
+			fail("close Markdown status", err)
+		}
+	}
+}
+
+func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metrics) error {
+	if metrics == nil {
+		return fmt.Errorf("nil metrics")
+	}
+	if _, err := fmt.Fprintf(w, "# Dragline compiler status\n\n- Module: `%s`\n- Metrics schema: `%d`\n- Target fingerprint: `%x`\n- Total native image: %d bytes\n- Peak compiler-owned live storage: %d bytes\n\n", filepath.Base(modulePath), metrics.Version, metrics.TargetFingerprint, metrics.NativeBytes, metrics.PeakLiveBytes); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "| Emitter | Functions | Wasm body bytes | Native bytes | Lower ms | Emit ms | Cache hits |\n|---|---:|---:|---:|---:|---:|---:|"); err != nil {
+		return err
+	}
+	for _, row := range []struct {
+		name string
+		data dragline.EmitterMetrics
+	}{{"RailMach", metrics.RailMach}, {"Structured", metrics.Structured}} {
+		if _, err := fmt.Fprintf(w, "| %s | %d | %d | %d | %.3f | %.3f | %d |\n", row.name, row.data.Functions, row.data.BodyBytes, row.data.NativeBytes, float64(row.data.LowerNanos)/1e6, float64(row.data.EmitNanos)/1e6, row.data.CacheHits); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(w, "\n## Functions\n\n| Function | Emitter | Wasm bytes | Native bytes | Lower ms | Emit ms |\n|---:|---|---:|---:|---:|---:|"); err != nil {
+		return err
+	}
+	for _, row := range metrics.Functions {
+		if row.NativeBytes == 0 {
+			continue
+		}
+		emitter := "Structured"
+		if row.RailMachFinalized {
+			emitter = "RailMach"
+		}
+		if _, err := fmt.Fprintf(w, "| %d | %s | %d | %d | %.3f | %.3f |\n", row.Function, emitter, row.BodyBytes, row.NativeBytes, float64(row.LowerNanos)/1e6, float64(row.EmitNanos)/1e6); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func fail(operation string, err error) {
