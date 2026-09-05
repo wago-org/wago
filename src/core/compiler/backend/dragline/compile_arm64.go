@@ -985,7 +985,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 	for _, instruction := range plan.Machine.Insts {
 		switch instruction.Op {
 		case railmach.OpARM64V128Const, railmach.OpARM64V128Load, railmach.OpARM64V128Store,
-			railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
+			railmach.OpARM64V128And, railmach.OpARM64V128Andnot, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
+			railmach.OpARM64V128Not, railmach.OpARM64V128Bitselect,
 			railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,
 			railmach.OpARM64I8x16Sub, railmach.OpARM64I8x16SubSatS, railmach.OpARM64I8x16SubSatU,
 			railmach.OpARM64I16x8Add, railmach.OpARM64I16x8AddSatS, railmach.OpARM64I16x8AddSatU,
@@ -3928,7 +3929,22 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					a.NeonNegD(dst, src)
 				}
 				continue
-			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
+			case railmach.OpARM64V128Not:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected v128.not operand count is %d", len(operands))
+				}
+				a.NeonNot16b(dst, reg(operands[0].Reg))
+				continue
+			case railmach.OpARM64V128Bitselect:
+				if len(operands) != 3 {
+					return nil, 0, true, fmt.Errorf("RailMach selected v128.bitselect operand count is %d", len(operands))
+				}
+				lhs, rhs, mask := reg(operands[0].Reg), reg(operands[1].Reg), reg(operands[2].Reg)
+				a.NeonMov16b(24, mask)
+				a.NeonBsl16b(24, lhs, rhs)
+				a.NeonMov16b(dst, 24)
+				continue
+			case railmach.OpARM64V128And, railmach.OpARM64V128Andnot, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
 				railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,
 				railmach.OpARM64I8x16Sub, railmach.OpARM64I8x16SubSatS, railmach.OpARM64I8x16SubSatU,
 				railmach.OpARM64I16x8Add, railmach.OpARM64I16x8AddSatS, railmach.OpARM64I16x8AddSatU,
@@ -3956,6 +3972,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				switch instruction.Op {
 				case railmach.OpARM64V128And:
 					a.NeonAnd16b(dst, lhs, rhs)
+				case railmach.OpARM64V128Andnot:
+					a.NeonAndn16b(dst, lhs, rhs)
 				case railmach.OpARM64V128Or:
 					a.NeonOrr16b(dst, lhs, rhs)
 				case railmach.OpARM64V128Xor:

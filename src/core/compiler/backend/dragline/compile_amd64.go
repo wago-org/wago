@@ -918,7 +918,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	for _, instruction := range plan.Machine.Insts {
 		switch instruction.Op {
 		case railmach.OpAMD64V128Const, railmach.OpAMD64V128Load, railmach.OpAMD64V128Store,
-			railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
+			railmach.OpAMD64V128And, railmach.OpAMD64V128Andnot, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
+			railmach.OpAMD64V128Not, railmach.OpAMD64V128Bitselect,
 			railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,
 			railmach.OpAMD64I8x16Sub, railmach.OpAMD64I8x16SubSatS, railmach.OpAMD64I8x16SubSatU,
 			railmach.OpAMD64I16x8Add, railmach.OpAMD64I16x8AddSatS, railmach.OpAMD64I16x8AddSatU,
@@ -2803,7 +2804,23 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 				}
 				continue
-			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
+			case railmach.OpAMD64V128Not:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected v128.not operand count is %d", len(operands))
+				}
+				a.VPcmpeqb(5, 5, 5)
+				a.VPxor(dst, reg(operands[0].Reg), 5)
+				continue
+			case railmach.OpAMD64V128Bitselect:
+				if len(operands) != 3 {
+					return nil, 0, true, fmt.Errorf("RailMach selected v128.bitselect operand count is %d", len(operands))
+				}
+				lhs, rhs, mask := reg(operands[0].Reg), reg(operands[1].Reg), reg(operands[2].Reg)
+				a.VPand(5, lhs, mask)
+				a.VPandn(dst, mask, rhs)
+				a.VPor(dst, 5, dst)
+				continue
+			case railmach.OpAMD64V128And, railmach.OpAMD64V128Andnot, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 				railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,
 				railmach.OpAMD64I8x16Sub, railmach.OpAMD64I8x16SubSatS, railmach.OpAMD64I8x16SubSatU,
 				railmach.OpAMD64I16x8Add, railmach.OpAMD64I16x8AddSatS, railmach.OpAMD64I16x8AddSatU,
@@ -2831,6 +2848,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				switch instruction.Op {
 				case railmach.OpAMD64V128And:
 					a.VPand(dst, lhs, rhs)
+				case railmach.OpAMD64V128Andnot:
+					a.VPandn(dst, rhs, lhs)
 				case railmach.OpAMD64V128Or:
 					a.VPor(dst, lhs, rhs)
 				case railmach.OpAMD64V128Xor:

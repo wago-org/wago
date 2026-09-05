@@ -444,7 +444,7 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 		hasVectorOperation = true
 		switch instruction.Kind {
 		case wasm.InstrV128Const, wasm.InstrV128Load, wasm.InstrV128Store,
-			wasm.InstrV128And, wasm.InstrV128Or, wasm.InstrV128Xor,
+			wasm.InstrV128And, wasm.InstrV128Andnot, wasm.InstrV128Or, wasm.InstrV128Xor, wasm.InstrV128Not, wasm.InstrV128Bitselect,
 			wasm.InstrI8x16Add, wasm.InstrI8x16AddSatS, wasm.InstrI8x16AddSatU,
 			wasm.InstrI8x16Sub, wasm.InstrI8x16SubSatS, wasm.InstrI8x16SubSatU,
 			wasm.InstrI16x8Add, wasm.InstrI16x8AddSatS, wasm.InstrI16x8AddSatU,
@@ -1672,7 +1672,8 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 			wasm.InstrI16x8ExtaddPairwiseI8x16S, wasm.InstrI16x8ExtaddPairwiseI8x16U,
 			wasm.InstrI32x4ExtaddPairwiseI16x8S,
 			wasm.InstrF32x4Abs, wasm.InstrF32x4Neg, wasm.InstrF64x2Abs, wasm.InstrF64x2Neg,
-			wasm.InstrI8x16Neg, wasm.InstrI16x8Neg, wasm.InstrI32x4Neg, wasm.InstrI64x2Abs, wasm.InstrI64x2Neg:
+			wasm.InstrI8x16Neg, wasm.InstrI16x8Neg, wasm.InstrI32x4Neg, wasm.InstrI64x2Abs, wasm.InstrI64x2Neg,
+			wasm.InstrV128Not, wasm.InstrV128Bitselect:
 			count = 1 // XMM5 is the ordinary vector lowering scratch.
 		}
 	}
