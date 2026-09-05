@@ -1,10 +1,10 @@
 # Railshot compile-latency report
 
-Measured 2026-09-04 on native ARM64. This is a stopping-point report for
+Measured through 2026-09-05 on native ARM64. This is a stopping-point report for
 `jairus/railshot-compile-latency`, comparing:
 
 - Base: `main` at `c46f2129edb52e6f30f4d0bfc5ae105cfde0c84d`
-- Branch: `5a4f5c5b4af3232f99a7a67376d4f66ee394df98`
+- Branch: `b1a6df879693c6b49c0ddf4e783e35131a153ec5`
 - Host: Apple M4 Max, macOS 26.6.2, Go 1.26.5, `darwin/arm64`
 
 ## Current result
@@ -12,10 +12,11 @@ Measured 2026-09-04 on native ARM64. This is a stopping-point report for
 | Metric | Delta versus `main` |
 |---|---:|
 | End-to-end compile latency, all-corpus geomean | **-9.38%** |
-| End-to-end compile latency, large-module geomean | **-22.22%** |
+| End-to-end compile latency, large-module geomean | **-23.92%** |
 | Backend-only compile latency, large-module geomean | **-10.33%** |
 | Backend-only compile latency, all-corpus one-shot geomean | **+0.86%** |
-| End-to-end compile heap, all-corpus geomean | **+1.07%** |
+| End-to-end compile heap, large-module geomean | **+0.87%** |
+| End-to-end compile heap, older all-corpus checkpoint | **+1.07%** |
 | Backend-only compile heap, all-corpus geomean | **+0.08%** |
 | End-to-end compile allocations, all-corpus geomean | **+1.66%** |
 | Backend-only compile allocations, all-corpus geomean | **+0.16%** |
@@ -23,9 +24,21 @@ Measured 2026-09-04 on native ARM64. This is a stopping-point report for
 | Execution latency | Focused memory-heavy rows improved **1.4-11.0%**; no confirmed regression |
 | Execution allocations | **0 B/op, 0 allocs/op** on both revisions |
 
+The exact current-HEAD large-corpus comparison used eight fresh interleaved
+300 ms samples per revision:
+
+| Corpus | Full compile main | Full compile branch | Latency delta | Heap delta | Allocation delta |
+|---|---:|---:|---:|---:|---:|
+| json-as | 1.329 ms | 1.042 ms | **-21.61%** | +1.24% | +1.01% |
+| Lua | 22.82 ms | 17.64 ms | **-22.72%** | +0.94% | +0.16% |
+| SQLite | 88.15 ms | 67.58 ms | **-23.34%** | +1.36% | +0.04% |
+| Ruby | 988.0 ms | 723.2 ms | **-26.80%** | +0.80% | statistically flat |
+| esbuild | 644.2 ms | 483.1 ms | **-25.01%** | +0.04% | -0.06% |
+| **Geomean** | **70.17 ms** | **53.39 ms** | **-23.92%** | **+0.87%** | **+0.23%** |
+
 The complete compile-latency and heap aggregate above was measured at
 implementation commit `e5b2431a`. The generated-code and focused execution rows
-include the later clean-address change. Current HEAD adds five changes measured
+include the later clean-address change. Current HEAD adds seven changes measured
 independently against their immediate predecessors:
 
 | Incremental change | Backend compile | Full compile | Heap | Generated code / execution |
@@ -35,6 +48,8 @@ independently against their immediate predecessors:
 | Dispatch integer/float constant hint work | **-0.18%** | not rerun | unchanged | Exact code-byte parity |
 | Dispatch stack-flow termination locally | **-1.75%** | not rerun | unchanged | Exact code-byte parity |
 | Compact validated segment counts | not rerun | **+0.30%** (flat) | **-0.45% full heap** | Exact code-byte parity |
+| Narrow validation flags to 32 bits | not rerun | **+0.03%** (flat) | **-0.28% full heap** | Exact code-byte parity |
+| Retain only consumed validation facts | not rerun | **-0.11%** (flat) | **-0.41% full heap** | Exact code-byte parity |
 
 The scanner result covers json-as, Lua, SQLite, Ruby, and esbuild, with all five
 medians improving. Its focused sparse-global hint scan improved from a 100.0 us
@@ -57,23 +72,29 @@ JSON -2.7%, SQLite -2.4%, Ruby -3.0%, and esbuild -1.6%, with Lua +1.1% in that
 sample. Allocations and generated code were unchanged, and exhaustive tests now
 cover every stack-flow terminator encoding.
 
-The validation summary now stores exact element/data state counts through 255
-in byte fields and routes larger indexes through the existing exact body scan.
-This shrinks `ValidatedFuncFacts` from 32 to 24 bytes. The five-corpus full
-compile heap geomean improved by 0.45%, with every corpus improving and no added
-allocations. The longer six-pair latency confirmation was statistically flat at
-+0.30%. Generated code sizes matched exactly on all five modules.
+The validation summary stores exact element/data state counts through 255 in
+byte fields and routes larger indexes through the existing exact body scan.
+Flags now use their required 32 bits, and validation no longer records cost,
+local-count, or depth fields that had no production consumer. Together these
+changes shrink `ValidatedFuncFacts` from 32 to 12 bytes. Across successive
+five-corpus measurements, the three steps reduced full-compile heap by 0.45%,
+0.28%, and 0.41% versus their immediate predecessors. Their latency results
+were statistically flat, allocation counts did not increase, and generated
+code matched exactly.
 
 The strongest and most stable result is on large real modules. End-to-end
-compile latency is 19.6-24.8% lower on Lua, SQLite, Ruby, and esbuild.
+compile latency is 21.6-26.8% lower on json-as, Lua, SQLite, Ruby, and esbuild.
 Backend-only compilation is 3.5-11.9% lower on the same group. The all-corpus
 backend geomean includes fresh-process micro modules whose 7-59% confidence
 intervals overwhelm their tens-of-microseconds signal; it is reported rather
 than filtered, but is not evidence of a backend regression. The branch
 currently spends a small amount of heap on compact validation analysis and
-parallel hint orchestration. The 24-byte validation record recovers 0.45%
-incrementally from the previously measured +1.07% full-pipeline heap delta;
-the aggregate versus-main table has not yet been rerun.
+parallel hint orchestration. At current HEAD, a fresh eight-pair comparison of
+json-as, Lua, SQLite, Ruby, and esbuild is 23.92% faster end to end than pinned
+`main`, with 0.87% more allocated heap and 0.23% more allocations. Every latency
+result is significant at p<0.001. The remaining heap delta is concentrated in
+compact validation analysis and parallel orchestration; esbuild is within 0.04%
+of `main`.
 
 Before the address-proof change, generated function code had exactly the same
 size across the entire corpus. The address-proof change intentionally removes
@@ -86,10 +107,11 @@ claim about exact instruction parity at current HEAD.
 
 | Corpus | Backend heap main | Backend heap branch | Full heap main | Full heap branch |
 |---|---:|---:|---:|---:|
-| lua | 509.6 KiB | 509.7 KiB | 844.9 KiB | 866.4 KiB |
-| sqlite3 | 1.105 MiB | 1.105 MiB | 2.757 MiB | 2.851 MiB |
-| ruby | 7.364 MiB | 7.364 MiB | 25.19 MiB | 25.73 MiB |
-| esbuild | 7.353 MiB | 7.353 MiB | 60.05 MiB | 60.18 MiB |
+| json-as | not rerun | not rerun | 108.9 KiB | 110.2 KiB |
+| lua | 509.6 KiB | 509.7 KiB | 842.6 KiB | 850.5 KiB |
+| sqlite3 | 1.105 MiB | 1.105 MiB | 2.755 MiB | 2.793 MiB |
+| ruby | 7.364 MiB | 7.364 MiB | 25.19 MiB | 25.39 MiB |
+| esbuild | 7.353 MiB | 7.353 MiB | 60.04 MiB | 60.07 MiB |
 
 ## Complete compile corpus
 
@@ -191,8 +213,8 @@ binary layout.
 
 ## Retained changes
 
-The branch has 26 commits over `main`, including six report checkpoints, and
-20 retained implementation changes:
+The branch has 28 commits over `main`, including six report checkpoints, and
+22 retained implementation changes:
 
 1. Faster ARM64 byte-backed hint decoding.
 2. Separation of opt-in statistics from inline reports.
@@ -213,12 +235,15 @@ The branch has 26 commits over `main`, including six report checkpoints, and
 17. Reused proven-clean memory32 addresses without redundant truncation.
 18. Dispatch-local ARM64 constant hint work.
 19. Dispatch-local ARM64 stack-flow termination tracking.
-20. Compact 24-byte validation function summaries with exact overflow fallback.
+20. Compact validation segment counts with exact overflow fallback.
+21. Narrowed validation flags to their required 32 bits.
+22. Removed validation aggregates with no production consumer, leaving a
+    12-byte per-function record.
 
 Implementation source delta, excluding this report:
 
 ```text
-36 files changed, 2,140 insertions, 329 deletions
+36 files changed, 2,102 insertions, 329 deletions
 ```
 
 The larger source increase is primarily validation-analysis structure, tests,
