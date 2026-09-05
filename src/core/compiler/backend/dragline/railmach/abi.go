@@ -350,7 +350,7 @@ func directPreparedIntegerContract(f *Func, allocation *GreedyAllocation, contra
 		return false
 	}
 	for _, instruction := range f.Insts {
-		switch instruction.Op {
+		switch SemanticOpcode(instruction.Op) {
 		case wasm.InstrCall, wasm.InstrI32Const, wasm.InstrI64Const,
 			wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
 			wasm.InstrI32And, wasm.InstrI64And, wasm.InstrI32Or, wasm.InstrI64Or,

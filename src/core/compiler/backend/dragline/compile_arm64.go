@@ -1098,6 +1098,9 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32Popcnt, railmach.OpARM64I64Popcnt,
 			railmach.OpARM64F32AddScalar, railmach.OpARM64F64AddScalar, railmach.OpARM64F32SubScalar, railmach.OpARM64F64SubScalar,
 			railmach.OpARM64F32MulScalar, railmach.OpARM64F64MulScalar, railmach.OpARM64F32DivScalar, railmach.OpARM64F64DivScalar,
+			railmach.OpARM64I32WrapI64, railmach.OpARM64I64ExtendI32S, railmach.OpARM64I64ExtendI32U,
+			railmach.OpARM64I32Extend8S, railmach.OpARM64I32Extend16S,
+			railmach.OpARM64I64Extend8S, railmach.OpARM64I64Extend16S, railmach.OpARM64I64Extend32S,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -5225,7 +5228,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			switch instruction.Op {
+			switch semanticOp {
 			case wasm.InstrI32WrapI64, wasm.InstrI64ExtendI32U:
 				a.MovReg32(dst, lhs)
 				continue

@@ -1023,6 +1023,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32Popcnt, railmach.OpAMD64I64Popcnt,
 			railmach.OpAMD64F32AddScalar, railmach.OpAMD64F64AddScalar, railmach.OpAMD64F32SubScalar, railmach.OpAMD64F64SubScalar,
 			railmach.OpAMD64F32MulScalar, railmach.OpAMD64F64MulScalar, railmach.OpAMD64F32DivScalar, railmach.OpAMD64F64DivScalar,
+			railmach.OpAMD64I32WrapI64, railmach.OpAMD64I64ExtendI32S, railmach.OpAMD64I64ExtendI32U,
+			railmach.OpAMD64I32Extend8S, railmach.OpAMD64I32Extend16S,
+			railmach.OpAMD64I64Extend8S, railmach.OpAMD64I64Extend16S, railmach.OpAMD64I64Extend32S,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -3956,7 +3959,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				emitAMD64DirectIntegerUnary(&a, semanticOp, dst, lhs)
 				continue
 			}
-			switch instruction.Op {
+			switch semanticOp {
 			case wasm.InstrI32WrapI64, wasm.InstrI64ExtendI32U:
 				a.MovReg32(dst, lhs)
 				continue
@@ -3964,10 +3967,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.Movsxd(dst, lhs)
 				continue
 			case wasm.InstrI32Extend8S, wasm.InstrI64Extend8S:
-				a.Movsx8(dst, lhs, instruction.Op == wasm.InstrI64Extend8S)
+				a.Movsx8(dst, lhs, semanticOp == wasm.InstrI64Extend8S)
 				continue
 			case wasm.InstrI32Extend16S, wasm.InstrI64Extend16S:
-				a.Movsx16(dst, lhs, instruction.Op == wasm.InstrI64Extend16S)
+				a.Movsx16(dst, lhs, semanticOp == wasm.InstrI64Extend16S)
 				continue
 			case wasm.InstrI64Extend32S:
 				a.Movsxd(dst, lhs)
@@ -4878,13 +4881,13 @@ func amd64RailMachReadLocationWithFloatConstant(a *amd64.Asm, plan *nativeBacken
 			if err != nil {
 				return 0, err
 			}
-			switch definition.Op {
+			switch semanticOp {
 			case wasm.InstrI64ExtendI32S, wasm.InstrI64Extend32S:
 				a.Movsxd(scratch, base)
 			case wasm.InstrI32Extend8S, wasm.InstrI64Extend8S:
-				a.Movsx8(scratch, base, definition.Op == wasm.InstrI64Extend8S)
+				a.Movsx8(scratch, base, semanticOp == wasm.InstrI64Extend8S)
 			case wasm.InstrI32Extend16S, wasm.InstrI64Extend16S:
-				a.Movsx16(scratch, base, definition.Op == wasm.InstrI64Extend16S)
+				a.Movsx16(scratch, base, semanticOp == wasm.InstrI64Extend16S)
 			default:
 				a.MovReg32(scratch, base)
 			}

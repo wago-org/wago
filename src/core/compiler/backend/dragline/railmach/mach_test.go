@@ -331,6 +331,55 @@ func TestSelectTargetOpcodesScalarFloatArithmetic(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesIntegerConversions(t *testing.T) {
+	operations := [8]MOpcode{
+		wasm.InstrI32WrapI64, wasm.InstrI64ExtendI32S, wasm.InstrI64ExtendI32U,
+		wasm.InstrI32Extend8S, wasm.InstrI32Extend16S,
+		wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S,
+	}
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [8]MOpcode
+	}{
+		{"amd64", TargetAMD64, [8]MOpcode{
+			OpAMD64I32WrapI64, OpAMD64I64ExtendI32S, OpAMD64I64ExtendI32U,
+			OpAMD64I32Extend8S, OpAMD64I32Extend16S,
+			OpAMD64I64Extend8S, OpAMD64I64Extend16S, OpAMD64I64Extend32S,
+		}},
+		{"arm64", TargetARM64, [8]MOpcode{
+			OpARM64I32WrapI64, OpARM64I64ExtendI32S, OpARM64I64ExtendI32U,
+			OpARM64I32Extend8S, OpARM64I32Extend16S,
+			OpARM64I64Extend8S, OpARM64I64Extend16S, OpARM64I64Extend32S,
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for index, encoding := range []byte{0xa7, 0xac, 0xad, 0xc0, 0xc1, 0xc2, 0xc3, 0xc4} {
+				parameterType, resultType := wasm.I32, wasm.I64
+				if index == 0 {
+					parameterType, resultType = wasm.I64, wasm.I32
+				} else if index == 3 || index == 4 {
+					resultType = wasm.I32
+				} else if index >= 5 {
+					parameterType = wasm.I64
+				}
+				m := machineModule([]wasm.ValType{parameterType}, []wasm.ValType{resultType}, []byte{0x20, 0, encoding, 0x0b})
+				f := buildMachineTest(t, test.target, m)
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operations[index] {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operations[index])
+				}
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerComparisons(t *testing.T) {
 	operations := [22]MOpcode{
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,
@@ -737,6 +786,9 @@ func TestColdExtensionAndAffineUsesCommitWhenTargetLegal(t *testing.T) {
 		0x0b,
 	})
 	extend := buildMachineTest(t, TargetARM64, extendModule)
+	if selected, err := SelectTargetOpcodes(extend); err != nil || selected != 2 || extend.Insts[0].Op != OpARM64I64ExtendI32S {
+		t.Fatalf("selected extension instructions=%d err=%v instructions=%#v", selected, err, extend.Insts)
+	}
 	extended := extend.Insts[0].Result
 	extendPlan := &railssa.PressurePlan{
 		Remats:   []railssa.RematRecipe{{Value: railssa.FlowValueID(extended), Base: railssa.FlowValueID(extend.InstructionOperands(0)[0].Reg), Kind: railssa.RematExtend}},

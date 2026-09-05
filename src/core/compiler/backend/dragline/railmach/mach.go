@@ -509,7 +509,7 @@ func coldRematerializationBase(f *Func, value VReg) (VReg, bool) {
 	}
 	instruction := f.Insts[instructionID]
 	operands := f.InstructionOperands(instructionID)
-	switch instruction.Op {
+	switch SemanticOpcode(instruction.Op) {
 	case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrRefNull:
 		return 0, len(operands) == 0
 	case wasm.InstrI32WrapI64, wasm.InstrI64ExtendI32U, wasm.InstrI64ExtendI32S,
