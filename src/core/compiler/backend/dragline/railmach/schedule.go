@@ -119,6 +119,11 @@ func BuildDependencyDAG(f *Func, selection *SelectionPlan, metadata *railssa.Met
 			reuse.definition[result], reuse.defined[result] = uint32(instructionID), true
 		}
 	}
+	combinationsSorted := true
+	for index := 1; index < len(selection.Combinations); index++ {
+		combinationsSorted = combinationsSorted && selection.Combinations[index-1].Consumer <= selection.Combinations[index].Consumer
+	}
+	combinationCursor := 0
 	for _, block := range f.Blocks {
 		lastTrap, lastCall, lastBarrier := ^uint32(0), ^uint32(0), ^uint32(0)
 		var lastHeap [9]uint32
@@ -187,9 +192,21 @@ func BuildDependencyDAG(f *Func, selection *SelectionPlan, metadata *railssa.Met
 				}
 				lastTrap = instructionID
 			}
-			for _, combination := range selection.Combinations {
-				if combination.Consumer == instructionID && combination.Producer != ^uint32(0) && combination.Producer < instructionID {
-					appendDependency(&reuse.Dependencies, combination.Producer, DependencyFusion)
+			if combinationsSorted {
+				for combinationCursor < len(selection.Combinations) && selection.Combinations[combinationCursor].Consumer < instructionID {
+					combinationCursor++
+				}
+				for index := combinationCursor; index < len(selection.Combinations) && selection.Combinations[index].Consumer == instructionID; index++ {
+					combination := selection.Combinations[index]
+					if combination.Producer != ^uint32(0) && combination.Producer < instructionID {
+						appendDependency(&reuse.Dependencies, combination.Producer, DependencyFusion)
+					}
+				}
+			} else {
+				for _, combination := range selection.Combinations {
+					if combination.Consumer == instructionID && combination.Producer != ^uint32(0) && combination.Producer < instructionID {
+						appendDependency(&reuse.Dependencies, combination.Producer, DependencyFusion)
+					}
 				}
 			}
 		}
@@ -1245,10 +1262,12 @@ func DecideRetry(attempt uint8, allocation *GreedyAllocation, debt CopyDebt) Ret
 	if attempt+1 >= MaxBackendAttempts || allocation == nil {
 		return RetryDecision{}
 	}
-	// The debt is already profile-weighted. More than four retained weighted
-	// spill units is enough to justify one bounded alternative; lower values
-	// are cheaper than rebuilding all candidates.
-	if allocation.Metrics.WeightedDebt > 4 {
+	// The debt is already profile-weighted, but a fixed threshold made a handful
+	// of spill units rebuild every schedule for thousand-value functions. Scale
+	// the opportunity gate with allocation size so retries remain reserved for
+	// material pressure rather than sparse residual debt.
+	spillThreshold := uint64(max(4, len(allocation.Intervals)/32))
+	if allocation.Metrics.WeightedDebt > spillThreshold {
 		return RetryDecision{Retry: true, Reason: 1}
 	}
 	if debt.Physical > debt.Coalesced+32 || debt.Cycles > 2 {

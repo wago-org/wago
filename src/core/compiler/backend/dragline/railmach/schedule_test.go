@@ -113,6 +113,46 @@ func TestDependencyDAGAndScheduleCandidates(t *testing.T) {
 	}
 }
 
+func TestDependencyDAGSortedCombinationFastPathMatchesFallback(t *testing.T) {
+	f := &Func{
+		Target: TargetARM64,
+		Insts: []Inst{
+			{Op: wasm.InstrNop, Source: 0},
+			{Op: wasm.InstrNop, Source: 1},
+			{Op: wasm.InstrNop, Source: 2},
+			{Op: wasm.InstrNop, Source: 3},
+		},
+		VRegs:  []VRegData{{}},
+		Blocks: []Block{{InstCount: 4}},
+	}
+	metadata := &railssa.Metadata{Instructions: make([]railssa.InstructionMetadata, 4)}
+	sorted := &SelectionPlan{
+		Selections: make([]Selection, 4),
+		Combinations: []Combination{
+			{Producer: 0, Consumer: 2, Kind: CombineImmediate},
+			{Producer: 1, Consumer: 3, Kind: CombineAddress},
+		},
+	}
+	fast, err := BuildDependencyDAG(f, sorted, metadata, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unsorted := &SelectionPlan{
+		Selections: sorted.Selections,
+		Combinations: []Combination{
+			sorted.Combinations[1],
+			sorted.Combinations[0],
+		},
+	}
+	fallback, err := BuildDependencyDAG(f, unsorted, metadata, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(fast.Offsets, fallback.Offsets) || !slices.Equal(fast.Dependencies, fallback.Dependencies) || !slices.Equal(fast.SuccessorOffsets, fallback.SuccessorOffsets) || !slices.Equal(fast.Successors, fallback.Successors) {
+		t.Fatalf("sorted combination DAG differs from fallback:\nfast=%#v\nfallback=%#v", fast, fallback)
+	}
+}
+
 func TestScheduleReadyFrontierMatchesDependencyScan(t *testing.T) {
 	m := machineModule(nil, []wasm.ValType{wasm.I64}, []byte{
 		0x42, 0x01,
@@ -292,6 +332,10 @@ func TestDecideRetryIsBounded(t *testing.T) {
 	}
 	if decision := DecideRetry(0, &GreedyAllocation{Metrics: GreedyMetrics{WeightedDebt: 4}}, CopyDebt{}); decision.Retry {
 		t.Fatalf("low debt requested retry: %#v", decision)
+	}
+	large := &GreedyAllocation{Allocation: Allocation{Intervals: make([]LiveInterval, 1024)}, Metrics: GreedyMetrics{WeightedDebt: 20}}
+	if decision := DecideRetry(0, large, CopyDebt{}); decision.Retry {
+		t.Fatalf("sparse large-function debt requested retry: %#v", decision)
 	}
 }
 
