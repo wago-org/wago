@@ -65,6 +65,7 @@ type FunctionMetrics struct {
 	ScheduleReadyWidthTotal    uint64                            `json:"schedule_ready_width_total"`
 	ScheduleReadyWidthMax      uint32                            `json:"schedule_ready_width_max"`
 	ScheduleCriticalPathCost   uint64                            `json:"schedule_critical_path_cost"`
+	LivenessDebt               railmach.LivenessDebt             `json:"liveness_debt"`
 	LiveSegments               uint32                            `json:"live_segments"`
 	IPRARefinedCalls           uint32                            `json:"ipra_refined_calls"`
 	WeightedSpillDebt          uint64                            `json:"weighted_spill_debt"`
@@ -147,6 +148,9 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 		metrics.ScheduleReadyWidthTotal = freedom.ReadyWidthTotal
 		metrics.ScheduleReadyWidthMax = freedom.ReadyWidthMax
 		metrics.ScheduleCriticalPathCost = freedom.CriticalPathCost
+	}
+	if debt, err := railmach.MeasureLivenessDebt(plan.Machine, plan.Schedule, plan.Allocation); err == nil {
+		metrics.LivenessDebt = debt
 	}
 	metrics.LiveSegments = uint32(len(plan.Allocation.Intervals) + len(plan.Allocation.Fragments))
 	metrics.IPRARefinedCalls = plan.IPRARefinedCalls
