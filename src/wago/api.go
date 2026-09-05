@@ -4626,11 +4626,11 @@ func nativeCancellationSupported() bool {
 func noOpCancellationWatch() {}
 
 func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []byte) (func(), error) {
-	if cancel != nil && cancel.Done() != nil && !nativeCancellationSupported() {
-		return nil, fmt.Errorf("wago: native context cancellation requires a concurrent scheduler (TinyGo: -scheduler=threads)")
-	}
-	if cancel == nil || len(activeTrap) < 4 {
+	if cancel == nil || cancel.Done() == nil || len(activeTrap) < 4 {
 		return noOpCancellationWatch, nil
+	}
+	if !nativeCancellationSupported() {
+		return nil, fmt.Errorf("wago: native context cancellation requires a concurrent scheduler (TinyGo: -scheduler=threads)")
 	}
 	done := make(chan struct{})
 	stopped := make(chan struct{})
