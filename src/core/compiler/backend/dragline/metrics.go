@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 19
+const MetricsVersion = 20
 
 // Metrics contains one deterministic row per compiled function plus module
 // totals. Timings are observational; all counts and byte sizes are exact for
@@ -69,6 +69,11 @@ type FunctionMetrics struct {
 	LiveIntervals              uint32                            `json:"live_intervals"`
 	LiveSegments               uint32                            `json:"live_segments"`
 	SegmentedRanges            uint32                            `json:"segmented_ranges"`
+	SegmentedCandidateRanges   uint32                            `json:"segmented_candidate_ranges"`
+	SegmentedBaselineDebt      uint64                            `json:"segmented_baseline_spill_debt"`
+	SegmentedCandidateDebt     uint64                            `json:"segmented_candidate_spill_debt"`
+	SegmentedAttempted         bool                              `json:"segmented_attempted"`
+	SegmentedAdmitted          bool                              `json:"segmented_admitted"`
 	AllocationFragments        uint32                            `json:"allocation_fragments"`
 	IPRARefinedCalls           uint32                            `json:"ipra_refined_calls"`
 	WeightedSpillDebt          uint64                            `json:"weighted_spill_debt"`
@@ -158,6 +163,11 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 	metrics.LiveIntervals = uint32(len(plan.Allocation.Intervals))
 	metrics.LiveSegments = uint32(len(plan.Allocation.Intervals) + len(plan.Allocation.LiveSegments) - len(plan.Allocation.LiveSegmentRanges))
 	metrics.SegmentedRanges = uint32(len(plan.Allocation.LiveSegmentRanges))
+	metrics.SegmentedCandidateRanges = plan.SegmentedCandidateRanges
+	metrics.SegmentedBaselineDebt = plan.SegmentedBaselineDebt
+	metrics.SegmentedCandidateDebt = plan.SegmentedCandidateDebt
+	metrics.SegmentedAttempted = plan.SegmentedAttempted
+	metrics.SegmentedAdmitted = plan.SegmentedAdmitted
 	metrics.AllocationFragments = uint32(len(plan.Allocation.Fragments))
 	metrics.IPRARefinedCalls = plan.IPRARefinedCalls
 	metrics.WeightedSpillDebt = plan.Score.WeightedSpillDebt

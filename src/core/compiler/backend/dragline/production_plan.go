@@ -60,9 +60,18 @@ type nativeBackendPlan struct {
 	Score              railmach.ScheduleScore
 	BackendAttempts    uint8
 	ScheduleCandidates uint8
-	IPRARefinedCalls   uint32
-	SignalsBounds      bool
-	AMD64BMI2          bool
+	// SegmentedBaselineDebt and SegmentedCandidateDebt retain the exact spill
+	// debt on both sides of the one bounded segmented-liveness trial. The trial
+	// is deliberately separate from schedule search so observability does not
+	// multiply allocator work.
+	SegmentedBaselineDebt    uint64
+	SegmentedCandidateDebt   uint64
+	SegmentedCandidateRanges uint32
+	SegmentedAttempted       bool
+	SegmentedAdmitted        bool
+	IPRARefinedCalls         uint32
+	SignalsBounds            bool
+	AMD64BMI2                bool
 	// AMD64MemoryBoundEnd is the access end offset subtracted from the stable
 	// memory-0 byte length cached in the final allocatable GPR. Zero disables
 	// the cache.
@@ -1304,6 +1313,9 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	}
 	backendAttempts := uint8(1)
 	scheduleCandidates := uint8(candidateCount)
+	segmentedBaselineDebt, segmentedCandidateDebt := uint64(0), uint64(0)
+	segmentedCandidateRanges := uint32(0)
+	segmentedAttempted, segmentedAdmitted := false, false
 	if decision := railmach.DecideRetry(0, allocation, exit.Debt); !fastMachine && decision.Retry {
 		backendAttempts = railmach.MaxBackendAttempts
 		retryCandidateCount := 3
@@ -1389,6 +1401,8 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		}
 	}
 	if !fastMachine && best.WeightedSpillDebt != 0 && railmach.CanUseSegmentedLiveness(machine) {
+		segmentedAttempted = true
+		segmentedBaselineDebt = best.WeightedSpillDebt
 		retainedMetrics, retainedSpillSlots := allocation.Metrics, allocation.SpillSlots
 		segmentedAllocation, segmentedErr := railmach.AllocateGreedyPSegmentedForSchedule(machine, schedule, bestGreedy, &p.allocation)
 		if segmentedErr != nil {
@@ -1402,7 +1416,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		if segmentedErr != nil {
 			return nil, segmentedErr
 		}
+		segmentedCandidateDebt = segmentedScore.WeightedSpillDebt
+		segmentedCandidateRanges = uint32(len(segmentedAllocation.LiveSegmentRanges))
 		if nativeSegmentedAllocationBetter(segmentedScore, best, segmentedAllocation, retainedMetrics, retainedSpillSlots) {
+			segmentedAdmitted = true
 			allocation, exit, best = segmentedAllocation, segmentedExit, segmentedScore
 		} else {
 			allocation, err = railmach.AllocateGreedyPForSchedule(machine, schedule, bestGreedy, &p.allocation)
@@ -1629,6 +1646,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		Stack: stack, CFG: cfg, Semantic: semantic,
 		Machine: machine, Selection: selection, DAG: dag, Schedule: schedule, Allocation: allocation, Exit: exit, PostRA: postRA,
 		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, ExternalCallVectorFPRs: externalCallVectorFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts, ScheduleCandidates: scheduleCandidates,
+		SegmentedBaselineDebt: segmentedBaselineDebt, SegmentedCandidateDebt: segmentedCandidateDebt, SegmentedCandidateRanges: segmentedCandidateRanges, SegmentedAttempted: segmentedAttempted, SegmentedAdmitted: segmentedAdmitted,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64BMI2:      target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
 		PostRAPairWith: p.postRAPairWith, PostRASkip: p.postRASkip,

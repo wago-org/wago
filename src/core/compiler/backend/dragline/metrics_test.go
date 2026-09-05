@@ -98,10 +98,15 @@ func TestRecordNativePlanMetricsKeepsRailSSAAndRailMachDistinct(t *testing.T) {
 			},
 			Fragments: make([]railmach.AllocationFragment, 2),
 		},
-		Exit:               &railmach.SSAExit{Debt: railmach.CopyDebt{Physical: 7, Coalesced: 5, Rematerialized: 2}},
-		Simplified:         &railssa.SimplifyResult{},
-		BackendAttempts:    2,
-		ScheduleCandidates: 6,
+		Exit:                     &railmach.SSAExit{Debt: railmach.CopyDebt{Physical: 7, Coalesced: 5, Rematerialized: 2}},
+		Simplified:               &railssa.SimplifyResult{},
+		BackendAttempts:          2,
+		ScheduleCandidates:       6,
+		SegmentedBaselineDebt:    13,
+		SegmentedCandidateDebt:   8,
+		SegmentedCandidateRanges: 1,
+		SegmentedAttempted:       true,
+		SegmentedAdmitted:        true,
 	}
 	metrics := FunctionMetrics{}
 	recordNativePlanMetrics(&metrics, plan)
@@ -110,6 +115,9 @@ func TestRecordNativePlanMetricsKeepsRailSSAAndRailMachDistinct(t *testing.T) {
 	}
 	if metrics.ScheduleCandidates != 6 || metrics.SelectionCombinations != 3 || metrics.Dependencies != 8 || metrics.LiveIntervals != 4 || metrics.LiveSegments != 6 || metrics.SegmentedRanges != 1 || metrics.AllocationFragments != 2 {
 		t.Fatalf("quality-search metrics = candidates:%d combinations:%d dependencies:%d intervals:%d segments:%d segmented:%d fragments:%d", metrics.ScheduleCandidates, metrics.SelectionCombinations, metrics.Dependencies, metrics.LiveIntervals, metrics.LiveSegments, metrics.SegmentedRanges, metrics.AllocationFragments)
+	}
+	if !metrics.SegmentedAttempted || !metrics.SegmentedAdmitted || metrics.SegmentedBaselineDebt != 13 || metrics.SegmentedCandidateDebt != 8 || metrics.SegmentedCandidateRanges != 1 {
+		t.Fatalf("segmented trial metrics = attempted:%t admitted:%t baseline:%d candidate:%d ranges:%d", metrics.SegmentedAttempted, metrics.SegmentedAdmitted, metrics.SegmentedBaselineDebt, metrics.SegmentedCandidateDebt, metrics.SegmentedCandidateRanges)
 	}
 	if metrics.PhysicalCopies != 7 || metrics.CoalescedCopies != 5 || metrics.CopyRematerializations != 2 {
 		t.Fatalf("copy metrics = physical:%d coalesced:%d rematerialized:%d", metrics.PhysicalCopies, metrics.CoalescedCopies, metrics.CopyRematerializations)
