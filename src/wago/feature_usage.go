@@ -166,6 +166,10 @@ func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.Vali
 	}
 	bodyClassifier := wasm.NewModuleInstructionClassifier(m, true)
 	validatedBodies := analysis.ValidFor(m)
+	if validatedBodies {
+		elemStateCount = max(elemStateCount, int(analysis.ElemStateCount))
+		dataStateCount = max(dataStateCount, int(analysis.DataStateCount))
+	}
 	for functionIndex, fn := range m.Code {
 		for _, local := range fn.Locals.Runs {
 			out |= requiredFeaturesForValType(local.Type)
@@ -173,8 +177,6 @@ func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.Vali
 		if validatedBodies && len(fn.BodyBytes) != 0 && analysis.Funcs[functionIndex].BodyBytes == uint32(len(fn.BodyBytes)) {
 			bodyFacts := &analysis.Funcs[functionIndex]
 			out |= requiredFeaturesForValidatedFlags(bodyFacts.Flags)
-			elemStateCount = max(elemStateCount, int(bodyFacts.ElemStateCount))
-			dataStateCount = max(dataStateCount, int(bodyFacts.DataStateCount))
 			if bodyFacts.Flags&wasm.ValidatedFuncUsesRefFunc != 0 {
 				moduleFacts.UsesRefFunc = true
 			}

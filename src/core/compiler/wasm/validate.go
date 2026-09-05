@@ -162,35 +162,51 @@ func (v *moduleValidator) validateFunctionsSerial() error {
 	// Besides avoiding one allocation, this makes its lifetime explicit for
 	// TinyGo's conservative collector across allocation-heavy decode steps.
 	fv := funcValidator{moduleValidator: v}
+	var summary validationSegmentCounts
 	for i := range v.m.Code {
-		if err := v.validateFunction(&fv, i, importedFuncs, widths); err != nil {
+		counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+		if err != nil {
 			return err
 		}
+		summary.merge(counts)
+	}
+	if v.analysis != nil {
+		v.analysis.ElemStateCount = summary.elem
+		v.analysis.DataStateCount = summary.data
 	}
 	return nil
 }
 
-func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) error {
+func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) (counts validationSegmentCounts, err error) {
 	fn := &v.m.Code[localIndex]
 	abs := importedFuncs + localIndex
 	if localIndex >= len(v.m.FuncTypes) {
-		return v.err(ErrUnknownFunc, "code without function type")
+		return counts, v.err(ErrUnknownFunc, "code without function type")
 	}
 	ft, ok := v.funcType(uint32(abs))
 	if !ok {
-		return v.err(ErrUnknownType, "function type")
+		return counts, v.err(ErrUnknownType, "function type")
 	}
 	if v.analysis != nil {
 		v.analysis.Funcs[localIndex] = ValidatedFuncFacts{BodyBytes: saturatingUint32(len(fn.BodyBytes))}
 	}
 	fv.beginFunc(abs)
-	var err error
 	if len(fn.BodyBytes) != 0 {
-		err = fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory)
+		err = fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory, &counts)
 	} else {
 		err = fv.validateFunc(*fn, ft)
 	}
-	return err
+	return counts, err
+}
+
+type validationSegmentCounts struct {
+	elem uint32
+	data uint32
+}
+
+func (s *validationSegmentCounts) merge(other validationSegmentCounts) {
+	s.elem = max(s.elem, other.elem)
+	s.data = max(s.data, other.data)
 }
 
 // validateFunctionsParallel is split from the serial path so its goroutine
@@ -202,8 +218,10 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 	importedFuncs := v.m.ImportedFuncCount()
 	widths := moduleMemargWidths(v.m)
 	type result struct {
-		index int
-		err   error
+		index          int
+		err            error
+		elemStateCount uint32
+		dataStateCount uint32
 	}
 	results := make([]result, workers)
 	var next atomic.Int64
@@ -214,15 +232,22 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 		go func() {
 			defer wg.Done()
 			fv := funcValidator{moduleValidator: v}
+			var summary validationSegmentCounts
+			defer func() {
+				results[worker].elemStateCount = summary.elem
+				results[worker].dataStateCount = summary.data
+			}()
 			for {
 				i := int(next.Add(1) - 1)
 				if i >= len(v.m.Code) {
 					return
 				}
-				if err := v.validateFunction(&fv, i, importedFuncs, widths); err != nil {
+				counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+				if err != nil {
 					results[worker] = result{index: i, err: err}
 					return
 				}
+				summary.merge(counts)
 			}
 		}()
 	}
@@ -233,6 +258,12 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 		if results[i].err != nil && results[i].index < lowest {
 			lowest = results[i].index
 			first = results[i].err
+		}
+	}
+	if first == nil && v.analysis != nil {
+		for i := range results {
+			v.analysis.ElemStateCount = max(v.analysis.ElemStateCount, results[i].elemStateCount)
+			v.analysis.DataStateCount = max(v.analysis.DataStateCount, results[i].dataStateCount)
 		}
 	}
 	return first

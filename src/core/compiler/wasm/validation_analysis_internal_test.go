@@ -13,27 +13,35 @@ func TestValidatedFuncFlagsTable(t *testing.T) {
 	}
 }
 
-func TestValidatedFuncSegmentCountExactFallbackBoundary(t *testing.T) {
+func TestSegmentStateCount(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		kind  InstrKind
-		count func(ValidatedFuncFacts) uint8
+		index uint32
+		want  uint32
 	}{
-		{"data", InstrDataDrop, func(f ValidatedFuncFacts) uint8 { return f.DataStateCount }},
-		{"element", InstrElemDrop, func(f ValidatedFuncFacts) uint8 { return f.ElemStateCount }},
+		{0, 1},
+		{254, 255},
+		{255, 256},
+		{^uint32(0), ^uint32(0)},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			var exact ValidatedFuncFacts
-			exact.observeInstruction(&Instruction{Kind: tc.kind, Index: 254})
-			if tc.count(exact) != 255 || exact.Flags&ValidatedFuncNeedsDetailedRequirements != 0 {
-				t.Fatalf("exact segment summary = %#v, want count 255 without fallback", exact)
-			}
+		if got := segmentStateCount(tc.index); got != tc.want {
+			t.Errorf("segmentStateCount(%d) = %d, want %d", tc.index, got, tc.want)
+		}
+	}
+}
 
-			var overflow ValidatedFuncFacts
-			overflow.observeInstruction(&Instruction{Kind: tc.kind, Index: 255})
-			if tc.count(overflow) != 255 || overflow.Flags&ValidatedFuncNeedsDetailedRequirements == 0 {
-				t.Fatalf("overflow segment summary = %#v, want saturated count and exact fallback", overflow)
-			}
-		})
+func TestRecordValidatedAnalysisSegmentCounts(t *testing.T) {
+	var v funcValidator
+	var facts ValidatedFuncFacts
+	var counts validationSegmentCounts
+	for _, in := range []Instruction{
+		{Kind: InstrDataDrop, Index: 299},
+		{Kind: InstrMemoryInit, Index: 7},
+		{Kind: InstrElemDrop, Index: 399},
+		{Kind: InstrTableInit, Index: 9},
+	} {
+		v.recordValidatedAnalysisFacts(&facts, &directOp{kind: directInstr, instr: in}, &counts)
+	}
+	if counts.data != 300 || counts.elem != 400 {
+		t.Fatalf("segment counts = data:%d element:%d, want 300/400", counts.data, counts.elem)
 	}
 }

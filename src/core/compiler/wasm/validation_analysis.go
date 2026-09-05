@@ -47,19 +47,17 @@ const (
 type ValidatedFuncFacts struct {
 	Flags     ValidatedFuncFlags
 	BodyBytes uint32
-	// Segment counts saturate at 255 and set NeedsDetailedRequirements when the
-	// exact count is larger, routing that uncommon function through the body scan.
-	ElemStateCount uint8
-	DataStateCount uint8
 }
 
 // ValidatedModuleAnalysis owns transient facts gathered by validation. Callers
 // may consume or discard it after compilation; it is not retained by Module.
 type ValidatedModuleAnalysis struct {
-	Funcs  []ValidatedFuncFacts
-	Flags  ValidatedFuncFlags
-	module *Module
-	valid  bool
+	Funcs          []ValidatedFuncFacts
+	Flags          ValidatedFuncFlags
+	ElemStateCount uint32
+	DataStateCount uint32
+	module         *Module
+	valid          bool
 }
 
 func (a *ValidatedModuleAnalysis) reset(m *Module) {
@@ -88,10 +86,6 @@ func (f *ValidatedFuncFacts) observeInstruction(in *Instruction) {
 		f.observeValType(typ)
 	}
 	switch in.Kind {
-	case InstrMemoryInit, InstrDataDrop:
-		f.DataStateCount = f.recordSegmentStateCount(f.DataStateCount, in.Index)
-	case InstrTableInit, InstrElemDrop:
-		f.ElemStateCount = f.recordSegmentStateCount(f.ElemStateCount, in.Index)
 	case InstrCallIndirect, InstrReturnCallIndirect:
 		if in.Index2 != 0 {
 			f.Flags |= ValidatedFuncUsesReferenceTypes
@@ -103,22 +97,6 @@ func (f *ValidatedFuncFacts) observeInstruction(in *Instruction) {
 		// is justified by measurements.
 		f.Flags |= ValidatedFuncNeedsDetailedRequirements
 	}
-}
-
-// recordSegmentStateCount keeps the fixed per-function validation record small
-// for the common case. A module with 256 or more segment state entries takes the
-// existing exact requirements scan, so saturation never under-sizes runtime
-// state and adds no variable sidecar to parallel validation.
-func (f *ValidatedFuncFacts) recordSegmentStateCount(current uint8, index uint32) uint8 {
-	if index >= uint32(^uint8(0)) {
-		f.Flags |= ValidatedFuncNeedsDetailedRequirements
-		return ^uint8(0)
-	}
-	count := uint8(index + 1)
-	if count > current {
-		return count
-	}
-	return current
 }
 
 func (f *ValidatedFuncFacts) observe(kind InstrKind) {

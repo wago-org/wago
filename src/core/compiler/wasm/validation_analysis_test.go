@@ -32,8 +32,43 @@ func validationAnalysisModule(t *testing.T) *wasm.Module {
 }
 
 func TestValidatedFuncFactsSize(t *testing.T) {
-	if got, want := unsafe.Sizeof(wasm.ValidatedFuncFacts{}), uintptr(12); got != want {
+	if got, want := unsafe.Sizeof(wasm.ValidatedFuncFacts{}), uintptr(8); got != want {
 		t.Fatalf("ValidatedFuncFacts size = %d, want %d", got, want)
+	}
+}
+
+func validationAnalysisSegmentModule(t *testing.T) *wasm.Module {
+	t.Helper()
+	data := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(12, wasmtest.ULEB(2)),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0xfc, 0x09, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0xfc, 0x09, 0x01, 0x0b}),
+		)),
+		wasmtest.Section(11, wasmtest.Vec(
+			[]byte{0x01, 0x00},
+			[]byte{0x01, 0x00},
+		)),
+	)
+	m, err := wasm.DecodeModule(data)
+	if err != nil {
+		t.Fatalf("decode segment module: %v", err)
+	}
+	return m
+}
+
+func TestValidateModuleWithAnalysisReducesSegmentCounts(t *testing.T) {
+	m := validationAnalysisSegmentModule(t)
+	for _, workers := range []int{1, 2} {
+		var analysis wasm.ValidatedModuleAnalysis
+		if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, workers, wasm.ValidationLimits{}, &analysis); err != nil {
+			t.Fatalf("workers %d: %v", workers, err)
+		}
+		if analysis.DataStateCount != 2 || analysis.ElemStateCount != 0 {
+			t.Errorf("workers %d counts = data:%d element:%d, want 2/0", workers, analysis.DataStateCount, analysis.ElemStateCount)
+		}
 	}
 }
 
