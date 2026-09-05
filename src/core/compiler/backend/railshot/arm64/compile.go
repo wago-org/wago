@@ -365,8 +365,6 @@ func (f *fn) opt(option optimization.Option) bool {
 // each compile. Embedding it keeps hot call sites terse while making ownership
 // and lifetime a single assignment instead of a list of parallel fields.
 type transient struct {
-	lsPool         []packedLocStates
-	lsPoolBytes    int
 	inlineBasePool map[int]int
 	endsPool       [][]uint32
 	tmpRoots       []*elem
@@ -763,16 +761,6 @@ const maxHintedControlFrames = 64
 // retained by every parallel worker. Deeper functions grow only the worker that
 // receives them; append remains the correctness fallback.
 const maxWorkerInitialControlFrames = 8
-
-// A live control frame can own entry and branch snapshots. Branch tables can
-// need thousands of tiny snapshots, so bound their pointer-rich headers and
-// payload independently instead of forcing repeated allocation behind a small
-// entry-count limit. Explicit slice growth keeps the backing at or below the
-// header ceiling, so the two limits retain at most 224 KiB per worker.
-const (
-	maxRetainedLocStateBufs  = 4096
-	maxRetainedLocStateBytes = 128 << 10
-)
 
 // Forward-edge overflow starts only after the inline sites. Bound both the
 // number and size of recycled buffers so a deeply branched function cannot set

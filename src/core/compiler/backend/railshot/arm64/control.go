@@ -243,24 +243,24 @@ func (f *fn) frameBranchState(fr *ctrlFrame) packedLocStates {
 	if merge := f.ctrlMerge(fr); merge != nil {
 		return merge.branchState
 	}
-	return nil
+	return packedLocStates{}
 }
 
 func (f *fn) frameEntryState(fr *ctrlFrame) packedLocStates {
 	if merge := f.ctrlMerge(fr); merge != nil {
 		return merge.entryState
 	}
-	return nil
+	return packedLocStates{}
 }
 
 func (f *fn) setFrameBranchState(fr *ctrlFrame, state packedLocStates) {
-	if state != nil {
+	if !state.empty() {
 		f.ensureCtrlMerge(fr).branchState = state
 	}
 }
 
 func (f *fn) setFrameEntryState(fr *ctrlFrame, state packedLocStates) {
-	if state != nil {
+	if !state.empty() {
 		f.ensureCtrlMerge(fr).entryState = state
 	}
 }
@@ -1816,7 +1816,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 			// Merge edge: converge to the end's recorded state (or fix it).
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
 			// fall-through's state simply flows out.
-			deadGP, deadFP := f.planForwardMergeDeadLocals(r, branchState, nil)
+			deadGP, deadFP := f.planForwardMergeDeadLocals(r, branchState, packedLocStates{})
 			f.convergeFrameBranchStateWithDead(&fr, deadGP, deadFP)
 			branchState = f.frameBranchState(&fr)
 		}
@@ -1840,7 +1840,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		// fall-through jumps over the stub.
 		deadGP, deadFP := f.planForwardMergeDeadLocals(r, branchState, entryState)
 		needLoads := false
-		if f.usesCalls && branchState != nil && entryState != nil {
+		if f.usesCalls && !branchState.empty() && !entryState.empty() {
 			for x := 0; x < f.nLocals; x++ {
 				reg, isFloat, ok := f.pinReg(x)
 				if !ok || branchState.get(x) != lsStackReg || entryState.get(x) != lsMem {
@@ -1955,10 +1955,6 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		}
 		f.ehTryDepth--
 	}
-	// The popped frame no longer owns these temporary buffers. Recycle them for
-	// later frames at the same or a shallower nesting depth.
-	f.freeLocStateBuf(branchState)
-	f.freeLocStateBuf(entryState)
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)
 	f.releaseFrameBaseTypes(&fr)
