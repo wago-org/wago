@@ -1,11 +1,15 @@
 # Railshot compile-latency report
 
-Measured through 2026-09-05 on native ARM64. This is a stopping-point report for
+Measured through 2026-09-05 on native ARM64 and Rosetta AMD64. This is a stopping-point report for
 `jairus/railshot-compile-latency`, comparing:
 
 - Base: `main` at `c46f2129edb52e6f30f4d0bfc5ae105cfde0c84d`
-- Branch implementation: `e8c451c3`
+- Branch implementation: `5d9b1f2d`
 - Host: Apple M4 Max, macOS 26.6.2, Go 1.26.5, `darwin/arm64`
+
+The AMD64 checkpoint below used the same host through Rosetta. Native Linux
+AMD64 confirmation remains pending because `ssh hub@hub` timed out during this
+measurement window.
 
 ## Current result
 
@@ -25,6 +29,48 @@ Measured through 2026-09-05 on native ARM64. This is a stopping-point report for
 | Generated ARM64 machine-code bytes | **-4.50%** large-module geomean; up to **-7.69%** |
 | Execution latency, complete-corpus geomean | **-0.90%** |
 | Execution allocations | **0 B/op, 0 allocs/op** on both revisions |
+
+## Current AMD64 checkpoint
+
+Eight interleaved 300 ms samples per revision compare the retained branch at
+`5d9b1f2d` with pinned `main` at `c46f2129`. Negative latency is better.
+
+| Metric | Delta versus `main` |
+|---|---:|
+| Backend-only compile latency, large-module geomean | **-16.93%** |
+| End-to-end compile latency, large-module geomean | **-27.98%** |
+| Backend-only compile heap, large-module geomean | +0.11% |
+| End-to-end compile heap, large-module geomean | +0.45% |
+| Backend-only allocation count, large-module geomean | +0.40% |
+| End-to-end allocation count, large-module geomean | +0.25% |
+| Generated AMD64 machine-code bytes | **0.00%** on all five large modules |
+| Execution latency, complete runnable corpus geomean | -0.24% (flat) |
+| Execution allocations | **0 B/op, 0 allocs/op** on both revisions |
+
+| Corpus | Backend main | Backend branch | Latency delta | Heap delta | Allocation delta |
+|---|---:|---:|---:|---:|---:|
+| json-as | 800.9 us | 688.4 us | **-14.05%** | +0.54% | +1.65% |
+| Lua | 15.32 ms | 12.73 ms | **-16.90%** | +0.02% | +0.28% |
+| SQLite | 55.34 ms | 49.59 ms | **-10.40%** | +0.00% | +0.08% |
+| Ruby | 658.0 ms | 512.7 ms | **-22.09%** | +0.00% | +0.02% |
+| esbuild | 412.2 ms | 327.0 ms | **-20.66%** | flat | flat |
+| **Geomean** | **44.98 ms** | **37.37 ms** | **-16.93%** | **+0.11%** | **+0.40%** |
+
+| Corpus | Full compile main | Full compile branch | Latency delta | Heap delta | Allocation delta |
+|---|---:|---:|---:|---:|---:|
+| json-as | 1.501 ms | 1.101 ms | **-26.64%** | +0.61% | +1.04% |
+| Lua | 25.12 ms | 18.24 ms | **-27.39%** | +0.52% | +0.16% |
+| SQLite | 94.53 ms | 70.37 ms | **-25.55%** | +0.64% | +0.05% |
+| Ruby | 1.100 s | 754.4 ms | **-31.42%** | +0.44% | +0.01% |
+| esbuild | 769.8 ms | 548.4 ms | **-28.77%** | +0.06% | flat |
+| **Geomean** | **78.69 ms** | **56.67 ms** | **-27.98%** | **+0.45%** | **+0.25%** |
+
+The complete runnable execution corpus used eight interleaved 100 ms samples.
+Its geomean moved from 4.715 us to 4.704 us (**-0.24%**, statistically flat).
+The only significant row was indirect-call dispatch at **-5.72%**; no workload
+significantly regressed. The five large-module code sizes matched exactly:
+57,470 B, 889,172 B, 3,634,105 B, 35,155,402 B, and 26,612,624 B for json-as,
+Lua, SQLite, Ruby, and esbuild respectively.
 
 The exact current-HEAD large-corpus comparison used eight fresh interleaved
 300 ms samples per revision:
@@ -430,6 +476,13 @@ These were measured and removed rather than retained speculatively:
 | Fast-path one-byte signed block types | Backend geomean regressed 0.30%, with every corpus statistically flat and resources unchanged; removed |
 | Reserve overwritten `br_table` entries by reslicing retained capacity | Backend geomean regressed 0.33%, including a significant 1.31% Lua regression; the redundant-looking zero writes help rather than hurt the later patching path |
 
+## Rejected AMD64 probes
+
+| Probe | Result |
+|---|---|
+| Track pending memory references to bypass empty allocator scans | Backend geomean regressed 1.82%; Ruby regressed 2.83% and esbuild 1.97% significantly, with unchanged heap and allocations. The exact ownership-safe counter was removed. |
+| Replace the pointer-rich 56-byte operand node with packed child/link IDs | Reached the intended 32-byte pointer-free node and cut serial backend heap 33.09% by geomean (18.73-45.01% per large module), with identical generated-code sizes. It also regressed backend latency 3.89% by geomean, including significant 3.11-4.77% regressions on Lua, SQLite, Ruby, and esbuild, so it was removed under the latency-first gate. |
+
 ## Method
 
 - Built separate test binaries from the exact base and branch revisions.
@@ -481,7 +534,11 @@ Raw measurements for the current checkpoint are in
 `/tmp/arm64-brtable-zero-confirm-{base,candidate}-0905.txt`,
 `/tmp/arm64-reader-i64-{base,candidate}-0905d.txt`,
 `/tmp/arm64-reader-s33-{base,candidate}-0905.txt`, and
-`/tmp/arm64-brtable-reslice-{base,candidate}-0905.txt` on the measuring host.
+`/tmp/arm64-brtable-reslice-{base,candidate}-0905.txt`, plus
+`/tmp/amd64-pending-count2-{base,candidate}-0905.txt`,
+`/tmp/amd64-nodeid-backend-{base,candidate}.txt`,
+`/tmp/amd64-current-vs-main-{backend,full,exec}-{base,candidate}.txt`, and
+`/tmp/amd64-current-vs-main-code-{base,candidate}.txt` on the measuring host.
 They are intentionally not checked into the repository.
 
 ## Next ARM64 work
