@@ -1120,7 +1120,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32Store8, railmach.OpARM64I32Store16, railmach.OpARM64I64Store8, railmach.OpARM64I64Store16, railmach.OpARM64I64Store32,
 			railmach.OpARM64I32Const, railmach.OpARM64I64Const, railmach.OpARM64F32Const, railmach.OpARM64F64Const,
 			railmach.OpARM64GlobalGet, railmach.OpARM64GlobalSet, railmach.OpARM64Select,
-			railmach.OpARM64MemorySize, railmach.OpARM64MemoryGrow,
+			railmach.OpARM64MemorySize, railmach.OpARM64MemoryGrow, railmach.OpARM64MemoryCopy, railmach.OpARM64MemoryFill,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -2514,7 +2514,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			if instruction.Op != wasm.InstrCall && instruction.Op != wasm.InstrCallIndirect && instruction.Result != 0 && plan.Allocation.Locations[instruction.Result].Kind == railmach.LocationSpill && !fusedComparison {
 				pendingSpill = instruction.Result
 			}
-			bulkMemory := instruction.Op == wasm.InstrMemoryCopy || instruction.Op == wasm.InstrMemoryFill
+			bulkMemory := semanticOp == wasm.InstrMemoryCopy || semanticOp == wasm.InstrMemoryFill
 			var bulkLive [3]bool
 			if bulkMemory {
 				for physical := range bulkLive {
@@ -3573,18 +3573,18 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrMemoryCopy || instruction.Op == wasm.InstrMemoryFill {
+			if semanticOp == wasm.InstrMemoryCopy || semanticOp == wasm.InstrMemoryFill {
 				if len(operands) != 3 {
-					return nil, 0, true, fmt.Errorf("RailMach %s operand count is %d", instruction.Op, len(operands))
+					return nil, 0, true, fmt.Errorf("RailMach %s operand count is %d", semanticOp, len(operands))
 				}
 				dst, dstConstant := arm64RailMachI32Constant(plan, operands[0].Reg)
 				second, secondConstant := arm64RailMachI32Constant(plan, operands[1].Reg)
 				n, nConstant := arm64RailMachI32Constant(plan, operands[2].Reg)
 				constant64 := dstConstant && secondConstant && nConstant && n == 64 && dst+n <= plan.Stack.MemoryMinBytes &&
-					(instruction.Op != wasm.InstrMemoryCopy || second+n <= plan.Stack.MemoryMinBytes)
+					(semanticOp != wasm.InstrMemoryCopy || second+n <= plan.Stack.MemoryMinBytes)
 				if constant64 {
-					emitARM64ConstantBulkMemory64(&a, instruction.Op, dst, second)
-				} else if err := emitARM64BulkMemoryRegisters(&a, instruction.Op, wasmOffset, mops, fn.Index, metadata, recordBulkMemoryTrap); err != nil {
+					emitARM64ConstantBulkMemory64(&a, semanticOp, dst, second)
+				} else if err := emitARM64BulkMemoryRegisters(&a, semanticOp, wasmOffset, mops, fn.Index, metadata, recordBulkMemoryTrap); err != nil {
 					return nil, 0, true, err
 				}
 				for physical := range bulkLive {

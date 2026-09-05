@@ -1045,7 +1045,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32Store8, railmach.OpAMD64I32Store16, railmach.OpAMD64I64Store8, railmach.OpAMD64I64Store16, railmach.OpAMD64I64Store32,
 			railmach.OpAMD64I32Const, railmach.OpAMD64I64Const, railmach.OpAMD64F32Const, railmach.OpAMD64F64Const,
 			railmach.OpAMD64GlobalGet, railmach.OpAMD64GlobalSet, railmach.OpAMD64Select,
-			railmach.OpAMD64MemorySize, railmach.OpAMD64MemoryGrow,
+			railmach.OpAMD64MemorySize, railmach.OpAMD64MemoryGrow, railmach.OpAMD64MemoryCopy, railmach.OpAMD64MemoryFill,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -2313,9 +2313,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				reloadGlobalDescriptors()
 				continue
 			}
-			if instruction.Op == wasm.InstrMemoryCopy || instruction.Op == wasm.InstrMemoryFill {
+			if semanticOp == wasm.InstrMemoryCopy || semanticOp == wasm.InstrMemoryFill {
 				if len(operands) != 3 {
-					return nil, 0, true, fmt.Errorf("RailMach %s operand count is %d", instruction.Op, len(operands))
+					return nil, 0, true, fmt.Errorf("RailMach %s operand count is %d", semanticOp, len(operands))
 				}
 				a.Push(amd64.RAX)
 				a.Push(amd64.RCX)
@@ -2338,7 +2338,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.LoadRsp32(amd64.RCX, 0)
 					a.AddRsp(24)
 				}
-				emitAMD64BulkMemoryRegisters(&a, instruction.Op, fn.Index, wasmOffset, metadata)
+				emitAMD64BulkMemoryRegisters(&a, semanticOp, fn.Index, wasmOffset, metadata)
 				a.Pop(amd64.RCX)
 				a.Pop(amd64.RAX)
 				continue

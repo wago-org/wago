@@ -780,6 +780,47 @@ func TestSelectTargetOpcodesMemoryManagement(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesBulkMemory(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0xfc, 0x0a, 0x00, 0x00,
+			0x20, 0x03, 0x20, 0x04, 0x20, 0x05, 0xfc, 0x0b, 0x00, 0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [2]MOpcode
+	}{
+		{"amd64", TargetAMD64, [2]MOpcode{OpAMD64MemoryCopy, OpAMD64MemoryFill}},
+		{"arm64", TargetARM64, [2]MOpcode{OpARM64MemoryCopy, OpARM64MemoryFill}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := buildMachineTest(t, test.target, m)
+			count, err := SelectTargetOpcodes(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if count != 2 || len(f.Insts) != 2 || f.Insts[0].Op != test.want[0] || f.Insts[1].Op != test.want[1] {
+				t.Fatalf("selected instructions = %#v, count %d, want %v", f.Insts, count, test.want)
+			}
+			if SemanticOpcode(f.Insts[0].Op) != wasm.InstrMemoryCopy || SemanticOpcode(f.Insts[1].Op) != wasm.InstrMemoryFill {
+				t.Fatalf("semantic instructions = %#v", f.Insts)
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerComparisons(t *testing.T) {
 	operations := [22]MOpcode{
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,
