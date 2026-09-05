@@ -362,7 +362,20 @@ func (a *Asm) Grow(n int) {
 	}
 }
 
-func (a *Asm) emit(bs ...byte) { a.B = append(a.B, bs...) }
+func (a *Asm) emit(bs ...byte) {
+	switch len(bs) {
+	case 1:
+		a.B = append(a.B, bs[0])
+	case 2:
+		a.B = append(a.B, bs[0], bs[1])
+	case 3:
+		a.B = append(a.B, bs[0], bs[1], bs[2])
+	case 4:
+		a.B = append(a.B, bs[0], bs[1], bs[2], bs[3])
+	default:
+		a.B = append(a.B, bs...)
+	}
+}
 func (a *Asm) imm32(v int32) {
 	a.B = append(a.B, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 }
