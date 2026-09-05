@@ -289,6 +289,48 @@ func TestSelectTargetOpcodesIntegerUnary(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesScalarFloatArithmetic(t *testing.T) {
+	operations := [8]MOpcode{
+		wasm.InstrF32Add, wasm.InstrF64Add, wasm.InstrF32Sub, wasm.InstrF64Sub,
+		wasm.InstrF32Mul, wasm.InstrF64Mul, wasm.InstrF32Div, wasm.InstrF64Div,
+	}
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [8]MOpcode
+	}{
+		{"amd64", TargetAMD64, [8]MOpcode{
+			OpAMD64F32AddScalar, OpAMD64F64AddScalar, OpAMD64F32SubScalar, OpAMD64F64SubScalar,
+			OpAMD64F32MulScalar, OpAMD64F64MulScalar, OpAMD64F32DivScalar, OpAMD64F64DivScalar,
+		}},
+		{"arm64", TargetARM64, [8]MOpcode{
+			OpARM64F32AddScalar, OpARM64F64AddScalar, OpARM64F32SubScalar, OpARM64F64SubScalar,
+			OpARM64F32MulScalar, OpARM64F64MulScalar, OpARM64F32DivScalar, OpARM64F64DivScalar,
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for index, encoding := range []byte{0x92, 0xa0, 0x93, 0xa1, 0x94, 0xa2, 0x95, 0xa3} {
+				type_ := wasm.F32
+				if index&1 != 0 {
+					type_ = wasm.F64
+				}
+				m := machineModule([]wasm.ValType{type_, type_}, []wasm.ValType{type_}, []byte{0x20, 0, 0x20, 1, encoding, 0x0b})
+				f := buildMachineTest(t, test.target, m)
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operations[index] {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operations[index])
+				}
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerComparisons(t *testing.T) {
 	operations := [22]MOpcode{
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,

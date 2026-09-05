@@ -1096,6 +1096,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32Rotr, railmach.OpARM64I64Rotr,
 			railmach.OpARM64I32Clz, railmach.OpARM64I64Clz, railmach.OpARM64I32Ctz, railmach.OpARM64I64Ctz,
 			railmach.OpARM64I32Popcnt, railmach.OpARM64I64Popcnt,
+			railmach.OpARM64F32AddScalar, railmach.OpARM64F64AddScalar, railmach.OpARM64F32SubScalar, railmach.OpARM64F64SubScalar,
+			railmach.OpARM64F32MulScalar, railmach.OpARM64F64MulScalar, railmach.OpARM64F32DivScalar, railmach.OpARM64F64DivScalar,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -5165,10 +5167,10 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op >= wasm.InstrF32Add && instruction.Op <= wasm.InstrF32Max || instruction.Op >= wasm.InstrF64Add && instruction.Op <= wasm.InstrF64Max {
+			if semanticOp >= wasm.InstrF32Add && semanticOp <= wasm.InstrF32Max || semanticOp >= wasm.InstrF64Add && semanticOp <= wasm.InstrF64Max {
 				rhs := reg(operands[1].Reg)
-				f64 := instruction.Op >= wasm.InstrF64Add
-				switch instruction.Op {
+				f64 := semanticOp >= wasm.InstrF64Add
+				switch semanticOp {
 				case wasm.InstrF32Add, wasm.InstrF64Add:
 					a.Fadd(dst, lhs, rhs, f64)
 				case wasm.InstrF32Sub, wasm.InstrF64Sub:
@@ -15687,6 +15689,7 @@ func arm64DirectLocalBinaryKind(kind wasm.InstrKind) bool {
 }
 
 func arm64DirectFloatBinaryKind(kind wasm.InstrKind) bool {
+	kind = railmach.SemanticOpcode(kind)
 	switch kind {
 	case wasm.InstrF32Add, wasm.InstrF32Sub, wasm.InstrF32Mul, wasm.InstrF32Div,
 		wasm.InstrF32Min, wasm.InstrF32Max,
@@ -15699,6 +15702,7 @@ func arm64DirectFloatBinaryKind(kind wasm.InstrKind) bool {
 }
 
 func arm64FloatBinaryPair(first, second wasm.InstrKind) (wasm.ValType, bool, bool) {
+	first, second = railmach.SemanticOpcode(first), railmach.SemanticOpcode(second)
 	if !arm64DirectFloatBinaryKind(first) || !arm64DirectFloatBinaryKind(second) {
 		return wasm.ValType{}, false, false
 	}
@@ -15714,6 +15718,7 @@ func arm64FloatBinaryPair(first, second wasm.InstrKind) (wasm.ValType, bool, boo
 }
 
 func emitARM64DirectFloatBinary(a *arm64.Asm, kind wasm.InstrKind, lhs, rhs arm64.Reg) {
+	kind = railmach.SemanticOpcode(kind)
 	f64 := kind >= wasm.InstrF64Add && kind <= wasm.InstrF64Max
 	switch kind {
 	case wasm.InstrF32Add, wasm.InstrF64Add:

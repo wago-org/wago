@@ -1021,6 +1021,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32Rotr, railmach.OpAMD64I64Rotr,
 			railmach.OpAMD64I32Clz, railmach.OpAMD64I64Clz, railmach.OpAMD64I32Ctz, railmach.OpAMD64I64Ctz,
 			railmach.OpAMD64I32Popcnt, railmach.OpAMD64I64Popcnt,
+			railmach.OpAMD64F32AddScalar, railmach.OpAMD64F64AddScalar, railmach.OpAMD64F32SubScalar, railmach.OpAMD64F64SubScalar,
+			railmach.OpAMD64F32MulScalar, railmach.OpAMD64F64MulScalar, railmach.OpAMD64F32DivScalar, railmach.OpAMD64F64DivScalar,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -3750,7 +3752,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
-			if amd64DirectFloatBinaryKind(instruction.Op) {
+			if amd64DirectFloatBinaryKind(semanticOp) {
 				if memoryFold {
 					if err := emitAMD64FoldedFloatMemory(&a, plan, foldedLoadID, instructionID, lhs, dst, fn.Index, metadata, &coldTrapPatches); err != nil {
 						return nil, 0, true, err
@@ -3762,7 +3764,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					continue
 				}
 				rhs := reg(operands[1].Reg)
-				emitAMD64DirectFloatBinary(&a, instruction.Op, dst, lhs, rhs)
+				emitAMD64DirectFloatBinary(&a, semanticOp, dst, lhs, rhs)
 				continue
 			}
 			if instruction.Op == wasm.InstrF32Copysign || instruction.Op == wasm.InstrF64Copysign {
@@ -4735,7 +4737,7 @@ func emitAMD64FoldedFloatMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID, c
 		disp = 0
 	}
 	opcode := byte(0x58)
-	switch consumer.Op {
+	switch railmach.SemanticOpcode(consumer.Op) {
 	case wasm.InstrF32Sub, wasm.InstrF64Sub:
 		opcode = 0x5c
 	case wasm.InstrF32Mul, wasm.InstrF64Mul:
@@ -7846,10 +7848,12 @@ func emitAMD64DirectIntegerBinary(a *amd64.Asm, kind wasm.InstrKind, dst, lhs, r
 }
 
 func amd64DirectFloatBinaryKind(kind wasm.InstrKind) bool {
+	kind = railmach.SemanticOpcode(kind)
 	return kind >= wasm.InstrF32Add && kind <= wasm.InstrF32Max || kind >= wasm.InstrF64Add && kind <= wasm.InstrF64Max
 }
 
 func emitAMD64DirectFloatBinary(a *amd64.Asm, kind wasm.InstrKind, dst, lhs, rhs amd64.Reg) {
+	kind = railmach.SemanticOpcode(kind)
 	f64 := kind >= wasm.InstrF64Add
 	switch kind {
 	case wasm.InstrF32Add, wasm.InstrF64Add:
