@@ -639,6 +639,11 @@ func TestRailMachAdmitsV128LocalsButRejectsUnqualifiedBoundaryCases(t *testing.T
 	if !railMachCandidate(&local, true) {
 		t.Fatal("declared v128 local did not enter RailMach")
 	}
+	unreachable := *foundation
+	unreachable.Instrs = append([]railssa.StackInstr{{Kind: wasm.InstrUnreachable}}, foundation.Instrs...)
+	if !railMachCandidate(&unreachable, true) {
+		t.Fatal("v128 function with unreachable region did not enter RailMach")
+	}
 }
 
 func TestRailMachAdmitsLargeMultiCallScalarFunctions(t *testing.T) {

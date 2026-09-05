@@ -4289,6 +4289,55 @@ func TestDraglineRailMachV128LocalExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachV128BlockTransferExecution(t *testing.T) {
+	constant := [16]byte{0x80, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	body := []byte{
+		0x41, 0x20, // i32.const 32
+		0x02, 0x7b, // block (result v128)
+		0xfd, 0x0c, // v128.const
+	}
+	body = append(body, constant[:]...)
+	body = append(body,
+		0x0c, 0x00, // br 0, carrying the vector value
+		0xfd, 0x0c, // unreachable v128.const
+	)
+	body = append(body, make([]byte, 16)...)
+	body = append(body,
+		0x0b,                   // end block
+		0xfd, 0x0b, 0x04, 0x00, // v128.store align=16 offset=0
+		0x0b,
+	)
+	read0 := []byte{0x41, 0x20, 0x29, 0x03, 0x00, 0x0b}
+	read8 := []byte{0x41, 0x28, 0x29, 0x03, 0x00, 0x0b}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read0", 0, 1), wasmtest.ExportEntry("read8", 0, 2))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(read0), wasmtest.Code(read8))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	for index, name := range []string{"read0", "read8"} {
+		result, err := instance.Invoke(name)
+		want := binary.LittleEndian.Uint64(constant[index*8:])
+		if err != nil || len(result) != 1 || result[0] != want {
+			t.Fatalf("%s after vector block transfer = %#x, %v; want %#x", name, result, err, want)
+		}
+	}
+}
+
 func TestDraglineRailMachVectorLoadVariantsExecution(t *testing.T) {
 	payload := [16]byte{0x80, 0x7f, 0xfe, 0x01, 0x00, 0xff, 0x34, 0x92, 8, 9, 10, 11, 12, 13, 14, 15}
 	extend8 := func(signed bool) (out [16]byte) {

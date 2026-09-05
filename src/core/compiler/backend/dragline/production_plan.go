@@ -416,9 +416,9 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 }
 
 // railMachV128FoundationCandidate admits vector operations whose machine
-// lowering is complete. Public vector parameters and results, globals, calls,
-// and unreachable regions remain on the structured oracle until their boundary
-// contracts are independently qualified. Declared vector locals are internal
+// lowering is complete. Public vector parameters and results, globals, and
+// calls remain on the structured oracle until their boundary contracts are
+// independently qualified. Declared vector locals and block values are internal
 // SSA values and use the same allocation, spill, and edge-transfer machinery as
 // other TypeV128 values.
 func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
@@ -434,10 +434,7 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 	}
 	hasVectorOperation := false
 	for _, instruction := range stack.Instrs {
-		if instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect || instruction.Kind == wasm.InstrUnreachable {
-			// Reachability is represented by the CFG, which is built after this
-			// inexpensive routing gate. Keep mixed reachable/dead SIMD functions on
-			// the structured oracle until capability routing consumes CFG identity.
+		if instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect {
 			return false
 		}
 		if !wasm.IsSIMDValidationInstructionKind(instruction.Kind) {
