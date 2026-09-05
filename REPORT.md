@@ -4,7 +4,7 @@ Measured through 2026-09-05 on native ARM64 and Rosetta AMD64. This is a stoppin
 `jairus/railshot-compile-latency`, comparing:
 
 - Base: `main` at `c46f2129edb52e6f30f4d0bfc5ae105cfde0c84d`
-- Branch implementation: `71f82617`
+- Branch implementation through: `85cd9086`
 - Host: Apple M4 Max, macOS 26.6.2, Go 1.26.5, `darwin/arm64`
 
 The AMD64 checkpoint below used the same host through Rosetta. Native Linux
@@ -101,6 +101,34 @@ Raw captures are:
 - `/tmp/amd64-current-vs-main-exec-focus-{base.Fg3ZD4,candidate.9WKEq5}`
 - `/tmp/amd64-coarse-production-focused-{base.fVaqGL,candidate.FI7Xhg}`
 - `/tmp/amd64-coarse-production-full-{base.QYM8ss,candidate.Sj4Aiz}`
+
+### Validation observation fast path
+
+The latest retained cross-architecture change removes the full validation-fact
+observer from ordinary scalar instructions. The validation loop now records the
+common per-opcode flag directly and calls the payload classifier only for the
+small set of instructions whose immediates affect retained module analysis.
+
+A 12-pair, alternating-order 500 ms Rosetta AMD64 confirmation against the
+immediate predecessor measured the five-large-module full-compilation geomean
+at **-1.51%**, with allocated heap and allocation counts unchanged. Ruby
+improved **1.90%** (`p=0.028`); the other four modules were favorable or flat.
+The old observer disappeared from the esbuild CPU profile. Native ARM64
+`go test ./...` passes, and the new table-consistency test verifies that the
+fast-path classification exactly matches the authoritative payload switch.
+
+An attempted follow-on shortcut that decoded and stepped simple opcodes
+directly in the validation loop was rejected. Its longer 12-pair confirmation
+measured **+0.39%** full-compilation geomean, despite an initially favorable
+short run. That code is not present in the branch.
+
+Additional raw captures are:
+
+- `/tmp/amd64-validation-payload-{base.2ukBeY,candidate.QOkClI}`
+- `/tmp/amd64-validation-payload-confirm-{base.OKaxgn,candidate.4ho7uU}`
+- `/tmp/amd64-validation-payload-esbuild.pprof`
+- `/tmp/amd64-validation-simple-{base.0QO6jX,candidate.bBuMa9}`
+- `/tmp/amd64-validation-simple-confirm-{base.mpzkEA,candidate.JoxoEO}`
 
 ## Current result
 
