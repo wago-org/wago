@@ -195,7 +195,7 @@ func TestVerifyARM64ByteWidenChain(t *testing.T) {
 	}
 }
 
-func TestPlanPostRAFindsARM64XorShift(t *testing.T) {
+func TestPlanPostRAFindsARM64LogicalShift(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
 		0x20, 0x00,
 		0x20, 0x00,
@@ -224,12 +224,12 @@ func TestPlanPostRAFindsARM64XorShift(t *testing.T) {
 	found := false
 	var producer, consumer uint32
 	for _, rewrite := range plan.Rewrites {
-		if rewrite.Kind != RewriteARM64XorShift {
+		if rewrite.Kind != RewriteARM64LogicalShift {
 			continue
 		}
-		base, shift, ok := VerifyARM64XorShift(f, rewrite.First, rewrite.Second, plan.uses)
-		if !ok || base == 0 || shift != 13 {
-			t.Fatalf("xor-shift rewrite = base v%d shift %d ok=%t", base, shift, ok)
+		base, logical, shifted, amount, wide, ok := VerifyARM64LogicalShift(f, rewrite.First, rewrite.Second, plan.uses)
+		if !ok || base == 0 || logical != wasm.InstrI64Xor || shifted != wasm.InstrI64ShrU || amount != 13 || !wide {
+			t.Fatalf("logical-shift rewrite = base v%d logical=%d shift=%d amount=%d wide=%t ok=%t", base, logical, shifted, amount, wide, ok)
 		}
 		found = true
 		producer, consumer = rewrite.First, rewrite.Second
@@ -239,14 +239,50 @@ func TestPlanPostRAFindsARM64XorShift(t *testing.T) {
 	}
 	shiftResult := f.Insts[producer].Result
 	plan.uses[shiftResult]++
-	if _, _, ok := VerifyARM64XorShift(f, producer, consumer, plan.uses); ok {
+	if _, _, _, _, _, ok := VerifyARM64LogicalShift(f, producer, consumer, plan.uses); ok {
 		t.Fatal("accepted multiply-used shift result")
 	}
 	plan.uses[shiftResult]--
 	xorOperands := f.InstructionOperands(consumer)
 	xorOperands[0].Reg, xorOperands[1].Reg = shiftResult, shiftResult
-	if _, _, ok := ARM64XorShiftImmediate(f, producer, consumer); ok {
+	if _, _, _, _, _, ok := ARM64LogicalShiftImmediate(f, producer, consumer); ok {
 		t.Fatal("accepted XOR without the unshifted base")
+	}
+}
+
+func TestARM64LogicalShiftImmediateCoversIntegerForms(t *testing.T) {
+	for _, wide := range []bool{false, true} {
+		constantOp, typ := MOpcode(wasm.InstrI32Const), TypeI32
+		logicalOps := []MOpcode{wasm.InstrI32And, wasm.InstrI32Or, wasm.InstrI32Xor}
+		shiftOps := []MOpcode{wasm.InstrI32Shl, wasm.InstrI32ShrS, wasm.InstrI32ShrU}
+		if wide {
+			constantOp, typ = wasm.InstrI64Const, TypeI64
+			logicalOps = []MOpcode{wasm.InstrI64And, wasm.InstrI64Or, wasm.InstrI64Xor}
+			shiftOps = []MOpcode{wasm.InstrI64Shl, wasm.InstrI64ShrS, wasm.InstrI64ShrU}
+		}
+		for _, logical := range logicalOps {
+			for _, shifted := range shiftOps {
+				f := &Func{
+					Insts: []Inst{
+						{Op: constantOp, Result: 3, Aux: 13},
+						{Op: shifted, Result: 2, OperandStart: 0, OperandCount: 2},
+						{Op: logical, Result: 4, OperandStart: 2, OperandCount: 2},
+					},
+					Operands: []Operand{{Reg: 1}, {Reg: 3}, {Reg: 1}, {Reg: 2}},
+					VRegs: []VRegData{
+						{},
+						{Type: typ, Bank: BankGPR, Flags: VRegInitial},
+						{Type: typ, Bank: BankGPR, Def: 9},
+						{Type: typ, Bank: BankGPR, Def: 3},
+						{Type: typ, Bank: BankGPR, Def: 15},
+					},
+				}
+				base, gotLogical, gotShift, amount, gotWide, ok := ARM64LogicalShiftImmediate(f, 1, 2)
+				if !ok || base != 1 || gotLogical != logical || gotShift != shifted || amount != 13 || gotWide != wide {
+					t.Fatalf("wide=%t logical=%d shift=%d: base=%d logical=%d shift=%d amount=%d wide=%t ok=%t", wide, logical, shifted, base, gotLogical, gotShift, amount, gotWide, ok)
+				}
+			}
+		}
 	}
 }
 

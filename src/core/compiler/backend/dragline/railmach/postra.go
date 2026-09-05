@@ -30,7 +30,7 @@ const (
 	RewriteARM64ByteWiden
 	RewriteARM64ByteSwap
 	RewriteARM64Narrow16To8
-	RewriteARM64XorShift
+	RewriteARM64LogicalShift
 )
 
 type Rewrite struct {
@@ -182,11 +182,6 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 			if schedule.BlockOf[producer] == schedule.BlockOf[consumer] && arm64CondIncrementable(f, producer, consumer, uses) {
 				reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: producer, Second: consumer, Kind: RewriteARM64CondIncrement})
 			}
-			if schedule.BlockOf[producer] == schedule.BlockOf[consumer] {
-				if _, _, ok := VerifyARM64XorShift(f, producer, consumer, uses); ok {
-					reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: producer, Second: consumer, Kind: RewriteARM64XorShift})
-				}
-			}
 		}
 		for index := 0; index < len(schedule.Order); index++ {
 			first := schedule.Order[index]
@@ -209,6 +204,17 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 			}
 			if _, members, ok := verifyARM64Narrow16To8Chain(f, schedule, final, position, uses); ok {
 				reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: members[0], Second: final, Kind: RewriteARM64Narrow16To8})
+			}
+		}
+		// Preserve higher-value multi-instruction rewrites by considering local
+		// shifted-register folds after their plans have been recorded. The
+		// realization pass rejects any overlap through its shared skip table.
+		for index := 0; index+1 < len(schedule.Order); index++ {
+			producer, consumer := schedule.Order[index], schedule.Order[index+1]
+			if schedule.BlockOf[producer] == schedule.BlockOf[consumer] {
+				if _, _, _, _, _, ok := VerifyARM64LogicalShift(f, producer, consumer, uses); ok {
+					reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: producer, Second: consumer, Kind: RewriteARM64LogicalShift})
+				}
 			}
 		}
 	}
@@ -956,7 +962,7 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 		if rewrite.Kind == RewriteInvalid || int(rewrite.First) >= len(f.Insts) || rewrite.Second != ^uint32(0) && (int(rewrite.Second) >= len(f.Insts) || rewrite.Second <= rewrite.First || rewrite.Second-rewrite.First > PostRAScanLimit && rewrite.Kind != RewriteAMD64FusionRepair && rewrite.Kind != RewriteAMD64ByteSwap && rewrite.Kind != RewritePhysicalRename && rewrite.Kind != RewriteARM64CompareBranch && rewrite.Kind != RewriteARM64RepeatedAdd && rewrite.Kind != RewriteARM64ByteWiden && rewrite.Kind != RewriteARM64ByteSwap && rewrite.Kind != RewriteARM64Narrow16To8) {
 			return fmt.Errorf("railmach: invalid post-RA rewrite %d: %#v", id, rewrite)
 		}
-		if target == TargetAMD64 && (rewrite.Kind == RewriteARM64Pair || rewrite.Kind == RewriteARM64PrePostIndex || rewrite.Kind == RewriteARM64CompareBranch || rewrite.Kind == RewriteARM64CondIncrement || rewrite.Kind == RewriteARM64RepeatedAdd || rewrite.Kind == RewriteARM64ByteWiden || rewrite.Kind == RewriteARM64ByteSwap || rewrite.Kind == RewriteARM64Narrow16To8 || rewrite.Kind == RewriteARM64XorShift) || target == TargetARM64 && (rewrite.Kind == RewriteAMD64LEA || rewrite.Kind == RewriteAMD64FusionRepair || rewrite.Kind == RewriteAMD64FixedRepair || rewrite.Kind == RewriteAMD64MemoryFold || rewrite.Kind == RewriteAMD64ByteSwap) {
+		if target == TargetAMD64 && (rewrite.Kind == RewriteARM64Pair || rewrite.Kind == RewriteARM64PrePostIndex || rewrite.Kind == RewriteARM64CompareBranch || rewrite.Kind == RewriteARM64CondIncrement || rewrite.Kind == RewriteARM64RepeatedAdd || rewrite.Kind == RewriteARM64ByteWiden || rewrite.Kind == RewriteARM64ByteSwap || rewrite.Kind == RewriteARM64Narrow16To8 || rewrite.Kind == RewriteARM64LogicalShift) || target == TargetARM64 && (rewrite.Kind == RewriteAMD64LEA || rewrite.Kind == RewriteAMD64FusionRepair || rewrite.Kind == RewriteAMD64FixedRepair || rewrite.Kind == RewriteAMD64MemoryFold || rewrite.Kind == RewriteAMD64ByteSwap) {
 			return fmt.Errorf("railmach: cross-target post-RA rewrite %d: %#v", id, rewrite)
 		}
 		if rewrite.Kind == RewriteAMD64FusionRepair && position[rewrite.Second] == position[rewrite.First]+1 {
@@ -1041,12 +1047,12 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 				return fmt.Errorf("railmach: illegal ARM64 16-to-8 lane narrowing %d: %#v", id, rewrite)
 			}
 		}
-		if rewrite.Kind == RewriteARM64XorShift {
+		if rewrite.Kind == RewriteARM64LogicalShift {
 			if position[rewrite.Second] != position[rewrite.First]+1 || schedule.BlockOf[rewrite.First] != schedule.BlockOf[rewrite.Second] {
-				return fmt.Errorf("railmach: nonadjacent ARM64 xor-shift rewrite %d: %#v", id, rewrite)
+				return fmt.Errorf("railmach: nonadjacent ARM64 logical-shift rewrite %d: %#v", id, rewrite)
 			}
-			if _, _, ok := VerifyARM64XorShift(f, rewrite.First, rewrite.Second, uses); !ok {
-				return fmt.Errorf("railmach: illegal ARM64 xor-shift rewrite %d: %#v", id, rewrite)
+			if _, _, _, _, _, ok := VerifyARM64LogicalShift(f, rewrite.First, rewrite.Second, uses); !ok {
+				return fmt.Errorf("railmach: illegal ARM64 logical-shift rewrite %d: %#v", id, rewrite)
 			}
 		}
 		if rewrite.Kind == RewriteAMD64MemoryFold {
@@ -1063,46 +1069,56 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 	return nil
 }
 
-// VerifyARM64XorShift recognizes the target's single-instruction form for the
-// general x ^ (x >> c) idiom. Requiring the unshifted input at the consumer
-// keeps its allocation live without extending ranges after allocation.
-func VerifyARM64XorShift(f *Func, producer, consumer uint32, uses []uint32) (base VReg, shift uint8, ok bool) {
+// VerifyARM64LogicalShift recognizes AArch64's single-instruction logical
+// shifted-register forms. Requiring the unshifted input at the consumer keeps
+// its allocation live without extending ranges after allocation.
+func VerifyARM64LogicalShift(f *Func, producer, consumer uint32, uses []uint32) (base VReg, logical, shift MOpcode, amount uint8, wide bool, ok bool) {
 	if f == nil || int(producer) >= len(f.Insts) || int(consumer) >= len(f.Insts) || len(uses) != len(f.VRegs) {
-		return 0, 0, false
+		return 0, 0, 0, 0, false, false
 	}
 	shiftInst := f.Insts[producer]
 	if shiftInst.Result == 0 || int(shiftInst.Result) >= len(uses) || uses[shiftInst.Result] != 1 {
-		return 0, 0, false
+		return 0, 0, 0, 0, false, false
 	}
-	return ARM64XorShiftImmediate(f, producer, consumer)
+	return ARM64LogicalShiftImmediate(f, producer, consumer)
 }
 
-// ARM64XorShiftImmediate replays the instruction-shape portion of the rewrite
-// at final emission, after the independently verified use count is no longer
-// needed.
-func ARM64XorShiftImmediate(f *Func, producer, consumer uint32) (base VReg, shift uint8, ok bool) {
+// ARM64LogicalShiftImmediate replays the instruction-shape portion of the
+// rewrite at final emission, after the independently verified use count is no
+// longer needed.
+func ARM64LogicalShiftImmediate(f *Func, producer, consumer uint32) (base VReg, logical, shift MOpcode, amount uint8, wide bool, ok bool) {
 	if f == nil || int(producer) >= len(f.Insts) || int(consumer) >= len(f.Insts) {
-		return 0, 0, false
+		return 0, 0, 0, 0, false, false
 	}
-	shiftInst, xorInst := f.Insts[producer], f.Insts[consumer]
-	if SemanticOpcode(shiftInst.Op) != wasm.InstrI64ShrU || SemanticOpcode(xorInst.Op) != wasm.InstrI64Xor || shiftInst.Result == 0 || xorInst.Result == 0 {
-		return 0, 0, false
+	shiftInst, logicalInst := f.Insts[producer], f.Insts[consumer]
+	shift, logical = SemanticOpcode(shiftInst.Op), SemanticOpcode(logicalInst.Op)
+	wide = logical == wasm.InstrI64And || logical == wasm.InstrI64Or || logical == wasm.InstrI64Xor
+	logicalOK := logical == wasm.InstrI32And || logical == wasm.InstrI32Or || logical == wasm.InstrI32Xor || wide
+	shiftOK := !wide && (shift == wasm.InstrI32Shl || shift == wasm.InstrI32ShrS || shift == wasm.InstrI32ShrU) ||
+		wide && (shift == wasm.InstrI64Shl || shift == wasm.InstrI64ShrS || shift == wasm.InstrI64ShrU)
+	if !logicalOK || !shiftOK || shiftInst.Result == 0 || logicalInst.Result == 0 {
+		return 0, 0, 0, 0, false, false
 	}
-	shiftOperands, xorOperands := f.InstructionOperands(producer), f.InstructionOperands(consumer)
-	if len(shiftOperands) != 2 || len(xorOperands) != 2 {
-		return 0, 0, false
+	shiftOperands, logicalOperands := f.InstructionOperands(producer), f.InstructionOperands(consumer)
+	if len(shiftOperands) != 2 || len(logicalOperands) != 2 {
+		return 0, 0, 0, 0, false, false
 	}
 	constant := shiftOperands[1].Reg
 	if constant == 0 || int(constant) >= len(f.VRegs) || f.VRegs[constant].Def%6 != 3 {
-		return 0, 0, false
+		return 0, 0, 0, 0, false, false
 	}
 	constantID := f.VRegs[constant].Def / 6
-	if int(constantID) >= len(f.Insts) || SemanticOpcode(f.Insts[constantID].Op) != wasm.InstrI64Const || f.Insts[constantID].Result != constant {
-		return 0, 0, false
+	constantOp := MOpcode(wasm.InstrI32Const)
+	mask := uint64(31)
+	if wide {
+		constantOp, mask = wasm.InstrI64Const, 63
+	}
+	if int(constantID) >= len(f.Insts) || SemanticOpcode(f.Insts[constantID].Op) != constantOp || f.Insts[constantID].Result != constant {
+		return 0, 0, 0, 0, false, false
 	}
 	base = shiftOperands[0].Reg
-	if !((xorOperands[0].Reg == base && xorOperands[1].Reg == shiftInst.Result) || (xorOperands[1].Reg == base && xorOperands[0].Reg == shiftInst.Result)) {
-		return 0, 0, false
+	if !((logicalOperands[0].Reg == base && logicalOperands[1].Reg == shiftInst.Result) || (logicalOperands[1].Reg == base && logicalOperands[0].Reg == shiftInst.Result)) {
+		return 0, 0, 0, 0, false, false
 	}
-	return base, uint8(f.Insts[constantID].Aux & 63), true
+	return base, logical, shift, uint8(f.Insts[constantID].Aux & mask), wide, true
 }

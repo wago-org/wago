@@ -2302,12 +2302,26 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if producerID, ok := nativePostRAProducer(plan, instructionID, railmach.RewriteARM64XorShift); ok && int(producerID) < len(plan.PostRASkip) && plan.PostRASkip[producerID] {
-				base, shift, verified := railmach.ARM64XorShiftImmediate(plan.Machine, producerID, instructionID)
+			if producerID, ok := nativePostRAProducer(plan, instructionID, railmach.RewriteARM64LogicalShift); ok && int(producerID) < len(plan.PostRASkip) && plan.PostRASkip[producerID] {
+				base, logical, shifted, amount, wide, verified := railmach.ARM64LogicalShiftImmediate(plan.Machine, producerID, instructionID)
 				if !verified {
-					return nil, 0, true, fmt.Errorf("RailMach xor-shift rewrite lost its selected shape")
+					return nil, 0, true, fmt.Errorf("RailMach logical-shift rewrite lost its selected shape")
 				}
-				a.Eor64Lsr(reg(instruction.Result), reg(base), reg(base), shift)
+				logicalOp := arm64.LogicalAND
+				switch logical {
+				case wasm.InstrI32Or, wasm.InstrI64Or:
+					logicalOp = arm64.LogicalORR
+				case wasm.InstrI32Xor, wasm.InstrI64Xor:
+					logicalOp = arm64.LogicalEOR
+				}
+				shiftKind := arm64.ShiftLSL
+				switch shifted {
+				case wasm.InstrI32ShrU, wasm.InstrI64ShrU:
+					shiftKind = arm64.ShiftLSR
+				case wasm.InstrI32ShrS, wasm.InstrI64ShrS:
+					shiftKind = arm64.ShiftASR
+				}
+				a.LogicalShifted(reg(instruction.Result), reg(base), reg(base), logicalOp, shiftKind, amount, wide)
 				if metrics != nil {
 					metrics.PostRARewrites++
 				}

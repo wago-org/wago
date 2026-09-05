@@ -1592,8 +1592,8 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 						p.postRASkip[instructionID] = true
 					}
 				}
-			case railmach.RewriteARM64XorShift:
-				if machineTarget == railmach.TargetARM64 && nativeARM64XorShiftRealizable(machine, schedule, allocation, rewrite.First, rewrite.Second) && !p.postRASkip[rewrite.First] && !p.postRASkip[rewrite.Second] {
+			case railmach.RewriteARM64LogicalShift:
+				if machineTarget == railmach.TargetARM64 && nativeARM64LogicalShiftRealizable(machine, schedule, allocation, rewrite.First, rewrite.Second) && !p.postRASkip[rewrite.First] && !p.postRASkip[rewrite.Second] {
 					p.postRASkip[rewrite.First] = true
 				}
 			}
@@ -2515,7 +2515,7 @@ func (p *nativeBackendPlanner) preparePostRAScratch(target railmach.Target, inst
 			if target == railmach.TargetARM64 {
 				needsSkip = true
 			}
-		case railmach.RewriteARM64XorShift:
+		case railmach.RewriteARM64LogicalShift:
 			if target == railmach.TargetARM64 {
 				needsSkip = true
 			}
@@ -2864,7 +2864,7 @@ func nativeARM64RepeatedAddRealizable(machine *railmach.Func, schedule *railmach
 	return lastInstruction.Result != 0 && lastLocation.Kind == railmach.LocationRegister && lastLocation.Bank == railmach.BankGPR && allocation.LocationAt(invariant, lastAt) == invariantLocation
 }
 
-func nativeARM64XorShiftRealizable(machine *railmach.Func, schedule *railmach.Schedule, allocation *railmach.GreedyAllocation, producer, consumer uint32) bool {
+func nativeARM64LogicalShiftRealizable(machine *railmach.Func, schedule *railmach.Schedule, allocation *railmach.GreedyAllocation, producer, consumer uint32) bool {
 	if machine == nil || schedule == nil || allocation == nil || int(producer) >= len(machine.Insts) || int(consumer) >= len(machine.Insts) || int(consumer) >= len(allocation.InstructionPositions) || !planInstructionsAdjacent(schedule, producer, consumer) {
 		return false
 	}

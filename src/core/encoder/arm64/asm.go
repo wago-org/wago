@@ -501,9 +501,37 @@ func (a *Asm) And64(rd, rn, rm Reg) { a.word(0x8A000000 | r(rm)<<16 | r(rn)<<5 |
 func (a *Asm) Orr64(rd, rn, rm Reg) { a.word(0xAA000000 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
 func (a *Asm) Eor64(rd, rn, rm Reg) { a.word(0xCA000000 | r(rm)<<16 | r(rn)<<5 | r(rd)) }
 
+type LogicalOp uint8
+
+const (
+	LogicalAND LogicalOp = iota
+	LogicalORR
+	LogicalEOR
+)
+
+type ShiftKind uint8
+
+const (
+	ShiftLSL ShiftKind = iota
+	ShiftLSR
+	ShiftASR
+)
+
+// LogicalShifted emits the register-shifted form shared by AND, ORR, and EOR.
+func (a *Asm) LogicalShifted(rd, rn, rm Reg, op LogicalOp, kind ShiftKind, shift uint8, wide bool) {
+	word := uint32(0x0A000000) | uint32(op&3)<<29 | uint32(kind&3)<<22 | r(rm)<<16 | r(rn)<<5 | r(rd)
+	if wide {
+		word |= 1 << 31
+		shift &= 63
+	} else {
+		shift &= 31
+	}
+	a.word(word | uint32(shift)<<10)
+}
+
 // Eor64Lsr is Rd = Rn ^ (Rm >> shift).
 func (a *Asm) Eor64Lsr(rd, rn, rm Reg, shift uint8) {
-	a.word(0xCA400000 | r(rm)<<16 | uint32(shift&63)<<10 | r(rn)<<5 | r(rd))
+	a.LogicalShifted(rd, rn, rm, LogicalEOR, ShiftLSR, shift, true)
 }
 
 // --- Variable shifts (LSLV/LSRV/ASRV: shift Rn by Rm mod width) ---
