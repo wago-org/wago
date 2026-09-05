@@ -4,7 +4,7 @@ Measured through 2026-09-05 on native ARM64 and Rosetta AMD64. This is a stoppin
 `jairus/railshot-compile-latency`, comparing:
 
 - Base: `main` at `c46f2129edb52e6f30f4d0bfc5ae105cfde0c84d`
-- Branch implementation through: `85cd9086`
+- Branch implementation through: `96cfd406`
 - Host: Apple M4 Max, macOS 26.6.2, Go 1.26.5, `darwin/arm64`
 
 The AMD64 checkpoint below used the same host through Rosetta. Native Linux
@@ -129,6 +129,35 @@ Additional raw captures are:
 - `/tmp/amd64-validation-payload-esbuild.pprof`
 - `/tmp/amd64-validation-simple-{base.0QO6jX,candidate.bBuMa9}`
 - `/tmp/amd64-validation-simple-confirm-{base.mpzkEA,candidate.JoxoEO}`
+
+### Internal compact-LEB fast path
+
+The byte-backed validator used a different reader from the compiler hint scan.
+Unlike the public reader, its `u32` and `i32` methods still sent even one-byte
+immediates through the full generic LEB loop. The internal reader now consumes
+one-byte unsigned and sign-extended 32-bit immediates directly; multi-byte and
+malformed encodings retain the existing decoder unchanged.
+
+A 12-pair, alternating-order 500 ms Rosetta AMD64 confirmation against the
+immediate predecessor measured **-4.13%** full-compilation geomean across the
+five large modules. Every module was significantly faster: json-as **-4.49%**,
+Lua **-2.74%**, SQLite **-2.72%**, Ruby **-2.93%**, and esbuild **-7.68%**.
+Allocated heap was flat by geomean and allocation counts were exactly flat.
+Generated machine code is unaffected because this changes validation decoding
+only.
+
+A follow-on attempt to bypass `stepDirectOp` for ordinary instructions was
+rejected after its longer confirmation measured only **-0.60%** geomean, with
+three of five modules statistically flat. That duplicated dispatch is not
+present in the branch.
+
+Additional raw captures are:
+
+- `/tmp/amd64-reader-{base.BWWxed,candidate.z8OhQG}`
+- `/tmp/amd64-reader-confirm-{base.8TF6aV,candidate.Ydcc78}`
+- `/tmp/amd64-reader-esbuild.pprof`
+- `/tmp/amd64-direct-step-{base.iapzZq,candidate.bUaf23}`
+- `/tmp/amd64-direct-step-confirm-{base.jBgUPZ,candidate.YfpfpK}`
 
 ## Current result
 
