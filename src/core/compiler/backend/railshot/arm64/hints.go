@@ -1002,7 +1002,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					s.h.flags.set(hintHasStackSinkFusion)
 				}
 			}
-			s.h.addStackArenaDiscount(stackAlgebraicDiscountOpcode(op, prevOp, prevPrevOp, prevIndex, prevPrevIndex, prevConst, prevConstOK))
+			if prevConstOK || prevOp == 0x20 || prevOp == 0x84 {
+				s.h.addStackArenaDiscount(stackAlgebraicDiscountOpcode(op, prevOp, prevPrevOp, prevIndex, prevPrevIndex, prevConst, prevConstOK))
+			}
 			prevPrevOp, prevPrevIndex = prevOp, prevIndex
 			prevOp, prevIndex = op, curIndex
 			prevConst, prevConstOK = curConst, curConstOK
