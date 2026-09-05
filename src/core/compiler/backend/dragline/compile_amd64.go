@@ -1059,6 +1059,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64If, railmach.OpAMD64Br, railmach.OpAMD64BrIf, railmach.OpAMD64BrTable, railmach.OpAMD64Return, railmach.OpAMD64Unreachable,
 			railmach.OpAMD64Call, railmach.OpAMD64CallIndirect,
 			railmach.OpAMD64RefNull, railmach.OpAMD64RefFunc, railmach.OpAMD64RefIsNull, railmach.OpAMD64RefEq, railmach.OpAMD64RefAsNonNull,
+			railmach.OpAMD64RefI31, railmach.OpAMD64I31GetS, railmach.OpAMD64I31GetU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -3552,7 +3553,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrRefI31 {
+			if semanticOp == wasm.InstrRefI31 {
 				if dst != lhs {
 					a.MovReg64(dst, lhs)
 				}
@@ -3560,7 +3561,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.AluRI(1, dst, 1, false)
 				continue
 			}
-			if instruction.Op == wasm.InstrI31GetS || instruction.Op == wasm.InstrI31GetU {
+			if semanticOp == wasm.InstrI31GetS || semanticOp == wasm.InstrI31GetU {
 				a.TestSelf(lhs, true)
 				nonNull := a.JccPlaceholder(amd64.CondNE)
 				metadata.recordTrap(a.Len(), wasmOffset, 16)
@@ -3570,7 +3571,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.MovReg64(dst, lhs)
 				}
 				shift := byte(5)
-				if instruction.Op == wasm.InstrI31GetS {
+				if semanticOp == wasm.InstrI31GetS {
 					shift = 7
 				}
 				a.ShiftImm(shift, dst, 1, false)

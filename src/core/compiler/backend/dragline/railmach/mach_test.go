@@ -1069,6 +1069,39 @@ func TestSelectTargetOpcodesReferencePrimitives(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesI31Primitives(t *testing.T) {
+	operations := []struct {
+		generic MOpcode
+		input   wasm.ValType
+		result  wasm.ValType
+		body    []byte
+		amd64   MOpcode
+		arm64   MOpcode
+	}{
+		{wasm.InstrRefI31, wasm.I32, wasm.I31Ref, []byte{0x20, 0, 0xfb, 0x1c, 0x0b}, OpAMD64RefI31, OpARM64RefI31},
+		{wasm.InstrI31GetS, wasm.I31Ref, wasm.I32, []byte{0x20, 0, 0xfb, 0x1d, 0x0b}, OpAMD64I31GetS, OpARM64I31GetS},
+		{wasm.InstrI31GetU, wasm.I31Ref, wasm.I32, []byte{0x20, 0, 0xfb, 0x1e, 0x0b}, OpAMD64I31GetU, OpARM64I31GetU},
+	}
+	for _, target := range []Target{TargetAMD64, TargetARM64} {
+		t.Run(target.String(), func(t *testing.T) {
+			for _, operation := range operations {
+				f := buildMachineTest(t, target, machineModule([]wasm.ValType{operation.input}, []wasm.ValType{operation.result}, operation.body))
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := operation.amd64
+				if target == TargetARM64 {
+					want = operation.arm64
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != want || SemanticOpcode(f.Insts[0].Op) != operation.generic {
+					t.Fatalf("%s selected instructions = %#v, count %d, want %d", operation.generic, f.Insts, count, want)
+				}
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesRefFunc(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(

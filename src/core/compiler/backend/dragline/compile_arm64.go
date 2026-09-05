@@ -1134,6 +1134,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64If, railmach.OpARM64Br, railmach.OpARM64BrIf, railmach.OpARM64BrTable, railmach.OpARM64Return, railmach.OpARM64Unreachable,
 			railmach.OpARM64Call, railmach.OpARM64CallIndirect,
 			railmach.OpARM64RefNull, railmach.OpARM64RefFunc, railmach.OpARM64RefIsNull, railmach.OpARM64RefEq, railmach.OpARM64RefAsNonNull,
+			railmach.OpARM64RefI31, railmach.OpARM64I31GetS, railmach.OpARM64I31GetU,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -4658,14 +4659,14 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrRefI31 {
+			if semanticOp == wasm.InstrRefI31 {
 				a.LslImm(dst, lhs, 1, true)
 				if !a.OrrImm32(dst, dst, 1) {
 					return nil, 0, true, fmt.Errorf("RailMach ref.i31 tag is not encodable")
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrI31GetS || instruction.Op == wasm.InstrI31GetU {
+			if semanticOp == wasm.InstrI31GetS || semanticOp == wasm.InstrI31GetU {
 				a.CmpImm64(lhs, 0)
 				nonNull := a.Bcond(arm64.CondNE)
 				metadata.recordTrap(a.Len(), wasmOffset, 16)
@@ -4673,7 +4674,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				if !a.PatchBranch19(nonNull, a.Len()) {
 					return nil, 0, true, fmt.Errorf("RailMach i31.get branch is out of range")
 				}
-				if instruction.Op == wasm.InstrI31GetS {
+				if semanticOp == wasm.InstrI31GetS {
 					a.AsrImm(dst, lhs, 1, true)
 				} else {
 					a.LsrImm(dst, lhs, 1, true)
