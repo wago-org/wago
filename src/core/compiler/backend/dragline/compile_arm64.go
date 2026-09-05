@@ -999,7 +999,10 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64I64x2LtS, railmach.OpARM64I64x2GtS, railmach.OpARM64I64x2LeS, railmach.OpARM64I64x2GeS,
 			railmach.OpARM64I8x16LtU, railmach.OpARM64I8x16GtU, railmach.OpARM64I8x16LeU, railmach.OpARM64I8x16GeU,
 			railmach.OpARM64I16x8LtU, railmach.OpARM64I16x8GtU, railmach.OpARM64I16x8LeU, railmach.OpARM64I16x8GeU,
-			railmach.OpARM64I32x4LtU, railmach.OpARM64I32x4GtU, railmach.OpARM64I32x4LeU, railmach.OpARM64I32x4GeU:
+			railmach.OpARM64I32x4LtU, railmach.OpARM64I32x4GtU, railmach.OpARM64I32x4LeU, railmach.OpARM64I32x4GeU,
+			railmach.OpARM64I16x8Shl, railmach.OpARM64I16x8ShrS, railmach.OpARM64I16x8ShrU,
+			railmach.OpARM64I32x4Shl, railmach.OpARM64I32x4ShrS, railmach.OpARM64I32x4ShrU,
+			railmach.OpARM64I64x2Shl, railmach.OpARM64I64x2ShrU:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3453,7 +3456,10 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				railmach.OpARM64I64x2LtS, railmach.OpARM64I64x2GtS, railmach.OpARM64I64x2LeS, railmach.OpARM64I64x2GeS,
 				railmach.OpARM64I8x16LtU, railmach.OpARM64I8x16GtU, railmach.OpARM64I8x16LeU, railmach.OpARM64I8x16GeU,
 				railmach.OpARM64I16x8LtU, railmach.OpARM64I16x8GtU, railmach.OpARM64I16x8LeU, railmach.OpARM64I16x8GeU,
-				railmach.OpARM64I32x4LtU, railmach.OpARM64I32x4GtU, railmach.OpARM64I32x4LeU, railmach.OpARM64I32x4GeU:
+				railmach.OpARM64I32x4LtU, railmach.OpARM64I32x4GtU, railmach.OpARM64I32x4LeU, railmach.OpARM64I32x4GeU,
+				railmach.OpARM64I16x8Shl, railmach.OpARM64I16x8ShrS, railmach.OpARM64I16x8ShrU,
+				railmach.OpARM64I32x4Shl, railmach.OpARM64I32x4ShrS, railmach.OpARM64I32x4ShrU,
+				railmach.OpARM64I64x2Shl, railmach.OpARM64I64x2ShrU:
 				if len(operands) != 2 {
 					return nil, 0, true, fmt.Errorf("RailMach selected vector binary operand count is %d", len(operands))
 				}
@@ -3561,6 +3567,48 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					a.NeonCmhsS(dst, rhs, lhs)
 				case railmach.OpARM64I32x4GeU:
 					a.NeonCmhsS(dst, lhs, rhs)
+				case railmach.OpARM64I16x8Shl, railmach.OpARM64I16x8ShrS, railmach.OpARM64I16x8ShrU,
+					railmach.OpARM64I32x4Shl, railmach.OpARM64I32x4ShrS, railmach.OpARM64I32x4ShrU,
+					railmach.OpARM64I64x2Shl, railmach.OpARM64I64x2ShrU:
+					mask := uint64(15)
+					if instruction.Op != railmach.OpARM64I16x8Shl && instruction.Op != railmach.OpARM64I16x8ShrS && instruction.Op != railmach.OpARM64I16x8ShrU {
+						mask = 31
+						if instruction.Op == railmach.OpARM64I64x2Shl || instruction.Op == railmach.OpARM64I64x2ShrU {
+							mask = 63
+						}
+					}
+					a.AndImm64(arm64.X16, rhs, mask)
+					right := instruction.Op == railmach.OpARM64I16x8ShrS || instruction.Op == railmach.OpARM64I16x8ShrU ||
+						instruction.Op == railmach.OpARM64I32x4ShrS || instruction.Op == railmach.OpARM64I32x4ShrU || instruction.Op == railmach.OpARM64I64x2ShrU
+					if right {
+						a.Sub64(arm64.X16, arm64.XZR, arm64.X16)
+					}
+					switch instruction.Op {
+					case railmach.OpARM64I16x8Shl, railmach.OpARM64I16x8ShrS, railmach.OpARM64I16x8ShrU:
+						a.NeonDupGprH(24, arm64.X16)
+					case railmach.OpARM64I32x4Shl, railmach.OpARM64I32x4ShrS, railmach.OpARM64I32x4ShrU:
+						a.NeonDupGprS(24, arm64.X16)
+					default:
+						a.NeonDupGprD(24, arm64.X16)
+					}
+					switch instruction.Op {
+					case railmach.OpARM64I16x8Shl:
+						a.NeonUshlH(dst, lhs, 24)
+					case railmach.OpARM64I16x8ShrS:
+						a.NeonSshrvH(dst, lhs, 24)
+					case railmach.OpARM64I16x8ShrU:
+						a.NeonUshrvH(dst, lhs, 24)
+					case railmach.OpARM64I32x4Shl:
+						a.NeonUshlS(dst, lhs, 24)
+					case railmach.OpARM64I32x4ShrS:
+						a.NeonSshrvS(dst, lhs, 24)
+					case railmach.OpARM64I32x4ShrU:
+						a.NeonUshrvS(dst, lhs, 24)
+					case railmach.OpARM64I64x2Shl:
+						a.NeonUshlD(dst, lhs, 24)
+					default:
+						a.NeonUshrvD(dst, lhs, 24)
+					}
 				}
 				switch instruction.Op {
 				case railmach.OpARM64I8x16Ne, railmach.OpARM64I16x8Ne, railmach.OpARM64I32x4Ne, railmach.OpARM64I64x2Ne:

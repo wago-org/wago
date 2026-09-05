@@ -932,7 +932,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I64x2LtS, railmach.OpAMD64I64x2GtS, railmach.OpAMD64I64x2LeS, railmach.OpAMD64I64x2GeS,
 			railmach.OpAMD64I8x16LtU, railmach.OpAMD64I8x16GtU, railmach.OpAMD64I8x16LeU, railmach.OpAMD64I8x16GeU,
 			railmach.OpAMD64I16x8LtU, railmach.OpAMD64I16x8GtU, railmach.OpAMD64I16x8LeU, railmach.OpAMD64I16x8GeU,
-			railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GtU, railmach.OpAMD64I32x4LeU, railmach.OpAMD64I32x4GeU:
+			railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GtU, railmach.OpAMD64I32x4LeU, railmach.OpAMD64I32x4GeU,
+			railmach.OpAMD64I16x8Shl, railmach.OpAMD64I16x8ShrS, railmach.OpAMD64I16x8ShrU,
+			railmach.OpAMD64I32x4Shl, railmach.OpAMD64I32x4ShrS, railmach.OpAMD64I32x4ShrU,
+			railmach.OpAMD64I64x2Shl, railmach.OpAMD64I64x2ShrU:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2240,7 +2243,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				railmach.OpAMD64I64x2LtS, railmach.OpAMD64I64x2GtS, railmach.OpAMD64I64x2LeS, railmach.OpAMD64I64x2GeS,
 				railmach.OpAMD64I8x16LtU, railmach.OpAMD64I8x16GtU, railmach.OpAMD64I8x16LeU, railmach.OpAMD64I8x16GeU,
 				railmach.OpAMD64I16x8LtU, railmach.OpAMD64I16x8GtU, railmach.OpAMD64I16x8LeU, railmach.OpAMD64I16x8GeU,
-				railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GtU, railmach.OpAMD64I32x4LeU, railmach.OpAMD64I32x4GeU:
+				railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GtU, railmach.OpAMD64I32x4LeU, railmach.OpAMD64I32x4GeU,
+				railmach.OpAMD64I16x8Shl, railmach.OpAMD64I16x8ShrS, railmach.OpAMD64I16x8ShrU,
+				railmach.OpAMD64I32x4Shl, railmach.OpAMD64I32x4ShrS, railmach.OpAMD64I32x4ShrU,
+				railmach.OpAMD64I64x2Shl, railmach.OpAMD64I64x2ShrU:
 				if len(operands) != 2 {
 					return nil, 0, true, fmt.Errorf("RailMach selected vector binary operand count is %d", len(operands))
 				}
@@ -2328,6 +2334,37 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						a.VPcmpgtd(dst, 5, dst)
 					default:
 						a.VPcmpgtd(dst, dst, 5)
+					}
+				case railmach.OpAMD64I16x8Shl, railmach.OpAMD64I16x8ShrS, railmach.OpAMD64I16x8ShrU,
+					railmach.OpAMD64I32x4Shl, railmach.OpAMD64I32x4ShrS, railmach.OpAMD64I32x4ShrU,
+					railmach.OpAMD64I64x2Shl, railmach.OpAMD64I64x2ShrU:
+					mask := int32(15)
+					if instruction.Op != railmach.OpAMD64I16x8Shl && instruction.Op != railmach.OpAMD64I16x8ShrS && instruction.Op != railmach.OpAMD64I16x8ShrU {
+						mask = 31
+						if instruction.Op == railmach.OpAMD64I64x2Shl || instruction.Op == railmach.OpAMD64I64x2ShrU {
+							mask = 63
+						}
+					}
+					a.MovReg32(amd64.R11, rhs)
+					a.AluRI(4, amd64.R11, mask, false)
+					a.MovGprToXmm(5, amd64.R11, true)
+					switch instruction.Op {
+					case railmach.OpAMD64I16x8Shl:
+						a.VPsllw(dst, lhs, 5)
+					case railmach.OpAMD64I16x8ShrS:
+						a.VPsraw(dst, lhs, 5)
+					case railmach.OpAMD64I16x8ShrU:
+						a.VPsrlw(dst, lhs, 5)
+					case railmach.OpAMD64I32x4Shl:
+						a.VPslld(dst, lhs, 5)
+					case railmach.OpAMD64I32x4ShrS:
+						a.VPsrad(dst, lhs, 5)
+					case railmach.OpAMD64I32x4ShrU:
+						a.VPsrld(dst, lhs, 5)
+					case railmach.OpAMD64I64x2Shl:
+						a.VPsllq(dst, lhs, 5)
+					default:
+						a.VPsrlq(dst, lhs, 5)
 					}
 				}
 				switch instruction.Op {
