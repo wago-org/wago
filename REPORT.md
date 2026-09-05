@@ -4,7 +4,7 @@ Measured 2026-09-04 on native ARM64. This is a stopping-point report for
 `jairus/railshot-compile-latency`, comparing:
 
 - Base: `main` at `c46f2129edb52e6f30f4d0bfc5ae105cfde0c84d`
-- Branch: `e5b2431a20a77458ad3cc2a8d0b1a02fc2f0ae4b`
+- Branch: `2df5838cef1349eda176200e93b09c6ae93bc02b`
 - Host: Apple M4 Max, macOS 26.6.2, Go 1.26.5, `darwin/arm64`
 
 ## Current result
@@ -22,6 +22,16 @@ Measured 2026-09-04 on native ARM64. This is a stopping-point report for
 | Generated ARM64 machine-code bytes | **0.00%**; exact size match on every corpus module |
 | Execution latency, executable-corpus geomean | **+0.23%** |
 | Execution allocations | **0 B/op, 0 allocs/op** on both revisions |
+
+The complete aggregate above was measured at implementation commit `e5b2431a`.
+Current HEAD adds one code-neutral ARM64 scanner change measured separately
+against that checkpoint: **-0.54% backend compile-latency geomean** across
+json-as, Lua, SQLite, Ruby, and esbuild, with all five medians improving. The
+focused sparse-global hint scan improved from a 100.0 us median to 96.2 us
+(**-3.8%**), while the sparse-local scan and allocation counts were flat. A
+fresh complete-corpus machine-code check at current HEAD matched every module
+and worker setting exactly. Execution was therefore not rerun for this
+compiler-only dispatch change.
 
 The strongest and most stable result is on large real modules. End-to-end
 compile latency is 19.6-24.8% lower on Lua, SQLite, Ruby, and esbuild.
@@ -147,8 +157,8 @@ binary layout.
 
 ## Retained changes
 
-The branch has 16 commits over `main`, including this report, and 15 retained
-implementation changes:
+The branch has 18 commits over `main`, including two report checkpoints, and 16
+retained implementation changes:
 
 1. Faster ARM64 byte-backed hint decoding.
 2. Separation of opt-in statistics from inline reports.
@@ -165,11 +175,12 @@ implementation changes:
 13. Hoisted ARM64 hint-path weighting.
 14. Table-driven validation instruction facts.
 15. Skipped irrelevant ARM64 hint-discount classification.
+16. Direct ARM64 hint-boundary classification in the opcode dispatch.
 
 Implementation source delta, excluding this report:
 
 ```text
-35 files changed, 1,934 insertions, 281 deletions
+35 files changed, 1,986 insertions, 300 deletions
 ```
 
 The larger source increase is primarily validation-analysis structure, tests,
@@ -192,6 +203,8 @@ These were measured and removed rather than retained speculatively:
 | Heavy-first scheduling | -0.04%; below measurement value |
 | Validation-to-hints fusion | Exact hint and code parity, but +0.20% full-compile latency geomean, +0.53% heap, and +1.33% esbuild latency (p=0.015, n=8); bounded per-function fallback and packed shared headers could not make the extra validation state pay for the removed scan |
 | Bitmask stack-flow terminator classification | Short run looked positive; 500 ms x 8 confirmation reversed to +0.90% geomean and +1.28% SQLite (p=0.005) |
+| Specialized scalar load/store encoder helpers | -0.43% in the first interleaved run, but no individual workload was significant; an unchecked scaled-encoding variant regressed by +0.74%, so the extra surface was removed |
+| Cached memory-zero address width and module type lookup | Short samples were noisy; the expanded cache regressed the focused geomean by +0.98% and Ruby by +1.35% (p=0.028), so it was removed |
 
 ## Method
 
@@ -214,13 +227,15 @@ intentionally not checked into the repository.
 
 ## Next ARM64 work
 
-The remaining structural ceiling is dominated by native output stores;
-`Asm.word` accounts for roughly 55% of the current large-module backend profile
-and already lowers to a single store. Validation direct-op decoding and the
-ARM64 hint walk are the next visible consumers. A complete validation-to-hints
-fusion was implemented and rejected because it increased latency and heap, so
-the next work should remain narrow and profile-led rather than retaining more
-summary state.
+With inlining disabled in the current large-module profile, scalar memory
+lowering is the largest visible family: `fn.ldst` is 20.58% flat and
+`memAddr` is 24.85% cumulative. The byte-backed hint scanner is 10.29%
+cumulative, and immediate materialization remains visible at 5.83% flat.
+Simple load/store helper specialization, unchecked scaled encoders, and module
+memory-type caches did not clear the retention gate. A complete
+validation-to-hints fusion was also implemented and rejected because it
+increased latency and heap, so the next work should remain narrow and
+profile-led rather than retaining more summary state.
 
 The near-term acceptance gates are:
 
