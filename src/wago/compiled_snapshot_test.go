@@ -3,6 +3,7 @@ package wago
 import (
 	"bytes"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -322,5 +323,48 @@ func BenchmarkCompiledSnapshotCopy(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		benchCompiledSink = cloneCompiledMetadata(c)
+	}
+}
+
+func TestHandBuiltCompiledConcurrentFirstUse(t *testing.T) {
+	owner := MustCompile(benchAddOneModule())
+	defer owner.Close()
+	c := *owner
+	c.codeCache, c.validateMemo = nil, nil
+	defer c.Close()
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for worker := 0; worker < 16; worker++ {
+		wg.Add(1)
+		go func(worker int) {
+			defer wg.Done()
+			<-start
+			for i := 0; i < 16; i++ {
+				if worker%2 == 0 {
+					in, err := Instantiate(&c)
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					if result, err := in.Invoke("f", I32(41)); err != nil || len(result) != 1 || result[0] != 42 {
+						t.Errorf("result=%v error=%v", result, err)
+					}
+					if err := in.Close(); err != nil {
+						t.Error(err)
+					}
+				} else {
+					if _, _, err := c.SignatureDescriptor("f"); err != nil {
+						t.Error(err)
+						return
+					}
+					c.CodeSize()
+				}
+			}
+		}(worker)
+	}
+	close(start)
+	wg.Wait()
+	if c.loadValidateMemo().executionView() == nil {
+		t.Fatal("first use did not publish an execution snapshot")
 	}
 }

@@ -638,8 +638,8 @@ func (c *Compiled) importModuleEndSections() (functions, tables, memories, tags 
 		return nil, nil, nil, nil, false
 	}
 	var ends []uint64
-	if c.validateMemo != nil {
-		ends = c.validateMemo.importModuleEnds
+	if memo := c.loadValidateMemo(); memo != nil {
+		ends = memo.importModuleEnds
 	}
 	functionCount := len(c.Imports)
 	tableCount := c.tableImportCount()
@@ -666,13 +666,14 @@ func (c *Compiled) appendImportModuleEnd(moduleEnd uint64) {
 }
 
 func (c *Compiled) validateImportModuleEnds() error {
-	if c == nil || c.validateMemo == nil || len(c.validateMemo.importModuleEnds) == 0 {
+	memo := c.loadValidateMemo()
+	if memo == nil || len(memo.importModuleEnds) == 0 {
 		return nil
 	}
 	functionEnds, tableEnds, memoryEnds, tagEnds, exact := c.importModuleEndSections()
 	if !exact {
 		want := len(c.Imports) + c.tableImportCount() + c.memoryImportCount() + c.tagImportCount()
-		return fmt.Errorf("compiled metadata invalid: import module-name ends length %d != non-global import count %d", len(c.validateMemo.importModuleEnds), want)
+		return fmt.Errorf("compiled metadata invalid: import module-name ends length %d != non-global import count %d", len(memo.importModuleEnds), want)
 	}
 	for i, key := range c.Imports {
 		if err := validateImportModuleEnd(key, functionEnds[i]); err != nil {

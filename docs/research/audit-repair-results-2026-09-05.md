@@ -78,6 +78,19 @@ implicit and explicit cases each use 968 B/op and 6 allocations. Captures are in
 `type-slabs-after.txt`. The allocation/retention tradeoff is explicit here because
 reducing unused storage does not reduce every benchmark's allocation count.
 
+## Concurrent first publication
+
+Cache pointers use atomic first publication; the cache lock serializes memo and
+snapshot construction. Readers acquire memo/snapshot pointers, including
+reflection sidecars. Raw pointer fields keep Compiled copyable and retain the
+existing compiler-owner allocation. A losing cache CAS allocates only a small
+cache candidate, never a competing metadata clone.
+
+A fresh hand-built Compiled now passes concurrent instantiation, invocation,
+signature reflection, and CodeSize under `-race`. Focused Compiled/snapshot/code
+ownership tests pass. Snapshot-copy and call-control measurements are in
+`snapshot-publication.txt`; the separate pre-clone quota repair is still pending.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.

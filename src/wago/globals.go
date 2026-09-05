@@ -1191,11 +1191,12 @@ type validateMemo struct {
 // once per compiler-produced Compiled and every time for a hand-constructed one.
 func (c *Compiled) validateCached() error {
 	c = c.executionView()
-	if c == nil || c.validateMemo == nil {
+	memo := c.loadValidateMemo()
+	if memo == nil {
 		return c.validate()
 	}
-	c.validateMemo.once.Do(func() { c.validateMemo.err = c.validate() })
-	return c.validateMemo.err
+	memo.once.Do(func() { memo.err = c.validate() })
+	return memo.err
 }
 
 // memorySizeBytes returns the initial and maximum (grow ceiling) linear-memory

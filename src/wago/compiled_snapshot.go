@@ -3,6 +3,8 @@ package wago
 import (
 	"fmt"
 	"slices"
+	"sync/atomic"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
@@ -18,19 +20,28 @@ func (c *Compiled) freezeExecution() *Compiled {
 	c.ensureCodeCache()
 	c.codeCache.mu.Lock()
 	defer c.codeCache.mu.Unlock()
-	if c.validateMemo == nil {
-		c.validateMemo = &validateMemo{}
+	memo := c.loadValidateMemo()
+	if memo == nil {
+		memo = &validateMemo{}
+		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.validateMemo)), unsafe.Pointer(memo))
 	}
-	if c.validateMemo.execution == nil {
+	if memo.executionView() == nil {
 		snapshot := cloneCompiledMetadata(c)
-		c.validateMemo.execution = snapshot
+		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&memo.execution)), unsafe.Pointer(snapshot))
 	}
-	return c.validateMemo.execution
+	return memo.executionView()
+}
+
+func (memo *validateMemo) executionView() *Compiled {
+	if memo == nil {
+		return nil
+	}
+	return (*Compiled)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&memo.execution))))
 }
 
 func (c *Compiled) executionView() *Compiled {
-	if c != nil && c.validateMemo != nil && c.validateMemo.execution != nil {
-		return c.validateMemo.execution
+	if snapshot := c.loadValidateMemo().executionView(); snapshot != nil {
+		return snapshot
 	}
 	return c
 }

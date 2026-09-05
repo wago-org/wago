@@ -5,6 +5,8 @@ import (
 	goruntime "runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"unsafe"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
 )
@@ -109,7 +111,7 @@ func installCompiledFinalizer(c *Compiled) *Compiled {
 }
 
 func (c *Compiled) setGCRootAdmissionFailure(diagnostic string) {
-	if c == nil || c.codeCache == nil || diagnostic == "" {
+	if c == nil || c.loadCodeCache() == nil || diagnostic == "" {
 		return
 	}
 	code := compiledCodeCacheFlags(15)
@@ -139,7 +141,7 @@ func (c *Compiled) setGCRootAdmissionFailure(diagnostic string) {
 }
 
 func (c *Compiled) gcRootAdmissionFailure() string {
-	if c == nil || c.codeCache == nil {
+	if c == nil || c.loadCodeCache() == nil {
 		return "native root admission metadata is unavailable"
 	}
 	switch (c.codeCache.flags & compiledCacheGCRootFailureMask) >> compiledCacheGCRootFailureShift {
@@ -171,21 +173,21 @@ func (c *Compiled) gcRootAdmissionFailure() string {
 }
 
 func (c *Compiled) usesDynamicFuncRefTest() bool {
-	return c != nil && c.codeCache != nil && c.codeCache.flags&compiledCacheDynamicFuncRefTest != 0
+	return c != nil && c.loadCodeCache() != nil && c.codeCache.flags&compiledCacheDynamicFuncRefTest != 0
 }
 
 func (c *Compiled) usesAtomicWaitHelpers() bool {
-	return c != nil && c.codeCache != nil && c.codeCache.flags&compiledCacheAtomicWaitHelpers != 0
+	return c != nil && c.loadCodeCache() != nil && c.codeCache.flags&compiledCacheAtomicWaitHelpers != 0
 }
 
 func (c *Compiled) prefersGuardMemory() bool {
-	return c != nil && c.codeCache != nil && c.codeCache.flags&compiledCacheGuardMemory != 0
+	return c != nil && c.loadCodeCache() != nil && c.codeCache.flags&compiledCacheGuardMemory != 0
 }
 
 const compiledStagedFeatureMask CoreFeatures = 1<<32 - 1
 
 func (c *Compiled) stagedFeatures() CoreFeatures {
-	if c == nil || c.codeCache == nil {
+	if c == nil || c.loadCodeCache() == nil {
 		return 0
 	}
 	return c.codeCache.stagedFeatures & compiledStagedFeatureMask
@@ -199,18 +201,18 @@ func (c *compiledCodeCache) setNativeStackBytes(stackBytes uint64) {
 }
 
 func (c *Compiled) nativeStackBytes() uint64 {
-	if c == nil || c.codeCache == nil {
+	if c == nil || c.loadCodeCache() == nil {
 		return 0
 	}
 	return uint64(c.codeCache.stagedFeatures >> 32)
 }
 
 func (c *Compiled) collectorFreeStructuralMetadata() bool {
-	return c != nil && c.codeCache != nil && c.codeCache.gcMetadataFlags&compiledGCMetadataCollectorFreeStructural != 0
+	return c != nil && c.loadCodeCache() != nil && c.codeCache.gcMetadataFlags&compiledGCMetadataCollectorFreeStructural != 0
 }
 
 func (c *Compiled) stagedGCTypeSubtypingProduct() stagedGCTypeSubtypingProduct {
-	if c == nil || c.codeCache == nil {
+	if c == nil || c.loadCodeCache() == nil {
 		return 0
 	}
 	return c.codeCache.gcTypeSubtypingProduct
@@ -225,18 +227,18 @@ func (c *Compiled) usesGCArrayHelpers() bool {
 }
 
 func (c *Compiled) collectorFreeGCArrayMetadata() bool {
-	return c != nil && c.codeCache != nil && c.codeCache.gcMetadataFlags&compiledGCMetadataCollectorFreeArray != 0
+	return c != nil && c.loadCodeCache() != nil && c.codeCache.gcMetadataFlags&compiledGCMetadataCollectorFreeArray != 0
 }
 
 func (c *Compiled) stagedGCStructProduct() stagedGCStructProduct {
-	if c == nil || c.codeCache == nil {
+	if c == nil || c.loadCodeCache() == nil {
 		return 0
 	}
 	return c.codeCache.gcStructProduct
 }
 
 func (c *Compiled) stagedGCArrayProduct() stagedGCArrayProduct {
-	if c == nil || c.codeCache == nil {
+	if c == nil || c.loadCodeCache() == nil {
 		return 0
 	}
 	return c.codeCache.gcArrayProduct
@@ -326,7 +328,7 @@ func (c *Compiled) needsNativeGCABI() bool {
 }
 
 func (c *Compiled) nativeGCABIRequirement() uint32 {
-	if c == nil || c.codeCache == nil {
+	if c == nil || c.loadCodeCache() == nil {
 		return 0
 	}
 	return uint32(c.codeCache.gcMetadataFlags&compiledGCMetadataNativeABIMask) >> compiledGCMetadataNativeABIShift
@@ -448,8 +450,8 @@ func (c *Compiled) genericGCFrameRoots() *compiledGCFrameRoots {
 	if c == nil {
 		return nil
 	}
-	if c.validateMemo != nil && c.validateMemo.gcFrameRoots != nil {
-		return c.validateMemo.gcFrameRoots
+	if memo := c.loadValidateMemo(); memo != nil && memo.gcFrameRoots != nil {
+		return memo.gcFrameRoots
 	}
 	// A module with no local functions cannot have a parked native Wasm frame.
 	// Its exact root set is therefore empty. Keep the collector-domain admission
@@ -499,15 +501,32 @@ func (c *Compiled) genericGCBoundaryCollectionSafe() bool {
 }
 
 func (c *Compiled) stagedGCI31Product() stagedGCI31Product {
-	if c == nil || c.codeCache == nil {
+	if c == nil || c.loadCodeCache() == nil {
 		return 0
 	}
 	return c.codeCache.gcI31Product
 }
 
+// Raw pointer fields keep Compiled copyable; all lazy publication uses atomics.
+// Compiler and codec construction may write them directly before publication.
+func (c *Compiled) loadCodeCache() *compiledCodeCache {
+	if c == nil {
+		return nil
+	}
+	return (*compiledCodeCache)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.codeCache))))
+}
+
+func (c *Compiled) loadValidateMemo() *validateMemo {
+	if c == nil {
+		return nil
+	}
+	return (*validateMemo)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.validateMemo))))
+}
+
 func (c *Compiled) ensureCodeCache() {
-	if c != nil && c.codeCache == nil {
-		c.codeCache = &compiledCodeCache{}
+	if c != nil && c.loadCodeCache() == nil {
+		cache := &compiledCodeCache{}
+		atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&c.codeCache)), nil, unsafe.Pointer(cache))
 	}
 }
 
@@ -593,7 +612,7 @@ func (c *Compiled) acquireCode() (uintptr, error) {
 }
 
 func (c *Compiled) releaseCode() {
-	cc := c.codeCache
+	cc := c.loadCodeCache()
 	if cc == nil {
 		return
 	}
@@ -619,7 +638,7 @@ func (c *Compiled) releaseCode() {
 // Reuse is allowed before instantiation, but a receiver with live instances
 // remains their code owner and cannot be replaced.
 func (c *Compiled) replaceDecoded(decoded Compiled) error {
-	if cc := c.codeCache; cc != nil {
+	if cc := c.loadCodeCache(); cc != nil {
 		cc.mu.Lock()
 		if cc.refs != 0 {
 			cc.mu.Unlock()
