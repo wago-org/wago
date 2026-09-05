@@ -283,9 +283,6 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 	if stackHasV128Value(stack) || stackHasSIMDInstruction(stack) {
 		return railMachV128FoundationCandidate(stack)
 	}
-	if stack.HasV128 && len(stack.BranchCasts) != 0 {
-		return false
-	}
 	if stack.HasReferences {
 		return true
 	}
@@ -297,59 +294,7 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 			return true
 		}
 	}
-	// The established structured emitter has stronger lowering for the common
-	// arithmetic/control loop shapes. RailMach is already faster for the target
-	// operations below, whose structured lowering otherwise falls behind the
-	// baseline. Keep this opcode policy explicit and source-derived: it applies to
-	// arbitrary verified functions and is not keyed to a benchmark identity.
-	loopNeedsRailMach := false
-	loopI32Eqz := 0
-	loopHasWrap, loopHasI32And, loopHasReinterpret := false, false, false
-	loopHasSaturatingConversion, loopHasBulkMemory := false, false
 	for _, instruction := range stack.Instrs {
-		if stack.MaxLoopDepth != 0 {
-			loopHasWrap = loopHasWrap || instruction.Kind == wasm.InstrI32WrapI64
-			loopHasI32And = loopHasI32And || instruction.Kind == wasm.InstrI32And
-			loopHasReinterpret = loopHasReinterpret || instruction.Kind == wasm.InstrI32ReinterpretF32 || instruction.Kind == wasm.InstrI64ReinterpretF64 || instruction.Kind == wasm.InstrF32ReinterpretI32 || instruction.Kind == wasm.InstrF64ReinterpretI64
-			loopHasSaturatingConversion = loopHasSaturatingConversion || instruction.Kind >= wasm.InstrI32TruncSatF32S && instruction.Kind <= wasm.InstrI64TruncSatF64U
-			loopHasBulkMemory = loopHasBulkMemory || instruction.Kind == wasm.InstrMemoryCopy || instruction.Kind == wasm.InstrMemoryFill
-			if instruction.Kind == wasm.InstrI32Eqz {
-				loopI32Eqz++
-			}
-			switch instruction.Kind {
-			case wasm.InstrI64Eqz,
-				wasm.InstrI64Add, wasm.InstrI64Mul,
-				wasm.InstrI64Load, wasm.InstrI64Store,
-				wasm.InstrGlobalGet, wasm.InstrGlobalSet,
-				wasm.InstrF32Sqrt, wasm.InstrF64Sqrt,
-				wasm.InstrF32ConvertI32S, wasm.InstrF32ConvertI32U,
-				wasm.InstrF32ConvertI64S, wasm.InstrF32ConvertI64U,
-				wasm.InstrF64ConvertI32S, wasm.InstrF64ConvertI32U,
-				wasm.InstrF64ConvertI64S, wasm.InstrF64ConvertI64U,
-				wasm.InstrI32Extend8S, wasm.InstrI32Extend16S,
-				wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S,
-				wasm.InstrF32Eq, wasm.InstrF64Eq, wasm.InstrF32Ne, wasm.InstrF64Ne,
-				wasm.InstrF32Lt, wasm.InstrF64Lt, wasm.InstrF32Gt, wasm.InstrF64Gt,
-				wasm.InstrF32Le, wasm.InstrF64Le, wasm.InstrF32Ge, wasm.InstrF64Ge,
-				wasm.InstrI32Eq, wasm.InstrI64Eq, wasm.InstrI32Ne, wasm.InstrI64Ne,
-				wasm.InstrI32LtS, wasm.InstrI64LtS, wasm.InstrI32LtU, wasm.InstrI64LtU,
-				wasm.InstrI32GtS, wasm.InstrI64GtS, wasm.InstrI32GtU, wasm.InstrI64GtU,
-				wasm.InstrI32LeS, wasm.InstrI64LeS, wasm.InstrI32LeU, wasm.InstrI64LeU,
-				wasm.InstrI32GeS, wasm.InstrI64GeS, wasm.InstrI32GeU, wasm.InstrI64GeU,
-				wasm.InstrF32Copysign, wasm.InstrF64Copysign,
-				wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U,
-				wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
-				wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U,
-				wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U,
-				wasm.InstrF32Load, wasm.InstrF64Load,
-				wasm.InstrI32Load8S, wasm.InstrI32Load8U, wasm.InstrI32Load16S, wasm.InstrI32Load16U,
-				wasm.InstrI64Load8S, wasm.InstrI64Load8U, wasm.InstrI64Load16S, wasm.InstrI64Load16U,
-				wasm.InstrI64Load32S, wasm.InstrI64Load32U,
-				wasm.InstrMemorySize, wasm.InstrMemoryGrow,
-				wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
-				loopNeedsRailMach = true
-			}
-		}
 		switch instruction.Kind {
 		case wasm.InstrInvalid, wasm.InstrNop, wasm.InstrDrop, wasm.InstrReturn,
 			wasm.InstrUnreachable, wasm.InstrBlock, wasm.InstrLoop, wasm.InstrIf,
@@ -424,10 +369,6 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 		default:
 			return false
 		}
-	}
-	loopNeedsRailMach = loopNeedsRailMach || loopI32Eqz > 1 || loopHasWrap && loopHasI32And && !loopHasReinterpret
-	if stack.MaxLoopDepth != 0 && !loopNeedsRailMach {
-		return false
 	}
 	return true
 }
@@ -1590,6 +1531,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	buildNativeImmediateCombinations(&immediatePlan, p.immediateProducer, p.immediateSkip, p.immediateUses)
 	if machine.Target == railmach.TargetARM64 {
 		buildNativeARM64LogicalImmediateCombinations(&immediatePlan, p.immediateProducer, p.immediateSkip, p.immediateUses)
+		preserveNativeARM64RepeatedAddInputs(machine, schedule, p.postRARepeatFirst, p.immediateSkip)
 	}
 	contract, calls, err := railmach.AnalyzeVerifiedABI(machine, allocation, metadata, stack.ImportedFuncs)
 	if err != nil {
@@ -1873,6 +1815,33 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		p.plan.ImmediateProducer = nil
 	}
 	return &p.plan, nil
+}
+
+// preserveNativeARM64RepeatedAddInputs keeps the invariant input of a
+// repeated-add rewrite materialized. Ordinary immediate folding can otherwise
+// suppress a shared constant after the rewrite has replaced all of its scalar
+// consumers with one shifted-register add.
+func preserveNativeARM64RepeatedAddInputs(machine *railmach.Func, schedule *railmach.Schedule, repeats []uint32, skipped []bool) {
+	if machine == nil || schedule == nil || len(repeats) == 0 || len(skipped) == 0 {
+		return
+	}
+	for last, encodedFirst := range repeats {
+		if encodedFirst == 0 || last >= len(machine.Insts) {
+			continue
+		}
+		_, invariant, _, ok := railmach.VerifyARM64RepeatedAddChain(machine, schedule, encodedFirst-1, uint32(last))
+		if !ok || invariant == 0 || int(invariant) >= len(machine.VRegs) {
+			continue
+		}
+		definition := machine.VRegs[invariant].Def
+		if definition < 3 || (definition-3)%6 != 0 {
+			continue
+		}
+		instruction := (definition - 3) / 6
+		if int(instruction) < len(skipped) && int(instruction) < len(machine.Insts) && machine.Insts[instruction].Result == invariant {
+			skipped[instruction] = false
+		}
+	}
 }
 
 func machineHasV128(machine *railmach.Func) bool {

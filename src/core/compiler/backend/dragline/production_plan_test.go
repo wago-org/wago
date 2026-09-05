@@ -72,6 +72,46 @@ func TestNativeARM64VectorAllocatableFPRs(t *testing.T) {
 	}
 }
 
+func TestPreserveNativeARM64RepeatedAddInvariant(t *testing.T) {
+	machine := &railmach.Func{
+		Target: railmach.TargetARM64,
+		VRegs: []railmach.VRegData{
+			{},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Flags: railmach.VRegInitial},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Def: 3, Flags: railmach.VRegRematerializable},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Def: 9},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Def: 15},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Def: 21},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR, Def: 27},
+		},
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Const, Aux: 1, Result: 2},
+			{Op: wasm.InstrI32Add, Result: 3, OperandStart: 0, OperandCount: 2},
+			{Op: wasm.InstrI32Add, Result: 4, OperandStart: 2, OperandCount: 2},
+			{Op: wasm.InstrI32Add, Result: 5, OperandStart: 4, OperandCount: 2},
+			{Op: wasm.InstrI32Add, Result: 6, OperandStart: 6, OperandCount: 2},
+		},
+		Operands: []railmach.Operand{
+			{Reg: 1}, {Reg: 2}, {Reg: 3}, {Reg: 2},
+			{Reg: 4}, {Reg: 2}, {Reg: 5}, {Reg: 2},
+		},
+		Results: []railmach.VReg{6},
+		Blocks:  []railmach.Block{{InstCount: 5}},
+	}
+	schedule := &railmach.Schedule{
+		Order:       []uint32{0, 1, 2, 3, 4},
+		BlockRanges: []railmach.MoveRange{{Count: 5}},
+		BlockOf:     make([]railssa.BlockID, 5),
+	}
+	repeats := make([]uint32, 5)
+	repeats[4] = 2 // First instruction 1, encoded as first+1.
+	skipped := []bool{true, true, true, true, false}
+	preserveNativeARM64RepeatedAddInputs(machine, schedule, repeats, skipped)
+	if skipped[0] {
+		t.Fatal("repeated-add invariant constant remained suppressed")
+	}
+}
+
 func TestNativeARM64AllocatableFPRsRespectReservedRegisters(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -810,36 +850,35 @@ func TestNativeScheduleScorePrefersARM64FloatLatencyWithinSpillBound(t *testing.
 	}
 }
 
-func TestRailMachLoopProfitabilityPolicy(t *testing.T) {
+func TestRailMachAdmitsSupportedLoopFamilies(t *testing.T) {
 	for _, test := range []struct {
 		name         string
 		instructions []wasm.InstrKind
 		loopDepth    uint8
-		want         bool
 	}{
-		{"established_arithmetic", []wasm.InstrKind{wasm.InstrI32Add}, 1, false},
-		{"comparison", []wasm.InstrKind{wasm.InstrI32LtU}, 1, true},
-		{"wide_recurrence", []wasm.InstrKind{wasm.InstrI64Add, wasm.InstrI32Sub}, 1, true},
-		{"wide_multiply", []wasm.InstrKind{wasm.InstrI64Mul, wasm.InstrI64ShrU}, 1, true},
-		{"wide_memory", []wasm.InstrKind{wasm.InstrI64Load, wasm.InstrI64Add, wasm.InstrI64Store}, 1, true},
-		{"mutable_global", []wasm.InstrKind{wasm.InstrGlobalGet, wasm.InstrI64Add, wasm.InstrGlobalSet}, 1, true},
-		{"masked_wrap", []wasm.InstrKind{wasm.InstrI32And, wasm.InstrI32WrapI64}, 1, true},
-		{"reinterpret_roundtrip", []wasm.InstrKind{wasm.InstrI32And, wasm.InstrI32WrapI64, wasm.InstrI64ReinterpretF64, wasm.InstrF64ReinterpretI64}, 1, false},
-		{"f64_memory_arithmetic", []wasm.InstrKind{wasm.InstrF64Load, wasm.InstrF64Mul, wasm.InstrF64Add, wasm.InstrF64Store}, 1, true},
-		{"f64_sqrt_conversion", []wasm.InstrKind{wasm.InstrF64ConvertI32U, wasm.InstrF64Sqrt, wasm.InstrF64Add}, 1, true},
-		{"saturating_conversion", []wasm.InstrKind{wasm.InstrF64Load, wasm.InstrI32TruncSatF64S}, 1, true},
-		{"bulk_memory", []wasm.InstrKind{wasm.InstrF64Load, wasm.InstrMemoryFill}, 1, true},
-		{"structured_if", []wasm.InstrKind{wasm.InstrI32LtU, wasm.InstrIf}, 1, true},
-		{"nested_loop", []wasm.InstrKind{wasm.InstrI32LtU}, 2, true},
-		{"nested_loop_with_call", []wasm.InstrKind{wasm.InstrI32LtU, wasm.InstrCall}, 2, true},
+		{"established_arithmetic", []wasm.InstrKind{wasm.InstrI32Add}, 1},
+		{"comparison", []wasm.InstrKind{wasm.InstrI32LtU}, 1},
+		{"wide_recurrence", []wasm.InstrKind{wasm.InstrI64Add, wasm.InstrI32Sub}, 1},
+		{"wide_multiply", []wasm.InstrKind{wasm.InstrI64Mul, wasm.InstrI64ShrU}, 1},
+		{"wide_memory", []wasm.InstrKind{wasm.InstrI64Load, wasm.InstrI64Add, wasm.InstrI64Store}, 1},
+		{"mutable_global", []wasm.InstrKind{wasm.InstrGlobalGet, wasm.InstrI64Add, wasm.InstrGlobalSet}, 1},
+		{"masked_wrap", []wasm.InstrKind{wasm.InstrI32And, wasm.InstrI32WrapI64}, 1},
+		{"reinterpret_roundtrip", []wasm.InstrKind{wasm.InstrI32And, wasm.InstrI32WrapI64, wasm.InstrI64ReinterpretF64, wasm.InstrF64ReinterpretI64}, 1},
+		{"f64_memory_arithmetic", []wasm.InstrKind{wasm.InstrF64Load, wasm.InstrF64Mul, wasm.InstrF64Add, wasm.InstrF64Store}, 1},
+		{"f64_sqrt_conversion", []wasm.InstrKind{wasm.InstrF64ConvertI32U, wasm.InstrF64Sqrt, wasm.InstrF64Add}, 1},
+		{"saturating_conversion", []wasm.InstrKind{wasm.InstrF64Load, wasm.InstrI32TruncSatF64S}, 1},
+		{"bulk_memory", []wasm.InstrKind{wasm.InstrF64Load, wasm.InstrMemoryFill}, 1},
+		{"structured_if", []wasm.InstrKind{wasm.InstrI32LtU, wasm.InstrIf}, 1},
+		{"nested_loop", []wasm.InstrKind{wasm.InstrI32LtU}, 2},
+		{"nested_loop_with_call", []wasm.InstrKind{wasm.InstrI32LtU, wasm.InstrCall}, 2},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			stack := &railssa.StackFunc{MaxLoopDepth: test.loopDepth}
 			for _, kind := range test.instructions {
 				stack.Instrs = append(stack.Instrs, railssa.StackInstr{Kind: kind})
 			}
-			if got := railMachCandidate(stack, false); got != test.want {
-				t.Fatalf("RailMach candidate = %v, want %v", got, test.want)
+			if !railMachCandidate(stack, false) {
+				t.Fatal("supported loop family was not admitted to RailMach")
 			}
 		})
 	}
@@ -855,14 +894,14 @@ func TestRailMachAdmitsScalarFunctionInSIMDModule(t *testing.T) {
 	}
 }
 
-func TestRailMachRejectsMixedSIMDBranchCastFunction(t *testing.T) {
+func TestRailMachAdmitsMixedSIMDBranchCastFunction(t *testing.T) {
 	stack := &railssa.StackFunc{
 		HasV128:       true,
 		HasReferences: true,
 		BranchCasts:   []railssa.BranchCastImmediate{{}},
 	}
-	if railMachCandidate(stack, true) {
-		t.Fatal("mixed SIMD/branch-cast function entered scalar RailMach")
+	if !railMachCandidate(stack, true) {
+		t.Fatal("mixed SIMD/branch-cast function did not enter RailMach")
 	}
 }
 

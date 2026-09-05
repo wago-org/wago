@@ -657,7 +657,7 @@ func TestCompilerNativeHotRecursiveSCCUsesCompleteContracts(t *testing.T) {
 	}
 }
 
-func TestCompilerNativeHotMixedEmitterSCCRemainsConservative(t *testing.T) {
+func TestCompilerNativeHotFormerMixedEmitterSCCUsesCompleteContracts(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
@@ -679,8 +679,8 @@ func TestCompilerNativeHotMixedEmitterSCCRemainsConservative(t *testing.T) {
 	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target, Profile: observations}); err != nil {
 		t.Fatal(err)
 	}
-	if len(metrics.Functions) != 2 || metrics.Functions[0].IPRARefinedCalls != 0 || metrics.Functions[1].IPRARefinedCalls != 0 {
-		t.Fatalf("mixed-emitter SCC published a partial contract: %#v", metrics.Functions)
+	if len(metrics.Functions) != 2 || metrics.Functions[0].IPRARefinedCalls != 1 || metrics.Functions[1].IPRARefinedCalls != 1 {
+		t.Fatalf("fully machine-lowered SCC did not publish complete contracts: %#v", metrics.Functions)
 	}
 }
 
