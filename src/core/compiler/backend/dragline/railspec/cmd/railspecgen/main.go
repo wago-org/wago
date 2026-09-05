@@ -43,6 +43,7 @@ var formNames = map[string]string{
 	"fixed-gpr-1":    "FormFixedGPR1",
 	"fixed-gpr-0":    "FormFixedGPR0",
 	"unsigned-imm12": "FormUnsignedImm12",
+	"unsigned-imm6":  "FormUnsignedImm6",
 	"address":        "FormAddress",
 	"flags":          "FormFlags",
 }
@@ -145,7 +146,7 @@ func generate(spec contract) ([]byte, error) {
 	fmt.Fprintln(&out)
 	fmt.Fprintln(&out, "const (")
 	fmt.Fprintln(&out, "\tFormInvalid OperandForm = iota")
-	for _, name := range []string{"Register", "SignedImm32", "FixedGPR1", "FixedGPR0", "UnsignedImm12", "Address", "Flags"} {
+	for _, name := range []string{"Register", "SignedImm32", "FixedGPR1", "FixedGPR0", "UnsignedImm12", "UnsignedImm6", "Address", "Flags"} {
 		fmt.Fprintf(&out, "\tForm%s\n", name)
 	}
 	fmt.Fprintln(&out, ")")

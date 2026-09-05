@@ -20,8 +20,13 @@ func SelectRule(target TargetMask, kind wasm.InstrKind, rhsKnown bool, rhs uint6
 			return RuleAMD64Imm32
 		}
 	}
-	if target == TargetARM64 && rhsKnown && rhs <= 4095 && (kind == wasm.InstrI32Add || kind == wasm.InstrI32Sub || kind == wasm.InstrI64Add || kind == wasm.InstrI64Sub) {
-		return RuleARM64Imm12
+	if target == TargetARM64 && rhsKnown {
+		if shift(kind) {
+			return RuleARM64ShiftImmediate
+		}
+		if rhs <= 4095 && (kind == wasm.InstrI32Add || kind == wasm.InstrI32Sub || kind == wasm.InstrI64Add || kind == wasm.InstrI64Sub) {
+			return RuleARM64Imm12
+		}
 	}
 	return RuleGenericRegister
 }

@@ -165,7 +165,7 @@ func SelectOrderWithCostModel(target Target, flow *railssa.ValueFlow, semantic *
 			reuse.Forms = append(reuse.Forms, FormRegister)
 		}
 		switch ruleID {
-		case railspec.RuleAMD64Imm32, railspec.RuleARM64Imm12:
+		case railspec.RuleAMD64Imm32, railspec.RuleARM64Imm12, railspec.RuleARM64ShiftImmediate:
 			reuse.Forms[len(reuse.Forms)-1] = FormImmediate
 			reuse.Combinations = append(reuse.Combinations, Combination{Producer: producerInstruction(flow, semantic, args[len(args)-1]), Consumer: uint32(id), Kind: CombineImmediate})
 		case railspec.RuleAMD64ShiftCL:
