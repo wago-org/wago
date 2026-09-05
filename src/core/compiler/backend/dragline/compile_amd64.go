@@ -957,7 +957,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32x4ExtmulLowI16x8S, railmach.OpAMD64I32x4ExtmulHighI16x8S,
 			railmach.OpAMD64I32x4ExtmulLowI16x8U, railmach.OpAMD64I32x4ExtmulHighI16x8U,
 			railmach.OpAMD64I64x2ExtmulLowI32x4S, railmach.OpAMD64I64x2ExtmulHighI32x4S,
-			railmach.OpAMD64I64x2ExtmulLowI32x4U, railmach.OpAMD64I64x2ExtmulHighI32x4U:
+			railmach.OpAMD64I64x2ExtmulLowI32x4U, railmach.OpAMD64I64x2ExtmulHighI32x4U,
+			railmach.OpAMD64I8x16Shuffle, railmach.OpAMD64I8x16Swizzle:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2506,6 +2507,39 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						a.VPmuludq(dst, dst, 5)
 					}
 				}
+				continue
+			case railmach.OpAMD64I8x16Shuffle:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector shuffle operand count is %d", len(operands))
+				}
+				immediate, ok := plan.Machine.SIMDImmediateAt(instructionID)
+				if !ok {
+					return nil, 0, true, fmt.Errorf("RailMach vector shuffle %d has no mask", instructionID)
+				}
+				var lhsMask, rhsMask [16]byte
+				for index := range lhsMask {
+					lhsMask[index], rhsMask[index] = 0x80, 0x80
+					if lane := immediate.Bytes[index]; lane < 16 {
+						lhsMask[index] = lane
+					} else {
+						rhsMask[index] = lane - 16
+					}
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(5), bytes: rhsMask})
+				a.VPshufb(4, rhs, 5)
+				simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(5), bytes: lhsMask})
+				a.VPshufb(dst, lhs, 5)
+				a.VPor(dst, dst, 4)
+				continue
+			case railmach.OpAMD64I8x16Swizzle:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector swizzle operand count is %d", len(operands))
+				}
+				bias := [16]byte{0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70, 0x70}
+				simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(5), bytes: bias})
+				a.VPaddusb(5, reg(operands[1].Reg), 5)
+				a.VPshufb(dst, reg(operands[0].Reg), 5)
 				continue
 			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 				railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,

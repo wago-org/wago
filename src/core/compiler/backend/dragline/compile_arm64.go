@@ -1024,7 +1024,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64I32x4ExtmulLowI16x8S, railmach.OpARM64I32x4ExtmulHighI16x8S,
 			railmach.OpARM64I32x4ExtmulLowI16x8U, railmach.OpARM64I32x4ExtmulHighI16x8U,
 			railmach.OpARM64I64x2ExtmulLowI32x4S, railmach.OpARM64I64x2ExtmulHighI32x4S,
-			railmach.OpARM64I64x2ExtmulLowI32x4U, railmach.OpARM64I64x2ExtmulHighI32x4U:
+			railmach.OpARM64I64x2ExtmulLowI32x4U, railmach.OpARM64I64x2ExtmulHighI32x4U,
+			railmach.OpARM64I8x16Shuffle, railmach.OpARM64I8x16Swizzle:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3649,6 +3650,36 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				default:
 					a.NeonUmull2DfromS(dst, lhs, rhs)
 				}
+				continue
+			case railmach.OpARM64I8x16Shuffle:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector shuffle operand count is %d", len(operands))
+				}
+				immediate, ok := plan.Machine.SIMDImmediateAt(instructionID)
+				if !ok {
+					return nil, 0, true, fmt.Errorf("RailMach vector shuffle %d has no mask", instructionID)
+				}
+				var lhsMask, rhsMask [16]byte
+				for index := range lhsMask {
+					lhsMask[index], rhsMask[index] = 0x80, 0x80
+					if lane := immediate.Bytes[index]; lane < 16 {
+						lhsMask[index] = lane
+					} else {
+						rhsMask[index] = lane - 16
+					}
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				emitARM64SIMDConstant(&a, 25, rhsMask)
+				a.NeonTbl(24, rhs, 25)
+				emitARM64SIMDConstant(&a, 25, lhsMask)
+				a.NeonTbl(dst, lhs, 25)
+				a.NeonOrr16b(dst, dst, 24)
+				continue
+			case railmach.OpARM64I8x16Swizzle:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector swizzle operand count is %d", len(operands))
+				}
+				a.NeonTbl(dst, reg(operands[0].Reg), reg(operands[1].Reg))
 				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
 				railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,
