@@ -1076,9 +1076,7 @@ func (f *fn) alignLoopHeader() {
 	}
 	f.alignCode(loopAlign)
 	if loopAlign >= 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals {
-		for range 4 {
-			f.a.Nop()
-		}
+		f.a.Nop4()
 	}
 }
 
