@@ -924,6 +924,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I16x8Add, railmach.OpAMD64I16x8AddSatS, railmach.OpAMD64I16x8AddSatU,
 			railmach.OpAMD64I16x8Sub, railmach.OpAMD64I16x8SubSatS, railmach.OpAMD64I16x8SubSatU,
 			railmach.OpAMD64I32x4Add, railmach.OpAMD64I32x4Sub, railmach.OpAMD64I64x2Add, railmach.OpAMD64I64x2Sub,
+			railmach.OpAMD64I8x16MinS, railmach.OpAMD64I8x16MinU, railmach.OpAMD64I8x16MaxS, railmach.OpAMD64I8x16MaxU, railmach.OpAMD64I8x16AvgrU,
+			railmach.OpAMD64I16x8Mul, railmach.OpAMD64I16x8MinS, railmach.OpAMD64I16x8MinU, railmach.OpAMD64I16x8MaxS, railmach.OpAMD64I16x8MaxU, railmach.OpAMD64I16x8AvgrU,
+			railmach.OpAMD64I32x4Mul, railmach.OpAMD64I32x4MinS, railmach.OpAMD64I32x4MinU, railmach.OpAMD64I32x4MaxS, railmach.OpAMD64I32x4MaxU,
 			railmach.OpAMD64I8x16Eq, railmach.OpAMD64I8x16Ne, railmach.OpAMD64I16x8Eq, railmach.OpAMD64I16x8Ne,
 			railmach.OpAMD64I32x4Eq, railmach.OpAMD64I32x4Ne, railmach.OpAMD64I64x2Eq, railmach.OpAMD64I64x2Ne,
 			railmach.OpAMD64I8x16LtS, railmach.OpAMD64I8x16GtS, railmach.OpAMD64I8x16LeS, railmach.OpAMD64I8x16GeS,
@@ -2772,6 +2775,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				railmach.OpAMD64I16x8Add, railmach.OpAMD64I16x8AddSatS, railmach.OpAMD64I16x8AddSatU,
 				railmach.OpAMD64I16x8Sub, railmach.OpAMD64I16x8SubSatS, railmach.OpAMD64I16x8SubSatU,
 				railmach.OpAMD64I32x4Add, railmach.OpAMD64I32x4Sub, railmach.OpAMD64I64x2Add, railmach.OpAMD64I64x2Sub,
+				railmach.OpAMD64I8x16MinS, railmach.OpAMD64I8x16MinU, railmach.OpAMD64I8x16MaxS, railmach.OpAMD64I8x16MaxU, railmach.OpAMD64I8x16AvgrU,
+				railmach.OpAMD64I16x8Mul, railmach.OpAMD64I16x8MinS, railmach.OpAMD64I16x8MinU, railmach.OpAMD64I16x8MaxS, railmach.OpAMD64I16x8MaxU, railmach.OpAMD64I16x8AvgrU,
+				railmach.OpAMD64I32x4Mul, railmach.OpAMD64I32x4MinS, railmach.OpAMD64I32x4MinU, railmach.OpAMD64I32x4MaxS, railmach.OpAMD64I32x4MaxU,
 				railmach.OpAMD64I8x16Eq, railmach.OpAMD64I8x16Ne, railmach.OpAMD64I16x8Eq, railmach.OpAMD64I16x8Ne,
 				railmach.OpAMD64I32x4Eq, railmach.OpAMD64I32x4Ne, railmach.OpAMD64I64x2Eq, railmach.OpAMD64I64x2Ne,
 				railmach.OpAMD64I8x16LtS, railmach.OpAMD64I8x16GtS, railmach.OpAMD64I8x16LeS, railmach.OpAMD64I8x16GeS,
@@ -2827,6 +2833,38 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.VPaddq(dst, lhs, rhs)
 				case railmach.OpAMD64I64x2Sub:
 					a.VPsubq(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16MinS:
+					a.VPminsb(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16MinU:
+					a.VPminub(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16MaxS:
+					a.VPmaxsb(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16MaxU:
+					a.VPmaxub(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16AvgrU:
+					a.VPavgb(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8Mul:
+					a.VPmullw(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8MinS:
+					a.VPminsw(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8MinU:
+					a.VPminuw(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8MaxS:
+					a.VPmaxsw(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8MaxU:
+					a.VPmaxuw(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8AvgrU:
+					a.VPavgw(dst, lhs, rhs)
+				case railmach.OpAMD64I32x4Mul:
+					a.VPmulld(dst, lhs, rhs)
+				case railmach.OpAMD64I32x4MinS:
+					a.VPminsd(dst, lhs, rhs)
+				case railmach.OpAMD64I32x4MinU:
+					a.VPminud(dst, lhs, rhs)
+				case railmach.OpAMD64I32x4MaxS:
+					a.VPmaxsd(dst, lhs, rhs)
+				case railmach.OpAMD64I32x4MaxU:
+					a.VPmaxud(dst, lhs, rhs)
 				case railmach.OpAMD64I8x16Eq, railmach.OpAMD64I8x16Ne:
 					a.VPcmpeqb(dst, lhs, rhs)
 				case railmach.OpAMD64I16x8Eq, railmach.OpAMD64I16x8Ne:
