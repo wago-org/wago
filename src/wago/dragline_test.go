@@ -5197,6 +5197,96 @@ func TestDraglineRailMachVectorFloatArithmeticExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachVectorFloatMinMaxExecution(t *testing.T) {
+	f32x4bits := func(bits uint32) (out [16]byte) {
+		for lane := 0; lane < 4; lane++ {
+			binary.LittleEndian.PutUint32(out[lane*4:], bits)
+		}
+		return
+	}
+	f64x2bits := func(bits uint64) (out [16]byte) {
+		for lane := 0; lane < 2; lane++ {
+			binary.LittleEndian.PutUint64(out[lane*8:], bits)
+		}
+		return
+	}
+	for _, test := range []struct {
+		name      string
+		subopcode uint32
+		lhs, rhs  [16]byte
+		want      [16]byte
+		nan32     bool
+		nan64     bool
+	}{
+		{name: "f32x4.min_signed_zero", subopcode: 232, lhs: f32x4bits(0), rhs: f32x4bits(1 << 31), want: f32x4bits(1 << 31)},
+		{name: "f32x4.max_signed_zero", subopcode: 233, lhs: f32x4bits(1 << 31), rhs: f32x4bits(0), want: f32x4bits(0)},
+		{name: "f32x4.pmin_first_wins", subopcode: 234, lhs: f32x4bits(1 << 31), rhs: f32x4bits(0), want: f32x4bits(1 << 31)},
+		{name: "f32x4.pmax_first_wins", subopcode: 235, lhs: f32x4bits(0), rhs: f32x4bits(1 << 31), want: f32x4bits(0)},
+		{name: "f32x4.min_nan", subopcode: 232, lhs: f32x4bits(math.Float32bits(float32(math.NaN()))), rhs: f32x4bits(math.Float32bits(1)), nan32: true},
+		{name: "f64x2.min_signed_zero", subopcode: 244, lhs: f64x2bits(0), rhs: f64x2bits(1 << 63), want: f64x2bits(1 << 63)},
+		{name: "f64x2.max_signed_zero", subopcode: 245, lhs: f64x2bits(1 << 63), rhs: f64x2bits(0), want: f64x2bits(0)},
+		{name: "f64x2.pmin_first_wins", subopcode: 246, lhs: f64x2bits(1 << 63), rhs: f64x2bits(0), want: f64x2bits(1 << 63)},
+		{name: "f64x2.pmax_first_wins", subopcode: 247, lhs: f64x2bits(0), rhs: f64x2bits(1 << 63), want: f64x2bits(0)},
+		{name: "f64x2.max_nan", subopcode: 245, lhs: f64x2bits(math.Float64bits(1)), rhs: f64x2bits(math.Float64bits(math.NaN())), nan64: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x41, 0x00, 0xfd, 0x0c}
+			body = append(body, test.lhs[:]...)
+			body = append(body, 0xfd, 0x0c)
+			body = append(body, test.rhs[:]...)
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(test.subopcode)...)
+			body = append(body, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+			read0 := []byte{0x41, 0x00, 0x29, 0x03, 0x00, 0x0b}
+			read8 := []byte{0x41, 0x08, 0x29, 0x03, 0x00, 0x0b}
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read0", 0, 1), wasmtest.ExportEntry("read8", 0, 2))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(read0), wasmtest.Code(read8))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if _, err := instance.Invoke("run"); err != nil {
+				t.Fatal(err)
+			}
+			var got [16]byte
+			for index, name := range []string{"read0", "read8"} {
+				result, err := instance.Invoke(name)
+				if err != nil || len(result) != 1 {
+					t.Fatalf("%s result = %#x, %v", name, result, err)
+				}
+				binary.LittleEndian.PutUint64(got[index*8:], result[0])
+			}
+			switch {
+			case test.nan32:
+				for lane := 0; lane < 4; lane++ {
+					if !math.IsNaN(float64(math.Float32frombits(binary.LittleEndian.Uint32(got[lane*4:])))) {
+						t.Fatalf("lane %d = %x; want NaN", lane, got[lane*4:lane*4+4])
+					}
+				}
+			case test.nan64:
+				for lane := 0; lane < 2; lane++ {
+					if !math.IsNaN(math.Float64frombits(binary.LittleEndian.Uint64(got[lane*8:]))) {
+						t.Fatalf("lane %d = %x; want NaN", lane, got[lane*8:lane*8+8])
+					}
+				}
+			case got != test.want:
+				t.Fatalf("result = %x; want %x", got, test.want)
+			}
+		})
+	}
+}
+
 func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
 	if runtime.GOARCH != "arm64" {
 		t.Skip("Dragline structured SIMD execution is currently ARM64-only")

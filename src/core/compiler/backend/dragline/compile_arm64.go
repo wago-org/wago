@@ -1037,7 +1037,9 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64F32x4Abs, railmach.OpARM64F32x4Neg, railmach.OpARM64F32x4Sqrt,
 			railmach.OpARM64F32x4Add, railmach.OpARM64F32x4Sub, railmach.OpARM64F32x4Mul, railmach.OpARM64F32x4Div,
 			railmach.OpARM64F64x2Abs, railmach.OpARM64F64x2Neg, railmach.OpARM64F64x2Sqrt,
-			railmach.OpARM64F64x2Add, railmach.OpARM64F64x2Sub, railmach.OpARM64F64x2Mul, railmach.OpARM64F64x2Div:
+			railmach.OpARM64F64x2Add, railmach.OpARM64F64x2Sub, railmach.OpARM64F64x2Mul, railmach.OpARM64F64x2Div,
+			railmach.OpARM64F32x4Min, railmach.OpARM64F32x4Max, railmach.OpARM64F32x4Pmin, railmach.OpARM64F32x4Pmax,
+			railmach.OpARM64F64x2Min, railmach.OpARM64F64x2Max, railmach.OpARM64F64x2Pmin, railmach.OpARM64F64x2Pmax:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3850,6 +3852,31 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					a.NeonFmul(dst, lhs, rhs, f64)
 				default:
 					a.NeonFdiv(dst, lhs, rhs, f64)
+				}
+				continue
+			case railmach.OpARM64F32x4Min, railmach.OpARM64F32x4Max, railmach.OpARM64F32x4Pmin, railmach.OpARM64F32x4Pmax,
+				railmach.OpARM64F64x2Min, railmach.OpARM64F64x2Max, railmach.OpARM64F64x2Pmin, railmach.OpARM64F64x2Pmax:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector float min/max operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				f64 := instruction.Op >= railmach.OpARM64F64x2Min && instruction.Op <= railmach.OpARM64F64x2Pmax
+				isMax := instruction.Op == railmach.OpARM64F32x4Max || instruction.Op == railmach.OpARM64F32x4Pmax ||
+					instruction.Op == railmach.OpARM64F64x2Max || instruction.Op == railmach.OpARM64F64x2Pmax
+				pseudo := instruction.Op == railmach.OpARM64F32x4Pmin || instruction.Op == railmach.OpARM64F32x4Pmax ||
+					instruction.Op == railmach.OpARM64F64x2Pmin || instruction.Op == railmach.OpARM64F64x2Pmax
+				if pseudo {
+					predicate := byte(0x11)
+					if isMax {
+						predicate = 0x1e
+					}
+					a.NeonFcmp(24, rhs, lhs, f64, predicate)
+					a.NeonBsl16b(24, rhs, lhs)
+					a.NeonMov16b(dst, 24)
+				} else if isMax {
+					a.NeonFmax(dst, lhs, rhs, f64)
+				} else {
+					a.NeonFmin(dst, lhs, rhs, f64)
 				}
 				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,

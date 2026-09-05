@@ -970,7 +970,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64F32x4Abs, railmach.OpAMD64F32x4Neg, railmach.OpAMD64F32x4Sqrt,
 			railmach.OpAMD64F32x4Add, railmach.OpAMD64F32x4Sub, railmach.OpAMD64F32x4Mul, railmach.OpAMD64F32x4Div,
 			railmach.OpAMD64F64x2Abs, railmach.OpAMD64F64x2Neg, railmach.OpAMD64F64x2Sqrt,
-			railmach.OpAMD64F64x2Add, railmach.OpAMD64F64x2Sub, railmach.OpAMD64F64x2Mul, railmach.OpAMD64F64x2Div:
+			railmach.OpAMD64F64x2Add, railmach.OpAMD64F64x2Sub, railmach.OpAMD64F64x2Mul, railmach.OpAMD64F64x2Div,
+			railmach.OpAMD64F32x4Min, railmach.OpAMD64F32x4Max, railmach.OpAMD64F32x4Pmin, railmach.OpAMD64F32x4Pmax,
+			railmach.OpAMD64F64x2Min, railmach.OpAMD64F64x2Max, railmach.OpAMD64F64x2Pmin, railmach.OpAMD64F64x2Pmax:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2705,6 +2707,45 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				default:
 					a.VFPackedDiv(dst, lhs, rhs, f64)
 				}
+				continue
+			case railmach.OpAMD64F32x4Min, railmach.OpAMD64F32x4Max, railmach.OpAMD64F32x4Pmin, railmach.OpAMD64F32x4Pmax,
+				railmach.OpAMD64F64x2Min, railmach.OpAMD64F64x2Max, railmach.OpAMD64F64x2Pmin, railmach.OpAMD64F64x2Pmax:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector float min/max operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				f64 := instruction.Op >= railmach.OpAMD64F64x2Min && instruction.Op <= railmach.OpAMD64F64x2Pmax
+				isMax := instruction.Op == railmach.OpAMD64F32x4Max || instruction.Op == railmach.OpAMD64F32x4Pmax ||
+					instruction.Op == railmach.OpAMD64F64x2Max || instruction.Op == railmach.OpAMD64F64x2Pmax
+				pseudo := instruction.Op == railmach.OpAMD64F32x4Pmin || instruction.Op == railmach.OpAMD64F32x4Pmax ||
+					instruction.Op == railmach.OpAMD64F64x2Pmin || instruction.Op == railmach.OpAMD64F64x2Pmax
+				packed := a.VFPackedMin
+				if isMax {
+					packed = a.VFPackedMax
+				}
+				if pseudo {
+					packed(dst, rhs, lhs, f64)
+					continue
+				}
+				packed(4, rhs, lhs, f64)
+				packed(dst, lhs, rhs, f64)
+				a.VFCmpPacked(5, dst, 4, f64, 0x03)
+				prefix := byte(0)
+				if f64 {
+					prefix = 1
+				}
+				if isMax {
+					a.VSseRRR(prefix, 0x54, dst, dst, 4)
+				} else {
+					a.VSseRRR(prefix, 0x56, dst, dst, 4)
+				}
+				a.VSseRRR(prefix, 0x56, dst, dst, 5)
+				if f64 {
+					a.VPsrlqImm(5, 5, 13)
+				} else {
+					a.VPsrldImm(5, 5, 10)
+				}
+				a.VSseRRR(prefix, 0x55, dst, 5, dst)
 				continue
 			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 				railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,
