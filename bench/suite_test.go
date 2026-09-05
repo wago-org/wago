@@ -23,6 +23,7 @@ import (
 const corpusDir = "corpus"
 
 var includeISABenchmarks = flag.Bool("wago.bench.isa", false, "include generated ISA micro-suite benchmarks")
+var includeOptimizationAblations = flag.Bool("wago.bench.optimization-ablation", false, "benchmark large modules with each enabled optimization disabled in turn")
 
 type execEntry struct {
 	Export string  `json:"export"`
@@ -296,6 +297,60 @@ func BenchmarkCompileFull(b *testing.B) {
 			}
 		}
 	})
+}
+
+// BenchmarkCompileFullOptimizationAblation attributes the compile-resource and
+// generated-code cost of each enabled optimization. The matrix is intentionally
+// opt-in: running every option across the real-module corpus is too expensive
+// for ordinary benchmark and CI invocations.
+func BenchmarkCompileFullOptimizationAblation(b *testing.B) {
+	if !*includeOptimizationAblations {
+		b.Skip("enable with -wago.bench.optimization-ablation")
+	}
+	wanted := map[string]bool{
+		"json-as": true,
+		"lua":     true,
+		"sqlite3": true,
+		"ruby":    true,
+		"esbuild": true,
+	}
+	base := wago.NewRuntimeConfig().WithFunctionWorkers(1)
+	infos := base.OptimizationInfos()
+	for _, m := range loadCorpus(b) {
+		if !m.supports("CompileFull") || !wanted[m.name()] {
+			continue
+		}
+		b.Run(m.name(), func(b *testing.B) {
+			run := func(b *testing.B, cfg *wago.RuntimeConfig) {
+				b.ReportAllocs()
+				var cm *wago.Compiled
+				for i := 0; i < b.N; i++ {
+					var err error
+					cm, err = wago.Compile(cfg, m.bytes)
+					if err != nil {
+						b.Fatal(err)
+					}
+				}
+				if cm != nil {
+					b.ReportMetric(float64(cm.CodeSize()), "code-B")
+				}
+			}
+
+			b.Run("default", func(b *testing.B) { run(b, base) })
+			for _, info := range infos {
+				if !info.On {
+					continue
+				}
+				cfg := base.WithOptimization(info.Name, false)
+				if cfg.Validate() != nil {
+					continue
+				}
+				b.Run("no-"+info.Name, func(b *testing.B) {
+					run(b, cfg)
+				})
+			}
+		})
+	}
 }
 
 // BenchmarkCompileFullWorkers measures the real public compile pipeline at
