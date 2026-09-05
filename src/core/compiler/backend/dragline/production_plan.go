@@ -1112,11 +1112,18 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			// around-call Q saves as AMD64. V24-V27 remain finalizer scratch.
 			if nativeMachineHasExternalCall(stack, machine) {
 				defaultGreedy.Linear.FPRs = 16
+				defaultGreedy.CallerFPRs = 16
+				defaultGreedy.CallerFPRMask = callerRegisterMask(16)
 			} else {
-				defaultGreedy.Linear.FPRs = 24
+				fprs := nativeARM64VectorAllocatableFPRs(machine)
+				defaultGreedy.Linear.FPRs = fprs
+				defaultGreedy.CallerFPRs = 16
+				defaultGreedy.CallerFPRMask = callerRegisterMask(16)
+				if fprs == 28 {
+					defaultGreedy.CallerFPRs = 20
+					defaultGreedy.CallerFPRMask |= uint64(0xf) << 24
+				}
 			}
-			defaultGreedy.CallerFPRs = 16
-			defaultGreedy.CallerFPRMask = callerRegisterMask(16)
 		}
 	}
 	amd64MemoryBoundEnd, cachesAMD64MemoryBound := p.nativeAMD64CachedMemoryBound(stack, machine, emission, pressure)
@@ -1780,6 +1787,49 @@ func nativeARM64AllocatableFPRs(machine *railmach.Func) uint8 {
 	default:
 		return 28
 	}
+}
+
+// nativeARM64VectorAllocatableFPRs admits V24-V27 only when every vector
+// operation in the function has a lowering that leaves those registers
+// untouched. V28-V30 remain spill/result scratch and V31 remains reserved for
+// architectural masks. Unknown forms retain the conservative 24-register set.
+func nativeARM64VectorAllocatableFPRs(machine *railmach.Func) uint8 {
+	if machine == nil {
+		return 24
+	}
+	for instructionID, instruction := range machine.Insts {
+		vector := instruction.Result != 0 && machine.VRegs[instruction.Result].Type == railmach.TypeV128
+		operands := machine.InstructionOperands(uint32(instructionID))
+		for _, operand := range operands {
+			vector = vector || machine.VRegs[operand.Reg].Type == railmach.TypeV128
+		}
+		if !vector {
+			continue
+		}
+		switch instruction.Op {
+		case wasm.InstrV128Const, wasm.InstrV128Load, wasm.InstrV128Store,
+			wasm.InstrV128And, wasm.InstrV128Or, wasm.InstrV128Xor, wasm.InstrV128Not,
+			wasm.InstrI32x4Add, wasm.InstrI32x4Sub, wasm.InstrI32x4Splat, wasm.InstrI32x4ReplaceLane:
+			continue
+		case wasm.InstrI8x16Shuffle:
+			immediate, ok := machine.SIMDImmediateAt(uint32(instructionID))
+			if ok && arm64ShuffleSpecialized(immediate.Bytes) {
+				continue
+			}
+		case wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU:
+			if len(operands) == 2 {
+				definition := machine.VRegs[operands[1].Reg].Def / 6
+				if int(definition) < len(machine.Insts) {
+					producer := machine.Insts[definition]
+					if producer.Result == operands[1].Reg && (producer.Op == wasm.InstrI32Const || producer.Op == wasm.InstrI64Const) {
+						continue
+					}
+				}
+			}
+		}
+		return 24
+	}
+	return 28
 }
 
 const (

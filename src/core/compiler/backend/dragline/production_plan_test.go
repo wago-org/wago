@@ -44,6 +44,34 @@ func TestNativeDenseLocalTableTargets(t *testing.T) {
 	}
 }
 
+func TestNativeARM64VectorAllocatableFPRs(t *testing.T) {
+	vector := railmach.VRegData{Type: railmach.TypeV128, Bank: railmach.BankFPR}
+	integer := railmach.VRegData{Type: railmach.TypeI32, Bank: railmach.BankGPR}
+	safe := &railmach.Func{
+		VRegs: []railmach.VRegData{{}, vector, vector, {Type: integer.Type, Bank: integer.Bank, Def: 3}},
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Const, Result: 3},
+			{Op: wasm.InstrV128Xor, Result: 2, OperandStart: 0, OperandCount: 2},
+			{Op: wasm.InstrI32x4ShrU, Result: 1, OperandStart: 2, OperandCount: 2},
+		},
+		Operands: []railmach.Operand{
+			{Reg: 1}, {Reg: 2},
+			{Reg: 2}, {Reg: 3, Flags: railmach.OperandColdRemat},
+		},
+	}
+	if got := nativeARM64VectorAllocatableFPRs(safe); got != 28 {
+		t.Fatalf("scratch-free vector FPRs = %d, want 28", got)
+	}
+	safe.Insts[0].Op = wasm.InstrI32Add
+	if got := nativeARM64VectorAllocatableFPRs(safe); got != 24 {
+		t.Fatalf("variable-shift vector FPRs = %d, want 24", got)
+	}
+	safe.Insts[1].Op = wasm.InstrV128Bitselect
+	if got := nativeARM64VectorAllocatableFPRs(safe); got != 24 {
+		t.Fatalf("scratch-using vector FPRs = %d, want 24", got)
+	}
+}
+
 func TestNativeARM64AllocatableFPRsRespectReservedRegisters(t *testing.T) {
 	tests := []struct {
 		name  string
