@@ -1501,7 +1501,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.MovImm64(amd64.R10, instruction.Aux>>32)
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+8), amd64.R10)
 				} else if semanticOp == wasm.InstrStructNew || semanticOp == wasm.InstrArrayNewFixed {
-					for index, operand := range operands {
+					argumentSlot := uint32(0)
+					for _, operand := range operands {
 						data := plan.Machine.VRegs[operand.Reg]
 						scratch := amd64.R10
 						if data.Bank == railmach.BankFPR {
@@ -1511,28 +1512,43 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						if err != nil {
 							return nil, 0, true, err
 						}
+						if data.Type == railmach.TypeV128 {
+							a.VMovdquStoreDisp(amd64.R11, int32(abi.SyncHostArgsOffset+argumentSlot*8), value)
+							argumentSlot += uint32(data.Type.SpillSlotUnits())
+							continue
+						}
 						if data.Bank == railmach.BankFPR {
 							a.MovXmmToGpr(amd64.R10, value, data.Type == railmach.TypeF64)
 							value = amd64.R10
 						}
-						a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+index*8), value)
+						a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+argumentSlot*8), value)
+						argumentSlot++
 					}
 					a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
-					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+len(operands)*8), amd64.R10)
+					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+argumentSlot*8), amd64.R10)
+					arity = argumentSlot + 1
 					if semanticOp == wasm.InstrArrayNewFixed {
 						a.MovImm64(amd64.R10, instruction.Aux>>32)
-						a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+(len(operands)+1)*8), amd64.R10)
+						a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+(argumentSlot+1)*8), amd64.R10)
+						arity++
 					}
 				} else if semanticOp == wasm.InstrArrayNewDefault {
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), reg(operands[0].Reg))
 				} else if semanticOp == wasm.InstrArrayNew {
+					valueData := plan.Machine.VRegs[operands[0].Reg]
 					value := reg(operands[0].Reg)
-					if plan.Machine.VRegs[operands[0].Reg].Bank == railmach.BankFPR {
+					if valueData.Type == railmach.TypeV128 {
+						a.VMovdquStoreDisp(amd64.R11, int32(abi.SyncHostArgsOffset), value)
+					} else if valueData.Bank == railmach.BankFPR {
 						a.MovXmmToGpr(amd64.R10, value, plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeF64)
 						value = amd64.R10
 					}
-					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), value)
-					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+8), reg(operands[1].Reg))
+					if valueData.Type != railmach.TypeV128 {
+						a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), value)
+					}
+					valueSlots := uint32(valueData.Type.SpillSlotUnits())
+					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+valueSlots*8), reg(operands[1].Reg))
+					arity = valueSlots + 2
 				} else if semanticOp == wasm.InstrArrayNewData || semanticOp == wasm.InstrArrayNewElem {
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), reg(operands[0].Reg))
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+8), reg(operands[1].Reg))
@@ -1548,8 +1564,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.MovImm64(amd64.R10, instruction.Aux)
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+8), amd64.R10)
 				} else if semanticOp == wasm.InstrArrayNew {
+					valueSlots := uint32(plan.Machine.VRegs[operands[0].Reg].Type.SpillSlotUnits())
 					a.MovImm64(amd64.R10, instruction.Aux)
-					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+16), amd64.R10)
+					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+(valueSlots+1)*8), amd64.R10)
 				}
 				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostImportIndexOffset), int32(codegen.GCHelperDispatchBit|payload))
 				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostArityOffset), int32(arity|resultArity<<16))
@@ -1588,11 +1605,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
 				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+16), amd64.R10)
 				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostImportIndexOffset), int32(codegen.GCHelperDispatchBit|payload))
-				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostArityOffset), int32(3|1<<16))
+				resultSlots := uint32(plan.Machine.VRegs[instruction.Result].Type.SpillSlotUnits())
+				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostArityOffset), int32(3|resultSlots<<16))
 				a.CallMem(amd64.R11, int32(abi.SyncHostTrampolineOffset))
 				a.Load64(amd64.R11, amd64.RBX, -int32(abi.SyncHostCustomContextOffset))
 				dst := reg(instruction.Result)
-				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
+				if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
+					a.VMovdquLoadDisp(dst, amd64.R11, int32(abi.SyncHostResultsOffset))
+				} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 					a.Load64(amd64.R10, amd64.R11, int32(abi.SyncHostResultsOffset))
 					a.MovGprToXmm(dst, amd64.R10, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
 				} else {
@@ -1616,18 +1636,24 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				emitAMD64ExternalCallFPRSave(&a, plan, false)
 				a.Load64(amd64.R11, amd64.RBX, -int32(abi.SyncHostCustomContextOffset))
 				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), reg(operands[0].Reg))
+				valueData := plan.Machine.VRegs[operands[1].Reg]
 				value := reg(operands[1].Reg)
-				if plan.Machine.VRegs[operands[1].Reg].Bank == railmach.BankFPR {
+				valueSlots := uint32(valueData.Type.SpillSlotUnits())
+				if valueData.Type == railmach.TypeV128 {
+					a.VMovdquStoreDisp(amd64.R11, int32(abi.SyncHostArgsOffset+8), value)
+				} else if valueData.Bank == railmach.BankFPR {
 					a.MovXmmToGpr(amd64.R10, value, plan.Machine.VRegs[operands[1].Reg].Type == railmach.TypeF64)
 					value = amd64.R10
 				}
-				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+8), value)
+				if valueData.Type != railmach.TypeV128 {
+					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+8), value)
+				}
 				a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux>>32)))
-				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+16), amd64.R10)
+				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+(1+valueSlots)*8), amd64.R10)
 				a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
-				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+24), amd64.R10)
+				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+(2+valueSlots)*8), amd64.R10)
 				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostImportIndexOffset), int32(codegen.GCHelperDispatchBit|payload))
-				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostArityOffset), 4)
+				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostArityOffset), int32(3+valueSlots))
 				a.CallMem(amd64.R11, int32(abi.SyncHostTrampolineOffset))
 				emitAMD64ExternalCallFPRSave(&a, plan, true)
 				continue
@@ -1708,11 +1734,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
 				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+16), amd64.R10)
 				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostImportIndexOffset), int32(codegen.GCHelperDispatchBit|payload))
-				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostArityOffset), int32(3|1<<16))
+				resultSlots := uint32(plan.Machine.VRegs[instruction.Result].Type.SpillSlotUnits())
+				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostArityOffset), int32(3|resultSlots<<16))
 				a.CallMem(amd64.R11, int32(abi.SyncHostTrampolineOffset))
 				a.Load64(amd64.R11, amd64.RBX, -int32(abi.SyncHostCustomContextOffset))
 				dst := reg(instruction.Result)
-				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
+				if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
+					a.VMovdquLoadDisp(dst, amd64.R11, int32(abi.SyncHostResultsOffset))
+				} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 					a.Load64(amd64.R10, amd64.R11, int32(abi.SyncHostResultsOffset))
 					a.MovGprToXmm(dst, amd64.R10, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
 				} else {
@@ -1737,16 +1766,22 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.Load64(amd64.R11, amd64.RBX, -int32(abi.SyncHostCustomContextOffset))
 				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), reg(operands[0].Reg))
 				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+8), reg(operands[1].Reg))
+				valueData := plan.Machine.VRegs[operands[2].Reg]
 				value := reg(operands[2].Reg)
-				if plan.Machine.VRegs[operands[2].Reg].Bank == railmach.BankFPR {
+				valueSlots := uint32(valueData.Type.SpillSlotUnits())
+				if valueData.Type == railmach.TypeV128 {
+					a.VMovdquStoreDisp(amd64.R11, int32(abi.SyncHostArgsOffset+16), value)
+				} else if valueData.Bank == railmach.BankFPR {
 					a.MovXmmToGpr(amd64.R10, value, plan.Machine.VRegs[operands[2].Reg].Type == railmach.TypeF64)
 					value = amd64.R10
 				}
-				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+16), value)
+				if valueData.Type != railmach.TypeV128 {
+					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+16), value)
+				}
 				a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
-				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+24), amd64.R10)
+				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+(2+valueSlots)*8), amd64.R10)
 				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostImportIndexOffset), int32(codegen.GCHelperDispatchBit|payload))
-				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostArityOffset), 4)
+				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostArityOffset), int32(3+valueSlots))
 				a.CallMem(amd64.R11, int32(abi.SyncHostTrampolineOffset))
 				emitAMD64ExternalCallFPRSave(&a, plan, true)
 				continue
@@ -1799,19 +1834,29 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				emitAMD64ExternalCallFPRSave(&a, plan, false)
 				a.Load64(amd64.R11, amd64.RBX, -int32(abi.SyncHostCustomContextOffset))
-				for index, operand := range operands {
+				argumentSlot := uint32(0)
+				for _, operand := range operands {
+					data := plan.Machine.VRegs[operand.Reg]
 					value := reg(operand.Reg)
-					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR {
+					if data.Type == railmach.TypeV128 {
+						a.VMovdquStoreDisp(amd64.R11, int32(abi.SyncHostArgsOffset+argumentSlot*8), value)
+						argumentSlot += uint32(data.Type.SpillSlotUnits())
+						continue
+					}
+					if data.Bank == railmach.BankFPR {
 						a.MovXmmToGpr(amd64.R10, value, plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF64)
 						value = amd64.R10
 					}
-					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+index*8), value)
+					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+argumentSlot*8), value)
+					argumentSlot++
 				}
 				a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
-				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+len(operands)*8), amd64.R10)
+				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+argumentSlot*8), amd64.R10)
+				arity = argumentSlot + 1
 				if semanticOp == wasm.InstrArrayCopy || semanticOp == wasm.InstrArrayInitData || semanticOp == wasm.InstrArrayInitElem {
 					a.MovImm64(amd64.R10, instruction.Aux>>32)
-					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+(len(operands)+1)*8), amd64.R10)
+					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+(argumentSlot+1)*8), amd64.R10)
+					arity++
 				}
 				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostImportIndexOffset), int32(codegen.GCHelperDispatchBit|payload))
 				a.StoreImm32Mem(amd64.R11, int32(abi.SyncHostArityOffset), int32(arity))

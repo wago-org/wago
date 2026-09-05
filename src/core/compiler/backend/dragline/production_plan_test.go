@@ -306,6 +306,66 @@ func TestNativeBackendPlannerReservesVerifiedCollectorRootSlots(t *testing.T) {
 	}
 }
 
+func TestNativeBackendPlannerAdmitsMixedVectorAndReferenceValues(t *testing.T) {
+	importEntry := append(wasmtest.Name("env"), wasmtest.Name("tick")...)
+	importEntry = append(importEntry, 0)
+	importEntry = append(importEntry, wasmtest.ULEB(0)...)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(
+			wasmtest.FuncType(nil, nil),
+			wasmtest.FuncType([]wasm.ValType{wasm.AnyRef, wasm.V128}, []wasm.ValType{wasm.AnyRef, wasm.V128}),
+		)),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x10, 0x00,
+			0x20, 0x00,
+			0x20, 0x01,
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stack.HasReferences || !stackHasV128Value(stack) {
+		t.Fatalf("mixed stack flags: references=%t vector-value=%t", stack.HasReferences, stackHasV128Value(stack))
+	}
+	if !railMachCandidate(stack, true) {
+		t.Fatal("mixed vector/reference function was not admitted to RailMach")
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Machine == nil || plan.Allocation == nil || plan.Roots == nil || plan.Roots.SlotCount != 1 || len(plan.Roots.Sites) != 1 || plan.Roots.Sites[0].Count != 1 {
+		t.Fatalf("incomplete mixed vector/reference plan: %#v", plan)
+	}
+	var metrics Metrics
+	compiled, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("mixed vector/reference emitter metrics: %#v", metrics.Functions)
+	}
+	if len(compiled.GCCallsites) != 1 || compiled.GCCallsites[0].RootCount != 1 || len(compiled.GCRoots) != 1 {
+		t.Fatalf("mixed vector/reference roots: callsites=%#v roots=%#v", compiled.GCCallsites, compiled.GCRoots)
+	}
+}
+
 func TestNativeBackendPlannerAllocatesOnlyRequiredPostRAScratch(t *testing.T) {
 	var planner nativeBackendPlanner
 	if !planner.preparePostRAScratch(railmach.TargetARM64, 64, []railmach.Rewrite{{Kind: railmach.RewriteARM64CompareBranch}}) {

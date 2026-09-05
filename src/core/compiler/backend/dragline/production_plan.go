@@ -436,7 +436,7 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 // lowering is complete. Vector parameters, calls, results, globals, locals,
 // and block values use the typed allocation and transfer machinery.
 func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
-	if stack == nil || stack.HasReferences || len(stack.BranchCasts) != 0 {
+	if stack == nil || len(stack.BranchCasts) != 0 {
 		return false
 	}
 	hasVectorOperation := false

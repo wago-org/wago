@@ -2447,7 +2447,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						return nil, 0, true, fmt.Errorf("RailMach GC dead fixed-array count argument is not encodable")
 					}
 				} else if semanticOp == wasm.InstrStructNew || semanticOp == wasm.InstrArrayNewFixed {
-					for index, operand := range operands {
+					argumentSlot := uint32(0)
+					for _, operand := range operands {
 						data := plan.Machine.VRegs[operand.Reg]
 						scratch := arm64.X16
 						if data.Bank == railmach.BankFPR {
@@ -2457,29 +2458,41 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						if err != nil {
 							return nil, 0, true, err
 						}
+						if data.Type == railmach.TypeV128 {
+							a.StrQ(arm64.X17, int32(abi.SyncHostArgsOffset+argumentSlot*8), value)
+							argumentSlot += uint32(data.Type.SpillSlotUnits())
+							continue
+						}
 						if data.Bank == railmach.BankFPR {
 							a.FmovToGpr(arm64.X16, value, data.Type == railmach.TypeF64)
 							value = arm64.X16
 						}
-						if !a.Store64(value, arm64.X17, uint32(abi.SyncHostArgsOffset+index*8)) {
+						if !a.Store64(value, arm64.X17, uint32(abi.SyncHostArgsOffset+argumentSlot*8)) {
 							return nil, 0, true, fmt.Errorf("RailMach GC struct.new argument offset is not encodable")
 						}
+						argumentSlot++
 					}
 					a.MovImm64(arm64.X16, uint64(uint32(instruction.Aux)))
-					if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+len(operands)*8)) {
+					if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+argumentSlot*8)) {
 						return nil, 0, true, fmt.Errorf("RailMach GC allocation type offset is not encodable")
 					}
+					arity = argumentSlot + 1
 					if semanticOp == wasm.InstrArrayNewFixed {
 						a.MovImm64(arm64.X16, instruction.Aux>>32)
-						if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+(len(operands)+1)*8)) {
+						if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+(argumentSlot+1)*8)) {
 							return nil, 0, true, fmt.Errorf("RailMach GC array.new_fixed count offset is not encodable")
 						}
+						arity++
 					}
 				} else if semanticOp == wasm.InstrArrayNewDefault {
 					argument = reg(operands[0].Reg)
 				} else if semanticOp == wasm.InstrArrayNew {
+					valueData := plan.Machine.VRegs[operands[0].Reg]
 					argument = reg(operands[0].Reg)
-					if plan.Machine.VRegs[operands[0].Reg].Bank == railmach.BankFPR {
+					if valueData.Type == railmach.TypeV128 {
+						a.StrQ(arm64.X17, int32(abi.SyncHostArgsOffset), argument)
+						argument = arm64.XZR
+					} else if valueData.Bank == railmach.BankFPR {
 						a.FmovToGpr(arm64.X16, argument, plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeF64)
 						argument = arm64.X16
 					}
@@ -2498,7 +2511,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				} else {
 					a.MovImm64(arm64.X16, uint64(uint32(instruction.Aux)))
 				}
-				if semanticOp != wasm.InstrStructNew && semanticOp != wasm.InstrArrayNewFixed && semanticOp != wasm.InstrArrayNewData && semanticOp != wasm.InstrArrayNewElem && !a.Store64(argument, arm64.X17, uint32(abi.SyncHostArgsOffset)) {
+				if semanticOp != wasm.InstrStructNew && semanticOp != wasm.InstrArrayNewFixed && semanticOp != wasm.InstrArrayNewData && semanticOp != wasm.InstrArrayNewElem && !(semanticOp == wasm.InstrArrayNew && plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeV128) && !a.Store64(argument, arm64.X17, uint32(abi.SyncHostArgsOffset)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC helper argument offset is not encodable")
 				}
 				if semanticOp == wasm.InstrArrayNewDefault {
@@ -2507,13 +2520,15 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						return nil, 0, true, fmt.Errorf("RailMach GC array helper type offset is not encodable")
 					}
 				} else if semanticOp == wasm.InstrArrayNew {
-					if !a.Store64(reg(operands[1].Reg), arm64.X17, uint32(abi.SyncHostArgsOffset+8)) {
+					valueSlots := uint32(plan.Machine.VRegs[operands[0].Reg].Type.SpillSlotUnits())
+					if !a.Store64(reg(operands[1].Reg), arm64.X17, uint32(abi.SyncHostArgsOffset+valueSlots*8)) {
 						return nil, 0, true, fmt.Errorf("RailMach GC array helper length offset is not encodable")
 					}
 					a.MovImm64(arm64.X16, instruction.Aux)
-					if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+16)) {
+					if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+(valueSlots+1)*8)) {
 						return nil, 0, true, fmt.Errorf("RailMach GC array helper type offset is not encodable")
 					}
+					arity = valueSlots + 2
 				}
 				a.MovImm64(arm64.X16, uint64(codegen.GCHelperDispatchBit|payload))
 				if !a.Store32(arm64.X16, arm64.X17, uint32(abi.SyncHostImportIndexOffset)) {
@@ -2564,14 +2579,17 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				if !a.Store32(arm64.X16, arm64.X17, uint32(abi.SyncHostImportIndexOffset)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC struct.get dispatch offset is not encodable")
 				}
-				a.MovImm64(arm64.X16, 3|1<<16)
+				resultSlots := uint64(plan.Machine.VRegs[instruction.Result].Type.SpillSlotUnits())
+				a.MovImm64(arm64.X16, 3|resultSlots<<16)
 				if !a.Store32(arm64.X16, arm64.X17, uint32(abi.SyncHostArityOffset)) || !a.Load64(arm64.X16, arm64.X17, uint32(abi.SyncHostTrampolineOffset)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC struct.get control offset is not encodable")
 				}
 				a.Blr(arm64.X16)
 				a.Ldur64(arm64.X17, arm64.X26, -int32(abi.SyncHostCustomContextOffset))
 				dst := reg(instruction.Result)
-				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
+				if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
+					a.LdrQ(dst, arm64.X17, int32(abi.SyncHostResultsOffset))
+				} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 					if !a.Load64(arm64.X16, arm64.X17, uint32(abi.SyncHostResultsOffset)) {
 						return nil, 0, true, fmt.Errorf("RailMach GC struct.get result offset is not encodable")
 					}
@@ -2597,27 +2615,31 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				if !a.Store64(reg(operands[0].Reg), arm64.X17, uint32(abi.SyncHostArgsOffset)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC struct.set object offset is not encodable")
 				}
+				valueData := plan.Machine.VRegs[operands[1].Reg]
 				value := reg(operands[1].Reg)
-				if plan.Machine.VRegs[operands[1].Reg].Bank == railmach.BankFPR {
+				valueSlots := uint32(valueData.Type.SpillSlotUnits())
+				if valueData.Type == railmach.TypeV128 {
+					a.StrQ(arm64.X17, int32(abi.SyncHostArgsOffset+8), value)
+				} else if valueData.Bank == railmach.BankFPR {
 					a.FmovToGpr(arm64.X16, value, plan.Machine.VRegs[operands[1].Reg].Type == railmach.TypeF64)
 					value = arm64.X16
 				}
-				if !a.Store64(value, arm64.X17, uint32(abi.SyncHostArgsOffset+8)) {
+				if valueData.Type != railmach.TypeV128 && !a.Store64(value, arm64.X17, uint32(abi.SyncHostArgsOffset+8)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC struct.set value offset is not encodable")
 				}
 				a.MovImm64(arm64.X16, uint64(uint32(instruction.Aux>>32)))
-				if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+16)) {
+				if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+(1+valueSlots)*8)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC struct.set type offset is not encodable")
 				}
 				a.MovImm64(arm64.X16, uint64(uint32(instruction.Aux)))
-				if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+24)) {
+				if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+(2+valueSlots)*8)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC struct.set field offset is not encodable")
 				}
 				a.MovImm64(arm64.X16, uint64(codegen.GCHelperDispatchBit|payload))
 				if !a.Store32(arm64.X16, arm64.X17, uint32(abi.SyncHostImportIndexOffset)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC struct.set dispatch offset is not encodable")
 				}
-				a.MovImm64(arm64.X16, 4)
+				a.MovImm64(arm64.X16, uint64(3+valueSlots))
 				if !a.Store32(arm64.X16, arm64.X17, uint32(abi.SyncHostArityOffset)) || !a.Load64(arm64.X16, arm64.X17, uint32(abi.SyncHostTrampolineOffset)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC struct.set control offset is not encodable")
 				}
@@ -2729,14 +2751,17 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				if !a.Store32(arm64.X16, arm64.X17, uint32(abi.SyncHostImportIndexOffset)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC array.get dispatch offset is not encodable")
 				}
-				a.MovImm64(arm64.X16, 3|1<<16)
+				resultSlots := uint64(plan.Machine.VRegs[instruction.Result].Type.SpillSlotUnits())
+				a.MovImm64(arm64.X16, 3|resultSlots<<16)
 				if !a.Store32(arm64.X16, arm64.X17, uint32(abi.SyncHostArityOffset)) || !a.Load64(arm64.X16, arm64.X17, uint32(abi.SyncHostTrampolineOffset)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC array.get control offset is not encodable")
 				}
 				a.Blr(arm64.X16)
 				a.Ldur64(arm64.X17, arm64.X26, -int32(abi.SyncHostCustomContextOffset))
 				dst := reg(instruction.Result)
-				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
+				if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
+					a.LdrQ(dst, arm64.X17, int32(abi.SyncHostResultsOffset))
+				} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 					if !a.Load64(arm64.X16, arm64.X17, uint32(abi.SyncHostResultsOffset)) {
 						return nil, 0, true, fmt.Errorf("RailMach GC array.get result offset is not encodable")
 					}
@@ -2762,23 +2787,27 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				if !a.Store64(reg(operands[0].Reg), arm64.X17, uint32(abi.SyncHostArgsOffset)) || !a.Store64(reg(operands[1].Reg), arm64.X17, uint32(abi.SyncHostArgsOffset+8)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC array.set argument offset is not encodable")
 				}
+				valueData := plan.Machine.VRegs[operands[2].Reg]
 				value := reg(operands[2].Reg)
-				if plan.Machine.VRegs[operands[2].Reg].Bank == railmach.BankFPR {
+				valueSlots := uint32(valueData.Type.SpillSlotUnits())
+				if valueData.Type == railmach.TypeV128 {
+					a.StrQ(arm64.X17, int32(abi.SyncHostArgsOffset+16), value)
+				} else if valueData.Bank == railmach.BankFPR {
 					a.FmovToGpr(arm64.X16, value, plan.Machine.VRegs[operands[2].Reg].Type == railmach.TypeF64)
 					value = arm64.X16
 				}
-				if !a.Store64(value, arm64.X17, uint32(abi.SyncHostArgsOffset+16)) {
+				if valueData.Type != railmach.TypeV128 && !a.Store64(value, arm64.X17, uint32(abi.SyncHostArgsOffset+16)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC array.set value offset is not encodable")
 				}
 				a.MovImm64(arm64.X16, uint64(uint32(instruction.Aux)))
-				if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+24)) {
+				if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+(2+valueSlots)*8)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC array.set type offset is not encodable")
 				}
 				a.MovImm64(arm64.X16, uint64(codegen.GCHelperDispatchBit|payload))
 				if !a.Store32(arm64.X16, arm64.X17, uint32(abi.SyncHostImportIndexOffset)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC array.set dispatch offset is not encodable")
 				}
-				a.MovImm64(arm64.X16, 4)
+				a.MovImm64(arm64.X16, uint64(3+valueSlots))
 				if !a.Store32(arm64.X16, arm64.X17, uint32(abi.SyncHostArityOffset)) || !a.Load64(arm64.X16, arm64.X17, uint32(abi.SyncHostTrampolineOffset)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC array.set control offset is not encodable")
 				}
@@ -2840,25 +2869,35 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					return nil, 0, true, fmt.Errorf("RailMach GC %s helper is not encodable", instruction.Op)
 				}
 				a.Ldur64(arm64.X17, arm64.X26, -int32(abi.SyncHostCustomContextOffset))
-				for index, operand := range operands {
+				argumentSlot := uint32(0)
+				for _, operand := range operands {
+					data := plan.Machine.VRegs[operand.Reg]
 					value := reg(operand.Reg)
-					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR {
+					if data.Type == railmach.TypeV128 {
+						a.StrQ(arm64.X17, int32(abi.SyncHostArgsOffset+argumentSlot*8), value)
+						argumentSlot += uint32(data.Type.SpillSlotUnits())
+						continue
+					}
+					if data.Bank == railmach.BankFPR {
 						a.FmovToGpr(arm64.X16, value, plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF64)
 						value = arm64.X16
 					}
-					if !a.Store64(value, arm64.X17, uint32(abi.SyncHostArgsOffset+index*8)) {
+					if !a.Store64(value, arm64.X17, uint32(abi.SyncHostArgsOffset+argumentSlot*8)) {
 						return nil, 0, true, fmt.Errorf("RailMach GC %s argument offset is not encodable", instruction.Op)
 					}
+					argumentSlot++
 				}
 				a.MovImm64(arm64.X16, uint64(uint32(instruction.Aux)))
-				if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+len(operands)*8)) {
+				if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+argumentSlot*8)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC %s type offset is not encodable", instruction.Op)
 				}
+				arity = uint64(argumentSlot + 1)
 				if semanticOp == wasm.InstrArrayCopy || semanticOp == wasm.InstrArrayInitData || semanticOp == wasm.InstrArrayInitElem {
 					a.MovImm64(arm64.X16, instruction.Aux>>32)
-					if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+(len(operands)+1)*8)) {
+					if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+(argumentSlot+1)*8)) {
 						return nil, 0, true, fmt.Errorf("RailMach GC array.copy source type offset is not encodable")
 					}
+					arity++
 				}
 				a.MovImm64(arm64.X16, uint64(codegen.GCHelperDispatchBit|payload))
 				if !a.Store32(arm64.X16, arm64.X17, uint32(abi.SyncHostImportIndexOffset)) {
