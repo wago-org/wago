@@ -448,11 +448,13 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool) (ea Reg, eaOwned bo
 		return ea, eaOwned, borrow, disp
 	}
 	f.boundsCertUpdate(bcKind, bcIdx, leaDisp)
-	if bcKind != 0 && f.inLoop() {
-		f.stats.addBoundsInLoop()
-	}
-	if f.boundsHoistable(bcKind, bcIdx) {
-		f.stats.addBoundsHoistable()
+	if f.stats != nil {
+		if bcKind != 0 && f.inLoop() {
+			f.stats.addBoundsInLoop()
+		}
+		if f.boundsHoistable(bcKind, bcIdx) {
+			f.stats.addBoundsHoistable()
+		}
 	}
 	f.pinned = f.pinned.add(ea)
 	t := f.allocReg(0)
