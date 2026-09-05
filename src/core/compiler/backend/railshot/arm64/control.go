@@ -1159,7 +1159,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
-	if kind == cfLoop && !f.unreachable {
+	if kind == cfLoop && !f.unreachable && f.stats != nil {
 		base := len(f.loopSetLocals)
 		setLocals := scanLoopSetLocals(r, f.classifier, f.loopSetLocals)
 		if setLocals != nil {

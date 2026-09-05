@@ -270,6 +270,7 @@ func TestCodegenStatsCodegenNeutralArm64(t *testing.T) {
 		{"strength", false, i32, i32, []byte{0x00, 0x20, 0x00, 0x41, 0x08, 0x6c, 0x0b}},
 		{"store", true, nil, nil, []byte{0x00, 0x41, 0x10, 0x41, 0x2a, 0x36, 0x02, 0x00, 0x0b}},
 		{"load", true, i32, i32, []byte{0x00, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}},
+		{"loop-load", true, i32, i32, []byte{0x00, 0x03, 0x7f, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b, 0x0b}},
 	}
 	for _, sh := range shapes {
 		for _, guard := range []bool{false, true} {
@@ -283,13 +284,17 @@ func TestCodegenStatsCodegenNeutralArm64(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s off: %v", sh.name, err)
 			}
-			on, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, Stats: &ModuleStats{}})
+			stats := &ModuleStats{}
+			on, err := CompileModuleWith(m, CompileOptions{ElideBoundsChecks: guard, Stats: stats})
 			if err != nil {
 				t.Fatalf("%s on: %v", sh.name, err)
 			}
 			if !bytes.Equal(off.Code, on.Code) {
 				t.Errorf("%s guard=%v: stats collection changed emitted code (%d vs %d bytes)",
 					sh.name, guard, len(off.Code), len(on.Code))
+			}
+			if sh.name == "loop-load" && !guard && stats.Funcs[0].BoundsChecksHoistable != 1 {
+				t.Errorf("loop-load: hoistable bounds checks = %d, want 1", stats.Funcs[0].BoundsChecksHoistable)
 			}
 		}
 	}
