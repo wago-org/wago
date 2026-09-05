@@ -201,6 +201,22 @@ func TestInlineRejectsRecursiveArm64(t *testing.T) {
 	}
 }
 
+func TestInlineBodyLimitArm64(t *testing.T) {
+	saved := inlineMaxBytes
+	inlineMaxBytes = inlineMaxBodyBytes
+	t.Cleanup(func() { inlineMaxBytes = saved })
+
+	policy := currentCodegenPolicy()
+	facts := inlineFacts{bodyBytes: inlineMaxBodyBytes, regABIIntOnly: true}
+	if !inlineOK(facts, policy) {
+		t.Fatalf("%d-byte leaf rejected at the inline limit", inlineMaxBodyBytes)
+	}
+	facts.bodyBytes++
+	if inlineOK(facts, policy) {
+		t.Fatalf("%d-byte leaf accepted above the inline limit", facts.bodyBytes)
+	}
+}
+
 func TestCompactInlineRequiresNativeByteProofArm64(t *testing.T) {
 	caller := []byte{0x00, 0x41, 0x05, 0x41, 0x07, 0x10, 0x01, 0x0b}
 	leaf := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b}

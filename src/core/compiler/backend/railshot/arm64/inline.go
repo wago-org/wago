@@ -28,10 +28,11 @@ import (
 // reason about — an inline of such a body cannot re-enter the inliner.
 
 // inlineMaxBodyBytes is the default encoded-body-size ceiling for a candidate
-// (a proxy for how much code each inline site adds). Control-flow callees are
-// larger than the tiny straight-line accessors, so this is generous; tune via
-// WAGO_INLINE_MAXBYTES.
-const inlineMaxBodyBytes = 160
+// (a proxy for how much code each inline site adds). Tiny helpers retain the
+// measured call-chain win; larger leaves stay as register-ABI calls instead of
+// multiplying lowering work and native bytes at every call site. Tune via
+// WAGO_INLINE_MAXBYTES for controlled experiments.
+const inlineMaxBodyBytes = 16
 
 // inlineCallSeqBytes is a rough per-call-site machine-code cost for the call
 // sequence an inline removes (arg staging + call + result handling). Used only
