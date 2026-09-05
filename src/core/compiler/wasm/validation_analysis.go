@@ -1,5 +1,7 @@
 package wasm
 
+import "sync"
+
 // ValidatedFuncFlags are architecture-neutral facts gathered while a function
 // body is being validated. They describe only successfully validated code.
 type ValidatedFuncFlags uint64
@@ -66,6 +68,7 @@ type ValidatedModuleAnalysis struct {
 }
 
 func (a *ValidatedModuleAnalysis) reset(m *Module) {
+	initValidatedFuncFlags()
 	*a = ValidatedModuleAnalysis{Funcs: make([]ValidatedFuncFacts, len(m.Code)), module: m}
 }
 
@@ -113,6 +116,33 @@ func (f *ValidatedFuncFacts) observe(kind InstrKind) {
 	if f.InstructionCost != ^uint32(0) {
 		f.InstructionCost++
 	}
+	if kind < numInstrKinds {
+		f.Flags |= validatedFuncFlagsByKind[kind]
+		return
+	}
+	f.observeSlow(kind)
+}
+
+var (
+	validatedFuncFlagsOnce   sync.Once
+	validatedFuncFlagsByKind [numInstrKinds]ValidatedFuncFlags
+)
+
+func initValidatedFuncFlags() {
+	validatedFuncFlagsOnce.Do(func() {
+		for kind := InstrKind(0); kind < numInstrKinds; kind++ {
+			var facts ValidatedFuncFacts
+			facts.observeSlow(kind)
+			validatedFuncFlagsByKind[kind] = facts.Flags
+		}
+	})
+}
+
+// observeSlow is the auditable source of the fixed instruction classifier.
+// Successful validation uses validatedFuncFlagsByKind; tests compare every
+// table entry with this definition so proposal additions cannot silently omit
+// a resource or feature fact.
+func (f *ValidatedFuncFacts) observeSlow(kind InstrKind) {
 	switch kind {
 	case InstrBlock, InstrIf, InstrTryTable, InstrBr, InstrBrIf, InstrBrTable,
 		InstrBrOnNull, InstrBrOnNonNull, InstrBrOnCast, InstrBrOnCastFail,
