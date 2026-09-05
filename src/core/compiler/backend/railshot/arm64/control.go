@@ -243,24 +243,24 @@ func (f *fn) frameBranchState(fr *ctrlFrame) packedLocStates {
 	if merge := f.ctrlMerge(fr); merge != nil {
 		return merge.branchState
 	}
-	return nil
+	return packedLocStates{}
 }
 
 func (f *fn) frameEntryState(fr *ctrlFrame) packedLocStates {
 	if merge := f.ctrlMerge(fr); merge != nil {
 		return merge.entryState
 	}
-	return nil
+	return packedLocStates{}
 }
 
 func (f *fn) setFrameBranchState(fr *ctrlFrame, state packedLocStates) {
-	if state != nil {
+	if !state.empty() {
 		f.ensureCtrlMerge(fr).branchState = state
 	}
 }
 
 func (f *fn) setFrameEntryState(fr *ctrlFrame, state packedLocStates) {
-	if state != nil {
+	if !state.empty() {
 		f.ensureCtrlMerge(fr).entryState = state
 	}
 }
@@ -1076,9 +1076,7 @@ func (f *fn) alignLoopHeader() {
 	}
 	f.alignCode(loopAlign)
 	if loopAlign >= 4 && !f.interruptible && f.nLocals <= pollFreeLoopPhaseMaxLocals {
-		for range 4 {
-			f.a.Nop()
-		}
+		f.a.Nop4()
 	}
 }
 
@@ -1161,7 +1159,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 	// through, else, br/br_if/br_table, and an if's cond-false passthrough) instead
 	// of a frame slot. Excludes loops (params, back-edge) and multi-value.
 	fr.set(ctrlRegMerge1, f.regMerge && (kind == cfBlock || kind == cfIf) && rN == 1 && res0 != mtNone && res0 != mtV128)
-	if kind == cfLoop && !f.unreachable {
+	if kind == cfLoop && !f.unreachable && f.stats != nil {
 		base := len(f.loopSetLocals)
 		setLocals := scanLoopSetLocals(r, f.classifier, f.loopSetLocals)
 		if setLocals != nil {
@@ -1818,7 +1816,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 			// Merge edge: converge to the end's recorded state (or fix it).
 			// A loop end is NOT a merge — br edges target the loop TOP — so the
 			// fall-through's state simply flows out.
-			deadGP, deadFP := f.planForwardMergeDeadLocals(r, branchState, nil)
+			deadGP, deadFP := f.planForwardMergeDeadLocals(r, branchState, packedLocStates{})
 			f.convergeFrameBranchStateWithDead(&fr, deadGP, deadFP)
 			branchState = f.frameBranchState(&fr)
 		}
@@ -1842,7 +1840,7 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		// fall-through jumps over the stub.
 		deadGP, deadFP := f.planForwardMergeDeadLocals(r, branchState, entryState)
 		needLoads := false
-		if f.usesCalls && branchState != nil && entryState != nil {
+		if f.usesCalls && !branchState.empty() && !entryState.empty() {
 			for x := 0; x < f.nLocals; x++ {
 				reg, isFloat, ok := f.pinReg(x)
 				if !ok || branchState.get(x) != lsStackReg || entryState.get(x) != lsMem {
@@ -1957,10 +1955,6 @@ func (f *fn) opEnd(r *wasm.Reader) error {
 		}
 		f.ehTryDepth--
 	}
-	// The popped frame no longer owns these temporary buffers. Recycle them for
-	// later frames at the same or a shallower nesting depth.
-	f.freeLocStateBuf(branchState)
-	f.freeLocStateBuf(entryState)
 	f.releaseCtrlMerge(&fr)
 	f.freeEndsBuf(ends)
 	f.releaseFrameBaseTypes(&fr)

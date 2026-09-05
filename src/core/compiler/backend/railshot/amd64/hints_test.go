@@ -12,9 +12,39 @@ import (
 )
 
 func TestFuncHintsSize(t *testing.T) {
-	const want = 32
+	const want = 24
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
+	}
+}
+
+func TestParallelModuleHintsMatchSerial(t *testing.T) {
+	for _, name := range []string{"json-as-simd.wasm", "lua.wasm", "sqlite3.wasm"} {
+		t.Run(name, func(t *testing.T) {
+			m := readParallelTestModule(t, "../../../../../../bench/corpus/"+name)
+			policy := currentCodegenPolicy()
+			serial, serialSidecar, serialGlobals, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, nil, false, policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parallel, parallelSidecar, parallelGlobals, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 4, nil, false, policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(parallel, serial) {
+				for i := range serial {
+					if parallel[i] != serial[i] {
+						t.Fatalf("function %d hints differ:\nparallel: %#v\nserial:   %#v", i, parallel[i], serial[i])
+					}
+				}
+			}
+			if !reflect.DeepEqual(parallelSidecar, serialSidecar) {
+				t.Fatalf("sidecars differ: parallel scores=%d last=%d globals=%d; serial scores=%d last=%d globals=%d", len(parallelSidecar.localScore), len(parallelSidecar.localLastGet), len(parallelSidecar.sparseGlobals), len(serialSidecar.localScore), len(serialSidecar.localLastGet), len(serialSidecar.sparseGlobals))
+			}
+			if !reflect.DeepEqual(parallelGlobals, serialGlobals) {
+				t.Fatal("module global scores differ")
+			}
+		})
 	}
 }
 
@@ -95,11 +125,9 @@ func TestScanBodyBytesDetectsDeepVariableShiftPressure(t *testing.T) {
 	}
 
 	var h funcHints
-	h.addStackArenaDiscount(7)
 	h.noteDeepVariableShift()
-	h.addStackArenaDiscount(5)
-	if got := h.arenaDiscount(); got != 12 || !h.hasDeepVariableShift() {
-		t.Fatalf("packed discount/pressure = %d/%v, want 12/true", got, h.hasDeepVariableShift())
+	if !h.hasDeepVariableShift() {
+		t.Fatal("deep variable shift flag was not retained")
 	}
 }
 
@@ -233,183 +261,6 @@ func TestScanBodyExceptionHandlingHint(t *testing.T) {
 	}
 	if plain.flags.has(hintModuleEH) {
 		t.Fatal("plain bytecode marked exception handling")
-	}
-}
-
-func TestScanBodyBytesStackArenaHintSkipsSIMDStores(t *testing.T) {
-	body := []byte{
-		0xfd, 0x0b, 0x04, 0x00, // v128.store align=16 offset=0
-		0xfd, 0x58, 0x00, 0x00, 0x0f, // v128.store8_lane align=1 offset=0 lane=15
-		0xfd, 0x59, 0x01, 0x00, 0x07, // v128.store16_lane align=2 offset=0 lane=7
-		0xfd, 0x5a, 0x02, 0x00, 0x03, // v128.store32_lane align=4 offset=0 lane=3
-		0xfd, 0x5b, 0x03, 0x00, 0x01, // v128.store64_lane align=8 offset=0 lane=1
-		0x0b,
-	}
-	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatalf("scan end-only body: %v", err)
-	}
-	storeHints, err := scanBodyBytes(body, 0, 0, 0)
-	if err != nil {
-		t.Fatalf("scan SIMD stores: %v", err)
-	}
-	if storeHints.stackArenaNodes != endOnly.stackArenaNodes {
-		t.Fatalf("SIMD store stack arena nodes = %d, want end-only baseline %d", storeHints.stackArenaNodes, endOnly.stackArenaNodes)
-	}
-	if !storeHints.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("SIMD body did not select legacy arena sizing")
-	}
-
-	body = []byte{
-		0xfd, 0x54, 0x00, 0x00, 0x0f, // v128.load8_lane align=1 offset=0 lane=15
-		0x0b,
-	}
-	loadHints, err := scanBodyBytes(body, 0, 0, 0)
-	if err != nil {
-		t.Fatalf("scan SIMD load lane: %v", err)
-	}
-	if loadHints.stackArenaNodes != endOnly.stackArenaNodes+1 {
-		t.Fatalf("SIMD load-lane stack arena nodes = %d, want %d", loadHints.stackArenaNodes, endOnly.stackArenaNodes+1)
-	}
-}
-
-func TestScanBodyBytesStackArenaHintCountsAtomics(t *testing.T) {
-	for _, kind := range []wasm.InstrKind{wasm.InstrAtomicFence, wasm.InstrI32AtomicStore, wasm.InstrI64AtomicStore32} {
-		if stackArenaOpAllocates(0xfe, &wasm.InstructionImmediate{Kind: kind}) {
-			t.Fatalf("result-free atomic %v counted as arena allocation", kind)
-		}
-	}
-	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := []byte{
-		0x41, 0x00, // i32.const address
-		0xfe, 0x10, 0x02, 0x00, // i32.atomic.load align=4 offset=0
-		0x1a, 0x0b, // drop; end
-	}
-	h, err := scanBodyBytes(body, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := endOnly.stackArenaNodes + 2; h.stackArenaNodes != want {
-		t.Fatalf("atomic stack arena nodes = %d, want %d", h.stackArenaNodes, want)
-	}
-}
-
-func TestScanBodyBytesDiscountsAlgebraicIdentities(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, 0x41, 0x00, 0x6a, 0x1a, // x + 0; drop
-		0x20, 0x00, 0x41, 0x01, 0x6a, 0x1a, // x + 1; drop (not an identity)
-		0x20, 0x00, 0x20, 0x00, 0x6b, 0x1a, // x - x; drop
-		0x20, 0x00, 0x41, 0x20, 0x74, 0x1a, // i32.shl by 32; drop
-		0x20, 0x00, 0x42, 0xc0, 0x00, 0x86, 0x1a, // i64.shl by 64; drop
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 1, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.stackArenaDiscount != 3 {
-		t.Fatalf("algebraic discount = %d, want 3", h.stackArenaDiscount)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("multibyte identity constant did not retain legacy sizing")
-	}
-}
-
-func TestScanBodyBytesDetectsDeadCodeAfterTerminator(t *testing.T) {
-	h, err := scanBodyBytes([]byte{0x00, 0x41, 0x00, 0x1a, 0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("dead instructions after unreachable were not detected")
-	}
-	terminalOnly, err := scanBodyBytes([]byte{0x00, 0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if terminalOnly.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("terminal unreachable was marked as followed by dead code")
-	}
-}
-
-func TestScanBodyBytesDiscountsSWARLookaheadCandidates(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, 0x42, 0x00, 0x83, 0x22, 0x01, 0x1a, // i64.and; local.tee
-		0x20, 0x00, 0x42, 0x20, 0x88, 0x22, 0x01, 0x1a, // i64.shr_u; local.tee
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 2, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.stackArenaDiscount != 44 {
-		t.Fatalf("SWAR lookahead discount = %d, want 44", h.stackArenaDiscount)
-	}
-}
-
-func TestScanBodyBytesDetectsStackSinkFusion(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, // local.get 0
-		0x20, 0x01, // local.get 1
-		0x92,       // f32.add
-		0x21, 0x02, // local.set 2
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 3, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("float local sink fusion was not detected")
-	}
-}
-
-func TestScanBodyBytesStackArenaHintCountsReferenceResults(t *testing.T) {
-	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := []byte{
-		0x20, 0x00, // local.get 0
-		0xd4,       // ref.as_non_null
-		0x1a,       // drop
-		0x41, 0x00, // i32.const 0
-		0xfb, 0x1c, // ref.i31
-		0x1a, 0x0b, // drop; end
-	}
-	h, err := scanBodyBytes(body, 1, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := endOnly.stackArenaNodes + 4; h.stackArenaNodes != want {
-		t.Fatalf("reference stack arena nodes = %d, want %d", h.stackArenaNodes, want)
-	}
-}
-
-func TestScanBodyBytesStackArenaHintSkipsSIMDImmediateBytes(t *testing.T) {
-	m := benchSIMDHeavyModule(t)
-	ft, ok := m.LocalFuncType(0)
-	if !ok {
-		t.Fatal("missing benchmark function type")
-	}
-	nLocals, err := countLocals(ft.Params, m.Code[0].Locals)
-	if err != nil {
-		t.Fatalf("count locals: %v", err)
-	}
-	h, err := scanFuncBody(m.Code[0], nLocals, m.GlobalCount(), uint32(m.ImportedFuncCount()))
-	if err != nil {
-		t.Fatalf("scanFuncBody: %v", err)
-	}
-	legacy := stackArenaCapForBody(len(m.Code[0].BodyBytes), nLocals)
-	hinted := stackArenaCapForHints(len(m.Code[0].BodyBytes), nLocals, int(h.stackArenaNodes))
-	if h.stackArenaNodes == 0 || int(h.stackArenaNodes) >= len(m.Code[0].BodyBytes)/2 {
-		t.Fatalf("stack arena node hint = %d, body bytes = %d", h.stackArenaNodes, len(m.Code[0].BodyBytes))
-	}
-	if hinted >= legacy {
-		t.Fatalf("hinted stack arena cap = %d, want less than legacy %d", hinted, legacy)
 	}
 }
 

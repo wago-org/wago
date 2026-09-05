@@ -15,7 +15,7 @@ func TestCtrlFrameSize(t *testing.T) {
 	if got, want := unsafe.Sizeof(ctrlFrame{}), uintptr(72); got != want {
 		t.Fatalf("ctrlFrame size = %d, want %d", got, want)
 	}
-	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(112); got != want {
+	if got, want := unsafe.Sizeof(ctrlFrameMerge{}), uintptr(96); got != want {
 		t.Fatalf("ctrlFrameMerge size = %d, want %d", got, want)
 	}
 	if got, want := unsafe.Sizeof(ctrlFrameRoots{}), uintptr(24); got != want {
@@ -225,7 +225,7 @@ func TestIntrusiveReturnPatchChainArm64(t *testing.T) {
 }
 
 func TestPackedLocStatesArm64(t *testing.T) {
-	states := make(packedLocStates, packedLocStateBytes(9))
+	var states packedLocStates
 	want := []locState{lsReg, lsStackReg, lsMem, lsConstZero, lsConstZero, lsMem, lsStackReg, lsReg, lsMem}
 	for i, state := range want {
 		states.set(i, state)
@@ -235,15 +235,53 @@ func TestPackedLocStatesArm64(t *testing.T) {
 			t.Fatalf("state %d = %d, want %d", i, got, state)
 		}
 	}
-	if got, wantBytes := len(states), 3; got != wantBytes {
+	states.set(63, lsMem)
+	if got := states.get(63); got != lsMem {
+		t.Fatalf("state 63 = %d, want %d", got, lsMem)
+	}
+	if got, wantBytes := unsafe.Sizeof(states), uintptr(16); got != wantBytes {
 		t.Fatalf("packed bytes = %d, want %d", got, wantBytes)
+	}
+}
+
+func TestConvergeEdgeRecordsHighestPinnedLocalArm64(t *testing.T) {
+	locals := make([]localDef, 64)
+	for i := range locals {
+		locals[i].reg = regNone
+	}
+	locals[63] = localDef{reg: X19, state: lsMem}
+	f := fn{
+		usesCalls:       true,
+		nLocals:         len(locals),
+		locals:          locals,
+		pinnedLocalMask: maskOf(X19),
+	}
+	var target packedLocStates
+	f.convergeEdgeTo(&target)
+	if target.empty() || target.get(63) != lsMem {
+		t.Fatalf("highest-local merge state = %v, want local 63 memory-only", target)
+	}
+}
+
+func TestConvergeEdgeWithoutPinnedLocalsSkipsSnapshotArm64(t *testing.T) {
+	f := fn{
+		usesCalls: true,
+		nLocals:   8,
+		locals:    make([]localDef, 8),
+	}
+	var target packedLocStates
+	f.convergeEdgeTo(&target)
+	if !target.empty() {
+		t.Fatalf("merge state = %v, want empty", target)
 	}
 }
 
 func TestPushCtrlReusesMergeSlotAtDepth(t *testing.T) {
 	f := fn{ctrl: make([]ctrlFrame, 0, 1)}
 	first := ctrlFrame{height: 1}
-	f.ensureCtrlMerge(&first).branchState = make(packedLocStates, 1)
+	firstState := packedLocStates{}
+	firstState.set(0, lsStackReg)
+	f.ensureCtrlMerge(&first).branchState = firstState
 	first.set(ctrlHasBaseGCRoots, true)
 	f.ensureCtrlRoots(&first).flags = []bool{true}
 	f.pushCtrl(&first)
@@ -251,7 +289,9 @@ func TestPushCtrlReusesMergeSlotAtDepth(t *testing.T) {
 	f.ctrl = f.ctrl[:0]
 
 	next := ctrlFrame{height: 2}
-	f.ensureCtrlMerge(&next).branchState = make(packedLocStates, 2)
+	nextState := packedLocStates{}
+	nextState.set(1, lsMem)
+	f.ensureCtrlMerge(&next).branchState = nextState
 	next.set(ctrlHasBaseGCRoots, true)
 	f.ensureCtrlRoots(&next).flags = []bool{false, true}
 	f.pushCtrl(&next)
@@ -265,15 +305,15 @@ func TestPushCtrlReusesMergeSlotAtDepth(t *testing.T) {
 	if got, want := next.mergeIndex, uint32(1); got != want {
 		t.Fatalf("caller merge index = %d, want %d", got, want)
 	}
-	if got, want := len(f.frameBranchState(&f.ctrl[0])), 2; got != want {
-		t.Fatalf("moved branch state length = %d, want %d", got, want)
+	if got, want := f.frameBranchState(&f.ctrl[0]).get(1), lsMem; got != want {
+		t.Fatalf("moved branch state = %d, want %d", got, want)
 	}
 	if got := f.frameBaseGCRoots(&f.ctrl[0]); len(got) != 2 || got[0] || !got[1] {
 		t.Fatalf("moved GC roots = %v, want [false true]", got)
 	}
 	f.releaseCtrlMerge(&next)
-	if got := f.frameBranchState(&f.ctrl[0]); got != nil {
-		t.Fatalf("released branch state = %v, want nil", got)
+	if got := f.frameBranchState(&f.ctrl[0]); !got.empty() {
+		t.Fatalf("released branch state = %v, want empty", got)
 	}
 	if got := f.frameBaseGCRoots(&f.ctrl[0]); got != nil {
 		t.Fatalf("released GC roots = %v, want nil", got)
@@ -290,45 +330,6 @@ func TestGCRootFlagsAvoidsAllFalseBacking(t *testing.T) {
 	got := gcRootFlags(roots)
 	if len(got) != len(roots) || got[0] || !got[1] || got[2] {
 		t.Fatalf("roots = %v, want [false true false]", got)
-	}
-}
-
-func TestLocStatePoolRetentionIsBoundedArm64(t *testing.T) {
-	f := fn{nLocals: 4}
-	for range maxRetainedLocStateBufs + 3 {
-		f.freeLocStateBuf(make(packedLocStates, 1))
-	}
-	if got := len(f.lsPool); got != maxRetainedLocStateBufs {
-		t.Fatalf("retained local-state buffers = %d, want %d", got, maxRetainedLocStateBufs)
-	}
-	if got := f.lsPoolBytes; got != maxRetainedLocStateBufs {
-		t.Fatalf("retained local-state bytes = %d, want %d", got, maxRetainedLocStateBufs)
-	}
-	if got := cap(f.lsPool); got != maxRetainedLocStateBufs {
-		t.Fatalf("retained local-state header capacity = %d, want %d", got, maxRetainedLocStateBufs)
-	}
-
-	f.lsPool = nil
-	f.lsPoolBytes = 0
-	f.freeLocStateBuf(make(packedLocStates, 1, maxRetainedLocStateBytes))
-	f.freeLocStateBuf(make(packedLocStates, 1))
-	if got := len(f.lsPool); got != 1 {
-		t.Fatalf("payload-bounded local-state buffers = %d, want 1", got)
-	}
-	if got := f.lsPoolBytes; got != maxRetainedLocStateBytes {
-		t.Fatalf("payload-bounded local-state bytes = %d, want %d", got, maxRetainedLocStateBytes)
-	}
-	_ = f.newLocStateBuf()
-	if f.lsPoolBytes != 0 {
-		t.Fatalf("local-state bytes after reuse = %d, want 0", f.lsPoolBytes)
-	}
-
-	f.nLocals = 8
-	f.lsPool = []packedLocStates{make(packedLocStates, 1)}
-	f.lsPoolBytes = 1
-	_ = f.newLocStateBuf()
-	if f.lsPoolBytes != 0 {
-		t.Fatalf("local-state bytes after undersized eviction = %d, want 0", f.lsPoolBytes)
 	}
 }
 

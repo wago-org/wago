@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"reflect"
 	"testing"
 	"unsafe"
 
@@ -10,8 +11,38 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func TestParallelModuleHintsMatchSerialArm64(t *testing.T) {
+	for _, name := range []string{"json-as-simd.wasm", "lua.wasm", "sqlite3.wasm"} {
+		t.Run(name, func(t *testing.T) {
+			m := readParallelTestModuleArm64(t, "../../../../../../bench/corpus/"+name)
+			policy := currentCodegenPolicy()
+			serial, serialSidecar, serialGlobals, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parallel, parallelSidecar, parallelGlobals, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 4, policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(parallel, serial) {
+				for i := range serial {
+					if parallel[i] != serial[i] {
+						t.Fatalf("function %d hints differ:\nparallel: %#v\nserial:   %#v", i, parallel[i], serial[i])
+					}
+				}
+			}
+			if !reflect.DeepEqual(parallelSidecar, serialSidecar) {
+				t.Fatalf("sidecars differ: parallel scores=%d last=%d globals=%d; serial scores=%d last=%d globals=%d", len(parallelSidecar.localScore), len(parallelSidecar.localLastGet), len(parallelSidecar.sparseGlobals), len(serialSidecar.localScore), len(serialSidecar.localLastGet), len(serialSidecar.sparseGlobals))
+			}
+			if !reflect.DeepEqual(parallelGlobals, serialGlobals) {
+				t.Fatal("module global scores differ")
+			}
+		})
+	}
+}
+
 func TestFuncHintsSizeArm64(t *testing.T) {
-	const want = 32
+	const want = 28
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
 	}
@@ -234,136 +265,6 @@ func TestLoopHintReservesLoopScratchPins(t *testing.T) {
 	}
 }
 
-func TestScanBodyBytesStackArenaHintCountsAtomicsArm64(t *testing.T) {
-	for _, kind := range []wasm.InstrKind{wasm.InstrAtomicFence, wasm.InstrI32AtomicStore, wasm.InstrI64AtomicStore32} {
-		if stackArenaOpAllocates(0xfe, &wasm.InstructionImmediate{Kind: kind}) {
-			t.Fatalf("result-free atomic %v counted as arena allocation", kind)
-		}
-	}
-	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := []byte{
-		0x41, 0x00, // i32.const address
-		0xfe, 0x10, 0x02, 0x00, // i32.atomic.load align=4 offset=0
-		0x1a, 0x0b, // drop; end
-	}
-	h, err := scanBodyBytes(body, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := endOnly.stackArenaNodes + 2; h.stackArenaNodes != want {
-		t.Fatalf("atomic stack arena nodes = %d, want %d", h.stackArenaNodes, want)
-	}
-}
-
-func TestScanBodyBytesDiscountsAlgebraicIdentitiesArm64(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, 0x41, 0x00, 0x6a, 0x1a, // x + 0; drop
-		0x20, 0x00, 0x41, 0x01, 0x6a, 0x1a, // x + 1; drop (not an identity)
-		0x20, 0x00, 0x20, 0x00, 0x6b, 0x1a, // x - x; drop
-		0x20, 0x00, 0x41, 0x20, 0x74, 0x1a, // i32.shl by 32; drop
-		0x20, 0x00, 0x42, 0xc0, 0x00, 0x86, 0x1a, // i64.shl by 64; drop
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 1, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.stackArenaDiscount != 3 {
-		t.Fatalf("algebraic discount = %d, want 3", h.stackArenaDiscount)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("multibyte identity constant did not retain legacy sizing")
-	}
-}
-
-func TestScanBodyBytesDetectsDeadCodeAfterTerminatorArm64(t *testing.T) {
-	h, err := scanBodyBytes([]byte{0x00, 0x41, 0x00, 0x1a, 0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("dead instructions after unreachable were not detected")
-	}
-	terminalOnly, err := scanBodyBytes([]byte{0x00, 0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if terminalOnly.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("terminal unreachable was marked as followed by dead code")
-	}
-}
-
-func TestScanBodyBytesDiscountsSWARLookaheadCandidatesArm64(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, 0x42, 0x00, 0x83, 0x22, 0x01, 0x1a, // i64.and; local.tee
-		0x20, 0x00, 0x42, 0x20, 0x88, 0x22, 0x01, 0x1a, // i64.shr_u; local.tee
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 2, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if h.stackArenaDiscount != 44 {
-		t.Fatalf("SWAR lookahead discount = %d, want 44", h.stackArenaDiscount)
-	}
-}
-
-func TestScanBodyBytesDetectsSIMDFusionRiskArm64(t *testing.T) {
-	body := []byte{
-		0xfd, 0x0b, 0x04, 0x00, // v128.store align=16 offset=0
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("SIMD body did not select legacy arena sizing")
-	}
-}
-
-func TestScanBodyBytesDetectsStackSinkFusionArm64(t *testing.T) {
-	body := []byte{
-		0x20, 0x00, // local.get 0
-		0x20, 0x01, // local.get 1
-		0x92,       // f32.add
-		0x21, 0x02, // local.set 2
-		0x0b,
-	}
-	h, err := scanBodyBytes(body, 3, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("float local sink fusion was not detected")
-	}
-}
-
-func TestScanBodyBytesStackArenaHintCountsReferenceResultsArm64(t *testing.T) {
-	endOnly, err := scanBodyBytes([]byte{0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := []byte{
-		0x20, 0x00, // local.get 0
-		0xd4,       // ref.as_non_null
-		0x1a,       // drop
-		0x41, 0x00, // i32.const 0
-		0xfb, 0x1c, // ref.i31
-		0x1a, 0x0b, // drop; end
-	}
-	h, err := scanBodyBytes(body, 1, 0, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := endOnly.stackArenaNodes + 4; h.stackArenaNodes != want {
-		t.Fatalf("reference stack arena nodes = %d, want %d", h.stackArenaNodes, want)
-	}
-}
-
 func TestModuleGlobalScores(t *testing.T) {
 	bytes := []byte{
 		0x23, 0x00, // global.get 0
@@ -451,19 +352,38 @@ func TestScanInlineFactsAST(t *testing.T) {
 }
 
 func TestInlineBoundaryParityBytesArm64(t *testing.T) {
-	for _, op := range []byte{0xd5, 0xd6} {
-		body := []byte{op, 0x00, 0x0b}
-		h, err := scanBodyBytes(body, 0, 0, 0)
-		if err != nil {
-			t.Fatalf("production scan opcode %#x: %v", op, err)
-		}
-		var facts inlineFacts
-		if err := scanInlineFactsBytes(body, &facts); err != nil {
-			t.Fatalf("inline scan opcode %#x: %v", op, err)
-		}
-		if !h.flags.has(hintHasControlFlow) || !facts.hasControlFlow {
-			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.flags.has(hintHasControlFlow), facts.hasControlFlow)
-		}
+	tests := []struct {
+		name string
+		op   byte
+		body []byte
+	}{
+		{"unreachable", 0x00, []byte{0x00, 0x0b}},
+		{"block", 0x02, []byte{0x02, 0x40, 0x0b, 0x0b}},
+		{"loop", 0x03, []byte{0x03, 0x40, 0x0b, 0x0b}},
+		{"if-else", 0x04, []byte{0x04, 0x40, 0x05, 0x0b, 0x0b}},
+		{"br", 0x0c, []byte{0x0c, 0x00, 0x0b}},
+		{"br-if", 0x0d, []byte{0x0d, 0x00, 0x0b}},
+		{"br-table", 0x0e, []byte{0x0e, 0x00, 0x00, 0x0b}},
+		{"return", 0x0f, []byte{0x0f, 0x0b}},
+		{"try-table", 0x1f, []byte{0x1f, 0x40, 0x00, 0x0b, 0x0b}},
+		{"br-on-null", 0xd5, []byte{0xd5, 0x00, 0x0b}},
+		{"br-on-non-null", 0xd6, []byte{0xd6, 0x00, 0x0b}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := test.body
+			h, err := scanBodyBytes(body, 0, 0, 0)
+			if err != nil {
+				t.Fatalf("production scan opcode %#x: %v", test.op, err)
+			}
+			var facts inlineFacts
+			if err := scanInlineFactsBytes(body, &facts); err != nil {
+				t.Fatalf("inline scan opcode %#x: %v", test.op, err)
+			}
+			if !h.flags.has(hintHasControlFlow) || !facts.hasControlFlow {
+				t.Fatalf("opcode %#x control classification: production=%v inline=%v", test.op, h.flags.has(hintHasControlFlow), facts.hasControlFlow)
+			}
+		})
 	}
 }
 

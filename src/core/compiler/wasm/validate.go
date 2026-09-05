@@ -83,7 +83,26 @@ func ValidateModuleWithConfig(m *Module, features ValidationFeatures, workers in
 	return validateModuleWithWorkersFeaturesAndLimits(m, nil, workers, features, limits)
 }
 
+// ValidateModuleWithAnalysis validates a module and gathers transient,
+// architecture-neutral facts during the same function-body walk. analysis is
+// cleared on failure and is valid only when this function returns nil.
+func ValidateModuleWithAnalysis(m *Module, features ValidationFeatures, workers int, limits ValidationLimits, analysis *ValidatedModuleAnalysis) error {
+	return validateModuleWithWorkersFeaturesAndLimitsAnalysis(m, nil, workers, features, limits, analysis)
+}
+
 func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits) error {
+	return validateModuleWithWorkersFeaturesAndLimitsAnalysis(m, direct, workers, features, limits, nil)
+}
+
+func validateModuleWithWorkersFeaturesAndLimitsAnalysis(m *Module, direct *directValidationEnv, workers int, features ValidationFeatures, limits ValidationLimits, analysis *ValidatedModuleAnalysis) (err error) {
+	if analysis != nil {
+		analysis.reset(m)
+		defer func() {
+			if err != nil {
+				*analysis = ValidatedModuleAnalysis{}
+			}
+		}()
+	}
 	if limits.MaxFunctionLocals == 0 {
 		limits.MaxFunctionLocals = DefaultMaxFunctionLocals
 	}
@@ -100,13 +119,24 @@ func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidat
 	// collector can otherwise lose a short-lived heap validator while nested
 	// decoding allocates, leaving its inline operand/control stacks reclaimed
 	// during validation.
-	v := moduleValidator{m: m, funcIndex: -1, direct: direct, features: features, limits: limits}
+	v := moduleValidator{
+		m:                m,
+		funcIndex:        -1,
+		direct:           direct,
+		features:         features,
+		limits:           limits,
+		analysis:         analysis,
+		analysisFuncBase: m.ImportedFuncCount(),
+	}
 	if err := v.validateModule(); err != nil {
 		runtime.KeepAlive(m)
 		runtime.KeepAlive(direct)
 		return err
 	}
-	err := v.validateFunctions(workers)
+	err = v.validateFunctions(workers)
+	if err == nil && analysis != nil {
+		analysis.finish()
+	}
 	// TinyGo's conservative collector needs the metadata owners to remain live
 	// while validators consume their nested byte slices and type views.
 	runtime.KeepAlive(m)
@@ -132,29 +162,51 @@ func (v *moduleValidator) validateFunctionsSerial() error {
 	// Besides avoiding one allocation, this makes its lifetime explicit for
 	// TinyGo's conservative collector across allocation-heavy decode steps.
 	fv := funcValidator{moduleValidator: v}
+	var summary validationSegmentCounts
 	for i := range v.m.Code {
-		if err := v.validateFunction(&fv, i, importedFuncs, widths); err != nil {
+		counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+		if err != nil {
 			return err
 		}
+		summary.merge(counts)
+	}
+	if v.analysis != nil {
+		v.analysis.ElemStateCount = summary.elem
+		v.analysis.DataStateCount = summary.data
 	}
 	return nil
 }
 
-func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) error {
+func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, importedFuncs int, widths memargWidths) (counts validationSegmentCounts, err error) {
 	fn := &v.m.Code[localIndex]
 	abs := importedFuncs + localIndex
 	if localIndex >= len(v.m.FuncTypes) {
-		return v.err(ErrUnknownFunc, "code without function type")
+		return counts, v.err(ErrUnknownFunc, "code without function type")
 	}
 	ft, ok := v.funcType(uint32(abs))
 	if !ok {
-		return v.err(ErrUnknownType, "function type")
+		return counts, v.err(ErrUnknownType, "function type")
+	}
+	if v.analysis != nil {
+		v.analysis.Funcs[localIndex] = ValidatedFuncFacts{BodyBytes: saturatingUint32(len(fn.BodyBytes))}
 	}
 	fv.beginFunc(abs)
 	if len(fn.BodyBytes) != 0 {
-		return fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory)
+		err = fv.validateFuncDirect(directCodeBody{locals: fn.Locals, body: fn.BodyBytes}, ft, widths, v.features.MultiMemory, &counts)
+	} else {
+		err = fv.validateFunc(*fn, ft)
 	}
-	return fv.validateFunc(*fn, ft)
+	return counts, err
+}
+
+type validationSegmentCounts struct {
+	elem uint32
+	data uint32
+}
+
+func (s *validationSegmentCounts) merge(other validationSegmentCounts) {
+	s.elem = max(s.elem, other.elem)
+	s.data = max(s.data, other.data)
 }
 
 // validateFunctionsParallel is split from the serial path so its goroutine
@@ -166,8 +218,10 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 	importedFuncs := v.m.ImportedFuncCount()
 	widths := moduleMemargWidths(v.m)
 	type result struct {
-		index int
-		err   error
+		index          int
+		err            error
+		elemStateCount uint32
+		dataStateCount uint32
 	}
 	results := make([]result, workers)
 	var next atomic.Int64
@@ -178,15 +232,22 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 		go func() {
 			defer wg.Done()
 			fv := funcValidator{moduleValidator: v}
+			var summary validationSegmentCounts
+			defer func() {
+				results[worker].elemStateCount = summary.elem
+				results[worker].dataStateCount = summary.data
+			}()
 			for {
 				i := int(next.Add(1) - 1)
 				if i >= len(v.m.Code) {
 					return
 				}
-				if err := v.validateFunction(&fv, i, importedFuncs, widths); err != nil {
+				counts, err := v.validateFunction(&fv, i, importedFuncs, widths)
+				if err != nil {
 					results[worker] = result{index: i, err: err}
 					return
 				}
+				summary.merge(counts)
 			}
 		}()
 	}
@@ -197,6 +258,12 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 		if results[i].err != nil && results[i].index < lowest {
 			lowest = results[i].index
 			first = results[i].err
+		}
+	}
+	if first == nil && v.analysis != nil {
+		for i := range results {
+			v.analysis.ElemStateCount = max(v.analysis.ElemStateCount, results[i].elemStateCount)
+			v.analysis.DataStateCount = max(v.analysis.DataStateCount, results[i].dataStateCount)
 		}
 	}
 	return first
@@ -219,6 +286,10 @@ type moduleValidator struct {
 	direct    *directValidationEnv
 	features  ValidationFeatures
 	limits    ValidationLimits
+	analysis  *ValidatedModuleAnalysis
+	// analysisFuncBase converts the absolute funcIndex already carried by a
+	// funcValidator into the caller-owned declared-function summary index.
+	analysisFuncBase int
 
 	// declaredFuncBits is the module validation context's declared function-
 	// reference set. The inline word keeps the common <=64-function module from
@@ -985,6 +1056,17 @@ func (v *funcValidator) verr(c ValidationErrorCode, d string) error {
 	return &ValidationError{Code: c, Func: v.funcIndex, Detail: d}
 }
 
+func (v *funcValidator) analysisFacts() *ValidatedFuncFacts {
+	if v.moduleValidator == nil || v.analysis == nil {
+		return nil
+	}
+	index := v.funcIndex - v.analysisFuncBase
+	if index < 0 || index >= len(v.analysis.Funcs) {
+		return nil
+	}
+	return &v.analysis.Funcs[index]
+}
+
 // beginFunc resets the per-function operand/control stacks so a single
 // funcValidator can be reused across every function body in a module. Reusing
 // the value and control slices keeps their capacity between functions, avoiding
@@ -1034,7 +1116,9 @@ func (v *funcValidator) validateFunc(fn Func, ft *CompType) error {
 	return err
 }
 func (v *funcValidator) top() *ctrlFrame { return &v.ctrls[len(v.ctrls)-1] }
-func (v *funcValidator) push(t ValType)  { v.vals = append(v.vals, val{t: t}) }
+func (v *funcValidator) push(t ValType) {
+	v.vals = append(v.vals, val{t: t})
+}
 func (v *funcValidator) pushAll(ts []ValType) {
 	for _, t := range ts {
 		v.push(t)

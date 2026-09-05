@@ -1517,28 +1517,28 @@ const (
 	maxSyncHostSlots       = 64 // must match runtime.MaxHostArity / maxHostArity
 )
 
-var instanceContextOffsets = [...]int32{
-	offCustomCtx,
-	offTablePtr,
-	offFuncRefDescPtr,
-	offPassiveElemPtr,
-	offGlobalsPtr,
-	offPassiveDataPtr,
-	offTableDirPtr,
-	offMemoryDirPtr,
-	offImportDispatchPtr,
-}
-
 // copyInstanceContext runs only at flushed cross-instance transfer boundaries;
 // X8 and X9 are therefore free call-clobbered scratch registers. The GC native
 // view lives 280 bytes below linMem, outside STUR's signed 9-bit range, so form
 // that destination address explicitly without clobbering the live dispatch
 // pointer in X16 or target entry in X17.
 func (f *fn) copyInstanceContext(dst, src Reg) {
-	for i, off := range instanceContextOffsets {
-		f.ld64(X9, src, int32(i*8))
-		f.st64(dst, -off, X9)
-	}
+	// The source descriptor is contiguous. Pair its loads, and pair the two
+	// destination runs whose basedata cells are contiguous as well. The register
+	// order in the first STP is reversed because basedata grows toward lower
+	// addresses from dst.
+	f.ld64(X9, src, 0)
+	f.st64(dst, -offCustomCtx, X9)
+	f.a.LdpOffset(X8, X9, src, 8)
+	f.a.StpOffset(X9, X8, dst, -int32(offFuncRefDescPtr))
+	f.a.LdpOffset(X8, X9, src, 24)
+	f.a.StpOffset(X8, X9, dst, -int32(offPassiveElemPtr))
+	f.a.LdpOffset(X8, X9, src, 40)
+	f.st64(dst, -int32(offPassiveDataPtr), X8)
+	f.st64(dst, -int32(offTableDirPtr), X9)
+	f.a.LdpOffset(X8, X9, src, 56)
+	f.st64(dst, -int32(offMemoryDirPtr), X8)
+	f.st64(dst, -int32(offImportDispatchPtr), X9)
 	f.ld64(X9, src, runtime.InstanceContextGCNativeViewOffset)
 	f.a.SubImm64(X8, dst, uint32(abi.GCNativeViewPtrOffset))
 	f.a.Store64(X9, X8, 0)

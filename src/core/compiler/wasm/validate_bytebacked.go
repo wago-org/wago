@@ -882,7 +882,7 @@ func (v *funcValidator) directElemRefType(index uint32) (RefType, error) {
 	}
 }
 
-func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, widths memargWidths, multiMemory bool) error {
+func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, widths memargWidths, multiMemory bool, segmentCounts *validationSegmentCounts) error {
 	v.localParams = ft.Params
 	v.localRuns = body.locals.Runs
 	var overflow bool
@@ -903,6 +903,32 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	v.rd.reset(body.body)
 	r := &v.rd
 	var op directOp // reused across the loop; decodeDirectOp overwrites it each step
+	facts := v.analysisFacts()
+	if facts != nil {
+		for {
+			if len(v.ctrls) == 0 {
+				if r.has() {
+					return &DecodeError{Code: ErrSectionSizeMismatch, Offset: r.off()}
+				}
+				return nil
+			}
+			if err := v.decodeDirectOp(r, widths, multiMemory, &op); err != nil {
+				return err
+			}
+			if err := v.stepDirectOp(&op); err != nil {
+				return err
+			}
+			if op.kind == directInstr {
+				kind := op.instr.Kind
+				facts.Flags |= validatedFuncFlagsByKind[kind]
+				if validatedFuncNeedsPayloadByKind[kind] {
+					v.observeValidatedInstructionPayload(facts, &op.instr, segmentCounts)
+				}
+			} else {
+				facts.observeStructuredDirect(&op)
+			}
+		}
+	}
 	for {
 		if len(v.ctrls) == 0 {
 			if r.has() {
@@ -917,6 +943,13 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 			return err
 		}
 	}
+}
+
+func segmentStateCount(index uint32) uint32 {
+	if index == ^uint32(0) {
+		return index
+	}
+	return index + 1
 }
 
 type directOpKind uint8

@@ -27,11 +27,17 @@ func gcFrameFixedOffsets(rootMap *nativeabi.FunctionRootMap) []uint32 {
 	return offsets
 }
 
-func gcFramePrepareModuleRootPlan(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier) (*shared.GCModuleFrameRootPlan, error) {
+func gcFramePrepareModuleRootPlan(m *wasm.Module, classifier *wasm.ModuleInstructionClassifier, analysis *wasm.ValidatedModuleAnalysis) (*shared.GCModuleFrameRootPlan, error) {
 	module := shared.NewGCModuleFrameRootPlan(len(m.Code))
 	collectingFunctions := 0
 	for function := range m.Code {
-		if gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, classifier) {
+		mayCollect := false
+		if analysis.ValidFor(m) {
+			mayCollect = analysis.Funcs[function].Flags&wasm.ValidatedFuncMayCollect != 0
+		} else {
+			mayCollect = gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, classifier)
+		}
+		if mayCollect {
 			if !module.MarkFunction(function) {
 				return nil, fmt.Errorf("function %d root plan ownership is invalid", function)
 			}
@@ -180,6 +186,13 @@ func moduleHasGCAllocationSites(m *wasm.Module) bool {
 		}
 	}
 	return false
+}
+
+func moduleHasGCAllocationSitesWithValidation(m *wasm.Module, analysis *wasm.ValidatedModuleAnalysis) bool {
+	if analysis.ValidFor(m) {
+		return analysis.Flags&wasm.ValidatedFuncMayAllocate != 0
+	}
+	return moduleHasGCAllocationSites(m)
 }
 
 // GCNativeRootAdmission describes whether a compiled generic-GC module can

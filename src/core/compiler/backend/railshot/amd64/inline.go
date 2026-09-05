@@ -736,32 +736,126 @@ func (f *fn) reserveInlineLocals(callees []*inlineTarget, targets inlineTargetTa
 // ordinary hints). Inline targets are call-free leaves (inlineClass), so a true
 // result means the spliced body adds no call either.
 func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable, _ CodegenPolicy) bool {
+	return buildInlineCallerPlan(caller, targets).allCallsInline
+}
+
+type inlineCallerPlan struct {
+	callees        []*inlineTarget
+	allCallsInline bool
+}
+
+// buildInlineCallerPlan finds the distinct splice targets and determines
+// whether they replace every call in one body walk. Common immediate-free
+// instructions bypass the module classifier because neither result depends on
+// their decoded kind.
+func buildInlineCallerPlan(caller *wasm.Func, targets inlineTargetTable) inlineCallerPlan {
 	if targets.empty() || len(caller.BodyBytes) == 0 {
-		return false
+		return inlineCallerPlan{}
 	}
+	var plan inlineCallerPlan
+	var smallSeen [inlineLinearSeenTargets]int
+	seenN := 0
+	var largeSeen map[int]struct{}
 	r := wasm.NewReader(caller.BodyBytes)
 	var imm wasm.InstructionImmediate
 	sawCall := false
+	allInline := true
 	for r.HasNext() {
 		op, err := r.Byte()
 		if err != nil {
-			return false
+			return plan
+		}
+		if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
+			continue
+		}
+		if op == 0x10 { // call
+			idx, err := r.U32()
+			if err != nil {
+				return plan
+			}
+			sawCall = true
+			t := targets.target(int(idx))
+			if t == nil {
+				allInline = false
+				continue
+			}
+			duplicate := false
+			if largeSeen != nil {
+				_, duplicate = largeSeen[t.globalIdx]
+			} else {
+				for _, globalIdx := range smallSeen[:seenN] {
+					if globalIdx == t.globalIdx {
+						duplicate = true
+						break
+					}
+				}
+			}
+			if duplicate {
+				continue
+			}
+			if largeSeen != nil {
+				largeSeen[t.globalIdx] = struct{}{}
+			} else if seenN < len(smallSeen) {
+				smallSeen[seenN] = t.globalIdx
+				seenN++
+			} else {
+				largeSeen = make(map[int]struct{}, 2*len(smallSeen))
+				for _, globalIdx := range smallSeen {
+					largeSeen[globalIdx] = struct{}{}
+				}
+				largeSeen[t.globalIdx] = struct{}{}
+			}
+			plan.callees = append(plan.callees, t)
+			continue
+		}
+		switch op {
+		case 0x05, 0x0b: // else, end
+			continue
+		case 0x12, 0x14, 0x15: // return_call, call_ref, return_call_ref
+			if _, err := r.U32(); err != nil {
+				return plan
+			}
+			sawCall = true
+			allInline = false
+			continue
+		case 0x08, 0x0c, 0x0d, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0xd2, 0xd5, 0xd6:
+			if _, err := r.U32(); err != nil {
+				return plan
+			}
+			continue
+		case 0x41:
+			if _, err := r.I32(); err != nil {
+				return plan
+			}
+			continue
+		case 0x42:
+			if _, err := r.I64(); err != nil {
+				return plan
+			}
+			continue
+		case 0x43:
+			if _, err := r.Bytes(4); err != nil {
+				return plan
+			}
+			continue
+		case 0x44:
+			if _, err := r.Bytes(8); err != nil {
+				return plan
+			}
+			continue
 		}
 		if err := targets.classifier.ClassifyInto(r, op, &imm); err != nil {
-			return false
+			return plan
 		}
 		switch imm.Kind {
-		case wasm.InstrCall:
-			sawCall = true
-			if targets.target(int(imm.Index)) == nil {
-				return false // a direct call that will not be inlined
-			}
 		case wasm.InstrReturnCall, wasm.InstrCallIndirect, wasm.InstrReturnCallIndirect,
 			wasm.InstrCallRef, wasm.InstrReturnCallRef:
-			return false // never inlined — the caller keeps a real call
+			sawCall = true
+			allInline = false
 		}
 	}
-	return sawCall
+	plan.allCallsInline = sawCall && allInline
+	return plan
 }
 
 // collectInlinedCallees scans the caller body once and returns the distinct
@@ -769,59 +863,7 @@ func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable, _ CodegenP
 // the caller's guard-page pin exclusion can be re-derived from the callees
 // (whether any touches memory), and reused by reserveInlineLocals.
 func collectInlinedCallees(caller *wasm.Func, targets inlineTargetTable) []*inlineTarget {
-	if targets.empty() || len(caller.BodyBytes) == 0 {
-		return nil
-	}
-	var out []*inlineTarget
-	var smallSeen [inlineLinearSeenTargets]int
-	seenN := 0
-	var largeSeen map[int]struct{}
-	r := wasm.NewReader(caller.BodyBytes)
-	var imm wasm.InstructionImmediate
-	for r.HasNext() {
-		op, err := r.Byte()
-		if err != nil {
-			return out
-		}
-		if err := targets.classifier.ClassifyInto(r, op, &imm); err != nil {
-			return out
-		}
-		if imm.Kind != wasm.InstrCall {
-			continue
-		}
-		t := targets.target(int(imm.Index))
-		if t == nil {
-			continue
-		}
-		duplicate := false
-		if largeSeen != nil {
-			_, duplicate = largeSeen[t.globalIdx]
-		} else {
-			for _, globalIdx := range smallSeen[:seenN] {
-				if globalIdx == t.globalIdx {
-					duplicate = true
-					break
-				}
-			}
-		}
-		if duplicate {
-			continue
-		}
-		if largeSeen != nil {
-			largeSeen[t.globalIdx] = struct{}{}
-		} else if seenN < len(smallSeen) {
-			smallSeen[seenN] = t.globalIdx
-			seenN++
-		} else {
-			largeSeen = make(map[int]struct{}, 2*len(smallSeen))
-			for _, globalIdx := range smallSeen {
-				largeSeen[globalIdx] = struct{}{}
-			}
-			largeSeen[t.globalIdx] = struct{}{}
-		}
-		out = append(out, t)
-	}
-	return out
+	return buildInlineCallerPlan(caller, targets).callees
 }
 
 // inlinePlanTouchesMemory reports whether any spliced callee touches linear

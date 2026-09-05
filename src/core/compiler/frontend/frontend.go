@@ -98,18 +98,41 @@ func RejectUnsupportedWithFeatures(m *wasm.Module, f Features) error {
 // using the caller's immutable module analysis. Production compilation computes
 // this once and reuses it for admission and runtime footprint construction.
 func RejectUnsupportedWithFeaturesAndFacts(m *wasm.Module, f Features, facts *ModuleFacts) error {
+	return RejectUnsupportedWithFeaturesFactsAndValidation(m, f, facts, nil)
+}
+
+// RejectUnsupportedWithFeaturesFactsAndValidation reuses facts gathered by the
+// successful validation walk. Functions whose fixed summary proves ordinary
+// frontend support avoid a second bytecode decode; staged or ambiguous
+// functions retain the contextual scanner and its existing errors.
+func RejectUnsupportedWithFeaturesFactsAndValidation(m *wasm.Module, f Features, facts *ModuleFacts, analysis *wasm.ValidatedModuleAnalysis) error {
 	if m == nil || facts == nil {
 		return fmt.Errorf("nil module or module facts")
 	}
-	p := supportPass{m: m, feat: f, facts: facts, classifier: wasm.NewModuleInstructionClassifier(m, true)}
+	p := supportPass{m: m, feat: f, facts: facts, validation: analysis, classifier: wasm.NewModuleInstructionClassifier(m, true)}
+	for i := 0; i < m.MemCount(); i++ {
+		if mt, ok := m.MemoryType(uint32(i)); ok && mt.Limits.Addr64 {
+			p.hasMemory64 = true
+			break
+		}
+	}
+	for i := 0; i < m.TableCount(); i++ {
+		if tt, ok := m.TableType(uint32(i)); ok && tt.Limits.Addr64 {
+			p.hasTable64 = true
+			break
+		}
+	}
 	return p.runWithFacts()
 }
 
 type supportPass struct {
-	m          *wasm.Module
-	feat       Features
-	facts      *ModuleFacts
-	classifier wasm.ModuleInstructionClassifier
+	m           *wasm.Module
+	feat        Features
+	facts       *ModuleFacts
+	validation  *wasm.ValidatedModuleAnalysis
+	classifier  wasm.ModuleInstructionClassifier
+	hasMemory64 bool
+	hasTable64  bool
 }
 
 // ModuleFacts is the allocation-bounded declaration/body prepass shared by
@@ -1090,6 +1113,9 @@ func (p supportPass) funcs() error {
 				return err
 			}
 		}
+		if p.validatedFuncAccepted(i, &fn) {
+			continue
+		}
 		if len(fn.BodyBytes) != 0 {
 			if err := p.funcExprBytes(fn.BodyBytes, funcIndex); err != nil {
 				return err
@@ -1101,6 +1127,31 @@ func (p supportPass) funcs() error {
 		}
 	}
 	return nil
+}
+
+func (p supportPass) validatedFuncAccepted(localIndex int, fn *wasm.Func) bool {
+	if !p.validation.ValidFor(p.m) || len(fn.BodyBytes) == 0 {
+		return false
+	}
+	facts := &p.validation.Funcs[localIndex]
+	if uint64(facts.BodyBytes) != uint64(len(fn.BodyBytes)) || facts.Flags&wasm.ValidatedFuncNeedsDetailedAdmission != 0 {
+		return false
+	}
+	flags := facts.Flags
+	if flags&wasm.ValidatedFuncUsesSignExtension != 0 && !p.feat.SignExtension ||
+		flags&wasm.ValidatedFuncUsesBulkMemory != 0 && !p.feat.BulkMemory ||
+		flags&wasm.ValidatedFuncUsesSaturatingTrunc != 0 && !p.feat.SaturatingTrunc ||
+		flags&wasm.ValidatedFuncUsesReferenceTypes != 0 && !p.feat.ReferenceTypes ||
+		flags&wasm.ValidatedFuncUsesSIMD != 0 && !p.feat.SIMD {
+		return false
+	}
+	if p.hasMemory64 && flags&wasm.ValidatedFuncTouchesMemory != 0 {
+		return false
+	}
+	if p.hasTable64 && flags&wasm.ValidatedFuncTouchesTable != 0 {
+		return false
+	}
+	return true
 }
 
 func (p supportPass) funcExprBytes(body []byte, funcIndex int) error {

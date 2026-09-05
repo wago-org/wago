@@ -642,6 +642,19 @@ func (a *Asm) Stur32(rt, rn Reg, off int32) {
 // Nop is the canonical A64 no-op.
 func (a *Asm) Nop() { a.word(0xD503201F) }
 
+// Nop4 emits four canonical no-ops with one slice-capacity check. Loop-header
+// phase padding uses this exact fixed-width run for every admitted poll-free
+// loop, so keeping it as one encoder operation avoids four append checks in a
+// hot compilation path.
+func (a *Asm) Nop4() {
+	a.B = append(a.B,
+		0x1f, 0x20, 0x03, 0xd5,
+		0x1f, 0x20, 0x03, 0xd5,
+		0x1f, 0x20, 0x03, 0xd5,
+		0x1f, 0x20, 0x03, 0xd5,
+	)
+}
+
 // Align16 pads the buffer to a 16-byte boundary with NOPs (A64 insns are 4 bytes,
 // so the buffer length is always a multiple of 4).
 func (a *Asm) Align16() {

@@ -25,6 +25,10 @@ func moduleRequiredFeatures(m *wasm.Module) CoreFeatures {
 }
 
 func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
+	return analyzeModuleRequirementsWithValidation(m, nil)
+}
+
+func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.ValidatedModuleAnalysis) moduleRequirements {
 	if m == nil {
 		return moduleRequirements{}
 	}
@@ -161,9 +165,39 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 		}
 	}
 	bodyClassifier := wasm.NewModuleInstructionClassifier(m, true)
-	for _, fn := range m.Code {
+	validatedBodies := analysis.ValidFor(m)
+	if validatedBodies {
+		elemStateCount = max(elemStateCount, int(analysis.ElemStateCount))
+		dataStateCount = max(dataStateCount, int(analysis.DataStateCount))
+	}
+	for functionIndex, fn := range m.Code {
 		for _, local := range fn.Locals.Runs {
 			out |= requiredFeaturesForValType(local.Type)
+		}
+		if validatedBodies && len(fn.BodyBytes) != 0 && analysis.Funcs[functionIndex].BodyBytes == uint32(len(fn.BodyBytes)) {
+			bodyFacts := &analysis.Funcs[functionIndex]
+			out |= requiredFeaturesForValidatedFlags(bodyFacts.Flags)
+			if bodyFacts.Flags&wasm.ValidatedFuncUsesRefFunc != 0 {
+				moduleFacts.UsesRefFunc = true
+			}
+			if bodyFacts.Flags&wasm.ValidatedFuncHasCallRef != 0 {
+				moduleFacts.UsesCallRef = true
+			}
+			if bodyFacts.Flags&wasm.ValidatedFuncUsesAtomicWait != 0 {
+				atomicWaitHelpers = true
+			}
+			needsExactScan := bodyFacts.Flags&wasm.ValidatedFuncNeedsDetailedRequirements != 0 ||
+				(bodyFacts.Flags&wasm.ValidatedFuncUsesTableGrow != 0 && len(moduleFacts.TableGrowUsed) > 1) ||
+				(bodyFacts.Flags&wasm.ValidatedFuncUsesMemoryGrow != 0 && len(moduleFacts.MemoryGrowUsed) > 1)
+			if !needsExactScan {
+				if bodyFacts.Flags&wasm.ValidatedFuncUsesTableGrow != 0 && len(moduleFacts.TableGrowUsed) == 1 {
+					moduleFacts.TableGrowUsed[0] = true
+				}
+				if bodyFacts.Flags&wasm.ValidatedFuncUsesMemoryGrow != 0 && len(moduleFacts.MemoryGrowUsed) == 1 {
+					moduleFacts.MemoryGrowUsed[0] = true
+				}
+				continue
+			}
 		}
 		if len(fn.BodyBytes) != 0 {
 			out |= requiredFeaturesAndSegmentCountsForBodyBytes(fn.BodyBytes, &elemStateCount, &dataStateCount, moduleFacts, &atomicWaitHelpers, m, &indexedFuncRefTest, &indexedFuncRefCast, &arm64GCRefTestHelper, &bodyClassifier)
@@ -185,6 +219,41 @@ func analyzeModuleRequirements(m *wasm.Module) moduleRequirements {
 		indexedFuncRefCast:   indexedFuncRefCast,
 		arm64GCRefTestHelper: arm64GCRefTestHelper,
 	}
+}
+
+func requiredFeaturesForValidatedFlags(flags wasm.ValidatedFuncFlags) CoreFeatures {
+	var out CoreFeatures
+	if flags&wasm.ValidatedFuncUsesBulkMemory != 0 {
+		out |= CoreFeatureBulkMemoryOperations
+	}
+	if flags&wasm.ValidatedFuncUsesSaturatingTrunc != 0 {
+		out |= CoreFeatureNonTrappingFloatToIntConversion
+	}
+	if flags&wasm.ValidatedFuncUsesReferenceTypes != 0 {
+		out |= CoreFeatureReferenceTypes
+	}
+	if flags&wasm.ValidatedFuncUsesSignExtension != 0 {
+		out |= CoreFeatureSignExtensionOps
+	}
+	if flags&wasm.ValidatedFuncUsesSIMD != 0 {
+		out |= CoreFeatureSIMD
+	}
+	if flags&wasm.ValidatedFuncHasTailCall != 0 {
+		out |= CoreFeatureTailCall
+	}
+	if flags&wasm.ValidatedFuncUsesTypedFunctionReferences != 0 {
+		out |= CoreFeatureTypedFunctionReferences
+	}
+	if flags&wasm.ValidatedFuncUsesGC != 0 {
+		out |= CoreFeatureGC
+	}
+	if flags&wasm.ValidatedFuncUsesExceptionHandling != 0 {
+		out |= CoreFeatureExceptionHandling
+	}
+	if flags&wasm.ValidatedFuncUsesThreads != 0 {
+		out |= CoreFeatureThreads
+	}
+	return out
 }
 
 func requiredFeaturesForConstExpr(expr wasm.Expr, importedGlobals int) CoreFeatures {
