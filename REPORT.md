@@ -4,33 +4,39 @@ Measured 2026-09-04 on native ARM64. This is a stopping-point report for
 `jairus/railshot-compile-latency`, comparing:
 
 - Base: `main` at `c46f2129edb52e6f30f4d0bfc5ae105cfde0c84d`
-- Branch: `5a4e2d8912e6f84dcfeb31c450c53e76a54ece76`
+- Branch: `e5b2431a20a77458ad3cc2a8d0b1a02fc2f0ae4b`
 - Host: Apple M4 Max, macOS 26.6.2, Go 1.26.5, `darwin/arm64`
 
 ## Current result
 
 | Metric | Delta versus `main` |
 |---|---:|
-| End-to-end compile latency, all-corpus geomean | **-10.93%** |
-| Backend-only compile latency, all-corpus geomean | **-3.49%** |
+| End-to-end compile latency, all-corpus geomean | **-9.38%** |
+| End-to-end compile latency, large-module geomean | **-22.22%** |
+| Backend-only compile latency, large-module geomean | **-10.33%** |
+| Backend-only compile latency, all-corpus one-shot geomean | **+0.86%** |
 | End-to-end compile heap, all-corpus geomean | **+1.07%** |
 | Backend-only compile heap, all-corpus geomean | **+0.08%** |
-| End-to-end compile allocations, all-corpus geomean | **+1.64%** |
+| End-to-end compile allocations, all-corpus geomean | **+1.66%** |
 | Backend-only compile allocations, all-corpus geomean | **+0.16%** |
 | Generated ARM64 machine-code bytes | **0.00%**; exact size match on every corpus module |
-| Execution latency, executable-corpus geomean | **+0.19%** |
+| Execution latency, executable-corpus geomean | **+0.23%** |
 | Execution allocations | **0 B/op, 0 allocs/op** on both revisions |
 
-The strongest result is on large real modules. End-to-end compile latency is
-18.2-21.8% lower on Lua, SQLite, Ruby, and esbuild. Backend-only compilation is
-3.5-12.8% lower on the same group. The branch currently spends a small amount
-of heap on compact validation analysis and parallel hint orchestration; reducing
-that +1.07% full-pipeline heap delta is the next memory target.
+The strongest and most stable result is on large real modules. End-to-end
+compile latency is 19.6-24.8% lower on Lua, SQLite, Ruby, and esbuild.
+Backend-only compilation is 3.5-11.9% lower on the same group. The all-corpus
+backend geomean includes fresh-process micro modules whose 7-59% confidence
+intervals overwhelm their tens-of-microseconds signal; it is reported rather
+than filtered, but is not evidence of a backend regression. The branch
+currently spends a small amount of heap on compact validation analysis and
+parallel hint orchestration; reducing that +1.07% full-pipeline heap delta is
+the next memory target.
 
-Generated function code has exactly the same size across the entire corpus.
-The +0.19% execution geomean, and the scattered positive and negative rows
-below, therefore do not represent an emitted-code change. They are binary
-layout and measurement effects outside the generated function bodies.
+Generated function code has exactly the same size across the entire corpus,
+and neither retained change is intended to alter lowering. The +0.23%
+execution geomean and scattered positive and negative rows are consistent with
+binary-layout and measurement noise; no broad execution shift is visible.
 
 ## Large-module memory detail
 
@@ -39,7 +45,7 @@ layout and measurement effects outside the generated function bodies.
 | lua | 509.6 KiB | 509.7 KiB | 844.9 KiB | 866.4 KiB |
 | sqlite3 | 1.105 MiB | 1.105 MiB | 2.757 MiB | 2.851 MiB |
 | ruby | 7.364 MiB | 7.364 MiB | 25.19 MiB | 25.73 MiB |
-| esbuild | 7.353 MiB | 7.353 MiB | 60.05 MiB | 60.19 MiB |
+| esbuild | 7.353 MiB | 7.353 MiB | 60.05 MiB | 60.18 MiB |
 
 ## Complete compile corpus
 
@@ -50,42 +56,42 @@ every reported size matched exactly.
 
 | Corpus | Backend main | Backend branch | Backend delta | Backend heap delta | Backend alloc delta | Full main | Full branch | Full delta | Full heap delta | Full alloc delta | Native code |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| tiny | 69.44 us | 70.40 us | +1.38% | +0.00% | +0.00% | 174.94 us | 176.46 us | +0.87% | +0.63% | +2.82% | 128 B |
-| fib_iter | 35.79 us | 31.56 us | -11.82% | +0.00% | +0.00% | 59.94 us | 53.92 us | -10.04% | +0.53% | +2.99% | 128 B |
-| fib_rec | 27.85 us | 29.04 us | +4.26% | +0.00% | +0.00% | 65.79 us | 60.85 us | -7.50% | +0.54% | +2.70% | 220 B |
-| arith | 26.90 us | 22.54 us | -16.19% | +0.00% | +0.00% | 62.29 us | 49.15 us | -21.10% | +0.40% | +2.94% | 152 B |
-| float | 27.73 us | 26.98 us | -2.70% | +0.00% | +0.00% | 48.00 us | 38.19 us | -20.44% | +0.40% | +2.94% | 152 B |
-| memory | 31.65 us | 26.83 us | -15.21% | +0.00% | +0.00% | 54.50 us | 72.40 us | +32.84% | +0.91% | +3.12% | 404 B |
-| memory_tree | 38.02 us | 32.12 us | -15.51% | +0.00% | +0.00% | 69.98 us | 71.71 us | +2.47% | +0.48% | +2.04% | 628 B |
-| globals | 25.10 us | 23.81 us | -5.14% | +0.00% | +0.00% | 60.50 us | 57.42 us | -5.10% | +0.64% | +2.33% | 220 B |
-| dispatch | 34.88 us | 33.63 us | -3.58% | +0.00% | +0.00% | 58.10 us | 59.71 us | +2.76% | +0.81% | +1.77% | 972 B |
-| branches | 16.04 us | 19.58 us | +22.08% | +0.00% | +0.00% | 44.69 us | 41.04 us | -8.16% | +0.52% | +3.08% | 132 B |
-| many_funcs | 212.08 us | 219.17 us | +3.34% | +0.00% | +0.00% | 384.48 us | 361.96 us | -5.86% | +8.00% | +2.70% | 9.49 KiB |
-| linked_list | 30.90 us | 28.42 us | -8.03% | +0.00% | +0.00% | 58.19 us | 55.56 us | -4.51% | +1.46% | +5.26% | 364 B |
-| mandelbrot | 31.42 us | 29.06 us | -7.49% | +0.00% | +0.00% | 58.77 us | 58.19 us | -0.99% | +0.03% | +1.30% | 412 B |
-| sieve | 27.35 us | 25.40 us | -7.16% | +0.00% | +0.00% | 53.29 us | 53.79 us | +0.94% | +0.44% | +2.41% | 400 B |
-| nbody | 96.27 us | 92.12 us | -4.31% | +0.00% | +0.00% | 179.35 us | 148.48 us | -17.21% | +0.22% | +1.55% | 3.93 KiB |
-| spectralnorm | 86.79 us | 86.52 us | -0.31% | +0.00% | +0.00% | 160.35 us | 127.33 us | -20.59% | +0.34% | +1.60% | 2.70 KiB |
-| fannkuch | 108.58 us | 103.44 us | -4.74% | +0.00% | +0.00% | 185.94 us | 166.19 us | -10.62% | +0.20% | +1.34% | 5.02 KiB |
-| matmul | 65.60 us | 65.40 us | -0.32% | +0.00% | +0.00% | 126.87 us | 104.17 us | -17.90% | +0.33% | +1.60% | 2.34 KiB |
-| quicksort | 80.85 us | 76.13 us | -5.85% | +0.00% | +0.00% | 139.44 us | 116.98 us | -16.11% | +0.38% | +1.23% | 2.40 KiB |
-| crc32 | 46.52 us | 43.73 us | -6.00% | +0.00% | +0.00% | 82.90 us | 72.92 us | -12.04% | +1.05% | +3.39% | 1.66 KiB |
-| sha256 | 83.08 us | 81.29 us | -2.16% | +0.00% | +0.00% | 151.98 us | 127.94 us | -15.82% | +0.31% | +1.42% | 3.68 KiB |
-| raytrace | 198.19 us | 178.85 us | -9.76% | +0.00% | +0.00% | 339.69 us | 279.23 us | -17.80% | +0.04% | +0.66% | 10.76 KiB |
-| regexmatch | 36.064 ms | 35.206 ms | -2.38% | +0.01% | +0.07% | 58.509 ms | 47.815 ms | -18.28% | +2.10% | +0.04% | 2.95 MiB |
-| wasm3 | 8.914 ms | 8.728 ms | -2.08% | +0.02% | +0.20% | 14.079 ms | 11.743 ms | -16.59% | +4.65% | +0.11% | 908.21 KiB |
-| json-as | 909.71 us | 878.02 us | -3.48% | +1.39% | +1.50% | 1.550 ms | 1.328 ms | -14.31% | +1.95% | +1.00% | 63.23 KiB |
-| blake-as | 247.63 us | 251.88 us | +1.72% | +0.00% | +0.00% | 437.19 us | 370.85 us | -15.17% | +0.35% | +0.26% | 10.80 KiB |
-| utf-as | 134.75 us | 131.65 us | -2.30% | +0.00% | +0.00% | 262.58 us | 238.29 us | -9.25% | +0.25% | +1.46% | 4.28 KiB |
-| xjb-mulhi | 30.17 us | 31.44 us | +4.21% | +0.00% | +0.00% | 60.38 us | 60.23 us | -0.24% | -0.27% | +0.00% | 480 B |
-| swar-pack-parse | 27.92 us | 33.71 us | +20.75% | +0.00% | +0.00% | 67.58 us | 66.12 us | -2.16% | +0.21% | +1.16% | 580 B |
-| json-as-simd | 968.27 us | 987.85 us | +2.02% | +1.29% | +1.44% | 1.742 ms | 1.456 ms | -16.42% | +2.10% | +0.94% | 71.79 KiB |
-| blake-as-simd | 633.08 us | 614.29 us | -2.97% | +0.24% | +2.27% | 1.229 ms | 1.032 ms | -16.06% | +0.43% | +1.81% | 30.57 KiB |
-| utf-as-simd | 368.04 us | 358.90 us | -2.49% | +0.00% | +0.00% | 687.08 us | 582.50 us | -15.22% | +0.28% | +0.94% | 20.18 KiB |
-| lua | 13.803 ms | 12.781 ms | -7.40% | +0.02% | +0.27% | 22.413 ms | 18.185 ms | -18.87% | +2.54% | +0.16% | 923.23 KiB |
-| sqlite3 | 53.343 ms | 51.493 ms | -3.47% | +0.00% | +0.07% | 86.091 ms | 70.395 ms | -18.23% | +3.41% | +0.05% | 3.56 MiB |
-| ruby | 587.161 ms | 511.991 ms | -12.80% | +0.00% | +0.01% | 976.040 ms | 763.715 ms | -21.75% | +2.14% | +0.01% | 35.83 MiB |
-| esbuild | 372.603 ms | 340.655 ms | -8.57% | +0.00% | +0.01% | 638.817 ms | 514.373 ms | -19.48% | +0.23% | +0.04% | 29.47 MiB |
+| tiny | 67.65 us | 72.27 us | +6.84% | +0.00% | +0.00% | 171.81 us | 182.88 us | +6.44% | +0.63% | +2.82% | 128 B |
+| fib_iter | 29.23 us | 30.56 us | +4.56% | +0.00% | +0.00% | 57.50 us | 54.02 us | -6.05% | +0.53% | +2.99% | 128 B |
+| fib_rec | 26.67 us | 34.50 us | +29.38% | +0.00% | +0.00% | 54.56 us | 66.77 us | +22.37% | +0.54% | +2.70% | 220 B |
+| arith | 24.04 us | 25.31 us | +5.29% | +0.00% | +0.00% | 51.06 us | 54.33 us | +6.40% | +0.40% | +2.94% | 152 B |
+| float | 23.40 us | 26.96 us | +15.23% | +0.00% | +0.00% | 46.88 us | 48.23 us | +2.89% | +0.40% | +2.94% | 152 B |
+| memory | 28.04 us | 28.33 us | +1.04% | +0.00% | +0.00% | 56.27 us | 65.46 us | +16.33% | +0.65% | +2.47% | 404 B |
+| memory_tree | 30.71 us | 36.10 us | +17.57% | +0.00% | +0.00% | 74.17 us | 67.83 us | -8.54% | +0.48% | +2.04% | 628 B |
+| globals | 23.08 us | 21.52 us | -6.77% | +0.00% | +0.00% | 60.44 us | 57.15 us | -5.45% | +0.64% | +2.33% | 220 B |
+| dispatch | 33.25 us | 32.52 us | -2.19% | +0.00% | +0.00% | 65.21 us | 61.94 us | -5.02% | +0.81% | +1.77% | 972 B |
+| branches | 16.96 us | 17.62 us | +3.93% | +0.00% | +0.00% | 42.92 us | 43.44 us | +1.21% | +0.52% | +3.08% | 132 B |
+| many_funcs | 218.15 us | 211.69 us | -2.96% | +0.00% | +0.00% | 373.88 us | 352.04 us | -5.84% | +8.00% | +2.70% | 9.49 KiB |
+| linked_list | 25.79 us | 26.54 us | +2.91% | +0.00% | +0.00% | 51.13 us | 50.65 us | -0.94% | +0.48% | +2.56% | 364 B |
+| mandelbrot | 27.25 us | 30.08 us | +10.40% | +0.00% | +0.00% | 57.92 us | 57.75 us | -0.29% | +0.38% | +2.60% | 412 B |
+| sieve | 23.62 us | 25.44 us | +7.67% | +0.00% | +0.00% | 50.94 us | 52.33 us | +2.74% | +0.44% | +2.41% | 400 B |
+| nbody | 94.58 us | 90.96 us | -3.83% | +0.00% | +0.00% | 170.73 us | 139.02 us | -18.57% | +0.44% | +2.34% | 3.93 KiB |
+| spectralnorm | 83.17 us | 86.52 us | +4.03% | +0.00% | +0.00% | 147.02 us | 133.83 us | -8.97% | +0.68% | +2.42% | 2.70 KiB |
+| fannkuch | 106.67 us | 106.13 us | -0.51% | +0.00% | +0.00% | 195.56 us | 158.79 us | -18.80% | +0.20% | +1.34% | 5.02 KiB |
+| matmul | 69.44 us | 60.46 us | -12.93% | +0.00% | +0.00% | 124.60 us | 110.17 us | -11.59% | +0.33% | +1.60% | 2.34 KiB |
+| quicksort | 77.31 us | 71.44 us | -7.60% | +0.00% | +0.00% | 134.19 us | 120.67 us | -10.08% | +0.38% | +1.23% | 2.40 KiB |
+| crc32 | 39.75 us | 45.02 us | +13.26% | +0.00% | +0.00% | 82.94 us | 78.98 us | -4.77% | +0.00% | +0.83% | 1.66 KiB |
+| sha256 | 75.25 us | 80.79 us | +7.36% | +0.00% | +0.00% | 148.92 us | 125.10 us | -15.99% | +0.31% | +1.42% | 3.68 KiB |
+| raytrace | 187.17 us | 175.69 us | -6.13% | +0.00% | +0.00% | 342.60 us | 270.10 us | -21.16% | +0.17% | +1.32% | 10.76 KiB |
+| regexmatch | 36.266 ms | 34.291 ms | -5.44% | +0.01% | +0.07% | 57.104 ms | 45.730 ms | -19.92% | +2.11% | +0.06% | 2.95 MiB |
+| wasm3 | 9.029 ms | 8.711 ms | -3.52% | +0.02% | +0.20% | 13.468 ms | 11.112 ms | -17.49% | +4.65% | +0.11% | 908.21 KiB |
+| json-as | 899.60 us | 853.27 us | -5.15% | +1.39% | +1.50% | 1.472 ms | 1.227 ms | -16.63% | +1.95% | +0.99% | 63.23 KiB |
+| blake-as | 266.77 us | 246.13 us | -7.74% | +0.00% | +0.00% | 411.35 us | 346.00 us | -15.89% | +0.63% | +1.04% | 10.80 KiB |
+| utf-as | 126.25 us | 117.17 us | -7.19% | +0.00% | +0.00% | 249.58 us | 226.65 us | -9.19% | +0.25% | +1.44% | 4.28 KiB |
+| xjb-mulhi | 28.48 us | 28.50 us | +0.07% | +0.00% | +0.00% | 53.73 us | 54.23 us | +0.93% | +0.11% | +1.14% | 480 B |
+| swar-pack-parse | 26.63 us | 33.50 us | +25.82% | +0.00% | +0.00% | 57.23 us | 57.06 us | -0.29% | +0.59% | +2.33% | 580 B |
+| json-as-simd | 974.60 us | 986.69 us | +1.24% | +1.29% | +1.44% | 1.680 ms | 1.352 ms | -19.51% | +2.10% | +0.94% | 71.79 KiB |
+| blake-as-simd | 656.71 us | 618.58 us | -5.81% | +0.24% | +2.27% | 1.211 ms | 921.69 us | -23.89% | +0.43% | +1.81% | 30.57 KiB |
+| utf-as-simd | 359.69 us | 350.00 us | -2.69% | +0.00% | +0.00% | 679.52 us | 534.25 us | -21.38% | +0.28% | +0.94% | 20.18 KiB |
+| lua | 13.828 ms | 13.053 ms | -5.61% | +0.02% | +0.27% | 21.979 ms | 17.353 ms | -21.05% | +2.54% | +0.16% | 923.23 KiB |
+| sqlite3 | 53.689 ms | 51.818 ms | -3.48% | +0.00% | +0.07% | 85.234 ms | 67.460 ms | -20.85% | +3.40% | +0.00% | 3.56 MiB |
+| ruby | 591.209 ms | 521.049 ms | -11.87% | +0.00% | +0.01% | 964.440 ms | 725.167 ms | -24.81% | +2.14% | +0.01% | 35.83 MiB |
+| esbuild | 374.843 ms | 342.821 ms | -8.54% | +0.00% | +0.01% | 627.529 ms | 504.845 ms | -19.55% | +0.22% | +0.00% | 29.47 MiB |
 
 The one-shot micro rows have much wider confidence intervals than the real
 modules. They are included for completeness, not treated as individual proof of
@@ -102,46 +108,47 @@ binary layout.
 
 | Workload | Main | Branch | Delta | Mann-Whitney result |
 |---|---:|---:|---:|---:|
-| tiny.add | 21.4 ns | 21.2 ns | -1.12% | p=0.005 n=8 |
-| fib_iter.fib | 29.5 ns | 29.7 ns | +0.42% | p=0.342 n=8 |
-| fib_rec.fib | 1.075 ms | 1.086 ms | +1.05% | p=0.328 n=8 |
-| arith.run | 1.51 us | 1.51 us | -0.10% | p=0.816 n=8 |
-| float.run | 2.54 us | 2.53 us | -0.22% | p=0.978 n=8 |
-| memory.sum | 309.7 ns | 309.5 ns | -0.06% | p=0.981 n=8 |
-| memory_tree.run | 8.74 us | 8.74 us | +0.04% | p=0.505 n=8 |
-| globals.accumulate | 636.2 ns | 611.7 ns | -3.87% | p=0.015 n=8 |
-| dispatch.apply | 24.7 ns | 24.4 ns | -0.93% | p=0.022 n=8 |
-| branches.classify | 21.3 ns | 21.0 ns | -1.46% | p=0.011 n=8 |
-| many_funcs.run | 21.3 ns | 21.2 ns | -0.31% | p=0.368 n=8 |
-| linked_list.sum | 5.70 us | 5.56 us | -2.40% | p=0.574 n=8 |
-| mandelbrot.render | 225.12 us | 223.71 us | -0.63% | p=0.878 n=8 |
-| sieve.count | 100.69 us | 101.22 us | +0.53% | p=0.382 n=8 |
-| nbody.step | 145.87 us | 146.61 us | +0.50% | p=0.721 n=8 |
-| spectralnorm.run | 385.19 us | 390.32 us | +1.33% | p=0.195 n=8 |
-| fannkuch.run | 1.266 ms | 1.279 ms | +1.02% | p=0.130 n=8 |
-| matmul.run | 149.65 us | 150.58 us | +0.62% | p=0.161 n=8 |
-| quicksort.sortN | 69.56 us | 71.21 us | +2.37% | p=0.195 n=8 |
-| crc32.hashN | 25.00 us | 24.37 us | -2.51% | p=0.161 n=8 |
-| sha256.hashN | 28.93 us | 28.87 us | -0.18% | p=0.721 n=8 |
-| raytrace.render | 265.01 us | 261.50 us | -1.32% | p=0.083 n=8 |
-| json-as.serializeN | 19.37 us | 19.09 us | -1.42% | p=0.003 n=8 |
-| json-as.deserializeN | 39.75 us | 39.29 us | -1.13% | p=0.083 n=8 |
-| blake-as.hashN | 396.10 us | 399.60 us | +0.88% | p=0.161 n=8 |
-| utf-as.convertN | 122.88 us | 122.94 us | +0.05% | p=0.645 n=8 |
-| xjb-mulhi.mulhi | 21.9 ns | 21.6 ns | -1.30% | p=0.247 n=8 |
-| xjb-mulhi.runN | 1.24 us | 1.25 us | +0.56% | p=0.556 n=8 |
-| swar-pack-parse.pack | 21.5 ns | 21.8 ns | +1.65% | p=0.169 n=8 |
-| swar-pack-parse.parse4 | 21.6 ns | 22.1 ns | +2.13% | p=0.398 n=8 |
-| swar-pack-parse.runN | 1.23 us | 1.26 us | +2.39% | p=0.007 n=8 |
-| json-as-simd.serializeN | 23.35 us | 24.04 us | +2.96% | p=0.028 n=8 |
-| json-as-simd.deserializeN | 51.11 us | 52.52 us | +2.77% | p=0.001 n=8 |
-| blake-as-simd.hashN | 423.80 us | 435.64 us | +2.79% | p=0.002 n=8 |
-| utf-as-simd.convertN | 56.60 us | 57.63 us | +1.81% | p=0.005 n=8 |
-| utf-as-simd.validateN | 143.95 us | 144.44 us | +0.34% | p=0.382 n=8 |
+| tiny.add | 21.0 ns | 21.1 ns | +0.52% | p=0.524 n=8 |
+| fib_iter.fib | 29.2 ns | 29.2 ns | +0.12% | p=0.574 n=8 |
+| fib_rec.fib | 1.115 ms | 1.072 ms | -3.86% | p=0.442 n=8 |
+| arith.run | 1.48 us | 1.48 us | -0.10% | p=0.983 n=8 |
+| float.run | 2.53 us | 2.57 us | +1.52% | p=0.442 n=8 |
+| memory.sum | 307.9 ns | 311.3 ns | +1.12% | p=0.279 n=8 |
+| memory_tree.run | 8.66 us | 8.68 us | +0.18% | p=0.505 n=8 |
+| globals.accumulate | 598.6 ns | 631.2 ns | +5.44% | p=0.169 n=8 |
+| dispatch.apply | 24.2 ns | 24.3 ns | +0.77% | p=0.984 n=8 |
+| branches.classify | 21.1 ns | 21.0 ns | -0.88% | p=0.523 n=8 |
+| many_funcs.run | 21.4 ns | 21.2 ns | -0.84% | p=0.395 n=8 |
+| linked_list.sum | 5.53 us | 5.64 us | +2.10% | p=0.195 n=8 |
+| mandelbrot.render | 219.58 us | 218.56 us | -0.46% | p=0.721 n=8 |
+| sieve.count | 100.19 us | 98.91 us | -1.28% | p=0.291 n=8 |
+| nbody.step | 144.29 us | 143.64 us | -0.45% | p=0.959 n=8 |
+| spectralnorm.run | 388.24 us | 383.33 us | -1.26% | p=0.328 n=8 |
+| fannkuch.run | 1.256 ms | 1.252 ms | -0.37% | p=0.959 n=8 |
+| matmul.run | 149.02 us | 148.06 us | -0.64% | p=0.721 n=8 |
+| quicksort.sortN | 69.39 us | 69.12 us | -0.39% | p=0.721 n=8 |
+| crc32.hashN | 23.40 us | 23.76 us | +1.57% | p=0.130 n=8 |
+| sha256.hashN | 28.30 us | 28.38 us | +0.29% | p=0.798 n=8 |
+| raytrace.render | 258.26 us | 257.33 us | -0.36% | p=0.574 n=8 |
+| json-as.serializeN | 19.01 us | 18.97 us | -0.22% | p=0.878 n=8 |
+| json-as.deserializeN | 39.35 us | 39.43 us | +0.19% | p=0.505 n=8 |
+| blake-as.hashN | 396.99 us | 398.36 us | +0.34% | p=0.505 n=8 |
+| utf-as.convertN | 123.31 us | 126.01 us | +2.19% | p=0.130 n=8 |
+| xjb-mulhi.mulhi | 21.6 ns | 21.9 ns | +1.67% | p=0.700 n=8 |
+| xjb-mulhi.runN | 1.23 us | 1.24 us | +0.73% | p=0.314 n=8 |
+| swar-pack-parse.pack | 21.6 ns | 21.1 ns | -2.29% | p=0.574 n=8 |
+| swar-pack-parse.parse4 | 22.1 ns | 22.2 ns | +0.72% | p=0.721 n=8 |
+| swar-pack-parse.runN | 1.24 us | 1.25 us | +1.42% | p=0.031 n=8 |
+| json-as-simd.serializeN | 23.58 us | 23.48 us | -0.42% | p=0.721 n=8 |
+| json-as-simd.deserializeN | 51.22 us | 51.00 us | -0.43% | p=0.721 n=8 |
+| blake-as-simd.hashN | 419.25 us | 422.88 us | +0.87% | p=0.505 n=8 |
+| utf-as-simd.convertN | 56.01 us | 56.39 us | +0.68% | p=0.382 n=8 |
+| utf-as-simd.validateN | 142.03 us | 142.49 us | +0.32% | p=0.645 n=8 |
 
 ## Retained changes
 
-The branch has 13 commits over `main`:
+The branch has 16 commits over `main`, including this report, and 15 retained
+implementation changes:
 
 1. Faster ARM64 byte-backed hint decoding.
 2. Separation of opt-in statistics from inline reports.
@@ -156,11 +163,13 @@ The branch has 13 commits over `main`:
 11. Fused AMD64 inline caller analysis.
 12. Fast AMD64 inline caller immediate decoding.
 13. Hoisted ARM64 hint-path weighting.
+14. Table-driven validation instruction facts.
+15. Skipped irrelevant ARM64 hint-discount classification.
 
 Implementation source delta, excluding this report:
 
 ```text
-34 files changed, 1,887 insertions, 280 deletions
+35 files changed, 1,934 insertions, 281 deletions
 ```
 
 The larger source increase is primarily validation-analysis structure, tests,
@@ -181,6 +190,8 @@ These were measured and removed rather than retained speculatively:
 | Dense function-signature pointer cache | +13.47% focused geomean, +1.07% heap |
 | Cached imported-function boundary | +5.32% focused geomean; json-as +26.93% |
 | Heavy-first scheduling | -0.04%; below measurement value |
+| Validation-to-hints fusion | Exact hint and code parity, but +0.20% full-compile latency geomean, +0.53% heap, and +1.33% esbuild latency (p=0.015, n=8); bounded per-function fallback and packed shared headers could not make the extra validation state pay for the removed scan |
+| Bitmask stack-flow terminator classification | Short run looked positive; 500 ms x 8 confirmation reversed to +0.90% geomean and +1.28% SQLite (p=0.005) |
 
 ## Method
 
@@ -196,16 +207,20 @@ These were measured and removed rather than retained speculatively:
 - Kept decode and validation outside `BenchmarkCompile`; included them in
   `BenchmarkCompileFull`.
 
-Raw measurements for this report are in `/tmp/arm64-report-*` on the measuring
-host. They are intentionally not checked into the repository.
+Raw measurements for the current checkpoint are in
+`/tmp/arm64-current-{main,branch}-{full-all,backend-all,exec}.txt` and the
+corresponding `benchstat` and CSV files on the measuring host. They are
+intentionally not checked into the repository.
 
 ## Next ARM64 work
 
-The remaining structural ceiling is the full hint walk, approximately 11% of
-large-function backend profiles after the current changes. More tiny accessor
-caches have repeatedly regressed. The next useful step is to extend the compact
-validation summary with the exact bounded facts needed by hint construction so
-the successful hint scan can be retired without adding another body walk.
+The remaining structural ceiling is dominated by native output stores;
+`Asm.word` accounts for roughly 55% of the current large-module backend profile
+and already lowers to a single store. Validation direct-op decoding and the
+ARM64 hint walk are the next visible consumers. A complete validation-to-hints
+fusion was implemented and rejected because it increased latency and heap, so
+the next work should remain narrow and profile-led rather than retaining more
+summary state.
 
 The near-term acceptance gates are:
 
