@@ -492,6 +492,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			persistent := sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(compilationPlan.Recursive) + sliceBytes(moduleContracts) + sliceBytes(seedContracts) + sliceBytes(seedScores) + sliceBytes(seedCandidates) + sliceBytes(refinedRecursive) + sliceBytes(attemptedRecursive)
 			metrics.observe(persistent + row.PeakLiveBytes)
 		}
+		nativePlanner = retainNativeBackendPlannerWithin(nativePlanner, nativeBackendPlannerRetentionBytes)
 	}
 	finalizeStart := time.Time{}
 	if metrics != nil {
@@ -738,6 +739,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 			}
 			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), requiresSHA2: functionRequiresSHA2, directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class), directLeaf: railMachFinalized && arm64DirectPreparedLeafPlan(nativePlan), directTrap: railMachFinalized && arm64DirectPreparedTrapClass(published.Class), contextFreeLoop: arm64ContextFreePreparedLoop(fn.Stack)}
 			worker.body = nil
+			worker.native = retainNativeBackendPlannerWithin(worker.native, nativeBackendPlannerRetentionBytes)
 		}
 		return nil
 	})

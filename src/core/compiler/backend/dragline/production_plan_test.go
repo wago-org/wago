@@ -308,6 +308,19 @@ func TestNativeBackendPlannerBuildsCompleteRailMachProduct(t *testing.T) {
 	t.Logf("RailSSA retained capacity: %#v", breakdown)
 }
 
+func TestRetainNativeBackendPlannerWithin(t *testing.T) {
+	planner := &nativeBackendPlanner{edgeWeights: make([]uint64, 0, 3)}
+	if got := retainNativeBackendPlannerWithin(planner, 24); got != planner {
+		t.Fatal("planner at retention limit was released")
+	}
+	if got := retainNativeBackendPlannerWithin(planner, 23); got != nil {
+		t.Fatal("planner above retention limit was retained")
+	}
+	if got := retainNativeBackendPlannerWithin(nil, 0); got != nil {
+		t.Fatal("nil planner was replaced")
+	}
+}
+
 func TestNativeBackendPlannerReservesVerifiedCollectorRootSlots(t *testing.T) {
 	importEntry := append(wasmtest.Name("env"), wasmtest.Name("tick")...)
 	importEntry = append(importEntry, 0)

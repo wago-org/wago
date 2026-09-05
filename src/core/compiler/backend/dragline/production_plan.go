@@ -185,6 +185,13 @@ type nativeAMD64MemoryBoundUse struct {
 	weight uint64
 }
 
+// nativeBackendPlannerRetentionBytes bounds reusable compiler workspace after
+// an exceptional function. Ordinary functions keep their planner storage and
+// avoid rebuilding it; giant functions release their slabs once their plan has
+// been fully consumed so later native-code growth does not overlap the
+// exceptional high-water mark.
+const nativeBackendPlannerRetentionBytes = 16 << 20
+
 type nativeCandidateRef struct {
 	schedule   *railmach.Schedule
 	allocation *railmach.GreedyAllocation
@@ -258,6 +265,13 @@ func (p *nativeBackendPlanner) retainScheduleCandidate(index int) {
 func (p *nativeBackendPlanner) CapacityBytes() uint64 {
 	ssa, machine, native := p.capacityBreakdown()
 	return ssa + machine + native
+}
+
+func retainNativeBackendPlannerWithin(p *nativeBackendPlanner, limit uint64) *nativeBackendPlanner {
+	if p != nil && p.CapacityBytes() > limit {
+		return nil
+	}
+	return p
 }
 
 func (p *nativeBackendPlanner) capacityBreakdown() (ssa, machine, native uint64) {

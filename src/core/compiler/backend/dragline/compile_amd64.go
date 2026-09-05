@@ -441,6 +441,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			persistent := sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(signalGuardFreePrepared) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(compilationPlan.Recursive) + sliceBytes(moduleContracts) + sliceBytes(seedContracts) + sliceBytes(seedScores) + sliceBytes(seedCandidates) + sliceBytes(refinedRecursive) + sliceBytes(attemptedRecursive)
 			metrics.observe(persistent + row.PeakLiveBytes)
 		}
+		nativePlanner = retainNativeBackendPlannerWithin(nativePlanner, nativeBackendPlannerRetentionBytes)
 	}
 	finalizeStart := time.Time{}
 	if metrics != nil {
@@ -720,6 +721,7 @@ func compileNativeParallelAMD64(input corecompiler.Input, m *wasm.Module) (corec
 				contracts[i] = railmach.ABIContract{}
 			}
 			results[i] = parallelAMD64Result{body: body, internalOffset: internalOffset, relocs: relocs, directPrepared: railMachFinalized && amd64DirectPreparedClass(contracts[i].Class), directLeaf: railMachFinalized && amd64DirectPreparedLeafClass(contracts[i].Class), requiresBMI2: railMachFinalized && amd64RailMachMayUseBMI2(nativePlan)}
+			worker.native = retainNativeBackendPlannerWithin(worker.native, nativeBackendPlannerRetentionBytes)
 		}
 		return nil
 	})

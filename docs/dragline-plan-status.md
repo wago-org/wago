@@ -222,6 +222,19 @@ the performance corpus.
   reduced peak storage slightly, and shrank the complete native image 0.2%.
   Metrics schema 21 records the exact
   source-admission or finalizer-safety reason for every structured function.
+- Giant-function workspace retention: ✅ serial and parallel compilation on
+  both targets now retain ordinary planner slabs but release a planner after a
+  completed function when its reusable capacity exceeds 16 MiB. This is a
+  function-size policy only; emitted code, relocations, ABI contracts, and
+  artifacts are consumed before release. On the exact Ruby module, compiler-
+  owned peak live storage fell from 115,392,147 to 78,027,191 bytes (32.4%),
+  compile wall fell from 95.330 to 94.603 seconds (0.8%), and the native image
+  remained exactly 49,427,280 bytes. Fresh-process `/usr/bin/time` runs on the
+  same Ruby artifact reduced maximum RSS from 472,416,256 to
+  381,157,376 bytes (19.3%) and Darwin peak memory footprint from 394,756,960
+  to 324,404,016 bytes (17.8%). This closes the measured Phase 11 debt in which
+  one exceptional function's roughly 48 MiB workspace remained live while the
+  module's native image continued to grow.
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution
