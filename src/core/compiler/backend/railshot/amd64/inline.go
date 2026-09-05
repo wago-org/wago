@@ -808,6 +808,42 @@ func buildInlineCallerPlan(caller *wasm.Func, targets inlineTargetTable) inlineC
 			plan.callees = append(plan.callees, t)
 			continue
 		}
+		switch op {
+		case 0x05, 0x0b: // else, end
+			continue
+		case 0x12, 0x14, 0x15: // return_call, call_ref, return_call_ref
+			if _, err := r.U32(); err != nil {
+				return plan
+			}
+			sawCall = true
+			allInline = false
+			continue
+		case 0x08, 0x0c, 0x0d, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0xd2, 0xd5, 0xd6:
+			if _, err := r.U32(); err != nil {
+				return plan
+			}
+			continue
+		case 0x41:
+			if _, err := r.I32(); err != nil {
+				return plan
+			}
+			continue
+		case 0x42:
+			if _, err := r.I64(); err != nil {
+				return plan
+			}
+			continue
+		case 0x43:
+			if _, err := r.Bytes(4); err != nil {
+				return plan
+			}
+			continue
+		case 0x44:
+			if _, err := r.Bytes(8); err != nil {
+				return plan
+			}
+			continue
+		}
 		if err := targets.classifier.ClassifyInto(r, op, &imm); err != nil {
 			return plan
 		}
