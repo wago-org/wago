@@ -139,6 +139,39 @@ func TestSelectTargetOpcodesIntegerAddSub(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesIntegerLogical(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [6]MOpcode
+	}{
+		{"amd64", TargetAMD64, [6]MOpcode{OpAMD64I32And, OpAMD64I64And, OpAMD64I32Or, OpAMD64I64Or, OpAMD64I32Xor, OpAMD64I64Xor}},
+		{"arm64", TargetARM64, [6]MOpcode{OpARM64I32And, OpARM64I64And, OpARM64I32Or, OpARM64I64Or, OpARM64I32Xor, OpARM64I64Xor}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			operations := [6]MOpcode{wasm.InstrI32And, wasm.InstrI64And, wasm.InstrI32Or, wasm.InstrI64Or, wasm.InstrI32Xor, wasm.InstrI64Xor}
+			for index, op := range []byte{0x71, 0x83, 0x72, 0x84, 0x73, 0x85} {
+				type_ := wasm.I32
+				if index&1 != 0 {
+					type_ = wasm.I64
+				}
+				m := machineModule([]wasm.ValType{type_, type_}, []wasm.ValType{type_}, []byte{0x20, 0, 0x20, 1, op, 0x0b})
+				f := buildMachineTest(t, test.target, m)
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operations[index] {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operations[index])
+				}
+			}
+		})
+	}
+}
+
 func vectorFoundationFixture(target Target) *Func {
 	f := &Func{
 		Target: target,

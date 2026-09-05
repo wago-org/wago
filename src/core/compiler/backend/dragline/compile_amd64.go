@@ -1007,6 +1007,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			wasm.InstrI64Clz, wasm.InstrI64Ctz, wasm.InstrI64Popcnt,
 			wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
 			railmach.OpAMD64I32Add, railmach.OpAMD64I64Add, railmach.OpAMD64I32Sub, railmach.OpAMD64I64Sub,
+			railmach.OpAMD64I32And, railmach.OpAMD64I64And, railmach.OpAMD64I32Or, railmach.OpAMD64I64Or,
+			railmach.OpAMD64I32Xor, railmach.OpAMD64I64Xor,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -4057,13 +4059,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			case railmach.OpAMD64I32Sub, railmach.OpAMD64I64Sub:
 				opcode = 0x29
 				digit = 5
-			case wasm.InstrI32And, wasm.InstrI64And:
+			case railmach.OpAMD64I32And, railmach.OpAMD64I64And:
 				opcode = 0x21
 				digit = 4
-			case wasm.InstrI32Or, wasm.InstrI64Or:
+			case railmach.OpAMD64I32Or, railmach.OpAMD64I64Or:
 				opcode = 0x09
 				digit = 1
-			case wasm.InstrI32Xor, wasm.InstrI64Xor:
+			case railmach.OpAMD64I32Xor, railmach.OpAMD64I64Xor:
 				opcode = 0x31
 				digit = 6
 			}
@@ -4671,7 +4673,7 @@ func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID,
 		a.MovReg64(dst, lhs)
 	}
 	opcode := byte(0)
-	switch consumer.Op {
+	switch railmach.SemanticOpcode(consumer.Op) {
 	case wasm.InstrI32Add, wasm.InstrI64Add:
 		opcode = 0x03
 	case wasm.InstrI32Sub, wasm.InstrI64Sub:

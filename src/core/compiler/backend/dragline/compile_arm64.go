@@ -1082,6 +1082,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			wasm.InstrI64Clz, wasm.InstrI64Ctz, wasm.InstrI64Popcnt,
 			wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
 			railmach.OpARM64I32Add, railmach.OpARM64I64Add, railmach.OpARM64I32Sub, railmach.OpARM64I64Sub,
+			railmach.OpARM64I32And, railmach.OpARM64I64And, railmach.OpARM64I32Or, railmach.OpARM64I64Or,
+			railmach.OpARM64I32Xor, railmach.OpARM64I64Xor,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -5255,27 +5257,27 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					if !emitARM64I64AddSubImmediate(&a, dst, lhs, plan.Machine.Insts[producer].Aux, true) {
 						return nil, 0, true, fmt.Errorf("RailMach selected unencodable ARM64 i64.sub immediate %#x", plan.Machine.Insts[producer].Aux)
 					}
-				case wasm.InstrI32And:
+				case railmach.OpARM64I32And:
 					if !a.AndImm32(dst, lhs, immediate) {
 						return nil, 0, true, fmt.Errorf("RailMach selected unencodable ARM64 i32.and immediate %#x", immediate)
 					}
-				case wasm.InstrI64And:
+				case railmach.OpARM64I64And:
 					if !a.AndImm64(dst, lhs, uint64(plan.Machine.Insts[producer].Aux)) {
 						return nil, 0, true, fmt.Errorf("RailMach selected unencodable ARM64 i64.and immediate %#x", plan.Machine.Insts[producer].Aux)
 					}
-				case wasm.InstrI32Or:
+				case railmach.OpARM64I32Or:
 					if !a.OrrImm32(dst, lhs, immediate) {
 						return nil, 0, true, fmt.Errorf("RailMach selected unencodable ARM64 i32.or immediate %#x", immediate)
 					}
-				case wasm.InstrI64Or:
+				case railmach.OpARM64I64Or:
 					if !a.OrrImm64(dst, lhs, uint64(plan.Machine.Insts[producer].Aux)) {
 						return nil, 0, true, fmt.Errorf("RailMach selected unencodable ARM64 i64.or immediate %#x", plan.Machine.Insts[producer].Aux)
 					}
-				case wasm.InstrI32Xor:
+				case railmach.OpARM64I32Xor:
 					if !a.EorImm32(dst, lhs, immediate) {
 						return nil, 0, true, fmt.Errorf("RailMach selected unencodable ARM64 i32.xor immediate %#x", immediate)
 					}
-				case wasm.InstrI64Xor:
+				case railmach.OpARM64I64Xor:
 					if !a.EorImm64(dst, lhs, uint64(plan.Machine.Insts[producer].Aux)) {
 						return nil, 0, true, fmt.Errorf("RailMach selected unencodable ARM64 i64.xor immediate %#x", plan.Machine.Insts[producer].Aux)
 					}
@@ -5437,19 +5439,19 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				} else {
 					a.Mul32(dst, lhs, rhs)
 				}
-			case wasm.InstrI32And, wasm.InstrI64And:
+			case railmach.OpARM64I32And, railmach.OpARM64I64And:
 				if wide {
 					a.And64(dst, lhs, rhs)
 				} else {
 					a.And32(dst, lhs, rhs)
 				}
-			case wasm.InstrI32Or, wasm.InstrI64Or:
+			case railmach.OpARM64I32Or, railmach.OpARM64I64Or:
 				if wide {
 					a.Orr64(dst, lhs, rhs)
 				} else {
 					a.Orr32(dst, lhs, rhs)
 				}
-			case wasm.InstrI32Xor, wasm.InstrI64Xor:
+			case railmach.OpARM64I32Xor, railmach.OpARM64I64Xor:
 				if wide {
 					a.Eor64(dst, lhs, rhs)
 				} else {
@@ -6277,7 +6279,7 @@ func arm64RailMachByteWidenPairConsumer(plan *nativeBackendPlan, first uint32) (
 	firstFinal, _, _ := railmach.VerifyARM64ByteWidenChain(plan.Machine, plan.Schedule, first, ^uint32(0))
 	start := plan.Allocation.InstructionPositions[firstFinal]
 	for _, instructionID := range plan.Schedule.Order[start+1 : consumerPosition] {
-		switch plan.Machine.Insts[instructionID].Op {
+		switch railmach.SemanticOpcode(plan.Machine.Insts[instructionID].Op) {
 		case wasm.InstrI64Store, wasm.InstrI64Const, wasm.InstrI64ShrU, wasm.InstrI64And:
 		default:
 			return 0, false

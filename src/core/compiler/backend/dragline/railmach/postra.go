@@ -364,7 +364,7 @@ func arm64ByteWidenChain(f *Func, schedule *Schedule, final uint32, position, us
 			return 0, nil, false
 		}
 		id := f.VRegs[value].Def / 6
-		if int(id) >= len(f.Insts) || f.Insts[id].Result != value || f.Insts[id].Op != op {
+		if int(id) >= len(f.Insts) || f.Insts[id].Result != value || SemanticOpcode(f.Insts[id].Op) != op {
 			return 0, nil, false
 		}
 		return id, f.InstructionOperands(id), true
@@ -374,7 +374,7 @@ func arm64ByteWidenChain(f *Func, schedule *Schedule, final uint32, position, us
 		return ok && f.Insts[id].Aux == want
 	}
 	andConstant := func(id uint32, want uint64) (VReg, bool) {
-		if int(id) >= len(f.Insts) || f.Insts[id].Op != wasm.InstrI64And {
+		if int(id) >= len(f.Insts) || SemanticOpcode(f.Insts[id].Op) != wasm.InstrI64And {
 			return 0, false
 		}
 		operands := f.InstructionOperands(id)
@@ -486,7 +486,7 @@ func VerifyARM64ByteSwapChain(f *Func, schedule *Schedule, final uint32) (VReg, 
 
 func verifyARM64ByteSwapChain(f *Func, schedule *Schedule, final uint32, position, uses []uint32) (VReg, [5]uint32, bool) {
 	var none [5]uint32
-	if int(final) >= len(f.Insts) || len(position) != len(f.Insts) || len(uses) != len(f.VRegs) || f.Insts[final].Op != wasm.InstrI32Or {
+	if int(final) >= len(f.Insts) || len(position) != len(f.Insts) || len(uses) != len(f.VRegs) || SemanticOpcode(f.Insts[final].Op) != wasm.InstrI32Or {
 		return 0, none, false
 	}
 	definition := func(value VReg, op wasm.InstrKind) (uint32, []Operand, bool) {
@@ -494,7 +494,7 @@ func verifyARM64ByteSwapChain(f *Func, schedule *Schedule, final uint32, positio
 			return 0, nil, false
 		}
 		id := f.VRegs[value].Def / 6
-		if int(id) >= len(f.Insts) || f.Insts[id].Result != value || f.Insts[id].Op != op {
+		if int(id) >= len(f.Insts) || f.Insts[id].Result != value || SemanticOpcode(f.Insts[id].Op) != op {
 			return 0, nil, false
 		}
 		return id, f.InstructionOperands(id), true
@@ -597,7 +597,7 @@ func VerifyARM64Narrow16To8Chain(f *Func, schedule *Schedule, final uint32) (VRe
 
 func verifyARM64Narrow16To8Chain(f *Func, schedule *Schedule, final uint32, position, uses []uint32) (VReg, [10]uint32, bool) {
 	var members [10]uint32
-	if int(final) >= len(f.Insts) || len(position) != len(f.Insts) || len(uses) != len(f.VRegs) || f.Insts[final].Op != wasm.InstrI64Or {
+	if int(final) >= len(f.Insts) || len(position) != len(f.Insts) || len(uses) != len(f.VRegs) || SemanticOpcode(f.Insts[final].Op) != wasm.InstrI64Or {
 		return 0, members, false
 	}
 	definition := func(value VReg, op wasm.InstrKind) (uint32, []Operand, bool) {
@@ -605,7 +605,7 @@ func verifyARM64Narrow16To8Chain(f *Func, schedule *Schedule, final uint32, posi
 			return 0, nil, false
 		}
 		id := f.VRegs[value].Def / 6
-		if int(id) >= len(f.Insts) || f.Insts[id].Result != value || f.Insts[id].Op != op {
+		if int(id) >= len(f.Insts) || f.Insts[id].Result != value || SemanticOpcode(f.Insts[id].Op) != op {
 			return 0, nil, false
 		}
 		return id, f.InstructionOperands(id), true
