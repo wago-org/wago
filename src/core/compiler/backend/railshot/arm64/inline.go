@@ -750,13 +750,55 @@ func collectInlinedCallees(caller *wasm.Func, targets inlineTargetTable) []*inli
 		if err != nil {
 			return out
 		}
-		if err := targets.classifier.ClassifyInto(r, op, &imm); err != nil {
-			return out
-		}
-		if imm.Kind != wasm.InstrCall {
+		if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
 			continue
 		}
-		t := targets.target(int(imm.Index))
+		var t *inlineTarget
+		if op == 0x10 { // call
+			idx, err := r.U32()
+			if err != nil {
+				return out
+			}
+			t = targets.target(int(idx))
+		} else {
+			switch op {
+			case 0x05, 0x0b: // else, end
+				continue
+			case 0x08, 0x0c, 0x0d, 0x12, 0x14, 0x15,
+				0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0xd2, 0xd5, 0xd6:
+				if _, err := r.U32(); err != nil {
+					return out
+				}
+				continue
+			case 0x41:
+				if _, err := r.I32(); err != nil {
+					return out
+				}
+				continue
+			case 0x42:
+				if _, err := r.I64(); err != nil {
+					return out
+				}
+				continue
+			case 0x43:
+				if _, err := r.Bytes(4); err != nil {
+					return out
+				}
+				continue
+			case 0x44:
+				if _, err := r.Bytes(8); err != nil {
+					return out
+				}
+				continue
+			}
+			if err := targets.classifier.ClassifyInto(r, op, &imm); err != nil {
+				return out
+			}
+			if imm.Kind != wasm.InstrCall {
+				continue
+			}
+			t = targets.target(int(imm.Index))
+		}
 		if t == nil {
 			continue
 		}
@@ -801,7 +843,9 @@ func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable, policy Cod
 	}
 	r := wasm.NewReader(caller.BodyBytes)
 	var imm wasm.InstructionImmediate
-	var controls []bool // true for loop frames
+	var controlLoops uint64 // one bit per ordinary control frame
+	controlDepth := 0
+	var deepControls []bool // pathological depth beyond the fixed 64-bit stack
 	loopDepth := 0
 	sawCall := false
 	for r.HasNext() {
@@ -814,16 +858,36 @@ func allCallsWillInline(caller *wasm.Func, targets inlineTargetTable, policy Cod
 		}
 		switch op {
 		case 0x02, 0x04: // block, if
-			controls = append(controls, false)
+			if controlDepth < 64 {
+				controlLoops &^= uint64(1) << controlDepth
+			} else {
+				deepControls = append(deepControls, false)
+			}
+			controlDepth++
 		case 0x03: // loop
-			controls = append(controls, true)
+			if controlDepth < 64 {
+				controlLoops |= uint64(1) << controlDepth
+			} else {
+				deepControls = append(deepControls, true)
+			}
+			controlDepth++
 			loopDepth++
 		case 0x0b: // end (the final function end has no matching entry here)
-			if n := len(controls); n != 0 {
-				if controls[n-1] {
+			if controlDepth != 0 {
+				controlDepth--
+				wasLoop := false
+				if controlDepth < 64 {
+					bit := uint64(1) << controlDepth
+					wasLoop = controlLoops&bit != 0
+					controlLoops &^= bit
+				} else {
+					i := controlDepth - 64
+					wasLoop = deepControls[i]
+					deepControls = deepControls[:i]
+				}
+				if wasLoop {
 					loopDepth--
 				}
-				controls = controls[:n-1]
 			}
 		}
 		switch imm.Kind {

@@ -2575,7 +2575,10 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// touchesMemory — otherwise the guard-page pin exclusion (which drops X9/X10/X11
 	// from the pool for a memory-touching call-making function) would be skipped for
 	// a caller whose own body never touched memory.
-	inlinedCallees := collectInlinedCallees(c, inlineTargets)
+	var inlinedCallees []*inlineTarget
+	if hasCall {
+		inlinedCallees = collectInlinedCallees(c, inlineTargets)
+	}
 	if policy.EnabledOption(optInlineCallFree) && hasCall && allCallsWillInline(c, inlineTargets, policy) {
 		hasCall = false
 		f.stats.peep("all-calls-inlined")
