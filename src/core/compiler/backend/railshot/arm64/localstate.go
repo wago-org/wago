@@ -201,6 +201,9 @@ func (f *fn) spillLocalsForCall() {
 // sequences that do not make a native call use this to preserve their actual
 // scratch bank without evicting unrelated local pins.
 func (f *fn) spillLocalsForClobbers(gpClobbers, fpClobbers regMask) {
+	if f.pinnedLocalMask&gpClobbers == 0 && f.fpinnedLocalMask&fpClobbers == 0 {
+		return
+	}
 	for x := 0; x < f.nLocals; x++ {
 		reg, isFloat, ok := f.pinReg(x)
 		if !ok {
