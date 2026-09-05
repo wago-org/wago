@@ -1375,6 +1375,67 @@ func TestSelectTargetOpcodesArrayFieldHelpers(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesArrayConstructors(t *testing.T) {
+	arrayModule := func(arrayType, body []byte, beforeCode, afterCode [][]byte) *wasm.Module {
+		t.Helper()
+		sections := [][]byte{
+			wasmtest.Section(1, wasmtest.Vec(arrayType, wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		}
+		sections = append(sections, beforeCode...)
+		sections = append(sections, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
+		sections = append(sections, afterCode...)
+		m, err := wasm.DecodeModule(wasmtest.Module(sections...))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	passiveData := append([]byte{0x01}, append(wasmtest.ULEB(1), 'x')...)
+	passiveElem := append([]byte{0x05, 0x70}, wasmtest.ULEB(0)...)
+	tests := []struct {
+		name    string
+		generic MOpcode
+		module  *wasm.Module
+		amd64   MOpcode
+		arm64   MOpcode
+	}{
+		{"new", wasm.InstrArrayNew, arrayModule([]byte{0x5e, 0x7e, 0x01}, []byte{0x42, 7, 0x41, 2, 0xfb, 0x06, 0, 0x1a, 0x41, 1, 0x0b}, nil, nil), OpAMD64ArrayNew, OpARM64ArrayNew},
+		{"new_default", wasm.InstrArrayNewDefault, arrayModule([]byte{0x5e, 0x7e, 0x01}, []byte{0x41, 2, 0xfb, 0x07, 0, 0x1a, 0x41, 1, 0x0b}, nil, nil), OpAMD64ArrayNewDefault, OpARM64ArrayNewDefault},
+		{"new_fixed", wasm.InstrArrayNewFixed, arrayModule([]byte{0x5e, 0x7e, 0x01}, []byte{0x42, 1, 0x42, 2, 0xfb, 0x08, 0, 2, 0x1a, 0x41, 1, 0x0b}, nil, nil), OpAMD64ArrayNewFixed, OpARM64ArrayNewFixed},
+		{"new_data", wasm.InstrArrayNewData, arrayModule([]byte{0x5e, 0x78, 0x01}, []byte{0x41, 0, 0x41, 1, 0xfb, 0x09, 0, 0, 0x1a, 0x41, 1, 0x0b}, [][]byte{wasmtest.Section(12, wasmtest.ULEB(1))}, [][]byte{wasmtest.Section(11, wasmtest.Vec(passiveData))}), OpAMD64ArrayNewData, OpARM64ArrayNewData},
+		{"new_elem", wasm.InstrArrayNewElem, arrayModule([]byte{0x5e, 0x70, 0x01}, []byte{0x41, 0, 0x41, 0, 0xfb, 0x0a, 0, 0, 0x1a, 0x41, 1, 0x0b}, [][]byte{wasmtest.Section(9, wasmtest.Vec(passiveElem))}, nil), OpAMD64ArrayNewElem, OpARM64ArrayNewElem},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for _, target := range []Target{TargetAMD64, TargetARM64} {
+				t.Run(target.String(), func(t *testing.T) {
+					f := buildMachineTest(t, target, test.module)
+					if _, err := SelectTargetOpcodes(f); err != nil {
+						t.Fatal(err)
+					}
+					want := test.amd64
+					if target == TargetARM64 {
+						want = test.arm64
+					}
+					found := false
+					for _, instruction := range f.Insts {
+						if instruction.Op == want && SemanticOpcode(instruction.Op) == test.generic && IsCall(instruction.Op) {
+							found = true
+						}
+					}
+					if !found {
+						t.Fatalf("selected instructions = %#v, want helper call %d", f.Insts, want)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesRefFunc(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(

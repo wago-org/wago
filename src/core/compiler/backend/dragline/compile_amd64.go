@@ -1065,6 +1065,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64StructGet, railmach.OpAMD64StructGetS, railmach.OpAMD64StructGetU, railmach.OpAMD64StructSet,
 			railmach.OpAMD64StructNew, railmach.OpAMD64StructNewDefault,
 			railmach.OpAMD64ArrayGet, railmach.OpAMD64ArrayGetS, railmach.OpAMD64ArrayGetU, railmach.OpAMD64ArraySet, railmach.OpAMD64ArrayLen,
+			railmach.OpAMD64ArrayNew, railmach.OpAMD64ArrayNewDefault, railmach.OpAMD64ArrayNewFixed, railmach.OpAMD64ArrayNewData, railmach.OpAMD64ArrayNewElem,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -1633,7 +1634,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 				}
 			}
-			if semanticOp == wasm.InstrStructNew || semanticOp == wasm.InstrStructNewDefault || instruction.Op == wasm.InstrArrayNew || instruction.Op == wasm.InstrArrayNewDefault || instruction.Op == wasm.InstrArrayNewFixed || instruction.Op == wasm.InstrArrayNewData || instruction.Op == wasm.InstrArrayNewElem {
+			if semanticOp == wasm.InstrStructNew || semanticOp == wasm.InstrStructNewDefault || semanticOp == wasm.InstrArrayNew || semanticOp == wasm.InstrArrayNewDefault || semanticOp == wasm.InstrArrayNewFixed || semanticOp == wasm.InstrArrayNewData || semanticOp == wasm.InstrArrayNewElem {
 				if plan.HelperSafepointBase == 0 {
 					return nil, 0, true, fmt.Errorf("RailMach GC helper safepoint base is unavailable")
 				}
@@ -1650,21 +1651,21 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				if semanticOp == wasm.InstrStructNew {
 					helper = codegen.GCHelperStructAlloc
 					arity = uint32(len(operands)) + 1
-				} else if instruction.Op == wasm.InstrArrayNewFixed {
+				} else if semanticOp == wasm.InstrArrayNewFixed {
 					helper = codegen.GCHelperArrayAllocFixed
 					arity = uint32(len(operands)) + 2
-				} else if instruction.Op == wasm.InstrArrayNewData || instruction.Op == wasm.InstrArrayNewElem {
+				} else if semanticOp == wasm.InstrArrayNewData || semanticOp == wasm.InstrArrayNewElem {
 					helper = codegen.GCHelperArrayAllocData
-					if instruction.Op == wasm.InstrArrayNewElem {
+					if semanticOp == wasm.InstrArrayNewElem {
 						helper = codegen.GCHelperArrayAllocElem
 					}
 					arity = 4
 					if len(operands) != 2 {
 						return nil, 0, true, fmt.Errorf("RailMach %s operand count is %d", instruction.Op, len(operands))
 					}
-				} else if instruction.Op == wasm.InstrArrayNew || instruction.Op == wasm.InstrArrayNewDefault {
+				} else if semanticOp == wasm.InstrArrayNew || semanticOp == wasm.InstrArrayNewDefault {
 					want := 1
-					if instruction.Op == wasm.InstrArrayNew {
+					if semanticOp == wasm.InstrArrayNew {
 						want = 2
 						helper = codegen.GCHelperArrayAllocUniform
 						arity = 3
@@ -1701,12 +1702,12 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				if deadReservation && semanticOp == wasm.InstrStructNew {
 					a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), amd64.R10)
-				} else if deadReservation && instruction.Op == wasm.InstrArrayNewFixed {
+				} else if deadReservation && semanticOp == wasm.InstrArrayNewFixed {
 					a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), amd64.R10)
 					a.MovImm64(amd64.R10, instruction.Aux>>32)
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+8), amd64.R10)
-				} else if semanticOp == wasm.InstrStructNew || instruction.Op == wasm.InstrArrayNewFixed {
+				} else if semanticOp == wasm.InstrStructNew || semanticOp == wasm.InstrArrayNewFixed {
 					for index, operand := range operands {
 						data := plan.Machine.VRegs[operand.Reg]
 						scratch := amd64.R10
@@ -1725,13 +1726,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 					a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+len(operands)*8), amd64.R10)
-					if instruction.Op == wasm.InstrArrayNewFixed {
+					if semanticOp == wasm.InstrArrayNewFixed {
 						a.MovImm64(amd64.R10, instruction.Aux>>32)
 						a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+(len(operands)+1)*8), amd64.R10)
 					}
-				} else if instruction.Op == wasm.InstrArrayNewDefault {
+				} else if semanticOp == wasm.InstrArrayNewDefault {
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), reg(operands[0].Reg))
-				} else if instruction.Op == wasm.InstrArrayNew {
+				} else if semanticOp == wasm.InstrArrayNew {
 					value := reg(operands[0].Reg)
 					if plan.Machine.VRegs[operands[0].Reg].Bank == railmach.BankFPR {
 						a.MovXmmToGpr(amd64.R10, value, plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeF64)
@@ -1739,7 +1740,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), value)
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+8), reg(operands[1].Reg))
-				} else if instruction.Op == wasm.InstrArrayNewData || instruction.Op == wasm.InstrArrayNewElem {
+				} else if semanticOp == wasm.InstrArrayNewData || semanticOp == wasm.InstrArrayNewElem {
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), reg(operands[0].Reg))
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+8), reg(operands[1].Reg))
 					a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
@@ -1750,10 +1751,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), amd64.R10)
 				}
-				if instruction.Op == wasm.InstrArrayNewDefault {
+				if semanticOp == wasm.InstrArrayNewDefault {
 					a.MovImm64(amd64.R10, instruction.Aux)
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+8), amd64.R10)
-				} else if instruction.Op == wasm.InstrArrayNew {
+				} else if semanticOp == wasm.InstrArrayNew {
 					a.MovImm64(amd64.R10, instruction.Aux)
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+16), amd64.R10)
 				}
