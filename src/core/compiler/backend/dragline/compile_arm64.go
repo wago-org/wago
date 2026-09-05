@@ -5925,7 +5925,7 @@ railMachEpilogue:
 	}
 	plan.ConditionalPatches = conditionalPatches
 	plan.ColdTrapPatches = coldTraps
-	arm64FuseCountedLoopBackedges(a.B[internalOffset:hotEnd])
+	arm64FuseZeroCheckedLoopBackedges(a.B[internalOffset:hotEnd])
 	if err := arm64PatchSIMDLiterals(&a, simdLiteralRefs); err != nil {
 		return nil, 0, true, fmt.Errorf("RailMach %w", err)
 	}
@@ -5937,19 +5937,21 @@ railMachEpilogue:
 	return a.B, internalOffset, true, nil
 }
 
-// arm64FuseCountedLoopBackedges turns the canonical
+// arm64FuseZeroCheckedLoopBackedges turns
 //
 //	check: cbz  wN, done
 //	       ... loop body ...
-//	       sub  wN, wN, #1
+//	       ... loop latch ...
 //	       b    check
 //	done:
 //
 // into a direct CBNZ backedge to the body. The entry check remains in place,
-// so zero-trip behavior is unchanged, while every taken iteration loses one
-// branch. The exact encodings and targets are verified before the in-place,
-// size-preserving rewrite.
-func arm64FuseCountedLoopBackedges(code []byte) uint32 {
+// so zero-trip behavior is unchanged. The CBNZ observes the same final latch
+// value that the next header CBZ observed, while every taken iteration loses
+// one branch. Exact encodings and targets are verified before the in-place,
+// size-preserving rewrite; no assumption about the instructions that produced
+// the condition is required.
+func arm64FuseZeroCheckedLoopBackedges(code []byte) uint32 {
 	words := len(code) / 4
 	var rewrites uint32
 	for tail := 1; tail < words; tail++ {
@@ -5965,11 +5967,7 @@ func arm64FuseCountedLoopBackedges(code []byte) uint32 {
 		if check&0x7f000000 != 0x34000000 || header+signExtendARM64Immediate(check>>5&0x7ffff, 19) != tail+1 {
 			continue
 		}
-		decrement := binary.LittleEndian.Uint32(code[(tail-1)*4:])
 		reg := check & 31
-		if decrement&0xffc00000 != 0x51000000 || decrement>>10&0xfff != 1 || decrement>>5&31 != reg || decrement&31 != reg {
-			continue
-		}
 		delta := header + 1 - tail
 		if delta < -(1<<18) || delta >= 1<<18 {
 			continue

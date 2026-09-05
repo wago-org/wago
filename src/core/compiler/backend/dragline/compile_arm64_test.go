@@ -2768,12 +2768,15 @@ func TestARM64FusesCanonicalCountedLoopBackedge(t *testing.T) {
 	body := a.Len()
 	a.Nop()
 	a.SubImm32(arm64.X1, arm64.X1, 1)
+	// Late SSA exit commonly copies a loop-carried result after updating the
+	// counter. The backedge condition remains the value observed by the header.
+	a.MovReg64(arm64.X3, arm64.X4)
 	back := a.Branch()
 	done := a.Len()
 	if !a.PatchBranch19(check, done) || !a.PatchBranch26(back, 0) {
 		t.Fatal("failed to build counted-loop fixture")
 	}
-	if got := arm64FuseCountedLoopBackedges(a.B); got != 1 {
+	if got := arm64FuseZeroCheckedLoopBackedges(a.B); got != 1 {
 		t.Fatalf("counted-loop rewrites = %d, want 1", got)
 	}
 	word := binary.LittleEndian.Uint32(a.B[back:])
@@ -2788,22 +2791,18 @@ func TestARM64FusesCanonicalCountedLoopBackedge(t *testing.T) {
 
 func TestARM64DoesNotFuseNonCanonicalCountedLoop(t *testing.T) {
 	for _, test := range []struct {
-		name      string
-		decrement arm64.Reg
-		amount    uint32
-		exitGap   bool
-		call      bool
+		name    string
+		exitGap bool
+		call    bool
 	}{
-		{name: "different register", decrement: arm64.X2, amount: 1},
-		{name: "different amount", decrement: arm64.X1, amount: 2},
-		{name: "nonadjacent exit", decrement: arm64.X1, amount: 1, exitGap: true},
-		{name: "call not branch", decrement: arm64.X1, amount: 1, call: true},
+		{name: "nonadjacent exit", exitGap: true},
+		{name: "call not branch", call: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var a arm64.Asm
 			check := a.Cbz32(arm64.X1)
 			a.Nop()
-			a.SubImm32(test.decrement, test.decrement, test.amount)
+			a.SubImm32(arm64.X1, arm64.X1, 1)
 			back := a.Branch()
 			if test.exitGap {
 				a.Nop()
@@ -2816,7 +2815,7 @@ func TestARM64DoesNotFuseNonCanonicalCountedLoop(t *testing.T) {
 				binary.LittleEndian.PutUint32(a.B[back:], word|0x80000000)
 			}
 			before := append([]byte(nil), a.B...)
-			if got := arm64FuseCountedLoopBackedges(a.B); got != 0 || !bytes.Equal(a.B, before) {
+			if got := arm64FuseZeroCheckedLoopBackedges(a.B); got != 0 || !bytes.Equal(a.B, before) {
 				t.Fatalf("noncanonical loop rewrites = %d, bytes changed = %t", got, !bytes.Equal(a.B, before))
 			}
 		})
