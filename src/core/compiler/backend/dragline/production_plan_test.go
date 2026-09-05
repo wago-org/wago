@@ -646,6 +646,11 @@ func TestRailMachAdmitsQualifiedV128Boundaries(t *testing.T) {
 	if !railMachCandidate(&indirectCall, true) {
 		t.Fatal("indirect-call v128 function did not enter RailMach")
 	}
+	global := *foundation
+	global.Globals = []wasm.ValType{wasm.V128}
+	if !railMachCandidate(&global, true) {
+		t.Fatal("v128 global function did not enter RailMach")
+	}
 	local := *foundation
 	local.Locals = []wasm.ValType{wasm.V128}
 	if !railMachCandidate(&local, true) {

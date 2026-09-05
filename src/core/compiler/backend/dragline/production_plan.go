@@ -418,20 +418,13 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 }
 
 // railMachV128FoundationCandidate admits vector operations whose machine
-// lowering is complete. Vector globals and mixed multi-result vector signatures
-// remain on the structured oracle until their boundary contracts are qualified.
-// Vector parameters, calls, single results, declared locals, and block values
-// use the typed allocation and transfer machinery.
+// lowering is complete. Mixed multi-result vector signatures remain on the
+// structured oracle until their result-vector contract is qualified. Vector
+// parameters, calls, single results, globals, locals, and block values use the
+// typed allocation and transfer machinery.
 func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 	if stack == nil || stack.HasReferences || len(stack.BranchCasts) != 0 {
 		return false
-	}
-	for _, types := range [][]wasm.ValType{stack.Globals} {
-		for _, typ := range types {
-			if typ == wasm.V128 {
-				return false
-			}
-		}
 	}
 	if len(stack.Results) > 1 {
 		for _, typ := range stack.Results {
@@ -538,7 +531,10 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			return false
 		}
 	}
-	return hasVectorOperation
+	// Typed vector boundaries still require the vector-capable machine ABI even
+	// when the function contains no SIMD opcode (for example, a v128 identity or
+	// a pure global.get/global.set accessor).
+	return hasVectorOperation || stackHasV128Value(stack)
 }
 
 func stackHasSIMDInstruction(stack *railssa.StackFunc) bool {
@@ -1873,9 +1869,18 @@ func nativeAMD64CachedGlobal(machine *railmach.Func) (uint32, bool) {
 		}
 	}
 	bestIndex, bestWeight := uint32(0), uint32(0)
-	for _, candidate := range machine.Insts {
+	for instructionID, candidate := range machine.Insts {
 		if candidate.Op != wasm.InstrGlobalGet && candidate.Op != wasm.InstrGlobalSet {
 			continue
+		}
+		if candidate.Op == wasm.InstrGlobalGet && candidate.Result != 0 && machine.VRegs[candidate.Result].Type == railmach.TypeV128 {
+			continue
+		}
+		if candidate.Op == wasm.InstrGlobalSet {
+			operands := machine.InstructionOperands(uint32(instructionID))
+			if len(operands) != 0 && machine.VRegs[operands[0].Reg].Type == railmach.TypeV128 {
+				continue
+			}
 		}
 		index, weightedUses := uint32(candidate.Aux), uint32(0)
 		for _, block := range machine.Blocks {

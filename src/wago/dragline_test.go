@@ -4489,6 +4489,43 @@ func TestDraglineRailMachV128IndirectCallExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachV128GlobalExecution(t *testing.T) {
+	initial := V128{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	updated := V128{0xf0, 0xe1, 0xd2, 0xc3, 0xb4, 0xa5, 0x96, 0x87, 0x78, 0x69, 0x5a, 0x4b, 0x3c, 0x2d, 0x1e, 0x0f}
+	initializer := append(append([]byte{0xfd, 0x0c}, initial[:]...), 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}), wasmtest.FuncType([]wasm.ValType{wasm.V128}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(6, wasmtest.Vec(wasmtest.GlobalEntry(wasm.V128, true, initializer))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("read", 0, 0), wasmtest.ExportEntry("write", 0, 1), wasmtest.ExportEntry("value", 3, 0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x23, 0x00, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x24, 0x00, 0x0b}),
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	lo, hi := hostV128Slots(updated)
+	if _, err := instance.Invoke("write", lo, hi); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := instance.GlobalV128("value"); err != nil || got != updated {
+		t.Fatalf("vector global after write = %x, %v; want %x", got, err, updated)
+	}
+	result, err := instance.Invoke("read")
+	if err != nil || len(result) != 2 || hostV128FromSlots(result[0], result[1]) != updated {
+		t.Fatalf("vector global round trip = %#x, %v; want %x", result, err, updated)
+	}
+}
+
 func TestDraglineRailMachVectorLoadVariantsExecution(t *testing.T) {
 	payload := [16]byte{0x80, 0x7f, 0xfe, 0x01, 0x00, 0xff, 0x34, 0x92, 8, 9, 10, 11, 12, 13, 14, 15}
 	extend8 := func(signed bool) (out [16]byte) {

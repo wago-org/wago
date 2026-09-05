@@ -1422,7 +1422,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				if plan.ABI.Class == railmach.ABIPreparedIndirect {
 					break
 				}
-				if plan.ABI.Class == railmach.ABIPreparedInt || plan.ABI.Class == railmach.ABIPreparedCall || plan.ABI.Class == railmach.ABIPreparedLeaf {
+				if data.Type != railmach.TypeV128 && (plan.ABI.Class == railmach.ABIPreparedInt || plan.ABI.Class == railmach.ABIPreparedCall || plan.ABI.Class == railmach.ABIPreparedLeaf) {
 					src := arm64ParamRegisters[local]
 					if dst != src {
 						if data.Type == railmach.TypeI32 {
@@ -4519,7 +4519,9 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 						return nil, 0, true, fmt.Errorf("RailMach global %d offset is not encodable", uint32(instruction.Aux))
 					}
 				}
-				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
+				if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
+					a.LdrQ(dst, arm64.X17, 0)
+				} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 					if !a.Load64(arm64.X16, arm64.X17, 0) {
 						return nil, 0, true, fmt.Errorf("RailMach global value load is not encodable")
 					}
@@ -4582,6 +4584,14 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				continue
 			}
 			if instruction.Op == wasm.InstrGlobalSet {
+				if plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeV128 {
+					a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
+					if !a.Load64(arm64.X17, arm64.X17, uint32(instruction.Aux)*8) {
+						return nil, 0, true, fmt.Errorf("RailMach vector global %d offset is not encodable", uint32(instruction.Aux))
+					}
+					a.StrQ(arm64.X17, 0, lhs)
+					continue
+				}
 				if promotedGlobal.valid && uint32(instruction.Aux) == promotedGlobal.index {
 					if lhs != arm64.X8 {
 						if plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeI32 {

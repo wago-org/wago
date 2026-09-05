@@ -90,7 +90,7 @@ func (c Compiler) Compile(input corecompiler.Input) (corecompiler.Output, error)
 	}
 	for i := range m.Globals {
 		if typ := wasm.GlobalValueType(m.Globals[i].Type); typ != wasm.I32 && typ != wasm.I64 {
-			if typ != wasm.F32 && typ != wasm.F64 {
+			if typ != wasm.F32 && typ != wasm.F64 && typ != wasm.V128 {
 				return corecompiler.Output{}, &UnsupportedError{Reason: fmt.Sprintf("global %d has unsupported type %s", i, typ)}
 			}
 		}

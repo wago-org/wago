@@ -3457,7 +3457,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.Load64(amd64.R10, amd64.RBX, -int32(abi.GlobalsPtrOffset))
 				}
 				a.Load64(amd64.R10, amd64.R10, int32(uint32(instruction.Aux))*8)
-				if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
+				if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
+					a.VMovdquLoadDisp(dst, descriptor, 0)
+				} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 					a.Load64(amd64.R11, descriptor, 0)
 					a.MovGprToXmm(dst, amd64.R11, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
 				} else if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeI32 {
@@ -3536,7 +3538,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.Load64(amd64.R10, amd64.R10, int32(uint32(instruction.Aux))*8)
 				}
 				src := lhs
-				if plan.Machine.VRegs[operands[0].Reg].Bank == railmach.BankFPR {
+				if plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeV128 {
+					a.VMovdquStoreDisp(descriptor, 0, src)
+					continue
+				} else if plan.Machine.VRegs[operands[0].Reg].Bank == railmach.BankFPR {
 					a.MovXmmToGpr(amd64.R11, src, plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeF64)
 					src = amd64.R11
 				}
