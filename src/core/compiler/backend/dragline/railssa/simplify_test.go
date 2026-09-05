@@ -219,6 +219,42 @@ func TestSparseSimplifyGVNsEquivalentPureInstructionsWithinBlock(t *testing.T) {
 	}
 }
 
+func TestSparseSimplifyGVNsEquivalentV128ConstantsWithinBlock(t *testing.T) {
+	constant := []byte{0xfd, 0x0c, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	body := append(append(append([]byte(nil), constant...), 0x1a), constant...)
+	body = append(body, 0x0b)
+	m := scalarModule(nil, []wasm.ValType{wasm.V128}, body)
+	_, _, _, semantic, _, result := buildSimplifyTest(t, m)
+	constants := make([]FlowValueID, 0, 2)
+	for _, instruction := range semantic.Insts {
+		if instruction.Op == wasm.InstrV128Const {
+			constants = append(constants, instruction.Result)
+		}
+	}
+	if len(constants) != 2 || resolveAlias(result.Aliases, constants[1]) != constants[0] {
+		t.Fatalf("constants=%v aliases=%v metrics=%#v", constants, result.Aliases, result.Metrics)
+	}
+}
+
+func TestSparseSimplifyKeepsDistinctV128Constants(t *testing.T) {
+	first := []byte{0xfd, 0x0c, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+	second := append([]byte(nil), first...)
+	second[len(second)-1] = 17
+	body := append(append(append([]byte(nil), first...), 0x1a), second...)
+	body = append(body, 0x0b)
+	m := scalarModule(nil, []wasm.ValType{wasm.V128}, body)
+	_, _, _, semantic, _, result := buildSimplifyTest(t, m)
+	constants := make([]FlowValueID, 0, 2)
+	for _, instruction := range semantic.Insts {
+		if instruction.Op == wasm.InstrV128Const {
+			constants = append(constants, instruction.Result)
+		}
+	}
+	if len(constants) != 2 || resolveAlias(result.Aliases, constants[1]) == constants[0] {
+		t.Fatalf("constants=%v aliases=%v", constants, result.Aliases)
+	}
+}
+
 func TestSparseSimplifyGVNsBitIdenticalFloatConstants(t *testing.T) {
 	m := scalarModule(nil, []wasm.ValType{wasm.F32}, []byte{
 		0x43, 0x00, 0x00, 0x80, 0x3f, 0x1a,

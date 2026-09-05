@@ -635,6 +635,51 @@ func TestARM64StructuredStoresUnpinnedV128LocalFromStackRegister(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachSIMDConstantsUseDeduplicatedLiteralPool(t *testing.T) {
+	constant := [16]byte{1, 3, 5, 7, 9, 11, 13, 15, 2, 4, 6, 8, 10, 12, 14, 16}
+	body := []byte{0xfd, 0x0c}
+	body = append(body, constant[:]...)
+	body = append(body, 0xfd, 0x0c)
+	body = append(body, constant[:]...)
+	body = append(body, 0xfd, 0x51, 0x0b) // v128.xor; end
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	output, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("constant function did not use RailMach: %#v", metrics.Functions)
+	}
+	if got := bytes.Count(output.Code, constant[:]); got != 1 {
+		t.Fatalf("SIMD literal pool copies = %d, want 1", got)
+	}
+	literalLoads := 0
+	for offset := 0; offset+4 <= len(output.Code); offset += 4 {
+		if binary.LittleEndian.Uint32(output.Code[offset:])&0xff000000 == 0x9c000000 {
+			literalLoads++
+		}
+	}
+	if literalLoads == 0 {
+		t.Fatalf("RailMach SIMD constant emitted no LDR Q literal: %x", output.Code)
+	}
+}
+
 func TestARM64FoldsInlinedI32AddTree(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

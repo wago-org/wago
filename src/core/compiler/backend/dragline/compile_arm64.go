@@ -1224,6 +1224,14 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 	}
 	a := arm64.Asm{B: scratch[:0]}
 	defer func() { metrics.observe(sliceBytes(a.B)) }()
+	var simdLiteralRefs []arm64SIMDLiteralRef
+	materializeSIMDConstant := func(reg arm64.Reg, bytes [16]byte) {
+		if arm64SIMDConstantIsSplat(bytes) {
+			a.NeonMoviB(reg, bytes[0])
+			return
+		}
+		simdLiteralRefs = append(simdLiteralRefs, arm64SIMDLiteralRef{bytes: bytes, at: a.LdrQLiteral(reg)})
+	}
 	a.StpPre(arm64.LR, arm64.X3, arm64.SP, -16)
 	a.MovReg64(arm64.X26, arm64.X1)
 	a.MovReg64(arm64.X9, arm64.X0)
@@ -3528,7 +3536,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				if !ok {
 					return nil, 0, true, fmt.Errorf("RailMach vector constant %d has no payload", instructionID)
 				}
-				emitARM64SIMDConstant(&a, dst, immediate.Bytes)
+				materializeSIMDConstant(dst, immediate.Bytes)
 				continue
 			case railmach.OpARM64I8x16Splat, railmach.OpARM64I16x8Splat, railmach.OpARM64I32x4Splat,
 				railmach.OpARM64I64x2Splat, railmach.OpARM64F32x4Splat, railmach.OpARM64F64x2Splat:
@@ -3734,9 +3742,9 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					}
 				}
 				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
-				emitARM64SIMDConstant(&a, 25, rhsMask)
+				materializeSIMDConstant(25, rhsMask)
 				a.NeonTbl(24, rhs, 25)
-				emitARM64SIMDConstant(&a, 25, lhsMask)
+				materializeSIMDConstant(25, lhsMask)
 				a.NeonTbl(dst, lhs, 25)
 				a.NeonOrr16b(dst, dst, 24)
 				continue
@@ -3802,13 +3810,13 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					a.LslImm(arm64.X16, arm64.X16, 8, true)
 					a.Orr32(dst, dst, arm64.X16)
 				case railmach.OpARM64I16x8Bitmask:
-					emitARM64SIMDConstant(&a, 25, [16]byte{1, 0, 2, 0, 4, 0, 8, 0, 16, 0, 32, 0, 64, 0, 128, 0})
+					materializeSIMDConstant(25, [16]byte{1, 0, 2, 0, 4, 0, 8, 0, 16, 0, 32, 0, 64, 0, 128, 0})
 					a.NeonSshrH(24, src, 15)
 					a.NeonAnd16b(24, 24, 25)
 					a.NeonAddvH(24, 24)
 					a.FmovToGpr(dst, 24, false)
 				case railmach.OpARM64I32x4Bitmask:
-					emitARM64SIMDConstant(&a, 25, [16]byte{1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 8, 0, 0, 0})
+					materializeSIMDConstant(25, [16]byte{1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 8, 0, 0, 0})
 					a.NeonSshrS(24, src, 31)
 					a.NeonAnd16b(24, 24, 25)
 					a.NeonAddvS(24, 24)
@@ -5868,6 +5876,9 @@ railMachEpilogue:
 	}
 	plan.ConditionalPatches = conditionalPatches
 	plan.ColdTrapPatches = coldTraps
+	if err := arm64PatchSIMDLiterals(&a, simdLiteralRefs); err != nil {
+		return nil, 0, true, fmt.Errorf("RailMach %w", err)
+	}
 	// Plans may be emitted again for exact post-RA byte accounting. Leave the
 	// reusable scratch in its empty state without a dense per-function clear.
 	resetMemoryChecks()
@@ -12855,26 +12866,8 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, target corecom
 	if err := arm64EmitSharedColdTraps(&a, coldMemoryTraps, fn.Index, metadata); err != nil {
 		return nil, 0, nil, fmt.Errorf("structured %w", err)
 	}
-	if len(simdLiteralRefs) != 0 {
-		a.Align16()
-		for index := range simdLiteralRefs {
-			literal := simdLiteralRefs[index]
-			target := -1
-			for previous := 0; previous < index; previous++ {
-				if simdLiteralRefs[previous].bytes == literal.bytes {
-					target = simdLiteralRefs[previous].target
-					break
-				}
-			}
-			if target < 0 {
-				target = a.Len()
-				a.B = append(a.B, literal.bytes[:]...)
-			}
-			simdLiteralRefs[index].target = target
-			if !a.PatchLdrQLiteral(literal.at, target) {
-				return nil, 0, nil, fmt.Errorf("structured SIMD literal is out of range")
-			}
-		}
+	if err := arm64PatchSIMDLiterals(&a, simdLiteralRefs); err != nil {
+		return nil, 0, nil, fmt.Errorf("structured %w", err)
 	}
 	return a.B, internalOffset, callRelocs, nil
 }
@@ -14435,6 +14428,32 @@ func emitARM64SIMDConstant(a *arm64.Asm, reg arm64.Reg, bytes [16]byte) {
 	a.FmovFromGpr(reg, arm64.X16, true)
 	a.MovImm64(arm64.X16, binary.LittleEndian.Uint64(bytes[8:]))
 	a.NeonInsD(reg, arm64.X16, 1)
+}
+
+func arm64PatchSIMDLiterals(a *arm64.Asm, refs []arm64SIMDLiteralRef) error {
+	if len(refs) == 0 {
+		return nil
+	}
+	a.Align16()
+	for index := range refs {
+		literal := &refs[index]
+		target := -1
+		for previous := 0; previous < index; previous++ {
+			if refs[previous].bytes == literal.bytes {
+				target = refs[previous].target
+				break
+			}
+		}
+		if target < 0 {
+			target = a.Len()
+			a.B = append(a.B, literal.bytes[:]...)
+		}
+		literal.target = target
+		if !a.PatchLdrQLiteral(literal.at, target) {
+			return fmt.Errorf("SIMD literal is out of range")
+		}
+	}
+	return nil
 }
 
 func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor, instr railssa.StackInstr,

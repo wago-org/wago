@@ -614,6 +614,14 @@ func localPureGVN(cfg *CFG, flow *ValueFlow, semantic *SemanticFunc, metadata *M
 func gvnHash(semantic *SemanticFunc, aliases []FlowValueID, instructionID uint32) uint64 {
 	instruction := semantic.Insts[instructionID]
 	hash := uint64(instruction.Op)*0x9e3779b185ebca87 ^ instruction.Aux
+	if immediate, ok := semantic.SIMDImmediateAt(instructionID); ok {
+		for _, value := range immediate.Bytes {
+			hash ^= uint64(value) + 0x9e3779b97f4a7c15 + hash<<6 + hash>>2
+		}
+		hash ^= immediate.Offset + 0x9e3779b97f4a7c15 + hash<<6 + hash>>2
+		hash ^= uint64(immediate.Subopcode)<<32 | uint64(immediate.MemoryIndex)
+		hash ^= uint64(immediate.Class)<<16 | uint64(immediate.Lane)<<8 | uint64(immediate.NaturalAlign)
+	}
 	for _, argument := range semantic.Operands(instructionID) {
 		hash ^= uint64(resolveAlias(aliases, argument)) + 0x9e3779b97f4a7c15 + hash<<6 + hash>>2
 	}
@@ -630,6 +638,15 @@ func gvnEquivalent(flow *ValueFlow, semantic *SemanticFunc, aliases []FlowValueI
 	if instruction.Op != definition.Op || instruction.Aux != definition.Aux || len(args) != len(candidateArgs) {
 		return false
 	}
+	candidateMap := semantic.InstructionMap[flow.Values[candidate].Instr]
+	if candidateMap == 0 {
+		return false
+	}
+	immediate, hasImmediate := semantic.SIMDImmediateAt(instructionID)
+	candidateImmediate, candidateHasImmediate := semantic.SIMDImmediateAt(candidateMap - 1)
+	if hasImmediate != candidateHasImmediate || hasImmediate && !equivalentSIMDImmediate(immediate, candidateImmediate) {
+		return false
+	}
 	for index := range args {
 		if resolveAlias(aliases, args[index]) != resolveAlias(aliases, candidateArgs[index]) {
 			return false
@@ -638,9 +655,15 @@ func gvnEquivalent(flow *ValueFlow, semantic *SemanticFunc, aliases []FlowValueI
 	return true
 }
 
+func equivalentSIMDImmediate(a, b SemanticSIMDImmediate) bool {
+	return a.Bytes == b.Bytes && a.Offset == b.Offset && a.Subopcode == b.Subopcode &&
+		a.MemoryIndex == b.MemoryIndex && a.Class == b.Class && a.Lane == b.Lane &&
+		a.NaturalAlign == b.NaturalAlign
+}
+
 func pureGVNOp(kind wasm.InstrKind) bool {
 	switch kind {
-	case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const,
+	case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const, wasm.InstrV128Const,
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 		wasm.InstrI32Clz, wasm.InstrI32Ctz, wasm.InstrI32Popcnt,
 		wasm.InstrI64Clz, wasm.InstrI64Ctz, wasm.InstrI64Popcnt,
