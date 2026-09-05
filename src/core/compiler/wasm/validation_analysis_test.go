@@ -32,7 +32,7 @@ func validationAnalysisModule(t *testing.T) *wasm.Module {
 }
 
 func TestValidatedFuncFactsSize(t *testing.T) {
-	if got, want := unsafe.Sizeof(wasm.ValidatedFuncFacts{}), uintptr(20); got != want {
+	if got, want := unsafe.Sizeof(wasm.ValidatedFuncFacts{}), uintptr(12); got != want {
 		t.Fatalf("ValidatedFuncFacts size = %d, want %d", got, want)
 	}
 }
@@ -63,22 +63,16 @@ func TestValidateModuleWithAnalysisSerialParallelParity(t *testing.T) {
 		if facts.Flags != wantFlags {
 			t.Errorf("function %d flags = %#x, want %#x", i, facts.Flags, wantFlags)
 		}
-		if facts.InstructionCost != 4 {
-			t.Errorf("function %d instruction cost = %d, want 4", i, facts.InstructionCost)
-		}
-		if facts.MaxOperandDepth != 1 || facts.MaxControlDepth != 2 {
-			t.Errorf("function %d depths = operands:%d control:%d, want 1/2", i, facts.MaxOperandDepth, facts.MaxControlDepth)
-		}
 	}
-	if serial.Flags != wantFlags || serial.InstructionCost != 8 {
-		t.Fatalf("module analysis = %#v, want flags %#x and cost 8", serial, wantFlags)
+	if serial.Flags != wantFlags {
+		t.Fatalf("module analysis = %#v, want flags %#x", serial, wantFlags)
 	}
 }
 
 func TestValidateModuleWithAnalysisClearsFailure(t *testing.T) {
 	m := validationAnalysisModule(t)
 	m.Code[0].BodyBytes = []byte{0xff}
-	analysis := wasm.ValidatedModuleAnalysis{Funcs: []wasm.ValidatedFuncFacts{{InstructionCost: 99}}}
+	analysis := wasm.ValidatedModuleAnalysis{Funcs: []wasm.ValidatedFuncFacts{{Flags: wasm.ValidatedFuncUsesSIMD}}}
 	if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, &analysis); err == nil {
 		t.Fatal("invalid body validated")
 	}

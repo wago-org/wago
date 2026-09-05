@@ -190,9 +190,6 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 	} else {
 		err = fv.validateFunc(*fn, ft)
 	}
-	if err == nil && v.analysis != nil {
-		v.analysis.Funcs[localIndex].LocalCount = uint16(fv.localCount)
-	}
 	return err
 }
 

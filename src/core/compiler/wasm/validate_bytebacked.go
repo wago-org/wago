@@ -905,7 +905,6 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	var op directOp // reused across the loop; decodeDirectOp overwrites it each step
 	facts := v.analysisFacts()
 	if facts != nil {
-		facts.recordDepths(len(v.vals), len(v.ctrls))
 		for {
 			if len(v.ctrls) == 0 {
 				if r.has() {
@@ -921,7 +920,6 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 				return err
 			}
 			v.recordValidatedCallFacts(facts, &op)
-			facts.recordDepths(len(v.vals), len(v.ctrls))
 		}
 	}
 	for {
