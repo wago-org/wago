@@ -4,7 +4,7 @@ import "sync"
 
 // ValidatedFuncFlags are architecture-neutral facts gathered while a function
 // body is being validated. They describe only successfully validated code.
-type ValidatedFuncFlags uint64
+type ValidatedFuncFlags uint32
 
 const (
 	ValidatedFuncHasControl ValidatedFuncFlags = 1 << iota
