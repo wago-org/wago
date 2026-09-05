@@ -217,7 +217,7 @@ func TestCompilerNativeRailMachBranchCastEdgeRefinement(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			[]byte{0x5f, 0x00},
-			wasmtest.FuncType([]wasm.ValType{wasm.AnyRef}, []wasm.ValType{wasm.I32}),
+			wasmtest.FuncType([]wasm.ValType{wasm.AnyRef, wasm.V128}, []wasm.ValType{wasm.V128}),
 			wasmtest.FuncType(nil, []wasm.ValType{wasm.EqRef}),
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
@@ -227,7 +227,7 @@ func TestCompilerNativeRailMachBranchCastEdgeRefinement(t *testing.T) {
 			0xfb, 0x18, 0x03, 0x00, 0x6e, 0x6d,
 			0x00,
 			0x0b,
-			0x1a, 0x41, 0x01,
+			0x1a, 0x20, 0x01,
 			0x0b,
 		}))),
 	)
