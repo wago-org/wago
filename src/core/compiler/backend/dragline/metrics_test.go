@@ -985,21 +985,32 @@ func TestCompilerNativeRailMachSpillEdgeFinalization(t *testing.T) {
 }
 
 func TestCompilerNativeRailMachRematerializationFinalization(t *testing.T) {
-	body := make([]byte, 0, 28*10)
+	const locals = 28
+	body := make([]byte, 0, locals*14)
+	body = append(body, 0x02, 0x40) // block; constants remain live in locals across the edge.
 	for index := range 28 {
 		body = append(body, 0x44)
 		var bits [8]byte
 		binary.LittleEndian.PutUint64(bits[:], math.Float64bits(float64(index+1)))
 		body = append(body, bits[:]...)
+		body = append(body, 0x21)
+		body = append(body, wasmtest.ULEB(uint32(index))...)
+	}
+	body = append(body, 0x0b)
+	for index := range locals {
+		body = append(body, 0x20)
+		body = append(body, wasmtest.ULEB(uint32(index))...)
 	}
 	for range 27 {
 		body = append(body, 0xa0)
 	}
 	body = append(body, 0x0b)
+	function := append([]byte{0x01, locals, 0x7c}, body...)
+	code := append(wasmtest.ULEB(uint32(len(function))), function...)
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.F64}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
-		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		wasmtest.Section(10, wasmtest.Vec(code)),
 	)
 	m, err := wasm.DecodeModule(source)
 	if err != nil {

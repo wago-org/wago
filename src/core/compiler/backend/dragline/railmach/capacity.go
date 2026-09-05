@@ -14,7 +14,7 @@ func PipelineCapacityBytes(f *Func, selection *SelectionPlan, dag *DependencyDAG
 		bytes += capacityBytes(dag.Offsets) + capacityBytes(dag.Dependencies) + capacityBytes(dag.scratch) + capacityBytes(dag.verifySeen) + capacityBytes(dag.definition) + capacityBytes(dag.defined)
 	}
 	if schedule != nil {
-		bytes += capacityBytes(schedule.Order) + capacityBytes(schedule.BlockRanges) + capacityBytes(schedule.BlockOf) + capacityBytes(schedule.remaining) + capacityBytes(schedule.sinkBefore) + capacityBytes(schedule.sinkProducer) + capacityBytes(schedule.lateBefore) + capacityBytes(schedule.lateProducer) + capacityBytes(schedule.fusionBefore) + capacityBytes(schedule.fusionSource) + capacityBytes(schedule.verifyPosition) + capacityBytes(schedule.verifySeen) + capacityBytes(schedule.uses) + capacityBytes(schedule.blockCandidates) + capacityBytes(schedule.pressureSpecial)
+		bytes += capacityBytes(schedule.Order) + capacityBytes(schedule.BlockRanges) + capacityBytes(schedule.BlockOf) + capacityBytes(schedule.remaining) + capacityBytes(schedule.sinkBefore) + capacityBytes(schedule.sinkProducer) + capacityBytes(schedule.lateBefore) + capacityBytes(schedule.lateProducer) + capacityBytes(schedule.fusionBefore) + capacityBytes(schedule.fusionSource) + capacityBytes(schedule.verifyPosition) + capacityBytes(schedule.verifySeen) + capacityBytes(schedule.uses) + capacityBytes(schedule.remainingUses) + capacityBytes(schedule.criticalHeight) + capacityBytes(schedule.blockCandidates) + capacityBytes(schedule.pressureSpecial)
 	}
 	if allocation != nil {
 		bytes += capacityBytes(allocation.Locations) + capacityBytes(allocation.Intervals) + capacityBytes(allocation.FixedMoves) + capacityBytes(allocation.InstructionPositions)

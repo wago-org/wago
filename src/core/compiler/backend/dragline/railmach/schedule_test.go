@@ -89,6 +89,49 @@ func TestDependencyDAGAndScheduleCandidates(t *testing.T) {
 	}
 }
 
+func TestLatencyScheduleScansDynamicLastUsePriorities(t *testing.T) {
+	f := &Func{
+		Target: TargetARM64,
+		Insts: []Inst{
+			{OperandStart: 0, OperandCount: 1, Result: 3, Op: wasm.InstrI64Add},
+			{OperandStart: 1, OperandCount: 1, Result: 4, Op: wasm.InstrI64Mul},
+			{OperandStart: 2, OperandCount: 2, Result: 5, Op: wasm.InstrI64Mul},
+		},
+		Operands: []Operand{
+			{Reg: 1, Bank: BankGPR},
+			{Reg: 2, Bank: BankGPR},
+			{Reg: 4, Bank: BankGPR}, {Reg: 2, Bank: BankGPR},
+		},
+		VRegs:  make([]VRegData, 6),
+		Blocks: []Block{{InstCount: 3}},
+	}
+	selection := &SelectionPlan{Selections: []Selection{
+		{Cost: SelectCost{Latency: 1, ResourceCost: 1}},
+		{Cost: SelectCost{Latency: 2, ResourceCost: 4}},
+		{Cost: SelectCost{Latency: 1, ResourceCost: 4}},
+	}}
+	dag := &DependencyDAG{
+		Offsets:      []uint32{0, 0, 0, 1},
+		Dependencies: []Dependency{{Instruction: 1, Kind: DependencyData}},
+	}
+	pressure := &railssa.PressurePlan{Blocks: []railssa.BlockPressure{{PeakGPR: uint16(DefaultLinearQConfig(TargetARM64).GPRs)}}}
+	schedule, err := BuildScheduleWithPressure(f, selection, dag, ScheduleKindLatencyFusion, pressure, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first := schedule.Order[0]; first != 0 {
+		t.Fatalf("first instruction = %d, want last-use instruction 0; order=%v", first, schedule.Order)
+	}
+	pressure.Blocks[0].PeakGPR--
+	schedule, err = BuildScheduleWithPressure(f, selection, dag, ScheduleKindLatencyFusion, pressure, schedule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first := schedule.Order[0]; first != 1 {
+		t.Fatalf("low-pressure first instruction = %d, want critical-path instruction 1; order=%v", first, schedule.Order)
+	}
+}
+
 func TestAMD64ScheduleInstructionLatencyUsesOpcodeCosts(t *testing.T) {
 	tests := []struct {
 		op   wasm.InstrKind

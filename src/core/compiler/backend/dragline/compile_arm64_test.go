@@ -905,6 +905,7 @@ func TestARM64FoldsLowWordByteSwapTree(t *testing.T) {
 func TestARM64FramefulPreparedLeafStaysOffGoStack(t *testing.T) {
 	const locals = 32
 	body := make([]byte, 0, locals*16)
+	body = append(body, 0x02, 0x40) // block; keep every assigned local live across its boundary.
 	for local := range locals {
 		body = append(body, 0x20, 0x00, 0xb8, 0x44)
 		body = append(body, make([]byte, 8)...)
@@ -913,6 +914,7 @@ func TestARM64FramefulPreparedLeafStaysOffGoStack(t *testing.T) {
 		body = append(body, 0x21)
 		body = append(body, wasmtest.ULEB(uint32(local+1))...)
 	}
+	body = append(body, 0x0b)
 	for local := range locals {
 		body = append(body, 0x20)
 		body = append(body, wasmtest.ULEB(uint32(local+1))...)

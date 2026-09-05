@@ -258,6 +258,8 @@ type Schedule struct {
 	verifyPosition  []uint32
 	verifySeen      []bool
 	uses            []uint32
+	remainingUses   []uint32
+	criticalHeight  []uint64
 	blockCandidates []uint32
 	pressureSpecial []uint32
 }
@@ -440,6 +442,20 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 	if kind == ScheduleKindPressure && pressure != nil {
 		committedLICM = uint32(len(pressure.LICM))
 	}
+	criticalHeight := resize(reuse.criticalHeight, len(f.Insts))
+	for instruction := len(f.Insts) - 1; instruction >= 0; instruction-- {
+		cost := uint64(scheduleInstructionLatency(f.Target, f.Insts[instruction].Op, selection.Selections[instruction].Cost.Latency))
+		criticalHeight[instruction] = max(criticalHeight[instruction], cost)
+		for _, dependency := range dag.Dependencies[dag.Offsets[instruction]:dag.Offsets[instruction+1]] {
+			if blockOf[dependency.Instruction] != blockOf[instruction] {
+				continue
+			}
+			dependencyCost := uint64(scheduleInstructionLatency(f.Target, f.Insts[dependency.Instruction].Op, selection.Selections[dependency.Instruction].Cost.Latency))
+			criticalHeight[dependency.Instruction] = max(criticalHeight[dependency.Instruction], dependencyCost+criticalHeight[instruction])
+		}
+	}
+	remainingUses := resize(reuse.remainingUses, len(uses))
+	copy(remainingUses, uses)
 	pressureSpecial := reuse.pressureSpecial[:0]
 	if kind == ScheduleKindPressure {
 		for instruction := range f.Insts {
@@ -449,7 +465,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 		}
 	}
 	verifyPosition, verifySeen, uses, blockCandidates := reuse.verifyPosition, reuse.verifySeen, reuse.uses, reuse.blockCandidates[:0]
-	*reuse = Schedule{Kind: kind, Order: order, BlockRanges: ranges, CommittedSinks: committed, CommittedInductions: committedInductions, CommittedLICM: committedLICM, CommittedFusions: committedFusions, BlockOf: blockOf, remaining: remainingScratch, sinkBefore: sinkBefore, sinkProducer: sinkProducer, lateBefore: lateBefore, lateProducer: lateProducer, fusionBefore: fusionBefore, fusionSource: fusionSource, verifyPosition: verifyPosition, verifySeen: verifySeen, uses: uses, blockCandidates: blockCandidates, pressureSpecial: pressureSpecial}
+	*reuse = Schedule{Kind: kind, Order: order, BlockRanges: ranges, CommittedSinks: committed, CommittedInductions: committedInductions, CommittedLICM: committedLICM, CommittedFusions: committedFusions, BlockOf: blockOf, remaining: remainingScratch, sinkBefore: sinkBefore, sinkProducer: sinkProducer, lateBefore: lateBefore, lateProducer: lateProducer, fusionBefore: fusionBefore, fusionSource: fusionSource, verifyPosition: verifyPosition, verifySeen: verifySeen, uses: uses, remainingUses: remainingUses, criticalHeight: criticalHeight, blockCandidates: blockCandidates, pressureSpecial: pressureSpecial}
 	for blockID := range f.Blocks {
 		start := uint32(len(reuse.Order))
 		remaining := resize(reuse.remaining, len(f.Insts))
@@ -469,10 +485,10 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 				}
 			}
 		}
-		staticPriority := kind == ScheduleKindLatencyFusion || kind == ScheduleKindPressure
+		staticPriority := kind == ScheduleKindPressure
 		if staticPriority {
 			slices.SortFunc(candidates, func(a, b uint32) int {
-				aScore, bScore := schedulePriority(f, selection, a, kind), schedulePriority(f, selection, b, kind)
+				aScore, bScore := schedulePriority(f, selection, a, kind, nil, reuse.criticalHeight, 0), schedulePriority(f, selection, b, kind, nil, reuse.criticalHeight, 0)
 				if aScore > bScore {
 					return -1
 				}
@@ -483,6 +499,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 			})
 		}
 		reuse.blockCandidates = candidates
+		lastUseHeightCredit := scheduleLastUseHeightCredit(f.Target, pressure, blockID)
 		blockCount := uint32(len(candidates))
 		for emitted := uint32(0); emitted < blockCount; emitted++ {
 			pendingCount := blockCount - emitted
@@ -520,7 +537,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 						if reuse.lateProducer[candidate] != ^uint32(0) && remaining[reuse.lateProducer[candidate]] || !scheduleReadyPlaced(railssa.BlockID(blockID), candidate, dag, remaining, reuse.BlockOf, ^uint32(0)) {
 							continue
 						}
-						score := schedulePriority(f, selection, candidate, kind)
+						score := schedulePriority(f, selection, candidate, kind, reuse.remainingUses, reuse.criticalHeight, lastUseHeightCredit)
 						if target := reuse.sinkBefore[candidate]; target != ^uint32(0) {
 							if scheduleReadyPlaced(railssa.BlockID(blockID), target, dag, remaining, reuse.BlockOf, candidate) {
 								score += 1 << 40
@@ -562,7 +579,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 					if !scheduleReadyPlaced(railssa.BlockID(blockID), candidate, dag, remaining, reuse.BlockOf, ^uint32(0)) {
 						continue
 					}
-					score := schedulePriority(f, selection, candidate, kind)
+					score := schedulePriority(f, selection, candidate, kind, reuse.remainingUses, reuse.criticalHeight, lastUseHeightCredit)
 					if kind == ScheduleKindPressure && reuse.sinkBefore[candidate] != ^uint32(0) {
 						if scheduleReadyPlaced(railssa.BlockID(blockID), reuse.sinkBefore[candidate], dag, remaining, reuse.BlockOf, candidate) {
 							score += 1 << 40
@@ -579,12 +596,12 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 					}
 					if best == ^uint32(0) || score > bestScore || score == bestScore && candidate < best {
 						best, bestScore = candidate, score
-						// Source-stable candidates are source ordered and latency
-						// candidates are priority ordered above. The first legal ready
-						// instruction is therefore the exact winner. Pressure needs a
-						// complete scan only when sink/late placement adds dynamic bonuses.
+						// Source-stable candidates are source ordered. Pressure candidates
+						// are priority ordered above and need a complete scan only when
+						// sink/late placement adds dynamic bonuses. Latency priorities use
+						// remaining-use counts and must always inspect every ready candidate.
 						ordinaryPressure := kind == ScheduleKindPressure && reuse.sinkBefore[candidate] == ^uint32(0) && reuse.lateBefore[candidate] == ^uint32(0)
-						if staticPriority && kind != ScheduleKindPressure || kind == ScheduleKindSourceStable || ordinaryPressure {
+						if kind == ScheduleKindSourceStable || ordinaryPressure {
 							break
 						}
 					}
@@ -596,6 +613,11 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 			remaining[best] = false
 			reuse.Order = append(reuse.Order, best)
 			reuse.Score += uint64(max(bestScore, 0))
+			for _, operand := range f.InstructionOperands(best) {
+				if reuse.remainingUses[operand.Reg] != 0 {
+					reuse.remainingUses[operand.Reg]--
+				}
+			}
 		}
 		reuse.BlockRanges[blockID] = MoveRange{Start: start, Count: uint32(len(reuse.Order)) - start}
 		reuse.remaining = remaining[:0]
@@ -874,18 +896,51 @@ func verifyCommittedSinks(schedule *Schedule) error {
 	return nil
 }
 
-func schedulePriority(f *Func, selection *SelectionPlan, instruction uint32, kind ScheduleKind) int64 {
+func schedulePriority(f *Func, selection *SelectionPlan, instruction uint32, kind ScheduleKind, remainingUses []uint32, criticalHeight []uint64, lastUseHeightCredit uint64) int64 {
 	switch kind {
 	case ScheduleKindSourceStable:
 		return -int64(instruction)
 	case ScheduleKindLatencyFusion:
 		selection := selection.Selections[instruction]
-		latency := scheduleInstructionLatency(f.Target, f.Insts[instruction].Op, selection.Cost.Latency)
-		priority := int64(latency)*1024 + int64(selection.Cost.ResourceCost)*32
-		if selection.ResultForm == FormFlags {
-			priority += 1 << 20
+		lastUses := uint64(0)
+		operands := f.InstructionOperands(instruction)
+		for index, operand := range operands {
+			duplicate := false
+			occurrences := uint32(1)
+			for previous := 0; previous < index; previous++ {
+				duplicate = duplicate || operands[previous].Reg == operand.Reg
+			}
+			if duplicate || int(operand.Reg) >= len(remainingUses) {
+				continue
+			}
+			for following := index + 1; following < len(operands); following++ {
+				if operands[following].Reg == operand.Reg {
+					occurrences++
+				}
+			}
+			if remainingUses[operand.Reg] == occurrences {
+				lastUses++
+			}
 		}
-		return priority - int64(instruction)
+		height := uint64(0)
+		if int(instruction) < len(criticalHeight) {
+			height = criticalHeight[instruction]
+		}
+		if lastUseHeightCredit == 0 {
+			lastUses = 0
+		}
+		// Killing an input is useful only when the block is near the target's
+		// allocator capacity, and may buy at most a small delay in critical-path
+		// work. This keeps LUC from serializing a long dependency chain merely to
+		// shorten one range while still breaking close choices toward lower pressure.
+		height += min(lastUses, 4) * lastUseHeightCredit
+		uses, defines := len(operands), int(f.Insts[instruction].ResultCount())
+		pressureDelta := min(max(int64(uses-defines)+64, 0), 127)
+		priority := int64(min(height, (uint64(1)<<24)-1))<<32 + int64(min(lastUses, 255))<<24 + int64(selection.Cost.ResourceCost)<<7 + pressureDelta
+		if selection.ResultForm == FormFlags {
+			priority += 1 << 23
+		}
+		return priority
 	case ScheduleKindPressure:
 		uses := len(f.InstructionOperands(instruction))
 		defines := int(f.Insts[instruction].ResultCount())
@@ -893,6 +948,22 @@ func schedulePriority(f *Func, selection *SelectionPlan, instruction uint32, kin
 	default:
 		return -int64(instruction)
 	}
+}
+
+func scheduleLastUseHeightCredit(target Target, pressure *railssa.PressurePlan, blockID int) uint64 {
+	if pressure == nil || blockID < 0 || blockID >= len(pressure.Blocks) {
+		return 0
+	}
+	capacity := DefaultLinearQConfig(target)
+	block := pressure.Blocks[blockID]
+	severeGPR := uint16(capacity.GPRs) + (uint16(capacity.GPRs)*3+3)/4
+	if capacity.GPRs != 0 && block.PeakGPR >= severeGPR {
+		return 3
+	}
+	if capacity.GPRs != 0 && block.PeakGPR >= uint16(capacity.GPRs) || capacity.FPRs != 0 && block.PeakFPR >= uint16(capacity.FPRs) {
+		return 2
+	}
+	return 0
 }
 
 // scheduleInstructionLatency refines the rule-form cost for operations whose
