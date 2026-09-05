@@ -915,11 +915,14 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 			if err := v.decodeDirectOp(r, widths, multiMemory, &op); err != nil {
 				return err
 			}
-			facts.observeDirect(&op)
 			if err := v.stepDirectOp(&op); err != nil {
 				return err
 			}
-			v.recordValidatedAnalysisFacts(facts, &op, segmentCounts)
+			if op.kind == directInstr {
+				v.observeValidatedInstruction(facts, &op.instr, segmentCounts)
+			} else {
+				facts.observeStructuredDirect(&op)
+			}
 		}
 	}
 	for {
@@ -934,39 +937,6 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 		}
 		if err := v.stepDirectOp(&op); err != nil {
 			return err
-		}
-	}
-}
-
-func (v *funcValidator) recordValidatedAnalysisFacts(facts *ValidatedFuncFacts, op *directOp, segmentCounts *validationSegmentCounts) {
-	if op.kind != directInstr {
-		return
-	}
-	switch op.instr.Kind {
-	case InstrMemoryInit, InstrDataDrop:
-		segmentCounts.data = max(segmentCounts.data, segmentStateCount(op.instr.Index))
-		return
-	case InstrTableInit, InstrElemDrop:
-		segmentCounts.elem = max(segmentCounts.elem, segmentStateCount(op.instr.Index))
-		return
-	case InstrCallIndirect, InstrReturnCallIndirect, InstrCallRef, InstrReturnCallRef:
-	default:
-		return
-	}
-	ft, ok := v.m.TypeFunc(op.instr.Index)
-	if !ok {
-		return
-	}
-	for _, typ := range ft.Params {
-		if typ.Kind() == ValRef {
-			facts.Flags |= ValidatedFuncDynamicReferenceCall
-			return
-		}
-	}
-	for _, typ := range ft.Results {
-		if typ.Kind() == ValRef {
-			facts.Flags |= ValidatedFuncDynamicReferenceCall
-			return
 		}
 	}
 }
