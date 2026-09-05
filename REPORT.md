@@ -14,8 +14,9 @@ measurement window.
 ## Pause checkpoint: current branch versus main
 
 This is the requested review pause. The ARM64 numbers are the last exact native
-checkpoint; the four commits after it are AMD64-only. The AMD64 numbers below
-are a fresh comparison of current `71f82617` against pinned `main` using eight
+checkpoint; the later backend commits are AMD64-only, while the validation
+reader changes are shared. The AMD64 numbers below are a fresh comparison of
+current code at `96cfd406` against pinned `main` using eight
 fresh, interleaved 300 ms samples per revision on Rosetta. Negative latency is
 better.
 
@@ -28,7 +29,7 @@ better.
 | ARM64 generated machine code | **-4.50%** |
 | ARM64 execution latency, complete corpus | **-0.90%** |
 | AMD64 backend compile latency, five large modules | **-25.58%** |
-| AMD64 full compile latency, five large modules | **-32.98%** |
+| AMD64 full compile latency, five large modules | **-36.26%** |
 | AMD64 backend compile heap | **-0.28%** |
 | AMD64 full compile heap | +0.24% (effectively flat) |
 | AMD64 generated machine code | **0.00%** on all five modules |
@@ -47,12 +48,12 @@ better.
 
 | Corpus | Full main | Full branch | Delta | Main heap | Branch heap | Heap delta |
 |---|---:|---:|---:|---:|---:|---:|
-| json-as | 1.518 ms | 1.026 ms | **-32.41%** | 186.7 KiB | 187.8 KiB | +0.55% |
-| Lua | 25.43 ms | 17.25 ms | **-32.15%** | 1.015 MiB | 1.017 MiB | +0.20% |
-| SQLite | 95.18 ms | 69.62 ms | **-26.86%** | 3.652 MiB | 3.660 MiB | +0.21% |
-| Ruby | 1.090 s | 688.4 ms | **-36.81%** | 32.36 MiB | 32.43 MiB | +0.22% |
-| esbuild | 707.7 ms | 451.4 ms | **-36.22%** | 70.46 MiB | 70.49 MiB | +0.03% |
-| **Geomean** | 77.70 ms | 52.07 ms | **-32.98%** | 4.341 MiB | 4.352 MiB | +0.24% |
+| json-as | 1.499 ms | 978.4 us | **-34.72%** | 186.8 KiB | 187.8 KiB | +0.54% |
+| Lua | 25.13 ms | 16.30 ms | **-35.13%** | 1.015 MiB | 1.017 MiB | +0.20% |
+| SQLite | 96.10 ms | 63.67 ms | **-33.74%** | 3.652 MiB | 3.660 MiB | +0.21% |
+| Ruby | 1.101 s | 665.1 ms | **-39.58%** | 32.36 MiB | 32.43 MiB | +0.22% |
+| esbuild | 775.0 ms | 481.1 ms | **-37.92%** | 70.46 MiB | 70.49 MiB | +0.03% |
+| **Geomean** | 79.06 ms | 50.39 ms | **-36.26%** | 4.341 MiB | 4.351 MiB | +0.24% |
 
 The newest change replaces AMD64's detailed per-op arena simulation with the
 same coarse bounded body estimate already proven on ARM64. Against its immediate
@@ -158,6 +159,14 @@ Additional raw captures are:
 - `/tmp/amd64-reader-esbuild.pprof`
 - `/tmp/amd64-direct-step-{base.iapzZq,candidate.bUaf23}`
 - `/tmp/amd64-direct-step-confirm-{base.jBgUPZ,candidate.YfpfpK}`
+- `/tmp/amd64-current-main-{base.OnHrRm,candidate.5iLw68}`
+
+Three additional profile-led probes were removed after failing the same gate:
+a direct exported-reader memarg path measured **-1.09%** with no significant
+module, one-byte I64 decoding measured **-0.47%**, and moving every precomputed
+numeric stack effect into the top of the validator measured **-0.57%**. Their
+raw captures are `/tmp/amd64-direct-memarg-*`, `/tmp/amd64-i64-*`, and
+`/tmp/amd64-effects-*` respectively.
 
 ## Current result
 
