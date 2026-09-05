@@ -478,7 +478,13 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrI32x4ExtendLowI16x8S, wasm.InstrI32x4ExtendHighI16x8S,
 			wasm.InstrI32x4ExtendLowI16x8U, wasm.InstrI32x4ExtendHighI16x8U,
 			wasm.InstrI64x2ExtendLowI32x4S, wasm.InstrI64x2ExtendHighI32x4S,
-			wasm.InstrI64x2ExtendLowI32x4U, wasm.InstrI64x2ExtendHighI32x4U:
+			wasm.InstrI64x2ExtendLowI32x4U, wasm.InstrI64x2ExtendHighI32x4U,
+			wasm.InstrI16x8ExtmulLowI8x16S, wasm.InstrI16x8ExtmulHighI8x16S,
+			wasm.InstrI16x8ExtmulLowI8x16U, wasm.InstrI16x8ExtmulHighI8x16U,
+			wasm.InstrI32x4ExtmulLowI16x8S, wasm.InstrI32x4ExtmulHighI16x8S,
+			wasm.InstrI32x4ExtmulLowI16x8U, wasm.InstrI32x4ExtmulHighI16x8U,
+			wasm.InstrI64x2ExtmulLowI32x4S, wasm.InstrI64x2ExtmulHighI32x4S,
+			wasm.InstrI64x2ExtmulLowI32x4U, wasm.InstrI64x2ExtmulHighI32x4U:
 		default:
 			return false
 		}
@@ -1031,9 +1037,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		// registers that are volatile on every supported platform ABI.
 		if machineTarget == railmach.TargetAMD64 {
 			fprs := uint8(6) // XMM0-XMM5 are volatile on Windows and SysV.
-			if machineNeedsAMD64VectorScratch(machine) {
-				fprs-- // XMM5 synthesizes mask inversion without clobbering live SSA values.
-			}
+			fprs -= machineAMD64VectorScratchCount(machine)
 			defaultGreedy.Linear.FPRs = fprs
 			defaultGreedy.CallerFPRs = fprs
 			defaultGreedy.CallerFPRMask = callerRegisterMask(fprs)
@@ -1609,12 +1613,20 @@ func machineHasV128(machine *railmach.Func) bool {
 	return false
 }
 
-func machineNeedsAMD64VectorScratch(machine *railmach.Func) bool {
+func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 	if machine == nil || machine.Target != railmach.TargetAMD64 {
-		return false
+		return 0
 	}
+	count := uint8(0)
 	for _, instruction := range machine.Insts {
 		switch instruction.Op {
+		case wasm.InstrI16x8ExtmulLowI8x16S, wasm.InstrI16x8ExtmulHighI8x16S,
+			wasm.InstrI16x8ExtmulLowI8x16U, wasm.InstrI16x8ExtmulHighI8x16U,
+			wasm.InstrI32x4ExtmulLowI16x8S, wasm.InstrI32x4ExtmulHighI16x8S,
+			wasm.InstrI32x4ExtmulLowI16x8U, wasm.InstrI32x4ExtmulHighI16x8U,
+			wasm.InstrI64x2ExtmulLowI32x4S, wasm.InstrI64x2ExtmulHighI32x4S,
+			wasm.InstrI64x2ExtmulLowI32x4U, wasm.InstrI64x2ExtmulHighI32x4U:
+			return 2 // XMM4-XMM5 preserve both widened inputs across destructive sequences.
 		case wasm.InstrI8x16Ne, wasm.InstrI16x8Ne, wasm.InstrI32x4Ne, wasm.InstrI64x2Ne,
 			wasm.InstrI8x16LeS, wasm.InstrI8x16GeS, wasm.InstrI16x8LeS, wasm.InstrI16x8GeS,
 			wasm.InstrI32x4LeS, wasm.InstrI32x4GeS, wasm.InstrI64x2LeS, wasm.InstrI64x2GeS,
@@ -1630,10 +1642,10 @@ func machineNeedsAMD64VectorScratch(machine *railmach.Func) bool {
 			wasm.InstrI32x4ExtendLowI16x8U, wasm.InstrI32x4ExtendHighI16x8U,
 			wasm.InstrI64x2ExtendLowI32x4S, wasm.InstrI64x2ExtendHighI32x4S,
 			wasm.InstrI64x2ExtendLowI32x4U, wasm.InstrI64x2ExtendHighI32x4U:
-			return true
+			count = 1 // XMM5 is the ordinary vector lowering scratch.
 		}
 	}
-	return false
+	return count
 }
 
 func nativeARM64AllocatableFPRs(machine *railmach.Func) uint8 {

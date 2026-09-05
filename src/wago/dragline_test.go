@@ -4702,6 +4702,140 @@ func TestDraglineRailMachVectorExtendExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachVectorExtmulExecution(t *testing.T) {
+	bytes16 := func(values ...byte) (out [16]byte) {
+		copy(out[:], values)
+		return
+	}
+	i16x8 := func(values ...int16) (out [16]byte) {
+		for index, value := range values {
+			binary.LittleEndian.PutUint16(out[index*2:], uint16(value))
+		}
+		return
+	}
+	i32x4 := func(values ...int32) (out [16]byte) {
+		for index, value := range values {
+			binary.LittleEndian.PutUint32(out[index*4:], uint32(value))
+		}
+		return
+	}
+	extmul8 := func(lhs, rhs [16]byte, signed, high bool) (out [16]byte) {
+		base := 0
+		if high {
+			base = 8
+		}
+		for lane := 0; lane < 8; lane++ {
+			var product int16
+			if signed {
+				product = int16(int8(lhs[base+lane])) * int16(int8(rhs[base+lane]))
+			} else {
+				product = int16(uint16(lhs[base+lane]) * uint16(rhs[base+lane]))
+			}
+			binary.LittleEndian.PutUint16(out[lane*2:], uint16(product))
+		}
+		return
+	}
+	extmul16 := func(lhs, rhs [16]byte, signed, high bool) (out [16]byte) {
+		base := 0
+		if high {
+			base = 4
+		}
+		for lane := 0; lane < 4; lane++ {
+			a := binary.LittleEndian.Uint16(lhs[(base+lane)*2:])
+			b := binary.LittleEndian.Uint16(rhs[(base+lane)*2:])
+			var product int32
+			if signed {
+				product = int32(int16(a)) * int32(int16(b))
+			} else {
+				product = int32(uint32(a) * uint32(b))
+			}
+			binary.LittleEndian.PutUint32(out[lane*4:], uint32(product))
+		}
+		return
+	}
+	extmul32 := func(lhs, rhs [16]byte, signed, high bool) (out [16]byte) {
+		base := 0
+		if high {
+			base = 2
+		}
+		for lane := 0; lane < 2; lane++ {
+			a := binary.LittleEndian.Uint32(lhs[(base+lane)*4:])
+			b := binary.LittleEndian.Uint32(rhs[(base+lane)*4:])
+			var product uint64
+			if signed {
+				product = uint64(int64(int32(a)) * int64(int32(b)))
+			} else {
+				product = uint64(a) * uint64(b)
+			}
+			binary.LittleEndian.PutUint64(out[lane*8:], product)
+		}
+		return
+	}
+	bytesLHS := bytes16(0x80, 2, 3, 4, 5, 6, 7, 8, 0xff, 10, 11, 12, 13, 14, 15, 16)
+	bytesRHS := bytes16(2, 3, 4, 5, 6, 7, 8, 9, 2, 11, 12, 13, 14, 15, 16, 17)
+	wordsLHS := i16x8(-32768, 2, 300, 4, -5, 600, 7, 800)
+	wordsRHS := i16x8(2, 3, 4, 5, 6, 7, 8, 9)
+	dwordsLHS := i32x4(math.MinInt32, 3, -4, 50000)
+	dwordsRHS := i32x4(2, 40000, 6, 70000)
+	for _, test := range []struct {
+		name      string
+		subopcode uint32
+		lhs, rhs  [16]byte
+		want      [16]byte
+	}{
+		{"i16x8.extmul_low_i8x16_s", 156, bytesLHS, bytesRHS, extmul8(bytesLHS, bytesRHS, true, false)},
+		{"i16x8.extmul_high_i8x16_s", 157, bytesLHS, bytesRHS, extmul8(bytesLHS, bytesRHS, true, true)},
+		{"i16x8.extmul_low_i8x16_u", 158, bytesLHS, bytesRHS, extmul8(bytesLHS, bytesRHS, false, false)},
+		{"i16x8.extmul_high_i8x16_u", 159, bytesLHS, bytesRHS, extmul8(bytesLHS, bytesRHS, false, true)},
+		{"i32x4.extmul_low_i16x8_s", 188, wordsLHS, wordsRHS, extmul16(wordsLHS, wordsRHS, true, false)},
+		{"i32x4.extmul_high_i16x8_s", 189, wordsLHS, wordsRHS, extmul16(wordsLHS, wordsRHS, true, true)},
+		{"i32x4.extmul_low_i16x8_u", 190, wordsLHS, wordsRHS, extmul16(wordsLHS, wordsRHS, false, false)},
+		{"i32x4.extmul_high_i16x8_u", 191, wordsLHS, wordsRHS, extmul16(wordsLHS, wordsRHS, false, true)},
+		{"i64x2.extmul_low_i32x4_s", 220, dwordsLHS, dwordsRHS, extmul32(dwordsLHS, dwordsRHS, true, false)},
+		{"i64x2.extmul_high_i32x4_s", 221, dwordsLHS, dwordsRHS, extmul32(dwordsLHS, dwordsRHS, true, true)},
+		{"i64x2.extmul_low_i32x4_u", 222, dwordsLHS, dwordsRHS, extmul32(dwordsLHS, dwordsRHS, false, false)},
+		{"i64x2.extmul_high_i32x4_u", 223, dwordsLHS, dwordsRHS, extmul32(dwordsLHS, dwordsRHS, false, true)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x41, 0x00, 0xfd, 0x0c}
+			body = append(body, test.lhs[:]...)
+			body = append(body, 0xfd, 0x0c)
+			body = append(body, test.rhs[:]...)
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(test.subopcode)...)
+			body = append(body, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+			read0 := []byte{0x41, 0x00, 0x29, 0x03, 0x00, 0x0b}
+			read8 := []byte{0x41, 0x08, 0x29, 0x03, 0x00, 0x0b}
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read0", 0, 1), wasmtest.ExportEntry("read8", 0, 2))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(read0), wasmtest.Code(read8))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if _, err := instance.Invoke("run"); err != nil {
+				t.Fatal(err)
+			}
+			for name, want := range map[string]uint64{"read0": binary.LittleEndian.Uint64(test.want[:8]), "read8": binary.LittleEndian.Uint64(test.want[8:])} {
+				result, err := instance.Invoke(name)
+				if err != nil || len(result) != 1 || result[0] != want {
+					t.Fatalf("%s result = %#x, %v; want %#x", name, result, err, want)
+				}
+			}
+		})
+	}
+}
+
 func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
 	if runtime.GOARCH != "arm64" {
 		t.Skip("Dragline structured SIMD execution is currently ARM64-only")

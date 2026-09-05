@@ -119,6 +119,18 @@ const (
 	OpAMD64I64x2ExtendHighI32x4S
 	OpAMD64I64x2ExtendLowI32x4U
 	OpAMD64I64x2ExtendHighI32x4U
+	OpAMD64I16x8ExtmulLowI8x16S
+	OpAMD64I16x8ExtmulHighI8x16S
+	OpAMD64I16x8ExtmulLowI8x16U
+	OpAMD64I16x8ExtmulHighI8x16U
+	OpAMD64I32x4ExtmulLowI16x8S
+	OpAMD64I32x4ExtmulHighI16x8S
+	OpAMD64I32x4ExtmulLowI16x8U
+	OpAMD64I32x4ExtmulHighI16x8U
+	OpAMD64I64x2ExtmulLowI32x4S
+	OpAMD64I64x2ExtmulHighI32x4S
+	OpAMD64I64x2ExtmulLowI32x4U
+	OpAMD64I64x2ExtmulHighI32x4U
 	opAMD64SelectedEnd
 )
 
@@ -226,6 +238,18 @@ const (
 	OpARM64I64x2ExtendHighI32x4S
 	OpARM64I64x2ExtendLowI32x4U
 	OpARM64I64x2ExtendHighI32x4U
+	OpARM64I16x8ExtmulLowI8x16S
+	OpARM64I16x8ExtmulHighI8x16S
+	OpARM64I16x8ExtmulLowI8x16U
+	OpARM64I16x8ExtmulHighI8x16U
+	OpARM64I32x4ExtmulLowI16x8S
+	OpARM64I32x4ExtmulHighI16x8S
+	OpARM64I32x4ExtmulLowI16x8U
+	OpARM64I32x4ExtmulHighI16x8U
+	OpARM64I64x2ExtmulLowI32x4S
+	OpARM64I64x2ExtmulHighI32x4S
+	OpARM64I64x2ExtmulLowI32x4U
+	OpARM64I64x2ExtmulHighI32x4U
 	opARM64SelectedEnd
 )
 
@@ -279,6 +303,9 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpAMD64I16x8ExtendLowI8x16S, OpAMD64I16x8ExtendHighI8x16S, OpAMD64I16x8ExtendLowI8x16U, OpAMD64I16x8ExtendHighI8x16U,
 		OpAMD64I32x4ExtendLowI16x8S, OpAMD64I32x4ExtendHighI16x8S, OpAMD64I32x4ExtendLowI16x8U, OpAMD64I32x4ExtendHighI16x8U,
 		OpAMD64I64x2ExtendLowI32x4S, OpAMD64I64x2ExtendHighI32x4S, OpAMD64I64x2ExtendLowI32x4U, OpAMD64I64x2ExtendHighI32x4U,
+		OpAMD64I16x8ExtmulLowI8x16S, OpAMD64I16x8ExtmulHighI8x16S, OpAMD64I16x8ExtmulLowI8x16U, OpAMD64I16x8ExtmulHighI8x16U,
+		OpAMD64I32x4ExtmulLowI16x8S, OpAMD64I32x4ExtmulHighI16x8S, OpAMD64I32x4ExtmulLowI16x8U, OpAMD64I32x4ExtmulHighI16x8U,
+		OpAMD64I64x2ExtmulLowI32x4S, OpAMD64I64x2ExtmulHighI32x4S, OpAMD64I64x2ExtmulLowI32x4U, OpAMD64I64x2ExtmulHighI32x4U,
 		OpARM64V128Move, OpARM64V128Const, OpARM64V128Load, OpARM64V128Store, OpARM64V128And, OpARM64V128Or, OpARM64V128Xor,
 		OpARM64I8x16Add, OpARM64I8x16AddSatS, OpARM64I8x16AddSatU, OpARM64I8x16Sub, OpARM64I8x16SubSatS, OpARM64I8x16SubSatU,
 		OpARM64I16x8Add, OpARM64I16x8AddSatS, OpARM64I16x8AddSatU, OpARM64I16x8Sub, OpARM64I16x8SubSatS, OpARM64I16x8SubSatU,
@@ -302,7 +329,10 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpARM64I8x16NarrowI16x8S, OpARM64I8x16NarrowI16x8U, OpARM64I16x8NarrowI32x4S, OpARM64I16x8NarrowI32x4U,
 		OpARM64I16x8ExtendLowI8x16S, OpARM64I16x8ExtendHighI8x16S, OpARM64I16x8ExtendLowI8x16U, OpARM64I16x8ExtendHighI8x16U,
 		OpARM64I32x4ExtendLowI16x8S, OpARM64I32x4ExtendHighI16x8S, OpARM64I32x4ExtendLowI16x8U, OpARM64I32x4ExtendHighI16x8U,
-		OpARM64I64x2ExtendLowI32x4S, OpARM64I64x2ExtendHighI32x4S, OpARM64I64x2ExtendLowI32x4U, OpARM64I64x2ExtendHighI32x4U:
+		OpARM64I64x2ExtendLowI32x4S, OpARM64I64x2ExtendHighI32x4S, OpARM64I64x2ExtendLowI32x4U, OpARM64I64x2ExtendHighI32x4U,
+		OpARM64I16x8ExtmulLowI8x16S, OpARM64I16x8ExtmulHighI8x16S, OpARM64I16x8ExtmulLowI8x16U, OpARM64I16x8ExtmulHighI8x16U,
+		OpARM64I32x4ExtmulLowI16x8S, OpARM64I32x4ExtmulHighI16x8S, OpARM64I32x4ExtmulLowI16x8U, OpARM64I32x4ExtmulHighI16x8U,
+		OpARM64I64x2ExtmulLowI32x4S, OpARM64I64x2ExtmulHighI32x4S, OpARM64I64x2ExtmulLowI32x4U, OpARM64I64x2ExtmulHighI32x4U:
 		return true
 	default:
 		return false
@@ -527,6 +557,30 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64I64x2ExtendLowI32x4U, OpARM64I64x2ExtendLowI32x4U
 		case wasm.InstrI64x2ExtendHighI32x4U:
 			amd64, arm64 = OpAMD64I64x2ExtendHighI32x4U, OpARM64I64x2ExtendHighI32x4U
+		case wasm.InstrI16x8ExtmulLowI8x16S:
+			amd64, arm64 = OpAMD64I16x8ExtmulLowI8x16S, OpARM64I16x8ExtmulLowI8x16S
+		case wasm.InstrI16x8ExtmulHighI8x16S:
+			amd64, arm64 = OpAMD64I16x8ExtmulHighI8x16S, OpARM64I16x8ExtmulHighI8x16S
+		case wasm.InstrI16x8ExtmulLowI8x16U:
+			amd64, arm64 = OpAMD64I16x8ExtmulLowI8x16U, OpARM64I16x8ExtmulLowI8x16U
+		case wasm.InstrI16x8ExtmulHighI8x16U:
+			amd64, arm64 = OpAMD64I16x8ExtmulHighI8x16U, OpARM64I16x8ExtmulHighI8x16U
+		case wasm.InstrI32x4ExtmulLowI16x8S:
+			amd64, arm64 = OpAMD64I32x4ExtmulLowI16x8S, OpARM64I32x4ExtmulLowI16x8S
+		case wasm.InstrI32x4ExtmulHighI16x8S:
+			amd64, arm64 = OpAMD64I32x4ExtmulHighI16x8S, OpARM64I32x4ExtmulHighI16x8S
+		case wasm.InstrI32x4ExtmulLowI16x8U:
+			amd64, arm64 = OpAMD64I32x4ExtmulLowI16x8U, OpARM64I32x4ExtmulLowI16x8U
+		case wasm.InstrI32x4ExtmulHighI16x8U:
+			amd64, arm64 = OpAMD64I32x4ExtmulHighI16x8U, OpARM64I32x4ExtmulHighI16x8U
+		case wasm.InstrI64x2ExtmulLowI32x4S:
+			amd64, arm64 = OpAMD64I64x2ExtmulLowI32x4S, OpARM64I64x2ExtmulLowI32x4S
+		case wasm.InstrI64x2ExtmulHighI32x4S:
+			amd64, arm64 = OpAMD64I64x2ExtmulHighI32x4S, OpARM64I64x2ExtmulHighI32x4S
+		case wasm.InstrI64x2ExtmulLowI32x4U:
+			amd64, arm64 = OpAMD64I64x2ExtmulLowI32x4U, OpARM64I64x2ExtmulLowI32x4U
+		case wasm.InstrI64x2ExtmulHighI32x4U:
+			amd64, arm64 = OpAMD64I64x2ExtmulHighI32x4U, OpARM64I64x2ExtmulHighI32x4U
 		default:
 			continue
 		}

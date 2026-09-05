@@ -951,7 +951,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32x4ExtendLowI16x8S, railmach.OpAMD64I32x4ExtendHighI16x8S,
 			railmach.OpAMD64I32x4ExtendLowI16x8U, railmach.OpAMD64I32x4ExtendHighI16x8U,
 			railmach.OpAMD64I64x2ExtendLowI32x4S, railmach.OpAMD64I64x2ExtendHighI32x4S,
-			railmach.OpAMD64I64x2ExtendLowI32x4U, railmach.OpAMD64I64x2ExtendHighI32x4U:
+			railmach.OpAMD64I64x2ExtendLowI32x4U, railmach.OpAMD64I64x2ExtendHighI32x4U,
+			railmach.OpAMD64I16x8ExtmulLowI8x16S, railmach.OpAMD64I16x8ExtmulHighI8x16S,
+			railmach.OpAMD64I16x8ExtmulLowI8x16U, railmach.OpAMD64I16x8ExtmulHighI8x16U,
+			railmach.OpAMD64I32x4ExtmulLowI16x8S, railmach.OpAMD64I32x4ExtmulHighI16x8S,
+			railmach.OpAMD64I32x4ExtmulLowI16x8U, railmach.OpAMD64I32x4ExtmulHighI16x8U,
+			railmach.OpAMD64I64x2ExtmulLowI32x4S, railmach.OpAMD64I64x2ExtmulHighI32x4S,
+			railmach.OpAMD64I64x2ExtmulLowI32x4U, railmach.OpAMD64I64x2ExtmulHighI32x4U:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2422,6 +2428,82 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						a.VPunpckhdq(dst, src, 5)
 					} else {
 						a.VPunpckldq(dst, src, 5)
+					}
+				}
+				continue
+			case railmach.OpAMD64I16x8ExtmulLowI8x16S, railmach.OpAMD64I16x8ExtmulHighI8x16S,
+				railmach.OpAMD64I16x8ExtmulLowI8x16U, railmach.OpAMD64I16x8ExtmulHighI8x16U,
+				railmach.OpAMD64I32x4ExtmulLowI16x8S, railmach.OpAMD64I32x4ExtmulHighI16x8S,
+				railmach.OpAMD64I32x4ExtmulLowI16x8U, railmach.OpAMD64I32x4ExtmulHighI16x8U,
+				railmach.OpAMD64I64x2ExtmulLowI32x4S, railmach.OpAMD64I64x2ExtmulHighI32x4S,
+				railmach.OpAMD64I64x2ExtmulLowI32x4U, railmach.OpAMD64I64x2ExtmulHighI32x4U:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector extmul operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				switch instruction.Op {
+				case railmach.OpAMD64I16x8ExtmulLowI8x16S, railmach.OpAMD64I16x8ExtmulHighI8x16S,
+					railmach.OpAMD64I16x8ExtmulLowI8x16U, railmach.OpAMD64I16x8ExtmulHighI8x16U:
+					signed := instruction.Op == railmach.OpAMD64I16x8ExtmulLowI8x16S || instruction.Op == railmach.OpAMD64I16x8ExtmulHighI8x16S
+					high := instruction.Op == railmach.OpAMD64I16x8ExtmulHighI8x16S || instruction.Op == railmach.OpAMD64I16x8ExtmulHighI8x16U
+					if signed {
+						if high {
+							a.VPunpckhbw(5, rhs, rhs)
+							a.VPunpckhbw(dst, lhs, lhs)
+						} else {
+							a.VPunpcklbw(5, rhs, rhs)
+							a.VPunpcklbw(dst, lhs, lhs)
+						}
+						a.VPsrawImm(5, 5, 8)
+						a.VPsrawImm(dst, dst, 8)
+					} else {
+						a.VPxor(4, 4, 4)
+						if high {
+							a.VPunpckhbw(5, rhs, 4)
+							a.VPunpckhbw(dst, lhs, 4)
+						} else {
+							a.VPunpcklbw(5, rhs, 4)
+							a.VPunpcklbw(dst, lhs, 4)
+						}
+					}
+					a.VPmullw(dst, dst, 5)
+				case railmach.OpAMD64I32x4ExtmulLowI16x8S, railmach.OpAMD64I32x4ExtmulHighI16x8S,
+					railmach.OpAMD64I32x4ExtmulLowI16x8U, railmach.OpAMD64I32x4ExtmulHighI16x8U:
+					signed := instruction.Op == railmach.OpAMD64I32x4ExtmulLowI16x8S || instruction.Op == railmach.OpAMD64I32x4ExtmulHighI16x8S
+					high := instruction.Op == railmach.OpAMD64I32x4ExtmulHighI16x8S || instruction.Op == railmach.OpAMD64I32x4ExtmulHighI16x8U
+					if signed {
+						if high {
+							a.VPunpckhwd(5, rhs, rhs)
+							a.VPunpckhwd(dst, lhs, lhs)
+						} else {
+							a.VPunpcklwd(5, rhs, rhs)
+							a.VPunpcklwd(dst, lhs, lhs)
+						}
+						a.VPsradImm(5, 5, 16)
+						a.VPsradImm(dst, dst, 16)
+					} else {
+						a.VPxor(4, 4, 4)
+						if high {
+							a.VPunpckhwd(5, rhs, 4)
+							a.VPunpckhwd(dst, lhs, 4)
+						} else {
+							a.VPunpcklwd(5, rhs, 4)
+							a.VPunpcklwd(dst, lhs, 4)
+						}
+					}
+					a.VPmulld(dst, dst, 5)
+				default:
+					high := instruction.Op == railmach.OpAMD64I64x2ExtmulHighI32x4S || instruction.Op == railmach.OpAMD64I64x2ExtmulHighI32x4U
+					shuffle := byte(0x10)
+					if high {
+						shuffle = 0x32
+					}
+					a.Pshufd(5, rhs, shuffle)
+					a.Pshufd(dst, lhs, shuffle)
+					if instruction.Op == railmach.OpAMD64I64x2ExtmulLowI32x4S || instruction.Op == railmach.OpAMD64I64x2ExtmulHighI32x4S {
+						a.VPmuldq(dst, dst, 5)
+					} else {
+						a.VPmuludq(dst, dst, 5)
 					}
 				}
 				continue
