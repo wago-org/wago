@@ -444,7 +444,13 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 		hasVectorOperation = true
 		switch instruction.Kind {
 		case wasm.InstrV128Const, wasm.InstrV128Load, wasm.InstrV128Store,
-			wasm.InstrV128And, wasm.InstrV128Or, wasm.InstrV128Xor:
+			wasm.InstrV128And, wasm.InstrV128Or, wasm.InstrV128Xor,
+			wasm.InstrI8x16Add, wasm.InstrI8x16AddSatS, wasm.InstrI8x16AddSatU,
+			wasm.InstrI8x16Sub, wasm.InstrI8x16SubSatS, wasm.InstrI8x16SubSatU,
+			wasm.InstrI16x8Add, wasm.InstrI16x8AddSatS, wasm.InstrI16x8AddSatU,
+			wasm.InstrI16x8Sub, wasm.InstrI16x8SubSatS, wasm.InstrI16x8SubSatU,
+			wasm.InstrI32x4Add, wasm.InstrI32x4Sub,
+			wasm.InstrI64x2Add, wasm.InstrI64x2Sub:
 		default:
 			return false
 		}

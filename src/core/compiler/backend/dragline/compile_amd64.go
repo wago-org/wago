@@ -918,7 +918,12 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	for _, instruction := range plan.Machine.Insts {
 		switch instruction.Op {
 		case railmach.OpAMD64V128Const, railmach.OpAMD64V128Load, railmach.OpAMD64V128Store,
-			railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor:
+			railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
+			railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,
+			railmach.OpAMD64I8x16Sub, railmach.OpAMD64I8x16SubSatS, railmach.OpAMD64I8x16SubSatU,
+			railmach.OpAMD64I16x8Add, railmach.OpAMD64I16x8AddSatS, railmach.OpAMD64I16x8AddSatU,
+			railmach.OpAMD64I16x8Sub, railmach.OpAMD64I16x8SubSatS, railmach.OpAMD64I16x8SubSatU,
+			railmach.OpAMD64I32x4Add, railmach.OpAMD64I32x4Sub, railmach.OpAMD64I64x2Add, railmach.OpAMD64I64x2Sub:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2212,7 +2217,12 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(dst), bytes: immediate.Bytes})
 				}
 				continue
-			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor:
+			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
+				railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,
+				railmach.OpAMD64I8x16Sub, railmach.OpAMD64I8x16SubSatS, railmach.OpAMD64I8x16SubSatU,
+				railmach.OpAMD64I16x8Add, railmach.OpAMD64I16x8AddSatS, railmach.OpAMD64I16x8AddSatU,
+				railmach.OpAMD64I16x8Sub, railmach.OpAMD64I16x8SubSatS, railmach.OpAMD64I16x8SubSatU,
+				railmach.OpAMD64I32x4Add, railmach.OpAMD64I32x4Sub, railmach.OpAMD64I64x2Add, railmach.OpAMD64I64x2Sub:
 				if len(operands) != 2 {
 					return nil, 0, true, fmt.Errorf("RailMach selected vector binary operand count is %d", len(operands))
 				}
@@ -2222,8 +2232,40 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.VPand(dst, lhs, rhs)
 				case railmach.OpAMD64V128Or:
 					a.VPor(dst, lhs, rhs)
-				default:
+				case railmach.OpAMD64V128Xor:
 					a.VPxor(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16Add:
+					a.VPaddb(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16AddSatS:
+					a.VPaddsb(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16AddSatU:
+					a.VPaddusb(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16Sub:
+					a.VPsubb(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16SubSatS:
+					a.VPsubsb(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16SubSatU:
+					a.VPsubusb(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8Add:
+					a.VPaddw(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8AddSatS:
+					a.VPaddsw(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8AddSatU:
+					a.VPaddusw(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8Sub:
+					a.VPsubw(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8SubSatS:
+					a.VPsubsw(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8SubSatU:
+					a.VPsubusw(dst, lhs, rhs)
+				case railmach.OpAMD64I32x4Add:
+					a.VPaddd(dst, lhs, rhs)
+				case railmach.OpAMD64I32x4Sub:
+					a.VPsubd(dst, lhs, rhs)
+				case railmach.OpAMD64I64x2Add:
+					a.VPaddq(dst, lhs, rhs)
+				case railmach.OpAMD64I64x2Sub:
+					a.VPsubq(dst, lhs, rhs)
 				}
 				continue
 			case railmach.OpAMD64V128Load, railmach.OpAMD64V128Store:

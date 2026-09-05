@@ -23,6 +23,22 @@ const (
 	OpAMD64V128And
 	OpAMD64V128Or
 	OpAMD64V128Xor
+	OpAMD64I8x16Add
+	OpAMD64I8x16AddSatS
+	OpAMD64I8x16AddSatU
+	OpAMD64I8x16Sub
+	OpAMD64I8x16SubSatS
+	OpAMD64I8x16SubSatU
+	OpAMD64I16x8Add
+	OpAMD64I16x8AddSatS
+	OpAMD64I16x8AddSatU
+	OpAMD64I16x8Sub
+	OpAMD64I16x8SubSatS
+	OpAMD64I16x8SubSatU
+	OpAMD64I32x4Add
+	OpAMD64I32x4Sub
+	OpAMD64I64x2Add
+	OpAMD64I64x2Sub
 	opAMD64SelectedEnd
 )
 
@@ -34,6 +50,22 @@ const (
 	OpARM64V128And
 	OpARM64V128Or
 	OpARM64V128Xor
+	OpARM64I8x16Add
+	OpARM64I8x16AddSatS
+	OpARM64I8x16AddSatU
+	OpARM64I8x16Sub
+	OpARM64I8x16SubSatS
+	OpARM64I8x16SubSatU
+	OpARM64I16x8Add
+	OpARM64I16x8AddSatS
+	OpARM64I16x8AddSatU
+	OpARM64I16x8Sub
+	OpARM64I16x8SubSatS
+	OpARM64I16x8SubSatU
+	OpARM64I32x4Add
+	OpARM64I32x4Sub
+	OpARM64I64x2Add
+	OpARM64I64x2Sub
 	opARM64SelectedEnd
 )
 
@@ -64,7 +96,13 @@ func selectedMemoryWidth(op MOpcode) uint8 {
 func isSelectedSIMDOpcode(op MOpcode) bool {
 	switch op {
 	case OpAMD64V128Move, OpAMD64V128Const, OpAMD64V128Load, OpAMD64V128Store, OpAMD64V128And, OpAMD64V128Or, OpAMD64V128Xor,
-		OpARM64V128Move, OpARM64V128Const, OpARM64V128Load, OpARM64V128Store, OpARM64V128And, OpARM64V128Or, OpARM64V128Xor:
+		OpAMD64I8x16Add, OpAMD64I8x16AddSatS, OpAMD64I8x16AddSatU, OpAMD64I8x16Sub, OpAMD64I8x16SubSatS, OpAMD64I8x16SubSatU,
+		OpAMD64I16x8Add, OpAMD64I16x8AddSatS, OpAMD64I16x8AddSatU, OpAMD64I16x8Sub, OpAMD64I16x8SubSatS, OpAMD64I16x8SubSatU,
+		OpAMD64I32x4Add, OpAMD64I32x4Sub, OpAMD64I64x2Add, OpAMD64I64x2Sub,
+		OpARM64V128Move, OpARM64V128Const, OpARM64V128Load, OpARM64V128Store, OpARM64V128And, OpARM64V128Or, OpARM64V128Xor,
+		OpARM64I8x16Add, OpARM64I8x16AddSatS, OpARM64I8x16AddSatU, OpARM64I8x16Sub, OpARM64I8x16SubSatS, OpARM64I8x16SubSatU,
+		OpARM64I16x8Add, OpARM64I16x8AddSatS, OpARM64I16x8AddSatU, OpARM64I16x8Sub, OpARM64I16x8SubSatS, OpARM64I16x8SubSatU,
+		OpARM64I32x4Add, OpARM64I32x4Sub, OpARM64I64x2Add, OpARM64I64x2Sub:
 		return true
 	default:
 		return false
@@ -97,6 +135,38 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64V128Or, OpARM64V128Or
 		case wasm.InstrV128Xor:
 			amd64, arm64 = OpAMD64V128Xor, OpARM64V128Xor
+		case wasm.InstrI8x16Add:
+			amd64, arm64 = OpAMD64I8x16Add, OpARM64I8x16Add
+		case wasm.InstrI8x16AddSatS:
+			amd64, arm64 = OpAMD64I8x16AddSatS, OpARM64I8x16AddSatS
+		case wasm.InstrI8x16AddSatU:
+			amd64, arm64 = OpAMD64I8x16AddSatU, OpARM64I8x16AddSatU
+		case wasm.InstrI8x16Sub:
+			amd64, arm64 = OpAMD64I8x16Sub, OpARM64I8x16Sub
+		case wasm.InstrI8x16SubSatS:
+			amd64, arm64 = OpAMD64I8x16SubSatS, OpARM64I8x16SubSatS
+		case wasm.InstrI8x16SubSatU:
+			amd64, arm64 = OpAMD64I8x16SubSatU, OpARM64I8x16SubSatU
+		case wasm.InstrI16x8Add:
+			amd64, arm64 = OpAMD64I16x8Add, OpARM64I16x8Add
+		case wasm.InstrI16x8AddSatS:
+			amd64, arm64 = OpAMD64I16x8AddSatS, OpARM64I16x8AddSatS
+		case wasm.InstrI16x8AddSatU:
+			amd64, arm64 = OpAMD64I16x8AddSatU, OpARM64I16x8AddSatU
+		case wasm.InstrI16x8Sub:
+			amd64, arm64 = OpAMD64I16x8Sub, OpARM64I16x8Sub
+		case wasm.InstrI16x8SubSatS:
+			amd64, arm64 = OpAMD64I16x8SubSatS, OpARM64I16x8SubSatS
+		case wasm.InstrI16x8SubSatU:
+			amd64, arm64 = OpAMD64I16x8SubSatU, OpARM64I16x8SubSatU
+		case wasm.InstrI32x4Add:
+			amd64, arm64 = OpAMD64I32x4Add, OpARM64I32x4Add
+		case wasm.InstrI32x4Sub:
+			amd64, arm64 = OpAMD64I32x4Sub, OpARM64I32x4Sub
+		case wasm.InstrI64x2Add:
+			amd64, arm64 = OpAMD64I64x2Add, OpARM64I64x2Add
+		case wasm.InstrI64x2Sub:
+			amd64, arm64 = OpAMD64I64x2Sub, OpARM64I64x2Sub
 		default:
 			continue
 		}

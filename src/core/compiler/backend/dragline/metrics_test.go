@@ -655,7 +655,9 @@ func TestCompilerNativeRailMachV128FoundationFinalization(t *testing.T) {
 	body := []byte{0x41, 0x20, 0x41, 0x00, 0xfd, 0x00, 0x04, 0x00}
 	body = append(body, 0xfd, 0x0c)
 	body = append(body, constant[:]...)
-	body = append(body, 0xfd, 0x51, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+	body = append(body, 0xfd)
+	body = append(body, wasmtest.ULEB(174)...)
+	body = append(body, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),

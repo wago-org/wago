@@ -985,7 +985,12 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 	for _, instruction := range plan.Machine.Insts {
 		switch instruction.Op {
 		case railmach.OpARM64V128Const, railmach.OpARM64V128Load, railmach.OpARM64V128Store,
-			railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor:
+			railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
+			railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,
+			railmach.OpARM64I8x16Sub, railmach.OpARM64I8x16SubSatS, railmach.OpARM64I8x16SubSatU,
+			railmach.OpARM64I16x8Add, railmach.OpARM64I16x8AddSatS, railmach.OpARM64I16x8AddSatU,
+			railmach.OpARM64I16x8Sub, railmach.OpARM64I16x8SubSatS, railmach.OpARM64I16x8SubSatU,
+			railmach.OpARM64I32x4Add, railmach.OpARM64I32x4Sub, railmach.OpARM64I64x2Add, railmach.OpARM64I64x2Sub:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3425,7 +3430,12 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				}
 				emitARM64SIMDConstant(&a, dst, immediate.Bytes)
 				continue
-			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor:
+			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
+				railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,
+				railmach.OpARM64I8x16Sub, railmach.OpARM64I8x16SubSatS, railmach.OpARM64I8x16SubSatU,
+				railmach.OpARM64I16x8Add, railmach.OpARM64I16x8AddSatS, railmach.OpARM64I16x8AddSatU,
+				railmach.OpARM64I16x8Sub, railmach.OpARM64I16x8SubSatS, railmach.OpARM64I16x8SubSatU,
+				railmach.OpARM64I32x4Add, railmach.OpARM64I32x4Sub, railmach.OpARM64I64x2Add, railmach.OpARM64I64x2Sub:
 				if len(operands) != 2 {
 					return nil, 0, true, fmt.Errorf("RailMach selected vector binary operand count is %d", len(operands))
 				}
@@ -3435,8 +3445,40 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					a.NeonAnd16b(dst, lhs, rhs)
 				case railmach.OpARM64V128Or:
 					a.NeonOrr16b(dst, lhs, rhs)
-				default:
+				case railmach.OpARM64V128Xor:
 					a.NeonEor16b(dst, lhs, rhs)
+				case railmach.OpARM64I8x16Add:
+					a.NeonAddB(dst, lhs, rhs)
+				case railmach.OpARM64I8x16AddSatS:
+					a.NeonSqaddB(dst, lhs, rhs)
+				case railmach.OpARM64I8x16AddSatU:
+					a.NeonUqaddB(dst, lhs, rhs)
+				case railmach.OpARM64I8x16Sub:
+					a.NeonSubB(dst, lhs, rhs)
+				case railmach.OpARM64I8x16SubSatS:
+					a.NeonSqsubB(dst, lhs, rhs)
+				case railmach.OpARM64I8x16SubSatU:
+					a.NeonUqsubB(dst, lhs, rhs)
+				case railmach.OpARM64I16x8Add:
+					a.NeonAddH(dst, lhs, rhs)
+				case railmach.OpARM64I16x8AddSatS:
+					a.NeonSqaddH(dst, lhs, rhs)
+				case railmach.OpARM64I16x8AddSatU:
+					a.NeonUqaddH(dst, lhs, rhs)
+				case railmach.OpARM64I16x8Sub:
+					a.NeonSubH(dst, lhs, rhs)
+				case railmach.OpARM64I16x8SubSatS:
+					a.NeonSqsubH(dst, lhs, rhs)
+				case railmach.OpARM64I16x8SubSatU:
+					a.NeonUqsubH(dst, lhs, rhs)
+				case railmach.OpARM64I32x4Add:
+					a.NeonAddS(dst, lhs, rhs)
+				case railmach.OpARM64I32x4Sub:
+					a.NeonSubS(dst, lhs, rhs)
+				case railmach.OpARM64I64x2Add:
+					a.NeonAddD(dst, lhs, rhs)
+				case railmach.OpARM64I64x2Sub:
+					a.NeonSubD(dst, lhs, rhs)
 				}
 				continue
 			case railmach.OpARM64V128Load, railmach.OpARM64V128Store:
