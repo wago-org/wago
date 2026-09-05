@@ -294,6 +294,12 @@ const (
 	OpAMD64MemoryGrow
 	OpAMD64MemoryCopy
 	OpAMD64MemoryFill
+	OpAMD64If
+	OpAMD64Br
+	OpAMD64BrIf
+	OpAMD64BrTable
+	OpAMD64Return
+	OpAMD64Unreachable
 	OpAMD64I32Add
 	OpAMD64I64Add
 	OpAMD64I32Sub
@@ -682,6 +688,12 @@ const (
 	OpARM64MemoryGrow
 	OpARM64MemoryCopy
 	OpARM64MemoryFill
+	OpARM64If
+	OpARM64Br
+	OpARM64BrIf
+	OpARM64BrTable
+	OpARM64Return
+	OpARM64Unreachable
 	OpARM64I32Add
 	OpARM64I64Add
 	OpARM64I32Sub
@@ -870,6 +882,18 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrMemoryCopy
 	case OpAMD64MemoryFill, OpARM64MemoryFill:
 		return wasm.InstrMemoryFill
+	case OpAMD64If, OpARM64If:
+		return wasm.InstrIf
+	case OpAMD64Br, OpARM64Br:
+		return wasm.InstrBr
+	case OpAMD64BrIf, OpARM64BrIf:
+		return wasm.InstrBrIf
+	case OpAMD64BrTable, OpARM64BrTable:
+		return wasm.InstrBrTable
+	case OpAMD64Return, OpARM64Return:
+		return wasm.InstrReturn
+	case OpAMD64Unreachable, OpARM64Unreachable:
+		return wasm.InstrUnreachable
 	case OpAMD64I32Add, OpARM64I32Add, OpARM64I32Madd:
 		return wasm.InstrI32Add
 	case OpAMD64I64Add, OpARM64I64Add, OpARM64I64Madd:
@@ -1334,6 +1358,18 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64MemoryCopy, OpARM64MemoryCopy
 		case wasm.InstrMemoryFill:
 			amd64, arm64 = OpAMD64MemoryFill, OpARM64MemoryFill
+		case wasm.InstrIf:
+			amd64, arm64 = OpAMD64If, OpARM64If
+		case wasm.InstrBr:
+			amd64, arm64 = OpAMD64Br, OpARM64Br
+		case wasm.InstrBrIf:
+			amd64, arm64 = OpAMD64BrIf, OpARM64BrIf
+		case wasm.InstrBrTable:
+			amd64, arm64 = OpAMD64BrTable, OpARM64BrTable
+		case wasm.InstrReturn:
+			amd64, arm64 = OpAMD64Return, OpARM64Return
+		case wasm.InstrUnreachable:
+			amd64, arm64 = OpAMD64Unreachable, OpARM64Unreachable
 		case wasm.InstrI32Add:
 			amd64, arm64 = OpAMD64I32Add, OpARM64I32Add
 		case wasm.InstrI64Add:

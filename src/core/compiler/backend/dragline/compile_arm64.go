@@ -1121,6 +1121,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32Const, railmach.OpARM64I64Const, railmach.OpARM64F32Const, railmach.OpARM64F64Const,
 			railmach.OpARM64GlobalGet, railmach.OpARM64GlobalSet, railmach.OpARM64Select,
 			railmach.OpARM64MemorySize, railmach.OpARM64MemoryGrow, railmach.OpARM64MemoryCopy, railmach.OpARM64MemoryFill,
+			railmach.OpARM64If, railmach.OpARM64Br, railmach.OpARM64BrIf, railmach.OpARM64BrTable, railmach.OpARM64Return, railmach.OpARM64Unreachable,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,

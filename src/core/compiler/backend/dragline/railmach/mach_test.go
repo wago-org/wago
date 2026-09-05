@@ -821,6 +821,50 @@ func TestSelectTargetOpcodesBulkMemory(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesControl(t *testing.T) {
+	tests := []struct {
+		name   string
+		params []wasm.ValType
+		body   []byte
+		kind   MOpcode
+		amd64  MOpcode
+		arm64  MOpcode
+	}{
+		{"if", []wasm.ValType{wasm.I32}, []byte{0x20, 0x00, 0x04, 0x40, 0x0b, 0x0b}, wasm.InstrIf, OpAMD64If, OpARM64If},
+		{"br", nil, []byte{0x02, 0x40, 0x0c, 0x00, 0x0b, 0x0b}, wasm.InstrBr, OpAMD64Br, OpARM64Br},
+		{"br_if", []wasm.ValType{wasm.I32}, []byte{0x02, 0x40, 0x20, 0x00, 0x0d, 0x00, 0x0b, 0x0b}, wasm.InstrBrIf, OpAMD64BrIf, OpARM64BrIf},
+		{"br_table", []wasm.ValType{wasm.I32}, []byte{0x02, 0x40, 0x20, 0x00, 0x0e, 0x01, 0x00, 0x00, 0x0b, 0x0b}, wasm.InstrBrTable, OpAMD64BrTable, OpARM64BrTable},
+		{"return", nil, []byte{0x0f, 0x0b}, wasm.InstrReturn, OpAMD64Return, OpARM64Return},
+		{"unreachable", nil, []byte{0x00, 0x0b}, wasm.InstrUnreachable, OpAMD64Unreachable, OpARM64Unreachable},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			m := machineModule(test.params, nil, test.body)
+			for _, target := range []struct {
+				name string
+				id   Target
+				want MOpcode
+			}{{"amd64", TargetAMD64, test.amd64}, {"arm64", TargetARM64, test.arm64}} {
+				t.Run(target.name, func(t *testing.T) {
+					f := buildMachineTest(t, target.id, m)
+					if _, err := SelectTargetOpcodes(f); err != nil {
+						t.Fatal(err)
+					}
+					found := false
+					for _, instruction := range f.Insts {
+						if instruction.Op == target.want && SemanticOpcode(instruction.Op) == test.kind {
+							found = true
+						}
+					}
+					if !found {
+						t.Fatalf("selected instructions = %#v, want %v", f.Insts, target.want)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerComparisons(t *testing.T) {
 	operations := [22]MOpcode{
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,

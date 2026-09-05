@@ -2692,6 +2692,7 @@ func resizeNativeSlice[T any](values []T, length int) []T {
 }
 
 func nativeControlInstruction(kind wasm.InstrKind) bool {
+	kind = railmach.SemanticOpcode(kind)
 	return kind == wasm.InstrIf || kind == wasm.InstrBr || kind == wasm.InstrBrIf ||
 		kind == wasm.InstrBrTable || kind == wasm.InstrReturn || kind == wasm.InstrUnreachable
 }

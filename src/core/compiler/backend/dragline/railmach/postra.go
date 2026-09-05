@@ -747,7 +747,8 @@ func compareBranchFusionRepairable(target Target, f *Func, producerID, consumerI
 		return false
 	}
 	producer, consumer := f.Insts[producerID], f.Insts[consumerID]
-	if producer.Result == 0 || int(producer.Result) >= len(uses) || uses[producer.Result] != 1 || (consumer.Op != wasm.InstrIf && consumer.Op != wasm.InstrBrIf) {
+	consumerOp := SemanticOpcode(consumer.Op)
+	if producer.Result == 0 || int(producer.Result) >= len(uses) || uses[producer.Result] != 1 || (consumerOp != wasm.InstrIf && consumerOp != wasm.InstrBrIf) {
 		return false
 	}
 	operands := f.InstructionOperands(consumerID)

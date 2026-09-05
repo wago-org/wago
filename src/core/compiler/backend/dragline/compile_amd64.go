@@ -1046,6 +1046,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32Const, railmach.OpAMD64I64Const, railmach.OpAMD64F32Const, railmach.OpAMD64F64Const,
 			railmach.OpAMD64GlobalGet, railmach.OpAMD64GlobalSet, railmach.OpAMD64Select,
 			railmach.OpAMD64MemorySize, railmach.OpAMD64MemoryGrow, railmach.OpAMD64MemoryCopy, railmach.OpAMD64MemoryFill,
+			railmach.OpAMD64If, railmach.OpAMD64Br, railmach.OpAMD64BrIf, railmach.OpAMD64BrTable, railmach.OpAMD64Return, railmach.OpAMD64Unreachable,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
