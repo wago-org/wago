@@ -1044,6 +1044,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32Store, railmach.OpAMD64I64Store, railmach.OpAMD64F32Store, railmach.OpAMD64F64Store,
 			railmach.OpAMD64I32Store8, railmach.OpAMD64I32Store16, railmach.OpAMD64I64Store8, railmach.OpAMD64I64Store16, railmach.OpAMD64I64Store32,
 			railmach.OpAMD64I32Const, railmach.OpAMD64I64Const, railmach.OpAMD64F32Const, railmach.OpAMD64F64Const,
+			railmach.OpAMD64GlobalGet, railmach.OpAMD64GlobalSet,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -3478,7 +3479,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.Load32(dst, amd64.RBX, -4)
 				continue
 			}
-			if instruction.Op == wasm.InstrGlobalGet {
+			if semanticOp == wasm.InstrGlobalGet {
 				if cachesGlobal && uint32(instruction.Aux) == cachedGlobalIndex {
 					cached := amd64RailMachGPRRegisters[nativeAMD64CachedGlobalValueRegister]
 					if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
@@ -3565,7 +3566,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				lhs = amd64.R11
 			}
 			producer := immediateProducer[instructionID]
-			if instruction.Op == wasm.InstrGlobalSet {
+			if semanticOp == wasm.InstrGlobalSet {
 				descriptor := amd64.R10
 				if cachesGlobal && uint32(instruction.Aux) == cachedGlobalIndex {
 					descriptor = amd64RailMachGPRRegisters[nativeAMD64GlobalsRegister]

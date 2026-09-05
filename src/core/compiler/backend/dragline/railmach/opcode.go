@@ -287,6 +287,8 @@ const (
 	OpAMD64I64Const
 	OpAMD64F32Const
 	OpAMD64F64Const
+	OpAMD64GlobalGet
+	OpAMD64GlobalSet
 	OpAMD64I32Add
 	OpAMD64I64Add
 	OpAMD64I32Sub
@@ -668,6 +670,8 @@ const (
 	OpARM64I64Const
 	OpARM64F32Const
 	OpARM64F64Const
+	OpARM64GlobalGet
+	OpARM64GlobalSet
 	OpARM64I32Add
 	OpARM64I64Add
 	OpARM64I32Sub
@@ -842,6 +846,10 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrF32Const
 	case OpAMD64F64Const, OpARM64F64Const:
 		return wasm.InstrF64Const
+	case OpAMD64GlobalGet, OpARM64GlobalGet:
+		return wasm.InstrGlobalGet
+	case OpAMD64GlobalSet, OpARM64GlobalSet:
+		return wasm.InstrGlobalSet
 	case OpAMD64I32Add, OpARM64I32Add, OpARM64I32Madd:
 		return wasm.InstrI32Add
 	case OpAMD64I64Add, OpARM64I64Add, OpARM64I64Madd:
@@ -1292,6 +1300,10 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64F32Const, OpARM64F32Const
 		case wasm.InstrF64Const:
 			amd64, arm64 = OpAMD64F64Const, OpARM64F64Const
+		case wasm.InstrGlobalGet:
+			amd64, arm64 = OpAMD64GlobalGet, OpARM64GlobalGet
+		case wasm.InstrGlobalSet:
+			amd64, arm64 = OpAMD64GlobalSet, OpARM64GlobalSet
 		case wasm.InstrI32Add:
 			amd64, arm64 = OpAMD64I32Add, OpARM64I32Add
 		case wasm.InstrI64Add:

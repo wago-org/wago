@@ -1119,6 +1119,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32Store, railmach.OpARM64I64Store, railmach.OpARM64F32Store, railmach.OpARM64F64Store,
 			railmach.OpARM64I32Store8, railmach.OpARM64I32Store16, railmach.OpARM64I64Store8, railmach.OpARM64I64Store16, railmach.OpARM64I64Store32,
 			railmach.OpARM64I32Const, railmach.OpARM64I64Const, railmach.OpARM64F32Const, railmach.OpARM64F64Const,
+			railmach.OpARM64GlobalGet, railmach.OpARM64GlobalSet,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -2302,7 +2303,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			skipped := swarSkipped || idempotentFloatTail && instructionID >= idempotentFloatStart && instructionID < idempotentFloatEnd || skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID]
 			instruction := plan.Machine.Insts[instructionID]
 			semanticOp := railmach.SemanticOpcode(instruction.Op)
-			if instruction.Op == wasm.InstrGlobalSet || railmach.IsCall(instruction.Op) {
+			if railmach.SemanticOpcode(instruction.Op) == wasm.InstrGlobalSet || railmach.IsCall(instruction.Op) {
 				resetGlobalMemoryChecks()
 			}
 			if pendingSpill != 0 {
@@ -4552,7 +4553,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				a.Ldur32(dst, arm64.X26, -4)
 				continue
 			}
-			if instruction.Op == wasm.InstrGlobalGet {
+			if semanticOp == wasm.InstrGlobalGet {
 				if promotedGlobal.valid && uint32(instruction.Aux) == promotedGlobal.index {
 					if !arm64RailMachPromotedGlobalValue(plan, instruction.Result, promotedGlobal) {
 						if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeI32 {
@@ -4665,7 +4666,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrGlobalSet {
+			if semanticOp == wasm.InstrGlobalSet {
 				if plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeV128 {
 					a.Ldur64(arm64.X17, arm64.X26, -int32(abi.GlobalsPtrOffset))
 					if !a.Load64(arm64.X17, arm64.X17, uint32(instruction.Aux)*8) {
@@ -6859,7 +6860,7 @@ func arm64RailMachGlobalAddress(plan *nativeBackendPlan, value railmach.VReg) (u
 		return 0, false
 	}
 	instruction := plan.Machine.Insts[definition]
-	if instruction.Op != wasm.InstrGlobalGet || instruction.Result != value {
+	if railmach.SemanticOpcode(instruction.Op) != wasm.InstrGlobalGet || instruction.Result != value {
 		return 0, false
 	}
 	index := uint32(instruction.Aux)
@@ -7069,7 +7070,7 @@ func arm64RailMachPromotedGlobalValue(plan *nativeBackendPlan, value railmach.VR
 			}
 			uses++
 			consumer := plan.Machine.Insts[instructionID]
-			if consumer.Op == wasm.InstrGlobalSet && uint32(consumer.Aux) == promoted.index {
+			if railmach.SemanticOpcode(consumer.Op) == wasm.InstrGlobalSet && uint32(consumer.Aux) == promoted.index {
 				globalSetUses++
 			}
 		}

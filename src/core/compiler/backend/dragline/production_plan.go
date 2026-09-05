@@ -1984,7 +1984,8 @@ func nativeAMD64CachesGlobalDescriptors(machine *railmach.Func) bool {
 	uses, hasCall := 0, false
 	for _, instruction := range machine.Insts {
 		hasCall = hasCall || railmach.IsCall(instruction.Op)
-		if instruction.Op == wasm.InstrGlobalGet || instruction.Op == wasm.InstrGlobalSet {
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		if semanticOp == wasm.InstrGlobalGet || semanticOp == wasm.InstrGlobalSet {
 			uses++
 		}
 	}
@@ -2002,13 +2003,14 @@ func nativeAMD64CachedGlobal(machine *railmach.Func) (uint32, bool) {
 	}
 	bestIndex, bestWeight := uint32(0), uint32(0)
 	for instructionID, candidate := range machine.Insts {
-		if candidate.Op != wasm.InstrGlobalGet && candidate.Op != wasm.InstrGlobalSet {
+		candidateOp := railmach.SemanticOpcode(candidate.Op)
+		if candidateOp != wasm.InstrGlobalGet && candidateOp != wasm.InstrGlobalSet {
 			continue
 		}
-		if candidate.Op == wasm.InstrGlobalGet && candidate.Result != 0 && machine.VRegs[candidate.Result].Type == railmach.TypeV128 {
+		if candidateOp == wasm.InstrGlobalGet && candidate.Result != 0 && machine.VRegs[candidate.Result].Type == railmach.TypeV128 {
 			continue
 		}
-		if candidate.Op == wasm.InstrGlobalSet {
+		if candidateOp == wasm.InstrGlobalSet {
 			operands := machine.InstructionOperands(uint32(instructionID))
 			if len(operands) != 0 && machine.VRegs[operands[0].Reg].Type == railmach.TypeV128 {
 				continue
@@ -2018,7 +2020,8 @@ func nativeAMD64CachedGlobal(machine *railmach.Func) (uint32, bool) {
 		for _, block := range machine.Blocks {
 			for instructionID := block.InstStart; instructionID < block.InstStart+block.InstCount; instructionID++ {
 				instruction := machine.Insts[instructionID]
-				if (instruction.Op != wasm.InstrGlobalGet && instruction.Op != wasm.InstrGlobalSet) || uint32(instruction.Aux) != index {
+				semanticOp := railmach.SemanticOpcode(instruction.Op)
+				if (semanticOp != wasm.InstrGlobalGet && semanticOp != wasm.InstrGlobalSet) || uint32(instruction.Aux) != index {
 					continue
 				}
 				if weightedUses > ^uint32(0)-block.Weight {
@@ -2041,7 +2044,8 @@ func nativeARM64CachesGlobals(machine *railmach.Func) bool {
 	}
 	uses := 0
 	for _, instruction := range machine.Insts {
-		if instruction.Op == wasm.InstrGlobalGet || instruction.Op == wasm.InstrGlobalSet {
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		if semanticOp == wasm.InstrGlobalGet || semanticOp == wasm.InstrGlobalSet {
 			uses++
 		}
 	}
@@ -2065,7 +2069,8 @@ func nativeARM64CachedGlobals(stack *railssa.StackFunc, machine *railmach.Func) 
 	counts := make([]uses, len(stack.Globals))
 	for _, instruction := range machine.Insts {
 		hasCall = hasCall || railmach.IsCall(instruction.Op)
-		if instruction.Op != wasm.InstrGlobalGet && instruction.Op != wasm.InstrGlobalSet {
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		if semanticOp != wasm.InstrGlobalGet && semanticOp != wasm.InstrGlobalSet {
 			continue
 		}
 		index := uint32(instruction.Aux)
@@ -2073,7 +2078,7 @@ func nativeARM64CachedGlobals(stack *railssa.StackFunc, machine *railmach.Func) 
 			continue
 		}
 		counts[index].all++
-		if instruction.Op == wasm.InstrGlobalSet {
+		if semanticOp == wasm.InstrGlobalSet {
 			counts[index].sets++
 		}
 	}
