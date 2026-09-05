@@ -386,6 +386,10 @@ These were measured and removed rather than retained speculatively:
 | Recycle nodes from terminal pure-drop trees | Dedicated 512-tree stress improved latency 6.89%, heap 86.33%, and allocations 22.73%, but all five real corpora slowed and the backend geomean regressed 1.15% with no corpus resource benefit; removed pending a giant-function-only admission policy |
 | Route contiguous integer opcodes through a bounded direct table | +1.98% backend geomean, including significant Lua (+2.83%) and esbuild (+1.55%) regressions; Go's existing large switch dispatch remained faster |
 | Fuse the two ARM64 inline caller scans | Removed more allocation traffic, but keeping loop-proof state through the full combined scan regressed esbuild by 2.76%; retained the faster decomposed scans with call-free gating and compact control state |
+| Share complete trap bodies in ordinary mode | Shrunk generated code by 2.12-5.81% across the five large modules, but backend compile latency improved only 0.24% and was statistically flat. Complete execution improved 0.67% overall, but a longer confirmation found a significant 2.29% `linked_list` regression; retained sharing only in the opt-in compact mode |
+| Skip trap-site sorting when each function group is already uniform | Backend compile geomean improved 0.25%, but every corpus was statistically flat and heap/allocations were identical; removed as below measurement value |
+| Double the initial ARM64 instruction-buffer reservation | Backend compile geomean regressed 0.05%, statistically flat, with unchanged heap and allocations; the existing body-times-four reservation already covers the useful range |
+| Make compact trap sharing the default | The existing compact mode reduced heap 1.18% and allocation count 13.89%, but regressed backend compile latency 4.27%; it remains an explicit footprint trade rather than the default |
 
 ## Method
 
@@ -415,7 +419,12 @@ Raw measurements for the current checkpoint are in
 `/tmp/arm64-inline-fast-collect-full-{base,candidate}.txt`,
 `/tmp/arm64-inline-fast-vs-main-{base,candidate}.txt`,
 `/tmp/arm64-inline16-vs-main-exec5-{base,candidate}.txt`, and
-`/tmp/arm64-inline16-code-{main,current}.txt` on the measuring host.
+`/tmp/arm64-inline16-code-{main,current}.txt`,
+`/tmp/arm64-shared-trap-default-{base,candidate}.txt`,
+`/tmp/arm64-shared-trap-exec-{base,candidate}.txt`,
+`/tmp/arm64-shared-trap-exec-confirm-{base,candidate}.txt`,
+`/tmp/arm64-trap-sort-uniform-{base,candidate}.txt`, and
+`/tmp/arm64-asm-reserve8-{base,candidate}.txt` on the measuring host.
 They are intentionally not checked into the repository.
 
 ## Next ARM64 work
