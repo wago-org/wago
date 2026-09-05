@@ -53,6 +53,23 @@ func buildMachineTest(t *testing.T, target Target, m *wasm.Module) *Func {
 	return machine
 }
 
+func TestSemanticOpcodeTablesCoverSelectedRanges(t *testing.T) {
+	for _, selectedRange := range [][2]MOpcode{
+		{OpAMD64V128Move, opAMD64SelectedEnd},
+		{OpARM64V128Move, opARM64SelectedEnd},
+	} {
+		for op := selectedRange[0]; op < selectedRange[1]; op++ {
+			want := semanticOpcodeSlow(op)
+			if got := SemanticOpcode(op); got != want {
+				t.Fatalf("SemanticOpcode(%d) = %d, want %d", uint16(op), uint16(got), uint16(want))
+			}
+		}
+	}
+	if got := SemanticOpcode(wasm.InstrI64Add); got != wasm.InstrI64Add {
+		t.Fatalf("generic semantic opcode changed: got %d", uint16(got))
+	}
+}
+
 func TestDenseRecordSizes(t *testing.T) {
 	if got := unsafe.Sizeof(Inst{}); got != 24 {
 		t.Fatalf("Inst size = %d, want 24", got)

@@ -1070,6 +1070,34 @@ func IsSelectedOpcodeForTarget(op MOpcode, target Target) bool {
 // instructions use this projection only for target-independent semantic
 // questions; encoding must continue to switch on the selected opcode itself.
 func SemanticOpcode(op MOpcode) MOpcode {
+	switch {
+	case op >= OpAMD64V128Move && op < opAMD64SelectedEnd:
+		return amd64SelectedSemanticOpcodes[op-OpAMD64V128Move]
+	case op >= OpARM64V128Move && op < opARM64SelectedEnd:
+		return arm64SelectedSemanticOpcodes[op-OpARM64V128Move]
+	default:
+		return op
+	}
+}
+
+// These compact per-target tables keep the large audited selected-to-semantic
+// mapping out of compiler hot paths. They add no per-compilation allocation and
+// preserve semanticOpcodeSlow as the single source of mapping truth.
+var amd64SelectedSemanticOpcodes = func() (table [opAMD64SelectedEnd - OpAMD64V128Move]MOpcode) {
+	for op := OpAMD64V128Move; op < opAMD64SelectedEnd; op++ {
+		table[op-OpAMD64V128Move] = semanticOpcodeSlow(op)
+	}
+	return table
+}()
+
+var arm64SelectedSemanticOpcodes = func() (table [opARM64SelectedEnd - OpARM64V128Move]MOpcode) {
+	for op := OpARM64V128Move; op < opARM64SelectedEnd; op++ {
+		table[op-OpARM64V128Move] = semanticOpcodeSlow(op)
+	}
+	return table
+}()
+
+func semanticOpcodeSlow(op MOpcode) MOpcode {
 	switch op {
 	case OpAMD64I32Load, OpARM64I32Load:
 		return wasm.InstrI32Load
