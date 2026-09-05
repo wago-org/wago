@@ -43,11 +43,12 @@ func (r *Reader) SkipU32N(n uint32) error {
 }
 
 func (r *Reader) Byte() (byte, error) {
-	old := r.pos
-	if err := r.Step(1); err != nil {
-		return 0, err
+	if r.pos >= len(r.data) {
+		return 0, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.pos}
 	}
-	return r.data[old], nil
+	b := r.data[r.pos]
+	r.pos++
+	return b, nil
 }
 
 func (r *Reader) LEU32() (uint32, error) {
