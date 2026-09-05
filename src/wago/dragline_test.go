@@ -33,6 +33,61 @@ func draglineBinaryModule(param, result wasm.ValType, body []byte) []byte {
 	)
 }
 
+func TestDraglineNativeARM64MultiplyAddExecution(t *testing.T) {
+	if runtime.GOARCH != "arm64" {
+		t.Skip("ARM64 selected multiply-add execution test")
+	}
+	for _, test := range []struct {
+		name  string
+		typ   wasm.ValType
+		body  []byte
+		args  []uint64
+		check func(uint64) bool
+	}{
+		{
+			name: "i32 wraps",
+			typ:  wasm.I32,
+			body: []byte{0x20, 0x00, 0x20, 0x01, 0x6c, 0x20, 0x02, 0x6a, 0x0b},
+			args: []uint64{I32(-1), I32(2), I32(3)},
+			check: func(value uint64) bool {
+				return AsI32(value) == 1
+			},
+		},
+		{
+			name: "i64 wraps",
+			typ:  wasm.I64,
+			body: []byte{0x20, 0x00, 0x20, 0x01, 0x7e, 0x20, 0x02, 0x7c, 0x0b},
+			args: []uint64{I64(-1), I64(2), I64(3)},
+			check: func(value uint64) bool {
+				return AsI64(value) == 1
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{test.typ, test.typ, test.typ}, []wasm.ValType{test.typ}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(test.body))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			result, err := instance.Invoke("run", test.args...)
+			if err != nil || len(result) != 1 || !test.check(result[0]) {
+				t.Fatalf("run%v = %v, %v; want wrapped result 1", test.args, result, err)
+			}
+		})
+	}
+}
+
 func TestDraglineNativeTinyPreparedUsesDirectIntegerEntry(t *testing.T) {
 	if runtime.GOARCH != "arm64" || !preparedDirectIntSupported {
 		t.Skip("Dragline direct prepared integer entries are currently ARM64-only")

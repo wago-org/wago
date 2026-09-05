@@ -516,6 +516,8 @@ const (
 	OpARM64I64Add
 	OpARM64I32Sub
 	OpARM64I64Sub
+	OpARM64I32Madd
+	OpARM64I64Madd
 	OpARM64I64MulHighU
 	opARM64SelectedEnd
 )
@@ -528,9 +530,9 @@ func IsSelectedOpcode(op MOpcode) bool { return op >= selectedOpcodeBase }
 // questions; encoding must continue to switch on the selected opcode itself.
 func SemanticOpcode(op MOpcode) MOpcode {
 	switch op {
-	case OpAMD64I32Add, OpARM64I32Add:
+	case OpAMD64I32Add, OpARM64I32Add, OpARM64I32Madd:
 		return wasm.InstrI32Add
-	case OpAMD64I64Add, OpARM64I64Add:
+	case OpAMD64I64Add, OpARM64I64Add, OpARM64I64Madd:
 		return wasm.InstrI64Add
 	case OpAMD64I32Sub, OpARM64I32Sub:
 		return wasm.InstrI32Sub

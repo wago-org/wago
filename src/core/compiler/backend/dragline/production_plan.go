@@ -1092,6 +1092,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if _, err := railmach.SelectARM64MulHighIdioms(machine); err != nil {
 		return nil, err
 	}
+	p.immediateUses = resizeNativeSlice(p.immediateUses, len(machine.VRegs))
+	if _, err := railmach.SelectARM64MultiplyAdds(machine, p.immediateUses); err != nil {
+		return nil, err
+	}
 	applyNativeARM64ShiftImmediateRematerialization(machine)
 	dag, err := railmach.BuildDependencyDAG(machine, selection, metadata, &p.dag)
 	if err != nil {
