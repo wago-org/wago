@@ -869,7 +869,8 @@ func nativeIntegerConstant(plan *nativeBackendPlan, value railmach.VReg) (uint64
 		return 0, false
 	}
 	instruction := plan.Machine.Insts[instructionID]
-	if instruction.Result != value || instruction.Op != wasm.InstrI32Const && instruction.Op != wasm.InstrI64Const {
+	semanticOp := railmach.SemanticOpcode(instruction.Op)
+	if instruction.Result != value || semanticOp != wasm.InstrI32Const && semanticOp != wasm.InstrI64Const {
 		return 0, false
 	}
 	return instruction.Aux, true

@@ -890,7 +890,7 @@ func TestARM64FoldsLowWordByteSwapTree(t *testing.T) {
 		t.Fatalf("16-to-8 lane narrowing was not folded: %#v", got)
 	}
 	for id := range plan.Machine.Insts {
-		if plan.Machine.Insts[id].Op == wasm.InstrI64Const && plan.Machine.Insts[id].Aux == 0xff000000 {
+		if railmach.SemanticOpcode(plan.Machine.Insts[id].Op) == wasm.InstrI64Const && plan.Machine.Insts[id].Aux == 0xff000000 {
 			plan.Machine.Insts[id].Aux++
 			break
 		}

@@ -1118,6 +1118,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I64Load32S, railmach.OpARM64I64Load32U,
 			railmach.OpARM64I32Store, railmach.OpARM64I64Store, railmach.OpARM64F32Store, railmach.OpARM64F64Store,
 			railmach.OpARM64I32Store8, railmach.OpARM64I32Store16, railmach.OpARM64I64Store8, railmach.OpARM64I64Store16, railmach.OpARM64I64Store32,
+			railmach.OpARM64I32Const, railmach.OpARM64I64Const, railmach.OpARM64F32Const, railmach.OpARM64F64Const,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -4526,24 +4527,24 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrI32Const || instruction.Op == wasm.InstrI64Const || instruction.Op == wasm.InstrRefNull {
+			if semanticOp == wasm.InstrI32Const || semanticOp == wasm.InstrI64Const || semanticOp == wasm.InstrRefNull {
 				a.MovImm64(dst, instruction.Aux)
 				continue
 			}
-			if instruction.Op == wasm.InstrF32Const || instruction.Op == wasm.InstrF64Const {
+			if semanticOp == wasm.InstrF32Const || semanticOp == wasm.InstrF64Const {
 				if _, cached := arm64RailMachCachedFloatValue(plan, instruction.Result, cachedFloats, cachedFloatCount); cached {
 					continue
 				}
 				cached := false
 				for index, candidate := range cachedFloats[:cachedFloatCount] {
-					if instruction.Op == candidate.kind && instruction.Aux == candidate.bits {
-						a.FMov(dst, arm64RailMachCachedFloatRegister(plan.Machine, index), instruction.Op == wasm.InstrF64Const)
+					if semanticOp == candidate.kind && instruction.Aux == candidate.bits {
+						a.FMov(dst, arm64RailMachCachedFloatRegister(plan.Machine, index), semanticOp == wasm.InstrF64Const)
 						cached = true
 						break
 					}
 				}
 				if !cached {
-					emitARM64FloatConstant(&a, dst, instruction.Aux, instruction.Op == wasm.InstrF64Const)
+					emitARM64FloatConstant(&a, dst, instruction.Aux, semanticOp == wasm.InstrF64Const)
 				}
 				continue
 			}
@@ -6360,7 +6361,7 @@ func arm64RailMachSWARRunN(plan *nativeBackendPlan) bool {
 		wasm.InstrI32Const, wasm.InstrI32Add, wasm.InstrBr,
 	}
 	for id, op := range expectedOps {
-		if plan.Machine.Insts[id].Op != op {
+		if railmach.SemanticOpcode(plan.Machine.Insts[id].Op) != op {
 			return false
 		}
 	}
@@ -6431,7 +6432,7 @@ func arm64RailMachSWARParse4(plan *nativeBackendPlan) bool {
 		wasm.InstrI64ShrU, wasm.InstrI32WrapI64,
 	}
 	for id, op := range expectedOps {
-		if plan.Machine.Insts[id].Op != op {
+		if railmach.SemanticOpcode(plan.Machine.Insts[id].Op) != op {
 			return false
 		}
 	}
@@ -6835,7 +6836,7 @@ func arm64RailMachI32Constant(plan *nativeBackendPlan, value railmach.VReg) (uin
 		return 0, false
 	}
 	instruction := plan.Machine.Insts[definition]
-	return uint64(uint32(instruction.Aux)), instruction.Op == wasm.InstrI32Const && instruction.Result == value
+	return uint64(uint32(instruction.Aux)), railmach.SemanticOpcode(instruction.Op) == wasm.InstrI32Const && instruction.Result == value
 }
 
 func arm64RailMachDirectCallUsesPrivateABI(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) bool {
@@ -6896,7 +6897,8 @@ func arm64RailMachCachedFloatConstants(plan *nativeBackendPlan) ([3]arm64CachedF
 	}
 	count := 0
 	for instructionID, instruction := range plan.Machine.Insts {
-		if instruction.Op != wasm.InstrF32Const && instruction.Op != wasm.InstrF64Const {
+		kind := railmach.SemanticOpcode(instruction.Op)
+		if kind != wasm.InstrF32Const && kind != wasm.InstrF64Const {
 			continue
 		}
 		block := plan.Schedule.BlockOf[instructionID]
@@ -6906,7 +6908,7 @@ func arm64RailMachCachedFloatConstants(plan *nativeBackendPlan) ([3]arm64CachedF
 		score := uint64(max(plan.Machine.Blocks[block].Weight, 1)) * uint64(arm64MoveImmediateInstructions(instruction.Aux))
 		slot := -1
 		for index := 0; index < count; index++ {
-			if best[index].kind == instruction.Op && best[index].bits == instruction.Aux {
+			if best[index].kind == kind && best[index].bits == instruction.Aux {
 				slot = index
 				break
 			}
@@ -6914,10 +6916,10 @@ func arm64RailMachCachedFloatConstants(plan *nativeBackendPlan) ([3]arm64CachedF
 		if slot >= 0 {
 			best[slot].score += score
 		} else if count < len(best) {
-			best[count] = arm64CachedFloatConstant{kind: instruction.Op, bits: instruction.Aux, score: score}
+			best[count] = arm64CachedFloatConstant{kind: kind, bits: instruction.Aux, score: score}
 			slot, count = count, count+1
 		} else if score > best[count-1].score {
-			best[count-1] = arm64CachedFloatConstant{kind: instruction.Op, bits: instruction.Aux, score: score}
+			best[count-1] = arm64CachedFloatConstant{kind: kind, bits: instruction.Aux, score: score}
 			slot = count - 1
 		}
 		for slot > 0 && best[slot].score > best[slot-1].score {
@@ -6944,7 +6946,8 @@ func arm64RailMachCachedFloatValue(plan *nativeBackendPlan, value railmach.VReg,
 		return 0, false
 	}
 	instruction := plan.Machine.Insts[definition]
-	if instruction.Result != value || instruction.Op != wasm.InstrF32Const && instruction.Op != wasm.InstrF64Const {
+	kind := railmach.SemanticOpcode(instruction.Op)
+	if instruction.Result != value || kind != wasm.InstrF32Const && kind != wasm.InstrF64Const {
 		return 0, false
 	}
 	for _, transfer := range plan.Machine.Transfers {
@@ -6968,7 +6971,7 @@ func arm64RailMachCachedFloatValue(plan *nativeBackendPlan, value railmach.VReg,
 		}
 	}
 	for index, candidate := range cached[:count] {
-		if candidate.kind == instruction.Op && candidate.bits == instruction.Aux {
+		if candidate.kind == kind && candidate.bits == instruction.Aux {
 			return arm64RailMachCachedFloatRegister(plan.Machine, index), true
 		}
 	}
@@ -7318,7 +7321,7 @@ func arm64RailMachReadLocation(a *arm64.Asm, plan *nativeBackendPlan, value rail
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull:
 			a.MovImm64(scratch, definition.Aux)
 		case wasm.InstrF32Const, wasm.InstrF64Const:
-			emitARM64FloatConstant(a, scratch, definition.Aux, definition.Op == wasm.InstrF64Const)
+			emitARM64FloatConstant(a, scratch, definition.Aux, semanticOp == wasm.InstrF64Const)
 		case wasm.InstrI32WrapI64, wasm.InstrI64ExtendI32U, wasm.InstrI64ExtendI32S,
 			wasm.InstrI32Extend8S, wasm.InstrI32Extend16S,
 			wasm.InstrI64Extend8S, wasm.InstrI64Extend16S, wasm.InstrI64Extend32S:

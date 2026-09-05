@@ -632,6 +632,41 @@ func TestSelectTargetOpcodesScalarMemory(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesScalarConstants(t *testing.T) {
+	operations := [4]MOpcode{wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrF32Const, wasm.InstrF64Const}
+	bodies := [4][]byte{
+		{0x41, 0x07, 0x0b},
+		{0x42, 0x07, 0x0b},
+		{0x43, 0, 0, 0, 0, 0x0b},
+		{0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0x0b},
+	}
+	types := [4]wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64}
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [4]MOpcode
+	}{
+		{"amd64", TargetAMD64, [4]MOpcode{OpAMD64I32Const, OpAMD64I64Const, OpAMD64F32Const, OpAMD64F64Const}},
+		{"arm64", TargetARM64, [4]MOpcode{OpARM64I32Const, OpARM64I64Const, OpARM64F32Const, OpARM64F64Const}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for index, operation := range operations {
+				f := buildMachineTest(t, test.target, machineModule(nil, []wasm.ValType{types[index]}, bodies[index]))
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operation {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operation)
+				}
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerComparisons(t *testing.T) {
 	operations := [22]MOpcode{
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,
@@ -1038,7 +1073,7 @@ func TestColdExtensionAndAffineUsesCommitWhenTargetLegal(t *testing.T) {
 		0x0b,
 	})
 	extend := buildMachineTest(t, TargetARM64, extendModule)
-	if selected, err := SelectTargetOpcodes(extend); err != nil || selected != 2 || extend.Insts[0].Op != OpARM64I64ExtendI32S {
+	if selected, err := SelectTargetOpcodes(extend); err != nil || selected != 3 || extend.Insts[0].Op != OpARM64I64ExtendI32S || extend.Insts[1].Op != OpARM64I64Const {
 		t.Fatalf("selected extension instructions=%d err=%v instructions=%#v", selected, err, extend.Insts)
 	}
 	extended := extend.Insts[0].Result

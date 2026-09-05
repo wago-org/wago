@@ -1043,6 +1043,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I64Load32S, railmach.OpAMD64I64Load32U,
 			railmach.OpAMD64I32Store, railmach.OpAMD64I64Store, railmach.OpAMD64F32Store, railmach.OpAMD64F64Store,
 			railmach.OpAMD64I32Store8, railmach.OpAMD64I32Store16, railmach.OpAMD64I64Store8, railmach.OpAMD64I64Store16, railmach.OpAMD64I64Store32,
+			railmach.OpAMD64I32Const, railmach.OpAMD64I64Const, railmach.OpAMD64F32Const, railmach.OpAMD64F64Const,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -3456,7 +3457,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrI32Const || instruction.Op == wasm.InstrI64Const || instruction.Op == wasm.InstrRefNull {
+			if semanticOp == wasm.InstrI32Const || semanticOp == wasm.InstrI64Const || semanticOp == wasm.InstrRefNull {
 				if wide {
 					a.MovImm64(dst, instruction.Aux)
 				} else {
@@ -3464,8 +3465,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrF32Const || instruction.Op == wasm.InstrF64Const {
-				f64 := instruction.Op == wasm.InstrF64Const
+			if semanticOp == wasm.InstrF32Const || semanticOp == wasm.InstrF64Const {
+				f64 := semanticOp == wasm.InstrF64Const
 				if instruction.Aux == 0 {
 					a.VPxor(dst, dst, dst)
 				} else {
@@ -4881,7 +4882,7 @@ func amd64RailMachReadLocationWithFloatConstant(a *amd64.Asm, plan *nativeBacken
 		case wasm.InstrI64Const, wasm.InstrRefNull:
 			a.MovImm64(scratch, definition.Aux)
 		case wasm.InstrF32Const, wasm.InstrF64Const:
-			f64 := definition.Op == wasm.InstrF64Const
+			f64 := semanticOp == wasm.InstrF64Const
 			if materializeFloatConstant != nil {
 				materializeFloatConstant(scratch, definition.Aux, f64)
 			} else {

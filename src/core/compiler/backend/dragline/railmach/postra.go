@@ -241,7 +241,8 @@ func physicalFlagsRenameable(target Target, f *Func, schedule *Schedule, produce
 		if instruction.Result != 0 && f.VRegs[instruction.Result].Flags&VRegElided != 0 {
 			continue
 		}
-		if instruction.Op != wasm.InstrI32Const && instruction.Op != wasm.InstrI64Const {
+		semanticOp := SemanticOpcode(instruction.Op)
+		if semanticOp != wasm.InstrI32Const && semanticOp != wasm.InstrI64Const {
 			return false
 		}
 	}
@@ -447,7 +448,7 @@ func arm64ByteWidenChain(f *Func, schedule *Schedule, final uint32, position, us
 		if matched {
 			continue
 		}
-		if f.Insts[id].Op != wasm.InstrI64Const {
+		if SemanticOpcode(f.Insts[id].Op) != wasm.InstrI64Const {
 			return 0, 0, false
 		}
 	}
@@ -778,7 +779,8 @@ func amd64LEARepairable(f *Func, selection *SelectionPlan, instructionID uint32)
 			continue
 		}
 		producer := f.Insts[combination.Producer]
-		if (producer.Op == wasm.InstrI32Const || producer.Op == wasm.InstrI64Const) && int32(producer.Aux) != math.MinInt32 {
+		semanticOp := SemanticOpcode(producer.Op)
+		if (semanticOp == wasm.InstrI32Const || semanticOp == wasm.InstrI64Const) && int32(producer.Aux) != math.MinInt32 {
 			return true
 		}
 	}
