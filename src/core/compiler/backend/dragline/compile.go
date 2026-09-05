@@ -724,7 +724,8 @@ func nativeAllocatingHelperCount(plan *nativeBackendPlan) uint32 {
 	}
 	var count uint32
 	for _, instruction := range plan.Machine.Insts {
-		if instruction.Op == wasm.InstrStructNew || instruction.Op == wasm.InstrStructNewDefault || instruction.Op == wasm.InstrArrayNew || instruction.Op == wasm.InstrArrayNewDefault || instruction.Op == wasm.InstrArrayNewFixed || instruction.Op == wasm.InstrArrayNewData || instruction.Op == wasm.InstrArrayNewElem {
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		if semanticOp == wasm.InstrStructNew || semanticOp == wasm.InstrStructNewDefault || semanticOp == wasm.InstrArrayNew || semanticOp == wasm.InstrArrayNewDefault || semanticOp == wasm.InstrArrayNewFixed || semanticOp == wasm.InstrArrayNewData || semanticOp == wasm.InstrArrayNewElem {
 			count++
 		}
 	}

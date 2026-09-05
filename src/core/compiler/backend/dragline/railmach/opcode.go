@@ -456,6 +456,8 @@ const (
 	OpAMD64StructGetS
 	OpAMD64StructGetU
 	OpAMD64StructSet
+	OpAMD64StructNew
+	OpAMD64StructNewDefault
 	opAMD64SelectedEnd
 )
 
@@ -903,6 +905,8 @@ const (
 	OpARM64StructGetS
 	OpARM64StructGetU
 	OpARM64StructSet
+	OpARM64StructNew
+	OpARM64StructNewDefault
 	opARM64SelectedEnd
 )
 
@@ -1222,6 +1226,10 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrStructGetU
 	case OpAMD64StructSet, OpARM64StructSet:
 		return wasm.InstrStructSet
+	case OpAMD64StructNew, OpARM64StructNew:
+		return wasm.InstrStructNew
+	case OpAMD64StructNewDefault, OpARM64StructNewDefault:
+		return wasm.InstrStructNewDefault
 	case OpAMD64F32EqScalar, OpARM64F32EqScalar:
 		return wasm.InstrF32Eq
 	case OpAMD64F64EqScalar, OpARM64F64EqScalar:
@@ -1798,6 +1806,10 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64StructGetU, OpARM64StructGetU
 		case wasm.InstrStructSet:
 			amd64, arm64 = OpAMD64StructSet, OpARM64StructSet
+		case wasm.InstrStructNew:
+			amd64, arm64 = OpAMD64StructNew, OpARM64StructNew
+		case wasm.InstrStructNewDefault:
+			amd64, arm64 = OpAMD64StructNewDefault, OpARM64StructNewDefault
 		case wasm.InstrF32Eq:
 			amd64, arm64 = OpAMD64F32EqScalar, OpARM64F32EqScalar
 		case wasm.InstrF64Eq:

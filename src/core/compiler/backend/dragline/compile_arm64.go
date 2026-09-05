@@ -1138,6 +1138,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64AnyConvertExtern, railmach.OpARM64ExternConvertAny,
 			railmach.OpARM64RefTest, railmach.OpARM64RefCast, railmach.OpARM64BrOnCast, railmach.OpARM64BrOnCastFail,
 			railmach.OpARM64StructGet, railmach.OpARM64StructGetS, railmach.OpARM64StructGetU, railmach.OpARM64StructSet,
+			railmach.OpARM64StructNew, railmach.OpARM64StructNewDefault,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -2548,7 +2549,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					}
 				}
 			}
-			if instruction.Op == wasm.InstrStructNew || instruction.Op == wasm.InstrStructNewDefault || instruction.Op == wasm.InstrArrayNew || instruction.Op == wasm.InstrArrayNewDefault || instruction.Op == wasm.InstrArrayNewFixed || instruction.Op == wasm.InstrArrayNewData || instruction.Op == wasm.InstrArrayNewElem {
+			if semanticOp == wasm.InstrStructNew || semanticOp == wasm.InstrStructNewDefault || instruction.Op == wasm.InstrArrayNew || instruction.Op == wasm.InstrArrayNewDefault || instruction.Op == wasm.InstrArrayNewFixed || instruction.Op == wasm.InstrArrayNewData || instruction.Op == wasm.InstrArrayNewElem {
 				if plan.HelperSafepointBase == 0 {
 					return nil, 0, true, fmt.Errorf("RailMach GC helper safepoint base is unavailable")
 				}
@@ -2561,7 +2562,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				arity := uint32(1)
 				resultArity := uint32(1)
 				deadReservation := instructionID < uint32(len(plan.DeadGCReservations)) && plan.DeadGCReservations[instructionID]
-				if instruction.Op == wasm.InstrStructNew {
+				if semanticOp == wasm.InstrStructNew {
 					helper = codegen.GCHelperStructAlloc
 					arity = uint32(len(operands)) + 1
 				} else if instruction.Op == wasm.InstrArrayNewFixed {
@@ -2592,7 +2593,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				if deadReservation {
 					resultArity = 0
-					switch instruction.Op {
+					switch semanticOp {
 					case wasm.InstrStructNew, wasm.InstrStructNewDefault:
 						helper, arity = codegen.GCHelperStructReserveDead, 1
 					case wasm.InstrArrayNewDefault:
@@ -2613,7 +2614,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				a.Ldur64(arm64.X17, arm64.X26, -int32(abi.SyncHostCustomContextOffset))
 				argument := arm64.X16
-				if deadReservation && instruction.Op == wasm.InstrStructNew {
+				if deadReservation && semanticOp == wasm.InstrStructNew {
 					a.MovImm64(arm64.X16, uint64(uint32(instruction.Aux)))
 					if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset)) {
 						return nil, 0, true, fmt.Errorf("RailMach GC dead struct reservation argument is not encodable")
@@ -2627,7 +2628,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+8)) {
 						return nil, 0, true, fmt.Errorf("RailMach GC dead fixed-array count argument is not encodable")
 					}
-				} else if instruction.Op == wasm.InstrStructNew || instruction.Op == wasm.InstrArrayNewFixed {
+				} else if semanticOp == wasm.InstrStructNew || instruction.Op == wasm.InstrArrayNewFixed {
 					for index, operand := range operands {
 						data := plan.Machine.VRegs[operand.Reg]
 						scratch := arm64.X16
@@ -2679,7 +2680,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				} else {
 					a.MovImm64(arm64.X16, uint64(uint32(instruction.Aux)))
 				}
-				if instruction.Op != wasm.InstrStructNew && instruction.Op != wasm.InstrArrayNewFixed && instruction.Op != wasm.InstrArrayNewData && instruction.Op != wasm.InstrArrayNewElem && !a.Store64(argument, arm64.X17, uint32(abi.SyncHostArgsOffset)) {
+				if semanticOp != wasm.InstrStructNew && instruction.Op != wasm.InstrArrayNewFixed && instruction.Op != wasm.InstrArrayNewData && instruction.Op != wasm.InstrArrayNewElem && !a.Store64(argument, arm64.X17, uint32(abi.SyncHostArgsOffset)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC helper argument offset is not encodable")
 				}
 				if instruction.Op == wasm.InstrArrayNewDefault {

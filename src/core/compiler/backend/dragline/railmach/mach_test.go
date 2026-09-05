@@ -1258,6 +1258,63 @@ func TestSelectTargetOpcodesStructFieldHelpers(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesStructConstructors(t *testing.T) {
+	structModule := func(body []byte) *wasm.Module {
+		t.Helper()
+		source := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(
+				[]byte{0x5f, 0x01, 0x7f, 0x01},
+				wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			)),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		)
+		m, err := wasm.DecodeModule(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	tests := []struct {
+		name    string
+		generic MOpcode
+		module  *wasm.Module
+		amd64   MOpcode
+		arm64   MOpcode
+	}{
+		{"new", wasm.InstrStructNew, structModule([]byte{0x41, 7, 0xfb, 0x00, 0, 0x1a, 0x41, 1, 0x0b}), OpAMD64StructNew, OpARM64StructNew},
+		{"new_default", wasm.InstrStructNewDefault, structModule([]byte{0xfb, 0x01, 0, 0x1a, 0x41, 1, 0x0b}), OpAMD64StructNewDefault, OpARM64StructNewDefault},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for _, target := range []Target{TargetAMD64, TargetARM64} {
+				t.Run(target.String(), func(t *testing.T) {
+					f := buildMachineTest(t, target, test.module)
+					if _, err := SelectTargetOpcodes(f); err != nil {
+						t.Fatal(err)
+					}
+					want := test.amd64
+					if target == TargetARM64 {
+						want = test.arm64
+					}
+					found := false
+					for _, instruction := range f.Insts {
+						if instruction.Op == want && SemanticOpcode(instruction.Op) == test.generic && IsCall(instruction.Op) {
+							found = true
+						}
+					}
+					if !found {
+						t.Fatalf("selected instructions = %#v, want helper call %d", f.Insts, want)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesRefFunc(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(

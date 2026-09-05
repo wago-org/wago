@@ -1063,6 +1063,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64AnyConvertExtern, railmach.OpAMD64ExternConvertAny,
 			railmach.OpAMD64RefTest, railmach.OpAMD64RefCast, railmach.OpAMD64BrOnCast, railmach.OpAMD64BrOnCastFail,
 			railmach.OpAMD64StructGet, railmach.OpAMD64StructGetS, railmach.OpAMD64StructGetU, railmach.OpAMD64StructSet,
+			railmach.OpAMD64StructNew, railmach.OpAMD64StructNewDefault,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -1631,7 +1632,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 				}
 			}
-			if instruction.Op == wasm.InstrStructNew || instruction.Op == wasm.InstrStructNewDefault || instruction.Op == wasm.InstrArrayNew || instruction.Op == wasm.InstrArrayNewDefault || instruction.Op == wasm.InstrArrayNewFixed || instruction.Op == wasm.InstrArrayNewData || instruction.Op == wasm.InstrArrayNewElem {
+			if semanticOp == wasm.InstrStructNew || semanticOp == wasm.InstrStructNewDefault || instruction.Op == wasm.InstrArrayNew || instruction.Op == wasm.InstrArrayNewDefault || instruction.Op == wasm.InstrArrayNewFixed || instruction.Op == wasm.InstrArrayNewData || instruction.Op == wasm.InstrArrayNewElem {
 				if plan.HelperSafepointBase == 0 {
 					return nil, 0, true, fmt.Errorf("RailMach GC helper safepoint base is unavailable")
 				}
@@ -1645,7 +1646,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				arity := uint32(1)
 				resultArity := uint32(1)
 				deadReservation := instructionID < uint32(len(plan.DeadGCReservations)) && plan.DeadGCReservations[instructionID]
-				if instruction.Op == wasm.InstrStructNew {
+				if semanticOp == wasm.InstrStructNew {
 					helper = codegen.GCHelperStructAlloc
 					arity = uint32(len(operands)) + 1
 				} else if instruction.Op == wasm.InstrArrayNewFixed {
@@ -1676,7 +1677,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				if deadReservation {
 					resultArity = 0
-					switch instruction.Op {
+					switch semanticOp {
 					case wasm.InstrStructNew, wasm.InstrStructNewDefault:
 						helper, arity = codegen.GCHelperStructReserveDead, 1
 					case wasm.InstrArrayNewDefault:
@@ -1696,7 +1697,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, fmt.Errorf("RailMach GC helper safepoint %d is not encodable", id)
 				}
 				a.Load64(amd64.R11, amd64.RBX, -int32(abi.SyncHostCustomContextOffset))
-				if deadReservation && instruction.Op == wasm.InstrStructNew {
+				if deadReservation && semanticOp == wasm.InstrStructNew {
 					a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), amd64.R10)
 				} else if deadReservation && instruction.Op == wasm.InstrArrayNewFixed {
@@ -1704,7 +1705,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset), amd64.R10)
 					a.MovImm64(amd64.R10, instruction.Aux>>32)
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+8), amd64.R10)
-				} else if instruction.Op == wasm.InstrStructNew || instruction.Op == wasm.InstrArrayNewFixed {
+				} else if semanticOp == wasm.InstrStructNew || instruction.Op == wasm.InstrArrayNewFixed {
 					for index, operand := range operands {
 						data := plan.Machine.VRegs[operand.Reg]
 						scratch := amd64.R10
