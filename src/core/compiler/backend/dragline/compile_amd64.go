@@ -958,7 +958,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32x4ExtmulLowI16x8U, railmach.OpAMD64I32x4ExtmulHighI16x8U,
 			railmach.OpAMD64I64x2ExtmulLowI32x4S, railmach.OpAMD64I64x2ExtmulHighI32x4S,
 			railmach.OpAMD64I64x2ExtmulLowI32x4U, railmach.OpAMD64I64x2ExtmulHighI32x4U,
-			railmach.OpAMD64I8x16Shuffle, railmach.OpAMD64I8x16Swizzle:
+			railmach.OpAMD64I8x16Shuffle, railmach.OpAMD64I8x16Swizzle,
+			railmach.OpAMD64V128AnyTrue,
+			railmach.OpAMD64I8x16AllTrue, railmach.OpAMD64I16x8AllTrue, railmach.OpAMD64I32x4AllTrue, railmach.OpAMD64I64x2AllTrue,
+			railmach.OpAMD64I8x16Bitmask, railmach.OpAMD64I16x8Bitmask, railmach.OpAMD64I32x4Bitmask, railmach.OpAMD64I64x2Bitmask:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2540,6 +2543,54 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(5), bytes: bias})
 				a.VPaddusb(5, reg(operands[1].Reg), 5)
 				a.VPshufb(dst, reg(operands[0].Reg), 5)
+				continue
+			case railmach.OpAMD64V128AnyTrue:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector any_true operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				a.VPtest(src, src)
+				a.SetccReg(amd64.CondNE, dst)
+				continue
+			case railmach.OpAMD64I8x16AllTrue, railmach.OpAMD64I16x8AllTrue,
+				railmach.OpAMD64I32x4AllTrue, railmach.OpAMD64I64x2AllTrue:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector all_true operand count is %d", len(operands))
+				}
+				a.VPxor(5, 5, 5)
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpAMD64I8x16AllTrue:
+					a.VPcmpeqb(5, src, 5)
+				case railmach.OpAMD64I16x8AllTrue:
+					a.VPcmpeqw(5, src, 5)
+				case railmach.OpAMD64I32x4AllTrue:
+					a.VPcmpeqd(5, src, 5)
+				default:
+					a.VPcmpeqq(5, src, 5)
+				}
+				a.VPmovmskb(dst, 5)
+				a.TestSelf(dst, false)
+				a.SetccReg(amd64.CondE, dst)
+				continue
+			case railmach.OpAMD64I8x16Bitmask, railmach.OpAMD64I16x8Bitmask,
+				railmach.OpAMD64I32x4Bitmask, railmach.OpAMD64I64x2Bitmask:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector bitmask operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpAMD64I8x16Bitmask:
+					a.VPmovmskb(dst, src)
+				case railmach.OpAMD64I16x8Bitmask:
+					a.VPacksswb(5, src, src)
+					a.VPmovmskb(dst, 5)
+					a.AluRI(4, dst, 0xff, false)
+				case railmach.OpAMD64I32x4Bitmask:
+					a.VMovmskps(dst, src)
+				default:
+					a.VMovmskpd(dst, src)
+				}
 				continue
 			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 				railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,

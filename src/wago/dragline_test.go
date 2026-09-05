@@ -4900,6 +4900,75 @@ func TestDraglineRailMachVectorShuffleExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachVectorReductionExecution(t *testing.T) {
+	i16x8 := func(values ...int16) (out [16]byte) {
+		for index, value := range values {
+			binary.LittleEndian.PutUint16(out[index*2:], uint16(value))
+		}
+		return
+	}
+	i32x4 := func(values ...int32) (out [16]byte) {
+		for index, value := range values {
+			binary.LittleEndian.PutUint32(out[index*4:], uint32(value))
+		}
+		return
+	}
+	i64x2 := func(values ...int64) (out [16]byte) {
+		for index, value := range values {
+			binary.LittleEndian.PutUint64(out[index*8:], uint64(value))
+		}
+		return
+	}
+	for _, test := range []struct {
+		name      string
+		subopcode uint32
+		input     [16]byte
+		want      uint64
+	}{
+		{"v128.any_true", 83, [16]byte{15: 1}, 1},
+		{"v128.any_true_false", 83, [16]byte{}, 0},
+		{"i8x16.all_true", 99, [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0xff}, 1},
+		{"i8x16.all_true_false", 99, [16]byte{1, 2, 3, 4, 5, 6, 7, 0, 9, 10, 11, 12, 13, 14, 15, 16}, 0},
+		{"i16x8.all_true", 131, i16x8(1, 2, 3, 4, 5, 6, 7, -1), 1},
+		{"i16x8.all_true_false", 131, i16x8(1, 2, 3, 0, 5, 6, 7, 8), 0},
+		{"i32x4.all_true", 163, i32x4(1, 2, 3, -1), 1},
+		{"i32x4.all_true_false", 163, i32x4(1, 0, 3, 4), 0},
+		{"i64x2.all_true", 195, i64x2(1, -1), 1},
+		{"i64x2.all_true_false", 195, i64x2(0, 1), 0},
+		{"i8x16.bitmask", 100, [16]byte{0x80, 0, 0, 0, 0, 0, 0, 0x80, 0x80, 0, 0, 0, 0, 0, 0, 0x80}, 0x8181},
+		{"i16x8.bitmask", 132, i16x8(-1, 1, 1, -1, 1, 1, 1, -1), 0x89},
+		{"i32x4.bitmask", 164, i32x4(1, -1, 1, -1), 0xa},
+		{"i64x2.bitmask", 196, i64x2(1, -1), 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := append([]byte{0xfd, 0x0c}, test.input[:]...)
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(test.subopcode)...)
+			body = append(body, 0x0b)
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			result, err := instance.Invoke("run")
+			if err != nil || len(result) != 1 || result[0] != test.want {
+				t.Fatalf("result = %#x, %v; want %#x", result, err, test.want)
+			}
+		})
+	}
+}
+
 func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
 	if runtime.GOARCH != "arm64" {
 		t.Skip("Dragline structured SIMD execution is currently ARM64-only")

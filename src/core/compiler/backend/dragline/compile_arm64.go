@@ -1025,7 +1025,10 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64I32x4ExtmulLowI16x8U, railmach.OpARM64I32x4ExtmulHighI16x8U,
 			railmach.OpARM64I64x2ExtmulLowI32x4S, railmach.OpARM64I64x2ExtmulHighI32x4S,
 			railmach.OpARM64I64x2ExtmulLowI32x4U, railmach.OpARM64I64x2ExtmulHighI32x4U,
-			railmach.OpARM64I8x16Shuffle, railmach.OpARM64I8x16Swizzle:
+			railmach.OpARM64I8x16Shuffle, railmach.OpARM64I8x16Swizzle,
+			railmach.OpARM64V128AnyTrue,
+			railmach.OpARM64I8x16AllTrue, railmach.OpARM64I16x8AllTrue, railmach.OpARM64I32x4AllTrue, railmach.OpARM64I64x2AllTrue,
+			railmach.OpARM64I8x16Bitmask, railmach.OpARM64I16x8Bitmask, railmach.OpARM64I32x4Bitmask, railmach.OpARM64I64x2Bitmask:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3680,6 +3683,81 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					return nil, 0, true, fmt.Errorf("RailMach selected vector swizzle operand count is %d", len(operands))
 				}
 				a.NeonTbl(dst, reg(operands[0].Reg), reg(operands[1].Reg))
+				continue
+			case railmach.OpARM64V128AnyTrue:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector any_true operand count is %d", len(operands))
+				}
+				a.NeonUmaxvB(24, reg(operands[0].Reg))
+				a.NeonUmovB(dst, 24, 0)
+				a.CmpImm32(dst, 0)
+				a.Cset32(dst, arm64.CondNE)
+				continue
+			case railmach.OpARM64I8x16AllTrue, railmach.OpARM64I16x8AllTrue,
+				railmach.OpARM64I32x4AllTrue, railmach.OpARM64I64x2AllTrue:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector all_true operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				if instruction.Op == railmach.OpARM64I64x2AllTrue {
+					a.FmovToGpr(dst, src, true)
+					a.NeonUmovD(arm64.X16, src, 1)
+					a.CmpImm64(dst, 0)
+					a.Cset32(dst, arm64.CondNE)
+					a.CmpImm64(arm64.X16, 0)
+					a.Cset32(arm64.X16, arm64.CondNE)
+					a.And32(dst, dst, arm64.X16)
+				} else {
+					switch instruction.Op {
+					case railmach.OpARM64I8x16AllTrue:
+						a.NeonUminvB(24, src)
+					case railmach.OpARM64I16x8AllTrue:
+						a.NeonUminvH(24, src)
+					default:
+						a.NeonUminvS(24, src)
+					}
+					a.FmovToGpr(dst, 24, false)
+					a.CmpImm32(dst, 0)
+					a.Cset32(dst, arm64.CondNE)
+				}
+				continue
+			case railmach.OpARM64I8x16Bitmask, railmach.OpARM64I16x8Bitmask,
+				railmach.OpARM64I32x4Bitmask, railmach.OpARM64I64x2Bitmask:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector bitmask operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpARM64I8x16Bitmask:
+					a.NeonUshrB(24, src, 7)
+					a.FmovToGpr(dst, 24, true)
+					a.NeonUmovD(arm64.X16, 24, 1)
+					a.MovImm64(arm64.X17, 0x0102040810204080)
+					a.Mul64(dst, dst, arm64.X17)
+					a.Mul64(arm64.X16, arm64.X16, arm64.X17)
+					a.LsrImm(dst, dst, 56, false)
+					a.LsrImm(arm64.X16, arm64.X16, 56, false)
+					a.LslImm(arm64.X16, arm64.X16, 8, true)
+					a.Orr32(dst, dst, arm64.X16)
+				case railmach.OpARM64I16x8Bitmask:
+					emitARM64SIMDConstant(&a, 25, [16]byte{1, 0, 2, 0, 4, 0, 8, 0, 16, 0, 32, 0, 64, 0, 128, 0})
+					a.NeonSshrH(24, src, 15)
+					a.NeonAnd16b(24, 24, 25)
+					a.NeonAddvH(24, 24)
+					a.FmovToGpr(dst, 24, false)
+				case railmach.OpARM64I32x4Bitmask:
+					emitARM64SIMDConstant(&a, 25, [16]byte{1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 8, 0, 0, 0})
+					a.NeonSshrS(24, src, 31)
+					a.NeonAnd16b(24, 24, 25)
+					a.NeonAddvS(24, 24)
+					a.FmovToGpr(dst, 24, false)
+				default:
+					a.NeonUshrD(24, src, 63)
+					a.FmovToGpr(dst, 24, true)
+					a.NeonUmovD(arm64.X16, 24, 1)
+					a.LslImm(arm64.X16, arm64.X16, 1, true)
+					a.Orr32(dst, dst, arm64.X16)
+				}
 				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
 				railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,

@@ -133,6 +133,15 @@ const (
 	OpAMD64I64x2ExtmulHighI32x4U
 	OpAMD64I8x16Shuffle
 	OpAMD64I8x16Swizzle
+	OpAMD64V128AnyTrue
+	OpAMD64I8x16AllTrue
+	OpAMD64I16x8AllTrue
+	OpAMD64I32x4AllTrue
+	OpAMD64I64x2AllTrue
+	OpAMD64I8x16Bitmask
+	OpAMD64I16x8Bitmask
+	OpAMD64I32x4Bitmask
+	OpAMD64I64x2Bitmask
 	opAMD64SelectedEnd
 )
 
@@ -254,6 +263,15 @@ const (
 	OpARM64I64x2ExtmulHighI32x4U
 	OpARM64I8x16Shuffle
 	OpARM64I8x16Swizzle
+	OpARM64V128AnyTrue
+	OpARM64I8x16AllTrue
+	OpARM64I16x8AllTrue
+	OpARM64I32x4AllTrue
+	OpARM64I64x2AllTrue
+	OpARM64I8x16Bitmask
+	OpARM64I16x8Bitmask
+	OpARM64I32x4Bitmask
+	OpARM64I64x2Bitmask
 	opARM64SelectedEnd
 )
 
@@ -311,6 +329,8 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpAMD64I32x4ExtmulLowI16x8S, OpAMD64I32x4ExtmulHighI16x8S, OpAMD64I32x4ExtmulLowI16x8U, OpAMD64I32x4ExtmulHighI16x8U,
 		OpAMD64I64x2ExtmulLowI32x4S, OpAMD64I64x2ExtmulHighI32x4S, OpAMD64I64x2ExtmulLowI32x4U, OpAMD64I64x2ExtmulHighI32x4U,
 		OpAMD64I8x16Shuffle, OpAMD64I8x16Swizzle,
+		OpAMD64V128AnyTrue, OpAMD64I8x16AllTrue, OpAMD64I16x8AllTrue, OpAMD64I32x4AllTrue, OpAMD64I64x2AllTrue,
+		OpAMD64I8x16Bitmask, OpAMD64I16x8Bitmask, OpAMD64I32x4Bitmask, OpAMD64I64x2Bitmask,
 		OpARM64V128Move, OpARM64V128Const, OpARM64V128Load, OpARM64V128Store, OpARM64V128And, OpARM64V128Or, OpARM64V128Xor,
 		OpARM64I8x16Add, OpARM64I8x16AddSatS, OpARM64I8x16AddSatU, OpARM64I8x16Sub, OpARM64I8x16SubSatS, OpARM64I8x16SubSatU,
 		OpARM64I16x8Add, OpARM64I16x8AddSatS, OpARM64I16x8AddSatU, OpARM64I16x8Sub, OpARM64I16x8SubSatS, OpARM64I16x8SubSatU,
@@ -338,7 +358,9 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpARM64I16x8ExtmulLowI8x16S, OpARM64I16x8ExtmulHighI8x16S, OpARM64I16x8ExtmulLowI8x16U, OpARM64I16x8ExtmulHighI8x16U,
 		OpARM64I32x4ExtmulLowI16x8S, OpARM64I32x4ExtmulHighI16x8S, OpARM64I32x4ExtmulLowI16x8U, OpARM64I32x4ExtmulHighI16x8U,
 		OpARM64I64x2ExtmulLowI32x4S, OpARM64I64x2ExtmulHighI32x4S, OpARM64I64x2ExtmulLowI32x4U, OpARM64I64x2ExtmulHighI32x4U,
-		OpARM64I8x16Shuffle, OpARM64I8x16Swizzle:
+		OpARM64I8x16Shuffle, OpARM64I8x16Swizzle,
+		OpARM64V128AnyTrue, OpARM64I8x16AllTrue, OpARM64I16x8AllTrue, OpARM64I32x4AllTrue, OpARM64I64x2AllTrue,
+		OpARM64I8x16Bitmask, OpARM64I16x8Bitmask, OpARM64I32x4Bitmask, OpARM64I64x2Bitmask:
 		return true
 	default:
 		return false
@@ -591,6 +613,24 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64I8x16Shuffle, OpARM64I8x16Shuffle
 		case wasm.InstrI8x16Swizzle:
 			amd64, arm64 = OpAMD64I8x16Swizzle, OpARM64I8x16Swizzle
+		case wasm.InstrV128AnyTrue:
+			amd64, arm64 = OpAMD64V128AnyTrue, OpARM64V128AnyTrue
+		case wasm.InstrI8x16AllTrue:
+			amd64, arm64 = OpAMD64I8x16AllTrue, OpARM64I8x16AllTrue
+		case wasm.InstrI16x8AllTrue:
+			amd64, arm64 = OpAMD64I16x8AllTrue, OpARM64I16x8AllTrue
+		case wasm.InstrI32x4AllTrue:
+			amd64, arm64 = OpAMD64I32x4AllTrue, OpARM64I32x4AllTrue
+		case wasm.InstrI64x2AllTrue:
+			amd64, arm64 = OpAMD64I64x2AllTrue, OpARM64I64x2AllTrue
+		case wasm.InstrI8x16Bitmask:
+			amd64, arm64 = OpAMD64I8x16Bitmask, OpARM64I8x16Bitmask
+		case wasm.InstrI16x8Bitmask:
+			amd64, arm64 = OpAMD64I16x8Bitmask, OpARM64I16x8Bitmask
+		case wasm.InstrI32x4Bitmask:
+			amd64, arm64 = OpAMD64I32x4Bitmask, OpARM64I32x4Bitmask
+		case wasm.InstrI64x2Bitmask:
+			amd64, arm64 = OpAMD64I64x2Bitmask, OpARM64I64x2Bitmask
 		default:
 			continue
 		}
