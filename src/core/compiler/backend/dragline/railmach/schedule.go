@@ -347,6 +347,7 @@ type Schedule struct {
 	uses                  []uint32
 	remainingUses         []uint32
 	criticalHeight        []uint64
+	resultCounts          []uint8
 	remainingDependencies []uint32
 	blockCandidates       []uint32
 	readyCandidates       []uint32
@@ -562,6 +563,12 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 			criticalHeight[dependency.Instruction] = max(criticalHeight[dependency.Instruction], dependencyCost+criticalHeight[instruction])
 		}
 	}
+	resultCounts := resize(reuse.resultCounts, len(f.Insts))
+	if kind != ScheduleKindSourceStable {
+		for instruction := range f.Insts {
+			resultCounts[instruction] = uint8(f.Insts[instruction].ResultCount())
+		}
+	}
 	remainingUses := resize(reuse.remainingUses, len(uses))
 	copy(remainingUses, uses)
 	pressureSpecial := reuse.pressureSpecial[:0]
@@ -574,7 +581,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 	}
 	verifyPosition, verifySeen, uses := reuse.verifyPosition, reuse.verifySeen, reuse.uses
 	blockCandidates, readyCandidates := reuse.blockCandidates[:0], reuse.readyCandidates[:0]
-	*reuse = Schedule{Kind: kind, Order: order, BlockRanges: ranges, CommittedSinks: committed, CommittedInductions: committedInductions, CommittedLICM: committedLICM, CommittedFusions: committedFusions, BlockOf: blockOf, remaining: remainingScratch, sinkBefore: sinkBefore, sinkProducer: sinkProducer, lateBefore: lateBefore, lateProducer: lateProducer, fusionBefore: fusionBefore, fusionSource: fusionSource, verifyPosition: verifyPosition, verifySeen: verifySeen, uses: uses, remainingUses: remainingUses, criticalHeight: criticalHeight, remainingDependencies: remainingDependencies, blockCandidates: blockCandidates, readyCandidates: readyCandidates, pressureSpecial: pressureSpecial}
+	*reuse = Schedule{Kind: kind, Order: order, BlockRanges: ranges, CommittedSinks: committed, CommittedInductions: committedInductions, CommittedLICM: committedLICM, CommittedFusions: committedFusions, BlockOf: blockOf, remaining: remainingScratch, sinkBefore: sinkBefore, sinkProducer: sinkProducer, lateBefore: lateBefore, lateProducer: lateProducer, fusionBefore: fusionBefore, fusionSource: fusionSource, verifyPosition: verifyPosition, verifySeen: verifySeen, uses: uses, remainingUses: remainingUses, criticalHeight: criticalHeight, resultCounts: resultCounts, remainingDependencies: remainingDependencies, blockCandidates: blockCandidates, readyCandidates: readyCandidates, pressureSpecial: pressureSpecial}
 	for blockID := range f.Blocks {
 		start := uint32(len(reuse.Order))
 		remaining := resize(reuse.remaining, len(f.Insts))
@@ -605,7 +612,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 		staticPriority := kind == ScheduleKindPressure && !hasSuccessors
 		if staticPriority {
 			slices.SortFunc(candidates, func(a, b uint32) int {
-				aScore, bScore := schedulePriority(f, selection, a, kind, nil, reuse.criticalHeight, 0), schedulePriority(f, selection, b, kind, nil, reuse.criticalHeight, 0)
+				aScore, bScore := schedulePriority(f, selection, a, kind, nil, reuse.criticalHeight, reuse.resultCounts, 0), schedulePriority(f, selection, b, kind, nil, reuse.criticalHeight, reuse.resultCounts, 0)
 				if aScore > bScore {
 					return -1
 				}
@@ -655,7 +662,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 						if reuse.lateProducer[candidate] != ^uint32(0) && remaining[reuse.lateProducer[candidate]] || !ready(railssa.BlockID(blockID), candidate, remaining) {
 							continue
 						}
-						score := schedulePriority(f, selection, candidate, kind, reuse.remainingUses, reuse.criticalHeight, lastUseHeightCredit)
+						score := schedulePriority(f, selection, candidate, kind, reuse.remainingUses, reuse.criticalHeight, reuse.resultCounts, lastUseHeightCredit)
 						if target := reuse.sinkBefore[candidate]; target != ^uint32(0) {
 							if scheduleReadyPlaced(railssa.BlockID(blockID), target, dag, remaining, reuse.BlockOf, candidate) {
 								score += 1 << 40
@@ -701,7 +708,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 					if !ready(railssa.BlockID(blockID), candidate, remaining) {
 						continue
 					}
-					score := schedulePriority(f, selection, candidate, kind, reuse.remainingUses, reuse.criticalHeight, lastUseHeightCredit)
+					score := schedulePriority(f, selection, candidate, kind, reuse.remainingUses, reuse.criticalHeight, reuse.resultCounts, lastUseHeightCredit)
 					if kind == ScheduleKindPressure && reuse.sinkBefore[candidate] != ^uint32(0) {
 						if scheduleReadyPlaced(railssa.BlockID(blockID), reuse.sinkBefore[candidate], dag, remaining, reuse.BlockOf, candidate) {
 							score += 1 << 40
@@ -1037,7 +1044,7 @@ func verifyCommittedSinks(schedule *Schedule) error {
 	return nil
 }
 
-func schedulePriority(f *Func, selection *SelectionPlan, instruction uint32, kind ScheduleKind, remainingUses []uint32, criticalHeight []uint64, lastUseHeightCredit uint64) int64 {
+func schedulePriority(f *Func, selection *SelectionPlan, instruction uint32, kind ScheduleKind, remainingUses []uint32, criticalHeight []uint64, resultCounts []uint8, lastUseHeightCredit uint64) int64 {
 	switch kind {
 	case ScheduleKindSourceStable:
 		return -int64(instruction)
@@ -1075,7 +1082,7 @@ func schedulePriority(f *Func, selection *SelectionPlan, instruction uint32, kin
 		// work. This keeps LUC from serializing a long dependency chain merely to
 		// shorten one range while still breaking close choices toward lower pressure.
 		height += min(lastUses, 4) * lastUseHeightCredit
-		uses, defines := len(operands), int(f.Insts[instruction].ResultCount())
+		uses, defines := len(operands), int(resultCounts[instruction])
 		pressureDelta := min(max(int64(uses-defines)+64, 0), 127)
 		priority := int64(min(height, (uint64(1)<<24)-1))<<32 + int64(min(lastUses, 255))<<24 + int64(selection.Cost.ResourceCost)<<7 + pressureDelta
 		if selection.ResultForm == FormFlags {
@@ -1084,7 +1091,7 @@ func schedulePriority(f *Func, selection *SelectionPlan, instruction uint32, kin
 		return priority
 	case ScheduleKindPressure:
 		uses := len(f.InstructionOperands(instruction))
-		defines := int(f.Insts[instruction].ResultCount())
+		defines := int(resultCounts[instruction])
 		return int64(uses-defines)*1024 - int64(instruction)
 	default:
 		return -int64(instruction)
