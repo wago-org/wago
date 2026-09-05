@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 18
+const MetricsVersion = 19
 
 // Metrics contains one deterministic row per compiled function plus module
 // totals. Timings are observational; all counts and byte sizes are exact for
@@ -66,7 +66,10 @@ type FunctionMetrics struct {
 	ScheduleReadyWidthMax      uint32                            `json:"schedule_ready_width_max"`
 	ScheduleCriticalPathCost   uint64                            `json:"schedule_critical_path_cost"`
 	LivenessDebt               railmach.LivenessDebt             `json:"liveness_debt"`
+	LiveIntervals              uint32                            `json:"live_intervals"`
 	LiveSegments               uint32                            `json:"live_segments"`
+	SegmentedRanges            uint32                            `json:"segmented_ranges"`
+	AllocationFragments        uint32                            `json:"allocation_fragments"`
 	IPRARefinedCalls           uint32                            `json:"ipra_refined_calls"`
 	WeightedSpillDebt          uint64                            `json:"weighted_spill_debt"`
 	AllocationStage            uint8                             `json:"allocation_stage"`
@@ -152,7 +155,10 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 	if debt, err := railmach.MeasureLivenessDebt(plan.Machine, plan.Schedule, plan.Allocation); err == nil {
 		metrics.LivenessDebt = debt
 	}
-	metrics.LiveSegments = uint32(len(plan.Allocation.Intervals) + len(plan.Allocation.Fragments))
+	metrics.LiveIntervals = uint32(len(plan.Allocation.Intervals))
+	metrics.LiveSegments = uint32(len(plan.Allocation.Intervals) + len(plan.Allocation.LiveSegments) - len(plan.Allocation.LiveSegmentRanges))
+	metrics.SegmentedRanges = uint32(len(plan.Allocation.LiveSegmentRanges))
+	metrics.AllocationFragments = uint32(len(plan.Allocation.Fragments))
 	metrics.IPRARefinedCalls = plan.IPRARefinedCalls
 	metrics.WeightedSpillDebt = plan.Score.WeightedSpillDebt
 	metrics.AllocationStage = plan.Allocation.Stage
