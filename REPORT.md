@@ -373,6 +373,10 @@ These were measured and removed rather than retained speculatively:
 | Allocate local merge snapshots in 16-buffer slabs | Allocation count -17.41%, but compile latency +2.36% and heap +0.25%; replaced by the inline fixed snapshot |
 | Reserve and clear `br_table` placeholders in one span | +2.41% backend geomean with unchanged heap and allocations; the existing four-byte append loop lowers better |
 | Remove the scan-local entry-initialization mirror | +0.08% backend geomean; every corpus nonsignificant, heap and allocations identical; retained as a diagnostic mirror only |
+| Clear only initialized control-sidecar prefixes | Initial backend run was -0.56%; the 12-pair 500 ms confirmation fell to -0.36%, with every latency row nonsignificant and heap/allocations effectively unchanged; removed as below measurement value |
+| Replace module-global scans with a bounded sorted view | +0.49% backend geomean with every corpus nonsignificant and resources unchanged; instruction emission, not membership scanning, accounted for the profiled synchronization cost |
+| Trap-specific `uint32` immediate materialization | -0.36% backend geomean with every corpus nonsignificant and resources unchanged; removed rather than risk expanding logical-immediate cases in cold stubs |
+| Recycle nodes from terminal pure-drop trees | Dedicated 512-tree stress improved latency 6.89%, heap 86.33%, and allocations 22.73%, but all five real corpora slowed and the backend geomean regressed 1.15% with no corpus resource benefit; removed pending a giant-function-only admission policy |
 
 ## Method
 
@@ -392,6 +396,10 @@ Raw measurements for the current checkpoint are in
 `/tmp/arm64-adapter-cache-vs-main-{base,candidate}.txt`,
 `/tmp/arm64-adapter-template-long-{base,candidate}.txt`,
 `/tmp/arm64-adapter-template-full-{base,candidate}.txt`,
+`/tmp/arm64-control-prefix-long-{base,candidate}.txt`,
+`/tmp/arm64-module-global-view-{base,candidate}.txt`,
+`/tmp/arm64-trap-u32-{base,candidate}.txt`,
+`/tmp/arm64-terminal-recycle-{stress,corpus}-{base,candidate}.txt`,
 `/tmp/arm64-inline16-vs-main-exec5-{base,candidate}.txt`, and
 `/tmp/arm64-inline16-code-{main,current}.txt` on the measuring host.
 They are intentionally not checked into the repository.
