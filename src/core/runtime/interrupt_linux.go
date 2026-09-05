@@ -218,12 +218,14 @@ func installInterruptHandler() error {
 		return nil
 	}
 	interruptTrapPC = addrNativeInterruptTrap()
-	if interruptCookie == 0 {
-		var cookie [4]byte
-		if _, err := rand.Read(cookie[:]); err != nil {
-			return err
-		}
-		interruptCookie = binary.LittleEndian.Uint32(cookie[:]) | 1
+	interruptRequestMu.Lock()
+	var cookieErr error
+	if atomic.LoadUint32(&interruptCookie) == 0 {
+		cookieErr = renewInterruptCookie()
+	}
+	interruptRequestMu.Unlock()
+	if cookieErr != nil {
+		return cookieErr
 	}
 	for pass := 0; pass < 2; pass++ {
 		for sig := uintptr(64); sig >= 35; sig-- {
@@ -354,6 +356,23 @@ func requestInterruptPointer(trapPtr uintptr) bool {
 	return acknowledged
 }
 
+// renewInterruptCookie runs under interruptRequestMu with no live requests.
+// Keep the cookie distinct across an idle rollover so a queued old token cannot
+// identify a new request after its sequence number is reused.
+func renewInterruptCookie() error {
+	old := atomic.LoadUint32(&interruptCookie)
+	var bytes [4]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return err
+	}
+	cookie := binary.LittleEndian.Uint32(bytes[:]) | 1
+	if cookie == old {
+		cookie += 2
+	} // odd, nonzero, and distinct even on wrap
+	atomic.StoreUint32(&interruptCookie, cookie)
+	return nil
+}
+
 func acquireInterruptRequest(trapPtr uintptr) *interruptRequest {
 	interruptRequestMu.Lock()
 	defer interruptRequestMu.Unlock()
@@ -364,10 +383,18 @@ func acquireInterruptRequest(trapPtr uintptr) *interruptRequest {
 		if owner == trapPtr || owner == 0 {
 			if owner == 0 {
 				if interruptSequence == ^uint32(0) {
-					return nil
+					for i := range interruptRequests {
+						if atomic.LoadUintptr(&interruptRequests[i].trap) != 0 {
+							return nil
+						}
+					}
+					if err := renewInterruptCookie(); err != nil {
+						return nil
+					}
+					interruptSequence = 0
 				}
 				interruptSequence++
-				atomic.StoreUint64(&request.token, uint64(interruptCookie)<<32|uint64(interruptSequence))
+				atomic.StoreUint64(&request.token, uint64(atomic.LoadUint32(&interruptCookie))<<32|uint64(interruptSequence))
 			}
 			atomic.AddUint32(&request.refs, 1)
 			// Writers hold interruptRequestMu. Publish only after the token is

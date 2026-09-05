@@ -5,7 +5,7 @@
 // SA_SIGINFO handler: R0=signal, R1=*siginfo, R2=*ucontext.
 // Linux arm64 ucontext has saved X9 at +256, X26 at +392, SP at +432, and
 // PC at +440. Generated Wasm pins linMem in X26; [linMem-104] is its active
-// trap pointer. interruptRequest is {trap uintptr, ack u32, refs u32}, 24 bytes.
+// trap pointer. interruptRequest is {trap uintptr, ack u32, refs u32, token u64}, 24 bytes.
 TEXT ·interruptSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	MOVD	R0, R3                      // preserve signal arguments for chaining
 	MOVD	R1, R4
@@ -18,7 +18,8 @@ TEXT ·interruptSigHandler(SB), NOSPLIT|NOFRAME, $0-0
 	BNE	chain_unowned
 check_cookie:
 	MOVWU	28(R4), R11
-	MOVWU	·interruptCookie(SB), R12
+	MOVD	$·interruptCookie(SB), R12
+	LDARW	(R12), R12
 	CMP	R11, R12
 	BEQ	check_pc
 chain_unowned:
@@ -35,10 +36,11 @@ handler_return:
 check_pc:
 	MOVD	440(R7), R11               // saved PC
 	MOVD	$·executableCodeRanges(SB), R12
-	MOVWU	·executableCodeRangeLimit(SB), R13
+	MOVD	$·executableCodeRangeLimit(SB), R13
+	LDARW	(R13), R13
 	CBZ	R13, handler_return
 range_loop:
-	MOVD	0(R12), R14                // range.start
+	LDAR	(R12), R14                  // acquire range.start before range.end
 	CBZ	R14, range_next
 	CMP	R14, R11
 	BLO	range_next                  // PC < start
@@ -63,10 +65,11 @@ reader_acquire:
 	STLXRW	R15, (R17), R13
 	CBNZ	R13, reader_acquire
 	MOVD	$·interruptLinearMemories(SB), R9
-	MOVWU	·interruptLinearMemoryLimit(SB), R12
+	MOVD	$·interruptLinearMemoryLimit(SB), R12
+	LDARW	(R12), R12
 	CBZ	R12, reader_release
 linmem_loop:
-	MOVD	0(R9), R13
+	LDAR	(R9), R13
 	CMP	R13, R11
 	BEQ	linmem_match
 	ADD	$8, R9
@@ -82,7 +85,8 @@ request_loop:
 	CMP	R13, R10
 	BNE	request_next
 	MOVD	24(R4), R14
-	MOVD	16(R9), R13
+	ADD	$16, R9, R13
+	LDAR	(R13), R13
 	CMP	R13, R14
 	BEQ	request_match
 request_next:
@@ -92,9 +96,10 @@ request_next:
 	B	reader_release
 request_match:
 	MOVW	$12, R16
-	MOVW	R16, (R10)                 // TrapInterrupted
+	STLRW	R16, (R10)                 // TrapInterrupted
 	MOVW	$1, R16
-	MOVW	R16, 8(R9)                 // acknowledgement
+	ADD	$8, R9, R13
+	STLRW	R16, (R13)                 // publish acknowledgement after trap
 	MOVD	R11, 256(R7)               // saved X9 = linMem for landing pad
 	MOVD	·interruptTrapPC(SB), R11
 	MOVD	R11, 440(R7)               // saved PC = landing pad

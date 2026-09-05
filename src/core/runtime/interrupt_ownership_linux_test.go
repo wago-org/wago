@@ -98,6 +98,56 @@ func TestInterruptTokenChangesOnTrapReuse(t *testing.T) {
 	}
 }
 
+func TestInterruptIdleGenerationRollover(t *testing.T) {
+	// Exercise only the bounded request coordinator, without delivering signals.
+	interruptRequestMu.Lock()
+	sequence, cookie := interruptSequence, atomic.LoadUint32(&interruptCookie)
+	interruptSequence = ^uint32(0) - 1
+	interruptRequestMu.Unlock()
+	defer func() {
+		interruptRequestMu.Lock()
+		interruptSequence = sequence
+		atomic.StoreUint32(&interruptCookie, cookie)
+		interruptRequestMu.Unlock()
+	}()
+	first := acquireInterruptRequest(16)
+	if first == nil {
+		t.Fatal("last sequence unavailable")
+	}
+	oldToken := first.token
+	if next := acquireInterruptRequest(32); next != nil {
+		releaseInterruptRequest(next, 32)
+		releaseInterruptRequest(first, 16)
+		t.Fatal("changed generation with a live request")
+	}
+	shared := acquireInterruptRequest(16)
+	if shared != first {
+		releaseInterruptRequest(first, 16)
+		t.Fatal("live owner could not share its request")
+	}
+	releaseInterruptRequest(shared, 16)
+	releaseInterruptRequest(first, 16)
+	next := acquireInterruptRequest(16)
+	if next == nil {
+		t.Fatal("idle request sequence remained exhausted")
+	}
+	defer releaseInterruptRequest(next, 16)
+	if uint32(next.token) != 1 || uint32(next.token>>32) == uint32(oldToken>>32) {
+		t.Fatalf("rollover reused generation: old=%x new=%x", oldToken, next.token)
+	}
+}
+
+func BenchmarkInterruptRequestLifecycle(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		r := acquireInterruptRequest(16)
+		if r == nil {
+			b.Fatal("request unavailable")
+		}
+		releaseInterruptRequest(r, 16)
+	}
+}
+
 func TestInterruptRequestPublishesTokenBeforeTrap(t *testing.T) {
 	// Distinct synthetic trap addresses all map to the same slot. The observer
 	// models the handler's acquire-load order without delivering any signals.

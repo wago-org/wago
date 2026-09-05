@@ -46,6 +46,20 @@ Five serial 100 ms samples on the same host give these medians:
 These short sequential samples confirm the allocation reduction; final
 interleaved timing and native-platform checks remain pending.
 
+## Linux interrupt generations and ARM64 ordering
+
+Token issuance renews its cookie and resets its sequence only after all requests
+have drained. Shared owners retain their token at the generation boundary.
+Cookie initialization and renewal share the request lock and atomic publication.
+The ARM64 handler acquires published code/memory registry entries and publishes
+trap acknowledgement with release ordering. The existing fixed registry sizes
+and native call path are unchanged.
+
+Focused interrupt/deadline/lifetime tests pass, including under `-race`.
+The Linux/arm64 runtime test binary cross-builds. Native ARM64 execution remains
+required; the race detector cannot prove assembly ordering. Signal negotiation
+and scan optimization still need their separate measurements.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.
