@@ -1102,6 +1102,39 @@ func TestSelectTargetOpcodesI31Primitives(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesExternConversions(t *testing.T) {
+	operations := []struct {
+		generic MOpcode
+		input   wasm.ValType
+		result  wasm.ValType
+		subop   byte
+		amd64   MOpcode
+		arm64   MOpcode
+	}{
+		{wasm.InstrAnyConvertExtern, wasm.ExternRef, wasm.AnyRef, 0x1a, OpAMD64AnyConvertExtern, OpARM64AnyConvertExtern},
+		{wasm.InstrExternConvertAny, wasm.AnyRef, wasm.ExternRef, 0x1b, OpAMD64ExternConvertAny, OpARM64ExternConvertAny},
+	}
+	for _, target := range []Target{TargetAMD64, TargetARM64} {
+		t.Run(target.String(), func(t *testing.T) {
+			for _, operation := range operations {
+				body := []byte{0x20, 0, 0xfb, operation.subop, 0x0b}
+				f := buildMachineTest(t, target, machineModule([]wasm.ValType{operation.input}, []wasm.ValType{operation.result}, body))
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				want := operation.amd64
+				if target == TargetARM64 {
+					want = operation.arm64
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != want || SemanticOpcode(f.Insts[0].Op) != operation.generic || !IsCall(f.Insts[0].Op) {
+					t.Fatalf("%s selected instructions = %#v, count %d, want helper call %d", operation.generic, f.Insts, count, want)
+				}
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesRefFunc(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(

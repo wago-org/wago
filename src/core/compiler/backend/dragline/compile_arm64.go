@@ -1135,6 +1135,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64Call, railmach.OpARM64CallIndirect,
 			railmach.OpARM64RefNull, railmach.OpARM64RefFunc, railmach.OpARM64RefIsNull, railmach.OpARM64RefEq, railmach.OpARM64RefAsNonNull,
 			railmach.OpARM64RefI31, railmach.OpARM64I31GetS, railmach.OpARM64I31GetU,
+			railmach.OpARM64AnyConvertExtern, railmach.OpARM64ExternConvertAny,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -2850,12 +2851,12 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrAnyConvertExtern || instruction.Op == wasm.InstrExternConvertAny {
+			if semanticOp == wasm.InstrAnyConvertExtern || semanticOp == wasm.InstrExternConvertAny {
 				if len(operands) != 1 {
 					return nil, 0, true, fmt.Errorf("RailMach %s operand count is %d", instruction.Op, len(operands))
 				}
 				helper := codegen.GCHelperAnyConvertExtern
-				if instruction.Op == wasm.InstrExternConvertAny {
+				if semanticOp == wasm.InstrExternConvertAny {
 					helper = codegen.GCHelperExternConvertAny
 				}
 				payload, ok := codegen.EncodeGCHelperDispatch(helper, 0)

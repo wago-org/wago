@@ -446,6 +446,8 @@ const (
 	OpAMD64RefI31
 	OpAMD64I31GetS
 	OpAMD64I31GetU
+	OpAMD64AnyConvertExtern
+	OpAMD64ExternConvertAny
 	opAMD64SelectedEnd
 )
 
@@ -883,6 +885,8 @@ const (
 	OpARM64RefI31
 	OpARM64I31GetS
 	OpARM64I31GetU
+	OpARM64AnyConvertExtern
+	OpARM64ExternConvertAny
 	opARM64SelectedEnd
 )
 
@@ -1182,6 +1186,10 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrI31GetS
 	case OpAMD64I31GetU, OpARM64I31GetU:
 		return wasm.InstrI31GetU
+	case OpAMD64AnyConvertExtern, OpARM64AnyConvertExtern:
+		return wasm.InstrAnyConvertExtern
+	case OpAMD64ExternConvertAny, OpARM64ExternConvertAny:
+		return wasm.InstrExternConvertAny
 	case OpAMD64F32EqScalar, OpARM64F32EqScalar:
 		return wasm.InstrF32Eq
 	case OpAMD64F64EqScalar, OpARM64F64EqScalar:
@@ -1738,6 +1746,10 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64I31GetS, OpARM64I31GetS
 		case wasm.InstrI31GetU:
 			amd64, arm64 = OpAMD64I31GetU, OpARM64I31GetU
+		case wasm.InstrAnyConvertExtern:
+			amd64, arm64 = OpAMD64AnyConvertExtern, OpARM64AnyConvertExtern
+		case wasm.InstrExternConvertAny:
+			amd64, arm64 = OpAMD64ExternConvertAny, OpARM64ExternConvertAny
 		case wasm.InstrF32Eq:
 			amd64, arm64 = OpAMD64F32EqScalar, OpARM64F32EqScalar
 		case wasm.InstrF64Eq:
