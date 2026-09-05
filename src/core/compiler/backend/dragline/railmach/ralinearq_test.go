@@ -171,6 +171,42 @@ func TestAllocateLinearQKeepsColdAffineRematerializationBaseLive(t *testing.T) {
 	}
 }
 
+func TestExtendLoopLiveIntervalsUsesScheduledBlockBounds(t *testing.T) {
+	f := &Func{
+		Insts: make([]Inst, 5),
+		VRegs: []VRegData{
+			{},
+			{},
+			{Flags: VRegBlockParam},
+		},
+		Blocks: []Block{
+			{InstStart: 0, InstCount: 1},
+			{InstStart: 1, InstCount: 2, Flags: railssa.BlockLoopHeader},
+			{InstStart: 3, InstCount: 2},
+		},
+		Edges: []Edge{{From: 2, To: 1}},
+	}
+	// Scheduling moved an invariant into the preheader, making the scheduled
+	// loop occupy [2, 5) even though its source-linear extent is [1, 5).
+	schedule := &Schedule{Order: []uint32{0, 2, 1, 3, 4}, BlockRanges: []MoveRange{
+		{Start: 0, Count: 2},
+		{Start: 2, Count: 1},
+		{Start: 3, Count: 2},
+	}}
+	starts := []uint32{0, 10, 12}
+	ends := []uint32{0, 14, 14}
+	used := []bool{false, true, true}
+
+	extendLoopLiveIntervals(f, schedule, starts, ends, used)
+
+	if got, want := ends[1], uint32(30); got != want {
+		t.Fatalf("loop invariant end = %d, want scheduled backedge %d", got, want)
+	}
+	if got, want := ends[2], uint32(14); got != want {
+		t.Fatalf("loop block parameter end = %d, want unchanged %d", got, want)
+	}
+}
+
 func TestAllocateLinearQReusesScratchWithoutRetainingState(t *testing.T) {
 	m := machineModule(nil, []wasm.ValType{wasm.I64}, []byte{
 		0x42, 0x01,

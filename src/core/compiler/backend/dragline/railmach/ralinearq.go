@@ -271,7 +271,7 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 			ends[result] = resultPosition
 		}
 	}
-	extendLoopLiveIntervals(f, starts, ends, used)
+	extendLoopLiveIntervals(f, schedule, starts, ends, used)
 	reuse.scratch.callPositions = callPositions
 	for id := 1; id < len(f.VRegs); id++ {
 		data := f.VRegs[id]
@@ -422,16 +422,16 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 // and overwrite the invariant's physical register before the next iteration.
 // Loop-header block parameters are excluded because their incoming edge move
 // deliberately replaces the previous iteration's value.
-func extendLoopLiveIntervals(f *Func, starts, ends []uint32, used []bool) {
+func extendLoopLiveIntervals(f *Func, schedule *Schedule, starts, ends []uint32, used []bool) {
 	for _, edge := range f.Edges {
 		if int(edge.From) >= len(f.Blocks) || int(edge.To) >= len(f.Blocks) || edge.From < edge.To || f.Blocks[edge.To].Flags&railssa.BlockLoopHeader == 0 {
 			continue
 		}
-		header := f.Blocks[edge.To].InstStart * 6
-		backedge := (f.Blocks[edge.From].InstStart + f.Blocks[edge.From].InstCount) * 6
+		header := blockScheduleStart(f, schedule, uint32(edge.To)) * 6
+		backedge := blockScheduleEnd(f, schedule, uint32(edge.From)) * 6
 		for id := 1; id < len(f.VRegs); id++ {
 			data := f.VRegs[id]
-			if !used[id] || starts[id] > header || ends[id] < header || ends[id] >= backedge || data.Flags&VRegBlockParam != 0 && data.Def == header {
+			if !used[id] || starts[id] > header || ends[id] < header || ends[id] >= backedge || data.Flags&VRegBlockParam != 0 && starts[id] == header {
 				continue
 			}
 			ends[id] = backedge
@@ -478,6 +478,13 @@ func scheduledLogicalPosition(position uint32, instructionPositions []uint32) ui
 		return position
 	}
 	return instructionPositions[instruction]*6 + phase
+}
+
+func blockScheduleStart(f *Func, schedule *Schedule, block uint32) uint32 {
+	if schedule != nil {
+		return schedule.BlockRanges[block].Start
+	}
+	return f.Blocks[block].InstStart
 }
 
 func blockScheduleEnd(f *Func, schedule *Schedule, block uint32) uint32 {
