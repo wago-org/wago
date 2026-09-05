@@ -1583,6 +1583,31 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 	}
 	swarRunN := arm64EnableAlgorithmSpecializations && arm64RailMachSWARRunN(plan)
 	swarParse4 := arm64EnableAlgorithmSpecializations && arm64RailMachSWARParse4(plan)
+	const noRotateMaskRegister = arm64.Reg(32)
+	rotateMaskRegister := noRotateMaskRegister
+	cacheRotateMask := !plan.ABI.HasCall && !hasCopysign64 && !swarRunN && !swarParse4
+	for _, rewrite := range plan.PostRA.Rewrites {
+		cacheRotateMask = cacheRotateMask && rewrite.Kind != railmach.RewriteARM64ByteSwap && rewrite.Kind != railmach.RewriteARM64ByteWiden
+	}
+	if cacheRotateMask {
+		rotateCount := 0
+		for instructionID, instruction := range plan.Machine.Insts {
+			if instruction.Op != railmach.OpARM64I8x16Shuffle {
+				continue
+			}
+			immediate, ok := plan.Machine.SIMDImmediateAt(uint32(instructionID))
+			if ok && arm64ShuffleLaneRotate(immediate.Bytes, 4, 1) {
+				rotateCount++
+			}
+		}
+		// The literal occupies 16 bytes in the function pool. Require enough
+		// uses to amortize both it and the one entry load; small functions keep
+		// the allocation-free two-shift lowering.
+		if rotateCount >= 8 {
+			rotateMaskRegister = 31
+			materializeSIMDConstant(rotateMaskRegister, [16]byte{1, 2, 3, 0, 5, 6, 7, 4, 9, 10, 11, 8, 13, 14, 15, 12})
+		}
+	}
 	idempotentFloatStart, idempotentFloatEnd, idempotentFloatTail := uint32(0), uint32(0), false
 	fastEpilogue := -1
 	if kind, n, result, ok := arm64RailMachClosedCounterLoop(plan); arm64EnableAlgorithmSpecializations && ok {
@@ -3610,7 +3635,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					return nil, 0, true, fmt.Errorf("RailMach vector shuffle %d has no mask", instructionID)
 				}
 				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
-				if result, specialized := emitARM64SpecializedShuffle(&a, immediate.Bytes, dst, lhs, rhs, 28); specialized {
+				if result, specialized := emitARM64SpecializedShuffle(&a, immediate.Bytes, dst, lhs, rhs, 28, rotateMaskRegister); specialized {
 					if result != dst {
 						a.NeonMov16b(dst, result)
 					}
@@ -10063,7 +10088,7 @@ func emitARM64StackMode(fn *railssa.Func, plan *railssa.EmissionPlan, target cor
 				if directBinary {
 					emitARM64DirectSIMDBinary(&a, descriptor.Kind, dst, lhs, rhs)
 				} else {
-					dst, _ = emitARM64SpecializedShuffle(&a, descriptor.Bytes, dst, lhs, rhs, arm64StructuredShuffleScratch(lhs))
+					dst, _ = emitARM64SpecializedShuffle(&a, descriptor.Bytes, dst, lhs, rhs, arm64StructuredShuffleScratch(lhs), 32)
 				}
 				localStoreV128(targetLocal, dst)
 				if tee {
@@ -14421,16 +14446,20 @@ func arm64SIMDConstantIsSplat(bytes [16]byte) bool {
 	return true
 }
 
-func emitARM64SpecializedShuffle(a *arm64.Asm, bytes [16]byte, dst, lhs, rhs, scratch arm64.Reg) (arm64.Reg, bool) {
+func emitARM64SpecializedShuffle(a *arm64.Asm, bytes [16]byte, dst, lhs, rhs, scratch, rotateMask arm64.Reg) (arm64.Reg, bool) {
 	switch {
 	case arm64ShuffleLaneRotate(bytes, 4, 2):
 		a.NeonRev32H(dst, lhs)
 	case arm64ShuffleLaneRotate(bytes, 4, 1):
-		if dst == lhs {
-			dst = scratch
+		if rotateMask < 32 {
+			a.NeonTbl(dst, lhs, rotateMask)
+		} else {
+			if dst == lhs {
+				dst = scratch
+			}
+			a.NeonUshrS(dst, lhs, 8)
+			a.NeonSliS(dst, lhs, 24)
 		}
-		a.NeonUshrS(dst, lhs, 8)
-		a.NeonSliS(dst, lhs, 24)
 	case arm64ShuffleZip(bytes, 4, false):
 		a.NeonZip1S(dst, lhs, rhs)
 	case arm64ShuffleZip(bytes, 4, true):
@@ -14771,7 +14800,7 @@ func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		lhs := sourceV(base, 0)
 		rhs := sourceV(base+1, 1)
 		dst := stackDestination(base, 0)
-		if result, ok := emitARM64SpecializedShuffle(a, descriptor.Bytes, dst, lhs, rhs, arm64StructuredShuffleScratch(lhs)); ok {
+		if result, ok := emitARM64SpecializedShuffle(a, descriptor.Bytes, dst, lhs, rhs, arm64StructuredShuffleScratch(lhs), 32); ok {
 			dst = result
 			storeV(base, dst)
 			types = append(types[:base], wasm.V128)

@@ -1353,11 +1353,15 @@ func TestARM64ShufflePatterns(t *testing.T) {
 		t.Fatal("zip pattern was not recognized")
 	}
 	var a arm64.Asm
-	if dst, ok := emitARM64SpecializedShuffle(&a, ror8, 4, 4, 5, 28); !ok || dst != 28 || len(a.B) != 8 {
+	if dst, ok := emitARM64SpecializedShuffle(&a, ror8, 4, 4, 5, 28, 32); !ok || dst != 28 || len(a.B) != 8 {
 		t.Fatalf("in-place lane rotate = dst %d, ok %t, bytes %d; want scratch destination and two instructions", dst, ok, len(a.B))
 	}
 	a.B = a.B[:0]
-	if dst, ok := emitARM64SpecializedShuffle(&a, zip1S, 6, 4, 5, 28); !ok || dst != 6 || len(a.B) != 4 {
+	if dst, ok := emitARM64SpecializedShuffle(&a, ror8, 4, 4, 5, 28, 31); !ok || dst != 4 || len(a.B) != 4 {
+		t.Fatalf("table lane rotate = dst %d, ok %t, bytes %d; want requested destination and one instruction", dst, ok, len(a.B))
+	}
+	a.B = a.B[:0]
+	if dst, ok := emitARM64SpecializedShuffle(&a, zip1S, 6, 4, 5, 28, 32); !ok || dst != 6 || len(a.B) != 4 {
 		t.Fatalf("zip1 = dst %d, ok %t, bytes %d; want requested destination and one instruction", dst, ok, len(a.B))
 	}
 }
