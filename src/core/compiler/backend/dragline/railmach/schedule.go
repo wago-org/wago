@@ -349,6 +349,7 @@ type Schedule struct {
 	criticalHeight        []uint64
 	remainingDependencies []uint32
 	blockCandidates       []uint32
+	readyCandidates       []uint32
 	pressureSpecial       []uint32
 }
 
@@ -571,8 +572,9 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 			}
 		}
 	}
-	verifyPosition, verifySeen, uses, blockCandidates := reuse.verifyPosition, reuse.verifySeen, reuse.uses, reuse.blockCandidates[:0]
-	*reuse = Schedule{Kind: kind, Order: order, BlockRanges: ranges, CommittedSinks: committed, CommittedInductions: committedInductions, CommittedLICM: committedLICM, CommittedFusions: committedFusions, BlockOf: blockOf, remaining: remainingScratch, sinkBefore: sinkBefore, sinkProducer: sinkProducer, lateBefore: lateBefore, lateProducer: lateProducer, fusionBefore: fusionBefore, fusionSource: fusionSource, verifyPosition: verifyPosition, verifySeen: verifySeen, uses: uses, remainingUses: remainingUses, criticalHeight: criticalHeight, remainingDependencies: remainingDependencies, blockCandidates: blockCandidates, pressureSpecial: pressureSpecial}
+	verifyPosition, verifySeen, uses := reuse.verifyPosition, reuse.verifySeen, reuse.uses
+	blockCandidates, readyCandidates := reuse.blockCandidates[:0], reuse.readyCandidates[:0]
+	*reuse = Schedule{Kind: kind, Order: order, BlockRanges: ranges, CommittedSinks: committed, CommittedInductions: committedInductions, CommittedLICM: committedLICM, CommittedFusions: committedFusions, BlockOf: blockOf, remaining: remainingScratch, sinkBefore: sinkBefore, sinkProducer: sinkProducer, lateBefore: lateBefore, lateProducer: lateProducer, fusionBefore: fusionBefore, fusionSource: fusionSource, verifyPosition: verifyPosition, verifySeen: verifySeen, uses: uses, remainingUses: remainingUses, criticalHeight: criticalHeight, remainingDependencies: remainingDependencies, blockCandidates: blockCandidates, readyCandidates: readyCandidates, pressureSpecial: pressureSpecial}
 	for blockID := range f.Blocks {
 		start := uint32(len(reuse.Order))
 		remaining := resize(reuse.remaining, len(f.Insts))
@@ -592,7 +594,15 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 				}
 			}
 		}
-		staticPriority := kind == ScheduleKindPressure
+		readyCandidates := reuse.readyCandidates[:0]
+		if hasSuccessors {
+			for _, candidate := range candidates {
+				if remainingDependencies[candidate] == 0 {
+					readyCandidates = append(readyCandidates, candidate)
+				}
+			}
+		}
+		staticPriority := kind == ScheduleKindPressure && !hasSuccessors
 		if staticPriority {
 			slices.SortFunc(candidates, func(a, b uint32) int {
 				aScore, bScore := schedulePriority(f, selection, a, kind, nil, reuse.criticalHeight, 0), schedulePriority(f, selection, b, kind, nil, reuse.criticalHeight, 0)
@@ -606,6 +616,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 			})
 		}
 		reuse.blockCandidates = candidates
+		reuse.readyCandidates = readyCandidates
 		lastUseHeightCredit := scheduleLastUseHeightCredit(f.Target, pressure, blockID)
 		blockCount := uint32(len(candidates))
 		for emitted := uint32(0); emitted < blockCount; emitted++ {
@@ -666,7 +677,11 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 				}
 			}
 			if best == ^uint32(0) {
-				for _, candidate := range candidates {
+				scanCandidates := candidates
+				if hasSuccessors {
+					scanCandidates = reuse.readyCandidates
+				}
+				for _, candidate := range scanCandidates {
 					if !remaining[candidate] {
 						continue
 					}
@@ -708,7 +723,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 						// sink/late placement adds dynamic bonuses. Latency priorities use
 						// remaining-use counts and must always inspect every ready candidate.
 						ordinaryPressure := kind == ScheduleKindPressure && reuse.sinkBefore[candidate] == ^uint32(0) && reuse.lateBefore[candidate] == ^uint32(0)
-						if kind == ScheduleKindSourceStable || ordinaryPressure {
+						if !hasSuccessors && (kind == ScheduleKindSourceStable || ordinaryPressure) {
 							break
 						}
 					}
@@ -718,12 +733,24 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 				return nil, fmt.Errorf("railmach: scheduler found a cycle in block %d", blockID)
 			}
 			remaining[best] = false
+			if hasSuccessors {
+				for index, candidate := range reuse.readyCandidates {
+					if candidate == best {
+						reuse.readyCandidates[index] = reuse.readyCandidates[len(reuse.readyCandidates)-1]
+						reuse.readyCandidates = reuse.readyCandidates[:len(reuse.readyCandidates)-1]
+						break
+					}
+				}
+			}
 			reuse.Order = append(reuse.Order, best)
 			reuse.Score += uint64(max(bestScore, 0))
 			if hasSuccessors {
 				for _, successor := range dag.Successors[dag.SuccessorOffsets[best]:dag.SuccessorOffsets[best+1]] {
 					if reuse.BlockOf[successor] == railssa.BlockID(blockID) && remaining[successor] && remainingDependencies[successor] != 0 {
 						remainingDependencies[successor]--
+						if remainingDependencies[successor] == 0 {
+							reuse.readyCandidates = append(reuse.readyCandidates, successor)
+						}
 					}
 				}
 			}

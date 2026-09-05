@@ -113,6 +113,45 @@ func TestDependencyDAGAndScheduleCandidates(t *testing.T) {
 	}
 }
 
+func TestScheduleReadyFrontierMatchesDependencyScan(t *testing.T) {
+	m := machineModule(nil, []wasm.ValType{wasm.I64}, []byte{
+		0x42, 0x01,
+		0x42, 0x02,
+		0x7c,
+		0x42, 0x03,
+		0x42, 0x04,
+		0x7c,
+		0x7c,
+		0x0b,
+	})
+	f, selection, _, dag := buildScheduleTest(t, TargetARM64, m)
+	scanned := *dag
+	scanned.SuccessorOffsets = nil
+	scanned.Successors = nil
+	pressure := &railssa.PressurePlan{Blocks: []railssa.BlockPressure{{PeakGPR: uint16(DefaultLinearQConfig(TargetARM64).GPRs)}}}
+	for _, kind := range []ScheduleKind{ScheduleKindSourceStable, ScheduleKindLatencyFusion, ScheduleKindPressure} {
+		want, err := BuildScheduleWithPressure(f, selection, &scanned, kind, pressure, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := BuildScheduleWithPressure(f, selection, dag, kind, pressure, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(got.Order, want.Order) {
+			t.Fatalf("%d ready-frontier order = %v, dependency-scan order = %v", kind, got.Order, want.Order)
+		}
+		got.readyCandidates = append(got.readyCandidates, ^uint32(0))
+		got, err = BuildScheduleWithPressure(f, selection, dag, kind, pressure, got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(got.Order, want.Order) {
+			t.Fatalf("%d reused ready-frontier order = %v, dependency-scan order = %v", kind, got.Order, want.Order)
+		}
+	}
+}
+
 func TestLatencyScheduleScansDynamicLastUsePriorities(t *testing.T) {
 	f := &Func{
 		Target: TargetARM64,
