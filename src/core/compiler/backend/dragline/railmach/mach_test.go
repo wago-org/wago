@@ -205,6 +205,48 @@ func TestSelectTargetOpcodesIntegerMultiply(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesIntegerShifts(t *testing.T) {
+	operations := [10]MOpcode{
+		wasm.InstrI32Shl, wasm.InstrI64Shl, wasm.InstrI32ShrS, wasm.InstrI64ShrS, wasm.InstrI32ShrU,
+		wasm.InstrI64ShrU, wasm.InstrI32Rotl, wasm.InstrI64Rotl, wasm.InstrI32Rotr, wasm.InstrI64Rotr,
+	}
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [10]MOpcode
+	}{
+		{"amd64", TargetAMD64, [10]MOpcode{
+			OpAMD64I32Shl, OpAMD64I64Shl, OpAMD64I32ShrS, OpAMD64I64ShrS, OpAMD64I32ShrU,
+			OpAMD64I64ShrU, OpAMD64I32Rotl, OpAMD64I64Rotl, OpAMD64I32Rotr, OpAMD64I64Rotr,
+		}},
+		{"arm64", TargetARM64, [10]MOpcode{
+			OpARM64I32Shl, OpARM64I64Shl, OpARM64I32ShrS, OpARM64I64ShrS, OpARM64I32ShrU,
+			OpARM64I64ShrU, OpARM64I32Rotl, OpARM64I64Rotl, OpARM64I32Rotr, OpARM64I64Rotr,
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for index, op := range []byte{0x74, 0x86, 0x75, 0x87, 0x76, 0x88, 0x77, 0x89, 0x78, 0x8a} {
+				type_ := wasm.I32
+				if index&1 != 0 {
+					type_ = wasm.I64
+				}
+				m := machineModule([]wasm.ValType{type_, type_}, []wasm.ValType{type_}, []byte{0x20, 0, 0x20, 1, op, 0x0b})
+				f := buildMachineTest(t, test.target, m)
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operations[index] {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operations[index])
+				}
+			}
+		})
+	}
+}
+
 func vectorFoundationFixture(target Target) *Func {
 	f := &Func{
 		Target: target,

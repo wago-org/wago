@@ -1010,6 +1010,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32And, railmach.OpAMD64I64And, railmach.OpAMD64I32Or, railmach.OpAMD64I64Or,
 			railmach.OpAMD64I32Xor, railmach.OpAMD64I64Xor,
 			railmach.OpAMD64I32Mul, railmach.OpAMD64I64Mul,
+			railmach.OpAMD64I32Shl, railmach.OpAMD64I64Shl, railmach.OpAMD64I32ShrS, railmach.OpAMD64I64ShrS,
+			railmach.OpAMD64I32ShrU, railmach.OpAMD64I64ShrU, railmach.OpAMD64I32Rotl, railmach.OpAMD64I64Rotl,
+			railmach.OpAMD64I32Rotr, railmach.OpAMD64I64Rotr,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -1483,6 +1486,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			instruction := plan.Machine.Insts[instructionID]
+			semanticOp := railmach.SemanticOpcode(instruction.Op)
 			if nativeControlInstruction(instruction.Op) {
 				continue
 			}
@@ -1556,7 +1560,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					divisionRHSSaved = true
 				}
 			}
-			if (instruction.Op >= wasm.InstrI32Shl && instruction.Op <= wasm.InstrI32Rotr || instruction.Op >= wasm.InstrI64Shl && instruction.Op <= wasm.InstrI64Rotr) && len(operands) == 2 {
+			if (semanticOp >= wasm.InstrI32Shl && semanticOp <= wasm.InstrI32Rotr || semanticOp >= wasm.InstrI64Shl && semanticOp <= wasm.InstrI64Rotr) && len(operands) == 2 {
 				lhs := plan.Allocation.LocationAt(operands[0].Reg, currentPosition)
 				result := plan.Allocation.LocationAt(instruction.Result, currentPosition)
 				lhsInRCX := operands[0].Reg != operands[1].Reg && lhs.Kind == railmach.LocationRegister && amd64RailMachPhysical(lhs) == amd64.RCX
@@ -3976,10 +3980,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.SetccReg(condition, dst)
 				continue
 			}
-			if instruction.Op >= wasm.InstrI32Shl && instruction.Op <= wasm.InstrI32Rotr || instruction.Op >= wasm.InstrI64Shl && instruction.Op <= wasm.InstrI64Rotr {
-				if producer != ^uint32(0) && plan.AMD64BMI2 && (instruction.Op == wasm.InstrI32Rotl || instruction.Op == wasm.InstrI64Rotl || instruction.Op == wasm.InstrI32Rotr || instruction.Op == wasm.InstrI64Rotr) && dst != lhs {
+			if semanticOp >= wasm.InstrI32Shl && semanticOp <= wasm.InstrI32Rotr || semanticOp >= wasm.InstrI64Shl && semanticOp <= wasm.InstrI64Rotr {
+				if producer != ^uint32(0) && plan.AMD64BMI2 && (semanticOp == wasm.InstrI32Rotl || semanticOp == wasm.InstrI64Rotl || semanticOp == wasm.InstrI32Rotr || semanticOp == wasm.InstrI64Rotr) && dst != lhs {
 					count := byte(plan.Machine.Insts[producer].Aux)
-					if instruction.Op == wasm.InstrI32Rotl || instruction.Op == wasm.InstrI64Rotl {
+					if semanticOp == wasm.InstrI32Rotl || semanticOp == wasm.InstrI64Rotl {
 						width := byte(32)
 						if wide {
 							width = 64
@@ -4000,7 +4004,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.MovReg64(out, lhs)
 				}
 				digit := byte(4)
-				switch instruction.Op {
+				switch semanticOp {
 				case wasm.InstrI32ShrS, wasm.InstrI64ShrS:
 					digit = 7
 				case wasm.InstrI32ShrU, wasm.InstrI64ShrU:
@@ -4051,7 +4055,6 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
-			semanticOp := railmach.SemanticOpcode(instruction.Op)
 			opcode := byte(0)
 			digit := byte(0)
 			switch instruction.Op {

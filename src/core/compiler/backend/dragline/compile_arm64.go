@@ -1085,6 +1085,9 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32And, railmach.OpARM64I64And, railmach.OpARM64I32Or, railmach.OpARM64I64Or,
 			railmach.OpARM64I32Xor, railmach.OpARM64I64Xor,
 			railmach.OpARM64I32Mul, railmach.OpARM64I64Mul,
+			railmach.OpARM64I32Shl, railmach.OpARM64I64Shl, railmach.OpARM64I32ShrS, railmach.OpARM64I64ShrS,
+			railmach.OpARM64I32ShrU, railmach.OpARM64I64ShrU, railmach.OpARM64I32Rotl, railmach.OpARM64I64Rotl,
+			railmach.OpARM64I32Rotr, railmach.OpARM64I64Rotr,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -5282,17 +5285,17 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					if !a.EorImm64(dst, lhs, uint64(plan.Machine.Insts[producer].Aux)) {
 						return nil, 0, true, fmt.Errorf("RailMach selected unencodable ARM64 i64.xor immediate %#x", plan.Machine.Insts[producer].Aux)
 					}
-				case wasm.InstrI32Shl, wasm.InstrI64Shl:
+				case railmach.OpARM64I32Shl, railmach.OpARM64I64Shl:
 					a.LslImm(dst, lhs, shift, !wide)
-				case wasm.InstrI32ShrS, wasm.InstrI64ShrS:
+				case railmach.OpARM64I32ShrS, railmach.OpARM64I64ShrS:
 					a.AsrImm(dst, lhs, shift, !wide)
-				case wasm.InstrI32ShrU, wasm.InstrI64ShrU:
+				case railmach.OpARM64I32ShrU, railmach.OpARM64I64ShrU:
 					a.LsrImm(dst, lhs, shift, !wide)
-				case wasm.InstrI32Rotr, wasm.InstrI64Rotr:
+				case railmach.OpARM64I32Rotr, railmach.OpARM64I64Rotr:
 					a.RorImm(dst, lhs, shift, !wide)
-				case wasm.InstrI32Rotl:
+				case railmach.OpARM64I32Rotl:
 					a.RorImm(dst, lhs, uint8(-shift)&31, true)
-				case wasm.InstrI64Rotl:
+				case railmach.OpARM64I64Rotl:
 					a.RorImm(dst, lhs, uint8(-shift)&63, false)
 				case wasm.InstrI32Eq, wasm.InstrI32Ne, wasm.InstrI32LtS, wasm.InstrI32LtU,
 					wasm.InstrI32GtS, wasm.InstrI32GtU, wasm.InstrI32LeS, wasm.InstrI32LeU,
@@ -5458,26 +5461,26 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				} else {
 					a.Eor32(dst, lhs, rhs)
 				}
-			case wasm.InstrI32Shl:
+			case railmach.OpARM64I32Shl:
 				a.Lslv32(dst, lhs, rhs)
-			case wasm.InstrI64Shl:
+			case railmach.OpARM64I64Shl:
 				a.Lslv64(dst, lhs, rhs)
-			case wasm.InstrI32ShrS:
+			case railmach.OpARM64I32ShrS:
 				a.Asrv32(dst, lhs, rhs)
-			case wasm.InstrI64ShrS:
+			case railmach.OpARM64I64ShrS:
 				a.Asrv64(dst, lhs, rhs)
-			case wasm.InstrI32ShrU:
+			case railmach.OpARM64I32ShrU:
 				a.Lsrv32(dst, lhs, rhs)
-			case wasm.InstrI64ShrU:
+			case railmach.OpARM64I64ShrU:
 				a.Lsrv64(dst, lhs, rhs)
-			case wasm.InstrI32Rotr:
+			case railmach.OpARM64I32Rotr:
 				a.Rorv32(dst, lhs, rhs)
-			case wasm.InstrI64Rotr:
+			case railmach.OpARM64I64Rotr:
 				a.Rorv64(dst, lhs, rhs)
-			case wasm.InstrI32Rotl:
+			case railmach.OpARM64I32Rotl:
 				a.Sub32(arm64.X16, arm64.XZR, rhs)
 				a.Rorv32(dst, lhs, arm64.X16)
-			case wasm.InstrI64Rotl:
+			case railmach.OpARM64I64Rotl:
 				a.Sub64(arm64.X16, arm64.XZR, rhs)
 				a.Rorv64(dst, lhs, arm64.X16)
 			}
@@ -6266,7 +6269,7 @@ func arm64RailMachByteWidenPairConsumer(plan *nativeBackendPlan, first uint32) (
 		return 0, false
 	}
 	definition := plan.Machine.VRegs[shifted].Def / 6
-	if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Op != wasm.InstrI64ShrU {
+	if int(definition) >= len(plan.Machine.Insts) || railmach.SemanticOpcode(plan.Machine.Insts[definition].Op) != wasm.InstrI64ShrU {
 		return 0, false
 	}
 	operands := plan.Machine.InstructionOperands(definition)
