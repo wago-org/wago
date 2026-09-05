@@ -972,7 +972,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64F64x2Abs, railmach.OpAMD64F64x2Neg, railmach.OpAMD64F64x2Sqrt,
 			railmach.OpAMD64F64x2Add, railmach.OpAMD64F64x2Sub, railmach.OpAMD64F64x2Mul, railmach.OpAMD64F64x2Div,
 			railmach.OpAMD64F32x4Min, railmach.OpAMD64F32x4Max, railmach.OpAMD64F32x4Pmin, railmach.OpAMD64F32x4Pmax,
-			railmach.OpAMD64F64x2Min, railmach.OpAMD64F64x2Max, railmach.OpAMD64F64x2Pmin, railmach.OpAMD64F64x2Pmax:
+			railmach.OpAMD64F64x2Min, railmach.OpAMD64F64x2Max, railmach.OpAMD64F64x2Pmin, railmach.OpAMD64F64x2Pmax,
+			railmach.OpAMD64F32x4Ceil, railmach.OpAMD64F32x4Floor, railmach.OpAMD64F32x4Trunc, railmach.OpAMD64F32x4Nearest,
+			railmach.OpAMD64F64x2Ceil, railmach.OpAMD64F64x2Floor, railmach.OpAMD64F64x2Trunc, railmach.OpAMD64F64x2Nearest:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2746,6 +2748,23 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.VPsrldImm(5, 5, 10)
 				}
 				a.VSseRRR(prefix, 0x55, dst, 5, dst)
+				continue
+			case railmach.OpAMD64F32x4Ceil, railmach.OpAMD64F32x4Floor, railmach.OpAMD64F32x4Trunc, railmach.OpAMD64F32x4Nearest,
+				railmach.OpAMD64F64x2Ceil, railmach.OpAMD64F64x2Floor, railmach.OpAMD64F64x2Trunc, railmach.OpAMD64F64x2Nearest:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector float round operand count is %d", len(operands))
+				}
+				f64 := instruction.Op >= railmach.OpAMD64F64x2Ceil && instruction.Op <= railmach.OpAMD64F64x2Nearest
+				mode := byte(0x08)
+				switch instruction.Op {
+				case railmach.OpAMD64F32x4Ceil, railmach.OpAMD64F64x2Ceil:
+					mode = 0x0a
+				case railmach.OpAMD64F32x4Floor, railmach.OpAMD64F64x2Floor:
+					mode = 0x09
+				case railmach.OpAMD64F32x4Trunc, railmach.OpAMD64F64x2Trunc:
+					mode = 0x0b
+				}
+				a.VFRoundPacked(dst, reg(operands[0].Reg), f64, mode)
 				continue
 			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 				railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,

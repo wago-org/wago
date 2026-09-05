@@ -1039,7 +1039,9 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64F64x2Abs, railmach.OpARM64F64x2Neg, railmach.OpARM64F64x2Sqrt,
 			railmach.OpARM64F64x2Add, railmach.OpARM64F64x2Sub, railmach.OpARM64F64x2Mul, railmach.OpARM64F64x2Div,
 			railmach.OpARM64F32x4Min, railmach.OpARM64F32x4Max, railmach.OpARM64F32x4Pmin, railmach.OpARM64F32x4Pmax,
-			railmach.OpARM64F64x2Min, railmach.OpARM64F64x2Max, railmach.OpARM64F64x2Pmin, railmach.OpARM64F64x2Pmax:
+			railmach.OpARM64F64x2Min, railmach.OpARM64F64x2Max, railmach.OpARM64F64x2Pmin, railmach.OpARM64F64x2Pmax,
+			railmach.OpARM64F32x4Ceil, railmach.OpARM64F32x4Floor, railmach.OpARM64F32x4Trunc, railmach.OpARM64F32x4Nearest,
+			railmach.OpARM64F64x2Ceil, railmach.OpARM64F64x2Floor, railmach.OpARM64F64x2Trunc, railmach.OpARM64F64x2Nearest:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3878,6 +3880,23 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				} else {
 					a.NeonFmin(dst, lhs, rhs, f64)
 				}
+				continue
+			case railmach.OpARM64F32x4Ceil, railmach.OpARM64F32x4Floor, railmach.OpARM64F32x4Trunc, railmach.OpARM64F32x4Nearest,
+				railmach.OpARM64F64x2Ceil, railmach.OpARM64F64x2Floor, railmach.OpARM64F64x2Trunc, railmach.OpARM64F64x2Nearest:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector float round operand count is %d", len(operands))
+				}
+				f64 := instruction.Op >= railmach.OpARM64F64x2Ceil && instruction.Op <= railmach.OpARM64F64x2Nearest
+				mode := byte('n')
+				switch instruction.Op {
+				case railmach.OpARM64F32x4Ceil, railmach.OpARM64F64x2Ceil:
+					mode = 'p'
+				case railmach.OpARM64F32x4Floor, railmach.OpARM64F64x2Floor:
+					mode = 'm'
+				case railmach.OpARM64F32x4Trunc, railmach.OpARM64F64x2Trunc:
+					mode = 'z'
+				}
+				a.NeonFrint(dst, reg(operands[0].Reg), f64, mode)
 				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
 				railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,

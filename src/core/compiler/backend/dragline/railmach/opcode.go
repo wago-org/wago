@@ -181,6 +181,14 @@ const (
 	OpAMD64F64x2Max
 	OpAMD64F64x2Pmin
 	OpAMD64F64x2Pmax
+	OpAMD64F32x4Ceil
+	OpAMD64F32x4Floor
+	OpAMD64F32x4Trunc
+	OpAMD64F32x4Nearest
+	OpAMD64F64x2Ceil
+	OpAMD64F64x2Floor
+	OpAMD64F64x2Trunc
+	OpAMD64F64x2Nearest
 	opAMD64SelectedEnd
 )
 
@@ -350,6 +358,14 @@ const (
 	OpARM64F64x2Max
 	OpARM64F64x2Pmin
 	OpARM64F64x2Pmax
+	OpARM64F32x4Ceil
+	OpARM64F32x4Floor
+	OpARM64F32x4Trunc
+	OpARM64F32x4Nearest
+	OpARM64F64x2Ceil
+	OpARM64F64x2Floor
+	OpARM64F64x2Trunc
+	OpARM64F64x2Nearest
 	opARM64SelectedEnd
 )
 
@@ -417,6 +433,8 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpAMD64F64x2Abs, OpAMD64F64x2Neg, OpAMD64F64x2Sqrt, OpAMD64F64x2Add, OpAMD64F64x2Sub, OpAMD64F64x2Mul, OpAMD64F64x2Div,
 		OpAMD64F32x4Min, OpAMD64F32x4Max, OpAMD64F32x4Pmin, OpAMD64F32x4Pmax,
 		OpAMD64F64x2Min, OpAMD64F64x2Max, OpAMD64F64x2Pmin, OpAMD64F64x2Pmax,
+		OpAMD64F32x4Ceil, OpAMD64F32x4Floor, OpAMD64F32x4Trunc, OpAMD64F32x4Nearest,
+		OpAMD64F64x2Ceil, OpAMD64F64x2Floor, OpAMD64F64x2Trunc, OpAMD64F64x2Nearest,
 		OpARM64V128Move, OpARM64V128Const, OpARM64V128Load, OpARM64V128Store, OpARM64V128And, OpARM64V128Or, OpARM64V128Xor,
 		OpARM64I8x16Add, OpARM64I8x16AddSatS, OpARM64I8x16AddSatU, OpARM64I8x16Sub, OpARM64I8x16SubSatS, OpARM64I8x16SubSatU,
 		OpARM64I16x8Add, OpARM64I16x8AddSatS, OpARM64I16x8AddSatU, OpARM64I16x8Sub, OpARM64I16x8SubSatS, OpARM64I16x8SubSatU,
@@ -454,7 +472,9 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpARM64F32x4Abs, OpARM64F32x4Neg, OpARM64F32x4Sqrt, OpARM64F32x4Add, OpARM64F32x4Sub, OpARM64F32x4Mul, OpARM64F32x4Div,
 		OpARM64F64x2Abs, OpARM64F64x2Neg, OpARM64F64x2Sqrt, OpARM64F64x2Add, OpARM64F64x2Sub, OpARM64F64x2Mul, OpARM64F64x2Div,
 		OpARM64F32x4Min, OpARM64F32x4Max, OpARM64F32x4Pmin, OpARM64F32x4Pmax,
-		OpARM64F64x2Min, OpARM64F64x2Max, OpARM64F64x2Pmin, OpARM64F64x2Pmax:
+		OpARM64F64x2Min, OpARM64F64x2Max, OpARM64F64x2Pmin, OpARM64F64x2Pmax,
+		OpARM64F32x4Ceil, OpARM64F32x4Floor, OpARM64F32x4Trunc, OpARM64F32x4Nearest,
+		OpARM64F64x2Ceil, OpARM64F64x2Floor, OpARM64F64x2Trunc, OpARM64F64x2Nearest:
 		return true
 	default:
 		return false
@@ -803,6 +823,22 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64F64x2Pmin, OpARM64F64x2Pmin
 		case wasm.InstrF64x2Pmax:
 			amd64, arm64 = OpAMD64F64x2Pmax, OpARM64F64x2Pmax
+		case wasm.InstrF32x4Ceil:
+			amd64, arm64 = OpAMD64F32x4Ceil, OpARM64F32x4Ceil
+		case wasm.InstrF32x4Floor:
+			amd64, arm64 = OpAMD64F32x4Floor, OpARM64F32x4Floor
+		case wasm.InstrF32x4Trunc:
+			amd64, arm64 = OpAMD64F32x4Trunc, OpARM64F32x4Trunc
+		case wasm.InstrF32x4Nearest:
+			amd64, arm64 = OpAMD64F32x4Nearest, OpARM64F32x4Nearest
+		case wasm.InstrF64x2Ceil:
+			amd64, arm64 = OpAMD64F64x2Ceil, OpARM64F64x2Ceil
+		case wasm.InstrF64x2Floor:
+			amd64, arm64 = OpAMD64F64x2Floor, OpARM64F64x2Floor
+		case wasm.InstrF64x2Trunc:
+			amd64, arm64 = OpAMD64F64x2Trunc, OpARM64F64x2Trunc
+		case wasm.InstrF64x2Nearest:
+			amd64, arm64 = OpAMD64F64x2Nearest, OpARM64F64x2Nearest
 		default:
 			continue
 		}
