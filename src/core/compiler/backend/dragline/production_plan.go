@@ -1007,6 +1007,33 @@ func nativeSegmentedAllocationBetter(candidate, retained railmach.ScheduleScore,
 		candidate.BrokenFusions <= retained.BrokenFusions
 }
 
+// nativeARM64PrePostIndexProfitable keeps writeback addressing for integer
+// memory traffic, where it reduces address materialization without crossing
+// register banks. Scalar floating-point traffic already has a compact indexed
+// form; forcing it through the integer scratch bank adds FMOVs and serializes
+// otherwise independent accesses through the written-back address register.
+func nativeARM64PrePostIndexProfitable(machine *railmach.Func, rewrite railmach.Rewrite) bool {
+	if machine == nil || int(rewrite.First) >= len(machine.Insts) {
+		return false
+	}
+	instruction := machine.Insts[rewrite.First]
+	_, _, store, memory := nativeMemoryAccess(instruction.Op)
+	if !memory {
+		// The post-RA verifier already proves non-scalar memory rewrites. This
+		// policy only overrides scalar floating-point forms.
+		return true
+	}
+	value := instruction.Result
+	if store {
+		operands := machine.InstructionOperands(rewrite.First)
+		if len(operands) != 2 {
+			return false
+		}
+		value = operands[1].Reg
+	}
+	return value != 0 && int(value) < len(machine.VRegs) && machine.VRegs[value].Bank != railmach.BankFPR
+}
+
 func railMachPhysicalLiveAcross(plan *nativeBackendPlan, instructionID uint32, bank railmach.Bank, physical uint16) bool {
 	position := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 	for _, interval := range plan.Allocation.Intervals {
@@ -1500,6 +1527,9 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 					p.postRAFusionWith[rewrite.Second] = rewrite.First + 1
 				}
 			case railmach.RewriteARM64PrePostIndex:
+				if !nativeARM64PrePostIndexProfitable(machine, rewrite) {
+					continue
+				}
 				if machineTarget != railmach.TargetARM64 || len(p.postRASkip) != 0 && (p.postRASkip[rewrite.First] || rewrite.Second != ^uint32(0) && p.postRASkip[rewrite.Second]) {
 					continue
 				}

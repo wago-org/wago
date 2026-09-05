@@ -665,6 +665,42 @@ func TestNativeSegmentedAllocationRequiresStrictDebtWin(t *testing.T) {
 	}
 }
 
+func TestNativeARM64PrePostIndexAvoidsScalarFloatBankCrossing(t *testing.T) {
+	machine := &railmach.Func{
+		Insts: []railmach.Inst{
+			{Result: 1, Op: wasm.InstrF64Load, OperandStart: 0, OperandCount: 1},
+			{Op: wasm.InstrF64Store, OperandStart: 1, OperandCount: 2},
+			{Result: 3, Op: wasm.InstrI64Load, OperandStart: 3, OperandCount: 1},
+			{Op: wasm.InstrI64Store, OperandStart: 4, OperandCount: 2},
+		},
+		Operands: []railmach.Operand{
+			{Reg: 2},
+			{Reg: 2}, {Reg: 1},
+			{Reg: 2},
+			{Reg: 2}, {Reg: 3},
+		},
+		VRegs: []railmach.VRegData{
+			{},
+			{Type: railmach.TypeF64, Bank: railmach.BankFPR},
+			{Type: railmach.TypeI32, Bank: railmach.BankGPR},
+			{Type: railmach.TypeI64, Bank: railmach.BankGPR},
+		},
+	}
+	for _, instruction := range []uint32{0, 1} {
+		if nativeARM64PrePostIndexProfitable(machine, railmach.Rewrite{First: instruction, Kind: railmach.RewriteARM64PrePostIndex}) {
+			t.Fatalf("floating-point memory instruction %d accepted writeback addressing", instruction)
+		}
+	}
+	for _, instruction := range []uint32{2, 3} {
+		if !nativeARM64PrePostIndexProfitable(machine, railmach.Rewrite{First: instruction, Kind: railmach.RewriteARM64PrePostIndex}) {
+			t.Fatalf("integer memory instruction %d rejected writeback addressing", instruction)
+		}
+	}
+	if nativeARM64PrePostIndexProfitable(machine, railmach.Rewrite{First: 4, Kind: railmach.RewriteARM64PrePostIndex}) {
+		t.Fatal("out-of-range rewrite accepted")
+	}
+}
+
 func TestNativeScheduleScorePrefersBoundedLoopInvariantMotionForSpeed(t *testing.T) {
 	stable := railmach.ScheduleScore{Kind: railmach.ScheduleKindSourceStable, PhysicalCopies: 3}
 	hoisted := railmach.ScheduleScore{Kind: railmach.ScheduleKindPressure, PhysicalCopies: 4, LoopInvariantOps: 1}
