@@ -882,7 +882,7 @@ func (v *funcValidator) directElemRefType(index uint32) (RefType, error) {
 	}
 }
 
-func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, widths memargWidths, multiMemory bool) error {
+func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, widths memargWidths, multiMemory bool, segmentCounts *validationSegmentCounts) error {
 	v.localParams = ft.Params
 	v.localRuns = body.locals.Runs
 	var overflow bool
@@ -919,7 +919,7 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 			if err := v.stepDirectOp(&op); err != nil {
 				return err
 			}
-			v.recordValidatedCallFacts(facts, &op)
+			v.recordValidatedAnalysisFacts(facts, &op, segmentCounts)
 		}
 	}
 	for {
@@ -938,11 +938,17 @@ func (v *funcValidator) validateFuncDirect(body directCodeBody, ft *CompType, wi
 	}
 }
 
-func (v *funcValidator) recordValidatedCallFacts(facts *ValidatedFuncFacts, op *directOp) {
+func (v *funcValidator) recordValidatedAnalysisFacts(facts *ValidatedFuncFacts, op *directOp, segmentCounts *validationSegmentCounts) {
 	if op.kind != directInstr {
 		return
 	}
 	switch op.instr.Kind {
+	case InstrMemoryInit, InstrDataDrop:
+		segmentCounts.data = max(segmentCounts.data, segmentStateCount(op.instr.Index))
+		return
+	case InstrTableInit, InstrElemDrop:
+		segmentCounts.elem = max(segmentCounts.elem, segmentStateCount(op.instr.Index))
+		return
 	case InstrCallIndirect, InstrReturnCallIndirect, InstrCallRef, InstrReturnCallRef:
 	default:
 		return
@@ -963,6 +969,13 @@ func (v *funcValidator) recordValidatedCallFacts(facts *ValidatedFuncFacts, op *
 			return
 		}
 	}
+}
+
+func segmentStateCount(index uint32) uint32 {
+	if index == ^uint32(0) {
+		return index
+	}
+	return index + 1
 }
 
 type directOpKind uint8
