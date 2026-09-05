@@ -452,7 +452,11 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrI32x4Add, wasm.InstrI32x4Sub,
 			wasm.InstrI64x2Add, wasm.InstrI64x2Sub,
 			wasm.InstrI8x16Eq, wasm.InstrI8x16Ne, wasm.InstrI16x8Eq, wasm.InstrI16x8Ne,
-			wasm.InstrI32x4Eq, wasm.InstrI32x4Ne, wasm.InstrI64x2Eq, wasm.InstrI64x2Ne:
+			wasm.InstrI32x4Eq, wasm.InstrI32x4Ne, wasm.InstrI64x2Eq, wasm.InstrI64x2Ne,
+			wasm.InstrI8x16LtS, wasm.InstrI8x16GtS, wasm.InstrI8x16LeS, wasm.InstrI8x16GeS,
+			wasm.InstrI16x8LtS, wasm.InstrI16x8GtS, wasm.InstrI16x8LeS, wasm.InstrI16x8GeS,
+			wasm.InstrI32x4LtS, wasm.InstrI32x4GtS, wasm.InstrI32x4LeS, wasm.InstrI32x4GeS,
+			wasm.InstrI64x2LtS, wasm.InstrI64x2GtS, wasm.InstrI64x2LeS, wasm.InstrI64x2GeS:
 		default:
 			return false
 		}
@@ -1589,7 +1593,9 @@ func machineNeedsAMD64VectorScratch(machine *railmach.Func) bool {
 	}
 	for _, instruction := range machine.Insts {
 		switch instruction.Op {
-		case wasm.InstrI8x16Ne, wasm.InstrI16x8Ne, wasm.InstrI32x4Ne, wasm.InstrI64x2Ne:
+		case wasm.InstrI8x16Ne, wasm.InstrI16x8Ne, wasm.InstrI32x4Ne, wasm.InstrI64x2Ne,
+			wasm.InstrI8x16LeS, wasm.InstrI8x16GeS, wasm.InstrI16x8LeS, wasm.InstrI16x8GeS,
+			wasm.InstrI32x4LeS, wasm.InstrI32x4GeS, wasm.InstrI64x2LeS, wasm.InstrI64x2GeS:
 			return true
 		}
 	}
