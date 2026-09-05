@@ -994,6 +994,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64I8x16MinS, railmach.OpARM64I8x16MinU, railmach.OpARM64I8x16MaxS, railmach.OpARM64I8x16MaxU, railmach.OpARM64I8x16AvgrU,
 			railmach.OpARM64I16x8Mul, railmach.OpARM64I16x8MinS, railmach.OpARM64I16x8MinU, railmach.OpARM64I16x8MaxS, railmach.OpARM64I16x8MaxU, railmach.OpARM64I16x8AvgrU,
 			railmach.OpARM64I32x4Mul, railmach.OpARM64I32x4MinS, railmach.OpARM64I32x4MinU, railmach.OpARM64I32x4MaxS, railmach.OpARM64I32x4MaxU,
+			railmach.OpARM64I8x16Abs, railmach.OpARM64I8x16Neg, railmach.OpARM64I16x8Abs, railmach.OpARM64I16x8Neg,
+			railmach.OpARM64I32x4Abs, railmach.OpARM64I32x4Neg, railmach.OpARM64I64x2Abs, railmach.OpARM64I64x2Neg,
 			railmach.OpARM64I8x16Eq, railmach.OpARM64I8x16Ne, railmach.OpARM64I16x8Eq, railmach.OpARM64I16x8Ne,
 			railmach.OpARM64I32x4Eq, railmach.OpARM64I32x4Ne, railmach.OpARM64I64x2Eq, railmach.OpARM64I64x2Ne,
 			railmach.OpARM64I8x16LtS, railmach.OpARM64I8x16GtS, railmach.OpARM64I8x16LeS, railmach.OpARM64I8x16GeS,
@@ -3900,6 +3902,31 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					mode = 'z'
 				}
 				a.NeonFrint(dst, reg(operands[0].Reg), f64, mode)
+				continue
+			case railmach.OpARM64I8x16Abs, railmach.OpARM64I8x16Neg, railmach.OpARM64I16x8Abs, railmach.OpARM64I16x8Neg,
+				railmach.OpARM64I32x4Abs, railmach.OpARM64I32x4Neg, railmach.OpARM64I64x2Abs, railmach.OpARM64I64x2Neg:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector integer unary operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpARM64I8x16Abs:
+					a.NeonAbsB(dst, src)
+				case railmach.OpARM64I8x16Neg:
+					a.NeonNegB(dst, src)
+				case railmach.OpARM64I16x8Abs:
+					a.NeonAbsH(dst, src)
+				case railmach.OpARM64I16x8Neg:
+					a.NeonNegH(dst, src)
+				case railmach.OpARM64I32x4Abs:
+					a.NeonAbsS(dst, src)
+				case railmach.OpARM64I32x4Neg:
+					a.NeonNegS(dst, src)
+				case railmach.OpARM64I64x2Abs:
+					a.NeonAbsD(dst, src)
+				default:
+					a.NeonNegD(dst, src)
+				}
 				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
 				railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,

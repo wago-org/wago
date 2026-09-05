@@ -5447,6 +5447,80 @@ func TestDraglineRailMachVectorIntegerMinMaxMulExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachVectorIntegerUnaryExecution(t *testing.T) {
+	repeat := func(width int, value int64) (out [16]byte) {
+		for lane := 0; lane < 16/width; lane++ {
+			switch width {
+			case 1:
+				out[lane] = byte(value)
+			case 2:
+				binary.LittleEndian.PutUint16(out[lane*2:], uint16(value))
+			case 4:
+				binary.LittleEndian.PutUint32(out[lane*4:], uint32(value))
+			case 8:
+				binary.LittleEndian.PutUint64(out[lane*8:], uint64(value))
+			}
+		}
+		return
+	}
+	for _, test := range []struct {
+		name      string
+		subopcode uint32
+		input     [16]byte
+		want      [16]byte
+	}{
+		{name: "i8x16.abs", subopcode: 96, input: repeat(1, -7), want: repeat(1, 7)},
+		{name: "i8x16.neg", subopcode: 97, input: repeat(1, 7), want: repeat(1, -7)},
+		{name: "i16x8.abs", subopcode: 128, input: repeat(2, -700), want: repeat(2, 700)},
+		{name: "i16x8.neg", subopcode: 129, input: repeat(2, 700), want: repeat(2, -700)},
+		{name: "i32x4.abs", subopcode: 160, input: repeat(4, -70000), want: repeat(4, 70000)},
+		{name: "i32x4.neg", subopcode: 161, input: repeat(4, 70000), want: repeat(4, -70000)},
+		{name: "i64x2.abs", subopcode: 192, input: repeat(8, -7000000000), want: repeat(8, 7000000000)},
+		{name: "i64x2.neg", subopcode: 193, input: repeat(8, 7000000000), want: repeat(8, -7000000000)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x41, 0x00, 0xfd, 0x0c}
+			body = append(body, test.input[:]...)
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(test.subopcode)...)
+			body = append(body, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+			read0 := []byte{0x41, 0x00, 0x29, 0x03, 0x00, 0x0b}
+			read8 := []byte{0x41, 0x08, 0x29, 0x03, 0x00, 0x0b}
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read0", 0, 1), wasmtest.ExportEntry("read8", 0, 2))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(read0), wasmtest.Code(read8))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if _, err := instance.Invoke("run"); err != nil {
+				t.Fatal(err)
+			}
+			var got [16]byte
+			for index, name := range []string{"read0", "read8"} {
+				result, err := instance.Invoke(name)
+				if err != nil || len(result) != 1 {
+					t.Fatalf("%s result = %#x, %v", name, result, err)
+				}
+				binary.LittleEndian.PutUint64(got[index*8:], result[0])
+			}
+			if got != test.want {
+				t.Fatalf("result = %x; want %x", got, test.want)
+			}
+		})
+	}
+}
+
 func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
 	if runtime.GOARCH != "arm64" {
 		t.Skip("Dragline structured SIMD execution is currently ARM64-only")

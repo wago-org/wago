@@ -454,6 +454,8 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrI8x16MinS, wasm.InstrI8x16MinU, wasm.InstrI8x16MaxS, wasm.InstrI8x16MaxU, wasm.InstrI8x16AvgrU,
 			wasm.InstrI16x8Mul, wasm.InstrI16x8MinS, wasm.InstrI16x8MinU, wasm.InstrI16x8MaxS, wasm.InstrI16x8MaxU, wasm.InstrI16x8AvgrU,
 			wasm.InstrI32x4Mul, wasm.InstrI32x4MinS, wasm.InstrI32x4MinU, wasm.InstrI32x4MaxS, wasm.InstrI32x4MaxU,
+			wasm.InstrI8x16Abs, wasm.InstrI8x16Neg, wasm.InstrI16x8Abs, wasm.InstrI16x8Neg,
+			wasm.InstrI32x4Abs, wasm.InstrI32x4Neg, wasm.InstrI64x2Abs, wasm.InstrI64x2Neg,
 			wasm.InstrI8x16Eq, wasm.InstrI8x16Ne, wasm.InstrI16x8Eq, wasm.InstrI16x8Ne,
 			wasm.InstrI32x4Eq, wasm.InstrI32x4Ne, wasm.InstrI64x2Eq, wasm.InstrI64x2Ne,
 			wasm.InstrI8x16LtS, wasm.InstrI8x16GtS, wasm.InstrI8x16LeS, wasm.InstrI8x16GeS,
@@ -1669,7 +1671,8 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 			wasm.InstrI16x8Bitmask,
 			wasm.InstrI16x8ExtaddPairwiseI8x16S, wasm.InstrI16x8ExtaddPairwiseI8x16U,
 			wasm.InstrI32x4ExtaddPairwiseI16x8S,
-			wasm.InstrF32x4Abs, wasm.InstrF32x4Neg, wasm.InstrF64x2Abs, wasm.InstrF64x2Neg:
+			wasm.InstrF32x4Abs, wasm.InstrF32x4Neg, wasm.InstrF64x2Abs, wasm.InstrF64x2Neg,
+			wasm.InstrI8x16Neg, wasm.InstrI16x8Neg, wasm.InstrI32x4Neg, wasm.InstrI64x2Abs, wasm.InstrI64x2Neg:
 			count = 1 // XMM5 is the ordinary vector lowering scratch.
 		}
 	}

@@ -927,6 +927,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I8x16MinS, railmach.OpAMD64I8x16MinU, railmach.OpAMD64I8x16MaxS, railmach.OpAMD64I8x16MaxU, railmach.OpAMD64I8x16AvgrU,
 			railmach.OpAMD64I16x8Mul, railmach.OpAMD64I16x8MinS, railmach.OpAMD64I16x8MinU, railmach.OpAMD64I16x8MaxS, railmach.OpAMD64I16x8MaxU, railmach.OpAMD64I16x8AvgrU,
 			railmach.OpAMD64I32x4Mul, railmach.OpAMD64I32x4MinS, railmach.OpAMD64I32x4MinU, railmach.OpAMD64I32x4MaxS, railmach.OpAMD64I32x4MaxU,
+			railmach.OpAMD64I8x16Abs, railmach.OpAMD64I8x16Neg, railmach.OpAMD64I16x8Abs, railmach.OpAMD64I16x8Neg,
+			railmach.OpAMD64I32x4Abs, railmach.OpAMD64I32x4Neg, railmach.OpAMD64I64x2Abs, railmach.OpAMD64I64x2Neg,
 			railmach.OpAMD64I8x16Eq, railmach.OpAMD64I8x16Ne, railmach.OpAMD64I16x8Eq, railmach.OpAMD64I16x8Ne,
 			railmach.OpAMD64I32x4Eq, railmach.OpAMD64I32x4Ne, railmach.OpAMD64I64x2Eq, railmach.OpAMD64I64x2Ne,
 			railmach.OpAMD64I8x16LtS, railmach.OpAMD64I8x16GtS, railmach.OpAMD64I8x16LeS, railmach.OpAMD64I8x16GeS,
@@ -2768,6 +2770,38 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					mode = 0x0b
 				}
 				a.VFRoundPacked(dst, reg(operands[0].Reg), f64, mode)
+				continue
+			case railmach.OpAMD64I8x16Abs, railmach.OpAMD64I8x16Neg, railmach.OpAMD64I16x8Abs, railmach.OpAMD64I16x8Neg,
+				railmach.OpAMD64I32x4Abs, railmach.OpAMD64I32x4Neg, railmach.OpAMD64I64x2Abs, railmach.OpAMD64I64x2Neg:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector integer unary operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpAMD64I8x16Abs:
+					a.VPabsb(dst, src)
+				case railmach.OpAMD64I16x8Abs:
+					a.VPabsw(dst, src)
+				case railmach.OpAMD64I32x4Abs:
+					a.VPabsd(dst, src)
+				case railmach.OpAMD64I64x2Abs:
+					a.VPxor(5, 5, 5)
+					a.VPcmpgtq(5, 5, src)
+					a.VPxor(dst, src, 5)
+					a.VPsubq(dst, dst, 5)
+				default:
+					a.VPxor(5, 5, 5)
+					switch instruction.Op {
+					case railmach.OpAMD64I8x16Neg:
+						a.VPsubb(dst, 5, src)
+					case railmach.OpAMD64I16x8Neg:
+						a.VPsubw(dst, 5, src)
+					case railmach.OpAMD64I32x4Neg:
+						a.VPsubd(dst, 5, src)
+					default:
+						a.VPsubq(dst, 5, src)
+					}
+				}
 				continue
 			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 				railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,
