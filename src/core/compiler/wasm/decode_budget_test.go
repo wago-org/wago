@@ -140,3 +140,49 @@ func BenchmarkDecodeStructuredCustom(b *testing.B) {
 		})
 	}
 }
+
+func explicitTypeModule(n int) []byte {
+	payload := binary.AppendUvarint(nil, uint64(n))
+	for i := 0; i < n; i++ {
+		payload = append(payload, 0x4e, 1, 0x60, 0, 0)
+	}
+	return module(section(secType, payload...))
+}
+
+func TestExplicitTypesDoNotReserveSingletonSlab(t *testing.T) {
+	// This quota covers exact group and subtype storage, but cannot cover an
+	// extra subtype per group or the former eight-copy slab reservation.
+	data := explicitTypeModule(1000)
+	dm, err := DecodeModuleByteBackedWithLimits(data, ValidationFeatures{}, DecodeLimits{MaxMetadataBytes: 400000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dm.Module.Types) != 1000 {
+		t.Fatal("wrong type group count")
+	}
+	for _, group := range dm.Module.Types {
+		if len(group.SubTypes) != 1 || cap(group.SubTypes) != 1 {
+			t.Fatal("group exposes unrelated types")
+		}
+	}
+}
+
+func BenchmarkDecodeTypeGroups(b *testing.B) {
+	for _, n := range []int{1, 1000, 100000} {
+		for _, explicit := range []bool{false, true} {
+			b.Run(fmt.Sprintf("groups=%d/explicit=%t", n, explicit), func(b *testing.B) {
+				data := singletonTypeModule(n)
+				if explicit {
+					data = explicitTypeModule(n)
+				}
+				b.ReportAllocs()
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					if _, err := DecodeModule(data); err != nil {
+						b.Fatal(err)
+					}
+				}
+			})
+		}
+	}
+}

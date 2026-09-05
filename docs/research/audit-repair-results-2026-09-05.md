@@ -60,6 +60,24 @@ The Linux/arm64 runtime test binary cross-builds. Native ARM64 execution remains
 required; the race detector cannot prove assembly ordering. Signal negotiation
 and scan optimization still need their separate measurements.
 
+## Lazy type slabs
+
+Implicit groups allocate slabs only as needed, growing from 16 to at most 1024
+subtypes per slab. Explicit groups allocate only their own exact subtype vector.
+Each reservation covers actual capacity and rounding. Singletons still expose
+capacity one; at most 1023 unused subtype slots can remain in the final slab.
+All wasm tests pass, including an explicit-only 1000-group fixture within a
+400000-byte quota.
+
+The 100000-singleton control changed from 17605392 B/op and 6 allocations to
+17611408 B/op and 108 allocations. The extra 102 allocations are bounded slab
+allocations, not one allocation per type. Short samples improved from about
+11.3 ms to 10.0 ms; final A/B timing is pending. The explicit-only 100000-group
+case uses 18401040 B/op, with no unused 15.2 MB singleton slab. Small one-group
+implicit and explicit cases each use 968 B/op and 6 allocations. Captures are in
+`type-slabs-after.txt`. The allocation/retention tradeoff is explicit here because
+reducing unused storage does not reduce every benchmark's allocation count.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.

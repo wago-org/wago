@@ -364,7 +364,7 @@ func decodeSubType(r *reader) (SubType, error) {
 func decodeRecType(r *reader) (RecType, error) {
 	if b, ok := r.peek(); ok && b == 0x4e {
 		_, _ = r.byte()
-		sts, err := readVec(r, decodeSubType)
+		sts, err := readMetadataVec(r, decodeSubType)
 		return RecType{SubTypes: sts}, err
 	}
 	st, err := decodeSubType(r)

@@ -98,7 +98,7 @@ func (r *reader) reserveType() error {
 	return nil
 }
 
-// decodeTypeSection keeps implicit singleton groups in one shared backing slab.
+// decodeTypeSection packs implicit singleton groups into lazily allocated slabs.
 // Explicit recursive groups retain their own contiguous subtype vectors.
 func decodeTypeSection(r *reader) ([]RecType, error) {
 	n, err := r.u32()
@@ -114,19 +114,25 @@ func decodeTypeSection(r *reader) ([]RecType, error) {
 	if uint64(n) > uint64(r.left()) {
 		return nil, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
 	}
-	if err := reserveDecodedSlice[RecType](r, n); err != nil {
-		return nil, err
-	}
-	if err := reserveDecodedSlice[SubType](r, n); err != nil {
+	if err := reserveMetadataStorage[RecType](r, n); err != nil {
 		return nil, err
 	}
 	groups := make([]RecType, n)
-	singletons := make([]SubType, n)
-	used := 0
+	var singletons []SubType
+	used, nextSlab := 0, 16
 	for i := range groups {
 		if b, ok := r.peek(); ok && b == 0x4e {
 			groups[i], err = decodeRecType(r)
 		} else {
+			if used == len(singletons) {
+				count := min(nextSlab, len(groups)-i)
+				if err := reserveMetadataStorage[SubType](r, uint32(count)); err != nil {
+					return nil, err
+				}
+				singletons = make([]SubType, count)
+				used = 0
+				nextSlab = min(nextSlab*2, 1024)
+			}
 			singletons[used], err = decodeSubType(r)
 			groups[i].SubTypes = singletons[used : used+1 : used+1]
 			used++
