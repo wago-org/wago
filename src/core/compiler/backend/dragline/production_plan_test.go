@@ -607,7 +607,7 @@ func TestRailMachRejectsMixedSIMDBranchCastFunction(t *testing.T) {
 	}
 }
 
-func TestRailMachRejectsV128ABICasesBeforeVectorABI(t *testing.T) {
+func TestRailMachAdmitsV128LocalsButRejectsUnqualifiedBoundaryCases(t *testing.T) {
 	foundation := &railssa.StackFunc{
 		HasV128:     true,
 		ResultTypes: []wasm.ValType{wasm.V128},
@@ -621,7 +621,6 @@ func TestRailMachRejectsV128ABICasesBeforeVectorABI(t *testing.T) {
 	}
 	for name, edit := range map[string]func(*railssa.StackFunc){
 		"public result": func(stack *railssa.StackFunc) { stack.Results = []wasm.ValType{wasm.V128} },
-		"vector local":  func(stack *railssa.StackFunc) { stack.Locals = []wasm.ValType{wasm.V128} },
 		"call": func(stack *railssa.StackFunc) {
 			stack.Instrs = append(stack.Instrs, railssa.StackInstr{Kind: wasm.InstrCall})
 		},
@@ -634,6 +633,11 @@ func TestRailMachRejectsV128ABICasesBeforeVectorABI(t *testing.T) {
 				t.Fatal("incomplete vector contract entered RailMach")
 			}
 		})
+	}
+	local := *foundation
+	local.Locals = []wasm.ValType{wasm.V128}
+	if !railMachCandidate(&local, true) {
+		t.Fatal("declared v128 local did not enter RailMach")
 	}
 }
 

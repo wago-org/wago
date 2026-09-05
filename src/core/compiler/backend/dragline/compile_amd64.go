@@ -1275,6 +1275,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				} else {
 					a.Load64(dst, paramBase, int32(local)*8)
 				}
+			} else if data.Type == railmach.TypeV128 {
+				a.VPxor(dst, dst, dst)
 			} else if data.Bank == railmach.BankFPR {
 				a.XorSelf32(amd64.R10)
 				a.MovGprToXmm(dst, amd64.R10, data.Type == railmach.TypeF64)

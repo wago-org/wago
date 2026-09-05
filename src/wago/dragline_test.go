@@ -4232,6 +4232,63 @@ func TestDraglineRailMachV128FoundationExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachV128LocalExecution(t *testing.T) {
+	constant := [16]byte{0x80, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	body := []byte{0x01, 0x01, 0x7b} // one v128 local
+	body = append(body,
+		0x41, 0x00, // i32.const 0
+		0x20, 0x00, // local.get 0 (the Wasm-mandated all-zero initial value)
+		0xfd, 0x0b, 0x04, 0x00, // v128.store align=16 offset=0
+	)
+	body = append(body, 0xfd, 0x0c)
+	body = append(body, constant[:]...)
+	body = append(body,
+		0x21, 0x00, // local.set 0
+		0x41, 0x20, // i32.const 32
+		0x20, 0x00, // local.get 0
+		0xfd, 0x0b, 0x04, 0x00, // v128.store align=16 offset=0
+		0x0b,
+	)
+	code := append(wasmtest.ULEB(uint32(len(body))), body...)
+	read := func(address byte) []byte { return []byte{0x41, address, 0x29, 0x03, 0x00, 0x0b} }
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(
+			wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("zero0", 0, 1), wasmtest.ExportEntry("zero8", 0, 2),
+			wasmtest.ExportEntry("read0", 0, 3), wasmtest.ExportEntry("read8", 0, 4),
+		)),
+		wasmtest.Section(10, wasmtest.Vec(code, wasmtest.Code(read(0)), wasmtest.Code(read(8)), wasmtest.Code(read(32)), wasmtest.Code(read(40)))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run"); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"zero0", "zero8"} {
+		result, err := instance.Invoke(name)
+		if err != nil || len(result) != 1 || result[0] != 0 {
+			t.Fatalf("%s after zero-initialized vector local = %#x, %v; want 0", name, result, err)
+		}
+	}
+	for index, name := range []string{"read0", "read8"} {
+		result, err := instance.Invoke(name)
+		want := binary.LittleEndian.Uint64(constant[index*8:])
+		if err != nil || len(result) != 1 || result[0] != want {
+			t.Fatalf("%s after vector local = %#x, %v; want %#x", name, result, err, want)
+		}
+	}
+}
+
 func TestDraglineRailMachVectorLoadVariantsExecution(t *testing.T) {
 	payload := [16]byte{0x80, 0x7f, 0xfe, 0x01, 0x00, 0xff, 0x34, 0x92, 8, 9, 10, 11, 12, 13, 14, 15}
 	extend8 := func(signed bool) (out [16]byte) {

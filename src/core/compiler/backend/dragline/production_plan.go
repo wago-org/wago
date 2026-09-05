@@ -415,15 +415,17 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 	return true
 }
 
-// railMachV128FoundationCandidate admits the first complete vector slice while
-// the public/private vector ABI and vector callee-save contract are still being
-// finished. This is intentionally source-derived: arbitrary functions composed
-// from constants, full-width memory operations, and bitwise operations qualify.
+// railMachV128FoundationCandidate admits vector operations whose machine
+// lowering is complete. Public vector parameters and results, globals, calls,
+// and unreachable regions remain on the structured oracle until their boundary
+// contracts are independently qualified. Declared vector locals are internal
+// SSA values and use the same allocation, spill, and edge-transfer machinery as
+// other TypeV128 values.
 func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 	if stack == nil || stack.HasReferences || len(stack.BranchCasts) != 0 {
 		return false
 	}
-	for _, types := range [][]wasm.ValType{stack.Params, stack.Results, stack.Locals, stack.Globals} {
+	for _, types := range [][]wasm.ValType{stack.Params, stack.Results, stack.Globals} {
 		for _, typ := range types {
 			if typ == wasm.V128 {
 				return false

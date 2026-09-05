@@ -1439,6 +1439,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 						return nil, 0, true, fmt.Errorf("RailMach parameter %d offset is not encodable", local)
 					}
 				}
+			} else if data.Type == railmach.TypeV128 {
+				a.NeonEor16b(dst, dst, dst)
 			} else if data.Bank == railmach.BankFPR {
 				a.FmovFromGpr(dst, arm64.XZR, data.Type == railmach.TypeF64)
 			} else {
