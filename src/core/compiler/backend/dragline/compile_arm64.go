@@ -1028,7 +1028,10 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64I8x16Shuffle, railmach.OpARM64I8x16Swizzle,
 			railmach.OpARM64V128AnyTrue,
 			railmach.OpARM64I8x16AllTrue, railmach.OpARM64I16x8AllTrue, railmach.OpARM64I32x4AllTrue, railmach.OpARM64I64x2AllTrue,
-			railmach.OpARM64I8x16Bitmask, railmach.OpARM64I16x8Bitmask, railmach.OpARM64I32x4Bitmask, railmach.OpARM64I64x2Bitmask:
+			railmach.OpARM64I8x16Bitmask, railmach.OpARM64I16x8Bitmask, railmach.OpARM64I32x4Bitmask, railmach.OpARM64I64x2Bitmask,
+			railmach.OpARM64I16x8ExtaddPairwiseI8x16S, railmach.OpARM64I16x8ExtaddPairwiseI8x16U,
+			railmach.OpARM64I32x4ExtaddPairwiseI16x8S, railmach.OpARM64I32x4ExtaddPairwiseI16x8U,
+			railmach.OpARM64I32x4DotI16x8S:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3758,6 +3761,32 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					a.LslImm(arm64.X16, arm64.X16, 1, true)
 					a.Orr32(dst, dst, arm64.X16)
 				}
+				continue
+			case railmach.OpARM64I16x8ExtaddPairwiseI8x16S, railmach.OpARM64I16x8ExtaddPairwiseI8x16U,
+				railmach.OpARM64I32x4ExtaddPairwiseI16x8S, railmach.OpARM64I32x4ExtaddPairwiseI16x8U:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector pairwise-add operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpARM64I16x8ExtaddPairwiseI8x16S:
+					a.NeonSaddlpHfromB(dst, src)
+				case railmach.OpARM64I16x8ExtaddPairwiseI8x16U:
+					a.NeonUaddlpHfromB(dst, src)
+				case railmach.OpARM64I32x4ExtaddPairwiseI16x8S:
+					a.NeonSaddlpSfromH(dst, src)
+				default:
+					a.NeonUaddlpSfromH(dst, src)
+				}
+				continue
+			case railmach.OpARM64I32x4DotI16x8S:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector dot operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				a.NeonSmull2SfromH(24, lhs, rhs)
+				a.NeonSmullSfromH(dst, lhs, rhs)
+				a.NeonAddpS(dst, dst, 24)
 				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
 				railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,

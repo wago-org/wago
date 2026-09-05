@@ -488,7 +488,10 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrI8x16Shuffle, wasm.InstrI8x16Swizzle,
 			wasm.InstrV128AnyTrue,
 			wasm.InstrI8x16AllTrue, wasm.InstrI16x8AllTrue, wasm.InstrI32x4AllTrue, wasm.InstrI64x2AllTrue,
-			wasm.InstrI8x16Bitmask, wasm.InstrI16x8Bitmask, wasm.InstrI32x4Bitmask, wasm.InstrI64x2Bitmask:
+			wasm.InstrI8x16Bitmask, wasm.InstrI16x8Bitmask, wasm.InstrI32x4Bitmask, wasm.InstrI64x2Bitmask,
+			wasm.InstrI16x8ExtaddPairwiseI8x16S, wasm.InstrI16x8ExtaddPairwiseI8x16U,
+			wasm.InstrI32x4ExtaddPairwiseI16x8S, wasm.InstrI32x4ExtaddPairwiseI16x8U,
+			wasm.InstrI32x4DotI16x8S:
 		default:
 			return false
 		}
@@ -1630,7 +1633,7 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 			wasm.InstrI32x4ExtmulLowI16x8U, wasm.InstrI32x4ExtmulHighI16x8U,
 			wasm.InstrI64x2ExtmulLowI32x4S, wasm.InstrI64x2ExtmulHighI32x4S,
 			wasm.InstrI64x2ExtmulLowI32x4U, wasm.InstrI64x2ExtmulHighI32x4U,
-			wasm.InstrI8x16Shuffle:
+			wasm.InstrI8x16Shuffle, wasm.InstrI32x4ExtaddPairwiseI16x8U:
 			return 2 // XMM4-XMM5 preserve both widened inputs across destructive sequences.
 		case wasm.InstrI8x16Ne, wasm.InstrI16x8Ne, wasm.InstrI32x4Ne, wasm.InstrI64x2Ne,
 			wasm.InstrI8x16LeS, wasm.InstrI8x16GeS, wasm.InstrI16x8LeS, wasm.InstrI16x8GeS,
@@ -1649,7 +1652,9 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 			wasm.InstrI64x2ExtendLowI32x4U, wasm.InstrI64x2ExtendHighI32x4U,
 			wasm.InstrI8x16Swizzle,
 			wasm.InstrI8x16AllTrue, wasm.InstrI16x8AllTrue, wasm.InstrI32x4AllTrue, wasm.InstrI64x2AllTrue,
-			wasm.InstrI16x8Bitmask:
+			wasm.InstrI16x8Bitmask,
+			wasm.InstrI16x8ExtaddPairwiseI8x16S, wasm.InstrI16x8ExtaddPairwiseI8x16U,
+			wasm.InstrI32x4ExtaddPairwiseI16x8S:
 			count = 1 // XMM5 is the ordinary vector lowering scratch.
 		}
 	}

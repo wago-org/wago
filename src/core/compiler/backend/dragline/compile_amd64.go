@@ -961,7 +961,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I8x16Shuffle, railmach.OpAMD64I8x16Swizzle,
 			railmach.OpAMD64V128AnyTrue,
 			railmach.OpAMD64I8x16AllTrue, railmach.OpAMD64I16x8AllTrue, railmach.OpAMD64I32x4AllTrue, railmach.OpAMD64I64x2AllTrue,
-			railmach.OpAMD64I8x16Bitmask, railmach.OpAMD64I16x8Bitmask, railmach.OpAMD64I32x4Bitmask, railmach.OpAMD64I64x2Bitmask:
+			railmach.OpAMD64I8x16Bitmask, railmach.OpAMD64I16x8Bitmask, railmach.OpAMD64I32x4Bitmask, railmach.OpAMD64I64x2Bitmask,
+			railmach.OpAMD64I16x8ExtaddPairwiseI8x16S, railmach.OpAMD64I16x8ExtaddPairwiseI8x16U,
+			railmach.OpAMD64I32x4ExtaddPairwiseI16x8S, railmach.OpAMD64I32x4ExtaddPairwiseI16x8U,
+			railmach.OpAMD64I32x4DotI16x8S:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2591,6 +2594,38 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				default:
 					a.VMovmskpd(dst, src)
 				}
+				continue
+			case railmach.OpAMD64I16x8ExtaddPairwiseI8x16S, railmach.OpAMD64I16x8ExtaddPairwiseI8x16U,
+				railmach.OpAMD64I32x4ExtaddPairwiseI16x8S, railmach.OpAMD64I32x4ExtaddPairwiseI16x8U:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector pairwise-add operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpAMD64I16x8ExtaddPairwiseI8x16S, railmach.OpAMD64I16x8ExtaddPairwiseI8x16U:
+					a.VPcmpeqb(5, 5, 5)
+					a.VPabsb(5, 5)
+					if instruction.Op == railmach.OpAMD64I16x8ExtaddPairwiseI8x16S {
+						a.VPmaddubsw(dst, 5, src)
+					} else {
+						a.VPmaddubsw(dst, src, 5)
+					}
+				case railmach.OpAMD64I32x4ExtaddPairwiseI16x8S:
+					a.VPcmpeqw(5, 5, 5)
+					a.VPsrlwImm(5, 5, 15)
+					a.VPmaddwd(dst, src, 5)
+				default:
+					a.VPxor(5, 5, 5)
+					a.VPunpckhwd(4, src, 5)
+					a.VPunpcklwd(dst, src, 5)
+					a.VPhaddd(dst, dst, 4)
+				}
+				continue
+			case railmach.OpAMD64I32x4DotI16x8S:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector dot operand count is %d", len(operands))
+				}
+				a.VPmaddwd(dst, reg(operands[0].Reg), reg(operands[1].Reg))
 				continue
 			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 				railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,
