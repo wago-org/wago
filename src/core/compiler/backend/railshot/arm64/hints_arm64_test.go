@@ -329,13 +329,32 @@ func TestScanBodyBytesDiscountsAlgebraicIdentitiesArm64(t *testing.T) {
 }
 
 func TestScanBodyBytesDetectsDeadCodeAfterTerminatorArm64(t *testing.T) {
-	h, err := scanBodyBytes([]byte{0x00, 0x41, 0x00, 0x1a, 0x0b}, 0, 0, 0)
-	if err != nil {
-		t.Fatal(err)
+	for _, test := range []struct {
+		name       string
+		terminator []byte
+	}{
+		{"unreachable", []byte{0x00}},
+		{"throw", []byte{0x08, 0x00}},
+		{"throw-ref", []byte{0x0a}},
+		{"br", []byte{0x0c, 0x00}},
+		{"br-table", []byte{0x0e, 0x00, 0x00}},
+		{"return", []byte{0x0f}},
+		{"return-call", []byte{0x12, 0x00}},
+		{"return-call-indirect", []byte{0x13, 0x00, 0x00}},
+		{"return-call-ref", []byte{0x15, 0x00}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := append(append([]byte(nil), test.terminator...), 0x41, 0x00, 0x1a, 0x0b)
+			h, err := scanBodyBytes(body, 0, 0, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !h.flags.has(hintHasStackSinkFusion) {
+				t.Fatal("dead instructions after terminator were not detected")
+			}
+		})
 	}
-	if !h.flags.has(hintHasStackSinkFusion) {
-		t.Fatal("dead instructions after unreachable were not detected")
-	}
+
 	terminalOnly, err := scanBodyBytes([]byte{0x00, 0x0b}, 0, 0, 0)
 	if err != nil {
 		t.Fatal(err)

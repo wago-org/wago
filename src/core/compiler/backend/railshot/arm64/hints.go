@@ -694,10 +694,12 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		curIndex := ^uint32(0)
 		var curConst int64
 		curConstOK := false
+		flowTerminator := false
 		switch op {
 		case 0x00: // unreachable
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
+			flowTerminator = true
 		case 0x0b: // end
 			s.h.addStackArenaNodes(2) // flush/rebuild allowance for the closing edge.
 			return subHasCall, op, nil
@@ -788,6 +790,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintCallsSelf)
 			}
 			s.noteDirectCallRef(idx, op == 0x10, loopDepth != 0)
+			flowTerminator = op == 0x12
 		case 0x11, 0x13: // indirect calls
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
@@ -797,6 +800,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.noteStackArenaOp(op, &imm)
 			s.h.flags.set(hintHasCall)
 			subHasCall = true
+			flowTerminator = op == 0x13
 		case 0x14, 0x15: // call_ref, return_call_ref
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
@@ -806,6 +810,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			}
 			s.h.flags.set(hintHasCall)
 			subHasCall = true
+			flowTerminator = op == 0x15
 		case 0x20, 0x21, 0x22: // local.get/set/tee
 			idx, err := s.r.U32()
 			if err != nil {
@@ -895,9 +900,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
+			flowTerminator = op == 0x0c
 		case 0x0f: // return
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
+			flowTerminator = true
 		case 0x25, 0x26: // table.get/set
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
@@ -969,11 +976,13 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			subHasCall = subHasCall || calls
 		case 0x08: // throw
 			s.h.flags.set(hintModuleEH)
+			flowTerminator = true
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
 		case 0x0a: // throw_ref
 			s.h.flags.set(hintModuleEH)
+			flowTerminator = true
 		default:
 			if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
 				s.noteImmediateFreeStackArenaOp(op)
@@ -989,6 +998,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintHasControlFlow)
 				if op == 0x0e { // br_table is the only unprefixed boundary in this path.
 					s.entryPrefix = false
+					flowTerminator = true
 				}
 			}
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
@@ -1007,7 +1017,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				(op >= 0x6a && op <= 0x78 || op >= 0x7c && op <= 0x8a) {
 				s.h.flags.set(hintHasStackSinkFusion)
 			}
-			if stackFlowTerminatorOpcode(op) {
+			if flowTerminator {
 				if next, ok := s.r.Peek(); ok && next != 0x0b && next != 0x05 {
 					s.h.flags.set(hintHasStackSinkFusion)
 				}
@@ -1152,15 +1162,6 @@ func stackLookaheadDiscountOpcode(op byte) uint16 {
 		return 32
 	default:
 		return 0
-	}
-}
-
-func stackFlowTerminatorOpcode(op byte) bool {
-	switch op {
-	case 0x00, 0x08, 0x0a, 0x0c, 0x0e, 0x0f, 0x12, 0x13, 0x15:
-		return true
-	default:
-		return false
 	}
 }
 
