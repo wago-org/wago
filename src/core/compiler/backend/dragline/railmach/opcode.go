@@ -875,6 +875,26 @@ const (
 	OpARM64I64GeS
 	OpARM64I32GeU
 	OpARM64I64GeU
+	OpARM64I32AddImmediate
+	OpARM64I64AddImmediate
+	OpARM64I32SubImmediate
+	OpARM64I64SubImmediate
+	OpARM64I32AndImmediate
+	OpARM64I64AndImmediate
+	OpARM64I32OrImmediate
+	OpARM64I64OrImmediate
+	OpARM64I32XorImmediate
+	OpARM64I64XorImmediate
+	OpARM64I32ShlImmediate
+	OpARM64I64ShlImmediate
+	OpARM64I32ShrSImmediate
+	OpARM64I64ShrSImmediate
+	OpARM64I32ShrUImmediate
+	OpARM64I64ShrUImmediate
+	OpARM64I32RotlImmediate
+	OpARM64I64RotlImmediate
+	OpARM64I32RotrImmediate
+	OpARM64I64RotrImmediate
 	OpARM64I32Madd
 	OpARM64I64Madd
 	OpARM64I64MulHighU
@@ -943,6 +963,26 @@ const (
 )
 
 func IsSelectedOpcode(op MOpcode) bool { return op >= selectedOpcodeBase }
+
+// IsARM64ImmediateOpcode reports whether op consumes its second semantic
+// operand from the immediate carried in Inst.Aux rather than a VReg location.
+func IsARM64ImmediateOpcode(op MOpcode) bool {
+	switch op {
+	case OpARM64I32AddImmediate, OpARM64I64AddImmediate,
+		OpARM64I32SubImmediate, OpARM64I64SubImmediate,
+		OpARM64I32AndImmediate, OpARM64I64AndImmediate,
+		OpARM64I32OrImmediate, OpARM64I64OrImmediate,
+		OpARM64I32XorImmediate, OpARM64I64XorImmediate,
+		OpARM64I32ShlImmediate, OpARM64I64ShlImmediate,
+		OpARM64I32ShrSImmediate, OpARM64I64ShrSImmediate,
+		OpARM64I32ShrUImmediate, OpARM64I64ShrUImmediate,
+		OpARM64I32RotlImmediate, OpARM64I64RotlImmediate,
+		OpARM64I32RotrImmediate, OpARM64I64RotrImmediate:
+		return true
+	default:
+		return false
+	}
+}
 
 // IsSelectedOpcodeForTarget reports whether op belongs to the complete selected
 // namespace for target. Final emission uses this range as its admission
@@ -1059,49 +1099,49 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrRefEq
 	case OpAMD64RefAsNonNull, OpARM64RefAsNonNull:
 		return wasm.InstrRefAsNonNull
-	case OpAMD64I32Add, OpARM64I32Add, OpARM64I32Madd:
+	case OpAMD64I32Add, OpARM64I32Add, OpARM64I32AddImmediate, OpARM64I32Madd:
 		return wasm.InstrI32Add
-	case OpAMD64I64Add, OpARM64I64Add, OpARM64I64Madd:
+	case OpAMD64I64Add, OpARM64I64Add, OpARM64I64AddImmediate, OpARM64I64Madd:
 		return wasm.InstrI64Add
-	case OpAMD64I32Sub, OpARM64I32Sub:
+	case OpAMD64I32Sub, OpARM64I32Sub, OpARM64I32SubImmediate:
 		return wasm.InstrI32Sub
-	case OpAMD64I64Sub, OpARM64I64Sub:
+	case OpAMD64I64Sub, OpARM64I64Sub, OpARM64I64SubImmediate:
 		return wasm.InstrI64Sub
-	case OpAMD64I32And, OpARM64I32And:
+	case OpAMD64I32And, OpARM64I32And, OpARM64I32AndImmediate:
 		return wasm.InstrI32And
-	case OpAMD64I64And, OpARM64I64And:
+	case OpAMD64I64And, OpARM64I64And, OpARM64I64AndImmediate:
 		return wasm.InstrI64And
-	case OpAMD64I32Or, OpARM64I32Or:
+	case OpAMD64I32Or, OpARM64I32Or, OpARM64I32OrImmediate:
 		return wasm.InstrI32Or
-	case OpAMD64I64Or, OpARM64I64Or:
+	case OpAMD64I64Or, OpARM64I64Or, OpARM64I64OrImmediate:
 		return wasm.InstrI64Or
-	case OpAMD64I32Xor, OpARM64I32Xor:
+	case OpAMD64I32Xor, OpARM64I32Xor, OpARM64I32XorImmediate:
 		return wasm.InstrI32Xor
-	case OpAMD64I64Xor, OpARM64I64Xor:
+	case OpAMD64I64Xor, OpARM64I64Xor, OpARM64I64XorImmediate:
 		return wasm.InstrI64Xor
 	case OpAMD64I32Mul, OpARM64I32Mul:
 		return wasm.InstrI32Mul
 	case OpAMD64I64Mul, OpARM64I64Mul:
 		return wasm.InstrI64Mul
-	case OpAMD64I32Shl, OpARM64I32Shl:
+	case OpAMD64I32Shl, OpARM64I32Shl, OpARM64I32ShlImmediate:
 		return wasm.InstrI32Shl
-	case OpAMD64I64Shl, OpARM64I64Shl:
+	case OpAMD64I64Shl, OpARM64I64Shl, OpARM64I64ShlImmediate:
 		return wasm.InstrI64Shl
-	case OpAMD64I32ShrS, OpARM64I32ShrS:
+	case OpAMD64I32ShrS, OpARM64I32ShrS, OpARM64I32ShrSImmediate:
 		return wasm.InstrI32ShrS
-	case OpAMD64I64ShrS, OpARM64I64ShrS:
+	case OpAMD64I64ShrS, OpARM64I64ShrS, OpARM64I64ShrSImmediate:
 		return wasm.InstrI64ShrS
-	case OpAMD64I32ShrU, OpARM64I32ShrU:
+	case OpAMD64I32ShrU, OpARM64I32ShrU, OpARM64I32ShrUImmediate:
 		return wasm.InstrI32ShrU
-	case OpAMD64I64ShrU, OpARM64I64ShrU:
+	case OpAMD64I64ShrU, OpARM64I64ShrU, OpARM64I64ShrUImmediate:
 		return wasm.InstrI64ShrU
-	case OpAMD64I32Rotl, OpARM64I32Rotl:
+	case OpAMD64I32Rotl, OpARM64I32Rotl, OpARM64I32RotlImmediate:
 		return wasm.InstrI32Rotl
-	case OpAMD64I64Rotl, OpARM64I64Rotl:
+	case OpAMD64I64Rotl, OpARM64I64Rotl, OpARM64I64RotlImmediate:
 		return wasm.InstrI64Rotl
-	case OpAMD64I32Rotr, OpARM64I32Rotr:
+	case OpAMD64I32Rotr, OpARM64I32Rotr, OpARM64I32RotrImmediate:
 		return wasm.InstrI32Rotr
-	case OpAMD64I64Rotr, OpARM64I64Rotr:
+	case OpAMD64I64Rotr, OpARM64I64Rotr, OpARM64I64RotrImmediate:
 		return wasm.InstrI64Rotr
 	case OpAMD64I32Clz, OpARM64I32Clz:
 		return wasm.InstrI32Clz
@@ -1561,11 +1601,10 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 	}
 }
 
-// SelectTargetOpcodes refines the first admitted SIMD family in place after
+// SelectTargetOpcodes refines generic machine operations in place after
 // target-independent scheduling and allocation have completed. The finalizer
 // therefore receives an explicit target operation rather than re-selecting a
-// Wasm opcode. Later families can move this boundary earlier once their
-// scheduling and constraint descriptions consume selected operations.
+// Wasm opcode.
 func SelectTargetOpcodes(f *Func) (int, error) {
 	if err := Verify(f); err != nil {
 		return 0, err
@@ -2520,6 +2559,80 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 		} else {
 			return 0, fmt.Errorf("railmach: cannot select opcodes for target %s", f.Target)
 		}
+		selected++
+	}
+	if err := Verify(f); err != nil {
+		return 0, err
+	}
+	return selected, nil
+}
+
+// SelectARM64ImmediateOpcodes makes already-proven integer immediate forms
+// explicit after target selection. The producer relation remains transient
+// allocation metadata; the selected instruction itself owns the native
+// immediate so final emission does not repeat the form decision.
+func SelectARM64ImmediateOpcodes(f *Func, producers []uint32) (int, error) {
+	if f == nil || f.Target != TargetARM64 || len(producers) != len(f.Insts) {
+		return 0, fmt.Errorf("railmach: invalid ARM64 immediate selection input")
+	}
+	selected := 0
+	for instructionID, producerID := range producers {
+		if producerID == ^uint32(0) {
+			continue
+		}
+		if int(producerID) >= len(f.Insts) {
+			return 0, fmt.Errorf("railmach: instruction %d has invalid immediate producer %d", instructionID, producerID)
+		}
+		instruction := &f.Insts[instructionID]
+		producer := f.Insts[producerID]
+		if SemanticOpcode(producer.Op) != wasm.InstrI32Const && SemanticOpcode(producer.Op) != wasm.InstrI64Const {
+			return 0, fmt.Errorf("railmach: instruction %d has non-constant immediate producer %d", instructionID, producerID)
+		}
+		switch instruction.Op {
+		case OpARM64I32Add:
+			instruction.Op = OpARM64I32AddImmediate
+		case OpARM64I64Add:
+			instruction.Op = OpARM64I64AddImmediate
+		case OpARM64I32Sub:
+			instruction.Op = OpARM64I32SubImmediate
+		case OpARM64I64Sub:
+			instruction.Op = OpARM64I64SubImmediate
+		case OpARM64I32And:
+			instruction.Op = OpARM64I32AndImmediate
+		case OpARM64I64And:
+			instruction.Op = OpARM64I64AndImmediate
+		case OpARM64I32Or:
+			instruction.Op = OpARM64I32OrImmediate
+		case OpARM64I64Or:
+			instruction.Op = OpARM64I64OrImmediate
+		case OpARM64I32Xor:
+			instruction.Op = OpARM64I32XorImmediate
+		case OpARM64I64Xor:
+			instruction.Op = OpARM64I64XorImmediate
+		case OpARM64I32Shl:
+			instruction.Op = OpARM64I32ShlImmediate
+		case OpARM64I64Shl:
+			instruction.Op = OpARM64I64ShlImmediate
+		case OpARM64I32ShrS:
+			instruction.Op = OpARM64I32ShrSImmediate
+		case OpARM64I64ShrS:
+			instruction.Op = OpARM64I64ShrSImmediate
+		case OpARM64I32ShrU:
+			instruction.Op = OpARM64I32ShrUImmediate
+		case OpARM64I64ShrU:
+			instruction.Op = OpARM64I64ShrUImmediate
+		case OpARM64I32Rotl:
+			instruction.Op = OpARM64I32RotlImmediate
+		case OpARM64I64Rotl:
+			instruction.Op = OpARM64I64RotlImmediate
+		case OpARM64I32Rotr:
+			instruction.Op = OpARM64I32RotrImmediate
+		case OpARM64I64Rotr:
+			instruction.Op = OpARM64I64RotrImmediate
+		default:
+			continue
+		}
+		instruction.Aux = producer.Aux
 		selected++
 	}
 	if err := Verify(f); err != nil {

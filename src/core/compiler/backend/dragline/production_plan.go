@@ -1804,6 +1804,11 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if _, err := railmach.SelectTargetOpcodes(machine); err != nil {
 		return nil, err
 	}
+	if machine.Target == railmach.TargetARM64 {
+		if _, err := railmach.SelectARM64ImmediateOpcodes(machine, p.immediateProducer); err != nil {
+			return nil, err
+		}
+	}
 	return &p.plan, nil
 }
 

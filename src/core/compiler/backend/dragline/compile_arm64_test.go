@@ -2361,6 +2361,62 @@ func TestARM64RailMachImmediateDoesNotMaterializeFoldedOperand(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachSelectedImmediateOwnsLiteral(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x42, 0x18, // i64.const 24
+			0x7c, 0x0b, // i64.add
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, instruction := range plan.Machine.Insts {
+		found = found || instruction.Op == railmach.OpARM64I64AddImmediate && instruction.Aux == 24
+	}
+	if !found {
+		t.Fatalf("selected machine instructions = %#v, want i64.add immediate 24", plan.Machine.Insts)
+	}
+	optimized, _, ok, err := emitARM64RailMach(fn, plan, false, nil, nil, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("selected RailMach finalization = ok %t, err %v", ok, err)
+	}
+	withoutRelation := *plan
+	withoutRelation.ImmediateProducer = make([]uint32, len(plan.ImmediateProducer))
+	for index := range withoutRelation.ImmediateProducer {
+		withoutRelation.ImmediateProducer[index] = ^uint32(0)
+	}
+	independent, _, ok, err := emitARM64RailMach(fn, &withoutRelation, false, nil, nil, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("producer-independent RailMach finalization = ok %t, err %v", ok, err)
+	}
+	if !bytes.Equal(optimized, independent) {
+		t.Fatalf("selected immediate output changed without producer relation: %d/%d bytes", len(optimized), len(independent))
+	}
+}
+
 func TestARM64RailMachBranchesDirectlyToBrTableCases(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

@@ -165,6 +165,62 @@ func TestSelectTargetOpcodesIntegerAddSub(t *testing.T) {
 	}
 }
 
+func TestSelectARM64ImmediateOpcodesInteger(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		type_    wasm.ValType
+		op       byte
+		semantic MOpcode
+		want     MOpcode
+	}{
+		{"i32.add", wasm.I32, 0x6a, wasm.InstrI32Add, OpARM64I32AddImmediate},
+		{"i64.add", wasm.I64, 0x7c, wasm.InstrI64Add, OpARM64I64AddImmediate},
+		{"i32.sub", wasm.I32, 0x6b, wasm.InstrI32Sub, OpARM64I32SubImmediate},
+		{"i64.sub", wasm.I64, 0x7d, wasm.InstrI64Sub, OpARM64I64SubImmediate},
+		{"i32.and", wasm.I32, 0x71, wasm.InstrI32And, OpARM64I32AndImmediate},
+		{"i64.and", wasm.I64, 0x83, wasm.InstrI64And, OpARM64I64AndImmediate},
+		{"i32.or", wasm.I32, 0x72, wasm.InstrI32Or, OpARM64I32OrImmediate},
+		{"i64.or", wasm.I64, 0x84, wasm.InstrI64Or, OpARM64I64OrImmediate},
+		{"i32.xor", wasm.I32, 0x73, wasm.InstrI32Xor, OpARM64I32XorImmediate},
+		{"i64.xor", wasm.I64, 0x85, wasm.InstrI64Xor, OpARM64I64XorImmediate},
+		{"i32.shl", wasm.I32, 0x74, wasm.InstrI32Shl, OpARM64I32ShlImmediate},
+		{"i64.shl", wasm.I64, 0x86, wasm.InstrI64Shl, OpARM64I64ShlImmediate},
+		{"i32.shr_s", wasm.I32, 0x75, wasm.InstrI32ShrS, OpARM64I32ShrSImmediate},
+		{"i64.shr_s", wasm.I64, 0x87, wasm.InstrI64ShrS, OpARM64I64ShrSImmediate},
+		{"i32.shr_u", wasm.I32, 0x76, wasm.InstrI32ShrU, OpARM64I32ShrUImmediate},
+		{"i64.shr_u", wasm.I64, 0x88, wasm.InstrI64ShrU, OpARM64I64ShrUImmediate},
+		{"i32.rotl", wasm.I32, 0x77, wasm.InstrI32Rotl, OpARM64I32RotlImmediate},
+		{"i64.rotl", wasm.I64, 0x89, wasm.InstrI64Rotl, OpARM64I64RotlImmediate},
+		{"i32.rotr", wasm.I32, 0x78, wasm.InstrI32Rotr, OpARM64I32RotrImmediate},
+		{"i64.rotr", wasm.I64, 0x8a, wasm.InstrI64Rotr, OpARM64I64RotrImmediate},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			constant := byte(0x41)
+			if test.type_ == wasm.I64 {
+				constant = 0x42
+			}
+			m := machineModule([]wasm.ValType{test.type_}, []wasm.ValType{test.type_}, []byte{0x20, 0, constant, 7, test.op, 0x0b})
+			f := buildMachineTest(t, TargetARM64, m)
+			if len(f.Insts) != 2 {
+				t.Fatalf("instructions = %#v, want const and operation", f.Insts)
+			}
+			if _, err := SelectTargetOpcodes(f); err != nil {
+				t.Fatal(err)
+			}
+			selected, err := SelectARM64ImmediateOpcodes(f, []uint32{^uint32(0), 0})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if selected != 1 || f.Insts[1].Op != test.want || f.Insts[1].Aux != 7 {
+				t.Fatalf("selected instructions = %#v, count %d, want %d with immediate 7", f.Insts, selected, test.want)
+			}
+			if got := SemanticOpcode(f.Insts[1].Op); got != test.semantic {
+				t.Fatalf("semantic opcode = %d, want %d", got, test.semantic)
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerLogical(t *testing.T) {
 	for _, test := range []struct {
 		name   string
