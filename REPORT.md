@@ -425,6 +425,7 @@ These were measured and removed rather than retained speculatively:
 | Track pending memory references to bypass empty pre-store stack scans | Five-corpus backend compile regressed 0.91%, with SQLite significantly slower by 1.26%, while heap and allocations were unchanged; the counter maintenance cost exceeded the avoided scans, so it was removed |
 | Select spill victims from the fixed register-owner table | Reused variant-dead node storage for an exact physical-stack order token and preserved the previous deepest-owner choice. Five-corpus backend compile regressed 1.33%, with Lua +2.10% and Ruby +2.19% significant; maintaining and comparing order tokens cost more than the rare list walks, so it was removed |
 | Reset branch-hint state only for branch opcodes | Removed one field store from ordinary opcode dispatch, but the five-corpus backend result was only -0.19% and every row was statistically flat; removed as below measurement value |
+| Reserve `br_table` placeholders with one bulk zero extension | A broad screen was -0.59%, but the one-second Lua/Ruby/esbuild confirmation was exactly flat at +0.01% geomean (Lua +0.44%, Ruby +0.90%, esbuild -1.29%); retained the existing four-byte append loop |
 
 ## Method
 
@@ -472,15 +473,21 @@ Raw measurements for the current checkpoint are in
 `/tmp/arm64-reader-byte-clean-{base,candidate}-0905.txt`,
 `/tmp/arm64-reader-u32-{base,candidate}-0905.txt`,
 `/tmp/arm64-reader-i32-{base,candidate}-0905.txt`, and
-`/tmp/arm64-reader-final-vs-main-{base,candidate}-0905.txt` on the measuring host.
+`/tmp/arm64-reader-final-vs-main-{base,candidate}-0905.txt`, and
+`/tmp/arm64-brtable-zero-{base,candidate}-0905.txt` plus
+`/tmp/arm64-brtable-zero-confirm-{base,candidate}-0905.txt` on the measuring host.
 They are intentionally not checked into the repository.
 
 ## Next ARM64 work
 
-In the pre-reader-fast-path large-module profile, instruction emission dominates:
-`Asm.word` is 57.1% flat, code-image mapping is 14.4%, `memAddr` is 18.0%
-cumulative, scalar `ldst` is 16.7%, materialization is 9.7%, `scanExpr` is 7.8%,
-local writes are 6.8%, calls are 3.7%, and trap-stub emission is 4.1%.
+In the fresh current esbuild profile, instruction emission dominates:
+`Asm.word` is 78.9% flat, `memAddr` is 33.1% cumulative, scalar stores are
+29.5%, materialization is 18.5%, scalar loads are 14.6%, and local writes are
+12.5%. Hint construction is now about 2.8% cumulative. `br_table` accounts for
+6.6% cumulative and 4.3% flat, but replacing its placeholder append loop with
+a bulk zero extension was exactly flat in the longer confirmation. The raw
+profile is `/tmp/arm64-reader-final-profile.pprof` with text summary
+`/tmp/arm64-reader-final-profile.txt`.
 Simple load/store helper specialization, unchecked scaled encoders, and module
 memory-type caches did not clear the retention gate. A complete
 validation-to-hints fusion was also implemented and rejected because it
