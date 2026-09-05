@@ -2,6 +2,7 @@ package wasm
 
 import (
 	"encoding/binary"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -93,8 +94,49 @@ func TestDecodeOpaqueCustomPayloadBudget(t *testing.T) {
 		t.Fatalf("owned payload exceeded budget: %v", err)
 	}
 	for _, name := range []string{"name", branchHintSectionName} {
-		if _, err := DecodeModule(module(custom(name))); err == nil || !strings.Contains(err.Error(), "allocation limit") {
-			t.Fatalf("structured %s payload was not charged before parsing: %v", name, err)
+		if _, err := DecodeModule(module(custom(name))); err == nil || strings.Contains(err.Error(), "allocation limit") {
+			t.Fatalf("malformed structured %s payload did not reach strict parsing: %v", name, err)
 		}
+	}
+}
+
+func TestDecodeLargeValidNameWithinBudget(t *testing.T) {
+	name := strings.Repeat("a", 3<<20)
+	sub := binary.AppendUvarint(nil, uint64(len(name)))
+	sub = append(sub, name...)
+	payload := []byte{4, 'n', 'a', 'm', 'e', 0}
+	payload = binary.AppendUvarint(payload, uint64(len(sub)))
+	payload = append(payload, sub...)
+	data := module(section(secCustom, payload...))
+	dm, err := DecodeModuleByteBackedWithLimits(data, ValidationFeatures{}, DecodeLimits{MaxMetadataBytes: 16 << 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dm.Module.NameSec == nil || dm.Module.NameSec.ModuleName == nil || *dm.Module.NameSec.ModuleName != name {
+		t.Fatal("module name changed")
+	}
+	if _, err := DecodeModuleByteBackedWithLimits(data, ValidationFeatures{}, DecodeLimits{MaxMetadataBytes: 8 << 20}); err == nil || !strings.Contains(err.Error(), "allocation limit") {
+		t.Fatalf("shared budget: %v", err)
+	}
+}
+
+func BenchmarkDecodeStructuredCustom(b *testing.B) {
+	for _, size := range []int{1024, 64 << 10, 3 << 20} {
+		b.Run(fmt.Sprint(size), func(b *testing.B) {
+			sub := binary.AppendUvarint(nil, uint64(size))
+			sub = append(sub, strings.Repeat("a", size)...)
+			payload := []byte{4, 'n', 'a', 'm', 'e', 0}
+			payload = binary.AppendUvarint(payload, uint64(len(sub)))
+			payload = append(payload, sub...)
+			data := module(section(secCustom, payload...))
+			b.ReportAllocs()
+			b.SetBytes(int64(len(data)))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := DecodeModule(data); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

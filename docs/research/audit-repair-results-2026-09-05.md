@@ -17,6 +17,18 @@ cancellation, deadline, and invocation-context tests pass. The new benchmark
 reports zero bytes and allocations for each inert context. No native polling or
 scheduler transition was changed. Native non-Linux and TinyGo tests are pending.
 
+## Structured custom-section budgets
+
+Name and branch-hint readers now share the parent budget. Exact-capacity
+structured vectors reserve storage and allocator rounding before allocation;
+strings and the owned raw payload are charged separately. Strict section checks
+remain in place. A valid 3 MiB module name now decodes with a 16 MiB metadata
+budget and rejects with an 8 MiB budget. The former malformed fixture now checks
+that the structural parser rejects it rather than codifying a payload multiplier.
+The complete wasm package tests pass. Structured-name benchmark captures are in
+`decode-budget.txt`; large valid names could not be benchmarked successfully on
+the old implementation. Type-slab changes are a separate repair.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.

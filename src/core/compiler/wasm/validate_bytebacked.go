@@ -305,13 +305,9 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 	if err != nil {
 		return err
 	}
-	// Opaque tool metadata retains one payload copy. Only the structured
-	// formats expand compact entries into maps and decoded records.
-	width := uint64(2) // owned bytes plus allocator rounding
-	if name == "name" || name == branchHintSectionName {
-		width = 128
-	}
-	if err := r.reserve(uint64(r.left()), width); err != nil {
+	// Every custom payload retains one owned byte copy. Structured decoders
+	// separately reserve their exact containers through the same parent budget.
+	if err := r.reserve(uint64(r.left()), 2); err != nil {
 		return err
 	}
 	payload, err := r.bytes(r.left())
@@ -322,7 +318,7 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 		if dm.seenName {
 			return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
 		}
-		ns, err := decodeNameSec(payload)
+		ns, err := decodeNameSecWithBudget(payload, r.budget)
 		if err != nil {
 			return err
 		}
@@ -333,7 +329,7 @@ func (dm *directModule) decodeDirectCustomSection(r *reader) error {
 		if dm.seenBranchHints || dm.seenCode {
 			return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
 		}
-		hints, err := decodeBranchHintSection(payload)
+		hints, err := decodeBranchHintSectionWithBudget(payload, r.budget)
 		if err != nil {
 			return err
 		}

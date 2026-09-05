@@ -71,11 +71,14 @@ func decodeSection(m *Module, r *reader, id byte) error {
 			if m.NameSec != nil {
 				return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
 			}
-			ns, err := decodeNameSec(payload)
+			ns, err := decodeNameSecWithBudget(payload, r.budget)
 			if err != nil {
 				return err
 			}
 			m.NameSec = ns
+		}
+		if err := r.reserve(uint64(len(payload)), 2); err != nil {
+			return err
 		}
 		ownedPayload := append([]byte(nil), payload...)
 		if name == "name" {

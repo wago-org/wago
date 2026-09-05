@@ -48,6 +48,45 @@ func reserveDecodedSlice[T any](r *reader, n uint32) error {
 	// Include old growth buffers, pointer sidecars and allocator rounding.
 	return r.reserve(uint64(n), uint64(unsafe.Sizeof(value))*8+16)
 }
+
+// reserveMetadataStorage covers one exact-capacity allocation, including
+// allocator size-class rounding. Unlike growing AST vectors, it needs no
+// allowance for old growth buffers.
+func reserveMetadataStorage[T any](r *reader, n uint32) error {
+	var value T
+	if n == 0 {
+		return nil
+	}
+	if err := r.reserve(uint64(n), uint64(unsafe.Sizeof(value))); err != nil {
+		return err
+	}
+	// Small allocations round to size classes; large ones round to pages.
+	return r.reserve(1, min(uint64(n)*uint64(unsafe.Sizeof(value)), 8192))
+}
+
+// All structured metadata entries consume at least one encoded byte. Allocate
+// their complete checked vector once instead of retaining growth buffers.
+func readMetadataVec[T any](r *reader, fn func(*reader) (T, error)) ([]T, error) {
+	n, err := r.u32()
+	if err != nil {
+		return nil, err
+	}
+	if uint64(n) > uint64(r.left()) {
+		return nil, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
+	}
+	if err := reserveMetadataStorage[T](r, n); err != nil {
+		return nil, err
+	}
+	out := make([]T, n)
+	for i := range out {
+		out[i], err = fn(r)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
 func (r *reader) reserveType() error {
 	if r.budget == nil {
 		r.budget = newDecodeBudget(DecodeLimits{})
