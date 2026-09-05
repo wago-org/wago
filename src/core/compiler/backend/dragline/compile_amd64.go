@@ -1993,36 +1993,50 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				args := operands[:len(operands)-1]
 				callOffset := int32(plan.Frame.CallAreaOffset)
 				emitAMD64ExternalCallFPRSave(&a, plan, false)
-				for index, operand := range args {
+				argumentSlot := uint32(0)
+				for _, operand := range args {
+					data := plan.Machine.VRegs[operand.Reg]
 					scratch := amd64.RSI
-					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR {
+					if data.Bank == railmach.BankFPR {
 						scratch = 13
 					}
 					src, err := amd64RailMachReadValueAt(&a, plan, operand.Reg, scratch, 0)
 					if err != nil {
 						return nil, 0, true, err
 					}
-					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR {
+					if data.Type == railmach.TypeV128 {
+						a.VMovdquStoreDisp(amd64.RSP, callOffset+int32(argumentSlot*8), src)
+						argumentSlot += 2
+						continue
+					}
+					if data.Bank == railmach.BankFPR {
 						a.MovXmmToGpr(amd64.R11, src, plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF64)
 						src = amd64.R11
 					}
-					a.StoreRsp64(callOffset+int32(index*8), src)
+					a.StoreRsp64(callOffset+int32(argumentSlot*8), src)
+					argumentSlot++
 				}
+				selectorOffset := int32(argumentSlot * 8)
 				selector := operands[len(operands)-1].Reg
 				selectorReg, err := amd64RailMachReadValueAt(&a, plan, selector, amd64.RSI, 0)
 				if err != nil {
 					return nil, 0, true, err
 				}
-				a.StoreRsp64(callOffset+int32(len(args)*8), selectorReg)
+				a.StoreRsp64(callOffset+selectorOffset, selectorReg)
 				a.LeaRsp(amd64.RDI, callOffset)
-				for index, operand := range args[:min(len(args), len(amd64ParamRegisters))] {
-					if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
-						a.Load32(amd64ParamRegisters[index], amd64.RDI, int32(index*8))
-					} else {
-						a.Load64(amd64ParamRegisters[index], amd64.RDI, int32(index*8))
+				loadArgumentRegisters := func() {
+					slot := uint32(0)
+					for index, operand := range args[:min(len(args), len(amd64ParamRegisters))] {
+						if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
+							a.Load32(amd64ParamRegisters[index], amd64.RDI, int32(slot*8))
+						} else {
+							a.Load64(amd64ParamRegisters[index], amd64.RDI, int32(slot*8))
+						}
+						slot += uint32(plan.Machine.VRegs[operand.Reg].Type.SpillSlotUnits())
 					}
 				}
-				a.Load32(amd64.R10, amd64.RDI, int32(len(args)*8))
+				loadArgumentRegisters()
+				a.Load32(amd64.R10, amd64.RDI, selectorOffset)
 				a.Load64(amd64.R11, amd64.RBX, -80)
 				a.Load32(amd64.RAX, amd64.R11, 0)
 				a.Cmp32(amd64.R10, amd64.RAX)
@@ -2049,17 +2063,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				if targets, ok := nativeDenseLocalTableTargets(plan.Stack.Module); ok {
 					// Keep the runtime OOB/null/signature checks, then use the proven
 					// dense local table to enter Dragline's private ABI directly.
-					a.Load32(amd64.RAX, amd64.RDI, int32(len(args)*8))
+					a.Load32(amd64.RAX, amd64.RDI, selectorOffset)
 					for slot, target := range targets {
 						a.AluRI(7, amd64.RAX, int32(slot), false)
 						next := a.JccPlaceholder(amd64.CondNE)
-						for index, operand := range args[:min(len(args), len(amd64ParamRegisters))] {
-							if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
-								a.Load32(amd64ParamRegisters[index], amd64.RDI, int32(index*8))
-							} else {
-								a.Load64(amd64ParamRegisters[index], amd64.RDI, int32(index*8))
-							}
-						}
+						loadArgumentRegisters()
 						if kind, inline := nativeInlineI32BinaryTarget(plan.Stack.Module, target); inline && len(args) == 2 && instruction.ResultCount() == 1 {
 							emitAMD64DirectIntegerBinary(&a, kind, amd64.RAX, amd64.RAX, amd64.RCX)
 						} else {
@@ -2092,13 +2100,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					fallback := a.JccPlaceholder(amd64.CondNE)
 					// Descriptor checks consume argument registers on AMD64. Restore the
 					// private ABI arguments from the canonical call vector before CALL.
-					for index, operand := range args[:min(len(args), len(amd64ParamRegisters))] {
-						if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
-							a.Load32(amd64ParamRegisters[index], amd64.RDI, int32(index*8))
-						} else {
-							a.Load64(amd64ParamRegisters[index], amd64.RDI, int32(index*8))
-						}
-					}
+					loadArgumentRegisters()
 					if instruction.ResultCount() > railmach.PrivateResultRegisters {
 						a.MovReg64(amd64.R10, amd64.RDI)
 					}

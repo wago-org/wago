@@ -615,7 +615,7 @@ func TestRailMachRejectsMixedSIMDBranchCastFunction(t *testing.T) {
 	}
 }
 
-func TestRailMachAdmitsV128LocalsButRejectsUnqualifiedBoundaryCases(t *testing.T) {
+func TestRailMachAdmitsQualifiedV128Boundaries(t *testing.T) {
 	foundation := &railssa.StackFunc{
 		HasV128:     true,
 		ResultTypes: []wasm.ValType{wasm.V128},
@@ -626,20 +626,6 @@ func TestRailMachAdmitsV128LocalsButRejectsUnqualifiedBoundaryCases(t *testing.T
 	}
 	if !railMachCandidate(foundation, true) {
 		t.Fatal("internal v128 foundation function did not enter RailMach")
-	}
-	for name, edit := range map[string]func(*railssa.StackFunc){
-		"indirect call": func(stack *railssa.StackFunc) {
-			stack.Instrs = append(stack.Instrs, railssa.StackInstr{Kind: wasm.InstrCallIndirect})
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			candidate := *foundation
-			candidate.Instrs = append([]railssa.StackInstr(nil), foundation.Instrs...)
-			edit(&candidate)
-			if railMachCandidate(&candidate, true) {
-				t.Fatal("incomplete vector contract entered RailMach")
-			}
-		})
 	}
 	boundary := *foundation
 	boundary.Params = []wasm.ValType{wasm.V128}
@@ -653,6 +639,12 @@ func TestRailMachAdmitsV128LocalsButRejectsUnqualifiedBoundaryCases(t *testing.T
 	directCall.Instrs = append(directCall.Instrs, railssa.StackInstr{Kind: wasm.InstrCall})
 	if !railMachCandidate(&directCall, true) {
 		t.Fatal("direct-call v128 function did not enter RailMach")
+	}
+	indirectCall := *foundation
+	indirectCall.Instrs = append([]railssa.StackInstr(nil), foundation.Instrs...)
+	indirectCall.Instrs = append(indirectCall.Instrs, railssa.StackInstr{Kind: wasm.InstrCallIndirect})
+	if !railMachCandidate(&indirectCall, true) {
+		t.Fatal("indirect-call v128 function did not enter RailMach")
 	}
 	local := *foundation
 	local.Locals = []wasm.ValType{wasm.V128}

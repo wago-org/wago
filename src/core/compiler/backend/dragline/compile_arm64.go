@@ -3071,43 +3071,60 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				if !arm64RailMachLeaSP(&a, arm64.X8, callOffset) {
 					return nil, 0, true, fmt.Errorf("RailMach call_indirect area offset %d is not encodable", callOffset)
 				}
+				argumentSlot := uint32(0)
 				for index, operand := range args {
+					data := plan.Machine.VRegs[operand.Reg]
 					scratch := arm64.X14
-					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR {
+					if data.Bank == railmach.BankFPR {
 						scratch = 29
 					}
 					src, err := arm64RailMachReadValueAt(&a, plan, operand.Reg, scratch, 16)
 					if err != nil {
 						return nil, 0, true, err
 					}
-					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR {
+					if data.Type == railmach.TypeV128 {
+						a.StrQ(arm64.X8, int32(argumentSlot*8), src)
+						argumentSlot += 2
+						continue
+					}
+					if data.Bank == railmach.BankFPR {
 						a.FmovToGpr(arm64.X16, src, plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF64)
 						src = arm64.X16
 					}
-					if !a.Store64(src, arm64.X8, uint32(index*8)) {
+					if !a.Store64(src, arm64.X8, argumentSlot*8) {
 						return nil, 0, true, fmt.Errorf("RailMach call_indirect argument %d is not encodable", index)
 					}
+					argumentSlot++
 				}
+				selectorOffset := argumentSlot * 8
 				selector := operands[len(operands)-1].Reg
 				selectorReg, err := arm64RailMachReadValueAt(&a, plan, selector, arm64.X14, 16)
 				if err != nil {
 					return nil, 0, true, err
 				}
-				if !a.Store64(selectorReg, arm64.X8, uint32(len(args)*8)) {
+				if !a.Store64(selectorReg, arm64.X8, selectorOffset) {
 					return nil, 0, true, fmt.Errorf("RailMach call_indirect selector is not encodable")
 				}
-				for index, operand := range args[:min(len(args), len(arm64ParamRegisters))] {
-					ok := false
-					if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
-						ok = a.Load32(arm64ParamRegisters[index], arm64.X8, uint32(index*8))
-					} else {
-						ok = a.Load64(arm64ParamRegisters[index], arm64.X8, uint32(index*8))
+				loadArgumentRegisters := func() error {
+					slot := uint32(0)
+					for index, operand := range args[:min(len(args), len(arm64ParamRegisters))] {
+						ok := false
+						if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
+							ok = a.Load32(arm64ParamRegisters[index], arm64.X8, slot*8)
+						} else {
+							ok = a.Load64(arm64ParamRegisters[index], arm64.X8, slot*8)
+						}
+						if !ok {
+							return fmt.Errorf("RailMach call_indirect argument %d is not encodable", index)
+						}
+						slot += uint32(plan.Machine.VRegs[operand.Reg].Type.SpillSlotUnits())
 					}
-					if !ok {
-						return nil, 0, true, fmt.Errorf("RailMach call_indirect argument %d is not encodable", index)
-					}
+					return nil
 				}
-				if !a.Load32(arm64.X16, arm64.X8, uint32(len(args)*8)) {
+				if err := loadArgumentRegisters(); err != nil {
+					return nil, 0, true, err
+				}
+				if !a.Load32(arm64.X16, arm64.X8, selectorOffset) {
 					return nil, 0, true, fmt.Errorf("RailMach call_indirect selector is not encodable")
 				}
 				a.Ldur64(arm64.X17, arm64.X26, -80)
@@ -3143,7 +3160,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					// the proven fixed local table, dispatch matching selectors directly
 					// into Dragline's private vector ABI and leave the generic wrapper path
 					// as a defensive fallback.
-					if !arm64RailMachLeaSP(&a, arm64.X8, callOffset) || !a.Load32(arm64.X14, arm64.X8, uint32(len(args)*8)) {
+					if !arm64RailMachLeaSP(&a, arm64.X8, callOffset) || !a.Load32(arm64.X14, arm64.X8, selectorOffset) {
 						return nil, 0, true, fmt.Errorf("RailMach immutable call_indirect selector is not encodable")
 					}
 					for slot, target := range immutableTargets {
