@@ -426,6 +426,9 @@ These were measured and removed rather than retained speculatively:
 | Select spill victims from the fixed register-owner table | Reused variant-dead node storage for an exact physical-stack order token and preserved the previous deepest-owner choice. Five-corpus backend compile regressed 1.33%, with Lua +2.10% and Ruby +2.19% significant; maintaining and comparing order tokens cost more than the rare list walks, so it was removed |
 | Reset branch-hint state only for branch opcodes | Removed one field store from ordinary opcode dispatch, but the five-corpus backend result was only -0.19% and every row was statistically flat; removed as below measurement value |
 | Reserve `br_table` placeholders with one bulk zero extension | A broad screen was -0.59%, but the one-second Lua/Ruby/esbuild confirmation was exactly flat at +0.01% geomean (Lua +0.44%, Ruby +0.90%, esbuild -1.29%); retained the existing four-byte append loop |
+| Fast-path one-byte `i64` immediates | Backend geomean was -0.46%, but every corpus was statistically flat and resources were unchanged; removed as below measurement value |
+| Fast-path one-byte signed block types | Backend geomean regressed 0.30%, with every corpus statistically flat and resources unchanged; removed |
+| Reserve overwritten `br_table` entries by reslicing retained capacity | Backend geomean regressed 0.33%, including a significant 1.31% Lua regression; the redundant-looking zero writes help rather than hurt the later patching path |
 
 ## Method
 
@@ -475,7 +478,10 @@ Raw measurements for the current checkpoint are in
 `/tmp/arm64-reader-i32-{base,candidate}-0905.txt`, and
 `/tmp/arm64-reader-final-vs-main-{base,candidate}-0905.txt`, and
 `/tmp/arm64-brtable-zero-{base,candidate}-0905.txt` plus
-`/tmp/arm64-brtable-zero-confirm-{base,candidate}-0905.txt` on the measuring host.
+`/tmp/arm64-brtable-zero-confirm-{base,candidate}-0905.txt`,
+`/tmp/arm64-reader-i64-{base,candidate}-0905d.txt`,
+`/tmp/arm64-reader-s33-{base,candidate}-0905.txt`, and
+`/tmp/arm64-brtable-reslice-{base,candidate}-0905.txt` on the measuring host.
 They are intentionally not checked into the repository.
 
 ## Next ARM64 work
