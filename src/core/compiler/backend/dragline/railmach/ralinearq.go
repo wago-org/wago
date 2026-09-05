@@ -29,7 +29,25 @@ type LiveInterval struct {
 	End    uint32
 	Weight uint32
 	Bank   Bank
-	_      [3]byte
+	Flags  uint8
+	_      uint16
+}
+
+const liveIntervalSegmented uint8 = 1 << iota
+
+// LiveSegment is one inclusive occupied range within a LiveInterval's
+// conservative Start/End span. Intervals without holes keep SegmentCount zero
+// and use the span directly, avoiding per-value segment storage.
+type LiveSegment struct {
+	Start uint32
+	End   uint32
+}
+
+type LiveSegmentRange struct {
+	Reg          VReg
+	SegmentStart uint32
+	SegmentCount uint16
+	_            uint16
 }
 
 type FixedMove struct {
@@ -45,6 +63,8 @@ type Allocation struct {
 	Intervals            []LiveInterval
 	FixedMoves           []FixedMove
 	InstructionPositions []uint32
+	LiveSegments         []LiveSegment
+	LiveSegmentRanges    []LiveSegmentRange
 	FrameBytes           uint32
 	SpillSlots           uint16
 
@@ -93,21 +113,35 @@ func reserveSpillUnits(next *uint16, units uint16) uint16 {
 // by repeated schedule candidates. It is deliberately owned by the allocation
 // product so verification remains independent of allocator-private state.
 type linearQScratch struct {
-	starts         []uint32
-	ends           []uint32
-	weights        []uint32
-	used           []bool
-	callPositions  []uint32
-	fixedAt        []uint8
-	fixedConflict  []bool
-	affinitySource []VReg
-	affinityWeight []uint32
-	gprActive      []activeInterval
-	fprActive      []activeInterval
-	spillActive    []spillInterval
-	spillFree      []uint16
-	verifySeen     []bool
-	positionSeen   []bool
+	starts          []uint32
+	ends            []uint32
+	weights         []uint32
+	used            []bool
+	callPositions   []uint32
+	fixedAt         []uint8
+	fixedConflict   []bool
+	affinitySource  []VReg
+	affinityWeight  []uint32
+	gprActive       []activeInterval
+	fprActive       []activeInterval
+	spillActive     []spillInterval
+	spillFree       []uint16
+	verifySeen      []bool
+	positionSeen    []bool
+	verifyRegNext   []uint32
+	verifyRegHead   [2][64]uint32
+	segmentPredOff  []uint32
+	segmentPreds    []uint32
+	segmentUseHead  []uint32
+	segmentUseNext  []uint32
+	segmentUseAt    []uint32
+	segmentSeen     []uint32
+	segmentWork     []uint32
+	segmentBlocks   []uint32
+	segmentBlockAt  []uint32
+	segmentEligible []bool
+	segmentRangeAt  []uint32
+	segmentRepack   []LiveSegment
 }
 
 type LinearQConfig struct {
@@ -131,7 +165,7 @@ func DefaultLinearQConfig(target Target) LinearQConfig {
 // affinities, dense reusable spill slots, and rematerializable constants.
 // Fixed-use moves are retained explicitly for late SSA exit.
 func AllocateLinearQ(f *Func, config LinearQConfig, reuse *Allocation) (*Allocation, error) {
-	return allocateLinearQ(f, nil, config, reuse)
+	return allocateLinearQ(f, nil, config, reuse, true)
 }
 
 // AllocateLinearQForSchedule computes live ranges in the selected per-block
@@ -141,10 +175,10 @@ func AllocateLinearQForSchedule(f *Func, schedule *Schedule, config LinearQConfi
 	if schedule == nil {
 		return nil, fmt.Errorf("railmach: scheduled RALinearQ requires a schedule")
 	}
-	return allocateLinearQ(f, schedule, config, reuse)
+	return allocateLinearQ(f, schedule, config, reuse, true)
 }
 
-func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *Allocation) (*Allocation, error) {
+func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *Allocation, allowSegments bool) (*Allocation, error) {
 	if err := Verify(f); err != nil {
 		return nil, err
 	}
@@ -158,8 +192,10 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 	intervals := reuse.Intervals[:0]
 	fixedMoves := reuse.FixedMoves[:0]
 	instructionPositions := resize(reuse.InstructionPositions, len(f.Insts))
+	liveSegments := reuse.LiveSegments[:0]
+	liveSegmentRanges := reuse.LiveSegmentRanges[:0]
 	scratch := reuse.scratch
-	*reuse = Allocation{Locations: locations, Intervals: intervals, FixedMoves: fixedMoves, InstructionPositions: instructionPositions, scratch: scratch}
+	*reuse = Allocation{Locations: locations, Intervals: intervals, FixedMoves: fixedMoves, InstructionPositions: instructionPositions, LiveSegments: liveSegments, LiveSegmentRanges: liveSegmentRanges, scratch: scratch}
 	positionSeen := resize(reuse.scratch.positionSeen, len(f.Insts))
 	reuse.scratch.positionSeen = positionSeen
 	if err := populateInstructionPositions(f, schedule, reuse.InstructionPositions, positionSeen); err != nil {
@@ -272,6 +308,7 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 		}
 	}
 	extendLoopLiveIntervals(f, schedule, starts, ends, used)
+	slices.Sort(callPositions)
 	reuse.scratch.callPositions = callPositions
 	for id := 1; id < len(f.VRegs); id++ {
 		data := f.VRegs[id]
@@ -295,33 +332,40 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 		}
 		return int(a.Reg) - int(b.Reg)
 	})
+	if allowSegments {
+		if err := buildLiveSegments(f, schedule, reuse); err != nil {
+			return nil, err
+		}
+	}
 
 	var gprStorage, fprStorage [64]bool
+	var gprCount, fprCount [64]uint16
 	gprFree := gprStorage[:config.GPRs]
 	fprFree := fprStorage[:config.FPRs]
-	for i := range gprFree {
-		gprFree[i] = true
+	for physical := range gprFree {
+		gprFree[physical] = true
 	}
-	for i := range fprFree {
-		fprFree[i] = true
+	for physical := range fprFree {
+		fprFree[physical] = true
 	}
 	gprActive := reuse.scratch.gprActive[:0]
 	fprActive := reuse.scratch.fprActive[:0]
 	spillActive := reuse.scratch.spillActive[:0]
 	spillFree := reuse.scratch.spillFree[:0]
 	nextSpill := uint16(0)
-
-	expireRegisters := func(position uint32, active *[]activeInterval, free []bool) {
+	expireRegisters := func(position uint32, active *[]activeInterval, free []bool, counts *[64]uint16) {
 		kept := (*active)[:0]
 		for _, item := range *active {
 			if item.interval.End < position {
-				free[item.physical] = true
+				counts[item.physical]--
+				free[item.physical] = counts[item.physical] == 0
 			} else {
 				kept = append(kept, item)
 			}
 		}
 		*active = kept
 	}
+
 	expireSpills := func(position uint32) {
 		kept := spillActive[:0]
 		for _, item := range spillActive {
@@ -347,18 +391,20 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 		return Location{Kind: LocationSpill, Bank: interval.Bank, Index: slot}
 	}
 	for _, interval := range reuse.Intervals {
-		free, active := gprFree, &gprActive
+		free, counts, active := gprFree, &gprCount, &gprActive
 		if interval.Bank == BankFPR {
-			free, active = fprFree, &fprActive
+			free, counts, active = fprFree, &fprCount, &fprActive
 		}
-		expireRegisters(interval.Start, active, free)
-		crossesCall := false
-		for _, call := range callPositions {
-			if interval.Start < call && call < interval.End {
-				crossesCall = true
-				break
+		expireRegisters(interval.Start, active, free, counts)
+		registerAvailable := func(physical int) bool {
+			for _, occupant := range *active {
+				if int(occupant.physical) == physical && allocationLiveRangesOverlap(reuse, interval, occupant.interval) {
+					return false
+				}
 			}
+			return true
 		}
+		crossesCall := allocationLiveRangeCrossesPositions(reuse, interval, callPositions)
 		location := Location{}
 		if !crossesCall {
 			preferred := -1
@@ -381,6 +427,18 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 					}
 				}
 			}
+			if location.Kind == LocationInvalid && len(reuse.LiveSegmentRanges) != 0 {
+				if preferred >= 0 && registerAvailable(preferred) {
+					location = Location{Kind: LocationRegister, Bank: interval.Bank, Index: uint16(preferred)}
+				} else {
+					for physical := range free {
+						if registerAvailable(physical) {
+							location = Location{Kind: LocationRegister, Bank: interval.Bank, Index: uint16(physical)}
+							break
+						}
+					}
+				}
+			}
 		}
 		if location.Kind == LocationInvalid {
 			if f.VRegs[interval.Reg].Flags&VRegRematerializable != 0 {
@@ -390,6 +448,7 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 			}
 		} else {
 			free[location.Index] = false
+			counts[location.Index]++
 			*active = append(*active, activeInterval{interval: interval, physical: location.Index})
 		}
 		reuse.Locations[interval.Reg] = location
@@ -524,9 +583,48 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 		seenPosition[position] = true
 	}
 	startOrdered := true
+	nextSegment := uint32(0)
+	var segmentSeen []bool
+	if len(allocation.LiveSegmentRanges) != 0 {
+		intervalByReg := resize(allocation.scratch.starts, len(f.VRegs))
+		allocation.scratch.starts = intervalByReg
+		for intervalIndex, interval := range allocation.Intervals {
+			intervalByReg[interval.Reg] = uint32(intervalIndex) + 1
+		}
+		segmentSeen = resize(allocation.scratch.segmentEligible, len(f.VRegs))
+		allocation.scratch.segmentEligible = segmentSeen
+		previousRangeReg := VReg(0)
+		for rangeIndex, range_ := range allocation.LiveSegmentRanges {
+			end := uint64(range_.SegmentStart) + uint64(range_.SegmentCount)
+			if range_.Reg == 0 || int(range_.Reg) >= len(intervalByReg) || range_.SegmentCount < 2 || range_.SegmentStart != nextSegment || end > uint64(len(allocation.LiveSegments)) || rangeIndex != 0 && range_.Reg <= previousRangeReg {
+				return fmt.Errorf("railmach: malformed live segment range %#v", range_)
+			}
+			intervalIndex := intervalByReg[range_.Reg]
+			if intervalIndex == 0 || allocation.Intervals[intervalIndex-1].Flags&liveIntervalSegmented == 0 {
+				return fmt.Errorf("railmach: live segment range for unsegmented vreg %d", range_.Reg)
+			}
+			interval := allocation.Intervals[intervalIndex-1]
+			segments := allocation.LiveSegments[range_.SegmentStart:uint32(end)]
+			if segments[0].Start != interval.Start || segments[len(segments)-1].End != interval.End {
+				return fmt.Errorf("railmach: vreg %d segments do not cover interval endpoints", interval.Reg)
+			}
+			for segmentIndex, segment := range segments {
+				if segment.End < segment.Start || segment.Start < interval.Start || segment.End > interval.End || segmentIndex != 0 && segment.Start <= segments[segmentIndex-1].End+1 {
+					return fmt.Errorf("railmach: vreg %d has invalid live segment %#v", interval.Reg, segment)
+				}
+			}
+			segmentSeen[range_.Reg] = true
+			nextSegment, previousRangeReg = uint32(end), range_.Reg
+		}
+	} else if len(allocation.LiveSegments) != 0 {
+		return fmt.Errorf("railmach: %d live segments have no ranges", len(allocation.LiveSegments))
+	}
 	for index, interval := range allocation.Intervals {
 		if interval.Reg == 0 || int(interval.Reg) >= len(f.VRegs) || interval.End < interval.Start {
 			return fmt.Errorf("railmach: invalid live interval %#v", interval)
+		}
+		if interval.Flags&^liveIntervalSegmented != 0 || interval.Flags&liveIntervalSegmented != 0 && (segmentSeen == nil || !segmentSeen[interval.Reg]) {
+			return fmt.Errorf("railmach: vreg %d has inconsistent live segment flags", interval.Reg)
 		}
 		if index != 0 && allocation.Intervals[index-1].Start > interval.Start {
 			startOrdered = false
@@ -554,6 +652,9 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 			return fmt.Errorf("railmach: vreg %d is unallocated", interval.Reg)
 		}
 	}
+	if nextSegment != uint32(len(allocation.LiveSegments)) {
+		return fmt.Errorf("railmach: %d trailing live segments are unowned", uint32(len(allocation.LiveSegments))-nextSegment)
+	}
 	for _, edge := range f.Edges {
 		if int(edge.From) >= len(f.Blocks) || int(edge.To) >= len(f.Blocks) || edge.From < edge.To || f.Blocks[edge.To].Flags&railssa.BlockLoopHeader == 0 {
 			continue
@@ -567,7 +668,7 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 			}
 		}
 	}
-	if startOrdered {
+	if startOrdered && len(allocation.LiveSegmentRanges) == 0 {
 		var registerEnd [2][64]uint32
 		var registerReg [2][64]VReg
 		spillEnd := resize(allocation.scratch.callPositions, int(allocation.SpillSlots))
@@ -597,11 +698,65 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 				}
 			}
 		}
+	} else if startOrdered {
+		clear(allocation.scratch.verifyRegHead[:])
+		registerNext := resize(allocation.scratch.verifyRegNext, len(allocation.Intervals))
+		allocation.scratch.verifyRegNext = registerNext
+		var registerMaxEnd [2][64]uint32
+		spillEnd := resize(allocation.scratch.callPositions, int(allocation.SpillSlots))
+		spillReg := resize(allocation.scratch.affinitySource, int(allocation.SpillSlots))
+		clear(spillReg)
+		allocation.scratch.callPositions, allocation.scratch.affinitySource = spillEnd, spillReg
+		for intervalIndex, interval := range allocation.Intervals {
+			location := allocation.Locations[interval.Reg]
+			switch location.Kind {
+			case LocationRegister:
+				bank := 0
+				if location.Bank == BankFPR {
+					bank = 1
+				}
+				head := &allocation.scratch.verifyRegHead[bank][location.Index]
+				if *head != 0 && interval.Start > registerMaxEnd[bank][location.Index] {
+					*head = 0
+				}
+				previous := uint32(0)
+				for occupant := *head; occupant != 0; {
+					next := registerNext[occupant-1]
+					other := allocation.Intervals[occupant-1]
+					if other.End < interval.Start {
+						if previous == 0 {
+							*head = next
+						} else {
+							registerNext[previous-1] = next
+						}
+						registerNext[occupant-1] = 0
+						occupant = next
+						continue
+					}
+					if allocationLiveRangesOverlap(allocation, interval, other) {
+						return fmt.Errorf("railmach: overlapping vregs %d and %d share register %d", other.Reg, interval.Reg, location.Index)
+					}
+					previous, occupant = occupant, next
+				}
+				registerNext[intervalIndex] = allocation.scratch.verifyRegHead[bank][location.Index]
+				allocation.scratch.verifyRegHead[bank][location.Index] = uint32(intervalIndex) + 1
+				registerMaxEnd[bank][location.Index] = max(registerMaxEnd[bank][location.Index], interval.End)
+			case LocationSpill:
+				units := f.VRegs[interval.Reg].Type.SpillSlotUnits()
+				for unit := uint16(0); unit < units; unit++ {
+					slot := location.Index + unit
+					if previous := spillReg[slot]; previous != 0 && interval.Start <= spillEnd[slot] {
+						return fmt.Errorf("railmach: overlapping vregs %d and %d share spill %d", previous, interval.Reg, slot)
+					}
+					spillReg[slot], spillEnd[slot] = interval.Reg, interval.End
+				}
+			}
+		}
 	} else {
 		for i, a := range allocation.Intervals {
 			la := allocation.Locations[a.Reg]
 			for _, b := range allocation.Intervals[i+1:] {
-				if a.End < b.Start || b.End < a.Start {
+				if !allocationLiveRangesOverlap(allocation, a, b) {
 					continue
 				}
 				lb := allocation.Locations[b.Reg]
@@ -620,7 +775,7 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 			limit = config.FPRs
 		}
 		interval, found := allocationInterval(allocation.Intervals, move.Reg)
-		if !found || move.Position < interval.Start || move.Position > interval.End || move.Physical >= limit {
+		if !found || !allocationLiveRangeContains(allocation, interval, move.Position) || move.Physical >= limit {
 			return fmt.Errorf("railmach: invalid fixed move %#v", move)
 		}
 	}
@@ -628,6 +783,102 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 		return fmt.Errorf("railmach: frame bytes %d disagree with %d spill slots", allocation.FrameBytes, allocation.SpillSlots)
 	}
 	return nil
+}
+
+func allocationIntervalSegments(allocation *Allocation, interval LiveInterval) []LiveSegment {
+	if allocation == nil || interval.Flags&liveIntervalSegmented == 0 {
+		return nil
+	}
+	index := -1
+	if int(interval.Reg) < len(allocation.scratch.segmentRangeAt) {
+		encoded := allocation.scratch.segmentRangeAt[interval.Reg]
+		if encoded != 0 && int(encoded-1) < len(allocation.LiveSegmentRanges) && allocation.LiveSegmentRanges[encoded-1].Reg == interval.Reg {
+			index = int(encoded - 1)
+		}
+	}
+	if index < 0 {
+		foundIndex, ok := slices.BinarySearchFunc(allocation.LiveSegmentRanges, interval.Reg, func(range_ LiveSegmentRange, reg VReg) int {
+			return int(range_.Reg) - int(reg)
+		})
+		if !ok {
+			return nil
+		}
+		index = foundIndex
+	}
+	range_ := allocation.LiveSegmentRanges[index]
+	start := uint64(range_.SegmentStart)
+	end := start + uint64(range_.SegmentCount)
+	if end > uint64(len(allocation.LiveSegments)) {
+		return nil
+	}
+	return allocation.LiveSegments[start:end]
+}
+
+func allocationLiveRangeContains(allocation *Allocation, interval LiveInterval, position uint32) bool {
+	if interval.Flags&liveIntervalSegmented == 0 {
+		return interval.Start <= position && position <= interval.End
+	}
+	segments := allocationIntervalSegments(allocation, interval)
+	index, _ := slices.BinarySearchFunc(segments, position, func(segment LiveSegment, position uint32) int {
+		if segment.End < position {
+			return -1
+		}
+		if segment.Start > position {
+			return 1
+		}
+		return 0
+	})
+	return index < len(segments) && segments[index].Start <= position && position <= segments[index].End
+}
+
+// IntervalContains reports whether interval is live at position after CFG
+// holes are applied. Runtime-ABI planning uses this instead of reinterpreting
+// the conservative Start/End span around calls and scratch-register sites.
+func (allocation *Allocation) IntervalContains(interval LiveInterval, position uint32) bool {
+	return allocationLiveRangeContains(allocation, interval, position)
+}
+
+func allocationLiveRangesOverlap(allocation *Allocation, a, b LiveInterval) bool {
+	if a.End < b.Start || b.End < a.Start {
+		return false
+	}
+	if a.Flags&liveIntervalSegmented == 0 && b.Flags&liveIntervalSegmented == 0 {
+		return true
+	}
+	aSegments, bSegments := allocationIntervalSegments(allocation, a), allocationIntervalSegments(allocation, b)
+	if len(aSegments) == 0 && len(bSegments) == 0 {
+		return true
+	}
+	if len(aSegments) == 0 {
+		return liveSegmentsOverlapRange(bSegments, a.Start, a.End)
+	}
+	if len(bSegments) == 0 {
+		return liveSegmentsOverlapRange(aSegments, b.Start, b.End)
+	}
+	left, right := 0, 0
+	for left < len(aSegments) && right < len(bSegments) {
+		aSegment, bSegment := aSegments[left], bSegments[right]
+		if aSegment.End < bSegment.Start {
+			left++
+		} else if bSegment.End < aSegment.Start {
+			right++
+		} else {
+			return true
+		}
+	}
+	return false
+}
+
+func liveSegmentsOverlapRange(segments []LiveSegment, start, end uint32) bool {
+	for _, segment := range segments {
+		if segment.Start > end {
+			return false
+		}
+		if segment.End >= start {
+			return true
+		}
+	}
+	return false
 }
 
 func spillLocationsOverlap(a uint16, aType MachineType, b uint16, bType MachineType) bool {

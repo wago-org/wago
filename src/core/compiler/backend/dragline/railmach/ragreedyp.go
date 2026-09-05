@@ -167,7 +167,7 @@ func AllocateFastMachineForSchedule(f *Func, schedule *Schedule, config GreedyCo
 	spillSets := reuse.SpillSets[:0]
 	spillMembers := reuse.SpillMembers[:0]
 	fragments := reuse.Fragments[:0]
-	base, err := allocateLinearQ(f, schedule, config.Linear, &reuse.Allocation)
+	base, err := allocateLinearQ(f, schedule, config.Linear, &reuse.Allocation, false)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +202,7 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 	spillSets := reuse.SpillSets[:0]
 	spillMembers := reuse.SpillMembers[:0]
 	fragments := reuse.Fragments[:0]
-	base, err := allocateLinearQ(f, schedule, config.Linear, &reuse.Allocation)
+	base, err := allocateLinearQ(f, schedule, config.Linear, &reuse.Allocation, false)
 	if err != nil {
 		return nil, err
 	}
@@ -230,13 +230,15 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 	})
 	reuse.callPositions = callPositions
 	crossesCall := func(interval LiveInterval) bool {
-		first := firstCallAfter(callPositions, interval.Start)
-		return first < len(callPositions) && callPositions[first].position < interval.End
+		return allocationLiveRangeCrossesCalls(&reuse.Allocation, interval, callPositions)
 	}
 	callSurvivorMask := func(interval LiveInterval) uint64 {
 		survivors := ^uint64(0)
 		for index := firstCallAfter(callPositions, interval.Start); index < len(callPositions) && callPositions[index].position < interval.End; index++ {
 			call := callPositions[index]
+			if !allocationLiveRangeContains(&reuse.Allocation, interval, call.position) {
+				continue
+			}
 			mask := conservativeCallMask(config, interval.Bank)
 			if overrideIndex, ok := slices.BinarySearchFunc(config.CallClobbers, call.instruction, func(override CallClobber, instruction uint32) int {
 				return int(override.Instruction) - int(instruction)
@@ -578,7 +580,7 @@ func planRegionalFragments(f *Func, schedule *Schedule, config GreedyConfig, all
 			continue
 		}
 		byReg[interval.Reg] = uint32(len(states)) + 1
-		states = append(states, regionalState{interval: uint32(intervalIndex), callLive: intervalCrossesPositions(allocation.callPositions, interval)})
+		states = append(states, regionalState{interval: uint32(intervalIndex), callLive: allocationLiveRangeCrossesCalls(&allocation.Allocation, interval, allocation.callPositions)})
 	}
 	flush := func(state *regionalState) {
 		if state.benefit >= 2 && state.start <= state.end {
@@ -784,9 +786,14 @@ func regionalFragmentsPhysicalFree(allocation *GreedyAllocation, bank Bank, phys
 	return true
 }
 
-func intervalCrossesPositions(calls []callPosition, interval LiveInterval) bool {
+func allocationLiveRangeCrossesCalls(allocation *Allocation, interval LiveInterval, calls []callPosition) bool {
 	first := firstCallAfter(calls, interval.Start)
-	return first < len(calls) && calls[first].position < interval.End
+	for index := first; index < len(calls) && calls[index].position < interval.End; index++ {
+		if allocationLiveRangeContains(allocation, interval, calls[index].position) {
+			return true
+		}
+	}
+	return false
 }
 
 func regionalPhysicalFree(allocation *GreedyAllocation, bank Bank, physical uint16, start, end uint32) bool {

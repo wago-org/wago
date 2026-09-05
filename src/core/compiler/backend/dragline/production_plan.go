@@ -964,7 +964,7 @@ func railMachPhysicalLiveAcross(plan *nativeBackendPlan, instructionID uint32, b
 	position := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 	for _, interval := range plan.Allocation.Intervals {
 		location := plan.Allocation.Locations[interval.Reg]
-		if interval.Bank == bank && location.Kind == railmach.LocationRegister && location.Index == physical && interval.Start < position && interval.End > position {
+		if interval.Bank == bank && location.Kind == railmach.LocationRegister && location.Index == physical && interval.Start < position && interval.End > position && plan.Allocation.IntervalContains(interval, position) {
 			return true
 		}
 	}
@@ -983,7 +983,7 @@ func nativeExternalCallFPRMasks(stack *railssa.StackFunc, machine *railmach.Func
 		}
 		position := allocation.InstructionPositions[instructionID]*6 + 2
 		for _, interval := range allocation.Intervals {
-			if interval.Bank != railmach.BankFPR || interval.Start >= position || interval.End <= position {
+			if interval.Bank != railmach.BankFPR || interval.Start >= position || interval.End <= position || !allocation.IntervalContains(interval, position) {
 				continue
 			}
 			location := allocation.Locations[interval.Reg]
@@ -2865,7 +2865,7 @@ func nativeCallTargetSafe(plan *nativeBackendPlan, instructionID uint32) bool {
 		}
 	}
 	for _, interval := range plan.Allocation.Intervals {
-		if interval.Start >= position || interval.End <= position {
+		if interval.Start >= position || interval.End <= position || !plan.Allocation.IntervalContains(interval, position) {
 			continue
 		}
 		location := plan.Allocation.Locations[interval.Reg]

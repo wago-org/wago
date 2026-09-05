@@ -137,6 +137,86 @@ func TestAllocateLinearQRematerializesConstants(t *testing.T) {
 	}
 }
 
+func TestVerifyAllocationAllowsSharedRegisterAcrossLiveRangeHole(t *testing.T) {
+	f := &Func{
+		Insts:  make([]Inst, 4),
+		VRegs:  []VRegData{{}, {Type: TypeI64, Bank: BankGPR}, {Type: TypeI64, Bank: BankGPR}},
+		Blocks: []Block{{InstCount: 4}},
+	}
+	allocation := &Allocation{
+		Locations: []Location{
+			{},
+			{Kind: LocationRegister, Bank: BankGPR, Index: 0},
+			{Kind: LocationRegister, Bank: BankGPR, Index: 0},
+		},
+		Intervals: []LiveInterval{
+			{Reg: 1, Start: 0, End: 20, Bank: BankGPR, Flags: liveIntervalSegmented},
+			{Reg: 2, Start: 6, End: 14, Bank: BankGPR},
+		},
+		LiveSegments:         []LiveSegment{{Start: 0, End: 5}, {Start: 15, End: 20}},
+		LiveSegmentRanges:    []LiveSegmentRange{{Reg: 1, SegmentCount: 2}},
+		InstructionPositions: []uint32{0, 1, 2, 3},
+	}
+	if err := VerifyAllocation(f, allocation, LinearQConfig{GPRs: 1, FPRs: 1}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAllocateLinearQSharesRegisterAcrossCFGLayoutHole(t *testing.T) {
+	f := liveRangeHoleFunc()
+	allocation, err := AllocateLinearQ(f, LinearQConfig{GPRs: 1, FPRs: 1}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, reg := range []VReg{1, 2} {
+		if got := allocation.Locations[reg]; got.Kind != LocationRegister || got.Index != 0 {
+			t.Fatalf("r%d location = %#v, want shared register 0", reg, got)
+		}
+	}
+	if len(allocation.LiveSegments) != 2 || len(allocation.LiveSegmentRanges) != 1 || allocation.LiveSegmentRanges[0].Reg != 1 {
+		t.Fatalf("segmented allocation = intervals %#v ranges %#v segments %#v", allocation.Intervals, allocation.LiveSegmentRanges, allocation.LiveSegments)
+	}
+}
+
+func TestAllocateLinearQKeepsLoopRangesConservative(t *testing.T) {
+	f := liveRangeHoleFunc()
+	f.Blocks[1].Flags |= railssa.BlockLoopHeader
+	allocation, err := AllocateLinearQ(f, LinearQConfig{GPRs: 1, FPRs: 1}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(allocation.LiveSegments) != 0 || len(allocation.LiveSegmentRanges) != 0 || allocation.SpillSlots == 0 {
+		t.Fatalf("loop allocation activated staged segments: spills=%d ranges=%#v segments=%#v", allocation.SpillSlots, allocation.LiveSegmentRanges, allocation.LiveSegments)
+	}
+}
+
+func liveRangeHoleFunc() *Func {
+	return &Func{
+		Target: TargetARM64,
+		Insts: []Inst{
+			{Result: 1, Op: wasm.InstrI64Const},
+			{Result: 2, Op: wasm.InstrI64Const},
+			{OperandStart: 0, OperandCount: 1, Op: wasm.InstrDrop},
+			{OperandStart: 1, OperandCount: 1, Op: wasm.InstrDrop},
+		},
+		Operands: []Operand{
+			{Reg: 2, Bank: BankGPR, Fixed: NoFixedReg, Flags: OperandUse},
+			{Reg: 1, Bank: BankGPR, Fixed: NoFixedReg, Flags: OperandUse},
+		},
+		VRegs: []VRegData{
+			{},
+			{Type: TypeI64, Bank: BankGPR, Def: 3},
+			{Type: TypeI64, Bank: BankGPR, Def: 9},
+		},
+		Blocks: []Block{
+			{InstStart: 0, InstCount: 1},
+			{InstStart: 1, InstCount: 2},
+			{InstStart: 3, InstCount: 1},
+		},
+		Edges: []Edge{{From: 0, To: 1}, {From: 0, To: 2}},
+	}
+}
+
 func TestAllocateLinearQKeepsColdAffineRematerializationBaseLive(t *testing.T) {
 	module := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
 		0x20, 0x00, // local.get 0

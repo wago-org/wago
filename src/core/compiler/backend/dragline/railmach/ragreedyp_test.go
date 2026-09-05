@@ -87,6 +87,21 @@ func TestAllocateGreedyPPromotesCallCrossingRange(t *testing.T) {
 	}
 }
 
+func TestAllocateGreedyPLeavesSegmentedLivenessStaged(t *testing.T) {
+	allocation, err := AllocateGreedyP(liveRangeHoleFunc(), GreedyConfig{
+		Linear:     LinearQConfig{GPRs: 1, FPRs: 1},
+		CallerGPRs: 1,
+		CallerFPRs: 1,
+		MaxStage:   3,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(allocation.LiveSegments) != 0 || len(allocation.LiveSegmentRanges) != 0 {
+		t.Fatalf("GreedyP activated staged segmented liveness: ranges=%#v segments=%#v", allocation.LiveSegmentRanges, allocation.LiveSegments)
+	}
+}
+
 func TestAllocateFastMachineRetainsVerifiedSpillSets(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
 		0x20, 0x00,
