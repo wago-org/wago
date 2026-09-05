@@ -231,3 +231,49 @@ func TestLocalFactsDisabledAcrossControlFlowArm64(t *testing.T) {
 		t.Fatalf("local-fact transfers = %d, want 0 across control flow; peeps=%v", got, stats.Funcs[0].Peephole)
 	}
 }
+
+func TestMemoryAddressUsesUpperZeroFactArm64(t *testing.T) {
+	computed := modMem(t, 1,
+		[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32},
+		[]byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x28, 0x02, 0x00, 0x0b},
+	)
+	on, err := CompileModuleWith(computed, CompileOptions{Optimizations: map[string]bool{"value-facts": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer on.CodeImage.Close()
+	off, err := CompileModuleWith(computed, CompileOptions{Optimizations: map[string]bool{"value-facts": false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer off.CodeImage.Close()
+	if got, want := len(on.Code), len(off.Code)-4; got != want {
+		t.Fatalf("upper-zero address code bytes = %d, want %d (without fact: %d)", got, want, len(off.Code))
+	}
+	if got, err := runArm64WrapperWithOptions(t, computed, CompileOptions{Optimizations: map[string]bool{"value-facts": true}}, 1, 2); err != nil || got != 0 {
+		t.Fatalf("computed address load = %#x, %v; want zero", got, err)
+	}
+
+	// Function parameters have no upper-zero fact: serialized callers may leave
+	// non-canonical bits above the Wasm i32, so their explicit truncation remains.
+	parameter := modMem(t, 1,
+		[]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32},
+		[]byte{0x00, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b},
+	)
+	paramOn, err := CompileModuleWith(parameter, CompileOptions{Optimizations: map[string]bool{"value-facts": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer paramOn.CodeImage.Close()
+	paramOff, err := CompileModuleWith(parameter, CompileOptions{Optimizations: map[string]bool{"value-facts": false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer paramOff.CodeImage.Close()
+	if len(paramOn.Code) != len(paramOff.Code) {
+		t.Fatalf("unknown-upper address changed code bytes: with facts %d, without %d", len(paramOn.Code), len(paramOff.Code))
+	}
+	if got, err := runArm64WrapperWithOptions(t, parameter, CompileOptions{Optimizations: map[string]bool{"value-facts": true}}, uint64(1)<<32); err != nil || got != 0 {
+		t.Fatalf("non-canonical parameter address = %#x, %v; want truncated address zero", got, err)
+	}
+}
