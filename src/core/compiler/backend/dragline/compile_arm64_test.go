@@ -37,6 +37,39 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachTrappingConversionUsesReservedFPRScratch(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(
+			[]wasm.ValType{wasm.F64, wasm.F64, wasm.F64},
+			[]wasm.ValType{wasm.I32, wasm.F64},
+		))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, 0xaa, // local.get 0; i32.trunc_f64_s
+			0x20, 0x01, 0x20, 0x02, 0xa0, // local.get 1; local.get 2; f64.add
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].StructuredReason != "" {
+		t.Fatalf("trapping conversion finalization = %#v", metrics.Functions)
+	}
+}
+
 func TestARM64StructuredCallLocalResidencyPlatform(t *testing.T) {
 	windows := corecompiler.Target{GOOS: "windows", GOARCH: "arm64"}
 	if arm64StructuredPinsLocalsAcrossCalls(windows) {

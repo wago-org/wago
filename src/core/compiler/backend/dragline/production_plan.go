@@ -283,6 +283,9 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 	if stackHasV128Value(stack) || stackHasSIMDInstruction(stack) {
 		return railMachV128FoundationCandidate(stack)
 	}
+	if nativeGiantTrappingConversion(stack) {
+		return false
+	}
 	if stack.HasReferences {
 		return true
 	}
@@ -371,6 +374,60 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 		}
 	}
 	return true
+}
+
+const nativeGiantStructuredInstructions = 4096
+
+// nativeGiantTrappingConversion retains the compact emitter for exceptionally
+// large scalar functions whose exact trapping conversions make the optimizing
+// pipeline materially more expensive. The shared Machine-SSA path remains the
+// default below this measured compile-cost boundary and for vector functions.
+func nativeGiantTrappingConversion(stack *railssa.StackFunc) bool {
+	if stack == nil || len(stack.Instrs) < nativeGiantStructuredInstructions {
+		return false
+	}
+	for _, instruction := range stack.Instrs {
+		if railMachTrappingTrunc(instruction.Kind) {
+			return true
+		}
+	}
+	return false
+}
+
+// railMachRejectionReason reports the first source-level capability boundary
+// that keeps a function on structured emission. It deliberately derives
+// scalar opcode support by probing railMachCandidate itself so diagnostics
+// cannot drift from the production admission policy.
+func railMachRejectionReason(stack *railssa.StackFunc, moduleHasV128 bool) string {
+	if stack == nil {
+		return "missing-stack"
+	}
+	if railMachCandidate(stack, moduleHasV128) {
+		return ""
+	}
+	if stackHasV128Value(stack) || stackHasSIMDInstruction(stack) {
+		for _, instruction := range stack.Instrs {
+			if !wasm.IsSIMDValidationInstructionKind(instruction.Kind) {
+				continue
+			}
+			probe := *stack
+			probe.Instrs = []railssa.StackInstr{instruction}
+			if !railMachV128FoundationCandidate(&probe) {
+				return "unsupported-op:" + instruction.Kind.String()
+			}
+		}
+		return "unsupported-vector-flow"
+	}
+	if nativeGiantTrappingConversion(stack) {
+		return "fast-structured:giant-trapping-conversion"
+	}
+	for _, instruction := range stack.Instrs {
+		probe := &railssa.StackFunc{Instrs: []railssa.StackInstr{instruction}}
+		if !railMachCandidate(probe, false) {
+			return "unsupported-op:" + instruction.Kind.String()
+		}
+	}
+	return "shared-capability"
 }
 
 // railMachV128FoundationCandidate admits vector operations whose machine

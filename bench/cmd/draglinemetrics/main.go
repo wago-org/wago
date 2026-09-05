@@ -147,7 +147,7 @@ func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metri
 			return err
 		}
 	}
-	if _, err := fmt.Fprintln(w, "\n## Functions\n\n| Function | Emitter | Wasm bytes | Native bytes | Spill debt | Segmented trial | Trial debt | Intervals | Segments | Segmented ranges | Fragments | Lower ms | Emit ms |\n|---:|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|"); err != nil {
+	if _, err := fmt.Fprintln(w, "\n## Functions\n\n| Function | Emitter | Reason | Wasm bytes | Native bytes | Spill debt | Segmented trial | Trial debt | Intervals | Segments | Segmented ranges | Fragments | Lower ms | Emit ms |\n|---:|---|---|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|"); err != nil {
 		return err
 	}
 	for _, row := range metrics.Functions {
@@ -166,7 +166,11 @@ func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metri
 			}
 			trialDebt = fmt.Sprintf("%d → %d", row.SegmentedBaselineDebt, row.SegmentedCandidateDebt)
 		}
-		if _, err := fmt.Fprintf(w, "| %d | %s | %d | %d | %d | %s | %s | %d | %d | %d | %d | %.3f | %.3f |\n", row.Function, emitter, row.BodyBytes, row.NativeBytes, row.WeightedSpillDebt, trial, trialDebt, row.LiveIntervals, row.LiveSegments, row.SegmentedRanges, row.AllocationFragments, float64(row.LowerNanos)/1e6, float64(row.EmitNanos)/1e6); err != nil {
+		reason := row.StructuredReason
+		if reason == "" {
+			reason = "-"
+		}
+		if _, err := fmt.Fprintf(w, "| %d | %s | %s | %d | %d | %d | %s | %s | %d | %d | %d | %d | %.3f | %.3f |\n", row.Function, emitter, reason, row.BodyBytes, row.NativeBytes, row.WeightedSpillDebt, trial, trialDebt, row.LiveIntervals, row.LiveSegments, row.SegmentedRanges, row.AllocationFragments, float64(row.LowerNanos)/1e6, float64(row.EmitNanos)/1e6); err != nil {
 			return err
 		}
 	}

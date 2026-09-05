@@ -48,6 +48,23 @@ func amd64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128, moduleHasDe
 	return true
 }
 
+func amd64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, moduleHasDenseGlobals bool) string {
+	if reason := railMachRejectionReason(stack, moduleHasV128); reason != "" {
+		return reason
+	}
+	if moduleHasDenseGlobals && stack.MaxLoopDepth > 1 && amd64StructuredUsesGlobals(stack) {
+		return "amd64-dense-global-loop"
+	}
+	if len(stack.Instrs) > 512 {
+		for _, instruction := range stack.Instrs {
+			if instruction.Kind == wasm.InstrMemoryCopy {
+				return "amd64-large-memory.copy"
+			}
+		}
+	}
+	return ""
+}
+
 func amd64StructuredUsesGlobals(stack *railssa.StackFunc) bool {
 	for _, instruction := range stack.Instrs {
 		if instruction.Kind == wasm.InstrGlobalGet || instruction.Kind == wasm.InstrGlobalSet {
@@ -196,6 +213,9 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				if row != nil {
 					row.CacheHit = true
 					row.RailMachFinalized = artifact.ABIClass != 0
+					if !row.RailMachFinalized {
+						row.StructuredReason = "cached-structured"
+					}
 					row.ABIClass = artifact.ABIClass
 					row.ClobberGPR = artifact.ClobberGPR
 					row.ClobberFPR = artifact.ClobberFPR
@@ -249,7 +269,12 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			fn.HelperSafepointBase = helperSafepointBases[i]
 		}
 		var nativePlan *nativeBackendPlan
-		if amd64RailMachCandidate(fn.Structured, compilationPlan.HasV128, len(m.Globals) >= amd64RailMachDenseGlobalThreshold) {
+		denseGlobals := len(m.Globals) >= amd64RailMachDenseGlobalThreshold
+		railMach := amd64RailMachCandidate(fn.Structured, compilationPlan.HasV128, denseGlobals)
+		if row != nil && !railMach {
+			row.StructuredReason = amd64RailMachRejectionReason(fn.Structured, compilationPlan.HasV128, denseGlobals)
+		}
+		if railMach {
 			if nativePlanner == nil {
 				nativePlanner = &nativeBackendPlanner{signalsBounds: input.Bounds == corecompiler.BoundsSignals}
 			}
@@ -751,6 +776,9 @@ func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 		if code, entry, ok, err := emitAMD64RailMach(fn, nativePlan, &relocs, metrics, metadata); ok || err != nil {
 			return code, entry, relocs, ok, err
 		}
+		if metrics != nil {
+			metrics.StructuredReason = amd64RailMachFinalizationRejectionReason(nativePlan)
+		}
 	}
 	if fn.Stack != nil {
 		code, entry, relocs, err := emitAMD64Stack(fn, plan, metrics, metadata)
@@ -859,6 +887,55 @@ func emitAMD64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 	}
 	a.Ret()
 	return a.B, internalOffset, nil, false, nil
+}
+
+func amd64RailMachFinalizationRejectionReason(plan *nativeBackendPlan) string {
+	if plan == nil || plan.Stack == nil || plan.CFG == nil || plan.Semantic == nil || plan.Machine == nil || plan.Allocation == nil || plan.Schedule == nil || plan.Exit == nil {
+		return "incomplete-machine-plan"
+	}
+	for _, interval := range plan.Allocation.Intervals {
+		location := plan.Allocation.Locations[interval.Reg]
+		if interval.Bank != railmach.BankGPR && interval.Bank != railmach.BankFPR ||
+			location.Kind == railmach.LocationRegister && (interval.Bank == railmach.BankGPR && int(location.Index) >= len(amd64RailMachGPRRegisters) || interval.Bank == railmach.BankFPR && int(location.Index) >= len(amd64FPRRegisters)) ||
+			location.Kind == railmach.LocationSpill && location.Index >= plan.Allocation.SpillSlots ||
+			location.Kind != railmach.LocationRegister && location.Kind != railmach.LocationSpill && location.Kind != railmach.LocationRematerialize {
+			return "amd64-allocation-boundary"
+		}
+	}
+	for _, instruction := range plan.Machine.Insts {
+		if !railmach.IsSelectedOpcodeForTarget(instruction.Op, railmach.TargetAMD64) {
+			return "unselected-op:" + railmach.SemanticOpcode(instruction.Op).String()
+		}
+	}
+	if reason := amd64RailMachTargetSafetyReason(plan); reason != "" {
+		return reason
+	}
+	return "amd64-finalization"
+}
+
+func amd64RailMachTargetSafetyReason(plan *nativeBackendPlan) string {
+	if !amd64RailMachExitSafe(plan) {
+		return "amd64-exit-safety"
+	}
+	denseGlobalModule := plan.Stack.Module != nil && len(plan.Stack.Module.Globals) >= amd64RailMachDenseGlobalThreshold
+	for instructionID, instruction := range plan.Machine.Insts {
+		operands := plan.Machine.InstructionOperands(uint32(instructionID))
+		if amd64DirectSafeDivKind(instruction.Op) && !amd64RailMachDivisionSafe(plan, uint32(instructionID), operands) {
+			return "amd64-division-safety"
+		}
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		if (semanticOp == wasm.InstrCall || semanticOp == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
+			return "amd64-call-safety:" + semanticOp.String()
+		}
+		trunc := railMachTrappingTrunc(semanticOp)
+		truncSat := semanticOp >= wasm.InstrI32TruncSatF32S && semanticOp <= wasm.InstrI64TruncSatF64U
+		scratchLive := railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankGPR, 0) ||
+			railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankFPR, 1)
+		if scratchLive && (trunc || denseGlobalModule && truncSat) {
+			return "amd64-trunc-scratch"
+		}
+	}
+	return ""
 }
 
 func measureAMD64PostRABaseline(fn *railssa.Func, plan *nativeBackendPlan) (int, error) {
@@ -5043,32 +5120,7 @@ func amd64RailMachDivisionSafe(plan *nativeBackendPlan, instructionID uint32, op
 }
 
 func amd64RailMachTargetSafe(plan *nativeBackendPlan) bool {
-	if !amd64RailMachExitSafe(plan) {
-		return false
-	}
-	denseGlobalModule := plan.Stack.Module != nil && len(plan.Stack.Module.Globals) >= amd64RailMachDenseGlobalThreshold
-	for instructionID := range plan.Machine.Insts {
-		instruction := plan.Machine.Insts[instructionID]
-		operands := plan.Machine.InstructionOperands(uint32(instructionID))
-		if amd64DirectSafeDivKind(instruction.Op) && !amd64RailMachDivisionSafe(plan, uint32(instructionID), operands) {
-			return false
-		}
-		semanticOp := railmach.SemanticOpcode(instruction.Op)
-		if (semanticOp == wasm.InstrCall || semanticOp == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
-			return false
-		}
-		trunc := railMachTrappingTrunc(semanticOp)
-		truncSat := semanticOp >= wasm.InstrI32TruncSatF32S && semanticOp <= wasm.InstrI64TruncSatF64U
-		if !trunc && !truncSat {
-			continue
-		}
-		scratchLive := railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankGPR, 0) ||
-			railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankFPR, 1)
-		if scratchLive && (trunc || denseGlobalModule) {
-			return false
-		}
-	}
-	return true
+	return amd64RailMachTargetSafetyReason(plan) == ""
 }
 
 func amd64RailMachExitSafe(plan *nativeBackendPlan) bool {

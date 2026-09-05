@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 20
+const MetricsVersion = 21
 
 // Metrics contains one deterministic row per compiled function plus module
 // totals. Timings are observational; all counts and byte sizes are exact for
@@ -56,6 +56,7 @@ type FunctionMetrics struct {
 	ObligationsElided          uint32                            `json:"obligations_elided"`
 	ProofQueries               uint32                            `json:"proof_queries"`
 	RailMachFinalized          bool                              `json:"railmach_finalized"`
+	StructuredReason           string                            `json:"structured_reason,omitempty"`
 	ScheduleKind               uint8                             `json:"schedule_kind"`
 	BackendAttempts            uint8                             `json:"backend_attempts"`
 	ScheduleCandidates         uint8                             `json:"schedule_candidates"`

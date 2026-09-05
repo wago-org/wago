@@ -207,6 +207,21 @@ the performance corpus.
   five manifest exports (Apple M4 Max, 500 ms/sample). SIMD-wide physical
   allocation, bounds-check elimination, and instruction combination remain
   explicit post-MVP debt.
+- ARM64 emitter convergence: ✅ the exact 36-module corpus routes all 30 runnable
+  applications and 27,384 of 27,390 total functions through RailMach. The six
+  retained structured functions are scalar giants above 4,096 source
+  instructions with exact trapping conversions; this is the measured internal
+  fast path allowed by Phase 9, not module-identity routing. Moving trapping
+  conversion scratch from allocatable V0/V1 to reserved V28/V29 removed the
+  other 71 finalizer fallbacks. A five-round alternating comparison against the
+  pre-cutover compiler lowered full-module compile time by 19% for Lua and 13%
+  for wasm3. SQLite increased 4.6%, inside the 10% migration cap, while its
+  native image shrank 0.4% and peak compiler-owned storage fell 11%. Native
+  size changed by -1.8% for Lua and +0.01% for wasm3, and their peak storage
+  also fell. Ruby's exact single run held compile wall effectively unchanged,
+  reduced peak storage slightly, and shrank the complete native image 0.2%.
+  Metrics schema 21 records the exact
+  source-admission or finalizer-safety reason for every structured function.
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution
@@ -219,6 +234,13 @@ the performance corpus.
   the longer paired Cranelift run has not yet been refreshed. Ruby compile
   latency remains a 19.216-second outlier in the original report. The configured
   LLVM command remains unavailable, so the LLVM gate is unmeasured.
+- Current ARM64 non-ISA execution: ✅ a three-round, 100 ms paired run on Apple
+  M4 Max has all 36 runnable exports faster than wazero. The module-equal paired
+  median geometric mean is 0.555x wazero latency, or 44.5% faster. The narrowest
+  rows are `float.run` at 3.2% faster and `arith.run` at 3.9% faster. Restoring
+  the quality allocator threshold after a measured FastMachine experiment was
+  required: the 1,024-instruction threshold made the two BLAKE rows 36–67%
+  slower and was rejected before commit.
 
 ## Completion rule
 

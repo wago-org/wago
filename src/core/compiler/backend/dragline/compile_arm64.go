@@ -44,6 +44,13 @@ func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, _ []ra
 	return railMachCandidate(stack, moduleHasV128)
 }
 
+func arm64RailMachRejectionReason(stack *railssa.StackFunc, moduleHasV128, uniformStructured bool) string {
+	if uniformStructured {
+		return "windows-uniform-structured"
+	}
+	return railMachRejectionReason(stack, moduleHasV128)
+}
+
 var arm64StackLocalRegisters = [...]arm64.Reg{arm64.X19, arm64.X20, arm64.X21, arm64.X22, arm64.X23}
 var arm64OperandStackRegisters = [...]arm64.Reg{arm64.X9, arm64.X10, arm64.X11, arm64.X12, arm64.X13, arm64.X14, arm64.X15}
 var arm64DeepSIMDOperandStackRegisters = [...]arm64.Reg{
@@ -247,6 +254,9 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				if row != nil {
 					row.CacheHit = true
 					row.RailMachFinalized = artifact.ABIClass != 0
+					if !row.RailMachFinalized {
+						row.StructuredReason = "cached-structured"
+					}
 					row.ABIClass = artifact.ABIClass
 					row.ClobberGPR = artifact.ClobberGPR
 					row.ClobberFPR = artifact.ClobberFPR
@@ -302,7 +312,11 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		functionRequiresMOPS := input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index)
 		requiresMOPS = requiresMOPS || functionRequiresMOPS
 		var nativePlan *nativeBackendPlan
-		if !uniformStructured && arm64RailMachCandidate(fn.Structured, compilationPlan.HasV128, moduleContracts) {
+		railMach := !uniformStructured && arm64RailMachCandidate(fn.Structured, compilationPlan.HasV128, moduleContracts)
+		if row != nil && !railMach {
+			row.StructuredReason = arm64RailMachRejectionReason(fn.Structured, compilationPlan.HasV128, uniformStructured)
+		}
+		if railMach {
 			if nativePlanner == nil {
 				nativePlanner = new(nativeBackendPlanner)
 			}
@@ -795,6 +809,9 @@ func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 		if code, entry, ok, err := emitARM64RailMachTarget(fn, nativePlan, useMOPS, scratch, &relocs, metrics, metadata); ok || err != nil {
 			return code, entry, relocs, ok, err
 		}
+		if metrics != nil {
+			metrics.StructuredReason = arm64RailMachFinalizationRejectionReason(nativePlan)
+		}
 	}
 	if fn.Stack != nil {
 		code, entry, relocs, err := emitARM64Stack(fn, plan, target, target.HasFeature(corecompiler.TargetFeatureARM64MOPS), observations, contracts, scratch, metrics, metadata)
@@ -938,6 +955,43 @@ func emitARM64(fn *railssa.Func, plan *railssa.EmissionPlan, nativePlan *nativeB
 	}
 	a.Ret()
 	return a.B, internalOffset, nil, false, nil
+}
+
+func arm64RailMachFinalizationRejectionReason(plan *nativeBackendPlan) string {
+	if plan == nil || plan.Stack == nil || plan.CFG == nil || plan.Semantic == nil || plan.Machine == nil || plan.Allocation == nil || plan.Schedule == nil || plan.Exit == nil {
+		return "incomplete-machine-plan"
+	}
+	for _, interval := range plan.Allocation.Intervals {
+		location := plan.Allocation.Locations[interval.Reg]
+		if interval.Bank != railmach.BankGPR && interval.Bank != railmach.BankFPR ||
+			location.Kind == railmach.LocationRegister && (interval.Bank == railmach.BankGPR && int(location.Index) >= len(arm64RailMachGPRRegisters) || interval.Bank == railmach.BankFPR && int(location.Index) >= len(arm64FPRRegisters)) ||
+			location.Kind == railmach.LocationSpill && location.Index >= plan.Allocation.SpillSlots ||
+			location.Kind != railmach.LocationRegister && location.Kind != railmach.LocationSpill && location.Kind != railmach.LocationRematerialize {
+			return "arm64-allocation-boundary"
+		}
+	}
+	for _, instruction := range plan.Machine.Insts {
+		if !railmach.IsSelectedOpcodeForTarget(instruction.Op, railmach.TargetARM64) {
+			return "unselected-op:" + railmach.SemanticOpcode(instruction.Op).String()
+		}
+	}
+	if reason := arm64RailMachTargetSafetyReason(plan); reason != "" {
+		return reason
+	}
+	return "arm64-finalization"
+}
+
+func arm64RailMachTargetSafetyReason(plan *nativeBackendPlan) string {
+	if !arm64RailMachExitSafe(plan) {
+		return "arm64-exit-safety"
+	}
+	for instructionID, instruction := range plan.Machine.Insts {
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		if (semanticOp == wasm.InstrCall || semanticOp == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
+			return "arm64-call-safety:" + semanticOp.String()
+		}
+	}
+	return ""
 }
 
 func measureARM64PostRABaseline(fn *railssa.Func, plan *nativeBackendPlan, mops bool) (int, error) {
@@ -5026,8 +5080,9 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					}
 					continue
 				}
-				a.FmovReg(arm64.X0, lhs, f64)
-				if err := emitARM64TruncI32Check(&a, f64, unsigned, fn.Index, wasmOffset, metadata); err != nil {
+				const truncValue = arm64.Reg(28)
+				a.FmovReg(truncValue, lhs, f64)
+				if err := emitARM64TruncI32Check(&a, truncValue, f64, unsigned, fn.Index, wasmOffset, metadata); err != nil {
 					return nil, 0, true, err
 				}
 				a.MovReg32(dst, arm64.X16)
@@ -5044,14 +5099,15 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					}
 					continue
 				}
-				a.FmovReg(arm64.X0, lhs, f64)
-				if err := emitARM64TruncI64Check(&a, f64, unsigned, fn.Index, wasmOffset, metadata); err != nil {
+				const truncValue, truncBoundary = arm64.Reg(28), arm64.Reg(29)
+				a.FmovReg(truncValue, lhs, f64)
+				if err := emitARM64TruncI64Check(&a, truncValue, truncBoundary, f64, unsigned, fn.Index, wasmOffset, metadata); err != nil {
 					return nil, 0, true, err
 				}
 				if unsigned {
-					a.Fcvtzu(dst, arm64.X0, f64, true)
+					a.Fcvtzu(dst, truncValue, f64, true)
 				} else {
-					a.Fcvtzs(dst, arm64.X0, f64, true)
+					a.Fcvtzs(dst, truncValue, f64, true)
 				}
 				continue
 			case wasm.InstrI32ReinterpretF32:
@@ -8839,23 +8895,7 @@ func emitARM64RailMachMoveRangeAt(a *arm64.Asm, plan *nativeBackendPlan, moveRan
 }
 
 func arm64RailMachTargetSafe(plan *nativeBackendPlan) bool {
-	if !arm64RailMachExitSafe(plan) {
-		return false
-	}
-	for instructionID, instruction := range plan.Machine.Insts {
-		semanticOp := railmach.SemanticOpcode(instruction.Op)
-		if (semanticOp == wasm.InstrCall || semanticOp == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
-			return false
-		}
-		if !railMachTrappingTrunc(railmach.SemanticOpcode(instruction.Op)) {
-			continue
-		}
-		if railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankFPR, 0) ||
-			railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankFPR, 1) {
-			return false
-		}
-	}
-	return true
+	return arm64RailMachTargetSafetyReason(plan) == ""
 }
 
 func arm64RailMachExitSafe(plan *nativeBackendPlan) bool {
@@ -15461,7 +15501,7 @@ func emitARM64RegisterStackFloat(a *arm64.Asm, kind wasm.InstrKind, stack *[]was
 		f64src := kind == wasm.InstrI32TruncF64S || kind == wasm.InstrI32TruncF64U
 		unsigned := kind == wasm.InstrI32TruncF32U || kind == wasm.InstrI32TruncF64U
 		a.FmovFromGpr(arm64.X0, top, f64src)
-		if err := emitARM64TruncI32Check(a, f64src, unsigned, function, wasmOffset, metadata); err != nil {
+		if err := emitARM64TruncI32Check(a, arm64.X0, f64src, unsigned, function, wasmOffset, metadata); err != nil {
 			return err
 		}
 		a.MovReg32(top, arm64.X16)
@@ -15473,7 +15513,7 @@ func emitARM64RegisterStackFloat(a *arm64.Asm, kind wasm.InstrKind, stack *[]was
 		f64src := kind == wasm.InstrI64TruncF64S || kind == wasm.InstrI64TruncF64U
 		unsigned := kind == wasm.InstrI64TruncF32U || kind == wasm.InstrI64TruncF64U
 		a.FmovFromGpr(arm64.X0, top, f64src)
-		if err := emitARM64TruncI64Check(a, f64src, unsigned, function, wasmOffset, metadata); err != nil {
+		if err := emitARM64TruncI64Check(a, arm64.X0, arm64.X1, f64src, unsigned, function, wasmOffset, metadata); err != nil {
 			return err
 		}
 		if unsigned {
@@ -15574,14 +15614,14 @@ func emitARM64RegisterStackFloat(a *arm64.Asm, kind wasm.InstrKind, stack *[]was
 	return nil
 }
 
-func emitARM64TruncI32Check(a *arm64.Asm, f64, unsigned bool, function, wasmOffset uint32, metadata *functionEmissionMetadata) error {
+func emitARM64TruncI32Check(a *arm64.Asm, value arm64.Reg, f64, unsigned bool, function, wasmOffset uint32, metadata *functionEmissionMetadata) error {
 	patchValid := func(site int) error {
 		if !a.PatchBranch19(site, a.Len()) {
 			return fmt.Errorf("float conversion range branch is out of range")
 		}
 		return nil
 	}
-	a.Fcmp(arm64.X0, arm64.X0, f64)
+	a.Fcmp(value, value, f64)
 	ordered := a.Bcond(arm64.CondVC)
 	metadata.recordTrap(a.Len(), wasmOffset, 11)
 	arm64EmitTrap(a, 11, function, wasmOffset)
@@ -15593,7 +15633,7 @@ func emitARM64TruncI32Check(a *arm64.Asm, f64, unsigned bool, function, wasmOffs
 	// the architectural saturation for larger finite values is then rejected by
 	// exact integer range comparisons. This also handles fractional values just
 	// outside an integer boundary according to truncation-toward-zero semantics.
-	a.Fcvtzs(arm64.X16, arm64.X0, f64, true)
+	a.Fcvtzs(arm64.X16, value, f64, true)
 	lower, upper := int64(math.MinInt32), uint64(math.MaxInt32)
 	if unsigned {
 		lower, upper = 0, math.MaxUint32
@@ -15614,14 +15654,14 @@ func emitARM64TruncI32Check(a *arm64.Asm, f64, unsigned bool, function, wasmOffs
 	return patchValid(belowUpper)
 }
 
-func emitARM64TruncI64Check(a *arm64.Asm, f64, unsigned bool, function, wasmOffset uint32, metadata *functionEmissionMetadata) error {
+func emitARM64TruncI64Check(a *arm64.Asm, value, boundary arm64.Reg, f64, unsigned bool, function, wasmOffset uint32, metadata *functionEmissionMetadata) error {
 	patchValid := func(site int) error {
 		if !a.PatchBranch19(site, a.Len()) {
 			return fmt.Errorf("float conversion range branch is out of range")
 		}
 		return nil
 	}
-	a.Fcmp(arm64.X0, arm64.X0, f64)
+	a.Fcmp(value, value, f64)
 	ordered := a.Bcond(arm64.CondVC)
 	metadata.recordTrap(a.Len(), wasmOffset, 11)
 	arm64EmitTrap(a, 11, function, wasmOffset)
@@ -15639,8 +15679,8 @@ func emitARM64TruncI64Check(a *arm64.Asm, f64, unsigned bool, function, wasmOffs
 		}
 	}
 	a.MovImm64(arm64.X16, minBits)
-	a.FmovFromGpr(arm64.X1, arm64.X16, f64)
-	a.Fcmp(arm64.X0, arm64.X1, f64)
+	a.FmovFromGpr(boundary, arm64.X16, f64)
+	a.Fcmp(value, boundary, f64)
 	aboveLower := a.Bcond(arm64.CondGT)
 	metadata.recordTrap(a.Len(), wasmOffset, 11)
 	arm64EmitTrap(a, 11, function, wasmOffset)
@@ -15648,8 +15688,8 @@ func emitARM64TruncI64Check(a *arm64.Asm, f64, unsigned bool, function, wasmOffs
 		return err
 	}
 	a.MovImm64(arm64.X16, maxBits)
-	a.FmovFromGpr(arm64.X1, arm64.X16, f64)
-	a.Fcmp(arm64.X0, arm64.X1, f64)
+	a.FmovFromGpr(boundary, arm64.X16, f64)
+	a.Fcmp(value, boundary, f64)
 	belowUpper := a.Bcond(arm64.CondLT)
 	metadata.recordTrap(a.Len(), wasmOffset, 11)
 	arm64EmitTrap(a, 11, function, wasmOffset)

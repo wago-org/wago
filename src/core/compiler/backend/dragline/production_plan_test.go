@@ -884,6 +884,35 @@ func TestRailMachAdmitsSupportedLoopFamilies(t *testing.T) {
 	}
 }
 
+func TestRailMachRejectionReasonIdentifiesFirstUnsupportedOperation(t *testing.T) {
+	if reason := railMachRejectionReason(&railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrI32Add}}}, false); reason != "" {
+		t.Fatalf("supported operation reason = %q", reason)
+	}
+	stack := &railssa.StackFunc{Instrs: []railssa.StackInstr{
+		{Kind: wasm.InstrI32Add},
+		{Kind: wasm.InstrTableGet},
+		{Kind: wasm.InstrTableSet},
+	}}
+	if reason := railMachRejectionReason(stack, false); reason != "unsupported-op:TableGet" {
+		t.Fatalf("unsupported operation reason = %q", reason)
+	}
+}
+
+func TestRailMachRetainsFastStructuredPathForGiantTrappingConversion(t *testing.T) {
+	stack := &railssa.StackFunc{Instrs: make([]railssa.StackInstr, nativeGiantStructuredInstructions)}
+	stack.Instrs[0].Kind = wasm.InstrI32TruncF64S
+	if railMachCandidate(stack, false) {
+		t.Fatal("giant trapping-conversion function entered the quality pipeline")
+	}
+	if reason := railMachRejectionReason(stack, false); reason != "fast-structured:giant-trapping-conversion" {
+		t.Fatalf("giant-function reason = %q", reason)
+	}
+	stack.Instrs = stack.Instrs[:nativeGiantStructuredInstructions-1]
+	if !railMachCandidate(stack, false) {
+		t.Fatal("function below giant threshold missed the machine pipeline")
+	}
+}
+
 func TestRailMachAdmitsScalarFunctionInSIMDModule(t *testing.T) {
 	stack := &railssa.StackFunc{
 		MaxLoopDepth: 1,
