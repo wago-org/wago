@@ -929,7 +929,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I8x16LtS, railmach.OpAMD64I8x16GtS, railmach.OpAMD64I8x16LeS, railmach.OpAMD64I8x16GeS,
 			railmach.OpAMD64I16x8LtS, railmach.OpAMD64I16x8GtS, railmach.OpAMD64I16x8LeS, railmach.OpAMD64I16x8GeS,
 			railmach.OpAMD64I32x4LtS, railmach.OpAMD64I32x4GtS, railmach.OpAMD64I32x4LeS, railmach.OpAMD64I32x4GeS,
-			railmach.OpAMD64I64x2LtS, railmach.OpAMD64I64x2GtS, railmach.OpAMD64I64x2LeS, railmach.OpAMD64I64x2GeS:
+			railmach.OpAMD64I64x2LtS, railmach.OpAMD64I64x2GtS, railmach.OpAMD64I64x2LeS, railmach.OpAMD64I64x2GeS,
+			railmach.OpAMD64I8x16LtU, railmach.OpAMD64I8x16GtU, railmach.OpAMD64I8x16LeU, railmach.OpAMD64I8x16GeU,
+			railmach.OpAMD64I16x8LtU, railmach.OpAMD64I16x8GtU, railmach.OpAMD64I16x8LeU, railmach.OpAMD64I16x8GeU,
+			railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GtU, railmach.OpAMD64I32x4LeU, railmach.OpAMD64I32x4GeU:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2234,7 +2237,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				railmach.OpAMD64I8x16LtS, railmach.OpAMD64I8x16GtS, railmach.OpAMD64I8x16LeS, railmach.OpAMD64I8x16GeS,
 				railmach.OpAMD64I16x8LtS, railmach.OpAMD64I16x8GtS, railmach.OpAMD64I16x8LeS, railmach.OpAMD64I16x8GeS,
 				railmach.OpAMD64I32x4LtS, railmach.OpAMD64I32x4GtS, railmach.OpAMD64I32x4LeS, railmach.OpAMD64I32x4GeS,
-				railmach.OpAMD64I64x2LtS, railmach.OpAMD64I64x2GtS, railmach.OpAMD64I64x2LeS, railmach.OpAMD64I64x2GeS:
+				railmach.OpAMD64I64x2LtS, railmach.OpAMD64I64x2GtS, railmach.OpAMD64I64x2LeS, railmach.OpAMD64I64x2GeS,
+				railmach.OpAMD64I8x16LtU, railmach.OpAMD64I8x16GtU, railmach.OpAMD64I8x16LeU, railmach.OpAMD64I8x16GeU,
+				railmach.OpAMD64I16x8LtU, railmach.OpAMD64I16x8GtU, railmach.OpAMD64I16x8LeU, railmach.OpAMD64I16x8GeU,
+				railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GtU, railmach.OpAMD64I32x4LeU, railmach.OpAMD64I32x4GeU:
 				if len(operands) != 2 {
 					return nil, 0, true, fmt.Errorf("RailMach selected vector binary operand count is %d", len(operands))
 				}
@@ -2302,6 +2308,27 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.VPcmpgtq(dst, rhs, lhs)
 				case railmach.OpAMD64I64x2GtS, railmach.OpAMD64I64x2LeS:
 					a.VPcmpgtq(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16LtU, railmach.OpAMD64I8x16GtU, railmach.OpAMD64I8x16LeU, railmach.OpAMD64I8x16GeU,
+					railmach.OpAMD64I16x8LtU, railmach.OpAMD64I16x8GtU, railmach.OpAMD64I16x8LeU, railmach.OpAMD64I16x8GeU,
+					railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GtU, railmach.OpAMD64I32x4LeU, railmach.OpAMD64I32x4GeU:
+					sign := amd64UnsignedVectorSignMask(instruction.Op)
+					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(5), bytes: sign})
+					a.VPxor(dst, lhs, 5)
+					a.VPxor(5, rhs, 5)
+					switch instruction.Op {
+					case railmach.OpAMD64I8x16LtU, railmach.OpAMD64I8x16GeU:
+						a.VPcmpgtb(dst, 5, dst)
+					case railmach.OpAMD64I8x16GtU, railmach.OpAMD64I8x16LeU:
+						a.VPcmpgtb(dst, dst, 5)
+					case railmach.OpAMD64I16x8LtU, railmach.OpAMD64I16x8GeU:
+						a.VPcmpgtw(dst, 5, dst)
+					case railmach.OpAMD64I16x8GtU, railmach.OpAMD64I16x8LeU:
+						a.VPcmpgtw(dst, dst, 5)
+					case railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GeU:
+						a.VPcmpgtd(dst, 5, dst)
+					default:
+						a.VPcmpgtd(dst, dst, 5)
+					}
 				}
 				switch instruction.Op {
 				case railmach.OpAMD64I8x16Ne, railmach.OpAMD64I16x8Ne, railmach.OpAMD64I32x4Ne, railmach.OpAMD64I64x2Ne:
@@ -2311,6 +2338,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					railmach.OpAMD64I16x8LeS, railmach.OpAMD64I16x8GeS,
 					railmach.OpAMD64I32x4LeS, railmach.OpAMD64I32x4GeS,
 					railmach.OpAMD64I64x2LeS, railmach.OpAMD64I64x2GeS:
+					a.VPcmpeqd(5, 5, 5)
+					a.VPxor(dst, dst, 5)
+				case railmach.OpAMD64I8x16LeU, railmach.OpAMD64I8x16GeU,
+					railmach.OpAMD64I16x8LeU, railmach.OpAMD64I16x8GeU,
+					railmach.OpAMD64I32x4LeU, railmach.OpAMD64I32x4GeU:
 					a.VPcmpeqd(5, 5, 5)
 					a.VPxor(dst, dst, 5)
 				}
@@ -3658,6 +3690,20 @@ func amd64RailMachPhysical(location railmach.Location) amd64.Reg {
 		return amd64FPRRegisters[location.Index]
 	}
 	return amd64RailMachGPRRegisters[location.Index]
+}
+
+func amd64UnsignedVectorSignMask(op railmach.MOpcode) (mask [16]byte) {
+	laneBytes := 1
+	switch op {
+	case railmach.OpAMD64I16x8LtU, railmach.OpAMD64I16x8GtU, railmach.OpAMD64I16x8LeU, railmach.OpAMD64I16x8GeU:
+		laneBytes = 2
+	case railmach.OpAMD64I32x4LtU, railmach.OpAMD64I32x4GtU, railmach.OpAMD64I32x4LeU, railmach.OpAMD64I32x4GeU:
+		laneBytes = 4
+	}
+	for index := laneBytes - 1; index < len(mask); index += laneBytes {
+		mask[index] = 0x80
+	}
+	return mask
 }
 
 func amd64RailMachRegisterLiveAfter(plan *nativeBackendPlan, physical uint16, position uint32, excluded railmach.VReg) bool {

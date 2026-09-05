@@ -4281,6 +4281,12 @@ func TestDraglineRailMachIntegerVectorArithmeticAndEqualityExecution(t *testing.
 		{"i64x2.lt_s", 216, splat64(^uint64(1)), splat64(1), ^uint64(0)},
 		{"i64x2.gt_s", 217, splat64(7), splat64(1), ^uint64(0)},
 		{"i64x2.ge_s", 219, splat64(^uint64(1)), splat64(^uint64(2)), ^uint64(0)},
+		{"i8x16.lt_u_false", 38, splat8(250), splat8(1), 0},
+		{"i8x16.gt_u", 40, splat8(250), splat8(1), ^uint64(0)},
+		{"i16x8.le_u", 52, splat16(1), splat16(2), ^uint64(0)},
+		{"i16x8.ge_u", 54, splat16(0xffff), splat16(2), ^uint64(0)},
+		{"i32x4.lt_u_false", 58, splat32(0x80000000), splat32(1), 0},
+		{"i32x4.ge_u", 64, splat32(0x80000000), splat32(1), ^uint64(0)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			body := []byte{0x41, 0x00, 0xfd, 0x0c}
