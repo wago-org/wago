@@ -477,6 +477,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 		committedLICM = uint32(len(pressure.LICM))
 	}
 	criticalHeight := resize(reuse.criticalHeight, len(f.Insts))
+	clear(criticalHeight)
 	for instruction := len(f.Insts) - 1; instruction >= 0; instruction-- {
 		cost := uint64(scheduleInstructionLatency(f.Target, f.Insts[instruction].Op, selection.Selections[instruction].Cost.Latency))
 		criticalHeight[instruction] = max(criticalHeight[instruction], cost)

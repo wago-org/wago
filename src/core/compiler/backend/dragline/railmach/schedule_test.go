@@ -151,6 +151,16 @@ func TestLatencyScheduleScansDynamicLastUsePriorities(t *testing.T) {
 	if first := schedule.Order[0]; first != 1 {
 		t.Fatalf("low-pressure first instruction = %d, want critical-path instruction 1; order=%v", first, schedule.Order)
 	}
+	for index := range schedule.criticalHeight {
+		schedule.criticalHeight[index] = 1000
+	}
+	schedule, err = BuildScheduleWithPressure(f, selection, dag, ScheduleKindLatencyFusion, pressure, schedule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := schedule.criticalHeight, []uint64{1, 3, 1}; !slices.Equal(got, want) {
+		t.Fatalf("reused critical heights = %v, want %v", got, want)
+	}
 }
 
 func TestAMD64ScheduleInstructionLatencyUsesOpcodeCosts(t *testing.T) {
