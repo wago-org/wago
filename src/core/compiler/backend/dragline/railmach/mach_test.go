@@ -922,6 +922,43 @@ func TestSelectTargetOpcodesCalls(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesReferencePrimitives(t *testing.T) {
+	m := machineModule(nil, nil, []byte{
+		0xd0, 0x6d, 0xd1, 0x1a,
+		0xd0, 0x6d, 0xd0, 0x6d, 0xd3, 0x1a,
+		0xd0, 0x6d, 0xd4, 0x1a,
+		0x0b,
+	})
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [4]MOpcode
+	}{
+		{"amd64", TargetAMD64, [4]MOpcode{OpAMD64RefNull, OpAMD64RefIsNull, OpAMD64RefEq, OpAMD64RefAsNonNull}},
+		{"arm64", TargetARM64, [4]MOpcode{OpARM64RefNull, OpARM64RefIsNull, OpARM64RefEq, OpARM64RefAsNonNull}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := buildMachineTest(t, test.target, m)
+			if _, err := SelectTargetOpcodes(f); err != nil {
+				t.Fatal(err)
+			}
+			semantics := [4]MOpcode{wasm.InstrRefNull, wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull}
+			for index, want := range test.want {
+				found := false
+				for _, instruction := range f.Insts {
+					if instruction.Op == want && SemanticOpcode(instruction.Op) == semantics[index] {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Fatalf("selected instructions = %#v, want %v", f.Insts, want)
+				}
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerComparisons(t *testing.T) {
 	operations := [22]MOpcode{
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,

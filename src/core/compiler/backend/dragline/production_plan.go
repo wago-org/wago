@@ -2294,7 +2294,8 @@ func nativeValueCannotCreateCollectorEdge(machine *railmach.Func, value railmach
 		return false
 	}
 	producer := machine.Insts[definition/6]
-	return producer.Result == value && (producer.Op == wasm.InstrRefNull || producer.Op == wasm.InstrRefI31)
+	semanticOp := railmach.SemanticOpcode(producer.Op)
+	return producer.Result == value && (semanticOp == wasm.InstrRefNull || semanticOp == wasm.InstrRefI31)
 }
 
 // preparePostRAScratch retains only the instruction-indexed tables consumed by

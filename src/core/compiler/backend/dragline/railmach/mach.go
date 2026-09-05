@@ -369,7 +369,8 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 			for ordinal := uint32(0); ordinal < instruction.ResultCount(); ordinal++ {
 				result := instruction.Result + VReg(ordinal)
 				reuse.VRegs[result].Def = (uint32(len(reuse.Insts))-1)*6 + 3
-				if instruction.Op == wasm.InstrI32Const || instruction.Op == wasm.InstrI64Const || instruction.Op == wasm.InstrF32Const || instruction.Op == wasm.InstrF64Const || instruction.Op == wasm.InstrRefNull {
+				semanticOp := SemanticOpcode(instruction.Op)
+				if semanticOp == wasm.InstrI32Const || semanticOp == wasm.InstrI64Const || semanticOp == wasm.InstrF32Const || semanticOp == wasm.InstrF64Const || semanticOp == wasm.InstrRefNull {
 					reuse.VRegs[result].Flags |= VRegRematerializable
 				}
 			}

@@ -1048,6 +1048,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64MemorySize, railmach.OpAMD64MemoryGrow, railmach.OpAMD64MemoryCopy, railmach.OpAMD64MemoryFill,
 			railmach.OpAMD64If, railmach.OpAMD64Br, railmach.OpAMD64BrIf, railmach.OpAMD64BrTable, railmach.OpAMD64Return, railmach.OpAMD64Unreachable,
 			railmach.OpAMD64Call, railmach.OpAMD64CallIndirect,
+			railmach.OpAMD64RefNull, railmach.OpAMD64RefIsNull, railmach.OpAMD64RefEq, railmach.OpAMD64RefAsNonNull,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -3530,7 +3531,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			lhs := reg(operands[0].Reg)
-			if instruction.Op == wasm.InstrRefAsNonNull {
+			if semanticOp == wasm.InstrRefAsNonNull {
 				a.TestSelf(lhs, true)
 				nonNull := a.JccPlaceholder(amd64.CondNE)
 				metadata.recordTrap(a.Len(), wasmOffset, 16)
@@ -3971,7 +3972,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.SetccReg(amd64.CondE, dst)
 				continue
 			}
-			if instruction.Op == wasm.InstrRefEq {
+			if semanticOp == wasm.InstrRefEq {
 				rhs := reg(operands[1].Reg)
 				a.Cmp64(lhs, rhs)
 				a.SetccReg(amd64.CondE, dst)

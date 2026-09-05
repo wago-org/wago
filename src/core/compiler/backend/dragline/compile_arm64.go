@@ -1123,6 +1123,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64MemorySize, railmach.OpARM64MemoryGrow, railmach.OpARM64MemoryCopy, railmach.OpARM64MemoryFill,
 			railmach.OpARM64If, railmach.OpARM64Br, railmach.OpARM64BrIf, railmach.OpARM64BrTable, railmach.OpARM64Return, railmach.OpARM64Unreachable,
 			railmach.OpARM64Call, railmach.OpARM64CallIndirect,
+			railmach.OpARM64RefNull, railmach.OpARM64RefIsNull, railmach.OpARM64RefEq, railmach.OpARM64RefAsNonNull,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -4634,7 +4635,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrRefAsNonNull {
+			if semanticOp == wasm.InstrRefAsNonNull {
 				a.CmpImm64(lhs, 0)
 				nonNull := a.Bcond(arm64.CondNE)
 				metadata.recordTrap(a.Len(), wasmOffset, 16)
@@ -5233,7 +5234,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				a.Cset32(dst, arm64.CondEQ)
 				continue
 			}
-			if instruction.Op == wasm.InstrRefEq {
+			if semanticOp == wasm.InstrRefEq {
 				rhs := reg(operands[1].Reg)
 				a.CmpReg64(lhs, rhs)
 				a.Cset32(dst, arm64.CondEQ)
