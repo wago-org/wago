@@ -458,6 +458,11 @@ const (
 	OpAMD64StructSet
 	OpAMD64StructNew
 	OpAMD64StructNewDefault
+	OpAMD64ArrayGet
+	OpAMD64ArrayGetS
+	OpAMD64ArrayGetU
+	OpAMD64ArraySet
+	OpAMD64ArrayLen
 	opAMD64SelectedEnd
 )
 
@@ -907,6 +912,11 @@ const (
 	OpARM64StructSet
 	OpARM64StructNew
 	OpARM64StructNewDefault
+	OpARM64ArrayGet
+	OpARM64ArrayGetS
+	OpARM64ArrayGetU
+	OpARM64ArraySet
+	OpARM64ArrayLen
 	opARM64SelectedEnd
 )
 
@@ -1230,6 +1240,16 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrStructNew
 	case OpAMD64StructNewDefault, OpARM64StructNewDefault:
 		return wasm.InstrStructNewDefault
+	case OpAMD64ArrayGet, OpARM64ArrayGet:
+		return wasm.InstrArrayGet
+	case OpAMD64ArrayGetS, OpARM64ArrayGetS:
+		return wasm.InstrArrayGetS
+	case OpAMD64ArrayGetU, OpARM64ArrayGetU:
+		return wasm.InstrArrayGetU
+	case OpAMD64ArraySet, OpARM64ArraySet:
+		return wasm.InstrArraySet
+	case OpAMD64ArrayLen, OpARM64ArrayLen:
+		return wasm.InstrArrayLen
 	case OpAMD64F32EqScalar, OpARM64F32EqScalar:
 		return wasm.InstrF32Eq
 	case OpAMD64F64EqScalar, OpARM64F64EqScalar:
@@ -1810,6 +1830,16 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64StructNew, OpARM64StructNew
 		case wasm.InstrStructNewDefault:
 			amd64, arm64 = OpAMD64StructNewDefault, OpARM64StructNewDefault
+		case wasm.InstrArrayGet:
+			amd64, arm64 = OpAMD64ArrayGet, OpARM64ArrayGet
+		case wasm.InstrArrayGetS:
+			amd64, arm64 = OpAMD64ArrayGetS, OpARM64ArrayGetS
+		case wasm.InstrArrayGetU:
+			amd64, arm64 = OpAMD64ArrayGetU, OpARM64ArrayGetU
+		case wasm.InstrArraySet:
+			amd64, arm64 = OpAMD64ArraySet, OpARM64ArraySet
+		case wasm.InstrArrayLen:
+			amd64, arm64 = OpAMD64ArrayLen, OpARM64ArrayLen
 		case wasm.InstrF32Eq:
 			amd64, arm64 = OpAMD64F32EqScalar, OpARM64F32EqScalar
 		case wasm.InstrF64Eq:

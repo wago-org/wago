@@ -1064,6 +1064,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64RefTest, railmach.OpAMD64RefCast, railmach.OpAMD64BrOnCast, railmach.OpAMD64BrOnCastFail,
 			railmach.OpAMD64StructGet, railmach.OpAMD64StructGetS, railmach.OpAMD64StructGetU, railmach.OpAMD64StructSet,
 			railmach.OpAMD64StructNew, railmach.OpAMD64StructNewDefault,
+			railmach.OpAMD64ArrayGet, railmach.OpAMD64ArrayGetS, railmach.OpAMD64ArrayGetU, railmach.OpAMD64ArraySet, railmach.OpAMD64ArrayLen,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -1892,14 +1893,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				emitAMD64ExternalCallFPRSave(&a, plan, true)
 				continue
 			}
-			if instruction.Op == wasm.InstrArrayGet || instruction.Op == wasm.InstrArrayGetS || instruction.Op == wasm.InstrArrayGetU {
+			if semanticOp == wasm.InstrArrayGet || semanticOp == wasm.InstrArrayGetS || semanticOp == wasm.InstrArrayGetU {
 				if len(operands) != 2 {
 					return nil, 0, true, fmt.Errorf("RailMach %s operand count is %d", instruction.Op, len(operands))
 				}
 				helper := codegen.GCHelperArrayGet
-				if instruction.Op == wasm.InstrArrayGetS {
+				if semanticOp == wasm.InstrArrayGetS {
 					helper = codegen.GCHelperArrayGetS
-				} else if instruction.Op == wasm.InstrArrayGetU {
+				} else if semanticOp == wasm.InstrArrayGetU {
 					helper = codegen.GCHelperArrayGetU
 				}
 				payload, ok := codegen.EncodeGCHelperDispatch(helper, 0)
@@ -1926,7 +1927,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				emitAMD64ExternalCallFPRSave(&a, plan, true)
 				continue
 			}
-			if instruction.Op == wasm.InstrArraySet {
+			if semanticOp == wasm.InstrArraySet {
 				if len(operands) != 3 {
 					return nil, 0, true, fmt.Errorf("RailMach array.set operand count is %d", len(operands))
 				}
@@ -2024,7 +2025,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				emitAMD64ExternalCallFPRSave(&a, plan, true)
 				continue
 			}
-			if instruction.Op == wasm.InstrArrayLen {
+			if semanticOp == wasm.InstrArrayLen {
 				if len(operands) != 1 {
 					return nil, 0, true, fmt.Errorf("RailMach array.len operand count is %d", len(operands))
 				}

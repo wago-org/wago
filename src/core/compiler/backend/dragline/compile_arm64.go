@@ -1139,6 +1139,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64RefTest, railmach.OpARM64RefCast, railmach.OpARM64BrOnCast, railmach.OpARM64BrOnCastFail,
 			railmach.OpARM64StructGet, railmach.OpARM64StructGetS, railmach.OpARM64StructGetU, railmach.OpARM64StructSet,
 			railmach.OpARM64StructNew, railmach.OpARM64StructNewDefault,
+			railmach.OpARM64ArrayGet, railmach.OpARM64ArrayGetS, railmach.OpARM64ArrayGetU, railmach.OpARM64ArraySet, railmach.OpARM64ArrayLen,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -2885,14 +2886,14 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrArrayGet || instruction.Op == wasm.InstrArrayGetS || instruction.Op == wasm.InstrArrayGetU {
+			if semanticOp == wasm.InstrArrayGet || semanticOp == wasm.InstrArrayGetS || semanticOp == wasm.InstrArrayGetU {
 				if len(operands) != 2 {
 					return nil, 0, true, fmt.Errorf("RailMach %s operand count is %d", instruction.Op, len(operands))
 				}
 				helper := codegen.GCHelperArrayGet
-				if instruction.Op == wasm.InstrArrayGetS {
+				if semanticOp == wasm.InstrArrayGetS {
 					helper = codegen.GCHelperArrayGetS
-				} else if instruction.Op == wasm.InstrArrayGetU {
+				} else if semanticOp == wasm.InstrArrayGetU {
 					helper = codegen.GCHelperArrayGetU
 				}
 				payload, ok := codegen.EncodeGCHelperDispatch(helper, 0)
@@ -2928,7 +2929,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrArraySet {
+			if semanticOp == wasm.InstrArraySet {
 				if len(operands) != 3 {
 					return nil, 0, true, fmt.Errorf("RailMach array.set operand count is %d", len(operands))
 				}
@@ -3053,7 +3054,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				a.Blr(arm64.X16)
 				continue
 			}
-			if instruction.Op == wasm.InstrArrayLen {
+			if semanticOp == wasm.InstrArrayLen {
 				if len(operands) != 1 {
 					return nil, 0, true, fmt.Errorf("RailMach array.len operand count is %d", len(operands))
 				}
