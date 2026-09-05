@@ -405,6 +405,10 @@ func TestARM64RailMachSIMDImmediateShiftCoversLaneKinds(t *testing.T) {
 		{railmach.OpARM64I16x8ShrS, func(a *arm64.Asm) { a.NeonSshrH(3, 4, 5) }},
 		{railmach.OpARM64I32x4ShrU, func(a *arm64.Asm) { a.NeonUshrS(3, 4, 5) }},
 		{railmach.OpARM64I64x2Shl, func(a *arm64.Asm) { a.NeonShlD(3, 4, 5) }},
+		{railmach.OpARM64I8x16ShlImmediate, func(a *arm64.Asm) { a.NeonShlB(3, 4, 5) }},
+		{railmach.OpARM64I16x8ShrSImmediate, func(a *arm64.Asm) { a.NeonSshrH(3, 4, 5) }},
+		{railmach.OpARM64I32x4ShrUImmediate, func(a *arm64.Asm) { a.NeonUshrS(3, 4, 5) }},
+		{railmach.OpARM64I64x2ShlImmediate, func(a *arm64.Asm) { a.NeonShlD(3, 4, 5) }},
 	}
 	for _, test := range tests {
 		var got, want arm64.Asm
@@ -416,6 +420,60 @@ func TestARM64RailMachSIMDImmediateShiftCoversLaneKinds(t *testing.T) {
 			t.Fatalf("selected shift %d = %x, want %x", test.op, got.B, want.B)
 		}
 	}
+}
+
+func TestARM64RailMachSelectedSIMDImmediateReachesVectorDispatch(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0
+			0x41, 0x05, // i32.const 5
+			0xfd, 0xab, 0x01, // i32x4.shl
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, instruction := range plan.Machine.Insts {
+		found = found || instruction.Op == railmach.OpARM64I32x4ShlImmediate && instruction.Aux == 5
+	}
+	if !found {
+		t.Fatalf("selected machine instructions = %#v, want i32x4.shl immediate 5", plan.Machine.Insts)
+	}
+	code, _, ok, err := emitARM64RailMach(fn, plan, false, nil, nil, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("selected RailMach finalization = ok %t, err %v", ok, err)
+	}
+	var encoding arm64.Asm
+	encoding.NeonShlS(0, 0, 5)
+	want := binary.LittleEndian.Uint32(encoding.B) &^ 0x3ff
+	for offset := 0; offset+4 <= len(code); offset += 4 {
+		if binary.LittleEndian.Uint32(code[offset:])&^0x3ff == want {
+			return
+		}
+	}
+	t.Fatalf("selected SIMD immediate emitted no i32x4.shl #5 in %x", code)
 }
 
 func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {

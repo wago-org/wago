@@ -695,6 +695,18 @@ const (
 	OpARM64I8x16ShrS
 	OpARM64I8x16ShrU
 	OpARM64I64x2ShrS
+	OpARM64I8x16ShlImmediate
+	OpARM64I8x16ShrSImmediate
+	OpARM64I8x16ShrUImmediate
+	OpARM64I16x8ShlImmediate
+	OpARM64I16x8ShrSImmediate
+	OpARM64I16x8ShrUImmediate
+	OpARM64I32x4ShlImmediate
+	OpARM64I32x4ShrSImmediate
+	OpARM64I32x4ShrUImmediate
+	OpARM64I64x2ShlImmediate
+	OpARM64I64x2ShrSImmediate
+	OpARM64I64x2ShrUImmediate
 	OpARM64V128Load8x8S
 	OpARM64V128Load8x8U
 	OpARM64V128Load16x4S
@@ -1007,7 +1019,11 @@ func IsARM64ImmediateOpcode(op MOpcode) bool {
 		OpARM64I32LeSImmediate, OpARM64I64LeSImmediate,
 		OpARM64I32LeUImmediate, OpARM64I64LeUImmediate,
 		OpARM64I32GeSImmediate, OpARM64I64GeSImmediate,
-		OpARM64I32GeUImmediate, OpARM64I64GeUImmediate:
+		OpARM64I32GeUImmediate, OpARM64I64GeUImmediate,
+		OpARM64I8x16ShlImmediate, OpARM64I8x16ShrSImmediate, OpARM64I8x16ShrUImmediate,
+		OpARM64I16x8ShlImmediate, OpARM64I16x8ShrSImmediate, OpARM64I16x8ShrUImmediate,
+		OpARM64I32x4ShlImmediate, OpARM64I32x4ShrSImmediate, OpARM64I32x4ShrUImmediate,
+		OpARM64I64x2ShlImmediate, OpARM64I64x2ShrSImmediate, OpARM64I64x2ShrUImmediate:
 		return true
 	default:
 		return false
@@ -1638,6 +1654,10 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpARM64I32x4TruncSatF32x4S, OpARM64I32x4TruncSatF32x4U, OpARM64I32x4TruncSatF64x2SZero, OpARM64I32x4TruncSatF64x2UZero,
 		OpARM64I8x16Popcnt, OpARM64I16x8Q15mulrSatS,
 		OpARM64I8x16Shl, OpARM64I8x16ShrS, OpARM64I8x16ShrU, OpARM64I64x2ShrS,
+		OpARM64I8x16ShlImmediate, OpARM64I8x16ShrSImmediate, OpARM64I8x16ShrUImmediate,
+		OpARM64I16x8ShlImmediate, OpARM64I16x8ShrSImmediate, OpARM64I16x8ShrUImmediate,
+		OpARM64I32x4ShlImmediate, OpARM64I32x4ShrSImmediate, OpARM64I32x4ShrUImmediate,
+		OpARM64I64x2ShlImmediate, OpARM64I64x2ShrSImmediate, OpARM64I64x2ShrUImmediate,
 		OpARM64V128Load8x8S, OpARM64V128Load8x8U, OpARM64V128Load16x4S, OpARM64V128Load16x4U,
 		OpARM64V128Load32x2S, OpARM64V128Load32x2U, OpARM64V128Load8Splat, OpARM64V128Load16Splat,
 		OpARM64V128Load32Splat, OpARM64V128Load64Splat, OpARM64V128Load32Zero, OpARM64V128Load64Zero,
@@ -2719,6 +2739,30 @@ func SelectARM64ImmediateOpcodes(f *Func, producers []uint32) (int, error) {
 			instruction.Op = OpARM64I32GeUImmediate
 		case OpARM64I64GeU:
 			instruction.Op = OpARM64I64GeUImmediate
+		case OpARM64I8x16Shl:
+			instruction.Op = OpARM64I8x16ShlImmediate
+		case OpARM64I8x16ShrS:
+			instruction.Op = OpARM64I8x16ShrSImmediate
+		case OpARM64I8x16ShrU:
+			instruction.Op = OpARM64I8x16ShrUImmediate
+		case OpARM64I16x8Shl:
+			instruction.Op = OpARM64I16x8ShlImmediate
+		case OpARM64I16x8ShrS:
+			instruction.Op = OpARM64I16x8ShrSImmediate
+		case OpARM64I16x8ShrU:
+			instruction.Op = OpARM64I16x8ShrUImmediate
+		case OpARM64I32x4Shl:
+			instruction.Op = OpARM64I32x4ShlImmediate
+		case OpARM64I32x4ShrS:
+			instruction.Op = OpARM64I32x4ShrSImmediate
+		case OpARM64I32x4ShrU:
+			instruction.Op = OpARM64I32x4ShrUImmediate
+		case OpARM64I64x2Shl:
+			instruction.Op = OpARM64I64x2ShlImmediate
+		case OpARM64I64x2ShrS:
+			instruction.Op = OpARM64I64x2ShrSImmediate
+		case OpARM64I64x2ShrU:
+			instruction.Op = OpARM64I64x2ShrUImmediate
 		default:
 			continue
 		}

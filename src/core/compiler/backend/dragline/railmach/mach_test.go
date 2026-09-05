@@ -277,6 +277,60 @@ func TestSelectARM64ImmediateOpcodesComparison(t *testing.T) {
 	}
 }
 
+func TestSelectARM64ImmediateOpcodesSIMDShift(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		op   MOpcode
+		want MOpcode
+	}{
+		{"i8x16.shl", wasm.InstrI8x16Shl, OpARM64I8x16ShlImmediate},
+		{"i8x16.shr_s", wasm.InstrI8x16ShrS, OpARM64I8x16ShrSImmediate},
+		{"i8x16.shr_u", wasm.InstrI8x16ShrU, OpARM64I8x16ShrUImmediate},
+		{"i16x8.shl", wasm.InstrI16x8Shl, OpARM64I16x8ShlImmediate},
+		{"i16x8.shr_s", wasm.InstrI16x8ShrS, OpARM64I16x8ShrSImmediate},
+		{"i16x8.shr_u", wasm.InstrI16x8ShrU, OpARM64I16x8ShrUImmediate},
+		{"i32x4.shl", wasm.InstrI32x4Shl, OpARM64I32x4ShlImmediate},
+		{"i32x4.shr_s", wasm.InstrI32x4ShrS, OpARM64I32x4ShrSImmediate},
+		{"i32x4.shr_u", wasm.InstrI32x4ShrU, OpARM64I32x4ShrUImmediate},
+		{"i64x2.shl", wasm.InstrI64x2Shl, OpARM64I64x2ShlImmediate},
+		{"i64x2.shr_s", wasm.InstrI64x2ShrS, OpARM64I64x2ShrSImmediate},
+		{"i64x2.shr_u", wasm.InstrI64x2ShrU, OpARM64I64x2ShrUImmediate},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := &Func{
+				Target: TargetARM64,
+				VRegs: []VRegData{
+					{},
+					{Type: TypeI32, Bank: BankGPR},
+					{Type: TypeV128, Bank: BankFPR},
+					{Type: TypeV128, Bank: BankFPR},
+				},
+				Operands: []Operand{
+					{Reg: 2, Fixed: NoFixedReg, Bank: BankFPR, Flags: OperandUse},
+					{Reg: 1, Fixed: NoFixedReg, Bank: BankGPR, Flags: OperandUse},
+				},
+				Insts: []Inst{
+					{Op: wasm.InstrI32Const, Aux: 13, Result: 1},
+					{Op: test.op, OperandStart: 0, OperandCount: 2, Result: 3},
+				},
+				Blocks: []Block{{InstCount: 2}},
+				SIMD:   []railssa.SemanticSIMDImmediate{{Instruction: 1}},
+			}
+			if _, err := SelectTargetOpcodes(f); err != nil {
+				t.Fatal(err)
+			}
+			producers := []uint32{^uint32(0), 0}
+			selected, err := SelectARM64ImmediateOpcodes(f, producers)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if selected != 1 || f.Insts[1].Op != test.want || f.Insts[1].Aux != 13 || producers[1] != ^uint32(0) {
+				t.Fatalf("selected instructions = %#v, producers %v, count %d, want %d with immediate 13", f.Insts, producers, selected, test.want)
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerLogical(t *testing.T) {
 	for _, test := range []struct {
 		name   string

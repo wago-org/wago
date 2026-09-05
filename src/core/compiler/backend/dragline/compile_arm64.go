@@ -4020,7 +4020,11 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				railmach.OpARM64I16x8Shl, railmach.OpARM64I16x8ShrS, railmach.OpARM64I16x8ShrU,
 				railmach.OpARM64I32x4Shl, railmach.OpARM64I32x4ShrS, railmach.OpARM64I32x4ShrU,
 				railmach.OpARM64I64x2Shl, railmach.OpARM64I64x2ShrU,
-				railmach.OpARM64I8x16Shl, railmach.OpARM64I8x16ShrS, railmach.OpARM64I8x16ShrU, railmach.OpARM64I64x2ShrS:
+				railmach.OpARM64I8x16Shl, railmach.OpARM64I8x16ShrS, railmach.OpARM64I8x16ShrU, railmach.OpARM64I64x2ShrS,
+				railmach.OpARM64I8x16ShlImmediate, railmach.OpARM64I8x16ShrSImmediate, railmach.OpARM64I8x16ShrUImmediate,
+				railmach.OpARM64I16x8ShlImmediate, railmach.OpARM64I16x8ShrSImmediate, railmach.OpARM64I16x8ShrUImmediate,
+				railmach.OpARM64I32x4ShlImmediate, railmach.OpARM64I32x4ShrSImmediate, railmach.OpARM64I32x4ShrUImmediate,
+				railmach.OpARM64I64x2ShlImmediate, railmach.OpARM64I64x2ShrSImmediate, railmach.OpARM64I64x2ShrUImmediate:
 				if len(operands) != 2 {
 					return nil, 0, true, fmt.Errorf("RailMach selected vector binary operand count is %d", len(operands))
 				}
@@ -4165,7 +4169,17 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				case railmach.OpARM64I8x16Shl, railmach.OpARM64I8x16ShrS, railmach.OpARM64I8x16ShrU,
 					railmach.OpARM64I16x8Shl, railmach.OpARM64I16x8ShrS, railmach.OpARM64I16x8ShrU,
 					railmach.OpARM64I32x4Shl, railmach.OpARM64I32x4ShrS, railmach.OpARM64I32x4ShrU,
-					railmach.OpARM64I64x2Shl, railmach.OpARM64I64x2ShrS, railmach.OpARM64I64x2ShrU:
+					railmach.OpARM64I64x2Shl, railmach.OpARM64I64x2ShrS, railmach.OpARM64I64x2ShrU,
+					railmach.OpARM64I8x16ShlImmediate, railmach.OpARM64I8x16ShrSImmediate, railmach.OpARM64I8x16ShrUImmediate,
+					railmach.OpARM64I16x8ShlImmediate, railmach.OpARM64I16x8ShrSImmediate, railmach.OpARM64I16x8ShrUImmediate,
+					railmach.OpARM64I32x4ShlImmediate, railmach.OpARM64I32x4ShrSImmediate, railmach.OpARM64I32x4ShrUImmediate,
+					railmach.OpARM64I64x2ShlImmediate, railmach.OpARM64I64x2ShrSImmediate, railmach.OpARM64I64x2ShrUImmediate:
+					if railmach.IsARM64ImmediateOpcode(instruction.Op) {
+						if !emitARM64RailMachSIMDImmediateShift(&a, instruction.Op, dst, lhs, uint32(instruction.Aux)) {
+							return nil, 0, true, fmt.Errorf("RailMach selected unsupported ARM64 SIMD immediate shift %s", instruction.Op)
+						}
+						continue
+					}
 					if producer := immediateProducer[instructionID]; producer != ^uint32(0) && int(producer) < len(plan.Machine.Insts) &&
 						emitARM64RailMachSIMDImmediateShift(&a, instruction.Op, dst, lhs, uint32(plan.Machine.Insts[producer].Aux)) {
 						continue
@@ -14933,29 +14947,29 @@ func emitARM64RailMachSIMDImmediateShift(a *arm64.Asm, op railmach.MOpcode, dst,
 	laneBits := uint32(0)
 	signed, right := false, false
 	switch op {
-	case railmach.OpARM64I8x16Shl:
+	case railmach.OpARM64I8x16Shl, railmach.OpARM64I8x16ShlImmediate:
 		laneBits = 8
-	case railmach.OpARM64I8x16ShrS:
+	case railmach.OpARM64I8x16ShrS, railmach.OpARM64I8x16ShrSImmediate:
 		laneBits, signed, right = 8, true, true
-	case railmach.OpARM64I8x16ShrU:
+	case railmach.OpARM64I8x16ShrU, railmach.OpARM64I8x16ShrUImmediate:
 		laneBits, right = 8, true
-	case railmach.OpARM64I16x8Shl:
+	case railmach.OpARM64I16x8Shl, railmach.OpARM64I16x8ShlImmediate:
 		laneBits = 16
-	case railmach.OpARM64I16x8ShrS:
+	case railmach.OpARM64I16x8ShrS, railmach.OpARM64I16x8ShrSImmediate:
 		laneBits, signed, right = 16, true, true
-	case railmach.OpARM64I16x8ShrU:
+	case railmach.OpARM64I16x8ShrU, railmach.OpARM64I16x8ShrUImmediate:
 		laneBits, right = 16, true
-	case railmach.OpARM64I32x4Shl:
+	case railmach.OpARM64I32x4Shl, railmach.OpARM64I32x4ShlImmediate:
 		laneBits = 32
-	case railmach.OpARM64I32x4ShrS:
+	case railmach.OpARM64I32x4ShrS, railmach.OpARM64I32x4ShrSImmediate:
 		laneBits, signed, right = 32, true, true
-	case railmach.OpARM64I32x4ShrU:
+	case railmach.OpARM64I32x4ShrU, railmach.OpARM64I32x4ShrUImmediate:
 		laneBits, right = 32, true
-	case railmach.OpARM64I64x2Shl:
+	case railmach.OpARM64I64x2Shl, railmach.OpARM64I64x2ShlImmediate:
 		laneBits = 64
-	case railmach.OpARM64I64x2ShrS:
+	case railmach.OpARM64I64x2ShrS, railmach.OpARM64I64x2ShrSImmediate:
 		laneBits, signed, right = 64, true, true
-	case railmach.OpARM64I64x2ShrU:
+	case railmach.OpARM64I64x2ShrU, railmach.OpARM64I64x2ShrUImmediate:
 		laneBits, right = 64, true
 	default:
 		return false
