@@ -1120,6 +1120,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32Store8, railmach.OpARM64I32Store16, railmach.OpARM64I64Store8, railmach.OpARM64I64Store16, railmach.OpARM64I64Store32,
 			railmach.OpARM64I32Const, railmach.OpARM64I64Const, railmach.OpARM64F32Const, railmach.OpARM64F64Const,
 			railmach.OpARM64GlobalGet, railmach.OpARM64GlobalSet, railmach.OpARM64Select,
+			railmach.OpARM64MemorySize, railmach.OpARM64MemoryGrow,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -1535,7 +1536,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				commonMemoryEndValid = false
 			}
 		}
-		if instruction.Op == wasm.InstrMemoryGrow {
+		if railmach.SemanticOpcode(instruction.Op) == wasm.InstrMemoryGrow {
 			cacheMemoryBounds = false
 			break
 		}
@@ -4549,7 +4550,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrMemorySize {
+			if semanticOp == wasm.InstrMemorySize {
 				a.Ldur32(dst, arm64.X26, -4)
 				continue
 			}
@@ -4727,7 +4728,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrMemoryGrow {
+			if semanticOp == wasm.InstrMemoryGrow {
 				if delta, constant := nativeIntegerConstant(plan, operands[0].Reg); constant && uint32(delta) == 0 {
 					a.Ldur32(dst, arm64.X26, -4)
 					continue

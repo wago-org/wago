@@ -1045,6 +1045,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32Store8, railmach.OpAMD64I32Store16, railmach.OpAMD64I64Store8, railmach.OpAMD64I64Store16, railmach.OpAMD64I64Store32,
 			railmach.OpAMD64I32Const, railmach.OpAMD64I64Const, railmach.OpAMD64F32Const, railmach.OpAMD64F64Const,
 			railmach.OpAMD64GlobalGet, railmach.OpAMD64GlobalSet, railmach.OpAMD64Select,
+			railmach.OpAMD64MemorySize, railmach.OpAMD64MemoryGrow,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -3475,7 +3476,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrMemorySize {
+			if semanticOp == wasm.InstrMemorySize {
 				a.Load32(dst, amd64.RBX, -4)
 				continue
 			}
@@ -3593,7 +3594,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.Store64(descriptor, 0, src)
 				continue
 			}
-			if instruction.Op == wasm.InstrMemoryGrow {
+			if semanticOp == wasm.InstrMemoryGrow {
 				a.Load32(amd64.R10, amd64.RBX, -4)
 				a.MovReg32(amd64.R11, amd64.R10)
 				a.Add32(amd64.R11, lhs)
