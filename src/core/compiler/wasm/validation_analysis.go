@@ -82,6 +82,17 @@ func (a *ValidatedModuleAnalysis) ValidFor(m *Module) bool {
 
 func (v *funcValidator) observeValidatedInstruction(f *ValidatedFuncFacts, in *Instruction, segmentCounts *validationSegmentCounts) {
 	f.observe(in.Kind)
+	if in.Kind < numInstrKinds && !validatedFuncNeedsPayloadByKind[in.Kind] {
+		return
+	}
+	v.observeValidatedInstructionPayload(f, in, segmentCounts)
+}
+
+// observeValidatedInstructionPayload records the uncommon facts that depend on
+// an instruction immediate rather than only its kind. The byte-backed validator
+// calls this only for kinds marked in validatedFuncNeedsPayloadByKind, keeping
+// the ordinary scalar instruction path to two table lookups and one OR.
+func (v *funcValidator) observeValidatedInstructionPayload(f *ValidatedFuncFacts, in *Instruction, segmentCounts *validationSegmentCounts) {
 	for _, typ := range in.ValTypes() {
 		f.observeValType(typ)
 	}
@@ -134,8 +145,9 @@ func (f *ValidatedFuncFacts) observe(kind InstrKind) {
 }
 
 var (
-	validatedFuncFlagsOnce   sync.Once
-	validatedFuncFlagsByKind [numInstrKinds]ValidatedFuncFlags
+	validatedFuncFlagsOnce          sync.Once
+	validatedFuncFlagsByKind        [numInstrKinds]ValidatedFuncFlags
+	validatedFuncNeedsPayloadByKind [numInstrKinds]bool
 )
 
 func initValidatedFuncFlags() {
@@ -144,8 +156,21 @@ func initValidatedFuncFlags() {
 			var facts ValidatedFuncFacts
 			facts.observeSlow(kind)
 			validatedFuncFlagsByKind[kind] = facts.Flags
+			validatedFuncNeedsPayloadByKind[kind] = validatedInstructionNeedsPayload(kind)
 		}
 	})
+}
+
+func validatedInstructionNeedsPayload(kind InstrKind) bool {
+	switch kind {
+	case InstrSelect,
+		InstrMemoryInit, InstrDataDrop, InstrTableInit, InstrElemDrop,
+		InstrCallIndirect, InstrReturnCallIndirect, InstrCallRef, InstrReturnCallRef,
+		InstrRefNull, InstrRefTest, InstrRefCast, InstrBrOnCast, InstrBrOnCastFail:
+		return true
+	default:
+		return false
+	}
 }
 
 // observeSlow is the auditable source of the fixed instruction classifier.
