@@ -2085,34 +2085,46 @@ func buildNativeEdgeConstantRematerialization(plan *nativeBackendPlan, skipped [
 	if plan == nil || plan.Machine == nil || plan.Allocation == nil || plan.Exit == nil {
 		return
 	}
+	const edgeMovesFlag = uint32(1 << 31)
+	// Subtract edge uses from the complete use counts. A value whose count
+	// reaches zero is used exclusively by edge transfers.
+	for _, transfer := range plan.Machine.Transfers {
+		if int(transfer.Src) < len(uses) && uses[transfer.Src] != 0 && uses[transfer.Src] < edgeMovesFlag {
+			uses[transfer.Src]--
+		}
+	}
+	// Encode the number of physical copies an edge-only value must have in the
+	// high-bit-marked scratch count. Values with non-edge uses remain unmarked.
+	for _, transfer := range plan.Machine.Transfers {
+		if int(transfer.Src) >= len(uses) {
+			continue
+		}
+		state := uses[transfer.Src]
+		if state == 0 {
+			uses[transfer.Src] = edgeMovesFlag | 1
+		} else if state&edgeMovesFlag != 0 && state != ^uint32(0) {
+			uses[transfer.Src]++
+		}
+	}
+	// Consume one expected edge copy for each valid physical move. Any invalid
+	// or excess move clears the candidate marker just as the former per-value
+	// scan rejected the producer.
+	for _, move := range plan.Exit.Moves {
+		if int(move.Reg) >= len(uses) || uses[move.Reg]&edgeMovesFlag == 0 {
+			continue
+		}
+		if int(move.Reg) >= len(plan.Allocation.Locations) || move.Kind != railmach.MoveCopy || move.Src != plan.Allocation.Locations[move.Reg] || uses[move.Reg] == edgeMovesFlag {
+			uses[move.Reg] = 1
+			continue
+		}
+		uses[move.Reg]--
+	}
 	for producerID, producer := range plan.Machine.Insts {
-		if producer.Result == 0 || (producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const) || skipped[producerID] {
-			continue
-		}
-		transfers := 0
-		for _, transfer := range plan.Machine.Transfers {
-			if transfer.Src == producer.Result {
-				transfers++
-			}
-		}
-		if int(producer.Result) >= len(uses) || uses[producer.Result] != uint32(transfers) {
-			continue
-		}
-		moves := 0
-		for _, move := range plan.Exit.Moves {
-			if move.Reg != producer.Result {
-				continue
-			}
-			if move.Kind != railmach.MoveCopy || move.Src != plan.Allocation.Locations[producer.Result] {
-				moves = -1
-				break
-			}
-			moves++
-		}
-		if transfers != 0 && moves == transfers {
+		if producer.Result != 0 && (producer.Op == wasm.InstrI32Const || producer.Op == wasm.InstrI64Const) && !skipped[producerID] && int(producer.Result) < len(uses) && uses[producer.Result] == edgeMovesFlag {
 			skipped[producerID] = true
 		}
 	}
+	countNativeMachineUses(plan.Machine, uses)
 }
 
 func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, producers []uint32, skipped []bool, uses []uint32) {
