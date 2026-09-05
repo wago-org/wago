@@ -1012,7 +1012,13 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64F32x4ExtractLane, railmach.OpARM64F32x4ReplaceLane,
 			railmach.OpARM64F64x2ExtractLane, railmach.OpARM64F64x2ReplaceLane,
 			railmach.OpARM64I8x16NarrowI16x8S, railmach.OpARM64I8x16NarrowI16x8U,
-			railmach.OpARM64I16x8NarrowI32x4S, railmach.OpARM64I16x8NarrowI32x4U:
+			railmach.OpARM64I16x8NarrowI32x4S, railmach.OpARM64I16x8NarrowI32x4U,
+			railmach.OpARM64I16x8ExtendLowI8x16S, railmach.OpARM64I16x8ExtendHighI8x16S,
+			railmach.OpARM64I16x8ExtendLowI8x16U, railmach.OpARM64I16x8ExtendHighI8x16U,
+			railmach.OpARM64I32x4ExtendLowI16x8S, railmach.OpARM64I32x4ExtendHighI16x8S,
+			railmach.OpARM64I32x4ExtendLowI16x8U, railmach.OpARM64I32x4ExtendHighI16x8U,
+			railmach.OpARM64I64x2ExtendLowI32x4S, railmach.OpARM64I64x2ExtendHighI32x4S,
+			railmach.OpARM64I64x2ExtendLowI32x4U, railmach.OpARM64I64x2ExtendHighI32x4U:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3562,6 +3568,43 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				default:
 					a.NeonSqxtunHfromS(dst, lhs)
 					a.NeonSqxtun2HfromS(dst, rhs)
+				}
+				continue
+			case railmach.OpARM64I16x8ExtendLowI8x16S, railmach.OpARM64I16x8ExtendHighI8x16S,
+				railmach.OpARM64I16x8ExtendLowI8x16U, railmach.OpARM64I16x8ExtendHighI8x16U,
+				railmach.OpARM64I32x4ExtendLowI16x8S, railmach.OpARM64I32x4ExtendHighI16x8S,
+				railmach.OpARM64I32x4ExtendLowI16x8U, railmach.OpARM64I32x4ExtendHighI16x8U,
+				railmach.OpARM64I64x2ExtendLowI32x4S, railmach.OpARM64I64x2ExtendHighI32x4S,
+				railmach.OpARM64I64x2ExtendLowI32x4U, railmach.OpARM64I64x2ExtendHighI32x4U:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector extend operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpARM64I16x8ExtendLowI8x16S:
+					a.NeonSxtlHfromB(dst, src)
+				case railmach.OpARM64I16x8ExtendHighI8x16S:
+					a.NeonSxtl2HfromB(dst, src)
+				case railmach.OpARM64I16x8ExtendLowI8x16U:
+					a.NeonUxtlHfromB(dst, src)
+				case railmach.OpARM64I16x8ExtendHighI8x16U:
+					a.NeonUxtl2HfromB(dst, src)
+				case railmach.OpARM64I32x4ExtendLowI16x8S:
+					a.NeonSxtlSfromH(dst, src)
+				case railmach.OpARM64I32x4ExtendHighI16x8S:
+					a.NeonSxtl2SfromH(dst, src)
+				case railmach.OpARM64I32x4ExtendLowI16x8U:
+					a.NeonUxtlSfromH(dst, src)
+				case railmach.OpARM64I32x4ExtendHighI16x8U:
+					a.NeonUxtl2SfromH(dst, src)
+				case railmach.OpARM64I64x2ExtendLowI32x4S:
+					a.NeonSxtlDfromS(dst, src)
+				case railmach.OpARM64I64x2ExtendHighI32x4S:
+					a.NeonSxtl2DfromS(dst, src)
+				case railmach.OpARM64I64x2ExtendLowI32x4U:
+					a.NeonUxtlDfromS(dst, src)
+				default:
+					a.NeonUxtl2DfromS(dst, src)
 				}
 				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,

@@ -472,7 +472,13 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrF32x4ExtractLane, wasm.InstrF32x4ReplaceLane,
 			wasm.InstrF64x2ExtractLane, wasm.InstrF64x2ReplaceLane,
 			wasm.InstrI8x16NarrowI16x8S, wasm.InstrI8x16NarrowI16x8U,
-			wasm.InstrI16x8NarrowI32x4S, wasm.InstrI16x8NarrowI32x4U:
+			wasm.InstrI16x8NarrowI32x4S, wasm.InstrI16x8NarrowI32x4U,
+			wasm.InstrI16x8ExtendLowI8x16S, wasm.InstrI16x8ExtendHighI8x16S,
+			wasm.InstrI16x8ExtendLowI8x16U, wasm.InstrI16x8ExtendHighI8x16U,
+			wasm.InstrI32x4ExtendLowI16x8S, wasm.InstrI32x4ExtendHighI16x8S,
+			wasm.InstrI32x4ExtendLowI16x8U, wasm.InstrI32x4ExtendHighI16x8U,
+			wasm.InstrI64x2ExtendLowI32x4S, wasm.InstrI64x2ExtendHighI32x4S,
+			wasm.InstrI64x2ExtendLowI32x4U, wasm.InstrI64x2ExtendHighI32x4U:
 		default:
 			return false
 		}
@@ -1617,7 +1623,13 @@ func machineNeedsAMD64VectorScratch(machine *railmach.Func) bool {
 			wasm.InstrI32x4LtU, wasm.InstrI32x4GtU, wasm.InstrI32x4LeU, wasm.InstrI32x4GeU,
 			wasm.InstrI16x8Shl, wasm.InstrI16x8ShrS, wasm.InstrI16x8ShrU,
 			wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU,
-			wasm.InstrI64x2Shl, wasm.InstrI64x2ShrU:
+			wasm.InstrI64x2Shl, wasm.InstrI64x2ShrU,
+			wasm.InstrI16x8ExtendLowI8x16S, wasm.InstrI16x8ExtendHighI8x16S,
+			wasm.InstrI16x8ExtendLowI8x16U, wasm.InstrI16x8ExtendHighI8x16U,
+			wasm.InstrI32x4ExtendLowI16x8S, wasm.InstrI32x4ExtendHighI16x8S,
+			wasm.InstrI32x4ExtendLowI16x8U, wasm.InstrI32x4ExtendHighI16x8U,
+			wasm.InstrI64x2ExtendLowI32x4S, wasm.InstrI64x2ExtendHighI32x4S,
+			wasm.InstrI64x2ExtendLowI32x4U, wasm.InstrI64x2ExtendHighI32x4U:
 			return true
 		}
 	}

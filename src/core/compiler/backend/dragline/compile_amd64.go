@@ -945,7 +945,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64F32x4ExtractLane, railmach.OpAMD64F32x4ReplaceLane,
 			railmach.OpAMD64F64x2ExtractLane, railmach.OpAMD64F64x2ReplaceLane,
 			railmach.OpAMD64I8x16NarrowI16x8S, railmach.OpAMD64I8x16NarrowI16x8U,
-			railmach.OpAMD64I16x8NarrowI32x4S, railmach.OpAMD64I16x8NarrowI32x4U:
+			railmach.OpAMD64I16x8NarrowI32x4S, railmach.OpAMD64I16x8NarrowI32x4U,
+			railmach.OpAMD64I16x8ExtendLowI8x16S, railmach.OpAMD64I16x8ExtendHighI8x16S,
+			railmach.OpAMD64I16x8ExtendLowI8x16U, railmach.OpAMD64I16x8ExtendHighI8x16U,
+			railmach.OpAMD64I32x4ExtendLowI16x8S, railmach.OpAMD64I32x4ExtendHighI16x8S,
+			railmach.OpAMD64I32x4ExtendLowI16x8U, railmach.OpAMD64I32x4ExtendHighI16x8U,
+			railmach.OpAMD64I64x2ExtendLowI32x4S, railmach.OpAMD64I64x2ExtendHighI32x4S,
+			railmach.OpAMD64I64x2ExtendLowI32x4U, railmach.OpAMD64I64x2ExtendHighI32x4U:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2361,6 +2367,62 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.VPpackssdw(dst, lhs, rhs)
 				default:
 					a.VPpackusdw(dst, lhs, rhs)
+				}
+				continue
+			case railmach.OpAMD64I16x8ExtendLowI8x16S, railmach.OpAMD64I16x8ExtendHighI8x16S,
+				railmach.OpAMD64I16x8ExtendLowI8x16U, railmach.OpAMD64I16x8ExtendHighI8x16U,
+				railmach.OpAMD64I32x4ExtendLowI16x8S, railmach.OpAMD64I32x4ExtendHighI16x8S,
+				railmach.OpAMD64I32x4ExtendLowI16x8U, railmach.OpAMD64I32x4ExtendHighI16x8U,
+				railmach.OpAMD64I64x2ExtendLowI32x4S, railmach.OpAMD64I64x2ExtendHighI32x4S,
+				railmach.OpAMD64I64x2ExtendLowI32x4U, railmach.OpAMD64I64x2ExtendHighI32x4U:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector extend operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpAMD64I16x8ExtendLowI8x16S, railmach.OpAMD64I16x8ExtendHighI8x16S:
+					if instruction.Op == railmach.OpAMD64I16x8ExtendHighI8x16S {
+						a.VPunpckhbw(dst, src, src)
+					} else {
+						a.VPunpcklbw(dst, src, src)
+					}
+					a.VPsrawImm(dst, dst, 8)
+				case railmach.OpAMD64I16x8ExtendLowI8x16U, railmach.OpAMD64I16x8ExtendHighI8x16U:
+					a.VPxor(5, 5, 5)
+					if instruction.Op == railmach.OpAMD64I16x8ExtendHighI8x16U {
+						a.VPunpckhbw(dst, src, 5)
+					} else {
+						a.VPunpcklbw(dst, src, 5)
+					}
+				case railmach.OpAMD64I32x4ExtendLowI16x8S, railmach.OpAMD64I32x4ExtendHighI16x8S:
+					if instruction.Op == railmach.OpAMD64I32x4ExtendHighI16x8S {
+						a.VPunpckhwd(dst, src, src)
+					} else {
+						a.VPunpcklwd(dst, src, src)
+					}
+					a.VPsradImm(dst, dst, 16)
+				case railmach.OpAMD64I32x4ExtendLowI16x8U, railmach.OpAMD64I32x4ExtendHighI16x8U:
+					a.VPxor(5, 5, 5)
+					if instruction.Op == railmach.OpAMD64I32x4ExtendHighI16x8U {
+						a.VPunpckhwd(dst, src, 5)
+					} else {
+						a.VPunpcklwd(dst, src, 5)
+					}
+				case railmach.OpAMD64I64x2ExtendLowI32x4S, railmach.OpAMD64I64x2ExtendHighI32x4S:
+					a.VPxor(5, 5, 5)
+					a.VPcmpgtd(5, 5, src)
+					if instruction.Op == railmach.OpAMD64I64x2ExtendHighI32x4S {
+						a.VPunpckhdq(dst, src, 5)
+					} else {
+						a.VPunpckldq(dst, src, 5)
+					}
+				default:
+					a.VPxor(5, 5, 5)
+					if instruction.Op == railmach.OpAMD64I64x2ExtendHighI32x4U {
+						a.VPunpckhdq(dst, src, 5)
+					} else {
+						a.VPunpckldq(dst, src, 5)
+					}
 				}
 				continue
 			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
