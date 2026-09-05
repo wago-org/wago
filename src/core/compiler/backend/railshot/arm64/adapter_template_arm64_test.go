@@ -44,3 +44,28 @@ func TestAdapterTemplateCacheRejectsOversizeShapeArm64(t *testing.T) {
 		t.Fatal("oversize adapter shape entered the bounded cache")
 	}
 }
+
+func TestAdapterTemplateCachePreservesNativeSizeAttributionArm64(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	m := modFuncs(t,
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x0b}},
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x0b}},
+		funcDef{i32, i32, []byte{0x00, 0x20, 0x00, 0x0b}},
+	)
+	m.Exports = append(m.Exports,
+		wasm.Export{Name: "g", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 1}},
+		wasm.Export{Name: "h", Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: 2}},
+	)
+
+	var stats ModuleStats
+	if _, err := CompileModuleWith(m, CompileOptions{Workers: 1, Stats: &stats}); err != nil {
+		t.Fatal(err)
+	}
+	want := stats.Funcs[1].NativeSize.AdapterToInternalPaddingBytes
+	if want == 0 {
+		t.Fatal("test adapter shape has no internal-entry padding")
+	}
+	if got := stats.Funcs[2].NativeSize.AdapterToInternalPaddingBytes; got != want {
+		t.Fatalf("cached adapter padding = %d, want %d", got, want)
+	}
+}

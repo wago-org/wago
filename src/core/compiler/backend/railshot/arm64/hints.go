@@ -59,7 +59,6 @@ const (
 	hintMutatesTable
 	hintHasControlFlow
 	hintModuleEH
-	hintHasStackSinkFusion
 	hintHasFloatConst
 	hintIntervalRegionStorage
 	hintPreservesCallerPins
@@ -79,22 +78,14 @@ func (f *funcHintFlags) assign(flag funcHintFlags, value bool) {
 
 // funcHints is everything scanFuncBody yields.
 type funcHints struct {
-	memOps      uint32 // scalar/vector/bulk linear-memory instructions
-	localStart  uint32
-	globalStart uint32
-	globalCount uint32
-	// stackArenaNodes is a conservative pre-scan estimate of operand-stack elem
-	// allocations while compiling this body. It lets compileFunc avoid reserving
-	// arena nodes for long immediates (notably v128.const payload bytes) while the
-	// stack's heap fallback still preserves pointer stability if the estimate is
-	// low for unusual control flow.
-	stackArenaNodes uint32
-
-	localCount         uint16 // complete parameter-plus-declared-local population
-	inlineCallSites    uint16 // saturated ordinary direct call sites targeting this local function
-	stackArenaDiscount uint16 // possible scanned nodes removed by bounded lookahead peepholes
-	flags              funcHintFlags
-	directCallRefs     uint8 // saturated call + return_call references targeting this local function
+	memOps          uint32 // scalar/vector/bulk linear-memory instructions
+	localStart      uint32
+	globalStart     uint32
+	globalCount     uint32
+	localCount      uint16 // complete parameter-plus-declared-local population
+	inlineCallSites uint16 // saturated ordinary direct call sites targeting this local function
+	flags           funcHintFlags
+	directCallRefs  uint8 // saturated call + return_call references targeting this local function
 	// maxControlDepth is the greatest simultaneously open structured-control
 	// depth, excluding the implicit function frame. It occupies alignment padding;
 	// 255 is a saturated fallback sentinel.
@@ -174,28 +165,6 @@ type immutableTableHint struct {
 	typeKey           uint64
 	typed             bool
 	monomorphicTarget int
-}
-
-func (h *funcHints) addStackArenaNodes(n uint32) {
-	if !shared.StackArenaHintsEnabled {
-		return
-	}
-	if ^uint32(0)-h.stackArenaNodes < n {
-		h.stackArenaNodes = ^uint32(0)
-	} else {
-		h.stackArenaNodes += n
-	}
-}
-
-func (h *funcHints) addStackArenaDiscount(n uint16) {
-	if !shared.StackArenaHintsEnabled {
-		return
-	}
-	if ^uint16(0)-h.stackArenaDiscount < n {
-		h.stackArenaDiscount = ^uint16(0)
-	} else {
-		h.stackArenaDiscount += n
-	}
 }
 
 func (h *funcHints) noteControlDepth(depth int) {
@@ -366,11 +335,6 @@ func gcOrAtomicInstructionMayCall(kind wasm.InstrKind) bool {
 
 func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, globalHints *shared.GlobalHintAccumulator) funcHintView {
 	elig.reset()
-	// Programmatic decoded bodies are uncommon and can exercise context-sensitive
-	// folds that the production byte scan accounts for. Keep their legacy arena.
-	if shared.StackArenaHintsEnabled {
-		h.flags.set(hintHasStackSinkFusion)
-	}
 	// walk returns whether the subtree contains a call. curLoop identifies the
 	// innermost enclosing loop whose globals are being considered for eligibility.
 	var walk func(instrs []wasm.Instruction, depth int, curLoop int) bool
@@ -682,31 +646,20 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 	}
 	hotnessWeight := pathWeight * loopWeight(loopDepth)
 	subHasCall := false
-	var prevOp, prevPrevOp byte
-	var prevIndex, prevPrevIndex uint32
-	var prevConst int64
-	var prevConstOK bool
 	for {
 		op, err := s.r.byte()
 		if err != nil {
 			return true, 0, err
 		}
-		curIndex := ^uint32(0)
-		var curConst int64
-		curConstOK := false
-		flowTerminator := false
 		switch op {
 		case 0x00: // unreachable
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
-			flowTerminator = true
 		case 0x0b: // end
-			s.h.addStackArenaNodes(2) // flush/rebuild allowance for the closing edge.
 			return subHasCall, op, nil
 		case 0x05: // else
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
-			s.h.addStackArenaNodes(2) // then-edge flush plus else-entry rebuild.
 			if stopAtElse {
 				return subHasCall, op, nil
 			}
@@ -715,7 +668,6 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
 			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
-			s.h.addStackArenaNodes(2) // entry flush/rebuild allowance.
 			s.h.noteControlDepth(depth + 1)
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
@@ -772,17 +724,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 					return true, term, s.r.err(wasm.ErrInvalidInstruction, s.r.off()-1)
 				}
 				subHasCall = subHasCall || callsThen || callsElse
-				if next, ok := s.r.Peek(); ok && (next == 0x21 || next == 0x22) {
-					s.h.flags.set(hintHasStackSinkFusion)
-				}
 			}
 		case 0x10, 0x12: // call, return_call
 			idx, err := s.r.U32()
 			if err != nil {
 				return true, 0, err
-			}
-			if shared.StackArenaHintsEnabled {
-				s.h.addStackArenaNodes(1)
 			}
 			s.h.flags.set(hintHasCall)
 			subHasCall = true
@@ -790,39 +736,25 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintCallsSelf)
 			}
 			s.noteDirectCallRef(idx, op == 0x10, loopDepth != 0)
-			flowTerminator = op == 0x12
 		case 0x11, 0x13: // indirect calls
 			var imm wasm.InstructionImmediate
 			err := s.classifyInstructionInto(op, &imm)
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
 			s.h.flags.set(hintHasCall)
 			subHasCall = true
-			flowTerminator = op == 0x13
 		case 0x14, 0x15: // call_ref, return_call_ref
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
-			if shared.StackArenaHintsEnabled {
-				s.h.addStackArenaNodes(1)
-			}
 			s.h.flags.set(hintHasCall)
 			subHasCall = true
-			flowTerminator = op == 0x15
 		case 0x20, 0x21, 0x22: // local.get/set/tee
 			idx, err := s.r.U32()
 			if err != nil {
 				return true, 0, err
 			}
-			if shared.StackArenaHintsEnabled && op == 0x20 {
-				s.h.addStackArenaNodes(1)
-			}
-			if op == 0x22 {
-				s.h.addStackArenaDiscount(stackLookaheadDiscountOpcode(prevOp))
-			}
-			curIndex = idx
 			if int(idx) < s.nLocals {
 				if s.entryPrefix && idx < 64 {
 					bit := uint64(1) << idx
@@ -847,9 +779,6 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err != nil {
 				return true, 0, err
 			}
-			if shared.StackArenaHintsEnabled && op == 0x23 {
-				s.h.addStackArenaNodes(1)
-			}
 			if int(idx) < s.nGlobals {
 				if op == 0x24 {
 					addGlobalHotness(s.globalHints, idx, 2*hotnessWeight)
@@ -859,40 +788,22 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.elig.add(curLoop, idx)
 			}
 		case 0x41: // i32.const
-			if shared.StackArenaHintsEnabled {
-				curConst, curConstOK = s.peekSingleByteConst()
-			}
 			if _, err := s.r.I32(); err != nil {
 				return true, 0, err
 			}
-			if shared.StackArenaHintsEnabled {
-				s.h.addStackArenaNodes(1)
-			}
 		case 0x42: // i64.const
-			if shared.StackArenaHintsEnabled {
-				curConst, curConstOK = s.peekSingleByteConst()
-			}
 			if _, err := s.r.I64(); err != nil {
 				return true, 0, err
-			}
-			if shared.StackArenaHintsEnabled {
-				s.h.addStackArenaNodes(1)
 			}
 		case 0x43: // f32.const
 			s.h.flags.set(hintHasFloatConst)
 			if _, err := s.r.Bytes(4); err != nil {
 				return true, 0, err
 			}
-			if shared.StackArenaHintsEnabled {
-				s.h.addStackArenaNodes(1)
-			}
 		case 0x44: // f64.const
 			s.h.flags.set(hintHasFloatConst)
 			if _, err := s.r.Bytes(8); err != nil {
 				return true, 0, err
-			}
-			if shared.StackArenaHintsEnabled {
-				s.h.addStackArenaNodes(1)
 			}
 		case 0x0c, 0x0d: // br, br_if
 			s.h.flags.set(hintHasControlFlow)
@@ -900,26 +811,19 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
-			flowTerminator = op == 0x0c
 		case 0x0f: // return
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
-			flowTerminator = true
 		case 0x25, 0x26: // table.get/set
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
-			if op == 0x25 && shared.StackArenaHintsEnabled {
-				s.h.addStackArenaNodes(1)
-			} else if op == 0x26 {
+			if op == 0x26 {
 				s.h.flags.set(hintMutatesTable)
 			}
 		case 0xd2, 0xd5, 0xd6: // ref.func, br_on_null, br_on_non_null
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
-			}
-			if shared.StackArenaHintsEnabled {
-				s.h.addStackArenaNodes(1)
 			}
 			if op != 0xd2 {
 				s.h.flags.set(hintHasControlFlow)
@@ -931,7 +835,6 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
 				s.h.flags.set(hintHasControlFlow)
 			}
@@ -961,7 +864,6 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.h.flags.set(hintHasControlFlow)
 			s.entryPrefix = false
 			s.h.flags.set(hintModuleEH)
-			s.h.addStackArenaNodes(2) // entry flush/rebuild allowance.
 			s.h.noteControlDepth(depth + 1)
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
@@ -976,16 +878,13 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			subHasCall = subHasCall || calls
 		case 0x08: // throw
 			s.h.flags.set(hintModuleEH)
-			flowTerminator = true
 			if _, err := s.r.U32(); err != nil {
 				return true, 0, err
 			}
 		case 0x0a: // throw_ref
 			s.h.flags.set(hintModuleEH)
-			flowTerminator = true
 		default:
 			if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
-				s.noteImmediateFreeStackArenaOp(op)
 				break
 			}
 			var imm wasm.InstructionImmediate
@@ -993,12 +892,10 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if err != nil {
 				return true, 0, err
 			}
-			s.noteStackArenaOp(op, &imm)
 			if shared.InstructionNeedsInlineBoundary(op, imm.Kind) {
 				s.h.flags.set(hintHasControlFlow)
 				if op == 0x0e { // br_table is the only unprefixed boundary in this path.
 					s.entryPrefix = false
-					flowTerminator = true
 				}
 			}
 			if shared.InstructionNeedsEHFrame(op, imm.Kind) {
@@ -1012,36 +909,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintUsesBulkMem)
 			}
 		}
-		if shared.StackArenaHintsEnabled {
-			if !prevConstOK && (prevOp == 0x41 || prevOp == 0x42) &&
-				(op >= 0x6a && op <= 0x78 || op >= 0x7c && op <= 0x8a) {
-				s.h.flags.set(hintHasStackSinkFusion)
-			}
-			if flowTerminator {
-				if next, ok := s.r.Peek(); ok && next != 0x0b && next != 0x05 {
-					s.h.flags.set(hintHasStackSinkFusion)
-				}
-			}
-			if prevConstOK || prevOp == 0x20 || prevOp == 0x84 {
-				s.h.addStackArenaDiscount(stackAlgebraicDiscountOpcode(op, prevOp, prevPrevOp, prevIndex, prevPrevIndex, prevConst, prevConstOK))
-			}
-			prevPrevOp, prevPrevIndex = prevOp, prevIndex
-			prevOp, prevIndex = op, curIndex
-			prevConst, prevConstOK = curConst, curConstOK
-		}
 	}
-}
-
-func (s *byteBodyScanner) peekSingleByteConst() (int64, bool) {
-	b, ok := s.r.Peek()
-	if !ok || b&0x80 != 0 {
-		return 0, false
-	}
-	v := int64(b & 0x7f)
-	if b&0x40 != 0 {
-		v |= ^int64(0x7f)
-	}
-	return v, true
 }
 
 func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline, inLoop bool) {
@@ -1112,145 +980,6 @@ func isTableMutation(kind wasm.InstrKind) bool {
 	case wasm.InstrTableSet, wasm.InstrTableInit, wasm.InstrTableCopy,
 		wasm.InstrTableGrow, wasm.InstrTableFill:
 		return true
-	default:
-		return false
-	}
-}
-
-func (s *byteBodyScanner) noteStackArenaOp(op byte, imm *wasm.InstructionImmediate) {
-	if !shared.StackArenaHintsEnabled {
-		return
-	}
-	if stackArenaOpAllocates(op, imm) {
-		s.h.addStackArenaNodes(1)
-	}
-	if op == 0xfd {
-		s.h.flags.set(hintHasStackSinkFusion)
-	}
-	if stackSinkFusionOpcode(op) {
-		next, ok := s.r.Peek()
-		if ok && (next == 0x21 || next == 0x22) {
-			s.h.flags.set(hintHasStackSinkFusion)
-		}
-	}
-}
-
-func (s *byteBodyScanner) noteImmediateFreeStackArenaOp(op byte) {
-	if !shared.StackArenaHintsEnabled {
-		return
-	}
-	if op == 0x1b || op == 0xd1 || op >= 0x45 && op <= 0xc4 {
-		s.h.addStackArenaNodes(1)
-	}
-	if stackSinkFusionOpcode(op) {
-		next, ok := s.r.Peek()
-		if ok && (next == 0x21 || next == 0x22) {
-			s.h.flags.set(hintHasStackSinkFusion)
-		}
-	}
-}
-
-func stackSinkFusionOpcode(op byte) bool {
-	return op == 0x1b || op == 0x1c || op >= 0x92 && op <= 0x97 || op >= 0xa0 && op <= 0xa5
-}
-
-func stackLookaheadDiscountOpcode(op byte) uint16 {
-	switch op {
-	case 0x83: // i64.and
-		return 12
-	case 0x88: // i64.shr_u
-		return 32
-	default:
-		return 0
-	}
-}
-
-func stackAlgebraicDiscountOpcode(op, prevOp, prevPrevOp byte, prevIndex, prevPrevIndex uint32, prevConst int64, prevConstOK bool) uint16 {
-	if prevConstOK && algebraicIdentityOpcode(op, prevOp, prevConst) || op == 0xa7 && prevOp == 0x84 {
-		return 1
-	}
-	if prevOp == 0x20 && prevPrevOp == 0x20 && prevIndex == prevPrevIndex && sameOperandSimplifiesOpcode(op) {
-		return 1
-	}
-	return 0
-}
-
-func algebraicIdentityOpcode(op, constOp byte, c int64) bool {
-	if constOp != 0x41 && constOp != 0x42 {
-		return false
-	}
-	switch op {
-	case 0x6a, 0x6b, 0x72, 0x73, 0x7c, 0x7d, 0x84, 0x85:
-		return c == 0
-	case 0x74, 0x75, 0x76, 0x77, 0x78:
-		return c&31 == 0
-	case 0x86, 0x87, 0x88, 0x89, 0x8a:
-		return c&63 == 0
-	case 0x6c, 0x6e, 0x7e, 0x80:
-		return c == 1
-	case 0x71:
-		return int32(c) == -1
-	case 0x83:
-		return c == -1
-	default:
-		return false
-	}
-}
-
-func sameOperandSimplifiesOpcode(op byte) bool {
-	if op >= 0x46 && op <= 0x4f || op >= 0x51 && op <= 0x5a {
-		return true
-	}
-	switch op {
-	case 0x6b, 0x71, 0x72, 0x73, 0x7d, 0x83, 0x84, 0x85:
-		return true
-	default:
-		return false
-	}
-}
-
-func stackArenaOpAllocates(op byte, imm *wasm.InstructionImmediate) bool {
-	switch op {
-	case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, // calls: conservatively allow one result node.
-		0x1b, 0x1c, // select
-		0x20, 0x23, 0x25, // local.get/global.get/table.get
-		0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f, 0x30, 0x31, 0x32, 0x33, 0x34, 0x35, // loads
-		0x3f, 0x40, // memory.size/grow
-		0x41, 0x42, 0x43, 0x44, // constants
-		0x45, 0x46, 0x47, 0x48, 0x49, 0x4a, 0x4b, 0x4c, 0x4d, 0x4e, 0x4f,
-		0x50, 0x51, 0x52, 0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a,
-		0x5b, 0x5c, 0x5d, 0x5e, 0x5f, 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66,
-		0x67, 0x68, 0x69,
-		0x6a, 0x6b, 0x6c, 0x6d, 0x6e, 0x6f, 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78,
-		0x79, 0x7a, 0x7b,
-		0x7c, 0x7d, 0x7e, 0x7f, 0x80, 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87, 0x88, 0x89, 0x8a,
-		0x8b, 0x8c, 0x8d, 0x8e, 0x8f, 0x90, 0x91, 0x92, 0x93, 0x94, 0x95, 0x96, 0x97, 0x98,
-		0x99, 0x9a, 0x9b, 0x9c, 0x9d, 0x9e, 0x9f, 0xa0, 0xa1, 0xa2, 0xa3, 0xa4, 0xa5, 0xa6,
-		0xa7, 0xa8, 0xa9, 0xaa, 0xab, 0xac, 0xad, 0xae, 0xaf, 0xb0, 0xb1, 0xb2, 0xb3, 0xb4, 0xb5, 0xb6, 0xb7, 0xb8, 0xb9, 0xba, 0xbb, 0xbc, 0xbd, 0xbe, 0xbf,
-		0xc0, 0xc1, 0xc2, 0xc3, 0xc4,
-		0xd0, 0xd1, 0xd2, 0xd3, 0xd4, 0xd5, 0xd6:
-		return true
-	case 0xfc:
-		return imm.Subopcode <= 7 || imm.Subopcode == 15 || imm.Subopcode == 16 // trunc_sat/table.grow/table.size push.
-	case 0xfe:
-		switch imm.Kind {
-		case wasm.InstrAtomicFence,
-			wasm.InstrI32AtomicStore, wasm.InstrI64AtomicStore,
-			wasm.InstrI32AtomicStore8, wasm.InstrI32AtomicStore16,
-			wasm.InstrI64AtomicStore8, wasm.InstrI64AtomicStore16, wasm.InstrI64AtomicStore32:
-			return false
-		default:
-			return true // loads, wait/notify, RMW, and cmpxchg push one result.
-		}
-	case 0xfb:
-		return true // GC/reference operations push at most one native result; result-free forms are safe overestimates.
-	case 0xfd:
-		switch imm.Subopcode {
-		case 11, 88, 89, 90, 91: // v128.store and v128.store{8,16,32,64}_lane push no result.
-			return false
-		default:
-			return true
-		}
 	default:
 		return false
 	}
