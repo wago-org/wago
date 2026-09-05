@@ -895,6 +895,26 @@ const (
 	OpARM64I64RotlImmediate
 	OpARM64I32RotrImmediate
 	OpARM64I64RotrImmediate
+	OpARM64I32EqImmediate
+	OpARM64I64EqImmediate
+	OpARM64I32NeImmediate
+	OpARM64I64NeImmediate
+	OpARM64I32LtSImmediate
+	OpARM64I64LtSImmediate
+	OpARM64I32LtUImmediate
+	OpARM64I64LtUImmediate
+	OpARM64I32GtSImmediate
+	OpARM64I64GtSImmediate
+	OpARM64I32GtUImmediate
+	OpARM64I64GtUImmediate
+	OpARM64I32LeSImmediate
+	OpARM64I64LeSImmediate
+	OpARM64I32LeUImmediate
+	OpARM64I64LeUImmediate
+	OpARM64I32GeSImmediate
+	OpARM64I64GeSImmediate
+	OpARM64I32GeUImmediate
+	OpARM64I64GeUImmediate
 	OpARM64I32Madd
 	OpARM64I64Madd
 	OpARM64I64MulHighU
@@ -977,7 +997,37 @@ func IsARM64ImmediateOpcode(op MOpcode) bool {
 		OpARM64I32ShrSImmediate, OpARM64I64ShrSImmediate,
 		OpARM64I32ShrUImmediate, OpARM64I64ShrUImmediate,
 		OpARM64I32RotlImmediate, OpARM64I64RotlImmediate,
-		OpARM64I32RotrImmediate, OpARM64I64RotrImmediate:
+		OpARM64I32RotrImmediate, OpARM64I64RotrImmediate,
+		OpARM64I32EqImmediate, OpARM64I64EqImmediate,
+		OpARM64I32NeImmediate, OpARM64I64NeImmediate,
+		OpARM64I32LtSImmediate, OpARM64I64LtSImmediate,
+		OpARM64I32LtUImmediate, OpARM64I64LtUImmediate,
+		OpARM64I32GtSImmediate, OpARM64I64GtSImmediate,
+		OpARM64I32GtUImmediate, OpARM64I64GtUImmediate,
+		OpARM64I32LeSImmediate, OpARM64I64LeSImmediate,
+		OpARM64I32LeUImmediate, OpARM64I64LeUImmediate,
+		OpARM64I32GeSImmediate, OpARM64I64GeSImmediate,
+		OpARM64I32GeUImmediate, OpARM64I64GeUImmediate:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsARM64CompareImmediateOpcode reports whether op is a selected integer
+// compare whose literal is carried in Inst.Aux.
+func IsARM64CompareImmediateOpcode(op MOpcode) bool {
+	switch op {
+	case OpARM64I32EqImmediate, OpARM64I64EqImmediate,
+		OpARM64I32NeImmediate, OpARM64I64NeImmediate,
+		OpARM64I32LtSImmediate, OpARM64I64LtSImmediate,
+		OpARM64I32LtUImmediate, OpARM64I64LtUImmediate,
+		OpARM64I32GtSImmediate, OpARM64I64GtSImmediate,
+		OpARM64I32GtUImmediate, OpARM64I64GtUImmediate,
+		OpARM64I32LeSImmediate, OpARM64I64LeSImmediate,
+		OpARM64I32LeUImmediate, OpARM64I64LeUImmediate,
+		OpARM64I32GeSImmediate, OpARM64I64GeSImmediate,
+		OpARM64I32GeUImmediate, OpARM64I64GeUImmediate:
 		return true
 	default:
 		return false
@@ -1393,45 +1443,45 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrI32Eqz
 	case OpAMD64I64Eqz, OpARM64I64Eqz:
 		return wasm.InstrI64Eqz
-	case OpAMD64I32Eq, OpARM64I32Eq:
+	case OpAMD64I32Eq, OpARM64I32Eq, OpARM64I32EqImmediate:
 		return wasm.InstrI32Eq
-	case OpAMD64I64Eq, OpARM64I64Eq:
+	case OpAMD64I64Eq, OpARM64I64Eq, OpARM64I64EqImmediate:
 		return wasm.InstrI64Eq
-	case OpAMD64I32Ne, OpARM64I32Ne:
+	case OpAMD64I32Ne, OpARM64I32Ne, OpARM64I32NeImmediate:
 		return wasm.InstrI32Ne
-	case OpAMD64I64Ne, OpARM64I64Ne:
+	case OpAMD64I64Ne, OpARM64I64Ne, OpARM64I64NeImmediate:
 		return wasm.InstrI64Ne
-	case OpAMD64I32LtS, OpARM64I32LtS:
+	case OpAMD64I32LtS, OpARM64I32LtS, OpARM64I32LtSImmediate:
 		return wasm.InstrI32LtS
-	case OpAMD64I64LtS, OpARM64I64LtS:
+	case OpAMD64I64LtS, OpARM64I64LtS, OpARM64I64LtSImmediate:
 		return wasm.InstrI64LtS
-	case OpAMD64I32LtU, OpARM64I32LtU:
+	case OpAMD64I32LtU, OpARM64I32LtU, OpARM64I32LtUImmediate:
 		return wasm.InstrI32LtU
-	case OpAMD64I64LtU, OpARM64I64LtU:
+	case OpAMD64I64LtU, OpARM64I64LtU, OpARM64I64LtUImmediate:
 		return wasm.InstrI64LtU
-	case OpAMD64I32GtS, OpARM64I32GtS:
+	case OpAMD64I32GtS, OpARM64I32GtS, OpARM64I32GtSImmediate:
 		return wasm.InstrI32GtS
-	case OpAMD64I64GtS, OpARM64I64GtS:
+	case OpAMD64I64GtS, OpARM64I64GtS, OpARM64I64GtSImmediate:
 		return wasm.InstrI64GtS
-	case OpAMD64I32GtU, OpARM64I32GtU:
+	case OpAMD64I32GtU, OpARM64I32GtU, OpARM64I32GtUImmediate:
 		return wasm.InstrI32GtU
-	case OpAMD64I64GtU, OpARM64I64GtU:
+	case OpAMD64I64GtU, OpARM64I64GtU, OpARM64I64GtUImmediate:
 		return wasm.InstrI64GtU
-	case OpAMD64I32LeS, OpARM64I32LeS:
+	case OpAMD64I32LeS, OpARM64I32LeS, OpARM64I32LeSImmediate:
 		return wasm.InstrI32LeS
-	case OpAMD64I64LeS, OpARM64I64LeS:
+	case OpAMD64I64LeS, OpARM64I64LeS, OpARM64I64LeSImmediate:
 		return wasm.InstrI64LeS
-	case OpAMD64I32LeU, OpARM64I32LeU:
+	case OpAMD64I32LeU, OpARM64I32LeU, OpARM64I32LeUImmediate:
 		return wasm.InstrI32LeU
-	case OpAMD64I64LeU, OpARM64I64LeU:
+	case OpAMD64I64LeU, OpARM64I64LeU, OpARM64I64LeUImmediate:
 		return wasm.InstrI64LeU
-	case OpAMD64I32GeS, OpARM64I32GeS:
+	case OpAMD64I32GeS, OpARM64I32GeS, OpARM64I32GeSImmediate:
 		return wasm.InstrI32GeS
-	case OpAMD64I64GeS, OpARM64I64GeS:
+	case OpAMD64I64GeS, OpARM64I64GeS, OpARM64I64GeSImmediate:
 		return wasm.InstrI64GeS
-	case OpAMD64I32GeU, OpARM64I32GeU:
+	case OpAMD64I32GeU, OpARM64I32GeU, OpARM64I32GeUImmediate:
 		return wasm.InstrI32GeU
-	case OpAMD64I64GeU, OpARM64I64GeU:
+	case OpAMD64I64GeU, OpARM64I64GeU, OpARM64I64GeUImmediate:
 		return wasm.InstrI64GeU
 	default:
 		return op
@@ -2568,9 +2618,9 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 }
 
 // SelectARM64ImmediateOpcodes makes already-proven integer immediate forms
-// explicit after target selection. The producer relation remains transient
-// allocation metadata; the selected instruction itself owns the native
-// immediate so final emission does not repeat the form decision.
+// explicit after target selection. The selected instruction owns the native
+// immediate and the migrated producer relation is discarded so final emission
+// cannot repeat the form decision.
 func SelectARM64ImmediateOpcodes(f *Func, producers []uint32) (int, error) {
 	if f == nil || f.Target != TargetARM64 || len(producers) != len(f.Insts) {
 		return 0, fmt.Errorf("railmach: invalid ARM64 immediate selection input")
@@ -2629,10 +2679,51 @@ func SelectARM64ImmediateOpcodes(f *Func, producers []uint32) (int, error) {
 			instruction.Op = OpARM64I32RotrImmediate
 		case OpARM64I64Rotr:
 			instruction.Op = OpARM64I64RotrImmediate
+		case OpARM64I32Eq:
+			instruction.Op = OpARM64I32EqImmediate
+		case OpARM64I64Eq:
+			instruction.Op = OpARM64I64EqImmediate
+		case OpARM64I32Ne:
+			instruction.Op = OpARM64I32NeImmediate
+		case OpARM64I64Ne:
+			instruction.Op = OpARM64I64NeImmediate
+		case OpARM64I32LtS:
+			instruction.Op = OpARM64I32LtSImmediate
+		case OpARM64I64LtS:
+			instruction.Op = OpARM64I64LtSImmediate
+		case OpARM64I32LtU:
+			instruction.Op = OpARM64I32LtUImmediate
+		case OpARM64I64LtU:
+			instruction.Op = OpARM64I64LtUImmediate
+		case OpARM64I32GtS:
+			instruction.Op = OpARM64I32GtSImmediate
+		case OpARM64I64GtS:
+			instruction.Op = OpARM64I64GtSImmediate
+		case OpARM64I32GtU:
+			instruction.Op = OpARM64I32GtUImmediate
+		case OpARM64I64GtU:
+			instruction.Op = OpARM64I64GtUImmediate
+		case OpARM64I32LeS:
+			instruction.Op = OpARM64I32LeSImmediate
+		case OpARM64I64LeS:
+			instruction.Op = OpARM64I64LeSImmediate
+		case OpARM64I32LeU:
+			instruction.Op = OpARM64I32LeUImmediate
+		case OpARM64I64LeU:
+			instruction.Op = OpARM64I64LeUImmediate
+		case OpARM64I32GeS:
+			instruction.Op = OpARM64I32GeSImmediate
+		case OpARM64I64GeS:
+			instruction.Op = OpARM64I64GeSImmediate
+		case OpARM64I32GeU:
+			instruction.Op = OpARM64I32GeUImmediate
+		case OpARM64I64GeU:
+			instruction.Op = OpARM64I64GeUImmediate
 		default:
 			continue
 		}
 		instruction.Aux = producer.Aux
+		producers[instructionID] = ^uint32(0)
 		selected++
 	}
 	if err := Verify(f); err != nil {

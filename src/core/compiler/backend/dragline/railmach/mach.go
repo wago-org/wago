@@ -653,6 +653,9 @@ func Verify(f *Func) error {
 					return fmt.Errorf("railmach: instruction %d selects invalid %s opcode %d", id, f.Target, instruction.Op)
 				}
 			}
+			if IsARM64ImmediateOpcode(instruction.Op) && instruction.OperandCount != 2 {
+				return fmt.Errorf("railmach: instruction %d selected ARM64 immediate with %d operands", id, instruction.OperandCount)
+			}
 			if seenSource && instruction.Source < lastSource {
 				return fmt.Errorf("railmach: instruction %d violates source-stable order", id)
 			}

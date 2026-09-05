@@ -1092,6 +1092,11 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				metrics.ImmediateFolds++
 			}
 		}
+		for _, instruction := range plan.Machine.Insts {
+			if railmach.IsARM64ImmediateOpcode(instruction.Op) {
+				metrics.ImmediateFolds++
+			}
+		}
 	}
 	if cap(scratch) < 128 {
 		scratch = make([]byte, 0, 128)
@@ -5084,6 +5089,21 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				a.Sxtw(dst, lhs)
 				continue
 			}
+			if railmach.IsARM64CompareImmediateOpcode(instruction.Op) {
+				if plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeI64 {
+					a.CmpImm64(lhs, uint32(instruction.Aux))
+				} else {
+					a.CmpImm32(lhs, uint32(instruction.Aux))
+				}
+				if fusedComparison {
+					if metrics != nil {
+						metrics.PostRARewrites++
+					}
+					continue
+				}
+				a.Cset32(dst, arm64IntegerComparisonCond(semanticOp))
+				continue
+			}
 			switch instruction.Op {
 			case railmach.OpARM64I32AddImmediate:
 				if !emitARM64I32AddSubImmediate(&a, dst, lhs, uint32(instruction.Aux), false) {
@@ -5167,34 +5187,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				continue
 			}
 			if producer := immediateProducer[instructionID]; producer != ^uint32(0) {
-				immediate := uint32(plan.Machine.Insts[producer].Aux)
-				switch instruction.Op {
-				case railmach.OpARM64I32Eq, railmach.OpARM64I32Ne, railmach.OpARM64I32LtS, railmach.OpARM64I32LtU,
-					railmach.OpARM64I32GtS, railmach.OpARM64I32GtU, railmach.OpARM64I32LeS, railmach.OpARM64I32LeU,
-					railmach.OpARM64I32GeS, railmach.OpARM64I32GeU:
-					a.CmpImm32(lhs, immediate)
-					if fusedComparison {
-						if metrics != nil {
-							metrics.PostRARewrites++
-						}
-						continue
-					}
-					a.Cset32(dst, arm64IntegerComparisonCond(semanticOp))
-				case railmach.OpARM64I64Eq, railmach.OpARM64I64Ne, railmach.OpARM64I64LtS, railmach.OpARM64I64LtU,
-					railmach.OpARM64I64GtS, railmach.OpARM64I64GtU, railmach.OpARM64I64LeS, railmach.OpARM64I64LeU,
-					railmach.OpARM64I64GeS, railmach.OpARM64I64GeU:
-					a.CmpImm64(lhs, immediate)
-					if fusedComparison {
-						if metrics != nil {
-							metrics.PostRARewrites++
-						}
-						continue
-					}
-					a.Cset32(dst, arm64IntegerComparisonCond(semanticOp))
-				default:
-					return nil, 0, true, fmt.Errorf("RailMach selected unsupported ARM64 immediate for %s", instruction.Op)
-				}
-				continue
+				return nil, 0, true, fmt.Errorf("RailMach selected unsupported ARM64 immediate producer %d for %s", producer, instruction.Op)
 			}
 			rhs := reg(operands[1].Reg)
 			if semanticOp >= wasm.InstrI32DivS && semanticOp <= wasm.InstrI32RemU || semanticOp >= wasm.InstrI64DivS && semanticOp <= wasm.InstrI64RemU {
