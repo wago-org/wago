@@ -532,6 +532,18 @@ func greedyEffectiveMaxStage(target Target, functionInstructions int, density, h
 	return configured
 }
 
+func greedyUsesColdRegionalFragments(f *Func) bool {
+	if f == nil || f.Target != TargetARM64 || len(f.Insts) < greedyRegionalDensityMinInstructions {
+		return false
+	}
+	for _, value := range f.VRegs {
+		if value.Type == TypeV128 {
+			return false
+		}
+	}
+	return true
+}
+
 func greedySpillCost(interval LiveInterval, functionInstructions uint64, density bool) uint64 {
 	cost := uint64(interval.Weight)
 	length := uint64(interval.End - interval.Start + 1)
@@ -613,6 +625,7 @@ func planRegionalFragments(f *Func, schedule *Schedule, config GreedyConfig, all
 	}
 	epoch := uint32(1)
 	activeBlock := ^railssa.BlockID(0)
+	coldRegionalFragments := greedyUsesColdRegionalFragments(f)
 	for ordinal := range f.Insts {
 		instructionID := uint32(ordinal)
 		if schedule != nil {
@@ -643,7 +656,7 @@ func planRegionalFragments(f *Func, schedule *Schedule, config GreedyConfig, all
 			}
 			state := &states[stateIndex-1]
 			weight := f.Blocks[block].Weight
-			if weight < 8 && !state.callLive {
+			if weight < 8 && !coldRegionalFragments && !state.callLive {
 				continue
 			}
 			if state.benefit != 0 && state.epoch != epoch {

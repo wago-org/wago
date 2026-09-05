@@ -60,6 +60,28 @@ func TestGreedyDensityWithFPRsIsARM64Only(t *testing.T) {
 	}
 }
 
+func TestGreedyColdRegionalFragmentsAreLargeScalarARM64Only(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		target Target
+		insts  int
+		type_  MachineType
+		want   bool
+	}{
+		{name: "large scalar ARM64", target: TargetARM64, insts: greedyRegionalDensityMinInstructions, type_: TypeI32, want: true},
+		{name: "small scalar ARM64", target: TargetARM64, insts: greedyRegionalDensityMinInstructions - 1, type_: TypeI32},
+		{name: "large vector ARM64", target: TargetARM64, insts: greedyRegionalDensityMinInstructions, type_: TypeV128},
+		{name: "large scalar AMD64", target: TargetAMD64, insts: greedyRegionalDensityMinInstructions, type_: TypeI32},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := &Func{Target: test.target, Insts: make([]Inst, test.insts), VRegs: []VRegData{{}, {Type: test.type_}}}
+			if got := greedyUsesColdRegionalFragments(f); got != test.want {
+				t.Fatalf("greedyUsesColdRegionalFragments = %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
 func TestAllocateGreedyPPromotesCallCrossingRange(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
 		0x20, 0x00,
