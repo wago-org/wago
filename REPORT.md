@@ -390,6 +390,11 @@ These were measured and removed rather than retained speculatively:
 | Skip trap-site sorting when each function group is already uniform | Backend compile geomean improved 0.25%, but every corpus was statistically flat and heap/allocations were identical; removed as below measurement value |
 | Double the initial ARM64 instruction-buffer reservation | Backend compile geomean regressed 0.05%, statistically flat, with unchanged heap and allocations; the existing body-times-four reservation already covers the useful range |
 | Make compact trap sharing the default | The existing compact mode reduced heap 1.18% and allocation count 13.89%, but regressed backend compile latency 4.27%; it remains an explicit footprint trade rather than the default |
+| Retain validation's resolved component types and consume them in ARM64 lowering | Replaced the frozen validation map with a direct dense traversal and bypassed repeated local function-signature lookup during lowering. Full compile regressed 0.88% by geomean and heap rose 0.42%; all five latency rows were statistically flat, so the type plan and backend integration were removed |
+| Split checked and unchecked local-hotness updates in the byte scanner | Focused global/local hint scans regressed 1.05% by geomean with identical heap and allocations; the compiler already eliminates enough of the inlined checks, so the split was removed |
+| Gate imported-tail safety scanning on validation's tail-call fact | The public feature set is already narrowed from module requirements, so the proposed fact check was redundant. Full compile regressed 0.28% by geomean, statistically flat, with exactly unchanged resources; removed |
+| Bypass hint-switch dispatch for the dense numeric opcode interval | Focused synthetic hint scans initially improved 0.59%, but the five-corpus backend confirmation regressed 1.41%, including SQLite +4.12% and esbuild +1.97%; the extra pre-switch branch disturbed the much broader opcode mix and was removed |
+| Track pending memory references to bypass empty pre-store stack scans | Five-corpus backend compile regressed 0.91%, with SQLite significantly slower by 1.26%, while heap and allocations were unchanged; the counter maintenance cost exceeded the avoided scans, so it was removed |
 
 ## Method
 
@@ -424,7 +429,14 @@ Raw measurements for the current checkpoint are in
 `/tmp/arm64-shared-trap-exec-{base,candidate}.txt`,
 `/tmp/arm64-shared-trap-exec-confirm-{base,candidate}.txt`,
 `/tmp/arm64-trap-sort-uniform-{base,candidate}.txt`, and
-`/tmp/arm64-asm-reserve8-{base,candidate}.txt` on the measuring host.
+`/tmp/arm64-asm-reserve8-{base,candidate}.txt`,
+`/tmp/arm64-resolved-dense-{base,candidate}.txt`, and
+`/tmp/arm64-resolved-types-{base,candidate}.txt`,
+`/tmp/arm64-hotness-at-{base,candidate}.txt`, and
+`/tmp/arm64-tail-scan-gate-{base,candidate}.txt`,
+`/tmp/arm64-numeric-hint-fast-{base,candidate}.txt`, and
+`/tmp/arm64-numeric-hint-fast-backend-{base,candidate}.txt`, and
+`/tmp/arm64-pending-memref-{base,candidate}.txt` on the measuring host.
 They are intentionally not checked into the repository.
 
 ## Next ARM64 work
