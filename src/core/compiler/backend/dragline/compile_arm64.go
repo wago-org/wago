@@ -40,20 +40,7 @@ var arm64FPParamRegisters = [...]arm64.Reg{0, 1, 2, 3, 4, 5, 6, 7}
 const arm64EnableAlgorithmSpecializations = false
 
 func arm64RailMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool, _ []railmach.ABIContract) bool {
-	if !railMachCandidate(stack, moduleHasV128) {
-		return false
-	}
-	if moduleHasV128 {
-		for _, instruction := range stack.Instrs {
-			if instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect {
-				// Keep SIMD leaves on RailMach, but retain the canonical finalizer for
-				// call-bearing functions until the private ABI carries complete V128
-				// argument and result vectors across every mixed-emitter edge.
-				return false
-			}
-		}
-	}
-	return true
+	return railMachCandidate(stack, moduleHasV128)
 }
 
 var arm64StackLocalRegisters = [...]arm64.Reg{arm64.X19, arm64.X20, arm64.X21, arm64.X22, arm64.X23}
@@ -1260,9 +1247,9 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			a.FmovToGpr(arm64.X17, arm64FPParamRegisters[0], plan.Machine.VRegs[result].Type == railmach.TypeF64)
 			a.Store64(arm64.X17, arm64.X16, uint32(index*8))
 		} else if plan.Machine.VRegs[result].Type == railmach.TypeI32 {
-			a.Store32(arm64RailMachGPRRegisters[index], arm64.X16, uint32(index*8))
+			a.Store32(arm64RailMachGPRRegisters[index], arm64.X16, railssa.TypeSlotOffset(plan.Stack.Results, index)*8)
 		} else {
-			a.Store64(arm64RailMachGPRRegisters[index], arm64.X16, uint32(index*8))
+			a.Store64(arm64RailMachGPRRegisters[index], arm64.X16, railssa.TypeSlotOffset(plan.Stack.Results, index)*8)
 		}
 	}
 	a.Ret()
@@ -5720,12 +5707,17 @@ railMachEpilogue:
 			if err != nil {
 				return nil, 0, true, err
 			}
+			offset := plan.Frame.ResultAreaOffset + railssa.TypeSlotOffset(plan.Stack.Results, index)*8
+			if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
+				a.StrQ(arm64.SP, int32(offset), result)
+				continue
+			}
 			if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
 				a.FmovToGpr(arm64.X17, result, plan.Machine.VRegs[value].Type == railmach.TypeF64)
 				result = arm64.X17
 			}
-			if !a.Store64(result, arm64.SP, plan.Frame.ResultAreaOffset+uint32(index*8)) {
-				return nil, 0, true, fmt.Errorf("RailMach result staging offset %d is not encodable", plan.Frame.ResultAreaOffset+uint32(index*8))
+			if !a.Store64(result, arm64.SP, offset) {
+				return nil, 0, true, fmt.Errorf("RailMach result staging offset %d is not encodable", offset)
 			}
 		}
 	}
@@ -5801,16 +5793,23 @@ railMachEpilogue:
 			return nil, 0, true, fmt.Errorf("RailMach result-vector home offset %d is not encodable", plan.Frame.RuntimeOffset)
 		}
 		for index := railmach.PrivateResultRegisters; index < len(plan.Machine.Results); index++ {
-			if !a.Load64(arm64.X17, arm64.SP, plan.Frame.ResultAreaOffset+uint32(index*8)) || !a.Store64(arm64.X17, arm64.X16, uint32(index*8)) {
+			offset := railssa.TypeSlotOffset(plan.Stack.Results, index) * 8
+			if plan.Machine.VRegs[plan.Machine.Results[index]].Type == railmach.TypeV128 {
+				a.LdrQ(29, arm64.SP, int32(plan.Frame.ResultAreaOffset+offset))
+				a.StrQ(arm64.X16, int32(offset), 29)
+			} else if !a.Load64(arm64.X17, arm64.SP, plan.Frame.ResultAreaOffset+offset) || !a.Store64(arm64.X17, arm64.X16, offset) {
 				return nil, 0, true, fmt.Errorf("RailMach overflow result %d is not encodable", index)
 			}
 		}
 	}
 	if len(plan.Machine.Results) > 1 {
 		for index, value := range plan.Machine.Results[:min(len(plan.Machine.Results), railmach.PrivateResultRegisters)] {
-			offset := plan.Frame.ResultAreaOffset + uint32(index*8)
+			offset := plan.Frame.ResultAreaOffset + railssa.TypeSlotOffset(plan.Stack.Results, index)*8
 			var ok bool
-			if plan.Machine.VRegs[value].Type == railmach.TypeI32 {
+			if plan.Machine.VRegs[value].Type == railmach.TypeV128 {
+				a.LdrQ(arm64FPRRegisters[index], arm64.SP, int32(offset))
+				ok = true
+			} else if plan.Machine.VRegs[value].Type == railmach.TypeI32 {
 				ok = a.Load32(arm64RailMachGPRRegisters[index], arm64.SP, offset)
 			} else {
 				ok = a.Load64(arm64RailMachGPRRegisters[index], arm64.SP, offset)

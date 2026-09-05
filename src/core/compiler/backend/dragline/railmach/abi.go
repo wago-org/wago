@@ -31,9 +31,14 @@ type ABIContract struct {
 	VectorFPRs uint64
 	Params     uint16
 	Results    uint16
-	Class      ABIClass
+	// ResultSlots is the canonical 64-bit slot width of Results. V128 consumes
+	// two slots while remaining one logical result and one register-result
+	// ordinal.
+	ResultSlots uint32
+	Class       ABIClass
 	// RegisterResults is the source-ordered result prefix returned in private
-	// result GPRs. Remaining results use the caller-owned result area.
+	// result registers. Vector ordinals use the FP/vector bank; remaining
+	// results use the caller-owned result area.
 	RegisterResults uint8
 	// VectorResultMask marks register-result ordinals carried in the target's
 	// FP/vector bank. Scalar results retain the established convention while
@@ -80,6 +85,9 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 	}
 	registerResults := min(len(f.Results), PrivateResultRegisters)
 	contract := ABIContract{Class: ABILeafScalar, Params: f.ParamCount, Results: uint16(len(f.Results)), RegisterResults: uint8(registerResults)}
+	for _, result := range f.Results {
+		contract.ResultSlots += uint32(f.VRegs[result].Type.SpillSlotUnits())
+	}
 	directARM64 := directPreparedARM64Contract(f, allocation)
 	var calls []CallContract
 	usesFP := false
@@ -490,7 +498,13 @@ func FrameForAllocation(contract ABIContract, allocation *GreedyAllocation, maxC
 	if allocation == nil {
 		return FrameRequirements{}, FrameLayout{}, fmt.Errorf("railmach: frame requires an allocation")
 	}
-	if contract.RegisterResults > PrivateResultRegisters || uint16(contract.RegisterResults) > contract.Results || contract.VectorResultMask&^uint8(lowMask(contract.RegisterResults)) != 0 {
+	resultSlots := contract.ResultSlots
+	if resultSlots == 0 {
+		// Zero preserves the compact scalar-only contract representation used by
+		// cached and seeded call summaries.
+		resultSlots = uint32(contract.Results)
+	}
+	if contract.RegisterResults > PrivateResultRegisters || uint16(contract.RegisterResults) > contract.Results || resultSlots < uint32(contract.Results) || contract.VectorResultMask&^uint8(lowMask(contract.RegisterResults)) != 0 {
 		return FrameRequirements{}, FrameLayout{}, fmt.Errorf("railmach: invalid private result convention: %d register results for %d results", contract.RegisterResults, contract.Results)
 	}
 	requirements := FrameRequirements{SpillSlots: allocation.SpillSlots, CalleeGPRs: contract.CalleeGPRs, CalleeFPRs: contract.CalleeFPRs, VectorFPRs: contract.VectorFPRs & contract.CalleeFPRs}
@@ -503,7 +517,7 @@ func FrameForAllocation(contract ABIContract, allocation *GreedyAllocation, maxC
 		// makes the return a verified parallel transfer even when allocations
 		// overlap the result registers. Overflow values are then copied to the
 		// caller-owned result vector.
-		requirements.ResultAreaBytes = uint32(contract.Results) * 8
+		requirements.ResultAreaBytes = resultSlots * 8
 	}
 	if contract.Results > uint16(contract.RegisterResults) {
 		// Preserve the hidden caller result-vector pointer across the body.

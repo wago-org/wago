@@ -481,15 +481,23 @@ func (a *Asm) LdrQ(dst, base Reg, disp int32) {
 	if a.ldStrScaled(0x3DC00000, 4, dst, base, uint32(disp)) {
 		return
 	}
-	a.AddImm64(X16, base, uint32(disp))
-	a.ldStrScaled(0x3DC00000, 4, dst, X16, 0)
+	scratch := X16
+	if base == X16 {
+		scratch = X17
+	}
+	a.AddImm64(scratch, base, uint32(disp))
+	a.ldStrScaled(0x3DC00000, 4, dst, scratch, 0)
 }
 func (a *Asm) StrQ(base Reg, disp int32, src Reg) {
 	if a.ldStrScaled(0x3D800000, 4, src, base, uint32(disp)) {
 		return
 	}
-	a.AddImm64(X16, base, uint32(disp))
-	a.ldStrScaled(0x3D800000, 4, src, X16, 0)
+	scratch := X16
+	if base == X16 {
+		scratch = X17
+	}
+	a.AddImm64(scratch, base, uint32(disp))
+	a.ldStrScaled(0x3D800000, 4, src, scratch, 0)
 }
 
 // LoadIdx / StoreIdx / StoreImmIdx are the base+index(+disp) linear-memory

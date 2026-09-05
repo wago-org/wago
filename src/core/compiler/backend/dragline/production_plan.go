@@ -418,20 +418,11 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 }
 
 // railMachV128FoundationCandidate admits vector operations whose machine
-// lowering is complete. Mixed multi-result vector signatures remain on the
-// structured oracle until their result-vector contract is qualified. Vector
-// parameters, calls, single results, globals, locals, and block values use the
-// typed allocation and transfer machinery.
+// lowering is complete. Vector parameters, calls, results, globals, locals,
+// and block values use the typed allocation and transfer machinery.
 func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 	if stack == nil || stack.HasReferences || len(stack.BranchCasts) != 0 {
 		return false
-	}
-	if len(stack.Results) > 1 {
-		for _, typ := range stack.Results {
-			if typ == wasm.V128 {
-				return false
-			}
-		}
 	}
 	hasVectorOperation := false
 	for _, instruction := range stack.Instrs {

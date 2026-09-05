@@ -1,6 +1,9 @@
 package arm64
 
-import "testing"
+import (
+	"encoding/binary"
+	"testing"
+)
 
 // Goldens from clang --target=aarch64-linux-gnu + llvm-objdump for the integer
 // data-processing port batch (asm2.go).
@@ -190,6 +193,21 @@ func TestPortLoadStoreEncodings(t *testing.T) {
 				t.Errorf("%s: got %#08x, want %#08x", c.name, got, c.want)
 			}
 		})
+	}
+}
+
+func TestQLoadStoreFallbackPreservesX16Base(t *testing.T) {
+	var a Asm
+	a.LdrQ(X0, X16, 8)
+	a.StrQ(X16, 8, X0)
+	want := []uint32{0x91002211, 0x3dc00220, 0x91002211, 0x3d800220}
+	if len(a.B) != len(want)*4 {
+		t.Fatalf("emitted %d bytes; want %d", len(a.B), len(want)*4)
+	}
+	for index, expected := range want {
+		if got := binary.LittleEndian.Uint32(a.B[index*4:]); got != expected {
+			t.Fatalf("instruction %d = %#08x; want %#08x", index, got, expected)
+		}
 	}
 }
 

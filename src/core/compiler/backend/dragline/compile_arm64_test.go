@@ -408,18 +408,18 @@ func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {
 		t.Fatal("large scalar leaf in SIMD module was rejected")
 	}
 	caller := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrCall}}}
-	if arm64RailMachCandidate(caller, true, nil) {
-		t.Fatal("mixed-module RailMach caller was admitted before its frame contract is shared")
+	if !arm64RailMachCandidate(caller, true, nil) {
+		t.Fatal("mixed-module RailMach caller was rejected after vector call qualification")
 	}
 	if !arm64RailMachCandidate(caller, false, nil) {
 		t.Fatal("scalar-only RailMach caller was rejected")
 	}
-	if arm64RailMachCandidate(caller, true, []railmach.ABIContract{{Class: railmach.ABIPreparedLeaf}}) {
-		t.Fatal("SIMD-module caller was admitted across the incomplete V128 private ABI")
+	if !arm64RailMachCandidate(caller, true, []railmach.ABIContract{{Class: railmach.ABIPreparedLeaf}}) {
+		t.Fatal("SIMD-module caller was rejected with a qualified private ABI")
 	}
 	trapCaller := &railssa.StackFunc{ImportedFuncs: 1, Instrs: []railssa.StackInstr{{Kind: wasm.InstrCall}, {Kind: wasm.InstrUnreachable}}}
-	if arm64RailMachCandidate(trapCaller, true, nil) {
-		t.Fatal("SIMD-module imported trap call was admitted across the mixed-emitter ABI")
+	if !arm64RailMachCandidate(trapCaller, true, nil) {
+		t.Fatal("SIMD-module imported trap call was rejected after vector call qualification")
 	}
 }
 

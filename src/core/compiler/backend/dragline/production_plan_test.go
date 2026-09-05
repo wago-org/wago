@@ -651,6 +651,11 @@ func TestRailMachAdmitsQualifiedV128Boundaries(t *testing.T) {
 	if !railMachCandidate(&global, true) {
 		t.Fatal("v128 global function did not enter RailMach")
 	}
+	mixedResults := *foundation
+	mixedResults.Results = []wasm.ValType{wasm.I32, wasm.V128, wasm.I64}
+	if !railMachCandidate(&mixedResults, true) {
+		t.Fatal("mixed multi-result v128 function did not enter RailMach")
+	}
 	local := *foundation
 	local.Locals = []wasm.ValType{wasm.V128}
 	if !railMachCandidate(&local, true) {

@@ -135,7 +135,7 @@ func TestAnalyzeABIKeepsV128ResultInVectorBank(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if contract.RegisterResults != 1 || contract.VectorResultMask != 1 || contract.FPRClobbers&1 == 0 || contract.VectorFPRs&1 == 0 || contract.GPRClobbers&1 != 0 {
+		if contract.RegisterResults != 1 || contract.ResultSlots != 2 || contract.VectorResultMask != 1 || contract.FPRClobbers&1 == 0 || contract.VectorFPRs&1 == 0 || contract.GPRClobbers&1 != 0 {
 			t.Fatalf("%s vector result contract = %#v", target, contract)
 		}
 	}
@@ -149,6 +149,13 @@ func TestFrameForAllocationUsesRegisterPrefixForMultipleResults(t *testing.T) {
 	}
 	if requirements.ResultAreaBytes != 48 || requirements.RuntimeBytes != 8 || layout.ResultAreaOffset != 0 || layout.RuntimeOffset != 48 || layout.TotalBytes != 64 {
 		t.Fatalf("requirements=%#v layout=%#v", requirements, layout)
+	}
+	vectorRequirements, _, err := FrameForAllocation(ABIContract{Results: 3, ResultSlots: 4, RegisterResults: 3, VectorResultMask: 2}, allocation, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vectorRequirements.ResultAreaBytes != 32 {
+		t.Fatalf("vector result area = %d bytes; want 32", vectorRequirements.ResultAreaBytes)
 	}
 	if _, _, err := FrameForAllocation(ABIContract{Results: 2, RegisterResults: 3}, allocation, 8); err == nil {
 		t.Fatal("invalid multi-result register prefix was accepted")

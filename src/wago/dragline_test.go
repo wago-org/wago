@@ -4526,6 +4526,96 @@ func TestDraglineRailMachV128GlobalExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachV128MixedResultsExecution(t *testing.T) {
+	vector := V128{0x80, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	body := []byte{0x41, 0x07, 0xfd, 0x0c}
+	body = append(body, vector[:]...)
+	body = append(body, 0x42, 0x09, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.V128, wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	lo, hi := hostV128Slots(vector)
+	result, err := instance.Invoke("run")
+	if err != nil || len(result) != 4 || result[0] != 7 || result[1] != lo || result[2] != hi || result[3] != 9 {
+		t.Fatalf("mixed vector results = %#x, %v; want [0x7 %#x %#x 0x9]", result, err, lo, hi)
+	}
+}
+
+func TestDraglineRailMachV128OverflowResultExecution(t *testing.T) {
+	vector := V128{0xf0, 0xe1, 0xd2, 0xc3, 0xb4, 0xa5, 0x96, 0x87, 0x78, 0x69, 0x5a, 0x4b, 0x3c, 0x2d, 0x1e, 0x0f}
+	body := []byte{
+		0x41, 0x01, // i32.const 1
+		0x42, 0x02, // i64.const 2
+		0x43, 0x00, 0x00, 0x40, 0x40, // f32.const 3
+		0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10, 0x40, // f64.const 4
+		0xfd, 0x0c,
+	}
+	body = append(body, vector[:]...)
+	body = append(body, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.I64, wasm.F32, wasm.F64, wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	lo, hi := hostV128Slots(vector)
+	result, err := instance.Invoke("run")
+	if err != nil || len(result) != 6 || result[0] != 1 || result[1] != 2 || result[2] != uint64(math.Float32bits(3)) || result[3] != math.Float64bits(4) || result[4] != lo || result[5] != hi {
+		t.Fatalf("overflow vector results = %#x, %v", result, err)
+	}
+}
+
+func TestDraglineRailMachV128MultiResultDirectCallExecution(t *testing.T) {
+	vector := V128{0xa0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	callee := []byte{0x41, 0x07, 0xfd, 0x0c}
+	callee = append(callee, vector[:]...)
+	callee = append(callee, 0x42, 0x09, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32, wasm.V128, wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(callee), wasmtest.Code([]byte{0x10, 0x00, 0x0b}))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	lo, hi := hostV128Slots(vector)
+	result, err := instance.Invoke("run")
+	if err != nil || len(result) != 4 || result[0] != 7 || result[1] != lo || result[2] != hi || result[3] != 9 {
+		t.Fatalf("mixed vector direct-call results = %#x, %v", result, err)
+	}
+}
+
 func TestDraglineRailMachVectorLoadVariantsExecution(t *testing.T) {
 	payload := [16]byte{0x80, 0x7f, 0xfe, 0x01, 0x00, 0xff, 0x34, 0x92, 8, 9, 10, 11, 12, 13, 14, 15}
 	extend8 := func(signed bool) (out [16]byte) {
