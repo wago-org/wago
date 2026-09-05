@@ -258,6 +258,8 @@ const (
 	OpAMD64F64x2RelaxedMadd
 	OpAMD64F64x2RelaxedNmadd
 	OpAMD64I16x8RelaxedQ15mulrS
+	OpAMD64I16x8RelaxedDotI8x16I7x16S
+	OpAMD64I32x4RelaxedDotI8x16I7x16AddS
 	opAMD64SelectedEnd
 )
 
@@ -504,6 +506,8 @@ const (
 	OpARM64F64x2RelaxedMadd
 	OpARM64F64x2RelaxedNmadd
 	OpARM64I16x8RelaxedQ15mulrS
+	OpARM64I16x8RelaxedDotI8x16I7x16S
+	OpARM64I32x4RelaxedDotI8x16I7x16AddS
 	opARM64SelectedEnd
 )
 
@@ -606,7 +610,7 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpAMD64V128Load8Lane, OpAMD64V128Load16Lane, OpAMD64V128Load32Lane, OpAMD64V128Load64Lane,
 		OpAMD64V128Store8Lane, OpAMD64V128Store16Lane, OpAMD64V128Store32Lane, OpAMD64V128Store64Lane,
 		OpAMD64F32x4RelaxedMadd, OpAMD64F32x4RelaxedNmadd, OpAMD64F64x2RelaxedMadd, OpAMD64F64x2RelaxedNmadd,
-		OpAMD64I16x8RelaxedQ15mulrS,
+		OpAMD64I16x8RelaxedQ15mulrS, OpAMD64I16x8RelaxedDotI8x16I7x16S, OpAMD64I32x4RelaxedDotI8x16I7x16AddS,
 		OpARM64V128Move, OpARM64V128Const, OpARM64V128Load, OpARM64V128Store,
 		OpARM64V128And, OpARM64V128Andnot, OpARM64V128Or, OpARM64V128Xor, OpARM64V128Not, OpARM64V128Bitselect,
 		OpARM64I8x16Add, OpARM64I8x16AddSatS, OpARM64I8x16AddSatU, OpARM64I8x16Sub, OpARM64I8x16SubSatS, OpARM64I8x16SubSatU,
@@ -665,7 +669,7 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpARM64V128Load8Lane, OpARM64V128Load16Lane, OpARM64V128Load32Lane, OpARM64V128Load64Lane,
 		OpARM64V128Store8Lane, OpARM64V128Store16Lane, OpARM64V128Store32Lane, OpARM64V128Store64Lane,
 		OpARM64F32x4RelaxedMadd, OpARM64F32x4RelaxedNmadd, OpARM64F64x2RelaxedMadd, OpARM64F64x2RelaxedNmadd,
-		OpARM64I16x8RelaxedQ15mulrS:
+		OpARM64I16x8RelaxedQ15mulrS, OpARM64I16x8RelaxedDotI8x16I7x16S, OpARM64I32x4RelaxedDotI8x16I7x16AddS:
 		return true
 	default:
 		return false
@@ -1189,6 +1193,10 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64F64x2Pmax, OpARM64F64x2Max
 		case wasm.InstrI16x8RelaxedQ15mulrS:
 			amd64, arm64 = OpAMD64I16x8RelaxedQ15mulrS, OpARM64I16x8RelaxedQ15mulrS
+		case wasm.InstrI16x8RelaxedDotI8x16I7x16S:
+			amd64, arm64 = OpAMD64I16x8RelaxedDotI8x16I7x16S, OpARM64I16x8RelaxedDotI8x16I7x16S
+		case wasm.InstrI32x4RelaxedDotI8x16I7x16AddS:
+			amd64, arm64 = OpAMD64I32x4RelaxedDotI8x16I7x16AddS, OpARM64I32x4RelaxedDotI8x16I7x16AddS
 		default:
 			continue
 		}

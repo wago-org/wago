@@ -5999,8 +5999,22 @@ func TestDraglineRailMachRelaxedVectorExecution(t *testing.T) {
 		}
 		return
 	}
-	i16x8 := func(value int16) (out [16]byte) {
+	i8x16 := func(values ...int8) (out [16]byte) {
+		for lane := range out {
+			value := values[0]
+			if len(values) > 1 {
+				value = values[lane]
+			}
+			out[lane] = byte(value)
+		}
+		return
+	}
+	i16x8 := func(values ...int16) (out [16]byte) {
 		for lane := 0; lane < 8; lane++ {
+			value := values[0]
+			if len(values) > 1 {
+				value = values[lane]
+			}
 			binary.LittleEndian.PutUint16(out[lane*2:], uint16(value))
 		}
 		return
@@ -6031,6 +6045,19 @@ func TestDraglineRailMachRelaxedVectorExecution(t *testing.T) {
 		{name: "f64x2.relaxed_min", subopcode: 271, inputs: [][16]byte{f64x2(1, 4), f64x2(2, 3)}, want: f64x2(1, 3)},
 		{name: "f64x2.relaxed_max", subopcode: 272, inputs: [][16]byte{f64x2(1, 4), f64x2(2, 3)}, want: f64x2(2, 4)},
 		{name: "i16x8.relaxed_q15mulr_s", subopcode: 273, inputs: [][16]byte{i16x8(16384), i16x8(16384)}, want: i16x8(8192)},
+		{name: "i16x8.relaxed_dot_i8x16_i7x16_s", subopcode: 274,
+			inputs: [][16]byte{
+				i8x16(1, -2, 127, -128, -128, -128, 50, -6, 2, 3, 100, -100, -126, -127, -128, -1),
+				i8x16(-3, 4, -2, -128, -128, -128, -5, -6, 10, -20, 2, -2, -1, 1, -128, -1),
+			},
+			want: i16x8(-11, 16130, 32767, -214, -40, 400, -1, 16385)},
+		{name: "i32x4.relaxed_dot_i8x16_i7x16_add_s", subopcode: 275,
+			inputs: [][16]byte{
+				i8x16(1, -2, 127, -128, -128, -128, 50, -6, 2, 3, 100, -100, -126, -127, -128, -1),
+				i8x16(-3, 4, -2, -128, -128, -128, -5, -6, 10, -20, 2, -2, -1, 1, -128, -1),
+				i32x4(1000, math.MaxInt32-10, -5000, math.MinInt32+20),
+			},
+			want: i32x4(17119, -2147451106, -4640, -2147467244)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			body := []byte{0x41, 0x00}

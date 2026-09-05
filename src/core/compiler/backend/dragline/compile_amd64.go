@@ -926,6 +926,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64V128Store8Lane, railmach.OpAMD64V128Store16Lane, railmach.OpAMD64V128Store32Lane, railmach.OpAMD64V128Store64Lane,
 			railmach.OpAMD64F32x4RelaxedMadd, railmach.OpAMD64F32x4RelaxedNmadd,
 			railmach.OpAMD64F64x2RelaxedMadd, railmach.OpAMD64F64x2RelaxedNmadd, railmach.OpAMD64I16x8RelaxedQ15mulrS,
+			railmach.OpAMD64I16x8RelaxedDotI8x16I7x16S, railmach.OpAMD64I32x4RelaxedDotI8x16I7x16AddS,
 			railmach.OpAMD64V128And, railmach.OpAMD64V128Andnot, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 			railmach.OpAMD64V128Not, railmach.OpAMD64V128Bitselect,
 			railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,
@@ -2844,6 +2845,51 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					return nil, 0, true, fmt.Errorf("RailMach selected relaxed q15 multiply operand count is %d", len(operands))
 				}
 				a.VPmulhrsw(dst, reg(operands[0].Reg), reg(operands[1].Reg))
+				continue
+			case railmach.OpAMD64I16x8RelaxedDotI8x16I7x16S, railmach.OpAMD64I32x4RelaxedDotI8x16I7x16AddS:
+				add := instruction.Op == railmach.OpAMD64I32x4RelaxedDotI8x16I7x16AddS
+				wantOperands := 2
+				if add {
+					wantOperands = 3
+				}
+				if len(operands) != wantOperands {
+					return nil, 0, true, fmt.Errorf("RailMach selected relaxed byte dot operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				if add {
+					addend := reg(operands[2].Reg)
+					a.MovXmmToGpr(amd64.R10, addend, true)
+					a.Pextrq(amd64.R11, addend, 1)
+				}
+				a.VPor(3, lhs, lhs)
+				a.VPor(4, rhs, rhs)
+				a.VPunpcklbw(3, 3, 3)
+				a.VPunpcklbw(4, 4, 4)
+				a.VPsrawImm(3, 3, 8)
+				a.VPsrawImm(4, 4, 8)
+				a.VPmullw(3, 3, 4)
+				a.VPcmpeqw(5, 5, 5)
+				a.VPabsw(5, 5)
+				a.VPmaddwd(3, 3, 5)
+				a.VPor(4, lhs, lhs)
+				a.VPor(5, rhs, rhs)
+				a.VPunpckhbw(4, 4, 4)
+				a.VPunpckhbw(5, 5, 5)
+				a.VPsrawImm(4, 4, 8)
+				a.VPsrawImm(5, 5, 8)
+				a.VPmullw(4, 4, 5)
+				a.VPcmpeqw(5, 5, 5)
+				a.VPabsw(5, 5)
+				a.VPmaddwd(4, 4, 5)
+				a.VPpackssdw(dst, 3, 4)
+				if add {
+					a.VPcmpeqw(3, 3, 3)
+					a.VPabsw(3, 3)
+					a.VPmaddwd(dst, dst, 3)
+					a.MovGprToXmm(3, amd64.R10, true)
+					a.Pinsrq(3, amd64.R11, 1)
+					a.VPaddd(dst, dst, 3)
+				}
 				continue
 			case railmach.OpAMD64I32x4TruncSatF32x4S, railmach.OpAMD64I32x4TruncSatF32x4U,
 				railmach.OpAMD64I32x4TruncSatF64x2SZero, railmach.OpAMD64I32x4TruncSatF64x2UZero:

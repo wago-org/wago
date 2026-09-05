@@ -528,7 +528,8 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrI8x16RelaxedLaneselect, wasm.InstrI16x8RelaxedLaneselect,
 			wasm.InstrI32x4RelaxedLaneselect, wasm.InstrI64x2RelaxedLaneselect,
 			wasm.InstrF32x4RelaxedMin, wasm.InstrF32x4RelaxedMax, wasm.InstrF64x2RelaxedMin, wasm.InstrF64x2RelaxedMax,
-			wasm.InstrI16x8RelaxedQ15mulrS:
+			wasm.InstrI16x8RelaxedQ15mulrS, wasm.InstrI16x8RelaxedDotI8x16I7x16S,
+			wasm.InstrI32x4RelaxedDotI8x16I7x16AddS:
 		default:
 			return false
 		}
@@ -1673,6 +1674,10 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 			wasm.InstrI8x16Popcnt, wasm.InstrI16x8Q15mulrSatS,
 			railmach.OpAMD64I8x16Popcnt, railmach.OpAMD64I16x8Q15mulrSatS:
 			return 3 // XMM3-XMM5 cover clamp, mask, and conversion temporaries.
+		case wasm.InstrI32x4RelaxedDotI8x16I7x16AddS, railmach.OpAMD64I32x4RelaxedDotI8x16I7x16AddS:
+			return 3 // XMM3-XMM5 preserve the addend and form the signed byte dot product.
+		case wasm.InstrI16x8RelaxedDotI8x16I7x16S, railmach.OpAMD64I16x8RelaxedDotI8x16I7x16S:
+			return 3 // XMM3-XMM5 widen both byte halves before exact saturated packing.
 		case wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU, wasm.InstrI64x2ShrS,
 			railmach.OpAMD64I8x16Shl, railmach.OpAMD64I8x16ShrS, railmach.OpAMD64I8x16ShrU, railmach.OpAMD64I64x2ShrS:
 			return 3 // XMM3-XMM5 hold shift counts, widened halves, and masks.

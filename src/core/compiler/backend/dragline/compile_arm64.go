@@ -993,6 +993,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64V128Store8Lane, railmach.OpARM64V128Store16Lane, railmach.OpARM64V128Store32Lane, railmach.OpARM64V128Store64Lane,
 			railmach.OpARM64F32x4RelaxedMadd, railmach.OpARM64F32x4RelaxedNmadd,
 			railmach.OpARM64F64x2RelaxedMadd, railmach.OpARM64F64x2RelaxedNmadd, railmach.OpARM64I16x8RelaxedQ15mulrS,
+			railmach.OpARM64I16x8RelaxedDotI8x16I7x16S, railmach.OpARM64I32x4RelaxedDotI8x16I7x16AddS,
 			railmach.OpARM64V128And, railmach.OpARM64V128Andnot, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
 			railmach.OpARM64V128Not, railmach.OpARM64V128Bitselect,
 			railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,
@@ -3924,6 +3925,30 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					return nil, 0, true, fmt.Errorf("RailMach selected relaxed q15 multiply operand count is %d", len(operands))
 				}
 				a.NeonSqrdmulhH(dst, reg(operands[0].Reg), reg(operands[1].Reg))
+				continue
+			case railmach.OpARM64I16x8RelaxedDotI8x16I7x16S, railmach.OpARM64I32x4RelaxedDotI8x16I7x16AddS:
+				add := instruction.Op == railmach.OpARM64I32x4RelaxedDotI8x16I7x16AddS
+				wantOperands := 2
+				if add {
+					wantOperands = 3
+				}
+				if len(operands) != wantOperands {
+					return nil, 0, true, fmt.Errorf("RailMach selected relaxed byte dot operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				if add {
+					a.NeonMov16b(25, reg(operands[2].Reg))
+				}
+				a.NeonSmull2HfromB(24, lhs, rhs)
+				a.NeonSmullHfromB(dst, lhs, rhs)
+				a.NeonSaddlpSfromH(dst, dst)
+				a.NeonSaddlpSfromH(24, 24)
+				a.NeonSqxtnHfromS(dst, dst)
+				a.NeonSqxtn2HfromS(dst, 24)
+				if add {
+					a.NeonSaddlpSfromH(dst, dst)
+					a.NeonAddS(dst, dst, 25)
+				}
 				continue
 			case railmach.OpARM64F32x4Ceil, railmach.OpARM64F32x4Floor, railmach.OpARM64F32x4Trunc, railmach.OpARM64F32x4Nearest,
 				railmach.OpARM64F64x2Ceil, railmach.OpARM64F64x2Floor, railmach.OpARM64F64x2Trunc, railmach.OpARM64F64x2Nearest:
