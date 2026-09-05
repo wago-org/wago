@@ -639,6 +639,45 @@ func exactFuncSignatureView(sig FuncSig, types []DefinedTypeDescriptor) (params,
 	return d.Params, d.Results, nil
 }
 
+// validateFuncSignature checks the exact-to-ABI contract without constructing
+// temporary descriptor or ABI slices. Public signature accessors still clone.
+func validateFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) error {
+	if !sig.HasTypeIndex {
+		for _, values := range [][]ValType{sig.Params, sig.Results} {
+			for i, value := range values {
+				if _, ok := valueTypeDescriptorFromValType(value); !ok {
+					return fmt.Errorf("value %d: unsupported ABI value type %s", i, value)
+				}
+			}
+		}
+		return nil
+	}
+	params, results, err := exactFuncSignatureView(sig, types)
+	if err != nil {
+		return err
+	}
+	if !descriptorABIEquals(params, sig.Params, types) {
+		return fmt.Errorf("structural params do not match ABI params")
+	}
+	if !descriptorABIEquals(results, sig.Results, types) {
+		return fmt.Errorf("structural results do not match ABI results")
+	}
+	return nil
+}
+
+func descriptorABIEquals(exact []ValueTypeDescriptor, legacy []ValType, types []DefinedTypeDescriptor) bool {
+	if len(exact) != len(legacy) {
+		return false
+	}
+	for i, typ := range exact {
+		abi, ok := typ.ABIType(types)
+		if !ok || abi != legacy[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func exactFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) (params, results []ValueTypeDescriptor, err error) {
 	if !sig.HasTypeIndex {
 		params, err = valueTypeDescriptorsFromValTypes(sig.Params)
@@ -648,18 +687,10 @@ func exactFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) (params, res
 		results, err = valueTypeDescriptorsFromValTypes(sig.Results)
 		return params, results, err
 	}
-	params, results, err = exactFuncSignatureView(sig, types)
-	if err != nil {
+	if err := validateFuncSignature(sig, types); err != nil {
 		return nil, nil, err
 	}
-	legacyParams, e := valTypesFromDescriptors(params, types)
-	if e != nil || !equalValTypes(legacyParams, sig.Params) {
-		return nil, nil, fmt.Errorf("structural params do not match ABI params")
-	}
-	legacyResults, e := valTypesFromDescriptors(results, types)
-	if e != nil || !equalValTypes(legacyResults, sig.Results) {
-		return nil, nil, fmt.Errorf("structural results do not match ABI results")
-	}
+	params, results, _ = exactFuncSignatureView(sig, types)
 	return append([]ValueTypeDescriptor(nil), params...), append([]ValueTypeDescriptor(nil), results...), nil
 }
 

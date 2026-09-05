@@ -2858,7 +2858,7 @@ func (c *Compiled) validate() error {
 	}
 	validateSigs := func(kind string, sigs []FuncSig) error {
 		for i, sig := range sigs {
-			if _, _, err := exactFuncSignature(sig, c.Types); err != nil {
+			if err := validateFuncSignature(sig, c.Types); err != nil {
 				return fmt.Errorf("compiled metadata invalid: %s function %d signature: %w", kind, i, err)
 			}
 		}
@@ -3404,7 +3404,7 @@ func (c *Compiled) validateCodecMetadata() error {
 		sigs []FuncSig
 	}{{"imported", c.importFuncSigs}, {"local", c.Funcs}} {
 		for i, sig := range set.sigs {
-			if _, _, err := exactFuncSignature(sig, c.Types); err != nil {
+			if err := validateFuncSignature(sig, c.Types); err != nil {
 				return fmt.Errorf("compiled metadata invalid: %s function %d signature: %w", set.kind, i, err)
 			}
 		}

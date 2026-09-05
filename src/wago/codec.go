@@ -634,8 +634,7 @@ func (w *compiledWriter) typeDescriptors(v []DefinedTypeDescriptor) error {
 func (w *compiledWriter) funcSigs(v []FuncSig, types []DefinedTypeDescriptor) error {
 	w.uvar(uint64(len(v)))
 	for i, sig := range v {
-		params, results, err := exactFuncSignature(sig, types)
-		if err != nil {
+		if err := validateFuncSignature(sig, types); err != nil {
 			return fmt.Errorf("function signature %d: %w", i, err)
 		}
 		w.bool(sig.HasTypeIndex)
@@ -643,8 +642,13 @@ func (w *compiledWriter) funcSigs(v []FuncSig, types []DefinedTypeDescriptor) er
 			w.u32(sig.TypeIndex)
 			continue
 		}
-		w.valueTypes(params)
-		w.valueTypes(results)
+		for _, values := range [][]ValType{sig.Params, sig.Results} {
+			w.uvar(uint64(len(values)))
+			for _, value := range values {
+				descriptor, _ := valueTypeDescriptorFromValType(value) // validated above
+				w.valueType(descriptor)
+			}
+		}
 	}
 	return nil
 }

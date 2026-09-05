@@ -29,6 +29,23 @@ The complete wasm package tests pass. Structured-name benchmark captures are in
 `decode-budget.txt`; large valid names could not be benchmarked successfully on
 the old implementation. Type-slab changes are a separate repair.
 
+## Signature validation and streaming artifacts
+
+Signature validation compares each exact descriptor to its ABI type without
+building temporary slices. Indexed artifact signatures write the index directly;
+non-indexed signatures stream their values. Public signature access still copies.
+The focused signature, codec, artifact, and Compiled tests pass.
+
+Five serial 100 ms samples on the same host give these medians:
+
+| Benchmark | Before ns/op | After ns/op | Before B/op | After B/op | Before allocs/op | After allocs/op |
+|---|---:|---:|---:|---:|---:|---:|
+| WriteCompiledImportedModule | 316910 | 147912 | 263074 | 154207 | 12829 | 21 |
+| ValidateFuncSignature | — | 14.47 | — | 0 | — | 0 |
+
+These short sequential samples confirm the allocation reduction; final
+interleaved timing and native-platform checks remain pending.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.
