@@ -3734,7 +3734,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					return nil, 0, true, fmt.Errorf("RailMach vector shuffle %d has no mask", instructionID)
 				}
 				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
-				if result, specialized := emitARM64SpecializedShuffle(&a, immediate.Bytes, dst, lhs, rhs); specialized {
+				if result, specialized := emitARM64SpecializedShuffle(&a, immediate.Bytes, dst, lhs, rhs, 28); specialized {
 					if result != dst {
 						a.NeonMov16b(dst, result)
 					}
@@ -10019,7 +10019,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, target corecom
 				if directBinary {
 					emitARM64DirectSIMDBinary(&a, descriptor.Kind, dst, lhs, rhs)
 				} else {
-					dst, _ = emitARM64SpecializedShuffle(&a, descriptor.Bytes, dst, lhs, rhs)
+					dst, _ = emitARM64SpecializedShuffle(&a, descriptor.Bytes, dst, lhs, rhs, arm64StructuredShuffleScratch(lhs))
 				}
 				localStoreV128(targetLocal, dst)
 				if tee {
@@ -14370,16 +14370,13 @@ func arm64SIMDConstantIsSplat(bytes [16]byte) bool {
 	return true
 }
 
-func emitARM64SpecializedShuffle(a *arm64.Asm, bytes [16]byte, dst, lhs, rhs arm64.Reg) (arm64.Reg, bool) {
+func emitARM64SpecializedShuffle(a *arm64.Asm, bytes [16]byte, dst, lhs, rhs, scratch arm64.Reg) (arm64.Reg, bool) {
 	switch {
 	case arm64ShuffleLaneRotate(bytes, 4, 2):
 		a.NeonRev32H(dst, lhs)
 	case arm64ShuffleLaneRotate(bytes, 4, 1):
 		if dst == lhs {
-			dst = 0
-			if lhs == 0 {
-				dst = 1
-			}
+			dst = scratch
 		}
 		a.NeonUshrS(dst, lhs, 8)
 		a.NeonSliS(dst, lhs, 24)
@@ -14395,6 +14392,13 @@ func emitARM64SpecializedShuffle(a *arm64.Asm, bytes [16]byte, dst, lhs, rhs arm
 		return dst, false
 	}
 	return dst, true
+}
+
+func arm64StructuredShuffleScratch(lhs arm64.Reg) arm64.Reg {
+	if lhs == 0 {
+		return 1
+	}
+	return 0
 }
 
 func emitARM64SIMDConstant(a *arm64.Asm, reg arm64.Reg, bytes [16]byte) {
@@ -14716,7 +14720,7 @@ func emitARM64StackSIMD(a *arm64.Asm, descriptor wasm.SIMDInstructionDescriptor,
 		lhs := sourceV(base, 0)
 		rhs := sourceV(base+1, 1)
 		dst := stackDestination(base, 0)
-		if result, ok := emitARM64SpecializedShuffle(a, descriptor.Bytes, dst, lhs, rhs); ok {
+		if result, ok := emitARM64SpecializedShuffle(a, descriptor.Bytes, dst, lhs, rhs, arm64StructuredShuffleScratch(lhs)); ok {
 			dst = result
 			storeV(base, dst)
 			types = append(types[:base], wasm.V128)
