@@ -1648,6 +1648,95 @@ func TestARM64RailMachLeaSPLargeFrameOffset(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachStoresSpilledWrapWithoutTemporary(t *testing.T) {
+	body := []byte{0x41, 0x00, 0x29, 0x03, 0x00, 0xa7, 0x0b} // i32.const 0; i64.load; i32.wrap_i64
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stackScratch railssa.StackFunc
+	fn, err := buildCompilerFunc(m, 0, &stackScratch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(fn.Structured, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapInstruction := ^uint32(0)
+	for instructionID, instruction := range plan.Machine.Insts {
+		if railmach.SemanticOpcode(instruction.Op) == wasm.InstrI32WrapI64 {
+			wrapInstruction = uint32(instructionID)
+			break
+		}
+	}
+	if wrapInstruction == ^uint32(0) {
+		t.Fatal("wrap instruction is unavailable")
+	}
+	wrap := plan.Machine.Insts[wrapInstruction]
+	position := plan.Allocation.InstructionPositions[wrapInstruction]*6 + 2
+	sourceValue := plan.Machine.InstructionOperands(wrapInstruction)[0].Reg
+	if plan.Allocation.LocationAt(sourceValue, position).Kind != railmach.LocationRegister {
+		t.Fatal("wrap source was not register-resident")
+	}
+	forcedAllocation := *plan.Allocation
+	forcedAllocation.Locations = append([]railmach.Location(nil), plan.Allocation.Locations...)
+	forcedAllocation.Locations[wrap.Result] = railmach.Location{Kind: railmach.LocationSpill, Bank: railmach.BankGPR, Index: forcedAllocation.SpillSlots}
+	forcedAllocation.SpillSlots++
+	forcedAllocation.FrameBytes = (uint32(forcedAllocation.SpillSlots)*8 + 15) &^ 15
+	exit, err := railmach.LateSSAExit(plan.Machine, &forcedAllocation.Allocation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	postRA, err := railmach.PlanPostRA(railmach.TargetARM64, plan.Machine, plan.Selection, plan.Schedule, &forcedAllocation, exit, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, instructionID := range postRA.WrapSpills {
+		found = found || instructionID == wrapInstruction
+	}
+	if !found {
+		t.Fatalf("wrap-spill rewrite was not planned: %#v", postRA.WrapSpills)
+	}
+	_, frame, err := railmach.FrameForAllocation(plan.ABI, &forcedAllocation, plan.CallArgumentBytes/8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forced := *plan
+	forced.Allocation, forced.Exit, forced.PostRA, forced.Frame, forced.PostRADirect = &forcedAllocation, exit, postRA, frame, true
+	var relocs []arm64CallReloc
+	var metrics FunctionMetrics
+	optimized, _, ok, err := emitARM64RailMach(fn, &forced, false, nil, &relocs, &metrics, nil)
+	if err != nil || !ok {
+		t.Fatalf("optimized wrap-spill finalization = ok %t, err %v", ok, err)
+	}
+	baseline := forced
+	baseline.PostRADirect = false
+	relocs = relocs[:0]
+	checked, _, ok, err := emitARM64RailMach(fn, &baseline, false, nil, &relocs, nil, nil)
+	if err != nil || !ok {
+		t.Fatalf("baseline wrap-spill finalization = ok %t, err %v", ok, err)
+	}
+	if metrics.PostRARewrites == 0 || len(checked)-len(optimized) != 4 {
+		t.Fatalf("wrap-spill realization = rewrites %d optimized %d baseline %d", metrics.PostRARewrites, len(optimized), len(checked))
+	}
+}
+
 func TestARM64StructuredRegisterModesKeepShallowOperandStackInRegisters(t *testing.T) {
 	operandStack, full := arm64StructuredRegisterModes(false, false, false, false, len(arm64StackLocalRegisters)+1, 0, len(arm64OperandStackRegisters))
 	if !operandStack || full {

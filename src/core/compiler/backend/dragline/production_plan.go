@@ -91,10 +91,14 @@ type nativeBackendPlan struct {
 	PostRARepeatFirst   []uint32
 	PostRAPreIndex      []bool
 	PostRAPostIndexWith []uint32
-	ImmediateProducer   []uint32
-	ImmediateSkip       []bool
-	DeadGCReservations  []bool
-	NoBarrierGCStores   []bool
+	// PostRADirect enables verifier-gated rewrites whose realization needs no
+	// instruction-indexed side table. The PostRA plan remains the sparse source
+	// of instruction identity.
+	PostRADirect       bool
+	ImmediateProducer  []uint32
+	ImmediateSkip      []bool
+	DeadGCReservations []bool
+	NoBarrierGCStores  []bool
 }
 
 type nativeBranchPatch struct {
@@ -112,6 +116,7 @@ func clearPostRAEmissionRewrites(plan *nativeBackendPlan) {
 	plan.PostRARepeatFirst = nil
 	plan.PostRAPreIndex = nil
 	plan.PostRAPostIndexWith = nil
+	plan.PostRADirect = false
 }
 
 // nativeBackendPlanner owns all temporary storage for one production
@@ -1443,7 +1448,8 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if err != nil {
 		return nil, err
 	}
-	hasPostRARealization := p.preparePostRAScratch(machineTarget, len(machine.Insts), postRA.Rewrites)
+	postRADirect := machineTarget == railmach.TargetARM64 && len(postRA.WrapSpills) != 0
+	hasPostRARealization := p.preparePostRAScratch(machineTarget, len(machine.Insts), postRA.Rewrites) || postRADirect
 	if hasPostRARealization {
 		for _, rewrite := range postRA.Rewrites {
 			switch rewrite.Kind {
@@ -1663,6 +1669,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		PostRARepeatFirst:   p.postRARepeatFirst,
 		PostRAPreIndex:      p.postRAPreIndex,
 		PostRAPostIndexWith: p.postRAPostIndexWith,
+		PostRADirect:        postRADirect,
 	}
 	p.plan.ImmediateProducer = p.immediateProducer
 	p.plan.ImmediateSkip = p.immediateSkip

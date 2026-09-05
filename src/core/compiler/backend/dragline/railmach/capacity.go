@@ -26,7 +26,7 @@ func PipelineCapacityBytes(f *Func, selection *SelectionPlan, dag *DependencyDAG
 		bytes += capacityBytes(exit.Moves) + capacityBytes(exit.EdgeMoves) + capacityBytes(exit.FixedMoves) + capacityBytes(exit.FixedPoints) + capacityBytes(exit.fixedScratch) + capacityBytes(exit.pending) + capacityBytes(exit.predSuccs) + capacityBytes(exit.succPreds)
 	}
 	if postRA != nil {
-		bytes += capacityBytes(postRA.Rewrites) + capacityBytes(postRA.position) + capacityBytes(postRA.seen) + capacityBytes(postRA.uses)
+		bytes += capacityBytes(postRA.Rewrites) + capacityBytes(postRA.WrapSpills) + capacityBytes(postRA.position) + capacityBytes(postRA.seen) + capacityBytes(postRA.uses)
 	}
 	if remat != nil {
 		bytes += capacityBytes(remat.Decisions)

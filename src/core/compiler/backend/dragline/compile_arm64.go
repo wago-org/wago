@@ -5071,7 +5071,24 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				continue
 			}
 			switch semanticOp {
-			case wasm.InstrI32WrapI64, wasm.InstrI64ExtendI32U:
+			case wasm.InstrI32WrapI64:
+				if nativeARM64WrapSpill(plan, instructionID) {
+					source, location, ok := railmach.VerifyARM64WrapSpill(plan.Machine, plan.Schedule, plan.Allocation, instructionID)
+					if !ok || source != operands[0].Reg {
+						return nil, 0, true, fmt.Errorf("RailMach wrap-spill rewrite failed verification")
+					}
+					pendingSpill = 0
+					if err := arm64RailMachWriteLocation(&a, plan, instruction.Result, location, lhs); err != nil {
+						return nil, 0, true, err
+					}
+					if metrics != nil {
+						metrics.PostRARewrites++
+					}
+					continue
+				}
+				a.MovReg32(dst, lhs)
+				continue
+			case wasm.InstrI64ExtendI32U:
 				a.MovReg32(dst, lhs)
 				continue
 			case wasm.InstrI64ExtendI32S:
@@ -7091,6 +7108,18 @@ func arm64RailMachHasSpecialMemoryEmission(plan *nativeBackendPlan, instruction 
 		len(plan.PostRARepeatFirst) != 0 && plan.PostRARepeatFirst[instruction] != 0 ||
 		len(plan.PostRAPreIndex) != 0 && plan.PostRAPreIndex[instruction] ||
 		len(plan.PostRAPostIndexWith) != 0 && plan.PostRAPostIndexWith[instruction] != 0
+}
+
+func nativeARM64WrapSpill(plan *nativeBackendPlan, instruction uint32) bool {
+	if plan == nil || plan.PostRA == nil || !plan.PostRADirect {
+		return false
+	}
+	for _, candidate := range plan.PostRA.WrapSpills {
+		if candidate == instruction {
+			return true
+		}
+	}
+	return false
 }
 
 func arm64RailMachLeaSP(a *arm64.Asm, dst arm64.Reg, offset uint32) bool {

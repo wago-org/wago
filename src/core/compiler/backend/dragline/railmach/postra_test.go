@@ -75,6 +75,72 @@ func TestPlanPostRAFindsARM64ConditionalIncrement(t *testing.T) {
 	t.Fatalf("rewrites = %#v", plan.Rewrites)
 }
 
+func TestPlanPostRAFindsARM64WrapSpill(t *testing.T) {
+	f := &Func{
+		Target:   TargetARM64,
+		Insts:    []Inst{{Op: wasm.InstrI32WrapI64, Result: 2, OperandCount: 1}},
+		Operands: []Operand{{Reg: 1, Bank: BankGPR, Flags: OperandUse, Fixed: NoFixedReg}},
+		VRegs: []VRegData{
+			{},
+			{Type: TypeI64, Bank: BankGPR, Flags: VRegInitial},
+			{Def: 3, Type: TypeI32, Bank: BankGPR},
+		},
+		Blocks: []Block{{InstCount: 1}},
+	}
+	schedule := &Schedule{Order: []uint32{0}, BlockOf: []railssa.BlockID{0}}
+	allocation := &GreedyAllocation{Allocation: Allocation{
+		Locations: []Location{
+			{},
+			{Kind: LocationRegister, Bank: BankGPR, Index: 1},
+			{Kind: LocationSpill, Bank: BankGPR, Index: 0},
+		},
+		InstructionPositions: []uint32{0},
+		SpillSlots:           1,
+		FrameBytes:           16,
+	}}
+	selection := &SelectionPlan{Selections: make([]Selection, 1)}
+	plan, err := PlanPostRAVerifiedAllocation(TargetARM64, f, selection, schedule, allocation, &SSAExit{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.WrapSpills) != 1 || plan.WrapSpills[0] != 0 {
+		t.Fatalf("wrap-spill rewrites = %#v", plan.WrapSpills)
+	}
+	if err := VerifyPostRAPlan(TargetARM64, f, selection, schedule, plan); err != nil {
+		t.Fatal(err)
+	}
+	if source, location, ok := VerifyARM64WrapSpill(f, schedule, allocation, 0); !ok || source != 1 || location != allocation.Locations[2] {
+		t.Fatalf("wrap-spill verification = source %d location %#v ok %t", source, location, ok)
+	}
+	allocation.Locations[1].Kind = LocationSpill
+	if _, _, ok := VerifyARM64WrapSpill(f, schedule, allocation, 0); ok {
+		t.Fatal("wrap-spill accepted a spilled source")
+	}
+	allocation.Locations[1].Kind = LocationRegister
+	f.Insts = append(f.Insts, Inst{Op: wasm.InstrI32Add, Result: 3, OperandStart: 1, OperandCount: 2})
+	f.Operands = append(f.Operands,
+		Operand{Reg: 2, Bank: BankGPR, Flags: OperandUse, Fixed: NoFixedReg},
+		Operand{Reg: 4, Bank: BankGPR, Flags: OperandUse, Fixed: NoFixedReg},
+	)
+	f.VRegs = append(f.VRegs,
+		VRegData{Def: 9, Type: TypeI32, Bank: BankGPR},
+		VRegData{Type: TypeI32, Bank: BankGPR, Flags: VRegInitial},
+	)
+	allocation.Locations = append(allocation.Locations,
+		Location{Kind: LocationRegister, Bank: BankGPR, Index: 2},
+		Location{Kind: LocationRegister, Bank: BankGPR, Index: 3},
+	)
+	allocation.InstructionPositions = append(allocation.InstructionPositions, 1)
+	schedule.Order = append(schedule.Order, 1)
+	schedule.BlockOf = append(schedule.BlockOf, 0)
+	if _, _, ok := VerifyARM64WrapSpill(f, schedule, allocation, 0); ok {
+		t.Fatal("wrap-spill bypassed pending-spill forwarding to the next instruction")
+	}
+	if err := VerifyPostRAPlan(TargetARM64, f, selection, schedule, plan); err == nil {
+		t.Fatal("post-RA verifier accepted wrap-spill across an immediate consumer")
+	}
+}
+
 func TestVerifyARM64ByteWidenChain(t *testing.T) {
 	var operands []Operand
 	inst := func(op wasm.InstrKind, result VReg, args ...VReg) Inst {

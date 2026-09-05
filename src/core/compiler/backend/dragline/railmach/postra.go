@@ -9,6 +9,7 @@ import (
 )
 
 const PostRAScanLimit = 8
+const postRAInlineWrapSpills = 16
 
 type RewriteKind uint8
 
@@ -40,12 +41,15 @@ type Rewrite struct {
 
 type PostRAPlan struct {
 	Rewrites        []Rewrite
+	WrapSpills      []uint32
 	EliminatedMoves uint32
 	ScanLimit       uint8
 
 	position []uint32
 	seen     []bool
 	uses     []uint32
+
+	wrapSpillInline [postRAInlineWrapSpills]uint32
 }
 
 // PlanPostRA performs a bounded physical-quality scan. It records legal local
@@ -78,10 +82,14 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 		reuse = new(PostRAPlan)
 	}
 	rewrites := reuse.Rewrites[:0]
+	wrapSpills := reuse.WrapSpills[:0]
+	if cap(wrapSpills) < postRAInlineWrapSpills {
+		wrapSpills = reuse.wrapSpillInline[:0]
+	}
 	position := resize(reuse.position, len(f.Insts))
 	seen := resize(reuse.seen, len(f.Insts))
 	uses := resize(reuse.uses, len(f.VRegs))
-	*reuse = PostRAPlan{Rewrites: rewrites, EliminatedMoves: exit.Debt.Coalesced, ScanLimit: PostRAScanLimit, position: position, seen: seen, uses: uses}
+	*reuse = PostRAPlan{Rewrites: rewrites, WrapSpills: wrapSpills, EliminatedMoves: exit.Debt.Coalesced, ScanLimit: PostRAScanLimit, position: position, seen: seen, uses: uses}
 	for instructionID := range f.Insts {
 		for _, operand := range f.InstructionOperands(uint32(instructionID)) {
 			uses[operand.Reg]++
@@ -112,6 +120,9 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 		case TargetARM64:
 			if arm64PreIndexable(instruction) {
 				reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: uint32(instructionID), Second: ^uint32(0), Kind: RewriteARM64PrePostIndex})
+			}
+			if _, _, ok := VerifyARM64WrapSpill(f, schedule, allocation, uint32(instructionID)); ok {
+				reuse.WrapSpills = append(reuse.WrapSpills, uint32(instructionID))
 			}
 		}
 		if isMemoryOp(instruction.Op) {
@@ -210,6 +221,56 @@ func arm64PostIndexScheduled(f *Func, schedule *Schedule, position []uint32, fir
 func arm64PreIndexable(instruction Inst) bool {
 	offset := uint32(instruction.Aux)
 	return isMemoryOp(instruction.Op) && offset > 0 && offset <= 255 && postRAMemoryWidth(instruction.Op) != 0
+}
+
+// VerifyARM64WrapSpill proves that an i32.wrap_i64 can write the low word of
+// its register-resident operand directly to the result spill slot. ARM64 W
+// register stores already discard the high 32 bits, so materializing the wrap
+// in a temporary GPR would be redundant.
+func VerifyARM64WrapSpill(f *Func, schedule *Schedule, allocation *GreedyAllocation, instructionID uint32) (VReg, Location, bool) {
+	if f == nil || schedule == nil || allocation == nil || int(instructionID) >= len(f.Insts) || int(instructionID) >= len(allocation.InstructionPositions) || len(schedule.Order) != len(f.Insts) || len(schedule.BlockOf) != len(f.Insts) {
+		return 0, Location{}, false
+	}
+	if !arm64WrapSpillShapeAt(f, schedule, instructionID, allocation.InstructionPositions[instructionID]) {
+		return 0, Location{}, false
+	}
+	instruction := f.Insts[instructionID]
+	operands := f.InstructionOperands(instructionID)
+	position := allocation.InstructionPositions[instructionID]*6 + 2
+	source := allocation.LocationAt(operands[0].Reg, position)
+	result := allocation.LocationAt(instruction.Result, position)
+	if source.Kind != LocationRegister || source.Bank != BankGPR || result.Kind != LocationSpill || result.Bank != BankGPR || allocation.Locations[instruction.Result] != result {
+		return 0, Location{}, false
+	}
+	return operands[0].Reg, result, true
+}
+
+func arm64WrapSpillShapeAt(f *Func, schedule *Schedule, instructionID, scheduledPosition uint32) bool {
+	if f == nil || schedule == nil || int(instructionID) >= len(f.Insts) || len(schedule.Order) != len(f.Insts) || len(schedule.BlockOf) != len(f.Insts) {
+		return false
+	}
+	instruction := f.Insts[instructionID]
+	operands := f.InstructionOperands(instructionID)
+	if SemanticOpcode(instruction.Op) != wasm.InstrI32WrapI64 || instruction.Result == 0 || instruction.ResultCount() != 1 || len(operands) != 1 ||
+		int(instruction.Result) >= len(f.VRegs) || int(operands[0].Reg) >= len(f.VRegs) ||
+		f.VRegs[instruction.Result].Type != TypeI32 || f.VRegs[operands[0].Reg].Type != TypeI64 {
+		return false
+	}
+	if int(scheduledPosition) >= len(schedule.Order) || schedule.Order[scheduledPosition] != instructionID {
+		return false
+	}
+	nextPosition := scheduledPosition + 1
+	if int(nextPosition) < len(schedule.Order) {
+		next := schedule.Order[nextPosition]
+		if schedule.BlockOf[next] == schedule.BlockOf[instructionID] {
+			for _, operand := range f.InstructionOperands(next) {
+				if operand.Reg == instruction.Result {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // arm64PostIndexChainable admits two adjacent scalar accesses whose effective
@@ -978,6 +1039,11 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 			if position[rewrite.Second] != position[rewrite.First]+1 || schedule.BlockOf[rewrite.First] != schedule.BlockOf[rewrite.Second] || !amd64FoldableLoadConsumer(f, rewrite.First, rewrite.Second, uses) {
 				return fmt.Errorf("railmach: illegal AMD64 memory fold %d: %#v", id, rewrite)
 			}
+		}
+	}
+	for index, instructionID := range plan.WrapSpills {
+		if target != TargetARM64 || int(instructionID) >= len(position) || index != 0 && instructionID <= plan.WrapSpills[index-1] || !arm64WrapSpillShapeAt(f, schedule, instructionID, position[instructionID]) {
+			return fmt.Errorf("railmach: illegal ARM64 wrap-spill %d: instruction %d", index, instructionID)
 		}
 	}
 	return nil
