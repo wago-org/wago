@@ -4232,6 +4232,144 @@ func TestDraglineRailMachV128FoundationExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachVectorLoadVariantsExecution(t *testing.T) {
+	payload := [16]byte{0x80, 0x7f, 0xfe, 0x01, 0x00, 0xff, 0x34, 0x92, 8, 9, 10, 11, 12, 13, 14, 15}
+	extend8 := func(signed bool) (out [16]byte) {
+		for lane := 0; lane < 8; lane++ {
+			value := uint16(payload[lane])
+			if signed {
+				value = uint16(int16(int8(payload[lane])))
+			}
+			binary.LittleEndian.PutUint16(out[lane*2:], value)
+		}
+		return
+	}
+	extend16 := func(signed bool) (out [16]byte) {
+		for lane := 0; lane < 4; lane++ {
+			value := uint32(binary.LittleEndian.Uint16(payload[lane*2:]))
+			if signed {
+				value = uint32(int32(int16(value)))
+			}
+			binary.LittleEndian.PutUint32(out[lane*4:], value)
+		}
+		return
+	}
+	extend32 := func(signed bool) (out [16]byte) {
+		for lane := 0; lane < 2; lane++ {
+			value := uint64(binary.LittleEndian.Uint32(payload[lane*4:]))
+			if signed {
+				value = uint64(int64(int32(value)))
+			}
+			binary.LittleEndian.PutUint64(out[lane*8:], value)
+		}
+		return
+	}
+	splat := func(width int) (out [16]byte) {
+		for offset := 0; offset < len(out); offset += width {
+			copy(out[offset:offset+width], payload[:width])
+		}
+		return
+	}
+	zero := func(width int) (out [16]byte) {
+		copy(out[:width], payload[:width])
+		return
+	}
+	for _, test := range []struct {
+		name      string
+		subopcode uint32
+		want      [16]byte
+	}{
+		{name: "v128.load8x8_s", subopcode: 1, want: extend8(true)},
+		{name: "v128.load8x8_u", subopcode: 2, want: extend8(false)},
+		{name: "v128.load16x4_s", subopcode: 3, want: extend16(true)},
+		{name: "v128.load16x4_u", subopcode: 4, want: extend16(false)},
+		{name: "v128.load32x2_s", subopcode: 5, want: extend32(true)},
+		{name: "v128.load32x2_u", subopcode: 6, want: extend32(false)},
+		{name: "v128.load8_splat", subopcode: 7, want: splat(1)},
+		{name: "v128.load16_splat", subopcode: 8, want: splat(2)},
+		{name: "v128.load32_splat", subopcode: 9, want: splat(4)},
+		{name: "v128.load64_splat", subopcode: 10, want: splat(8)},
+		{name: "v128.load32_zero", subopcode: 92, want: zero(4)},
+		{name: "v128.load64_zero", subopcode: 93, want: zero(8)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x41, 0x20, 0x41, 0x00, 0xfd}
+			body = append(body, wasmtest.ULEB(test.subopcode)...)
+			body = append(body, 0x00, 0x00, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+			read0 := []byte{0x41, 0x20, 0x29, 0x03, 0x00, 0x0b}
+			read8 := []byte{0x41, 0x28, 0x29, 0x03, 0x00, 0x0b}
+			segment := append([]byte{0x00, 0x41, 0x00, 0x0b}, append(wasmtest.ULEB(uint32(len(payload))), payload[:]...)...)
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read0", 0, 1), wasmtest.ExportEntry("read8", 0, 2))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(read0), wasmtest.Code(read8))),
+				wasmtest.Section(11, wasmtest.Vec(segment)),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if _, err := instance.Invoke("run"); err != nil {
+				t.Fatal(err)
+			}
+			var got [16]byte
+			for index, name := range []string{"read0", "read8"} {
+				result, err := instance.Invoke(name)
+				if err != nil || len(result) != 1 {
+					t.Fatalf("%s result = %#x, %v", name, result, err)
+				}
+				binary.LittleEndian.PutUint64(got[index*8:], result[0])
+			}
+			if got != test.want {
+				t.Fatalf("result = %x; want %x", got, test.want)
+			}
+		})
+	}
+}
+
+func TestDraglineRailMachVectorNarrowLoadUsesSemanticWidth(t *testing.T) {
+	body := []byte{
+		0x41, 0x20, // destination address
+		0x20, 0x00, // source address
+		0xfd, 0x07, 0x00, 0x00, // v128.load8_splat align=1 offset=0
+		0xfd, 0x0b, 0x04, 0x00, // v128.store align=16 offset=0
+		0x0b,
+	}
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if _, err := instance.Invoke("run", I32(65535)); err != nil {
+		t.Fatalf("last-byte vector splat load: %v", err)
+	}
+	_, err = instance.Invoke("run", I32(65536))
+	var trap *TrapError
+	if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
+		t.Fatalf("past-end vector splat load = %v; want linear-memory trap", err)
+	}
+}
+
 func TestDraglineRailMachIntegerVectorArithmeticAndEqualityExecution(t *testing.T) {
 	splat8 := func(value byte) (out [16]byte) {
 		for index := range out {

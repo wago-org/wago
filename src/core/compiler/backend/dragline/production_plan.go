@@ -444,6 +444,10 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 		hasVectorOperation = true
 		switch instruction.Kind {
 		case wasm.InstrV128Const, wasm.InstrV128Load, wasm.InstrV128Store,
+			wasm.InstrV128Load8x8S, wasm.InstrV128Load8x8U, wasm.InstrV128Load16x4S, wasm.InstrV128Load16x4U,
+			wasm.InstrV128Load32x2S, wasm.InstrV128Load32x2U,
+			wasm.InstrV128Load8Splat, wasm.InstrV128Load16Splat, wasm.InstrV128Load32Splat, wasm.InstrV128Load64Splat,
+			wasm.InstrV128Load32Zero, wasm.InstrV128Load64Zero,
 			wasm.InstrV128And, wasm.InstrV128Andnot, wasm.InstrV128Or, wasm.InstrV128Xor, wasm.InstrV128Not, wasm.InstrV128Bitselect,
 			wasm.InstrI8x16Add, wasm.InstrI8x16AddSatS, wasm.InstrI8x16AddSatU,
 			wasm.InstrI8x16Sub, wasm.InstrI8x16SubSatS, wasm.InstrI8x16SubSatU,
@@ -1660,6 +1664,9 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 		case wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU, wasm.InstrI64x2ShrS,
 			railmach.OpAMD64I8x16Shl, railmach.OpAMD64I8x16ShrS, railmach.OpAMD64I8x16ShrU, railmach.OpAMD64I64x2ShrS:
 			return 3 // XMM3-XMM5 hold shift counts, widened halves, and masks.
+		case wasm.InstrV128Load8x8U, wasm.InstrV128Load16x4U, wasm.InstrV128Load32x2S, wasm.InstrV128Load32x2U,
+			railmach.OpAMD64V128Load8x8U, railmach.OpAMD64V128Load16x4U, railmach.OpAMD64V128Load32x2S, railmach.OpAMD64V128Load32x2U:
+			count = 1 // XMM5 supplies zero or sign-extension lanes.
 		case wasm.InstrI16x8ExtmulLowI8x16S, wasm.InstrI16x8ExtmulHighI8x16S,
 			wasm.InstrI16x8ExtmulLowI8x16U, wasm.InstrI16x8ExtmulHighI8x16U,
 			wasm.InstrI32x4ExtmulLowI16x8S, wasm.InstrI32x4ExtmulHighI16x8S,

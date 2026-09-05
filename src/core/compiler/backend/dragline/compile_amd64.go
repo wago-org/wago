@@ -918,6 +918,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	for _, instruction := range plan.Machine.Insts {
 		switch instruction.Op {
 		case railmach.OpAMD64V128Const, railmach.OpAMD64V128Load, railmach.OpAMD64V128Store,
+			railmach.OpAMD64V128Load8x8S, railmach.OpAMD64V128Load8x8U, railmach.OpAMD64V128Load16x4S, railmach.OpAMD64V128Load16x4U,
+			railmach.OpAMD64V128Load32x2S, railmach.OpAMD64V128Load32x2U,
+			railmach.OpAMD64V128Load8Splat, railmach.OpAMD64V128Load16Splat, railmach.OpAMD64V128Load32Splat, railmach.OpAMD64V128Load64Splat,
+			railmach.OpAMD64V128Load32Zero, railmach.OpAMD64V128Load64Zero,
 			railmach.OpAMD64V128And, railmach.OpAMD64V128Andnot, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 			railmach.OpAMD64V128Not, railmach.OpAMD64V128Bitselect,
 			railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,
@@ -3198,13 +3202,18 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.VPxor(dst, dst, 5)
 				}
 				continue
-			case railmach.OpAMD64V128Load, railmach.OpAMD64V128Store:
+			case railmach.OpAMD64V128Load, railmach.OpAMD64V128Store,
+				railmach.OpAMD64V128Load8x8S, railmach.OpAMD64V128Load8x8U, railmach.OpAMD64V128Load16x4S, railmach.OpAMD64V128Load16x4U,
+				railmach.OpAMD64V128Load32x2S, railmach.OpAMD64V128Load32x2U,
+				railmach.OpAMD64V128Load8Splat, railmach.OpAMD64V128Load16Splat, railmach.OpAMD64V128Load32Splat, railmach.OpAMD64V128Load64Splat,
+				railmach.OpAMD64V128Load32Zero, railmach.OpAMD64V128Load64Zero:
 				access, ok := plan.Machine.MemoryAccessAt(instructionID)
 				store := instruction.Op == railmach.OpAMD64V128Store
-				if !ok || access.SemanticWidth != 16 || access.EncodedWidth != 16 || len(operands) != 1 && !store || len(operands) != 2 && store {
+				if !ok || access.SemanticWidth == 0 || access.EncodedWidth != access.SemanticWidth || len(operands) != 1 && !store || len(operands) != 2 && store {
 					return nil, 0, true, fmt.Errorf("RailMach selected vector memory operation %d is malformed", instructionID)
 				}
-				if access.Offset > math.MaxUint64-16 {
+				width := uint64(access.SemanticWidth)
+				if access.Offset > math.MaxUint64-width {
 					metadata.recordTrap(a.Len(), wasmOffset, 3)
 					amd64EmitTrap(&a, 3, fn.Index, wasmOffset)
 					continue
@@ -3213,7 +3222,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				if source := reg(operands[0].Reg); source != address {
 					a.MovReg32(address, source)
 				}
-				end := access.Offset + 16
+				end := access.Offset + width
 				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
 					emitAMD64RailMachBoundsCheck(&a, plan, address, end, instruction.Source, &coldTrapPatches, !store)
 				}
@@ -3226,8 +3235,48 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				if store {
 					a.VMovdquStoreIdx(amd64.RBX, address, reg(operands[1].Reg), disp)
-				} else {
+				} else if instruction.Op == railmach.OpAMD64V128Load {
 					a.VMovdquLoadIdx(dst, amd64.RBX, address, disp)
+				} else {
+					a.LoadIdx(amd64.R11, amd64.RBX, address, disp, int(access.SemanticWidth), false, access.SemanticWidth == 8)
+					a.MovGprToXmm(dst, amd64.R11, access.SemanticWidth == 8)
+					switch instruction.Op {
+					case railmach.OpAMD64V128Load8x8S:
+						a.VPunpcklbw(dst, dst, dst)
+						a.VPsrawImm(dst, dst, 8)
+					case railmach.OpAMD64V128Load8x8U:
+						a.VPxor(5, 5, 5)
+						a.VPunpcklbw(dst, dst, 5)
+					case railmach.OpAMD64V128Load16x4S:
+						a.VPunpcklwd(dst, dst, dst)
+						a.VPsradImm(dst, dst, 16)
+					case railmach.OpAMD64V128Load16x4U:
+						a.VPxor(5, 5, 5)
+						a.VPunpcklwd(dst, dst, 5)
+					case railmach.OpAMD64V128Load32x2S:
+						a.VPxor(5, 5, 5)
+						a.VPcmpgtd(5, 5, dst)
+						a.VPunpckldq(dst, dst, 5)
+					case railmach.OpAMD64V128Load32x2U:
+						a.VPxor(5, 5, 5)
+						a.VPunpckldq(dst, dst, 5)
+					case railmach.OpAMD64V128Load8Splat:
+						a.AluRI(4, amd64.R11, 0xff, false)
+						a.MovImm64(amd64.R10, 0x0101010101010101)
+						a.IMul(amd64.R11, amd64.R10, true)
+						a.MovGprToXmm(dst, amd64.R11, true)
+						a.Punpcklqdq(dst, dst)
+					case railmach.OpAMD64V128Load16Splat:
+						a.AluRI(4, amd64.R11, 0xffff, false)
+						a.MovImm64(amd64.R10, 0x0001000100010001)
+						a.IMul(amd64.R11, amd64.R10, true)
+						a.MovGprToXmm(dst, amd64.R11, true)
+						a.Punpcklqdq(dst, dst)
+					case railmach.OpAMD64V128Load32Splat:
+						a.Pshufd(dst, dst, 0)
+					case railmach.OpAMD64V128Load64Splat:
+						a.Punpcklqdq(dst, dst)
+					}
 				}
 				continue
 			}

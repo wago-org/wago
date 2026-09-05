@@ -985,6 +985,10 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 	for _, instruction := range plan.Machine.Insts {
 		switch instruction.Op {
 		case railmach.OpARM64V128Const, railmach.OpARM64V128Load, railmach.OpARM64V128Store,
+			railmach.OpARM64V128Load8x8S, railmach.OpARM64V128Load8x8U, railmach.OpARM64V128Load16x4S, railmach.OpARM64V128Load16x4U,
+			railmach.OpARM64V128Load32x2S, railmach.OpARM64V128Load32x2U,
+			railmach.OpARM64V128Load8Splat, railmach.OpARM64V128Load16Splat, railmach.OpARM64V128Load32Splat, railmach.OpARM64V128Load64Splat,
+			railmach.OpARM64V128Load32Zero, railmach.OpARM64V128Load64Zero,
 			railmach.OpARM64V128And, railmach.OpARM64V128Andnot, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
 			railmach.OpARM64V128Not, railmach.OpARM64V128Bitselect,
 			railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,
@@ -4247,19 +4251,24 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					a.NeonNot16b(dst, dst)
 				}
 				continue
-			case railmach.OpARM64V128Load, railmach.OpARM64V128Store:
+			case railmach.OpARM64V128Load, railmach.OpARM64V128Store,
+				railmach.OpARM64V128Load8x8S, railmach.OpARM64V128Load8x8U, railmach.OpARM64V128Load16x4S, railmach.OpARM64V128Load16x4U,
+				railmach.OpARM64V128Load32x2S, railmach.OpARM64V128Load32x2U,
+				railmach.OpARM64V128Load8Splat, railmach.OpARM64V128Load16Splat, railmach.OpARM64V128Load32Splat, railmach.OpARM64V128Load64Splat,
+				railmach.OpARM64V128Load32Zero, railmach.OpARM64V128Load64Zero:
 				access, ok := plan.Machine.MemoryAccessAt(instructionID)
 				store := instruction.Op == railmach.OpARM64V128Store
-				if !ok || access.SemanticWidth != 16 || access.EncodedWidth != 16 || len(operands) != 1 && !store || len(operands) != 2 && store {
+				if !ok || access.SemanticWidth == 0 || access.EncodedWidth != access.SemanticWidth || len(operands) != 1 && !store || len(operands) != 2 && store {
 					return nil, 0, true, fmt.Errorf("RailMach selected vector memory operation %d is malformed", instructionID)
 				}
-				if access.Offset > math.MaxUint64-16 {
+				width := uint64(access.SemanticWidth)
+				if access.Offset > math.MaxUint64-width {
 					metadata.recordTrap(a.Len(), wasmOffset, 3)
 					arm64EmitTrap(&a, 3, fn.Index, wasmOffset)
 					continue
 				}
 				lhs := reg(operands[0].Reg)
-				end := access.Offset + 16
+				end := access.Offset + width
 				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
 					bounds := arm64.X8
 					if !cacheMemoryBounds {
@@ -4288,8 +4297,33 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				}
 				if store {
 					a.StrQ(arm64.X16, 0, reg(operands[1].Reg))
-				} else {
+				} else if instruction.Op == railmach.OpARM64V128Load {
 					a.LdrQ(dst, arm64.X16, 0)
+				} else {
+					a.LoadIdx(arm64.X17, arm64.X16, arm64.XZR, 0, int(access.SemanticWidth), false, access.SemanticWidth == 8)
+					a.FmovFromGpr(dst, arm64.X17, access.SemanticWidth == 8)
+					switch instruction.Op {
+					case railmach.OpARM64V128Load8x8S:
+						a.NeonSxtlHfromB(dst, dst)
+					case railmach.OpARM64V128Load8x8U:
+						a.NeonUxtlHfromB(dst, dst)
+					case railmach.OpARM64V128Load16x4S:
+						a.NeonSxtlSfromH(dst, dst)
+					case railmach.OpARM64V128Load16x4U:
+						a.NeonUxtlSfromH(dst, dst)
+					case railmach.OpARM64V128Load32x2S:
+						a.NeonSxtlDfromS(dst, dst)
+					case railmach.OpARM64V128Load32x2U:
+						a.NeonUxtlDfromS(dst, dst)
+					case railmach.OpARM64V128Load8Splat:
+						a.NeonDupGprB(dst, arm64.X17)
+					case railmach.OpARM64V128Load16Splat:
+						a.NeonDupGprH(dst, arm64.X17)
+					case railmach.OpARM64V128Load32Splat:
+						a.NeonDupGprS(dst, arm64.X17)
+					case railmach.OpARM64V128Load64Splat:
+						a.NeonDupGprD(dst, arm64.X17)
+					}
 				}
 				continue
 			}
