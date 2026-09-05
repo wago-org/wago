@@ -195,6 +195,61 @@ func TestVerifyARM64ByteWidenChain(t *testing.T) {
 	}
 }
 
+func TestPlanPostRAFindsARM64XorShift(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
+		0x20, 0x00,
+		0x20, 0x00,
+		0x42, 0x0d,
+		0x88, // i64.shr_u
+		0x85, // i64.xor
+		0x0b,
+	})
+	f, selection, _, dag := buildScheduleTest(t, TargetARM64, m)
+	schedule, err := BuildSchedule(f, selection, dag, ScheduleKindSourceStable, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocation, err := AllocateGreedyPForSchedule(f, schedule, DefaultGreedyConfig(TargetARM64), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exit, err := LateSSAExit(f, &allocation.Allocation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := PlanPostRA(TargetARM64, f, selection, schedule, allocation, exit, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	var producer, consumer uint32
+	for _, rewrite := range plan.Rewrites {
+		if rewrite.Kind != RewriteARM64XorShift {
+			continue
+		}
+		base, shift, ok := VerifyARM64XorShift(f, rewrite.First, rewrite.Second, plan.uses)
+		if !ok || base == 0 || shift != 13 {
+			t.Fatalf("xor-shift rewrite = base v%d shift %d ok=%t", base, shift, ok)
+		}
+		found = true
+		producer, consumer = rewrite.First, rewrite.Second
+	}
+	if !found {
+		t.Fatalf("rewrites = %#v", plan.Rewrites)
+	}
+	shiftResult := f.Insts[producer].Result
+	plan.uses[shiftResult]++
+	if _, _, ok := VerifyARM64XorShift(f, producer, consumer, plan.uses); ok {
+		t.Fatal("accepted multiply-used shift result")
+	}
+	plan.uses[shiftResult]--
+	xorOperands := f.InstructionOperands(consumer)
+	xorOperands[0].Reg, xorOperands[1].Reg = shiftResult, shiftResult
+	if _, _, ok := ARM64XorShiftImmediate(f, producer, consumer); ok {
+		t.Fatal("accepted XOR without the unshifted base")
+	}
+}
+
 func TestVerifyPostRAAllowsScheduledAdjacentARM64CompareBeyondSourceScan(t *testing.T) {
 	insts := make([]Inst, PostRAScanLimit+2)
 	insts[0] = Inst{Op: wasm.InstrI32Eq, Result: 1, OperandStart: 0, OperandCount: 2}

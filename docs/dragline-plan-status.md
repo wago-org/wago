@@ -254,6 +254,14 @@ the performance corpus.
   the quality allocator threshold after a measured FastMachine experiment was
   required: the 1,024-instruction threshold made the two BLAKE rows 36–67%
   slower and was rejected before commit.
+- ARM64 shifted-register XOR: ✅ the post-RA verifier now recognizes an
+  adjacent, single-use `i64.shr_u` constant feeding the matching
+  `x ^ (x >> c)` form and requires the unshifted base to remain live at the XOR.
+  The finalizer emits one `EOR ... LSR` instruction only when the base and
+  result are register-resident; all near misses retain ordinary lowering. This
+  reduces `arith.run` from 188 to 184 native bytes and its loop from six to five
+  instructions. Sixteen forward/reverse paired one-second samples against
+  exact commit `74ef2669` measured 0.994x median latency, about 0.65% faster.
 
 ## Completion rule
 

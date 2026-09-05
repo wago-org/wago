@@ -2302,6 +2302,17 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
+			if producerID, ok := nativePostRAProducer(plan, instructionID, railmach.RewriteARM64XorShift); ok && int(producerID) < len(plan.PostRASkip) && plan.PostRASkip[producerID] {
+				base, shift, verified := railmach.ARM64XorShiftImmediate(plan.Machine, producerID, instructionID)
+				if !verified {
+					return nil, 0, true, fmt.Errorf("RailMach xor-shift rewrite lost its selected shape")
+				}
+				a.Eor64Lsr(reg(instruction.Result), reg(base), reg(base), shift)
+				if metrics != nil {
+					metrics.PostRARewrites++
+				}
+				continue
+			}
 			if swarRunN && instructionID == 21 {
 				src := arm64RailMachPhysical(plan.Allocation.Locations[plan.Machine.Insts[4].Result])
 				dst := arm64RailMachPhysical(plan.Allocation.Locations[instruction.Result])

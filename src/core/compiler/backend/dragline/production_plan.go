@@ -1592,6 +1592,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 						p.postRASkip[instructionID] = true
 					}
 				}
+			case railmach.RewriteARM64XorShift:
+				if machineTarget == railmach.TargetARM64 && nativeARM64XorShiftRealizable(machine, schedule, allocation, rewrite.First, rewrite.Second) && !p.postRASkip[rewrite.First] && !p.postRASkip[rewrite.Second] {
+					p.postRASkip[rewrite.First] = true
+				}
 			}
 		}
 	}
@@ -2511,6 +2515,10 @@ func (p *nativeBackendPlanner) preparePostRAScratch(target railmach.Target, inst
 			if target == railmach.TargetARM64 {
 				needsSkip = true
 			}
+		case railmach.RewriteARM64XorShift:
+			if target == railmach.TargetARM64 {
+				needsSkip = true
+			}
 		case railmach.RewriteARM64PrePostIndex:
 			if target == railmach.TargetARM64 {
 				needsPreIndex = true
@@ -2854,6 +2862,21 @@ func nativeARM64RepeatedAddRealizable(machine *railmach.Func, schedule *railmach
 	lastAt := lastPosition*6 + 2
 	lastLocation := allocation.LocationAt(lastInstruction.Result, lastAt)
 	return lastInstruction.Result != 0 && lastLocation.Kind == railmach.LocationRegister && lastLocation.Bank == railmach.BankGPR && allocation.LocationAt(invariant, lastAt) == invariantLocation
+}
+
+func nativeARM64XorShiftRealizable(machine *railmach.Func, schedule *railmach.Schedule, allocation *railmach.GreedyAllocation, producer, consumer uint32) bool {
+	if machine == nil || schedule == nil || allocation == nil || int(producer) >= len(machine.Insts) || int(consumer) >= len(machine.Insts) || int(consumer) >= len(allocation.InstructionPositions) || !planInstructionsAdjacent(schedule, producer, consumer) {
+		return false
+	}
+	shiftOperands := machine.InstructionOperands(producer)
+	if len(shiftOperands) != 2 {
+		return false
+	}
+	position := allocation.InstructionPositions[consumer]*6 + 2
+	baseLocation := allocation.LocationAt(shiftOperands[0].Reg, position)
+	resultLocation := allocation.LocationAt(machine.Insts[consumer].Result, position)
+	return baseLocation.Kind == railmach.LocationRegister && baseLocation.Bank == railmach.BankGPR &&
+		resultLocation.Kind == railmach.LocationRegister && resultLocation.Bank == railmach.BankGPR
 }
 
 func resizeNativeSlice[T any](values []T, length int) []T {
