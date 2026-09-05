@@ -511,6 +511,7 @@ func (a *Asm) VPtest(a1, a2 Reg)        { a.vex3RRReserved(vexMap0F38, 0b01, 0x1
 func (a *Asm) VPabsb(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1C, dst, src) }
 func (a *Asm) VPabsw(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1D, dst, src) }
 func (a *Asm) VPabsd(dst, src Reg)      { a.vex3RRReserved(vexMap0F38, 0b01, 0x1E, dst, src) }
+func (a *Asm) VPmovzxdq(dst, src Reg)   { a.vex3RRReserved(vexMap0F38, 0b01, 0x35, dst, src) }
 
 // VPsllw/VPsrlw/VPsraw emit variable-count packed 16-bit lane shifts. They are
 // x86 helpers only; Wasm count masking stays in the backend.

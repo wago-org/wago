@@ -220,7 +220,9 @@ const (
 	OpAMD64F32x4DemoteF64x2Zero
 	OpAMD64F64x2PromoteLowF32x4
 	OpAMD64F32x4ConvertI32x4S
+	OpAMD64F32x4ConvertI32x4U
 	OpAMD64F64x2ConvertLowI32x4S
+	OpAMD64F64x2ConvertLowI32x4U
 	opAMD64SelectedEnd
 )
 
@@ -429,7 +431,9 @@ const (
 	OpARM64F32x4DemoteF64x2Zero
 	OpARM64F64x2PromoteLowF32x4
 	OpARM64F32x4ConvertI32x4S
+	OpARM64F32x4ConvertI32x4U
 	OpARM64F64x2ConvertLowI32x4S
+	OpARM64F64x2ConvertLowI32x4U
 	opARM64SelectedEnd
 )
 
@@ -506,7 +510,8 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpAMD64F64x2Min, OpAMD64F64x2Max, OpAMD64F64x2Pmin, OpAMD64F64x2Pmax,
 		OpAMD64F32x4Ceil, OpAMD64F32x4Floor, OpAMD64F32x4Trunc, OpAMD64F32x4Nearest,
 		OpAMD64F64x2Ceil, OpAMD64F64x2Floor, OpAMD64F64x2Trunc, OpAMD64F64x2Nearest,
-		OpAMD64F32x4DemoteF64x2Zero, OpAMD64F64x2PromoteLowF32x4, OpAMD64F32x4ConvertI32x4S, OpAMD64F64x2ConvertLowI32x4S,
+		OpAMD64F32x4DemoteF64x2Zero, OpAMD64F64x2PromoteLowF32x4,
+		OpAMD64F32x4ConvertI32x4S, OpAMD64F32x4ConvertI32x4U, OpAMD64F64x2ConvertLowI32x4S, OpAMD64F64x2ConvertLowI32x4U,
 		OpARM64V128Move, OpARM64V128Const, OpARM64V128Load, OpARM64V128Store,
 		OpARM64V128And, OpARM64V128Andnot, OpARM64V128Or, OpARM64V128Xor, OpARM64V128Not, OpARM64V128Bitselect,
 		OpARM64I8x16Add, OpARM64I8x16AddSatS, OpARM64I8x16AddSatU, OpARM64I8x16Sub, OpARM64I8x16SubSatS, OpARM64I8x16SubSatU,
@@ -554,7 +559,8 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpARM64F64x2Min, OpARM64F64x2Max, OpARM64F64x2Pmin, OpARM64F64x2Pmax,
 		OpARM64F32x4Ceil, OpARM64F32x4Floor, OpARM64F32x4Trunc, OpARM64F32x4Nearest,
 		OpARM64F64x2Ceil, OpARM64F64x2Floor, OpARM64F64x2Trunc, OpARM64F64x2Nearest,
-		OpARM64F32x4DemoteF64x2Zero, OpARM64F64x2PromoteLowF32x4, OpARM64F32x4ConvertI32x4S, OpARM64F64x2ConvertLowI32x4S:
+		OpARM64F32x4DemoteF64x2Zero, OpARM64F64x2PromoteLowF32x4,
+		OpARM64F32x4ConvertI32x4S, OpARM64F32x4ConvertI32x4U, OpARM64F64x2ConvertLowI32x4S, OpARM64F64x2ConvertLowI32x4U:
 		return true
 	default:
 		return false
@@ -981,8 +987,12 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64F64x2PromoteLowF32x4, OpARM64F64x2PromoteLowF32x4
 		case wasm.InstrF32x4ConvertI32x4S:
 			amd64, arm64 = OpAMD64F32x4ConvertI32x4S, OpARM64F32x4ConvertI32x4S
+		case wasm.InstrF32x4ConvertI32x4U:
+			amd64, arm64 = OpAMD64F32x4ConvertI32x4U, OpARM64F32x4ConvertI32x4U
 		case wasm.InstrF64x2ConvertLowI32x4S:
 			amd64, arm64 = OpAMD64F64x2ConvertLowI32x4S, OpARM64F64x2ConvertLowI32x4S
+		case wasm.InstrF64x2ConvertLowI32x4U:
+			amd64, arm64 = OpAMD64F64x2ConvertLowI32x4U, OpARM64F64x2ConvertLowI32x4U
 		default:
 			continue
 		}

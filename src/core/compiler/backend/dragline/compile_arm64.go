@@ -1050,7 +1050,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64F32x4Ceil, railmach.OpARM64F32x4Floor, railmach.OpARM64F32x4Trunc, railmach.OpARM64F32x4Nearest,
 			railmach.OpARM64F64x2Ceil, railmach.OpARM64F64x2Floor, railmach.OpARM64F64x2Trunc, railmach.OpARM64F64x2Nearest,
 			railmach.OpARM64F32x4DemoteF64x2Zero, railmach.OpARM64F64x2PromoteLowF32x4,
-			railmach.OpARM64F32x4ConvertI32x4S, railmach.OpARM64F64x2ConvertLowI32x4S:
+			railmach.OpARM64F32x4ConvertI32x4S, railmach.OpARM64F32x4ConvertI32x4U,
+			railmach.OpARM64F64x2ConvertLowI32x4S, railmach.OpARM64F64x2ConvertLowI32x4U:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3908,7 +3909,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				a.NeonFrint(dst, reg(operands[0].Reg), f64, mode)
 				continue
 			case railmach.OpARM64F32x4DemoteF64x2Zero, railmach.OpARM64F64x2PromoteLowF32x4,
-				railmach.OpARM64F32x4ConvertI32x4S, railmach.OpARM64F64x2ConvertLowI32x4S:
+				railmach.OpARM64F32x4ConvertI32x4S, railmach.OpARM64F32x4ConvertI32x4U,
+				railmach.OpARM64F64x2ConvertLowI32x4S, railmach.OpARM64F64x2ConvertLowI32x4U:
 				if len(operands) != 1 {
 					return nil, 0, true, fmt.Errorf("RailMach selected vector conversion operand count is %d", len(operands))
 				}
@@ -3920,9 +3922,14 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					a.NeonFcvtlDfromS(dst, src)
 				case railmach.OpARM64F32x4ConvertI32x4S:
 					a.NeonScvtfSfromS(dst, src)
-				default:
+				case railmach.OpARM64F32x4ConvertI32x4U:
+					a.NeonUcvtfSfromS(dst, src)
+				case railmach.OpARM64F64x2ConvertLowI32x4S:
 					a.NeonSxtlDfromS(dst, src)
 					a.NeonScvtfDfromD(dst, dst)
+				default:
+					a.NeonUxtlDfromS(dst, src)
+					a.NeonUcvtfDfromD(dst, dst)
 				}
 				continue
 			case railmach.OpARM64I8x16Abs, railmach.OpARM64I8x16Neg, railmach.OpARM64I16x8Abs, railmach.OpARM64I16x8Neg,

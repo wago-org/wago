@@ -166,6 +166,7 @@ func TestVexEncoding(t *testing.T) {
 		{"vpmulld xmm8,xmm1,xmm2", func(a *Asm) { a.VPmulld(8, 1, 2) }, []byte{0xC4, 0x62, 0x71, 0x40, 0xC2}},
 		{"vpmulld xmm0,xmm1,xmm10", func(a *Asm) { a.VPmulld(0, 1, 10) }, []byte{0xC4, 0xC2, 0x71, 0x40, 0xC2}},
 		{"vpmuldq xmm0,xmm1,xmm2", func(a *Asm) { a.VPmuldq(0, 1, 2) }, []byte{0xC4, 0xE2, 0x71, 0x28, 0xC2}},
+		{"vpmovzxdq xmm0,xmm1", func(a *Asm) { a.VPmovzxdq(0, 1) }, []byte{0xC4, 0xE2, 0x79, 0x35, 0xC1}},
 		{"vpmuldq xmm8,xmm1,xmm2", func(a *Asm) { a.VPmuldq(8, 1, 2) }, []byte{0xC4, 0x62, 0x71, 0x28, 0xC2}},
 		{"vpmuldq xmm0,xmm1,xmm10", func(a *Asm) { a.VPmuldq(0, 1, 10) }, []byte{0xC4, 0xC2, 0x71, 0x28, 0xC2}},
 		{"vpmuludq xmm0,xmm1,xmm2", func(a *Asm) { a.VPmuludq(0, 1, 2) }, []byte{0xC4, 0xE1, 0x71, 0xF4, 0xC2}},

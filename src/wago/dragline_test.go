@@ -5591,7 +5591,7 @@ func TestDraglineRailMachVectorLogicalExecution(t *testing.T) {
 	}
 }
 
-func TestDraglineRailMachVectorSignedConversionExecution(t *testing.T) {
+func TestDraglineRailMachVectorConversionExecution(t *testing.T) {
 	f32x4 := func(values ...float32) (out [16]byte) {
 		for lane, value := range values {
 			binary.LittleEndian.PutUint32(out[lane*4:], math.Float32bits(value))
@@ -5610,6 +5610,12 @@ func TestDraglineRailMachVectorSignedConversionExecution(t *testing.T) {
 		}
 		return
 	}
+	u32x4 := func(values ...uint32) (out [16]byte) {
+		for lane, value := range values {
+			binary.LittleEndian.PutUint32(out[lane*4:], value)
+		}
+		return
+	}
 	for _, test := range []struct {
 		name      string
 		subopcode uint32
@@ -5619,7 +5625,9 @@ func TestDraglineRailMachVectorSignedConversionExecution(t *testing.T) {
 		{name: "f32x4.demote_f64x2_zero", subopcode: 94, input: f64x2(1.5, -2.25), want: f32x4(1.5, -2.25, 0, 0)},
 		{name: "f64x2.promote_low_f32x4", subopcode: 95, input: f32x4(1.5, -2.25, 9, 10), want: f64x2(1.5, -2.25)},
 		{name: "f32x4.convert_i32x4_s", subopcode: 250, input: i32x4(-3, 7, -1000, 65537), want: f32x4(-3, 7, -1000, 65537)},
+		{name: "f32x4.convert_i32x4_u", subopcode: 251, input: u32x4(0, 1, 0x80000000, 0xffffffff), want: f32x4(0, 1, float32(uint32(0x80000000)), float32(uint32(0xffffffff)))},
 		{name: "f64x2.convert_low_i32x4_s", subopcode: 254, input: i32x4(-3, 7, -1000, 65537), want: f64x2(-3, 7)},
+		{name: "f64x2.convert_low_i32x4_u", subopcode: 255, input: u32x4(0xffffffff, 0x80000000, 3, 4), want: f64x2(float64(uint32(0xffffffff)), float64(uint32(0x80000000)))},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			body := []byte{0x41, 0x00, 0xfd, 0x0c}
