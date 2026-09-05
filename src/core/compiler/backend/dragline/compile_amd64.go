@@ -1048,7 +1048,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64MemorySize, railmach.OpAMD64MemoryGrow, railmach.OpAMD64MemoryCopy, railmach.OpAMD64MemoryFill,
 			railmach.OpAMD64If, railmach.OpAMD64Br, railmach.OpAMD64BrIf, railmach.OpAMD64BrTable, railmach.OpAMD64Return, railmach.OpAMD64Unreachable,
 			railmach.OpAMD64Call, railmach.OpAMD64CallIndirect,
-			railmach.OpAMD64RefNull, railmach.OpAMD64RefIsNull, railmach.OpAMD64RefEq, railmach.OpAMD64RefAsNonNull,
+			railmach.OpAMD64RefNull, railmach.OpAMD64RefFunc, railmach.OpAMD64RefIsNull, railmach.OpAMD64RefEq, railmach.OpAMD64RefAsNonNull,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -3514,7 +3514,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrRefFunc {
+			if semanticOp == wasm.InstrRefFunc {
 				a.Load64(dst, amd64.RBX, -int32(abi.FuncRefDescPtrOffset))
 				a.TestSelf(dst, true)
 				nonNull := a.JccPlaceholder(amd64.CondNE)

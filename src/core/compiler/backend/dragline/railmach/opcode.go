@@ -303,6 +303,7 @@ const (
 	OpAMD64Call
 	OpAMD64CallIndirect
 	OpAMD64RefNull
+	OpAMD64RefFunc
 	OpAMD64RefIsNull
 	OpAMD64RefEq
 	OpAMD64RefAsNonNull
@@ -703,6 +704,7 @@ const (
 	OpARM64Call
 	OpARM64CallIndirect
 	OpARM64RefNull
+	OpARM64RefFunc
 	OpARM64RefIsNull
 	OpARM64RefEq
 	OpARM64RefAsNonNull
@@ -912,6 +914,8 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrCallIndirect
 	case OpAMD64RefNull, OpARM64RefNull:
 		return wasm.InstrRefNull
+	case OpAMD64RefFunc, OpARM64RefFunc:
+		return wasm.InstrRefFunc
 	case OpAMD64RefIsNull, OpARM64RefIsNull:
 		return wasm.InstrRefIsNull
 	case OpAMD64RefEq, OpARM64RefEq:
@@ -1400,6 +1404,8 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64CallIndirect, OpARM64CallIndirect
 		case wasm.InstrRefNull:
 			amd64, arm64 = OpAMD64RefNull, OpARM64RefNull
+		case wasm.InstrRefFunc:
+			amd64, arm64 = OpAMD64RefFunc, OpARM64RefFunc
 		case wasm.InstrRefIsNull:
 			amd64, arm64 = OpAMD64RefIsNull, OpARM64RefIsNull
 		case wasm.InstrRefEq:
