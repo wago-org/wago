@@ -40,3 +40,32 @@ func TestMeasureScheduleFreedom(t *testing.T) {
 		t.Fatalf("schedule freedom = %#v", metrics)
 	}
 }
+
+func TestMeasureScheduleFreedomDoesNotEnqueueSuccessorBlocksTwice(t *testing.T) {
+	f := &Func{
+		Target: TargetARM64,
+		VRegs:  []VRegData{{}},
+		Insts: []Inst{
+			{Op: wasm.InstrNop, Source: 0},
+			{Op: wasm.InstrNop, Source: 1},
+			{Op: wasm.InstrNop, Source: 2},
+			{Op: wasm.InstrReturn, Source: 3},
+		},
+		Blocks: []Block{{InstCount: 2}, {InstStart: 2, InstCount: 2}},
+	}
+	selection := &SelectionPlan{Selections: make([]Selection, 4)}
+	dag := &DependencyDAG{
+		Offsets: []uint32{0, 0, 0, 1, 2},
+		Dependencies: []Dependency{
+			{Instruction: 0, Kind: DependencyEffect},
+			{Instruction: 2, Kind: DependencyData},
+		},
+	}
+	metrics, err := MeasureScheduleFreedom(f, selection, dag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metrics.ReadySteps != 4 || metrics.ReadyWidthTotal != 5 || metrics.ReadyWidthMax != 2 {
+		t.Fatalf("cross-block schedule freedom = %#v", metrics)
+	}
+}

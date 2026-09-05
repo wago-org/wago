@@ -1,6 +1,10 @@
 package railmach
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
+)
 
 // ScheduleFreedomMetrics describes the dependency-graph opportunity available
 // to a scheduler. ReadyWidthTotal/Steps is the mean source-stable ready width;
@@ -29,6 +33,12 @@ func MeasureScheduleFreedom(f *Func, selection *SelectionPlan, dag *DependencyDA
 	indegree := make([]uint32, n)
 	successorCount := make([]uint32, n)
 	critical := make([]uint64, n)
+	blockOf := make([]railssa.BlockID, n)
+	for blockID, block := range f.Blocks {
+		for instruction := block.InstStart; instruction < block.InstStart+block.InstCount; instruction++ {
+			blockOf[instruction] = railssa.BlockID(blockID)
+		}
+	}
 	for instruction := range f.Insts {
 		dependencies := dag.Dependencies[dag.Offsets[instruction]:dag.Offsets[instruction+1]]
 		indegree[instruction] = uint32(len(dependencies))
@@ -62,7 +72,7 @@ func MeasureScheduleFreedom(f *Func, selection *SelectionPlan, dag *DependencyDA
 		result.CriticalPathCost = max(result.CriticalPathCost, cost)
 	}
 	ready := make([]uint32, 0, n)
-	for _, block := range f.Blocks {
+	for blockID, block := range f.Blocks {
 		ready = ready[:0]
 		for instruction := block.InstStart; instruction < block.InstStart+block.InstCount; instruction++ {
 			if indegree[instruction] == 0 {
@@ -77,7 +87,7 @@ func MeasureScheduleFreedom(f *Func, selection *SelectionPlan, dag *DependencyDA
 			ready, instruction = popMinHeap(ready)
 			for _, successor := range successors[offsets[instruction]:offsets[instruction+1]] {
 				indegree[successor]--
-				if indegree[successor] == 0 {
+				if indegree[successor] == 0 && blockOf[successor] == railssa.BlockID(blockID) {
 					ready = appendMinHeap(ready, successor)
 				}
 			}
