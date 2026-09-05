@@ -25,7 +25,7 @@ func TestLoadLargeNegativeDisplacement(t *testing.T) {
 func TestCopyInstanceContextMaterializesLargeNegativeStore(t *testing.T) {
 	f := &fn{a: &a64.Asm{}}
 	f.copyInstanceContext(X1, X10)
-	if got, want := len(f.a.B), (len(instanceContextOffsets)*2+3)*4; got != want {
+	if got, want := len(f.a.B), 15*4; got != want {
 		t.Fatalf("copy instance context emitted %d bytes, want %d", got, want)
 	}
 }
