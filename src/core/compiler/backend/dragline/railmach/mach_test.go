@@ -107,6 +107,32 @@ func TestSelectTargetOpcodesV128Foundation(t *testing.T) {
 	}
 }
 
+func TestSelectedOpcodeTargetRanges(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		op     MOpcode
+		target Target
+		want   bool
+	}{
+		{"amd64 first", OpAMD64V128Move, TargetAMD64, true},
+		{"amd64 last", opAMD64SelectedEnd - 1, TargetAMD64, true},
+		{"amd64 end", opAMD64SelectedEnd, TargetAMD64, false},
+		{"amd64 on arm64", OpAMD64I32Add, TargetARM64, false},
+		{"arm64 first", OpARM64V128Move, TargetARM64, true},
+		{"arm64 last", opARM64SelectedEnd - 1, TargetARM64, true},
+		{"arm64 end", opARM64SelectedEnd, TargetARM64, false},
+		{"arm64 on amd64", OpARM64I32Add, TargetAMD64, false},
+		{"generic", wasm.InstrI32Add, TargetAMD64, false},
+		{"invalid target", OpAMD64I32Add, TargetInvalid, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := IsSelectedOpcodeForTarget(test.op, test.target); got != test.want {
+				t.Fatalf("IsSelectedOpcodeForTarget(%d, %s) = %t, want %t", test.op, test.target, got, test.want)
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerAddSub(t *testing.T) {
 	for _, test := range []struct {
 		name   string

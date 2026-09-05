@@ -944,6 +944,21 @@ const (
 
 func IsSelectedOpcode(op MOpcode) bool { return op >= selectedOpcodeBase }
 
+// IsSelectedOpcodeForTarget reports whether op belongs to the complete selected
+// namespace for target. Final emission uses this range as its admission
+// authority: generic Wasm operations must be selected before an encoder sees
+// them, and an opcode selected for the other architecture is never admissible.
+func IsSelectedOpcodeForTarget(op MOpcode, target Target) bool {
+	switch target {
+	case TargetAMD64:
+		return op >= OpAMD64V128Move && op < opAMD64SelectedEnd
+	case TargetARM64:
+		return op >= OpARM64V128Move && op < opARM64SelectedEnd
+	default:
+		return false
+	}
+}
+
 // SemanticOpcode reports the Wasm operation implemented by an instruction.
 // Generic instructions already carry that operation directly. Selected target
 // instructions use this projection only for target-independent semantic
