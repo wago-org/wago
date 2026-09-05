@@ -519,6 +519,64 @@ func TestSelectTargetOpcodesFloatConversions(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesFloatTruncations(t *testing.T) {
+	operations := [16]MOpcode{
+		wasm.InstrI32TruncF32S, wasm.InstrI32TruncF32U, wasm.InstrI32TruncF64S, wasm.InstrI32TruncF64U,
+		wasm.InstrI64TruncF32S, wasm.InstrI64TruncF32U, wasm.InstrI64TruncF64S, wasm.InstrI64TruncF64U,
+		wasm.InstrI32TruncSatF32S, wasm.InstrI32TruncSatF32U, wasm.InstrI32TruncSatF64S, wasm.InstrI32TruncSatF64U,
+		wasm.InstrI64TruncSatF32S, wasm.InstrI64TruncSatF32U, wasm.InstrI64TruncSatF64S, wasm.InstrI64TruncSatF64U,
+	}
+	inputs := [16]wasm.ValType{
+		wasm.F32, wasm.F32, wasm.F64, wasm.F64, wasm.F32, wasm.F32, wasm.F64, wasm.F64,
+		wasm.F32, wasm.F32, wasm.F64, wasm.F64, wasm.F32, wasm.F32, wasm.F64, wasm.F64,
+	}
+	results := [16]wasm.ValType{
+		wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I64, wasm.I64, wasm.I64, wasm.I64,
+		wasm.I32, wasm.I32, wasm.I32, wasm.I32, wasm.I64, wasm.I64, wasm.I64, wasm.I64,
+	}
+	encodings := [16][]byte{
+		{0xa8}, {0xa9}, {0xaa}, {0xab}, {0xae}, {0xaf}, {0xb0}, {0xb1},
+		{0xfc, 0}, {0xfc, 1}, {0xfc, 2}, {0xfc, 3}, {0xfc, 4}, {0xfc, 5}, {0xfc, 6}, {0xfc, 7},
+	}
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [16]MOpcode
+	}{
+		{"amd64", TargetAMD64, [16]MOpcode{
+			OpAMD64I32TruncF32S, OpAMD64I32TruncF32U, OpAMD64I32TruncF64S, OpAMD64I32TruncF64U,
+			OpAMD64I64TruncF32S, OpAMD64I64TruncF32U, OpAMD64I64TruncF64S, OpAMD64I64TruncF64U,
+			OpAMD64I32TruncSatF32S, OpAMD64I32TruncSatF32U, OpAMD64I32TruncSatF64S, OpAMD64I32TruncSatF64U,
+			OpAMD64I64TruncSatF32S, OpAMD64I64TruncSatF32U, OpAMD64I64TruncSatF64S, OpAMD64I64TruncSatF64U,
+		}},
+		{"arm64", TargetARM64, [16]MOpcode{
+			OpARM64I32TruncF32S, OpARM64I32TruncF32U, OpARM64I32TruncF64S, OpARM64I32TruncF64U,
+			OpARM64I64TruncF32S, OpARM64I64TruncF32U, OpARM64I64TruncF64S, OpARM64I64TruncF64U,
+			OpARM64I32TruncSatF32S, OpARM64I32TruncSatF32U, OpARM64I32TruncSatF64S, OpARM64I32TruncSatF64U,
+			OpARM64I64TruncSatF32S, OpARM64I64TruncSatF32U, OpARM64I64TruncSatF64S, OpARM64I64TruncSatF64U,
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for index, encoding := range encodings {
+				body := append([]byte{0x20, 0}, encoding...)
+				body = append(body, 0x0b)
+				m := machineModule([]wasm.ValType{inputs[index]}, []wasm.ValType{results[index]}, body)
+				f := buildMachineTest(t, test.target, m)
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operations[index] {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operations[index])
+				}
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesScalarFloatUnary(t *testing.T) {
 	operations := [14]MOpcode{
 		wasm.InstrF32Abs, wasm.InstrF32Neg, wasm.InstrF32Ceil, wasm.InstrF32Floor, wasm.InstrF32Trunc, wasm.InstrF32Nearest, wasm.InstrF32Sqrt,

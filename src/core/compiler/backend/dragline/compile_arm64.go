@@ -1113,6 +1113,10 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64F64ConvertI64S, railmach.OpARM64F64ConvertI64U, railmach.OpARM64F64PromoteF32,
 			railmach.OpARM64I32ReinterpretF32, railmach.OpARM64I64ReinterpretF64,
 			railmach.OpARM64F32ReinterpretI32, railmach.OpARM64F64ReinterpretI64,
+			railmach.OpARM64I32TruncF32S, railmach.OpARM64I32TruncF32U, railmach.OpARM64I32TruncF64S, railmach.OpARM64I32TruncF64U,
+			railmach.OpARM64I64TruncF32S, railmach.OpARM64I64TruncF32U, railmach.OpARM64I64TruncF64S, railmach.OpARM64I64TruncF64U,
+			railmach.OpARM64I32TruncSatF32S, railmach.OpARM64I32TruncSatF32U, railmach.OpARM64I32TruncSatF64S, railmach.OpARM64I32TruncSatF64U,
+			railmach.OpARM64I64TruncSatF32S, railmach.OpARM64I64TruncSatF32U, railmach.OpARM64I64TruncSatF64S, railmach.OpARM64I64TruncSatF64U,
 			railmach.OpARM64F32EqScalar, railmach.OpARM64F64EqScalar, railmach.OpARM64F32NeScalar, railmach.OpARM64F64NeScalar,
 			railmach.OpARM64F32LtScalar, railmach.OpARM64F64LtScalar, railmach.OpARM64F32GtScalar, railmach.OpARM64F64GtScalar,
 			railmach.OpARM64F32LeScalar, railmach.OpARM64F64LeScalar, railmach.OpARM64F32GeScalar, railmach.OpARM64F64GeScalar,
@@ -8909,7 +8913,7 @@ func arm64RailMachTargetSafe(plan *nativeBackendPlan) bool {
 		if (semanticOp == wasm.InstrCall || semanticOp == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
 			return false
 		}
-		if !railMachTrappingTrunc(instruction.Op) {
+		if !railMachTrappingTrunc(railmach.SemanticOpcode(instruction.Op)) {
 			continue
 		}
 		if railMachPhysicalLiveAcross(plan, uint32(instructionID), railmach.BankFPR, 0) ||

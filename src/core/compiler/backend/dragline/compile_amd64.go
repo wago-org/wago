@@ -1038,6 +1038,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64F64ConvertI64S, railmach.OpAMD64F64ConvertI64U, railmach.OpAMD64F64PromoteF32,
 			railmach.OpAMD64I32ReinterpretF32, railmach.OpAMD64I64ReinterpretF64,
 			railmach.OpAMD64F32ReinterpretI32, railmach.OpAMD64F64ReinterpretI64,
+			railmach.OpAMD64I32TruncF32S, railmach.OpAMD64I32TruncF32U, railmach.OpAMD64I32TruncF64S, railmach.OpAMD64I32TruncF64U,
+			railmach.OpAMD64I64TruncF32S, railmach.OpAMD64I64TruncF32U, railmach.OpAMD64I64TruncF64S, railmach.OpAMD64I64TruncF64U,
+			railmach.OpAMD64I32TruncSatF32S, railmach.OpAMD64I32TruncSatF32U, railmach.OpAMD64I32TruncSatF64S, railmach.OpAMD64I32TruncSatF64U,
+			railmach.OpAMD64I64TruncSatF32S, railmach.OpAMD64I64TruncSatF32U, railmach.OpAMD64I64TruncSatF64S, railmach.OpAMD64I64TruncSatF64U,
 			railmach.OpAMD64F32EqScalar, railmach.OpAMD64F64EqScalar, railmach.OpAMD64F32NeScalar, railmach.OpAMD64F64NeScalar,
 			railmach.OpAMD64F32LtScalar, railmach.OpAMD64F64LtScalar, railmach.OpAMD64F32GtScalar, railmach.OpAMD64F64GtScalar,
 			railmach.OpAMD64F32LeScalar, railmach.OpAMD64F64LeScalar, railmach.OpAMD64F32GeScalar, railmach.OpAMD64F64GeScalar,
@@ -5208,8 +5212,8 @@ func amd64RailMachTargetSafe(plan *nativeBackendPlan) bool {
 		if (semanticOp == wasm.InstrCall || semanticOp == wasm.InstrCallIndirect) && !nativeCallTargetSafe(plan, uint32(instructionID)) {
 			return false
 		}
-		trunc := railMachTrappingTrunc(instruction.Op)
-		truncSat := instruction.Op >= wasm.InstrI32TruncSatF32S && instruction.Op <= wasm.InstrI64TruncSatF64U
+		trunc := railMachTrappingTrunc(semanticOp)
+		truncSat := semanticOp >= wasm.InstrI32TruncSatF32S && semanticOp <= wasm.InstrI64TruncSatF64U
 		if !trunc && !truncSat {
 			continue
 		}
