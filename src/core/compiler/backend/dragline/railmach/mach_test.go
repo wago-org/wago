@@ -506,3 +506,31 @@ func TestColdExtensionAndAffineUsesCommitWhenTargetLegal(t *testing.T) {
 		t.Fatalf("affine committed=%d err=%v operands=%#v", committed, err, affine.InstructionOperands(3))
 	}
 }
+
+func TestColdRematerializationRejectsAggregateHotUseCost(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
+		0x20, 0x00,
+		0x42, 0x03,
+		0x7c,
+		0x42, 0x02,
+		0x7e,
+		0x0b,
+	})
+	f := buildMachineTest(t, TargetARM64, m)
+	affineValue := f.Insts[1].Result
+	pressure := &railssa.PressurePlan{
+		Remats: []railssa.RematRecipe{{Value: railssa.FlowValueID(affineValue), Base: railssa.FlowValueID(f.InstructionOperands(1)[0].Reg), Aux: 3, Kind: railssa.RematAffine}},
+		ColdUses: []railssa.ColdUse{
+			{Value: railssa.FlowValueID(affineValue), Instruction: 3, HotWeight: 64, ColdWeight: 16},
+			{Value: railssa.FlowValueID(affineValue), Instruction: 3, HotWeight: 64, ColdWeight: 16},
+		},
+	}
+	priced := &RematPlan{Decisions: []RematDecision{{Value: affineValue, Base: f.InstructionOperands(1)[0].Reg, RecipeCost: 2, SpillCost: 20, Profitable: true}}}
+	committed, err := ApplyColdRematerialization(f, pressure, priced)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if committed != 0 || f.InstructionOperands(3)[0].Flags&OperandColdRemat != 0 {
+		t.Fatalf("aggregate-expensive rematerialization committed=%d operands=%#v", committed, f.InstructionOperands(3))
+	}
+}

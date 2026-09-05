@@ -166,3 +166,16 @@ func TestPressureShapeSeparatesRematerializableColdUse(t *testing.T) {
 		t.Fatalf("cold uses = %#v; block weights = %#v", plan.ColdUses, cfg.Blocks)
 	}
 }
+
+func TestRetainAggregateColdUses(t *testing.T) {
+	uses := []ColdUse{
+		{Value: 2, Instruction: 7, HotWeight: 64, ColdWeight: 16},
+		{Value: 1, Instruction: 9, HotWeight: 64, ColdWeight: 8},
+		{Value: 2, Instruction: 3, HotWeight: 64, ColdWeight: 16},
+		{Value: 1, Instruction: 5, HotWeight: 64, ColdWeight: 4},
+	}
+	got := retainAggregateColdUses(uses)
+	if len(got) != 2 || got[0].Value != 1 || got[0].Instruction != 5 || got[1].Value != 1 || got[1].Instruction != 9 {
+		t.Fatalf("retained cold uses = %#v", got)
+	}
+}

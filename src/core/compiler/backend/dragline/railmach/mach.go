@@ -435,20 +435,32 @@ func ApplyColdRematerialization(f *Func, pressure *railssa.PressurePlan, priced 
 		}
 	}
 	var committed uint32
-	for _, use := range pressure.ColdUses {
-		if int(use.Instruction) >= len(f.Insts) || int(use.Value) >= len(f.VRegs) || kind[use.Value] == railssa.RematInvalid {
-			continue
+	for start := 0; start < len(pressure.ColdUses); {
+		end, hot, cold := start, uint32(0), uint64(0)
+		value := pressure.ColdUses[start].Value
+		for end < len(pressure.ColdUses) && pressure.ColdUses[end].Value == value {
+			hot = max(hot, pressure.ColdUses[end].HotWeight)
+			cold += uint64(pressure.ColdUses[end].ColdWeight)
+			end++
 		}
-		f.VRegs[use.Value].Flags |= VRegColdRematerializable
-		operands := f.InstructionOperands(use.Instruction)
-		for index := range operands {
-			operand := &operands[index]
-			if operand.Reg != VReg(use.Value) || operand.Flags&OperandFixed != 0 || operand.Flags&OperandColdRemat != 0 {
-				continue
+		if cold <= uint64(hot/4) {
+			for _, use := range pressure.ColdUses[start:end] {
+				if int(use.Instruction) >= len(f.Insts) || int(use.Value) >= len(f.VRegs) || kind[use.Value] == railssa.RematInvalid {
+					continue
+				}
+				f.VRegs[use.Value].Flags |= VRegColdRematerializable
+				operands := f.InstructionOperands(use.Instruction)
+				for index := range operands {
+					operand := &operands[index]
+					if operand.Reg != VReg(use.Value) || operand.Flags&OperandFixed != 0 || operand.Flags&OperandColdRemat != 0 {
+						continue
+					}
+					operand.Flags |= OperandColdRemat
+					committed++
+				}
 			}
-			operand.Flags |= OperandColdRemat
-			committed++
 		}
+		start = end
 	}
 	if err := Verify(f); err != nil {
 		return 0, err

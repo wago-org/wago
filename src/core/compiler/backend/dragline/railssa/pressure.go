@@ -2,6 +2,7 @@ package railssa
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -258,11 +259,49 @@ func PressureShape(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *SemanticFu
 			}
 		}
 	}
+	reuse.ColdUses = retainAggregateColdUses(reuse.ColdUses)
 	planPressureLICM(f, cfg, flow, semantic, metadata, simplified, reuse)
 	if err := VerifyPressurePlan(flow, semantic, metadata, reuse); err != nil {
 		return nil, err
 	}
 	return reuse, nil
+}
+
+// retainAggregateColdUses groups cold uses by value and bounds their aggregate
+// rematerialization work without a dense per-value scratch table. A collection
+// of uses can be individually cold yet collectively hotter than the use whose
+// interval they would shorten; retain only groups within the same four-to-one
+// budget used to admit an individual cold use.
+func retainAggregateColdUses(uses []ColdUse) []ColdUse {
+	slices.SortFunc(uses, func(a, b ColdUse) int {
+		if a.Value < b.Value {
+			return -1
+		}
+		if a.Value > b.Value {
+			return 1
+		}
+		if a.Instruction < b.Instruction {
+			return -1
+		}
+		if a.Instruction > b.Instruction {
+			return 1
+		}
+		return 0
+	})
+	retained := uses[:0]
+	for start := 0; start < len(uses); {
+		end, hot, cold := start, uint32(0), uint64(0)
+		for end < len(uses) && uses[end].Value == uses[start].Value {
+			hot = max(hot, uses[end].HotWeight)
+			cold += uint64(uses[end].ColdWeight)
+			end++
+		}
+		if cold <= uint64(hot/4) {
+			retained = append(retained, uses[start:end]...)
+		}
+		start = end
+	}
+	return retained
 }
 
 func pressureRematRecipe(f *StackFunc, semantic *SemanticFunc, simplified *SimplifyResult, semanticID uint32, instruction SemanticInst) (RematRecipe, bool) {
@@ -419,10 +458,25 @@ func VerifyPressurePlan(flow *ValueFlow, semantic *SemanticFunc, metadata *Metad
 			return fmt.Errorf("railssa: invalid LICM move %#v", move)
 		}
 	}
-	for _, use := range plan.ColdUses {
+	previous, groupHot, groupCold := FlowValueID(0), uint32(0), uint64(0)
+	for index, use := range plan.ColdUses {
 		if use.Value == 0 || int(use.Value) >= len(flow.Values) || use.Instruction >= uint32(len(semantic.Insts)) || use.ColdWeight == 0 || uint64(use.ColdWeight)*4 > uint64(use.HotWeight) {
 			return fmt.Errorf("railssa: invalid cold use %#v", use)
 		}
+		if index != 0 && use.Value < previous {
+			return fmt.Errorf("railssa: cold uses are not grouped by value")
+		}
+		if use.Value != previous {
+			if previous != 0 && groupCold > uint64(groupHot/4) {
+				return fmt.Errorf("railssa: aggregate cold-use weight %d exceeds hot-use budget %d for value %d", groupCold, groupHot/4, previous)
+			}
+			previous, groupHot, groupCold = use.Value, 0, 0
+		}
+		groupHot = max(groupHot, use.HotWeight)
+		groupCold += uint64(use.ColdWeight)
+	}
+	if previous != 0 && groupCold > uint64(groupHot/4) {
+		return fmt.Errorf("railssa: aggregate cold-use weight %d exceeds hot-use budget %d for value %d", groupCold, groupHot/4, previous)
 	}
 	return nil
 }
