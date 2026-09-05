@@ -272,6 +272,11 @@ func (f *fn) reconcileLocals() {
 	if !f.usesCalls {
 		return
 	}
+	// Call-making functions with no local pins retain the register-call frame
+	// shape but have no local register state to reconcile.
+	if f.pinnedLocalMask == 0 && f.fpinnedLocalMask == 0 {
+		return
+	}
 	for x := 0; x < f.nLocals; x++ {
 		reg, isFloat, ok := f.pinReg(x)
 		if !ok {
@@ -387,6 +392,11 @@ func (f *fn) convergeEdgeToWithDead(target *packedLocStates, deadGP, deadFP regM
 		}
 	}
 	if !f.usesCalls {
+		return
+	}
+	// Merge snapshots describe only register-homed locals. Avoid allocating and
+	// copying an all-dead snapshot for call-making functions with no local pins.
+	if f.pinnedLocalMask == 0 && f.fpinnedLocalMask == 0 {
 		return
 	}
 	for x := 0; x < f.nLocals; x++ {

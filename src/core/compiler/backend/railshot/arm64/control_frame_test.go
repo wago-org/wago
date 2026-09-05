@@ -240,6 +240,22 @@ func TestPackedLocStatesArm64(t *testing.T) {
 	}
 }
 
+func TestConvergeEdgeWithoutPinnedLocalsSkipsSnapshotArm64(t *testing.T) {
+	f := fn{
+		usesCalls: true,
+		nLocals:   8,
+		locals:    make([]localDef, 8),
+	}
+	var target packedLocStates
+	f.convergeEdgeTo(&target)
+	if target != nil {
+		t.Fatalf("merge state = %v, want nil", target)
+	}
+	if len(f.lsPool) != 0 || f.lsPoolBytes != 0 {
+		t.Fatalf("local-state pool = %d buffers/%d bytes, want empty", len(f.lsPool), f.lsPoolBytes)
+	}
+}
+
 func TestPushCtrlReusesMergeSlotAtDepth(t *testing.T) {
 	f := fn{ctrl: make([]ctrlFrame, 0, 1)}
 	first := ctrlFrame{height: 1}
