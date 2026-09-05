@@ -4,7 +4,7 @@ Measured through 2026-09-05 on native ARM64. This is a stopping-point report for
 `jairus/railshot-compile-latency`, comparing:
 
 - Base: `main` at `c46f2129edb52e6f30f4d0bfc5ae105cfde0c84d`
-- Branch: `82ec3c14fde696e3a1d16a961b33fcda23ebf847`
+- Branch: `1cfc3f47cbdd08f9525f09db76d5672b47a644d6`
 - Host: Apple M4 Max, macOS 26.6.2, Go 1.26.5, `darwin/arm64`
 
 ## Current result
@@ -12,16 +12,16 @@ Measured through 2026-09-05 on native ARM64. This is a stopping-point report for
 | Metric | Delta versus `main` |
 |---|---:|
 | End-to-end compile latency, all-corpus geomean | **-9.38%** |
-| End-to-end compile latency, large-module geomean | **-24.29%** |
-| Backend-only compile latency, large-module geomean | **-11.21%** |
+| End-to-end compile latency, large-module geomean | **-26.37%** |
+| Backend-only compile latency, large-module geomean | **-13.62%** |
 | Backend-only compile latency, all-corpus one-shot geomean | **+0.86%** |
-| End-to-end compile heap, large-module geomean | **+0.63%** |
+| End-to-end compile heap, large-module geomean | **+0.60%** |
 | End-to-end compile heap, older all-corpus checkpoint | **+1.07%** |
-| Backend-only compile heap, large-module geomean | **+0.17%** |
+| Backend-only compile heap, large-module geomean | **+0.24%** |
 | End-to-end compile allocations, all-corpus geomean | **+1.66%** |
 | Backend-only compile allocations, all-corpus geomean | **+0.16%** |
-| Generated ARM64 machine-code bytes | **-1.37%** large-module geomean; up to **-3.2%** |
-| Execution latency, complete-corpus geomean | **-1.65%** |
+| Generated ARM64 machine-code bytes | **-2.13%** large-module geomean; up to **-3.40%** |
+| Execution latency, complete-corpus geomean | **-1.77%** |
 | Execution allocations | **0 B/op, 0 allocs/op** on both revisions |
 
 The exact current-HEAD large-corpus comparison used eight fresh interleaved
@@ -29,18 +29,26 @@ The exact current-HEAD large-corpus comparison used eight fresh interleaved
 
 | Corpus | Full compile main | Full compile branch | Latency delta | Heap delta | Allocation delta |
 |---|---:|---:|---:|---:|---:|
-| json-as | 1.323 ms | 1.012 ms | **-23.50%** | +1.27% | +1.01% |
-| Lua | 22.58 ms | 17.32 ms | **-23.30%** | +0.61% | +0.16% |
-| SQLite | 86.16 ms | 66.00 ms | **-23.40%** | +0.79% | +0.03% |
-| Ruby | 959.6 ms | 701.2 ms | **-26.93%** | +0.55% | statistically flat |
-| esbuild | 627.7 ms | 475.4 ms | **-24.26%** | +0.01% | -0.06% |
-| **Geomean** | **68.88 ms** | **52.15 ms** | **-24.29%** | **+0.63%** | **+0.23%** |
+| json-as | 1.319 ms | 0.999 ms | **-24.27%** | +1.05% | +1.01% |
+| Lua | 22.51 ms | 16.91 ms | **-24.88%** | +0.60% | +0.16% |
+| SQLite | 86.51 ms | 65.02 ms | **-24.84%** | +0.79% | +0.04% |
+| Ruby | 961.6 ms | 695.8 ms | **-27.65%** | +0.55% | +0.01% |
+| esbuild | 629.9 ms | 440.6 ms | **-30.05%** | +0.01% | -0.07% |
+| **Geomean** | **68.93 ms** | **50.75 ms** | **-26.37%** | **+0.60%** | **+0.23%** |
 
-The matching backend-only geomean improved from 41.79 ms to 37.10 ms
-(**-11.21%**). Every per-corpus backend and end-to-end latency result was
+The matching backend-only geomean improved from 41.77 ms to 36.08 ms
+(**-13.62%**). Every per-corpus backend and end-to-end latency result was
 significant at `p<0.001`. Backend allocated heap was effectively flat at
-**+0.17%** geomean; SQLite, Ruby, and esbuild each used less backend heap than
-`main`.
+**+0.24%** geomean; Ruby and esbuild each used less backend heap than `main`.
+
+| Corpus | Backend main | Backend branch | Latency delta | Heap delta | Allocation delta |
+|---|---:|---:|---:|---:|---:|
+| json-as | 764.4 us | 676.8 us | **-11.46%** | +1.37% | +1.50% |
+| Lua | 13.83 ms | 12.27 ms | **-11.30%** | +0.01% | +0.27% |
+| SQLite | 54.27 ms | 48.15 ms | **-11.28%** | +0.31% | +0.11% |
+| Ruby | 592.2 ms | 498.6 ms | **-15.80%** | -0.06% | -0.02% |
+| esbuild | 374.3 ms | 306.9 ms | **-18.01%** | -0.44% | -0.11% |
+| **Geomean** | **41.77 ms** | **36.08 ms** | **-13.62%** | **+0.24%** | **+0.35%** |
 
 The older all-corpus compile-latency and heap rows below were measured at
 implementation commit `e5b2431a`. The exact current large-module comparison
@@ -58,6 +66,8 @@ changes measured independently against their immediate predecessors:
 | Retain only consumed validation facts | not rerun | **-0.11%** (flat) | **-0.41% full heap** | Exact code-byte parity |
 | Move segment counts to module analysis | not rerun | **+0.01%** (flat) | **-0.27% full heap** | Exact code-byte parity |
 | Fuse validation fact observation | not rerun | **-1.35%** | unchanged | Exact code-byte parity |
+| Pair instance-context transfers | **-0.61%** | not rerun | effectively flat | **-0.78%** code on the large-module sample; cross-instance execution **-4.05%** geomean |
+| Skip bounds-diagnostic control scans when stats are disabled | **-3.27%** | not rerun | unchanged | Exact code-byte parity |
 
 The scanner result covers json-as, Lua, SQLite, Ruby, and esbuild, with all five
 medians improving. Its focused sparse-global hint scan improved from a 100.0 us
@@ -90,15 +100,15 @@ compile latency by 1.35%, with heap and allocation counts unchanged. Generated
 code matched exactly for both latest changes.
 
 The strongest and most stable result is on large real modules. End-to-end
-compile latency is 23.3-26.9% lower on json-as, Lua, SQLite, Ruby, and esbuild.
-Backend-only compilation is 7.7-16.6% lower on the same group. The all-corpus
+compile latency is 24.3-30.1% lower on json-as, Lua, SQLite, Ruby, and esbuild.
+Backend-only compilation is 11.3-18.0% lower on the same group. The all-corpus
 backend geomean includes fresh-process micro modules whose 7-59% confidence
 intervals overwhelm their tens-of-microseconds signal; it is reported rather
 than filtered, but is not evidence of a backend regression. The branch
 currently spends a small amount of heap on compact validation analysis and
 parallel hint orchestration. At current HEAD, a fresh eight-pair comparison of
-json-as, Lua, SQLite, Ruby, and esbuild is 24.29% faster end to end than pinned
-`main`, with 0.63% more allocated heap and 0.23% more allocations. Every latency
+json-as, Lua, SQLite, Ruby, and esbuild is 26.37% faster end to end than pinned
+`main`, with 0.60% more allocated heap and 0.23% more allocations. Every latency
 result is significant at p<0.001. The remaining heap delta is concentrated in
 compact validation analysis and parallel orchestration; esbuild is within 0.01%
 of `main`.
@@ -112,36 +122,37 @@ claim about exact instruction parity at current HEAD.
 
 ## Current generated code and execution
 
-The only retained change that intentionally alters generated code is reuse of
-already-proven-clean memory32 addresses. The two newest validation changes are
-byte-identical to their predecessors. Against pinned `main`, current generated
-ARM64 code is 1.37% smaller by geomean across the five large modules:
+The retained changes that intentionally alter generated code are reuse of
+already-proven-clean memory32 addresses and paired instance-context transfers.
+The bounds-diagnostic change is byte-identical to its predecessor. Against
+pinned `main`, current generated ARM64 code is 2.13% smaller by geomean across
+the five large modules:
 
 | Corpus | Main code | Branch code | Delta |
 |---|---:|---:|---:|
-| json-as | 76,472 B | 76,104 B | -0.48% |
-| Lua | 1,000,820 B | 990,852 B | -1.00% |
-| SQLite | 3,957,880 B | 3,926,360 B | -0.80% |
-| Ruby | 39,294,784 B | 38,769,328 B | -1.34% |
-| esbuild | 31,288,340 B | 30,286,192 B | -3.20% |
+| json-as | 76,472 B | 74,856 B | -2.11% |
+| Lua | 1,000,820 B | 983,652 B | -1.72% |
+| SQLite | 3,957,880 B | 3,892,136 B | -1.66% |
+| Ruby | 39,294,784 B | 38,602,912 B | -1.76% |
+| esbuild | 31,288,340 B | 30,223,936 B | -3.40% |
 
 A fresh complete execution-corpus run used eight interleaved 100 ms samples per
-revision. The geomean improved **1.65%**, with **0 B/op and 0 allocs/op** on both
-revisions. Significant improvements included memory sum -3.66%, memory tree
--3.18%, nbody -2.35%, matmul -4.23%, CRC32 -12.48%, SHA-256 -6.45%, json-as
-deserialize -4.17%, json-as SIMD serialize -3.61%, BLAKE SIMD -4.36%, and UTF
-SIMD convert -5.12%/validate -2.15%. No row showed a statistically significant
+revision. The geomean improved **1.77%**, with **0 B/op and 0 allocs/op** on both
+revisions. Significant improvements included sieve -1.84%, nbody -4.53%, matmul
+-5.34%, CRC32 -10.30%, SHA-256 -4.77%, raytrace -2.38%, json-as deserialize
+-4.79%, scalar UTF conversion -3.59%, json-as SIMD serialization -2.48%, and
+UTF SIMD conversion -3.47%. No row showed a statistically significant
 regression.
 
 ## Large-module memory detail
 
 | Corpus | Backend heap main | Backend heap branch | Full heap main | Full heap branch |
 |---|---:|---:|---:|---:|
-| json-as | 51.82 KiB | 52.53 KiB | 108.8 KiB | 110.1 KiB |
-| lua | 509.5 KiB | 509.6 KiB | 842.6 KiB | 847.8 KiB |
-| sqlite3 | 1.105 MiB | 1.104 MiB | 2.755 MiB | 2.777 MiB |
-| ruby | 7.364 MiB | 7.362 MiB | 25.19 MiB | 25.33 MiB |
-| esbuild | 7.353 MiB | 7.323 MiB | 60.05 MiB | 60.05 MiB |
+| json-as | 51.82 KiB | 52.53 KiB | 108.9 KiB | 110.0 KiB |
+| lua | 509.5 KiB | 509.6 KiB | 842.6 KiB | 847.7 KiB |
+| sqlite3 | 1.105 MiB | 1.108 MiB | 2.755 MiB | 2.777 MiB |
+| ruby | 7.364 MiB | 7.360 MiB | 25.19 MiB | 25.33 MiB |
+| esbuild | 7.353 MiB | 7.321 MiB | 60.04 MiB | 60.05 MiB |
 
 ## Complete compile corpus
 
@@ -243,8 +254,8 @@ binary layout.
 
 ## Retained changes
 
-The branch has 32 commits over `main`, including eight report checkpoints, and
-24 retained implementation changes:
+The branch has 34 commits over pinned `main`, including eight report
+checkpoints, and 26 retained implementation changes:
 
 1. Faster ARM64 byte-backed hint decoding.
 2. Separation of opt-in statistics from inline reports.
@@ -272,16 +283,19 @@ The branch has 32 commits over `main`, including eight report checkpoints, and
 23. Moved exact segment counts out of every worker/function record and into the
     module analysis, leaving an 8-byte per-function record.
 24. Fused common validation fact observation into one direct per-op path.
+25. Paired ARM64 instance-context loads and stores.
+26. Skipped diagnostic-only loop and bounds-hoist scans when statistics are
+    disabled.
 
 Implementation source delta, excluding this report:
 
 ```text
-36 files changed, 2,171 insertions, 337 deletions
+38 files changed, 2,195 insertions, 359 deletions
 ```
 
 The larger source increase is primarily validation-analysis structure, tests,
-and duplicated architecture-specific integration. Only the clean-address
-change intentionally alters generated code.
+and duplicated architecture-specific integration. Only the clean-address and
+paired instance-context changes intentionally alter generated code.
 
 ## Rejected ARM64 probes
 
@@ -301,6 +315,9 @@ These were measured and removed rather than retained speculatively:
 | Bitmask stack-flow terminator classification | Short run looked positive; 500 ms x 8 confirmation reversed to +0.90% geomean and +1.28% SQLite (p=0.005) |
 | Specialized scalar load/store encoder helpers | -0.43% in the first interleaved run, but no individual workload was significant; an unchecked scaled-encoding variant regressed by +0.74%, so the extra surface was removed |
 | Cached memory-zero address width and module type lookup | Short samples were noisy; the expanded cache regressed the focused geomean by +0.98% and Ruby by +1.35% (p=0.028), so it was removed |
+| Explicit `MovImm32` branch classification | Exact randomized encoding parity, but +0.41% backend geomean |
+| Conditional telemetry defers | +0.08% backend geomean; below measurement value |
+| Skip trap-site sort for single-function groups | Short run was -0.74%; 1 s confirmation reversed to +0.14%, so it was removed |
 | Common-constant `MovImm64` fast path | Initial 300 ms run was -0.92%; the 1 s confirmation fell to -0.23%, below the retention gate, so it was removed |
 | Cached algebraic-discount eligibility | Focused hint geomean -0.03%, statistically flat; removed |
 | Width-specific i32 home loads for memory addresses | Reduced code 2.0-4.6% and compile heap 0.12%, but compile latency was flat and json-as execution reproducibly regressed 4.81% (p<0.001); removed |
