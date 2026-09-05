@@ -45,12 +45,8 @@ const (
 // successfully validated local function. Variable-sized facts belong in
 // module-owned sidecars rather than per-function slices.
 type ValidatedFuncFacts struct {
-	Flags           ValidatedFuncFlags
-	BodyBytes       uint32
-	InstructionCost uint32
-	LocalCount      uint16
-	MaxOperandDepth uint16
-	MaxControlDepth uint16
+	Flags     ValidatedFuncFlags
+	BodyBytes uint32
 	// Segment counts saturate at 255 and set NeedsDetailedRequirements when the
 	// exact count is larger, routing that uncommon function through the body scan.
 	ElemStateCount uint8
@@ -60,12 +56,10 @@ type ValidatedFuncFacts struct {
 // ValidatedModuleAnalysis owns transient facts gathered by validation. Callers
 // may consume or discard it after compilation; it is not retained by Module.
 type ValidatedModuleAnalysis struct {
-	Funcs           []ValidatedFuncFacts
-	Flags           ValidatedFuncFlags
-	BodyBytes       uint64
-	InstructionCost uint64
-	module          *Module
-	valid           bool
+	Funcs  []ValidatedFuncFacts
+	Flags  ValidatedFuncFlags
+	module *Module
+	valid  bool
 }
 
 func (a *ValidatedModuleAnalysis) reset(m *Module) {
@@ -77,8 +71,6 @@ func (a *ValidatedModuleAnalysis) finish() {
 	for i := range a.Funcs {
 		facts := &a.Funcs[i]
 		a.Flags |= facts.Flags
-		a.BodyBytes += uint64(facts.BodyBytes)
-		a.InstructionCost += uint64(facts.InstructionCost)
 	}
 	a.valid = true
 }
@@ -130,9 +122,6 @@ func (f *ValidatedFuncFacts) recordSegmentStateCount(current uint8, index uint32
 }
 
 func (f *ValidatedFuncFacts) observe(kind InstrKind) {
-	if f.InstructionCost != ^uint32(0) {
-		f.InstructionCost++
-	}
 	if kind < numInstrKinds {
 		f.Flags |= validatedFuncFlagsByKind[kind]
 		return
@@ -288,22 +277,6 @@ func (f *ValidatedFuncFacts) observeDirect(op *directOp) {
 			f.observeValType(op.blockType.Val)
 		}
 	}
-}
-
-func (f *ValidatedFuncFacts) recordDepths(operands, controls int) {
-	if operands > int(f.MaxOperandDepth) {
-		f.MaxOperandDepth = saturatingUint16(operands)
-	}
-	if controls > int(f.MaxControlDepth) {
-		f.MaxControlDepth = saturatingUint16(controls)
-	}
-}
-
-func saturatingUint16(n int) uint16 {
-	if n >= int(^uint16(0)) {
-		return ^uint16(0)
-	}
-	return uint16(n)
 }
 
 func saturatingUint32(n int) uint32 {
