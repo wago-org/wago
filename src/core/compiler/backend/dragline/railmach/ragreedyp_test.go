@@ -33,6 +33,9 @@ func TestGreedySpillDensityPrioritizesFrequentlyUsedShortRange(t *testing.T) {
 	if got := greedyEffectiveMaxStage(TargetARM64, 512, false, true, 4); got != 4 {
 		t.Fatalf("ARM64 cyclic-call max stage = %d, want 4", got)
 	}
+	if got := greedyEffectiveMaxStage(TargetARM64, greedyRegionalMaxInstructions, false, false, 4); got != 3 {
+		t.Fatalf("giant-function max stage = %d, want 3", got)
+	}
 }
 
 func TestGreedyDensityWithFPRsIsARM64Only(t *testing.T) {

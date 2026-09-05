@@ -33,6 +33,7 @@ type CallClobber struct {
 const (
 	greedyDensityMinInstructions         = 256
 	greedyRegionalDensityMinInstructions = 480
+	greedyRegionalMaxInstructions        = 8192
 )
 
 func DefaultGreedyConfig(target Target) GreedyConfig {
@@ -457,6 +458,9 @@ func greedyUsesDensityCost(f *Func) bool {
 
 func greedyEffectiveMaxStage(target Target, functionInstructions int, density, hasCyclicCall bool, configured uint8) uint8 {
 	if target == TargetAMD64 && hasCyclicCall && configured > 3 {
+		return 3
+	}
+	if functionInstructions >= greedyRegionalMaxInstructions && configured > 3 {
 		return 3
 	}
 	if density && functionInstructions < greedyRegionalDensityMinInstructions && configured > 3 {
