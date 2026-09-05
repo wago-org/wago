@@ -1089,6 +1089,9 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if _, err := railmach.ApplyAddressFolding(machine, flow, semantic, simplified, selection); err != nil {
 		return nil, err
 	}
+	if _, err := railmach.SelectARM64MulHighIdioms(machine); err != nil {
+		return nil, err
+	}
 	applyNativeARM64ShiftImmediateRematerialization(machine)
 	dag, err := railmach.BuildDependencyDAG(machine, selection, metadata, &p.dag)
 	if err != nil {

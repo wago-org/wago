@@ -100,12 +100,33 @@ func TestDraglineMulhiDifferential(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer got.Close()
-	for _, args := range [][2]int32{{0x12345678, -0x65432110}, {-1, -1}, {1, 1}} {
-		wantResult, wantErr := want.Invoke("mulhi", wago.I32(args[0]), wago.I32(args[1]))
-		gotResult, gotErr := got.Invoke("mulhi", wago.I32(args[0]), wago.I32(args[1]))
+	check := func(args [2]uint64) {
+		t.Helper()
+		wantResult, wantErr := want.Invoke("mulhi", wago.I64(int64(args[0])), wago.I64(int64(args[1])))
+		gotResult, gotErr := got.Invoke("mulhi", wago.I64(int64(args[0])), wago.I64(int64(args[1])))
 		if (wantErr == nil) != (gotErr == nil) || !slices.Equal(gotResult, wantResult) {
 			t.Fatalf("mulhi%v: Dragline=(%#x,%v), Railshot=(%#x,%v)", args, gotResult, gotErr, wantResult, wantErr)
 		}
+	}
+	for _, args := range [][2]uint64{
+		{}, {1, 1}, {^uint64(0), ^uint64(0)},
+		{0x123456789abcdef0, 0xfedcba9876543210},
+		{1 << 63, 2}, {1 << 63, 1 << 63}, {1<<32 - 1, 1<<32 + 1},
+	} {
+		check(args)
+	}
+	// Deterministic full-width differential coverage catches mistakes that
+	// low-word-only fixtures cannot expose in the selected UMULH identity.
+	state := uint64(0x9e3779b97f4a7c15)
+	for range 256 {
+		state ^= state << 13
+		state ^= state >> 7
+		state ^= state << 17
+		x := state
+		state ^= state << 13
+		state ^= state >> 7
+		state ^= state << 17
+		check([2]uint64{x, state})
 	}
 }
 

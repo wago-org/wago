@@ -516,6 +516,7 @@ const (
 	OpARM64I64Add
 	OpARM64I32Sub
 	OpARM64I64Sub
+	OpARM64I64MulHighU
 	opARM64SelectedEnd
 )
 

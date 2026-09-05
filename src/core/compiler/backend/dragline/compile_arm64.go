@@ -1060,7 +1060,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			wasm.InstrI32Clz, wasm.InstrI32Ctz, wasm.InstrI32Popcnt,
 			wasm.InstrI64Clz, wasm.InstrI64Ctz, wasm.InstrI64Popcnt,
 			wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
-			railmach.OpARM64I32Add, railmach.OpARM64I64Add, railmach.OpARM64I32Sub, railmach.OpARM64I64Sub,
+			railmach.OpARM64I32Add, railmach.OpARM64I64Add, railmach.OpARM64I32Sub, railmach.OpARM64I64Sub, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -5381,6 +5381,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				continue
 			}
 			switch instruction.Op {
+			case railmach.OpARM64I64MulHighU:
+				a.Umulh(dst, lhs, rhs)
 			case railmach.OpARM64I32Add, railmach.OpARM64I64Add:
 				if wide {
 					a.Add64(dst, lhs, rhs)
