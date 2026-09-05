@@ -63,11 +63,11 @@ func TestLatencyPriorityOrdersLastUseBeforeCriticalHeight(t *testing.T) {
 	remaining := []uint32{0, 1, 0, 0, 2}
 	heights := []uint64{62, 64}
 	resultCounts := []uint8{1, 1}
-	if first, second := schedulePriority(f, selection, 0, ScheduleKindLatencyFusion, remaining, heights, resultCounts, 2), schedulePriority(f, selection, 1, ScheduleKindLatencyFusion, remaining, heights, resultCounts, 2); first <= second {
+	if first, second := latencySchedulePriority(f, selection, 0, remaining, heights, resultCounts, 2), latencySchedulePriority(f, selection, 1, remaining, heights, resultCounts, 2); first <= second {
 		t.Fatalf("last-use priority %d did not beat critical-path priority %d", first, second)
 	}
 	remaining[1] = 2
-	if first, second := schedulePriority(f, selection, 0, ScheduleKindLatencyFusion, remaining, heights, resultCounts, 2), schedulePriority(f, selection, 1, ScheduleKindLatencyFusion, remaining, heights, resultCounts, 2); first >= second {
+	if first, second := latencySchedulePriority(f, selection, 0, remaining, heights, resultCounts, 2), latencySchedulePriority(f, selection, 1, remaining, heights, resultCounts, 2); first >= second {
 		t.Fatalf("critical-path priority %d did not beat local priority %d", second, first)
 	}
 }
