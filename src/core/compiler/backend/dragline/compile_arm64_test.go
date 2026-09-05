@@ -2727,6 +2727,67 @@ func TestARM64RecognizesCanonicalCountedLoop(t *testing.T) {
 	}
 }
 
+func TestARM64FusesCanonicalCountedLoopBackedge(t *testing.T) {
+	var a arm64.Asm
+	check := a.Cbz32(arm64.X1)
+	body := a.Len()
+	a.Nop()
+	a.SubImm32(arm64.X1, arm64.X1, 1)
+	back := a.Branch()
+	done := a.Len()
+	if !a.PatchBranch19(check, done) || !a.PatchBranch26(back, 0) {
+		t.Fatal("failed to build counted-loop fixture")
+	}
+	if got := arm64FuseCountedLoopBackedges(a.B); got != 1 {
+		t.Fatalf("counted-loop rewrites = %d, want 1", got)
+	}
+	word := binary.LittleEndian.Uint32(a.B[back:])
+	if word&0x7f00001f != 0x35000001 {
+		t.Fatalf("backedge = %#08x, want CBNZ w1", word)
+	}
+	target := back/4 + signExtendARM64Immediate(word>>5&0x7ffff, 19)
+	if target != body/4 {
+		t.Fatalf("CBNZ target word = %d, want body word %d", target, body/4)
+	}
+}
+
+func TestARM64DoesNotFuseNonCanonicalCountedLoop(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		decrement arm64.Reg
+		amount    uint32
+		exitGap   bool
+		call      bool
+	}{
+		{name: "different register", decrement: arm64.X2, amount: 1},
+		{name: "different amount", decrement: arm64.X1, amount: 2},
+		{name: "nonadjacent exit", decrement: arm64.X1, amount: 1, exitGap: true},
+		{name: "call not branch", decrement: arm64.X1, amount: 1, call: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var a arm64.Asm
+			check := a.Cbz32(arm64.X1)
+			a.Nop()
+			a.SubImm32(test.decrement, test.decrement, test.amount)
+			back := a.Branch()
+			if test.exitGap {
+				a.Nop()
+			}
+			if !a.PatchBranch19(check, a.Len()) || !a.PatchBranch26(back, 0) {
+				t.Fatal("failed to build noncanonical loop fixture")
+			}
+			if test.call {
+				word := binary.LittleEndian.Uint32(a.B[back:])
+				binary.LittleEndian.PutUint32(a.B[back:], word|0x80000000)
+			}
+			before := append([]byte(nil), a.B...)
+			if got := arm64FuseCountedLoopBackedges(a.B); got != 0 || !bytes.Equal(a.B, before) {
+				t.Fatalf("noncanonical loop rewrites = %d, bytes changed = %t", got, !bytes.Equal(a.B, before))
+			}
+		})
+	}
+}
+
 func TestARM64PowerRotationTablesCoverBothDirections(t *testing.T) {
 	for _, wide := range []bool{false, true} {
 		for _, right := range []bool{false, true} {

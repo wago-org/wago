@@ -5855,6 +5855,7 @@ railMachEpilogue:
 		}
 	}
 	a.Ret()
+	hotEnd := a.Len()
 	for layoutIndex := range plan.Schedule.BlockRanges {
 		blockID := layoutIndex
 		if plan.Layout != nil {
@@ -5887,6 +5888,7 @@ railMachEpilogue:
 	}
 	plan.ConditionalPatches = conditionalPatches
 	plan.ColdTrapPatches = coldTraps
+	arm64FuseCountedLoopBackedges(a.B[internalOffset:hotEnd])
 	if err := arm64PatchSIMDLiterals(&a, simdLiteralRefs); err != nil {
 		return nil, 0, true, fmt.Errorf("RailMach %w", err)
 	}
@@ -5896,6 +5898,55 @@ railMachEpilogue:
 	plan.MemoryCheckEnds = memoryCheckEnds
 	plan.MemoryCheckTouched = memoryCheckTouched
 	return a.B, internalOffset, true, nil
+}
+
+// arm64FuseCountedLoopBackedges turns the canonical
+//
+//	check: cbz  wN, done
+//	       ... loop body ...
+//	       sub  wN, wN, #1
+//	       b    check
+//	done:
+//
+// into a direct CBNZ backedge to the body. The entry check remains in place,
+// so zero-trip behavior is unchanged, while every taken iteration loses one
+// branch. The exact encodings and targets are verified before the in-place,
+// size-preserving rewrite.
+func arm64FuseCountedLoopBackedges(code []byte) uint32 {
+	words := len(code) / 4
+	var rewrites uint32
+	for tail := 1; tail < words; tail++ {
+		branch := binary.LittleEndian.Uint32(code[tail*4:])
+		if branch&0xfc000000 != 0x14000000 {
+			continue
+		}
+		header := tail + signExtendARM64Immediate(branch&0x03ffffff, 26)
+		if header < 0 || header+1 >= tail || header >= words {
+			continue
+		}
+		check := binary.LittleEndian.Uint32(code[header*4:])
+		if check&0x7f000000 != 0x34000000 || header+signExtendARM64Immediate(check>>5&0x7ffff, 19) != tail+1 {
+			continue
+		}
+		decrement := binary.LittleEndian.Uint32(code[(tail-1)*4:])
+		reg := check & 31
+		if decrement&0xffc00000 != 0x51000000 || decrement>>10&0xfff != 1 || decrement>>5&31 != reg || decrement&31 != reg {
+			continue
+		}
+		delta := header + 1 - tail
+		if delta < -(1<<18) || delta >= 1<<18 {
+			continue
+		}
+		conditional := uint32(delta) & 0x7ffff
+		binary.LittleEndian.PutUint32(code[tail*4:], 0x35000000|conditional<<5|reg)
+		rewrites++
+	}
+	return rewrites
+}
+
+func signExtendARM64Immediate(value uint32, bits uint) int {
+	shift := 32 - bits
+	return int(int32(value<<shift) >> shift)
 }
 
 func arm64LoadRailMachParameterRegisters(a *arm64.Asm, plan *nativeBackendPlan) error {
