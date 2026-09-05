@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 17
+const MetricsVersion = 18
 
 // Metrics contains one deterministic row per compiled function plus module
 // totals. Timings are observational; all counts and byte sizes are exact for
@@ -22,6 +22,22 @@ type Metrics struct {
 	TotalNanos    int64  `json:"total_nanos"`
 	PeakLiveBytes uint64 `json:"peak_live_bytes"`
 	NativeBytes   uint64 `json:"native_bytes"`
+
+	RailMach   EmitterMetrics `json:"railmach"`
+	Structured EmitterMetrics `json:"structured"`
+}
+
+// EmitterMetrics aggregates exact compile attribution by the function emitter
+// that produced the installed native body. Execution attribution is joined by
+// function index in the benchmark harness rather than guessed from module
+// identity.
+type EmitterMetrics struct {
+	Functions   uint32 `json:"functions"`
+	BodyBytes   uint64 `json:"body_bytes"`
+	NativeBytes uint64 `json:"native_bytes"`
+	LowerNanos  int64  `json:"lower_nanos"`
+	EmitNanos   int64  `json:"emit_nanos"`
+	CacheHits   uint32 `json:"cache_hits"`
 }
 
 // FunctionMetrics attributes compiler work to one original Wasm function.
@@ -174,6 +190,34 @@ func (m *Metrics) reset(fingerprint [32]byte) {
 func (m *Metrics) observe(bytes uint64) {
 	if bytes > m.PeakLiveBytes {
 		m.PeakLiveBytes = bytes
+	}
+}
+
+func (m *Metrics) summarizeEmitters() {
+	if m == nil {
+		return
+	}
+	m.RailMach = EmitterMetrics{}
+	m.Structured = EmitterMetrics{}
+	for index := range m.Functions {
+		row := &m.Functions[index]
+		// Every emitted native function has a non-empty adapter or body. A zero
+		// byte row belongs to an unselected function in a tier clone.
+		if row.NativeBytes == 0 {
+			continue
+		}
+		total := &m.Structured
+		if row.RailMachFinalized {
+			total = &m.RailMach
+		}
+		total.Functions++
+		total.BodyBytes += uint64(row.BodyBytes)
+		total.NativeBytes += uint64(row.NativeBytes)
+		total.LowerNanos += row.LowerNanos
+		total.EmitNanos += row.EmitNanos
+		if row.CacheHit {
+			total.CacheHits++
+		}
 	}
 }
 

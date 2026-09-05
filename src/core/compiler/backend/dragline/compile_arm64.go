@@ -505,6 +505,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		metrics.TotalNanos = elapsedNanos(totalStart)
 		metrics.NativeBytes = uint64(len(code))
 		metrics.observe(sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(moduleContracts))
+		metrics.summarizeEmitters()
 	}
 	return corecompiler.Output{Code: code, Entry: entries, InternalEntry: internal, DirectPrepared: directPrepared, DirectLeafPrepared: directLeafPrepared, DirectTrapPrepared: directTrapPrepared, ContextFreeLoopPrepared: contextFreeLoopPrepared, GCCallsites: gcCallsites, GCRoots: gcRoots, GCSafepoints: gcSafepoints, GCSafepointRoots: gcSafepointRoots, GCAdapterReturnOffsets: gcAdapterReturnOffsets, RequiresARM64MOPS: requiresMOPS, RequiresARM64SHA2: requiresSHA2}, nil
 }

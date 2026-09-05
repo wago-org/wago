@@ -64,6 +64,24 @@ func TestCompilerReportsPerFunctionMetricsAndPeakLiveBytes(t *testing.T) {
 	if metrics.NativeBytes != uint64(len(output.Code)) || metrics.PeakLiveBytes < metrics.Functions[0].PeakLiveBytes || metrics.PeakLiveBytes < metrics.Functions[1].PeakLiveBytes {
 		t.Fatalf("module metrics = %#v, native output = %d", metrics, len(output.Code))
 	}
+	if metrics.RailMach.Functions+metrics.Structured.Functions != 2 ||
+		metrics.RailMach.NativeBytes+metrics.Structured.NativeBytes != uint64(metrics.Functions[0].NativeBytes+metrics.Functions[1].NativeBytes) ||
+		metrics.RailMach.BodyBytes+metrics.Structured.BodyBytes != uint64(metrics.Functions[0].BodyBytes+metrics.Functions[1].BodyBytes) {
+		t.Fatalf("emitter attribution = RailMach %#v, structured %#v", metrics.RailMach, metrics.Structured)
+	}
+}
+
+func TestMetricsSummarizesEmitters(t *testing.T) {
+	metrics := Metrics{Functions: []FunctionMetrics{
+		{BodyBytes: 7, NativeBytes: 11, LowerNanos: 13, EmitNanos: 17, RailMachFinalized: true, CacheHit: true},
+		{BodyBytes: 19, NativeBytes: 23, LowerNanos: 29, EmitNanos: 31},
+		{BodyBytes: 37}, // Unselected tier-clone row.
+	}}
+	metrics.summarizeEmitters()
+	if metrics.RailMach != (EmitterMetrics{Functions: 1, BodyBytes: 7, NativeBytes: 11, LowerNanos: 13, EmitNanos: 17, CacheHits: 1}) ||
+		metrics.Structured != (EmitterMetrics{Functions: 1, BodyBytes: 19, NativeBytes: 23, LowerNanos: 29, EmitNanos: 31}) {
+		t.Fatalf("emitter attribution = RailMach %#v, structured %#v", metrics.RailMach, metrics.Structured)
+	}
 }
 
 func TestRecordNativePlanMetricsKeepsRailSSAAndRailMachDistinct(t *testing.T) {
