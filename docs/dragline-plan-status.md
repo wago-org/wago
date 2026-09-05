@@ -235,6 +235,21 @@ the performance corpus.
   to 324,404,016 bytes (17.8%). This closes the measured Phase 11 debt in which
   one exceptional function's roughly 48 MiB workspace remained live while the
   module's native image continued to grow.
+- Giant-function phase lifetimes: ✅ exceptional planners now snapshot their
+  exact capacity high-water, release local SSA immediately after value-flow
+  construction, release value-flow storage after its last address-folding
+  consumer, and release the remaining planning-only slabs before native
+  emission. Ordinary planners below 16 MiB keep all reusable storage. Any
+  planner trimmed in one of these phases is discarded after emission rather
+  than reused partially empty. Metrics schema 22 separates planning and
+  emission high-water marks while retaining the function-wide peak. On the
+  exact Ruby module, the largest function's compiler-owned peak fell from
+  44,834,283 to 27,133,035 bytes (39.5%), the module peak fell from 78,025,015
+  to 75,394,416 bytes (3.4%), and Darwin peak memory footprint fell from
+  323,699,504 to 308,839,216 bytes (4.6%). Compile wall moved from 94.729 to
+  93.978 seconds (0.8% lower), native output remained exactly 49,425,936
+  bytes, and process maximum RSS was flat within 0.1%, confirming that Go
+  runtime/unreclaimed heap dominates that process-level measure.
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution

@@ -321,6 +321,63 @@ func TestRetainNativeBackendPlannerWithin(t *testing.T) {
 	}
 }
 
+func TestReleaseNativeBackendPlanningScratchAbove(t *testing.T) {
+	planner := &nativeBackendPlanner{
+		locals:            railssa.LocalSSA{EntryValues: make([]railssa.EnvValueID, 1)},
+		flow:              railssa.ValueFlow{Values: make([]railssa.FlowValue, 1)},
+		metadata:          railssa.Metadata{Instructions: make([]railssa.InstructionMetadata, 1)},
+		pressure:          railssa.PressurePlan{Blocks: make([]railssa.BlockPressure, 1)},
+		candidateScratch:  new([2]nativeCandidateWorkspace),
+		edgeWeights:       make([]uint64, 1),
+		edgeObserved:      make([]bool, 1),
+		blockBytes:        make([]uint32, 1),
+		coldBlocks:        make([]bool, 1),
+		immediateUses:     make([]uint32, 1),
+		gcValues:          make([]railssa.GCValueFact, 1),
+		amd64MemoryBounds: make([]nativeAMD64MemoryBoundUse, 1),
+	}
+	planner.plan.Pressure = &planner.pressure
+	planner.semantic.Insts = make([]railssa.SemanticInst, 1)
+	planner.plan.Semantic = &planner.semantic
+	if planner.releasePlanningScratchAbove(planner.CapacityBytes()) {
+		t.Fatal("planner at release threshold was trimmed")
+	}
+	if !planner.releasePlanningScratchAbove(0) {
+		t.Fatal("planner above release threshold was retained")
+	}
+	if planner.locals.EntryValues != nil || planner.flow.Values != nil || planner.metadata.Instructions != nil || planner.pressure.Blocks != nil || planner.plan.Pressure != nil ||
+		planner.candidateScratch != nil || planner.edgeWeights != nil || planner.edgeObserved != nil || planner.blockBytes != nil || planner.coldBlocks != nil ||
+		planner.immediateUses != nil || planner.gcValues != nil || planner.amd64MemoryBounds != nil {
+		t.Fatalf("planning scratch retained: %#v", planner)
+	}
+	if planner.plan.Semantic != &planner.semantic || len(planner.semantic.Insts) != 1 {
+		t.Fatal("finalizer-owned semantic plan was released")
+	}
+	if (&nativeBackendPlanner{}).releasePlanningScratchAbove(0) {
+		t.Fatal("empty planner reported released scratch")
+	}
+}
+
+func TestReleaseExceptionalNativeBackendSSAConstructionScratch(t *testing.T) {
+	planner := &nativeBackendPlanner{
+		locals: railssa.LocalSSA{EntryValues: make([]railssa.EnvValueID, 8)},
+		flow:   railssa.ValueFlow{Values: make([]railssa.FlowValue, 4)},
+	}
+	if !planner.releaseLocalSSAScratchAbove(0) {
+		t.Fatal("exceptional local SSA scratch was retained")
+	}
+	if planner.locals.EntryValues != nil || !planner.exceptionalFunction || planner.peakCapacityBytes == 0 || planner.peakRailSSA.LocalSSA == 0 {
+		t.Fatalf("local SSA release state = %#v", planner)
+	}
+	planner.releaseValueFlowScratch()
+	if planner.flow.Values != nil {
+		t.Fatal("exceptional value-flow scratch was retained")
+	}
+	if !planner.releasePlanningScratchAbove(^uint64(0)) {
+		t.Fatal("exceptional planner was retained after early scratch release")
+	}
+}
+
 func TestNativeBackendPlannerReservesVerifiedCollectorRootSlots(t *testing.T) {
 	importEntry := append(wasmtest.Name("env"), wasmtest.Name("tick")...)
 	importEntry = append(importEntry, 0)

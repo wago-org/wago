@@ -71,6 +71,20 @@ func TestCompilerReportsPerFunctionMetricsAndPeakLiveBytes(t *testing.T) {
 	}
 }
 
+func TestFunctionMetricsSeparatesLivePhases(t *testing.T) {
+	var metrics FunctionMetrics
+	metrics.beginLivePhase(100)
+	metrics.observe(50)
+	metrics.beginLivePhase(20)
+	metrics.observe(30)
+	if metrics.PeakLiveBytes != 150 {
+		t.Fatalf("function peak = %d, want 150", metrics.PeakLiveBytes)
+	}
+	if metrics.livePhasePeakBytes != 50 {
+		t.Fatalf("current phase peak = %d, want 50", metrics.livePhasePeakBytes)
+	}
+}
+
 func TestMetricsSummarizesEmitters(t *testing.T) {
 	metrics := Metrics{Functions: []FunctionMetrics{
 		{BodyBytes: 7, NativeBytes: 11, LowerNanos: 13, EmitNanos: 17, RailMachFinalized: true, CacheHit: true},

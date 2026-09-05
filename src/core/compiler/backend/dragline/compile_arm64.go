@@ -286,7 +286,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				code = append(code, artifact.Code...)
 				if metrics != nil {
 					persistent := sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(compilationPlan.Recursive) + sliceBytes(moduleContracts) + sliceBytes(seedContracts) + sliceBytes(seedScores) + sliceBytes(seedCandidates) + sliceBytes(refinedRecursive) + sliceBytes(attemptedRecursive)
-					metrics.observe(persistent + row.PeakLiveBytes)
+					metrics.observe(persistent + row.livePhasePeakBytes)
 				}
 				continue
 			}
@@ -368,12 +368,24 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			}
 			if nativePlan != nil {
 				recordSpecializationMetrics(row, nativePlan.Specialize)
-				row.RailSSACapacity = railssa.MeasurePipelineCapacity(&nativePlanner.cfg, &nativePlanner.locals, &nativePlanner.flow, &nativePlanner.semantic, &nativePlanner.metadata, &nativePlanner.simplified, &nativePlanner.pressure, &nativePlanner.specialize, &nativePlanner.emission)
-				row.RailSSARetainedBytes, row.RailMachRetainedBytes, row.NativePlannerRetainedBytes = nativePlanner.capacityBreakdown()
+				row.RailSSACapacity = nativePlanner.peakRailSSA
+				row.RailSSARetainedBytes, row.RailMachRetainedBytes, row.NativePlannerRetainedBytes = nativePlanner.peakSSABytes, nativePlanner.peakMachineBytes, nativePlanner.peakNativeBytes
 				row.liveBaseBytes = fn.CapacityBytes() + row.RailSSARetainedBytes + row.RailMachRetainedBytes + row.NativePlannerRetainedBytes
 				row.observe(0)
 			} else if plan != nil {
 				row.observe(fn.PeakBuildBytes() + emissionPlanner.CapacityBytes())
+			}
+		}
+		trimPlanningScratch := nativePlan != nil && (nativePlanner.exceptionalFunction || nativePlanner.CapacityBytes() > nativeBackendPlannerRetentionBytes)
+		if trimPlanningScratch && metrics != nil {
+			persistent := sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(compilationPlan.Recursive) + sliceBytes(moduleContracts) + sliceBytes(seedContracts) + sliceBytes(seedScores) + sliceBytes(seedCandidates) + sliceBytes(refinedRecursive) + sliceBytes(attemptedRecursive)
+			metrics.observe(persistent + row.livePhasePeakBytes)
+		}
+		if trimPlanningScratch {
+			nativePlanner.releasePlanningScratchAbove(nativeBackendPlannerRetentionBytes)
+			if row != nil {
+				ssa, machine, native := nativePlanner.capacityBreakdown()
+				row.beginLivePhase(fn.CapacityBytes() + ssa + machine + native)
 			}
 		}
 		emitStart := time.Time{}
@@ -490,9 +502,13 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		bodyScratch = body[:0]
 		if metrics != nil {
 			persistent := sliceBytes(code) + sliceBytes(entries) + sliceBytes(internal) + sliceBytes(callRelocs) + sliceBytes(helperSafepointBases) + sliceBytes(compilationPlan.Order) + sliceBytes(compilationPlan.Component) + sliceBytes(compilationPlan.Recursive) + sliceBytes(moduleContracts) + sliceBytes(seedContracts) + sliceBytes(seedScores) + sliceBytes(seedCandidates) + sliceBytes(refinedRecursive) + sliceBytes(attemptedRecursive)
-			metrics.observe(persistent + row.PeakLiveBytes)
+			metrics.observe(persistent + row.livePhasePeakBytes)
 		}
-		nativePlanner = retainNativeBackendPlannerWithin(nativePlanner, nativeBackendPlannerRetentionBytes)
+		if trimPlanningScratch {
+			nativePlanner = nil
+		} else {
+			nativePlanner = retainNativeBackendPlannerWithin(nativePlanner, nativeBackendPlannerRetentionBytes)
+		}
 	}
 	finalizeStart := time.Time{}
 	if metrics != nil {
@@ -730,6 +746,7 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 				}
 			}
 			plan = applyBoundsMode(input.Bounds, plan, nativePlan)
+			trimPlanningScratch := nativePlan != nil && worker.native.releasePlanningScratchAbove(nativeBackendPlannerRetentionBytes)
 			body, internalOffset, relocs, railMachFinalized, err := emitARM64(fn, plan, nativePlan, input.Target, input.Profile, contracts, worker.body, nil, nil)
 			if err != nil {
 				return functionError(m, i, "emit", err)
@@ -739,7 +756,11 @@ func compileNativeParallelARM64(input corecompiler.Input, m *wasm.Module) (corec
 			}
 			results[i] = parallelARM64Result{body: body, internalOffset: internalOffset, relocs: relocs, requiresMOPS: input.Target.HasFeature(corecompiler.TargetFeatureARM64MOPS) && arm64StackSelectsMOPS(fn.Stack, input.Profile, fn.Index), requiresSHA2: functionRequiresSHA2, directPrepared: railMachFinalized && arm64DirectPreparedClass(published.Class), directLeaf: railMachFinalized && arm64DirectPreparedLeafPlan(nativePlan), directTrap: railMachFinalized && arm64DirectPreparedTrapClass(published.Class), contextFreeLoop: arm64ContextFreePreparedLoop(fn.Stack)}
 			worker.body = nil
-			worker.native = retainNativeBackendPlannerWithin(worker.native, nativeBackendPlannerRetentionBytes)
+			if trimPlanningScratch {
+				worker.native = nil
+			} else {
+				worker.native = retainNativeBackendPlannerWithin(worker.native, nativeBackendPlannerRetentionBytes)
+			}
 		}
 		return nil
 	})

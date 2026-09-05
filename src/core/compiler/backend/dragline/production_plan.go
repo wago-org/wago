@@ -172,6 +172,12 @@ type nativeBackendPlanner struct {
 	signalsBounds       bool
 	candidateScratch    *[2]nativeCandidateWorkspace
 	plan                nativeBackendPlan
+	peakRailSSA         railssa.PipelineCapacityBreakdown
+	peakSSABytes        uint64
+	peakMachineBytes    uint64
+	peakNativeBytes     uint64
+	peakCapacityBytes   uint64
+	exceptionalFunction bool
 }
 
 type nativeCandidateWorkspace struct {
@@ -272,6 +278,71 @@ func retainNativeBackendPlannerWithin(p *nativeBackendPlanner, limit uint64) *na
 		return nil
 	}
 	return p
+}
+
+func (p *nativeBackendPlanner) resetCapacityPeak() {
+	p.peakRailSSA = railssa.PipelineCapacityBreakdown{}
+	p.peakSSABytes = 0
+	p.peakMachineBytes = 0
+	p.peakNativeBytes = 0
+	p.peakCapacityBytes = 0
+	p.exceptionalFunction = false
+}
+
+func (p *nativeBackendPlanner) observeCapacity() uint64 {
+	ssa, machine, native := p.capacityBreakdown()
+	total := ssa + machine + native
+	if total > p.peakCapacityBytes {
+		p.peakRailSSA = railssa.MeasurePipelineCapacity(&p.cfg, &p.locals, &p.flow, &p.semantic, &p.metadata, &p.simplified, &p.pressure, &p.specialize, &p.emission)
+		p.peakSSABytes = ssa
+		p.peakMachineBytes = machine
+		p.peakNativeBytes = native
+		p.peakCapacityBytes = total
+	}
+	return total
+}
+
+func (p *nativeBackendPlanner) releaseLocalSSAScratchAbove(limit uint64) bool {
+	if p == nil || p.observeCapacity() <= limit {
+		return false
+	}
+	p.locals = railssa.LocalSSA{}
+	p.exceptionalFunction = true
+	return true
+}
+
+func (p *nativeBackendPlanner) releaseValueFlowScratch() {
+	if p == nil || !p.exceptionalFunction {
+		return
+	}
+	p.observeCapacity()
+	p.flow = railssa.ValueFlow{}
+}
+
+// releasePlanningScratchAbove drops exceptional-function storage whose products
+// have already been copied into the semantic and machine plans consumed by the
+// finalizers. Ordinary planners retain these slabs for the next function. The
+// selected program, verifier state, CFG, simplification facts, roots, ABI, and
+// emission metadata remain owned by p until finalization completes.
+func (p *nativeBackendPlanner) releasePlanningScratchAbove(limit uint64) bool {
+	if p == nil || !p.exceptionalFunction && p.CapacityBytes() <= limit {
+		return false
+	}
+	p.observeCapacity()
+	p.locals = railssa.LocalSSA{}
+	p.flow = railssa.ValueFlow{}
+	p.metadata = railssa.Metadata{}
+	p.pressure = railssa.PressurePlan{}
+	p.plan.Pressure = nil
+	p.candidateScratch = nil
+	p.edgeWeights = nil
+	p.edgeObserved = nil
+	p.blockBytes = nil
+	p.coldBlocks = nil
+	p.immediateUses = nil
+	p.gcValues = nil
+	p.amd64MemoryBounds = nil
+	return true
 }
 
 func (p *nativeBackendPlanner) capacityBreakdown() (ssa, machine, native uint64) {
@@ -1144,6 +1215,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if stack == nil {
 		return nil, fmt.Errorf("dragline: RailMach planning requires structured Wasm")
 	}
+	p.resetCapacityPeak()
 	cfg, err := railssa.BuildCFG(stack, &p.cfg)
 	if err != nil {
 		return nil, err
@@ -1156,6 +1228,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if err != nil {
 		return nil, err
 	}
+	p.releaseLocalSSAScratchAbove(nativeBackendPlannerRetentionBytes)
 	semantic, err := railssa.BuildSemanticFunc(stack, cfg, flow, &p.semantic)
 	if err != nil {
 		return nil, err
@@ -1218,6 +1291,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if _, err := railmach.ApplyAddressFolding(machine, flow, semantic, simplified, selection); err != nil {
 		return nil, err
 	}
+	p.releaseValueFlowScratch()
 	p.immediateUses = resizeNativeSlice(p.immediateUses, len(machine.VRegs))
 	if _, err := railmach.SelectARM64VectorRotatesVerified(machine, selection, p.immediateUses); err != nil {
 		return nil, err
@@ -1889,6 +1963,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		}
 		p.plan.ImmediateProducer = nil
 	}
+	p.observeCapacity()
 	return &p.plan, nil
 }
 

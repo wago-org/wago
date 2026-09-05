@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 21
+const MetricsVersion = 22
 
 // Metrics contains one deterministic row per compiled function plus module
 // totals. Timings are observational; all counts and byte sizes are exact for
@@ -118,9 +118,13 @@ type FunctionMetrics struct {
 	NativePlannerRetainedBytes uint64                            `json:"native_planner_retained_bytes"`
 	RailSSACapacity            railssa.PipelineCapacityBreakdown `json:"railssa_capacity"`
 
-	// liveBaseBytes is retained planner storage that remains live during native
-	// finalization. observe adds it to transient emitter storage.
-	liveBaseBytes uint64
+	// liveBaseBytes is retained planner storage that remains live during the
+	// current compiler phase. observe adds it to transient storage. A giant
+	// function can release planning-only slabs before native finalization, so
+	// livePhasePeakBytes is reset at that ownership boundary while PeakLiveBytes
+	// remains the function-wide high-water mark.
+	liveBaseBytes      uint64
+	livePhasePeakBytes uint64
 }
 
 func recordSpecializationMetrics(metrics *FunctionMetrics, plan *railssa.SpecializationPlan) {
@@ -243,9 +247,25 @@ func (m *Metrics) summarizeEmitters() {
 }
 
 func (m *FunctionMetrics) observe(bytes uint64) {
-	if m != nil && m.liveBaseBytes+bytes > m.PeakLiveBytes {
-		m.PeakLiveBytes = m.liveBaseBytes + bytes
+	if m == nil {
+		return
 	}
+	live := m.liveBaseBytes + bytes
+	if live > m.livePhasePeakBytes {
+		m.livePhasePeakBytes = live
+	}
+	if live > m.PeakLiveBytes {
+		m.PeakLiveBytes = live
+	}
+}
+
+func (m *FunctionMetrics) beginLivePhase(base uint64) {
+	if m == nil {
+		return
+	}
+	m.liveBaseBytes = base
+	m.livePhasePeakBytes = 0
+	m.observe(0)
 }
 
 func elapsedNanos(start time.Time) int64 { return time.Since(start).Nanoseconds() }

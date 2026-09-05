@@ -2,7 +2,7 @@ package railssa
 
 // PipelineCapacityBreakdown attributes reusable RailSSA backing storage to its
 // owning stage. It intentionally reports capacities rather than current
-// lengths because retained headroom remains live during native finalization.
+// lengths so callers can snapshot an exact compiler-owned high-water point.
 type PipelineCapacityBreakdown struct {
 	CFG            uint64 `json:"cfg"`
 	LocalSSA       uint64 `json:"local_ssa"`
