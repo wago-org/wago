@@ -5117,6 +5117,86 @@ func TestDraglineRailMachVectorFloatComparisonExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachVectorFloatArithmeticExecution(t *testing.T) {
+	f32x4 := func(value float32) (out [16]byte) {
+		bits := math.Float32bits(value)
+		for lane := 0; lane < 4; lane++ {
+			binary.LittleEndian.PutUint32(out[lane*4:], bits)
+		}
+		return
+	}
+	f64x2 := func(value float64) (out [16]byte) {
+		bits := math.Float64bits(value)
+		for lane := 0; lane < 2; lane++ {
+			binary.LittleEndian.PutUint64(out[lane*8:], bits)
+		}
+		return
+	}
+	for _, test := range []struct {
+		name      string
+		subopcode uint32
+		lhs       [16]byte
+		rhs       [16]byte
+		binary    bool
+		want      [16]byte
+	}{
+		{"f32x4.abs", 224, f32x4(-3.5), [16]byte{}, false, f32x4(3.5)},
+		{"f32x4.neg", 225, f32x4(2.5), [16]byte{}, false, f32x4(-2.5)},
+		{"f32x4.sqrt", 227, f32x4(9), [16]byte{}, false, f32x4(3)},
+		{"f32x4.add", 228, f32x4(1.5), f32x4(2.25), true, f32x4(3.75)},
+		{"f32x4.sub", 229, f32x4(5), f32x4(2), true, f32x4(3)},
+		{"f32x4.mul", 230, f32x4(1.5), f32x4(2), true, f32x4(3)},
+		{"f32x4.div", 231, f32x4(7.5), f32x4(2.5), true, f32x4(3)},
+		{"f64x2.abs", 236, f64x2(-3.5), [16]byte{}, false, f64x2(3.5)},
+		{"f64x2.neg", 237, f64x2(2.5), [16]byte{}, false, f64x2(-2.5)},
+		{"f64x2.sqrt", 239, f64x2(9), [16]byte{}, false, f64x2(3)},
+		{"f64x2.add", 240, f64x2(1.5), f64x2(2.25), true, f64x2(3.75)},
+		{"f64x2.sub", 241, f64x2(5), f64x2(2), true, f64x2(3)},
+		{"f64x2.mul", 242, f64x2(1.5), f64x2(2), true, f64x2(3)},
+		{"f64x2.div", 243, f64x2(7.5), f64x2(2.5), true, f64x2(3)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x41, 0x00, 0xfd, 0x0c}
+			body = append(body, test.lhs[:]...)
+			if test.binary {
+				body = append(body, 0xfd, 0x0c)
+				body = append(body, test.rhs[:]...)
+			}
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(test.subopcode)...)
+			body = append(body, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+			read0 := []byte{0x41, 0x00, 0x29, 0x03, 0x00, 0x0b}
+			read8 := []byte{0x41, 0x08, 0x29, 0x03, 0x00, 0x0b}
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read0", 0, 1), wasmtest.ExportEntry("read8", 0, 2))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(read0), wasmtest.Code(read8))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if _, err := instance.Invoke("run"); err != nil {
+				t.Fatal(err)
+			}
+			for name, want := range map[string]uint64{"read0": binary.LittleEndian.Uint64(test.want[:8]), "read8": binary.LittleEndian.Uint64(test.want[8:])} {
+				result, err := instance.Invoke(name)
+				if err != nil || len(result) != 1 || result[0] != want {
+					t.Fatalf("%s result = %#x, %v; want %#x", name, result, err, want)
+				}
+			}
+		})
+	}
+}
+
 func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
 	if runtime.GOARCH != "arm64" {
 		t.Skip("Dragline structured SIMD execution is currently ARM64-only")

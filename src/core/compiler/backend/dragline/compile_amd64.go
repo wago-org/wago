@@ -966,7 +966,11 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32x4ExtaddPairwiseI16x8S, railmach.OpAMD64I32x4ExtaddPairwiseI16x8U,
 			railmach.OpAMD64I32x4DotI16x8S,
 			railmach.OpAMD64F32x4Eq, railmach.OpAMD64F32x4Ne, railmach.OpAMD64F32x4Lt, railmach.OpAMD64F32x4Gt, railmach.OpAMD64F32x4Le, railmach.OpAMD64F32x4Ge,
-			railmach.OpAMD64F64x2Eq, railmach.OpAMD64F64x2Ne, railmach.OpAMD64F64x2Lt, railmach.OpAMD64F64x2Gt, railmach.OpAMD64F64x2Le, railmach.OpAMD64F64x2Ge:
+			railmach.OpAMD64F64x2Eq, railmach.OpAMD64F64x2Ne, railmach.OpAMD64F64x2Lt, railmach.OpAMD64F64x2Gt, railmach.OpAMD64F64x2Le, railmach.OpAMD64F64x2Ge,
+			railmach.OpAMD64F32x4Abs, railmach.OpAMD64F32x4Neg, railmach.OpAMD64F32x4Sqrt,
+			railmach.OpAMD64F32x4Add, railmach.OpAMD64F32x4Sub, railmach.OpAMD64F32x4Mul, railmach.OpAMD64F32x4Div,
+			railmach.OpAMD64F64x2Abs, railmach.OpAMD64F64x2Neg, railmach.OpAMD64F64x2Sqrt,
+			railmach.OpAMD64F64x2Add, railmach.OpAMD64F64x2Sub, railmach.OpAMD64F64x2Mul, railmach.OpAMD64F64x2Div:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2651,6 +2655,56 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				f64 := instruction.Op >= railmach.OpAMD64F64x2Eq && instruction.Op <= railmach.OpAMD64F64x2Ge
 				a.VFCmpPacked(dst, reg(operands[0].Reg), reg(operands[1].Reg), f64, predicate)
+				continue
+			case railmach.OpAMD64F32x4Abs, railmach.OpAMD64F32x4Neg, railmach.OpAMD64F32x4Sqrt,
+				railmach.OpAMD64F64x2Abs, railmach.OpAMD64F64x2Neg, railmach.OpAMD64F64x2Sqrt:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector float unary operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				f64 := instruction.Op == railmach.OpAMD64F64x2Abs || instruction.Op == railmach.OpAMD64F64x2Neg || instruction.Op == railmach.OpAMD64F64x2Sqrt
+				if instruction.Op == railmach.OpAMD64F32x4Sqrt || instruction.Op == railmach.OpAMD64F64x2Sqrt {
+					a.VFPackedSqrt(dst, src, f64)
+					continue
+				}
+				a.VPcmpeqd(5, 5, 5)
+				isAbs := instruction.Op == railmach.OpAMD64F32x4Abs || instruction.Op == railmach.OpAMD64F64x2Abs
+				switch {
+				case isAbs && f64:
+					a.VPsrlqImm(5, 5, 1)
+				case isAbs:
+					a.VPsrldImm(5, 5, 1)
+				case f64:
+					a.VPsllqImm(5, 5, 63)
+				default:
+					a.VPslldImm(5, 5, 31)
+				}
+				prefix, opcode := byte(0), byte(0x57)
+				if f64 {
+					prefix = 1
+				}
+				if isAbs {
+					opcode = 0x54
+				}
+				a.VSseRRR(prefix, opcode, dst, src, 5)
+				continue
+			case railmach.OpAMD64F32x4Add, railmach.OpAMD64F32x4Sub, railmach.OpAMD64F32x4Mul, railmach.OpAMD64F32x4Div,
+				railmach.OpAMD64F64x2Add, railmach.OpAMD64F64x2Sub, railmach.OpAMD64F64x2Mul, railmach.OpAMD64F64x2Div:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector float binary operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				f64 := instruction.Op >= railmach.OpAMD64F64x2Add && instruction.Op <= railmach.OpAMD64F64x2Div
+				switch instruction.Op {
+				case railmach.OpAMD64F32x4Add, railmach.OpAMD64F64x2Add:
+					a.VFPackedAdd(dst, lhs, rhs, f64)
+				case railmach.OpAMD64F32x4Sub, railmach.OpAMD64F64x2Sub:
+					a.VFPackedSub(dst, lhs, rhs, f64)
+				case railmach.OpAMD64F32x4Mul, railmach.OpAMD64F64x2Mul:
+					a.VFPackedMul(dst, lhs, rhs, f64)
+				default:
+					a.VFPackedDiv(dst, lhs, rhs, f64)
+				}
 				continue
 			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 				railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,

@@ -1033,7 +1033,11 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64I32x4ExtaddPairwiseI16x8S, railmach.OpARM64I32x4ExtaddPairwiseI16x8U,
 			railmach.OpARM64I32x4DotI16x8S,
 			railmach.OpARM64F32x4Eq, railmach.OpARM64F32x4Ne, railmach.OpARM64F32x4Lt, railmach.OpARM64F32x4Gt, railmach.OpARM64F32x4Le, railmach.OpARM64F32x4Ge,
-			railmach.OpARM64F64x2Eq, railmach.OpARM64F64x2Ne, railmach.OpARM64F64x2Lt, railmach.OpARM64F64x2Gt, railmach.OpARM64F64x2Le, railmach.OpARM64F64x2Ge:
+			railmach.OpARM64F64x2Eq, railmach.OpARM64F64x2Ne, railmach.OpARM64F64x2Lt, railmach.OpARM64F64x2Gt, railmach.OpARM64F64x2Le, railmach.OpARM64F64x2Ge,
+			railmach.OpARM64F32x4Abs, railmach.OpARM64F32x4Neg, railmach.OpARM64F32x4Sqrt,
+			railmach.OpARM64F32x4Add, railmach.OpARM64F32x4Sub, railmach.OpARM64F32x4Mul, railmach.OpARM64F32x4Div,
+			railmach.OpARM64F64x2Abs, railmach.OpARM64F64x2Neg, railmach.OpARM64F64x2Sqrt,
+			railmach.OpARM64F64x2Add, railmach.OpARM64F64x2Sub, railmach.OpARM64F64x2Mul, railmach.OpARM64F64x2Div:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3812,6 +3816,40 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				a.NeonFcmp(dst, reg(operands[0].Reg), reg(operands[1].Reg), f64, predicate)
 				if instruction.Op == railmach.OpARM64F32x4Ne || instruction.Op == railmach.OpARM64F64x2Ne {
 					a.NeonNot16b(dst, dst)
+				}
+				continue
+			case railmach.OpARM64F32x4Abs, railmach.OpARM64F32x4Neg, railmach.OpARM64F32x4Sqrt,
+				railmach.OpARM64F64x2Abs, railmach.OpARM64F64x2Neg, railmach.OpARM64F64x2Sqrt:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector float unary operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				f64 := instruction.Op == railmach.OpARM64F64x2Abs || instruction.Op == railmach.OpARM64F64x2Neg || instruction.Op == railmach.OpARM64F64x2Sqrt
+				switch instruction.Op {
+				case railmach.OpARM64F32x4Abs, railmach.OpARM64F64x2Abs:
+					a.NeonFabs(dst, src, f64)
+				case railmach.OpARM64F32x4Neg, railmach.OpARM64F64x2Neg:
+					a.NeonFneg(dst, src, f64)
+				default:
+					a.NeonFsqrt(dst, src, f64)
+				}
+				continue
+			case railmach.OpARM64F32x4Add, railmach.OpARM64F32x4Sub, railmach.OpARM64F32x4Mul, railmach.OpARM64F32x4Div,
+				railmach.OpARM64F64x2Add, railmach.OpARM64F64x2Sub, railmach.OpARM64F64x2Mul, railmach.OpARM64F64x2Div:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector float binary operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				f64 := instruction.Op >= railmach.OpARM64F64x2Add && instruction.Op <= railmach.OpARM64F64x2Div
+				switch instruction.Op {
+				case railmach.OpARM64F32x4Add, railmach.OpARM64F64x2Add:
+					a.NeonFadd(dst, lhs, rhs, f64)
+				case railmach.OpARM64F32x4Sub, railmach.OpARM64F64x2Sub:
+					a.NeonFsub(dst, lhs, rhs, f64)
+				case railmach.OpARM64F32x4Mul, railmach.OpARM64F64x2Mul:
+					a.NeonFmul(dst, lhs, rhs, f64)
+				default:
+					a.NeonFdiv(dst, lhs, rhs, f64)
 				}
 				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
