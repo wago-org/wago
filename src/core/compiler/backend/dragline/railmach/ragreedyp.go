@@ -118,6 +118,11 @@ type regionalSegment struct {
 	next                uint32 // 1-based index
 }
 
+type priorityInterval struct {
+	interval LiveInterval
+	cost     uint64
+}
+
 type GreedyAllocation struct {
 	Allocation
 	Stage        uint8
@@ -126,7 +131,7 @@ type GreedyAllocation struct {
 	SpillMembers []VReg
 	Fragments    []AllocationFragment
 
-	priorityIntervals []LiveInterval
+	priorityIntervals []priorityInterval
 	callPositions     []callPosition
 	candidateVictims  []VReg
 	bestVictims       []VReg
@@ -263,7 +268,6 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 		}
 		return survivors
 	}
-	intervals := append(reuse.priorityIntervals[:0], reuse.Intervals...)
 	useDensityCost := greedyUsesDensityCost(f)
 	hasCall := false
 	for _, instruction := range f.Insts {
@@ -315,19 +319,22 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 			calleeUsed[bank] |= uint64(1) << location.Index
 		}
 	}
-	slices.SortFunc(intervals, func(a, b LiveInterval) int {
-		costA := spillCost(a)
-		costB := spillCost(b)
-		if costA != costB {
-			if costA > costB {
+	intervals := reuse.priorityIntervals[:0]
+	for _, interval := range reuse.Intervals {
+		intervals = append(intervals, priorityInterval{interval: interval, cost: spillCost(interval)})
+	}
+	slices.SortFunc(intervals, func(a, b priorityInterval) int {
+		if a.cost != b.cost {
+			if a.cost > b.cost {
 				return -1
 			}
 			return 1
 		}
-		return int(a.Reg) - int(b.Reg)
+		return int(a.interval.Reg) - int(b.interval.Reg)
 	})
 	reuse.priorityIntervals = intervals
-	for _, interval := range intervals {
+	for _, priority := range intervals {
+		interval, valueCost := priority.interval, priority.cost
 		current := reuse.Locations[interval.Reg]
 		if current.Kind == LocationRegister {
 			continue
@@ -381,7 +388,6 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 			reuse.candidateVictims = victims
 		}
 		reuse.bestVictims = bestVictims
-		valueCost := spillCost(interval)
 		if best < 0 || bestCost >= valueCost || len(bestVictims) != 0 && config.MaxStage < 2 {
 			continue
 		}
