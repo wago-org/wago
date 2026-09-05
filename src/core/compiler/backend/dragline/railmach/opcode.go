@@ -260,6 +260,10 @@ const (
 	OpAMD64I16x8RelaxedQ15mulrS
 	OpAMD64I16x8RelaxedDotI8x16I7x16S
 	OpAMD64I32x4RelaxedDotI8x16I7x16AddS
+	OpAMD64I32Add
+	OpAMD64I64Add
+	OpAMD64I32Sub
+	OpAMD64I64Sub
 	opAMD64SelectedEnd
 )
 
@@ -508,10 +512,33 @@ const (
 	OpARM64I16x8RelaxedQ15mulrS
 	OpARM64I16x8RelaxedDotI8x16I7x16S
 	OpARM64I32x4RelaxedDotI8x16I7x16AddS
+	OpARM64I32Add
+	OpARM64I64Add
+	OpARM64I32Sub
+	OpARM64I64Sub
 	opARM64SelectedEnd
 )
 
 func IsSelectedOpcode(op MOpcode) bool { return op >= selectedOpcodeBase }
+
+// SemanticOpcode reports the Wasm operation implemented by an instruction.
+// Generic instructions already carry that operation directly. Selected target
+// instructions use this projection only for target-independent semantic
+// questions; encoding must continue to switch on the selected opcode itself.
+func SemanticOpcode(op MOpcode) MOpcode {
+	switch op {
+	case OpAMD64I32Add, OpARM64I32Add:
+		return wasm.InstrI32Add
+	case OpAMD64I64Add, OpARM64I64Add:
+		return wasm.InstrI64Add
+	case OpAMD64I32Sub, OpARM64I32Sub:
+		return wasm.InstrI32Sub
+	case OpAMD64I64Sub, OpARM64I64Sub:
+		return wasm.InstrI64Sub
+	default:
+		return op
+	}
+}
 
 // SelectedOpcodeTarget reports the only target on which a selected opcode is
 // legal. Generic operations return TargetInvalid.
@@ -692,6 +719,14 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 		switch instruction.Op {
 		case wasm.InstrV128Const:
 			amd64, arm64 = OpAMD64V128Const, OpARM64V128Const
+		case wasm.InstrI32Add:
+			amd64, arm64 = OpAMD64I32Add, OpARM64I32Add
+		case wasm.InstrI64Add:
+			amd64, arm64 = OpAMD64I64Add, OpARM64I64Add
+		case wasm.InstrI32Sub:
+			amd64, arm64 = OpAMD64I32Sub, OpARM64I32Sub
+		case wasm.InstrI64Sub:
+			amd64, arm64 = OpAMD64I64Sub, OpARM64I64Sub
 		case wasm.InstrV128Load:
 			amd64, arm64 = OpAMD64V128Load, OpARM64V128Load
 		case wasm.InstrV128Load8x8S:

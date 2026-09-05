@@ -255,7 +255,7 @@ func arm64RepeatedAddChainFrom(f *Func, schedule *Schedule, start int, uses []ui
 	firstID := schedule.Order[start]
 	first := f.Insts[firstID]
 	operands := f.InstructionOperands(firstID)
-	if first.Op != wasm.InstrI32Add || first.Result == 0 || len(operands) != 2 {
+	if SemanticOpcode(first.Op) != wasm.InstrI32Add || first.Result == 0 || len(operands) != 2 {
 		return 0, 0, 0, 0, false
 	}
 	try := func(initialCandidate, invariantCandidate VReg) (uint32, uint8, bool) {
@@ -269,7 +269,7 @@ func arm64RepeatedAddChainFrom(f *Func, schedule *Schedule, start int, uses []ui
 				continue
 			}
 			args := f.InstructionOperands(instructionID)
-			if schedule.BlockOf[instructionID] != schedule.BlockOf[firstID] || instruction.Op != wasm.InstrI32Add || instruction.Result == 0 || len(args) != 2 || int(previous) >= len(uses) || uses[previous] != 1 {
+			if schedule.BlockOf[instructionID] != schedule.BlockOf[firstID] || SemanticOpcode(instruction.Op) != wasm.InstrI32Add || instruction.Result == 0 || len(args) != 2 || int(previous) >= len(uses) || uses[previous] != 1 {
 				break
 			}
 			if !((args[0].Reg == previous && args[1].Reg == invariantCandidate) || (args[1].Reg == previous && args[0].Reg == invariantCandidate)) {

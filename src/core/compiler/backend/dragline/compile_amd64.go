@@ -1006,6 +1006,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			wasm.InstrI32Clz, wasm.InstrI32Ctz, wasm.InstrI32Popcnt,
 			wasm.InstrI64Clz, wasm.InstrI64Ctz, wasm.InstrI64Popcnt,
 			wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
+			railmach.OpAMD64I32Add, railmach.OpAMD64I64Add, railmach.OpAMD64I32Sub, railmach.OpAMD64I64Sub,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -4047,12 +4048,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
+			semanticOp := railmach.SemanticOpcode(instruction.Op)
 			opcode := byte(0)
 			digit := byte(0)
 			switch instruction.Op {
-			case wasm.InstrI32Add, wasm.InstrI64Add:
+			case railmach.OpAMD64I32Add, railmach.OpAMD64I64Add:
 				opcode = 0x01
-			case wasm.InstrI32Sub, wasm.InstrI64Sub:
+			case railmach.OpAMD64I32Sub, railmach.OpAMD64I64Sub:
 				opcode = 0x29
 				digit = 5
 			case wasm.InstrI32And, wasm.InstrI64And:
@@ -4065,10 +4067,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				opcode = 0x31
 				digit = 6
 			}
-			if nativeHasPostRARewrite(plan, instructionID, railmach.RewriteAMD64LEA) && (instruction.Op == wasm.InstrI32Add || instruction.Op == wasm.InstrI64Add || producer != ^uint32(0) && (instruction.Op == wasm.InstrI32Sub || instruction.Op == wasm.InstrI64Sub)) {
+			if nativeHasPostRARewrite(plan, instructionID, railmach.RewriteAMD64LEA) && (semanticOp == wasm.InstrI32Add || semanticOp == wasm.InstrI64Add || producer != ^uint32(0) && (semanticOp == wasm.InstrI32Sub || semanticOp == wasm.InstrI64Sub)) {
 				if producer != ^uint32(0) {
 					displacement := int32(plan.Machine.Insts[producer].Aux)
-					if instruction.Op == wasm.InstrI32Sub || instruction.Op == wasm.InstrI64Sub {
+					if semanticOp == wasm.InstrI32Sub || semanticOp == wasm.InstrI64Sub {
 						displacement = -displacement
 					}
 					a.LeaDispW(dst, lhs, displacement, wide)
@@ -4088,7 +4090,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			} else {
 				rhs := reg(operands[1].Reg)
 				if dst == rhs && dst != lhs {
-					if instruction.Op == wasm.InstrI32Sub || instruction.Op == wasm.InstrI64Sub {
+					if semanticOp == wasm.InstrI32Sub || semanticOp == wasm.InstrI64Sub {
 						a.MovReg64(amd64.R10, lhs)
 						a.AluRR(opcode, amd64.R10, rhs, wide)
 						a.MovReg64(dst, amd64.R10)
@@ -4834,7 +4836,8 @@ func amd64RailMachReadLocationWithFloatConstant(a *amd64.Asm, plan *nativeBacken
 			return 0, fmt.Errorf("RailMach rematerialization value %d has no definition", value)
 		}
 		definition := plan.Machine.Insts[instructionID]
-		switch definition.Op {
+		semanticOp := railmach.SemanticOpcode(definition.Op)
+		switch semanticOp {
 		case wasm.InstrI32Const:
 			a.MovImm32(scratch, int32(definition.Aux))
 		case wasm.InstrI64Const, wasm.InstrRefNull:
@@ -4880,7 +4883,7 @@ func amd64RailMachReadLocationWithFloatConstant(a *amd64.Asm, plan *nativeBacken
 			if err != nil {
 				return 0, err
 			}
-			wide := definition.Op == wasm.InstrI64Add || definition.Op == wasm.InstrI64Sub
+			wide := semanticOp == wasm.InstrI64Add || semanticOp == wasm.InstrI64Sub
 			if base != scratch {
 				if wide {
 					a.MovReg64(scratch, base)
@@ -4889,7 +4892,7 @@ func amd64RailMachReadLocationWithFloatConstant(a *amd64.Asm, plan *nativeBacken
 				}
 			}
 			digit := byte(0)
-			if definition.Op == wasm.InstrI32Sub || definition.Op == wasm.InstrI64Sub {
+			if semanticOp == wasm.InstrI32Sub || semanticOp == wasm.InstrI64Sub {
 				digit = 5
 			}
 			a.AluRI(digit, scratch, int32(plan.Machine.Insts[constant.Def/6].Aux), wide)

@@ -74,6 +74,10 @@ func TestSelectedOpcodeNamespaceIsTargetSpecific(t *testing.T) {
 	if err := Verify(f); err == nil || !strings.Contains(err.Error(), "invalid arm64 opcode") {
 		t.Fatalf("Verify cross-target selected opcode = %v", err)
 	}
+	f.Insts[0].Op = OpAMD64I32Add
+	if err := Verify(f); err == nil || !strings.Contains(err.Error(), "invalid arm64 opcode") {
+		t.Fatalf("Verify cross-target selected scalar opcode = %v", err)
+	}
 }
 
 func TestSelectTargetOpcodesV128Foundation(t *testing.T) {
@@ -97,6 +101,38 @@ func TestSelectTargetOpcodesV128Foundation(t *testing.T) {
 			for index, want := range test.want {
 				if got := f.Insts[index].Op; got != want {
 					t.Fatalf("instruction %d opcode = %d, want %d", index, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestSelectTargetOpcodesIntegerAddSub(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [4]MOpcode
+	}{
+		{"amd64", TargetAMD64, [4]MOpcode{OpAMD64I32Add, OpAMD64I64Add, OpAMD64I32Sub, OpAMD64I64Sub}},
+		{"arm64", TargetARM64, [4]MOpcode{OpARM64I32Add, OpARM64I64Add, OpARM64I32Sub, OpARM64I64Sub}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for index, op := range []byte{0x6a, 0x7c, 0x6b, 0x7d} {
+				type_ := wasm.I32
+				if index&1 != 0 {
+					type_ = wasm.I64
+				}
+				m := machineModule([]wasm.ValType{type_, type_}, []wasm.ValType{type_}, []byte{0x20, 0, 0x20, 1, op, 0x0b})
+				f := buildMachineTest(t, test.target, m)
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != [4]MOpcode{wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub}[index] {
+					t.Fatalf("instruction %d semantic opcode = %d", index, got)
 				}
 			}
 		})

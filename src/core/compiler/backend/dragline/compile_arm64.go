@@ -1060,6 +1060,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			wasm.InstrI32Clz, wasm.InstrI32Ctz, wasm.InstrI32Popcnt,
 			wasm.InstrI64Clz, wasm.InstrI64Ctz, wasm.InstrI64Popcnt,
 			wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
+			railmach.OpARM64I32Add, railmach.OpARM64I64Add, railmach.OpARM64I32Sub, railmach.OpARM64I64Sub,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -5202,19 +5203,19 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					shift = uint8(immediate & 63)
 				}
 				switch instruction.Op {
-				case wasm.InstrI32Add:
+				case railmach.OpARM64I32Add:
 					if !emitARM64I32AddSubImmediate(&a, dst, lhs, immediate, false) {
 						return nil, 0, true, fmt.Errorf("RailMach selected unencodable ARM64 i32.add immediate %#x", immediate)
 					}
-				case wasm.InstrI64Add:
+				case railmach.OpARM64I64Add:
 					if !emitARM64I64AddSubImmediate(&a, dst, lhs, plan.Machine.Insts[producer].Aux, false) {
 						return nil, 0, true, fmt.Errorf("RailMach selected unencodable ARM64 i64.add immediate %#x", plan.Machine.Insts[producer].Aux)
 					}
-				case wasm.InstrI32Sub:
+				case railmach.OpARM64I32Sub:
 					if !emitARM64I32AddSubImmediate(&a, dst, lhs, immediate, true) {
 						return nil, 0, true, fmt.Errorf("RailMach selected unencodable ARM64 i32.sub immediate %#x", immediate)
 					}
-				case wasm.InstrI64Sub:
+				case railmach.OpARM64I64Sub:
 					if !emitARM64I64AddSubImmediate(&a, dst, lhs, plan.Machine.Insts[producer].Aux, true) {
 						return nil, 0, true, fmt.Errorf("RailMach selected unencodable ARM64 i64.sub immediate %#x", plan.Machine.Insts[producer].Aux)
 					}
@@ -5380,13 +5381,13 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				continue
 			}
 			switch instruction.Op {
-			case wasm.InstrI32Add, wasm.InstrI64Add:
+			case railmach.OpARM64I32Add, railmach.OpARM64I64Add:
 				if wide {
 					a.Add64(dst, lhs, rhs)
 				} else {
 					a.Add32(dst, lhs, rhs)
 				}
-			case wasm.InstrI32Sub, wasm.InstrI64Sub:
+			case railmach.OpARM64I32Sub, railmach.OpARM64I64Sub:
 				if wide {
 					a.Sub64(dst, lhs, rhs)
 				} else {
@@ -6853,15 +6854,16 @@ func arm64RailMachPromotedGlobal(plan *nativeBackendPlan) arm64PromotedGlobal {
 		if nativeControlInstruction(instruction.Op) {
 			continue
 		}
-		switch instruction.Op {
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		switch semanticOp {
 		case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
 			candidate := uint32(instruction.Aux)
 			if index != ^uint32(0) && index != candidate {
 				return arm64PromotedGlobal{}
 			}
 			index = candidate
-			hasGet = hasGet || instruction.Op == wasm.InstrGlobalGet
-			hasSet = hasSet || instruction.Op == wasm.InstrGlobalSet
+			hasGet = hasGet || semanticOp == wasm.InstrGlobalGet
+			hasSet = hasSet || semanticOp == wasm.InstrGlobalSet
 		case wasm.InstrI32Const, wasm.InstrI64Const,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
@@ -6895,8 +6897,9 @@ func arm64RailMachPromotedGlobalValue(plan *nativeBackendPlan, value railmach.VR
 		return false
 	}
 	instruction := plan.Machine.Insts[definition]
-	if instruction.Op != wasm.InstrGlobalGet {
-		switch instruction.Op {
+	semanticOp := railmach.SemanticOpcode(instruction.Op)
+	if semanticOp != wasm.InstrGlobalGet {
+		switch semanticOp {
 		case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
 			wasm.InstrI32And, wasm.InstrI64And, wasm.InstrI32Or, wasm.InstrI64Or,
 			wasm.InstrI32Xor, wasm.InstrI64Xor:
@@ -6917,7 +6920,7 @@ func arm64RailMachPromotedGlobalValue(plan *nativeBackendPlan, value railmach.VR
 			}
 		}
 	}
-	if instruction.Op == wasm.InstrGlobalGet {
+	if semanticOp == wasm.InstrGlobalGet {
 		if uint32(instruction.Aux) != promoted.index || uses == 0 {
 			return false
 		}
@@ -7158,7 +7161,8 @@ func arm64RailMachReadLocation(a *arm64.Asm, plan *nativeBackendPlan, value rail
 			return 0, fmt.Errorf("RailMach rematerialization value %d has no definition", value)
 		}
 		definition := plan.Machine.Insts[instructionID]
-		switch definition.Op {
+		semanticOp := railmach.SemanticOpcode(definition.Op)
+		switch semanticOp {
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull:
 			a.MovImm64(scratch, definition.Aux)
 		case wasm.InstrF32Const, wasm.InstrF64Const:
@@ -7174,7 +7178,7 @@ func arm64RailMachReadLocation(a *arm64.Asm, plan *nativeBackendPlan, value rail
 			if err != nil {
 				return 0, err
 			}
-			switch definition.Op {
+			switch semanticOp {
 			case wasm.InstrI64ExtendI32S, wasm.InstrI64Extend32S:
 				a.Sxtw(scratch, base)
 			case wasm.InstrI32Extend8S:
@@ -7205,7 +7209,7 @@ func arm64RailMachReadLocation(a *arm64.Asm, plan *nativeBackendPlan, value rail
 			if err != nil {
 				return 0, err
 			}
-			switch definition.Op {
+			switch semanticOp {
 			case wasm.InstrI32Add:
 				a.AddImm32(scratch, base, uint32(immediate))
 			case wasm.InstrI64Add:
