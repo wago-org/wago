@@ -395,6 +395,28 @@ func TestARM64StructuredSIMDImmediateShiftMasksLaneCount(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachSIMDImmediateShiftCoversLaneKinds(t *testing.T) {
+	tests := []struct {
+		op   railmach.MOpcode
+		want func(*arm64.Asm)
+	}{
+		{railmach.OpARM64I8x16Shl, func(a *arm64.Asm) { a.NeonShlB(3, 4, 5) }},
+		{railmach.OpARM64I16x8ShrS, func(a *arm64.Asm) { a.NeonSshrH(3, 4, 5) }},
+		{railmach.OpARM64I32x4ShrU, func(a *arm64.Asm) { a.NeonUshrS(3, 4, 5) }},
+		{railmach.OpARM64I64x2Shl, func(a *arm64.Asm) { a.NeonShlD(3, 4, 5) }},
+	}
+	for _, test := range tests {
+		var got, want arm64.Asm
+		if !emitARM64RailMachSIMDImmediateShift(&got, test.op, 3, 4, 5) {
+			t.Fatalf("selected shift %d was rejected", test.op)
+		}
+		test.want(&want)
+		if !bytes.Equal(got.B, want.B) {
+			t.Fatalf("selected shift %d = %x, want %x", test.op, got.B, want.B)
+		}
+	}
+}
+
 func TestARM64MixedSIMDModuleRailMachAdmission(t *testing.T) {
 	leaf := &railssa.StackFunc{Instrs: []railssa.StackInstr{{Kind: wasm.InstrI32Add}}}
 	if !arm64RailMachCandidate(leaf, true, nil) {
@@ -677,6 +699,41 @@ func TestARM64RailMachSIMDConstantsUseDeduplicatedLiteralPool(t *testing.T) {
 	}
 	if literalLoads == 0 {
 		t.Fatalf("RailMach SIMD constant emitted no LDR Q literal: %x", output.Code)
+	}
+}
+
+func TestARM64RailMachUsesSpecializedSIMDShuffle(t *testing.T) {
+	body := []byte{0x20, 0x00, 0x20, 0x00, 0xfd, 0x0d}
+	body = append(body, []byte{2, 3, 0, 1, 6, 7, 4, 5, 10, 11, 8, 9, 14, 15, 12, 13}...)
+	body = append(body, 0x0b)
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	output, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized {
+		t.Fatalf("shuffle function did not use RailMach: %#v", metrics.Functions)
+	}
+	var specialized arm64.Asm
+	specialized.NeonRev32H(0, 0)
+	if !bytes.Contains(output.Code, specialized.B) {
+		t.Fatalf("RailMach shuffle emitted no REV32: %x", output.Code)
 	}
 }
 

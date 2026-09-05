@@ -741,7 +741,11 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers []uint3
 				wasm.InstrI32ShrS, wasm.InstrI64ShrS,
 				wasm.InstrI32ShrU, wasm.InstrI64ShrU,
 				wasm.InstrI32Rotl, wasm.InstrI64Rotl,
-				wasm.InstrI32Rotr, wasm.InstrI64Rotr:
+				wasm.InstrI32Rotr, wasm.InstrI64Rotr,
+				wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU,
+				wasm.InstrI16x8Shl, wasm.InstrI16x8ShrS, wasm.InstrI16x8ShrU,
+				wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU,
+				wasm.InstrI64x2Shl, wasm.InstrI64x2ShrS, wasm.InstrI64x2ShrU:
 				producers[consumerID] = uint32(producerID)
 				foldedUses++
 			}

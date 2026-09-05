@@ -3732,6 +3732,13 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				if !ok {
 					return nil, 0, true, fmt.Errorf("RailMach vector shuffle %d has no mask", instructionID)
 				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				if result, specialized := emitARM64SpecializedShuffle(&a, immediate.Bytes, dst, lhs, rhs); specialized {
+					if result != dst {
+						a.NeonMov16b(dst, result)
+					}
+					continue
+				}
 				var lhsMask, rhsMask [16]byte
 				for index := range lhsMask {
 					lhsMask[index], rhsMask[index] = 0x80, 0x80
@@ -3741,7 +3748,6 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 						rhsMask[index] = lane - 16
 					}
 				}
-				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
 				materializeSIMDConstant(25, rhsMask)
 				a.NeonTbl(24, rhs, 25)
 				materializeSIMDConstant(25, lhsMask)
@@ -4277,6 +4283,10 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					railmach.OpARM64I16x8Shl, railmach.OpARM64I16x8ShrS, railmach.OpARM64I16x8ShrU,
 					railmach.OpARM64I32x4Shl, railmach.OpARM64I32x4ShrS, railmach.OpARM64I32x4ShrU,
 					railmach.OpARM64I64x2Shl, railmach.OpARM64I64x2ShrS, railmach.OpARM64I64x2ShrU:
+					if producer := immediateProducer[instructionID]; producer != ^uint32(0) && int(producer) < len(plan.Machine.Insts) &&
+						emitARM64RailMachSIMDImmediateShift(&a, instruction.Op, dst, lhs, uint32(plan.Machine.Insts[producer].Aux)) {
+						continue
+					}
 					mask := uint64(15)
 					if instruction.Op == railmach.OpARM64I8x16Shl || instruction.Op == railmach.OpARM64I8x16ShrS || instruction.Op == railmach.OpARM64I8x16ShrU {
 						mask = 7
@@ -14926,6 +14936,83 @@ func emitARM64StructuredSIMDImmediateShift(a *arm64.Asm, kind wasm.InstrKind, ds
 		a.NeonShlS(dst, src, shift)
 	case wasm.InstrI32x4ShrU:
 		a.NeonUshrS(dst, src, shift)
+	}
+	return true
+}
+
+func emitARM64RailMachSIMDImmediateShift(a *arm64.Asm, op railmach.MOpcode, dst, src arm64.Reg, immediate uint32) bool {
+	laneBits := uint32(0)
+	signed, right := false, false
+	switch op {
+	case railmach.OpARM64I8x16Shl:
+		laneBits = 8
+	case railmach.OpARM64I8x16ShrS:
+		laneBits, signed, right = 8, true, true
+	case railmach.OpARM64I8x16ShrU:
+		laneBits, right = 8, true
+	case railmach.OpARM64I16x8Shl:
+		laneBits = 16
+	case railmach.OpARM64I16x8ShrS:
+		laneBits, signed, right = 16, true, true
+	case railmach.OpARM64I16x8ShrU:
+		laneBits, right = 16, true
+	case railmach.OpARM64I32x4Shl:
+		laneBits = 32
+	case railmach.OpARM64I32x4ShrS:
+		laneBits, signed, right = 32, true, true
+	case railmach.OpARM64I32x4ShrU:
+		laneBits, right = 32, true
+	case railmach.OpARM64I64x2Shl:
+		laneBits = 64
+	case railmach.OpARM64I64x2ShrS:
+		laneBits, signed, right = 64, true, true
+	case railmach.OpARM64I64x2ShrU:
+		laneBits, right = 64, true
+	default:
+		return false
+	}
+	shift := uint8(immediate & (laneBits - 1))
+	if shift == 0 {
+		if dst != src {
+			a.NeonMov16b(dst, src)
+		}
+		return true
+	}
+	if !right {
+		switch laneBits {
+		case 8:
+			a.NeonShlB(dst, src, shift)
+		case 16:
+			a.NeonShlH(dst, src, shift)
+		case 32:
+			a.NeonShlS(dst, src, shift)
+		case 64:
+			a.NeonShlD(dst, src, shift)
+		}
+		return true
+	}
+	if signed {
+		switch laneBits {
+		case 8:
+			a.NeonSshrB(dst, src, shift)
+		case 16:
+			a.NeonSshrH(dst, src, shift)
+		case 32:
+			a.NeonSshrS(dst, src, shift)
+		case 64:
+			a.NeonSshrD(dst, src, shift)
+		}
+		return true
+	}
+	switch laneBits {
+	case 8:
+		a.NeonUshrB(dst, src, shift)
+	case 16:
+		a.NeonUshrH(dst, src, shift)
+	case 32:
+		a.NeonUshrS(dst, src, shift)
+	case 64:
+		a.NeonUshrD(dst, src, shift)
 	}
 	return true
 }
