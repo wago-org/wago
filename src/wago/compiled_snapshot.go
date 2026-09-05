@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	gc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // freezeExecution captures metadata before compiler/loader publication, or on
@@ -35,11 +36,42 @@ func (c *Compiled) executionView() *Compiled {
 }
 
 func cloneCompiledMetadata(c *Compiled) *Compiled {
+	var valTypeCount, refInitCount, byteCount int
+	for i := range c.Funcs {
+		valTypeCount += len(c.Funcs[i].Params) + len(c.Funcs[i].Results)
+	}
+	for i := range c.importFuncSigs {
+		valTypeCount += len(c.importFuncSigs[i].Params) + len(c.importFuncSigs[i].Results)
+	}
+	countElems := func(elems []ElemInit) {
+		for i := range elems {
+			byteCount += len(elems[i].Offset.Expr)
+			refInitCount += len(elems[i].Values)
+			for j := range elems[i].Values {
+				byteCount += len(elems[i].Values[j].Expr)
+			}
+		}
+	}
+	for i := range c.Globals {
+		byteCount += len(c.Globals[i].InitExpr)
+	}
+	countElems(c.Elems)
+	countElems(c.passiveElems)
+	for i := range c.Data {
+		byteCount += len(c.Data[i].Bytes) + len(c.Data[i].Offset.Expr)
+	}
+	for i := range c.PassiveData {
+		byteCount += len(c.PassiveData[i].Bytes)
+	}
+	valTypes := packedCloneStorage[ValType]{values: make([]ValType, valTypeCount)}
+	refInits := packedCloneStorage[RefInit]{values: make([]RefInit, refInitCount)}
+	bytes := packedCloneStorage[byte]{values: make([]byte, byteCount)}
+
 	out := *c
 	out.Entry = slices.Clone(c.Entry)
 	out.InternalEntry = slices.Clone(c.InternalEntry)
-	out.Funcs = cloneFuncSigs(c.Funcs)
-	out.importFuncSigs = cloneFuncSigs(c.importFuncSigs)
+	out.Funcs = cloneFuncSigs(c.Funcs, &valTypes)
+	out.importFuncSigs = cloneFuncSigs(c.importFuncSigs, &valTypes)
 	out.Types = cloneDefinedTypeDescriptors(c.Types)
 	out.ValueTypes = slices.Clone(c.ValueTypes)
 	out.Imports = slices.Clone(c.Imports)
@@ -48,33 +80,57 @@ func cloneCompiledMetadata(c *Compiled) *Compiled {
 	out.GlobalImports = slices.Clone(c.GlobalImports)
 	out.Globals = slices.Clone(c.Globals)
 	for i := range out.Globals {
-		out.Globals[i].InitExpr = slices.Clone(c.Globals[i].InitExpr)
+		out.Globals[i].InitExpr = bytes.clone(c.Globals[i].InitExpr)
 	}
 	out.GlobalExports = cloneExportMap(c.GlobalExports)
 	out.FuncTypeID = slices.Clone(c.FuncTypeID)
-	out.Elems = cloneCompiledElems(c.Elems)
-	out.passiveElems = cloneCompiledElems(c.passiveElems)
+	out.Elems = cloneCompiledElems(c.Elems, &refInits, &bytes)
+	out.passiveElems = cloneCompiledElems(c.passiveElems, &refInits, &bytes)
 	out.Data = slices.Clone(c.Data)
 	for i := range out.Data {
-		out.Data[i].Bytes = slices.Clone(c.Data[i].Bytes)
-		out.Data[i].Offset.Expr = slices.Clone(c.Data[i].Offset.Expr)
+		out.Data[i].Bytes = bytes.clone(c.Data[i].Bytes)
+		out.Data[i].Offset.Expr = bytes.clone(c.Data[i].Offset.Expr)
 	}
 	out.PassiveData = slices.Clone(c.PassiveData)
 	for i := range out.PassiveData {
-		out.PassiveData[i].Bytes = slices.Clone(c.PassiveData[i].Bytes)
+		out.PassiveData[i].Bytes = bytes.clone(c.PassiveData[i].Bytes)
 	}
 	out.GCTypeDescs = slices.Clone(c.GCTypeDescs)
+	gcFieldCount := 0
+	for i := range c.GCTypeDescs {
+		gcFieldCount += len(c.GCTypeDescs[i].Fields)
+	}
+	gcFields := packedCloneStorage[gc.FieldDesc]{values: make([]gc.FieldDesc, gcFieldCount)}
 	for i := range out.GCTypeDescs {
-		out.GCTypeDescs[i].Fields = slices.Clone(c.GCTypeDescs[i].Fields)
+		out.GCTypeDescs[i].Fields = gcFields.clone(c.GCTypeDescs[i].Fields)
 	}
 	return &out
 }
 
-func cloneFuncSigs(in []FuncSig) []FuncSig {
+type packedCloneStorage[T any] struct {
+	values []T
+	next   int
+}
+
+func (p *packedCloneStorage[T]) clone(in []T) []T {
+	if in == nil {
+		return nil
+	}
+	if len(in) == 0 {
+		return make([]T, 0)
+	}
+	end := p.next + len(in)
+	out := p.values[p.next:end:end]
+	copy(out, in)
+	p.next = end
+	return out
+}
+
+func cloneFuncSigs(in []FuncSig, valTypes *packedCloneStorage[ValType]) []FuncSig {
 	out := slices.Clone(in)
 	for i := range out {
-		out[i].Params = slices.Clone(in[i].Params)
-		out[i].Results = slices.Clone(in[i].Results)
+		out[i].Params = valTypes.clone(in[i].Params)
+		out[i].Results = valTypes.clone(in[i].Results)
 	}
 	return out
 }
@@ -90,13 +146,13 @@ func cloneExportMap(in map[string]int) map[string]int {
 	return out
 }
 
-func cloneCompiledElems(in []ElemInit) []ElemInit {
+func cloneCompiledElems(in []ElemInit, refInits *packedCloneStorage[RefInit], bytes *packedCloneStorage[byte]) []ElemInit {
 	out := slices.Clone(in)
 	for i := range out {
-		out[i].Offset.Expr = slices.Clone(in[i].Offset.Expr)
-		out[i].Values = slices.Clone(in[i].Values)
+		out[i].Offset.Expr = bytes.clone(in[i].Offset.Expr)
+		out[i].Values = refInits.clone(in[i].Values)
 		for j := range out[i].Values {
-			out[i].Values[j].Expr = slices.Clone(in[i].Values[j].Expr)
+			out[i].Values[j].Expr = bytes.clone(in[i].Values[j].Expr)
 		}
 	}
 	return out
@@ -107,22 +163,32 @@ func cloneCompiledNames(in *wasm.NameSec) *wasm.NameSec {
 		return nil
 	}
 	out := *in
+	nameCount := len(in.FunctionNames) + len(in.TypeNames) + len(in.TableNames) + len(in.MemoryNames) +
+		len(in.GlobalNames) + len(in.ElementNames) + len(in.DataNames) + len(in.TagNames)
+	indirectCount := len(in.LocalNames) + len(in.LabelNames) + len(in.FieldNames)
+	for _, names := range []wasm.IndirectNameMap{in.LocalNames, in.LabelNames, in.FieldNames} {
+		for i := range names {
+			nameCount += len(names[i].Names)
+		}
+	}
+	names := packedCloneStorage[wasm.NameAssoc]{values: make([]wasm.NameAssoc, nameCount)}
+	indirects := packedCloneStorage[wasm.IndirectNameAssoc]{values: make([]wasm.IndirectNameAssoc, indirectCount)}
 	if in.ModuleName != nil {
 		name := *in.ModuleName
 		out.ModuleName = &name
 	}
-	out.FunctionNames = slices.Clone(in.FunctionNames)
-	out.TypeNames = slices.Clone(in.TypeNames)
-	out.TableNames = slices.Clone(in.TableNames)
-	out.MemoryNames = slices.Clone(in.MemoryNames)
-	out.GlobalNames = slices.Clone(in.GlobalNames)
-	out.ElementNames = slices.Clone(in.ElementNames)
-	out.DataNames = slices.Clone(in.DataNames)
-	out.TagNames = slices.Clone(in.TagNames)
+	out.FunctionNames = names.clone(in.FunctionNames)
+	out.TypeNames = names.clone(in.TypeNames)
+	out.TableNames = names.clone(in.TableNames)
+	out.MemoryNames = names.clone(in.MemoryNames)
+	out.GlobalNames = names.clone(in.GlobalNames)
+	out.ElementNames = names.clone(in.ElementNames)
+	out.DataNames = names.clone(in.DataNames)
+	out.TagNames = names.clone(in.TagNames)
 	cloneIndirect := func(in wasm.IndirectNameMap) wasm.IndirectNameMap {
-		out := slices.Clone(in)
+		out := indirects.clone(in)
 		for i := range out {
-			out[i].Names = slices.Clone(in[i].Names)
+			out[i].Names = names.clone(in[i].Names)
 		}
 		return out
 	}

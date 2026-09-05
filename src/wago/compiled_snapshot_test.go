@@ -221,6 +221,53 @@ func TestCompiledSnapshotOwnsNestedPublicMetadata(t *testing.T) {
 	}
 }
 
+func TestCompiledSnapshotPacksRepeatedNestedSlices(t *testing.T) {
+	const count = 1024
+	c := &Compiled{
+		Funcs:       make([]FuncSig, count),
+		Types:       make([]DefinedTypeDescriptor, count),
+		Names:       &wasm.NameSec{LocalNames: make(wasm.IndirectNameMap, count)},
+		Data:        make([]DataInit, count),
+		GCTypeDescs: make([]gc.TypeDesc, count),
+	}
+	for i := 0; i < count; i++ {
+		c.Funcs[i].Params = []ValType{ValI32}
+		c.Funcs[i].Results = []ValType{ValI64}
+		c.Types[i].Supers = []uint32{uint32(i)}
+		c.Types[i].Params = []ValueTypeDescriptor{{Kind: ValueTypeI32}}
+		c.Types[i].Results = []ValueTypeDescriptor{{Kind: ValueTypeI64}}
+		c.Types[i].Fields = []FieldTypeDescriptor{{}}
+		c.Names.LocalNames[i] = wasm.IndirectNameAssoc{Index: uint32(i), Names: wasm.NameMap{{Index: uint32(i), Name: "p"}}}
+		c.Data[i].Bytes = []byte{byte(i)}
+		c.GCTypeDescs[i].Fields = []gc.FieldDesc{{}}
+	}
+	allocs := testing.AllocsPerRun(10, func() {
+		benchCompiledSink = cloneCompiledMetadata(c)
+	})
+	if allocs > 18 {
+		t.Fatalf("clone allocations = %.0f, want at most 18", allocs)
+	}
+
+	snapshot := cloneCompiledMetadata(c)
+	if cap(snapshot.Funcs[0].Params) != len(snapshot.Funcs[0].Params) ||
+		cap(snapshot.Types[0].Supers) != len(snapshot.Types[0].Supers) ||
+		cap(snapshot.Names.LocalNames[0].Names) != len(snapshot.Names.LocalNames[0].Names) ||
+		cap(snapshot.Data[0].Bytes) != len(snapshot.Data[0].Bytes) ||
+		cap(snapshot.GCTypeDescs[0].Fields) != len(snapshot.GCTypeDescs[0].Fields) {
+		t.Fatal("packed child slice can grow into adjacent metadata")
+	}
+	snapshot.Funcs[0].Params = append(snapshot.Funcs[0].Params, ValF64)
+	snapshot.Types[0].Supers = append(snapshot.Types[0].Supers, 99)
+	snapshot.Names.LocalNames[0].Names = append(snapshot.Names.LocalNames[0].Names, wasm.NameAssoc{Name: "other"})
+	snapshot.Data[0].Bytes = append(snapshot.Data[0].Bytes, 0xff)
+	snapshot.GCTypeDescs[0].Fields = append(snapshot.GCTypeDescs[0].Fields, gc.FieldDesc{})
+	if snapshot.Funcs[0].Results[0] != ValI64 || snapshot.Funcs[1].Params[0] != ValI32 ||
+		snapshot.Types[1].Supers[0] != 1 || len(snapshot.Names.LocalNames[1].Names) != 1 ||
+		snapshot.Data[1].Bytes[0] != 1 || len(snapshot.GCTypeDescs[1].Fields) != 1 || c.Data[0].Bytes[0] != 0 {
+		t.Fatal("packed child append changed adjacent or public metadata")
+	}
+}
+
 // Some low-level fixtures deliberately attach synthetic GC/type metadata to
 // numeric machine code. Give them a separate unpublished metadata owner.
 func mutableCompiledFixture(c *Compiled) *Compiled {

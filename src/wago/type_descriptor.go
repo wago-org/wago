@@ -664,13 +664,22 @@ func exactFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) (params, res
 }
 
 func cloneDefinedTypeDescriptors(in []DefinedTypeDescriptor) []DefinedTypeDescriptor {
+	var superCount, valueTypeCount, fieldCount int
+	for i := range in {
+		superCount += len(in[i].Supers)
+		valueTypeCount += len(in[i].Params) + len(in[i].Results)
+		fieldCount += len(in[i].Fields)
+	}
+	supers := packedCloneStorage[uint32]{values: make([]uint32, superCount)}
+	valueTypes := packedCloneStorage[ValueTypeDescriptor]{values: make([]ValueTypeDescriptor, valueTypeCount)}
+	fields := packedCloneStorage[FieldTypeDescriptor]{values: make([]FieldTypeDescriptor, fieldCount)}
 	out := make([]DefinedTypeDescriptor, len(in))
 	for i := range in {
 		out[i] = in[i]
-		out[i].Supers = append([]uint32(nil), in[i].Supers...)
-		out[i].Params = append([]ValueTypeDescriptor(nil), in[i].Params...)
-		out[i].Results = append([]ValueTypeDescriptor(nil), in[i].Results...)
-		out[i].Fields = append([]FieldTypeDescriptor(nil), in[i].Fields...)
+		out[i].Supers = supers.clone(in[i].Supers)
+		out[i].Params = valueTypes.clone(in[i].Params)
+		out[i].Results = valueTypes.clone(in[i].Results)
+		out[i].Fields = fields.clone(in[i].Fields)
 	}
 	return out
 }

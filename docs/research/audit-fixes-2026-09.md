@@ -83,6 +83,20 @@ valid. Three 100 ms samples keep about 7.78 MB per 8-worker import compile
 (23.9–27.3 ms before, 24.9–25.5 ms after). Repeated small-module instantiation
 retains 1,520 B/op and 10 allocations (1.97–2.11 microseconds before,
 2.02–2.07 after). No throughput claim follows from these short samples.
+The execution snapshot now packs repeated function signatures, data and element
+payloads, structural-type vectors, debug-name maps, and GC fields into typed
+backing slabs. Every child slice has capacity equal to its length, so appending
+cannot overwrite adjacent metadata, and the slabs remain independent of the
+mutable public view. On Linux/amd64 Go 1.27.1, ten interleaved measurements
+reduce the 8-worker import compile from 3,493 to 292 allocations/op; `main`
+measures 273. Across the full compile corpus, the allocation geomean falls from
+325 to 257 allocations/op versus 231 on `main`. Large-module results return to
+their `main` allocation counts: esbuild 110,850 -> 19,650 (main 19,640), ruby
+81,510 -> 40,490 (main 40,580), and sqlite3 13,168 -> 7,882 (main 7,949).
+Full-corpus time is unchanged by packing; allocated bytes fall only 0.2% because
+snapshot ownership still requires copying the payload itself. The same packing
+reduces imported-artifact loading from about 12,860 to 9,659 allocations/op,
+within 26 allocations of `main`.
 The constructor allocation test measures platform environment lookup overhead
 separately and retains a one-allocation budget for the configuration. Go 1.22
 Windows/amd64 with BMI2 uses four allocations for its two environment lookups;
