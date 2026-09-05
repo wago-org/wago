@@ -922,6 +922,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64V128Load32x2S, railmach.OpAMD64V128Load32x2U,
 			railmach.OpAMD64V128Load8Splat, railmach.OpAMD64V128Load16Splat, railmach.OpAMD64V128Load32Splat, railmach.OpAMD64V128Load64Splat,
 			railmach.OpAMD64V128Load32Zero, railmach.OpAMD64V128Load64Zero,
+			railmach.OpAMD64V128Load8Lane, railmach.OpAMD64V128Load16Lane, railmach.OpAMD64V128Load32Lane, railmach.OpAMD64V128Load64Lane,
+			railmach.OpAMD64V128Store8Lane, railmach.OpAMD64V128Store16Lane, railmach.OpAMD64V128Store32Lane, railmach.OpAMD64V128Store64Lane,
 			railmach.OpAMD64V128And, railmach.OpAMD64V128Andnot, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 			railmach.OpAMD64V128Not, railmach.OpAMD64V128Bitselect,
 			railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,
@@ -3206,10 +3208,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				railmach.OpAMD64V128Load8x8S, railmach.OpAMD64V128Load8x8U, railmach.OpAMD64V128Load16x4S, railmach.OpAMD64V128Load16x4U,
 				railmach.OpAMD64V128Load32x2S, railmach.OpAMD64V128Load32x2U,
 				railmach.OpAMD64V128Load8Splat, railmach.OpAMD64V128Load16Splat, railmach.OpAMD64V128Load32Splat, railmach.OpAMD64V128Load64Splat,
-				railmach.OpAMD64V128Load32Zero, railmach.OpAMD64V128Load64Zero:
+				railmach.OpAMD64V128Load32Zero, railmach.OpAMD64V128Load64Zero,
+				railmach.OpAMD64V128Load8Lane, railmach.OpAMD64V128Load16Lane, railmach.OpAMD64V128Load32Lane, railmach.OpAMD64V128Load64Lane,
+				railmach.OpAMD64V128Store8Lane, railmach.OpAMD64V128Store16Lane, railmach.OpAMD64V128Store32Lane, railmach.OpAMD64V128Store64Lane:
 				access, ok := plan.Machine.MemoryAccessAt(instructionID)
-				store := instruction.Op == railmach.OpAMD64V128Store
-				if !ok || access.SemanticWidth == 0 || access.EncodedWidth != access.SemanticWidth || len(operands) != 1 && !store || len(operands) != 2 && store {
+				laneLoad := instruction.Op >= railmach.OpAMD64V128Load8Lane && instruction.Op <= railmach.OpAMD64V128Load64Lane
+				laneStore := instruction.Op >= railmach.OpAMD64V128Store8Lane && instruction.Op <= railmach.OpAMD64V128Store64Lane
+				store := instruction.Op == railmach.OpAMD64V128Store || laneStore
+				if !ok || access.SemanticWidth == 0 || access.EncodedWidth != access.SemanticWidth || len(operands) != 1 && !store && !laneLoad || len(operands) != 2 && (store || laneLoad) {
 					return nil, 0, true, fmt.Errorf("RailMach selected vector memory operation %d is malformed", instructionID)
 				}
 				width := uint64(access.SemanticWidth)
@@ -3233,10 +3239,47 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.MovImm64(amd64.R11, access.Offset)
 					a.AluRR(0x01, address, amd64.R11, true)
 				}
-				if store {
+				if laneStore {
+					immediate, present := plan.Machine.SIMDImmediateAt(instructionID)
+					if !present {
+						return nil, 0, true, fmt.Errorf("RailMach vector lane store %d has no lane", instructionID)
+					}
+					src := reg(operands[1].Reg)
+					switch access.SemanticWidth {
+					case 1:
+						a.Pextrb(amd64.R11, src, byte(immediate.Lane))
+					case 2:
+						a.Pextrw(amd64.R11, src, byte(immediate.Lane))
+					case 4:
+						a.Pextrd(amd64.R11, src, byte(immediate.Lane))
+					case 8:
+						a.Pextrq(amd64.R11, src, byte(immediate.Lane))
+					}
+					a.StoreIdx(amd64.RBX, address, amd64.R11, disp, int(access.SemanticWidth))
+				} else if store {
 					a.VMovdquStoreIdx(amd64.RBX, address, reg(operands[1].Reg), disp)
 				} else if instruction.Op == railmach.OpAMD64V128Load {
 					a.VMovdquLoadIdx(dst, amd64.RBX, address, disp)
+				} else if laneLoad {
+					immediate, present := plan.Machine.SIMDImmediateAt(instructionID)
+					if !present {
+						return nil, 0, true, fmt.Errorf("RailMach vector lane load %d has no lane", instructionID)
+					}
+					src := reg(operands[1].Reg)
+					if dst != src {
+						a.VMovdqu(dst, src)
+					}
+					a.LoadIdx(amd64.R11, amd64.RBX, address, disp, int(access.SemanticWidth), false, access.SemanticWidth == 8)
+					switch access.SemanticWidth {
+					case 1:
+						a.Pinsrb(dst, amd64.R11, byte(immediate.Lane))
+					case 2:
+						a.Pinsrw(dst, amd64.R11, byte(immediate.Lane))
+					case 4:
+						a.Pinsrd(dst, amd64.R11, byte(immediate.Lane))
+					case 8:
+						a.Pinsrq(dst, amd64.R11, byte(immediate.Lane))
+					}
 				} else {
 					a.LoadIdx(amd64.R11, amd64.RBX, address, disp, int(access.SemanticWidth), false, access.SemanticWidth == 8)
 					a.MovGprToXmm(dst, amd64.R11, access.SemanticWidth == 8)

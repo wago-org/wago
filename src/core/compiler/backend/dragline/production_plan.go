@@ -448,6 +448,8 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrV128Load32x2S, wasm.InstrV128Load32x2U,
 			wasm.InstrV128Load8Splat, wasm.InstrV128Load16Splat, wasm.InstrV128Load32Splat, wasm.InstrV128Load64Splat,
 			wasm.InstrV128Load32Zero, wasm.InstrV128Load64Zero,
+			wasm.InstrV128Load8Lane, wasm.InstrV128Load16Lane, wasm.InstrV128Load32Lane, wasm.InstrV128Load64Lane,
+			wasm.InstrV128Store8Lane, wasm.InstrV128Store16Lane, wasm.InstrV128Store32Lane, wasm.InstrV128Store64Lane,
 			wasm.InstrV128And, wasm.InstrV128Andnot, wasm.InstrV128Or, wasm.InstrV128Xor, wasm.InstrV128Not, wasm.InstrV128Bitselect,
 			wasm.InstrI8x16Add, wasm.InstrI8x16AddSatS, wasm.InstrI8x16AddSatU,
 			wasm.InstrI8x16Sub, wasm.InstrI8x16SubSatS, wasm.InstrI8x16SubSatU,

@@ -625,7 +625,7 @@ func TestRailMachAdmitsOnlySupportedV128OperationsBeforeVectorABI(t *testing.T) 
 		"call": func(stack *railssa.StackFunc) {
 			stack.Instrs = append(stack.Instrs, railssa.StackInstr{Kind: wasm.InstrCall})
 		},
-		"unsupported family": func(stack *railssa.StackFunc) { stack.Instrs[2].Kind = wasm.InstrV128Load8Lane },
+		"unsupported family": func(stack *railssa.StackFunc) { stack.Instrs[2].Kind = wasm.InstrI8x16RelaxedSwizzle },
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := *foundation

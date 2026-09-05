@@ -4370,6 +4370,79 @@ func TestDraglineRailMachVectorNarrowLoadUsesSemanticWidth(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachVectorLaneMemoryExecution(t *testing.T) {
+	payload := [16]byte{0x80, 0x7f, 0xfe, 0x01, 0x00, 0xff, 0x34, 0x92, 8, 9, 10, 11, 12, 13, 14, 15}
+	initial := [16]byte{0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa}
+	stored := [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	for _, test := range []struct {
+		name              string
+		width, lane       byte
+		loadSub, storeSub uint32
+	}{
+		{name: "8", width: 1, lane: 15, loadSub: 84, storeSub: 88},
+		{name: "16", width: 2, lane: 7, loadSub: 85, storeSub: 89},
+		{name: "32", width: 4, lane: 3, loadSub: 86, storeSub: 90},
+		{name: "64", width: 8, lane: 1, loadSub: 87, storeSub: 91},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x41, 0x20, 0x41, 0x00, 0xfd, 0x0c}
+			body = append(body, initial[:]...)
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(test.loadSub)...)
+			body = append(body, 0x00, 0x00, test.lane, 0xfd, 0x0b, 0x04, 0x00)
+			body = append(body, 0x41)
+			body = append(body, wasmtest.SLEB32(64)...)
+			body = append(body, 0xfd, 0x0c)
+			body = append(body, stored[:]...)
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(test.storeSub)...)
+			body = append(body, 0x00, 0x00, test.lane, 0x0b)
+			read32 := []byte{0x41, 0x20, 0x29, 0x03, 0x00, 0x0b}
+			read40 := []byte{0x41, 0x28, 0x29, 0x03, 0x00, 0x0b}
+			read64 := append([]byte{0x41}, wasmtest.SLEB32(64)...)
+			read64 = append(read64, 0x29, 0x03, 0x00, 0x0b)
+			segment := append([]byte{0x00, 0x41, 0x00, 0x0b}, append(wasmtest.ULEB(uint32(len(payload))), payload[:]...)...)
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read32", 0, 1), wasmtest.ExportEntry("read40", 0, 2), wasmtest.ExportEntry("read64", 0, 3))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(read32), wasmtest.Code(read40), wasmtest.Code(read64))),
+				wasmtest.Section(11, wasmtest.Vec(segment)),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if _, err := instance.Invoke("run"); err != nil {
+				t.Fatal(err)
+			}
+			wantLoad := initial
+			copy(wantLoad[int(test.lane)*int(test.width):], payload[:test.width])
+			for index, name := range []string{"read32", "read40"} {
+				result, err := instance.Invoke(name)
+				want := binary.LittleEndian.Uint64(wantLoad[index*8:])
+				if err != nil || len(result) != 1 || result[0] != want {
+					t.Fatalf("%s = %#x, %v; want %#x", name, result, err, want)
+				}
+			}
+			result, err := instance.Invoke("read64")
+			var storedLane [8]byte
+			copy(storedLane[:], stored[int(test.lane)*int(test.width):int(test.lane+1)*int(test.width)])
+			wantStore := binary.LittleEndian.Uint64(storedLane[:])
+			if err != nil || len(result) != 1 || result[0] != wantStore {
+				t.Fatalf("stored lane = %#x, %v; want %#x", result, err, wantStore)
+			}
+		})
+	}
+}
+
 func TestDraglineRailMachIntegerVectorArithmeticAndEqualityExecution(t *testing.T) {
 	splat8 := func(value byte) (out [16]byte) {
 		for index := range out {
