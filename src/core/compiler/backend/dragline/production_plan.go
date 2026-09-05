@@ -770,46 +770,71 @@ func nativeMachineValueEscapes(machine *railmach.Func, value railmach.VReg) bool
 	return false
 }
 
-func applyNativeARM64ShiftImmediateRematerialization(machine *railmach.Func) {
-	if machine == nil || machine.Target != railmach.TargetARM64 {
+func applyNativeARM64ShiftImmediateRematerialization(machine *railmach.Func, states []uint32) {
+	if machine == nil || machine.Target != railmach.TargetARM64 || len(states) < len(machine.VRegs) {
 		return
 	}
-	for _, producer := range machine.Insts {
-		if producer.Result == 0 || producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const || nativeMachineValueEscapes(machine, producer.Result) {
-			continue
+	states = states[:len(machine.VRegs)]
+	clear(states)
+	for _, instruction := range machine.Insts {
+		if instruction.Result != 0 && (instruction.Op == wasm.InstrI32Const || instruction.Op == wasm.InstrI64Const) {
+			states[instruction.Result] = shiftImmediateCandidate
 		}
-		uses, eligible := uint32(0), uint32(0)
-		for instructionID, consumer := range machine.Insts {
-			operands := machine.InstructionOperands(uint32(instructionID))
-			for operandIndex, operand := range operands {
-				if operand.Reg != producer.Result {
-					continue
-				}
-				uses++
-				if operandIndex != 1 || len(operands) != 2 {
-					continue
-				}
-				switch consumer.Op {
-				case wasm.InstrI32Shl, wasm.InstrI64Shl,
-					wasm.InstrI32ShrS, wasm.InstrI64ShrS,
-					wasm.InstrI32ShrU, wasm.InstrI64ShrU,
-					wasm.InstrI32Rotl, wasm.InstrI64Rotl,
-					wasm.InstrI32Rotr, wasm.InstrI64Rotr:
-					eligible++
-				}
+	}
+	for instructionID, consumer := range machine.Insts {
+		operands := machine.InstructionOperands(uint32(instructionID))
+		for operandIndex, operand := range operands {
+			if states[operand.Reg]&shiftImmediateCandidate == 0 {
+				continue
+			}
+			states[operand.Reg] |= shiftImmediateSeen
+			if !nativeARM64ShiftImmediateUse(consumer.Op, operandIndex, len(operands)) {
+				states[operand.Reg] |= shiftImmediateRejected
 			}
 		}
-		if uses == 0 || eligible != uses {
-			continue
+	}
+	for _, transfer := range machine.Transfers {
+		if states[transfer.Src]&shiftImmediateCandidate != 0 {
+			states[transfer.Src] |= shiftImmediateRejected
 		}
-		for instructionID := range machine.Insts {
-			operands := machine.InstructionOperands(uint32(instructionID))
-			for index := range operands {
-				if operands[index].Reg == producer.Result {
-					operands[index].Flags |= railmach.OperandColdRemat
-				}
+		if states[transfer.Dst]&shiftImmediateCandidate != 0 {
+			states[transfer.Dst] |= shiftImmediateRejected
+		}
+	}
+	for _, result := range machine.Results {
+		if states[result]&shiftImmediateCandidate != 0 {
+			states[result] |= shiftImmediateRejected
+		}
+	}
+	for instructionID := range machine.Insts {
+		operands := machine.InstructionOperands(uint32(instructionID))
+		for index := range operands {
+			if states[operands[index].Reg] == shiftImmediateCandidate|shiftImmediateSeen {
+				operands[index].Flags |= railmach.OperandColdRemat
 			}
 		}
+	}
+}
+
+const (
+	shiftImmediateCandidate uint32 = 1 << iota
+	shiftImmediateSeen
+	shiftImmediateRejected
+)
+
+func nativeARM64ShiftImmediateUse(op railmach.MOpcode, operandIndex, operandCount int) bool {
+	if operandIndex != 1 || operandCount != 2 {
+		return false
+	}
+	switch op {
+	case wasm.InstrI32Shl, wasm.InstrI64Shl,
+		wasm.InstrI32ShrS, wasm.InstrI64ShrS,
+		wasm.InstrI32ShrU, wasm.InstrI64ShrU,
+		wasm.InstrI32Rotl, wasm.InstrI64Rotl,
+		wasm.InstrI32Rotr, wasm.InstrI64Rotr:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1096,7 +1121,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if _, err := railmach.SelectARM64MultiplyAdds(machine, p.immediateUses); err != nil {
 		return nil, err
 	}
-	applyNativeARM64ShiftImmediateRematerialization(machine)
+	applyNativeARM64ShiftImmediateRematerialization(machine, p.immediateUses)
 	dag, err := railmach.BuildDependencyDAG(machine, selection, metadata, &p.dag)
 	if err != nil {
 		return nil, err
