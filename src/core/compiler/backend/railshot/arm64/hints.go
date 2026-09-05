@@ -694,18 +694,6 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 		curIndex := ^uint32(0)
 		var curConst int64
 		curConstOK := false
-		if op == 0x43 || op == 0x44 {
-			s.h.flags.set(hintHasFloatConst)
-		}
-		if shared.StackArenaHintsEnabled && (op == 0x41 || op == 0x42) {
-			if b, ok := s.r.Peek(); ok && b&0x80 == 0 {
-				curConst = int64(b & 0x7f)
-				if b&0x40 != 0 {
-					curConst |= ^int64(0x7f)
-				}
-				curConstOK = true
-			}
-		}
 		switch op {
 		case 0x00: // unreachable
 			s.h.flags.set(hintHasControlFlow)
@@ -866,6 +854,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.elig.add(curLoop, idx)
 			}
 		case 0x41: // i32.const
+			if shared.StackArenaHintsEnabled {
+				curConst, curConstOK = s.peekSingleByteConst()
+			}
 			if _, err := s.r.I32(); err != nil {
 				return true, 0, err
 			}
@@ -873,6 +864,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.addStackArenaNodes(1)
 			}
 		case 0x42: // i64.const
+			if shared.StackArenaHintsEnabled {
+				curConst, curConstOK = s.peekSingleByteConst()
+			}
 			if _, err := s.r.I64(); err != nil {
 				return true, 0, err
 			}
@@ -880,6 +874,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.addStackArenaNodes(1)
 			}
 		case 0x43: // f32.const
+			s.h.flags.set(hintHasFloatConst)
 			if _, err := s.r.Bytes(4); err != nil {
 				return true, 0, err
 			}
@@ -887,6 +882,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.addStackArenaNodes(1)
 			}
 		case 0x44: // f64.const
+			s.h.flags.set(hintHasFloatConst)
 			if _, err := s.r.Bytes(8); err != nil {
 				return true, 0, err
 			}
@@ -1024,6 +1020,18 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			prevConst, prevConstOK = curConst, curConstOK
 		}
 	}
+}
+
+func (s *byteBodyScanner) peekSingleByteConst() (int64, bool) {
+	b, ok := s.r.Peek()
+	if !ok || b&0x80 != 0 {
+		return 0, false
+	}
+	v := int64(b & 0x7f)
+	if b&0x40 != 0 {
+		v |= ^int64(0x7f)
+	}
+	return v, true
 }
 
 func (s *byteBodyScanner) noteDirectCallRef(globalIdx uint32, inline, inLoop bool) {
