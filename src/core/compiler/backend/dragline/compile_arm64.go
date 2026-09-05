@@ -1010,7 +1010,9 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64I32x4ExtractLane, railmach.OpARM64I32x4ReplaceLane,
 			railmach.OpARM64I64x2ExtractLane, railmach.OpARM64I64x2ReplaceLane,
 			railmach.OpARM64F32x4ExtractLane, railmach.OpARM64F32x4ReplaceLane,
-			railmach.OpARM64F64x2ExtractLane, railmach.OpARM64F64x2ReplaceLane:
+			railmach.OpARM64F64x2ExtractLane, railmach.OpARM64F64x2ReplaceLane,
+			railmach.OpARM64I8x16NarrowI16x8S, railmach.OpARM64I8x16NarrowI16x8U,
+			railmach.OpARM64I16x8NarrowI32x4S, railmach.OpARM64I16x8NarrowI32x4U:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3535,6 +3537,31 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					a.NeonInsLaneS(dst, immediate.Lane, scalar)
 				default:
 					a.NeonInsLaneD(dst, immediate.Lane, scalar)
+				}
+				continue
+			case railmach.OpARM64I8x16NarrowI16x8S, railmach.OpARM64I8x16NarrowI16x8U,
+				railmach.OpARM64I16x8NarrowI32x4S, railmach.OpARM64I16x8NarrowI32x4U:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector narrow operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				if dst == rhs {
+					a.NeonMov16b(24, rhs)
+					rhs = 24
+				}
+				switch instruction.Op {
+				case railmach.OpARM64I8x16NarrowI16x8S:
+					a.NeonSqxtnBfromH(dst, lhs)
+					a.NeonSqxtn2BfromH(dst, rhs)
+				case railmach.OpARM64I8x16NarrowI16x8U:
+					a.NeonSqxtunBfromH(dst, lhs)
+					a.NeonSqxtun2BfromH(dst, rhs)
+				case railmach.OpARM64I16x8NarrowI32x4S:
+					a.NeonSqxtnHfromS(dst, lhs)
+					a.NeonSqxtn2HfromS(dst, rhs)
+				default:
+					a.NeonSqxtunHfromS(dst, lhs)
+					a.NeonSqxtun2HfromS(dst, rhs)
 				}
 				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,

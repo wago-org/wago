@@ -470,7 +470,9 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrI32x4ExtractLane, wasm.InstrI32x4ReplaceLane,
 			wasm.InstrI64x2ExtractLane, wasm.InstrI64x2ReplaceLane,
 			wasm.InstrF32x4ExtractLane, wasm.InstrF32x4ReplaceLane,
-			wasm.InstrF64x2ExtractLane, wasm.InstrF64x2ReplaceLane:
+			wasm.InstrF64x2ExtractLane, wasm.InstrF64x2ReplaceLane,
+			wasm.InstrI8x16NarrowI16x8S, wasm.InstrI8x16NarrowI16x8U,
+			wasm.InstrI16x8NarrowI32x4S, wasm.InstrI16x8NarrowI32x4U:
 		default:
 			return false
 		}

@@ -943,7 +943,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32x4ExtractLane, railmach.OpAMD64I32x4ReplaceLane,
 			railmach.OpAMD64I64x2ExtractLane, railmach.OpAMD64I64x2ReplaceLane,
 			railmach.OpAMD64F32x4ExtractLane, railmach.OpAMD64F32x4ReplaceLane,
-			railmach.OpAMD64F64x2ExtractLane, railmach.OpAMD64F64x2ReplaceLane:
+			railmach.OpAMD64F64x2ExtractLane, railmach.OpAMD64F64x2ReplaceLane,
+			railmach.OpAMD64I8x16NarrowI16x8S, railmach.OpAMD64I8x16NarrowI16x8U,
+			railmach.OpAMD64I16x8NarrowI32x4S, railmach.OpAMD64I16x8NarrowI32x4U:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2342,6 +2344,23 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.Pinsrd(dst, scalar, immediate.Lane)
 				default:
 					a.Pinsrq(dst, scalar, immediate.Lane)
+				}
+				continue
+			case railmach.OpAMD64I8x16NarrowI16x8S, railmach.OpAMD64I8x16NarrowI16x8U,
+				railmach.OpAMD64I16x8NarrowI32x4S, railmach.OpAMD64I16x8NarrowI32x4U:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector narrow operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				switch instruction.Op {
+				case railmach.OpAMD64I8x16NarrowI16x8S:
+					a.VPacksswb(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16NarrowI16x8U:
+					a.VPpackuswb(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8NarrowI32x4S:
+					a.VPpackssdw(dst, lhs, rhs)
+				default:
+					a.VPpackusdw(dst, lhs, rhs)
 				}
 				continue
 			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
