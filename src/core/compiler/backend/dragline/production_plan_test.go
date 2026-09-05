@@ -625,7 +625,7 @@ func TestRailMachAdmitsOnlyV128FoundationBeforeVectorABI(t *testing.T) {
 		"call": func(stack *railssa.StackFunc) {
 			stack.Instrs = append(stack.Instrs, railssa.StackInstr{Kind: wasm.InstrCall})
 		},
-		"later family": func(stack *railssa.StackFunc) { stack.Instrs[2].Kind = wasm.InstrI64x2Mul },
+		"later family": func(stack *railssa.StackFunc) { stack.Instrs[2].Kind = wasm.InstrI8x16Popcnt },
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := *foundation

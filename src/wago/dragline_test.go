@@ -5379,6 +5379,12 @@ func TestDraglineRailMachVectorIntegerMinMaxMulExecution(t *testing.T) {
 		}
 		return
 	}
+	i64x2 := func(value int64) (out [16]byte) {
+		for lane := 0; lane < 2; lane++ {
+			binary.LittleEndian.PutUint64(out[lane*8:], uint64(value))
+		}
+		return
+	}
 	for _, test := range []struct {
 		name      string
 		subopcode uint32
@@ -5401,6 +5407,7 @@ func TestDraglineRailMachVectorIntegerMinMaxMulExecution(t *testing.T) {
 		{name: "i32x4.min_u", subopcode: 183, lhs: i32x4(0xfffffffe), rhs: i32x4(1), want: i32x4(1)},
 		{name: "i32x4.max_s", subopcode: 184, lhs: i32x4(-2), rhs: i32x4(1), want: i32x4(1)},
 		{name: "i32x4.max_u", subopcode: 185, lhs: i32x4(0xfffffffe), rhs: i32x4(1), want: i32x4(0xfffffffe)},
+		{name: "i64x2.mul", subopcode: 213, lhs: i64x2(0x100000003), rhs: i64x2(0x200000005), want: i64x2(0xb0000000f)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			body := []byte{0x41, 0x00, 0xfd, 0x0c}

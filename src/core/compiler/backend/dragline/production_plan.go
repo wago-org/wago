@@ -454,6 +454,7 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrI8x16MinS, wasm.InstrI8x16MinU, wasm.InstrI8x16MaxS, wasm.InstrI8x16MaxU, wasm.InstrI8x16AvgrU,
 			wasm.InstrI16x8Mul, wasm.InstrI16x8MinS, wasm.InstrI16x8MinU, wasm.InstrI16x8MaxS, wasm.InstrI16x8MaxU, wasm.InstrI16x8AvgrU,
 			wasm.InstrI32x4Mul, wasm.InstrI32x4MinS, wasm.InstrI32x4MinU, wasm.InstrI32x4MaxS, wasm.InstrI32x4MaxU,
+			wasm.InstrI64x2Mul,
 			wasm.InstrI8x16Abs, wasm.InstrI8x16Neg, wasm.InstrI16x8Abs, wasm.InstrI16x8Neg,
 			wasm.InstrI32x4Abs, wasm.InstrI32x4Neg, wasm.InstrI64x2Abs, wasm.InstrI64x2Neg,
 			wasm.InstrI8x16Eq, wasm.InstrI8x16Ne, wasm.InstrI16x8Eq, wasm.InstrI16x8Ne,
@@ -1649,7 +1650,8 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 			wasm.InstrI64x2ExtmulLowI32x4S, wasm.InstrI64x2ExtmulHighI32x4S,
 			wasm.InstrI64x2ExtmulLowI32x4U, wasm.InstrI64x2ExtmulHighI32x4U,
 			wasm.InstrI8x16Shuffle, wasm.InstrI32x4ExtaddPairwiseI16x8U,
-			wasm.InstrF32x4Min, wasm.InstrF32x4Max, wasm.InstrF64x2Min, wasm.InstrF64x2Max:
+			wasm.InstrF32x4Min, wasm.InstrF32x4Max, wasm.InstrF64x2Min, wasm.InstrF64x2Max,
+			wasm.InstrI64x2Mul:
 			return 2 // XMM4-XMM5 preserve both widened inputs across destructive sequences.
 		case wasm.InstrI8x16Ne, wasm.InstrI16x8Ne, wasm.InstrI32x4Ne, wasm.InstrI64x2Ne,
 			wasm.InstrI8x16LeS, wasm.InstrI8x16GeS, wasm.InstrI16x8LeS, wasm.InstrI16x8GeS,

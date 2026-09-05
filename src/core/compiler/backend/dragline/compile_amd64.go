@@ -928,6 +928,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I8x16MinS, railmach.OpAMD64I8x16MinU, railmach.OpAMD64I8x16MaxS, railmach.OpAMD64I8x16MaxU, railmach.OpAMD64I8x16AvgrU,
 			railmach.OpAMD64I16x8Mul, railmach.OpAMD64I16x8MinS, railmach.OpAMD64I16x8MinU, railmach.OpAMD64I16x8MaxS, railmach.OpAMD64I16x8MaxU, railmach.OpAMD64I16x8AvgrU,
 			railmach.OpAMD64I32x4Mul, railmach.OpAMD64I32x4MinS, railmach.OpAMD64I32x4MinU, railmach.OpAMD64I32x4MaxS, railmach.OpAMD64I32x4MaxU,
+			railmach.OpAMD64I64x2Mul,
 			railmach.OpAMD64I8x16Abs, railmach.OpAMD64I8x16Neg, railmach.OpAMD64I16x8Abs, railmach.OpAMD64I16x8Neg,
 			railmach.OpAMD64I32x4Abs, railmach.OpAMD64I32x4Neg, railmach.OpAMD64I64x2Abs, railmach.OpAMD64I64x2Neg,
 			railmach.OpAMD64I8x16Eq, railmach.OpAMD64I8x16Ne, railmach.OpAMD64I16x8Eq, railmach.OpAMD64I16x8Ne,
@@ -2803,6 +2804,20 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						a.VPsubq(dst, 5, src)
 					}
 				}
+				continue
+			case railmach.OpAMD64I64x2Mul:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected i64x2.mul operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				a.VPsrlqImm(4, rhs, 32)
+				a.VPmuludq(4, 4, lhs)
+				a.VPsrlqImm(5, lhs, 32)
+				a.VPmuludq(5, 5, rhs)
+				a.VPaddq(4, 4, 5)
+				a.VPsllqImm(4, 4, 32)
+				a.VPmuludq(dst, lhs, rhs)
+				a.VPaddq(dst, dst, 4)
 				continue
 			case railmach.OpAMD64V128Not:
 				if len(operands) != 1 {

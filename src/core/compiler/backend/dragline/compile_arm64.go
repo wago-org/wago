@@ -995,6 +995,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64I8x16MinS, railmach.OpARM64I8x16MinU, railmach.OpARM64I8x16MaxS, railmach.OpARM64I8x16MaxU, railmach.OpARM64I8x16AvgrU,
 			railmach.OpARM64I16x8Mul, railmach.OpARM64I16x8MinS, railmach.OpARM64I16x8MinU, railmach.OpARM64I16x8MaxS, railmach.OpARM64I16x8MaxU, railmach.OpARM64I16x8AvgrU,
 			railmach.OpARM64I32x4Mul, railmach.OpARM64I32x4MinS, railmach.OpARM64I32x4MinU, railmach.OpARM64I32x4MaxS, railmach.OpARM64I32x4MaxU,
+			railmach.OpARM64I64x2Mul,
 			railmach.OpARM64I8x16Abs, railmach.OpARM64I8x16Neg, railmach.OpARM64I16x8Abs, railmach.OpARM64I16x8Neg,
 			railmach.OpARM64I32x4Abs, railmach.OpARM64I32x4Neg, railmach.OpARM64I64x2Abs, railmach.OpARM64I64x2Neg,
 			railmach.OpARM64I8x16Eq, railmach.OpARM64I8x16Ne, railmach.OpARM64I16x8Eq, railmach.OpARM64I16x8Ne,
@@ -3928,6 +3929,20 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				default:
 					a.NeonNegD(dst, src)
 				}
+				continue
+			case railmach.OpARM64I64x2Mul:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected i64x2.mul operand count is %d", len(operands))
+				}
+				lhs, rhs := reg(operands[0].Reg), reg(operands[1].Reg)
+				a.NeonRev64S(24, rhs)
+				a.NeonMulS(24, 24, lhs)
+				a.NeonUaddlpDfromS(24, 24)
+				a.NeonShlD(24, 24, 32)
+				a.NeonXtnSfromD(25, lhs)
+				a.NeonXtnSfromD(26, rhs)
+				a.NeonUmullDfromS(27, 25, 26)
+				a.NeonAddD(dst, 24, 27)
 				continue
 			case railmach.OpARM64V128Not:
 				if len(operands) != 1 {
