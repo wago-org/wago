@@ -35,6 +35,30 @@ func TestResolveParallelKeepsCycleTemporaryAcrossSpillCopy(t *testing.T) {
 	}
 }
 
+func TestEdgeOrderedTransferSplit(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		edges []uint32
+		split int
+		ok    bool
+	}{
+		{name: "one_run", edges: []uint32{0, 0, 2, 3}, split: 4, ok: true},
+		{name: "stack_then_locals", edges: []uint32{0, 2, 3, 0, 1, 3}, split: 3, ok: true},
+		{name: "arbitrary", edges: []uint32{1, 0, 2, 0}, ok: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			transfers := make([]EdgeTransfer, len(test.edges))
+			for index, edge := range test.edges {
+				transfers[index].Edge = edge
+			}
+			split, ok := edgeOrderedTransferSplit(transfers)
+			if split != test.split || ok != test.ok {
+				t.Fatalf("split=%d ok=%t, want %d/%t", split, ok, test.split, test.ok)
+			}
+		})
+	}
+}
+
 func TestLateSSAExitPlacesIfResultCopies(t *testing.T) {
 	m := machineModule([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x20, 0x00,

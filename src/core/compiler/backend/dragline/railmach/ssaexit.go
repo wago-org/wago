@@ -115,20 +115,29 @@ func lateSSAExitVerifiedAllocation(f *Func, allocation *Allocation, reuse *SSAEx
 		predSuccs[edge.From]++
 		succPreds[edge.To]++
 	}
+	transferSplit, orderedRuns := edgeOrderedTransferSplit(f.Transfers)
+	firstTransfer, secondTransfer := 0, transferSplit
 	for edgeIndex := range f.Edges {
 		start := uint32(len(reuse.Moves))
 		pending = pending[:0]
-		for _, transfer := range f.Transfers {
-			if int(transfer.Edge) != edgeIndex {
-				continue
+		if orderedRuns {
+			for firstTransfer < transferSplit && int(f.Transfers[firstTransfer].Edge) == edgeIndex {
+				pending = collectEdgeTransfer(pending, f.Transfers[firstTransfer], allocation, &reuse.Debt)
+				firstTransfer++
 			}
-			reuse.Debt.Requested++
-			src, dst := allocation.Locations[transfer.Src], allocation.Locations[transfer.Dst]
-			if src == dst {
-				reuse.Debt.Coalesced++
-				continue
+			for secondTransfer < len(f.Transfers) && int(f.Transfers[secondTransfer].Edge) == edgeIndex {
+				pending = collectEdgeTransfer(pending, f.Transfers[secondTransfer], allocation, &reuse.Debt)
+				secondTransfer++
 			}
-			pending = append(pending, pendingCopy{src: src, dst: dst, reg: transfer.Src})
+		} else {
+			// Func is public within the backend package and focused tests may build
+			// arbitrary transfer order. Preserve the general correctness path;
+			// production construction always supplies at most the stack/local runs.
+			for _, transfer := range f.Transfers {
+				if int(transfer.Edge) == edgeIndex {
+					pending = collectEdgeTransfer(pending, transfer, allocation, &reuse.Debt)
+				}
+			}
 		}
 		edge := f.Edges[edgeIndex]
 		predLegal, succLegal := predSuccs[edge.From] == 1, succPreds[edge.To] == 1
@@ -190,6 +199,34 @@ func lateSSAExitVerifiedAllocation(f *Func, allocation *Allocation, reuse *SSAEx
 		return nil, err
 	}
 	return reuse, nil
+}
+
+// edgeOrderedTransferSplit recognizes the two stable runs produced by machine
+// construction: operand-stack arguments followed by local arguments. Walking
+// both runs together preserves the old per-edge copy order without an E*T scan,
+// a sort, or another function-sized index slab.
+func edgeOrderedTransferSplit(transfers []EdgeTransfer) (split int, ok bool) {
+	split = len(transfers)
+	for index := 1; index < len(transfers); index++ {
+		if transfers[index].Edge >= transfers[index-1].Edge {
+			continue
+		}
+		if split != len(transfers) {
+			return 0, false
+		}
+		split = index
+	}
+	return split, true
+}
+
+func collectEdgeTransfer(pending []pendingCopy, transfer EdgeTransfer, allocation *Allocation, debt *CopyDebt) []pendingCopy {
+	debt.Requested++
+	src, dst := allocation.Locations[transfer.Src], allocation.Locations[transfer.Dst]
+	if src == dst {
+		debt.Coalesced++
+		return pending
+	}
+	return append(pending, pendingCopy{src: src, dst: dst, reg: transfer.Src})
 }
 
 func resolveParallel(out *[]PhysicalMove, copies []pendingCopy, edge, position uint32, placement MovePlacement, debt *CopyDebt) error {
