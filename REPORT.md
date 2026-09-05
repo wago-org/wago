@@ -4,7 +4,8 @@ Measured through 2026-09-05 on native ARM64. This is a stopping-point report for
 `jairus/railshot-compile-latency`, comparing:
 
 - Base: `main` at `c46f2129edb52e6f30f4d0bfc5ae105cfde0c84d`
-- Branch: `bdb1176fb609957ba27aa432f305f3670f8d9f7f`
+- Branch: `d6d7161049933c579b6f08451fb2a85e008d047a` (implementation unchanged
+  since `bdb1176fb609957ba27aa432f305f3670f8d9f7f`; later commits are report-only)
 - Host: Apple M4 Max, macOS 26.6.2, Go 1.26.5, `darwin/arm64`
 
 ## Current result
@@ -101,19 +102,18 @@ calls with one direct observation path; a longer five-corpus run improved full
 compile latency by 1.35%, with heap and allocation counts unchanged. Generated
 code matched exactly for both latest changes.
 
-The strongest and most stable result is on large real modules. End-to-end
-compile latency is 24.3-30.1% lower on json-as, Lua, SQLite, Ruby, and esbuild.
-Backend-only compilation is 11.3-18.0% lower on the same group. The all-corpus
+The strongest and most stable result is on large real modules. The exact
+current comparison is the eight-pair table above: end-to-end compile latency is
+27.6-34.7% lower on json-as, Lua, SQLite, Ruby, and esbuild, and backend-only
+compilation is 15.8-28.9% lower on the same group. The all-corpus
 backend geomean includes fresh-process micro modules whose 7-59% confidence
 intervals overwhelm their tens-of-microseconds signal; it is reported rather
 than filtered, but is not evidence of a backend regression. The branch
 currently spends a small amount of heap on compact validation analysis and
-parallel hint orchestration. At current HEAD, a fresh eight-pair comparison of
-json-as, Lua, SQLite, Ruby, and esbuild is 26.37% faster end to end than pinned
-`main`, with 0.60% more allocated heap and 0.23% more allocations. Every latency
-result is significant at p<0.001. The remaining heap delta is concentrated in
-compact validation analysis and parallel orchestration; esbuild is within 0.01%
-of `main`.
+parallel hint orchestration. The large-module geomean is 29.98% faster end to
+end with 0.28% more allocated heap and 0.15% fewer allocations. Every latency
+result is significant at p<0.001; esbuild full-compile heap is 0.10% below
+`main`.
 
 Before the address-proof change, generated function code had exactly the same
 size across the entire corpus. The address-proof change intentionally removes
