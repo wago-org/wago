@@ -981,7 +981,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64F32x4Min, railmach.OpAMD64F32x4Max, railmach.OpAMD64F32x4Pmin, railmach.OpAMD64F32x4Pmax,
 			railmach.OpAMD64F64x2Min, railmach.OpAMD64F64x2Max, railmach.OpAMD64F64x2Pmin, railmach.OpAMD64F64x2Pmax,
 			railmach.OpAMD64F32x4Ceil, railmach.OpAMD64F32x4Floor, railmach.OpAMD64F32x4Trunc, railmach.OpAMD64F32x4Nearest,
-			railmach.OpAMD64F64x2Ceil, railmach.OpAMD64F64x2Floor, railmach.OpAMD64F64x2Trunc, railmach.OpAMD64F64x2Nearest:
+			railmach.OpAMD64F64x2Ceil, railmach.OpAMD64F64x2Floor, railmach.OpAMD64F64x2Trunc, railmach.OpAMD64F64x2Nearest,
+			railmach.OpAMD64F32x4DemoteF64x2Zero, railmach.OpAMD64F64x2PromoteLowF32x4,
+			railmach.OpAMD64F32x4ConvertI32x4S, railmach.OpAMD64F64x2ConvertLowI32x4S:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2772,6 +2774,23 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					mode = 0x0b
 				}
 				a.VFRoundPacked(dst, reg(operands[0].Reg), f64, mode)
+				continue
+			case railmach.OpAMD64F32x4DemoteF64x2Zero, railmach.OpAMD64F64x2PromoteLowF32x4,
+				railmach.OpAMD64F32x4ConvertI32x4S, railmach.OpAMD64F64x2ConvertLowI32x4S:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector conversion operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpAMD64F32x4DemoteF64x2Zero:
+					a.Vcvtpd2ps(dst, src)
+				case railmach.OpAMD64F64x2PromoteLowF32x4:
+					a.Vcvtps2pd(dst, src)
+				case railmach.OpAMD64F32x4ConvertI32x4S:
+					a.Vcvtdq2ps(dst, src)
+				default:
+					a.Vcvtdq2pd(dst, src)
+				}
 				continue
 			case railmach.OpAMD64I8x16Abs, railmach.OpAMD64I8x16Neg, railmach.OpAMD64I16x8Abs, railmach.OpAMD64I16x8Neg,
 				railmach.OpAMD64I32x4Abs, railmach.OpAMD64I32x4Neg, railmach.OpAMD64I64x2Abs, railmach.OpAMD64I64x2Neg:
