@@ -364,9 +364,7 @@ func (a *Asm) Grow(n int) {
 
 func (a *Asm) emit(bs ...byte) { a.B = append(a.B, bs...) }
 func (a *Asm) imm32(v int32) {
-	var t [4]byte
-	binary.LittleEndian.PutUint32(t[:], uint32(v))
-	a.B = append(a.B, t[:]...)
+	a.B = append(a.B, byte(v), byte(v>>8), byte(v>>16), byte(v>>24))
 }
 func (a *Asm) Len() int                  { return len(a.B) }
 func (a *Asm) PatchU32(at int, v uint32) { binary.LittleEndian.PutUint32(a.B[at:], v) }
