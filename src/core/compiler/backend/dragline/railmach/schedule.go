@@ -28,11 +28,17 @@ type Dependency struct {
 type DependencyDAG struct {
 	Offsets      []uint32
 	Dependencies []Dependency
+	// SuccessorOffsets and Successors are the exact reverse CSR used by the
+	// scheduler to update ready counts without rescanning every candidate's
+	// predecessor list after each placement.
+	SuccessorOffsets []uint32
+	Successors       []uint32
 
-	scratch    []Dependency
-	verifySeen []uint32
-	definition []uint32
-	defined    []bool
+	scratch         []Dependency
+	verifySeen      []uint32
+	definition      []uint32
+	defined         []bool
+	successorCursor []uint32
 }
 
 // HasScheduleAlternatives reports whether scheduling effort can change the
@@ -90,6 +96,8 @@ func BuildDependencyDAG(f *Func, selection *SelectionPlan, metadata *railssa.Met
 	}
 	offsets := resize(reuse.Offsets, len(f.Insts)+1)
 	dependencies := reuse.Dependencies[:0]
+	successorOffsets := resize(reuse.SuccessorOffsets, len(f.Insts)+1)
+	successors := reuse.Successors[:0]
 	scratch := reuse.scratch[:0]
 	if cap(dependencies) == 0 {
 		// Data dependencies are bounded by machine operands; instruction and
@@ -103,7 +111,8 @@ func BuildDependencyDAG(f *Func, selection *SelectionPlan, metadata *railssa.Met
 	verifySeen := reuse.verifySeen
 	definition := resize(reuse.definition, len(f.VRegs))
 	defined := resize(reuse.defined, len(f.VRegs))
-	*reuse = DependencyDAG{Offsets: offsets, Dependencies: dependencies, scratch: scratch, verifySeen: verifySeen, definition: definition, defined: defined}
+	successorCursor := reuse.successorCursor
+	*reuse = DependencyDAG{Offsets: offsets, Dependencies: dependencies, SuccessorOffsets: successorOffsets, Successors: successors, scratch: scratch, verifySeen: verifySeen, definition: definition, defined: defined, successorCursor: successorCursor}
 	for instructionID, instruction := range f.Insts {
 		for ordinal := uint32(0); ordinal < instruction.ResultCount(); ordinal++ {
 			result := instruction.Result + VReg(ordinal)
@@ -210,6 +219,23 @@ func BuildDependencyDAG(f *Func, selection *SelectionPlan, metadata *railssa.Met
 	reuse.Offsets[len(f.Insts)] = uint32(len(compacted))
 	reuse.Dependencies = append(reuse.Dependencies[:0], compacted...)
 	reuse.scratch = compacted[:0]
+	clear(reuse.SuccessorOffsets)
+	for _, dependency := range reuse.Dependencies {
+		reuse.SuccessorOffsets[dependency.Instruction+1]++
+	}
+	for instruction := 1; instruction < len(reuse.SuccessorOffsets); instruction++ {
+		reuse.SuccessorOffsets[instruction] += reuse.SuccessorOffsets[instruction-1]
+	}
+	reuse.Successors = resize(reuse.Successors, len(reuse.Dependencies))
+	cursor := resize(reuse.successorCursor, len(f.Insts))
+	copy(cursor, reuse.SuccessorOffsets[:len(f.Insts)])
+	for consumer := range f.Insts {
+		for _, dependency := range reuse.Dependencies[reuse.Offsets[consumer]:reuse.Offsets[consumer+1]] {
+			reuse.Successors[cursor[dependency.Instruction]] = uint32(consumer)
+			cursor[dependency.Instruction]++
+		}
+	}
+	reuse.successorCursor = cursor
 	if err := verifyDependencyDAGReusingScratch(f, reuse); err != nil {
 		return nil, err
 	}
@@ -260,6 +286,33 @@ func verifyDependencyDAG(f *Func, dag *DependencyDAG, seen []uint32) error {
 			seen[dependency.Instruction] = generation
 		}
 	}
+	if len(dag.SuccessorOffsets) != 0 || len(dag.Successors) != 0 {
+		if len(dag.SuccessorOffsets) != len(f.Insts)+1 || dag.SuccessorOffsets[0] != 0 || int(dag.SuccessorOffsets[len(f.Insts)]) != len(dag.Successors) || len(dag.Successors) != len(dag.Dependencies) {
+			return fmt.Errorf("railmach: malformed dependency successor graph")
+		}
+		for producer := range f.Insts {
+			if dag.SuccessorOffsets[producer] > dag.SuccessorOffsets[producer+1] {
+				return fmt.Errorf("railmach: successor offsets regress at %d", producer)
+			}
+			previous, havePrevious := uint32(0), false
+			for _, consumer := range dag.Successors[dag.SuccessorOffsets[producer]:dag.SuccessorOffsets[producer+1]] {
+				if consumer <= uint32(producer) || int(consumer) >= len(f.Insts) {
+					return fmt.Errorf("railmach: instruction %d has invalid successor %d", producer, consumer)
+				}
+				if havePrevious && consumer <= previous {
+					return fmt.Errorf("railmach: instruction %d has duplicate or unordered successor %d", producer, consumer)
+				}
+				previous, havePrevious = consumer, true
+				found := false
+				for _, dependency := range dag.Dependencies[dag.Offsets[consumer]:dag.Offsets[consumer+1]] {
+					found = found || dependency.Instruction == uint32(producer)
+				}
+				if !found {
+					return fmt.Errorf("railmach: successor %d -> %d has no dependency", producer, consumer)
+				}
+			}
+		}
+	}
 	return nil
 }
 
@@ -282,20 +335,21 @@ type Schedule struct {
 	CommittedFusions    uint32
 	BlockOf             []railssa.BlockID
 
-	remaining       []bool
-	sinkBefore      []uint32
-	sinkProducer    []uint32
-	lateBefore      []uint32
-	lateProducer    []uint32
-	fusionBefore    []uint32
-	fusionSource    []uint32
-	verifyPosition  []uint32
-	verifySeen      []bool
-	uses            []uint32
-	remainingUses   []uint32
-	criticalHeight  []uint64
-	blockCandidates []uint32
-	pressureSpecial []uint32
+	remaining             []bool
+	sinkBefore            []uint32
+	sinkProducer          []uint32
+	lateBefore            []uint32
+	lateProducer          []uint32
+	fusionBefore          []uint32
+	fusionSource          []uint32
+	verifyPosition        []uint32
+	verifySeen            []bool
+	uses                  []uint32
+	remainingUses         []uint32
+	criticalHeight        []uint64
+	remainingDependencies []uint32
+	blockCandidates       []uint32
+	pressureSpecial       []uint32
 }
 
 func BuildSchedule(f *Func, selection *SelectionPlan, dag *DependencyDAG, kind ScheduleKind, reuse *Schedule) (*Schedule, error) {
@@ -454,6 +508,24 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 			}
 		}
 	}
+	remainingDependencies := resize(reuse.remainingDependencies, len(f.Insts))
+	clear(remainingDependencies)
+	hasSuccessors := len(dag.SuccessorOffsets) == len(f.Insts)+1 && len(dag.Successors) == len(dag.Dependencies)
+	if hasSuccessors {
+		for instruction := range f.Insts {
+			for _, dependency := range dag.Dependencies[dag.Offsets[instruction]:dag.Offsets[instruction+1]] {
+				if blockOf[dependency.Instruction] == blockOf[instruction] {
+					remainingDependencies[instruction]++
+				}
+			}
+		}
+	}
+	ready := func(block railssa.BlockID, instruction uint32, remaining []bool) bool {
+		if hasSuccessors {
+			return int(instruction) < len(blockOf) && blockOf[instruction] == block && remainingDependencies[instruction] == 0
+		}
+		return scheduleReadyPlaced(block, instruction, dag, remaining, blockOf, ^uint32(0))
+	}
 	committed := uint32(0)
 	committedInductions := uint32(0)
 	committedLICM := uint32(0)
@@ -500,7 +572,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 		}
 	}
 	verifyPosition, verifySeen, uses, blockCandidates := reuse.verifyPosition, reuse.verifySeen, reuse.uses, reuse.blockCandidates[:0]
-	*reuse = Schedule{Kind: kind, Order: order, BlockRanges: ranges, CommittedSinks: committed, CommittedInductions: committedInductions, CommittedLICM: committedLICM, CommittedFusions: committedFusions, BlockOf: blockOf, remaining: remainingScratch, sinkBefore: sinkBefore, sinkProducer: sinkProducer, lateBefore: lateBefore, lateProducer: lateProducer, fusionBefore: fusionBefore, fusionSource: fusionSource, verifyPosition: verifyPosition, verifySeen: verifySeen, uses: uses, remainingUses: remainingUses, criticalHeight: criticalHeight, blockCandidates: blockCandidates, pressureSpecial: pressureSpecial}
+	*reuse = Schedule{Kind: kind, Order: order, BlockRanges: ranges, CommittedSinks: committed, CommittedInductions: committedInductions, CommittedLICM: committedLICM, CommittedFusions: committedFusions, BlockOf: blockOf, remaining: remainingScratch, sinkBefore: sinkBefore, sinkProducer: sinkProducer, lateBefore: lateBefore, lateProducer: lateProducer, fusionBefore: fusionBefore, fusionSource: fusionSource, verifyPosition: verifyPosition, verifySeen: verifySeen, uses: uses, remainingUses: remainingUses, criticalHeight: criticalHeight, remainingDependencies: remainingDependencies, blockCandidates: blockCandidates, pressureSpecial: pressureSpecial}
 	for blockID := range f.Blocks {
 		start := uint32(len(reuse.Order))
 		remaining := resize(reuse.remaining, len(f.Insts))
@@ -549,7 +621,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 						target = reuse.lateBefore[previous]
 					}
 				}
-				if target < uint32(len(remaining)) && reuse.BlockOf[target] == railssa.BlockID(blockID) && remaining[target] && scheduleReadyPlaced(railssa.BlockID(blockID), target, dag, remaining, reuse.BlockOf, ^uint32(0)) {
+				if target < uint32(len(remaining)) && remaining[target] && ready(railssa.BlockID(blockID), target, remaining) {
 					best = target
 				}
 			}
@@ -569,7 +641,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 							!scheduleReadyPlaced(railssa.BlockID(blockID), target, dag, remaining, reuse.BlockOf, candidate) {
 							continue
 						}
-						if reuse.lateProducer[candidate] != ^uint32(0) && remaining[reuse.lateProducer[candidate]] || !scheduleReadyPlaced(railssa.BlockID(blockID), candidate, dag, remaining, reuse.BlockOf, ^uint32(0)) {
+						if reuse.lateProducer[candidate] != ^uint32(0) && remaining[reuse.lateProducer[candidate]] || !ready(railssa.BlockID(blockID), candidate, remaining) {
 							continue
 						}
 						score := schedulePriority(f, selection, candidate, kind, reuse.remainingUses, reuse.criticalHeight, lastUseHeightCredit)
@@ -611,7 +683,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 					if kind == ScheduleKindPressure && reuse.lateProducer[candidate] != ^uint32(0) && remaining[reuse.lateProducer[candidate]] {
 						continue
 					}
-					if !scheduleReadyPlaced(railssa.BlockID(blockID), candidate, dag, remaining, reuse.BlockOf, ^uint32(0)) {
+					if !ready(railssa.BlockID(blockID), candidate, remaining) {
 						continue
 					}
 					score := schedulePriority(f, selection, candidate, kind, reuse.remainingUses, reuse.criticalHeight, lastUseHeightCredit)
@@ -648,6 +720,13 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 			remaining[best] = false
 			reuse.Order = append(reuse.Order, best)
 			reuse.Score += uint64(max(bestScore, 0))
+			if hasSuccessors {
+				for _, successor := range dag.Successors[dag.SuccessorOffsets[best]:dag.SuccessorOffsets[best+1]] {
+					if reuse.BlockOf[successor] == railssa.BlockID(blockID) && remaining[successor] && remainingDependencies[successor] != 0 {
+						remainingDependencies[successor]--
+					}
+				}
+			}
 			for _, operand := range f.InstructionOperands(best) {
 				if reuse.remainingUses[operand.Reg] != 0 {
 					reuse.remainingUses[operand.Reg]--

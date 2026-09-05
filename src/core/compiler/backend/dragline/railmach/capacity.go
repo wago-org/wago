@@ -11,10 +11,10 @@ func PipelineCapacityBytes(f *Func, selection *SelectionPlan, dag *DependencyDAG
 		bytes += capacityBytes(selection.Selections) + capacityBytes(selection.Forms) + capacityBytes(selection.Combinations) + capacityBytes(selection.AddressFolds) + capacityBytes(selection.useCount) + capacityBytes(selection.soleConsumer) + capacityBytes(selection.verifyUseCount)
 	}
 	if dag != nil {
-		bytes += capacityBytes(dag.Offsets) + capacityBytes(dag.Dependencies) + capacityBytes(dag.scratch) + capacityBytes(dag.verifySeen) + capacityBytes(dag.definition) + capacityBytes(dag.defined)
+		bytes += capacityBytes(dag.Offsets) + capacityBytes(dag.Dependencies) + capacityBytes(dag.SuccessorOffsets) + capacityBytes(dag.Successors) + capacityBytes(dag.scratch) + capacityBytes(dag.verifySeen) + capacityBytes(dag.definition) + capacityBytes(dag.defined) + capacityBytes(dag.successorCursor)
 	}
 	if schedule != nil {
-		bytes += capacityBytes(schedule.Order) + capacityBytes(schedule.BlockRanges) + capacityBytes(schedule.BlockOf) + capacityBytes(schedule.remaining) + capacityBytes(schedule.sinkBefore) + capacityBytes(schedule.sinkProducer) + capacityBytes(schedule.lateBefore) + capacityBytes(schedule.lateProducer) + capacityBytes(schedule.fusionBefore) + capacityBytes(schedule.fusionSource) + capacityBytes(schedule.verifyPosition) + capacityBytes(schedule.verifySeen) + capacityBytes(schedule.uses) + capacityBytes(schedule.remainingUses) + capacityBytes(schedule.criticalHeight) + capacityBytes(schedule.blockCandidates) + capacityBytes(schedule.pressureSpecial)
+		bytes += capacityBytes(schedule.Order) + capacityBytes(schedule.BlockRanges) + capacityBytes(schedule.BlockOf) + capacityBytes(schedule.remaining) + capacityBytes(schedule.sinkBefore) + capacityBytes(schedule.sinkProducer) + capacityBytes(schedule.lateBefore) + capacityBytes(schedule.lateProducer) + capacityBytes(schedule.fusionBefore) + capacityBytes(schedule.fusionSource) + capacityBytes(schedule.verifyPosition) + capacityBytes(schedule.verifySeen) + capacityBytes(schedule.uses) + capacityBytes(schedule.remainingUses) + capacityBytes(schedule.criticalHeight) + capacityBytes(schedule.remainingDependencies) + capacityBytes(schedule.blockCandidates) + capacityBytes(schedule.pressureSpecial)
 	}
 	if allocation != nil {
 		bytes += capacityBytes(allocation.Locations) + capacityBytes(allocation.Intervals) + capacityBytes(allocation.FixedMoves) + capacityBytes(allocation.InstructionPositions) + capacityBytes(allocation.LiveSegments) + capacityBytes(allocation.LiveSegmentRanges)

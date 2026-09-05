@@ -90,6 +90,9 @@ func TestDependencyDAGAndScheduleCandidates(t *testing.T) {
 	if len(dag.Dependencies) == 0 {
 		t.Fatal("dependency DAG is empty")
 	}
+	if len(dag.SuccessorOffsets) != len(f.Insts)+1 || len(dag.Successors) != len(dag.Dependencies) {
+		t.Fatalf("dependency reverse graph = offsets:%d successors:%d, want %d and %d", len(dag.SuccessorOffsets), len(dag.Successors), len(f.Insts)+1, len(dag.Dependencies))
+	}
 	for _, kind := range []ScheduleKind{ScheduleKindSourceStable, ScheduleKindLatencyFusion, ScheduleKindPressure} {
 		schedule, err := BuildSchedule(f, selection, dag, kind, nil)
 		if err != nil {
