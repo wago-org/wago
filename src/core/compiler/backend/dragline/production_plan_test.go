@@ -410,6 +410,7 @@ func TestNativeImmediateCombinationsFoldRepeatedRotateCounts(t *testing.T) {
 		Operands: []railmach.Operand{{Reg: 2}, {Reg: 1}, {Reg: 3}, {Reg: 1}},
 		VRegs:    make([]railmach.VRegData, 5),
 	}
+	machine.VRegs[1] = railmach.VRegData{Def: 3, Flags: railmach.VRegRematerializable}
 	plan := &nativeBackendPlan{Machine: machine, Selection: &railmach.SelectionPlan{}}
 	producers := make([]uint32, len(machine.Insts))
 	skipped := make([]bool, len(machine.Insts))
@@ -448,6 +449,7 @@ func TestNativeImmediateCombinationsFoldRepeatedVectorShiftCounts(t *testing.T) 
 		Operands: []railmach.Operand{{Reg: 2}, {Reg: 1}, {Reg: 3}, {Reg: 1}},
 		VRegs:    make([]railmach.VRegData, 5),
 	}
+	machine.VRegs[1] = railmach.VRegData{Def: 3, Flags: railmach.VRegRematerializable}
 	plan := &nativeBackendPlan{Machine: machine, Selection: &railmach.SelectionPlan{}}
 	producers := make([]uint32, len(machine.Insts))
 	skipped := make([]bool, len(machine.Insts))

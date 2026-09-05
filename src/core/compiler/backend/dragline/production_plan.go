@@ -688,18 +688,7 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers []uint3
 		producers[index] = ^uint32(0)
 	}
 	clear(skipped)
-	clear(uses)
-	for instructionID := range plan.Machine.Insts {
-		for _, operand := range plan.Machine.InstructionOperands(uint32(instructionID)) {
-			uses[operand.Reg]++
-		}
-	}
-	for _, transfer := range plan.Machine.Transfers {
-		uses[transfer.Src]++
-	}
-	for _, result := range plan.Machine.Results {
-		uses[result]++
-	}
+	countNativeMachineUses(plan.Machine, uses)
 	if plan.Allocation != nil {
 		for instructionID, instruction := range plan.Machine.Insts {
 			if instruction.Result == 0 || int(instruction.Result) >= len(plan.Machine.VRegs) || int(instruction.Result) >= len(plan.Allocation.Locations) {
@@ -726,48 +715,72 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers []uint3
 		producers[combination.Consumer] = combination.Producer
 		skipped[combination.Producer] = true
 	}
-	for producerID, producer := range plan.Machine.Insts {
-		if producer.Result == 0 || producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const || skipped[producerID] {
+	for consumerID, consumer := range plan.Machine.Insts {
+		if producers[consumerID] != ^uint32(0) {
 			continue
 		}
-		foldedUses := uint32(0)
-		for consumerID, consumer := range plan.Machine.Insts {
-			operands := plan.Machine.InstructionOperands(uint32(consumerID))
-			if len(operands) != 2 || operands[1].Reg != producer.Result {
-				continue
-			}
-			switch consumer.Op {
-			case wasm.InstrI32Shl, wasm.InstrI64Shl,
-				wasm.InstrI32ShrS, wasm.InstrI64ShrS,
-				wasm.InstrI32ShrU, wasm.InstrI64ShrU,
-				wasm.InstrI32Rotl, wasm.InstrI64Rotl,
-				wasm.InstrI32Rotr, wasm.InstrI64Rotr,
-				wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU,
-				wasm.InstrI16x8Shl, wasm.InstrI16x8ShrS, wasm.InstrI16x8ShrU,
-				wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU,
-				wasm.InstrI64x2Shl, wasm.InstrI64x2ShrS, wasm.InstrI64x2ShrU:
-				producers[consumerID] = uint32(producerID)
-				foldedUses++
+		operands := plan.Machine.InstructionOperands(uint32(consumerID))
+		if len(operands) != 2 || !nativeImmediateShiftUse(consumer.Op) {
+			continue
+		}
+		value := operands[1].Reg
+		if value == 0 || int(value) >= len(plan.Machine.VRegs) {
+			continue
+		}
+		definition := plan.Machine.VRegs[value].Def
+		if definition < 3 || (definition-3)%6 != 0 {
+			continue
+		}
+		producerID := (definition - 3) / 6
+		if int(producerID) >= len(plan.Machine.Insts) || skipped[producerID] {
+			continue
+		}
+		producer := plan.Machine.Insts[producerID]
+		if producer.Result != value || producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const {
+			continue
+		}
+		producers[consumerID] = producerID
+		if uses[value] != 0 {
+			uses[value]--
+			if uses[value] == 0 {
+				skipped[producerID] = true
 			}
 		}
-		if uses[producer.Result] != 0 && foldedUses == uses[producer.Result] && !nativeMachineValueEscapes(plan.Machine, producer.Result) {
-			skipped[producerID] = true
+	}
+	// Later edge-rematerialization decisions consume the original use counts.
+	countNativeMachineUses(plan.Machine, uses)
+}
+
+func countNativeMachineUses(machine *railmach.Func, uses []uint32) {
+	clear(uses)
+	for instructionID := range machine.Insts {
+		for _, operand := range machine.InstructionOperands(uint32(instructionID)) {
+			uses[operand.Reg]++
 		}
+	}
+	for _, transfer := range machine.Transfers {
+		uses[transfer.Src]++
+	}
+	for _, result := range machine.Results {
+		uses[result]++
 	}
 }
 
-func nativeMachineValueEscapes(machine *railmach.Func, value railmach.VReg) bool {
-	for _, transfer := range machine.Transfers {
-		if transfer.Src == value || transfer.Dst == value {
-			return true
-		}
+func nativeImmediateShiftUse(op railmach.MOpcode) bool {
+	switch op {
+	case wasm.InstrI32Shl, wasm.InstrI64Shl,
+		wasm.InstrI32ShrS, wasm.InstrI64ShrS,
+		wasm.InstrI32ShrU, wasm.InstrI64ShrU,
+		wasm.InstrI32Rotl, wasm.InstrI64Rotl,
+		wasm.InstrI32Rotr, wasm.InstrI64Rotr,
+		wasm.InstrI8x16Shl, wasm.InstrI8x16ShrS, wasm.InstrI8x16ShrU,
+		wasm.InstrI16x8Shl, wasm.InstrI16x8ShrS, wasm.InstrI16x8ShrU,
+		wasm.InstrI32x4Shl, wasm.InstrI32x4ShrS, wasm.InstrI32x4ShrU,
+		wasm.InstrI64x2Shl, wasm.InstrI64x2ShrS, wasm.InstrI64x2ShrU:
+		return true
+	default:
+		return false
 	}
-	for _, result := range machine.Results {
-		if result == value {
-			return true
-		}
-	}
-	return false
 }
 
 func applyNativeARM64ShiftImmediateRematerialization(machine *railmach.Func, states []uint32) {
@@ -2106,6 +2119,19 @@ func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, produ
 	if plan == nil || plan.Machine == nil {
 		return
 	}
+	countNativeMachineUses(plan.Machine, uses)
+	for _, producerID := range producers {
+		if producerID == ^uint32(0) || int(producerID) >= len(plan.Machine.Insts) {
+			continue
+		}
+		producer := plan.Machine.Insts[producerID]
+		if producer.Result != 0 && uses[producer.Result] != 0 {
+			uses[producer.Result]--
+			if uses[producer.Result] == 0 {
+				skipped[producerID] = true
+			}
+		}
+	}
 	for instructionID, instruction := range plan.Machine.Insts {
 		if producers[instructionID] != ^uint32(0) {
 			continue
@@ -2131,22 +2157,14 @@ func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, produ
 			continue
 		}
 		producers[instructionID] = producerID
-	}
-	for producerID, producer := range plan.Machine.Insts {
-		if producer.Result == 0 || (producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const) || skipped[producerID] || nativeMachineValueEscapes(plan.Machine, producer.Result) {
-			continue
-		}
-		folded := uint32(0)
-		for consumerID := range plan.Machine.Insts {
-			operands := plan.Machine.InstructionOperands(uint32(consumerID))
-			if len(operands) == 2 && operands[1].Reg == producer.Result && producers[consumerID] == uint32(producerID) {
-				folded++
+		if uses[producer.Result] != 0 {
+			uses[producer.Result]--
+			if uses[producer.Result] == 0 {
+				skipped[producerID] = true
 			}
 		}
-		if uses[producer.Result] != 0 && folded == uses[producer.Result] {
-			skipped[producerID] = true
-		}
 	}
+	countNativeMachineUses(plan.Machine, uses)
 }
 
 func arm64AddSubKind(kind wasm.InstrKind) bool {
