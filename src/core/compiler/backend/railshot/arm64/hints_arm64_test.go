@@ -500,19 +500,38 @@ func TestScanInlineFactsAST(t *testing.T) {
 }
 
 func TestInlineBoundaryParityBytesArm64(t *testing.T) {
-	for _, op := range []byte{0xd5, 0xd6} {
-		body := []byte{op, 0x00, 0x0b}
-		h, err := scanBodyBytes(body, 0, 0, 0)
-		if err != nil {
-			t.Fatalf("production scan opcode %#x: %v", op, err)
-		}
-		var facts inlineFacts
-		if err := scanInlineFactsBytes(body, &facts); err != nil {
-			t.Fatalf("inline scan opcode %#x: %v", op, err)
-		}
-		if !h.flags.has(hintHasControlFlow) || !facts.hasControlFlow {
-			t.Fatalf("opcode %#x control classification: production=%v inline=%v", op, h.flags.has(hintHasControlFlow), facts.hasControlFlow)
-		}
+	tests := []struct {
+		name string
+		op   byte
+		body []byte
+	}{
+		{"unreachable", 0x00, []byte{0x00, 0x0b}},
+		{"block", 0x02, []byte{0x02, 0x40, 0x0b, 0x0b}},
+		{"loop", 0x03, []byte{0x03, 0x40, 0x0b, 0x0b}},
+		{"if-else", 0x04, []byte{0x04, 0x40, 0x05, 0x0b, 0x0b}},
+		{"br", 0x0c, []byte{0x0c, 0x00, 0x0b}},
+		{"br-if", 0x0d, []byte{0x0d, 0x00, 0x0b}},
+		{"br-table", 0x0e, []byte{0x0e, 0x00, 0x00, 0x0b}},
+		{"return", 0x0f, []byte{0x0f, 0x0b}},
+		{"try-table", 0x1f, []byte{0x1f, 0x40, 0x00, 0x0b, 0x0b}},
+		{"br-on-null", 0xd5, []byte{0xd5, 0x00, 0x0b}},
+		{"br-on-non-null", 0xd6, []byte{0xd6, 0x00, 0x0b}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := test.body
+			h, err := scanBodyBytes(body, 0, 0, 0)
+			if err != nil {
+				t.Fatalf("production scan opcode %#x: %v", test.op, err)
+			}
+			var facts inlineFacts
+			if err := scanInlineFactsBytes(body, &facts); err != nil {
+				t.Fatalf("inline scan opcode %#x: %v", test.op, err)
+			}
+			if !h.flags.has(hintHasControlFlow) || !facts.hasControlFlow {
+				t.Fatalf("opcode %#x control classification: production=%v inline=%v", test.op, h.flags.has(hintHasControlFlow), facts.hasControlFlow)
+			}
+		})
 	}
 }
 
