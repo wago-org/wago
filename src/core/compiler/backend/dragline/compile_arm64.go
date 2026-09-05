@@ -1004,7 +1004,13 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64I32x4Shl, railmach.OpARM64I32x4ShrS, railmach.OpARM64I32x4ShrU,
 			railmach.OpARM64I64x2Shl, railmach.OpARM64I64x2ShrU,
 			railmach.OpARM64I8x16Splat, railmach.OpARM64I16x8Splat, railmach.OpARM64I32x4Splat,
-			railmach.OpARM64I64x2Splat, railmach.OpARM64F32x4Splat, railmach.OpARM64F64x2Splat:
+			railmach.OpARM64I64x2Splat, railmach.OpARM64F32x4Splat, railmach.OpARM64F64x2Splat,
+			railmach.OpARM64I8x16ExtractLaneS, railmach.OpARM64I8x16ExtractLaneU, railmach.OpARM64I8x16ReplaceLane,
+			railmach.OpARM64I16x8ExtractLaneS, railmach.OpARM64I16x8ExtractLaneU, railmach.OpARM64I16x8ReplaceLane,
+			railmach.OpARM64I32x4ExtractLane, railmach.OpARM64I32x4ReplaceLane,
+			railmach.OpARM64I64x2ExtractLane, railmach.OpARM64I64x2ReplaceLane,
+			railmach.OpARM64F32x4ExtractLane, railmach.OpARM64F32x4ReplaceLane,
+			railmach.OpARM64F64x2ExtractLane, railmach.OpARM64F64x2ReplaceLane:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3463,6 +3469,72 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					a.NeonDupS(dst, src)
 				default:
 					a.NeonDupD(dst, src)
+				}
+				continue
+			case railmach.OpARM64I8x16ExtractLaneS, railmach.OpARM64I8x16ExtractLaneU,
+				railmach.OpARM64I16x8ExtractLaneS, railmach.OpARM64I16x8ExtractLaneU,
+				railmach.OpARM64I32x4ExtractLane, railmach.OpARM64I64x2ExtractLane,
+				railmach.OpARM64F32x4ExtractLane, railmach.OpARM64F64x2ExtractLane:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector extract operand count is %d", len(operands))
+				}
+				immediate, ok := plan.Machine.SIMDImmediateAt(instructionID)
+				if !ok {
+					return nil, 0, true, fmt.Errorf("RailMach vector extract %d has no lane", instructionID)
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpARM64I8x16ExtractLaneS, railmach.OpARM64I8x16ExtractLaneU:
+					a.NeonUmovB(dst, src, immediate.Lane)
+					if instruction.Op == railmach.OpARM64I8x16ExtractLaneS {
+						a.Sxtb(dst, dst, false)
+					}
+				case railmach.OpARM64I16x8ExtractLaneS, railmach.OpARM64I16x8ExtractLaneU:
+					a.NeonUmovH(dst, src, immediate.Lane)
+					if instruction.Op == railmach.OpARM64I16x8ExtractLaneS {
+						a.Sxth(dst, dst, false)
+					}
+				case railmach.OpARM64I32x4ExtractLane:
+					a.NeonUmovS(dst, src, immediate.Lane)
+				case railmach.OpARM64I64x2ExtractLane:
+					a.NeonUmovD(dst, src, immediate.Lane)
+				case railmach.OpARM64F32x4ExtractLane:
+					a.NeonDupLaneS(dst, src, immediate.Lane)
+				default:
+					a.NeonDupLaneD(dst, src, immediate.Lane)
+				}
+				continue
+			case railmach.OpARM64I8x16ReplaceLane, railmach.OpARM64I16x8ReplaceLane,
+				railmach.OpARM64I32x4ReplaceLane, railmach.OpARM64I64x2ReplaceLane,
+				railmach.OpARM64F32x4ReplaceLane, railmach.OpARM64F64x2ReplaceLane:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector replace operand count is %d", len(operands))
+				}
+				immediate, ok := plan.Machine.SIMDImmediateAt(instructionID)
+				if !ok {
+					return nil, 0, true, fmt.Errorf("RailMach vector replace %d has no lane", instructionID)
+				}
+				vector, scalar := reg(operands[0].Reg), reg(operands[1].Reg)
+				if (instruction.Op == railmach.OpARM64F32x4ReplaceLane || instruction.Op == railmach.OpARM64F64x2ReplaceLane) && dst == scalar {
+					a.FMov(24, scalar, instruction.Op == railmach.OpARM64F64x2ReplaceLane)
+					scalar = 24
+				}
+				if dst != vector {
+					a.NeonMov16b(dst, vector)
+				}
+				switch instruction.Op {
+				case railmach.OpARM64I8x16ReplaceLane:
+					a.NeonInsB(dst, scalar, immediate.Lane)
+				case railmach.OpARM64I16x8ReplaceLane:
+					a.NeonInsH(dst, scalar, immediate.Lane)
+				case railmach.OpARM64I32x4ReplaceLane:
+					a.NeonInsS(dst, scalar, immediate.Lane)
+				case railmach.OpARM64I64x2ReplaceLane:
+					a.NeonInsD(dst, scalar, immediate.Lane)
+				case railmach.OpARM64F32x4ReplaceLane:
+					a.NeonInsLaneS(dst, immediate.Lane, scalar)
+				default:
+					a.NeonInsLaneD(dst, immediate.Lane, scalar)
 				}
 				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,

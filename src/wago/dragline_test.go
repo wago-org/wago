@@ -4444,6 +4444,101 @@ func TestDraglineRailMachVectorSplatExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachVectorLaneExecution(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		result    wasm.ValType
+		subopcode uint32
+		lane      byte
+		value     [16]byte
+		want      uint64
+	}{
+		{name: "i8x16.extract_lane_s", result: wasm.I32, subopcode: 21, lane: 15, value: [16]byte{15: 0x80}, want: 0xffffff80},
+		{name: "i8x16.extract_lane_u", result: wasm.I32, subopcode: 22, lane: 14, value: [16]byte{14: 0xfe}, want: 0xfe},
+		{name: "i16x8.extract_lane_s", result: wasm.I32, subopcode: 24, lane: 7, value: [16]byte{14: 0x01, 15: 0x80}, want: 0xffff8001},
+		{name: "i16x8.extract_lane_u", result: wasm.I32, subopcode: 25, lane: 6, value: [16]byte{12: 0x34, 13: 0xf2}, want: 0xf234},
+		{name: "i32x4.extract_lane", result: wasm.I32, subopcode: 27, lane: 3, value: [16]byte{12: 0xef, 13: 0xcd, 14: 0xab, 15: 0x89}, want: 0x89abcdef},
+		{name: "i64x2.extract_lane", result: wasm.I64, subopcode: 29, lane: 1, value: [16]byte{8: 0x88, 9: 0x77, 10: 0x66, 11: 0x55, 12: 0x44, 13: 0x33, 14: 0x22, 15: 0x11}, want: 0x1122334455667788},
+		{name: "f32x4.extract_lane", result: wasm.F32, subopcode: 31, lane: 3, value: [16]byte{12: 0x00, 13: 0x00, 14: 0xc0, 15: 0x3f}, want: uint64(math.Float32bits(1.5))},
+		{name: "f64x2.extract_lane", result: wasm.F64, subopcode: 33, lane: 1, value: [16]byte{8: 0x00, 9: 0x00, 10: 0x00, 11: 0x00, 12: 0x00, 13: 0x00, 14: 0x04, 15: 0xc0}, want: math.Float64bits(-2.5)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := append([]byte{0xfd, 0x0c}, test.value[:]...)
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(test.subopcode)...)
+			body = append(body, test.lane, 0x0b)
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{test.result}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			result, err := instance.Invoke("run")
+			if err != nil || len(result) != 1 || result[0] != test.want {
+				t.Fatalf("result = %#x, %v; want %#x", result, err, test.want)
+			}
+		})
+	}
+
+	for _, test := range []struct {
+		name      string
+		param     wasm.ValType
+		subopcode uint32
+		lane      byte
+		value     uint64
+		want      uint64
+	}{
+		{"i8x16.replace_lane", wasm.I32, 23, 15, 0xa5, 0xa500000000000000},
+		{"i16x8.replace_lane", wasm.I32, 26, 7, 0x1234, 0x1234000000000000},
+		{"i32x4.replace_lane", wasm.I32, 28, 3, 0x12345678, 0x1234567800000000},
+		{"i64x2.replace_lane", wasm.I64, 30, 1, 0x1122334455667788, 0x1122334455667788},
+		{"f32x4.replace_lane", wasm.F32, 32, 3, uint64(math.Float32bits(1.5)), 0x3fc0000000000000},
+		{"f64x2.replace_lane", wasm.F64, 34, 1, math.Float64bits(-2.5), math.Float64bits(-2.5)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := append([]byte{0x41, 0x00, 0xfd, 0x0c}, make([]byte, 16)...)
+			body = append(body, 0x20, 0x00, 0xfd)
+			body = append(body, wasmtest.ULEB(test.subopcode)...)
+			body = append(body, test.lane, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+			read := []byte{0x41, 0x08, 0x29, 0x03, 0x00, 0x0b}
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{test.param}, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read", 0, 1))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(read))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if _, err := instance.Invoke("run", test.value); err != nil {
+				t.Fatal(err)
+			}
+			result, err := instance.Invoke("read")
+			if err != nil || len(result) != 1 || result[0] != test.want {
+				t.Fatalf("result = %#x, %v; want %#x", result, err, test.want)
+			}
+		})
+	}
+}
+
 func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
 	if runtime.GOARCH != "arm64" {
 		t.Skip("Dragline structured SIMD execution is currently ARM64-only")

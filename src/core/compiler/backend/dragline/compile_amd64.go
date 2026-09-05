@@ -937,7 +937,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32x4Shl, railmach.OpAMD64I32x4ShrS, railmach.OpAMD64I32x4ShrU,
 			railmach.OpAMD64I64x2Shl, railmach.OpAMD64I64x2ShrU,
 			railmach.OpAMD64I8x16Splat, railmach.OpAMD64I16x8Splat, railmach.OpAMD64I32x4Splat,
-			railmach.OpAMD64I64x2Splat, railmach.OpAMD64F32x4Splat, railmach.OpAMD64F64x2Splat:
+			railmach.OpAMD64I64x2Splat, railmach.OpAMD64F32x4Splat, railmach.OpAMD64F64x2Splat,
+			railmach.OpAMD64I8x16ExtractLaneS, railmach.OpAMD64I8x16ExtractLaneU, railmach.OpAMD64I8x16ReplaceLane,
+			railmach.OpAMD64I16x8ExtractLaneS, railmach.OpAMD64I16x8ExtractLaneU, railmach.OpAMD64I16x8ReplaceLane,
+			railmach.OpAMD64I32x4ExtractLane, railmach.OpAMD64I32x4ReplaceLane,
+			railmach.OpAMD64I64x2ExtractLane, railmach.OpAMD64I64x2ReplaceLane,
+			railmach.OpAMD64F32x4ExtractLane, railmach.OpAMD64F32x4ReplaceLane,
+			railmach.OpAMD64F64x2ExtractLane, railmach.OpAMD64F64x2ReplaceLane:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2266,6 +2272,76 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 						a.VMovdqu(dst, src)
 					}
 					a.Punpcklqdq(dst, dst)
+				}
+				continue
+			case railmach.OpAMD64I8x16ExtractLaneS, railmach.OpAMD64I8x16ExtractLaneU,
+				railmach.OpAMD64I16x8ExtractLaneS, railmach.OpAMD64I16x8ExtractLaneU,
+				railmach.OpAMD64I32x4ExtractLane, railmach.OpAMD64I64x2ExtractLane,
+				railmach.OpAMD64F32x4ExtractLane, railmach.OpAMD64F64x2ExtractLane:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector extract operand count is %d", len(operands))
+				}
+				immediate, ok := plan.Machine.SIMDImmediateAt(instructionID)
+				if !ok {
+					return nil, 0, true, fmt.Errorf("RailMach vector extract %d has no lane", instructionID)
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpAMD64I8x16ExtractLaneS, railmach.OpAMD64I8x16ExtractLaneU:
+					a.Pextrb(dst, src, immediate.Lane)
+					if instruction.Op == railmach.OpAMD64I8x16ExtractLaneS {
+						a.Movsx8(dst, dst, false)
+					}
+				case railmach.OpAMD64I16x8ExtractLaneS, railmach.OpAMD64I16x8ExtractLaneU:
+					a.Pextrw(dst, src, immediate.Lane)
+					if instruction.Op == railmach.OpAMD64I16x8ExtractLaneS {
+						a.Movsx16(dst, dst, false)
+					}
+				case railmach.OpAMD64I32x4ExtractLane:
+					a.Pextrd(dst, src, immediate.Lane)
+				case railmach.OpAMD64I64x2ExtractLane:
+					a.Pextrq(dst, src, immediate.Lane)
+				case railmach.OpAMD64F32x4ExtractLane:
+					if immediate.Lane == 0 {
+						a.FMov(dst, src, false)
+					} else {
+						a.Pshufd(dst, src, immediate.Lane)
+					}
+				default:
+					if immediate.Lane == 0 {
+						a.FMov(dst, src, true)
+					} else {
+						a.Pshufd(dst, src, 0xee)
+					}
+				}
+				continue
+			case railmach.OpAMD64I8x16ReplaceLane, railmach.OpAMD64I16x8ReplaceLane,
+				railmach.OpAMD64I32x4ReplaceLane, railmach.OpAMD64I64x2ReplaceLane,
+				railmach.OpAMD64F32x4ReplaceLane, railmach.OpAMD64F64x2ReplaceLane:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector replace operand count is %d", len(operands))
+				}
+				immediate, ok := plan.Machine.SIMDImmediateAt(instructionID)
+				if !ok {
+					return nil, 0, true, fmt.Errorf("RailMach vector replace %d has no lane", instructionID)
+				}
+				vector, scalar := reg(operands[0].Reg), reg(operands[1].Reg)
+				if instruction.Op == railmach.OpAMD64F32x4ReplaceLane || instruction.Op == railmach.OpAMD64F64x2ReplaceLane {
+					a.MovXmmToGpr(amd64.R11, scalar, instruction.Op == railmach.OpAMD64F64x2ReplaceLane)
+					scalar = amd64.R11
+				}
+				if dst != vector {
+					a.VMovdqu(dst, vector)
+				}
+				switch instruction.Op {
+				case railmach.OpAMD64I8x16ReplaceLane:
+					a.Pinsrb(dst, scalar, immediate.Lane)
+				case railmach.OpAMD64I16x8ReplaceLane:
+					a.Pinsrw(dst, scalar, immediate.Lane)
+				case railmach.OpAMD64I32x4ReplaceLane, railmach.OpAMD64F32x4ReplaceLane:
+					a.Pinsrd(dst, scalar, immediate.Lane)
+				default:
+					a.Pinsrq(dst, scalar, immediate.Lane)
 				}
 				continue
 			case railmach.OpAMD64V128And, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,

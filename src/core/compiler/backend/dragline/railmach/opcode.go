@@ -89,6 +89,20 @@ const (
 	OpAMD64I64x2Splat
 	OpAMD64F32x4Splat
 	OpAMD64F64x2Splat
+	OpAMD64I8x16ExtractLaneS
+	OpAMD64I8x16ExtractLaneU
+	OpAMD64I8x16ReplaceLane
+	OpAMD64I16x8ExtractLaneS
+	OpAMD64I16x8ExtractLaneU
+	OpAMD64I16x8ReplaceLane
+	OpAMD64I32x4ExtractLane
+	OpAMD64I32x4ReplaceLane
+	OpAMD64I64x2ExtractLane
+	OpAMD64I64x2ReplaceLane
+	OpAMD64F32x4ExtractLane
+	OpAMD64F32x4ReplaceLane
+	OpAMD64F64x2ExtractLane
+	OpAMD64F64x2ReplaceLane
 	opAMD64SelectedEnd
 )
 
@@ -166,6 +180,20 @@ const (
 	OpARM64I64x2Splat
 	OpARM64F32x4Splat
 	OpARM64F64x2Splat
+	OpARM64I8x16ExtractLaneS
+	OpARM64I8x16ExtractLaneU
+	OpARM64I8x16ReplaceLane
+	OpARM64I16x8ExtractLaneS
+	OpARM64I16x8ExtractLaneU
+	OpARM64I16x8ReplaceLane
+	OpARM64I32x4ExtractLane
+	OpARM64I32x4ReplaceLane
+	OpARM64I64x2ExtractLane
+	OpARM64I64x2ReplaceLane
+	OpARM64F32x4ExtractLane
+	OpARM64F32x4ReplaceLane
+	OpARM64F64x2ExtractLane
+	OpARM64F64x2ReplaceLane
 	opARM64SelectedEnd
 )
 
@@ -211,6 +239,10 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpAMD64I16x8Shl, OpAMD64I16x8ShrS, OpAMD64I16x8ShrU,
 		OpAMD64I32x4Shl, OpAMD64I32x4ShrS, OpAMD64I32x4ShrU, OpAMD64I64x2Shl, OpAMD64I64x2ShrU,
 		OpAMD64I8x16Splat, OpAMD64I16x8Splat, OpAMD64I32x4Splat, OpAMD64I64x2Splat, OpAMD64F32x4Splat, OpAMD64F64x2Splat,
+		OpAMD64I8x16ExtractLaneS, OpAMD64I8x16ExtractLaneU, OpAMD64I8x16ReplaceLane,
+		OpAMD64I16x8ExtractLaneS, OpAMD64I16x8ExtractLaneU, OpAMD64I16x8ReplaceLane,
+		OpAMD64I32x4ExtractLane, OpAMD64I32x4ReplaceLane, OpAMD64I64x2ExtractLane, OpAMD64I64x2ReplaceLane,
+		OpAMD64F32x4ExtractLane, OpAMD64F32x4ReplaceLane, OpAMD64F64x2ExtractLane, OpAMD64F64x2ReplaceLane,
 		OpARM64V128Move, OpARM64V128Const, OpARM64V128Load, OpARM64V128Store, OpARM64V128And, OpARM64V128Or, OpARM64V128Xor,
 		OpARM64I8x16Add, OpARM64I8x16AddSatS, OpARM64I8x16AddSatU, OpARM64I8x16Sub, OpARM64I8x16SubSatS, OpARM64I8x16SubSatU,
 		OpARM64I16x8Add, OpARM64I16x8AddSatS, OpARM64I16x8AddSatU, OpARM64I16x8Sub, OpARM64I16x8SubSatS, OpARM64I16x8SubSatU,
@@ -226,7 +258,11 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpARM64I32x4LtU, OpARM64I32x4GtU, OpARM64I32x4LeU, OpARM64I32x4GeU,
 		OpARM64I16x8Shl, OpARM64I16x8ShrS, OpARM64I16x8ShrU,
 		OpARM64I32x4Shl, OpARM64I32x4ShrS, OpARM64I32x4ShrU, OpARM64I64x2Shl, OpARM64I64x2ShrU,
-		OpARM64I8x16Splat, OpARM64I16x8Splat, OpARM64I32x4Splat, OpARM64I64x2Splat, OpARM64F32x4Splat, OpARM64F64x2Splat:
+		OpARM64I8x16Splat, OpARM64I16x8Splat, OpARM64I32x4Splat, OpARM64I64x2Splat, OpARM64F32x4Splat, OpARM64F64x2Splat,
+		OpARM64I8x16ExtractLaneS, OpARM64I8x16ExtractLaneU, OpARM64I8x16ReplaceLane,
+		OpARM64I16x8ExtractLaneS, OpARM64I16x8ExtractLaneU, OpARM64I16x8ReplaceLane,
+		OpARM64I32x4ExtractLane, OpARM64I32x4ReplaceLane, OpARM64I64x2ExtractLane, OpARM64I64x2ReplaceLane,
+		OpARM64F32x4ExtractLane, OpARM64F32x4ReplaceLane, OpARM64F64x2ExtractLane, OpARM64F64x2ReplaceLane:
 		return true
 	default:
 		return false
@@ -391,6 +427,34 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64F32x4Splat, OpARM64F32x4Splat
 		case wasm.InstrF64x2Splat:
 			amd64, arm64 = OpAMD64F64x2Splat, OpARM64F64x2Splat
+		case wasm.InstrI8x16ExtractLaneS:
+			amd64, arm64 = OpAMD64I8x16ExtractLaneS, OpARM64I8x16ExtractLaneS
+		case wasm.InstrI8x16ExtractLaneU:
+			amd64, arm64 = OpAMD64I8x16ExtractLaneU, OpARM64I8x16ExtractLaneU
+		case wasm.InstrI8x16ReplaceLane:
+			amd64, arm64 = OpAMD64I8x16ReplaceLane, OpARM64I8x16ReplaceLane
+		case wasm.InstrI16x8ExtractLaneS:
+			amd64, arm64 = OpAMD64I16x8ExtractLaneS, OpARM64I16x8ExtractLaneS
+		case wasm.InstrI16x8ExtractLaneU:
+			amd64, arm64 = OpAMD64I16x8ExtractLaneU, OpARM64I16x8ExtractLaneU
+		case wasm.InstrI16x8ReplaceLane:
+			amd64, arm64 = OpAMD64I16x8ReplaceLane, OpARM64I16x8ReplaceLane
+		case wasm.InstrI32x4ExtractLane:
+			amd64, arm64 = OpAMD64I32x4ExtractLane, OpARM64I32x4ExtractLane
+		case wasm.InstrI32x4ReplaceLane:
+			amd64, arm64 = OpAMD64I32x4ReplaceLane, OpARM64I32x4ReplaceLane
+		case wasm.InstrI64x2ExtractLane:
+			amd64, arm64 = OpAMD64I64x2ExtractLane, OpARM64I64x2ExtractLane
+		case wasm.InstrI64x2ReplaceLane:
+			amd64, arm64 = OpAMD64I64x2ReplaceLane, OpARM64I64x2ReplaceLane
+		case wasm.InstrF32x4ExtractLane:
+			amd64, arm64 = OpAMD64F32x4ExtractLane, OpARM64F32x4ExtractLane
+		case wasm.InstrF32x4ReplaceLane:
+			amd64, arm64 = OpAMD64F32x4ReplaceLane, OpARM64F32x4ReplaceLane
+		case wasm.InstrF64x2ExtractLane:
+			amd64, arm64 = OpAMD64F64x2ExtractLane, OpARM64F64x2ExtractLane
+		case wasm.InstrF64x2ReplaceLane:
+			amd64, arm64 = OpAMD64F64x2ReplaceLane, OpARM64F64x2ReplaceLane
 		default:
 			continue
 		}
