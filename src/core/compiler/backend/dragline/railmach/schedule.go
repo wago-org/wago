@@ -35,6 +35,40 @@ type DependencyDAG struct {
 	defined    []bool
 }
 
+// HasScheduleAlternatives reports whether scheduling effort can change the
+// machine order. A direct dependency from every instruction to its source
+// predecessor proves a unique block-local topological order. Uncertain input
+// and cross-block LICM remain eligible so this gate can only remove redundant
+// candidates, never suppress a known transformation.
+func HasScheduleAlternatives(f *Func, dag *DependencyDAG, pressure *railssa.PressurePlan) bool {
+	if f == nil || dag == nil || len(dag.Offsets) != len(f.Insts)+1 || pressure != nil && len(pressure.LICM) != 0 {
+		return true
+	}
+	for _, block := range f.Blocks {
+		end := block.InstStart + block.InstCount
+		if end > uint32(len(f.Insts)) {
+			return true
+		}
+		for instruction := block.InstStart + 1; instruction < end; instruction++ {
+			start, dependencyEnd := dag.Offsets[instruction], dag.Offsets[instruction+1]
+			if dependencyEnd < start || dependencyEnd > uint32(len(dag.Dependencies)) {
+				return true
+			}
+			found := false
+			for _, dependency := range dag.Dependencies[start:dependencyEnd] {
+				if dependency.Instruction == instruction-1 {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // ResetVerifierScratch detaches reusable verifier state from a shallow DAG
 // copy. Immutable offsets and dependencies remain shared, allowing independent
 // candidate verification without duplicating the graph.

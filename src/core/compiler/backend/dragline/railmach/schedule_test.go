@@ -9,6 +9,27 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func TestHasScheduleAlternativesRequiresRealOrderingFreedom(t *testing.T) {
+	f := &Func{Insts: make([]Inst, 3), Blocks: []Block{{InstCount: 3}}}
+	serial := &DependencyDAG{
+		Offsets:      []uint32{0, 0, 1, 2},
+		Dependencies: []Dependency{{Instruction: 0, Kind: DependencyData}, {Instruction: 1, Kind: DependencyData}},
+	}
+	if HasScheduleAlternatives(f, serial, nil) {
+		t.Fatal("direct predecessor chain reported schedule alternatives")
+	}
+	parallel := &DependencyDAG{Offsets: []uint32{0, 0, 0, 0}}
+	if !HasScheduleAlternatives(f, parallel, nil) {
+		t.Fatal("independent instructions reported a unique schedule")
+	}
+	if !HasScheduleAlternatives(f, serial, &railssa.PressurePlan{LICM: []railssa.LICMMove{{}}}) {
+		t.Fatal("cross-block LICM opportunity reported a unique schedule")
+	}
+	if !HasScheduleAlternatives(f, &DependencyDAG{}, nil) {
+		t.Fatal("malformed dependency graph suppressed alternate schedules")
+	}
+}
+
 func buildScheduleTest(t *testing.T, target Target, m *wasm.Module) (*Func, *SelectionPlan, *railssa.Metadata, *DependencyDAG) {
 	t.Helper()
 	stack, err := railssa.BuildStackFunc(m, 0)

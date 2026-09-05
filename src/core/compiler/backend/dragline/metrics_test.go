@@ -182,6 +182,29 @@ func TestCompilerTargetModesIdentifyRailMachFinalization(t *testing.T) {
 	}
 }
 
+func TestCompilerSkipsRedundantScheduleCandidates(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0x00, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metrics Metrics
+	target, err := corecompiler.HostTarget(corecompiler.TargetCompatibility)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].ScheduleCandidates != 1 {
+		t.Fatalf("serial function schedule metrics = %#v", metrics.Functions)
+	}
+}
+
 func TestCompilerNativeRailMachBranchCastEdgeRefinement(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(

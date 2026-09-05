@@ -1228,17 +1228,18 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	haveBest := false
 	bestIndex := 0
 	fastMachine := railmach.FastMachinePolicy(len(machine.Insts))
+	scheduleAlternatives := railmach.HasScheduleAlternatives(machine, dag, pressure)
 	candidateCount := 3
-	if fastMachine {
+	if fastMachine || !scheduleAlternatives {
 		candidateCount = 1
 	}
-	parallelCandidates := p.parallelCandidates && len(machine.Insts) >= 1024 && !fastMachine
+	parallelCandidates := p.parallelCandidates && len(machine.Insts) >= 1024 && !fastMachine && scheduleAlternatives
 	// Evaluate the commonly retained source-stable candidate last. Candidate
 	// scoring is order-independent (Kind is the deterministic final tie-break),
 	// so its verified products can be consumed directly when it wins instead of
 	// rebuilding a fourth identical schedule/allocation/exit chain.
 	kinds := [3]railmach.ScheduleKind{railmach.ScheduleKindLatencyFusion, railmach.ScheduleKindPressure, railmach.ScheduleKindSourceStable}
-	if fastMachine {
+	if fastMachine || !scheduleAlternatives {
 		kinds[0] = railmach.ScheduleKindSourceStable
 	}
 	if parallelCandidates {
@@ -1305,7 +1306,11 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	scheduleCandidates := uint8(candidateCount)
 	if decision := railmach.DecideRetry(0, allocation, exit.Debt); !fastMachine && decision.Retry {
 		backendAttempts = railmach.MaxBackendAttempts
-		scheduleCandidates += 3
+		retryCandidateCount := 3
+		if !scheduleAlternatives {
+			retryCandidateCount = 1
+		}
+		scheduleCandidates += uint8(retryCandidateCount)
 		retryGreedy := defaultGreedy
 		retryGreedy.PreserveGPRCost = 0
 		retryGreedy.PreserveFPRCost = 0
@@ -1325,7 +1330,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				}
 			}
 		} else {
-			for _, kind := range retryKinds {
+			for _, kind := range retryKinds[:retryCandidateCount] {
 				candidate, retryErr := railmach.BuildScheduleWithPressure(machine, selection, dag, kind, pressure, &p.schedule)
 				if retryErr != nil {
 					return nil, retryErr
