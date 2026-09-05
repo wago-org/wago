@@ -37,6 +37,61 @@ func TestCollectInlinedCalleesDeduplicatesPastStackSetArm64(t *testing.T) {
 	}
 }
 
+func TestCollectInlinedCalleesFastImmediateDecodeArm64(t *testing.T) {
+	data := &inlineTargetData{slots: []uint32{1, 2}, targets: make([]inlineTarget, 2)}
+	data.targets[0].globalIdx = 0
+	data.targets[1].globalIdx = 1
+	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
+	body := []byte{
+		0x00,       // unreachable (immediate-free; stands in for the local decl byte)
+		0x20, 0x00, // local.get 0
+		0x41, 0x7f, // i32.const -1
+		0x10, 0x01, // call 1
+		0x44, 0, 0, 0, 0, 0, 0, 0, 0, // f64.const 0
+		0x23, 0x00, // global.get 0
+		0x10, 0x00, // call 0
+		0x28, 0x00, 0x00, // i32.load align=0 offset=0 (classifier fallback)
+		0x10, 0x01, // duplicate call 1
+		0x0b,
+	}
+	got := collectInlinedCallees(&wasm.Func{BodyBytes: body}, targets)
+	if len(got) != 2 || got[0].globalIdx != 1 || got[1].globalIdx != 0 {
+		t.Fatalf("inline targets = %#v, want [1 0] in first-call order", got)
+	}
+}
+
+func TestAllCallsWillInlineDeepControlArm64(t *testing.T) {
+	data := &inlineTargetData{slots: []uint32{1}, targets: []inlineTarget{{globalIdx: 0}}}
+	targets := inlineTargetTable{data: data, classifier: wasm.NewModuleInstructionClassifier(&wasm.Module{}, true)}
+	policy := currentCodegenPolicy()
+
+	// Exercise the allocation-free 64-frame bit stack and its bounded deep fallback.
+	body := []byte{0x00}
+	for range 65 {
+		body = append(body, 0x02, 0x40) // block void
+	}
+	body = append(body, 0x10, 0x00) // call 0
+	for range 66 {                  // close 65 blocks and the function
+		body = append(body, 0x0b)
+	}
+	if !allCallsWillInline(&wasm.Func{BodyBytes: body}, targets, policy) {
+		t.Fatal("deep block-nested direct call was not recognized as fully inlineable")
+	}
+
+	// A loop in the deep fallback must still activate the loop regression guard.
+	body = []byte{0x00}
+	for range 64 {
+		body = append(body, 0x02, 0x40)
+	}
+	body = append(body, 0x03, 0x40, 0x10, 0x00) // loop void; call 0
+	for range 66 {
+		body = append(body, 0x0b)
+	}
+	if allCallsWillInline(&wasm.Func{BodyBytes: body}, targets, policy) {
+		t.Fatal("regressive call in a deeply nested loop was classified as fully inlineable")
+	}
+}
+
 func TestInlineBasePoolRetentionIsBoundedArm64(t *testing.T) {
 	targetsData := &inlineTargetData{targets: make([]inlineTarget, maxRetainedInlineBases+1)}
 	callees := make([]*inlineTarget, len(targetsData.targets))
