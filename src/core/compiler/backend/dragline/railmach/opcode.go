@@ -452,6 +452,10 @@ const (
 	OpAMD64RefCast
 	OpAMD64BrOnCast
 	OpAMD64BrOnCastFail
+	OpAMD64StructGet
+	OpAMD64StructGetS
+	OpAMD64StructGetU
+	OpAMD64StructSet
 	opAMD64SelectedEnd
 )
 
@@ -895,6 +899,10 @@ const (
 	OpARM64RefCast
 	OpARM64BrOnCast
 	OpARM64BrOnCastFail
+	OpARM64StructGet
+	OpARM64StructGetS
+	OpARM64StructGetU
+	OpARM64StructSet
 	opARM64SelectedEnd
 )
 
@@ -1206,6 +1214,14 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrBrOnCast
 	case OpAMD64BrOnCastFail, OpARM64BrOnCastFail:
 		return wasm.InstrBrOnCastFail
+	case OpAMD64StructGet, OpARM64StructGet:
+		return wasm.InstrStructGet
+	case OpAMD64StructGetS, OpARM64StructGetS:
+		return wasm.InstrStructGetS
+	case OpAMD64StructGetU, OpARM64StructGetU:
+		return wasm.InstrStructGetU
+	case OpAMD64StructSet, OpARM64StructSet:
+		return wasm.InstrStructSet
 	case OpAMD64F32EqScalar, OpARM64F32EqScalar:
 		return wasm.InstrF32Eq
 	case OpAMD64F64EqScalar, OpARM64F64EqScalar:
@@ -1774,6 +1790,14 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64BrOnCast, OpARM64BrOnCast
 		case wasm.InstrBrOnCastFail:
 			amd64, arm64 = OpAMD64BrOnCastFail, OpARM64BrOnCastFail
+		case wasm.InstrStructGet:
+			amd64, arm64 = OpAMD64StructGet, OpARM64StructGet
+		case wasm.InstrStructGetS:
+			amd64, arm64 = OpAMD64StructGetS, OpARM64StructGetS
+		case wasm.InstrStructGetU:
+			amd64, arm64 = OpAMD64StructGetU, OpARM64StructGetU
+		case wasm.InstrStructSet:
+			amd64, arm64 = OpAMD64StructSet, OpARM64StructSet
 		case wasm.InstrF32Eq:
 			amd64, arm64 = OpAMD64F32EqScalar, OpARM64F32EqScalar
 		case wasm.InstrF64Eq:

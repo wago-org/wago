@@ -1195,6 +1195,69 @@ func TestSelectTargetOpcodesReferenceTypeHelpers(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesStructFieldHelpers(t *testing.T) {
+	structModule := func(fieldType byte, mutable bool, body []byte) *wasm.Module {
+		t.Helper()
+		mutability := byte(0)
+		if mutable {
+			mutability = 1
+		}
+		source := wasmtest.Module(
+			wasmtest.Section(1, wasmtest.Vec(
+				[]byte{0x5f, 0x01, fieldType, mutability},
+				wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			)),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+			wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+		)
+		m, err := wasm.DecodeModule(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := wasm.ValidateModule(m); err != nil {
+			t.Fatal(err)
+		}
+		return m
+	}
+	tests := []struct {
+		name    string
+		generic MOpcode
+		module  *wasm.Module
+		amd64   MOpcode
+		arm64   MOpcode
+	}{
+		{"get", wasm.InstrStructGet, structModule(0x7f, false, []byte{0xfb, 0x01, 0, 0xfb, 0x02, 0, 0, 0x0b}), OpAMD64StructGet, OpARM64StructGet},
+		{"get_s", wasm.InstrStructGetS, structModule(0x78, false, []byte{0xfb, 0x01, 0, 0xfb, 0x03, 0, 0, 0x0b}), OpAMD64StructGetS, OpARM64StructGetS},
+		{"get_u", wasm.InstrStructGetU, structModule(0x78, false, []byte{0xfb, 0x01, 0, 0xfb, 0x04, 0, 0, 0x0b}), OpAMD64StructGetU, OpARM64StructGetU},
+		{"set", wasm.InstrStructSet, structModule(0x7f, true, []byte{0xfb, 0x01, 0, 0x41, 1, 0xfb, 0x05, 0, 0, 0x41, 7, 0x0b}), OpAMD64StructSet, OpARM64StructSet},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			for _, target := range []Target{TargetAMD64, TargetARM64} {
+				t.Run(target.String(), func(t *testing.T) {
+					f := buildMachineTest(t, target, test.module)
+					if _, err := SelectTargetOpcodes(f); err != nil {
+						t.Fatal(err)
+					}
+					want := test.amd64
+					if target == TargetARM64 {
+						want = test.arm64
+					}
+					found := false
+					for _, instruction := range f.Insts {
+						if instruction.Op == want && SemanticOpcode(instruction.Op) == test.generic && IsCall(instruction.Op) {
+							found = true
+						}
+					}
+					if !found {
+						t.Fatalf("selected instructions = %#v, want helper call %d", f.Insts, want)
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesRefFunc(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(

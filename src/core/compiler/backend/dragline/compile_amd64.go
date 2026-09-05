@@ -1062,6 +1062,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64RefI31, railmach.OpAMD64I31GetS, railmach.OpAMD64I31GetU,
 			railmach.OpAMD64AnyConvertExtern, railmach.OpAMD64ExternConvertAny,
 			railmach.OpAMD64RefTest, railmach.OpAMD64RefCast, railmach.OpAMD64BrOnCast, railmach.OpAMD64BrOnCastFail,
+			railmach.OpAMD64StructGet, railmach.OpAMD64StructGetS, railmach.OpAMD64StructGetU, railmach.OpAMD64StructSet,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -1769,14 +1770,14 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				reloadGlobalDescriptors()
 				continue
 			}
-			if instruction.Op == wasm.InstrStructGet || instruction.Op == wasm.InstrStructGetS || instruction.Op == wasm.InstrStructGetU {
+			if semanticOp == wasm.InstrStructGet || semanticOp == wasm.InstrStructGetS || semanticOp == wasm.InstrStructGetU {
 				if len(operands) != 1 {
 					return nil, 0, true, fmt.Errorf("RailMach %s operand count is %d", instruction.Op, len(operands))
 				}
 				helper := codegen.GCHelperStructGet
-				if instruction.Op == wasm.InstrStructGetS {
+				if semanticOp == wasm.InstrStructGetS {
 					helper = codegen.GCHelperStructGetS
-				} else if instruction.Op == wasm.InstrStructGetU {
+				} else if semanticOp == wasm.InstrStructGetU {
 					helper = codegen.GCHelperStructGetU
 				}
 				payload, ok := codegen.EncodeGCHelperDispatch(helper, 0)
@@ -1804,7 +1805,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				emitAMD64ExternalCallFPRSave(&a, plan, true)
 				continue
 			}
-			if instruction.Op == wasm.InstrStructSet {
+			if semanticOp == wasm.InstrStructSet {
 				if len(operands) != 2 {
 					return nil, 0, true, fmt.Errorf("RailMach struct.set operand count is %d", len(operands))
 				}
