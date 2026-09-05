@@ -4018,6 +4018,21 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				a.NeonBsl16b(24, lhs, rhs)
 				a.NeonMov16b(dst, 24)
 				continue
+			case railmach.OpARM64I32x4RotrImmediate:
+				if len(operands) != 1 || instruction.Aux == 0 || instruction.Aux >= 32 {
+					return nil, 0, true, fmt.Errorf("RailMach selected i32x4 rotate has invalid operands or shift %d", instruction.Aux)
+				}
+				src := reg(operands[0].Reg)
+				result := dst
+				if result == src {
+					result = 24
+				}
+				a.NeonUshrS(result, src, uint8(instruction.Aux))
+				a.NeonSliS(result, src, uint8(32-instruction.Aux))
+				if result != dst {
+					a.NeonMov16b(dst, result)
+				}
+				continue
 			case railmach.OpARM64V128And, railmach.OpARM64V128Andnot, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
 				railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,
 				railmach.OpARM64I8x16Sub, railmach.OpARM64I8x16SubSatS, railmach.OpARM64I8x16SubSatU,

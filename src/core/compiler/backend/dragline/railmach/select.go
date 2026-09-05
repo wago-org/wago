@@ -45,6 +45,7 @@ const (
 	CombineCompareBranch
 	CombineImmediate
 	CombineAddress
+	CombineVectorRotate
 )
 
 type Combination struct {

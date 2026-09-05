@@ -1179,10 +1179,13 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if _, err := railmach.ApplyAddressFolding(machine, flow, semantic, simplified, selection); err != nil {
 		return nil, err
 	}
+	p.immediateUses = resizeNativeSlice(p.immediateUses, len(machine.VRegs))
+	if _, err := railmach.SelectARM64VectorRotatesVerified(machine, selection, p.immediateUses); err != nil {
+		return nil, err
+	}
 	if _, err := railmach.SelectARM64MulHighIdioms(machine); err != nil {
 		return nil, err
 	}
-	p.immediateUses = resizeNativeSlice(p.immediateUses, len(machine.VRegs))
 	if _, err := railmach.SelectARM64MultiplyAdds(machine, p.immediateUses); err != nil {
 		return nil, err
 	}

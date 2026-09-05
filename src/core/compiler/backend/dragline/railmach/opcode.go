@@ -488,6 +488,7 @@ const (
 	OpARM64V128Xor
 	OpARM64V128Not
 	OpARM64V128Bitselect
+	OpARM64I32x4RotrImmediate
 	OpARM64I8x16Add
 	OpARM64I8x16AddSatS
 	OpARM64I8x16AddSatU
@@ -1099,6 +1100,10 @@ var arm64SelectedSemanticOpcodes = func() (table [opARM64SelectedEnd - OpARM64V1
 
 func semanticOpcodeSlow(op MOpcode) MOpcode {
 	switch op {
+	case OpARM64I32x4RotrImmediate:
+		// Wasm has no vector rotate opcode; this selected operation implements
+		// the canonical complementary shift/or expression.
+		return wasm.InstrV128Or
 	case OpAMD64I32Load, OpARM64I32Load:
 		return wasm.InstrI32Load
 	case OpAMD64I64Load, OpARM64I64Load:
@@ -1631,7 +1636,7 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpAMD64F32x4RelaxedMadd, OpAMD64F32x4RelaxedNmadd, OpAMD64F64x2RelaxedMadd, OpAMD64F64x2RelaxedNmadd,
 		OpAMD64I16x8RelaxedQ15mulrS, OpAMD64I16x8RelaxedDotI8x16I7x16S, OpAMD64I32x4RelaxedDotI8x16I7x16AddS,
 		OpARM64V128Move, OpARM64V128Const, OpARM64V128Load, OpARM64V128Store,
-		OpARM64V128And, OpARM64V128Andnot, OpARM64V128Or, OpARM64V128Xor, OpARM64V128Not, OpARM64V128Bitselect,
+		OpARM64V128And, OpARM64V128Andnot, OpARM64V128Or, OpARM64V128Xor, OpARM64V128Not, OpARM64V128Bitselect, OpARM64I32x4RotrImmediate,
 		OpARM64I8x16Add, OpARM64I8x16AddSatS, OpARM64I8x16AddSatU, OpARM64I8x16Sub, OpARM64I8x16SubSatS, OpARM64I8x16SubSatU,
 		OpARM64I16x8Add, OpARM64I16x8AddSatS, OpARM64I16x8AddSatU, OpARM64I16x8Sub, OpARM64I16x8SubSatS, OpARM64I16x8SubSatU,
 		OpARM64I32x4Add, OpARM64I32x4Sub, OpARM64I64x2Add, OpARM64I64x2Sub,
