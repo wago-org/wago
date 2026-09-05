@@ -270,6 +270,8 @@ const (
 	OpAMD64I64Or
 	OpAMD64I32Xor
 	OpAMD64I64Xor
+	OpAMD64I32Mul
+	OpAMD64I64Mul
 	opAMD64SelectedEnd
 )
 
@@ -528,6 +530,8 @@ const (
 	OpARM64I64Or
 	OpARM64I32Xor
 	OpARM64I64Xor
+	OpARM64I32Mul
+	OpARM64I64Mul
 	OpARM64I32Madd
 	OpARM64I64Madd
 	OpARM64I64MulHighU
@@ -562,6 +566,10 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrI32Xor
 	case OpAMD64I64Xor, OpARM64I64Xor:
 		return wasm.InstrI64Xor
+	case OpAMD64I32Mul, OpARM64I32Mul:
+		return wasm.InstrI32Mul
+	case OpAMD64I64Mul, OpARM64I64Mul:
+		return wasm.InstrI64Mul
 	default:
 		return op
 	}
@@ -766,6 +774,10 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64I32Xor, OpARM64I32Xor
 		case wasm.InstrI64Xor:
 			amd64, arm64 = OpAMD64I64Xor, OpARM64I64Xor
+		case wasm.InstrI32Mul:
+			amd64, arm64 = OpAMD64I32Mul, OpARM64I32Mul
+		case wasm.InstrI64Mul:
+			amd64, arm64 = OpAMD64I64Mul, OpARM64I64Mul
 		case wasm.InstrV128Load:
 			amd64, arm64 = OpAMD64V128Load, OpARM64V128Load
 		case wasm.InstrV128Load8x8S:

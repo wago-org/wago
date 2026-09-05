@@ -172,6 +172,39 @@ func TestSelectTargetOpcodesIntegerLogical(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesIntegerMultiply(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [2]MOpcode
+	}{
+		{"amd64", TargetAMD64, [2]MOpcode{OpAMD64I32Mul, OpAMD64I64Mul}},
+		{"arm64", TargetARM64, [2]MOpcode{OpARM64I32Mul, OpARM64I64Mul}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			operations := [2]MOpcode{wasm.InstrI32Mul, wasm.InstrI64Mul}
+			for index, op := range []byte{0x6c, 0x7e} {
+				type_ := wasm.I32
+				if index != 0 {
+					type_ = wasm.I64
+				}
+				m := machineModule([]wasm.ValType{type_, type_}, []wasm.ValType{type_}, []byte{0x20, 0, 0x20, 1, op, 0x0b})
+				f := buildMachineTest(t, test.target, m)
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operations[index] {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operations[index])
+				}
+			}
+		})
+	}
+}
+
 func vectorFoundationFixture(target Target) *Func {
 	f := &Func{
 		Target: target,

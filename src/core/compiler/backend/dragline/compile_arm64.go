@@ -1084,6 +1084,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32Add, railmach.OpARM64I64Add, railmach.OpARM64I32Sub, railmach.OpARM64I64Sub,
 			railmach.OpARM64I32And, railmach.OpARM64I64And, railmach.OpARM64I32Or, railmach.OpARM64I64Or,
 			railmach.OpARM64I32Xor, railmach.OpARM64I64Xor,
+			railmach.OpARM64I32Mul, railmach.OpARM64I64Mul,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -5433,7 +5434,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				} else {
 					a.Sub32(dst, lhs, rhs)
 				}
-			case wasm.InstrI32Mul, wasm.InstrI64Mul:
+			case railmach.OpARM64I32Mul, railmach.OpARM64I64Mul:
 				if wide {
 					a.Mul64(dst, lhs, rhs)
 				} else {
@@ -8441,7 +8442,7 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 		if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Result != move.Reg {
 			continue
 		}
-		switch plan.Machine.Insts[definition].Op {
+		switch railmach.SemanticOpcode(plan.Machine.Insts[definition].Op) {
 		case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
 			wasm.InstrI32Mul, wasm.InstrI64Mul:
 			if len(plan.Machine.Insts) >= 256 {
@@ -8544,7 +8545,7 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 		if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Result != move.Reg {
 			continue
 		}
-		switch plan.Machine.Insts[definition].Op {
+		switch railmach.SemanticOpcode(plan.Machine.Insts[definition].Op) {
 		case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
 			wasm.InstrI32Mul, wasm.InstrI64Mul:
 			if len(plan.Machine.Insts) >= 256 {
@@ -8649,7 +8650,7 @@ func arm64RailMachEdgeResultRename(plan *nativeBackendPlan, block uint32) arm64E
 		if int(definition) >= len(plan.Machine.Insts) || plan.Machine.Insts[definition].Result != move.Reg {
 			continue
 		}
-		switch plan.Machine.Insts[definition].Op {
+		switch railmach.SemanticOpcode(plan.Machine.Insts[definition].Op) {
 		case wasm.InstrI32Add, wasm.InstrI64Add, wasm.InstrI32Sub, wasm.InstrI64Sub,
 			wasm.InstrI32Mul, wasm.InstrI64Mul:
 			if len(plan.Machine.Insts) >= 256 {

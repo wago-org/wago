@@ -1009,6 +1009,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32Add, railmach.OpAMD64I64Add, railmach.OpAMD64I32Sub, railmach.OpAMD64I64Sub,
 			railmach.OpAMD64I32And, railmach.OpAMD64I64And, railmach.OpAMD64I32Or, railmach.OpAMD64I64Or,
 			railmach.OpAMD64I32Xor, railmach.OpAMD64I64Xor,
+			railmach.OpAMD64I32Mul, railmach.OpAMD64I64Mul,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -4032,7 +4033,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrI32Mul || instruction.Op == wasm.InstrI64Mul {
+			if instruction.Op == railmach.OpAMD64I32Mul || instruction.Op == railmach.OpAMD64I64Mul {
 				if producer != ^uint32(0) {
 					a.ImulRRI(dst, lhs, int32(plan.Machine.Insts[producer].Aux), wide)
 				} else {
