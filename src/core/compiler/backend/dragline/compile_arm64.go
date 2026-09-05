@@ -1053,7 +1053,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64F32x4ConvertI32x4S, railmach.OpARM64F32x4ConvertI32x4U,
 			railmach.OpARM64F64x2ConvertLowI32x4S, railmach.OpARM64F64x2ConvertLowI32x4U,
 			railmach.OpARM64I32x4TruncSatF32x4S, railmach.OpARM64I32x4TruncSatF32x4U,
-			railmach.OpARM64I32x4TruncSatF64x2SZero, railmach.OpARM64I32x4TruncSatF64x2UZero:
+			railmach.OpARM64I32x4TruncSatF64x2SZero, railmach.OpARM64I32x4TruncSatF64x2UZero,
+			railmach.OpARM64I8x16Popcnt, railmach.OpARM64I16x8Q15mulrSatS:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3977,6 +3978,18 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				default:
 					a.NeonNegD(dst, src)
 				}
+				continue
+			case railmach.OpARM64I8x16Popcnt:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected i8x16.popcnt operand count is %d", len(operands))
+				}
+				a.NeonCntB(dst, reg(operands[0].Reg))
+				continue
+			case railmach.OpARM64I16x8Q15mulrSatS:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected i16x8.q15mulr_sat_s operand count is %d", len(operands))
+				}
+				a.NeonSqrdmulhH(dst, reg(operands[0].Reg), reg(operands[1].Reg))
 				continue
 			case railmach.OpARM64I64x2Mul:
 				if len(operands) != 2 {

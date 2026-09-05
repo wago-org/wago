@@ -607,7 +607,7 @@ func TestRailMachRejectsMixedSIMDBranchCastFunction(t *testing.T) {
 	}
 }
 
-func TestRailMachAdmitsOnlyV128FoundationBeforeVectorABI(t *testing.T) {
+func TestRailMachAdmitsOnlySupportedV128OperationsBeforeVectorABI(t *testing.T) {
 	foundation := &railssa.StackFunc{
 		HasV128:     true,
 		ResultTypes: []wasm.ValType{wasm.V128},
@@ -625,7 +625,7 @@ func TestRailMachAdmitsOnlyV128FoundationBeforeVectorABI(t *testing.T) {
 		"call": func(stack *railssa.StackFunc) {
 			stack.Instrs = append(stack.Instrs, railssa.StackInstr{Kind: wasm.InstrCall})
 		},
-		"later family": func(stack *railssa.StackFunc) { stack.Instrs[2].Kind = wasm.InstrI8x16Popcnt },
+		"unsupported family": func(stack *railssa.StackFunc) { stack.Instrs[2].Kind = wasm.InstrI8x16Shl },
 	} {
 		t.Run(name, func(t *testing.T) {
 			candidate := *foundation

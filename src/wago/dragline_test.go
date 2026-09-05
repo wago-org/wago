@@ -5402,6 +5402,7 @@ func TestDraglineRailMachVectorIntegerMinMaxMulExecution(t *testing.T) {
 		{name: "i16x8.max_s", subopcode: 152, lhs: i16x8(-2), rhs: i16x8(1), want: i16x8(1)},
 		{name: "i16x8.max_u", subopcode: 153, lhs: i16x8(65534), rhs: i16x8(1), want: i16x8(65534)},
 		{name: "i16x8.avgr_u", subopcode: 155, lhs: i16x8(2), rhs: i16x8(5), want: i16x8(4)},
+		{name: "i16x8.q15mulr_sat_s", subopcode: 130, lhs: i16x8(-32768), rhs: i16x8(-32768), want: i16x8(32767)},
 		{name: "i32x4.mul", subopcode: 181, lhs: i32x4(70000), rhs: i32x4(3), want: i32x4(210000)},
 		{name: "i32x4.min_s", subopcode: 182, lhs: i32x4(-2), rhs: i32x4(1), want: i32x4(-2)},
 		{name: "i32x4.min_u", subopcode: 183, lhs: i32x4(0xfffffffe), rhs: i32x4(1), want: i32x4(1)},
@@ -5478,6 +5479,7 @@ func TestDraglineRailMachVectorIntegerUnaryExecution(t *testing.T) {
 	}{
 		{name: "i8x16.abs", subopcode: 96, input: repeat(1, -7), want: repeat(1, 7)},
 		{name: "i8x16.neg", subopcode: 97, input: repeat(1, 7), want: repeat(1, -7)},
+		{name: "i8x16.popcnt", subopcode: 98, input: repeat(1, 0x55), want: repeat(1, 4)},
 		{name: "i16x8.abs", subopcode: 128, input: repeat(2, -700), want: repeat(2, 700)},
 		{name: "i16x8.neg", subopcode: 129, input: repeat(2, 700), want: repeat(2, -700)},
 		{name: "i32x4.abs", subopcode: 160, input: repeat(4, -70000), want: repeat(4, 70000)},

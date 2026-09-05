@@ -512,7 +512,8 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrF32x4ConvertI32x4S, wasm.InstrF32x4ConvertI32x4U,
 			wasm.InstrF64x2ConvertLowI32x4S, wasm.InstrF64x2ConvertLowI32x4U,
 			wasm.InstrI32x4TruncSatF32x4S, wasm.InstrI32x4TruncSatF32x4U,
-			wasm.InstrI32x4TruncSatF64x2SZero, wasm.InstrI32x4TruncSatF64x2UZero:
+			wasm.InstrI32x4TruncSatF64x2SZero, wasm.InstrI32x4TruncSatF64x2UZero,
+			wasm.InstrI8x16Popcnt, wasm.InstrI16x8Q15mulrSatS:
 		default:
 			return false
 		}
@@ -1651,7 +1652,9 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 		case wasm.InstrI32x4TruncSatF32x4S, wasm.InstrI32x4TruncSatF32x4U,
 			wasm.InstrI32x4TruncSatF64x2SZero, wasm.InstrI32x4TruncSatF64x2UZero,
 			railmach.OpAMD64I32x4TruncSatF32x4S, railmach.OpAMD64I32x4TruncSatF32x4U,
-			railmach.OpAMD64I32x4TruncSatF64x2SZero, railmach.OpAMD64I32x4TruncSatF64x2UZero:
+			railmach.OpAMD64I32x4TruncSatF64x2SZero, railmach.OpAMD64I32x4TruncSatF64x2UZero,
+			wasm.InstrI8x16Popcnt, wasm.InstrI16x8Q15mulrSatS,
+			railmach.OpAMD64I8x16Popcnt, railmach.OpAMD64I16x8Q15mulrSatS:
 			return 3 // XMM3-XMM5 cover clamp, mask, and conversion temporaries.
 		case wasm.InstrI16x8ExtmulLowI8x16S, wasm.InstrI16x8ExtmulHighI8x16S,
 			wasm.InstrI16x8ExtmulLowI8x16U, wasm.InstrI16x8ExtmulHighI8x16U,
