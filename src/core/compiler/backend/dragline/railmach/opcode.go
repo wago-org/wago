@@ -2770,6 +2770,11 @@ func SelectARM64ImmediateOpcodes(f *Func, producers []uint32) (int, error) {
 		producers[instructionID] = ^uint32(0)
 		selected++
 	}
+	for instructionID, producerID := range producers {
+		if producerID != ^uint32(0) {
+			return 0, fmt.Errorf("railmach: ARM64 immediate producer %d (%s) for instruction %d (%s) has no selected opcode", producerID, SemanticOpcode(f.Insts[producerID].Op), instructionID, SemanticOpcode(f.Insts[instructionID].Op))
+		}
+	}
 	if err := Verify(f); err != nil {
 		return 0, err
 	}

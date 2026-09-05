@@ -722,6 +722,13 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers []uint3
 		if producer.Result == 0 || uses[producer.Result] != 1 || producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const {
 			continue
 		}
+		consumerOperands := plan.Machine.InstructionOperands(combination.Consumer)
+		if len(consumerOperands) != 2 || consumerOperands[1].Reg != producer.Result {
+			// Earlier machine contractions may have changed the selected
+			// consumer after RailSpec recorded this relation. Only a still-binary
+			// operation with the literal in operand two owns an immediate form.
+			continue
+		}
 		producers[combination.Consumer] = combination.Producer
 		skipped[combination.Producer] = true
 	}
@@ -1808,6 +1815,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		if _, err := railmach.SelectARM64ImmediateOpcodes(machine, p.immediateProducer); err != nil {
 			return nil, err
 		}
+		p.plan.ImmediateProducer = nil
 	}
 	return &p.plan, nil
 }

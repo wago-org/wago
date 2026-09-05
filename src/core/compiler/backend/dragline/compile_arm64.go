@@ -1085,13 +1085,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 		}
 		return [...]arm64.Reg{arm64.X14, arm64.X15, arm64.X13}[min(ordinal, 2)]
 	}
-	immediateProducer, skipInstruction := plan.ImmediateProducer, plan.ImmediateSkip
+	skipInstruction := plan.ImmediateSkip
 	if metrics != nil {
-		for _, producer := range immediateProducer {
-			if producer != ^uint32(0) {
-				metrics.ImmediateFolds++
-			}
-		}
 		for _, instruction := range plan.Machine.Insts {
 			if railmach.IsARM64ImmediateOpcode(instruction.Op) {
 				metrics.ImmediateFolds++
@@ -2306,9 +2301,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			}
 			if semanticOp != wasm.InstrCall && semanticOp != wasm.InstrCallIndirect {
 				for operandIndex, operand := range operands {
-					if operandIndex == 1 && (railmach.IsARM64ImmediateOpcode(instruction.Op) || immediateProducer[instructionID] != ^uint32(0)) {
-						// The selected ARM64 immediate form owns the literal; older
-						// shift/compare forms still refer to the producer plan.
+					if operandIndex == 1 && railmach.IsARM64ImmediateOpcode(instruction.Op) {
+						// The selected ARM64 immediate form owns the literal.
 						continue
 					}
 					duplicate := false
@@ -4180,10 +4174,6 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						}
 						continue
 					}
-					if producer := immediateProducer[instructionID]; producer != ^uint32(0) && int(producer) < len(plan.Machine.Insts) &&
-						emitARM64RailMachSIMDImmediateShift(&a, instruction.Op, dst, lhs, uint32(plan.Machine.Insts[producer].Aux)) {
-						continue
-					}
 					mask := uint64(15)
 					if instruction.Op == railmach.OpARM64I8x16Shl || instruction.Op == railmach.OpARM64I8x16ShrS || instruction.Op == railmach.OpARM64I8x16ShrU {
 						mask = 7
@@ -5199,9 +5189,6 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			case railmach.OpARM64I64RotrImmediate:
 				a.RorImm(dst, lhs, uint8(instruction.Aux)&63, false)
 				continue
-			}
-			if producer := immediateProducer[instructionID]; producer != ^uint32(0) {
-				return nil, 0, true, fmt.Errorf("RailMach selected unsupported ARM64 immediate producer %d for %s", producer, instruction.Op)
 			}
 			rhs := reg(operands[1].Reg)
 			if semanticOp >= wasm.InstrI32DivS && semanticOp <= wasm.InstrI32RemU || semanticOp >= wasm.InstrI64DivS && semanticOp <= wasm.InstrI64RemU {

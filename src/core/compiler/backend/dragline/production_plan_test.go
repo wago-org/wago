@@ -460,6 +460,27 @@ func TestNativeImmediateCombinationsFoldRepeatedVectorShiftCounts(t *testing.T) 
 	}
 }
 
+func TestNativeImmediateCombinationsRejectStaleMultiplyAddRelation(t *testing.T) {
+	machine := &railmach.Func{
+		Target: railmach.TargetARM64,
+		Insts: []railmach.Inst{
+			{Op: wasm.InstrI32Const, Aux: 7, Result: 1},
+			{Op: railmach.OpARM64I32Madd, Result: 5, OperandStart: 0, OperandCount: 3},
+		},
+		Operands: []railmach.Operand{{Reg: 2}, {Reg: 3}, {Reg: 1}},
+		VRegs:    make([]railmach.VRegData, 6),
+	}
+	selection := &railmach.SelectionPlan{Combinations: []railmach.Combination{{Kind: railmach.CombineImmediate, Producer: 0, Consumer: 1}}}
+	plan := &nativeBackendPlan{Machine: machine, Selection: selection}
+	producers := make([]uint32, len(machine.Insts))
+	skipped := make([]bool, len(machine.Insts))
+	uses := make([]uint32, len(machine.VRegs))
+	buildNativeImmediateCombinations(plan, producers, skipped, uses)
+	if producers[1] != ^uint32(0) || skipped[0] {
+		t.Fatalf("stale multiply-add relation admitted: producers=%v skipped=%v", producers, skipped)
+	}
+}
+
 func TestNativeImmediateCombinationRetainsEdgeTransferConstant(t *testing.T) {
 	machine := &railmach.Func{
 		Insts: []railmach.Inst{
