@@ -367,6 +367,7 @@ These were measured and removed rather than retained speculatively:
 | Disable store/load forwarding | Full compile -3.60% with equal code size, but execution +0.50% geomean and json-as serialization +17.96%; retained the optimization |
 | Fuse branch-pair and store/load scans | Exact output/resources, but +0.17% combined compile latency with every corpus nonsignificant; removed |
 | Allocate local merge snapshots in 16-buffer slabs | Allocation count -17.41%, but compile latency +2.36% and heap +0.25%; replaced by the inline fixed snapshot |
+| Reserve and clear `br_table` placeholders in one span | +2.41% backend geomean with unchanged heap and allocations; the existing four-byte append loop lowers better |
 
 ## Method
 
