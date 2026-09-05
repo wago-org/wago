@@ -4,12 +4,103 @@ Measured through 2026-09-05 on native ARM64 and Rosetta AMD64. This is a stoppin
 `jairus/railshot-compile-latency`, comparing:
 
 - Base: `main` at `c46f2129edb52e6f30f4d0bfc5ae105cfde0c84d`
-- Branch implementation: `5d9b1f2d`
+- Branch implementation: `71f82617`
 - Host: Apple M4 Max, macOS 26.6.2, Go 1.26.5, `darwin/arm64`
 
 The AMD64 checkpoint below used the same host through Rosetta. Native Linux
 AMD64 confirmation remains pending because `ssh hub@hub` timed out during this
 measurement window.
+
+## Pause checkpoint: current branch versus main
+
+This is the requested review pause. The ARM64 numbers are the last exact native
+checkpoint; the four commits after it are AMD64-only. The AMD64 numbers below
+are a fresh comparison of current `71f82617` against pinned `main` using eight
+fresh, interleaved 300 ms samples per revision on Rosetta. Negative latency is
+better.
+
+| Architecture and metric | Delta versus `main` |
+|---|---:|
+| ARM64 backend compile latency, five large modules | **-35.70%** |
+| ARM64 full compile latency, five large modules | **-40.20%** |
+| ARM64 backend compile heap | **-6.33%** |
+| ARM64 full compile heap | **-1.62%** |
+| ARM64 generated machine code | **-4.50%** |
+| ARM64 execution latency, complete corpus | **-0.90%** |
+| AMD64 backend compile latency, five large modules | **-25.58%** |
+| AMD64 full compile latency, five large modules | **-32.98%** |
+| AMD64 backend compile heap | **-0.28%** |
+| AMD64 full compile heap | +0.24% (effectively flat) |
+| AMD64 generated machine code | **0.00%** on all five modules |
+| AMD64 execution latency, complete corpus | -0.25% (flat) |
+
+### Fresh AMD64 compile results
+
+| Corpus | Backend main | Backend branch | Delta | Main heap | Branch heap | Heap delta |
+|---|---:|---:|---:|---:|---:|---:|
+| json-as | 800.2 us | 615.2 us | **-23.12%** | 129.8 KiB | 130.4 KiB | +0.43% |
+| Lua | 15.33 ms | 11.76 ms | **-23.32%** | 706.2 KiB | 703.1 KiB | -0.44% |
+| SQLite | 55.82 ms | 46.48 ms | **-16.74%** | 2.002 MiB | 1.987 MiB | -0.78% |
+| Ruby | 671.1 ms | 459.5 ms | **-31.53%** | 14.53 MiB | 14.46 MiB | -0.48% |
+| esbuild | 422.3 ms | 286.8 ms | **-32.09%** | 17.78 MiB | 17.76 MiB | -0.12% |
+| **Geomean** | 45.46 ms | 33.83 ms | **-25.58%** | 2.143 MiB | 2.137 MiB | **-0.28%** |
+
+| Corpus | Full main | Full branch | Delta | Main heap | Branch heap | Heap delta |
+|---|---:|---:|---:|---:|---:|---:|
+| json-as | 1.518 ms | 1.026 ms | **-32.41%** | 186.7 KiB | 187.8 KiB | +0.55% |
+| Lua | 25.43 ms | 17.25 ms | **-32.15%** | 1.015 MiB | 1.017 MiB | +0.20% |
+| SQLite | 95.18 ms | 69.62 ms | **-26.86%** | 3.652 MiB | 3.660 MiB | +0.21% |
+| Ruby | 1.090 s | 688.4 ms | **-36.81%** | 32.36 MiB | 32.43 MiB | +0.22% |
+| esbuild | 707.7 ms | 451.4 ms | **-36.22%** | 70.46 MiB | 70.49 MiB | +0.03% |
+| **Geomean** | 77.70 ms | 52.07 ms | **-32.98%** | 4.341 MiB | 4.352 MiB | +0.24% |
+
+The newest change replaces AMD64's detailed per-op arena simulation with the
+same coarse bounded body estimate already proven on ARM64. Against its immediate
+predecessor it improves backend compilation **5.57%** and full compilation
+**3.11%**, while reducing backend/full heap **0.38%/0.21%**. It shrinks the
+retained `funcHints` record from 32 to 24 bytes and deletes 586 lines. The five
+backend improvements were all significant (`p<=0.007`); full-compilation Lua
+and esbuild were favorable but not individually significant in that sample.
+
+The three preceding AMD64 emission/scanner changes improved their immediate
+predecessors as follows:
+
+| Incremental AMD64 change | Backend compile | Full compile | Heap | Code |
+|---|---:|---:|---:|---:|
+| Direct four-byte `imm32` append | **-1.45%** | **-2.16%** | unchanged | identical sizes |
+| Specialized one-to-four-byte `emit` | **-1.59%** | **-1.37%** | unchanged | identical sizes |
+| Dispatch hint boundaries with exact opcodes | **-1.60%** | **-1.41%** | unchanged | identical sizes |
+| Coarse bounded arena estimate | **-5.57%** | **-3.11%** | -0.38% / -0.21% | identical sizes |
+
+Generated AMD64 code remains 57,470 B, 889,172 B, 3,634,105 B,
+35,155,402 B, and 26,612,624 B for json-as, Lua, SQLite, Ruby, and
+esbuild respectively, exactly matching `main` in size.
+
+### Fresh AMD64 execution results
+
+The complete runnable corpus used eight fresh interleaved 100 ms samples. Its
+geomean moved from 4.807 us to 4.795 us (**-0.25%**, statistically flat), with
+**0 B/op and 0 allocs/op** on both revisions. Indirect-call dispatch improved
+5.07%. SHA-256 and raytrace initially crossed `p<0.05` in the short broad run;
+a dedicated 12-pair alternating-order 300 ms confirmation found both flat and
+favorable (SHA-256 -1.35%, `p=0.101`; raytrace -0.29%, `p=0.378`).
+
+### Validation and raw data
+
+- Native ARM64 `go test ./...`: pass.
+- Rosetta AMD64 backend, shared, frontend, and Wasm tests: pass.
+- Five large AMD64 generated-code sizes: exact parity with `main`.
+- Native AMD64 remains pending: `ssh hub@hub` timed out again at this checkpoint.
+- Rosetta cannot qualify the guard-page differential suite: its host-feature
+  detection disables SIMD and produces the known explicit/guard discrepancy.
+
+Raw captures are:
+
+- `/tmp/amd64-current-vs-main-compile-{base.RsQzXJ,candidate.xa8whx}`
+- `/tmp/amd64-current-vs-main-exec-{base.pE13Cp,candidate.CkfETy}`
+- `/tmp/amd64-current-vs-main-exec-focus-{base.Fg3ZD4,candidate.9WKEq5}`
+- `/tmp/amd64-coarse-production-focused-{base.fVaqGL,candidate.FI7Xhg}`
+- `/tmp/amd64-coarse-production-full-{base.QYM8ss,candidate.Sj4Aiz}`
 
 ## Current result
 
