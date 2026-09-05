@@ -380,6 +380,51 @@ func TestSelectTargetOpcodesIntegerConversions(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesScalarFloatComparisons(t *testing.T) {
+	operations := [12]MOpcode{
+		wasm.InstrF32Eq, wasm.InstrF64Eq, wasm.InstrF32Ne, wasm.InstrF64Ne,
+		wasm.InstrF32Lt, wasm.InstrF64Lt, wasm.InstrF32Gt, wasm.InstrF64Gt,
+		wasm.InstrF32Le, wasm.InstrF64Le, wasm.InstrF32Ge, wasm.InstrF64Ge,
+	}
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [12]MOpcode
+	}{
+		{"amd64", TargetAMD64, [12]MOpcode{
+			OpAMD64F32EqScalar, OpAMD64F64EqScalar, OpAMD64F32NeScalar, OpAMD64F64NeScalar,
+			OpAMD64F32LtScalar, OpAMD64F64LtScalar, OpAMD64F32GtScalar, OpAMD64F64GtScalar,
+			OpAMD64F32LeScalar, OpAMD64F64LeScalar, OpAMD64F32GeScalar, OpAMD64F64GeScalar,
+		}},
+		{"arm64", TargetARM64, [12]MOpcode{
+			OpARM64F32EqScalar, OpARM64F64EqScalar, OpARM64F32NeScalar, OpARM64F64NeScalar,
+			OpARM64F32LtScalar, OpARM64F64LtScalar, OpARM64F32GtScalar, OpARM64F64GtScalar,
+			OpARM64F32LeScalar, OpARM64F64LeScalar, OpARM64F32GeScalar, OpARM64F64GeScalar,
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for index, encoding := range []byte{0x5b, 0x61, 0x5c, 0x62, 0x5d, 0x63, 0x5e, 0x64, 0x5f, 0x65, 0x60, 0x66} {
+				type_ := wasm.F32
+				if index&1 != 0 {
+					type_ = wasm.F64
+				}
+				m := machineModule([]wasm.ValType{type_, type_}, []wasm.ValType{wasm.I32}, []byte{0x20, 0, 0x20, 1, encoding, 0x0b})
+				f := buildMachineTest(t, test.target, m)
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operations[index] {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operations[index])
+				}
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerComparisons(t *testing.T) {
 	operations := [22]MOpcode{
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,

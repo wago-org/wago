@@ -1026,6 +1026,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32WrapI64, railmach.OpAMD64I64ExtendI32S, railmach.OpAMD64I64ExtendI32U,
 			railmach.OpAMD64I32Extend8S, railmach.OpAMD64I32Extend16S,
 			railmach.OpAMD64I64Extend8S, railmach.OpAMD64I64Extend16S, railmach.OpAMD64I64Extend32S,
+			railmach.OpAMD64F32EqScalar, railmach.OpAMD64F64EqScalar, railmach.OpAMD64F32NeScalar, railmach.OpAMD64F64NeScalar,
+			railmach.OpAMD64F32LtScalar, railmach.OpAMD64F64LtScalar, railmach.OpAMD64F32GtScalar, railmach.OpAMD64F64GtScalar,
+			railmach.OpAMD64F32LeScalar, railmach.OpAMD64F64LeScalar, railmach.OpAMD64F32GeScalar, railmach.OpAMD64F64GeScalar,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -3694,13 +3697,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
-			if instruction.Op >= wasm.InstrF32Eq && instruction.Op <= wasm.InstrF64Ge {
+			if semanticOp >= wasm.InstrF32Eq && semanticOp <= wasm.InstrF64Ge {
 				rhs := reg(operands[1].Reg)
-				f64 := instruction.Op >= wasm.InstrF64Eq
+				f64 := semanticOp >= wasm.InstrF64Eq
 				a.Ucomis(lhs, rhs, f64)
 				unordered := a.JccPlaceholder(amd64.CondP)
 				condition := amd64.CondE
-				switch instruction.Op {
+				switch semanticOp {
 				case wasm.InstrF32Ne, wasm.InstrF64Ne:
 					condition = amd64.CondNE
 				case wasm.InstrF32Lt, wasm.InstrF64Lt:
@@ -3715,7 +3718,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.SetccReg(condition, dst)
 				orderedDone := a.JmpPlaceholder()
 				a.PatchRel32(unordered, a.Len())
-				if instruction.Op == wasm.InstrF32Ne || instruction.Op == wasm.InstrF64Ne {
+				if semanticOp == wasm.InstrF32Ne || semanticOp == wasm.InstrF64Ne {
 					a.MovImm32(dst, 1)
 				} else {
 					a.XorSelf32(dst)

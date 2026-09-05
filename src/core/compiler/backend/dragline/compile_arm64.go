@@ -1101,6 +1101,9 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32WrapI64, railmach.OpARM64I64ExtendI32S, railmach.OpARM64I64ExtendI32U,
 			railmach.OpARM64I32Extend8S, railmach.OpARM64I32Extend16S,
 			railmach.OpARM64I64Extend8S, railmach.OpARM64I64Extend16S, railmach.OpARM64I64Extend32S,
+			railmach.OpARM64F32EqScalar, railmach.OpARM64F64EqScalar, railmach.OpARM64F32NeScalar, railmach.OpARM64F64NeScalar,
+			railmach.OpARM64F32LtScalar, railmach.OpARM64F64LtScalar, railmach.OpARM64F32GtScalar, railmach.OpARM64F64GtScalar,
+			railmach.OpARM64F32LeScalar, railmach.OpARM64F64LeScalar, railmach.OpARM64F32GeScalar, railmach.OpARM64F64GeScalar,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -5023,12 +5026,12 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op >= wasm.InstrF32Eq && instruction.Op <= wasm.InstrF64Ge {
+			if semanticOp >= wasm.InstrF32Eq && semanticOp <= wasm.InstrF64Ge {
 				rhs := reg(operands[1].Reg)
-				f64 := instruction.Op >= wasm.InstrF64Eq
+				f64 := semanticOp >= wasm.InstrF64Eq
 				condition := arm64.CondEQ
 				swap := false
-				switch instruction.Op {
+				switch semanticOp {
 				case wasm.InstrF32Ne, wasm.InstrF64Ne:
 					condition = arm64.CondNE
 				case wasm.InstrF32Lt, wasm.InstrF64Lt:
