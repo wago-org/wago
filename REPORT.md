@@ -328,6 +328,11 @@ These were measured and removed rather than retained speculatively:
 | Validation rare-reference lookup table | Short run looked positive; six-pair 1 s confirmation reversed to +1.11%; removed |
 | Branch-hint reset only on `br_if` | +0.20% backend geomean; removed |
 | Direct instance-context load/store calls | +0.36% backend geomean; removed |
+| Zero-register store for unpinned zero-valued locals | +0.68% backend geomean, with Lua +1.52% and SQLite +1.63%; removed despite a 0.13% heap reduction |
+| Memarg-only hint classification for scalar loads/stores | -0.16% backend geomean, but focused hint scans were +0.12% and flat; below measurement value |
+| Split hot scaled load/store helpers | +0.30% backend geomean, with Lua +2.32%; removed |
+| `binary.LittleEndian.AppendUint32` instruction emission | +1.25% backend geomean, with Ruby +3.17%; the existing four-byte append lowers better |
+| Stable cost-bucket parallel scheduling | Reduced `p4` allocation counts 5.24% by geomean and up to 20.19%, but did not improve latency and regressed Ruby `p4` by 3.89%; removed under the no-memory-only-landing gate |
 
 ## Method
 
@@ -360,7 +365,12 @@ Simple load/store helper specialization, unchecked scaled encoders, and module
 memory-type caches did not clear the retention gate. A complete
 validation-to-hints fusion was also implemented and rejected because it
 increased latency and heap, so the next work should remain narrow and
-profile-led rather than retaining more summary state.
+profile-led rather than retaining more summary state. Follow-up probes also
+ruled out generic memarg-only hint classification, alternative instruction-word
+appends, zero-register local stores, and cost-bucket scheduling. The ARM64 first
+pass is therefore at a defensible plateau; the next implementation work should
+move to AMD64's still-pointer-rich operand representation and measured allocator
+stack traversals, as ordered by the plan.
 
 The near-term acceptance gates are:
 
