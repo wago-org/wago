@@ -26,9 +26,12 @@ type ABIContract struct {
 	FPRClobbers uint64
 	CalleeGPRs  uint64
 	CalleeFPRs  uint64
-	Params      uint16
-	Results     uint16
-	Class       ABIClass
+	// VectorFPRs marks clobbered FP/vector registers whose architectural upper
+	// half is live and therefore requires a full 16-byte callee-save home.
+	VectorFPRs uint64
+	Params     uint16
+	Results    uint16
+	Class      ABIClass
 	// RegisterResults is the source-ordered result prefix returned in private
 	// result GPRs. Remaining results use the caller-owned result area.
 	RegisterResults uint8
@@ -88,6 +91,9 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		if location.Bank == BankFPR {
 			usesFP = true
 			contract.FPRClobbers |= mask
+			if f.VRegs[reg].Type == TypeV128 {
+				contract.VectorFPRs |= mask
+			}
 		} else {
 			contract.GPRClobbers |= mask
 		}
@@ -104,6 +110,9 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		if location.Bank == BankFPR {
 			usesFP = true
 			contract.FPRClobbers |= mask
+			if fragment.Reg != 0 && f.VRegs[fragment.Reg].Type == TypeV128 {
+				contract.VectorFPRs |= mask
+			}
 		} else {
 			contract.GPRClobbers |= mask
 		}
@@ -117,6 +126,9 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		if move.Bank == BankFPR {
 			usesFP = true
 			contract.FPRClobbers |= uint64(1) << move.Physical
+			if move.Reg != 0 && f.VRegs[move.Reg].Type == TypeV128 {
+				contract.VectorFPRs |= uint64(1) << move.Physical
+			}
 		} else {
 			contract.GPRClobbers |= uint64(1) << move.Physical
 		}
@@ -128,6 +140,7 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 		if f.VRegs[result].Type == TypeV128 {
 			contract.VectorResultMask |= 1 << index
 			contract.FPRClobbers |= uint64(1) << index
+			contract.VectorFPRs |= uint64(1) << index
 		} else if directARM64 && len(f.Results) == 1 && f.VRegs[result].Bank == BankFPR {
 			contract.FPRClobbers |= uint64(1) << index
 		} else {
@@ -265,6 +278,7 @@ func PruneSkippedDefinitionClobbers(f *Func, allocation *GreedyAllocation, contr
 	}
 	contract.GPRClobbers &^= candidatesGPR &^ retainedGPR
 	contract.FPRClobbers &^= candidatesFPR &^ retainedFPR
+	contract.VectorFPRs &= contract.FPRClobbers
 	config := DefaultGreedyConfig(f.Target)
 	contract.CalleeGPRs = contract.GPRClobbers &^ config.CallerMask(BankGPR)
 	contract.CalleeFPRs = contract.FPRClobbers &^ config.CallerMask(BankFPR)
@@ -432,6 +446,7 @@ type FrameRequirements struct {
 	RootSlots       uint16
 	CalleeGPRs      uint64
 	CalleeFPRs      uint64
+	VectorFPRs      uint64
 	CallAreaBytes   uint32
 	ResultAreaBytes uint32
 	RuntimeBytes    uint32
@@ -448,7 +463,8 @@ type FrameLayout struct {
 }
 
 func ComposeFrame(requirements FrameRequirements) (FrameLayout, error) {
-	total := uint64(requirements.SpillSlots)*8 + uint64(requirements.RootSlots)*8 + uint64(popcount64(requirements.CalleeGPRs)+popcount64(requirements.CalleeFPRs))*8
+	vectorFPRs := requirements.VectorFPRs & requirements.CalleeFPRs
+	total := uint64(requirements.SpillSlots)*8 + uint64(requirements.RootSlots)*8 + uint64(popcount64(requirements.CalleeGPRs)+popcount64(requirements.CalleeFPRs)+popcount64(vectorFPRs))*8
 	total = (total + 15) &^ 15
 	total += uint64(requirements.CallAreaBytes) + uint64(requirements.ResultAreaBytes) + uint64(requirements.RuntimeBytes)
 	total = (total + 15) &^ 15
@@ -458,7 +474,7 @@ func ComposeFrame(requirements FrameRequirements) (FrameLayout, error) {
 	layout := FrameLayout{}
 	layout.SpillBytes = uint32(requirements.SpillSlots) * 8
 	layout.RootBytes = uint32(requirements.RootSlots) * 8
-	layout.CalleeSaveBytes = uint32(popcount64(requirements.CalleeGPRs)+popcount64(requirements.CalleeFPRs)) * 8
+	layout.CalleeSaveBytes = uint32(popcount64(requirements.CalleeGPRs)+popcount64(requirements.CalleeFPRs)+popcount64(vectorFPRs)) * 8
 	offset := align16(layout.SpillBytes + layout.RootBytes + layout.CalleeSaveBytes)
 	layout.CallAreaOffset = offset
 	offset += requirements.CallAreaBytes
@@ -477,7 +493,7 @@ func FrameForAllocation(contract ABIContract, allocation *GreedyAllocation, maxC
 	if contract.RegisterResults > PrivateResultRegisters || uint16(contract.RegisterResults) > contract.Results || contract.VectorResultMask&^uint8(lowMask(contract.RegisterResults)) != 0 {
 		return FrameRequirements{}, FrameLayout{}, fmt.Errorf("railmach: invalid private result convention: %d register results for %d results", contract.RegisterResults, contract.Results)
 	}
-	requirements := FrameRequirements{SpillSlots: allocation.SpillSlots, CalleeGPRs: contract.CalleeGPRs, CalleeFPRs: contract.CalleeFPRs}
+	requirements := FrameRequirements{SpillSlots: allocation.SpillSlots, CalleeGPRs: contract.CalleeGPRs, CalleeFPRs: contract.CalleeFPRs, VectorFPRs: contract.VectorFPRs & contract.CalleeFPRs}
 	if maxCallSlots > ^uint32(0)/8 {
 		return FrameRequirements{}, FrameLayout{}, fmt.Errorf("railmach: outgoing call area overflow")
 	}

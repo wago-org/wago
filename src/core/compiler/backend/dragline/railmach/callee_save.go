@@ -50,7 +50,10 @@ func PlanCalleeSaveRegions(f *Func, schedule *Schedule, allocation *GreedyAlloca
 
 	var gpr, fpr [64]calleeSaveUse
 	initializeCalleeSaveUses(&gpr, contract.CalleeGPRs)
-	initializeCalleeSaveUses(&fpr, contract.CalleeFPRs)
+	// A vector register needs a 16-byte home. Keep those saves at the function
+	// boundary; the compact regional record intentionally describes only the
+	// established eight-byte scalar save slot.
+	initializeCalleeSaveUses(&fpr, contract.CalleeFPRs&^contract.VectorFPRs)
 	visit := func(bank Bank, physical uint16, start, end uint32) {
 		if physical >= 64 {
 			return
@@ -265,7 +268,11 @@ func calleeSaveSlotOffset(contract ABIContract, frame FrameLayout, bank Bank, ph
 			if bank == BankFPR && index == physical {
 				return offset
 			}
-			offset += 8
+			if contract.VectorFPRs&(uint64(1)<<index) != 0 {
+				offset += 16
+			} else {
+				offset += 8
+			}
 		}
 	}
 	return ^uint32(0)

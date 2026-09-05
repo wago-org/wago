@@ -4362,6 +4362,92 @@ func TestDraglineRailMachV128PublicBoundaryExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachV128DirectCallExecution(t *testing.T) {
+	live := [16]byte{0x80, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	argument := [16]byte{0x7f, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30}
+	callee := []byte{0x20, 0x00, 0x0b} // identity(v128) -> v128
+	caller := []byte{0xfd, 0x0c}
+	caller = append(caller, live[:]...)
+	caller = append(caller, 0xfd, 0x0c)
+	caller = append(caller, argument[:]...)
+	caller = append(caller,
+		0x10, 0x00, // call identity while the first vector remains live
+		0xfd, 0x51, // v128.xor
+		0x0b,
+	)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}), wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(callee), wasmtest.Code(caller))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	result, err := instance.Invoke("run")
+	if err != nil || len(result) != 2 {
+		t.Fatalf("vector direct call = %#x, %v", result, err)
+	}
+	var want [16]byte
+	for index := range want {
+		want[index] = live[index] ^ argument[index]
+	}
+	if result[0] != binary.LittleEndian.Uint64(want[:8]) || result[1] != binary.LittleEndian.Uint64(want[8:]) {
+		t.Fatalf("vector direct call = %#x; want %x", result, want)
+	}
+}
+
+func TestDraglineRailMachV128ImportCallExecution(t *testing.T) {
+	live := [16]byte{0x80, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	argument := [16]byte{0x7f, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30}
+	importEntry := append(append(wasmtest.Name("env"), wasmtest.Name("identity")...), 0x00, 0x00)
+	body := []byte{0xfd, 0x0c}
+	body = append(body, live[:]...)
+	body = append(body, 0xfd, 0x0c)
+	body = append(body, argument[:]...)
+	body = append(body, 0x10, 0x00, 0xfd, 0x51, 0x0b)
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.V128}), wasmtest.FuncType(nil, []wasm.ValType{wasm.V128}))),
+		wasmtest.Section(2, wasmtest.Vec(importEntry)),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(1))),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 1))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{"env.identity": HostFunc(func(_ HostModule, params, results []uint64) {
+		if len(params) != 2 || len(results) != 2 {
+			t.Fatalf("vector import slots = params:%d results:%d", len(params), len(results))
+		}
+		results[0], results[1] = params[0], params[1]
+	})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	result, err := instance.Invoke("run")
+	if err != nil || len(result) != 2 {
+		t.Fatalf("vector import call = %#x, %v", result, err)
+	}
+	var want [16]byte
+	for index := range want {
+		want[index] = live[index] ^ argument[index]
+	}
+	if result[0] != binary.LittleEndian.Uint64(want[:8]) || result[1] != binary.LittleEndian.Uint64(want[8:]) {
+		t.Fatalf("vector import call = %#x; want %x", result, want)
+	}
+}
+
 func TestDraglineRailMachVectorLoadVariantsExecution(t *testing.T) {
 	payload := [16]byte{0x80, 0x7f, 0xfe, 0x01, 0x00, 0xff, 0x34, 0x92, 8, 9, 10, 11, 12, 13, 14, 15}
 	extend8 := func(signed bool) (out [16]byte) {

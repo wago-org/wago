@@ -1330,6 +1330,11 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 		if calleeFPRs&(uint64(1)<<index) == 0 {
 			continue
 		}
+		if plan.ABI.VectorFPRs&(uint64(1)<<index) != 0 {
+			a.StrQ(arm64.SP, int32(calleeSaveOffset), arm64FPRRegisters[index])
+			calleeSaveOffset += 16
+			continue
+		}
 		next := index + 1
 		for next < len(arm64FPRRegisters) && calleeFPRs&(uint64(1)<<next) == 0 {
 			next++
@@ -3156,7 +3161,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 							*relocs = append(*relocs, arm64CallReloc{at: a.Bl(), target: target - plan.Stack.ImportedFuncs})
 							metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 16)
 						}
-						if err := arm64StagePrivateCallResults(&a, instruction, callOffset); err != nil {
+						if err := arm64StagePrivateCallResults(&a, plan, instruction, callOffset); err != nil {
 							return nil, 0, true, err
 						}
 						immutableDone = append(immutableDone, a.Branch())
@@ -3191,7 +3196,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					}
 					*relocs = append(*relocs, arm64CallReloc{at: a.Bl(), target: target - plan.Stack.ImportedFuncs})
 					metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 16)
-					if err := arm64StagePrivateCallResults(&a, instruction, callOffset); err != nil {
+					if err := arm64StagePrivateCallResults(&a, plan, instruction, callOffset); err != nil {
 						return nil, 0, true, err
 					}
 					specializedDone = a.Branch()
@@ -3340,7 +3345,9 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				var privateFPArguments [len(arm64FPParamRegisters)]arm64RailMachCallArgument
 				privateArgumentCount, privateFPArgumentCount := 0, 0
 				registerArgumentsReady := true
+				argumentSlot := uint32(0)
 				for index, operand := range operands {
+					data := plan.Machine.VRegs[operand.Reg]
 					scratch := arm64.X14
 					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR {
 						scratch = 29
@@ -3349,7 +3356,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					if err != nil {
 						return nil, 0, true, err
 					}
-					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR && !privateRegisterCall {
+					if data.Bank == railmach.BankFPR && data.Type != railmach.TypeV128 && !privateRegisterCall {
 						a.FmovToGpr(arm64.X16, src, plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF64)
 						src = arm64.X16
 					}
@@ -3361,7 +3368,9 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 							privateArguments[privateArgumentCount] = arm64RailMachCallArgument{src: src, dst: arm64ParamRegisters[privateArgumentCount], i32: plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32}
 							privateArgumentCount++
 						}
-					} else if !fastTinyCall && !a.Store64(src, arm64.X8, uint32(index*8)) {
+					} else if !fastTinyCall && data.Type == railmach.TypeV128 {
+						a.StrQ(arm64.X8, int32(argumentSlot*8), src)
+					} else if !fastTinyCall && !a.Store64(src, arm64.X8, argumentSlot*8) {
 						return nil, 0, true, fmt.Errorf("RailMach call argument %d is not encodable", index)
 					}
 					if index < len(arm64ParamRegisters) {
@@ -3370,6 +3379,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					if len(operands) == 1 {
 						singleRegisterArgument = src
 					}
+					argumentSlot += uint32(data.Type.SpillSlotUnits())
 				}
 				if privateRegisterCall {
 					arm64EmitRailMachCallArguments(&a, privateArguments[:privateArgumentCount])
@@ -3435,7 +3445,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					*relocs = append(*relocs, arm64CallReloc{at: a.Bl(), target: uint32(instruction.Aux) - plan.Stack.ImportedFuncs})
 					metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 0)
 					if !arm64RailMachDirectCallUsesPrivateABI(plan, instructionID, instruction) || instruction.ResultCount() > 1 {
-						if err := arm64StagePrivateCallResults(&a, instruction, callOffset); err != nil {
+						if err := arm64StagePrivateCallResults(&a, plan, instruction, callOffset); err != nil {
 							return nil, 0, true, err
 						}
 					}
@@ -3449,7 +3459,11 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 					}
 				} else if instruction.Result != 0 {
 					dst := reg(instruction.Result)
-					if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
+					if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
+						if dst != arm64FPParamRegisters[0] {
+							a.NeonOrr16b(dst, arm64FPParamRegisters[0], arm64FPParamRegisters[0])
+						}
+					} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 						if privateRegisterCall {
 							if dst != arm64FPParamRegisters[0] {
 								a.FmovReg(dst, arm64FPParamRegisters[0], plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
@@ -5734,6 +5748,11 @@ railMachEpilogue:
 		if calleeFPRs&(uint64(1)<<index) == 0 {
 			continue
 		}
+		if plan.ABI.VectorFPRs&(uint64(1)<<index) != 0 {
+			a.LdrQ(arm64FPRRegisters[index], arm64.SP, int32(calleeSaveOffset))
+			calleeSaveOffset += 16
+			continue
+		}
 		next := index + 1
 		for next < len(arm64FPRRegisters) && calleeFPRs&(uint64(1)<<next) == 0 {
 			next++
@@ -7280,14 +7299,19 @@ func arm64RailMachStoreValue(a *arm64.Asm, plan *nativeBackendPlan, value railma
 	return arm64RailMachWriteLocation(a, plan, value, plan.Allocation.Locations[value], src)
 }
 
-func arm64StagePrivateCallResults(a *arm64.Asm, instruction railmach.Inst, callOffset uint32) error {
+func arm64StagePrivateCallResults(a *arm64.Asm, plan *nativeBackendPlan, instruction railmach.Inst, callOffset uint32) error {
 	if !arm64RailMachLeaSP(a, arm64.X8, callOffset) {
 		return fmt.Errorf("RailMach call result area offset %d is not encodable", callOffset)
 	}
+	slot := uint32(0)
 	for index := 0; index < min(int(instruction.ResultCount()), railmach.PrivateResultRegisters); index++ {
-		if !a.Store64(arm64RailMachGPRRegisters[index], arm64.X8, uint32(index*8)) {
+		data := plan.Machine.VRegs[instruction.Result+railmach.VReg(index)]
+		if data.Type == railmach.TypeV128 {
+			a.StrQ(arm64.X8, int32(slot*8), arm64FPRRegisters[index])
+		} else if !a.Store64(arm64RailMachGPRRegisters[index], arm64.X8, slot*8) {
 			return fmt.Errorf("RailMach private call result %d is not encodable", index)
 		}
+		slot += uint32(data.Type.SpillSlotUnits())
 	}
 	return nil
 }
@@ -7296,23 +7320,30 @@ func arm64MaterializeCallResults(a *arm64.Asm, plan *nativeBackendPlan, instruct
 	if !arm64RailMachLeaSP(a, arm64.X8, callOffset) {
 		return fmt.Errorf("RailMach call result area offset %d is not encodable", callOffset)
 	}
+	slot := uint32(0)
 	for ordinal := uint32(0); ordinal < instruction.ResultCount(); ordinal++ {
 		value := instruction.Result + railmach.VReg(ordinal)
+		data := plan.Machine.VRegs[value]
 		location := plan.Allocation.LocationAt(value, position)
 		if location.Kind == railmach.LocationInvalid {
+			slot += uint32(data.Type.SpillSlotUnits())
 			continue
 		}
-		if !a.Load64(arm64.X16, arm64.X8, ordinal*8) {
+		src := arm64.X16
+		if data.Type == railmach.TypeV128 {
+			a.LdrQ(29, arm64.X8, int32(slot*8))
+			src = 29
+		} else if !a.Load64(arm64.X16, arm64.X8, slot*8) {
 			return fmt.Errorf("RailMach call result %d is not encodable", ordinal)
 		}
-		src := arm64.X16
-		if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+		if data.Bank == railmach.BankFPR && data.Type != railmach.TypeV128 {
 			a.FmovFromGpr(29, arm64.X16, plan.Machine.VRegs[value].Type == railmach.TypeF64)
 			src = 29
 		}
 		if err := arm64RailMachWriteLocation(a, plan, value, location, src); err != nil {
 			return err
 		}
+		slot += uint32(data.Type.SpillSlotUnits())
 	}
 	return nil
 }

@@ -292,7 +292,15 @@ func TestNativeCallArgumentBytesCoversLargestCanonicalVector(t *testing.T) {
 			{Op: wasm.InstrCall, Result: 1},
 		},
 		Operands: make([]railmach.Operand, 14),
+		VRegs:    make([]railmach.VRegData, 16),
 	}
+	for index := range machine.Operands {
+		machine.Operands[index].Reg = railmach.VReg(index + 1)
+		machine.VRegs[index+1].Type = railmach.TypeI64
+	}
+	machine.VRegs[1].Type = railmach.TypeV128
+	machine.Insts[2].Result = 15
+	machine.VRegs[15].Type = railmach.TypeV128
 	if got := nativeCallArgumentBytes(machine); got != 96 {
 		t.Fatalf("call argument bytes = %d, want 96", got)
 	}
@@ -620,8 +628,8 @@ func TestRailMachAdmitsV128LocalsButRejectsUnqualifiedBoundaryCases(t *testing.T
 		t.Fatal("internal v128 foundation function did not enter RailMach")
 	}
 	for name, edit := range map[string]func(*railssa.StackFunc){
-		"call": func(stack *railssa.StackFunc) {
-			stack.Instrs = append(stack.Instrs, railssa.StackInstr{Kind: wasm.InstrCall})
+		"indirect call": func(stack *railssa.StackFunc) {
+			stack.Instrs = append(stack.Instrs, railssa.StackInstr{Kind: wasm.InstrCallIndirect})
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -639,6 +647,12 @@ func TestRailMachAdmitsV128LocalsButRejectsUnqualifiedBoundaryCases(t *testing.T
 	boundary.Results = []wasm.ValType{wasm.V128}
 	if !railMachCandidate(&boundary, true) {
 		t.Fatal("single-result v128 boundary did not enter RailMach")
+	}
+	directCall := *foundation
+	directCall.Instrs = append([]railssa.StackInstr(nil), foundation.Instrs...)
+	directCall.Instrs = append(directCall.Instrs, railssa.StackInstr{Kind: wasm.InstrCall})
+	if !railMachCandidate(&directCall, true) {
+		t.Fatal("direct-call v128 function did not enter RailMach")
 	}
 	local := *foundation
 	local.Locals = []wasm.ValType{wasm.V128}

@@ -281,10 +281,10 @@ func TestAMD64StructuredSIMDHighRegistersRespectStackPressure(t *testing.T) {
 	}
 }
 
-func TestAMD64StructuredPreservesPinnedLocalsAcrossCall(t *testing.T) {
+func TestAMD64RailMachAvoidsUnneededPinnedLocalSaveAcrossExactCall(t *testing.T) {
 	callee := wasmtest.Code([]byte{0x20, 0x00, 0x0b})
 	callerBody := []byte{
-		0x01, 0x01, 0x7b, // one v128 local forces structured emission
+		0x01, 0x01, 0x7b, // one v128 local exercises mixed-bank planning
 		0xfd, 0x0c, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x1a, // v128.const 0; drop
 		0x20, 0x00, 0x10, 0x00, 0x1a, // call 0(local.get 0); drop
 		0x20, 0x00, 0x0b, // return the pinned parameter
@@ -299,8 +299,8 @@ func TestAMD64StructuredPreservesPinnedLocalsAcrossCall(t *testing.T) {
 	var save, restore amd64.Asm
 	save.StoreRsp64(0, amd64.R12)
 	restore.LoadRsp32(amd64.R12, 0)
-	if !bytes.Contains(output.Code, save.B) || !bytes.Contains(output.Code, restore.B) {
-		t.Fatalf("structured call did not save and restore its pinned local: %x", output.Code)
+	if bytes.Contains(output.Code, save.B) || bytes.Contains(output.Code, restore.B) {
+		t.Fatalf("exact local call retained an unnecessary pinned-local save: %x", output.Code)
 	}
 }
 
@@ -459,7 +459,7 @@ func TestAMD64StructuredFusesIntegerComparisonIntoControl(t *testing.T) {
 	}
 }
 
-func TestAMD64StructuredShuffleUsesRIPMaskOperands(t *testing.T) {
+func TestAMD64RailMachShuffleUsesSelectedRegisterForms(t *testing.T) {
 	body := []byte{0x20, 0x00, 0x20, 0x01, 0xfd, 0x0d}
 	for lane := byte(0); lane < 16; lane++ {
 		body = append(body, lane)
@@ -471,8 +471,8 @@ func TestAMD64StructuredShuffleUsesRIPMaskOperands(t *testing.T) {
 		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
 	)
 	output := compileAMD64EmissionTest(t, source)
-	if got := countAMD64VPshufbRIP(output.Code); got != 2 {
-		t.Fatalf("RIP-relative vpshufb instructions = %d, want 2", got)
+	if got := countAMD64VPshufbRIP(output.Code); got != 0 || !containsAMD64VEXOpcode(output.Code, 0x00) {
+		t.Fatalf("selected shuffle code has RIP forms=%d or no register vpshufb: %x", got, output.Code)
 	}
 }
 

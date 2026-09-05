@@ -49,6 +49,8 @@ type nativeBackendPlan struct {
 	// indirect calls. Platform callees may clobber these even though local
 	// Dragline callees honor the private callee-save contract.
 	ExternalCallFPRs uint64
+	// ExternalCallVectorFPRs is the full-width subset of ExternalCallFPRs.
+	ExternalCallVectorFPRs uint64
 	// HelperSafepointBase is the module-global ID assigned to the first
 	// allocating runtime-helper instruction in this function.
 	HelperSafepointBase uint32
@@ -416,10 +418,10 @@ func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {
 }
 
 // railMachV128FoundationCandidate admits vector operations whose machine
-// lowering is complete. Vector globals, calls, and mixed multi-result vector
-// signatures remain on the structured oracle until their boundary contracts
-// are independently qualified. Vector parameters, single results, declared
-// locals, and block values use the typed allocation and transfer machinery.
+// lowering is complete. Vector globals, indirect calls, and mixed multi-result
+// vector signatures remain on the structured oracle until their boundary
+// contracts are independently qualified. Vector parameters, direct calls,
+// single results, declared locals, and block values use the typed machinery.
 func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 	if stack == nil || stack.HasReferences || len(stack.BranchCasts) != 0 {
 		return false
@@ -440,7 +442,7 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 	}
 	hasVectorOperation := false
 	for _, instruction := range stack.Instrs {
-		if instruction.Kind == wasm.InstrCall || instruction.Kind == wasm.InstrCallIndirect {
+		if instruction.Kind == wasm.InstrCallIndirect {
 			return false
 		}
 		if !wasm.IsSIMDValidationInstructionKind(instruction.Kind) {
@@ -543,8 +545,14 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 }
 
 func stackHasSIMDInstruction(stack *railssa.StackFunc) bool {
-	for _, instruction := range stack.Instrs {
+	for index, instruction := range stack.Instrs {
 		if wasm.IsSIMDValidationInstructionKind(instruction.Kind) {
+			// A vector constant immediately discarded is pure and has no observable
+			// trap. Do not let feature-probing dead code move an otherwise scalar
+			// function away from its better target path.
+			if instruction.Kind == wasm.InstrV128Const && index+1 < len(stack.Instrs) && stack.Instrs[index+1].Kind == wasm.InstrDrop {
+				continue
+			}
 			return true
 		}
 	}
@@ -935,11 +943,10 @@ func railMachPhysicalLiveAcross(plan *nativeBackendPlan, instructionID uint32, b
 	return false
 }
 
-func nativeExternalCallFPRMask(stack *railssa.StackFunc, machine *railmach.Func, allocation *railmach.GreedyAllocation) uint64 {
+func nativeExternalCallFPRMasks(stack *railssa.StackFunc, machine *railmach.Func, allocation *railmach.GreedyAllocation) (all, vector uint64) {
 	if stack == nil || machine == nil || allocation == nil || machine.Target != railmach.TargetAMD64 {
-		return 0
+		return 0, 0
 	}
-	var mask uint64
 	for instructionID, instruction := range machine.Insts {
 		external := instruction.Op != wasm.InstrCall && railmach.IsCall(instruction.Op) || instruction.Op == wasm.InstrCall && uint32(instruction.Aux) < stack.ImportedFuncs
 		if !external {
@@ -952,11 +959,15 @@ func nativeExternalCallFPRMask(stack *railssa.StackFunc, machine *railmach.Func,
 			}
 			location := allocation.Locations[interval.Reg]
 			if location.Kind == railmach.LocationRegister && location.Index < 64 {
-				mask |= uint64(1) << location.Index
+				mask := uint64(1) << location.Index
+				all |= mask
+				if machine.VRegs[interval.Reg].Type == railmach.TypeV128 {
+					vector |= mask
+				}
 			}
 		}
 	}
-	return mask
+	return all, vector
 }
 
 func nativeMemoryAccess(kind wasm.InstrKind) (size int, signed, store, ok bool) {
@@ -1418,10 +1429,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if err != nil {
 		return nil, err
 	}
-	externalCallFPRs := nativeExternalCallFPRMask(stack, machine, allocation)
+	externalCallFPRs, externalCallVectorFPRs := nativeExternalCallFPRMasks(stack, machine, allocation)
 	if p.rootPlan.SlotCount != 0 || externalCallFPRs != 0 {
 		requirements.RootSlots = p.rootPlan.SlotCount
-		requirements.CallAreaBytes += uint32(bits.OnesCount64(externalCallFPRs)) * 8
+		requirements.CallAreaBytes += uint32(bits.OnesCount64(externalCallFPRs)+bits.OnesCount64(externalCallVectorFPRs)) * 8
 		frame, err = railmach.ComposeFrame(requirements)
 		if err != nil {
 			return nil, err
@@ -1490,7 +1501,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	p.plan = nativeBackendPlan{
 		Stack: stack, CFG: cfg, Semantic: semantic,
 		Machine: machine, Selection: selection, DAG: dag, Schedule: schedule, Allocation: allocation, Exit: exit, PostRA: postRA,
-		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts,
+		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, ExternalCallVectorFPRs: externalCallVectorFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64BMI2:      target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
 		PostRAPairWith: p.postRAPairWith, PostRASkip: p.postRASkip,
@@ -2212,8 +2223,15 @@ func nativeCallArgumentBytes(machine *railmach.Func) uint32 {
 		if !railmach.IsCall(instruction.Op) {
 			continue
 		}
-		slots := uint32(len(machine.InstructionOperands(uint32(instructionID))))
-		slots = max(slots, instruction.ResultCount())
+		argumentSlots := uint32(0)
+		for _, operand := range machine.InstructionOperands(uint32(instructionID)) {
+			argumentSlots += uint32(machine.VRegs[operand.Reg].Type.SpillSlotUnits())
+		}
+		resultSlots := uint32(0)
+		for ordinal := uint32(0); ordinal < instruction.ResultCount(); ordinal++ {
+			resultSlots += uint32(machine.VRegs[instruction.Result+railmach.VReg(ordinal)].Type.SpillSlotUnits())
+		}
+		slots := max(argumentSlots, resultSlots)
 		maxSlots = max(maxSlots, slots)
 	}
 	return (maxSlots*8 + 15) &^ 15

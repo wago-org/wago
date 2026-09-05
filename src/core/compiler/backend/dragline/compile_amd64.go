@@ -1211,8 +1211,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	}
 	for index := range amd64FPRRegisters {
 		if plan.ABI.CalleeFPRs&^shrinkFPRs&(uint64(1)<<index) != 0 {
-			a.FStoreDisp(amd64.RSP, int32(calleeSaveOffset), amd64FPRRegisters[index], true)
-			calleeSaveOffset += 8
+			if plan.ABI.VectorFPRs&(uint64(1)<<index) != 0 {
+				a.VMovdquStoreDisp(amd64.RSP, int32(calleeSaveOffset), amd64FPRRegisters[index])
+				calleeSaveOffset += 16
+			} else {
+				a.FStoreDisp(amd64.RSP, int32(calleeSaveOffset), amd64FPRRegisters[index], true)
+				calleeSaveOffset += 8
+			}
 		}
 	}
 	reloadGlobalDescriptors()
@@ -2064,7 +2069,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 							*relocs = append(*relocs, amd64CallReloc{at: a.CallRel32(), target: target - plan.Stack.ImportedFuncs})
 							metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 0)
 						}
-						amd64StagePrivateCallResults(&a, instruction, callOffset)
+						amd64StagePrivateCallResults(&a, plan, instruction, callOffset)
 						immutableDone = append(immutableDone, a.JmpPlaceholder())
 						a.PatchRel32(next, a.Len())
 					}
@@ -2099,7 +2104,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					}
 					*relocs = append(*relocs, amd64CallReloc{at: a.CallRel32(), target: target - plan.Stack.ImportedFuncs})
 					metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 0)
-					amd64StagePrivateCallResults(&a, instruction, callOffset)
+					amd64StagePrivateCallResults(&a, plan, instruction, callOffset)
 					specializedDone = a.JmpPlaceholder()
 					a.PatchRel32(fallback, a.Len())
 					a.Load64(amd64.R10, amd64.R11, 8+coreruntime.TableEntryCodePtrOffset)
@@ -2164,36 +2169,43 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				var privateArguments [len(amd64ParamRegisters)]amd64RailMachCallArgument
 				privateArgumentCount := 0
+				argumentSlot := uint32(0)
 				for index, operand := range operands {
+					data := plan.Machine.VRegs[operand.Reg]
 					scratch := amd64.RSI
-					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR {
+					if data.Bank == railmach.BankFPR {
 						scratch = 13
 					}
 					src, err := amd64RailMachReadValueAt(&a, plan, operand.Reg, scratch, 0)
 					if err != nil {
 						return nil, 0, true, err
 					}
-					if plan.Machine.VRegs[operand.Reg].Bank == railmach.BankFPR {
+					if data.Bank == railmach.BankFPR && data.Type != railmach.TypeV128 {
 						a.MovXmmToGpr(amd64.R11, src, plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF64)
 						src = amd64.R11
 					}
 					if privateRegisterCall {
 						privateArguments[privateArgumentCount] = amd64RailMachCallArgument{src: src, dst: amd64ParamRegisters[index], i32: plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32}
 						privateArgumentCount++
+					} else if data.Type == railmach.TypeV128 {
+						a.VMovdquStoreDisp(amd64.RSP, callOffset+int32(argumentSlot*8), src)
 					} else {
-						a.StoreRsp64(callOffset+int32(index*8), src)
+						a.StoreRsp64(callOffset+int32(argumentSlot*8), src)
 					}
+					argumentSlot += uint32(data.Type.SpillSlotUnits())
 				}
 				if privateRegisterCall {
 					amd64EmitRailMachCallArguments(&a, privateArguments[:privateArgumentCount])
 				} else {
 					a.LeaRsp(amd64.RDI, callOffset)
+					slot := uint32(0)
 					for index, operand := range operands[:min(len(operands), len(amd64ParamRegisters))] {
 						if plan.Machine.VRegs[operand.Reg].Type == railmach.TypeI32 || plan.Machine.VRegs[operand.Reg].Type == railmach.TypeF32 {
-							a.LoadRsp32(amd64ParamRegisters[index], callOffset+int32(index*8))
+							a.LoadRsp32(amd64ParamRegisters[index], callOffset+int32(slot*8))
 						} else {
-							a.LoadRsp64(amd64ParamRegisters[index], callOffset+int32(index*8))
+							a.LoadRsp64(amd64ParamRegisters[index], callOffset+int32(slot*8))
 						}
+						slot += uint32(plan.Machine.VRegs[operand.Reg].Type.SpillSlotUnits())
 					}
 				}
 				if imported {
@@ -2226,7 +2238,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					*relocs = append(*relocs, amd64CallReloc{at: a.CallRel32(), target: uint32(instruction.Aux) - plan.Stack.ImportedFuncs})
 					metadata.recordRailMachSafepoint(a.Len(), plan, instruction.Source, 0)
 					if instruction.ResultCount() > 1 {
-						amd64StagePrivateCallResults(&a, instruction, callOffset)
+						amd64StagePrivateCallResults(&a, plan, instruction, callOffset)
 					}
 				}
 				if imported || instruction.ResultCount() > 1 {
@@ -2237,7 +2249,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					location := plan.Allocation.LocationAt(instruction.Result, currentPosition)
 					if location.Kind != railmach.LocationInvalid {
 						src := amd64.RAX
-						if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
+						if plan.Machine.VRegs[instruction.Result].Type == railmach.TypeV128 {
+							src = amd64FPRRegisters[0]
+						} else if plan.Machine.VRegs[instruction.Result].Bank == railmach.BankFPR {
 							a.MovGprToXmm(13, amd64.RAX, plan.Machine.VRegs[instruction.Result].Type == railmach.TypeF64)
 							src = 13
 						}
@@ -4290,8 +4304,13 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	}
 	for index := range amd64FPRRegisters {
 		if plan.ABI.CalleeFPRs&^shrinkFPRs&(uint64(1)<<index) != 0 {
-			a.FLoadDisp(amd64FPRRegisters[index], amd64.RSP, int32(calleeSaveOffset), true)
-			calleeSaveOffset += 8
+			if plan.ABI.VectorFPRs&(uint64(1)<<index) != 0 {
+				a.VMovdquLoadDisp(amd64FPRRegisters[index], amd64.RSP, int32(calleeSaveOffset))
+				calleeSaveOffset += 16
+			} else {
+				a.FLoadDisp(amd64FPRRegisters[index], amd64.RSP, int32(calleeSaveOffset), true)
+				calleeSaveOffset += 8
+			}
 		}
 	}
 	if len(plan.Machine.Results) > railmach.PrivateResultRegisters {
@@ -4701,12 +4720,21 @@ func emitAMD64ExternalCallFPRSave(a *amd64.Asm, plan *nativeBackendPlan, restore
 		if plan.ExternalCallFPRs&(uint64(1)<<index) == 0 {
 			continue
 		}
-		if restore {
+		vector := plan.ExternalCallVectorFPRs&(uint64(1)<<index) != 0
+		if restore && vector {
+			a.VMovdquLoadDisp(register, amd64.RSP, int32(offset))
+		} else if restore {
 			a.FLoadDisp(register, amd64.RSP, int32(offset), true)
+		} else if vector {
+			a.VMovdquStoreDisp(amd64.RSP, int32(offset), register)
 		} else {
 			a.FStoreDisp(amd64.RSP, int32(offset), register, true)
 		}
-		offset += 8
+		if vector {
+			offset += 16
+		} else {
+			offset += 8
+		}
 	}
 }
 
@@ -4936,28 +4964,44 @@ func amd64RailMachStoreValue(a *amd64.Asm, plan *nativeBackendPlan, value railma
 	return amd64RailMachWriteLocation(a, plan, value, plan.Allocation.Locations[value], src)
 }
 
-func amd64StagePrivateCallResults(a *amd64.Asm, instruction railmach.Inst, callOffset int32) {
+func amd64StagePrivateCallResults(a *amd64.Asm, plan *nativeBackendPlan, instruction railmach.Inst, callOffset int32) {
+	slot := uint32(0)
 	for index := 0; index < min(int(instruction.ResultCount()), railmach.PrivateResultRegisters); index++ {
-		a.StoreRsp64(callOffset+int32(index*8), amd64RailMachGPRRegisters[index])
+		data := plan.Machine.VRegs[instruction.Result+railmach.VReg(index)]
+		if data.Type == railmach.TypeV128 {
+			a.VMovdquStoreDisp(amd64.RSP, callOffset+int32(slot*8), amd64FPRRegisters[index])
+		} else {
+			a.StoreRsp64(callOffset+int32(slot*8), amd64RailMachGPRRegisters[index])
+		}
+		slot += uint32(data.Type.SpillSlotUnits())
 	}
 }
 
 func amd64MaterializeCallResults(a *amd64.Asm, plan *nativeBackendPlan, instruction railmach.Inst, callOffset int32, position uint32) error {
+	slot := uint32(0)
 	for ordinal := uint32(0); ordinal < instruction.ResultCount(); ordinal++ {
 		value := instruction.Result + railmach.VReg(ordinal)
+		data := plan.Machine.VRegs[value]
 		location := plan.Allocation.LocationAt(value, position)
 		if location.Kind == railmach.LocationInvalid {
+			slot += uint32(data.Type.SpillSlotUnits())
 			continue
 		}
-		a.LoadRsp64(amd64.R11, callOffset+int32(ordinal*8))
 		src := amd64.R11
-		if plan.Machine.VRegs[value].Bank == railmach.BankFPR {
+		if data.Type == railmach.TypeV128 {
+			a.VMovdquLoadDisp(13, amd64.RSP, callOffset+int32(slot*8))
+			src = 13
+		} else {
+			a.LoadRsp64(amd64.R11, callOffset+int32(slot*8))
+		}
+		if data.Bank == railmach.BankFPR && data.Type != railmach.TypeV128 {
 			a.MovGprToXmm(13, amd64.R11, plan.Machine.VRegs[value].Type == railmach.TypeF64)
 			src = 13
 		}
 		if err := amd64RailMachWriteLocation(a, plan, value, location, src); err != nil {
 			return err
 		}
+		slot += uint32(data.Type.SpillSlotUnits())
 	}
 	return nil
 }

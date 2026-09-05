@@ -135,7 +135,7 @@ func TestAnalyzeABIKeepsV128ResultInVectorBank(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if contract.RegisterResults != 1 || contract.VectorResultMask != 1 || contract.FPRClobbers&1 == 0 || contract.GPRClobbers&1 != 0 {
+		if contract.RegisterResults != 1 || contract.VectorResultMask != 1 || contract.FPRClobbers&1 == 0 || contract.VectorFPRs&1 == 0 || contract.GPRClobbers&1 != 0 {
 			t.Fatalf("%s vector result contract = %#v", target, contract)
 		}
 	}
@@ -249,5 +249,16 @@ func TestComposeFrameIsAlignedAndIncludesCalleeSaves(t *testing.T) {
 	}
 	if layout.SpillBytes != 24 || layout.RootBytes != 8 || layout.CalleeSaveBytes != 24 || layout.TotalBytes&15 != 0 || layout.TotalBytes < 88 {
 		t.Fatalf("layout = %#v", layout)
+	}
+}
+
+func TestComposeFrameReservesFullWidthVectorCalleeSave(t *testing.T) {
+	requirements := FrameRequirements{CalleeFPRs: 0b11, VectorFPRs: 0b10}
+	layout, err := ComposeFrame(requirements)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout.CalleeSaveBytes != 24 || layout.TotalBytes != 32 {
+		t.Fatalf("vector callee-save layout = %#v", layout)
 	}
 }
