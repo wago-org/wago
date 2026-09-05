@@ -4,7 +4,7 @@ Measured 2026-09-04 on native ARM64. This is a stopping-point report for
 `jairus/railshot-compile-latency`, comparing:
 
 - Base: `main` at `c46f2129edb52e6f30f4d0bfc5ae105cfde0c84d`
-- Branch: `7b7848f7484f56c87846fec5cc4a3432c778e3da`
+- Branch: `c780fed1ba347a4030ea4f1f449ded590cb40192`
 - Host: Apple M4 Max, macOS 26.6.2, Go 1.26.5, `darwin/arm64`
 
 ## Current result
@@ -19,18 +19,21 @@ Measured 2026-09-04 on native ARM64. This is a stopping-point report for
 | Backend-only compile heap, all-corpus geomean | **+0.08%** |
 | End-to-end compile allocations, all-corpus geomean | **+1.66%** |
 | Backend-only compile allocations, all-corpus geomean | **+0.16%** |
-| Generated ARM64 machine-code bytes | **0.00%**; exact size match on every corpus module |
-| Execution latency, executable-corpus geomean | **+0.23%** |
+| Generated ARM64 machine-code bytes | Reduced on memory-heavy modules; up to **-3.2%** in the large-module sample |
+| Execution latency | Focused memory-heavy rows improved **1.4-11.0%**; no confirmed regression |
 | Execution allocations | **0 B/op, 0 allocs/op** on both revisions |
 
-The complete aggregate above was measured at implementation commit `e5b2431a`.
-Current HEAD adds two changes measured independently against their immediate
-predecessors:
+The complete compile-latency and heap aggregate above was measured at
+implementation commit `e5b2431a`. The generated-code and focused execution rows
+include the later clean-address change. Current HEAD adds four changes measured
+independently against their immediate predecessors:
 
 | Incremental change | Backend compile | Full compile | Heap | Generated code / execution |
 |---|---:|---:|---:|---|
 | Direct hint-boundary dispatch | **-0.54%** | not rerun | unchanged | Exact code-byte parity |
 | Reuse clean memory-address proofs | **-0.66%** | **-0.19%** | non-increasing | 0.5-3.2% less code on the large-module sample; selected memory-heavy execution rows improved |
+| Dispatch integer/float constant hint work | **-0.18%** | not rerun | unchanged | Exact code-byte parity |
+| Dispatch stack-flow termination locally | **-1.75%** | not rerun | unchanged | Exact code-byte parity |
 
 The scanner result covers json-as, Lua, SQLite, Ruby, and esbuild, with all five
 medians improving. Its focused sparse-global hint scan improved from a 100.0 us
@@ -43,7 +46,15 @@ Code fell by 352 B for json-as, 10,064 B for Lua, 31,232 B for SQLite, 524,128 B
 for Ruby, and 1,002,148 B for esbuild. Focused execution medians improved by
 1.4% for memory-tree, 3.8% for linked-list, 4.4% for matmul, 11.0% for CRC32,
 and 4.1% for SHA-256. A longer Mandelbrot confirmation was flat (+0.4%). The
-full semantic suite and an explicit non-canonical-upper-address regression pass.
+full semantic suite and an explicit non-canonical-upper-address regression passed.
+
+The two newest scanner changes remove common-path classification while retaining
+the same hint decisions. Dispatch-local constant handling improved the focused
+global/local hint scans by about 1.0%/1.9%. Dispatch-local stack-flow termination
+improved them by 3.1%/1.2% and improved the five-corpus backend geomean by 1.75%:
+JSON -2.7%, SQLite -2.4%, Ruby -3.0%, and esbuild -1.6%, with Lua +1.1% in that
+sample. Allocations and generated code were unchanged, and exhaustive tests now
+cover every stack-flow terminator encoding.
 
 The strongest and most stable result is on large real modules. End-to-end
 compile latency is 19.6-24.8% lower on Lua, SQLite, Ruby, and esbuild.
@@ -55,10 +66,12 @@ currently spends a small amount of heap on compact validation analysis and
 parallel hint orchestration; reducing that +1.07% full-pipeline heap delta is
 the next memory target.
 
-Generated function code has exactly the same size across the entire corpus,
-and neither retained change is intended to alter lowering. The +0.23%
-execution geomean and scattered positive and negative rows are consistent with
-binary-layout and measurement noise; no broad execution shift is visible.
+Before the address-proof change, generated function code had exactly the same
+size across the entire corpus. The address-proof change intentionally removes
+redundant instructions; its focused execution measurements found improvements
+on memory-heavy rows and no confirmed regression. The older complete execution
+table below remains the representation-only checkpoint at `e5b2431a`, not a
+claim about exact instruction parity at current HEAD.
 
 ## Large-module memory detail
 
@@ -169,8 +182,8 @@ binary layout.
 
 ## Retained changes
 
-The branch has 20 commits over `main`, including three report checkpoints, and
-17 retained implementation changes:
+The branch has 24 commits over `main`, including five report checkpoints, and
+19 retained implementation changes:
 
 1. Faster ARM64 byte-backed hint decoding.
 2. Separation of opt-in statistics from inline reports.
@@ -189,16 +202,18 @@ The branch has 20 commits over `main`, including three report checkpoints, and
 15. Skipped irrelevant ARM64 hint-discount classification.
 16. Direct ARM64 hint-boundary classification in the opcode dispatch.
 17. Reused proven-clean memory32 addresses without redundant truncation.
+18. Dispatch-local ARM64 constant hint work.
+19. Dispatch-local ARM64 stack-flow termination tracking.
 
 Implementation source delta, excluding this report:
 
 ```text
-36 files changed, 2,042 insertions, 301 deletions
+36 files changed, 2,098 insertions, 329 deletions
 ```
 
 The larger source increase is primarily validation-analysis structure, tests,
-and duplicated architecture-specific integration. The generated code remains
-unchanged.
+and duplicated architecture-specific integration. Only the clean-address
+change intentionally alters generated code.
 
 ## Rejected ARM64 probes
 
