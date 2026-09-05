@@ -79,8 +79,8 @@ func TestSelectOrderChoosesARM64ShiftImmediate(t *testing.T) {
 	for _, combination := range plan.Combinations {
 		found = found || combination.Kind == CombineImmediate && combination.Consumer == shift
 	}
-	if !found {
-		t.Fatalf("ARM64 shift combinations = %#v", plan.Combinations)
+	if found {
+		t.Fatalf("ARM64 shift producer was combined before post-allocation proof: %#v", plan.Combinations)
 	}
 }
 

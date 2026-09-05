@@ -165,9 +165,15 @@ func SelectOrderWithCostModel(target Target, flow *railssa.ValueFlow, semantic *
 			reuse.Forms = append(reuse.Forms, FormRegister)
 		}
 		switch ruleID {
-		case railspec.RuleAMD64Imm32, railspec.RuleARM64Imm12, railspec.RuleARM64ShiftImmediate:
+		case railspec.RuleAMD64Imm32, railspec.RuleARM64Imm12:
 			reuse.Forms[len(reuse.Forms)-1] = FormImmediate
 			reuse.Combinations = append(reuse.Combinations, Combination{Producer: producerInstruction(flow, semantic, args[len(args)-1]), Consumer: uint32(id), Kind: CombineImmediate})
+		case railspec.RuleARM64ShiftImmediate:
+			// Record the selected operand form now, but retain the producer edge
+			// until the post-allocation immediate pass can prove every use folds.
+			// Removing hundreds of such edges changed large-function schedule
+			// selection before its target cycle model is calibrated.
+			reuse.Forms[len(reuse.Forms)-1] = FormImmediate
 		case railspec.RuleAMD64ShiftCL:
 			if len(args) >= 2 {
 				reuse.Forms[len(reuse.Forms)-1] = FormFixedRegister
