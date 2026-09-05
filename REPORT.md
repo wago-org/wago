@@ -506,8 +506,8 @@ fresh summary in "Current generated code and execution" above.
 
 ## Retained changes
 
-Implementation head `43a29b50` has 53 committed changesets over pinned `main`
-and 33 retained implementation changes:
+Implementation through `96cfd406` has 72 committed changesets over pinned
+`main`, including 44 implementation commits grouped into 42 retained changes:
 
 1. Faster ARM64 byte-backed hint decoding.
 2. Separation of opt-in statistics from inline reports.
@@ -554,17 +554,57 @@ and 33 retained implementation changes:
 33. Skipped inline caller analysis for call-free functions, decoded common caller
     immediates directly, and replaced the ordinary loop-control slice with a
     fixed 64-bit stack plus a deep-control fallback.
+34. Read bytecode bytes through a direct bounds-checked cursor path.
+35. Fast-pathed one-byte U32 and I32 immediates in the public bytecode reader.
+36. Replaced detailed ARM64 operand-arena simulation with a conservative bounded
+    body/local estimate.
+37. Appended AMD64 32-bit immediates directly without a generic encoder helper.
+38. Specialized AMD64's common one-to-four-byte instruction emission.
+39. Classified AMD64 hint boundaries directly from the consumed opcode.
+40. Replaced detailed AMD64 operand-arena simulation with the same conservative
+    bounded estimate.
+41. Kept ordinary validation fact observation to a direct table OR and moved
+    payload-dependent facts to an uncommon path.
+42. Fast-pathed one-byte U32 and I32 immediates in the internal validation reader.
 
 Implementation source delta, excluding this report:
 
 ```text
-54 files changed, 2,682 insertions, 1,016 deletions
+59 files changed, 2,760 insertions, 1,559 deletions
 ```
 
 The larger source increase is primarily validation-analysis structure, tests,
 and duplicated architecture-specific integration. Only the clean-address,
 paired instance-context, and inline-budget changes intentionally alter generated
 code.
+
+## Plan completion audit
+
+The implementation plan is complete as an evidence-driven optimization program:
+each structural phase either produced retained source or reached its explicit
+no-go gate with the prototype removed. “Rejected” below means the proposed
+mechanism was implemented and measured, not merely considered.
+
+| Plan phase | Current disposition | Authoritative evidence |
+|---|---|---|
+| 0. Non-perturbing measurement | Retained | `Stats` no longer triggers inline-report scans; `CollectInlineReport` is explicit; compile-resource stage/scratch counters and public stage benchmarks are present. |
+| 1. Validation analysis | Retained | `ValidatedModuleAnalysis` is caller-owned, 8 bytes per function, gathered by serial or parallel validation, cleared on failure, and covered by parity tests. |
+| 2. Retire accepted-path rescans | Retained | Requirements, frontend admission, dynamic funcref, GC allocation/collection admission, and segment counts consume validation facts with exact scanner fallbacks. |
+| 3. Shared resolved types | No-go | The dense validation-owned type plan was implemented; full compile was +0.88% and heap +0.42%, so it was removed. |
+| 4. Allocator traversal bookkeeping | No-go | Pending-memory ownership and fixed-register victim selection were implemented with exact ownership/order semantics; they regressed backend latency 0.91-1.82% and 1.33%. `curSpillSlot` remained below profile sampling, so a bitmap was not retained speculatively. |
+| 5. Validation-built hints | Mixed | Complete validation-to-hints fusion preserved exact hints/code but regressed latency and heap, so it was removed; parallel bounded hint scans and compact sidecars remain. |
+| 6. Cost-aware scheduling | No-go | Heavy-first and stable bucket schedulers were implemented; neither improved latency, and the latter regressed Ruby p4 3.89%, so ascending atomic work remains. |
+| 7. Holistic AMD64 NodeID | No-go | Both partial and all-link native AMD64 layouts were implemented. The 32-byte pointer-free node cut heap 33.09% but regressed backend latency 3.89%, exceeding the plan's hard gate. |
+| 8. Profile-driven loop/emission tuning | Retained | Reader, hint dispatch, arena estimation, encoder, diagnostics, finalizer, local-state, and adapter-cache changes account for the measured compile wins; unsuccessful probes are recorded below. |
+
+The explicit final gates pass at the current checkpoint: native ARM64
+`go test ./...` is green; AMD64 Rosetta package/corpus checks pass except the
+documented host-feature SIMD limitation; generated code is unchanged on AMD64
+and intentionally 4.50% smaller on ARM64; execution is flat-to-improved; and
+the fresh large-module full-compilation results beat the plan's stretch target.
+The latest native AMD64 refresh could not be run because `ssh hub@hub` timed
+out, but the rejected NodeID layouts and earlier branch checkpoints were
+qualified on native AMD64 as recorded below.
 
 ## Rejected ARM64 probes
 
