@@ -984,7 +984,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64F64x2Ceil, railmach.OpAMD64F64x2Floor, railmach.OpAMD64F64x2Trunc, railmach.OpAMD64F64x2Nearest,
 			railmach.OpAMD64F32x4DemoteF64x2Zero, railmach.OpAMD64F64x2PromoteLowF32x4,
 			railmach.OpAMD64F32x4ConvertI32x4S, railmach.OpAMD64F32x4ConvertI32x4U,
-			railmach.OpAMD64F64x2ConvertLowI32x4S, railmach.OpAMD64F64x2ConvertLowI32x4U:
+			railmach.OpAMD64F64x2ConvertLowI32x4S, railmach.OpAMD64F64x2ConvertLowI32x4U,
+			railmach.OpAMD64I32x4TruncSatF32x4S, railmach.OpAMD64I32x4TruncSatF32x4U,
+			railmach.OpAMD64I32x4TruncSatF64x2SZero, railmach.OpAMD64I32x4TruncSatF64x2UZero:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2809,6 +2811,58 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(5), bytes: magic})
 					a.VPor(dst, 4, 5)
 					a.VFPackedSub(dst, dst, 5, true)
+				}
+				continue
+			case railmach.OpAMD64I32x4TruncSatF32x4S, railmach.OpAMD64I32x4TruncSatF32x4U,
+				railmach.OpAMD64I32x4TruncSatF64x2SZero, railmach.OpAMD64I32x4TruncSatF64x2UZero:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector trunc_sat operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpAMD64I32x4TruncSatF32x4S:
+					a.VMovdqu(5, src)
+					a.VFCmpPacked(5, 5, 5, false, 0x00)
+					a.VSseRRR(0, 0x54, dst, src, 5)
+					a.VSseRRR(0, 0x57, 5, 5, dst)
+					a.Vcvttps2dq(dst, dst)
+					a.VSseRRR(0, 0x54, 5, 5, dst)
+					a.VPsradImm(5, 5, 31)
+					a.VPxor(dst, dst, 5)
+				case railmach.OpAMD64I32x4TruncSatF32x4U:
+					a.VPxor(3, 3, 3)
+					a.VSseRRR(0, 0x5f, dst, src, 3)
+					a.VPcmpeqd(4, 4, 4)
+					a.VPsrldImm(4, 4, 1)
+					a.Vcvtdq2ps(4, 4)
+					a.VMovdqu(5, dst)
+					a.Vcvttps2dq(dst, dst)
+					a.VSseRRR(0, 0x5c, 5, 5, 4)
+					a.VFCmpPacked(4, 4, 5, false, 0x12)
+					a.Vcvttps2dq(5, 5)
+					a.VPxor(5, 5, 4)
+					a.VPxor(4, 4, 4)
+					a.VPmaxsd(5, 5, 4)
+					a.VPaddd(dst, dst, 5)
+				case railmach.OpAMD64I32x4TruncSatF64x2SZero:
+					a.VMovdqu(5, src)
+					a.VFCmpPacked(5, 5, 5, true, 0x00)
+					maxc := [16]byte{0, 0, 0xc0, 0xff, 0xff, 0xff, 0xdf, 0x41, 0, 0, 0xc0, 0xff, 0xff, 0xff, 0xdf, 0x41}
+					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(4), bytes: maxc})
+					a.VSseRRR(0, 0x54, 5, 5, 4)
+					a.VSseRRR(1, 0x5d, dst, src, 5)
+					a.Vcvttpd2dq(dst, dst)
+				default:
+					a.VPxor(5, 5, 5)
+					a.VSseRRR(1, 0x5f, dst, src, 5)
+					maxc := [16]byte{0, 0, 0xe0, 0xff, 0xff, 0xff, 0xef, 0x41, 0, 0, 0xe0, 0xff, 0xff, 0xff, 0xef, 0x41}
+					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(4), bytes: maxc})
+					a.VSseRRR(1, 0x5d, dst, dst, 4)
+					a.VFRoundPacked(dst, dst, true, 0x0b)
+					magic := [16]byte{0, 0, 0, 0, 0, 0, 0x30, 0x43, 0, 0, 0, 0, 0, 0, 0x30, 0x43}
+					simdConstantPatches = append(simdConstantPatches, amd64SIMDConstantPatch{at: a.MovdquRipPlaceholder(4), bytes: magic})
+					a.VFPackedAdd(dst, dst, 4, true)
+					a.VShufps(dst, dst, 5, 0b00_00_10_00)
 				}
 				continue
 			case railmach.OpAMD64I8x16Abs, railmach.OpAMD64I8x16Neg, railmach.OpAMD64I16x8Abs, railmach.OpAMD64I16x8Neg,

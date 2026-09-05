@@ -1051,7 +1051,9 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64F64x2Ceil, railmach.OpARM64F64x2Floor, railmach.OpARM64F64x2Trunc, railmach.OpARM64F64x2Nearest,
 			railmach.OpARM64F32x4DemoteF64x2Zero, railmach.OpARM64F64x2PromoteLowF32x4,
 			railmach.OpARM64F32x4ConvertI32x4S, railmach.OpARM64F32x4ConvertI32x4U,
-			railmach.OpARM64F64x2ConvertLowI32x4S, railmach.OpARM64F64x2ConvertLowI32x4U:
+			railmach.OpARM64F64x2ConvertLowI32x4S, railmach.OpARM64F64x2ConvertLowI32x4U,
+			railmach.OpARM64I32x4TruncSatF32x4S, railmach.OpARM64I32x4TruncSatF32x4U,
+			railmach.OpARM64I32x4TruncSatF64x2SZero, railmach.OpARM64I32x4TruncSatF64x2UZero:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -3930,6 +3932,25 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				default:
 					a.NeonUxtlDfromS(dst, src)
 					a.NeonUcvtfDfromD(dst, dst)
+				}
+				continue
+			case railmach.OpARM64I32x4TruncSatF32x4S, railmach.OpARM64I32x4TruncSatF32x4U,
+				railmach.OpARM64I32x4TruncSatF64x2SZero, railmach.OpARM64I32x4TruncSatF64x2UZero:
+				if len(operands) != 1 {
+					return nil, 0, true, fmt.Errorf("RailMach selected vector trunc_sat operand count is %d", len(operands))
+				}
+				src := reg(operands[0].Reg)
+				switch instruction.Op {
+				case railmach.OpARM64I32x4TruncSatF32x4S:
+					a.NeonFcvtzsSfromS(dst, src)
+				case railmach.OpARM64I32x4TruncSatF32x4U:
+					a.NeonFcvtzuSfromS(dst, src)
+				case railmach.OpARM64I32x4TruncSatF64x2SZero:
+					a.NeonFcvtzsDfromD(dst, src)
+					a.NeonSqxtnSfromD(dst, dst)
+				default:
+					a.NeonFcvtzuDfromD(dst, src)
+					a.NeonUqxtnSfromD(dst, dst)
 				}
 				continue
 			case railmach.OpARM64I8x16Abs, railmach.OpARM64I8x16Neg, railmach.OpARM64I16x8Abs, railmach.OpARM64I16x8Neg,
