@@ -4,6 +4,7 @@ package dragline
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"math/bits"
@@ -958,6 +959,26 @@ func emitARM64RailMach(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scr
 }
 
 func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scratch []byte, relocs *[]arm64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, bool, error) {
+	code, entry, ok, err := emitARM64RailMachTargetMode(fn, plan, mops, scratch, relocs, metrics, metadata, false)
+	if !errors.Is(err, errARM64ColdTrapBranchOutOfRange) {
+		return code, entry, ok, err
+	}
+	return emitARM64RailMachTargetMode(fn, plan, mops, scratch, relocs, metrics, metadata, true)
+}
+
+func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops bool, scratch []byte, relocs *[]arm64CallReloc, metrics *FunctionMetrics, metadata *functionEmissionMetadata, inlineColdTraps bool) ([]byte, int, bool, error) {
+	var savedRelocs []arm64CallReloc
+	if relocs != nil {
+		savedRelocs = *relocs
+	}
+	var savedMetrics FunctionMetrics
+	if metrics != nil {
+		savedMetrics = *metrics
+	}
+	var savedMetadata functionEmissionMetadata
+	if metadata != nil {
+		savedMetadata = *metadata
+	}
 	if plan == nil || plan.Stack == nil || plan.CFG == nil || plan.Semantic == nil || plan.Machine == nil || plan.Allocation == nil || plan.Schedule == nil || plan.Exit == nil {
 		return nil, 0, false, nil
 	}
@@ -1570,10 +1591,12 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 	patches := plan.BranchPatches[:0]
 	conditionalPatches := plan.ConditionalPatches[:0]
 	coldTraps := plan.ColdTrapPatches[:0]
-	// B.cond has a signed 19-bit word displacement. Keep a conservative
-	// instruction-count margin for large functions whose final trap section can
-	// otherwise fall outside that range.
-	coldMemoryTraps := len(plan.Machine.Insts) <= 64*1024
+	// B.cond has a signed 19-bit word displacement. Machine instructions alone
+	// are not a sufficient size estimate: late SSA exit can insert hundreds of
+	// thousands of physical edge moves in a large function. Count both streams
+	// before attempting the compact shared section, while retaining the exact
+	// re-emission fallback for target forms that expand beyond this estimate.
+	coldMemoryTraps := !inlineColdTraps && arm64SharedColdTrapCandidate(len(plan.Machine.Insts), len(plan.Exit.Moves))
 	emitMemoryTrapBranch := func(source uint32) error {
 		if coldMemoryTraps {
 			coldTraps = append(coldTraps, nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: source, Code: 3})
@@ -5875,6 +5898,18 @@ railMachEpilogue:
 		arm64EmitTrap(&a, 1, fn.Index, offset)
 	}
 	if err := arm64EmitSharedColdTraps(&a, coldTraps, fn.Index, metadata); err != nil {
+		resetMemoryChecks()
+		if errors.Is(err, errARM64ColdTrapBranchOutOfRange) {
+			if relocs != nil {
+				*relocs = savedRelocs
+			}
+			if metrics != nil {
+				*metrics = savedMetrics
+			}
+			if metadata != nil {
+				*metadata = savedMetadata
+			}
+		}
 		return nil, 0, true, fmt.Errorf("RailMach %w", err)
 	}
 	plan.BranchPatches = patches
@@ -8914,6 +8949,28 @@ func arm64StructuredLocalOverwrittenBeforeRead(instrs []railssa.StackInstr, call
 }
 
 func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, target corecompiler.Target, mops bool, observations *compilerprofile.Module, contracts []railmach.ABIContract, scratch []byte, metrics *FunctionMetrics, metadata *functionEmissionMetadata) ([]byte, int, []arm64CallReloc, error) {
+	var savedMetrics FunctionMetrics
+	if metrics != nil {
+		savedMetrics = *metrics
+	}
+	var savedMetadata functionEmissionMetadata
+	if metadata != nil {
+		savedMetadata = *metadata
+	}
+	code, entry, relocs, err := emitARM64StackMode(fn, plan, target, mops, observations, contracts, scratch, metrics, metadata, false)
+	if !errors.Is(err, errARM64ColdTrapBranchOutOfRange) {
+		return code, entry, relocs, err
+	}
+	if metrics != nil {
+		*metrics = savedMetrics
+	}
+	if metadata != nil {
+		*metadata = savedMetadata
+	}
+	return emitARM64StackMode(fn, plan, target, mops, observations, contracts, scratch, metrics, metadata, true)
+}
+
+func emitARM64StackMode(fn *railssa.Func, plan *railssa.EmissionPlan, target corecompiler.Target, mops bool, observations *compilerprofile.Module, contracts []railmach.ABIContract, scratch []byte, metrics *FunctionMetrics, metadata *functionEmissionMetadata, inlineColdTraps bool) ([]byte, int, []arm64CallReloc, error) {
 	sf := fn.Stack
 	v128StackRegisters := arm64V128StackRegisters[:]
 	callRelocs := make([]arm64CallReloc, 0, 2)
@@ -9199,7 +9256,7 @@ func emitARM64Stack(fn *railssa.Func, plan *railssa.EmissionPlan, target corecom
 		simdLiteralRefs = append(simdLiteralRefs, arm64SIMDLiteralRef{bytes: bytes, at: a.LdrQLiteral(reg)})
 	}
 	coldMemoryTraps := make([]nativeBranchPatch, 0, 4)
-	coldMemoryTrapBranches := len(sf.Instrs) <= 64*1024
+	coldMemoryTrapBranches := !inlineColdTraps && len(sf.Instrs) <= 64*1024
 	emitColdMemoryTrap := func(source uint32) error {
 		if coldMemoryTrapBranches {
 			coldMemoryTraps = append(coldMemoryTraps, nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: source, Code: 3})
@@ -16180,6 +16237,19 @@ func arm64EmitTrap(a *arm64.Asm, code, function, wasmOffset uint32) {
 	a.Ret()
 }
 
+var errARM64ColdTrapBranchOutOfRange = errors.New("cold trap branch is out of range")
+
+func arm64SharedColdTrapCandidate(machineInstructions, physicalMoves int) bool {
+	if machineInstructions < 0 || physicalMoves < 0 {
+		return false
+	}
+	// A B.cond carries 18 signed word-displacement bits. Decline the compact
+	// layout up front only when the combined machine and physical-move streams
+	// already consume that entire word budget; ambiguous expansions use the
+	// exact patch-and-retry path so ordinary large functions keep shared traps.
+	return uint64(machineInstructions)+uint64(physicalMoves) < 1<<18
+}
+
 func arm64EmitSharedColdTraps(a *arm64.Asm, traps []nativeBranchPatch, function uint32, metadata *functionEmissionMetadata) error {
 	if len(traps) == 0 {
 		return nil
@@ -16226,7 +16296,7 @@ func arm64EmitSharedColdTraps(a *arm64.Asm, traps []nativeBranchPatch, function 
 			return fmt.Errorf("shared cold trap branch is out of range")
 		}
 		if !a.PatchBranch19(trap.At, trapOffset) {
-			return fmt.Errorf("cold trap branch is out of range")
+			return errARM64ColdTrapBranchOutOfRange
 		}
 	}
 	return nil

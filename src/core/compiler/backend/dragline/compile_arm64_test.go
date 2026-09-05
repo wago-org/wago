@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"math"
 	"runtime"
 	"testing"
@@ -2282,6 +2283,29 @@ func TestARM64SharedColdTrapsMaterializeRepeatedCodeOnce(t *testing.T) {
 	}
 	if len(metadata.Traps) != len(traps) {
 		t.Fatalf("trap metadata = %#v, want %d sites", metadata.Traps, len(traps))
+	}
+}
+
+func TestARM64SharedColdTrapsReportConditionalRange(t *testing.T) {
+	var a arm64.Asm
+	trap := nativeBranchPatch{At: a.Bcond(arm64.CondHI), Target: 10, Code: 3}
+	// B.cond reaches strictly less than one MiB forward. Model a valid large
+	// function whose first bounds check cannot reach its terminal cold section;
+	// the caller uses this exact error to re-emit with local trap bodies.
+	a.B = append(a.B, make([]byte, 1<<20)...)
+	var metadata functionEmissionMetadata
+	err := arm64EmitSharedColdTraps(&a, []nativeBranchPatch{trap}, 0, &metadata)
+	if !errors.Is(err, errARM64ColdTrapBranchOutOfRange) {
+		t.Fatalf("shared cold trap error = %v, want conditional-range retry", err)
+	}
+}
+
+func TestARM64SharedColdTrapCandidateIncludesLateExitMoves(t *testing.T) {
+	if !arm64SharedColdTrapCandidate(128*1024, 128*1024-1) {
+		t.Fatal("sub-range combined machine operations should retain shared cold traps")
+	}
+	if arm64SharedColdTrapCandidate(20*1024, 253*1024) {
+		t.Fatal("large late-exit move stream should select inline cold traps")
 	}
 }
 
