@@ -1076,6 +1076,12 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I8x16Shl, railmach.OpARM64I8x16ShrS, railmach.OpARM64I8x16ShrU, railmach.OpARM64I64x2ShrS:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
+			railmach.OpARM64I32Eqz, railmach.OpARM64I64Eqz,
+			railmach.OpARM64I32Eq, railmach.OpARM64I64Eq, railmach.OpARM64I32Ne, railmach.OpARM64I64Ne,
+			railmach.OpARM64I32LtS, railmach.OpARM64I64LtS, railmach.OpARM64I32LtU, railmach.OpARM64I64LtU,
+			railmach.OpARM64I32GtS, railmach.OpARM64I64GtS, railmach.OpARM64I32GtU, railmach.OpARM64I64GtU,
+			railmach.OpARM64I32LeS, railmach.OpARM64I64LeS, railmach.OpARM64I32LeU, railmach.OpARM64I64LeU,
+			railmach.OpARM64I32GeS, railmach.OpARM64I64GeS, railmach.OpARM64I32GeU, railmach.OpARM64I64GeU,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
 			wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU,
 			wasm.InstrI32Clz, wasm.InstrI32Ctz, wasm.InstrI32Popcnt,
@@ -2269,6 +2275,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			swarSkipped := swarRunN && (instructionID >= 5 && instructionID < 21 || instructionID >= 27 && instructionID < 37) || swarParse4 && instructionID >= 2 && instructionID < 12
 			skipped := swarSkipped || idempotentFloatTail && instructionID >= idempotentFloatStart && instructionID < idempotentFloatEnd || skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID]
 			instruction := plan.Machine.Insts[instructionID]
+			semanticOp := railmach.SemanticOpcode(instruction.Op)
 			if instruction.Op == wasm.InstrGlobalSet || railmach.IsCall(instruction.Op) {
 				resetGlobalMemoryChecks()
 			}
@@ -5175,7 +5182,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrI32Eqz || instruction.Op == wasm.InstrI64Eqz || instruction.Op == wasm.InstrRefIsNull {
+			if semanticOp == wasm.InstrI32Eqz || semanticOp == wasm.InstrI64Eqz || semanticOp == wasm.InstrRefIsNull {
 				operandWide := plan.Machine.VRegs[operands[0].Reg].Type.IsWideGPR()
 				if fusedComparison {
 					// The consumer emits CB(N)Z directly from this operand, avoiding
@@ -5297,9 +5304,9 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					a.RorImm(dst, lhs, uint8(-shift)&31, true)
 				case railmach.OpARM64I64Rotl:
 					a.RorImm(dst, lhs, uint8(-shift)&63, false)
-				case wasm.InstrI32Eq, wasm.InstrI32Ne, wasm.InstrI32LtS, wasm.InstrI32LtU,
-					wasm.InstrI32GtS, wasm.InstrI32GtU, wasm.InstrI32LeS, wasm.InstrI32LeU,
-					wasm.InstrI32GeS, wasm.InstrI32GeU:
+				case railmach.OpARM64I32Eq, railmach.OpARM64I32Ne, railmach.OpARM64I32LtS, railmach.OpARM64I32LtU,
+					railmach.OpARM64I32GtS, railmach.OpARM64I32GtU, railmach.OpARM64I32LeS, railmach.OpARM64I32LeU,
+					railmach.OpARM64I32GeS, railmach.OpARM64I32GeU:
 					a.CmpImm32(lhs, immediate)
 					if fusedComparison {
 						if metrics != nil {
@@ -5307,10 +5314,10 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						}
 						continue
 					}
-					a.Cset32(dst, arm64IntegerComparisonCond(instruction.Op))
-				case wasm.InstrI64Eq, wasm.InstrI64Ne, wasm.InstrI64LtS, wasm.InstrI64LtU,
-					wasm.InstrI64GtS, wasm.InstrI64GtU, wasm.InstrI64LeS, wasm.InstrI64LeU,
-					wasm.InstrI64GeS, wasm.InstrI64GeU:
+					a.Cset32(dst, arm64IntegerComparisonCond(semanticOp))
+				case railmach.OpARM64I64Eq, railmach.OpARM64I64Ne, railmach.OpARM64I64LtS, railmach.OpARM64I64LtU,
+					railmach.OpARM64I64GtS, railmach.OpARM64I64GtU, railmach.OpARM64I64LeS, railmach.OpARM64I64LeU,
+					railmach.OpARM64I64GeS, railmach.OpARM64I64GeU:
 					a.CmpImm64(lhs, immediate)
 					if fusedComparison {
 						if metrics != nil {
@@ -5318,7 +5325,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						}
 						continue
 					}
-					a.Cset32(dst, arm64IntegerComparisonCond(instruction.Op))
+					a.Cset32(dst, arm64IntegerComparisonCond(semanticOp))
 				default:
 					return nil, 0, true, fmt.Errorf("RailMach selected unsupported ARM64 immediate for %s", instruction.Op)
 				}
@@ -5383,7 +5390,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if arm64IntegerComparisonKind(instruction.Op) {
+			if arm64IntegerComparisonKind(semanticOp) {
 				operandWide := plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeI64
 				if operandWide {
 					a.CmpReg64(lhs, rhs)
@@ -5399,7 +5406,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				if nativeHasPostRARewrite(plan, instructionID, railmach.RewriteARM64CondIncrement) {
 					continue
 				}
-				a.Cset32(dst, arm64IntegerComparisonCond(instruction.Op))
+				a.Cset32(dst, arm64IntegerComparisonCond(semanticOp))
 				continue
 			}
 			if producerID, ok := nativePostRAProducer(plan, instructionID, railmach.RewriteARM64CondIncrement); ok {
@@ -5571,7 +5578,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						return nil, 0, true, fmt.Errorf("RailMach conditional block %d has invalid fused producer %d", blockID, producerID)
 					}
 					trueCondition = condition
-					if producer.Op == wasm.InstrI32Eqz || producer.Op == wasm.InstrI64Eqz {
+					producerSemanticOp := railmach.SemanticOpcode(producer.Op)
+					if producerSemanticOp == wasm.InstrI32Eqz || producerSemanticOp == wasm.InstrI64Eqz {
 						producerOperands := plan.Machine.InstructionOperands(producerID)
 						if len(producerOperands) != 1 {
 							return nil, 0, true, fmt.Errorf("RailMach eqz fusion producer %d has %d operands", producerID, len(producerOperands))
@@ -5619,7 +5627,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				if !ok {
 					return nil, 0, true, fmt.Errorf("RailMach conditional block %d has invalid fused producer %d", blockID, producerID)
 				}
-				if producer.Op == wasm.InstrI32Eqz || producer.Op == wasm.InstrI64Eqz {
+				producerSemanticOp := railmach.SemanticOpcode(producer.Op)
+				if producerSemanticOp == wasm.InstrI32Eqz || producerSemanticOp == wasm.InstrI64Eqz {
 					producerOperands := plan.Machine.InstructionOperands(producerID)
 					if len(producerOperands) != 1 {
 						return nil, 0, true, fmt.Errorf("RailMach eqz fusion producer %d has %d operands", producerID, len(producerOperands))
@@ -7197,6 +7206,7 @@ func emitARM64BoundsLimit(a *arm64.Asm, dst, bounds arm64.Reg, end, memoryMinimu
 }
 
 func arm64IntegerComparisonKind(kind wasm.InstrKind) bool {
+	kind = railmach.SemanticOpcode(kind)
 	return kind >= wasm.InstrI32Eq && kind <= wasm.InstrI32GeU ||
 		kind >= wasm.InstrI64Eq && kind <= wasm.InstrI64GeU
 }
@@ -8314,7 +8324,7 @@ func arm64RailMachRotatedZeroTestLatch(plan *nativeBackendPlan, block, backedge 
 	}
 	consumerID := semanticID - 1
 	producerID, fused := nativeARM64FusionProducer(plan, consumerID)
-	if !fused || plan.Machine.Insts[producerID].Op != wasm.InstrI32Eqz {
+	if !fused || railmach.SemanticOpcode(plan.Machine.Insts[producerID].Op) != wasm.InstrI32Eqz {
 		return 0, 0, false
 	}
 	if int(header) >= len(plan.Schedule.BlockRanges) {
@@ -13708,6 +13718,7 @@ func emitARM64DirectSafeDiv(a *arm64.Asm, kind wasm.InstrKind, lhs, rhs arm64.Re
 }
 
 func arm64IntegerComparisonCond(kind wasm.InstrKind) arm64.Cond {
+	kind = railmach.SemanticOpcode(kind)
 	switch kind {
 	case wasm.InstrI32Ne, wasm.InstrI64Ne:
 		return arm64.CondNE
@@ -13733,6 +13744,7 @@ func arm64IntegerComparisonCond(kind wasm.InstrKind) arm64.Cond {
 }
 
 func arm64ComparisonResultCond(kind wasm.InstrKind) (arm64.Cond, bool) {
+	kind = railmach.SemanticOpcode(kind)
 	if kind == wasm.InstrI32Eqz || kind == wasm.InstrI64Eqz {
 		return arm64.CondEQ, true
 	}

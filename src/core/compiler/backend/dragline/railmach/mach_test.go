@@ -247,6 +247,73 @@ func TestSelectTargetOpcodesIntegerShifts(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesIntegerComparisons(t *testing.T) {
+	operations := [22]MOpcode{
+		wasm.InstrI32Eqz, wasm.InstrI64Eqz,
+		wasm.InstrI32Eq, wasm.InstrI64Eq, wasm.InstrI32Ne, wasm.InstrI64Ne,
+		wasm.InstrI32LtS, wasm.InstrI64LtS, wasm.InstrI32LtU, wasm.InstrI64LtU,
+		wasm.InstrI32GtS, wasm.InstrI64GtS, wasm.InstrI32GtU, wasm.InstrI64GtU,
+		wasm.InstrI32LeS, wasm.InstrI64LeS, wasm.InstrI32LeU, wasm.InstrI64LeU,
+		wasm.InstrI32GeS, wasm.InstrI64GeS, wasm.InstrI32GeU, wasm.InstrI64GeU,
+	}
+	encodings := [22]byte{
+		0x45, 0x50,
+		0x46, 0x51, 0x47, 0x52,
+		0x48, 0x53, 0x49, 0x54,
+		0x4a, 0x55, 0x4b, 0x56,
+		0x4c, 0x57, 0x4d, 0x58,
+		0x4e, 0x59, 0x4f, 0x5a,
+	}
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [22]MOpcode
+	}{
+		{"amd64", TargetAMD64, [22]MOpcode{
+			OpAMD64I32Eqz, OpAMD64I64Eqz,
+			OpAMD64I32Eq, OpAMD64I64Eq, OpAMD64I32Ne, OpAMD64I64Ne,
+			OpAMD64I32LtS, OpAMD64I64LtS, OpAMD64I32LtU, OpAMD64I64LtU,
+			OpAMD64I32GtS, OpAMD64I64GtS, OpAMD64I32GtU, OpAMD64I64GtU,
+			OpAMD64I32LeS, OpAMD64I64LeS, OpAMD64I32LeU, OpAMD64I64LeU,
+			OpAMD64I32GeS, OpAMD64I64GeS, OpAMD64I32GeU, OpAMD64I64GeU,
+		}},
+		{"arm64", TargetARM64, [22]MOpcode{
+			OpARM64I32Eqz, OpARM64I64Eqz,
+			OpARM64I32Eq, OpARM64I64Eq, OpARM64I32Ne, OpARM64I64Ne,
+			OpARM64I32LtS, OpARM64I64LtS, OpARM64I32LtU, OpARM64I64LtU,
+			OpARM64I32GtS, OpARM64I64GtS, OpARM64I32GtU, OpARM64I64GtU,
+			OpARM64I32LeS, OpARM64I64LeS, OpARM64I32LeU, OpARM64I64LeU,
+			OpARM64I32GeS, OpARM64I64GeS, OpARM64I32GeU, OpARM64I64GeU,
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for index, encoding := range encodings {
+				type_ := wasm.I32
+				if index&1 != 0 {
+					type_ = wasm.I64
+				}
+				params := []wasm.ValType{type_}
+				body := []byte{0x20, 0, encoding, 0x0b}
+				if index >= 2 {
+					params = append(params, type_)
+					body = []byte{0x20, 0, 0x20, 1, encoding, 0x0b}
+				}
+				f := buildMachineTest(t, test.target, machineModule(params, []wasm.ValType{wasm.I32}, body))
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operations[index] {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operations[index])
+				}
+			}
+		})
+	}
+}
+
 func vectorFoundationFixture(target Target) *Func {
 	f := &Func{
 		Target: target,

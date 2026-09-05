@@ -697,12 +697,13 @@ func arm64CondIncrementable(f *Func, producerID, consumerID uint32, uses []uint3
 		return false
 	}
 	producer, consumer := f.Insts[producerID], f.Insts[consumerID]
-	if producer.Result == 0 || int(producer.Result) >= len(uses) || uses[producer.Result] != 1 || consumer.Op != wasm.InstrI32Add {
+	producerOp, consumerOp := SemanticOpcode(producer.Op), SemanticOpcode(consumer.Op)
+	if producer.Result == 0 || int(producer.Result) >= len(uses) || uses[producer.Result] != 1 || consumerOp != wasm.InstrI32Add {
 		return false
 	}
-	comparable := producer.Op == wasm.InstrI32Eqz || producer.Op == wasm.InstrI64Eqz ||
-		producer.Op >= wasm.InstrI32Eq && producer.Op <= wasm.InstrI64GeU ||
-		producer.Op >= wasm.InstrF32Eq && producer.Op <= wasm.InstrF64Ge
+	comparable := producerOp == wasm.InstrI32Eqz || producerOp == wasm.InstrI64Eqz ||
+		producerOp >= wasm.InstrI32Eq && producerOp <= wasm.InstrI64GeU ||
+		producerOp >= wasm.InstrF32Eq && producerOp <= wasm.InstrF64Ge
 	if !comparable {
 		return false
 	}
@@ -716,7 +717,7 @@ func amd64FoldableLoadConsumer(f *Func, loadID, consumerID uint32, uses []uint32
 		load.Result == 0 || int(load.Result) >= len(uses) || uses[load.Result] != 1 {
 		return false
 	}
-	switch consumer.Op {
+	switch SemanticOpcode(consumer.Op) {
 	case wasm.InstrI32Add, wasm.InstrI32Sub, wasm.InstrI32And, wasm.InstrI32Or, wasm.InstrI32Xor:
 		if load.Op != wasm.InstrI32Load {
 			return false
@@ -752,11 +753,12 @@ func compareBranchFusionRepairable(target Target, f *Func, producerID, consumerI
 	if len(operands) != 1 || operands[0].Reg != producer.Result {
 		return false
 	}
-	if producer.Op == wasm.InstrI32Eqz || producer.Op == wasm.InstrI64Eqz {
+	producerOp := SemanticOpcode(producer.Op)
+	if producerOp == wasm.InstrI32Eqz || producerOp == wasm.InstrI64Eqz {
 		return true
 	}
-	return producer.Op >= wasm.InstrI32Eq && producer.Op <= wasm.InstrI64GeU ||
-		target == TargetARM64 && producer.Op >= wasm.InstrF32Eq && producer.Op <= wasm.InstrF64Ge
+	return producerOp >= wasm.InstrI32Eq && producerOp <= wasm.InstrI64GeU ||
+		target == TargetARM64 && producerOp >= wasm.InstrF32Eq && producerOp <= wasm.InstrF64Ge
 }
 
 // amd64LEARepairable admits register addition and immediate subtraction. A

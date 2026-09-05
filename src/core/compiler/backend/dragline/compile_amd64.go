@@ -1001,6 +1001,12 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I8x16Shl, railmach.OpAMD64I8x16ShrS, railmach.OpAMD64I8x16ShrU, railmach.OpAMD64I64x2ShrS:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
+			railmach.OpAMD64I32Eqz, railmach.OpAMD64I64Eqz,
+			railmach.OpAMD64I32Eq, railmach.OpAMD64I64Eq, railmach.OpAMD64I32Ne, railmach.OpAMD64I64Ne,
+			railmach.OpAMD64I32LtS, railmach.OpAMD64I64LtS, railmach.OpAMD64I32LtU, railmach.OpAMD64I64LtU,
+			railmach.OpAMD64I32GtS, railmach.OpAMD64I64GtS, railmach.OpAMD64I32GtU, railmach.OpAMD64I64GtU,
+			railmach.OpAMD64I32LeS, railmach.OpAMD64I64LeS, railmach.OpAMD64I32LeU, railmach.OpAMD64I64LeU,
+			railmach.OpAMD64I32GeS, railmach.OpAMD64I64GeS, railmach.OpAMD64I32GeU, railmach.OpAMD64I64GeU,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
 			wasm.InstrRefI31, wasm.InstrI31GetS, wasm.InstrI31GetU,
 			wasm.InstrI32Clz, wasm.InstrI32Ctz, wasm.InstrI32Popcnt,
@@ -3924,7 +3930,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrI32Eqz || instruction.Op == wasm.InstrI64Eqz || instruction.Op == wasm.InstrRefIsNull {
+			if semanticOp == wasm.InstrI32Eqz || semanticOp == wasm.InstrI64Eqz || semanticOp == wasm.InstrRefIsNull {
 				operandWide := plan.Machine.VRegs[operands[0].Reg].Type.IsWideGPR()
 				a.TestSelf(lhs, operandWide)
 				if fusedComparison {
@@ -3963,7 +3969,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.Movsxd(dst, lhs)
 				continue
 			}
-			if condition, comparison := amd64IntegerComparisonCond(instruction.Op); comparison {
+			if condition, comparison := amd64IntegerComparisonCond(semanticOp); comparison {
 				rhs := reg(operands[1].Reg)
 				operandWide := plan.Machine.VRegs[operands[0].Reg].Type == railmach.TypeI64
 				if operandWide {
@@ -4428,6 +4434,7 @@ func amd64RailMachCarriesMemoryChecks(plan *nativeBackendPlan, previous, current
 }
 
 func amd64IntegerComparisonCond(kind wasm.InstrKind) (amd64.Cond, bool) {
+	kind = railmach.SemanticOpcode(kind)
 	switch kind {
 	case wasm.InstrI32Eq, wasm.InstrI64Eq:
 		return amd64.CondE, true
@@ -4455,6 +4462,7 @@ func amd64IntegerComparisonCond(kind wasm.InstrKind) (amd64.Cond, bool) {
 }
 
 func amd64FusedComparisonCond(kind wasm.InstrKind) (amd64.Cond, bool) {
+	kind = railmach.SemanticOpcode(kind)
 	if kind == wasm.InstrI32Eqz || kind == wasm.InstrI64Eqz {
 		return amd64.CondE, true
 	}
@@ -4521,7 +4529,7 @@ func amd64RailMachRotatedZeroTestLatch(plan *nativeBackendPlan, block, backedge 
 	}
 	consumerID := semanticID - 1
 	producerID, fused := nativeAMD64FusionProducer(plan, consumerID)
-	if !fused || plan.Machine.Insts[producerID].Op != wasm.InstrI32Eqz {
+	if !fused || railmach.SemanticOpcode(plan.Machine.Insts[producerID].Op) != wasm.InstrI32Eqz {
 		return 0, 0, false
 	}
 	if int(header) >= len(plan.Schedule.BlockRanges) {
