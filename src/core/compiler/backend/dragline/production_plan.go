@@ -450,7 +450,9 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrI16x8Add, wasm.InstrI16x8AddSatS, wasm.InstrI16x8AddSatU,
 			wasm.InstrI16x8Sub, wasm.InstrI16x8SubSatS, wasm.InstrI16x8SubSatU,
 			wasm.InstrI32x4Add, wasm.InstrI32x4Sub,
-			wasm.InstrI64x2Add, wasm.InstrI64x2Sub:
+			wasm.InstrI64x2Add, wasm.InstrI64x2Sub,
+			wasm.InstrI8x16Eq, wasm.InstrI8x16Ne, wasm.InstrI16x8Eq, wasm.InstrI16x8Ne,
+			wasm.InstrI32x4Eq, wasm.InstrI32x4Ne, wasm.InstrI64x2Eq, wasm.InstrI64x2Ne:
 		default:
 			return false
 		}
@@ -1002,9 +1004,13 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		// Until callee-save homes become 128-bit, vector values may use only
 		// registers that are volatile on every supported platform ABI.
 		if machineTarget == railmach.TargetAMD64 {
-			defaultGreedy.Linear.FPRs = 6 // XMM0-XMM5 are volatile on Windows and SysV.
-			defaultGreedy.CallerFPRs = 6
-			defaultGreedy.CallerFPRMask = callerRegisterMask(6)
+			fprs := uint8(6) // XMM0-XMM5 are volatile on Windows and SysV.
+			if machineNeedsAMD64VectorScratch(machine) {
+				fprs-- // XMM5 synthesizes mask inversion without clobbering live SSA values.
+			}
+			defaultGreedy.Linear.FPRs = fprs
+			defaultGreedy.CallerFPRs = fprs
+			defaultGreedy.CallerFPRMask = callerRegisterMask(fprs)
 		} else {
 			defaultGreedy.Linear.FPRs = 16 // V0-V7 and V16-V23 in allocator order.
 			defaultGreedy.CallerFPRs = 16
@@ -1571,6 +1577,19 @@ func machineHasV128(machine *railmach.Func) bool {
 	}
 	for _, value := range machine.VRegs {
 		if value.Type == railmach.TypeV128 {
+			return true
+		}
+	}
+	return false
+}
+
+func machineNeedsAMD64VectorScratch(machine *railmach.Func) bool {
+	if machine == nil || machine.Target != railmach.TargetAMD64 {
+		return false
+	}
+	for _, instruction := range machine.Insts {
+		switch instruction.Op {
+		case wasm.InstrI8x16Ne, wasm.InstrI16x8Ne, wasm.InstrI32x4Ne, wasm.InstrI64x2Ne:
 			return true
 		}
 	}

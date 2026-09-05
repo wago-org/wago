@@ -4232,7 +4232,7 @@ func TestDraglineRailMachV128FoundationExecution(t *testing.T) {
 	}
 }
 
-func TestDraglineRailMachIntegerVectorAddSubExecution(t *testing.T) {
+func TestDraglineRailMachIntegerVectorArithmeticAndEqualityExecution(t *testing.T) {
 	splat8 := func(value byte) (out [16]byte) {
 		for index := range out {
 			out[index] = value
@@ -4269,6 +4269,10 @@ func TestDraglineRailMachIntegerVectorAddSubExecution(t *testing.T) {
 		{"i16x8.sub_sat_u", 147, splat16(1), splat16(2), 0},
 		{"i32x4.add", 174, splat32(0xffffffff), splat32(2), 0x0000000100000001},
 		{"i64x2.sub", 209, splat64(3), splat64(5), ^uint64(1)},
+		{"i8x16.eq", 35, splat8(7), splat8(7), ^uint64(0)},
+		{"i16x8.ne", 46, splat16(7), splat16(8), ^uint64(0)},
+		{"i32x4.eq", 55, splat32(7), splat32(7), ^uint64(0)},
+		{"i64x2.ne", 215, splat64(7), splat64(8), ^uint64(0)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			body := []byte{0x41, 0x00, 0xfd, 0x0c}

@@ -923,7 +923,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I8x16Sub, railmach.OpAMD64I8x16SubSatS, railmach.OpAMD64I8x16SubSatU,
 			railmach.OpAMD64I16x8Add, railmach.OpAMD64I16x8AddSatS, railmach.OpAMD64I16x8AddSatU,
 			railmach.OpAMD64I16x8Sub, railmach.OpAMD64I16x8SubSatS, railmach.OpAMD64I16x8SubSatU,
-			railmach.OpAMD64I32x4Add, railmach.OpAMD64I32x4Sub, railmach.OpAMD64I64x2Add, railmach.OpAMD64I64x2Sub:
+			railmach.OpAMD64I32x4Add, railmach.OpAMD64I32x4Sub, railmach.OpAMD64I64x2Add, railmach.OpAMD64I64x2Sub,
+			railmach.OpAMD64I8x16Eq, railmach.OpAMD64I8x16Ne, railmach.OpAMD64I16x8Eq, railmach.OpAMD64I16x8Ne,
+			railmach.OpAMD64I32x4Eq, railmach.OpAMD64I32x4Ne, railmach.OpAMD64I64x2Eq, railmach.OpAMD64I64x2Ne:
 		case wasm.InstrI32Const, wasm.InstrI64Const, wasm.InstrRefNull, wasm.InstrRefFunc,
 			wasm.InstrI32Eqz, wasm.InstrI64Eqz,
 			wasm.InstrRefIsNull, wasm.InstrRefEq, wasm.InstrRefAsNonNull,
@@ -2222,7 +2224,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				railmach.OpAMD64I8x16Sub, railmach.OpAMD64I8x16SubSatS, railmach.OpAMD64I8x16SubSatU,
 				railmach.OpAMD64I16x8Add, railmach.OpAMD64I16x8AddSatS, railmach.OpAMD64I16x8AddSatU,
 				railmach.OpAMD64I16x8Sub, railmach.OpAMD64I16x8SubSatS, railmach.OpAMD64I16x8SubSatU,
-				railmach.OpAMD64I32x4Add, railmach.OpAMD64I32x4Sub, railmach.OpAMD64I64x2Add, railmach.OpAMD64I64x2Sub:
+				railmach.OpAMD64I32x4Add, railmach.OpAMD64I32x4Sub, railmach.OpAMD64I64x2Add, railmach.OpAMD64I64x2Sub,
+				railmach.OpAMD64I8x16Eq, railmach.OpAMD64I8x16Ne, railmach.OpAMD64I16x8Eq, railmach.OpAMD64I16x8Ne,
+				railmach.OpAMD64I32x4Eq, railmach.OpAMD64I32x4Ne, railmach.OpAMD64I64x2Eq, railmach.OpAMD64I64x2Ne:
 				if len(operands) != 2 {
 					return nil, 0, true, fmt.Errorf("RailMach selected vector binary operand count is %d", len(operands))
 				}
@@ -2266,6 +2270,19 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.VPaddq(dst, lhs, rhs)
 				case railmach.OpAMD64I64x2Sub:
 					a.VPsubq(dst, lhs, rhs)
+				case railmach.OpAMD64I8x16Eq, railmach.OpAMD64I8x16Ne:
+					a.VPcmpeqb(dst, lhs, rhs)
+				case railmach.OpAMD64I16x8Eq, railmach.OpAMD64I16x8Ne:
+					a.VPcmpeqw(dst, lhs, rhs)
+				case railmach.OpAMD64I32x4Eq, railmach.OpAMD64I32x4Ne:
+					a.VPcmpeqd(dst, lhs, rhs)
+				case railmach.OpAMD64I64x2Eq, railmach.OpAMD64I64x2Ne:
+					a.VPcmpeqq(dst, lhs, rhs)
+				}
+				switch instruction.Op {
+				case railmach.OpAMD64I8x16Ne, railmach.OpAMD64I16x8Ne, railmach.OpAMD64I32x4Ne, railmach.OpAMD64I64x2Ne:
+					a.VPcmpeqd(5, 5, 5)
+					a.VPxor(dst, dst, 5)
 				}
 				continue
 			case railmach.OpAMD64V128Load, railmach.OpAMD64V128Store:
