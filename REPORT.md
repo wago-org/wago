@@ -4,7 +4,7 @@ Measured 2026-09-04 on native ARM64. This is a stopping-point report for
 `jairus/railshot-compile-latency`, comparing:
 
 - Base: `main` at `c46f2129edb52e6f30f4d0bfc5ae105cfde0c84d`
-- Branch: `2df5838cef1349eda176200e93b09c6ae93bc02b`
+- Branch: `7b7848f7484f56c87846fec5cc4a3432c778e3da`
 - Host: Apple M4 Max, macOS 26.6.2, Go 1.26.5, `darwin/arm64`
 
 ## Current result
@@ -24,14 +24,26 @@ Measured 2026-09-04 on native ARM64. This is a stopping-point report for
 | Execution allocations | **0 B/op, 0 allocs/op** on both revisions |
 
 The complete aggregate above was measured at implementation commit `e5b2431a`.
-Current HEAD adds one code-neutral ARM64 scanner change measured separately
-against that checkpoint: **-0.54% backend compile-latency geomean** across
-json-as, Lua, SQLite, Ruby, and esbuild, with all five medians improving. The
-focused sparse-global hint scan improved from a 100.0 us median to 96.2 us
-(**-3.8%**), while the sparse-local scan and allocation counts were flat. A
-fresh complete-corpus machine-code check at current HEAD matched every module
-and worker setting exactly. Execution was therefore not rerun for this
-compiler-only dispatch change.
+Current HEAD adds two changes measured independently against their immediate
+predecessors:
+
+| Incremental change | Backend compile | Full compile | Heap | Generated code / execution |
+|---|---:|---:|---:|---|
+| Direct hint-boundary dispatch | **-0.54%** | not rerun | unchanged | Exact code-byte parity |
+| Reuse clean memory-address proofs | **-0.66%** | **-0.19%** | non-increasing | 0.5-3.2% less code on the large-module sample; selected memory-heavy execution rows improved |
+
+The scanner result covers json-as, Lua, SQLite, Ruby, and esbuild, with all five
+medians improving. Its focused sparse-global hint scan improved from a 100.0 us
+median to 96.2 us (**-3.8%**), while the sparse-local scan and allocation counts
+were flat. A complete compile-worker check matched every module and worker
+setting exactly before the address-proof change.
+
+The address-proof change deliberately removes redundant generated instructions.
+Code fell by 352 B for json-as, 10,064 B for Lua, 31,232 B for SQLite, 524,128 B
+for Ruby, and 1,002,148 B for esbuild. Focused execution medians improved by
+1.4% for memory-tree, 3.8% for linked-list, 4.4% for matmul, 11.0% for CRC32,
+and 4.1% for SHA-256. A longer Mandelbrot confirmation was flat (+0.4%). The
+full semantic suite and an explicit non-canonical-upper-address regression pass.
 
 The strongest and most stable result is on large real modules. End-to-end
 compile latency is 19.6-24.8% lower on Lua, SQLite, Ruby, and esbuild.
@@ -157,8 +169,8 @@ binary layout.
 
 ## Retained changes
 
-The branch has 18 commits over `main`, including two report checkpoints, and 16
-retained implementation changes:
+The branch has 20 commits over `main`, including three report checkpoints, and
+17 retained implementation changes:
 
 1. Faster ARM64 byte-backed hint decoding.
 2. Separation of opt-in statistics from inline reports.
@@ -176,11 +188,12 @@ retained implementation changes:
 14. Table-driven validation instruction facts.
 15. Skipped irrelevant ARM64 hint-discount classification.
 16. Direct ARM64 hint-boundary classification in the opcode dispatch.
+17. Reused proven-clean memory32 addresses without redundant truncation.
 
 Implementation source delta, excluding this report:
 
 ```text
-35 files changed, 1,986 insertions, 300 deletions
+36 files changed, 2,042 insertions, 301 deletions
 ```
 
 The larger source increase is primarily validation-analysis structure, tests,
@@ -205,6 +218,7 @@ These were measured and removed rather than retained speculatively:
 | Bitmask stack-flow terminator classification | Short run looked positive; 500 ms x 8 confirmation reversed to +0.90% geomean and +1.28% SQLite (p=0.005) |
 | Specialized scalar load/store encoder helpers | -0.43% in the first interleaved run, but no individual workload was significant; an unchecked scaled-encoding variant regressed by +0.74%, so the extra surface was removed |
 | Cached memory-zero address width and module type lookup | Short samples were noisy; the expanded cache regressed the focused geomean by +0.98% and Ruby by +1.35% (p=0.028), so it was removed |
+| Common-constant `MovImm64` fast path | Initial 300 ms run was -0.92%; the 1 s confirmation fell to -0.23%, below the retention gate, so it was removed |
 
 ## Method
 
