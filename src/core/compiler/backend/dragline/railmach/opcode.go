@@ -468,6 +468,12 @@ const (
 	OpAMD64ArrayNewFixed
 	OpAMD64ArrayNewData
 	OpAMD64ArrayNewElem
+	OpAMD64ArrayFill
+	OpAMD64ArrayCopy
+	OpAMD64ArrayInitData
+	OpAMD64ArrayInitElem
+	OpAMD64DataDrop
+	OpAMD64ElemDrop
 	opAMD64SelectedEnd
 )
 
@@ -927,6 +933,12 @@ const (
 	OpARM64ArrayNewFixed
 	OpARM64ArrayNewData
 	OpARM64ArrayNewElem
+	OpARM64ArrayFill
+	OpARM64ArrayCopy
+	OpARM64ArrayInitData
+	OpARM64ArrayInitElem
+	OpARM64DataDrop
+	OpARM64ElemDrop
 	opARM64SelectedEnd
 )
 
@@ -1270,6 +1282,18 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrArrayNewData
 	case OpAMD64ArrayNewElem, OpARM64ArrayNewElem:
 		return wasm.InstrArrayNewElem
+	case OpAMD64ArrayFill, OpARM64ArrayFill:
+		return wasm.InstrArrayFill
+	case OpAMD64ArrayCopy, OpARM64ArrayCopy:
+		return wasm.InstrArrayCopy
+	case OpAMD64ArrayInitData, OpARM64ArrayInitData:
+		return wasm.InstrArrayInitData
+	case OpAMD64ArrayInitElem, OpARM64ArrayInitElem:
+		return wasm.InstrArrayInitElem
+	case OpAMD64DataDrop, OpARM64DataDrop:
+		return wasm.InstrDataDrop
+	case OpAMD64ElemDrop, OpARM64ElemDrop:
+		return wasm.InstrElemDrop
 	case OpAMD64F32EqScalar, OpARM64F32EqScalar:
 		return wasm.InstrF32Eq
 	case OpAMD64F64EqScalar, OpARM64F64EqScalar:
@@ -1870,6 +1894,18 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64ArrayNewData, OpARM64ArrayNewData
 		case wasm.InstrArrayNewElem:
 			amd64, arm64 = OpAMD64ArrayNewElem, OpARM64ArrayNewElem
+		case wasm.InstrArrayFill:
+			amd64, arm64 = OpAMD64ArrayFill, OpARM64ArrayFill
+		case wasm.InstrArrayCopy:
+			amd64, arm64 = OpAMD64ArrayCopy, OpARM64ArrayCopy
+		case wasm.InstrArrayInitData:
+			amd64, arm64 = OpAMD64ArrayInitData, OpARM64ArrayInitData
+		case wasm.InstrArrayInitElem:
+			amd64, arm64 = OpAMD64ArrayInitElem, OpARM64ArrayInitElem
+		case wasm.InstrDataDrop:
+			amd64, arm64 = OpAMD64DataDrop, OpARM64DataDrop
+		case wasm.InstrElemDrop:
+			amd64, arm64 = OpAMD64ElemDrop, OpARM64ElemDrop
 		case wasm.InstrF32Eq:
 			amd64, arm64 = OpAMD64F32EqScalar, OpARM64F32EqScalar
 		case wasm.InstrF64Eq:

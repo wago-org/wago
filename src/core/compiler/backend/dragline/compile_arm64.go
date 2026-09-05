@@ -1141,6 +1141,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64StructNew, railmach.OpARM64StructNewDefault,
 			railmach.OpARM64ArrayGet, railmach.OpARM64ArrayGetS, railmach.OpARM64ArrayGetU, railmach.OpARM64ArraySet, railmach.OpARM64ArrayLen,
 			railmach.OpARM64ArrayNew, railmach.OpARM64ArrayNewDefault, railmach.OpARM64ArrayNewFixed, railmach.OpARM64ArrayNewData, railmach.OpARM64ArrayNewElem,
+			railmach.OpARM64ArrayFill, railmach.OpARM64ArrayCopy, railmach.OpARM64ArrayInitData, railmach.OpARM64ArrayInitElem,
+			railmach.OpARM64DataDrop, railmach.OpARM64ElemDrop,
 			railmach.OpARM64I32Madd, railmach.OpARM64I64Madd, railmach.OpARM64I64MulHighU,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
@@ -2969,7 +2971,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				a.Blr(arm64.X16)
 				continue
 			}
-			if instruction.Op == wasm.InstrDataDrop {
+			if semanticOp == wasm.InstrDataDrop {
 				offset := uint64(uint32(instruction.Aux))*16 + 8
 				if offset > math.MaxUint32 {
 					return nil, 0, true, fmt.Errorf("RailMach data.drop descriptor offset is not encodable")
@@ -2980,7 +2982,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if instruction.Op == wasm.InstrElemDrop {
+			if semanticOp == wasm.InstrElemDrop {
 				payload, ok := codegen.EncodeGCHelperDispatch(codegen.GCHelperArrayDropElem, 0)
 				if !ok {
 					return nil, 0, true, fmt.Errorf("RailMach GC elem.drop helper is not encodable")
@@ -3001,17 +3003,17 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				a.Blr(arm64.X16)
 				continue
 			}
-			if instruction.Op == wasm.InstrArrayFill || instruction.Op == wasm.InstrArrayCopy || instruction.Op == wasm.InstrArrayInitData || instruction.Op == wasm.InstrArrayInitElem {
+			if semanticOp == wasm.InstrArrayFill || semanticOp == wasm.InstrArrayCopy || semanticOp == wasm.InstrArrayInitData || semanticOp == wasm.InstrArrayInitElem {
 				want := 4
 				helper := codegen.GCHelperArrayFill
 				arity := uint64(5)
-				if instruction.Op == wasm.InstrArrayCopy {
+				if semanticOp == wasm.InstrArrayCopy {
 					want = 5
 					helper = codegen.GCHelperArrayCopy
 					arity = 7
-				} else if instruction.Op == wasm.InstrArrayInitData || instruction.Op == wasm.InstrArrayInitElem {
+				} else if semanticOp == wasm.InstrArrayInitData || semanticOp == wasm.InstrArrayInitElem {
 					helper = codegen.GCHelperArrayInitData
-					if instruction.Op == wasm.InstrArrayInitElem {
+					if semanticOp == wasm.InstrArrayInitElem {
 						helper = codegen.GCHelperArrayInitElem
 					}
 					arity = 6
@@ -3038,7 +3040,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+len(operands)*8)) {
 					return nil, 0, true, fmt.Errorf("RailMach GC %s type offset is not encodable", instruction.Op)
 				}
-				if instruction.Op == wasm.InstrArrayCopy || instruction.Op == wasm.InstrArrayInitData || instruction.Op == wasm.InstrArrayInitElem {
+				if semanticOp == wasm.InstrArrayCopy || semanticOp == wasm.InstrArrayInitData || semanticOp == wasm.InstrArrayInitElem {
 					a.MovImm64(arm64.X16, instruction.Aux>>32)
 					if !a.Store64(arm64.X16, arm64.X17, uint32(abi.SyncHostArgsOffset+(len(operands)+1)*8)) {
 						return nil, 0, true, fmt.Errorf("RailMach GC array.copy source type offset is not encodable")

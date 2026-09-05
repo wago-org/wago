@@ -1066,6 +1066,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64StructNew, railmach.OpAMD64StructNewDefault,
 			railmach.OpAMD64ArrayGet, railmach.OpAMD64ArrayGetS, railmach.OpAMD64ArrayGetU, railmach.OpAMD64ArraySet, railmach.OpAMD64ArrayLen,
 			railmach.OpAMD64ArrayNew, railmach.OpAMD64ArrayNewDefault, railmach.OpAMD64ArrayNewFixed, railmach.OpAMD64ArrayNewData, railmach.OpAMD64ArrayNewElem,
+			railmach.OpAMD64ArrayFill, railmach.OpAMD64ArrayCopy, railmach.OpAMD64ArrayInitData, railmach.OpAMD64ArrayInitElem,
+			railmach.OpAMD64DataDrop, railmach.OpAMD64ElemDrop,
 			wasm.InstrI32Mul, wasm.InstrI64Mul,
 			wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
 			wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
@@ -1958,7 +1960,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				emitAMD64ExternalCallFPRSave(&a, plan, true)
 				continue
 			}
-			if instruction.Op == wasm.InstrDataDrop {
+			if semanticOp == wasm.InstrDataDrop {
 				offset := uint64(uint32(instruction.Aux))*16 + 8
 				if offset > math.MaxInt32 {
 					return nil, 0, true, fmt.Errorf("RailMach data.drop descriptor offset is not encodable")
@@ -1967,7 +1969,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				a.StoreImm32Mem(amd64.R11, int32(offset), 0)
 				continue
 			}
-			if instruction.Op == wasm.InstrElemDrop {
+			if semanticOp == wasm.InstrElemDrop {
 				payload, ok := codegen.EncodeGCHelperDispatch(codegen.GCHelperArrayDropElem, 0)
 				if !ok {
 					return nil, 0, true, fmt.Errorf("RailMach GC elem.drop helper is not encodable")
@@ -1982,17 +1984,17 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				emitAMD64ExternalCallFPRSave(&a, plan, true)
 				continue
 			}
-			if instruction.Op == wasm.InstrArrayFill || instruction.Op == wasm.InstrArrayCopy || instruction.Op == wasm.InstrArrayInitData || instruction.Op == wasm.InstrArrayInitElem {
+			if semanticOp == wasm.InstrArrayFill || semanticOp == wasm.InstrArrayCopy || semanticOp == wasm.InstrArrayInitData || semanticOp == wasm.InstrArrayInitElem {
 				want := 4
 				helper := codegen.GCHelperArrayFill
 				arity := uint32(5)
-				if instruction.Op == wasm.InstrArrayCopy {
+				if semanticOp == wasm.InstrArrayCopy {
 					want = 5
 					helper = codegen.GCHelperArrayCopy
 					arity = 7
-				} else if instruction.Op == wasm.InstrArrayInitData || instruction.Op == wasm.InstrArrayInitElem {
+				} else if semanticOp == wasm.InstrArrayInitData || semanticOp == wasm.InstrArrayInitElem {
 					helper = codegen.GCHelperArrayInitData
-					if instruction.Op == wasm.InstrArrayInitElem {
+					if semanticOp == wasm.InstrArrayInitElem {
 						helper = codegen.GCHelperArrayInitElem
 					}
 					arity = 6
@@ -2016,7 +2018,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				}
 				a.MovImm64(amd64.R10, uint64(uint32(instruction.Aux)))
 				a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+len(operands)*8), amd64.R10)
-				if instruction.Op == wasm.InstrArrayCopy || instruction.Op == wasm.InstrArrayInitData || instruction.Op == wasm.InstrArrayInitElem {
+				if semanticOp == wasm.InstrArrayCopy || semanticOp == wasm.InstrArrayInitData || semanticOp == wasm.InstrArrayInitElem {
 					a.MovImm64(amd64.R10, instruction.Aux>>32)
 					a.Store64(amd64.R11, int32(abi.SyncHostArgsOffset+(len(operands)+1)*8), amd64.R10)
 				}
