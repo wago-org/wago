@@ -664,6 +664,11 @@ func exactFuncSignature(sig FuncSig, types []DefinedTypeDescriptor) (params, res
 }
 
 func cloneDefinedTypeDescriptors(in []DefinedTypeDescriptor) []DefinedTypeDescriptor {
+	out, _ := cloneDefinedTypeDescriptorsAndValues(in, nil)
+	return out
+}
+
+func cloneDefinedTypeDescriptorsAndValues(in []DefinedTypeDescriptor, trailingValues []ValueTypeDescriptor) ([]DefinedTypeDescriptor, []ValueTypeDescriptor) {
 	var superCount, valueTypeCount, fieldCount int
 	for i := range in {
 		superCount += len(in[i].Supers)
@@ -671,7 +676,7 @@ func cloneDefinedTypeDescriptors(in []DefinedTypeDescriptor) []DefinedTypeDescri
 		fieldCount += len(in[i].Fields)
 	}
 	supers := packedCloneStorage[uint32]{values: make([]uint32, superCount)}
-	valueTypes := packedCloneStorage[ValueTypeDescriptor]{values: make([]ValueTypeDescriptor, valueTypeCount)}
+	valueTypes := packedCloneStorage[ValueTypeDescriptor]{values: make([]ValueTypeDescriptor, valueTypeCount+len(trailingValues))}
 	fields := packedCloneStorage[FieldTypeDescriptor]{values: make([]FieldTypeDescriptor, fieldCount)}
 	out := make([]DefinedTypeDescriptor, len(in))
 	for i := range in {
@@ -681,7 +686,7 @@ func cloneDefinedTypeDescriptors(in []DefinedTypeDescriptor) []DefinedTypeDescri
 		out[i].Results = valueTypes.clone(in[i].Results)
 		out[i].Fields = fields.clone(in[i].Fields)
 	}
-	return out
+	return out, valueTypes.clone(trailingValues)
 }
 
 func (c wasmTypeDescriptorConverter) definedType(st *wasm.SubType, sourceGroup int, descriptorGroup uint32, params, results []ValueTypeDescriptor) (DefinedTypeDescriptor, error) {

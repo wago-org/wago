@@ -63,17 +63,19 @@ func cloneCompiledMetadata(c *Compiled) *Compiled {
 	for i := range c.PassiveData {
 		byteCount += len(c.PassiveData[i].Bytes)
 	}
+	entries := packedCloneStorage[int]{values: make([]int, len(c.Entry)+len(c.InternalEntry))}
+	funcSigs := packedCloneStorage[FuncSig]{values: make([]FuncSig, len(c.Funcs)+len(c.importFuncSigs))}
 	valTypes := packedCloneStorage[ValType]{values: make([]ValType, valTypeCount)}
+	elems := packedCloneStorage[ElemInit]{values: make([]ElemInit, len(c.Elems)+len(c.passiveElems))}
 	refInits := packedCloneStorage[RefInit]{values: make([]RefInit, refInitCount)}
 	bytes := packedCloneStorage[byte]{values: make([]byte, byteCount)}
 
 	out := *c
-	out.Entry = slices.Clone(c.Entry)
-	out.InternalEntry = slices.Clone(c.InternalEntry)
-	out.Funcs = cloneFuncSigs(c.Funcs, &valTypes)
-	out.importFuncSigs = cloneFuncSigs(c.importFuncSigs, &valTypes)
-	out.Types = cloneDefinedTypeDescriptors(c.Types)
-	out.ValueTypes = slices.Clone(c.ValueTypes)
+	out.Entry = entries.clone(c.Entry)
+	out.InternalEntry = entries.clone(c.InternalEntry)
+	out.Funcs = cloneFuncSigs(c.Funcs, &funcSigs, &valTypes)
+	out.importFuncSigs = cloneFuncSigs(c.importFuncSigs, &funcSigs, &valTypes)
+	out.Types, out.ValueTypes = cloneDefinedTypeDescriptorsAndValues(c.Types, c.ValueTypes)
 	out.Imports = slices.Clone(c.Imports)
 	out.Exports = cloneExportMap(c.Exports)
 	out.Names = cloneCompiledNames(c.Names)
@@ -84,8 +86,8 @@ func cloneCompiledMetadata(c *Compiled) *Compiled {
 	}
 	out.GlobalExports = cloneExportMap(c.GlobalExports)
 	out.FuncTypeID = slices.Clone(c.FuncTypeID)
-	out.Elems = cloneCompiledElems(c.Elems, &refInits, &bytes)
-	out.passiveElems = cloneCompiledElems(c.passiveElems, &refInits, &bytes)
+	out.Elems = cloneCompiledElems(c.Elems, &elems, &refInits, &bytes)
+	out.passiveElems = cloneCompiledElems(c.passiveElems, &elems, &refInits, &bytes)
 	out.Data = slices.Clone(c.Data)
 	for i := range out.Data {
 		out.Data[i].Bytes = bytes.clone(c.Data[i].Bytes)
@@ -126,8 +128,8 @@ func (p *packedCloneStorage[T]) clone(in []T) []T {
 	return out
 }
 
-func cloneFuncSigs(in []FuncSig, valTypes *packedCloneStorage[ValType]) []FuncSig {
-	out := slices.Clone(in)
+func cloneFuncSigs(in []FuncSig, funcs *packedCloneStorage[FuncSig], valTypes *packedCloneStorage[ValType]) []FuncSig {
+	out := funcs.clone(in)
 	for i := range out {
 		out[i].Params = valTypes.clone(in[i].Params)
 		out[i].Results = valTypes.clone(in[i].Results)
@@ -146,8 +148,8 @@ func cloneExportMap(in map[string]int) map[string]int {
 	return out
 }
 
-func cloneCompiledElems(in []ElemInit, refInits *packedCloneStorage[RefInit], bytes *packedCloneStorage[byte]) []ElemInit {
-	out := slices.Clone(in)
+func cloneCompiledElems(in []ElemInit, elems *packedCloneStorage[ElemInit], refInits *packedCloneStorage[RefInit], bytes *packedCloneStorage[byte]) []ElemInit {
+	out := elems.clone(in)
 	for i := range out {
 		out[i].Offset.Expr = bytes.clone(in[i].Offset.Expr)
 		out[i].Values = refInits.clone(in[i].Values)

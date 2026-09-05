@@ -224,44 +224,67 @@ func TestCompiledSnapshotOwnsNestedPublicMetadata(t *testing.T) {
 func TestCompiledSnapshotPacksRepeatedNestedSlices(t *testing.T) {
 	const count = 1024
 	c := &Compiled{
-		Funcs:       make([]FuncSig, count),
-		Types:       make([]DefinedTypeDescriptor, count),
-		Names:       &wasm.NameSec{LocalNames: make(wasm.IndirectNameMap, count)},
-		Data:        make([]DataInit, count),
-		GCTypeDescs: make([]gc.TypeDesc, count),
+		Entry:          make([]int, count),
+		InternalEntry:  make([]int, count),
+		Funcs:          make([]FuncSig, count),
+		importFuncSigs: make([]FuncSig, count),
+		Types:          make([]DefinedTypeDescriptor, count),
+		ValueTypes:     make([]ValueTypeDescriptor, count),
+		Names:          &wasm.NameSec{LocalNames: make(wasm.IndirectNameMap, count)},
+		Elems:          make([]ElemInit, count),
+		passiveElems:   make([]ElemInit, count),
+		Data:           make([]DataInit, count),
+		GCTypeDescs:    make([]gc.TypeDesc, count),
 	}
 	for i := 0; i < count; i++ {
+		c.Entry[i] = i + 1
+		c.InternalEntry[i] = -(i + 1)
 		c.Funcs[i].Params = []ValType{ValI32}
 		c.Funcs[i].Results = []ValType{ValI64}
+		c.importFuncSigs[i].Params = []ValType{ValI32}
+		c.importFuncSigs[i].Results = []ValType{ValI64}
 		c.Types[i].Supers = []uint32{uint32(i)}
 		c.Types[i].Params = []ValueTypeDescriptor{{Kind: ValueTypeI32}}
 		c.Types[i].Results = []ValueTypeDescriptor{{Kind: ValueTypeI64}}
 		c.Types[i].Fields = []FieldTypeDescriptor{{}}
+		c.ValueTypes[i] = ValueTypeDescriptor{Kind: ValueTypeF32}
 		c.Names.LocalNames[i] = wasm.IndirectNameAssoc{Index: uint32(i), Names: wasm.NameMap{{Index: uint32(i), Name: "p"}}}
+		c.Elems[i].Values = []RefInit{{FuncIndex: uint32(i)}}
+		c.passiveElems[i].Values = []RefInit{{FuncIndex: uint32(i)}}
 		c.Data[i].Bytes = []byte{byte(i)}
 		c.GCTypeDescs[i].Fields = []gc.FieldDesc{{}}
 	}
 	allocs := testing.AllocsPerRun(10, func() {
 		benchCompiledSink = cloneCompiledMetadata(c)
 	})
-	if allocs > 18 {
-		t.Fatalf("clone allocations = %.0f, want at most 18", allocs)
+	if allocs > 17 {
+		t.Fatalf("clone allocations = %.0f, want at most 17", allocs)
 	}
 
 	snapshot := cloneCompiledMetadata(c)
-	if cap(snapshot.Funcs[0].Params) != len(snapshot.Funcs[0].Params) ||
+	if cap(snapshot.Entry) != len(snapshot.Entry) || cap(snapshot.InternalEntry) != len(snapshot.InternalEntry) ||
+		cap(snapshot.Funcs) != len(snapshot.Funcs) || cap(snapshot.importFuncSigs) != len(snapshot.importFuncSigs) ||
+		cap(snapshot.ValueTypes) != len(snapshot.ValueTypes) || cap(snapshot.Elems) != len(snapshot.Elems) ||
+		cap(snapshot.passiveElems) != len(snapshot.passiveElems) ||
+		cap(snapshot.Funcs[0].Params) != len(snapshot.Funcs[0].Params) ||
 		cap(snapshot.Types[0].Supers) != len(snapshot.Types[0].Supers) ||
 		cap(snapshot.Names.LocalNames[0].Names) != len(snapshot.Names.LocalNames[0].Names) ||
 		cap(snapshot.Data[0].Bytes) != len(snapshot.Data[0].Bytes) ||
 		cap(snapshot.GCTypeDescs[0].Fields) != len(snapshot.GCTypeDescs[0].Fields) {
 		t.Fatal("packed child slice can grow into adjacent metadata")
 	}
+	snapshot.Entry = append(snapshot.Entry, 99)
+	snapshot.Funcs = append(snapshot.Funcs, FuncSig{})
+	snapshot.Types[count-1].Results = append(snapshot.Types[count-1].Results, ValueTypeDescriptor{Kind: ValueTypeF64})
+	snapshot.Elems = append(snapshot.Elems, ElemInit{})
 	snapshot.Funcs[0].Params = append(snapshot.Funcs[0].Params, ValF64)
 	snapshot.Types[0].Supers = append(snapshot.Types[0].Supers, 99)
 	snapshot.Names.LocalNames[0].Names = append(snapshot.Names.LocalNames[0].Names, wasm.NameAssoc{Name: "other"})
 	snapshot.Data[0].Bytes = append(snapshot.Data[0].Bytes, 0xff)
 	snapshot.GCTypeDescs[0].Fields = append(snapshot.GCTypeDescs[0].Fields, gc.FieldDesc{})
-	if snapshot.Funcs[0].Results[0] != ValI64 || snapshot.Funcs[1].Params[0] != ValI32 ||
+	if snapshot.InternalEntry[0] != -1 || snapshot.importFuncSigs[0].Params[0] != ValI32 ||
+		snapshot.ValueTypes[0].Kind != ValueTypeF32 || snapshot.passiveElems[0].Values[0].FuncIndex != 0 ||
+		snapshot.Funcs[0].Results[0] != ValI64 || snapshot.Funcs[1].Params[0] != ValI32 ||
 		snapshot.Types[1].Supers[0] != 1 || len(snapshot.Names.LocalNames[1].Names) != 1 ||
 		snapshot.Data[1].Bytes[0] != 1 || len(snapshot.GCTypeDescs[1].Fields) != 1 || c.Data[0].Bytes[0] != 0 {
 		t.Fatal("packed child append changed adjacent or public metadata")

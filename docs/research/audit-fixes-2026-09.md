@@ -88,15 +88,20 @@ payloads, structural-type vectors, debug-name maps, and GC fields into typed
 backing slabs. Every child slice has capacity equal to its length, so appending
 cannot overwrite adjacent metadata, and the slabs remain independent of the
 mutable public view. On Linux/amd64 Go 1.27.1, ten interleaved measurements
-reduce the 8-worker import compile from 3,493 to 292 allocations/op; `main`
+reduce the 8-worker import compile from 3,493 to 290 allocations/op; `main`
 measures 273. Across the full compile corpus, the allocation geomean falls from
-325 to 257 allocations/op versus 231 on `main`. Large-module results return to
+325 to 257 allocations/op versus 235 on `main`. Large-module results return to
 their `main` allocation counts: esbuild 110,850 -> 19,650 (main 19,640), ruby
 81,510 -> 40,490 (main 40,580), and sqlite3 13,168 -> 7,882 (main 7,949).
 Full-corpus time is unchanged by packing; allocated bytes fall only 0.2% because
 snapshot ownership still requires copying the payload itself. The same packing
 reduces imported-artifact loading from about 12,860 to 9,659 allocations/op,
-within 26 allocations of `main`.
+within 23 allocations of `main`. A follow-up packs same-typed top-level entry,
+signature, element, and value-type slices together. In ten interleaved samples
+against the first packed version, this lowers the corpus allocation geomean a
+further 0.95%, the 8-worker compile from 292 to 290 allocations, and the small
+snapshot copy from 12 to 11 allocations. Corpus time (-0.07%), allocated bytes
+(-0.03%), and generated code bytes are unchanged.
 The constructor allocation test measures platform environment lookup overhead
 separately and retains a one-allocation budget for the configuration. Go 1.22
 Windows/amd64 with BMI2 uses four allocations for its two environment lookups;
