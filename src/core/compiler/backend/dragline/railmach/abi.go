@@ -46,6 +46,10 @@ type ABIContract struct {
 	VectorResultMask uint8
 	HasCall          bool
 	MayCollect       bool
+	// DirectWritesGlobal excludes calls. WritesGlobal includes the refined
+	// transitive effects of every call and is safe for caller-side cache reuse.
+	DirectWritesGlobal bool
+	WritesGlobal       bool
 }
 
 // PrivateResultRegisters is the source-ordered GPR result prefix shared by
@@ -59,7 +63,8 @@ type CallContract struct {
 	FPRClobbers  uint64
 	Class        ABIClass
 	Conservative bool
-	_            [2]byte
+	WritesGlobal bool
+	_            byte
 }
 
 func AnalyzeABI(f *Func, allocation *GreedyAllocation, metadata *railssa.Metadata, importedFunctions uint32) (ABIContract, []CallContract, error) {
@@ -160,18 +165,20 @@ func analyzeVerifiedABI(f *Func, allocation *GreedyAllocation, metadata *railssa
 	contract.CalleeGPRs = contract.GPRClobbers &^ callerGPRs
 	contract.CalleeFPRs = contract.FPRClobbers &^ callerFPRs
 	for instructionID, instruction := range f.Insts {
+		meta := metadata.Instructions[instruction.Source]
 		if !IsCall(instruction.Op) {
+			contract.DirectWritesGlobal = contract.DirectWritesGlobal || meta.Writes&railssa.HeapGlobal != 0
 			continue
 		}
 		contract.HasCall = true
-		meta := metadata.Instructions[instruction.Source]
 		contract.MayCollect = contract.MayCollect || meta.Flags&railssa.EffectMayCollect != 0
-		call := CallContract{Instruction: uint32(instructionID), Callee: uint32(instruction.Aux), Class: ABIGeneral, Conservative: true, GPRClobbers: callerGPRs, FPRClobbers: callerFPRs}
+		call := CallContract{Instruction: uint32(instructionID), Callee: uint32(instruction.Aux), Class: ABIGeneral, Conservative: true, WritesGlobal: meta.Writes&railssa.HeapGlobal != 0, GPRClobbers: callerGPRs, FPRClobbers: callerFPRs}
 		if instruction.Op == wasm.InstrCall && call.Callee >= importedFunctions {
 			call.Conservative = false
 		}
 		calls = append(calls, call)
 	}
+	PropagateCallEffects(&contract, calls)
 	switch {
 	case !contract.HasCall && len(f.Insts) <= 4 && hasDirectRegisterParams(f, allocation):
 		contract.Class = ABITinyDirect
@@ -424,6 +431,19 @@ func PropagateCallClobbers(contract *ABIContract, calls []CallContract, config G
 	contract.CalleeFPRs = contract.FPRClobbers &^ config.CallerMask(BankFPR)
 }
 
+// PropagateCallEffects rebuilds the transitive effect bits after local call
+// contracts have been refined. Conservative and imported calls retain the
+// metadata-derived effect recorded when the call contract was created.
+func PropagateCallEffects(contract *ABIContract, calls []CallContract) {
+	if contract == nil {
+		return
+	}
+	contract.WritesGlobal = contract.DirectWritesGlobal
+	for _, call := range calls {
+		contract.WritesGlobal = contract.WritesGlobal || call.WritesGlobal
+	}
+}
+
 func RefineCallContracts(calls []CallContract, module []ABIContract, importedFunctions uint32) uint32 {
 	refined := uint32(0)
 	for index := range calls {
@@ -437,6 +457,7 @@ func RefineCallContracts(calls []CallContract, module []ABIContract, importedFun
 		}
 		callee := module[local]
 		call.GPRClobbers, call.FPRClobbers, call.Class, call.Conservative = callee.GPRClobbers, callee.FPRClobbers, callee.Class, false
+		call.WritesGlobal = callee.WritesGlobal
 		refined++
 	}
 	return refined

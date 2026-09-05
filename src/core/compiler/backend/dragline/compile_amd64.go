@@ -186,7 +186,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			artifact, hit, cacheErr := functionCache.Get(artifactIdentity)
 			if cacheErr == nil && hit {
 				requiresBMI2 = requiresBMI2 || artifact.RequiredISA[uint16(corecompiler.TargetFeatureAMD64BMI2)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureAMD64BMI2)%64)) != 0
-				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
+				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR, DirectWritesGlobal: true, WritesGlobal: true}
 				if !captureGC && amd64DirectPreparedClass(moduleContracts[i].Class) {
 					directPrepared = markAMD64DirectPrepared(directPrepared, len(m.Code), i)
 				}

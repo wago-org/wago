@@ -1442,6 +1442,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	localContract := contract
 	refinedCalls := refineNativeCallContracts(calls, stack.ImportedFuncs, moduleContracts, components, refinedRecursive, localIndex)
 	railmach.PropagateCallClobbers(&contract, calls, defaultGreedy)
+	railmach.PropagateCallEffects(&contract, calls)
 	callArgumentBytes := nativeCallArgumentBytes(machine)
 	requirements, frame, err := railmach.FrameForAllocation(contract, allocation, callArgumentBytes/8)
 	if err != nil {
@@ -2355,6 +2356,7 @@ func refineNativeCallContracts(calls []railmach.CallContract, imported uint32, c
 		}
 		contract := contracts[callee]
 		call.GPRClobbers, call.FPRClobbers, call.Class, call.Conservative = contract.GPRClobbers, contract.FPRClobbers, contract.Class, false
+		call.WritesGlobal = contract.WritesGlobal
 		refined++
 	}
 	return refined

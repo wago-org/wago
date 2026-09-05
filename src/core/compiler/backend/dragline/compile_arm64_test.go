@@ -2403,9 +2403,20 @@ func TestARM64RailMachSelfCallUsesCanonicalArgumentVector(t *testing.T) {
 	if !arm64RailMachDirectCallUsesPrivateABI(plan, 8, local) {
 		t.Fatal("verified local callee did not use the private result ABI")
 	}
+	if arm64RailMachDirectCallWritesGlobal(plan, 8, local) {
+		t.Fatal("verified read-only local callee was treated as a global writer")
+	}
+	plan.Calls[0].WritesGlobal = true
+	if !arm64RailMachDirectCallWritesGlobal(plan, 8, local) {
+		t.Fatal("verified global-writing local callee lost its effect")
+	}
+	plan.Calls[0].WritesGlobal = false
 	plan.Calls[0].Conservative = true
 	if arm64RailMachDirectCallUsesPrivateABI(plan, 8, local) {
 		t.Fatal("conservative local callee used the private result ABI")
+	}
+	if !arm64RailMachDirectCallWritesGlobal(plan, 8, local) {
+		t.Fatal("conservative local callee was treated as read-only")
 	}
 	plan.Calls[0] = railmach.CallContract{Instruction: 8, Callee: 4, Class: railmach.ABITinyDirect}
 	if !arm64RailMachDirectCallNeedsRegisterArguments(plan, local) {

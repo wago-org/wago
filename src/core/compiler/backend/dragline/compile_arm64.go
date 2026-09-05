@@ -233,7 +233,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 			if cacheErr == nil && hit {
 				requiresMOPS = requiresMOPS || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64MOPS)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64MOPS)%64)) != 0
 				requiresSHA2 = requiresSHA2 || artifact.RequiredISA[uint16(corecompiler.TargetFeatureARM64SHA2)/64]&(uint64(1)<<(uint16(corecompiler.TargetFeatureARM64SHA2)%64)) != 0
-				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR}
+				moduleContracts[i] = railmach.ABIContract{Class: railmach.ABIClass(artifact.ABIClass), GPRClobbers: artifact.ClobberGPR, FPRClobbers: artifact.ClobberFPR, DirectWritesGlobal: true, WritesGlobal: true}
 				if !captureGC && artifact.ContextFreeLoop {
 					contextFreeLoopPrepared = markARM64DirectPrepared(contextFreeLoopPrepared, len(m.Code), i)
 				}
@@ -3500,7 +3500,7 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				}
 				if imported {
 					reloadCachedGlobals()
-				} else {
+				} else if arm64RailMachDirectCallWritesGlobal(plan, instructionID, instruction) {
 					reloadCachedGlobalValues()
 				}
 				if skipCall >= 0 && !a.PatchBranch19(skipCall, a.Len()) {
@@ -6724,6 +6724,18 @@ func arm64RailMachDirectCallClass(plan *nativeBackendPlan, instructionID uint32,
 		}
 	}
 	return 0
+}
+
+func arm64RailMachDirectCallWritesGlobal(plan *nativeBackendPlan, instructionID uint32, instruction railmach.Inst) bool {
+	if plan == nil || plan.Stack == nil || instruction.Op != wasm.InstrCall || uint32(instruction.Aux) < plan.Stack.ImportedFuncs {
+		return true
+	}
+	for _, call := range plan.Calls {
+		if call.Instruction == instructionID && call.Callee == uint32(instruction.Aux) && !call.Conservative {
+			return call.WritesGlobal
+		}
+	}
+	return true
 }
 
 func arm64RailMachI32Constant(plan *nativeBackendPlan, value railmach.VReg) (uint64, bool) {

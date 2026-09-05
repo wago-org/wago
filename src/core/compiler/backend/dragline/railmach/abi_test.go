@@ -46,12 +46,25 @@ func TestAnalyzeABIAndRefineDirectCall(t *testing.T) {
 	if contract.Params != 1 || contract.Results != 1 || contract.RegisterResults != 1 || !contract.HasCall || len(calls) != 1 {
 		t.Fatalf("contract=%#v calls=%#v", contract, calls)
 	}
-	callee := ABIContract{Class: ABITinyDirect, GPRClobbers: 3, FPRClobbers: 4}
+	callee := ABIContract{Class: ABITinyDirect, GPRClobbers: 3, FPRClobbers: 4, WritesGlobal: true}
 	if refined := RefineCallContracts(calls, []ABIContract{callee}, 0); refined != 1 {
 		t.Fatalf("refined = %d calls=%#v", refined, calls)
 	}
-	if calls[0].GPRClobbers != 3 || calls[0].FPRClobbers != 4 || calls[0].Class != ABITinyDirect || calls[0].Conservative {
+	if calls[0].GPRClobbers != 3 || calls[0].FPRClobbers != 4 || calls[0].Class != ABITinyDirect || calls[0].Conservative || !calls[0].WritesGlobal {
 		t.Fatalf("refined call = %#v", calls[0])
+	}
+}
+
+func TestAnalyzeABIRetainsDirectGlobalWrite(t *testing.T) {
+	f := &Func{Target: TargetARM64, Insts: []Inst{{Op: wasm.InstrGlobalSet}}, VRegs: []VRegData{{}}, Blocks: []Block{{InstCount: 1}}}
+	allocation := &GreedyAllocation{Allocation: Allocation{Locations: []Location{{}}}}
+	metadata := &railssa.Metadata{Instructions: []railssa.InstructionMetadata{{Writes: railssa.HeapGlobal}}}
+	contract, calls, err := analyzeVerifiedABI(f, allocation, metadata, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contract.DirectWritesGlobal || !contract.WritesGlobal || len(calls) != 0 {
+		t.Fatalf("global-write contract = %#v calls=%#v", contract, calls)
 	}
 }
 
@@ -195,6 +208,25 @@ func TestPropagateCallClobbersUsesOnlyVolatileRegisters(t *testing.T) {
 	PropagateCallClobbers(&contract, []CallContract{{GPRClobbers: 0b1101, FPRClobbers: 0b11}}, config)
 	if contract.GPRClobbers != 0b01 || contract.FPRClobbers != 0b1 || contract.CalleeGPRs != 0 || contract.CalleeFPRs != 0 {
 		t.Fatalf("propagated contract = %#v", contract)
+	}
+}
+
+func TestPropagateCallEffectsUsesRefinedCallee(t *testing.T) {
+	contract := ABIContract{DirectWritesGlobal: false, WritesGlobal: true}
+	calls := []CallContract{{WritesGlobal: true}}
+	PropagateCallEffects(&contract, calls)
+	if !contract.WritesGlobal {
+		t.Fatal("global-writing call lost its transitive effect")
+	}
+	calls[0].WritesGlobal = false
+	PropagateCallEffects(&contract, calls)
+	if contract.WritesGlobal {
+		t.Fatal("read-only call retained a stale conservative global-write effect")
+	}
+	contract.DirectWritesGlobal = true
+	PropagateCallEffects(&contract, calls)
+	if !contract.WritesGlobal {
+		t.Fatal("direct global write was omitted from the function contract")
 	}
 }
 
