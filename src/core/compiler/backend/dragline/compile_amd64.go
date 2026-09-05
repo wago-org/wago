@@ -1023,6 +1023,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64I32Popcnt, railmach.OpAMD64I64Popcnt,
 			railmach.OpAMD64F32AddScalar, railmach.OpAMD64F64AddScalar, railmach.OpAMD64F32SubScalar, railmach.OpAMD64F64SubScalar,
 			railmach.OpAMD64F32MulScalar, railmach.OpAMD64F64MulScalar, railmach.OpAMD64F32DivScalar, railmach.OpAMD64F64DivScalar,
+			railmach.OpAMD64F32MinScalar, railmach.OpAMD64F64MinScalar, railmach.OpAMD64F32MaxScalar, railmach.OpAMD64F64MaxScalar,
+			railmach.OpAMD64F32CopysignScalar, railmach.OpAMD64F64CopysignScalar,
 			railmach.OpAMD64F32AbsScalar, railmach.OpAMD64F64AbsScalar, railmach.OpAMD64F32NegScalar, railmach.OpAMD64F64NegScalar,
 			railmach.OpAMD64F32CeilScalar, railmach.OpAMD64F64CeilScalar, railmach.OpAMD64F32FloorScalar, railmach.OpAMD64F64FloorScalar,
 			railmach.OpAMD64F32TruncScalar, railmach.OpAMD64F64TruncScalar, railmach.OpAMD64F32NearestScalar, railmach.OpAMD64F64NearestScalar,
@@ -3779,9 +3781,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				emitAMD64DirectFloatBinary(&a, semanticOp, dst, lhs, rhs)
 				continue
 			}
-			if instruction.Op == wasm.InstrF32Copysign || instruction.Op == wasm.InstrF64Copysign {
+			if semanticOp == wasm.InstrF32Copysign || semanticOp == wasm.InstrF64Copysign {
 				rhs := reg(operands[1].Reg)
-				f64 := instruction.Op == wasm.InstrF64Copysign
+				f64 := semanticOp == wasm.InstrF64Copysign
 				a.MovXmmToGpr(amd64.R10, lhs, f64)
 				a.MovXmmToGpr(amd64.R11, rhs, f64)
 				a.ShiftImm(4, amd64.R10, 1, f64)

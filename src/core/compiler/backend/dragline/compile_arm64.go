@@ -1098,6 +1098,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			railmach.OpARM64I32Popcnt, railmach.OpARM64I64Popcnt,
 			railmach.OpARM64F32AddScalar, railmach.OpARM64F64AddScalar, railmach.OpARM64F32SubScalar, railmach.OpARM64F64SubScalar,
 			railmach.OpARM64F32MulScalar, railmach.OpARM64F64MulScalar, railmach.OpARM64F32DivScalar, railmach.OpARM64F64DivScalar,
+			railmach.OpARM64F32MinScalar, railmach.OpARM64F64MinScalar, railmach.OpARM64F32MaxScalar, railmach.OpARM64F64MaxScalar,
+			railmach.OpARM64F32CopysignScalar, railmach.OpARM64F64CopysignScalar,
 			railmach.OpARM64F32AbsScalar, railmach.OpARM64F64AbsScalar, railmach.OpARM64F32NegScalar, railmach.OpARM64F64NegScalar,
 			railmach.OpARM64F32CeilScalar, railmach.OpARM64F64CeilScalar, railmach.OpARM64F32FloorScalar, railmach.OpARM64F64FloorScalar,
 			railmach.OpARM64F32TruncScalar, railmach.OpARM64F64TruncScalar, railmach.OpARM64F32NearestScalar, railmach.OpARM64F64NearestScalar,
@@ -1547,8 +1549,9 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 	}
 	hasCopysign32, hasCopysign64 := false, false
 	for _, instruction := range plan.Machine.Insts {
-		hasCopysign32 = hasCopysign32 || instruction.Op == wasm.InstrF32Copysign
-		hasCopysign64 = hasCopysign64 || instruction.Op == wasm.InstrF64Copysign
+		semanticOp := railmach.SemanticOpcode(instruction.Op)
+		hasCopysign32 = hasCopysign32 || semanticOp == wasm.InstrF32Copysign
+		hasCopysign64 = hasCopysign64 || semanticOp == wasm.InstrF64Copysign
 	}
 	if hasCopysign32 {
 		a.MovImm64(arm64.X16, 0x80000000)
@@ -5070,9 +5073,9 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				emitARM64DirectFloatUnary(&a, semanticOp, dst, lhs, semanticOp >= wasm.InstrF64Abs)
 				continue
 			}
-			if instruction.Op == wasm.InstrF32Copysign || instruction.Op == wasm.InstrF64Copysign {
+			if semanticOp == wasm.InstrF32Copysign || semanticOp == wasm.InstrF64Copysign {
 				rhs := reg(operands[1].Reg)
-				f64 := instruction.Op == wasm.InstrF64Copysign
+				f64 := semanticOp == wasm.InstrF64Copysign
 				if dst != lhs {
 					a.Orr16b(dst, lhs, lhs)
 				}
@@ -6868,7 +6871,7 @@ type arm64CachedFloatConstant struct {
 func arm64RailMachCachedFloatRegisterBase(machine *railmach.Func) arm64.Reg {
 	if machine != nil {
 		for _, instruction := range machine.Insts {
-			if instruction.Op == wasm.InstrF32Copysign {
+			if railmach.SemanticOpcode(instruction.Op) == wasm.InstrF32Copysign {
 				return 24
 			}
 		}

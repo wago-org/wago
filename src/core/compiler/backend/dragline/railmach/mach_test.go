@@ -509,6 +509,48 @@ func TestSelectTargetOpcodesScalarFloatUnary(t *testing.T) {
 	}
 }
 
+func TestSelectTargetOpcodesScalarFloatMinMaxCopysign(t *testing.T) {
+	operations := [6]MOpcode{
+		wasm.InstrF32Min, wasm.InstrF32Max, wasm.InstrF32Copysign,
+		wasm.InstrF64Min, wasm.InstrF64Max, wasm.InstrF64Copysign,
+	}
+	for _, test := range []struct {
+		name   string
+		target Target
+		want   [6]MOpcode
+	}{
+		{"amd64", TargetAMD64, [6]MOpcode{
+			OpAMD64F32MinScalar, OpAMD64F32MaxScalar, OpAMD64F32CopysignScalar,
+			OpAMD64F64MinScalar, OpAMD64F64MaxScalar, OpAMD64F64CopysignScalar,
+		}},
+		{"arm64", TargetARM64, [6]MOpcode{
+			OpARM64F32MinScalar, OpARM64F32MaxScalar, OpARM64F32CopysignScalar,
+			OpARM64F64MinScalar, OpARM64F64MaxScalar, OpARM64F64CopysignScalar,
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for index, encoding := range []byte{0x96, 0x97, 0x98, 0xa4, 0xa5, 0xa6} {
+				type_ := wasm.F32
+				if index >= 3 {
+					type_ = wasm.F64
+				}
+				m := machineModule([]wasm.ValType{type_, type_}, []wasm.ValType{type_}, []byte{0x20, 0, 0x20, 1, encoding, 0x0b})
+				f := buildMachineTest(t, test.target, m)
+				count, err := SelectTargetOpcodes(f)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if count != 1 || len(f.Insts) != 1 || f.Insts[0].Op != test.want[index] {
+					t.Fatalf("selected instructions = %#v, count %d, want %d", f.Insts, count, test.want[index])
+				}
+				if got := SemanticOpcode(f.Insts[0].Op); got != operations[index] {
+					t.Fatalf("instruction %d semantic opcode = %d, want %d", index, got, operations[index])
+				}
+			}
+		})
+	}
+}
+
 func TestSelectTargetOpcodesIntegerComparisons(t *testing.T) {
 	operations := [22]MOpcode{
 		wasm.InstrI32Eqz, wasm.InstrI64Eqz,

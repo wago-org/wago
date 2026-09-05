@@ -296,6 +296,12 @@ const (
 	OpAMD64F64MulScalar
 	OpAMD64F32DivScalar
 	OpAMD64F64DivScalar
+	OpAMD64F32MinScalar
+	OpAMD64F64MinScalar
+	OpAMD64F32MaxScalar
+	OpAMD64F64MaxScalar
+	OpAMD64F32CopysignScalar
+	OpAMD64F64CopysignScalar
 	OpAMD64F32AbsScalar
 	OpAMD64F64AbsScalar
 	OpAMD64F32NegScalar
@@ -644,6 +650,12 @@ const (
 	OpARM64F64MulScalar
 	OpARM64F32DivScalar
 	OpARM64F64DivScalar
+	OpARM64F32MinScalar
+	OpARM64F64MinScalar
+	OpARM64F32MaxScalar
+	OpARM64F64MaxScalar
+	OpARM64F32CopysignScalar
+	OpARM64F64CopysignScalar
 	OpARM64F32AbsScalar
 	OpARM64F64AbsScalar
 	OpARM64F32NegScalar
@@ -794,6 +806,18 @@ func SemanticOpcode(op MOpcode) MOpcode {
 		return wasm.InstrF32Div
 	case OpAMD64F64DivScalar, OpARM64F64DivScalar:
 		return wasm.InstrF64Div
+	case OpAMD64F32MinScalar, OpARM64F32MinScalar:
+		return wasm.InstrF32Min
+	case OpAMD64F64MinScalar, OpARM64F64MinScalar:
+		return wasm.InstrF64Min
+	case OpAMD64F32MaxScalar, OpARM64F32MaxScalar:
+		return wasm.InstrF32Max
+	case OpAMD64F64MaxScalar, OpARM64F64MaxScalar:
+		return wasm.InstrF64Max
+	case OpAMD64F32CopysignScalar, OpARM64F32CopysignScalar:
+		return wasm.InstrF32Copysign
+	case OpAMD64F64CopysignScalar, OpARM64F64CopysignScalar:
+		return wasm.InstrF64Copysign
 	case OpAMD64F32AbsScalar, OpARM64F32AbsScalar:
 		return wasm.InstrF32Abs
 	case OpAMD64F64AbsScalar, OpARM64F64AbsScalar:
@@ -1178,6 +1202,18 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64F32DivScalar, OpARM64F32DivScalar
 		case wasm.InstrF64Div:
 			amd64, arm64 = OpAMD64F64DivScalar, OpARM64F64DivScalar
+		case wasm.InstrF32Min:
+			amd64, arm64 = OpAMD64F32MinScalar, OpARM64F32MinScalar
+		case wasm.InstrF64Min:
+			amd64, arm64 = OpAMD64F64MinScalar, OpARM64F64MinScalar
+		case wasm.InstrF32Max:
+			amd64, arm64 = OpAMD64F32MaxScalar, OpARM64F32MaxScalar
+		case wasm.InstrF64Max:
+			amd64, arm64 = OpAMD64F64MaxScalar, OpARM64F64MaxScalar
+		case wasm.InstrF32Copysign:
+			amd64, arm64 = OpAMD64F32CopysignScalar, OpARM64F32CopysignScalar
+		case wasm.InstrF64Copysign:
+			amd64, arm64 = OpAMD64F64CopysignScalar, OpARM64F64CopysignScalar
 		case wasm.InstrF32Abs:
 			amd64, arm64 = OpAMD64F32AbsScalar, OpARM64F32AbsScalar
 		case wasm.InstrF64Abs:
