@@ -991,6 +991,8 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 			railmach.OpARM64V128Load32Zero, railmach.OpARM64V128Load64Zero,
 			railmach.OpARM64V128Load8Lane, railmach.OpARM64V128Load16Lane, railmach.OpARM64V128Load32Lane, railmach.OpARM64V128Load64Lane,
 			railmach.OpARM64V128Store8Lane, railmach.OpARM64V128Store16Lane, railmach.OpARM64V128Store32Lane, railmach.OpARM64V128Store64Lane,
+			railmach.OpARM64F32x4RelaxedMadd, railmach.OpARM64F32x4RelaxedNmadd,
+			railmach.OpARM64F64x2RelaxedMadd, railmach.OpARM64F64x2RelaxedNmadd, railmach.OpARM64I16x8RelaxedQ15mulrS,
 			railmach.OpARM64V128And, railmach.OpARM64V128Andnot, railmach.OpARM64V128Or, railmach.OpARM64V128Xor,
 			railmach.OpARM64V128Not, railmach.OpARM64V128Bitselect,
 			railmach.OpARM64I8x16Add, railmach.OpARM64I8x16AddSatS, railmach.OpARM64I8x16AddSatU,
@@ -3900,6 +3902,28 @@ func emitARM64RailMachTarget(fn *railssa.Func, plan *nativeBackendPlan, mops boo
 				} else {
 					a.NeonFmin(dst, lhs, rhs, f64)
 				}
+				continue
+			case railmach.OpARM64F32x4RelaxedMadd, railmach.OpARM64F32x4RelaxedNmadd,
+				railmach.OpARM64F64x2RelaxedMadd, railmach.OpARM64F64x2RelaxedNmadd:
+				if len(operands) != 3 {
+					return nil, 0, true, fmt.Errorf("RailMach selected relaxed vector multiply-add operand count is %d", len(operands))
+				}
+				lhs, rhs, addend := reg(operands[0].Reg), reg(operands[1].Reg), reg(operands[2].Reg)
+				f64 := instruction.Op == railmach.OpARM64F64x2RelaxedMadd || instruction.Op == railmach.OpARM64F64x2RelaxedNmadd
+				neg := instruction.Op == railmach.OpARM64F32x4RelaxedNmadd || instruction.Op == railmach.OpARM64F64x2RelaxedNmadd
+				a.NeonMov16b(24, addend)
+				a.NeonFmul(dst, lhs, rhs, f64)
+				if neg {
+					a.NeonFsub(dst, 24, dst, f64)
+				} else {
+					a.NeonFadd(dst, dst, 24, f64)
+				}
+				continue
+			case railmach.OpARM64I16x8RelaxedQ15mulrS:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected relaxed q15 multiply operand count is %d", len(operands))
+				}
+				a.NeonSqrdmulhH(dst, reg(operands[0].Reg), reg(operands[1].Reg))
 				continue
 			case railmach.OpARM64F32x4Ceil, railmach.OpARM64F32x4Floor, railmach.OpARM64F32x4Trunc, railmach.OpARM64F32x4Nearest,
 				railmach.OpARM64F64x2Ceil, railmach.OpARM64F64x2Floor, railmach.OpARM64F64x2Trunc, railmach.OpARM64F64x2Nearest:

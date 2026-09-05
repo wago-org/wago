@@ -924,6 +924,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			railmach.OpAMD64V128Load32Zero, railmach.OpAMD64V128Load64Zero,
 			railmach.OpAMD64V128Load8Lane, railmach.OpAMD64V128Load16Lane, railmach.OpAMD64V128Load32Lane, railmach.OpAMD64V128Load64Lane,
 			railmach.OpAMD64V128Store8Lane, railmach.OpAMD64V128Store16Lane, railmach.OpAMD64V128Store32Lane, railmach.OpAMD64V128Store64Lane,
+			railmach.OpAMD64F32x4RelaxedMadd, railmach.OpAMD64F32x4RelaxedNmadd,
+			railmach.OpAMD64F64x2RelaxedMadd, railmach.OpAMD64F64x2RelaxedNmadd, railmach.OpAMD64I16x8RelaxedQ15mulrS,
 			railmach.OpAMD64V128And, railmach.OpAMD64V128Andnot, railmach.OpAMD64V128Or, railmach.OpAMD64V128Xor,
 			railmach.OpAMD64V128Not, railmach.OpAMD64V128Bitselect,
 			railmach.OpAMD64I8x16Add, railmach.OpAMD64I8x16AddSatS, railmach.OpAMD64I8x16AddSatU,
@@ -2820,6 +2822,28 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.VPor(dst, 4, 5)
 					a.VFPackedSub(dst, dst, 5, true)
 				}
+				continue
+			case railmach.OpAMD64F32x4RelaxedMadd, railmach.OpAMD64F32x4RelaxedNmadd,
+				railmach.OpAMD64F64x2RelaxedMadd, railmach.OpAMD64F64x2RelaxedNmadd:
+				if len(operands) != 3 {
+					return nil, 0, true, fmt.Errorf("RailMach selected relaxed vector multiply-add operand count is %d", len(operands))
+				}
+				lhs, rhs, addend := reg(operands[0].Reg), reg(operands[1].Reg), reg(operands[2].Reg)
+				f64 := instruction.Op == railmach.OpAMD64F64x2RelaxedMadd || instruction.Op == railmach.OpAMD64F64x2RelaxedNmadd
+				neg := instruction.Op == railmach.OpAMD64F32x4RelaxedNmadd || instruction.Op == railmach.OpAMD64F64x2RelaxedNmadd
+				a.VMovdqu(5, addend)
+				a.VFPackedMul(dst, lhs, rhs, f64)
+				if neg {
+					a.VFPackedSub(dst, 5, dst, f64)
+				} else {
+					a.VFPackedAdd(dst, dst, 5, f64)
+				}
+				continue
+			case railmach.OpAMD64I16x8RelaxedQ15mulrS:
+				if len(operands) != 2 {
+					return nil, 0, true, fmt.Errorf("RailMach selected relaxed q15 multiply operand count is %d", len(operands))
+				}
+				a.VPmulhrsw(dst, reg(operands[0].Reg), reg(operands[1].Reg))
 				continue
 			case railmach.OpAMD64I32x4TruncSatF32x4S, railmach.OpAMD64I32x4TruncSatF32x4U,
 				railmach.OpAMD64I32x4TruncSatF64x2SZero, railmach.OpAMD64I32x4TruncSatF64x2UZero:

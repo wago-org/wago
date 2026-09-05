@@ -520,7 +520,15 @@ func railMachV128FoundationCandidate(stack *railssa.StackFunc) bool {
 			wasm.InstrF64x2ConvertLowI32x4S, wasm.InstrF64x2ConvertLowI32x4U,
 			wasm.InstrI32x4TruncSatF32x4S, wasm.InstrI32x4TruncSatF32x4U,
 			wasm.InstrI32x4TruncSatF64x2SZero, wasm.InstrI32x4TruncSatF64x2UZero,
-			wasm.InstrI8x16Popcnt, wasm.InstrI16x8Q15mulrSatS:
+			wasm.InstrI8x16Popcnt, wasm.InstrI16x8Q15mulrSatS,
+			wasm.InstrI8x16RelaxedSwizzle,
+			wasm.InstrI32x4RelaxedTruncF32x4S, wasm.InstrI32x4RelaxedTruncF32x4U,
+			wasm.InstrI32x4RelaxedTruncZeroF64x2S, wasm.InstrI32x4RelaxedTruncZeroF64x2U,
+			wasm.InstrF32x4RelaxedMadd, wasm.InstrF32x4RelaxedNmadd, wasm.InstrF64x2RelaxedMadd, wasm.InstrF64x2RelaxedNmadd,
+			wasm.InstrI8x16RelaxedLaneselect, wasm.InstrI16x8RelaxedLaneselect,
+			wasm.InstrI32x4RelaxedLaneselect, wasm.InstrI64x2RelaxedLaneselect,
+			wasm.InstrF32x4RelaxedMin, wasm.InstrF32x4RelaxedMax, wasm.InstrF64x2RelaxedMin, wasm.InstrF64x2RelaxedMax,
+			wasm.InstrI16x8RelaxedQ15mulrS:
 		default:
 			return false
 		}
@@ -1658,6 +1666,8 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 		switch instruction.Op {
 		case wasm.InstrI32x4TruncSatF32x4S, wasm.InstrI32x4TruncSatF32x4U,
 			wasm.InstrI32x4TruncSatF64x2SZero, wasm.InstrI32x4TruncSatF64x2UZero,
+			wasm.InstrI32x4RelaxedTruncF32x4S, wasm.InstrI32x4RelaxedTruncF32x4U,
+			wasm.InstrI32x4RelaxedTruncZeroF64x2S, wasm.InstrI32x4RelaxedTruncZeroF64x2U,
 			railmach.OpAMD64I32x4TruncSatF32x4S, railmach.OpAMD64I32x4TruncSatF32x4U,
 			railmach.OpAMD64I32x4TruncSatF64x2SZero, railmach.OpAMD64I32x4TruncSatF64x2UZero,
 			wasm.InstrI8x16Popcnt, wasm.InstrI16x8Q15mulrSatS,
@@ -1669,6 +1679,14 @@ func machineAMD64VectorScratchCount(machine *railmach.Func) uint8 {
 		case wasm.InstrV128Load8x8U, wasm.InstrV128Load16x4U, wasm.InstrV128Load32x2S, wasm.InstrV128Load32x2U,
 			railmach.OpAMD64V128Load8x8U, railmach.OpAMD64V128Load16x4U, railmach.OpAMD64V128Load32x2S, railmach.OpAMD64V128Load32x2U:
 			count = 1 // XMM5 supplies zero or sign-extension lanes.
+		case wasm.InstrI8x16RelaxedSwizzle,
+			wasm.InstrF32x4RelaxedMadd, wasm.InstrF32x4RelaxedNmadd, wasm.InstrF64x2RelaxedMadd, wasm.InstrF64x2RelaxedNmadd,
+			wasm.InstrI8x16RelaxedLaneselect, wasm.InstrI16x8RelaxedLaneselect,
+			wasm.InstrI32x4RelaxedLaneselect, wasm.InstrI64x2RelaxedLaneselect,
+			wasm.InstrI16x8RelaxedQ15mulrS,
+			railmach.OpAMD64F32x4RelaxedMadd, railmach.OpAMD64F32x4RelaxedNmadd,
+			railmach.OpAMD64F64x2RelaxedMadd, railmach.OpAMD64F64x2RelaxedNmadd:
+			count = 1 // XMM5 preserves a ternary input or supplies a vector scratch.
 		case wasm.InstrI16x8ExtmulLowI8x16S, wasm.InstrI16x8ExtmulHighI8x16S,
 			wasm.InstrI16x8ExtmulLowI8x16U, wasm.InstrI16x8ExtmulHighI8x16U,
 			wasm.InstrI32x4ExtmulLowI16x8S, wasm.InstrI32x4ExtmulHighI16x8S,

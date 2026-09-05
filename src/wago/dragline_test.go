@@ -5974,6 +5974,110 @@ func TestDraglineRailMachVectorTruncSatExecution(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachRelaxedVectorExecution(t *testing.T) {
+	repeat := func(value byte) (out [16]byte) {
+		for lane := range out {
+			out[lane] = value
+		}
+		return
+	}
+	f32x4 := func(values ...float32) (out [16]byte) {
+		for lane, value := range values {
+			binary.LittleEndian.PutUint32(out[lane*4:], math.Float32bits(value))
+		}
+		return
+	}
+	f64x2 := func(values ...float64) (out [16]byte) {
+		for lane, value := range values {
+			binary.LittleEndian.PutUint64(out[lane*8:], math.Float64bits(value))
+		}
+		return
+	}
+	i32x4 := func(values ...int32) (out [16]byte) {
+		for lane, value := range values {
+			binary.LittleEndian.PutUint32(out[lane*4:], uint32(value))
+		}
+		return
+	}
+	i16x8 := func(value int16) (out [16]byte) {
+		for lane := 0; lane < 8; lane++ {
+			binary.LittleEndian.PutUint16(out[lane*2:], uint16(value))
+		}
+		return
+	}
+	ascending := [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
+	descending := [16]byte{15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0}
+	for _, test := range []struct {
+		name      string
+		subopcode uint32
+		inputs    [][16]byte
+		want      [16]byte
+	}{
+		{name: "i8x16.relaxed_swizzle", subopcode: 256, inputs: [][16]byte{ascending, descending}, want: descending},
+		{name: "i32x4.relaxed_trunc_f32x4_s", subopcode: 257, inputs: [][16]byte{f32x4(-3.75, 7.75, 10, -11)}, want: i32x4(-3, 7, 10, -11)},
+		{name: "i32x4.relaxed_trunc_f32x4_u", subopcode: 258, inputs: [][16]byte{f32x4(3.75, 7.75, 10, 11)}, want: i32x4(3, 7, 10, 11)},
+		{name: "i32x4.relaxed_trunc_f64x2_s_zero", subopcode: 259, inputs: [][16]byte{f64x2(-3.75, 7.75)}, want: i32x4(-3, 7, 0, 0)},
+		{name: "i32x4.relaxed_trunc_f64x2_u_zero", subopcode: 260, inputs: [][16]byte{f64x2(3.75, 7.75)}, want: i32x4(3, 7, 0, 0)},
+		{name: "f32x4.relaxed_madd", subopcode: 261, inputs: [][16]byte{f32x4(2, 3, 4, 5), f32x4(4, 4, 4, 4), f32x4(1, 1, 1, 1)}, want: f32x4(9, 13, 17, 21)},
+		{name: "f32x4.relaxed_nmadd", subopcode: 262, inputs: [][16]byte{f32x4(2, 3, 4, 5), f32x4(4, 4, 4, 4), f32x4(1, 1, 1, 1)}, want: f32x4(-7, -11, -15, -19)},
+		{name: "f64x2.relaxed_madd", subopcode: 263, inputs: [][16]byte{f64x2(2, 3), f64x2(4, 4), f64x2(1, 1)}, want: f64x2(9, 13)},
+		{name: "f64x2.relaxed_nmadd", subopcode: 264, inputs: [][16]byte{f64x2(2, 3), f64x2(4, 4), f64x2(1, 1)}, want: f64x2(-7, -11)},
+		{name: "i8x16.relaxed_laneselect", subopcode: 265, inputs: [][16]byte{repeat(0xf0), repeat(0x0f), repeat(0xaa)}, want: repeat(0xa5)},
+		{name: "i16x8.relaxed_laneselect", subopcode: 266, inputs: [][16]byte{repeat(0xf0), repeat(0x0f), repeat(0xaa)}, want: repeat(0xa5)},
+		{name: "i32x4.relaxed_laneselect", subopcode: 267, inputs: [][16]byte{repeat(0xf0), repeat(0x0f), repeat(0xaa)}, want: repeat(0xa5)},
+		{name: "i64x2.relaxed_laneselect", subopcode: 268, inputs: [][16]byte{repeat(0xf0), repeat(0x0f), repeat(0xaa)}, want: repeat(0xa5)},
+		{name: "f32x4.relaxed_min", subopcode: 269, inputs: [][16]byte{f32x4(1, 4, -2, 8), f32x4(2, 3, -1, 7)}, want: f32x4(1, 3, -2, 7)},
+		{name: "f32x4.relaxed_max", subopcode: 270, inputs: [][16]byte{f32x4(1, 4, -2, 8), f32x4(2, 3, -1, 7)}, want: f32x4(2, 4, -1, 8)},
+		{name: "f64x2.relaxed_min", subopcode: 271, inputs: [][16]byte{f64x2(1, 4), f64x2(2, 3)}, want: f64x2(1, 3)},
+		{name: "f64x2.relaxed_max", subopcode: 272, inputs: [][16]byte{f64x2(1, 4), f64x2(2, 3)}, want: f64x2(2, 4)},
+		{name: "i16x8.relaxed_q15mulr_s", subopcode: 273, inputs: [][16]byte{i16x8(16384), i16x8(16384)}, want: i16x8(8192)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x41, 0x00}
+			for _, input := range test.inputs {
+				body = append(body, 0xfd, 0x0c)
+				body = append(body, input[:]...)
+			}
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(test.subopcode)...)
+			body = append(body, 0xfd, 0x0b, 0x04, 0x00, 0x0b)
+			read0 := []byte{0x41, 0x00, 0x29, 0x03, 0x00, 0x0b}
+			read8 := []byte{0x41, 0x08, 0x29, 0x03, 0x00, 0x0b}
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil), wasmtest.FuncType(nil, []wasm.ValType{wasm.I64}))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(1), wasmtest.ULEB(1))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0), wasmtest.ExportEntry("read0", 0, 1), wasmtest.ExportEntry("read8", 0, 2))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body), wasmtest.Code(read0), wasmtest.Code(read8))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3).WithCompiler(CompilerDragline).WithTarget(TargetNative), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			if _, err := instance.Invoke("run"); err != nil {
+				t.Fatal(err)
+			}
+			var got [16]byte
+			for index, name := range []string{"read0", "read8"} {
+				result, err := instance.Invoke(name)
+				if err != nil || len(result) != 1 {
+					t.Fatalf("%s result = %#x, %v", name, result, err)
+				}
+				binary.LittleEndian.PutUint64(got[index*8:], result[0])
+			}
+			if got != test.want {
+				t.Fatalf("result = %x; want %x", got, test.want)
+			}
+		})
+	}
+}
+
 func TestDraglineStructuredSIMDBitmaskNonzero(t *testing.T) {
 	if runtime.GOARCH != "arm64" {
 		t.Skip("Dragline structured SIMD execution is currently ARM64-only")

@@ -253,6 +253,11 @@ const (
 	OpAMD64V128Store16Lane
 	OpAMD64V128Store32Lane
 	OpAMD64V128Store64Lane
+	OpAMD64F32x4RelaxedMadd
+	OpAMD64F32x4RelaxedNmadd
+	OpAMD64F64x2RelaxedMadd
+	OpAMD64F64x2RelaxedNmadd
+	OpAMD64I16x8RelaxedQ15mulrS
 	opAMD64SelectedEnd
 )
 
@@ -494,6 +499,11 @@ const (
 	OpARM64V128Store16Lane
 	OpARM64V128Store32Lane
 	OpARM64V128Store64Lane
+	OpARM64F32x4RelaxedMadd
+	OpARM64F32x4RelaxedNmadd
+	OpARM64F64x2RelaxedMadd
+	OpARM64F64x2RelaxedNmadd
+	OpARM64I16x8RelaxedQ15mulrS
 	opARM64SelectedEnd
 )
 
@@ -595,6 +605,8 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpAMD64V128Load32Splat, OpAMD64V128Load64Splat, OpAMD64V128Load32Zero, OpAMD64V128Load64Zero,
 		OpAMD64V128Load8Lane, OpAMD64V128Load16Lane, OpAMD64V128Load32Lane, OpAMD64V128Load64Lane,
 		OpAMD64V128Store8Lane, OpAMD64V128Store16Lane, OpAMD64V128Store32Lane, OpAMD64V128Store64Lane,
+		OpAMD64F32x4RelaxedMadd, OpAMD64F32x4RelaxedNmadd, OpAMD64F64x2RelaxedMadd, OpAMD64F64x2RelaxedNmadd,
+		OpAMD64I16x8RelaxedQ15mulrS,
 		OpARM64V128Move, OpARM64V128Const, OpARM64V128Load, OpARM64V128Store,
 		OpARM64V128And, OpARM64V128Andnot, OpARM64V128Or, OpARM64V128Xor, OpARM64V128Not, OpARM64V128Bitselect,
 		OpARM64I8x16Add, OpARM64I8x16AddSatS, OpARM64I8x16AddSatU, OpARM64I8x16Sub, OpARM64I8x16SubSatS, OpARM64I8x16SubSatU,
@@ -651,7 +663,9 @@ func isSelectedSIMDOpcode(op MOpcode) bool {
 		OpARM64V128Load32x2S, OpARM64V128Load32x2U, OpARM64V128Load8Splat, OpARM64V128Load16Splat,
 		OpARM64V128Load32Splat, OpARM64V128Load64Splat, OpARM64V128Load32Zero, OpARM64V128Load64Zero,
 		OpARM64V128Load8Lane, OpARM64V128Load16Lane, OpARM64V128Load32Lane, OpARM64V128Load64Lane,
-		OpARM64V128Store8Lane, OpARM64V128Store16Lane, OpARM64V128Store32Lane, OpARM64V128Store64Lane:
+		OpARM64V128Store8Lane, OpARM64V128Store16Lane, OpARM64V128Store32Lane, OpARM64V128Store64Lane,
+		OpARM64F32x4RelaxedMadd, OpARM64F32x4RelaxedNmadd, OpARM64F64x2RelaxedMadd, OpARM64F64x2RelaxedNmadd,
+		OpARM64I16x8RelaxedQ15mulrS:
 		return true
 	default:
 		return false
@@ -1144,6 +1158,37 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 			amd64, arm64 = OpAMD64I8x16ShrU, OpARM64I8x16ShrU
 		case wasm.InstrI64x2ShrS:
 			amd64, arm64 = OpAMD64I64x2ShrS, OpARM64I64x2ShrS
+		case wasm.InstrI8x16RelaxedSwizzle:
+			amd64, arm64 = OpAMD64I8x16Swizzle, OpARM64I8x16Swizzle
+		case wasm.InstrI32x4RelaxedTruncF32x4S:
+			amd64, arm64 = OpAMD64I32x4TruncSatF32x4S, OpARM64I32x4TruncSatF32x4S
+		case wasm.InstrI32x4RelaxedTruncF32x4U:
+			amd64, arm64 = OpAMD64I32x4TruncSatF32x4U, OpARM64I32x4TruncSatF32x4U
+		case wasm.InstrI32x4RelaxedTruncZeroF64x2S:
+			amd64, arm64 = OpAMD64I32x4TruncSatF64x2SZero, OpARM64I32x4TruncSatF64x2SZero
+		case wasm.InstrI32x4RelaxedTruncZeroF64x2U:
+			amd64, arm64 = OpAMD64I32x4TruncSatF64x2UZero, OpARM64I32x4TruncSatF64x2UZero
+		case wasm.InstrF32x4RelaxedMadd:
+			amd64, arm64 = OpAMD64F32x4RelaxedMadd, OpARM64F32x4RelaxedMadd
+		case wasm.InstrF32x4RelaxedNmadd:
+			amd64, arm64 = OpAMD64F32x4RelaxedNmadd, OpARM64F32x4RelaxedNmadd
+		case wasm.InstrF64x2RelaxedMadd:
+			amd64, arm64 = OpAMD64F64x2RelaxedMadd, OpARM64F64x2RelaxedMadd
+		case wasm.InstrF64x2RelaxedNmadd:
+			amd64, arm64 = OpAMD64F64x2RelaxedNmadd, OpARM64F64x2RelaxedNmadd
+		case wasm.InstrI8x16RelaxedLaneselect, wasm.InstrI16x8RelaxedLaneselect,
+			wasm.InstrI32x4RelaxedLaneselect, wasm.InstrI64x2RelaxedLaneselect:
+			amd64, arm64 = OpAMD64V128Bitselect, OpARM64V128Bitselect
+		case wasm.InstrF32x4RelaxedMin:
+			amd64, arm64 = OpAMD64F32x4Pmin, OpARM64F32x4Min
+		case wasm.InstrF32x4RelaxedMax:
+			amd64, arm64 = OpAMD64F32x4Pmax, OpARM64F32x4Max
+		case wasm.InstrF64x2RelaxedMin:
+			amd64, arm64 = OpAMD64F64x2Pmin, OpARM64F64x2Min
+		case wasm.InstrF64x2RelaxedMax:
+			amd64, arm64 = OpAMD64F64x2Pmax, OpARM64F64x2Max
+		case wasm.InstrI16x8RelaxedQ15mulrS:
+			amd64, arm64 = OpAMD64I16x8RelaxedQ15mulrS, OpARM64I16x8RelaxedQ15mulrS
 		default:
 			continue
 		}
