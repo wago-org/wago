@@ -4,7 +4,7 @@ Measured through 2026-09-05 on native ARM64. This is a stopping-point report for
 `jairus/railshot-compile-latency`, comparing:
 
 - Base: `main` at `c46f2129edb52e6f30f4d0bfc5ae105cfde0c84d`
-- Branch implementation: `880eb469`
+- Branch implementation: `e8c451c3`
 - Host: Apple M4 Max, macOS 26.6.2, Go 1.26.5, `darwin/arm64`
 
 ## Current result
@@ -12,10 +12,10 @@ Measured through 2026-09-05 on native ARM64. This is a stopping-point report for
 | Metric | Delta versus `main` |
 |---|---:|
 | End-to-end compile latency, older all-corpus checkpoint | **-9.38%** |
-| End-to-end compile latency, large-module geomean | **-38.09%** |
-| Backend-only compile latency, large-module geomean | **-32.25%** |
+| End-to-end compile latency, large-module geomean | **-40.20%** |
+| Backend-only compile latency, large-module geomean | **-35.70%** |
 | Backend-only compile latency, older all-corpus checkpoint | **+0.86%** |
-| End-to-end compile heap, large-module geomean | **-1.59%** |
+| End-to-end compile heap, large-module geomean | **-1.62%** |
 | End-to-end compile heap, older all-corpus checkpoint | **+1.07%** |
 | Backend-only compile heap, large-module geomean | **-6.33%** |
 | End-to-end compile allocations, large-module geomean | **-19.00%** |
@@ -31,26 +31,26 @@ The exact current-HEAD large-corpus comparison used eight fresh interleaved
 
 | Corpus | Full compile main | Full compile branch | Latency delta | Heap delta | Allocation delta |
 |---|---:|---:|---:|---:|---:|
-| json-as | 1.365 ms | 0.874 ms | **-35.99%** | -0.59% | -12.06% |
-| Lua | 23.04 ms | 14.66 ms | **-36.37%** | -2.50% | -9.75% |
-| SQLite | 87.25 ms | 55.70 ms | **-36.16%** | -2.84% | -11.29% |
-| Ruby | 976.3 ms | 595.1 ms | **-39.04%** | -0.87% | -6.58% |
-| esbuild | 638.1 ms | 366.2 ms | **-42.60%** | -1.13% | -46.96% |
-| **Geomean** | **70.27 ms** | **43.50 ms** | **-38.09%** | **-1.59%** | **-18.99%** |
+| json-as | 1.363 ms | 0.844 ms | **-38.10%** | -0.76% | -12.06% |
+| Lua | 22.77 ms | 14.20 ms | **-37.65%** | -2.50% | -9.75% |
+| SQLite | 86.95 ms | 52.59 ms | **-39.51%** | -2.84% | -11.29% |
+| Ruby | 966.3 ms | 565.9 ms | **-41.44%** | -0.87% | -6.58% |
+| esbuild | 629.0 ms | 351.8 ms | **-44.07%** | -1.13% | -46.98% |
+| **Geomean** | **69.66 ms** | **41.66 ms** | **-40.20%** | **-1.62%** | **-19.00%** |
 
-The matching backend-only geomean improved from 42.25 ms to 28.63 ms
-(**-32.25%**). Every per-corpus backend and end-to-end latency result was
+The matching backend-only geomean improved from 41.90 ms to 26.94 ms
+(**-35.70%**). Every per-corpus backend and end-to-end latency result was
 significant at `p<0.001`. Backend allocated heap improved **6.33%** by geomean;
 every large corpus used less backend heap than `main`.
 
 | Corpus | Backend main | Backend branch | Latency delta | Heap delta | Allocation delta |
 |---|---:|---:|---:|---:|---:|
-| json-as | 763.2 us | 556.5 us | **-27.09%** | -2.51% | -37.59% |
-| Lua | 13.99 ms | 10.06 ms | **-28.11%** | -5.10% | -33.69% |
-| SQLite | 55.44 ms | 38.06 ms | **-31.35%** | -9.21% | -33.65% |
-| Ruby | 597.9 ms | 393.7 ms | **-34.15%** | -4.90% | -19.44% |
-| esbuild | 378.3 ms | 227.9 ms | **-39.75%** | -9.74% | -76.97% |
-| **Geomean** | **42.25 ms** | **28.63 ms** | **-32.25%** | **-6.33%** | **-44.87%** |
+| json-as | 751.7 us | 529.9 us | **-29.51%** | -2.51% | -37.59% |
+| Lua | 13.92 ms | 9.511 ms | **-31.66%** | -5.10% | -33.69% |
+| SQLite | 53.46 ms | 36.44 ms | **-31.85%** | -9.21% | -33.65% |
+| Ruby | 603.9 ms | 362.2 ms | **-40.01%** | -4.90% | -19.44% |
+| esbuild | 377.3 ms | 210.6 ms | **-44.19%** | -9.74% | -76.97% |
+| **Geomean** | **41.90 ms** | **26.94 ms** | **-35.70%** | **-6.33%** | **-44.87%** |
 
 The inline-analysis change is representation-only: all five final compiled-code
 buffers matched its immediate predecessor in both byte length and SHA-256.
@@ -83,6 +83,9 @@ changes measured independently against their immediate predecessors:
 | Reuse repeated host-adapter encodings | **-0.60%** | **-1.25%** | unchanged | Exact large-corpus code-size and SHA-256 parity; complete execution corpus passed |
 | Fast ARM64 inline caller analysis | **-0.94%** | **-0.77%** | **-0.45% backend heap; -8.63% backend allocs** | Exact large-corpus code-size and SHA-256 parity |
 | Replace detailed ARM64 arena prediction with a coarse bounded estimate | **-3.69%** | **-2.88%** | **-0.74% backend; -0.28% full heap** | Exact large-corpus code-size and SHA-256 parity |
+| Read bytecode bytes without nested cursor calls | **-2.61%** | **-2.43%** | unchanged | Exact large-corpus code-size and SHA-256 parity |
+| Fast-path one-byte `U32` LEBs | **-1.73%** | **-1.92%** | unchanged | Exact large-corpus code-size and SHA-256 parity |
+| Fast-path one-byte `I32` LEBs | **-0.79%** | **-0.17%** (flat) | unchanged | Exact large-corpus code-size and SHA-256 parity |
 
 The latest ARM64 change removes the per-op arena-node simulation from hint
 construction. Small ordinary functions use a constant-time estimate derived
@@ -149,14 +152,14 @@ code matched exactly for both latest changes.
 
 The strongest and most stable result is on large real modules. The exact
 current comparison is the eight-pair table above: end-to-end compile latency is
-36.0-42.6% lower on json-as, Lua, SQLite, Ruby, and esbuild, and backend-only
-compilation is 27.1-39.8% lower on the same group. The all-corpus
+37.7-44.1% lower on json-as, Lua, SQLite, Ruby, and esbuild, and backend-only
+compilation is 29.5-44.2% lower on the same group. The all-corpus
 backend geomean includes fresh-process micro modules whose 7-59% confidence
 intervals overwhelm their tens-of-microseconds signal; it is reported rather
 than filtered, but is not evidence of a backend regression. The branch
 currently spends a small amount of heap on compact validation analysis and
-parallel hint orchestration. The large-module geomean is 38.09% faster end to
-end with 1.59% less allocated heap and 18.99% fewer allocations. Every latency
+parallel hint orchestration. The large-module geomean is 40.20% faster end to
+end with 1.62% less allocated heap and 19.00% fewer allocations. Every latency
 result is significant at p<0.001; esbuild full-compile heap is 1.10% below
 `main`.
 
@@ -352,7 +355,7 @@ and 33 retained implementation changes:
 Implementation source delta, excluding this report:
 
 ```text
-49 files changed, 2,702 insertions, 566 deletions
+54 files changed, 2,682 insertions, 1,016 deletions
 ```
 
 The larger source increase is primarily validation-analysis structure, tests,
@@ -370,7 +373,7 @@ These were measured and removed rather than retained speculatively:
 | Saturated `uint32` local hotness | +1.25% focused geomean; esbuild +1.58% |
 | Lookup table for loop weighting | Unstable and slower overall |
 | Pending-memory-reference counter | +0.44% backend geomean; Ruby +3.35% (p=0.038); no heap benefit |
-| Direct reader bounds check | +15.45% focused geomean; json-as +70.84% |
+| Compiler-local replacement for the shared bytecode reader | +15.45% focused geomean; json-as +70.84%. This was a larger reader/state substitution, not the later retained direct `Reader.Byte` cursor increment |
 | Dense function-signature pointer cache | +13.47% focused geomean, +1.07% heap |
 | Cached imported-function boundary | +5.32% focused geomean; json-as +26.93% |
 | Heavy-first scheduling | -0.04%; below measurement value |
@@ -465,12 +468,16 @@ Raw measurements for the current checkpoint are in
 `/tmp/arm64-numeric-hint-fast-backend-{base,candidate}.txt`, and
 `/tmp/arm64-pending-memref-{base,candidate}.txt`, and
 `/tmp/arm64-reg-owner-{base,candidate}.txt`, and
-`/tmp/arm64-branch-state-{base,candidate}.txt` on the measuring host.
+`/tmp/arm64-branch-state-{base,candidate}.txt`,
+`/tmp/arm64-reader-byte-clean-{base,candidate}-0905.txt`,
+`/tmp/arm64-reader-u32-{base,candidate}-0905.txt`,
+`/tmp/arm64-reader-i32-{base,candidate}-0905.txt`, and
+`/tmp/arm64-reader-final-vs-main-{base,candidate}-0905.txt` on the measuring host.
 They are intentionally not checked into the repository.
 
 ## Next ARM64 work
 
-In the current large-module profile, instruction emission dominates:
+In the pre-reader-fast-path large-module profile, instruction emission dominates:
 `Asm.word` is 57.1% flat, code-image mapping is 14.4%, `memAddr` is 18.0%
 cumulative, scalar `ldst` is 16.7%, materialization is 9.7%, `scanExpr` is 7.8%,
 local writes are 6.8%, calls are 3.7%, and trap-stub emission is 4.1%.
