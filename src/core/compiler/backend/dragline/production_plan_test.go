@@ -665,6 +665,28 @@ func TestNativeSegmentedAllocationRequiresStrictDebtWin(t *testing.T) {
 	}
 }
 
+func TestNativeScheduleScorePrefersBoundedLoopInvariantMotionForSpeed(t *testing.T) {
+	stable := railmach.ScheduleScore{Kind: railmach.ScheduleKindSourceStable, PhysicalCopies: 3}
+	hoisted := railmach.ScheduleScore{Kind: railmach.ScheduleKindPressure, PhysicalCopies: 4, LoopInvariantOps: 1}
+	if !nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetARM64, 13, false, hoisted, stable) ||
+		nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetARM64, 13, false, stable, hoisted) {
+		t.Fatal("bounded loop-invariant motion preference was not stable across candidate order")
+	}
+	hoisted.PhysicalCopies++
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetARM64, 13, false, hoisted, stable) {
+		t.Fatal("loop-invariant motion with excess copies was preferred")
+	}
+	hoisted.PhysicalCopies--
+	hoisted.WeightedSpillDebt = 1
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSpeed, railmach.TargetARM64, 13, false, hoisted, stable) {
+		t.Fatal("loop-invariant motion with added spill debt was preferred")
+	}
+	hoisted.WeightedSpillDebt = 0
+	if nativeScheduleScoreBetter(corecompiler.ObjectiveSize, railmach.TargetARM64, 13, false, hoisted, stable) {
+		t.Fatal("loop-invariant motion preference escaped the speed objective")
+	}
+}
+
 func testScheduleScore(debt uint64, copies, cycles, repairs uint32) railmach.ScheduleScore {
 	return railmach.ScheduleScore{WeightedSpillDebt: debt, PhysicalCopies: copies, CopyCycles: cycles, FixedRepairs: repairs}
 }

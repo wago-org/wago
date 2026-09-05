@@ -45,6 +45,7 @@ type Induction struct {
 
 type LICMMove struct {
 	Instruction uint32
+	From        BlockID
 	Preheader   BlockID
 	Loop        BlockID
 }
@@ -65,6 +66,7 @@ type PressurePlan struct {
 	ColdUses    []ColdUse
 	ReducedArgs uint32
 
+	licmInline           [4]LICMMove
 	definition           []uint32
 	lastUse              []uint32
 	useCount             []uint8
@@ -113,6 +115,9 @@ func PressureShape(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *SemanticFu
 	}
 	inductions := reuse.Inductions[:0]
 	licm := reuse.LICM[:0]
+	if cap(licm) == 0 {
+		licm = reuse.licmInline[:0]
+	}
 	coldUses := reuse.ColdUses[:0]
 	definition := resizeClear(reuse.definition, len(flow.Values))
 	lastUse := resizeClear(reuse.lastUse, len(flow.Values))
@@ -261,7 +266,7 @@ func PressureShape(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *SemanticFu
 	}
 	reuse.ColdUses = retainAggregateColdUses(reuse.ColdUses)
 	planPressureLICM(f, cfg, flow, semantic, metadata, simplified, reuse)
-	if err := VerifyPressurePlan(flow, semantic, metadata, reuse); err != nil {
+	if err := VerifyPressurePlan(f, cfg, flow, semantic, metadata, simplified, reuse); err != nil {
 		return nil, err
 	}
 	return reuse, nil
@@ -342,32 +347,39 @@ func planPressureLICM(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *Semanti
 		if !ok {
 			continue
 		}
-		semanticLoop := semantic.Blocks[loopID]
-		for instructionID := semanticLoop.InstStart; instructionID < semanticLoop.InstStart+semanticLoop.InstCount; instructionID++ {
-			instruction := semantic.Insts[instructionID]
-			meta := metadata.Instructions[instruction.Source]
-			if instruction.Result == 0 || !licmPureOp(instruction.Op) || meta.Reads != 0 || meta.Writes != 0 || meta.Flags != 0 || meta.Traps != 0 || meta.Obligations != 0 {
+		for sourceBlock, semanticBlock := range semantic.Blocks {
+			// Nested regions plan their own motion. Restricting this pass to the
+			// loop's direct region also prevents one instruction from receiving
+			// competing moves from nested and outer loops.
+			if cfg.Blocks[sourceBlock].Region != loop.Region {
 				continue
 			}
-			invariant := true
-			for _, argument := range semantic.Operands(instructionID) {
-				argument = resolveAlias(simplified.Aliases, argument)
-				if blockInRegion(cfg.Blocks[plan.valueBlock[argument]].Region, loop.Region, f) {
-					invariant = false
-					break
+			for instructionID := semanticBlock.InstStart; instructionID < semanticBlock.InstStart+semanticBlock.InstCount; instructionID++ {
+				instruction := semantic.Insts[instructionID]
+				meta := metadata.Instructions[instruction.Source]
+				if instruction.Result == 0 || !licmPureOp(instruction.Op) || !licmWorthHoisting(f.Instrs[instruction.Source]) || meta.Reads != 0 || meta.Writes != 0 || meta.Flags != 0 || meta.Traps != 0 || meta.Obligations != 0 {
+					continue
 				}
+				invariant := true
+				for _, argument := range semantic.Operands(instructionID) {
+					argument = resolveAlias(simplified.Aliases, argument)
+					if blockInRegion(cfg.Blocks[plan.valueBlock[argument]].Region, loop.Region, f) {
+						invariant = false
+						break
+					}
+				}
+				if !invariant || !allValueUsesInLoop(f, cfg, semantic, instruction.Result, loop.Region) {
+					continue
+				}
+				bankPeak, sourcePeak := &plan.Blocks[preheader].PeakGPR, plan.Blocks[sourceBlock].PeakGPR
+				if flow.Values[instruction.Result].Type == wasm.F32 || flow.Values[instruction.Result].Type == wasm.F64 {
+					bankPeak, sourcePeak = &plan.Blocks[preheader].PeakFPR, plan.Blocks[sourceBlock].PeakFPR
+				}
+				if uint32(*bankPeak)+1 > uint32(sourcePeak) {
+					continue
+				}
+				plan.LICM = append(plan.LICM, LICMMove{Instruction: instructionID, From: BlockID(sourceBlock), Preheader: preheader, Loop: BlockID(loopID)})
 			}
-			if !invariant || !allValueUsesInLoop(f, cfg, semantic, instruction.Result, loop.Region) {
-				continue
-			}
-			bankPeak, loopPeak := &plan.Blocks[preheader].PeakGPR, plan.Blocks[loopID].PeakGPR
-			if flow.Values[instruction.Result].Type == wasm.F32 || flow.Values[instruction.Result].Type == wasm.F64 {
-				bankPeak, loopPeak = &plan.Blocks[preheader].PeakFPR, plan.Blocks[loopID].PeakFPR
-			}
-			if uint32(*bankPeak)+1 > uint32(loopPeak) {
-				continue
-			}
-			plan.LICM = append(plan.LICM, LICMMove{Instruction: instructionID, Preheader: preheader, Loop: BlockID(loopID)})
 		}
 	}
 }
@@ -422,10 +434,24 @@ func allValueUsesInLoop(f *StackFunc, cfg *CFG, semantic *SemanticFunc, value Fl
 }
 
 func licmPureOp(kind wasm.InstrKind) bool {
-	return kind == wasm.InstrI32Add || kind == wasm.InstrI32Sub || kind == wasm.InstrI32Mul ||
+	return kind == wasm.InstrI32Const || kind == wasm.InstrI64Const ||
+		kind == wasm.InstrI32Add || kind == wasm.InstrI32Sub || kind == wasm.InstrI32Mul ||
 		kind == wasm.InstrI64Add || kind == wasm.InstrI64Sub || kind == wasm.InstrI64Mul ||
 		kind == wasm.InstrI32And || kind == wasm.InstrI32Or || kind == wasm.InstrI32Xor ||
 		kind == wasm.InstrI64And || kind == wasm.InstrI64Or || kind == wasm.InstrI64Xor
+}
+
+func licmWorthHoisting(instruction StackInstr) bool {
+	switch instruction.Kind {
+	case wasm.InstrI32Const:
+		value := int64(int32(uint32(instruction.U64())))
+		return value < -32768 || value > 65535
+	case wasm.InstrI64Const:
+		value := int64(instruction.U64())
+		return value < -32768 || value > 65535
+	default:
+		return true
+	}
 }
 
 func cheapSinkOp(kind wasm.InstrKind) bool {
@@ -434,8 +460,8 @@ func cheapSinkOp(kind wasm.InstrKind) bool {
 		kind == wasm.InstrI64Add || kind == wasm.InstrI64Sub || kind == wasm.InstrI64And || kind == wasm.InstrI64Or || kind == wasm.InstrI64Xor
 }
 
-func VerifyPressurePlan(flow *ValueFlow, semantic *SemanticFunc, metadata *Metadata, plan *PressurePlan) error {
-	if plan == nil || len(plan.Blocks) != len(flow.Reachable) {
+func VerifyPressurePlan(f *StackFunc, cfg *CFG, flow *ValueFlow, semantic *SemanticFunc, metadata *Metadata, simplified *SimplifyResult, plan *PressurePlan) error {
+	if f == nil || cfg == nil || flow == nil || semantic == nil || metadata == nil || simplified == nil || plan == nil || len(plan.Blocks) != len(flow.Reachable) || len(cfg.Blocks) != len(semantic.Blocks) {
 		return fmt.Errorf("railssa: malformed pressure plan")
 	}
 	for _, sink := range plan.Sinks {
@@ -454,8 +480,29 @@ func VerifyPressurePlan(flow *ValueFlow, semantic *SemanticFunc, metadata *Metad
 		}
 	}
 	for _, move := range plan.LICM {
-		if move.Instruction >= uint32(len(semantic.Insts)) || int(move.Preheader) >= len(plan.Blocks) || int(move.Loop) >= len(plan.Blocks) || move.Preheader == move.Loop || !licmPureOp(semantic.Insts[move.Instruction].Op) {
+		if move.Instruction >= uint32(len(semantic.Insts)) || int(move.From) >= len(semantic.Blocks) || int(move.Preheader) >= len(plan.Blocks) || int(move.Loop) >= len(plan.Blocks) || move.From == move.Preheader || move.Preheader == move.Loop {
 			return fmt.Errorf("railssa: invalid LICM move %#v", move)
+		}
+		block := semantic.Blocks[move.From]
+		if move.Instruction < block.InstStart || move.Instruction >= block.InstStart+block.InstCount {
+			return fmt.Errorf("railssa: LICM source mismatch %#v", move)
+		}
+		instruction := semantic.Insts[move.Instruction]
+		meta := metadata.Instructions[instruction.Source]
+		loopRegion := cfg.Blocks[move.Loop].Region
+		expectedPreheader, hasPreheader := loopPreheader(f, cfg, move.Loop, loopRegion)
+		if cfg.Blocks[move.Loop].Flags&BlockLoopHeader == 0 || !hasPreheader || expectedPreheader != move.Preheader || cfg.Blocks[move.From].Region != loopRegion || blockInRegion(cfg.Blocks[move.Preheader].Region, loopRegion, f) ||
+			!licmPureOp(instruction.Op) || !licmWorthHoisting(f.Instrs[instruction.Source]) || meta.Reads != 0 || meta.Writes != 0 || meta.Flags != 0 || meta.Traps != 0 || meta.Obligations != 0 {
+			return fmt.Errorf("railssa: unsafe LICM move %#v", move)
+		}
+		for _, argument := range semantic.Operands(move.Instruction) {
+			argument = resolveAlias(simplified.Aliases, argument)
+			if blockInRegion(cfg.Blocks[plan.valueBlock[argument]].Region, loopRegion, f) {
+				return fmt.Errorf("railssa: variant LICM operand in move %#v", move)
+			}
+		}
+		if !allValueUsesInLoop(f, cfg, semantic, instruction.Result, loopRegion) {
+			return fmt.Errorf("railssa: LICM result escapes loop in move %#v", move)
 		}
 	}
 	previous, groupHot, groupCold := FlowValueID(0), uint32(0), uint64(0)

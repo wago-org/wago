@@ -12,6 +12,7 @@ type ScheduleScore struct {
 	CopyMotion        uint32
 	FixedRepairs      uint32
 	BrokenFusions     uint32
+	LoopInvariantOps  uint32
 	Kind              ScheduleKind
 }
 
@@ -63,6 +64,7 @@ func scoreVerifiedScheduleCandidate(f *Func, selection *SelectionPlan, schedule 
 		CopyMotion:        exit.Debt.Motion,
 		FixedRepairs:      uint32(len(allocation.FixedMoves)),
 		BrokenFusions:     brokenFusions,
+		LoopInvariantOps:  schedule.CommittedLICM,
 		Kind:              schedule.Kind,
 	}
 }

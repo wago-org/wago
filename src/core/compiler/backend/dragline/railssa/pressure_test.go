@@ -87,6 +87,40 @@ func TestPressureShapePlansPureLoopInvariantWithoutRaisingPeak(t *testing.T) {
 	}
 }
 
+func TestPressureShapePlansConstantFromLoopContinuation(t *testing.T) {
+	m := scalarModule([]wasm.ValType{wasm.I32, wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
+		0x02, 0x40,
+		0x03, 0x40,
+		0x20, 0x00,
+		0x45,
+		0x0d, 0x01,
+		0x20, 0x01,
+		0x42, 0x80, 0x80, 0x04,
+		0x7e,
+		0x21, 0x01,
+		0x20, 0x00,
+		0x41, 0x01,
+		0x6b,
+		0x21, 0x00,
+		0x0c, 0x00,
+		0x0b,
+		0x0b,
+		0x20, 0x01,
+		0x0b,
+	})
+	f, cfg, flow, semantic, metadata, simplified := buildSimplifyTest(t, m)
+	plan, err := PressureShape(f, cfg, flow, semantic, metadata, simplified, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, move := range plan.LICM {
+		if semantic.Insts[move.Instruction].Op == wasm.InstrI64Const && move.From != move.Loop {
+			return
+		}
+	}
+	t.Fatalf("LICM moves = %#v", plan.LICM)
+}
+
 func TestPressureShapeDoesNotHoistLoopParameterUse(t *testing.T) {
 	m := scalarModule([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x41, 0x00,

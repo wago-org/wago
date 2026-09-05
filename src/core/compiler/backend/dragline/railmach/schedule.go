@@ -443,7 +443,7 @@ func BuildScheduleWithPressure(f *Func, selection *SelectionPlan, dag *Dependenc
 			lateProducer[terminator] = instruction
 		}
 		for _, move := range pressure.LICM {
-			if move.Instruction >= uint32(len(f.Insts)) || int(move.Preheader) >= len(f.Blocks) || int(move.Loop) >= len(f.Blocks) || blockOf[move.Instruction] != move.Loop {
+			if move.Instruction >= uint32(len(f.Insts)) || int(move.From) >= len(f.Blocks) || int(move.Preheader) >= len(f.Blocks) || int(move.Loop) >= len(f.Blocks) || blockOf[move.Instruction] != move.From {
 				return nil, fmt.Errorf("railmach: invalid LICM placement %#v", move)
 			}
 			if target := sinkBefore[move.Instruction]; target != ^uint32(0) {

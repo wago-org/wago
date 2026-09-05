@@ -935,6 +935,21 @@ func planInstructionsAdjacent(schedule *railmach.Schedule, first, second uint32)
 }
 
 func nativeScheduleScoreBetter(objective corecompiler.OptimizationObjective, target railmach.Target, instructions int, usesFPR bool, candidate, retained railmach.ScheduleScore) bool {
+	if objective == corecompiler.ObjectiveSpeed {
+		licmWithinBound := func(hoisted, other railmach.ScheduleScore) bool {
+			return hoisted.LoopInvariantOps > other.LoopInvariantOps &&
+				hoisted.WeightedSpillDebt <= other.WeightedSpillDebt &&
+				hoisted.CopyCycles <= other.CopyCycles &&
+				hoisted.PhysicalCopies <= other.PhysicalCopies+hoisted.LoopInvariantOps-other.LoopInvariantOps &&
+				hoisted.FixedRepairs <= other.FixedRepairs && hoisted.BrokenFusions <= other.BrokenFusions
+		}
+		if licmWithinBound(candidate, retained) {
+			return true
+		}
+		if licmWithinBound(retained, candidate) {
+			return false
+		}
+	}
 	if objective == corecompiler.ObjectiveSpeed && target == railmach.TargetAMD64 && usesFPR && instructions >= 64 {
 		latencyWithoutDebt := func(latency, other railmach.ScheduleScore) bool {
 			return latency.Kind == railmach.ScheduleKindLatencyFusion &&

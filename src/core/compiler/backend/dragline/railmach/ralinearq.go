@@ -68,7 +68,10 @@ type Allocation struct {
 	FrameBytes           uint32
 	SpillSlots           uint16
 
-	scratch linearQScratch
+	// schedule retains the verified position coordinate system through the
+	// immediately following allocation, SSA-exit, ABI, and post-RA checks.
+	schedule *Schedule
+	scratch  linearQScratch
 }
 
 type activeInterval struct {
@@ -195,7 +198,7 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 	liveSegments := reuse.LiveSegments[:0]
 	liveSegmentRanges := reuse.LiveSegmentRanges[:0]
 	scratch := reuse.scratch
-	*reuse = Allocation{Locations: locations, Intervals: intervals, FixedMoves: fixedMoves, InstructionPositions: instructionPositions, LiveSegments: liveSegments, LiveSegmentRanges: liveSegmentRanges, scratch: scratch}
+	*reuse = Allocation{Locations: locations, Intervals: intervals, FixedMoves: fixedMoves, InstructionPositions: instructionPositions, LiveSegments: liveSegments, LiveSegmentRanges: liveSegmentRanges, schedule: schedule, scratch: scratch}
 	positionSeen := resize(reuse.scratch.positionSeen, len(f.Insts))
 	reuse.scratch.positionSeen = positionSeen
 	if err := populateInstructionPositions(f, schedule, reuse.InstructionPositions, positionSeen); err != nil {
@@ -659,8 +662,8 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 		if int(edge.From) >= len(f.Blocks) || int(edge.To) >= len(f.Blocks) || edge.From < edge.To || f.Blocks[edge.To].Flags&railssa.BlockLoopHeader == 0 {
 			continue
 		}
-		header := f.Blocks[edge.To].InstStart * 6
-		backedge := (f.Blocks[edge.From].InstStart + f.Blocks[edge.From].InstCount) * 6
+		header := blockScheduleStart(f, allocation.schedule, uint32(edge.To)) * 6
+		backedge := blockScheduleEnd(f, allocation.schedule, uint32(edge.From)) * 6
 		for _, interval := range allocation.Intervals {
 			data := f.VRegs[interval.Reg]
 			if interval.Start <= header && interval.End >= header && interval.End < backedge && !(data.Flags&VRegBlockParam != 0 && data.Def == header) {
