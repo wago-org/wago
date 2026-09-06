@@ -4641,15 +4641,19 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				continue
 			}
 			lhs := reg(operands[0].Reg)
-			if instruction.Op == railmach.OpARM64I32Madd || instruction.Op == railmach.OpARM64I64Madd {
+			if instruction.Op == railmach.OpARM64I32Madd || instruction.Op == railmach.OpARM64I64Madd || instruction.Op == railmach.OpARM64I32Msub || instruction.Op == railmach.OpARM64I64Msub {
 				if len(operands) != 3 {
 					return nil, 0, true, fmt.Errorf("RailMach selected multiply-add operand count is %d", len(operands))
 				}
 				rhs, addend := reg(operands[1].Reg), reg(operands[2].Reg)
 				if instruction.Op == railmach.OpARM64I64Madd {
 					a.Madd64(dst, lhs, rhs, addend)
-				} else {
+				} else if instruction.Op == railmach.OpARM64I32Madd {
 					a.Madd32(dst, lhs, rhs, addend)
+				} else if instruction.Op == railmach.OpARM64I64Msub {
+					a.Msub64(dst, lhs, rhs, addend)
+				} else {
+					a.Msub32(dst, lhs, rhs, addend)
 				}
 				continue
 			}

@@ -992,6 +992,10 @@ const (
 	OpARM64ArrayInitElem
 	OpARM64DataDrop
 	OpARM64ElemDrop
+	// Append new selected opcodes immediately before the range sentinel so
+	// existing in-process opcode identities remain stable.
+	OpARM64I32Msub
+	OpARM64I64Msub
 	opARM64SelectedEnd
 )
 
@@ -1202,9 +1206,9 @@ func semanticOpcodeSlow(op MOpcode) MOpcode {
 		return wasm.InstrI32Add
 	case OpAMD64I64Add, OpARM64I64Add, OpARM64I64AddImmediate, OpARM64I64Madd:
 		return wasm.InstrI64Add
-	case OpAMD64I32Sub, OpARM64I32Sub, OpARM64I32SubImmediate:
+	case OpAMD64I32Sub, OpARM64I32Sub, OpARM64I32SubImmediate, OpARM64I32Msub:
 		return wasm.InstrI32Sub
-	case OpAMD64I64Sub, OpARM64I64Sub, OpARM64I64SubImmediate:
+	case OpAMD64I64Sub, OpARM64I64Sub, OpARM64I64SubImmediate, OpARM64I64Msub:
 		return wasm.InstrI64Sub
 	case OpAMD64I32And, OpARM64I32And, OpARM64I32AndImmediate:
 		return wasm.InstrI32And

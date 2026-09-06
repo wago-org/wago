@@ -37,6 +37,60 @@ func TestARM64BoundsImmediateHelpers(t *testing.T) {
 	}
 }
 
+func TestARM64RailMachSelectsIntegerMultiplySubtract(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{
+			0x20, 0x00, // local.get 0: addend
+			0x20, 0x01, // local.get 1
+			0x20, 0x02, // local.get 2
+			0x7e, // i64.mul
+			0x7d, // i64.sub
+			0x0b,
+		}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetNative)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner nativeBackendPlanner
+	plan, err := planner.Plan(stack, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := false
+	for _, instruction := range plan.Machine.Insts {
+		selected = selected || instruction.Op == railmach.OpARM64I64Msub
+	}
+	if !selected {
+		t.Fatal("RailMach did not select i64 MSUB")
+	}
+	fn := &railssa.Func{Structured: stack, Params: []wasm.ValType{wasm.I64, wasm.I64, wasm.I64}, Results: []wasm.ValType{wasm.I64}}
+	native, _, used, err := emitARM64RailMach(fn, plan, false, nil, nil, nil, nil)
+	if err != nil || !used {
+		t.Fatalf("MSUB finalization: used=%t err=%v", used, err)
+	}
+	found := false
+	for offset := 0; offset+4 <= len(native); offset += 4 {
+		found = found || binary.LittleEndian.Uint32(native[offset:])&0xffe08000 == 0x9b008000
+	}
+	if !found {
+		t.Fatalf("MSUB encoding is absent from %x", native)
+	}
+}
+
 func TestARM64RailMachTrappingConversionUsesReservedFPRScratch(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(

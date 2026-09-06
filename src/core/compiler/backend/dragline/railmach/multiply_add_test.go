@@ -65,6 +65,49 @@ func TestSelectARM64MultiplyAddsContractsPrivateProduct(t *testing.T) {
 	}
 }
 
+func TestSelectARM64MultiplyAddsContractsRightSubtrahend(t *testing.T) {
+	for _, test := range []struct {
+		typ  MachineType
+		want MOpcode
+	}{{TypeI32, OpARM64I32Msub}, {TypeI64, OpARM64I64Msub}} {
+		f, product, root := newMultiplyAddFixture(t, test.typ)
+		if test.typ == TypeI64 {
+			f.Insts[root].Op = wasm.InstrI64Sub
+		} else {
+			f.Insts[root].Op = wasm.InstrI32Sub
+		}
+		selected, err := SelectARM64MultiplyAdds(f, make([]uint32, len(f.VRegs)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if selected != 1 || f.Insts[root].Op != test.want {
+			t.Fatalf("type %d selected=%d root=%#v", test.typ, selected, f.Insts[root])
+		}
+		operands := f.InstructionOperands(root)
+		if len(operands) != 3 || operands[0].Reg != 1 || operands[1].Reg != 2 || operands[2].Reg != 3 {
+			t.Fatalf("type %d multiply-subtract operands = %#v", test.typ, operands)
+		}
+		productResult := f.Insts[product].Result
+		if f.Insts[product].OperandCount != 0 || f.VRegs[productResult].Flags&VRegElided == 0 {
+			t.Fatalf("type %d product was not detached: inst=%#v value=%#v", test.typ, f.Insts[product], f.VRegs[productResult])
+		}
+		if err := Verify(f); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestSelectARM64MultiplyAddsRejectsLeftSubtrahend(t *testing.T) {
+	f, product, root := newMultiplyAddFixture(t, TypeI64)
+	f.Insts[root].Op = wasm.InstrI64Sub
+	operands := f.InstructionOperands(root)
+	operands[0], operands[1] = operands[1], operands[0]
+	selected, err := SelectARM64MultiplyAdds(f, make([]uint32, len(f.VRegs)))
+	if err != nil || selected != 0 || f.Insts[product].OperandCount != 2 {
+		t.Fatalf("left product selected=%d err=%v product=%#v", selected, err, f.Insts[product])
+	}
+}
+
 func TestSelectARM64MultiplyAddsRejectsSharedProduct(t *testing.T) {
 	f, product, _ := newMultiplyAddFixture(t, TypeI64)
 	productResult := f.Insts[product].Result

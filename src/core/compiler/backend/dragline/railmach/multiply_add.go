@@ -7,8 +7,9 @@ import (
 )
 
 // SelectARM64MultiplyAdds contracts a private integer multiply consumed by an
-// add into ARM64 MADD. Wasm integer multiply and add both wrap at their result
-// width, exactly matching MADD's low i32/i64 result.
+// add or by the right-hand side of a subtraction into ARM64 MADD or MSUB. Wasm
+// integer multiply, add, and subtraction all wrap at their result width,
+// exactly matching the low i32/i64 result of those instructions.
 //
 // uses is caller-owned reusable scratch. Counting machine operands, edge
 // transfers, and function results makes producer elision explicit and keeps the
@@ -41,22 +42,34 @@ func SelectARM64MultiplyAdds(f *Func, uses []uint32) (uint32, error) {
 	for rootID := range f.Insts {
 		root := &f.Insts[rootID]
 		semantic := SemanticOpcode(root.Op)
-		if semantic != wasm.InstrI32Add && semantic != wasm.InstrI64Add || root.Result == 0 {
+		if semantic != wasm.InstrI32Add && semantic != wasm.InstrI64Add && semantic != wasm.InstrI32Sub && semantic != wasm.InstrI64Sub || root.Result == 0 {
 			continue
 		}
 		rootOperands := f.InstructionOperands(uint32(rootID))
 		if len(rootOperands) != 2 {
 			continue
 		}
-		wantType, mulOp, selectedOp := TypeI32, MOpcode(wasm.InstrI32Mul), OpARM64I32Madd
-		if semantic == wasm.InstrI64Add {
-			wantType, mulOp, selectedOp = TypeI64, MOpcode(wasm.InstrI64Mul), OpARM64I64Madd
+		wantType, mulOp := TypeI32, MOpcode(wasm.InstrI32Mul)
+		selectedOp := OpARM64I32Madd
+		if semantic == wasm.InstrI64Add || semantic == wasm.InstrI64Sub {
+			wantType, mulOp = TypeI64, MOpcode(wasm.InstrI64Mul)
+			selectedOp = OpARM64I64Madd
+		}
+		if semantic == wasm.InstrI32Sub {
+			selectedOp = OpARM64I32Msub
+		} else if semantic == wasm.InstrI64Sub {
+			selectedOp = OpARM64I64Msub
 		}
 		if int(root.Result) >= len(f.VRegs) || f.VRegs[root.Result].Type != wantType {
 			continue
 		}
 
 		for multiplied := 0; multiplied < 2; multiplied++ {
+			// MSUB computes addend - product. A product on the left of Wasm
+			// subtraction would require a different negated form.
+			if (semantic == wasm.InstrI32Sub || semantic == wasm.InstrI64Sub) && multiplied != 1 {
+				continue
+			}
 			product := rootOperands[multiplied].Reg
 			if product == 0 || int(product) >= len(f.VRegs) || uses[product] != 1 || f.VRegs[product].Type != wantType {
 				continue

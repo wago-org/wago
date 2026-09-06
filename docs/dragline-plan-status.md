@@ -395,6 +395,17 @@ the performance corpus.
   no native-size changes outside that reduction. Higher-value multi-instruction
   rewrites are planned first, preventing local logical folds from displacing
   byte-widen or byte-swap sequences.
+- ARM64 integer multiply/subtract selection: ✅ the existing machine-SSA
+  multiply/add contraction now also selects `MSUB` for a single-use integer
+  product on the right side of Wasm subtraction. The target opcode retains
+  subtraction semantics, the left-product near miss remains unfused, and native
+  encoding tests cover the selected 64-bit form. An exact pre/post native-image
+  audit across every manifest module except the six giant compile-only modules
+  changed only `json-as` (-80 bytes), `json-as-simd` (-80 bytes), and
+  `utf-as-simd` (-16 bytes). Six alternating 300 ms execution pairs ranged from
+  0.989x to 1.008x baseline across their six exports; a longer ten-pair check of
+  the narrowest row measured 1.0069x. This remains inside the migration floor
+  but is recorded explicitly rather than claiming a broad execution win.
 
 ## Completion rule
 
