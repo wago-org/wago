@@ -173,8 +173,10 @@ func AllocateGreedyPSegmentedForSchedule(f *Func, schedule *Schedule, config Gre
 
 // AllocateFastMachineForSchedule packages a complete verified RALinearQ
 // allocation for the bounded-work giant-function policy. It retains the spill
-// metadata required by the common ABI, frame, post-RA, and verifier pipeline
-// without running GreedyP promotion, eviction, or regional search.
+// metadata required by the common ABI, frame, post-RA, and verifier pipeline.
+// A linear no-eviction pass may place call-live spills in registers that survive
+// every crossed call; the path still avoids GreedyP priority sorting, eviction,
+// regional search, schedule alternatives, and allocation retry.
 func AllocateFastMachineForSchedule(f *Func, schedule *Schedule, config GreedyConfig, reuse *GreedyAllocation) (*GreedyAllocation, error) {
 	if reuse == nil {
 		reuse = new(GreedyAllocation)
@@ -193,6 +195,77 @@ func AllocateFastMachineForSchedule(f *Func, schedule *Schedule, config GreedyCo
 	reuse.SpillMembers = spillMembers
 	reuse.Fragments = fragments
 	useDensityCost := greedyUsesDensityCost(f)
+	callPositions := collectCallPositions(f, &reuse.Allocation, reuse.callPositions[:0])
+	reuse.callPositions = callPositions
+	clear(reuse.occupantHead[:])
+	occupantNext := resize(reuse.occupantNext, len(reuse.Intervals))
+	clear(occupantNext)
+	reuse.occupantNext = occupantNext
+	for intervalIndex := len(reuse.Intervals) - 1; intervalIndex >= 0; intervalIndex-- {
+		interval := reuse.Intervals[intervalIndex]
+		location := reuse.Locations[interval.Reg]
+		if location.Kind != LocationRegister || location.Index >= 64 {
+			continue
+		}
+		bank := 0
+		if location.Bank == BankFPR {
+			bank = 1
+		}
+		occupantNext[intervalIndex] = reuse.occupantHead[bank][location.Index]
+		reuse.occupantHead[bank][location.Index] = uint32(intervalIndex) + 1
+	}
+	var calleeUsed [2]uint64
+	var promotedThrough [2][64]uint32
+	physicalFree := func(bank int, physical uint16, start, end uint32) bool {
+		head := &reuse.occupantHead[bank][physical]
+		for *head != 0 && reuse.Intervals[*head-1].End < start {
+			*head = occupantNext[*head-1]
+		}
+		if *head != 0 && reuse.Intervals[*head-1].Start <= end {
+			return false
+		}
+		// End+1 keeps zero as the no-promotion sentinel. Intervals arrive in
+		// increasing start order, so only the latest promoted end can overlap.
+		return promotedThrough[bank][physical] == 0 || promotedThrough[bank][physical] <= start
+	}
+	for _, interval := range reuse.Intervals {
+		if reuse.Locations[interval.Reg].Kind != LocationSpill || !allocationLiveRangeCrossesCalls(&reuse.Allocation, interval, callPositions) {
+			continue
+		}
+		survivors := allocationCallSurvivorMask(config, &reuse.Allocation, interval, callPositions)
+		limit := config.Linear.GPRs
+		bank := 0
+		preserveCost := config.PreserveGPRCost
+		if interval.Bank == BankFPR {
+			limit, bank, preserveCost = config.Linear.FPRs, 1, config.PreserveFPRCost
+		}
+		for physical := uint16(0); physical < uint16(limit); physical++ {
+			if survivors&(uint64(1)<<physical) == 0 || !physicalFree(bank, physical, interval.Start, interval.End) {
+				continue
+			}
+			additionalPreservation := uint64(0)
+			if conservativeCallMask(config, interval.Bank)&(uint64(1)<<physical) == 0 && calleeUsed[bank]&(uint64(1)<<physical) == 0 {
+				additionalPreservation = uint64(preserveCost)
+			}
+			if greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost) <= additionalPreservation {
+				continue
+			}
+			reuse.Locations[interval.Reg] = Location{Kind: LocationRegister, Bank: interval.Bank, Index: physical}
+			promotedThrough[bank][physical] = interval.End + 1
+			reuse.Metrics.Promotions++
+			if conservativeCallMask(config, interval.Bank)&(uint64(1)<<physical) == 0 {
+				reuse.Metrics.CalleeSaved++
+				if calleeUsed[bank]&(uint64(1)<<physical) == 0 {
+					calleeUsed[bank] |= uint64(1) << physical
+					reuse.Metrics.PreservationCost += uint64(preserveCost)
+				}
+			}
+			break
+		}
+	}
+	recolorGreedySpills(f, reuse)
+	rebuildFixedMoves(f, &reuse.Allocation)
+	reuse.Metrics.SpillSlots = uint32(reuse.SpillSlots)
 	for _, interval := range reuse.Intervals {
 		if reuse.Locations[interval.Reg].Kind == LocationSpill {
 			reuse.Metrics.WeightedDebt += greedySpillCost(interval, uint64(len(f.Insts)), useDensityCost)
@@ -203,6 +276,12 @@ func AllocateFastMachineForSchedule(f *Func, schedule *Schedule, config GreedyCo
 	}
 	if err := verifySpillSetsReusingScratch(reuse); err != nil {
 		return nil, err
+	}
+	for _, interval := range reuse.Intervals {
+		location := reuse.Locations[interval.Reg]
+		if location.Kind == LocationRegister && allocationCallSurvivorMask(config, &reuse.Allocation, interval, callPositions)&(uint64(1)<<location.Index) == 0 {
+			return nil, fmt.Errorf("railmach: fast vreg %d occupies call-clobbered register %d", interval.Reg, location.Index)
+		}
 	}
 	return reuse, nil
 }
@@ -228,45 +307,13 @@ func allocateGreedyP(f *Func, schedule *Schedule, config GreedyConfig, reuse *Gr
 	reuse.SpillMembers = spillMembers
 	reuse.Fragments = fragments
 
-	callPositions := reuse.callPositions[:0]
-	for id, instruction := range f.Insts {
-		if IsCall(instruction.Op) {
-			// Operands are consumed at +2 and the result becomes live at +3.
-			// Sampling later would incorrectly classify the call's own result as
-			// crossing the call and promote it into a callee-saved region.
-			callPositions = append(callPositions, callPosition{instruction: uint32(id), position: reuse.InstructionPositions[id]*6 + 2})
-		}
-	}
-	slices.SortFunc(callPositions, func(a, b callPosition) int {
-		if a.position != b.position {
-			return int(a.position) - int(b.position)
-		}
-		return int(a.instruction) - int(b.instruction)
-	})
+	callPositions := collectCallPositions(f, &reuse.Allocation, reuse.callPositions[:0])
 	reuse.callPositions = callPositions
 	crossesCall := func(interval LiveInterval) bool {
 		return allocationLiveRangeCrossesCalls(&reuse.Allocation, interval, callPositions)
 	}
 	callSurvivorMask := func(interval LiveInterval) uint64 {
-		survivors := ^uint64(0)
-		for index := firstCallAfter(callPositions, interval.Start); index < len(callPositions) && callPositions[index].position < interval.End; index++ {
-			call := callPositions[index]
-			if !allocationLiveRangeContains(&reuse.Allocation, interval, call.position) {
-				continue
-			}
-			mask := conservativeCallMask(config, interval.Bank)
-			if overrideIndex, ok := slices.BinarySearchFunc(config.CallClobbers, call.instruction, func(override CallClobber, instruction uint32) int {
-				return int(override.Instruction) - int(instruction)
-			}); ok {
-				override := config.CallClobbers[overrideIndex]
-				mask = override.GPR
-				if interval.Bank == BankFPR {
-					mask = override.FPR
-				}
-			}
-			survivors &^= mask
-		}
-		return survivors
+		return allocationCallSurvivorMask(config, &reuse.Allocation, interval, callPositions)
 	}
 	useDensityCost := greedyUsesDensityCost(f)
 	hasCall := false
@@ -561,6 +608,48 @@ func greedySpillCost(interval LiveInterval, functionInstructions uint64, density
 
 func firstCallAfter(calls []callPosition, position uint32) int {
 	return sort.Search(len(calls), func(index int) bool { return calls[index].position > position })
+}
+
+func collectCallPositions(f *Func, allocation *Allocation, reuse []callPosition) []callPosition {
+	calls := reuse[:0]
+	for instructionID, instruction := range f.Insts {
+		if !IsCall(instruction.Op) {
+			continue
+		}
+		// Operands are consumed at +2 and the result becomes live at +3.
+		// Sampling later would incorrectly classify the call's own result as
+		// crossing the call and promote it into a preserved register.
+		calls = append(calls, callPosition{instruction: uint32(instructionID), position: allocation.InstructionPositions[instructionID]*6 + 2})
+	}
+	slices.SortFunc(calls, func(a, b callPosition) int {
+		if a.position != b.position {
+			return int(a.position) - int(b.position)
+		}
+		return int(a.instruction) - int(b.instruction)
+	})
+	return calls
+}
+
+func allocationCallSurvivorMask(config GreedyConfig, allocation *Allocation, interval LiveInterval, calls []callPosition) uint64 {
+	survivors := ^uint64(0)
+	for index := firstCallAfter(calls, interval.Start); index < len(calls) && calls[index].position < interval.End; index++ {
+		call := calls[index]
+		if !allocationLiveRangeContains(allocation, interval, call.position) {
+			continue
+		}
+		mask := conservativeCallMask(config, interval.Bank)
+		if overrideIndex, ok := slices.BinarySearchFunc(config.CallClobbers, call.instruction, func(override CallClobber, instruction uint32) int {
+			return int(override.Instruction) - int(instruction)
+		}); ok {
+			override := config.CallClobbers[overrideIndex]
+			mask = override.GPR
+			if interval.Bank == BankFPR {
+				mask = override.FPR
+			}
+		}
+		survivors &^= mask
+	}
+	return survivors
 }
 
 func conservativeCallMask(config GreedyConfig, bank Bank) uint64 {

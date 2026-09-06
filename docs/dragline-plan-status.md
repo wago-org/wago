@@ -389,6 +389,23 @@ the performance corpus.
   FastMachine improvement against giant-function compile wall and peak-live
   gates, because enhancing only the ordinary allocator cannot materially move
   the measured total.
+- FastMachine call-survivor allocation: ✅ the bounded giant-function allocator
+  now performs one interval-start sweep that promotes call-live spills into a
+  register only when that register survives every crossed call, does not
+  overlap an existing assignment, and repays any new callee-save cost. Exact
+  direct-call clobber refinements are shared with GreedyP; the path performs no
+  priority sort, eviction, regional search, schedule alternative, or retry.
+  Against exact commit `7de66424`, serialized native ARM64 `esbuild` compilation
+  improves from 162.733 to 160.396 seconds (-1.44%), peak compiler-owned live
+  storage is flat at -0.002%, native code falls by 151,328 bytes, spill slots
+  across its 27 FastMachine functions fall from 1,062 to 979, and their weighted
+  spill debt falls 0.77%. Ruby improves from 96.659 to 96.246 seconds (-0.43%),
+  peak live storage falls 0.20%, native code falls by 469,184 bytes, and spill
+  slots fall from 1,209 to 1,094. SQLite is 39,216 bytes smaller with flat
+  compile wall, `regexmatch` is 3,920 bytes smaller, and Lua and `wasm3` remain
+  byte-identical. This is the measured FastMachine policy requested by Phase 9,
+  while true split children remain deferred until a distinct residual debt can
+  justify their transfer machinery.
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution

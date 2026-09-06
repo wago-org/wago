@@ -157,6 +157,96 @@ func TestAllocateFastMachineRetainsVerifiedSpillSets(t *testing.T) {
 	}
 }
 
+func TestAllocateFastMachinePromotesCallLiveRangeWithoutEviction(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
+		0x20, 0x00,
+		0x10, 0x00,
+		0x1a,
+		0x20, 0x00,
+		0x0b,
+	})
+	f, selection, _, dag := buildScheduleTest(t, TargetARM64, m)
+	schedule, err := BuildSchedule(f, selection, dag, ScheduleKindSourceStable, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocation, err := AllocateFastMachineForSchedule(f, schedule, GreedyConfig{
+		Linear: LinearQConfig{GPRs: 2, FPRs: 1}, CallerGPRs: 1, CallerFPRs: 1,
+		PreserveGPRCost: 1,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	param := f.InstructionOperands(0)[0].Reg
+	if got := allocation.Locations[param]; got != (Location{Kind: LocationRegister, Bank: BankGPR, Index: 1}) {
+		t.Fatalf("fast call-live parameter = %#v, want callee-saved register 1", got)
+	}
+	if allocation.Metrics.Promotions != 1 || allocation.Metrics.CalleeSaved != 1 || allocation.Metrics.PreservationCost != 1 || allocation.Metrics.Evictions != 0 {
+		t.Fatalf("fast promotion metrics = %#v", allocation.Metrics)
+	}
+}
+
+func TestAllocateFastMachineRejectsPromotionBelowPreservationCost(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
+		0x20, 0x00,
+		0x10, 0x00,
+		0x1a,
+		0x20, 0x00,
+		0x0b,
+	})
+	f, selection, _, dag := buildScheduleTest(t, TargetARM64, m)
+	schedule, err := BuildSchedule(f, selection, dag, ScheduleKindSourceStable, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocation, err := AllocateFastMachineForSchedule(f, schedule, GreedyConfig{
+		Linear: LinearQConfig{GPRs: 2, FPRs: 1}, CallerGPRs: 1, CallerFPRs: 1,
+		PreserveGPRCost: ^uint16(0),
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	param := f.InstructionOperands(0)[0].Reg
+	if allocation.Locations[param].Kind != LocationSpill || allocation.Metrics.Promotions != 0 || allocation.Metrics.PreservationCost != 0 {
+		t.Fatalf("costed fast allocation parameter=%#v metrics=%#v", allocation.Locations[param], allocation.Metrics)
+	}
+}
+
+func TestAllocateFastMachineUsesExactDirectCallClobbers(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{
+		0x20, 0x00,
+		0x10, 0x00,
+		0x1a,
+		0x20, 0x00,
+		0x0b,
+	})
+	f, selection, _, dag := buildScheduleTest(t, TargetAMD64, m)
+	schedule, err := BuildSchedule(f, selection, dag, ScheduleKindSourceStable, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call := uint32(^uint32(0))
+	for instructionID, instruction := range f.Insts {
+		if instruction.Op == wasm.InstrCall {
+			call = uint32(instructionID)
+		}
+	}
+	allocation, err := AllocateFastMachineForSchedule(f, schedule, GreedyConfig{
+		Linear: LinearQConfig{GPRs: 2, FPRs: 1}, CallerGPRs: 2, CallerFPRs: 1,
+		CallClobbers: []CallClobber{{Instruction: call, GPR: 1 << 1}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	param := f.InstructionOperands(0)[0].Reg
+	if got := allocation.Locations[param]; got != (Location{Kind: LocationRegister, Bank: BankGPR, Index: 0}) {
+		t.Fatalf("fast exact-clobber parameter = %#v, want safe caller register 0", got)
+	}
+	if allocation.Metrics.CalleeSaved != 0 || allocation.Metrics.PreservationCost != 0 {
+		t.Fatalf("safe caller register charged preservation: %#v", allocation.Metrics)
+	}
+}
+
 func TestDefaultARM64GreedyConfigModelsNoncontiguousCallerFPRs(t *testing.T) {
 	config := DefaultGreedyConfig(TargetARM64)
 	want := lowMask(16) | uint64(0xf)<<24
