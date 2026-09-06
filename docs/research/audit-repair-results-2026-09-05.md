@@ -362,3 +362,10 @@ The ambiguous embedded JSON-field fixture uses a dynamic outer type so go vet
 can still reject accidental duplicate tags in ordinary source. A padding field
 avoids reflect.StructOf's unsupported direct-interface embedded layout. The
 strict semantic assertion is unchanged; Go 1.22 and current race tests pass.
+
+## Remove superseded private helpers
+
+Static analysis found old private wrappers left unused by the budget, signature,
+JSON descriptor, and captured plugin-selection paths. Remove those wrappers.
+The remaining staticcheck diagnostics are checked against the audited baseline,
+rather than disabled or hidden. These removals do not change public APIs.

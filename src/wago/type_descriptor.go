@@ -353,18 +353,6 @@ func valTypesFromDescriptors(ts []ValueTypeDescriptor, types []DefinedTypeDescri
 	return out, nil
 }
 
-func equalValTypes(a, b []ValType) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func exactValueType(legacy ValType, has bool, index uint32, pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) (ValueTypeDescriptor, error) {
 	if !has {
 		v, ok := valueTypeDescriptorFromValType(legacy)

@@ -2,13 +2,9 @@ package wasm
 
 const branchHintSectionName = "metadata.code.branch_hint"
 
-// decodeBranchHintSection decodes the branch-hint code-metadata payload. The
+// decodeBranchHintSectionWithBudget decodes the branch-hint code-metadata payload. The
 // section name has already been consumed. Target validation needs the code
 // section, so it is deliberately performed by validateBranchHints afterwards.
-func decodeBranchHintSection(payload []byte) ([]FuncBranchHints, error) {
-	return decodeBranchHintSectionWithBudget(payload, newDecodeBudget(DecodeLimits{}))
-}
-
 func decodeBranchHintSectionWithBudget(payload []byte, budget *decodeBudget) ([]FuncBranchHints, error) {
 	r := &reader{data: payload, budget: budget}
 	funcs, err := readMetadataVec(r, func(r *reader) (FuncBranchHints, error) {

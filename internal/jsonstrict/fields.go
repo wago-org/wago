@@ -57,10 +57,6 @@ func descriptorFor(t reflect.Type) *jsonDescriptor {
 	return d
 }
 
-func (d *jsonDescriptor) lookup(key string) (jsonField, bool) {
-	field, _, ok := d.lookupCanonical(key)
-	return field, ok
-}
 func (d *jsonDescriptor) lookupCanonical(key string) (jsonField, string, bool) {
 	if field, ok := d.exact[key]; ok {
 		canonical := key

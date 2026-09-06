@@ -46,22 +46,6 @@ func jsonType(t reflect.Type) reflect.Type {
 	return t
 }
 
-func jsonFieldType(t reflect.Type, key string) reflect.Type {
-	if t == nil {
-		return nil
-	}
-	if t.Kind() == reflect.Map {
-		return t.Elem()
-	}
-	if t.Kind() != reflect.Struct {
-		return nil
-	}
-	if field, ok := descriptorFor(t).lookup(key); ok {
-		return field.typ
-	}
-	return nil
-}
-
 func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]struct{}, rootType reflect.Type, typed bool, limits Limits) error {
 	values := 0
 	chargeValue := func() error {

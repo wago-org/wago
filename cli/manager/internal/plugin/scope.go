@@ -69,6 +69,5 @@ func (selection pluginRuntimeSelection) depsSource(global bool) (string, error) 
 }
 
 func localPluginBuildDir() (string, error)    { return capturePluginRuntime().buildDirFor(false) }
-func globalPluginBuildDir() string            { dir, _ := capturePluginRuntime().buildDirFor(true); return dir }
 func buildDirFor(global bool) (string, error) { return capturePluginRuntime().buildDirFor(global) }
 func depsSource(global bool) (string, error)  { return capturePluginRuntime().depsSource(global) }
