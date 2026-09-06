@@ -166,10 +166,15 @@ func (e *Engine) StackBytes() uint64 {
 // consumer, cold) reads [linMem-abi.TrapCellPtrOffset], and function returns
 // carry no trap protocol at all (WARP's model).
 func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error {
-	if err := validateTrapBuffer(trap); err != nil {
-		return err
+	if len(trap) < TrapBufferBytes {
+		return errIncompleteTrapBuffer
 	}
-	installTrapCell(linMem, trap)
+	if len(linMem) != 0 {
+		clearTrapUnlessInterrupted(trap)
+		base := unsafe.Pointer(&linMem[0])
+		*(*uint64)(unsafe.Add(base, -int(abi.TrapCellPtrOffset))) = uint64(slicePtr(trap))
+		*(*uint64)(unsafe.Add(base, -int(abi.EHHandlerPtrOffset))) = 0
+	}
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
 	goruntime.KeepAlive(serArgs)
 	goruntime.KeepAlive(linMem)
@@ -212,9 +217,9 @@ func validateTrapBuffer(trap []byte) error {
 	return nil
 }
 
-// installTrapCell clears any stale non-interrupt trap and writes the cell's
-// address into basedata. A concurrent close interruption wins the CAS reset and
-// remains visible at the first generated safepoint.
+// clearTrapUnlessInterrupted clears a stale non-interrupt trap. A concurrent
+// close interruption wins the CAS reset and remains visible at the first
+// generated safepoint.
 func clearTrapUnlessInterrupted(trap []byte) {
 	if len(trap) < 4 {
 		return
@@ -231,16 +236,6 @@ func clearTrapUnlessInterrupted(trap []byte) {
 			return
 		}
 	}
-}
-
-func installTrapCell(linMem, trap []byte) {
-	if len(trap) < 4 || len(linMem) == 0 {
-		return
-	}
-	clearTrapUnlessInterrupted(trap)
-	base := unsafe.Pointer(&linMem[0])
-	*(*uint64)(unsafe.Add(base, -int(abi.TrapCellPtrOffset))) = uint64(slicePtr(trap))
-	*(*uint64)(unsafe.Add(base, -int(abi.EHHandlerPtrOffset))) = 0
 }
 
 // CallWithHost runs native code that may request returning host imports via the
