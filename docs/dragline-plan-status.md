@@ -305,6 +305,15 @@ the performance corpus.
   362,648 for regexmatch. Immediate and bounds state are the next largest
   categories, so subsequent footprint work can target measured retained state
   instead of aggregate planner size.
+- Compact post-RA fusion relations: ✅ functions with at most 65,535 machine
+  instructions retain fusion partners in an instruction-indexed `uint16` slab;
+  larger functions preserve the existing `uint32` representation. Both remain
+  direct O(1) finalizer lookups, and focused tests pin the boundary encoding on
+  ARM64 and AMD64. Exact ARM64 native images remain byte-identical for SQLite,
+  Lua, and regexmatch while peak compiler-owned storage falls by 21,556, 3,910,
+  and 19,840 bytes respectively. Six alternating serialized SQLite public-
+  compile runs are neutral at 1.6797 versus 1.6798 seconds median, while median
+  allocation volume falls by about 65 KiB/op.
 - Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
   bounded initial schedule candidate's realized post-allocation spill debt,
   physical copies, copy cycles, copy motion, fixed repairs, broken fusions,

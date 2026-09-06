@@ -4454,18 +4454,36 @@ func amd64FusedComparisonCond(kind wasm.InstrKind) (amd64.Cond, bool) {
 }
 
 func nativeAMD64FusionConsumer(plan *nativeBackendPlan, producer uint32) (uint32, bool) {
-	if plan == nil || int(producer) >= len(plan.PostRAFusionWith) || plan.PostRAFusionWith[producer] == 0 {
+	if plan == nil {
 		return 0, false
 	}
-	consumer := plan.PostRAFusionWith[producer] - 1
+	var encoded uint32
+	if int(producer) < len(plan.PostRAFusionWith16) {
+		encoded = uint32(plan.PostRAFusionWith16[producer])
+	} else if int(producer) < len(plan.PostRAFusionWith32) {
+		encoded = plan.PostRAFusionWith32[producer]
+	}
+	if encoded == 0 {
+		return 0, false
+	}
+	consumer := encoded - 1
 	return consumer, consumer > producer && int(consumer) < len(plan.Machine.Insts)
 }
 
 func nativeAMD64FusionProducer(plan *nativeBackendPlan, consumer uint32) (uint32, bool) {
-	if plan == nil || int(consumer) >= len(plan.PostRAFusionWith) || plan.PostRAFusionWith[consumer] == 0 {
+	if plan == nil {
 		return 0, false
 	}
-	producer := plan.PostRAFusionWith[consumer] - 1
+	var encoded uint32
+	if int(consumer) < len(plan.PostRAFusionWith16) {
+		encoded = uint32(plan.PostRAFusionWith16[consumer])
+	} else if int(consumer) < len(plan.PostRAFusionWith32) {
+		encoded = plan.PostRAFusionWith32[consumer]
+	}
+	if encoded == 0 {
+		return 0, false
+	}
+	producer := encoded - 1
 	return producer, producer < consumer && int(producer) < len(plan.Machine.Insts)
 }
 

@@ -7311,7 +7311,8 @@ func arm64RailMachHasSpecialMemoryEmission(plan *nativeBackendPlan, instruction 
 	return len(plan.PostRASkip) != 0 && plan.PostRASkip[instruction] ||
 		len(plan.PostRAPairWith) != 0 && plan.PostRAPairWith[instruction] != 0 ||
 		len(plan.PostRAForwardFrom) != 0 && plan.PostRAForwardFrom[instruction] != 0 ||
-		len(plan.PostRAFusionWith) != 0 && plan.PostRAFusionWith[instruction] != 0 ||
+		len(plan.PostRAFusionWith16) != 0 && plan.PostRAFusionWith16[instruction] != 0 ||
+		len(plan.PostRAFusionWith32) != 0 && plan.PostRAFusionWith32[instruction] != 0 ||
 		len(plan.PostRAMemoryFrom) != 0 && plan.PostRAMemoryFrom[instruction] != 0 ||
 		len(plan.PostRARepeatFirst) != 0 && plan.PostRARepeatFirst[instruction] != 0 ||
 		len(plan.PostRAPreIndex) != 0 && plan.PostRAPreIndex[instruction] ||
@@ -13870,18 +13871,36 @@ func arm64FusedComparisonCond(kind wasm.InstrKind) (arm64.Cond, bool) {
 }
 
 func nativeARM64FusionConsumer(plan *nativeBackendPlan, producer uint32) (uint32, bool) {
-	if plan == nil || int(producer) >= len(plan.PostRAFusionWith) || plan.PostRAFusionWith[producer] == 0 {
+	if plan == nil {
 		return 0, false
 	}
-	consumer := plan.PostRAFusionWith[producer] - 1
+	var encoded uint32
+	if int(producer) < len(plan.PostRAFusionWith16) {
+		encoded = uint32(plan.PostRAFusionWith16[producer])
+	} else if int(producer) < len(plan.PostRAFusionWith32) {
+		encoded = plan.PostRAFusionWith32[producer]
+	}
+	if encoded == 0 {
+		return 0, false
+	}
+	consumer := encoded - 1
 	return consumer, consumer > producer && int(consumer) < len(plan.Machine.Insts)
 }
 
 func nativeARM64FusionProducer(plan *nativeBackendPlan, consumer uint32) (uint32, bool) {
-	if plan == nil || int(consumer) >= len(plan.PostRAFusionWith) || plan.PostRAFusionWith[consumer] == 0 {
+	if plan == nil {
 		return 0, false
 	}
-	producer := plan.PostRAFusionWith[consumer] - 1
+	var encoded uint32
+	if int(consumer) < len(plan.PostRAFusionWith16) {
+		encoded = uint32(plan.PostRAFusionWith16[consumer])
+	} else if int(consumer) < len(plan.PostRAFusionWith32) {
+		encoded = plan.PostRAFusionWith32[consumer]
+	}
+	if encoded == 0 {
+		return 0, false
+	}
+	producer := encoded - 1
 	return producer, producer < consumer && int(producer) < len(plan.Machine.Insts)
 }
 
