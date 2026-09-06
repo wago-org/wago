@@ -106,6 +106,15 @@ first-use/snapshot race runs pass. The scalar preflight has zero allocations.
 Tests verify aliased destination charging, rejection before publication, public
 mutation isolation, retry, and warm caller policy.
 
+## Bounded regular-file reads
+
+Reads allocate size plus one byte after checking the opened regular file. The
+extra byte detects growth; size, path identity, and quota checks remain in place.
+All regularfile tests pass. Two serial A/B samples reduced 1 MiB reads from
+2229120 B/op and 34 allocations to about 1057900 B/op and 10 allocations;
+time fell from 184–188 us to 101–102 us. At 8 MiB the count fell from 39 to 10.
+Captures: utility-regularfile-ab.txt. Short timing samples remain provisional.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.

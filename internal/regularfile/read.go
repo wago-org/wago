@@ -67,13 +67,24 @@ func read(path string, limit int64, snapshot bool) ([]byte, error) {
 	if opened.Size() > limit {
 		return nil, fmt.Errorf("%s exceeds byte limit %d", path, limit)
 	}
-	data, err := io.ReadAll(io.LimitReader(file, limit+1))
-	if err != nil {
+	size := opened.Size()
+	if size < 0 || uint64(size) >= uint64(int(^uint(0)>>1)) {
+		return nil, fmt.Errorf("%s size overflows read capacity", path)
+	}
+	// Read one byte beyond the checked size to detect growth without allocating
+	// repeated io.ReadAll buffers. The extra byte is still within limit+1.
+	data := make([]byte, int(size)+1)
+	n, err := io.ReadFull(file, data)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return nil, err
 	}
-	if int64(len(data)) > limit {
+	if int64(n) > limit {
 		return nil, fmt.Errorf("%s exceeds byte limit %d", path, limit)
 	}
+	if int64(n) != size {
+		return nil, fmt.Errorf("%s changed while reading", path)
+	}
+	data = data[:n:n]
 	after, statErr := file.Stat()
 	if snapshot {
 		if statErr != nil {
