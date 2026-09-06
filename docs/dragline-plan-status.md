@@ -306,6 +306,23 @@ the performance corpus.
   peak compiler-owned storage and identical native output. A separate ten-pair,
   500 ms exact-head run measured `blake-as.hashN` at 0.99429x wazero latency;
   it is at parity but remains the narrowest measured ARM64 application margin.
+- Exact schedule-realization oracle: ✅ metrics schema 27 adds an opt-in
+  `-schedule=source|latency|pressure` diagnostic to `draglinemetrics`. It forces
+  only functions that normally have genuine schedule alternatives, bypasses
+  cached function artifacts, and then uses the normal allocator, bounded retry,
+  segmented-liveness trial, post-RA verifier, and target finalizer. Production
+  selection and metrics-disabled compilation are unchanged. All three forced
+  modes compiled all 36 non-ISA application modules on native ARM64: 27,384
+  RailMach functions plus the six measured structured giant-function cases,
+  with no verifier or finalizer failures. Exact aggregate native images were
+  95,318,812 bytes for automatic mixed selection, 95,349,368 for source-stable,
+  95,372,744 for latency/fusion, and 95,413,084 for pressure. The mixed
+  production policy is therefore already smallest across this corpus, while
+  individual functions still differ: `blake-as` is 10,176 bytes automatically,
+  10,256 source-stable, 10,192 latency/fusion, and 10,144 pressure. This closes
+  the missing exact-byte measurement seam without using estimated encoder
+  output; execution calibration can now compare ordinary schedule policies via
+  the same final machine-code pipeline before any production cutover.
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution

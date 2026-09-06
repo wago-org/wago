@@ -26,9 +26,10 @@ func main() {
 	replayPath := flag.String("replay", "", "write a replay artifact here if a function fails")
 	targetMode := flag.String("target", "compat", "target mode: compat or native")
 	boundsMode := flag.String("bounds", "explicit", "bounds mode: explicit or signals")
+	scheduleMode := flag.String("schedule", "auto", "diagnostic schedule: auto, source, latency, or pressure")
 	flag.Parse()
 	if flag.NArg() != 1 {
-		fmt.Fprintln(os.Stderr, "usage: draglinemetrics [-target compat|native] [-bounds explicit|signals] [-out metrics.json] [-markdown status.md] [-replay failure.json] module.wasm")
+		fmt.Fprintln(os.Stderr, "usage: draglinemetrics [-target compat|native] [-bounds explicit|signals] [-schedule auto|source|latency|pressure] [-out metrics.json] [-markdown status.md] [-replay failure.json] module.wasm")
 		os.Exit(2)
 	}
 	if *targetMode != "compat" && *targetMode != "native" {
@@ -37,6 +38,11 @@ func main() {
 	}
 	if *boundsMode != "explicit" && *boundsMode != "signals" {
 		fmt.Fprintln(os.Stderr, "draglinemetrics: -bounds must be explicit or signals")
+		os.Exit(2)
+	}
+	schedule, ok := parseScheduleDiagnostic(*scheduleMode)
+	if !ok {
+		fmt.Fprintln(os.Stderr, "draglinemetrics: -schedule must be auto, source, latency, or pressure")
 		os.Exit(2)
 	}
 
@@ -52,7 +58,7 @@ func main() {
 		fail("validate module", err)
 	}
 
-	var metrics dragline.Metrics
+	metrics := dragline.Metrics{ScheduleOverride: schedule}
 	compiler := dragline.Compiler{Metrics: &metrics}
 	if *replayPath != "" {
 		compiler.Replay = func(replay corecompiler.ReplayArtifact) error {
@@ -130,11 +136,26 @@ func main() {
 	}
 }
 
+func parseScheduleDiagnostic(value string) (dragline.ScheduleDiagnosticKind, bool) {
+	switch value {
+	case "auto":
+		return dragline.ScheduleDiagnosticAuto, true
+	case "source":
+		return dragline.ScheduleDiagnosticSourceStable, true
+	case "latency":
+		return dragline.ScheduleDiagnosticLatencyFusion, true
+	case "pressure":
+		return dragline.ScheduleDiagnosticPressure, true
+	default:
+		return dragline.ScheduleDiagnosticAuto, false
+	}
+}
+
 func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metrics) error {
 	if metrics == nil {
 		return fmt.Errorf("nil metrics")
 	}
-	if _, err := fmt.Fprintf(w, "# Dragline compiler status\n\n- Module: `%s`\n- Metrics schema: `%d`\n- Target fingerprint: `%x`\n- Total native image: %d bytes\n- Peak compiler-owned live storage: %d bytes\n\n", filepath.Base(modulePath), metrics.Version, metrics.TargetFingerprint, metrics.NativeBytes, metrics.PeakLiveBytes); err != nil {
+	if _, err := fmt.Fprintf(w, "# Dragline compiler status\n\n- Module: `%s`\n- Metrics schema: `%d`\n- Target fingerprint: `%x`\n- Schedule diagnostic: %s\n- Total native image: %d bytes\n- Peak compiler-owned live storage: %d bytes\n\n", filepath.Base(modulePath), metrics.Version, metrics.TargetFingerprint, scheduleDiagnosticName(metrics.ScheduleOverride), metrics.NativeBytes, metrics.PeakLiveBytes); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(w, "| Emitter | Functions | Wasm body bytes | Native bytes | Lower ms | Emit ms | Cache hits |\n|---|---:|---:|---:|---:|---:|---:|"); err != nil {
@@ -205,6 +226,21 @@ func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metri
 		}
 	}
 	return nil
+}
+
+func scheduleDiagnosticName(kind dragline.ScheduleDiagnosticKind) string {
+	switch kind {
+	case dragline.ScheduleDiagnosticAuto:
+		return "auto"
+	case dragline.ScheduleDiagnosticSourceStable:
+		return "source"
+	case dragline.ScheduleDiagnosticLatencyFusion:
+		return "latency"
+	case dragline.ScheduleDiagnosticPressure:
+		return "pressure"
+	default:
+		return fmt.Sprintf("unknown-%d", kind)
+	}
 }
 
 func scheduleKindName(kind uint8) string {

@@ -80,6 +80,9 @@ var draglineCompilerRevision = sha256.Sum256([]byte("wago-dragline-function-arti
 func (c Compiler) Compile(input corecompiler.Input) (corecompiler.Output, error) {
 	if c.Metrics != nil {
 		c.Metrics.reset(input.Target.Fingerprint())
+		if !c.Metrics.ScheduleOverride.valid() {
+			return corecompiler.Output{}, fmt.Errorf("dragline: invalid diagnostic schedule override %d", c.Metrics.ScheduleOverride)
+		}
 	}
 	if input.Target.GOARCH != "amd64" && input.Target.GOARCH != "arm64" {
 		return corecompiler.Output{}, &UnsupportedError{Reason: fmt.Sprintf("target architecture %s", input.Target.GOARCH)}
@@ -95,7 +98,13 @@ func (c Compiler) Compile(input corecompiler.Input) (corecompiler.Output, error)
 			}
 		}
 	}
-	output, err := compileNative(input, m, c.Metrics, c.FunctionCache)
+	functionCache := c.FunctionCache
+	if c.Metrics != nil && c.Metrics.ScheduleOverride != ScheduleDiagnosticAuto {
+		// A cached artifact did not necessarily use the requested schedule and
+		// would therefore invalidate the exact-code-size diagnostic.
+		functionCache = nil
+	}
+	output, err := compileNative(input, m, c.Metrics, functionCache)
 	err = classifyResourceLimit(err)
 	if err == nil || c.Replay == nil || len(input.Source) == 0 {
 		return output, err

@@ -3,8 +3,10 @@ package dragline
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"fmt"
 	"math"
 	"runtime"
+	"strings"
 	"testing"
 
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
@@ -232,6 +234,45 @@ func TestCompilerTargetModesIdentifyRailMachFinalization(t *testing.T) {
 				t.Fatalf("%s metrics = %#v", mode, metrics.Functions)
 			}
 		})
+	}
+}
+
+func TestCompilerDiagnosticScheduleOverrideUsesNormalFinalizer(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x20, 0, 0x42, 7, 0x7c, 0x20, 1, 0x42, 3, 0x7d, 0x84, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := corecompiler.HostTarget(corecompiler.TargetCompatibility)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forced := range []ScheduleDiagnosticKind{ScheduleDiagnosticSourceStable, ScheduleDiagnosticLatencyFusion, ScheduleDiagnosticPressure} {
+		t.Run(fmt.Sprint(forced), func(t *testing.T) {
+			metrics := Metrics{ScheduleOverride: forced}
+			output, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{Module: m, Source: source, Target: target})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if metrics.ScheduleOverride != forced || metrics.NativeBytes != uint64(len(output.Code)) {
+				t.Fatalf("override/output metrics = %#v, code=%d", metrics, len(output.Code))
+			}
+			if len(metrics.Functions) != 1 || !metrics.Functions[0].ScheduleForced || metrics.Functions[0].InitialScheduleScoreCount != 1 || metrics.Functions[0].InitialScheduleScores[0].Kind != uint8(forced) || metrics.Functions[0].ScheduleKind != uint8(forced) {
+				t.Fatalf("forced schedule %d metrics = %#v", forced, metrics.Functions)
+			}
+		})
+	}
+}
+
+func TestCompilerRejectsInvalidDiagnosticScheduleOverride(t *testing.T) {
+	metrics := Metrics{ScheduleOverride: ScheduleDiagnosticKind(4)}
+	_, err := (Compiler{Metrics: &metrics}).Compile(corecompiler.Input{})
+	if err == nil || !strings.Contains(err.Error(), "invalid diagnostic schedule override 4") {
+		t.Fatalf("error = %v", err)
 	}
 }
 

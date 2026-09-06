@@ -36,3 +36,18 @@ func TestWriteMarkdownStatusAttributesEmitters(t *testing.T) {
 		}
 	}
 }
+
+func TestParseScheduleDiagnostic(t *testing.T) {
+	for input, want := range map[string]dragline.ScheduleDiagnosticKind{
+		"auto": dragline.ScheduleDiagnosticAuto, "source": dragline.ScheduleDiagnosticSourceStable,
+		"latency": dragline.ScheduleDiagnosticLatencyFusion, "pressure": dragline.ScheduleDiagnosticPressure,
+	} {
+		got, ok := parseScheduleDiagnostic(input)
+		if !ok || got != want {
+			t.Fatalf("parseScheduleDiagnostic(%q) = %d, %v; want %d, true", input, got, ok, want)
+		}
+	}
+	if got, ok := parseScheduleDiagnostic("random"); ok || got != dragline.ScheduleDiagnosticAuto {
+		t.Fatalf("invalid schedule = %d, %v", got, ok)
+	}
+}

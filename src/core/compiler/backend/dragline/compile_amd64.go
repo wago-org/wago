@@ -175,7 +175,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		}
 		if hotRecursiveComponent(input, m, compilationPlan, i) && !attemptedRecursive[i] {
 			if nativePlanner == nil {
-				nativePlanner = &nativeBackendPlanner{candidatePostRA: metrics != nil, signalsBounds: input.Bounds == corecompiler.BoundsSignals}
+				nativePlanner = &nativeBackendPlanner{candidatePostRA: metrics != nil, forcedSchedule: diagnosticScheduleOverride(metrics), signalsBounds: input.Bounds == corecompiler.BoundsSignals}
 			}
 			seedHotRecursiveComponent(input, m, compilationPlan, i, hostContracts, moduleContracts, seedContracts, seedScores, seedCandidates, refinedRecursive, attemptedRecursive, &stackScratch, nativePlanner)
 		}
@@ -276,7 +276,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 		}
 		if railMach {
 			if nativePlanner == nil {
-				nativePlanner = &nativeBackendPlanner{candidatePostRA: metrics != nil, signalsBounds: input.Bounds == corecompiler.BoundsSignals}
+				nativePlanner = &nativeBackendPlanner{candidatePostRA: metrics != nil, forcedSchedule: diagnosticScheduleOverride(metrics), signalsBounds: input.Bounds == corecompiler.BoundsSignals}
 			}
 			nativePlan, err = nativePlanner.PlanProfileIPRA(fn.Structured, input.Target, input.Objective, fn.Index, input.Profile, hostContracts, moduleContracts, compilationPlan.Component, refinedRecursive, i)
 			if err != nil {

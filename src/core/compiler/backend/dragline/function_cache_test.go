@@ -61,6 +61,16 @@ func TestCompilerReusesRelocatableFunctionArtifacts(t *testing.T) {
 	if stats.Entries != 2 || stats.Hits != 2 || stats.Misses != 2 {
 		t.Fatalf("function cache stats = %#v on %s", stats, runtime.GOARCH)
 	}
+	metrics.ScheduleOverride = ScheduleDiagnosticPressure
+	if _, err := compiler.Compile(input); err != nil {
+		t.Fatal(err)
+	}
+	if metrics.Functions[0].CacheHit || metrics.Functions[1].CacheHit {
+		t.Fatalf("forced schedule diagnostic reused cached output: %#v", metrics.Functions)
+	}
+	if got := cache.Stats(); got != stats {
+		t.Fatalf("forced schedule diagnostic changed cache stats: got %#v, want %#v", got, stats)
+	}
 	dependencies, ok := functionArtifactDependencies(input, module, cache)
 	if !ok {
 		t.Fatal("compiled module no longer has cache dependencies")

@@ -60,6 +60,7 @@ type nativeBackendPlan struct {
 	Score              railmach.ScheduleScore
 	BackendAttempts    uint8
 	ScheduleCandidates uint8
+	ScheduleForced     bool
 	// InitialScheduleScores retain the realized post-allocation debt for the
 	// bounded first-pass candidates. Metrics-enabled compilation also attaches
 	// their first-pass post-RA opportunities. Retry scores are deliberately
@@ -183,6 +184,7 @@ type nativeBackendPlanner struct {
 	amd64MemoryBounds   []nativeAMD64MemoryBoundUse
 	parallelCandidates  bool
 	candidatePostRA     bool
+	forcedSchedule      railmach.ScheduleKind
 	signalsBounds       bool
 	candidateScratch    *[2]nativeCandidateWorkspace
 	plan                nativeBackendPlan
@@ -1417,8 +1419,12 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	bestIndex := 0
 	fastMachine := railmach.FastMachinePolicy(len(machine.Insts))
 	scheduleAlternatives := railmach.HasScheduleAlternatives(machine, dag, pressure)
-	candidateCount := 3
+	forcedSchedule := p.forcedSchedule
 	if fastMachine || !scheduleAlternatives {
+		forcedSchedule = 0
+	}
+	candidateCount := 3
+	if fastMachine || !scheduleAlternatives || forcedSchedule != 0 {
 		candidateCount = 1
 	}
 	parallelCandidates := p.parallelCandidates && len(machine.Insts) >= 1024 && !fastMachine && scheduleAlternatives
@@ -1429,6 +1435,8 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	kinds := [3]railmach.ScheduleKind{railmach.ScheduleKindLatencyFusion, railmach.ScheduleKindPressure, railmach.ScheduleKindSourceStable}
 	if fastMachine || !scheduleAlternatives {
 		kinds[0] = railmach.ScheduleKindSourceStable
+	} else if forcedSchedule != 0 {
+		kinds[0] = forcedSchedule
 	}
 	var initialScheduleScores [3]railmach.ScheduleScore
 	if parallelCandidates {
@@ -1525,6 +1533,11 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		retryIndex := 0
 		improved := false
 		retryKinds := [3]railmach.ScheduleKind{railmach.ScheduleKindSourceStable, railmach.ScheduleKindLatencyFusion, railmach.ScheduleKindPressure}
+		if forcedSchedule != 0 {
+			retryKinds[0] = forcedSchedule
+			retryCandidateCount = 1
+			retryScheduleScoreCount = 1
+		}
 		if parallelCandidates {
 			retryScores, retryErrs := p.evaluateScheduleCandidates(machine, selection, dag, pressure, retryGreedy, retryKinds, true)
 			for index, candidateScore := range retryScores {
@@ -1864,7 +1877,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	p.plan = nativeBackendPlan{
 		Stack: stack, CFG: cfg, Semantic: semantic,
 		Machine: machine, Selection: selection, DAG: dag, Schedule: schedule, Allocation: allocation, Exit: exit, PostRA: postRA,
-		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, ExternalCallVectorFPRs: externalCallVectorFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts, ScheduleCandidates: scheduleCandidates,
+		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, ExternalCallVectorFPRs: externalCallVectorFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts, ScheduleCandidates: scheduleCandidates, ScheduleForced: forcedSchedule != 0,
 		InitialScheduleScores: initialScheduleScores, InitialScheduleScoreCount: uint8(candidateCount), InitialCandidateFrontier: initialCandidateFrontier,
 		RetryScheduleScores: retryScheduleScores, RetryScheduleScoreCount: retryScheduleScoreCount, RetryCandidateFrontier: retryCandidateFrontier,
 		SegmentedBaselineDebt: segmentedBaselineDebt, SegmentedCandidateDebt: segmentedCandidateDebt, SegmentedBaselineCopies: segmentedBaselineCopies, SegmentedCandidateCopies: segmentedCandidateCopies, SegmentedCandidateRanges: segmentedCandidateRanges, SegmentedAttempted: segmentedAttempted, SegmentedAdmitted: segmentedAdmitted,

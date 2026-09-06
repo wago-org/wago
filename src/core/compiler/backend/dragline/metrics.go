@@ -8,15 +8,53 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 26
+const MetricsVersion = 27
+
+// ScheduleDiagnosticKind selects one scheduler for an opt-in metrics compile.
+// Zero preserves production selection. A forced kind applies only to functions
+// that would normally evaluate schedule alternatives; tiny or dependency-linear
+// functions retain their normal source-stable fast path.
+type ScheduleDiagnosticKind uint8
+
+const (
+	ScheduleDiagnosticAuto ScheduleDiagnosticKind = iota
+	ScheduleDiagnosticSourceStable
+	ScheduleDiagnosticLatencyFusion
+	ScheduleDiagnosticPressure
+)
+
+func (kind ScheduleDiagnosticKind) valid() bool {
+	return kind <= ScheduleDiagnosticPressure
+}
+
+func (kind ScheduleDiagnosticKind) machineKind() railmach.ScheduleKind {
+	switch kind {
+	case ScheduleDiagnosticSourceStable:
+		return railmach.ScheduleKindSourceStable
+	case ScheduleDiagnosticLatencyFusion:
+		return railmach.ScheduleKindLatencyFusion
+	case ScheduleDiagnosticPressure:
+		return railmach.ScheduleKindPressure
+	default:
+		return 0
+	}
+}
+
+func diagnosticScheduleOverride(metrics *Metrics) railmach.ScheduleKind {
+	if metrics == nil {
+		return 0
+	}
+	return metrics.ScheduleOverride.machineKind()
+}
 
 // Metrics contains one deterministic row per compiled function plus module
 // totals. Timings are observational; all counts and byte sizes are exact for
 // the compiler-owned slices tracked by the current pipeline.
 type Metrics struct {
-	Version           uint32            `json:"version"`
-	TargetFingerprint [32]byte          `json:"target_fingerprint"`
-	Functions         []FunctionMetrics `json:"functions"`
+	Version           uint32                 `json:"version"`
+	TargetFingerprint [32]byte               `json:"target_fingerprint"`
+	ScheduleOverride  ScheduleDiagnosticKind `json:"schedule_override,omitempty"`
+	Functions         []FunctionMetrics      `json:"functions"`
 
 	FinalizeNanos int64  `json:"finalize_nanos"`
 	TotalNanos    int64  `json:"total_nanos"`
@@ -79,6 +117,7 @@ type FunctionMetrics struct {
 	RailMachFinalized          bool                              `json:"railmach_finalized"`
 	StructuredReason           string                            `json:"structured_reason,omitempty"`
 	ScheduleKind               uint8                             `json:"schedule_kind"`
+	ScheduleForced             bool                              `json:"schedule_forced"`
 	BackendAttempts            uint8                             `json:"backend_attempts"`
 	ScheduleCandidates         uint8                             `json:"schedule_candidates"`
 	InitialScheduleScoreCount  uint8                             `json:"initial_schedule_score_count"`
@@ -186,6 +225,7 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 	metrics.SemanticArguments = uint32(len(plan.Semantic.Args))
 	metrics.RailMachInstructions = uint32(len(plan.Machine.Insts))
 	metrics.ScheduleKind = uint8(plan.Score.Kind)
+	metrics.ScheduleForced = plan.ScheduleForced
 	metrics.BackendAttempts = plan.BackendAttempts
 	metrics.ScheduleCandidates = plan.ScheduleCandidates
 	metrics.InitialScheduleScoreCount = plan.InitialScheduleScoreCount
@@ -281,8 +321,9 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 }
 
 func (m *Metrics) reset(fingerprint [32]byte) {
+	scheduleOverride := m.ScheduleOverride
 	functions := m.Functions[:0]
-	*m = Metrics{Version: MetricsVersion, TargetFingerprint: fingerprint, Functions: functions}
+	*m = Metrics{Version: MetricsVersion, TargetFingerprint: fingerprint, ScheduleOverride: scheduleOverride, Functions: functions}
 }
 
 func (m *Metrics) observe(bytes uint64) {
