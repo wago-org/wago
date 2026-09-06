@@ -136,7 +136,18 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 func (fn *PreparedFunction) Invoke(args ...uint64) ([]uint64, error) {
 	if fn != nil && fn.in != nil && len(args) == fn.paramSlots {
 		if fn.directIntFast {
-			return fn.invokeDirectInt(args)
+			switch len(args) {
+			case 0:
+				return fn.invokeDirectIntFixed(0, 0, 0, 0)
+			case 1:
+				return fn.invokeDirectIntFixed(args[0], 0, 0, 0)
+			case 2:
+				return fn.invokeDirectIntFixed(args[0], args[1], 0, 0)
+			case 3:
+				return fn.invokeDirectIntFixed(args[0], args[1], args[2], 0)
+			case 4:
+				return fn.invokeDirectIntFixed(args[0], args[1], args[2], args[3])
+			}
 		}
 		if fn.scalarFast {
 			return fn.invokeScalar(args)

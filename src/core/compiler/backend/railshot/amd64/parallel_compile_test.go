@@ -223,4 +223,7 @@ func assertCompiledModuleEqual(t *testing.T, got, want *encoder.CompiledModule) 
 	if !reflect.DeepEqual(got.DirectPrepared, want.DirectPrepared) {
 		t.Fatalf("DirectPrepared differs\n got: %v\nwant: %v", got.DirectPrepared, want.DirectPrepared)
 	}
+	if got.PreparedIsolatedTables != want.PreparedIsolatedTables {
+		t.Fatalf("PreparedIsolatedTables = %v, want %v", got.PreparedIsolatedTables, want.PreparedIsolatedTables)
+	}
 }

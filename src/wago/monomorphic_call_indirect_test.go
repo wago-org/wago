@@ -119,3 +119,54 @@ func TestImmutableMultiTargetCallIndirectExec(t *testing.T) {
 		t.Fatalf("caller(1,10,3) via sub = %v, %v; want 7", got, err)
 	}
 }
+
+func TestImmutableLocalTablePreparedEntryIsIsolated(t *testing.T) {
+	c := MustCompile(callIndirectModule(2, 1, 2))
+	if !c.preparedIsolatedTables {
+		t.Fatal("fresh immutable local-table compilation did not retain its isolation proof")
+	}
+	if c.needsFuncRefContextHeader {
+		t.Fatal("immutable call_indirect module unexpectedly requires mutable call_ref context")
+	}
+
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	if c.boundsMode == BoundsChecksSignalsBased {
+		if in.preparedIsolatedEligible() {
+			t.Fatal("signals-based immutable-table instance must use the guarded entry")
+		}
+		return
+	}
+	if !in.preparedIsolatedEligible() {
+		t.Fatal("immutable, unexported local-table instance should use the isolated entry")
+	}
+
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var decoded Compiled
+	if err := decoded.UnmarshalBinary(blob); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if decoded.preparedIsolatedTables {
+		t.Fatal("serialized module unexpectedly retained compile-only table isolation proof")
+	}
+}
+
+func TestImmutableLocalTableRuntimeStoreKeepsGuardedEntry(t *testing.T) {
+	c := MustCompile(callIndirectModule(2, 1, 2))
+	rt := NewRuntime()
+	defer rt.Close()
+	in, err := instantiateCore(c, InstantiateOptions{store: rt.refStore})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	if in.preparedIsolatedEligible() {
+		t.Fatal("runtime-store table instance must retain the guarded entry")
+	}
+}
