@@ -353,6 +353,17 @@ the performance corpus.
   focused constant, masked-range, and masked-induction elision tests pass, and
   native ARM64 `blake-as` output remains byte-identical at 10,176 bytes with
   SHA-256 `a9cf0dbc1c8664fdf076e0a5738eff210b8d3f72d4039b249aca03413801fc3c`.
+- Loop-segmented liveness experiment: ❌ enabling the existing one-location
+  segmented allocator for loop CFGs reduced an exact native ARM64 `esbuild`
+  image from 37,019,108 to 37,016,084 bytes and weighted spill debt from
+  900,723,276,819 to 900,722,529,892, but serialized full-module compile wall
+  increased from 192.878 to 496.860 seconds (2.576x). Peak compiler-owned live
+  storage also rose from 82,578,401 to 82,720,285 bytes. A 1,024-unit spill-debt
+  opportunity gate retained small code-size wins in Lua, `regexmatch`, and
+  `wasm3`, but still launched too many duplicate allocation trials in giant
+  modules. The experiment was reverted: Stage 7B must avoid a second full
+  allocator pass (or use a genuinely bounded module budget) before loop ranges
+  can enter production.
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution
