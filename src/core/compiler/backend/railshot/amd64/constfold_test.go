@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// The const-fold pack (docs/no-ir-plan.md P2.3/P2.4): relational compares and the
+// The const-fold pack: relational compares and the
 // unary ops (clz/ctz/popcnt/eqz + width conversions) fold at compile time when
 // their operands are constant, and integer compares of the same local collapse to
 // a constant. These only fire on compile-time-known inputs, so the fold value is

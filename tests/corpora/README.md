@@ -1,14 +1,28 @@
 # Semantic corpus
 
-Real programs compiled to WebAssembly, each pinned to an upstream revision and
-checked against an **exact, independently verifiable oracle**. The rule that
-defines this corpus: a module that merely compiles, instantiates, and exits
-successfully does **not** count as a pass — the observed result must match the
-expected result exactly.
+Use this corpus to test real WebAssembly programs with real outputs. Each
+program is pinned to an upstream revision and checked against an exact,
+independently verifiable oracle.
 
-This is a complement to the existing regression corpora in `tests/regressions/`
-(which focus on spec, validation, and runtime/ABI edge cases). It exists to
-grow Wago's confidence in *real programs with real outputs*.
+A module does not pass merely because it compiles, instantiates, and exits. Its
+observed result must exactly match the expected result.
+
+This corpus complements `tests/regressions/`, which focuses on specification,
+validation, runtime, and ABI edge cases.
+
+## Run It
+
+From the repository root:
+
+```sh
+go test ./tests/semanticcorpus
+```
+
+The manifest gate checks every artifact digest and copied license without a
+toolchain. The execution gate compiles each artifact, creates a fresh instance,
+then creates a second instance from the same compiled module. Both must produce
+the exact oracle. Each case has a `timeout_ms` limit. `InvokeContext` stops a
+miscompiled guest from running forever.
 
 ## Layout
 
@@ -21,10 +35,10 @@ grow Wago's confidence in *real programs with real outputs*.
 - `../semanticcorpus/` — the Go package that loads the manifest and executes
   every case through the wago core API, comparing results exactly.
 
-## Oracle strengths used
+## Oracle Strengths
 
 The manifest `expect`/`vectors` block is always an exact oracle, not a smoke
-check. The first tranche leans on these document-described strengths:
+check. The first tranche uses these documented strengths:
 
 | Strength | Meaning                                 | Example here          |
 | -------- | --------------------------------------- | --------------------- |
@@ -33,86 +47,76 @@ check. The first tranche leans on these document-described strengths:
 | 3        | Native build of the same pinned source  | CoreMark native diff  |
 | 5        | Round-trip checked by an independent decoder | QOI, zlib, zstd native-encoded reference streams |
 
-CoreMark's oracle is its published per-kernel CRC table for the standard 2K
-performance run (`crclist=0xe714`, `crcmatrix=0x1fd7`, `crcstate=0x8e3a`),
-taken from the pinned upstream `core_main.c` and independently confirmed by a
-native arm64 build of the same reviewed port. BLAKE3's oracle is the upstream
-`test_vectors.json`: 35 input lengths across all three modes (hash, keyed hash,
-derive key), each compared against the full 131-byte published digest/XOF.
-QOI, zlib, and zstd cases decode a native-encoded reference stream and compare
-the exact decompressed bytes: a native encoder (the pinned toolchain or a host
-encoder) produced the stream, and the wasm decoder must reproduce the original
-deterministic pattern byte-for-byte.
+CoreMark uses its published per-kernel CRC table for the standard 2K performance
+run: `crclist=0xe714`, `crcmatrix=0x1fd7`, and `crcstate=0x8e3a`. The table is
+from the pinned upstream `core_main.c` and is independently confirmed by a
+native arm64 build of the reviewed port.
 
-## Guest-owned buffers
+BLAKE3 uses upstream `test_vectors.json`: 35 input lengths in all three modes
+(hash, keyed hash, and derive key). Each check compares the full 131-byte
+published digest/XOF. QOI, zlib, and zstd decode a native-encoded reference
+stream and compare the exact decompressed bytes. A native encoder, from the
+pinned toolchain or the host, makes the stream. The wasm decoder must reproduce
+the original deterministic pattern byte for byte.
 
-The core-ABI runners own their input/output buffers and expose zero-arg pointer
-exports (e.g. `blake3_input_ptr`/`blake3_output_ptr`); the harness resolves the
-addresses at runtime rather than assuming a linear-memory layout. Placing
-host-written buffers at a fixed low offset collides with the guest's default
-64 KiB stack (`__stack_pointer` starts at 65536), which corrupts results for
-inputs larger than the stack region. Corpus runners must never hardcode
-host-visible buffer offsets below the guest stack.
+## Guest-Owned Buffers
 
-## Running
+Core-ABI runners own their input and output buffers. They expose zero-argument
+pointer exports, such as `blake3_input_ptr` and `blake3_output_ptr`. The harness
+resolves the addresses at run time instead of assuming a linear-memory layout.
 
-```sh
-go test ./tests/semanticcorpus
-```
+Do not put host-written buffers at a fixed low offset. The guest's default
+64 KiB stack starts at `__stack_pointer = 65536`; a low buffer can collide with
+the stack and corrupt a large input. Corpus runners must not hardcode a
+host-visible buffer offset below the guest stack.
 
-The manifest gate verifies every artifact digest and copied license without a
-toolchain. The execution gate compiles each artifact, instantiates it twice
-(fresh instance + second instance from the same compiled module), and requires
-both to reproduce the exact oracle. A per-case `timeout_ms` bound prevents a
-miscompiled guest from hanging the suite; `InvokeContext` interrupts runaway
-native loops.
+## Known Issues and Current Status
 
-## Runtime findings
-
-A case whose `known_issue` field is set is **skipped by the execution gate** with
-that message rather than silently dropped: the pinned artifact, oracle, and
-build script stay checked in, so clearing the field once an issue is fixed
-re-enables the case verbatim.
+A case with a `known_issue` field is skipped by the execution gate with that
+message. It is not silently dropped. Its pinned artifact, oracle, and build
+script remain checked in. Clearing the field after a fix re-enables the exact
+same case.
 
 The previously recorded LZ4 JIT discrepancy no longer reproduces. Compression
 and decompression are enabled and checked against their exact size and byte
 oracles on every supported corpus-test platform.
 
-## Rebuilding an artifact
+## Rebuild an Artifact
 
-Artifacts are checked in so the suite needs no toolchain at run time. To verify
-one after rebuilding, run its build script; it stages into a temp directory,
-compares SHA-256 against the checked-in artifact, and does not overwrite it by
+Artifacts are checked in, so normal suite runs need no toolchain. To verify one
+after a rebuild, run its build script. It stages output in a temporary directory,
+compares SHA-256 with the checked-in artifact, and does not overwrite it by
 default:
 
 ```sh
 tests/corpora/coremark/build.sh   # needs wasi-sdk (WASI_SDK=/path/to/wasi-sdk)
 ```
 
-After reviewing a deliberate port or upstream change, rebuild with `UPDATE=1`
-to replace that artifact, then update `MANIFEST.json`'s `artifact_sha256` and
-re-record provenance. A default build failing with a digest mismatch is
-intentional: it means the checked-in bytes and manifest pin disagree and must
-be reviewed, not silently accepted.
+After you review a deliberate port or upstream change, rebuild with `UPDATE=1`
+to replace the artifact. Then update `MANIFEST.json`'s `artifact_sha256` and
+record new provenance. A default digest mismatch is intentional. It means the
+checked-in bytes and manifest pin disagree and need review.
 
-## Provenance discipline
+## Provenance Rules
 
-Every case records repository, exact revision, revision date, license, and
-toolchain version in `MANIFEST.json`; the upstream license is copied into the
-corpus directory. Build scripts clone the pinned revision (`.tmp/upstream/`,
-git-ignored) rather than building from an unpinned checkout. Wago-owned patches
-(the porting layer) are checked in as reviewed source and compiled against the
-pinned upstream translation units.
+Each case records its repository, exact revision, revision date, license, and
+toolchain version in `MANIFEST.json`. The corpus directory includes the upstream
+license. Build scripts clone the pinned revision into the ignored
+`.tmp/upstream/` directory. They do not build an unpinned checkout.
 
-## Status and next tranches
+Wago-owned porting patches are checked in as reviewed source. They compile
+against the pinned upstream translation units.
 
-Current cases: CoreMark (self-validating CRC), BLAKE3 (105 published-vector
-checks across hash/keyed/derive modes), QOI (exact encode + decode versus a
-native reference), LZ4 (compress/decompress round-trip), zlib inflate (exact
-decode of a native-encoded stream), and zstd decompress (exact decode of a
-native-encoded frame). Planned next, following the same pattern: JSONTestSuite
-classification, Stockfish `perft` node counts, and a 6502 emulator running the
-Klaus functional test.
-WASI-Preview-1 cases are a later tranche gated on the external `wago-org/wasi`
-host plugin; the manifest `abi` field is reserved for them (`core` is the only
-admitted value today).
+## Current Cases and Future Work
+
+Current cases are CoreMark (self-validating CRC), BLAKE3 (105 published-vector
+checks across hash, keyed, and derive modes), QOI (exact encode and decode
+against a native reference), LZ4 (compress/decompress round trip), zlib inflate
+(exact decode of a native-encoded stream), and zstd decompress (exact decode of
+a native-encoded frame).
+
+Planned work follows the same pattern: JSONTestSuite classification, Stockfish
+`perft` node counts, and a 6502 emulator running the Klaus functional test.
+WASI Preview 1 cases are later work. They need the external `wago-org/wasi` host
+plugin. The manifest `abi` field is reserved for them; `core` is the only
+admitted value today.

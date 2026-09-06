@@ -3,7 +3,7 @@
 package amd64
 
 // CodegenStats is the railshot "explain" dashboard: per-function counters that
-// make every later optimization prove itself (docs/no-ir-plan.md P1). Collection
+// make every later optimization prove itself. Collection
 // is opt-in — a *CodegenStats is threaded through the fn only when the caller asks
 // (CompileOptions.Stats) or WAGO_EXPLAIN=1 is set. When off, the field is nil and
 // every counter method is a no-op (nil-receiver methods), so the hot compile path

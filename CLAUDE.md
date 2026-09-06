@@ -1,7 +1,12 @@
-## Project conventions
+# Notes for AI assistants
 
-- Commit messages follow the repo convention: short subjects, no bodies.
-- Every PR needs a short explanation of the behavior change, tests or a clear
-  reason tests are not useful, support-matrix updates when needed, and benchmark
-  numbers when changing hot code paths.
-- See `skills/commit/SKILL.md` for the commit workflow.
+Follow the repository rules in [AGENTS.md](AGENTS.md) before you make a
+change.
+
+- Use short commit subjects without a body.
+- In each pull request, state the behavior change and the tests you ran. State
+  why tests are not useful when that is true.
+- Update the support matrix when a feature's support changes.
+- Include benchmark numbers when you change a hot path.
+
+See [the commit workflow](skills/commit/SKILL.md) before you create a commit.

@@ -1,14 +1,20 @@
 # Runtime regression corpus maintenance
 
-The checked-in runtime regression corpus lives under
-`tests/regressions/runtime` and is pinned by `PROVENANCE.json`.
-`UPSTREAM_INVENTORY.tsv` classifies every upstream
-`.wast` path and generates `EXCLUSIONS.md`; `MANIFEST.tsv` is the port-mode ledger
-for the classified-as-ported subset. `RUST_PORTS.tsv` records exact portable Rust
-test functions plus reviewed function-body hashes, and `DIRECT_ARTIFACTS.tsv`
-binds direct sources to their reviewed binary artifact digests.
+Use this guide only when you verify, refresh, or update the runtime regression
+corpus. The checked-in corpus is in `tests/regressions/runtime` and is pinned by
+`PROVENANCE.json`.
 
-## Correctness gates
+| File | Purpose |
+|---|---|
+| `UPSTREAM_INVENTORY.tsv` | Classifies every upstream `.wast` path and generates `EXCLUSIONS.md`. |
+| `MANIFEST.tsv` | Records the port mode for each ported fixture. |
+| `RUST_PORTS.tsv` | Records portable Rust test functions and reviewed function-body hashes. |
+| `DIRECT_ARTIFACTS.tsv` | Binds direct sources to reviewed binary artifact digests. |
+
+Do not edit generated `EXCLUSIONS.md` directly. Change its source ledger, then
+run the refresh workflow.
+
+## Safety Checks
 
 - Every upstream `.wast` path is classified exactly once as ported, excluded, or
   out of scope; stale and newly unclassified paths fail verification.
@@ -36,7 +42,7 @@ binds direct sources to their reviewed binary artifact digests.
   `GOMAXPROCS` values, runs a conservative optimizer matrix, exercises guard-page
   mode, and fuzzes metadata, normalization, traps, and Emscripten bounds.
 
-## Verify the checked-in import
+## Verify the Checked-In Import
 
 Install the exact WABT version recorded in `PROVENANCE.json`, then provide an
 exact Wasmtime checkout:
@@ -47,42 +53,47 @@ make regression-corpus-check \
   WAST2JSON=wast2json
 ```
 
-The check is byte-for-byte. It verifies the Wasmtime origin, commit, and clean
-tracked worktree before reading any upstream source, plus the exact WABT version,
-the complete upstream inventory, upstream sources, exact Rust-port functions and
-body hashes, direct source/artifact bindings, deterministic local adaptations,
-strict generated JSON/Wasm graphs, and final fixture-tree digest. CI checks out
-and builds the WABT commit recorded in provenance from fresh source on every run,
-verifies origin/commit/worktree/submodule state, and runs the same verifier
-against a freshly fetched Wasmtime checkout. Workflow actions are pinned by full
-commit SHA. WABT embeds its input path in each `commands.json`; the small legacy
-subset retains the historical `testdata/wasmtime/core` spelling instead of the
-normal `testdata/wasmtime/wasm2` spelling. It is explicitly listed in
-`legacy_core_source_filenames` so regeneration remains deterministic without
-trusting the generated JSON to choose its own expected path. The
-`normalized_wabt_json_fixtures` list separately declares fixtures requiring a
-reviewed deterministic JSON repair; currently this covers WABT 1.0.41's
-malformed multi-result metadata for `winch/use-innermost-frame.wast`. The repair
-parses the generated command prefix and preserves its actual lines, action, and
-trap text; an unexpected or already-fixed WABT shape fails closed.
+This check is byte for byte. Before it reads an upstream source, it verifies the
+Wasmtime origin, commit, and clean tracked worktree. It also verifies the WABT
+version, complete upstream inventory and sources, Rust-port functions and body
+hashes, direct source/artifact bindings, deterministic local adaptations,
+generated JSON/Wasm graphs, and the final fixture-tree digest.
 
-## Refresh
+On every CI run, WABT is built from the provenance-pinned source. CI verifies
+origin, commit, worktree, and submodule state, then runs the same verifier
+against a freshly fetched Wasmtime checkout. Workflow actions use full commit
+SHAs.
+
+WABT embeds its input path in `commands.json`. A small legacy subset keeps the
+historical `testdata/wasmtime/core` path instead of the normal
+`testdata/wasmtime/wasm2` path. `legacy_core_source_filenames` explicitly lists
+it, so regeneration stays deterministic without trusting generated JSON to pick
+its expected path.
+
+`normalized_wabt_json_fixtures` lists fixtures that need a reviewed,
+deterministic JSON repair. It currently covers WABT 1.0.41's malformed
+multi-result metadata for `winch/use-innermost-frame.wast`. The repair parses the
+generated command prefix and keeps its actual lines, action, and trap text. An
+unexpected or already-fixed WABT shape fails closed.
+
+## Refresh the Corpus
 
 ```sh
 make regression-corpus-sync WAST2JSON=wast2json
 ```
 
-The sync target rejects an existing Wasmtime checkout with staged or unstaged
-tracked modifications before fetching or checking out the pin. It then fetches
-the pinned revision, stages a complete copy of the core tree, replaces unmodified
-sources from upstream, applies the deterministic Embenchen registration
-transformation, regenerates all `wast-json` artifacts,
-regenerates `EXCLUSIONS.md`, and updates the digest in `PROVENANCE.json`. The
-prospective tree is fully validated before replacement. Metadata writes are
-synced before rename; parent directories are synced after commit; rollback errors
-are surfaced; and failpoint tests cover each commit stage.
+The sync target rejects a Wasmtime checkout with staged or unstaged tracked
+changes before it fetches or checks out the pin. It then fetches the pinned
+revision, stages a full core-tree copy, replaces unmodified upstream sources,
+applies the deterministic Embenchen registration transformation, regenerates
+all `wast-json` artifacts and `EXCLUSIONS.md`, and updates the
+`PROVENANCE.json` digest.
 
-Direct modes are intentionally not synthesized by WABT:
+The prospective tree is validated before replacement. Metadata writes sync
+before rename. Parent directories sync after commit. Rollback errors are shown,
+and failpoint tests cover each commit stage.
+
+WABT intentionally does not synthesize these direct modes:
 
 - `direct-go` preserves annotations or identity-sensitive assertions replayed in
   Go;
@@ -90,13 +101,12 @@ Direct modes are intentionally not synthesized by WABT:
 - `direct-concurrency` preserves thread-command modules replayed with Go
   goroutines.
 
-Their exact bytes remain covered by both the fixture-tree digest and
-`DIRECT_ARTIFACTS.tsv`. The importer never overwrites a changed direct source. A
-pin update that changes one must be reviewed and applied manually together with
-its modules and Go oracle; source-only changes are rejected when artifact hashes
-remain unchanged.
+Both the fixture-tree digest and `DIRECT_ARTIFACTS.tsv` cover their exact bytes.
+The importer never overwrites a changed direct source. If a pin update changes
+one, review and apply it manually with its modules and Go oracle. Source-only
+changes fail when artifact hashes stay unchanged.
 
-## Updating the pin
+## Update the Pin
 
 1. Change the Wasmtime revision/date and—if needed—the WABT version, repository,
    and exact commit in `tests/regressions/runtime/PROVENANCE.json`.
@@ -114,10 +124,10 @@ remain unchanged.
    WAGO_BOUNDS=signals go test -count=1 -tags wago_guardpage ./src/wago -run '^TestRuntimeRegression'
    ```
 
-Use `WAGO_REGRESSION_TIMEOUT` to adjust the default 20-second per-fixture child
-limit only when a measured slow target requires it.
+Change `WAGO_REGRESSION_TIMEOUT` from its default 20-second child limit only
+when measurements show that a target needs more time.
 
-## Stress and fuzz maintenance
+## Stress and Fuzz Maintenance
 
 Run the same matrix used by the scheduled workflow with:
 
@@ -132,7 +142,7 @@ For a shorter local smoke run, set `WAGO_STRESS_COUNT` and
 WAGO_STRESS_COUNT=2 WAGO_STRESS_FUZZTIME=5s make regression-stress
 ```
 
-The canonical run repeats lifecycle/reuse/resource tests across several
-`GOMAXPROCS` values, shuffles the complete suite under conservative optimizer
-switches, repeats guard-page execution, and fuzzes path/Rust parsing, WABT JSON
-normalization, trap matching, and Emscripten memory ranges.
+The full run repeats lifecycle, reuse, and resource tests at several
+`GOMAXPROCS` values. It shuffles the full suite with conservative optimizer
+switches, repeats guard-page execution, and fuzzes path and Rust parsing, WABT
+JSON normalization, trap matching, and Emscripten memory ranges.

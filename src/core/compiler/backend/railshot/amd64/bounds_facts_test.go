@@ -8,8 +8,8 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// TestBoundsFactsElision checks P6.1 straight-line elision (docs/no-ir-plan.md
-// P6): one check may prove same-source fixed-offset loads across a pure range,
+// TestBoundsFactsElision checks P6.1 straight-line elision: one check may prove
+// same-source fixed-offset loads across a pure range,
 // and a later covered access needs no check of its own. Correctness at scale is
 // covered by
 // TestCorpusDifferential on the compute kernels (nbody/fannkuch/sha256/raytrace);

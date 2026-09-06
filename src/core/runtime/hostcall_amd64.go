@@ -16,7 +16,7 @@ import (
 // control frame and unwinds to Go through the existing trap re-entry SP; Go runs
 // the host function on the goroutine stack and writes the results; resumeNative
 // restores the saved register state and returns to the instruction after the
-// call. See docs/host-import-results-plan.md §2.
+// call.
 
 // maxHostArity is the inline uint64 param/result capacity. Wider internal calls
 // use the checked extension described in hostcall_layout.go, leaving this common
