@@ -425,3 +425,20 @@ spec3-signals, TinyGo, vet, docs, and formatting gates pass. Focused interrupt,
 trap-reset, cancellation, and deadline race tests pass. Captures:
 final-corerefined-{a,b}.txt, final-callsrefined-{a,b}.txt, refined-gates-status.txt.
 The scheduler transition remains required and unchanged.
+
+## Measure the type-slab tradeoff
+
+BenchmarkDecodeMixedTypeGroups measures one implicit group followed by explicit
+groups. Ten paired 200 ms samples at 1000 groups fall from 101.38 us and 332.9 KiB
+to 98.10 us and 183.5 KiB (-44.88% bytes). At 100000 groups, 14.97 ms and
+32.05 MiB become 12.97 ms and 17.55 MiB (-45.24% bytes).
+
+The all-implicit 1000-group control costs more: 73.44 to 78.74 us (+7.22%,
+p=0.007), 181008 to 187024 B, and six to eleven allocations. Keep the 16-entry
+initial slab because reserving 1024 entries to recover this row would restore
+unused storage on sparse mixed input. The 100000 implicit control improves from
+11.77 to 10.27 ms, with 6016 extra bytes and 102 extra bounded slab allocations.
+At 100000 explicit groups, 16.13 ms and 33605392 B become 14.12 ms and 18401040 B.
+Single-group cases retain 968 B and six allocations. These results justify a
+bounded memory tradeoff; they do not claim every decoder row is faster. Captures:
+final-mixed-{a,b}.txt and final-types-{a,b}.txt.
