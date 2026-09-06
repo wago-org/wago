@@ -253,3 +253,22 @@ Managedrelease and filelock race tests pass on Linux, including stale/live recor
 PID reuse, rollback isolation, and distinct coordinator identities. Windows amd64
 managedrelease and replacement test binaries cross-build. Native Windows worker,
 interrupted cleanup, and reinstall execution remain a required release gate.
+
+## Checked collector scratch and telemetry
+
+Each checked collector retains one idle scratch record, with at most 256 entries
+in each root/input vector. Reentrant callbacks use separate records. Owner and
+generation checks run after callbacks. Release clears references and drops large
+outlier buffers; close drops the idle record. Nil-root collection keeps its direct
+path. Checked telemetry aliases and guarded snapshot/reset methods now match the
+documented API, with normal and `wago_gcstats` tests.
+
+Checked GC race and telemetry-tag tests pass. Warm 1/16/256-root collection now
+uses zero bytes and allocations, versus 6/10/14 allocations before. Throughput
+256-root collection falls from about 4185 to 2061 ns; Tiny from 6183 to 3836 ns.
+Four-value construction falls from 184 B/5 allocations to zero, and about 157 to
+88 ns (Throughput). A 4096-root outlier drops from 370752 B/20 allocations to
+318656 B/13 allocations, without a claimed timing win or retained large buffer.
+Nil-root times do not regress in the short samples. Capture: gc-bounded-ab.txt.
+The first constructor fixture exhausted its heap because it supplied nil roots;
+it failed visibly and was corrected to explicit EmptyRoots on both sides.

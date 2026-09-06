@@ -20,7 +20,8 @@ merges that profile with the ordinary, guard-page, and specification profiles.
 This keeps diagnostic-only telemetry paths visible without adding timing or
 counter machinery to release builds.
 
-Then attach one recorder to one collector:
+Then attach one recorder to one checked collector. In this example, `gc` is
+`github.com/wago-org/wago/src/core/runtime/gc`:
 
 ```go
 telemetry := new(gc.Telemetry)
@@ -112,7 +113,8 @@ state.
 ## Root classes
 
 Unclassified `RootSet` arguments are reported as native-frame roots. Runtime or
-test integrations can use `gc.ClassifiedRoots` or `gc.RootGroups` to report:
+test integrations using the trusted native ABI can use `native.ClassifiedRoots`
+or `native.RootGroups` (`native` imports `src/core/runtime/gc/native`) to report:
 
 - native frames;
 - collector globals;
@@ -291,3 +293,17 @@ stripped bytes. Diagnostic timing and JSON support therefore remain explicitly
 outside release builds. Hardware instruction/cache counters were not sampled on
 this host because `perf` was unavailable; the documented reviewer command is
 still required before claiming hardware-counter neutrality.
+
+## Checked API migration
+
+The checked `gc` package exposes `Telemetry`, `TelemetryAvailable`, and collector
+`TelemetrySnapshot`/`ResetTelemetry` methods. Closed collectors return unavailable.
+It retains opaque owner/generation-checked references; telemetry does not expose
+raw references or a native collector. Native root classification helpers belong
+to the trusted `gc/native` integration and must not be used as checked Go ingress.
+Checked root snapshots report the ordinary unclassified root category.
+
+Checked collectors retain at most one idle scratch record with at most 256 entries
+in each roots/native-values/constructor-values vector. Nested root callbacks use
+separate records. Error, panic, and close paths clear references; outlier buffers
+are discarded. Collector and root access still requires external synchronization.

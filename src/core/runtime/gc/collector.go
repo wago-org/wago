@@ -10,8 +10,9 @@ var ErrCollectorClosed = errors.New("gc: collector closed")
 
 // Collector owns a checked Go heap. It never exposes the raw native collector.
 type Collector struct {
-	heap   *raw.Collector
-	closed bool
+	heap    *raw.Collector
+	closed  bool
+	scratch *checkedScratch
 }
 
 func NewCollector(config Config, types []TypeDesc) (*Collector, error) {
@@ -35,6 +36,7 @@ func (c *Collector) Close() {
 	if c != nil && !c.closed {
 		c.heap.Close()
 		c.closed = true
+		c.scratch = nil
 	}
 }
 func (c *Collector) unwrap(ref Ref) (raw.Ref, error) {
@@ -80,20 +82,6 @@ func (c *Collector) input(value Value) (raw.Value, error) {
 	}
 	return out, nil
 }
-func (c *Collector) inputs(values []Value) ([]raw.Value, error) {
-	if err := c.available(); err != nil {
-		return nil, err
-	}
-	out := make([]raw.Value, len(values))
-	for i, value := range values {
-		v, err := c.input(value)
-		if err != nil {
-			return nil, err
-		}
-		out[i] = v
-	}
-	return out, nil
-}
 func (c *Collector) output(value raw.Value, err error) (Value, error) {
 	if err != nil {
 		return Value{}, err
@@ -121,7 +109,11 @@ func (c *Collector) CollectFull(roots RootSet) error {
 	if err := c.available(); err != nil {
 		return err
 	}
-	r, err := c.roots(roots)
+	if roots == nil {
+		return c.heap.CollectFull(nil)
+	}
+	scratch, r, err := c.prepareScratch(roots, nil)
+	defer c.releaseScratch(scratch)
 	if err != nil {
 		return err
 	}
@@ -131,7 +123,11 @@ func (c *Collector) CollectMinor(roots RootSet) error {
 	if err := c.available(); err != nil {
 		return err
 	}
-	r, err := c.roots(roots)
+	if roots == nil {
+		return c.heap.CollectMinor(nil)
+	}
+	scratch, r, err := c.prepareScratch(roots, nil)
+	defer c.releaseScratch(scratch)
 	if err != nil {
 		return err
 	}
@@ -141,7 +137,11 @@ func (c *Collector) Step(roots RootSet) error {
 	if err := c.available(); err != nil {
 		return err
 	}
-	r, err := c.roots(roots)
+	if roots == nil {
+		return c.heap.Step(nil)
+	}
+	scratch, r, err := c.prepareScratch(roots, nil)
+	defer c.releaseScratch(scratch)
 	if err != nil {
 		return err
 	}
@@ -151,7 +151,11 @@ func (c *Collector) Verify(roots RootSet) error {
 	if err := c.available(); err != nil {
 		return err
 	}
-	r, err := c.roots(roots)
+	if roots == nil {
+		return c.heap.Verify(nil)
+	}
+	scratch, r, err := c.prepareScratch(roots, nil)
+	defer c.releaseScratch(scratch)
 	if err != nil {
 		return err
 	}

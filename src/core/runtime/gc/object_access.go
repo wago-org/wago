@@ -5,28 +5,28 @@ func (c *Collector) NewStructDefault(id TypeID) (Ref, error) {
 	return c.NewStructDefaultWithRoots(id, nil)
 }
 func (c *Collector) NewStructDefaultWithRoots(id TypeID, roots RootSet) (Ref, error) {
-	r, err := c.roots(roots)
+	scratch, r, err := c.prepareScratch(roots, nil)
+	defer c.releaseScratch(scratch)
 	if err != nil {
 		return Ref{}, err
 	}
 	return c.wrap(c.heap.NewStructDefaultWithRoots(id, r))
 }
 func (c *Collector) NewStructWithRoots(id TypeID, values []Value, roots RootSet) (Ref, error) {
-	r, err := c.roots(roots)
+	scratch, r, err := c.prepareScratch(roots, values)
+	defer c.releaseScratch(scratch)
 	if err != nil {
 		return Ref{}, err
 	}
-	input, err := c.inputs(values)
-	if err != nil {
-		return Ref{}, err
-	}
+	input := scratch.inputValues()
 	return c.wrap(c.heap.NewStructWithRoots(id, input, r))
 }
 func (c *Collector) NewArray(id TypeID, length uint32, init Value) (Ref, error) {
 	return c.NewArrayWithRoots(id, length, init, nil)
 }
 func (c *Collector) NewArrayWithRoots(id TypeID, length uint32, init Value, roots RootSet) (Ref, error) {
-	r, err := c.roots(roots)
+	scratch, r, err := c.prepareScratch(roots, nil)
+	defer c.releaseScratch(scratch)
 	if err != nil {
 		return Ref{}, err
 	}
@@ -37,21 +37,20 @@ func (c *Collector) NewArrayWithRoots(id TypeID, length uint32, init Value, root
 	return c.wrap(c.heap.NewArrayWithRoots(id, length, input, r))
 }
 func (c *Collector) NewArrayFixedWithRoots(id TypeID, values []Value, roots RootSet) (Ref, error) {
-	r, err := c.roots(roots)
+	scratch, r, err := c.prepareScratch(roots, values)
+	defer c.releaseScratch(scratch)
 	if err != nil {
 		return Ref{}, err
 	}
-	input, err := c.inputs(values)
-	if err != nil {
-		return Ref{}, err
-	}
+	input := scratch.inputValues()
 	return c.wrap(c.heap.NewArrayFixedWithRoots(id, input, r))
 }
 func (c *Collector) NewArrayDefault(id TypeID, length uint32) (Ref, error) {
 	return c.NewArrayDefaultWithRoots(id, length, nil)
 }
 func (c *Collector) NewArrayDefaultWithRoots(id TypeID, length uint32, roots RootSet) (Ref, error) {
-	r, err := c.roots(roots)
+	scratch, r, err := c.prepareScratch(roots, nil)
+	defer c.releaseScratch(scratch)
 	if err != nil {
 		return Ref{}, err
 	}
@@ -65,7 +64,8 @@ func (c *Collector) NewRefArrayWithRoots(id TypeID, length uint32, initial RootS
 		return Ref{}, ErrInvalidReference
 	}
 	value := initial.GetRef()
-	r, err := c.roots(roots)
+	scratch, r, err := c.prepareScratch(roots, nil)
+	defer c.releaseScratch(scratch)
 	if err != nil {
 		return Ref{}, err
 	}
