@@ -353,6 +353,24 @@ the performance corpus.
   focused constant, masked-range, and masked-induction elision tests pass, and
   native ARM64 `blake-as` output remains byte-identical at 10,176 bytes with
   SHA-256 `a9cf0dbc1c8664fdf076e0a5738eff210b8d3f72d4039b249aca03413801fc3c`.
+- Bounds-check observability and common-predecessor reuse: ✅ metrics schema 29
+  now reports each RailMach function's selected memory-access count separately
+  from source-proved and dominating-check reuse. An exact native ARM64 pass over
+  the non-ISA manifest shows that existing exact-address reuse already removes
+  18,594 checks in `regexmatch`, 13,595 in SQLite, and 4,020 in Lua. The shared
+  finalizer policy now also retains facts while layout moves from a memory-free
+  branch arm to its sibling: both arms must have the same sole predecessor, and
+  a binary search over the sorted memory descriptors independently rejects a
+  first arm that could have established a path-local fact. This removes another
+  119 checks and 2,816 native bytes from SQLite, 10 checks and 176 bytes from
+  Lua, and 50 checks and 960 bytes from Ruby; every runnable application image
+  and esbuild remain byte-identical. Three serialized alternating measurements
+  put SQLite compile wall 0.77% lower and Lua 0.27% higher; an exact paired Ruby
+  run was 0.71% higher, while its 75,336,538-byte peak-live value was identical.
+  Esbuild remained at 36,864,196 native bytes, 159.910 seconds, and 82,838,709
+  peak-live bytes. A broader unsigned-remainder/shift range-proof experiment
+  reached zero current corpus accesses and was reverted rather than adding an
+  unmeasured source-analysis path.
 - Loop-segmented liveness experiment: ❌ enabling the existing one-location
   segmented allocator for loop CFGs reduced an exact native ARM64 `esbuild`
   image from 37,019,108 to 37,016,084 bytes and weighted spill debt from

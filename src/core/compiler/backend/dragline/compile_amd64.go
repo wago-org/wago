@@ -1274,6 +1274,9 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	}
 	memoryChecked := func(address railmach.VReg, end uint64) bool {
 		if memoryCheckEnds[address] >= end {
+			if metrics != nil {
+				metrics.BoundsChecksReused++
+			}
 			return true
 		}
 		if memoryCheckEnds[address] == 0 {
@@ -1355,6 +1358,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		if plan.Layout != nil {
 			blockID = int(plan.Layout.Order[layoutIndex])
 		}
+		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockExit) != 0 {
+			blockOffsets[blockID] = a.Len()
+			continue
+		}
 		if !amd64RailMachCarriesMemoryChecks(plan, previousLayoutBlock, blockID) {
 			resetMemoryChecks()
 		}
@@ -1390,9 +1397,6 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			a.AlignLoop()
 		}
 		blockOffsets[blockID] = a.Len()
-		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockExit) != 0 {
-			continue
-		}
 		if plan.Simplified != nil && blockID < len(plan.Simplified.Reachable) && !plan.Simplified.Reachable[blockID] {
 			offset := uint32(0)
 			if block := plan.CFG.Blocks[blockID]; block.InstCount != 0 {
@@ -4406,16 +4410,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	return a.B, internalOffset, true, nil
 }
 
-// amd64RailMachCarriesMemoryChecks permits exact SSA-address bounds facts to
-// cross a laid-out block boundary only when the current block's sole entry is
-// the block emitted immediately before it. Linear memory cannot shrink, so a
-// successful check remains valid along that straight-line edge.
+// amd64RailMachCarriesMemoryChecks applies the shared conservative CFG policy.
+// Linear memory cannot shrink, so a passed exact-address check remains valid.
 func amd64RailMachCarriesMemoryChecks(plan *nativeBackendPlan, previous, current int) bool {
-	if plan == nil || plan.CFG == nil || previous < 0 || current < 0 || current >= len(plan.CFG.Blocks) {
-		return false
-	}
-	block := plan.CFG.Blocks[current]
-	return block.PredCount == 1 && int(block.PredStart) < len(plan.CFG.Preds) && int(plan.CFG.Preds[block.PredStart]) == previous
+	return railMachCarriesMemoryChecks(plan, previous, current)
 }
 
 func amd64IntegerComparisonCond(kind wasm.InstrKind) (amd64.Cond, bool) {

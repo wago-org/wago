@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 28
+const MetricsVersion = 29
 
 // ScheduleDiagnosticKind selects one scheduler for an opt-in metrics compile.
 // Zero preserves production selection. A forced kind applies only to functions
@@ -115,7 +115,9 @@ type FunctionMetrics struct {
 	GenericMachineInstructions uint32                            `json:"generic_machine_instructions"`
 	SemanticArguments          uint32                            `json:"semantic_arguments"`
 	StackInstructions          uint32                            `json:"stack_instructions"`
+	MemoryAccesses             uint32                            `json:"memory_accesses"`
 	BoundsChecksElided         uint32                            `json:"bounds_checks_elided"`
+	BoundsChecksReused         uint32                            `json:"bounds_checks_reused"`
 	ObligationsElided          uint32                            `json:"obligations_elided"`
 	ProofQueries               uint32                            `json:"proof_queries"`
 	RailMachFinalized          bool                              `json:"railmach_finalized"`
@@ -228,6 +230,7 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 	metrics.RailSSAInstructions = uint32(len(plan.Semantic.Insts))
 	metrics.SemanticArguments = uint32(len(plan.Semantic.Args))
 	metrics.RailMachInstructions = uint32(len(plan.Machine.Insts))
+	metrics.MemoryAccesses = uint32(len(plan.Machine.Memory))
 	metrics.TargetSelectedInstructions = plan.TargetSelectedInstructions
 	metrics.GenericMachineInstructions = plan.GenericMachineInstructions
 	metrics.ScheduleKind = uint8(plan.Score.Kind)

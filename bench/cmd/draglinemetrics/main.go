@@ -169,7 +169,7 @@ func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metri
 			return err
 		}
 	}
-	if _, err := fmt.Fprintln(w, "\n## Functions\n\n| Function | Emitter | Reason | Wasm bytes | Native bytes | Spill debt | Edge moves | Loop-backedge moves | Fixed moves | Segmented trial | Trial debt | Trial copies | Intervals | Segments | Segmented ranges | Fragments | Lower ms | Emit ms |\n|---:|---|---|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|"); err != nil {
+	if _, err := fmt.Fprintln(w, "\n## Functions\n\n| Function | Emitter | Reason | Wasm bytes | Native bytes | Memory accesses | Proved checks | Reused checks | Spill debt | Edge moves | Loop-backedge moves | Fixed moves | Segmented trial | Trial debt | Trial copies | Intervals | Segments | Segmented ranges | Fragments | Lower ms | Emit ms |\n|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|"); err != nil {
 		return err
 	}
 	for _, row := range metrics.Functions {
@@ -193,7 +193,7 @@ func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metri
 		if reason == "" {
 			reason = "-"
 		}
-		if _, err := fmt.Fprintf(w, "| %d | %s | %s | %d | %d | %d | %d | %d | %d | %s | %s | %s | %d | %d | %d | %d | %.3f | %.3f |\n", row.Function, emitter, reason, row.BodyBytes, row.NativeBytes, row.WeightedSpillDebt, row.EdgeMoves, row.LoopBackedgeMoves, row.FixedMoves, trial, trialDebt, trialCopies, row.LiveIntervals, row.LiveSegments, row.SegmentedRanges, row.AllocationFragments, float64(row.LowerNanos)/1e6, float64(row.EmitNanos)/1e6); err != nil {
+		if _, err := fmt.Fprintf(w, "| %d | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %s | %s | %s | %d | %d | %d | %d | %.3f | %.3f |\n", row.Function, emitter, reason, row.BodyBytes, row.NativeBytes, row.MemoryAccesses, row.BoundsChecksElided, row.BoundsChecksReused, row.WeightedSpillDebt, row.EdgeMoves, row.LoopBackedgeMoves, row.FixedMoves, trial, trialDebt, trialCopies, row.LiveIntervals, row.LiveSegments, row.SegmentedRanges, row.AllocationFragments, float64(row.LowerNanos)/1e6, float64(row.EmitNanos)/1e6); err != nil {
 			return err
 		}
 	}

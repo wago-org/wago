@@ -762,6 +762,46 @@ func railMachElidesMemoryBoundsCheck(plan *nativeBackendPlan, instruction uint32
 	return ok && access.BoundsProof != 0
 }
 
+// railMachCarriesMemoryChecks retains exact SSA-address bounds facts along a
+// straight-line edge. It also retains predecessor facts while layout moves
+// from a memory-free then arm to its else sibling: both siblings have the same
+// sole predecessor, and the first arm cannot have added a path-local fact.
+func railMachCarriesMemoryChecks(plan *nativeBackendPlan, previous, current int) bool {
+	if plan == nil || plan.CFG == nil || plan.Machine == nil || previous < 0 || current < 0 || previous >= len(plan.CFG.Blocks) || current >= len(plan.CFG.Blocks) || previous >= len(plan.Machine.Blocks) || current >= len(plan.Machine.Blocks) {
+		return false
+	}
+	predecessor := func(block int) (railssa.BlockID, bool) {
+		data := plan.CFG.Blocks[block]
+		if data.PredCount != 1 || int(data.PredStart) >= len(plan.CFG.Preds) {
+			return 0, false
+		}
+		return plan.CFG.Preds[data.PredStart], true
+	}
+	currentPredecessor, ok := predecessor(current)
+	if !ok {
+		return false
+	}
+	if int(currentPredecessor) == previous {
+		return true
+	}
+	previousPredecessor, ok := predecessor(previous)
+	if !ok || previousPredecessor != currentPredecessor {
+		return false
+	}
+	block := plan.Machine.Blocks[previous]
+	end := block.InstStart + block.InstCount
+	low, high := 0, len(plan.Machine.Memory)
+	for low < high {
+		middle := int(uint(low+high) >> 1)
+		if plan.Machine.Memory[middle].Instruction < block.InstStart {
+			low = middle + 1
+		} else {
+			high = middle
+		}
+	}
+	return low >= len(plan.Machine.Memory) || plan.Machine.Memory[low].Instruction >= end
+}
+
 // FunctionError identifies the original Wasm function and compiler stage that
 // failed, allowing deterministic one-function replay capture.
 type FunctionError struct {

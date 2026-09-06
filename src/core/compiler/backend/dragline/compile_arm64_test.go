@@ -202,22 +202,28 @@ func TestARM64FloatSelectCoalescesDestination(t *testing.T) {
 }
 
 func TestARM64CarriesMemoryChecksOnlyAcrossUniqueLaidOutPredecessor(t *testing.T) {
-	plan := &nativeBackendPlan{CFG: &railssa.CFG{
+	plan := &nativeBackendPlan{Machine: &railmach.Func{Blocks: make([]railmach.Block, 4)}, CFG: &railssa.CFG{
 		Blocks: []railssa.Block{
-			{SuccStart: 0, SuccCount: 1},
+			{SuccStart: 0, SuccCount: 2},
 			{PredStart: 0, PredCount: 1},
-			{PredStart: 1, PredCount: 2},
+			{PredStart: 1, PredCount: 1},
+			{PredStart: 2, PredCount: 2},
 		},
-		Preds: []railssa.BlockID{0, 0, 1},
+		Preds: []railssa.BlockID{0, 0, 1, 2},
 	}}
 	if !arm64RailMachCarriesMemoryChecks(plan, 0, 1) {
 		t.Fatal("unique immediately laid-out predecessor did not carry checks")
 	}
-	if arm64RailMachCarriesMemoryChecks(plan, 2, 1) {
-		t.Fatal("non-predecessor layout neighbor carried checks")
+	if !arm64RailMachCarriesMemoryChecks(plan, 1, 2) {
+		t.Fatal("memory-free sibling discarded common-predecessor checks")
 	}
-	if arm64RailMachCarriesMemoryChecks(plan, 1, 2) {
+	if arm64RailMachCarriesMemoryChecks(plan, 2, 3) {
 		t.Fatal("join block carried path-local checks")
+	}
+	plan.Machine.Blocks[1] = railmach.Block{InstCount: 1}
+	plan.Machine.Memory = []railmach.MemoryAccess{{Instruction: 0}}
+	if arm64RailMachCarriesMemoryChecks(plan, 1, 2) {
+		t.Fatal("memory-producing sibling carried path-local checks")
 	}
 	if arm64RailMachCarriesMemoryChecks(nil, 0, 1) || arm64RailMachCarriesMemoryChecks(plan, -1, 1) {
 		t.Fatal("missing predecessor state carried checks")

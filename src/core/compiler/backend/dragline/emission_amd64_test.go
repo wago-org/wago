@@ -16,6 +16,29 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func TestAMD64CarriesMemoryChecksAcrossMemoryFreeLayoutSibling(t *testing.T) {
+	plan := &nativeBackendPlan{Machine: &railmach.Func{Blocks: make([]railmach.Block, 4)}, CFG: &railssa.CFG{
+		Blocks: []railssa.Block{
+			{SuccStart: 0, SuccCount: 2},
+			{PredStart: 0, PredCount: 1},
+			{PredStart: 1, PredCount: 1},
+			{PredStart: 2, PredCount: 2},
+		},
+		Preds: []railssa.BlockID{0, 0, 1, 2},
+	}}
+	if !amd64RailMachCarriesMemoryChecks(plan, 0, 1) || !amd64RailMachCarriesMemoryChecks(plan, 1, 2) {
+		t.Fatal("common-predecessor bounds facts were not carried")
+	}
+	if amd64RailMachCarriesMemoryChecks(plan, 2, 3) {
+		t.Fatal("join block carried path-local checks")
+	}
+	plan.Machine.Blocks[1] = railmach.Block{InstCount: 1}
+	plan.Machine.Memory = []railmach.MemoryAccess{{Instruction: 0}}
+	if amd64RailMachCarriesMemoryChecks(plan, 1, 2) {
+		t.Fatal("memory-producing sibling carried path-local checks")
+	}
+}
+
 func TestAMD64RailMachRotatesCanonicalCountdownLoop(t *testing.T) {
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),

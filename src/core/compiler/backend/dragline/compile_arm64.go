@@ -1570,6 +1570,9 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				check := &globalMemoryChecks[slot]
 				if check.valid && check.index == index {
 					if check.end >= end {
+						if metrics != nil {
+							metrics.BoundsChecksReused++
+						}
 						return true
 					}
 					check.end = end
@@ -1585,6 +1588,9 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			return false
 		}
 		if memoryCheckEnds[address] >= end {
+			if metrics != nil {
+				metrics.BoundsChecksReused++
+			}
 			return true
 		}
 		if memoryCheckEnds[address] == 0 {
@@ -2159,6 +2165,13 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 		if plan.Layout != nil {
 			blockID = int(plan.Layout.Order[layoutIndex])
 		}
+		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockExit) != 0 {
+			blockOffsets[blockID] = a.Len()
+			continue
+		}
+		if plan.Simplified != nil && blockID < len(plan.Simplified.Reachable) && !plan.Simplified.Reachable[blockID] {
+			continue
+		}
 		if !arm64RailMachCarriesMemoryChecks(plan, previousLayoutBlock, blockID) {
 			resetMemoryChecks()
 		}
@@ -2177,13 +2190,6 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 		edgeResultRename := arm64RailMachEdgeResultRename(plan, uint32(blockID))
 		if idempotentFloatTail && edgeResultRename.valid && edgeResultRename.instruction >= idempotentFloatStart && edgeResultRename.instruction < idempotentFloatEnd {
 			edgeResultRename = arm64EdgeResultRename{}
-		}
-		if plan.Machine.Blocks[blockID].Flags&uint16(railssa.BlockExit) != 0 {
-			blockOffsets[blockID] = a.Len()
-			continue
-		}
-		if plan.Simplified != nil && blockID < len(plan.Simplified.Reachable) && !plan.Simplified.Reachable[blockID] {
-			continue
 		}
 		block := plan.Machine.Blocks[blockID]
 		// Align only substantial nested loop bodies. Small loop headers are often
@@ -2218,7 +2224,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			skipped := swarSkipped || idempotentFloatTail && instructionID >= idempotentFloatStart && instructionID < idempotentFloatEnd || skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID]
 			instruction := plan.Machine.Insts[instructionID]
 			semanticOp := railmach.SemanticOpcode(instruction.Op)
-			if railmach.SemanticOpcode(instruction.Op) == wasm.InstrGlobalSet || railmach.IsCall(instruction.Op) {
+			if semanticOp == wasm.InstrGlobalSet || railmach.IsCall(instruction.Op) {
 				resetGlobalMemoryChecks()
 			}
 			if pendingSpill != 0 {
@@ -4944,6 +4950,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						combinedBounds = true
 						if metrics != nil {
 							metrics.PostRARewrites++
+							metrics.BoundsChecksReused++
 						}
 					}
 				}
@@ -6132,17 +6139,11 @@ func arm64LoadRailMachParameterRegisters(a *arm64.Asm, plan *nativeBackendPlan) 
 	return nil
 }
 
-// arm64RailMachCarriesMemoryChecks permits exact SSA-address bounds facts to
-// cross a laid-out block boundary only when every entry to the current block
-// comes from the block emitted immediately before it. Linear memory cannot
-// shrink, so a passed check remains valid; calls and global writes separately
-// invalidate the mutable-global address cache at their emission sites.
+// arm64RailMachCarriesMemoryChecks applies the shared conservative CFG policy.
+// Linear memory cannot shrink, so a passed exact-address check remains valid;
+// calls and global writes separately invalidate mutable-global address facts.
 func arm64RailMachCarriesMemoryChecks(plan *nativeBackendPlan, previous, current int) bool {
-	if plan == nil || plan.CFG == nil || previous < 0 || current < 0 || current >= len(plan.CFG.Blocks) {
-		return false
-	}
-	block := plan.CFG.Blocks[current]
-	return block.PredCount == 1 && int(block.PredStart) < len(plan.CFG.Preds) && int(plan.CFG.Preds[block.PredStart]) == previous
+	return railMachCarriesMemoryChecks(plan, previous, current)
 }
 
 func arm64RailMachMulHighU(plan *nativeBackendPlan) bool {
