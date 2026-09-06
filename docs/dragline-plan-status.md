@@ -380,6 +380,15 @@ the performance corpus.
   bytes smaller, Lua 48 bytes smaller, `wasm3` 32 bytes smaller, and Ruby 144
   bytes smaller at +0.07% compile wall and +0.13% peak live storage. This clears
   Stage 7B without introducing split children or hole-boundary copies.
+- True-split allocation gate: ⏸ exact post-Stage-7B `esbuild` metrics attribute
+  900,415,994,365 of 900,722,529,936 remaining weighted spill-debt units
+  (99.966%) to 27 giant functions on the deliberately bounded Stage-0
+  FastMachine allocator. The ordinary quality allocator accounts for only
+  306,535,571 units (0.034%). Arbitrary split children in GreedyP are therefore
+  deferred: the next allocation experiment must first compare a bounded
+  FastMachine improvement against giant-function compile wall and peak-live
+  gates, because enhancing only the ordinary allocator cannot materially move
+  the measured total.
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution
@@ -399,6 +408,15 @@ the performance corpus.
   the quality allocator threshold after a measured FastMachine experiment was
   required: the 1,024-instruction threshold made the two BLAKE rows 36–67%
   slower and was rejected before commit.
+- Current ARM64 execution floor refresh: ✅ three 300 ms samples per engine on
+  Apple M4 Max keep every runnable non-ISA export faster than wazero. The
+  narrowest row is now `arith.run`: median Dragline latency is 1,338 ns versus
+  1,363 ns for wazero, or 1.8% faster. Its hot loop already consists of the
+  minimal expected `SXTW`, `MADD`, shifted `EOR`, decrement, and conditional
+  branch sequence, so no corpus-specific rewrite is justified. The next
+  execution work should target a reusable operation family with measured
+  headroom rather than forcing this already-minimal kernel toward an arbitrary
+  percentage.
 - ARM64 shifted-register logic: ✅ the post-RA verifier recognizes adjacent,
   single-use 32/64-bit constant shifts feeding matching AND, OR, or XOR forms
   and requires the unshifted base to remain live at the logical consumer. The
