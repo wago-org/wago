@@ -223,3 +223,19 @@ release through the same locked atomic writer. For a legacy bootstrap, restore
 the retained launcher and its prior selection (or remove the selection if none
 existed). During update and rollback, do not delete a release while a process
 still runs its payload. Explicit uninstall ends the paired-source guarantee.
+
+## Plugin build lock removal races
+
+The plugin build module uses a directory lock across processes. On Windows,
+`mkdir` can return access denied while the previous owner removes that directory;
+a following `Stat` may already see no lock. Acquisition retries one consecutive
+permission failure without a visible lock, using the existing 50 ms poll. A
+second failure returns the original permission error. Confirmed contention
+retains the existing timeout. The callback runs only after `mkdir` succeeds.
+
+`TestBuildLockRetriesRemovalRace` injects the removal window and verifies actual
+lock creation; `TestBuildLockReportsPersistentPermissionFailure` checks the
+bounded error path. The serialization test still checks that callbacks do not
+overlap. The removal test fails without the retry. All build-lock tests pass in
+20 repetitions on Linux and Windows/amd64 under Wine with Go 1.22.12. This affects
+CLI lock contention only; Wasm execution and runtime memory layout are unchanged.
