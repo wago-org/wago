@@ -227,6 +227,19 @@ and cache churn bounds. Two A/B samples for 64 fields fall from 78656 B/op and
 At 256 fields: about 1.10 MB/99997 allocations becomes 29680 B/op/987 allocations;
 time falls from about 4.6 ms to 42–46 us. Capture: json-ab.txt.
 
+## Unix lease handoff
+
+The launcher passes one validated descriptor through exec. The current payload
+adopts that same open file description and restores close-on-exec before normal
+startup. Direct payload launch opens a private close-on-exec lease. Handoff state
+is consumed and removed from child environments. Windows keeps its waiting-parent
+lease model. Old payload binaries keep their old behavior until updated.
+
+Filelock and managedrelease tests pass under -race. Linux subprocess tests verify
+one lease descriptor for launcher and direct payload startup, zero lease descriptors
+in an ordinary child, close-on-exec flags, and malformed handoff rejection. Native
+Darwin execution remains pending. No extra long-lived goroutine was introduced.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.

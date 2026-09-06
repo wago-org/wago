@@ -44,3 +44,10 @@ func renameRetiredDirectory(path, retired string) error {
 	}
 	return err
 }
+
+func leaseHandoff(*filelock.Lock) (string, error) { return "", nil }
+func adoptProcessLease(string) (*filelock.Lock, bool, error) {
+	// Windows keeps the launcher lease in its waiting parent, without inheritance.
+	_ = os.Unsetenv(leaseDescriptorEnv)
+	return nil, false, nil
+}

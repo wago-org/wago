@@ -28,9 +28,10 @@ func Dispatch() (bool, error) {
 	}
 	if lease != nil {
 		defer lease.Close()
-		if err := inheritLease(lease); err != nil {
-			return false, err
-		}
+	}
+	handoff, err := leaseHandoff(lease)
+	if err != nil {
+		return false, err
 	}
 	source := SourceForExecutable(target)
 	if source == "" {
@@ -45,6 +46,16 @@ func Dispatch() (bool, error) {
 			}
 		}
 		environment = append(environment, "WAGO_SRC="+source, "WAGO_RELEASE_SOURCE="+source)
+	}
+	filtered := environment[:0]
+	for _, entry := range environment {
+		if !strings.HasPrefix(entry, leaseDescriptorEnv+"=") {
+			filtered = append(filtered, entry)
+		}
+	}
+	environment = filtered
+	if handoff != "" {
+		environment = append(environment, leaseDescriptorEnv+"="+handoff)
 	}
 	return true, dispatch(target, os.Args, environment)
 }

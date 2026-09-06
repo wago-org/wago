@@ -179,3 +179,32 @@ func tryExisting(path string, shared bool) (*Lock, error) {
 // Descriptor returns the held descriptor for a platform exec boundary. The
 // caller must keep the Lock live and must not close or unlock the descriptor.
 func (lock *Lock) Descriptor() uintptr { return lock.file.Fd() }
+
+// AdoptSharedExisting takes ownership of an inherited file descriptor. It
+// validates the expected lock-file identity and establishes shared ownership on
+// that same open file description, without opening a second lease. The caller
+// must already have restored close-on-exec and must not retain another owner.
+// The file is closed on every failure.
+func AdoptSharedExisting(file *os.File, path string) (*Lock, error) {
+	if file == nil {
+		return nil, errors.New("nil inherited lock file")
+	}
+	if err := validateLockFile(file, path); err != nil {
+		file.Close()
+		return nil, err
+	}
+	locked, err := trySharedLock(file)
+	if err != nil || !locked {
+		file.Close()
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("inherited lease is being retired")
+	}
+	lock := &Lock{file: file}
+	if err := validateLockFile(file, path); err != nil {
+		lock.Close()
+		return nil, err
+	}
+	return lock, nil
+}

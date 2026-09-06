@@ -10,6 +10,8 @@ import (
 	"github.com/wago-org/wago/internal/filelock"
 )
 
+const leaseDescriptorEnv = "WAGO_RELEASE_LEASE_FD"
+
 const leaseFile = ".lease"
 const publishedFile = ".published"
 const retiringLeaseFile = ".retiring-lease"
@@ -24,6 +26,11 @@ var processLease struct {
 // process lifetime. The launcher also pins legacy payloads across execution.
 func pinProcess(executable string) error {
 	processLease.Do(func() {
+		inherited, found, err := adoptProcessLease(executable)
+		if found {
+			processLease.lock, processLease.err = inherited, err
+			return
+		}
 		processLease.lock, processLease.err = filelock.TryAcquireSharedExisting(filepath.Join(filepath.Dir(executable), leaseFile))
 		if os.IsNotExist(processLease.err) && legacyRelease(executable) {
 			// Releases predating leases are not eligible for automatic pruning.
@@ -32,9 +39,6 @@ func pinProcess(executable string) error {
 		}
 		if processLease.err == nil && processLease.lock == nil {
 			processLease.err = fmt.Errorf("manager release is being retired")
-		}
-		if processLease.err == nil {
-			processLease.err = inheritLease(processLease.lock)
 		}
 	})
 	return processLease.err
@@ -108,7 +112,7 @@ func pruneReleases(root string, record Record) error {
 			return err
 		}
 		if lease == nil {
-			continue // A running payload or inherited child still owns this pair.
+			continue // A running payload still owns this pair.
 		}
 		retired := filepath.Join(directory, ".retired-"+name)
 		// Retire the lease name before releasing it. Windows cannot rename
