@@ -4313,7 +4313,11 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 	}
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
+	admittedHere := false
 	defer func() {
+		if admittedHere {
+			in.endInvocation()
+		}
 		state.invocationID = 0
 		state.invokeMu.Unlock()
 	}()
@@ -4324,7 +4328,7 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		if err := in.beginInvocation(); err != nil {
 			return nil, fmt.Errorf("invoke %q: %w", export, err)
 		}
-		defer in.endInvocation()
+		admittedHere = true
 		alreadyAdmitted = true
 		ic := in.findInvokeCache(export)
 		if ic == nil {
@@ -4341,16 +4345,19 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 			if len(args) != ic.paramSlots {
 				return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
 			}
-			fn := PreparedFunction{
-				in:               in,
-				directEntry:      in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li])),
-				paramSlots:       ic.paramSlots,
-				resultSlots:      ic.resultSlots,
-				scalarWideMask:   ic.scalarWideMask,
-				scalarResultWide: ic.scalarResultWide,
-				isolatedFast:     true,
+			directEntry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+			switch len(args) {
+			case 0:
+				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, 0, 0, 0, 0)
+			case 1:
+				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, args[0], 0, 0, 0)
+			case 2:
+				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, args[0], args[1], 0, 0)
+			case 3:
+				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, args[0], args[1], args[2], 0)
+			case 4:
+				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, args[0], args[1], args[2], args[3])
 			}
-			return fn.invokeDirectInt(args)
 		}
 	}
 	id := newInvocationID()

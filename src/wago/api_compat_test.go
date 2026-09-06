@@ -80,6 +80,16 @@ func TestInvokeCacheSelectsIsolatedDirectIntegerEntry(t *testing.T) {
 	if ic == nil || ic.directIntFast != wantDirect {
 		t.Fatalf("direct integer cache selection = %+v; want %v", ic, wantDirect)
 	}
+	if _, err := in.Invoke("f"); err == nil {
+		t.Fatal("wrong-arity cached direct invocation succeeded")
+	}
+	if got := in.invocationState.Load() & instanceInvocationCount; got != 0 {
+		t.Fatalf("invocation count after direct error = %d, want 0", got)
+	}
+	got, err = in.Invoke("f", I32(9))
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 10 {
+		t.Fatalf("invoke after direct error = %v, %v; want [10], nil", got, err)
+	}
 }
 
 func BenchmarkInvokeAlternatingExports(b *testing.B) {
