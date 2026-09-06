@@ -100,8 +100,12 @@ func TestMetricsSummarizesEmitters(t *testing.T) {
 
 func TestRecordNativePlanMetricsKeepsRailSSAAndRailMachDistinct(t *testing.T) {
 	plan := &nativeBackendPlan{
-		Semantic:  &railssa.SemanticFunc{Insts: make([]railssa.SemanticInst, 11), Args: make([]railssa.FlowValueID, 9)},
-		Machine:   &railmach.Func{Insts: make([]railmach.Inst, 2)},
+		Semantic: &railssa.SemanticFunc{Insts: make([]railssa.SemanticInst, 11), Args: make([]railssa.FlowValueID, 9)},
+		Machine: &railmach.Func{
+			Insts:  make([]railmach.Inst, 2),
+			Blocks: []railmach.Block{{}, {Flags: railssa.BlockLoopHeader}},
+			Edges:  []railmach.Edge{{From: 0, To: 1}, {From: 1, To: 1}},
+		},
 		Selection: &railmach.SelectionPlan{Combinations: make([]railmach.Combination, 3)},
 		DAG:       &railmach.DependencyDAG{Dependencies: make([]railmach.Dependency, 8)},
 		Allocation: &railmach.GreedyAllocation{
@@ -112,12 +116,18 @@ func TestRecordNativePlanMetricsKeepsRailSSAAndRailMachDistinct(t *testing.T) {
 			},
 			Fragments: make([]railmach.AllocationFragment, 2),
 		},
-		Exit:                     &railmach.SSAExit{Debt: railmach.CopyDebt{Physical: 7, Coalesced: 5, Rematerialized: 2}},
+		Exit: &railmach.SSAExit{
+			Debt:       railmach.CopyDebt{Physical: 7, Coalesced: 5, Rematerialized: 2},
+			EdgeMoves:  []railmach.MoveRange{{Count: 2}, {Start: 2, Count: 3}},
+			FixedMoves: []railmach.MoveRange{{Start: 5, Count: 2}},
+		},
 		Simplified:               &railssa.SimplifyResult{},
 		BackendAttempts:          2,
 		ScheduleCandidates:       6,
 		SegmentedBaselineDebt:    13,
 		SegmentedCandidateDebt:   8,
+		SegmentedBaselineCopies:  7,
+		SegmentedCandidateCopies: 4,
 		SegmentedCandidateRanges: 1,
 		SegmentedAttempted:       true,
 		SegmentedAdmitted:        true,
@@ -130,11 +140,14 @@ func TestRecordNativePlanMetricsKeepsRailSSAAndRailMachDistinct(t *testing.T) {
 	if metrics.ScheduleCandidates != 6 || metrics.SelectionCombinations != 3 || metrics.Dependencies != 8 || metrics.LiveIntervals != 4 || metrics.LiveSegments != 6 || metrics.SegmentedRanges != 1 || metrics.AllocationFragments != 2 {
 		t.Fatalf("quality-search metrics = candidates:%d combinations:%d dependencies:%d intervals:%d segments:%d segmented:%d fragments:%d", metrics.ScheduleCandidates, metrics.SelectionCombinations, metrics.Dependencies, metrics.LiveIntervals, metrics.LiveSegments, metrics.SegmentedRanges, metrics.AllocationFragments)
 	}
-	if !metrics.SegmentedAttempted || !metrics.SegmentedAdmitted || metrics.SegmentedBaselineDebt != 13 || metrics.SegmentedCandidateDebt != 8 || metrics.SegmentedCandidateRanges != 1 {
-		t.Fatalf("segmented trial metrics = attempted:%t admitted:%t baseline:%d candidate:%d ranges:%d", metrics.SegmentedAttempted, metrics.SegmentedAdmitted, metrics.SegmentedBaselineDebt, metrics.SegmentedCandidateDebt, metrics.SegmentedCandidateRanges)
+	if !metrics.SegmentedAttempted || !metrics.SegmentedAdmitted || metrics.SegmentedBaselineDebt != 13 || metrics.SegmentedCandidateDebt != 8 || metrics.SegmentedBaselineCopies != 7 || metrics.SegmentedCandidateCopies != 4 || metrics.SegmentedCandidateRanges != 1 {
+		t.Fatalf("segmented trial metrics = attempted:%t admitted:%t debt:%d->%d copies:%d->%d ranges:%d", metrics.SegmentedAttempted, metrics.SegmentedAdmitted, metrics.SegmentedBaselineDebt, metrics.SegmentedCandidateDebt, metrics.SegmentedBaselineCopies, metrics.SegmentedCandidateCopies, metrics.SegmentedCandidateRanges)
 	}
 	if metrics.PhysicalCopies != 7 || metrics.CoalescedCopies != 5 || metrics.CopyRematerializations != 2 {
 		t.Fatalf("copy metrics = physical:%d coalesced:%d rematerialized:%d", metrics.PhysicalCopies, metrics.CoalescedCopies, metrics.CopyRematerializations)
+	}
+	if metrics.EdgeMoves != 5 || metrics.LoopBackedgeMoves != 3 || metrics.LoopBackedgesWithMoves != 1 || metrics.MaxEdgeMoveBundle != 3 || metrics.FixedMoves != 2 {
+		t.Fatalf("move placement metrics = edge:%d backedge:%d backedges:%d max:%d fixed:%d", metrics.EdgeMoves, metrics.LoopBackedgeMoves, metrics.LoopBackedgesWithMoves, metrics.MaxEdgeMoveBundle, metrics.FixedMoves)
 	}
 }
 

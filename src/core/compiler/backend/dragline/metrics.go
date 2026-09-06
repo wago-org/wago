@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 22
+const MetricsVersion = 23
 
 // Metrics contains one deterministic row per compiled function plus module
 // totals. Timings are observational; all counts and byte sizes are exact for
@@ -73,6 +73,8 @@ type FunctionMetrics struct {
 	SegmentedCandidateRanges   uint32                            `json:"segmented_candidate_ranges"`
 	SegmentedBaselineDebt      uint64                            `json:"segmented_baseline_spill_debt"`
 	SegmentedCandidateDebt     uint64                            `json:"segmented_candidate_spill_debt"`
+	SegmentedBaselineCopies    uint32                            `json:"segmented_baseline_physical_copies"`
+	SegmentedCandidateCopies   uint32                            `json:"segmented_candidate_physical_copies"`
 	SegmentedAttempted         bool                              `json:"segmented_attempted"`
 	SegmentedAdmitted          bool                              `json:"segmented_admitted"`
 	AllocationFragments        uint32                            `json:"allocation_fragments"`
@@ -93,6 +95,11 @@ type FunctionMetrics struct {
 	CopyRematerializations     uint32                            `json:"copy_rematerializations"`
 	CopyCycles                 uint32                            `json:"copy_cycles"`
 	CopyMotion                 uint32                            `json:"copy_motion"`
+	EdgeMoves                  uint32                            `json:"edge_moves"`
+	LoopBackedgeMoves          uint32                            `json:"loop_backedge_moves"`
+	LoopBackedgesWithMoves     uint32                            `json:"loop_backedges_with_moves"`
+	MaxEdgeMoveBundle          uint32                            `json:"max_edge_move_bundle"`
+	FixedMoves                 uint32                            `json:"fixed_moves"`
 	AddressFolds               uint32                            `json:"address_folds"`
 	MemoryFolds                uint32                            `json:"memory_folds"`
 	ImmediateFolds             uint32                            `json:"immediate_folds"`
@@ -171,6 +178,8 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 	metrics.SegmentedCandidateRanges = plan.SegmentedCandidateRanges
 	metrics.SegmentedBaselineDebt = plan.SegmentedBaselineDebt
 	metrics.SegmentedCandidateDebt = plan.SegmentedCandidateDebt
+	metrics.SegmentedBaselineCopies = plan.SegmentedBaselineCopies
+	metrics.SegmentedCandidateCopies = plan.SegmentedCandidateCopies
 	metrics.SegmentedAttempted = plan.SegmentedAttempted
 	metrics.SegmentedAdmitted = plan.SegmentedAdmitted
 	metrics.AllocationFragments = uint32(len(plan.Allocation.Fragments))
@@ -190,6 +199,24 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 	metrics.CopyRematerializations = plan.Exit.Debt.Rematerialized
 	metrics.CopyCycles = plan.Exit.Debt.Cycles
 	metrics.CopyMotion = plan.Exit.Debt.Motion
+	for edgeIndex, moveRange := range plan.Exit.EdgeMoves {
+		metrics.EdgeMoves += moveRange.Count
+		if moveRange.Count > metrics.MaxEdgeMoveBundle {
+			metrics.MaxEdgeMoveBundle = moveRange.Count
+		}
+		if moveRange.Count == 0 || edgeIndex >= len(plan.Machine.Edges) {
+			continue
+		}
+		edge := plan.Machine.Edges[edgeIndex]
+		if int(edge.From) < len(plan.Machine.Blocks) && int(edge.To) < len(plan.Machine.Blocks) &&
+			edge.From >= edge.To && plan.Machine.Blocks[edge.To].Flags&railssa.BlockLoopHeader != 0 {
+			metrics.LoopBackedgeMoves += moveRange.Count
+			metrics.LoopBackedgesWithMoves++
+		}
+	}
+	for _, moveRange := range plan.Exit.FixedMoves {
+		metrics.FixedMoves += moveRange.Count
+	}
 	metrics.AddressFolds = uint32(len(plan.Selection.AddressFolds))
 	metrics.ABIClass = uint8(plan.ABI.Class)
 	metrics.ClobberGPR = plan.ABI.GPRClobbers
