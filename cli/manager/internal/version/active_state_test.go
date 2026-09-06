@@ -105,7 +105,39 @@ func TestActiveStateLegacyMigrationAndCorruption(t *testing.T) {
 	}
 }
 
-func activeStateTestDirs(t *testing.T) wagopaths.Dirs {
+func activeStateTestDirs(t testing.TB) wagopaths.Dirs {
 	root := t.TempDir()
 	return wagopaths.Dirs{Config: root, Data: filepath.Join(root, "data"), Versions: filepath.Join(root, "versions"), Cache: filepath.Join(root, "cache")}
+}
+
+func TestActiveStateReadDoesNotCreateLock(t *testing.T) {
+	d := activeStateTestDirs(t)
+	if err := os.WriteFile(d.ConfigFile(activeStateFile), []byte(`{"format":1,"version":"old","profile":"standard","build":"normal"}`), 0444); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(d.Config, 0555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(d.Config, 0755)
+	state, err := readActiveInstallation(d)
+	if err != nil || state.Version != "old" {
+		t.Fatalf("read-only state: %+v, %v", state, err)
+	}
+	if _, err := os.Lstat(d.ConfigFile("active-installation.lock")); !os.IsNotExist(err) {
+		t.Fatalf("read created a lock: %v", err)
+	}
+}
+
+func BenchmarkActiveInstallationRead(b *testing.B) {
+	d := activeStateTestDirs(b)
+	if err := setActiveInstallation(d, "old", wagopaths.ProfileStandard, wagopaths.BuildNormal); err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, err := readActiveInstallation(d); err != nil {
+			b.Fatal(err)
+		}
+	}
 }

@@ -28,18 +28,15 @@ func activeStateLock(d wagopaths.Dirs) (*filelock.Lock, error) {
 	return filelock.Acquire(context.Background(), d.ConfigFile("active-installation.lock"))
 }
 
+// Readers open the atomically published record without creating lock files.
+// Legacy records remain read-only; the next writer publishes the complete tuple.
 func readActiveInstallation(d wagopaths.Dirs) (activeInstallationState, error) {
-	lock, err := activeStateLock(d)
-	if err != nil {
-		return activeInstallationState{}, err
-	}
-	defer lock.Close()
 	return readActiveInstallationLocked(d)
 }
 
 func readActiveInstallationLocked(d wagopaths.Dirs) (activeInstallationState, error) {
 	state := activeInstallationState{Format: 1, Profile: wagopaths.ProfileStandard, Build: wagopaths.BuildNormal}
-	data, err := regularfile.Read(d.ConfigFile(activeStateFile), 4096)
+	data, err := regularfile.ReadAtomicSnapshot(d.ConfigFile(activeStateFile), 4096)
 	if os.IsNotExist(err) {
 		// Legacy files are read only during migration. All new writers publish the
 		// complete record and never alter the legacy tuple.

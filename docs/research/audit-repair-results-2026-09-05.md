@@ -115,6 +115,15 @@ All regularfile tests pass. Two serial A/B samples reduced 1 MiB reads from
 time fell from 184–188 us to 101–102 us. At 8 MiB the count fell from 39 to 10.
 Captures: utility-regularfile-ab.txt. Short timing samples remain provisional.
 
+## Read-only active-state access
+
+Readers consume one atomic record without creating or chmodding a writer lock.
+Legacy reads do not migrate state; a later writer publishes the complete record.
+The version tests pass, including read-only state and absence of a created lock.
+Two A/B samples reduced reads from 5824 B/op, 97 allocations and 22.5–24.0 us
+to 3544 B/op, 81 allocations and 11.8–12.0 us. This candidate also includes the
+regular-file allocation fix. Capture: utility-version-ab.txt.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.
