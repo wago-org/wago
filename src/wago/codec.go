@@ -263,6 +263,10 @@ func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded Compiled
 		_ = image.Close()
 		return decoded, nil, 0, err
 	}
+	if decoded.validateMemo == nil {
+		decoded.validateMemo = &validateMemo{}
+	}
+	decoded.validateMemo.snapshotLimit = budget.limit
 	return decoded, image, 0, nil
 }
 

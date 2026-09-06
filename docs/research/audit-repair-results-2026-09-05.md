@@ -83,13 +83,28 @@ reducing unused storage does not reduce every benchmark's allocation count.
 Cache pointers use atomic first publication; the cache lock serializes memo and
 snapshot construction. Readers acquire memo/snapshot pointers, including
 reflection sidecars. Raw pointer fields keep Compiled copyable and retain the
-existing compiler-owner allocation. A losing cache CAS allocates only a small
-cache candidate, never a competing metadata clone.
+existing compiler-owner allocation. A short first-initialization lock publishes only one cache. Repeated race
+tests exposed a losing-CAS write racing with established pointer readers; the
+lock removes that write. Warm access uses atomic reads without this lock.
 
 A fresh hand-built Compiled now passes concurrent instantiation, invocation,
 signature reflection, and CodeSize under `-race`. Focused Compiled/snapshot/code
 ownership tests pass. Snapshot-copy and call-control measurements are in
-`snapshot-publication.txt`; the separate pre-clone quota repair is still pending.
+`snapshot-publication.txt`; final timing remains pending.
+
+## Snapshot allocation quota
+
+The snapshot preflight counts destination storage before any deep clone, including
+aliased source vectors, nested expressions, name maps, and rounding. Its byte
+quota also bounds packed integer counts. Runtime and low-level instantiation
+callers can configure MaxCompiledMetadataBytes; zero selects 256 MiB. Artifact
+loads retain their decode quota. A smaller caller quota applies to warm snapshots
+as well. Quota rejection leaves a cold object available for a larger-budget retry.
+
+Focused artifact, snapshot, Compiled, and ownership tests pass. Ten repeated
+first-use/snapshot race runs pass. The scalar preflight has zero allocations.
+Tests verify aliased destination charging, rejection before publication, public
+mutation isolation, retry, and warm caller policy.
 
 ## Remaining work
 

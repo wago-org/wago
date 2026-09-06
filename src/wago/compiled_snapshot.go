@@ -13,9 +13,9 @@ import (
 // freezeExecution captures metadata before compiler/loader publication, or on
 // the first use of a hand-built Compiled. Instances never read the public view.
 // Code ownership and validation are shared; public containers are deeply copied.
-func (c *Compiled) freezeExecution() *Compiled {
+func (c *Compiled) freezeExecution(limit uint64) (*Compiled, error) {
 	if c == nil {
-		return nil
+		return nil, fmt.Errorf("compiled module is nil")
 	}
 	c.ensureCodeCache()
 	c.codeCache.mu.Lock()
@@ -25,11 +25,27 @@ func (c *Compiled) freezeExecution() *Compiled {
 		memo = &validateMemo{}
 		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.validateMemo)), unsafe.Pointer(memo))
 	}
-	if memo.executionView() == nil {
-		snapshot := cloneCompiledMetadata(c)
-		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&memo.execution)), unsafe.Pointer(snapshot))
+	if c.codeCache.closed {
+		return nil, fmt.Errorf("compiled module is closed")
 	}
-	return memo.executionView()
+	if limit == 0 {
+		limit = memo.snapshotLimit
+	}
+	limit = normalizeSnapshotLimit(limit)
+	if snapshot := memo.executionView(); snapshot != nil {
+		if memo.snapshotBytes > limit {
+			return nil, snapshotLimitError(limit)
+		}
+		return snapshot, nil
+	}
+	size, err := snapshotMetadataBytes(c, limit)
+	if err != nil {
+		return nil, err
+	}
+	snapshot := cloneCompiledMetadata(c)
+	memo.snapshotBytes = size
+	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&memo.execution)), unsafe.Pointer(snapshot))
+	return snapshot, nil
 }
 
 func (memo *validateMemo) executionView() *Compiled {

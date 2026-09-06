@@ -14,9 +14,13 @@ import (
 
 // InstantiateOptions configures instance creation from a *Compiled.
 type InstantiateOptions struct {
-	Imports Imports
-	GC      GCConfig
-	store   *referenceStore
+	// MaxCompiledMetadataBytes bounds the frozen Go metadata snapshot. Zero
+	// uses the source policy or the 256 MiB default; native instance storage
+	// has a separate quota. A stricter limit also applies to an existing snapshot.
+	MaxCompiledMetadataBytes uint64
+	Imports                  Imports
+	GC                       GCConfig
+	store                    *referenceStore
 
 	runtime                  *Runtime
 	origin                   InstantiateOrigin
@@ -137,7 +141,11 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
-	c = c.freezeExecution()
+	var err error
+	c, err = c.freezeExecution(opts.MaxCompiledMetadataBytes)
+	if err != nil {
+		return nil, err
+	}
 	b.c = c
 	if err := c.preflightImportBindings(opts.Imports); err != nil {
 		return nil, err

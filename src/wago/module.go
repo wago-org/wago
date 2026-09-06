@@ -183,11 +183,12 @@ type ModuleMetadata struct {
 }
 
 type moduleBindings struct {
-	rt                   *Runtime
-	imports              Imports
-	importMeta           map[string]*registeredImport
-	independentInstances bool
-	moduleIdentity       bool
+	rt                       *Runtime
+	imports                  Imports
+	importMeta               map[string]*registeredImport
+	independentInstances     bool
+	moduleIdentity           bool
+	maxCompiledMetadataBytes uint64
 }
 
 // snapshotModuleBindingsLocked captures one immutable import-policy generation.
@@ -195,11 +196,12 @@ type moduleBindings struct {
 func (rt *Runtime) snapshotModuleBindingsLocked(hooks *hookRegistry) moduleBindings {
 	cfg := rt.cfg.clone()
 	bindings := moduleBindings{
-		rt:                   rt,
-		imports:              make(Imports, len(rt.imports)),
-		importMeta:           make(map[string]*registeredImport, len(rt.importMeta)),
-		independentInstances: cfg.IndependentInstanceExecution(),
-		moduleIdentity:       hooks.needsModuleIdentity(),
+		rt:                       rt,
+		imports:                  make(Imports, len(rt.imports)),
+		importMeta:               make(map[string]*registeredImport, len(rt.importMeta)),
+		independentInstances:     cfg.IndependentInstanceExecution(),
+		moduleIdentity:           hooks.needsModuleIdentity(),
+		maxCompiledMetadataBytes: cfg.MaxCompiledMetadataBytes(),
 	}
 	for key, value := range rt.imports {
 		bindings.imports[key] = value
@@ -212,7 +214,7 @@ func (rt *Runtime) snapshotModuleBindingsLocked(hooks *hookRegistry) moduleBindi
 
 // buildModule wraps a compiled module with the runtime's current binding
 // generation. Callers that already hold rt.mu should snapshot directly instead.
-func (rt *Runtime) buildModule(c *Compiled) *Module {
+func (rt *Runtime) buildModule(c *Compiled) (*Module, error) {
 	rt.mu.Lock()
 	hooks := rt.loadHooks()
 	bindings := rt.snapshotModuleBindingsLocked(hooks)
@@ -220,8 +222,12 @@ func (rt *Runtime) buildModule(c *Compiled) *Module {
 	return buildModule(c, bindings)
 }
 
-func buildModule(c *Compiled, bindings moduleBindings) *Module {
-	m := &Module{rt: bindings.rt, c: c.freezeExecution(), compiledView: c, independentInstances: bindings.independentInstances}
+func buildModule(c *Compiled, bindings moduleBindings) (*Module, error) {
+	snapshot, err := c.freezeExecution(bindings.maxCompiledMetadataBytes)
+	if err != nil {
+		return nil, err
+	}
+	m := &Module{rt: bindings.rt, c: snapshot, compiledView: c, independentInstances: bindings.independentInstances}
 	c = m.c
 	if bindings.moduleIdentity {
 		m.identity.Store(&moduleIdentityToken{})
@@ -287,7 +293,7 @@ func buildModule(c *Compiled, bindings moduleBindings) *Module {
 			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: append([]ValueTypeDescriptor(nil), sig.Params...), Provided: bindings.imports[def.ImportKey] != nil})
 		}
 	}
-	return m
+	return m, nil
 }
 
 // indexDeclaredImportIdentities rejects distinct structured import names that

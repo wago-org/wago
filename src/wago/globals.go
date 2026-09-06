@@ -1168,7 +1168,9 @@ func (c *Compiled) RequiresAVX2() bool { return c != nil && c.requiresAVX2 }
 func (c *Compiled) RequiresAVX512() bool { return c != nil && c.requiresAVX512 }
 
 type validateMemo struct {
-	execution *Compiled // private deeply owned execution metadata
+	execution     *Compiled // private deeply owned execution metadata
+	snapshotLimit uint64    // source admission policy; zero selects the default
+	snapshotBytes uint64    // protected by the code-cache lock
 
 	once                     sync.Once
 	err                      error

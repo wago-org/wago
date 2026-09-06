@@ -141,7 +141,9 @@ func TestCompiledReflectionUsesExecutionSnapshot(t *testing.T) {
 				c.Globals = []GlobalDef{{Type: ValI32, InitExpr: []byte{0x41, 7, 0x0b}}}
 				c.GlobalExports = map[string]int{"g": 0}
 				c.Names = &wasm.NameSec{FunctionNames: wasm.NameMap{{Name: "named"}}}
-				c.freezeExecution()
+				if _, err := c.freezeExecution(0); err != nil {
+					t.Fatal(err)
+				}
 			}
 			read := func() []any {
 				params, results, err := c.SignatureDescriptor("f")

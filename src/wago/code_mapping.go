@@ -99,11 +99,13 @@ func installCompiledFinalizer(c *Compiled) *Compiled {
 	// validation result.
 	var gcFrameRoots *compiledGCFrameRoots
 	var importModuleEnds []uint64
+	var snapshotLimit uint64
 	if c.validateMemo != nil {
 		gcFrameRoots = c.validateMemo.gcFrameRoots
 		importModuleEnds = c.validateMemo.importModuleEnds
+		snapshotLimit = c.validateMemo.snapshotLimit
 	}
-	c.validateMemo = &validateMemo{gcFrameRoots: gcFrameRoots, importModuleEnds: importModuleEnds}
+	c.validateMemo = &validateMemo{gcFrameRoots: gcFrameRoots, importModuleEnds: importModuleEnds, snapshotLimit: snapshotLimit}
 	goruntime.SetFinalizer(c, func(c *Compiled) {
 		_ = c.Close()
 	})
@@ -111,7 +113,8 @@ func installCompiledFinalizer(c *Compiled) *Compiled {
 }
 
 func (c *Compiled) setGCRootAdmissionFailure(diagnostic string) {
-	if c == nil || c.loadCodeCache() == nil || diagnostic == "" {
+	cc := c.loadCodeCache()
+	if cc == nil || diagnostic == "" {
 		return
 	}
 	code := compiledCodeCacheFlags(15)
@@ -137,14 +140,15 @@ func (c *Compiled) setGCRootAdmissionFailure(diagnostic string) {
 	case strings.Contains(diagnostic, "unavailable on this build target"):
 		code = 10
 	}
-	c.codeCache.flags = c.codeCache.flags&^compiledCacheGCRootFailureMask | code<<compiledCacheGCRootFailureShift
+	cc.flags = cc.flags&^compiledCacheGCRootFailureMask | code<<compiledCacheGCRootFailureShift
 }
 
 func (c *Compiled) gcRootAdmissionFailure() string {
-	if c == nil || c.loadCodeCache() == nil {
+	cc := c.loadCodeCache()
+	if cc == nil {
 		return "native root admission metadata is unavailable"
 	}
-	switch (c.codeCache.flags & compiledCacheGCRootFailureMask) >> compiledCacheGCRootFailureShift {
+	switch (cc.flags & compiledCacheGCRootFailureMask) >> compiledCacheGCRootFailureShift {
 	case 1:
 		return "generic GC module has no local function bodies"
 	case 2:
@@ -173,24 +177,28 @@ func (c *Compiled) gcRootAdmissionFailure() string {
 }
 
 func (c *Compiled) usesDynamicFuncRefTest() bool {
-	return c != nil && c.loadCodeCache() != nil && c.codeCache.flags&compiledCacheDynamicFuncRefTest != 0
+	cc := c.loadCodeCache()
+	return cc != nil && cc.flags&compiledCacheDynamicFuncRefTest != 0
 }
 
 func (c *Compiled) usesAtomicWaitHelpers() bool {
-	return c != nil && c.loadCodeCache() != nil && c.codeCache.flags&compiledCacheAtomicWaitHelpers != 0
+	cc := c.loadCodeCache()
+	return cc != nil && cc.flags&compiledCacheAtomicWaitHelpers != 0
 }
 
 func (c *Compiled) prefersGuardMemory() bool {
-	return c != nil && c.loadCodeCache() != nil && c.codeCache.flags&compiledCacheGuardMemory != 0
+	cc := c.loadCodeCache()
+	return cc != nil && cc.flags&compiledCacheGuardMemory != 0
 }
 
 const compiledStagedFeatureMask CoreFeatures = 1<<32 - 1
 
 func (c *Compiled) stagedFeatures() CoreFeatures {
-	if c == nil || c.loadCodeCache() == nil {
+	cc := c.loadCodeCache()
+	if cc == nil {
 		return 0
 	}
-	return c.codeCache.stagedFeatures & compiledStagedFeatureMask
+	return cc.stagedFeatures & compiledStagedFeatureMask
 }
 
 func (c *compiledCodeCache) setNativeStackBytes(stackBytes uint64) {
@@ -201,21 +209,24 @@ func (c *compiledCodeCache) setNativeStackBytes(stackBytes uint64) {
 }
 
 func (c *Compiled) nativeStackBytes() uint64 {
-	if c == nil || c.loadCodeCache() == nil {
+	cc := c.loadCodeCache()
+	if cc == nil {
 		return 0
 	}
-	return uint64(c.codeCache.stagedFeatures >> 32)
+	return uint64(cc.stagedFeatures >> 32)
 }
 
 func (c *Compiled) collectorFreeStructuralMetadata() bool {
-	return c != nil && c.loadCodeCache() != nil && c.codeCache.gcMetadataFlags&compiledGCMetadataCollectorFreeStructural != 0
+	cc := c.loadCodeCache()
+	return cc != nil && cc.gcMetadataFlags&compiledGCMetadataCollectorFreeStructural != 0
 }
 
 func (c *Compiled) stagedGCTypeSubtypingProduct() stagedGCTypeSubtypingProduct {
-	if c == nil || c.loadCodeCache() == nil {
+	cc := c.loadCodeCache()
+	if cc == nil {
 		return 0
 	}
-	return c.codeCache.gcTypeSubtypingProduct
+	return cc.gcTypeSubtypingProduct
 }
 
 func (c *Compiled) usesGCStructHelpers() bool {
@@ -227,21 +238,24 @@ func (c *Compiled) usesGCArrayHelpers() bool {
 }
 
 func (c *Compiled) collectorFreeGCArrayMetadata() bool {
-	return c != nil && c.loadCodeCache() != nil && c.codeCache.gcMetadataFlags&compiledGCMetadataCollectorFreeArray != 0
+	cc := c.loadCodeCache()
+	return cc != nil && cc.gcMetadataFlags&compiledGCMetadataCollectorFreeArray != 0
 }
 
 func (c *Compiled) stagedGCStructProduct() stagedGCStructProduct {
-	if c == nil || c.loadCodeCache() == nil {
+	cc := c.loadCodeCache()
+	if cc == nil {
 		return 0
 	}
-	return c.codeCache.gcStructProduct
+	return cc.gcStructProduct
 }
 
 func (c *Compiled) stagedGCArrayProduct() stagedGCArrayProduct {
-	if c == nil || c.loadCodeCache() == nil {
+	cc := c.loadCodeCache()
+	if cc == nil {
 		return 0
 	}
-	return c.codeCache.gcArrayProduct
+	return cc.gcArrayProduct
 }
 
 func (c *Compiled) usesGenericGCExecution() bool {
@@ -328,10 +342,11 @@ func (c *Compiled) needsNativeGCABI() bool {
 }
 
 func (c *Compiled) nativeGCABIRequirement() uint32 {
-	if c == nil || c.loadCodeCache() == nil {
+	cc := c.loadCodeCache()
+	if cc == nil {
 		return 0
 	}
-	return uint32(c.codeCache.gcMetadataFlags&compiledGCMetadataNativeABIMask) >> compiledGCMetadataNativeABIShift
+	return uint32(cc.gcMetadataFlags&compiledGCMetadataNativeABIMask) >> compiledGCMetadataNativeABIShift
 }
 
 func (c *compiledCodeCache) setNativeGCABIVersion(version uint32) {
@@ -501,10 +516,11 @@ func (c *Compiled) genericGCBoundaryCollectionSafe() bool {
 }
 
 func (c *Compiled) stagedGCI31Product() stagedGCI31Product {
-	if c == nil || c.loadCodeCache() == nil {
+	cc := c.loadCodeCache()
+	if cc == nil {
 		return 0
 	}
-	return c.codeCache.gcI31Product
+	return cc.gcI31Product
 }
 
 // Raw pointer fields keep Compiled copyable; all lazy publication uses atomics.
@@ -523,10 +539,21 @@ func (c *Compiled) loadValidateMemo() *validateMemo {
 	return (*validateMemo)(atomic.LoadPointer((*unsafe.Pointer)(unsafe.Pointer(&c.validateMemo))))
 }
 
+// The cold coordinator avoids competing CAS writes after the winner has
+// published a cache. Fixed compiler-owned caches never acquire this lock.
+var compiledPublicationMu sync.Mutex
+
 func (c *Compiled) ensureCodeCache() {
 	if c != nil && c.loadCodeCache() == nil {
-		cache := &compiledCodeCache{}
-		atomic.CompareAndSwapPointer((*unsafe.Pointer)(unsafe.Pointer(&c.codeCache)), nil, unsafe.Pointer(cache))
+		c.initializeCodeCache()
+	}
+}
+
+func (c *Compiled) initializeCodeCache() {
+	compiledPublicationMu.Lock()
+	defer compiledPublicationMu.Unlock()
+	if c.loadCodeCache() == nil {
+		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&c.codeCache)), unsafe.Pointer(&compiledCodeCache{}))
 	}
 }
 
@@ -586,7 +613,9 @@ func publishCompilerCompiled(c *Compiled) (*Compiled, error) {
 	*c = Compiled{}
 	// Keep the finalizer outside the cache/memo owner to avoid a finalizer cycle.
 	goruntime.SetFinalizer(published, func(c *Compiled) { _ = c.Close() })
-	published.freezeExecution()
+	if _, err := published.freezeExecution(0); err != nil {
+		return nil, joinPrimary(err, published.Close())
+	}
 	return published, nil
 }
 
@@ -659,8 +688,8 @@ func (c *Compiled) replaceDecoded(decoded Compiled) error {
 	}
 	*c = decoded
 	installCompiledFinalizer(c)
-	c.freezeExecution()
-	return nil
+	_, err := c.freezeExecution(0)
+	return err
 }
 
 // Close releases the executable code mapping cached for this compiled module.

@@ -658,7 +658,10 @@ func (p *PreparedCompile) Adopt(c *Compiled) (*Module, error) {
 }
 
 func (p *PreparedCompile) finishCompile(c *Compiled) (*Module, error) {
-	mod := buildModule(c, p.bindings)
+	mod, err := buildModule(c, p.bindings)
+	if err != nil {
+		return nil, emitCompileError(p.hooks, p.compilation, joinPrimary(err, c.Close()))
+	}
 	identities, err := indexDeclaredImportIdentities(mod.imports)
 	if err != nil {
 		return nil, emitCompileError(p.hooks, p.compilation, joinPrimary(err, c.Close()))
@@ -766,7 +769,10 @@ func (rt *Runtime) bindModule(c *Compiled, ownsCompiled bool) (*Module, error) {
 			Suggestion: "use a smaller module or increase WithMaxMemoriesPerModule after you inspect the module metadata",
 		})
 	}
-	mod := buildModule(c, bindings)
+	mod, err := buildModule(c, bindings)
+	if err != nil {
+		return nil, emitCompileError(hooks, compilation, err)
+	}
 	identities, err := indexDeclaredImportIdentities(mod.imports)
 	if err != nil {
 		return nil, emitCompileError(hooks, compilation, err)
@@ -1059,7 +1065,8 @@ func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
 // plugin lifecycle callbacks around the low-level instantiator.
 func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation, runtimeReservation *runtimeInstanceReservation) (*Instance, error) {
 	iopts := InstantiateOptions{
-		Imports: imports, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,
+		MaxCompiledMetadataBytes: rt.cfg.maxCompiledMetadataBytes,
+		Imports:                  imports, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,
 		forceSyncHost:            forceSyncHost || rt.callerResolverActive.Load(),
 		moduleIdentity:           mod.moduleIdentity(),
 		operationReservation:     reservation,
