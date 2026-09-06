@@ -1,16 +1,14 @@
 # Startup Latency Bench Skill
 
 Use this skill to reproduce the cross-runtime full-process startup-latency
-comparison in `docs/startup-latency-2026-07.md`: time `exec()` → load →
-compile → instantiate → execute → exit for one real-world binary across a mix
-of interpreters and JITs.
+comparison: time `exec()` → load → compile → instantiate → execute → exit for
+one real-world binary across a mix of interpreters and JITs.
 
-> **Automated now:** the multi-workload sweep that feeds the website's Startup
-> section is scripted in `bench/startup/` — `make bench-startup` writes
-> `bench/startup/startup.json`, and `make site` regenerates the website from it
-> (via `scripts/update-website-startup.mjs`). This skill documents the method
-> and the twin construction behind that harness; read it when adding a workload
-> or debugging a runtime's numbers.
+> **Automated workflow:** the multi-workload sweep that feeds the website's
+> Startup section is in `bench/startup/`. `make bench-startup` writes
+> `bench/startup/startup.json`, and `make site` regenerates the website with
+> `scripts/update-website-startup.mjs`. Use this skill when you add a workload
+> or investigate a runtime's numbers.
 
 ## Method in one paragraph
 
@@ -24,8 +22,9 @@ actually ran (guards against a CLI silently not invoking the entry).
 
 ## 1. Build the two modules
 
-Sources live in the json-as checkout (`~/Code/AssemblyScript/json-as`), next
-to the corpus bench entry `assembly/wago-bench.ts`. If missing, recreate:
+Sources live in your json-as checkout, beside the corpus benchmark entry
+`assembly/wago-bench.ts`. In the commands below, replace `<json-as-dir>` with
+that checkout path. If the files are missing, recreate them:
 
 `assembly/wago-startup.ts`:
 
@@ -65,7 +64,7 @@ removes the `env.abort` import; a bare `--use abort=` breaks json-as's
 explicit `abort()` calls):
 
 ```sh
-cd ~/Code/AssemblyScript/json-as
+cd <json-as-dir>
 JSON_MODE=SWAR node_modules/.bin/asc assembly/wago-startup.ts -o /tmp/json-startup.wasm \
   -O3 --noAssert --uncheckedBehavior always --disable simd --enable bulk-memory \
   --transform ./transform --runtime incremental --use abort=assembly/wago-startup/wagoAbort

@@ -19,13 +19,16 @@ Each commit should have:
   benchmark work separated unless the behavior is inseparable.
 - **A measurable claim.** The commit should name the test, benchmark, fixture,
   or observable behavior that proves the change.
-- **A docs companion.** Include associated developer/agent documentation changes
-  under `docs/` when the commit changes workflow, expectations, testing,
+- **A documentation companion.** Include associated developer or agent
+  documentation when the commit changes workflow, expectations, testing,
   benchmarking, or agent behavior.
 - **A clear boundary.** Avoid drive-by cleanup, broad formatting, unrelated
   renames, or speculative refactors.
 
 ## Red / Green Discipline
+
+In this section, a *red* test fails before the fix. A *green* test passes after
+the fix. The names describe the test result, not a required commit color.
 
 Prefer this sequence:
 
@@ -45,7 +48,7 @@ notes.
 Every commit should ask: "Did this change how future developers or agents should
 work?"
 
-If yes, update `docs/` in the same commit. Examples:
+If yes, update the relevant documentation in the same commit. Examples:
 
 - new test helper or fixture convention;
 - changed benchmark procedure or required measurement;
@@ -72,7 +75,7 @@ Proof:
 - specific package test, fixture, benchmark, or measurement
 
 Docs:
-- docs/<file>.md updated
+- relevant documentation updated
 - or: unchanged, no developer/agent workflow impact
 ```
 
@@ -89,7 +92,7 @@ Keep the subject short and specific, such as:
 - [ ] Tests or benchmarks prove the claim.
 - [ ] Hot-path or memory-sensitive changes include before/after numbers when
       practical.
-- [ ] Developer/agent docs in `docs/` were updated, or the no-docs reason is
+- [ ] Relevant developer or agent documentation was updated, or the no-docs reason is
       stated.
 - [ ] Unsupported wasm behavior is rejected explicitly.
 - [ ] No unrelated formatting, renames, or cleanup are included.
