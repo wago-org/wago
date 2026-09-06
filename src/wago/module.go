@@ -196,6 +196,9 @@ type moduleBindings struct {
 func (rt *Runtime) snapshotModuleBindingsLocked(hooks *hookRegistry) moduleBindings {
 	rt.importsShared = true
 	cfg := rt.cfg
+	if cfg == nil {
+		cfg = NewRuntimeConfig()
+	}
 	bindings := moduleBindings{
 		rt: rt, imports: rt.imports, importMeta: rt.importMeta,
 		independentInstances:     cfg.IndependentInstanceExecution(),
@@ -222,6 +225,7 @@ func buildModule(c *Compiled, bindings moduleBindings) (*Module, error) {
 	}
 	m := &Module{rt: bindings.rt, c: snapshot, compiledView: c, independentInstances: bindings.independentInstances}
 	c = m.c
+	m.imports = make([]ImportSpec, 0, len(c.Imports)+len(c.GlobalImports)+c.memoryImportCount()+c.tableImportCount()+c.tagImportCount())
 	if bindings.moduleIdentity {
 		m.identity.Store(&moduleIdentityToken{})
 	}
@@ -232,9 +236,15 @@ func buildModule(c *Compiled, bindings moduleBindings) (*Module, error) {
 		mod, name := splitImportKeyAt(key, importModuleEndAt(funcModuleEnds, i))
 		spec := ImportSpec{Module: mod, Name: name, Kind: ImportFunc, Index: i}
 		if i < len(c.importFuncSigs) {
-			spec.Params = append([]ValType(nil), c.importFuncSigs[i].Params...)
-			spec.Results = append([]ValType(nil), c.importFuncSigs[i].Results...)
-			spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
+			spec.Params = c.importFuncSigs[i].Params
+			spec.Results = c.importFuncSigs[i].Results
+			if c.importFuncSigs[i].HasTypeIndex {
+				if validateFuncSignature(c.importFuncSigs[i], c.Types) == nil {
+					spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignatureView(c.importFuncSigs[i], c.Types)
+				}
+			} else {
+				spec.ParamTypes, spec.ResultTypes, _ = exactFuncSignature(c.importFuncSigs[i], c.Types)
+			}
 		}
 		meta := bindings.importMeta[key]
 		if _, ok := bindings.imports[key]; ok && registeredImportMatches(meta, mod, name) {
@@ -283,7 +293,7 @@ func buildModule(c *Compiled, bindings moduleBindings) (*Module, error) {
 			mod, name := splitImportKeyAt(def.ImportKey, importModuleEndAt(tagModuleEnds, i))
 			sig := c.Types[def.TypeIndex]
 			params, _ := valTypesFromDescriptors(sig.Params, c.Types)
-			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: append([]ValueTypeDescriptor(nil), sig.Params...), Provided: bindings.imports[def.ImportKey] != nil})
+			m.imports = append(m.imports, ImportSpec{Module: mod, Name: name, Kind: ImportTag, Index: i, Params: params, ParamTypes: sig.Params, Provided: bindings.imports[def.ImportKey] != nil})
 		}
 	}
 	return m, nil

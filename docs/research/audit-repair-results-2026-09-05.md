@@ -198,6 +198,19 @@ The imported numeric-global fixture falls from 2880 B/op and 22 allocations to
 Capture: imports-ab.txt. Multiple WithImports options need a small source-list
 slice, but do not allocate another merged import map.
 
+## Private import metadata
+
+Module import storage is preallocated once. ABI/exact descriptor slices borrow
+owned execution-snapshot storage; non-indexed hand-built signatures still convert.
+ModuleView borrows the private ImportSpec slice and its public Imports method
+copies on access. A nil Runtime config retains the prior default behavior.
+Focused metadata, snapshot, ownership, and import tests pass with pinned WABT
+1.0.41; the distro 1.0.36 caused visible version-check failures before PATH was
+corrected. At 10000 imports, Runtime compile uses about 9.90 MB instead of
+20.68 MB per operation. InvokeAddOne remains about 100–102 ns, zero allocations;
+PreparedInvokeAddOne remains about 17.7–17.9 ns, zero allocations. Short A/B
+samples are in imports-ab.txt; longer confidence checks remain pending.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.
