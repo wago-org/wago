@@ -56,11 +56,13 @@ type nativeBackendPlan struct {
 	HelperSafepointBase uint32
 	// CallArgumentBytes is the fixed caller-owned canonical argument/result
 	// vector prefix. External-call FPR saves follow it in Frame.CallAreaBytes.
-	CallArgumentBytes  uint32
-	Score              railmach.ScheduleScore
-	BackendAttempts    uint8
-	ScheduleCandidates uint8
-	ScheduleForced     bool
+	CallArgumentBytes          uint32
+	Score                      railmach.ScheduleScore
+	BackendAttempts            uint8
+	ScheduleCandidates         uint8
+	ScheduleForced             bool
+	TargetSelectedInstructions uint32
+	GenericMachineInstructions uint32
 	// InitialScheduleScores retain the realized post-allocation debt for the
 	// bounded first-pass candidates. Metrics-enabled compilation also attaches
 	// their first-pass post-RA opportunities. Retry scores are deliberately
@@ -2044,6 +2046,15 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			return nil, err
 		}
 		p.plan.ImmediateProducer = nil
+	}
+	p.plan.TargetSelectedInstructions, p.plan.GenericMachineInstructions = 0, 0
+	if p.candidatePostRA {
+		for _, instruction := range machine.Insts {
+			if railmach.IsSelectedOpcode(instruction.Op) {
+				p.plan.TargetSelectedInstructions++
+			}
+		}
+		p.plan.GenericMachineInstructions = uint32(len(machine.Insts)) - p.plan.TargetSelectedInstructions
 	}
 	p.observeCapacity()
 	return &p.plan, nil

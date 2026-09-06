@@ -230,7 +230,7 @@ func TestCompilerTargetModesIdentifyRailMachFinalization(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].ScheduleKind == 0 || metrics.Functions[0].RailSSAInstructions == 0 || metrics.Functions[0].RailMachInstructions == 0 || metrics.Functions[0].ScheduleCandidates != 3 || metrics.Functions[0].ScheduleReadySteps == 0 || metrics.Functions[0].ScheduleReadyWidthTotal < uint64(metrics.Functions[0].ScheduleReadySteps) || metrics.Functions[0].ScheduleReadyWidthMax == 0 || metrics.Functions[0].ScheduleCriticalPathCost == 0 || metrics.Functions[0].LiveSegments == 0 || metrics.Functions[0].ImmediateFolds != 2 || runtime.GOARCH == "amd64" && metrics.Functions[0].PostRARewrites == 0 {
+			if len(metrics.Functions) != 1 || !metrics.Functions[0].RailMachFinalized || metrics.Functions[0].ScheduleKind == 0 || metrics.Functions[0].RailSSAInstructions == 0 || metrics.Functions[0].RailMachInstructions == 0 || metrics.Functions[0].TargetSelectedInstructions == 0 || metrics.Functions[0].TargetSelectedInstructions+metrics.Functions[0].GenericMachineInstructions != metrics.Functions[0].RailMachInstructions || metrics.Functions[0].ScheduleCandidates != 3 || metrics.Functions[0].ScheduleReadySteps == 0 || metrics.Functions[0].ScheduleReadyWidthTotal < uint64(metrics.Functions[0].ScheduleReadySteps) || metrics.Functions[0].ScheduleReadyWidthMax == 0 || metrics.Functions[0].ScheduleCriticalPathCost == 0 || metrics.Functions[0].LiveSegments == 0 || metrics.Functions[0].ImmediateFolds != 2 || runtime.GOARCH == "amd64" && metrics.Functions[0].PostRARewrites == 0 {
 				t.Fatalf("%s metrics = %#v", mode, metrics.Functions)
 			}
 		})

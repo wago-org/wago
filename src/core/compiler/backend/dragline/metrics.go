@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 27
+const MetricsVersion = 28
 
 // ScheduleDiagnosticKind selects one scheduler for an opt-in metrics compile.
 // Zero preserves production selection. A forced kind applies only to functions
@@ -56,10 +56,12 @@ type Metrics struct {
 	ScheduleOverride  ScheduleDiagnosticKind `json:"schedule_override,omitempty"`
 	Functions         []FunctionMetrics      `json:"functions"`
 
-	FinalizeNanos int64  `json:"finalize_nanos"`
-	TotalNanos    int64  `json:"total_nanos"`
-	PeakLiveBytes uint64 `json:"peak_live_bytes"`
-	NativeBytes   uint64 `json:"native_bytes"`
+	FinalizeNanos              int64  `json:"finalize_nanos"`
+	TotalNanos                 int64  `json:"total_nanos"`
+	PeakLiveBytes              uint64 `json:"peak_live_bytes"`
+	NativeBytes                uint64 `json:"native_bytes"`
+	TargetSelectedInstructions uint64 `json:"target_selected_instructions"`
+	GenericMachineInstructions uint64 `json:"generic_machine_instructions"`
 
 	RailMach   EmitterMetrics `json:"railmach"`
 	Structured EmitterMetrics `json:"structured"`
@@ -109,6 +111,8 @@ type FunctionMetrics struct {
 
 	RailSSAInstructions        uint32                            `json:"railssa_instructions"`
 	RailMachInstructions       uint32                            `json:"railmach_instructions"`
+	TargetSelectedInstructions uint32                            `json:"target_selected_instructions"`
+	GenericMachineInstructions uint32                            `json:"generic_machine_instructions"`
 	SemanticArguments          uint32                            `json:"semantic_arguments"`
 	StackInstructions          uint32                            `json:"stack_instructions"`
 	BoundsChecksElided         uint32                            `json:"bounds_checks_elided"`
@@ -224,6 +228,8 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 	metrics.RailSSAInstructions = uint32(len(plan.Semantic.Insts))
 	metrics.SemanticArguments = uint32(len(plan.Semantic.Args))
 	metrics.RailMachInstructions = uint32(len(plan.Machine.Insts))
+	metrics.TargetSelectedInstructions = plan.TargetSelectedInstructions
+	metrics.GenericMachineInstructions = plan.GenericMachineInstructions
 	metrics.ScheduleKind = uint8(plan.Score.Kind)
 	metrics.ScheduleForced = plan.ScheduleForced
 	metrics.BackendAttempts = plan.BackendAttempts
@@ -338,8 +344,12 @@ func (m *Metrics) summarizeEmitters() {
 	}
 	m.RailMach = EmitterMetrics{}
 	m.Structured = EmitterMetrics{}
+	m.TargetSelectedInstructions = 0
+	m.GenericMachineInstructions = 0
 	for index := range m.Functions {
 		row := &m.Functions[index]
+		m.TargetSelectedInstructions += uint64(row.TargetSelectedInstructions)
+		m.GenericMachineInstructions += uint64(row.GenericMachineInstructions)
 		// Every emitted native function has a non-empty adapter or body. A zero
 		// byte row belongs to an unselected function in a tier clone.
 		if row.NativeBytes == 0 {

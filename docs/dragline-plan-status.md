@@ -323,6 +323,24 @@ the performance corpus.
   the missing exact-byte measurement seam without using estimated encoder
   output; execution calibration can now compare ordinary schedule policies via
   the same final machine-code pipeline before any production cutover.
+- ARM64 schedule execution calibration: ✅ ten alternating 500 ms rounds on
+  `blake-as.hashN` reject replacing the current mixed policy with any one
+  scheduler. Automatic selection measured 371.7 us by geometric mean versus
+  373.3 us for latency/fusion, 374.2 us for pressure, 381.9 us for
+  source-stable, and 394.9 us for wazero. Automatic selection is 5.9% faster
+  than wazero and at least 0.4% faster than every forced alternative. This
+  measurement used temporary benchmark binaries only; no module identity or
+  forced schedule enters production.
+- Target-opcode convergence: ✅ metrics schema 28 counts explicit target and
+  residual generic machine instructions after every late target-form refinement.
+  The complete native ARM64 pass over all 36 non-ISA application modules found
+  6,502,101 target-selected instructions and zero generic instructions across
+  27,384 RailMach functions; the six retained structured giant functions are
+  reported separately. The count runs only during opt-in metrics compilation,
+  so normal compilation does not rescan the final machine program. This closes
+  the measured ordinary-opcode convergence gate for the application corpus;
+  future work should add genuinely new forms or loop transformations rather
+  than recreate a second selection switch.
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution

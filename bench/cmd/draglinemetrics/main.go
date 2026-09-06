@@ -155,7 +155,7 @@ func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metri
 	if metrics == nil {
 		return fmt.Errorf("nil metrics")
 	}
-	if _, err := fmt.Fprintf(w, "# Dragline compiler status\n\n- Module: `%s`\n- Metrics schema: `%d`\n- Target fingerprint: `%x`\n- Schedule diagnostic: %s\n- Total native image: %d bytes\n- Peak compiler-owned live storage: %d bytes\n\n", filepath.Base(modulePath), metrics.Version, metrics.TargetFingerprint, scheduleDiagnosticName(metrics.ScheduleOverride), metrics.NativeBytes, metrics.PeakLiveBytes); err != nil {
+	if _, err := fmt.Fprintf(w, "# Dragline compiler status\n\n- Module: `%s`\n- Metrics schema: `%d`\n- Target fingerprint: `%x`\n- Schedule diagnostic: %s\n- Total native image: %d bytes\n- Peak compiler-owned live storage: %d bytes\n- Target-selected machine instructions: %d\n- Generic machine instructions: %d\n\n", filepath.Base(modulePath), metrics.Version, metrics.TargetFingerprint, scheduleDiagnosticName(metrics.ScheduleOverride), metrics.NativeBytes, metrics.PeakLiveBytes, metrics.TargetSelectedInstructions, metrics.GenericMachineInstructions); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(w, "| Emitter | Functions | Wasm body bytes | Native bytes | Lower ms | Emit ms | Cache hits |\n|---|---:|---:|---:|---:|---:|---:|"); err != nil {
