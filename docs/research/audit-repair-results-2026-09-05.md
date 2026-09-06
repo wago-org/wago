@@ -355,3 +355,10 @@ path. A protected-root replacement regression passes on Linux and Wine. The stal
 coordinator regression also freezes its original ID before rotation; all pending
 cleanup/recovery tests then pass under Wine. This supplements native Windows
 qualification; it does not replace the PowerShell worker gate.
+
+## Lint fixture correction
+
+The ambiguous embedded JSON-field fixture uses a dynamic outer type so go vet
+can still reject accidental duplicate tags in ordinary source. A padding field
+avoids reflect.StructOf's unsupported direct-interface embedded layout. The
+strict semantic assertion is unchanged; Go 1.22 and current race tests pass.

@@ -14,7 +14,8 @@ type fieldEmbedded struct {
 	Item fieldInner `json:"item"`
 }
 type fieldEmbeddedOther struct {
-	Item map[string]int `json:"item"`
+	Item    map[string]int `json:"item"`
+	Padding byte           `json:"-"` // A non-direct interface layout also works with reflect.StructOf.
 }
 
 func TestTypedFieldDescriptors(t *testing.T) {
@@ -28,10 +29,10 @@ func TestTypedFieldDescriptors(t *testing.T) {
 			fieldEmbedded
 			Item map[string]int `json:"item"`
 		}{}, true},
-		{"ambiguous embedded ignored", `{"item":{"n":1,"N":2}}`, struct {
-			fieldEmbedded
-			fieldEmbeddedOther
-		}{}, true},
+		{"ambiguous embedded ignored", `{"item":{"n":1,"N":2}}`, reflect.New(reflect.StructOf([]reflect.StructField{
+			{Name: "FieldEmbedded", Type: reflect.TypeOf(fieldEmbedded{}), Anonymous: true},
+			{Name: "FieldEmbeddedOther", Type: reflect.TypeOf(fieldEmbeddedOther{}), Anonymous: true},
+		})).Interface(), true},
 		{"raw stays exact", `{"raw":{"n":1,"N":2}}`, struct {
 			Raw json.RawMessage `json:"raw"`
 		}{}, true},
