@@ -192,7 +192,12 @@ func EncodeLock(document LockDocument) ([]byte, error) {
 		return nil, err
 	}
 	data = append(data, '\n')
-	if _, err := DecodeLock(data); err != nil {
+	if len(data) > maxProjectMetadataBytes {
+		return nil, fmt.Errorf("project lock exceeds byte limit %d", maxProjectMetadataBytes)
+	}
+	// The graph was validated above. Preserve the strict token/collection pass
+	// for RawMessage data without rebuilding and validating the same graph.
+	if err := jsonstrict.ValidateTypedJSONWithLimits(data, LockDocument{}, projectJSONLimits); err != nil {
 		return nil, err
 	}
 	return data, nil

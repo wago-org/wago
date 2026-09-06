@@ -124,6 +124,14 @@ Two A/B samples reduced reads from 5824 B/op, 97 allocations and 22.5–24.0 us
 to 3544 B/op, 81 allocations and 11.8–12.0 us. This candidate also includes the
 regular-file allocation fix. Capture: utility-version-ab.txt.
 
+## Lock serialization
+
+EncodeLock validates the graph once and checks the final JSON byte/depth/value
+limits and typed key rules without allocating a second decoded graph. Project
+tests pass. The 1000-plugin A/B fixture fell from 338303 to 327177 allocations,
+about 16.67 MB to 13.39 MB per encode, and 34.4–35.0 ms to 28.2–28.6 ms.
+Strict JSON field lookup remains a separate repair. Capture: utility-project-ab.txt.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.
