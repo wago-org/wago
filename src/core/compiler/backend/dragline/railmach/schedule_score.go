@@ -2,10 +2,14 @@ package railmach
 
 import "fmt"
 
-// ScheduleScore is a deterministic, target-neutral quality ordering computed
-// only after a candidate has a complete allocation and late SSA exit. Fields
-// are compared lexicographically in the order shown by BetterThan.
+// ScheduleScore is a deterministic, target-neutral quality vector computed
+// only after a candidate has a complete allocation and late SSA exit. BetterThan
+// preserves the calibrated production debt ordering; Dominates exposes the
+// independent pre-postRA dimensions for frontier analysis.
 type ScheduleScore struct {
+	EstimatedCycles   uint64
+	ResourceCycles    uint64
+	SelectedBytes     uint64
 	WeightedSpillDebt uint64
 	PhysicalCopies    uint32
 	CopyCycles        uint32
@@ -35,20 +39,24 @@ func ScoreScheduleCandidate(f *Func, selection *SelectionPlan, dag *DependencyDA
 	if err := VerifySSAExit(f, &allocation.Allocation, exit); err != nil {
 		return ScheduleScore{}, err
 	}
-	return scoreVerifiedScheduleCandidate(f, selection, schedule, allocation, exit), nil
+	return scoreVerifiedScheduleCandidate(f, selection, dag, schedule, allocation, exit), nil
 }
 
 // ScoreVerifiedScheduleCandidate scores products returned by the verified
 // schedule, allocator, and SSA-exit builders without replaying those complete
 // verifiers at the immediately adjacent scoring boundary.
-func ScoreVerifiedScheduleCandidate(f *Func, selection *SelectionPlan, schedule *Schedule, allocation *GreedyAllocation, exit *SSAExit) (ScheduleScore, error) {
-	if f == nil || selection == nil || schedule == nil || allocation == nil || exit == nil || len(selection.Selections) != len(f.Insts) || len(schedule.Order) != len(f.Insts) || schedule.Kind < ScheduleKindSourceStable || schedule.Kind > ScheduleKindPressure {
+func ScoreVerifiedScheduleCandidate(f *Func, selection *SelectionPlan, dag *DependencyDAG, schedule *Schedule, allocation *GreedyAllocation, exit *SSAExit) (ScheduleScore, error) {
+	if f == nil || selection == nil || dag == nil || schedule == nil || allocation == nil || exit == nil ||
+		len(selection.Selections) != len(f.Insts) || len(dag.Offsets) != len(f.Insts)+1 ||
+		len(schedule.Order) != len(f.Insts) || len(schedule.BlockRanges) != len(f.Blocks) ||
+		len(schedule.verifyPosition) != len(f.Insts) || len(schedule.criticalHeight) != len(f.Insts) ||
+		schedule.Kind < ScheduleKindSourceStable || schedule.Kind > ScheduleKindPressure {
 		return ScheduleScore{}, fmt.Errorf("railmach: verified schedule score requires complete products")
 	}
-	return scoreVerifiedScheduleCandidate(f, selection, schedule, allocation, exit), nil
+	return scoreVerifiedScheduleCandidate(f, selection, dag, schedule, allocation, exit), nil
 }
 
-func scoreVerifiedScheduleCandidate(f *Func, selection *SelectionPlan, schedule *Schedule, allocation *GreedyAllocation, exit *SSAExit) ScheduleScore {
+func scoreVerifiedScheduleCandidate(f *Func, selection *SelectionPlan, dag *DependencyDAG, schedule *Schedule, allocation *GreedyAllocation, exit *SSAExit) ScheduleScore {
 	// Schedule verification just reconstructed this exact inverse permutation.
 	position := schedule.verifyPosition
 	brokenFusions := uint32(0)
@@ -57,7 +65,11 @@ func scoreVerifiedScheduleCandidate(f *Func, selection *SelectionPlan, schedule 
 			brokenFusions++
 		}
 	}
+	estimatedCycles, resourceCycles, selectedBytes := estimateScheduleCost(f, selection, dag, schedule)
 	return ScheduleScore{
+		EstimatedCycles:   estimatedCycles,
+		ResourceCycles:    resourceCycles,
+		SelectedBytes:     selectedBytes,
 		WeightedSpillDebt: allocation.Metrics.WeightedDebt,
 		PhysicalCopies:    exit.Debt.Physical,
 		CopyCycles:        exit.Debt.Cycles,
@@ -67,6 +79,104 @@ func scoreVerifiedScheduleCandidate(f *Func, selection *SelectionPlan, schedule 
 		LoopInvariantOps:  schedule.CommittedLICM,
 		Kind:              schedule.Kind,
 	}
+}
+
+// estimateScheduleCost models one in-order issue stream per block. Dependency
+// latency may overlap independent work, while selected uops occupy the issue
+// stream. Block weights make loop scheduling visible without collapsing the
+// independent execution, spill, copy, and byte dimensions into one sum.
+// criticalHeight is scheduler-only scratch after construction, so reusing it
+// here avoids retaining another instruction-sized candidate slab.
+func estimateScheduleCost(f *Func, selection *SelectionPlan, dag *DependencyDAG, schedule *Schedule) (estimatedCycles, resourceCycles, selectedBytes uint64) {
+	completion := schedule.criticalHeight
+	clear(completion)
+	for _, selected := range selection.Selections {
+		selectedBytes = saturatingAdd(selectedBytes, uint64(selected.Cost.Bytes))
+	}
+	for blockID, blockRange := range schedule.BlockRanges {
+		end := blockRange.Start + blockRange.Count
+		issueAt, blockFinish, blockResources := uint64(0), uint64(0), uint64(0)
+		for position := blockRange.Start; position < end; position++ {
+			instructionID := schedule.Order[position]
+			readyAt := uint64(0)
+			for _, dependency := range dag.Dependencies[dag.Offsets[instructionID]:dag.Offsets[instructionID+1]] {
+				dependencyPosition := schedule.verifyPosition[dependency.Instruction]
+				if dependencyPosition >= blockRange.Start && dependencyPosition < end {
+					readyAt = max(readyAt, completion[dependency.Instruction])
+				}
+			}
+			selected := selection.Selections[instructionID]
+			latency := uint64(scheduleInstructionLatency(f.Target, f.Insts[instructionID].Op, selected.Cost.Latency))
+			resources := uint64(max(selected.Cost.ResourceCost, 1))
+			start := max(issueAt, readyAt)
+			finish := saturatingAdd(start, latency)
+			completion[instructionID] = finish
+			issueAt = saturatingAdd(start, resources)
+			blockFinish = max(blockFinish, finish)
+			blockResources = saturatingAdd(blockResources, resources)
+		}
+		weight := uint64(max(f.Blocks[blockID].Weight, 1))
+		estimatedCycles = saturatingAdd(estimatedCycles, saturatingMultiply(blockFinish, weight))
+		resourceCycles = saturatingAdd(resourceCycles, saturatingMultiply(blockResources, weight))
+	}
+	return estimatedCycles, resourceCycles, selectedBytes
+}
+
+func saturatingMultiply(a, b uint64) uint64 {
+	if a != 0 && b > ^uint64(0)/a {
+		return ^uint64(0)
+	}
+	return a * b
+}
+
+// Dominates reports whether s is no worse in every pre-postRA quality
+// dimension and strictly better in at least one. Kind is deliberately excluded:
+// it is a deterministic policy tie-break, not machine-code quality. Callers
+// must not use this alone for production selection until post-RA opportunity
+// and realized-byte costs are present as well.
+func (s ScheduleScore) Dominates(other ScheduleScore) bool {
+	noWorse := s.EstimatedCycles <= other.EstimatedCycles &&
+		s.ResourceCycles <= other.ResourceCycles &&
+		s.SelectedBytes <= other.SelectedBytes &&
+		s.WeightedSpillDebt <= other.WeightedSpillDebt &&
+		s.PhysicalCopies <= other.PhysicalCopies &&
+		s.CopyCycles <= other.CopyCycles &&
+		s.CopyMotion >= other.CopyMotion &&
+		s.FixedRepairs <= other.FixedRepairs &&
+		s.BrokenFusions <= other.BrokenFusions &&
+		s.LoopInvariantOps >= other.LoopInvariantOps
+	strictlyBetter := s.EstimatedCycles < other.EstimatedCycles ||
+		s.ResourceCycles < other.ResourceCycles ||
+		s.SelectedBytes < other.SelectedBytes ||
+		s.WeightedSpillDebt < other.WeightedSpillDebt ||
+		s.PhysicalCopies < other.PhysicalCopies ||
+		s.CopyCycles < other.CopyCycles ||
+		s.CopyMotion > other.CopyMotion ||
+		s.FixedRepairs < other.FixedRepairs ||
+		s.BrokenFusions < other.BrokenFusions ||
+		s.LoopInvariantOps > other.LoopInvariantOps
+	return noWorse && strictlyBetter
+}
+
+// ScheduleFrontier returns one bit per candidate on the pre-postRA frontier.
+// Production currently evaluates at most three candidates, but the 64-bit
+// result keeps this helper useful to offline scheduler experiments as well.
+func ScheduleFrontier(scores []ScheduleScore) uint64 {
+	count := min(len(scores), 64)
+	var frontier uint64
+	for candidate := range count {
+		dominated := false
+		for other := range count {
+			if candidate != other && scores[other].Dominates(scores[candidate]) {
+				dominated = true
+				break
+			}
+		}
+		if !dominated {
+			frontier |= uint64(1) << candidate
+		}
+	}
+	return frontier
 }
 
 // BetterThan reports whether s is preferred to other. Stable kind ordering is

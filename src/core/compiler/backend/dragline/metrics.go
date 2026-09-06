@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 24
+const MetricsVersion = 25
 
 // Metrics contains one deterministic row per compiled function plus module
 // totals. Timings are observational; all counts and byte sizes are exact for
@@ -43,14 +43,18 @@ type EmitterMetrics struct {
 // ScheduleCandidateMetrics records the complete realized debt used to compare
 // one initial schedule candidate after allocation and late SSA exit.
 type ScheduleCandidateMetrics struct {
-	Kind              uint8  `json:"kind"`
-	WeightedSpillDebt uint64 `json:"weighted_spill_debt"`
-	PhysicalCopies    uint32 `json:"physical_copies"`
-	CopyCycles        uint32 `json:"copy_cycles"`
-	CopyMotion        uint32 `json:"copy_motion"`
-	FixedRepairs      uint32 `json:"fixed_repairs"`
-	BrokenFusions     uint32 `json:"broken_fusions"`
-	LoopInvariantOps  uint32 `json:"loop_invariant_ops"`
+	EstimatedCycles       uint64 `json:"estimated_cycles"`
+	ResourceCycles        uint64 `json:"resource_cycles"`
+	SelectedBytes         uint64 `json:"selected_bytes"`
+	Kind                  uint8  `json:"kind"`
+	PrePostRANondominated bool   `json:"pre_postra_nondominated"`
+	WeightedSpillDebt     uint64 `json:"weighted_spill_debt"`
+	PhysicalCopies        uint32 `json:"physical_copies"`
+	CopyCycles            uint32 `json:"copy_cycles"`
+	CopyMotion            uint32 `json:"copy_motion"`
+	FixedRepairs          uint32 `json:"fixed_repairs"`
+	BrokenFusions         uint32 `json:"broken_fusions"`
+	LoopInvariantOps      uint32 `json:"loop_invariant_ops"`
 }
 
 // FunctionMetrics attributes compiler work to one original Wasm function.
@@ -75,6 +79,7 @@ type FunctionMetrics struct {
 	ScheduleCandidates         uint8                             `json:"schedule_candidates"`
 	InitialScheduleScoreCount  uint8                             `json:"initial_schedule_score_count"`
 	InitialScheduleScores      [3]ScheduleCandidateMetrics       `json:"initial_schedule_scores"`
+	InitialPrePostRAFrontier   uint8                             `json:"initial_pre_postra_frontier"`
 	SelectionCombinations      uint32                            `json:"selection_combinations"`
 	Dependencies               uint32                            `json:"dependencies"`
 	ScheduleReadySteps         uint32                            `json:"schedule_ready_steps"`
@@ -177,10 +182,12 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 	metrics.BackendAttempts = plan.BackendAttempts
 	metrics.ScheduleCandidates = plan.ScheduleCandidates
 	metrics.InitialScheduleScoreCount = plan.InitialScheduleScoreCount
+	metrics.InitialPrePostRAFrontier = plan.InitialPrePostRAFrontier
 	for index := range plan.InitialScheduleScores[:plan.InitialScheduleScoreCount] {
 		score := plan.InitialScheduleScores[index]
 		metrics.InitialScheduleScores[index] = ScheduleCandidateMetrics{
-			Kind: uint8(score.Kind), WeightedSpillDebt: score.WeightedSpillDebt,
+			EstimatedCycles: score.EstimatedCycles, ResourceCycles: score.ResourceCycles, SelectedBytes: score.SelectedBytes,
+			Kind: uint8(score.Kind), PrePostRANondominated: plan.InitialPrePostRAFrontier&(1<<index) != 0, WeightedSpillDebt: score.WeightedSpillDebt,
 			PhysicalCopies: score.PhysicalCopies, CopyCycles: score.CopyCycles,
 			CopyMotion: score.CopyMotion, FixedRepairs: score.FixedRepairs,
 			BrokenFusions: score.BrokenFusions, LoopInvariantOps: score.LoopInvariantOps,

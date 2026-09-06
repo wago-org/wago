@@ -125,11 +125,12 @@ func TestRecordNativePlanMetricsKeepsRailSSAAndRailMachDistinct(t *testing.T) {
 		BackendAttempts:    2,
 		ScheduleCandidates: 6,
 		InitialScheduleScores: [3]railmach.ScheduleScore{
-			{Kind: railmach.ScheduleKindLatencyFusion, WeightedSpillDebt: 13, PhysicalCopies: 7, CopyCycles: 2, CopyMotion: 3, FixedRepairs: 4, BrokenFusions: 5, LoopInvariantOps: 6},
+			{Kind: railmach.ScheduleKindLatencyFusion, EstimatedCycles: 101, ResourceCycles: 77, SelectedBytes: 32, WeightedSpillDebt: 13, PhysicalCopies: 7, CopyCycles: 2, CopyMotion: 3, FixedRepairs: 4, BrokenFusions: 5, LoopInvariantOps: 6},
 			{Kind: railmach.ScheduleKindPressure, WeightedSpillDebt: 8, PhysicalCopies: 4},
 			{Kind: railmach.ScheduleKindSourceStable, WeightedSpillDebt: 10, PhysicalCopies: 5},
 		},
 		InitialScheduleScoreCount: 3,
+		InitialPrePostRAFrontier:  1,
 		SegmentedBaselineDebt:     13,
 		SegmentedCandidateDebt:    8,
 		SegmentedBaselineCopies:   7,
@@ -146,7 +147,7 @@ func TestRecordNativePlanMetricsKeepsRailSSAAndRailMachDistinct(t *testing.T) {
 	if metrics.ScheduleCandidates != 6 || metrics.SelectionCombinations != 3 || metrics.Dependencies != 8 || metrics.LiveIntervals != 4 || metrics.LiveSegments != 6 || metrics.SegmentedRanges != 1 || metrics.AllocationFragments != 2 {
 		t.Fatalf("quality-search metrics = candidates:%d combinations:%d dependencies:%d intervals:%d segments:%d segmented:%d fragments:%d", metrics.ScheduleCandidates, metrics.SelectionCombinations, metrics.Dependencies, metrics.LiveIntervals, metrics.LiveSegments, metrics.SegmentedRanges, metrics.AllocationFragments)
 	}
-	if metrics.InitialScheduleScoreCount != 3 || metrics.InitialScheduleScores[0] != (ScheduleCandidateMetrics{Kind: uint8(railmach.ScheduleKindLatencyFusion), WeightedSpillDebt: 13, PhysicalCopies: 7, CopyCycles: 2, CopyMotion: 3, FixedRepairs: 4, BrokenFusions: 5, LoopInvariantOps: 6}) || metrics.InitialScheduleScores[1].WeightedSpillDebt != 8 || metrics.InitialScheduleScores[2].WeightedSpillDebt != 10 {
+	if metrics.InitialScheduleScoreCount != 3 || metrics.InitialPrePostRAFrontier != 1 || metrics.InitialScheduleScores[0] != (ScheduleCandidateMetrics{Kind: uint8(railmach.ScheduleKindLatencyFusion), PrePostRANondominated: true, EstimatedCycles: 101, ResourceCycles: 77, SelectedBytes: 32, WeightedSpillDebt: 13, PhysicalCopies: 7, CopyCycles: 2, CopyMotion: 3, FixedRepairs: 4, BrokenFusions: 5, LoopInvariantOps: 6}) || metrics.InitialScheduleScores[1].WeightedSpillDebt != 8 || metrics.InitialScheduleScores[2].WeightedSpillDebt != 10 {
 		t.Fatalf("initial schedule scores = count:%d scores:%#v", metrics.InitialScheduleScoreCount, metrics.InitialScheduleScores)
 	}
 	if !metrics.SegmentedAttempted || !metrics.SegmentedAdmitted || metrics.SegmentedBaselineDebt != 13 || metrics.SegmentedCandidateDebt != 8 || metrics.SegmentedBaselineCopies != 7 || metrics.SegmentedCandidateCopies != 4 || metrics.SegmentedCandidateRanges != 1 {

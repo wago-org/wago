@@ -66,6 +66,7 @@ type nativeBackendPlan struct {
 	// changes.
 	InitialScheduleScores     [3]railmach.ScheduleScore
 	InitialScheduleScoreCount uint8
+	InitialPrePostRAFrontier  uint8
 	// Segmented baseline/candidate fields retain exact spill and copy debt on
 	// both sides of the one bounded segmented-liveness trial. The trial is
 	// deliberately separate from schedule search so observability does not
@@ -242,7 +243,7 @@ func (p *nativeBackendPlanner) evaluateScheduleCandidates(machine *railmach.Func
 			errs[index] = err
 			return
 		}
-		scores[index], errs[index] = railmach.ScoreVerifiedScheduleCandidate(machine, selection, candidate, allocation, exit)
+		scores[index], errs[index] = railmach.ScoreVerifiedScheduleCandidate(machine, selection, dag, candidate, allocation, exit)
 	}
 	if parallel {
 		var wait sync.WaitGroup
@@ -1445,7 +1446,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			if candidateErr != nil {
 				return nil, candidateErr
 			}
-			score, candidateErr := railmach.ScoreVerifiedScheduleCandidate(machine, selection, candidate, candidateAllocation, candidateExit)
+			score, candidateErr := railmach.ScoreVerifiedScheduleCandidate(machine, selection, dag, candidate, candidateAllocation, candidateExit)
 			if candidateErr != nil {
 				return nil, candidateErr
 			}
@@ -1455,6 +1456,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			}
 		}
 	}
+	initialPrePostRAFrontier := uint8(railmach.ScheduleFrontier(initialScheduleScores[:candidateCount]))
 	var schedule *railmach.Schedule
 	var allocation *railmach.GreedyAllocation
 	var exit *railmach.SSAExit
@@ -1522,7 +1524,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				if retryErr != nil {
 					return nil, retryErr
 				}
-				candidateScore, retryErr := railmach.ScoreVerifiedScheduleCandidate(machine, selection, candidate, candidateAllocation, candidateExit)
+				candidateScore, retryErr := railmach.ScoreVerifiedScheduleCandidate(machine, selection, dag, candidate, candidateAllocation, candidateExit)
 				if retryErr != nil {
 					return nil, retryErr
 				}
@@ -1580,7 +1582,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		if segmentedErr != nil {
 			return nil, segmentedErr
 		}
-		segmentedScore, segmentedErr := railmach.ScoreVerifiedScheduleCandidate(machine, selection, schedule, segmentedAllocation, segmentedExit)
+		segmentedScore, segmentedErr := railmach.ScoreVerifiedScheduleCandidate(machine, selection, dag, schedule, segmentedAllocation, segmentedExit)
 		if segmentedErr != nil {
 			return nil, segmentedErr
 		}
@@ -1828,7 +1830,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		Stack: stack, CFG: cfg, Semantic: semantic,
 		Machine: machine, Selection: selection, DAG: dag, Schedule: schedule, Allocation: allocation, Exit: exit, PostRA: postRA,
 		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, ExternalCallVectorFPRs: externalCallVectorFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts, ScheduleCandidates: scheduleCandidates,
-		InitialScheduleScores: initialScheduleScores, InitialScheduleScoreCount: uint8(candidateCount),
+		InitialScheduleScores: initialScheduleScores, InitialScheduleScoreCount: uint8(candidateCount), InitialPrePostRAFrontier: initialPrePostRAFrontier,
 		SegmentedBaselineDebt: segmentedBaselineDebt, SegmentedCandidateDebt: segmentedCandidateDebt, SegmentedBaselineCopies: segmentedBaselineCopies, SegmentedCandidateCopies: segmentedCandidateCopies, SegmentedCandidateRanges: segmentedCandidateRanges, SegmentedAttempted: segmentedAttempted, SegmentedAdmitted: segmentedAdmitted,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64BMI2:      target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),

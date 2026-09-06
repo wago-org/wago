@@ -23,6 +23,59 @@ func TestScheduleScoreOrdersCompleteBackendDebt(t *testing.T) {
 	}
 }
 
+func TestScheduleScoreParetoFrontier(t *testing.T) {
+	scores := []ScheduleScore{
+		{Kind: ScheduleKindSourceStable, EstimatedCycles: 12, ResourceCycles: 8, SelectedBytes: 16, WeightedSpillDebt: 3},
+		{Kind: ScheduleKindLatencyFusion, EstimatedCycles: 10, ResourceCycles: 8, SelectedBytes: 16, WeightedSpillDebt: 3},
+		{Kind: ScheduleKindPressure, EstimatedCycles: 11, ResourceCycles: 8, SelectedBytes: 16, WeightedSpillDebt: 2},
+	}
+	if scores[0].Dominates(scores[1]) || !scores[1].Dominates(scores[0]) {
+		t.Fatal("cycle improvement did not dominate otherwise equal candidate")
+	}
+	if scores[1].Dominates(scores[2]) || scores[2].Dominates(scores[1]) {
+		t.Fatal("execution/spill tradeoff was incorrectly dominated")
+	}
+	if got, want := ScheduleFrontier(scores), uint64(0b110); got != want {
+		t.Fatalf("frontier = %03b, want %03b", got, want)
+	}
+}
+
+func TestScheduleScoreParetoFrontierKeepsEqualCandidates(t *testing.T) {
+	scores := []ScheduleScore{{Kind: ScheduleKindSourceStable}, {Kind: ScheduleKindLatencyFusion}}
+	if got, want := ScheduleFrontier(scores), uint64(0b11); got != want {
+		t.Fatalf("equal frontier = %02b, want %02b", got, want)
+	}
+}
+
+func TestEstimateScheduleCostDistinguishesLatencyExposure(t *testing.T) {
+	f := &Func{
+		Target: TargetARM64,
+		Insts:  []Inst{{Op: wasm.InstrI64Mul}, {Op: wasm.InstrI64Add}, {Op: wasm.InstrI64Add}},
+		Blocks: []Block{{InstCount: 3, Weight: 2}},
+	}
+	selection := &SelectionPlan{Selections: []Selection{
+		{Cost: SelectCost{Latency: 5, ResourceCost: 1, Bytes: 4}},
+		{Cost: SelectCost{Latency: 1, ResourceCost: 1, Bytes: 4}},
+		{Cost: SelectCost{Latency: 1, ResourceCost: 1, Bytes: 4}},
+	}}
+	dag := &DependencyDAG{Offsets: []uint32{0, 0, 0, 1}, Dependencies: []Dependency{{Instruction: 0, Kind: DependencyData}}}
+	makeSchedule := func(order []uint32) *Schedule {
+		position := make([]uint32, len(order))
+		for index, instruction := range order {
+			position[instruction] = uint32(index)
+		}
+		return &Schedule{Order: order, BlockRanges: []MoveRange{{Count: 3}}, verifyPosition: position, criticalHeight: make([]uint64, 3)}
+	}
+	fastCycles, fastResources, fastBytes := estimateScheduleCost(f, selection, dag, makeSchedule([]uint32{0, 1, 2}))
+	slowCycles, slowResources, slowBytes := estimateScheduleCost(f, selection, dag, makeSchedule([]uint32{1, 0, 2}))
+	if fastCycles != 12 || slowCycles != 14 {
+		t.Fatalf("estimated cycles = %d/%d, want 12/14", fastCycles, slowCycles)
+	}
+	if fastResources != 6 || slowResources != 6 || fastBytes != 12 || slowBytes != 12 {
+		t.Fatalf("resource/byte costs = %d/%d and %d/%d, want 6/6 and 12/12", fastResources, slowResources, fastBytes, slowBytes)
+	}
+}
+
 func TestScoreScheduleCandidateValidatesCompleteCandidate(t *testing.T) {
 	m, selection, _, dag := buildScheduleTest(t, TargetAMD64, machineModule(nil, nil, []byte{0x41, 0x00, 0x04, 0x40, 0x0b, 0x0b}))
 	schedule, err := BuildSchedule(m, selection, dag, ScheduleKindSourceStable, nil)

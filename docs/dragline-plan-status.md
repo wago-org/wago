@@ -274,6 +274,22 @@ the performance corpus.
   estimate. Schema 23 also attributes physical copies to ordinary edges, loop
   backedges, fixed-register repairs, and the segmented-liveness baseline and
   candidate. These are observational additions and do not change codegen.
+- Scheduler cost-frontier calibration: ✅ metrics schema 25 adds a bounded,
+  schedule-aware issue/latency estimate, profile-weighted selected-resource
+  cost, factual selected-rule bytes, and an explicit pre-postRA Pareto frontier
+  for every initial candidate. An exact native ARM64 pass over all 36 non-ISA
+  application modules found 24,805 multi-candidate functions; 4,749 retained
+  schedules (19.15%) sit outside that preliminary frontier, with a mean modeled
+  cycle gap of 2.285%. This is intentionally advisory: 4,621 of those retained
+  schedules (97.30%) produce post-RA rewrites, and 4,612 (97.12%) realize
+  positive native-byte savings. A trial that let the preliminary frontier steer
+  production lost the verifier-gated ARM64 byte-swap plan and failed its focused
+  codegen test, so it was reverted. The next scheduler cutover must add realized
+  post-RA opportunity and native-byte costs before discarding candidates. Ten
+  alternating 10-compile `blake-as` pairs measured 0.99788x compile latency
+  versus exact `4f16f000` with 6/10 wins, unchanged B/op/allocs, and byte-for-byte
+  identical native output (SHA-256
+  `694f9159e1a2999ec94ca7618237911e8ac6b24a10e0cd9f967bf6178933771a`).
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution

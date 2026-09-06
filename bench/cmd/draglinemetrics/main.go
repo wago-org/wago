@@ -176,7 +176,7 @@ func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metri
 			return err
 		}
 	}
-	if _, err := fmt.Fprintln(w, "\n## Initial schedule candidates\n\nThese are first-pass candidates scored after allocation and late SSA exit; retry-policy candidates are excluded. Final kind identifies the schedule kind ultimately retained, whose debt may differ after an allocator retry.\n\n| Function | Candidate | Kind | Final kind | Spill debt | Physical copies | Copy cycles | Copy motion | Fixed repairs | Broken fusions | Loop-invariant ops |\n|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|"); err != nil {
+	if _, err := fmt.Fprintln(w, "\n## Initial schedule candidates\n\nThese are first-pass candidates scored after allocation and late SSA exit; retry-policy candidates are excluded. Final kind identifies the schedule kind ultimately retained, whose debt may differ after an allocator retry. The frontier is advisory until post-RA opportunities and realized native bytes join the score.\n\n| Function | Candidate | Kind | Final kind | Pre-postRA frontier | Estimated cycles | Resource cycles | Selected-rule bytes | Spill debt | Physical copies | Copy cycles | Copy motion | Fixed repairs | Broken fusions | Loop-invariant ops |\n|---:|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"); err != nil {
 		return err
 	}
 	for _, row := range metrics.Functions {
@@ -189,7 +189,11 @@ func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metri
 			if score.Kind == row.ScheduleKind {
 				retained = "yes"
 			}
-			if _, err := fmt.Fprintf(w, "| %d | %d | %s | %s | %d | %d | %d | %d | %d | %d | %d |\n", row.Function, index+1, scheduleKindName(score.Kind), retained, score.WeightedSpillDebt, score.PhysicalCopies, score.CopyCycles, score.CopyMotion, score.FixedRepairs, score.BrokenFusions, score.LoopInvariantOps); err != nil {
+			frontier := ""
+			if score.PrePostRANondominated {
+				frontier = "yes"
+			}
+			if _, err := fmt.Fprintf(w, "| %d | %d | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n", row.Function, index+1, scheduleKindName(score.Kind), retained, frontier, score.EstimatedCycles, score.ResourceCycles, score.SelectedBytes, score.WeightedSpillDebt, score.PhysicalCopies, score.CopyCycles, score.CopyMotion, score.FixedRepairs, score.BrokenFusions, score.LoopInvariantOps); err != nil {
 				return err
 			}
 		}
