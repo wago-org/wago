@@ -11,8 +11,14 @@ func TestDecodeMemoryReservedZeroImmediate(t *testing.T) {
 		name   string
 		decode func([]byte) error
 	}{
-		{name: "AST", decode: func(b []byte) error { _, err := decodeModuleASTForTest(b); return err }},
-		{name: "byte-backed", decode: func(b []byte) error { _, err := DecodeModuleByteBacked(b); return err }},
+		{name: "AST", decode: func(b []byte) error {
+			_, err := decodeModuleASTWithFeaturesForTest(b, ValidationFeatures{})
+			return err
+		}},
+		{name: "byte-backed", decode: func(b []byte) error {
+			_, err := DecodeModuleByteBackedWithFeatures(b, ValidationFeatures{})
+			return err
+		}},
 	}
 	for _, op := range []struct {
 		name string

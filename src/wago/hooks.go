@@ -84,7 +84,7 @@ func moduleView(mod *Module) ModuleView {
 	if mod == nil {
 		return ModuleView{}
 	}
-	return ModuleView{compiled: mod.c, identity: mod.moduleIdentity(), imports: cloneImportSpecs(mod.imports)}
+	return ModuleView{compiled: mod.c, identity: mod.moduleIdentity(), imports: mod.imports}
 }
 
 func cloneImportSpecs(in []ImportSpec) []ImportSpec {

@@ -13,30 +13,33 @@ import (
 // A local manifest is isolated and wins by default; otherwise every Wago
 // version reads the shared global intent while compiling its own artifact.
 func resolvePluginEnvironment() (pluginEnvironment, error) {
-	dirs := wagopaths.DirsFor(pluginRuntimeVersion())
-	manifestDir := sharedGlobalPluginDir(dirs)
+	return capturePluginRuntime().resolveEnvironment()
+}
+
+func (selection pluginRuntimeSelection) resolveEnvironment() (pluginEnvironment, error) {
+	manifestDir := sharedGlobalPluginDir(selection.dirs)
 	scope, err := project.ResolveScope(".", manifestDir)
 	if err != nil {
 		return pluginEnvironment{}, err
 	}
 	if scope.Name == "bare" {
-		return pluginEnvironment{scope: "bare"}, nil
+		return pluginEnvironment{scope: "bare", selection: selection}, nil
 	}
-	buildDir, err := buildDirFor(scope.Name != "local")
+	buildDir, err := selection.buildDirFor(scope.Name != "local")
 	if err != nil {
 		return pluginEnvironment{}, err
 	}
 	return pluginEnvironment{
-		scope: scope.Name, manifestDir: scope.ManifestDir, buildDir: buildDir, dependencies: scope.Dependencies,
+		selection: selection, scope: scope.Name, manifestDir: scope.ManifestDir, buildDir: buildDir, dependencies: scope.Dependencies,
 	}, nil
 }
 
-func pluginBuildVariant() string {
+func pluginBuildVariantWithDefault(fallback string) string {
 	switch value := strings.ToLower(strings.TrimSpace(os.Getenv("WAGO_RUNTIME_BUILD"))); value {
 	case string(wagopaths.BuildNormal), string(wagopaths.BuildTiny):
 		return value
 	}
-	return pluginBuildDefaultVariant()
+	return fallback
 }
 
 func pluginBuildProfile() string {
@@ -47,30 +50,24 @@ func pluginBuildProfile() string {
 	return runnerProfile()
 }
 
-func localPluginBuildDir() (string, error) {
+func (selection pluginRuntimeSelection) buildDirFor(global bool) (string, error) {
+	if global {
+		return filepath.Join(selection.dirs.Versions, selection.version, selection.profile, selection.build, "plugins"), nil
+	}
 	wd, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(wd, ".wago", "builds", pluginRuntimeVersion(), pluginBuildProfile(), pluginBuildVariant()), nil
+	return filepath.Join(wd, ".wago", "builds", selection.version, selection.profile, selection.build), nil
 }
 
-func globalPluginBuildDir() string {
-	dirs := wagopaths.DirsFor(pluginRuntimeVersion())
-	return filepath.Join(dirs.Versions, pluginRuntimeVersion(), pluginBuildProfile(), pluginBuildVariant(), "plugins")
-}
-
-func buildDirFor(global bool) (string, error) {
-	if global {
-		return globalPluginBuildDir(), nil
-	}
-	return localPluginBuildDir()
-}
-
-func depsSource(global bool) (string, error) {
+func (selection pluginRuntimeSelection) depsSource(global bool) (string, error) {
 	if !global {
 		return ".", nil
 	}
-	dirs := wagopaths.DirsFor(pluginRuntimeVersion())
-	return sharedGlobalPluginDir(dirs), nil
+	return sharedGlobalPluginDir(selection.dirs), nil
 }
+
+func localPluginBuildDir() (string, error)    { return capturePluginRuntime().buildDirFor(false) }
+func buildDirFor(global bool) (string, error) { return capturePluginRuntime().buildDirFor(global) }
+func depsSource(global bool) (string, error)  { return capturePluginRuntime().depsSource(global) }

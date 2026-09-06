@@ -460,7 +460,7 @@ func TestCardMetadataFootprint(t *testing.T) {
 	if got := unsafe.Sizeof(tinyGC{}); got != 88 {
 		t.Fatalf("tinyGC size=%d, want 88 with unbounded transient-root accounting", got)
 	}
-	wantCollector := uintptr(1128)
+	wantCollector := uintptr(1128) + unsafe.Sizeof((*[]uint64)(nil))
 	if got := unsafe.Sizeof(Collector{}); got != wantCollector {
 		t.Fatalf("Collector size=%d, want %d", got, wantCollector)
 	}

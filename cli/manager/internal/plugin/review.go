@@ -322,7 +322,8 @@ func containsString(values []string, value string) bool {
 }
 
 func pkgGrant(name string, useGlobal bool, requested []string, grantAll, denyAll bool, scopes map[string]map[string]project.AuthorityScope) {
-	src, err := depsSource(useGlobal)
+	selection := capturePluginRuntime()
+	src, err := selection.depsSource(useGlobal)
 	if err != nil {
 		fatal("plugin grant: %v", err)
 	}
@@ -350,11 +351,11 @@ func pkgGrant(name string, useGlobal bool, requested []string, grantAll, denyAll
 			return editErr
 		}
 		lock, warnings = reviewed.Lock, reviewed.Warnings
-		buildDir, err := buildDirFor(useGlobal)
+		buildDir, err := selection.buildDirFor(useGlobal)
 		if err != nil {
 			return err
 		}
-		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false)
+		return stageAndPublishLockedState(mutation, src, buildDir, manifest, lock, false, selection.config())
 	})
 	if err != nil {
 		fatal("plugin grant: %v", err)

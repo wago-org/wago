@@ -8,7 +8,12 @@ generated Wasm on either architecture.
 ## Execution contract
 
 Ordinary native entries publish no activation and do not lock their goroutine
-to an OS thread. Generated Wasm already keeps its linear-memory base in a fixed
+to an OS thread. Standard Go records a scannable syscall boundary and releases
+the P during native execution, then reacquires it before Go host callbacks.
+Call sites keep their slice owners live until native return, including the
+complete host park/resume loop. Raw `uintptr` arguments still require stable
+storage whose owner the caller retains.
+Generated Wasm already keeps its linear-memory base in a fixed
 register (RBX on amd64, X26 on arm64), and basedata stores the active trap-cell
 pointer at a fixed negative offset. The signal handler therefore derives all
 per-invocation state from the saved CPU context.
@@ -22,17 +27,18 @@ The table is process-wide and uses 32 KiB on a 64-bit system.
 The table includes mappings in the bounded reuse caches.
 See [Native memory limits](native-memory-limits.md) for configuration and telemetry.
 
-Wago reserves real-time signal 40. Go installs its dispatcher across the
-real-time range, so Wago preserves that handler and chains deliveries that are
-not its `tgkill` requests. The handler uses Go's per-thread alternate signal
-stack through `SA_ONSTACK`.
+Wago negotiates signals 35..64, preferring ignored signals and then compatible
+Go dispatchers. It preserves the complete action and chains unowned deliveries.
+A random process cookie and a non-reused request sequence authenticate queued
+broadcasts and timer expirations. Final code unmapping restores the old action
+only if Wago still owns it. The handler uses the alternate signal stack.
 
 For a saved PC in a registered code range, the handler:
 
 1. reads the fixed linear-memory register;
 2. matches the register value against the live `JobMemory` table;
 3. reads the basedata trap pointer only after the match;
-4. matches the trap pointer against the table of active cold requests;
+4. matches the trap pointer and exact token against active cold requests;
 5. writes `TrapInterrupted` to the preallocated invocation trap cell;
 6. loads the trap re-entry stack pointer recorded by `enterNative`;
 7. rewrites the saved stack and program context to a landing pad; and
@@ -55,11 +61,15 @@ the Go stack and registers. Existing trap decoding then returns
 ## Races and host code
 
 An interruption request publishes its trap pointer in a fixed 64-entry table,
-enumerates `/proc/self/task`, and uses `tgkill(getpid(), tid, signal)` to
-broadcast to the process threads. Deliveries outside registered generated code
+enumerates `/proc/self/task`, and uses `rt_tgsigqueueinfo` with its token to
+broadcast to process threads. Deliveries outside registered generated code
 return immediately. A generated-code delivery only commits when its basedata
 trap pointer matches the request, then acknowledges the matching table entry.
 This moves thread discovery and all registry traffic to the cold request side.
+Request writers hold a mutex, initialize the token and reference count, and
+publish the trap pointer last. The ARM64 handler uses an acquire load of that
+pointer before reading the token; AMD64 provides the same load ordering. A
+reused slot therefore cannot expose its previous token as a new request.
 
 The trap is stored before the broadcast. Entry and host-return boundaries
 preserve it, and bounded cancellation retries close the small check-to-entry
@@ -78,13 +88,14 @@ cancellation or the deadline actually fires.
 
 Deadline contexts alone lock their goroutine for the duration of the call and
 arm a `timer_create(CLOCK_MONOTONIC, SIGEV_THREAD_ID)` timer for that Linux TID.
-Kernel delivery breaks an uninstrumented native loop even if the Go runtime is
-waiting for that loop during stop-the-world GC. After the deadline, the timer
+Kernel delivery can interrupt an uninstrumented native loop independently of
+Go callback scheduling. After the deadline, the timer
 retries at a short interval and is deleted before the goroutine is unlocked.
 The timer reuses the request-table match, so nested Wasm entered by a host
-callback is not mistaken for the deadline's target. Cleanup blocks the reserved
-signal on the pinned thread, deletes the timer, drains a pending expiration,
-then unpublishes the request before unlocking the goroutine. Explicit
+callback is not mistaken for the deadline's target. Setup failures return an
+error before native entry. Cleanup deletes the timer and unpublishes the request
+before unlocking the goroutine. Late expirations carry the old token and cannot
+affect a later use of that trap address; unrelated signals are never drained. Explicit
 cancellation uses the broadcast path because it has no predetermined kernel
 deadline.
 
@@ -107,9 +118,20 @@ Run the Linux architecture-specific gates on native amd64 and arm64 machines
 ```sh
 go test ./src/wago -run 'Test(CallContextInterruptsNativeLoop|InvokeContextInterruptsNativeLoop|InvokeContextInterruptsHostCallLoop|KernelDeadlineInterruptsDuringStopTheWorld|CloseInterruptsInfiniteInvocation|PublicCompileOmitsCooperativeInterruptPolls)$'
 go test ./src/core/runtime -run 'Test(ProcessNativeMemoryStatsTracksLifecycle|ProcessNativeMemoryStatsTracksCacheReuse|InterruptLinearMemoryCapacityReturnsTypedError|UnregisterWaitsForSignalReaders|InterruptLinearMemoryRegistrationScansPastHoles)$'
+go test -race ./src/core/runtime -run 'TestInterrupt(Request|Token|SignalOwnership)' -count=10
 go test ./src/core/runtime ./src/wago
 ```
 
 The public-compile test compares the exact generated bytes against a backend
 compile with interruption disabled and verifies that the cooperative form is
 larger.
+The request publication test observes repeated slot reuse through atomic loads;
+it detects a published trap paired with an older token without sending signals.
+Publication changes add no table storage or generated-Wasm instructions.
+
+## Cooperative targets
+
+Standard Go uses the same syscall boundary on macOS, Windows, and the
+`wago_target_tinygo` build, so cooperative trap publication has a runnable Go
+processor. TinyGo requires `-scheduler=threads` for cancelable native calls.
+Other TinyGo schedulers reject those calls before native entry.

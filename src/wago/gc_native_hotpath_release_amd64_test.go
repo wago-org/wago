@@ -5,7 +5,7 @@ package wago
 import (
 	"testing"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // TestNativeGCHotPathDoesNotRecheckImmutableABI proves the production hot path

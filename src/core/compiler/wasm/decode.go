@@ -37,9 +37,19 @@ func lookupSectionOrder(id byte) (uint8, bool) {
 // DecodeModule decodes a WebAssembly binary into the compact module
 // representation used by validation and lowering. Function bodies and const
 // expressions retain their raw bytecode; DecodeModule does not materialize a
-// structured function-body instruction tree.
+// structured function-body instruction tree. This syntax-only entry accepts
+// Core 3 memory grammar; validation applies the selected feature policy.
 func DecodeModule(data []byte) (*Module, error) {
 	dm, err := DecodeModuleByteBacked(data)
+	if err != nil {
+		return nil, err
+	}
+	return dm.Module, nil
+}
+
+// DecodeModuleWithFeatures decodes using explicit feature-dependent wire grammar.
+func DecodeModuleWithFeatures(data []byte, features ValidationFeatures) (*Module, error) {
+	dm, err := DecodeModuleByteBackedWithFeatures(data, features)
 	if err != nil {
 		return nil, err
 	}
@@ -61,11 +71,14 @@ func decodeSection(m *Module, r *reader, id byte) error {
 			if m.NameSec != nil {
 				return &DecodeError{Code: ErrInvalidSection, Offset: r.off()}
 			}
-			ns, err := decodeNameSec(payload)
+			ns, err := decodeNameSecWithBudget(payload, r.budget)
 			if err != nil {
 				return err
 			}
 			m.NameSec = ns
+		}
+		if err := r.reserve(uint64(len(payload)), 2); err != nil {
+			return err
 		}
 		ownedPayload := append([]byte(nil), payload...)
 		if name == "name" {
@@ -73,7 +86,7 @@ func decodeSection(m *Module, r *reader, id byte) error {
 		}
 		m.Customs = append(m.Customs, CustomSec{Name: name, Data: ownedPayload})
 	case secType:
-		v, err := readVec(r, decodeRecType)
+		v, err := decodeTypeSection(r)
 		if err != nil {
 			return err
 		}
@@ -318,6 +331,9 @@ func decodeTypeMetadata(r *reader) (TypeMetadata, error) {
 	}
 }
 func decodeSubType(r *reader) (SubType, error) {
+	if err := r.reserveType(); err != nil {
+		return SubType{}, err
+	}
 	b, ok := r.peek()
 	if !ok {
 		return SubType{}, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.off()}
@@ -348,7 +364,7 @@ func decodeSubType(r *reader) (SubType, error) {
 func decodeRecType(r *reader) (RecType, error) {
 	if b, ok := r.peek(); ok && b == 0x4e {
 		_, _ = r.byte()
-		sts, err := readVec(r, decodeSubType)
+		sts, err := readMetadataVec(r, decodeSubType)
 		return RecType{SubTypes: sts}, err
 	}
 	st, err := decodeSubType(r)
@@ -510,6 +526,9 @@ func decodeExternTypeKind(r *reader, kind ExternKind) (ExternType, error) {
 func decodeImports(r *reader) ([]Import, bool, error) {
 	n, err := r.u32()
 	if err != nil {
+		return nil, false, err
+	}
+	if err := reserveDecodedSlice[Import](r, n); err != nil {
 		return nil, false, err
 	}
 	capHint := boundedVecCap(n, r.left())

@@ -5,6 +5,10 @@ package wasm
 // materializes structured instruction trees for function bodies and
 // const-expression fields.
 func decodeModuleASTForTest(data []byte) (*Module, error) {
+	return decodeModuleASTWithFeaturesForTest(data, ValidationFeatures{MultiMemory: true})
+}
+
+func decodeModuleASTWithFeaturesForTest(data []byte, features ValidationFeatures) (*Module, error) {
 	r := newReader(data)
 	magic, err := r.bytes(4)
 	if err != nil {
@@ -64,7 +68,7 @@ func decodeModuleASTForTest(data []byte) (*Module, error) {
 		case secElement:
 			err = decodeASTElementSectionForTest(m, sub)
 		case secCode:
-			err = decodeASTCodeSectionForTest(m, sub)
+			err = decodeASTCodeSectionForTest(m, sub, features.MultiMemory)
 		case secData:
 			err = decodeASTDataSectionForTest(m, sub)
 		default:
@@ -170,7 +174,7 @@ func decodeASTGlobalSectionForTest(m *Module, r *reader) error {
 	return nil
 }
 
-func decodeASTCodeSectionForTest(m *Module, r *reader) error {
+func decodeASTCodeSectionForTest(m *Module, r *reader, multiMemory bool) error {
 	n, err := r.u32()
 	if err != nil {
 		return err
@@ -190,7 +194,9 @@ func decodeASTCodeSectionForTest(m *Module, r *reader) error {
 		if err != nil {
 			return err
 		}
-		expr, err := decodeExprWithModule(sub, 0, m)
+		widths := moduleMemargWidths(m)
+		widths.multiMemory = multiMemory
+		expr, err := decodeExprWithMemargWidths(sub, 0, widths)
 		if err != nil {
 			return err
 		}

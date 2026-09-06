@@ -617,6 +617,8 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalTableComposition(t *test
 		}
 	}
 	features := NewRuntimeConfig().frontendFeatures()
+	features.TailCalls = false
+	features.TypedTailCalls = false
 	features.MultiMemory = true
 	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), returnCall, features); err == nil || !strings.Contains(err.Error(), "tail") {
 		t.Fatalf("global+table return_call without staged tail feature = %v, want rejection", err)
@@ -741,6 +743,8 @@ func TestStagedMultiMemoryNativeSameMemoryImportedTableComposition(t *testing.T)
 		}
 	}
 	features := NewRuntimeConfig().frontendFeatures()
+	features.TailCalls = false
+	features.TypedTailCalls = false
 	features.MultiMemory = true
 	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), returnCall, features); err == nil || !strings.Contains(err.Error(), "tail") {
 		t.Fatalf("imported-table return_call without staged tail feature = %v, want rejection", err)
@@ -898,6 +902,8 @@ func TestStagedMultiMemoryNativeSameMemoryImportedGlobalComposition(t *testing.T
 		t.Fatalf("decode composed return_call gate module: %v", err)
 	}
 	features := NewRuntimeConfig().frontendFeatures()
+	features.TailCalls = false
+	features.TypedTailCalls = false
 	features.MultiMemory = true
 	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), returnCall, features); err == nil || !strings.Contains(err.Error(), "tail") {
 		t.Fatalf("imported-global return_call without staged tail feature = %v, want rejection (module=%d funcs)", err, len(returnModule.Code))
@@ -1019,6 +1025,8 @@ func TestStagedMultiMemoryNativeContextProductAndGates(t *testing.T) {
 		t.Fatalf("decode return_call gate module: %v", err)
 	}
 	features := NewRuntimeConfig().frontendFeatures()
+	features.TailCalls = false
+	features.TypedTailCalls = false
 	features.MultiMemory = true
 	if _, err := compileWithFrontendFeatures(NewRuntimeConfig(), returnCall, features); err == nil || !strings.Contains(err.Error(), "tail") {
 		t.Fatalf("return_call without staged tail feature = %v, want fail-closed rejection (module=%d funcs)", err, len(returnModule.Code))

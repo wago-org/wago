@@ -286,7 +286,8 @@ current optimization priorities. The Core 3.0 implementation ledger is
   zero interruption instrumentation in generated Wasm. Other targets retain
   function-entry and loop-header polls. Both Linux architectures return
   `context.Canceled`/`DeadlineExceeded`, and active-instance close uses the same
-  trap. See `docs/linux-host-interrupt.md`.
+  trap. Standard Go releases the P at the foreign boundary. TinyGo cancelable
+  calls require the threads scheduler. See `docs/linux-host-interrupt.md`.
 - [x] Wasm-level trap source frames: generated cold edges report the logical
   function (including inlined callees) and an exact Wasm PC when a function has
   one site for that trap class. Shared multi-site stubs still report the

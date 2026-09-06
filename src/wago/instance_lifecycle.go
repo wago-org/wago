@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -16,8 +17,9 @@ const (
 // owned memory as soon as no invocation or retained reference can still reach
 // them. An activation parked in host code may finish after Close returns; its
 // invocation lease defers physical release until native execution has unwound.
-// Imported memory is left for the host to Close. Close is idempotent. Concurrent
-// callers wait for the active close operation and receive its same result.
+// Imported memory is left for the host to Close. Close is idempotent. A caller
+// that joins an active close returns promptly, which permits callback reentry.
+// Call WaitClosed to wait for the active close operation and receive its result.
 func (in *Instance) Close() (err error) {
 	if in == nil {
 		return nil
@@ -30,7 +32,7 @@ func (in *Instance) Close() (err error) {
 		default:
 			// A callback may reenter Close while the lifecycle owner is still
 			// active. Returning promptly avoids self-deadlock; external callers
-			// that need completion use closeAndWait or Runtime.WaitClosed.
+			// that need completion use WaitClosed.
 			return nil
 		}
 	}
@@ -42,6 +44,28 @@ func (in *Instance) Close() (err error) {
 		close(state.done)
 	}()
 	return in.closeOnce()
+}
+
+// WaitClosed waits for an already-started Close operation and returns its result.
+// It does not start closure or wait for physical release held by active guest
+// calls or retained references. Close callbacks must not wait for themselves.
+func (in *Instance) WaitClosed(ctx context.Context) error {
+	if in == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	state := in.ensurePluginState().close.Load()
+	if state == nil {
+		return fmt.Errorf("wago: instance close has not started")
+	}
+	select {
+	case <-state.done:
+		return state.result
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (in *Instance) beginClose() (*instanceCloseState, bool) {

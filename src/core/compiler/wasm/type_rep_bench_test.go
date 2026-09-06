@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unsafe"
 
-	corergc "github.com/wago-org/wago/src/core/runtime/gc"
+	corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func typeContainsGoPointer(t reflect.Type) bool {

@@ -242,6 +242,7 @@ type RuntimeConfig struct {
 	maxFunctionLocals        uint32 // total function parameters plus declared locals
 	maxMemoriesPerModule     uint32
 	maxInstanceMetadataBytes uint64
+	maxCompiledMetadataBytes uint64
 	maxModuleBytes           uint64
 	maxNativeCodeBytes       uint64
 	boundsChecks             BoundsCheckMode
@@ -353,6 +354,7 @@ func NewRuntimeConfig() *RuntimeConfig {
 		optimizationDeltas:   optimizationDeltas,
 		trustedOptimizations: true,
 		maxMemoryPages:       defaultMaxMemoryPages,
+		maxModuleBytes:       64 << 20,
 		maxFunctionLocals:    DefaultMaxFunctionLocals,
 		maxMemoriesPerModule: DefaultMaxMemoriesPerModule,
 		boundsChecks:         bounds,
@@ -482,8 +484,22 @@ func (c *RuntimeConfig) WithMaxInstanceMetadataBytes(bytes uint64) *RuntimeConfi
 	return &n
 }
 
+// WithMaxCompiledMetadataBytes bounds owned execution-snapshot metadata before
+// cloning. Zero selects the 256 MiB default. This is separate from native
+// instance metadata and applies to compilation and precompiled module admission.
+func (c *RuntimeConfig) WithMaxCompiledMetadataBytes(bytes uint64) *RuntimeConfig {
+	n := *c
+	n.maxCompiledMetadataBytes = bytes
+	return &n
+}
+
+// MaxCompiledMetadataBytes returns the configured snapshot quota; zero selects
+// the default decoded metadata quota.
+func (c *RuntimeConfig) MaxCompiledMetadataBytes() uint64 { return c.maxCompiledMetadataBytes }
+
 // WithMaxModuleBytes caps input Wasm bytes accepted by compilation. Zero is
-// unbounded. This is a cheap front-door compile resource quota.
+// unbounded. The default is 64 MiB. Decode-time type and metadata limits still
+// apply independently. This is a cheap front-door compile resource quota.
 func (c *RuntimeConfig) WithMaxModuleBytes(bytes uint64) *RuntimeConfig {
 	n := *c
 	n.maxModuleBytes = bytes
@@ -679,8 +695,8 @@ func (c *RuntimeConfig) MustCompile(wasmBytes []byte) *Compiled {
 }
 
 func (c *RuntimeConfig) String() string {
-	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, maxMemoriesPerModule: %d, maxInstanceMetadataBytes: %d, maxModuleBytes: %d, maxNativeCodeBytes: %d, functionWorkers: %d, nativeStackBytes: %d, independentInstances: %t}",
-		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.maxMemoriesPerModule, c.maxInstanceMetadataBytes, c.maxModuleBytes, c.maxNativeCodeBytes, c.functionWorkers, c.nativeStackBytes, c.independentInstances)
+	return fmt.Sprintf("RuntimeConfig{features: %s, optimizations: %d, bounds: %s, maxMemoryPages: %d, maxFunctionLocals: %d, maxMemoriesPerModule: %d, maxInstanceMetadataBytes: %d, maxCompiledMetadataBytes: %d, maxModuleBytes: %d, maxNativeCodeBytes: %d, functionWorkers: %d, nativeStackBytes: %d, independentInstances: %t}",
+		c.features, len(c.optimizations), c.boundsChecks, c.maxMemoryPages, c.maxFunctionLocals, c.maxMemoriesPerModule, c.maxInstanceMetadataBytes, c.maxCompiledMetadataBytes, c.maxModuleBytes, c.maxNativeCodeBytes, c.functionWorkers, c.nativeStackBytes, c.independentInstances)
 }
 
 // SupportedFeatures reports the WebAssembly feature set this wago build can

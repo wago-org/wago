@@ -101,6 +101,7 @@ func validateModuleWithWorkersFeaturesAndLimits(m *Module, direct *directValidat
 	// decoding allocates, leaving its inline operand/control stacks reclaimed
 	// during validation.
 	v := moduleValidator{m: m, funcIndex: -1, direct: direct, features: features, limits: limits}
+	v.ensureImportIndexes()
 	if err := v.validateModule(); err != nil {
 		runtime.KeepAlive(m)
 		runtime.KeepAlive(direct)
@@ -126,7 +127,7 @@ func (v *moduleValidator) validateFunctions(workers int) error {
 }
 
 func (v *moduleValidator) validateFunctionsSerial() error {
-	importedFuncs := v.m.ImportedFuncCount()
+	importedFuncs := len(v.importsOfKind(ExternFunc))
 	widths := moduleMemargWidths(v.m)
 	// Keep the reusable operand/control-stack owner in the validating frame.
 	// Besides avoiding one allocation, this makes its lifetime explicit for
@@ -163,7 +164,7 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 // declared-function bits are immutable, the component-type cache is frozen, and
 // the serial const-expression validator is no longer reachable from body checks.
 func (v *moduleValidator) validateFunctionsParallel(workers int) error {
-	importedFuncs := v.m.ImportedFuncCount()
+	importedFuncs := len(v.importsOfKind(ExternFunc))
 	widths := moduleMemargWidths(v.m)
 	type result struct {
 		index int
@@ -214,11 +215,13 @@ func (v *moduleValidator) freezeCompCache() {
 }
 
 type moduleValidator struct {
-	m         *Module
-	funcIndex int
-	direct    *directValidationEnv
-	features  ValidationFeatures
-	limits    ValidationLimits
+	importIndexes    [5][]uint32
+	importIndexReady bool
+	m                *Module
+	funcIndex        int
+	direct           *directValidationEnv
+	features         ValidationFeatures
+	limits           ValidationLimits
 
 	// declaredFuncBits is the module validation context's declared function-
 	// reference set. The inline word keeps the common <=64-function module from
@@ -330,11 +333,11 @@ func (v *moduleValidator) validateModule() error {
 			return err
 		}
 	}
-	if v.m.MemCount() > 1 && !v.features.MultiMemory {
+	if (len(v.importsOfKind(ExternMem))+len(v.m.Memories)) > 1 && !v.features.MultiMemory {
 		return v.err(ErrUnsupportedFeature, "multiple memories")
 	}
-	if uint64(v.m.MemCount()) > uint64(v.limits.MaxMemoriesPerModule) {
-		return v.err(ErrResourceLimitExceeded, fmt.Sprintf("memory count %d exceeds configured limit %d", v.m.MemCount(), v.limits.MaxMemoriesPerModule))
+	if uint64((len(v.importsOfKind(ExternMem)) + len(v.m.Memories))) > uint64(v.limits.MaxMemoriesPerModule) {
+		return v.err(ErrResourceLimitExceeded, fmt.Sprintf("memory count %d exceeds configured limit %d", (len(v.importsOfKind(ExternMem))+len(v.m.Memories)), v.limits.MaxMemoriesPerModule))
 	}
 	for _, tag := range v.m.Tags {
 		if err := v.validateTagType(tag, "tag"); err != nil {
@@ -345,7 +348,7 @@ func (v *moduleValidator) validateModule() error {
 		if err := v.validateGlobalType(g.Type); err != nil {
 			return err
 		}
-		globalLimit := v.m.ImportedGlobalCount() + i
+		globalLimit := len(v.importsOfKind(ExternGlobal)) + i
 		if v.direct != nil {
 			if i >= len(v.direct.globalInits) {
 				return v.err(ErrTypeMismatch, "global init")
@@ -478,7 +481,7 @@ func (v *moduleValidator) collectDeclaredFuncsInExpr(expr Expr) {
 }
 
 func (v *moduleValidator) declareFunc(idx uint32) {
-	funcCount := v.m.FuncCount()
+	funcCount := (len(v.importsOfKind(ExternFunc)) + len(v.m.FuncTypes))
 	if uint64(idx) >= uint64(funcCount) {
 		return
 	}
@@ -679,15 +682,12 @@ func (v *moduleValidator) validateMemType(mt MemType) error {
 	return nil
 }
 func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternFunc {
-			if n == idx {
-				ft := v.funcTypeFromTypeIdx(im.Type.FuncType())
-				return ft, ft != nil
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternFunc)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		ft := v.funcTypeFromTypeIdx(im.Type.FuncType())
+		return ft, ft != nil
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.FuncTypes) {
@@ -701,14 +701,11 @@ func (v *moduleValidator) funcType(idx uint32) (*CompType, bool) {
 // packed, so returning a pointer would force their reconstructed value to
 // escape on every global.get/global.set validation.
 func (v *moduleValidator) globalType(idx uint32) (GlobalType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternGlobal {
-			if n == idx {
-				return im.Type.GlobalType(), true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternGlobal)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.GlobalType(), true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Globals) {
@@ -718,14 +715,11 @@ func (v *moduleValidator) globalType(idx uint32) (GlobalType, bool) {
 }
 
 func (v *moduleValidator) globalProperties(idx uint32) (typ ValType, mutable bool, ok bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternGlobal {
-			if n == idx {
-				return im.Type.value, im.Type.flags&externTypeMutable != 0, true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternGlobal)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.value, im.Type.flags&externTypeMutable != 0, true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Globals) {
@@ -735,14 +729,11 @@ func (v *moduleValidator) globalProperties(idx uint32) (typ ValType, mutable boo
 	return gt.Type, gt.Mutable, true
 }
 func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternTable {
-			if n == idx {
-				return im.Type.TableType(), true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternTable)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.TableType(), true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Tables) {
@@ -755,14 +746,11 @@ func (v *moduleValidator) tableType(idx uint32) (TableType, bool) {
 // packed, so returning a pointer would make reconstruction escape on every
 // load/store validated by checkMemArg.
 func (v *moduleValidator) memoryType(idx uint32) (MemType, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternMem {
-			if n == idx {
-				return im.Type.MemType(), true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternMem)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.MemType(), true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Memories) {
@@ -772,14 +760,11 @@ func (v *moduleValidator) memoryType(idx uint32) (MemType, bool) {
 }
 
 func (v *moduleValidator) memoryProperties(idx uint32) (uint8, bool) {
-	n := uint32(0)
-	for i := range v.m.Imports {
-		if im := &v.m.Imports[i]; im.Type.Kind == ExternMem {
-			if n == idx {
-				return im.Type.flags, true
-			}
-			n++
-		}
+	indexes := v.importsOfKind(ExternMem)
+	n := uint32(len(indexes))
+	if idx < n {
+		im := &v.m.Imports[indexes[idx]]
+		return im.Type.flags, true
 	}
 	local := int(idx - n)
 	if local < 0 || local >= len(v.m.Memories) {
@@ -798,21 +783,21 @@ func (v *moduleValidator) memoryProperties(idx uint32) (uint8, bool) {
 func (v *moduleValidator) validExternIdx(x ExternIdx) bool {
 	switch x.Kind {
 	case ExternFunc:
-		return int(x.Index) < v.m.FuncCount()
+		return int(x.Index) < (len(v.importsOfKind(ExternFunc)) + len(v.m.FuncTypes))
 	case ExternTable:
-		return int(x.Index) < v.m.TableCount()
+		return int(x.Index) < (len(v.importsOfKind(ExternTable)) + len(v.m.Tables))
 	case ExternMem:
-		return int(x.Index) < v.m.MemCount()
+		return int(x.Index) < (len(v.importsOfKind(ExternMem)) + len(v.m.Memories))
 	case ExternGlobal:
-		return int(x.Index) < v.m.GlobalCount()
+		return int(x.Index) < (len(v.importsOfKind(ExternGlobal)) + len(v.m.Globals))
 	case ExternTag:
-		return int(x.Index) < v.m.TagCount()
+		return int(x.Index) < (len(v.importsOfKind(ExternTag)) + len(v.m.Tags))
 	}
 	return false
 }
 
 func (v *moduleValidator) validateConstExpr(e Expr, want ValType) error {
-	return v.validateConstExprWithGlobalLimit(e, want, v.m.ImportedGlobalCount()+len(v.m.Globals))
+	return v.validateConstExprWithGlobalLimit(e, want, len(v.importsOfKind(ExternGlobal))+len(v.m.Globals))
 }
 
 func (v *moduleValidator) validateConstExprWithGlobalLimit(e Expr, want ValType, globalLimit int) error {
@@ -860,7 +845,7 @@ func (v *moduleValidator) validateElemPayload(e Elem) (RefType, error) {
 	switch e.Kind.Kind {
 	case ElemFuncs:
 		for _, f := range e.Kind.Funcs {
-			if int(f) >= v.m.FuncCount() {
+			if int(f) >= (len(v.importsOfKind(ExternFunc)) + len(v.m.FuncTypes)) {
 				return RefType{}, v.err(ErrUnknownFunc, "elem")
 			}
 		}

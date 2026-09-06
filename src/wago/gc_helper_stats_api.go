@@ -1,6 +1,6 @@
 package wago
 
-import corergc "github.com/wago-org/wago/src/core/runtime/gc"
+import corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
 
 // GCHelperStats reports executed synchronous Go helper transitions for one
 // tracked collector domain.

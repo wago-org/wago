@@ -175,3 +175,67 @@ previously more permissive. On Windows the same locking and atomic replacement
 rules apply, but POSIX mode bits are not equivalent to Windows ACL guarantees;
 this implementation does not claim ACL hardening beyond the current user's
 normal filesystem protections.
+
+## Paired manager releases
+
+The installer and self-update stage the manager and plugin-build source together
+under `bin/.wago-releases/release-*`. They verify the staged manager, sync the
+pair, and atomically publish `bin/.wago-release.json` under a process lock. The
+record names the previous release for rollback. Old release directories remain
+intact while old managers run. Source lookup uses the running executable's own
+release directory, never the current selection.
+
+Each successful publication retains the current and previous releases and prunes
+older inactive pairs. Running managers hold a shared file lease; Unix dispatch
+keeps its descriptor across exec, and Windows dispatch holds it while waiting
+for the child. New payloads also pin themselves when started directly. Pruning
+takes an exclusive lease and renames the retired directory before unlocking,
+so a concurrent launch cannot pin a directory already selected for removal.
+The next publication removes pairs whose last process has exited. No background
+worker or process registry is needed. Failed-publication recovery directories
+and legacy directories without lease metadata stay until explicit recovery or
+uninstall; they are not part of the normal successful-update retention set.
+
+The stable `bin/wago` dispatcher enters the selected payload. Launcher role and
+release discovery use the real executable path, so renamed symlinks and custom
+`argv[0]` values cannot route manager calls into installer commands. The installer
+supplies this dispatcher even for older manager payloads, passing paired source
+through `WAGO_SRC`. It tracks that automatic binding with `WAGO_RELEASE_SOURCE`
+so a nested launcher updates it; an explicit user `WAGO_SRC` override still wins.
+Self-update can use its existing dispatcher without replacing a running Windows
+executable. Legacy source, including `WAGO_SRC_DIR`, is preserved for old running
+managers; new paired sources live beside their immutable manager payload.
+
+First-install/legacy bootstrap retains any prior launcher as `previous-launcher`
+in the staged release. A bootstrap failure restores the prior selection; a
+failed restoration reports the retained release path. Staged verification and
+publication failures never delete prior source. Reinstall data cleanup happens
+after publication and preserves release/legacy source paths. Every self-uninstall
+mode removes the stable launcher, release selection/lock files, and all paired
+releases, including their source. Minimal mode still preserves separately
+installed runtimes, configuration, and legacy source. Full uninstall also removes
+the selected Wago home; a custom launcher directory keeps unrelated sibling
+files. Windows defers removal until the running payload exits, even when its
+path differs from the stable launcher.
+
+To roll back an existing paired installation, select its recorded previous
+release through the same locked atomic writer. For a legacy bootstrap, restore
+the retained launcher and its prior selection (or remove the selection if none
+existed). During update and rollback, do not delete a release while a process
+still runs its payload. Explicit uninstall ends the paired-source guarantee.
+
+## Plugin build lock removal races
+
+The plugin build module uses a directory lock across processes. On Windows,
+`mkdir` can return access denied while the previous owner removes that directory;
+a following `Stat` may already see no lock. Acquisition retries one consecutive
+permission failure without a visible lock, using the existing 50 ms poll. A
+second failure returns the original permission error. Confirmed contention
+retains the existing timeout. The callback runs only after `mkdir` succeeds.
+
+`TestBuildLockRetriesRemovalRace` injects the removal window and verifies actual
+lock creation; `TestBuildLockReportsPersistentPermissionFailure` checks the
+bounded error path. The serialization test still checks that callbacks do not
+overlap. The removal test fails without the retry. All build-lock tests pass in
+20 repetitions on Linux and Windows/amd64 under Wine with Go 1.22.12. This affects
+CLI lock contention only; Wasm execution and runtime memory layout are unchanged.

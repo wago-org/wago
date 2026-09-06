@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -311,6 +312,13 @@ func TestReferenceGlobalCloseOrderingAliasesAndStoreRoots(t *testing.T) {
 	}
 	if err := in.Close(); err != nil {
 		t.Fatalf("Instance.Close: %v", err)
+	}
+	// Runtime.Close may already own the instance close on its shutdown worker.
+	// Join that worker before inspecting the released importer roots.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := rt.WaitClosed(ctx); err != nil {
+		t.Fatalf("Runtime.WaitClosed: %v", err)
 	}
 	if got := shared.owner.importers; got != 0 {
 		t.Fatalf("importers after close = %d, want 0", got)

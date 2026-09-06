@@ -220,7 +220,11 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 		gc = *state.gcConfig
 	}
 	pluginGCImports := parent.pluginGCImportSet()
-	child, err := rt.instantiateWithHooksOrigin(buildModule(parent.c, bindings), imports, pluginGCImports, gc, hasGC, false, InstantiateManaged, hooks, operation.reservation, nil)
+	mod, err := buildModule(parent.c, bindings)
+	var child *Instance
+	if err == nil {
+		child, err = rt.instantiateWithHooksOrigin(mod, imports, pluginGCImports, gc, hasGC, false, InstantiateManaged, hooks, operation.reservation, nil)
+	}
 	if err != nil {
 		m.mu.Lock()
 		m.live--
@@ -355,7 +359,10 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 		}
 		return in.replayHostLog()
 	}
-	stopCancel := in.startCancellationWatch(ctx, in.trap)
+	stopCancel, err := in.startCancellationWatch(ctx, in.trap)
+	if err != nil {
+		return err
+	}
 	defer stopCancel()
 	if in.syncMode {
 		return contextInterruptError(ctx, in.callNativeSyncWithTrapContext(base, in.trap, ctx))

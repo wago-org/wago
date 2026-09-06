@@ -9,15 +9,20 @@ import (
 
 	"github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/src/core/runtime/abi"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // InstantiateOptions configures instance creation from a *Compiled.
 type InstantiateOptions struct {
-	Imports Imports
-	GC      GCConfig
-	store   *referenceStore
+	// MaxCompiledMetadataBytes bounds the frozen Go metadata snapshot. Zero
+	// uses the source policy or the 256 MiB default; native instance storage
+	// has a separate quota. A stricter limit also applies to an existing snapshot.
+	MaxCompiledMetadataBytes uint64
+	Imports                  Imports
+	GC                       GCConfig
+	store                    *referenceStore
 
+	ownedImports             bool // private Runtime resolution has transferred ownership
 	runtime                  *Runtime
 	origin                   InstantiateOrigin
 	pluginGC                 *GCConfig
@@ -117,6 +122,15 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 }
 
 func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, moduleUse *Module) (*Instance, error) {
+	defer goruntime.KeepAlive(c)
+	// Keep validation, native linking, public lookup, and teardown on one binding set.
+	if opts.Imports != nil && !opts.ownedImports {
+		imports := make(Imports, len(opts.Imports))
+		for key, value := range opts.Imports {
+			imports[key] = value
+		}
+		opts.Imports = imports
+	}
 	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports, moduleUse: moduleUse}
 	defer b.releaseModuleUse()
 	if c == nil {
@@ -128,6 +142,12 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	if err := c.checkOpen(); err != nil {
 		return nil, err
 	}
+	var err error
+	c, err = c.freezeExecution(opts.MaxCompiledMetadataBytes)
+	if err != nil {
+		return nil, err
+	}
+	b.c = c
 	if err := c.preflightImportBindings(opts.Imports); err != nil {
 		return nil, err
 	}

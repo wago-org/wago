@@ -175,12 +175,6 @@ func TestStackFinishFunctionRetainsBoundedReusableOverflowArm64(t *testing.T) {
 	}
 }
 
-func testElem(kind elemKind) *elem {
-	e := new(elem)
-	e.setElemKind(kind)
-	return e
-}
-
 func TestScratchClearNodeReferencesArm64(t *testing.T) {
 	e := &elem{}
 	sc := scratch{}

@@ -203,13 +203,24 @@ func (c *Collector) shouldAllocateLarge(size uint32) bool {
 }
 
 func (c *Collector) newHandle(e handleEntry) uint32 {
-	if n := len(c.freeHandles); n > 0 {
+	for len(c.freeHandles) > 0 {
+		n := len(c.freeHandles)
 		h := c.freeHandles[n-1]
 		c.freeHandles = c.freeHandles[:n-1]
+		if c.checkedHandles != nil {
+			generations := *c.checkedHandles
+			if generations[h] == ^uint64(0) {
+				continue
+			} // retire rather than wrap
+			generations[h]++
+		}
 		c.handles[h] = e
 		return h
 	}
 	c.handles = append(c.handles, e)
+	if c.checkedHandles != nil {
+		*c.checkedHandles = append(*c.checkedHandles, 1)
+	}
 	c.mark = append(c.mark, false)
 	// The handle is unpublished until the profile-specific post-allocation path.
 	// Tiny overwrites this byte with its current-epoch gray/black state; keeping

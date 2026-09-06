@@ -11,7 +11,7 @@ import (
 	"unsafe"
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func stagedGCExternBytes(t testing.TB) []byte {

@@ -199,6 +199,7 @@ type GCNativeRootAdmission struct {
 // GCNativeRootAdmission reports exact native-root coverage and actionable
 // fail-closed diagnostics without exposing live frames or process-local handles.
 func (c *Compiled) GCNativeRootAdmission() GCNativeRootAdmission {
+	c = c.executionView()
 	status := GCNativeRootAdmission{Required: c != nil && c.needsExactNativeGCRoots()}
 	if c == nil {
 		status.Reason = "nil compiled module"

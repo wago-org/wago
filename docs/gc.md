@@ -3,7 +3,7 @@
 This document describes wago's native Wasm GC runtime direction. WasmGC is now
 active mandatory WebAssembly 3.0 scope, tracked in [wasm3.md](wasm3.md), rather
 than a non-goal. The current implementation is an initial foundation under
-`src/core/runtime/gc`; it establishes reference encoding, object metadata, typed
+`src/core/runtime/gc/native`; it establishes reference encoding, object metadata, typed
 descriptors, a byte-slice heap skeleton, exact scanning, roots, barriers, stress
 knobs, and tests.
 
@@ -571,7 +571,7 @@ remain later slices.
 
 Iterations 34-35 define the bridge between amd64 exception frames and the collector/
 lifecycle layers. `src/core/nativeabi` owns dependency-neutral `FunctionRootMap` and
-`RootSlot` records; `src/core/runtime/gc` aliases and validates them at the collector
+`RootSlot` records; `src/core/runtime/gc/native` aliases and validates them at the collector
 boundary. A map names one local function, the minimum post-prologue frame prefix containing
 its roots, and strictly ordered 8-byte-aligned offsets relative to that function's post-
 prologue RSP. Validation rejects out-of-range functions, duplicate or unordered maps/slots,
@@ -2384,8 +2384,8 @@ the hooks to constant no-ops and retain no injector state. The hardening suite i
 run with:
 
 ```sh
-go test -tags wagodebug ./src/core/runtime/gc
-go test -race -tags wagodebug ./src/core/runtime/gc
+go test -tags wagodebug ./src/core/runtime/gc/...
+go test -race -tags wagodebug ./src/core/runtime/gc/...
 ```
 
 The injection matrix covers promotion planning, destination allocation, commit
@@ -2485,3 +2485,10 @@ ranges, destination element type, and allocation bounds before publishing a
 collector reference. Reference argument/result conversion uses store-owned
 extern/any tokens and releases transient ownership after matching. The pinned
 full suite passes 2,226 modules and 58,038 assertions with zero gaps.
+
+## Checked Go references
+
+The parent `src/core/runtime/gc` package now supplies collector-bound, generation-
+checked references for Go callers. Its opaque Ref is separate from the compact
+native ABI described above. See [GC reference boundaries](gc-reference-boundaries.md)
+for ownership, rooting, and migration rules.

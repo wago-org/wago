@@ -32,6 +32,10 @@ Implemented runtime configuration quotas include:
 - `WithMemoryLimitPages`: live pages per memory, checked at instantiation and by
   `memory.grow`; zero adds no quota;
 - `WithMaxInstanceMetadataBytes`: validated off-heap metadata bytes per instance;
+- `WithMaxCompiledMetadataBytes`: owned execution-snapshot metadata, checked
+  before cloning; zero selects the 256 MiB default. Low-level callers use
+  `InstantiateOptions.MaxCompiledMetadataBytes`. Counts include destination
+  copies of aliased slices and allocation-rounding allowances;
 - `WithMaxModuleBytes`: input Wasm bytes per compilation;
 - `WithMaxNativeCodeBytes`: generated native code bytes per module;
 - instance count, aggregate memory, and native mapping limits already exposed by
