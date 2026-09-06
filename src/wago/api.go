@@ -4321,7 +4321,8 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 		state.invocationID = 0
 		state.invokeMu.Unlock()
 	}()
-	if !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil {
+	privateRefStore := in.refStore == nil || in.refStore.private
+	if !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil && privateRefStore {
 		// Admit before reading cached or compiled entry metadata. Close publishes
 		// its gate without taking invokeMu, so the invocation count is what keeps
 		// those resources live through this fast-path probe and native entry.
