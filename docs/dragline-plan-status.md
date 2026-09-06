@@ -314,6 +314,13 @@ the performance corpus.
   and 19,840 bytes respectively. Six alternating serialized SQLite public-
   compile runs are neutral at 1.6797 versus 1.6798 seconds median, while median
   allocation volume falls by about 65 KiB/op.
+- Compact ARM64 pair relations: ✅ verified load/store partner identities use
+  the same adaptive 16-bit representation below 65,536 machine instructions
+  and retain the 32-bit fallback above it. SQLite, Lua, and regexmatch native
+  images remain byte-identical while peak storage falls another 16,068, 3,910,
+  and 19,840 bytes. Six alternating serialized SQLite public compiles are
+  effectively neutral at 1.695 versus 1.693 seconds median, and median
+  allocation volume falls by about 30 KiB/op.
 - Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
   bounded initial schedule candidate's realized post-allocation spill debt,
   physical copies, copy cycles, copy motion, fixed repairs, broken fusions,

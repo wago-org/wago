@@ -4842,8 +4842,10 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					continue
 				}
 				encodedSecond := uint32(0)
-				if len(plan.PostRAPairWith) != 0 {
-					encodedSecond = plan.PostRAPairWith[instructionID]
+				if len(plan.PostRAPairWith16) != 0 {
+					encodedSecond = uint32(plan.PostRAPairWith16[instructionID])
+				} else if len(plan.PostRAPairWith32) != 0 {
+					encodedSecond = plan.PostRAPairWith32[instructionID]
 				}
 				if encodedSecond != 0 {
 					secondID := encodedSecond - 1
@@ -7309,7 +7311,8 @@ func arm64RailMachHasSpecialMemoryEmission(plan *nativeBackendPlan, instruction 
 		return true
 	}
 	return len(plan.PostRASkip) != 0 && plan.PostRASkip[instruction] ||
-		len(plan.PostRAPairWith) != 0 && plan.PostRAPairWith[instruction] != 0 ||
+		len(plan.PostRAPairWith16) != 0 && plan.PostRAPairWith16[instruction] != 0 ||
+		len(plan.PostRAPairWith32) != 0 && plan.PostRAPairWith32[instruction] != 0 ||
 		len(plan.PostRAForwardFrom) != 0 && plan.PostRAForwardFrom[instruction] != 0 ||
 		len(plan.PostRAFusionWith16) != 0 && plan.PostRAFusionWith16[instruction] != 0 ||
 		len(plan.PostRAFusionWith32) != 0 && plan.PostRAFusionWith32[instruction] != 0 ||

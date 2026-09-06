@@ -2495,7 +2495,10 @@ func TestARM64RailMachPairsAndRotatesZeroTerminatedPointerChase(t *testing.T) {
 	}
 	plan.SignalsBounds = true
 	paired := false
-	for _, encoded := range plan.PostRAPairWith {
+	for _, encoded := range plan.PostRAPairWith16 {
+		paired = paired || encoded != 0
+	}
+	for _, encoded := range plan.PostRAPairWith32 {
 		paired = paired || encoded != 0
 	}
 	rotated := false
@@ -2558,7 +2561,12 @@ func TestARM64RailMachDoesNotPairLoadsAcrossTrap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, encoded := range plan.PostRAPairWith {
+	for _, encoded := range plan.PostRAPairWith16 {
+		if encoded != 0 {
+			t.Fatalf("loads were paired across trapping division: %#v", plan.PostRA.Rewrites)
+		}
+	}
+	for _, encoded := range plan.PostRAPairWith32 {
 		if encoded != 0 {
 			t.Fatalf("loads were paired across trapping division: %#v", plan.PostRA.Rewrites)
 		}
@@ -3139,7 +3147,10 @@ func TestARM64RealizesFloatingMemoryPair(t *testing.T) {
 		t.Fatal(err)
 	}
 	found := false
-	for _, encoded := range plan.PostRAPairWith {
+	for _, encoded := range plan.PostRAPairWith16 {
+		found = found || encoded != 0
+	}
+	for _, encoded := range plan.PostRAPairWith32 {
 		found = found || encoded != 0
 	}
 	if !found {

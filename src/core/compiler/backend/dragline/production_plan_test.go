@@ -526,8 +526,8 @@ func TestNativeBackendPlannerAllocatesOnlyRequiredPostRAScratch(t *testing.T) {
 	if !planner.preparePostRAScratch(railmach.TargetARM64, 64, []railmach.Rewrite{{Kind: railmach.RewriteARM64CompareBranch}}) {
 		t.Fatal("ARM64 compare/branch was not recognized as realizable")
 	}
-	if len(planner.postRAFusionWith16) != 64 || len(planner.postRAFusionWith32) != 0 || len(planner.postRAPairWith) != 0 || len(planner.postRASkip) != 0 || len(planner.postRAForwardFrom) != 0 || len(planner.postRAMemoryFrom) != 0 || len(planner.postRARepeatFirst) != 0 {
-		t.Fatalf("compare/branch scratch = fusion16:%d fusion32:%d pair:%d skip:%d forward:%d memory:%d repeat:%d", len(planner.postRAFusionWith16), len(planner.postRAFusionWith32), len(planner.postRAPairWith), len(planner.postRASkip), len(planner.postRAForwardFrom), len(planner.postRAMemoryFrom), len(planner.postRARepeatFirst))
+	if len(planner.postRAFusionWith16) != 64 || len(planner.postRAFusionWith32) != 0 || len(planner.postRAPairWith16) != 0 || len(planner.postRAPairWith32) != 0 || len(planner.postRASkip) != 0 || len(planner.postRAForwardFrom) != 0 || len(planner.postRAMemoryFrom) != 0 || len(planner.postRARepeatFirst) != 0 {
+		t.Fatalf("compare/branch scratch = fusion16:%d fusion32:%d pair16:%d pair32:%d skip:%d forward:%d memory:%d repeat:%d", len(planner.postRAFusionWith16), len(planner.postRAFusionWith32), len(planner.postRAPairWith16), len(planner.postRAPairWith32), len(planner.postRASkip), len(planner.postRAForwardFrom), len(planner.postRAMemoryFrom), len(planner.postRARepeatFirst))
 	}
 	planner.setPostRAFusion(1, 63)
 	if planner.postRAFusionWith16[1] != 64 || planner.postRAFusionWith16[63] != 2 {
@@ -536,8 +536,12 @@ func TestNativeBackendPlannerAllocatesOnlyRequiredPostRAScratch(t *testing.T) {
 	if !planner.preparePostRAScratch(railmach.TargetARM64, 32, []railmach.Rewrite{{Kind: railmach.RewriteARM64Pair}}) {
 		t.Fatal("ARM64 pair was not recognized as realizable")
 	}
-	if len(planner.postRAPairWith) != 32 || len(planner.postRASkip) != 32 || len(planner.postRAFusionWith16) != 0 || len(planner.postRAFusionWith32) != 0 {
-		t.Fatalf("pair scratch = pair:%d skip:%d fusion16:%d fusion32:%d", len(planner.postRAPairWith), len(planner.postRASkip), len(planner.postRAFusionWith16), len(planner.postRAFusionWith32))
+	if len(planner.postRAPairWith16) != 32 || len(planner.postRAPairWith32) != 0 || len(planner.postRASkip) != 32 || len(planner.postRAFusionWith16) != 0 || len(planner.postRAFusionWith32) != 0 {
+		t.Fatalf("pair scratch = pair16:%d pair32:%d skip:%d fusion16:%d fusion32:%d", len(planner.postRAPairWith16), len(planner.postRAPairWith32), len(planner.postRASkip), len(planner.postRAFusionWith16), len(planner.postRAFusionWith32))
+	}
+	planner.setPostRAPair(1, 31)
+	if planner.postRAPairWith16[1] != 32 {
+		t.Fatalf("compact pair relation = %d, want 32", planner.postRAPairWith16[1])
 	}
 	if planner.preparePostRAScratch(railmach.TargetARM64, 32, []railmach.Rewrite{{Kind: railmach.RewriteAMD64MemoryFold}}) {
 		t.Fatal("cross-target rewrite allocated realization scratch")
@@ -548,6 +552,13 @@ func TestNativeBackendPlannerAllocatesOnlyRequiredPostRAScratch(t *testing.T) {
 	planner.setPostRAFusion(1, 1<<16-1)
 	if planner.postRAFusionWith32[1] != 1<<16 || planner.postRAFusionWith32[1<<16-1] != 2 {
 		t.Fatalf("wide fusion relation = %d/%d, want %d/2", planner.postRAFusionWith32[1], planner.postRAFusionWith32[1<<16-1], 1<<16)
+	}
+	if !planner.preparePostRAScratch(railmach.TargetARM64, 1<<16, []railmach.Rewrite{{Kind: railmach.RewriteARM64Pair}}) || len(planner.postRAPairWith16) != 0 || len(planner.postRAPairWith32) != 1<<16 {
+		t.Fatalf("large pair scratch = pair16:%d pair32:%d", len(planner.postRAPairWith16), len(planner.postRAPairWith32))
+	}
+	planner.setPostRAPair(1, 1<<16-1)
+	if planner.postRAPairWith32[1] != 1<<16 {
+		t.Fatalf("wide pair relation = %d, want %d", planner.postRAPairWith32[1], 1<<16)
 	}
 }
 
