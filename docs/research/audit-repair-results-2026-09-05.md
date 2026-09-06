@@ -345,3 +345,13 @@ string. Exact-subtree behavior remains covered by the existing strict JSON tests
 The race suite passes. Ten-sample final captures retain 3888 B/204 allocations at
 64 fields and 29680 B/987 allocations at 256 fields, around 6.1 and 41 us.
 Captures: final-json-a.txt and final-json-b.txt.
+
+## Windows identity snapshot follow-up
+
+Wine testing exposed lazy Windows FileInfo identity loading: comparing an old
+Stat result only after path replacement can read the new identity. Cleanup now
+forces identity capture at snapshot time on Windows. Unix keeps the prior Stat
+path. A protected-root replacement regression passes on Linux and Wine. The stale
+coordinator regression also freezes its original ID before rotation; all pending
+cleanup/recovery tests then pass under Wine. This supplements native Windows
+qualification; it does not replace the PowerShell worker gate.

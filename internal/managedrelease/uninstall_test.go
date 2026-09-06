@@ -97,6 +97,10 @@ func TestStaleCleanupRecoveryRetiresCoordinator(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Windows loads file IDs lazily; freeze the old ID before rotation.
+			if !os.SameFile(before, before) {
+				t.Fatal("read original coordinator identity")
+			}
 			if scenario == "legacy" {
 				if err := os.WriteFile(UninstallPendingPath(lockPath), nil, 0600); err != nil {
 					t.Fatal(err)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 // Reinstall cleanup runs after paired publication and preserves the launcher,
@@ -141,7 +142,7 @@ func captureCleanupProtection(paths []string) (cleanupProtection, error) {
 	p := cleanupProtection{paths: paths, roots: make([]os.FileInfo, len(paths))}
 	seen := make(map[string]bool)
 	for i, path := range paths {
-		root, err := os.Stat(path)
+		root, err := cleanupIdentitySnapshot(path)
 		if os.IsNotExist(err) {
 			continue
 		}
@@ -160,7 +161,7 @@ func captureCleanupProtection(paths []string) (cleanupProtection, error) {
 		for _, route := range []string{absolute, resolved} {
 			for !seen[route] {
 				seen[route] = true
-				info, err := os.Stat(route)
+				info, err := cleanupIdentitySnapshot(route)
 				if err != nil {
 					return p, err
 				}
@@ -211,4 +212,17 @@ func (p cleanupProtection) validate() error {
 		}
 	}
 	return nil
+}
+
+// Windows FileInfo loads its identity lazily from the path. Resolve it while
+// capturing the snapshot, before a path can refer to a different directory.
+func cleanupIdentitySnapshot(path string) (os.FileInfo, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if runtime.GOOS == "windows" && !os.SameFile(info, info) {
+		return nil, fmt.Errorf("capture cleanup identity for %s", path)
+	}
+	return info, nil
 }
