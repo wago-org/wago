@@ -3606,8 +3606,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			if size, signed, store, memory := nativeMemoryAccess(instruction.Op); memory {
 				encodedStore := uint32(0)
-				if len(plan.PostRAForwardFrom) != 0 {
-					encodedStore = plan.PostRAForwardFrom[instructionID]
+				if len(plan.PostRAForwardFrom16) != 0 {
+					encodedStore = uint32(plan.PostRAForwardFrom16[instructionID])
+				} else if len(plan.PostRAForwardFrom32) != 0 {
+					encodedStore = plan.PostRAForwardFrom32[instructionID]
 				}
 				if encodedStore != 0 {
 					storeID := encodedStore - 1

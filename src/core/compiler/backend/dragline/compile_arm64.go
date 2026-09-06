@@ -4813,8 +4813,10 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			}
 			if size, signed, store, memory := nativeMemoryAccess(instruction.Op); memory {
 				encodedStore := uint32(0)
-				if len(plan.PostRAForwardFrom) != 0 {
-					encodedStore = plan.PostRAForwardFrom[instructionID]
+				if len(plan.PostRAForwardFrom16) != 0 {
+					encodedStore = uint32(plan.PostRAForwardFrom16[instructionID])
+				} else if len(plan.PostRAForwardFrom32) != 0 {
+					encodedStore = plan.PostRAForwardFrom32[instructionID]
 				}
 				if encodedStore != 0 {
 					storeID := encodedStore - 1
@@ -7313,7 +7315,8 @@ func arm64RailMachHasSpecialMemoryEmission(plan *nativeBackendPlan, instruction 
 	return len(plan.PostRASkip) != 0 && plan.PostRASkip[instruction] ||
 		len(plan.PostRAPairWith16) != 0 && plan.PostRAPairWith16[instruction] != 0 ||
 		len(plan.PostRAPairWith32) != 0 && plan.PostRAPairWith32[instruction] != 0 ||
-		len(plan.PostRAForwardFrom) != 0 && plan.PostRAForwardFrom[instruction] != 0 ||
+		len(plan.PostRAForwardFrom16) != 0 && plan.PostRAForwardFrom16[instruction] != 0 ||
+		len(plan.PostRAForwardFrom32) != 0 && plan.PostRAForwardFrom32[instruction] != 0 ||
 		len(plan.PostRAFusionWith16) != 0 && plan.PostRAFusionWith16[instruction] != 0 ||
 		len(plan.PostRAFusionWith32) != 0 && plan.PostRAFusionWith32[instruction] != 0 ||
 		len(plan.PostRAMemoryFrom) != 0 && plan.PostRAMemoryFrom[instruction] != 0 ||

@@ -102,7 +102,8 @@ type nativeBackendPlan struct {
 	PostRAPairWith16    []uint16
 	PostRAPairWith32    []uint32
 	PostRASkip          []bool
-	PostRAForwardFrom   []uint32
+	PostRAForwardFrom16 []uint16
+	PostRAForwardFrom32 []uint32
 	PostRAFusionWith16  []uint16
 	PostRAFusionWith32  []uint32
 	PostRAMemoryFrom    []uint32
@@ -129,7 +130,8 @@ func clearPostRAEmissionRewrites(plan *nativeBackendPlan) {
 	plan.PostRAPairWith16 = nil
 	plan.PostRAPairWith32 = nil
 	plan.PostRASkip = nil
-	plan.PostRAForwardFrom = nil
+	plan.PostRAForwardFrom16 = nil
+	plan.PostRAForwardFrom32 = nil
 	plan.PostRAFusionWith16 = nil
 	plan.PostRAFusionWith32 = nil
 	plan.PostRAMemoryFrom = nil
@@ -177,7 +179,8 @@ type nativeBackendPlanner struct {
 	postRAPairWith16    []uint16
 	postRAPairWith32    []uint32
 	postRASkip          []bool
-	postRAForwardFrom   []uint32
+	postRAForwardFrom16 []uint16
+	postRAForwardFrom32 []uint32
 	postRAFusionWith16  []uint16
 	postRAFusionWith32  []uint32
 	postRAMemoryFrom    []uint32
@@ -405,7 +408,7 @@ func (p *nativeBackendPlanner) nativeCapacityBreakdown() NativePlannerCapacityBr
 	return NativePlannerCapacityBreakdown{
 		ControlFlow: sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches),
 		Bounds:      sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.amd64MemoryBounds),
-		PostRA:      sliceBytes(p.postRAPairWith16) + sliceBytes(p.postRAPairWith32) + sliceBytes(p.postRASkip) + sliceBytes(p.postRAForwardFrom) + sliceBytes(p.postRAFusionWith16) + sliceBytes(p.postRAFusionWith32) + sliceBytes(p.postRAMemoryFrom) + sliceBytes(p.postRARepeatFirst) + sliceBytes(p.postRAPreIndex) + sliceBytes(p.postRAPostIndexWith),
+		PostRA:      sliceBytes(p.postRAPairWith16) + sliceBytes(p.postRAPairWith32) + sliceBytes(p.postRASkip) + sliceBytes(p.postRAForwardFrom16) + sliceBytes(p.postRAForwardFrom32) + sliceBytes(p.postRAFusionWith16) + sliceBytes(p.postRAFusionWith32) + sliceBytes(p.postRAMemoryFrom) + sliceBytes(p.postRARepeatFirst) + sliceBytes(p.postRAPreIndex) + sliceBytes(p.postRAPostIndexWith),
 		Immediates:  sliceBytes(p.immediateProducer) + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses),
 		GC:          sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.gcValues),
 		CallsRoots:  sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots),
@@ -1725,7 +1728,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				p.postRASkip[rewrite.Second] = true
 			case railmach.RewriteLoadStoreForward:
 				if !p.postRASkip[rewrite.First] && !p.postRASkip[rewrite.Second] {
-					p.postRAForwardFrom[rewrite.Second] = rewrite.First + 1
+					p.setPostRAForward(rewrite.Second, rewrite.First)
 				}
 			case railmach.RewriteAMD64FusionRepair:
 				if machineTarget == railmach.TargetAMD64 && planInstructionsAdjacent(schedule, rewrite.First, rewrite.Second) {
@@ -1935,7 +1938,8 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64BMI2:        target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
 		PostRAPairWith16: p.postRAPairWith16, PostRAPairWith32: p.postRAPairWith32, PostRASkip: p.postRASkip,
-		PostRAForwardFrom:   p.postRAForwardFrom,
+		PostRAForwardFrom16: p.postRAForwardFrom16,
+		PostRAForwardFrom32: p.postRAForwardFrom32,
 		PostRAFusionWith16:  p.postRAFusionWith16,
 		PostRAFusionWith32:  p.postRAFusionWith32,
 		PostRAMemoryFrom:    p.postRAMemoryFrom,
@@ -2741,6 +2745,14 @@ func (p *nativeBackendPlanner) hasPostRAPair(instruction uint32) bool {
 		int(instruction) < len(p.postRAPairWith32) && p.postRAPairWith32[instruction] != 0
 }
 
+func (p *nativeBackendPlanner) setPostRAForward(load, store uint32) {
+	if len(p.postRAForwardFrom16) != 0 {
+		p.postRAForwardFrom16[load] = uint16(store + 1)
+		return
+	}
+	p.postRAForwardFrom32[load] = store + 1
+}
+
 // preparePostRAScratch retains only the instruction-indexed tables consumed by
 // rewrites present for this target. Most functions realize one rewrite family;
 // allocating every table made that bounded plan needlessly footprint-heavy.
@@ -2829,7 +2841,18 @@ func (p *nativeBackendPlanner) preparePostRAScratch(target railmach.Target, inst
 		clear(p.postRAPairWith32)
 	}
 	p.postRASkip = prepareBool(p.postRASkip, needsSkip)
-	p.postRAForwardFrom = prepare(p.postRAForwardFrom, needsForward)
+	if !needsForward {
+		p.postRAForwardFrom16 = p.postRAForwardFrom16[:0]
+		p.postRAForwardFrom32 = p.postRAForwardFrom32[:0]
+	} else if instructions <= int(^uint16(0)) {
+		p.postRAForwardFrom32 = nil
+		p.postRAForwardFrom16 = resizeNativeSlice(p.postRAForwardFrom16, instructions)
+		clear(p.postRAForwardFrom16)
+	} else {
+		p.postRAForwardFrom16 = nil
+		p.postRAForwardFrom32 = resizeNativeSlice(p.postRAForwardFrom32, instructions)
+		clear(p.postRAForwardFrom32)
+	}
 	if !needsFusion {
 		p.postRAFusionWith16 = p.postRAFusionWith16[:0]
 		p.postRAFusionWith32 = p.postRAFusionWith32[:0]

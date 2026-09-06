@@ -321,6 +321,13 @@ the performance corpus.
   and 19,840 bytes. Six alternating serialized SQLite public compiles are
   effectively neutral at 1.695 versus 1.693 seconds median, and median
   allocation volume falls by about 30 KiB/op.
+- Compact load/store forwarding relations: ✅ the target-neutral forwarding
+  map now uses 16-bit store identities below 65,536 machine instructions and a
+  32-bit fallback above that boundary. SQLite, Lua, and regexmatch remain byte-
+  identical while peak storage falls another 16,068, 3,190, and 9,716 bytes.
+  Six alternating serialized SQLite public compiles improve slightly from
+  1.6707 to 1.6686 seconds median, while median allocation volume falls by
+  about 35 KiB/op.
 - Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
   bounded initial schedule candidate's realized post-allocation spill debt,
   physical copies, copy cycles, copy motion, fixed repairs, broken fusions,
