@@ -194,6 +194,7 @@ type nativeBackendPlanner struct {
 	peakSSABytes        uint64
 	peakMachineBytes    uint64
 	peakNativeBytes     uint64
+	peakNativeBreakdown NativePlannerCapacityBreakdown
 	peakCapacityBytes   uint64
 	exceptionalFunction bool
 }
@@ -313,6 +314,7 @@ func (p *nativeBackendPlanner) resetCapacityPeak() {
 	p.peakSSABytes = 0
 	p.peakMachineBytes = 0
 	p.peakNativeBytes = 0
+	p.peakNativeBreakdown = NativePlannerCapacityBreakdown{}
 	p.peakCapacityBytes = 0
 	p.exceptionalFunction = false
 }
@@ -325,6 +327,7 @@ func (p *nativeBackendPlanner) observeCapacity() uint64 {
 		p.peakSSABytes = ssa
 		p.peakMachineBytes = machine
 		p.peakNativeBytes = native
+		p.peakNativeBreakdown = p.nativeCapacityBreakdown()
 		p.peakCapacityBytes = total
 	}
 	return total
@@ -385,8 +388,22 @@ func (p *nativeBackendPlanner) capacityBreakdown() (ssa, machine, native uint64)
 			machine += railmach.PipelineCapacityBytes(nil, nil, nil, &candidate.schedule, &candidate.allocation, &candidate.exit, &candidate.postRA, nil, nil)
 		}
 	}
-	native = sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches) + sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.postRAPairWith) + sliceBytes(p.postRASkip) + sliceBytes(p.postRAForwardFrom) + sliceBytes(p.postRAFusionWith) + sliceBytes(p.postRAMemoryFrom) + sliceBytes(p.postRARepeatFirst) + sliceBytes(p.postRAPreIndex) + sliceBytes(p.postRAPostIndexWith) + sliceBytes(p.immediateProducer) + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses) + sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.amd64MemoryBounds) + sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots) + sliceBytes(p.gcValues)
+	native = p.nativeCapacityBreakdown().Total()
 	return ssa, machine, native
+}
+
+func (p *nativeBackendPlanner) nativeCapacityBreakdown() NativePlannerCapacityBreakdown {
+	if p == nil {
+		return NativePlannerCapacityBreakdown{}
+	}
+	return NativePlannerCapacityBreakdown{
+		ControlFlow: sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches),
+		Bounds:      sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.amd64MemoryBounds),
+		PostRA:      sliceBytes(p.postRAPairWith) + sliceBytes(p.postRASkip) + sliceBytes(p.postRAForwardFrom) + sliceBytes(p.postRAFusionWith) + sliceBytes(p.postRAMemoryFrom) + sliceBytes(p.postRARepeatFirst) + sliceBytes(p.postRAPreIndex) + sliceBytes(p.postRAPostIndexWith),
+		Immediates:  sliceBytes(p.immediateProducer) + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses),
+		GC:          sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.gcValues),
+		CallsRoots:  sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots),
+	}
 }
 
 func railMachCandidate(stack *railssa.StackFunc, moduleHasV128 bool) bool {

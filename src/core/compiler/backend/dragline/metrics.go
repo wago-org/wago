@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 29
+const MetricsVersion = 30
 
 // ScheduleDiagnosticKind selects one scheduler for an opt-in metrics compile.
 // Zero preserves production selection. A forced kind applies only to functions
@@ -78,6 +78,23 @@ type EmitterMetrics struct {
 	LowerNanos  int64  `json:"lower_nanos"`
 	EmitNanos   int64  `json:"emit_nanos"`
 	CacheHits   uint32 `json:"cache_hits"`
+}
+
+// NativePlannerCapacityBreakdown attributes the native finalization scratch
+// retained at the function's exact planner-capacity high-water mark. The
+// categories are disjoint and sum to NativePlannerRetainedBytes.
+type NativePlannerCapacityBreakdown struct {
+	ControlFlow uint64 `json:"control_flow"`
+	Bounds      uint64 `json:"bounds"`
+	PostRA      uint64 `json:"postra"`
+	Immediates  uint64 `json:"immediates"`
+	GC          uint64 `json:"gc"`
+	CallsRoots  uint64 `json:"calls_roots"`
+}
+
+// Total returns all retained native-planner bytes represented by b.
+func (b NativePlannerCapacityBreakdown) Total() uint64 {
+	return b.ControlFlow + b.Bounds + b.PostRA + b.Immediates + b.GC + b.CallsRoots
 }
 
 // ScheduleCandidateMetrics records one initial schedule candidate after
@@ -195,6 +212,7 @@ type FunctionMetrics struct {
 	RailSSARetainedBytes       uint64                            `json:"railssa_retained_bytes"`
 	RailMachRetainedBytes      uint64                            `json:"railmach_retained_bytes"`
 	NativePlannerRetainedBytes uint64                            `json:"native_planner_retained_bytes"`
+	NativePlannerCapacity      NativePlannerCapacityBreakdown    `json:"native_planner_capacity"`
 	RailSSACapacity            railssa.PipelineCapacityBreakdown `json:"railssa_capacity"`
 
 	// liveBaseBytes is retained planner storage that remains live during the

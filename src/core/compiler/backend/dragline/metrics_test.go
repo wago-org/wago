@@ -63,6 +63,9 @@ func TestCompilerReportsPerFunctionMetricsAndPeakLiveBytes(t *testing.T) {
 	if row := metrics.Functions[0]; row.RailSSARetainedBytes == 0 || row.RailMachRetainedBytes == 0 || row.RailSSARetainedBytes+row.RailMachRetainedBytes+row.NativePlannerRetainedBytes >= row.PeakLiveBytes {
 		t.Fatalf("RailMach retained-capacity attribution is incomplete: %#v", row)
 	}
+	if row := metrics.Functions[0]; row.NativePlannerCapacity.Total() != row.NativePlannerRetainedBytes {
+		t.Fatalf("native planner capacity categories = %#v, want total %d", row.NativePlannerCapacity, row.NativePlannerRetainedBytes)
+	}
 	if metrics.NativeBytes != uint64(len(output.Code)) || metrics.PeakLiveBytes < metrics.Functions[0].PeakLiveBytes || metrics.PeakLiveBytes < metrics.Functions[1].PeakLiveBytes {
 		t.Fatalf("module metrics = %#v, native output = %d", metrics, len(output.Code))
 	}

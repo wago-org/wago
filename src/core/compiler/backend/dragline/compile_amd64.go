@@ -326,6 +326,7 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 				recordSpecializationMetrics(row, nativePlan.Specialize)
 				row.RailSSACapacity = nativePlanner.peakRailSSA
 				row.RailSSARetainedBytes, row.RailMachRetainedBytes, row.NativePlannerRetainedBytes = nativePlanner.peakSSABytes, nativePlanner.peakMachineBytes, nativePlanner.peakNativeBytes
+				row.NativePlannerCapacity = nativePlanner.peakNativeBreakdown
 				row.liveBaseBytes = fn.CapacityBytes() + row.RailSSARetainedBytes + row.RailMachRetainedBytes + row.NativePlannerRetainedBytes
 				row.observe(0)
 			} else if plan != nil {

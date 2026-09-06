@@ -296,6 +296,15 @@ the performance corpus.
   5,737 peak live bytes and the module peak from 71,007 to 70,951; `arith`
   falls from 15,234 to 15,106 function peak and from 15,563 to 15,435 module
   peak. Their native images remain byte-identical at 19,276 and 184 bytes.
+- Native-planner category attribution: ✅ metrics schema 30 records the exact
+  disjoint control-flow, bounds, post-RA, immediate, GC, and call/root capacity
+  at each function's planner high-water; the canonical Markdown projection
+  exposes the same totals. Exact ARM64 samples identify post-RA realization as
+  the largest remaining native-planner category: 158,332 of 369,046 bytes for
+  SQLite's module-peak function, 33,750 of 78,189 for Lua, and 158,312 of
+  362,648 for regexmatch. Immediate and bounds state are the next largest
+  categories, so subsequent footprint work can target measured retained state
+  instead of aggregate planner size.
 - Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
   bounded initial schedule candidate's realized post-allocation spill debt,
   physical copies, copy cycles, copy motion, fixed repairs, broken fusions,

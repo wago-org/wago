@@ -197,6 +197,18 @@ func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metri
 			return err
 		}
 	}
+	if _, err := fmt.Fprintln(w, "\n## Native planner capacity\n\nThe disjoint categories are captured at each function's exact planner-capacity high-water mark.\n\n| Function | Total bytes | Control flow | Bounds | Post-RA | Immediates | GC | Calls/roots |\n|---:|---:|---:|---:|---:|---:|---:|---:|"); err != nil {
+		return err
+	}
+	for _, row := range metrics.Functions {
+		if !row.RailMachFinalized {
+			continue
+		}
+		capacity := row.NativePlannerCapacity
+		if _, err := fmt.Fprintf(w, "| %d | %d | %d | %d | %d | %d | %d | %d |\n", row.Function, capacity.Total(), capacity.ControlFlow, capacity.Bounds, capacity.PostRA, capacity.Immediates, capacity.GC, capacity.CallsRoots); err != nil {
+			return err
+		}
+	}
 	if _, err := fmt.Fprintln(w, "\n## Schedule candidates\n\nInitial and bounded allocator-retry candidates are scored separately after allocation and late SSA exit. Final kind identifies the schedule kind ultimately retained. Metrics-enabled compilation also plans candidate post-RA opportunities; each phase's frontier remains advisory until exact realized native bytes join the score.\n\n| Function | Phase | Candidate | Kind | Final kind | Candidate frontier | Estimated cycles | Resource cycles | Selected-rule bytes | Post-RA rewrites | Planned elisions | Wrap spills | Eliminated moves | Spill debt | Physical copies | Copy cycles | Copy motion | Fixed repairs | Broken fusions | Loop-invariant ops |\n|---:|---|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"); err != nil {
 		return err
 	}
