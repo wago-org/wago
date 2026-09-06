@@ -302,3 +302,23 @@ The option-helper test now checks the resolved owned import map, including later
 option precedence, instead of requiring options to merge their private storage
 immediately. The full-suite run exposed this stale implementation assertion; it
 was not suppressed. Public behavior and the ownership regression remain checked.
+
+## Registration cost and final call controls
+
+Registry scaling and unrelated-import instantiation fixtures now register through
+LoadPlugins and the granted HostImports API. A separate BenchmarkRegisterImports
+measures batch setup/close. Ten alternating 200 ms samples at GOMAXPROCS=1 show
+10000-registration importless compile falling from median 2.158 ms, 2472221 B and
+20148 allocations to 27.198 us, 17216 B and 75 allocations. Candidate allocation
+counts are constant at all four registry sizes. Batch registration itself remains
+about 9 ms and 100236 allocations at 10000 imports; no per-compile saving is hidden
+in timed setup. Small registry/runtime objects gain about 16 fixed bytes.
+
+The same run keeps InvokeAddOne at 97.26 ns and PreparedInvokeAddOne at 17.66 ns,
+both zero allocations. Direct host calls remain 553.9 ns, 112 B and one allocation.
+Small compile is +1.0% and small instantiate +0.3% in medians, with unchanged
+allocation counts. Imported numeric-global instantiation is 2675 ns, 2224 B and
+18 allocations, versus 2879.5 ns, 2880 B and 22. Streaming artifact write is
+126952 ns, 154208 B and 21 allocations, versus 270380.5 ns, 263078 B and 12829.
+These are per-row medians, not statistical equivalence claims. Raw captures:
+final-wago-a.txt and final-wago-b.txt.

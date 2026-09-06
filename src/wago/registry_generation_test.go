@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"fmt"
 	"testing"
 )
@@ -8,14 +9,8 @@ import (
 func BenchmarkCompileRegistryScaling(b *testing.B) {
 	for _, count := range []int{0, 10, 1000, 10000} {
 		b.Run(fmt.Sprint(count), func(b *testing.B) {
-			rt := NewRuntime()
+			rt := benchmarkRegisteredRuntime(b, count)
 			defer rt.Close()
-			for i := 0; i < count; i++ {
-				key := fmt.Sprintf("unused.f%d", i)
-				fn := HostFunc(func(HostModule, []uint64, []uint64) {})
-				rt.imports[key] = fn
-				rt.importMeta[key] = &registeredImport{module: "unused", name: key, fn: fn, params: []ValType{ValI32}}
-			}
 			wasm := benchAddOneModule()
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -80,5 +75,54 @@ func TestPreparedCompileReleasesRegistryGeneration(t *testing.T) {
 		if p.bindings.imports != nil || p.bindings.importMeta != nil {
 			t.Fatal("consumed preparation retains old registry")
 		}
+	}
+}
+
+func benchmarkRegistrySet(b *testing.B, count int) PluginSet {
+	definition := testDefinition("example.com/bench/registry")
+	definition.Authorities = []AuthorityRequest{{Name: AuthorityHostImportDefine, Mode: AuthorityRequired, Reason: "benchmark registered imports", Scope: AuthorityScope{Modules: []string{"unused"}}}}
+	return testSet(b, PluginProvider{Definition: definition, New: func() Plugin {
+		return pluginFunc(func(reg *Registrar) error {
+			imports, err := reg.HostImports()
+			if err != nil {
+				return err
+			}
+			module, err := imports.Module("unused")
+			if err != nil {
+				return err
+			}
+			fn := HostFunc(func(HostModule, []uint64, []uint64) {})
+			for i := 0; i < count; i++ {
+				module.Func(fmt.Sprintf("f%d", i), fn).Params(ValI32)
+			}
+			return nil
+		})
+	}})
+}
+func benchmarkRegisteredRuntime(b *testing.B, count int) *Runtime {
+	b.Helper()
+	rt := NewRuntime()
+	if err := rt.LoadPlugins(context.Background(), benchmarkRegistrySet(b, count)); err != nil {
+		rt.Close()
+		b.Fatal(err)
+	}
+	return rt
+}
+func BenchmarkRegisterImports(b *testing.B) {
+	for _, count := range []int{0, 10, 1000, 10000} {
+		b.Run(fmt.Sprint(count), func(b *testing.B) {
+			set := benchmarkRegistrySet(b, count)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				rt := NewRuntime()
+				if err := rt.LoadPlugins(context.Background(), set); err != nil {
+					b.Fatal(err)
+				}
+				if err := rt.Close(); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }
