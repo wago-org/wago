@@ -342,6 +342,9 @@ func TestNativeBackendPlannerSizesMemoryCheckScratchFromSparseAccesses(t *testin
 	if got, want := cap(planner.memoryCheckTouched), len(plan.Machine.Memory); got != want {
 		t.Fatalf("memory-check scratch capacity = %d, want sparse access count %d", got, want)
 	}
+	if cap(planner.deadGCReservations) != 0 || cap(planner.noBarrierGCStores) != 0 {
+		t.Fatalf("non-GC function retained GC scratch: reservations=%d barriers=%d", cap(planner.deadGCReservations), cap(planner.noBarrierGCStores))
+	}
 }
 
 func TestRetainNativeBackendPlannerWithin(t *testing.T) {

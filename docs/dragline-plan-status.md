@@ -276,6 +276,18 @@ the performance corpus.
   the footprint-migration ceiling. Ruby falls from 75,336,538 to 75,242,430
   bytes (-94,108), remains exactly 48,955,040 native bytes, and its paired wall
   run improves from 98.693 to 98.147 seconds (-0.55%).
+- Operation-gated GC scratch: ✅ dead-constructor and no-write-barrier bitmaps
+  are now allocated only when the machine function actually contains their GC
+  operation family. The finalizers already treat absent maps conservatively;
+  focused tests retain dead-constructor and reference-store proofs while a
+  non-GC planner test requires zero bitmap capacity. Relative to the preceding
+  sparse-bounds result, peak live storage falls another 21,556 bytes for SQLite
+  and 3,910 for Lua. Esbuild falls another 105,278 bytes to 82,583,459 and Ruby
+  another 56,250 bytes to 75,186,180; their largest-function planner reductions
+  are exactly two bytes per machine instruction. Native output remains byte-
+  identical for all four modules. Serialized wall time moves from 165.391 to
+  159.406 seconds for esbuild (-3.62%) and 98.147 to 96.604 seconds for Ruby
+  (-1.57%).
 - Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
   bounded initial schedule candidate's realized post-allocation spill debt,
   physical copies, copy cycles, copy motion, fixed repairs, broken fusions,

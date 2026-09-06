@@ -1999,54 +1999,75 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		}
 	}
 	buildNativeEdgeConstantRematerialization(&p.plan, p.immediateSkip, p.immediateUses)
-	p.deadGCReservations = resizeNativeSlice(p.deadGCReservations, len(machine.Insts))
-	clear(p.deadGCReservations)
-	for instructionID, instruction := range machine.Insts {
-		if instruction.Result == 0 || p.immediateUses[instruction.Result] != 0 {
-			continue
-		}
-		switch instruction.Op {
-		case wasm.InstrStructNew, wasm.InstrStructNewDefault,
+	hasGCConstructor, hasGCReferenceStore := false, false
+	for _, instruction := range machine.Insts {
+		switch railmach.SemanticOpcode(instruction.Op) {
+		case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrArrayNew,
 			wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData:
-			p.deadGCReservations[instructionID] = true
-		case wasm.InstrArrayNew:
-			// The checked uniform helper validates the initializer but deliberately
-			// rejects reference elements: omitting those payload writes would skip
-			// their publication semantics. Keep such constructors conservative.
+			hasGCConstructor = true
+		case wasm.InstrStructSet:
+			typeID, fieldID := uint32(instruction.Aux>>32), uint32(instruction.Aux)
+			field, ok := stack.Module.StructField(typeID, fieldID)
+			hasGCReferenceStore = hasGCReferenceStore || ok && field.Storage().Val().Kind() == wasm.ValRef
+		case wasm.InstrArraySet:
 			field, ok := stack.Module.ArrayField(uint32(instruction.Aux))
-			p.deadGCReservations[instructionID] = ok && field.Storage().Val().Kind() != wasm.ValRef
+			hasGCReferenceStore = hasGCReferenceStore || ok && field.Storage().Val().Kind() == wasm.ValRef
+		}
+	}
+	p.deadGCReservations = p.deadGCReservations[:0]
+	if hasGCConstructor {
+		p.deadGCReservations = resizeNativeSlice(p.deadGCReservations, len(machine.Insts))
+		clear(p.deadGCReservations)
+		for instructionID, instruction := range machine.Insts {
+			if instruction.Result == 0 || p.immediateUses[instruction.Result] != 0 {
+				continue
+			}
+			switch railmach.SemanticOpcode(instruction.Op) {
+			case wasm.InstrStructNew, wasm.InstrStructNewDefault,
+				wasm.InstrArrayNewDefault, wasm.InstrArrayNewFixed, wasm.InstrArrayNewData:
+				p.deadGCReservations[instructionID] = true
+			case wasm.InstrArrayNew:
+				// The checked uniform helper validates the initializer but deliberately
+				// rejects reference elements: omitting those payload writes would skip
+				// their publication semantics. Keep such constructors conservative.
+				field, ok := stack.Module.ArrayField(uint32(instruction.Aux))
+				p.deadGCReservations[instructionID] = ok && field.Storage().Val().Kind() != wasm.ValRef
+			}
 		}
 	}
 	p.plan.DeadGCReservations = p.deadGCReservations
-	p.noBarrierGCStores = resizeNativeSlice(p.noBarrierGCStores, len(machine.Insts))
-	clear(p.noBarrierGCStores)
-	for instructionID, instruction := range machine.Insts {
-		operands := machine.InstructionOperands(uint32(instructionID))
-		var child railmach.VReg
-		switch instruction.Op {
-		case wasm.InstrStructSet:
-			if len(operands) != 2 {
-				return nil, fmt.Errorf("RailMach struct.set operand count is %d", len(operands))
-			}
-			typeID, fieldID := uint32(instruction.Aux>>32), uint32(instruction.Aux)
-			field, ok := stack.Module.StructField(typeID, fieldID)
-			if !ok || field.Storage().Val().Kind() != wasm.ValRef {
+	p.noBarrierGCStores = p.noBarrierGCStores[:0]
+	if hasGCReferenceStore {
+		p.noBarrierGCStores = resizeNativeSlice(p.noBarrierGCStores, len(machine.Insts))
+		clear(p.noBarrierGCStores)
+		for instructionID, instruction := range machine.Insts {
+			operands := machine.InstructionOperands(uint32(instructionID))
+			var child railmach.VReg
+			switch railmach.SemanticOpcode(instruction.Op) {
+			case wasm.InstrStructSet:
+				if len(operands) != 2 {
+					return nil, fmt.Errorf("RailMach struct.set operand count is %d", len(operands))
+				}
+				typeID, fieldID := uint32(instruction.Aux>>32), uint32(instruction.Aux)
+				field, ok := stack.Module.StructField(typeID, fieldID)
+				if !ok || field.Storage().Val().Kind() != wasm.ValRef {
+					continue
+				}
+				child = operands[1].Reg
+			case wasm.InstrArraySet:
+				if len(operands) != 3 {
+					return nil, fmt.Errorf("RailMach array.set operand count is %d", len(operands))
+				}
+				field, ok := stack.Module.ArrayField(uint32(instruction.Aux))
+				if !ok || field.Storage().Val().Kind() != wasm.ValRef {
+					continue
+				}
+				child = operands[2].Reg
+			default:
 				continue
 			}
-			child = operands[1].Reg
-		case wasm.InstrArraySet:
-			if len(operands) != 3 {
-				return nil, fmt.Errorf("RailMach array.set operand count is %d", len(operands))
-			}
-			field, ok := stack.Module.ArrayField(uint32(instruction.Aux))
-			if !ok || field.Storage().Val().Kind() != wasm.ValRef {
-				continue
-			}
-			child = operands[2].Reg
-		default:
-			continue
+			p.noBarrierGCStores[instructionID] = nativeValueCannotCreateCollectorEdge(machine, child)
 		}
-		p.noBarrierGCStores[instructionID] = nativeValueCannotCreateCollectorEdge(machine, child)
 	}
 	p.plan.NoBarrierGCStores = p.noBarrierGCStores
 	if cap(p.blockOffsets) < len(machine.Blocks) {
