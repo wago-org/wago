@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -13,6 +14,10 @@ func (i *installer) cleanReinstallData(mode string) error {
 		paths = append(paths, i.dataDir, filepath.Join(i.home, ".wago"))
 	}
 	protected := []string{filepath.Clean(i.binDir), filepath.Clean(i.srcDir)}
+	protection, err := captureCleanupProtection(protected)
+	if err != nil {
+		return err
+	}
 	var remove func(string) error
 	remove = func(path string) error {
 		path = filepath.Clean(path)
@@ -23,22 +28,18 @@ func (i *installer) cleanReinstallData(mode string) error {
 		if err != nil {
 			return err
 		}
-		contains := false
-		for _, keep := range protected {
-			inside, err := cleanupPathContains(keep, path)
-			if err != nil {
-				return err
-			}
-			if inside {
-				return nil
-			}
-			ancestor, err := cleanupPathContains(path, keep)
-			if err != nil {
-				return err
-			}
-			contains = contains || ancestor
+		target, err := os.Stat(path)
+		if err != nil && !os.IsNotExist(err) {
+			return err
 		}
+		if protection.isRoot(target) {
+			return nil
+		}
+		contains := protection.isAncestor(target)
 		if !contains {
+			if err := protection.validate(); err != nil {
+				return err
+			}
 			return safeRemove(path, i.home)
 		}
 		// Preserve aliases through which the configured launcher/source is
@@ -61,6 +62,19 @@ func (i *installer) cleanReinstallData(mode string) error {
 		return nil
 	}
 	for _, path := range uniquePaths(paths) {
+		inside := false
+		// Only initial cleanup roots can begin inside a protected tree. Recursive
+		// traversal stops at that tree's root, so it need not walk ancestry again.
+		for _, keep := range protected {
+			contains, err := cleanupPathContains(keep, path)
+			if err != nil {
+				return err
+			}
+			inside = inside || contains
+		}
+		if inside {
+			continue
+		}
 		if err := remove(path); err != nil {
 			return err
 		}
@@ -112,4 +126,89 @@ func cleanupPathContains(root, path string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// Cache the configured and resolved ancestor identities once per operation.
+// Compare current boundary identities to this snapshot; no repeated filesystem
+// ancestry walk is needed for each child of a deep installation directory.
+type cleanupProtection struct {
+	paths     []string
+	roots     []os.FileInfo
+	ancestors []os.FileInfo
+}
+
+func captureCleanupProtection(paths []string) (cleanupProtection, error) {
+	p := cleanupProtection{paths: paths, roots: make([]os.FileInfo, len(paths))}
+	seen := make(map[string]bool)
+	for i, path := range paths {
+		root, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return p, err
+		}
+		p.roots[i] = root
+		absolute, err := filepath.Abs(path)
+		if err != nil {
+			return p, err
+		}
+		resolved, err := filepath.EvalSymlinks(absolute)
+		if err != nil {
+			return p, err
+		}
+		for _, route := range []string{absolute, resolved} {
+			for !seen[route] {
+				seen[route] = true
+				info, err := os.Stat(route)
+				if err != nil {
+					return p, err
+				}
+				p.ancestors = append(p.ancestors, info)
+				parent := filepath.Dir(route)
+				if parent == route {
+					break
+				}
+				route = parent
+			}
+		}
+	}
+	return p, nil
+}
+func (p cleanupProtection) isRoot(info os.FileInfo) bool {
+	if info == nil {
+		return false
+	}
+	for _, root := range p.roots {
+		if root != nil && os.SameFile(root, info) {
+			return true
+		}
+	}
+	return false
+}
+func (p cleanupProtection) isAncestor(info os.FileInfo) bool {
+	if info == nil {
+		return false
+	}
+	for _, ancestor := range p.ancestors {
+		if os.SameFile(ancestor, info) {
+			return true
+		}
+	}
+	return false
+}
+func (p cleanupProtection) validate() error {
+	for i, path := range p.paths {
+		current, err := os.Stat(path)
+		if p.roots[i] == nil && os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if p.roots[i] == nil || !os.SameFile(current, p.roots[i]) {
+			return fmt.Errorf("protected cleanup path changed: %s", path)
+		}
+	}
+	return nil
 }

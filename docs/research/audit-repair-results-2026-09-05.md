@@ -272,3 +272,15 @@ Four-value construction falls from 184 B/5 allocations to zero, and about 157 to
 Nil-root times do not regress in the short samples. Capture: gc-bounded-ab.txt.
 The first constructor fixture exhausted its heap because it supplied nil roots;
 it failed visibly and was corrected to explicit EmptyRoots on both sides.
+
+## Cleanup ancestor reuse
+
+Reinstall cleanup captures configured and resolved protected ancestry once, then
+compares file identities while traversing. It still checks protected path identity
+at each removal boundary and does not traverse directory links. Existing nested,
+alias, and reinstall tests pass. Identity comparisons can grow with depth; the
+repeated filesystem ancestry walks are removed.
+
+At depth 128, BenchmarkReinstallCleanup falls from about 371 ms, 52.07 MB and
+281501 allocations to 4.10 ms, 480942 B and 2987 allocations. Depth 1 falls from
+168 to 124 us and 412 to 305 allocations. Capture: cleanup-ab.txt.
