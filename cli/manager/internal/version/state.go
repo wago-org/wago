@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -229,14 +230,9 @@ func vmWhich(d wagopaths.Dirs) {
 }
 
 func vmUse(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) {
-	_, profile, build, ok := installedRuntime(d, ver, profile, build)
-	if !ok {
-		if profile == "" {
-			fatal("version use: %s is not installed (try: wago version install %s)", ver, ver)
-		}
-		fatal("version use: %s %s/%s is not installed (try: wago version install %s --profile %s --build %s)", ver, profile, build, ver, profile, build)
-	}
-	if err := setActiveInstallation(d, ver, profile, build); err != nil {
+	var err error
+	profile, build, err = useInstalledVersion(context.Background(), d, ver, profile, build)
+	if err != nil {
 		fatal("version use: %v", err)
 	}
 	fmt.Printf("%s\n", cyan("Using "+installedWagoLabel(ver, ver, profile, build)))

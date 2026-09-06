@@ -31,6 +31,11 @@ func installVersionContext(ctx context.Context, d wagopaths.Dirs, ver string, pr
 	if err := validateVersionStorageName(installName); err != nil {
 		fatal("version install: %v", err)
 	}
+	lock, err := versionMutationLock(ctx, d, installName)
+	if err != nil {
+		fatal("version install: %v", err)
+	}
+	defer lock.Close()
 	dest := d.RuntimeBinary(installName, string(profile), string(build))
 	if installedPath, _, _, installed := installedRuntime(d, installName, profile, build); installed {
 		// A rolling channel (canary/nightly) re-fetches even when present — the
@@ -41,6 +46,7 @@ func installVersionContext(ctx context.Context, d wagopaths.Dirs, ver string, pr
 			if showLocation {
 				printDetail(os.Stdout, "location", displayPath(installedPath))
 			}
+			_ = lock.Close()
 			if offer {
 				finishVersionInstall(d, installName, profile, build, use)
 			}
@@ -63,6 +69,7 @@ func installVersionContext(ctx context.Context, d wagopaths.Dirs, ver string, pr
 	if showLocation {
 		printDetail(progress.Writer(), "location", displayPath(dest))
 	}
+	_ = lock.Close()
 	if offer {
 		finishVersionInstall(d, installName, profile, build, use)
 	}

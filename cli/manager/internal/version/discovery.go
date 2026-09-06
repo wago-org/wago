@@ -334,6 +334,11 @@ func vmUpdateContext(ctx context.Context, d wagopaths.Dirs, ver string, profile 
 	if err := validateVersionStorageName(ver); err != nil {
 		fatal("version update: %v", err)
 	}
+	lock, err := versionMutationLock(ctx, d, ver)
+	if err != nil {
+		fatal("version update: %v", err)
+	}
+	defer lock.Close()
 	dest := d.RuntimeBinary(ver, string(profile), string(build))
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		fatal("version update: %v", err)
@@ -346,6 +351,7 @@ func vmUpdateContext(ctx context.Context, d wagopaths.Dirs, ver string, profile 
 	}
 	if !force && installedCommitMatches(dest, resolved) {
 		progress.Finish(installedWagoLabel(ver, resolved, profile, build) + " is already up to date")
+		_ = lock.Close()
 		offerUseUpdated(d, ver, profile, build, use)
 		return
 	}
@@ -353,6 +359,7 @@ func vmUpdateContext(ctx context.Context, d wagopaths.Dirs, ver string, profile 
 		fatal("version update: %v", err)
 	}
 	progress.Finish("Updated " + installedWagoLabel(ver, resolved, profile, build))
+	_ = lock.Close()
 	offerUseUpdated(d, ver, profile, build, use)
 }
 

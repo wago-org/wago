@@ -1,6 +1,7 @@
 package version
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -350,6 +351,11 @@ func vmUninstall(d wagopaths.Dirs, ver string) {
 }
 
 func removeInstalledVersion(d wagopaths.Dirs, ver string) error {
+	lock, err := versionMutationLock(context.Background(), d, ver)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 	dir, err := versionDirectory(d, ver)
 	if err != nil {
 		return err

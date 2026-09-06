@@ -105,6 +105,16 @@ func writeActiveInstallationLocked(d wagopaths.Dirs, state activeInstallationSta
 }
 
 func setActiveInstallation(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) error {
+	lock, err := versionMutationLock(context.Background(), d, ver)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	return setActiveInstallationVersionLocked(d, ver, profile, build)
+}
+
+// Caller owns the stable version mutation lock.
+func setActiveInstallationVersionLocked(d wagopaths.Dirs, ver string, profile wagopaths.Profile, build wagopaths.Build) error {
 	if err := validateVersionStorageName(ver); err != nil {
 		return err
 	}

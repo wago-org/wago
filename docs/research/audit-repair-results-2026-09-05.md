@@ -155,6 +155,21 @@ mismatch: identity's go list enabled VCS stamping while the actual generated
 build disabled it. The identity query now also uses -buildvcs=false, allowing
 the existing generated-runtime fixture to pass on both execution paths.
 
+## Version lifecycle coordination
+
+Install/update, installed selection, and removal use stable per-version locks in
+config/version-locks, outside removable payload directories. Lock order is version
+then active state. Case variants share a coordinator. Install/update release the
+lock before a user prompt; selection reacquires it and checks that the runtime
+still exists. Network/build work currently holds the same cancellable operation
+lock, favoring coherent publication over concurrent updates of one version.
+
+Version tests pass under -race. New tests hold the coordinator while removal
+waits, verify another version remains independent, reject selection after removal,
+and verify the coordinator inode survives removal/reinstall. Cancellation while
+waiting is covered. Raw payload helper APIs accept arbitrary destinations and
+remain caller-coordinated; the version lifecycle commands own this lock.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.
