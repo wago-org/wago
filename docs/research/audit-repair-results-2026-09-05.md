@@ -142,6 +142,19 @@ Ten-retry A/B samples fell from 3744 B/op and 42 allocations to 1264 B/op and
 12 allocations. The 105 ms time measures the intentional wait, not throughput.
 Capture: utility-filelock-ab.txt.
 
+## One runtime selection per plugin operation
+
+Plugin add/remove/update/config/grant/rebuild and execution capture runtime
+version, standard profile, build variant and paths once. Staging receives that
+captured compiler config. A regression test changes active state and the build
+environment override after capture: both local/global paths and compiler inputs
+retain the old selection; the next operation sees the new one.
+
+Plugin and plugin/build package tests pass. Validation exposed an existing
+mismatch: identity's go list enabled VCS stamping while the actual generated
+build disabled it. The identity query now also uses -buildvcs=false, allowing
+the existing generated-runtime fixture to pass on both execution paths.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.
