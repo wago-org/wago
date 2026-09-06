@@ -2,15 +2,17 @@
 
 Implementation of the [accepted plan](performance-security-repair-plan-2026-09-05.md).
 Baseline: `f0f4951138b8`; scheduler comparison: main `447f057115ee`.
-The repairs are committed on `fix/september-audit`; the final source repair is
-`d261e75c1`. No push or merge was done.
+The repairs are committed on `fix/september-audit`. The audit loader repair is
+`d261e75c1`; the later raw-call repair is `ff81e0f05`. No merge was done.
 The user's unrelated `AGENTS.md` edit is preserved and is not part of the commits.
 
 Implementation covers all seven blockers, both lower security findings, all nine
 performance priorities, and the checked-GC documentation issue. Qualification is
 not complete: native Windows recovery/PowerShell and Linux ARM64 signal ordering
-need native hosts; the full Go 1.27.1 raw-call benchmark has an unresolved timing
-outlier. Two Wine installer failures, 25 staticcheck diagnostics, and a decoder
+need native hosts. The Go 1.27.1 raw-call timing gate is now resolved by the
+[September 6 follow-up](raw-call-repair-2026-09-06.md): 36.12 to 21.84 ns with
+zero allocations in 12 paired full-binary runs. Two Wine installer failures,
+25 staticcheck diagnostics on this host, and a decoder
 fuzz error-phase mismatch also occur on the audited baseline. The external SQLi
 benchmark fixture is absent. Do not treat this branch as fully qualified to merge.
 
@@ -58,7 +60,7 @@ IDs M/S/P/D follow the order of the original audit. B numbers refer to the
 | P9d lock timer | `0265ef283` | Go 1.22/current cancellation and retry tests; B16 |
 | P9e signal negotiation/scans | `9354cd0b8` | Recheck actual signal action; bounded registry scan retained on measurements; B2 |
 | P9f small import index | `3aa120a63` | Exact component/collision tests around four-row boundary; B11 |
-| Call refinement / measurement | `ec99d6cd4`, `f58e021db`, `ed9a99e69` | Trap reset race tests, bounded cancellation tails, checked raw-call fixture; B1/B2 |
+| Call refinement / measurement | `ec99d6cd4`, `f58e021db`, `ed9a99e69`, `ff81e0f05` | Trap reset/binding race tests, bounded cancellation tails, checked raw-call fixture and setup refinement; B1/B2 |
 | Superseded helpers | `52f5cc70c` | No new staticcheck diagnostics |
 
 ## Background cancellation watcher
@@ -499,7 +501,10 @@ Single-group cases retain 968 B and six allocations. These results justify a
 bounded memory tradeoff; they do not claim every decoder row is faster. Captures:
 final-mixed-{a,b}.txt and final-types-{a,b}.txt.
 
-## Raw-call benchmark checks and unresolved full-binary timing
+## Raw-call benchmark checks and initial full-binary timing
+
+This subsection records the initial timing defect before `ff81e0f05`; see the
+[follow-up](raw-call-repair-2026-09-06.md) for the fix and final qualification.
 
 The raw setup now checks decode, validation, export lookup, engine/memory/code
 setup, and every call error. Failed setup releases resources already acquired.
@@ -525,9 +530,9 @@ removed. CPU profiles do not establish the cause; hardware counters are not
 available under this host's perf permissions. The narrower binary and Go 1.22
 results suggest linked-binary sensitivity, but do not prove its mechanism.
 
-Keep the full Go 1.27.1 row as an unresolved performance qualification item.
-Do not mask it by replacing its selector with the smaller binary. Other public
-call and corpus execution controls are reported separately. Captures:
+This full-binary row initially blocked performance qualification. The later
+repair passes the same full-binary selector, including a CPU-pinned comparison;
+it does not substitute the smaller binary. The earlier captures remain available:
 final-raw-owner-{a,b}.txt, final-go122-raw-{a,b}.txt,
 checked-raw-{a,b}.txt, go122-raw-{a,b}.txt, isolated-raw-{a,b}.txt,
 raw-call-pinned-{a,b}.txt, raw-{a,b}.cpu, and perf-access.txt.
@@ -717,9 +722,9 @@ run native Darwin and Windows runtime/release suites, including the Windows
 PowerShell worker, interruption/reinstall, and descriptor lifecycle tests. The
 cross-build and Wine results here supplement those gates only.
 
-Investigate the final Go 1.27.1 full-binary raw-call row on a host with hardware
-performance counters. It still exceeds the 3% call-time gate, despite the stable
-public controls and improved Go 1.22 result. No cause or correction is claimed.
+The raw-call timing gate passes after `ff81e0f05`; the same benchmark also improves
+on Go 1.22.12. Its syscall/scheduler boundary, atomic trap reset, and owner lifetime
+checks are retained. Native CI must still pass for the pushed head before merge.
 The all-implicit 1000-type allocation/time tradeoff is explicitly justified by the
 mixed-input storage measurements; it is not an unnoticed regression.
 
