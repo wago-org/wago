@@ -3028,14 +3028,19 @@ func TestARM64PlansScalarByteSwap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var planner nativeBackendPlanner
+	planner := nativeBackendPlanner{candidatePostRA: true}
 	plan, err := planner.Plan(fn.Structured, target)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, rewrite := range plan.PostRA.Rewrites {
 		if rewrite.Kind == railmach.RewriteARM64ByteSwap {
-			return
+			for _, score := range plan.InitialScheduleScores[:plan.InitialScheduleScoreCount] {
+				if score.Kind == plan.Score.Kind && score.PostRARewrites != 0 {
+					return
+				}
+			}
+			t.Fatalf("retained byte-swap schedule omitted initial-candidate post-RA opportunities: kind=%d scores=%#v", plan.Score.Kind, plan.InitialScheduleScores[:plan.InitialScheduleScoreCount])
 		}
 	}
 	t.Fatalf("byte swap was not planned: %#v", plan.PostRA.Rewrites)

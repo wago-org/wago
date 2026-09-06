@@ -47,6 +47,38 @@ func TestScheduleScoreParetoFrontierKeepsEqualCandidates(t *testing.T) {
 	}
 }
 
+func TestScorePostRAOpportunitiesCountsOnlyPlannedInstructionElisions(t *testing.T) {
+	schedule := &Schedule{
+		Order:          []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+		verifyPosition: []uint32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9},
+	}
+	postRA := &PostRAPlan{
+		Rewrites: []Rewrite{
+			{First: 0, Second: 1, Kind: RewriteARM64Pair},
+			{First: 2, Second: 5, Kind: RewriteARM64RepeatedAdd},
+			{First: 6, Second: 9, Kind: RewriteARM64ByteWiden},
+			{First: 9, Second: ^uint32(0), Kind: RewriteARM64PrePostIndex},
+		},
+		WrapSpills:      []uint32{3, 7},
+		EliminatedMoves: 4,
+	}
+	score := ScorePostRAOpportunities(ScheduleScore{}, schedule, postRA)
+	if score.PostRARewrites != 4 || score.PostRAElisions != 6 || score.PostRAWrapSpills != 2 || score.EliminatedMoves != 4 {
+		t.Fatalf("post-RA opportunity score = %#v", score)
+	}
+}
+
+func TestScheduleScoreFrontierPreservesPostRATradeoff(t *testing.T) {
+	fast := ScheduleScore{EstimatedCycles: 10, ResourceCycles: 8, SelectedBytes: 16}
+	rewrite := ScheduleScore{EstimatedCycles: 11, ResourceCycles: 8, SelectedBytes: 16, PostRAElisions: 1}
+	if fast.Dominates(rewrite) || rewrite.Dominates(fast) {
+		t.Fatal("execution/post-RA tradeoff was incorrectly dominated")
+	}
+	if got, want := ScheduleFrontier([]ScheduleScore{fast, rewrite}), uint64(0b11); got != want {
+		t.Fatalf("post-RA frontier = %02b, want %02b", got, want)
+	}
+}
+
 func TestEstimateScheduleCostDistinguishesLatencyExposure(t *testing.T) {
 	f := &Func{
 		Target: TargetARM64,

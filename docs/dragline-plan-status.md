@@ -290,6 +290,22 @@ the performance corpus.
   versus exact `4f16f000` with 6/10 wins, unchanged B/op/allocs, and byte-for-byte
   identical native output (SHA-256
   `694f9159e1a2999ec94ca7618237911e8ac6b24a10e0cd9f967bf6178933771a`).
+- Candidate post-RA calibration: ✅ metrics schema 26 opt-in planning records
+  verifier-gated rewrite count, conservatively planned instruction elisions,
+  vector wrap-spill opportunities, and already-eliminated moves for both the
+  initial and bounded allocator-retry schedule candidates. Normal compilation
+  does not perform this extra analysis. A refreshed native ARM64 pass over all
+  36 non-ISA application modules found 24,805 multi-candidate functions and
+  reduced the schedules outside the measured candidate frontier only from
+  4,749 to 4,743 (19.12%). Of those retained schedules, 4,618 (97.36%) have
+  first-pass post-RA rewrites and 2,635 (55.56%) have planned instruction
+  elisions. This proves that rewrite counts alone do not resolve the selection
+  question; exact candidate native bytes remain required before the frontier
+  can steer production. Ten alternating metrics-enabled `blake-as` pairs put
+  schema 26 at 1.01591x schema 25 compile latency (4/10 wins), with unchanged
+  peak compiler-owned storage and identical native output. A separate ten-pair,
+  500 ms exact-head run measured `blake-as.hashN` at 0.99429x wazero latency;
+  it is at parity but remains the narrowest measured ARM64 application margin.
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution

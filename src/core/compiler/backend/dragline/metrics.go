@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 25
+const MetricsVersion = 26
 
 // Metrics contains one deterministic row per compiled function plus module
 // totals. Timings are observational; all counts and byte sizes are exact for
@@ -40,21 +40,25 @@ type EmitterMetrics struct {
 	CacheHits   uint32 `json:"cache_hits"`
 }
 
-// ScheduleCandidateMetrics records the complete realized debt used to compare
-// one initial schedule candidate after allocation and late SSA exit.
+// ScheduleCandidateMetrics records one initial schedule candidate after
+// allocation and late SSA exit, plus opt-in first-pass post-RA opportunities.
 type ScheduleCandidateMetrics struct {
-	EstimatedCycles       uint64 `json:"estimated_cycles"`
-	ResourceCycles        uint64 `json:"resource_cycles"`
-	SelectedBytes         uint64 `json:"selected_bytes"`
-	Kind                  uint8  `json:"kind"`
-	PrePostRANondominated bool   `json:"pre_postra_nondominated"`
-	WeightedSpillDebt     uint64 `json:"weighted_spill_debt"`
-	PhysicalCopies        uint32 `json:"physical_copies"`
-	CopyCycles            uint32 `json:"copy_cycles"`
-	CopyMotion            uint32 `json:"copy_motion"`
-	FixedRepairs          uint32 `json:"fixed_repairs"`
-	BrokenFusions         uint32 `json:"broken_fusions"`
-	LoopInvariantOps      uint32 `json:"loop_invariant_ops"`
+	EstimatedCycles   uint64 `json:"estimated_cycles"`
+	ResourceCycles    uint64 `json:"resource_cycles"`
+	SelectedBytes     uint64 `json:"selected_bytes"`
+	PostRARewrites    uint32 `json:"postra_rewrites"`
+	PostRAElisions    uint32 `json:"postra_planned_elisions"`
+	PostRAWrapSpills  uint32 `json:"postra_wrap_spills"`
+	EliminatedMoves   uint32 `json:"eliminated_moves"`
+	Kind              uint8  `json:"kind"`
+	Nondominated      bool   `json:"nondominated"`
+	WeightedSpillDebt uint64 `json:"weighted_spill_debt"`
+	PhysicalCopies    uint32 `json:"physical_copies"`
+	CopyCycles        uint32 `json:"copy_cycles"`
+	CopyMotion        uint32 `json:"copy_motion"`
+	FixedRepairs      uint32 `json:"fixed_repairs"`
+	BrokenFusions     uint32 `json:"broken_fusions"`
+	LoopInvariantOps  uint32 `json:"loop_invariant_ops"`
 }
 
 // FunctionMetrics attributes compiler work to one original Wasm function.
@@ -79,7 +83,10 @@ type FunctionMetrics struct {
 	ScheduleCandidates         uint8                             `json:"schedule_candidates"`
 	InitialScheduleScoreCount  uint8                             `json:"initial_schedule_score_count"`
 	InitialScheduleScores      [3]ScheduleCandidateMetrics       `json:"initial_schedule_scores"`
-	InitialPrePostRAFrontier   uint8                             `json:"initial_pre_postra_frontier"`
+	InitialCandidateFrontier   uint8                             `json:"initial_candidate_frontier"`
+	RetryScheduleScoreCount    uint8                             `json:"retry_schedule_score_count"`
+	RetryScheduleScores        [3]ScheduleCandidateMetrics       `json:"retry_schedule_scores"`
+	RetryCandidateFrontier     uint8                             `json:"retry_candidate_frontier"`
 	SelectionCombinations      uint32                            `json:"selection_combinations"`
 	Dependencies               uint32                            `json:"dependencies"`
 	ScheduleReadySteps         uint32                            `json:"schedule_ready_steps"`
@@ -182,17 +189,24 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 	metrics.BackendAttempts = plan.BackendAttempts
 	metrics.ScheduleCandidates = plan.ScheduleCandidates
 	metrics.InitialScheduleScoreCount = plan.InitialScheduleScoreCount
-	metrics.InitialPrePostRAFrontier = plan.InitialPrePostRAFrontier
-	for index := range plan.InitialScheduleScores[:plan.InitialScheduleScoreCount] {
-		score := plan.InitialScheduleScores[index]
-		metrics.InitialScheduleScores[index] = ScheduleCandidateMetrics{
-			EstimatedCycles: score.EstimatedCycles, ResourceCycles: score.ResourceCycles, SelectedBytes: score.SelectedBytes,
-			Kind: uint8(score.Kind), PrePostRANondominated: plan.InitialPrePostRAFrontier&(1<<index) != 0, WeightedSpillDebt: score.WeightedSpillDebt,
-			PhysicalCopies: score.PhysicalCopies, CopyCycles: score.CopyCycles,
-			CopyMotion: score.CopyMotion, FixedRepairs: score.FixedRepairs,
-			BrokenFusions: score.BrokenFusions, LoopInvariantOps: score.LoopInvariantOps,
+	metrics.InitialCandidateFrontier = plan.InitialCandidateFrontier
+	metrics.RetryScheduleScoreCount = plan.RetryScheduleScoreCount
+	metrics.RetryCandidateFrontier = plan.RetryCandidateFrontier
+	recordScheduleScores := func(out *[3]ScheduleCandidateMetrics, scores [3]railmach.ScheduleScore, count, frontier uint8) {
+		for index := range scores[:count] {
+			score := scores[index]
+			out[index] = ScheduleCandidateMetrics{
+				EstimatedCycles: score.EstimatedCycles, ResourceCycles: score.ResourceCycles, SelectedBytes: score.SelectedBytes,
+				PostRARewrites: score.PostRARewrites, PostRAElisions: score.PostRAElisions, PostRAWrapSpills: score.PostRAWrapSpills, EliminatedMoves: score.EliminatedMoves,
+				Kind: uint8(score.Kind), Nondominated: frontier&(1<<index) != 0, WeightedSpillDebt: score.WeightedSpillDebt,
+				PhysicalCopies: score.PhysicalCopies, CopyCycles: score.CopyCycles,
+				CopyMotion: score.CopyMotion, FixedRepairs: score.FixedRepairs,
+				BrokenFusions: score.BrokenFusions, LoopInvariantOps: score.LoopInvariantOps,
+			}
 		}
 	}
+	recordScheduleScores(&metrics.InitialScheduleScores, plan.InitialScheduleScores, plan.InitialScheduleScoreCount, plan.InitialCandidateFrontier)
+	recordScheduleScores(&metrics.RetryScheduleScores, plan.RetryScheduleScores, plan.RetryScheduleScoreCount, plan.RetryCandidateFrontier)
 	metrics.SelectionCombinations = uint32(len(plan.Selection.Combinations))
 	metrics.Dependencies = uint32(len(plan.DAG.Dependencies))
 	if freedom, err := railmach.MeasureScheduleFreedom(plan.Machine, plan.Selection, plan.DAG); err == nil {

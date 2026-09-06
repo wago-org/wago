@@ -125,19 +125,24 @@ func TestRecordNativePlanMetricsKeepsRailSSAAndRailMachDistinct(t *testing.T) {
 		BackendAttempts:    2,
 		ScheduleCandidates: 6,
 		InitialScheduleScores: [3]railmach.ScheduleScore{
-			{Kind: railmach.ScheduleKindLatencyFusion, EstimatedCycles: 101, ResourceCycles: 77, SelectedBytes: 32, WeightedSpillDebt: 13, PhysicalCopies: 7, CopyCycles: 2, CopyMotion: 3, FixedRepairs: 4, BrokenFusions: 5, LoopInvariantOps: 6},
+			{Kind: railmach.ScheduleKindLatencyFusion, EstimatedCycles: 101, ResourceCycles: 77, SelectedBytes: 32, PostRARewrites: 3, PostRAElisions: 2, PostRAWrapSpills: 1, EliminatedMoves: 4, WeightedSpillDebt: 13, PhysicalCopies: 7, CopyCycles: 2, CopyMotion: 3, FixedRepairs: 4, BrokenFusions: 5, LoopInvariantOps: 6},
 			{Kind: railmach.ScheduleKindPressure, WeightedSpillDebt: 8, PhysicalCopies: 4},
 			{Kind: railmach.ScheduleKindSourceStable, WeightedSpillDebt: 10, PhysicalCopies: 5},
 		},
 		InitialScheduleScoreCount: 3,
-		InitialPrePostRAFrontier:  1,
-		SegmentedBaselineDebt:     13,
-		SegmentedCandidateDebt:    8,
-		SegmentedBaselineCopies:   7,
-		SegmentedCandidateCopies:  4,
-		SegmentedCandidateRanges:  1,
-		SegmentedAttempted:        true,
-		SegmentedAdmitted:         true,
+		InitialCandidateFrontier:  1,
+		RetryScheduleScores: [3]railmach.ScheduleScore{
+			{Kind: railmach.ScheduleKindLatencyFusion, EstimatedCycles: 99, PostRARewrites: 4, PostRAElisions: 3, WeightedSpillDebt: 9},
+		},
+		RetryScheduleScoreCount:  1,
+		RetryCandidateFrontier:   1,
+		SegmentedBaselineDebt:    13,
+		SegmentedCandidateDebt:   8,
+		SegmentedBaselineCopies:  7,
+		SegmentedCandidateCopies: 4,
+		SegmentedCandidateRanges: 1,
+		SegmentedAttempted:       true,
+		SegmentedAdmitted:        true,
 	}
 	metrics := FunctionMetrics{}
 	recordNativePlanMetrics(&metrics, plan)
@@ -147,8 +152,11 @@ func TestRecordNativePlanMetricsKeepsRailSSAAndRailMachDistinct(t *testing.T) {
 	if metrics.ScheduleCandidates != 6 || metrics.SelectionCombinations != 3 || metrics.Dependencies != 8 || metrics.LiveIntervals != 4 || metrics.LiveSegments != 6 || metrics.SegmentedRanges != 1 || metrics.AllocationFragments != 2 {
 		t.Fatalf("quality-search metrics = candidates:%d combinations:%d dependencies:%d intervals:%d segments:%d segmented:%d fragments:%d", metrics.ScheduleCandidates, metrics.SelectionCombinations, metrics.Dependencies, metrics.LiveIntervals, metrics.LiveSegments, metrics.SegmentedRanges, metrics.AllocationFragments)
 	}
-	if metrics.InitialScheduleScoreCount != 3 || metrics.InitialPrePostRAFrontier != 1 || metrics.InitialScheduleScores[0] != (ScheduleCandidateMetrics{Kind: uint8(railmach.ScheduleKindLatencyFusion), PrePostRANondominated: true, EstimatedCycles: 101, ResourceCycles: 77, SelectedBytes: 32, WeightedSpillDebt: 13, PhysicalCopies: 7, CopyCycles: 2, CopyMotion: 3, FixedRepairs: 4, BrokenFusions: 5, LoopInvariantOps: 6}) || metrics.InitialScheduleScores[1].WeightedSpillDebt != 8 || metrics.InitialScheduleScores[2].WeightedSpillDebt != 10 {
+	if metrics.InitialScheduleScoreCount != 3 || metrics.InitialCandidateFrontier != 1 || metrics.InitialScheduleScores[0] != (ScheduleCandidateMetrics{Kind: uint8(railmach.ScheduleKindLatencyFusion), Nondominated: true, EstimatedCycles: 101, ResourceCycles: 77, SelectedBytes: 32, PostRARewrites: 3, PostRAElisions: 2, PostRAWrapSpills: 1, EliminatedMoves: 4, WeightedSpillDebt: 13, PhysicalCopies: 7, CopyCycles: 2, CopyMotion: 3, FixedRepairs: 4, BrokenFusions: 5, LoopInvariantOps: 6}) || metrics.InitialScheduleScores[1].WeightedSpillDebt != 8 || metrics.InitialScheduleScores[2].WeightedSpillDebt != 10 {
 		t.Fatalf("initial schedule scores = count:%d scores:%#v", metrics.InitialScheduleScoreCount, metrics.InitialScheduleScores)
+	}
+	if metrics.RetryScheduleScoreCount != 1 || metrics.RetryCandidateFrontier != 1 || metrics.RetryScheduleScores[0] != (ScheduleCandidateMetrics{Kind: uint8(railmach.ScheduleKindLatencyFusion), Nondominated: true, EstimatedCycles: 99, PostRARewrites: 4, PostRAElisions: 3, WeightedSpillDebt: 9}) {
+		t.Fatalf("retry schedule scores = count:%d scores:%#v", metrics.RetryScheduleScoreCount, metrics.RetryScheduleScores)
 	}
 	if !metrics.SegmentedAttempted || !metrics.SegmentedAdmitted || metrics.SegmentedBaselineDebt != 13 || metrics.SegmentedCandidateDebt != 8 || metrics.SegmentedBaselineCopies != 7 || metrics.SegmentedCandidateCopies != 4 || metrics.SegmentedCandidateRanges != 1 {
 		t.Fatalf("segmented trial metrics = attempted:%t admitted:%t debt:%d->%d copies:%d->%d ranges:%d", metrics.SegmentedAttempted, metrics.SegmentedAdmitted, metrics.SegmentedBaselineDebt, metrics.SegmentedCandidateDebt, metrics.SegmentedBaselineCopies, metrics.SegmentedCandidateCopies, metrics.SegmentedCandidateRanges)
@@ -806,6 +814,9 @@ func TestCompilerNativeRailMachARM64PairFinalization(t *testing.T) {
 	}
 	if runtime.GOARCH == "arm64" && (metrics.Functions[0].PostRARewrites == 0 || metrics.Functions[0].PostRAByteSavings <= 0) {
 		t.Fatalf("ARM64 pair did not report an exact byte saving: %#v", metrics.Functions[0])
+	}
+	if runtime.GOARCH == "arm64" && (metrics.Functions[0].InitialScheduleScoreCount == 0 || metrics.Functions[0].InitialScheduleScores[0].PostRARewrites == 0 || metrics.Functions[0].InitialScheduleScores[0].PostRAElisions == 0) {
+		t.Fatalf("ARM64 pair did not report initial-candidate post-RA opportunity: %#v", metrics.Functions[0].InitialScheduleScores)
 	}
 }
 

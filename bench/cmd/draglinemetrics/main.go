@@ -176,26 +176,32 @@ func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metri
 			return err
 		}
 	}
-	if _, err := fmt.Fprintln(w, "\n## Initial schedule candidates\n\nThese are first-pass candidates scored after allocation and late SSA exit; retry-policy candidates are excluded. Final kind identifies the schedule kind ultimately retained, whose debt may differ after an allocator retry. The frontier is advisory until post-RA opportunities and realized native bytes join the score.\n\n| Function | Candidate | Kind | Final kind | Pre-postRA frontier | Estimated cycles | Resource cycles | Selected-rule bytes | Spill debt | Physical copies | Copy cycles | Copy motion | Fixed repairs | Broken fusions | Loop-invariant ops |\n|---:|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"); err != nil {
+	if _, err := fmt.Fprintln(w, "\n## Schedule candidates\n\nInitial and bounded allocator-retry candidates are scored separately after allocation and late SSA exit. Final kind identifies the schedule kind ultimately retained. Metrics-enabled compilation also plans candidate post-RA opportunities; each phase's frontier remains advisory until exact realized native bytes join the score.\n\n| Function | Phase | Candidate | Kind | Final kind | Candidate frontier | Estimated cycles | Resource cycles | Selected-rule bytes | Post-RA rewrites | Planned elisions | Wrap spills | Eliminated moves | Spill debt | Physical copies | Copy cycles | Copy motion | Fixed repairs | Broken fusions | Loop-invariant ops |\n|---:|---|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|"); err != nil {
 		return err
 	}
 	for _, row := range metrics.Functions {
-		count := int(row.InitialScheduleScoreCount)
-		if count > len(row.InitialScheduleScores) {
-			count = len(row.InitialScheduleScores)
+		writeCandidates := func(phase string, scores [3]dragline.ScheduleCandidateMetrics, count uint8) error {
+			limit := min(int(count), len(scores))
+			for index, score := range scores[:limit] {
+				retained := ""
+				if score.Kind == row.ScheduleKind {
+					retained = "yes"
+				}
+				frontier := ""
+				if score.Nondominated {
+					frontier = "yes"
+				}
+				if _, err := fmt.Fprintf(w, "| %d | %s | %d | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n", row.Function, phase, index+1, scheduleKindName(score.Kind), retained, frontier, score.EstimatedCycles, score.ResourceCycles, score.SelectedBytes, score.PostRARewrites, score.PostRAElisions, score.PostRAWrapSpills, score.EliminatedMoves, score.WeightedSpillDebt, score.PhysicalCopies, score.CopyCycles, score.CopyMotion, score.FixedRepairs, score.BrokenFusions, score.LoopInvariantOps); err != nil {
+					return err
+				}
+			}
+			return nil
 		}
-		for index, score := range row.InitialScheduleScores[:count] {
-			retained := ""
-			if score.Kind == row.ScheduleKind {
-				retained = "yes"
-			}
-			frontier := ""
-			if score.PrePostRANondominated {
-				frontier = "yes"
-			}
-			if _, err := fmt.Fprintf(w, "| %d | %d | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n", row.Function, index+1, scheduleKindName(score.Kind), retained, frontier, score.EstimatedCycles, score.ResourceCycles, score.SelectedBytes, score.WeightedSpillDebt, score.PhysicalCopies, score.CopyCycles, score.CopyMotion, score.FixedRepairs, score.BrokenFusions, score.LoopInvariantOps); err != nil {
-				return err
-			}
+		if err := writeCandidates("initial", row.InitialScheduleScores, row.InitialScheduleScoreCount); err != nil {
+			return err
+		}
+		if err := writeCandidates("retry", row.RetryScheduleScores, row.RetryScheduleScoreCount); err != nil {
+			return err
 		}
 	}
 	return nil

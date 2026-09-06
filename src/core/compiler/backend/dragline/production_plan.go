@@ -61,12 +61,16 @@ type nativeBackendPlan struct {
 	BackendAttempts    uint8
 	ScheduleCandidates uint8
 	// InitialScheduleScores retain the realized post-allocation debt for the
-	// bounded first-pass candidates. Retry scores are deliberately excluded so
-	// this remains a comparable view of scheduling rather than allocator-policy
-	// changes.
+	// bounded first-pass candidates. Metrics-enabled compilation also attaches
+	// their first-pass post-RA opportunities. Retry scores are deliberately
+	// excluded so this remains a comparable view of scheduling rather than
+	// allocator-policy changes.
 	InitialScheduleScores     [3]railmach.ScheduleScore
 	InitialScheduleScoreCount uint8
-	InitialPrePostRAFrontier  uint8
+	InitialCandidateFrontier  uint8
+	RetryScheduleScores       [3]railmach.ScheduleScore
+	RetryScheduleScoreCount   uint8
+	RetryCandidateFrontier    uint8
 	// Segmented baseline/candidate fields retain exact spill and copy debt on
 	// both sides of the one bounded segmented-liveness trial. The trial is
 	// deliberately separate from schedule search so observability does not
@@ -178,6 +182,7 @@ type nativeBackendPlanner struct {
 	noBarrierGCStores   []bool
 	amd64MemoryBounds   []nativeAMD64MemoryBoundUse
 	parallelCandidates  bool
+	candidatePostRA     bool
 	signalsBounds       bool
 	candidateScratch    *[2]nativeCandidateWorkspace
 	plan                nativeBackendPlan
@@ -193,6 +198,7 @@ type nativeCandidateWorkspace struct {
 	schedule   railmach.Schedule
 	allocation railmach.GreedyAllocation
 	exit       railmach.SSAExit
+	postRA     railmach.PostRAPlan
 }
 
 type nativeAMD64MemoryBoundUse struct {
@@ -211,6 +217,7 @@ type nativeCandidateRef struct {
 	schedule   *railmach.Schedule
 	allocation *railmach.GreedyAllocation
 	exit       *railmach.SSAExit
+	postRA     *railmach.PostRAPlan
 }
 
 func (p *nativeBackendPlanner) evaluateScheduleCandidates(machine *railmach.Func, selection *railmach.SelectionPlan, dag *railmach.DependencyDAG, pressure *railssa.PressurePlan, greedy railmach.GreedyConfig, kinds [3]railmach.ScheduleKind, parallel bool) ([3]railmach.ScheduleScore, [3]error) {
@@ -218,9 +225,9 @@ func (p *nativeBackendPlanner) evaluateScheduleCandidates(machine *railmach.Func
 		p.candidateScratch = new([2]nativeCandidateWorkspace)
 	}
 	refs := [3]nativeCandidateRef{
-		{schedule: &p.schedule, allocation: &p.allocation, exit: &p.exit},
-		{schedule: &p.candidateScratch[0].schedule, allocation: &p.candidateScratch[0].allocation, exit: &p.candidateScratch[0].exit},
-		{schedule: &p.candidateScratch[1].schedule, allocation: &p.candidateScratch[1].allocation, exit: &p.candidateScratch[1].exit},
+		{schedule: &p.schedule, allocation: &p.allocation, exit: &p.exit, postRA: &p.postRA},
+		{schedule: &p.candidateScratch[0].schedule, allocation: &p.candidateScratch[0].allocation, exit: &p.candidateScratch[0].exit, postRA: &p.candidateScratch[0].postRA},
+		{schedule: &p.candidateScratch[1].schedule, allocation: &p.candidateScratch[1].allocation, exit: &p.candidateScratch[1].exit, postRA: &p.candidateScratch[1].postRA},
 	}
 	var scores [3]railmach.ScheduleScore
 	var errs [3]error
@@ -244,6 +251,14 @@ func (p *nativeBackendPlanner) evaluateScheduleCandidates(machine *railmach.Func
 			return
 		}
 		scores[index], errs[index] = railmach.ScoreVerifiedScheduleCandidate(machine, selection, dag, candidate, allocation, exit)
+		if errs[index] == nil && p.candidatePostRA {
+			postRA, err := railmach.PlanPostRAVerifiedAllocation(machine.Target, machine, selection, candidate, allocation, exit, ref.postRA)
+			if err != nil {
+				errs[index] = err
+				return
+			}
+			scores[index] = railmach.ScorePostRAOpportunities(scores[index], candidate, postRA)
+		}
 	}
 	if parallel {
 		var wait sync.WaitGroup
@@ -363,7 +378,7 @@ func (p *nativeBackendPlanner) capacityBreakdown() (ssa, machine, native uint64)
 	if p.candidateScratch != nil {
 		for index := range p.candidateScratch {
 			candidate := &p.candidateScratch[index]
-			machine += railmach.PipelineCapacityBytes(nil, nil, nil, &candidate.schedule, &candidate.allocation, &candidate.exit, nil, nil, nil)
+			machine += railmach.PipelineCapacityBytes(nil, nil, nil, &candidate.schedule, &candidate.allocation, &candidate.exit, &candidate.postRA, nil, nil)
 		}
 	}
 	native = sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches) + sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.postRAPairWith) + sliceBytes(p.postRASkip) + sliceBytes(p.postRAForwardFrom) + sliceBytes(p.postRAFusionWith) + sliceBytes(p.postRAMemoryFrom) + sliceBytes(p.postRARepeatFirst) + sliceBytes(p.postRAPreIndex) + sliceBytes(p.postRAPostIndexWith) + sliceBytes(p.immediateProducer) + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses) + sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.amd64MemoryBounds) + sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots) + sliceBytes(p.gcValues)
@@ -1450,13 +1465,20 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			if candidateErr != nil {
 				return nil, candidateErr
 			}
+			if p.candidatePostRA {
+				candidatePostRA, candidateErr := railmach.PlanPostRAVerifiedAllocation(machineTarget, machine, selection, candidate, candidateAllocation, candidateExit, &p.postRA)
+				if candidateErr != nil {
+					return nil, candidateErr
+				}
+				score = railmach.ScorePostRAOpportunities(score, candidate, candidatePostRA)
+			}
 			initialScheduleScores[index] = score
 			if !haveBest || nativeScheduleScoreBetter(objective, machine.Target, len(machine.Insts), usesFPR, score, best) {
 				best, haveBest = score, true
 			}
 		}
 	}
-	initialPrePostRAFrontier := uint8(railmach.ScheduleFrontier(initialScheduleScores[:candidateCount]))
+	initialCandidateFrontier := uint8(railmach.ScheduleFrontier(initialScheduleScores[:candidateCount]))
 	var schedule *railmach.Schedule
 	var allocation *railmach.GreedyAllocation
 	var exit *railmach.SSAExit
@@ -1481,6 +1503,8 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	}
 	backendAttempts := uint8(1)
 	scheduleCandidates := uint8(candidateCount)
+	var retryScheduleScores [3]railmach.ScheduleScore
+	var retryScheduleScoreCount, retryCandidateFrontier uint8
 	segmentedBaselineDebt, segmentedCandidateDebt := uint64(0), uint64(0)
 	segmentedBaselineCopies, segmentedCandidateCopies := uint32(0), uint32(0)
 	segmentedCandidateRanges := uint32(0)
@@ -1491,6 +1515,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		if !scheduleAlternatives {
 			retryCandidateCount = 1
 		}
+		retryScheduleScoreCount = uint8(retryCandidateCount)
 		scheduleCandidates += uint8(retryCandidateCount)
 		retryGreedy := defaultGreedy
 		retryGreedy.PreserveGPRCost = 0
@@ -1506,12 +1531,13 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				if retryErrs[index] != nil {
 					return nil, retryErrs[index]
 				}
+				retryScheduleScores[index] = candidateScore
 				if nativeScheduleScoreBetter(objective, machine.Target, len(machine.Insts), usesFPR, candidateScore, retryBest) {
 					retryBest, retryKind, retryIndex, improved = candidateScore, retryKinds[index], index, true
 				}
 			}
 		} else {
-			for _, kind := range retryKinds[:retryCandidateCount] {
+			for index, kind := range retryKinds[:retryCandidateCount] {
 				candidate, retryErr := railmach.BuildScheduleWithPressure(machine, selection, dag, kind, pressure, &p.schedule)
 				if retryErr != nil {
 					return nil, retryErr
@@ -1528,11 +1554,20 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				if retryErr != nil {
 					return nil, retryErr
 				}
+				if p.candidatePostRA {
+					candidatePostRA, retryErr := railmach.PlanPostRAVerifiedAllocation(machineTarget, machine, selection, candidate, candidateAllocation, candidateExit, &p.postRA)
+					if retryErr != nil {
+						return nil, retryErr
+					}
+					candidateScore = railmach.ScorePostRAOpportunities(candidateScore, candidate, candidatePostRA)
+				}
+				retryScheduleScores[index] = candidateScore
 				if nativeScheduleScoreBetter(objective, machine.Target, len(machine.Insts), usesFPR, candidateScore, retryBest) {
 					retryBest, retryKind, improved = candidateScore, kind, true
 				}
 			}
 		}
+		retryCandidateFrontier = uint8(railmach.ScheduleFrontier(retryScheduleScores[:retryCandidateCount]))
 		if improved {
 			best, bestGreedy = retryBest, retryGreedy
 			if parallelCandidates {
@@ -1830,7 +1865,8 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		Stack: stack, CFG: cfg, Semantic: semantic,
 		Machine: machine, Selection: selection, DAG: dag, Schedule: schedule, Allocation: allocation, Exit: exit, PostRA: postRA,
 		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, ExternalCallVectorFPRs: externalCallVectorFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts, ScheduleCandidates: scheduleCandidates,
-		InitialScheduleScores: initialScheduleScores, InitialScheduleScoreCount: uint8(candidateCount), InitialPrePostRAFrontier: initialPrePostRAFrontier,
+		InitialScheduleScores: initialScheduleScores, InitialScheduleScoreCount: uint8(candidateCount), InitialCandidateFrontier: initialCandidateFrontier,
+		RetryScheduleScores: retryScheduleScores, RetryScheduleScoreCount: retryScheduleScoreCount, RetryCandidateFrontier: retryCandidateFrontier,
 		SegmentedBaselineDebt: segmentedBaselineDebt, SegmentedCandidateDebt: segmentedCandidateDebt, SegmentedBaselineCopies: segmentedBaselineCopies, SegmentedCandidateCopies: segmentedCandidateCopies, SegmentedCandidateRanges: segmentedCandidateRanges, SegmentedAttempted: segmentedAttempted, SegmentedAdmitted: segmentedAdmitted,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64BMI2:      target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),
