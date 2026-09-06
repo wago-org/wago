@@ -295,6 +295,12 @@ func TestNativeBackendPlannerBuildsCompleteRailMachProduct(t *testing.T) {
 	if plan.Machine == nil || plan.Selection == nil || plan.Schedule == nil || plan.Allocation == nil || plan.Exit == nil || plan.PostRA == nil || plan.Score.Kind == 0 {
 		t.Fatalf("incomplete native backend plan: %#v", plan)
 	}
+	if len(plan.Machine.Memory) != 0 {
+		t.Fatalf("non-memory function has %d memory descriptors", len(plan.Machine.Memory))
+	}
+	if cap(planner.memoryCheckEnds) != 0 || cap(planner.memoryCheckTouched) != 0 {
+		t.Fatalf("non-memory function retained bounds scratch: ends=%d touched=%d", cap(planner.memoryCheckEnds), cap(planner.memoryCheckTouched))
+	}
 	if err := railmach.VerifyAllocation(plan.Machine, &plan.Allocation.Allocation, railmach.DefaultLinearQConfig(plan.Machine.Target)); err != nil {
 		t.Fatal(err)
 	}

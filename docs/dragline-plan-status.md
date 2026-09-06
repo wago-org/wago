@@ -288,6 +288,14 @@ the performance corpus.
   identical for all four modules. Serialized wall time moves from 165.391 to
   159.406 seconds for esbuild (-3.62%) and 98.147 to 96.604 seconds for Ruby
   (-1.57%).
+- Operation-gated bounds scratch: ✅ a function with no selected memory
+  descriptor now presents empty bounds-cache endpoint and touched-address
+  scratch to both finalizers. Reusable capacity remains available across
+  functions, but a fresh memory-free planner allocates neither slab. On the
+  exact ARM64 `many_funcs` corpus, the largest function falls from 5,793 to
+  5,737 peak live bytes and the module peak from 71,007 to 70,951; `arith`
+  falls from 15,234 to 15,106 function peak and from 15,563 to 15,435 module
+  peak. Their native images remain byte-identical at 19,276 and 184 bytes.
 - Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
   bounded initial schedule candidate's realized post-allocation spill debt,
   physical copies, copy cycles, copy motion, fixed repairs, broken fusions,
