@@ -148,7 +148,7 @@ func writeRuntimeSchema() {
 // usage prints the top-level help. The layout follows a single house style (see
 // Cmd.printHelp for per-command help): a one-line banner with the version, a
 // usage line, the command table (rendered from the registry so a new command
-// shows up automatically), the global flags, then a docs/repo footer. Per-command
+// shows up automatically), the global flags, then a documentation/repository footer. Per-command
 // flags live in each command's own `--help`. Headings are bold and argument
 // syntax is dimmed so command names and descriptions remain easy to scan.
 func usage(w *os.File) {

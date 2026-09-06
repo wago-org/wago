@@ -1,8 +1,23 @@
 # Agent Todo
 
-Status: completed historical roadmap. Current feature and artifact truth lives in
-`FEATURES.md`, `ROADMAP.md`, and `ARCHITECTURE.md`; codec/version measurements
-below record the implementation state when each item landed.
+> **Status:** completed historical roadmap. This file is an archive, not the
+> current plan.
+
+Use [FEATURES.md](FEATURES.md) for current feature support,
+[ROADMAP.md](ROADMAP.md) for current priorities, and
+[ARCHITECTURE.md](ARCHITECTURE.md) for the current design. The details below
+record the implementation state, benchmark measurements, and codec versions when
+each item landed. They are retained as history, not as current performance
+promises.
+
+## How to Read This Archive
+
+- **Current State** is a chronological record of completed work.
+- **Implementation Order** preserves the original completed plan.
+- **Definition of Done** and **Engineering Constraints** record the acceptance
+  rules that applied to that work.
+
+All checklist items are complete. Do not use this file to select new work.
 
 ## WebAssembly 2.0 Completion Roadmap
 

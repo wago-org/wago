@@ -1,14 +1,27 @@
 # Contributing
 
-`wago` is a small Go-first WebAssembly JIT. Keep changes direct, tested, and
-easy to audit.
+Thank you for helping with `wago`, a small Go-first WebAssembly JIT. Keep each
+change small, tested, and easy to review.
 
-First-class targets: **linux/amd64**, **linux/arm64**, **darwin/amd64**,
-**darwin/arm64**, **windows/amd64**, and **windows/arm64** with Go **1.22+**.
-All six targets have native CI, release assets, and conformance gates;
-see [FEATURES.md](FEATURES.md) for feature-level platform admission.
+Run commands from the repository root unless a command says otherwise. Start
+with [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md),
+[FEATURES.md](FEATURES.md), and [ROADMAP.md](ROADMAP.md).
 
-## Setup
+## Before You Start
+
+`wago` supports Go **1.22+**. Its first-class targets are linux/amd64,
+linux/arm64, darwin/amd64, darwin/arm64, windows/amd64, and windows/arm64. CI,
+release assets, and conformance gates cover all six targets. See
+[FEATURES.md](FEATURES.md) for feature-level platform support.
+
+Read these files before you plan feature work:
+
+- [FEATURES.md](FEATURES.md) lists implemented and unsupported features.
+- [ROADMAP.md](ROADMAP.md) lists the current priorities.
+- [ARCHITECTURE.md](ARCHITECTURE.md) explains the main compiler and runtime
+  parts.
+
+## Set Up a Checkout
 
 ```bash
 git clone https://github.com/wago-org/wago
@@ -20,7 +33,11 @@ go build -tags wago_runtime -o wago-runtime ./cli/wago
 ./scripts/install-hooks.sh
 ```
 
-The benchmark module is separate:
+`wago` is the manager command. `wago-runtime` is the runtime command. The
+optional hook formats staged Go files. Review and stage its changes before you
+commit again.
+
+The benchmark suite is a separate Go module:
 
 ```bash
 cd bench
@@ -28,84 +45,63 @@ go test ./...
 go test -bench .
 ```
 
-## Project Shape
+## Find the Code
 
-```text
-wago.go                          public API facade, generated (re-exports src/wago)
-src/wago                         public API implementation
-internal/genfacade               generator for wago.go
-cli/wago                         build-tagged manager/runtime entrypoint
-cli/manager                      manager implementation and command tree
-cli/runtime                      runtime implementation and command tree
-cli/internal                     shared CLI primitives
-src/core/compiler/wasm           decoder + validator
-src/core/compiler/backend/railshot  single-pass amd64 and arm64 codegen
-src/core/runtime                 mmap, foreign stack, trap plumbing
-tests                           shared harnesses, fixtures, corpora, and scripts
-bench                            runtime comparison benchmarks
-```
+| Path | Purpose |
+|---|---|
+| `wago.go` | Generated public API facade. It re-exports `src/wago`. |
+| `src/wago` | Public API implementation. |
+| `internal/genfacade` | Generator for `wago.go`. |
+| `cli/wago` | Build-tagged manager and runtime entry point. |
+| `cli/manager` | Manager commands. |
+| `cli/runtime` | Runtime commands. |
+| `cli/internal` | Shared CLI code. |
+| `src/core/compiler/wasm` | WebAssembly decoder and validator. |
+| `src/core/compiler/backend/railshot` | Single-pass amd64 and arm64 code generator. |
+| `src/core/runtime` | Memory maps, foreign stack, and trap code. |
+| `tests` | Test harnesses, fixtures, corpora, and scripts. |
+| `bench` | Runtime-comparison benchmarks. |
 
-The root `wago.go` is generated: it re-exports every exported symbol of
-`src/wago` so callers keep the clean `github.com/wago-org/wago` import path. When
-you add or rename public API in `src/wago`, run `go generate ./...` and commit
-the regenerated `wago.go`. CI fails if it is stale.
+`wago.go` is generated. When you add or rename public API in `src/wago`, run
+`go generate ./...` and commit the updated `wago.go`. CI rejects a stale facade.
 
-Use [FEATURES.md](FEATURES.md) before adding feature work and
-[ROADMAP.md](ROADMAP.md) before reshuffling priorities.
+## Make a Change
 
-`make test` is the unified Go test surface. Wago-owned cases and applicable
-regressions adapted from upstream projects live together in their domain
-packages. The pinned Core v2 wrappers need WABT and `tests/spec-v2`; run
-`make spec2` when changing decoder, validator, linker, or execution semantics.
-See [tests/README.md](tests/README.md) for the complete test layout and fixture
-provenance.
+- Prefer the existing design over a new abstraction.
+- Keep generated machine-code changes narrow and cover them with tests.
+- Decode, validate, and compile a WebAssembly feature completely. Otherwise,
+  reject it with a clear error.
+- Return errors for bad public API input. Do not panic.
+- Keep the no-cgo runtime boundary unless a design note explains the change.
+- Use short comments. Add doc comments for exported API and for non-obvious
+  compiler or runtime code.
 
-## Development
+For a new opcode or module feature:
 
-- Prefer the existing shape over new abstractions.
-- Keep generated machine-code changes tightly scoped and covered by tests.
-- Reject unsupported Wasm features explicitly instead of accepting modules that
-  run with partial semantics.
-- Keep public API behavior boring: return errors for bad inputs, do not panic.
-- Preserve the no-cgo runtime boundary unless a change has a clear design note.
-- Keep comments minimal. Add short doc comments for exported API and larger or
-  less obvious compiler/runtime functions.
+1. Decode the feature.
+2. Validate it against the WebAssembly type rules.
+3. Compile it completely or reject it clearly.
+4. Test successful execution and failure or trap behavior.
+5. Update [FEATURES.md](FEATURES.md) and [ROADMAP.md](ROADMAP.md) when support
+   status changes.
 
-The optional git hook installed by `./scripts/install-hooks.sh` runs `gofmt` on
-staged Go files before commit. If formatting changes anything, review and stage
-those changes before committing again.
+Take extra care in runtime code. It crosses into native execution.
 
-## AI-Assisted Contributions
+- Check bounds before you write shared buffers.
+- Keep memory-map permissions and cleanup paths easy to inspect.
+- Return Go errors for traps and bad instantiate-time state.
+- Add stress tests for stacks, memory, host calls, and traps.
 
-AI assistance is fine, but the contributor owns the patch.
+## Test Your Change
 
-If you use AI while preparing a PR, include a short note describing how it was
-used. Examples: drafting docs, generating test cases, exploring an approach, or
-reviewing code. No long disclosure is needed.
-
-Before submitting AI-assisted work:
-
-- read every changed line and make sure you can explain it
-- verify edge cases yourself, especially around validation, traps, memory, and
-  native-code generation
-- run the same tests you would run for hand-written code
-- split broad generated output into small, reviewable commits or PRs
-- remove AI-produced code you do not fully understand
-
-For larger design changes, open an issue first and describe the intended
-behavior. A clear human explanation matters more than where the first draft came
-from.
-
-## Tests
-
-Run this before opening a PR:
+Start with the smallest relevant test. Before you open a pull request, run:
 
 ```bash
 go test ./...
 (cd bench && go test ./...)
 ```
 
-For CLI-facing changes, also build and exercise the examples:
+For CLI changes, also build and run these checks:
 
 ```bash
 go build -o wago ./cli/wago
@@ -117,98 +113,88 @@ go build -tags wago_runtime -o wago-runtime ./cli/wago
 ./wago-runtime validate tests/fixtures/wasm/fib.wasm
 ```
 
-When adding behavior, add the smallest fixture that proves it. Prefer readable
-WAT in the test or a tiny checked-in wasm fixture under `tests/fixtures/wasm`.
+Use the smallest fixture that proves new behavior. Prefer readable WAT in a
+test or a small checked-in `.wasm` file under `tests/fixtures/wasm`. See
+[tests/README.md](tests/README.md) for the complete test layout and fixture
+provenance.
 
-### Spec conformance (wasm 1.0 / MVP)
+### WebAssembly Conformance
 
-[`SPECTEST.md`](SPECTEST.md) is a scoreboard of wago against the official
-WebAssembly testsuite, vendored as a submodule at `tests/spec` (pinned to a
-pre-reference-types commit so the file set is MVP). `TestSpecExec` (in
-`spectest_exec_test.go`) runs each file's `assert_return`/`assert_trap`
-assertions in an isolated subprocess and scores it; it skips unless the
-submodule is checked out and `wast2json` (wabt) is on `PATH`.
+[SPECTEST.md](SPECTEST.md) records results against the official WebAssembly
+testsuite. The WebAssembly 1.0 suite is vendored as the `tests/spec` submodule
+at a pre-reference-types revision. `TestSpecExec` runs its `assert_return` and
+`assert_trap` assertions in isolated subprocesses. It needs the checked-out
+submodule and WABT's `wast2json` on `PATH`.
 
-Note: `TestSpecExec` runs on linux/amd64, linux/arm64, and darwin/arm64.
+`TestSpecExec` runs on linux/amd64, linux/arm64, and darwin/arm64. Regenerate
+the WebAssembly 1.0 report when conformance changes:
 
 ```bash
-git submodule update --init tests/spec        # one time
-WAGO_SPECTEST_WRITE=SPECTEST.md go test . -run TestSpecExec   # regenerate the scoreboard
+git submodule update --init tests/spec
+WAGO_SPECTEST_WRITE=SPECTEST.md go test . -run TestSpecExec
 ```
 
-The `note` column points at the first blocker per file (a missing opcode often
-blocks a whole module). Regenerate and commit `SPECTEST.md` when conformance
-changes.
+The report's `note` column gives the first blocker for each file. A missing
+opcode can block a whole module. Commit the regenerated report with the
+conformance change.
 
-## Performance and Stress
+The pinned WebAssembly 2.0 wrappers need WABT and `tests/spec-v2`. Run
+`make spec2` when you change decoding, validation, linking, or execution
+semantics.
 
-`wago` is performance-sensitive, but not every PR needs a full benchmark report.
-Use judgment based on the code path you touched.
+## Measure Performance and Stress
 
-Run the benchmark suite when changing hot compiler, runtime, call-boundary, or
-memory paths:
+`wago` is performance-sensitive. Run benchmarks when you change compiler,
+runtime, call-boundary, or memory hot paths:
 
 ```bash
 cd bench
 go test -bench .
 ```
 
-For changes that affect parsing, validation, codegen, instantiation, memory, or
-host-call logging, also test a larger or more adversarial input than the happy
-path fixture. Function-worker changes should include `BenchmarkValidateWorkers`
-and/or `BenchmarkCompileFullWorkers` at fixed `GOMAXPROCS`, with serial and
-parallel allocation counts. The goal is to catch behavior that is technically
-correct on small modules but falls over with:
+For changes to parsing, validation, code generation, instantiation, memory, or
+host-call logging, test a larger or adversarial input as well as the small
+fixture. For function-worker changes, include `BenchmarkValidateWorkers` or
+`BenchmarkCompileFullWorkers` at a fixed `GOMAXPROCS`, with serial and parallel
+allocation counts.
 
-- many functions, locals, params, results, blocks, or table entries
-- large active data or element segments
-- deep or repeated calls
-- long-running loops
-- repeated host imports
-- large linear-memory reads and writes near bounds
+Use inputs with many functions, locals, parameters, results, blocks, or table
+entries. Also cover large active data or element segments, deep or repeated
+calls, long loops, repeated host imports, and memory access near bounds.
 
-If a change is expected to affect speed or memory use, include before/after
-numbers in the PR. If it only affects cold paths, say that instead. Avoid adding
-optimizations that make unsupported Wasm features silently accepted; correctness
-and explicit failure come first.
+If a change can affect speed or memory use, include before-and-after numbers in
+the pull request. If it affects only cold paths, say so. Do not accept an
+unsupported WebAssembly feature just to improve an optimization result.
 
-## Compiler Changes
+## Write Docs and Open a Pull Request
 
-Decoder and validator changes live in `src/core/compiler/wasm`. Backend changes
-live in `src/core/compiler/backend/railshot`.
+Keep README examples runnable from a fresh checkout. Keep their fixtures in the
+repository. Describe only supported behavior, not planned behavior.
 
-For new opcodes or module features:
+Every pull request needs:
 
-1. Decode the feature.
-2. Validate it against the Wasm type rules.
-3. Either compile it completely or reject it with a clear error.
-4. Add tests for success and failure/trap behavior.
-5. Update [FEATURES.md](FEATURES.md) and [ROADMAP.md](ROADMAP.md) if support
-   status changes.
+- a short description of the behavior change;
+- tests, or a clear reason tests are not useful;
+- support-matrix updates when needed; and
+- benchmark numbers for hot-path changes.
 
-## Runtime Changes
+Small pull requests are easier to review.
 
-Runtime code crosses into native execution. Be conservative:
+## AI-Assisted Work
 
-- check bounds before writing shared buffers
-- keep mmap permissions and cleanup paths obvious
-- return Go errors for traps and invalid instantiate-time state
-- add stress tests for stack, memory, host-call, and trap behavior
+AI tools are allowed, but you own the patch. Add a short pull-request note that
+states how you used them, such as drafting docs, generating tests, exploring an
+approach, or reviewing code.
 
-## Docs
+Before you submit AI-assisted work:
 
-README examples should be copy-paste runnable from a fresh checkout. If a doc
-example uses a fixture, keep that fixture checked in.
+- Read every changed line and be able to explain it.
+- Check edge cases, especially validation, traps, memory, and native code
+  generation.
+- Run the same tests you would run for handwritten code.
+- Split broad generated output into small, reviewable commits or pull requests.
+- Remove generated code that you do not fully understand.
 
-Keep docs concise and concrete. Avoid documenting planned features as supported.
-
-## Pull Requests
-
-Good PRs include:
-
-- a short explanation of the behavior change
-- tests or a clear reason tests are not useful
-- any support-matrix updates
-- benchmark numbers when changing hot code paths
-
-Small PRs are easier to review than broad rewrites.
+For a large design change, open an issue first and describe the intended
+behavior. A clear human explanation is more important than the first draft's
+source.

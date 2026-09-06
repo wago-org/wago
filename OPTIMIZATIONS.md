@@ -1,23 +1,42 @@
-# wago optimization roadmap
+# Wago optimization roadmap
 
-Two complementary lenses on the same question — *how do we make wago faster without
-destroying the reason it exists* (fast compile, no cgo, tiny footprint, single pass):
+This is a technical record for maintainers. It tracks changes that improve Wago
+without losing its core properties: fast compilation, no cgo, small footprint,
+and one direct backend.
 
-1. **Make the single-pass backend smarter** — better-informed choices inside the existing
-   railshot tier.
-2. **Port what's still worth porting from [WARP](https://github.com/wago-org/warp)** — the C++ reference engine the
-   backend is a port of. Used as a *reference axis*, not a target to clone.
+## Start here
 
-The headline architectural decision (see the end, **revised 2026-07-03**): **no IR on any
-execution path.** Railshot is the one and only backend; the `src/core/compiler/ir` SSA
-package stays as an off-path research/debug tool, not a planned tier. The ceiling SSA was
-reserved for is attacked incrementally instead — see `docs/no-ir-plan.md`.
+If you are new to the project, read [Architecture](ARCHITECTURE.md) first. Then
+use this file as follows:
+
+- **Current choices and priorities:** read [Remaining roadmap](#remaining-roadmap-priority-ordered).
+- **Why Wago has one execution backend:** read
+  [Architecture decision: no IR](#architecture-decision-no-ir-revised-2026-07-03).
+- **Measured results for shipped work:** read [Landed work and measurements](#landed-work-and-measurements-updated-2026-08-30).
+
+The dated sections preserve measurement context and historical decisions. A result
+applies only to the hardware, configuration, and revision stated beside it.
+
+Two complementary approaches guide the work:
+
+1. Make the single-pass backend smarter with better choices inside Railshot.
+2. Port only useful ideas from [WARP](https://github.com/wago-org/warp), the C++
+   reference engine whose backend design Wago ports. WARP is a reference, not a
+   target to clone.
+
+The architecture decision is **no IR on an execution path**. Railshot is the only
+backend. The `src/core/compiler/ir` SSA package remains an off-path research and
+debug tool, not a planned tier. Wago addresses the benefits often associated with
+SSA through small, measured changes instead.
 
 Legend: effort S/M/L · value ⬜ low · 🟦 medium · 🟩 high · ⭐ very high.
 
 ---
 
-## What's in place (updated 2026-08-30)
+## Landed work and measurements (updated 2026-08-30)
+
+The entries below are an evidence log. They describe the change, its measured
+benefit or cost, and rejected alternatives. They are not a list of promises.
 
 **Benchmark-audit frontend wins (2026-08-30).** Indexed multi-memory memargs in
 allocation-free bytecode walks now decode directly into `InstructionImmediate`
@@ -35,7 +54,7 @@ allocation counts. The stripped manager size is unchanged; runtime-standard and
 runtime-minimal each grow 4,096 bytes. Stale resource-limit and survivor-policy
 benchmark fixtures were repaired.
 Adjacent import-name reuse and an inline mixed-memory width word were measured and
-rejected. See `docs/research/benchmark-audit-2026-08-30.md`.
+rejected.
 
 **Commutative self-updates and low-32 masks (2026-08-29).** AMD64 now
 accumulates every safe non-fixed `x = f(y) op x` form directly in `x` instead of
@@ -229,8 +248,7 @@ size-only preflight that was not equivalent on an occupied bounded heap. On Dew 
 allocation **924,536→524,512 B/op**. The stripped plugin-complete TinyGo binary is
 **1,776,700 bytes**, +2,512 bytes over the preceding 1,774,188-byte build. The next
 order is structured exact/non-null facts and bounded GC load forwarding, then native
-bump allocation for constructors that remain live. See
-`docs/wasmgc-v8-cranelift-research-2026-08.md`.
+bump allocation for constructors that remain live.
 
 **Structured WasmGC reference facts (2026-08-10, #314; retired 2026-09-03).** AMD64 experimented with a
 backend-neutral bounded two-word fact for compact GC references: nullability,
@@ -634,13 +652,15 @@ shrinks 899,459→878,298 bytes, and `.bss` shrinks 133,888→5,824 bytes
 TinyGo `wago version` is about 0.4 ms versus the pre-campaign 0.549 ms;
 `BenchmarkDecodeValidate` remains **6.3%** below the pre-campaign median.
 
+## Earlier implementation record
+
 The AMD64 backend (`src/core/compiler/backend/railshot/amd64`) is the full
 WARP-architecture port: single-pass x86-64 codegen over a valent-block operand
 stack (deferred-action trees, condense engine) with an on-the-fly
 whole-register-file allocator. ARM64 has an architecture-specific direct backend;
-see `docs/amd64-arm64-backend-status.md` for parity status. Landed, in rough order:
+has parity status summarized below. Landed, in rough order:
 
-**Storage model / register allocation**
+### Storage model and register allocation
 - **Register-ABI internal calls** (old P1) — args/results in registers between wasm
   functions; wrapper ABI kept at the Go boundary. Includes the parallel-move resolver.
 - **Hotness-aware local pinning** (old P2) — loop-weighted scores from a one-pass
@@ -656,7 +676,7 @@ see `docs/amd64-arm64-backend-status.md` for parity status. Landed, in rough ord
   call-clobbered local can stay slot-only across a merge until actually read. Loop tops
   stay eager (reloads hoisted out of bodies). Conditional returns converge nothing.
 
-**Bounds checks / traps**
+### Bounds checks and traps
 - **Guard-page mode** (old P5) is first-class behind `-tags wago_guardpage` and is the
   *default* bounds mode in such builds (`WAGO_BOUNDS=explicit` overrides).
 - **Shared cold trap stubs** (old P9) — one stub per trap code per function; every check
@@ -664,7 +684,7 @@ see `docs/amd64-arm64-backend-status.md` for parity status. Landed, in rough ord
 - **Stack-fence elision for small call-free leaves** — a leaf's one unchecked frame is
   absorbed by the fence's 256 KiB margin.
 
-**Instruction selection**
+### Instruction selection
 - Compare→branch fusion; constant folding; memarg offset folding; deferred loads folded
   as ALU r/m operands; in-place accumulation; cmov select.
 - **Algebraic identities + strength reduction** (old P4) — `x±0`, `x&~0`, `x|0`, `x^0`,
@@ -702,10 +722,12 @@ see `docs/amd64-arm64-backend-status.md` for parity status. Landed, in rough ord
   NOPs on the entry path). Tight-loop benchmarks swing ±20% on layout luck without this;
   treat any single-module regression as suspect until the disassembly is diffed.
 
-**MVP completeness** (old "completion batch"): memory.grow/size, trapping float→int
+### MVP completeness
+
+The old "completion batch" includes memory.grow/size, trapping float→int
 truncation + trunc_sat, start function, multi-value, imported/mutable globals.
 
-**AMD64 corpus pass (2026-07-30)**
+### AMD64 corpus pass (2026-07-30)
 - Float-local residency now uses WARP's eleven-register pool in call-making
   functions as well as leaves; the existing dirty spill/lazy-reload protocol
   preserves the caller-saved XMM pins.
@@ -742,17 +764,19 @@ throughput). Five 1-second samples gave JSON SIMD serialize 29.963→28.750 µs
 against wazero by the corpus runner; the lowering choices retain WARP's bounded
 register-residency model while using AVX's non-destructive three-operand forms.
 
-**Compile speed**: decoded modules keep byte-backed function bodies. The optional
+### Compile speed
+
+Decoded modules keep byte-backed function bodies. The optional
 `scanBody` instruction walk is used only for programmatically constructed modules that
 provide decoded instructions; normal decoded modules use BodyBytes and first-N pinning.
 Validation is byte-backed and no-body too (#96: type-cache + validator/reader reuse,
-validation allocs −90%). The opt-in [function-worker policy](docs/function-workers.md)
-now applies to both validation and codegen: module-wide work remains serial, function
+validation allocs −90%). The opt-in function-worker policy now applies to both
+validation and codegen: module-wide work remains serial, function
 bodies fan out with worker-local state, and results/errors rejoin deterministically.
 At p4, validation improved 58–72% on the representative medium/large corpus while
 keeping serial allocation counts unchanged.
 
-**Landed since the #87/#88 sweep (2026-07-02 → 07-03)**
+### Landed since the #87/#88 sweep (2026-07-02 to 2026-07-03)
 - **Borrowed reads for value-pinned globals** (`stGlobReg`, #93) and
   **immediate-only constant stores** (`StoreImmIdx`, #94).
 - **Float parity batch** (#97): `minss/maxss`-based min/max with NaN fixup + deferred
@@ -1037,10 +1061,8 @@ remain allocation-free.
 
 ## Remaining roadmap (priority-ordered)
 
-The original phase-by-phase design record is **`docs/no-ir-plan.md`**
-(2026-07-03, incorporating an external repo review that was triaged against the
-tree). This document is authoritative for current optimization status;
-R-numbers remain stable labels and Pn identify the original plan phases.
+This document is authoritative for current optimization status. R-numbers remain
+stable labels and Pn identify the original plan phases.
 
 ### R0. `CodegenStats` + explain mode  · ✅ LANDED (`perf/codegen-stats`)
 Per-function counters (spills/flushes/condenses/store-forced deferred loads/bounds
@@ -1049,8 +1071,8 @@ nil-safe `stats` field on `fn` — byte-identical codegen when off. Surfaced thr
 `CompileOptions.Stats`, `WAGO_EXPLAIN=1`, and `bench/cmd/explain`; ships the
 `WAGO_DEBUG_MODGLOBALS` / `WAGO_PIN_GLOBAL_K=auto|0..3` knobs and an objdump-based
 golden-disasm harness (`golden_test.go`). Every subsequent optimization lands with
-its counter moving and a golden. (Plan P1; see `docs/no-ir-plan.md` P1 for the
-counter list and on-corpus verification.)
+its counter moving and a golden. Plan P1 defines the counter list and
+on-corpus verification.
 
 ### R1. `stFlags` — compare fusion past adjacency  · M · 🟩 (old P8)
 **`eqz`-of-compare fusion LANDED** (`perf/railshot-stflags`, gated `WAGO_NO_STFLAGS`):
@@ -1094,8 +1116,8 @@ allocation volume. `WAGO_NO_STORE8_FLAGS=1` is the differential oracle. (Plan P2
 ### R4. json serialize gap — ✅ RESOLVED (2026-07-02)
 Closed by #99 + #100: guard-mode ser 190→**93ns (beats WARP's 97)**; deser 175ns
 (1.07× WARP). The forensic trail (B1 `stGlobReg` #93, B2 immediate stores #94, the B3
-WARP wat-27 burst diff, the K-sweep) is preserved in PR #95's findings doc and
-`docs/valent-blocks-expansion-plan.md` §0–§2. The punchline for posterity: the
+WARP wat-27 burst diff, and the K-sweep) is preserved in PR #95's findings.
+The punchline for posterity: the
 bottleneck was never call overhead or global register residency — **~89% of serializer
 samples were one backward `std; rep movsb`** in `memory.copy` (no ERMSB/FSRM on
 backward copies) on copies that were disjoint and forward-safe. B1+B2 remain as real
@@ -1136,7 +1158,7 @@ inliner** (both decision-gated on R0 counters, P5.4–.5) · **fused validate+co
 persistent/general known-bits state, general pending sets with owned regs, tiny unroll, SIMD copy/fill
 now, `memory.size` micro-opt.
 
-### Greenfield (not in WARP either)
+### Future feature areas (not in WARP either)
 SIMD/v128, threads & atomics, exception handling, tail calls, full reference types +
 `table.*`, passive element execution, remaining bulk-memory table ops, memory64,
 multi-memory. (Cross-instance linking + imported memory/table/global landed
@@ -1144,7 +1166,7 @@ in #112–#115; the `linking`/`data` spec files now pass.)
 
 ---
 
-## The one architecture choice (revised 2026-07-03)
+## Architecture decision: no IR (revised 2026-07-03)
 
 **No IR on any execution path — railshot is the only backend.** The earlier "Tier 2
 optional SSA" framing is retired; the E-gate SSA-spike question in the perf plans is
@@ -1156,7 +1178,7 @@ answered: no.
 - **The ceiling gets attacked incrementally** ("Tier 1.5"): flags-resident values,
   restricted pending sets, call-surviving trees, alias-aware load windows, bounds
   facts — each a small extension of the valent-block storage model, each individually
-  gated and measured (`docs/no-ir-plan.md`). The original case for SSA (wazero's json
+  gated and measured. The original case for SSA (wazero's json
   edge = its register allocator) has weakened: wago now beats wazero on both json
   directions and most of the corpus without it.
 - **`src/core/compiler/ir` stays off-path** as a research/debug package (potential

@@ -12,5 +12,5 @@
 // the AArch64 twin in src/core/compiler/backend/railshot/arm64.
 //
 // Migration in progress: the arch-specific files are being moved here out of the
-// parent package (which becomes neutral-only). See docs/arm64-port plan.
+// parent package (which becomes neutral-only).
 package amd64

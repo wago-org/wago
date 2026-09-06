@@ -3,7 +3,7 @@
 ╚╩╝ ╩ ╩ ╚═╝ ╚═╝</pre></h1>
 
 <p align="center">
-  A wonderfully quick, compact, and extensible WebAssembly runtime for Go
+  A fast, compact WebAssembly runtime for Go
 </p>
 
 <p align="center">
@@ -23,13 +23,23 @@
 Wago is a WebAssembly runtime for Go. It compiles Wasm to native machine code
 and runs it without cgo, a C toolchain, or an interpreter.
 
-Use the CLI to run `.wasm` files, save precompiled `.wago` artifacts, or build
-standalone executables. Use the Go package to embed the same runtime in your
-application. Host integrations such as WASI and the Component Model are provided
-through plugins.
+Use the CLI to run `.wasm` files, save precompiled `.wago` artifacts, or create
+standalone executables. Use the Go package to embed the same runtime in an
+application. Plugins provide host integrations such as WASI and the Component
+Model.
 
 > [!NOTE]
 > Wago is still pre-release. APIs and `.wago` artifacts may change.
+
+## Choose a path
+
+- **Run a Wasm module:** [Install Wago](#install), then
+  [run a module](#run-a-module).
+- **Embed Wago in Go:** go to [Use Wago from Go](#use-wago-from-go).
+- **Add WASI or another host integration:** go to
+  [Add host capabilities](#add-host-capabilities).
+- **Learn the implementation:** see [Architecture](ARCHITECTURE.md) and the
+  [feature matrix](FEATURES.md).
 
 ## Install
 
@@ -47,13 +57,13 @@ irm https://install.wago.sh/ps | iex
 wago version install
 ```
 
-These commands install the Wago manager, then install a runtime. See
+These commands install the Wago manager and then install a runtime. See
 [Getting started](https://docs.wago.sh/getting-started) for other installation
 methods, release channels, and source builds.
 
 ## Run a module
 
-Download a small Fibonacci module and run it:
+Download and run a small Fibonacci module:
 
 ```sh
 curl -fsSL https://wago.sh/corpora/fib.wasm -o fib.wasm
@@ -92,8 +102,9 @@ Run the small typed API example:
 go run github.com/wago-org/wago/examples/02-runtime-typed@latest
 ```
 
-The example compiles a module, creates an instance, and calls an export. See
-[Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for the complete guide.
+The example compiles a module, creates an instance, and calls an exported
+function. See [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for a
+complete guide.
 
 ## Add host capabilities
 
@@ -110,9 +121,9 @@ See [Use plugins](https://docs.wago.sh/guides/plugins) or browse the
 
 ## Platforms
 
-Wago currently supports Linux, macOS, and Windows on amd64 and arm64. WebAssembly
-feature support varies by backend; see the [feature matrix](FEATURES.md) for the
-exact coverage.
+Wago supports Linux, macOS, and Windows on amd64 and arm64. WebAssembly feature
+support varies by backend. See the [feature matrix](FEATURES.md) for exact
+coverage.
 
 ## Learn more
 

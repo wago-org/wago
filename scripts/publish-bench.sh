@@ -4,8 +4,9 @@
 # companion to publish-charts.sh. Like that script, run this on a stable machine
 # (never CI): shared runners make benchmark numbers noisy and pollute the trend.
 #
-# Artifacts land in docs/bench/: bench.json (latest run), history.json (all runs,
-# sorted by version), and charts/{latency,trend}-<stage>.svg.
+# Artifacts land in the external wago-org/docs repository under docs/bench/:
+# bench.json (latest run), history.json (all runs, sorted by version), and
+# charts/{latency,trend}-<stage>.svg.
 set -eu
 
 docs_remote="${WAGO_DOCS_REMOTE:-git@github.com:wago-org/docs.git}"
