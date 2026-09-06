@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	goruntime "runtime"
 	"sort"
 	"sync"
@@ -56,15 +57,16 @@ type Runtime struct {
 	refStore                 *referenceStore
 	guestArguments           []string
 
-	plugins      []PluginDefinition
-	imports      Imports                      // "module.name" -> host fn (any)
-	importMeta   map[string]*registeredImport // "module.name" -> declared signature/cap/docs
-	importOwner  map[string]string            // "module.name" -> owning plugin ID
-	moduleOwner  map[string]string            // import module -> owning plugin ID
-	caps         map[Capability]string
-	capOrder     []Capability
-	instructions map[string]*registeredInstruction
-	pluginRuns   []registeredPluginRun
+	plugins       []PluginDefinition
+	imports       Imports                      // "module.name" -> host fn (any)
+	importsShared bool                         // rt.mu protects copy-on-write publication of both import maps
+	importMeta    map[string]*registeredImport // "module.name" -> declared signature/cap/docs
+	importOwner   map[string]string            // "module.name" -> owning plugin ID
+	moduleOwner   map[string]string            // import module -> owning plugin ID
+	caps          map[Capability]string
+	capOrder      []Capability
+	instructions  map[string]*registeredInstruction
+	pluginRuns    []registeredPluginRun
 }
 
 type runtimeInstanceReservation struct {
@@ -626,6 +628,7 @@ func (p *PreparedCompile) finish() {
 		return
 	}
 	p.finished = true
+	p.bindings = moduleBindings{} // release the captured registry generation
 	p.mu.Unlock()
 	p.operation.end()
 }
@@ -1581,4 +1584,16 @@ func checkCompat(c Compatibility) error {
 		return fmt.Errorf("requires wago %s, have %s", constraint, Version)
 	}
 	return nil
+}
+
+// writableImportsLocked forks both maps once before mutating a published
+// generation. Registered metadata is already owned and immutable at insertion.
+// The caller holds rt.mu; snapshotModuleBindingsLocked publishes the pair.
+func (rt *Runtime) writableImportsLocked() {
+	if !rt.importsShared {
+		return
+	}
+	rt.imports = maps.Clone(rt.imports)
+	rt.importMeta = maps.Clone(rt.importMeta)
+	rt.importsShared = false
 }

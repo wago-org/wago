@@ -194,20 +194,13 @@ type moduleBindings struct {
 // snapshotModuleBindingsLocked captures one immutable import-policy generation.
 // The caller must hold rt.mu.
 func (rt *Runtime) snapshotModuleBindingsLocked(hooks *hookRegistry) moduleBindings {
-	cfg := rt.cfg.clone()
+	rt.importsShared = true
+	cfg := rt.cfg
 	bindings := moduleBindings{
-		rt:                       rt,
-		imports:                  make(Imports, len(rt.imports)),
-		importMeta:               make(map[string]*registeredImport, len(rt.importMeta)),
+		rt: rt, imports: rt.imports, importMeta: rt.importMeta,
 		independentInstances:     cfg.IndependentInstanceExecution(),
 		moduleIdentity:           hooks.needsModuleIdentity(),
 		maxCompiledMetadataBytes: cfg.MaxCompiledMetadataBytes(),
-	}
-	for key, value := range rt.imports {
-		bindings.imports[key] = value
-	}
-	for key, value := range rt.importMeta {
-		bindings.importMeta[key] = cloneRegisteredImport(value)
 	}
 	return bindings
 }

@@ -170,6 +170,18 @@ and verify the coordinator inode survives removal/reinstall. Cancellation while
 waiting is covered. Raw payload helper APIs accept arbitrary destinations and
 remain caller-coordinated; the version lifecycle commands own this lock.
 
+## Immutable import registry generations
+
+Compilation snapshots share the paired import maps under rt.mu. Registration
+forks a published map pair once before inserting already-owned immutable metadata.
+Configuration reads no longer clone the whole config for binding metadata.
+Consumed or closed PreparedCompile objects release the captured registry maps.
+
+Focused tests verify old/new map-pair isolation, zero allocations for warm binding
+snapshots, and preparation release. A scaling fixture covers 0/10/1000/10000
+unrelated registrations with setup outside timing. Full A/B timing and the broader
+runtime/plugin race run are pending; no public ownership boundary is weakened.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.
