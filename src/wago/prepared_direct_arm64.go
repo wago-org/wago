@@ -35,17 +35,26 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 	if in.isLogicallyClosed() {
 		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
 	}
-	if fn.scalarWideMask&1 == 0 {
-		a0 = uint64(uint32(a0))
-	}
-	if fn.scalarWideMask&2 == 0 {
-		a1 = uint64(uint32(a1))
-	}
-	if fn.scalarWideMask&4 == 0 {
-		a2 = uint64(uint32(a2))
-	}
-	if fn.scalarWideMask&8 == 0 {
-		a3 = uint64(uint32(a3))
+	switch fn.paramSlots {
+	case 4:
+		if fn.scalarWideMask&8 == 0 {
+			a3 = uint64(uint32(a3))
+		}
+		fallthrough
+	case 3:
+		if fn.scalarWideMask&4 == 0 {
+			a2 = uint64(uint32(a2))
+		}
+		fallthrough
+	case 2:
+		if fn.scalarWideMask&2 == 0 {
+			a1 = uint64(uint32(a1))
+		}
+		fallthrough
+	case 1:
+		if fn.scalarWideMask&1 == 0 {
+			a0 = uint64(uint32(a0))
+		}
 	}
 	if !fn.isolatedFast {
 		nativeExecutionMu.Lock()

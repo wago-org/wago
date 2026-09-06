@@ -1459,7 +1459,7 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 	if exactNativeGCRoots || gcStructProduct.requiresHelpers() || gcArrayProduct.requiresHelpers() || gcStructProduct.requiresArrayHelpers() {
 		nativeGCABIVersion = gc.NativeABIVersion
 	}
-	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
+	c := newCompilerCompiled(Compiled{code: code, Entry: entry, InternalEntry: internalEntry, registerABIDisabled: !cfg.optimizations["reg-abi"], NumImports: importedFuncs, Types: types, Exports: map[string]int{}, Names: m.NameSec, GlobalExports: map[string]int{}, hasTableExportMetadata: true, boundsMode: boundsMode, stagedTable64: features.Table64 && usesTable64, independentInstances: cfg.independentInstances, preparedIsolatedTables: cm.PreparedIsolatedTables, GCTypeDescs: gcDescs, requiredFeatures: requiredByModule, dynamicImports: importedFuncs > 0, dynamicFuncrefEscape: moduleDynamicFuncrefEscape(m), customInstructions: customInstructions, requiresBMI2: cm.RequiresBMI2, requiresAVX2: cm.RequiresAVX2, requiresAVX512: cm.RequiresAVX512, syncHostSlots: uint16(syncHostSlots), hasGCCodeTelemetry: cfg.gcCodeTelemetry})
 	c.codeCache.setNativeStackBytes(cfg.nativeStackBytes)
 	if c.validateMemo != nil {
 		c.validateMemo.memoryLimitPages = cfg.maxMemoryPages
@@ -4313,12 +4313,48 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 	}
 	state := in.ensurePluginState()
 	state.invokeMu.Lock()
-	id := newInvocationID()
-	state.invocationID = id
 	defer func() {
 		state.invocationID = 0
 		state.invokeMu.Unlock()
 	}()
+	if !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil {
+		// Admit before reading cached or compiled entry metadata. Close publishes
+		// its gate without taking invokeMu, so the invocation count is what keeps
+		// those resources live through this fast-path probe and native entry.
+		if err := in.beginInvocation(); err != nil {
+			return nil, fmt.Errorf("invoke %q: %w", export, err)
+		}
+		defer in.endInvocation()
+		alreadyAdmitted = true
+		ic := in.findInvokeCache(export)
+		if ic == nil {
+			var err error
+			ic, err = in.fillInvokeCache(export)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// Cross-instance attachment can make native control shared after the
+		// immutable export metadata was cached. Keep that dynamic security bit on
+		// the entry boundary and fall back to the audited rebinding route.
+		if ic.directIntFast && !in.nativeControlIsShared() {
+			if len(args) != ic.paramSlots {
+				return nil, fmt.Errorf("%s expects %d arg slot(s), got %d", export, ic.paramSlots, len(args))
+			}
+			fn := PreparedFunction{
+				in:               in,
+				directEntry:      in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li])),
+				paramSlots:       ic.paramSlots,
+				resultSlots:      ic.resultSlots,
+				scalarWideMask:   ic.scalarWideMask,
+				scalarResultWide: ic.scalarResultWide,
+				isolatedFast:     true,
+			}
+			return fn.invokeDirectInt(args)
+		}
+	}
+	id := newInvocationID()
+	state.invocationID = id
 	return in.invokeWithToken(export, args, contexts, id, true, alreadyAdmitted, nil)
 }
 
@@ -4365,8 +4401,12 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		}
 		defer restore()
 	}
-	previousReservation := in.swapInvocationReservation(reservation)
-	defer in.swapInvocationReservation(previousReservation)
+	// Ordinary Invoke and hook-free Call entries carry no reservation and start
+	// with a fresh activation, so there is no map state to clear or restore.
+	if reservation != nil {
+		previousReservation := in.swapInvocationReservation(reservation)
+		defer in.swapInvocationReservation(previousReservation)
+	}
 	if threadedMu := in.lockThreadedInstanceState(); threadedMu != nil {
 		defer threadedMu.Unlock()
 	}
@@ -4862,13 +4902,27 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		}
 	}
 	entryMode := preparedEntryGeneral
+	var scalarWideMask uint8
 	if !hasReferenceValType(sig.Params) && !hasReferenceValType(sig.Results) &&
 		paramSlots <= 4 && resultSlots <= 1 {
 		entryMode = in.preparedEntryMode()
+		paramSlot := 0
+		for _, typ := range sig.Params {
+			if isWideValType(typ) {
+				scalarWideMask |= 1 << paramSlot
+			}
+			paramSlot++
+		}
 	}
+	directIntFast := preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
+		preparedDirectIntSupported && preparedDirectIntEnabled && entryMode == preparedEntryIsolated &&
+		preparedDirectIntSignature(sig) && in.c.directPreparedAt(li)
 	*slot = invokeCache{
 		export:            export,
 		valid:             true,
+		directIntFast:     directIntFast,
+		scalarWideMask:    scalarWideMask,
+		scalarResultWide:  resultSlots == 1 && rw[0],
 		li:                li,
 		paramSlots:        paramSlots,
 		resultSlots:       resultSlots,
