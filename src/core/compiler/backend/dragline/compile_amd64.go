@@ -3605,14 +3605,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 				continue
 			}
 			if size, signed, store, memory := nativeMemoryAccess(instruction.Op); memory {
-				encodedStore := uint32(0)
-				if len(plan.PostRAForwardFrom16) != 0 {
-					encodedStore = uint32(plan.PostRAForwardFrom16[instructionID])
-				} else if len(plan.PostRAForwardFrom32) != 0 {
-					encodedStore = plan.PostRAForwardFrom32[instructionID]
-				}
-				if encodedStore != 0 {
-					storeID := encodedStore - 1
+				if storeID, ok := plan.PostRAForwardFrom.get(instructionID); ok {
 					storeOperands := plan.Machine.InstructionOperands(storeID)
 					if len(storeOperands) != 2 {
 						return nil, 0, true, fmt.Errorf("RailMach forwarded store %d has no value", storeID)
@@ -4459,16 +4452,10 @@ func nativeAMD64FusionConsumer(plan *nativeBackendPlan, producer uint32) (uint32
 	if plan == nil {
 		return 0, false
 	}
-	var encoded uint32
-	if int(producer) < len(plan.PostRAFusionWith16) {
-		encoded = uint32(plan.PostRAFusionWith16[producer])
-	} else if int(producer) < len(plan.PostRAFusionWith32) {
-		encoded = plan.PostRAFusionWith32[producer]
-	}
-	if encoded == 0 {
+	consumer, ok := plan.PostRAFusionWith.get(producer)
+	if !ok {
 		return 0, false
 	}
-	consumer := encoded - 1
 	return consumer, consumer > producer && int(consumer) < len(plan.Machine.Insts)
 }
 
@@ -4476,16 +4463,10 @@ func nativeAMD64FusionProducer(plan *nativeBackendPlan, consumer uint32) (uint32
 	if plan == nil {
 		return 0, false
 	}
-	var encoded uint32
-	if int(consumer) < len(plan.PostRAFusionWith16) {
-		encoded = uint32(plan.PostRAFusionWith16[consumer])
-	} else if int(consumer) < len(plan.PostRAFusionWith32) {
-		encoded = plan.PostRAFusionWith32[consumer]
-	}
-	if encoded == 0 {
+	producer, ok := plan.PostRAFusionWith.get(consumer)
+	if !ok {
 		return 0, false
 	}
-	producer := encoded - 1
 	return producer, producer < consumer && int(producer) < len(plan.Machine.Insts)
 }
 
@@ -4605,10 +4586,13 @@ func amd64RailMachRotatedZeroTestLatch(plan *nativeBackendPlan, block, backedge 
 }
 
 func nativeAMD64MemoryFoldSource(plan *nativeBackendPlan, consumer uint32) (uint32, bool) {
-	if plan == nil || int(consumer) >= len(plan.PostRAMemoryFrom) || plan.PostRAMemoryFrom[consumer] == 0 {
+	if plan == nil {
 		return 0, false
 	}
-	producer := plan.PostRAMemoryFrom[consumer] - 1
+	producer, ok := plan.PostRAMemoryFrom.get(consumer)
+	if !ok {
+		return 0, false
+	}
 	return producer, producer < consumer && int(producer) < len(plan.Machine.Insts)
 }
 

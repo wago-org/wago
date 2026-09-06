@@ -862,7 +862,10 @@ func TestAMD64RailMachSignalsElideFoldedMemoryBoundsCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	folded := false
-	for _, producer := range plan.PostRAMemoryFrom {
+	for _, producer := range plan.PostRAMemoryFrom.narrow {
+		folded = folded || producer != 0
+	}
+	for _, producer := range plan.PostRAMemoryFrom.wide {
 		folded = folded || producer != 0
 	}
 	if !folded {

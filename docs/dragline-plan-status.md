@@ -328,6 +328,16 @@ the performance corpus.
   Six alternating serialized SQLite public compiles improve slightly from
   1.6707 to 1.6686 seconds median, while median allocation volume falls by
   about 35 KiB/op.
+- Unified compact instruction relations: ✅ pair, forwarding, fusion, AMD64
+  memory-fold, ARM64 repeated-add, and ARM64 post-index identities now share
+  one allocation-free adaptive representation. Go confirms every finalizer
+  `get`/`has` call is inlined. Compact/wide boundary tests cover each operation
+  family, while existing realization tests retain target behavior. Relative to
+  the forwarding-only result, SQLite, Lua, and regexmatch remain byte-identical
+  and lose another 16,068, 3,910, and 19,840 peak bytes. SQLite's measured
+  post-RA category has fallen from 158,332 to 88,572 bytes across the compact
+  relation series. Six alternating public compiles improve from 1.6566 to
+  1.6533 seconds median, with about 37 KiB/op less allocation.
 - Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
   bounded initial schedule candidate's realized post-allocation spill debt,
   physical copies, copy cycles, copy motion, fixed repairs, broken fusions,

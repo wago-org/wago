@@ -84,8 +84,9 @@ func TestAMD64RealizesEFLAGSPhysicalRename(t *testing.T) {
 	}
 	forced := *plan
 	forced.Schedule, forced.Allocation, forced.Exit, forced.PostRA = &schedule, allocation, exit, postRA
-	forced.PostRAFusionWith16 = make([]uint16, len(plan.Machine.Insts))
-	forced.PostRAFusionWith16[0], forced.PostRAFusionWith16[2] = 3, 1
+	forced.PostRAFusionWith.prepare(len(plan.Machine.Insts), true)
+	forced.PostRAFusionWith.set(0, 2)
+	forced.PostRAFusionWith.set(2, 0)
 	var relocs []amd64CallReloc
 	var metrics FunctionMetrics
 	optimized, _, ok, err := emitAMD64RailMach(fn, &forced, &relocs, &metrics, nil)

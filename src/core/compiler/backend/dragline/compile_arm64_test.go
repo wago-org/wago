@@ -1746,8 +1746,9 @@ func TestCompilerNativeARM64RealizesNZCVPhysicalRename(t *testing.T) {
 	}
 	forced := *plan
 	forced.Schedule, forced.Allocation, forced.Exit, forced.PostRA = &schedule, allocation, exit, postRA
-	forced.PostRAFusionWith16 = make([]uint16, len(plan.Machine.Insts))
-	forced.PostRAFusionWith16[0], forced.PostRAFusionWith16[2] = 3, 1
+	forced.PostRAFusionWith.prepare(len(plan.Machine.Insts), true)
+	forced.PostRAFusionWith.set(0, 2)
+	forced.PostRAFusionWith.set(2, 0)
 	var relocs []arm64CallReloc
 	var metrics FunctionMetrics
 	optimized, _, ok, err := emitARM64RailMach(fn, &forced, false, nil, &relocs, &metrics, nil)
@@ -2495,10 +2496,10 @@ func TestARM64RailMachPairsAndRotatesZeroTerminatedPointerChase(t *testing.T) {
 	}
 	plan.SignalsBounds = true
 	paired := false
-	for _, encoded := range plan.PostRAPairWith16 {
+	for _, encoded := range plan.PostRAPairWith.narrow {
 		paired = paired || encoded != 0
 	}
-	for _, encoded := range plan.PostRAPairWith32 {
+	for _, encoded := range plan.PostRAPairWith.wide {
 		paired = paired || encoded != 0
 	}
 	rotated := false
@@ -2561,12 +2562,12 @@ func TestARM64RailMachDoesNotPairLoadsAcrossTrap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, encoded := range plan.PostRAPairWith16 {
+	for _, encoded := range plan.PostRAPairWith.narrow {
 		if encoded != 0 {
 			t.Fatalf("loads were paired across trapping division: %#v", plan.PostRA.Rewrites)
 		}
 	}
-	for _, encoded := range plan.PostRAPairWith32 {
+	for _, encoded := range plan.PostRAPairWith.wide {
 		if encoded != 0 {
 			t.Fatalf("loads were paired across trapping division: %#v", plan.PostRA.Rewrites)
 		}
@@ -3147,10 +3148,10 @@ func TestARM64RealizesFloatingMemoryPair(t *testing.T) {
 		t.Fatal(err)
 	}
 	found := false
-	for _, encoded := range plan.PostRAPairWith16 {
+	for _, encoded := range plan.PostRAPairWith.narrow {
 		found = found || encoded != 0
 	}
-	for _, encoded := range plan.PostRAPairWith32 {
+	for _, encoded := range plan.PostRAPairWith.wide {
 		found = found || encoded != 0
 	}
 	if !found {

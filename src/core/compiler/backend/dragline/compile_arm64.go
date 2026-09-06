@@ -2419,8 +2419,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if len(plan.PostRARepeatFirst) != 0 && plan.PostRARepeatFirst[instructionID] != 0 {
-				first := plan.PostRARepeatFirst[instructionID] - 1
+			if first, ok := plan.PostRARepeatFirst.get(instructionID); ok {
 				initial, invariant, count, ok := railmach.VerifyARM64RepeatedAddChain(plan.Machine, plan.Schedule, first, instructionID)
 				if !ok || count&(count-1) != 0 {
 					return nil, 0, true, fmt.Errorf("RailMach repeated-add rewrite failed verification")
@@ -4812,14 +4811,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				continue
 			}
 			if size, signed, store, memory := nativeMemoryAccess(instruction.Op); memory {
-				encodedStore := uint32(0)
-				if len(plan.PostRAForwardFrom16) != 0 {
-					encodedStore = uint32(plan.PostRAForwardFrom16[instructionID])
-				} else if len(plan.PostRAForwardFrom32) != 0 {
-					encodedStore = plan.PostRAForwardFrom32[instructionID]
-				}
-				if encodedStore != 0 {
-					storeID := encodedStore - 1
+				if storeID, ok := plan.PostRAForwardFrom.get(instructionID); ok {
 					storeOperands := plan.Machine.InstructionOperands(storeID)
 					if len(storeOperands) != 2 {
 						return nil, 0, true, fmt.Errorf("RailMach forwarded store %d has no value", storeID)
@@ -4843,14 +4835,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					}
 					continue
 				}
-				encodedSecond := uint32(0)
-				if len(plan.PostRAPairWith16) != 0 {
-					encodedSecond = uint32(plan.PostRAPairWith16[instructionID])
-				} else if len(plan.PostRAPairWith32) != 0 {
-					encodedSecond = plan.PostRAPairWith32[instructionID]
-				}
-				if encodedSecond != 0 {
-					secondID := encodedSecond - 1
+				if secondID, ok := plan.PostRAPairWith.get(instructionID); ok {
 					second := plan.Machine.Insts[secondID]
 					secondWasmOffset := railMachWasmOffset(plan, second.Source)
 					for _, check := range [...]struct {
@@ -4900,14 +4885,10 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					}
 					continue
 				}
-				encodedChain := uint32(0)
-				if len(plan.PostRAPostIndexWith) != 0 {
-					encodedChain = plan.PostRAPostIndexWith[instructionID]
-				}
 				chainOther := uint32(0)
 				chainFirst, chainSecond := false, false
-				if encodedChain != 0 {
-					chainOther = encodedChain - 1
+				if other, ok := plan.PostRAPostIndexWith.get(instructionID); ok {
+					chainOther = other
 					chainFirst = instructionID < chainOther
 					chainSecond = instructionID > chainOther
 				}
@@ -4926,7 +4907,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				// failure and evaluates the second address only after the first is in
 				// bounds. One cold branch therefore covers both loads without moving a
 				// check across a store, call, or trapping instruction.
-				if !combinedBounds && cacheMemoryLimit && !store && encodedSecond == 0 && encodedChain == 0 && !preIndex &&
+				if !combinedBounds && cacheMemoryLimit && !store && !chainFirst && !chainSecond && !preIndex &&
 					!railMachElidesMemoryBoundsCheck(plan, instructionID) && scheduleIndex+1 < len(blockOrder) &&
 					memoryCheckEnds[operands[0].Reg] < end && !arm64RailMachHasSpecialMemoryEmission(plan, instructionID) {
 					nextID := blockOrder[scheduleIndex+1]
@@ -4981,7 +4962,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						return nil, 0, true, err
 					}
 				}
-				foldedIndexed := encodedChain == 0 && !preIndex && uint32(instruction.Aux) <= math.MaxInt32
+				foldedIndexed := !chainFirst && !chainSecond && !preIndex && uint32(instruction.Aux) <= math.MaxInt32
 				if !chainSecond && !foldedIndexed {
 					a.AddExtUXTW(arm64.X16, arm64.X26, lhs)
 				}
@@ -7313,16 +7294,13 @@ func arm64RailMachHasSpecialMemoryEmission(plan *nativeBackendPlan, instruction 
 		return true
 	}
 	return len(plan.PostRASkip) != 0 && plan.PostRASkip[instruction] ||
-		len(plan.PostRAPairWith16) != 0 && plan.PostRAPairWith16[instruction] != 0 ||
-		len(plan.PostRAPairWith32) != 0 && plan.PostRAPairWith32[instruction] != 0 ||
-		len(plan.PostRAForwardFrom16) != 0 && plan.PostRAForwardFrom16[instruction] != 0 ||
-		len(plan.PostRAForwardFrom32) != 0 && plan.PostRAForwardFrom32[instruction] != 0 ||
-		len(plan.PostRAFusionWith16) != 0 && plan.PostRAFusionWith16[instruction] != 0 ||
-		len(plan.PostRAFusionWith32) != 0 && plan.PostRAFusionWith32[instruction] != 0 ||
-		len(plan.PostRAMemoryFrom) != 0 && plan.PostRAMemoryFrom[instruction] != 0 ||
-		len(plan.PostRARepeatFirst) != 0 && plan.PostRARepeatFirst[instruction] != 0 ||
+		plan.PostRAPairWith.has(instruction) ||
+		plan.PostRAForwardFrom.has(instruction) ||
+		plan.PostRAFusionWith.has(instruction) ||
+		plan.PostRAMemoryFrom.has(instruction) ||
+		plan.PostRARepeatFirst.has(instruction) ||
 		len(plan.PostRAPreIndex) != 0 && plan.PostRAPreIndex[instruction] ||
-		len(plan.PostRAPostIndexWith) != 0 && plan.PostRAPostIndexWith[instruction] != 0
+		plan.PostRAPostIndexWith.has(instruction)
 }
 
 func nativeARM64WrapSpill(plan *nativeBackendPlan, instruction uint32) bool {
@@ -13880,16 +13858,10 @@ func nativeARM64FusionConsumer(plan *nativeBackendPlan, producer uint32) (uint32
 	if plan == nil {
 		return 0, false
 	}
-	var encoded uint32
-	if int(producer) < len(plan.PostRAFusionWith16) {
-		encoded = uint32(plan.PostRAFusionWith16[producer])
-	} else if int(producer) < len(plan.PostRAFusionWith32) {
-		encoded = plan.PostRAFusionWith32[producer]
-	}
-	if encoded == 0 {
+	consumer, ok := plan.PostRAFusionWith.get(producer)
+	if !ok {
 		return 0, false
 	}
-	consumer := encoded - 1
 	return consumer, consumer > producer && int(consumer) < len(plan.Machine.Insts)
 }
 
@@ -13897,16 +13869,10 @@ func nativeARM64FusionProducer(plan *nativeBackendPlan, consumer uint32) (uint32
 	if plan == nil {
 		return 0, false
 	}
-	var encoded uint32
-	if int(consumer) < len(plan.PostRAFusionWith16) {
-		encoded = uint32(plan.PostRAFusionWith16[consumer])
-	} else if int(consumer) < len(plan.PostRAFusionWith32) {
-		encoded = plan.PostRAFusionWith32[consumer]
-	}
-	if encoded == 0 {
+	producer, ok := plan.PostRAFusionWith.get(consumer)
+	if !ok {
 		return 0, false
 	}
-	producer := encoded - 1
 	return producer, producer < consumer && int(producer) < len(plan.Machine.Insts)
 }
 

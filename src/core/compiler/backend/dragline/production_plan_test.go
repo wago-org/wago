@@ -103,8 +103,9 @@ func TestPreserveNativeARM64RepeatedAddInvariant(t *testing.T) {
 		BlockRanges: []railmach.MoveRange{{Count: 5}},
 		BlockOf:     make([]railssa.BlockID, 5),
 	}
-	repeats := make([]uint32, 5)
-	repeats[4] = 2 // First instruction 1, encoded as first+1.
+	var repeats nativeInstructionRelation
+	repeats.prepare(5, true)
+	repeats.set(4, 1)
 	skipped := []bool{true, true, true, true, false}
 	preserveNativeARM64RepeatedAddInputs(machine, schedule, repeats, skipped)
 	if skipped[0] {
@@ -526,53 +527,63 @@ func TestNativeBackendPlannerAllocatesOnlyRequiredPostRAScratch(t *testing.T) {
 	if !planner.preparePostRAScratch(railmach.TargetARM64, 64, []railmach.Rewrite{{Kind: railmach.RewriteARM64CompareBranch}}) {
 		t.Fatal("ARM64 compare/branch was not recognized as realizable")
 	}
-	if len(planner.postRAFusionWith16) != 64 || len(planner.postRAFusionWith32) != 0 || len(planner.postRAPairWith16) != 0 || len(planner.postRAPairWith32) != 0 || len(planner.postRASkip) != 0 || len(planner.postRAForwardFrom16) != 0 || len(planner.postRAForwardFrom32) != 0 || len(planner.postRAMemoryFrom) != 0 || len(planner.postRARepeatFirst) != 0 {
-		t.Fatalf("compare/branch scratch = fusion16:%d fusion32:%d pair16:%d pair32:%d skip:%d forward16:%d forward32:%d memory:%d repeat:%d", len(planner.postRAFusionWith16), len(planner.postRAFusionWith32), len(planner.postRAPairWith16), len(planner.postRAPairWith32), len(planner.postRASkip), len(planner.postRAForwardFrom16), len(planner.postRAForwardFrom32), len(planner.postRAMemoryFrom), len(planner.postRARepeatFirst))
+	if len(planner.postRAFusionWith.narrow) != 64 || len(planner.postRAFusionWith.wide) != 0 || planner.postRAPairWith.capacityBytes() != 0 || len(planner.postRASkip) != 0 || planner.postRAForwardFrom.capacityBytes() != 0 || planner.postRAMemoryFrom.capacityBytes() != 0 || planner.postRARepeatFirst.capacityBytes() != 0 {
+		t.Fatalf("compare/branch scratch = fusion:%#v pair:%#v skip:%d forward:%#v memory:%#v repeat:%#v", planner.postRAFusionWith, planner.postRAPairWith, len(planner.postRASkip), planner.postRAForwardFrom, planner.postRAMemoryFrom, planner.postRARepeatFirst)
 	}
-	planner.setPostRAFusion(1, 63)
-	if planner.postRAFusionWith16[1] != 64 || planner.postRAFusionWith16[63] != 2 {
-		t.Fatalf("compact fusion relation = %d/%d, want 64/2", planner.postRAFusionWith16[1], planner.postRAFusionWith16[63])
+	planner.postRAFusionWith.set(1, 63)
+	planner.postRAFusionWith.set(63, 1)
+	if related, ok := planner.postRAFusionWith.get(1); !ok || related != 63 {
+		t.Fatalf("compact fusion relation = %d/%t, want 63/true", related, ok)
 	}
 	if !planner.preparePostRAScratch(railmach.TargetARM64, 32, []railmach.Rewrite{{Kind: railmach.RewriteARM64Pair}}) {
 		t.Fatal("ARM64 pair was not recognized as realizable")
 	}
-	if len(planner.postRAPairWith16) != 32 || len(planner.postRAPairWith32) != 0 || len(planner.postRASkip) != 32 || len(planner.postRAFusionWith16) != 0 || len(planner.postRAFusionWith32) != 0 {
-		t.Fatalf("pair scratch = pair16:%d pair32:%d skip:%d fusion16:%d fusion32:%d", len(planner.postRAPairWith16), len(planner.postRAPairWith32), len(planner.postRASkip), len(planner.postRAFusionWith16), len(planner.postRAFusionWith32))
+	if len(planner.postRAPairWith.narrow) != 32 || len(planner.postRAPairWith.wide) != 0 || len(planner.postRASkip) != 32 || len(planner.postRAFusionWith.narrow) != 0 || len(planner.postRAFusionWith.wide) != 0 {
+		t.Fatalf("pair scratch = pair:%#v skip:%d fusion:%#v", planner.postRAPairWith, len(planner.postRASkip), planner.postRAFusionWith)
 	}
-	planner.setPostRAPair(1, 31)
-	if planner.postRAPairWith16[1] != 32 {
-		t.Fatalf("compact pair relation = %d, want 32", planner.postRAPairWith16[1])
+	planner.postRAPairWith.set(1, 31)
+	if related, ok := planner.postRAPairWith.get(1); !ok || related != 31 {
+		t.Fatalf("compact pair relation = %d/%t, want 31/true", related, ok)
 	}
 	if planner.preparePostRAScratch(railmach.TargetARM64, 32, []railmach.Rewrite{{Kind: railmach.RewriteAMD64MemoryFold}}) {
 		t.Fatal("cross-target rewrite allocated realization scratch")
 	}
-	if !planner.preparePostRAScratch(railmach.TargetARM64, 32, []railmach.Rewrite{{Kind: railmach.RewriteLoadStoreForward}}) || len(planner.postRAForwardFrom16) != 32 || len(planner.postRAForwardFrom32) != 0 {
-		t.Fatalf("compact forward scratch = forward16:%d forward32:%d", len(planner.postRAForwardFrom16), len(planner.postRAForwardFrom32))
+	if !planner.preparePostRAScratch(railmach.TargetARM64, 32, []railmach.Rewrite{{Kind: railmach.RewriteLoadStoreForward}}) || len(planner.postRAForwardFrom.narrow) != 32 || len(planner.postRAForwardFrom.wide) != 0 {
+		t.Fatalf("compact forward scratch = %#v", planner.postRAForwardFrom)
 	}
-	planner.setPostRAForward(31, 1)
-	if planner.postRAForwardFrom16[31] != 2 {
-		t.Fatalf("compact forward relation = %d, want 2", planner.postRAForwardFrom16[31])
+	planner.postRAForwardFrom.set(31, 1)
+	if related, ok := planner.postRAForwardFrom.get(31); !ok || related != 1 {
+		t.Fatalf("compact forward relation = %d/%t, want 1/true", related, ok)
 	}
-	if !planner.preparePostRAScratch(railmach.TargetARM64, 1<<16, []railmach.Rewrite{{Kind: railmach.RewriteARM64CompareBranch}}) || len(planner.postRAFusionWith16) != 0 || len(planner.postRAFusionWith32) != 1<<16 {
-		t.Fatalf("large fusion scratch = fusion16:%d fusion32:%d", len(planner.postRAFusionWith16), len(planner.postRAFusionWith32))
+	if !planner.preparePostRAScratch(railmach.TargetAMD64, 32, []railmach.Rewrite{{Kind: railmach.RewriteAMD64MemoryFold}}) || len(planner.postRAMemoryFrom.narrow) != 32 || len(planner.postRAMemoryFrom.wide) != 0 {
+		t.Fatalf("compact memory-fold scratch = %#v", planner.postRAMemoryFrom)
 	}
-	planner.setPostRAFusion(1, 1<<16-1)
-	if planner.postRAFusionWith32[1] != 1<<16 || planner.postRAFusionWith32[1<<16-1] != 2 {
-		t.Fatalf("wide fusion relation = %d/%d, want %d/2", planner.postRAFusionWith32[1], planner.postRAFusionWith32[1<<16-1], 1<<16)
+	if !planner.preparePostRAScratch(railmach.TargetARM64, 32, []railmach.Rewrite{{Kind: railmach.RewriteARM64RepeatedAdd}}) || len(planner.postRARepeatFirst.narrow) != 32 || len(planner.postRARepeatFirst.wide) != 0 {
+		t.Fatalf("compact repeated-add scratch = %#v", planner.postRARepeatFirst)
 	}
-	if !planner.preparePostRAScratch(railmach.TargetARM64, 1<<16, []railmach.Rewrite{{Kind: railmach.RewriteARM64Pair}}) || len(planner.postRAPairWith16) != 0 || len(planner.postRAPairWith32) != 1<<16 {
-		t.Fatalf("large pair scratch = pair16:%d pair32:%d", len(planner.postRAPairWith16), len(planner.postRAPairWith32))
+	if !planner.preparePostRAScratch(railmach.TargetARM64, 32, []railmach.Rewrite{{Kind: railmach.RewriteARM64PrePostIndex, Second: 1}}) || len(planner.postRAPostIndexWith.narrow) != 32 || len(planner.postRAPostIndexWith.wide) != 0 {
+		t.Fatalf("compact post-index scratch = %#v", planner.postRAPostIndexWith)
 	}
-	planner.setPostRAPair(1, 1<<16-1)
-	if planner.postRAPairWith32[1] != 1<<16 {
-		t.Fatalf("wide pair relation = %d, want %d", planner.postRAPairWith32[1], 1<<16)
+	if !planner.preparePostRAScratch(railmach.TargetARM64, 1<<16, []railmach.Rewrite{{Kind: railmach.RewriteARM64CompareBranch}}) || len(planner.postRAFusionWith.narrow) != 0 || len(planner.postRAFusionWith.wide) != 1<<16 {
+		t.Fatalf("large fusion scratch = %#v", planner.postRAFusionWith)
 	}
-	if !planner.preparePostRAScratch(railmach.TargetAMD64, 1<<16, []railmach.Rewrite{{Kind: railmach.RewriteLoadStoreForward}}) || len(planner.postRAForwardFrom16) != 0 || len(planner.postRAForwardFrom32) != 1<<16 {
-		t.Fatalf("large forward scratch = forward16:%d forward32:%d", len(planner.postRAForwardFrom16), len(planner.postRAForwardFrom32))
+	planner.postRAFusionWith.set(1, 1<<16-1)
+	if related, ok := planner.postRAFusionWith.get(1); !ok || related != 1<<16-1 {
+		t.Fatalf("wide fusion relation = %d/%t, want %d/true", related, ok, 1<<16-1)
 	}
-	planner.setPostRAForward(1<<16-1, 1)
-	if planner.postRAForwardFrom32[1<<16-1] != 2 {
-		t.Fatalf("wide forward relation = %d, want 2", planner.postRAForwardFrom32[1<<16-1])
+	if !planner.preparePostRAScratch(railmach.TargetARM64, 1<<16, []railmach.Rewrite{{Kind: railmach.RewriteARM64Pair}}) || len(planner.postRAPairWith.narrow) != 0 || len(planner.postRAPairWith.wide) != 1<<16 {
+		t.Fatalf("large pair scratch = %#v", planner.postRAPairWith)
+	}
+	planner.postRAPairWith.set(1, 1<<16-1)
+	if related, ok := planner.postRAPairWith.get(1); !ok || related != 1<<16-1 {
+		t.Fatalf("wide pair relation = %d/%t, want %d/true", related, ok, 1<<16-1)
+	}
+	if !planner.preparePostRAScratch(railmach.TargetAMD64, 1<<16, []railmach.Rewrite{{Kind: railmach.RewriteLoadStoreForward}}) || len(planner.postRAForwardFrom.narrow) != 0 || len(planner.postRAForwardFrom.wide) != 1<<16 {
+		t.Fatalf("large forward scratch = %#v", planner.postRAForwardFrom)
+	}
+	planner.postRAForwardFrom.set(1<<16-1, 1)
+	if related, ok := planner.postRAForwardFrom.get(1<<16 - 1); !ok || related != 1 {
+		t.Fatalf("wide forward relation = %d/%t, want 1/true", related, ok)
 	}
 }
 
