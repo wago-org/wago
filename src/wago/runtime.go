@@ -990,7 +990,7 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities
 		}
 	}
 	for key, exact := range exactOverrides {
-		if declared, ok := declaredIdentities[key]; ok && declared != exact.identity {
+		if declared, ok := declaredImportIdentity(specs, declaredIdentities, key); ok && declared != exact.identity {
 			return nil, nil, importIdentityCollisionError(declared, exact.identity)
 		}
 	}

@@ -322,3 +322,17 @@ allocation counts. Imported numeric-global instantiation is 2675 ns, 2224 B and
 126952 ns, 154208 B and 21 allocations, versus 270380.5 ns, 263078 B and 12829.
 These are per-row medians, not statistical equivalence claims. Raw captures:
 final-wago-a.txt and final-wago-b.txt.
+
+## Small import identity lookup
+
+For up to four imports, reuse the immutable ImportSpec rows for identity checks
+and lookup. No extra Module field or sidecar is needed. Larger dotted namespaces
+retain the map. Separator-aware comparisons preserve empty components and reject
+ambiguous flattened identities on both sides of the threshold.
+
+The exhaustive component comparison and collision tests pass. Ten alternating
+samples show one-row index construction falling from 118.7 ns, 480 B and three
+allocations to 7.17 ns and zero allocations; four rows fall from 247.35 ns, 528 B
+and six allocations to 54.89 ns and zero. Eight-row and larger allocation counts
+stay unchanged. Captures: final-index-a.txt and final-index-b.txt. The baseline is
+the pre-index repair state, so this isolates the small-table change.

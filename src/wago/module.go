@@ -315,6 +315,21 @@ func indexDeclaredImportIdentities(specs []ImportSpec) (map[string]importBinding
 		return nil, nil
 	}
 
+	// For up to four rows the immutable ImportSpec slice is already a compact
+	// lookup table. Reuse it without adding bytes to every Module or a sidecar.
+	if len(specs) <= inlineImportIdentityLimit {
+		for i, spec := range specs {
+			identity := importBindingKey{module: spec.Module, name: spec.Name}
+			for _, previous := range specs[:i] {
+				other := importBindingKey{module: previous.Module, name: previous.Name}
+				if identity != other && sameFlattenedImport(identity, other) {
+					return nil, importIdentityCollisionError(other, identity)
+				}
+			}
+		}
+		return nil, nil
+	}
+
 	flatIdentities := make(map[string]importBindingKey, len(specs))
 	for _, spec := range specs {
 		identity := importBindingKey{module: spec.Module, name: spec.Name}
@@ -709,4 +724,39 @@ func (c *Compiled) validateImportModuleEnds() error {
 		}
 	}
 	return nil
+}
+
+const inlineImportIdentityLimit = 4
+
+func sameFlattenedImport(a, b importBindingKey) bool {
+	if len(a.module) == len(b.module) {
+		return a == b
+	}
+	if len(a.module) > len(b.module) {
+		a, b = b, a
+	}
+	// b's longer module must be a.module + "." + a prefix of a.name.
+	n := len(a.module)
+	if b.module[:n] != a.module || b.module[n] != '.' {
+		return false
+	}
+	return flatImportMatches(a.name, b.module[n+1:], b.name)
+}
+func flatImportMatches(key, module, name string) bool {
+	n := len(module)
+	return len(key) == n+1+len(name) && key[n] == '.' && key[:n] == module && key[n+1:] == name
+}
+func declaredImportIdentity(specs []ImportSpec, index map[string]importBindingKey, key string) (importBindingKey, bool) {
+	if index != nil {
+		identity, ok := index[key]
+		return identity, ok
+	}
+	if len(specs) <= inlineImportIdentityLimit {
+		for _, spec := range specs {
+			if flatImportMatches(key, spec.Module, spec.Name) {
+				return importBindingKey{module: spec.Module, name: spec.Name}, true
+			}
+		}
+	}
+	return importBindingKey{}, false
 }
