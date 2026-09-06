@@ -369,3 +369,42 @@ Static analysis found old private wrappers left unused by the budget, signature,
 JSON descriptor, and captured plugin-selection paths. Remove those wrappers.
 The remaining staticcheck diagnostics are checked against the audited baseline,
 rather than disabled or hidden. These removals do not change public APIs.
+
+## Host release gates and existing failures
+
+With Go 1.22.12, WABT 1.0.41, and the pinned Core 3 interpreter plus its revision
+environment variable, the root package suites pass except two Wine installer
+tests. Both failures also occur at f0f4951138b8: Wine lacks the CMD download path,
+and its Go 1.22 directory enumeration reports `Invalid function`. No test was
+weakened or skipped to hide these failures. Runtime-tag CLI packages pass when
+using pinned TinyGo 0.41.1; installed TinyGo 0.42.0 showed a duplicate-symbol link
+failure before the pinned version was used. Release asset and qualification
+script tests pass.
+
+Concurrency, guard-page, corpus (explicit and guard), semantic corpus, spec 1/2/3,
+and spec3-signals gates pass. TinyGo build and runtime/public API tests pass with
+0.41.1 and Go 1.22.12. Current-Go race suites pass for all changed runtime, decoder,
+GC, ownership, manager, and utility packages; the full wago race package takes
+267.5 seconds, including many process-isolated cases and race-runtime exit waits.
+
+Formatting, generation, vet, docs, and website-generator checks pass. Staticcheck
+still reports 25 existing baseline diagnostics; after removing superseded helpers,
+there are no new diagnostics. Captures: gate-*.txt, staticcheck-{baseline,final}.txt,
+final-race.txt, baseline-wine.txt.
+
+A ten-second codec fuzz run passes 69954 cases. The decoder differential fuzz
+harness stops on an existing error-phase mismatch: AST reports validation and the
+byte-backed path reports decode; both reject the input. The exact generated case
+also fails on the audited baseline. Keep this gap visible; it is not an admission
+success or a new acceptance regression. Captures: fuzz-decoder.txt,
+fuzz-decoder-baseline.txt, decoder-phase-case, fuzz-codec.txt. The generated failing
+case is preserved with those local artifacts rather than added to the repo corpus.
+
+## Cancellation tail fixture
+
+BenchmarkInterruptCancelLatency reports p50/p95/p99 cancel-to-return latency
+separately from the 100 us scheduled work interval. Its sample window is capped
+at 1024 entries. Every call must return context.Canceled. Ten alternating runs
+of 100 calls per side pass; the normal benchmark allocation columns include
+context/timer setup and invocation cleanup. No unbounded measurement buffer is
+introduced. Captures: final-cancel-{a,b}.txt and final-cancel-benchstat.txt.
