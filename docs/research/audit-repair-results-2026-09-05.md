@@ -408,3 +408,20 @@ at 1024 entries. Every call must return context.Canceled. Ten alternating runs
 of 100 calls per side pass; the normal benchmark allocation columns include
 context/timer setup and invocation cleanup. No unbounded measurement buffer is
 introduced. Captures: final-cancel-{a,b}.txt and final-cancel-benchstat.txt.
+
+## Avoid a redundant trap-cell write
+
+A clear trap cell needs no compare-and-swap from zero to zero. An acquire load
+and early return preserve a concurrent interruption because they never overwrite
+it. Nonzero traps retain the compare-and-swap retry, and Interrupted is preserved.
+The auxiliary trap payload is still cleared as before. The added concurrent-reset
+test covers both zero and nonzero starting states under the race detector.
+
+Ten alternating 200 ms samples reduce the direct core boundary control from
+22.79 ns to 21.46 ns (-5.84%), with zero bytes and allocations. Public Invoke,
+PreparedInvoke, and direct host-call controls show no detected timing change and
+retain their allocation counts. After this change, normal, guard-page, gcstats,
+spec3-signals, TinyGo, vet, docs, and formatting gates pass. Focused interrupt,
+trap-reset, cancellation, and deadline race tests pass. Captures:
+final-corerefined-{a,b}.txt, final-callsrefined-{a,b}.txt, refined-gates-status.txt.
+The scheduler transition remains required and unchanged.

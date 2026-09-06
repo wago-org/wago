@@ -222,7 +222,9 @@ func clearTrapUnlessInterrupted(trap []byte) {
 	cell := (*uint32)(unsafe.Pointer(&trap[0]))
 	for {
 		old := atomic.LoadUint32(cell)
-		if TrapCode(old) == TrapInterrupted || atomic.CompareAndSwapUint32(cell, old, 0) {
+		// A zero cell needs no write. A concurrent interruption remains visible
+		// because this fast path never stores over it.
+		if old == 0 || TrapCode(old) == TrapInterrupted || atomic.CompareAndSwapUint32(cell, old, 0) {
 			if len(trap) >= TrapBufferBytes {
 				clear(trap[16:24])
 			}
