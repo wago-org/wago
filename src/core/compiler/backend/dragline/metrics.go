@@ -8,7 +8,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
 )
 
-const MetricsVersion = 23
+const MetricsVersion = 24
 
 // Metrics contains one deterministic row per compiled function plus module
 // totals. Timings are observational; all counts and byte sizes are exact for
@@ -40,6 +40,19 @@ type EmitterMetrics struct {
 	CacheHits   uint32 `json:"cache_hits"`
 }
 
+// ScheduleCandidateMetrics records the complete realized debt used to compare
+// one initial schedule candidate after allocation and late SSA exit.
+type ScheduleCandidateMetrics struct {
+	Kind              uint8  `json:"kind"`
+	WeightedSpillDebt uint64 `json:"weighted_spill_debt"`
+	PhysicalCopies    uint32 `json:"physical_copies"`
+	CopyCycles        uint32 `json:"copy_cycles"`
+	CopyMotion        uint32 `json:"copy_motion"`
+	FixedRepairs      uint32 `json:"fixed_repairs"`
+	BrokenFusions     uint32 `json:"broken_fusions"`
+	LoopInvariantOps  uint32 `json:"loop_invariant_ops"`
+}
+
 // FunctionMetrics attributes compiler work to one original Wasm function.
 type FunctionMetrics struct {
 	Function  uint32 `json:"function"`
@@ -60,6 +73,8 @@ type FunctionMetrics struct {
 	ScheduleKind               uint8                             `json:"schedule_kind"`
 	BackendAttempts            uint8                             `json:"backend_attempts"`
 	ScheduleCandidates         uint8                             `json:"schedule_candidates"`
+	InitialScheduleScoreCount  uint8                             `json:"initial_schedule_score_count"`
+	InitialScheduleScores      [3]ScheduleCandidateMetrics       `json:"initial_schedule_scores"`
 	SelectionCombinations      uint32                            `json:"selection_combinations"`
 	Dependencies               uint32                            `json:"dependencies"`
 	ScheduleReadySteps         uint32                            `json:"schedule_ready_steps"`
@@ -161,6 +176,16 @@ func recordNativePlanMetrics(metrics *FunctionMetrics, plan *nativeBackendPlan) 
 	metrics.ScheduleKind = uint8(plan.Score.Kind)
 	metrics.BackendAttempts = plan.BackendAttempts
 	metrics.ScheduleCandidates = plan.ScheduleCandidates
+	metrics.InitialScheduleScoreCount = plan.InitialScheduleScoreCount
+	for index := range plan.InitialScheduleScores[:plan.InitialScheduleScoreCount] {
+		score := plan.InitialScheduleScores[index]
+		metrics.InitialScheduleScores[index] = ScheduleCandidateMetrics{
+			Kind: uint8(score.Kind), WeightedSpillDebt: score.WeightedSpillDebt,
+			PhysicalCopies: score.PhysicalCopies, CopyCycles: score.CopyCycles,
+			CopyMotion: score.CopyMotion, FixedRepairs: score.FixedRepairs,
+			BrokenFusions: score.BrokenFusions, LoopInvariantOps: score.LoopInvariantOps,
+		}
+	}
 	metrics.SelectionCombinations = uint32(len(plan.Selection.Combinations))
 	metrics.Dependencies = uint32(len(plan.DAG.Dependencies))
 	if freedom, err := railmach.MeasureScheduleFreedom(plan.Machine, plan.Selection, plan.DAG); err == nil {

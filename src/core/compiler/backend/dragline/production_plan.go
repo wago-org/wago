@@ -60,6 +60,12 @@ type nativeBackendPlan struct {
 	Score              railmach.ScheduleScore
 	BackendAttempts    uint8
 	ScheduleCandidates uint8
+	// InitialScheduleScores retain the realized post-allocation debt for the
+	// bounded first-pass candidates. Retry scores are deliberately excluded so
+	// this remains a comparable view of scheduling rather than allocator-policy
+	// changes.
+	InitialScheduleScores     [3]railmach.ScheduleScore
+	InitialScheduleScoreCount uint8
 	// Segmented baseline/candidate fields retain exact spill and copy debt on
 	// both sides of the one bounded segmented-liveness trial. The trial is
 	// deliberately separate from schedule search so observability does not
@@ -1396,18 +1402,20 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if fastMachine || !scheduleAlternatives {
 		kinds[0] = railmach.ScheduleKindSourceStable
 	}
+	var initialScheduleScores [3]railmach.ScheduleScore
 	if parallelCandidates {
 		scores, candidateErrs := p.evaluateScheduleCandidates(machine, selection, dag, pressure, defaultGreedy, kinds, true)
 		for index, score := range scores {
 			if candidateErrs[index] != nil {
 				return nil, candidateErrs[index]
 			}
+			initialScheduleScores[index] = score
 			if !haveBest || nativeScheduleScoreBetter(objective, machine.Target, len(machine.Insts), usesFPR, score, best) {
 				best, bestIndex, haveBest = score, index, true
 			}
 		}
 	} else {
-		for _, kind := range kinds[:candidateCount] {
+		for index, kind := range kinds[:candidateCount] {
 			candidate, candidateErr := railmach.BuildScheduleWithPressure(machine, selection, dag, kind, pressure, &p.schedule)
 			if candidateErr != nil {
 				return nil, candidateErr
@@ -1429,6 +1437,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			if candidateErr != nil {
 				return nil, candidateErr
 			}
+			initialScheduleScores[index] = score
 			if !haveBest || nativeScheduleScoreBetter(objective, machine.Target, len(machine.Insts), usesFPR, score, best) {
 				best, haveBest = score, true
 			}
@@ -1803,6 +1812,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		Stack: stack, CFG: cfg, Semantic: semantic,
 		Machine: machine, Selection: selection, DAG: dag, Schedule: schedule, Allocation: allocation, Exit: exit, PostRA: postRA,
 		Specialize: specialize, Roots: &p.rootPlan, Emission: emission, Pressure: pressure, Remat: remat, Layout: layout, ABI: contract, LocalABI: localContract, Calls: calls, Frame: frame, CalleeSaves: p.calleeSaveRegions, ExternalCallFPRs: externalCallFPRs, ExternalCallVectorFPRs: externalCallVectorFPRs, CallArgumentBytes: callArgumentBytes, Score: best, BackendAttempts: backendAttempts, ScheduleCandidates: scheduleCandidates,
+		InitialScheduleScores: initialScheduleScores, InitialScheduleScoreCount: uint8(candidateCount),
 		SegmentedBaselineDebt: segmentedBaselineDebt, SegmentedCandidateDebt: segmentedCandidateDebt, SegmentedBaselineCopies: segmentedBaselineCopies, SegmentedCandidateCopies: segmentedCandidateCopies, SegmentedCandidateRanges: segmentedCandidateRanges, SegmentedAttempted: segmentedAttempted, SegmentedAdmitted: segmentedAdmitted,
 		Simplified: simplified, IPRARefinedCalls: refinedCalls, AMD64MemoryBoundEnd: amd64MemoryBoundEnd,
 		AMD64BMI2:      target.HasFeature(corecompiler.TargetFeatureAMD64BMI2),

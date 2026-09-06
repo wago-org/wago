@@ -13,6 +13,7 @@ import (
 
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railmach"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	runtimeabi "github.com/wago-org/wago/src/core/runtime/abi"
 )
@@ -175,7 +176,38 @@ func writeMarkdownStatus(w io.Writer, modulePath string, metrics *dragline.Metri
 			return err
 		}
 	}
+	if _, err := fmt.Fprintln(w, "\n## Initial schedule candidates\n\nThese are first-pass candidates scored after allocation and late SSA exit; retry-policy candidates are excluded. Final kind identifies the schedule kind ultimately retained, whose debt may differ after an allocator retry.\n\n| Function | Candidate | Kind | Final kind | Spill debt | Physical copies | Copy cycles | Copy motion | Fixed repairs | Broken fusions | Loop-invariant ops |\n|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|"); err != nil {
+		return err
+	}
+	for _, row := range metrics.Functions {
+		count := int(row.InitialScheduleScoreCount)
+		if count > len(row.InitialScheduleScores) {
+			count = len(row.InitialScheduleScores)
+		}
+		for index, score := range row.InitialScheduleScores[:count] {
+			retained := ""
+			if score.Kind == row.ScheduleKind {
+				retained = "yes"
+			}
+			if _, err := fmt.Fprintf(w, "| %d | %d | %s | %s | %d | %d | %d | %d | %d | %d | %d |\n", row.Function, index+1, scheduleKindName(score.Kind), retained, score.WeightedSpillDebt, score.PhysicalCopies, score.CopyCycles, score.CopyMotion, score.FixedRepairs, score.BrokenFusions, score.LoopInvariantOps); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
+}
+
+func scheduleKindName(kind uint8) string {
+	switch kind {
+	case uint8(railmach.ScheduleKindSourceStable):
+		return "source-stable"
+	case uint8(railmach.ScheduleKindLatencyFusion):
+		return "latency/fusion"
+	case uint8(railmach.ScheduleKindPressure):
+		return "pressure"
+	default:
+		return fmt.Sprintf("unknown-%d", kind)
+	}
 }
 
 func fail(operation string, err error) {

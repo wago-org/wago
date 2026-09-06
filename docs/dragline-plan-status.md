@@ -250,6 +250,16 @@ the performance corpus.
   93.978 seconds (0.8% lower), native output remained exactly 49,425,936
   bytes, and process maximum RSS was flat within 0.1%, confirming that Go
   runtime/unreclaimed heap dominates that process-level measure.
+- Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
+  bounded initial schedule candidate's realized post-allocation spill debt,
+  physical copies, copy cycles, copy motion, fixed repairs, broken fusions,
+  and loop-invariant motion alongside the retained winner. Retry-policy
+  candidates remain separate. The canonical Markdown projection exposes the
+  same candidate frontier per function, so target scheduling changes can be
+  investigated against the actual backend debt rather than an IR-only pressure
+  estimate. Schema 23 also attributes physical copies to ordinary edges, loop
+  backedges, fixed-register repairs, and the segmented-liveness baseline and
+  candidate. These are observational additions and do not change codegen.
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution
