@@ -442,3 +442,34 @@ At 100000 explicit groups, 16.13 ms and 33605392 B become 14.12 ms and 18401040 
 Single-group cases retain 968 B and six allocations. These results justify a
 bounded memory tradeoff; they do not claim every decoder row is faster. Captures:
 final-mixed-{a,b}.txt and final-types-{a,b}.txt.
+
+## Raw-call benchmark checks and unresolved full-binary timing
+
+The raw setup now checks decode, validation, export lookup, engine/memory/code
+setup, and every call error. Failed setup releases resources already acquired.
+The call-overhead row warms and verifies fib(1) == 1, excludes setup from timing,
+and verifies the final result. The identical fixture was used on both revisions.
+
+| Toolchain / linked benchmark | Baseline ns/op | Candidate ns/op | Change |
+|---|---:|---:|---:|
+| Go 1.27.1, full bench binary | 25.45 | 36.43 | +43.17% |
+| Go 1.22.12, full bench binary | 30.89 | 28.67 | -7.20% |
+| Go 1.27.1, three-file binary | 25.22 | 22.70 | -10.01% |
+
+All rows use ten alternating 200 ms samples, check the same result, and allocate
+zero bytes. The three-file binary is built with `go test -c bench_test.go
+backend.go backend_amd64.go` in `bench`; it narrows the linked test program without
+changing this fixture or the runtime source. The full Go 1.27.1 slowdown also
+persists in a CPU-pinned run. It is not explained by additional JIT instructions:
+both generated 105-byte guest bodies have SHA-256
+`23884eaa206f055bd7862d2c03f2f0bbfeac39eadf7c02c80000c44af58e00ea`.
+A 64-byte trampoline-alignment experiment did not recover the timing and was
+removed. CPU profiles do not establish the cause; hardware counters are not
+available under this host's perf permissions. The narrower binary and Go 1.22
+results suggest linked-binary sensitivity, but do not prove its mechanism.
+
+Keep the full Go 1.27.1 row as an unresolved performance qualification item.
+Do not mask it by replacing its selector with the smaller binary. Other public
+call and corpus execution controls are reported separately. Captures:
+checked-raw-{a,b}.txt, go122-raw-{a,b}.txt, isolated-raw-{a,b}.txt,
+raw-call-pinned-{a,b}.txt, raw-{a,b}.cpu, and perf-access.txt.

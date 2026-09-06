@@ -98,22 +98,49 @@ func BenchmarkInstantiate_wazero(b *testing.B) {
 }
 
 func wagoSetup(b *testing.B, wasmBytes []byte, export string) (func(n int32) int32, func()) {
-	m, _ := wasm.DecodeModule(wasmBytes)
-	wasm.ValidateModule(m)
+	b.Helper()
+	m, err := wasm.DecodeModule(wasmBytes)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		b.Fatal(err)
+	}
 	cm, err := benchCompileModule(m)
 	if err != nil {
 		b.Fatal(err)
 	}
-	var localIdx int
+	localIdx := -1
 	for i := range m.Exports {
 		if m.Exports[i].Index.Kind == wasm.ExternFunc && m.Exports[i].Name == export {
 			localIdx = int(m.Exports[i].Index.Index) - m.ImportedFuncCount()
 		}
 	}
-	eng, _ := runtime.NewEngine()
-	jm, _ := runtime.NewJobMemory(1 << 16)
-	ar, _ := runtime.NewArena(4096)
-	mem, base, _ := runtime.MapCode(cm.Code)
+	if localIdx < 0 {
+		b.Fatalf("missing export %s", export)
+	}
+	eng, err := runtime.NewEngine()
+	if err != nil {
+		b.Fatal(err)
+	}
+	jm, err := runtime.NewJobMemory(1 << 16)
+	if err != nil {
+		eng.Close()
+		b.Fatal(err)
+	}
+	ar, err := runtime.NewArena(4096)
+	if err != nil {
+		jm.Close()
+		eng.Close()
+		b.Fatal(err)
+	}
+	mem, base, err := runtime.MapCode(cm.Code)
+	if err != nil {
+		ar.Close()
+		jm.Close()
+		eng.Close()
+		b.Fatal(err)
+	}
 	entry := base + uintptr(cm.Entry[localIdx])
 	serArgs := ar.Alloc(16)
 	results := ar.Alloc(16)
@@ -121,7 +148,9 @@ func wagoSetup(b *testing.B, wasmBytes []byte, export string) (func(n int32) int
 	lin := jm.LinearMemory()
 	call := func(n int32) int32 {
 		binary.LittleEndian.PutUint32(serArgs, uint32(n))
-		eng.Call(entry, serArgs, lin, trap, results)
+		if err := eng.Call(entry, serArgs, lin, trap, results); err != nil {
+			b.Fatal(err)
+		}
 		return int32(binary.LittleEndian.Uint32(results))
 	}
 	cleanup := func() { runtime.Unmap(mem); ar.Close(); jm.Close(); eng.Close() }
@@ -180,9 +209,18 @@ func BenchmarkExecFibRec_wazero(b *testing.B) {
 func BenchmarkExecCallOverhead_wago(b *testing.B) {
 	call, cleanup := wagoSetup(b, fibWasm, "fib")
 	defer cleanup()
+	if got := call(1); got != 1 {
+		b.Fatalf("fib(1) = %d, want 1", got)
+	}
 	b.ReportAllocs()
+	b.ResetTimer()
+	var got int32
 	for i := 0; i < b.N; i++ {
-		_ = call(1)
+		got = call(1)
+	}
+	b.StopTimer()
+	if got != 1 {
+		b.Fatalf("fib(1) = %d, want 1", got)
 	}
 }
 
