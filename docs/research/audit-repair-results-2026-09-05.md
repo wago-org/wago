@@ -179,8 +179,24 @@ Consumed or closed PreparedCompile objects release the captured registry maps.
 
 Focused tests verify old/new map-pair isolation, zero allocations for warm binding
 snapshots, and preparation release. A scaling fixture covers 0/10/1000/10000
-unrelated registrations with setup outside timing. Full A/B timing and the broader
-runtime/plugin race run are pending; no public ownership boundary is weakened.
+unrelated registrations with setup outside timing. The broader runtime/plugin race run passes (122.8 seconds total, including
+subprocess regression suites). Two A/B samples at 10000 unrelated registrations
+fall from about 2.47 MB and 20148 allocations to 17216 B/op and 75 allocations.
+The candidate allocates the same amount at every tested registry size. Timings
+fall from about 2.5 ms to 27–30 us. Final longer timing remains pending; no public ownership boundary is weakened.
+
+## Instance import ownership
+
+WithImports borrows source maps until resolution, which merges options into one
+owned map. The private Runtime-to-instantiator path transfers that map; public
+low-level calls still clone caller maps. Multiple options preserve last-write
+precedence and explicit unused entries. Focused ownership/import tests and the
+new override/mutation regression pass, including a focused race run.
+
+The imported numeric-global fixture falls from 2880 B/op and 22 allocations to
+2224 B/op and 18 allocations; short A/B times fall from about 3.66 us to 3.10 us.
+Capture: imports-ab.txt. Multiple WithImports options need a small source-list
+slice, but do not allocate another merged import map.
 
 ## Remaining work
 

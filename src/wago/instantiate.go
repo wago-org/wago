@@ -22,6 +22,7 @@ type InstantiateOptions struct {
 	GC                       GCConfig
 	store                    *referenceStore
 
+	ownedImports             bool // private Runtime resolution has transferred ownership
 	runtime                  *Runtime
 	origin                   InstantiateOrigin
 	pluginGC                 *GCConfig
@@ -123,7 +124,7 @@ func instantiateCore(c *Compiled, opts InstantiateOptions) (*Instance, error) {
 func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, moduleUse *Module) (*Instance, error) {
 	defer goruntime.KeepAlive(c)
 	// Keep validation, native linking, public lookup, and teardown on one binding set.
-	if opts.Imports != nil {
+	if opts.Imports != nil && !opts.ownedImports {
 		imports := make(Imports, len(opts.Imports))
 		for key, value := range opts.Imports {
 			imports[key] = value

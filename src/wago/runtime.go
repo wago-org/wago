@@ -799,6 +799,7 @@ type InstantiateOption func(*instantiateConfig)
 
 type instantiateConfig struct {
 	imports       Imports
+	extraImports  []Imports
 	exactImports  map[string]exactImportOverride
 	importErr     error
 	gc            GCConfig
@@ -830,12 +831,12 @@ func WithPolicy(p Policy) InstantiateOption {
 func WithImports(im Imports) InstantiateOption {
 	return func(c *instantiateConfig) {
 		if c.imports == nil {
-			c.imports = Imports{}
-		}
-		for k, v := range im {
-			c.imports[k] = v
+			c.imports = im
+		} else {
+			c.extraImports = append(c.extraImports, im)
 		}
 	}
+
 }
 
 // WithImport adds one per-call import using its exact Wasm module and name.
@@ -929,7 +930,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 		}
 	}()
 
-	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, mod.importIdentities, cfg.imports, cfg.exactImports)
+	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, mod.importIdentities, cfg.imports, cfg.exactImports, cfg.extraImports...)
 	if err != nil {
 		return nil, err
 	}
@@ -954,23 +955,29 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 // cloning runtime imports the module cannot use. Explicit per-call imports are
 // retained even when undeclared, preserving the low-level Imports inspection
 // behavior. Runtime imports are only retained for declared module keys.
-func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities map[string]importBindingKey, overrides Imports, exactOverrides map[string]exactImportOverride) (Imports, map[uint32]struct{}, error) {
+func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities map[string]importBindingKey, overrides Imports, exactOverrides map[string]exactImportOverride, extraOverrides ...Imports) (Imports, map[uint32]struct{}, error) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 
 	for key, exact := range exactOverrides {
 		identity := exact.identity
-		if _, duplicated := overrides[key]; duplicated {
+		if _, duplicated := lookupImportOverride(key, overrides, extraOverrides); duplicated {
 			return nil, nil, fmt.Errorf("wago: import %q.%q is configured by both WithImport and WithImports", identity.module, identity.name)
 		}
 	}
-	for key := range overrides {
-		module := importModule(key)
-		if !isReserved(module) || rt.overridePolicy == AllowTestOverrides {
-			continue
+	for index := -1; index < len(extraOverrides); index++ {
+		source := overrides
+		if index >= 0 {
+			source = extraOverrides[index]
 		}
-		if _, provided := rt.imports[key]; provided {
-			return nil, nil, fmt.Errorf("wago: import %q may not override reserved module %q", key, module)
+		for key := range source {
+			module := importModule(key)
+			if !isReserved(module) || rt.overridePolicy == AllowTestOverrides {
+				continue
+			}
+			if _, provided := rt.imports[key]; provided {
+				return nil, nil, fmt.Errorf("wago: import %q may not override reserved module %q", key, module)
+			}
 		}
 	}
 	for key, exact := range exactOverrides {
@@ -988,16 +995,25 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities
 		}
 	}
 
-	capacity := len(overrides) + len(exactOverrides) + len(specs)
-	if available := len(overrides) + len(exactOverrides) + len(rt.imports); available < capacity {
+	overrideCount := len(overrides)
+	for _, source := range extraOverrides {
+		overrideCount += len(source)
+	}
+	capacity := overrideCount + len(exactOverrides) + len(specs)
+	if available := overrideCount + len(exactOverrides) + len(rt.imports); available < capacity {
 		capacity = available
 	}
 	var resolved Imports
 	var pluginGCImports map[uint32]struct{}
-	if len(overrides) != 0 {
+	if overrideCount != 0 {
 		resolved = make(Imports, capacity)
 		for key, value := range overrides {
 			resolved[key] = value
+		}
+		for _, source := range extraOverrides {
+			for key, value := range source {
+				resolved[key] = value
+			}
 		}
 	}
 	for _, spec := range specs {
@@ -1010,7 +1026,7 @@ func (rt *Runtime) resolveInstanceImports(specs []ImportSpec, declaredIdentities
 			resolved[key] = exact.value
 			continue
 		}
-		if _, provided := overrides[key]; provided {
+		if _, provided := lookupImportOverride(key, overrides, extraOverrides); provided {
 			if module, name := splitImportKey(key); module != spec.Module || name != spec.Name {
 				return nil, nil, fmt.Errorf("wago: flattened import %q is ambiguous for Wasm import %q.%q; use WithImport with separate module and name", key, spec.Module, spec.Name)
 			}
@@ -1069,7 +1085,7 @@ func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
 func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation, runtimeReservation *runtimeInstanceReservation) (*Instance, error) {
 	iopts := InstantiateOptions{
 		MaxCompiledMetadataBytes: rt.cfg.maxCompiledMetadataBytes,
-		Imports:                  imports, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,
+		Imports:                  imports, ownedImports: true, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,
 		forceSyncHost:            forceSyncHost || rt.callerResolverActive.Load(),
 		moduleIdentity:           mod.moduleIdentity(),
 		operationReservation:     reservation,
@@ -1596,4 +1612,16 @@ func (rt *Runtime) writableImportsLocked() {
 	rt.imports = maps.Clone(rt.imports)
 	rt.importMeta = maps.Clone(rt.importMeta)
 	rt.importsShared = false
+}
+
+// Options remain borrowed until resolution constructs the one instance-owned
+// map. Later WithImports options retain their documented overwrite precedence.
+func lookupImportOverride(key string, first Imports, rest []Imports) (any, bool) {
+	for i := len(rest) - 1; i >= 0; i-- {
+		if value, ok := rest[i][key]; ok {
+			return value, true
+		}
+	}
+	value, ok := first[key]
+	return value, ok
 }
