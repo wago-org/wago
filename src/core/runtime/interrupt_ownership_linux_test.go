@@ -79,6 +79,28 @@ func TestInterruptSignalOwnership(t *testing.T) {
 	if err := Unmap(code); err != nil {
 		t.Fatal(err)
 	}
+	// Change ownership while no code is live. A preferred-signal hint must be
+	// revalidated and the newly observed action restored after the next mapping.
+	signal.Ignore(syscall.Signal(sig))
+	var changed interruptSigaction
+	if err := interruptRTSigaction(uintptr(sig), nil, &changed); err != nil {
+		t.Fatal(err)
+	}
+	code, _, err = MapCode([]byte{0xc3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Unmap(code); err != nil {
+		t.Fatal(err)
+	}
+	var restored interruptSigaction
+	if err := interruptRTSigaction(uintptr(sig), nil, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if restored != changed {
+		t.Fatalf("preferred hint overwrote changed owner: %+v != %+v", restored, changed)
+	}
+
 }
 
 func TestInterruptTokenChangesOnTrapReuse(t *testing.T) {

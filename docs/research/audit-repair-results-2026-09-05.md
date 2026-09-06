@@ -284,3 +284,14 @@ repeated filesystem ancestry walks are removed.
 At depth 128, BenchmarkReinstallCleanup falls from about 371 ms, 52.07 MB and
 281501 allocations to 4.10 ms, 480942 B and 2987 allocations. Depth 1 falls from
 168 to 124 us and 412 to 305 allocations. Capture: cleanup-ab.txt.
+
+## Linux signal negotiation
+
+An idle handler installation first rechecks the previously usable signal action.
+An unchanged action avoids a full signal scan; a changed action uses the original
+negotiation path. No signal-handler scan or restoration rule is relaxed. The
+isolated ownership test now changes the idle signal action and checks restoration.
+Interrupt race tests pass. Negotiation falls from about 5902 to 652 ns with zero
+allocations. Empty MapCode/Unmap falls from 12.7 to 7.2 us; at 2048 registered code
+spans it remains about 11 us. Capture: signal-ab.txt. Keep the bounded registry
+scans: these lifecycle measurements do not justify more assembly complexity.

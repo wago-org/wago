@@ -52,12 +52,14 @@ var (
 	interruptLinearMemoryCache uint32
 	interruptLinearMemoryMu    sync.Mutex
 
-	interruptRequestMu sync.Mutex
-	interruptOldAction interruptSigaction
-	interruptOurAction interruptSigaction
-	interruptCookie    uint32
-	interruptSequence  uint32
-	interruptSignal    uint32
+	interruptRequestMu       sync.Mutex
+	interruptOldAction       interruptSigaction
+	interruptOurAction       interruptSigaction
+	interruptCookie          uint32
+	interruptSequence        uint32
+	interruptSignal          uint32
+	interruptPreferredSignal uintptr // executableCodeMu protects the bounded hint
+	interruptPreferredAction interruptSigaction
 )
 
 func init() {
@@ -227,6 +229,18 @@ func installInterruptHandler() error {
 	if cookieErr != nil {
 		return cookieErr
 	}
+	// Recheck the previously compatible OS action. This avoids rescanning every
+	// real-time signal on sequential compile/close workloads without assuming that
+	// another library left signal ownership unchanged while no mapping was live.
+	if interruptPreferredSignal != 0 {
+		var current interruptSigaction
+		if err := interruptRTSigaction(interruptPreferredSignal, nil, &current); err != nil {
+			return err
+		}
+		if current == interruptPreferredAction {
+			return installInterruptAction(interruptPreferredSignal, current)
+		}
+	}
 	for pass := 0; pass < 2; pass++ {
 		for sig := uintptr(64); sig >= 35; sig-- {
 			var old interruptSigaction
@@ -241,23 +255,29 @@ func installInterruptHandler() error {
 			if (pass == 0 && !vacant) || (pass == 1 && !compatible) {
 				continue
 			}
-			act := old
-			act.handler = addrInterruptSigHandler()
-			act.flags |= interruptSA_SIGINFO | interruptSA_ONSTACK
-			if act.restorer == 0 {
-				configureInterruptSigaction(&act)
-			}
-			interruptOldAction = old
-			interruptOldHandler = old.handler
-			interruptOurAction = act
-			if err := interruptRTSigaction(sig, &act, nil); err != nil {
-				return err
-			}
-			atomic.StoreUint32(&interruptSignal, uint32(sig))
-			return nil
+			return installInterruptAction(sig, old)
 		}
 	}
 	return fmt.Errorf("no compatible real-time signal available for native interruption")
+}
+
+// Called under executableCodeMu after verifying that old is compatible.
+func installInterruptAction(sig uintptr, old interruptSigaction) error {
+	act := old
+	act.handler = addrInterruptSigHandler()
+	act.flags |= interruptSA_SIGINFO | interruptSA_ONSTACK
+	if act.restorer == 0 {
+		configureInterruptSigaction(&act)
+	}
+	interruptOldAction = old
+	interruptOldHandler = old.handler
+	interruptOurAction = act
+	if err := interruptRTSigaction(sig, &act, nil); err != nil {
+		return err
+	}
+	interruptPreferredSignal, interruptPreferredAction = sig, old
+	atomic.StoreUint32(&interruptSignal, uint32(sig))
+	return nil
 }
 
 func restoreInterruptHandler() {
