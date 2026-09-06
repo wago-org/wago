@@ -364,6 +364,22 @@ the performance corpus.
   modules. The experiment was reverted: Stage 7B must avoid a second full
   allocator pass (or use a genuinely bounded module budget) before loop ranges
   can enter production.
+- Loop-segmented liveness, indexed retry: ✅ the allocator now keeps a sparse
+  occupant list for each physical register, so a segmented conflict query
+  visits only values assigned to the candidate register instead of rescanning
+  every active interval. This removes the giant-function complexity cliff while
+  preserving exact sparse overlap and one physical assignment per value. An
+  independent allocation verifier now requires every ordinary use and outgoing
+  edge transfer to lie within the value's computed segments. Against exact
+  commit `f50cbce2`, serialized native ARM64 `esbuild` compile wall moved from
+  160.921 to 162.733 seconds (+1.13%), peak compiler-owned live storage from
+  82,578,401 to 82,840,501 bytes (+0.32%), and native code from 37,018,548 to
+  37,015,524 bytes (-3,024). A minimum 64-unit weighted-debt payoff prevents
+  marginal loop retries: all runnable application modules remain byte-identical,
+  while SQLite is 768 bytes smaller at +0.16% compile wall, `regexmatch` is 304
+  bytes smaller, Lua 48 bytes smaller, `wasm3` 32 bytes smaller, and Ruby 144
+  bytes smaller at +0.07% compile wall and +0.13% peak live storage. This clears
+  Stage 7B without introducing split children or hole-boundary copies.
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution

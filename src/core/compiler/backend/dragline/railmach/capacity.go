@@ -20,6 +20,11 @@ func PipelineCapacityBytes(f *Func, selection *SelectionPlan, dag *DependencyDAG
 		bytes += capacityBytes(allocation.Locations) + capacityBytes(allocation.Intervals) + capacityBytes(allocation.FixedMoves) + capacityBytes(allocation.InstructionPositions) + capacityBytes(allocation.LiveSegments) + capacityBytes(allocation.LiveSegmentRanges)
 		scratch := &allocation.scratch
 		bytes += capacityBytes(scratch.starts) + capacityBytes(scratch.ends) + capacityBytes(scratch.weights) + capacityBytes(scratch.used) + capacityBytes(scratch.callPositions) + capacityBytes(scratch.fixedAt) + capacityBytes(scratch.fixedConflict) + capacityBytes(scratch.affinitySource) + capacityBytes(scratch.affinityWeight) + capacityBytes(scratch.gprActive) + capacityBytes(scratch.fprActive) + capacityBytes(scratch.spillActive) + capacityBytes(scratch.spillFree) + capacityBytes(scratch.verifySeen) + capacityBytes(scratch.positionSeen) + capacityBytes(scratch.verifyRegNext) + capacityBytes(scratch.segmentPredOff) + capacityBytes(scratch.segmentPreds) + capacityBytes(scratch.segmentUseHead) + capacityBytes(scratch.segmentUseNext) + capacityBytes(scratch.segmentUseAt) + capacityBytes(scratch.segmentSeen) + capacityBytes(scratch.segmentWork) + capacityBytes(scratch.segmentBlocks) + capacityBytes(scratch.segmentBlockAt) + capacityBytes(scratch.segmentEligible) + capacityBytes(scratch.segmentRangeAt) + capacityBytes(scratch.segmentRepack)
+		for bank := range scratch.registerOccupants {
+			for physical := range scratch.registerOccupants[bank] {
+				bytes += capacityBytes(scratch.registerOccupants[bank][physical])
+			}
+		}
 		bytes += capacityBytes(allocation.SpillSets) + capacityBytes(allocation.SpillMembers) + capacityBytes(allocation.Fragments) + capacityBytes(allocation.priorityIntervals) + capacityBytes(allocation.callPositions) + capacityBytes(allocation.candidateVictims) + capacityBytes(allocation.bestVictims) + capacityBytes(allocation.verifySpillSeen) + capacityBytes(allocation.occupantNext) + capacityBytes(allocation.intervalByReg) + capacityBytes(allocation.regionalStates) + capacityBytes(allocation.regionalSegments)
 	}
 	if exit != nil {

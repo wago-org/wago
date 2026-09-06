@@ -8,18 +8,10 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-// CanUseSegmentedLiveness reports whether the staged allocator can model this
-// function without needing loop-aware transfer pricing.
+// CanUseSegmentedLiveness reports whether the staged allocator can model CFG
+// holes while retaining one physical assignment for each virtual register.
 func CanUseSegmentedLiveness(f *Func) bool {
-	if f == nil || len(f.Blocks) < 2 {
-		return false
-	}
-	for _, block := range f.Blocks {
-		if block.Flags&railssa.BlockLoopHeader != 0 {
-			return false
-		}
-	}
-	return true
+	return f != nil && len(f.Blocks) >= 2
 }
 
 // buildLiveSegments records only intervals with real CFG-layout holes. The
@@ -27,9 +19,6 @@ func CanUseSegmentedLiveness(f *Func) bool {
 // allocation conflict checks use this sparse slab when SegmentCount is nonzero.
 func buildLiveSegments(f *Func, schedule *Schedule, allocation *Allocation) error {
 	if !CanUseSegmentedLiveness(f) || len(allocation.Intervals) == 0 {
-		// Loop-aware holes need to price transfers and allocation changes on hot
-		// backedges. Stage 7B proves the one-location model on acyclic CFGs before
-		// true hot/cold split products are introduced.
 		return nil
 	}
 	scratch := &allocation.scratch
@@ -50,11 +39,10 @@ func buildLiveSegments(f *Func, schedule *Schedule, allocation *Allocation) erro
 	eligibleCount := 0
 	for _, interval := range allocation.Intervals {
 		startOrdinal, endOrdinal := min(interval.Start/6, uint32(len(f.Insts))), min(interval.End/6, uint32(len(f.Insts)))
-		// Loop nesting raises block weight by eight. Keep this first segmented
-		// allocation slice on cold/control-flow ranges: sharing a location across
-		// hot holes can trade fewer spills for extra physical copies, and that
-		// choice needs the calibrated cost model planned for true split products.
-		if interval.Weight < 8 && blockAt[startOrdinal] != blockAt[endOrdinal] {
+		// Only cross-block values can contain CFG-layout holes. The one-location
+		// model does not introduce transfers at a hole boundary, so loops and
+		// acyclic control flow use the same exact sparse-overlap check.
+		if blockAt[startOrdinal] != blockAt[endOrdinal] {
 			eligible[interval.Reg] = true
 			eligibleCount++
 		}

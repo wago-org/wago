@@ -810,7 +810,7 @@ func TestNativeSegmentedAllocationRequiresStrictDebtWin(t *testing.T) {
 	}
 	if !nativeSegmentedAllocationBetter(
 		testScheduleScore(9, 2, 1, 1), retained, allocation,
-		testGreedyMetrics(2), 1,
+		testGreedyMetrics(2), 1, 1,
 	) {
 		t.Fatal("strict segmented debt improvement was rejected")
 	}
@@ -820,18 +820,42 @@ func TestNativeSegmentedAllocationRequiresStrictDebtWin(t *testing.T) {
 		"copy cycles":     testScheduleScore(9, 2, 2, 1),
 		"fixed repairs":   testScheduleScore(9, 2, 1, 2),
 	} {
-		if nativeSegmentedAllocationBetter(candidate, retained, allocation, testGreedyMetrics(2), 1) {
+		if nativeSegmentedAllocationBetter(candidate, retained, allocation, testGreedyMetrics(2), 1, 1) {
 			t.Fatalf("segmented candidate with %s was accepted", name)
 		}
 	}
 	allocation.Metrics.PreservationCost = 3
-	if nativeSegmentedAllocationBetter(testScheduleScore(9, 2, 1, 1), retained, allocation, testGreedyMetrics(2), 1) {
+	if nativeSegmentedAllocationBetter(testScheduleScore(9, 2, 1, 1), retained, allocation, testGreedyMetrics(2), 1, 1) {
 		t.Fatal("segmented candidate with higher preservation cost was accepted")
 	}
 	allocation.Metrics.PreservationCost = 2
 	allocation.SpillSlots = 2
-	if nativeSegmentedAllocationBetter(testScheduleScore(9, 2, 1, 1), retained, allocation, testGreedyMetrics(2), 1) {
+	if nativeSegmentedAllocationBetter(testScheduleScore(9, 2, 1, 1), retained, allocation, testGreedyMetrics(2), 1, 1) {
 		t.Fatal("segmented candidate with more spill slots was accepted")
+	}
+	allocation.SpillSlots = 1
+	if nativeSegmentedAllocationBetter(testScheduleScore(9, 2, 1, 1), retained, allocation, testGreedyMetrics(2), 1, 2) {
+		t.Fatal("segmented candidate below the minimum debt reduction was accepted")
+	}
+}
+
+func TestNativeSegmentedLoopCandidatesRequireMeasuredPayoff(t *testing.T) {
+	acyclic := &railmach.Func{Blocks: []railmach.Block{{}, {}}}
+	loop := &railmach.Func{Blocks: []railmach.Block{{}, {Flags: railssa.BlockLoopHeader}}}
+	if got := nativeSegmentedMinimumDebtReduction(acyclic); got != 1 {
+		t.Fatalf("acyclic minimum debt reduction = %d", got)
+	}
+	if got := nativeSegmentedMinimumDebtReduction(loop); got != 64 {
+		t.Fatalf("loop minimum debt reduction = %d", got)
+	}
+	if !nativeShouldTrySegmentedLiveness(acyclic, railmach.ScheduleScore{WeightedSpillDebt: 1}) {
+		t.Fatal("acyclic segmented opportunity was rejected")
+	}
+	if nativeShouldTrySegmentedLiveness(loop, railmach.ScheduleScore{WeightedSpillDebt: 1023}) {
+		t.Fatal("low-payoff loop segmented opportunity was admitted")
+	}
+	if !nativeShouldTrySegmentedLiveness(loop, railmach.ScheduleScore{WeightedSpillDebt: 1024}) {
+		t.Fatal("measured loop segmented opportunity was rejected")
 	}
 }
 

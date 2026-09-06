@@ -1,6 +1,7 @@
 package railmach
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railssa"
@@ -24,6 +25,34 @@ func TestAllocateLinearQSpillsUnderPressure(t *testing.T) {
 	}
 	if err := VerifyAllocation(f, allocation, LinearQConfig{GPRs: 1, FPRs: 1}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestVerifyAllocationRejectsSegmentThatOmitsUse(t *testing.T) {
+	f := &Func{
+		Target: TargetARM64,
+		Insts: []Inst{
+			{Result: 1, Op: wasm.InstrI64Const},
+			{OperandStart: 0, OperandCount: 1, Op: wasm.InstrDrop},
+			{Op: wasm.InstrNop},
+			{OperandStart: 1, OperandCount: 1, Op: wasm.InstrDrop},
+		},
+		Operands: []Operand{
+			{Reg: 1, Bank: BankGPR, Fixed: NoFixedReg, Flags: OperandUse},
+			{Reg: 1, Bank: BankGPR, Fixed: NoFixedReg, Flags: OperandUse},
+		},
+		VRegs:  []VRegData{{}, {Type: TypeI64, Bank: BankGPR, Def: 3}},
+		Blocks: []Block{{InstCount: 4}},
+	}
+	allocation := &Allocation{
+		Locations:            []Location{{}, {Kind: LocationRegister, Bank: BankGPR, Index: 0}},
+		Intervals:            []LiveInterval{{Reg: 1, Start: 3, End: 20, Bank: BankGPR, Flags: liveIntervalSegmented}},
+		LiveSegments:         []LiveSegment{{Start: 3, End: 5}, {Start: 12, End: 20}},
+		LiveSegmentRanges:    []LiveSegmentRange{{Reg: 1, SegmentCount: 2}},
+		InstructionPositions: []uint32{0, 1, 2, 3},
+	}
+	if err := VerifyAllocation(f, allocation, LinearQConfig{GPRs: 1, FPRs: 1}); err == nil || !strings.Contains(err.Error(), "not live at instruction 1") {
+		t.Fatalf("VerifyAllocation omitted use = %v", err)
 	}
 }
 
@@ -178,15 +207,15 @@ func TestAllocateLinearQSharesRegisterAcrossCFGLayoutHole(t *testing.T) {
 	}
 }
 
-func TestAllocateLinearQKeepsLoopRangesConservative(t *testing.T) {
+func TestAllocateLinearQSharesRegisterAcrossLoopLayoutHole(t *testing.T) {
 	f := liveRangeHoleFunc()
 	f.Blocks[1].Flags |= railssa.BlockLoopHeader
 	allocation, err := AllocateLinearQ(f, LinearQConfig{GPRs: 1, FPRs: 1}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(allocation.LiveSegments) != 0 || len(allocation.LiveSegmentRanges) != 0 || allocation.SpillSlots == 0 {
-		t.Fatalf("loop allocation activated staged segments: spills=%d ranges=%#v segments=%#v", allocation.SpillSlots, allocation.LiveSegmentRanges, allocation.LiveSegments)
+	if len(allocation.LiveSegments) != 2 || len(allocation.LiveSegmentRanges) != 1 || allocation.SpillSlots != 0 {
+		t.Fatalf("loop allocation = spills:%d ranges:%#v segments:%#v", allocation.SpillSlots, allocation.LiveSegmentRanges, allocation.LiveSegments)
 	}
 }
 

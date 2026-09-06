@@ -116,35 +116,40 @@ func reserveSpillUnits(next *uint16, units uint16) uint16 {
 // by repeated schedule candidates. It is deliberately owned by the allocation
 // product so verification remains independent of allocator-private state.
 type linearQScratch struct {
-	starts          []uint32
-	ends            []uint32
-	weights         []uint32
-	used            []bool
-	callPositions   []uint32
-	fixedAt         []uint8
-	fixedConflict   []bool
-	affinitySource  []VReg
-	affinityWeight  []uint32
-	gprActive       []activeInterval
-	fprActive       []activeInterval
-	spillActive     []spillInterval
-	spillFree       []uint16
-	verifySeen      []bool
-	positionSeen    []bool
-	verifyRegNext   []uint32
-	verifyRegHead   [2][64]uint32
-	segmentPredOff  []uint32
-	segmentPreds    []uint32
-	segmentUseHead  []uint32
-	segmentUseNext  []uint32
-	segmentUseAt    []uint32
-	segmentSeen     []uint32
-	segmentWork     []uint32
-	segmentBlocks   []uint32
-	segmentBlockAt  []uint32
-	segmentEligible []bool
-	segmentRangeAt  []uint32
-	segmentRepack   []LiveSegment
+	starts         []uint32
+	ends           []uint32
+	weights        []uint32
+	used           []bool
+	callPositions  []uint32
+	fixedAt        []uint8
+	fixedConflict  []bool
+	affinitySource []VReg
+	affinityWeight []uint32
+	gprActive      []activeInterval
+	fprActive      []activeInterval
+	// registerOccupants indexes assigned intervals by bank and physical
+	// register. Segmented allocation consults one physical register at a time;
+	// retaining a per-register list avoids rescanning every live interval for
+	// each otherwise occupied register.
+	registerOccupants [2][64][]activeInterval
+	spillActive       []spillInterval
+	spillFree         []uint16
+	verifySeen        []bool
+	positionSeen      []bool
+	verifyRegNext     []uint32
+	verifyRegHead     [2][64]uint32
+	segmentPredOff    []uint32
+	segmentPreds      []uint32
+	segmentUseHead    []uint32
+	segmentUseNext    []uint32
+	segmentUseAt      []uint32
+	segmentSeen       []uint32
+	segmentWork       []uint32
+	segmentBlocks     []uint32
+	segmentBlockAt    []uint32
+	segmentEligible   []bool
+	segmentRangeAt    []uint32
+	segmentRepack     []LiveSegment
 }
 
 type LinearQConfig struct {
@@ -353,6 +358,12 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 	}
 	gprActive := reuse.scratch.gprActive[:0]
 	fprActive := reuse.scratch.fprActive[:0]
+	segmented := len(reuse.LiveSegmentRanges) != 0
+	for bank := range reuse.scratch.registerOccupants {
+		for physical := range reuse.scratch.registerOccupants[bank] {
+			reuse.scratch.registerOccupants[bank][physical] = reuse.scratch.registerOccupants[bank][physical][:0]
+		}
+	}
 	spillActive := reuse.scratch.spillActive[:0]
 	spillFree := reuse.scratch.spillFree[:0]
 	nextSpill := uint16(0)
@@ -395,17 +406,33 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 	}
 	for _, interval := range reuse.Intervals {
 		free, counts, active := gprFree, &gprCount, &gprActive
+		bankIndex := 0
 		if interval.Bank == BankFPR {
 			free, counts, active = fprFree, &fprCount, &fprActive
+			bankIndex = 1
 		}
 		expireRegisters(interval.Start, active, free, counts)
 		registerAvailable := func(physical int) bool {
-			for _, occupant := range *active {
-				if int(occupant.physical) == physical && allocationLiveRangesOverlap(reuse, interval, occupant.interval) {
-					return false
+			if !segmented {
+				for _, occupant := range *active {
+					if int(occupant.physical) == physical {
+						return false
+					}
 				}
+				return true
 			}
-			return true
+			occupants := &reuse.scratch.registerOccupants[bankIndex][physical]
+			kept := (*occupants)[:0]
+			available := true
+			for _, occupant := range *occupants {
+				if occupant.interval.End < interval.Start {
+					continue
+				}
+				kept = append(kept, occupant)
+				available = available && !allocationLiveRangesOverlap(reuse, interval, occupant.interval)
+			}
+			*occupants = kept
+			return available
 		}
 		crossesCall := allocationLiveRangeCrossesPositions(reuse, interval, callPositions)
 		location := Location{}
@@ -452,7 +479,11 @@ func allocateLinearQ(f *Func, schedule *Schedule, config LinearQConfig, reuse *A
 		} else {
 			free[location.Index] = false
 			counts[location.Index]++
-			*active = append(*active, activeInterval{interval: interval, physical: location.Index})
+			assigned := activeInterval{interval: interval, physical: location.Index}
+			*active = append(*active, assigned)
+			if segmented {
+				reuse.scratch.registerOccupants[bankIndex][location.Index] = append(reuse.scratch.registerOccupants[bankIndex][location.Index], assigned)
+			}
 		}
 		reuse.Locations[interval.Reg] = location
 	}
@@ -588,8 +619,9 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 	startOrdered := true
 	nextSegment := uint32(0)
 	var segmentSeen []bool
+	var intervalByReg []uint32
 	if len(allocation.LiveSegmentRanges) != 0 {
-		intervalByReg := resize(allocation.scratch.starts, len(f.VRegs))
+		intervalByReg = resize(allocation.scratch.starts, len(f.VRegs))
 		allocation.scratch.starts = intervalByReg
 		for intervalIndex, interval := range allocation.Intervals {
 			intervalByReg[interval.Reg] = uint32(intervalIndex) + 1
@@ -657,6 +689,33 @@ func verifyAllocation(f *Func, allocation *Allocation, config LinearQConfig, see
 	}
 	if nextSegment != uint32(len(allocation.LiveSegments)) {
 		return fmt.Errorf("railmach: %d trailing live segments are unowned", uint32(len(allocation.LiveSegments))-nextSegment)
+	}
+	if len(allocation.LiveSegmentRanges) != 0 {
+		for instructionID := range f.Insts {
+			position := allocation.InstructionPositions[instructionID]*6 + 2
+			for _, operand := range f.InstructionOperands(uint32(instructionID)) {
+				if operand.Flags&OperandColdRemat != 0 {
+					continue
+				}
+				if operand.Reg == 0 || int(operand.Reg) >= len(intervalByReg) {
+					return fmt.Errorf("railmach: instruction %d has invalid operand vreg %d", instructionID, operand.Reg)
+				}
+				encoded := intervalByReg[operand.Reg]
+				if encoded == 0 || !allocationLiveRangeContains(allocation, allocation.Intervals[encoded-1], position) {
+					return fmt.Errorf("railmach: operand vreg %d is not live at instruction %d", operand.Reg, instructionID)
+				}
+			}
+		}
+		for _, transfer := range f.Transfers {
+			position := blockScheduleEnd(f, allocation.schedule, uint32(transfer.From)) * 6
+			if transfer.Src == 0 || int(transfer.Src) >= len(intervalByReg) {
+				return fmt.Errorf("railmach: block %d has invalid edge source vreg %d", transfer.From, transfer.Src)
+			}
+			encoded := intervalByReg[transfer.Src]
+			if encoded == 0 || !allocationLiveRangeContains(allocation, allocation.Intervals[encoded-1], position) {
+				return fmt.Errorf("railmach: edge source vreg %d is not live at block %d exit", transfer.Src, transfer.From)
+			}
+		}
 	}
 	for _, edge := range f.Edges {
 		if int(edge.From) >= len(f.Blocks) || int(edge.To) >= len(f.Blocks) || edge.From < edge.To || f.Blocks[edge.To].Flags&railssa.BlockLoopHeader == 0 {

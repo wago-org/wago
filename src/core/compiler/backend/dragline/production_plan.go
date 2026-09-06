@@ -1119,15 +1119,41 @@ func nativeScheduleScoreBetter(objective corecompiler.OptimizationObjective, tar
 	return candidate.BetterThan(retained)
 }
 
-func nativeSegmentedAllocationBetter(candidate, retained railmach.ScheduleScore, candidateAllocation *railmach.GreedyAllocation, retainedMetrics railmach.GreedyMetrics, retainedSpillSlots uint16) bool {
+func nativeSegmentedAllocationBetter(candidate, retained railmach.ScheduleScore, candidateAllocation *railmach.GreedyAllocation, retainedMetrics railmach.GreedyMetrics, retainedSpillSlots uint16, minimumDebtReduction uint64) bool {
 	return candidateAllocation != nil && len(candidateAllocation.LiveSegmentRanges) != 0 &&
 		candidate.WeightedSpillDebt < retained.WeightedSpillDebt &&
+		retained.WeightedSpillDebt-candidate.WeightedSpillDebt >= max(minimumDebtReduction, 1) &&
 		candidateAllocation.SpillSlots <= retainedSpillSlots &&
 		candidateAllocation.Metrics.PreservationCost <= retainedMetrics.PreservationCost &&
 		candidate.CopyCycles <= retained.CopyCycles &&
 		candidate.PhysicalCopies <= retained.PhysicalCopies &&
 		candidate.FixedRepairs <= retained.FixedRepairs &&
 		candidate.BrokenFusions <= retained.BrokenFusions
+}
+
+func nativeSegmentedMinimumDebtReduction(machine *railmach.Func) uint64 {
+	if machine != nil {
+		for _, block := range machine.Blocks {
+			if block.Flags&railssa.BlockLoopHeader != 0 {
+				// Loop assignments perturb repeated hot code. Require a material
+				// measured debt reduction before changing their physical mapping.
+				return 64
+			}
+		}
+	}
+	return 1
+}
+
+func nativeShouldTrySegmentedLiveness(machine *railmach.Func, score railmach.ScheduleScore) bool {
+	if score.WeightedSpillDebt == 0 || !railmach.CanUseSegmentedLiveness(machine) {
+		return false
+	}
+	for _, block := range machine.Blocks {
+		if block.Flags&railssa.BlockLoopHeader != 0 {
+			return score.WeightedSpillDebt >= 1024
+		}
+	}
+	return true
 }
 
 // nativeARM64PrePostIndexProfitable keeps writeback addressing for integer
@@ -1622,7 +1648,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			}
 		}
 	}
-	if !fastMachine && best.WeightedSpillDebt != 0 && railmach.CanUseSegmentedLiveness(machine) {
+	if !fastMachine && nativeShouldTrySegmentedLiveness(machine, best) {
 		segmentedAttempted = true
 		segmentedBaselineDebt = best.WeightedSpillDebt
 		segmentedBaselineCopies = best.PhysicalCopies
@@ -1642,7 +1668,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		segmentedCandidateDebt = segmentedScore.WeightedSpillDebt
 		segmentedCandidateCopies = segmentedScore.PhysicalCopies
 		segmentedCandidateRanges = uint32(len(segmentedAllocation.LiveSegmentRanges))
-		if nativeSegmentedAllocationBetter(segmentedScore, best, segmentedAllocation, retainedMetrics, retainedSpillSlots) {
+		if nativeSegmentedAllocationBetter(segmentedScore, best, segmentedAllocation, retainedMetrics, retainedSpillSlots, nativeSegmentedMinimumDebtReduction(machine)) {
 			segmentedAdmitted = true
 			allocation, exit, best = segmentedAllocation, segmentedExit, segmentedScore
 		} else {
