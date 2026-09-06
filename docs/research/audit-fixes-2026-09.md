@@ -462,3 +462,16 @@ ns/op with zero B/op and zero allocations. Native array-allocation samples span
 zero B/op and zero allocations. No latency claim follows from these noisy
 samples. The native Collector struct grows 1128 -> 1136 bytes on AMD64; checked
 refs use 24 bytes and their generation table uses 8 bytes per handle.
+
+## PR 562 CI close-order test repair
+
+The Linux/arm64 guard-page lane caught a test race in
+`TestReferenceGlobalCloseOrderingAliasesAndStoreRoots`: `Runtime.Close` starts
+asynchronous teardown, and a concurrent `Instance.Close` may return while that
+worker still owns closure. The test now joins `Runtime.WaitClosed` with a
+five-second deadline before inspecting importer roots. It keeps the exact
+zero-importer and released-store assertions.
+
+The original test failed locally within 200 guard-page repetitions. The repaired
+test passes 200 repetitions under the race detector. This changes only test
+synchronization; runtime hot paths and memory layout are unchanged.
