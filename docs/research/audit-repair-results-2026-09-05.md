@@ -473,3 +473,40 @@ Do not mask it by replacing its selector with the smaller binary. Other public
 call and corpus execution controls are reported separately. Captures:
 checked-raw-{a,b}.txt, go122-raw-{a,b}.txt, isolated-raw-{a,b}.txt,
 raw-call-pinned-{a,b}.txt, raw-{a,b}.cpu, and perf-access.txt.
+
+## Artifact decoder owner follow-up
+
+The expanded codec sweep exposed a small-artifact regression: about 1 KiB extra
+Go allocation and a 5.69% time increase. A full-rate heap profile and compiler
+escape analysis traced the extra storage to a second decoder staging value after
+atomic cache publication, plus a temporary memo used only to carry the quota.
+Return one staging owner through decode/validation, and install the source quota
+in the final owner's memo before freezing its snapshot. No publication or quota
+check is removed. The regression test checks default and explicit artifact quota
+propagation. It compiles an explicit-bounds artifact even in guard test builds,
+because signal-based artifacts intentionally cannot be serialized.
+
+Ten final alternating 200 ms samples against f0f4951138b8:
+
+| Operation | Before us | After us | Before B/op | After B/op | Before allocs | After allocs |
+|---|---:|---:|---:|---:|---:|---:|
+| Unmarshal small scalar | 12.09 | 12.01 | 4852 | 4823 | 50 | 46 |
+| Unmarshal structural references | 16.25 | 15.96 | 7896 | 7864 | 80 | 78 |
+| Read 1600-import artifact | 739.6 | 670.7 | 360301 | 305898 | 9656 | 3252 |
+| Unmarshal 1600-import artifact | 737.1 | 674.2 | 360350 | 305946 | 9657 | 3253 |
+
+The small scalar and structural timing differences are not significant. Large
+artifact reads improve 9.32% and unmarshal improves 8.54%. Imported first-use
+read/unmarshal also improve about 8.8%, with 3252/3253 allocations.
+Captures: final-codec-owner-{a,b}.txt, small-codec-{a,b}.pprof, codec-escape.txt.
+The earlier final-codec-extra and final-codec-refined captures retain the failed
+intermediate performance checks; they are superseded by final-codec-owner.
+
+Normal, guard, gcstats, and TinyGo public API tests pass after the loader change;
+focused artifact/snapshot/ownership race tests pass. The first guard run caught
+the fixture's default signal-bounds choice, which was corrected explicitly and
+the full guard package rerun passed. Vet, formatting, and docs checks pass.
+All five non-host wago test targets cross-build. The TinyGo LTO link exceeded
+30 seconds; process inspection identified ld.lld, while its actual runtime and
+public tests completed in 0.04 s and 1.91 s. Captures: codec-owner-{tests,race}.txt,
+final-owner-gates-status.txt, final-owner-guard-fixed.txt, final-owner-tinygo.txt.

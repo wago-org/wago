@@ -4137,7 +4137,7 @@ func (c *Compiled) readFromWithLimits(r io.Reader, limits ArtifactLimits, exactB
 	if exactBytes >= 0 && n != exactBytes {
 		return n, fmt.Errorf("trailing %d byte(s) after compiled sections", exactBytes-n)
 	}
-	if err := finishDecodedCompiled(&decoded); err != nil {
+	if err := finishDecodedCompiled(decoded); err != nil {
 		return n, err
 	}
 	mapping, base, err := image.Take()
@@ -4148,7 +4148,11 @@ func (c *Compiled) readFromWithLimits(r io.Reader, limits ArtifactLimits, exactB
 	decoded.codeCache.mem = mapping
 	decoded.codeCache.base = base
 	decoded.codeCache.flags |= compiledCacheWritableCode
-	if err := c.replaceDecoded(decoded); err != nil {
+	decodedLimit := limits.MaxDecodedBytes
+	if decodedLimit == 0 {
+		decodedLimit = DefaultArtifactLimits().MaxDecodedBytes
+	}
+	if err := c.replaceDecoded(*decoded, uint64(decodedLimit)); err != nil {
 		_ = decoded.Close()
 		return n, err
 	}

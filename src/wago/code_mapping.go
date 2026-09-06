@@ -666,7 +666,7 @@ func (c *Compiled) releaseCode() {
 // replaceDecoded installs decoded state without orphaning an executable image.
 // Reuse is allowed before instantiation, but a receiver with live instances
 // remains their code owner and cannot be replaced.
-func (c *Compiled) replaceDecoded(decoded Compiled) error {
+func (c *Compiled) replaceDecoded(decoded Compiled, snapshotLimit uint64) error {
 	if cc := c.loadCodeCache(); cc != nil {
 		cc.mu.Lock()
 		if cc.refs != 0 {
@@ -688,6 +688,9 @@ func (c *Compiled) replaceDecoded(decoded Compiled) error {
 	}
 	*c = decoded
 	installCompiledFinalizer(c)
+	// Store the admission policy in the final memo, without creating a temporary
+	// decode memo.
+	c.validateMemo.snapshotLimit = snapshotLimit
 	_, err := c.freezeExecution(0)
 	return err
 }

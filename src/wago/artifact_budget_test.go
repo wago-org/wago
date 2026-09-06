@@ -58,3 +58,36 @@ func TestArtifactDecodedBudgetBeforeMetadataRead(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestArtifactSnapshotRetainsDecodedLimit(t *testing.T) {
+	source, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchAddOneModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	data, err := source.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, limit := range []int64{0, 1 << 20} {
+		var decoded Compiled
+		limits := DefaultArtifactLimits()
+		limits.MaxDecodedBytes = limit
+		if _, err := decoded.ReadFromWithLimits(bytes.NewReader(data), limits); err != nil {
+			t.Fatal(err)
+		}
+		want := limit
+		if want == 0 {
+			want = DefaultArtifactLimits().MaxDecodedBytes
+		}
+		if got := decoded.loadValidateMemo().snapshotLimit; got != uint64(want) {
+			t.Errorf("decoded limit %d: snapshot policy %d, want %d", limit, got, want)
+		}
+		if decoded.loadValidateMemo().executionView() == nil {
+			t.Error("artifact snapshot was not frozen")
+		}
+		if err := decoded.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

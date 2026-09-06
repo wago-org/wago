@@ -184,13 +184,16 @@ func readArtifactUvar(r *artifactCountingReader) (uint64, error) {
 	return 0, fmt.Errorf("section length overflows u64")
 }
 
-func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded Compiled, image *coreruntime.CodeBuffer, read int64, err error) {
+func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded *Compiled, image *coreruntime.CodeBuffer, read int64, err error) {
 	if source == nil {
 		return decoded, nil, 0, fmt.Errorf("wago: compiled artifact reader is nil")
 	}
 	if limits.MaxCodeBytes < 0 || limits.MaxMetadataBytes < 0 || limits.MaxDecodedBytes < 0 {
 		return decoded, nil, 0, fmt.Errorf("wago: compiled artifact limits must be non-negative")
 	}
+	// Return the staging owner itself: atomic cache publication makes this
+	// value escape, so returning it by value would allocate another copy.
+	decoded = &Compiled{}
 	r := &artifactCountingReader{r: source}
 	defer func() { read = r.n }()
 	var header [6]byte
@@ -259,14 +262,10 @@ func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded Compiled
 		return decoded, nil, 0, fmt.Errorf("truncated metadata section: %w", err)
 	}
 	decoded.code = code
-	if err := unmarshalCompiledMetadataBudget(&decoded, metadata, budget); err != nil {
+	if err := unmarshalCompiledMetadataBudget(decoded, metadata, budget); err != nil {
 		_ = image.Close()
 		return decoded, nil, 0, err
 	}
-	if decoded.validateMemo == nil {
-		decoded.validateMemo = &validateMemo{}
-	}
-	decoded.validateMemo.snapshotLimit = budget.limit
 	return decoded, image, 0, nil
 }
 
