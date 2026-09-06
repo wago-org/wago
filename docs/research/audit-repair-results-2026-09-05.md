@@ -1,12 +1,65 @@
 # Audit repair results
 
 Implementation of the [accepted plan](performance-security-repair-plan-2026-09-05.md).
-Baseline: `f0f4951138b8`. Host: Linux/amd64, Go 1.27.1. Initial serial samples use
-`GOMAXPROCS=1`, `-cpu=1`, 100 ms, five samples. Raw local captures are in
-`/tmp/wago-audit-repair`; final release measurements need the plan's longer A/B
-and native-platform runs. The initial Go test-binary build exceeded 30 seconds;
-process inspection showed compilation followed by a 12.8-second benchmark suite,
-not an individual Wasm compile over 30 seconds.
+Baseline: `f0f4951138b8`; scheduler comparison: main `447f057115ee`.
+The repairs are committed on `fix/september-audit`; the final source repair is
+`d261e75c1`. No push or merge was done.
+The user's unrelated `AGENTS.md` edit is preserved and is not part of the commits.
+
+Implementation covers all seven blockers, both lower security findings, all nine
+performance priorities, and the checked-GC documentation issue. Qualification is
+not complete: native Windows recovery/PowerShell and Linux ARM64 signal ordering
+need native hosts; the full Go 1.27.1 raw-call benchmark has an unresolved timing
+outlier. Two Wine installer failures, 25 staticcheck diagnostics, and a decoder
+fuzz error-phase mismatch also occur on the audited baseline. The external SQLi
+benchmark fixture is absent. Do not treat this branch as fully qualified to merge.
+
+The sections below retain the initial measurements and later verification.
+Final A/B samples use prebuilt binaries, alternate order, run serially with
+`GOMAXPROCS=1` and `-cpu=1`, and compare matching rows. Small controls use ten
+200 ms samples per side; large corpus stages use ten single-iteration samples.
+Exceptions are labeled. Host: Linux/amd64, AMD Ryzen 7 8845HS, kernel
+6.12.101+deb13, Go 1.27.1. Correctness gates also use CI-pinned Go 1.22.12.
+CPU affinity is 0–15 with host-default power/thermal settings; a raw-call diagnostic
+also pinned CPU 2. No test/build jobs ran concurrently with timed A/B processes.
+GOGC and GOMEMLIMIT use defaults except labeled memory runs. Bounds are explicit
+unless labeled guard-page. Raw captures, scripts, environment, fixture hashes,
+and profiles are local under `/tmp/wago-audit-repair`, not checked into the repo.
+The initial cold Go test-binary build exceeded 30 seconds; measured individual
+Wasm compilations stayed below 1.3 seconds in the selected final corpus.
+
+## Audit-to-commit map
+
+IDs M/S/P/D follow the order of the original audit. B numbers refer to the
+[accepted benchmark inventory](performance-security-repair-plan-2026-09-05.md).
+
+| Audit item | Repair commits | Main proof / benchmark group |
+|---|---|---|
+| M1 token exhaustion; S1 ARM64 ordering | `5479ff1bb` | Idle rollover/shared ownership tests; B2; native ARM64 still required |
+| M2 structured custom budgets | `5b277e23d` | Valid 3 MiB names, exact quotas, malformed rejection; B3 |
+| M3 first publication | `044e78384` | Fresh hand-built concurrent first-use race test; B5 |
+| M3 pre-clone aggregate quota / codec ownership | `71b065c7f`, `d261e75c1` | Aliased destination charge, cold retry, warm quota, no-allocation preflight; B5 |
+| M4 stale Windows uninstall | `db7cc716f`, `3e9315365` | Stale/live worker and coordinator tests, Wine supplement; B7/native gate |
+| M5 version lifecycle race | `2feba6552` | Removal/selection serialization, cancellation, stable lock identity; B6 |
+| M6 read-only active state | `d5c58a033` | Read-only and legacy tests, read syscall trace; B6/B8 |
+| M7 mixed plugin selection | `3f0be121e` | Captured version/profile/build tests, plugin/build suites; B6 |
+| S2 inherited release leases | `4bf88d665` | One payload lease, zero ordinary-child leases, invalid handoff tests; B7/B8 |
+| P1 signature allocations | `586b8758f` | Signature/codec ownership tests; B9 |
+| P2 registry copies | `ddb3996d1`, `85a745ecd` | Generation isolation/release and real public registration; B10 |
+| P3 unused singleton slab | `4d5fc3e61`, `9c73dcd48` | Explicit-only quota, mixed and implicit tradeoff; B4 |
+| P4 duplicate import maps | `42ef69220`, `fc9005d54` | Override/mutation and public ownership tests; B11 |
+| P5 private metadata copies | `9ffb68334` | Snapshot/reflection/ownership tests; B10/B11 |
+| P6 JSON reflection | `e1fe56450`, `a0a7c21e7`, `cb0b46452` | Strict field semantics, bounded churn, race tests; B12 |
+| P7 lock reparse | `842d8da74` | Lock graph and strict token tests; B13 |
+| P8 inert cancellation watcher | `7f0fc3519` | Background/TODO/WithoutCancel allocation test; B1 |
+| P9a checked-GC scratch; D1 telemetry API | `036cef4eb` | Reentry/panic/close/outlier and telemetry tests; B14/B15 |
+| P9b bounded reads | `98332ee81` | Growth/identity/limit tests; B16 |
+| P9c cleanup ancestors | `136b7dfa1`, `3e9315365` | Protected aliases/replacement tests, depth controls; B16 |
+| P9d lock timer | `0265ef283` | Go 1.22/current cancellation and retry tests; B16 |
+| P9e signal negotiation/scans | `9354cd0b8` | Recheck actual signal action; bounded registry scan retained on measurements; B2 |
+| P9f small import index | `3aa120a63` | Exact component/collision tests around four-row boundary; B11 |
+| Call refinement / measurement | `ec99d6cd4`, `f58e021db`, `ed9a99e69` | Trap reset race tests, bounded cancellation tails, checked raw-call fixture; B1/B2 |
+| Superseded helpers | `52f5cc70c` | No new staticcheck diagnostics |
 
 ## Background cancellation watcher
 
@@ -15,7 +68,7 @@ Background, TODO, and WithoutCancel. All now take the shared no-op path before
 callback/channel allocation. Nil contexts remain allocation-free. The focused
 cancellation, deadline, and invocation-context tests pass. The new benchmark
 reports zero bytes and allocations for each inert context. No native polling or
-scheduler transition was changed. Native non-Linux and TinyGo tests are pending.
+scheduler transition was changed. Pinned TinyGo tests later pass; native non-Linux execution remains unrun.
 
 ## Structured custom-section budgets
 
@@ -43,8 +96,8 @@ Five serial 100 ms samples on the same host give these medians:
 | WriteCompiledImportedModule | 316910 | 147912 | 263074 | 154207 | 12829 | 21 |
 | ValidateFuncSignature | — | 14.47 | — | 0 | — | 0 |
 
-These short sequential samples confirm the allocation reduction; final
-interleaved timing and native-platform checks remain pending.
+These initial samples confirm the allocation reduction. Final interleaved
+measurements are recorded below; native-platform execution remains unrun.
 
 ## Linux interrupt generations and ARM64 ordering
 
@@ -58,7 +111,7 @@ and native call path are unchanged.
 Focused interrupt/deadline/lifetime tests pass, including under `-race`.
 The Linux/arm64 runtime test binary cross-builds. Native ARM64 execution remains
 required; the race detector cannot prove assembly ordering. Signal negotiation
-and scan optimization still need their separate measurements.
+and scan measurements are recorded in their section below.
 
 ## Lazy type slabs
 
@@ -72,7 +125,7 @@ All wasm tests pass, including an explicit-only 1000-group fixture within a
 The 100000-singleton control changed from 17605392 B/op and 6 allocations to
 17611408 B/op and 108 allocations. The extra 102 allocations are bounded slab
 allocations, not one allocation per type. Short samples improved from about
-11.3 ms to 10.0 ms; final A/B timing is pending. The explicit-only 100000-group
+11.3 ms to 10.0 ms; final A/B timing is recorded below. The explicit-only 100000-group
 case uses 18401040 B/op, with no unused 15.2 MB singleton slab. Small one-group
 implicit and explicit cases each use 968 B/op and 6 allocations. Captures are in
 `type-slabs-after.txt`. The allocation/retention tradeoff is explicit here because
@@ -90,7 +143,7 @@ lock removes that write. Warm access uses atomic reads without this lock.
 A fresh hand-built Compiled now passes concurrent instantiation, invocation,
 signature reflection, and CodeSize under `-race`. Focused Compiled/snapshot/code
 ownership tests pass. Snapshot-copy and call-control measurements are in
-`snapshot-publication.txt`; final timing remains pending.
+`snapshot-publication.txt`; final public and snapshot controls are recorded below.
 
 ## Snapshot allocation quota
 
@@ -183,7 +236,8 @@ unrelated registrations with setup outside timing. The broader runtime/plugin ra
 subprocess regression suites). Two A/B samples at 10000 unrelated registrations
 fall from about 2.47 MB and 20148 allocations to 17216 B/op and 75 allocations.
 The candidate allocates the same amount at every tested registry size. Timings
-fall from about 2.5 ms to 27–30 us. Final longer timing remains pending; no public ownership boundary is weakened.
+fall from about 2.5 ms to 27–30 us. Final ten-sample timing is recorded below;
+public ownership boundaries are preserved.
 
 ## Instance import ownership
 
@@ -209,7 +263,8 @@ Focused metadata, snapshot, ownership, and import tests pass with pinned WABT
 corrected. At 10000 imports, Runtime compile uses about 9.90 MB instead of
 20.68 MB per operation. InvokeAddOne remains about 100–102 ns, zero allocations;
 PreparedInvokeAddOne remains about 17.7–17.9 ns, zero allocations. Short A/B
-samples are in imports-ab.txt; longer confidence checks remain pending.
+samples are in imports-ab.txt; final public call and import controls are recorded
+below. The 10000-module-import row itself remains a short allocation scout.
 
 ## Strict JSON field lookup
 
@@ -390,7 +445,8 @@ GC, ownership, manager, and utility packages; the full wago race package takes
 Formatting, generation, vet, docs, and website-generator checks pass. Staticcheck
 still reports 25 existing baseline diagnostics; after removing superseded helpers,
 there are no new diagnostics. Captures: gate-*.txt, staticcheck-{baseline,final}.txt,
-final-race.txt, baseline-wine.txt.
+final-race.txt, baseline-wine.txt. Final source static analysis is also recorded
+in staticcheck-owner.txt and compared by diagnostic text against the baseline.
 
 A ten-second codec fuzz run passes 69954 cases. The decoder differential fuzz
 harness stops on an existing error-phase mismatch: AST reports validation and the
@@ -452,12 +508,13 @@ and verifies the final result. The identical fixture was used on both revisions.
 
 | Toolchain / linked benchmark | Baseline ns/op | Candidate ns/op | Change |
 |---|---:|---:|---:|
-| Go 1.27.1, full bench binary | 25.45 | 36.43 | +43.17% |
-| Go 1.22.12, full bench binary | 30.89 | 28.67 | -7.20% |
-| Go 1.27.1, three-file binary | 25.22 | 22.70 | -10.01% |
+| Go 1.27.1, final full bench binary | 25.25 | 36.53 | +44.67% |
+| Go 1.22.12, final full bench binary | 30.60 | 28.43 | -7.09% |
+| Go 1.27.1, three-file diagnostic binary | 25.22 | 22.70 | -10.01% |
 
 All rows use ten alternating 200 ms samples, check the same result, and allocate
-zero bytes. The three-file binary is built with `go test -c bench_test.go
+zero bytes. Both full-binary rows were repeated after the last loader refinement;
+the three-file diagnostic predates it. The three-file binary is built with `go test -c bench_test.go
 backend.go backend_amd64.go` in `bench`; it narrows the linked test program without
 changing this fixture or the runtime source. The full Go 1.27.1 slowdown also
 persists in a CPU-pinned run. It is not explained by additional JIT instructions:
@@ -471,8 +528,124 @@ results suggest linked-binary sensitivity, but do not prove its mechanism.
 Keep the full Go 1.27.1 row as an unresolved performance qualification item.
 Do not mask it by replacing its selector with the smaller binary. Other public
 call and corpus execution controls are reported separately. Captures:
+final-raw-owner-{a,b}.txt, final-go122-raw-{a,b}.txt,
 checked-raw-{a,b}.txt, go122-raw-{a,b}.txt, isolated-raw-{a,b}.txt,
 raw-call-pinned-{a,b}.txt, raw-{a,b}.cpu, and perf-access.txt.
+
+## Whole-runtime and memory controls
+
+The final corpus stage sweep covers tiny, fib_iter, json-as, sqlite3, ruby, and
+esbuild where the manifest supports each stage. Ten one-iteration compile-full
+medians are ruby 1.113 to 1.141 s (p=0.052), esbuild 718 to 727 ms (p=0.218),
+sqlite3 101.7 to 101.4 ms, and json-as 1.866 to 1.869 ms. The largest observed
+single compile is below 1.3 s. Ten 200 ms small/corpus hot controls find no timing
+difference for tiny/fib execution and json-as serialization/deserialization.
+Captures: final-corpus-{a,b}.txt and final-corpus-hot-{a,b}.txt.
+
+Backend small/control allocation counts stay at 22/21; their timings show no
+detected difference. GC-layout legacy/precomputed compile time increases by
+1.25%/4.09% in this run, with identical 1.688 MiB, 2082 allocations, and
+236.8 KiB generated code. These small timing costs remain visible; the native
+backend implementation was not changed by this repair stack. Tagged native
+telemetry is 24.86 to 25.20 ns disabled (no detected difference), and 832.2 to
+854.8 ns enabled (+2.72%), both zero allocation. Native GC constructor/persistent
+root sweeps in plain and stats builds are three single-iteration scouts, not
+confidence-level timing claims. Captures: final-backend-*, final-telemetry-*,
+final-nativegc-*, final-nativegcstats-*.
+
+Worker controls run at GOMAXPROCS 2 and 4: validation and compilation of tiny,
+json-as, and sqlite3, json-as multi-module throughput, and independent/process
+execution of tiny.add and json-as exports. Three one-iteration samples check
+execution and allocation shape; they do not establish steady-state parallel
+throughput. An initially over-restricted selector missed parallel execution;
+corrected selectors produce rows in corrected-parallel-* and
+corrected-throughput-*. The other rows are in workers-{2,4}-{a,b}.txt.
+
+Cancellation uses ten runs of 100 calls. Median per-run p50/p95/p99
+cancel-to-return values are 20.09/41.04/52.25 us before and
+20.93/42.39/52.16 us after. Both use 36 Go allocations for the full
+context/timer/invocation lifecycle. Tail uncertainty is large (occasional
+millisecond p99 samples), so this does not prove a tight tail-latency bound.
+
+Thirty alternating process samples use temporary managed installations and
+cold runtime caches. These are wall-clock medians in milliseconds:
+
+| Operation | Baseline | Candidate |
+|---|---:|---:|
+| Managed launcher --version | 4.406 | 4.395 |
+| Direct payload --version | 2.668 | 2.598 |
+| Active-version query | 4.249 | 4.154 |
+| Cold fib startup twin | 7.522 | 7.467 |
+| Cold sha256 startup twin | 3.210 | 3.206 |
+| Cold json-as startup twin | 4.870 | 4.966 |
+
+Commands must exit successfully; manager output is checked, and corpus suites
+supply guest result oracles. These samples include guest work and do not claim
+work-minus-noop startup deltas. Captures: startup-samples.json/startup-summary.txt.
+The active-query syscall trace shows no candidate writer-lock creation or chmod;
+the baseline opens/creates active-installation.lock. Linux handoff tests count
+one lease in the payload and zero inherited leases in an ordinary child.
+
+Stripped CGO_ENABLED=0 product sizes, verified after the final loader refinement:
+manager 9662624 to 9695392 B (+0.34%); runtime-standard 9277600 to 9314464 B
+(+0.40%); runtime-minimal 8945824 to 8978592 B (+0.37%). Build flags are
+`-buildvcs=false -ldflags '-s -w -X main.version=audit'`, with `wago_runtime`
+and additionally `wago_minimal` for the runtime products.
+
+At GOMEMLIMIT=64MiB, five standalone-process median peak RSS samples in KiB are
+fib 15424 to 15660, sha256 15452 to 15664, json-as 17576 to 17776. At 128MiB,
+they are 15448 to 13612, 15448 to 15664, and 17584 to 17796. Process-to-process
+noise is visible; this does not establish a memory decrease for fib. GOMEMLIMIT
+limits Go heap work, not process or native memory. RSS uses a small local
+fork/exec/wait4 diagnostic launcher so the Python orchestrator's own RSS does not
+set an inherited measurement floor. The discarded Python-only measurements had
+that floor and are not used. This launcher does not add cgo to wago.
+
+A full-rate heap profile of one 10000-registration compile/close lifecycle has
+60.80 KiB baseline and 60.35 KiB candidate post-GC in-use heap. Baseline registry
+snapshot copies account for 2397.45 KiB cumulative allocation traffic; the
+candidate removes that path. This single profile is not a long-running RSS
+plateau proof. Deterministic churn/release tests separately enforce the JSON cache
+bound (128 descriptors/256 KiB charge), checked-GC idle scratch bound (256 entries
+per vector with outlier drop), registry generation release, and native mapping
+lifetime. Captures: registry-{a,b}.pprof, rss-kib.json, measurement-environment.json.
+
+## Benchmark coverage and limits
+
+The accepted inventory is larger than a single confidence sweep. The table
+records actual coverage; proposed combinations are not silently counted as run.
+Use the package columns in the plan with `-run '^$' -bench '<selector>' -benchmem
+-benchtime=200ms -count=10 -cpu=1`. For A/B work, prebuild both sides and alternate
+one process at a time instead of running each whole side consecutively. Confirm
+that output includes every requested row. Use `-v` when checking optional data.
+
+| Inventory | Actual fixture/selector coverage and limits |
+|---|---|
+| B1 | CrossBoundaryCall, HostCall, LinearMemoryAccess; InvokeAddOne, PreparedInvokeAddOne, InvokeHostFuncDirect, both InvokeCrossInstance paths, CallerResolverInvocationContext, CancellationWatch. Context variants also have correctness/race tests. No full direct/host/cancellable context benchmark cross-product. |
+| B2 | InterruptRequestLifecycle; InterruptSignalNegotiation; ExecutableRegistryScaling at 0/16/256/2048; InterruptCancelLatency. Capacity/holes/churn/ownership in tests. Concurrent deadline tail matrix and native ARM64 timing unrun. |
+| B3 | DecodeStructuredCustom at 1 KiB/64 KiB/3 MiB; quota/malformed tests and full decoder/corpus/spec tests. Baseline valid 3 MiB fails admission and is reported separately. No timing claim for the proposed 8 MiB/dense nested matrix. |
+| B4 | DecodeSingletonTypes, DecodeTypeGroups (implicit/explicit), DecodeMixedTypeGroups at 1000/100000. Budget/storage bounds checked in tests. Explicit multi-type width matrix not separately timed. |
+| B5 | CompiledSnapshotCopy, CompiledSnapshotPreflight, FirstUseCompiledImportedModule read/unmarshal, scalar compile/instantiate; hand-built parallel cold use under race. Preflight has no baseline counterpart. |
+| B6 | ActiveInstallationRead plus active query startup/syscall trace; version and captured plugin tuple tests. Mutation/build contention has deterministic tests, not a latency distribution benchmark. |
+| B7 | Release selection/publication/retention/recovery tests, Linux descriptor-count subprocesses, managed startup. Native Windows cleanup phases and recovery latency unmeasured. |
+| B8 | Six process operations in the startup table, 30 pairs; no work-minus-noop claim. |
+| B9 | ValidateFuncSignature; Write/Marshal/Read/UnmarshalCompiledImportedModule; small scalar and structural-reference codec controls; codec fuzz. Uses the existing 1600-import artifact, not every proposed signature-count/descriptor combination. |
+| B10 | CompileRegistryScaling at 0/10/1000/10000 registrations, RegisterImports batch, CompileImportMetadata allocation scout, immutable generation/race tests. Registry sizes and module import sizes are not a full cross-product. |
+| B11 | Public/private ownership tests, final import-kind instantiation controls, ImportIdentityIndex around the four-row cutoff; public metadata mutation tests. Hook/reflection combinations are correctness-tested, not a complete timing matrix. |
+| B12 | ValidateTypedJSON 4/16/64/256 fields, strict embedded/Unicode/alias tests, bounded descriptor-churn/race tests. Cold/parallel/churn throughput is not separately claimed. |
+| B13 | EncodeLock 0/1/10/100/1000 plugins (short A/B), strict graph/token/round-trip tests. No separate DecodeLock or atomic-publication timing claim. |
+| B14 | CheckedCollectionRoots 0/1/16/256/4096, CheckedConstructors, Tiny/Throughput, reentry/panic/close/outlier tests. Warm common cases are zero-allocation; large outliers intentionally allocate transient storage. |
+| B15 | Plain/stats ArrayConstructors and TinyStepPersistentRoots scouts, ten-pair CollectorTelemetryOverhead; frame-root and collection correctness suites. Full native GC pause/deferred-work distribution matrix unrun. |
+| B16 | ReadRegularFile 0/4096/65536/1 MiB/8 MiB; FileLockAcquire 0/1/10 retries; ReinstallCleanup depths 1/16/64/128; correctness suites and active-read syscall trace. Filesystem timing samples are short, and complete syscall-count matrices are unrun. |
+
+The optional `BenchmarkSqliBenign` explicitly skips because its external
+`WAGO_SQLI_WASM` fixture is absent. Its PASS exit does not count as workload
+coverage. The manifest corpus itself is present and its hashes are recorded.
+Native Linux ARM64 (including the small-device 64/128 MiB process-budget check),
+Darwin amd64/arm64, and Windows amd64/arm64 execution remain external gates.
+Cross-builds of production packages and runtime/GC/wago/release test binaries pass
+on all those targets; runtime cross-builds were repeated after the trap change
+and wago cross-builds after the loader refinement.
 
 ## Artifact decoder owner follow-up
 
@@ -510,3 +683,57 @@ All five non-host wago test targets cross-build. The TinyGo LTO link exceeded
 30 seconds; process inspection identified ld.lld, while its actual runtime and
 public tests completed in 0.04 s and 1.91 s. Captures: codec-owner-{tests,race}.txt,
 final-owner-gates-status.txt, final-owner-guard-fixed.txt, final-owner-tinygo.txt.
+A final ten-second `FuzzCompiledCodecGeneratedValidModules` run passes 80887
+cases with two workers; capture: final-owner-fuzz-codec.txt.
+
+## Final public-call and import controls
+
+Ten alternating 200 ms pairs retain zero allocations for cross-instance direct
+and indirect calls (109.1 to 106.8 ns and 111.2 to 110.9 ns). Resolver invocation
+context keeps its existing 208 B/two allocations. Snapshot copy stays at 1552 B,
+11 allocations, about 540 ns. The candidate scalar snapshot preflight is 41.08 ns
+and zero allocation; there is no matching baseline implementation.
+
+Imported function/externref global instantiation loses four allocations per
+operation. Imported memory reexport falls from 2.172 to 1.972 us, 2720 to 2064 B,
+and 15 to 11 allocations. Imported table setup falls from 3.465 to 3.275 us,
+2824 to 2168 B, and 21 to 17 allocations. Unrelated-import instantiation stays at
+1552 B and 11 allocations across registry sizes; its 10000-namespace timing is
++1.37%. The unchanged externref control is +1.75% in this run with equal bytes and
+allocations. These small increases are retained in the results. Captures:
+final-public-extra-*, final-imports-extra-*.
+
+Marshal small scalar falls from 1.263 to 1.127 us, 560 to 496 B, and 14 to six
+allocations. Marshal imported falls from 416.7 to 266.8 us and about 12828 to 20
+allocations. Structural-reference marshal has 16 allocations instead of 20;
+its +0.88% time change is below the planned investigation threshold. Captures:
+final-codec-extra-*. Read/unmarshal results from that intermediate capture are
+superseded by the final owner table above.
+
+## Remaining qualification actions
+
+Run native Linux ARM64 interrupt/signal tests and the low-end memory check;
+run native Darwin and Windows runtime/release suites, including the Windows
+PowerShell worker, interruption/reinstall, and descriptor lifecycle tests. The
+cross-build and Wine results here supplement those gates only.
+
+Investigate the final Go 1.27.1 full-binary raw-call row on a host with hardware
+performance counters. It still exceeds the 3% call-time gate, despite the stable
+public controls and improved Go 1.22 result. No cause or correction is claimed.
+The all-implicit 1000-type allocation/time tradeoff is explicitly justified by the
+mixed-input storage measurements; it is not an unnoticed regression.
+
+The commands that remain red on this host have diagnostic records:
+
+- `GOTOOLCHAIN=go1.22.12 make test`: the root Wine tests
+  `TestWineCmdBootstrapDownloadsVerifiesAndExecutesInstaller` and
+  `TestWineInstallerCompletesNativeInstallFlow` fail on both revisions.
+- `make lint`: staticcheck retains 25 baseline diagnostics; formatting, generated
+  files, vet, website-generator, and docs checks pass individually.
+- `go test ./src/core/compiler/wasm -run '^$' -fuzz '^FuzzDecodeValidateByteBackedDifferentialGenerated$' -fuzztime=10s`: stops on
+  the same baseline error-phase mismatch. Both decoders reject the case.
+- In `bench`, `go test -run '^$' -bench '^BenchmarkSqliBenign$' -benchtime=1x -v`:
+  skips for the missing external fixture. Supply the project's fixture through
+  `WAGO_SQLI_WASM` before claiming that workload's coverage.
+
+These failures and gaps were not weakened, hidden, or turned into passing rows.
