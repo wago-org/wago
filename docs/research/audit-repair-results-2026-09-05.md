@@ -295,3 +295,10 @@ Interrupt race tests pass. Negotiation falls from about 5902 to 652 ns with zero
 allocations. Empty MapCode/Unmap falls from 12.7 to 7.2 us; at 2048 registered code
 spans it remains about 11 us. Capture: signal-ab.txt. Keep the bounded registry
 scans: these lifecycle measurements do not justify more assembly complexity.
+
+## Import option regression coverage
+
+The option-helper test now checks the resolved owned import map, including later
+option precedence, instead of requiring options to merge their private storage
+immediately. The full-suite run exposed this stale implementation assertion; it
+was not suppressed. Public behavior and the ownership regression remain checked.
