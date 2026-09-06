@@ -3323,8 +3323,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.MovReg32(address, source)
 				}
 				end := access.Offset + width
-				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
-					emitAMD64RailMachBoundsCheck(&a, plan, address, end, instruction.Source, &coldTrapPatches, !store)
+				if !railMachElidesMemoryBoundsCheck(plan, instructionID) && !memoryChecked(operands[0].Reg, end) {
+					emitAMD64RailMachBoundsCheck(&a, plan, address, end, instructionID, &coldTrapPatches, !store)
 				}
 				disp := int32(0)
 				if access.Offset <= math.MaxInt32 {
@@ -3649,8 +3649,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 					a.MovReg32(address, lhs)
 				}
 				endOffset := uint64(uint32(instruction.Aux)) + uint64(size)
-				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, endOffset) {
-					emitAMD64RailMachBoundsCheck(&a, plan, address, endOffset, instruction.Source, &coldTrapPatches, !store)
+				if !railMachElidesMemoryBoundsCheck(plan, instructionID) && !memoryChecked(operands[0].Reg, endOffset) {
+					emitAMD64RailMachBoundsCheck(&a, plan, address, endOffset, instructionID, &coldTrapPatches, !store)
 				}
 				disp := int32(uint32(instruction.Aux))
 				if uint32(instruction.Aux) > math.MaxInt32 {
@@ -4593,10 +4593,11 @@ func nativeAMD64MemoryFoldSource(plan *nativeBackendPlan, consumer uint32) (uint
 	return producer, producer < consumer && int(producer) < len(plan.Machine.Insts)
 }
 
-func emitAMD64RailMachBoundsCheck(a *amd64.Asm, plan *nativeBackendPlan, address amd64.Reg, endOffset uint64, source uint32, coldTraps *[]nativeBranchPatch, preserveRSI bool) {
-	if railMachElidesBoundsCheck(plan, source) {
+func emitAMD64RailMachBoundsCheck(a *amd64.Asm, plan *nativeBackendPlan, address amd64.Reg, endOffset uint64, instruction uint32, coldTraps *[]nativeBranchPatch, preserveRSI bool) {
+	if railMachElidesMemoryBoundsCheck(plan, instruction) {
 		return
 	}
+	source := plan.Machine.Insts[instruction].Source
 	if plan.AMD64MemoryBoundEnd == endOffset {
 		a.Cmp64(address, amd64RailMachGPRRegisters[nativeAMD64MemoryBoundRegister])
 	} else if endOffset != 0 && endOffset <= math.MaxInt32 && endOffset <= plan.Stack.MemoryMinBytes {
@@ -4659,7 +4660,7 @@ func emitAMD64FoldedIntegerMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID,
 		width = 8
 	}
 	endOffset := uint64(uint32(load.Aux)) + width
-	emitAMD64RailMachBoundsCheck(a, plan, address, endOffset, load.Source, coldTraps, false)
+	emitAMD64RailMachBoundsCheck(a, plan, address, endOffset, loadID, coldTraps, false)
 	displacement := int32(uint32(load.Aux))
 	if uint32(load.Aux) > math.MaxInt32 {
 		a.MovImm64(amd64.R11, uint64(uint32(load.Aux)))
@@ -4710,7 +4711,7 @@ func emitAMD64FoldedFloatMemory(a *amd64.Asm, plan *nativeBackendPlan, loadID, c
 		width = 8
 	}
 	endOffset := uint64(uint32(load.Aux)) + width
-	emitAMD64RailMachBoundsCheck(a, plan, address, endOffset, load.Source, coldTraps, false)
+	emitAMD64RailMachBoundsCheck(a, plan, address, endOffset, loadID, coldTraps, false)
 	disp := int32(uint32(load.Aux))
 	if uint32(load.Aux) > math.MaxInt32 {
 		a.MovImm64(amd64.R11, uint64(uint32(load.Aux)))

@@ -341,6 +341,18 @@ the performance corpus.
   the measured ordinary-opcode convergence gate for the application corpus;
   future work should add genuinely new forms or loop transformations rather
   than recreate a second selection switch.
+- Machine bounds-proof convergence: ✅ every independently verified explicit
+  bounds decision is now rebound to the selected `MemoryAccess` that consumes
+  it before instruction selection. Dense machine-local certificate identities
+  survive scheduling and post-RA rewriting, and the RailMach verifier rejects
+  missing, duplicate, out-of-order, or unknown proof references while retaining
+  exact address, offset, semantic width, encoded width, and trap-source checks.
+  Both ARM64 and AMD64 finalizers now consume this machine descriptor rather
+  than consulting the source-indexed emission side plan; signal/guard-page mode
+  remains an explicit target policy, not a forged semantic certificate. The
+  focused constant, masked-range, and masked-induction elision tests pass, and
+  native ARM64 `blake-as` output remains byte-identical at 10,176 bytes with
+  SHA-256 `a9cf0dbc1c8664fdf076e0a5738eff210b8d3f72d4039b249aca03413801fc3c`.
 - External compiler and execution harness: 🚧 the current ARM64 report covers
   all 53 admitted compile modules and all 216 runnable exports. Across the 17
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution

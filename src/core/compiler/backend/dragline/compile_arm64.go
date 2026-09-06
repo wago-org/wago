@@ -4455,7 +4455,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				lhs := reg(operands[0].Reg)
 				end := access.Offset + width
-				if !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
+				if !railMachElidesMemoryBoundsCheck(plan, instructionID) && !memoryChecked(operands[0].Reg, end) {
 					bounds := arm64.X8
 					if !cacheMemoryBounds {
 						a.SubImm64(arm64.X17, arm64.X26, abi.ActualLinMemByteSize64Offset)
@@ -4842,8 +4842,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						end    uint64
 						source uint32
 						index  uint32
-					}{{uint64(uint32(instruction.Aux)) + uint64(size), wasmOffset, instruction.Source}, {uint64(uint32(second.Aux)) + uint64(size), secondWasmOffset, second.Source}} {
-						if railMachElidesBoundsCheck(plan, check.index) || memoryChecked(operands[0].Reg, check.end) {
+					}{{uint64(uint32(instruction.Aux)) + uint64(size), wasmOffset, instructionID}, {uint64(uint32(second.Aux)) + uint64(size), secondWasmOffset, secondID}} {
+						if railMachElidesMemoryBoundsCheck(plan, check.index) || memoryChecked(operands[0].Reg, check.end) {
 							continue
 						}
 						bounds := arm64.X8
@@ -4912,7 +4912,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				// bounds. One cold branch therefore covers both loads without moving a
 				// check across a store, call, or trapping instruction.
 				if !combinedBounds && cacheMemoryLimit && !store && encodedSecond == 0 && encodedChain == 0 && !preIndex &&
-					!railMachElidesBoundsCheck(plan, instruction.Source) && scheduleIndex+1 < len(blockOrder) &&
+					!railMachElidesMemoryBoundsCheck(plan, instructionID) && scheduleIndex+1 < len(blockOrder) &&
 					memoryCheckEnds[operands[0].Reg] < end && !arm64RailMachHasSpecialMemoryEmission(plan, instructionID) {
 					nextID := blockOrder[scheduleIndex+1]
 					next := plan.Machine.Insts[nextID]
@@ -4924,7 +4924,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					nextSkipped := nextSwarSkipped || idempotentFloatTail && nextID >= idempotentFloatStart && nextID < idempotentFloatEnd || skipInstruction[nextID] ||
 						nextResult != 0 && plan.Machine.VRegs[nextResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[nextID]
 					if nextMemory && !nextStore && !nextSkipped && len(nextOperands) != 0 && nextOperands[0].Reg != operands[0].Reg && nextEnd == end &&
-						!railMachElidesBoundsCheck(plan, next.Source) && memoryCheckEnds[nextOperands[0].Reg] < nextEnd &&
+						!railMachElidesMemoryBoundsCheck(plan, nextID) && memoryCheckEnds[nextOperands[0].Reg] < nextEnd &&
 						!arm64RailMachHasSpecialMemoryEmission(plan, nextID) &&
 						plan.Allocation.LocationAt(operands[0].Reg, currentPosition).Kind == railmach.LocationRegister &&
 						plan.Allocation.LocationAt(nextOperands[0].Reg, currentPosition).Kind == railmach.LocationRegister {
@@ -4943,7 +4943,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						}
 					}
 				}
-				if !combinedBounds && !railMachElidesBoundsCheck(plan, instruction.Source) && !memoryChecked(operands[0].Reg, end) {
+				if !combinedBounds && !railMachElidesMemoryBoundsCheck(plan, instructionID) && !memoryChecked(operands[0].Reg, end) {
 					bounds := arm64.X8
 					if !cacheMemoryBounds {
 						a.SubImm64(arm64.X17, arm64.X26, abi.ActualLinMemByteSize64Offset)

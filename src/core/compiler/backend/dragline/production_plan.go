@@ -1313,6 +1313,9 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	if err != nil {
 		return nil, err
 	}
+	if err := railmach.BindBoundsProofs(machine, emission); err != nil {
+		return nil, err
+	}
 	costModel, err := railspec.TargetCostModelForObjective(target, objective)
 	if err != nil {
 		return nil, err
@@ -1379,7 +1382,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			}
 		}
 	}
-	amd64MemoryBoundEnd, cachesAMD64MemoryBound := p.nativeAMD64CachedMemoryBound(stack, machine, emission, pressure)
+	amd64MemoryBoundEnd, cachesAMD64MemoryBound := p.nativeAMD64CachedMemoryBound(stack, machine, pressure)
 	if nativeAMD64CachesGlobals(machine) {
 		// The final two allocatable GPRs map to RBP/R12. Reserve them for one
 		// hot global's write-through value and immutable descriptor.
@@ -2250,7 +2253,7 @@ const (
 	nativeARM64GlobalsRegister                      = 19
 )
 
-func (p *nativeBackendPlanner) nativeAMD64CachedMemoryBound(stack *railssa.StackFunc, machine *railmach.Func, emission *railssa.EmissionPlan, pressure *railssa.PressurePlan) (uint64, bool) {
+func (p *nativeBackendPlanner) nativeAMD64CachedMemoryBound(stack *railssa.StackFunc, machine *railmach.Func, pressure *railssa.PressurePlan) (uint64, bool) {
 	// Large functions use regional allocation, whose bounded reload fragments
 	// are deliberately more valuable than one globally reserved bound register.
 	if stack == nil || machine == nil || pressure == nil || p.signalsBounds || machine.Target != railmach.TargetAMD64 || nativeAMD64CachesGlobalDescriptors(machine) || stack.MemoryMinBytes == 0 || len(machine.Insts) >= 512 {
@@ -2266,7 +2269,8 @@ func (p *nativeBackendPlanner) nativeAMD64CachedMemoryBound(stack *railssa.Stack
 		for instructionID := block.InstStart; instructionID < block.InstStart+block.InstCount; instructionID++ {
 			instruction := machine.Insts[instructionID]
 			size, _, _, memory := nativeMemoryAccess(instruction.Op)
-			if !memory || emission != nil && emission.ElidesBoundsCheck(instruction.Source) {
+			access, described := machine.MemoryAccessAt(instructionID)
+			if !memory || described && access.BoundsProof != 0 {
 				continue
 			}
 			end := uint64(uint32(instruction.Aux)) + uint64(size)

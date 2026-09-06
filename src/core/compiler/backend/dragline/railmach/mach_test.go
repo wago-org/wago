@@ -1889,6 +1889,8 @@ func TestVerifyMemoryAccessIdentityAndWidth(t *testing.T) {
 		{"different offset", func(f *Func) { f.Memory[0].Offset++ }, "different constant offset"},
 		{"different trap", func(f *Func) { f.Memory[0].TrapSite++ }, "different trap source"},
 		{"invalid alignment", func(f *Func) { f.Memory[0].Alignment = 3 }, "invalid 3-byte alignment"},
+		{"invalid bounds proof", func(f *Func) { f.BoundsProofCount, f.Memory[0].BoundsProof = 1, 2 }, "invalid bounds proof"},
+		{"dropped bounds proof", func(f *Func) { f.BoundsProofCount = 1 }, "preserved 0 of 1 bounds proofs"},
 		{"missing descriptor", func(f *Func) { f.Memory = nil }, "no access descriptor"},
 	}
 	for _, test := range tests {
@@ -1899,6 +1901,69 @@ func TestVerifyMemoryAccessIdentityAndWidth(t *testing.T) {
 				t.Fatalf("Verify = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestBindBoundsProofsMakesMachineAccessAuthoritative(t *testing.T) {
+	source := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec([]byte{0})),
+		wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+		wasmtest.Section(10, wasmtest.Vec(wasmtest.Code([]byte{0x41, 0x00, 0x28, 0x02, 0x00, 0x0b}))),
+	)
+	m, err := wasm.DecodeModule(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wasm.ValidateModule(m); err != nil {
+		t.Fatal(err)
+	}
+	stack, err := railssa.BuildStackFunc(m, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var planner railssa.EmissionPlanner
+	emission, err := planner.Plan(stack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := railssa.BuildCFG(stack, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locals, err := railssa.BuildLocalSSA(stack, cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	flow, err := railssa.BuildValueFlow(stack, cfg, locals, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	semantic, err := railssa.BuildSemanticFunc(stack, cfg, flow, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := railssa.BuildMetadata(stack, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	simplified, err := railssa.SparseSimplify(stack, cfg, flow, semantic, metadata, railssa.DefaultSimplifyConfig(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	machine, err := BuildWithSimplify(TargetARM64, cfg, flow, semantic, simplified, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := BindBoundsProofs(machine, emission); err != nil {
+		t.Fatal(err)
+	}
+	if machine.BoundsProofCount != 1 || len(machine.Memory) != 1 || machine.Memory[0].BoundsProof != 1 {
+		t.Fatalf("machine bounds proofs = %d %#v", machine.BoundsProofCount, machine.Memory)
+	}
+	machine.Memory[0].BoundsProof = 0
+	if err := Verify(machine); err == nil || !strings.Contains(err.Error(), "preserved 0 of 1 bounds proofs") {
+		t.Fatalf("Verify dropped proof = %v", err)
 	}
 }
 

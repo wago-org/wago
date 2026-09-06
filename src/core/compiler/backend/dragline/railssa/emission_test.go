@@ -158,7 +158,7 @@ func TestEmissionPlannerPublishesVerifiedConstantStoreBounds(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !plan.ElidesBoundsCheck(2) || plan.ElidedBoundsChecks() != 1 || plan.ProofQueries != 1 {
+	if !plan.ElidesBoundsCheck(2) || plan.BoundsProof(2) == 0 || plan.BoundsProof(1) != 0 || plan.ElidedBoundsChecks() != 1 || plan.ProofQueries != 1 {
 		t.Fatalf("plan = %#v", plan)
 	}
 }

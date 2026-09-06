@@ -237,31 +237,31 @@ func TestNativeAMD64CachedMemoryBoundSelectsHotAccessEnd(t *testing.T) {
 		},
 	}
 	pressure := &railssa.PressurePlan{Blocks: make([]railssa.BlockPressure, len(machine.Blocks))}
-	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); !ok || end != 8 {
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, pressure); !ok || end != 8 {
 		t.Fatalf("cached memory bound = (%d, %t), want (8, true)", end, ok)
 	}
 	machine.Insts = append(machine.Insts, make([]railmach.Inst, 30)...)
-	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); ok || end != 0 {
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, pressure); ok || end != 0 {
 		t.Fatalf("large-function cached memory bound = (%d, %t), want disabled", end, ok)
 	}
 	machine.Insts = machine.Insts[:3]
 	p.signalsBounds = true
-	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); ok || end != 0 {
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, pressure); ok || end != 0 {
 		t.Fatalf("signals-based cached memory bound = (%d, %t), want disabled", end, ok)
 	}
 	p.signalsBounds = false
 	machine.VRegs = []railmach.VRegData{{Bank: railmach.BankFPR}}
-	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); ok || end != 0 {
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, pressure); ok || end != 0 {
 		t.Fatalf("mixed floating access cached memory bound = (%d, %t), want disabled", end, ok)
 	}
 	machine.VRegs = nil
 	pressure.Blocks[0].PeakGPR = 32
-	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); ok || end != 0 {
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, pressure); ok || end != 0 {
 		t.Fatalf("high-pressure cached memory bound = (%d, %t), want disabled", end, ok)
 	}
 	pressure.Blocks[0].PeakGPR = 0
 	machine.Insts = append(machine.Insts, railmach.Inst{Op: wasm.InstrMemoryGrow})
-	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, nil, pressure); ok || end != 0 {
+	if end, ok := p.nativeAMD64CachedMemoryBound(stack, machine, pressure); ok || end != 0 {
 		t.Fatalf("growing function cached memory bound = (%d, %t), want disabled", end, ok)
 	}
 }

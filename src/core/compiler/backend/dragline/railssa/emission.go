@@ -24,6 +24,16 @@ func (p *EmissionPlan) ElidesBoundsCheck(source uint32) bool {
 	return p != nil && (p.signalsBounds || int(source) < len(p.boundsChecksElided) && p.boundsChecksElided[source])
 }
 
+// BoundsProof returns a stable nonzero identity for an explicitly proved
+// source access. Signal/guard-page enforcement is a target policy rather than
+// a semantic proof and therefore deliberately returns zero here.
+func (p *EmissionPlan) BoundsProof(source uint32) uint32 {
+	if p == nil || int(source) >= len(p.boundsChecksElided) || !p.boundsChecksElided[source] {
+		return 0
+	}
+	return source + 1
+}
+
 // ElideAllMemoryBounds selects signal/guard-page enforcement for scalar
 // memory accesses. Bulk-memory operations retain their explicit range checks.
 func (p *EmissionPlan) ElideAllMemoryBounds() {

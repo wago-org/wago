@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	corecompiler "github.com/wago-org/wago/src/core/compiler"
+	"github.com/wago-org/wago/src/core/compiler/backend/dragline/railmach"
 )
 
 func TestARM64ProductionConsumesProvedBoundsElision(t *testing.T) {
@@ -69,6 +70,12 @@ func TestARM64RailMachConsumesMaskedInductionBoundsElision(t *testing.T) {
 	}
 	checkedPlan := *optimizedPlan
 	checkedPlan.Emission = nil
+	checkedMachine := *optimizedPlan.Machine
+	checkedMachine.Memory = append([]railmach.MemoryAccess(nil), optimizedPlan.Machine.Memory...)
+	if err := railmach.BindBoundsProofs(&checkedMachine, nil); err != nil {
+		t.Fatal(err)
+	}
+	checkedPlan.Machine = &checkedMachine
 	var checkedMetadata, optimizedMetadata functionEmissionMetadata
 	checked, _, used, err := emitARM64RailMach(fn, &checkedPlan, false, nil, nil, nil, &checkedMetadata)
 	if err != nil || !used {

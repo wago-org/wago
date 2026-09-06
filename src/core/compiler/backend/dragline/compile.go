@@ -748,13 +748,18 @@ func railMachWasmOffset(plan *nativeBackendPlan, source uint32) uint32 {
 	return plan.Stack.Instrs[source].Offset
 }
 
-// railMachElidesBoundsCheck consumes only source-stable proof decisions. The
-// RailMach lowering preserves SemanticInst.Source, which is the original
-// StackFunc instruction index used by EmissionPlan; schedules and post-RA
-// rewrites may move machine instructions but do not change that identity.
-func railMachElidesBoundsCheck(plan *nativeBackendPlan, source uint32) bool {
-	return plan != nil && plan.Stack != nil && int(source) < len(plan.Stack.Instrs) &&
-		(plan.SignalsBounds || plan.Emission != nil && plan.Emission.ElidesBoundsCheck(source))
+// railMachElidesMemoryBoundsCheck consumes the proof identity attached to the
+// selected machine access. Schedules and post-RA rewrites may move or combine
+// emission, but they do not change the owning instruction's stable identity.
+func railMachElidesMemoryBoundsCheck(plan *nativeBackendPlan, instruction uint32) bool {
+	if plan == nil || plan.Machine == nil || int(instruction) >= len(plan.Machine.Insts) {
+		return false
+	}
+	if plan.SignalsBounds {
+		return true
+	}
+	access, ok := plan.Machine.MemoryAccessAt(instruction)
+	return ok && access.BoundsProof != 0
 }
 
 // FunctionError identifies the original Wasm function and compiler stage that

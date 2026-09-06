@@ -208,17 +208,18 @@ type Edge struct {
 // Func owns one function's machine SSA and contains no Go pointers in its hot
 // instruction, operand, vreg, block, or transfer records.
 type Func struct {
-	Target     Target
-	ParamCount uint16
-	Insts      []Inst
-	Operands   []Operand
-	VRegs      []VRegData
-	Blocks     []Block
-	Edges      []Edge
-	Transfers  []EdgeTransfer
-	Results    []VReg
-	Memory     []MemoryAccess
-	SIMD       []railssa.SemanticSIMDImmediate
+	Target           Target
+	ParamCount       uint16
+	BoundsProofCount uint32
+	Insts            []Inst
+	Operands         []Operand
+	VRegs            []VRegData
+	Blocks           []Block
+	Edges            []Edge
+	Transfers        []EdgeTransfer
+	Results          []VReg
+	Memory           []MemoryAccess
+	SIMD             []railssa.SemanticSIMDImmediate
 }
 
 func (f *Func) InstructionOperands(id uint32) []Operand {
@@ -417,6 +418,35 @@ func BuildWithSimplify(target Target, cfg *railssa.CFG, flow *railssa.ValueFlow,
 		return nil, err
 	}
 	return reuse, nil
+}
+
+// BindBoundsProofs transfers independently verified source-level proof
+// decisions onto the selected machine accesses that consume them. The dense
+// machine-local certificate IDs make proof preservation independently
+// checkable after scheduling and post-RA rewriting without retaining RailSSA.
+func BindBoundsProofs(f *Func, emission *railssa.EmissionPlan) error {
+	if f == nil {
+		return fmt.Errorf("railmach: bounds proof binding requires a function")
+	}
+	f.BoundsProofCount = 0
+	for index := range f.Memory {
+		f.Memory[index].BoundsProof = 0
+	}
+	if emission == nil {
+		return Verify(f)
+	}
+	for index := range f.Memory {
+		access := &f.Memory[index]
+		if emission.BoundsProof(access.TrapSite) == 0 {
+			continue
+		}
+		f.BoundsProofCount++
+		access.BoundsProof = f.BoundsProofCount
+	}
+	if f.BoundsProofCount != emission.ElidedBoundsChecks() {
+		return fmt.Errorf("railmach: bound %d of %d source bounds proofs", f.BoundsProofCount, emission.ElidedBoundsChecks())
+	}
+	return Verify(f)
 }
 
 // ApplyColdRematerialization commits verifier-planned constant cold uses to
@@ -703,6 +733,8 @@ func Verify(f *Func) error {
 		}
 	}
 	previous := uint32(0)
+	previousBoundsProof := uint32(0)
+	preservedBoundsProofs := uint32(0)
 	for index, access := range f.Memory {
 		if int(access.Instruction) >= len(f.Insts) || index != 0 && access.Instruction <= previous {
 			return fmt.Errorf("railmach: memory access %d has invalid instruction identity", index)
@@ -727,7 +759,20 @@ func Verify(f *Func) error {
 		if memoryOpcodeWidth(instruction.Op) != access.SemanticWidth {
 			return fmt.Errorf("railmach: memory access %d disagrees with its opcode", index)
 		}
+		if access.BoundsProof != 0 {
+			if access.BoundsProof > f.BoundsProofCount || access.BoundsProof <= previousBoundsProof {
+				return fmt.Errorf("railmach: memory access %d has invalid bounds proof %d", index, access.BoundsProof)
+			}
+			previousBoundsProof = access.BoundsProof
+			preservedBoundsProofs++
+		}
 		previous = access.Instruction
+	}
+	if f.BoundsProofCount > uint32(len(f.Memory)) {
+		return fmt.Errorf("railmach: %d bounds proofs exceed %d memory accesses", f.BoundsProofCount, len(f.Memory))
+	}
+	if preservedBoundsProofs != f.BoundsProofCount {
+		return fmt.Errorf("railmach: preserved %d of %d bounds proofs", preservedBoundsProofs, f.BoundsProofCount)
 	}
 	memoryIndex := 0
 	for instructionID, instruction := range f.Insts {
