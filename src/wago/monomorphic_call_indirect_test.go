@@ -156,3 +156,17 @@ func TestImmutableLocalTablePreparedEntryIsIsolated(t *testing.T) {
 		t.Fatal("serialized module unexpectedly retained compile-only table isolation proof")
 	}
 }
+
+func TestImmutableLocalTableRuntimeStoreKeepsGuardedEntry(t *testing.T) {
+	c := MustCompile(callIndirectModule(2, 1, 2))
+	rt := NewRuntime()
+	defer rt.Close()
+	in, err := instantiateCore(c, InstantiateOptions{store: rt.refStore})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	if in.preparedIsolatedEligible() {
+		t.Fatal("runtime-store table instance must retain the guarded entry")
+	}
+}
