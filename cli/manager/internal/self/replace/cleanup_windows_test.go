@@ -16,12 +16,12 @@ import (
 )
 
 func TestTargetRemovalScriptWaitsThenRemovesTargets(t *testing.T) {
-	script := targetRemovalScript(1234, []string{`C:\Users\A'lice\.wago`, `C:\Users\A'lice\.local\bin\wago.exe`}, `C:\Users\A'lice\.local\bin\.wago-release.lock`, nil, syscall.ByHandleFileInformation{})
-	if strings.Index(script, "Wait-Process") < strings.Index(script, "$lock.Lock(0, 1)") {
+	script := targetRemovalScript(1234, []string{`C:\Users\A'lice\.wago`, `C:\Users\A'lice\.local\bin\wago.exe`}, `C:\Users\A'lice\.local\bin\.wago-release.lock`, nil, syscall.ByHandleFileInformation{}, "test-operation", 1)
+	if strings.Index(script, "[WagoLockIdentity]::WaitForParent(") < strings.Index(script, "$lock.Lock(0, 1)") {
 		t.Fatal("cleanup waits for the parent before taking ownership")
 	}
 	for _, want := range []string{
-		`Wait-Process -Id 1234`,
+		`WaitForParent(1234`,
 		`Remove-WagoTarget 'C:\Users\A''lice\.wago'`,
 		`Remove-WagoTarget 'C:\Users\A''lice\.local\bin\wago.exe'`,
 		`Start-Sleep -Milliseconds 250`,
@@ -98,6 +98,11 @@ func TestScheduleTargetRemovalDeletesContainingDirectoryAfterExit(t *testing.T) 
 
 func TestScheduleTargetRemovalFindsRunningPayload(t *testing.T) {
 	if root := os.Getenv("WAGO_TEST_RELEASE_CLEANUP_CHILD"); root != "" {
+		owner, err := filelock.Acquire(context.Background(), filepath.Join(root, ".wago-release.lock"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer owner.Close()
 		launcher := filepath.Join(root, "wago.exe")
 		deferred, err := ScheduleTargetRemoval(launcher, []string{filepath.Join(root, ".wago-releases"), launcher}, filepath.Join(root, ".wago-release.lock"), nil)
 		if err != nil || !deferred {
@@ -183,7 +188,7 @@ func TestDeferredCleanupRejectsRetiredCoordinator(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := filepath.Join(t.TempDir(), "cleanup.ps1")
-	if err := os.WriteFile(script, []byte(targetRemovalScript(0, []string{target}, lockPath, nil, identity)), 0600); err != nil {
+	if err := os.WriteFile(script, []byte(targetRemovalScript(0, []string{target}, lockPath, nil, identity, "test-operation", 1)), 0600); err != nil {
 		t.Fatal(err)
 	}
 	command := exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script)

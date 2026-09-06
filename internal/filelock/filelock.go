@@ -90,28 +90,56 @@ func acquireOpened(ctx context.Context, file *os.File, path string) (*Lock, erro
 // All protected destructive work must finish first: a new owner may create a
 // fresh lock as soon as the path is removed. Waiters on this inode reject it.
 func (lock *Lock) Retire(path string) error {
+	retired, err := lock.retireName(path)
+	if err != nil {
+		return err
+	}
+	return errors.Join(os.Remove(retired), lock.Close())
+}
+
+// Rotate invalidates old waiters and returns ownership of a fresh coordinator.
+// Keep the retired inode alive until the new one exists so its identity cannot
+// immediately be recycled. Callers must retain their pending operation marker
+// across this transition; another process can acquire the fresh name first.
+func (lock *Lock) Rotate(ctx context.Context, path string) (*Lock, error) {
+	retired, err := lock.retireName(path)
+	if err != nil {
+		return nil, err
+	}
+	next, err := Acquire(ctx, path)
+	cleanupErr := errors.Join(os.Remove(retired), lock.Close())
+	if err != nil || cleanupErr != nil {
+		if next != nil {
+			next.Close()
+		}
+		return nil, errors.Join(err, cleanupErr)
+	}
+	return next, nil
+}
+
+func (lock *Lock) retireName(path string) (string, error) {
 	if lock == nil || lock.file == nil {
-		return errors.New("cannot retire an unheld lock")
+		return "", errors.New("cannot retire an unheld lock")
 	}
 	if err := validateLockFile(lock.file, path); err != nil {
-		return err
+		return "", err
 	}
 	// Rename first: Windows can leave a delete-pending pathname visible to
 	// existing handles. Waiters must lose the coordinator name immediately.
 	retired, err := os.CreateTemp(filepath.Dir(path), ".retired-lock-*")
 	if err != nil {
-		return err
+		return "", err
 	}
 	retiredPath := retired.Name()
 	if err := retired.Close(); err != nil {
 		os.Remove(retiredPath)
-		return err
+		return "", err
 	}
 	if err := os.Rename(path, retiredPath); err != nil {
 		os.Remove(retiredPath)
-		return err
+		return "", err
 	}
-	return errors.Join(os.Remove(retiredPath), lock.Close())
+	return retiredPath, nil
 }
 
 func validateLockFile(file *os.File, path string) error {

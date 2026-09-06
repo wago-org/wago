@@ -240,7 +240,16 @@ one lease descriptor for launcher and direct payload startup, zero lease descrip
 in an ordinary child, close-on-exec flags, and malformed handoff rejection. Native
 Darwin execution remains pending. No extra long-lived goroutine was introduced.
 
-## Remaining work
+## Recover deferred Windows cleanup
 
-The other work groups and full release gates in the accepted plan are pending.
-This file is updated with each repair; a partial result is not a merge approval.
+Pending cleanup now records a random operation ID, scheduling phase, PID, and
+process creation identity. The worker checks both this record and the publication
+coordinator identity before it removes any target. Parent waiting holds one
+verified process handle. A dead scheduler, dead worker, reused PID, or old empty
+marker permits recovery only after coordinator rotation invalidates old waiters.
+Rollback removes only its own operation. Live cleanup remains exclusive.
+
+Managedrelease and filelock race tests pass on Linux, including stale/live records,
+PID reuse, rollback isolation, and distinct coordinator identities. Windows amd64
+managedrelease and replacement test binaries cross-build. Native Windows worker,
+interrupted cleanup, and reinstall execution remain a required release gate.

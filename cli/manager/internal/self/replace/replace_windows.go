@@ -117,12 +117,22 @@ func ScheduleTargetRemoval(_ string, targets []string, lockPath string, emptyDir
 	if err != nil {
 		return false, err
 	}
+	operation, parentCreated, undoPending, err := managedrelease.BeginUninstallPending(lockPath)
+	if err != nil {
+		return false, err
+	}
+	started := false
+	defer func() {
+		if !started {
+			_ = undoPending()
+		}
+	}()
 	script, err := os.CreateTemp("", "wago-uninstall-*.ps1")
 	if err != nil {
 		return false, err
 	}
 	scriptPath := script.Name()
-	if _, err := script.WriteString(targetRemovalScript(os.Getpid(), targets, lockPath, emptyDirs, identity)); err != nil {
+	if _, err := script.WriteString(targetRemovalScript(os.Getpid(), targets, lockPath, emptyDirs, identity, operation, parentCreated)); err != nil {
 		_ = script.Close()
 		_ = os.Remove(scriptPath)
 		return false, err
@@ -131,27 +141,31 @@ func ScheduleTargetRemoval(_ string, targets []string, lockPath string, emptyDir
 		_ = os.Remove(scriptPath)
 		return false, err
 	}
-	undoPending, err := managedrelease.MarkUninstallPending(lockPath)
-	if err != nil {
-		os.Remove(scriptPath)
-		return false, err
-	}
+
 	process := exec.Command("powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath)
 	process.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: createNoWindow | createNewProcessGroup}
 	if err := process.Start(); err != nil {
 		_ = os.Remove(scriptPath)
 		return false, errors.Join(err, undoPending())
 	}
+	if err := managedrelease.BindUninstallWorker(lockPath, operation, process.Process.Pid); err != nil {
+		_ = process.Process.Kill()
+		_ = process.Wait()
+		_ = os.Remove(scriptPath)
+		return false, errors.Join(err, undoPending())
+	}
+	started = true
 	_ = process.Process.Release()
 	return true, nil
 }
 
-func targetRemovalScript(parentPID int, targets []string, lockPath string, emptyDirs []string, identity syscall.ByHandleFileInformation) string {
+func targetRemovalScript(parentPID int, targets []string, lockPath string, emptyDirs []string, identity syscall.ByHandleFileInformation, operation string, parentCreated uint64) string {
 	quote := func(path string) string { return "'" + strings.ReplaceAll(path, "'", "''") + "'" }
 	var script strings.Builder
 	script.WriteString("$ErrorActionPreference = 'Stop'\r\n")
 	fmt.Fprintf(&script, "$lockPath = %s\r\n", quote(lockPath))
 	fmt.Fprintf(&script, "$pendingPath = %s\r\n", quote(managedrelease.UninstallPendingPath(lockPath)))
+	fmt.Fprintf(&script, "$expectedOperation = %s\r\n", quote(operation))
 	fmt.Fprintf(&script, "$expectedVolume = [uint32]%d; $expectedHigh = [uint32]%d; $expectedLow = [uint32]%d\r\n", identity.VolumeSerialNumber, identity.FileIndexHigh, identity.FileIndexLow)
 	script.WriteString(`Add-Type @'
 using System;
@@ -174,6 +188,28 @@ public static class WagoLockIdentity {
         uint size = GetLongPathName(path, result, (uint)result.Capacity);
         if (size == 0 || size >= result.Capacity) throw new System.ComponentModel.Win32Exception();
         return result.ToString();
+    }
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool GetProcessTimes(IntPtr handle, out ulong created, out ulong exited, out ulong kernel, out ulong user);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
+    [DllImport("kernel32.dll")]
+    static extern bool CloseHandle(IntPtr handle);
+    public static void WaitForParent(int pid, ulong expectedCreated) {
+        if (pid <= 0) return;
+        IntPtr handle = OpenProcess(0x101000, false, pid);
+        if (handle == IntPtr.Zero) {
+            if (Marshal.GetLastWin32Error() == 87) return;
+            throw new System.ComponentModel.Win32Exception();
+        }
+        try {
+            ulong created, exited, kernel, user;
+            if (!GetProcessTimes(handle, out created, out exited, out kernel, out user)) throw new System.ComponentModel.Win32Exception();
+            if (created != expectedCreated || exited != 0) return;
+            if (WaitForSingleObject(handle, 60000) != 0) throw new TimeoutException("Wago cleanup parent did not exit");
+        } finally { CloseHandle(handle); }
     }
     public static bool Same(FileStream left, FileStream right, uint volume, uint high, uint low) {
         Info a, b;
@@ -201,8 +237,12 @@ try {
         if (![WagoLockIdentity]::Same($lock, $linked, $expectedVolume, $expectedHigh, $expectedLow)) { throw 'Wago publication lock was retired' }
     } finally { $linked.Dispose() }
     $pendingPath = [WagoLockIdentity]::LongPath($pendingPath)
+    if ((Get-Item -LiteralPath $pendingPath).Length -gt 4096) { throw 'Invalid Wago cleanup record' }
+    $pending = [IO.File]::ReadAllText($pendingPath) | ConvertFrom-Json
+    $workerCreated = [uint64]((Get-Process -Id $PID).StartTime.ToFileTimeUtc())
+    if ($pending.format -ne 1 -or $pending.operation -cne $expectedOperation -or $pending.phase -cne 'scheduled' -or $pending.pid -ne $PID -or [uint64]$pending.created -ne $workerCreated) { throw 'Wago cleanup operation changed' }
 `)
-	fmt.Fprintf(&script, "    Wait-Process -Id %d -ErrorAction SilentlyContinue\r\n", parentPID)
+	fmt.Fprintf(&script, "    [WagoLockIdentity]::WaitForParent(%d, [uint64]%d)\r\n", parentPID, parentCreated)
 	script.WriteString(`    function Remove-WagoTarget([string] $path) {
         if (!(Test-Path -LiteralPath $path)) { return }
         $path = [WagoLockIdentity]::LongPath($path)
