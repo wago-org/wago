@@ -264,6 +264,18 @@ the performance corpus.
   93.978 seconds (0.8% lower), native output remained exactly 49,425,936
   bytes, and process maximum RSS was flat within 0.1%, confirming that Go
   runtime/unreclaimed heap dominates that process-level measure.
+- Sparse bounds-cache scratch: ✅ the finalizer's reusable touched-address slab
+  is now sized from the exact selected memory-descriptor count rather than all
+  machine instructions. Only a selected memory operation can append to this
+  scratch, and a focused planner test pins that bound. Against exact schema-29
+  pre-change runs, compiler-owned peak live storage falls from 14,724,828 to
+  14,690,496 bytes for SQLite and from 3,502,094 to 3,496,690 for Lua, with
+  byte-identical native images. Esbuild falls from 82,838,709 to 82,688,737
+  bytes (-149,972) with its 36,864,196-byte image unchanged; its single
+  serialized wall run moved from 159.910 to 165.391 seconds (+3.43%), inside
+  the footprint-migration ceiling. Ruby falls from 75,336,538 to 75,242,430
+  bytes (-94,108), remains exactly 48,955,040 native bytes, and its paired wall
+  run improves from 98.693 to 98.147 seconds (-0.55%).
 - Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
   bounded initial schedule candidate's realized post-allocation spill debt,
   physical copies, copy cycles, copy motion, fixed repairs, broken fusions,

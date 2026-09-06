@@ -2060,7 +2060,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	p.coldTrapPatches = p.coldTrapPatches[:0]
 	p.memoryCheckEnds = resizeNativeSlice(p.memoryCheckEnds, len(machine.VRegs))
 	clear(p.memoryCheckEnds)
-	p.memoryCheckTouched = resizeNativeSlice(p.memoryCheckTouched, len(machine.Insts))[:0]
+	// Only selected memory instructions can add an address to the active bounds
+	// cache. Size this scratch from its exact sparse descriptor set rather than
+	// retaining one VReg slot for every machine instruction in the function.
+	p.memoryCheckTouched = resizeNativeSlice(p.memoryCheckTouched, len(machine.Memory))[:0]
 	p.plan.BlockOffsets = p.blockOffsets
 	p.plan.BranchPatches = p.branchPatches
 	p.plan.ConditionalPatches = p.conditionalPatches
