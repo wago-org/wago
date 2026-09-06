@@ -2686,15 +2686,24 @@ func SelectTargetOpcodes(f *Func) (int, error) {
 // explicit after target selection. The selected instruction owns the native
 // immediate and the migrated producer relation is discarded so final emission
 // cannot repeat the form decision.
-func SelectARM64ImmediateOpcodes(f *Func, producers []uint32) (int, error) {
-	if f == nil || f.Target != TargetARM64 || len(producers) != len(f.Insts) {
+func SelectARM64ImmediateOpcodes(f *Func, producers16 []uint16, producers32 []uint32) (int, error) {
+	if f == nil || f.Target != TargetARM64 ||
+		(len(producers16) != len(f.Insts) && len(producers32) != len(f.Insts)) ||
+		(len(producers16) != 0 && len(producers32) != 0) {
 		return 0, fmt.Errorf("railmach: invalid ARM64 immediate selection input")
 	}
 	selected := 0
-	for instructionID, producerID := range producers {
-		if producerID == ^uint32(0) {
+	for instructionID := range f.Insts {
+		var encoded uint32
+		if len(producers16) != 0 {
+			encoded = uint32(producers16[instructionID])
+		} else {
+			encoded = producers32[instructionID]
+		}
+		if encoded == 0 {
 			continue
 		}
+		producerID := encoded - 1
 		if int(producerID) >= len(f.Insts) {
 			return 0, fmt.Errorf("railmach: instruction %d has invalid immediate producer %d", instructionID, producerID)
 		}
@@ -2812,11 +2821,22 @@ func SelectARM64ImmediateOpcodes(f *Func, producers []uint32) (int, error) {
 			continue
 		}
 		instruction.Aux = producer.Aux
-		producers[instructionID] = ^uint32(0)
+		if len(producers16) != 0 {
+			producers16[instructionID] = 0
+		} else {
+			producers32[instructionID] = 0
+		}
 		selected++
 	}
-	for instructionID, producerID := range producers {
-		if producerID != ^uint32(0) {
+	for instructionID := range f.Insts {
+		var encoded uint32
+		if len(producers16) != 0 {
+			encoded = uint32(producers16[instructionID])
+		} else {
+			encoded = producers32[instructionID]
+		}
+		if encoded != 0 {
+			producerID := encoded - 1
 			return 0, fmt.Errorf("railmach: ARM64 immediate producer %d (%s) for instruction %d (%s) has no selected opcode", producerID, SemanticOpcode(f.Insts[producerID].Op), instructionID, SemanticOpcode(f.Insts[instructionID].Op))
 		}
 	}

@@ -164,18 +164,19 @@ func TestAMD64RailMachRecognizesPreparedSingleArgumentCall(t *testing.T) {
 
 func TestAMD64RailMachTracksBMI2OnlyForFoldedRotates(t *testing.T) {
 	plan := &nativeBackendPlan{
-		AMD64BMI2:         true,
-		Machine:           &railmach.Func{Insts: []railmach.Inst{{Op: wasm.InstrI32Rotr}}},
-		ImmediateProducer: []uint32{0},
+		AMD64BMI2: true,
+		Machine:   &railmach.Func{Insts: []railmach.Inst{{Op: wasm.InstrI32Rotr}}},
 	}
+	plan.ImmediateProducer.prepare(1, true)
+	plan.ImmediateProducer.set(0, 0)
 	if !amd64RailMachMayUseBMI2(plan) {
 		t.Fatal("BMI2 folded rotate was not tracked")
 	}
-	plan.ImmediateProducer[0] = ^uint32(0)
+	plan.ImmediateProducer.prepare(1, true)
 	if amd64RailMachMayUseBMI2(plan) {
 		t.Fatal("non-folded rotate was marked as requiring BMI2")
 	}
-	plan.ImmediateProducer[0] = 0
+	plan.ImmediateProducer.set(0, 0)
 	plan.AMD64BMI2 = false
 	if amd64RailMachMayUseBMI2(plan) {
 		t.Fatal("baseline target was marked as requiring BMI2")

@@ -488,11 +488,11 @@ func compileNative(input corecompiler.Input, m *wasm.Module, metrics *Metrics, f
 }
 
 func amd64RailMachMayUseBMI2(plan *nativeBackendPlan) bool {
-	if plan == nil || plan.Machine == nil || !plan.AMD64BMI2 || len(plan.ImmediateProducer) != len(plan.Machine.Insts) {
+	if plan == nil || plan.Machine == nil || !plan.AMD64BMI2 {
 		return false
 	}
 	for instructionID, instruction := range plan.Machine.Insts {
-		if plan.ImmediateProducer[instructionID] == ^uint32(0) {
+		if !plan.ImmediateProducer.has(uint32(instructionID)) {
 			continue
 		}
 		if instruction.Op == wasm.InstrI32Rotl || instruction.Op == wasm.InstrI32Rotr || instruction.Op == wasm.InstrI64Rotl || instruction.Op == wasm.InstrI64Rotr {
@@ -3529,7 +3529,10 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			if shiftRCXSaved && plan.Allocation.LocationAt(operands[0].Reg, currentPosition).Kind == railmach.LocationRegister && amd64RailMachPhysical(plan.Allocation.LocationAt(operands[0].Reg, currentPosition)) == amd64.RCX {
 				lhs = amd64.R11
 			}
-			producer := immediateProducer[instructionID]
+			producer, hasImmediateProducer := immediateProducer.get(instructionID)
+			if !hasImmediateProducer {
+				producer = ^uint32(0)
+			}
 			if semanticOp == wasm.InstrGlobalSet {
 				descriptor := amd64.R10
 				if cachesGlobal && uint32(instruction.Aux) == cachedGlobalIndex {

@@ -255,7 +255,7 @@ func TestSelectARM64ImmediateOpcodesInteger(t *testing.T) {
 			if _, err := SelectTargetOpcodes(f); err != nil {
 				t.Fatal(err)
 			}
-			selected, err := SelectARM64ImmediateOpcodes(f, []uint32{^uint32(0), 0})
+			selected, err := SelectARM64ImmediateOpcodes(f, []uint16{0, 1}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -311,7 +311,7 @@ func TestSelectARM64ImmediateOpcodesComparison(t *testing.T) {
 			if _, err := SelectTargetOpcodes(f); err != nil {
 				t.Fatal(err)
 			}
-			selected, err := SelectARM64ImmediateOpcodes(f, []uint32{^uint32(0), 0})
+			selected, err := SelectARM64ImmediateOpcodes(f, []uint16{0, 1}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -367,15 +367,31 @@ func TestSelectARM64ImmediateOpcodesSIMDShift(t *testing.T) {
 			if _, err := SelectTargetOpcodes(f); err != nil {
 				t.Fatal(err)
 			}
-			producers := []uint32{^uint32(0), 0}
-			selected, err := SelectARM64ImmediateOpcodes(f, producers)
+			producers := []uint16{0, 1}
+			selected, err := SelectARM64ImmediateOpcodes(f, producers, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if selected != 1 || f.Insts[1].Op != test.want || f.Insts[1].Aux != 13 || producers[1] != ^uint32(0) {
+			if selected != 1 || f.Insts[1].Op != test.want || f.Insts[1].Aux != 13 || producers[1] != 0 {
 				t.Fatalf("selected instructions = %#v, producers %v, count %d, want %d with immediate 13", f.Insts, producers, selected, test.want)
 			}
 		})
+	}
+}
+
+func TestSelectARM64ImmediateOpcodesWideRelation(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.I64}, []wasm.ValType{wasm.I64}, []byte{0x20, 0, 0x42, 7, 0x7c, 0x0b})
+	f := buildMachineTest(t, TargetARM64, m)
+	if _, err := SelectTargetOpcodes(f); err != nil {
+		t.Fatal(err)
+	}
+	producers := []uint32{0, 1}
+	selected, err := SelectARM64ImmediateOpcodes(f, nil, producers)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected != 1 || f.Insts[1].Op != OpARM64I64AddImmediate || f.Insts[1].Aux != 7 || producers[1] != 0 {
+		t.Fatalf("selected instructions = %#v, producers %v, count %d", f.Insts, producers, selected)
 	}
 }
 

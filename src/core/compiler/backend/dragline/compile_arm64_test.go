@@ -2718,10 +2718,7 @@ func TestARM64RailMachImmediateDoesNotMaterializeFoldedOperand(t *testing.T) {
 		t.Fatalf("optimized RailMach finalization = ok %t, err %v", ok, err)
 	}
 	baseline := *plan
-	baseline.ImmediateProducer = make([]uint32, len(plan.ImmediateProducer))
-	for index := range baseline.ImmediateProducer {
-		baseline.ImmediateProducer[index] = ^uint32(0)
-	}
+	baseline.ImmediateProducer = nativeInstructionRelation{}
 	baseline.ImmediateSkip = make([]bool, len(plan.ImmediateSkip))
 	unfolded, _, ok, err := emitARM64RailMach(fn, &baseline, false, nil, nil, nil, nil)
 	if err != nil || !ok {
@@ -2775,10 +2772,7 @@ func TestARM64RailMachSelectedImmediateOwnsLiteral(t *testing.T) {
 		t.Fatalf("selected RailMach finalization = ok %t, err %v", ok, err)
 	}
 	withoutRelation := *plan
-	withoutRelation.ImmediateProducer = make([]uint32, len(plan.ImmediateProducer))
-	for index := range withoutRelation.ImmediateProducer {
-		withoutRelation.ImmediateProducer[index] = ^uint32(0)
-	}
+	withoutRelation.ImmediateProducer = nativeInstructionRelation{}
 	independent, _, ok, err := emitARM64RailMach(fn, &withoutRelation, false, nil, nil, nil, nil)
 	if err != nil || !ok {
 		t.Fatalf("producer-independent RailMach finalization = ok %t, err %v", ok, err)

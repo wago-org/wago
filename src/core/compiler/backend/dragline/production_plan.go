@@ -111,7 +111,7 @@ type nativeBackendPlan struct {
 	// instruction-indexed side table. The PostRA plan remains the sparse source
 	// of instruction identity.
 	PostRADirect       bool
-	ImmediateProducer  []uint32
+	ImmediateProducer  nativeInstructionRelation
 	ImmediateSkip      []bool
 	DeadGCReservations []bool
 	NoBarrierGCStores  []bool
@@ -230,7 +230,7 @@ type nativeBackendPlanner struct {
 	postRARepeatFirst   nativeInstructionRelation
 	postRAPreIndex      []bool
 	postRAPostIndexWith nativeInstructionRelation
-	immediateProducer   []uint32
+	immediateProducer   nativeInstructionRelation
 	immediateSkip       []bool
 	immediateUses       []uint32
 	deadGCReservations  []bool
@@ -452,7 +452,7 @@ func (p *nativeBackendPlanner) nativeCapacityBreakdown() NativePlannerCapacityBr
 		ControlFlow: sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches),
 		Bounds:      sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.amd64MemoryBounds),
 		PostRA:      p.postRAPairWith.capacityBytes() + sliceBytes(p.postRASkip) + p.postRAForwardFrom.capacityBytes() + p.postRAFusionWith.capacityBytes() + p.postRAMemoryFrom.capacityBytes() + p.postRARepeatFirst.capacityBytes() + sliceBytes(p.postRAPreIndex) + p.postRAPostIndexWith.capacityBytes(),
-		Immediates:  sliceBytes(p.immediateProducer) + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses),
+		Immediates:  p.immediateProducer.capacityBytes() + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses),
 		GC:          sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.gcValues),
 		CallsRoots:  sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots),
 	}
@@ -878,10 +878,8 @@ func structuredV128ManagedCandidate(stack *railssa.StackFunc) bool {
 	return found && allocated
 }
 
-func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers []uint32, skipped []bool, uses []uint32) {
-	for index := range producers {
-		producers[index] = ^uint32(0)
-	}
+func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers *nativeInstructionRelation, skipped []bool, uses []uint32) {
+	producers.prepare(len(plan.Machine.Insts), true)
 	clear(skipped)
 	countNativeMachineUses(plan.Machine, uses)
 	if plan.Allocation != nil {
@@ -914,11 +912,11 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers []uint3
 			// operation with the literal in operand two owns an immediate form.
 			continue
 		}
-		producers[combination.Consumer] = combination.Producer
+		producers.set(combination.Consumer, combination.Producer)
 		skipped[combination.Producer] = true
 	}
 	for consumerID, consumer := range plan.Machine.Insts {
-		if producers[consumerID] != ^uint32(0) {
+		if producers.has(uint32(consumerID)) {
 			continue
 		}
 		operands := plan.Machine.InstructionOperands(uint32(consumerID))
@@ -941,7 +939,7 @@ func buildNativeImmediateCombinations(plan *nativeBackendPlan, producers []uint3
 		if producer.Result != value || producer.Op != wasm.InstrI32Const && producer.Op != wasm.InstrI64Const {
 			continue
 		}
-		producers[consumerID] = producerID
+		producers.set(uint32(consumerID), producerID)
 		if uses[value] != 0 {
 			uses[value]--
 			if uses[value] == 0 {
@@ -1853,13 +1851,12 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			}
 		}
 	}
-	p.immediateProducer = resizeNativeSlice(p.immediateProducer, len(machine.Insts))
 	p.immediateSkip = resizeNativeSlice(p.immediateSkip, len(machine.Insts))
 	p.immediateUses = resizeNativeSlice(p.immediateUses, len(machine.VRegs))
 	immediatePlan := nativeBackendPlan{Machine: machine, Selection: selection, Allocation: allocation}
-	buildNativeImmediateCombinations(&immediatePlan, p.immediateProducer, p.immediateSkip, p.immediateUses)
+	buildNativeImmediateCombinations(&immediatePlan, &p.immediateProducer, p.immediateSkip, p.immediateUses)
 	if machine.Target == railmach.TargetARM64 {
-		buildNativeARM64LogicalImmediateCombinations(&immediatePlan, p.immediateProducer, p.immediateSkip, p.immediateUses)
+		buildNativeARM64LogicalImmediateCombinations(&immediatePlan, &p.immediateProducer, p.immediateSkip, p.immediateUses)
 		preserveNativeARM64RepeatedAddInputs(machine, schedule, p.postRARepeatFirst, p.immediateSkip)
 	}
 	contract, calls, err := railmach.AnalyzeVerifiedABI(machine, allocation, metadata, stack.ImportedFuncs)
@@ -2169,10 +2166,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 		return nil, err
 	}
 	if machine.Target == railmach.TargetARM64 {
-		if _, err := railmach.SelectARM64ImmediateOpcodes(machine, p.immediateProducer); err != nil {
+		if _, err := railmach.SelectARM64ImmediateOpcodes(machine, p.immediateProducer.narrow, p.immediateProducer.wide); err != nil {
 			return nil, err
 		}
-		p.plan.ImmediateProducer = nil
+		p.plan.ImmediateProducer = nativeInstructionRelation{}
 	}
 	p.plan.TargetSelectedInstructions, p.plan.GenericMachineInstructions = 0, 0
 	if p.candidatePostRA {
@@ -2622,13 +2619,14 @@ func buildNativeEdgeConstantRematerialization(plan *nativeBackendPlan, skipped [
 	countNativeMachineUses(plan.Machine, uses)
 }
 
-func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, producers []uint32, skipped []bool, uses []uint32) {
+func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, producers *nativeInstructionRelation, skipped []bool, uses []uint32) {
 	if plan == nil || plan.Machine == nil {
 		return
 	}
 	countNativeMachineUses(plan.Machine, uses)
-	for _, producerID := range producers {
-		if producerID == ^uint32(0) || int(producerID) >= len(plan.Machine.Insts) {
+	for instructionID := range plan.Machine.Insts {
+		producerID, ok := producers.get(uint32(instructionID))
+		if !ok || int(producerID) >= len(plan.Machine.Insts) {
 			continue
 		}
 		producer := plan.Machine.Insts[producerID]
@@ -2640,7 +2638,7 @@ func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, produ
 		}
 	}
 	for instructionID, instruction := range plan.Machine.Insts {
-		if producers[instructionID] != ^uint32(0) {
+		if producers.has(uint32(instructionID)) {
 			continue
 		}
 		operands := plan.Machine.InstructionOperands(uint32(instructionID))
@@ -2663,7 +2661,7 @@ func buildNativeARM64LogicalImmediateCombinations(plan *nativeBackendPlan, produ
 		if producer.Aux > 0xfff && arm64AddSubKind(instruction.Op) && nativeMachineInstructionWeight(plan.Machine, uint32(instructionID)) < 64 {
 			continue
 		}
-		producers[instructionID] = producerID
+		producers.set(uint32(instructionID), producerID)
 		if uses[producer.Result] != 0 {
 			uses[producer.Result]--
 			if uses[producer.Result] == 0 {

@@ -338,6 +338,15 @@ the performance corpus.
   post-RA category has fallen from 158,332 to 88,572 bytes across the compact
   relation series. Six alternating public compiles improve from 1.6566 to
   1.6533 seconds median, with about 37 KiB/op less allocation.
+- Compact immediate-producer relations: ✅ immediate selection now reuses the
+  same adaptive instruction-identity representation, including the selected
+  ARM64 opcode seam and the AMD64 finalizer. Compact and wide selection tests
+  cover both encodings. SQLite, Lua, and regexmatch remain byte-identical while
+  peak compiler-owned storage falls by 21,556, 3,910, and 19,840 bytes; their
+  immediate planner categories fall from 87,638 to 66,082, 16,295 to 12,385,
+  and 88,800 to 68,960 bytes. Six alternating serialized SQLite public
+  compiles are compile-wall neutral (+0.04% median) while median allocation
+  volume falls by about 63 KiB/op.
 - Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
   bounded initial schedule candidate's realized post-allocation spill debt,
   physical copies, copy cycles, copy motion, fixed repairs, broken fusions,
