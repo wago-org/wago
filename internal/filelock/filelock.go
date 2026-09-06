@@ -46,6 +46,12 @@ func Acquire(ctx context.Context, path string) (*Lock, error) {
 
 // acquireOpened owns file, including on cancellation or retirement.
 func acquireOpened(ctx context.Context, file *os.File, path string) (*Lock, error) {
+	var timer *time.Timer
+	defer func() {
+		if timer != nil {
+			timer.Stop()
+		}
+	}()
 	for {
 		if err := ctx.Err(); err != nil {
 			_ = file.Close()
@@ -65,12 +71,14 @@ func acquireOpened(ctx context.Context, file *os.File, path string) (*Lock, erro
 			}
 			return lock, nil
 		}
-		timer := time.NewTimer(pollInterval)
+		if timer == nil {
+			timer = time.NewTimer(pollInterval)
+		} else {
+			// The preceding retry consumed timer.C, including on Go 1.22.
+			timer.Reset(pollInterval)
+		}
 		select {
 		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
-			}
 			_ = file.Close()
 			return nil, ctx.Err()
 		case <-timer.C:

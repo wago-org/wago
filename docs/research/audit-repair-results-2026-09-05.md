@@ -132,6 +132,16 @@ tests pass. The 1000-plugin A/B fixture fell from 338303 to 327177 allocations,
 about 16.67 MB to 13.39 MB per encode, and 34.4–35.0 ms to 28.2–28.6 ms.
 Strict JSON field lookup remains a separate repair. Capture: utility-project-ab.txt.
 
+## File-lock retry timers
+
+Contended acquisition reuses one timer, resetting only after consuming its prior
+channel event. Uncontended acquisition does not allocate a timer. Package tests
+pass on Go 1.27.1 and Go 1.22.12. Go 1.27 removed the old asynctimerchan switch,
+so validation used the actual older toolchain after that switch failed loudly.
+Ten-retry A/B samples fell from 3744 B/op and 42 allocations to 1264 B/op and
+12 allocations. The 105 ms time measures the intentional wait, not throughput.
+Capture: utility-filelock-ab.txt.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.
