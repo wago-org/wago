@@ -56,21 +56,8 @@ func jsonFieldType(t reflect.Type, key string) reflect.Type {
 	if t.Kind() != reflect.Struct {
 		return nil
 	}
-	for i := 0; i < t.NumField(); i++ {
-		f := t.Field(i)
-		if !f.IsExported() {
-			continue
-		}
-		name := strings.Split(f.Tag.Get("json"), ",")[0]
-		if name == "-" {
-			continue
-		}
-		if name == "" {
-			name = f.Name
-		}
-		if foldJSONName(name) == foldJSONName(key) {
-			return f.Type
-		}
+	if field, ok := descriptorFor(t).lookup(key); ok {
+		return field.typ
 	}
 	return nil
 }
@@ -132,8 +119,13 @@ func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]st
 				if typed {
 					childFoldNames = childType != nil && childType.Kind() == reflect.Struct
 				}
+				var descriptor *jsonDescriptor
+				if typed && childType != nil && childType.Kind() == reflect.Struct {
+					descriptor = descriptorFor(childType)
+				}
 				frames = append(frames, uniqueJSONFrame{
-					object: delimiter == '{', wantKey: delimiter == '{',
+					descriptor: descriptor,
+					object:     delimiter == '{', wantKey: delimiter == '{',
 					typ: childType, valueType: valueType,
 					foldNames: childFoldNames, valueFoldNames: childFoldNames,
 				})
@@ -159,23 +151,44 @@ func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]st
 				return errors.New("JSON response contains a non-string object key")
 			}
 			frame := &frames[len(frames)-1]
-			if frame.members == nil {
-				frame.members = map[string]struct{}{}
-			}
 			canonicalKey := key
-			if frame.foldNames {
-				canonicalKey = foldJSONName(key)
+			var field jsonField
+			known := false
+			if frame.descriptor != nil {
+				field, known = frame.descriptor.lookup(key)
 			}
-			if _, exists := frame.members[canonicalKey]; exists {
-				return errors.New("JSON response contains a duplicate object field")
+			if known && field.id < 64 {
+				mask := uint64(1) << uint(field.id)
+				if frame.fieldsSeen&mask != 0 {
+					return errors.New("JSON response contains a duplicate object field")
+				}
+				frame.fieldsSeen |= mask
+			} else {
+				if frame.members == nil {
+					frame.members = map[string]struct{}{}
+				}
+				if frame.foldNames {
+					canonicalKey = foldJSONName(key)
+				}
+				if _, exists := frame.members[canonicalKey]; exists {
+					return errors.New("JSON response contains a duplicate object field")
+				}
+				frame.members[canonicalKey] = struct{}{}
 			}
-			frame.members[canonicalKey] = struct{}{}
 			frame.valueFoldNames = frame.foldNames
-			if _, exact := exactSubtrees[foldJSONName(key)]; exact {
-				frame.valueFoldNames = false
+			if len(exactSubtrees) != 0 {
+				if _, exact := exactSubtrees[foldJSONName(key)]; exact {
+					frame.valueFoldNames = false
+				}
 			}
 			if typed {
-				frame.valueType = jsonFieldType(frame.typ, key)
+				if known {
+					frame.valueType = field.typ
+				} else if frame.typ != nil && frame.typ.Kind() == reflect.Map {
+					frame.valueType = frame.typ.Elem()
+				} else {
+					frame.valueType = nil
+				}
 			}
 			frame.wantKey = false
 			continue
@@ -192,6 +205,8 @@ func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]st
 }
 
 type uniqueJSONFrame struct {
+	descriptor     *jsonDescriptor
+	fieldsSeen     uint64
 	typ, valueType reflect.Type
 	object         bool
 	wantKey        bool

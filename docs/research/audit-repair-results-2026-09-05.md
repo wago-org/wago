@@ -211,6 +211,22 @@ corrected. At 10000 imports, Runtime compile uses about 9.90 MB instead of
 PreparedInvokeAddOne remains about 17.7–17.9 ns, zero allocations. Short A/B
 samples are in imports-ab.txt; longer confidence checks remain pending.
 
+## Strict JSON field lookup
+
+A bounded FIFO cache holds up to 128 type descriptors and 256 KiB of conservative
+storage charges. Oversized descriptors remain transient. Known fields use exact
+lookup, then folded fallback; common duplicate IDs use a 64-bit inline bitset.
+Wider/unknown fields retain ordinary duplicate-key maps. Case aliases remain
+strict even where a Go struct declares two distinct exact spellings. Embedded
+field dominance now determines each child's type; maps and RawMessage stay exact.
+
+JSON, project, and version tests pass under -race. New tests cover embedded,
+shadowed and ambiguous fields, raw JSON, Unicode aliases, exact type preference,
+and cache churn bounds. Two A/B samples for 64 fields fall from 78656 B/op and
+6583 allocations to 3888 B/op and 204 allocations, and about 302 us to 6.3 us.
+At 256 fields: about 1.10 MB/99997 allocations becomes 29680 B/op/987 allocations;
+time falls from about 4.6 ms to 42–46 us. Capture: json-ab.txt.
+
 ## Remaining work
 
 The other work groups and full release gates in the accepted plan are pending.
