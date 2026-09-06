@@ -58,11 +58,20 @@ func descriptorFor(t reflect.Type) *jsonDescriptor {
 }
 
 func (d *jsonDescriptor) lookup(key string) (jsonField, bool) {
-	if field, ok := d.exact[key]; ok {
-		return field, true
-	}
-	field, ok := d.folded[foldJSONName(key)]
+	field, _, ok := d.lookupCanonical(key)
 	return field, ok
+}
+func (d *jsonDescriptor) lookupCanonical(key string) (jsonField, string, bool) {
+	if field, ok := d.exact[key]; ok {
+		canonical := key
+		if field.id >= 64 {
+			canonical = foldJSONName(key)
+		}
+		return field, canonical, true
+	}
+	canonical := foldJSONName(key)
+	field, ok := d.folded[canonical]
+	return field, canonical, ok
 }
 
 type fieldCandidate struct {

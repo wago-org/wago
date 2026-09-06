@@ -155,7 +155,7 @@ func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]st
 			var field jsonField
 			known := false
 			if frame.descriptor != nil {
-				field, known = frame.descriptor.lookup(key)
+				field, canonicalKey, known = frame.descriptor.lookupCanonical(key)
 			}
 			if known && field.id < 64 {
 				mask := uint64(1) << uint(field.id)
@@ -167,7 +167,7 @@ func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]st
 				if frame.members == nil {
 					frame.members = map[string]struct{}{}
 				}
-				if frame.foldNames {
+				if frame.foldNames && frame.descriptor == nil {
 					canonicalKey = foldJSONName(key)
 				}
 				if _, exists := frame.members[canonicalKey]; exists {
@@ -177,7 +177,11 @@ func validateUniqueJSON(data []byte, foldNames bool, exactSubtrees map[string]st
 			}
 			frame.valueFoldNames = frame.foldNames
 			if len(exactSubtrees) != 0 {
-				if _, exact := exactSubtrees[foldJSONName(key)]; exact {
+				subtreeKey := canonicalKey
+				if !frame.foldNames {
+					subtreeKey = foldJSONName(key)
+				}
+				if _, exact := exactSubtrees[subtreeKey]; exact {
 					frame.valueFoldNames = false
 				}
 			}

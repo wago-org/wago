@@ -336,3 +336,12 @@ allocations to 7.17 ns and zero allocations; four rows fall from 247.35 ns, 528 
 and six allocations to 54.89 ns and zero. Eight-row and larger allocation counts
 stay unchanged. Captures: final-index-a.txt and final-index-b.txt. The baseline is
 the pre-index repair state, so this isolates the small-table change.
+
+## Fold each JSON key once
+
+Descriptor lookup returns its canonical key for wide and unknown-field duplicate
+tracking, avoiding a second Unicode fold. Common exact field IDs need no folded
+string. Exact-subtree behavior remains covered by the existing strict JSON tests.
+The race suite passes. Ten-sample final captures retain 3888 B/204 allocations at
+64 fields and 29680 B/987 allocations at 256 fields, around 6.1 and 41 us.
+Captures: final-json-a.txt and final-json-b.txt.
