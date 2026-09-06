@@ -1532,6 +1532,14 @@ func semanticOpcodeSlow(op MOpcode) MOpcode {
 		return wasm.InstrI32GeU
 	case OpAMD64I64GeU, OpARM64I64GeU, OpARM64I64GeUImmediate:
 		return wasm.InstrI64GeU
+	case OpAMD64I8x16Bitmask, OpARM64I8x16Bitmask:
+		return wasm.InstrI8x16Bitmask
+	case OpAMD64I16x8Bitmask, OpARM64I16x8Bitmask:
+		return wasm.InstrI16x8Bitmask
+	case OpAMD64I32x4Bitmask, OpARM64I32x4Bitmask:
+		return wasm.InstrI32x4Bitmask
+	case OpAMD64I64x2Bitmask, OpARM64I64x2Bitmask:
+		return wasm.InstrI64x2Bitmask
 	default:
 		return op
 	}

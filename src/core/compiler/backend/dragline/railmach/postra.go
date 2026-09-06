@@ -31,6 +31,7 @@ const (
 	RewriteARM64ByteSwap
 	RewriteARM64Narrow16To8
 	RewriteARM64LogicalShift
+	RewriteARM64BitmaskPopcnt
 )
 
 type Rewrite struct {
@@ -179,6 +180,12 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 	if target == TargetARM64 {
 		for index := 0; index+1 < len(schedule.Order); index++ {
 			producer, consumer := schedule.Order[index], schedule.Order[index+1]
+			if schedule.BlockOf[producer] == schedule.BlockOf[consumer] && arm64BitmaskPopcntable(f, producer, consumer, uses) {
+				reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: producer, Second: consumer, Kind: RewriteARM64BitmaskPopcnt})
+			}
+		}
+		for index := 0; index+1 < len(schedule.Order); index++ {
+			producer, consumer := schedule.Order[index], schedule.Order[index+1]
 			if schedule.BlockOf[producer] == schedule.BlockOf[consumer] && arm64CondIncrementable(f, producer, consumer, uses) {
 				reuse.Rewrites = append(reuse.Rewrites, Rewrite{First: producer, Second: consumer, Kind: RewriteARM64CondIncrement})
 			}
@@ -222,6 +229,70 @@ func planPostRAVerifiedAllocation(target Target, f *Func, selection *SelectionPl
 		return nil, err
 	}
 	return reuse, nil
+}
+
+// VerifyARM64BitmaskPopcnt proves that an i8x16 sign-bit mask is consumed only
+// by an adjacent i32.popcnt. Counting the shifted predicate bytes directly is
+// then exactly the population count of the 16-bit scalar mask.
+func VerifyARM64BitmaskPopcnt(f *Func, schedule *Schedule, producer, consumer uint32) (source, result VReg, ok bool) {
+	if f == nil || schedule == nil || int(producer) >= len(f.Insts) || int(consumer) >= len(f.Insts) || len(schedule.Order) != len(f.Insts) || len(schedule.BlockOf) != len(f.Insts) {
+		return 0, 0, false
+	}
+	bitmaskResult := f.Insts[producer].Result
+	uses := uint32(0)
+	for instructionID := range f.Insts {
+		for _, operand := range f.InstructionOperands(uint32(instructionID)) {
+			if operand.Reg == bitmaskResult {
+				uses++
+			}
+		}
+	}
+	for _, transfer := range f.Transfers {
+		if transfer.Src == bitmaskResult {
+			uses++
+		}
+	}
+	for _, value := range f.Results {
+		if value == bitmaskResult {
+			uses++
+		}
+	}
+	if !arm64BitmaskPopcntShape(f, producer, consumer, uses) {
+		return 0, 0, false
+	}
+	adjacent := false
+	for position, instructionID := range schedule.Order {
+		if instructionID == producer {
+			adjacent = position+1 < len(schedule.Order) && schedule.Order[position+1] == consumer
+			break
+		}
+	}
+	if !adjacent || schedule.BlockOf[producer] != schedule.BlockOf[consumer] {
+		return 0, 0, false
+	}
+	return f.InstructionOperands(producer)[0].Reg, f.Insts[consumer].Result, true
+}
+
+func arm64BitmaskPopcntable(f *Func, producer, consumer uint32, uses []uint32) bool {
+	if f == nil || int(producer) >= len(f.Insts) || int(consumer) >= len(f.Insts) || len(uses) != len(f.VRegs) || f.Insts[producer].Result == 0 {
+		return false
+	}
+	return arm64BitmaskPopcntShape(f, producer, consumer, uses[f.Insts[producer].Result])
+}
+
+func arm64BitmaskPopcntShape(f *Func, producer, consumer uint32, resultUses uint32) bool {
+	if f == nil || int(producer) >= len(f.Insts) || int(consumer) >= len(f.Insts) {
+		return false
+	}
+	bitmask, popcnt := f.Insts[producer], f.Insts[consumer]
+	bitmaskOperands, popcntOperands := f.InstructionOperands(producer), f.InstructionOperands(consumer)
+	if SemanticOpcode(bitmask.Op) != wasm.InstrI8x16Bitmask || SemanticOpcode(popcnt.Op) != wasm.InstrI32Popcnt ||
+		bitmask.Result == 0 || popcnt.Result == 0 || len(bitmaskOperands) != 1 || len(popcntOperands) != 1 ||
+		int(bitmaskOperands[0].Reg) >= len(f.VRegs) || int(popcnt.Result) >= len(f.VRegs) {
+		return false
+	}
+	return popcntOperands[0].Reg == bitmask.Result && resultUses == 1 &&
+		f.VRegs[bitmaskOperands[0].Reg].Type == TypeV128 && f.VRegs[popcnt.Result].Type == TypeI32
 }
 
 func arm64PostIndexScheduled(f *Func, schedule *Schedule, position []uint32, first, second uint32) bool {
@@ -962,7 +1033,7 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 		if rewrite.Kind == RewriteInvalid || int(rewrite.First) >= len(f.Insts) || rewrite.Second != ^uint32(0) && (int(rewrite.Second) >= len(f.Insts) || rewrite.Second <= rewrite.First || rewrite.Second-rewrite.First > PostRAScanLimit && rewrite.Kind != RewriteAMD64FusionRepair && rewrite.Kind != RewriteAMD64ByteSwap && rewrite.Kind != RewritePhysicalRename && rewrite.Kind != RewriteARM64CompareBranch && rewrite.Kind != RewriteARM64RepeatedAdd && rewrite.Kind != RewriteARM64ByteWiden && rewrite.Kind != RewriteARM64ByteSwap && rewrite.Kind != RewriteARM64Narrow16To8) {
 			return fmt.Errorf("railmach: invalid post-RA rewrite %d: %#v", id, rewrite)
 		}
-		if target == TargetAMD64 && (rewrite.Kind == RewriteARM64Pair || rewrite.Kind == RewriteARM64PrePostIndex || rewrite.Kind == RewriteARM64CompareBranch || rewrite.Kind == RewriteARM64CondIncrement || rewrite.Kind == RewriteARM64RepeatedAdd || rewrite.Kind == RewriteARM64ByteWiden || rewrite.Kind == RewriteARM64ByteSwap || rewrite.Kind == RewriteARM64Narrow16To8 || rewrite.Kind == RewriteARM64LogicalShift) || target == TargetARM64 && (rewrite.Kind == RewriteAMD64LEA || rewrite.Kind == RewriteAMD64FusionRepair || rewrite.Kind == RewriteAMD64FixedRepair || rewrite.Kind == RewriteAMD64MemoryFold || rewrite.Kind == RewriteAMD64ByteSwap) {
+		if target == TargetAMD64 && (rewrite.Kind == RewriteARM64Pair || rewrite.Kind == RewriteARM64PrePostIndex || rewrite.Kind == RewriteARM64CompareBranch || rewrite.Kind == RewriteARM64CondIncrement || rewrite.Kind == RewriteARM64RepeatedAdd || rewrite.Kind == RewriteARM64ByteWiden || rewrite.Kind == RewriteARM64ByteSwap || rewrite.Kind == RewriteARM64Narrow16To8 || rewrite.Kind == RewriteARM64LogicalShift || rewrite.Kind == RewriteARM64BitmaskPopcnt) || target == TargetARM64 && (rewrite.Kind == RewriteAMD64LEA || rewrite.Kind == RewriteAMD64FusionRepair || rewrite.Kind == RewriteAMD64FixedRepair || rewrite.Kind == RewriteAMD64MemoryFold || rewrite.Kind == RewriteAMD64ByteSwap) {
 			return fmt.Errorf("railmach: cross-target post-RA rewrite %d: %#v", id, rewrite)
 		}
 		if rewrite.Kind == RewriteAMD64FusionRepair && position[rewrite.Second] == position[rewrite.First]+1 {
@@ -1053,6 +1124,11 @@ func verifyPostRAPlan(target Target, f *Func, selection *SelectionPlan, schedule
 			}
 			if _, _, _, _, _, ok := VerifyARM64LogicalShift(f, rewrite.First, rewrite.Second, uses); !ok {
 				return fmt.Errorf("railmach: illegal ARM64 logical-shift rewrite %d: %#v", id, rewrite)
+			}
+		}
+		if rewrite.Kind == RewriteARM64BitmaskPopcnt {
+			if position[rewrite.Second] != position[rewrite.First]+1 || schedule.BlockOf[rewrite.First] != schedule.BlockOf[rewrite.Second] || !arm64BitmaskPopcntable(f, rewrite.First, rewrite.Second, uses) {
+				return fmt.Errorf("railmach: illegal ARM64 bitmask-popcnt rewrite %d: %#v", id, rewrite)
 			}
 		}
 		if rewrite.Kind == RewriteAMD64MemoryFold {

@@ -94,6 +94,11 @@ func TestSemanticOpcodeTablesCoverSelectedRanges(t *testing.T) {
 	if got := SemanticOpcode(wasm.InstrI64Add); got != wasm.InstrI64Add {
 		t.Fatalf("generic semantic opcode changed: got %d", uint16(got))
 	}
+	for _, op := range []MOpcode{OpAMD64I8x16Bitmask, OpARM64I8x16Bitmask} {
+		if got := SemanticOpcode(op); got != wasm.InstrI8x16Bitmask {
+			t.Fatalf("selected bitmask semantic opcode = %d, want %d", uint16(got), uint16(wasm.InstrI8x16Bitmask))
+		}
+	}
 }
 
 func TestDenseRecordSizes(t *testing.T) {

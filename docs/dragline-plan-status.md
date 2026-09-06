@@ -145,6 +145,20 @@ the performance corpus.
 
 - Execution correctness: ✅ all 180 admitted exports match Railshot at the
   manifest trip counts, with zero timed allocations.
+- ARM64 SIMD mask reduction: ✅ a general post-RA rewrite now recognizes an
+  adjacent, sole-use `i8x16.bitmask` → `i32.popcnt` dataflow chain and counts
+  the shifted sign bytes directly with `USHR.16B`, `ADDV.8B`, and `UMOV.B`.
+  The legality proof is based only on typed machine values, exact use counts,
+  schedule adjacency, target identity, and physical register locations; it has
+  no module, export, corpus, or algorithm identity. On the September 5, 2026
+  Apple M4 Max gate, ten alternating 500 ms rounds reduced
+  `utf-as-simd.convertN` from a 83.945 us exact-head median to 46.076 us; the
+  paired geometric-mean ratio was 0.548x and the candidate won all ten pairs.
+  The same candidate measured 0.474x wazero across ten paired rounds. Module
+  native code fell from 22,220 to 21,660 bytes; compiler-owned peak-live bytes
+  moved only from 729,198 to 729,208, and compile-wall medians were effectively
+  flat at 15.510 ms versus 15.569 ms. Full repository tests, Dragline vet, bench
+  tests, corpus coverage, and the dedicated SIMD differential gate pass.
 - Every admitted export faster than Railshot: ✅ all 180 compatibility-mode
   ARM64 balanced medians are lower in the post-change August 28, 2026
   six-round, 500 ms serialized alternating run. The narrowest raw and paired

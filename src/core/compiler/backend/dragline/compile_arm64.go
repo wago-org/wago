@@ -2348,6 +2348,25 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
+			if consumerID, ok := nativePostRAConsumer(plan, instructionID, railmach.RewriteARM64BitmaskPopcnt); ok && int(consumerID) < len(plan.PostRASkip) && plan.PostRASkip[consumerID] {
+				source, result, verified := railmach.VerifyARM64BitmaskPopcnt(plan.Machine, plan.Schedule, instructionID, consumerID)
+				if !verified {
+					return nil, 0, true, fmt.Errorf("RailMach bitmask-popcnt rewrite failed verification")
+				}
+				src := reg(source)
+				resultPosition := plan.Allocation.InstructionPositions[consumerID]*6 + 2
+				resultLocation := plan.Allocation.LocationAt(result, resultPosition)
+				if resultLocation.Kind != railmach.LocationRegister || resultLocation.Bank != railmach.BankGPR {
+					return nil, 0, true, fmt.Errorf("RailMach bitmask-popcnt result lost register allocation")
+				}
+				a.NeonUshrB(24, src, 7)
+				a.NeonAddvB(24, 24)
+				a.NeonUmovB(arm64RailMachPhysical(resultLocation), 24, 0)
+				if metrics != nil {
+					metrics.PostRARewrites++
+				}
+				continue
+			}
 			if swarRunN && instructionID == 21 {
 				src := arm64RailMachPhysical(plan.Allocation.Locations[plan.Machine.Insts[4].Result])
 				dst := arm64RailMachPhysical(plan.Allocation.Locations[instruction.Result])

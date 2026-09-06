@@ -1013,6 +1013,18 @@ func nativePostRAProducer(plan *nativeBackendPlan, consumer uint32, kind railmac
 	return 0, false
 }
 
+func nativePostRAConsumer(plan *nativeBackendPlan, producer uint32, kind railmach.RewriteKind) (uint32, bool) {
+	if plan == nil || plan.PostRA == nil {
+		return 0, false
+	}
+	for _, rewrite := range plan.PostRA.Rewrites {
+		if rewrite.First == producer && rewrite.Kind == kind {
+			return rewrite.Second, true
+		}
+	}
+	return 0, false
+}
+
 func planInstructionsAdjacent(schedule *railmach.Schedule, first, second uint32) bool {
 	if schedule == nil || int(first) >= len(schedule.BlockOf) || int(second) >= len(schedule.BlockOf) || schedule.BlockOf[first] != schedule.BlockOf[second] {
 		return false
@@ -1683,6 +1695,10 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 			case railmach.RewriteARM64LogicalShift:
 				if machineTarget == railmach.TargetARM64 && nativeARM64LogicalShiftRealizable(machine, schedule, allocation, rewrite.First, rewrite.Second) && !p.postRASkip[rewrite.First] && !p.postRASkip[rewrite.Second] {
 					p.postRASkip[rewrite.First] = true
+				}
+			case railmach.RewriteARM64BitmaskPopcnt:
+				if machineTarget == railmach.TargetARM64 && nativeARM64BitmaskPopcntRealizable(machine, schedule, allocation, rewrite.First, rewrite.Second) && !p.postRASkip[rewrite.First] && !p.postRASkip[rewrite.Second] {
+					p.postRASkip[rewrite.Second] = true
 				}
 			}
 		}
@@ -2609,6 +2625,10 @@ func (p *nativeBackendPlanner) preparePostRAScratch(target railmach.Target, inst
 			if target == railmach.TargetARM64 {
 				needsSkip = true
 			}
+		case railmach.RewriteARM64BitmaskPopcnt:
+			if target == railmach.TargetARM64 {
+				needsSkip = true
+			}
 		case railmach.RewriteARM64PrePostIndex:
 			if target == railmach.TargetARM64 {
 				needsPreIndex = true
@@ -2966,6 +2986,22 @@ func nativeARM64LogicalShiftRealizable(machine *railmach.Func, schedule *railmac
 	baseLocation := allocation.LocationAt(shiftOperands[0].Reg, position)
 	resultLocation := allocation.LocationAt(machine.Insts[consumer].Result, position)
 	return baseLocation.Kind == railmach.LocationRegister && baseLocation.Bank == railmach.BankGPR &&
+		resultLocation.Kind == railmach.LocationRegister && resultLocation.Bank == railmach.BankGPR
+}
+
+func nativeARM64BitmaskPopcntRealizable(machine *railmach.Func, schedule *railmach.Schedule, allocation *railmach.GreedyAllocation, producer, consumer uint32) bool {
+	if machine == nil || schedule == nil || allocation == nil || int(producer) >= len(machine.Insts) || int(consumer) >= len(machine.Insts) || !planInstructionsAdjacent(schedule, producer, consumer) {
+		return false
+	}
+	source, result, ok := railmach.VerifyARM64BitmaskPopcnt(machine, schedule, producer, consumer)
+	if !ok {
+		return false
+	}
+	producerPosition := allocation.InstructionPositions[producer]*6 + 2
+	consumerPosition := allocation.InstructionPositions[consumer]*6 + 2
+	sourceLocation := allocation.LocationAt(source, producerPosition)
+	resultLocation := allocation.LocationAt(result, consumerPosition)
+	return sourceLocation.Kind == railmach.LocationRegister && sourceLocation.Bank == railmach.BankFPR &&
 		resultLocation.Kind == railmach.LocationRegister && resultLocation.Bank == railmach.BankGPR
 }
 

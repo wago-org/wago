@@ -75,6 +75,53 @@ func TestPlanPostRAFindsARM64ConditionalIncrement(t *testing.T) {
 	t.Fatalf("rewrites = %#v", plan.Rewrites)
 }
 
+func TestPlanPostRAFindsARM64I8x16BitmaskPopcnt(t *testing.T) {
+	m := machineModule([]wasm.ValType{wasm.V128}, []wasm.ValType{wasm.I32}, []byte{
+		0x20, 0x00,
+		0xfd, 0x64,
+		0x69,
+		0x0b,
+	})
+	f, selection, _, dag := buildScheduleTest(t, TargetARM64, m)
+	schedule, err := BuildSchedule(f, selection, dag, ScheduleKindSourceStable, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocation, err := AllocateGreedyPForSchedule(f, schedule, DefaultGreedyConfig(TargetARM64), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exit, err := LateSSAExit(f, &allocation.Allocation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := PlanPostRA(TargetARM64, f, selection, schedule, allocation, exit, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rewrite Rewrite
+	for _, candidate := range plan.Rewrites {
+		if candidate.Kind == RewriteARM64BitmaskPopcnt {
+			rewrite = candidate
+			break
+		}
+	}
+	if rewrite.Kind == RewriteInvalid {
+		t.Fatalf("rewrites = %#v", plan.Rewrites)
+	}
+	source, result, ok := VerifyARM64BitmaskPopcnt(f, schedule, rewrite.First, rewrite.Second)
+	if !ok || f.VRegs[source].Type != TypeV128 || f.VRegs[result].Type != TypeI32 {
+		t.Fatalf("verified rewrite = source v%d result v%d ok %t", source, result, ok)
+	}
+
+	// A second observable use of the scalar mask must retain the ordinary
+	// bitmask materialization.
+	f.Results = append(f.Results, f.Insts[rewrite.First].Result)
+	if err := VerifyPostRAPlan(TargetARM64, f, selection, schedule, plan); err == nil {
+		t.Fatal("accepted bitmask-popcnt rewrite with a second mask use")
+	}
+}
+
 func TestPlanPostRAFindsARM64WrapSpill(t *testing.T) {
 	f := &Func{
 		Target:   TargetARM64,
