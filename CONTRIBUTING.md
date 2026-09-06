@@ -166,6 +166,59 @@ If a change can affect speed or memory use, include before-and-after numbers in
 the pull request. If it affects only cold paths, say so. Do not accept an
 unsupported WebAssembly feature just to improve an optimization result.
 
+## Make a Commit
+
+Keep each commit small, measurable, and easy to review. A commit should do one
+of these things:
+
+1. Add a test that shows a missing behavior or regression.
+2. Make a focused test pass with the smallest change.
+3. Do both for one small topic when separate commits would add noise.
+
+Each commit must have one topic. Keep decoder, validator, backend, runtime,
+CLI, documentation, and benchmark changes separate unless the behavior needs
+them together. Name the test, benchmark, fixture, or observable behavior that
+proves the change. Avoid drive-by cleanup, broad formatting, unrelated renames,
+and speculative refactors.
+
+When practical, use this sequence:
+
+1. Add the smallest test or fixture that fails for the missing behavior.
+2. Make the smallest implementation change that makes the test pass.
+3. Make a separate cleanup commit only when it is needed.
+
+You can combine the first two steps when a separate failing state would not
+help. State why in the commit message or pull request description.
+
+Update the relevant developer or agent documentation when a commit changes
+workflow, test, benchmark, review, unsafe/runtime rule, or performance or
+memory expectation. If no documentation update is needed, say why in the
+commit message or pull request description.
+
+Use a short, specific subject such as `wasm: reject passive data segments` or
+`runtime: reduce host-call buffer allocation`. Add this body when it helps a
+reviewer:
+
+```text
+Why:
+- what behavior, regression, or measurement motivated this
+
+What:
+- the focused code, test, or documentation change
+
+Proof:
+- the test, fixture, benchmark, or measurement
+
+Docs:
+- relevant documentation updated
+- or: unchanged, no developer or agent workflow impact
+```
+
+Before you commit, confirm that the diff has one topic, the focused tests or
+benchmarks pass, and hot-path or memory-sensitive changes include measurements
+when practical. Confirm that unsupported WebAssembly behavior is rejected
+clearly and that no unrelated formatting, rename, or cleanup is included.
+
 ## Write Docs and Open a Pull Request
 
 Keep README examples runnable from a fresh checkout. Keep their fixtures in the

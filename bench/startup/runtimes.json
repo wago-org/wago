@@ -1,5 +1,5 @@
 {
-  "_comment": "Cross-runtime startup-latency sweep config. Each runtime: how to invoke it on a module ({wasm} is substituted) and its engine `tag` for the website. `bin` is the default binary; override any path with the UPPERCASE env var in `env` (e.g. WAGO_BIN=/path/to/wago). Cold-cache flags matter \u2014 see skills/startup-latency-bench. A runtime whose binary isn't found is skipped with a warning (the sweep still writes the rest).",
+  "_comment": "Cross-runtime startup-latency sweep config. Each runtime: how to invoke it on a module ({wasm} is substituted) and its engine `tag` for the website. `bin` is the default binary; override any path with the UPPERCASE env var in `env` (e.g. WAGO_BIN=/path/to/wago). Cold-cache flags are part of a valid comparison. A runtime whose binary isn't found is skipped with a warning (the sweep still writes the rest).",
   "order": [
     "wago",
     "wazero",

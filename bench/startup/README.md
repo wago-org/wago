@@ -28,7 +28,7 @@ can find.
   not a wasm toolchain.
 - `src/*.rs` contains the Rust compute-twin sources. A `_start` wrapper is
   appended to the matching `bench/corpus/rust/*.rs` kernel. The `json-as` twin
-  is AssemblyScript; see `skills/startup-latency-bench` for its build.
+  is AssemblyScript.
 - `run.mjs` performs the sweep and writes `startup.json`.
 - `startup.json` is the committed dataset consumed by the website generator.
 
@@ -58,5 +58,6 @@ The website sorts each workload from fastest to slowest. It scales bar widths
 against the slowest non-LLVM runtime. Wavm's LLVM compilation is an outlier and
 would otherwise flatten the other bars.
 
-See `skills/startup-latency-bench/SKILL.md` for the twin construction, the
-cold-cache gotchas per runtime, and how to attribute wago's own startup.
+Keep the command, cache controls, and work twins unchanged when you compare
+results. When you add or rebuild a twin, document its source and build steps in
+this README.

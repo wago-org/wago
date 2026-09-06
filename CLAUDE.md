@@ -9,4 +9,5 @@ change.
 - Update the support matrix when a feature's support changes.
 - Include benchmark numbers when you change a hot path.
 
-See [the commit workflow](skills/commit/SKILL.md) before you create a commit.
+See [the commit workflow](CONTRIBUTING.md#make-a-commit) before you create a
+commit.

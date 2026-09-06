@@ -48,8 +48,8 @@ Prioritize:
   the implementation.
 - Update the relevant developer or agent documentation when workflow, testing,
   benchmarking, review expectations, or agent behavior changes.
-- Keep commits atomic, bounded, and easy to review; use
-  `skills/commit/SKILL.md`.
+- Keep commits atomic, bounded, and easy to review. Follow the commit workflow
+  in `CONTRIBUTING.md`.
 
 ## Done Means Done
 
