@@ -370,16 +370,12 @@ function buildGeneralSummary(metrics, raw) {
       compile.set(engine, aggregate);
     }
   }
-  const runtime = raw?.runtime ?? raw?.wasmtimeRuntime ?? [];
-  const runtimeValues = (stage, grouped = false) => Object.fromEntries(
-    ENGINES.map(({ id }) => [id,
-      id === "railshot" ? metricGeomean(metrics, stage === "instantiate" ? "Instantiate/" : "Exec/", grouped, "ns", APPLICATION_CORPUS) :
-      id === "wazero" ? metricGeomean(metrics, stage === "instantiate" ? "WazeroInstantiate/" : "WazeroExec/", grouped, "ns", APPLICATION_CORPUS) :
-      externalRuntimeGeomean(runtime, stage, grouped, id),
-    ]),
-  );
-  const instantiate = runtimeValues("instantiate");
-  const execution = runtimeValues("exec", true);
+  // Summary means use only exact Wago/wazero pairs. A plugin-backed Wago row
+  // remains visible in the detailed table when wazero lacks that host runtime,
+  // but it cannot silently enter one side of the aggregate as a zero or as an
+  // unmatched sample.
+  const instantiate = pairedMetricGeomeans(metrics, "Instantiate/", "WazeroInstantiate/", false, APPLICATION_CORPUS);
+  const execution = pairedMetricGeomeans(metrics, "Exec/", "WazeroExec/", true, APPLICATION_CORPUS);
   const compileTime = {
     railshot: metricGeomean(metrics, "CompileFull/", false, "ns", APPLICATION_CORPUS),
     wazero: metricGeomean(metrics, "WazeroCompile/", false, "ns", APPLICATION_CORPUS),
@@ -429,6 +425,32 @@ function metricGeomean(metrics, prefix, groupExports = false, field = "ns", incl
     groups.set(group, values);
   }
   return geomean([...groups.values()].map(geomean));
+}
+
+function pairedMetricGeomeans(metrics, wagoPrefix, wazeroPrefix, groupExports, includedModules) {
+  const wagoGroups = new Map();
+  const wazeroGroups = new Map();
+  for (const [key, wagoMetric] of metrics) {
+    if (!key.startsWith(wagoPrefix)) continue;
+    const tail = key.slice(wagoPrefix.length);
+    const module = tail.split(".", 1)[0];
+    if (includedModules && !includedModules.has(module)) continue;
+    const wazeroMetric = metrics.get(`${wazeroPrefix}${tail}`);
+    const wago = Number(wagoMetric.ns);
+    const wazero = Number(wazeroMetric?.ns);
+    if (!(wago > 0) || !(wazero > 0)) continue;
+    const group = groupExports ? module : tail;
+    const wagoValues = wagoGroups.get(group) ?? [];
+    const wazeroValues = wazeroGroups.get(group) ?? [];
+    wagoValues.push(wago);
+    wazeroValues.push(wazero);
+    wagoGroups.set(group, wagoValues);
+    wazeroGroups.set(group, wazeroValues);
+  }
+  return {
+    railshot: geomean([...wagoGroups.values()].map(geomean)),
+    wazero: geomean([...wazeroGroups.values()].map(geomean)),
+  };
 }
 
 function externalRuntimeGeomean(rows, stage, groupExports = false, engine = "wasmtime") {

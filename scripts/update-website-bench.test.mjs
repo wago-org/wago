@@ -42,7 +42,7 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       "Exec/nbody.step": { ns: 20 }, "WazeroExec/nbody.step": { ns: 30 },
       "Exec/json-as.deserializeN": { ns: 25 }, "WazeroExec/json-as.deserializeN": { ns: 50 },
       "Exec/json-as-simd.deserializeN": { ns: 18 }, "WazeroExec/json-as-simd.deserializeN": { ns: 36 },
-	  "Exec/lua.plugin-workload": { ns: 7 }, "WazeroExec/lua.plugin-workload": { ns: 0 },
+	  "Exec/lua.plugin-workload": { ns: 1e30 }, "WazeroExec/lua.plugin-workload": { ns: 0 },
     };
     for (const name of ["coremark", "blake3", "qoi", "lz4", "zlib", "zstd"]) {
       metrics[`CompileFull/${name}`] = { ns: 100, bytes: 10, allocs: 1 };
@@ -178,6 +178,11 @@ function assertDOMContract(html) {
     for (const label of ["Application compile", "SIMD execution"]) {
       assert.equal(matches(general, new RegExp(`<span class="vs__label">${label}</span>`, "g")), 1);
     }
+	const executionStart = general.indexOf('<span class="vs__label">Execution</span>');
+	const executionEnd = general.indexOf('<div class="vs__row" data-engine-row>', executionStart);
+	const execution = general.slice(executionStart, executionEnd);
+	assert.match(execution, />34\.1ns<\/span>/);
+	assert.match(execution, />68\.3ns<\/span>/);
     assert.doesNotMatch(general, /Micro compile mean|Micro startup mean|AS startup mean|Compute execution mean|Tiny compile|Ruby compile|fib_rec startup|Many-function startup|>N-body<|>JSON deserialize</);
   }
   assert.match(html, />[0-9.]+× faster<\/span>/);
