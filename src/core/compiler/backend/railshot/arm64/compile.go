@@ -194,6 +194,8 @@ type fn struct {
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
 	// AArch64 has 31 GPRs (X0-X30), so the array is sized [32] (versus amd64's [16]).
 	regUser [32]*elem
+	// intervalRegLimit is the target/mode-specific regional lease ceiling.
+	intervalRegLimit int
 	// pinned[r] marks a register temporarily protected from spilling/allocation
 	// (e.g. an operand being consumed by the current op).
 	pinned regMask

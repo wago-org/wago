@@ -13,9 +13,9 @@ Implementation progress:
   changing emitted code.
 - [x] Reject naive version-final transfer and Belady-style next-use eviction:
   both regressed BLAKE materially and were removed rather than left dormant.
-- [x] Expand the ARM64 straight-line lease budget from 18 to the proven-safe 19;
-  retain a three-register transient floor and reject the corrupt 20-register
-  configuration.
+- [x] Expand the ARM64 straight-line lease budget from 18 to 19 only when
+  signals-based bounds leave X27 free; keep explicit bounds at 18 and preserve
+  the required three-register transient floor.
 - [x] Make AMD64 admission use its existing score-gated eviction path when the
   nominal ninth lease is unavailable; validate on native AMD64.
 - [x] Admit R8 as AMD64's last-choice tenth regional lease only in the existing

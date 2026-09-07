@@ -144,10 +144,10 @@ optimization flag from either rejected experiment remains on the branch.
 
 ## ARM64 lease-budget sweep
 
-Increasing the interval-region budget from 18 to 19 passed the full ARM64
-backend suite and `TestCorpusSemanticExec`. Six alternating 400 ms pairs showed
-small execution improvements: approximately 0.5% on blake-as and 1.1% on
-BLAKE3. The physical and size movements were clearer:
+An experimental increase of the interval-region budget from 18 to 19 passed the
+ARM64 backend suite and `TestCorpusSemanticExec`. Six alternating 400 ms pairs
+in explicit-bounds mode showed small execution improvements: approximately 0.5%
+on blake-as and 1.1% on BLAKE3. The physical and size movements were clearer:
 
 | Workload | Pressure misses | Activation loads | Native function bytes |
 | --- | ---: | ---: | ---: |
@@ -159,8 +159,26 @@ BLAKE3. The physical and size movements were clearer:
 This is an 18-19% pressure-miss reduction and a 2.2-2.4% native-size reduction.
 Twenty leases failed BLAKE3's semantic oracle on the 63-byte vector, establishing
 that the remaining three registers in the ordered pool are a required transient
-floor rather than spare capacity. The retained limit is therefore 19, with the
-floor encoded in a regression test.
+floor rather than spare capacity. The floor is encoded in a regression test.
+
+The wider Linux ARM64 guard-page CI gate subsequently found the missing resource
+constraint: explicit bounds reserves X27 for the memory size. That leaves only
+two scratch-capable tail registers at 19 active leases. In that configuration,
+`blake-as-simd.hashN` returned `2841881934` instead of the golden `26497025`.
+Signals-based bounds, which leave X27 free and preserve three transient
+registers, remained correct. The final policy therefore keeps explicit bounds at
+18 leases and permits 19 only for signals-based code. The earlier explicit-mode
+timings above describe the rejected configuration, not a retained gain.
+`TestCorpusDifferential` covers both modes and the policy split has a direct unit
+test.
+
+Eight signals-based samples per variant against exact main confirmed that the
+mode-specific nineteenth lease is useful and correct:
+
+| Workload | 18-lease median | 19-lease median | Delta |
+| --- | ---: | ---: | ---: |
+| blake-as | 372,114 ns/op | 366,308 ns/op | -1.56% |
+| BLAKE3 | 231,678 ns/op | 228,548 ns/op | -1.35% |
 
 ## AMD64 effective-capacity admission
 

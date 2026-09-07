@@ -63,6 +63,15 @@ func TestIntervalRegionLeavesTransientFloorArm64(t *testing.T) {
 	}
 }
 
+func TestIntervalRegionBoundsModePreservesTransientFloorArm64(t *testing.T) {
+	if got, want := intervalRegionRegLimit(false), maxIntervalRegionRegs-1; got != want {
+		t.Fatalf("explicit-bounds regional leases = %d, want %d", got, want)
+	}
+	if got := intervalRegionRegLimit(true); got != maxIntervalRegionRegs {
+		t.Fatalf("signals-based regional leases = %d, want %d", got, maxIntervalRegionRegs)
+	}
+}
+
 func TestEntryInitializedLocalSkipsZeroArm64(t *testing.T) {
 	saved := entryInitElisionEnabled
 	defer func() { entryInitElisionEnabled = saved }()
