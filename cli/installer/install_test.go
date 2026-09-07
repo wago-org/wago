@@ -205,12 +205,12 @@ func TestInstallerCanonicalRollingManagerResolutionPaginates(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		if r.URL.Query().Get("scope") != "installer" || r.URL.Query().Get("per_page") != "100" {
+		if r.URL.Query().Get("scope") != "installer" || r.URL.Query().Get("per_page") != "20" {
 			t.Fatalf("release query = %q", r.URL.RawQuery)
 		}
 		requests++
 		if r.URL.Query().Get("page") == "1" {
-			for index := 0; index < 100; index++ {
+			for index := 0; index < installerReleasePageSize; index++ {
 				if index != 0 {
 					_, _ = fmt.Fprint(w, ",")
 				}
@@ -233,6 +233,36 @@ func TestInstallerCanonicalRollingManagerResolutionPaginates(t *testing.T) {
 	}
 	if requests != 2 {
 		t.Fatalf("release requests = %d, want 2", requests)
+	}
+}
+
+func TestInstallerReleaseCatalogKeepsPagesWithinMetadataLimit(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/releases" {
+			http.NotFound(w, r)
+			return
+		}
+		requests++
+		if r.URL.Query().Get("per_page") != "20" {
+			// GitHub's live 100-release response has grown beyond the installer's
+			// 4 MiB metadata bound. Model that failure so increasing the page size
+			// cannot silently reintroduce a source-build fallback.
+			_, _ = fmt.Fprintf(w, `[{"tag_name":"nightly-oversized","body":%q}]`, strings.Repeat("x", (4<<20)+1))
+			return
+		}
+		_, _ = fmt.Fprintf(w, `[{"tag_name":"nightly-exact","target_commitish":%q,"published_at":"2026-09-06T00:00:00Z"}]`, sha)
+	}))
+	defer server.Close()
+
+	i := &installer{releaseAPI: server.URL + "/releases", httpClient: server.Client()}
+	tag, _, err := i.resolveReleaseForTest("nightly@" + sha)
+	if err != nil || tag != "nightly-exact" {
+		t.Fatalf("resolve canonical manager = %q, %v", tag, err)
+	}
+	if requests != 1 {
+		t.Fatalf("release requests = %d, want 1", requests)
 	}
 }
 

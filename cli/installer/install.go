@@ -442,6 +442,11 @@ func (i *installer) resolveRelease() (installbootstrap.ResolvedRelease, string, 
 
 type installerReleaseCatalog struct{ installer *installer }
 
+const (
+	installerReleasePageSize  = 20
+	installerReleasePageLimit = 50
+)
+
 func (catalog installerReleaseCatalog) Latest() (installbootstrap.Release, error) {
 	var item installbootstrap.Release
 	err := catalog.installer.getJSON(catalog.installer.releaseAPI+"/latest", &item)
@@ -449,31 +454,30 @@ func (catalog installerReleaseCatalog) Latest() (installbootstrap.Release, error
 }
 
 func (catalog installerReleaseCatalog) Releases() ([]installbootstrap.Release, error) {
-	const pageLimit = 10
 	var releases []installbootstrap.Release
 	base, err := url.Parse(catalog.installer.releaseAPI)
 	if err != nil {
 		return nil, fmt.Errorf("parse release catalog URL: %w", err)
 	}
-	for page := 1; page <= pageLimit; page++ {
+	for page := 1; page <= installerReleasePageLimit; page++ {
 		var batch []installbootstrap.Release
 		address := *base
 		query := address.Query()
-		query.Set("per_page", "100")
+		query.Set("per_page", strconv.Itoa(installerReleasePageSize))
 		query.Set("page", strconv.Itoa(page))
 		address.RawQuery = query.Encode()
 		if err := catalog.installer.getJSON(address.String(), &batch); err != nil {
 			return nil, err
 		}
-		if len(batch) > 100 {
+		if len(batch) > installerReleasePageSize {
 			return nil, fmt.Errorf("release catalog returned too many releases on page %d", page)
 		}
 		releases = append(releases, batch...)
-		if len(batch) < 100 {
+		if len(batch) < installerReleasePageSize {
 			return releases, nil
 		}
 	}
-	return nil, fmt.Errorf("release catalog exceeded %d pages", pageLimit)
+	return nil, fmt.Errorf("release catalog exceeded %d pages", installerReleasePageLimit)
 }
 
 func (i *installer) getJSON(url string, value any) error {
