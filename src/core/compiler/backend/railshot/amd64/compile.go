@@ -254,10 +254,11 @@ type fn struct {
 	// Bounded straight-line local intervals. A non-regNone intervalReg entry marks
 	// an eligible local; locals[x].reg is populated only while its cached value is
 	// live. Physical registers are selected and reclaimed dynamically.
-	intervalReg   []Reg
-	intervalLast  []uint32
-	intervalScore []uint32
-	intervalOwner [16]int
+	intervalReg      []Reg
+	intervalLast     []uint32
+	intervalScore    []uint32
+	intervalOwner    [16]int
+	intervalRegLimit int
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.

@@ -74,6 +74,15 @@ func TestIntervalRegionRegisterPolicy(t *testing.T) {
 	}
 }
 
+func TestIntervalRegionRegisterLimitByBoundsMode(t *testing.T) {
+	if got, want := intervalRegionRegLimit(false), maxIntervalRegionRegs; got != want {
+		t.Fatalf("explicit-bounds register limit = %d, want %d", got, want)
+	}
+	if got, want := intervalRegionRegLimit(true), maxIntervalRegionRegs-1; got != want {
+		t.Fatalf("signals-bounds register limit = %d, want %d", got, want)
+	}
+}
+
 func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 	saved := intervalRegionPinsEnabled
 	defer func() { intervalRegionPinsEnabled = saved }()

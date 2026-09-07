@@ -203,13 +203,12 @@ short-run deltas stayed within -1.0% to +1.4%. No new unsafe operation, register
 or state transition is introduced: the change reaches the same eviction routine
 already used when all nine nominal slots are active.
 
-## AMD64 last-choice R8 lease
+## AMD64 explicit-bounds last-choice R8 lease
 
-The call-free, control-free, bulk-memory-free interval region can use R8 after
-the ordinary regional pool is exhausted. RAX, RCX, and RDX remain outside the
-pool for multiply, divide, shift, and return lowering; R8 is deliberately last
-because its encodings can require an extra REX prefix and calls and bulk-memory
-lowering reserve it as fixed scratch.
+In explicit-bounds mode, the call-free, control-free, bulk-memory-free interval
+region can use R8 after the ordinary regional pool is exhausted. RAX, RCX, and
+RDX remain outside the pool for multiply, divide, shift, and return lowering;
+R8 is deliberately last because its encodings can require an extra REX prefix.
 
 Eight focused samples per variant on the Ryzen host compared this policy with
 `9955179c`:
@@ -228,5 +227,12 @@ moved from 547,557 to 549,063 ns/op for blake-as (+0.28%) and from 1,486,591 to
 1,493,565 ns/op for BLAKE3 (+0.47%). Module native code grew from 11,245 to
 11,293 bytes (+0.43%) and from 31,554 to 32,194 bytes (+2.03%), remaining below
 the 10% phase ceiling. Pressure misses fell from 562 to 448 for blake-as and
-from 468 to 355 for BLAKE3. The native AMD64 backend suite and full semantic
-execution corpus passed before retention.
+from 468 to 355 for BLAKE3. The native AMD64 backend suite and full explicit-
+bounds semantic execution corpus passed before retention.
+
+The Windows AMD64 guard differential subsequently exposed the mode-specific
+resource conflict: signals-based bounds lowering still uses R8 as fixed scratch,
+and leasing it corrupted `blake-as.wasm.hashN`. Native AMD64 guard testing
+reproduced the same wrong result. The retained policy therefore caps the region
+at nine leases in signals mode and permits the tenth R8 lease only with explicit
+bounds; the focused speedups above measure that explicit-bounds configuration.

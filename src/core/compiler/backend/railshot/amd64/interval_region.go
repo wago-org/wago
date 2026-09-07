@@ -15,6 +15,15 @@ const (
 // scratch. Regional functions exclude those boundaries before this pool is used.
 var intervalRegionOrder = [...]Reg{R12, R13, R14, R15, R9, R10, R11, RBP, RDI, RSI, R8}
 
+func intervalRegionRegLimit(guardMode bool) int {
+	if guardMode {
+		// Signals-based bounds lowering uses R8 as fixed scratch even in a
+		// call-free region. Keep it out of the regional lease pool.
+		return maxIntervalRegionRegs - 1
+	}
+	return maxIntervalRegionRegs
+}
+
 func intervalRegionHintStorageEligible(enabled bool, bodyLen, nLocals int, moduleEH bool) bool {
 	return enabled && !moduleEH &&
 		bodyLen >= minIntervalRegionBody && bodyLen <= maxIntervalRegionBody &&
@@ -29,6 +38,7 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		len(hints.localScore) != f.nLocals || len(hints.localLastGet) != f.nLocals {
 		return false
 	}
+	f.intervalRegLimit = intervalRegionRegLimit(f.guardMode)
 
 	assigned := resizeRegScratch(f.tmpIntervalReg, f.nLocals)
 	f.tmpIntervalReg = assigned
@@ -107,7 +117,7 @@ func (f *fn) claimIntervalReg(x int) Reg {
 			active++
 		}
 	}
-	if active < maxIntervalRegionRegs {
+	if active < f.intervalRegLimit {
 		for _, reg := range intervalRegionOrder {
 			if !f.reserved.has(reg) && !f.pinned.has(reg) && !f.pinnedLocalMask.has(reg) &&
 				f.regUser[reg] == nil && f.intervalOwner[reg] < 0 {
