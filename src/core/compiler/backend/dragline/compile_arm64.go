@@ -1558,8 +1558,8 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 	var globalMemoryChecks [4]globalMemoryCheck
 	resetGlobalMemoryChecks := func() { clear(globalMemoryChecks[:]) }
 	resetMemoryChecks := func() {
-		for _, address := range memoryCheckTouched {
-			memoryCheckEnds[address] = 0
+		for _, slot := range memoryCheckTouched {
+			memoryCheckEnds[slot] = 0
 		}
 		memoryCheckTouched = memoryCheckTouched[:0]
 		resetGlobalMemoryChecks()
@@ -1588,17 +1588,28 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			}
 			return false
 		}
-		if memoryCheckEnds[address] >= end {
+		slot, ok := plan.MemoryCheckSlots.get(uint32(address))
+		if !ok {
+			return false
+		}
+		if memoryCheckEnds[slot] >= end {
 			if metrics != nil {
 				metrics.BoundsChecksReused++
 			}
 			return true
 		}
-		if memoryCheckEnds[address] == 0 {
-			memoryCheckTouched = append(memoryCheckTouched, address)
+		if memoryCheckEnds[slot] == 0 {
+			memoryCheckTouched = append(memoryCheckTouched, slot)
 		}
-		memoryCheckEnds[address] = end
+		memoryCheckEnds[slot] = end
 		return false
+	}
+	memoryCheckEnd := func(address railmach.VReg) uint64 {
+		slot, ok := plan.MemoryCheckSlots.get(uint32(address))
+		if !ok {
+			return 0
+		}
+		return memoryCheckEnds[slot]
 	}
 	var pendingSpill railmach.VReg
 	helperOrdinal := uint32(0)
@@ -4909,7 +4920,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				// check across a store, call, or trapping instruction.
 				if !combinedBounds && cacheMemoryLimit && !store && !chainFirst && !chainSecond && !preIndex &&
 					!railMachElidesMemoryBoundsCheck(plan, instructionID) && scheduleIndex+1 < len(blockOrder) &&
-					memoryCheckEnds[operands[0].Reg] < end && !arm64RailMachHasSpecialMemoryEmission(plan, instructionID) {
+					memoryCheckEnd(operands[0].Reg) < end && !arm64RailMachHasSpecialMemoryEmission(plan, instructionID) {
 					nextID := blockOrder[scheduleIndex+1]
 					next := plan.Machine.Insts[nextID]
 					nextSize, _, nextStore, nextMemory := nativeMemoryAccess(next.Op)
@@ -4920,7 +4931,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					nextSkipped := nextSwarSkipped || idempotentFloatTail && nextID >= idempotentFloatStart && nextID < idempotentFloatEnd || skipInstruction[nextID] ||
 						nextResult != 0 && plan.Machine.VRegs[nextResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[nextID]
 					if nextMemory && !nextStore && !nextSkipped && len(nextOperands) != 0 && nextOperands[0].Reg != operands[0].Reg && nextEnd == end &&
-						!railMachElidesMemoryBoundsCheck(plan, nextID) && memoryCheckEnds[nextOperands[0].Reg] < nextEnd &&
+						!railMachElidesMemoryBoundsCheck(plan, nextID) && memoryCheckEnd(nextOperands[0].Reg) < nextEnd &&
 						!arm64RailMachHasSpecialMemoryEmission(plan, nextID) &&
 						plan.Allocation.LocationAt(operands[0].Reg, currentPosition).Kind == railmach.LocationRegister &&
 						plan.Allocation.LocationAt(nextOperands[0].Reg, currentPosition).Kind == railmach.LocationRegister {

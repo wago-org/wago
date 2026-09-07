@@ -347,6 +347,15 @@ the performance corpus.
   and 88,800 to 68,960 bytes. Six alternating serialized SQLite public
   compiles are compile-wall neutral (+0.04% median) while median allocation
   volume falls by about 63 KiB/op.
+- Unique-address bounds-cache slots: ✅ finalization retains a compact O(1)
+  VReg-to-slot relation and one 64-bit bound only for each distinct selected
+  memory address, using already-dead immediate scratch to assign slots. Two
+  accesses through the same address are covered explicitly. SQLite, Lua, and
+  regexmatch remain byte-identical while peak compiler-owned storage falls by
+  52,106, 10,264, and 67,112 bytes; their bounds categories fall from 76,276
+  to 24,170, 15,456 to 5,192, and 94,872 to 27,760 bytes. Six alternating
+  serialized SQLite public compiles remain within +0.40% median wall noise,
+  while median allocation volume falls by about 176 KiB/op.
 - Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
   bounded initial schedule candidate's realized post-allocation spill debt,
   physical copies, copy cycles, copy motion, fixed repairs, broken fusions,

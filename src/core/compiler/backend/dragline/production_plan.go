@@ -97,8 +97,9 @@ type nativeBackendPlan struct {
 	BranchPatches       []nativeBranchPatch
 	ConditionalPatches  []nativeBranchPatch
 	ColdTrapPatches     []nativeBranchPatch
+	MemoryCheckSlots    nativeDenseRelation
 	MemoryCheckEnds     []uint64
-	MemoryCheckTouched  []railmach.VReg
+	MemoryCheckTouched  []uint32
 	PostRAPairWith      nativeInstructionRelation
 	PostRASkip          []bool
 	PostRAForwardFrom   nativeInstructionRelation
@@ -123,55 +124,59 @@ type nativeBranchPatch struct {
 	Code   uint8
 }
 
-// nativeInstructionRelation stores one optional instruction identity per
-// instruction. Ordinary functions use 16-bit identities; functions too large
-// for the zero-reserving encoding retain the full 32-bit representation.
-type nativeInstructionRelation struct {
+// nativeDenseRelation stores one optional uint32 identity per dense key.
+// Ordinary functions use 16-bit identities; functions too large for the
+// zero-reserving encoding retain the full 32-bit representation.
+type nativeDenseRelation struct {
 	narrow []uint16
 	wide   []uint32
 }
 
-func (r *nativeInstructionRelation) prepare(instructions int, needed bool) {
+// Most users relate machine instructions. Retain the specific alias so plan
+// fields document that contract while bounds-cache slots can key by VReg.
+type nativeInstructionRelation = nativeDenseRelation
+
+func (r *nativeDenseRelation) prepare(keys int, needed bool) {
 	if !needed {
 		r.narrow = r.narrow[:0]
 		r.wide = r.wide[:0]
 		return
 	}
-	if instructions <= int(^uint16(0)) {
+	if keys <= int(^uint16(0)) {
 		r.wide = nil
-		r.narrow = resizeNativeSlice(r.narrow, instructions)
+		r.narrow = resizeNativeSlice(r.narrow, keys)
 		clear(r.narrow)
 		return
 	}
 	r.narrow = nil
-	r.wide = resizeNativeSlice(r.wide, instructions)
+	r.wide = resizeNativeSlice(r.wide, keys)
 	clear(r.wide)
 }
 
-func (r *nativeInstructionRelation) set(instruction, related uint32) {
+func (r *nativeDenseRelation) set(key, related uint32) {
 	if len(r.narrow) != 0 {
-		r.narrow[instruction] = uint16(related + 1)
+		r.narrow[key] = uint16(related + 1)
 		return
 	}
-	r.wide[instruction] = related + 1
+	r.wide[key] = related + 1
 }
 
-func (r nativeInstructionRelation) get(instruction uint32) (uint32, bool) {
+func (r nativeDenseRelation) get(key uint32) (uint32, bool) {
 	var encoded uint32
-	if int(instruction) < len(r.narrow) {
-		encoded = uint32(r.narrow[instruction])
-	} else if int(instruction) < len(r.wide) {
-		encoded = r.wide[instruction]
+	if int(key) < len(r.narrow) {
+		encoded = uint32(r.narrow[key])
+	} else if int(key) < len(r.wide) {
+		encoded = r.wide[key]
 	}
 	return encoded - 1, encoded != 0
 }
 
-func (r nativeInstructionRelation) has(instruction uint32) bool {
-	_, ok := r.get(instruction)
+func (r nativeDenseRelation) has(key uint32) bool {
+	_, ok := r.get(key)
 	return ok
 }
 
-func (r nativeInstructionRelation) capacityBytes() uint64 {
+func (r nativeDenseRelation) capacityBytes() uint64 {
 	return sliceBytes(r.narrow) + sliceBytes(r.wide)
 }
 
@@ -220,8 +225,9 @@ type nativeBackendPlanner struct {
 	branchPatches       []nativeBranchPatch
 	conditionalPatches  []nativeBranchPatch
 	coldTrapPatches     []nativeBranchPatch
+	memoryCheckSlots    nativeDenseRelation
 	memoryCheckEnds     []uint64
-	memoryCheckTouched  []railmach.VReg
+	memoryCheckTouched  []uint32
 	postRAPairWith      nativeInstructionRelation
 	postRASkip          []bool
 	postRAForwardFrom   nativeInstructionRelation
@@ -450,7 +456,7 @@ func (p *nativeBackendPlanner) nativeCapacityBreakdown() NativePlannerCapacityBr
 	}
 	return NativePlannerCapacityBreakdown{
 		ControlFlow: sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches),
-		Bounds:      sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.amd64MemoryBounds),
+		Bounds:      p.memoryCheckSlots.capacityBytes() + sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.amd64MemoryBounds),
 		PostRA:      p.postRAPairWith.capacityBytes() + sliceBytes(p.postRASkip) + p.postRAForwardFrom.capacityBytes() + p.postRAFusionWith.capacityBytes() + p.postRAMemoryFrom.capacityBytes() + p.postRARepeatFirst.capacityBytes() + sliceBytes(p.postRAPreIndex) + p.postRAPostIndexWith.capacityBytes(),
 		Immediates:  p.immediateProducer.capacityBytes() + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses),
 		GC:          sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.gcValues),
@@ -2148,18 +2154,30 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	p.coldTrapPatches = p.coldTrapPatches[:0]
 	p.memoryCheckEnds = p.memoryCheckEnds[:0]
 	p.memoryCheckTouched = p.memoryCheckTouched[:0]
+	p.memoryCheckSlots.prepare(len(machine.VRegs), len(machine.Memory) != 0)
 	if len(machine.Memory) != 0 {
-		p.memoryCheckEnds = resizeNativeSlice(p.memoryCheckEnds, len(machine.VRegs))
+		// Immediate-use scratch is dead after edge rematerialization and GC
+		// analysis. Reuse it to assign one dense bounds-cache slot to each
+		// distinct memory address without retaining another VReg-sized slab.
+		clear(p.immediateUses)
+		uniqueAddresses := 0
+		for index := range machine.Memory {
+			address := machine.Memory[index].AddressValue
+			if p.immediateUses[address] == 0 {
+				uniqueAddresses++
+				p.immediateUses[address] = uint32(uniqueAddresses)
+				p.memoryCheckSlots.set(uint32(address), uint32(uniqueAddresses-1))
+			}
+		}
+		p.memoryCheckEnds = resizeNativeSlice(p.memoryCheckEnds, uniqueAddresses)
 		clear(p.memoryCheckEnds)
-		// Only selected memory instructions can add an address to the active bounds
-		// cache. Size this scratch from its exact sparse descriptor set rather than
-		// retaining one VReg slot for every machine instruction in the function.
-		p.memoryCheckTouched = resizeNativeSlice(p.memoryCheckTouched, len(machine.Memory))[:0]
+		p.memoryCheckTouched = resizeNativeSlice(p.memoryCheckTouched, uniqueAddresses)[:0]
 	}
 	p.plan.BlockOffsets = p.blockOffsets
 	p.plan.BranchPatches = p.branchPatches
 	p.plan.ConditionalPatches = p.conditionalPatches
 	p.plan.ColdTrapPatches = p.coldTrapPatches
+	p.plan.MemoryCheckSlots = p.memoryCheckSlots
 	p.plan.MemoryCheckEnds = p.memoryCheckEnds
 	p.plan.MemoryCheckTouched = p.memoryCheckTouched
 	if _, err := railmach.SelectTargetOpcodes(machine); err != nil {

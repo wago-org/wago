@@ -1268,22 +1268,26 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	memoryCheckEnds := plan.MemoryCheckEnds
 	memoryCheckTouched := plan.MemoryCheckTouched[:0]
 	resetMemoryChecks := func() {
-		for _, address := range memoryCheckTouched {
-			memoryCheckEnds[address] = 0
+		for _, slot := range memoryCheckTouched {
+			memoryCheckEnds[slot] = 0
 		}
 		memoryCheckTouched = memoryCheckTouched[:0]
 	}
 	memoryChecked := func(address railmach.VReg, end uint64) bool {
-		if memoryCheckEnds[address] >= end {
+		slot, ok := plan.MemoryCheckSlots.get(uint32(address))
+		if !ok {
+			return false
+		}
+		if memoryCheckEnds[slot] >= end {
 			if metrics != nil {
 				metrics.BoundsChecksReused++
 			}
 			return true
 		}
-		if memoryCheckEnds[address] == 0 {
-			memoryCheckTouched = append(memoryCheckTouched, address)
+		if memoryCheckEnds[slot] == 0 {
+			memoryCheckTouched = append(memoryCheckTouched, slot)
 		}
-		memoryCheckEnds[address] = end
+		memoryCheckEnds[slot] = end
 		return false
 	}
 	var pendingSpill railmach.VReg

@@ -299,8 +299,8 @@ func TestNativeBackendPlannerBuildsCompleteRailMachProduct(t *testing.T) {
 	if len(plan.Machine.Memory) != 0 {
 		t.Fatalf("non-memory function has %d memory descriptors", len(plan.Machine.Memory))
 	}
-	if cap(planner.memoryCheckEnds) != 0 || cap(planner.memoryCheckTouched) != 0 {
-		t.Fatalf("non-memory function retained bounds scratch: ends=%d touched=%d", cap(planner.memoryCheckEnds), cap(planner.memoryCheckTouched))
+	if planner.memoryCheckSlots.capacityBytes() != 0 || cap(planner.memoryCheckEnds) != 0 || cap(planner.memoryCheckTouched) != 0 {
+		t.Fatalf("non-memory function retained bounds scratch: slots=%d ends=%d touched=%d", planner.memoryCheckSlots.capacityBytes(), cap(planner.memoryCheckEnds), cap(planner.memoryCheckTouched))
 	}
 	if err := railmach.VerifyAllocation(plan.Machine, &plan.Allocation.Allocation, railmach.DefaultLinearQConfig(plan.Machine.Target)); err != nil {
 		t.Fatal(err)
@@ -315,7 +315,7 @@ func TestNativeBackendPlannerBuildsCompleteRailMachProduct(t *testing.T) {
 	t.Logf("RailSSA retained capacity: %#v", breakdown)
 }
 
-func TestNativeBackendPlannerSizesMemoryCheckScratchFromSparseAccesses(t *testing.T) {
+func TestNativeBackendPlannerSizesMemoryCheckScratchFromUniqueAddresses(t *testing.T) {
 	body := []byte{0x20, 0x00, 0x41, 0x01, 0x6a, 0x1a, 0x20, 0x00, 0x28, 0x02, 0x00, 0x1a, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b}
 	source := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
@@ -346,8 +346,13 @@ func TestNativeBackendPlannerSizesMemoryCheckScratchFromSparseAccesses(t *testin
 	if len(plan.Machine.Memory) != 2 || len(plan.Machine.Insts) <= len(plan.Machine.Memory) {
 		t.Fatalf("machine instructions/accesses = %d/%d", len(plan.Machine.Insts), len(plan.Machine.Memory))
 	}
-	if got, want := cap(planner.memoryCheckTouched), len(plan.Machine.Memory); got != want {
-		t.Fatalf("memory-check scratch capacity = %d, want sparse access count %d", got, want)
+	if got, want := cap(planner.memoryCheckTouched), 1; got != want || cap(planner.memoryCheckEnds) != want {
+		t.Fatalf("memory-check scratch capacity = touched:%d ends:%d, want unique address count %d", got, cap(planner.memoryCheckEnds), want)
+	}
+	firstSlot, firstOK := plan.MemoryCheckSlots.get(uint32(plan.Machine.Memory[0].AddressValue))
+	secondSlot, secondOK := plan.MemoryCheckSlots.get(uint32(plan.Machine.Memory[1].AddressValue))
+	if !firstOK || !secondOK || firstSlot != secondSlot {
+		t.Fatalf("memory-check slots = %d/%t and %d/%t, want one shared slot", firstSlot, firstOK, secondSlot, secondOK)
 	}
 	if cap(planner.deadGCReservations) != 0 || cap(planner.noBarrierGCStores) != 0 {
 		t.Fatalf("non-GC function retained GC scratch: reservations=%d barriers=%d", cap(planner.deadGCReservations), cap(planner.noBarrierGCStores))
