@@ -335,12 +335,13 @@ func readCorpus(includeISA bool) []corpusEntry {
 			if mod.Path != "" {
 				path = mod.Path
 			}
+			name := strings.TrimSuffix(filepath.Base(path), ".wasm")
 			var b int64
 			if fi, err := os.Stat(path); err == nil {
 				b = fi.Size()
 			}
 			out = append(out, corpusEntry{
-				Name:     strings.TrimSuffix(mod.File, ".wasm"),
+				Name:     name,
 				Category: mod.Category, Bytes: b,
 			})
 		}
