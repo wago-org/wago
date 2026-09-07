@@ -2251,6 +2251,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 	localScores := make([]uint32, totalScores)
 	localLastGets := make([]uint32, intervalLocals)
 	localEventMeta := make([]uint32, intervalFunctions*2)
+	residencyShadow := make([]shared.ResidencyShadowEntry, 0, intervalFunctions)
 	var sparseGlobals []shared.GlobalHint
 	var sparseAccum shared.GlobalHintAccumulator
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
@@ -2296,6 +2297,10 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 			localEventMeta[intervalEventAt] = h.localStart
 			localEventMeta[intervalEventAt+1] = h.localEventMeta
 			intervalEventAt += 2
+			residencyShadow = append(residencyShadow, shared.ResidencyShadowEntry{
+				LocalStart: h.localStart,
+				Summary:    shared.PlanResidencyShadow(localEvents.Events, nLocals, maxIntervalRegionRegs, localEvents.Overflow),
+			})
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.flags.assign(hintIntervalRegionStorage, intervalStorage)
@@ -2322,8 +2327,9 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		localScores = compactEHLocalScores(allHints, localScores)
 		localLastGets = nil
 		localEventMeta = nil
+		residencyShadow = nil
 	}
-	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, localEventMeta: localEventMeta, sparseGlobals: sparseGlobals}, agg, nil
+	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, localEventMeta: localEventMeta, sparseGlobals: sparseGlobals, residencyShadow: residencyShadow}, agg, nil
 }
 
 // compactEHLocalScores drops interval-only storage when a tagless try_table or
@@ -2896,6 +2902,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if !pinLocals {
 		fpPinLimit = 0
 	}
+	f.noteResidencyEvents(hints)
 	intervalRegion := pinLocals && regABI && !hasCall && !hints.flags.has(hintHasControlFlow) && !hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
 	if intervalRegion {
 		gpPool = nil // regional GP assignments supersede whole-function GP pins

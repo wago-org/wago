@@ -99,3 +99,21 @@ memory on both target workloads. The reusable tape starts with a measured 1,152-
 event reservation and grows only when a function requires it; the hard cap stays
 32,768. The event tape is guidance-only at this stage and cannot affect generated
 code.
+
+## Shadow-planner qualification
+
+The allocation-free shadow planner reports:
+
+| Workload | Candidates | Versions/segments | Profitable | Reads/defines | Loads avoided | Pressure debt | Max live | Fail-soft |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| blake-as | 37 | 476 | 474 | 601 / 470 | 595 | 17,642 | 37 | 0 |
+| blake3 | 37 | 469 | 467 | 580 / 464 | 575 | 18,430 | 37 | 0 |
+
+The high overlap debt and 37 simultaneously interesting locals explain why the
+current 18-register ARM64 lease pool sees pressure misses despite few dirty
+writebacks. These are shadow estimates, not runtime savings.
+
+Six alternating 300 ms compilation pairs against `a07de097` produced median
+deltas of +3.50% for blake-as and +1.23% for BLAKE3. Heap deltas remain +10.7%
+and +6.5%, with three additional allocations and identical native code sizes.
+This remains within the phase ceilings.

@@ -43,6 +43,9 @@ func TestIntervalRegionDynamicReuse(t *testing.T) {
 	if r := on.Residency; r.Events == 0 || r.EventOverflows != 0 || r.Candidates != 20 || r.Activations == 0 || r.MaxActive == 0 || r.MaxActive > maxIntervalRegionRegs || r.FinalTransfers == 0 {
 		t.Fatalf("residency stats = %+v", r)
 	}
+	if p := on.Residency.Shadow; p.Candidates == 0 || p.Segments == 0 || p.FailSoft != 0 {
+		t.Fatalf("residency shadow = %+v", p)
+	}
 
 	intervalRegionPinsEnabled = false
 	if got := runAmd64(t, m); got != 210 {

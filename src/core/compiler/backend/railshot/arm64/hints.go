@@ -12,7 +12,8 @@ import (
 func funcHintStorageBytes(hints []funcHints, sidecar funcHintSidecar) (headers, sidecars uint64) {
 	headers = uint64(cap(hints)) * uint64(unsafe.Sizeof(funcHints{}))
 	sidecars = uint64(cap(sidecar.localScore)+cap(sidecar.localLastGet)+cap(sidecar.localEventMeta))*uint64(unsafe.Sizeof(uint32(0))) +
-		uint64(cap(sidecar.sparseGlobals))*uint64(unsafe.Sizeof(shared.GlobalHint{}))
+		uint64(cap(sidecar.sparseGlobals))*uint64(unsafe.Sizeof(shared.GlobalHint{})) +
+		uint64(cap(sidecar.residencyShadow))*uint64(unsafe.Sizeof(shared.ResidencyShadowEntry{}))
 	return
 }
 
@@ -113,6 +114,7 @@ type funcHintView struct {
 	sparseGlobals    []shared.GlobalHint
 	localEvents      *shared.LocalEventTape // scan-only, never copied into funcHints
 	localEventMeta   uint32                 // reconstructed from the sparse sidecar
+	residencyShadow  shared.ResidencyShadowSummary
 }
 
 type funcHintSidecar struct {
@@ -120,6 +122,7 @@ type funcHintSidecar struct {
 	localLastGet           []uint32
 	sparseGlobals          []shared.GlobalHint
 	localEventMeta         []uint32 // ordered localStart, packed event summary pairs
+	residencyShadow        []shared.ResidencyShadowEntry
 	localLastGetRangeCount uint32
 }
 
@@ -162,13 +165,15 @@ func (s funcHintSidecar) view(h funcHints) funcHintView {
 	globalStart := int(h.globalStart)
 	globalEnd := globalStart + int(h.globalCount)
 	eventMeta := shared.FindLocalEventMeta(s.localEventMeta, h.localStart)
+	shadow := shared.FindResidencyShadow(s.residencyShadow, h.localStart)
 	return funcHintView{
-		funcHints:      h,
-		nLocals:        nLocals,
-		localScore:     s.localScore[localStart:localEnd],
-		localLastGet:   localLastGet,
-		sparseGlobals:  s.sparseGlobals[globalStart:globalEnd],
-		localEventMeta: eventMeta,
+		funcHints:       h,
+		nLocals:         nLocals,
+		localScore:      s.localScore[localStart:localEnd],
+		localLastGet:    localLastGet,
+		sparseGlobals:   s.sparseGlobals[globalStart:globalEnd],
+		localEventMeta:  eventMeta,
+		residencyShadow: shadow,
 	}
 }
 

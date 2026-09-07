@@ -14,10 +14,11 @@ type ResidencyStats struct {
 	DirtyWritebacks int
 	FinalTransfers  int
 	MaxActive       int
+	Shadow          ResidencyShadowSummary
 }
 
 // Active reports whether any residency event was observed.
 func (s ResidencyStats) Active() bool {
 	return s.Events|s.EventOverflows|s.Candidates|s.Activations|s.ActivationLoads|s.PressureMisses|
-		s.Evictions|s.DirtyWritebacks|s.FinalTransfers|s.MaxActive != 0
+		s.Evictions|s.DirtyWritebacks|s.FinalTransfers|s.MaxActive != 0 || s.Shadow.Active()
 }

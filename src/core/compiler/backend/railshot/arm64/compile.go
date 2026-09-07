@@ -1942,6 +1942,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	}
 	localLastGets := make([]uint32, lastGetCount)
 	localEventMeta := make([]uint32, intervalFunctions*2)
+	residencyShadow := make([]shared.ResidencyShadowEntry, 0, intervalFunctions)
 	var sparseGlobals []shared.GlobalHint
 	var sparseAccum shared.GlobalHintAccumulator
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
@@ -1994,6 +1995,10 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 			localEventMeta[intervalEventAt] = h.localStart
 			localEventMeta[intervalEventAt+1] = h.localEventMeta
 			intervalEventAt += 2
+			residencyShadow = append(residencyShadow, shared.ResidencyShadowEntry{
+				LocalStart: h.localStart,
+				Summary:    shared.PlanResidencyShadow(localEvents.Events, nLocals, maxIntervalRegionRegs, localEvents.Overflow),
+			})
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs
@@ -2022,12 +2027,14 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		localScores = compactEHLocalScores(allHints, localScores)
 		localLastGets = nil
 		localEventMeta = nil
+		residencyShadow = nil
 		intervalRangeAt = 0
 	}
 	return allHints, funcHintSidecar{
 		localScore:             localScores,
 		localLastGet:           localLastGets,
 		localEventMeta:         localEventMeta,
+		residencyShadow:        residencyShadow,
 		sparseGlobals:          sparseGlobals,
 		localLastGetRangeCount: uint32(intervalRangeAt / 2),
 	}, agg, nil
@@ -2518,6 +2525,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		globalHints = hints.sparseGlobals
 	}
 	f.installModuleGlobals(modGlobals)
+	f.noteResidencyEvents(hints)
 	intervalRegion := pinLocals && regABI && !hasCall && !hints.flags.has(hintHasControlFlow) &&
 		!hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
 	if intervalRegion {

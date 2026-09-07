@@ -687,6 +687,12 @@ has parity status summarized below. Landed, in rough order:
   capped at 32,768 events, and overflow falls back to coarse hints. Only a sparse
   event-count summary is retained; per-function hint headers and emitted code remain
   unchanged.
+- **Shadow regional-residency planner** — an allocation-free bounded pass over
+  the local event tape ranks at most 48 GP candidates and splits exact local
+  versions at definitions, calls, and structured boundaries. It records projected
+  avoided loads, synchronization and pressure debt, profitable segments, and
+  fail-soft cap exhaustion in a sparse sidecar. The summary is telemetry-only and
+  cannot influence lowering.
 
 ### Bounds checks and traps
 - **Guard-page mode** (old P5) is first-class behind `-tags wago_guardpage` and is the
