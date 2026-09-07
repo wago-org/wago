@@ -218,7 +218,7 @@ function buildCorpusTabs(sets) {
       if (!APPLICATION_CORPUS.has(name)) continue;
       if (seenModules.has(name)) continue;
       seenModules.add(name);
-      modules.push({ name, category: info.category || "other" });
+      modules.push({ name, category: name === "wasm3" ? "real-large" : info.category || "other" });
     }
   }
   const categoryLabels = new Map([
