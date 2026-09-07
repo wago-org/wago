@@ -93,7 +93,6 @@ func pluginCorpus(tb testing.TB) []corpusModule {
 
 func compilePluginCorpus(tb testing.TB, m corpusModule, stdin io.Reader) (*wago.Runtime, *wago.Module, func()) {
 	tb.Helper()
-	provider := emscripten.Provider()
 	// Provider internals deliberately aren't exported. Redirect process streams
 	// only while the provider is constructed, then restore them immediately.
 	oldStdin, oldStdout, oldStderr := os.Stdin, os.Stdout, os.Stderr
@@ -114,12 +113,20 @@ func compilePluginCorpus(tb testing.TB, m corpusModule, stdin io.Reader) (*wago.
 		tb.Fatal(err)
 	}
 	os.Stdin, os.Stdout, os.Stderr = inputFile, devnull, devnull
-	provider = emscripten.Provider()
+	restored := false
+	restoreStreams := func() {
+		if !restored {
+			os.Stdin, os.Stdout, os.Stderr = oldStdin, oldStdout, oldStderr
+			restored = true
+		}
+	}
+	defer restoreStreams()
+	provider := emscripten.Provider()
 	rt := wago.NewRuntime(wago.WithGuestArguments(pluginArgs(m.name())))
 	if err := rt.LoadPlugins(context.Background(), pluginSet(tb, provider)); err != nil {
 		tb.Fatal(err)
 	}
-	os.Stdin, os.Stdout, os.Stderr = oldStdin, oldStdout, oldStderr
+	restoreStreams()
 	_ = os.Remove(inputFile.Name())
 	compiled, err := rt.Compile(m.bytes)
 	if err != nil {
