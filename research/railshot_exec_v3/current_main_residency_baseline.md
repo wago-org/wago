@@ -117,3 +117,22 @@ Six alternating 300 ms compilation pairs against `a07de097` produced median
 deltas of +3.50% for blake-as and +1.23% for BLAKE3. Heap deltas remain +10.7%
 and +6.5%, with three additional allocations and identical native code sizes.
 This remains within the phase ceilings.
+
+## Rejected active-policy experiments
+
+Two default-off ARM64 experiments consumed the event tape and were removed after
+measurement:
+
+1. Per-version final-read ownership transfer was approximately flat on blake-as
+   but made BLAKE3 about 14% slower.
+2. Restricting the policy to farthest-next-use admission and eviction made
+   blake-as about 18% slower and BLAKE3 about 46% slower across six alternating
+   400 ms pairs.
+
+The second form also reduced calls completed per benchmark batch, corroborating
+the latency regression. The full ARM64 instruction corpus passed after a
+fail-soft stale-lease repair, so correctness was not the reason for rejection.
+The result instead shows that next-use distance alone is a poor proxy for
+physical cost: it ignores dirty-home writes, expression-tree register demand,
+and the benefit of keeping stable working-state locals resident. No code or
+optimization flag from either rejected experiment remains on the branch.

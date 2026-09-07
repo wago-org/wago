@@ -11,8 +11,10 @@ Implementation progress:
 - [x] Add the bounded local event tape without changing emitted code.
 - [x] Add an allocation-free, fail-soft shadow residency planner without
   changing emitted code.
-- [ ] Activate versioned local leases behind an optimization flag and qualify
-  them against the full corpus.
+- [x] Reject naive version-final transfer and Belady-style next-use eviction:
+  both regressed BLAKE materially and were removed rather than left dormant.
+- [ ] Design the next active lease policy around dirty-home cost and transient
+  expression pressure, then qualify it against the full corpus.
 
 Source: [shared Railshot Design conversation](https://chatgpt.com/share/6a9f2829-4380-83e8-b5ac-b9747c326b95).
 
