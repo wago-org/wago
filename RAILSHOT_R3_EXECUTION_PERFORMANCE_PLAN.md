@@ -18,6 +18,9 @@ Implementation progress:
   configuration.
 - [x] Make AMD64 admission use its existing score-gated eviction path when the
   nominal ninth lease is unavailable; validate on native AMD64.
+- [x] Admit R8 as AMD64's last-choice tenth regional lease only in the existing
+  call-free, control-free, bulk-memory-free region; retain it after semantic,
+  code-size, compile-resource, and full-corpus qualification.
 - [ ] Design the next active lease policy around dirty-home cost and transient
   expression pressure, then qualify it against the full corpus.
 

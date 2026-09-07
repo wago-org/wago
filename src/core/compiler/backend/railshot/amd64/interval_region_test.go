@@ -55,6 +55,25 @@ func TestIntervalRegionDynamicReuse(t *testing.T) {
 	}
 }
 
+func TestIntervalRegionRegisterPolicy(t *testing.T) {
+	if len(intervalRegionOrder) < maxIntervalRegionRegs {
+		t.Fatalf("regional order has %d registers for limit %d", len(intervalRegionOrder), maxIntervalRegionRegs)
+	}
+	if got := intervalRegionOrder[len(intervalRegionOrder)-1]; got != R8 {
+		t.Fatalf("last-choice regional register = %v, want R8", got)
+	}
+	var seen regMask
+	for _, reg := range intervalRegionOrder {
+		if reg == RAX || reg == RCX || reg == RDX {
+			t.Fatalf("fixed arithmetic register %v is regionally leased", reg)
+		}
+		if seen.has(reg) {
+			t.Fatalf("regional register %v appears more than once", reg)
+		}
+		seen = seen.add(reg)
+	}
+}
+
 func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 	saved := intervalRegionPinsEnabled
 	defer func() { intervalRegionPinsEnabled = saved }()

@@ -184,3 +184,31 @@ A three-pair, 46-workload screening run showed no material non-BLAKE regression;
 short-run deltas stayed within -1.0% to +1.4%. No new unsafe operation, register,
 or state transition is introduced: the change reaches the same eviction routine
 already used when all nine nominal slots are active.
+
+## AMD64 last-choice R8 lease
+
+The call-free, control-free, bulk-memory-free interval region can use R8 after
+the ordinary regional pool is exhausted. RAX, RCX, and RDX remain outside the
+pool for multiply, divide, shift, and return lowering; R8 is deliberately last
+because its encodings can require an extra REX prefix and calls and bulk-memory
+lowering reserve it as fixed scratch.
+
+Eight focused samples per variant on the Ryzen host compared this policy with
+`9955179c`:
+
+| Workload | Nine-lease median | R8 median | Delta |
+| --- | ---: | ---: | ---: |
+| blake-as | 667,059 ns/op | 663,017 ns/op | -0.61% |
+| BLAKE3 | 356,575 ns/op | 334,734 ns/op | -6.13% |
+
+Two opposite-order, three-sample full-corpus screens bracketed the 46-workload
+geometric mean between +0.11% and -1.05%. BLAKE3 remained 5.9-6.4% faster in
+both screens; short sub-50 ns microbenchmarks moved with run order.
+
+Compilation allocations and heap bytes were unchanged. Median compile latency
+moved from 547,557 to 549,063 ns/op for blake-as (+0.28%) and from 1,486,591 to
+1,493,565 ns/op for BLAKE3 (+0.47%). Module native code grew from 11,245 to
+11,293 bytes (+0.43%) and from 31,554 to 32,194 bytes (+2.03%), remaining below
+the 10% phase ceiling. Pressure misses fell from 562 to 448 for blake-as and
+from 468 to 355 for BLAKE3. The native AMD64 backend suite and full semantic
+execution corpus passed before retention.

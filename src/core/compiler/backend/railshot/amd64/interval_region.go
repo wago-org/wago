@@ -7,10 +7,13 @@ const (
 	minIntervalRegionLocals = 16
 	maxIntervalRegionBody   = 16 << 10
 	maxIntervalRegionLocals = 256
-	maxIntervalRegionRegs   = 9
+	maxIntervalRegionRegs   = 10
 )
 
-var intervalRegionOrder = [...]Reg{R12, R13, R14, R15, R9, R10, R11, RBP, RDI, RSI}
+// Keep R8 last: unlike RAX/RCX/RDX it has no unavoidable arithmetic role, but
+// its encoding costs a REX prefix and bulk-memory/call lowering uses it as fixed
+// scratch. Regional functions exclude those boundaries before this pool is used.
+var intervalRegionOrder = [...]Reg{R12, R13, R14, R15, R9, R10, R11, RBP, RDI, RSI, R8}
 
 func intervalRegionHintStorageEligible(enabled bool, bodyLen, nLocals int, moduleEH bool) bool {
 	return enabled && !moduleEH &&
