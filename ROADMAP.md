@@ -1,26 +1,33 @@
-# wago roadmap
+# Wago roadmap
 
-wago is a pure-Go (no cgo) single-pass WebAssembly engine — a from-scratch port
-of [WARP](https://github.com/wago-org/warp)'s design. Linux, macOS, and Windows
+Wago is a pure-Go, no-cgo, single-pass WebAssembly engine. It is a from-scratch
+port of [WARP](https://github.com/wago-org/warp)'s design. Linux, macOS, and Windows
 on amd64 and arm64 are supported. The amd64 backend uses a modern CPU baseline
 of SSSE3/SSE4.1/SSE4.2 plus AVX/VEX.128 XMM encodings; AVX2/FMA/VNNI remain
-outside the baseline and require explicit feature gates. This file tracks what
-works and what's next at a glance.
+outside the baseline and require explicit feature gates.
 
-Four companion docs go deeper:
+## Start here
+
+This file tracks completed work, active work, and longer-term ideas. For users,
+[FEATURES.md](FEATURES.md) is the source of truth for support on a selected
+build. For maintainers, use [Current work](#current-work-near-term) to find the
+active tracks. The later iteration sections are historical completion records;
+they keep the evidence behind current feature status.
+
+## Related files
+
+These documents give more detail:
 - [FEATURES.md](FEATURES.md) — the per-feature support matrix (source of truth for
   spec-feature status).
 - [OPTIMIZATIONS.md](OPTIMIZATIONS.md) — the optimization roadmap (what codegen work
   is landed / pending, and why).
-- [docs/no-ir-plan.md](docs/no-ir-plan.md) — the July 3, 2026 no-IR decision,
-  original P0–P8 plan, and its preserved design rationale. This roadmap is the
-  current source for priority and completion status.
-- [docs/wasm3.md](docs/wasm3.md) — the mandatory Core 3.0 implementation ledger,
-  official suite pin, measurements, platform gates, and recursive slices.
 
 Status: [x] done · 🚧 in progress · [ ] planned.
 
 ## Done
+
+This section is a summary of delivered capabilities. It is not a compatibility
+promise for every build; check [FEATURES.md](FEATURES.md) for exact support.
 
 **Full WebAssembly 1.0 (MVP).** The pinned pre-reference-types spec testsuite passes
 in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPECTEST.md)).
@@ -88,8 +95,9 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
 **Arm64 acceptance (done)**
 - [x] Parent/child corpus runner with hard per-case deadlines and explicit/guard/wazero outcomes
 - [x] Darwin/arm64 guard-page execution via synchronous SIGSEGV/SIGBUS context rewriting (Mach-port receiver avoided)
-- [x] Guard-page execution on all six native targets, including Darwin/amd64
-  signal-context rewriting and Windows vectored exception handling
+- [x] Guard-page execution on Linux/amd64, Linux/arm64, and Darwin/arm64.
+  All six native targets support explicit bounds; Darwin/amd64 and Windows use
+  explicit bounds rather than signal-backed guard pages.
 - [x] Verify json-as serialize/deserialize in explicit and guard modes and SQLite's
   recursive-CTE aggregate workload against committed goldens on Darwin/arm64
 - [x] Reference globals, heterogeneous indexed table operations, and nonzero-table
@@ -98,12 +106,11 @@ in full — 57/57 applicable files, 0 failing assertions (see [SPECTEST.md](SPEC
   exception handling, multi-memory, memory64, and table64, with a zero-gap complete
   official suite under Linux/arm64 QEMU and native Linux/Darwin arm64 CI gates
 
-## Next (near-term)
+## Current work (near-term)
 
-The no-IR decision and preserved phase designs are in
-**[docs/no-ir-plan.md](docs/no-ir-plan.md)**; this roadmap is authoritative for
-current optimization priorities. The Core 3.0 implementation ledger is
-**[docs/wasm3.md](docs/wasm3.md)**. Current tracks:
+This roadmap is authoritative for current optimization priorities. The lists
+keep completed items for context; look for 🚧 and [ ] to find work that remains.
+Current tracks:
 
 **WebAssembly 3.0** (primary conformance complete; product hardening continues)
 - [x] Pin and execute the complete official `WebAssembly/spec` `wg-3.0` corpus.
@@ -286,8 +293,8 @@ current optimization priorities. The Core 3.0 implementation ledger is
   zero interruption instrumentation in generated Wasm. Other targets retain
   function-entry and loop-header polls. Both Linux architectures return
   `context.Canceled`/`DeadlineExceeded`, and active-instance close uses the same
-  trap. Standard Go releases the P at the foreign boundary. TinyGo cancelable
-  calls require the threads scheduler. See `docs/linux-host-interrupt.md`.
+  trap. Standard Go releases the P at the foreign boundary. TinyGo release
+  builds use the safe `tasks` scheduler and reject cancelable native calls.
 - [x] Wasm-level trap source frames: generated cold edges report the logical
   function (including inlined callees) and an exact Wasm PC when a function has
   one site for that trap class. Shared multi-site stubs still report the
@@ -314,17 +321,17 @@ current optimization priorities. The Core 3.0 implementation ledger is
   selects TinyGo for the final link and strips the resulting native binary.
   Platform-sensitive codegen keeps both link paths native-target-only.
 
-## Verification & quality
+## Verification and quality
 
 - [ ] Differential oracle: fuzz modules, compare results/traps against C++ WARP (the
   off-path `src/core/compiler/ir` package is reserved as this oracle)
 - [ ] Byte-for-byte codegen diffing against WARP for shared inputs
 - [ ] Golden disassembly regression net (grows one golden per optimization from P1 on)
 
-## Bigger bets
+## Larger feature areas
 
-- [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1/SSE4.2 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates. Current metrics: [`docs/simd-performance-2026-07.md`](docs/simd-performance-2026-07.md).
-- [x] [Threads & atomics](docs/threads-atomics-plan.md) — bounded experimental
+- [x] SIMD (`v128`) — complete for the documented linux/amd64 SSSE3/SSE4.1/SSE4.2 + AVX/VEX.128 baseline: every decoded core SIMD opcode and deterministic relaxed SIMD opcode through 0xfd 275 is frontend-admitted, validator-admitted, and lowered by railshot; reserved proposal-table holes are invalid-decode tests. Public `[16]byte` (`wago.V128`) plumbing covers locals, params/results, control flow, globals, cross-instance imports, and host imports/results. The official SIMD proposal corpus passes via WABT `wast2json` (24,325 assertions, 0 skipped modules/assertions). Keep AVX2/FMA/VNNI optimizations behind future CPU gates.
+- [x] **Threads & atomics** — bounded experimental
   product on Linux/macOS amd64/arm64 with explicit bounds and one memory32;
   shared memory must be an exact-max import, while unshared memory can be local
   or imported. It includes true distinct-instance native overlap, the full classic
@@ -363,14 +370,15 @@ current optimization priorities. The Core 3.0 implementation ledger is
   mandatory native CI and release assets for all six targets.
 - [ ] wazero-compatible API shim for drop-in migration
 
-## Non-goals (for now)
+## Non-goals for now
 
 - An interpreter tier (supported modules execute as native code)
-- **An SSA / IR execution tier** — decided against 2026-07-03; railshot is the one and
-  only backend, and the ceiling is attacked incrementally instead
-  (see [docs/no-ir-plan.md](docs/no-ir-plan.md) §0)
+- **An SSA / IR execution tier** — decided against 2026-07-03; Railshot is the
+  only backend, and the ceiling is attacked incrementally instead.
 - Re-implementing WARP's linker/disassembler/fuzzer (WARP remains the external
   reference)
+
+## Historical milestones
 
 ### Iteration 72 boundary
 
@@ -542,18 +550,19 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   into the stable native head slot; repeated non-head writes improve 16.9% in the
   interleaved control. The 256K two-write fixture falls from 262,144 to 64 scanned
   slots while dense work remains within 3% of baseline.
-- [x] Generalize exact native-root admission: retain the one-word <=64-root path,
-  add two-word <=128-root masks and a bounded flat arena through 1,024 roots,
-  admit exact local starts, omit independently proven non-collecting functions,
-  share repeated immutable offset maps, and expose fail-closed diagnostics. The
-  one-root 16K-instruction compile benchmark improves 3.2% while temporary bytes
-  fall 18.6%; dense safepoint lookup remains about 1.66 ns, zero allocation.
+- [x] Historical wide-root phase: retain the one-word <=64-root path, add
+  two-word <=128-root masks and a bounded flat arena through 1,024 roots, admit
+  exact local starts, omit independently proven non-collecting functions, share
+  repeated immutable offset maps, and expose fail-closed diagnostics. This was
+  not a permanent semantic ceiling; the following per-site-liveness work removes
+  it. The one-root 16K-instruction compile benchmark improves 3.2% while
+  temporary bytes fall 18.6%; dense safepoint lookup remains about 1.66 ns, zero
+  allocation.
 - [x] Base large-frame admission on per-site liveness: track the configured local
   population, compact locals dead at every collection point, and emit variable-size
   exact root vectors. Function parameters plus declared locals default to 65,535;
   lower configured admission limits remain available, and the native 256 KiB stack
-  fence remains independent. See
-  [`docs/function-local-limits.md`](docs/function-local-limits.md).
+  fence remains independent.
 - [x] Add bounded Throughput survivor aging: Eden feeds two bump-copy semispaces,
   handle-owned age bits retain the 20-byte native entry, medium-lived objects
   tenure after measured survival, and large young objects age in place. Exact
@@ -578,6 +587,3 @@ snapshot roots, then completes signal-backed and broader native-platform parity.
   frame extension: 404-slot reference constructors retain exact initializer
   roots, AMD64/ARM64 share the u16 check, codec reload recomputes capacity, and
   ordinary modules retain the 64-slot inline frame and unchanged `Compiled` size.
-
-Measured details and regression coverage are in
-[`docs/wasm3-hardening-2026-08.md`](docs/wasm3-hardening-2026-08.md).

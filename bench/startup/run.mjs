@@ -3,9 +3,8 @@
 //
 // Times the whole process (exec → load → compile → instantiate → run _start →
 // exit) for each committed work-twin in bench/startup/twins/ across every
-// runtime in runtimes.json, using hyperfine (cold caches, same knobs the
-// website panels were first measured with). See skills/startup-latency-bench
-// for the methodology and how the twins are built.
+// runtime in runtimes.json, using hyperfine with cold caches and the settings
+// recorded in bench/startup/README.md.
 //
 // A runtime whose binary isn't on PATH (nor via its *_BIN env override) is
 // skipped with a warning, so the sweep still produces a partial dataset on a

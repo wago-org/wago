@@ -212,8 +212,8 @@ const (
 	// default; needs no signal handler.
 	BoundsChecksExplicit BoundsCheckMode = iota
 	// BoundsChecksSignalsBased elides eligible memory-0 memory32 checks and relies
-	// on a guard-page mapping plus a SIGSEGV/SIGBUS handler (see
-	// docs/guardpage-spike.md). Indexed nonzero memories and memory64 retain
+	// on a guard-page mapping plus a SIGSEGV/SIGBUS handler. Indexed nonzero
+	// memories and memory64 retain
 	// explicit checks. The mode is faster on memory-heavy code, but installs
 	// process-wide signal handlers and requires a `wago_guardpage` build.
 	BoundsChecksSignalsBased

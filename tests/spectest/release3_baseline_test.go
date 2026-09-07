@@ -122,10 +122,6 @@ func TestRelease3DocumentationMatchesCommittedBaseline(t *testing.T) {
 		"../../FEATURES.md",
 		"../../ROADMAP.md",
 		"../../VERIFICATION.md",
-		"../../docs/gc.md",
-		"../../docs/runtime-abi.md",
-		"../../docs/spec-testing.md",
-		"../../docs/wasm3.md",
 	} {
 		doc, err := os.ReadFile(filepath.Clean(path))
 		if err != nil {

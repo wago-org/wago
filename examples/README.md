@@ -1,34 +1,33 @@
 # wago examples
 
-Runnable, self-contained examples of the wago API — from running a single module
-to building capability-authorized plugins. Each example is a small `main.go`
-you can run directly:
+These runnable, self-contained programs teach the wago Go API. Start with one
+module, then move to host functions, memory, and plugins. Each example has a
+small `main.go` that you can run from the repository root:
 
 ```sh
 go run ./examples/01-hello
 go run ./examples/10-hooks
 ```
 
-The tiny WebAssembly modules the examples run against are assembled in-process by
-[`internal/mods`](internal/mods/mods.go) so nothing here needs an external wasm
-toolchain — real projects would load `.wasm` files compiled from Rust,
-AssemblyScript, TinyGo, or C instead. The examples are about the **wago Go API**,
-not wasm authoring.
+[`internal/mods`](internal/mods/mods.go) builds the small WebAssembly modules in
+process. You do not need a separate wasm toolchain to run these examples. Real
+projects normally load `.wasm` files built by Rust, AssemblyScript, TinyGo, or
+C. These examples teach the wago Go API, not wasm authoring.
 
 ## Go API examples
 
 | # | Example | Shows |
 |---|---------|-------|
-| 01 | [hello](01-hello) | Low-level `Compile` → `Instantiate` → `Invoke` |
-| 02 | [runtime-typed](02-runtime-typed) | `Runtime` + context-aware typed `Call` with `Value` |
-| 03 | [host-import](03-host-import) | Defining a `HostFunc` the guest calls back into |
-| 04 | [memory](04-memory) | Reading/writing guest linear memory from the host |
-| 05 | [globals](05-globals) | Reading and setting exported globals, typed |
-| 08 | [custom-plugin](08-custom-plugin) | Writing an explicit `PluginProvider` |
-| 10 | [hooks](10-hooks) | Invoke/compile hooks (tracing, auto-instrumentation) |
-| 14 | [handles](14-handles) | `HandleTable` resource handles with a generation guard |
-| 15 | [config](15-config) | `RuntimeConfig`: features, bounds checks, and function workers |
-| 16 | [serialize](16-serialize) | Precompiling to a `.wago` blob and loading it |
+| 01 | [hello](01-hello) | Low-level `Compile`, `Instantiate`, then `Invoke` |
+| 02 | [runtime-typed](02-runtime-typed) | `Runtime` and context-aware typed `Call` with `Value` |
+| 03 | [host-import](03-host-import) | Define a `HostFunc` that guest code calls |
+| 04 | [memory](04-memory) | Read and write guest linear memory from the host |
+| 05 | [globals](05-globals) | Read and set typed exported globals |
+| 08 | [custom-plugin](08-custom-plugin) | Write an explicit `PluginProvider` |
+| 10 | [hooks](10-hooks) | Add invoke and compile hooks for tracing or instrumentation |
+| 14 | [handles](14-handles) | Use generation-checked `HandleTable` resource handles |
+| 15 | [config](15-config) | Configure features, bounds checks, and function workers |
+| 16 | [serialize](16-serialize) | Precompile and load a `.wago` blob |
 
 Run them all:
 
@@ -36,33 +35,36 @@ Run them all:
 for d in examples/[0-9]*; do echo "== $d =="; go run "./$d"; done
 ```
 
-## Host functions are always the stack form
+## Write a Host Function
 
-Every host import — whether ad-hoc or provided by a plugin — is a `wago.HostFunc`:
+Every host import, including a plugin import, uses this `wago.HostFunc` form:
 
 ```go
 func(m wago.HostModule, params, results []uint64)
 ```
 
-It reads its wasm arguments from `params` (decode with `wago.AsI32`/`AsI64`/…),
-writes results into `results` (encode with `wago.I32`/…), and can reach the
-calling instance's linear memory via `m.Memory()`. This one reflection-free form
-binds identically on standard Go and TinyGo — see
+Read wasm arguments from `params`, with helpers such as `wago.AsI32` and
+`wago.AsI64`. Write results to `results`, with helpers such as `wago.I32`. Use
+`m.Memory()` to access the calling instance's linear memory.
+
+This reflection-free form works the same way in standard Go and TinyGo. See
 [03-host-import](03-host-import) and [04-memory](04-memory).
 
 ## Writing a plugin
 
-A plugin implements the one-method `wago.Plugin` interface and is paired with an
-immutable `PluginDefinition` and factory in an explicit `PluginProvider`. It
-declares host imports, guest capabilities, lifecycle observation, and exact
-privileged Authorities through a transactional `Registrar`. The host reviews
-those authorities in a `PluginSelection`, then loads the complete `PluginSet`
-atomically with `rt.LoadPlugins` — see [08-custom-plugin](08-custom-plugin) and
+A plugin implements the one-method `wago.Plugin` interface. It has an immutable
+`PluginDefinition` and a factory in an explicit `PluginProvider`.
+
+The plugin declares host imports, guest capabilities, lifecycle observation, and
+the exact privileged Authorities it needs. The host reviews those Authorities in
+a `PluginSelection`. It then loads the full `PluginSet` atomically with
+`rt.LoadPlugins`. See [08-custom-plugin](08-custom-plugin) and
 [10-hooks](10-hooks).
 
 ## CLI
 
-The `wago` CLI mirrors much of this from the shell.
+The `wago` CLI provides many of the same operations from the shell. Build it
+with `make build` before you run these commands.
 
 Run a module and inspect it:
 
@@ -91,7 +93,8 @@ wago plugin tree                                  # direct and transitive graph
 wago plugin list --json                           # linked definitions and plan
 ```
 
-Version management (nvm-style; ships in every build, network install in full builds):
+Version management is similar to nvm. It ships in every build; network install
+is available in full builds:
 
 ```sh
 wago --version              # this binary's version
@@ -101,5 +104,5 @@ wago version use 0.5.0      # switch the active version
 wago env                    # resolved config/cache/data directories
 ```
 
-See the repository root for building the CLI (`make build`) and the lean,
-TinyGo-compiled release (`make build-release`).
+See the repository root for the standard CLI build (`make build`) and the lean
+TinyGo release build (`make build-release`).

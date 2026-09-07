@@ -1,5 +1,5 @@
 // Command explain compiles a wasm module through the railshot backend and prints
-// its per-function CodegenStats dashboard (docs/no-ir-plan.md P1) — the counters
+// its per-function CodegenStats dashboard — the counters
 // every later optimization proves itself against: pins, flushes, condenses,
 // forced deferred loads, bounds checks, calls by kind, and peephole hits.
 //

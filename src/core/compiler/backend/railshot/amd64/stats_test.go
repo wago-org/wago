@@ -45,7 +45,7 @@ func TestModuleStatsReportsFinalizerFallbacks(t *testing.T) {
 // TestCodegenStatsPeepholes checks that each instruction-selection rewrite bumps
 // its named counter exactly once for a body built to trigger it precisely once,
 // and does not fire the others. This is the trustworthiness net the plan's exit
-// criterion asks for (docs/no-ir-plan.md P1).
+// criterion requires.
 func TestCodegenStatsPeepholes(t *testing.T) {
 	i32 := []wasm.ValType{wasm.I32}
 	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}

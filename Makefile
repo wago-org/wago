@@ -255,8 +255,7 @@ spec: spec1 spec2 spec3 ## Run the WebAssembly spec suite for all versions
 TINYGO ?= tinygo
 # wago runs native code on a dedicated foreign stack. TinyGo's conservative
 # collector with a threaded scheduler can stop a thread mid-run and scan that
-# switched stack, so wago under TinyGo wants the cooperative scheduler. See
-# docs/tinygo.md.
+# switched stack, so wago under TinyGo uses the cooperative scheduler.
 TINYGO_SCHEDULER ?= tasks
 # Stamped into the manager and runners via -ldflags -X. Release workflows pass
 # the git tag; 0.0.0 is the pre-release default until the first tag.

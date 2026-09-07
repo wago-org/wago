@@ -1,5 +1,14 @@
 # WebAssembly spec conformance
 
+> **Purpose:** this is a conformance-result record. It is not the feature
+> support contract. Use [FEATURES.md](FEATURES.md) for supported behavior and
+> [ROADMAP.md](ROADMAP.md) for current work.
+
+Read the release summary first. The WebAssembly 1.0 table below is a generated
+per-file scoreboard. The detailed WebAssembly 3.0 text records completed
+iterations and retained accounting facts; do not treat it as a beginner setup
+guide.
+
 ## Release suites
 
 - WebAssembly 1.0 keeps the historical `tests/spec` execution report below.
@@ -67,8 +76,7 @@
   native-import contexts, and unsupported product/platform paths remain explicit.
   Public typed-reference, multi-memory, compact-import, memory64, table64, and tail-call
   execution remain disabled; the schema-1 totals remain byte-for-byte unchanged.
-  The machine-readable schema-1 inventory is `tests/spec-v3-baseline.json`; see
-  `docs/wasm3.md` for family grouping and caveats.
+  The machine-readable schema-1 inventory is `tests/spec-v3-baseline.json`.
 
 ## WebAssembly 1.0 (MVP)
 
