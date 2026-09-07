@@ -356,6 +356,13 @@ the performance corpus.
   to 24,170, 15,456 to 5,192, and 94,872 to 27,760 bytes. Six alternating
   serialized SQLite public compiles remain within +0.40% median wall noise,
   while median allocation volume falls by about 176 KiB/op.
+- Compact post-RA membership bits: ✅ skip and ARM64 pre-index membership now
+  use reusable 64-bit sets with inlined O(1) queries instead of one byte per
+  instruction. Word-boundary and clearing tests cover the representation;
+  target realization tests retain exact behavior. SQLite, Lua, and regexmatch
+  stay byte-identical while peak compiler-owned storage falls by another
+  16,452, 3,414, and 17,360 bytes. Six alternating SQLite public compiles
+  improve by 0.13% median, with about 20 KiB/op less allocation.
 - Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
   bounded initial schedule candidate's realized post-allocation spill debt,
   physical copies, copy cycles, copy motion, fixed repairs, broken fusions,

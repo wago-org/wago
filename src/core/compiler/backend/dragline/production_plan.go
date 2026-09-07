@@ -101,12 +101,12 @@ type nativeBackendPlan struct {
 	MemoryCheckEnds     []uint64
 	MemoryCheckTouched  []uint32
 	PostRAPairWith      nativeInstructionRelation
-	PostRASkip          []bool
+	PostRASkip          nativeBitSet
 	PostRAForwardFrom   nativeInstructionRelation
 	PostRAFusionWith    nativeInstructionRelation
 	PostRAMemoryFrom    nativeInstructionRelation
 	PostRARepeatFirst   nativeInstructionRelation
-	PostRAPreIndex      []bool
+	PostRAPreIndex      nativeBitSet
 	PostRAPostIndexWith nativeInstructionRelation
 	// PostRADirect enables verifier-gated rewrites whose realization needs no
 	// instruction-indexed side table. The PostRA plan remains the sparse source
@@ -130,6 +130,41 @@ type nativeBranchPatch struct {
 type nativeDenseRelation struct {
 	narrow []uint16
 	wide   []uint32
+}
+
+type nativeBitSet struct {
+	words []uint64
+}
+
+func (s *nativeBitSet) prepare(bits int, needed bool) {
+	if !needed {
+		s.words = s.words[:0]
+		return
+	}
+	s.words = resizeNativeSlice(s.words, (bits+63)/64)
+	clear(s.words)
+}
+
+func (s *nativeBitSet) set(bit uint32, value bool) {
+	word, mask := bit>>6, uint64(1)<<(bit&63)
+	if value {
+		s.words[word] |= mask
+	} else {
+		s.words[word] &^= mask
+	}
+}
+
+func (s nativeBitSet) has(bit uint32) bool {
+	word := bit >> 6
+	return int(word) < len(s.words) && s.words[word]&(uint64(1)<<(bit&63)) != 0
+}
+
+func (s nativeBitSet) prepared(bits int) bool {
+	return len(s.words) == (bits+63)/64
+}
+
+func (s nativeBitSet) capacityBytes() uint64 {
+	return sliceBytes(s.words)
 }
 
 // Most users relate machine instructions. Retain the specific alias so plan
@@ -182,12 +217,12 @@ func (r nativeDenseRelation) capacityBytes() uint64 {
 
 func clearPostRAEmissionRewrites(plan *nativeBackendPlan) {
 	plan.PostRAPairWith = nativeInstructionRelation{}
-	plan.PostRASkip = nil
+	plan.PostRASkip = nativeBitSet{}
 	plan.PostRAForwardFrom = nativeInstructionRelation{}
 	plan.PostRAFusionWith = nativeInstructionRelation{}
 	plan.PostRAMemoryFrom = nativeInstructionRelation{}
 	plan.PostRARepeatFirst = nativeInstructionRelation{}
-	plan.PostRAPreIndex = nil
+	plan.PostRAPreIndex = nativeBitSet{}
 	plan.PostRAPostIndexWith = nativeInstructionRelation{}
 	plan.PostRADirect = false
 }
@@ -229,12 +264,12 @@ type nativeBackendPlanner struct {
 	memoryCheckEnds     []uint64
 	memoryCheckTouched  []uint32
 	postRAPairWith      nativeInstructionRelation
-	postRASkip          []bool
+	postRASkip          nativeBitSet
 	postRAForwardFrom   nativeInstructionRelation
 	postRAFusionWith    nativeInstructionRelation
 	postRAMemoryFrom    nativeInstructionRelation
 	postRARepeatFirst   nativeInstructionRelation
-	postRAPreIndex      []bool
+	postRAPreIndex      nativeBitSet
 	postRAPostIndexWith nativeInstructionRelation
 	immediateProducer   nativeInstructionRelation
 	immediateSkip       []bool
@@ -457,7 +492,7 @@ func (p *nativeBackendPlanner) nativeCapacityBreakdown() NativePlannerCapacityBr
 	return NativePlannerCapacityBreakdown{
 		ControlFlow: sliceBytes(p.edgeWeights) + sliceBytes(p.edgeObserved) + sliceBytes(p.blockBytes) + sliceBytes(p.coldBlocks) + sliceBytes(p.calleeSaveRegions) + sliceBytes(p.blockOffsets) + sliceBytes(p.branchPatches) + sliceBytes(p.conditionalPatches) + sliceBytes(p.coldTrapPatches),
 		Bounds:      p.memoryCheckSlots.capacityBytes() + sliceBytes(p.memoryCheckEnds) + sliceBytes(p.memoryCheckTouched) + sliceBytes(p.amd64MemoryBounds),
-		PostRA:      p.postRAPairWith.capacityBytes() + sliceBytes(p.postRASkip) + p.postRAForwardFrom.capacityBytes() + p.postRAFusionWith.capacityBytes() + p.postRAMemoryFrom.capacityBytes() + p.postRARepeatFirst.capacityBytes() + sliceBytes(p.postRAPreIndex) + p.postRAPostIndexWith.capacityBytes(),
+		PostRA:      p.postRAPairWith.capacityBytes() + p.postRASkip.capacityBytes() + p.postRAForwardFrom.capacityBytes() + p.postRAFusionWith.capacityBytes() + p.postRAMemoryFrom.capacityBytes() + p.postRARepeatFirst.capacityBytes() + p.postRAPreIndex.capacityBytes() + p.postRAPostIndexWith.capacityBytes(),
 		Immediates:  p.immediateProducer.capacityBytes() + sliceBytes(p.immediateSkip) + sliceBytes(p.immediateUses),
 		GC:          sliceBytes(p.deadGCReservations) + sliceBytes(p.noBarrierGCStores) + sliceBytes(p.gcValues),
 		CallsRoots:  sliceBytes(p.plan.Calls) + sliceBytes(p.rootPlan.Sites) + sliceBytes(p.rootPlan.Roots),
@@ -1768,13 +1803,13 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				if machineTarget != railmach.TargetARM64 {
 					continue
 				}
-				if p.postRASkip[rewrite.First] || p.postRAPairWith.has(rewrite.Second) || !nativeARM64PairRealizable(machine, allocation, rewrite.First, rewrite.Second) {
+				if p.postRASkip.has(rewrite.First) || p.postRAPairWith.has(rewrite.Second) || !nativeARM64PairRealizable(machine, allocation, rewrite.First, rewrite.Second) {
 					continue
 				}
 				p.postRAPairWith.set(rewrite.First, rewrite.Second)
-				p.postRASkip[rewrite.Second] = true
+				p.postRASkip.set(rewrite.Second, true)
 			case railmach.RewriteLoadStoreForward:
-				if !p.postRASkip[rewrite.First] && !p.postRASkip[rewrite.Second] {
+				if !p.postRASkip.has(rewrite.First) && !p.postRASkip.has(rewrite.Second) {
 					p.postRAForwardFrom.set(rewrite.Second, rewrite.First)
 				}
 			case railmach.RewriteAMD64FusionRepair:
@@ -1796,21 +1831,21 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				if !nativeARM64PrePostIndexProfitable(machine, rewrite) {
 					continue
 				}
-				if machineTarget != railmach.TargetARM64 || len(p.postRASkip) != 0 && (p.postRASkip[rewrite.First] || rewrite.Second != ^uint32(0) && p.postRASkip[rewrite.Second]) {
+				if machineTarget != railmach.TargetARM64 || p.postRASkip.has(rewrite.First) || rewrite.Second != ^uint32(0) && p.postRASkip.has(rewrite.Second) {
 					continue
 				}
 				if rewrite.Second == ^uint32(0) && !p.postRAPostIndexWith.has(rewrite.First) {
-					p.postRAPreIndex[rewrite.First] = true
+					p.postRAPreIndex.set(rewrite.First, true)
 				} else if planInstructionsAdjacent(schedule, rewrite.First, rewrite.Second) && !p.postRAPostIndexWith.has(rewrite.First) && !p.postRAPostIndexWith.has(rewrite.Second) {
 					p.postRAPostIndexWith.set(rewrite.First, rewrite.Second)
 					p.postRAPostIndexWith.set(rewrite.Second, rewrite.First)
-					p.postRAPreIndex[rewrite.First] = false
-					p.postRAPreIndex[rewrite.Second] = false
+					p.postRAPreIndex.set(rewrite.First, false)
+					p.postRAPreIndex.set(rewrite.Second, false)
 				}
 			case railmach.RewriteAMD64MemoryFold:
-				if machineTarget == railmach.TargetAMD64 && planInstructionsAdjacent(schedule, rewrite.First, rewrite.Second) && !p.postRASkip[rewrite.First] && !p.postRASkip[rewrite.Second] {
+				if machineTarget == railmach.TargetAMD64 && planInstructionsAdjacent(schedule, rewrite.First, rewrite.Second) && !p.postRASkip.has(rewrite.First) && !p.postRASkip.has(rewrite.Second) {
 					p.postRAMemoryFrom.set(rewrite.Second, rewrite.First)
-					p.postRASkip[rewrite.First] = true
+					p.postRASkip.set(rewrite.First, true)
 				}
 			case railmach.RewriteARM64RepeatedAdd:
 				if machineTarget != railmach.TargetARM64 || !nativeARM64RepeatedAddRealizable(machine, schedule, allocation, rewrite.First, rewrite.Second) {
@@ -1821,7 +1856,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				lastPosition := allocation.InstructionPositions[rewrite.Second]
 				for instructionID, position := range allocation.InstructionPositions {
 					if position >= firstPosition && position < lastPosition {
-						p.postRASkip[instructionID] = true
+						p.postRASkip.set(uint32(instructionID), true)
 					}
 				}
 			case railmach.RewriteARM64ByteWiden:
@@ -1836,23 +1871,23 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				}
 				conflict := false
 				for instructionID, position := range allocation.InstructionPositions {
-					conflict = conflict || position > firstPosition && position < finalPosition && p.postRASkip[instructionID]
+					conflict = conflict || position > firstPosition && position < finalPosition && p.postRASkip.has(uint32(instructionID))
 				}
 				if conflict {
 					continue
 				}
 				for instructionID, position := range allocation.InstructionPositions {
 					if position > firstPosition && position < finalPosition {
-						p.postRASkip[instructionID] = true
+						p.postRASkip.set(uint32(instructionID), true)
 					}
 				}
 			case railmach.RewriteARM64LogicalShift:
-				if machineTarget == railmach.TargetARM64 && nativeARM64LogicalShiftRealizable(machine, schedule, allocation, rewrite.First, rewrite.Second) && !p.postRASkip[rewrite.First] && !p.postRASkip[rewrite.Second] {
-					p.postRASkip[rewrite.First] = true
+				if machineTarget == railmach.TargetARM64 && nativeARM64LogicalShiftRealizable(machine, schedule, allocation, rewrite.First, rewrite.Second) && !p.postRASkip.has(rewrite.First) && !p.postRASkip.has(rewrite.Second) {
+					p.postRASkip.set(rewrite.First, true)
 				}
 			case railmach.RewriteARM64BitmaskPopcnt:
-				if machineTarget == railmach.TargetARM64 && nativeARM64BitmaskPopcntRealizable(machine, schedule, allocation, rewrite.First, rewrite.Second) && !p.postRASkip[rewrite.First] && !p.postRASkip[rewrite.Second] {
-					p.postRASkip[rewrite.Second] = true
+				if machineTarget == railmach.TargetARM64 && nativeARM64BitmaskPopcntRealizable(machine, schedule, allocation, rewrite.First, rewrite.Second) && !p.postRASkip.has(rewrite.First) && !p.postRASkip.has(rewrite.Second) {
+					p.postRASkip.set(rewrite.Second, true)
 				}
 			}
 		}
@@ -1998,7 +2033,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 	}
 	p.plan.ImmediateProducer = p.immediateProducer
 	p.plan.ImmediateSkip = p.immediateSkip
-	if (machine.Target == railmach.TargetARM64 || machine.Target == railmach.TargetAMD64) && len(p.postRASkip) == len(machine.Insts) {
+	if (machine.Target == railmach.TargetARM64 || machine.Target == railmach.TargetAMD64) && p.postRASkip.prepared(len(machine.Insts)) {
 		for _, rewrite := range postRA.Rewrites {
 			var source railmach.VReg
 			var members [10]uint32
@@ -2056,7 +2091,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 					member = member || instructionID == candidate
 				}
 				if member {
-					conflict = conflict || p.postRASkip[instructionID]
+					conflict = conflict || p.postRASkip.has(uint32(instructionID))
 				} else {
 					instruction := machine.Insts[instructionID]
 					elided := p.immediateSkip[instructionID] || instruction.Result != 0 && machine.VRegs[instruction.Result].Flags&railmach.VRegElided != 0
@@ -2067,7 +2102,7 @@ func (p *nativeBackendPlanner) PlanProfileIPRA(stack *railssa.StackFunc, target 
 				continue
 			}
 			for _, instructionID := range activeMembers[1:] {
-				p.postRASkip[instructionID] = true
+				p.postRASkip.set(uint32(instructionID), true)
 			}
 		}
 	}
@@ -2843,21 +2878,13 @@ func (p *nativeBackendPlanner) preparePostRAScratch(target railmach.Target, inst
 			}
 		}
 	}
-	prepareBool := func(values []bool, needed bool) []bool {
-		if !needed {
-			return values[:0]
-		}
-		values = resizeNativeSlice(values, instructions)
-		clear(values)
-		return values
-	}
 	p.postRAPairWith.prepare(instructions, needsPair)
-	p.postRASkip = prepareBool(p.postRASkip, needsSkip)
+	p.postRASkip.prepare(instructions, needsSkip)
 	p.postRAForwardFrom.prepare(instructions, needsForward)
 	p.postRAFusionWith.prepare(instructions, needsFusion)
 	p.postRAMemoryFrom.prepare(instructions, needsMemory)
 	p.postRARepeatFirst.prepare(instructions, needsRepeat)
-	p.postRAPreIndex = prepareBool(p.postRAPreIndex, needsPreIndex)
+	p.postRAPreIndex.prepare(instructions, needsPreIndex)
 	p.postRAPostIndexWith.prepare(instructions, needsPostIndex)
 	return needsPair || needsSkip || needsForward || needsFusion || needsMemory || needsRepeat || needsPreIndex || needsPostIndex
 }

@@ -529,7 +529,7 @@ func amd64DirectPreparedClass(class railmach.ABIClass) bool {
 }
 
 func amd64RailMachByteSwapSource(plan *nativeBackendPlan, first uint32) (railmach.VReg, amd64.Reg, bool) {
-	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.PostRA == nil || len(plan.PostRASkip) != len(plan.Machine.Insts) {
+	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.PostRA == nil || !plan.PostRASkip.prepared(len(plan.Machine.Insts)) {
 		return 0, 0, false
 	}
 	for _, rewrite := range plan.PostRA.Rewrites {
@@ -537,11 +537,11 @@ func amd64RailMachByteSwapSource(plan *nativeBackendPlan, first uint32) (railmac
 			continue
 		}
 		source, members, ok := railmach.VerifyARM64ByteSwapChain(plan.Machine, plan.Schedule, rewrite.Second)
-		if !ok || members[0] != first || plan.PostRASkip[first] {
+		if !ok || members[0] != first || plan.PostRASkip.has(first) {
 			return 0, 0, false
 		}
 		for _, instructionID := range members[1:] {
-			if !plan.PostRASkip[instructionID] {
+			if !plan.PostRASkip.has(instructionID) {
 				return 0, 0, false
 			}
 		}
@@ -1420,7 +1420,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		for _, instructionID := range plan.Schedule.Order[blockRange.Start : blockRange.Start+blockRange.Count] {
 			nextPosition := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 			forwardedSpill = 0
-			if pendingSpill != 0 && plan.Machine.VRegs[pendingSpill].Bank == railmach.BankFPR && !skipInstruction[instructionID] && (len(plan.PostRASkip) == 0 || !plan.PostRASkip[instructionID]) &&
+			if pendingSpill != 0 && plan.Machine.VRegs[pendingSpill].Bank == railmach.BankFPR && !skipInstruction[instructionID] && !plan.PostRASkip.has(instructionID) &&
 				!nativeControlInstruction(plan.Machine.Insts[instructionID].Op) {
 				if forward, elideStore := amd64RailMachForwardPendingSpill(plan, instructionID, pendingSpill, nextPosition); forward {
 					forwardedSpill = pendingSpill
@@ -1437,7 +1437,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			emitCalleeRestoreBefore(instructionID)
 			instructionResult := plan.Machine.Insts[instructionID].Result
-			if skipInstruction[instructionID] || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 {
+			if skipInstruction[instructionID] || plan.PostRASkip.has(instructionID) || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 {
 				continue
 			}
 			instruction := plan.Machine.Insts[instructionID]

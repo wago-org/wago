@@ -2233,7 +2233,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			currentForwardedSpill = 0
 			instructionResult := plan.Machine.Insts[instructionID].Result
 			swarSkipped := swarRunN && (instructionID >= 5 && instructionID < 21 || instructionID >= 27 && instructionID < 37) || swarParse4 && instructionID >= 2 && instructionID < 12
-			skipped := swarSkipped || idempotentFloatTail && instructionID >= idempotentFloatStart && instructionID < idempotentFloatEnd || skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[instructionID]
+			skipped := swarSkipped || idempotentFloatTail && instructionID >= idempotentFloatStart && instructionID < idempotentFloatEnd || skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || plan.PostRASkip.has(instructionID)
 			instruction := plan.Machine.Insts[instructionID]
 			semanticOp := railmach.SemanticOpcode(instruction.Op)
 			if semanticOp == wasm.InstrGlobalSet || railmach.IsCall(instruction.Op) {
@@ -2341,7 +2341,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if producerID, ok := nativePostRAProducer(plan, instructionID, railmach.RewriteARM64LogicalShift); ok && int(producerID) < len(plan.PostRASkip) && plan.PostRASkip[producerID] {
+			if producerID, ok := nativePostRAProducer(plan, instructionID, railmach.RewriteARM64LogicalShift); ok && plan.PostRASkip.has(producerID) {
 				base, logical, shifted, amount, wide, verified := railmach.ARM64LogicalShiftImmediate(plan.Machine, producerID, instructionID)
 				if !verified {
 					return nil, 0, true, fmt.Errorf("RailMach logical-shift rewrite lost its selected shape")
@@ -2366,7 +2366,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				}
 				continue
 			}
-			if consumerID, ok := nativePostRAConsumer(plan, instructionID, railmach.RewriteARM64BitmaskPopcnt); ok && int(consumerID) < len(plan.PostRASkip) && plan.PostRASkip[consumerID] {
+			if consumerID, ok := nativePostRAConsumer(plan, instructionID, railmach.RewriteARM64BitmaskPopcnt); ok && plan.PostRASkip.has(consumerID) {
 				source, result, verified := railmach.VerifyARM64BitmaskPopcnt(plan.Machine, plan.Schedule, instructionID, consumerID)
 				if !verified {
 					return nil, 0, true, fmt.Errorf("RailMach bitmask-popcnt rewrite failed verification")
@@ -4907,7 +4907,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 				if chainSecond {
 					boundsAddress = arm64.X15
 				}
-				preIndex := len(plan.PostRAPreIndex) != 0 && plan.PostRAPreIndex[instructionID]
+				preIndex := plan.PostRAPreIndex.has(instructionID)
 				end := uint64(uint32(instruction.Aux)) + uint64(size)
 				combinedBounds := combinedBoundsSecond == instructionID
 				if combinedBounds {
@@ -4929,7 +4929,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					nextResult := next.Result
 					nextSwarSkipped := swarRunN && (nextID >= 5 && nextID < 21 || nextID >= 27 && nextID < 37) || swarParse4 && nextID >= 2 && nextID < 12
 					nextSkipped := nextSwarSkipped || idempotentFloatTail && nextID >= idempotentFloatStart && nextID < idempotentFloatEnd || skipInstruction[nextID] ||
-						nextResult != 0 && plan.Machine.VRegs[nextResult].Flags&railmach.VRegElided != 0 || len(plan.PostRASkip) != 0 && plan.PostRASkip[nextID]
+						nextResult != 0 && plan.Machine.VRegs[nextResult].Flags&railmach.VRegElided != 0 || plan.PostRASkip.has(nextID)
 					if nextMemory && !nextStore && !nextSkipped && len(nextOperands) != 0 && nextOperands[0].Reg != operands[0].Reg && nextEnd == end &&
 						!railMachElidesMemoryBoundsCheck(plan, nextID) && memoryCheckEnd(nextOperands[0].Reg) < nextEnd &&
 						!arm64RailMachHasSpecialMemoryEmission(plan, nextID) &&
@@ -6268,13 +6268,13 @@ func arm64RailMachMulHighLoop(plan *nativeBackendPlan) (n, result railmach.VReg,
 }
 
 func arm64RailMachByteWidenRealized(plan *nativeBackendPlan, first, final uint32) bool {
-	if plan == nil || plan.Allocation == nil || len(plan.PostRASkip) != len(plan.Machine.Insts) || int(first) >= len(plan.Allocation.InstructionPositions) || int(final) >= len(plan.Allocation.InstructionPositions) {
+	if plan == nil || plan.Allocation == nil || !plan.PostRASkip.prepared(len(plan.Machine.Insts)) || int(first) >= len(plan.Allocation.InstructionPositions) || int(final) >= len(plan.Allocation.InstructionPositions) {
 		return false
 	}
 	firstPosition := plan.Allocation.InstructionPositions[first]
 	finalPosition := plan.Allocation.InstructionPositions[final]
 	for instructionID, position := range plan.Allocation.InstructionPositions {
-		if position > firstPosition && position < finalPosition && !plan.PostRASkip[instructionID] {
+		if position > firstPosition && position < finalPosition && !plan.PostRASkip.has(uint32(instructionID)) {
 			return false
 		}
 	}
@@ -6282,7 +6282,7 @@ func arm64RailMachByteWidenRealized(plan *nativeBackendPlan, first, final uint32
 }
 
 func arm64RailMachByteSwapSource(plan *nativeBackendPlan, first uint32) (railmach.VReg, arm64.Reg, bool, bool) {
-	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.PostRA == nil || len(plan.PostRASkip) != len(plan.Machine.Insts) {
+	if plan == nil || plan.Machine == nil || plan.Schedule == nil || plan.PostRA == nil || !plan.PostRASkip.prepared(len(plan.Machine.Insts)) {
 		return 0, 0, false, false
 	}
 	for _, rewrite := range plan.PostRA.Rewrites {
@@ -6312,11 +6312,11 @@ func arm64RailMachByteSwapSource(plan *nativeBackendPlan, first uint32) (railmac
 			continue
 		}
 		activeMembers := members[:memberCount]
-		if activeMembers[0] != first || plan.PostRASkip[first] {
+		if activeMembers[0] != first || plan.PostRASkip.has(first) {
 			return 0, 0, false, false
 		}
 		for _, instructionID := range activeMembers[1:] {
-			if !plan.PostRASkip[instructionID] {
+			if !plan.PostRASkip.has(instructionID) {
 				return 0, 0, false, false
 			}
 		}
@@ -7304,13 +7304,13 @@ func arm64RailMachHasSpecialMemoryEmission(plan *nativeBackendPlan, instruction 
 	if plan == nil {
 		return true
 	}
-	return len(plan.PostRASkip) != 0 && plan.PostRASkip[instruction] ||
+	return plan.PostRASkip.has(instruction) ||
 		plan.PostRAPairWith.has(instruction) ||
 		plan.PostRAForwardFrom.has(instruction) ||
 		plan.PostRAFusionWith.has(instruction) ||
 		plan.PostRAMemoryFrom.has(instruction) ||
 		plan.PostRARepeatFirst.has(instruction) ||
-		len(plan.PostRAPreIndex) != 0 && plan.PostRAPreIndex[instruction] ||
+		plan.PostRAPreIndex.has(instruction) ||
 		plan.PostRAPostIndexWith.has(instruction)
 }
 

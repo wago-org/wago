@@ -532,8 +532,8 @@ func TestNativeBackendPlannerAllocatesOnlyRequiredPostRAScratch(t *testing.T) {
 	if !planner.preparePostRAScratch(railmach.TargetARM64, 64, []railmach.Rewrite{{Kind: railmach.RewriteARM64CompareBranch}}) {
 		t.Fatal("ARM64 compare/branch was not recognized as realizable")
 	}
-	if len(planner.postRAFusionWith.narrow) != 64 || len(planner.postRAFusionWith.wide) != 0 || planner.postRAPairWith.capacityBytes() != 0 || len(planner.postRASkip) != 0 || planner.postRAForwardFrom.capacityBytes() != 0 || planner.postRAMemoryFrom.capacityBytes() != 0 || planner.postRARepeatFirst.capacityBytes() != 0 {
-		t.Fatalf("compare/branch scratch = fusion:%#v pair:%#v skip:%d forward:%#v memory:%#v repeat:%#v", planner.postRAFusionWith, planner.postRAPairWith, len(planner.postRASkip), planner.postRAForwardFrom, planner.postRAMemoryFrom, planner.postRARepeatFirst)
+	if len(planner.postRAFusionWith.narrow) != 64 || len(planner.postRAFusionWith.wide) != 0 || planner.postRAPairWith.capacityBytes() != 0 || planner.postRASkip.capacityBytes() != 0 || planner.postRAForwardFrom.capacityBytes() != 0 || planner.postRAMemoryFrom.capacityBytes() != 0 || planner.postRARepeatFirst.capacityBytes() != 0 {
+		t.Fatalf("compare/branch scratch = fusion:%#v pair:%#v skip:%#v forward:%#v memory:%#v repeat:%#v", planner.postRAFusionWith, planner.postRAPairWith, planner.postRASkip, planner.postRAForwardFrom, planner.postRAMemoryFrom, planner.postRARepeatFirst)
 	}
 	planner.postRAFusionWith.set(1, 63)
 	planner.postRAFusionWith.set(63, 1)
@@ -543,8 +543,8 @@ func TestNativeBackendPlannerAllocatesOnlyRequiredPostRAScratch(t *testing.T) {
 	if !planner.preparePostRAScratch(railmach.TargetARM64, 32, []railmach.Rewrite{{Kind: railmach.RewriteARM64Pair}}) {
 		t.Fatal("ARM64 pair was not recognized as realizable")
 	}
-	if len(planner.postRAPairWith.narrow) != 32 || len(planner.postRAPairWith.wide) != 0 || len(planner.postRASkip) != 32 || len(planner.postRAFusionWith.narrow) != 0 || len(planner.postRAFusionWith.wide) != 0 {
-		t.Fatalf("pair scratch = pair:%#v skip:%d fusion:%#v", planner.postRAPairWith, len(planner.postRASkip), planner.postRAFusionWith)
+	if len(planner.postRAPairWith.narrow) != 32 || len(planner.postRAPairWith.wide) != 0 || !planner.postRASkip.prepared(32) || len(planner.postRAFusionWith.narrow) != 0 || len(planner.postRAFusionWith.wide) != 0 {
+		t.Fatalf("pair scratch = pair:%#v skip:%#v fusion:%#v", planner.postRAPairWith, planner.postRASkip, planner.postRAFusionWith)
 	}
 	planner.postRAPairWith.set(1, 31)
 	if related, ok := planner.postRAPairWith.get(1); !ok || related != 31 {
@@ -589,6 +589,28 @@ func TestNativeBackendPlannerAllocatesOnlyRequiredPostRAScratch(t *testing.T) {
 	planner.postRAForwardFrom.set(1<<16-1, 1)
 	if related, ok := planner.postRAForwardFrom.get(1<<16 - 1); !ok || related != 1 {
 		t.Fatalf("wide forward relation = %d/%t, want 1/true", related, ok)
+	}
+}
+
+func TestNativeBitSetCoversWordBoundaryAndClear(t *testing.T) {
+	var set nativeBitSet
+	set.prepare(65, true)
+	for _, bit := range []uint32{0, 63, 64} {
+		set.set(bit, true)
+		if !set.has(bit) {
+			t.Fatalf("bit %d was not retained", bit)
+		}
+		set.set(bit, false)
+		if set.has(bit) {
+			t.Fatalf("bit %d was not cleared", bit)
+		}
+	}
+	if set.has(65) || !set.prepared(65) || set.capacityBytes() != 16 {
+		t.Fatalf("bitset state = %#v", set)
+	}
+	set.prepare(65, false)
+	if set.capacityBytes() != 16 || set.has(0) {
+		t.Fatalf("released bitset state = %#v", set)
 	}
 }
 
