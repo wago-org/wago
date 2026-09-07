@@ -13,6 +13,7 @@ import (
 	"time"
 
 	wago "github.com/wago-org/wago"
+	"github.com/wago-org/wago/examples/internal/exampleplugin"
 	"github.com/wago-org/wago/examples/internal/mods"
 )
 
@@ -29,7 +30,10 @@ var tracerDefinition = wago.PluginDefinition{
 		License:    "Apache-2.0",
 	},
 	Authorities: []wago.AuthorityRequest{
+		{Name: wago.AuthorityRuntimeCloseObserve, Mode: wago.AuthorityRequired, Reason: "record runtime close"},
 		{Name: wago.AuthorityModuleCompileObserve, Mode: wago.AuthorityRequired, Reason: "record successful compilation"},
+		{Name: wago.AuthorityModuleCloseObserve, Mode: wago.AuthorityRequired, Reason: "record module close"},
+		{Name: wago.AuthorityInstanceInstantiateIntercept, Mode: wago.AuthorityRequired, Reason: "attach state before guest start"},
 		{Name: wago.AuthorityInstanceInstantiateObserve, Mode: wago.AuthorityRequired, Reason: "record successful instantiation"},
 		{Name: wago.AuthorityInstanceCloseObserve, Mode: wago.AuthorityRequired, Reason: "record logical instance close"},
 		{Name: wago.AuthorityInstanceInvokeIntercept, Mode: wago.AuthorityRequired, Reason: "record invocation start"},
@@ -38,12 +42,48 @@ var tracerDefinition = wago.PluginDefinition{
 }
 
 func (tracer) Register(reg *wago.Registrar) error {
+	closing, err := reg.RuntimeCloseObserver()
+	if err != nil {
+		return err
+	}
+	if err := closing.Observe(func(wago.RuntimeCloseEvent) {
+		fmt.Println("[trace] closing runtime")
+	}); err != nil {
+		return err
+	}
+
 	compiled, err := reg.ModuleCompileObserver()
 	if err != nil {
 		return err
 	}
 	if err := compiled.Observe(func(wago.ModuleCompiledEvent) {
 		fmt.Println("[trace] compiled module")
+	}); err != nil {
+		return err
+	}
+	modules, err := reg.ModuleCloseObserver()
+	if err != nil {
+		return err
+	}
+	if err := modules.Observe(func(wago.ModuleCloseEvent) {
+		fmt.Println("[trace] closed module")
+	}); err != nil {
+		return err
+	}
+
+	creating, err := reg.InstanceInstantiateInterceptor()
+	if err != nil {
+		return err
+	}
+	if err := creating.Before(func(wago.InstantiationRequest) error {
+		fmt.Println("[trace] checked instantiation")
+		return nil
+	}); err != nil {
+		return err
+	}
+	if err := creating.After(func(wago.InstantiationEvent) error {
+		fmt.Println("[trace] attached instance state")
+		return nil
 	}); err != nil {
 		return err
 	}
@@ -95,41 +135,35 @@ func (tracer) Register(reg *wago.Registrar) error {
 }
 
 func tracerPluginSet() wago.PluginSet {
-	provider := wago.PluginProvider{
-		Definition: tracerDefinition,
-		New:        func() wago.Plugin { return tracer{} },
-	}
-	digest, err := wago.DefinitionDigest(tracerDefinition)
-	if err != nil {
-		panic(err)
-	}
-	grants := make([]wago.AuthorityGrant, 0, len(tracerDefinition.Authorities))
-	for _, request := range tracerDefinition.Authorities {
-		grants = append(grants, wago.AuthorityGrant{Name: request.Name})
-	}
-	return wago.PluginSet{
-		Providers: []wago.PluginProvider{provider},
-		Selections: []wago.PluginSelection{{
-			ID:               tracerDefinition.ID,
-			DefinitionDigest: digest,
-			Direct:           true,
-			Dependencies:     map[string]string{},
-			Grants:           grants,
-		}},
-	}
+	return exampleplugin.MustSet(tracerDefinition, func() wago.Plugin { return tracer{} })
 }
 
 func main() {
 	rt := wago.NewRuntime()
-	defer rt.Close()
 	if err := rt.LoadPlugins(context.Background(), tracerPluginSet()); err != nil {
 		panic(err)
 	}
 
-	mod, _ := rt.Compile(mods.Add())
+	mod, err := rt.Compile(mods.Add())
+	if err != nil {
+		panic(err)
+	}
 	ctx := context.Background()
-	inst, _ := rt.Instantiate(ctx, mod)
-	defer inst.Close()
+	inst, err := rt.Instantiate(ctx, mod)
+	if err != nil {
+		panic(err)
+	}
 
-	_, _ = inst.Call(ctx, "add", wago.ValueI32(20), wago.ValueI32(22))
+	if _, err := inst.Call(ctx, "add", wago.ValueI32(20), wago.ValueI32(22)); err != nil {
+		panic(err)
+	}
+	if err := inst.Close(); err != nil {
+		panic(err)
+	}
+	if err := mod.Close(); err != nil {
+		panic(err)
+	}
+	if err := rt.CloseContext(ctx); err != nil {
+		panic(err)
+	}
 }
