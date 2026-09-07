@@ -1146,6 +1146,10 @@ type Compiled struct {
 	// to use instance-local native execution leases. It is intentionally not
 	// serialized because it is runtime policy rather than a module property.
 	independentInstances bool
+	// preparedIsolatedTables is a fresh-compilation proof that every table is
+	// local, unexported, immutable, and limited to local function descriptors.
+	// Like direct-prepared entry selection, codecs conservatively discard it.
+	preparedIsolatedTables bool
 }
 
 // The sign bit of a fresh compilation's internal-entry offset carries the

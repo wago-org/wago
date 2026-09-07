@@ -25,6 +25,12 @@ type CompiledModule struct {
 	// The optional bitset uses one bit per local function.
 	DirectPrepared []uint64
 
+	// PreparedIsolatedTables reports that every table is local, unexported,
+	// never mutated, and contains only local function descriptors. Runtime entry
+	// selection may then treat the table descriptor arena as instance-private,
+	// read-only state.
+	PreparedIsolatedTables bool
+
 	// RequiresBMI2 reports that Code contains a BMI2 instruction.
 	RequiresBMI2 bool
 

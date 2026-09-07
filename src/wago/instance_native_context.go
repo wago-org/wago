@@ -306,8 +306,11 @@ func (in *Instance) preparedEntryMode() preparedEntryMode {
 			return preparedEntryGeneral
 		}
 	}
-	if len(in.globalCells) == 0 && in.tableDescPtr == 0 && in.gc == nil &&
-		in.c.NumImports == 0 && !in.c.needsFuncRefContext() {
+	privateRefStore := in.refStore == nil || in.refStore.private
+	isolatedTables := privateRefStore && in.tableDescPtr != 0 && in.c.preparedIsolatedTables &&
+		!in.c.needsFuncRefContextHeader
+	if len(in.globalCells) == 0 && (in.tableDescPtr == 0 || isolatedTables) && in.gc == nil &&
+		in.c.NumImports == 0 && (!in.c.needsFuncRefContext() || isolatedTables) {
 		return preparedEntryIsolated
 	}
 	return preparedEntryPrivate

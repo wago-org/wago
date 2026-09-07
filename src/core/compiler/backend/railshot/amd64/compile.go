@@ -1706,7 +1706,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			fmt.Fprint(os.Stderr, ms.String())
 		}
 		keepCodeBuffer = true
-		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, hintSidecar, immutableTables, modGlobals, hostAdapters, inlineTargets, policy, ms, guardMode, boundsFacts, importedFuncs)
@@ -1983,7 +1983,19 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+}
+
+func allTablesPreparedIsolated(tables []immutableTableHint) bool {
+	if len(tables) == 0 {
+		return false
+	}
+	for i := range tables {
+		if !tables[i].local {
+			return false
+		}
+	}
+	return true
 }
 
 func countGCSharedStubRelocs(relocs [][]callReloc) int {

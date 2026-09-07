@@ -185,18 +185,19 @@ func (in *Instance) beginInvocation() error {
 	if in.guestStorageBorrowed() {
 		return fmt.Errorf("instance access is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
-	if in.rt != nil {
-		in.rt.mu.Lock()
-		if in.rt.state == runtimeClosed || in.rt.state == runtimeClosing && in.instantiateOrigin() != InstantiateManaged {
-			in.rt.mu.Unlock()
-			return fmt.Errorf("instance runtime is closed")
-		}
-		in.rt.activeOperations++
-		in.rt.mu.Unlock()
+	if in.rt == nil {
+		return in.beginInstanceInvocation()
 	}
+	in.rt.mu.Lock()
+	if in.rt.state == runtimeClosed || in.rt.state == runtimeClosing && in.instantiateOrigin() != InstantiateManaged {
+		in.rt.mu.Unlock()
+		return fmt.Errorf("instance runtime is closed")
+	}
+	in.rt.activeOperations++
+	in.rt.mu.Unlock()
 	admitted := false
 	defer func() {
-		if admitted || in.rt == nil {
+		if admitted {
 			return
 		}
 		in.rt.mu.Lock()
@@ -204,6 +205,14 @@ func (in *Instance) beginInvocation() error {
 		in.rt.stateCond.Broadcast()
 		in.rt.mu.Unlock()
 	}()
+	if err := in.beginInstanceInvocation(); err != nil {
+		return err
+	}
+	admitted = true
+	return nil
+}
+
+func (in *Instance) beginInstanceInvocation() error {
 	for {
 		state := in.invocationState.Load()
 		if state&instanceInvocationClosed != 0 {
@@ -213,7 +222,6 @@ func (in *Instance) beginInvocation() error {
 			return fmt.Errorf("instance has too many active invocations")
 		}
 		if in.invocationState.CompareAndSwap(state, state+1) {
-			admitted = true
 			return nil
 		}
 	}

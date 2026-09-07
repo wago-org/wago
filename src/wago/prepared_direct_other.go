@@ -14,3 +14,7 @@ func (fn *PreparedFunction) invokeDirectInt([]uint64) ([]uint64, error) {
 func (fn *PreparedFunction) invokeDirectIntFixed(uint64, uint64, uint64, uint64) ([]uint64, error) {
 	return nil, fmt.Errorf("wago: direct prepared integer entry is unavailable on this architecture")
 }
+
+func (in *Instance) invokeDirectIntEntry(uintptr, int, int, uint8, bool, bool, uint64, uint64, uint64, uint64) ([]uint64, error) {
+	return nil, fmt.Errorf("wago: direct prepared integer entry is unavailable on this architecture")
+}

@@ -76,8 +76,8 @@ func TestPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepare: %v", err)
 	}
-	if !fn.directIntFast || fn.isolatedFast {
-		t.Fatalf("direct/private selection = %v/%v, want true/false", fn.directIntFast, fn.isolatedFast)
+	if !fn.directIntFast || !fn.isolatedFast {
+		t.Fatalf("direct/isolated selection = %v/%v, want true/true", fn.directIntFast, fn.isolatedFast)
 	}
 	for _, tc := range []struct {
 		idx, want uint64

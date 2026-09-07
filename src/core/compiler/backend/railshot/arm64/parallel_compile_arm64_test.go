@@ -213,4 +213,7 @@ func assertCompiledModuleEqualArm64(t *testing.T, got, want *encoder.CompiledMod
 	if !reflect.DeepEqual(got.InternalEntry, want.InternalEntry) {
 		t.Fatalf("InternalEntry differs\n got: %v\nwant: %v", got.InternalEntry, want.InternalEntry)
 	}
+	if got.PreparedIsolatedTables != want.PreparedIsolatedTables {
+		t.Fatalf("PreparedIsolatedTables = %v, want %v", got.PreparedIsolatedTables, want.PreparedIsolatedTables)
+	}
 }
