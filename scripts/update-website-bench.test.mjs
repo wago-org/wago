@@ -22,8 +22,8 @@ test("benchmark regeneration preserves the fixed-height architecture DOM", async
 <body>
             <!-- ░░░ PERFORMANCE ░░░ -->
             <section id="performance"></section>
-            <!-- ░░░ ARCHITECTURE ░░░ -->
-            <section id="architecture"></section>
+            <!-- ░░░ PLUGINS ░░░ -->
+            <section id="plugins"></section>
 </body>
 `);
     const metrics = {
