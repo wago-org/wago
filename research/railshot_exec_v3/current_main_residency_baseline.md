@@ -161,3 +161,26 @@ Twenty leases failed BLAKE3's semantic oracle on the 63-byte vector, establishin
 that the remaining three registers in the ordered pool are a required transient
 floor rather than spare capacity. The retained limit is therefore 19, with the
 floor encoded in a regression test.
+
+## AMD64 effective-capacity admission
+
+Native measurements ran on an AMD Ryzen 7 7800X3D under Linux with CPU affinity
+pinned to CPU 2. The AMD64 interval region nominally permits nine leases, but
+both BLAKE kernels peak at eight because one ordered register is unavailable.
+Previously `claimIntervalReg` returned immediately in that state and never
+reached its existing score-gated eviction selector.
+
+Allowing the no-free-register case to fall through to that selector produced:
+
+| Workload | Pressure misses | Native function bytes | Paired execution median |
+| --- | ---: | ---: | ---: |
+| blake-as, base | 662 | 6,144 | 674,421 ns/op |
+| blake-as, candidate | 562 | 6,061 | 667,397 ns/op (-1.04%) |
+| BLAKE3, base | 636 | 5,977 | 358,137 ns/op |
+| BLAKE3, candidate | 468 | 5,588 | 357,056 ns/op (-0.30%) |
+
+The candidate passed the full AMD64 backend suite and semantic execution corpus.
+A three-pair, 46-workload screening run showed no material non-BLAKE regression;
+short-run deltas stayed within -1.0% to +1.4%. No new unsafe operation, register,
+or state transition is introduced: the change reaches the same eviction routine
+already used when all nine nominal slots are active.

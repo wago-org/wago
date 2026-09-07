@@ -111,7 +111,6 @@ func (f *fn) claimIntervalReg(x int) Reg {
 				return reg
 			}
 		}
-		return regNone
 	}
 	return f.evictIntervalLocalBelow(0, int(localHotness(f.intervalScore[x])))
 }

@@ -698,6 +698,11 @@ has parity status summarized below. Landed, in rough order:
   the measured BLAKE kernels this cuts native code by 2.2-2.4% and pressure
   misses by 18-19%. A 20-register sweep corrupted BLAKE3 and is forbidden by a
   target-derived floor test.
+- **AMD64 effective-capacity eviction** — if a nominal regional slot is
+  permanently reserved or transiently unavailable, admission falls through to
+  the existing hotness-gated eviction selector instead of reporting an immediate
+  miss. This preserves the transient checks and turns otherwise unreachable
+  regional capacity into smaller BLAKE code.
 
 ### Bounds checks and traps
 - **Guard-page mode** (old P5) is first-class behind `-tags wago_guardpage` and is the
