@@ -66,6 +66,12 @@ func TestImmutableLocalTableCallIndirectSpecialization(t *testing.T) {
 	if got := stats.Funcs[1].Peephole["immutable-table-type-check-elide"]; got != 1 {
 		t.Fatalf("type-check elision count = %d, want 1", got)
 	}
+	if got := stats.Funcs[1].Peephole["immutable-table-static-length"]; got != 1 {
+		t.Fatalf("static-length check count = %d, want 1", got)
+	}
+	if got := stats.Funcs[1].Peephole["call-result-register"]; got != 1 {
+		t.Fatalf("direct call-result register count = %d, want 1", got)
+	}
 
 	// An exported table can be mutated by another importing instance, so the
 	// specialization must not fire.

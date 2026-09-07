@@ -307,7 +307,7 @@ func (f *fn) callOp(r *wasm.Reader) error {
 			}
 		}
 	}
-	return f.callInternal(int(idx)-imported, ft, hint)
+	return f.callInternal(int(idx)-imported, ft, hint, f.callResultReturnsDirectly(r, ft))
 }
 
 func (f *fn) emitCustomInstruction(custom CustomInstruction, ft *wasm.CompType) error {
@@ -1640,7 +1640,7 @@ func (f *fn) adoptWideWrapperResults(belowTypes []machineType, belowGCRoots []bo
 // callInternal lowers a direct call to another local function. Integer-only
 // callees use the fast register ABI (args/result in registers); others go
 // through the wrapper (rsp-buffer) ABI.
-func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
+func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int, keepReturnReg bool) error {
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	relocBase := len(f.relocs)
 	finishRoots := func() {
@@ -1656,7 +1656,7 @@ func (f *fn) callInternal(localIdx int, ft *wasm.CompType, resHint int) error {
 	if f.opt(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft))) {
 		if sigIsIntOnly(ft) {
 			f.stats.call(callKindRegisterABI)
-			f.emitRegisterCall(localIdx, ft, resHint)
+			f.emitRegisterCall(localIdx, ft, resHint, keepReturnReg)
 		} else {
 			f.stats.call(callKindMixed)
 			f.emitMixedRegisterCall(localIdx, ft)
@@ -1727,13 +1727,26 @@ func (f *fn) prepareGCFrameCallsite(paramCount int) ([]uint32, bool) {
 // entered at its internal entry, and the single result is taken from RAX.
 // resHint >= 0 fuses a following `local.set resHint`: RAX moves straight into
 // the pinned local's register instead of an allocated result register.
-func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int) {
-	f.emitRegisterCallVia(ft, resHint, localIdx, regNone)
+func (f *fn) emitRegisterCall(localIdx int, ft *wasm.CompType, resHint int, keepReturnReg bool) {
+	f.emitRegisterCallVia(ft, resHint, localIdx, regNone, keepReturnReg)
+}
+
+// callResultReturnsDirectly reports the only shape where an internal call's
+// return register can stay owned by the operand stack: the call is immediately
+// returned from the current function. Keeping RAX in longer expressions can
+// increase fixed-register pressure, while descriptor calls with alternate
+// wrapper branches need a common merged result location.
+func (f *fn) callResultReturnsDirectly(r *wasm.Reader, ft *wasm.CompType) bool {
+	if !f.singleRegResult || len(ft.Results) != 1 {
+		return false
+	}
+	next, ok := r.Peek()
+	return ok && (next == 0x0f || (next == 0x0b && len(f.ctrl) == 1))
 }
 
 // emitRegisterCallVia emits either a direct internal rel32 call (localIdx >= 0)
 // or an indirect register call. Explicit operands avoid a closure per wasm call.
-func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg) uint32 {
+func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, indirect Reg, keepReturnRegs bool) uint32 {
 	p, rN := len(ft.Params), len(ft.Results)
 	callTarget := f.preserveIndirectCallTarget(indirect, p)
 	allRoots := f.rootsBottomToTop()
@@ -1824,11 +1837,13 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 		returnOffset = uint32(len(f.a.B))
 	}
 
-	// Capture the result(s) out of the return registers before the reload
-	// sequence below reuses RAX/RDX as scratch. Single int → RAX; two ints →
-	// RAX/RDX (mirrors arm64's X0/X1 pair return).
+	// Capture results out of RAX/RDX before post-call state restoration. The one
+	// exception is an immediately returned single result under STACK_REG: local
+	// reload is a no-op, and pinned-global reloads use their dedicated registers,
+	// so RAX can remain the operand-stack result through the function return.
 	resReg := regNone
-	if rN == 1 && resHint < 0 {
+	keepResultRegs := keepReturnRegs && f.usesCalls && resHint < 0
+	if rN == 1 && resHint < 0 && !keepResultRegs {
 		resReg = f.allocReg(maskOf(RAX))
 		f.a.MovReg64(resReg, RAX)
 		f.pinned = f.pinned.add(resReg)
@@ -1857,7 +1872,12 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, localIdx int, i
 	}
 
 	if rN == 1 && resHint < 0 {
-		f.pinned = f.pinned.remove(resReg)
+		if keepResultRegs {
+			resReg = RAX
+			f.stats.peep("call-result-register")
+		} else {
+			f.pinned = f.pinned.remove(resReg)
+		}
 		value := f.pushReg(resReg, mtOf(ft.Results[0]))
 		value.st.setGCRoot(gcFrameRefType(f.m, ft.Results[0]))
 	}
@@ -2149,7 +2169,7 @@ func (f *fn) callRef(r *wasm.Reader) error {
 		wrapper := f.a.JccPlaceholder(condNE)
 		f.stripDescriptorHomeTags(home)
 		f.pinned = f.pinned.remove(home)
-		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
+		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code, false)
 		if recordRoots {
 			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
@@ -2633,20 +2653,34 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		return fmt.Errorf("call_indirect: bad table %d", tableIdx)
 	}
 	table64 := tt.Limits.Addr64
+	tableHint, immutableTable := f.immutableTable(tableIdx)
+	keepReturnReg := f.callResultReturnsDirectly(r, ft)
 
 	idxReg := f.materialize(f.popValue()) // table32 uses i32; table64 uses full i64
 	rootOffsets, recordRoots := f.prepareGCFrameCallsite(len(ft.Params))
 	f.canonicalizeTableOperand(idxReg, tableIdx)
 	f.pinned = f.pinned.add(idxReg)
+
+	// A private immutable table cannot grow, so its declared minimum is its exact
+	// runtime length. Compare a small exact length directly before loading the
+	// descriptor; larger table64 limits keep the ordinary runtime-length path
+	// because x86-64 compare immediates are sign-extended.
+	staticLength := immutableTable && tt.Limits.Min <= 1<<31-1
+	if staticLength {
+		f.a.AluRI(cmpDigit, idxReg, int32(tt.Limits.Min), table64)
+		f.trapIf(condAE, trapIndirectOOB) // idx >= exact immutable length
+		f.stats.peep("immutable-table-static-length")
+	}
 	tbl := f.allocReg(0)
 	f.loadTableDescriptor(tbl, tableIdx)
 	f.pinned = f.pinned.add(tbl)
-
-	ln := f.allocReg(0)
-	f.a.Load32(ln, tbl, 0) // bounded table length; the 32-bit load zero-extends for table64
-	f.a.AluRR(0x39, idxReg, ln, table64)
-	f.release(ln)
-	f.trapIf(condAE, trapIndirectOOB) // idx >= length → cold stub
+	if !staticLength {
+		ln := f.allocReg(0)
+		f.a.Load32(ln, tbl, 0) // bounded table length; the 32-bit load zero-extends for table64
+		f.a.AluRR(0x39, idxReg, ln, table64)
+		f.release(ln)
+		f.trapIf(condAE, trapIndirectOOB) // idx >= runtime length
+	}
 
 	// 64-bit pointer arithmetic: entry address = tbl + idx*32 (TableEntryBytes).
 	f.a.ShiftImm(4, idxReg, 5, true)   // idx *= 32
@@ -2662,7 +2696,6 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 	f.a.TestSelf(code, true)
 	f.trapIf(condE, trapIndirectOOB) // null entry
 
-	tableHint, immutableTable := f.immutableTable(tableIdx)
 	if f.gcTypeSubtypingRefTest {
 		f.pinned = f.pinned.add(code)
 		identity := f.allocReg(maskOf(idxReg, code))
@@ -2689,28 +2722,18 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		f.release(idxReg)
 		f.release(code)
 		f.stats.peep("monomorphic-call-indirect")
-		returnOffset := f.emitRegisterCallVia(ft, -1, tableHint.monomorphicTarget, regNone)
+		returnOffset := f.emitRegisterCallVia(ft, -1, tableHint.monomorphicTarget, regNone, keepReturnReg)
 		if recordRoots {
 			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
 		return nil
 	}
 	if immutableTable && descriptorRegisterCall {
-		home := f.allocReg(maskOf(idxReg, code))
-		f.a.Load64(home, idxReg, 8+runtime.TableEntryHomeLinMemOffset)
-		kind := f.descriptorEntryKind(home, maskOf(idxReg, code, home))
-		f.stripDescriptorHomeTags(home)
-		f.a.AluRI(cmpDigit, kind, int32(abi.FuncRefInternalTagValue), true)
-		f.trapIf(condNE, trapTailUnsupported)
-		f.a.Cmp64(home, RBX)
-		f.trapIf(condNE, trapTailUnsupported)
-		f.release(kind)
-		f.release(home)
 		f.pinned = f.pinned.remove(idxReg)
 		f.release(idxReg)
 		f.pinned = f.pinned.add(code)
 		f.stats.peep("immutable-local-call-indirect")
-		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
+		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code, keepReturnReg)
 		if recordRoots {
 			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
@@ -2753,7 +2776,7 @@ func (f *fn) callIndirect(r *wasm.Reader) error {
 		wrapper := f.a.JccPlaceholder(condNE)
 		f.stripDescriptorHomeTags(home)
 		f.pinned = f.pinned.remove(home)
-		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code)
+		returnOffset := f.emitRegisterCallVia(ft, -1, -1, code, false)
 		if recordRoots {
 			f.gcFrameRoots.RecordCallsite(returnOffset, 0, rootOffsets)
 		}
