@@ -4844,6 +4844,58 @@ func TestDraglineRailMachVectorNarrowLoadUsesSemanticWidth(t *testing.T) {
 	}
 }
 
+func TestDraglineRailMachVectorConstantOffsetBoundsTrap(t *testing.T) {
+	tests := []struct {
+		name      string
+		subopcode uint32
+		offset    uint32
+		store     bool
+	}{
+		{name: "load128", subopcode: 0, offset: 65521},
+		{name: "load8_splat", subopcode: 7, offset: 65536},
+		{name: "store128", subopcode: 11, offset: 65521, store: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte{0x41, 0x00}
+			if test.store {
+				body = append(body, 0xfd, 0x0c)
+				body = append(body, make([]byte, 16)...)
+			}
+			body = append(body, 0xfd)
+			body = append(body, wasmtest.ULEB(test.subopcode)...)
+			body = append(body, 0x00)
+			body = append(body, wasmtest.ULEB(test.offset)...)
+			if !test.store {
+				body = append(body, 0x1a)
+			}
+			body = append(body, 0x0b)
+			module := wasmtest.Module(
+				wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType(nil, nil))),
+				wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+				wasmtest.Section(5, wasmtest.Vec([]byte{0x00, 0x01})),
+				wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 0))),
+				wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))),
+			)
+			compiled, err := Compile(NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV2).WithCompiler(CompilerDragline).WithTarget(TargetNative).WithBoundsChecks(BoundsChecksExplicit), module)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer compiled.Close()
+			instance, err := Instantiate(compiled, InstantiateOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer instance.Close()
+			_, err = instance.Invoke("run")
+			var trap *TrapError
+			if !errors.As(err, &trap) || trap.Code != TrapLinMemOutOfBounds {
+				t.Fatalf("run = %v; want linear-memory trap", err)
+			}
+		})
+	}
+}
+
 func TestDraglineRailMachVectorLaneMemoryExecution(t *testing.T) {
 	payload := [16]byte{0x80, 0x7f, 0xfe, 0x01, 0x00, 0xff, 0x34, 0x92, 8, 9, 10, 11, 12, 13, 14, 15}
 	initial := [16]byte{0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa, 0xaa}

@@ -4487,7 +4487,11 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						a.CmpReg32(lhs, arm64.X17)
 					} else {
 						a.MovReg32(arm64.X16, lhs)
-						emitARM64BoundsEnd(&a, arm64.X16, end)
+						scratch := arm64.X17
+						if bounds == arm64.X17 {
+							scratch = arm64.X8
+						}
+						emitARM64BoundsEndScratch(&a, arm64.X16, end, scratch)
 						a.CmpReg64(arm64.X16, bounds)
 					}
 					if err := emitMemoryTrapBranch(wasmOffset); err != nil {
@@ -4871,7 +4875,11 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 							a.CmpReg32(lhs, arm64.X17)
 						} else {
 							a.MovReg32(arm64.X16, lhs)
-							emitARM64BoundsEnd(&a, arm64.X16, check.end)
+							scratch := arm64.X17
+							if bounds == arm64.X17 {
+								scratch = arm64.X8
+							}
+							emitARM64BoundsEndScratch(&a, arm64.X16, check.end, scratch)
 							a.CmpReg64(arm64.X16, bounds)
 						}
 						if err := emitMemoryTrapBranch(check.source); err != nil {
@@ -4966,7 +4974,11 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 						a.CmpReg32(lhs, arm64.X17)
 					} else {
 						a.MovReg32(boundsAddress, lhs)
-						emitARM64BoundsEnd(&a, boundsAddress, end)
+						scratch := arm64.X17
+						if bounds == arm64.X17 {
+							scratch = arm64.X8
+						}
+						emitARM64BoundsEndScratch(&a, boundsAddress, end, scratch)
 						a.CmpReg64(boundsAddress, bounds)
 					}
 					if err := emitMemoryTrapBranch(wasmOffset); err != nil {
@@ -7206,6 +7218,10 @@ func arm64RailMachInstructionUses(machine *railmach.Func, instruction uint32, va
 // memory32 address. Common access widths and offsets fit AArch64's immediate
 // form and avoid materializing a scratch constant in every hot-path check.
 func emitARM64BoundsEnd(a *arm64.Asm, address arm64.Reg, end uint64) {
+	emitARM64BoundsEndScratch(a, address, end, arm64.X17)
+}
+
+func emitARM64BoundsEndScratch(a *arm64.Asm, address arm64.Reg, end uint64, scratch arm64.Reg) {
 	if end <= 0xfff {
 		a.AddImm64(address, address, uint32(end))
 		return
@@ -7214,8 +7230,8 @@ func emitARM64BoundsEnd(a *arm64.Asm, address arm64.Reg, end uint64) {
 		a.AddImm64LSL12(address, address, uint32(end))
 		return
 	}
-	a.MovImm64(arm64.X17, end)
-	a.Add64(address, address, arm64.X17)
+	a.MovImm64(scratch, end)
+	a.Add64(address, address, scratch)
 }
 
 func emitARM64I32AddSubImmediate(a *arm64.Asm, dst, src arm64.Reg, value uint32, subtract bool) bool {
