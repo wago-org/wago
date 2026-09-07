@@ -229,6 +229,11 @@ the performance corpus.
   then reused `X17` to materialize an unencodable `offset + semantic width`.
   Bounds-end construction now chooses a non-aliasing reserved scratch register;
   focused 128-bit load/store and narrow-splat tests pin the one-page boundary.
+- Native ARM64 relaxed-SIMD conformance: ✅ the seven pinned Core 3 files compile
+  eight modules and pass all 69 execution assertions through native Dragline,
+  with zero failures, skips, or harness gaps. `make relaxed-simd-dragline` uses
+  pinned WABT in a mode restricted to an explicit Core 3 file list; unfiltered
+  Core 3 qualification still requires the official reference interpreter.
 - ARM64 emitter convergence: ✅ the exact 36-module corpus routes all 30 runnable
   applications and 27,384 of 27,390 total functions through RailMach. The six
   retained structured functions are scalar giants above 4,096 source
