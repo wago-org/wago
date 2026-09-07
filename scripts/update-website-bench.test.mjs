@@ -42,6 +42,7 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       "Exec/nbody.step": { ns: 20 }, "WazeroExec/nbody.step": { ns: 30 },
       "Exec/json-as.deserializeN": { ns: 25 }, "WazeroExec/json-as.deserializeN": { ns: 50 },
       "Exec/json-as-simd.deserializeN": { ns: 18 }, "WazeroExec/json-as-simd.deserializeN": { ns: 36 },
+	  "Exec/lua.plugin-workload": { ns: 7 }, "WazeroExec/lua.plugin-workload": { ns: 0 },
     };
     for (const name of ["coremark", "blake3", "qoi", "lz4", "zlib", "zstd"]) {
       metrics[`CompileFull/${name}`] = { ns: 100, bytes: 10, allocs: 1 };
@@ -75,6 +76,7 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
         .map((key) => key.slice("CompileFull/".length)))]
         .map((name) => [name, { category: name === "tiny" ? "micro" : "semantic", bytes: 100 }]),
     );
+	modules.lua = { category: "real-large", bytes: 100 };
     const general = {
       compile: [
         { wasm_path: "/tmp/tiny.wasm", runs: [
@@ -172,7 +174,7 @@ function assertDOMContract(html) {
     const generalStart = html.indexOf(`id="perf-${arch}-panel-general"`);
     const generalEnd = html.indexOf(`id="perf-${arch}-panel-compile"`, generalStart);
     const general = html.slice(generalStart, generalEnd);
-    assert.equal(matches(general, /data-engine-row/g), 8);
+    assert.equal(matches(general, /data-engine-row/g), 7);
     for (const label of ["Application compile", "SIMD execution"]) {
       assert.equal(matches(general, new RegExp(`<span class="vs__label">${label}</span>`, "g")), 1);
     }
@@ -193,10 +195,16 @@ function assertDOMContract(html) {
   assert.doesNotMatch(html, />Railshot</);
   assert.match(html, /<span class="vs__engine">wago<\/span>/);
   assert.doesNotMatch(html, /data-engine="(?:wasmtime|v8|wavm)"|data-engine-toggle="(?:wasmtime|v8|wavm)"/);
+	assert.doesNotMatch(html, />0(?:\.0)?ns</);
+	const unavailableStart = html.indexOf('<span class="vs__label">lua</span>');
+	assert.ok(unavailableStart >= 0);
+	const unavailableEnd = html.indexOf('<div class="vs__row" data-engine-row>', unavailableStart);
+	const unavailableRow = html.slice(unavailableStart, unavailableEnd);
+	assert.match(unavailableRow, /data-engine="railshot"/);
+	assert.doesNotMatch(unavailableRow, /data-engine="wazero"/);
   assert.match(html, /Summary metrics · lower is better/);
   assert.match(html, /<span class="vs__sub">fresh process<\/span>/);
   assert.match(html, /<span class="vs__sub">runnable corpus<\/span>/);
-  assert.match(html, /<span class="vs__sub">host → Wasm<\/span>/);
   assert.match(html, /<span class="vs__sub">compile \+ instantiate<\/span>/);
   assert.match(html, /End-to-end latency/);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);

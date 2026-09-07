@@ -64,7 +64,11 @@ func BenchmarkPluginExec(b *testing.B) {
 			}
 			started := time.Now()
 			runPluginWorkload(b, m.name(), instance)
-			b.ReportMetric(float64(time.Since(started).Nanoseconds()), "ns/op")
+			elapsed := time.Since(started)
+			if elapsed < time.Millisecond {
+				b.Fatalf("plugin workload completed in %s, want at least 1ms", elapsed)
+			}
+			b.ReportMetric(float64(elapsed.Nanoseconds()), "ns/op")
 			if err := instance.Close(); err != nil {
 				b.Fatal(err)
 			}
@@ -80,7 +84,7 @@ func BenchmarkPluginExec(b *testing.B) {
 }
 
 func pluginCorpus(tb testing.TB) []corpusModule {
-	wanted := map[string]bool{"regexmatch": true, "wasm3": true, "lua": true, "sqlite3": true, "ruby": true, "esbuild": true}
+	wanted := map[string]bool{"wasm3": true, "lua": true, "sqlite3": true, "ruby": true, "esbuild": true}
 	var out []corpusModule
 	for _, m := range loadCorpus(tb) {
 		if wanted[m.name()] {
@@ -209,7 +213,7 @@ func pluginLua(tb testing.TB, instance *wago.Instance) {
 	}
 	defer pluginCall(tb, instance, "lua_close", state)
 	pluginCall(tb, instance, "luaL_openlibs", state)
-	source := append([]byte(`local s=0 for i=1,5000 do s=(s+i*i)%1000000007 end return s`), 0)
+	source := append([]byte(`local s=0 for i=1,100000 do s=(s+i*i)%1000000007 end return s`), 0)
 	p := pluginCallOne(tb, instance, "malloc", uint64(len(source)))
 	defer pluginCall(tb, instance, "free", p)
 	copy(instance.Memory().UnsafeBytes()[p:p+uint64(len(source))], source)

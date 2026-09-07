@@ -28,6 +28,12 @@ const ENGINES = [
   { id: "railshot", label: "wago" },
   { id: "wazero", label: "wazero" },
 ];
+const APPLICATION_CORPUS = new Set([
+  "json-as", "blake-as", "utf-as",
+  "json-as-simd", "blake-as-simd", "utf-as-simd",
+  "coremark", "blake3", "qoi", "lz4", "zlib", "zstd",
+  "wasm3", "lua", "sqlite3", "ruby", "esbuild",
+]);
 
 const benchmarkSets = await loadBenchmarkSets();
 
@@ -209,6 +215,7 @@ function buildCorpusTabs(sets) {
   const seenModules = new Set();
   for (const set of sets) {
     for (const [name, info] of Object.entries(set.modules ?? {})) {
+      if (!APPLICATION_CORPUS.has(name)) continue;
       if (seenModules.has(name)) continue;
       seenModules.add(name);
       modules.push({ name, category: info.category || "other" });
@@ -366,30 +373,25 @@ function buildGeneralSummary(metrics, raw) {
   const runtime = raw?.runtime ?? raw?.wasmtimeRuntime ?? [];
   const runtimeValues = (stage, grouped = false) => Object.fromEntries(
     ENGINES.map(({ id }) => [id,
-      id === "railshot" ? metricGeomean(metrics, stage === "instantiate" ? "Instantiate/" : "Exec/", grouped) :
-      id === "wazero" ? metricGeomean(metrics, stage === "instantiate" ? "WazeroInstantiate/" : "WazeroExec/", grouped) :
+      id === "railshot" ? metricGeomean(metrics, stage === "instantiate" ? "Instantiate/" : "Exec/", grouped, "ns", APPLICATION_CORPUS) :
+      id === "wazero" ? metricGeomean(metrics, stage === "instantiate" ? "WazeroInstantiate/" : "WazeroExec/", grouped, "ns", APPLICATION_CORPUS) :
       externalRuntimeGeomean(runtime, stage, grouped, id),
     ]),
   );
   const instantiate = runtimeValues("instantiate");
   const execution = runtimeValues("exec", true);
-  const tinyCall = Object.fromEntries(ENGINES.map(({ id }) => [id,
-    id === "railshot" ? Number(metrics.get("Exec/tiny.add")?.ns ?? 0) :
-    id === "wazero" ? Number(metrics.get("WazeroExec/tiny.add")?.ns ?? 0) :
-    externalRuntimeMetric(runtime, id, "exec", "tiny", "add"),
-  ]));
-  const compileTime = Object.fromEntries([...compile].map(([engine, values]) => [engine, geomean(values.wall)]));
-  compileTime.railshot ||= metricGeomean(metrics, "CompileFull/");
-  compileTime.wazero ||= metricGeomean(metrics, "WazeroCompile/");
+  const compileTime = {
+    railshot: metricGeomean(metrics, "CompileFull/", false, "ns", APPLICATION_CORPUS),
+    wazero: metricGeomean(metrics, "WazeroCompile/", false, "ns", APPLICATION_CORPUS),
+  };
   const summary = [
     ["Compile", "fresh process", "ns", compileTime],
     ["Compile heap", "per compile", "bytes", {
-      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes"),
-      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes"),
+      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes", APPLICATION_CORPUS),
+      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes", APPLICATION_CORPUS),
     }],
     ["Instantiate", "runnable corpus", "ns", instantiate],
     ["Execution", "runnable corpus", "ns", execution],
-    ["Call latency", "host → Wasm", "ns", tinyCall],
     ["End-to-end latency", "compile + instantiate", "ns", Object.fromEntries(
       ENGINES.map(({ id }) => [id, Number(compileTime[id] ?? 0) + Number(instantiate[id] ?? 0)]),
     )],
@@ -414,12 +416,14 @@ function generalCorpusMetric(metrics, label, sub, railshotPrefix, wazeroPrefix, 
   return { label, sub, kind, values: { railshot, wazero } };
 }
 
-function metricGeomean(metrics, prefix, groupExports = false, field = "ns") {
+function metricGeomean(metrics, prefix, groupExports = false, field = "ns", includedModules = null) {
   const groups = new Map();
   for (const [key, metric] of metrics) {
     if (!key.startsWith(prefix) || !(Number(metric[field]) > 0)) continue;
     const tail = key.slice(prefix.length);
-    const group = groupExports ? tail.split(".", 1)[0] : tail;
+    const module = tail.split(".", 1)[0];
+    if (includedModules && !includedModules.has(module)) continue;
+    const group = groupExports ? module : tail;
     const values = groups.get(group) ?? [];
     values.push(Number(metric[field]));
     groups.set(group, values);

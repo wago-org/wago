@@ -177,18 +177,10 @@ func BenchmarkWazeroExec(b *testing.B) {
 				args[i] = uint64(uint32(a))
 			}
 			b.Run(m.name()+"."+e.Export, func(b *testing.B) {
-				b.ReportAllocs()
-				// Warm up + reset, mirroring wago's BenchmarkExec, so any
-				// first-call setup cost isn't charged to the timed loop.
-				if _, err := fn.Call(ctx, args...); err != nil {
-					b.Fatalf("warmup call: %v", err)
-				}
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					if _, err := fn.Call(ctx, args...); err != nil {
-						b.Fatal(err)
-					}
-				}
+				benchmarkExecCalls(b, func() error {
+					_, err := fn.Call(ctx, args...)
+					return err
+				})
 			})
 		}
 		for _, semantic := range semanticExecCases(b, m) {
@@ -198,16 +190,7 @@ func BenchmarkWazeroExec(b *testing.B) {
 				b.Fatalf("%s prepare: %v", semantic.ID, err)
 			}
 			b.Run(m.name()+"."+semantic.Invoke.Export, func(b *testing.B) {
-				b.ReportAllocs()
-				if err := prepared.invoke(ctx); err != nil {
-					b.Fatalf("warmup call: %v", err)
-				}
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					if err := prepared.invoke(ctx); err != nil {
-						b.Fatal(err)
-					}
-				}
+				benchmarkExecCalls(b, func() error { return prepared.invoke(ctx) })
 			})
 		}
 		r.Close(ctx)
