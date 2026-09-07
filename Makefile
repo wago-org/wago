@@ -253,6 +253,16 @@ simd: ## Run the official SIMD proposal execution suite (needs wast2json)
 simd-dragline: ## Run the official SIMD proposal suite through native Dragline (needs wast2json)
 	$(call run-spec,simd,$(SPEC1_DIR),proposals/simd/simd_address.wast,tests/spec,WAGO_SPEC_COMPILER=dragline WAGO_SPEC_TARGET=native)
 
+.PHONY: relaxed-simd-dragline
+relaxed-simd-dragline: wabt ## Run the pinned Core 3 relaxed-SIMD family through native Dragline
+	@test -f $(SPEC3_DIR)/test/core/relaxed-simd/relaxed_laneselect.wast || git submodule update --init tests/spec-v3
+	@wast2json="$$(scripts/bootstrap-wabt.sh --print-path)"; \
+		WAGO_WAST2JSON="$$wast2json" WAGO_WABT_VERSION=1.0.41 \
+		WAGO_SPEC_WABT_ONLY=1 WAGO_SPEC_COMPILER=dragline WAGO_SPEC_TARGET=native \
+		WAGO_SPECTEST_DIR=$(SPEC3_DIR) WAGO_SPEC_VERSION=3.0 \
+		WAGO_SPEC_FILES='relaxed-simd/i16x8_relaxed_q15mulr_s,relaxed-simd/i32x4_relaxed_trunc,relaxed-simd/i8x16_relaxed_swizzle,relaxed-simd/relaxed_dot_product,relaxed-simd/relaxed_laneselect,relaxed-simd/relaxed_madd_nmadd,relaxed-simd/relaxed_min_max' \
+		go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
+
 .PHONY: spec
 spec: spec1 spec2 spec3 ## Run the WebAssembly spec suite for all versions
 

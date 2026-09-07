@@ -1296,7 +1296,8 @@ func TestSpecSuiteExec(t *testing.T) {
 		version = "1.0"
 	}
 	dir, files := resolveSpecPlan(t, dir, version)
-	if filter := strings.TrimSpace(os.Getenv("WAGO_SPEC_FILES")); filter != "" {
+	filter := strings.TrimSpace(os.Getenv("WAGO_SPEC_FILES"))
+	if filter != "" {
 		wanted := make(map[string]struct{})
 		for _, name := range strings.Split(filter, ",") {
 			if name = strings.TrimSpace(strings.TrimSuffix(name, ".wast")); name != "" {
@@ -1325,10 +1326,27 @@ func TestSpecSuiteExec(t *testing.T) {
 	if version == "3.0" {
 		interpreter, err = resolveSpecInterpreter()
 		if err != nil {
-			t.Fatal(err)
+			if !filteredWABTOnlyAllowed(version, filter) {
+				t.Fatal(err)
+			}
+			t.Logf("filtered Core 3 run uses pinned WABT without interpreter fallback: %v", err)
 		}
 	}
 	runSpecExec(t, wast2json, interpreter, dir, version, files)
+}
+
+func filteredWABTOnlyAllowed(version, filter string) bool {
+	return version == "3.0" && strings.TrimSpace(filter) != "" && os.Getenv("WAGO_SPEC_WABT_ONLY") == "1"
+}
+
+func TestFilteredWABTOnlyRequiresExplicitCore3Files(t *testing.T) {
+	t.Setenv("WAGO_SPEC_WABT_ONLY", "1")
+	if filteredWABTOnlyAllowed("3.0", "") || filteredWABTOnlyAllowed("2.0", "simd/foo") {
+		t.Fatal("WABT-only mode admitted an unfiltered or non-Core-3 run")
+	}
+	if !filteredWABTOnlyAllowed("3.0", "relaxed-simd/relaxed_laneselect") {
+		t.Fatal("WABT-only mode rejected an explicit Core 3 file filter")
+	}
 }
 
 func specRuntimeConfig(version string) (*wago.RuntimeConfig, error) {

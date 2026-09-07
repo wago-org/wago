@@ -37,6 +37,7 @@ make spec2
 make spec3
 make simd
 make simd-dragline
+make relaxed-simd-dragline
 ```
 
 `make spec2` sets `WAGO_SPECTEST_DIR` to the `tests/spec-v2` checkout and
@@ -52,6 +53,12 @@ native target. The spec harness also accepts the fail-closed
 `WAGO_SPEC_COMPILER=railshot|dragline` and
 `WAGO_SPEC_TARGET=compatibility|native` selectors for focused investigation;
 unknown values fail the run instead of silently selecting another backend.
+
+`make relaxed-simd-dragline` runs the seven pinned Core 3 relaxed-SIMD files
+through native Dragline. It uses `WAGO_SPEC_WABT_ONLY=1`, which the harness
+accepts only together with an explicit Core 3 `WAGO_SPEC_FILES` filter. Any
+file that pinned WABT cannot convert still fails. Unfiltered Core 3 runs retain
+the mandatory official-interpreter fallback and cannot use this mode.
 
 `make spec3` verifies checksum-pinned WABT 1.0.41 and the official 3.0.0
 reference interpreter built from the exact Release 3 pin. WABT remains primary;
