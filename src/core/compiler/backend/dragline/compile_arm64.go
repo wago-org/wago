@@ -2233,7 +2233,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 			currentForwardedSpill = 0
 			instructionResult := plan.Machine.Insts[instructionID].Result
 			swarSkipped := swarRunN && (instructionID >= 5 && instructionID < 21 || instructionID >= 27 && instructionID < 37) || swarParse4 && instructionID >= 2 && instructionID < 12
-			skipped := swarSkipped || idempotentFloatTail && instructionID >= idempotentFloatStart && instructionID < idempotentFloatEnd || skipInstruction[instructionID] || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || plan.PostRASkip.has(instructionID)
+			skipped := swarSkipped || idempotentFloatTail && instructionID >= idempotentFloatStart && instructionID < idempotentFloatEnd || skipInstruction.has(instructionID) || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 || plan.PostRASkip.has(instructionID)
 			instruction := plan.Machine.Insts[instructionID]
 			semanticOp := railmach.SemanticOpcode(instruction.Op)
 			if semanticOp == wasm.InstrGlobalSet || railmach.IsCall(instruction.Op) {
@@ -4928,7 +4928,7 @@ func emitARM64RailMachTargetMode(fn *railssa.Func, plan *nativeBackendPlan, mops
 					nextEnd := uint64(uint32(next.Aux)) + uint64(nextSize)
 					nextResult := next.Result
 					nextSwarSkipped := swarRunN && (nextID >= 5 && nextID < 21 || nextID >= 27 && nextID < 37) || swarParse4 && nextID >= 2 && nextID < 12
-					nextSkipped := nextSwarSkipped || idempotentFloatTail && nextID >= idempotentFloatStart && nextID < idempotentFloatEnd || skipInstruction[nextID] ||
+					nextSkipped := nextSwarSkipped || idempotentFloatTail && nextID >= idempotentFloatStart && nextID < idempotentFloatEnd || skipInstruction.has(nextID) ||
 						nextResult != 0 && plan.Machine.VRegs[nextResult].Flags&railmach.VRegElided != 0 || plan.PostRASkip.has(nextID)
 					if nextMemory && !nextStore && !nextSkipped && len(nextOperands) != 0 && nextOperands[0].Reg != operands[0].Reg && nextEnd == end &&
 						!railMachElidesMemoryBoundsCheck(plan, nextID) && memoryCheckEnd(nextOperands[0].Reg) < nextEnd &&
@@ -8944,7 +8944,7 @@ func emitARM64RailMachMoveRangeAt(a *arm64.Asm, plan *nativeBackendPlan, moveRan
 				data := plan.Machine.VRegs[move.Reg]
 				if data.Flags&railmach.VRegRematerializable != 0 && data.Def%6 == 3 {
 					producer := data.Def / 6
-					if int(producer) < len(plan.ImmediateSkip) && plan.ImmediateSkip[producer] {
+					if plan.ImmediateSkip.has(producer) {
 						source = railmach.Location{Kind: railmach.LocationRematerialize, Bank: move.Bank}
 					}
 				}

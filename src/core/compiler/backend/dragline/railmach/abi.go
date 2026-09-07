@@ -241,8 +241,8 @@ func directPreparedAMD64IntegerContract(f *Func, allocation *GreedyAllocation) b
 // emit. It is deliberately conservative: parameters, block arguments,
 // fragments, fixed-register repairs, result registers, and any register shared
 // with a retained definition keep the original clobber bit.
-func PruneSkippedDefinitionClobbers(f *Func, allocation *GreedyAllocation, contract ABIContract, skipped []bool) ABIContract {
-	if f == nil || allocation == nil || len(skipped) != len(f.Insts) || len(allocation.Locations) != len(f.VRegs) {
+func PruneSkippedDefinitionClobbers(f *Func, allocation *GreedyAllocation, contract ABIContract, skipped []uint64) ABIContract {
+	if f == nil || allocation == nil || len(skipped) != (len(f.Insts)+63)/64 || len(allocation.Locations) != len(f.VRegs) {
 		return contract
 	}
 	var candidatesGPR, candidatesFPR, retainedGPR, retainedFPR uint64
@@ -268,7 +268,7 @@ func PruneSkippedDefinitionClobbers(f *Func, allocation *GreedyAllocation, contr
 		skippedDefinition := data.Flags&(VRegInitial|VRegBlockParam) == 0 && data.Def%6 == 3
 		if skippedDefinition {
 			instructionID := data.Def / 6
-			skippedDefinition = int(instructionID) < len(f.Insts) && skipped[instructionID]
+			skippedDefinition = int(instructionID) < len(f.Insts) && skipped[instructionID>>6]&(uint64(1)<<(instructionID&63)) != 0
 			if skippedDefinition {
 				instruction := f.Insts[instructionID]
 				skippedDefinition = instruction.Result != 0 && VReg(value) >= instruction.Result && VReg(value) < instruction.Result+VReg(instruction.ResultCount())

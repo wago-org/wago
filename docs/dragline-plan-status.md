@@ -363,6 +363,12 @@ the performance corpus.
   stay byte-identical while peak compiler-owned storage falls by another
   16,452, 3,414, and 17,360 bytes. Six alternating SQLite public compiles
   improve by 0.13% median, with about 20 KiB/op less allocation.
+- Compact immediate-elision membership: ✅ constant-definition suppression now
+  shares the reusable bitset representation across combination planning,
+  ABI-clobber pruning, edge rematerialization, and both finalizers. SQLite,
+  Lua, and regexmatch remain byte-identical while peak compiler-owned storage
+  falls by another 9,426, 1,707, and 8,680 bytes. Six alternating SQLite
+  public compiles improve by 0.11% median, with about 25 KiB/op less allocation.
 - Scheduler and SSA-exit observability: ✅ metrics schema 24 retains every
   bounded initial schedule candidate's realized post-allocation spill debt,
   physical copies, copy cycles, copy motion, fixed repairs, broken fusions,

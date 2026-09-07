@@ -268,13 +268,13 @@ func TestPruneSkippedDefinitionClobbersRetainsOnlyPhysicalWrites(t *testing.T) {
 	}}}
 	contract := ABIContract{GPRClobbers: uint64(1)<<12 | uint64(1)<<13, CalleeGPRs: uint64(1)<<12 | uint64(1)<<13}
 
-	pruned := PruneSkippedDefinitionClobbers(f, allocation, contract, []bool{true, false, true})
+	pruned := PruneSkippedDefinitionClobbers(f, allocation, contract, []uint64{0b101})
 	if pruned.GPRClobbers != uint64(1)<<12 || pruned.CalleeGPRs != uint64(1)<<12 {
 		t.Fatalf("pruned shared definitions = %#v", pruned)
 	}
 
 	allocation.Fragments = []AllocationFragment{{Location: Location{Kind: LocationRegister, Bank: BankGPR, Index: 13}}}
-	retained := PruneSkippedDefinitionClobbers(f, allocation, contract, []bool{true, false, true})
+	retained := PruneSkippedDefinitionClobbers(f, allocation, contract, []uint64{0b101})
 	if retained.GPRClobbers != contract.GPRClobbers || retained.CalleeGPRs != contract.CalleeGPRs {
 		t.Fatalf("fragment write was pruned: %#v", retained)
 	}

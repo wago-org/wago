@@ -106,9 +106,13 @@ func TestPreserveNativeARM64RepeatedAddInvariant(t *testing.T) {
 	var repeats nativeInstructionRelation
 	repeats.prepare(5, true)
 	repeats.set(4, 1)
-	skipped := []bool{true, true, true, true, false}
-	preserveNativeARM64RepeatedAddInputs(machine, schedule, repeats, skipped)
-	if skipped[0] {
+	var skipped nativeBitSet
+	skipped.prepare(5, true)
+	for bit := uint32(0); bit < 4; bit++ {
+		skipped.set(bit, true)
+	}
+	preserveNativeARM64RepeatedAddInputs(machine, schedule, repeats, &skipped)
+	if skipped.has(0) {
 		t.Fatal("repeated-add invariant constant remained suppressed")
 	}
 }
@@ -702,12 +706,12 @@ func TestNativeImmediateCombinationsFoldRepeatedRotateCounts(t *testing.T) {
 	machine.VRegs[1] = railmach.VRegData{Def: 3, Flags: railmach.VRegRematerializable}
 	plan := &nativeBackendPlan{Machine: machine, Selection: &railmach.SelectionPlan{}}
 	var producers nativeInstructionRelation
-	skipped := make([]bool, len(machine.Insts))
+	var skipped nativeBitSet
 	uses := make([]uint32, len(machine.VRegs))
-	buildNativeImmediateCombinations(plan, &producers, skipped, uses)
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
 	producer1, ok1 := producers.get(1)
 	producer2, ok2 := producers.get(2)
-	if !ok1 || producer1 != 0 || !ok2 || producer2 != 0 || !skipped[0] || uses[1] != 2 {
+	if !ok1 || producer1 != 0 || !ok2 || producer2 != 0 || !skipped.has(0) || uses[1] != 2 {
 		t.Fatalf("producers=%v skipped=%v uses=%v", producers, skipped, uses)
 	}
 	machine.Target = railmach.TargetARM64
@@ -723,8 +727,8 @@ func TestNativeImmediateCombinationsFoldRepeatedRotateCounts(t *testing.T) {
 	if machine.Operands[1].Flags&railmach.OperandColdRemat != 0 || machine.Operands[3].Flags&railmach.OperandColdRemat != 0 {
 		t.Fatalf("escaping rotate constant was removed from liveness: %#v", machine.Operands)
 	}
-	buildNativeImmediateCombinations(plan, &producers, skipped, uses)
-	if skipped[0] {
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
+	if skipped.has(0) {
 		t.Fatal("function-result constant was elided")
 	}
 }
@@ -743,12 +747,12 @@ func TestNativeImmediateCombinationsFoldRepeatedVectorShiftCounts(t *testing.T) 
 	machine.VRegs[1] = railmach.VRegData{Def: 3, Flags: railmach.VRegRematerializable}
 	plan := &nativeBackendPlan{Machine: machine, Selection: &railmach.SelectionPlan{}}
 	var producers nativeInstructionRelation
-	skipped := make([]bool, len(machine.Insts))
+	var skipped nativeBitSet
 	uses := make([]uint32, len(machine.VRegs))
-	buildNativeImmediateCombinations(plan, &producers, skipped, uses)
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
 	producer1, ok1 := producers.get(1)
 	producer2, ok2 := producers.get(2)
-	if !ok1 || producer1 != 0 || !ok2 || producer2 != 0 || !skipped[0] || uses[1] != 2 {
+	if !ok1 || producer1 != 0 || !ok2 || producer2 != 0 || !skipped.has(0) || uses[1] != 2 {
 		t.Fatalf("producers=%v skipped=%v uses=%v", producers, skipped, uses)
 	}
 }
@@ -766,10 +770,10 @@ func TestNativeImmediateCombinationsRejectStaleMultiplyAddRelation(t *testing.T)
 	selection := &railmach.SelectionPlan{Combinations: []railmach.Combination{{Kind: railmach.CombineImmediate, Producer: 0, Consumer: 1}}}
 	plan := &nativeBackendPlan{Machine: machine, Selection: selection}
 	var producers nativeInstructionRelation
-	skipped := make([]bool, len(machine.Insts))
+	var skipped nativeBitSet
 	uses := make([]uint32, len(machine.VRegs))
-	buildNativeImmediateCombinations(plan, &producers, skipped, uses)
-	if producers.has(1) || skipped[0] {
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
+	if producers.has(1) || skipped.has(0) {
 		t.Fatalf("stale multiply-add relation admitted: producers=%v skipped=%v", producers, skipped)
 	}
 }
@@ -787,10 +791,10 @@ func TestNativeImmediateCombinationRetainsEdgeTransferConstant(t *testing.T) {
 	selection := &railmach.SelectionPlan{Combinations: []railmach.Combination{{Kind: railmach.CombineImmediate, Producer: 0, Consumer: 1}}}
 	plan := &nativeBackendPlan{Machine: machine, Selection: selection}
 	var producers nativeInstructionRelation
-	skipped := make([]bool, len(machine.Insts))
+	var skipped nativeBitSet
 	uses := make([]uint32, len(machine.VRegs))
-	buildNativeImmediateCombinations(plan, &producers, skipped, uses)
-	if skipped[0] || uses[1] != 2 {
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
+	if skipped.has(0) || uses[1] != 2 {
 		t.Fatalf("edge-transfer constant skipped=%v uses=%v producers=%v", skipped, uses, producers)
 	}
 }
@@ -830,18 +834,18 @@ func TestARM64ExtendedAddSubImmediateRequiresHotBlock(t *testing.T) {
 	}
 	plan := &nativeBackendPlan{Machine: machine, Selection: &railmach.SelectionPlan{}}
 	var producers nativeInstructionRelation
-	skipped := make([]bool, len(machine.Insts))
+	var skipped nativeBitSet
 	uses := make([]uint32, len(machine.VRegs))
-	buildNativeImmediateCombinations(plan, &producers, skipped, uses)
-	buildNativeARM64LogicalImmediateCombinations(plan, &producers, skipped, uses)
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
+	buildNativeARM64LogicalImmediateCombinations(plan, &producers, &skipped, uses)
 	if producers.has(1) {
 		t.Fatal("extended immediate folded in a low-weight block")
 	}
 	machine.Blocks[0].Weight = 64
-	buildNativeImmediateCombinations(plan, &producers, skipped, uses)
-	buildNativeARM64LogicalImmediateCombinations(plan, &producers, skipped, uses)
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
+	buildNativeARM64LogicalImmediateCombinations(plan, &producers, &skipped, uses)
 	producer, ok := producers.get(1)
-	if !ok || producer != 0 || !skipped[0] {
+	if !ok || producer != 0 || !skipped.has(0) {
 		t.Fatalf("hot extended immediate producers=%v skipped=%v", producers, skipped)
 	}
 }
@@ -860,19 +864,20 @@ func TestNativeEdgeConstantRematerializationRequiresPhysicalMoves(t *testing.T) 
 		Allocation: &railmach.GreedyAllocation{Allocation: railmach.Allocation{Locations: []railmach.Location{{}, register(0), register(1)}}},
 		Exit:       &railmach.SSAExit{Moves: []railmach.PhysicalMove{{Src: register(0), Dst: register(1), Reg: 1, Kind: railmach.MoveCopy, Bank: railmach.BankGPR}}},
 	}
-	skipped := make([]bool, 1)
-	buildNativeEdgeConstantRematerialization(plan, skipped, []uint32{0, 1, 0})
-	if !skipped[0] {
+	var skipped nativeBitSet
+	skipped.prepare(1, true)
+	buildNativeEdgeConstantRematerialization(plan, &skipped, []uint32{0, 1, 0})
+	if !skipped.has(0) {
 		t.Fatal("edge-only constant was not selected for direct rematerialization")
 	}
-	skipped[0] = false
-	buildNativeEdgeConstantRematerialization(plan, skipped, []uint32{0, 2, 0})
-	if skipped[0] {
+	skipped.set(0, false)
+	buildNativeEdgeConstantRematerialization(plan, &skipped, []uint32{0, 2, 0})
+	if skipped.has(0) {
 		t.Fatal("constant with a non-edge use was elided")
 	}
 	plan.Exit.Moves = nil
-	buildNativeEdgeConstantRematerialization(plan, skipped, []uint32{0, 1, 0})
-	if skipped[0] {
+	buildNativeEdgeConstantRematerialization(plan, &skipped, []uint32{0, 1, 0})
+	if skipped.has(0) {
 		t.Fatal("coalesced edge constant lost its defining materialization")
 	}
 }
@@ -902,10 +907,10 @@ func TestNativeImmediatePlanSkipsFullyRematerializedDefinition(t *testing.T) {
 		}}},
 	}
 	var producers nativeInstructionRelation
-	skipped := make([]bool, len(machine.Insts))
+	var skipped nativeBitSet
 	uses := make([]uint32, len(machine.VRegs))
-	buildNativeImmediateCombinations(plan, &producers, skipped, uses)
-	if !skipped[0] {
+	buildNativeImmediateCombinations(plan, &producers, &skipped, uses)
+	if !skipped.has(0) {
 		t.Fatal("fully rematerialized constant definition was emitted")
 	}
 }

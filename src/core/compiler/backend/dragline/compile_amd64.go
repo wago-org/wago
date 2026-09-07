@@ -1081,8 +1081,8 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 	}
 	immediateProducer, skipInstruction := plan.ImmediateProducer, plan.ImmediateSkip
 	if metrics != nil {
-		for _, skip := range skipInstruction {
-			if skip {
+		for instructionID := range plan.Machine.Insts {
+			if skipInstruction.has(uint32(instructionID)) {
 				metrics.ImmediateFolds++
 			}
 		}
@@ -1420,7 +1420,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 		for _, instructionID := range plan.Schedule.Order[blockRange.Start : blockRange.Start+blockRange.Count] {
 			nextPosition := plan.Allocation.InstructionPositions[instructionID]*6 + 2
 			forwardedSpill = 0
-			if pendingSpill != 0 && plan.Machine.VRegs[pendingSpill].Bank == railmach.BankFPR && !skipInstruction[instructionID] && !plan.PostRASkip.has(instructionID) &&
+			if pendingSpill != 0 && plan.Machine.VRegs[pendingSpill].Bank == railmach.BankFPR && !skipInstruction.has(instructionID) && !plan.PostRASkip.has(instructionID) &&
 				!nativeControlInstruction(plan.Machine.Insts[instructionID].Op) {
 				if forward, elideStore := amd64RailMachForwardPendingSpill(plan, instructionID, pendingSpill, nextPosition); forward {
 					forwardedSpill = pendingSpill
@@ -1437,7 +1437,7 @@ func emitAMD64RailMach(fn *railssa.Func, plan *nativeBackendPlan, relocs *[]amd6
 			}
 			emitCalleeRestoreBefore(instructionID)
 			instructionResult := plan.Machine.Insts[instructionID].Result
-			if skipInstruction[instructionID] || plan.PostRASkip.has(instructionID) || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 {
+			if skipInstruction.has(instructionID) || plan.PostRASkip.has(instructionID) || instructionResult != 0 && plan.Machine.VRegs[instructionResult].Flags&railmach.VRegElided != 0 {
 				continue
 			}
 			instruction := plan.Machine.Insts[instructionID]
@@ -5101,7 +5101,7 @@ func emitAMD64RailMachMoveRangeAt(a *amd64.Asm, plan *nativeBackendPlan, moveRan
 				data := plan.Machine.VRegs[move.Reg]
 				if data.Flags&railmach.VRegRematerializable != 0 && data.Def%6 == 3 {
 					producer := data.Def / 6
-					if int(producer) < len(plan.ImmediateSkip) && plan.ImmediateSkip[producer] {
+					if plan.ImmediateSkip.has(producer) {
 						source = railmach.Location{Kind: railmach.LocationRematerialize, Bank: move.Bank}
 					}
 				}

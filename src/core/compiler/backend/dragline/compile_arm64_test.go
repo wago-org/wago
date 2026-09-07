@@ -2719,7 +2719,7 @@ func TestARM64RailMachImmediateDoesNotMaterializeFoldedOperand(t *testing.T) {
 	}
 	baseline := *plan
 	baseline.ImmediateProducer = nativeInstructionRelation{}
-	baseline.ImmediateSkip = make([]bool, len(plan.ImmediateSkip))
+	baseline.ImmediateSkip = nativeBitSet{}
 	unfolded, _, ok, err := emitARM64RailMach(fn, &baseline, false, nil, nil, nil, nil)
 	if err != nil || !ok {
 		t.Fatalf("unfolded RailMach finalization = ok %t, err %v", ok, err)
