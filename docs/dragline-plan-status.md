@@ -547,13 +547,10 @@ the performance corpus.
   MVP ISA modules, Dragline is 0.234x Railshot and 0.293x Cranelift execution
   latency while emitting 0.531x and 0.597x their native code; compile wall is
   1.058x Railshot and 0.917x Cranelift, with 0.585x Cranelift RSS. Across the 36
-  applications. A subsequent three-round, 50 ms diagnostic pass after separating
-  operand-stack/local register eligibility, caching immutable memory length, and
-  reusing FP scratch across adjacent binary operations reduced general-code
-  execution from 3.048x to 2.374x Railshot. This is still a failed product gate;
-  the longer paired Cranelift run has not yet been refreshed. Ruby compile
-  latency remains a 19.216-second outlier in the original report. The configured
-  LLVM command remains unavailable, so the LLVM gate is unmeasured.
+  applications, those compile/Cranelift rows remain a historical measurement
+  epoch and must not be combined with the current execution results below. Ruby
+  compile latency remains a 19.216-second outlier in that original report. The
+  configured LLVM command remains unavailable, so the LLVM gate is unmeasured.
 - Current ARM64 non-ISA execution: ✅ a three-round, 100 ms paired run on Apple
   M4 Max has all 36 runnable exports faster than wazero. The module-equal paired
   median geometric mean is 0.555x wazero latency, or 44.5% faster. The narrowest
@@ -561,15 +558,17 @@ the performance corpus.
   the quality allocator threshold after a measured FastMachine experiment was
   required: the 1,024-instruction threshold made the two BLAKE rows 36–67%
   slower and was rejected before commit.
-- Current ARM64 execution floor refresh: ✅ three 300 ms samples per engine on
-  Apple M4 Max keep every runnable non-ISA export faster than wazero. The
-  narrowest row is now `arith.run`: median Dragline latency is 1,338 ns versus
-  1,363 ns for wazero, or 1.8% faster. Its hot loop already consists of the
-  minimal expected `SXTW`, `MADD`, shifted `EOR`, decrement, and conditional
-  branch sequence, so no corpus-specific rewrite is justified. The next
-  execution work should target a reusable operation family with measured
-  headroom rather than forcing this already-minimal kernel toward an arbitrary
-  percentage.
+- Current ARM64 execution floor refresh: ✅ the September 6 exact-head sweep of
+  all 36 runnable non-ISA exports used three 100 ms samples per engine and
+  measured a module/export-equal median geometric mean of 0.570x wazero
+  latency. The sequential sweep's apparent `float.run` miss was order noise:
+  twelve alternating 500 ms pairs measured 0.941x wazero with 12/12 wins.
+  Twelve equivalent `arith.run` pairs establish the current narrowest margin at
+  0.995x wazero with 8/12 wins. Its hot loop already consists of the minimal
+  expected `SXTW`, `MADD`, shifted `EOR`, decrement, and conditional branch
+  sequence, so no corpus-specific rewrite is justified. The next execution work
+  should target a reusable operation family with measured headroom rather than
+  forcing this already-minimal kernel toward an arbitrary percentage.
 - ARM64 shifted-register logic: ✅ the post-RA verifier recognizes adjacent,
   single-use 32/64-bit constant shifts feeding matching AND, OR, or XOR forms
   and requires the unshifted base to remain live at the logical consumer. The
