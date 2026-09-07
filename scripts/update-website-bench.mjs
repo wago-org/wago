@@ -25,7 +25,7 @@ const websiteDir = resolve(process.env.WAGO_WEBSITE_DIR || join(root, "..", "web
 const indexPath = join(websiteDir, "index.html");
 const requestedUpdateArch = process.env.WAGO_BENCH_UPDATE_ARCH || "";
 const ENGINES = [
-  { id: "railshot", label: "Wago" },
+  { id: "railshot", label: "wago" },
   { id: "wazero", label: "wazero" },
 ];
 
@@ -199,6 +199,68 @@ const TABS = [
   },
 ];
 
+// The detailed tables are derived from the benchmark corpus instead of a
+// hand-picked shortlist. This keeps every available module/export visible when
+// the manifest grows and makes missing benchmark pairs obvious during review.
+TABS.splice(1, TABS.length - 1, ...buildCorpusTabs(benchmarkSets));
+
+function buildCorpusTabs(sets) {
+  const modules = [];
+  const seenModules = new Set();
+  for (const set of sets) {
+    for (const [name, info] of Object.entries(set.modules ?? {})) {
+      if (seenModules.has(name)) continue;
+      seenModules.add(name);
+      modules.push({ name, category: info.category || "other" });
+    }
+  }
+  const categoryLabels = new Map([
+    ["micro", "Micro modules"], ["loop", "Loops"], ["calls", "Calls"],
+    ["calls+memory", "Calls and memory"], ["alu", "Integer arithmetic"],
+    ["fp", "Floating point"], ["memory", "Memory"], ["globals", "Globals"],
+    ["control", "Control flow"], ["scale", "Scale"], ["compute", "Compute kernels"],
+    ["real", "Real-world programs"], ["real-simd", "Real-world SIMD"],
+    ["semantic", "Semantic corpus"], ["real-large", "Large real-world programs"],
+    ["regression-only", "Regression corpus"], ["other", "Other"],
+  ]);
+  const grouped = (makeItems) => {
+    const groups = new Map();
+    for (const module of modules) {
+      const items = makeItems(module);
+      if (items.length === 0) continue;
+      const group = groups.get(module.category) ?? [];
+      group.push(...items);
+      groups.set(module.category, group);
+    }
+    return [...groups].flatMap(([category, items]) => [grp(categoryLabels.get(category) ?? category), ...items]);
+  };
+  const moduleRows = (wagoPrefix, wazeroPrefix, kind = "ns") => grouped(({ name, category }) => [
+    rs(name, `${category} corpus`, `${wagoPrefix}${name}`, `${wazeroPrefix}${name}`,
+      kind === "ns" ? "faster" : "smaller", kind),
+  ]);
+  const execRows = grouped(({ name, category }) => {
+    const keys = new Set();
+    for (const set of sets) {
+      for (const key of set.metrics.keys()) {
+        for (const prefix of ["Exec/", "WazeroExec/"]) {
+          if (key.startsWith(`${prefix}${name}.`)) keys.add(key.slice(prefix.length));
+        }
+      }
+    }
+    return [...keys].sort().map((tail) => {
+      const exportName = tail.slice(name.length + 1);
+      return rs(name, `${exportName} · ${category} corpus`, `Exec/${tail}`, `WazeroExec/${tail}`);
+    });
+  });
+  return [
+    { id: "compile", label: "Compile latency", items: moduleRows("CompileFull/", "WazeroCompile/") },
+    { id: "compile-memory", label: "Compile memory", items: moduleRows("CompileFull/", "WazeroCompile/", "bytes") },
+    { id: "instantiate", label: "Instantiate latency", items: moduleRows("Instantiate/", "WazeroInstantiate/") },
+    { id: "machine-code", label: "Machine code", items: moduleRows("CompileFull/", "WazeroCompile/", "code") },
+    { id: "execution", label: "Execution", items: execRows },
+  ];
+}
+
 const html = await readFile(indexPath, "utf8");
 const updateArch = requestedUpdateArch || (
   benchmarkSets.length === 1 &&
@@ -261,7 +323,7 @@ async function loadRunMetrics(path, fallbackArch = "") {
   const run = JSON.parse(await readFile(path, "utf8"));
   const metrics = new Map();
   for (const [key, m] of Object.entries(run.metrics ?? {})) {
-    metrics.set(key, { ns: Number(m.ns ?? 0), bytes: Number(m.bytes ?? 0), allocs: Number(m.allocs ?? 0) });
+    metrics.set(key, { ns: Number(m.ns ?? 0), bytes: Number(m.bytes ?? 0), allocs: Number(m.allocs ?? 0), codeBytes: Number(m.codeBytes ?? 0) });
   }
   const arch = run.goarch || fallbackArch;
   const generalPath = resolve(
@@ -277,7 +339,7 @@ async function loadRunMetrics(path, fallbackArch = "") {
     throw new Error(`general benchmark commit ${generalRaw.commit} does not match ${run.commit}`);
   }
   const general = buildGeneralSummary(metrics, generalRaw);
-  return { metrics, general, external: generalRaw, source: path, arch, goos: run.goos || "", commit: run.commit || "", cpu: run.cpu || "" };
+  return { metrics, modules: run.modules ?? {}, general, external: generalRaw, source: path, arch, goos: run.goos || "", commit: run.commit || "", cpu: run.cpu || "" };
 }
 
 function buildGeneralSummary(metrics, raw) {
@@ -728,7 +790,7 @@ ${rows}
 
 function buildEngineRow(spec, set, tabID) {
   const kind = spec.kind ?? "ns";
-  const pick = (metric) => kind === "bytes" ? metric.bytes : kind === "count" ? metric.allocs : metric.ns;
+  const pick = (metric) => kind === "bytes" ? metric.bytes : kind === "count" ? metric.allocs : kind === "code" ? metric.codeBytes : metric.ns;
   const values = [];
   for (const engine of ENGINES) {
     let value = 0;
@@ -769,7 +831,7 @@ function externalRowMetric(raw, engine, tabID, key) {
 function renderEngineRow(row, indent) {
   const pad = " ".repeat(indent);
   const max = Math.max(1, ...row.values.map(({ value }) => value));
-  const format = row.kind === "bytes" ? fmtBytes : row.kind === "count" ? fmtCount : fmtNs;
+  const format = row.kind === "bytes" || row.kind === "code" ? fmtBytes : row.kind === "count" ? fmtCount : fmtNs;
   const delta = comparisonDelta(row);
   const lines = row.values.map(({ engine, value }) => `${pad}        <div class="vs__line" data-engine="${engine.id}">
 ${pad}            <span class="vs__engine">${esc(engine.label)}</span>
@@ -792,7 +854,7 @@ function comparisonDelta(row) {
   if (same) return { text: "same", className: "tie" };
   const railshotWins = railshot < wazero;
   const magnitude = trim(Math.max(railshot, wazero) / Math.min(railshot, wazero), 1);
-  const resource = row.kind === "bytes" || row.kind === "count";
+  const resource = row.kind === "bytes" || row.kind === "code" || row.kind === "count";
   const word = resource
     ? railshotWins ? "less" : "more"
     : railshotWins ? "faster" : "slower";

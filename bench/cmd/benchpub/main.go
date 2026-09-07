@@ -27,7 +27,7 @@ import (
 // suiteRegex selects the wago stage suite plus the cross-engine wazero
 // benchmarks (compare_test.go). The fixed wago-vs-wazero set in bench_test.go is
 // excluded — these fan out over the same corpus as the wago stages.
-const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec|BenchmarkWazeroCompile|BenchmarkWazeroInstantiate|BenchmarkWazeroExec)$`
+const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec|BenchmarkWazeroCompile|BenchmarkWazeroInstantiate|BenchmarkWazeroExec|BenchmarkPluginInstantiate|BenchmarkPluginExec)$`
 
 // stampPath (bench-relative — benchpub runs with cwd=bench/) records the commit
 // the last published/charted numbers reflect and the wall-clock time benchpub
@@ -47,9 +47,10 @@ var stageOrder = []string{"Decode", "Validate", "Compile", "CompileFull", "Insta
 
 // Metric is one benchmark's central result.
 type Metric struct {
-	Ns     float64 `json:"ns"`
-	Bytes  int64   `json:"bytes"`
-	Allocs int64   `json:"allocs"`
+	Ns        float64 `json:"ns"`
+	Bytes     int64   `json:"bytes"`
+	Allocs    int64   `json:"allocs"`
+	CodeBytes int64   `json:"codeBytes,omitempty"`
 }
 
 // ModuleInfo is corpus metadata for one module, recorded so charts can select
@@ -225,7 +226,15 @@ func parseRun(text string) Run {
 // normalizeName turns "Decode/tiny" / "Exec/fib_rec.fib" into the stable
 // "Stage/key" form used as the metric key (the leading function name's
 // "Benchmark" is already stripped by benchRe).
-func normalizeName(n string) string { return n }
+func normalizeName(n string) string {
+	if strings.HasPrefix(n, "PluginInstantiate/") {
+		return "Instantiate/" + strings.TrimPrefix(n, "PluginInstantiate/")
+	}
+	if strings.HasPrefix(n, "PluginExec/") {
+		return "Exec/" + strings.TrimPrefix(n, "PluginExec/") + ".plugin-workload"
+	}
+	return n
+}
 
 // parseMetrics reads the "X ns/op Y B/op Z allocs/op" tail of a bench line.
 func parseMetrics(tail string) (Metric, bool) {
@@ -245,6 +254,8 @@ func parseMetrics(tail string) (Metric, bool) {
 			met.Bytes = int64(v)
 		case "allocs/op":
 			met.Allocs = int64(v)
+		case "code-B":
+			met.CodeBytes = int64(v)
 		}
 	}
 	return met, gotNs
@@ -254,13 +265,15 @@ func median(s []Metric) Metric {
 	ns := make([]float64, len(s))
 	by := make([]int64, len(s))
 	al := make([]int64, len(s))
+	code := make([]int64, len(s))
 	for i, m := range s {
-		ns[i], by[i], al[i] = m.Ns, m.Bytes, m.Allocs
+		ns[i], by[i], al[i], code[i] = m.Ns, m.Bytes, m.Allocs, m.CodeBytes
 	}
 	sort.Float64s(ns)
 	sort.Slice(by, func(i, j int) bool { return by[i] < by[j] })
 	sort.Slice(al, func(i, j int) bool { return al[i] < al[j] })
-	return Metric{Ns: medianFloat(ns), Bytes: medianInt(by), Allocs: medianInt(al)}
+	sort.Slice(code, func(i, j int) bool { return code[i] < code[j] })
+	return Metric{Ns: medianFloat(ns), Bytes: medianInt(by), Allocs: medianInt(al), CodeBytes: medianInt(code)}
 }
 
 // medianFloat/medianInt return the true median of a sorted slice, averaging the

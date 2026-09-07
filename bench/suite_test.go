@@ -295,6 +295,12 @@ func BenchmarkCompileFull(b *testing.B) {
 				b.Fatal(err)
 			}
 		}
+		b.StopTimer()
+		compiled, err := wago.Compile(nil, m.bytes)
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.ReportMetric(float64(compiled.CodeSize()), "code-B")
 	})
 }
 
