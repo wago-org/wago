@@ -1893,6 +1893,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	totalScores := 0
 	intervalLocals := 0
 	intervalFunctions := 0
+	eventReserve := 0
 	moduleEH := m.TagCount() != 0
 	storageModuleEH := moduleEH
 	for i := range m.Code {
@@ -1921,6 +1922,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 			}
 			intervalLocals += count
 			intervalFunctions++
+			eventReserve = max(eventReserve, min(shared.LocalEventInitialCapacity, len(m.Code[i].BodyBytes)/2))
 		}
 	}
 	if uint64(totalScores) > uint64(^uint32(0)) || uint64(intervalLocals) > uint64(^uint32(0)) {
@@ -1939,6 +1941,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		lastGetCount = intervalLocals + intervalFunctions*2
 	}
 	localLastGets := make([]uint32, lastGetCount)
+	localEventMeta := make([]uint32, intervalFunctions*2)
 	var sparseGlobals []shared.GlobalHint
 	var sparseAccum shared.GlobalHintAccumulator
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
@@ -1949,6 +1952,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	scoreAt := 0
 	intervalAt := intervalFunctions * 2
 	intervalRangeAt := 0
+	intervalEventAt := 0
+	localEvents := shared.LocalEventTape{Events: make([]shared.LocalEvent, 0, eventReserve)}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		nLocals := int(allHints[i].localCount)
@@ -1956,6 +1961,10 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		scoreCount := retainedLocalScoreCount(allHints[i])
 		sparseAccum.Reset(nGlobals)
 		h := funcHintsWithStorage(localScores[scoreAt : scoreAt+scoreCount])
+		if intervalStorage {
+			localEvents.Reset(shared.LocalEventLimit)
+			h.localEvents = &localEvents
+		}
 		if compactLastGets {
 			if intervalStorage {
 				h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
@@ -1979,6 +1988,12 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 		h, err = scanFuncBodyIntoModule(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), m.BranchHintsForFunc(uint32(importedFuncs+i)), h, &eligibilityTracker, m, &classifier, allHints, importedFuncs, &sparseAccum)
 		if err != nil {
 			return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: %w", i, err)
+		}
+		if intervalStorage {
+			h.setLocalEventSummary(len(localEvents.Events), localEvents.Overflow)
+			localEventMeta[intervalEventAt] = h.localStart
+			localEventMeta[intervalEventAt+1] = h.localEventMeta
+			intervalEventAt += 2
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs
@@ -2006,11 +2021,13 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 	if moduleEH && !storageModuleEH {
 		localScores = compactEHLocalScores(allHints, localScores)
 		localLastGets = nil
+		localEventMeta = nil
 		intervalRangeAt = 0
 	}
 	return allHints, funcHintSidecar{
 		localScore:             localScores,
 		localLastGet:           localLastGets,
+		localEventMeta:         localEventMeta,
 		sparseGlobals:          sparseGlobals,
 		localLastGetRangeCount: uint32(intervalRangeAt / 2),
 	}, agg, nil

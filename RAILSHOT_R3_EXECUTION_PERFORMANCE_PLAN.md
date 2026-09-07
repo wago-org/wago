@@ -6,9 +6,10 @@ Implementation progress:
 
 - [x] Add pointer-free regional-residency debt telemetry without changing emitted
   code.
-- [ ] Refresh paired execution, compile-resource, and native-size baselines using
+- [x] Refresh paired execution, compile-resource, and native-size baselines using
   the new counters.
-- [ ] Add the bounded local event tape and shadow residency planner.
+- [x] Add the bounded local event tape without changing emitted code.
+- [ ] Add the shadow residency planner.
 
 Source: [shared Railshot Design conversation](https://chatgpt.com/share/6a9f2829-4380-83e8-b5ac-b9747c326b95).
 

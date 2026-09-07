@@ -44,8 +44,19 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		f.intervalOwner[i] = -1
 	}
 	f.stats.peep("interval-region")
+	f.noteResidencyEvents(hints)
 	f.noteResidencyCandidates(kept)
 	return true
+}
+
+func (f *fn) noteResidencyEvents(hints *funcHintView) {
+	if f.stats == nil {
+		return
+	}
+	f.stats.Residency.Events += hints.localEventCount()
+	if hints.localEventOverflowed() {
+		f.stats.Residency.EventOverflows++
+	}
 }
 
 func resizeRegScratch(buf []Reg, n int) []Reg {

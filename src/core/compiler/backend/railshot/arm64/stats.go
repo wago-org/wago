@@ -555,8 +555,8 @@ func (s *CodegenStats) report() string {
 	fmt.Fprintf(&b, "    mem:   bounds=%d elidable=%d inloop=%d hoistable=%d trapStubs=%d trapGroups=%d   pins: local=%d gval=%d\n",
 		s.BoundsChecks, s.BoundsChecksElidable, s.BoundsChecksInLoop, s.BoundsChecksHoistable, s.TrapStubs, s.TrapGroups, s.PinnedLocals, s.PinnedGlobalsValue)
 	if r := s.Residency; r.Active() {
-		fmt.Fprintf(&b, "    residency: candidates=%d activations=%d loads=%d misses=%d evictions=%d writebacks=%d final-transfers=%d max-active=%d\n",
-			r.Candidates, r.Activations, r.ActivationLoads, r.PressureMisses,
+		fmt.Fprintf(&b, "    residency: events=%d overflows=%d candidates=%d activations=%d loads=%d misses=%d evictions=%d writebacks=%d final-transfers=%d max-active=%d\n",
+			r.Events, r.EventOverflows, r.Candidates, r.Activations, r.ActivationLoads, r.PressureMisses,
 			r.Evictions, r.DirtyWritebacks, r.FinalTransfers, r.MaxActive)
 	}
 	if s.InlineSiteBytes != 0 {

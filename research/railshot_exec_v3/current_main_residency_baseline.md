@@ -80,3 +80,22 @@ Pressure misses outnumber activation loads by roughly 6.3x for blake-as and
 policy experiments should therefore distinguish avoided future reads from
 writeback cost and should be evaluated in shadow mode before changing emitted
 code.
+
+## Bounded event-tape qualification
+
+The codegen-neutral event-tape slice records 1,076 events for blake-as and 1,045
+for BLAKE3, with no cap overflow. Both retain the exact baseline native sizes:
+11,404 B and 32,064 B respectively.
+
+Eight alternating 300 ms full-compilation pairs against the exact base produced:
+
+| Benchmark | Base median | Event-tape median | Delta | Heap delta | Allocation delta |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `BenchmarkCompileFull/blake-as` | 334,176 ns/op | 340,110 ns/op | +1.78% | +10.6% | +2 |
+| `BenchmarkCompileFull/blake3` | 977,017 ns/op | 1,005,384 ns/op | +2.90% | +6.4% | +2 |
+
+This remains below the phase ceilings of +25% compile latency and +20% compiler
+memory on both target workloads. The reusable tape starts with a measured 1,152-
+event reservation and grows only when a function requires it; the hard cap stays
+32,768. The event tape is guidance-only at this stage and cannot affect generated
+code.

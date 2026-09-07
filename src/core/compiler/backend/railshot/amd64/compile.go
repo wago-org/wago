@@ -2211,6 +2211,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 	allHints := make([]funcHints, n)
 	totalScores := 0
 	intervalLocals := 0
+	intervalFunctions := 0
+	eventReserve := 0
 	moduleHasTailCall := false
 	moduleEH := m.TagCount() != 0
 	storageModuleEH := moduleEH
@@ -2239,6 +2241,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 				return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint interval locals overflow")
 			}
 			intervalLocals += count
+			intervalFunctions++
+			eventReserve = max(eventReserve, min(shared.LocalEventInitialCapacity, len(m.Code[i].BodyBytes)/2))
 		}
 	}
 	if uint64(totalScores) > uint64(^uint32(0)) || uint64(intervalLocals) > uint64(^uint32(0)) {
@@ -2246,6 +2250,7 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 	}
 	localScores := make([]uint32, totalScores)
 	localLastGets := make([]uint32, intervalLocals)
+	localEventMeta := make([]uint32, intervalFunctions*2)
 	var sparseGlobals []shared.GlobalHint
 	var sparseAccum shared.GlobalHintAccumulator
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
@@ -2259,6 +2264,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 	}
 	scoreAt := 0
 	intervalAt := 0
+	intervalEventAt := 0
+	localEvents := shared.LocalEventTape{Events: make([]shared.LocalEvent, 0, eventReserve)}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		nLocals := int(allHints[i].localCount)
@@ -2270,6 +2277,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		h.localCount = uint16(nLocals)
 		h.localStart = uint32(scoreAt)
 		if intervalStorage {
+			localEvents.Reset(shared.LocalEventLimit)
+			h.localEvents = &localEvents
 			h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
 			if nLocals != 0 {
 				h.lastGetStartPlus1 = uint32(intervalAt) + 1
@@ -2281,6 +2290,12 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		h, err = scanFuncBodyIntoMemory64WithModuleCalls(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, &classifier, gcTypeLayouts, gcStructHelpers, allHints, importedFuncs, &sparseAccum)
 		if err != nil {
 			return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: %w", i, err)
+		}
+		if intervalStorage {
+			h.setLocalEventSummary(len(localEvents.Events), localEvents.Overflow)
+			localEventMeta[intervalEventAt] = h.localStart
+			localEventMeta[intervalEventAt+1] = h.localEventMeta
+			intervalEventAt += 2
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.flags.assign(hintIntervalRegionStorage, intervalStorage)
@@ -2306,8 +2321,9 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 	if moduleEH && !storageModuleEH {
 		localScores = compactEHLocalScores(allHints, localScores)
 		localLastGets = nil
+		localEventMeta = nil
 	}
-	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, sparseGlobals: sparseGlobals}, agg, nil
+	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, localEventMeta: localEventMeta, sparseGlobals: sparseGlobals}, agg, nil
 }
 
 // compactEHLocalScores drops interval-only storage when a tagless try_table or

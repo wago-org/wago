@@ -4,6 +4,8 @@ package shared
 // It is deliberately pointer-free so opt-in explain collection does not add
 // another scannable object graph to compilation.
 type ResidencyStats struct {
+	Events          int
+	EventOverflows  int
 	Candidates      int
 	Activations     int
 	ActivationLoads int
@@ -16,6 +18,6 @@ type ResidencyStats struct {
 
 // Active reports whether any residency event was observed.
 func (s ResidencyStats) Active() bool {
-	return s.Candidates|s.Activations|s.ActivationLoads|s.PressureMisses|
+	return s.Events|s.EventOverflows|s.Candidates|s.Activations|s.ActivationLoads|s.PressureMisses|
 		s.Evictions|s.DirtyWritebacks|s.FinalTransfers|s.MaxActive != 0
 }

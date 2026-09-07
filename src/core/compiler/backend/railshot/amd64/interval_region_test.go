@@ -40,7 +40,7 @@ func TestIntervalRegionDynamicReuse(t *testing.T) {
 	if on.Peephole["tree-order"] != 0 {
 		t.Fatalf("tree ordering must stay disabled while regional registers are active: %v", on.Peephole)
 	}
-	if r := on.Residency; r.Candidates != 20 || r.Activations == 0 || r.MaxActive == 0 || r.MaxActive > maxIntervalRegionRegs || r.FinalTransfers == 0 {
+	if r := on.Residency; r.Events == 0 || r.EventOverflows != 0 || r.Candidates != 20 || r.Activations == 0 || r.MaxActive == 0 || r.MaxActive > maxIntervalRegionRegs || r.FinalTransfers == 0 {
 		t.Fatalf("residency stats = %+v", r)
 	}
 
@@ -76,6 +76,9 @@ func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 	if got := len(sidecar.view(hints[0]).localLastGet); got != 20 {
 		t.Fatalf("candidate last-get storage = %d locals, want 20", got)
 	}
+	if got := sidecar.view(hints[0]).localEventCount(); got == 0 {
+		t.Fatal("candidate did not retain an event summary")
+	}
 	ineligible := sidecar.view(hints[1])
 	if got, want := ineligible.nLocals, 100; got != want {
 		t.Fatalf("ineligible local count = %d, want %d", got, want)
@@ -85,6 +88,9 @@ func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 	}
 	if got := ineligible.localLastGet; got != nil {
 		t.Fatalf("ineligible function reserved %d last-get entries", len(got))
+	}
+	if got := ineligible.localEventCount(); got != 0 {
+		t.Fatalf("ineligible function retained %d events", got)
 	}
 	eligible := sidecar.view(hints[2])
 	if got, want := len(eligible.localScore), 100; got != want {

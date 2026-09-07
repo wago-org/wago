@@ -681,6 +681,12 @@ has parity status summarized below. Landed, in rough order:
   is pointer-free; nil stats remain a no-op, and stats-on/off code bytes are tested
   equal. Use these counters to qualify phase-sensitive residency changes instead of
   treating a lower spill count alone as proof of improvement.
+- **Bounded local event tape** — the fused function-hint scan records four-byte,
+  pointer-free local reads/definitions and physical boundaries only for interval-
+  region candidates. One module-scan scratch backing is reused across functions,
+  capped at 32,768 events, and overflow falls back to coarse hints. Only a sparse
+  event-count summary is retained; per-function hint headers and emitted code remain
+  unchanged.
 
 ### Bounds checks and traps
 - **Guard-page mode** (old P5) is first-class behind `-tags wago_guardpage` and is the
