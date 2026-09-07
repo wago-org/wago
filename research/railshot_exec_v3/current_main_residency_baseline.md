@@ -128,6 +128,11 @@ measurement:
 2. Restricting the policy to farthest-next-use admission and eviction made
    blake-as about 18% slower and BLAKE3 about 46% slower across six alternating
    400 ms pairs.
+3. Preferring clean homes among otherwise eligible eviction victims produced
+   sub-2% timing movement, but it did not remove a single dirty writeback. It
+   instead raised blake-as from 15 to 19 evictions and BLAKE3 from 21 to 26,
+   adding the same number of activation loads. The apparent timing movement was
+   rejected as noise-amplifying churn.
 
 The second form also reduced calls completed per benchmark batch, corroborating
 the latency regression. The full ARM64 instruction corpus passed after a
