@@ -1,0 +1,82 @@
+# Current-main residency baseline
+
+Date: 2026-09-07
+
+This captures the first Railshot R3 execution-performance baseline on the exact
+branch base, before changing allocation or code-generation policy. The only
+branch-side code active during these measurements is opt-in statistics
+collection; codegen-neutrality tests verify that enabling statistics does not
+change emitted code for their covered shapes.
+
+## Environment
+
+- Source base: `a07de0973191efab1d32677eff527952c7f9cdd2`
+- Branch plan commit: `f08c9611810ee699345350a0ad17c41528fb73c1`
+- Host: Apple M4 Max, Darwin arm64
+- OS: Darwin 25.6.0 (`RELEASE_ARM64_T6041`)
+- Go: `go1.26.5 darwin/arm64`
+- Execution: `GOMAXPROCS=1`
+
+## Regional-residency debt
+
+Collected with:
+
+```sh
+go run ./bench/cmd/explain corpus/blake-as.wasm
+go run ./bench/cmd/explain corpus/blake3sum.wasm
+```
+
+| Workload | Candidates | Activations | Loads | Pressure misses | Evictions | Dirty writebacks | Final transfers | Max active |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| blake-as | 39 | 49 | 21 | 132 | 15 | 13 | 34 | 18 |
+| blake3 | 37 | 55 | 19 | 166 | 21 | 17 | 34 | 18 |
+
+Both functions reported zero ordinary allocator spills and reloads. The lease
+telemetry therefore exposes substantial local-residency contention that the
+existing spill counters do not describe.
+
+## Execution baseline
+
+Collected with ten 500 ms samples per benchmark:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkExec/(blake-as\.hashN|blake3\.blake3_hash)$' \
+  -benchtime=500ms -count=10 -benchmem
+```
+
+| Benchmark | Median | Allocations | Calls per batch |
+| --- | ---: | ---: | ---: |
+| `BenchmarkExec/blake-as.hashN` | 392,746 ns/op | 0 | 6 |
+| `BenchmarkExec/blake3.blake3_hash` | 240,135 ns/op | 0 | 8-9 |
+
+The execution medians are reference points, not proof of a change. Future
+candidate comparisons must use alternating paired samples against this exact
+source base or a newly recorded matched baseline.
+
+## Full compilation baseline
+
+Collected with eight 300 ms samples per benchmark:
+
+```sh
+GOMAXPROCS=1 go test -run '^$' \
+  -bench '^BenchmarkCompileFull/(blake-as|blake3)$' \
+  -benchtime=300ms -count=8 -benchmem
+```
+
+| Benchmark | Median | Native code | Heap bytes | Allocations |
+| --- | ---: | ---: | ---: | ---: |
+| `BenchmarkCompileFull/blake-as` | 357,142 ns/op | 11,404 B | 45,672 B/op | 201 |
+| `BenchmarkCompileFull/blake3` | 994,129 ns/op | 32,064 B | 75,896 B/op | 246 |
+
+The first blake-as sample reported 45,748 B/op; the other samples reported
+45,672 B/op. Native-code sizes were stable across all samples.
+
+## Initial interpretation
+
+The ARM64 interval region reaches its 18-register limit in both workloads.
+Pressure misses outnumber activation loads by roughly 6.3x for blake-as and
+8.7x for BLAKE3, while dirty evictions remain comparatively small. The first
+policy experiments should therefore distinguish avoided future reads from
+writeback cost and should be evaluated in shadow mode before changing emitted
+code.

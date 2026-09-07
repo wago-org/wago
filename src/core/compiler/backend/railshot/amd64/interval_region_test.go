@@ -40,6 +40,9 @@ func TestIntervalRegionDynamicReuse(t *testing.T) {
 	if on.Peephole["tree-order"] != 0 {
 		t.Fatalf("tree ordering must stay disabled while regional registers are active: %v", on.Peephole)
 	}
+	if r := on.Residency; r.Candidates != 20 || r.Activations == 0 || r.MaxActive == 0 || r.MaxActive > maxIntervalRegionRegs || r.FinalTransfers == 0 {
+		t.Fatalf("residency stats = %+v", r)
+	}
 
 	intervalRegionPinsEnabled = false
 	if got := runAmd64(t, m); got != 210 {

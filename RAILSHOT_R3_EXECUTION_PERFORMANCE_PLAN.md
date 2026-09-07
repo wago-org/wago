@@ -2,6 +2,14 @@
 
 Status: proposed; measure each phase independently before retaining it.
 
+Implementation progress:
+
+- [x] Add pointer-free regional-residency debt telemetry without changing emitted
+  code.
+- [ ] Refresh paired execution, compile-resource, and native-size baselines using
+  the new counters.
+- [ ] Add the bounded local event tape and shadow residency planner.
+
 Source: [shared Railshot Design conversation](https://chatgpt.com/share/6a9f2829-4380-83e8-b5ac-b9747c326b95).
 
 This repository branch starts at `a07de0973191efab1d32677eff527952c7f9cdd2`.

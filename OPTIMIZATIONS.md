@@ -675,6 +675,12 @@ has parity status summarized below. Landed, in rough order:
   per-frame on each pinned local's merge state (`lsStackReg` or `lsMem`), so a
   call-clobbered local can stay slot-only across a merge until actually read. Loop tops
   stay eager (reloads hoisted out of bodies). Conditional returns converge nothing.
+- **Regional-residency debt telemetry** — opt-in `CodegenStats` records candidate
+  locals, activations and reloads, pressure misses, evictions, dirty writebacks,
+  final-use ownership transfers, and peak active leases. The shared counter record
+  is pointer-free; nil stats remain a no-op, and stats-on/off code bytes are tested
+  equal. Use these counters to qualify phase-sensitive residency changes instead of
+  treating a lower spill count alone as proof of improvement.
 
 ### Bounds checks and traps
 - **Guard-page mode** (old P5) is first-class behind `-tags wago_guardpage` and is the

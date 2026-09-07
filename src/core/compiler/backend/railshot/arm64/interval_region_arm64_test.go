@@ -37,6 +37,9 @@ func TestIntervalRegionDynamicReuseArm64(t *testing.T) {
 	if on.Peephole["interval-region-reactivate"] == 0 {
 		t.Fatalf("dynamic regional cache did not reuse a register: %v", on.Peephole)
 	}
+	if r := on.Residency; r.Candidates != 32 || r.Activations == 0 || r.MaxActive == 0 || r.MaxActive > maxIntervalRegionRegs || r.FinalTransfers == 0 {
+		t.Fatalf("residency stats = %+v", r)
+	}
 
 	intervalRegionPinsEnabled = false
 	off := compileWithStats(t, m, false).Funcs[0]

@@ -45,6 +45,7 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		f.intervalOwner[i] = -1
 	}
 	f.stats.peep("interval-region")
+	f.noteResidencyCandidates(kept)
 	return true
 }
 
@@ -58,6 +59,7 @@ func (f *fn) activateIntervalLocal(x, pos int, load bool) {
 	}
 	reg := f.claimIntervalReg(x)
 	if reg == regNone {
+		f.noteResidencyPressureMiss()
 		return
 	}
 	f.invalidateGlobalsCache()
@@ -70,6 +72,7 @@ func (f *fn) activateIntervalLocal(x, pos int, load bool) {
 	f.intervalOwner[reg] = x
 	f.pinnedLocalMask = f.pinnedLocalMask.add(reg)
 	f.stats.peep("interval-region-reactivate")
+	f.noteResidencyActivation(load)
 }
 
 func (f *fn) claimIntervalReg(x int) Reg {
@@ -103,6 +106,9 @@ func (f *fn) takeFinalIntervalGet(x, pos int) (Reg, bool) {
 	f.locals[x].state = lsMem
 	f.intervalOwner[reg] = -1
 	f.pinnedLocalMask = f.pinnedLocalMask.remove(reg)
+	if f.stats != nil {
+		f.stats.Residency.FinalTransfers++
+	}
 	return reg, true
 }
 
@@ -130,6 +136,9 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 	reg := f.locals[best].reg
 	if f.locals[best].state == lsReg {
 		f.st64(SP, f.localOff(best), reg)
+		if f.stats != nil {
+			f.stats.Residency.DirtyWritebacks++
+		}
 	}
 	f.demoteIntervalLocalRefs(best)
 	f.locals[best].reg = regNone
@@ -137,7 +146,42 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 	f.intervalOwner[reg] = -1
 	f.pinnedLocalMask = f.pinnedLocalMask.remove(reg)
 	f.stats.peep("interval-region-evict")
+	if f.stats != nil {
+		f.stats.Residency.Evictions++
+	}
 	return reg
+}
+
+func (f *fn) noteResidencyCandidates(n int) {
+	if f.stats != nil {
+		f.stats.Residency.Candidates += n
+	}
+}
+
+func (f *fn) noteResidencyPressureMiss() {
+	if f.stats != nil {
+		f.stats.Residency.PressureMisses++
+	}
+}
+
+func (f *fn) noteResidencyActivation(load bool) {
+	if f.stats == nil {
+		return
+	}
+	r := &f.stats.Residency
+	r.Activations++
+	if load {
+		r.ActivationLoads++
+	}
+	active := 0
+	for _, owner := range f.intervalOwner {
+		if owner >= 0 {
+			active++
+		}
+	}
+	if active > r.MaxActive {
+		r.MaxActive = active
+	}
 }
 
 func (f *fn) intervalLocalHasMemBorrow(x int) bool {
