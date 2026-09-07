@@ -197,7 +197,7 @@ SPEC3_DIR = $(CURDIR)/tests/spec-v3
 define run-spec
 	@command -v wast2json >/dev/null 2>&1 || { echo "wast2json (wabt) not on PATH; install wabt (e.g. apt-get install wabt)"; exit 1; }
 	@test -f $(2)/$(3) || git submodule update --init $(4)
-	WAGO_SPECTEST_DIR=$(2) WAGO_SPEC_VERSION=$(1) go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
+	$(5) WAGO_SPECTEST_DIR=$(2) WAGO_SPEC_VERSION=$(1) go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
 endef
 
 .PHONY: spec1
@@ -248,6 +248,10 @@ spec3-baseline: ## Refresh tests/spec-v3-baseline.json and return the spec3 stat
 .PHONY: simd
 simd: ## Run the official SIMD proposal execution suite (needs wast2json)
 	$(call run-spec,simd,$(SPEC1_DIR),proposals/simd/simd_address.wast,tests/spec)
+
+.PHONY: simd-dragline
+simd-dragline: ## Run the official SIMD proposal suite through native Dragline (needs wast2json)
+	$(call run-spec,simd,$(SPEC1_DIR),proposals/simd/simd_address.wast,tests/spec,WAGO_SPEC_COMPILER=dragline WAGO_SPEC_TARGET=native)
 
 .PHONY: spec
 spec: spec1 spec2 spec3 ## Run the WebAssembly spec suite for all versions

@@ -36,6 +36,7 @@ make spec1
 make spec2
 make spec3
 make simd
+make simd-dragline
 ```
 
 `make spec2` sets `WAGO_SPECTEST_DIR` to the `tests/spec-v2` checkout and
@@ -45,6 +46,12 @@ informational CI card. `make simd` is the required native execution gate for the
 focused official SIMD proposal corpus on each supported runtime target; broader
 spec-suite gaps remain visible in the card without failing the aggregate CI
 check.
+
+`make simd-dragline` runs the same complete proposal corpus through Dragline's
+native target. The spec harness also accepts the fail-closed
+`WAGO_SPEC_COMPILER=railshot|dragline` and
+`WAGO_SPEC_TARGET=compatibility|native` selectors for focused investigation;
+unknown values fail the run instead of silently selecting another backend.
 
 `make spec3` verifies checksum-pinned WABT 1.0.41 and the official 3.0.0
 reference interpreter built from the exact Release 3 pin. WABT remains primary;
