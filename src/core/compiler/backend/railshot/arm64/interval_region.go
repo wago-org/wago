@@ -7,7 +7,7 @@ const (
 	minIntervalRegionLocals = 32
 	maxIntervalRegionBody   = 16 << 10
 	maxIntervalRegionLocals = 256
-	maxIntervalRegionRegs   = 18
+	maxIntervalRegionRegs   = 19
 )
 
 var intervalRegionOrder = [...]Reg{

@@ -13,6 +13,9 @@ Implementation progress:
   changing emitted code.
 - [x] Reject naive version-final transfer and Belady-style next-use eviction:
   both regressed BLAKE materially and were removed rather than left dormant.
+- [x] Expand the ARM64 straight-line lease budget from 18 to the proven-safe 19;
+  retain a three-register transient floor and reject the corrupt 20-register
+  configuration.
 - [ ] Design the next active lease policy around dirty-home cost and transient
   expression pressure, then qualify it against the full corpus.
 

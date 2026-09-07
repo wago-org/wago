@@ -54,6 +54,15 @@ func TestIntervalRegionDynamicReuseArm64(t *testing.T) {
 	}
 }
 
+func TestIntervalRegionLeavesTransientFloorArm64(t *testing.T) {
+	// BLAKE3 produces incorrect output at 20 leases: only X2/X3 remain from the
+	// ordered scratch-capable tail and ordinary lowering can require one more.
+	const transientFloor = 3
+	if got, want := maxIntervalRegionRegs, len(intervalRegionOrder)-transientFloor; got != want {
+		t.Fatalf("regional leases = %d, want %d to preserve %d transient registers", got, want, transientFloor)
+	}
+}
+
 func TestEntryInitializedLocalSkipsZeroArm64(t *testing.T) {
 	saved := entryInitElisionEnabled
 	defer func() { entryInitElisionEnabled = saved }()

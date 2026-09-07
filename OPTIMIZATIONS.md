@@ -693,6 +693,11 @@ has parity status summarized below. Landed, in rough order:
   avoided loads, synchronization and pressure debt, profitable segments, and
   fail-soft cap exhaustion in a sparse sidecar. The summary is telemetry-only and
   cannot influence lowering.
+- **ARM64 19-register interval region** — the bounded call-free regional cache
+  uses one more register while preserving a three-register transient tail. On
+  the measured BLAKE kernels this cuts native code by 2.2-2.4% and pressure
+  misses by 18-19%. A 20-register sweep corrupted BLAKE3 and is forbidden by a
+  target-derived floor test.
 
 ### Bounds checks and traps
 - **Guard-page mode** (old P5) is first-class behind `-tags wago_guardpage` and is the

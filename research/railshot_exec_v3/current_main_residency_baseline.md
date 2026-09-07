@@ -141,3 +141,23 @@ The result instead shows that next-use distance alone is a poor proxy for
 physical cost: it ignores dirty-home writes, expression-tree register demand,
 and the benefit of keeping stable working-state locals resident. No code or
 optimization flag from either rejected experiment remains on the branch.
+
+## ARM64 lease-budget sweep
+
+Increasing the interval-region budget from 18 to 19 passed the full ARM64
+backend suite and `TestCorpusSemanticExec`. Six alternating 400 ms pairs showed
+small execution improvements: approximately 0.5% on blake-as and 1.1% on
+BLAKE3. The physical and size movements were clearer:
+
+| Workload | Pressure misses | Activation loads | Native function bytes |
+| --- | ---: | ---: | ---: |
+| blake-as, 18 leases | 132 | 21 | 5,308 |
+| blake-as, 19 leases | 108 | 21 | 5,192 |
+| BLAKE3, 18 leases | 166 | 19 | 5,560 |
+| BLAKE3, 19 leases | 135 | 23 | 5,428 |
+
+This is an 18-19% pressure-miss reduction and a 2.2-2.4% native-size reduction.
+Twenty leases failed BLAKE3's semantic oracle on the 63-byte vector, establishing
+that the remaining three registers in the ordered pool are a required transient
+floor rather than spare capacity. The retained limit is therefore 19, with the
+floor encoded in a regression test.
