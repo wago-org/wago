@@ -47,9 +47,10 @@ execution diagnosis.
   refinements and RailMach block identities for scalar machine values. Native
   execution covers taken and fallthrough paths, nullable targets, collecting
   functions with a live root, call-bearing functions, and multi-value branch
-  targets. Mixed V128 functions remain on the structured SIMD emitter until
-  RailMach gains a 128-bit machine value/spill contract, and execute through a
-  focused native test.
+  targets. Mixed V128 functions now use RailMach's first-class `TypeV128`,
+  vector-bank allocation, 16-byte spill homes, block-edge transfers, selected
+  target opcodes, and private-call ABI; focused native tests retain mixed
+  vector/collector coverage.
 - `struct.new_default` and initialized `struct.new` execute through the
   allocating-helper path in both native finalizers. Initialized fields are
   staged directly from allocated register, spill, or rematerialized locations
@@ -121,11 +122,14 @@ returns, cross-instance trap propagation, arbitrary scalar parameter lists
 through eight registers plus a canonical argument vector, and mixed six-result
 register/vector returns. Type-indexed multi-value blocks, branches, parameters,
 and loop labels also lower through verified RailSSA block arguments. Other
-post-MVP module/runtime contracts remain rejected or constrained. A separate
-post-MVP gate admits the exact 31-instruction core-SIMD subset used by the
-checked-in JSON, Blake, and UTF corpora. V128 parameters, results, locals,
-structured-control results, calls, selects, and frame homes use two canonical
-64-bit slots without changing scalar frame accounting.
+post-MVP module/runtime contracts remain rejected or constrained. Core SIMD is
+no longer a corpus-specific subset: RailMach lowers the complete official
+proposal operation families through first-class `TypeV128` values and explicit
+target-selected forms. V128 parameters, results, locals, structured-control
+results, calls, selects, and 16-byte frame homes use the banked vector ABI
+without changing scalar frame accounting. On native ARM64,
+`make simd-dragline` passes all 470 modules and 24,325 execution assertions with
+zero failures or skips.
 
 The opt-in pinned compile gate admits all 782 modules emitted by the 64-file
 pre-reference-types corpus, with zero MVP rejections and zero post-MVP
@@ -215,12 +219,16 @@ the performance corpus.
 - Curated applications: ✅ 30/36 execute and match Railshot; `regexmatch`,
   `wasm3`, Lua, SQLite, Ruby, and esbuild additionally compile but need their
   host environments to run. All 36 available artifacts are admitted. The three
-  former SIMD rejections now execute through a normal focused differential gate.
-  The retained ARM64 operand/local caches are allocation-free and reduced the
-  exact six-sample median range to 1.85x–8.35x slower than Railshot across the
-  five manifest exports (Apple M4 Max, 500 ms/sample). SIMD-wide physical
-  allocation, bounds-check elimination, and instruction combination remain
-  explicit post-MVP debt.
+  former SIMD rejections now execute through the common RailMach path and a
+  focused differential gate. The historical structured-SIMD latency range is
+  superseded by the exact-head ARM64 application measurements below.
+- Native ARM64 core SIMD conformance: ✅ the explicit Dragline/native spec gate
+  passes all 470 official proposal modules and 24,325 assertions with zero
+  failures, skips, or harness gaps. The gate exposed six large-constant-offset
+  bounds failures before passing: RailMach loaded the memory limit into `X17`,
+  then reused `X17` to materialize an unencodable `offset + semantic width`.
+  Bounds-end construction now chooses a non-aliasing reserved scratch register;
+  focused 128-bit load/store and narrow-splat tests pin the one-page boundary.
 - ARM64 emitter convergence: ✅ the exact 36-module corpus routes all 30 runnable
   applications and 27,384 of 27,390 total functions through RailMach. The six
   retained structured functions are scalar giants above 4,096 source
