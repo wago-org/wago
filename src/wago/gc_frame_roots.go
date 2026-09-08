@@ -33,7 +33,7 @@ func gcFramePrepareModuleRootPlan(m *wasm.Module, classifier *wasm.ModuleInstruc
 	for function := range m.Code {
 		mayCollect := false
 		if analysis.ValidFor(m) {
-			mayCollect = analysis.Funcs[function].Flags&wasm.ValidatedFuncMayCollect != 0
+			mayCollect = analysis.Func(function).Flags&wasm.ValidatedFuncMayCollect != 0
 		} else {
 			mayCollect = gcFrameBodyMayCollectWithClassifier(m.Code[function].BodyBytes, classifier)
 		}
@@ -190,7 +190,7 @@ func moduleHasGCAllocationSites(m *wasm.Module) bool {
 
 func moduleHasGCAllocationSitesWithValidation(m *wasm.Module, analysis *wasm.ValidatedModuleAnalysis) bool {
 	if analysis.ValidFor(m) {
-		return analysis.Flags&wasm.ValidatedFuncMayAllocate != 0
+		return analysis.Flags()&wasm.ValidatedFuncMayAllocate != 0
 	}
 	return moduleHasGCAllocationSites(m)
 }

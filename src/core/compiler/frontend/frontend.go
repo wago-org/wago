@@ -1133,7 +1133,7 @@ func (p supportPass) validatedFuncAccepted(localIndex int, fn *wasm.Func) bool {
 	if !p.validation.ValidFor(p.m) || len(fn.BodyBytes) == 0 {
 		return false
 	}
-	facts := &p.validation.Funcs[localIndex]
+	facts := p.validation.Func(localIndex)
 	if uint64(facts.BodyBytes) != uint64(len(fn.BodyBytes)) || facts.Flags&wasm.ValidatedFuncNeedsDetailedAdmission != 0 {
 		return false
 	}
@@ -1142,6 +1142,7 @@ func (p supportPass) validatedFuncAccepted(localIndex int, fn *wasm.Func) bool {
 		flags&wasm.ValidatedFuncUsesBulkMemory != 0 && !p.feat.BulkMemory ||
 		flags&wasm.ValidatedFuncUsesSaturatingTrunc != 0 && !p.feat.SaturatingTrunc ||
 		flags&wasm.ValidatedFuncUsesReferenceTypes != 0 && !p.feat.ReferenceTypes ||
+		flags&wasm.ValidatedFuncUsesTypedFunctionReferences != 0 && !p.feat.TypedFunctionReferences ||
 		flags&wasm.ValidatedFuncUsesSIMD != 0 && !p.feat.SIMD {
 		return false
 	}
@@ -1149,6 +1150,11 @@ func (p supportPass) validatedFuncAccepted(localIndex int, fn *wasm.Func) bool {
 		return false
 	}
 	if p.hasTable64 && flags&wasm.ValidatedFuncTouchesTable != 0 {
+		return false
+	}
+	// Memory immediates can require multi-memory even in a one-memory module.
+	// The fixed summary does not carry explicit memarg encodings or indexes.
+	if !p.feat.MultiMemory && flags&wasm.ValidatedFuncTouchesMemory != 0 {
 		return false
 	}
 	return true

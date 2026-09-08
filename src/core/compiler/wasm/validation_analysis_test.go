@@ -37,6 +37,35 @@ func TestValidatedFuncFactsSize(t *testing.T) {
 	}
 }
 
+func TestValidationAnalysisRefusesTreeAndMixedBodies(t *testing.T) {
+	for _, treeCount := range []int{0, 1, 2} {
+		for _, workers := range []int{1, 2} {
+			m := validationAnalysisModule(t)
+			for i := range m.Code {
+				m.Code[i].BodyBytes = []byte{0x10, 0, 0x0b}
+			}
+			for i := 0; i < treeCount; i++ {
+				m.Code[i].BodyBytes = nil
+				m.Code[i].Body = wasm.Expr{Instrs: []wasm.Instruction{{Kind: wasm.InstrCall, Index: 0}}}
+			}
+			var analysis wasm.ValidatedModuleAnalysis
+			if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, workers, wasm.ValidationLimits{}, &analysis); err != nil {
+				t.Fatal(err)
+			}
+			if got, want := analysis.ValidFor(m), treeCount == 0; got != want {
+				t.Errorf("%d tree bodies, %d workers: ValidFor = %v, want %v", treeCount, workers, got, want)
+			}
+			if treeCount == 0 {
+				facts := analysis.Func(0)
+				facts.Flags = 0
+				if analysis.Func(0).Flags == 0 {
+					t.Fatal("caller modified private summary storage")
+				}
+			}
+		}
+	}
+}
+
 func validationAnalysisSegmentModule(t *testing.T) *wasm.Module {
 	t.Helper()
 	data := wasmtest.Module(
@@ -66,8 +95,8 @@ func TestValidateModuleWithAnalysisReducesSegmentCounts(t *testing.T) {
 		if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, workers, wasm.ValidationLimits{}, &analysis); err != nil {
 			t.Fatalf("workers %d: %v", workers, err)
 		}
-		if analysis.DataStateCount != 2 || analysis.ElemStateCount != 0 {
-			t.Errorf("workers %d counts = data:%d element:%d, want 2/0", workers, analysis.DataStateCount, analysis.ElemStateCount)
+		if analysis.DataStateCount() != 2 || analysis.ElemStateCount() != 0 {
+			t.Errorf("workers %d counts = data:%d element:%d, want 2/0", workers, analysis.DataStateCount(), analysis.ElemStateCount())
 		}
 	}
 }
@@ -90,16 +119,17 @@ func TestValidateModuleWithAnalysisSerialParallelParity(t *testing.T) {
 	if serial.ValidFor(validationAnalysisModule(t)) {
 		t.Fatal("analysis accepted a different module with the same shape")
 	}
-	if len(serial.Funcs) != 2 {
-		t.Fatalf("function facts = %d, want 2", len(serial.Funcs))
+	if serial.FuncCount() != 2 {
+		t.Fatalf("function facts = %d, want 2", serial.FuncCount())
 	}
 	wantFlags := wasm.ValidatedFuncHasControl | wasm.ValidatedFuncHasLoop | wasm.ValidatedFuncHasDirectCall | wasm.ValidatedFuncMayCollect
-	for i, facts := range serial.Funcs {
+	for i := 0; i < serial.FuncCount(); i++ {
+		facts := serial.Func(i)
 		if facts.Flags != wantFlags {
 			t.Errorf("function %d flags = %#x, want %#x", i, facts.Flags, wantFlags)
 		}
 	}
-	if serial.Flags != wantFlags {
+	if serial.Flags() != wantFlags {
 		t.Fatalf("module analysis = %#v, want flags %#x", serial, wantFlags)
 	}
 }
@@ -107,7 +137,7 @@ func TestValidateModuleWithAnalysisSerialParallelParity(t *testing.T) {
 func TestValidateModuleWithAnalysisClearsFailure(t *testing.T) {
 	m := validationAnalysisModule(t)
 	m.Code[0].BodyBytes = []byte{0xff}
-	analysis := wasm.ValidatedModuleAnalysis{Funcs: []wasm.ValidatedFuncFacts{{Flags: wasm.ValidatedFuncUsesSIMD}}}
+	var analysis wasm.ValidatedModuleAnalysis
 	if err := wasm.ValidateModuleWithAnalysis(m, wasm.ValidationFeatures{}, 1, wasm.ValidationLimits{}, &analysis); err == nil {
 		t.Fatal("invalid body validated")
 	}

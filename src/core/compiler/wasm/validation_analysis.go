@@ -39,6 +39,8 @@ const (
 	// ValidatedFuncNeedsDetailedAdmission marks proposal/product code that must
 	// still pass through the frontend's contextual body admission scanner.
 	ValidatedFuncNeedsDetailedAdmission
+	// Type-indexed block encodings require multi-value even with zero results.
+	ValidatedFuncUsesMultiValue
 )
 
 // ValidatedFuncFacts is the fixed, always-present summary produced for one
@@ -49,26 +51,33 @@ type ValidatedFuncFacts struct {
 	BodyBytes uint32
 }
 
-// ValidatedModuleAnalysis owns transient facts gathered by validation. Callers
-// may consume or discard it after compilation; it is not retained by Module.
+// ValidatedModuleAnalysis owns transient facts gathered by validation. Storage
+// is private; accessors return values. The compilation phase must keep Module
+// and its nested storage immutable from validation through the last consumer.
+// It is not retained by Module. Mutation requires fresh validation.
 type ValidatedModuleAnalysis struct {
-	Funcs          []ValidatedFuncFacts
-	Flags          ValidatedFuncFlags
-	ElemStateCount uint32
-	DataStateCount uint32
+	funcs          []ValidatedFuncFacts
+	flags          ValidatedFuncFlags
+	elemStateCount uint32
+	dataStateCount uint32
 	module         *Module
 	valid          bool
 }
 
 func (a *ValidatedModuleAnalysis) reset(m *Module) {
 	initValidatedFuncFlags()
-	*a = ValidatedModuleAnalysis{Funcs: make([]ValidatedFuncFacts, len(m.Code)), module: m}
+	*a = ValidatedModuleAnalysis{funcs: make([]ValidatedFuncFacts, len(m.Code)), module: m}
 }
 
 func (a *ValidatedModuleAnalysis) finish() {
-	for i := range a.Funcs {
-		facts := &a.Funcs[i]
-		a.Flags |= facts.Flags
+	for i := range a.funcs {
+		facts := &a.funcs[i]
+		// Tree validation does not gather instruction facts. Refuse the whole
+		// analysis, including mixed modules, so every consumer uses its fallback.
+		if facts.BodyBytes == 0 {
+			return
+		}
+		a.flags |= facts.Flags
 	}
 	a.valid = true
 }
@@ -77,8 +86,23 @@ func (a *ValidatedModuleAnalysis) finish() {
 // m. Consumers must retain their exact scanner when the identity does not
 // match; fixed summaries are proof artifacts, not caller assertions.
 func (a *ValidatedModuleAnalysis) ValidFor(m *Module) bool {
-	return a != nil && a.valid && a.module == m && len(a.Funcs) == len(m.Code)
+	return a != nil && a.valid && a.module == m && len(a.funcs) == len(m.Code)
 }
+
+// FuncCount returns the number of local function summaries.
+func (a *ValidatedModuleAnalysis) FuncCount() int { return len(a.funcs) }
+
+// Func returns a copy of one local function's facts. Use only after ValidFor.
+func (a *ValidatedModuleAnalysis) Func(index int) ValidatedFuncFacts { return a.funcs[index] }
+
+// Flags returns the union of all function flags. Use only after ValidFor.
+func (a *ValidatedModuleAnalysis) Flags() ValidatedFuncFlags { return a.flags }
+
+// ElemStateCount returns the required element-state slots after ValidFor.
+func (a *ValidatedModuleAnalysis) ElemStateCount() uint32 { return a.elemStateCount }
+
+// DataStateCount returns the required data-state slots after ValidFor.
+func (a *ValidatedModuleAnalysis) DataStateCount() uint32 { return a.dataStateCount }
 
 func (v *funcValidator) observeValidatedInstruction(f *ValidatedFuncFacts, in *Instruction, segmentCounts *validationSegmentCounts) {
 	f.observe(in.Kind)
@@ -113,13 +137,13 @@ func (v *funcValidator) observeValidatedInstructionPayload(f *ValidatedFuncFacts
 		// references. Keep the fixed summary compact and let these uncommon
 		// functions use the exact existing scanner until a sparse heap sidecar
 		// is justified by measurements.
-		f.Flags |= ValidatedFuncNeedsDetailedRequirements
+		f.Flags |= ValidatedFuncNeedsDetailedRequirements | ValidatedFuncNeedsDetailedAdmission
 	}
 }
 
 func (v *funcValidator) observeValidatedDynamicCall(f *ValidatedFuncFacts, typeIndex uint32) {
-	ft, ok := v.m.TypeFunc(typeIndex)
-	if !ok {
+	ft := v.funcTypeFromTypeIdx(TypeIdx{Index: typeIndex})
+	if ft == nil {
 		return
 	}
 	for _, typ := range ft.Params {
@@ -174,10 +198,15 @@ func validatedInstructionNeedsPayload(kind InstrKind) bool {
 }
 
 // observeSlow is the auditable source of the fixed instruction classifier.
-// Successful validation uses validatedFuncFlagsByKind; tests compare every
-// table entry with this definition so proposal additions cannot silently omit
-// a resource or feature fact.
+// Successful validation uses validatedFuncFlagsByKind. Table synchronization
+// tests check its construction; independent admission and requirements tests
+// check that the classification is sufficient to replace exact scanning.
 func (f *ValidatedFuncFacts) observeSlow(kind InstrKind) {
+	// Only these classes have complete admission rules in the fixed summary.
+	// New instruction kinds retain exact admission and requirement scanning.
+	if !validatedInstructionAdmissionComplete(kind) {
+		f.Flags |= ValidatedFuncNeedsDetailedAdmission | ValidatedFuncNeedsDetailedRequirements
+	}
 	switch kind {
 	case InstrBlock, InstrIf, InstrTryTable, InstrBr, InstrBrIf, InstrBrTable,
 		InstrBrOnNull, InstrBrOnNonNull, InstrBrOnCast, InstrBrOnCastFail,
@@ -190,7 +219,7 @@ func (f *ValidatedFuncFacts) observeSlow(kind InstrKind) {
 	case InstrReturnCall:
 		f.Flags |= ValidatedFuncHasDirectCall | ValidatedFuncHasTailCall | ValidatedFuncHasControl | ValidatedFuncMayCollect
 	case InstrCallIndirect:
-		f.Flags |= ValidatedFuncHasIndirectCall | ValidatedFuncMayCollect
+		f.Flags |= ValidatedFuncHasIndirectCall | ValidatedFuncTouchesTable | ValidatedFuncMayCollect
 	case InstrReturnCallIndirect:
 		f.Flags |= ValidatedFuncHasIndirectCall | ValidatedFuncHasTailCall | ValidatedFuncHasControl | ValidatedFuncMayCollect
 	case InstrCallRef:
@@ -214,9 +243,10 @@ func (f *ValidatedFuncFacts) observeSlow(kind InstrKind) {
 	case InstrI32TruncSatF32S, InstrI32TruncSatF32U, InstrI32TruncSatF64S, InstrI32TruncSatF64U,
 		InstrI64TruncSatF32S, InstrI64TruncSatF32U, InstrI64TruncSatF64S, InstrI64TruncSatF64U:
 		f.Flags |= ValidatedFuncUsesSaturatingTrunc
-	case InstrRefNull, InstrRefIsNull, InstrRefFunc, InstrRefEq, InstrRefAsNonNull,
-		InstrBrOnNull, InstrBrOnNonNull:
+	case InstrRefNull, InstrRefIsNull, InstrRefFunc, InstrRefEq:
 		f.Flags |= ValidatedFuncUsesReferenceTypes
+	case InstrRefAsNonNull, InstrBrOnNull, InstrBrOnNonNull:
+		f.Flags |= ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesTypedFunctionReferences | ValidatedFuncNeedsDetailedAdmission
 	case InstrRefI31, InstrI31GetS, InstrI31GetU, InstrRefTest, InstrRefCast,
 		InstrBrOnCast, InstrBrOnCastFail, InstrAnyConvertExtern, InstrExternConvertAny:
 		f.Flags |= ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesGC | ValidatedFuncNeedsDetailedAdmission
@@ -260,6 +290,29 @@ func (f *ValidatedFuncFacts) observeSlow(kind InstrKind) {
 	}
 }
 
+// Keep the proposal classes explicit. Numeric ranges are closed at their last
+// named member; appending a new proposal does not grant it summary admission.
+func validatedInstructionAdmissionComplete(kind InstrKind) bool {
+	if kind >= InstrI32Const && kind <= InstrI64Extend32S ||
+		kind >= InstrI32Load && kind <= InstrMemoryGrow ||
+		kind >= InstrI32TruncSatF32S && kind <= InstrI64TruncSatF64U ||
+		kind >= InstrV128Load && kind <= InstrF64x2ConvertLowI32x4U {
+		return true
+	}
+	switch kind {
+	case InstrUnreachable, InstrNop, InstrBlock, InstrLoop, InstrIf,
+		InstrBr, InstrBrIf, InstrBrTable, InstrReturn, InstrCall, InstrCallIndirect,
+		InstrDrop, InstrSelect, InstrLocalGet, InstrLocalSet, InstrLocalTee,
+		InstrGlobalGet, InstrGlobalSet, InstrTableGet, InstrTableSet,
+		InstrMemoryInit, InstrDataDrop, InstrMemoryCopy, InstrMemoryFill,
+		InstrTableInit, InstrElemDrop, InstrTableCopy, InstrTableGrow, InstrTableSize, InstrTableFill,
+		InstrRefIsNull, InstrRefFunc, InstrRefEq:
+		return true
+	default:
+		return false
+	}
+}
+
 func instructionTouchesMemory(kind InstrKind) bool {
 	if effect := opEffects[kind]; effect.cat == effLoad || effect.cat == effStore {
 		return true
@@ -282,6 +335,9 @@ func (f *ValidatedFuncFacts) observeValType(typ ValType) {
 }
 
 func (f *ValidatedFuncFacts) observeStructuredDirect(op *directOp) {
+	if op.blockType.Kind == BlockTypeIndex {
+		f.Flags |= ValidatedFuncUsesMultiValue
+	}
 	switch op.kind {
 	case directBlock:
 		f.observe(InstrBlock)

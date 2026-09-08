@@ -258,6 +258,16 @@ so the public package stays clean.
 
 ## 3. Front end — decode and validate (`src/core/compiler/wasm`)
 
+Validation can return one eight-byte fact record per local function. The record
+storage is private. Accessors return copies, and consumers must check `ValidFor`
+before use. The compile phase owns the decoded module and keeps it immutable
+until the last fact consumer finishes. Changes to a module require new validation.
+Tree-based validation does not yet gather these facts; tree or mixed modules use
+the existing exact scans. An absent analysis is not proof that a function cannot
+collect. Fast admission is limited to fully classified instruction families.
+Type-indexed control encodings record multi-value even for zero or one result.
+
+
 - `decode.go` parses the binary into a `Module` (types, funcs, tables, memory,
   globals, imports/exports, element/data segments, code bodies).
 - `validate.go` / `validate_ops.go` enforce the wasm type rules: a structured

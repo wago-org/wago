@@ -167,15 +167,15 @@ func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.Vali
 	bodyClassifier := wasm.NewModuleInstructionClassifier(m, true)
 	validatedBodies := analysis.ValidFor(m)
 	if validatedBodies {
-		elemStateCount = max(elemStateCount, int(analysis.ElemStateCount))
-		dataStateCount = max(dataStateCount, int(analysis.DataStateCount))
+		elemStateCount = max(elemStateCount, int(analysis.ElemStateCount()))
+		dataStateCount = max(dataStateCount, int(analysis.DataStateCount()))
 	}
 	for functionIndex, fn := range m.Code {
 		for _, local := range fn.Locals.Runs {
 			out |= requiredFeaturesForValType(local.Type)
 		}
-		if validatedBodies && len(fn.BodyBytes) != 0 && analysis.Funcs[functionIndex].BodyBytes == uint32(len(fn.BodyBytes)) {
-			bodyFacts := &analysis.Funcs[functionIndex]
+		if validatedBodies && len(fn.BodyBytes) != 0 && analysis.Func(functionIndex).BodyBytes == uint32(len(fn.BodyBytes)) {
+			bodyFacts := analysis.Func(functionIndex)
 			out |= requiredFeaturesForValidatedFlags(bodyFacts.Flags)
 			if bodyFacts.Flags&wasm.ValidatedFuncUsesRefFunc != 0 {
 				moduleFacts.UsesRefFunc = true
@@ -223,6 +223,9 @@ func analyzeModuleRequirementsWithValidation(m *wasm.Module, analysis *wasm.Vali
 
 func requiredFeaturesForValidatedFlags(flags wasm.ValidatedFuncFlags) CoreFeatures {
 	var out CoreFeatures
+	if flags&wasm.ValidatedFuncUsesMultiValue != 0 {
+		out |= CoreFeatureMultiValue
+	}
 	if flags&wasm.ValidatedFuncUsesBulkMemory != 0 {
 		out |= CoreFeatureBulkMemoryOperations
 	}

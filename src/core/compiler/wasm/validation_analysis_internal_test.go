@@ -1,6 +1,61 @@
 package wasm
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
+
+func BenchmarkValidatedDynamicCallFacts(b *testing.B) {
+	for _, count := range []int{128, 4096} {
+		m := &Module{Types: make([]RecType, count)}
+		for i := range m.Types {
+			m.Types[i].SubTypes = []SubType{{Comp: CompType{Kind: CompFunc, Params: []ValType{I32, I64, FuncRef}}}}
+		}
+		owner := moduleValidator{m: m}
+		owner.freezeCompCache()
+		v := funcValidator{moduleValidator: &owner}
+		for _, cached := range []bool{false, true} {
+			b.Run(fmt.Sprintf("groups_%d/cached_%v", count, cached), func(b *testing.B) {
+				b.ReportAllocs()
+				for i := 0; i < b.N; i++ {
+					var facts ValidatedFuncFacts
+					if cached {
+						v.observeValidatedDynamicCall(&facts, uint32(count-1))
+					} else {
+						ft, ok := m.TypeFunc(uint32(count - 1))
+						if !ok {
+							b.Fatal("missing type")
+						}
+						for _, typ := range ft.Params {
+							if typ.Kind() == ValRef {
+								facts.Flags |= ValidatedFuncDynamicReferenceCall
+								break
+							}
+						}
+					}
+					if facts.Flags&ValidatedFuncDynamicReferenceCall == 0 {
+						b.Fatal("reference call omitted")
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestValidatedReferenceRequirementsIndependentOfTable(t *testing.T) {
+	initValidatedFuncFlags()
+	for _, kind := range []InstrKind{InstrRefAsNonNull, InstrBrOnNull, InstrBrOnNonNull} {
+		var facts ValidatedFuncFacts
+		facts.observe(kind)
+		want := ValidatedFuncUsesReferenceTypes | ValidatedFuncUsesTypedFunctionReferences | ValidatedFuncNeedsDetailedAdmission
+		if facts.Flags&want != want {
+			t.Errorf("%s: flags %#x omit %#x", kind, facts.Flags, want)
+		}
+	}
+	if validatedInstructionAdmissionComplete(InstrInvalid) || validatedInstructionAdmissionComplete(numInstrKinds) {
+		t.Fatal("unknown instruction received complete admission classification")
+	}
+}
 
 func TestValidatedFuncFlagsTable(t *testing.T) {
 	initValidatedFuncFlags()

@@ -185,7 +185,7 @@ func moduleDynamicFuncrefEscape(m *wasm.Module) bool {
 
 func moduleDynamicFuncrefEscapeWithValidation(m *wasm.Module, analysis *wasm.ValidatedModuleAnalysis) bool {
 	if analysis.ValidFor(m) {
-		return analysis.Flags&wasm.ValidatedFuncDynamicReferenceCall != 0
+		return analysis.Flags()&wasm.ValidatedFuncDynamicReferenceCall != 0
 	}
 	return moduleDynamicFuncrefEscape(m)
 }
@@ -1074,7 +1074,7 @@ func validateThreadedExecutionBoundary(m *wasm.Module, bounds BoundsCheckMode, a
 		}
 	}
 	if len(analyses) != 0 && analyses[0].ValidFor(m) {
-		if analyses[0].Flags&wasm.ValidatedFuncUsesNonAtomicMemory == 0 {
+		if analyses[0].Flags()&wasm.ValidatedFuncUsesNonAtomicMemory == 0 {
 			return nil
 		}
 		// Preserve the exact instruction and function diagnostic on rejection.

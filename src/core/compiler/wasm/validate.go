@@ -85,7 +85,9 @@ func ValidateModuleWithConfig(m *Module, features ValidationFeatures, workers in
 
 // ValidateModuleWithAnalysis validates a module and gathers transient,
 // architecture-neutral facts during the same function-body walk. analysis is
-// cleared on failure and is valid only when this function returns nil.
+// cleared on failure. Callers must use ValidFor: successful tree validation
+// does not produce complete facts. Keep the module immutable until all summary
+// consumers finish; edits require a new validation.
 func ValidateModuleWithAnalysis(m *Module, features ValidationFeatures, workers int, limits ValidationLimits, analysis *ValidatedModuleAnalysis) error {
 	return validateModuleWithWorkersFeaturesAndLimitsAnalysis(m, nil, workers, features, limits, analysis)
 }
@@ -172,8 +174,8 @@ func (v *moduleValidator) validateFunctionsSerial() error {
 		summary.merge(counts)
 	}
 	if v.analysis != nil {
-		v.analysis.ElemStateCount = summary.elem
-		v.analysis.DataStateCount = summary.data
+		v.analysis.elemStateCount = summary.elem
+		v.analysis.dataStateCount = summary.data
 	}
 	return nil
 }
@@ -189,7 +191,7 @@ func (v *moduleValidator) validateFunction(fv *funcValidator, localIndex, import
 		return counts, v.err(ErrUnknownType, "function type")
 	}
 	if v.analysis != nil {
-		v.analysis.Funcs[localIndex] = ValidatedFuncFacts{BodyBytes: saturatingUint32(len(fn.BodyBytes))}
+		v.analysis.funcs[localIndex] = ValidatedFuncFacts{BodyBytes: saturatingUint32(len(fn.BodyBytes))}
 	}
 	fv.beginFunc(abs)
 	if len(fn.BodyBytes) != 0 {
@@ -263,8 +265,8 @@ func (v *moduleValidator) validateFunctionsParallel(workers int) error {
 	}
 	if first == nil && v.analysis != nil {
 		for i := range results {
-			v.analysis.ElemStateCount = max(v.analysis.ElemStateCount, results[i].elemStateCount)
-			v.analysis.DataStateCount = max(v.analysis.DataStateCount, results[i].dataStateCount)
+			v.analysis.elemStateCount = max(v.analysis.elemStateCount, results[i].elemStateCount)
+			v.analysis.dataStateCount = max(v.analysis.dataStateCount, results[i].dataStateCount)
 		}
 	}
 	return first
@@ -284,12 +286,12 @@ func (v *moduleValidator) freezeCompCache() {
 type moduleValidator struct {
 	importIndexes    [5][]uint32
 	importIndexReady bool
-	m         *Module
-	funcIndex int
-	direct    *directValidationEnv
-	features  ValidationFeatures
-	limits    ValidationLimits
-	analysis  *ValidatedModuleAnalysis
+	m                *Module
+	funcIndex        int
+	direct           *directValidationEnv
+	features         ValidationFeatures
+	limits           ValidationLimits
+	analysis         *ValidatedModuleAnalysis
 	// analysisFuncBase converts the absolute funcIndex already carried by a
 	// funcValidator into the caller-owned declared-function summary index.
 	analysisFuncBase int
@@ -1046,10 +1048,10 @@ func (v *funcValidator) analysisFacts() *ValidatedFuncFacts {
 		return nil
 	}
 	index := v.funcIndex - v.analysisFuncBase
-	if index < 0 || index >= len(v.analysis.Funcs) {
+	if index < 0 || index >= len(v.analysis.funcs) {
 		return nil
 	}
-	return &v.analysis.Funcs[index]
+	return &v.analysis.funcs[index]
 }
 
 // beginFunc resets the per-function operand/control stacks so a single
