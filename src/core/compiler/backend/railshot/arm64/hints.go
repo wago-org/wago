@@ -89,8 +89,9 @@ type funcHints struct {
 	// maxControlDepth is the greatest simultaneously open structured-control
 	// depth, excluding the implicit function frame. It occupies alignment padding;
 	// 255 is a saturated fallback sentinel.
-	maxControlDepth uint8
-	callRelocSites  uint16 // saturated direct calls emitted by this function before optional inlining
+	maxControlDepth  uint8
+	callRelocSites   uint16 // saturated direct calls emitted by this function before optional inlining
+	immediateFreeOps uint16 // saturated arena sizing hint in the final two padding bytes
 }
 
 // funcHintView reconstructs scan/compile slices on the stack. Only funcHints is
@@ -885,6 +886,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.h.flags.set(hintModuleEH)
 		default:
 			if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
+				if s.h.immediateFreeOps < defaultStackArenaCap {
+					s.h.immediateFreeOps++
+				}
 				break
 			}
 			var imm wasm.InstructionImmediate

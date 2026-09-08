@@ -15,8 +15,16 @@ func TestGlobalHintCapacityIndependentOfBatching(t *testing.T) {
 		if cap(serial) != cap(parallel) {
 			t.Fatalf("count %d: serial cap %d, parallel cap %d", len(serial), cap(serial), cap(parallel))
 		}
-		if cap(serial) > max(8, 2*len(serial)) {
+		if cap(serial) > 2*len(serial) {
 			t.Fatalf("excess capacity %d for %d records", cap(serial), len(serial))
+		}
+	}
+}
+
+func TestGlobalHintCapacitySmallAndOverflow(t *testing.T) {
+	for _, pair := range [][2]int{{0, 0}, {1, 1}, {2, 2}, {3, 4}, {5, 8}, {9, 16}, {int(^uint(0) >> 1), int(^uint(0) >> 1)}} {
+		if got := GlobalHintCapacity(pair[0]); got != pair[1] {
+			t.Fatalf("count %d: capacity %d, want %d", pair[0], got, pair[1])
 		}
 	}
 }

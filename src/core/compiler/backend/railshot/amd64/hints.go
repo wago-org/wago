@@ -94,6 +94,9 @@ type funcHints struct {
 	// inlineCallSites packs a saturated 7-bit ordinary-call count plus a high
 	// bit recording any return_call reference to this local function.
 	inlineCallSites uint8
+	// Saturated sizing hint only; stable arena growth handles underestimates.
+	// Uses the final two padding bytes, without widening the retained header.
+	immediateFreeOps uint16
 }
 
 const gcResolverSiteMask = uint32(1<<24 - 1)
@@ -967,6 +970,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.h.flags.set(hintModuleEH)
 		default:
 			if _, ok := wasm.ImmediateFreeInstructionKind(op); ok {
+				if s.h.immediateFreeOps < defaultStackArenaCap {
+					s.h.immediateFreeOps++
+				}
 				break
 			}
 			var imm wasm.InstructionImmediate

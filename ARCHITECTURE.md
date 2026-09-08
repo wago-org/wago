@@ -290,6 +290,15 @@ shape, the backend then trusts it.
 
 ## 4. Back end — Valent-Block code generation (`src/core/compiler/backend/railshot`)
 
+Small operand arenas use half the body bytes plus local and immediate-free
+instruction allowances. The density counter saturates at 256 and occupies two
+padding bytes in each backend's 28-byte hint header. It is only a size hint:
+stable chunks still grow for valid code. Below 256 nodes, overflow fills to a
+power-of-two total, then doubles that total. This avoids tripling storage after
+a one-node underestimate. The existing large-arena growth and retention limits
+remain unchanged. Sparse global-hint storage uses the same power-of-two capacity
+rule in serial and parallel scans, starting at one record instead of eight.
+
 The backend is a **single forward pass** that fuses code generation and register
 allocation. It uses the *Valent-Block* technique from WARP: instead of emitting
 a push/pop for every wasm operand, it keeps a **compile-time symbolic operand
@@ -537,6 +546,8 @@ storage inside the Instance; larger signatures use an exact-sized heap slice.
 This removes a tiny allocation and keeps independently written small results
 away from adjacent instances' tiny heap objects. Returned slices still use the
 same per-instance reuse rule. They never alias mmap-backed native result bytes.
+A retained small result slice also retains its Instance; copy results that must
+outlive the next call or the instance.
 Host re-entry retains its separate save/restore buffer, and all entry, close,
 reference-token, and trap checks remain in place.
 

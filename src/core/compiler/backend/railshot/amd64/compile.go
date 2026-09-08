@@ -787,16 +787,17 @@ func (sc *scratch) finishControlWorker() {
 const maxScratchFunctionResults = shared.FunctionResultScratchCapacity
 
 // moduleStackArenaCap chooses the first operand-stack chunk reused across the
-// serial module compile. Body bytes and local counts provide a cheap bounded
-// estimate for small functions. Larger modules keep the established 256-node
-// geometric arena instead of paying per-opcode prediction work in the hint scan.
+// serial module compile. Half the body bytes plus a density/local allowance
+// estimates small functions. The saturated immediate-free count occupies header
+// padding and is collected in the existing scan, without resolving more types.
+// Larger modules keep the established 256-node geometric arena.
 func moduleStackArenaCap(m *wasm.Module, hints []funcHints) int {
 	if len(hints) != len(m.Code) || moduleHasMultiValueResults(m) {
 		return defaultStackArenaCap
 	}
 	capHint := minStackArenaCap
 	for i := range hints {
-		fnCap := stackArenaCapForBody(len(m.Code[i].BodyBytes), int(hints[i].localCount))
+		fnCap := stackArenaCapForBody(len(m.Code[i].BodyBytes), int(hints[i].localCount)) + int(hints[i].immediateFreeOps)/2
 		if fnCap >= defaultStackArenaCap {
 			return defaultStackArenaCap
 		}

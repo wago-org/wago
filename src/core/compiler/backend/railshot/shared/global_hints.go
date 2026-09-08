@@ -6,14 +6,11 @@ import (
 )
 
 // GlobalHintCapacity gives serial and parallel sidecars the same capacity
-// contract. At most twice the live record count is retained, with eight records
-// for the smallest non-empty sidecar. It does not depend on append batching.
+// contract. At most twice the live record count is retained. It does not depend
+// on append batching; one referenced global reserves one record, not eight.
 func GlobalHintCapacity(count int) int {
 	if count <= 0 {
 		return 0
-	}
-	if count <= 8 {
-		return 8
 	}
 	shift := bits.Len(uint(count - 1))
 	if shift >= bits.UintSize-1 {

@@ -101,7 +101,7 @@ func TestSubDefaultHintPreservesGeometricGrowthArm64(t *testing.T) {
 	for i := 1; i < nodes; i++ {
 		s.alloc()
 	}
-	want := []int{101, 202, 404, 808, 1616}
+	want := []int{101, 27, 128, 256, 512, 1024}
 	if got := stackChunkCapsArm64(s); !slices.Equal(got, want) {
 		t.Fatalf("sub-default growth = %v, want %v", got, want)
 	}
@@ -248,7 +248,7 @@ func TestStackArenaCapForBodyTinyFunctionArm64(t *testing.T) {
 func TestStackArenaCapForBodyMediumFunctionArm64(t *testing.T) {
 	const bodyLen = 64
 	const locals = 12
-	want := bodyLen*3/4 + locals/4 + 1
+	want := bodyLen/2 + locals/4 + 1
 	s := newStackWithCap(stackArenaCapForBody(bodyLen, locals))
 	if cap(s.chunks[0]) != want {
 		t.Fatalf("medium stack arena cap = %d, want %d", cap(s.chunks[0]), want)

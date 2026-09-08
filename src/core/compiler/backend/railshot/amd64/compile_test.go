@@ -48,7 +48,7 @@ func TestModuleStackArenaCapUsesCheapBodyBound(t *testing.T) {
 }
 
 func TestModuleStackArenaCapFallsBackWhenBodyBoundReachesDefault(t *testing.T) {
-	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, defaultStackArenaCap*4/3+1)}}}
+	m := &wasm.Module{Code: []wasm.Func{{BodyBytes: make([]byte, defaultStackArenaCap*2)}}}
 	if got := moduleStackArenaCap(m, []funcHints{{}}); got != defaultStackArenaCap {
 		t.Fatalf("large-function cap = %d, want default %d", got, defaultStackArenaCap)
 	}
