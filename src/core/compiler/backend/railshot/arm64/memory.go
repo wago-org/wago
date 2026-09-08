@@ -121,13 +121,24 @@ func (f *fn) emitTrapUnwind() {
 // emitInterruptCheck polls the invocation trap cell at bounded native safe
 // points. A context watcher writes TrapInterrupted there; the ordinary cold trap
 // path then unwinds the complete wasm call tree.
-func (f *fn) emitInterruptCheck() {
+func (f *fn) emitInterruptCheck(preserveLayout bool) {
 	if !f.interruptible {
 		return
 	}
-	f.ld64(X16, linMemReg, -int32(offTrapCellPtr))
-	f.ld32(X17, X16, 0)
+	cell := X16
+	if f.trapCellReg != regNone {
+		cell = f.trapCellReg
+	} else {
+		f.ld64(cell, linMemReg, -int32(offTrapCellPtr))
+	}
+	f.ld32(X17, cell, 0)
 	f.trapIfZero(X17, false, false, trapInterrupted)
+	if preserveLayout && f.trapCellReg != regNone {
+		// Keep the following loop body at the same address as the uncached form.
+		// Replacing the dependent pointer load with a NOP isolates the latency win
+		// from fetch-block phase changes across unrelated corpus functions.
+		f.a.Nop()
+	}
 }
 
 // trapIf records a conditional branch to this function's shared trap stub for

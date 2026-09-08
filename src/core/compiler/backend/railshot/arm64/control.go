@@ -1236,7 +1236,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if kind == cfLoop {
 			f.alignLoopHeader()
 			fr.controlSite = f.a.Len()
-			f.emitInterruptCheck()
+			f.emitInterruptCheck(true)
 		}
 	}
 	f.pushCtrl(&fr)

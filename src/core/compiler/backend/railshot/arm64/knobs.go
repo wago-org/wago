@@ -15,6 +15,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("interval-region-pins", &intervalRegionPinsEnabled),
 	optimization.Bind("multi-bounds-cert", &multiBoundsCertEnabled),
 	optimization.Bind("leaf-scratch-memsize", &leafScratchMemSizeEnabled),
+	optimization.Bind("loop-trap-cell", &loopTrapCellEnabled),
 	optimization.Bind("magic-div", &magicDivEnabled),
 	optimization.Bind("shared-trap-body", &sharedTrapBodyEnabled),
 	optimization.Bind("shared-adapters", &sharedAdaptersEnabled),
@@ -59,6 +60,7 @@ var (
 	optIntervalRegionPins = optimizationBindings.Option("interval-region-pins")
 	optMultiBoundsCert    = optimizationBindings.Option("multi-bounds-cert")
 	optLeafScratchMemSize = optimizationBindings.Option("leaf-scratch-memsize")
+	optLoopTrapCell       = optimizationBindings.Option("loop-trap-cell")
 	optMagicDiv           = optimizationBindings.Option("magic-div")
 	optSharedTrapBody     = optimizationBindings.Option("shared-trap-body")
 	optSharedAdapters     = optimizationBindings.Option("shared-adapters")

@@ -66,6 +66,10 @@ var (
 	// leafScratchMemSizeEnabled caches memBytes in backend scratch X17 for bounded
 	// straight-line regional leaves, freeing X27 for one more resident local.
 	leafScratchMemSizeEnabled = os.Getenv("WAGO_ARM64_NO_LEAF_SCRATCH_MEMSIZE") != "1"
+	// loopTrapCellEnabled keeps the invocation's stable trap-cell pointer in a
+	// dedicated register across call-free loops, leaving every cancellation poll
+	// intact while removing its repeated basedata load.
+	loopTrapCellEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_TRAP_CELL") != "1"
 	// entryInitElisionEnabled skips zero-initialization for declared locals whose
 	// first straight-line access is a set/tee. The kill switch is the A/B oracle.
 	entryInitElisionEnabled = os.Getenv("WAGO_ARM64_NO_ENTRY_INIT_ELISION") != "1"

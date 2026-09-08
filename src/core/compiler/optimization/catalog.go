@@ -392,6 +392,7 @@ var catalog = []Definition{
 	experimentalAMD64("bmi2-rorx", "BMI2 rotates", "use non-destructive immediate rotates on BMI2 hosts"),
 	arm64("leaf-scratch-pins", "Leaf scratch pins", "pin scratch values in leaf functions"),
 	arm64("leaf-scratch-memsize", "Leaf scratch memory size", "cache memory size in backend scratch for straight-line regional leaves"),
+	arm64("loop-trap-cell", "Loop trap cell", "cache the stable cancellation cell across call-free loops"),
 	amd64("vex-float-mem", "VEX memory operands", "fold scalar float loads into AVX operations"),
 	both("multi-bounds-cert", "Multiple bounds proofs", "retain independent proofs for interleaved arrays"),
 	amd64("addr-zext-elim", "Memory32 address cleanup", "skip redundant zero-extension of proven-clean memory32 addresses"),

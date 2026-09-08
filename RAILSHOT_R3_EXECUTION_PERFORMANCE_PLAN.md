@@ -31,6 +31,11 @@ Implementation progress:
 - [x] Reject direct replay of the shadow segment benefit as an active lease
   score: it under-admitted useful BLAKE locals and increased both code size and
   pressure misses materially. The experiment was removed rather than gated.
+- [x] Cache the stable cancellation-cell pointer across eligible ARM64 memory
+  loops without removing any poll. Selection is call-free and pressure-neutral,
+  preserves the transient-register floor and loop layout, and has an environment
+  kill switch. A 7-pair, 500 ms ARM64 A/B measured `memory.sum` 2.57% faster and
+  sieve 0.67% faster; BLAKE and CoreMark remained within 0.34% and 0.03%.
 - [ ] Design the next active lease policy around dirty-home cost and transient
   expression pressure, then qualify it against the full corpus.
 

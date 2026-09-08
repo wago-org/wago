@@ -236,6 +236,10 @@ type fn struct {
 	// memory.grow, and established once at every offset-0 entry (wrapper prologue /
 	// reg-ABI adapter — the only ways an activation enters from Go).
 	memSizeReg Reg
+	// trapCellReg caches [linMemReg-offTrapCellPtr] in call-free interruptible
+	// loops. The pointer is fixed for an activation; calls are excluded because
+	// cross-instance entry can replace the active trap cell.
+	trapCellReg Reg
 	// reserved is the module-wide never-allocatable register set: memSizeReg and
 	// the module-pinned global registers.
 	reserved regMask
@@ -2330,7 +2334,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f := &sc.fnState
 	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow)}
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow)}
 	// Relocations are transient until the module owner copies them into its flat
 	// arena. Reuse one function buffer instead of allocating one backing per
 	// caller; larger decoded call counts can still reserve the exact target-cost
@@ -2543,6 +2547,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		gpPool = nil // regional assignments supersede whole-function GP pins
 	}
 	f.assignPinnedLocals(hints.localScore, globalHints, gpPool, hasCall, pinLocals)
+	if f.opt(optLoopTrapCell) && f.interruptible && f.hasLoop && !hasCall && touchesMemory {
+		// Prefer X27 when explicit bounds do not own it. Otherwise spend only an
+		// extended local-pin register that residency left unused; the poll cache
+		// must never evict a hot local merely to save one metadata load.
+		if candidate := selectLoopTrapCellReg(f.memSizeReg, f.reserved, f.pinnedLocalMask); candidate != regNone {
+			f.trapCellReg = candidate
+			f.reserved = f.reserved.add(candidate)
+			f.stats.peep("loop-trap-cell")
+		}
+	}
 	for i := range f.locals {
 		if r := f.locals[i].reg; r >= X2 && r <= X7 {
 			f.stats.peep("entry-arg-local-pin")
@@ -2779,6 +2793,18 @@ func gpPinLimit(reserved regMask) int {
 		return 0
 	}
 	return available - minTransientGP
+}
+
+func selectLoopTrapCellReg(memSize Reg, reserved, pinned regMask) Reg {
+	for _, candidate := range [...]Reg{X27, X25, X24} {
+		withCandidate := reserved.add(candidate)
+		if candidate == memSize || reserved.has(candidate) || pinned.has(candidate) ||
+			pinned.count() > gpPinLimit(withCandidate) {
+			continue
+		}
+		return candidate
+	}
+	return regNone
 }
 
 // withoutReg returns pool with r removed (order preserved).
@@ -3111,10 +3137,13 @@ func (f *fn) prologue(localScores []uint32) {
 	// 12 bits, so we materialize the size in the backend scratch X16 — uniform for
 	// any frame size). See CONTRACT §4h option 1.
 	f.subRspAt = a.Len()
-	a.Movz64(X16, 0, 0)          // frame size lo 16 bits; patched after body
-	a.Movk64(X16, 0, 1)          // frame size hi 16 bits
-	a.SubSPReg(X16)              // SUB SP, SP, X16
-	a.MovReg64(linMemReg, X1)    // linMem → linMemReg (pinned for the whole function)
+	a.Movz64(X16, 0, 0)       // frame size lo 16 bits; patched after body
+	a.Movk64(X16, 0, 1)       // frame size hi 16 bits
+	a.SubSPReg(X16)           // SUB SP, SP, X16
+	a.MovReg64(linMemReg, X1) // linMem → linMemReg (pinned for the whole function)
+	if f.trapCellReg != regNone {
+		f.ld64(f.trapCellReg, linMemReg, -int32(offTrapCellPtr))
+	}
 	f.st64(SP, frResultsOff, X3) // results ptr (trap cell ptr lives in basedata)
 	if f.memSizeReg != regNone {
 		// Offset-0 entry: establish the module-wide memBytes cache. Direct wasm→wasm
@@ -3122,7 +3151,7 @@ func (f *fn) prologue(localScores []uint32) {
 		f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
 	}
 	f.emitStackFenceCheck(linMemReg, X16)
-	f.emitInterruptCheck()
+	f.emitInterruptCheck(false)
 	// Copy v128 params through V0 before loading any pinned scalar float params.
 	// V0 is only a prologue scratch here; keeping these copies first prevents a
 	// future pin-pool change from letting a later v128 copy clobber an already-live
@@ -3390,7 +3419,10 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	// entry, so an arg register cannot double as scratch here (amd64 used RSI, which
 	// is not one of its arg registers).
 	f.emitStackFenceCheck(linMemReg, X16)
-	f.emitInterruptCheck()
+	if f.trapCellReg != regNone {
+		f.ld64(f.trapCellReg, linMemReg, -int32(offTrapCellPtr))
+	}
+	f.emitInterruptCheck(false)
 	gp, fp = 0, 0
 	moves := f.tmpMoves[:0]
 	for i := 0; i < np; i++ {

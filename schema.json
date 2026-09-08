@@ -96,6 +96,7 @@
               "local-slot-order",
               "loop-precheck",
               "loop-region-pins",
+              "loop-trap-cell",
               "magic-div",
               "merge-next-use",
               "mul-add-fuse",
