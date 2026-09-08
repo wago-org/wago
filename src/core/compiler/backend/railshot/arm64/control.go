@@ -1236,7 +1236,7 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 		if kind == cfLoop {
 			f.alignLoopHeader()
 			fr.controlSite = f.a.Len()
-			f.emitInterruptCheck()
+			f.emitInterruptCheck(true)
 		}
 	}
 	f.pushCtrl(&fr)
@@ -1329,9 +1329,7 @@ func (f *fn) trySimpleIfLocalSet(r *wasm.Reader) (bool, error) {
 	if err := r.JumpTo(r2.Offset()); err != nil {
 		return false, err
 	}
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	cond := f.s.back()
 	if cond == nil {
 		return false, fmt.Errorf("arm64: if without condition")

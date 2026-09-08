@@ -12,8 +12,9 @@ import (
 
 func funcHintStorageBytes(hints []funcHints, sidecar funcHintSidecar) (headers, sidecars uint64) {
 	headers = uint64(cap(hints)) * uint64(unsafe.Sizeof(funcHints{}))
-	sidecars = uint64(cap(sidecar.localScore)+cap(sidecar.localLastGet))*uint64(unsafe.Sizeof(uint32(0))) +
-		uint64(cap(sidecar.sparseGlobals))*uint64(unsafe.Sizeof(shared.GlobalHint{}))
+	sidecars = uint64(cap(sidecar.localScore)+cap(sidecar.localLastGet)+cap(sidecar.localEventMeta))*uint64(unsafe.Sizeof(uint32(0))) +
+		uint64(cap(sidecar.sparseGlobals))*uint64(unsafe.Sizeof(shared.GlobalHint{})) +
+		uint64(cap(sidecar.residencyShadow))*uint64(unsafe.Sizeof(shared.ResidencyShadowEntry{}))
 	return
 }
 
@@ -137,12 +138,17 @@ type funcHintView struct {
 	localScore       []uint32
 	localLastGet     []uint32
 	sparseGlobals    []shared.GlobalHint
+	localEvents      *shared.LocalEventTape // scan-only, never copied into funcHints
+	localEventMeta   uint32                 // reconstructed from the sparse sidecar
+	residencyShadow  shared.ResidencyShadowSummary
 }
 
 type funcHintSidecar struct {
-	localScore    []uint32
-	localLastGet  []uint32
-	sparseGlobals []shared.GlobalHint
+	localScore      []uint32
+	localLastGet    []uint32
+	localEventMeta  []uint32 // ordered localStart, packed event summary pairs
+	sparseGlobals   []shared.GlobalHint
+	residencyShadow []shared.ResidencyShadowEntry
 }
 
 func retainedLocalScoreCount(h funcHints) int {
@@ -164,12 +170,16 @@ func (s funcHintSidecar) view(h funcHints) funcHintView {
 	}
 	globalStart := int(h.globalStart)
 	globalEnd := globalStart + int(h.globalCount)
+	eventMeta := shared.FindLocalEventMeta(s.localEventMeta, h.localStart)
+	shadow := shared.FindResidencyShadow(s.residencyShadow, h.localStart)
 	return funcHintView{
-		funcHints:     h,
-		nLocals:       nLocals,
-		localScore:    s.localScore[localStart:localEnd],
-		localLastGet:  localLastGet,
-		sparseGlobals: s.sparseGlobals[globalStart:globalEnd],
+		funcHints:       h,
+		nLocals:         nLocals,
+		localScore:      s.localScore[localStart:localEnd],
+		localLastGet:    localLastGet,
+		sparseGlobals:   s.sparseGlobals[globalStart:globalEnd],
+		localEventMeta:  eventMeta,
+		residencyShadow: shadow,
 	}
 }
 
@@ -211,6 +221,43 @@ func (h *funcHints) noteControlDepth(depth int) {
 		h.maxControlDepth = 255
 	} else if d := uint8(depth); d > h.maxControlDepth {
 		h.maxControlDepth = d
+	}
+}
+
+const (
+	localEventCountMask = uint32(1<<17 - 1)
+	localEventOverflow  = uint32(1 << 17)
+)
+
+func (h *funcHintView) setLocalEventSummary(count int, overflow bool) {
+	if count > int(localEventCountMask) {
+		count = int(localEventCountMask)
+	}
+	h.localEventMeta = uint32(count)
+	if overflow {
+		h.localEventMeta |= localEventOverflow
+	}
+}
+
+func (h funcHintView) localEventCount() int { return int(h.localEventMeta & localEventCountMask) }
+func (h funcHintView) localEventOverflowed() bool {
+	return h.localEventMeta&localEventOverflow != 0
+}
+
+func (h *funcHintView) noteLocalEvent(kind shared.LocalEventKind, local uint32, depth int) {
+	if h.localEvents == nil {
+		return
+	}
+	if local > uint32(^uint16(0)-1) {
+		h.localEvents.Overflow = true
+		return
+	}
+	h.localEvents.Append(kind, uint16(local), depth)
+}
+
+func (h *funcHintView) noteBoundaryEvent(kind shared.LocalEventKind, depth int) {
+	if h.localEvents != nil {
+		h.localEvents.Append(kind, shared.NoLocal, depth)
 	}
 }
 
@@ -421,6 +468,41 @@ func scanBody(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32) funcHintVie
 	return finishGlobalHints(scanBodyInto(body, nLocals, nGlobals, selfIdx, h, &elig, nil, nil, false, &accum), &accum)
 }
 
+func noteASTPhysicalEvent(h *funcHintView, kind wasm.InstrKind, depth int, gcStructHelpers bool) {
+	var event shared.LocalEventKind
+	switch kind {
+	case wasm.InstrBlock, wasm.InstrTryTable:
+		event = shared.LocalEventBlock
+	case wasm.InstrLoop:
+		event = shared.LocalEventLoop
+	case wasm.InstrIf:
+		event = shared.LocalEventIf
+	case wasm.InstrBr, wasm.InstrBrIf, wasm.InstrBrTable, wasm.InstrReturn:
+		event = shared.LocalEventBranch
+	case wasm.InstrCall, wasm.InstrCallIndirect, wasm.InstrReturnCall,
+		wasm.InstrReturnCallIndirect, wasm.InstrCallRef, wasm.InstrReturnCallRef:
+		event = shared.LocalEventCall
+	case wasm.InstrGlobalSet, wasm.InstrTableSet, wasm.InstrMemoryGrow,
+		wasm.InstrMemoryInit, wasm.InstrMemoryCopy, wasm.InstrMemoryFill,
+		wasm.InstrTableInit, wasm.InstrTableCopy, wasm.InstrTableGrow, wasm.InstrTableFill:
+		event = shared.LocalEventInvalidate
+	case wasm.InstrI32DivS, wasm.InstrI32DivU, wasm.InstrI32RemS, wasm.InstrI32RemU,
+		wasm.InstrI32Shl, wasm.InstrI32ShrS, wasm.InstrI32ShrU, wasm.InstrI32Rotl, wasm.InstrI32Rotr,
+		wasm.InstrI64DivS, wasm.InstrI64DivU, wasm.InstrI64RemS, wasm.InstrI64RemU,
+		wasm.InstrI64Shl, wasm.InstrI64ShrS, wasm.InstrI64ShrU, wasm.InstrI64Rotl, wasm.InstrI64Rotr:
+		event = shared.LocalEventFixedReg
+	default:
+		if gcOrAtomicInstructionMayCall(kind, gcStructHelpers) {
+			event = shared.LocalEventCollection
+		} else if wasm.IsSIMDValidationInstructionKind(kind) {
+			event = shared.LocalEventPressure
+		} else {
+			return
+		}
+	}
+	h.noteBoundaryEvent(event, depth)
+}
+
 func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcHintView, elig *globalEligibilityTracker, m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, globalHints *shared.GlobalHintAccumulator) funcHintView {
 	elig.reset()
 	// Programmatic decoded bodies are uncommon and can exercise context-sensitive
@@ -436,6 +518,7 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			noteASTPhysicalEvent(&h, in.Kind, depth, gcStructHelpers)
 			if in.Kind == wasm.InstrF32Const || in.Kind == wasm.InstrF64Const {
 				h.flags.set(hintHasFloatConst)
 			}
@@ -475,10 +558,12 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 				}
 			case wasm.InstrLocalGet:
 				if int(in.Index) < nLocals {
+					h.noteLocalEvent(shared.LocalEventRead, in.Index, depth)
 					addHotness(h.localScore, in.Index, w)
 				}
 			case wasm.InstrLocalSet, wasm.InstrLocalTee:
 				if int(in.Index) < nLocals {
+					h.noteLocalEvent(shared.LocalEventDefine, in.Index, depth)
 					addHotness(h.localScore, in.Index, 2*w)
 				}
 			case wasm.InstrGlobalGet, wasm.InstrGlobalSet:
@@ -500,17 +585,21 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 					}
 				}
 				elig.pop(loop)
+				h.noteBoundaryEvent(shared.LocalEventEnd, depth)
 			case wasm.InstrBlock, wasm.InstrTryTable:
 				if walk(in.Body().Instrs, depth, curLoop) {
 					sub = true
 				}
+				h.noteBoundaryEvent(shared.LocalEventEnd, depth)
 			case wasm.InstrIf:
 				if walk(in.Then(), depth, curLoop) {
 					sub = true
 				}
+				h.noteBoundaryEvent(shared.LocalEventElse, depth)
 				if walk(in.Else(), depth, curLoop) {
 					sub = true
 				}
+				h.noteBoundaryEvent(shared.LocalEventEnd, depth)
 			case wasm.InstrMemoryCopy, wasm.InstrMemoryFill:
 				h.flags.set(hintUsesBulkMem | hintTouchesMemory)
 			case wasm.InstrStructNew, wasm.InstrStructNewDefault, wasm.InstrStructGet, wasm.InstrStructGetS, wasm.InstrStructGetU, wasm.InstrStructSet:
@@ -751,6 +840,36 @@ type byteBodyScanner struct {
 	importedFuncs   int
 }
 
+func (s *byteBodyScanner) notePhysicalEvent(op byte, depth int) {
+	var kind shared.LocalEventKind
+	switch op {
+	case 0x02, 0x1f:
+		kind = shared.LocalEventBlock
+	case 0x03:
+		kind = shared.LocalEventLoop
+	case 0x04:
+		kind = shared.LocalEventIf
+	case 0x05:
+		kind = shared.LocalEventElse
+	case 0x0b:
+		kind = shared.LocalEventEnd
+	case 0x08, 0x09, 0x0a, 0x0c, 0x0d, 0x0e, 0x0f:
+		kind = shared.LocalEventBranch
+	case 0x10, 0x11, 0x12, 0x13, 0x14, 0x15:
+		kind = shared.LocalEventCall
+	case 0x24, 0x26, 0x40:
+		kind = shared.LocalEventInvalidate
+	case 0x6d, 0x6e, 0x6f, 0x70, 0x74, 0x75, 0x76, 0x77, 0x78,
+		0x7f, 0x80, 0x81, 0x82, 0x86, 0x87, 0x88, 0x89, 0x8a:
+		kind = shared.LocalEventFixedReg
+	case 0xfd:
+		kind = shared.LocalEventPressure
+	default:
+		return
+	}
+	s.h.noteBoundaryEvent(kind, depth)
+}
+
 func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAtElse bool) (bool, byte, error) {
 	if depth > 20000 {
 		return true, 0, s.r.err(wasm.ErrInstructionNestingLimitExceeded, s.r.off())
@@ -793,6 +912,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintHasLoop)
 			}
 		}
+		s.notePhysicalEvent(op, depth)
 		switch op {
 		case 0x0b: // end
 			s.h.addStackArenaNodes(2) // flush/rebuild allowance for the closing edge.
@@ -910,6 +1030,11 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			idx := imm.Index
 			curIndex = idx
 			if int(idx) < s.nLocals {
+				kind := shared.LocalEventDefine
+				if op == 0x20 {
+					kind = shared.LocalEventRead
+				}
+				s.h.noteLocalEvent(kind, idx, depth)
 				if s.entryPrefix && idx < 64 {
 					bit := uint64(1) << idx
 					if s.entrySeen&bit == 0 {
@@ -958,6 +1083,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintModuleEH)
 			}
 			if gcOrAtomicInstructionMayCall(imm.Kind, s.gcStructHelpers) {
+				s.h.noteBoundaryEvent(shared.LocalEventCollection, depth)
 				s.h.flags.set(hintHasCall)
 				subHasCall = true
 			}
@@ -974,6 +1100,7 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 				s.h.flags.set(hintTouchesMemory)
 			}
 			if imm.UsesBulkMemory {
+				s.h.noteBoundaryEvent(shared.LocalEventInvalidate, depth)
 				s.h.flags.set(hintUsesBulkMem)
 			}
 		case 0x1f: // try_table: blocktype, catch vector, body

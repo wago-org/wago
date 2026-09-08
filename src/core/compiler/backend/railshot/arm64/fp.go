@@ -850,7 +850,7 @@ func (f *fn) fload(r *wasm.Reader, f64 bool) error {
 	if addrOK {
 		aliasLocal = addrLocal
 	}
-	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, 0)
 	e := f.pushValue(fmemRefStorage(ea, disp, f64, borrow, aliasLocal))
 	if eaOwned {
 		f.regUser[ea] = e
@@ -880,7 +880,7 @@ func (f *fn) fstore(r *wasm.Reader, f64 bool) error {
 		return nil
 	}
 	addrLocal, addrOK := localAddressKey(f.s.back())
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true, 0)
 	f.pinned = f.pinned.add(ea)
 	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	f.a.StrFIdx(linMemReg, ea, xmm, disp, f64)

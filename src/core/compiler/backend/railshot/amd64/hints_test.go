@@ -7,9 +7,35 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestLocalEventTapeScansStructuredLocals(t *testing.T) {
+	h := newFuncHints(2, 0)
+	var tape shared.LocalEventTape
+	tape.Reset(shared.LocalEventLimit)
+	h.localEvents = &tape
+	elig := newGlobalEligibilityTracker(0)
+	var globals shared.GlobalHintAccumulator
+	got, err := scanBodyBytesIntoMemory64WithModuleCalls([]byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}, 2, 0, 0, h, &elig, false, nil, nil, nil, false, nil, 0, &globals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []shared.LocalEventKind{shared.LocalEventBlock, shared.LocalEventRead, shared.LocalEventDefine, shared.LocalEventEnd, shared.LocalEventEnd}
+	if len(tape.Events) != len(want) {
+		t.Fatalf("events = %+v, want kinds %v", tape.Events, want)
+	}
+	for i := range want {
+		if tape.Events[i].Kind != want[i] {
+			t.Fatalf("event %d = %+v, want kind %v", i, tape.Events[i], want[i])
+		}
+	}
+	if got.localEvents != &tape {
+		t.Fatal("scanner lost worker-owned tape")
+	}
+}
 
 func TestFuncHintsSize(t *testing.T) {
 	const want = 32

@@ -254,10 +254,11 @@ type fn struct {
 	// Bounded straight-line local intervals. A non-regNone intervalReg entry marks
 	// an eligible local; locals[x].reg is populated only while its cached value is
 	// live. Physical registers are selected and reclaimed dynamically.
-	intervalReg   []Reg
-	intervalLast  []uint32
-	intervalScore []uint32
-	intervalOwner [16]int
+	intervalReg      []Reg
+	intervalLast     []uint32
+	intervalScore    []uint32
+	intervalOwner    [16]int
+	intervalRegLimit int
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -1417,7 +1418,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if opts.Stats != nil || explainEnabled {
 		hintStart = time.Now()
 	}
-	allHints, hintSidecar, globalScores, err := computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy)
+	allHints, hintSidecar, globalScores, err := computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy, opts.Stats != nil || explainEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
@@ -2203,14 +2204,16 @@ var moduleGlobalRegs = []Reg{R14, R13, R12}
 // avoids both a second body pass and a functions-by-globals retained matrix. The
 // standalone computeModuleGlobalScores is retained as the parity oracle in tests.
 func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) ([]funcHints, funcHintSidecar, []int64, error) {
-	return computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, gcTypeLayouts, gcStructHelpers, currentCodegenPolicy())
+	return computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, gcTypeLayouts, gcStructHelpers, currentCodegenPolicy(), false)
 }
 
-func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy) ([]funcHints, funcHintSidecar, []int64, error) {
+func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy, detailedResidency bool) ([]funcHints, funcHintSidecar, []int64, error) {
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
 	totalScores := 0
 	intervalLocals := 0
+	intervalFunctions := 0
+	eventReserve := 0
 	moduleHasTailCall := false
 	moduleEH := m.TagCount() != 0
 	storageModuleEH := moduleEH
@@ -2239,6 +2242,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 				return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint interval locals overflow")
 			}
 			intervalLocals += count
+			intervalFunctions++
+			eventReserve = max(eventReserve, min(shared.LocalEventInitialCapacity, len(m.Code[i].BodyBytes)/2))
 		}
 	}
 	if uint64(totalScores) > uint64(^uint32(0)) || uint64(intervalLocals) > uint64(^uint32(0)) {
@@ -2246,6 +2251,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 	}
 	localScores := make([]uint32, totalScores)
 	localLastGets := make([]uint32, intervalLocals)
+	localEventMeta := make([]uint32, intervalFunctions*2)
+	residencyShadow := make([]shared.ResidencyShadowEntry, 0, intervalFunctions)
 	var sparseGlobals []shared.GlobalHint
 	var sparseAccum shared.GlobalHintAccumulator
 	eligibilityTracker := newGlobalEligibilityTracker(nGlobals)
@@ -2259,6 +2266,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 	}
 	scoreAt := 0
 	intervalAt := 0
+	intervalEventAt := 0
+	localEvents := shared.LocalEventTape{Events: make([]shared.LocalEvent, 0, eventReserve)}
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	for i := range m.Code {
 		nLocals := int(allHints[i].localCount)
@@ -2270,6 +2279,8 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		h.localCount = uint16(nLocals)
 		h.localStart = uint32(scoreAt)
 		if intervalStorage {
+			localEvents.Reset(shared.LocalEventLimit)
+			h.localEvents = &localEvents
 			h.localLastGet = localLastGets[intervalAt : intervalAt+nLocals]
 			if nLocals != 0 {
 				h.lastGetStartPlus1 = uint32(intervalAt) + 1
@@ -2281,6 +2292,19 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 		h, err = scanFuncBodyIntoMemory64WithModuleCalls(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, &classifier, gcTypeLayouts, gcStructHelpers, allHints, importedFuncs, &sparseAccum)
 		if err != nil {
 			return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: %w", i, err)
+		}
+		if intervalStorage {
+			h.setLocalEventSummary(len(localEvents.Events), localEvents.Overflow)
+			localEventMeta[intervalEventAt] = h.localStart
+			localEventMeta[intervalEventAt+1] = h.localEventMeta
+			intervalEventAt += 2
+			var summary shared.ResidencyShadowSummary
+			if detailedResidency {
+				summary = shared.PlanResidencyTransitionShadow(localEvents.Events, nLocals, maxIntervalRegionRegs, localEvents.Overflow)
+			} else {
+				summary = shared.PlanResidencyShadow(localEvents.Events, nLocals, maxIntervalRegionRegs, localEvents.Overflow)
+			}
+			residencyShadow = append(residencyShadow, shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summary})
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.flags.assign(hintIntervalRegionStorage, intervalStorage)
@@ -2306,8 +2330,10 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 	if moduleEH && !storageModuleEH {
 		localScores = compactEHLocalScores(allHints, localScores)
 		localLastGets = nil
+		localEventMeta = nil
+		residencyShadow = nil
 	}
-	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, sparseGlobals: sparseGlobals}, agg, nil
+	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, localEventMeta: localEventMeta, sparseGlobals: sparseGlobals, residencyShadow: residencyShadow}, agg, nil
 }
 
 // compactEHLocalScores drops interval-only storage when a tagless try_table or
@@ -2880,6 +2906,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if !pinLocals {
 		fpPinLimit = 0
 	}
+	f.noteResidencyEvents(hints)
 	intervalRegion := pinLocals && regABI && !hasCall && !hints.flags.has(hintHasControlFlow) && !hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
 	if intervalRegion {
 		gpPool = nil // regional GP assignments supersede whole-function GP pins
