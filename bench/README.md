@@ -27,6 +27,15 @@ Split long benchmark runs into fresh processes per group and sample so native
 code mappings can be released between groups. Use the same process boundaries
 for both revisions, and retain exit status plus peak resident memory for each run.
 
+For instantiation changes, compare every plugin's time, heap bytes, and allocation
+count. Integer-ABI signature classification must not allocate or change its
+eight-parameter/two-result limits. Type-key storage uses the declared type count
+as a capacity hint, not an admission limit: exact collision checks, key order,
+growth, and final-owner cleanup must remain intact. Keep active data copies and
+their bounds checks. `BenchmarkPluginExec` manually times one fixed workload;
+increasing `-benchtime` does not lengthen it, and its printed zero allocation
+counters do not measure that workload's allocations.
+
 The optional backend memory/global type caches use at most 1 MiB per module and
 retain direct lookup for tiny or over-budget modules. Global-hint sidecars use
 the same capacity contract in serial and parallel scans; compare backing capacity

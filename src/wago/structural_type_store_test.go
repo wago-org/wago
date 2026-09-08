@@ -202,3 +202,49 @@ func TestReferenceStoreRejectsStructuralKeyCollisionWithinModule(t *testing.T) {
 		t.Fatalf("within-module collision error = %v", err)
 	}
 }
+
+func TestReferenceStoreTypeKeyCapacity(t *testing.T) {
+	for _, distinctKeys := range []bool{false, true} {
+		c := compiledStoreType(7, ValueTypeI32)
+		const functions = 128
+		sig := c.Funcs[0]
+		c.Funcs = make([]FuncSig, functions)
+		c.FuncTypeID = make([]uint64, functions)
+		for i := range c.Funcs {
+			c.Funcs[i] = sig
+			c.FuncTypeID[i] = 7
+			if distinctKeys {
+				// A capacity hint must not become a limit or assume that public
+				// metadata assigns only one key to each declared type.
+				c.FuncTypeID[i] += uint64(i)
+			}
+		}
+		store := newReferenceStore(false)
+		in := &Instance{c: c}
+		if err := store.registerInstance(in); err != nil {
+			t.Fatal(err)
+		}
+		keys := store.instanceTypes[in]
+		want := 1
+		if distinctKeys {
+			want = functions
+		}
+		if len(keys) != want || len(store.typeKeys) != want {
+			t.Fatalf("distinct=%v: instance keys=%d store keys=%d, want %d", distinctKeys, len(keys), len(store.typeKeys), want)
+		}
+		if !distinctKeys && cap(keys) != 1 {
+			t.Fatalf("one declared type retained %d key slots, want 1", cap(keys))
+		}
+		for i, key := range keys {
+			if key != c.FuncTypeID[i] || store.typeKeys[key].refs != 1 {
+				t.Fatalf("key %d: got %#x owners=%d, want %#x owners=1", i, key, store.typeKeys[key].refs, c.FuncTypeID[i])
+			}
+		}
+		store.advanceInstanceLifetime(in, referenceLifetimeClosed)
+		store.advanceInstanceLifetime(in, referenceLifetimeQuiesced)
+		store.advanceInstanceLifetime(in, referenceLifetimeResourcesReleased)
+		if len(store.typeKeys) != 0 || len(store.instanceTypes) != 0 {
+			t.Fatalf("distinct=%v: type keys retained after final owner released", distinctKeys)
+		}
+	}
+}

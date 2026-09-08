@@ -872,8 +872,8 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 					internal = internalEntryOffset(c.InternalEntry[li])
 				}
 				regABIEnabled := !c.registerABIDisabled
-				stagedTailRegABI := regABIEnabled && c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (funcSigLocalRegABI(c.Funcs[li]) || funcSigReferenceResultRegABI(c.Funcs[li]))
 				localRegABI := regABIEnabled && funcSigLocalRegABI(c.Funcs[li])
+				stagedTailRegABI := regABIEnabled && c.stagedFeatures().IsEnabled(CoreFeatureTailCall) && (localRegABI || funcSigReferenceResultRegABI(c.Funcs[li]))
 				// Equal wrapper/internal offsets on a register-ABI function encode an
 				// intentionally wrapperless direct-only function. It cannot be a valid
 				// ref.func target; leave its unused descriptor entry invalid instead of
@@ -1824,7 +1824,12 @@ func funcSigIntRegABI(sig FuncSig) bool {
 	if len(sig.Results) > 2 || len(sig.Params) > 8 {
 		return false
 	}
-	for _, t := range append(append([]ValType{}, sig.Params...), sig.Results...) {
+	for _, t := range sig.Params {
+		if t != ValI32 && t != ValI64 {
+			return false
+		}
+	}
+	for _, t := range sig.Results {
 		if t != ValI32 && t != ValI64 {
 			return false
 		}

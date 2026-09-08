@@ -1454,7 +1454,13 @@ func (s *referenceStore) registerInstance(in *Instance) error {
 	// the compact key authoritatively: the store invariant guarantees that one key
 	// never denotes two distinct live structural types.
 	candidate := make(map[uint64]structuralTypeRegistration)
-	keys := make([]uint64, 0, len(in.c.FuncTypeID))
+	keyCapacity := len(in.c.FuncTypeID)
+	if types := len(in.c.Types); types > 0 && types < keyCapacity {
+		// Most functions reuse declared types. This is only an allocation hint:
+		// append still accepts every distinct key, including legacy metadata.
+		keyCapacity = types
+	}
+	keys := make([]uint64, 0, keyCapacity)
 	for i, key := range in.c.FuncTypeID {
 		canonical, cached := in.c.cachedStructuralCallIdentity(i)
 		if !cached {
