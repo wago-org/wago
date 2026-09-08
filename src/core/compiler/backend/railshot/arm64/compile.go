@@ -2737,9 +2737,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		sc.directPreparedLight = directPrepared && f.preserveCallerPins && f.opt(optPreparedLightEntry)
 		// Scheduler retention and register preservation are independent proofs.
 		// This is the byte-backed, loop-free candidate set; module finalization
-		// admits only acyclic bounded callees. preserveCallerPins independently
-		// selects the smaller register-save thunk.
-		sc.directPreparedBounded = directPrepared && len(c.BodyBytes) != 0 && !f.hasLoop && len(customInstructions) == 0 && f.opt(optPreparedBoundedEntry)
+		// admits only acyclic bounded callees. Calls removed by inlining have no
+		// relocation for the finalizer to charge, while bulk/table mutations may
+		// lower to guest-counted native loops, so both classes fail closed here.
+		// preserveCallerPins independently selects the smaller register-save thunk.
+		sc.directPreparedBounded = directPrepared && len(c.BodyBytes) != 0 && !f.hasLoop &&
+			!hints.flags.has(hintUsesBulkMem|hintMutatesTable) && len(inlinedCallees) == 0 &&
+			len(customInstructions) == 0 && f.opt(optPreparedBoundedEntry)
 		globalHints = hints.sparseGlobals
 	}
 	f.installModuleGlobals(modGlobals)

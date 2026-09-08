@@ -260,6 +260,89 @@ func TestPreparedDirectARM64BoundedEntryRejectsRecursiveCallGraph(t *testing.T) 
 	}
 }
 
+func TestPreparedDirectARM64BoundedEntryRejectsInlinedCall(t *testing.T) {
+	module := wasmtest.Module(
+		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}))),
+		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
+		wasmtest.Section(10, wasmtest.Vec(
+			wasmtest.Code([]byte{0x20, 0x00, 0x41, 0x01, 0x6a, 0x0b}),
+			wasmtest.Code([]byte{0x20, 0x00, 0x10, 0x00, 0x0b}),
+		)),
+	)
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), module)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !compiled.directPreparedAt(1) {
+		t.Fatal("inlined caller did not retain ordinary scheduler-releasing direct entry")
+	}
+	if compiled.directPreparedBoundedAt(1) {
+		t.Fatal("caller admitted to bounded entry after inlining")
+	}
+}
+
+func TestPreparedDirectARM64BoundedEntryRejectsBulkAndTableMutation(t *testing.T) {
+	tableSection := func() []byte {
+		table := append([]byte{0x70, 0x01}, wasmtest.ULEB(1)...)
+		table = append(table, wasmtest.ULEB(65535)...)
+		return wasmtest.Section(4, wasmtest.Vec(table))
+	}
+	tableModule := func(body []byte, sections ...[]byte) []byte {
+		moduleSections := [][]byte{
+			wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I32}, nil))),
+			wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
+			tableSection(),
+		}
+		moduleSections = append(moduleSections, sections...)
+		moduleSections = append(moduleSections, wasmtest.Section(10, wasmtest.Vec(wasmtest.Code(body))))
+		return wasmtest.Module(moduleSections...)
+	}
+
+	tests := []struct {
+		name       string
+		module     []byte
+		wantDirect bool
+	}{
+		{name: "memory.copy", module: benchBulkMemoryModule(0x0a)},
+		{name: "memory.fill", module: benchBulkMemoryModule(0x0b)},
+		{name: "table.copy", module: tableModule([]byte{0x41, 0x00, 0x41, 0x00, 0x20, 0x00, 0xfc, 0x0e, 0x00, 0x00, 0x0b}), wantDirect: true},
+		{name: "table.init", module: tableModule(
+			[]byte{0x41, 0x00, 0x41, 0x00, 0x20, 0x00, 0xfc, 0x0c, 0x00, 0x00, 0x0b},
+			wasmtest.Section(9, wasmtest.Vec(tableTestPassiveElem(0))),
+		), wantDirect: true},
+		{name: "table.grow", module: tableModule([]byte{0xd0, 0x70, 0x20, 0x00, 0xfc, 0x0f, 0x00, 0x1a, 0x0b}), wantDirect: true},
+		{name: "table.fill", module: tableModule([]byte{0x41, 0x00, 0xd0, 0x70, 0x20, 0x00, 0xfc, 0x11, 0x00, 0x0b}), wantDirect: true},
+	}
+	configs := []struct {
+		name   string
+		bounds BoundsCheckMode
+	}{
+		{name: "explicit", bounds: BoundsChecksExplicit},
+	}
+	if GuardPageSupported() {
+		configs = append(configs, struct {
+			name   string
+			bounds BoundsCheckMode
+		}{name: "signals", bounds: BoundsChecksSignalsBased})
+	}
+	for _, config := range configs {
+		for _, tc := range tests {
+			t.Run(config.name+"/"+tc.name, func(t *testing.T) {
+				compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(config.bounds), tc.module)
+				if err != nil {
+					t.Fatalf("compile: %v", err)
+				}
+				if compiled.directPreparedAt(0) != tc.wantDirect {
+					t.Fatalf("ordinary direct entry = %v, want %v", compiled.directPreparedAt(0), tc.wantDirect)
+				}
+				if compiled.directPreparedBoundedAt(0) {
+					t.Fatal("bulk or table-mutating function selected the no-scheduler-release bounded entry")
+				}
+			})
+		}
+	}
+}
+
 func TestPreparedDirectARM64BoundedEntryAllowsFullRegisterSave(t *testing.T) {
 	body := []byte{
 		0x01, 0x01, 0x7f, // one i32 local
