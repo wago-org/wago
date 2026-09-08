@@ -11,6 +11,11 @@ func TestPortIntEncodings(t *testing.T) {
 		want uint32
 	}{
 		{"add x0,x1,x2,lsl#3", func(a *Asm) { a.AddShifted(X0, X1, X2, 3, false) }, 0x8b020c20},
+		{"add x0,x1,x2,lsr#7", func(a *Asm) { a.AddShiftedReg(X0, X1, X2, RegShiftLSR, 7, false) }, 0x8b421c20},
+		{"sub w3,w4,w5,asr#11", func(a *Asm) { a.SubShiftedReg(X3, X4, X5, RegShiftASR, 11, true) }, 0x4b852c83},
+		{"and x6,x7,x8,ror#13", func(a *Asm) { a.AndShiftedReg(X6, X7, X8, RegShiftROR, 13, false) }, 0x8ac834e6},
+		{"orr w9,w10,w11,lsl#17", func(a *Asm) { a.OrrShiftedReg(X9, X10, X11, RegShiftLSL, 17, true) }, 0x2a0b4549},
+		{"eor x12,x13,x14,lsr#29", func(a *Asm) { a.EorShiftedReg(X12, X13, X14, RegShiftLSR, 29, false) }, 0xca4e75ac},
 		{"add x0,x1,w2,uxtw", func(a *Asm) { a.AddExtUXTW(X0, X1, X2) }, 0x8b224020},
 		{"add x25,x25,w19,uxtw", func(a *Asm) { a.AddExtUXTW(X25, X25, X19) }, 0x8b334339},
 		{"adds w0,w1,w2", func(a *Asm) { a.Adds32(X0, X1, X2) }, 0x2b020020},
@@ -71,6 +76,62 @@ func TestPortIntEncodings(t *testing.T) {
 	}
 }
 
+func TestLogicalImmediatePredicates(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		v32  uint32
+		v64  uint64
+		ok32 bool
+		ok64 bool
+	}{
+		{name: "byte-mask", v32: 0x00ff00ff, v64: 0x00ff00ff00ff00ff, ok32: true, ok64: true},
+		{name: "high-bits", v32: 0x80000000, v64: 0x8000000000000000, ok32: true, ok64: true},
+		{name: "irregular", v32: 0x12345678, v64: 0x123456789abcdef0},
+		{name: "zero", v32: 0, v64: 0},
+		{name: "ones", v32: ^uint32(0), v64: ^uint64(0)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := LogicalImmediate32(tc.v32); got != tc.ok32 {
+				t.Fatalf("LogicalImmediate32(%#x) = %v, want %v", tc.v32, got, tc.ok32)
+			}
+			if got := LogicalImmediate64(tc.v64); got != tc.ok64 {
+				t.Fatalf("LogicalImmediate64(%#x) = %v, want %v", tc.v64, got, tc.ok64)
+			}
+		})
+	}
+}
+
+func TestAdjacentIndexedBaseReuse(t *testing.T) {
+	var a Asm
+	a.DenseIdxDisp = true
+	a.ReuseIndexedBase = true
+	a.LoadIdx(X0, X26, X22, 4, 4, false, false)
+	a.StoreIdx(X26, X22, X1, 8, 4)
+	if got := len(a.B); got != 12 {
+		t.Fatalf("reused sequence = %d bytes, want 12", got)
+	}
+	if a.IndexedBaseReuses != 1 {
+		t.Fatalf("indexed base reuses = %d, want 1", a.IndexedBaseReuses)
+	}
+
+	var overwrite Asm
+	overwrite.DenseIdxDisp = true
+	overwrite.ReuseIndexedBase = true
+	overwrite.LoadIdx(X22, X26, X22, 4, 4, false, false)
+	overwrite.StoreIdx(X26, X22, X1, 8, 4)
+	if got := len(overwrite.B); got != 16 || overwrite.IndexedBaseReuses != 0 {
+		t.Fatalf("address-input overwrite = %d bytes/%d reuses, want 16/0", got, overwrite.IndexedBaseReuses)
+	}
+
+	var disabled Asm
+	disabled.DenseIdxDisp = true
+	disabled.LoadIdx(X0, X26, X22, 4, 4, false, false)
+	disabled.StoreIdx(X26, X22, X1, 8, 4)
+	if got := len(disabled.B); got != 16 || disabled.IndexedBaseReuses != 0 {
+		t.Fatalf("disabled reuse = %d bytes/%d hits, want 16/0", got, disabled.IndexedBaseReuses)
+	}
+}
+
 // Goldens for the scalar-FP + SP + branch batch.
 func TestPortFPEncodings(t *testing.T) {
 	cases := []struct {
@@ -90,6 +151,8 @@ func TestPortFPEncodings(t *testing.T) {
 		{"fmov d0,d1", func(a *Asm) { a.FmovReg(X0, X1, true) }, 0x1e604020},
 		{"fmov s0,w1", func(a *Asm) { a.FmovFromGpr(X0, X1, false) }, 0x1e270020},
 		{"fmov d0,x1", func(a *Asm) { a.FmovFromGpr(X0, X1, true) }, 0x9e670020},
+		{"fmov s5,#0.5", func(a *Asm) { a.FmovImm(X5, 0x60, false) }, 0x1e2c1005},
+		{"fmov d0,#1.0", func(a *Asm) { a.FmovImm(X0, 0x70, true) }, 0x1e6e1000},
 		{"fmov w0,s1", func(a *Asm) { a.FmovToGpr(X0, X1, false) }, 0x1e260020},
 		{"fmov x0,d1", func(a *Asm) { a.FmovToGpr(X0, X1, true) }, 0x9e660020},
 		{"fcmp s0,s1", func(a *Asm) { a.Fcmp(X0, X1, false) }, 0x1e212000},

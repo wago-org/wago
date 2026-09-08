@@ -536,6 +536,7 @@ const (
 	layoutHasCall
 	layoutCallsSelf
 	layoutDirectPrepared
+	layoutDirectPreparedBounded
 	layoutOmitted
 )
 
@@ -655,16 +656,17 @@ func (f *fn) recordJumpTableFragment(start, end int, kind jumpTableFragmentKind)
 }
 
 type scratch struct {
-	stack             *stack     // the valent-block operand stack
-	asm               *amd64.Asm // the x86-64 encoder byte buffer
-	directPrepared    bool
-	rel32TailBound    bool // Rel32Sites uses the current function buffer's uncommitted tail
-	localRefTailBound bool // localRefs uses caller-owned compiler-arena tail scratch
-	fragmentOverflow  bool
-	policy            CodegenPolicy
-	classifier        wasm.ModuleInstructionClassifier
-	fnState           fn // per-function compiler state, reused across the module
-	relocs            []callReloc
+	stack                 *stack     // the valent-block operand stack
+	asm                   *amd64.Asm // the x86-64 encoder byte buffer
+	directPrepared        bool
+	directPreparedBounded bool
+	rel32TailBound        bool // Rel32Sites uses the current function buffer's uncommitted tail
+	localRefTailBound     bool // localRefs uses caller-owned compiler-arena tail scratch
+	fragmentOverflow      bool
+	policy                CodegenPolicy
+	classifier            wasm.ModuleInstructionClassifier
+	fnState               fn // per-function compiler state, reused across the module
+	relocs                []callReloc
 
 	// Per-function jump-site accumulators. Held here (not on fn) so their backing
 	// arrays are retained and reused across every function in the module instead of
@@ -945,6 +947,7 @@ func (sc *scratch) reset() {
 		sc.asm.ResetRel32Recorder(0)
 	}
 	sc.directPrepared = false
+	sc.directPreparedBounded = false
 	sc.retSiteHead = 0
 	sc.tailFrameSites = sc.tailFrameSites[:0]
 	sc.brFoldSites = sc.brFoldSites[:0]
@@ -1552,7 +1555,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 		}()
 		pressureDone := false
 		pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
-		var directPrepared []uint64
+		var directPrepared, directPreparedBounded []uint64
 		var adapterTails []adapterTailInfo
 		var adapters []sharedAdapterInfo
 		if policy.CompactNative {
@@ -1625,6 +1628,9 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			}
 			if sc.directPrepared {
 				directPrepared = markDirectPrepared(directPrepared, n, i)
+			}
+			if sc.directPreparedBounded {
+				directPreparedBounded = markDirectPrepared(directPreparedBounded, n, i)
 			}
 			relocStart := len(relocArena)
 			relocArena = append(relocArena, rl...)
@@ -1707,7 +1713,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			fmt.Fprint(os.Stderr, ms.String())
 		}
 		keepCodeBuffer = true
-		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, hintSidecar, immutableTables, modGlobals, hostAdapters, inlineTargets, policy, ms, guardMode, boundsFacts, importedFuncs)
@@ -1834,7 +1840,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 				ws.arena = append(ws.arena, fnCode...)
 				flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
 					boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
-					boolFlag(ws.scratch.directPrepared, layoutDirectPrepared)
+					boolFlag(ws.scratch.directPrepared, layoutDirectPrepared) | boolFlag(ws.scratch.directPreparedBounded, layoutDirectPreparedBounded)
 				ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
 				result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, internalOff: compactInternalOff, bodyBytes: bodyBytes, layoutFlags: flags, literalStart: compactLiteralStart, literalEnd: compactLiteralEnd}
 				if policy.CompactNative {
@@ -1867,7 +1873,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	// relocation patching are byte-for-byte identical to the serial compiler.
 	code := make([]byte, 0, codeCap)
 	var literalWords []uint64
-	var directPrepared []uint64
+	var directPrepared, directPreparedBounded []uint64
 	var adapterTails []adapterTailInfo
 	var adapters []sharedAdapterInfo
 	if policy.CompactNative {
@@ -1893,6 +1899,9 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		internalEntry[i] = len(code) + int(r.internalOff)
 		if r.layoutFlags&layoutDirectPrepared != 0 {
 			directPrepared = markDirectPrepared(directPrepared, n, i)
+		}
+		if r.layoutFlags&layoutDirectPreparedBounded != 0 {
+			directPreparedBounded = markDirectPrepared(directPreparedBounded, n, i)
 		}
 		if adapterTails != nil && r.adapterOff != 0 {
 			adapterTails = append(adapterTails, adapterTailInfo{function: uint32(i), returnOff: r.adapterOff, endOff: r.adapterEnd})
@@ -1984,7 +1993,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, DirectPreparedBounded: directPreparedBounded, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 }
 
 func allTablesPreparedIsolated(tables []immutableTableHint) bool {
@@ -2823,7 +2832,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// generated code is constrained to caller-saved GPRs. Reserve every Go
 	// callee-saved allocatable register up front; RBX remains the explicit linMem
 	// input. The body/local bounds keep any spill tradeoff away from larger code.
-	volatilePrepared := regABI && preparedDirectIntSig(ft) && !hasCall && !touchesMemory && len(modGlobals) == 0 && !moduleEH &&
+	volatilePrepared := f.opt(optPreparedDirectEntry) && regABI && preparedDirectIntSig(ft) && !hasCall && !touchesMemory && len(modGlobals) == 0 && !moduleEH &&
 		len(c.BodyBytes) <= 96 && nLocals <= 8
 	if volatilePrepared {
 		for _, r := range [...]Reg{RBP, R12, R13, R14, R15} {
@@ -2964,6 +2973,13 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		// state beyond RBX is required. Keep this deliberately leaf-only: a local
 		// callee could itself expect the module memory-size cache to be live.
 		sc.directPrepared = volatilePrepared
+		// This subset contains no loop, call, bulk operation, table mutation, EH,
+		// or custom instruction, and volatilePrepared already excludes linear
+		// memory access and caps the body and locals. Finite structured branches
+		// and constant-time global/table reads cannot extend the activation beyond
+		// that static instruction bound.
+		sc.directPreparedBounded = volatilePrepared && !f.hasLoop &&
+			!hints.flags.has(hintUsesBulkMem|hintMutatesTable) && len(inlinedCallees) == 0 && len(custom) == 0 && f.opt(optPreparedBoundedEntry)
 		internalOff, err := f.emitRegABI(c, hostAdapter, hints.flags.has(hintHasFloatConst), hints.flags.has(hintHasSIMD), hints.localScore)
 		if err != nil {
 			return nil, nil, 0, err

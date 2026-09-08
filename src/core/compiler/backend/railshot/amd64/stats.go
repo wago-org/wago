@@ -41,6 +41,11 @@ var (
 	// boundsFactsEnabled gates P6.1 straight-line bounds-check elision (explicit
 	// mode). WAGO_NO_BOUNDS_FACTS=1 forces every check — the A/B oracle + kill switch.
 	boundsFactsEnabled = os.Getenv("WAGO_NO_BOUNDS_FACTS") != "1"
+	// preparedDirectEntryEnabled admits compiler-proved register-ABI entries.
+	// preparedBoundedEntryEnabled further marks the loop-free subset which may
+	// retain its P across the tightly bounded native activation.
+	preparedDirectEntryEnabled  = os.Getenv("WAGO_AMD64_NO_PREPARED_DIRECT_ENTRY") != "1"
+	preparedBoundedEntryEnabled = os.Getenv("WAGO_AMD64_NO_PREPARED_BOUNDED_ENTRY") != "1"
 	// compactI32FrameEnabled packs i32 locals in admitted kernels.
 	compactI32FrameEnabled = os.Getenv("WAGO_NO_COMPACT_I32_FRAME") != "1"
 	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings on

@@ -13,6 +13,12 @@ type CompiledModule struct {
 	Entry          []int           // Entry[localFuncIdx] = byte offset in Code
 	InternalEntry  []int           // register-ABI internal entry offset (== Entry[i] when none)
 	DirectPrepared []uint64        // reserved for parity with AMD64 prepared-entry metadata
+	// DirectPreparedLight marks direct entries whose compiler proof limits
+	// clobbers to caller-saved registers, allowing a smaller Go boundary thunk.
+	DirectPreparedLight []uint64
+	// DirectPreparedBounded is the stricter loop/call/custom-free subset whose
+	// native duration is statically bounded and needs no scheduler release.
+	DirectPreparedBounded []uint64
 	// PreparedIsolatedTables reports that every table is local, unexported,
 	// never mutated, and contains only local function descriptors. Runtime entry
 	// selection may then treat the table descriptor arena as instance-private,

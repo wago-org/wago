@@ -1156,11 +1156,25 @@ type Compiled struct {
 // optional direct-prepared selection without growing Compiled. Native code
 // offsets are non-negative and bounded far below the host int range. The codec
 // strips this compile-only bit, so decoded artifacts retain the wrapper fallback.
-var directPreparedEntryMask = ^(^uint(0) >> 1)
+var (
+	directPreparedEntryMask   = ^(^uint(0) >> 1)
+	directPreparedLightMask   = directPreparedEntryMask >> 1
+	directPreparedBoundedMask = directPreparedEntryMask >> 2
+)
 
 func markDirectPreparedEntry(off int) int { return int(uint(off) | directPreparedEntryMask) }
 func directPreparedEntry(off int) bool    { return uint(off)&directPreparedEntryMask != 0 }
-func internalEntryOffset(off int) int     { return int(uint(off) &^ directPreparedEntryMask) }
+func markDirectPreparedLightEntry(off int) int {
+	return int(uint(off) | directPreparedLightMask)
+}
+func directPreparedLightEntry(off int) bool { return uint(off)&directPreparedLightMask != 0 }
+func markDirectPreparedBoundedEntry(off int) int {
+	return int(uint(off) | directPreparedBoundedMask)
+}
+func directPreparedBoundedEntry(off int) bool { return uint(off)&directPreparedBoundedMask != 0 }
+func internalEntryOffset(off int) int {
+	return int(uint(off) &^ (directPreparedEntryMask | directPreparedLightMask | directPreparedBoundedMask))
+}
 
 // RequiresBMI2 reports whether compilation selected BMI2 instructions.
 func (c *Compiled) RequiresBMI2() bool { return c != nil && c.requiresBMI2 }

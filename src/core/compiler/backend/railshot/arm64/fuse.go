@@ -2,7 +2,10 @@
 
 package arm64
 
-import "math/bits"
+import (
+	"fmt"
+	"math/bits"
+)
 
 // Compare→branch fusion: when a relational compare (or eqz) feeds directly into
 // br_if or if, emit the compare's CMP and branch on its NZCV flags, skipping the
@@ -46,10 +49,11 @@ func (f *fn) tryMaskedEqzToFlags(node *elem) (Cond, bool) {
 		emitted = f.a.TstImm32(x, uint32(c))
 	}
 	if !emitted {
-		t := f.allocReg(maskOf(x))
-		f.loadConst(t, storage{kind: stConst, typ: inner.st.typ, cval: int64(c)})
+		t, tempOwned := f.intConstReadReg(storage{kind: stConst, typ: inner.st.typ, cval: int64(c)}, maskOf(x))
 		f.a.TstReg(x, t, !wide)
-		f.release(t)
+		if tempOwned {
+			f.release(t)
+		}
 	} else if c&(c-1) == 0 {
 		f.recordSingleBitTest(testOff, x, uint8(bits.TrailingZeros64(c)))
 	}
@@ -225,10 +229,11 @@ func (f *fn) condenseToFlags(node *elem) Cond {
 				f.a.CmpImm32(L, uint32(v))
 			}
 		} else {
-			t := f.allocReg(maskOf(L))
-			f.loadConst(t, right.st)
+			t, owned := f.intConstReadReg(right.st, maskOf(L))
 			f.cmpRR(L, t, w)
-			f.release(t)
+			if owned {
+				f.release(t)
+			}
 		}
 	case stReg:
 		f.cmpRR(L, right.st.reg, w)
@@ -285,10 +290,55 @@ func (f *fn) condenseSimpleEqzOperand(node *elem) (reg Reg, owned, wide, ok bool
 	default:
 		reg, owned = f.materialize(a), true
 	}
-	wide = node.st.typ.is64()
+	wide = a.st.typ.is64()
 	f.consumeBlockBelow(node)
 	f.erase(node)
 	return reg, owned, wide, true
+}
+
+// brIfSimpleEqz selects CBZ directly for an empty branch edge. The branch has
+// exactly the same integer-width test and target as `<integer>.eqz; br_if`, and
+// convergence/flush work remains before the test just as in brIfFused.
+func (f *fn) brIfSimpleEqz(top *elem, labelIdx uint32) (bool, error) {
+	if !f.opt(optZeroBranch) || top == nil || top.deferredOp() != opEqz {
+		return false, nil
+	}
+	fi := len(f.ctrl) - 1 - int(labelIdx)
+	if fi < 0 {
+		return false, errBadLabel
+	}
+	fr := &f.ctrl[fi]
+	if fr.branchArity() != 0 || (fr.kind != cfLoop && fr.kind != cfBlock && fr.kind != cfIf) {
+		return false, nil
+	}
+	f.convergeBranchLocals(fr)
+	f.flushBelow(top)
+	reg, owned, wide, ok := f.condenseSimpleEqzOperand(top)
+	if !ok {
+		return false, nil
+	}
+	var site int
+	if wide {
+		site = f.a.Cbz64(reg)
+	} else {
+		site = f.a.Cbz32(reg)
+	}
+	if owned {
+		f.release(reg)
+	}
+	if fr.kind == cfLoop {
+		if !f.a.PatchBranch19(site, fr.controlSite) {
+			return false, fmt.Errorf("arm64: direct eqz loop branch out of range")
+		}
+	} else {
+		f.appendFrameEnd(fr, site, true)
+		fr.set(ctrlEndReachable, true)
+	}
+	f.stats.peep("zero-branch")
+	// Keep the next function's entry address unchanged. The removed CMP was hot;
+	// this replacement word is emitted after every reachable return and trap tail.
+	f.phasePadWords++
+	return true, nil
 }
 
 // brIfFused lowers `<compare> br_if L` as CMP + conditional branch.

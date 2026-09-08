@@ -13,6 +13,15 @@ func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint6
 	return uint64(enterNativeInt(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)), nil
 }
 
+// EnterPreparedIntBounded is reserved for compiler-proven bounded leaves: no
+// loops, calls, bulk operations, table mutation, linear-memory access, EH, or
+// custom instructions, with a tightly capped body. They cannot retain the P for
+// an unbounded interval, so the full native transition need not enter syscall
+// state.
+func (e *Engine) EnterPreparedIntBounded(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
+	return uint64(enterNativeIntRaw(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)), nil
+}
+
 func PreparedIntTrapCode(trap []byte) TrapCode {
 	if len(trap) < 4 {
 		return TrapNone

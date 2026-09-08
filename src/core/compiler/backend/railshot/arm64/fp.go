@@ -293,6 +293,22 @@ func (f *fn) pushFReg(r Reg, typ machineType) *elem {
 // loadFConst materializes a float constant's bits into V register r (via a GP
 // scratch).
 func (f *fn) loadFConst(r Reg, st storage) {
+	if f.opt(optFPImmediateConst) {
+		bits := uint64(st.cval)
+		if st.typ == mtF32 {
+			bits = uint64(uint32(st.cval))
+		}
+		if bits == 0 {
+			f.a.FmovFromGpr(r, a64.ZR, st.typ == mtF64)
+			f.stats.peep("fp-immediate-zero")
+			return
+		}
+		if imm8, ok := encodeFPImmediate(bits, st.typ == mtF64); ok {
+			f.a.FmovImm(r, imm8, st.typ == mtF64)
+			f.stats.peep("fp-immediate-const")
+			return
+		}
+	}
 	t := f.allocReg(0)
 	if st.typ == mtF64 {
 		f.a.MovImm64(t, uint64(st.cval))
@@ -302,6 +318,45 @@ func (f *fn) loadFConst(r Reg, st storage) {
 		f.a.FmovFromGpr(r, t, false)
 	}
 	f.release(t)
+}
+
+// encodeFPImmediate is the inverse of ARM's VFPExpandImm for f32/f64. The
+// representable set is exact: one sign bit, a constrained exponent, the high
+// four fraction bits, and zero in every remaining fraction bit.
+func encodeFPImmediate(bits uint64, f64 bool) (uint8, bool) {
+	var sign, exponent, fraction uint64
+	var repeatBits uint64
+	if f64 {
+		sign = bits >> 63
+		exponent = bits >> 52 & 0x7ff
+		fraction = bits & (uint64(1)<<52 - 1)
+		if fraction&(uint64(1)<<48-1) != 0 {
+			return 0, false
+		}
+		repeatBits = exponent >> 2 & 0xff
+	} else {
+		bits = uint64(uint32(bits))
+		sign = bits >> 31
+		exponent = bits >> 23 & 0xff
+		fraction = bits & (uint64(1)<<23 - 1)
+		if fraction&(uint64(1)<<19-1) != 0 {
+			return 0, false
+		}
+		repeatBits = exponent >> 2 & 0x1f
+	}
+	b6 := repeatBits & 1
+	repeatMask := uint64(0x1f)
+	topBit := uint64(7)
+	fracShift := uint(19)
+	if f64 {
+		repeatMask = 0xff
+		topBit = 10
+		fracShift = 48
+	}
+	if repeatBits != b6*repeatMask || exponent>>topBit != b6^1 {
+		return 0, false
+	}
+	return uint8(sign<<7 | b6<<6 | (exponent&3)<<4 | fraction>>fracShift), true
 }
 
 // loadFMask materializes a 32/64-bit bit mask into V register dst (via a GP

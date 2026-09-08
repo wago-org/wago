@@ -1448,6 +1448,12 @@ func compileWithFrontendFeaturesAndInstructions(cfg *RuntimeConfig, wasmBytes []
 		if i>>6 < len(cm.DirectPrepared) && cm.DirectPrepared[i>>6]&(uint64(1)<<uint(i&63)) != 0 {
 			internalEntry[i] = markDirectPreparedEntry(internalEntry[i])
 		}
+		if i>>6 < len(cm.DirectPreparedLight) && cm.DirectPreparedLight[i>>6]&(uint64(1)<<uint(i&63)) != 0 {
+			internalEntry[i] = markDirectPreparedLightEntry(internalEntry[i])
+		}
+		if i>>6 < len(cm.DirectPreparedBounded) && cm.DirectPreparedBounded[i>>6]&(uint64(1)<<uint(i&63)) != 0 {
+			internalEntry[i] = markDirectPreparedBoundedEntry(internalEntry[i])
+		}
 	}
 
 	typeConverter := newWasmTypeDescriptorConverter(m)
@@ -4352,15 +4358,15 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 			directEntry := in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 			switch len(args) {
 			case 0:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, 0, 0, 0, 0)
+				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, 0, 0, 0, 0)
 			case 1:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, args[0], 0, 0, 0)
+				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], 0, 0, 0)
 			case 2:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, args[0], args[1], 0, 0)
+				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], 0, 0)
 			case 3:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, args[0], args[1], args[2], 0)
+				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], 0)
 			case 4:
-				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, args[0], args[1], args[2], args[3])
+				return in.invokeDirectIntEntry(directEntry, ic.paramSlots, ic.resultSlots, ic.scalarWideMask, ic.scalarResultWide, true, ic.directIntLight, ic.directIntBounded, args[0], args[1], args[2], args[3])
 			}
 		}
 	}
@@ -4913,10 +4919,15 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		}
 	}
 	entryMode := preparedEntryGeneral
+	directEntryMode := preparedEntryGeneral
 	var scalarWideMask uint8
 	if !hasReferenceValType(sig.Params) && !hasReferenceValType(sig.Results) &&
 		paramSlots <= 4 && resultSlots <= 1 {
 		entryMode = in.preparedEntryMode()
+		directEntryMode = entryMode
+		if directEntryMode == preparedEntryGeneral && in.c.boundsMode == BoundsChecksSignalsBased && in.c.directPreparedAt(li) {
+			directEntryMode = in.preparedMemoryFreeEntryMode()
+		}
 		paramSlot := 0
 		for _, typ := range sig.Params {
 			if isWideValType(typ) {
@@ -4926,12 +4937,14 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		}
 	}
 	directIntFast := preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
-		preparedDirectIntSupported && preparedDirectIntEnabled && entryMode == preparedEntryIsolated &&
+		preparedDirectIntSupported && preparedDirectIntEnabled && directEntryMode == preparedEntryIsolated &&
 		preparedDirectIntSignature(sig) && in.c.directPreparedAt(li)
 	*slot = invokeCache{
 		export:            export,
 		valid:             true,
 		directIntFast:     directIntFast,
+		directIntLight:    directIntFast && in.c.directPreparedLightAt(li),
+		directIntBounded:  directIntFast && in.c.directPreparedBoundedAt(li),
 		scalarWideMask:    scalarWideMask,
 		scalarResultWide:  resultSlots == 1 && rw[0],
 		li:                li,
