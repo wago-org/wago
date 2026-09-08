@@ -4,10 +4,66 @@ package arm64
 
 import (
 	"bytes"
+	"encoding/binary"
+	"reflect"
 	"testing"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
+
+func TestAdapterTemplateEmissionAndGCMetadataParityArm64(t *testing.T) {
+	i32 := []wasm.ValType{wasm.I32}
+	build := func(repeated bool) *wasm.Module {
+		m := modFuncs(t,
+			funcDef{i32, i32, []byte{0, 0x20, 0, 0x0b}},
+			funcDef{i32, i32, []byte{0, 0x20, 0, 0x0b}},
+			funcDef{i32, i32, []byte{0, 0x20, 0, 0x0b}},
+			funcDef{i32, i32, []byte{0, 0x20, 0, 0x0b}},
+		)
+		for i := range m.Code {
+			m.Exports = append(m.Exports, wasm.Export{Name: string(rune('a' + i)), Index: wasm.ExternIdx{Kind: wasm.ExternFunc, Index: uint32(i)}})
+			if repeated {
+				m.FuncTypes[i] = wasm.TypeIdx{}
+			}
+		}
+		return m
+	}
+	plans := func() *shared.GCModuleFrameRootPlan {
+		return testGCModuleRootPlansARM64(t,
+			&shared.GCFrameRootPlan{Candidate: true}, &shared.GCFrameRootPlan{Candidate: true},
+			&shared.GCFrameRootPlan{Candidate: true}, &shared.GCFrameRootPlan{Candidate: true})
+	}
+	cachedRoots, uncachedRoots := plans(), plans()
+	cached, err := CompileModuleWith(build(true), CompileOptions{Workers: 1, GCFrameRoots: cachedRoots})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cached.CodeImage.Close()
+	uncached, err := CompileModuleWith(build(false), CompileOptions{Workers: 1, GCFrameRoots: uncachedRoots})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer uncached.CodeImage.Close()
+	if !bytes.Equal(cached.Code, uncached.Code) || !reflect.DeepEqual(cached.Entry, uncached.Entry) || !reflect.DeepEqual(cached.InternalEntry, uncached.InternalEntry) {
+		t.Fatal("reused adapter changed emitted bytes or entries")
+	}
+	for i := range cached.Entry {
+		got, want := cachedRoots.Function(i), uncachedRoots.Function(i)
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("function %d GC metadata differs: %#v / %#v", i, got, want)
+		}
+		if got.AdapterReturnOffset < 4 {
+			t.Fatalf("function %d has no adapter return", i)
+		}
+		call := cached.Entry[i] + int(got.AdapterReturnOffset) - 4
+		word := binary.LittleEndian.Uint32(cached.Code[call:])
+		displacement := int(int32(word<<6)>>6) * 4
+		if word>>26 != 0x25 || call+displacement != cached.InternalEntry[i] {
+			t.Fatalf("function %d adapter call targets %d, want %d", i, call+displacement, cached.InternalEntry[i])
+		}
+	}
+}
 
 func TestAdapterTemplateCacheRequiresRepeatedTypeArm64(t *testing.T) {
 	var ft, other wasm.CompType

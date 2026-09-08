@@ -33,6 +33,12 @@ the same capacity contract in serial and parallel scans; compare backing capacit
 as well as contents. Parallel merge allocates the final destination once after
 checking its byte size. Its peak includes the worker buffers and that destination.
 
+Address-fact qualification checks results and traps with `value-facts` enabled
+and disabled across calls, local storage, joins, and imported globals. Keep
+63/64/65-local coverage in both bounds modes. Adapter-cache qualification compares
+emitted bytes, branch targets, entries, and GC return metadata against uncached
+emission. Emulated ARM64 checks qualify these cases, not native ARM64 speed.
+
 ## Choose a Run
 
 ```bash
