@@ -1,0 +1,40 @@
+{
+  "tag": "v0.41.1",
+  "url": "https://github.com/tinygo-org/tinygo/releases/tag/v0.41.1",
+  "asset": {
+    "url": "https://api.github.com/repos/tinygo-org/tinygo/releases/assets/402872560",
+    "id": 402872560,
+    "node_id": "RA_kwDOCCLnUc4YA1jw",
+    "name": "tinygo0.41.1.linux-amd64.tar.gz",
+    "label": null,
+    "uploader": {
+      "login": "deadprogram",
+      "id": 5520,
+      "node_id": "MDQ6VXNlcjU1MjA=",
+      "avatar_url": "https://avatars.githubusercontent.com/u/5520?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/deadprogram",
+      "html_url": "https://github.com/deadprogram",
+      "followers_url": "https://api.github.com/users/deadprogram/followers",
+      "following_url": "https://api.github.com/users/deadprogram/following{/other_user}",
+      "gists_url": "https://api.github.com/users/deadprogram/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/deadprogram/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/deadprogram/subscriptions",
+      "organizations_url": "https://api.github.com/users/deadprogram/orgs",
+      "repos_url": "https://api.github.com/users/deadprogram/repos",
+      "events_url": "https://api.github.com/users/deadprogram/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/deadprogram/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "content_type": "application/gzip",
+    "state": "uploaded",
+    "size": 179419437,
+    "digest": "sha256:e156d1d93a376eef639a4143d13be07e8c463fb6cf2d7d447698ed4474d23e91",
+    "download_count": 39887,
+    "created_at": "2026-04-22T21:46:22Z",
+    "updated_at": "2026-04-22T21:51:27Z",
+    "browser_download_url": "https://github.com/tinygo-org/tinygo/releases/download/v0.41.1/tinygo0.41.1.linux-amd64.tar.gz"
+  }
+}

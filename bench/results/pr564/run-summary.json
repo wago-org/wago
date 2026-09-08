@@ -1,0 +1,402 @@
+{
+  "groups": [
+    {
+      "label": "base",
+      "mode": "explicit",
+      "processes": 252,
+      "failed": [],
+      "seconds": 2236.6279999999992,
+      "maxRSSKiB": 1199412,
+      "largestProcess": "base-explicit-BenchmarkCompileCompact-1"
+    },
+    {
+      "label": "candidate",
+      "mode": "explicit",
+      "processes": 252,
+      "failed": [],
+      "seconds": 2144.8350000000005,
+      "maxRSSKiB": 1297412,
+      "largestProcess": "candidate-explicit-BenchmarkCompileCompact-5"
+    },
+    {
+      "label": "base",
+      "mode": "signals",
+      "processes": 258,
+      "failed": [],
+      "seconds": 2271.0469999999996,
+      "maxRSSKiB": 2028088,
+      "largestProcess": "base-signals-BenchmarkCompileCompact-3"
+    },
+    {
+      "label": "candidate",
+      "mode": "signals",
+      "processes": 258,
+      "failed": [],
+      "seconds": 2173.6400000000012,
+      "maxRSSKiB": 2112584,
+      "largestProcess": "candidate-signals-BenchmarkCompileCompact-4"
+    }
+  ],
+  "skips": [
+    {
+      "key": "base-explicit-BenchmarkSqliBenign-0",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "base-explicit-BenchmarkSqliBenign-0",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkSqliBenign-0",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkSqliBenign-0",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkSqliBenign-1",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkSqliBenign-1",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "base-explicit-BenchmarkSqliBenign-1",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "base-explicit-BenchmarkSqliBenign-1",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "base-explicit-BenchmarkSqliBenign-2",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "base-explicit-BenchmarkSqliBenign-2",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkSqliBenign-2",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkSqliBenign-2",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkSqliBenign-3",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkSqliBenign-3",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "base-explicit-BenchmarkSqliBenign-3",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "base-explicit-BenchmarkSqliBenign-3",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "base-explicit-BenchmarkSqliBenign-4",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "base-explicit-BenchmarkSqliBenign-4",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkSqliBenign-4",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkSqliBenign-4",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkSqliBenign-5",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkSqliBenign-5",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "base-explicit-BenchmarkSqliBenign-5",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "base-explicit-BenchmarkSqliBenign-5",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkCompileFullOptimizationAblation-0",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkCompileFullOptimizationAblation",
+      "previous": "    suite_test.go:332: enable with -wago.bench.optimization-ablation"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkCompileFullOptimizationAblation-1",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkCompileFullOptimizationAblation",
+      "previous": "    suite_test.go:332: enable with -wago.bench.optimization-ablation"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkCompileFullOptimizationAblation-2",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkCompileFullOptimizationAblation",
+      "previous": "    suite_test.go:332: enable with -wago.bench.optimization-ablation"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkCompileFullOptimizationAblation-3",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkCompileFullOptimizationAblation",
+      "previous": "    suite_test.go:332: enable with -wago.bench.optimization-ablation"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkCompileFullOptimizationAblation-4",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkCompileFullOptimizationAblation",
+      "previous": "    suite_test.go:332: enable with -wago.bench.optimization-ablation"
+    },
+    {
+      "key": "candidate-explicit-BenchmarkCompileFullOptimizationAblation-5",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkCompileFullOptimizationAblation",
+      "previous": "    suite_test.go:332: enable with -wago.bench.optimization-ablation"
+    },
+    {
+      "key": "base-signals-BenchmarkSqliBenign-0",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "base-signals-BenchmarkSqliBenign-0",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-signals-BenchmarkSqliBenign-0",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "candidate-signals-BenchmarkSqliBenign-0",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-signals-BenchmarkSqliBenign-1",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "candidate-signals-BenchmarkSqliBenign-1",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "base-signals-BenchmarkSqliBenign-1",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "base-signals-BenchmarkSqliBenign-1",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "base-signals-BenchmarkSqliBenign-2",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "base-signals-BenchmarkSqliBenign-2",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-signals-BenchmarkSqliBenign-2",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "candidate-signals-BenchmarkSqliBenign-2",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-signals-BenchmarkSqliBenign-3",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "candidate-signals-BenchmarkSqliBenign-3",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "base-signals-BenchmarkSqliBenign-3",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "base-signals-BenchmarkSqliBenign-3",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "base-signals-BenchmarkSqliBenign-4",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "base-signals-BenchmarkSqliBenign-4",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-signals-BenchmarkSqliBenign-4",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "candidate-signals-BenchmarkSqliBenign-4",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-signals-BenchmarkSqliBenign-5",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "candidate-signals-BenchmarkSqliBenign-5",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "base-signals-BenchmarkSqliBenign-5",
+      "line": 6,
+      "text": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory",
+      "previous": "BenchmarkSqliBenign"
+    },
+    {
+      "key": "base-signals-BenchmarkSqliBenign-5",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkSqliBenign",
+      "previous": "    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory"
+    },
+    {
+      "key": "candidate-signals-BenchmarkCompileFullOptimizationAblation-0",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkCompileFullOptimizationAblation",
+      "previous": "    suite_test.go:332: enable with -wago.bench.optimization-ablation"
+    },
+    {
+      "key": "candidate-signals-BenchmarkCompileFullOptimizationAblation-1",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkCompileFullOptimizationAblation",
+      "previous": "    suite_test.go:332: enable with -wago.bench.optimization-ablation"
+    },
+    {
+      "key": "candidate-signals-BenchmarkCompileFullOptimizationAblation-2",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkCompileFullOptimizationAblation",
+      "previous": "    suite_test.go:332: enable with -wago.bench.optimization-ablation"
+    },
+    {
+      "key": "candidate-signals-BenchmarkCompileFullOptimizationAblation-3",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkCompileFullOptimizationAblation",
+      "previous": "    suite_test.go:332: enable with -wago.bench.optimization-ablation"
+    },
+    {
+      "key": "candidate-signals-BenchmarkCompileFullOptimizationAblation-4",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkCompileFullOptimizationAblation",
+      "previous": "    suite_test.go:332: enable with -wago.bench.optimization-ablation"
+    },
+    {
+      "key": "candidate-signals-BenchmarkCompileFullOptimizationAblation-5",
+      "line": 7,
+      "text": "--- SKIP: BenchmarkCompileFullOptimizationAblation",
+      "previous": "    suite_test.go:332: enable with -wago.bench.optimization-ablation"
+    }
+  ]
+}

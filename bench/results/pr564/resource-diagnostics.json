@@ -1,0 +1,165 @@
+{
+  "note": "WAGO_EXPLAIN=1 instrumented, single iteration; structural counters only. Its timing and B/op are NOT used in the normal benchmark comparison.",
+  "rows": [
+    {
+      "label": "base",
+      "mod": "isa_call",
+      "code": 0,
+      "args": [
+        "-test.run=^$",
+        "-test.bench=^BenchmarkCompileCompact$/^isa_call$",
+        "-test.benchtime=1x",
+        "-test.count=1",
+        "-test.benchmem",
+        "-test.v",
+        "-wago.bench.isa"
+      ],
+      "stats": [
+        "compile: hints=39444ns functions=84329ns finalize=0ns hint-headers=96B hint-sidecars=24B attempts=3",
+        "compile-node-scratch: reserved=6776B peak-envelope=6776B retained=6776B discarded=0B",
+        "compile-control-scratch: reserved=216B peak-envelope=1624B retained=1624B discarded=0B",
+        "native-mapping: required=4096 pages=1 compiler-arena=16384 arena-slack=14460"
+      ]
+    },
+    {
+      "label": "candidate",
+      "mod": "isa_call",
+      "code": 0,
+      "args": [
+        "-test.run=^$",
+        "-test.bench=^BenchmarkCompileCompact$/^isa_call$",
+        "-test.benchtime=1x",
+        "-test.count=1",
+        "-test.benchmem",
+        "-test.v",
+        "-wago.bench.isa"
+      ],
+      "stats": [
+        "compile: hints=46087ns functions=107132ns finalize=0ns hint-headers=84B hint-sidecars=24B attempts=3",
+        "compile-node-scratch: reserved=8400B peak-envelope=8400B retained=8400B discarded=0B",
+        "compile-control-scratch: reserved=216B peak-envelope=1624B retained=1624B discarded=0B",
+        "native-mapping: required=4096 pages=1 compiler-arena=16384 arena-slack=14460"
+      ]
+    },
+    {
+      "label": "base",
+      "mod": "isa_var",
+      "code": 0,
+      "args": [
+        "-test.run=^$",
+        "-test.bench=^BenchmarkCompileCompact$/^isa_var$",
+        "-test.benchtime=1x",
+        "-test.count=1",
+        "-test.benchmem",
+        "-test.v",
+        "-wago.bench.isa"
+      ],
+      "stats": [
+        "compile: hints=44423ns functions=78407ns finalize=0ns hint-headers=64B hint-sidecars=32B attempts=2",
+        "compile-node-scratch: reserved=13888B peak-envelope=13888B retained=13888B discarded=0B",
+        "compile-control-scratch: reserved=216B peak-envelope=1624B retained=1624B discarded=0B",
+        "native-mapping: required=4096 pages=1 compiler-arena=16384 arena-slack=15917"
+      ]
+    },
+    {
+      "label": "candidate",
+      "mod": "isa_var",
+      "code": 0,
+      "args": [
+        "-test.run=^$",
+        "-test.bench=^BenchmarkCompileCompact$/^isa_var$",
+        "-test.benchtime=1x",
+        "-test.count=1",
+        "-test.benchmem",
+        "-test.v",
+        "-wago.bench.isa"
+      ],
+      "stats": [
+        "compile: hints=41608ns functions=61947ns finalize=0ns hint-headers=56B hint-sidecars=116B attempts=2",
+        "compile-node-scratch: reserved=14336B peak-envelope=14336B retained=14336B discarded=0B",
+        "compile-control-scratch: reserved=216B peak-envelope=1624B retained=1624B discarded=0B",
+        "native-mapping: required=4096 pages=1 compiler-arena=16384 arena-slack=15917"
+      ]
+    },
+    {
+      "label": "base",
+      "mod": "isa_bulk_mem",
+      "code": 0,
+      "args": [
+        "-test.run=^$",
+        "-test.bench=^BenchmarkCompileCompact$/^isa_bulk_mem$",
+        "-test.benchtime=1x",
+        "-test.count=1",
+        "-test.benchmem",
+        "-test.v",
+        "-wago.bench.isa"
+      ],
+      "stats": [
+        "compile: hints=40867ns functions=116771ns finalize=0ns hint-headers=288B hint-sidecars=36B attempts=9",
+        "compile-node-scratch: reserved=1736B peak-envelope=1736B retained=1736B discarded=0B",
+        "compile-control-scratch: reserved=216B peak-envelope=1624B retained=1624B discarded=0B",
+        "native-mapping: required=4096 pages=1 compiler-arena=16384 arena-slack=13295"
+      ]
+    },
+    {
+      "label": "candidate",
+      "mod": "isa_bulk_mem",
+      "code": 0,
+      "args": [
+        "-test.run=^$",
+        "-test.bench=^BenchmarkCompileCompact$/^isa_bulk_mem$",
+        "-test.benchtime=1x",
+        "-test.count=1",
+        "-test.benchmem",
+        "-test.v",
+        "-wago.bench.isa"
+      ],
+      "stats": [
+        "compile: hints=40126ns functions=101320ns finalize=0ns hint-headers=252B hint-sidecars=36B attempts=9",
+        "compile-node-scratch: reserved=1848B peak-envelope=1848B retained=1848B discarded=0B",
+        "compile-control-scratch: reserved=216B peak-envelope=1624B retained=1624B discarded=0B",
+        "native-mapping: required=4096 pages=1 compiler-arena=16384 arena-slack=13295"
+      ]
+    },
+    {
+      "label": "base",
+      "mod": "json-as",
+      "code": 0,
+      "args": [
+        "-test.run=^$",
+        "-test.bench=^BenchmarkCompileCompact$/^json-as$",
+        "-test.benchtime=1x",
+        "-test.count=1",
+        "-test.benchmem",
+        "-test.v",
+        "-wago.bench.isa"
+      ],
+      "stats": [
+        "compile: hints=324610ns functions=1158469ns finalize=0ns hint-headers=1376B hint-sidecars=2328B attempts=43",
+        "compile-node-scratch: reserved=14336B peak-envelope=100352B retained=100352B discarded=0B",
+        "compile-control-scratch: reserved=1080B peak-envelope=2488B retained=2488B discarded=0B",
+        "native-mapping: required=53248 pages=13 compiler-arena=86016 arena-slack=35536"
+      ]
+    },
+    {
+      "label": "candidate",
+      "mod": "json-as",
+      "code": 0,
+      "args": [
+        "-test.run=^$",
+        "-test.bench=^BenchmarkCompileCompact$/^json-as$",
+        "-test.benchtime=1x",
+        "-test.count=1",
+        "-test.benchmem",
+        "-test.v",
+        "-wago.bench.isa"
+      ],
+      "stats": [
+        "compile: hints=161163ns functions=1133027ns finalize=0ns hint-headers=1204B hint-sidecars=2328B attempts=43",
+        "compile-node-scratch: reserved=14336B peak-envelope=100352B retained=100352B discarded=0B",
+        "compile-control-scratch: reserved=1080B peak-envelope=2488B retained=2488B discarded=0B",
+        "native-mapping: required=53248 pages=13 compiler-arena=86016 arena-slack=35536"
+      ]
+    }
+  ]
+}

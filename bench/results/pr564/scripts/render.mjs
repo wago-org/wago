@@ -1,17 +1,64 @@
-# PR #564 correctness and performance qualification
+import fs from 'node:fs';
+const out='/tmp/wago-pr564-HbN430';
+const all=JSON.parse(fs.readFileSync(`${out}/comparison.json`));
+const summary=JSON.parse(fs.readFileSync(`${out}/summary.json`));
+const regressions=JSON.parse(fs.readFileSync(`${out}/regressions.json`));
+const runs=JSON.parse(fs.readFileSync(`${out}/run-summary.json`));
+const inventoryCount=JSON.parse(fs.readFileSync(`${out}/metric-inventory.json`)).entries.length;
+const builds=JSON.parse(fs.readFileSync(`${out}/build-size.json`)).rows;
+const arm=fs.readFileSync(`${out}/arm64-code-size.tsv`,'utf8').trim().split('\n').slice(1).map(line=>{const[name,base,candidate,delta,percent]=line.split('\t');return{name,base:+base,candidate:+candidate,delta:+delta,percent:+percent};});
+const singleWorker=JSON.parse(fs.readFileSync(`${out}/single-worker-summary.json`)).rows;
+const pct=x=>x===null||x===undefined?'n/a':`${x>0?'+':''}${x.toFixed(2)}%`;
+const time=x=>x>=1e6?`${(x/1e6).toFixed(3)} ms`:x>=1e3?`${(x/1e3).toFixed(3)} us`:`${x.toFixed(2)} ns`;
+const find=(mode,name,unit)=>all.find(r=>r.mode===mode&&r.name===name&&r.unit===unit);
+const get=(mode,stage,corpus,unit='ns/op')=>summary.find(r=>r.mode===mode&&r.stage===stage&&r.corpus===corpus&&r.unit===unit);
+const stages=['Decode','Validate','ValidateWorkers','Compile','CompileCompact','CompileWorkers','CompileFull','CompileFullWorkers','CompileMultiModuleThroughput','Instantiate','Exec','ExecParallel','PluginInstantiate','PluginExec'];
+const stageTable=stages.map(stage=>{
+  const a=get('explicit',stage,'default'),b=get('signals',stage,'default');
+  return `| ${stage} | ${a?.rows??0} | ${pct(a?.delta)} | ${pct(b?.delta)} |`;
+}).join('\n');
+const largeTable=[];
+for(const mode of ['explicit','signals'])for(const mod of ['json-as','lua','sqlite3','ruby','esbuild']) {
+  const t=find(mode,`BenchmarkCompileFull/${mod}`,'ns/op');if(!t)continue;
+  const heap=find(mode,t.name,'B/op'),alloc=find(mode,t.name,'allocs/op'),code=find(mode,t.name,'code-B');
+  largeTable.push(`| ${mode} | ${mod} | ${time(t.base)} | ${time(t.candidate)} | ${pct(t.delta)} | ${pct(heap?.delta)} | ${alloc?.base} -> ${alloc?.candidate} | ${pct(code?.delta)} |`);
+}
+const confirmed=regressions.filter(r=>r.status==='repeat-significant-slowdown');
+const timingTable=confirmed.map(r=>`| ${r.mode} | ${r.name} | ${time(r.base)} | ${time(r.candidate)} | ${pct(r.delta)} | ${r.p.toPrecision(3)} |`).join('\n');
+const worstTiming=[...confirmed].sort((a,b)=>b.delta-a.delta).slice(0,6).map(r=>`| ${r.mode} | ${r.name} | ${time(r.base)} | ${time(r.candidate)} | ${pct(r.delta)} |`).join('\n');
+const code=all.filter(r=>r.unit==='code-B'&&!/Wazero|_wazero/.test(r.name)&&!r.status);
+const codeGrowth=code.filter(r=>r.candidate>r.base);
+const changedCode=code.filter(r=>r.candidate!==r.base);
+const allocationGrowth=regressions.filter(r=>r.status==='resource-increase-observed');
+const peakTable=runs.groups.map(r=>`| ${r.label} | ${r.mode} | ${r.processes} | ${r.failed.length} | ${(r.maxRSSKiB/1024).toFixed(1)} MiB |`).join('\n');
+const resources=allocationGrowth.filter(r=>r.unit==='B/op'&&r.delta>1&&/^Benchmark(?:Compile|Validate|Decode|Instantiate|PluginInstantiate)/.test(r.name)).sort((a,b)=>b.delta-a.delta).slice(0,20).map(r=>`| ${r.mode} | ${r.name} | ${r.base} | ${r.candidate} | ${pct(r.delta)} |`).join('\n');
+const controlTable=['WazeroCompile','WazeroInstantiate','WazeroExec'].map(stage=>{
+  const changes=['explicit','signals'].map(mode=>{
+    const rows=all.filter(r=>r.mode===mode&&r.unit==='ns/op'&&r.name.startsWith(`Benchmark${stage}/`)&&!r.name.includes('/isa_'));
+    return pct(100*Math.expm1(rows.reduce((sum,r)=>sum+Math.log(r.candidate/r.base),0)/rows.length));
+  });
+  return `| ${stage} | ${changes.join(' | ')} |`;
+}).join('\n');
+const buildTable=['manager','runtime-standard','runtime-minimal','runtime-minimal-tiny'].map(name=>{
+  const a=builds.find(r=>r.name===name&&r.label==='base'),b=builds.find(r=>r.name===name&&r.label==='candidate');
+  return `| ${name} | ${a.bytes.toLocaleString('en-US')} | ${b.bytes.toLocaleString('en-US')} | ${b.bytes-a.bytes>0?'+':''}${b.bytes-a.bytes} | ${pct(100*(b.bytes/a.bytes-1))} | ${b.budget.toLocaleString('en-US')} |`;
+}).join('\n');
+const armTable=arm.filter(r=>['json-as','lua','sqlite3','ruby','esbuild'].includes(r.name.split('/')[1])).map(r=>`| ${r.name.split('/')[1]} | ${r.base.toLocaleString('en-US')} | ${r.candidate.toLocaleString('en-US')} | ${pct(r.percent)} |`).join('\n');
+const singleWorkerTable=singleWorker.map(r=>`| ${r.name} | ${time(r.base)} | ${time(r.candidate)} | ${pct(r.delta)} |`).join('\n');
+const report=`# PR #564 correctness and performance qualification
 
-The correctness fixes are local on `fix/pr564-correctness-performance`.
+The correctness fixes are local on \`fix/pr564-correctness-performance\`.
 No changes were pushed or posted to the PR.
 
-Full-pipeline compile time is lower, but 6 timing slowdowns
+Full-pipeline compile time is lower, but ${confirmed.length} timing slowdowns
 remain in the focused repeats. This is **not a zero-regression result**.
 The full root suite still has two Wine test failures. Native ARM64 latency is
 not measured on this AMD64 host.
 
-- Reviewed PR head: `ab29bf3a9ad215833b5138220de6cd7190461a78`.
-- Reviewed PR base: `447f057115ee04d9e58580061dbee696becec21f`.
-- New benchmark baseline, pinned `origin/main`: `a07de0973191efab1d32677eff527952c7f9cdd2`.
-- Qualified production code commit: `16124d7639983fca0243f77486e32dc5ac74ab57`.
+- Reviewed PR head: \`ab29bf3a9ad215833b5138220de6cd7190461a78\`.
+- Reviewed PR base: \`447f057115ee04d9e58580061dbee696becec21f\`.
+- New benchmark baseline, pinned \`origin/main\`: \`a07de0973191efab1d32677eff527952c7f9cdd2\`.
+- Qualified production code commit: \`16124d7639983fca0243f77486e32dc5ac74ab57\`.
   Later test/report/data commits do not change production code.
 
 ## Changes
@@ -40,7 +87,7 @@ not measured on this AMD64 host.
 
 ## Full native AMD64 comparison
 
-Linux AMD64, Ryzen 7 8845HS, Go 1.27.1, `GOMAXPROCS=8`, `GOGC=100`.
+Linux AMD64, Ryzen 7 8845HS, Go 1.27.1, \`GOMAXPROCS=8\`, \`GOGC=100\`.
 Six fresh process samples per revision, benchmark group, and build/default
 bounds mode; 100 ms requested sample time. Baseline/candidate order alternates.
 The full default suite includes the generated ISA cases and worker matrices.
@@ -53,20 +100,7 @@ workloads. Row counts are benchmark cases, not independent applications.
 
 | Stage | Non-ISA rows | Explicit build/default | Guard build/default |
 |---|---:|---:|---:|
-| Decode | 42 | -8.40% | -10.85% |
-| Validate | 42 | -7.75% | -14.22% |
-| ValidateWorkers | 28 | -3.49% | -10.72% |
-| Compile | 42 | -8.40% | -16.39% |
-| CompileCompact | 42 | -11.57% | -11.18% |
-| CompileWorkers | 36 | -23.83% | -26.91% |
-| CompileFull | 42 | -23.47% | -24.86% |
-| CompileFullWorkers | 45 | -33.40% | -35.58% |
-| CompileMultiModuleThroughput | 6 | -28.20% | -28.36% |
-| Instantiate | 36 | +0.97% | -1.29% |
-| Exec | 46 | -3.82% | +0.27% |
-| ExecParallel | 72 | -2.12% | -0.63% |
-| PluginInstantiate | 5 | -1.47% | -1.84% |
-| PluginExec | 5 | -0.27% | -0.81% |
+${stageTable}
 
 The mode label describes the build and runtime default. Direct backend
 Compile/CompileCompact/CompileWorkers helpers and the standalone JSON benches
@@ -83,9 +117,7 @@ Unchanged-engine controls also move on this shared host:
 
 | Control, non-ISA geomean | Explicit build | Guard build |
 |---|---:|---:|
-| WazeroCompile | -1.57% | -1.26% |
-| WazeroInstantiate | -1.45% | +7.14% |
-| WazeroExec | -0.96% | +1.14% |
+${controlTable}
 
 These control shifts limit claims about small runtime differences. They do not
 provide a correction factor for the compiler results, since their samples were
@@ -95,23 +127,14 @@ taken at other times. Host-load records and all control samples are retained.
 
 | Mode | Module | Main time | Candidate time | Time change | Heap change | Allocations/op | Code-size change |
 |---|---|---:|---:|---:|---:|---:|---:|
-| explicit | json-as | 1.886 ms | 1.357 ms | -28.03% | +0.43% | 405 -> 406 | 0.00% |
-| explicit | lua | 26.721 ms | 18.980 ms | -28.97% | +0.17% | 2533 -> 2533 | 0.00% |
-| explicit | sqlite3 | 103.516 ms | 72.824 ms | -29.65% | +0.23% | 7909.5 -> 7909 | 0.00% |
-| explicit | ruby | 1107.533 ms | 725.186 ms | -34.52% | -2.86% | 40553 -> 40544 | 0.00% |
-| explicit | esbuild | 722.025 ms | 486.157 ms | -32.67% | -0.09% | 19625 -> 19623 | 0.00% |
-| signals | json-as | 1.726 ms | 1.168 ms | -32.30% | +0.43% | 404 -> 405 | 0.00% |
-| signals | lua | 23.884 ms | 16.203 ms | -32.16% | +0.18% | 2524 -> 2524 | 0.00% |
-| signals | sqlite3 | 88.932 ms | 62.319 ms | -29.93% | +0.24% | 7882 -> 7883 | 0.00% |
-| signals | ruby | 1010.459 ms | 630.011 ms | -37.65% | -2.87% | 40496 -> 40490 | 0.00% |
-| signals | esbuild | 649.487 ms | 410.623 ms | -36.78% | -0.09% | 19649 -> 19647 | 0.00% |
+${largeTable.join('\n')}
 
 Large-module full-pipeline geomeans: explicit
--30.81%, guard
--33.83%.
+${pct(get('explicit','CompileFull','five-large')?.delta)}, guard
+${pct(get('signals','CompileFull','five-large')?.delta)}.
 Large-module backend geomeans: explicit-build
--15.33%, guard-build
--20.62%.
+${pct(get('explicit','Compile','five-large')?.delta)}, guard-build
+${pct(get('signals','Compile','five-large')?.delta)}.
 
 ### Focused implementation checks
 
@@ -133,12 +156,12 @@ They do not establish a speedup of that size for a whole module.
 ## Regressions and limits
 
 The first-pass timing screen repeats every positive change with exact rank-test
-`p < 0.05`, plus every slowdown above 5%, in 12 alternating-order fresh pairs
+\`p < 0.05\`, plus every slowdown above 5%, in 12 alternating-order fresh pairs
 with 300 ms requested samples. This is screening across many cases, not a
 multiple-comparison-adjusted guarantee. The host also had unrelated active
 workloads. Control results and load records are retained.
 
-6 timing rows remain slower with `p < 0.05` in the repeat.
+${confirmed.length} timing rows remain slower with \`p < 0.05\` in the repeat.
 The complete list is in
 [confirmed timing regressions](bench/results/pr564/confirmed-timing.md).
 All observed increases, including small or unconfirmed ones, are in
@@ -150,12 +173,7 @@ throughput measurements; an 8 ns/op result is not an 8 ns single-call latency.
 
 | Mode | Benchmark | Main | Candidate | Change |
 |---|---|---:|---:|---:|
-| explicit | BenchmarkExecParallel/process/swar-pack-parse.parse4 | 8.04 ns | 13.85 ns | +72.18% |
-| explicit | BenchmarkExecParallel/independent/fib_iter.fib | 14.36 ns | 16.89 ns | +17.69% |
-| explicit | BenchmarkExecParallel/process/xjb-mulhi.mulhi | 13.23 ns | 14.50 ns | +9.56% |
-| explicit | BenchmarkExecGlobalGet_wago | 75.67 ns | 80.09 ns | +5.85% |
-| explicit | BenchmarkExecParallel/independent/isa_simd_i64x2.shl | 157.05 ns | 163.60 ns | +4.17% |
-| signals | BenchmarkInstantiate/zstd | 9.283 us | 9.437 us | +1.66% |
+${worstTiming}
 
 For swar-pack-parse, fib_iter, xjb-mulhi, and the corpus globals module, the
 native code hashes, exact entry values, and prepared-call routing flags match
@@ -171,10 +189,7 @@ slower (p=0.004). These samples are not mixed into the eight-worker comparison.
 
 | Single-worker diagnostic | Main | Candidate | Change |
 |---|---:|---:|---:|
-| BenchmarkExecParallel/process/swar-pack-parse.parse4 | 17.51 ns | 17.47 ns | -0.23% |
-| BenchmarkExecParallel/independent/fib_iter.fib | 28.68 ns | 28.86 ns | +0.65% |
-| BenchmarkExecParallel/process/xjb-mulhi.mulhi | 18.23 ns | 18.26 ns | +0.19% |
-| BenchmarkExecGlobalGet_wago | 77.22 ns | 81.86 ns | +6.01% |
+${singleWorkerTable}
 
 The parallel costs are sensitive to worker count in this harness. Their exact
 cause remains unresolved; matching native bytes and a flat one-worker result
@@ -182,33 +197,14 @@ do not erase the eight-worker regression. Investigate per-instance data layout
 and host-call behavior under concurrent execution before claiming unchanged
 runtime performance. This is a follow-up direction, not a proven attribution.
 
-There are 552 observed resource-increase rows. These
+There are ${allocationGrowth.length} observed resource-increase rows. These
 include heap bytes, allocation counts, and normalized per-call counters; they
 are not all statistically established regressions. The following are up to 20
 compiler/setup heap increases above 1%; the full list has no percentage cutoff.
 
 | Mode | Benchmark | Main B/op | Candidate B/op | Change |
 |---|---|---:|---:|---:|
-| explicit | BenchmarkCompileCompact/isa_call | 20920 | 23608 | +12.85% |
-| signals | BenchmarkCompileCompact/isa_call | 20920 | 23608 | +12.85% |
-| signals | BenchmarkCompile/isa_var | 23056 | 25184 | +9.23% |
-| explicit | BenchmarkCompile/isa_var | 23072.5 | 25184 | +9.15% |
-| explicit | BenchmarkCompileCompact/isa_var | 25664 | 27792 | +8.29% |
-| signals | BenchmarkCompileCompact/isa_var | 25664 | 27792 | +8.29% |
-| explicit | BenchmarkCompileFull/isa_var | 32017 | 34225.5 | +6.90% |
-| signals | BenchmarkCompileFull/isa_var | 32018 | 34225 | +6.89% |
-| signals | BenchmarkValidateWorkers/ruby/p2 | 397228 | 421812 | +6.19% |
-| signals | BenchmarkValidateWorkers/esbuild/p8 | 5430457 | 5682494 | +4.64% |
-| signals | BenchmarkCompile/isa_bulk_mem | 11176 | 11400 | +2.00% |
-| signals | BenchmarkCompile/linked_list | 14220.5 | 14499.5 | +1.96% |
-| explicit | BenchmarkCompile/isa_bulk_mem | 11276 | 11492 | +1.92% |
-| signals | BenchmarkCompileFullWorkers/json-as/p8 | 829696 | 844651 | +1.80% |
-| signals | BenchmarkCompileWorkers/sqlite3/p8 | 16463940.5 | 16749732 | +1.74% |
-| signals | BenchmarkCompileFull/isa_bulk_mem | 22585 | 22953 | +1.63% |
-| explicit | BenchmarkCompileWorkers/json-as/p8 | 748049.5 | 760231.5 | +1.63% |
-| explicit | BenchmarkCompileFull/isa_bulk_mem | 22633 | 23001 | +1.63% |
-| explicit | BenchmarkCompileFullWorkers/json-as/p8 | 875844.5 | 889962 | +1.61% |
-| explicit | BenchmarkCompileCompact/isa_bulk_mem | 13984 | 14208 | +1.60% |
+${resources}
 
 ExecParallel also reports small allocation-counter increases, such as 2 -> 7
 B/op for independent matmul. Its timed RunParallel setup allocates worker and
@@ -223,23 +219,19 @@ sidecar is 32 -> 116 bytes under the common serial/parallel capacity contract.
 These counters explain part, not all, of Go's heap increase. Their instrumented
 times and heap totals are excluded from the normal comparison.
 
-Across 298 paired native-code-size rows, 0 sizes
-changed and 0 grew. Size equality does not prove byte equality
+Across ${code.length} paired native-code-size rows, ${changedCode.length} sizes
+changed and ${codeGrowth.length} grew. Size equality does not prove byte equality
 or semantic equivalence. ARM64 changed native output in the PR and must not be
 described as compile-time-only. Native ARM64 speed was not measured on this host;
 QEMU checks are correctness/code-size evidence only.
 
-The new ARM64 explicit-bounds census has 60 paired modules, including
-ISA fixtures: 27 shrink,
-33 are equal, and 0 grow.
+The new ARM64 explicit-bounds census has ${arm.length} paired modules, including
+ISA fixtures: ${arm.filter(r=>r.delta<0).length} shrink,
+${arm.filter(r=>r.delta===0).length} are equal, and ${arm.filter(r=>r.delta>0).length} grow.
 
 | ARM64 module | Main code bytes | Candidate code bytes | Change |
 |---|---:|---:|---:|
-| json-as | 72,648 | 71,048 | -2.20% |
-| lua | 953,212 | 915,100 | -4.00% |
-| sqlite3 | 3,746,864 | 3,539,664 | -5.53% |
-| ruby | 37,600,848 | 36,201,472 | -3.72% |
-| esbuild | 30,906,196 | 28,501,376 | -7.78% |
+${armTable}
 
 ### Built binary footprint
 
@@ -251,10 +243,7 @@ comparison. Every candidate profile is below its checked-in byte budget.
 
 | Profile | Main bytes | Candidate bytes | Delta bytes | Change | Budget bytes |
 |---|---:|---:|---:|---:|---:|
-| manager | 7,884,952 | 7,897,240 | +12288 | +0.16% | 9,000,000 |
-| runtime-standard | 8,077,464 | 7,938,200 | -139264 | -1.72% | 8,870,000 |
-| runtime-minimal | 7,762,072 | 7,618,712 | -143360 | -1.85% | 8,560,000 |
-| runtime-minimal-tiny | 2,229,056 | 2,245,920 | +16864 | +0.76% | 2,317,000 |
+${buildTable}
 
 Execution allocation units need care: the batched harness normalizes time per
 call but leaves Go's B/op and allocs/op counters per batch. The analysis adds
@@ -266,10 +255,7 @@ allocation-free plugin execution.
 
 | Revision | Build/default mode | Processes | Failed | Largest RSS |
 |---|---|---:|---:|---:|
-| base | explicit | 252 | 0 | 1171.3 MiB |
-| candidate | explicit | 252 | 0 | 1267.0 MiB |
-| base | signals | 258 | 0 | 1980.6 MiB |
-| candidate | signals | 258 | 0 | 2063.1 MiB |
+${peakTable}
 
 RSS includes fixtures, Go heap, native mappings, and test infrastructure for the
 whole group. Faster code can also run more iterations in the requested time.
@@ -281,14 +267,14 @@ The 139 focused repeat groups add 3,336 successful processes. The separate
 one-worker diagnosis adds 96 successful processes. The repeat runner was drained
 and paused once for correctness, size, and tool checks; none overlapped a timed
 sample. One wrapper-duration field includes that pause; its benchmark and GNU
-time measurements finished before the pause work. See `confirmation-pause.json`.
+time measurements finished before the pause work. See \`confirmation-pause.json\`.
 
 The initial unsplit baseline process received SIGKILL during CompileCompact;
 the cause was not established. Its subsequent guard run was stopped. These
 failed/incomplete captures are retained and excluded from the paired comparison.
 The fresh-process comparison uses identical boundaries for both revisions.
 
-The optional external Impart `sqli.wasm` fixture was unavailable, so its row
+The optional external Impart \`sqli.wasm\` fixture was unavailable, so its row
 is visibly skipped. The candidate-only optimization-ablation matrix is opt-in
 and was not enabled; it has no baseline counterpart. Neither is silently counted
 as a measured case. The guard-only memory benchmark is included separately.
@@ -304,13 +290,13 @@ as a measured case. The guard-only memory benchmark is included separately.
 - Selected ARM64 backend and runtime tests pass under QEMU, including explicit
   and guard-page address-fact cases. This does not replace native ARM64 testing.
 
-The full root `go test ./...` run was **not green**. In its final Go 1.22.12 run,
+The full root \`go test ./...\` run was **not green**. In its final Go 1.22.12 run,
 all packages other than the root package pass. Its two Wine test failures are installer
 checksum verification and an unsupported directory operation during install.
 The local Wine 10.0 certutil check exits zero without printing a hash for a known
 file. Supplying official Windows curl in a temporary directory fixes download
 availability but does not fix checksum verification. The curl source and digest
-are retained in `wine-tools.json` ([publisher](https://curl.se/windows/)).
+are retained in \`wine-tools.json\` ([publisher](https://curl.se/windows/)).
 No check was weakened.
 
 The earlier installed TinyGo 0.42.0 / Go 1.27.1 duplicate-symbol failure is
@@ -329,7 +315,11 @@ all sample medians, exact rank-test screens, benchstat output, focused repeats,
 per-process exit status/RSS, host/tool details, test logs, and SHA-256 checksums.
 
 [Reported-metric inventory](bench/results/pr564/inventory-summary.md) indexes
-1,036 numeric/performance-claim lines from the PR description, report, commit
+${inventoryCount.toLocaleString('en-US')} numeric/performance-claim lines from the PR description, report, commit
 messages, and attached CI size artifact. It keeps all historical sources and checkpoints separate from this
 qualification. The historical 24-byte claim and unchanged-ARM64-code claim do
 not describe the reviewed implementation.
+`;
+fs.writeFileSync(`${out}/REPORT-new.md`,report);
+fs.writeFileSync(`${out}/confirmed-timing.md`,`# Timing slowdowns after focused repeats\n\nThese are 12-pair, 300 ms requested-time results. See the main report for host\nnoise, multiple-comparison, and benchmark-unit limits. All first-pass data\nremain in the comparison files.\n\n| Mode | Benchmark | Main | Candidate | Change | Exact rank p |\n|---|---|---:|---:|---:|---:|\n${timingTable}\n`);
+console.log(`Rendered report and ${confirmed.length} confirmed timing rows.`);

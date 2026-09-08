@@ -1,0 +1,7 @@
+{
+  "url": "https://curl.se/windows/dl-8.22.0_1/curl-8.22.0_1-win64-mingw.zip",
+  "sha256": "7f23b039f6ea4197362d4468e1a0e71428201222e1bef3b680d5ef7b2aefb714",
+  "source": "https://curl.se/windows/",
+  "WINEPATH": "Z:\\tmp\\wago-pr564-HbN430\\wine-curl\\curl-8.22.0_1-win64-mingw\\bin",
+  "note": "Official static Windows curl, temporary directory and per-process WINEPATH only; no global install or user Wine-prefix edits."
+}

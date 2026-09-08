@@ -1,0 +1,72 @@
+package main
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strconv"
+
+	"github.com/wago-org/wago"
+)
+
+func entries(values []int) []string {
+	result := make([]string, len(values))
+	for i, value := range values {
+		result[i] = strconv.Itoa(value)
+	}
+	return result
+}
+
+func main() {
+	var rows []map[string]any
+	for _, name := range []string{"swar-pack-parse", "fib_iter", "xjb-mulhi", "globals"} {
+		data, err := os.ReadFile(filepath.Join(os.Args[1], name+".wasm"))
+		if err != nil {
+			panic(err)
+		}
+		for _, independent := range []bool{false, true} {
+			c, err := wago.NewRuntimeConfig().WithIndependentInstanceExecution(independent).Compile(data)
+			if err != nil {
+				panic(err)
+			}
+			var code bytes.Buffer
+			if _, err := c.WriteCodeTo(&code); err != nil {
+				panic(err)
+			}
+			hash := sha256.Sum256(code.Bytes())
+			in, err := wago.Instantiate(c, wago.InstantiateOptions{})
+			if err != nil {
+				panic(err)
+			}
+			flags := map[string]map[string]bool{}
+			for export := range c.Exports {
+				fn, err := in.PrepareFunction(export)
+				if err != nil {
+					panic(err)
+				}
+				value := reflect.ValueOf(fn).Elem()
+				fields := map[string]bool{}
+				for _, field := range []string{"scalarFast", "privateFast", "isolatedFast", "directIntFast"} {
+					fields[field] = value.FieldByName(field).Bool()
+				}
+				flags[export] = fields
+			}
+			// Internal entries use a machine-word high bit. Strings preserve the
+			// exact values through JSON consumers with double-precision numbers.
+			rows = append(rows, map[string]any{"module": name, "independent": independent, "codeBytes": code.Len(), "codeSHA256": hex.EncodeToString(hash[:]), "entry": entries(c.Entry), "internalEntry": entries(c.InternalEntry), "preparedFlags": flags})
+			if err := in.Close(); err != nil {
+				panic(err)
+			}
+		}
+	}
+	data, err := json.MarshalIndent(rows, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(data))
+}

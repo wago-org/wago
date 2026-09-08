@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+const out='/tmp/wago-pr564-HbN430';
+const url='https://curl.se/windows/dl-8.22.0_1/curl-8.22.0_1-win64-mingw.zip';
+const expected='7f23b039f6ea4197362d4468e1a0e71428201222e1bef3b680d5ef7b2aefb714';
+const archive=`${out}/curl-8.22.0_1-win64-mingw.zip`;
+execFileSync('curl',['-fL','--retry','2','-o',archive,url],{stdio:'inherit'});
+const actual=crypto.createHash('sha256').update(fs.readFileSync(archive)).digest('hex');
+if(actual!==expected)throw new Error(`curl publisher SHA-256 mismatch: ${actual}`);
+const dir=`${out}/wine-curl`;
+if(fs.existsSync(dir))throw new Error('curl destination exists; inspect before replacing');
+fs.mkdirSync(dir);
+execFileSync('unzip',['-q',archive,'-d',dir]);
+const winepath=`Z:${dir.replaceAll('/','\\')}\\curl-8.22.0_1-win64-mingw\\bin`;
+fs.writeFileSync(`${out}/wine-tools.json`,JSON.stringify({url,sha256:actual,source:'https://curl.se/windows/',WINEPATH:winepath,note:'Official static Windows curl, temporary directory and per-process WINEPATH only; no global install or user Wine-prefix edits.'},null,2)+'\n');
+console.log({winepath});
