@@ -1,0 +1,37 @@
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+                                              │ /tmp/wago-pr564-regressions-zHTLww/recheck/base.bench │ /tmp/wago-pr564-regressions-zHTLww/recheck/before.bench │
+                                              │                        sec/op                         │              sec/op               vs base               │
+ExecParallel/process/swar-pack-parse.parse4-8                                            7.983n ±  3%                      14.155n ± 45%        ~ (p=0.093 n=6)
+ExecParallel/independent/fib_iter.fib-8                                                  14.21n ±  5%                       17.45n ±  6%  +22.81% (p=0.002 n=6)
+ExecParallel/process/xjb-mulhi.mulhi-8                                                   13.92n ±  8%                       15.20n ±  7%        ~ (p=0.065 n=6)
+ExecGlobalGet_wago-8                                                                     77.47n ±  1%                       82.93n ±  4%   +7.03% (p=0.002 n=6)
+ExecParallel/independent/isa_simd_i64x2.shl-8                                            155.8n ± 11%                       148.4n ±  8%        ~ (p=0.310 n=6)
+Instantiate/zstd-8                                                                       9.644µ ±  2%                       9.738µ ±  2%        ~ (p=0.240 n=6)
+geomean                                                                                  75.41n                             87.53n        +16.08%
+
+                                              │ /tmp/wago-pr564-regressions-zHTLww/recheck/base.bench │ /tmp/wago-pr564-regressions-zHTLww/recheck/before.bench │
+                                              │                         B/op                          │              B/op                vs base                │
+ExecParallel/process/swar-pack-parse.parse4-8                                            0.000 ± 0%                          0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecParallel/independent/fib_iter.fib-8                                                  0.000 ± 0%                          0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecParallel/process/xjb-mulhi.mulhi-8                                                   0.000 ± 0%                          0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecGlobalGet_wago-8                                                                     0.000 ± 0%                          0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecParallel/independent/isa_simd_i64x2.shl-8                                            0.000 ± 0%                          0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Instantiate/zstd-8                                                                     1.648Ki ± 0%                        1.648Ki ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                             ²                                    +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                              │ /tmp/wago-pr564-regressions-zHTLww/recheck/base.bench │ /tmp/wago-pr564-regressions-zHTLww/recheck/before.bench │
+                                              │                       allocs/op                       │            allocs/op             vs base                │
+ExecParallel/process/swar-pack-parse.parse4-8                                            0.000 ± 0%                          0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecParallel/independent/fib_iter.fib-8                                                  0.000 ± 0%                          0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecParallel/process/xjb-mulhi.mulhi-8                                                   0.000 ± 0%                          0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecGlobalGet_wago-8                                                                     0.000 ± 0%                          0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecParallel/independent/isa_simd_i64x2.shl-8                                            0.000 ± 0%                          0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Instantiate/zstd-8                                                                       13.00 ± 0%                          13.00 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                             ²                                    +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

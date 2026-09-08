@@ -1,0 +1,386 @@
+[
+  {
+    "name": "BenchmarkExecParallel/process/float.run",
+    "unit": "ns/op",
+    "base": 4518,
+    "samples": {
+      "base": {
+        "n": 12,
+        "median": 4518,
+        "delta": 0,
+        "values": [
+          4429,
+          4486,
+          4515,
+          4529,
+          4453,
+          4487,
+          4485,
+          4521,
+          4540,
+          4531,
+          4527,
+          4532
+        ]
+      },
+      "final": {
+        "n": 12,
+        "median": 4527,
+        "delta": 0.19920318725099584,
+        "values": [
+          4458,
+          4476,
+          4525,
+          4546,
+          4550,
+          4512,
+          4524,
+          4534,
+          4557,
+          4538,
+          4520,
+          4529
+        ]
+      },
+      "before": {
+        "n": 12,
+        "median": 4519.5,
+        "delta": 0.033200531208499307,
+        "values": [
+          4498,
+          4472,
+          4524,
+          4530,
+          4479,
+          4502,
+          4520,
+          4537,
+          4545,
+          4519,
+          4545,
+          4507
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/process/float.run",
+    "unit": "B/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 12,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "final": {
+        "n": 12,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 12,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/process/float.run",
+    "unit": "allocs/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 12,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "final": {
+        "n": 12,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 12,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/process/isa_bulk_mem.copy_fwd_64",
+    "unit": "ns/op",
+    "base": 380.65,
+    "samples": {
+      "base": {
+        "n": 12,
+        "median": 380.65,
+        "delta": 0,
+        "values": [
+          347,
+          417.9,
+          345.5,
+          424.7,
+          349.1,
+          351.1,
+          460.3,
+          339.3,
+          410.2,
+          340,
+          411.3,
+          421.3
+        ]
+      },
+      "final": {
+        "n": 12,
+        "median": 360.95000000000005,
+        "delta": -5.175357940365144,
+        "values": [
+          344.5,
+          349,
+          472.8,
+          358.3,
+          354.7,
+          363.6,
+          415.5,
+          465.7,
+          409.5,
+          337.7,
+          407.9,
+          339.8
+        ]
+      },
+      "before": {
+        "n": 12,
+        "median": 347.1,
+        "delta": -8.813871010114271,
+        "values": [
+          349.2,
+          353.4,
+          348.8,
+          345.4,
+          344.9,
+          343.1,
+          419,
+          339.5,
+          340.1,
+          400.7,
+          338.9,
+          414.4
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/process/isa_bulk_mem.copy_fwd_64",
+    "unit": "B/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 12,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "final": {
+        "n": 12,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 12,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/process/isa_bulk_mem.copy_fwd_64",
+    "unit": "allocs/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 12,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "final": {
+        "n": 12,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 12,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  }
+]

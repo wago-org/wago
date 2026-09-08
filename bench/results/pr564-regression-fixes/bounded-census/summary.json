@@ -1,0 +1,5582 @@
+[
+  {
+    "name": "BenchmarkCompileCompact/tiny",
+    "unit": "ns/op",
+    "base": 123482,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 123482,
+        "delta": 0,
+        "values": [
+          123482
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 117340,
+        "delta": -4.974004308320246,
+        "values": [
+          117340
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 120878,
+        "delta": -2.108809381124377,
+        "values": [
+          120878
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/tiny",
+    "unit": "B/op",
+    "base": 10784,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 10784,
+        "delta": 0,
+        "values": [
+          10784
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 10784,
+        "delta": 0,
+        "values": [
+          10784
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 10784,
+        "delta": 0,
+        "values": [
+          10784
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/tiny",
+    "unit": "allocs/op",
+    "base": 27,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 27,
+        "delta": 0,
+        "values": [
+          27
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 27,
+        "delta": 0,
+        "values": [
+          27
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 27,
+        "delta": 0,
+        "values": [
+          27
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/fib_iter",
+    "unit": "ns/op",
+    "base": 51757,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 51757,
+        "delta": 0,
+        "values": [
+          51757
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 62167,
+        "delta": 20.113221400003866,
+        "values": [
+          62167
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 58590,
+        "delta": 13.202078945843066,
+        "values": [
+          58590
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/fib_iter",
+    "unit": "B/op",
+    "base": 13184,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 13184,
+        "delta": 0,
+        "values": [
+          13184
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 12672,
+        "delta": -3.8834951456310662,
+        "values": [
+          12672
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 13184,
+        "delta": 0,
+        "values": [
+          13184
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/fib_iter",
+    "unit": "allocs/op",
+    "base": 28,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 28,
+        "delta": 0,
+        "values": [
+          28
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 28,
+        "delta": 0,
+        "values": [
+          28
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 28,
+        "delta": 0,
+        "values": [
+          28
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/fib_rec",
+    "unit": "ns/op",
+    "base": 61635,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 61635,
+        "delta": 0,
+        "values": [
+          61635
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 45195,
+        "delta": -26.67315648576296,
+        "values": [
+          45195
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 52739,
+        "delta": -14.433357670154944,
+        "values": [
+          52739
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/fib_rec",
+    "unit": "B/op",
+    "base": 13264,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 13264,
+        "delta": 0,
+        "values": [
+          13264
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 12496,
+        "delta": -5.79010856453559,
+        "values": [
+          12496
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 12752,
+        "delta": -3.86007237635706,
+        "values": [
+          12752
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/fib_rec",
+    "unit": "allocs/op",
+    "base": 37,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 37,
+        "delta": 0,
+        "values": [
+          37
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 37,
+        "delta": 0,
+        "values": [
+          37
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 37,
+        "delta": 0,
+        "values": [
+          37
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/arith",
+    "unit": "ns/op",
+    "base": 60383,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 60383,
+        "delta": 0,
+        "values": [
+          60383
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 62056,
+        "delta": 2.7706473676365917,
+        "values": [
+          62056
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 44533,
+        "delta": -26.2491098487985,
+        "values": [
+          44533
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/arith",
+    "unit": "B/op",
+    "base": 27456,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 27456,
+        "delta": 0,
+        "values": [
+          27456
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 12864,
+        "delta": -53.14685314685315,
+        "values": [
+          12864
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 13376,
+        "delta": -51.28205128205128,
+        "values": [
+          13376
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/arith",
+    "unit": "allocs/op",
+    "base": 27,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 27,
+        "delta": 0,
+        "values": [
+          27
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 27,
+        "delta": 0,
+        "values": [
+          27
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 27,
+        "delta": 0,
+        "values": [
+          27
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/float",
+    "unit": "ns/op",
+    "base": 49483,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 49483,
+        "delta": 0,
+        "values": [
+          49483
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 51617,
+        "delta": 4.312592203382981,
+        "values": [
+          51617
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 42389,
+        "delta": -14.33623668734717,
+        "values": [
+          42389
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/float",
+    "unit": "B/op",
+    "base": 28048,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 28048,
+        "delta": 0,
+        "values": [
+          28048
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 13456,
+        "delta": -52.02509982886481,
+        "values": [
+          13456
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 13968,
+        "delta": -50.19965772960639,
+        "values": [
+          13968
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/float",
+    "unit": "allocs/op",
+    "base": 41,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 41,
+        "delta": 0,
+        "values": [
+          41
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 41,
+        "delta": 0,
+        "values": [
+          41
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 41,
+        "delta": 0,
+        "values": [
+          41
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/memory",
+    "unit": "ns/op",
+    "base": 167916,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 167916,
+        "delta": 0,
+        "values": [
+          167916
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 75542,
+        "delta": -55.01202982443603,
+        "values": [
+          75542
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 60583,
+        "delta": -63.92065080159127,
+        "values": [
+          60583
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/memory",
+    "unit": "B/op",
+    "base": 13584,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 13584,
+        "delta": 0,
+        "values": [
+          13584
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 12688,
+        "delta": -6.595995288574796,
+        "values": [
+          12688
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 13328,
+        "delta": -1.8845700824499434,
+        "values": [
+          13328
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/memory",
+    "unit": "allocs/op",
+    "base": 34,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 34,
+        "delta": 0,
+        "values": [
+          34
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 34,
+        "delta": 0,
+        "values": [
+          34
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 34,
+        "delta": 0,
+        "values": [
+          34
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/memory_tree",
+    "unit": "ns/op",
+    "base": 280507,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 280507,
+        "delta": 0,
+        "values": [
+          280507
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 62237,
+        "delta": -77.81267490650858,
+        "values": [
+          62237
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 68358,
+        "delta": -75.6305546742149,
+        "values": [
+          68358
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/memory_tree",
+    "unit": "B/op",
+    "base": 28448,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 28448,
+        "delta": 0,
+        "values": [
+          28448
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 16928,
+        "delta": -40.4949381327334,
+        "values": [
+          16928
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 18208,
+        "delta": -35.9955005624297,
+        "values": [
+          18208
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/memory_tree",
+    "unit": "allocs/op",
+    "base": 51,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 51,
+        "delta": 0,
+        "values": [
+          51
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 51,
+        "delta": 0,
+        "values": [
+          51
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 51,
+        "delta": 0,
+        "values": [
+          51
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/globals",
+    "unit": "ns/op",
+    "base": 62217,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 62217,
+        "delta": 0,
+        "values": [
+          62217
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 44664,
+        "delta": -28.212546410145134,
+        "values": [
+          44664
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 66616,
+        "delta": 7.070414838388217,
+        "values": [
+          66616
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/globals",
+    "unit": "B/op",
+    "base": 13672,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 13672,
+        "delta": 0,
+        "values": [
+          13672
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 12904,
+        "delta": -5.617320070216502,
+        "values": [
+          12904
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 13344,
+        "delta": -2.3990637799882975,
+        "values": [
+          13344
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/globals",
+    "unit": "allocs/op",
+    "base": 40,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 40,
+        "delta": 0,
+        "values": [
+          40
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 40,
+        "delta": 0,
+        "values": [
+          40
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 39,
+        "delta": -2.500000000000002,
+        "values": [
+          39
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/dispatch",
+    "unit": "ns/op",
+    "base": 56536,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 56536,
+        "delta": 0,
+        "values": [
+          56536
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 49422,
+        "delta": -12.583132871090985,
+        "values": [
+          49422
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 52809,
+        "delta": -6.59225979906608,
+        "values": [
+          52809
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/dispatch",
+    "unit": "B/op",
+    "base": 11304,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 11304,
+        "delta": 0,
+        "values": [
+          11304
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 11288,
+        "delta": -0.14154281670205604,
+        "values": [
+          11288
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 11288,
+        "delta": -0.14154281670205604,
+        "values": [
+          11288
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/dispatch",
+    "unit": "allocs/op",
+    "base": 43,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 43,
+        "delta": 0,
+        "values": [
+          43
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 43,
+        "delta": 0,
+        "values": [
+          43
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 43,
+        "delta": 0,
+        "values": [
+          43
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/branches",
+    "unit": "ns/op",
+    "base": 55644,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 55644,
+        "delta": 0,
+        "values": [
+          55644
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 42540,
+        "delta": -23.54970886348933,
+        "values": [
+          42540
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 32350,
+        "delta": -41.86255481273812,
+        "values": [
+          32350
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/branches",
+    "unit": "B/op",
+    "base": 13248,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 13248,
+        "delta": 0,
+        "values": [
+          13248
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 12224,
+        "delta": -7.729468599033817,
+        "values": [
+          12224
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 12608,
+        "delta": -4.8309178743961345,
+        "values": [
+          12608
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/branches",
+    "unit": "allocs/op",
+    "base": 25,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 25,
+        "delta": 0,
+        "values": [
+          25
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 25,
+        "delta": 0,
+        "values": [
+          25
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 25,
+        "delta": 0,
+        "values": [
+          25
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/many_funcs",
+    "unit": "ns/op",
+    "base": 403989,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 403989,
+        "delta": 0,
+        "values": [
+          403989
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 361830,
+        "delta": -10.435680179410822,
+        "values": [
+          361830
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 363453,
+        "delta": -10.033936567579815,
+        "values": [
+          363453
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/many_funcs",
+    "unit": "B/op",
+    "base": 53224,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 53224,
+        "delta": 0,
+        "values": [
+          53224
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 52968,
+        "delta": -0.48098602134375446,
+        "values": [
+          52968
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 52968,
+        "delta": -0.48098602134375446,
+        "values": [
+          52968
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/many_funcs",
+    "unit": "allocs/op",
+    "base": 39,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 39,
+        "delta": 0,
+        "values": [
+          39
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 39,
+        "delta": 0,
+        "values": [
+          39
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 39,
+        "delta": 0,
+        "values": [
+          39
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/linked_list",
+    "unit": "ns/op",
+    "base": 60153,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 60153,
+        "delta": 0,
+        "values": [
+          60153
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 70963,
+        "delta": 17.970841022060412,
+        "values": [
+          70963
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 50135,
+        "delta": -16.654198460592152,
+        "values": [
+          50135
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/linked_list",
+    "unit": "B/op",
+    "base": 16816,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 16816,
+        "delta": 0,
+        "values": [
+          16816
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 14896,
+        "delta": -11.41769743101808,
+        "values": [
+          14896
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 16304,
+        "delta": -3.044719314938149,
+        "values": [
+          16304
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/linked_list",
+    "unit": "allocs/op",
+    "base": 38,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 38,
+        "delta": 0,
+        "values": [
+          38
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 38,
+        "delta": 0,
+        "values": [
+          38
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 38,
+        "delta": 0,
+        "values": [
+          38
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/mandelbrot",
+    "unit": "ns/op",
+    "base": 59141,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 59141,
+        "delta": 0,
+        "values": [
+          59141
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 83086,
+        "delta": 40.48798633773525,
+        "values": [
+          83086
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 50746,
+        "delta": -14.194890177710896,
+        "values": [
+          50746
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/mandelbrot",
+    "unit": "B/op",
+    "base": 30256,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 30256,
+        "delta": 0,
+        "values": [
+          30256
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 22064,
+        "delta": -27.07562136435748,
+        "values": [
+          22064
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 24752,
+        "delta": -18.19143310417768,
+        "values": [
+          24752
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/mandelbrot",
+    "unit": "allocs/op",
+    "base": 58,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 58,
+        "delta": 0,
+        "values": [
+          58
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 58,
+        "delta": 0,
+        "values": [
+          58
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 58,
+        "delta": 0,
+        "values": [
+          58
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/sieve",
+    "unit": "ns/op",
+    "base": 53681,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 53681,
+        "delta": 0,
+        "values": [
+          53681
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 97183,
+        "delta": 81.03798364411989,
+        "values": [
+          97183
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 48390,
+        "delta": -9.856373763528993,
+        "values": [
+          48390
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/sieve",
+    "unit": "B/op",
+    "base": 20928,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 20928,
+        "delta": 0,
+        "values": [
+          20928
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 17600,
+        "delta": -15.902140672782872,
+        "values": [
+          17600
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 19264,
+        "delta": -7.9510703363914415,
+        "values": [
+          19264
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/sieve",
+    "unit": "allocs/op",
+    "base": 39,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 39,
+        "delta": 0,
+        "values": [
+          39
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 39,
+        "delta": 0,
+        "values": [
+          39
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 39,
+        "delta": 0,
+        "values": [
+          39
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/nbody",
+    "unit": "ns/op",
+    "base": 213952,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 213952,
+        "delta": 0,
+        "values": [
+          213952
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 173305,
+        "delta": -18.99818650912354,
+        "values": [
+          173305
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 136676,
+        "delta": -36.11838169309004,
+        "values": [
+          136676
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/nbody",
+    "unit": "B/op",
+    "base": 70000,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 70000,
+        "delta": 0,
+        "values": [
+          70000
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 70000,
+        "delta": 0,
+        "values": [
+          70000
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 70080,
+        "delta": 0.11428571428571122,
+        "values": [
+          70080
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/nbody",
+    "unit": "allocs/op",
+    "base": 89,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 89,
+        "delta": 0,
+        "values": [
+          89
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 89,
+        "delta": 0,
+        "values": [
+          89
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 89,
+        "delta": 0,
+        "values": [
+          89
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/spectralnorm",
+    "unit": "ns/op",
+    "base": 115688,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 115688,
+        "delta": 0,
+        "values": [
+          115688
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 114996,
+        "delta": -0.598160569808448,
+        "values": [
+          114996
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 92033,
+        "delta": -20.44723739713713,
+        "values": [
+          92033
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/spectralnorm",
+    "unit": "B/op",
+    "base": 63992,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 63992,
+        "delta": 0,
+        "values": [
+          63992
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 63992,
+        "delta": 0,
+        "values": [
+          63992
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 64072,
+        "delta": 0.1250156269533731,
+        "values": [
+          64072
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/spectralnorm",
+    "unit": "allocs/op",
+    "base": 81,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 81,
+        "delta": 0,
+        "values": [
+          81
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 81,
+        "delta": 0,
+        "values": [
+          81
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 81,
+        "delta": 0,
+        "values": [
+          81
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/fannkuch",
+    "unit": "ns/op",
+    "base": 228299,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 228299,
+        "delta": 0,
+        "values": [
+          228299
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 215094,
+        "delta": -5.784081402021036,
+        "values": [
+          215094
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 134583,
+        "delta": -41.04967608268104,
+        "values": [
+          134583
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/fannkuch",
+    "unit": "B/op",
+    "base": 65776,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 65776,
+        "delta": 0,
+        "values": [
+          65776
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 65776,
+        "delta": 0,
+        "values": [
+          65776
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 65856,
+        "delta": 0.12162490878131482,
+        "values": [
+          65856
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/fannkuch",
+    "unit": "allocs/op",
+    "base": 68,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 68,
+        "delta": 0,
+        "values": [
+          68
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 68,
+        "delta": 0,
+        "values": [
+          68
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 68,
+        "delta": 0,
+        "values": [
+          68
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/matmul",
+    "unit": "ns/op",
+    "base": 102633,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 102633,
+        "delta": 0,
+        "values": [
+          102633
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 109195,
+        "delta": 6.393655062211967,
+        "values": [
+          109195
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 119645,
+        "delta": 16.57556536396676,
+        "values": [
+          119645
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/matmul",
+    "unit": "B/op",
+    "base": 63224,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 63224,
+        "delta": 0,
+        "values": [
+          63224
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 63224,
+        "delta": 0,
+        "values": [
+          63224
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 63304,
+        "delta": 0.1265342275085457,
+        "values": [
+          63304
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/matmul",
+    "unit": "allocs/op",
+    "base": 75,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 75,
+        "delta": 0,
+        "values": [
+          75
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 75,
+        "delta": 0,
+        "values": [
+          75
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 75,
+        "delta": 0,
+        "values": [
+          75
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/quicksort",
+    "unit": "ns/op",
+    "base": 116800,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 116800,
+        "delta": 0,
+        "values": [
+          116800
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 131166,
+        "delta": 12.299657534246577,
+        "values": [
+          131166
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 96361,
+        "delta": -17.499143835616437,
+        "values": [
+          96361
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/quicksort",
+    "unit": "B/op",
+    "base": 30024,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 30024,
+        "delta": 0,
+        "values": [
+          30024
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 30024,
+        "delta": 0,
+        "values": [
+          30024
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 30104,
+        "delta": 0.266453503863584,
+        "values": [
+          30104
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/quicksort",
+    "unit": "allocs/op",
+    "base": 72,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 72,
+        "delta": 0,
+        "values": [
+          72
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 72,
+        "delta": 0,
+        "values": [
+          72
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 72,
+        "delta": 0,
+        "values": [
+          72
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/crc32",
+    "unit": "ns/op",
+    "base": 97814,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 97814,
+        "delta": 0,
+        "values": [
+          97814
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 73338,
+        "delta": -25.02300284212894,
+        "values": [
+          73338
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 63951,
+        "delta": -34.61978857832212,
+        "values": [
+          63951
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/crc32",
+    "unit": "B/op",
+    "base": 28592,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 28592,
+        "delta": 0,
+        "values": [
+          28592
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 28592,
+        "delta": 0,
+        "values": [
+          28592
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 28672,
+        "delta": 0.2797985450475604,
+        "values": [
+          28672
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/crc32",
+    "unit": "allocs/op",
+    "base": 47,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 47,
+        "delta": 0,
+        "values": [
+          47
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 47,
+        "delta": 0,
+        "values": [
+          47
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 47,
+        "delta": 0,
+        "values": [
+          47
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/sha256",
+    "unit": "ns/op",
+    "base": 120376,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 120376,
+        "delta": 0,
+        "values": [
+          120376
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 115847,
+        "delta": -3.7623778826344156,
+        "values": [
+          115847
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 102973,
+        "delta": -14.457200770917789,
+        "values": [
+          102973
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/sha256",
+    "unit": "B/op",
+    "base": 62808,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 62808,
+        "delta": 0,
+        "values": [
+          62808
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 62808,
+        "delta": 0,
+        "values": [
+          62808
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 62888,
+        "delta": 0.12737230925996545,
+        "values": [
+          62888
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/sha256",
+    "unit": "allocs/op",
+    "base": 54,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 54,
+        "delta": 0,
+        "values": [
+          54
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 54,
+        "delta": 0,
+        "values": [
+          54
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 54,
+        "delta": 0,
+        "values": [
+          54
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/raytrace",
+    "unit": "ns/op",
+    "base": 420931,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 420931,
+        "delta": 0,
+        "values": [
+          420931
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 288101,
+        "delta": -31.556240809063716,
+        "values": [
+          288101
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 278614,
+        "delta": -33.81005437945886,
+        "values": [
+          278614
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/raytrace",
+    "unit": "B/op",
+    "base": 140928,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 140928,
+        "delta": 0,
+        "values": [
+          140928
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 140928,
+        "delta": 0,
+        "values": [
+          140928
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 140984,
+        "delta": 0.039736603088091904,
+        "values": [
+          140984
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/raytrace",
+    "unit": "allocs/op",
+    "base": 116,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 116,
+        "delta": 0,
+        "values": [
+          116
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 116,
+        "delta": 0,
+        "values": [
+          116
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 115,
+        "delta": -0.8620689655172376,
+        "values": [
+          115
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/regexmatch",
+    "unit": "ns/op",
+    "base": 63638743,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 63638743,
+        "delta": 0,
+        "values": [
+          63638743
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 55466701,
+        "delta": -12.8413001495017,
+        "values": [
+          55466701
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 50456537,
+        "delta": -20.714120641886346,
+        "values": [
+          50456537
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/regexmatch",
+    "unit": "B/op",
+    "base": 1339464,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 1339464,
+        "delta": 0,
+        "values": [
+          1339464
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 1337496,
+        "delta": -0.14692444141836125,
+        "values": [
+          1337496
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 1337408,
+        "delta": -0.15349423351430636,
+        "values": [
+          1337408
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/regexmatch",
+    "unit": "allocs/op",
+    "base": 1940,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 1940,
+        "delta": 0,
+        "values": [
+          1940
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 1942,
+        "delta": 0.10309278350515427,
+        "values": [
+          1942
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 1939,
+        "delta": -0.051546391752577136,
+        "values": [
+          1939
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/wasm3",
+    "unit": "ns/op",
+    "base": 14386148,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 14386148,
+        "delta": 0,
+        "values": [
+          14386148
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 11916599,
+        "delta": -17.166158724350677,
+        "values": [
+          11916599
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 11779581,
+        "delta": -18.11858879805769,
+        "values": [
+          11779581
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/wasm3",
+    "unit": "B/op",
+    "base": 470864,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 470864,
+        "delta": 0,
+        "values": [
+          470864
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 468232,
+        "delta": -0.5589724421488973,
+        "values": [
+          468232
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 468144,
+        "delta": -0.5776614903666433,
+        "values": [
+          468144
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/wasm3",
+    "unit": "allocs/op",
+    "base": 831,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 831,
+        "delta": 0,
+        "values": [
+          831
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 833,
+        "delta": 0.24067388688326918,
+        "values": [
+          833
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 830,
+        "delta": -0.12033694344163459,
+        "values": [
+          830
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/json-as",
+    "unit": "ns/op",
+    "base": 1369654,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 1369654,
+        "delta": 0,
+        "values": [
+          1369654
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 1465844,
+        "delta": 7.02294156042329,
+        "values": [
+          1465844
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 1665840,
+        "delta": 21.624877523812593,
+        "values": [
+          1665840
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/json-as",
+    "unit": "B/op",
+    "base": 136240,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 136240,
+        "delta": 0,
+        "values": [
+          136240
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 136784,
+        "delta": 0.39929536112741637,
+        "values": [
+          136784
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 136760,
+        "delta": 0.3816793893129722,
+        "values": [
+          136760
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/json-as",
+    "unit": "allocs/op",
+    "base": 148,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 148,
+        "delta": 0,
+        "values": [
+          148
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 148,
+        "delta": 0,
+        "values": [
+          148
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 147,
+        "delta": -0.6756756756756799,
+        "values": [
+          147
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/blake-as",
+    "unit": "ns/op",
+    "base": 433865,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 433865,
+        "delta": 0,
+        "values": [
+          433865
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 315964,
+        "delta": -27.174581955216482,
+        "values": [
+          315964
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 524816,
+        "delta": 20.962972353151322,
+        "values": [
+          524816
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/blake-as",
+    "unit": "B/op",
+    "base": 122376,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 122376,
+        "delta": 0,
+        "values": [
+          122376
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 122176,
+        "delta": -0.16343073805321628,
+        "values": [
+          122176
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 122176,
+        "delta": -0.16343073805321628,
+        "values": [
+          122176
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/blake-as",
+    "unit": "allocs/op",
+    "base": 93,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 93,
+        "delta": 0,
+        "values": [
+          93
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 89,
+        "delta": -4.3010752688172005,
+        "values": [
+          89
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 89,
+        "delta": -4.3010752688172005,
+        "values": [
+          89
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/utf-as",
+    "unit": "ns/op",
+    "base": 280667,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 280667,
+        "delta": 0,
+        "values": [
+          280667
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 195257,
+        "delta": -30.431080248123223,
+        "values": [
+          195257
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 241343,
+        "delta": -14.010909725760424,
+        "values": [
+          241343
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/utf-as",
+    "unit": "B/op",
+    "base": 121896,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 121896,
+        "delta": 0,
+        "values": [
+          121896
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 121880,
+        "delta": -0.01312594342718354,
+        "values": [
+          121880
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 121960,
+        "delta": 0.05250377370873416,
+        "values": [
+          121960
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/utf-as",
+    "unit": "allocs/op",
+    "base": 72,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 72,
+        "delta": 0,
+        "values": [
+          72
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 72,
+        "delta": 0,
+        "values": [
+          72
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 72,
+        "delta": 0,
+        "values": [
+          72
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/xjb-mulhi",
+    "unit": "ns/op",
+    "base": 76354,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 76354,
+        "delta": 0,
+        "values": [
+          76354
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 58369,
+        "delta": -23.55475810042695,
+        "values": [
+          58369
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 82135,
+        "delta": 7.571312570395783,
+        "values": [
+          82135
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/xjb-mulhi",
+    "unit": "B/op",
+    "base": 28544,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 28544,
+        "delta": 0,
+        "values": [
+          28544
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 17024,
+        "delta": -40.35874439461884,
+        "values": [
+          17024
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 18688,
+        "delta": -34.52914798206278,
+        "values": [
+          18688
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/xjb-mulhi",
+    "unit": "allocs/op",
+    "base": 31,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 31,
+        "delta": 0,
+        "values": [
+          31
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 31,
+        "delta": 0,
+        "values": [
+          31
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 31,
+        "delta": 0,
+        "values": [
+          31
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/swar-pack-parse",
+    "unit": "ns/op",
+    "base": 72847,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 72847,
+        "delta": 0,
+        "values": [
+          72847
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 54002,
+        "delta": -25.869287685148322,
+        "values": [
+          54002
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 69150,
+        "delta": -5.075020247916862,
+        "values": [
+          69150
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/swar-pack-parse",
+    "unit": "B/op",
+    "base": 26200,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 26200,
+        "delta": 0,
+        "values": [
+          26200
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 14680,
+        "delta": -43.969465648854964,
+        "values": [
+          14680
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 15960,
+        "delta": -39.08396946564886,
+        "values": [
+          15960
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/swar-pack-parse",
+    "unit": "allocs/op",
+    "base": 28,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 28,
+        "delta": 0,
+        "values": [
+          28
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 28,
+        "delta": 0,
+        "values": [
+          28
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 28,
+        "delta": 0,
+        "values": [
+          28
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/json-as-simd",
+    "unit": "ns/op",
+    "base": 5175173,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 5175173,
+        "delta": 0,
+        "values": [
+          5175173
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 1391313,
+        "delta": -73.11562338109276,
+        "values": [
+          1391313
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 1570922,
+        "delta": -69.64503408871549,
+        "values": [
+          1570922
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/json-as-simd",
+    "unit": "B/op",
+    "base": 144456,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 144456,
+        "delta": 0,
+        "values": [
+          144456
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 145128,
+        "delta": 0.4651935537464791,
+        "values": [
+          145128
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 145104,
+        "delta": 0.4485794982555191,
+        "values": [
+          145104
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/json-as-simd",
+    "unit": "allocs/op",
+    "base": 183,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 183,
+        "delta": 0,
+        "values": [
+          183
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 183,
+        "delta": 0,
+        "values": [
+          183
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 182,
+        "delta": -0.5464480874316946,
+        "values": [
+          182
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/blake-as-simd",
+    "unit": "ns/op",
+    "base": 827183,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 827183,
+        "delta": 0,
+        "values": [
+          827183
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 721195,
+        "delta": -12.813125995094188,
+        "values": [
+          721195
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 1018263,
+        "delta": 23.10008788865341,
+        "values": [
+          1018263
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/blake-as-simd",
+    "unit": "B/op",
+    "base": 250080,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 250080,
+        "delta": 0,
+        "values": [
+          250080
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 250232,
+        "delta": 0.0607805502239378,
+        "values": [
+          250232
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 250312,
+        "delta": 0.09277031349967935,
+        "values": [
+          250312
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/blake-as-simd",
+    "unit": "allocs/op",
+    "base": 133,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 133,
+        "delta": 0,
+        "values": [
+          133
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 132,
+        "delta": -0.7518796992481258,
+        "values": [
+          132
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 132,
+        "delta": -0.7518796992481258,
+        "values": [
+          132
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/utf-as-simd",
+    "unit": "ns/op",
+    "base": 718630,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 718630,
+        "delta": 0,
+        "values": [
+          718630
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 707700,
+        "delta": -1.5209495846263077,
+        "values": [
+          707700
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 657836,
+        "delta": -8.459708055605809,
+        "values": [
+          657836
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/utf-as-simd",
+    "unit": "B/op",
+    "base": 146712,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 146712,
+        "delta": 0,
+        "values": [
+          146712
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 146608,
+        "delta": -0.07088718032608465,
+        "values": [
+          146608
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 146592,
+        "delta": -0.08179290037624298,
+        "values": [
+          146592
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/utf-as-simd",
+    "unit": "allocs/op",
+    "base": 137,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 137,
+        "delta": 0,
+        "values": [
+          137
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 135,
+        "delta": -1.4598540145985384,
+        "values": [
+          135
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 134,
+        "delta": -2.1897810218978075,
+        "values": [
+          134
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/coremark",
+    "unit": "ns/op",
+    "base": 537790,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 537790,
+        "delta": 0,
+        "values": [
+          537790
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 516961,
+        "delta": -3.8730731326354184,
+        "values": [
+          516961
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 796286,
+        "delta": 48.06634559958347,
+        "values": [
+          796286
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/coremark",
+    "unit": "B/op",
+    "base": 126216,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 126216,
+        "delta": 0,
+        "values": [
+          126216
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 126200,
+        "delta": -0.012676681244849775,
+        "values": [
+          126200
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 126256,
+        "delta": 0.031691703112124436,
+        "values": [
+          126256
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/coremark",
+    "unit": "allocs/op",
+    "base": 93,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 93,
+        "delta": 0,
+        "values": [
+          93
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 93,
+        "delta": 0,
+        "values": [
+          93
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 92,
+        "delta": -1.0752688172043001,
+        "values": [
+          92
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/blake3",
+    "unit": "ns/op",
+    "base": 822215,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 822215,
+        "delta": 0,
+        "values": [
+          822215
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 2323025,
+        "delta": 182.53254927239223,
+        "values": [
+          2323025
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 969832,
+        "delta": 17.953576619254097,
+        "values": [
+          969832
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/blake3",
+    "unit": "B/op",
+    "base": 127768,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 127768,
+        "delta": 0,
+        "values": [
+          127768
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 127736,
+        "delta": -0.025045394778033803,
+        "values": [
+          127736
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 127648,
+        "delta": -0.09392023041763231,
+        "values": [
+          127648
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/blake3",
+    "unit": "allocs/op",
+    "base": 105,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 105,
+        "delta": 0,
+        "values": [
+          105
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 105,
+        "delta": 0,
+        "values": [
+          105
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 102,
+        "delta": -2.857142857142858,
+        "values": [
+          102
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/qoi",
+    "unit": "ns/op",
+    "base": 245661,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 245661,
+        "delta": 0,
+        "values": [
+          245661
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 840079,
+        "delta": 241.96677535302715,
+        "values": [
+          840079
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 281329,
+        "delta": 14.519195151041476,
+        "values": [
+          281329
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/qoi",
+    "unit": "B/op",
+    "base": 65328,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 65328,
+        "delta": 0,
+        "values": [
+          65328
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 65296,
+        "delta": -0.048983590497186924,
+        "values": [
+          65296
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 65352,
+        "delta": 0.03673769287289019,
+        "values": [
+          65352
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/qoi",
+    "unit": "allocs/op",
+    "base": 89,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 89,
+        "delta": 0,
+        "values": [
+          89
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 89,
+        "delta": 0,
+        "values": [
+          89
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 88,
+        "delta": -1.1235955056179803,
+        "values": [
+          88
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/lz4",
+    "unit": "ns/op",
+    "base": 298501,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 298501,
+        "delta": 0,
+        "values": [
+          298501
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 726455,
+        "delta": 143.36769391057317,
+        "values": [
+          726455
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 254638,
+        "delta": -14.694423134260859,
+        "values": [
+          254638
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/lz4",
+    "unit": "B/op",
+    "base": 64064,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 64064,
+        "delta": 0,
+        "values": [
+          64064
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 64048,
+        "delta": -0.024975024975026905,
+        "values": [
+          64048
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 64128,
+        "delta": 0.09990009990010762,
+        "values": [
+          64128
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/lz4",
+    "unit": "allocs/op",
+    "base": 68,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 68,
+        "delta": 0,
+        "values": [
+          68
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 68,
+        "delta": 0,
+        "values": [
+          68
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 68,
+        "delta": 0,
+        "values": [
+          68
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/zlib",
+    "unit": "ns/op",
+    "base": 1100888,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 1100888,
+        "delta": 0,
+        "values": [
+          1100888
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 906713,
+        "delta": -17.638034023442895,
+        "values": [
+          906713
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 1209412,
+        "delta": 9.857860200129354,
+        "values": [
+          1209412
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/zlib",
+    "unit": "B/op",
+    "base": 266728,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 266728,
+        "delta": 0,
+        "values": [
+          266728
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 266712,
+        "delta": -0.005998620317326786,
+        "values": [
+          266712
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 266768,
+        "delta": 0.014996550793311414,
+        "values": [
+          266768
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/zlib",
+    "unit": "allocs/op",
+    "base": 169,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 169,
+        "delta": 0,
+        "values": [
+          169
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 169,
+        "delta": 0,
+        "values": [
+          169
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 168,
+        "delta": -0.591715976331364,
+        "values": [
+          168
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/zstd",
+    "unit": "ns/op",
+    "base": 7151636,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 7151636,
+        "delta": 0,
+        "values": [
+          7151636
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 2921940,
+        "delta": -59.14305481990414,
+        "values": [
+          2921940
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 4818022,
+        "delta": -32.63049182033314,
+        "values": [
+          4818022
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/zstd",
+    "unit": "B/op",
+    "base": 985912,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 985912,
+        "delta": 0,
+        "values": [
+          985912
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 985904,
+        "delta": -0.0008114314462126515,
+        "values": [
+          985904
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 985816,
+        "delta": -0.009737177354574023,
+        "values": [
+          985816
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/zstd",
+    "unit": "allocs/op",
+    "base": 223,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 223,
+        "delta": 0,
+        "values": [
+          223
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 225,
+        "delta": 0.8968609865470878,
+        "values": [
+          225
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 222,
+        "delta": -0.4484304932735439,
+        "values": [
+          222
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/lua",
+    "unit": "ns/op",
+    "base": 21148022,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 21148022,
+        "delta": 0,
+        "values": [
+          21148022
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 15997326,
+        "delta": -24.355450358430687,
+        "values": [
+          15997326
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 17795484,
+        "delta": -15.852726084737379,
+        "values": [
+          17795484
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/lua",
+    "unit": "B/op",
+    "base": 792376,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 792376,
+        "delta": 0,
+        "values": [
+          792376
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 789136,
+        "delta": -0.4088967863741466,
+        "values": [
+          789136
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 789088,
+        "delta": -0.4149545165426538,
+        "values": [
+          789088
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/lua",
+    "unit": "allocs/op",
+    "base": 756,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 756,
+        "delta": 0,
+        "values": [
+          756
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 756,
+        "delta": 0,
+        "values": [
+          756
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 755,
+        "delta": -0.1322751322751281,
+        "values": [
+          755
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/sqlite3",
+    "unit": "ns/op",
+    "base": 95181665,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 95181665,
+        "delta": 0,
+        "values": [
+          95181665
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 77983664,
+        "delta": -18.06860701585752,
+        "values": [
+          77983664
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 77187198,
+        "delta": -18.905392125678823,
+        "values": [
+          77187198
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/sqlite3",
+    "unit": "B/op",
+    "base": 2208080,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 2208080,
+        "delta": 0,
+        "values": [
+          2208080
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 2193800,
+        "delta": -0.6467156987065681,
+        "values": [
+          2193800
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 2193712,
+        "delta": -0.6507010615557363,
+        "values": [
+          2193712
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/sqlite3",
+    "unit": "allocs/op",
+    "base": 2144,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 2144,
+        "delta": 0,
+        "values": [
+          2144
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 2146,
+        "delta": 0.0932835820895539,
+        "values": [
+          2146
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 2143,
+        "delta": -0.04664179104477695,
+        "values": [
+          2143
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/ruby",
+    "unit": "ns/op",
+    "base": 1069703883,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 1069703883,
+        "delta": 0,
+        "values": [
+          1069703883
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 813237368,
+        "delta": -23.975468265174094,
+        "values": [
+          813237368
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 852848628,
+        "delta": -20.272456559830964,
+        "values": [
+          852848628
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/ruby",
+    "unit": "B/op",
+    "base": 15078760,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 15078760,
+        "delta": 0,
+        "values": [
+          15078760
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 13745608,
+        "delta": -8.841257503932686,
+        "values": [
+          13745608
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 13745536,
+        "delta": -8.841734996776928,
+        "values": [
+          13745536
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/ruby",
+    "unit": "allocs/op",
+    "base": 4479,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 4479,
+        "delta": 0,
+        "values": [
+          4479
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 4473,
+        "delta": -0.13395847287340779,
+        "values": [
+          4473
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 4471,
+        "delta": -0.17861129716454371,
+        "values": [
+          4471
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/esbuild",
+    "unit": "ns/op",
+    "base": 543024346,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 543024346,
+        "delta": 0,
+        "values": [
+          543024346
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 453670759,
+        "delta": -16.45480311484966,
+        "values": [
+          453670759
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 474069234,
+        "delta": -12.698346309504139,
+        "values": [
+          474069234
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/esbuild",
+    "unit": "B/op",
+    "base": 18384616,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 18384616,
+        "delta": 0,
+        "values": [
+          18384616
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 18272184,
+        "delta": -0.6115547912450281,
+        "values": [
+          18272184
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 18272112,
+        "delta": -0.6119464230310845,
+        "values": [
+          18272112
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/esbuild",
+    "unit": "allocs/op",
+    "base": 9207,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 9207,
+        "delta": 0,
+        "values": [
+          9207
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 9205,
+        "delta": -0.021722602367768573,
+        "values": [
+          9205
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 9203,
+        "delta": -0.043445204735526044,
+        "values": [
+          9203
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_i32",
+    "unit": "ns/op",
+    "base": 579700,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 579700,
+        "delta": 0,
+        "values": [
+          579700
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 278363,
+        "delta": -51.98154217698809,
+        "values": [
+          278363
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 257754,
+        "delta": -55.5366568914956,
+        "values": [
+          257754
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_i32",
+    "unit": "B/op",
+    "base": 30904,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 30904,
+        "delta": 0,
+        "values": [
+          30904
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 30840,
+        "delta": -0.20709293295366749,
+        "values": [
+          30840
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 30840,
+        "delta": -0.20709293295366749,
+        "values": [
+          30840
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_i32",
+    "unit": "allocs/op",
+    "base": 43,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 43,
+        "delta": 0,
+        "values": [
+          43
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 43,
+        "delta": 0,
+        "values": [
+          43
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 43,
+        "delta": 0,
+        "values": [
+          43
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_i64",
+    "unit": "ns/op",
+    "base": 286248,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 286248,
+        "delta": 0,
+        "values": [
+          286248
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 901164,
+        "delta": 214.81931751488221,
+        "values": [
+          901164
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 1322054,
+        "delta": 361.85615270674384,
+        "values": [
+          1322054
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_i64",
+    "unit": "B/op",
+    "base": 30904,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 30904,
+        "delta": 0,
+        "values": [
+          30904
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 30856,
+        "delta": -0.15531969971525061,
+        "values": [
+          30856
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 30856,
+        "delta": -0.15531969971525061,
+        "values": [
+          30856
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_i64",
+    "unit": "allocs/op",
+    "base": 43,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 43,
+        "delta": 0,
+        "values": [
+          43
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 44,
+        "delta": 2.3255813953488413,
+        "values": [
+          44
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 44,
+        "delta": 2.3255813953488413,
+        "values": [
+          44
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_f32",
+    "unit": "ns/op",
+    "base": 968450,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 968450,
+        "delta": 0,
+        "values": [
+          968450
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 323809,
+        "delta": -66.5642005266147,
+        "values": [
+          323809
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 515579,
+        "delta": -46.76245547008106,
+        "values": [
+          515579
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_f32",
+    "unit": "B/op",
+    "base": 34496,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 34496,
+        "delta": 0,
+        "values": [
+          34496
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 30368,
+        "delta": -11.966604823747684,
+        "values": [
+          30368
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 32416,
+        "delta": -6.029684601113172,
+        "values": [
+          32416
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_f32",
+    "unit": "allocs/op",
+    "base": 69,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 69,
+        "delta": 0,
+        "values": [
+          69
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 69,
+        "delta": 0,
+        "values": [
+          69
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 69,
+        "delta": 0,
+        "values": [
+          69
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_f64",
+    "unit": "ns/op",
+    "base": 1089627,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 1089627,
+        "delta": 0,
+        "values": [
+          1089627
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 295345,
+        "delta": -72.89485300933255,
+        "values": [
+          295345
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 605498,
+        "delta": -44.430708857251155,
+        "values": [
+          605498
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_f64",
+    "unit": "B/op",
+    "base": 34528,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 34528,
+        "delta": 0,
+        "values": [
+          34528
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 30400,
+        "delta": -11.955514365152919,
+        "values": [
+          30400
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 32464,
+        "delta": -5.977757182576459,
+        "values": [
+          32464
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_f64",
+    "unit": "allocs/op",
+    "base": 70,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 70,
+        "delta": 0,
+        "values": [
+          70
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 70,
+        "delta": 0,
+        "values": [
+          70
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 71,
+        "delta": 1.4285714285714235,
+        "values": [
+          71
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_mem",
+    "unit": "ns/op",
+    "base": 933874,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 933874,
+        "delta": 0,
+        "values": [
+          933874
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 159850,
+        "delta": -82.8831298440689,
+        "values": [
+          159850
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 456478,
+        "delta": -51.11995836697456,
+        "values": [
+          456478
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_mem",
+    "unit": "B/op",
+    "base": 28592,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 28592,
+        "delta": 0,
+        "values": [
+          28592
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 25760,
+        "delta": -9.904868494683827,
+        "values": [
+          25760
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 28576,
+        "delta": -0.05595970900951208,
+        "values": [
+          28576
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_mem",
+    "unit": "allocs/op",
+    "base": 39,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 39,
+        "delta": 0,
+        "values": [
+          39
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 39,
+        "delta": 0,
+        "values": [
+          39
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 39,
+        "delta": 0,
+        "values": [
+          39
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_bulk_mem",
+    "unit": "ns/op",
+    "base": 288051,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 288051,
+        "delta": 0,
+        "values": [
+          288051
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 116579,
+        "delta": -59.52834741070158,
+        "values": [
+          116579
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 363022,
+        "delta": 26.026988276381612,
+        "values": [
+          363022
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_bulk_mem",
+    "unit": "B/op",
+    "base": 13984,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 13984,
+        "delta": 0,
+        "values": [
+          13984
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 13568,
+        "delta": -2.9748283752860427,
+        "values": [
+          13568
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 14208,
+        "delta": 1.6018306636155666,
+        "values": [
+          14208
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_bulk_mem",
+    "unit": "allocs/op",
+    "base": 41,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 41,
+        "delta": 0,
+        "values": [
+          41
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 41,
+        "delta": 0,
+        "values": [
+          41
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 41,
+        "delta": 0,
+        "values": [
+          41
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_ctl",
+    "unit": "ns/op",
+    "base": 296497,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 296497,
+        "delta": 0,
+        "values": [
+          296497
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 169328,
+        "delta": -42.890484558022514,
+        "values": [
+          169328
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 193804,
+        "delta": -34.635426328091015,
+        "values": [
+          193804
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_ctl",
+    "unit": "B/op",
+    "base": 61712,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 61712,
+        "delta": 0,
+        "values": [
+          61712
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 61696,
+        "delta": -0.025926886180971387,
+        "values": [
+          61696
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 61696,
+        "delta": -0.025926886180971387,
+        "values": [
+          61696
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_ctl",
+    "unit": "allocs/op",
+    "base": 43,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 43,
+        "delta": 0,
+        "values": [
+          43
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 43,
+        "delta": 0,
+        "values": [
+          43
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 43,
+        "delta": 0,
+        "values": [
+          43
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_call",
+    "unit": "ns/op",
+    "base": 113594,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 113594,
+        "delta": 0,
+        "values": [
+          113594
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 94367,
+        "delta": -16.926070038910503,
+        "values": [
+          94367
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 75181,
+        "delta": -33.81604662218075,
+        "values": [
+          75181
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_call",
+    "unit": "B/op",
+    "base": 20936,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 20936,
+        "delta": 0,
+        "values": [
+          20936
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 20296,
+        "delta": -3.0569354222392042,
+        "values": [
+          20296
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 23624,
+        "delta": 12.839128773404651,
+        "values": [
+          23624
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_call",
+    "unit": "allocs/op",
+    "base": 65,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 65,
+        "delta": 0,
+        "values": [
+          65
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 65,
+        "delta": 0,
+        "values": [
+          65
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 65,
+        "delta": 0,
+        "values": [
+          65
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_var",
+    "unit": "ns/op",
+    "base": 62958,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 62958,
+        "delta": 0,
+        "values": [
+          62958
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 61565,
+        "delta": -2.2125861685568182,
+        "values": [
+          61565
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 61606,
+        "delta": -2.1474633882906047,
+        "values": [
+          61606
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_var",
+    "unit": "B/op",
+    "base": 25664,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 25664,
+        "delta": 0,
+        "values": [
+          25664
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 24896,
+        "delta": -2.9925187032418976,
+        "values": [
+          24896
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 27792,
+        "delta": 8.291770573566094,
+        "values": [
+          27792
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_var",
+    "unit": "allocs/op",
+    "base": 37,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 37,
+        "delta": 0,
+        "values": [
+          37
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 37,
+        "delta": 0,
+        "values": [
+          37
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 37,
+        "delta": 0,
+        "values": [
+          37
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_cvt",
+    "unit": "ns/op",
+    "base": 153448,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 153448,
+        "delta": 0,
+        "values": [
+          153448
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 134984,
+        "delta": -12.032740733017045,
+        "values": [
+          134984
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 153859,
+        "delta": 0.267843178145033,
+        "values": [
+          153859
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_cvt",
+    "unit": "B/op",
+    "base": 26232,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 26232,
+        "delta": 0,
+        "values": [
+          26232
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 23512,
+        "delta": -10.369014943580357,
+        "values": [
+          23512
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 24792,
+        "delta": -5.489478499542544,
+        "values": [
+          24792
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_cvt",
+    "unit": "allocs/op",
+    "base": 52,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 52,
+        "delta": 0,
+        "values": [
+          52
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 52,
+        "delta": 0,
+        "values": [
+          52
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 52,
+        "delta": 0,
+        "values": [
+          52
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_v128",
+    "unit": "ns/op",
+    "base": 126568,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 126568,
+        "delta": 0,
+        "values": [
+          126568
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 117381,
+        "delta": -7.25854876430061,
+        "values": [
+          117381
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 111269,
+        "delta": -12.087573478288348,
+        "values": [
+          111269
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_v128",
+    "unit": "B/op",
+    "base": 33080,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 33080,
+        "delta": 0,
+        "values": [
+          33080
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 33064,
+        "delta": -0.04836759371221744,
+        "values": [
+          33064
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 33064,
+        "delta": -0.04836759371221744,
+        "values": [
+          33064
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_v128",
+    "unit": "allocs/op",
+    "base": 57,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 57,
+        "delta": 0,
+        "values": [
+          57
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 57,
+        "delta": 0,
+        "values": [
+          57
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 57,
+        "delta": 0,
+        "values": [
+          57
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_i8x16",
+    "unit": "ns/op",
+    "base": 338917,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 338917,
+        "delta": 0,
+        "values": [
+          338917
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 367641,
+        "delta": 8.475231398838057,
+        "values": [
+          367641
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 331563,
+        "delta": -2.169852795817262,
+        "values": [
+          331563
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_i8x16",
+    "unit": "B/op",
+    "base": 46328,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 46328,
+        "delta": 0,
+        "values": [
+          46328
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 39288,
+        "delta": -15.195993783457084,
+        "values": [
+          39288
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 44152,
+        "delta": -4.696943533068554,
+        "values": [
+          44152
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_i8x16",
+    "unit": "allocs/op",
+    "base": 66,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 66,
+        "delta": 0,
+        "values": [
+          66
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 66,
+        "delta": 0,
+        "values": [
+          66
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 66,
+        "delta": 0,
+        "values": [
+          66
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_i16x8",
+    "unit": "ns/op",
+    "base": 424938,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 424938,
+        "delta": 0,
+        "values": [
+          424938
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 371848,
+        "delta": -12.493587299794317,
+        "values": [
+          371848
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 372610,
+        "delta": -12.314267022483282,
+        "values": [
+          372610
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_i16x8",
+    "unit": "B/op",
+    "base": 42816,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 42816,
+        "delta": 0,
+        "values": [
+          42816
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 36544,
+        "delta": -14.648729446935727,
+        "values": [
+          36544
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 42688,
+        "delta": -0.2989536621823663,
+        "values": [
+          42688
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_i16x8",
+    "unit": "allocs/op",
+    "base": 51,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 51,
+        "delta": 0,
+        "values": [
+          51
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 51,
+        "delta": 0,
+        "values": [
+          51
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 51,
+        "delta": 0,
+        "values": [
+          51
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_i32x4",
+    "unit": "ns/op",
+    "base": 407355,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 407355,
+        "delta": 0,
+        "values": [
+          407355
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 470815,
+        "delta": 15.578549422493904,
+        "values": [
+          470815
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 336623,
+        "delta": -17.363724515471766,
+        "values": [
+          336623
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_i32x4",
+    "unit": "B/op",
+    "base": 37288,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 37288,
+        "delta": 0,
+        "values": [
+          37288
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 31016,
+        "delta": -16.820424801544732,
+        "values": [
+          31016
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 37160,
+        "delta": -0.3432739755417247,
+        "values": [
+          37160
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_i32x4",
+    "unit": "allocs/op",
+    "base": 51,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 51,
+        "delta": 0,
+        "values": [
+          51
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 51,
+        "delta": 0,
+        "values": [
+          51
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 51,
+        "delta": 0,
+        "values": [
+          51
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_i64x2",
+    "unit": "ns/op",
+    "base": 257323,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 257323,
+        "delta": 0,
+        "values": [
+          257323
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 309412,
+        "delta": 20.24265223085382,
+        "values": [
+          309412
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 277371,
+        "delta": 7.790986425620727,
+        "values": [
+          277371
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_i64x2",
+    "unit": "B/op",
+    "base": 40368,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 40368,
+        "delta": 0,
+        "values": [
+          40368
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 34160,
+        "delta": -15.378517637732859,
+        "values": [
+          34160
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 40304,
+        "delta": -0.15854141894570128,
+        "values": [
+          40304
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_i64x2",
+    "unit": "allocs/op",
+    "base": 50,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 50,
+        "delta": 0,
+        "values": [
+          50
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 50,
+        "delta": 0,
+        "values": [
+          50
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 50,
+        "delta": 0,
+        "values": [
+          50
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_f32x4",
+    "unit": "ns/op",
+    "base": 259187,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 259187,
+        "delta": 0,
+        "values": [
+          259187
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 285647,
+        "delta": 10.208845351039987,
+        "values": [
+          285647
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 250261,
+        "delta": -3.4438455632419873,
+        "values": [
+          250261
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_f32x4",
+    "unit": "B/op",
+    "base": 35752,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 35752,
+        "delta": 0,
+        "values": [
+          35752
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 29544,
+        "delta": -17.36406354889237,
+        "values": [
+          29544
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 35688,
+        "delta": -0.1790109644215665,
+        "values": [
+          35688
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_f32x4",
+    "unit": "allocs/op",
+    "base": 50,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 50,
+        "delta": 0,
+        "values": [
+          50
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 50,
+        "delta": 0,
+        "values": [
+          50
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 50,
+        "delta": 0,
+        "values": [
+          50
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_f64x2",
+    "unit": "ns/op",
+    "base": 423916,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 423916,
+        "delta": 0,
+        "values": [
+          423916
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 222758,
+        "delta": -47.45232546070448,
+        "values": [
+          222758
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 221066,
+        "delta": -47.85146113852744,
+        "values": [
+          221066
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_f64x2",
+    "unit": "B/op",
+    "base": 35704,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 35704,
+        "delta": 0,
+        "values": [
+          35704
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 29496,
+        "delta": -17.387407573381132,
+        "values": [
+          29496
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 35640,
+        "delta": -0.1792516244678466,
+        "values": [
+          35640
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_f64x2",
+    "unit": "allocs/op",
+    "base": 49,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 49,
+        "delta": 0,
+        "values": [
+          49
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 49,
+        "delta": 0,
+        "values": [
+          49
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 49,
+        "delta": 0,
+        "values": [
+          49
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_reduce",
+    "unit": "ns/op",
+    "base": 158067,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 158067,
+        "delta": 0,
+        "values": [
+          158067
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 96822,
+        "delta": -38.74622786539885,
+        "values": [
+          96822
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 89358,
+        "delta": -43.468276110763156,
+        "values": [
+          89358
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_reduce",
+    "unit": "B/op",
+    "base": 28552,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 28552,
+        "delta": 0,
+        "values": [
+          28552
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 25704,
+        "delta": -9.974782852339592,
+        "values": [
+          25704
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 28520,
+        "delta": -0.11207621182404148,
+        "values": [
+          28520
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkCompileCompact/isa_simd_reduce",
+    "unit": "allocs/op",
+    "base": 38,
+    "samples": {
+      "base": {
+        "n": 1,
+        "median": 38,
+        "delta": 0,
+        "values": [
+          38
+        ]
+      },
+      "bounded": {
+        "n": 1,
+        "median": 38,
+        "delta": 0,
+        "values": [
+          38
+        ]
+      },
+      "before": {
+        "n": 1,
+        "median": 38,
+        "delta": 0,
+        "values": [
+          38
+        ]
+      }
+    }
+  }
+]

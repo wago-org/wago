@@ -1,0 +1,167 @@
+[
+  {
+    "mode": "explicit",
+    "name": "BenchmarkCompileCompact/tiny",
+    "unit": "ns/op",
+    "base": 15691,
+    "candidate": 16347,
+    "delta": 4.180740551908735,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.04112554112554113
+  },
+  {
+    "mode": "explicit",
+    "name": "BenchmarkExec/qoi.qoi_decode_run",
+    "unit": "ns/op",
+    "base": 6789,
+    "candidate": 7036.5,
+    "delta": 3.6456031816173295,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.04112554112554113
+  },
+  {
+    "mode": "explicit",
+    "name": "BenchmarkExec/zstd.zstd_decompress_run",
+    "unit": "ns/op",
+    "base": 6252,
+    "candidate": 6508.5,
+    "delta": 4.102687140115169,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.015151515151515152
+  },
+  {
+    "mode": "explicit",
+    "name": "BenchmarkExec/isa_i32.add",
+    "unit": "ns/op",
+    "base": 13933,
+    "candidate": 14310.5,
+    "delta": 2.709394961601963,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.008658008658008658
+  },
+  {
+    "mode": "explicit",
+    "name": "BenchmarkExec/isa_simd_i32x4.extadd_pairwise_u",
+    "unit": "ns/op",
+    "base": 4311,
+    "candidate": 4468.5,
+    "delta": 3.653444676409179,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.04112554112554113
+  },
+  {
+    "mode": "explicit",
+    "name": "BenchmarkExec/isa_simd_i32x4.gt_u",
+    "unit": "ns/op",
+    "base": 5260,
+    "candidate": 5436,
+    "delta": 3.3460076045627396,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.02813852813852814
+  },
+  {
+    "mode": "explicit",
+    "name": "BenchmarkExec/isa_simd_f32x4.convert_i32x4_s",
+    "unit": "ns/op",
+    "base": 2616,
+    "candidate": 2713,
+    "delta": 3.7079510703363905,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.015151515151515152
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkExecParallel/process/float.run",
+    "unit": "ns/op",
+    "base": 4454,
+    "candidate": 4524.5,
+    "delta": 1.5828468792097095,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.04112554112554113
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkExecParallel/process/isa_i32.xor",
+    "unit": "ns/op",
+    "base": 14850.5,
+    "candidate": 15098.5,
+    "delta": 1.6699774418369673,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.04112554112554113
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkExecParallel/independent/isa_f64.floor",
+    "unit": "ns/op",
+    "base": 5494.5,
+    "candidate": 5634.5,
+    "delta": 2.548002548002537,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.04112554112554113
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkExecParallel/process/isa_mem.load_i32_stride",
+    "unit": "ns/op",
+    "base": 10432.5,
+    "candidate": 10771.5,
+    "delta": 3.249460819554284,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.004329004329004329
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkExecParallel/process/isa_simd_i16x8.extadd_pairwise_s",
+    "unit": "ns/op",
+    "base": 2989,
+    "candidate": 3060.5,
+    "delta": 2.392104382736693,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.04112554112554113
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkExecParallel/process/isa_simd_i16x8.mul",
+    "unit": "ns/op",
+    "base": 6005.5,
+    "candidate": 6130,
+    "delta": 2.073099658646238,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.025974025974025976
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkInstantiate/swar-pack-parse",
+    "unit": "ns/op",
+    "base": 1951,
+    "candidate": 2005,
+    "delta": 2.767811378780105,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.04112554112554113
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkPluginExec/wasm3",
+    "unit": "ns/op",
+    "base": 22318839.5,
+    "candidate": 23792100,
+    "delta": 6.6009726894626475,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "p": 0.04112554112554113
+  }
+]

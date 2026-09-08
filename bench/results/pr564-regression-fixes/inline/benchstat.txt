@@ -1,0 +1,37 @@
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+                                              │ /tmp/wago-pr564-regressions-zHTLww/inline/base.bench │ /tmp/wago-pr564-regressions-zHTLww/inline/inline.bench │ /tmp/wago-pr564-regressions-zHTLww/inline/before.bench │
+                                              │                        sec/op                        │             sec/op               vs base               │             sec/op               vs base               │
+ExecParallel/process/swar-pack-parse.parse4-8                                          13.780n ± 35%                      3.461n ± 24%  -74.89% (p=0.002 n=6)                     13.490n ± 30%        ~ (p=0.699 n=6)
+ExecParallel/independent/fib_iter.fib-8                                                16.230n ±  9%                      6.057n ± 14%  -62.68% (p=0.002 n=6)                     19.050n ± 18%        ~ (p=0.089 n=6)
+ExecParallel/process/xjb-mulhi.mulhi-8                                                 15.465n ±  6%                      3.752n ± 49%  -75.74% (p=0.002 n=6)                     16.065n ± 14%        ~ (p=0.589 n=6)
+ExecGlobalGet_wago-8                                                                    88.97n ± 10%                      96.75n ± 14%        ~ (p=0.180 n=6)                     104.10n ± 38%  +17.01% (p=0.002 n=6)
+ExecParallel/independent/isa_simd_i64x2.shl-8                                           183.5n ± 20%                      183.2n ± 10%        ~ (p=0.699 n=6)                      198.3n ± 14%        ~ (p=0.240 n=6)
+Instantiate/zstd-8                                                                      12.97µ ± 27%                      14.27µ ± 19%        ~ (p=0.699 n=6)                      14.42µ ± 36%        ~ (p=0.180 n=6)
+geomean                                                                                 94.95n                            52.05n        -45.18%                                    103.5n         +9.00%
+
+                                              │ /tmp/wago-pr564-regressions-zHTLww/inline/base.bench │ /tmp/wago-pr564-regressions-zHTLww/inline/inline.bench │ /tmp/wago-pr564-regressions-zHTLww/inline/before.bench │
+                                              │                         B/op                         │              B/op               vs base                │              B/op               vs base                │
+ExecParallel/process/swar-pack-parse.parse4-8                                           0.000 ± 0%                         0.000 ± 0%       ~ (p=1.000 n=6) ¹                       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecParallel/independent/fib_iter.fib-8                                                 0.000 ± 0%                         0.000 ± 0%       ~ (p=1.000 n=6) ¹                       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecParallel/process/xjb-mulhi.mulhi-8                                                  0.000 ± 0%                         0.000 ± 0%       ~ (p=1.000 n=6) ¹                       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecGlobalGet_wago-8                                                                    0.000 ± 0%                         0.000 ± 0%       ~ (p=1.000 n=6) ¹                       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecParallel/independent/isa_simd_i64x2.shl-8                                           0.000 ± 0%                         0.000 ± 0%       ~ (p=1.000 n=6) ¹                       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Instantiate/zstd-8                                                                    1.648Ki ± 0%                       1.641Ki ± 0%  -0.47% (p=0.002 n=6)                       1.648Ki ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                            ²                                   -0.08%               ²                                   +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                              │ /tmp/wago-pr564-regressions-zHTLww/inline/base.bench │ /tmp/wago-pr564-regressions-zHTLww/inline/inline.bench │ /tmp/wago-pr564-regressions-zHTLww/inline/before.bench │
+                                              │                      allocs/op                       │           allocs/op             vs base                │           allocs/op             vs base                │
+ExecParallel/process/swar-pack-parse.parse4-8                                           0.000 ± 0%                         0.000 ± 0%       ~ (p=1.000 n=6) ¹                       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecParallel/independent/fib_iter.fib-8                                                 0.000 ± 0%                         0.000 ± 0%       ~ (p=1.000 n=6) ¹                       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecParallel/process/xjb-mulhi.mulhi-8                                                  0.000 ± 0%                         0.000 ± 0%       ~ (p=1.000 n=6) ¹                       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecGlobalGet_wago-8                                                                    0.000 ± 0%                         0.000 ± 0%       ~ (p=1.000 n=6) ¹                       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+ExecParallel/independent/isa_simd_i64x2.shl-8                                           0.000 ± 0%                         0.000 ± 0%       ~ (p=1.000 n=6) ¹                       0.000 ± 0%       ~ (p=1.000 n=6) ¹
+Instantiate/zstd-8                                                                      13.00 ± 0%                         12.00 ± 0%  -7.69% (p=0.002 n=6)                         13.00 ± 0%       ~ (p=1.000 n=6) ¹
+geomean                                                                                            ²                                   -1.33%               ²                                   +0.00%               ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

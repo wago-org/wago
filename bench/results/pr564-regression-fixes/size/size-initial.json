@@ -1,0 +1,42 @@
+[
+  {
+    "name": "manager",
+    "cmd": "/home/jtenner/.local/share/mise/installs/go/1.22.12/bin/go",
+    "args": [
+      "build",
+      "-buildvcs=false",
+      "-trimpath",
+      "-ldflags=-s -w -X main.version=0.0.0",
+      "-o",
+      "/tmp/wago-pr564-regressions-zHTLww/size-manager",
+      "./cli/wago"
+    ],
+    "code": 0,
+    "seconds": 6.425,
+    "baseBytes": 7884952,
+    "beforeBytes": 7897240,
+    "bytes": 7897240,
+    "budget": 9000000
+  },
+  {
+    "name": "runtime-standard",
+    "cmd": "/home/jtenner/.local/share/mise/installs/go/1.22.12/bin/go",
+    "args": [
+      "build",
+      "-buildvcs=false",
+      "-trimpath",
+      "-ldflags=-s -w -X main.version=0.0.0",
+      "-tags",
+      "wago_runtime",
+      "-o",
+      "/tmp/wago-pr564-regressions-zHTLww/size-runtime-standard",
+      "./cli/wago"
+    ],
+    "code": 0,
+    "seconds": 0.807,
+    "baseBytes": 8077464,
+    "beforeBytes": 7938200,
+    "bytes": 7938200,
+    "budget": 8870000
+  }
+]

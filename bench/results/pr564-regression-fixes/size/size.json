@@ -1,0 +1,87 @@
+[
+  {
+    "name": "manager",
+    "cmd": "/home/jtenner/.local/share/mise/installs/go/1.22.12/bin/go",
+    "args": [
+      "build",
+      "-buildvcs=false",
+      "-trimpath",
+      "-ldflags=-s -w -X main.version=0.0.0",
+      "-o",
+      "/tmp/wago-pr564-regressions-zHTLww/size-manager",
+      "./cli/wago"
+    ],
+    "code": 0,
+    "seconds": 0.109,
+    "baseBytes": 7884952,
+    "beforeBytes": 7897240,
+    "bytes": 7897240,
+    "budget": 9000000
+  },
+  {
+    "name": "runtime-standard",
+    "cmd": "/home/jtenner/.local/share/mise/installs/go/1.22.12/bin/go",
+    "args": [
+      "build",
+      "-buildvcs=false",
+      "-trimpath",
+      "-ldflags=-s -w -X main.version=0.0.0",
+      "-tags",
+      "wago_runtime",
+      "-o",
+      "/tmp/wago-pr564-regressions-zHTLww/size-runtime-standard",
+      "./cli/wago"
+    ],
+    "code": 0,
+    "seconds": 0.059,
+    "baseBytes": 8077464,
+    "beforeBytes": 7938200,
+    "bytes": 7938200,
+    "budget": 8870000
+  },
+  {
+    "name": "runtime-minimal",
+    "cmd": "/home/jtenner/.local/share/mise/installs/go/1.22.12/bin/go",
+    "args": [
+      "build",
+      "-buildvcs=false",
+      "-trimpath",
+      "-ldflags=-s -w -X main.version=0.0.0",
+      "-tags",
+      "wago_runtime,wago_minimal",
+      "-o",
+      "/tmp/wago-pr564-regressions-zHTLww/size-runtime-minimal",
+      "./cli/wago"
+    ],
+    "code": 0,
+    "seconds": 0.649,
+    "baseBytes": 7762072,
+    "beforeBytes": 7618712,
+    "bytes": 7618712,
+    "budget": 8560000
+  },
+  {
+    "name": "runtime-minimal-tiny",
+    "cmd": "/tmp/wago-pr564-HbN430/pinned-tinygo/bin/tinygo",
+    "args": [
+      "build",
+      "-scheduler=tasks",
+      "-no-debug",
+      "-opt=z",
+      "-gc=conservative",
+      "-ldflags",
+      "-X main.version=0.0.0",
+      "-tags",
+      "wago_runtime,wago_lean,wago_minimal",
+      "-o",
+      "/tmp/wago-pr564-regressions-zHTLww/size-runtime-minimal-tiny",
+      "./cli/wago"
+    ],
+    "code": 0,
+    "seconds": 75.083,
+    "baseBytes": 2229056,
+    "beforeBytes": 2245920,
+    "bytes": 2246016,
+    "budget": 2317000
+  }
+]

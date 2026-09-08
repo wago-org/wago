@@ -1,0 +1,25 @@
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics
+                                                │ /tmp/wago-pr564-regressions-zHTLww/remaining-triples/base.bench │ /tmp/wago-pr564-regressions-zHTLww/remaining-triples/final.bench │ /tmp/wago-pr564-regressions-zHTLww/remaining-triples/before.bench │
+                                                │                             sec/op                              │                  sec/op                    vs base               │                   sec/op                    vs base               │
+ExecParallel/process/float.run-8                                                                     4.518µ ±  1%                                4.527µ ±  0%       ~ (p=0.183 n=12)                                 4.519µ ±  0%       ~ (p=0.579 n=12)
+ExecParallel/process/isa_bulk_mem.copy_fwd_64-8                                                      380.6n ± 11%                                360.9n ± 15%       ~ (p=0.887 n=12)                                 347.1n ± 15%       ~ (p=0.160 n=12)
+geomean                                                                                              1.311µ                                      1.278µ        -2.53%                                                1.252µ        -4.49%
+
+                                                │ /tmp/wago-pr564-regressions-zHTLww/remaining-triples/base.bench │ /tmp/wago-pr564-regressions-zHTLww/remaining-triples/final.bench │ /tmp/wago-pr564-regressions-zHTLww/remaining-triples/before.bench │
+                                                │                              B/op                               │                  B/op                    vs base                 │                   B/op                    vs base                 │
+ExecParallel/process/float.run-8                                                                     0.000 ± 0%                                  0.000 ± 0%       ~ (p=1.000 n=12) ¹                                 0.000 ± 0%       ~ (p=1.000 n=12) ¹
+ExecParallel/process/isa_bulk_mem.copy_fwd_64-8                                                      0.000 ± 0%                                  0.000 ± 0%       ~ (p=1.000 n=12) ¹                                 0.000 ± 0%       ~ (p=1.000 n=12) ¹
+geomean                                                                                                         ²                                            +0.00%                ²                                             +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean
+
+                                                │ /tmp/wago-pr564-regressions-zHTLww/remaining-triples/base.bench │ /tmp/wago-pr564-regressions-zHTLww/remaining-triples/final.bench │ /tmp/wago-pr564-regressions-zHTLww/remaining-triples/before.bench │
+                                                │                            allocs/op                            │                allocs/op                 vs base                 │                allocs/op                  vs base                 │
+ExecParallel/process/float.run-8                                                                     0.000 ± 0%                                  0.000 ± 0%       ~ (p=1.000 n=12) ¹                                 0.000 ± 0%       ~ (p=1.000 n=12) ¹
+ExecParallel/process/isa_bulk_mem.copy_fwd_64-8                                                      0.000 ± 0%                                  0.000 ± 0%       ~ (p=1.000 n=12) ¹                                 0.000 ± 0%       ~ (p=1.000 n=12) ¹
+geomean                                                                                                         ²                                            +0.00%                ²                                             +0.00%                ²
+¹ all samples are equal
+² summaries must be >0 to compute geomean

@@ -1,5 +1,28 @@
 # PR #564 correctness and performance qualification
 
+## Follow-up regression fixes — 2026-09-08
+
+The latest production code is `d006d3d10`. Small invocation results now use
+Go-owned inline storage, and small compiler arenas and sparse hints use bounded
+capacity rules. Validation, feature admission, bounds, native-entry, reference,
+and trap checks are unchanged by these follow-up fixes.
+
+The full 1,020-process comparison passed. The three large parallel-call cases
+are 65–78% faster than pinned main in focused repeats. Full-pipeline compilation
+is about 24–25% faster across the non-ISA corpus. All 37 new timing warnings were
+repeated. One guard-mode float case was +1.22% in a 500 ms repeat, then +0.20%
+without a clear statistical difference in longer samples. It remains a small
+uncertainty, not a claimed fix. Some memory and binary-size costs also remain.
+
+Full native and guard source tests, focused race checks, and the full emulated
+ARM64 backend suite pass. Native ARM64 timing and the earlier platform limits
+are not cleared. See the [follow-up report and raw numbers](bench/results/pr564-regression-fixes/README.md).
+
+## Initial qualification — production code `16124d763`
+
+The following preserves the initial results. Its six timing regressions and
+arena figures describe that checkpoint, not the follow-up implementation.
+
 The correctness fixes are local on `fix/pr564-correctness-performance`.
 No changes were pushed or posted to the PR.
 

@@ -1,0 +1,830 @@
+[
+  {
+    "name": "BenchmarkExecParallel/process/swar-pack-parse.parse4",
+    "unit": "ns/op",
+    "base": 13.78,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 13.78,
+        "delta": 0,
+        "values": [
+          8.997,
+          11.27,
+          16.72,
+          10.16,
+          17.05,
+          16.29
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 3.4605,
+        "delta": -74.88751814223512,
+        "values": [
+          4.287,
+          3.298,
+          3.498,
+          3.52,
+          3.423,
+          3.298
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 13.49,
+        "delta": -2.1044992743105895,
+        "values": [
+          9.422,
+          10.11,
+          11.13,
+          16.83,
+          16.13,
+          15.85
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/process/swar-pack-parse.parse4",
+    "unit": "B/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/process/swar-pack-parse.parse4",
+    "unit": "allocs/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/independent/fib_iter.fib",
+    "unit": "ns/op",
+    "base": 16.23,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 16.23,
+        "delta": 0,
+        "values": [
+          17.65,
+          16.3,
+          16.16,
+          15.66,
+          15.87,
+          16.63
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 6.057,
+        "delta": -62.68022181146026,
+        "values": [
+          6.176,
+          6.31,
+          5.577,
+          5.61,
+          6.877,
+          5.938
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 19.05,
+        "delta": 17.375231053604434,
+        "values": [
+          19.21,
+          19.47,
+          16.7,
+          19.47,
+          18.89,
+          15.55
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/independent/fib_iter.fib",
+    "unit": "B/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/independent/fib_iter.fib",
+    "unit": "allocs/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/process/xjb-mulhi.mulhi",
+    "unit": "ns/op",
+    "base": 15.465,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 15.465,
+        "delta": 0,
+        "values": [
+          15.43,
+          14.58,
+          14.94,
+          16,
+          15.5,
+          16.27
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 3.7515,
+        "delta": -75.7419980601358,
+        "values": [
+          3.767,
+          5.607,
+          3.736,
+          3.566,
+          3.629,
+          3.864
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 16.064999999999998,
+        "delta": 3.879728419010653,
+        "values": [
+          17.69,
+          17.4,
+          14.3,
+          13.88,
+          16.56,
+          15.57
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/process/xjb-mulhi.mulhi",
+    "unit": "B/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/process/xjb-mulhi.mulhi",
+    "unit": "allocs/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecGlobalGet_wago",
+    "unit": "ns/op",
+    "base": 88.97,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 88.97,
+        "delta": 0,
+        "values": [
+          85.88,
+          87.65,
+          90.29,
+          93.61,
+          98.16,
+          87.04
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 96.755,
+        "delta": 8.750140496796677,
+        "values": [
+          83.58,
+          95.8,
+          96.91,
+          103.2,
+          96.6,
+          106.7
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 104.1,
+        "delta": 17.005732269304264,
+        "values": [
+          113.2,
+          108.1,
+          100.1,
+          99.31,
+          143.9,
+          98.17
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecGlobalGet_wago",
+    "unit": "B/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecGlobalGet_wago",
+    "unit": "allocs/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/independent/isa_simd_i64x2.shl",
+    "unit": "ns/op",
+    "base": 183.55,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 183.55,
+        "delta": 0,
+        "values": [
+          216.7,
+          179.6,
+          164,
+          182.7,
+          184.4,
+          220.2
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 183.2,
+        "delta": -0.19068373740126487,
+        "values": [
+          187.1,
+          200.5,
+          165.2,
+          198.5,
+          178,
+          179.3
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 198.3,
+        "delta": 8.035957504767088,
+        "values": [
+          191.2,
+          191.1,
+          224.8,
+          205.4,
+          226.4,
+          180.5
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/independent/isa_simd_i64x2.shl",
+    "unit": "B/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkExecParallel/independent/isa_simd_i64x2.shl",
+    "unit": "allocs/op",
+    "base": 0,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 0,
+        "delta": 0,
+        "values": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkInstantiate/zstd",
+    "unit": "ns/op",
+    "base": 12972.5,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 12972.5,
+        "delta": 0,
+        "values": [
+          11467,
+          12585,
+          14152,
+          12517,
+          16495,
+          13360
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 14266,
+        "delta": 9.971092696087869,
+        "values": [
+          14764,
+          12144,
+          11556,
+          15188,
+          13768,
+          15085
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 14418.5,
+        "delta": 11.146656388514176,
+        "values": [
+          14559,
+          17417,
+          14278,
+          11700,
+          19670,
+          13924
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkInstantiate/zstd",
+    "unit": "B/op",
+    "base": 1688,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 1688,
+        "delta": 0,
+        "values": [
+          1688,
+          1688,
+          1688,
+          1688,
+          1688,
+          1688
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 1680,
+        "delta": -0.4739336492891044,
+        "values": [
+          1680,
+          1680,
+          1680,
+          1680,
+          1680,
+          1680
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 1688,
+        "delta": 0,
+        "values": [
+          1688,
+          1688,
+          1688,
+          1688,
+          1688,
+          1688
+        ]
+      }
+    }
+  },
+  {
+    "name": "BenchmarkInstantiate/zstd",
+    "unit": "allocs/op",
+    "base": 13,
+    "samples": {
+      "base": {
+        "n": 6,
+        "median": 13,
+        "delta": 0,
+        "values": [
+          13,
+          13,
+          13,
+          13,
+          13,
+          13
+        ]
+      },
+      "inline": {
+        "n": 6,
+        "median": 12,
+        "delta": -7.692307692307687,
+        "values": [
+          12,
+          12,
+          12,
+          12,
+          12,
+          12
+        ]
+      },
+      "before": {
+        "n": 6,
+        "median": 13,
+        "delta": 0,
+        "values": [
+          13,
+          13,
+          13,
+          13,
+          13,
+          13
+        ]
+      }
+    }
+  }
+]
