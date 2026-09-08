@@ -3,7 +3,7 @@
 ╚╩╝ ╩ ╩ ╚═╝ ╚═╝</pre></h1>
 
 <p align="center">
-  A fast, compact WebAssembly runtime for Go
+  a wonderfully quick, compact, and extensible webassembly runtime for go
 </p>
 
 <p align="center">
@@ -14,19 +14,11 @@
 </p>
 
 <p align="center">
-  <a href="https://docs.wago.sh">Documentation</a> ·
-  <a href="https://docs.wago.sh/getting-started">Getting started</a> ·
-  <a href="https://plugins.wago.sh">Plugins</a> ·
-  <a href="https://wago.sh/#performance">Benchmarks</a>
+  <a href="https://docs.wago.sh">documentation</a> ·
+  <a href="https://docs.wago.sh/getting-started">getting started</a> ·
+  <a href="https://plugins.wago.sh">plugins</a> ·
+  <a href="https://wago.sh/#performance">benchmarks</a>
 </p>
-
-Wago is a WebAssembly runtime for Go. It compiles Wasm to native machine code
-and runs it without cgo, a C toolchain, or an interpreter.
-
-Use the CLI to run `.wasm` files, save precompiled `.wago` artifacts, or create
-standalone executables. Use the Go package to embed the same runtime in an
-application. Plugins provide host integrations such as WASI and the Component
-Model.
 
 > [!NOTE]
 > Wago is still pre-release. APIs and `.wago` artifacts may change.
@@ -84,7 +76,7 @@ wago fib.wago 30
 Or build a standalone executable:
 
 ```sh
-wago compile --invoke fib fib.wasm -o fib
+wago compile fib.wasm -o fib
 ./fib 30
 ```
 
