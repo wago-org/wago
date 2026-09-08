@@ -6,11 +6,12 @@ import (
 	"io"
 	"math/bits"
 	"sort"
+	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const (
@@ -183,13 +184,16 @@ func readArtifactUvar(r *artifactCountingReader) (uint64, error) {
 	return 0, fmt.Errorf("section length overflows u64")
 }
 
-func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded Compiled, image *coreruntime.CodeBuffer, read int64, err error) {
+func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded *Compiled, image *coreruntime.CodeBuffer, read int64, err error) {
 	if source == nil {
 		return decoded, nil, 0, fmt.Errorf("wago: compiled artifact reader is nil")
 	}
-	if limits.MaxCodeBytes < 0 || limits.MaxMetadataBytes < 0 {
+	if limits.MaxCodeBytes < 0 || limits.MaxMetadataBytes < 0 || limits.MaxDecodedBytes < 0 {
 		return decoded, nil, 0, fmt.Errorf("wago: compiled artifact limits must be non-negative")
 	}
+	// Return the staging owner itself: atomic cache publication makes this
+	// value escape, so returning it by value would allocate another copy.
+	decoded = &Compiled{}
 	r := &artifactCountingReader{r: source}
 	defer func() { read = r.n }()
 	var header [6]byte
@@ -247,13 +251,18 @@ func readCompiledFrom(source io.Reader, limits ArtifactLimits) (decoded Compiled
 		_ = image.Close()
 		return decoded, nil, 0, err
 	}
+	budget := newArtifactDecodeBudget(limits.MaxDecodedBytes)
+	if err := budget.charge(uint64(metadataLen), 1); err != nil {
+		_ = image.Close()
+		return decoded, nil, 0, err
+	}
 	metadata := make([]byte, metadataLen)
 	if _, err := io.ReadFull(r, metadata); err != nil {
 		_ = image.Close()
 		return decoded, nil, 0, fmt.Errorf("truncated metadata section: %w", err)
 	}
 	decoded.code = code
-	if err := unmarshalCompiledMetadata(&decoded, metadata); err != nil {
+	if err := unmarshalCompiledMetadataBudget(decoded, metadata, budget); err != nil {
 		_ = image.Close()
 		return decoded, nil, 0, err
 	}
@@ -628,8 +637,7 @@ func (w *compiledWriter) typeDescriptors(v []DefinedTypeDescriptor) error {
 func (w *compiledWriter) funcSigs(v []FuncSig, types []DefinedTypeDescriptor) error {
 	w.uvar(uint64(len(v)))
 	for i, sig := range v {
-		params, results, err := exactFuncSignature(sig, types)
-		if err != nil {
+		if err := validateFuncSignature(sig, types); err != nil {
 			return fmt.Errorf("function signature %d: %w", i, err)
 		}
 		w.bool(sig.HasTypeIndex)
@@ -637,8 +645,13 @@ func (w *compiledWriter) funcSigs(v []FuncSig, types []DefinedTypeDescriptor) er
 			w.u32(sig.TypeIndex)
 			continue
 		}
-		w.valueTypes(params)
-		w.valueTypes(results)
+		for _, values := range [][]ValType{sig.Params, sig.Results} {
+			w.uvar(uint64(len(values)))
+			for _, value := range values {
+				descriptor, _ := valueTypeDescriptorFromValType(value) // validated above
+				w.valueType(descriptor)
+			}
+		}
 	}
 	return nil
 }
@@ -840,7 +853,18 @@ func unmarshalCompiled(c *Compiled, data []byte) error {
 }
 
 func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
-	r := compiledReader{data: data}
+	budget := newArtifactDecodeBudget(0)
+	if err := budget.charge(uint64(len(data)), 1); err != nil {
+		return err
+	}
+	return unmarshalCompiledMetadataBudget(c, data, budget)
+}
+
+func unmarshalCompiledMetadataBudget(c *Compiled, data []byte, budget *artifactDecodeBudget) error {
+	if err := budget.charge(1, 16384); err != nil {
+		return err
+	}
+	r := compiledReader{data: data, budget: budget}
 	var err error
 	c.Entry, err = r.intSlice()
 	if err != nil {
@@ -848,6 +872,9 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 	}
 	c.InternalEntry, err = r.intSlice()
 	if err != nil {
+		return err
+	}
+	if err := c.validateInternalEntries(true); err != nil {
 		return err
 	}
 	n, err := r.uvar()
@@ -1053,7 +1080,10 @@ func unmarshalCompiledMetadata(c *Compiled, data []byte) error {
 	return nil
 }
 
-type compiledReader struct{ data []byte }
+type compiledReader struct {
+	data   []byte
+	budget *artifactDecodeBudget
+}
 
 func (r *compiledReader) requiredSection(want byte, label string) ([]byte, error) {
 	id, err := r.u8()
@@ -1197,11 +1227,21 @@ func (r *compiledReader) countMax(label string, max int) (int, error) {
 	}
 	return int(n), nil
 }
-func (r *compiledReader) countElements(label string, minElemBytes int) (int, error) {
+func (r *compiledReader) countElements(label string, minElemBytes int, decodedElemBytes uintptr) (int, error) {
 	if minElemBytes <= 0 {
 		return 0, fmt.Errorf("%s count has invalid element size %d", label, minElemBytes)
 	}
-	return r.countMax(label, len(r.data)/minElemBytes)
+	n, err := r.countMax(label, len(r.data)/minElemBytes)
+	if err != nil {
+		return 0, err
+	}
+	// Charge the actual container type, including its frozen copy and bounded
+	// validation/capacity overhead. Callers add explicit map/interner overhead;
+	// nested vectors and byte payloads are charged independently.
+	if err := r.reserve(uint64(n), uint64(decodedElemBytes)*artifactCollectionCopies); err != nil {
+		return 0, fmt.Errorf("%s: %w", label, err)
+	}
+	return n, nil
 }
 func (r *compiledReader) countBytes(label string) (int, error) {
 	return r.countMax(label, len(r.data))
@@ -1214,6 +1254,9 @@ func (r *compiledReader) bytesLabel(label string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := r.reserve(uint64(n), 2); err != nil {
+		return nil, err
+	}
 	return r.take(n)
 }
 func (r *compiledReader) str() (string, error) {
@@ -1224,10 +1267,13 @@ func (r *compiledReader) strLabel(label string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if err := r.reserve(uint64(len(b)), 1); err != nil {
+		return "", err
+	}
 	return string(b), nil
 }
 func (r *compiledReader) stringSlice() ([]string, error) {
-	n, err := r.countElements("string slice", minStringBytes)
+	n, err := r.countElements("string slice", minStringBytes, unsafe.Sizeof(""))
 	if err != nil {
 		return nil, err
 	}
@@ -1249,7 +1295,7 @@ func (r *compiledReader) importDirectoryWithAllocationLimit(want, allocationLimi
 	// Each entry needs at least an empty string length and one module-boundary
 	// varint in the remainder. This also rejects an impossible count before any
 	// decoded directory allocation.
-	n, err := r.countElements("function imports", minStringBytes+minVarintBytes)
+	n, err := r.countElements("function imports", minStringBytes+minVarintBytes, unsafe.Sizeof("")+unsafe.Sizeof(uint64(0)))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1278,7 +1324,7 @@ func (r *compiledReader) importDirectoryWithAllocationLimit(want, allocationLimi
 	return keys, ends, nil
 }
 func (r *compiledReader) intSlice() ([]int, error) {
-	n, err := r.countElements("int slice", minVarintBytes)
+	n, err := r.countElements("int slice", minVarintBytes, unsafe.Sizeof(int(0)))
 	if err != nil {
 		return nil, err
 	}
@@ -1292,7 +1338,7 @@ func (r *compiledReader) intSlice() ([]int, error) {
 	return out, nil
 }
 func (r *compiledReader) u64Slice() ([]uint64, error) {
-	n, err := r.countElements("u64 slice", 8)
+	n, err := r.countElements("u64 slice", 8, unsafe.Sizeof(uint64(0)))
 	if err != nil {
 		return nil, err
 	}
@@ -1306,7 +1352,7 @@ func (r *compiledReader) u64Slice() ([]uint64, error) {
 	return out, nil
 }
 func (r *compiledReader) tags(c *Compiled) error {
-	n, err := r.countElements("exception tags", minTagBytes)
+	n, err := r.countElements("exception tags", minTagBytes, unsafe.Sizeof(compiledTagDef{})+unsafe.Sizeof(uint64(0)))
 	if err != nil {
 		return err
 	}
@@ -1348,7 +1394,7 @@ func (r *compiledReader) tags(c *Compiled) error {
 }
 
 func (r *compiledReader) memories(c *Compiled) error {
-	n, err := r.countElements("memories", 7)
+	n, err := r.countElements("memories", 7, unsafe.Sizeof(memoryDef{})+unsafe.Sizeof(uint64(0)))
 	if err != nil {
 		return err
 	}
@@ -1411,7 +1457,7 @@ func (r *compiledReader) memories(c *Compiled) error {
 }
 
 func (r *compiledReader) stringIntMap() (map[string]int, error) {
-	n, err := r.countElements("string-int map", minStringIntMapBytes)
+	n, err := r.countElements("string-int map", minStringIntMapBytes, unsafe.Sizeof("")+unsafe.Sizeof(int(0))+16)
 	if err != nil {
 		return nil, err
 	}
@@ -1430,7 +1476,7 @@ func (r *compiledReader) stringIntMap() (map[string]int, error) {
 	return out, nil
 }
 func (r *compiledReader) nameMap(label string) (wasm.NameMap, error) {
-	n, err := r.countElements(label, minNameAssocBytes)
+	n, err := r.countElements(label, minNameAssocBytes, unsafe.Sizeof(wasm.NameAssoc{}))
 	if err != nil {
 		return nil, err
 	}
@@ -1448,7 +1494,7 @@ func (r *compiledReader) nameMap(label string) (wasm.NameMap, error) {
 	return out, nil
 }
 func (r *compiledReader) indirectNameMap(label, nestedLabel string) (wasm.IndirectNameMap, error) {
-	n, err := r.countElements(label, minNameAssocBytes)
+	n, err := r.countElements(label, minNameAssocBytes, unsafe.Sizeof(wasm.IndirectNameAssoc{}))
 	if err != nil {
 		return nil, err
 	}
@@ -1588,7 +1634,7 @@ func (r *compiledReader) valueType() (ValueTypeDescriptor, error) {
 }
 
 func (r *compiledReader) valueTypes(label string) ([]ValueTypeDescriptor, error) {
-	n, err := r.countElements(label, minVarintBytes)
+	n, err := r.countElements(label, minVarintBytes, unsafe.Sizeof(ValueTypeDescriptor{}))
 	if err != nil {
 		return nil, err
 	}
@@ -1625,7 +1671,7 @@ func (r *compiledReader) fieldType() (FieldTypeDescriptor, error) {
 }
 
 func (r *compiledReader) typeDescriptors() ([]DefinedTypeDescriptor, error) {
-	n, err := r.countElements("defined types", minDefinedTypeBytes)
+	n, err := r.countElements("defined types", minDefinedTypeBytes, unsafe.Sizeof(DefinedTypeDescriptor{}))
 	if err != nil {
 		return nil, err
 	}
@@ -1638,7 +1684,7 @@ func (r *compiledReader) typeDescriptors() ([]DefinedTypeDescriptor, error) {
 		if d.Final, err = r.bool(); err != nil {
 			return nil, err
 		}
-		sn, err := r.countElements("supertypes", minU32Bytes)
+		sn, err := r.countElements("supertypes", minU32Bytes, unsafe.Sizeof(uint32(0)))
 		if err != nil {
 			return nil, err
 		}
@@ -1680,7 +1726,7 @@ func (r *compiledReader) typeDescriptors() ([]DefinedTypeDescriptor, error) {
 				return nil, err
 			}
 		case CompositeTypeStruct:
-			fn, err := r.countElements("struct fields", minFieldTypeBytes)
+			fn, err := r.countElements("struct fields", minFieldTypeBytes, unsafe.Sizeof(FieldTypeDescriptor{}))
 			if err != nil {
 				return nil, err
 			}
@@ -1705,7 +1751,7 @@ func (r *compiledReader) typeDescriptors() ([]DefinedTypeDescriptor, error) {
 }
 
 func (r *compiledReader) funcSigs(types []DefinedTypeDescriptor) ([]FuncSig, error) {
-	n, err := r.countElements("function signatures", minFuncSigBytes)
+	n, err := r.countElements("function signatures", minFuncSigBytes, unsafe.Sizeof(FuncSig{}))
 	if err != nil {
 		return nil, err
 	}
@@ -1727,9 +1773,15 @@ func (r *compiledReader) funcSigs(types []DefinedTypeDescriptor) ([]FuncSig, err
 				return nil, fmt.Errorf("function signature %d type index %d is not a function", i, out[i].TypeIndex)
 			}
 			params, results := types[out[i].TypeIndex].Params, types[out[i].TypeIndex].Results
+			if err := r.reserve(uint64(len(params)), 16); err != nil {
+				return nil, err
+			}
 			out[i].Params, err = valTypesFromDescriptors(params, types)
 			if err != nil {
 				return nil, fmt.Errorf("function signature %d params: %w", i, err)
+			}
+			if err := r.reserve(uint64(len(results)), 16); err != nil {
+				return nil, err
 			}
 			out[i].Results, err = valTypesFromDescriptors(results, types)
 			if err != nil {
@@ -1741,12 +1793,18 @@ func (r *compiledReader) funcSigs(types []DefinedTypeDescriptor) ([]FuncSig, err
 		if err != nil {
 			return nil, err
 		}
+		if err := r.reserve(uint64(len(params)), 16); err != nil {
+			return nil, err
+		}
 		out[i].Params, err = valTypesFromDescriptors(params, types)
 		if err != nil {
 			return nil, fmt.Errorf("function signature %d params: %w", i, err)
 		}
 		results, err := r.valueTypes("function results")
 		if err != nil {
+			return nil, err
+		}
+		if err := r.reserve(uint64(len(results)), 16); err != nil {
 			return nil, err
 		}
 		out[i].Results, err = valTypesFromDescriptors(results, types)
@@ -1779,7 +1837,7 @@ func (r *compiledReader) offset() (OffsetInit, error) {
 	return OffsetInit{Base: base, HasGlobal: has, Global: glob, Expr: expr}, nil
 }
 func (r *compiledReader) elems(pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) ([]ElemInit, error) {
-	n, err := r.countElements("element segments", minElemInitBytes)
+	n, err := r.countElements("element segments", minElemInitBytes, unsafe.Sizeof(ElemInit{}))
 	if err != nil {
 		return nil, err
 	}
@@ -1805,7 +1863,7 @@ func (r *compiledReader) elems(pool []ValueTypeDescriptor, types []DefinedTypeDe
 		if err != nil {
 			return nil, err
 		}
-		vn, err := r.countElements("element values", 1)
+		vn, err := r.countElements("element values", 1, unsafe.Sizeof(RefInit{}))
 		if err != nil {
 			return nil, err
 		}
@@ -1848,7 +1906,7 @@ func (r *compiledReader) elems(pool []ValueTypeDescriptor, types []DefinedTypeDe
 	return out, nil
 }
 func (r *compiledReader) dataInits() ([]DataInit, error) {
-	n, err := r.countElements("data segments", minDataInitBytes)
+	n, err := r.countElements("data segments", minDataInitBytes, unsafe.Sizeof(DataInit{}))
 	if err != nil {
 		return nil, err
 	}
@@ -1870,7 +1928,7 @@ func (r *compiledReader) dataInits() ([]DataInit, error) {
 	return out, nil
 }
 func (r *compiledReader) passiveDataInits() ([]PassiveDataInit, error) {
-	n, err := r.countElements("passive data segments", minPassiveDataBytes)
+	n, err := r.countElements("passive data segments", minPassiveDataBytes, unsafe.Sizeof(PassiveDataInit{}))
 	if err != nil {
 		return nil, err
 	}
@@ -1884,7 +1942,7 @@ func (r *compiledReader) passiveDataInits() ([]PassiveDataInit, error) {
 	return out, nil
 }
 func (r *compiledReader) globals(pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) ([]GlobalDef, error) {
-	n, err := r.countElements("globals", minGlobalBytes)
+	n, err := r.countElements("globals", minGlobalBytes, unsafe.Sizeof(GlobalDef{}))
 	if err != nil {
 		return nil, err
 	}
@@ -1939,7 +1997,7 @@ func (r *compiledReader) globals(pool []ValueTypeDescriptor, types []DefinedType
 	return out, nil
 }
 func (r *compiledReader) tables(c *Compiled, pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) error {
-	n, err := r.countElements("tables", minTableBytes)
+	n, err := r.countElements("tables", minTableBytes, unsafe.Sizeof(tableDef{})+unsafe.Sizeof(uint64(0)))
 	if err != nil {
 		return err
 	}
@@ -2044,7 +2102,7 @@ func (r *compiledReader) tables(c *Compiled, pool []ValueTypeDescriptor, types [
 }
 
 func (r *compiledReader) globalImports(pool []ValueTypeDescriptor, types []DefinedTypeDescriptor) ([]GlobalImportDef, error) {
-	n, err := r.countElements("global imports", minGlobalImportBytes)
+	n, err := r.countElements("global imports", minGlobalImportBytes, unsafe.Sizeof(GlobalImportDef{}))
 	if err != nil {
 		return nil, err
 	}
@@ -2070,7 +2128,7 @@ func (r *compiledReader) globalImports(pool []ValueTypeDescriptor, types []Defin
 	return out, nil
 }
 func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
-	n, err := r.countElements("GC type descriptors", minGCDescBytes)
+	n, err := r.countElements("GC type descriptors", minGCDescBytes, unsafe.Sizeof(gc.TypeDesc{}))
 	if err != nil {
 		return nil, err
 	}
@@ -2090,7 +2148,7 @@ func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
 		if err != nil {
 			return nil, err
 		}
-		fieldCount, err := r.countElements("GC type fields", minGCFieldBytes)
+		fieldCount, err := r.countElements("GC type fields", minGCFieldBytes, unsafe.Sizeof(gc.FieldDesc{}))
 		if err != nil {
 			return nil, err
 		}
@@ -2150,7 +2208,10 @@ func (r *compiledReader) gcTypeDescs() ([]gc.TypeDesc, error) {
 }
 
 func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
-	adapterCount, err := r.countElements("GC frame adapter returns", 4)
+	// Each distinct vector can add a hash key, slice header, and map-bucket
+	// overhead to the offset interner, independently of the vector's payload.
+	const internerEntryBytes = unsafe.Sizeof(uint64(0)) + unsafe.Sizeof([]uint32(nil)) + 16
+	adapterCount, err := r.countElements("GC frame adapter returns", 4, unsafe.Sizeof(uint32(0)))
 	if err != nil {
 		return nil, err
 	}
@@ -2162,7 +2223,7 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 			return nil, err
 		}
 	}
-	n, err := r.countElements("GC frame safepoints", 9)
+	n, err := r.countElements("GC frame safepoints", 9, unsafe.Sizeof(compiledGCFrameSafepoint{})+internerEntryBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -2179,7 +2240,7 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 		if err != nil {
 			return nil, err
 		}
-		count, err := r.countElements("GC frame root offsets", 4)
+		count, err := r.countElements("GC frame root offsets", 4, unsafe.Sizeof(uint32(0)))
 		if err != nil {
 			return nil, err
 		}
@@ -2192,7 +2253,7 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 		}
 		rootMap.safepoints[i].offsets = offsetInterner.intern(rootMap.safepoints[i].offsets, false)
 	}
-	callCount, err := r.countElements("GC frame callsites", 13)
+	callCount, err := r.countElements("GC frame callsites", 13, unsafe.Sizeof(compiledGCFrameCallsite{})+internerEntryBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -2213,7 +2274,7 @@ func (r *compiledReader) gcFrameRoots() (*compiledGCFrameRoots, error) {
 		if err != nil {
 			return nil, err
 		}
-		count, err := r.countElements("GC callsite root offsets", 4)
+		count, err := r.countElements("GC callsite root offsets", 4, unsafe.Sizeof(uint32(0)))
 		if err != nil {
 			return nil, err
 		}

@@ -374,7 +374,7 @@ func TestMemoryPageQuotaDirectoryCountsTowardMetadataQuota(t *testing.T) {
 	if err := compiled.validateCached(); err != nil {
 		t.Fatal(err)
 	}
-	exact := uint64(compiled.instantiateArenaNeed + abi.MemoryDirEntryBytes)
+	exact := uint64(compiled.executionView().instantiateArenaNeed + abi.MemoryDirEntryBytes)
 	instantiate := func(limit uint64) error {
 		rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithMemoryLimitPages(2).WithMaxInstanceMetadataBytes(limit)))
 		defer rt.Close()
@@ -415,11 +415,11 @@ func TestInstanceMetadataArenaCanExceedOneMiBAndQuotaIsExact(t *testing.T) {
 	if err := compiled.validateCached(); err != nil {
 		t.Fatal(err)
 	}
-	if compiled.instantiateArenaNeed <= 1<<20 {
-		t.Fatalf("metadata need = %d, want above old 1 MiB ceiling", compiled.instantiateArenaNeed)
+	if compiled.executionView().instantiateArenaNeed <= 1<<20 {
+		t.Fatalf("metadata need = %d, want above old 1 MiB ceiling", compiled.executionView().instantiateArenaNeed)
 	}
 
-	exact := uint64(compiled.instantiateArenaNeed)
+	exact := uint64(compiled.executionView().instantiateArenaNeed)
 	rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithMaxInstanceMetadataBytes(exact)))
 	mod, err := rt.Module(compiled)
 	if err != nil {

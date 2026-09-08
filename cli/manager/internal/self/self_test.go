@@ -13,6 +13,7 @@ import (
 
 	projectconfig "github.com/wago-org/wago/cli/internal/project"
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
+	"github.com/wago-org/wago/internal/managedrelease"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -51,6 +52,7 @@ func TestSelfUpdateStagesAreUniqueAndSameDirectory(t *testing.T) {
 }
 
 func TestSelfUpdateSkipsMatchingManagerCommit(t *testing.T) {
+	fakeReleaseVerification(t)
 	executable := filepath.Join(t.TempDir(), "wago")
 	if err := os.WriteFile(executable, []byte("manager"), 0o755); err != nil {
 		t.Fatal(err)
@@ -80,6 +82,7 @@ func TestSelfUpdateSkipsMatchingManagerCommit(t *testing.T) {
 }
 
 func TestSelfUpdateSynchronizesManagedPluginBuildSource(t *testing.T) {
+	fakeReleaseVerification(t)
 	home := t.TempDir()
 	setTestHome(t, home)
 	managed := filepath.Join(home, ".wago")
@@ -108,12 +111,22 @@ func TestSelfUpdateSynchronizesManagedPluginBuildSource(t *testing.T) {
 	var syncedRef, syncedDest string
 	syncManagerSource = func(ref, dest string, _ *managerprogress.Progress) error {
 		syncedRef, syncedDest = ref, dest
-		return nil
+		if err := os.MkdirAll(dest, 0755); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dest, "go.mod"), []byte("module github.com/wago-org/wago\n"), 0644)
 	}
 
 	selfUpdate("canary@old", executable, true)
-	if syncedRef != resolved || syncedDest != source {
-		t.Fatalf("source sync = (%q, %q), want (%q, %q)", syncedRef, syncedDest, resolved, source)
+	selected, err := managedrelease.SelectedBinary(executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if syncedRef != resolved || syncedDest != managedrelease.SourceForExecutable(selected) || syncedDest == source {
+		t.Fatalf("source was not paired with selected executable: %q, %q", syncedRef, syncedDest)
+	}
+	if _, err := os.Stat(source); err != nil {
+		t.Fatal("legacy source was removed", err)
 	}
 }
 
@@ -485,5 +498,18 @@ func TestSelfUninstallMinimalRemovesOnlyManager(t *testing.T) {
 	}
 	if config, err := os.ReadFile(zshrc); err != nil || len(config) != 0 {
 		t.Fatalf("minimal uninstall PATH cleanup = %q, %v", config, err)
+	}
+}
+
+func fakeReleaseVerification(t *testing.T) {
+	t.Helper()
+	oldVerify, oldSync := verifyManagerRelease, syncManagerSource
+	t.Cleanup(func() { verifyManagerRelease, syncManagerSource = oldVerify, oldSync })
+	verifyManagerRelease = func(string) error { return nil }
+	syncManagerSource = func(_ string, dest string, _ *managerprogress.Progress) error {
+		if err := os.MkdirAll(dest, 0755); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dest, "go.mod"), []byte("module github.com/wago-org/wago\n"), 0644)
 	}
 }

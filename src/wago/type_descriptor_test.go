@@ -1,10 +1,14 @@
 package wago
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 )
@@ -313,6 +317,21 @@ func TestWasmTypeDescriptorConverterReusesFlattenedIndex(t *testing.T) {
 }
 
 func TestWasmTypeDescriptorConverterReusesFlattenedIndexForDescriptors(t *testing.T) {
+	// AllocsPerRun reads process-wide counters. Windows CI can still run
+	// background cleanup from earlier native/GC tests during these large
+	// allocations; use a fresh process while retaining the exact budget.
+	const childEnv = "WAGO_TYPE_DESCRIPTOR_ALLOCATION_CHILD"
+	if runtime.GOOS == "windows" && os.Getenv(childEnv) != "1" {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestWasmTypeDescriptorConverterReusesFlattenedIndexForDescriptors$", "-test.count=1", "-test.v")
+		cmd.Env = append(os.Environ(), childEnv+"=1")
+		output, err := cmd.CombinedOutput()
+		if err != nil || !strings.Contains(string(output), "--- PASS: TestWasmTypeDescriptorConverterReusesFlattenedIndexForDescriptors") {
+			t.Fatalf("isolated descriptor allocation check: %v\n%s", err, output)
+		}
+		return
+	}
 	m := &wasm.Module{Types: make([]wasm.RecType, 4096)}
 	for i := range m.Types {
 		m.Types[i].SubTypes = []wasm.SubType{{Final: true, Comp: wasm.CompType{Kind: wasm.CompFunc}}}

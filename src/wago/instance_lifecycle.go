@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -16,8 +17,9 @@ const (
 // owned memory as soon as no invocation or retained reference can still reach
 // them. An activation parked in host code may finish after Close returns; its
 // invocation lease defers physical release until native execution has unwound.
-// Imported memory is left for the host to Close. Close is idempotent. Concurrent
-// callers wait for the active close operation and receive its same result.
+// Imported memory is left for the host to Close. Close is idempotent. A caller
+// that joins an active close returns promptly, which permits callback reentry.
+// Call WaitClosed to wait for the active close operation and receive its result.
 func (in *Instance) Close() (err error) {
 	if in == nil {
 		return nil
@@ -30,7 +32,7 @@ func (in *Instance) Close() (err error) {
 		default:
 			// A callback may reenter Close while the lifecycle owner is still
 			// active. Returning promptly avoids self-deadlock; external callers
-			// that need completion use closeAndWait or Runtime.WaitClosed.
+			// that need completion use WaitClosed.
 			return nil
 		}
 	}
@@ -42,6 +44,28 @@ func (in *Instance) Close() (err error) {
 		close(state.done)
 	}()
 	return in.closeOnce()
+}
+
+// WaitClosed waits for an already-started Close operation and returns its result.
+// It does not start closure or wait for physical release held by active guest
+// calls or retained references. Close callbacks must not wait for themselves.
+func (in *Instance) WaitClosed(ctx context.Context) error {
+	if in == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	state := in.ensurePluginState().close.Load()
+	if state == nil {
+		return fmt.Errorf("wago: instance close has not started")
+	}
+	select {
+	case <-state.done:
+		return state.result
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (in *Instance) beginClose() (*instanceCloseState, bool) {
@@ -161,18 +185,19 @@ func (in *Instance) beginInvocation() error {
 	if in.guestStorageBorrowed() {
 		return fmt.Errorf("instance access is unavailable while guest storage is borrowed: %w", ErrPermissionDenied)
 	}
-	if in.rt != nil {
-		in.rt.mu.Lock()
-		if in.rt.state == runtimeClosed || in.rt.state == runtimeClosing && in.instantiateOrigin() != InstantiateManaged {
-			in.rt.mu.Unlock()
-			return fmt.Errorf("instance runtime is closed")
-		}
-		in.rt.activeOperations++
-		in.rt.mu.Unlock()
+	if in.rt == nil {
+		return in.beginInstanceInvocation()
 	}
+	in.rt.mu.Lock()
+	if in.rt.state == runtimeClosed || in.rt.state == runtimeClosing && in.instantiateOrigin() != InstantiateManaged {
+		in.rt.mu.Unlock()
+		return fmt.Errorf("instance runtime is closed")
+	}
+	in.rt.activeOperations++
+	in.rt.mu.Unlock()
 	admitted := false
 	defer func() {
-		if admitted || in.rt == nil {
+		if admitted {
 			return
 		}
 		in.rt.mu.Lock()
@@ -180,6 +205,14 @@ func (in *Instance) beginInvocation() error {
 		in.rt.stateCond.Broadcast()
 		in.rt.mu.Unlock()
 	}()
+	if err := in.beginInstanceInvocation(); err != nil {
+		return err
+	}
+	admitted = true
+	return nil
+}
+
+func (in *Instance) beginInstanceInvocation() error {
 	for {
 		state := in.invocationState.Load()
 		if state&instanceInvocationClosed != 0 {
@@ -189,7 +222,6 @@ func (in *Instance) beginInvocation() error {
 			return fmt.Errorf("instance has too many active invocations")
 		}
 		if in.invocationState.CompareAndSwap(state, state+1) {
-			admitted = true
 			return nil
 		}
 	}

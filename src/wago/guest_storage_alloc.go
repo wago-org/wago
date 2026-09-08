@@ -3,7 +3,7 @@ package wago
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // GuestGCArrayAllocatorHostModule is the optional host-callback surface for

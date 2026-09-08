@@ -152,7 +152,7 @@ func TestSpecSuite(t *testing.T) {
 			}
 			switch c.Type {
 			case "module":
-				m, derr := DecodeModule(data)
+				m, derr := DecodeModuleWithFeatures(data, ValidationFeatures{})
 				var verr error
 				if derr == nil {
 					verr = ValidateModule(m)
@@ -167,7 +167,7 @@ func TestSpecSuite(t *testing.T) {
 					t.Errorf("%s.wast:%d valid module REJECTED: decode=%v validate=%v", base, c.Line, derr, verr)
 				}
 			case "assert_invalid":
-				m, derr := DecodeModule(data)
+				m, derr := DecodeModuleWithFeatures(data, ValidationFeatures{})
 				var verr error
 				if derr == nil {
 					verr = ValidateModule(m)
@@ -186,7 +186,7 @@ func TestSpecSuite(t *testing.T) {
 					stats.assertionsSkipped++
 					continue
 				}
-				if _, derr := DecodeModule(data); derr == nil {
+				if _, derr := DecodeModuleWithFeatures(data, ValidationFeatures{}); derr == nil {
 					stats.assertionsFailed++
 					t.Errorf("%s.wast:%d malformed binary ACCEPTED (expected: %s)", base, c.Line, c.Text)
 				} else {

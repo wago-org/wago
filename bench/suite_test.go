@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	wago "github.com/wago-org/wago"
 	wasm "github.com/wago-org/wago/src/core/compiler/wasm"
@@ -24,6 +25,14 @@ const corpusDir = "corpus"
 
 var includeISABenchmarks = flag.Bool("wago.bench.isa", false, "include generated ISA micro-suite benchmarks")
 var includeOptimizationAblations = flag.Bool("wago.bench.optimization-ablation", false, "benchmark large modules with each enabled optimization disabled in turn")
+var applicationsOnly = flag.Bool("wago.bench.applications", false, "benchmark only complete application and library workloads")
+
+var applicationCorpus = map[string]bool{
+	"json-as": true, "blake-as": true, "utf-as": true,
+	"json-as-simd": true, "blake-as-simd": true, "utf-as-simd": true,
+	"coremark": true, "blake3": true, "qoi": true, "lz4": true, "zlib": true, "zstd": true,
+	"wasm3": true, "lua": true, "sqlite3": true, "ruby": true, "esbuild": true,
+}
 
 type execEntry struct {
 	Export string  `json:"export"`
@@ -79,7 +88,16 @@ func loadCorpus(tb testing.TB) []corpusModule {
 			corpus = append(corpus, readManifest(tb, "isa-manifest.json")...)
 		}
 	})
-	return corpus
+	if !*applicationsOnly {
+		return corpus
+	}
+	applications := make([]corpusModule, 0, len(applicationCorpus))
+	for _, mod := range corpus {
+		if applicationCorpus[mod.name()] {
+			applications = append(applications, mod)
+		}
+	}
+	return applications
 }
 
 // readManifest loads one manifest file and resolves each module's bytes.
@@ -296,6 +314,12 @@ func BenchmarkCompileFull(b *testing.B) {
 				b.Fatal(err)
 			}
 		}
+		b.StopTimer()
+		compiled, err := wago.Compile(nil, m.bytes)
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.ReportMetric(float64(compiled.CodeSize()), "code-B")
 	})
 }
 
@@ -446,6 +470,48 @@ func BenchmarkExec(b *testing.B) {
 	benchmarkExec(b, wago.NewRuntimeConfig())
 }
 
+// benchmarkExecCalls batches fast calls so every timed outer operation carries
+// at least a millisecond of Wasm work. The reported ns/op is normalized back to
+// one invocation, preserving the chart's per-call latency while avoiding timer
+// noise dominating very small exports.
+func benchmarkExecCalls(b *testing.B, invoke func() error) {
+	const calibrationTarget = 2 * time.Millisecond
+	batch := 1
+	for {
+		started := time.Now()
+		for i := 0; i < batch; i++ {
+			if err := invoke(); err != nil {
+				b.Fatalf("calibration invoke: %v", err)
+			}
+		}
+		elapsed := time.Since(started)
+		if elapsed >= calibrationTarget {
+			break
+		}
+		if elapsed <= 0 {
+			batch *= 10
+			continue
+		}
+		scaled := int(float64(batch) * float64(calibrationTarget) / float64(elapsed))
+		if scaled <= batch {
+			scaled = batch + 1
+		}
+		batch = scaled
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < batch; j++ {
+			if err := invoke(); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+	b.StopTimer()
+	b.ReportMetric(float64(b.Elapsed().Nanoseconds())/float64(b.N*batch), "ns/op")
+	b.ReportMetric(float64(batch), "calls/batch")
+}
+
 func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 	for _, m := range loadCorpus(b) {
 		if (len(m.Exec) == 0 && len(m.SemanticExec) == 0) || !m.supports("Exec") {
@@ -476,16 +542,10 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 				b.Fatalf("%s prepare %s: %v", m.name(), e.Export, err)
 			}
 			b.Run(m.name()+"."+e.Export, func(b *testing.B) {
-				b.ReportAllocs()
-				if _, err := fn.Invoke(args...); err != nil {
-					b.Fatalf("warmup invoke: %v", err)
-				}
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					if _, err := fn.Invoke(args...); err != nil {
-						b.Fatal(err)
-					}
-				}
+				benchmarkExecCalls(b, func() error {
+					_, err := fn.Invoke(args...)
+					return err
+				})
 			})
 		}
 		for _, semantic := range semanticExecCases(b, m) {
@@ -497,16 +557,7 @@ func benchmarkExec(b *testing.B, cfg *wago.RuntimeConfig) {
 				b.Fatalf("%s prepare: %v", semantic.ID, err)
 			}
 			b.Run(m.name()+"."+semantic.Invoke.Export, func(b *testing.B) {
-				b.ReportAllocs()
-				if err := prepared.invoke(); err != nil {
-					b.Fatalf("warmup invoke: %v", err)
-				}
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					if err := prepared.invoke(); err != nil {
-						b.Fatal(err)
-					}
-				}
+				benchmarkExecCalls(b, prepared.invoke)
 			})
 		}
 		in.Close()

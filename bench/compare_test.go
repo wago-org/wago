@@ -2,6 +2,8 @@ package wagobench
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/tetratelabs/wazero"
@@ -40,8 +42,55 @@ func BenchmarkWazeroCompile(b *testing.B) {
 				}
 				cm.Close(ctx)
 			}
+			b.StopTimer()
+			cm, err := r.CompileModule(ctx, m.bytes)
+			if err != nil {
+				b.Fatal(err)
+			}
+			codeSize, err := wazeroCodeSize(cm)
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.ReportMetric(float64(codeSize), "code-B")
+			cm.Close(ctx)
 		})
 	}
+}
+
+// wazeroCodeSize returns the executable byte slice length from wazero's pinned
+// compiler engine. wazero does not expose this through CompiledModule, so keep
+// this deliberately narrow reflection shim guarded by structural errors. The
+// benchmark module pins wazero, making any upstream layout change fail loudly.
+func wazeroCodeSize(cm wazero.CompiledModule) (int, error) {
+	v := reflect.ValueOf(cm)
+	if v.Kind() != reflect.Pointer || v.IsNil() {
+		return 0, fmt.Errorf("unexpected wazero compiled module %T", cm)
+	}
+	v = v.Elem().FieldByName("compiledEngine")
+	if !v.IsValid() || v.Kind() != reflect.Interface || v.IsNil() {
+		return 0, fmt.Errorf("wazero compiledEngine field unavailable")
+	}
+	v = v.Elem()
+	if v.Kind() == reflect.Pointer {
+		v = v.Elem()
+	}
+	modules := v.FieldByName("compiledModules")
+	if !modules.IsValid() || modules.Kind() != reflect.Map || modules.Len() != 1 {
+		return 0, fmt.Errorf("wazero compiledModules has %d entries, want 1", modules.Len())
+	}
+	compiled := modules.MapIndex(modules.MapKeys()[0])
+	if compiled.Kind() == reflect.Pointer {
+		compiled = compiled.Elem()
+	}
+	executables := compiled.FieldByName("executables")
+	if executables.Kind() == reflect.Pointer {
+		executables = executables.Elem()
+	}
+	executable := executables.FieldByName("executable")
+	if !executable.IsValid() || executable.Kind() != reflect.Slice {
+		return 0, fmt.Errorf("wazero executable field unavailable")
+	}
+	return executable.Len(), nil
 }
 
 // BenchmarkWazeroInstantiate times fresh instances of an already-compiled
@@ -128,18 +177,10 @@ func BenchmarkWazeroExec(b *testing.B) {
 				args[i] = uint64(uint32(a))
 			}
 			b.Run(m.name()+"."+e.Export, func(b *testing.B) {
-				b.ReportAllocs()
-				// Warm up + reset, mirroring wago's BenchmarkExec, so any
-				// first-call setup cost isn't charged to the timed loop.
-				if _, err := fn.Call(ctx, args...); err != nil {
-					b.Fatalf("warmup call: %v", err)
-				}
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					if _, err := fn.Call(ctx, args...); err != nil {
-						b.Fatal(err)
-					}
-				}
+				benchmarkExecCalls(b, func() error {
+					_, err := fn.Call(ctx, args...)
+					return err
+				})
 			})
 		}
 		for _, semantic := range semanticExecCases(b, m) {
@@ -149,16 +190,7 @@ func BenchmarkWazeroExec(b *testing.B) {
 				b.Fatalf("%s prepare: %v", semantic.ID, err)
 			}
 			b.Run(m.name()+"."+semantic.Invoke.Export, func(b *testing.B) {
-				b.ReportAllocs()
-				if err := prepared.invoke(ctx); err != nil {
-					b.Fatalf("warmup call: %v", err)
-				}
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					if err := prepared.invoke(ctx); err != nil {
-						b.Fatal(err)
-					}
-				}
+				benchmarkExecCalls(b, func() error { return prepared.invoke(ctx) })
 			})
 		}
 		r.Close(ctx)

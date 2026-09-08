@@ -36,7 +36,7 @@ func TestImportedInstancesShareCodeAcrossBindings(t *testing.T) {
 	defer first.Close()
 	second := instantiate(2)
 	defer second.Close()
-	if first.c != c || second.c != c || first.base != second.base {
+	if first.c != c.executionView() || second.c != c.executionView() || first.base != second.base {
 		t.Fatalf("instances did not share compiled image: c=%p first=%p/%#x second=%p/%#x", c, first.c, first.base, second.c, second.base)
 	}
 	for _, tc := range []struct {

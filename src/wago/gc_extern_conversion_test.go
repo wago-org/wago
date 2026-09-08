@@ -5,7 +5,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func newGCExternConversionFixture(t testing.TB) (*referenceStore, *gc.Collector, *gcExternConversionState, gc.Ref) {

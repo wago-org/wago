@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestGCInvocationDomainUsesRegisteredAssociation(t *testing.T) {

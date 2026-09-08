@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/wago-org/wago/internal/managedrelease"
 )
 
 type key struct {
@@ -36,6 +38,21 @@ type radioItem struct {
 var version = "dev"
 
 func main() {
+	executable, err := managedrelease.ExecutablePath()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if name := filepath.Base(executable); name == "wago" || (runtime.GOOS == "windows" && strings.EqualFold(name, "wago.exe")) {
+		dispatched, err := managedrelease.Dispatch()
+		if !dispatched && err == nil {
+			err = fmt.Errorf("wago release selection is missing; reinstall Wago")
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		os.Exit(managedrelease.ExitCode(err))
+	}
 	if len(os.Args) == 1 || (len(os.Args) == 2 && os.Args[1] == "install") {
 		if err := runInstaller(); err != nil {
 			s := colors()

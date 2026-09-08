@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	goruntime "runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -165,11 +166,21 @@ func (e *Engine) StackBytes() uint64 {
 // consumer, cold) reads [linMem-abi.TrapCellPtrOffset], and function returns
 // carry no trap protocol at all (WARP's model).
 func (e *Engine) Call(code uintptr, serArgs, linMem, trap, results []byte) error {
-	if err := validateTrapBuffer(trap); err != nil {
-		return err
+	if len(trap) < TrapBufferBytes {
+		return errIncompleteTrapBuffer
 	}
-	installTrapCell(linMem, trap)
+	if len(linMem) != 0 {
+		clearTrapUnlessInterrupted(trap)
+		base := unsafe.Pointer(&linMem[0])
+		*(*uint64)(unsafe.Add(base, -int(abi.TrapCellPtrOffset))) = uint64(slicePtr(trap))
+		*(*uint64)(unsafe.Add(base, -int(abi.EHHandlerPtrOffset))) = 0
+	}
 	enterNative(code, slicePtr(serArgs), slicePtr(linMem), slicePtr(trap), slicePtr(results), e.stackTop)
+	goruntime.KeepAlive(serArgs)
+	goruntime.KeepAlive(linMem)
+	goruntime.KeepAlive(trap)
+	goruntime.KeepAlive(results)
+	goruntime.KeepAlive(e)
 	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
 		return trapErrorFromBuffer(tc, trap)
 	}
@@ -186,6 +197,10 @@ func (e *Engine) CallPrepared(code uintptr, serArgs []byte, linMemBase uintptr, 
 		return err
 	}
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+	goruntime.KeepAlive(serArgs)
+	goruntime.KeepAlive(trap)
+	goruntime.KeepAlive(results)
+	goruntime.KeepAlive(e)
 	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
 		storeTrap(trap, 0)
 		return trapErrorFromBuffer(tc, trap)
@@ -202,9 +217,9 @@ func validateTrapBuffer(trap []byte) error {
 	return nil
 }
 
-// installTrapCell clears any stale non-interrupt trap and writes the cell's
-// address into basedata. A concurrent close interruption wins the CAS reset and
-// remains visible at the first generated safepoint.
+// clearTrapUnlessInterrupted clears a stale non-interrupt trap. A concurrent
+// close interruption wins the CAS reset and remains visible at the first
+// generated safepoint.
 func clearTrapUnlessInterrupted(trap []byte) {
 	if len(trap) < 4 {
 		return
@@ -212,23 +227,15 @@ func clearTrapUnlessInterrupted(trap []byte) {
 	cell := (*uint32)(unsafe.Pointer(&trap[0]))
 	for {
 		old := atomic.LoadUint32(cell)
-		if TrapCode(old) == TrapInterrupted || atomic.CompareAndSwapUint32(cell, old, 0) {
+		// A zero cell needs no write. A concurrent interruption remains visible
+		// because this fast path never stores over it.
+		if old == 0 || TrapCode(old) == TrapInterrupted || atomic.CompareAndSwapUint32(cell, old, 0) {
 			if len(trap) >= TrapBufferBytes {
 				clear(trap[16:24])
 			}
 			return
 		}
 	}
-}
-
-func installTrapCell(linMem, trap []byte) {
-	if len(trap) < 4 || len(linMem) == 0 {
-		return
-	}
-	clearTrapUnlessInterrupted(trap)
-	base := unsafe.Pointer(&linMem[0])
-	*(*uint64)(unsafe.Add(base, -int(abi.TrapCellPtrOffset))) = uint64(slicePtr(trap))
-	*(*uint64)(unsafe.Add(base, -int(abi.EHHandlerPtrOffset))) = 0
 }
 
 // CallWithHost runs native code that may request returning host imports via the
@@ -243,7 +250,9 @@ func installTrapCell(linMem, trap []byte) {
 // A cross-instance callee may park through a different frame; its stub publishes
 // that exact pointer at trap+8 so dispatch and resume follow the active callee.
 func (e *Engine) CallWithHost(code uintptr, serArgs, linMem, trap, results, ctrl []byte, host HostCall) error {
-	return e.CallWithHostBase(code, serArgs, slicePtr(linMem), trap, results, ctrl, host)
+	err := e.CallWithHostBase(code, serArgs, slicePtr(linMem), trap, results, ctrl, host)
+	goruntime.KeepAlive(linMem)
+	return err
 }
 
 // CallWithHostBase is the stable-base form used by guard-page JobMemory, whose
@@ -262,13 +271,22 @@ func (e *Engine) CallWithHostBase(code uintptr, serArgs []byte, linMemBase uintp
 	clearTrapUnlessInterrupted(trap)
 	storeOffHeapU64(linMemBase-abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
 	ctrlPtr := slicePtr(ctrl)
+	var callErr error
 	if e.hostScratchInUse {
 		var argBuf, resBuf [maxHostArity]uint64
-		return e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, argBuf[:], resBuf[:])
+		callErr = e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, argBuf[:], resBuf[:])
+	} else {
+		e.hostScratchInUse = true
+		defer func() { e.hostScratchInUse = false }()
+		callErr = e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, e.hostArgs[:], e.hostResults[:])
 	}
-	e.hostScratchInUse = true
-	defer func() { e.hostScratchInUse = false }()
-	return e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, e.hostArgs[:], e.hostResults[:])
+	// Native frames can retain these addresses across every host park/resume.
+	goruntime.KeepAlive(serArgs)
+	goruntime.KeepAlive(trap)
+	goruntime.KeepAlive(results)
+	goruntime.KeepAlive(ctrl)
+	goruntime.KeepAlive(e)
+	return callErr
 }
 
 // InitHostCtrlFrame installs the shared host-call trampoline in an off-heap

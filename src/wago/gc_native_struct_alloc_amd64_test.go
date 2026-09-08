@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	corergc "github.com/wago-org/wago/src/core/runtime/gc"
+	corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 func TestGCNativeStructAllocPreparedAcrossCollections(t *testing.T) {

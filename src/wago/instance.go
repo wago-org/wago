@@ -6,7 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // offHeapPtr reinterprets a known off-heap address — JIT arena / table-descriptor
@@ -96,6 +96,9 @@ type invokeCache struct {
 	export            string
 	valid             bool
 	entryMode         preparedEntryMode
+	directIntFast     bool
+	scalarWideMask    uint8
+	scalarResultWide  bool
 	li                int // local index, or -1-import index for an InstanceExport re-export
 	paramSlots        int
 	resultSlots       int

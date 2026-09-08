@@ -292,11 +292,22 @@ func syncInstalledSourceContext(ctx context.Context, ref, dest string, progress 
 	}
 	defer os.RemoveAll(temp)
 
+	return publishSourceUsing(source, dest, progress, os.Rename)
+}
+
+func publishSourceUsing(source, dest string, progress *managerprogress.Progress, rename func(string, string) error) error {
+	parent := filepath.Dir(dest)
+
 	backupRoot, err := os.MkdirTemp(parent, ".wago-source-backup-*")
 	if err != nil {
 		return fmt.Errorf("prepare source backup: %w", err)
 	}
-	defer os.RemoveAll(backupRoot)
+	removeBackup := true
+	defer func() {
+		if removeBackup {
+			_ = os.RemoveAll(backupRoot)
+		}
+	}()
 	backup := filepath.Join(backupRoot, "src")
 
 	if progress != nil {
@@ -305,7 +316,7 @@ func syncInstalledSourceContext(ctx context.Context, ref, dest string, progress 
 	hadSource := false
 	if _, statErr := os.Lstat(dest); statErr == nil {
 		hadSource = true
-		if err := os.Rename(dest, backup); err != nil {
+		if err := rename(dest, backup); err != nil {
 			if progress != nil {
 				progress.Fail("could not replace plugin build source")
 			}
@@ -317,9 +328,12 @@ func syncInstalledSourceContext(ctx context.Context, ref, dest string, progress 
 		}
 		return statErr
 	}
-	if err := os.Rename(source, dest); err != nil {
+	if err := rename(source, dest); err != nil {
 		if hadSource {
-			_ = os.Rename(backup, dest)
+			if restoreErr := rename(backup, dest); restoreErr != nil {
+				removeBackup = false
+				err = errors.Join(err, fmt.Errorf("restore source failed; backup retained at %s: %w", backup, restoreErr))
+			}
 		}
 		if progress != nil {
 			progress.Fail("could not replace plugin build source")

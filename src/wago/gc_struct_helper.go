@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Internal GC helper dispatch occupies bit 30. Public host-funcref dispatch uses

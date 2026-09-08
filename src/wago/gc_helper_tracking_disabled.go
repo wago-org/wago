@@ -2,7 +2,7 @@
 
 package wago
 
-import "github.com/wago-org/wago/src/core/runtime/gc"
+import "github.com/wago-org/wago/src/core/runtime/gc/native"
 
 func recordSynchronousGCHelper(*Instance, uint32, []uint64) {}
 func setGCHelperStatsTracking(*gc.Collector, bool)          {}

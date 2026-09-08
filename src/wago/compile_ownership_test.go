@@ -221,3 +221,39 @@ func TestCompileMemoryPressureOnlyForLargeSources(t *testing.T) {
 		t.Fatalf("large source pressure = (%d, %v), want (auto, enabled)", at, pressure != nil)
 	}
 }
+
+func TestCompilerPublicationReleasesHeapCodeBacking(t *testing.T) {
+	// Parallel compilation emits a Go slice. Its grouped staging owner remains
+	// reachable through the cache even after the public result is copied out.
+	original := bytes.Repeat([]byte{0x5a}, 1<<20)
+	staged := installCompilerCompiledFinalizer(newCompilerCompiled(Compiled{code: original}))
+	published, err := publishCompilerCompiled(staged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer published.Close()
+	if staged.code != nil || staged.codeCache != nil || staged.validateMemo != nil {
+		t.Fatal("compiler staging view retained code or metadata after publication")
+	}
+	snapshot := published.executionView()
+	mapped := published.codeCache.mem
+	if len(mapped) < len(original) || len(published.code) != len(original) || len(snapshot.code) != len(original) {
+		t.Fatalf("image sizes: heap=%d public=%d execution=%d mapping=%d", len(original), len(published.code), len(snapshot.code), len(mapped))
+	}
+	if unsafe.SliceData(published.code) != unsafe.SliceData(mapped) || unsafe.SliceData(snapshot.code) != unsafe.SliceData(mapped) {
+		t.Fatal("published views do not share the executable mapping")
+	}
+	if unsafe.SliceData(mapped) == unsafe.SliceData(original) {
+		t.Fatal("publication retained heap-backed code")
+	}
+	var output bytes.Buffer
+	if _, err := published.WriteCodeTo(&output); err != nil || !bytes.Equal(output.Bytes(), original) {
+		t.Fatalf("code inspection after publication: %v", err)
+	}
+	if err := published.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if published.CodeSize() != 0 || published.codeCache.mem != nil {
+		t.Fatal("Close retained code mapping")
+	}
+}

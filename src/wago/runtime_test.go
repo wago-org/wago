@@ -750,3 +750,30 @@ func TestHostFuncRefAttachmentDeduplication(t *testing.T) {
 		t.Fatal("closed host funcref owner attached")
 	}
 }
+
+func TestRuntimeImportOptionsOwnOneResolvedMap(t *testing.T) {
+	rt := NewRuntime()
+	defer rt.Close()
+	mod := callsEnvF(t, rt)
+	first := Imports{"unused.first": 1, "env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(1) })}
+	last := Imports{"unused.last": 2, "env.f": HostFunc(func(_ HostModule, p, r []uint64) { r[0] = I32(9) })}
+	in, err := rt.Instantiate(context.Background(), mod, WithImports(first), WithImports(last))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	first["unused.first"] = 99
+	delete(last, "env.f")
+	last["unused.last"] = 99
+	got, err := in.Invoke("g", I32(7))
+	if err != nil || AsI32(got[0]) != 9 {
+		t.Fatalf("last override did not remain owned: %v, %v", got, err)
+	}
+	imports := in.Imports()
+	if imports["unused.first"] != 1 || imports["unused.last"] != 2 {
+		t.Fatalf("caller maps changed resolved imports: %v", imports)
+	}
+	if len(first) != 2 || len(last) != 1 {
+		t.Fatal("resolution mutated caller maps")
+	}
+}

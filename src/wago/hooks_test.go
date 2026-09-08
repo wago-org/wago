@@ -331,7 +331,13 @@ func TestInstantiateOptionHelpers(t *testing.T) {
 	WithImports(Imports{"env.f": 1})(&c)
 	WithImports(Imports{"env.g": 2, "env.f": 3})(&c)
 	WithGC(GCConfig{TinyHeapBytes: 64})(&c)
-	if c.policy.MaxTableEntries != 3 || len(c.imports) != 2 || c.imports["env.f"] != 3 || c.imports["env.g"] != 2 || !c.hasGC || c.gc.TinyHeapBytes != 64 {
+	rt := NewRuntime()
+	defer rt.Close()
+	imports, _, err := rt.resolveInstanceImports(nil, nil, c.imports, c.exactImports, c.extraImports...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.policy.MaxTableEntries != 3 || len(imports) != 2 || imports["env.f"] != 3 || imports["env.g"] != 2 || !c.hasGC || c.gc.TinyHeapBytes != 64 {
 		t.Fatalf("instantiate config = %#v", c)
 	}
 }

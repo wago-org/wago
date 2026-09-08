@@ -396,7 +396,7 @@ func TestMarshalGlobalScalarAndV128RoundTrip(t *testing.T) {
 		t.Fatalf("gv = % x, %v; want % x", got, err, vec)
 	}
 
-	scalar := *c
+	scalar := *mutableCompiledFixture(c)
 	scalar.Globals = []GlobalDef{{Type: ValI32, Bits: I32(1)}, {Type: ValI64, Bits: I64(2)}}
 	scalar.GlobalExports = map[string]int{}
 	compact, err := scalar.MarshalBinary()
@@ -504,4 +504,48 @@ func codecSIMDBlockTypeModule() []byte {
 			0x0b, // end function
 		}))),
 	)
+}
+
+// Reusing the caller's authenticated buffer must not change retained state.
+func TestUnmarshalOwnsArtifactBytes(t *testing.T) {
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchAddOneModule())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	blob, err := c.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var loaded Compiled
+	if err := loaded.UnmarshalBinary(blob); err != nil {
+		t.Fatal(err)
+	}
+	defer loaded.Close()
+	want, err := loaded.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range blob {
+		blob[i] = 0
+	}
+	got, err := loaded.MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatal("caller buffer reuse changed retained artifact")
+	}
+	if loaded.codeCache == nil || loaded.codeCache.flags&compiledCacheWritableCode == 0 {
+		t.Fatal("missing owned code image")
+	}
+	in, err := Instantiate(&loaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	out, err := in.Invoke("f", 41)
+	if err != nil || len(out) != 1 || out[0] != 42 {
+		t.Fatalf("Invoke = %v, %v", out, err)
+	}
 }

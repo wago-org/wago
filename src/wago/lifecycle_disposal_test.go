@@ -347,7 +347,7 @@ func TestRuntimeCloseWaitsForPendingManagedInstantiation(t *testing.T) {
 	}
 }
 
-func TestConcurrentInstanceCloseWaitsAndRunsOnce(t *testing.T) {
+func TestConcurrentInstanceWaitClosedRunsOnce(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
 	var before, after atomic.Int32
@@ -377,11 +377,17 @@ func TestConcurrentInstanceCloseWaitsAndRunsOnce(t *testing.T) {
 	for i := 0; i < callers; i++ {
 		go func() {
 			<-start
-			results <- in.Close()
+			_ = in.Close()
+			results <- in.WaitClosed(context.Background())
 		}()
 	}
 	close(start)
 	<-entered
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := in.WaitClosed(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("blocked close wait = %v", err)
+	}
 	close(release)
 	var panicResults int
 	for i := 0; i < callers; i++ {
@@ -392,8 +398,8 @@ func TestConcurrentInstanceCloseWaitsAndRunsOnce(t *testing.T) {
 			t.Fatalf("Close[%d] = %v, want nil or ErrCallbackPanic", i, err)
 		}
 	}
-	if panicResults == 0 {
-		t.Fatal("close lifecycle owner did not report ErrCallbackPanic")
+	if panicResults != callers {
+		t.Fatalf("WaitClosed panic results = %d, want %d", panicResults, callers)
 	}
 	if before.Load() != 1 || after.Load() != 1 {
 		t.Fatalf("hook counts = %d/%d, want 1/1", before.Load(), after.Load())

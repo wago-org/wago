@@ -1,18 +1,28 @@
-# Corpus provenance lock
+# Benchmark Corpus Provenance
 
-The committed wasm corpus is locked at the SHA-256 values below. Rebuild
-scripts must write into a temporary directory and compare these values; they
-must never overwrite a checked-in artifact in place.
+Use this file when you review or refresh a benchmark artifact. The committed
+wasm corpus is locked to the SHA-256 values below. Rebuild scripts must write to
+a temporary directory, then compare the new values. They must not overwrite a
+checked-in artifact in place.
 
-The synthetic modules (`src/*.wat`) are reproducible with `wabt` pinned by CI;
-the Rust modules are reproducible with the pinned `wasm32-wasip1` toolchain;
-AssemblyScript and third-party binaries are fetched/build artifacts and are
+Run this command from the repository root and compare its output at the review
+commit:
+
+```bash
+shasum -a 256 bench/corpus/*.wasm bench/corpus/vendor/*.wasm
+```
+
+The manifest records each artifact's source class. This makes an unlisted
+artifact unable to disappear silently from acceptance.
+
+## Rebuild Rules
+
+Synthetic modules in `src/*.wat` are reproducible with the WABT version pinned
+by CI. Rust modules are reproducible with the pinned `wasm32-wasip1` toolchain.
+AssemblyScript and third-party binaries are fetched or built artifacts. They are
 regression-only unless their manifest entry declares an executable export.
 
-Run `shasum -a 256 bench/corpus/*.wasm bench/corpus/vendor/*.wasm` and compare
-the output at the review commit. This lock intentionally records the source
-classification in the manifest so unlisted artifacts cannot silently vanish
-from acceptance.
+## Artifact Classes
 
 | artifact class | source/tool | reproducibility |
 | --- | --- | --- |

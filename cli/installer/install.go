@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/wago-org/wago/internal/managedrelease"
 	"io"
 	"net/http"
 	"net/url"
@@ -168,20 +169,35 @@ func (i *installer) run() error {
 			return err
 		}
 	}
-	if reinstallMode != "minimal" {
-		if err := i.cleanExisting(reinstallMode); err != nil {
+	installed := filepath.Join(i.binDir, executableName("wago"))
+	release, err := managedrelease.Prepare(installed, i.version, func(binary, source string) error {
+		if err := managedrelease.CopyFile(managerPath, binary); err != nil {
 			return err
 		}
-	}
-	installed := filepath.Join(i.binDir, executableName("wago"))
-	if err := i.installManager(managerPath, installed); err != nil {
+		legacy := i.srcDir
+		i.srcDir = source
+		defer func() { i.srcDir = legacy }()
+		return i.saveSource(sourceDir)
+	}, i.verify)
+	if err != nil {
 		return err
 	}
-	if err := i.saveSource(sourceDir); err != nil {
+	installerExecutable, err := os.Executable()
+	if err != nil {
 		return err
 	}
-	if err := i.verify(installed); err != nil {
-		return err
+	// The installer also supplies the stable dispatcher, so older manager
+	// payloads can use the paired source through WAGO_SRC without a new build.
+	bootstrap := func() (func() error, error) {
+		return managedrelease.BootstrapLauncher(release, installerExecutable, installed)
+	}
+	if err := managedrelease.Publish(release, bootstrap, nil); err != nil {
+		return fmt.Errorf("publish manager release (pair retained at %s): %w", release.Directory, err)
+	}
+	if reinstallMode != "minimal" {
+		if err := i.cleanReinstallData(reinstallMode); err != nil {
+			return err
+		}
 	}
 
 	pathReady, configFile := i.offerPathSetup()
@@ -255,7 +271,7 @@ func (i *installer) plan() {
 	fmt.Fprintf(i.out, "\n%sPlan%s\n", s.bold, s.reset)
 	i.detail("Version", i.version)
 	i.detail("Command", displayPath(filepath.Join(i.binDir, executableName("wago")), i.home))
-	i.detail("Source", displayPath(i.srcDir, i.home))
+	i.detail("Source", displayPath(filepath.Join(i.binDir, ".wago-releases"), i.home))
 	fmt.Fprintf(i.out, "\n%sDry run · no changes made.%s\n", s.dim, s.reset)
 }
 
@@ -426,6 +442,11 @@ func (i *installer) resolveRelease() (installbootstrap.ResolvedRelease, string, 
 
 type installerReleaseCatalog struct{ installer *installer }
 
+const (
+	installerReleasePageSize  = 20
+	installerReleasePageLimit = 50
+)
+
 func (catalog installerReleaseCatalog) Latest() (installbootstrap.Release, error) {
 	var item installbootstrap.Release
 	err := catalog.installer.getJSON(catalog.installer.releaseAPI+"/latest", &item)
@@ -433,31 +454,30 @@ func (catalog installerReleaseCatalog) Latest() (installbootstrap.Release, error
 }
 
 func (catalog installerReleaseCatalog) Releases() ([]installbootstrap.Release, error) {
-	const pageLimit = 10
 	var releases []installbootstrap.Release
 	base, err := url.Parse(catalog.installer.releaseAPI)
 	if err != nil {
 		return nil, fmt.Errorf("parse release catalog URL: %w", err)
 	}
-	for page := 1; page <= pageLimit; page++ {
+	for page := 1; page <= installerReleasePageLimit; page++ {
 		var batch []installbootstrap.Release
 		address := *base
 		query := address.Query()
-		query.Set("per_page", "100")
+		query.Set("per_page", strconv.Itoa(installerReleasePageSize))
 		query.Set("page", strconv.Itoa(page))
 		address.RawQuery = query.Encode()
 		if err := catalog.installer.getJSON(address.String(), &batch); err != nil {
 			return nil, err
 		}
-		if len(batch) > 100 {
+		if len(batch) > installerReleasePageSize {
 			return nil, fmt.Errorf("release catalog returned too many releases on page %d", page)
 		}
 		releases = append(releases, batch...)
-		if len(batch) < 100 {
+		if len(batch) < installerReleasePageSize {
 			return releases, nil
 		}
 	}
-	return nil, fmt.Errorf("release catalog exceeded %d pages", pageLimit)
+	return nil, fmt.Errorf("release catalog exceeded %d pages", installerReleasePageLimit)
 }
 
 func (i *installer) getJSON(url string, value any) error {
@@ -635,19 +655,6 @@ func (i *installer) buildManager(sourceDir, target string) error {
 	return nil
 }
 
-func (i *installer) cleanExisting(mode string) error {
-	i.begin("Cleaning existing Wago installation")
-	if err := cleanPlatformInstall(mode, i.home, i.binDir, i.srcDir, i.dataDir, i.configDir, i.cacheDir); err != nil {
-		return fmt.Errorf("clean existing installation: %w", err)
-	}
-	i.done("Cleaned existing Wago installation")
-	return nil
-}
-
-func (i *installer) installManager(source, target string) error {
-	return i.installManagerUsing(source, target, os.Rename, isCrossDeviceError)
-}
-
 type pathRenamer func(string, string) error
 
 func (i *installer) installManagerUsing(source, target string, rename pathRenamer, crossDevice func(error) bool) error {
@@ -675,12 +682,17 @@ func (i *installer) saveSourceUsing(source string, rename pathRenamer, crossDevi
 		return err
 	}
 	var backupRoot, backup string
+	removeBackup := true
 	if _, err := os.Stat(i.srcDir); err == nil {
 		backupRoot, err = os.MkdirTemp(filepath.Dir(i.srcDir), ".wago-source-backup-")
 		if err != nil {
 			return err
 		}
-		defer os.RemoveAll(backupRoot)
+		defer func() {
+			if removeBackup {
+				_ = os.RemoveAll(backupRoot)
+			}
+		}()
 		backup = filepath.Join(backupRoot, "source")
 		if err := rename(i.srcDir, backup); err != nil {
 			return err
@@ -690,7 +702,10 @@ func (i *installer) saveSourceUsing(source string, rename pathRenamer, crossDevi
 	}
 	if err := movePathUsing(source, i.srcDir, rename, crossDevice); err != nil {
 		if backup != "" {
-			_ = rename(backup, i.srcDir)
+			if restoreErr := rename(backup, i.srcDir); restoreErr != nil {
+				removeBackup = false
+				err = errors.Join(err, fmt.Errorf("restore source failed; backup retained at %s: %w", backup, restoreErr))
+			}
 		}
 		return fmt.Errorf("save Wago source: %w", err)
 	}

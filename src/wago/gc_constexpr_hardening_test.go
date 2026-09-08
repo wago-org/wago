@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	corergc "github.com/wago-org/wago/src/core/runtime/gc"
+	corergc "github.com/wago-org/wago/src/core/runtime/gc/native"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -193,6 +193,7 @@ func TestCompiledCodecRejectsIllTypedGCConstExpr(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
+	compiled = mutableCompiledFixture(compiled)
 	compiled.Globals[1].InitExpr = []byte{0xd0, byte(wasm.HeapNone), 0x0b}
 	if _, err := compiled.MarshalBinary(); err == nil {
 		t.Fatal("MarshalBinary accepted ref.null none for a non-null concrete global")
@@ -203,6 +204,7 @@ func TestCompiledCodecRejectsIllTypedGCConstExpr(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
+	compiled = mutableCompiledFixture(compiled)
 	compiled.Globals[1].InitExpr = []byte{0xfb, 0x01, 0x7f, 0x0b}
 	if _, err := compiled.MarshalBinary(); err == nil {
 		t.Fatal("MarshalBinary accepted an out-of-range GC constructor type")
@@ -217,6 +219,7 @@ func TestCompiledCodecRejectsIllTypedGCConstExpr(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer compiled.Close()
+	compiled = mutableCompiledFixture(compiled)
 	compiled.Elems[0].Values[0].Expr = []byte{0xd0, byte(wasm.HeapNone), 0x0b}
 	if _, err := compiled.MarshalBinary(); err == nil {
 		t.Fatal("MarshalBinary accepted a null GC element for a non-null concrete element type")

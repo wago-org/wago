@@ -145,7 +145,7 @@ func TestInstallerDryRunPresentation(t *testing.T) {
 	separator := string(os.PathSeparator)
 	want := "Welcome to Wago! Let’s get you set up.\n\n" +
 		"Install location: ~" + separator + ".wago" + separator + "bin\n\n" +
-		"Plan\n  Version  canary\n  Command  ~" + separator + ".wago" + separator + "bin" + separator + executableName("wago") + "\n  Source   ~" + separator + ".wago" + separator + "src\n\n" +
+		"Plan\n  Version  canary\n  Command  ~" + separator + ".wago" + separator + "bin" + separator + executableName("wago") + "\n  Source   ~" + separator + ".wago" + separator + "bin" + separator + ".wago-releases\n\n" +
 		"Dry run · no changes made.\n"
 	if got := output.String(); got != want {
 		t.Fatalf("dry-run output:\n--- got ---\n%s--- want ---\n%s", got, want)
@@ -205,12 +205,12 @@ func TestInstallerCanonicalRollingManagerResolutionPaginates(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		if r.URL.Query().Get("scope") != "installer" || r.URL.Query().Get("per_page") != "100" {
+		if r.URL.Query().Get("scope") != "installer" || r.URL.Query().Get("per_page") != "20" {
 			t.Fatalf("release query = %q", r.URL.RawQuery)
 		}
 		requests++
 		if r.URL.Query().Get("page") == "1" {
-			for index := 0; index < 100; index++ {
+			for index := 0; index < installerReleasePageSize; index++ {
 				if index != 0 {
 					_, _ = fmt.Fprint(w, ",")
 				}
@@ -233,6 +233,36 @@ func TestInstallerCanonicalRollingManagerResolutionPaginates(t *testing.T) {
 	}
 	if requests != 2 {
 		t.Fatalf("release requests = %d, want 2", requests)
+	}
+}
+
+func TestInstallerReleaseCatalogKeepsPagesWithinMetadataLimit(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/releases" {
+			http.NotFound(w, r)
+			return
+		}
+		requests++
+		if r.URL.Query().Get("per_page") != "20" {
+			// GitHub's live 100-release response has grown beyond the installer's
+			// 4 MiB metadata bound. Model that failure so increasing the page size
+			// cannot silently reintroduce a source-build fallback.
+			_, _ = fmt.Fprintf(w, `[{"tag_name":"nightly-oversized","body":%q}]`, strings.Repeat("x", (4<<20)+1))
+			return
+		}
+		_, _ = fmt.Fprintf(w, `[{"tag_name":"nightly-exact","target_commitish":%q,"published_at":"2026-09-06T00:00:00Z"}]`, sha)
+	}))
+	defer server.Close()
+
+	i := &installer{releaseAPI: server.URL + "/releases", httpClient: server.Client()}
+	tag, _, err := i.resolveReleaseForTest("nightly@" + sha)
+	if err != nil || tag != "nightly-exact" {
+		t.Fatalf("resolve canonical manager = %q, %v", tag, err)
+	}
+	if requests != 1 {
+		t.Fatalf("release requests = %d, want 1", requests)
 	}
 }
 
@@ -848,5 +878,45 @@ func TestInstallerVerificationIsBounded(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed > 2500*time.Millisecond {
 		t.Fatalf("verification took %s", elapsed.Round(time.Millisecond))
+	}
+}
+
+func TestSourceRollbackRetainsBackup(t *testing.T) {
+	root := t.TempDir()
+	source, dest := filepath.Join(root, "new"), filepath.Join(root, "installed")
+	for _, dir := range []string{source, dest} {
+		if err := os.Mkdir(dir, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dest, "marker"), []byte("old"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	publishErr, restoreErr := errors.New("publish failed"), errors.New("restore failed")
+	calls := 0
+	rename := func(from, to string) error {
+		calls++
+		switch calls {
+		case 2:
+			return publishErr
+		case 3:
+			return restoreErr
+		}
+		return os.Rename(from, to)
+	}
+	err := (&installer{out: &bytes.Buffer{}, srcDir: dest}).saveSourceUsing(source, rename, func(error) bool { return false })
+	if !errors.Is(err, publishErr) || !errors.Is(err, restoreErr) {
+		t.Fatalf("missing failure cause: %v", err)
+	}
+	backups, globErr := filepath.Glob(filepath.Join(root, ".wago-source-backup-*", "*"))
+	if globErr != nil || len(backups) != 1 {
+		t.Fatalf("backups = %v, %v", backups, globErr)
+	}
+	if !strings.Contains(err.Error(), backups[0]) {
+		t.Fatalf("backup path absent from error: %v", err)
+	}
+	data, readErr := os.ReadFile(filepath.Join(backups[0], "marker"))
+	if readErr != nil || string(data) != "old" {
+		t.Fatalf("backup contents = %q, %v", data, readErr)
 	}
 }

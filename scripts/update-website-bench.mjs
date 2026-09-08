@@ -25,9 +25,15 @@ const websiteDir = resolve(process.env.WAGO_WEBSITE_DIR || join(root, "..", "web
 const indexPath = join(websiteDir, "index.html");
 const requestedUpdateArch = process.env.WAGO_BENCH_UPDATE_ARCH || "";
 const ENGINES = [
-  { id: "railshot", label: "Wago" },
+  { id: "railshot", label: "wago" },
   { id: "wazero", label: "wazero" },
 ];
+const APPLICATION_CORPUS = new Set([
+  "json-as", "blake-as", "utf-as",
+  "json-as-simd", "blake-as-simd", "utf-as-simd",
+  "coremark", "blake3", "qoi", "lz4", "zlib", "zstd",
+  "wasm3", "lua", "sqlite3", "ruby", "esbuild",
+]);
 
 const benchmarkSets = await loadBenchmarkSets();
 
@@ -199,6 +205,69 @@ const TABS = [
   },
 ];
 
+// The detailed tables are derived from the benchmark corpus instead of a
+// hand-picked shortlist. This keeps every available module/export visible when
+// the manifest grows and makes missing benchmark pairs obvious during review.
+TABS.splice(1, TABS.length - 1, ...buildCorpusTabs(benchmarkSets));
+
+function buildCorpusTabs(sets) {
+  const modules = [];
+  const seenModules = new Set();
+  for (const set of sets) {
+    for (const [name, info] of Object.entries(set.modules ?? {})) {
+      if (!APPLICATION_CORPUS.has(name)) continue;
+      if (seenModules.has(name)) continue;
+      seenModules.add(name);
+      modules.push({ name, category: name === "wasm3" ? "real-large" : info.category || "other" });
+    }
+  }
+  const categoryLabels = new Map([
+    ["micro", "Micro modules"], ["loop", "Loops"], ["calls", "Calls"],
+    ["calls+memory", "Calls and memory"], ["alu", "Integer arithmetic"],
+    ["fp", "Floating point"], ["memory", "Memory"], ["globals", "Globals"],
+    ["control", "Control flow"], ["scale", "Scale"], ["compute", "Compute kernels"],
+    ["real", "Real-world programs"], ["real-simd", "Real-world SIMD"],
+    ["semantic", "Semantic corpus"], ["real-large", "Large real-world programs"],
+    ["regression-only", "Regression corpus"], ["other", "Other"],
+  ]);
+  const grouped = (makeItems) => {
+    const groups = new Map();
+    for (const module of modules) {
+      const items = makeItems(module);
+      if (items.length === 0) continue;
+      const group = groups.get(module.category) ?? [];
+      group.push(...items);
+      groups.set(module.category, group);
+    }
+    return [...groups].flatMap(([category, items]) => [grp(categoryLabels.get(category) ?? category), ...items]);
+  };
+  const moduleRows = (wagoPrefix, wazeroPrefix, kind = "ns") => grouped(({ name, category }) => [
+    rs(name, `${category} corpus`, `${wagoPrefix}${name}`, `${wazeroPrefix}${name}`,
+      kind === "ns" ? "faster" : "smaller", kind),
+  ]);
+  const execRows = grouped(({ name, category }) => {
+    const keys = new Set();
+    for (const set of sets) {
+      for (const key of set.metrics.keys()) {
+        for (const prefix of ["Exec/", "WazeroExec/"]) {
+          if (key.startsWith(`${prefix}${name}.`)) keys.add(key.slice(prefix.length));
+        }
+      }
+    }
+    return [...keys].sort().map((tail) => {
+      const exportName = tail.slice(name.length + 1);
+      return rs(name, `${exportName} · ${category} corpus`, `Exec/${tail}`, `WazeroExec/${tail}`);
+    });
+  });
+  return [
+    { id: "compile", label: "Compile latency", items: moduleRows("CompileFull/", "WazeroCompile/") },
+    { id: "compile-memory", label: "Compile memory", items: moduleRows("CompileFull/", "WazeroCompile/", "bytes") },
+    { id: "instantiate", label: "Instantiate latency", items: moduleRows("Instantiate/", "WazeroInstantiate/") },
+    { id: "machine-code", label: "Machine code", items: moduleRows("CompileFull/", "WazeroCompile/", "code") },
+    { id: "execution", label: "Execution", items: execRows },
+  ];
+}
+
 const html = await readFile(indexPath, "utf8");
 const updateArch = requestedUpdateArch || (
   benchmarkSets.length === 1 &&
@@ -261,7 +330,7 @@ async function loadRunMetrics(path, fallbackArch = "") {
   const run = JSON.parse(await readFile(path, "utf8"));
   const metrics = new Map();
   for (const [key, m] of Object.entries(run.metrics ?? {})) {
-    metrics.set(key, { ns: Number(m.ns ?? 0), bytes: Number(m.bytes ?? 0), allocs: Number(m.allocs ?? 0) });
+    metrics.set(key, { ns: Number(m.ns ?? 0), bytes: Number(m.bytes ?? 0), allocs: Number(m.allocs ?? 0), codeBytes: Number(m.codeBytes ?? 0) });
   }
   const arch = run.goarch || fallbackArch;
   const generalPath = resolve(
@@ -277,7 +346,7 @@ async function loadRunMetrics(path, fallbackArch = "") {
     throw new Error(`general benchmark commit ${generalRaw.commit} does not match ${run.commit}`);
   }
   const general = buildGeneralSummary(metrics, generalRaw);
-  return { metrics, general, external: generalRaw, source: path, arch, goos: run.goos || "", commit: run.commit || "", cpu: run.cpu || "" };
+  return { metrics, modules: run.modules ?? {}, general, external: generalRaw, source: path, arch, goos: run.goos || "", commit: run.commit || "", cpu: run.cpu || "" };
 }
 
 function buildGeneralSummary(metrics, raw) {
@@ -301,33 +370,24 @@ function buildGeneralSummary(metrics, raw) {
       compile.set(engine, aggregate);
     }
   }
-  const runtime = raw?.runtime ?? raw?.wasmtimeRuntime ?? [];
-  const runtimeValues = (stage, grouped = false) => Object.fromEntries(
-    ENGINES.map(({ id }) => [id,
-      id === "railshot" ? metricGeomean(metrics, stage === "instantiate" ? "Instantiate/" : "Exec/", grouped) :
-      id === "wazero" ? metricGeomean(metrics, stage === "instantiate" ? "WazeroInstantiate/" : "WazeroExec/", grouped) :
-      externalRuntimeGeomean(runtime, stage, grouped, id),
-    ]),
-  );
-  const instantiate = runtimeValues("instantiate");
-  const execution = runtimeValues("exec", true);
-  const tinyCall = Object.fromEntries(ENGINES.map(({ id }) => [id,
-    id === "railshot" ? Number(metrics.get("Exec/tiny.add")?.ns ?? 0) :
-    id === "wazero" ? Number(metrics.get("WazeroExec/tiny.add")?.ns ?? 0) :
-    externalRuntimeMetric(runtime, id, "exec", "tiny", "add"),
-  ]));
-  const compileTime = Object.fromEntries([...compile].map(([engine, values]) => [engine, geomean(values.wall)]));
-  compileTime.railshot ||= metricGeomean(metrics, "CompileFull/");
-  compileTime.wazero ||= metricGeomean(metrics, "WazeroCompile/");
+  // Summary means use only exact Wago/wazero pairs. A plugin-backed Wago row
+  // remains visible in the detailed table when wazero lacks that host runtime,
+  // but it cannot silently enter one side of the aggregate as a zero or as an
+  // unmatched sample.
+  const instantiate = pairedMetricGeomeans(metrics, "Instantiate/", "WazeroInstantiate/", false, APPLICATION_CORPUS);
+  const execution = pairedMetricGeomeans(metrics, "Exec/", "WazeroExec/", true, APPLICATION_CORPUS);
+  const compileTime = {
+    railshot: metricGeomean(metrics, "CompileFull/", false, "ns", APPLICATION_CORPUS),
+    wazero: metricGeomean(metrics, "WazeroCompile/", false, "ns", APPLICATION_CORPUS),
+  };
   const summary = [
     ["Compile", "fresh process", "ns", compileTime],
     ["Compile heap", "per compile", "bytes", {
-      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes"),
-      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes"),
+      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes", APPLICATION_CORPUS),
+      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes", APPLICATION_CORPUS),
     }],
     ["Instantiate", "runnable corpus", "ns", instantiate],
     ["Execution", "runnable corpus", "ns", execution],
-    ["Call latency", "host → Wasm", "ns", tinyCall],
     ["End-to-end latency", "compile + instantiate", "ns", Object.fromEntries(
       ENGINES.map(({ id }) => [id, Number(compileTime[id] ?? 0) + Number(instantiate[id] ?? 0)]),
     )],
@@ -352,17 +412,45 @@ function generalCorpusMetric(metrics, label, sub, railshotPrefix, wazeroPrefix, 
   return { label, sub, kind, values: { railshot, wazero } };
 }
 
-function metricGeomean(metrics, prefix, groupExports = false, field = "ns") {
+function metricGeomean(metrics, prefix, groupExports = false, field = "ns", includedModules = null) {
   const groups = new Map();
   for (const [key, metric] of metrics) {
     if (!key.startsWith(prefix) || !(Number(metric[field]) > 0)) continue;
     const tail = key.slice(prefix.length);
-    const group = groupExports ? tail.split(".", 1)[0] : tail;
+    const module = tail.split(".", 1)[0];
+    if (includedModules && !includedModules.has(module)) continue;
+    const group = groupExports ? module : tail;
     const values = groups.get(group) ?? [];
     values.push(Number(metric[field]));
     groups.set(group, values);
   }
   return geomean([...groups.values()].map(geomean));
+}
+
+function pairedMetricGeomeans(metrics, wagoPrefix, wazeroPrefix, groupExports, includedModules) {
+  const wagoGroups = new Map();
+  const wazeroGroups = new Map();
+  for (const [key, wagoMetric] of metrics) {
+    if (!key.startsWith(wagoPrefix)) continue;
+    const tail = key.slice(wagoPrefix.length);
+    const module = tail.split(".", 1)[0];
+    if (includedModules && !includedModules.has(module)) continue;
+    const wazeroMetric = metrics.get(`${wazeroPrefix}${tail}`);
+    const wago = Number(wagoMetric.ns);
+    const wazero = Number(wazeroMetric?.ns);
+    if (!(wago > 0) || !(wazero > 0)) continue;
+    const group = groupExports ? module : tail;
+    const wagoValues = wagoGroups.get(group) ?? [];
+    const wazeroValues = wazeroGroups.get(group) ?? [];
+    wagoValues.push(wago);
+    wazeroValues.push(wazero);
+    wagoGroups.set(group, wagoValues);
+    wazeroGroups.set(group, wazeroValues);
+  }
+  return {
+    railshot: geomean([...wagoGroups.values()].map(geomean)),
+    wazero: geomean([...wazeroGroups.values()].map(geomean)),
+  };
 }
 
 function externalRuntimeGeomean(rows, stage, groupExports = false, engine = "wasmtime") {
@@ -728,7 +816,7 @@ ${rows}
 
 function buildEngineRow(spec, set, tabID) {
   const kind = spec.kind ?? "ns";
-  const pick = (metric) => kind === "bytes" ? metric.bytes : kind === "count" ? metric.allocs : metric.ns;
+  const pick = (metric) => kind === "bytes" ? metric.bytes : kind === "count" ? metric.allocs : kind === "code" ? metric.codeBytes : metric.ns;
   const values = [];
   for (const engine of ENGINES) {
     let value = 0;
@@ -769,7 +857,7 @@ function externalRowMetric(raw, engine, tabID, key) {
 function renderEngineRow(row, indent) {
   const pad = " ".repeat(indent);
   const max = Math.max(1, ...row.values.map(({ value }) => value));
-  const format = row.kind === "bytes" ? fmtBytes : row.kind === "count" ? fmtCount : fmtNs;
+  const format = row.kind === "bytes" || row.kind === "code" ? fmtBytes : row.kind === "count" ? fmtCount : fmtNs;
   const delta = comparisonDelta(row);
   const lines = row.values.map(({ engine, value }) => `${pad}        <div class="vs__line" data-engine="${engine.id}">
 ${pad}            <span class="vs__engine">${esc(engine.label)}</span>
@@ -792,7 +880,7 @@ function comparisonDelta(row) {
   if (same) return { text: "same", className: "tie" };
   const railshotWins = railshot < wazero;
   const magnitude = trim(Math.max(railshot, wazero) / Math.min(railshot, wazero), 1);
-  const resource = row.kind === "bytes" || row.kind === "count";
+  const resource = row.kind === "bytes" || row.kind === "code" || row.kind === "count";
   const word = resource
     ? railshotWins ? "less" : "more"
     : railshotWins ? "faster" : "slower";

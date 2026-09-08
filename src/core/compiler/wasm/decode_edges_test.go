@@ -351,7 +351,7 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 		} {
 			t.Run(tc.name+"/zero", func(t *testing.T) {
 				r := newReader([]byte{tc.op, 0x00})
-				in, err := decodeInstruction(r, 0)
+				in, err := decodeInstructionWithMemargWidths(r, 0, memargWidths{})
 				if err != nil || in.Kind != tc.kind || in.Index != 0 || r.has() {
 					t.Fatalf("instr=%#v left=%d err=%v", in, r.left(), err)
 				}
@@ -365,7 +365,7 @@ func TestDecodeInstructionImmediates(t *testing.T) {
 			} {
 				name := fmt.Sprintf("%x", immediate)
 				t.Run(tc.name+"/reject-"+name, func(t *testing.T) {
-					_, err := decodeInstruction(newReader(append([]byte{tc.op}, immediate...)), 0)
+					_, err := decodeInstructionWithMemargWidths(newReader(append([]byte{tc.op}, immediate...)), 0, memargWidths{})
 					var de *DecodeError
 					if !errors.As(err, &de) || de.Code != ErrInvalidInstruction || de.Offset != 1 {
 						t.Fatalf("error=%#v / %v, want invalid instruction at immediate", de, err)

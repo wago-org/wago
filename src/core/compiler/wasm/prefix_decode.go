@@ -8,7 +8,16 @@ func lookupPrefixKind(table []InstrKind, sub uint32) (InstrKind, bool) {
 	return kind, kind != InstrInvalid
 }
 
-func decodeFC(r *reader) (Instruction, error) {
+func decodeFC(r *reader) (Instruction, error) { return decodeFCWithMultiMemory(r, true) }
+
+func readMemoryIndex(r *reader, multiMemory bool) (uint32, error) {
+	if multiMemory {
+		return r.u32()
+	}
+	return 0, readReservedZeroByte(r)
+}
+
+func decodeFCWithMultiMemory(r *reader, multiMemory bool) (Instruction, error) {
 	sub, err := r.u32()
 	if err != nil {
 		return Instruction{}, err
@@ -18,13 +27,23 @@ func decodeFC(r *reader) (Instruction, error) {
 	}
 	switch sub {
 	case 8:
-		return twoIndexInst(r, InstrMemoryInit)
+		a, err := r.u32()
+		if err != nil {
+			return Instruction{}, err
+		}
+		b, err := readMemoryIndex(r, multiMemory)
+		return Instruction{Kind: InstrMemoryInit, Index: a, Index2: b}, err
 	case 9:
 		return indexInst(r, InstrDataDrop)
 	case 10:
-		return twoIndexInst(r, InstrMemoryCopy)
+		a, err := readMemoryIndex(r, multiMemory)
+		if err != nil {
+			return Instruction{}, err
+		}
+		b, err := readMemoryIndex(r, multiMemory)
+		return Instruction{Kind: InstrMemoryCopy, Index: a, Index2: b}, err
 	case 11:
-		mi, err := r.u32()
+		mi, err := readMemoryIndex(r, multiMemory)
 		return Instruction{Kind: InstrMemoryFill, Index: mi}, err
 	case 12:
 		return twoIndexInst(r, InstrTableInit)
@@ -260,13 +279,6 @@ func decodeFDWithMemarg64(r *reader, memarg64 bool) (Instruction, error) {
 
 func decodeFDWithMemargWidths(r *reader, widths memargWidths) (Instruction, error) {
 	return decodeFDWithMemargWidthsInto(r, widths, nil)
-}
-
-// decodeFDWithMemarg64Into decodes a SIMD-prefixed instruction. If ext is
-// non-nil, rare immediate payloads are written into that caller-owned scratch;
-// otherwise the returned Instruction owns a newly allocated payload.
-func decodeFDWithMemarg64Into(r *reader, memarg64 bool, ext *instrExt) (Instruction, error) {
-	return decodeFDWithMemargWidthsInto(r, fixedMemargWidths(memarg64), ext)
 }
 
 func decodeFDWithMemargWidthsInto(r *reader, widths memargWidths, ext *instrExt) (Instruction, error) {

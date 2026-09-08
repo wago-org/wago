@@ -415,7 +415,7 @@ func TestPluginGCHostImportInvocationContext(t *testing.T) {
 	}
 	defer in.Close()
 	deadline := time.Now().Add(time.Hour)
-	parent, cancel := context.WithDeadline(context.Background(), deadline)
+	parent, cancel := invocationContextTestParent(context.Background(), deadline)
 	defer cancel()
 	result, err := in.Call(parent, "call")
 	if err != nil {
@@ -430,9 +430,9 @@ func TestPluginGCHostImportInvocationContext(t *testing.T) {
 	if ctx == nil {
 		t.Fatal("GC host import did not receive an invocation context")
 	}
-	gotDeadline, ok := ctx.Deadline()
-	if !ok || !gotDeadline.Equal(deadline) {
-		t.Fatalf("GC host deadline = %v, %v; want %v, true", gotDeadline, ok, deadline)
+	if !invocationContextTestDeadline(ctx, deadline) {
+		gotDeadline, ok := ctx.Deadline()
+		t.Fatalf("GC host deadline = %v, %v; want %v, supported=%v", gotDeadline, ok, deadline, nativeCancellationSupported())
 	}
 	if ctx.Err() != context.Canceled {
 		t.Fatalf("GC host context after callback = %v, want context.Canceled", ctx.Err())

@@ -3,7 +3,7 @@ package wago
 import (
 	"fmt"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // Foreign Runtime transfer uses explicit transactional graph cloning rather

@@ -1,7 +1,14 @@
 package wasm
 
 func decodeNameSec(payload []byte) (*NameSec, error) {
-	r := newReader(payload)
+	return decodeNameSecWithBudget(payload, newDecodeBudget(DecodeLimits{}))
+}
+
+func decodeNameSecWithBudget(payload []byte, budget *decodeBudget) (*NameSec, error) {
+	r := &reader{data: payload, budget: budget}
+	if err := reserveMetadataStorage[NameSec](r, 1); err != nil {
+		return nil, err
+	}
 	ns := &NameSec{}
 	var prev byte
 	seen := false
@@ -23,7 +30,7 @@ func decodeNameSec(payload []byte) (*NameSec, error) {
 		if err != nil {
 			return nil, err
 		}
-		sub := newReader(subb)
+		sub := &reader{data: subb, budget: r.budget}
 		known := true
 		switch id {
 		case 0:
@@ -108,7 +115,7 @@ func decodeNameSec(payload []byte) (*NameSec, error) {
 	return ns, nil
 }
 func decodeNameMap(r *reader) (NameMap, error) {
-	entries, err := readVec(r, func(r *reader) (NameAssoc, error) {
+	entries, err := readMetadataVec(r, func(r *reader) (NameAssoc, error) {
 		i, err := r.u32()
 		if err != nil {
 			return NameAssoc{}, err
@@ -127,7 +134,7 @@ func decodeNameMap(r *reader) (NameMap, error) {
 	return entries, nil
 }
 func decodeIndirectNameMap(r *reader) (IndirectNameMap, error) {
-	entries, err := readVec(r, func(r *reader) (IndirectNameAssoc, error) {
+	entries, err := readMetadataVec(r, func(r *reader) (IndirectNameAssoc, error) {
 		i, err := r.u32()
 		if err != nil {
 			return IndirectNameAssoc{}, err

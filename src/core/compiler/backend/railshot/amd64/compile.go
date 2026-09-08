@@ -25,7 +25,7 @@ import (
 )
 
 // regMergeEnabled turns on WARP-style register reconciliation of single-int-result
-// block/if merges (docs/operand-stack-registers-plan.md) instead of the
+// block/if merges instead of the
 // flush-to-slot + reload. Default ON (fib_rec −13.7%, json-as serialize −1.5%, no
 // regressions; validated against the spec suite + full corpus differential).
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
@@ -414,7 +414,7 @@ type fn struct {
 	nativeStructAllocType  uint32 // type index + 1 for the next gcStructAllocOne call
 	nativeArrayAlloc       gcArrayAllocStubSite
 
-	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
+	// stats collects per-function codegen counters. nil
 	// unless the caller requested collection, in which case every counter method
 	// is a no-op — the hot compile path is unaffected. See stats.go.
 	stats  *CodegenStats
@@ -1677,7 +1677,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 			fmt.Fprint(os.Stderr, ms.String())
 		}
 		keepCodeBuffer = true
-		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+		return &amd64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, relocs, literalOffsets, allHints, hintSidecar, immutableTables, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, importedFuncs)
@@ -1955,7 +1955,19 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 			requiresAVX512 = requiresAVX512 || lowering.Features&plugincodegen.FeatureAVX512 != 0
 		}
 	}
-	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+	return &amd64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, PreparedIsolatedTables: allTablesPreparedIsolated(immutableTables), RequiresBMI2: requiresBMI2, RequiresAVX2: requiresAVX2, RequiresAVX512: requiresAVX512}, nil
+}
+
+func allTablesPreparedIsolated(tables []immutableTableHint) bool {
+	if len(tables) == 0 {
+		return false
+	}
+	for i := range tables {
+		if !tables[i].local {
+			return false
+		}
+	}
+	return true
 }
 
 func countGCSharedStubRelocs(relocs [][]callReloc) int {

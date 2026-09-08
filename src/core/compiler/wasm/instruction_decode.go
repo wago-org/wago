@@ -38,10 +38,6 @@ func decodeExprWithMemarg64(r *reader, depth int, memarg64 bool) (Expr, error) {
 	return decodeExprWithMemargWidths(r, depth, fixedMemargWidths(memarg64))
 }
 
-func decodeExprWithModule(r *reader, depth int, m *Module) (Expr, error) {
-	return decodeExprWithMemargWidths(r, depth, moduleMemargWidths(m))
-}
-
 func decodeExprWithMemargWidths(r *reader, depth int, widths memargWidths) (Expr, error) {
 	if depth > maxInstructionNestingDepth {
 		return Expr{}, &DecodeError{Code: ErrInstructionNestingLimitExceeded, Offset: r.off()}
@@ -161,8 +157,14 @@ func decodeInstructionWithMemargWidths(r *reader, depth int, widths memargWidths
 		ma, err := decodeMemArgWithWidths(r, widths)
 		return Instruction{Kind: memOpcodeKind[op], ext: &instrExt{MemArg: ma}}, err
 	case 0x3f:
+		if widths.multiMemory {
+			return indexInst(r, InstrMemorySize)
+		}
 		return reservedZeroInst(r, InstrMemorySize)
 	case 0x40:
+		if widths.multiMemory {
+			return indexInst(r, InstrMemoryGrow)
+		}
 		return reservedZeroInst(r, InstrMemoryGrow)
 	case 0x41:
 		x, err := r.i32()
@@ -192,7 +194,7 @@ func decodeInstructionWithMemargWidths(r *reader, depth int, widths memargWidths
 	case 0xfb:
 		return decodeFB(r)
 	case 0xfc:
-		return decodeFC(r)
+		return decodeFCWithMultiMemory(r, widths.multiMemory)
 	case 0xfd:
 		return decodeFDWithMemargWidths(r, widths)
 	case 0xfe:
@@ -264,15 +266,18 @@ func readReservedZeroByte(r *reader) error {
 }
 
 type memargWidths struct {
-	indexed64 []uint64
-	fixed64   bool
+	multiMemory bool
+	indexed64   []uint64
+	fixed64     bool
 }
 
-func fixedMemargWidths(addr64 bool) memargWidths { return memargWidths{fixed64: addr64} }
+func fixedMemargWidths(addr64 bool) memargWidths {
+	return memargWidths{multiMemory: true, fixed64: addr64}
+}
 
 func moduleMemargWidths(m *Module) memargWidths {
 	if m == nil {
-		return memargWidths{}
+		return memargWidths{multiMemory: true}
 	}
 	seen, mixed := false, false
 	addr64 := false
@@ -293,12 +298,12 @@ func moduleMemargWidths(m *Module) memargWidths {
 		count++
 	}
 	if !seen {
-		return memargWidths{}
+		return memargWidths{multiMemory: true}
 	}
 	// Preserve the allocation-free fixed-width hot path for the overwhelmingly
 	// common single-memory and uniform-width multi-memory modules.
 	if !mixed {
-		return memargWidths{fixed64: addr64}
+		return memargWidths{multiMemory: true, fixed64: addr64}
 	}
 	indexed64 := make([]uint64, (count+63)/64)
 	index := 0
@@ -317,7 +322,7 @@ func moduleMemargWidths(m *Module) memargWidths {
 		}
 		index++
 	}
-	return memargWidths{indexed64: indexed64}
+	return memargWidths{multiMemory: true, indexed64: indexed64}
 }
 
 func (w memargWidths) offset64(memoryIndex uint32) bool {
@@ -339,6 +344,9 @@ func decodeMemArgWithWidths(r *reader, widths memargWidths) (MemArg, error) {
 	}
 	ma := MemArg{}
 	if n >= 64 && n < 128 {
+		if !widths.multiMemory {
+			return MemArg{}, &DecodeError{Code: ErrInvalidInstruction, Offset: r.off()}
+		}
 		ma.Align = n - 64
 		mi, err := r.u32()
 		if err != nil {

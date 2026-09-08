@@ -42,6 +42,7 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       "Exec/nbody.step": { ns: 20 }, "WazeroExec/nbody.step": { ns: 30 },
       "Exec/json-as.deserializeN": { ns: 25 }, "WazeroExec/json-as.deserializeN": { ns: 50 },
       "Exec/json-as-simd.deserializeN": { ns: 18 }, "WazeroExec/json-as-simd.deserializeN": { ns: 36 },
+	  "Exec/lua.plugin-workload": { ns: 1e30 }, "WazeroExec/lua.plugin-workload": { ns: 0 },
     };
     for (const name of ["coremark", "blake3", "qoi", "lz4", "zlib", "zstd"]) {
       metrics[`CompileFull/${name}`] = { ns: 100, bytes: 10, allocs: 1 };
@@ -64,6 +65,18 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       metrics[`Exec/${name}`] = { ns: 40 };
       metrics[`WazeroExec/${name}`] = { ns: 80 };
     }
+    for (const key of Object.keys(metrics)) {
+      if (key.startsWith("CompileFull/") || key.startsWith("WazeroCompile/")) {
+        metrics[key].codeBytes = key.startsWith("Wazero") ? 200 : 100;
+      }
+    }
+    const modules = Object.fromEntries(
+      [...new Set(Object.keys(metrics)
+        .filter((key) => key.startsWith("CompileFull/"))
+        .map((key) => key.slice("CompileFull/".length)))]
+        .map((name) => [name, { category: name === "tiny" ? "micro" : "semantic", bytes: 100 }]),
+    );
+	modules.lua = { category: "real-large", bytes: 100 };
     const general = {
       compile: [
         { wasm_path: "/tmp/tiny.wasm", runs: [
@@ -92,8 +105,8 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
         { engine: "wavm", stage: "exec", module: "tiny.wasm", export: "add", ns_per_op: 6 },
       ],
     };
-    await writeFile(amd64, JSON.stringify({ goos: "linux", goarch: "amd64", metrics }));
-    await writeFile(arm64, JSON.stringify({ goos: "darwin", goarch: "arm64", metrics }));
+    await writeFile(amd64, JSON.stringify({ goos: "linux", goarch: "amd64", modules, metrics }));
+    await writeFile(arm64, JSON.stringify({ goos: "darwin", goarch: "arm64", modules, metrics }));
     await writeFile(generalAMD64, JSON.stringify(general));
     await writeFile(generalARM64, JSON.stringify(general));
 
@@ -147,30 +160,32 @@ function assertDOMContract(html) {
   assert.equal(matches(html, /class="vs__main"/g), 2);
   assert.equal(matches(html, /class="vs__toprow"/g), 2);
   assert.equal(matches(html, /class="vs__specs"/g), 2);
-  assert.equal(matches(html, /id="perf-(?:amd64|arm64)-tab-memory"/g), 2);
-  assert.equal(matches(html, />Memory<\/button>/g), 2);
+  for (const tab of ["compile", "compile-memory", "instantiate", "machine-code", "execution"]) {
+    assert.equal(matches(html, new RegExp(`id="perf-(?:amd64|arm64)-tab-${tab}"`, "g")), 2);
+  }
+  assert.equal(matches(html, />Machine code<\/button>/g), 2);
+  assert.equal(matches(html, />Execution<\/button>/g), 2);
   assert.doesNotMatch(html, /Go allocs|allocation objects/i);
   assert.equal(matches(html, /data-engine-toggles/g), 0);
   assert.equal(matches(html, /data-engine-toggle=/g), 0);
-  assert.equal(matches(html, /data-engine-row/g), 82);
-  assert.equal(matches(html, /class="vs__delta /g), 82);
-  assert.equal(matches(html, /Semantic corpus — full compile/g), 2);
-  assert.equal(matches(html, /Semantic corpus — exact-oracle workloads/g), 2);
-  assert.equal(matches(html, /<span class="vs__label">CoreMark<\/span>/g), 6);
-  for (const label of ["BLAKE3", "QOI", "LZ4", "zlib", "Zstandard"]) {
-    assert.equal(matches(html, new RegExp(`<span class="vs__label">${label}</span>`, "g")), 4);
-  }
+  assert.ok(matches(html, /data-engine-row/g) > 80);
+  assert.ok(matches(html, /class="vs__delta /g) > 80);
   for (const arch of ["amd64", "arm64"]) {
     const generalStart = html.indexOf(`id="perf-${arch}-panel-general"`);
     const generalEnd = html.indexOf(`id="perf-${arch}-panel-compile"`, generalStart);
     const general = html.slice(generalStart, generalEnd);
-    assert.equal(matches(general, /data-engine-row/g), 8);
+    assert.equal(matches(general, /data-engine-row/g), 7);
     for (const label of ["Application compile", "SIMD execution"]) {
       assert.equal(matches(general, new RegExp(`<span class="vs__label">${label}</span>`, "g")), 1);
     }
+	const executionStart = general.indexOf('<span class="vs__label">Execution</span>');
+	const executionEnd = general.indexOf('<div class="vs__row" data-engine-row>', executionStart);
+	const execution = general.slice(executionStart, executionEnd);
+	assert.match(execution, />34\.1ns<\/span>/);
+	assert.match(execution, />68\.3ns<\/span>/);
     assert.doesNotMatch(general, /Micro compile mean|Micro startup mean|AS startup mean|Compute execution mean|Tiny compile|Ruby compile|fib_rec startup|Many-function startup|>N-body<|>JSON deserialize</);
   }
-  assert.match(html, />1\.5× faster<\/span>/);
+  assert.match(html, />[0-9.]+× faster<\/span>/);
   assert.match(html, />2× less<\/span>/);
   assert.match(html, /Compile heap/);
   assert.match(html, /<span class="vs__sub">per compile<\/span>/);
@@ -183,12 +198,18 @@ function assertDOMContract(html) {
   }
   assert.doesNotMatch(html, /dragline/i);
   assert.doesNotMatch(html, />Railshot</);
-  assert.match(html, /<span class="vs__engine">Wago<\/span>/);
+  assert.match(html, /<span class="vs__engine">wago<\/span>/);
   assert.doesNotMatch(html, /data-engine="(?:wasmtime|v8|wavm)"|data-engine-toggle="(?:wasmtime|v8|wavm)"/);
+	assert.doesNotMatch(html, />0(?:\.0)?ns</);
+	const unavailableStart = html.indexOf('<span class="vs__label">lua</span>');
+	assert.ok(unavailableStart >= 0);
+	const unavailableEnd = html.indexOf('<div class="vs__row" data-engine-row>', unavailableStart);
+	const unavailableRow = html.slice(unavailableStart, unavailableEnd);
+	assert.match(unavailableRow, /data-engine="railshot"/);
+	assert.doesNotMatch(unavailableRow, /data-engine="wazero"/);
   assert.match(html, /Summary metrics · lower is better/);
   assert.match(html, /<span class="vs__sub">fresh process<\/span>/);
   assert.match(html, /<span class="vs__sub">runnable corpus<\/span>/);
-  assert.match(html, /<span class="vs__sub">host → Wasm<\/span>/);
   assert.match(html, /<span class="vs__sub">compile \+ instantiate<\/span>/);
   assert.match(html, /End-to-end latency/);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);

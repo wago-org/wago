@@ -112,6 +112,7 @@ TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
 	FSTPQ	(F30, F31), 624(RSP)
 	MRS	NZCV, R17
 	MOVD	R17, 656(RSP)
+	MOVD	R30, 664(RSP)          // interrupted leaf return address
 	MOVD	672(RSP), R0           // allocation-aligned page from VEH frame
 	MOVD	$65536, R1
 	MOVD	$0x1000, R2            // MEM_COMMIT
@@ -146,6 +147,7 @@ TEXT ·guardCommitPage(SB), NOSPLIT|NOFRAME, $0-0
 	LDP	96(RSP), (R12, R13)
 	LDP	112(RSP), (R14, R15)
 	MOVD	128(RSP), R16          // restore the memory-lowering scratch
+	MOVD	664(RSP), R30          // VirtualAlloc overwrites LR
 	MOVD	680(RSP), R17          // retry PC in the dedicated logical-PC scratch
 	ADD	$688, RSP
 	B	(R17)
@@ -154,6 +156,7 @@ commitfailed:
 	CBZ	R1, commitsearch
 	MOVW	$4, R2                 // TrapLinMemCouldNotExtend
 	MOVW	R2, (R1)
+	MOVD	R26, R9                // landing pad requires primary linMem in X9
 	B	·nativeTrapExitHandlerJump(SB)
 commitsearch:
 	BRK	$0

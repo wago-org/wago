@@ -29,7 +29,7 @@ func (e *UnsupportedError) Unwrap() error { return runtime.ErrUnsupported }
 // DecodeValidate decodes without materializing function-body instruction trees,
 // validates, and runs wago's support pass over data.
 func DecodeValidate(data []byte) (*wasm.Module, error) {
-	m, err := wasm.DecodeModule(data)
+	m, err := wasm.DecodeModuleWithFeatures(data, wasm.ValidationFeatures{})
 	if err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}

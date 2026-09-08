@@ -62,6 +62,36 @@ func TestInvokeCacheKeepsAlternatingExports(t *testing.T) {
 	}
 }
 
+func TestInvokeCacheSelectsIsolatedDirectIntegerEntry(t *testing.T) {
+	in, err := Instantiate(MustCompile(alternatingExportsModule()))
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+
+	got, err := in.Invoke("f", I32(41))
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+		t.Fatalf("invoke = %v, %v; want [42], nil", got, err)
+	}
+	ic := in.findInvokeCache("f")
+	wantDirect := preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
+		preparedDirectIntSupported && preparedDirectIntEnabled && in.preparedIsolatedEligible() &&
+		in.c.directPreparedAt(0)
+	if ic == nil || ic.directIntFast != wantDirect {
+		t.Fatalf("direct integer cache selection = %+v; want %v", ic, wantDirect)
+	}
+	if _, err := in.Invoke("f"); err == nil {
+		t.Fatal("wrong-arity cached direct invocation succeeded")
+	}
+	if got := in.invocationState.Load() & instanceInvocationCount; got != 0 {
+		t.Fatalf("invocation count after direct error = %d, want 0", got)
+	}
+	got, err = in.Invoke("f", I32(9))
+	if err != nil || len(got) != 1 || AsI32(got[0]) != 10 {
+		t.Fatalf("invoke after direct error = %v, %v; want [10], nil", got, err)
+	}
+}
+
 func BenchmarkInvokeAlternatingExports(b *testing.B) {
 	c := MustCompile(alternatingExportsModule())
 	in, err := Instantiate(c)

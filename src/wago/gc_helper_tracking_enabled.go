@@ -5,7 +5,7 @@ package wago
 import (
 	"sync/atomic"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 type gcHelperCounter struct {

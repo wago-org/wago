@@ -269,7 +269,10 @@ func TestStagedTagProductMetadataIdentityLifecycle(t *testing.T) {
 	rt := NewRuntime()
 	defer rt.Close()
 	rt.imports = Imports{"env.first": primary, "env.second": primary}
-	consumerModule := rt.buildModule(consumerCompiled)
+	consumerModule, err := rt.buildModule(consumerCompiled)
+	if err != nil {
+		t.Fatal(err)
+	}
 	imports := consumerModule.Imports()
 	if len(imports) != 2 || imports[0].Kind != ImportTag || imports[0].Index != 0 || imports[1].Index != 1 || !reflect.DeepEqual(imports[0].Params, []ValType{ValI32, ValF64}) {
 		t.Fatalf("tag import inspection = %#v", imports)

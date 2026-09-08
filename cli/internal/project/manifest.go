@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/wago-org/wago/internal/jsonstrict"
+	"github.com/wago-org/wago/internal/regularfile"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -55,7 +57,7 @@ func Read(dir string) (map[string]any, error) {
 }
 
 func readManifest(dir string) (map[string]any, error) {
-	data, err := os.ReadFile(Path(dir))
+	data, err := regularfile.Read(Path(dir), maxProjectMetadataBytes)
 	if os.IsNotExist(err) {
 		return map[string]any{}, nil
 	}
@@ -66,6 +68,12 @@ func readManifest(dir string) (map[string]any, error) {
 }
 
 func decodeManifest(data []byte, dir string) (map[string]any, error) {
+	if len(data) > maxProjectMetadataBytes {
+		return nil, fmt.Errorf("project manifest exceeds byte limit %d", maxProjectMetadataBytes)
+	}
+	if err := jsonstrict.ValidateUniqueJSONWithLimits(data, projectJSONLimits); err != nil {
+		return nil, fmt.Errorf("%s: %w", DisplayPath(dir), err)
+	}
 	manifest := map[string]any{}
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	if err := decoder.Decode(&manifest); err != nil {
@@ -97,6 +105,13 @@ func EncodeManifest(manifest map[string]any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	data = append(data, '\n')
+	if len(data) > maxProjectMetadataBytes {
+		return nil, fmt.Errorf("project manifest exceeds byte limit %d", maxProjectMetadataBytes)
+	}
+	if err := jsonstrict.ValidateUniqueJSONWithLimits(data, projectJSONLimits); err != nil {
+		return nil, err
+	}
 	var normalized map[string]any
 	if err := json.Unmarshal(data, &normalized); err != nil {
 		return nil, err
@@ -104,7 +119,7 @@ func EncodeManifest(manifest map[string]any) ([]byte, error) {
 	if err := ValidateManifest(normalized); err != nil {
 		return nil, err
 	}
-	return append(data, '\n'), nil
+	return data, nil
 }
 
 var (

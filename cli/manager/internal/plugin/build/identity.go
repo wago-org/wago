@@ -258,7 +258,8 @@ func selectedModules(dir string) ([]resolvedModuleIdentity, error) {
 }
 
 func selectedBuildFiles(dir, buildTag, goRoot string) ([]selectedBuildFile, error) {
-	args := []string{"list", "-deps", "-json"}
+	// Match the generated executable build: it has no VCS identity.
+	args := []string{"list", "-buildvcs=false", "-deps", "-json"}
 	if buildTag != "" {
 		args = append(args, "-tags", buildTag)
 	}

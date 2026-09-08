@@ -6,7 +6,7 @@ import (
 	"math"
 	"sync/atomic"
 
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // GuestStorageAccess describes whether a host callback only observes guest

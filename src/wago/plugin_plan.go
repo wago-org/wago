@@ -749,6 +749,7 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 	if err := validatePluginCommitConflicts(plan, rt.instructions, rt.overridePolicy); err != nil {
 		return err
 	}
+	rt.writableImportsLocked()
 	needsInstructionABI := false
 	hooks := rt.hooks.clone()
 	for _, p := range plan {

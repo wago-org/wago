@@ -4,6 +4,7 @@ package runtime
 
 import (
 	"fmt"
+	goruntime "runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -238,6 +239,11 @@ func (e *Engine) CallGuarded(code uintptr, serArgs []byte, linMemBase uintptr, t
 	clearTrapUnlessInterrupted(trap)
 	j.putU64(abi.TrapCellPtrOffset, uint64(slicePtr(trap)))
 	enterNative(code, slicePtr(serArgs), linMemBase, slicePtr(trap), slicePtr(results), e.stackTop)
+	goruntime.KeepAlive(serArgs)
+	goruntime.KeepAlive(trap)
+	goruntime.KeepAlive(results)
+	goruntime.KeepAlive(j)
+	goruntime.KeepAlive(e)
 	if tc := TrapCode(loadTrap(trap)); tc != TrapNone {
 		return trapErrorFromBuffer(tc, trap)
 	}

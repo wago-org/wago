@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 const stagedGCExternDeltaPath = "tests/spec-v3-staged-gc-extern.json"

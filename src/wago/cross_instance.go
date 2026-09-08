@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/src/core/runtime/gc"
+	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
 // InstanceExport is a handle to another instance's exported function, used as an

@@ -22,7 +22,7 @@ import (
 )
 
 // regMergeEnabled turns on WARP-style register reconciliation of single-int-result
-// block/if merges (docs/operand-stack-registers-plan.md) instead of the
+// block/if merges instead of the
 // flush-to-slot + reload. Default ON (fib_rec −13.7%, json-as serialize −1.5%, no
 // regressions; validated against the spec suite + full corpus differential).
 // WAGO_REG_MERGE=0 restores the slot path — kept as the reference oracle for A/B.
@@ -333,7 +333,7 @@ type fn struct {
 	moduleEH               bool // reserve the handler register and fixed EH frame area
 	compactFrameHeader     bool // register ABI: no wrapper results-pointer header
 
-	// stats collects per-function codegen counters (docs/no-ir-plan.md P1). nil
+	// stats collects per-function codegen counters. nil
 	// unless the caller requested collection, in which case every counter method
 	// is a no-op — the hot compile path is unaffected. See stats.go.
 	stats  *CodegenStats
@@ -1504,7 +1504,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 			fmt.Fprint(os.Stderr, ms.String())
 		}
 		keepCodeBuffer = true
-		return &a64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared}, nil
+		return &a64.CompiledModule{Code: code, CodeImage: codeBuffer, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, PreparedIsolatedTables: immutableTable.local}, nil
 	}
 
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, importedFuncs)
@@ -1712,7 +1712,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	if explainEnabled && ms != nil {
 		fmt.Fprint(os.Stderr, ms.String())
 	}
-	return &a64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared}, nil
+	return &a64.CompiledModule{Code: code, Entry: entry, InternalEntry: internalEntry, DirectPrepared: directPrepared, PreparedIsolatedTables: immutableTable.local}, nil
 }
 
 // finalizeOmittedInlineEntries closes the module-layout seam for standalone

@@ -4,6 +4,8 @@ package wago
 
 import (
 	"encoding/json"
+	"errors"
+	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -80,8 +82,10 @@ func stagedOfficialMultiMemoryModules(t *testing.T, base string) [][]byte {
 
 func stagedCompactConsumerRoundTrip(t *testing.T, data []byte, wantImports []string) *Compiled {
 	t.Helper()
-	if _, err := compatibilityDefaultConfig().Compile(data); err == nil || !strings.Contains(err.Error(), "compact imports") {
-		t.Fatalf("default compile error = %v, want fail-closed compact-import rejection", err)
+	_, err := compatibilityDefaultConfig().Compile(data)
+	var decodeErr *wasm.DecodeError
+	if !errors.As(err, &decodeErr) || decodeErr.Code != wasm.ErrInvalidInstruction {
+		t.Fatalf("Core 2 compile error = %v, want indexed memory wire rejection", err)
 	}
 	compiled := stagedMultiMemoryCompile(t, data)
 	if got := compiled.MemoryImports(); !equalStrings(got, wantImports) {
