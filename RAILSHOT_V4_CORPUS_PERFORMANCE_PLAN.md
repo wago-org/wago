@@ -222,18 +222,19 @@ declared-local `mulhi` from `33.4 ns` to about `20--21 ns`, and immutable-table
 
 ## Current ARM64 qualification
 
-The final working-tree candidate was requalified on Apple M4 Max, Go 1.26.5,
+The final working-tree candidate, including the direct-entry stale-trap reset,
+was requalified on Apple M4 Max, Go 1.26.5,
 wazero 1.9.0, `GOMAXPROCS=1`, and signal-backed bounds:
 
 - 46 paired execution rows, five 300 ms samples: wazero/Railshot median-row
-  geomean `1.4158x`, 39 wins and 7 losses;
+  geomean `1.4099x`, 38 wins and 8 losses;
 - every Railshot execution row: `0 B/op`, `0 allocs/op`;
 - 17 application CompileFull rows, five 200 ms samples: wazero/Railshot
   median-row geomean `2.8952x`;
 - compiler bytes/op geomean: wazero/Railshot `15.9745x`;
 - compiler allocations/op geomean: wazero/Railshot `13.8276x`.
 
-Raw evidence is retained in `/private/tmp/wago-v4-final-arm-exec-5x.txt` and
+Raw evidence is retained in `/private/tmp/wago-v4-final2-arm-exec-5x.txt` and
 `/private/tmp/wago-v4-final-arm-compile-5x.txt` until publication.
 
 ## Current AMD64 qualification
@@ -248,13 +249,19 @@ Tiny call-heavy host-boundary rows improve by roughly `3.1x` against the exact
 candidate with the scheduler transition retained.
 
 A five-sample, 300 ms production guard-page comparison against wazero scores a
-46-row median geomean of `1.3882x`, with 34 wins and 12 losses. Representative
-ratios are `3.575x` for tiny, `3.216x` for branches, `3.192x` for SWAR pack,
-`0.666x` for scalar BLAKE-AS, `0.858--0.886x` for BLAKE3, and `0.956x` for SIMD
+46-row median geomean of `1.4170x`, with 34 wins and 12 losses. Representative
+ratios are `3.322x` for tiny, `3.051x` for branches, `3.224x` for SWAR pack,
+`0.674x` for scalar BLAKE-AS, `0.861--0.888x` for BLAKE3, and `0.963x` for SIMD
 BLAKE-AS. On the same exact source, 17 application CompileFull rows score
 `3.1008x` latency, `9.7265x` bytes/op, and `12.6172x` allocations/op against
-wazero. Raw evidence is retained in `/private/tmp/wago-v4-final-amd-exec-5x.txt`
+wazero. Raw evidence is retained in `/private/tmp/wago-v4-final2-amd-exec-5x.txt`
 and `/private/tmp/wago-v4-final-amd-compile-5x.txt` until publication.
+
+Direct prepared entries now perform the same interruption-preserving stale-trap
+reset as ordinary wrapper entry. The successful-call path is one atomic load;
+the cold path clears prior trap metadata without erasing a concurrent interrupt.
+Cross-export regressions prove that a memory trap in one export cannot abort a
+later direct export before it executes.
 
 Disabling BMI2 exposed a pre-existing interval-residency correctness defect in
 the destructive rotate lowering. The retained fix materializes and protects the

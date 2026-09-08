@@ -63,6 +63,7 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 	}
 	var result uint64
 	var err error
+	wruntime.PreparePreparedIntTrap(in.trap)
 	if fn.directIntBounded {
 		if fn.directIntLight {
 			result, err = in.eng.EnterPreparedIntLightBounded(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
@@ -135,6 +136,7 @@ func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, result
 	}
 	var result uint64
 	var err error
+	wruntime.PreparePreparedIntTrap(in.trap)
 	if bounded {
 		if light {
 			result, err = in.eng.EnterPreparedIntLightBounded(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
