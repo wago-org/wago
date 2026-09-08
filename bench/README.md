@@ -35,7 +35,8 @@ checking its byte size. Its peak includes the worker buffers and that destinatio
 
 Address-fact qualification checks results and traps with `value-facts` enabled
 and disabled across calls, local storage, joins, and imported globals. Keep
-63/64/65-local coverage in both bounds modes. Adapter-cache qualification compares
+63/64/65-local coverage in both bounds modes, with integer and floating-point
+locals live across calls and joins. Adapter-cache qualification compares
 emitted bytes, branch targets, entries, and GC return metadata against uncached
 emission. Emulated ARM64 checks qualify these cases, not native ARM64 speed.
 

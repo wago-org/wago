@@ -22,7 +22,9 @@ func TestMemoryValueFactsAcrossTransfers(t *testing.T) {
 	for _, count := range []int{63, 64, 65} {
 		for _, shape := range []string{"spill-call", "call-result", "join", "import-global"} {
 			body := []byte{2, byte(count - 3), 0x7f, 1, 0x7c} // two parameters; mixed i32/f64 locals
-			body = append(body, 0x44, 0, 0, 0, 0, 0, 0, 0, 0, 0x21, byte(count-1))
+			// Keep a non-constant FP local live across the call or join. Reading
+			// it after the load makes a lost mixed-class snapshot visible.
+			body = append(body, 0x20, 1, 0xb8, 0x21, byte(count-1)) // f64.convert_i32_u
 			switch shape {
 			case "spill-call":
 				body = append(body, 0x20, 0, 0x41, 0, 0x6a, 0x21, 2, 0x20, 2, 0x20, 0, 0x10, 1, 0x1a)
@@ -33,7 +35,8 @@ func TestMemoryValueFactsAcrossTransfers(t *testing.T) {
 			case "import-global":
 				body = append(body, 0x23, 0)
 			}
-			body = append(body, 0x28, 2, 0, 0x0b)
+			// load + restored FP choice - original integer choice must equal load.
+			body = append(body, 0x28, 2, 0, 0x20, byte(count-1), 0xab, 0x6a, 0x20, 1, 0x6b, 0x0b)
 			helper := append([]byte{0}, bytes.Repeat([]byte{0x01}, 200)...)
 			helper = append(helper, 0x20, 0, 0x0b)
 			code := append(wasmtest.ULEB(uint32(len(body))), body...)
