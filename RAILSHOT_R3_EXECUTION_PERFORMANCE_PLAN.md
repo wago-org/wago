@@ -28,6 +28,9 @@ Implementation progress:
   versions by avoided physical work and reports predicted admissions,
   evictions, reloads, and dirty writebacks. Ordinary compilation retains the
   cheaper aggregate shadow only.
+- [x] Reject direct replay of the shadow segment benefit as an active lease
+  score: it under-admitted useful BLAKE locals and increased both code size and
+  pressure misses materially. The experiment was removed rather than gated.
 - [ ] Design the next active lease policy around dirty-home cost and transient
   expression pressure, then qualify it against the full corpus.
 

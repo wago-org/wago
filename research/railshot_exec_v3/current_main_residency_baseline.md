@@ -280,3 +280,36 @@ execution-speed claim; no transition decision is consumed by code generation.
 Four alternating ordinary-compilation pairs showed noise-sized timing movement,
 unchanged allocations and native bytes, and only 16-28 additional retained heap
 bytes from the expanded pointer-free summary.
+
+## Rejected active transition replay
+
+The first attempt to consume the transition model retained a bounded sidecar of
+per-local-version benefits. Code generation decremented the current benefit on
+reads, used dirty-home cost as an eviction tie-breaker, and required one unit of
+hysteresis before replacing a lease. A no-contention backend fixture immediately
+exposed an over-broad version: native code grew from 412 to 564 bytes. Restricting
+the policy to functions whose candidate count exceeded the safe lease budget
+restored that fixture, but the intended BLAKE cases still failed the physical
+gate:
+
+| Workload | Baseline kernel bytes | Candidate kernel bytes | Baseline pressure misses | Candidate pressure misses |
+| --- | ---: | ---: | ---: | ---: |
+| blake-as | 5,308 | 7,600 | 132 | 679 |
+| BLAKE3 | 5,560 | 7,804 | 166 | 695 |
+
+Candidate activations also fell from 49 to 33 for blake-as and from 55 to 29
+for BLAKE3. The offline score is an aggregate diagnostic: consuming it as a
+per-read countdown double-charges future work and leaves too many useful values
+memory-resident. The experiment failed before timing, and all active sidecar and
+code-generation changes were removed. A retained policy needs exact transition
+decisions or a codegen-native pressure model; the aggregate benefit is not a
+safe control signal.
+
+ARM64's effective-capacity admission was also tested independently by falling
+through to its existing safe eviction selector when the nominal lease count was
+below the cap but no physical register was free. Unlike the retained AMD64
+change, this did not alter either BLAKE kernel: activation, miss, eviction,
+writeback, transfer, and native-byte counts were identical. The ARM64 misses in
+these kernels therefore occur at the actual lease ceiling, not because transient
+register ownership makes the effective capacity smaller. The no-effect change
+was removed.
