@@ -33,6 +33,7 @@ machine code.
 * **Fast and lightweight.** Using a few *kilobytes* of ram, we compile 3x faster and execute 40% faster than wazero.
 * **Pure Go.** Embed Wago without CGO while keeping straightforward Go builds
   and cross-compilation.
+* **Standards Compliant** We pass the [official WebAssembly test suite](https://github.com/WebAssembly/testsuite), millions of fuzzes, and many real-world corpora.
 * **Extensible by design.** WASI, the Component Model, and other host
   capabilities live outside the core runtime as plugins.
 * **Standalone executables** Compile your `.wasm` to _tiny_ native executables. Great for CLIs.
