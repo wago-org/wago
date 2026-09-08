@@ -617,9 +617,10 @@ func (s *CodegenStats) report() string {
 			r.Events, r.EventOverflows, r.Candidates, r.Activations, r.ActivationLoads, r.PressureMisses,
 			r.Evictions, r.DirtyWritebacks, r.FinalTransfers, r.MaxActive)
 		if p := r.Shadow; p.Active() {
-			fmt.Fprintf(&b, "    residency-shadow: candidates=%d versions=%d segments=%d profitable=%d reads=%d defines=%d loads-avoided=%d sync-debt=%d pressure-debt=%d max-live=%d fail-soft=%d\n",
+			fmt.Fprintf(&b, "    residency-shadow: candidates=%d versions=%d segments=%d profitable=%d reads=%d defines=%d loads-avoided=%d sync-debt=%d pressure-debt=%d max-live=%d admissions=%d evictions=%d reloads=%d writebacks=%d fail-soft=%d\n",
 				p.Candidates, p.Versions, p.Segments, p.Profitable, p.Reads, p.Defines,
-				p.LoadsAvoided, p.SyncDebt, p.PressureDebt, p.MaxLive, p.FailSoft)
+				p.LoadsAvoided, p.SyncDebt, p.PressureDebt, p.MaxLive, p.Admissions,
+				p.Evictions, p.Reloads, p.Writebacks, p.FailSoft)
 		}
 	}
 	if s.InlineSiteBytes != 0 {

@@ -21,6 +21,13 @@ Implementation progress:
 - [x] Admit R8 as AMD64's last-choice tenth regional lease only for explicit
   bounds in the existing call-free, control-free, bulk-memory-free region;
   signals-based bounds retain R8 as fixed scratch.
+- [x] Reject additive dirty-eviction cost, post-eviction read cooldown, and
+  dirty-definition admission credit after bounded ARM64 sweeps showed either
+  noise-sized movement or writeback churn.
+- [x] Add an opt-in, codegen-neutral transition shadow that scores local
+  versions by avoided physical work and reports predicted admissions,
+  evictions, reloads, and dirty writebacks. Ordinary compilation retains the
+  cheaper aggregate shadow only.
 - [ ] Design the next active lease policy around dirty-home cost and transient
   expression pressure, then qualify it against the full corpus.
 

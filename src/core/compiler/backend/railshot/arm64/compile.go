@@ -1286,7 +1286,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	if opts.Stats != nil || explainEnabled {
 		hintStart = time.Now()
 	}
-	allHints, hintSidecar, globalScores, err := computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, policy)
+	allHints, hintSidecar, globalScores, err := computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, policy, opts.Stats != nil || explainEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("arm64: %w", err)
 	}
@@ -1886,10 +1886,10 @@ var moduleGlobalRegs = []Reg{X25, X24, X23}
 // avoids both a second body pass and a functions-by-globals retained matrix. The
 // standalone computeModuleGlobalScores is retained as the parity oracle in tests.
 func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int) ([]funcHints, funcHintSidecar, []int64, error) {
-	return computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, currentCodegenPolicy())
+	return computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, currentCodegenPolicy(), false)
 }
 
-func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, policy CodegenPolicy) ([]funcHints, funcHintSidecar, []int64, error) {
+func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, policy CodegenPolicy, detailedResidency bool) ([]funcHints, funcHintSidecar, []int64, error) {
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
 	totalScores := 0
@@ -1997,10 +1997,13 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, p
 			localEventMeta[intervalEventAt] = h.localStart
 			localEventMeta[intervalEventAt+1] = h.localEventMeta
 			intervalEventAt += 2
-			residencyShadow = append(residencyShadow, shared.ResidencyShadowEntry{
-				LocalStart: h.localStart,
-				Summary:    shared.PlanResidencyShadow(localEvents.Events, nLocals, maxIntervalRegionRegs, localEvents.Overflow),
-			})
+			var summary shared.ResidencyShadowSummary
+			if detailedResidency {
+				summary = shared.PlanResidencyTransitionShadow(localEvents.Events, nLocals, maxIntervalRegionRegs, localEvents.Overflow)
+			} else {
+				summary = shared.PlanResidencyShadow(localEvents.Events, nLocals, maxIntervalRegionRegs, localEvents.Overflow)
+			}
+			residencyShadow = append(residencyShadow, shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summary})
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.directCallRefs = allHints[i].directCallRefs

@@ -236,3 +236,47 @@ and leasing it corrupted `blake-as.wasm.hashN`. Native AMD64 guard testing
 reproduced the same wrong result. The retained policy therefore caps the region
 at nine leases in signals mode and permits the tenth R8 lease only with explicit
 bounds; the focused speedups above measure that explicit-bounds configuration.
+
+## Physical-debt policy screening
+
+Three bounded ARM64 policy sweeps tested whether small dynamic costs could make
+the existing whole-local lease policy phase-sensitive without retaining a
+version plan. None met the retention threshold:
+
+1. Adding a cost to dirty eviction was catastrophic at large values. The only
+   plausible value (`+4`) was mixed across ten alternating samples: blake-as was
+   approximately 0.3% slower while BLAKE3 was approximately 1% faster. This is
+   below the phase threshold and does not transfer across the two ARX kernels.
+2. Suppressing the first four reads after a pressure eviction changed only two
+   BLAKE3 activations and one load. Ten alternating samples were approximately
+   flat on blake-as and 0.3% faster on BLAKE3, with eight additional native
+   bytes. The movement is noise-sized.
+3. Crediting a newly defined dirty version by even one score unit increased
+   BLAKE3 evictions from 21 to 39 and dirty writebacks from 17 to 35. Larger
+   credits regressed execution materially. Without a future-use proof, rotating
+   leases merely converts pressure misses into stores.
+
+All experimental code and environment knobs were removed. These results rule
+out scalar adjustments to the whole-local hotness score; the next active policy
+must carry bounded per-version evidence.
+
+An opt-in transition shadow now supplies that evidence without changing emitted
+code. It scores each bounded version segment by avoided loads/stores minus
+fixed-register, synchronization, and transient-pressure debt, then simulates a
+one-unit-hysteresis lease matcher. Detailed simulation runs only when codegen
+statistics are requested; ordinary compilation retains the cheaper aggregate
+shadow.
+
+On the M4 Max explicit-bounds baseline it predicts:
+
+| Workload | Admissions | Evictions | Reloads | Dirty writebacks |
+| --- | ---: | ---: | ---: | ---: |
+| blake-as | 25 | 6 | 4 | 5 |
+| BLAKE3 | 26 | 7 | 3 | 5 |
+
+Those transition counts are far below the rejected definition-credit policy's
+39 evictions and 35 writebacks on BLAKE3. They are a planning signal, not an
+execution-speed claim; no transition decision is consumed by code generation.
+Four alternating ordinary-compilation pairs showed noise-sized timing movement,
+unchanged allocations and native bytes, and only 16-28 additional retained heap
+bytes from the expanded pointer-free summary.

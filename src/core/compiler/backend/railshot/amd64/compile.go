@@ -1418,7 +1418,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if opts.Stats != nil || explainEnabled {
 		hintStart = time.Now()
 	}
-	allHints, hintSidecar, globalScores, err := computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy)
+	allHints, hintSidecar, globalScores, err := computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy, opts.Stats != nil || explainEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
@@ -2204,10 +2204,10 @@ var moduleGlobalRegs = []Reg{R14, R13, R12}
 // avoids both a second body pass and a functions-by-globals retained matrix. The
 // standalone computeModuleGlobalScores is retained as the parity oracle in tests.
 func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) ([]funcHints, funcHintSidecar, []int64, error) {
-	return computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, gcTypeLayouts, gcStructHelpers, currentCodegenPolicy())
+	return computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, gcTypeLayouts, gcStructHelpers, currentCodegenPolicy(), false)
 }
 
-func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy) ([]funcHints, funcHintSidecar, []int64, error) {
+func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy, detailedResidency bool) ([]funcHints, funcHintSidecar, []int64, error) {
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
 	totalScores := 0
@@ -2298,10 +2298,13 @@ func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, g
 			localEventMeta[intervalEventAt] = h.localStart
 			localEventMeta[intervalEventAt+1] = h.localEventMeta
 			intervalEventAt += 2
-			residencyShadow = append(residencyShadow, shared.ResidencyShadowEntry{
-				LocalStart: h.localStart,
-				Summary:    shared.PlanResidencyShadow(localEvents.Events, nLocals, maxIntervalRegionRegs, localEvents.Overflow),
-			})
+			var summary shared.ResidencyShadowSummary
+			if detailedResidency {
+				summary = shared.PlanResidencyTransitionShadow(localEvents.Events, nLocals, maxIntervalRegionRegs, localEvents.Overflow)
+			} else {
+				summary = shared.PlanResidencyShadow(localEvents.Events, nLocals, maxIntervalRegionRegs, localEvents.Overflow)
+			}
+			residencyShadow = append(residencyShadow, shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summary})
 		}
 		h.inlineCallSites = allHints[i].inlineCallSites
 		h.flags.assign(hintIntervalRegionStorage, intervalStorage)

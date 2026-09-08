@@ -21,6 +21,25 @@ func TestPlanResidencyShadowVersionsAndBoundaries(t *testing.T) {
 	if got.LoadsAvoided != 3 || got.SyncDebt != 2 {
 		t.Fatalf("physical estimate = %+v", got)
 	}
+	if got.Admissions|got.Evictions|got.Reloads|got.Writebacks != 0 {
+		t.Fatalf("ordinary shadow unexpectedly ran transition simulation: %+v", got)
+	}
+}
+
+func TestPlanResidencyTransitionShadowModelsHystereticDirtyReplacement(t *testing.T) {
+	events := []LocalEvent{
+		{Local: 0, Kind: LocalEventDefine},
+		{Local: 0, Kind: LocalEventRead},
+		{Local: 0, Kind: LocalEventRead},
+		{Local: 1, Kind: LocalEventDefine},
+		{Local: 1, Kind: LocalEventRead},
+		{Local: 1, Kind: LocalEventRead},
+		{Local: 1, Kind: LocalEventRead},
+	}
+	got := PlanResidencyTransitionShadow(events, 2, 1, false)
+	if got.Admissions != 2 || got.Evictions != 1 || got.Reloads != 0 || got.Writebacks != 1 {
+		t.Fatalf("transition shadow = %+v", got)
+	}
 }
 
 func TestPlanResidencyShadowFailsSoft(t *testing.T) {
@@ -52,6 +71,7 @@ func TestPlanResidencyShadowNeverPanics(t *testing.T) {
 			events[i] = LocalEvent{Local: uint16(raw[i*3]), Depth: raw[i*3+1], Kind: LocalEventKind(raw[i*3+2])}
 		}
 		_ = PlanResidencyShadow(events, ResidencyShadowMaxLocals, 18, false)
+		_ = PlanResidencyTransitionShadow(events, ResidencyShadowMaxLocals, 18, false)
 		return true
 	}
 	if err := quick.Check(f, nil); err != nil {
