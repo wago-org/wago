@@ -532,6 +532,14 @@ same context slot.
 
 ## 12. Memory model
 
+Public invocation results stay in Go-owned memory. Up to two result slots use
+storage inside the Instance; larger signatures use an exact-sized heap slice.
+This removes a tiny allocation and keeps independently written small results
+away from adjacent instances' tiny heap objects. Returned slices still use the
+same per-instance reuse rule. They never alias mmap-backed native result bytes.
+Host re-entry retains its separate save/restore buffer, and all entry, close,
+reference-token, and trap checks remain in place.
+
 Linear memory is the mmap-backed tail of JobMemory, exposed zero-copy via
 `Instance.Memory().UnsafeBytes()` — writes are visible in both directions without
 copying. Explicit mode checks the current size cached in basedata; supported

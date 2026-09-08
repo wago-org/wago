@@ -1503,10 +1503,15 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	}
 	in := &Instance{
 		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
-		serArgs: serArgs, results: results, trap: trap, resultVals: make([]uint64, c.maxResultSlots), rt: opts.runtime,
+		serArgs: serArgs, results: results, trap: trap, rt: opts.runtime,
 		nativeContext:   nativeContextPtr,
 		moduleIdentity:  opts.moduleIdentity,
 		pluginGCImports: opts.pluginGCImports,
+	}
+	if c.maxResultSlots <= len(in.resultInline) {
+		in.resultVals = in.resultInline[:c.maxResultSlots:c.maxResultSlots]
+	} else {
+		in.resultVals = make([]uint64, c.maxResultSlots)
 	}
 	independentInstances := c.independentInstances
 	if opts.hasExecutionPolicy {
