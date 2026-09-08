@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	plugincodegen "github.com/wago-org/wago/codegen/amd64"
 	railcore "github.com/wago-org/wago/src/core/compiler/backend/railshot"
@@ -2372,7 +2373,7 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 			state := &states[workerID]
 			for {
 				i := int(next.Add(1) - 1)
-				if i >= len(allHints) {
+				if i >= len(allHints) || !failures.ShouldStart(i) {
 					return
 				}
 				base := allHints[i]
@@ -2411,12 +2412,20 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 		return nil, false, false, err
 	}
 
-	totalGlobals := 0
+	var totalGlobals uint64
 	for i := range ranges {
-		totalGlobals += int(ranges[i].end - ranges[i].start)
-		if uint64(totalGlobals) > uint64(^uint32(0)) {
+		totalGlobals += uint64(ranges[i].end - ranges[i].start)
+		if totalGlobals > uint64(^uint32(0)) || totalGlobals > uint64(^uint(0)>>1)/uint64(unsafe.Sizeof(shared.GlobalHint{})) {
 			return nil, false, false, fmt.Errorf("function hint global sidecar exceeds 32-bit index capacity")
 		}
+	}
+	// One destination allocation; use the serial accumulator's capacity contract.
+	globalCapacity := shared.GlobalHintCapacity(int(totalGlobals))
+	if uint64(globalCapacity) > uint64(^uint(0)>>1)/uint64(unsafe.Sizeof(shared.GlobalHint{})) {
+		return nil, false, false, fmt.Errorf("function hint global sidecar exceeds addressable byte capacity")
+	}
+	if totalGlobals != 0 {
+		sparseGlobals = make([]shared.GlobalHint, 0, globalCapacity)
 	}
 	for i := range allHints {
 		r := ranges[i]

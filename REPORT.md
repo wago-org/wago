@@ -1,5 +1,12 @@
 # Railshot compile-latency report
 
+The tables below are historical checkpoints. They do not qualify PR #564 at
+`ab29bf3a9ad215833b5138220de6cd7190461a78`. That head has summary-admission,
+feature-metadata, tree-analysis, and stale-test defects. Native AMD64
+qualification is now in progress against `origin/main` at
+`a07de0973191efab1d32677eff527952c7f9cdd2`; the final comparison will replace this
+checkpoint summary. The reviewed AMD64 hint record is 28 bytes, not 24.
+
 Measured through 2026-09-05 on native ARM64 and Rosetta AMD64. This is a stopping-point report for
 `jairus/railshot-compile-latency`, comparing:
 
@@ -59,7 +66,7 @@ The newest change replaces AMD64's detailed per-op arena simulation with the
 same coarse bounded body estimate already proven on ARM64. Against its immediate
 predecessor it improves backend compilation **5.57%** and full compilation
 **3.11%**, while reducing backend/full heap **0.38%/0.21%**. It shrinks the
-retained `funcHints` record from 32 to 24 bytes and deletes 586 lines. The five
+retained `funcHints` record from 32 to 28 bytes and deletes 586 lines. The five
 backend improvements were all significant (`p<=0.007`); full-compilation Lua
 and esbuild were favorable but not individually significant in that sample.
 

@@ -232,7 +232,7 @@ func TestStackArenaCapForBodyTinyFunction(t *testing.T) {
 func TestStackArenaCapForBodyMediumFunction(t *testing.T) {
 	const bodyLen = 64
 	const locals = 12
-	want := bodyLen + locals/4 + 1
+	want := bodyLen - bodyLen/4 + locals/4 + 1
 	s := newStackWithCap(stackArenaCapForBody(bodyLen, locals))
 	if cap(s.chunks[0]) != want {
 		t.Fatalf("medium stack first chunk cap = %d, want %d", cap(s.chunks[0]), want)

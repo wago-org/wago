@@ -2,6 +2,25 @@ package shared
 
 import "testing"
 
+func TestGlobalHintCapacityIndependentOfBatching(t *testing.T) {
+	var a GlobalHintAccumulator
+	var serial []GlobalHint
+	for _, count := range []int{1, 7, 3, 19, 40, 80} {
+		a.Reset(count)
+		for i := 0; i < count; i++ {
+			a.Add(uint32(i), int64(i+1))
+		}
+		serial = a.AppendTo(serial)
+		parallel := make([]GlobalHint, len(serial), GlobalHintCapacity(len(serial)))
+		if cap(serial) != cap(parallel) {
+			t.Fatalf("count %d: serial cap %d, parallel cap %d", len(serial), cap(serial), cap(parallel))
+		}
+		if cap(serial) > max(8, 2*len(serial)) {
+			t.Fatalf("excess capacity %d for %d records", cap(serial), len(serial))
+		}
+	}
+}
+
 func TestGlobalHintAccumulatorReusesDenseScratchAndSortsSparseRecords(t *testing.T) {
 	var a GlobalHintAccumulator
 	a.Reset(1024)

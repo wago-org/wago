@@ -12,7 +12,7 @@ import (
 )
 
 func TestFuncHintsSize(t *testing.T) {
-	const want = 24
+	const want = 28
 	if got := unsafe.Sizeof(funcHints{}); got != want {
 		t.Fatalf("funcHints size = %d, want %d", got, want)
 	}
@@ -43,6 +43,9 @@ func TestParallelModuleHintsMatchSerial(t *testing.T) {
 			}
 			if !reflect.DeepEqual(parallelGlobals, serialGlobals) {
 				t.Fatal("module global scores differ")
+			}
+			if cap(parallelSidecar.sparseGlobals) != cap(serialSidecar.sparseGlobals) {
+				t.Fatalf("global sidecar backing capacity: parallel %d, serial %d", cap(parallelSidecar.sparseGlobals), cap(serialSidecar.sparseGlobals))
 			}
 		})
 	}

@@ -16,6 +16,23 @@ There are two suites:
 Benchmark results depend on the machine and its current load. Use the same
 machine and command when you compare two changes.
 
+For compiler review, pin both source commits and keep raw benchmark output,
+toolchain and CPU details, bounds mode, `GOMAXPROCS`, sample count, and run status.
+Run the full suite in both bounds modes. Include ISA cases with `-wago.bench.isa`.
+Use at least six samples for a first comparison, then repeat possible regressions
+with alternating baseline/candidate order and a longer sample time. Keep skipped
+or failed cases visible. Compare code size, heap bytes, and allocations as well
+as time. Equal code size does not establish equal bytes or equal behavior.
+Split long benchmark runs into fresh processes per group and sample so native
+code mappings can be released between groups. Use the same process boundaries
+for both revisions, and retain exit status plus peak resident memory for each run.
+
+The optional backend memory/global type caches use at most 1 MiB per module and
+retain direct lookup for tiny or over-budget modules. Global-hint sidecars use
+the same capacity contract in serial and parallel scans; compare backing capacity
+as well as contents. Parallel merge allocates the final destination once after
+checking its byte size. Its peak includes the worker buffers and that destination.
+
 ## Choose a Run
 
 ```bash

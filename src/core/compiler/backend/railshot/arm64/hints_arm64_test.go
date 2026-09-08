@@ -37,6 +37,9 @@ func TestParallelModuleHintsMatchSerialArm64(t *testing.T) {
 			if !reflect.DeepEqual(parallelGlobals, serialGlobals) {
 				t.Fatal("module global scores differ")
 			}
+			if cap(parallelSidecar.sparseGlobals) != cap(serialSidecar.sparseGlobals) {
+				t.Fatalf("global sidecar backing capacity: parallel %d, serial %d", cap(parallelSidecar.sparseGlobals), cap(serialSidecar.sparseGlobals))
+			}
 		})
 	}
 }
