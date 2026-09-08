@@ -256,15 +256,11 @@ type fn struct {
 	globalCellReg Reg
 	globalCellIdx uint32
 
-	// Straight-line bounds-check certificate (P6.1). After a check proves
-	// source+bcExtent <= memBytes, a later access on the SAME address source with
-	// off+size <= bcExtent is in-bounds and needs no check. Keyed on the address
-	// SOURCE (a local/global index — a stable value), not a physical register.
-	// Invalidated at any flush (call/control boundary), memory.grow, and a set of
-	// the source. Currently count-only via stats (measurement; no codegen change).
-	bcKind   uint8  // 0 none, 1 local, 2 global
-	bcIdx    uint32 // address source index
-	bcExtent int32  // max off+size proven in-bounds on that source
+	// Straight-line bounds-check certificates (P6.1). Each entry records a stable
+	// local/global address source and its largest checked extent. The fixed set
+	// retains independent proofs for interleaved arrays without per-local state.
+	boundsCerts    [8]boundsCert
+	nextBoundsCert uint8
 
 	// globalReg[g] value-pins hot mutable-int global g in a register for the whole
 	// function, sharing the GP pin pool with hot locals (WARP's model). The value is
@@ -2425,6 +2421,16 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		}
 	}
 	regABI := policy.EnabledOption(optRegABI) && (sigFitsRegABI(ft) || (f.stagedTailDescriptors && sigFitsReferenceResultRegABI(ft)))
+	// A bounded straight-line regional leaf does not use backend scratch X17 on
+	// its successful path. Cache memBytes there so X27 can hold one more hot local
+	// without adding a load at every check. Trap stubs may overwrite X17 only on
+	// their terminal path. Calls, control, tables, and bulk helpers retain X27.
+	if f.opt(optLeafScratchMemSize) && f.memSizeReg != regNone && regABI && !hasCall && !hints.flags.has(hintHasControlFlow) &&
+		!hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0 && len(m.Tables) == 0 &&
+		intervalRegionHintStorageEligible(f.opt(optIntervalRegionPins), len(c.BodyBytes), nLocals, f.moduleEH) {
+		f.memSizeReg = X17
+		f.stats.peep("interval-region-scratch-memsize")
+	}
 	// Only wrapper-ABI code reads frResultsOff. Register-ABI adapters preserve X3
 	// below the internal frame, while direct internal and tail paths return in
 	// registers. EH and GC frame plans retain the established fixed layout until
@@ -3309,7 +3315,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 	var adapterCall int
 	if hostAdapter {
 		a.MovReg64(linMemReg, X1) // linMem → linMemReg: the module-wide invariant the internal entry inherits
-		if f.memSizeReg != regNone {
+		if f.memSizeReg != regNone && f.memSizeReg != X17 {
 			// Offset-0 entry (from Go, or an indirect call): establish the module-wide
 			// memBytes cache before the internal entry runs (which relies on it).
 			f.ld64(f.memSizeReg, linMemReg, -bdCurBytes)
@@ -3428,6 +3434,11 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 		f.preloadFloatConsts(c.BodyBytes)
 	}
 	f.derivePinnedGlobals()
+	if f.memSizeReg == X17 {
+		// X17 is caller-clobbered backend scratch, so establish this leaf-local
+		// cache after entry setup and immediately before the body that consumes it.
+		f.ld64(X17, linMemReg, -bdCurBytes)
+	}
 	if err := f.runBody(c); err != nil {
 		return 0, err
 	}

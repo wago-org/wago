@@ -24,8 +24,8 @@ func TestBoundsFactsElisionArm64(t *testing.T) {
 		0x20, 0x00, 0x28, 0x02, 0x04, 0x1a,
 		0x0b}
 	s = compileWithStats(t, modMem(t, 1, i32, nil, grow), false).Funcs[0]
-	if s.BoundsChecks != 2 || s.BoundsChecksElidable != 0 {
-		t.Errorf("grow: bounds=%d elidable=%d, want 2/0", s.BoundsChecks, s.BoundsChecksElidable)
+	if s.BoundsChecks != 1 || s.BoundsChecksElidable != 1 {
+		t.Errorf("grow: bounds=%d elidable=%d, want 1/1", s.BoundsChecks, s.BoundsChecksElidable)
 	}
 
 	reset := []byte{0x00,
@@ -49,5 +49,18 @@ func TestBoundsFactsElisionArm64(t *testing.T) {
 	g := compileWithStats(t, modMem(t, 1, i32, nil, covered), true).Funcs[0]
 	if g.BoundsChecks != 0 || g.BoundsChecksElidable != 0 {
 		t.Errorf("guard: bounds=%d elidable=%d, want 0/0", g.BoundsChecks, g.BoundsChecksElidable)
+	}
+}
+
+func TestBoundsRangeStopsAtEarlierTrapCandidatesArm64(t *testing.T) {
+	i32x2 := []wasm.ValType{wasm.I32, wasm.I32}
+	division := []byte{0x00,
+		0x20, 0x00, 0x28, 0x02, 0x00, 0x1a,
+		0x41, 0x08, 0x20, 0x01, 0x6e, 0x1a,
+		0x20, 0x00, 0x28, 0x02, 0x04, 0x1a,
+		0x0b}
+	s := compileWithStats(t, modMem(t, 1, i32x2, nil, division), false).Funcs[0]
+	if s.BoundsChecks != 2 || s.BoundsChecksElidable != 0 {
+		t.Errorf("division barrier: bounds=%d elidable=%d, want 2/0", s.BoundsChecks, s.BoundsChecksElidable)
 	}
 }

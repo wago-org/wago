@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -64,11 +65,48 @@ func TestIntervalRegionLeavesTransientFloorArm64(t *testing.T) {
 }
 
 func TestIntervalRegionBoundsModePreservesTransientFloorArm64(t *testing.T) {
-	if got, want := intervalRegionRegLimit(false), maxIntervalRegionRegs-1; got != want {
+	if got, want := intervalRegionRegLimit(true), maxIntervalRegionRegs-1; got != want {
 		t.Fatalf("explicit-bounds regional leases = %d, want %d", got, want)
 	}
-	if got := intervalRegionRegLimit(true); got != maxIntervalRegionRegs {
+	if got := intervalRegionRegLimit(false); got != maxIntervalRegionRegs {
 		t.Fatalf("signals-based regional leases = %d, want %d", got, maxIntervalRegionRegs)
+	}
+}
+
+func TestIntervalRegionCachesMemSizeInLeafScratchArm64(t *testing.T) {
+	body := []byte{0x01, 0x20, 0x7f}            // thirty-two i32 locals
+	body = append(body, 0x41, 0x00, 0x21, 0x00) // sum = 0
+	for x := byte(1); x < 32; x++ {
+		body = append(body,
+			0x41, x, 0x21, x,
+			0x20, 0x00, 0x20, x, 0x6a, 0x21, 0x00,
+		)
+	}
+	body = append(body, 0x20, 0x00, 0x2d, 0x00, 0x00, 0x0b)
+	m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+
+	saved := leafScratchMemSizeEnabled
+	defer SetOptKnob("leaf-scratch-memsize", saved)
+	if !SetOptKnob("leaf-scratch-memsize", true) {
+		t.Fatal("leaf-scratch-memsize is not registered")
+	}
+	on := compileWithStats(t, m, false).Funcs[0]
+	if got := on.Peephole["interval-region-scratch-memsize"]; got != 1 {
+		t.Fatalf("scratch memsize = %d, want 1 (all: %v)", got, on.Peephole)
+	}
+	got, err := runArm64WrapperMem(t, m, 0, func(mem []byte) {
+		binary.LittleEndian.PutUint32(mem[496:], 0xa5)
+	})
+	if err != nil || got != 0xa5 {
+		t.Fatalf("load = %#x, %v; want 0xa5", got, err)
+	}
+
+	if !SetOptKnob("leaf-scratch-memsize", false) {
+		t.Fatal("leaf-scratch-memsize is not registered")
+	}
+	off := compileWithStats(t, m, false).Funcs[0]
+	if got := off.Peephole["interval-region-scratch-memsize"]; got != 0 {
+		t.Fatalf("disabled scratch memsize = %d, want 0", got)
 	}
 }
 

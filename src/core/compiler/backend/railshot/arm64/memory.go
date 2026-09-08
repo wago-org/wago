@@ -10,6 +10,22 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/abi"
 )
 
+// memAccessSize returns the byte width of a plain scalar memory instruction.
+func memAccessSize(op byte) int {
+	switch op {
+	case 0x2c, 0x2d, 0x30, 0x31, 0x3a, 0x3c:
+		return 1
+	case 0x2e, 0x2f, 0x32, 0x33, 0x3b, 0x3d:
+		return 2
+	case 0x28, 0x2a, 0x34, 0x35, 0x36, 0x38, 0x3e:
+		return 4
+	case 0x29, 0x2b, 0x37, 0x39:
+		return 8
+	default:
+		return 0
+	}
+}
+
 // Linear-memory access: scalar loads/stores with a linear bounds check, plus
 // memory.size/grow. Ported from WARP's memory lowering, adapted to wago's runtime
 // memory ABI (the same one src/core/encoder/arm64 targets): the linear-memory base is
@@ -385,7 +401,7 @@ func sortTrapSitesByFunction(sites []trapSite) {
 // aliasPinned lets a pinned-local address be used in place (no copy) — only
 // valid when the access is emitted immediately (stores), not deferred (loads);
 // eaOwned reports whether the caller must release ea.
-func (f *fn) memAddr(off uint64, size int, aliasPinned bool) (ea Reg, eaOwned bool, borrow int, disp int32) {
+func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) (ea Reg, eaOwned bool, borrow int, disp int32) {
 	if f.memoryAddr64(0) {
 		return f.memAddr64(off, size)
 	}
@@ -437,6 +453,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool) (ea Reg, eaOwned bo
 	if f.boundsFacts && f.boundsCertCovers(bcKind, bcIdx, leaDisp) {
 		f.stats.addBoundsElidable()
 		return ea, eaOwned, borrow, disp
+	}
+	if rangeExtent > leaDisp {
+		leaDisp = rangeExtent
 	}
 	f.boundsCertUpdate(bcKind, bcIdx, leaDisp)
 	if bcKind != 0 && f.inLoop() {
@@ -518,7 +537,7 @@ func (f *fn) readMemArg(r *wasm.Reader) (memoryIndex uint32, off uint64, err err
 
 func (f *fn) memAddrAt(memoryIndex uint32, off uint64, size int) (base, ea Reg, releaseBase, eaOwned bool, borrow int, disp int32) {
 	if memoryIndex == 0 {
-		ea, eaOwned, borrow, disp = f.memAddr(off, size, true)
+		ea, eaOwned, borrow, disp = f.memAddr(off, size, true, 0)
 		return linMemReg, ea, false, eaOwned, borrow, disp
 	}
 	base, ea, disp = f.indexedMemAddr(memoryIndex, off, size)
@@ -560,7 +579,99 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	return base, ea, disp
 }
 
-// boundsCertCovers reports whether the active straight-line certificate already
+type boundsCert struct {
+	kind   uint8
+	idx    uint32
+	extent int32
+}
+
+func boundsSource(s storage) (kind uint8, idx uint32) {
+	switch s.kind {
+	case stLocalReg, stLocalRef:
+		return 1, uint32(s.idx)
+	case stGlobReg:
+		return 2, uint32(s.idx)
+	default:
+		return 0, 0
+	}
+}
+
+const maxStraightLineRangeOps = 4096
+
+// straightLineLoadExtent finds later scalar loads from the same stable source
+// across only non-trapping local integer work. Any effect, control edge, store,
+// or potential trap ends the scan, preserving observable trap order.
+func (f *fn) straightLineLoadExtent(r *wasm.Reader, kind uint8, idx uint32, extent int32) int32 {
+	scan := *r
+	prevKind, prevIdx := uint8(0), uint32(0)
+	for n := 0; n < maxStraightLineRangeOps && scan.HasNext(); n++ {
+		op, err := scan.Byte()
+		if err != nil {
+			break
+		}
+		nextKind, nextIdx := uint8(0), uint32(0)
+		switch {
+		case op == 0x20:
+			x, err := scan.U32()
+			if err != nil {
+				return extent
+			}
+			nextKind, nextIdx = 1, x
+		case op == 0x23:
+			x, err := scan.U32()
+			if err != nil {
+				return extent
+			}
+			nextKind, nextIdx = 2, x
+		case op == 0x21 || op == 0x22:
+			x, err := scan.U32()
+			if err != nil || kind == 1 && x == idx {
+				return extent
+			}
+		case op >= 0x28 && op <= 0x35:
+			size := memAccessSize(op)
+			align, err := scan.U32()
+			if err != nil {
+				return extent
+			}
+			memoryIndex := uint32(0)
+			if align >= 64 && align < 128 {
+				memoryIndex, err = scan.U32()
+				if err != nil {
+					return extent
+				}
+			}
+			off, err := scan.U32()
+			if err != nil || memoryIndex != 0 {
+				return extent
+			}
+			if prevKind == kind && prevIdx == idx {
+				candidate := int64(off) + int64(size)
+				if candidate > 0x7fffffff {
+					return extent
+				}
+				if int32(candidate) > extent {
+					extent = int32(candidate)
+				}
+			}
+		case op == 0x01 || op == 0x1a || op == 0x1b,
+			op == 0x41 || op == 0x42,
+			op >= 0x45 && op <= 0x6c,
+			op >= 0x71 && op <= 0x7e,
+			op >= 0x83 && op <= 0x8a,
+			op == 0xa7 || op == 0xac || op == 0xad:
+			if err := skipImmediates(&scan, op); err != nil {
+				return extent
+			}
+		default:
+			return extent
+		}
+		prevKind, prevIdx = nextKind, nextIdx
+	}
+	return extent
+}
+
+// boundsCertCovers reports whether an active straight-line certificate already
 // proves this access in-bounds (P6.1): the same keyable source, with this
 // access's extent (off+size) within the proven extent. A check proves
 // source+extent <= memBytes; memBytes only ever grows, so a later access on the
@@ -569,28 +680,78 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 // join), memory.grow, and a set of the certified source — exactly the set that
 // makes the proving check dominate this one on every path, so eliding is sound.
 func (f *fn) boundsCertCovers(kind uint8, idx uint32, extent int32) bool {
-	return kind != 0 && f.bcKind == kind && f.bcIdx == idx && extent <= f.bcExtent
+	if kind == 0 {
+		return false
+	}
+	if !f.opt(optMultiBoundsCert) {
+		c := &f.boundsCerts[0]
+		return c.kind == kind && c.idx == idx && extent <= c.extent
+	}
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			return extent <= c.extent
+		}
+	}
+	return false
 }
 
-// boundsCertUpdate records the check about to be emitted: establish or extend the
-// single-entry certificate for a keyable source; an unkeyable (computed) base
-// ends the straight-line certificate.
+// boundsCertUpdate records the check about to be emitted. The bounded
+// round-robin set covers interleaved arrays with fixed compiler state.
 func (f *fn) boundsCertUpdate(kind uint8, idx uint32, extent int32) {
-	if kind == 0 {
-		f.bcKind = 0
-		return
-	}
-	if f.bcKind == kind && f.bcIdx == idx {
-		if extent > f.bcExtent {
-			f.bcExtent = extent // same source, larger reach — extend the proven extent
+	if !f.opt(optMultiBoundsCert) {
+		c := &f.boundsCerts[0]
+		if kind == 0 {
+			*c = boundsCert{}
+		} else if c.kind == kind && c.idx == idx {
+			if extent > c.extent {
+				c.extent = extent
+			}
+		} else {
+			*c = boundsCert{kind: kind, idx: idx, extent: extent}
 		}
 		return
 	}
-	f.bcKind, f.bcIdx, f.bcExtent = kind, idx, extent
+	if kind == 0 {
+		return
+	}
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			if extent > c.extent {
+				c.extent = extent
+			}
+			return
+		}
+	}
+	for i := range f.boundsCerts {
+		if f.boundsCerts[i].kind == 0 {
+			f.boundsCerts[i] = boundsCert{kind: kind, idx: idx, extent: extent}
+			return
+		}
+	}
+	i := int(f.nextBoundsCert) % len(f.boundsCerts)
+	f.boundsCerts[i] = boundsCert{kind: kind, idx: idx, extent: extent}
+	f.nextBoundsCert++
 }
 
-// invalidateBoundsCert drops the straight-line bounds certificate.
-func (f *fn) invalidateBoundsCert() { f.bcKind = 0 }
+// invalidateBoundsCert drops every straight-line bounds certificate.
+func (f *fn) invalidateBoundsCert() {
+	for i := range f.boundsCerts {
+		f.boundsCerts[i] = boundsCert{}
+	}
+	f.nextBoundsCert = 0
+}
+
+// invalidateBoundsCertFor drops only the proof whose address source changed.
+func (f *fn) invalidateBoundsCertFor(kind uint8, idx uint32) {
+	for i := range f.boundsCerts {
+		c := &f.boundsCerts[i]
+		if c.kind == kind && c.idx == idx {
+			*c = boundsCert{}
+		}
+	}
+}
 
 // inLoop reports whether any enclosing control frame is a loop.
 func (f *fn) inLoop() bool {
@@ -644,6 +805,16 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 		return nil
 	}
 	f.invalidateStoreForward()
+	rangeExtent := int32(0)
+	if f.boundsFacts && !f.guardMode && !f.threadedMemory0 && !f.memoryAddr64(0) && int64(off)+int64(size) <= 0x7fffffff {
+		if top := f.s.back(); top != nil && top.elemKind() == ekValue {
+			kind, idx := boundsSource(top.st)
+			currentExtent := int32(off) + int32(size)
+			if kind != 0 && !f.boundsCertCovers(kind, idx, currentExtent) {
+				rangeExtent = f.straightLineLoadExtent(r, kind, idx, currentExtent)
+			}
+		}
+	}
 	// The address may read a pinned local's register in place (WARP
 	// liftToRegInPlace): the deferred load records the borrow so a local.set of
 	// that local realizes the load first, and consumers neither write nor
@@ -653,7 +824,7 @@ func (f *fn) memLoad(r *wasm.Reader, size int, signed, wide bool) error {
 	if addrOK {
 		aliasLocal = addrLocal
 	}
-	ea, eaOwned, borrow, disp := f.memAddr(off, size, true)
+	ea, eaOwned, borrow, disp := f.memAddr(off, size, true, rangeExtent)
 	if f.opt(optLoadPair) && !f.memoryAddr64(0) && !f.guardMode && !f.threadedMemory0 && !signed &&
 		(size == 4 && !wide || size == 8 && wide) && addrOK {
 		if first := f.s.back(); first != nil && first.elemKind() == ekValue && first.st.kind == stMemRef &&
@@ -740,7 +911,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 		v := top.st.cval
 		f.erase(top)
 		addrLocal, addrOK := localAddressKey(f.s.back())
-		ea, eaOwned, _, disp := f.memAddr(off, size, true)
+		ea, eaOwned, _, disp := f.memAddr(off, size, true, 0)
 		f.pinned = f.pinned.add(ea)
 		f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 		if size == 8 {
@@ -763,7 +934,7 @@ func (f *fn) memStore(r *wasm.Reader, size int) error {
 	vreg, vOwned := f.materializeRead(value)
 	f.pinned = f.pinned.add(vreg)
 	addrLocal, addrOK := localAddressKey(f.s.back())
-	ea, eaOwned, _, disp := f.memAddr(off, size, true)
+	ea, eaOwned, _, disp := f.memAddr(off, size, true, 0)
 	f.pinned = f.pinned.add(ea)
 	f.materializePendingLoadsBeforeStore(ea, addrLocal, addrOK, disp, size)
 	f.a.StoreIdx(linMemReg, ea, vreg, disp, size)

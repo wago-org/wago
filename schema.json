@@ -88,6 +88,7 @@
               "inline",
               "inline-callfree",
               "interval-region-pins",
+              "leaf-scratch-memsize",
               "leaf-scratch-pins",
               "legacy-fp-pins",
               "legacy-gp-pins",

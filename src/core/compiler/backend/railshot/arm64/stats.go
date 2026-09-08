@@ -60,6 +60,12 @@ var (
 	// lifetimes in bounded call-free straight-line functions. The cache is
 	// pressure-spillable and releases a register at the local's final get.
 	intervalRegionPinsEnabled = os.Getenv("WAGO_ARM64_INTERVAL_REGIONS") != "0"
+	// multiBoundsCertEnabled keeps independent straight-line bounds proofs for a
+	// small set of address sources. The kill switch restores the single proof.
+	multiBoundsCertEnabled = os.Getenv("WAGO_ARM64_SINGLE_BOUNDS_CERT") != "1"
+	// leafScratchMemSizeEnabled caches memBytes in backend scratch X17 for bounded
+	// straight-line regional leaves, freeing X27 for one more resident local.
+	leafScratchMemSizeEnabled = os.Getenv("WAGO_ARM64_NO_LEAF_SCRATCH_MEMSIZE") != "1"
 	// entryInitElisionEnabled skips zero-initialization for declared locals whose
 	// first straight-line access is a set/tee. The kill switch is the A/B oracle.
 	entryInitElisionEnabled = os.Getenv("WAGO_ARM64_NO_ENTRY_INIT_ELISION") != "1"

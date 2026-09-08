@@ -10,11 +10,10 @@ const (
 	maxIntervalRegionRegs   = 19
 )
 
-func intervalRegionRegLimit(guardMode bool) int {
-	// Explicit bounds reserve X27 for the memory size, so nineteen active leases
-	// would leave only two registers from the scratch-capable tail. Signals mode
-	// does not reserve X27 and can keep the full three-register transient floor.
-	if !guardMode {
+func intervalRegionRegLimit(x27Reserved bool) int {
+	// Caching the explicit-bounds memory size reserves X27, so nineteen active
+	// leases would leave only two registers from the scratch-capable tail.
+	if x27Reserved {
 		return maxIntervalRegionRegs - 1
 	}
 	return maxIntervalRegionRegs
@@ -51,7 +50,7 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		return false
 	}
 	f.intervalLast, f.intervalScore = hints.localLastGet, hints.localScore
-	f.intervalRegLimit = intervalRegionRegLimit(f.guardMode)
+	f.intervalRegLimit = intervalRegionRegLimit(f.memSizeReg == X27)
 	for i := range f.intervalOwner {
 		f.intervalOwner[i] = -1
 	}
