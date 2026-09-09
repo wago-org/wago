@@ -4,6 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	goruntime "runtime"
+
+	wruntime "github.com/wago-org/wago/src/core/runtime"
 )
 
 // PreparedFunction is a resolved local Wasm export ready for repeated calls.
@@ -35,7 +37,17 @@ type PreparedFunction struct {
 	directIntFast       bool
 	directIntLight      bool
 	directIntBounded    bool
+	directIntMode       preparedIntCallMode
+	directIntCall       wruntime.PreparedIntCall
 }
+
+type preparedIntCallMode uint8
+
+const (
+	preparedIntCallNone preparedIntCallMode = iota
+	preparedIntCallBlock
+	preparedIntCallPrebound
+)
 
 func (c *Compiled) directPreparedAt(local int) bool {
 	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedEntry(c.InternalEntry[local])
@@ -153,6 +165,7 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 				fn.directIntBounded = in.c.directPreparedBoundedAt(ic.li)
 				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
 				fn.directLinMem = in.jm.LinMemBase()
+				fn.initDirectIntCall()
 			}
 		}
 	}

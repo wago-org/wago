@@ -157,6 +157,15 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		}
 	}
 
+	// Prefer the exact extended-register cover before the generic three-operand
+	// local sink. Both accept a borrowed destination source, but UXTW folds the
+	// conversion too and therefore emits one instruction instead of two.
+	if node.deferredOp() == opAdd {
+		if r := f.tryUxtwAdd(node, left, right, dest); r != regNone {
+			return r
+		}
+	}
+
 	// AArch64's integer ALU is genuinely three-operand.  When local.set gives
 	// us a destination register and the left input is a borrowed pinned
 	// local/global, use it as Rn directly instead of first copying it into Rd:
@@ -182,9 +191,6 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// AssemblyScript array-address shape (`base + (i << log2size)`).
 	if node.deferredOp() == opAdd {
 		if r := f.tryLeaScaledAdd(node, left, right, dest); r != regNone {
-			return r
-		}
-		if r := f.tryUxtwAdd(node, left, right, dest); r != regNone {
 			return r
 		}
 	}

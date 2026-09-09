@@ -1314,6 +1314,12 @@ func (a *Asm) AlignLoop() {
 	a.nop(pad)
 }
 
+// AlignLoop32 places a compact loop at the start of a 32-byte fetch block.
+func (a *Asm) AlignLoop32() {
+	pad := (32 - len(a.B)%32) % 32
+	a.nop(pad)
+}
+
 func (a *Asm) nop(pad int) {
 	for pad > 0 {
 		n := pad

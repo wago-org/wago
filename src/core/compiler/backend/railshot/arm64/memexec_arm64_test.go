@@ -11,6 +11,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/arm64spike"
+	"github.com/wago-org/wago/tests/wasmtest"
 )
 
 // TestMemExec compiles a store+load function in guard-page mode (no bounds
@@ -206,6 +207,80 @@ func TestBulkMemoryExecLargeArm64(t *testing.T) {
 				t.Fatalf("memory mismatch\n got % x\nwant % x", got, want)
 			}
 		})
+	}
+}
+
+func TestMemoryCopyDynamicChunksArm64(t *testing.T) {
+	const (
+		head = 4096
+		size = 65536
+		span = 640
+	)
+	cases := []struct {
+		name     string
+		dst, src int32
+	}{
+		{"forward-disjoint", 64, 320},
+		{"forward-overlap", 32, 35},
+		{"backward-disjoint", 320, 64},
+		{"backward-overlap", 35, 32},
+	}
+	settings := []struct {
+		name          string
+		tail4, qpairs bool
+	}{
+		{"legacy", false, false},
+		{"tail4", true, false},
+		{"qpairs", false, true},
+		{"tail4+qpairs", true, true},
+	}
+	for _, setting := range settings {
+		for _, tc := range cases {
+			t.Run(fmt.Sprintf("%s/%s", setting.name, tc.name), func(t *testing.T) {
+				body := []byte{0x00, 0x41}
+				body = append(body, wasmtest.SLEB32(tc.dst)...)
+				body = append(body, 0x41)
+				body = append(body, wasmtest.SLEB32(tc.src)...)
+				body = append(body,
+					0x20, 0x00, // local.get 0: dynamic length
+					0xfc, 0x0a, 0x00, 0x00, // memory.copy 0 0
+					0x0b,
+				)
+				m := modMem(t, 1, []wasm.ValType{wasm.I32}, nil, body)
+				cm, err := CompileModuleWith(m, CompileOptions{
+					ElideBoundsChecks: true,
+					Optimizations: map[string]bool{
+						"memcopy-tail4":  setting.tail4,
+						"memcopy-qpairs": setting.qpairs,
+					},
+				})
+				if err != nil {
+					t.Fatalf("compile: %v", err)
+				}
+				code, err := arm64spike.MapExec(cm.Code)
+				if err != nil {
+					t.Fatalf("map code: %v", err)
+				}
+				entry := uintptr(unsafe.Pointer(&code[cm.InternalEntry[0]]))
+				for n := 0; n <= 160; n++ {
+					buf, err := arm64spike.MapRW(head + size)
+					if err != nil {
+						t.Fatalf("map memory: %v", err)
+					}
+					mem := buf[head:]
+					for i := range mem[:span] {
+						mem[i] = byte(i*29 + 7)
+					}
+					want := append([]byte(nil), mem[:span]...)
+					copy(want[tc.dst:int(tc.dst)+n], want[tc.src:int(tc.src)+n])
+					binary.LittleEndian.PutUint32(buf[head-bdCurBytes:], size)
+					arm64spike.Call3(entry, uintptr(n), 0, uintptr(unsafe.Pointer(&mem[0])))
+					if !bytes.Equal(mem[:span], want) {
+						t.Fatalf("n=%d memory mismatch\n got % x\nwant % x", n, mem[:span], want)
+					}
+				}
+			})
+		}
 	}
 }
 

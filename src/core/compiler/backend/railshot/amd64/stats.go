@@ -46,6 +46,18 @@ var (
 	// retain its P across the tightly bounded native activation.
 	preparedDirectEntryEnabled  = os.Getenv("WAGO_AMD64_NO_PREPARED_DIRECT_ENTRY") != "1"
 	preparedBoundedEntryEnabled = os.Getenv("WAGO_AMD64_NO_PREPARED_BOUNDED_ENTRY") != "1"
+	// wideLoopIntConstEnabled keeps repeatedly materialized non-imm32 i64 loop
+	// constants in otherwise-idle registers. WAGO_AMD64_NO_WIDE_LOOP_INT_CONST=1
+	// is the bounded rollback switch.
+	wideLoopIntConstEnabled = os.Getenv("WAGO_AMD64_NO_WIDE_LOOP_INT_CONST") != "1"
+	// memSizeRegionalLeaseEnabled lets a large straight-line, call-free regional
+	// allocator borrow R15. Bounds checks read the immutable current byte size
+	// directly, and the register-ABI return reloads R15 for its caller.
+	memSizeRegionalLeaseEnabled      = os.Getenv("WAGO_AMD64_NO_MEMSIZE_REGIONAL_LEASE") != "1"
+	moduleGlobalRegionalLeaseEnabled = os.Getenv("WAGO_AMD64_NO_MODULE_GLOBAL_REGIONAL_LEASE") != "1"
+	// compactLoopAlign32Enabled gives small loop functions a complete 32-byte
+	// fetch block. Larger functions retain the lower-padding mixed policy.
+	compactLoopAlign32Enabled = os.Getenv("WAGO_AMD64_NO_COMPACT_LOOP_ALIGN32") != "1"
 	// compactI32FrameEnabled packs i32 locals in admitted kernels.
 	compactI32FrameEnabled = os.Getenv("WAGO_NO_COMPACT_I32_FRAME") != "1"
 	// accumulatorImmediateEnabled admits ModRM-free RAX/EAX imm32 encodings on
@@ -65,7 +77,8 @@ var (
 	// commuteSelfUpdateEnabled makes a non-fixed destination the accumulator for
 	// commutative x=f(y) op x expressions instead of spilling x first.
 	// WAGO_AMD64_NO_COMMUTE_SELF_UPDATE=1 is the A/B oracle.
-	commuteSelfUpdateEnabled = os.Getenv("WAGO_AMD64_NO_COMMUTE_SELF_UPDATE") != "1"
+	commuteSelfUpdateEnabled      = os.Getenv("WAGO_AMD64_NO_COMMUTE_SELF_UPDATE") != "1"
+	commuteFixedSelfUpdateEnabled = os.Getenv("WAGO_AMD64_NO_COMMUTE_FIXED_SELF_UPDATE") != "1"
 	// i64Mask32Enabled lowers i64.and with any low-32-bit mask to a 32-bit AND whose
 	// destination write implicitly zero-extends. WAGO_AMD64_NO_I64_MASK32=1 is the
 	// A/B oracle.

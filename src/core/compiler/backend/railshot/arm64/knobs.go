@@ -34,6 +34,8 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("olddest-rhs-sink", &oldDestRHSSinkEnabled),
 	optimization.Bind("branch-fold", &branchFoldEnabled),
 	optimization.Bind("store-load-fwd", &storeLoadFwdEnabled),
+	optimization.Bind("memcopy-tail4", &memcopyTail4Enabled),
+	optimization.Bind("memcopy-qpairs", &memcopyQPairsEnabled),
 	optimization.Bind("uxtw-add", &uxtwAddEnabled),
 	optimization.Bind("shifted-register-alu", &shiftedRegisterALUEnabled),
 	optimization.Bind("fp-immediate-const", &fpImmediateConstEnabled),
@@ -88,6 +90,8 @@ var (
 	optOldDestRHSSink       = optimizationBindings.Option("olddest-rhs-sink")
 	optBranchFold           = optimizationBindings.Option("branch-fold")
 	optStoreLoadFwd         = optimizationBindings.Option("store-load-fwd")
+	optMemcopyTail4         = optimizationBindings.Option("memcopy-tail4")
+	optMemcopyQPairs        = optimizationBindings.Option("memcopy-qpairs")
 	optUXTWAdd              = optimizationBindings.Option("uxtw-add")
 	optShiftedRegisterALU   = optimizationBindings.Option("shifted-register-alu")
 	optFPImmediateConst     = optimizationBindings.Option("fp-immediate-const")

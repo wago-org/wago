@@ -263,6 +263,7 @@ func (f *fn) emitTrapStubs() {
 					f.a.PatchRel32(int(site.branch), common)
 				}
 			}
+			f.restoreModuleGlobalRegionalLease()
 			f.storeGlobalPins(RSI, true)
 			f.emitTrap(code, first.function)
 			if commonJump >= 0 {
@@ -312,6 +313,7 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 
 	common := f.a.Len()
 	f.trapBodyOff = common
+	f.restoreModuleGlobalRegionalLease()
 	f.storeGlobalPins(RSI, true)
 	f.a.Load64(RSI, RBX, -offTrapCellPtr)
 	f.a.Store32(RSI, 16, RCX)
@@ -438,6 +440,8 @@ func (f *fn) memAddr(off uint32, size int, aliasPinned bool, rangeExtent int32) 
 	f.a.LeaDisp(t, ea, leaDisp) // t = ea + off + size
 	if f.memSizeReg != regNone {
 		f.a.Cmp64(t, f.memSizeReg) // memBytes lives in a register (WARP REGS::memSize)
+	} else if f.memSizeRegionalLease {
+		f.a.AluRM(cmpRMcode, t, RBX, -bdCurBytes, true)
 	} else {
 		mb := f.allocReg(maskOf(t))
 		f.a.Load64(mb, RBX, -bdCurBytes) // memory size in bytes
@@ -566,6 +570,8 @@ func (f *fn) memAddr64(off uint64, size int) (ea Reg, eaOwned bool, borrow int, 
 	f.trapIf(condB, trapMemOOB)
 	if f.memSizeReg != regNone {
 		f.a.Cmp64(t, f.memSizeReg)
+	} else if f.memSizeRegionalLease {
+		f.a.AluRM(cmpRMcode, t, RBX, -bdCurBytes, true)
 	} else {
 		mb := f.allocReg(maskOf(t))
 		f.a.Load64(mb, RBX, -bdCurBytes)
@@ -749,10 +755,11 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 }
 
 // cleanMemory32Address reports concrete storage forms whose materialization
-// necessarily writes a 32-bit destination. Borrowed local/global registers,
-// spill slots, and deferred operations are deliberately excluded: their
-// native-width carriers may have nonzero high bits, including after local.tee,
-// a sign-extending narrow load, or an identity-folded deferred operation.
+// necessarily writes a 32-bit destination. Regional i32 pins are loaded from
+// canonical frame homes; call-free whole-function pins are canonicalized at
+// ingress and only receive 32-bit writes; i32 spills reload at their value width.
+// Call-making whole-function pins, globals, and deferred operations remain
+// excluded because their carrier may still have nonzero high bits.
 func (f *fn) cleanMemory32Address(e *elem) bool {
 	if !f.opt(optAddrZExtElim) || e == nil {
 		return false
@@ -763,8 +770,31 @@ func (f *fn) cleanMemory32Address(e *elem) bool {
 	switch e.st.kind {
 	case stConst, stLocalRef:
 		return true
+	case stLocalReg:
+		if len(f.intervalReg) != 0 {
+			return f.opt(optCanonicalI32)
+		}
+		if f.usesCalls {
+			return false
+		}
+		return f.profitableCanonicalI32Carrier()
+	case stSlot:
+		return f.profitableCanonicalI32Carrier()
 	}
 	return false
+}
+
+// profitableCanonicalI32Carrier waits for the third eligible use before
+// changing code shape. Canonicalizing isolated carriers is semantically safe
+// but can perturb hot-loop placement for no amortized instruction saving.
+func (f *fn) profitableCanonicalI32Carrier() bool {
+	if !f.opt(optCanonicalI32) {
+		return false
+	}
+	if f.canonicalI32Uses != ^uint8(0) {
+		f.canonicalI32Uses++
+	}
+	return f.canonicalI32Uses >= 3
 }
 
 // memLoad lowers a scalar load of `size` bytes. signed selects sign-extension;
