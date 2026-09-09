@@ -38,10 +38,6 @@ machine code.
   capabilities live outside the core runtime as plugins.
 * **Standalone executables** Compile your `.wasm` to _tiny_ native executables. Great for CLIs.
 
-Wago supports WebAssembly 1.0, 2.0, and the supported WebAssembly 3.0 feature
-set, including SIMD on supported hosts. See the
-[feature matrix](FEATURES.md) for exact platform and feature coverage.
-
 ## Install
 
 On macOS and Linux:
@@ -123,6 +119,8 @@ support varies by backend and host.
 See the [feature matrix](FEATURES.md) for exact coverage.
 
 ## Learn more
+
+> 💖 We develop wago free-of-charge. If you or your company benefits from using wago or you'd like developement to continue, *please* consider sponsoring us! It'd truly mean the world
 
 [Documentation](https://docs.wago.sh) ·
 [Examples](examples/README.md) ·
