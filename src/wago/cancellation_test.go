@@ -14,6 +14,39 @@ import (
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
+func TestQueuedInvocationChecksCancellationAfterGate(t *testing.T) {
+	for _, entry := range []string{"invoke", "host-token"} {
+		t.Run(entry, func(t *testing.T) {
+			in := &Instance{}
+			state := in.ensurePluginState()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			contexts := invocationContextSetFor(ctx)
+			state.invokeMu.Lock()
+			done := make(chan error, 1)
+			go func() {
+				var err error
+				if entry == "invoke" {
+					_, err = in.invokeEntry("unused", nil, contexts, false)
+				} else {
+					_, err = in.invokeWithToken("unused", nil, contexts, newInvocationID(), false, false, nil)
+				}
+				done <- err
+			}()
+			cancel()
+			state.invokeMu.Unlock()
+			select {
+			case err := <-done:
+				if !errors.Is(err, context.Canceled) {
+					t.Fatalf("queued call = %v, want context.Canceled", err)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("queued call did not release the instance gate")
+			}
+		})
+	}
+}
+
 func TestCallContextInterruptsNativeLoop(t *testing.T) {
 	mod := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(

@@ -4414,6 +4414,16 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 			state.invokeMu.Unlock()
 		}()
 	}
+	// Cancellation may arrive while this call waits for the instance gate.
+	ctx := contexts.interrupt
+	if ctx == nil {
+		ctx = contexts.callback
+	}
+	if ctx != nil {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+	}
 	if !alreadyAdmitted {
 		if err := in.beginInvocation(); err != nil {
 			return nil, fmt.Errorf("invoke %q: %w", export, err)

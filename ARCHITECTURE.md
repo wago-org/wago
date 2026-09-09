@@ -10,6 +10,9 @@ as a separate repository.
 The amd64 GP allocator must only spill GP values. Scalar float, SIMD, and
 custom XMM values use a separate register bank, even when register numbers match.
 
+Context-aware invocation checks cancellation after it acquires the instance
+gate, before it reads export metadata or enters guest or host code.
+
 ## Start here
 
 Wago processes a module in five steps: **decode**, **validate**, **compile**,
