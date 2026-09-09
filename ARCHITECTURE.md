@@ -17,6 +17,7 @@ CLI feature settings apply enables before disables. An explicit disable of
 `extended-constant-expressions` also disables `extended-const-expressions`.
 Version-1 global and local settings accept known retired optimization names as
 compatibility no-ops. Unknown names still produce an error.
+The retired list includes `inline-loop-callees` and `deep-fp-pins` from v1.
 
 ## Start here
 
