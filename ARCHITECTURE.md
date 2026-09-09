@@ -25,6 +25,8 @@ including calls through a Wasm wrapper and replayed host logs.
 Reference instructions constrain an unreachable stack value to a reference.
 The validator uses an internal heap bottom type for this value; it cannot match
 a numeric or vector operand and has no binary encoding.
+An unreachable `try_table` body still produces its declared results at the
+parent validation frame, just like a block.
 
 ## Start here
 
