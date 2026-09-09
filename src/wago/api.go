@@ -4797,6 +4797,10 @@ func (in *Instance) replayHostLog() (err error) {
 				err = &ExitError{Code: ex.Code}
 				return
 			}
+			if ex, ok := r.(*HostExit); ok && ex != nil {
+				err = &ExitError{Code: ex.Code}
+				return
+			}
 			if missing, ok := r.(missingHostFunc); ok {
 				err = fmt.Errorf("missing host function for import index %d", missing.importIdx)
 				return

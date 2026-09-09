@@ -19,6 +19,9 @@ Version-1 global and local settings accept known retired optimization names as
 compatibility no-ops. Unknown names still produce an error.
 The retired list includes `inline-loop-callees` and `deep-fp-pins` from v1.
 
+Host calls convert both `HostExit` and non-nil `*HostExit` panics to `ExitError`,
+including calls through a Wasm wrapper and replayed host logs.
+
 ## Start here
 
 Wago processes a module in five steps: **decode**, **validate**, **compile**,
