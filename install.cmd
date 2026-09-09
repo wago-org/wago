@@ -117,11 +117,9 @@ if /i "!version!"=="latest" (
   exit /b 0
 )
 if /i "!version:~0,1!"=="v" set "tag=!version!"
-if /i "!version:~0,7!"=="canary-" set "tag=!version!"
-if /i "!version:~0,8!"=="nightly-" set "tag=!version!"
 if defined tag exit /b 0
 set "channel=canary"
-if /i "!version!"=="nightly" set "channel=nightly"
+if /i "!version!"=="beta" set "channel=beta"
 curl.exe -fsSL "!release_api!?per_page=100" -o "!tmp_dir!\releases.json" >nul 2>&1
 if errorlevel 1 exit /b 1
 set "release_pending_tag="
@@ -134,8 +132,8 @@ for /f "usebackq tokens=1,* delims=:" %%A in ("!tmp_dir!\releases.json") do (
   if /i "!release_key!"=="tag_name" (
     call :clean_release_candidate "%%B"
     set "release_pending_tag="
-    if /i "!channel!"=="canary" if /i "!release_candidate:~0,7!"=="canary-" set "release_pending_tag=!release_candidate!"
-    if /i "!channel!"=="nightly" if /i "!release_candidate:~0,8!"=="nightly-" set "release_pending_tag=!release_candidate!"
+    if /i "!channel!"=="canary" if /i not "!release_candidate:-canary.g=!"=="!release_candidate!" set "release_pending_tag=!release_candidate!"
+    if /i "!channel!"=="beta" if /i not "!release_candidate:-beta.=!"=="!release_candidate!" set "release_pending_tag=!release_candidate!"
   )
   if /i "!release_key!"=="published_at" if defined release_pending_tag (
     call :clean_release_candidate "%%B"

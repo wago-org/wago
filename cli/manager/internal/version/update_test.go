@@ -18,7 +18,7 @@ func TestInstalledCommitMatchesOnlyCanonicalHashes(t *testing.T) {
 	previous := runtimeVersionOutput
 	t.Cleanup(func() { runtimeVersionOutput = previous })
 	runtimeVersionOutput = func(string) ([]byte, error) {
-		return []byte("Wago\n  release      canary-deadbee\n"), nil
+		return []byte("Wago\n  release      v0.1.0-canary.gdeadbee123456789012345678901234567890123\n"), nil
 	}
 	if installedCommitMatches(runtime, "canary@deadbee123456789012345678901234567890123") {
 		t.Fatal("legacy abbreviated canary hash was treated as canonical")
@@ -37,7 +37,7 @@ func TestInstalledCommitMatchesOnlyCanonicalHashes(t *testing.T) {
 func TestSameReleaseRejectsMalformedRollingIdentityEvenWhenTextMatches(t *testing.T) {
 	for _, version := range []string{
 		"canary@deadbee",
-		"nightly@deadbee12345678901234567890123456789012z",
+		"beta@deadbee12345678901234567890123456789012z",
 		"canary",
 	} {
 		if sameRelease(version, version) {
@@ -55,11 +55,11 @@ func TestRollingCommitIdentityRequiresCanonicalSHA(t *testing.T) {
 		canonical             bool
 	}{
 		{"canary@deadbee123456789012345678901234567890123", "canary", "deadbee123456789012345678901234567890123", true},
-		{"nightly-20260731-cafef00@cafef00123456789012345678901234567890123", "nightly", "cafef00123456789012345678901234567890123", true},
+		{"v0.1.0-beta.1@cafef00123456789012345678901234567890123", "beta", "cafef00123456789012345678901234567890123", true},
 		{" CANARY@DEADBEE123456789012345678901234567890123 ", "canary", "deadbee123456789012345678901234567890123", true},
 		{"canary@deadbee123456789012345678901234567890123@junk", "", "", false},
-		{"canary-deadbee", "", "", false},
-		{"nightly-20260731-cafef00", "", "", false},
+		{"v0.1.0-canary.gdeadbee123456789012345678901234567890123", "", "", false},
+		{"v0.1.0-beta.1", "", "", false},
 		{"v0.2.0", "", "", false},
 	} {
 		channel, sha, canonical := rollingCommitSHA(test.version)
@@ -67,11 +67,11 @@ func TestRollingCommitIdentityRequiresCanonicalSHA(t *testing.T) {
 			t.Errorf("rollingCommitSHA(%q) = %q, %q, %v", test.version, channel, sha, canonical)
 		}
 	}
-	canonical := " NIGHTLY-20260731-CAFEF00@CAFEF00123456789012345678901234567890123 "
-	if got := releaseAssetVersion(canonical); got != "nightly-20260731-cafef00" {
+	canonical := " V0.1.0-BETA.1@CAFEF00123456789012345678901234567890123 "
+	if got := releaseAssetVersion(canonical); got != "v0.1.0-beta.1" {
 		t.Fatalf("releaseAssetVersion(%q) = %q", canonical, got)
 	}
-	if got := releasePickerLabel(canonical); got != "nightly-cafef00" {
+	if got := releasePickerLabel(canonical); got != "v0.1.0-beta.1" {
 		t.Fatalf("releasePickerLabel(%q) = %q", canonical, got)
 	}
 }

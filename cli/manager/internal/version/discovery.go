@@ -373,7 +373,7 @@ func installedCommitMatches(path, resolved string) bool {
 
 func sameRelease(installed, resolved string) bool {
 	lowerInstalled := strings.ToLower(strings.TrimSpace(installed))
-	rollingStamp := strings.HasPrefix(lowerInstalled, "canary@") || strings.HasPrefix(lowerInstalled, "nightly@")
+	rollingStamp := strings.HasPrefix(lowerInstalled, "canary@") || strings.HasPrefix(lowerInstalled, "beta@")
 	if installed != "" && installed == resolved && channelRelease(installed) == "" && !isRollingChannel(installed) && !rollingStamp {
 		return true
 	}
@@ -390,22 +390,27 @@ func resolveRunnerVersion(ver string, progress *managerprogress.Progress) (resol
 }
 
 func resolveRunnerVersionContext(ctx context.Context, ver string, progress *managerprogress.Progress) (resolved string, sourceOnly bool, err error) {
-	if ver == "canary" {
+	if channel, sha, canonical := rollingCommitSHA(ver); canonical {
 		if progress != nil {
-			progress.Begin("resolving main commit")
+			progress.Begin("resolving release")
 		}
-		sha, resolveErr := latestMainCommitContext(ctx)
-		if resolveErr != nil {
+		resolved, err = channelCommitReleaseContext(ctx, channel, sha)
+		if err == nil {
 			if progress != nil {
-				progress.Fail("could not resolve main commit")
+				progress.Done("resolved " + releasePickerLabel(resolved))
 			}
-			return "", false, resolveErr
+			return resolved, false, nil
 		}
-		resolved = canaryCommitTarget(sha)
+		if errors.Is(err, errNoPublishedRelease) {
+			if progress != nil {
+				progress.Done("no published release; using " + releasePickerLabel(ver) + " source")
+			}
+			return ver, true, nil
+		}
 		if progress != nil {
-			progress.Done("resolved " + releasePickerLabel(resolved))
+			progress.Fail("could not resolve release")
 		}
-		return resolved, false, nil
+		return "", false, err
 	}
 	if !isRollingChannel(ver) {
 		return canonicalReleaseRef(ver), false, nil
@@ -579,12 +584,11 @@ func latestChannelRelease(channel string) (string, error) {
 }
 
 func latestChannelReleaseContext(ctx context.Context, channel string) (string, error) {
-	prefix := channel + "-"
 	var resolved string
 	var resolveErr error
 	err := forEachReleasePage(ctx, "release channel discovery", func(releases []remoteRelease) bool {
 		for _, release := range releases {
-			if release.Draft || !strings.HasPrefix(release.TagName, prefix) {
+			if release.Draft || channelRelease(release.TagName) != channel {
 				continue
 			}
 			sha := strings.ToLower(strings.TrimSpace(release.TargetCommitish))
@@ -605,6 +609,27 @@ func latestChannelReleaseContext(ctx context.Context, channel string) (string, e
 	}
 	if resolved == "" {
 		return "", fmt.Errorf("%w: %s", errNoPublishedRelease, channel)
+	}
+	return resolved, nil
+}
+
+func channelCommitReleaseContext(ctx context.Context, channel, sha string) (string, error) {
+	var resolved string
+	err := forEachReleasePage(ctx, "release commit discovery", func(releases []remoteRelease) bool {
+		for _, release := range releases {
+			if release.Draft || channelRelease(release.TagName) != channel || !strings.EqualFold(release.TargetCommitish, sha) {
+				continue
+			}
+			resolved = release.TagName + "@" + strings.ToLower(sha)
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return "", err
+	}
+	if resolved == "" {
+		return "", fmt.Errorf("%w: %s commit %s", errNoPublishedRelease, channel, sha)
 	}
 	return resolved, nil
 }

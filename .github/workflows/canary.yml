@@ -2,8 +2,8 @@ name: Publish canary
 
 # A push to main publishes a canary only after that commit's CI run succeeds.
 # Manual dispatches build the current main tip. Every successful target is
-# attached to a uniquely tagged canary-* prerelease with the same asset names
-# as nightly and stable.
+# attached to a uniquely tagged SemVer canary prerelease with the same asset
+# names as beta and stable releases.
 on:
   workflow_run:
     workflows: [CI]
@@ -21,6 +21,7 @@ concurrency:
 env:
   GO_VERSION: "1.22"
   TINYGO_VERSION: "0.41.1"
+  RELEASE_SERIES: "0.1.0"
 
 jobs:
   prepare:
@@ -46,8 +47,8 @@ jobs:
         run: |
           sha=$(git rev-parse HEAD)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "version=canary-${sha::7}" >> "$GITHUB_OUTPUT"
-          echo "tag=canary-$sha" >> "$GITHUB_OUTPUT"
+          echo "version=v${RELEASE_SERIES}-canary.g$sha" >> "$GITHUB_OUTPUT"
+          echo "tag=v${RELEASE_SERIES}-canary.g$sha" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build canary (${{ matrix.goos }}/${{ matrix.goarch }})

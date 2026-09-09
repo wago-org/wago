@@ -3,7 +3,7 @@ package version
 import "testing"
 
 func TestIsRollingChannel(t *testing.T) {
-	for _, v := range []string{"canary", "nightly"} {
+	for _, v := range []string{"canary", "beta"} {
 		if !isRollingChannel(v) {
 			t.Errorf("%q should be a rolling channel", v)
 		}

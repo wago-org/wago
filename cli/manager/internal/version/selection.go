@@ -51,14 +51,14 @@ func useInstalledPicker(ver string, profile wagopaths.Profile, build wagopaths.B
 func updateChannelPicker(active string) *tui.Picker {
 	items := []tui.Item{
 		{Label: "Canary", Value: "canary"},
-		{Label: "Nightly", Value: "nightly"},
+		{Label: "Beta", Value: "beta"},
 	}
 	p := tui.NewPicker("Update Wago channel", items)
 	channel := active
 	if !isRollingChannel(channel) {
 		channel = channelRelease(channel)
 	}
-	if channel == "nightly" {
+	if channel == "beta" {
 		p.SetCursor(1)
 	}
 	return p
@@ -333,14 +333,11 @@ func releaseCommit(release string) string {
 	if _, sha, canonical := rollingCommitSHA(release); canonical {
 		return sha[:7]
 	}
-	if channelRelease(release) == "" {
-		return ""
+	if channelRelease(release) == "canary" {
+		_, identity, _ := strings.Cut(strings.ToLower(release), "-canary.g")
+		return identity[:7]
 	}
-	parts := strings.Split(release, "-")
-	if len(parts) < 3 {
-		return ""
-	}
-	return parts[len(parts)-1]
+	return ""
 }
 
 func vmUninstall(d wagopaths.Dirs, ver string) {
@@ -406,6 +403,7 @@ func vmChooseUninstall(d wagopaths.Dirs) {
 }
 
 // rollingChannels are version names whose build moves under a fixed name:
-// "canary" tracks the latest main commit, "nightly" the latest nightly release.
+// "canary" tracks the latest qualified main build, while "beta" tracks the
+// latest manually qualified beta release.
 // Installing or updating one always re-fetches, unlike an immutable release.
-var rollingChannels = map[string]bool{"canary": true, "nightly": true}
+var rollingChannels = map[string]bool{"canary": true, "beta": true}

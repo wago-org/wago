@@ -35,8 +35,8 @@ download() {
 }
 
 release_tag_from_json() {
-	prefix=$1
-	awk -v prefix="$prefix-" '
+	channel=$1
+	awk -v channel="$channel" '
 		/"tag_name"[[:space:]]*:/ {
 			line = $0
 			sub(/^.*"tag_name"[[:space:]]*:[[:space:]]*"/, "", line)
@@ -47,7 +47,9 @@ release_tag_from_json() {
 			line = $0
 			sub(/^.*"published_at"[[:space:]]*:[[:space:]]*"/, "", line)
 			sub(/".*$/, "", line)
-			if (index(tag, prefix) == 1 && (best == "" || line > best)) {
+			matches = (channel == "beta" && tag ~ /^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$/) || \
+				(channel == "canary" && tag ~ /^v[0-9]+\.[0-9]+\.[0-9]+-canary\.g[0-9a-f]{40}$/)
+			if (matches && (best == "" || line > best)) {
 				best = line
 				best_tag = tag
 			}
@@ -63,9 +65,9 @@ resolve_release() {
 			download "$release_api/latest" "$tmp/release.json" || return 1
 			tag=$(sed -n 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp/release.json" | head -1)
 			;;
-		v*|canary-*|nightly-*) tag=$version ;;
+		v*) tag=$version ;;
 		*)
-			case "$version" in nightly) channel=nightly ;; *) channel=canary ;; esac
+			case "$version" in beta) channel=beta ;; *) channel=canary ;; esac
 			download "$release_api?per_page=100" "$tmp/releases.json" || return 1
 			tag=$(release_tag_from_json "$channel" "$tmp/releases.json")
 			;;

@@ -1,14 +1,14 @@
-name: Qualify and publish stable release
+name: Qualify and publish release
 
-# Stable publication is an explicit operation. A version tag does not trigger
-# publication. The workflow accepts one immutable main-branch commit, verifies
-# its complete CI qualification record, builds and smoke-tests the release files
-# once, records their hashes, and publishes those same files.
+# Beta and stable publication are explicit operations. A version tag does not
+# trigger publication. The workflow accepts one immutable main-branch commit,
+# verifies its complete CI qualification record, builds and smoke-tests the
+# release files once, records their hashes, and publishes those same files.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Stable version tag (for example v1.0.0)"
+        description: "SemVer tag (for example v0.1.0-beta.1 or v0.1.0)"
         required: true
         type: string
       source_sha:
@@ -21,7 +21,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: stable-release-${{ inputs.version }}
+  group: release-${{ inputs.version }}
   cancel-in-progress: false
 
 env:
@@ -34,6 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.inputs.outputs.version }}
+      channel: ${{ steps.inputs.outputs.channel }}
+      prerelease: ${{ steps.inputs.outputs.prerelease }}
       source_sha: ${{ steps.inputs.outputs.source_sha }}
       ci_run_id: ${{ steps.ci.outputs.run_id }}
       ci_run_attempt: ${{ steps.ci.outputs.run_attempt }}
@@ -47,20 +49,28 @@ jobs:
           WORKFLOW_REF: ${{ github.ref }}
         run: |
           [[ "$WORKFLOW_REF" == "refs/heads/main" ]] || {
-            echo "::error::stable qualification must be dispatched from the main workflow"
+            echo "::error::release qualification must be dispatched from the main workflow"
             exit 1
           }
           version=$REQUESTED_VERSION
           source_sha=$(printf '%s' "$REQUESTED_SOURCE_SHA" | tr 'A-F' 'a-f')
-          [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || {
-            echo "::error::stable version must have the form vMAJOR.MINOR.PATCH"
+          if [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-beta\.(0|[1-9][0-9]*)$ ]]; then
+            channel=beta
+            prerelease=true
+          elif [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            channel=release
+            prerelease=false
+          else
+            echo "::error::version must have the form vMAJOR.MINOR.PATCH-beta.N or vMAJOR.MINOR.PATCH"
             exit 1
-          }
+          fi
           [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || {
             echo "::error::source_sha must be one full commit SHA"
             exit 1
           }
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
           echo "source_sha=$source_sha" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -138,7 +148,7 @@ jobs:
           overwrite: true
 
   build:
-    name: Build and smoke stable release (${{ matrix.goos }}/${{ matrix.goarch }})
+    name: Build and smoke release (${{ matrix.goos }}/${{ matrix.goarch }})
     needs: prepare
     strategy:
       fail-fast: false
@@ -265,7 +275,7 @@ jobs:
           overwrite: true
 
   publish:
-    name: Publish exactly qualified stable files
+    name: Publish exactly qualified release files
     needs: [prepare, build, manifest]
     runs-on: ubuntu-latest
     steps:
@@ -292,8 +302,8 @@ jobs:
             "${{ needs.prepare.outputs.source_sha }}" \
             "${{ needs.prepare.outputs.ci_run_id }}" \
             "${{ needs.prepare.outputs.ci_run_attempt }}"
-      - name: Create or verify immutable stable tag
-        id: stable
+      - name: Create or verify immutable release tag
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -301,15 +311,19 @@ jobs:
         run: |
           resume_draft=false
           release_state=$(gh release view "$VERSION" --repo "${{ github.repository }}" \
-            --json isDraft,tagName --jq '[.isDraft, .tagName] | @tsv' 2>/dev/null || true)
+            --json isDraft,isPrerelease,tagName --jq '[.isDraft, .isPrerelease, .tagName] | @tsv' 2>/dev/null || true)
           if [ -n "$release_state" ]; then
-            read -r is_draft tag_name <<<"$release_state"
+            read -r is_draft is_prerelease tag_name <<<"$release_state"
             if [ "$is_draft" != "true" ]; then
-              echo "::error::published stable release $VERSION already exists; refusing to replace it"
+              echo "::error::published release $VERSION already exists; refusing to replace it"
               exit 1
             fi
             if [ "$tag_name" != "$VERSION" ]; then
-              echo "::error::existing draft release does not identify stable tag $VERSION"
+              echo "::error::existing draft release does not identify tag $VERSION"
+              exit 1
+            fi
+            if [ "$is_prerelease" != "${{ needs.prepare.outputs.prerelease }}" ]; then
+              echo "::error::existing draft release has the wrong prerelease state"
               exit 1
             fi
             resume_draft=true
@@ -336,14 +350,15 @@ jobs:
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
           CI_RUN_ID: ${{ needs.prepare.outputs.ci_run_id }}
           CI_RUN_ATTEMPT: ${{ needs.prepare.outputs.ci_run_attempt }}
-          RESUME_DRAFT: ${{ steps.stable.outputs.resume_draft }}
+          RESUME_DRAFT: ${{ steps.release.outputs.resume_draft }}
+          PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
         run: |
           manifest_sha=$(awk '$2 == "release-manifest.json" {print $1}' release/release-manifest.json.sha256)
           generated_notes=$(gh api --method POST \
             "repos/${{ github.repository }}/releases/generate-notes" \
             -f tag_name="$VERSION" -f target_commitish="$SOURCE_SHA" --jq .body)
           {
-            printf 'Qualified stable release from commit `%s`.\n\n' "$SOURCE_SHA"
+            printf 'Qualified %s release from commit `%s`.\n\n' '${{ needs.prepare.outputs.channel }}' "$SOURCE_SHA"
             printf -- '- Source commit: `%s`\n' "$SOURCE_SHA"
             printf -- '- Complete CI qualification: `%s/actions/runs/%s` (attempt `%s`)\n' \
               '${{ github.server_url }}/${{ github.repository }}' "$CI_RUN_ID" "$CI_RUN_ATTEMPT"
@@ -357,7 +372,7 @@ jobs:
             release_state=$(gh release view "$VERSION" --repo "${{ github.repository }}" \
               --json isDraft --jq .isDraft)
             if [ "$release_state" != "true" ]; then
-              echo "::error::stable release $VERSION became published before draft recovery"
+              echo "::error::release $VERSION became published before draft recovery"
               exit 1
             fi
             gh release upload "$VERSION" --repo "${{ github.repository }}" \
@@ -365,12 +380,17 @@ jobs:
             gh release edit "$VERSION" --repo "${{ github.repository }}" \
               --title "$VERSION" --notes-file release-notes.md
           else
+            prerelease_flag=()
+            if [ "$PRERELEASE" = "true" ]; then
+              prerelease_flag=(--prerelease)
+            fi
             gh release create "$VERSION" \
               --repo "${{ github.repository }}" \
               --verify-tag \
               --title "$VERSION" \
               --notes-file release-notes.md \
               --draft \
+              "${prerelease_flag[@]}" \
               "${assets[@]}"
           fi
           is_draft=$(gh release view "$VERSION" --repo "${{ github.repository }}" \
@@ -403,7 +423,7 @@ jobs:
           private-key: ${{ secrets.DOCS_SYNC_APP_PRIVATE_KEY }}
           owner: wago-org
           repositories: docs
-      - name: Synchronize stable documentation
+      - name: Synchronize release documentation
         env:
           DOCS_SYNC_TOKEN: ${{ steps.docs-sync-token.outputs.token }}
-        run: scripts/dispatch-docs-release.sh release "${{ needs.prepare.outputs.version }}" "${{ needs.prepare.outputs.source_sha }}"
+        run: scripts/dispatch-docs-release.sh "${{ needs.prepare.outputs.channel }}" "${{ needs.prepare.outputs.version }}" "${{ needs.prepare.outputs.source_sha }}"

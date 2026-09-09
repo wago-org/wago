@@ -518,22 +518,22 @@ func (e commandEnvironment) Switch(version, profile, build string) {
 }
 func (e commandEnvironment) InstallRequested(options versioninstall.Options) {
 	if automation.DryRun() {
-		automation.PrintPlan("install runtime", map[string]any{"versions": options.Versions, "latest": options.Latest, "nightly": options.Nightly, "canary": options.Canary, "profile": options.Profile, "build": options.Build, "use": options.Use})
+		automation.PrintPlan("install runtime", map[string]any{"versions": options.Versions, "latest": options.Latest, "beta": options.Beta, "canary": options.Canary, "profile": options.Profile, "build": options.Build, "use": options.Use})
 		return
 	}
 	e.toolchain().Install(managerversion.InstallRequest{
-		Versions: options.Versions, Latest: options.Latest, Nightly: options.Nightly, Canary: options.Canary,
+		Versions: options.Versions, Latest: options.Latest, Beta: options.Beta, Canary: options.Canary,
 		Profile: options.Profile, Build: options.Build,
 		Use: options.Use,
 	})
 }
-func (e commandEnvironment) UpdateVersion(args []string, nightly, canary, force bool, profile, build, use string) {
+func (e commandEnvironment) UpdateVersion(args []string, beta, canary, force bool, profile, build, use string) {
 	if automation.DryRun() {
-		automation.PrintPlan("update runtime", map[string]any{"versions": args, "nightly": nightly, "canary": canary, "force": force, "profile": profile, "build": build, "use": use})
+		automation.PrintPlan("update runtime", map[string]any{"versions": args, "beta": beta, "canary": canary, "force": force, "profile": profile, "build": build, "use": use})
 		return
 	}
 	e.toolchain().Update(managerversion.UpdateRequest{
-		Args: args, Nightly: nightly, Canary: canary, Force: force, Profile: profile, Build: build, Use: use,
+		Args: args, Beta: beta, Canary: canary, Force: force, Profile: profile, Build: build, Use: use,
 	})
 }
 func (e commandEnvironment) UninstallVersions(versions []string) {
@@ -576,7 +576,7 @@ func (e commandEnvironment) UpdateEverything(options updatecmd.Options) {
 		if channel == "" {
 			channel = activeRuntime
 		}
-		if channel == "canary" || channel == "nightly" {
+		if channel == "canary" || channel == "beta" {
 			e.toolchain().Update(managerversion.UpdateRequest{Args: []string{channel}, Profile: options.Profile, Build: options.Build, Use: options.Use, Force: options.Force})
 		} else {
 			fmt.Fprintln(os.Stdout, dim("runtime is pinned; skipping channel update"))

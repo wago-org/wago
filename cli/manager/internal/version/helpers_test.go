@@ -10,27 +10,27 @@ import (
 )
 
 func TestVersionSelectionAndOrderingHelpers(t *testing.T) {
-	if !isRollingChannel("canary") || isRollingChannel("1.2.3") || channelRelease("nightly-20260101") != "nightly" || channelRelease("v1.2.3") != "" {
+	if !isRollingChannel("canary") || isRollingChannel("1.2.3") || channelRelease("v0.1.0-beta.1") != "beta" || channelRelease("v1.2.3") != "" {
 		t.Fatal("release channel detection mismatch")
 	}
-	if got := strings.Join(stableReleaseNames([]string{"v1.2.3", "canary-abcd", "", "nightly-2026"}), ","); got != "v1.2.3" {
+	if got := strings.Join(stableReleaseNames([]string{"v1.2.3", "v0.1.0-canary.gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "", "v1.2.3-beta.1"}), ","); got != "v1.2.3" {
 		t.Fatalf("stable releases = %q", got)
 	}
 	for _, tc := range []struct {
-		active          string
-		args            []string
-		nightly, canary bool
-		want            string
-		err             bool
+		active       string
+		args         []string
+		beta, canary bool
+		want         string
+		err          bool
 	}{
 		{"canary", nil, false, false, "canary", false},
-		{"", nil, true, false, "nightly", false},
-		{"", []string{"nightly"}, false, false, "nightly", false},
+		{"", nil, true, false, "beta", false},
+		{"", []string{"beta"}, false, false, "beta", false},
 		{"1.2.3", nil, false, false, "", true},
 		{"", []string{"1", "2"}, false, false, "", true},
 		{"", nil, true, true, "", true},
 	} {
-		got, err := updateVersionTarget(tc.active, tc.args, tc.nightly, tc.canary)
+		got, err := updateVersionTarget(tc.active, tc.args, tc.beta, tc.canary)
 		if (err != nil) != tc.err || got != tc.want {
 			t.Fatalf("updateVersionTarget(%q, %v) = %q, %v", tc.active, tc.args, got, err)
 		}

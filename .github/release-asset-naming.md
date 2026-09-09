@@ -1,5 +1,20 @@
 # Release asset names
 
+## Channels and versions
+
+- `canary` resolves the newest successful main build. Canary releases use an
+  immutable SemVer tag such as
+  `v0.1.0-canary.g<40-character-commit-sha>`.
+- `beta` resolves the newest manually qualified beta, such as
+  `v0.1.0-beta.1`.
+- `latest` resolves the newest stable `vMAJOR.MINOR.PATCH` release.
+
+The canary workflow publishes automatically after main CI succeeds. Beta and
+stable releases are dispatched through `release.yml` with an exact full commit
+SHA that already passed main CI. Both paths build, smoke-test, checksum, and
+publish the same platform asset set. Before starting a new release series,
+update `RELEASE_SERIES` in `canary.yml`.
+
 ## Choose a file
 
 Start with the Wago CLI that matches your operating system and CPU architecture:
