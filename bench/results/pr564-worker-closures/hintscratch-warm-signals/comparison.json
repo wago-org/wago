@@ -1,0 +1,1346 @@
+[
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p4",
+    "unit": "ns/op",
+    "label": "final",
+    "base": 497160,
+    "candidate": 338079.5,
+    "delta": -31.997847775364065,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      494302,
+      498913,
+      498774,
+      501817,
+      492361,
+      495546
+    ],
+    "candidateValues": [
+      337771,
+      333322,
+      333919,
+      348061,
+      339976,
+      338388
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p4",
+    "unit": "ns/op",
+    "label": "hintscratch",
+    "base": 497160,
+    "candidate": 336359,
+    "delta": -32.343913428272586,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      494302,
+      498913,
+      498774,
+      501817,
+      492361,
+      495546
+    ],
+    "candidateValues": [
+      336748,
+      330419,
+      335970,
+      333931,
+      338385,
+      342827
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p4",
+    "unit": "code-B",
+    "label": "final",
+    "base": 57638,
+    "candidate": 57638,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      57638,
+      57638,
+      57638,
+      57638,
+      57638,
+      57638
+    ],
+    "candidateValues": [
+      57638,
+      57638,
+      57638,
+      57638,
+      57638,
+      57638
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p4",
+    "unit": "code-B",
+    "label": "hintscratch",
+    "base": 57638,
+    "candidate": 57638,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      57638,
+      57638,
+      57638,
+      57638,
+      57638,
+      57638
+    ],
+    "candidateValues": [
+      57638,
+      57638,
+      57638,
+      57638,
+      57638,
+      57638
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p4",
+    "unit": "B/op",
+    "label": "final",
+    "base": 552596,
+    "candidate": 559047,
+    "delta": 1.1673989677811747,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      552948,
+      551575,
+      552057,
+      552341,
+      553084,
+      552851
+    ],
+    "candidateValues": [
+      559094,
+      559000,
+      559391,
+      558733,
+      558272,
+      559784
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p4",
+    "unit": "B/op",
+    "label": "hintscratch",
+    "base": 552596,
+    "candidate": 556770.5,
+    "delta": 0.7554343498686222,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      552948,
+      551575,
+      552057,
+      552341,
+      553084,
+      552851
+    ],
+    "candidateValues": [
+      556593,
+      557002,
+      556899,
+      557137,
+      556642,
+      556485
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p4",
+    "unit": "allocs/op",
+    "label": "final",
+    "base": 403,
+    "candidate": 392,
+    "delta": -2.7295285359801524,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      403,
+      402,
+      403,
+      402,
+      403,
+      403
+    ],
+    "candidateValues": [
+      392,
+      392,
+      392,
+      391,
+      392,
+      391
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p4",
+    "unit": "allocs/op",
+    "label": "hintscratch",
+    "base": 403,
+    "candidate": 379,
+    "delta": -5.955334987593053,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      403,
+      402,
+      403,
+      402,
+      403,
+      403
+    ],
+    "candidateValues": [
+      379,
+      379,
+      379,
+      379,
+      379,
+      379
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p8",
+    "unit": "ns/op",
+    "label": "final",
+    "base": 467918.5,
+    "candidate": 304577,
+    "delta": -34.908108997613894,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      470076,
+      463858,
+      475207,
+      467323,
+      468514,
+      459406
+    ],
+    "candidateValues": [
+      307975,
+      303694,
+      308080,
+      299298,
+      299066,
+      305460
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p8",
+    "unit": "ns/op",
+    "label": "hintscratch",
+    "base": 467918.5,
+    "candidate": 298698,
+    "delta": -36.16452437764269,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      470076,
+      463858,
+      475207,
+      467323,
+      468514,
+      459406
+    ],
+    "candidateValues": [
+      300059,
+      303589,
+      293973,
+      292166,
+      297337,
+      300998
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p8",
+    "unit": "code-B",
+    "label": "final",
+    "base": 57638,
+    "candidate": 57638,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      57638,
+      57638,
+      57638,
+      57638,
+      57638,
+      57638
+    ],
+    "candidateValues": [
+      57638,
+      57638,
+      57638,
+      57638,
+      57638,
+      57638
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p8",
+    "unit": "code-B",
+    "label": "hintscratch",
+    "base": 57638,
+    "candidate": 57638,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      57638,
+      57638,
+      57638,
+      57638,
+      57638,
+      57638
+    ],
+    "candidateValues": [
+      57638,
+      57638,
+      57638,
+      57638,
+      57638,
+      57638
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p8",
+    "unit": "B/op",
+    "label": "final",
+    "base": 747149,
+    "candidate": 757647,
+    "delta": 1.4050744898273404,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      748640,
+      746793,
+      747246,
+      747052,
+      748431,
+      744486
+    ],
+    "candidateValues": [
+      757270,
+      758024,
+      758737,
+      756193,
+      756467,
+      758266
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p8",
+    "unit": "B/op",
+    "label": "hintscratch",
+    "base": 747149,
+    "candidate": 751058,
+    "delta": 0.5231888150823982,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      748640,
+      746793,
+      747246,
+      747052,
+      748431,
+      744486
+    ],
+    "candidateValues": [
+      751180,
+      753366,
+      750221,
+      749942,
+      751009,
+      751107
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p8",
+    "unit": "allocs/op",
+    "label": "final",
+    "base": 629,
+    "candidate": 620,
+    "delta": -1.4308426073131986,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      630,
+      629,
+      629,
+      628,
+      629,
+      630
+    ],
+    "candidateValues": [
+      620,
+      620,
+      620,
+      620,
+      619,
+      619
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/json-as/p8",
+    "unit": "allocs/op",
+    "label": "hintscratch",
+    "base": 629,
+    "candidate": 596,
+    "delta": -5.246422893481717,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      630,
+      629,
+      629,
+      628,
+      629,
+      630
+    ],
+    "candidateValues": [
+      595,
+      596,
+      597,
+      596,
+      596,
+      595
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/json-as/p8",
+    "unit": "ns/op",
+    "label": "final",
+    "base": 1223990,
+    "candidate": 584277,
+    "delta": -52.26456098497536,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1169650,
+      1231168,
+      1226554,
+      1221426,
+      1243046,
+      1219515
+    ],
+    "candidateValues": [
+      581372,
+      584269,
+      584285,
+      593584,
+      578419,
+      592869
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/json-as/p8",
+    "unit": "ns/op",
+    "label": "hintscratch",
+    "base": 1223990,
+    "candidate": 584343.5,
+    "delta": -52.25912793405174,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1169650,
+      1231168,
+      1226554,
+      1221426,
+      1243046,
+      1219515
+    ],
+    "candidateValues": [
+      590086,
+      585645,
+      600417,
+      581528,
+      577434,
+      583042
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/json-as/p8",
+    "unit": "code-B",
+    "label": "final",
+    "base": 55941,
+    "candidate": 55941,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      55941,
+      55941,
+      55941,
+      55941,
+      55941,
+      55941
+    ],
+    "candidateValues": [
+      55941,
+      55941,
+      55941,
+      55941,
+      55941,
+      55941
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/json-as/p8",
+    "unit": "code-B",
+    "label": "hintscratch",
+    "base": 55941,
+    "candidate": 55941,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      55941,
+      55941,
+      55941,
+      55941,
+      55941,
+      55941
+    ],
+    "candidateValues": [
+      55941,
+      55941,
+      55941,
+      55941,
+      55941,
+      55941
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/json-as/p8",
+    "unit": "B/op",
+    "label": "final",
+    "base": 830707.5,
+    "candidate": 845568.5,
+    "delta": 1.788957003518088,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      828529,
+      829863,
+      832447,
+      829283,
+      832836,
+      831552
+    ],
+    "candidateValues": [
+      845879,
+      844403,
+      845258,
+      846472,
+      844404,
+      846979
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/json-as/p8",
+    "unit": "B/op",
+    "label": "hintscratch",
+    "base": 830707.5,
+    "candidate": 839840,
+    "delta": 1.0993640962673412,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      828529,
+      829863,
+      832447,
+      829283,
+      832836,
+      831552
+    ],
+    "candidateValues": [
+      838780,
+      839829,
+      839851,
+      838197,
+      839994,
+      839997
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/json-as/p8",
+    "unit": "allocs/op",
+    "label": "final",
+    "base": 911,
+    "candidate": 906,
+    "delta": -0.5488474204171201,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      912,
+      911,
+      912,
+      911,
+      911,
+      910
+    ],
+    "candidateValues": [
+      906,
+      905,
+      907,
+      906,
+      906,
+      906
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/json-as/p8",
+    "unit": "allocs/op",
+    "label": "hintscratch",
+    "base": 911,
+    "candidate": 882,
+    "delta": -3.183315038419321,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      912,
+      911,
+      912,
+      911,
+      911,
+      910
+    ],
+    "candidateValues": [
+      880,
+      881,
+      882,
+      882,
+      882,
+      882
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/lua/p8",
+    "unit": "ns/op",
+    "label": "final",
+    "base": 6496963,
+    "candidate": 3161112.5,
+    "delta": -51.34476677795456,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      6476734,
+      6619809,
+      6464536,
+      6517192,
+      6432272,
+      6580175
+    ],
+    "candidateValues": [
+      3129138,
+      3240960,
+      3170318,
+      3348632,
+      3151907,
+      3100598
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/lua/p8",
+    "unit": "ns/op",
+    "label": "hintscratch",
+    "base": 6496963,
+    "candidate": 3181724.5,
+    "delta": -51.027510853917434,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      6476734,
+      6619809,
+      6464536,
+      6517192,
+      6432272,
+      6580175
+    ],
+    "candidateValues": [
+      3175006,
+      3246875,
+      3086414,
+      3297129,
+      3188443,
+      3158531
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/lua/p8",
+    "unit": "code-B",
+    "label": "final",
+    "base": 890004,
+    "candidate": 890004,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      890004,
+      890004,
+      890004,
+      890004,
+      890004,
+      890004
+    ],
+    "candidateValues": [
+      890004,
+      890004,
+      890004,
+      890004,
+      890004,
+      890004
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/lua/p8",
+    "unit": "code-B",
+    "label": "hintscratch",
+    "base": 890004,
+    "candidate": 890004,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      890004,
+      890004,
+      890004,
+      890004,
+      890004,
+      890004
+    ],
+    "candidateValues": [
+      890004,
+      890004,
+      890004,
+      890004,
+      890004,
+      890004
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/lua/p8",
+    "unit": "B/op",
+    "label": "final",
+    "base": 5304493.5,
+    "candidate": 5341119.5,
+    "delta": 0.6904712014445868,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      5276120,
+      5327209,
+      5313325,
+      5295160,
+      5295662,
+      5318903
+    ],
+    "candidateValues": [
+      5342195,
+      5340044,
+      5359418,
+      5327485,
+      5338878,
+      5342562
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/lua/p8",
+    "unit": "B/op",
+    "label": "hintscratch",
+    "base": 5304493.5,
+    "candidate": 5339091,
+    "delta": 0.6522300385512825,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      5276120,
+      5327209,
+      5313325,
+      5295160,
+      5295662,
+      5318903
+    ],
+    "candidateValues": [
+      5345837,
+      5344521,
+      5333243,
+      5336421,
+      5332873,
+      5341761
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/lua/p8",
+    "unit": "allocs/op",
+    "label": "final",
+    "base": 2210,
+    "candidate": 2175.5,
+    "delta": -1.5610859728506732,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      2219,
+      2213,
+      2207,
+      2208,
+      2210,
+      2210
+    ],
+    "candidateValues": [
+      2175,
+      2178,
+      2173,
+      2174,
+      2176,
+      2178
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/lua/p8",
+    "unit": "allocs/op",
+    "label": "hintscratch",
+    "base": 2210,
+    "candidate": 2132.5,
+    "delta": -3.5067873303167407,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      2219,
+      2213,
+      2207,
+      2208,
+      2210,
+      2210
+    ],
+    "candidateValues": [
+      2132,
+      2131,
+      2136,
+      2133,
+      2125,
+      2133
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/esbuild/p4",
+    "unit": "ns/op",
+    "label": "final",
+    "base": 389187017,
+    "candidate": 175198593,
+    "delta": -54.983443602385115,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      388202800,
+      393198774,
+      388588958,
+      389785076,
+      389841840,
+      387990447
+    ],
+    "candidateValues": [
+      174181776,
+      176215410,
+      183997316,
+      174090936,
+      176318890,
+      173824778
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/esbuild/p4",
+    "unit": "ns/op",
+    "label": "hintscratch",
+    "base": 389187017,
+    "candidate": 177214829,
+    "delta": -54.46538007201818,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      388202800,
+      393198774,
+      388588958,
+      389785076,
+      389841840,
+      387990447
+    ],
+    "candidateValues": [
+      180065765,
+      180383593,
+      176490155,
+      175989366,
+      176704732,
+      177724926
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/esbuild/p4",
+    "unit": "code-B",
+    "label": "final",
+    "base": 20163867,
+    "candidate": 20163867,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      20163867,
+      20163867,
+      20163867,
+      20163867,
+      20163867,
+      20163867
+    ],
+    "candidateValues": [
+      20163867,
+      20163867,
+      20163867,
+      20163867,
+      20163867,
+      20163867
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/esbuild/p4",
+    "unit": "code-B",
+    "label": "hintscratch",
+    "base": 20163867,
+    "candidate": 20163867,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      20163867,
+      20163867,
+      20163867,
+      20163867,
+      20163867,
+      20163867
+    ],
+    "candidateValues": [
+      20163867,
+      20163867,
+      20163867,
+      20163867,
+      20163867,
+      20163867
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/esbuild/p4",
+    "unit": "B/op",
+    "label": "final",
+    "base": 180832136,
+    "candidate": 181876661,
+    "delta": 0.5776213360660698,
+    "p": 0.30952380952380953,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      180948892,
+      181543168,
+      180633004,
+      180648732,
+      180715380,
+      182498020
+    ],
+    "candidateValues": [
+      181717573,
+      180523117,
+      182361781,
+      182375570,
+      182035749,
+      181674512
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/esbuild/p4",
+    "unit": "B/op",
+    "label": "hintscratch",
+    "base": 180832136,
+    "candidate": 182092601,
+    "delta": 0.6970359516186964,
+    "p": 0.09307359307359307,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      180948892,
+      181543168,
+      180633004,
+      180648732,
+      180715380,
+      182498020
+    ],
+    "candidateValues": [
+      182211565,
+      182168722,
+      182645162,
+      182016480,
+      181326824,
+      181465392
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/esbuild/p4",
+    "unit": "allocs/op",
+    "label": "final",
+    "base": 27354,
+    "candidate": 27574.5,
+    "delta": 0.806097828471164,
+    "p": 0.48484848484848486,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      26434,
+      26843,
+      27637,
+      27071,
+      28508,
+      27718
+    ],
+    "candidateValues": [
+      27373,
+      26870,
+      28173,
+      27776,
+      28201,
+      27116
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileFullWorkers/esbuild/p4",
+    "unit": "allocs/op",
+    "label": "hintscratch",
+    "base": 27354,
+    "candidate": 28253.5,
+    "delta": 3.28836733201725,
+    "p": 0.04112554112554113,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      26434,
+      26843,
+      27637,
+      27071,
+      28508,
+      27718
+    ],
+    "candidateValues": [
+      27922,
+      28236,
+      29474,
+      28271,
+      28282,
+      27846
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/sqlite3/p8",
+    "unit": "ns/op",
+    "label": "final",
+    "base": 22386442,
+    "candidate": 10110668,
+    "delta": -54.83575281860333,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      22334663,
+      22120748,
+      23037715,
+      22596677,
+      22438221,
+      21934844
+    ],
+    "candidateValues": [
+      9727436,
+      10577355,
+      10122571,
+      10503782,
+      10098765,
+      9957012
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/sqlite3/p8",
+    "unit": "ns/op",
+    "label": "hintscratch",
+    "base": 22386442,
+    "candidate": 10114397.5,
+    "delta": -54.81909318148905,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      22334663,
+      22120748,
+      23037715,
+      22596677,
+      22438221,
+      21934844
+    ],
+    "candidateValues": [
+      10020604,
+      10160934,
+      10477464,
+      10108668,
+      10120127,
+      9931497
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/sqlite3/p8",
+    "unit": "code-B",
+    "label": "final",
+    "base": 3636329,
+    "candidate": 3636329,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      3636329,
+      3636329,
+      3636329,
+      3636329,
+      3636329,
+      3636329
+    ],
+    "candidateValues": [
+      3636329,
+      3636329,
+      3636329,
+      3636329,
+      3636329,
+      3636329
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/sqlite3/p8",
+    "unit": "code-B",
+    "label": "hintscratch",
+    "base": 3636329,
+    "candidate": 3636329,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      3636329,
+      3636329,
+      3636329,
+      3636329,
+      3636329,
+      3636329
+    ],
+    "candidateValues": [
+      3636329,
+      3636329,
+      3636329,
+      3636329,
+      3636329,
+      3636329
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/sqlite3/p8",
+    "unit": "B/op",
+    "label": "final",
+    "base": 16638113,
+    "candidate": 16391815,
+    "delta": -1.4803241208903972,
+    "p": 0.24025974025974026,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      16453250,
+      16398594,
+      17609760,
+      17668088,
+      16751581,
+      16524645
+    ],
+    "candidateValues": [
+      16103843,
+      16848375,
+      16133128,
+      16666817,
+      16644642,
+      16138988
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/sqlite3/p8",
+    "unit": "B/op",
+    "label": "hintscratch",
+    "base": 16638113,
+    "candidate": 16467852.5,
+    "delta": -1.023316165721433,
+    "p": 0.30952380952380953,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      16453250,
+      16398594,
+      17609760,
+      17668088,
+      16751581,
+      16524645
+    ],
+    "candidateValues": [
+      16302261,
+      16481352,
+      16942629,
+      16454353,
+      16604094,
+      16139216
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/sqlite3/p8",
+    "unit": "allocs/op",
+    "label": "final",
+    "base": 4507.5,
+    "candidate": 4512.5,
+    "delta": 0.11092623405435376,
+    "p": 0.14502164502164502,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      4510,
+      4495,
+      4511,
+      4500,
+      4505,
+      4514
+    ],
+    "candidateValues": [
+      4518,
+      4505,
+      4511,
+      4509,
+      4517,
+      4514
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileWorkers/sqlite3/p8",
+    "unit": "allocs/op",
+    "label": "hintscratch",
+    "base": 4507.5,
+    "candidate": 4470,
+    "delta": -0.8319467554076532,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      4510,
+      4495,
+      4511,
+      4500,
+      4505,
+      4514
+    ],
+    "candidateValues": [
+      4472,
+      4480,
+      4459,
+      4467,
+      4468,
+      4473
+    ]
+  }
+]

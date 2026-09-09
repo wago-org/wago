@@ -1,0 +1,46 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index a04979480..4e81b061c 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -2362,7 +2362,7 @@ const (
+ )
+ 
+ func parallelHintScanEligible(m *wasm.Module, nGlobals, workers int) bool {
+-	if workers <= 1 || len(m.Code) < workers*2 || uint64(nGlobals)*uint64(workers) > maxParallelHintGlobalEntries {
++	if workers <= 1 || workers > len(m.Code)/2 || uint64(nGlobals)*uint64(workers) > maxParallelHintGlobalEntries {
+ 		return false
+ 	}
+ 	bodyBytes := 0
+@@ -2372,7 +2372,8 @@ func parallelHintScanEligible(m *wasm.Module, nGlobals, workers int) bool {
+ 		}
+ 		bodyBytes += len(m.Code[i].BodyBytes)
+ 	}
+-	return bodyBytes >= minParallelHintBodyBytes
++	// Each worker must have enough scan work to amortize its scratch and launch.
++	return bodyBytes/workers >= minParallelHintBodyBytes
+ }
+ 
+ type parallelCalleeHints struct {
+diff --git a/src/core/compiler/backend/railshot/arm64/compile.go b/src/core/compiler/backend/railshot/arm64/compile.go
+index bae929b31..d3e80536a 100644
+--- a/src/core/compiler/backend/railshot/arm64/compile.go
++++ b/src/core/compiler/backend/railshot/arm64/compile.go
+@@ -2282,7 +2282,7 @@ const (
+ // workers and leaves tiny or programmatically constructed modules on the
+ // allocation-minimal serial path.
+ func parallelHintScanEligible(m *wasm.Module, nGlobals, workers int) bool {
+-	if workers <= 1 || len(m.Code) < workers*2 || uint64(nGlobals)*uint64(workers) > maxParallelHintGlobalEntries {
++	if workers <= 1 || workers > len(m.Code)/2 || uint64(nGlobals)*uint64(workers) > maxParallelHintGlobalEntries {
+ 		return false
+ 	}
+ 	bodyBytes := 0
+@@ -2292,7 +2292,8 @@ func parallelHintScanEligible(m *wasm.Module, nGlobals, workers int) bool {
+ 		}
+ 		bodyBytes += len(m.Code[i].BodyBytes)
+ 	}
+-	return bodyBytes >= minParallelHintBodyBytes
++	// Each worker must have enough scan work to amortize its scratch and launch.
++	return bodyBytes/workers >= minParallelHintBodyBytes
+ }
+ 
+ type parallelCalleeHints struct {

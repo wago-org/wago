@@ -90,6 +90,43 @@ func TestParallelHintScratchExclusiveAndGrowable(t *testing.T) {
 	}
 }
 
+func TestParallelHintRetainedScratchIsExclusiveAndGrowable(t *testing.T) {
+	states := newParallelHintWorkers(&wasm.Module{}, 32, 2)
+	for i := range states {
+		if len(states[i].retained) != 0 || cap(states[i].retained) != 8 {
+			t.Fatalf("worker %d retained scratch: len=%d cap=%d, want 0/8", i, len(states[i].retained), cap(states[i].retained))
+		}
+		states[i].globals.Add(uint32(i), int64(i+1))
+		states[i].retained = states[i].globals.AppendTo(states[i].retained)
+	}
+	states[0].retained[0].Score = 99
+	if states[1].retained[0].Score != 2 {
+		t.Fatal("inline retained buffers alias")
+	}
+	states[0].globals.Reset(32)
+	for i := uint32(0); i < 32; i++ {
+		states[0].globals.Add(i, 1)
+	}
+	states[0].retained = states[0].globals.AppendTo(states[0].retained)
+	if len(states[0].retained) != 33 || states[0].retained[0].Score != 99 {
+		t.Fatal("retained growth lost prior records")
+	}
+	if len(states[1].retained) != 1 || states[1].retained[0].Score != 2 {
+		t.Fatal("retained growth changed another worker")
+	}
+	if got := testing.AllocsPerRun(100, func() {
+		state := &states[1]
+		state.retained = state.retained[:0]
+		state.globals.Reset(32)
+		for i := uint32(0); i < 8; i++ {
+			state.globals.Add(i, 1)
+		}
+		state.retained = state.globals.AppendTo(state.retained)
+	}); got != 0 {
+		t.Fatalf("small retained span allocations = %g, want 0", got)
+	}
+}
+
 func TestParallelLocalScratchCapacityIsBounded(t *testing.T) {
 	for _, n := range []int{0, 1, 32, 64, 65, 103, 65535} {
 		hints := []funcHints{{localCount: uint16(n)}}

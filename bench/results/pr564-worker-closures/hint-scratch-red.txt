@@ -1,0 +1,5 @@
+--- FAIL: TestParallelHintRetainedScratchIsExclusiveAndGrowable (0.00s)
+    parallel_scratch_test.go:97: worker 0 retained scratch: len=0 cap=0, want 0/8
+FAIL
+FAIL	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.002s
+FAIL

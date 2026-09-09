@@ -1,0 +1,3 @@
+run,bounds,main_KiB,prior_pr_KiB,after_KiB,change_vs_main_percent,p_vs_main,change_vs_prior_percent,p_vs_prior,samples_each,benchtime
+hintscratch-esbuild-fixed-explicit,explicit,279034,275184,276680,-0.8436247912440797,0.1978081146206062,0.5436362579219756,0.551167166391288,12,3x
+hintscratch-esbuild-fixed-signals,signals,263040,262708,259622,-1.299422141119222,0.05965706120504882,-1.1746882470271225,0.1135023275284414,12,3x

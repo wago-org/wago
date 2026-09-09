@@ -1,0 +1,22 @@
+{
+  "names": [
+    [
+      "signals",
+      "BenchmarkCompileFullWorkers/esbuild/p4"
+    ]
+  ],
+  "labels": [
+    "base",
+    "final",
+    "hintscratch"
+  ],
+  "samples": 12,
+  "benchtime": "3x",
+  "procs": "8",
+  "binaries": {
+    "/home/jtenner/Projects/wago/.tmp/pr564-memory/final731/base-signals.test": "432251c1062d09357884a88c9c04706c66cd8c87e933a6626d68b2d7ebaa2f0e",
+    "/home/jtenner/Projects/wago/.tmp/pr564-memory/final731/final-signals.test": "7b63c0fe6eec2d60375804593b71610c6f2f2e9a07deeb17844b51f498a9190c",
+    "/home/jtenner/Projects/wago/.tmp/pr564-memory/final731/hintscratch-signals.test": "9e911960f5ec68a50daab2d926ac0c3baf4a7b14fd08ef9f76973cf44ce585de"
+  },
+  "resourceLogs": true
+}

@@ -1,0 +1,1 @@
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	0.132s

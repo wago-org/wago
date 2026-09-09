@@ -1,0 +1,779 @@
+?   	github.com/wago-org/wago/src/core/codeimage	[no test files]
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot	0.067s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	4.771s
+?   	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	[no test files]
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/shared	(cached)
+ok  	github.com/wago-org/wago/src/core/compiler/codegen	(cached)
+ok  	github.com/wago-org/wago/src/core/compiler/frontend	(cached)
+ok  	github.com/wago-org/wago/src/core/compiler/ir	(cached)
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	(cached)
+ok  	github.com/wago-org/wago/src/core/compiler/wasm	1.194s
+?   	github.com/wago-org/wago/src/core/compiler/wasm/internal/geninstrnames	[no test files]
+ok  	github.com/wago-org/wago/src/core/encoder/amd64	(cached)
+ok  	github.com/wago-org/wago/src/core/encoder/arm64	(cached)
+ok  	github.com/wago-org/wago/src/core/nativeabi	(cached)
+ok  	github.com/wago-org/wago/src/core/plugins	(cached)
+ok  	github.com/wago-org/wago/src/core/runtime	(cached)
+ok  	github.com/wago-org/wago/src/core/runtime/abi	(cached)
+ok  	github.com/wago-org/wago/src/core/runtime/gc	(cached)
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	(cached)
+ok  	github.com/wago-org/wago/src/core/runtime/hostthunk	(cached)
+ok  	github.com/wago-org/wago/src/core/semver	(cached)
+--- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting (0.02s)
+    --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/exceptions-tag (0.00s)
+        exception_handling_official_amd64_test.go:917: convert pinned exceptions/tag.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/exceptions/tag.wast:31:4: error: unexpected token "rec", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/exceptions-try_table (0.00s)
+        exception_handling_official_amd64_test.go:917: convert pinned exceptions/try_table.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/exceptions/try_table.wast:408:42: error: unexpected token "exn", expected a numeric index or a name (e.g. 12 or $foo).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    --- FAIL: TestStagedOfficialExceptionHandlingFamilyAccounting/ref_null (0.00s)
+        exception_handling_official_amd64_test.go:917: convert pinned ref_null.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/ref_null.wast:3:35: error: unexpected token anyref, expected ).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    exception_handling_official_amd64_test.go:958: staged exception-handling accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+        {
+          "schema": 1,
+          "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+          "files": [
+            {
+              "name": "exceptions/throw",
+              "status": "accounted",
+              "counts": {
+                "commands": 13,
+                "modules_passed": 1,
+                "assertions_passed": 9,
+                "expected_invalid": 3,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "exceptions/throw_ref",
+              "status": "accounted",
+              "counts": {
+                "commands": 15,
+                "modules_passed": 1,
+                "assertions_passed": 12,
+                "expected_invalid": 2,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            }
+          ],
+          "totals": {
+            "commands": 28,
+            "modules_passed": 2,
+            "assertions_passed": 21,
+            "expected_invalid": 5,
+            "expected_unlinkable": 0,
+            "expected_uninstantiable": 0,
+            "expected_feature_rejects": 0,
+            "blocked_commands": 0,
+            "unexpected_compile_rejects": 0,
+            "unexpected_link_rejects": 0,
+            "failures": 0
+          }
+        }
+--- FAIL: TestStagedOfficialGCArrayBulkAccounting (0.00s)
+    gc_array_bulk_official_amd64_test.go:387: convert pinned gc/array_fill.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/array_fill.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedGCArrayBulkProductBoundary (0.00s)
+    --- FAIL: TestStagedGCArrayBulkProductBoundary/gc/array_fill (0.00s)
+        gc_array_bulk_product_amd64_test.go:46: convert pinned gc/array_fill.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/array_fill.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    --- FAIL: TestStagedGCArrayBulkProductBoundary/gc/array_copy (0.00s)
+        gc_array_bulk_product_amd64_test.go:46: convert pinned gc/array_copy.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/array_copy.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    gc_array_bulk_product_amd64_test.go:104: bulk array layouts: Compiled=784 Instance=888 codeCache=64 memoryDir=136 arrayGlobal=40 plugin=136 collector=1136
+--- FAIL: TestStagedGCArrayBulkCopyMutableRootLifecycle (0.00s)
+    gc_array_bulk_product_amd64_test.go:108: convert pinned gc/array_copy.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/array_copy.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedOfficialGCArrayInitAccounting (0.00s)
+    gc_array_init_official_amd64_test.go:396: convert pinned gc/array_init_data.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedGCArrayInitDataProductBoundary (0.00s)
+    --- FAIL: TestStagedGCArrayInitDataProductBoundary/array_init_data.2.wasm (0.00s)
+        gc_array_init_product_amd64_test.go:47: convert pinned gc/array_init_data.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    --- FAIL: TestStagedGCArrayInitDataProductBoundary/array_init_data.3.wasm (0.00s)
+        gc_array_init_product_amd64_test.go:47: convert pinned gc/array_init_data.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    gc_array_init_product_amd64_test.go:129: array-init layouts: Compiled=784 Instance=888 codeCache=64 memoryDir=136 arrayGlobal=40 plugin=136 collector=1136
+--- FAIL: TestStagedGCArrayInitElemProductBoundaryAndTinyLifecycle (0.00s)
+    gc_array_init_product_amd64_test.go:133: convert pinned gc/array_init_elem.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/array_init_elem.wast:12:8: error: unexpected token "array.init_elem", expected an instr.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedGCArrayInitDataTinyLifecycle (0.00s)
+    gc_array_init_product_amd64_test.go:274: convert pinned gc/array_init_data.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedGCArrayInitDataTransientTinyRootProof (0.00s)
+    gc_array_init_product_amd64_test.go:326: convert pinned gc/array_init_data.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/array_init_data.wast:7:21: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedOfficialGCArrayAccounting (0.00s)
+    gc_array_official_amd64_test.go:374: convert pinned gc/array.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/array.wast:4:16: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedOfficialGCBrOnCastAccounting (0.00s)
+    gc_br_on_cast_official_amd64_test.go:459: convert pinned gc/br_on_cast.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/br_on_cast.wast:5:28: error: unexpected token "i16", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedGCBrOnCastProductBoundaryLifecycle (0.00s)
+    gc_br_on_cast_product_amd64_test.go:85: convert pinned gc/br_on_cast.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/br_on_cast.wast:5:28: error: unexpected token "i16", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedOfficialGCExternAccounting (0.00s)
+    gc_extern_official_amd64_test.go:345: convert pinned gc/extern.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/extern.wast:4:20: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedGCExternProductBoundaryLifecycle (0.00s)
+    gc_extern_product_amd64_test.go:41: convert pinned gc/extern.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/extern.wast:4:20: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedOfficialGCI31Accounting (0.00s)
+    gc_i31_official_amd64_test.go:348: convert pinned gc/i31.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/i31.wast:2:52: error: unexpected token "i31", expected a numeric index or a name (e.g. 12 or $foo).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedOfficialGCRefCastAccounting (0.00s)
+    gc_ref_cast_official_amd64_test.go:338: convert pinned gc/ref_cast.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/ref_cast.wast:6:20: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedGCRefCastProductBoundaryLifecycle (0.00s)
+    gc_ref_cast_product_amd64_test.go:63: convert pinned gc/ref_cast.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/ref_cast.wast:6:20: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedOfficialGCRefEqAccounting (0.00s)
+    gc_ref_eq_official_amd64_test.go:304: convert pinned gc/ref_eq.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/ref_eq.wast:2:14: error: unexpected token "sub", expected func, struct or array.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedGCRefEqProductBoundaryLifecycle (0.00s)
+    gc_ref_eq_product_amd64_test.go:50: convert pinned gc/ref_eq.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/ref_eq.wast:2:14: error: unexpected token "sub", expected func, struct or array.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedGCRefTestAbstractMixedTableLifecycle (0.00s)
+    gc_ref_test_abstract_amd64_test.go:41: convert pinned gc/ref_test.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/ref_test.wast:6:20: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedOfficialGCRefTestAccounting (0.00s)
+    gc_ref_test_official_amd64_test.go:409: convert pinned gc/ref_test.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/ref_test.wast:6:20: error: unexpected token "i8", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedOfficialGCStructAccounting (0.00s)
+    gc_struct_official_amd64_test.go:309: convert pinned gc/struct.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/struct.wast:5:23: error: unexpected token ")", expected i32, i64, f32, f64, v128, externref, exnref or funcref.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedOfficialGCTypeSubtypingAccounting (0.00s)
+    gc_type_subtyping_official_amd64_test.go:551: convert pinned gc/type-subtyping.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/gc/type-subtyping.wast:4:14: error: unexpected token "sub", expected func, struct or array.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+--- FAIL: TestStagedOfficialMemory64FamilyAccounting (0.11s)
+    --- FAIL: TestStagedOfficialMemory64FamilyAccounting/memory64 (0.00s)
+        memory64_official_amd64_test.go:336: convert pinned memory64.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/memory64/memory64.wast:8:9: error: unexpected token "definition", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    memory64_official_amd64_test.go:368: staged memory64 accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+        {
+          "schema": 1,
+          "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+          "files": [
+            {
+              "name": "memory64/address64",
+              "status": "accounted",
+              "counts": {
+                "commands": 242,
+                "modules_passed": 4,
+                "assertions_passed": 238,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/align64",
+              "status": "accounted",
+              "counts": {
+                "commands": 157,
+                "modules_passed": 26,
+                "assertions_passed": 48,
+                "expected_invalid": 37,
+                "expected_malformed": 46,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/binary_leb128_64",
+              "status": "accounted",
+              "counts": {
+                "commands": 2,
+                "modules_passed": 1,
+                "assertions_passed": 0,
+                "expected_invalid": 0,
+                "expected_malformed": 1,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/bulk64",
+              "status": "accounted",
+              "counts": {
+                "commands": 70,
+                "modules_passed": 5,
+                "assertions_passed": 65,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/call_indirect64",
+              "status": "accounted",
+              "counts": {
+                "commands": 2,
+                "modules_passed": 1,
+                "assertions_passed": 1,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/endianness64",
+              "status": "accounted",
+              "counts": {
+                "commands": 69,
+                "modules_passed": 1,
+                "assertions_passed": 68,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/float_memory64",
+              "status": "accounted",
+              "counts": {
+                "commands": 90,
+                "modules_passed": 6,
+                "assertions_passed": 84,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/load64",
+              "status": "accounted",
+              "counts": {
+                "commands": 97,
+                "modules_passed": 1,
+                "assertions_passed": 37,
+                "expected_invalid": 46,
+                "expected_malformed": 13,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/memory_copy64",
+              "status": "accounted",
+              "counts": {
+                "commands": 4450,
+                "modules_passed": 33,
+                "assertions_passed": 4353,
+                "expected_invalid": 64,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/memory_fill64",
+              "status": "accounted",
+              "counts": {
+                "commands": 100,
+                "modules_passed": 11,
+                "assertions_passed": 25,
+                "expected_invalid": 64,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/memory_grow64",
+              "status": "accounted",
+              "counts": {
+                "commands": 49,
+                "modules_passed": 4,
+                "assertions_passed": 45,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/memory_init64",
+              "status": "accounted",
+              "counts": {
+                "commands": 240,
+                "modules_passed": 24,
+                "assertions_passed": 149,
+                "expected_invalid": 67,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/memory_redundancy64",
+              "status": "accounted",
+              "counts": {
+                "commands": 8,
+                "modules_passed": 1,
+                "assertions_passed": 7,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/memory_trap64",
+              "status": "accounted",
+              "counts": {
+                "commands": 172,
+                "modules_passed": 2,
+                "assertions_passed": 170,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/memory64-imports",
+              "status": "accounted",
+              "counts": {
+                "commands": 78,
+                "modules_passed": 40,
+                "assertions_passed": 0,
+                "expected_invalid": 0,
+                "expected_unlinkable": 30,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            }
+          ],
+          "totals": {
+            "commands": 5826,
+            "modules_passed": 160,
+            "assertions_passed": 5290,
+            "expected_invalid": 278,
+            "expected_malformed": 60,
+            "expected_unlinkable": 30,
+            "expected_uninstantiable": 0,
+            "expected_feature_rejects": 0,
+            "blocked_commands": 0,
+            "unexpected_compile_rejects": 0,
+            "unexpected_link_rejects": 0,
+            "failures": 0
+          }
+        }
+--- FAIL: TestStagedOfficialTable64FamilyAccounting (0.07s)
+    --- FAIL: TestStagedOfficialTable64FamilyAccounting/table64 (0.00s)
+        table64_official_amd64_test.go:507: convert pinned table64.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/memory64/table64.wast:9:9: error: unexpected token "definition", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    table64_official_amd64_test.go:535: staged table64 accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+        {
+          "schema": 1,
+          "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+          "files": [
+            {
+              "name": "memory64/table_copy64",
+              "status": "accounted",
+              "counts": {
+                "commands": 1728,
+                "modules_passed": 52,
+                "assertions_passed": 1675,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/table_copy_mixed",
+              "status": "accounted",
+              "counts": {
+                "commands": 4,
+                "modules_passed": 1,
+                "assertions_passed": 0,
+                "expected_invalid": 3,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/table_fill64",
+              "status": "accounted",
+              "counts": {
+                "commands": 80,
+                "modules_passed": 1,
+                "assertions_passed": 70,
+                "expected_invalid": 9,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/table_get64",
+              "status": "accounted",
+              "counts": {
+                "commands": 11,
+                "modules_passed": 1,
+                "assertions_passed": 10,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/table_grow64",
+              "status": "accounted",
+              "counts": {
+                "commands": 22,
+                "modules_passed": 1,
+                "assertions_passed": 21,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/table_init64",
+              "status": "accounted",
+              "counts": {
+                "commands": 876,
+                "modules_passed": 38,
+                "assertions_passed": 770,
+                "expected_invalid": 67,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/table_set64",
+              "status": "accounted",
+              "counts": {
+                "commands": 19,
+                "modules_passed": 1,
+                "assertions_passed": 18,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "memory64/table_size64",
+              "status": "accounted",
+              "counts": {
+                "commands": 37,
+                "modules_passed": 1,
+                "assertions_passed": 36,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            }
+          ],
+          "totals": {
+            "commands": 2777,
+            "modules_passed": 96,
+            "assertions_passed": 2600,
+            "expected_invalid": 79,
+            "expected_unlinkable": 0,
+            "expected_uninstantiable": 0,
+            "expected_feature_rejects": 0,
+            "blocked_commands": 0,
+            "unexpected_compile_rejects": 0,
+            "unexpected_link_rejects": 0,
+            "failures": 0
+          }
+        }
+--- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting (0.05s)
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/ref_null (0.00s)
+        typed_reference_official_amd64_test.go:470: convert pinned ref_null.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/ref_null.wast:3:35: error: unexpected token anyref, expected ).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type-canon (0.00s)
+        typed_reference_official_amd64_test.go:470: convert pinned type-canon.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/type-canon.wast:2:4: error: unexpected token "rec", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type-equivalence (0.00s)
+        typed_reference_official_amd64_test.go:470: convert pinned type-equivalence.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/type-equivalence.wast:31:4: error: unexpected token "rec", expected a module field.), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    --- FAIL: TestStagedOfficialTypedReferenceFamilyAccounting/type-rec (0.00s)
+        typed_reference_official_amd64_test.go:470: convert pinned type-rec.wast with WABT (exit status 1: ../../tests/spec-v3/test/core/type-rec.wast:5:3: error: unexpected token (, expected ).), interpreter unavailable: WAGO_SPEC_INTERPRETER must name the pinned official Release 3 interpreter
+    typed_reference_official_amd64_test.go:502: staged typed-reference accounting changed; rerun with WAGO_UPDATE_STAGED_SPEC=1 after reviewing exact gates
+        {
+          "schema": 1,
+          "suite_revision": "9d36019973201a19f9c9ebb0f10828b2fe2374aa",
+          "files": [
+            {
+              "name": "br_on_non_null",
+              "status": "accounted",
+              "counts": {
+                "commands": 12,
+                "modules_passed": 3,
+                "assertions_passed": 8,
+                "expected_invalid": 1,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "br_on_null",
+              "status": "accounted",
+              "counts": {
+                "commands": 10,
+                "modules_passed": 3,
+                "assertions_passed": 6,
+                "expected_invalid": 1,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "call_ref",
+              "status": "accounted",
+              "counts": {
+                "commands": 35,
+                "modules_passed": 4,
+                "assertions_passed": 27,
+                "expected_invalid": 4,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "ref",
+              "status": "accounted",
+              "counts": {
+                "commands": 13,
+                "modules_passed": 1,
+                "assertions_passed": 0,
+                "expected_invalid": 12,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "ref_as_non_null",
+              "status": "accounted",
+              "counts": {
+                "commands": 7,
+                "modules_passed": 2,
+                "assertions_passed": 4,
+                "expected_invalid": 1,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "ref_func",
+              "status": "accounted",
+              "counts": {
+                "commands": 17,
+                "modules_passed": 3,
+                "assertions_passed": 10,
+                "expected_invalid": 3,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "ref_is_null",
+              "status": "accounted",
+              "counts": {
+                "commands": 22,
+                "modules_passed": 2,
+                "assertions_passed": 18,
+                "expected_invalid": 2,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "select",
+              "status": "accounted",
+              "counts": {
+                "commands": 157,
+                "modules_passed": 3,
+                "assertions_passed": 124,
+                "expected_invalid": 30,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "type",
+              "status": "accounted",
+              "counts": {
+                "commands": 3,
+                "modules_passed": 1,
+                "assertions_passed": 0,
+                "expected_invalid": 0,
+                "expected_malformed": 2,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            },
+            {
+              "name": "unreached-valid",
+              "status": "accounted",
+              "counts": {
+                "commands": 13,
+                "modules_passed": 3,
+                "assertions_passed": 10,
+                "expected_invalid": 0,
+                "expected_unlinkable": 0,
+                "expected_uninstantiable": 0,
+                "expected_feature_rejects": 0,
+                "blocked_commands": 0,
+                "unexpected_compile_rejects": 0,
+                "unexpected_link_rejects": 0,
+                "failures": 0
+              }
+            }
+          ],
+          "totals": {
+            "commands": 289,
+            "modules_passed": 25,
+            "assertions_passed": 207,
+            "expected_invalid": 54,
+            "expected_malformed": 2,
+            "expected_unlinkable": 0,
+            "expected_uninstantiable": 0,
+            "expected_feature_rejects": 0,
+            "blocked_commands": 0,
+            "unexpected_compile_rejects": 0,
+            "unexpected_link_rejects": 0,
+            "failures": 0
+          }
+        }
+FAIL
+FAIL	github.com/wago-org/wago/src/wago	5.531s
+FAIL

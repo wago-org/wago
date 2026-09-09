@@ -1754,96 +1754,98 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	work.failures.Reset(n)
 	var wg sync.WaitGroup
 	wg.Add(workers)
-	for workerID := range states {
-		go func(workerID int) {
-			defer wg.Done()
-			ws := &states[workerID]
-			defer func() {
-				ws.scratch.finishControlWorker()
-				ws.scratch.finishStackWorker()
-				ws.scratchStats = workerScratchStats(ws.scratch)
-				ws.scratch = nil
-			}()
-			for {
-				i := int(work.next.Add(1) - 1)
-				if i >= n {
-					return
-				}
-				var st *CodegenStats
-				if ms != nil {
-					st = ms.Funcs[i]
-				}
-				if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
-					st.peep("inline-dead-body")
-					results[i] = funcResult{layoutFlags: layoutOmitted}
-					continue
-				}
-				arenaTail := ws.arena[len(ws.arena):cap(ws.arena)]
-				ws.scratch.rel32TailBound = false
-				ws.scratch.localRefTailBound = false
-				if compactNativePolicy(policy) {
-					ws.scratch.asm.Rel32Sites = nil
-					n := amd64.Rel32ScratchSize(finalizerRel32Limit(policy))
-					if len(arenaTail) >= n && ws.scratch.asm.BindRel32Storage(arenaTail[:n], finalizerRel32Limit(policy)) {
-						ws.scratch.rel32TailBound = true
-						arenaTail = arenaTail[n:]
-					}
-				}
-				if symbolicLocalSlotPackingPolicy(policy) {
-					ws.scratch.localRefs.Sites = nil
-					n := amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
-					if len(arenaTail) >= n && ws.scratch.localRefs.BindStorage(arenaTail[:n], maxAMD64LocalRefSites) {
-						ws.scratch.localRefTailBound = true
-					}
-				}
-				hints := hintSidecar.view(allHints[i])
-				fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, ws.scratch)
-				if err != nil {
-					work.failures.Record(i, err)
-					continue
-				}
-				start := len(ws.arena)
-				compactStart, compactEnd, codeOK := compactFuncResultRange(start, len(fnCode))
-				literalStart := len(ws.literals)
-				compactLiteralStart, compactLiteralEnd, literalOK := compactFuncResultRange(literalStart, len(ws.scratch.fnState.literalWords))
-				bodyBytes, bodyOK := compactFuncResultValue(len(m.Code[i].BodyBytes))
-				compactInternalOff, internalOK := compactFuncResultValue(internalOff)
-				if !codeOK || !literalOK || !bodyOK || !internalOK {
-					work.failures.Record(i, fmt.Errorf("amd64: parallel function metadata exceeds 32-bit range"))
-					continue
-				}
-				relocStart := len(ws.relocs)
-				compactRelocStart, compactRelocEnd, relocOK := compactFuncResultRange(relocStart, len(rl))
-				if !relocOK {
-					work.failures.Record(i, fmt.Errorf("amd64: parallel worker relocations exceed 32-bit range"))
-					continue
-				}
-				ws.relocs = append(ws.relocs, rl...)
-				ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
-				ws.arena = append(ws.arena, fnCode...)
-				flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
-					boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
-					boolFlag(ws.scratch.directPrepared, layoutDirectPrepared) | boolFlag(ws.scratch.directPreparedBounded, layoutDirectPreparedBounded)
-				ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
-				result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, internalOff: compactInternalOff, bodyBytes: bodyBytes, layoutFlags: flags, literalStart: compactLiteralStart, literalEnd: compactLiteralEnd}
-				if policy.CompactNative {
-					if policy.EnabledOption(optSharedAdapters) {
-						info := ws.scratch.fnState.sharedAdapterInfo()
-						result.adapterOff, result.adapterEnd = info.dispOff, info.endOff
-					} else {
-						info := ws.scratch.fnState.adapterTailInfo()
-						result.adapterOff, result.adapterEnd = info.returnOff, info.endOff
-					}
-					if policy.EnabledOption(optSharedTrapBody) {
-						result.trapBody = ws.scratch.fnState.sharedTrapBodyInfoAMD64()
-					}
-				}
-				results[i] = result
-				if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
-					pressureOnce.Do(opts.MemoryPressure)
+	// Capture the shared context once; each worker still owns its scratch.
+	runWorker := func(workerID int) {
+		defer wg.Done()
+		ws := &states[workerID]
+		defer func() {
+			ws.scratch.finishControlWorker()
+			ws.scratch.finishStackWorker()
+			ws.scratchStats = workerScratchStats(ws.scratch)
+			ws.scratch = nil
+		}()
+		for {
+			i := int(work.next.Add(1) - 1)
+			if i >= n {
+				return
+			}
+			var st *CodegenStats
+			if ms != nil {
+				st = ms.Funcs[i]
+			}
+			if inlineTargets.omitStandaloneBody(i, hostAdapters[i]) {
+				st.peep("inline-dead-body")
+				results[i] = funcResult{layoutFlags: layoutOmitted}
+				continue
+			}
+			arenaTail := ws.arena[len(ws.arena):cap(ws.arena)]
+			ws.scratch.rel32TailBound = false
+			ws.scratch.localRefTailBound = false
+			if compactNativePolicy(policy) {
+				ws.scratch.asm.Rel32Sites = nil
+				n := amd64.Rel32ScratchSize(finalizerRel32Limit(policy))
+				if len(arenaTail) >= n && ws.scratch.asm.BindRel32Storage(arenaTail[:n], finalizerRel32Limit(policy)) {
+					ws.scratch.rel32TailBound = true
+					arenaTail = arenaTail[n:]
 				}
 			}
-		}(workerID)
+			if symbolicLocalSlotPackingPolicy(policy) {
+				ws.scratch.localRefs.Sites = nil
+				n := amd64.LocalRefScratchSize(maxAMD64LocalRefSites)
+				if len(arenaTail) >= n && ws.scratch.localRefs.BindStorage(arenaTail[:n], maxAMD64LocalRefSites) {
+					ws.scratch.localRefTailBound = true
+				}
+			}
+			hints := hintSidecar.view(allHints[i])
+			fnCode, rl, internalOff, err := compileFunc(m, opts.Codegen.Module.GCTypeLayouts, i, hostAdapters[i], guardMode, boundsFacts, opts.Interruptible, modGlobals, &hints, immutableTables, opts.ImportBindings, opts.SyncHostCalls, opts.SyncHostSlots, opts.GCTypeSubtypingRefTest, opts.GCStructHelpers, opts.GCArrayHelpers, opts.CustomInstructions, opts.GCFrameRoots.Function(i), st, inlineTargets, ws.scratch)
+			if err != nil {
+				work.failures.Record(i, err)
+				continue
+			}
+			start := len(ws.arena)
+			compactStart, compactEnd, codeOK := compactFuncResultRange(start, len(fnCode))
+			literalStart := len(ws.literals)
+			compactLiteralStart, compactLiteralEnd, literalOK := compactFuncResultRange(literalStart, len(ws.scratch.fnState.literalWords))
+			bodyBytes, bodyOK := compactFuncResultValue(len(m.Code[i].BodyBytes))
+			compactInternalOff, internalOK := compactFuncResultValue(internalOff)
+			if !codeOK || !literalOK || !bodyOK || !internalOK {
+				work.failures.Record(i, fmt.Errorf("amd64: parallel function metadata exceeds 32-bit range"))
+				continue
+			}
+			relocStart := len(ws.relocs)
+			compactRelocStart, compactRelocEnd, relocOK := compactFuncResultRange(relocStart, len(rl))
+			if !relocOK {
+				work.failures.Record(i, fmt.Errorf("amd64: parallel worker relocations exceed 32-bit range"))
+				continue
+			}
+			ws.relocs = append(ws.relocs, rl...)
+			ws.usesBMI2 = ws.usesBMI2 || ws.scratch.asm.UsesBMI2
+			ws.arena = append(ws.arena, fnCode...)
+			flags := boolFlag(hostAdapters[i], layoutHostAdapter) | boolFlag(hints.flags.has(hintHasLoop), layoutHasLoop) |
+				boolFlag(hints.flags.has(hintHasCall), layoutHasCall) | boolFlag(hints.flags.has(hintCallsSelf), layoutCallsSelf) |
+				boolFlag(ws.scratch.directPrepared, layoutDirectPrepared) | boolFlag(ws.scratch.directPreparedBounded, layoutDirectPreparedBounded)
+			ws.literals = append(ws.literals, ws.scratch.fnState.literalWords...)
+			result := funcResult{worker: uint32(workerID), start: compactStart, end: compactEnd, relocStart: compactRelocStart, relocEnd: compactRelocEnd, internalOff: compactInternalOff, bodyBytes: bodyBytes, layoutFlags: flags, literalStart: compactLiteralStart, literalEnd: compactLiteralEnd}
+			if policy.CompactNative {
+				if policy.EnabledOption(optSharedAdapters) {
+					info := ws.scratch.fnState.sharedAdapterInfo()
+					result.adapterOff, result.adapterEnd = info.dispOff, info.endOff
+				} else {
+					info := ws.scratch.fnState.adapterTailInfo()
+					result.adapterOff, result.adapterEnd = info.returnOff, info.endOff
+				}
+				if policy.EnabledOption(optSharedTrapBody) {
+					result.trapBody = ws.scratch.fnState.sharedTrapBodyInfoAMD64()
+				}
+			}
+			results[i] = result
+			if opts.MemoryPressure != nil && pressureBytes.Add(int64(len(fnCode))) >= int64(pressureAt) {
+				pressureOnce.Do(opts.MemoryPressure)
+			}
+		}
+	}
+	for workerID := range states {
+		go runWorker(workerID)
 	}
 	wg.Wait()
 
@@ -2388,13 +2390,14 @@ type parallelHintOwner struct {
 }
 
 type parallelHintWorker struct {
-	elig          globalEligibilityTracker
-	globals       shared.GlobalHintAccumulator
-	retained      []shared.GlobalHint
-	classifier    wasm.ModuleInstructionClassifier
-	localEvents   shared.LocalEventTape
-	frameScratch  [4]globalEligibilityFrame
-	globalScratch [8]uint32
+	elig            globalEligibilityTracker
+	globals         shared.GlobalHintAccumulator
+	retained        []shared.GlobalHint
+	classifier      wasm.ModuleInstructionClassifier
+	localEvents     shared.LocalEventTape
+	frameScratch    [4]globalEligibilityFrame
+	globalScratch   [8]uint32
+	retainedScratch [8]shared.GlobalHint
 }
 
 // The caller has already bounded workers * nGlobals with
@@ -2409,6 +2412,7 @@ func newParallelHintWorkers(m *wasm.Module, nGlobals, workers int) []parallelHin
 		start := i * 3 * nGlobals
 		state.elig.marks = words[start : start+nGlobals : start+nGlobals]
 		state.elig.frames = state.frameScratch[:0]
+		state.retained = state.retainedScratch[:0]
 		state.elig.globals = state.globalScratch[:0]
 		state.globals.ResetWithScratch(nGlobals, words[start+nGlobals:start+3*nGlobals:start+3*nGlobals])
 		state.classifier = classifier
@@ -2446,61 +2450,63 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 	failures.Reset(len(allHints))
 	var wg sync.WaitGroup
 	wg.Add(workers)
-	for workerID := range states {
-		go func(workerID int) {
-			defer wg.Done()
-			state := &states[workerID]
-			for {
-				i := int(next.Add(1) - 1)
-				if i >= len(allHints) || !failures.ShouldStart(i) {
-					return
-				}
-				base := allHints[i]
-				nLocals := int(base.localCount)
-				localStart := int(base.localStart)
-				h := funcHintsWithStorage(localScores[localStart : localStart+retainedLocalScoreCount(base)])
-				h.nLocals = nLocals
-				h.localCount = base.localCount
-				h.localStart = base.localStart
-				h.lastGetStartPlus1 = base.lastGetStartPlus1
-				h.flags.assign(hintIntervalRegionStorage, base.flags.has(hintIntervalRegionStorage))
-				if base.lastGetStartPlus1 != 0 {
-					lastGetStart := int(base.lastGetStartPlus1 - 1)
-					h.localLastGet = localLastGets[lastGetStart : lastGetStart+nLocals]
-				}
-				if base.flags.has(hintIntervalRegionStorage) {
-					if state.localEvents.Events == nil {
-						state.localEvents.Events = make([]shared.LocalEvent, 0, eventReserve)
-					}
-					state.localEvents.Reset(shared.LocalEventLimit)
-					h.localEvents = &state.localEvents
-				}
-				state.globals.Reset(nGlobals)
-				h, scanErr := scanBodyBytesIntoMemory64WithModuleCalls(m.Code[i].BodyBytes, nLocals, nGlobals, uint32(importedFuncs+i), h, &state.elig, memory64, m, &state.classifier, gcTypeLayouts, gcStructHelpers, nil, calleeHints, importedFuncs, &state.globals)
-				if scanErr != nil {
-					failures.Record(i, fmt.Errorf("function %d hints: %w", i, scanErr))
-					continue
-				}
-				h.flags.assign(hintIntervalRegionStorage, base.flags.has(hintIntervalRegionStorage))
-				if base.flags.has(hintIntervalRegionStorage) {
-					event := int(owners[i].event)
-					h.setLocalEventSummary(len(state.localEvents.Events), state.localEvents.Overflow)
-					localEventMeta[event*2] = h.localStart
-					localEventMeta[event*2+1] = h.localEventMeta
-					residencyShadow[event] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&state.localEvents, nLocals, detailedResidency)}
-				}
-				allHints[i] = h.funcHints
-				start := len(state.retained)
-				state.retained = state.globals.AppendTo(state.retained)
-				if uint64(len(state.retained)) > uint64(^uint32(0)) {
-					failures.Record(i, fmt.Errorf("function %d hints: worker global sidecar exceeds 32-bit index capacity", i))
-					continue
-				}
-				allHints[i].globalStart = uint32(start)
-				allHints[i].globalCount = uint32(len(state.retained) - start)
-				owners[i].worker = uint32(workerID)
+	// Capture the shared context once; each worker still owns its scratch.
+	runWorker := func(workerID int) {
+		defer wg.Done()
+		state := &states[workerID]
+		for {
+			i := int(next.Add(1) - 1)
+			if i >= len(allHints) || !failures.ShouldStart(i) {
+				return
 			}
-		}(workerID)
+			base := allHints[i]
+			nLocals := int(base.localCount)
+			localStart := int(base.localStart)
+			h := funcHintsWithStorage(localScores[localStart : localStart+retainedLocalScoreCount(base)])
+			h.nLocals = nLocals
+			h.localCount = base.localCount
+			h.localStart = base.localStart
+			h.lastGetStartPlus1 = base.lastGetStartPlus1
+			h.flags.assign(hintIntervalRegionStorage, base.flags.has(hintIntervalRegionStorage))
+			if base.lastGetStartPlus1 != 0 {
+				lastGetStart := int(base.lastGetStartPlus1 - 1)
+				h.localLastGet = localLastGets[lastGetStart : lastGetStart+nLocals]
+			}
+			if base.flags.has(hintIntervalRegionStorage) {
+				if state.localEvents.Events == nil {
+					state.localEvents.Events = make([]shared.LocalEvent, 0, eventReserve)
+				}
+				state.localEvents.Reset(shared.LocalEventLimit)
+				h.localEvents = &state.localEvents
+			}
+			state.globals.Reset(nGlobals)
+			h, scanErr := scanBodyBytesIntoMemory64WithModuleCalls(m.Code[i].BodyBytes, nLocals, nGlobals, uint32(importedFuncs+i), h, &state.elig, memory64, m, &state.classifier, gcTypeLayouts, gcStructHelpers, nil, calleeHints, importedFuncs, &state.globals)
+			if scanErr != nil {
+				failures.Record(i, fmt.Errorf("function %d hints: %w", i, scanErr))
+				continue
+			}
+			h.flags.assign(hintIntervalRegionStorage, base.flags.has(hintIntervalRegionStorage))
+			if base.flags.has(hintIntervalRegionStorage) {
+				event := int(owners[i].event)
+				h.setLocalEventSummary(len(state.localEvents.Events), state.localEvents.Overflow)
+				localEventMeta[event*2] = h.localStart
+				localEventMeta[event*2+1] = h.localEventMeta
+				residencyShadow[event] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&state.localEvents, nLocals, detailedResidency)}
+			}
+			allHints[i] = h.funcHints
+			start := len(state.retained)
+			state.retained = state.globals.AppendTo(state.retained)
+			if uint64(len(state.retained)) > uint64(^uint32(0)) {
+				failures.Record(i, fmt.Errorf("function %d hints: worker global sidecar exceeds 32-bit index capacity", i))
+				continue
+			}
+			allHints[i].globalStart = uint32(start)
+			allHints[i].globalCount = uint32(len(state.retained) - start)
+			owners[i].worker = uint32(workerID)
+		}
+	}
+	for workerID := range states {
+		go runWorker(workerID)
 	}
 	wg.Wait()
 	if _, err := failures.Result(); err != nil {
