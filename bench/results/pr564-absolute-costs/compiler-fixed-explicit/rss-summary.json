@@ -1,0 +1,36 @@
+{
+  "mode": "explicit",
+  "unit": "KiB maximum whole-process RSS",
+  "operation": "one compact compile per corpus module; ISA included",
+  "samples": {
+    "base": [
+      160952,
+      160776,
+      160960,
+      158228,
+      160180,
+      158380
+    ],
+    "before": [
+      162412,
+      155340,
+      158184,
+      159264,
+      158700,
+      160556
+    ],
+    "final": [
+      156064,
+      158124,
+      157812,
+      155596,
+      155864,
+      160368
+    ]
+  },
+  "main": 160478,
+  "prior": 158982,
+  "after": 156938,
+  "delta": -2.205909844340037,
+  "p": 0.015151515151515152
+}

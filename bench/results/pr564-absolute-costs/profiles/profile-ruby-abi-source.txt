@@ -1,0 +1,15 @@
+Total: 1.18GB
+ROUTINE ======================== github.com/wago-org/wago/src/wago.funcSigIntRegABI in /home/jtenner/Projects/wago/.tmp/pr564-absolute-costs/prior/src/wago/instantiate.go
+  181.50MB   181.50MB (flat, cum) 15.03% of Total
+         .          .   1821:func funcSigIntRegABI(sig FuncSig) bool {
+         .          .   1822:	// Up to two integer results ride the register ABI (RAX/RDX on amd64, X0/X1 on
+         .          .   1823:	// arm64); the int-only check below covers both result types.
+         .          .   1824:	if len(sig.Results) > 2 || len(sig.Params) > 8 {
+         .          .   1825:		return false
+         .          .   1826:	}
+  181.50MB   181.50MB   1827:	for _, t := range append(append([]ValType{}, sig.Params...), sig.Results...) {
+         .          .   1828:		if t != ValI32 && t != ValI64 {
+         .          .   1829:			return false
+         .          .   1830:		}
+         .          .   1831:	}
+         .          .   1832:	return true

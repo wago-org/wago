@@ -1,0 +1,19 @@
+{
+  "name": "micro-final",
+  "cmd": "go",
+  "args": [
+    "test",
+    "./src/wago",
+    "-run",
+    "^$",
+    "-bench",
+    "^BenchmarkFuncSigIntRegABI$",
+    "-benchmem",
+    "-count=6",
+    "-benchtime=500ms"
+  ],
+  "cwd": "/home/jtenner/Projects/wago",
+  "code": 0,
+  "start": "2026-09-08T21:32:02.308Z",
+  "seconds": 3.56
+}

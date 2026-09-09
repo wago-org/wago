@@ -1,0 +1,8 @@
+=== RUN   TestAbsoluteCostCodeAudit
+    absolute_code_audit_test.go:15: CODE coremark bytes=24278 sha256=d49b1c62f7d7f7ddf6bbda37ada6fca7d24040409167e630e61c0233c838043f
+    absolute_code_audit_test.go:15: CODE isa_bulk_mem bytes=3774 sha256=8708674bb6880ca8aa1810a6d1623051578af908fd71afbe23207405eef8f630
+    absolute_code_audit_test.go:15: CODE wasm3 bytes=870633 sha256=5f43a1873ec9868b10990b8cf551230aacb2af3835ca0b0fc29bb2c51ebce306
+    absolute_code_audit_test.go:15: CODE ruby bytes=35192654 sha256=91bee98954c17a0d38684ac1b3507955a55509e895124a30ff87b3c7d9a807cc
+--- PASS: TestAbsoluteCostCodeAudit (1.21s)
+PASS
+ok  	wagobench	1.209s

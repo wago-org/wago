@@ -1,0 +1,134 @@
+File: before-signals.test
+Build ID: 78aa917447782568e289d82f2cdd5c14c0b955b8
+Type: alloc_space
+Time: 2026-09-08 17:32:25 EDT
+Showing nodes accounting for 102.04MB, 89.05% of 114.58MB total
+Dropped 79 nodes (cum <= 0.57MB)
+      flat  flat%   sum%        cum   cum%
+   31.11MB 27.15% 27.15%    31.11MB 27.15%  os.readFileContents
+   15.48MB 13.51% 40.66%    15.48MB 13.51%  github.com/wago-org/wago/src/wago.(*Runtime).prepareCompile
+    7.08MB  6.18% 46.84%     7.08MB  6.18%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*stack).alloc
+    4.13MB  3.60% 50.44%     5.14MB  4.48%  github.com/wago-org/wago/src/wago.cloneCompiledMetadata
+    4.04MB  3.53% 53.96%     8.05MB  7.02%  github.com/wago-org/wago/src/wago.(*Runtime).commitPluginPlan
+    2.62MB  2.29% 56.25%    30.14MB 26.30%  github.com/wago-org/wago/src/wago.compileWithFrontendFeaturesAndInstructions
+    2.50MB  2.18% 58.43%     2.50MB  2.18%  github.com/wago-org/wago/src/wago.(*ImportModuleBuilder).Func
+    2.50MB  2.18% 60.61%     2.50MB  2.18%  github.com/wago-org/wago/src/core/compiler/wasm.StructuralFuncTypeKey
+    2.50MB  2.18% 62.80%     2.50MB  2.18%  github.com/wago-org/wago/src/wago.exactFuncSignature
+    2.18MB  1.90% 64.69%     2.68MB  2.34%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectCodeSectionWithWidths
+    2.04MB  1.78% 66.48%     2.54MB  2.22%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.computeModuleHintsWithWorkersPolicy
+    2.03MB  1.77% 68.25%     2.03MB  1.77%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.newStackWithCap
+    2.01MB  1.75% 70.00%     2.01MB  1.75%  github.com/JairusSW/wago-emscripten.invokeSignatures.func1 (inline)
+       2MB  1.75% 71.75%        2MB  1.75%  runtime.mallocgc
+       2MB  1.75% 73.49%        2MB  1.75%  reflect.mapassign_faststr0
+       2MB  1.75% 75.24%        2MB  1.75%  github.com/wago-org/wago/src/wago.encodeFlatCallIdentity
+    1.72MB  1.50% 76.74%     1.72MB  1.50%  runtime/pprof.StartCPUProfile
+    1.52MB  1.33% 78.07%     5.53MB  4.83%  github.com/JairusSW/wago-emscripten.(*plugin).registerEmscripten
+    1.50MB  1.31% 79.38%     1.50MB  1.31%  github.com/wago-org/wago/src/wago.cloneRegisteredImport (inline)
+    1.50MB  1.31% 80.69%     1.50MB  1.31%  github.com/wago-org/wago/src/wago.(*registeredImport).key (inline)
+    1.03MB   0.9% 81.59%     1.03MB   0.9%  regexp.(*bitState).reset
+    1.02MB  0.89% 82.48%    15.68MB 13.68%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleWith
+    1.01MB  0.88% 83.36%     1.01MB  0.88%  github.com/wago-org/wago/src/core/compiler/wasm.(*ValidatedModuleAnalysis).reset (inline)
+       1MB  0.88% 84.23%        1MB  0.88%  github.com/wago-org/wasi/internal/core.(*Plugin).bindings
+       1MB  0.87% 85.11%        1MB  0.87%  github.com/wago-org/wago/src/core/compiler/wasm.decodeTypeSection
+       1MB  0.87% 85.98%        1MB  0.87%  testing.(*B).ResetTimer
+       1MB  0.87% 86.85%        1MB  0.87%  github.com/wago-org/wago/src/wago.(*pluginCallGate).wrap (inline)
+    0.51MB  0.44% 87.30%     1.51MB  1.32%  github.com/wago-org/wago/src/wago.validatePluginCommitConflicts
+    0.50MB  0.44% 87.74%        1MB  0.88%  github.com/wago-org/wago/src/wago.validateRegistration
+    0.50MB  0.44% 88.18%     2.53MB  2.21%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.newScratchWithStackCap
+    0.50MB  0.44% 88.61%        1MB  0.87%  github.com/wago-org/wago/src/wago.buildHostFuncThunks
+    0.50MB  0.44% 89.05%     9.58MB  8.36%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileFuncAttempt
+         0     0% 89.05%        4MB  3.49%  encoding/json.(*Decoder).Decode
+         0     0% 89.05%     3.50MB  3.06%  encoding/json/v2.Unmarshal
+         0     0% 89.05%        3MB  2.62%  encoding/json/v2.makeInterfaceArshaler.func2
+         0     0% 89.05%     3.50MB  3.06%  encoding/json/v2.makeMapArshaler.func3
+         0     0% 89.05%     3.50MB  3.06%  encoding/json/v2.unmarshalDecode
+         0     0% 89.05%     6.03MB  5.26%  github.com/JairusSW/wago-emscripten.(*plugin).Register
+         0     0% 89.05%     2.01MB  1.75%  github.com/JairusSW/wago-emscripten.invokeSignatures
+         0     0% 89.05%     3.54MB  3.09%  github.com/wago-org/wago.DefinitionDigest (inline)
+         0     0% 89.05%     9.08MB  7.93%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).body (inline)
+         0     0% 89.05%     9.08MB  7.93%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).bodyLoop
+         0     0% 89.05%     1.50MB  1.31%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).callIndirect
+         0     0% 89.05%     8.58MB  7.49%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitPlain
+         0     0% 89.05%     9.08MB  7.93%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitRegABI
+         0     0% 89.05%     7.08MB  6.18%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).pushValue (inline)
+         0     0% 89.05%     9.08MB  7.93%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).runBody
+         0     0% 89.05%     7.08MB  6.18%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*stack).pushValue
+         0     0% 89.05%    15.68MB 13.68%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.CompileModuleWith (inline)
+         0     0% 89.05%     9.58MB  8.36%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileFunc
+         0     0% 89.05%     2.50MB  2.18%  github.com/wago-org/wago/src/core/compiler/wasm.(*Module).StructuralTypeKeyChecked
+         0     0% 89.05%     4.18MB  3.65%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModuleByteBackedWithFeatures (inline)
+         0     0% 89.05%     4.18MB  3.65%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModuleByteBackedWithLimits
+         0     0% 89.05%     4.18MB  3.65%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModuleWithFeatures
+         0     0% 89.05%     1.01MB  0.88%  github.com/wago-org/wago/src/core/compiler/wasm.ValidateModuleWithAnalysis
+         0     0% 89.05%     2.68MB  2.34%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectCodeSectionWithModule
+         0     0% 89.05%     4.18MB  3.65%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectModuleInnerLimits
+         0     0% 89.05%     4.18MB  3.65%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectModuleLimited (inline)
+         0     0% 89.05%     1.51MB  1.31%  github.com/wago-org/wago/src/core/compiler/wasm.decodeSection
+         0     0% 89.05%     1.01MB  0.88%  github.com/wago-org/wago/src/core/compiler/wasm.validateModuleWithWorkersFeaturesAndLimitsAnalysis
+         0     0% 89.05%     5.14MB  4.48%  github.com/wago-org/wago/src/wago.(*Compiled).freezeExecution
+         0     0% 89.05%    30.14MB 26.30%  github.com/wago-org/wago/src/wago.(*PreparedCompile).Compile
+         0     0% 89.05%    45.61MB 39.81%  github.com/wago-org/wago/src/wago.(*Runtime).Compile (inline)
+         0     0% 89.05%        6MB  5.24%  github.com/wago-org/wago/src/wago.(*Runtime).Instantiate (inline)
+         0     0% 89.05%    19.59MB 17.09%  github.com/wago-org/wago/src/wago.(*Runtime).LoadPlugins
+         0     0% 89.05%    45.61MB 39.81%  github.com/wago-org/wago/src/wago.(*Runtime).compile
+         0     0% 89.05%        6MB  5.24%  github.com/wago-org/wago/src/wago.(*Runtime).instantiateOrigin
+         0     0% 89.05%        6MB  5.24%  github.com/wago-org/wago/src/wago.(*Runtime).instantiateWithHooksOrigin
+         0     0% 89.05%        6MB  5.24%  github.com/wago-org/wago/src/wago.(*instanceBuilder).instantiate
+         0     0% 89.05%     4.50MB  3.93%  github.com/wago-org/wago/src/wago.(*referenceStore).registerInstance
+         0     0% 89.05%     3.54MB  3.09%  github.com/wago-org/wago/src/wago.DefinitionDigest
+         0     0% 89.05%     8.54MB  7.45%  github.com/wago-org/wago/src/wago.callSafely
+         0     0% 89.05%        1MB  0.87%  github.com/wago-org/wago/src/wago.canonicalJSON
+         0     0% 89.05%     5.03MB  4.39%  github.com/wago-org/wago/src/wago.canonicalPluginDefinition
+         0     0% 89.05%    30.14MB 26.30%  github.com/wago-org/wago/src/wago.compileWithConfigAndInstructions
+         0     0% 89.05%     4.50MB  3.93%  github.com/wago-org/wago/src/wago.compiledStructuralCallIdentity
+         0     0% 89.05%        2MB  1.75%  github.com/wago-org/wago/src/wago.freezeDefinition (inline)
+         0     0% 89.05%        6MB  5.24%  github.com/wago-org/wago/src/wago.instantiateCoreWithModuleLease
+         0     0% 89.05%        6MB  5.24%  github.com/wago-org/wago/src/wago.instantiateCoreWithModuleUse
+         0     0% 89.05%     5.14MB  4.48%  github.com/wago-org/wago/src/wago.publishCompilerCompiled
+         0     0% 89.05%    15.68MB 13.68%  github.com/wago-org/wago/src/wago.railshotCompileModuleWith
+         0     0% 89.05%     9.54MB  8.32%  github.com/wago-org/wago/src/wago.registerPlan
+         0     0% 89.05%     8.54MB  7.45%  github.com/wago-org/wago/src/wago.registerPlan.func3
+         0     0% 89.05%     1.03MB   0.9%  github.com/wago-org/wago/src/wago.validCanonicalPath
+         0     0% 89.05%        3MB  2.62%  github.com/wago-org/wago/src/wago.validateConfigSchema
+         0     0% 89.05%        2MB  1.75%  github.com/wago-org/wago/src/wago.validateImmutablePlan
+         0     0% 89.05%     4.03MB  3.52%  github.com/wago-org/wago/src/wago.validatePluginDefinition
+         0     0% 89.05%     2.51MB  2.19%  github.com/wago-org/wasi/internal/core.(*Plugin).Register
+         0     0% 89.05%     1.72MB  1.50%  main.main
+         0     0% 89.05%    31.11MB 27.15%  os.ReadFile
+         0     0% 89.05%        2MB  1.75%  reflect.Value.SetMapIndex
+         0     0% 89.05%        2MB  1.75%  reflect.mapassign_faststr
+         0     0% 89.05%     1.03MB   0.9%  regexp.(*Regexp).MatchString (inline)
+         0     0% 89.05%     1.03MB   0.9%  regexp.(*Regexp).backtrack
+         0     0% 89.05%     1.03MB   0.9%  regexp.(*Regexp).doMatch (inline)
+         0     0% 89.05%     1.03MB   0.9%  regexp.(*Regexp).find
+         0     0% 89.05%     1.50MB  1.31%  runtime.allocm
+         0     0% 89.05%     1.01MB  0.88%  runtime.doInit (inline)
+         0     0% 89.05%     1.01MB  0.88%  runtime.doInit1
+         0     0% 89.05%     2.73MB  2.38%  runtime.main
+         0     0% 89.05%        1MB  0.87%  runtime.mcall
+         0     0% 89.05%     1.50MB  1.31%  runtime.newm
+         0     0% 89.05%        2MB  1.75%  runtime.newobject
+         0     0% 89.05%        1MB  0.87%  runtime.park_m
+         0     0% 89.05%     1.50MB  1.31%  runtime.resetspinning
+         0     0% 89.05%     1.50MB  1.31%  runtime.schedule
+         0     0% 89.05%     1.50MB  1.31%  runtime.startm
+         0     0% 89.05%     1.50MB  1.31%  runtime.wakep
+         0     0% 89.05%     1.50MB  1.31%  runtime/pprof.(*profileBuilder).appendLocsForStack
+         0     0% 89.05%     1.50MB  1.31%  runtime/pprof.(*profileBuilder).build
+         0     0% 89.05%        1MB  0.87%  runtime/pprof.(*profileBuilder).emitLocation
+         0     0% 89.05%        2MB  1.75%  runtime/pprof.profileWriter
+         0     0% 89.05%    31.61MB 27.59%  sync.(*Once).Do (inline)
+         0     0% 89.05%    31.61MB 27.59%  sync.(*Once).doSlow
+         0     0% 89.05%   107.85MB 94.12%  testing.(*B).run1.func1
+         0     0% 89.05%   107.85MB 94.12%  testing.(*B).runN
+         0     0% 89.05%     1.72MB  1.50%  testing.(*M).Run
+         0     0% 89.05%     1.72MB  1.50%  testing.(*M).before
+         0     0% 89.05%     1.72MB  1.50%  testing/internal/testdeps.TestDeps.StartCPUProfile
+         0     0% 89.05%    31.61MB 27.59%  wagobench.BenchmarkPluginExec
+         0     0% 89.05%    75.24MB 65.66%  wagobench.BenchmarkPluginExec.func1
+         0     0% 89.05%    69.23MB 60.42%  wagobench.compilePluginCorpus
+         0     0% 89.05%    31.61MB 27.59%  wagobench.loadCorpus
+         0     0% 89.05%    31.61MB 27.59%  wagobench.loadCorpus.func1
+         0     0% 89.05%    31.61MB 27.59%  wagobench.pluginCorpus
+         0     0% 89.05%     3.54MB  3.09%  wagobench.pluginSet
+         0     0% 89.05%    31.61MB 27.59%  wagobench.readManifest

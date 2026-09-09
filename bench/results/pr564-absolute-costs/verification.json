@@ -1,0 +1,123 @@
+{
+  "verified": "2026-09-09T03:08:37.913Z",
+  "main": "a07de0973191efab1d32677eff527952c7f9cdd2",
+  "production": "3a84fa628ac16ac5502a7de986f2fe732007583d",
+  "fullProcesses": 1020,
+  "fullMetrics": 16144,
+  "confirmationCases": 348,
+  "runs": [
+    {
+      "run": "compiler-fixed-explicit",
+      "processes": 18,
+      "metrics": 360,
+      "benchtime": "1x",
+      "samples": 6
+    },
+    {
+      "run": "compiler-fixed-signals",
+      "processes": 18,
+      "metrics": 360,
+      "benchtime": "1x",
+      "samples": 6
+    },
+    {
+      "run": "confirm-explicit",
+      "processes": 4248,
+      "metrics": 730,
+      "benchtime": "500ms",
+      "samples": 12
+    },
+    {
+      "run": "confirm-signals",
+      "processes": 4104,
+      "metrics": 599,
+      "benchtime": "500ms",
+      "samples": 12
+    },
+    {
+      "run": "instantiate-fixed-explicit",
+      "processes": 90,
+      "metrics": 30,
+      "benchtime": "128x",
+      "samples": 6
+    },
+    {
+      "run": "instantiate-fixed-signals",
+      "processes": 90,
+      "metrics": 30,
+      "benchtime": "128x",
+      "samples": 6
+    },
+    {
+      "run": "largest",
+      "processes": 144,
+      "metrics": 30,
+      "benchtime": "500ms",
+      "samples": 12
+    },
+    {
+      "run": "resource-explicit-fixed",
+      "processes": 1458,
+      "metrics": 642,
+      "benchtime": "1x",
+      "samples": 6
+    },
+    {
+      "run": "resource-explicit-warm",
+      "processes": 324,
+      "metrics": 70,
+      "benchtime": "500ms",
+      "samples": 12
+    },
+    {
+      "run": "resource-signals-fixed",
+      "processes": 1458,
+      "metrics": 642,
+      "benchtime": "1x",
+      "samples": 6
+    },
+    {
+      "run": "resource-signals-warm",
+      "processes": 396,
+      "metrics": 84,
+      "benchtime": "500ms",
+      "samples": 12
+    },
+    {
+      "run": "timing-final-explicit",
+      "processes": 72,
+      "metrics": 6,
+      "benchtime": "1s",
+      "samples": 24
+    },
+    {
+      "run": "timing-final-signals",
+      "processes": 432,
+      "metrics": 36,
+      "benchtime": "1s",
+      "samples": 24
+    }
+  ],
+  "codeAuditPairs": 108,
+  "codeAuditChanges": [],
+  "releaseBudgetFailures": [],
+  "releaseSmokeFailures": [
+    {
+      "name": "base-runtime-minimal-tiny.smoke.json",
+      "status": null,
+      "signal": "SIGABRT",
+      "passed": false
+    },
+    {
+      "name": "final-runtime-minimal-tiny.smoke.json",
+      "status": null,
+      "signal": "SIGSEGV",
+      "passed": false
+    }
+  ],
+  "notes": [
+    "Three small main-relative timing costs remain; see final timing diagnostics.",
+    "Existing Wine/root-suite and native ARM64 timing limits are not cleared.",
+    "This verifies evidence coverage, not universal correctness or timing equivalence."
+  ]
+}

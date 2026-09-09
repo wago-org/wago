@@ -1,8 +1,22 @@
 # PR #564 correctness and performance qualification
 
+## Instantiation allocation follow-up — measured checkpoint 3a84fa628
+
+Production code `3a84fa628` removes temporary integer-ABI signature slices and
+reduces type-key storage for modules that reuse declared types. Exact admission,
+collision, lifetime, data-initialization, and bounds checks remain in place.
+Source tests and focused checks pass. The full comparison against pinned main
+passed all 1,020 processes. [Full numbers are saved here](bench/results/pr564-absolute-costs/README.md).
+All 348 longer-repeat cases and final timing and memory checks are complete.
+Ruby instantiation is about 11% faster than freshly measured main. Three small
+timing costs (+0.82%, +1.72%, +1.69%) and compiler allocation increases remain.
+All 108 executable-corpus byte comparisons match main. The pinned TinyGo
+minimal-runtime smoke crashes on main and this checkpoint; this is not a clean release result.
+The reports below qualify earlier checkpoints. Later changes require new checks.
+
 ## Follow-up regression fixes — 2026-09-08
 
-The latest production code is `d006d3d10`. Small invocation results now use
+This checkpoint is `d006d3d10`. Small invocation results now use
 Go-owned inline storage, and small compiler arenas and sparse hints use bounded
 capacity rules. Validation, feature admission, bounds, native-entry, reference,
 and trap checks are unchanged by these follow-up fixes.

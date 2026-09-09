@@ -1,0 +1,139 @@
+File: before-signals.test
+Build ID: 78aa917447782568e289d82f2cdd5c14c0b955b8
+Type: cpu
+Time: 2026-09-08 17:32:05 EDT
+Duration: 8.57s, Total samples = 8.61s (100.50%)
+Showing nodes accounting for 6.86s, 79.67% of 8.61s total
+Dropped 307 nodes (cum <= 0.04s)
+      flat  flat%   sum%        cum   cum%
+     2.73s 31.71% 31.71%      2.73s 31.71%  runtime.memmove
+     0.87s 10.10% 41.81%      6.10s 70.85%  github.com/wago-org/wago/src/wago.(*instanceBuilder).instantiate
+     0.32s  3.72% 45.53%      0.32s  3.72%  internal/runtime/syscall/linux.Syscall6
+     0.27s  3.14% 48.66%      0.27s  3.14%  github.com/wago-org/wago/src/wago.funcSigLocalRegABI
+     0.21s  2.44% 51.10%      0.21s  2.44%  runtime.memclrNoHeapPointers
+     0.19s  2.21% 53.31%      0.32s  3.72%  runtime.mapaccess2_fast64
+     0.15s  1.74% 55.05%      0.19s  2.21%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).decodeDirectOp
+     0.14s  1.63% 56.68%      0.50s  5.81%  github.com/wago-org/wago/src/wago.funcSigIntRegABI
+     0.12s  1.39% 58.07%      0.19s  2.21%  github.com/wago-org/wago/src/wago.(*Compiled).needsPublicFuncrefHostReentry
+     0.11s  1.28% 59.35%      0.39s  4.53%  github.com/wago-org/wago/src/wago.(*instanceBuilder).instantiate.func8
+     0.10s  1.16% 60.51%      0.10s  1.16%  github.com/wago-org/wago/src/wago.(*Compiled).memoryDef
+     0.10s  1.16% 61.67%      0.10s  1.16%  internal/runtime/maps.ctrlGroup.matchH2 (inline)
+     0.08s  0.93% 62.60%      0.08s  0.93%  encoding/binary.littleEndian.PutUint64
+     0.08s  0.93% 63.53%      0.10s  1.16%  github.com/wago-org/wago/src/wago.(*Compiled).cachedStructuralCallIdentity
+     0.08s  0.93% 64.46%      0.15s  1.74%  runtime.mallocgcTinySC2
+     0.07s  0.81% 65.27%      1.03s 11.96%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).bodyLoop
+     0.07s  0.81% 66.09%      0.07s  0.81%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*stack).alloc
+     0.07s  0.81% 66.90%      0.08s  0.93%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).emit (inline)
+     0.07s  0.81% 67.71%      0.63s  7.32%  github.com/wago-org/wago/src/wago.(*referenceStore).registerInstance
+     0.07s  0.81% 68.52%      0.07s  0.81%  github.com/wago-org/wago/src/wago.hasValType (inline)
+     0.07s  0.81% 69.34%      0.09s  1.05%  runtime.(*_panic).nextDefer
+     0.06s   0.7% 70.03%      0.13s  1.51%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*byteBodyScanner).scanExpr
+     0.06s   0.7% 70.73%      0.14s  1.63%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).step
+     0.06s   0.7% 71.43%      0.07s  0.81%  github.com/wago-org/wago/src/core/runtime.(*JobMemory).HostBytesChecked
+     0.06s   0.7% 72.13%      0.06s   0.7%  github.com/wago-org/wago/src/wago.(*Compiled).funcTypeKey
+     0.05s  0.58% 72.71%      0.16s  1.86%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).memOp
+     0.05s  0.58% 73.29%      0.05s  0.58%  internal/runtime/maps.memHash64AES
+     0.04s  0.46% 73.75%      0.64s  7.43%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitPlain
+     0.04s  0.46% 74.22%      0.13s  1.51%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*stack).pushValue
+     0.04s  0.46% 74.68%      0.11s  1.28%  github.com/wago-org/wago/src/core/compiler/wasm.readDirectFuncExprBytes
+     0.04s  0.46% 75.15%      0.32s  3.72%  runtime.growslice
+     0.03s  0.35% 75.49%      0.05s  0.58%  bytes.Equal (inline)
+     0.03s  0.35% 75.84%      0.16s  1.86%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).opEnd
+     0.03s  0.35% 76.19%      0.07s  0.81%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).baseAddr
+     0.03s  0.35% 76.54%      0.11s  1.28%  runtime.mapaccess2_faststr
+     0.02s  0.23% 76.77%      0.08s  0.93%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).convergeEdgeTo
+     0.02s  0.23% 77.00%      0.07s  0.81%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).opBlock
+     0.02s  0.23% 77.24%      0.07s  0.81%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).pushBinOp
+     0.02s  0.23% 77.47%      0.10s  1.16%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).setLocal
+     0.02s  0.23% 77.70%      0.05s  0.58%  github.com/wago-org/wago/src/core/compiler/wasm.classifyExprOpAfterOpcodeWithWidths
+     0.02s  0.23% 77.93%      0.05s  0.58%  github.com/wago-org/wago/src/core/compiler/wasm.classifyInstructionImmediateIntoWithWidths
+     0.02s  0.23% 78.16%      0.08s  0.93%  github.com/wago-org/wago/src/wago.(*Runtime).resolveInstanceImports
+     0.01s  0.12% 78.28%      1.08s 12.54%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).emitRegABI
+     0.01s  0.12% 78.40%      0.10s  1.16%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).materialize
+     0.01s  0.12% 78.51%      0.05s  0.58%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).memStore
+     0.01s  0.12% 78.63%      0.14s  1.63%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).pushValue (inline)
+     0.01s  0.12% 78.75%      0.07s  0.81%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.buildInlineCallerPlan
+     0.01s  0.12% 78.86%      1.27s 14.75%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileFuncAttempt
+     0.01s  0.12% 78.98%      0.06s   0.7%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).popExpect
+     0.01s  0.12% 79.09%      0.19s  2.21%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).stepDirectOp
+     0.01s  0.12% 79.21%      0.40s  4.65%  github.com/wago-org/wago/src/core/compiler/wasm.(*funcValidator).validateFuncDirect
+     0.01s  0.12% 79.33%      0.33s  3.83%  github.com/wago-org/wago/src/wago.(*Instance).closeOnce
+     0.01s  0.12% 79.44%      0.07s  0.81%  github.com/wago-org/wago/src/wago.(*instanceBuilder).instantiate.func7
+     0.01s  0.12% 79.56%      1.95s 22.65%  github.com/wago-org/wago/src/wago.compileWithFrontendFeaturesAndInstructions
+     0.01s  0.12% 79.67%      0.26s  3.02%  runtime.mallocgc
+         0     0% 79.67%      1.03s 11.96%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).body (inline)
+         0     0% 79.67%      0.05s  0.58%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).brIfFused
+         0     0% 79.67%      0.10s  1.16%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).callOp
+         0     0% 79.67%      0.09s  1.05%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).condense
+         0     0% 79.67%      0.05s  0.58%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).condenseBinary
+         0     0% 79.67%      0.08s  0.93%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).convergeFrameBranchState
+         0     0% 79.67%      0.06s   0.7%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).memLoad
+         0     0% 79.67%      0.09s  1.05%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).opBr
+         0     0% 79.67%      0.06s   0.7%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).popValue
+         0     0% 79.67%      1.04s 12.08%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*fn).runBody
+         0     0% 79.67%      0.06s   0.7%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.(*scratch).reset
+         0     0% 79.67%      1.40s 16.26%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.CompileModuleWith (inline)
+         0     0% 79.67%      0.07s  0.81%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.HostIndirectSyncThunk (inline)
+         0     0% 79.67%      1.27s 14.75%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileFunc
+         0     0% 79.67%      1.40s 16.26%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.compileModuleWith
+         0     0% 79.67%      0.11s  1.28%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.computeModuleHintsWithWorkersPolicy
+         0     0% 79.67%      0.07s  0.81%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.hostIndirectSyncThunk
+         0     0% 79.67%      0.11s  1.28%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.scanBodyBytesIntoMemory64WithModuleCalls
+         0     0% 79.67%      0.11s  1.28%  github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64.scanFuncBodyIntoMemory64WithModuleCalls
+         0     0% 79.67%      0.40s  4.65%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunction
+         0     0% 79.67%      0.40s  4.65%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunctions
+         0     0% 79.67%      0.40s  4.65%  github.com/wago-org/wago/src/core/compiler/wasm.(*moduleValidator).validateFunctionsSerial
+         0     0% 79.67%      0.11s  1.28%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModuleByteBackedWithFeatures (inline)
+         0     0% 79.67%      0.11s  1.28%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModuleByteBackedWithLimits
+         0     0% 79.67%      0.11s  1.28%  github.com/wago-org/wago/src/core/compiler/wasm.DecodeModuleWithFeatures
+         0     0% 79.67%      0.41s  4.76%  github.com/wago-org/wago/src/core/compiler/wasm.ValidateModuleWithAnalysis
+         0     0% 79.67%      0.11s  1.28%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectCodeSectionWithModule
+         0     0% 79.67%      0.11s  1.28%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectCodeSectionWithWidths
+         0     0% 79.67%      0.11s  1.28%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectModuleInnerLimits
+         0     0% 79.67%      0.11s  1.28%  github.com/wago-org/wago/src/core/compiler/wasm.decodeDirectModuleLimited (inline)
+         0     0% 79.67%      0.41s  4.76%  github.com/wago-org/wago/src/core/compiler/wasm.validateModuleWithWorkersFeaturesAndLimitsAnalysis
+         0     0% 79.67%      0.07s  0.81%  github.com/wago-org/wago/src/core/encoder/amd64.(*Asm).Load64 (inline)
+         0     0% 79.67%      0.26s  3.02%  github.com/wago-org/wago/src/core/runtime.(*JobMemory).decommitGuarded
+         0     0% 79.67%      0.26s  3.02%  github.com/wago-org/wago/src/core/runtime.ReleaseJobMemory
+         0     0% 79.67%      0.26s  3.02%  github.com/wago-org/wago/src/core/runtime.releaseGuardedJobMemory
+         0     0% 79.67%      0.19s  2.21%  github.com/wago-org/wago/src/wago.(*Compiled).arenaNeedForImports
+         0     0% 79.67%      0.34s  3.95%  github.com/wago-org/wago/src/wago.(*Instance).Close
+         0     0% 79.67%      0.32s  3.72%  github.com/wago-org/wago/src/wago.(*Instance).closeOnce.func1 (inline)
+         0     0% 79.67%      0.32s  3.72%  github.com/wago-org/wago/src/wago.(*Instance).releaseResources
+         0     0% 79.67%      0.32s  3.72%  github.com/wago-org/wago/src/wago.(*Instance).tryFinalize
+         0     0% 79.67%      1.95s 22.65%  github.com/wago-org/wago/src/wago.(*PreparedCompile).Compile
+         0     0% 79.67%      1.99s 23.11%  github.com/wago-org/wago/src/wago.(*Runtime).Compile (inline)
+         0     0% 79.67%      6.19s 71.89%  github.com/wago-org/wago/src/wago.(*Runtime).Instantiate (inline)
+         0     0% 79.67%      1.99s 23.11%  github.com/wago-org/wago/src/wago.(*Runtime).compile
+         0     0% 79.67%      6.19s 71.89%  github.com/wago-org/wago/src/wago.(*Runtime).instantiateOrigin
+         0     0% 79.67%      6.10s 70.85%  github.com/wago-org/wago/src/wago.(*Runtime).instantiateWithHooksOrigin
+         0     0% 79.67%      0.13s  1.51%  github.com/wago-org/wago/src/wago.buildHostFuncThunks
+         0     0% 79.67%      0.32s  3.72%  github.com/wago-org/wago/src/wago.callShutdownSafely
+         0     0% 79.67%      1.95s 22.65%  github.com/wago-org/wago/src/wago.compileWithConfigAndInstructions
+         0     0% 79.67%      6.10s 70.85%  github.com/wago-org/wago/src/wago.instantiateCoreWithModuleLease
+         0     0% 79.67%      6.10s 70.85%  github.com/wago-org/wago/src/wago.instantiateCoreWithModuleUse
+         0     0% 79.67%      1.40s 16.26%  github.com/wago-org/wago/src/wago.railshotCompileModuleWith
+         0     0% 79.67%      0.07s  0.81%  github.com/wago-org/wago/src/wago.railshotHostIndirectSyncThunk (inline)
+         0     0% 79.67%      0.32s  3.72%  github.com/wago-org/wago/src/wago.referenceLifetime.finalize
+         0     0% 79.67%      0.05s  0.58%  internal/runtime/maps.(*table).grow
+         0     0% 79.67%      0.05s  0.58%  internal/runtime/maps.(*table).rehash
+         0     0% 79.67%      0.05s  0.58%  internal/runtime/maps.(*table).reset
+         0     0% 79.67%      0.05s  0.58%  internal/runtime/maps.newGroups (inline)
+         0     0% 79.67%      0.05s  0.58%  internal/runtime/maps.newTable
+         0     0% 79.67%      0.05s  0.58%  internal/runtime/maps.newarray
+         0     0% 79.67%      0.05s  0.58%  runtime.gcBgMarkWorker
+         0     0% 79.67%      0.05s  0.58%  runtime.gcBgMarkWorker.func2
+         0     0% 79.67%      0.05s  0.58%  runtime.gcDrain
+         0     0% 79.67%      0.05s  0.58%  runtime.makeslice
+         0     0% 79.67%      0.06s   0.7%  runtime.mapaccess1_faststr
+         0     0% 79.67%      0.06s   0.7%  runtime.mapassign_fast64
+         0     0% 79.67%      0.06s   0.7%  runtime.memclrHasPointers
+         0     0% 79.67%      0.05s  0.58%  runtime.newarray
+         0     0% 79.67%      0.08s  0.93%  runtime.systemstack
+         0     0% 79.67%      0.32s  3.72%  syscall.RawSyscall6
+         0     0% 79.67%      0.31s  3.60%  syscall.Syscall
+         0     0% 79.67%      7.85s 91.17%  testing.(*B).launch
+         0     0% 79.67%      0.68s  7.90%  testing.(*B).run1.func1
+         0     0% 79.67%      8.53s 99.07%  testing.(*B).runN
+         0     0% 79.67%      8.52s 98.95%  wagobench.BenchmarkPluginInstantiate.func1
+         0     0% 79.67%      1.99s 23.11%  wagobench.compilePluginCorpus

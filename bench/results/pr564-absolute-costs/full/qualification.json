@@ -1,0 +1,122 @@
+{
+  "processSummary": [
+    {
+      "mode": "explicit",
+      "label": "base",
+      "processes": 252,
+      "failed": 0,
+      "seconds": 2122.065000000002,
+      "maxRSSKiB": 1738476
+    },
+    {
+      "mode": "explicit",
+      "label": "final",
+      "processes": 252,
+      "failed": 0,
+      "seconds": 2032.138,
+      "maxRSSKiB": 2069600
+    },
+    {
+      "mode": "signals",
+      "label": "base",
+      "processes": 258,
+      "failed": 0,
+      "seconds": 2155.985000000001,
+      "maxRSSKiB": 1893640
+    },
+    {
+      "mode": "signals",
+      "label": "final",
+      "processes": 258,
+      "failed": 0,
+      "seconds": 2062.4750000000013,
+      "maxRSSKiB": 1924688
+    }
+  ],
+  "pairedMetrics": 16144,
+  "unpaired": [],
+  "badSampleCounts": [],
+  "skipped": [
+    "signals/base: --- SKIP: BenchmarkSqliBenign",
+    "signals/final: --- SKIP: BenchmarkSqliBenign",
+    "signals/final: --- SKIP: BenchmarkCompileFullOptimizationAblation",
+    "explicit/base: --- SKIP: BenchmarkSqliBenign",
+    "explicit/final: --- SKIP: BenchmarkSqliBenign",
+    "explicit/final: --- SKIP: BenchmarkCompileFullOptimizationAblation"
+  ],
+  "codeSize": {
+    "rows": 298,
+    "changed": 0,
+    "grown": 0
+  },
+  "confirmationCases": 348,
+  "confirmedTiming": [
+    {
+      "mode": "explicit",
+      "name": "BenchmarkExecParallel/independent/isa_simd_i32x4.trunc_sat_f32x4_s",
+      "unit": "ns/op",
+      "base": 1083.5,
+      "final": 1094,
+      "delta": 0.969081679741568,
+      "p": 0.011079982072040223,
+      "baseSamples": 12,
+      "finalSamples": 12
+    },
+    {
+      "mode": "signals",
+      "name": "BenchmarkExecParallel/process/isa_f64.min",
+      "unit": "ns/op",
+      "base": 31852,
+      "final": 32134.5,
+      "delta": 0.8869144794675377,
+      "p": 0.014492507089088056,
+      "baseSamples": 12,
+      "finalSamples": 12
+    },
+    {
+      "mode": "signals",
+      "name": "BenchmarkInstantiate/sha256",
+      "unit": "ns/op",
+      "base": 7407.5,
+      "final": 7466,
+      "delta": 0.7897401282483951,
+      "p": 0.015115991828873777,
+      "baseSamples": 12,
+      "finalSamples": 12
+    },
+    {
+      "mode": "signals",
+      "name": "BenchmarkValidate/tiny",
+      "unit": "ns/op",
+      "base": 672.65,
+      "final": 678.3,
+      "delta": 0.8399613469114664,
+      "p": 0.008700681469560188,
+      "baseSamples": 12,
+      "finalSamples": 12
+    },
+    {
+      "mode": "signals",
+      "name": "BenchmarkExecParallel/independent/isa_simd_i32x4.extadd_pairwise_u",
+      "unit": "ns/op",
+      "base": 692.05,
+      "final": 707.3,
+      "delta": 2.203598005924423,
+      "p": 0.0017654306926079709,
+      "baseSamples": 12,
+      "finalSamples": 12
+    },
+    {
+      "mode": "signals",
+      "name": "BenchmarkExecParallel/process/blake-as-simd.hashN",
+      "unit": "ns/op",
+      "base": 514736,
+      "final": 517219.5,
+      "delta": 0.4824803394361421,
+      "p": 0.03872113886920725,
+      "baseSamples": 12,
+      "finalSamples": 12
+    }
+  ],
+  "resourceIncreases": 520
+}

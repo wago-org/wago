@@ -26,6 +26,9 @@ as time. Equal code size does not establish equal bytes or equal behavior.
 Split long benchmark runs into fresh processes per group and sample so native
 code mappings can be released between groups. Use the same process boundaries
 for both revisions, and retain exit status plus peak resident memory for each run.
+Keep long-run data and tools in a persistent workspace directory, not volatile
+`/tmp` storage. Checkpoint each completed process. Preserve interrupted logs on
+resume, and refuse to combine samples from changed benchmark binaries.
 
 For instantiation changes, compare every plugin's time, heap bytes, and allocation
 count. Integer-ABI signature classification must not allocate or change its
@@ -35,6 +38,11 @@ growth, and final-owner cleanup must remain intact. Keep active data copies and
 their bounds checks. `BenchmarkPluginExec` manually times one fixed workload;
 increasing `-benchtime` does not lengthen it, and its printed zero allocation
 counters do not measure that workload's allocations.
+Use fixed operation counts as a separate instantiation heap check, since the
+first-instance preparation cost is spread across the calibrated iteration count.
+For execution, convert allocation counters to per-call values only when the row
+reports `calls/batch`. `BenchmarkExecParallel` uses one call per Go benchmark
+operation; its counters must not receive that batch conversion.
 
 The optional backend memory/global type caches use at most 1 MiB per module and
 retain direct lookup for tiny or over-budget modules. Global-hint sidecars use

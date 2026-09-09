@@ -1,0 +1,15 @@
+{
+  "name": "profile-wasm3-cpu-top",
+  "cmd": "go",
+  "args": [
+    "tool",
+    "pprof",
+    "-top",
+    "/home/jtenner/Projects/wago/.tmp/pr564-absolute-costs/before-signals.test",
+    "/home/jtenner/Projects/wago/.tmp/pr564-absolute-costs/wasm3.cpu"
+  ],
+  "cwd": "/home/jtenner/Projects/wago",
+  "code": 0,
+  "start": "2026-09-08T21:32:26.065Z",
+  "seconds": 0.049
+}

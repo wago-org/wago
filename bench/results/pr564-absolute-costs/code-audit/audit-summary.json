@@ -1,0 +1,58 @@
+[
+  {
+    "mode": "explicit",
+    "name": "coremark",
+    "bytes": 24278,
+    "sha256": "d49b1c62f7d7f7ddf6bbda37ada6fca7d24040409167e630e61c0233c838043f",
+    "equal": true
+  },
+  {
+    "mode": "explicit",
+    "name": "isa_bulk_mem",
+    "bytes": 3774,
+    "sha256": "8708674bb6880ca8aa1810a6d1623051578af908fd71afbe23207405eef8f630",
+    "equal": true
+  },
+  {
+    "mode": "explicit",
+    "name": "wasm3",
+    "bytes": 870633,
+    "sha256": "5f43a1873ec9868b10990b8cf551230aacb2af3835ca0b0fc29bb2c51ebce306",
+    "equal": true
+  },
+  {
+    "mode": "explicit",
+    "name": "ruby",
+    "bytes": 35192654,
+    "sha256": "91bee98954c17a0d38684ac1b3507955a55509e895124a30ff87b3c7d9a807cc",
+    "equal": true
+  },
+  {
+    "mode": "signals",
+    "name": "coremark",
+    "bytes": 19331,
+    "sha256": "c9616e4e9254de64774426443f8b8cda0421b89163dce629453f2dbf79edcc75",
+    "equal": true
+  },
+  {
+    "mode": "signals",
+    "name": "isa_bulk_mem",
+    "bytes": 3749,
+    "sha256": "0c932773b375748d57de8f63fed89e8978747607467be687d94c0f0676d9162e",
+    "equal": true
+  },
+  {
+    "mode": "signals",
+    "name": "wasm3",
+    "bytes": 735239,
+    "sha256": "708c9a2de6cb268170a9083bd91c304605ba07c379a4da07dc2facb3449e05ff",
+    "equal": true
+  },
+  {
+    "mode": "signals",
+    "name": "ruby",
+    "bytes": 28402311,
+    "sha256": "65e10e8ec4004d6cbfea37036855744f57e4c86224fa8910c5ab1df68a118902",
+    "equal": true
+  }
+]

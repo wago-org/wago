@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {parse,median,rankP} from './stats.mjs';
+const root='/home/jtenner/Projects/wago/.tmp/pr564-absolute-costs';
+assert.equal(median([4,1,3,2]),2.5);
+assert.equal(rankP([1,2,3,4,5,6],[7,8,9,10,11,12]),2/924);
+assert.equal(rankP(Array(6).fill(1),Array(6).fill(1)),1);
+assert.equal(rankP(Array(12).fill(1),Array(12).fill(2)),2/2704156);
+assert.equal(rankP([1,1,2,3,4,5],[1,2,2,3,4,5]),rankP([1,2,2,3,4,5],[1,1,2,3,4,5]));
+const rows=parse(`${root}/analysis-fixture.bench`);
+assert.equal(median(rows.get('BenchmarkSerial')['B/call']),5);
+assert.notEqual(median(rows.get('BenchmarkSerial')['B/op'])/median(rows.get('BenchmarkSerial')['calls/batch']),5);
+assert.equal(rows.get('BenchmarkParallel')['B/op'][0],7);
+assert.equal(rows.get('BenchmarkParallel')['B/call'],undefined);
+console.log('PASS: medians, exact rank tests, per-sample batch normalization, and unbatched parallel counters');

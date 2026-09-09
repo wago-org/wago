@@ -1,0 +1,22 @@
+bounds,benchmark,unit,main_median,after_median,change_percent,p,main_samples,after_samples,prior_median,after_vs_prior_percent,p_vs_prior,measurement
+explicit,BenchmarkExecParallel/independent/isa_simd_i32x4.trunc_sat_f32x4_s,ns/op,1156,1165.5,0.8217993079584707,0.009759173444473024,24,24,1168,-0.21404109589041598,0.4394874371820483,reported
+explicit,BenchmarkExecParallel/independent/isa_simd_i32x4.trunc_sat_f32x4_s,B/op,0,0,0,1,24,24,0,0,1,reported
+explicit,BenchmarkExecParallel/independent/isa_simd_i32x4.trunc_sat_f32x4_s,allocs/op,0,0,0,1,24,24,0,0,1,reported
+signals,BenchmarkPluginExec/wasm3,ns/op,23402883.5,22854796.5,-2.3419635447913922,0.1359033566453425,24,24,23088855.5,-1.0137314948330811,0.5600830495545132,reported
+signals,BenchmarkPluginExec/wasm3,B/op,0,0,0,1,24,24,0,0,1,unmeasured: allocation timer stopped
+signals,BenchmarkPluginExec/wasm3,allocs/op,0,0,0,1,24,24,0,0,1,unmeasured: allocation timer stopped
+signals,BenchmarkExecParallel/process/blake-as-simd.hashN,ns/op,532476.5,531210,-0.2378508722920114,0.45518404416730696,24,24,532790.5,-0.2966456796808514,0.5062315872631278,reported
+signals,BenchmarkExecParallel/process/blake-as-simd.hashN,B/op,12,11.5,-4.1666666666666625,0.6738453323055439,24,24,12,-4.1666666666666625,0.8722492621892092,reported
+signals,BenchmarkExecParallel/process/blake-as-simd.hashN,allocs/op,0,0,0,1,24,24,0,0,1,reported
+signals,BenchmarkExecParallel/process/isa_f64.min,ns/op,33359,33235.5,-0.37021493450043463,0.3408678602148868,24,24,33342.5,-0.3209117492689484,0.509594300014551,reported
+signals,BenchmarkExecParallel/process/isa_f64.min,B/op,0,0,0,1,24,24,0,0,1,reported
+signals,BenchmarkExecParallel/process/isa_f64.min,allocs/op,0,0,0,1,24,24,0,0,1,reported
+signals,BenchmarkInstantiate/sha256,ns/op,7669,7742,0.9518842091537305,0.23817210115097973,24,24,7724,0.23303987571205997,0.7476279657353552,reported
+signals,BenchmarkInstantiate/sha256,B/op,1760,1752,-0.4545454545454519,6.202011224319716e-14,24,24,1752,0,1,reported
+signals,BenchmarkInstantiate/sha256,allocs/op,10,9,-9.999999999999998,6.202011224319716e-14,24,24,9,0,1,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i32x4.extadd_pairwise_u,ns/op,707,719.1500000000001,1.7185289957567296,0.0004294985656022102,24,24,725.4,-0.8615936035290761,0.6865098252328131,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i32x4.extadd_pairwise_u,B/op,0,0,0,1,24,24,0,0,1,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i32x4.extadd_pairwise_u,allocs/op,0,0,0,1,24,24,0,0,1,reported
+signals,BenchmarkValidate/tiny,ns/op,682.3,693.8,1.6854755972446123,0.018003943328299667,24,24,692.55,0.18049238322142003,0.3487104743257933,reported
+signals,BenchmarkValidate/tiny,B/op,1560,1560,0,1,24,24,1560,0,1,reported
+signals,BenchmarkValidate/tiny,allocs/op,11,11,0,1,24,24,11,0,1,reported
