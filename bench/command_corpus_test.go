@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -27,15 +28,36 @@ type commandOutput struct {
 	stdout, stderr []byte
 }
 
+func TestCommandSupportsPlatform(t *testing.T) {
+	all := corpusModule{Command: &commandEntry{}}
+	if !commandSupportsPlatform(all, "linux", "amd64") {
+		t.Fatal("empty platform list should support every platform")
+	}
+	darwinARM64 := corpusModule{Command: &commandEntry{Platforms: []string{"darwin/arm64"}}}
+	if !commandSupportsPlatform(darwinARM64, "darwin", "arm64") {
+		t.Fatal("darwin/arm64 should be supported")
+	}
+	if commandSupportsPlatform(darwinARM64, "linux", "amd64") {
+		t.Fatal("linux/amd64 should not be supported")
+	}
+}
+
 func commandCorpus(tb testing.TB) []corpusModule {
 	tb.Helper()
 	var out []corpusModule
 	for _, m := range loadCorpus(tb) {
-		if m.Command != nil && m.supports("CommandExec") {
+		if m.Command != nil && m.supports("CommandExec") && commandSupportsPlatform(m, runtime.GOOS, runtime.GOARCH) {
 			out = append(out, m)
 		}
 	}
 	return out
+}
+
+func commandSupportsPlatform(m corpusModule, goos, goarch string) bool {
+	if len(m.Command.Platforms) == 0 {
+		return true
+	}
+	return slices.Contains(m.Command.Platforms, goos+"/"+goarch)
 }
 
 func commandInput(tb testing.TB, path string) []byte {

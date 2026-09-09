@@ -37,6 +37,7 @@ var applicationCorpus = map[string]bool{
 type commandEntry struct {
 	Runtime      string   `json:"runtime"` // core or wasi; command runs in a fresh instance
 	Export       string   `json:"export"`
+	Platforms    []string `json:"platforms"` // optional GOOS/GOARCH allowlist
 	Args         []string `json:"args"`
 	Stdin        string   `json:"stdin"`   // optional path relative to corpus/
 	Preopen      string   `json:"preopen"` // optional host directory relative to corpus/, mounted at /

@@ -76,6 +76,21 @@ func TestMarkdownAnchorsMatchGitHubDuplicates(t *testing.T) {
 	}
 }
 
+func TestIsDocumentationPathSkipsPinnedCorpusInputs(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{path: "README.md", want: true},
+		{path: "docs/guide.md", want: true},
+		{path: "bench/corpus/inputs/workload/default.input.md", want: false},
+	} {
+		if got := isDocumentationPath(tc.path); got != tc.want {
+			t.Errorf("isDocumentationPath(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
 func writeFile(t *testing.T, root, name, contents string) {
 	t.Helper()
 	path := filepath.Join(root, filepath.FromSlash(name))

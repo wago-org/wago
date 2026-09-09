@@ -133,7 +133,9 @@ application replays, and import-free programs share the `CommandExec` stage.
 Every run uses a fresh instance, and the Wago and wazero rows use the same
 artifact, arguments, stdin, and preopened input directory. Sightglass output is
 checked against pinned upstream hashes; Embench and TACLeBench remain
-self-verifying.
+self-verifying. The manifest can restrict command execution by `GOOS/GOARCH`
+while keeping decode and compile coverage cross-platform; see the provenance
+notes for current amd64 limitations.
 
 Run the smoke gate without collecting benchmark numbers:
 

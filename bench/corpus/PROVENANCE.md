@@ -66,3 +66,13 @@ compression module produced a different Brotli oracle under Wago, and the
 Wasm-R3 FFmpeg replay exceeded the current ARM64 backend's transient-register
 admission limit. Keeping them out prevents a compile-only or incorrect workload
 from being labeled runnable.
+
+All 73 admitted artifacts remain in cross-platform decode and compile stages.
+Fourteen command executions are currently limited to Darwin/ARM64 in the
+manifest: Embench picojpeg fails its verifier on Linux/AMD64; Bullet reaches an
+invalid native target and pathfinding does not terminate in the AMD64 backend;
+and the file-backed Sightglass workloads plus WABench bzip2 expose Linux/AMD64
+WASI or code-generation failures.
+Those restrictions keep the Linux suite runnable without hiding the artifacts
+from compile coverage, and should be removed individually as their underlying
+runtime failures are fixed.
