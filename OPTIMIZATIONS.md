@@ -675,6 +675,34 @@ has parity status summarized below. Landed, in rough order:
   per-frame on each pinned local's merge state (`lsStackReg` or `lsMem`), so a
   call-clobbered local can stay slot-only across a merge until actually read. Loop tops
   stay eager (reloads hoisted out of bodies). Conditional returns converge nothing.
+- **Regional-residency debt telemetry** — opt-in `CodegenStats` records candidate
+  locals, activations and reloads, pressure misses, evictions, dirty writebacks,
+  final-use ownership transfers, and peak active leases. The shared counter record
+  is pointer-free; nil stats remain a no-op, and stats-on/off code bytes are tested
+  equal. Use these counters to qualify phase-sensitive residency changes instead of
+  treating a lower spill count alone as proof of improvement.
+- **Bounded local event tape** — the fused function-hint scan records four-byte,
+  pointer-free local reads/definitions and physical boundaries only for interval-
+  region candidates. One module-scan scratch backing is reused across functions,
+  capped at 32,768 events, and overflow falls back to coarse hints. Only a sparse
+  event-count summary is retained; per-function hint headers and emitted code remain
+  unchanged.
+- **Shadow regional-residency planner** — an allocation-free bounded pass over
+  the local event tape ranks at most 48 GP candidates and splits exact local
+  versions at definitions, calls, and structured boundaries. It records projected
+  avoided loads, synchronization and pressure debt, profitable segments, and
+  fail-soft cap exhaustion in a sparse sidecar. The summary is telemetry-only and
+  cannot influence lowering.
+- **ARM64 19-register interval region** — the bounded call-free regional cache
+  uses one more register while preserving a three-register transient tail. On
+  the measured BLAKE kernels this cuts native code by 2.2-2.4% and pressure
+  misses by 18-19%. A 20-register sweep corrupted BLAKE3 and is forbidden by a
+  target-derived floor test.
+- **AMD64 effective-capacity eviction** — if a nominal regional slot is
+  permanently reserved or transiently unavailable, admission falls through to
+  the existing hotness-gated eviction selector instead of reporting an immediate
+  miss. This preserves the transient checks and turns otherwise unreachable
+  regional capacity into smaller BLAKE code.
 
 ### Bounds checks and traps
 - **Guard-page mode** (old P5) is first-class behind `-tags wago_guardpage` and is the

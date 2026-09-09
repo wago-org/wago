@@ -3,7 +3,7 @@
 ╚╩╝ ╩ ╩ ╚═╝ ╚═╝</pre></h1>
 
 <p align="center">
-  A fast, compact WebAssembly runtime for Go
+  a wonderfully quick, compact, and extensible webassembly runtime for go
 </p>
 
 <p align="center">
@@ -11,35 +11,36 @@
   <a href="https://go.dev/"><img src="https://img.shields.io/badge/go-%3E%3D1.22-00ADD8.svg" alt="Go >= 1.22"></a>
   <a href="https://github.com/wago-org/wago/releases"><img src="https://img.shields.io/github/v/release/wago-org/wago?include_prereleases&label=release" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/wago-org/wago" alt="License"></a>
+  <a href="https://wago.sh/discord"><img src="https://img.shields.io/badge/discord-join-5865F2?logo=discord&logoColor=white" alt="Discord"></a>
 </p>
 
 <p align="center">
-  <a href="https://docs.wago.sh">Documentation</a> ·
-  <a href="https://docs.wago.sh/getting-started">Getting started</a> ·
-  <a href="https://plugins.wago.sh">Plugins</a> ·
-  <a href="https://wago.sh/#performance">Benchmarks</a>
+  <a href="https://docs.wago.sh">documentation</a> ·
+  <a href="https://docs.wago.sh/getting-started">getting started</a> ·
+  <a href="https://plugins.wago.sh">plugins</a> ·
+  <a href="https://wago.sh/#performance">benchmarks</a> ·
+  <a href="https://wago.sh/discord">discord</a>
 </p>
 
-Wago is a WebAssembly runtime for Go. It compiles Wasm to native machine code
-and runs it without cgo, a C toolchain, or an interpreter.
-
-Use the CLI to run `.wasm` files, save precompiled `.wago` artifacts, or create
-standalone executables. Use the Go package to embed the same runtime in an
-application. Plugins provide host integrations such as WASI and the Component
-Model.
+Wago is a pure-Go WebAssembly engine that compiles Wasm directly to native
+machine code.
 
 > [!NOTE]
-> Wago is still pre-release. APIs and `.wago` artifacts may change.
+> Wago is still beta. APIs and `.wago` artifacts may change.
 
-## Choose a path
+## Why Wago?
 
-- **Run a Wasm module:** [Install Wago](#install), then
-  [run a module](#run-a-module).
-- **Embed Wago in Go:** go to [Use Wago from Go](#use-wago-from-go).
-- **Add WASI or another host integration:** go to
-  [Add host capabilities](#add-host-capabilities).
-- **Learn the implementation:** see [Architecture](ARCHITECTURE.md) and the
-  [feature matrix](FEATURES.md).
+* **Fast and lightweight.** Using a few *kilobytes* of ram, we compile 3x faster and execute 40% faster than wazero.
+* **Pure Go.** Embed Wago without CGO while keeping straightforward Go builds
+  and cross-compilation.
+* **Standards Compliant** We pass the [official WebAssembly test suite](https://github.com/WebAssembly/testsuite), millions of fuzzes, and many real-world corpora.
+* **Extensible by design.** WASI, the Component Model, and other host
+  capabilities live outside the core runtime as plugins.
+* **Standalone executables** Compile your `.wasm` to _tiny_ native executables. Great for CLIs.
+
+Wago supports WebAssembly 1.0, 2.0, and the supported WebAssembly 3.0 feature
+set, including SIMD on supported hosts. See the
+[feature matrix](FEATURES.md) for exact platform and feature coverage.
 
 ## Install
 
@@ -47,14 +48,12 @@ On macOS and Linux:
 
 ```sh
 curl -fsSL https://install.wago.sh/unix | sh
-wago version install
 ```
 
 On Windows, in PowerShell:
 
 ```powershell
 irm https://install.wago.sh/ps | iex
-wago version install
 ```
 
 These commands install the Wago manager and then install a runtime. See
@@ -71,20 +70,13 @@ wago fib.wasm 30
 ```
 
 ```text
-fib(30) = 832040
+832040
 ```
 
-Save it as a precompiled artifact:
+Build a standalone executable:
 
 ```sh
-wago build fib.wasm -o fib.wago
-wago fib.wago 30
-```
-
-Or build a standalone executable:
-
-```sh
-wago compile --invoke fib fib.wasm -o fib
+wago compile fib.wasm -o fib
 ./fib 30
 ```
 
@@ -96,15 +88,19 @@ Add Wago to your module:
 go get github.com/wago-org/wago
 ```
 
-Run the small typed API example:
+Run the typed API example:
 
 ```sh
 go run github.com/wago-org/wago/examples/02-runtime-typed@latest
 ```
 
 The example compiles a module, creates an instance, and calls an exported
-function. See [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for a
+function. See [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for the
 complete guide.
+
+## Performance
+
+[**View the benchmarks →**](https://wago.sh/#performance)
 
 ## Add host capabilities
 
@@ -122,17 +118,19 @@ See [Use plugins](https://docs.wago.sh/guides/plugins) or browse the
 ## Platforms
 
 Wago supports Linux, macOS, and Windows on amd64 and arm64. WebAssembly feature
-support varies by backend. See the [feature matrix](FEATURES.md) for exact
-coverage.
+support varies by backend and host.
+
+See the [feature matrix](FEATURES.md) for exact coverage.
 
 ## Learn more
 
-Most usage and implementation details live in the
-[documentation](https://docs.wago.sh).
-
-[Examples](examples/README.md) · [Features](FEATURES.md) ·
-[Architecture](ARCHITECTURE.md) · [Benchmarks](bench/README.md) ·
-[Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) ·
+[Documentation](https://docs.wago.sh) ·
+[Examples](examples/README.md) ·
+[Features](FEATURES.md) ·
+[Architecture](ARCHITECTURE.md) ·
+[Benchmarks](bench/README.md) ·
+[Roadmap](ROADMAP.md) ·
+[Contributing](CONTRIBUTING.md) ·
 [Issues](https://github.com/wago-org/wago/issues)
 
 ## License

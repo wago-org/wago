@@ -7,9 +7,43 @@ import (
 	"testing"
 	"unsafe"
 
+	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+func TestParallelModuleHintsMatchSerialDetailedResidencyArm64(t *testing.T) {
+	for _, name := range []string{"json-as-simd.wasm", "lua.wasm", "sqlite3.wasm"} {
+		t.Run(name, func(t *testing.T) {
+			m := readParallelTestModuleArm64(t, "../../../../../../bench/corpus/"+name)
+			policy := currentCodegenPolicy()
+			serial, serialSidecar, serialGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, policy, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			parallel, parallelSidecar, parallelGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 4, policy, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(parallel, serial) {
+				for i := range serial {
+					if parallel[i] != serial[i] {
+						t.Fatalf("function %d hints differ:\nparallel: %#v\nserial:   %#v", i, parallel[i], serial[i])
+					}
+				}
+			}
+			if !reflect.DeepEqual(parallelSidecar, serialSidecar) {
+				t.Fatalf("sidecars differ: parallel scores=%d last=%d globals=%d; serial scores=%d last=%d globals=%d", len(parallelSidecar.localScore), len(parallelSidecar.localLastGet), len(parallelSidecar.sparseGlobals), len(serialSidecar.localScore), len(serialSidecar.localLastGet), len(serialSidecar.sparseGlobals))
+			}
+			if !reflect.DeepEqual(parallelGlobals, serialGlobals) {
+				t.Fatal("module global scores differ")
+			}
+			if cap(parallelSidecar.sparseGlobals) != cap(serialSidecar.sparseGlobals) {
+				t.Fatalf("global sidecar backing capacity: parallel %d, serial %d", cap(parallelSidecar.sparseGlobals), cap(serialSidecar.sparseGlobals))
+			}
+		})
+	}
+}
 
 func TestParallelModuleHintsMatchSerialArm64(t *testing.T) {
 	for _, name := range []string{"json-as-simd.wasm", "lua.wasm", "sqlite3.wasm"} {
@@ -41,6 +75,31 @@ func TestParallelModuleHintsMatchSerialArm64(t *testing.T) {
 				t.Fatalf("global sidecar backing capacity: parallel %d, serial %d", cap(parallelSidecar.sparseGlobals), cap(serialSidecar.sparseGlobals))
 			}
 		})
+	}
+}
+
+func TestLocalEventTapeScansStructuredLocalsArm64(t *testing.T) {
+	h := newFuncHints(2, 0)
+	var tape shared.LocalEventTape
+	tape.Reset(shared.LocalEventLimit)
+	h.localEvents = &tape
+	elig := newGlobalEligibilityTracker(0)
+	var globals shared.GlobalHintAccumulator
+	got, err := scanBodyBytesIntoModule([]byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}, 0, 2, 0, 0, nil, h, &elig, nil, nil, nil, nil, 0, &globals)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []shared.LocalEventKind{shared.LocalEventBlock, shared.LocalEventRead, shared.LocalEventDefine, shared.LocalEventEnd, shared.LocalEventEnd}
+	if len(tape.Events) != len(want) {
+		t.Fatalf("events = %+v, want kinds %v", tape.Events, want)
+	}
+	for i := range want {
+		if tape.Events[i].Kind != want[i] {
+			t.Fatalf("event %d = %+v, want kind %v", i, tape.Events[i], want[i])
+		}
+	}
+	if got.localEvents != &tape {
+		t.Fatal("scanner lost worker-owned tape")
 	}
 }
 

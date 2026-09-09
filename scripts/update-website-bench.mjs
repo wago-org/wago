@@ -376,6 +376,14 @@ function buildGeneralSummary(metrics, raw) {
   // unmatched sample.
   const instantiate = pairedMetricGeomeans(metrics, "Instantiate/", "WazeroInstantiate/", false, APPLICATION_CORPUS);
   const execution = pairedMetricGeomeans(metrics, "Exec/", "WazeroExec/", true, APPLICATION_CORPUS);
+  const machineCode = pairedMetricGeomeans(
+    metrics,
+    "CompileFull/",
+    "WazeroCompile/",
+    false,
+    APPLICATION_CORPUS,
+    "codeBytes",
+  );
   const compileTime = {
     railshot: metricGeomean(metrics, "CompileFull/", false, "ns", APPLICATION_CORPUS),
     wazero: metricGeomean(metrics, "WazeroCompile/", false, "ns", APPLICATION_CORPUS),
@@ -386,6 +394,7 @@ function buildGeneralSummary(metrics, raw) {
       railshot: metricGeomean(metrics, "CompileFull/", false, "bytes", APPLICATION_CORPUS),
       wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes", APPLICATION_CORPUS),
     }],
+    ["Machine code", "compiled corpus", "code", machineCode],
     ["Instantiate", "runnable corpus", "ns", instantiate],
     ["Execution", "runnable corpus", "ns", execution],
     ["End-to-end latency", "compile + instantiate", "ns", Object.fromEntries(
@@ -427,7 +436,7 @@ function metricGeomean(metrics, prefix, groupExports = false, field = "ns", incl
   return geomean([...groups.values()].map(geomean));
 }
 
-function pairedMetricGeomeans(metrics, wagoPrefix, wazeroPrefix, groupExports, includedModules) {
+function pairedMetricGeomeans(metrics, wagoPrefix, wazeroPrefix, groupExports, includedModules, field = "ns") {
   const wagoGroups = new Map();
   const wazeroGroups = new Map();
   for (const [key, wagoMetric] of metrics) {
@@ -436,8 +445,8 @@ function pairedMetricGeomeans(metrics, wagoPrefix, wazeroPrefix, groupExports, i
     const module = tail.split(".", 1)[0];
     if (includedModules && !includedModules.has(module)) continue;
     const wazeroMetric = metrics.get(`${wazeroPrefix}${tail}`);
-    const wago = Number(wagoMetric.ns);
-    const wazero = Number(wazeroMetric?.ns);
+    const wago = Number(wagoMetric[field]);
+    const wazero = Number(wazeroMetric?.[field]);
     if (!(wago > 0) || !(wazero > 0)) continue;
     const group = groupExports ? module : tail;
     const wagoValues = wagoGroups.get(group) ?? [];
@@ -619,7 +628,7 @@ function fmtNs(ns) {
 function fmtBytes(bytes) {
   if (bytes >= 1 << 20) return trim(bytes / (1 << 20), 1) + " MB";
   if (bytes >= 1 << 10) return trim(bytes / (1 << 10), bytes >= 100 << 10 ? 0 : 1) + " KB";
-  return `${bytes} B`;
+  return `${trim(bytes, bytes >= 100 ? 0 : 1)} B`;
 }
 
 function fmtCount(n) {

@@ -255,10 +255,11 @@ type fn struct {
 	// Bounded straight-line local intervals. A non-regNone intervalReg entry marks
 	// an eligible local; locals[x].reg is populated only while its cached value is
 	// live. Physical registers are selected and reclaimed dynamically.
-	intervalReg   []Reg
-	intervalLast  []uint32
-	intervalScore []uint32
-	intervalOwner [16]int
+	intervalReg      []Reg
+	intervalLast     []uint32
+	intervalScore    []uint32
+	intervalOwner    [16]int
+	intervalRegLimit int
 
 	// Register occupancy: regUser[r] is the value elem currently resident in
 	// physical register r, or nil if r is free. Only allocatable GPRs are tracked.
@@ -1387,7 +1388,7 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*amd64.CompiledModu
 	if opts.Stats != nil || explainEnabled {
 		hintStart = time.Now()
 	}
-	allHints, hintSidecar, globalScores, err := computeModuleHintsWithWorkersPolicy(m, nGlobals, importedFuncs, workers, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy)
+	allHints, hintSidecar, globalScores, err := computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, workers, opts.Codegen.Module.GCTypeLayouts, opts.GCStructHelpers, policy, opts.Stats != nil || explainEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("amd64: %w", err)
 	}
@@ -2177,18 +2178,24 @@ var moduleGlobalRegs = []Reg{R14, R13, R12}
 // avoids both a second body pass and a functions-by-globals retained matrix. The
 // standalone computeModuleGlobalScores is retained as the parity oracle in tests.
 func computeModuleHints(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool) ([]funcHints, funcHintSidecar, []int64, error) {
-	return computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, gcTypeLayouts, gcStructHelpers, currentCodegenPolicy())
+	return computeModuleHintsWithPolicy(m, nGlobals, importedFuncs, gcTypeLayouts, gcStructHelpers, currentCodegenPolicy(), false)
 }
 
-func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy) ([]funcHints, funcHintSidecar, []int64, error) {
-	return computeModuleHintsWithWorkersPolicy(m, nGlobals, importedFuncs, 1, gcTypeLayouts, gcStructHelpers, policy)
+func computeModuleHintsWithPolicy(m *wasm.Module, nGlobals, importedFuncs int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy, detailedResidency bool) ([]funcHints, funcHintSidecar, []int64, error) {
+	return computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, 1, gcTypeLayouts, gcStructHelpers, policy, detailedResidency)
 }
 
 func computeModuleHintsWithWorkersPolicy(m *wasm.Module, nGlobals, importedFuncs, workers int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy) ([]funcHints, funcHintSidecar, []int64, error) {
+	return computeModuleHintsWithWorkersResidencyPolicy(m, nGlobals, importedFuncs, workers, gcTypeLayouts, gcStructHelpers, policy, false)
+}
+
+func computeModuleHintsWithWorkersResidencyPolicy(m *wasm.Module, nGlobals, importedFuncs, workers int, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, policy CodegenPolicy, detailedResidency bool) ([]funcHints, funcHintSidecar, []int64, error) {
 	n := len(m.Code)
 	allHints := make([]funcHints, n)
 	totalScores := 0
 	intervalLocals := 0
+	intervalFunctions := 0
+	eventReserve := 0
 	moduleHasTailCall := false
 	moduleEH := m.TagCount() != 0
 	storageModuleEH := moduleEH
@@ -2217,6 +2224,8 @@ func computeModuleHintsWithWorkersPolicy(m *wasm.Module, nGlobals, importedFuncs
 				return nil, funcHintSidecar{}, nil, fmt.Errorf("function hint interval locals overflow")
 			}
 			intervalLocals += count
+			intervalFunctions++
+			eventReserve = max(eventReserve, min(shared.LocalEventInitialCapacity, len(m.Code[i].BodyBytes)/2))
 		}
 	}
 	if uint64(totalScores) > uint64(^uint32(0)) || uint64(intervalLocals) > uint64(^uint32(0)) {
@@ -2224,6 +2233,8 @@ func computeModuleHintsWithWorkersPolicy(m *wasm.Module, nGlobals, importedFuncs
 	}
 	localScores := make([]uint32, totalScores)
 	localLastGets := make([]uint32, intervalLocals)
+	localEventMeta := make([]uint32, intervalFunctions*2)
+	residencyShadow := make([]shared.ResidencyShadowEntry, intervalFunctions)
 	var sparseGlobals []shared.GlobalHint
 	var agg []int64
 	if nGlobals > 0 && n > 0 {
@@ -2236,7 +2247,7 @@ func computeModuleHintsWithWorkersPolicy(m *wasm.Module, nGlobals, importedFuncs
 	if parallelHintScanEligible(m, nGlobals, workers) {
 		var parallelTail, parallelEH bool
 		var err error
-		sparseGlobals, parallelTail, parallelEH, err = scanModuleHintsParallel(m, nGlobals, importedFuncs, workers, memory64, gcTypeLayouts, gcStructHelpers, allHints, localScores, localLastGets)
+		sparseGlobals, parallelTail, parallelEH, err = scanModuleHintsParallel(m, nGlobals, importedFuncs, workers, memory64, gcTypeLayouts, gcStructHelpers, allHints, localScores, localLastGets, localEventMeta, residencyShadow, eventReserve, detailedResidency)
 		if err != nil {
 			return nil, funcHintSidecar{}, nil, err
 		}
@@ -2251,6 +2262,8 @@ func computeModuleHintsWithWorkersPolicy(m *wasm.Module, nGlobals, importedFuncs
 		scoreAt := 0
 		intervalAt := 0
 		classifier := wasm.NewModuleInstructionClassifier(m, true)
+		localEvents := shared.LocalEventTape{Events: make([]shared.LocalEvent, 0, eventReserve)}
+		intervalEventAt := 0
 		for i := range m.Code {
 			nLocals := int(allHints[i].localCount)
 			intervalStorage := allHints[i].flags.has(hintIntervalRegionStorage)
@@ -2267,6 +2280,10 @@ func computeModuleHintsWithWorkersPolicy(m *wasm.Module, nGlobals, importedFuncs
 				}
 				intervalAt += nLocals
 			}
+			if intervalStorage {
+				localEvents.Reset(shared.LocalEventLimit)
+				h.localEvents = &localEvents
+			}
 			h.inlineCallSites = allHints[i].inlineCallSites
 			var err error
 			h, err = scanFuncBodyIntoMemory64WithModuleCalls(m.Code[i], nLocals, nGlobals, uint32(importedFuncs+i), h, &eligibilityTracker, memory64, m, &classifier, gcTypeLayouts, gcStructHelpers, allHints, importedFuncs, &sparseAccum)
@@ -2274,6 +2291,13 @@ func computeModuleHintsWithWorkersPolicy(m *wasm.Module, nGlobals, importedFuncs
 				return nil, funcHintSidecar{}, nil, fmt.Errorf("function %d hints: %w", i, err)
 			}
 			h.inlineCallSites = allHints[i].inlineCallSites
+			if intervalStorage {
+				h.setLocalEventSummary(len(localEvents.Events), localEvents.Overflow)
+				localEventMeta[intervalEventAt*2] = h.localStart
+				localEventMeta[intervalEventAt*2+1] = h.localEventMeta
+				residencyShadow[intervalEventAt] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&localEvents, nLocals, detailedResidency)}
+				intervalEventAt++
+			}
 			h.flags.assign(hintIntervalRegionStorage, intervalStorage)
 			scoreAt += scoreCount
 			allHints[i] = h.funcHints
@@ -2298,8 +2322,20 @@ func computeModuleHintsWithWorkersPolicy(m *wasm.Module, nGlobals, importedFuncs
 	if moduleEH && !storageModuleEH {
 		localScores = compactEHLocalScores(allHints, localScores)
 		localLastGets = nil
+		localEventMeta = nil
+		residencyShadow = nil
 	}
-	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, sparseGlobals: sparseGlobals}, agg, nil
+	return allHints, funcHintSidecar{localScore: localScores, localLastGet: localLastGets, localEventMeta: localEventMeta, sparseGlobals: sparseGlobals, residencyShadow: residencyShadow}, agg, nil
+}
+
+// summarizeHintResidency uses the same bounded event tape and planner for
+// serial and parallel scans. Each worker owns its tape; output slots are
+// assigned in function order before workers start.
+func summarizeHintResidency(tape *shared.LocalEventTape, nLocals int, detailed bool) shared.ResidencyShadowSummary {
+	if detailed {
+		return shared.PlanResidencyTransitionShadow(tape.Events, nLocals, maxIntervalRegionRegs, tape.Overflow)
+	}
+	return shared.PlanResidencyShadow(tape.Events, nLocals, maxIntervalRegionRegs, tape.Overflow)
 }
 
 const (
@@ -2330,16 +2366,18 @@ type parallelHintRange struct {
 	worker uint32
 	start  uint32
 	end    uint32
+	event  uint32 // index in the module's eligible-function event sidecars
 }
 
 type parallelHintWorker struct {
-	elig       globalEligibilityTracker
-	globals    shared.GlobalHintAccumulator
-	retained   []shared.GlobalHint
-	classifier wasm.ModuleInstructionClassifier
+	elig        globalEligibilityTracker
+	globals     shared.GlobalHintAccumulator
+	retained    []shared.GlobalHint
+	classifier  wasm.ModuleInstructionClassifier
+	localEvents shared.LocalEventTape
 }
 
-func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers int, memory64 bool, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, allHints []funcHints, localScores, localLastGets []uint32) (sparseGlobals []shared.GlobalHint, moduleHasTailCall, moduleEH bool, err error) {
+func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers int, memory64 bool, gcTypeLayouts []codegen.GCTypeLayout, gcStructHelpers bool, allHints []funcHints, localScores, localLastGets []uint32, localEventMeta []uint32, residencyShadow []shared.ResidencyShadowEntry, eventReserve int, detailedResidency bool) (sparseGlobals []shared.GlobalHint, moduleHasTailCall, moduleEH bool, err error) {
 	scoreAt, intervalAt := 0, 0
 	for i := range allHints {
 		h := &allHints[i]
@@ -2363,6 +2401,13 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 	}
 	calleeHints := make([]parallelCalleeHints, len(allHints))
 	ranges := make([]parallelHintRange, len(allHints))
+	eventAt := uint32(0)
+	for i := range allHints {
+		if allHints[i].flags.has(hintIntervalRegionStorage) {
+			ranges[i].event = eventAt
+			eventAt++
+		}
+	}
 	var next atomic.Int64
 	var failures shared.LowestIndexError
 	failures.Reset(len(allHints))
@@ -2390,6 +2435,13 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 					lastGetStart := int(base.lastGetStartPlus1 - 1)
 					h.localLastGet = localLastGets[lastGetStart : lastGetStart+nLocals]
 				}
+				if base.flags.has(hintIntervalRegionStorage) {
+					if state.localEvents.Events == nil {
+						state.localEvents.Events = make([]shared.LocalEvent, 0, eventReserve)
+					}
+					state.localEvents.Reset(shared.LocalEventLimit)
+					h.localEvents = &state.localEvents
+				}
 				state.globals.Reset(nGlobals)
 				h, scanErr := scanBodyBytesIntoMemory64WithModuleCalls(m.Code[i].BodyBytes, nLocals, nGlobals, uint32(importedFuncs+i), h, &state.elig, memory64, m, &state.classifier, gcTypeLayouts, gcStructHelpers, nil, calleeHints, importedFuncs, &state.globals)
 				if scanErr != nil {
@@ -2397,6 +2449,13 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 					continue
 				}
 				h.flags.assign(hintIntervalRegionStorage, base.flags.has(hintIntervalRegionStorage))
+				if base.flags.has(hintIntervalRegionStorage) {
+					event := int(ranges[i].event)
+					h.setLocalEventSummary(len(state.localEvents.Events), state.localEvents.Overflow)
+					localEventMeta[event*2] = h.localStart
+					localEventMeta[event*2+1] = h.localEventMeta
+					residencyShadow[event] = shared.ResidencyShadowEntry{LocalStart: h.localStart, Summary: summarizeHintResidency(&state.localEvents, nLocals, detailedResidency)}
+				}
 				allHints[i] = h.funcHints
 				start := len(state.retained)
 				state.retained = state.globals.AppendTo(state.retained)
@@ -2404,7 +2463,7 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 					failures.Record(i, fmt.Errorf("function %d hints: worker global sidecar exceeds 32-bit index capacity", i))
 					continue
 				}
-				ranges[i] = parallelHintRange{worker: uint32(workerID), start: uint32(start), end: uint32(len(state.retained))}
+				ranges[i] = parallelHintRange{worker: uint32(workerID), start: uint32(start), end: uint32(len(state.retained)), event: ranges[i].event}
 			}
 		}(workerID)
 	}
@@ -3019,6 +3078,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	if !pinLocals {
 		fpPinLimit = 0
 	}
+	f.noteResidencyEvents(hints)
 	intervalRegion := pinLocals && regABI && !hasCall && !hints.flags.has(hintHasControlFlow) && !hints.flags.has(hintUsesBulkMem) && len(inlinedCallees) == 0 && f.prepareIntervalRegion(c.BodyBytes, hints)
 	if intervalRegion {
 		gpPool = nil // regional GP assignments supersede whole-function GP pins

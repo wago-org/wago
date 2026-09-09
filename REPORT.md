@@ -1,5 +1,15 @@
 # PR #564 correctness and performance qualification
 
+## Integration with main 9708df167
+
+The branch now incorporates main's regional-residency compiler work. Parallel
+hint workers own bounded local-event tapes and write summaries into distinct
+function-ordered slots. Serial and parallel scans use the same summary planner,
+including detailed diagnostics. ARM64 keeps main's value-version bounds
+invalidation and this PR's cached type lookup. Tests compare basic and detailed
+serial/parallel sidecars. Earlier benchmark tables remain tied to their original
+commits; they do not measure this merged state.
+
 ## Instantiation allocation follow-up — measured checkpoint 3a84fa628
 
 Production code `3a84fa628` removes temporary integer-ABI signature slices and

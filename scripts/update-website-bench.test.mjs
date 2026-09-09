@@ -70,6 +70,9 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
         metrics[key].codeBytes = key.startsWith("Wazero") ? 200 : 100;
       }
     }
+    // Missing wazero machine code must remove the pair from both averages.
+    metrics["CompileFull/ruby"].codeBytes = 1e30;
+    metrics["WazeroCompile/ruby"].codeBytes = 0;
     const modules = Object.fromEntries(
       [...new Set(Object.keys(metrics)
         .filter((key) => key.startsWith("CompileFull/"))
@@ -174,10 +177,15 @@ function assertDOMContract(html) {
     const generalStart = html.indexOf(`id="perf-${arch}-panel-general"`);
     const generalEnd = html.indexOf(`id="perf-${arch}-panel-compile"`, generalStart);
     const general = html.slice(generalStart, generalEnd);
-    assert.equal(matches(general, /data-engine-row/g), 7);
-    for (const label of ["Application compile", "SIMD execution"]) {
+    assert.equal(matches(general, /data-engine-row/g), 8);
+    for (const label of ["Machine code", "Application compile", "SIMD execution"]) {
       assert.equal(matches(general, new RegExp(`<span class="vs__label">${label}</span>`, "g")), 1);
     }
+	const machineCodeStart = general.indexOf('<span class="vs__label">Machine code</span>');
+	const machineCodeEnd = general.indexOf('<div class="vs__row" data-engine-row>', machineCodeStart);
+	const machineCode = general.slice(machineCodeStart, machineCodeEnd);
+	assert.match(machineCode, />100 B<\/span>/);
+	assert.match(machineCode, />200 B<\/span>/);
 	const executionStart = general.indexOf('<span class="vs__label">Execution</span>');
 	const executionEnd = general.indexOf('<div class="vs__row" data-engine-row>', executionStart);
 	const execution = general.slice(executionStart, executionEnd);

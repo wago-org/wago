@@ -40,10 +40,46 @@ func TestIntervalRegionDynamicReuse(t *testing.T) {
 	if on.Peephole["tree-order"] != 0 {
 		t.Fatalf("tree ordering must stay disabled while regional registers are active: %v", on.Peephole)
 	}
+	if r := on.Residency; r.Events == 0 || r.EventOverflows != 0 || r.Candidates != 20 || r.Activations == 0 || r.MaxActive == 0 || r.MaxActive > maxIntervalRegionRegs || r.FinalTransfers == 0 {
+		t.Fatalf("residency stats = %+v", r)
+	}
+	// Every non-accumulator local is read once, below the shadow planner's
+	// two-read admission threshold.
+	if p := on.Residency.Shadow; p.Candidates != 0 || p.Segments != 0 || p.FailSoft != 0 {
+		t.Fatalf("residency shadow = %+v", p)
+	}
 
 	intervalRegionPinsEnabled = false
 	if got := runAmd64(t, m); got != 210 {
 		t.Fatalf("disabled result = %d, want 210", got)
+	}
+}
+
+func TestIntervalRegionRegisterPolicy(t *testing.T) {
+	if len(intervalRegionOrder) < maxIntervalRegionRegs {
+		t.Fatalf("regional order has %d registers for limit %d", len(intervalRegionOrder), maxIntervalRegionRegs)
+	}
+	if got := intervalRegionOrder[len(intervalRegionOrder)-1]; got != R8 {
+		t.Fatalf("last-choice regional register = %v, want R8", got)
+	}
+	var seen regMask
+	for _, reg := range intervalRegionOrder {
+		if reg == RAX || reg == RCX || reg == RDX {
+			t.Fatalf("fixed arithmetic register %v is regionally leased", reg)
+		}
+		if seen.has(reg) {
+			t.Fatalf("regional register %v appears more than once", reg)
+		}
+		seen = seen.add(reg)
+	}
+}
+
+func TestIntervalRegionRegisterLimitByBoundsMode(t *testing.T) {
+	if got, want := intervalRegionRegLimit(false), maxIntervalRegionRegs; got != want {
+		t.Fatalf("explicit-bounds register limit = %d, want %d", got, want)
+	}
+	if got, want := intervalRegionRegLimit(true), maxIntervalRegionRegs-1; got != want {
+		t.Fatalf("signals-bounds register limit = %d, want %d", got, want)
 	}
 }
 
@@ -73,6 +109,9 @@ func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 	if got := len(sidecar.view(hints[0]).localLastGet); got != 20 {
 		t.Fatalf("candidate last-get storage = %d locals, want 20", got)
 	}
+	if got := sidecar.view(hints[0]).localEventCount(); got == 0 {
+		t.Fatal("candidate did not retain an event summary")
+	}
 	ineligible := sidecar.view(hints[1])
 	if got, want := ineligible.nLocals, 100; got != want {
 		t.Fatalf("ineligible local count = %d, want %d", got, want)
@@ -82,6 +121,9 @@ func TestIntervalRegionLastGetStorageOnlyForCandidates(t *testing.T) {
 	}
 	if got := ineligible.localLastGet; got != nil {
 		t.Fatalf("ineligible function reserved %d last-get entries", len(got))
+	}
+	if got := ineligible.localEventCount(); got != 0 {
+		t.Fatalf("ineligible function retained %d events", got)
 	}
 	eligible := sidecar.view(hints[2])
 	if got, want := len(eligible.localScore), 100; got != want {

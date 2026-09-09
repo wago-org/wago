@@ -725,9 +725,7 @@ func (f *fn) trySelectLocalSet(r *wasm.Reader) (bool, error) {
 		return false, nil
 	}
 
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	// Refs below the select still require x's old value; refs in its three
 	// operand blocks are consumed before the final CSEL overwrites dest.
 	f.realizeLocalRefs(x, f.s.baseOfValentBlock(a))
@@ -793,9 +791,7 @@ func (f *fn) tryTeeCompareBrIf(r *wasm.Reader, x int) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	if err := f.brIfFusedSet(top, idx, pr); err != nil {
 		return false, err
 	}
@@ -892,9 +888,7 @@ func (f *fn) tryFbinLocalSet(r *wasm.Reader, vop func(dst, s1, s2 Reg, f64 bool)
 		}
 		return false, nil
 	}
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	right := f.s.back()
 	if right == nil {
 		if err := r.JumpTo(save); err != nil {
@@ -938,9 +932,7 @@ func (f *fn) tryFminmaxLocalSet(r *wasm.Reader, f64, isMax bool) (bool, error) {
 		}
 		return false, nil
 	}
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert()
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	right := f.s.back()
 	if right == nil {
 		if err := r.JumpTo(save); err != nil {
@@ -1132,9 +1124,7 @@ func subtreeRefsLocal(s *stack, e *elem, x int) bool {
 }
 
 func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
-	if f.bcKind == 1 && f.bcIdx == uint32(x) {
-		f.invalidateBoundsCert() // the certified base local changed value
-	}
+	f.invalidateBoundsCertFor(1, uint32(x))
 	e := f.s.back()
 	if e != nil && e.elemKind() == ekValue && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")

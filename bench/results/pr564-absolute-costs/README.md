@@ -181,6 +181,9 @@ storage was lost and is excluded. This comparison uses new post-reboot samples
 for both main and the fixed revision. Raw archives, scripts, identities, and
 checksums are retained with this report. Later commits need their own qualification;
 these numbers must not be relabeled as measurements of a later main or PR head.
+The code-audit overlay is saved as `scripts/code_audit_test.go.txt` so Go does
+not compile this evidence directory as a standalone benchmark package. Restore
+the `.go` suffix only at the overlay source path when reproducing the audit.
 
 ## Remaining memory costs
 
