@@ -19,7 +19,8 @@
   <a href="https://docs.wago.sh/getting-started">getting started</a> ·
   <a href="https://plugins.wago.sh">plugins</a> ·
   <a href="https://wago.sh/#performance">benchmarks</a> ·
-  <a href="https://wago.sh/discord">discord</a>
+  <a href="https://wago.sh/discord">discord</a> ·
+  <a href="https://github.com/sponsors/JairusSW">sponsor us</a>
 </p>
 
 Wago is a pure-Go WebAssembly engine that compiles Wasm directly to native
