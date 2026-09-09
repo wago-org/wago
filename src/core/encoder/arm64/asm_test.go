@@ -321,6 +321,14 @@ func TestCompatibilityLoadStoreAndLayoutWrappers(t *testing.T) {
 	if len(aligned.B) != 16 {
 		t.Fatalf("Align16 length = %d", len(aligned.B))
 	}
+	var four, repeated Asm
+	four.Nop4()
+	for range 4 {
+		repeated.Nop()
+	}
+	if string(four.B) != string(repeated.B) {
+		t.Fatalf("Nop4 = %x, want %x", four.B, repeated.B)
+	}
 	var grown Asm
 	grown.Grow(32)
 	if cap(grown.B) < 32 {

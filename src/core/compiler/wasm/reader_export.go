@@ -43,11 +43,12 @@ func (r *Reader) SkipU32N(n uint32) error {
 }
 
 func (r *Reader) Byte() (byte, error) {
-	old := r.pos
-	if err := r.Step(1); err != nil {
-		return 0, err
+	if r.pos >= len(r.data) {
+		return 0, &DecodeError{Code: ErrIndexOutOfBounds, Offset: r.pos}
 	}
-	return r.data[old], nil
+	b := r.data[r.pos]
+	r.pos++
+	return b, nil
 }
 
 func (r *Reader) LEU32() (uint32, error) {
@@ -100,11 +101,33 @@ func (r *Reader) leb128(signedInt bool, maxBits uint32) (uint64, error) {
 	return result, nil
 }
 
-func (r *Reader) U32() (uint32, error) { v, err := r.leb128(false, 32); return uint32(v), err }
+func (r *Reader) U32() (uint32, error) {
+	if r.pos < len(r.data) {
+		if b := r.data[r.pos]; b < 0x80 {
+			r.pos++
+			return uint32(b), nil
+		}
+	}
+	v, err := r.leb128(false, 32)
+	return uint32(v), err
+}
 func (r *Reader) U64() (uint64, error) { return r.leb128(false, 64) }
 func (r *Reader) S33() (int64, error)  { v, err := r.leb128(true, 33); return int64(v), err }
-func (r *Reader) I32() (int32, error)  { v, err := r.leb128(true, 32); return int32(uint32(v)), err }
-func (r *Reader) I64() (int64, error)  { v, err := r.leb128(true, 64); return int64(v), err }
+func (r *Reader) I32() (int32, error) {
+	if r.pos < len(r.data) {
+		if b := r.data[r.pos]; b < 0x80 {
+			r.pos++
+			value := int32(b)
+			if b&0x40 != 0 {
+				value |= ^int32(0x7f)
+			}
+			return value, nil
+		}
+	}
+	v, err := r.leb128(true, 32)
+	return int32(uint32(v)), err
+}
+func (r *Reader) I64() (int64, error) { v, err := r.leb128(true, 64); return int64(v), err }
 
 func (r *Reader) Peek() (byte, bool) {
 	if r.pos >= len(r.data) {

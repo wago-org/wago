@@ -45,23 +45,13 @@ func (st *storage) setEHRoot(root bool) {
 }
 
 func (f *fn) factsForLocal(x int) valueFacts {
-	if uint(x) >= uint(len(f.locals)) {
-		return 0
+	// A serialized i32 parameter can arrive in a 64-bit carrier with high bits
+	// set. Only a recorded machine-value proof can remove canonicalization;
+	// the Wasm type alone is not that proof, including across control joins.
+	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
+		return f.locals[x].facts
 	}
-	// Every ARM64 carrier of a Wasm i32 is canonical: constants and ALU results
-	// use W-register writes, scalar loads zero-extend, call/host boundaries
-	// marshal to uint32, and local copies preserve that representation. Unlike
-	// value-specific facts, this type invariant is identical on every control
-	// edge and therefore remains valid when detailed local fact tracking is
-	// disabled for control-flow functions.
-	facts := valueFacts(0)
-	if f.opt(optValueFacts) && f.localType[x] == mtI32 {
-		facts |= factUpper32Zero
-	}
-	if f.localFactsEnabled {
-		facts |= f.locals[x].facts
-	}
-	return facts
+	return 0
 }
 
 func (f *fn) setFactsForLocal(x int, facts valueFacts) {

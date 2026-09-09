@@ -101,7 +101,7 @@ func TestSubDefaultHintPreservesGeometricGrowthArm64(t *testing.T) {
 	for i := 1; i < nodes; i++ {
 		s.alloc()
 	}
-	want := []int{101, 202, 404, 808, 1616}
+	want := []int{101, 27, 128, 256, 512, 1024}
 	if got := stackChunkCapsArm64(s); !slices.Equal(got, want) {
 		t.Fatalf("sub-default growth = %v, want %v", got, want)
 	}
@@ -248,7 +248,7 @@ func TestStackArenaCapForBodyTinyFunctionArm64(t *testing.T) {
 func TestStackArenaCapForBodyMediumFunctionArm64(t *testing.T) {
 	const bodyLen = 64
 	const locals = 12
-	want := bodyLen + locals/4 + 1
+	want := bodyLen/2 + locals/4 + 1
 	s := newStackWithCap(stackArenaCapForBody(bodyLen, locals))
 	if cap(s.chunks[0]) != want {
 		t.Fatalf("medium stack arena cap = %d, want %d", cap(s.chunks[0]), want)
@@ -260,16 +260,5 @@ func TestStackArenaCapForBodyLargeFunctionArm64(t *testing.T) {
 	want := stackArenaCapForBody(1024, 128)
 	if cap(s.chunks[0]) != want {
 		t.Fatalf("large stack arena cap = %d, want %d", cap(s.chunks[0]), want)
-	}
-}
-
-func TestStackArenaCapForHintsIgnoresLongImmediatesArm64(t *testing.T) {
-	// A body with a few stack-producing opcodes and long immediates should reserve
-	// from the opcode hint, not one arena elem per byte.
-	const bodyLen = 64
-	const nodes = 12
-	want := nodes + nodes/2 + 1
-	if got := stackArenaCapForHints(bodyLen, 0, nodes); got != want {
-		t.Fatalf("stackArenaCapForHints(%d, 0, %d) = %d, want %d", bodyLen, nodes, got, want)
 	}
 }

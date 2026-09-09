@@ -6,10 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/wago-org/wago/internal/jsonstrict"
+	"github.com/wago-org/wago/internal/namecheck"
 	"github.com/wago-org/wago/internal/regularfile"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -121,12 +121,6 @@ func EncodeManifest(manifest map[string]any) ([]byte, error) {
 	}
 	return data, nil
 }
-
-var (
-	manifestSlugPattern     = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
-	manifestPlatformPattern = regexp.MustCompile(`^[a-z0-9]+/[a-z0-9]+$`)
-	manifestGitHubPattern   = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$`)
-)
 
 var manifestFeatureNames = stringSet(
 	"bulk-memory-operations", "exception-handling", "extended-const-expressions",
@@ -316,7 +310,7 @@ func validateManifestPackage(raw any) error {
 	if err := validateManifestSlugField(pkg, "package", "category"); err != nil {
 		return err
 	}
-	if err := validateManifestStringList(pkg, "package", "tags", 32, manifestSlugPattern); err != nil {
+	if err := validateManifestStringList(pkg, "package", "tags", 32, namecheck.Slug); err != nil {
 		return err
 	}
 	if err := validateManifestAuthors(pkg); err != nil {
@@ -325,7 +319,7 @@ func validateManifestPackage(raw any) error {
 	if err := validateManifestEngines(pkg, "package"); err != nil {
 		return err
 	}
-	if err := validateManifestStringList(pkg, "package", "platforms", 0, manifestPlatformPattern); err != nil {
+	if err := validateManifestStringList(pkg, "package", "platforms", 0, namecheck.Platform); err != nil {
 		return err
 	}
 	if rawSubpackages, ok := pkg["subpackages"]; ok {
@@ -366,13 +360,13 @@ func validateManifestPackage(raw any) error {
 			if err := validateManifestStability(subpackage, path); err != nil {
 				return err
 			}
-			if err := validateManifestStringList(subpackage, path, "tags", 32, manifestSlugPattern); err != nil {
+			if err := validateManifestStringList(subpackage, path, "tags", 32, namecheck.Slug); err != nil {
 				return err
 			}
 			if err := validateManifestEngines(subpackage, path); err != nil {
 				return err
 			}
-			if err := validateManifestStringList(subpackage, path, "platforms", 0, manifestPlatformPattern); err != nil {
+			if err := validateManifestStringList(subpackage, path, "platforms", 0, namecheck.Platform); err != nil {
 				return err
 			}
 		}
@@ -416,7 +410,7 @@ func validateManifestAuthors(pkg map[string]any) error {
 		}
 		if rawGitHub, ok := author["github"]; ok {
 			github, ok := rawGitHub.(string)
-			if !ok || !manifestGitHubPattern.MatchString(github) {
+			if !ok || !namecheck.GitHubUser(github) {
 				return fmt.Errorf("%s.github must be a GitHub username", path)
 			}
 		}
@@ -440,7 +434,7 @@ func validateManifestEngines(object map[string]any, path string) error {
 		return err
 	}
 	for name, rawConstraint := range engines {
-		if len(name) > 64 || !manifestSlugPattern.MatchString(name) {
+		if len(name) > 64 || !namecheck.Slug(name) {
 			return fmt.Errorf("%s.engines contains invalid engine %q", path, name)
 		}
 		constraint, ok := rawConstraint.(string)
@@ -451,7 +445,7 @@ func validateManifestEngines(object map[string]any, path string) error {
 	return nil
 }
 
-func validateManifestStringList(object map[string]any, path, field string, max int, pattern *regexp.Regexp) error {
+func validateManifestStringList(object map[string]any, path, field string, max int, pattern func(string) bool) error {
 	raw, ok := object[field]
 	if !ok {
 		return nil
@@ -463,7 +457,7 @@ func validateManifestStringList(object map[string]any, path, field string, max i
 	seen := map[string]bool{}
 	for index, rawValue := range values {
 		value, ok := rawValue.(string)
-		if !ok || len(value) > 64 || !pattern.MatchString(value) {
+		if !ok || len(value) > 64 || !pattern(value) {
 			return fmt.Errorf("%s.%s[%d] is invalid", path, field, index)
 		}
 		if seen[value] {
@@ -480,7 +474,7 @@ func validateManifestSlugField(object map[string]any, path, field string) error 
 		return nil
 	}
 	value, ok := raw.(string)
-	if !ok || len(value) > 64 || !manifestSlugPattern.MatchString(value) {
+	if !ok || len(value) > 64 || !namecheck.Slug(value) {
 		return fmt.Errorf("%s.%s must be a lowercase slug", path, field)
 	}
 	return nil

@@ -1,6 +1,23 @@
 package shared
 
-import "slices"
+import (
+	"math/bits"
+	"slices"
+)
+
+// GlobalHintCapacity gives serial and parallel sidecars the same capacity
+// contract. At most twice the live record count is retained. It does not depend
+// on append batching; one referenced global reserves one record, not eight.
+func GlobalHintCapacity(count int) int {
+	if count <= 0 {
+		return 0
+	}
+	shift := bits.Len(uint(count - 1))
+	if shift >= bits.UintSize-1 {
+		return count
+	}
+	return 1 << shift
+}
 
 // GlobalHint is the compact per-function record retained for a referenced
 // global. Modules with sparse global use keep one record per actual use target
@@ -27,6 +44,19 @@ const (
 	globalHintEligible  = uint32(1 << 31)
 	globalHintEpochMask = globalHintEligible - 1
 )
+
+// ResetWithScratch accepts caller-owned, exclusive scratch for initial dense
+// storage. Short scratch keeps Reset's normal allocation fallback. Full-slice
+// bounds prevent one worker's append from overwriting another worker's range.
+func (a *GlobalHintAccumulator) ResetWithScratch(nGlobals int, scratch []uint32) {
+	if len(a.scores) < nGlobals && nGlobals <= len(scratch)/2 {
+		a.scores = scratch[:nGlobals:nGlobals]
+		a.marks = scratch[nGlobals : 2*nGlobals : 2*nGlobals]
+		clear(a.marks)
+		a.epoch = 0
+	}
+	a.Reset(nGlobals)
+}
 
 func (a *GlobalHintAccumulator) Reset(nGlobals int) {
 	if len(a.scores) < nGlobals {
@@ -81,6 +111,12 @@ func (a *GlobalHintAccumulator) MarkEligible(index uint32) {
 // AppendTo appends deterministic index-sorted records to dst. Callers can keep
 // offset ranges while dst grows, then publish slices after the final append.
 func (a *GlobalHintAccumulator) AppendTo(dst []GlobalHint) []GlobalHint {
+	needed := len(dst) + int(a.touchedN) + len(a.touchedExtra)
+	if needed > cap(dst) {
+		grown := make([]GlobalHint, len(dst), GlobalHintCapacity(needed))
+		copy(grown, dst)
+		dst = grown
+	}
 	inline := a.touchedInline[:a.touchedN]
 	slices.Sort(inline)
 	slices.Sort(a.touchedExtra)

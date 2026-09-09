@@ -118,6 +118,14 @@ test or a small checked-in `.wasm` file under `tests/fixtures/wasm`. See
 [tests/README.md](tests/README.md) for the complete test layout and fixture
 provenance.
 
+For TinyGo startup changes, test optimized release settings as well as the
+default debug build: `-scheduler=tasks -no-debug -opt=z -gc=conservative`.
+Repeat `--version` and a real-module call in fresh processes; a single successful
+start does not clear an intermittent initialization failure. CI runs this check
+for the Minimal/Tiny CLI on its supported native targets. Shared ASCII name
+checks in `internal/namecheck` are checked against the prior exact regex grammar
+under standard Go; callers must retain their own length limits.
+
 ### WebAssembly Conformance
 
 [SPECTEST.md](SPECTEST.md) records results against the official WebAssembly

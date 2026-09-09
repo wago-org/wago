@@ -418,6 +418,13 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) 
 	}
 	off32 := uint32(off)
 	e := f.popValue()
+	// Do not infer this from the Wasm i32 type alone: serialized parameters and
+	// other external carriers may have non-canonical upper bits. Constants are
+	// materialized with a W-register move; the fact is set only by producers
+	// whose AArch64 lowering also writes a W register and survives exact-value
+	// moves and spills.
+	upper32Zero := e.st.kind == stConst ||
+		f.opt(optValueFacts) && e.st.valueFacts().has(factUpper32Zero)
 	// Bounds-certificate source: the address's stable value carrier (a local or
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
@@ -444,9 +451,9 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) 
 	// ABI slots are 64-bit words; memory32 consumes only the low i32 bits. Skip
 	// the canonicalization when the producer already guarantees a zero upper
 	// half (notably every ARM64-backed Wasm i32 local).
-	if !e.st.valueFacts().has(factUpper32Zero) || loadDefinedLocal {
+	if !upper32Zero || loadDefinedLocal {
 		f.a.MovReg32(ea, ea)
-		if loadDefinedLocal && e.st.valueFacts().has(factUpper32Zero) {
+		if loadDefinedLocal && upper32Zero {
 			f.stats.peep("memory-address-load-rename")
 		}
 	} else {
@@ -482,11 +489,13 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) 
 		leaDisp = rangeExtent
 	}
 	f.boundsCertUpdate(bcKind, bcIdx, leaDisp)
-	if bcKind != 0 && f.inLoop() {
-		f.stats.addBoundsInLoop()
-	}
-	if f.boundsHoistable(bcKind, bcIdx) {
-		f.stats.addBoundsHoistable()
+	if f.stats != nil {
+		if bcKind != 0 && f.inLoop() {
+			f.stats.addBoundsInLoop()
+		}
+		if f.boundsHoistable(bcKind, bcIdx) {
+			f.stats.addBoundsHoistable()
+		}
 	}
 	f.pinned = f.pinned.add(ea)
 	t := f.allocReg(0)
@@ -1391,7 +1400,10 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	// dominates the string-append copies AssemblyScript's __renew makes constantly;
 	// large copies fall through to the block byte-copy loops. joins26 collects the
 	// unconditional B (imm26) exits, joins19 the CBZ (imm19) exits.
-	var joins26, joins19 []int
+	// Two exits of each encoding are emitted below. These are compiler-local
+	// patch sites, not runtime state; append retains its ordinary growth path.
+	var scratch26, scratch19 [2]int
+	joins26, joins19 := scratch26[:0], scratch19[:0]
 	f.cmpImm(X11, smallBulkMax, true)
 	big := f.a.Bcond(condAE)
 
@@ -1678,7 +1690,7 @@ func bulkChunks(n int, buf *[8][2]int) [][2]int {
 }
 
 func (f *fn) memoryAddr64(memoryIndex uint32) bool {
-	mt, ok := f.m.MemoryType(memoryIndex)
+	mt, ok := f.memoryType(memoryIndex)
 	return ok && mt.Limits.Addr64
 }
 

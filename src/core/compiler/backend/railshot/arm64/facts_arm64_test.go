@@ -233,7 +233,53 @@ func TestLocalFactsDisabledAcrossControlFlowArm64(t *testing.T) {
 	}
 }
 
-func TestI32LocalElidesRepeatedMemoryAddressCanonicalizationArm64(t *testing.T) {
+func TestMemoryAddressUsesUpperZeroFactArm64(t *testing.T) {
+	computed := modMem(t, 1,
+		[]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32},
+		[]byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x28, 0x02, 0x00, 0x0b},
+	)
+	on, err := CompileModuleWith(computed, CompileOptions{Optimizations: map[string]bool{"value-facts": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer on.CodeImage.Close()
+	off, err := CompileModuleWith(computed, CompileOptions{Optimizations: map[string]bool{"value-facts": false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer off.CodeImage.Close()
+	if got, want := len(on.Code), len(off.Code); got != want {
+		t.Fatalf("upper-zero address code bytes = %d, want %d (without fact: %d)", got, want, len(off.Code))
+	}
+	if got, err := runArm64WrapperWithOptions(t, computed, CompileOptions{Optimizations: map[string]bool{"value-facts": true}}, 1, 2); err != nil || got != 0 {
+		t.Fatalf("computed address load = %#x, %v; want zero", got, err)
+	}
+
+	// Serialized callers may leave high bits set. Without a machine-value proof,
+	// the address canonicalization must remain even when value facts are enabled.
+	parameter := modMem(t, 1,
+		[]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32},
+		[]byte{0x00, 0x20, 0x00, 0x28, 0x02, 0x00, 0x0b},
+	)
+	paramOn, err := CompileModuleWith(parameter, CompileOptions{Optimizations: map[string]bool{"value-facts": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer paramOn.CodeImage.Close()
+	paramOff, err := CompileModuleWith(parameter, CompileOptions{Optimizations: map[string]bool{"value-facts": false}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer paramOff.CodeImage.Close()
+	if len(paramOn.Code) != len(paramOff.Code) {
+		t.Fatalf("unknown-upper address changed code bytes: with facts %d, without %d", len(paramOn.Code), len(paramOff.Code))
+	}
+	if got, err := runArm64WrapperWithOptions(t, parameter, CompileOptions{Optimizations: map[string]bool{"value-facts": true}}, uint64(1)<<32); err != nil || got != 0 {
+		t.Fatalf("non-canonical parameter address = %#x, %v; want truncated address zero", got, err)
+	}
+}
+
+func TestI32ParameterKeepsMemoryAddressCanonicalizationAcrossBlockArm64(t *testing.T) {
 	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 		0x00,       // no locals
 		0x02, 0x40, // block (forces value-specific facts off)
@@ -257,8 +303,8 @@ func TestI32LocalElidesRepeatedMemoryAddressCanonicalizationArm64(t *testing.T) 
 		return stats.Funcs[0]
 	}
 	on, off := compile(true), compile(false)
-	if got := on.Peephole["memory-address-zext-elim"]; got != 1 {
-		t.Fatalf("address zext eliminations = %d, want 1", got)
+	if got := on.Peephole["memory-address-zext-elim"]; got != 0 {
+		t.Fatalf("unproven parameter address zext eliminations = %d, want 0", got)
 	}
 	if got := off.Peephole["memory-address-zext-elim"]; got != 0 {
 		t.Fatalf("disabled address zext eliminations = %d, want 0", got)
@@ -270,5 +316,8 @@ func TestI32LocalElidesRepeatedMemoryAddressCanonicalizationArm64(t *testing.T) 
 		binary.LittleEndian.PutUint32(memory[4:], 42)
 	}); err != nil || got != 42 {
 		t.Fatalf("load(4) = %d, %v; want 42", got, err)
+	}
+	if got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: map[string]bool{"value-facts": true}}, uint64(1)<<32); err != nil || got != 0 {
+		t.Fatalf("non-canonical parameter across block = %d, %v; want address zero", got, err)
 	}
 }

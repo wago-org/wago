@@ -16,6 +16,63 @@ There are two suites:
 Benchmark results depend on the machine and its current load. Use the same
 machine and command when you compare two changes.
 
+For compiler review, pin both source commits and keep raw benchmark output,
+toolchain and CPU details, bounds mode, `GOMAXPROCS`, sample count, and run status.
+Run the full suite in both bounds modes. Include ISA cases with `-wago.bench.isa`.
+Use at least six samples for a first comparison, then repeat possible regressions
+with alternating baseline/candidate order and a longer sample time. Keep skipped
+or failed cases visible. Compare code size, heap bytes, and allocations as well
+as time. Equal code size does not establish equal bytes or equal behavior.
+Split long benchmark runs into fresh processes per group and sample so native
+code mappings can be released between groups. Use the same process boundaries
+for both revisions, and retain exit status plus peak resident memory for each run.
+Keep long-run data and tools in a persistent workspace directory, not volatile
+`/tmp` storage. Checkpoint each completed process. Preserve interrupted logs on
+resume, and refuse to combine samples from changed benchmark binaries.
+Keep generated benchmark results, profiles, logs, and archives out of source
+commits. Use an ignored local workspace for these files during a comparison.
+
+After a full qualification, a narrow allocation-only follow-up can use a bounded
+focused comparison when requested. Pin main and the qualified PR as separate
+controls, cover the affected lanes and nearby execution/compact paths, and check
+native-byte equality and correctness. Use fixed work for heap/RSS checks and
+separate timed samples for speed. State the selected cases and limits before
+running; do not silently expand into repeated full-suite runs. Such a report
+qualifies only its selected cases, not a new full-suite result.
+
+For instantiation changes, compare every plugin's time, heap bytes, and allocation
+count. Integer-ABI signature classification must not allocate or change its
+eight-parameter/two-result limits. Type-key storage uses the declared type count
+as a capacity hint, not an admission limit: exact collision checks, key order,
+growth, and final-owner cleanup must remain intact. Keep active data copies and
+their bounds checks. `BenchmarkPluginExec` manually times one fixed workload;
+increasing `-benchtime` does not lengthen it, and its printed zero allocation
+counters do not measure that workload's allocations.
+Use fixed operation counts as a separate instantiation heap check, since the
+first-instance preparation cost is spread across the calibrated iteration count.
+State timed counts separately from whole-process work. With the current `b.N`
+loops, Go first runs one calibration operation. `-benchtime=1x` reuses that
+result; a larger fixed count runs a second sample of the requested size. Thus
+`128x` reports 128 timed operations but also runs the initial operation and
+its setup. Keep that work equal on both versions. Peak process memory includes
+calibration and setup, even when the final allocation counters do not.
+For execution, convert allocation counters to per-call values only when the row
+reports `calls/batch`. `BenchmarkExecParallel` uses one call per Go benchmark
+operation; its counters must not receive that batch conversion.
+
+The optional backend memory/global type caches use at most 1 MiB per module and
+retain direct lookup for tiny or over-budget modules. Global-hint sidecars use
+the same capacity contract in serial and parallel scans; compare backing capacity
+as well as contents. Parallel merge allocates the final destination once after
+checking its byte size. Its peak includes the worker buffers and that destination.
+
+Address-fact qualification checks results and traps with `value-facts` enabled
+and disabled across calls, local storage, joins, and imported globals. Keep
+63/64/65-local coverage in both bounds modes, with integer and floating-point
+locals live across calls and joins. Adapter-cache qualification compares
+emitted bytes, branch targets, entries, and GC return metadata against uncached
+emission. Emulated ARM64 checks qualify these cases, not native ARM64 speed.
+
 ## Choose a Run
 
 ```bash

@@ -67,6 +67,24 @@ func ModuleCodeCapacity(bodyBytes, functions, expansion int) int {
 	return bodyBytes*expansion + overhead
 }
 
+// JoinedModuleCodeCapacity tightens a non-compact parallel join's speculative
+// allocation once native body sizes are known. Keep alignment space per function
+// and a small allowance for module tails. This is only an allocation hint: append
+// must still grow for any larger output. Invalid or overflowing hints retain the
+// old estimate, and a tighter hint never increases the initial allocation.
+func JoinedModuleCodeCapacity(estimate, emittedBytes, functions int) int {
+	const maxInt = int(^uint(0) >> 1)
+	const tailAllowance = 4096
+	if emittedBytes < 0 || functions < 0 || functions > (maxInt-tailAllowance)/16 {
+		return estimate
+	}
+	overhead := functions*16 + tailAllowance
+	if emittedBytes > maxInt-overhead {
+		return estimate
+	}
+	return min(estimate, emittedBytes+overhead)
+}
+
 // TaperedModuleCodeCapacity keeps the conservative small-module expansion while
 // capping how much of that headroom a large module can retain. Expansion values
 // are expressed in eighths (32 == 4x, 40 == 5x), avoiding floating point in the

@@ -646,7 +646,7 @@ func (f *fn) inLoop() bool {
 }
 
 func (f *fn) memoryAddr64(memoryIndex uint32) bool {
-	mt, ok := f.m.MemoryType(memoryIndex)
+	mt, ok := f.memoryType(memoryIndex)
 	return ok && mt.Limits.Addr64
 }
 
@@ -1183,7 +1183,10 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	// loop (WARP emitMemcpyNoBoundsCheck) — `rep movsb`'s ~30-cycle startup
 	// dominates the string-append copies AssemblyScript's __renew makes
 	// constantly; large copies keep rep movsb (ERMSB wins at size).
-	var joins []int
+	// Four exits are emitted below. Keep their patch sites on the Go stack;
+	// append still grows if a later lowering adds more exits.
+	var joinScratch [4]int
+	joins := joinScratch[:0]
 	f.a.AluRI(cmpDigit, RCX, smallBulkMax, true)
 	big := f.a.JccPlaceholder(condAE)
 

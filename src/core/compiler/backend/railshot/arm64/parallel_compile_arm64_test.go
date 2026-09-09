@@ -4,14 +4,12 @@ package arm64
 
 import (
 	"bytes"
-	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
-	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoder "github.com/wago-org/wago/src/core/encoder/arm64"
 )
@@ -133,19 +131,6 @@ func equalWorkerModuleStatsARM64(a, b *ModuleStats) bool {
 		aCopy.Funcs[i], bCopy.Funcs[i] = &aFunc, &bFunc
 	}
 	return reflect.DeepEqual(&aCopy, &bCopy)
-}
-
-func readParallelTestModuleArm64(t testing.TB, path string) *wasm.Module {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, err := frontend.DecodeValidate(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return m
 }
 
 func BenchmarkCompileModuleCompactionArm64(b *testing.B) {

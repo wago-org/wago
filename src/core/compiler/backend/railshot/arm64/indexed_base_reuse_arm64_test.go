@@ -14,6 +14,9 @@ func indexedBaseReuseModuleArm64(t testing.TB) *wasm.Module {
 	// folded indexed displacement. Assign every value so each deferred load is
 	// materialized before the next access; the final result is the eighth word.
 	body := []byte{0x01, 0x01, 0x7f}
+	// Give the stored address a machine-value proof. An incoming i32 parameter
+	// can have dirty high carrier bits and is not itself a zero-extension proof.
+	body = append(body, 0x20, 0x00, 0x41, 0x01, 0x74, 0x21, 0x00)
 	for off := byte(0); off < 32; off += 4 {
 		body = append(body, 0x20, 0x00, 0x28, 0x02, off, 0x21, 0x01)
 	}

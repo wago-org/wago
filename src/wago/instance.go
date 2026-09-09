@@ -47,6 +47,7 @@ type Instance struct {
 	gcNativeView            *gc.NativeInstanceView
 	serArgs, results, trap  []byte
 	resultVals              []uint64       // reusable Invoke result buffer (valid until the next call)
+	resultInline            [2]uint64      // small results stay with their instance, not in adjacent tiny heap objects
 	ic                      [4]invokeCache // tiny fixed export resolution cache
 	pluginGCImports         map[uint32]struct{}
 	refStore                *referenceStore

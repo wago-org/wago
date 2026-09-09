@@ -63,7 +63,7 @@ func (f *fn) globalGet(r *wasm.Reader) error {
 	if err != nil {
 		return err
 	}
-	gt, ok := f.m.GlobalTypeByIndex(x)
+	gt, ok := f.globalType(x)
 	if !ok {
 		return fmt.Errorf("arm64: unknown global %d", x)
 	}
@@ -157,7 +157,7 @@ func (f *fn) globalSet(r *wasm.Reader) error {
 		return err
 	}
 	f.invalidateBoundsCertFor(2, x)
-	gt, ok := f.m.GlobalTypeByIndex(x)
+	gt, ok := f.globalType(x)
 	if !ok {
 		return fmt.Errorf("arm64: unknown global %d", x)
 	}

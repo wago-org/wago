@@ -56,11 +56,7 @@ func (f *fn) finalizePeepholes() {
 		targets = make([]uint64, words)
 	}
 	sc.branchTargets = targets
-	fragments := finalizerFragmentCursor{fragments: sc.finalFragments}
 	for pc := 0; pc < n; pc += 4 {
-		if _, opaque := fragments.at(pc); compact && f.opaqueFragments && opaque {
-			continue
-		}
 		w := rdWord(b, pc)
 		if !compact && isIndirectBranch(w) {
 			return
@@ -177,12 +173,7 @@ func (f *fn) foldSingleBitBranches(b []byte, n int, targets []uint64) {
 // expected a branch. We prove that by collecting every PC-relative branch
 // target first and only folding pairs whose middle word is not among them.
 func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
-	compact := nativeFinalizerEnabled && f.compactNative()
-	fragments := finalizerFragmentCursor{fragments: f.scratchState().finalFragments}
 	for pc := 0; pc+8 <= n; pc += 4 {
-		if _, opaque := fragments.at(pc); compact && f.opaqueFragments && opaque {
-			continue
-		}
 		w := rdWord(b, pc)
 		cc, ok := bcondSkipOne(w) // B.cond whose displacement is exactly +2 words
 		if !ok {
@@ -226,12 +217,7 @@ func (f *fn) foldBranchPairs(b []byte, n int, targets []uint64) {
 // SP between them) and only fired when nothing branches to the load: an external
 // entrant that skipped the store must genuinely load from memory.
 func (f *fn) forwardStoreLoads(b []byte, n int, targets []uint64) {
-	compact := nativeFinalizerEnabled && f.compactNative()
-	fragments := finalizerFragmentCursor{fragments: f.scratchState().finalFragments}
 	for pc := 0; pc+8 <= n; pc += 4 {
-		if _, opaque := fragments.at(pc); compact && f.opaqueFragments && opaque {
-			continue
-		}
 		if f.forwardStoreLoadAt(b, n, pc, targets, true) {
 			pc += 4 // step past the word we just rewrote
 		}

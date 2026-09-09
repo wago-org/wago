@@ -523,6 +523,20 @@ jobs:
           echo "$out"
           test "$out" = "fib(20) = 6765"
 
+      # Debug builds alone did not expose an intermittent failure in optimized
+      # startup. Exercise the shipped optimizer/GC settings in fresh processes.
+      - name: Smoke-run optimized TinyGo release settings
+        if: matrix.cli
+        run: |
+          tinygo build -scheduler=tasks -no-debug -opt=z -gc=conservative \
+            -tags wago_runtime,wago_lean,wago_minimal -o wago-tinygo-release ./cli/wago
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            ./wago-tinygo-release --version
+            out="$(./wago-tinygo-release run --invoke fib tests/fixtures/wasm/fib.wasm 20)"
+            echo "$out"
+            test "$out" = "fib(20) = 6765"
+          done
+
   # Coverage is deliberately kept off pull requests and runs after code changes
   # land on main. The size job remains a separate pull-request and main gate.
   coverage:

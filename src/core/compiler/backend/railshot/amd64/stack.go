@@ -234,7 +234,7 @@ func (e *elem) isDeferred() bool { return e.st.kind == deferredStorageKind }
 // a chunked bump arena of elems. Each chunk is a fixed-capacity []elem that is
 // never reallocated once created, so every *elem handed out stays valid for the
 // life of the function even as the arena grows without bound. Sub-default hints
-// preserve direct doubling. At or above 256, growth fills to the next legacy
+// fill to a power-of-two total before doubling. At or above 256, growth fills to the next legacy
 // 256/512/... cumulative boundary and then resumes the capped geometric sequence,
 // so an underestimate cannot regress legacy retention. reset() reuses every chunk
 // across the module compile up to a fixed byte ceiling, so ordinary recurring
@@ -273,15 +273,13 @@ func newStackWithCap(capHint int) *stack {
 
 func stackArenaGrowthCaps(firstCap int) (next, geometric int) {
 	if firstCap < defaultStackArenaCap {
-		next = firstCap * 2
-		if next > maxStackChunkCap {
-			next = maxStackChunkCap
+		// Fill to the next power-of-two total, then double the total.
+		// A one-node underestimate must not triple retained small arenas.
+		total := minStackArenaCap
+		for total <= firstCap {
+			total *= 2
 		}
-		geometric = next * 2
-		if geometric > maxStackChunkCap {
-			geometric = maxStackChunkCap
-		}
-		return next, geometric
+		return total - firstCap, total
 	}
 	total, geometric := defaultStackArenaCap, defaultStackArenaCap*2
 	for total < firstCap {
@@ -393,16 +391,13 @@ func (s *stack) resetGrowthCaps() {
 }
 
 func stackArenaCapForBody(bodyLen, nLocals int) int {
-	return stackArenaCapForHints(bodyLen, nLocals, 0)
-}
-
-func stackArenaCapForHints(bodyLen, nLocals, nodeHint int) int {
-	// Node-count estimate used to size the first chunk so a typical function fits
-	// without advancing chunks. Historically one node per body byte; the pre-scan's
-	// opcode-based estimate avoids reserving nodes for long immediates (notably
-	// 16-byte SIMD constants). The chunked arena grows past any underestimate while
-	// preserving pointer stability, so this is a hint, not a bound.
-	return shared.StackArenaCapacity(bodyLen, nLocals, nodeHint)
+	// Most node-producing opcodes are one byte, while locals, constants, calls,
+	// memory operations, and prefixed instructions also carry immediates. One
+	// node per two body bytes is a cheap corpus-backed estimate that avoids the
+	// former per-opcode predictor. Stable chunk growth preserves correctness when
+	// an unusually dense function exceeds it.
+	nodes := bodyLen / 2
+	return nodes + nLocals/4 + 1
 }
 
 // alloc returns a fresh zeroed node from the arena. The returned pointer is

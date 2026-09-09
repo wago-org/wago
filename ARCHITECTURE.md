@@ -258,6 +258,16 @@ so the public package stays clean.
 
 ## 3. Front end — decode and validate (`src/core/compiler/wasm`)
 
+Validation can return one eight-byte fact record per local function. The record
+storage is private. Accessors return copies, and consumers must check `ValidFor`
+before use. The compile phase owns the decoded module and keeps it immutable
+until the last fact consumer finishes. Changes to a module require new validation.
+Tree-based validation does not yet gather these facts; tree or mixed modules use
+the existing exact scans. An absent analysis is not proof that a function cannot
+collect. Fast admission is limited to fully classified instruction families.
+Type-indexed control encodings record multi-value even for zero or one result.
+
+
 - `decode.go` parses the binary into a `Module` (types, funcs, tables, memory,
   globals, imports/exports, element/data segments, code bodies).
 - `validate.go` / `validate_ops.go` enforce the wasm type rules: a structured
@@ -279,6 +289,41 @@ shape, the backend then trusts it.
 ---
 
 ## 4. Back end — Valent-Block code generation (`src/core/compiler/backend/railshot`)
+
+Small operand arenas use half the body bytes plus local and immediate-free
+instruction allowances. The density counter saturates at 256 and occupies two
+padding bytes in each backend's 28-byte hint header. It is only a size hint:
+stable chunks still grow for valid code. Below 256 nodes, overflow fills to a
+power-of-two total, then doubles that total. This avoids tripling storage after
+a one-node underestimate. The existing large-arena growth and retention limits
+remain unchanged. Sparse global-hint storage uses the same power-of-two capacity
+rule in serial and parallel scans, starting at one record instead of eight.
+
+Parallel non-compact codegen sizes its final heap join from completed native
+worker bytes when that is below the original Wasm expansion estimate. Checked
+arithmetic adds per-function alignment space and a 4 KiB module-tail allowance.
+This remains a capacity hint, not an output limit: append can grow. Compact
+adapter sharing keeps its old estimate because it temporarily appends an island
+before compaction. Code layout, relocation checks, and emitted bytes are unchanged.
+Dynamic `memory.copy` lowering uses stack-backed lists for its four fixed branch
+patch sites (two per branch encoding on ARM64), with ordinary append fallback.
+
+Parallel codegen reserves at most 64 local slots per worker; a larger function
+uses the normal growth path. Parallel hint scans allocate dense global scratch
+once, then give each worker exclusive, capacity-bounded slices. Each worker has
+inline space for four eligibility frames, eight global indexes, and eight
+temporary retained global hints, with normal slice growth beyond those sizes.
+The retained spans are copied into the final detached sidecar; its serial and
+parallel capacity contract is unchanged. Both parallel compiler phases allocate
+their captured worker context once, while keeping worker scratch private.
+Temporary global offsets use the existing
+per-function hint fields until flattening; worker and event ownership retain
+full-width 32-bit indexes. This removes duplicate range storage without changing
+global ordering, feature checks, deterministic errors, or final resource counts.
+ARM64 loop-constant facts use worker-local sparse lists, merged in function order
+with the same backing-capacity contract as serial scans. Address clearing can
+only be omitted for a proven machine value. An `i32` type does not by itself prove
+that a serialized 64-bit parameter carrier has zero high bits.
 
 The backend is a **single forward pass** that fuses code generation and register
 allocation. It uses the *Valent-Block* technique from WARP: instead of emitting
@@ -521,6 +566,16 @@ same context slot.
 ---
 
 ## 12. Memory model
+
+Public invocation results stay in Go-owned memory. Up to two result slots use
+storage inside the Instance; larger signatures use an exact-sized heap slice.
+This removes a tiny allocation and keeps independently written small results
+away from adjacent instances' tiny heap objects. Returned slices still use the
+same per-instance reuse rule. They never alias mmap-backed native result bytes.
+A retained small result slice also retains its Instance; copy results that must
+outlive the next call or the instance.
+Host re-entry retains its separate save/restore buffer, and all entry, close,
+reference-token, and trap checks remain in place.
 
 Linear memory is the mmap-backed tail of JobMemory, exposed zero-copy via
 `Instance.Memory().UnsafeBytes()` — writes are visible in both directions without

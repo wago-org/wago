@@ -166,6 +166,23 @@ func TestFinalizePeepholesRecordsBranchToNextArm64(t *testing.T) {
 	}
 }
 
+func TestFinalizePeepholesSkipOpaqueFragmentsArm64(t *testing.T) {
+	beforeFinalizer, beforeCompaction := nativeFinalizerEnabled, nativeCompactionEnabled
+	nativeFinalizerEnabled, nativeCompactionEnabled = true, true
+	t.Cleanup(func() { nativeFinalizerEnabled, nativeCompactionEnabled = beforeFinalizer, beforeCompaction })
+
+	a := &a64.Asm{}
+	a.Store64(a64.X0, a64.SP, 0)
+	a.Load64(a64.X0, a64.SP, 0)
+	want := bytes.Clone(a.B)
+	sc := &scratch{asm: a, finalFragments: []finalizerFragment{{start: 0, end: uint32(len(a.B)), kind: fragmentPlugin}}}
+	f := fn{a: a, sc: sc, opaqueFragments: true}
+	f.finalizePeepholes()
+	if !bytes.Equal(a.B, want) {
+		t.Fatalf("opaque fragment rewritten: got %x, want %x", a.B, want)
+	}
+}
+
 func TestBranchTargetBitsArm64(t *testing.T) {
 	targets := make([]uint64, 65)
 	const n = 65 * 64 * 4
