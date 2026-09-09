@@ -17,7 +17,6 @@ import (
 	wazerowasi "github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
 	wazerosys "github.com/tetratelabs/wazero/sys"
 	"github.com/wago-org/wago"
-	"github.com/wago-org/wasi/p1"
 )
 
 type commandOutput struct {
@@ -172,17 +171,9 @@ func runWagoCommand(m corpusModule, compiled *wago.Compiled, stdin []byte, captu
 	if capture {
 		stdoutWriter, stderrWriter = &stdout, &stderr
 	}
-	var imports wago.Imports
-	if m.Command.Runtime == "wasi" {
-		cfg := p1.Config{
-			Args: commandArgs(m), Stdin: bytes.NewReader(stdin),
-			Stdout: stdoutWriter, Stderr: stderrWriter,
-			Now: func() int64 { return 0 },
-		}
-		if dir := commandPreopen(m); dir != "" {
-			cfg.Preopens = map[string]string{"/": dir}
-		}
-		imports = p1.Imports(cfg)
+	imports, err := commandRuntimeImports(m, stdin, stdoutWriter, stderrWriter)
+	if err != nil {
+		return commandOutput{}, err
 	}
 	in, err := wago.Instantiate(compiled, wago.InstantiateOptions{Imports: imports})
 	if err != nil {

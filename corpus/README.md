@@ -25,5 +25,7 @@ make bench-all                           # complete benchmark inventory
 To admit a workload, add its artifact, provenance, digest, and execution oracle
 to `catalog.json`, then run `make test-corpus CORPUS=<id>` and
 `make bench-check CORPUS=<id>`. Compile-only workloads must declare stages which
-exclude execution. Missing artifacts, unknown selectors, duplicate IDs, digest
-mismatches, and executable entries without an oracle fail closed.
+exclude execution. Command workloads may declare an explicit `platforms`
+allowlist when their host adapter is not portable. Missing artifacts, unknown
+selectors, duplicate IDs, digest mismatches, and executable entries without an
+oracle fail closed.

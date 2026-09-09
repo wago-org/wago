@@ -1340,6 +1340,7 @@
       ],
       "command": {
         "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
         "oracle": "self-check"
       },
@@ -1363,6 +1364,7 @@
       ],
       "command": {
         "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
         "oracle": "self-check"
       },
@@ -1386,6 +1388,7 @@
       ],
       "command": {
         "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
         "oracle": "self-check"
       },
@@ -1409,6 +1412,7 @@
       ],
       "command": {
         "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
         "oracle": "self-check"
       },
@@ -1432,6 +1436,7 @@
       ],
       "command": {
         "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
         "oracle": "self-check"
       },
@@ -1455,6 +1460,7 @@
       ],
       "command": {
         "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
         "oracle": "self-check"
       },
@@ -1478,6 +1484,7 @@
       ],
       "command": {
         "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
         "preopen": "workloads/applications/sightglass/shootout-base64/inputs",
         "inputs": {
@@ -1506,6 +1513,7 @@
       ],
       "command": {
         "runtime": "wasi",
+        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
         "export": "_start",
         "preopen": "workloads/applications/sightglass/libsodium-hash/inputs",
         "stdout_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
