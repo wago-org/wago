@@ -348,24 +348,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
-          CI_RUN_ID: ${{ needs.prepare.outputs.ci_run_id }}
-          CI_RUN_ATTEMPT: ${{ needs.prepare.outputs.ci_run_attempt }}
           RESUME_DRAFT: ${{ steps.release.outputs.resume_draft }}
           PRERELEASE: ${{ needs.prepare.outputs.prerelease }}
         run: |
-          manifest_sha=$(awk '$2 == "release-manifest.json" {print $1}' release/release-manifest.json.sha256)
           generated_notes=$(gh api --method POST \
             "repos/${{ github.repository }}/releases/generate-notes" \
             -f tag_name="$VERSION" -f target_commitish="$SOURCE_SHA" --jq .body)
-          {
-            printf 'Qualified %s release from commit `%s`.\n\n' '${{ needs.prepare.outputs.channel }}' "$SOURCE_SHA"
-            printf -- '- Source commit: `%s`\n' "$SOURCE_SHA"
-            printf -- '- Complete CI qualification: `%s/actions/runs/%s` (attempt `%s`)\n' \
-              '${{ github.server_url }}/${{ github.repository }}' "$CI_RUN_ID" "$CI_RUN_ATTEMPT"
-            printf -- '- Release manifest SHA-256: `%s`\n\n' "$manifest_sha"
-            sed -n '1,$p' .github/release-asset-naming.md
-            printf '\n%s\n' "$generated_notes"
-          } >release-notes.md
+          printf '%s\n' "$generated_notes" |
+            sed 's/^## New Contributors$/## First-time contributors/' >release-notes.md
           mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
           assets+=(release/release-manifest.json release/release-manifest.json.sha256)
           if [ "$RESUME_DRAFT" = "true" ]; then

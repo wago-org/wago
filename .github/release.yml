@@ -1,0 +1,8 @@
+changelog:
+  categories:
+    - title: New features
+      labels:
+        - enhancement
+    - title: Changelog
+      labels:
+        - "*"
