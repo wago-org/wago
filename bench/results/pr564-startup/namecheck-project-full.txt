@@ -1,0 +1,2 @@
+ok  	github.com/wago-org/wago/cli/internal/project	0.325s
+ok  	github.com/wago-org/wago/internal/namecheck	0.099s
