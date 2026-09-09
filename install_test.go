@@ -37,12 +37,12 @@ func TestShellBootstrapMatchesReleaseContract(t *testing.T) {
 	catalog := bootstrapContractCatalog{
 		latest: installbootstrap.Release{TagName: "v1.2.3", PublishedAt: "2026-08-04T00:00:00Z"},
 		releases: []installbootstrap.Release{
-			{TagName: "v0.1.0-canary.gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", PublishedAt: "2026-08-01T00:00:00Z"},
+			{TagName: "v0.1.0-canary.gaaaaaaa", PublishedAt: "2026-08-01T00:00:00Z"},
 			{TagName: "v0.1.0-beta.1", PublishedAt: "2026-08-04T00:00:00Z"},
-			{TagName: "v0.1.0-canary.gbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", PublishedAt: "2026-08-03T00:00:00Z"},
+			{TagName: "v0.1.0-canary.gbbbbbbb", PublishedAt: "2026-08-03T00:00:00Z"},
 		},
 	}
-	for _, version := range []string{"latest", "main", "beta", "v0.1.0-canary.gcccccccccccccccccccccccccccccccccccccccc"} {
+	for _, version := range []string{"latest", "main", "beta", "v0.1.0-canary.gccccccc"} {
 		t.Run(version, func(t *testing.T) {
 			wantTag, err := installbootstrap.Resolve(version, catalog)
 			if err != nil {
@@ -56,7 +56,7 @@ func TestShellBootstrapMatchesReleaseContract(t *testing.T) {
 				case "/releases/latest":
 					_, _ = fmt.Fprintf(w, "{\n  \"tag_name\": %q,\n  \"published_at\": %q\n}\n", catalog.latest.TagName, catalog.latest.PublishedAt)
 				case "/releases":
-					_, _ = fmt.Fprint(w, "[\n  {\n    \"tag_name\": \"v0.1.0-canary.gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n    \"published_at\": \"2026-08-01T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"v0.1.0-beta.1\",\n    \"published_at\": \"2026-08-04T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"v0.1.0-canary.gbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\n    \"published_at\": \"2026-08-03T00:00:00Z\"\n  }\n]\n")
+					_, _ = fmt.Fprint(w, "[\n  {\n    \"tag_name\": \"v0.1.0-canary.gaaaaaaa\",\n    \"published_at\": \"2026-08-01T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"v0.1.0-beta.1\",\n    \"published_at\": \"2026-08-04T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"v0.1.0-canary.gbbbbbbb\",\n    \"published_at\": \"2026-08-03T00:00:00Z\"\n  }\n]\n")
 				case "/download/" + wantTag + "/" + asset:
 					_, _ = w.Write(payload)
 				case "/download/" + wantTag + "/" + asset + ".sha256":
@@ -82,7 +82,7 @@ func TestShellBootstrapMatchesReleaseContract(t *testing.T) {
 func TestShellBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
 	payload := []byte("#!/bin/sh\nprintf 'native installer: %s\\n' \"$WAGO_VERSION\"\n")
 	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
-	tag := "v0.1.0-canary.gdeadbee123456789012345678901234567890123"
+	tag := "v0.1.0-canary.gdeadbee"
 	asset := "wago-installer-" + runtime.GOOS + "-" + runtime.GOARCH
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -331,7 +331,7 @@ func TestWineCmdBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
 		t.Fatal(err)
 	}
 	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
-	tag := "v0.1.0-canary.gbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	tag := "v0.1.0-canary.gbbbbbbb"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/releases":
@@ -378,7 +378,7 @@ func TestWineInstallerCompletesNativeInstallFlow(t *testing.T) {
 	}
 	managerHash := fmt.Sprintf("%x", sha256.Sum256(manager))
 	sourceArchive := makeSourceArchive(t)
-	tag := "v0.1.0-canary.gcccccccccccccccccccccccccccccccccccccccc"
+	tag := "v0.1.0-canary.gccccccc"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/download/" + tag + "/wago-windows-amd64":

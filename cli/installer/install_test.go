@@ -161,13 +161,13 @@ func TestInstallerDownloadsExactCanonicalRollingManager(t *testing.T) {
 		switch r.URL.Path {
 		case "/releases":
 			_, _ = fmt.Fprintf(w, `[
-  {"tag_name":"v0.1.0-canary.gdeadbee123456789012345678901234567890123","target_commitish":%q,"published_at":"2026-08-05T00:00:00Z","draft":true},
-  {"tag_name":"v0.1.0-canary.gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","target_commitish":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","published_at":"2026-08-04T00:00:00Z"},
-  {"tag_name":"v0.1.0-canary.gdeadbee123456789012345678901234567890123","target_commitish":%q,"published_at":"2026-08-03T00:00:00Z"}
+  {"tag_name":"v0.1.0-canary.gdeadbee","target_commitish":%q,"published_at":"2026-08-05T00:00:00Z","draft":true},
+  {"tag_name":"v0.1.0-canary.gaaaaaaa","target_commitish":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","published_at":"2026-08-04T00:00:00Z"},
+  {"tag_name":"v0.1.0-canary.gdeadbee","target_commitish":%q,"published_at":"2026-08-03T00:00:00Z"}
 ]`, sha, sha)
-		case "/download/v0.1.0-canary.gdeadbee123456789012345678901234567890123/" + asset:
+		case "/download/v0.1.0-canary.gdeadbee/" + asset:
 			_, _ = w.Write(payload)
-		case "/download/v0.1.0-canary.gdeadbee123456789012345678901234567890123/" + asset + ".sha256":
+		case "/download/v0.1.0-canary.gdeadbee/" + asset + ".sha256":
 			_, _ = fmt.Fprintf(w, "%s  %s\n", hash, asset)
 		default:
 			http.NotFound(w, r)
@@ -192,7 +192,7 @@ func TestInstallerDownloadsExactCanonicalRollingManager(t *testing.T) {
 	if got, err := os.ReadFile(target); err != nil || !bytes.Equal(got, payload) {
 		t.Fatalf("manager = %q, %v", got, err)
 	}
-	if installer.managerTag != "v0.1.0-canary.gdeadbee123456789012345678901234567890123" || !installer.managerFromRelease {
+	if installer.managerTag != "v0.1.0-canary.gdeadbee" || !installer.managerFromRelease {
 		t.Fatalf("manager resolution = %q, %v", installer.managerTag, installer.managerFromRelease)
 	}
 }
@@ -222,13 +222,13 @@ func TestInstallerCanonicalRollingManagerResolutionPaginates(t *testing.T) {
 			_, _ = fmt.Fprint(w, "]")
 			return
 		}
-		_, _ = fmt.Fprintf(w, `[{"tag_name":"v0.1.0-canary.gdeadbee123456789012345678901234567890123","target_commitish":%q,"published_at":"2026-08-03T00:00:00Z"}]`, sha)
+		_, _ = fmt.Fprintf(w, `[{"tag_name":"v0.1.0-canary.gdeadbee","target_commitish":%q,"published_at":"2026-08-03T00:00:00Z"}]`, sha)
 	}))
 	defer server.Close()
 
 	i := &installer{releaseAPI: server.URL + "/releases?scope=installer&per_page=1&page=99", httpClient: server.Client()}
 	tag, _, err := i.resolveReleaseForTest("canary@" + sha)
-	if err != nil || tag != "v0.1.0-canary.gdeadbee123456789012345678901234567890123" {
+	if err != nil || tag != "v0.1.0-canary.gdeadbee" {
 		t.Fatalf("resolve canonical manager = %q, %v", tag, err)
 	}
 	if requests != 2 {
@@ -458,12 +458,12 @@ func TestInstallerDownloadsNewestChannelManager(t *testing.T) {
 		switch r.URL.Path {
 		case "/releases":
 			_, _ = fmt.Fprint(w, `[
-  {"tag_name":"v0.1.0-canary.gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","published_at":"2026-01-01T00:00:00Z"},
-  {"tag_name":"v0.1.0-canary.gdeadbee123456789012345678901234567890123","published_at":"2026-08-03T00:00:00Z"}
+  {"tag_name":"v0.1.0-canary.gaaaaaaa","published_at":"2026-01-01T00:00:00Z"},
+  {"tag_name":"v0.1.0-canary.gdeadbee","published_at":"2026-08-03T00:00:00Z"}
 ]`)
-		case "/download/v0.1.0-canary.gdeadbee123456789012345678901234567890123/" + asset:
+		case "/download/v0.1.0-canary.gdeadbee/" + asset:
 			_, _ = w.Write(payload)
-		case "/download/v0.1.0-canary.gdeadbee123456789012345678901234567890123/" + asset + ".sha256":
+		case "/download/v0.1.0-canary.gdeadbee/" + asset + ".sha256":
 			_, _ = fmt.Fprintf(w, "%s  %s\n", hash, asset)
 		default:
 			http.NotFound(w, r)
@@ -488,7 +488,7 @@ func TestInstallerDownloadsNewestChannelManager(t *testing.T) {
 	if got, err := os.ReadFile(target); err != nil || !bytes.Equal(got, payload) {
 		t.Fatalf("manager = %q, %v", got, err)
 	}
-	if installer.managerTag != "v0.1.0-canary.gdeadbee123456789012345678901234567890123" || !installer.managerFromRelease {
+	if installer.managerTag != "v0.1.0-canary.gdeadbee" || !installer.managerFromRelease {
 		t.Fatalf("manager resolution = %q, %v", installer.managerTag, installer.managerFromRelease)
 	}
 }
@@ -686,7 +686,7 @@ func assertInstallerTranscript(t *testing.T, reinstall bool) {
 	}
 	fmt.Fprintln(&output)
 	statuses := []string{
-		"Downloaded Wago manager v0.1.0-canary.gdeadbee123456789012345678901234567890123",
+		"Downloaded Wago manager v0.1.0-canary.gdeadbee",
 		"Fetched Wago source",
 	}
 	if reinstall {
@@ -712,7 +712,7 @@ func assertInstallerTranscript(t *testing.T, reinstall bool) {
 		installer.offerCompletions(installed, configFile)
 	}
 	installer.offerPathRefresh(configFile)
-	installer.finish("v0.1.0-canary.gdeadbee123456789012345678901234567890123", installed, pathReady, configFile)
+	installer.finish("v0.1.0-canary.gdeadbee", installed, pathReady, configFile)
 
 	separator := string(os.PathSeparator)
 	command := "~" + separator + ".wago" + separator + "bin" + separator + executableName("wago")
@@ -722,7 +722,7 @@ func assertInstallerTranscript(t *testing.T, reinstall bool) {
 		want += "Reinstall method: Full\n"
 	}
 	want += "\n" +
-		"✓ Downloaded Wago manager v0.1.0-canary.gdeadbee123456789012345678901234567890123\n" +
+		"✓ Downloaded Wago manager v0.1.0-canary.gdeadbee\n" +
 		"✓ Fetched Wago source\n"
 	if reinstall {
 		want += "✓ Cleaned existing Wago installation\n"
@@ -735,14 +735,14 @@ func assertInstallerTranscript(t *testing.T, reinstall bool) {
 		want += "Add Wago to PATH? Yes\n" +
 			"✓ Added Wago to PATH\n\n" +
 			"Refresh PATH now? Yes\n\n" +
-			"Sweet, Wago v0.1.0-canary.gdeadbee123456789012345678901234567890123 is ready at " + command + "\n"
+			"Sweet, Wago v0.1.0-canary.gdeadbee is ready at " + command + "\n"
 	} else {
 		want += "Add Wago to PATH in ~/.zshrc? Yes\n" +
 			"✓ Added Wago to PATH\n\n" +
 			"Enable zsh completions? Yes\n" +
 			"✓ Enabled zsh completions\n\n" +
 			"Refresh PATH now? Yes\n\n" +
-			"Sweet, Wago v0.1.0-canary.gdeadbee123456789012345678901234567890123 is ready at " + command + "\n"
+			"Sweet, Wago v0.1.0-canary.gdeadbee is ready at " + command + "\n"
 	}
 	want += "\nNow, install the Wago version you want:\n\n" +
 		"wago version install\n"
@@ -766,8 +766,8 @@ func TestInstallerWarmFinishAfterPathSetup(t *testing.T) {
 	}
 	installer.pathAdded = true
 	installed := filepath.Join(home, ".wago", "bin", "wago")
-	installer.finish("v0.1.0-canary.gdeadbee123456789012345678901234567890123", installed, true, filepath.Join(home, ".zshrc"))
-	want := "\nSweet, Wago v0.1.0-canary.gdeadbee123456789012345678901234567890123 is ready at ~/.wago/bin/wago\n\n" +
+	installer.finish("v0.1.0-canary.gdeadbee", installed, true, filepath.Join(home, ".zshrc"))
+	want := "\nSweet, Wago v0.1.0-canary.gdeadbee is ready at ~/.wago/bin/wago\n\n" +
 		"Open a new terminal or run:\n\n" +
 		"source ~/.zshrc\n\n" +
 		"Then install the Wago version you want:\n\n" +
@@ -791,9 +791,9 @@ func TestInstallerFinishWhenPathIsAlreadyReady(t *testing.T) {
 		t.Fatal(err)
 	}
 	installed := filepath.Join(binDir, executableName("wago"))
-	installer.finish("v0.1.0-canary.gdeadbee123456789012345678901234567890123", installed, true, "")
+	installer.finish("v0.1.0-canary.gdeadbee", installed, true, "")
 	separator := string(os.PathSeparator)
-	want := "\nSweet, Wago v0.1.0-canary.gdeadbee123456789012345678901234567890123 is ready at ~" + separator + ".wago" + separator + "bin" + separator + executableName("wago") + "\n\n" +
+	want := "\nSweet, Wago v0.1.0-canary.gdeadbee is ready at ~" + separator + ".wago" + separator + "bin" + separator + executableName("wago") + "\n\n" +
 		"Now, install the Wago version you want:\n\n" +
 		"wago version install\n"
 	if got := output.String(); got != want {

@@ -4,9 +4,9 @@ import "testing"
 
 func TestChannelPreservesReleaseTrack(t *testing.T) {
 	tests := map[string]string{
-		"canary": "canary",
-		"v0.1.0-canary.g7d8c58a000000000000000000000000000000000": "canary",
-		"canary@7d8c58a000000000000000000000000000000000":         "canary",
+		"canary":                 "canary",
+		"v0.1.0-canary.g7d8c58a": "canary",
+		"canary@7d8c58a000000000000000000000000000000000": "canary",
 		"beta":          "beta",
 		"v0.1.0-beta.2": "beta",
 		"beta@7d8c58a000000000000000000000000000000000": "beta",

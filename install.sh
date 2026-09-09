@@ -48,7 +48,7 @@ release_tag_from_json() {
 			sub(/^.*"published_at"[[:space:]]*:[[:space:]]*"/, "", line)
 			sub(/".*$/, "", line)
 			matches = (channel == "beta" && tag ~ /^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$/) || \
-				(channel == "canary" && tag ~ /^v[0-9]+\.[0-9]+\.[0-9]+-canary\.g[0-9a-f]{40}$/)
+				(channel == "canary" && tag ~ /^v[0-9]+\.[0-9]+\.[0-9]+-canary\.g[0-9a-f]{7}$/)
 			if (matches && (best == "" || line > best)) {
 				best = line
 				best_tag = tag

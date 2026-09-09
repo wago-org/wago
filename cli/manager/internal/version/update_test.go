@@ -18,7 +18,7 @@ func TestInstalledCommitMatchesOnlyCanonicalHashes(t *testing.T) {
 	previous := runtimeVersionOutput
 	t.Cleanup(func() { runtimeVersionOutput = previous })
 	runtimeVersionOutput = func(string) ([]byte, error) {
-		return []byte("Wago\n  release      v0.1.0-canary.gdeadbee123456789012345678901234567890123\n"), nil
+		return []byte("Wago\n  release      v0.1.0-canary.gdeadbee\n"), nil
 	}
 	if installedCommitMatches(runtime, "canary@deadbee123456789012345678901234567890123") {
 		t.Fatal("legacy abbreviated canary hash was treated as canonical")
@@ -58,7 +58,7 @@ func TestRollingCommitIdentityRequiresCanonicalSHA(t *testing.T) {
 		{"v0.1.0-beta.1@cafef00123456789012345678901234567890123", "beta", "cafef00123456789012345678901234567890123", true},
 		{" CANARY@DEADBEE123456789012345678901234567890123 ", "canary", "deadbee123456789012345678901234567890123", true},
 		{"canary@deadbee123456789012345678901234567890123@junk", "", "", false},
-		{"v0.1.0-canary.gdeadbee123456789012345678901234567890123", "", "", false},
+		{"v0.1.0-canary.gdeadbee", "", "", false},
 		{"v0.1.0-beta.1", "", "", false},
 		{"v0.2.0", "", "", false},
 	} {

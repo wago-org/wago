@@ -4,7 +4,7 @@
 
 - `canary` resolves the newest successful main build. Canary releases use an
   immutable SemVer tag such as
-  `v0.1.0-canary.g<40-character-commit-sha>`.
+  `v0.1.0-canary.g<7-character-commit-sha>`.
 - `beta` resolves the newest manually qualified beta, such as
   `v0.1.0-beta.1`.
 - `latest` resolves the newest stable `vMAJOR.MINOR.PATCH` release.
