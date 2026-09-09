@@ -129,7 +129,8 @@ See the [feature matrix](FEATURES.md) for exact coverage.
 [Benchmarks](bench/README.md) ·
 [Roadmap](ROADMAP.md) ·
 [Contributing](CONTRIBUTING.md) ·
-[Issues](https://github.com/wago-org/wago/issues)
+[Issues](https://github.com/wago-org/wago/issues) ·
+[Sponsor us!](https://github.com/sponsors/JairusSW)
 
 ## License
 
