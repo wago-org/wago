@@ -7,6 +7,9 @@ host-boundary shape and runtime ABI are derived from
 [WARP](https://github.com/wago-org/warp), a C++ single-pass wasm engine maintained
 as a separate repository.
 
+The amd64 GP allocator must only spill GP values. Scalar float, SIMD, and
+custom XMM values use a separate register bank, even when register numbers match.
+
 ## Start here
 
 Wago processes a module in five steps: **decode**, **validate**, **compile**,
