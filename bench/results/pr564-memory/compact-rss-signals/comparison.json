@@ -1,0 +1,10082 @@
+[
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/tiny",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 118614,
+    "candidate": 127922,
+    "delta": 7.847303016507334,
+    "p": 0.9372294372294372,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      118594,
+      118634,
+      114487,
+      129826,
+      135486,
+      117392
+    ],
+    "candidateValues": [
+      101102,
+      152800,
+      110479,
+      127932,
+      133983,
+      127912
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/tiny",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 118614,
+    "candidate": 130021.5,
+    "delta": 9.617330163387127,
+    "p": 0.30952380952380953,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      118594,
+      118634,
+      114487,
+      129826,
+      135486,
+      117392
+    ],
+    "candidateValues": [
+      127712,
+      114317,
+      129195,
+      130848,
+      147760,
+      144063
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/tiny",
+    "unit": "B/op",
+    "label": "before",
+    "base": 10784,
+    "candidate": 10784,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      10784,
+      10784,
+      10784,
+      10784,
+      10784,
+      10784
+    ],
+    "candidateValues": [
+      10784,
+      10784,
+      10784,
+      10784,
+      10784,
+      10784
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/tiny",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 10784,
+    "candidate": 10784,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      10784,
+      10784,
+      10784,
+      10784,
+      10784,
+      10784
+    ],
+    "candidateValues": [
+      10784,
+      10784,
+      10784,
+      10784,
+      10784,
+      10784
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/tiny",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 27,
+    "candidate": 27,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      27,
+      27,
+      27,
+      27,
+      27,
+      27
+    ],
+    "candidateValues": [
+      27,
+      27,
+      27,
+      27,
+      27,
+      27
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/tiny",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 27,
+    "candidate": 27,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      27,
+      27,
+      27,
+      27,
+      27,
+      27
+    ],
+    "candidateValues": [
+      27,
+      27,
+      27,
+      27,
+      27,
+      27
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fib_iter",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 53972.5,
+    "candidate": 56492.5,
+    "delta": 4.66904442076983,
+    "p": 0.6991341991341992,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      46589,
+      42721,
+      61356,
+      41729,
+      64893,
+      62999
+    ],
+    "candidateValues": [
+      58491,
+      50305,
+      56227,
+      56758,
+      57569,
+      41077
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fib_iter",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 53972.5,
+    "candidate": 56221,
+    "delta": 4.166010468294035,
+    "p": 0.8181818181818182,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      46589,
+      42721,
+      61356,
+      41729,
+      64893,
+      62999
+    ],
+    "candidateValues": [
+      68309,
+      42821,
+      55174,
+      59332,
+      49864,
+      57268
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fib_iter",
+    "unit": "B/op",
+    "label": "before",
+    "base": 13184,
+    "candidate": 12672,
+    "delta": -3.8834951456310662,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      13184,
+      13184,
+      13184,
+      13184,
+      13184,
+      13184
+    ],
+    "candidateValues": [
+      12672,
+      12672,
+      12672,
+      12672,
+      12672,
+      12672
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fib_iter",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 13184,
+    "candidate": 12672,
+    "delta": -3.8834951456310662,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      13184,
+      13184,
+      13184,
+      13184,
+      13184,
+      13184
+    ],
+    "candidateValues": [
+      12672,
+      12672,
+      12672,
+      12672,
+      12672,
+      12672
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fib_iter",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 28,
+    "candidate": 28,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28,
+      28,
+      28,
+      28,
+      28,
+      28
+    ],
+    "candidateValues": [
+      28,
+      28,
+      28,
+      28,
+      28,
+      28
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fib_iter",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 28,
+    "candidate": 28,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28,
+      28,
+      28,
+      28,
+      28,
+      28
+    ],
+    "candidateValues": [
+      28,
+      28,
+      28,
+      28,
+      28,
+      28
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fib_rec",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 57554,
+    "candidate": 53165.5,
+    "delta": -7.625013031240224,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      58220,
+      74390,
+      42651,
+      65835,
+      52930,
+      56888
+    ],
+    "candidateValues": [
+      59613,
+      42280,
+      62799,
+      41729,
+      49253,
+      57078
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fib_rec",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 57554,
+    "candidate": 54307.5,
+    "delta": -5.640789519407862,
+    "p": 0.48484848484848486,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      58220,
+      74390,
+      42651,
+      65835,
+      52930,
+      56888
+    ],
+    "candidateValues": [
+      62478,
+      57469,
+      39275,
+      51146,
+      60595,
+      48051
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fib_rec",
+    "unit": "B/op",
+    "label": "before",
+    "base": 13264,
+    "candidate": 12496,
+    "delta": -5.79010856453559,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      13264,
+      13264,
+      13264,
+      13264,
+      13264,
+      13264
+    ],
+    "candidateValues": [
+      12496,
+      12496,
+      12496,
+      12496,
+      12496,
+      12496
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fib_rec",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 13264,
+    "candidate": 12496,
+    "delta": -5.79010856453559,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      13264,
+      13264,
+      13264,
+      13264,
+      13264,
+      13264
+    ],
+    "candidateValues": [
+      12496,
+      12496,
+      12496,
+      12496,
+      12496,
+      12496
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fib_rec",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 37,
+    "candidate": 37,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      37,
+      37,
+      37,
+      37,
+      37,
+      37
+    ],
+    "candidateValues": [
+      37,
+      37,
+      37,
+      37,
+      37,
+      37
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fib_rec",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 37,
+    "candidate": 37,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      37,
+      37,
+      37,
+      37,
+      37,
+      37
+    ],
+    "candidateValues": [
+      37,
+      37,
+      37,
+      37,
+      37,
+      37
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/arith",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 52118.5,
+    "candidate": 47204,
+    "delta": -9.429473219682071,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      42911,
+      47650,
+      59282,
+      56587,
+      46037,
+      57058
+    ],
+    "candidateValues": [
+      49383,
+      41228,
+      54773,
+      41349,
+      58591,
+      45025
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/arith",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 52118.5,
+    "candidate": 43322,
+    "delta": -16.87788405268763,
+    "p": 0.09307359307359307,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      42911,
+      47650,
+      59282,
+      56587,
+      46037,
+      57058
+    ],
+    "candidateValues": [
+      48812,
+      37622,
+      52480,
+      36169,
+      40697,
+      45947
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/arith",
+    "unit": "B/op",
+    "label": "before",
+    "base": 27456,
+    "candidate": 12864,
+    "delta": -53.14685314685315,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      27456,
+      27456,
+      27456,
+      27456,
+      27456,
+      27456
+    ],
+    "candidateValues": [
+      12864,
+      12864,
+      12864,
+      12864,
+      12864,
+      12864
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/arith",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 27456,
+    "candidate": 12864,
+    "delta": -53.14685314685315,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      27456,
+      27456,
+      27456,
+      27456,
+      27456,
+      27456
+    ],
+    "candidateValues": [
+      12864,
+      12864,
+      12864,
+      12864,
+      12864,
+      12864
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/arith",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 27,
+    "candidate": 27,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      27,
+      27,
+      27,
+      27,
+      27,
+      27
+    ],
+    "candidateValues": [
+      27,
+      27,
+      27,
+      27,
+      27,
+      27
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/arith",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 27,
+    "candidate": 27,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      27,
+      27,
+      27,
+      27,
+      27,
+      27
+    ],
+    "candidateValues": [
+      27,
+      27,
+      27,
+      27,
+      27,
+      27
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/float",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 42741,
+    "candidate": 44714.5,
+    "delta": 4.617346341919926,
+    "p": 0.9372294372294372,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      42200,
+      38553,
+      54684,
+      43162,
+      75403,
+      42320
+    ],
+    "candidateValues": [
+      59092,
+      38103,
+      37641,
+      43542,
+      45887,
+      48772
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/float",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 42741,
+    "candidate": 50029.5,
+    "delta": 17.052712851828456,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      42200,
+      38553,
+      54684,
+      43162,
+      75403,
+      42320
+    ],
+    "candidateValues": [
+      51397,
+      39334,
+      73710,
+      48662,
+      47099,
+      246297
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/float",
+    "unit": "B/op",
+    "label": "before",
+    "base": 28048,
+    "candidate": 13456,
+    "delta": -52.02509982886481,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28048,
+      28048,
+      28048,
+      28048,
+      28048,
+      28048
+    ],
+    "candidateValues": [
+      13456,
+      13456,
+      13456,
+      13456,
+      13456,
+      13456
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/float",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 28048,
+    "candidate": 13456,
+    "delta": -52.02509982886481,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28048,
+      28048,
+      28048,
+      28048,
+      28048,
+      28048
+    ],
+    "candidateValues": [
+      13456,
+      13456,
+      13456,
+      13456,
+      13456,
+      13456
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/float",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 41,
+    "candidate": 41,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      41,
+      41,
+      41,
+      41,
+      41,
+      41
+    ],
+    "candidateValues": [
+      41,
+      41,
+      41,
+      41,
+      41,
+      41
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/float",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 41,
+    "candidate": 41,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      41,
+      41,
+      41,
+      41,
+      41,
+      41
+    ],
+    "candidateValues": [
+      41,
+      41,
+      41,
+      41,
+      41,
+      41
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/memory",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 47720.5,
+    "candidate": 51222,
+    "delta": 7.337517419138528,
+    "p": 0.30952380952380953,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      48141,
+      45366,
+      47300,
+      61516,
+      47209,
+      49594
+    ],
+    "candidateValues": [
+      50826,
+      51618,
+      63651,
+      54193,
+      43943,
+      48362
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/memory",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 47720.5,
+    "candidate": 45766.5,
+    "delta": -4.09467629215955,
+    "p": 0.5887445887445888,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      48141,
+      45366,
+      47300,
+      61516,
+      47209,
+      49594
+    ],
+    "candidateValues": [
+      48231,
+      57669,
+      51217,
+      38613,
+      43302,
+      40556
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/memory",
+    "unit": "B/op",
+    "label": "before",
+    "base": 13584,
+    "candidate": 12688,
+    "delta": -6.595995288574796,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      13584,
+      13584,
+      13584,
+      13584,
+      13584,
+      13584
+    ],
+    "candidateValues": [
+      12688,
+      12688,
+      12688,
+      12688,
+      12688,
+      12688
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/memory",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 13584,
+    "candidate": 12688,
+    "delta": -6.595995288574796,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      13584,
+      13584,
+      13584,
+      13584,
+      13584,
+      13584
+    ],
+    "candidateValues": [
+      12688,
+      12688,
+      12688,
+      12688,
+      12688,
+      12688
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/memory",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 34,
+    "candidate": 34,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      34,
+      34,
+      34,
+      34,
+      34,
+      34
+    ],
+    "candidateValues": [
+      34,
+      34,
+      34,
+      34,
+      34,
+      34
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/memory",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 34,
+    "candidate": 34,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      34,
+      34,
+      34,
+      34,
+      34,
+      34
+    ],
+    "candidateValues": [
+      34,
+      34,
+      34,
+      34,
+      34,
+      34
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/memory_tree",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 56061,
+    "candidate": 53085,
+    "delta": -5.308503237544815,
+    "p": 0.48484848484848486,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      54032,
+      80954,
+      50055,
+      54623,
+      58210,
+      57499
+    ],
+    "candidateValues": [
+      51497,
+      54673,
+      57178,
+      77557,
+      50225,
+      49384
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/memory_tree",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 56061,
+    "candidate": 54343,
+    "delta": -3.0645190060826555,
+    "p": 0.6991341991341992,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      54032,
+      80954,
+      50055,
+      54623,
+      58210,
+      57499
+    ],
+    "candidateValues": [
+      53441,
+      50225,
+      59242,
+      57970,
+      53081,
+      55245
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/memory_tree",
+    "unit": "B/op",
+    "label": "before",
+    "base": 28448,
+    "candidate": 16928,
+    "delta": -40.4949381327334,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28448,
+      28448,
+      28448,
+      28448,
+      28448,
+      28448
+    ],
+    "candidateValues": [
+      16928,
+      16928,
+      16928,
+      16928,
+      16928,
+      16928
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/memory_tree",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 28448,
+    "candidate": 16928,
+    "delta": -40.4949381327334,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28448,
+      28448,
+      28448,
+      28448,
+      28448,
+      28448
+    ],
+    "candidateValues": [
+      16928,
+      16928,
+      16928,
+      16928,
+      16928,
+      16928
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/memory_tree",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 51,
+    "candidate": 51,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      51,
+      51,
+      51,
+      51,
+      51,
+      51
+    ],
+    "candidateValues": [
+      51,
+      51,
+      51,
+      51,
+      51,
+      51
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/memory_tree",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 51,
+    "candidate": 51,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      51,
+      51,
+      51,
+      51,
+      51,
+      51
+    ],
+    "candidateValues": [
+      51,
+      51,
+      51,
+      51,
+      51,
+      51
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/globals",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 46408,
+    "candidate": 48928,
+    "delta": 5.430098258920868,
+    "p": 0.8181818181818182,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      67448,
+      65875,
+      46238,
+      37040,
+      46578,
+      37371
+    ],
+    "candidateValues": [
+      48873,
+      48983,
+      61326,
+      50826,
+      37912,
+      41449
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/globals",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 46408,
+    "candidate": 41900,
+    "delta": -9.713842440958453,
+    "p": 0.5887445887445888,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      67448,
+      65875,
+      46238,
+      37040,
+      46578,
+      37371
+    ],
+    "candidateValues": [
+      42040,
+      40516,
+      39855,
+      44975,
+      47810,
+      41760
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/globals",
+    "unit": "B/op",
+    "label": "before",
+    "base": 13672,
+    "candidate": 12904,
+    "delta": -5.617320070216502,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      13672,
+      13672,
+      13672,
+      13672,
+      13672,
+      13672
+    ],
+    "candidateValues": [
+      12904,
+      12904,
+      12904,
+      12904,
+      12904,
+      12904
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/globals",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 13672,
+    "candidate": 12904,
+    "delta": -5.617320070216502,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      13672,
+      13672,
+      13672,
+      13672,
+      13672,
+      13672
+    ],
+    "candidateValues": [
+      12904,
+      12904,
+      12904,
+      12904,
+      12904,
+      12904
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/globals",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 40,
+    "candidate": 40,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      40,
+      40,
+      40,
+      40,
+      40,
+      40
+    ],
+    "candidateValues": [
+      40,
+      40,
+      40,
+      40,
+      40,
+      40
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/globals",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 40,
+    "candidate": 40,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      40,
+      40,
+      40,
+      40,
+      40,
+      40
+    ],
+    "candidateValues": [
+      40,
+      40,
+      40,
+      40,
+      40,
+      40
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/dispatch",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 49083.5,
+    "candidate": 55320,
+    "delta": 12.705899131072563,
+    "p": 0.30952380952380953,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      62297,
+      43462,
+      44514,
+      49404,
+      48763,
+      50505
+    ],
+    "candidateValues": [
+      70443,
+      61006,
+      44644,
+      44985,
+      49634,
+      70914
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/dispatch",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 49083.5,
+    "candidate": 47650.5,
+    "delta": -2.9195147045341097,
+    "p": 0.8181818181818182,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      62297,
+      43462,
+      44514,
+      49404,
+      48763,
+      50505
+    ],
+    "candidateValues": [
+      45176,
+      45236,
+      43883,
+      62258,
+      50065,
+      72928
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/dispatch",
+    "unit": "B/op",
+    "label": "before",
+    "base": 11304,
+    "candidate": 11288,
+    "delta": -0.14154281670205604,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      11304,
+      11304,
+      11304,
+      11304,
+      11304,
+      11304
+    ],
+    "candidateValues": [
+      11288,
+      11288,
+      11288,
+      11288,
+      11288,
+      11288
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/dispatch",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 11304,
+    "candidate": 11288,
+    "delta": -0.14154281670205604,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      11304,
+      11304,
+      11304,
+      11304,
+      11304,
+      11304
+    ],
+    "candidateValues": [
+      11288,
+      11288,
+      11288,
+      11288,
+      11288,
+      11288
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/dispatch",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 43,
+    "candidate": 43,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ],
+    "candidateValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/dispatch",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 43,
+    "candidate": 43,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ],
+    "candidateValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/branches",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 32130.5,
+    "candidate": 36804.5,
+    "delta": 14.546925818147871,
+    "p": 0.5887445887445888,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      33022,
+      51738,
+      31239,
+      34495,
+      30137,
+      29986
+    ],
+    "candidateValues": [
+      38673,
+      38954,
+      31209,
+      39154,
+      28274,
+      34936
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/branches",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 32130.5,
+    "candidate": 31715.5,
+    "delta": -1.2916076625013595,
+    "p": 0.9372294372294372,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      33022,
+      51738,
+      31239,
+      34495,
+      30137,
+      29986
+    ],
+    "candidateValues": [
+      30338,
+      30929,
+      35207,
+      32502,
+      45426,
+      29566
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/branches",
+    "unit": "B/op",
+    "label": "before",
+    "base": 13248,
+    "candidate": 12224,
+    "delta": -7.729468599033817,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      13248,
+      13248,
+      13248,
+      13248,
+      13248,
+      13248
+    ],
+    "candidateValues": [
+      12224,
+      12224,
+      12224,
+      12224,
+      12224,
+      12224
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/branches",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 13248,
+    "candidate": 12224,
+    "delta": -7.729468599033817,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      13248,
+      13248,
+      13248,
+      13248,
+      13248,
+      13248
+    ],
+    "candidateValues": [
+      12224,
+      12224,
+      12224,
+      12224,
+      12224,
+      12224
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/branches",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 25,
+    "candidate": 25,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      25,
+      25,
+      25,
+      25,
+      25,
+      25
+    ],
+    "candidateValues": [
+      25,
+      25,
+      25,
+      25,
+      25,
+      25
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/branches",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 25,
+    "candidate": 25,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      25,
+      25,
+      25,
+      25,
+      25,
+      25
+    ],
+    "candidateValues": [
+      25,
+      25,
+      25,
+      25,
+      25,
+      25
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/many_funcs",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 342198,
+    "candidate": 319459.5,
+    "delta": -6.644837199516074,
+    "p": 0.24025974025974026,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      336097,
+      340004,
+      339684,
+      539713,
+      360382,
+      344392
+    ],
+    "candidateValues": [
+      307903,
+      328291,
+      308956,
+      445364,
+      310628,
+      451165
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/many_funcs",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 342198,
+    "candidate": 335506,
+    "delta": -1.9555929608004674,
+    "p": 0.24025974025974026,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      336097,
+      340004,
+      339684,
+      539713,
+      360382,
+      344392
+    ],
+    "candidateValues": [
+      430876,
+      314095,
+      317942,
+      339053,
+      348329,
+      331959
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/many_funcs",
+    "unit": "B/op",
+    "label": "before",
+    "base": 53224,
+    "candidate": 52968,
+    "delta": -0.48098602134375446,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      53224,
+      53224,
+      53224,
+      53224,
+      53224,
+      53224
+    ],
+    "candidateValues": [
+      52968,
+      52968,
+      52968,
+      52968,
+      52968,
+      52968
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/many_funcs",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 53224,
+    "candidate": 52968,
+    "delta": -0.48098602134375446,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      53224,
+      53224,
+      53224,
+      53224,
+      53224,
+      53224
+    ],
+    "candidateValues": [
+      52968,
+      52968,
+      52968,
+      52968,
+      52968,
+      52968
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/many_funcs",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 39,
+    "candidate": 39,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ],
+    "candidateValues": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/many_funcs",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 39,
+    "candidate": 39,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ],
+    "candidateValues": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/linked_list",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 42961.5,
+    "candidate": 62498.5,
+    "delta": 45.47560024673254,
+    "p": 0.48484848484848486,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      40527,
+      40476,
+      40627,
+      61176,
+      76845,
+      45296
+    ],
+    "candidateValues": [
+      59703,
+      68590,
+      49143,
+      39084,
+      65294,
+      65875
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/linked_list",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 42961.5,
+    "candidate": 40246,
+    "delta": -6.320775578133908,
+    "p": 0.13203463203463203,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      40527,
+      40476,
+      40627,
+      61176,
+      76845,
+      45296
+    ],
+    "candidateValues": [
+      40526,
+      39966,
+      38924,
+      40998,
+      56808,
+      39916
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/linked_list",
+    "unit": "B/op",
+    "label": "before",
+    "base": 16816,
+    "candidate": 14896,
+    "delta": -11.41769743101808,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      16816,
+      16816,
+      16816,
+      16816,
+      16816,
+      16816
+    ],
+    "candidateValues": [
+      14896,
+      14896,
+      14896,
+      14896,
+      14896,
+      14896
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/linked_list",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 16816,
+    "candidate": 14896,
+    "delta": -11.41769743101808,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      16816,
+      16816,
+      16816,
+      16816,
+      16816,
+      16816
+    ],
+    "candidateValues": [
+      14896,
+      14896,
+      14896,
+      14896,
+      14896,
+      14896
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/linked_list",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 38,
+    "candidate": 38,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      38,
+      38,
+      38,
+      38,
+      38,
+      38
+    ],
+    "candidateValues": [
+      38,
+      38,
+      38,
+      38,
+      38,
+      38
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/linked_list",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 38,
+    "candidate": 38,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      38,
+      38,
+      38,
+      38,
+      38,
+      38
+    ],
+    "candidateValues": [
+      38,
+      38,
+      38,
+      38,
+      38,
+      38
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/mandelbrot",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 47605.5,
+    "candidate": 53150.5,
+    "delta": 11.647813803026953,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      44925,
+      44956,
+      70894,
+      50255,
+      53932,
+      44044
+    ],
+    "candidateValues": [
+      48572,
+      65254,
+      41148,
+      42811,
+      57729,
+      60575
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/mandelbrot",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 47605.5,
+    "candidate": 52890.5,
+    "delta": 11.101658421821003,
+    "p": 0.5887445887445888,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      44925,
+      44956,
+      70894,
+      50255,
+      53932,
+      44044
+    ],
+    "candidateValues": [
+      62799,
+      48472,
+      63300,
+      45496,
+      57309,
+      44314
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/mandelbrot",
+    "unit": "B/op",
+    "label": "before",
+    "base": 30256,
+    "candidate": 22064,
+    "delta": -27.07562136435748,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      30256,
+      30256,
+      30256,
+      30256,
+      30256,
+      30256
+    ],
+    "candidateValues": [
+      22064,
+      22064,
+      22064,
+      22064,
+      22064,
+      22064
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/mandelbrot",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 30256,
+    "candidate": 22064,
+    "delta": -27.07562136435748,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      30256,
+      30256,
+      30256,
+      30256,
+      30256,
+      30256
+    ],
+    "candidateValues": [
+      22064,
+      22064,
+      22064,
+      22064,
+      22064,
+      22064
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/mandelbrot",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 58,
+    "candidate": 58,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      58,
+      58,
+      58,
+      58,
+      58,
+      58
+    ],
+    "candidateValues": [
+      58,
+      58,
+      58,
+      58,
+      58,
+      58
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/mandelbrot",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 58,
+    "candidate": 58,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      58,
+      58,
+      58,
+      58,
+      58,
+      58
+    ],
+    "candidateValues": [
+      58,
+      58,
+      58,
+      58,
+      58,
+      58
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sieve",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 62508.5,
+    "candidate": 43703,
+    "delta": -30.08470847964677,
+    "p": 0.06493506493506493,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      46578,
+      79822,
+      59523,
+      65494,
+      46428,
+      76966
+    ],
+    "candidateValues": [
+      41409,
+      67368,
+      44104,
+      47390,
+      43302,
+      39064
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sieve",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 62508.5,
+    "candidate": 58000,
+    "delta": -7.212619083804606,
+    "p": 0.6991341991341992,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      46578,
+      79822,
+      59523,
+      65494,
+      46428,
+      76966
+    ],
+    "candidateValues": [
+      46077,
+      69923,
+      42310,
+      79030,
+      83057,
+      40668
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sieve",
+    "unit": "B/op",
+    "label": "before",
+    "base": 20928,
+    "candidate": 17600,
+    "delta": -15.902140672782872,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      20928,
+      20928,
+      20928,
+      20928,
+      20928,
+      20928
+    ],
+    "candidateValues": [
+      17600,
+      17600,
+      17600,
+      17600,
+      17600,
+      17600
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sieve",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 20928,
+    "candidate": 17600,
+    "delta": -15.902140672782872,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      20928,
+      20928,
+      20928,
+      20928,
+      20928,
+      20928
+    ],
+    "candidateValues": [
+      17600,
+      17600,
+      17600,
+      17600,
+      17600,
+      17600
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sieve",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 39,
+    "candidate": 39,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ],
+    "candidateValues": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sieve",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 39,
+    "candidate": 39,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ],
+    "candidateValues": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/nbody",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 183893,
+    "candidate": 167948.5,
+    "delta": -8.670531232836487,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      126570,
+      180071,
+      189780,
+      187715,
+      193166,
+      121240
+    ],
+    "candidateValues": [
+      127711,
+      181043,
+      117923,
+      164392,
+      180192,
+      171505
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/nbody",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 183893,
+    "candidate": 144844.5,
+    "delta": -21.234359111004764,
+    "p": 0.30952380952380953,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      126570,
+      180071,
+      189780,
+      187715,
+      193166,
+      121240
+    ],
+    "candidateValues": [
+      113235,
+      118465,
+      171224,
+      116941,
+      217632,
+      181875
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/nbody",
+    "unit": "B/op",
+    "label": "before",
+    "base": 74160,
+    "candidate": 74160,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      74160,
+      74160,
+      74160,
+      74160,
+      74160,
+      74160
+    ],
+    "candidateValues": [
+      74160,
+      74160,
+      74160,
+      74160,
+      74160,
+      74160
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/nbody",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 74160,
+    "candidate": 74160,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      74160,
+      74160,
+      74160,
+      74160,
+      74160,
+      74160
+    ],
+    "candidateValues": [
+      74160,
+      74160,
+      74160,
+      74160,
+      74160,
+      74160
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/nbody",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 92,
+    "candidate": 92,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      92,
+      92,
+      92,
+      92,
+      92,
+      92
+    ],
+    "candidateValues": [
+      92,
+      92,
+      92,
+      92,
+      92,
+      92
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/nbody",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 92,
+    "candidate": 92,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      92,
+      92,
+      92,
+      92,
+      92,
+      92
+    ],
+    "candidateValues": [
+      92,
+      92,
+      92,
+      92,
+      92,
+      92
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/spectralnorm",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 101858,
+    "candidate": 127932.5,
+    "delta": 25.598872940760664,
+    "p": 0.6991341991341992,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      98347,
+      92425,
+      144594,
+      96333,
+      105369,
+      146658
+    ],
+    "candidateValues": [
+      139845,
+      130998,
+      124867,
+      93247,
+      110669,
+      131639
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/spectralnorm",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 101858,
+    "candidate": 110269,
+    "delta": 8.25757427006224,
+    "p": 0.9372294372294372,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      98347,
+      92425,
+      144594,
+      96333,
+      105369,
+      146658
+    ],
+    "candidateValues": [
+      107423,
+      92315,
+      122191,
+      92775,
+      137851,
+      113115
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/spectralnorm",
+    "unit": "B/op",
+    "label": "before",
+    "base": 63992,
+    "candidate": 63992,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      63992,
+      63992,
+      63992,
+      63992,
+      63992,
+      63992
+    ],
+    "candidateValues": [
+      63992,
+      63992,
+      63992,
+      63992,
+      63992,
+      63992
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/spectralnorm",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 63992,
+    "candidate": 63992,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      63992,
+      63992,
+      63992,
+      63992,
+      63992,
+      63992
+    ],
+    "candidateValues": [
+      63992,
+      63992,
+      63992,
+      63992,
+      63992,
+      63992
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/spectralnorm",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 81,
+    "candidate": 81,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      81,
+      81,
+      81,
+      81,
+      81,
+      81
+    ],
+    "candidateValues": [
+      81,
+      81,
+      81,
+      81,
+      81,
+      81
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/spectralnorm",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 81,
+    "candidate": 81,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      81,
+      81,
+      81,
+      81,
+      81,
+      81
+    ],
+    "candidateValues": [
+      81,
+      81,
+      81,
+      81,
+      81,
+      81
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fannkuch",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 164426.5,
+    "candidate": 179675,
+    "delta": 9.273748452956188,
+    "p": 0.8181818181818182,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      230607,
+      160384,
+      153872,
+      170182,
+      168469,
+      153340
+    ],
+    "candidateValues": [
+      149023,
+      208485,
+      153831,
+      205519,
+      205850,
+      136989
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fannkuch",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 164426.5,
+    "candidate": 184895,
+    "delta": 12.448419202500816,
+    "p": 0.6991341991341992,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      230607,
+      160384,
+      153872,
+      170182,
+      168469,
+      153340
+    ],
+    "candidateValues": [
+      195921,
+      136539,
+      147699,
+      173869,
+      261355,
+      213635
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fannkuch",
+    "unit": "B/op",
+    "label": "before",
+    "base": 69296,
+    "candidate": 69296,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      69296,
+      69296,
+      69296,
+      69296,
+      69296,
+      69296
+    ],
+    "candidateValues": [
+      69296,
+      69296,
+      69296,
+      69296,
+      69296,
+      69296
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fannkuch",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 69296,
+    "candidate": 69296,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      69296,
+      69296,
+      69296,
+      69296,
+      69296,
+      69296
+    ],
+    "candidateValues": [
+      69296,
+      69296,
+      69296,
+      69296,
+      69296,
+      69296
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fannkuch",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 71,
+    "candidate": 71,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      71,
+      71,
+      71,
+      71,
+      71,
+      71
+    ],
+    "candidateValues": [
+      71,
+      71,
+      71,
+      71,
+      71,
+      71
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/fannkuch",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 71,
+    "candidate": 71,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      71,
+      71,
+      71,
+      71,
+      71,
+      71
+    ],
+    "candidateValues": [
+      71,
+      71,
+      71,
+      71,
+      71,
+      71
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/matmul",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 152314,
+    "candidate": 117798,
+    "delta": -22.661081712777552,
+    "p": 0.06493506493506493,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      171265,
+      149564,
+      99659,
+      121951,
+      164241,
+      155064
+    ],
+    "candidateValues": [
+      93497,
+      147670,
+      94339,
+      139975,
+      143422,
+      95621
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/matmul",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 152314,
+    "candidate": 107053,
+    "delta": -29.715587536273745,
+    "p": 0.04112554112554113,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      171265,
+      149564,
+      99659,
+      121951,
+      164241,
+      155064
+    ],
+    "candidateValues": [
+      127782,
+      97645,
+      91363,
+      95851,
+      116461,
+      137851
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/matmul",
+    "unit": "B/op",
+    "label": "before",
+    "base": 64824,
+    "candidate": 64824,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      64824,
+      64824,
+      64824,
+      64824,
+      64824,
+      64824
+    ],
+    "candidateValues": [
+      64824,
+      64824,
+      64824,
+      64824,
+      64824,
+      64824
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/matmul",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 64824,
+    "candidate": 64824,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      64824,
+      64824,
+      64824,
+      64824,
+      64824,
+      64824
+    ],
+    "candidateValues": [
+      64824,
+      64824,
+      64824,
+      64824,
+      64824,
+      64824
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/matmul",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 78,
+    "candidate": 78,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      78,
+      78,
+      78,
+      78,
+      78,
+      78
+    ],
+    "candidateValues": [
+      78,
+      78,
+      78,
+      78,
+      78,
+      78
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/matmul",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 78,
+    "candidate": 78,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      78,
+      78,
+      78,
+      78,
+      78,
+      78
+    ],
+    "candidateValues": [
+      78,
+      78,
+      78,
+      78,
+      78,
+      78
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/quicksort",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 109497,
+    "candidate": 90321,
+    "delta": -17.512808570097814,
+    "p": 0.13203463203463203,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      143502,
+      157048,
+      109788,
+      104689,
+      109206,
+      100631
+    ],
+    "candidateValues": [
+      86443,
+      110770,
+      85141,
+      89700,
+      138653,
+      90942
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/quicksort",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 109497,
+    "candidate": 97599.5,
+    "delta": -10.865594491173269,
+    "p": 0.17965367965367965,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      143502,
+      157048,
+      109788,
+      104689,
+      109206,
+      100631
+    ],
+    "candidateValues": [
+      117613,
+      90511,
+      87495,
+      89469,
+      114096,
+      104688
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/quicksort",
+    "unit": "B/op",
+    "label": "before",
+    "base": 30024,
+    "candidate": 30024,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      30024,
+      30024,
+      30024,
+      30024,
+      30024,
+      30024
+    ],
+    "candidateValues": [
+      30024,
+      30024,
+      30024,
+      30024,
+      30024,
+      30024
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/quicksort",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 30024,
+    "candidate": 30024,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      30024,
+      30024,
+      30024,
+      30024,
+      30024,
+      30024
+    ],
+    "candidateValues": [
+      30024,
+      30024,
+      30024,
+      30024,
+      30024,
+      30024
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/quicksort",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 72,
+    "candidate": 72,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      72,
+      72,
+      72,
+      72,
+      72,
+      72
+    ],
+    "candidateValues": [
+      72,
+      72,
+      72,
+      72,
+      72,
+      72
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/quicksort",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 72,
+    "candidate": 72,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      72,
+      72,
+      72,
+      72,
+      72,
+      72
+    ],
+    "candidateValues": [
+      72,
+      72,
+      72,
+      72,
+      72,
+      72
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/crc32",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 68449.5,
+    "candidate": 81700,
+    "delta": 19.35806689603283,
+    "p": 0.8181818181818182,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      71816,
+      63159,
+      65083,
+      96423,
+      95431,
+      64172
+    ],
+    "candidateValues": [
+      56117,
+      81885,
+      61496,
+      104568,
+      81515,
+      106191
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/crc32",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 68449.5,
+    "candidate": 66225.5,
+    "delta": -3.249110658222487,
+    "p": 0.30952380952380953,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      71816,
+      63159,
+      65083,
+      96423,
+      95431,
+      64172
+    ],
+    "candidateValues": [
+      72878,
+      56056,
+      60114,
+      70193,
+      85943,
+      62258
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/crc32",
+    "unit": "B/op",
+    "label": "before",
+    "base": 28592,
+    "candidate": 28592,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28592,
+      28592,
+      28592,
+      28592,
+      28592,
+      28592
+    ],
+    "candidateValues": [
+      28592,
+      28592,
+      28592,
+      28592,
+      28592,
+      28592
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/crc32",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 28592,
+    "candidate": 28592,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28592,
+      28592,
+      28592,
+      28592,
+      28592,
+      28592
+    ],
+    "candidateValues": [
+      28592,
+      28592,
+      28592,
+      28592,
+      28592,
+      28592
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/crc32",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 47,
+    "candidate": 47,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      47,
+      47,
+      47,
+      47,
+      47,
+      47
+    ],
+    "candidateValues": [
+      47,
+      47,
+      47,
+      47,
+      47,
+      47
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/crc32",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 47,
+    "candidate": 47,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      47,
+      47,
+      47,
+      47,
+      47,
+      47
+    ],
+    "candidateValues": [
+      47,
+      47,
+      47,
+      47,
+      47,
+      47
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sha256",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 121890.5,
+    "candidate": 131724.5,
+    "delta": 8.067897005919257,
+    "p": 0.48484848484848486,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      118374,
+      113185,
+      177826,
+      120137,
+      123644,
+      185712
+    ],
+    "candidateValues": [
+      109467,
+      146237,
+      109428,
+      166876,
+      155525,
+      117212
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sha256",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 121890.5,
+    "candidate": 112894,
+    "delta": -7.380804902761085,
+    "p": 0.09307359307359307,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      118374,
+      113185,
+      177826,
+      120137,
+      123644,
+      185712
+    ],
+    "candidateValues": [
+      119938,
+      104728,
+      160925,
+      108105,
+      117683,
+      101142
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sha256",
+    "unit": "B/op",
+    "label": "before",
+    "base": 65944,
+    "candidate": 65944,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      65944,
+      65944,
+      65944,
+      65944,
+      65944,
+      65944
+    ],
+    "candidateValues": [
+      65944,
+      65944,
+      65944,
+      65944,
+      65944,
+      65944
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sha256",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 65944,
+    "candidate": 65944,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      65944,
+      65944,
+      65944,
+      65944,
+      65944,
+      65944
+    ],
+    "candidateValues": [
+      65944,
+      65944,
+      65944,
+      65944,
+      65944,
+      65944
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sha256",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 57,
+    "candidate": 57,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      57,
+      57,
+      57,
+      57,
+      57,
+      57
+    ],
+    "candidateValues": [
+      57,
+      57,
+      57,
+      57,
+      57,
+      57
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sha256",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 57,
+    "candidate": 57,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      57,
+      57,
+      57,
+      57,
+      57,
+      57
+    ],
+    "candidateValues": [
+      57,
+      57,
+      57,
+      57,
+      57,
+      57
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/raytrace",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 295440,
+    "candidate": 235656.5,
+    "delta": -20.235411589493633,
+    "p": 0.04112554112554113,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      379669,
+      306060,
+      253400,
+      284820,
+      269250,
+      378066
+    ],
+    "candidateValues": [
+      229595,
+      268789,
+      228773,
+      220097,
+      332410,
+      241718
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/raytrace",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 295440,
+    "candidate": 231168,
+    "delta": -21.754670999187653,
+    "p": 0.09307359307359307,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      379669,
+      306060,
+      253400,
+      284820,
+      269250,
+      378066
+    ],
+    "candidateValues": [
+      301772,
+      222651,
+      225437,
+      236899,
+      370512,
+      221229
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/raytrace",
+    "unit": "B/op",
+    "label": "before",
+    "base": 145840,
+    "candidate": 145840,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      145840,
+      145840,
+      145840,
+      145840,
+      145840,
+      145840
+    ],
+    "candidateValues": [
+      145840,
+      145840,
+      145840,
+      145840,
+      145840,
+      145840
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/raytrace",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 145840,
+    "candidate": 145840,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      145840,
+      145840,
+      145840,
+      145840,
+      145840,
+      145840
+    ],
+    "candidateValues": [
+      145840,
+      145840,
+      145840,
+      145840,
+      145840,
+      145840
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/raytrace",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 119,
+    "candidate": 119,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      119,
+      119,
+      119,
+      119,
+      119,
+      119
+    ],
+    "candidateValues": [
+      119,
+      119,
+      119,
+      119,
+      119,
+      119
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/raytrace",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 119,
+    "candidate": 119,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      119,
+      119,
+      119,
+      119,
+      119,
+      119
+    ],
+    "candidateValues": [
+      119,
+      119,
+      119,
+      119,
+      119,
+      119
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/regexmatch",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 48112655.5,
+    "candidate": 41547595.5,
+    "delta": -13.645183230428836,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      47676825,
+      48381724,
+      48013960,
+      47823913,
+      52502585,
+      48211351
+    ],
+    "candidateValues": [
+      40626816,
+      45470441,
+      41974562,
+      43374325,
+      41120629,
+      40919571
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/regexmatch",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 48112655.5,
+    "candidate": 41648553,
+    "delta": -13.435347587497015,
+    "p": 0.06493506493506493,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      47676825,
+      48381724,
+      48013960,
+      47823913,
+      52502585,
+      48211351
+    ],
+    "candidateValues": [
+      43395049,
+      41571297,
+      41420923,
+      41650600,
+      53716035,
+      41646506
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/regexmatch",
+    "unit": "B/op",
+    "label": "before",
+    "base": 1397320,
+    "candidate": 1395352,
+    "delta": -0.1408410385595249,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1397320,
+      1397320,
+      1397320,
+      1397320,
+      1397320,
+      1397320
+    ],
+    "candidateValues": [
+      1395352,
+      1395352,
+      1395352,
+      1395352,
+      1395352,
+      1395352
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/regexmatch",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 1397320,
+    "candidate": 1395352,
+    "delta": -0.1408410385595249,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1397320,
+      1397320,
+      1397320,
+      1397320,
+      1397320,
+      1397320
+    ],
+    "candidateValues": [
+      1395352,
+      1395352,
+      1395352,
+      1395352,
+      1395352,
+      1395352
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/regexmatch",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 1947,
+    "candidate": 1949,
+    "delta": 0.10272213662043672,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1947,
+      1947,
+      1947,
+      1947,
+      1947,
+      1947
+    ],
+    "candidateValues": [
+      1949,
+      1949,
+      1949,
+      1949,
+      1949,
+      1949
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/regexmatch",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 1947,
+    "candidate": 1949,
+    "delta": 0.10272213662043672,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1947,
+      1947,
+      1947,
+      1947,
+      1947,
+      1947
+    ],
+    "candidateValues": [
+      1949,
+      1949,
+      1949,
+      1949,
+      1949,
+      1949
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/wasm3",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 12167177,
+    "candidate": 10464228.5,
+    "delta": -13.996249910722923,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      12363965,
+      12375938,
+      11970389,
+      11922521,
+      13716538,
+      11894449
+    ],
+    "candidateValues": [
+      10605625,
+      10998519,
+      10259490,
+      10712999,
+      10207271,
+      10322832
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/wasm3",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 12167177,
+    "candidate": 10575629.5,
+    "delta": -13.0806636576422,
+    "p": 0.04112554112554113,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      12363965,
+      12375938,
+      11970389,
+      11922521,
+      13716538,
+      11894449
+    ],
+    "candidateValues": [
+      10837592,
+      10384264,
+      10248799,
+      10481039,
+      12725221,
+      10670220
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/wasm3",
+    "unit": "B/op",
+    "label": "before",
+    "base": 505536,
+    "candidate": 502904,
+    "delta": -0.520635523483981,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      505536,
+      505536,
+      505536,
+      505536,
+      505536,
+      505536
+    ],
+    "candidateValues": [
+      502904,
+      502904,
+      502904,
+      502904,
+      502904,
+      502904
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/wasm3",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 505536,
+    "candidate": 502904,
+    "delta": -0.520635523483981,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      505536,
+      505536,
+      505536,
+      505536,
+      505536,
+      505536
+    ],
+    "candidateValues": [
+      502904,
+      502904,
+      502904,
+      502904,
+      502904,
+      502904
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/wasm3",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 837,
+    "candidate": 839,
+    "delta": 0.2389486260454099,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      837,
+      837,
+      837,
+      837,
+      837,
+      837
+    ],
+    "candidateValues": [
+      839,
+      839,
+      839,
+      839,
+      839,
+      839
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/wasm3",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 837,
+    "candidate": 839,
+    "delta": 0.2389486260454099,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      837,
+      837,
+      837,
+      837,
+      837,
+      837
+    ],
+    "candidateValues": [
+      839,
+      839,
+      839,
+      839,
+      839,
+      839
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/json-as",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 1399520,
+    "candidate": 1233776.5,
+    "delta": -11.842881845204067,
+    "p": 0.025974025974025976,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1573730,
+      1406934,
+      1392106,
+      1268512,
+      1443935,
+      1248835
+    ],
+    "candidateValues": [
+      1118658,
+      1228246,
+      1278782,
+      1157272,
+      1239307,
+      1314630
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/json-as",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 1399520,
+    "candidate": 1249796.5,
+    "delta": -10.698203669829653,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1573730,
+      1406934,
+      1392106,
+      1268512,
+      1443935,
+      1248835
+    ],
+    "candidateValues": [
+      1182990,
+      1129569,
+      1491144,
+      1134068,
+      1543594,
+      1316603
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/json-as",
+    "unit": "B/op",
+    "label": "before",
+    "base": 136240,
+    "candidate": 136784,
+    "delta": 0.39929536112741637,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      136240,
+      136240,
+      136240,
+      136240,
+      136240,
+      136240
+    ],
+    "candidateValues": [
+      136784,
+      136784,
+      136784,
+      136784,
+      136784,
+      136784
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/json-as",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 136240,
+    "candidate": 136784,
+    "delta": 0.39929536112741637,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      136240,
+      136240,
+      136240,
+      136240,
+      136240,
+      136240
+    ],
+    "candidateValues": [
+      136784,
+      136784,
+      136784,
+      136784,
+      136784,
+      136784
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/json-as",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 148,
+    "candidate": 148,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      148,
+      148,
+      148,
+      148,
+      148,
+      148
+    ],
+    "candidateValues": [
+      148,
+      148,
+      148,
+      148,
+      148,
+      148
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/json-as",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 148,
+    "candidate": 148,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      148,
+      148,
+      148,
+      148,
+      148,
+      148
+    ],
+    "candidateValues": [
+      148,
+      148,
+      148,
+      148,
+      148,
+      148
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake-as",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 451590,
+    "candidate": 472405,
+    "delta": 4.609269470094546,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      546355,
+      538660,
+      520876,
+      358770,
+      382304,
+      357087
+    ],
+    "candidateValues": [
+      479097,
+      500998,
+      465713,
+      501960,
+      314045,
+      317541
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake-as",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 451590,
+    "candidate": 442102.5,
+    "delta": -2.1009101175845313,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      546355,
+      538660,
+      520876,
+      358770,
+      382304,
+      357087
+    ],
+    "candidateValues": [
+      351957,
+      473737,
+      460272,
+      332931,
+      423933,
+      470200
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake-as",
+    "unit": "B/op",
+    "label": "before",
+    "base": 133816,
+    "candidate": 133616,
+    "delta": -0.14945895856998126,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      133816,
+      133816,
+      133816,
+      133816,
+      133816,
+      133816
+    ],
+    "candidateValues": [
+      133616,
+      133616,
+      133616,
+      133616,
+      133616,
+      133616
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake-as",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 133816,
+    "candidate": 133616,
+    "delta": -0.14945895856998126,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      133816,
+      133816,
+      133816,
+      133816,
+      133816,
+      133816
+    ],
+    "candidateValues": [
+      133616,
+      133616,
+      133616,
+      133616,
+      133616,
+      133616
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake-as",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 97,
+    "candidate": 93,
+    "delta": -4.123711340206182,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      97,
+      97,
+      97,
+      97,
+      97,
+      97
+    ],
+    "candidateValues": [
+      93,
+      93,
+      93,
+      93,
+      93,
+      93
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake-as",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 97,
+    "candidate": 93,
+    "delta": -4.123711340206182,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      97,
+      97,
+      97,
+      97,
+      97,
+      97
+    ],
+    "candidateValues": [
+      93,
+      93,
+      93,
+      93,
+      93,
+      93
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/utf-as",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 259155.5,
+    "candidate": 231854,
+    "delta": -10.534794746783305,
+    "p": 0.6991341991341992,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      174250,
+      262898,
+      263860,
+      265293,
+      255413,
+      187535
+    ],
+    "candidateValues": [
+      174370,
+      281032,
+      220388,
+      233913,
+      240937,
+      229795
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/utf-as",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 259155.5,
+    "candidate": 233512,
+    "delta": -9.895024415843,
+    "p": 0.6991341991341992,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      174250,
+      262898,
+      263860,
+      265293,
+      255413,
+      187535
+    ],
+    "candidateValues": [
+      178288,
+      231518,
+      225848,
+      255023,
+      270562,
+      235506
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/utf-as",
+    "unit": "B/op",
+    "label": "before",
+    "base": 121896,
+    "candidate": 121880,
+    "delta": -0.01312594342718354,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      124232,
+      121896,
+      121896,
+      121896,
+      121896,
+      121896
+    ],
+    "candidateValues": [
+      121880,
+      121880,
+      121880,
+      121880,
+      121880,
+      121880
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/utf-as",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 121896,
+    "candidate": 121880,
+    "delta": -0.01312594342718354,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      124232,
+      121896,
+      121896,
+      121896,
+      121896,
+      121896
+    ],
+    "candidateValues": [
+      121880,
+      121880,
+      121880,
+      121880,
+      121880,
+      121880
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/utf-as",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 72,
+    "candidate": 72,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      74,
+      72,
+      72,
+      72,
+      72,
+      72
+    ],
+    "candidateValues": [
+      72,
+      72,
+      72,
+      72,
+      72,
+      72
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/utf-as",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 72,
+    "candidate": 72,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      74,
+      72,
+      72,
+      72,
+      72,
+      72
+    ],
+    "candidateValues": [
+      72,
+      72,
+      72,
+      72,
+      72,
+      72
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/xjb-mulhi",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 55906,
+    "candidate": 65799.5,
+    "delta": 17.696669409365718,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      56968,
+      81044,
+      54844,
+      49373,
+      53260,
+      81775
+    ],
+    "candidateValues": [
+      77738,
+      93707,
+      52490,
+      74722,
+      48692,
+      56877
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/xjb-mulhi",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 55906,
+    "candidate": 64552.5,
+    "delta": 15.466139591457084,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      56968,
+      81044,
+      54844,
+      49373,
+      53260,
+      81775
+    ],
+    "candidateValues": [
+      56758,
+      80382,
+      51879,
+      105950,
+      72347,
+      45816
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/xjb-mulhi",
+    "unit": "B/op",
+    "label": "before",
+    "base": 28544,
+    "candidate": 17024,
+    "delta": -40.35874439461884,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      26208,
+      28544,
+      28544,
+      28544,
+      28544,
+      28544
+    ],
+    "candidateValues": [
+      17024,
+      17024,
+      17024,
+      17024,
+      17024,
+      17024
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/xjb-mulhi",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 28544,
+    "candidate": 17024,
+    "delta": -40.35874439461884,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      26208,
+      28544,
+      28544,
+      28544,
+      28544,
+      28544
+    ],
+    "candidateValues": [
+      17024,
+      17024,
+      17024,
+      17024,
+      17024,
+      17024
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/xjb-mulhi",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 31,
+    "candidate": 31,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      29,
+      31,
+      31,
+      31,
+      31,
+      31
+    ],
+    "candidateValues": [
+      31,
+      31,
+      31,
+      31,
+      31,
+      31
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/xjb-mulhi",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 31,
+    "candidate": 31,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      29,
+      31,
+      31,
+      31,
+      31,
+      31
+    ],
+    "candidateValues": [
+      31,
+      31,
+      31,
+      31,
+      31,
+      31
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/swar-pack-parse",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 58676,
+    "candidate": 75107,
+    "delta": 28.002931351830384,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      54904,
+      58911,
+      56707,
+      81244,
+      58441,
+      102003
+    ],
+    "candidateValues": [
+      62619,
+      74461,
+      78378,
+      62448,
+      78298,
+      75753
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/swar-pack-parse",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 58676,
+    "candidate": 67834,
+    "delta": 15.607744222510057,
+    "p": 0.8181818181818182,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      54904,
+      58911,
+      56707,
+      81244,
+      58441,
+      102003
+    ],
+    "candidateValues": [
+      44675,
+      54133,
+      77817,
+      79580,
+      60024,
+      75644
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/swar-pack-parse",
+    "unit": "B/op",
+    "label": "before",
+    "base": 26200,
+    "candidate": 14680,
+    "delta": -43.969465648854964,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      26200,
+      26200,
+      26200,
+      26200,
+      26200,
+      26200
+    ],
+    "candidateValues": [
+      14680,
+      14680,
+      14680,
+      14680,
+      14680,
+      14680
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/swar-pack-parse",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 26200,
+    "candidate": 14680,
+    "delta": -43.969465648854964,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      26200,
+      26200,
+      26200,
+      26200,
+      26200,
+      26200
+    ],
+    "candidateValues": [
+      14680,
+      14680,
+      14680,
+      14680,
+      14680,
+      14680
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/swar-pack-parse",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 28,
+    "candidate": 28,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28,
+      28,
+      28,
+      28,
+      28,
+      28
+    ],
+    "candidateValues": [
+      28,
+      28,
+      28,
+      28,
+      28,
+      28
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/swar-pack-parse",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 28,
+    "candidate": 28,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28,
+      28,
+      28,
+      28,
+      28,
+      28
+    ],
+    "candidateValues": [
+      28,
+      28,
+      28,
+      28,
+      28,
+      28
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/json-as-simd",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 1384055.5,
+    "candidate": 1214766,
+    "delta": -12.231409795344195,
+    "p": 0.015151515151515152,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1411342,
+      1325691,
+      1347292,
+      1356769,
+      1448022,
+      1620158
+    ],
+    "candidateValues": [
+      1203318,
+      1397526,
+      1206505,
+      1224359,
+      1223027,
+      1192839
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/json-as-simd",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 1384055.5,
+    "candidate": 1259465,
+    "delta": -9.001842772923485,
+    "p": 0.24025974025974026,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1411342,
+      1325691,
+      1347292,
+      1356769,
+      1448022,
+      1620158
+    ],
+    "candidateValues": [
+      1280896,
+      1238034,
+      1415691,
+      1226874,
+      1659302,
+      1227154
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/json-as-simd",
+    "unit": "B/op",
+    "label": "before",
+    "base": 144456,
+    "candidate": 145128,
+    "delta": 0.4651935537464791,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      144456,
+      144456,
+      144456,
+      144456,
+      144456,
+      144456
+    ],
+    "candidateValues": [
+      145128,
+      145128,
+      145128,
+      145128,
+      145128,
+      145128
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/json-as-simd",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 144456,
+    "candidate": 145128,
+    "delta": 0.4651935537464791,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      144456,
+      144456,
+      144456,
+      144456,
+      144456,
+      144456
+    ],
+    "candidateValues": [
+      145128,
+      145128,
+      145128,
+      145128,
+      145128,
+      145128
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/json-as-simd",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 183,
+    "candidate": 183,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      183,
+      183,
+      183,
+      183,
+      183,
+      183
+    ],
+    "candidateValues": [
+      183,
+      183,
+      183,
+      183,
+      183,
+      183
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/json-as-simd",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 183,
+    "candidate": 183,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      183,
+      183,
+      183,
+      183,
+      183,
+      183
+    ],
+    "candidateValues": [
+      183,
+      183,
+      183,
+      183,
+      183,
+      183
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake-as-simd",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 1174980,
+    "candidate": 962031.5,
+    "delta": -18.123585082299275,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1091617,
+      1329959,
+      963314,
+      1267831,
+      1124560,
+      1225400
+    ],
+    "candidateValues": [
+      822798,
+      1281166,
+      789506,
+      1293010,
+      787792,
+      1101265
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake-as-simd",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 1174980,
+    "candidate": 1009296.5,
+    "delta": -14.100963420653967,
+    "p": 0.06493506493506493,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1091617,
+      1329959,
+      963314,
+      1267831,
+      1124560,
+      1225400
+    ],
+    "candidateValues": [
+      1180646,
+      957734,
+      1121033,
+      796198,
+      859367,
+      1060859
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake-as-simd",
+    "unit": "B/op",
+    "label": "before",
+    "base": 284648,
+    "candidate": 284800,
+    "delta": 0.05339928613585787,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      284648,
+      284648,
+      284648,
+      284648,
+      284648,
+      284648
+    ],
+    "candidateValues": [
+      284800,
+      284800,
+      284800,
+      284800,
+      284800,
+      284800
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake-as-simd",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 284648,
+    "candidate": 284800,
+    "delta": 0.05339928613585787,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      284648,
+      284648,
+      284648,
+      284648,
+      284648,
+      284648
+    ],
+    "candidateValues": [
+      284800,
+      284800,
+      284800,
+      284800,
+      284800,
+      284800
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake-as-simd",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 139,
+    "candidate": 138,
+    "delta": -0.7194244604316502,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      139,
+      139,
+      139,
+      139,
+      139,
+      139
+    ],
+    "candidateValues": [
+      138,
+      138,
+      138,
+      138,
+      138,
+      138
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake-as-simd",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 139,
+    "candidate": 138,
+    "delta": -0.7194244604316502,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      139,
+      139,
+      139,
+      139,
+      139,
+      139
+    ],
+    "candidateValues": [
+      138,
+      138,
+      138,
+      138,
+      138,
+      138
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/utf-as-simd",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 735342.5,
+    "candidate": 643088,
+    "delta": -12.545786487249144,
+    "p": 0.24025974025974026,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      754850,
+      737346,
+      754389,
+      633820,
+      733339,
+      492112
+    ],
+    "candidateValues": [
+      664629,
+      630183,
+      647056,
+      654510,
+      639120,
+      609354
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/utf-as-simd",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 735342.5,
+    "candidate": 606889.5,
+    "delta": -17.46845857542574,
+    "p": 0.13203463203463203,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      754850,
+      737346,
+      754389,
+      633820,
+      733339,
+      492112
+    ],
+    "candidateValues": [
+      702530,
+      569268,
+      644511,
+      651293,
+      450594,
+      563727
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/utf-as-simd",
+    "unit": "B/op",
+    "label": "before",
+    "base": 146712,
+    "candidate": 146608,
+    "delta": -0.07088718032608465,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      146712,
+      146712,
+      146712,
+      146712,
+      146712,
+      146712
+    ],
+    "candidateValues": [
+      146608,
+      146608,
+      146608,
+      146608,
+      146608,
+      146608
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/utf-as-simd",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 146712,
+    "candidate": 146608,
+    "delta": -0.07088718032608465,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      146712,
+      146712,
+      146712,
+      146712,
+      146712,
+      146712
+    ],
+    "candidateValues": [
+      146608,
+      146608,
+      146608,
+      146608,
+      146608,
+      146608
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/utf-as-simd",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 137,
+    "candidate": 135,
+    "delta": -1.4598540145985384,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ],
+    "candidateValues": [
+      135,
+      135,
+      135,
+      135,
+      135,
+      135
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/utf-as-simd",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 137,
+    "candidate": 135,
+    "delta": -1.4598540145985384,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      137,
+      137,
+      137,
+      137,
+      137,
+      137
+    ],
+    "candidateValues": [
+      135,
+      135,
+      135,
+      135,
+      135,
+      135
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/coremark",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 791719,
+    "candidate": 576336.5,
+    "delta": -27.204412171490134,
+    "p": 0.015151515151515152,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      813571,
+      768315,
+      804874,
+      524643,
+      817849,
+      778564
+    ],
+    "candidateValues": [
+      494767,
+      657906,
+      465071,
+      735793,
+      724022,
+      472154
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/coremark",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 791719,
+    "candidate": 611603.5,
+    "delta": -22.749927688990667,
+    "p": 0.04112554112554113,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      813571,
+      768315,
+      804874,
+      524643,
+      817849,
+      778564
+    ],
+    "candidateValues": [
+      757674,
+      680068,
+      472545,
+      543139,
+      538450,
+      697612
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/coremark",
+    "unit": "B/op",
+    "label": "before",
+    "base": 131216,
+    "candidate": 131200,
+    "delta": -0.012193634922574859,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      131216,
+      131216,
+      131216,
+      131216,
+      131216,
+      131216
+    ],
+    "candidateValues": [
+      131200,
+      131200,
+      131200,
+      131200,
+      131200,
+      131200
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/coremark",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 131216,
+    "candidate": 131200,
+    "delta": -0.012193634922574859,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      131216,
+      131216,
+      131216,
+      131216,
+      131216,
+      131216
+    ],
+    "candidateValues": [
+      131200,
+      131200,
+      131200,
+      131200,
+      131200,
+      131200
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/coremark",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 96,
+    "candidate": 96,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      96,
+      96,
+      96,
+      96,
+      96,
+      96
+    ],
+    "candidateValues": [
+      96,
+      96,
+      96,
+      96,
+      96,
+      96
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/coremark",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 96,
+    "candidate": 96,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      96,
+      96,
+      96,
+      96,
+      96,
+      96
+    ],
+    "candidateValues": [
+      96,
+      96,
+      96,
+      96,
+      96,
+      96
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake3",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 882000.5,
+    "candidate": 899048,
+    "delta": 1.9328220335476098,
+    "p": 0.9372294372294372,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      875989,
+      1055769,
+      886058,
+      861491,
+      1174414,
+      877943
+    ],
+    "candidateValues": [
+      880909,
+      917187,
+      1137885,
+      817638,
+      760501,
+      1125051
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake3",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 882000.5,
+    "candidate": 954317.5,
+    "delta": 8.199201701132818,
+    "p": 0.8181818181818182,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      875989,
+      1055769,
+      886058,
+      861491,
+      1174414,
+      877943
+    ],
+    "candidateValues": [
+      1045800,
+      954558,
+      758887,
+      961551,
+      810435,
+      954077
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake3",
+    "unit": "B/op",
+    "label": "before",
+    "base": 139296,
+    "candidate": 139264,
+    "delta": -0.02297266253158403,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      139296,
+      139296,
+      139296,
+      139296,
+      139296,
+      139296
+    ],
+    "candidateValues": [
+      139264,
+      139264,
+      139264,
+      139264,
+      139264,
+      139264
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake3",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 139296,
+    "candidate": 139264,
+    "delta": -0.02297266253158403,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      139296,
+      139296,
+      139296,
+      139296,
+      139296,
+      139296
+    ],
+    "candidateValues": [
+      139264,
+      139264,
+      139264,
+      139264,
+      139264,
+      139264
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake3",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 109,
+    "candidate": 109,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      109,
+      109,
+      109,
+      109,
+      109,
+      109
+    ],
+    "candidateValues": [
+      109,
+      109,
+      109,
+      109,
+      109,
+      109
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/blake3",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 109,
+    "candidate": 109,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      109,
+      109,
+      109,
+      109,
+      109,
+      109
+    ],
+    "candidateValues": [
+      109,
+      109,
+      109,
+      109,
+      109,
+      109
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/qoi",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 343265,
+    "candidate": 313333.5,
+    "delta": -8.719648085298527,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      349502,
+      230707,
+      233071,
+      337028,
+      363798,
+      361264
+    ],
+    "candidateValues": [
+      314295,
+      249423,
+      311079,
+      321318,
+      312372,
+      316449
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/qoi",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 343265,
+    "candidate": 220107,
+    "delta": -35.878402983117994,
+    "p": 0.025974025974025976,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      349502,
+      230707,
+      233071,
+      337028,
+      363798,
+      361264
+    ],
+    "candidateValues": [
+      325437,
+      210058,
+      309656,
+      214206,
+      226008,
+      204317
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/qoi",
+    "unit": "B/op",
+    "label": "before",
+    "base": 68064,
+    "candidate": 68032,
+    "delta": -0.04701457451810054,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      68064,
+      68064,
+      68064,
+      68064,
+      68064,
+      68064
+    ],
+    "candidateValues": [
+      68032,
+      68032,
+      68032,
+      68032,
+      68032,
+      68032
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/qoi",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 68064,
+    "candidate": 68032,
+    "delta": -0.04701457451810054,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      68064,
+      68064,
+      68064,
+      68064,
+      68064,
+      68064
+    ],
+    "candidateValues": [
+      68032,
+      68032,
+      68032,
+      68032,
+      68032,
+      68032
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/qoi",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 92,
+    "candidate": 92,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      92,
+      92,
+      92,
+      92,
+      92,
+      92
+    ],
+    "candidateValues": [
+      92,
+      92,
+      92,
+      92,
+      92,
+      92
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/qoi",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 92,
+    "candidate": 92,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      92,
+      92,
+      92,
+      92,
+      92,
+      92
+    ],
+    "candidateValues": [
+      92,
+      92,
+      92,
+      92,
+      92,
+      92
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/lz4",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 304717.5,
+    "candidate": 266880,
+    "delta": -12.417238918014228,
+    "p": 0.24025974025974026,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      307683,
+      301752,
+      208164,
+      316109,
+      215689,
+      310729
+    ],
+    "candidateValues": [
+      268398,
+      300108,
+      273388,
+      181714,
+      265362,
+      262907
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/lz4",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 304717.5,
+    "candidate": 272802,
+    "delta": -10.473799502818181,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      307683,
+      301752,
+      208164,
+      316109,
+      215689,
+      310729
+    ],
+    "candidateValues": [
+      339693,
+      297674,
+      174551,
+      274580,
+      194047,
+      271024
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/lz4",
+    "unit": "B/op",
+    "label": "before",
+    "base": 64064,
+    "candidate": 64048,
+    "delta": -0.024975024975026905,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      64064,
+      64064,
+      64064,
+      64064,
+      64064,
+      64064
+    ],
+    "candidateValues": [
+      64048,
+      64048,
+      64048,
+      64048,
+      64048,
+      64048
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/lz4",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 64064,
+    "candidate": 64048,
+    "delta": -0.024975024975026905,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      64064,
+      64064,
+      64064,
+      64064,
+      64064,
+      64064
+    ],
+    "candidateValues": [
+      64048,
+      64048,
+      64048,
+      64048,
+      64048,
+      64048
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/lz4",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 68,
+    "candidate": 68,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      68,
+      68,
+      68,
+      68,
+      68,
+      68
+    ],
+    "candidateValues": [
+      68,
+      68,
+      68,
+      68,
+      68,
+      68
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/lz4",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 68,
+    "candidate": 68,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      68,
+      68,
+      68,
+      68,
+      68,
+      68
+    ],
+    "candidateValues": [
+      68,
+      68,
+      68,
+      68,
+      68,
+      68
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/zlib",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 1017135.5,
+    "candidate": 868800,
+    "delta": -14.583651833998523,
+    "p": 0.48484848484848486,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      906116,
+      963644,
+      1070627,
+      1092379,
+      1108400,
+      899864
+    ],
+    "candidateValues": [
+      1178582,
+      904132,
+      791489,
+      833468,
+      1113248,
+      781620
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/zlib",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 1017135.5,
+    "candidate": 957433,
+    "delta": -5.869670265171156,
+    "p": 0.8181818181818182,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      906116,
+      963644,
+      1070627,
+      1092379,
+      1108400,
+      899864
+    ],
+    "candidateValues": [
+      803622,
+      955059,
+      1218097,
+      911496,
+      1088351,
+      959807
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/zlib",
+    "unit": "B/op",
+    "label": "before",
+    "base": 301256,
+    "candidate": 301240,
+    "delta": -0.0053110975383074965,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      301256,
+      301256,
+      301256,
+      301256,
+      301256,
+      301256
+    ],
+    "candidateValues": [
+      301240,
+      301240,
+      301240,
+      301240,
+      301240,
+      301240
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/zlib",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 301256,
+    "candidate": 301240,
+    "delta": -0.0053110975383074965,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      301256,
+      301256,
+      301256,
+      301256,
+      301256,
+      301256
+    ],
+    "candidateValues": [
+      301240,
+      301240,
+      301240,
+      301240,
+      301240,
+      301240
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/zlib",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 175,
+    "candidate": 175,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      175,
+      175,
+      175,
+      175,
+      175,
+      175
+    ],
+    "candidateValues": [
+      175,
+      175,
+      175,
+      175,
+      175,
+      175
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/zlib",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 175,
+    "candidate": 175,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      175,
+      175,
+      175,
+      175,
+      175,
+      175
+    ],
+    "candidateValues": [
+      175,
+      175,
+      175,
+      175,
+      175,
+      175
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/zstd",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 3229044.5,
+    "candidate": 2732084,
+    "delta": -15.390326766942975,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      3170723,
+      3137522,
+      3132873,
+      3287366,
+      3741918,
+      3311412
+    ],
+    "candidateValues": [
+      2731874,
+      3056118,
+      2732294,
+      2846331,
+      2722246,
+      2707028
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/zstd",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 3229044.5,
+    "candidate": 2960522,
+    "delta": -8.315850091257648,
+    "p": 0.015151515151515152,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      3170723,
+      3137522,
+      3132873,
+      3287366,
+      3741918,
+      3311412
+    ],
+    "candidateValues": [
+      3056308,
+      2899271,
+      3264333,
+      2968863,
+      2904892,
+      2952181
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/zstd",
+    "unit": "B/op",
+    "label": "before",
+    "base": 1007208,
+    "candidate": 1007200,
+    "delta": -0.0007942748667555399,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1007208,
+      1007208,
+      1007208,
+      1007208,
+      1007208,
+      1007208
+    ],
+    "candidateValues": [
+      1007200,
+      1007200,
+      1007200,
+      1007200,
+      1007200,
+      1007200
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/zstd",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 1007208,
+    "candidate": 1007200,
+    "delta": -0.0007942748667555399,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1007208,
+      1007208,
+      1007208,
+      1007208,
+      1007208,
+      1007208
+    ],
+    "candidateValues": [
+      1007200,
+      1007200,
+      1007200,
+      1007200,
+      1007200,
+      1007200
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/zstd",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 228,
+    "candidate": 230,
+    "delta": 0.8771929824561431,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      228,
+      228,
+      228,
+      228,
+      228,
+      228
+    ],
+    "candidateValues": [
+      230,
+      230,
+      230,
+      230,
+      230,
+      230
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/zstd",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 228,
+    "candidate": 230,
+    "delta": 0.8771929824561431,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      228,
+      228,
+      228,
+      228,
+      228,
+      228
+    ],
+    "candidateValues": [
+      230,
+      230,
+      230,
+      230,
+      230,
+      230
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/lua",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 17372842,
+    "candidate": 15091365.5,
+    "delta": -13.132431066834084,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      17356939,
+      17345518,
+      17369845,
+      17375839,
+      18475551,
+      17504372
+    ],
+    "candidateValues": [
+      15608459,
+      16071506,
+      14834173,
+      15143128,
+      15039603,
+      14848773
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/lua",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 17372842,
+    "candidate": 15449790,
+    "delta": -11.06930000284352,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      17356939,
+      17345518,
+      17369845,
+      17375839,
+      18475551,
+      17504372
+    ],
+    "candidateValues": [
+      15286108,
+      16109487,
+      15523579,
+      15722656,
+      15376001,
+      15255334
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/lua",
+    "unit": "B/op",
+    "label": "before",
+    "base": 813944,
+    "candidate": 810704,
+    "delta": -0.3980617831202182,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      813944,
+      813944,
+      813944,
+      813944,
+      813944,
+      813944
+    ],
+    "candidateValues": [
+      810704,
+      810704,
+      810704,
+      810704,
+      810704,
+      810704
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/lua",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 813944,
+    "candidate": 810704,
+    "delta": -0.3980617831202182,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      813944,
+      813944,
+      813944,
+      813944,
+      813944,
+      813944
+    ],
+    "candidateValues": [
+      810704,
+      810704,
+      810704,
+      810704,
+      810704,
+      810704
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/lua",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 761,
+    "candidate": 761,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      761,
+      761,
+      761,
+      761,
+      761,
+      761
+    ],
+    "candidateValues": [
+      761,
+      761,
+      761,
+      761,
+      761,
+      761
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/lua",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 761,
+    "candidate": 761,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      761,
+      761,
+      761,
+      761,
+      761,
+      761
+    ],
+    "candidateValues": [
+      761,
+      761,
+      761,
+      761,
+      761,
+      761
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sqlite3",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 72196190.5,
+    "candidate": 62787674,
+    "delta": -13.031873890908408,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      72258876,
+      72133505,
+      71869979,
+      71119322,
+      73272741,
+      75941422
+    ],
+    "candidateValues": [
+      62531107,
+      64210321,
+      61287327,
+      63379462,
+      63044241,
+      62464847
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sqlite3",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 72196190.5,
+    "candidate": 63618136,
+    "delta": -11.881588821504375,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      72258876,
+      72133505,
+      71869979,
+      71119322,
+      73272741,
+      75941422
+    ],
+    "candidateValues": [
+      64554580,
+      62846715,
+      63780120,
+      62875258,
+      63456152,
+      65286750
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sqlite3",
+    "unit": "B/op",
+    "label": "before",
+    "base": 2249168,
+    "candidate": 2234888,
+    "delta": -0.634901439109925,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      2249168,
+      2249168,
+      2249168,
+      2249168,
+      2249168,
+      2249168
+    ],
+    "candidateValues": [
+      2234888,
+      2234888,
+      2234888,
+      2234888,
+      2234888,
+      2234888
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sqlite3",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 2249168,
+    "candidate": 2234888,
+    "delta": -0.634901439109925,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      2249168,
+      2249168,
+      2249168,
+      2249168,
+      2249168,
+      2249168
+    ],
+    "candidateValues": [
+      2234888,
+      2234888,
+      2234888,
+      2234888,
+      2234888,
+      2234888
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sqlite3",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 2150,
+    "candidate": 2152,
+    "delta": 0.09302325581395099,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      2150,
+      2150,
+      2150,
+      2150,
+      2150,
+      2150
+    ],
+    "candidateValues": [
+      2152,
+      2152,
+      2152,
+      2152,
+      2152,
+      2152
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/sqlite3",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 2150,
+    "candidate": 2152,
+    "delta": 0.09302325581395099,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      2150,
+      2150,
+      2150,
+      2150,
+      2150,
+      2150
+    ],
+    "candidateValues": [
+      2152,
+      2152,
+      2152,
+      2152,
+      2152,
+      2152
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/ruby",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 804565514,
+    "candidate": 646516278,
+    "delta": -19.644048029630067,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      799539666,
+      804516288,
+      804614740,
+      804710775,
+      803274089,
+      825492635
+    ],
+    "candidateValues": [
+      644513784,
+      678798290,
+      643054915,
+      647685887,
+      684410225,
+      645346669
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/ruby",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 804565514,
+    "candidate": 663663719,
+    "delta": -17.512780817498474,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      799539666,
+      804516288,
+      804614740,
+      804710775,
+      803274089,
+      825492635
+    ],
+    "candidateValues": [
+      665716736,
+      667790264,
+      667055851,
+      661219335,
+      661610702,
+      657487945
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/ruby",
+    "unit": "B/op",
+    "label": "before",
+    "base": 15186152,
+    "candidate": 13853000,
+    "delta": -8.778734731484317,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      15186152,
+      15186152,
+      15186152,
+      15186152,
+      15186152,
+      15186152
+    ],
+    "candidateValues": [
+      13853000,
+      13853000,
+      13858576,
+      13853000,
+      13858688,
+      13853000
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/ruby",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 15186152,
+    "candidate": 13853000,
+    "delta": -8.778734731484317,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      15186152,
+      15186152,
+      15186152,
+      15186152,
+      15186152,
+      15186152
+    ],
+    "candidateValues": [
+      13853000,
+      13853000,
+      13858688,
+      13853000,
+      13853000,
+      13858688
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/ruby",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 4487,
+    "candidate": 4481,
+    "delta": -0.13371963449966273,
+    "p": 0.23376623376623376,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      4487,
+      4487,
+      4487,
+      4487,
+      4487,
+      4487
+    ],
+    "candidateValues": [
+      4481,
+      4481,
+      4488,
+      4481,
+      4489,
+      4481
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/ruby",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 4487,
+    "candidate": 4481,
+    "delta": -0.13371963449966273,
+    "p": 0.23376623376623376,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      4487,
+      4487,
+      4487,
+      4487,
+      4487,
+      4487
+    ],
+    "candidateValues": [
+      4481,
+      4481,
+      4489,
+      4481,
+      4481,
+      4489
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/esbuild",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 410804181,
+    "candidate": 336852938,
+    "delta": -18.001579930365896,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      408778933,
+      412829429,
+      414413424,
+      415621296,
+      407679472,
+      404868702
+    ],
+    "candidateValues": [
+      346195450,
+      333682884,
+      333583762,
+      340022992,
+      370795662,
+      333464786
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/esbuild",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 410804181,
+    "candidate": 345842696,
+    "delta": -15.8132482590288,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      408778933,
+      412829429,
+      414413424,
+      415621296,
+      407679472,
+      404868702
+    ],
+    "candidateValues": [
+      339322694,
+      371163043,
+      351351206,
+      338555388,
+      345279381,
+      346406011
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/esbuild",
+    "unit": "B/op",
+    "label": "before",
+    "base": 18441704,
+    "candidate": 18329272,
+    "delta": -0.6096616668394672,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      18441704,
+      18441704,
+      18441704,
+      18441704,
+      18441704,
+      18441704
+    ],
+    "candidateValues": [
+      18329272,
+      18329272,
+      18329272,
+      18329272,
+      18329272,
+      18329272
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/esbuild",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 18441704,
+    "candidate": 18329272,
+    "delta": -0.6096616668394672,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      18441704,
+      18441704,
+      18441704,
+      18441704,
+      18441704,
+      18441704
+    ],
+    "candidateValues": [
+      18329272,
+      18329272,
+      18329272,
+      18329272,
+      18329272,
+      18329272
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/esbuild",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 9214,
+    "candidate": 9212,
+    "delta": -0.021706099413931756,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      9214,
+      9214,
+      9214,
+      9214,
+      9214,
+      9214
+    ],
+    "candidateValues": [
+      9212,
+      9212,
+      9212,
+      9212,
+      9212,
+      9212
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/esbuild",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 9214,
+    "candidate": 9212,
+    "delta": -0.021706099413931756,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      9214,
+      9214,
+      9214,
+      9214,
+      9214,
+      9214
+    ],
+    "candidateValues": [
+      9212,
+      9212,
+      9212,
+      9212,
+      9212,
+      9212
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_i32",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 368463,
+    "candidate": 333692,
+    "delta": -9.436768413653473,
+    "p": 0.13203463203463203,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      420847,
+      368999,
+      291572,
+      367927,
+      410838,
+      319976
+    ],
+    "candidateValues": [
+      350844,
+      243832,
+      336126,
+      347528,
+      331258,
+      245666
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_i32",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 368463,
+    "candidate": 312111,
+    "delta": -15.293801548595109,
+    "p": 0.24025974025974026,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      420847,
+      368999,
+      291572,
+      367927,
+      410838,
+      319976
+    ],
+    "candidateValues": [
+      660261,
+      276424,
+      249473,
+      249573,
+      352317,
+      347798
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_i32",
+    "unit": "B/op",
+    "label": "before",
+    "base": 30904,
+    "candidate": 30840,
+    "delta": -0.20709293295366749,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      30904,
+      30904,
+      30904,
+      30904,
+      30904,
+      30904
+    ],
+    "candidateValues": [
+      30840,
+      30840,
+      30840,
+      30840,
+      30840,
+      30840
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_i32",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 30904,
+    "candidate": 30840,
+    "delta": -0.20709293295366749,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      30904,
+      30904,
+      30904,
+      30904,
+      30904,
+      30904
+    ],
+    "candidateValues": [
+      30840,
+      30840,
+      30840,
+      30840,
+      30840,
+      30840
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_i32",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 43,
+    "candidate": 43,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ],
+    "candidateValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_i32",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 43,
+    "candidate": 43,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ],
+    "candidateValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_i64",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 279284,
+    "candidate": 260143,
+    "delta": -6.8535970553271985,
+    "p": 0.30952380952380953,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      261245,
+      386933,
+      285611,
+      272957,
+      604114,
+      254783
+    ],
+    "candidateValues": [
+      314646,
+      259131,
+      261155,
+      215107,
+      436266,
+      199458
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_i64",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 279284,
+    "candidate": 360338,
+    "delta": 29.02207072370777,
+    "p": 0.5887445887445888,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      261245,
+      386933,
+      285611,
+      272957,
+      604114,
+      254783
+    ],
+    "candidateValues": [
+      285951,
+      245174,
+      377796,
+      532328,
+      448670,
+      342880
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_i64",
+    "unit": "B/op",
+    "label": "before",
+    "base": 30904,
+    "candidate": 30840,
+    "delta": -0.20709293295366749,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      30904,
+      30904,
+      30904,
+      30904,
+      30904,
+      30904
+    ],
+    "candidateValues": [
+      30840,
+      30840,
+      30840,
+      30840,
+      30856,
+      30840
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_i64",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 30904,
+    "candidate": 30840,
+    "delta": -0.20709293295366749,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      30904,
+      30904,
+      30904,
+      30904,
+      30904,
+      30904
+    ],
+    "candidateValues": [
+      30840,
+      30840,
+      30840,
+      30856,
+      30840,
+      30840
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_i64",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 43,
+    "candidate": 43,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ],
+    "candidateValues": [
+      43,
+      43,
+      43,
+      43,
+      44,
+      43
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_i64",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 43,
+    "candidate": 43,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ],
+    "candidateValues": [
+      43,
+      43,
+      43,
+      44,
+      43,
+      43
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_f32",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 232736,
+    "candidate": 227551,
+    "delta": -2.2278461432696295,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      217522,
+      209587,
+      291211,
+      534793,
+      184930,
+      247950
+    ],
+    "candidateValues": [
+      472054,
+      198025,
+      218634,
+      201091,
+      236468,
+      333542
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_f32",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 232736,
+    "candidate": 214701.5,
+    "delta": -7.7489086346762,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      217522,
+      209587,
+      291211,
+      534793,
+      184930,
+      247950
+    ],
+    "candidateValues": [
+      282575,
+      213023,
+      168830,
+      216380,
+      256386,
+      154362
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_f32",
+    "unit": "B/op",
+    "label": "before",
+    "base": 34496,
+    "candidate": 30368,
+    "delta": -11.966604823747684,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      34496,
+      34496,
+      34496,
+      34496,
+      34496,
+      34512
+    ],
+    "candidateValues": [
+      30368,
+      30368,
+      30368,
+      30384,
+      30368,
+      30368
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_f32",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 34496,
+    "candidate": 30368,
+    "delta": -11.966604823747684,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      34496,
+      34496,
+      34496,
+      34496,
+      34496,
+      34512
+    ],
+    "candidateValues": [
+      30368,
+      30368,
+      30368,
+      30368,
+      30368,
+      30368
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_f32",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 69,
+    "candidate": 69,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      69,
+      69,
+      69,
+      69,
+      69,
+      70
+    ],
+    "candidateValues": [
+      69,
+      69,
+      69,
+      70,
+      69,
+      69
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_f32",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 69,
+    "candidate": 69,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      69,
+      69,
+      69,
+      69,
+      69,
+      70
+    ],
+    "candidateValues": [
+      69,
+      69,
+      69,
+      69,
+      69,
+      69
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_f64",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 202889.5,
+    "candidate": 169696,
+    "delta": -16.360383361386365,
+    "p": 0.24025974025974026,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      199137,
+      203616,
+      202163,
+      212793,
+      299708,
+      192925
+    ],
+    "candidateValues": [
+      277776,
+      163179,
+      151287,
+      166555,
+      266665,
+      172837
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_f64",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 202889.5,
+    "candidate": 177065.5,
+    "delta": -12.728110621791666,
+    "p": 0.17965367965367965,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      199137,
+      203616,
+      202163,
+      212793,
+      299708,
+      192925
+    ],
+    "candidateValues": [
+      207613,
+      186904,
+      167227,
+      154031,
+      163940,
+      220207
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_f64",
+    "unit": "B/op",
+    "label": "before",
+    "base": 34528,
+    "candidate": 30400,
+    "delta": -11.955514365152919,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      34528,
+      34528,
+      34528,
+      34528,
+      34528,
+      34528
+    ],
+    "candidateValues": [
+      30400,
+      30400,
+      30400,
+      30400,
+      30400,
+      30400
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_f64",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 34528,
+    "candidate": 30400,
+    "delta": -11.955514365152919,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      34528,
+      34528,
+      34528,
+      34528,
+      34528,
+      34528
+    ],
+    "candidateValues": [
+      30400,
+      30400,
+      30400,
+      30400,
+      30400,
+      30400
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_f64",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 70,
+    "candidate": 70,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      70,
+      70,
+      70,
+      70,
+      70,
+      70
+    ],
+    "candidateValues": [
+      70,
+      70,
+      70,
+      70,
+      70,
+      70
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_f64",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 70,
+    "candidate": 70,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      70,
+      70,
+      70,
+      70,
+      70,
+      70
+    ],
+    "candidateValues": [
+      70,
+      70,
+      70,
+      70,
+      70,
+      70
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_mem",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 191903.5,
+    "candidate": 129685.5,
+    "delta": -32.42150351609012,
+    "p": 0.09307359307359307,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      182385,
+      209847,
+      231248,
+      201422,
+      161386,
+      149784
+    ],
+    "candidateValues": [
+      279229,
+      130737,
+      128464,
+      128634,
+      152750,
+      120969
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_mem",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 191903.5,
+    "candidate": 184374,
+    "delta": -3.923586594303907,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      182385,
+      209847,
+      231248,
+      201422,
+      161386,
+      149784
+    ],
+    "candidateValues": [
+      134495,
+      151958,
+      201181,
+      193186,
+      178127,
+      190621
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_mem",
+    "unit": "B/op",
+    "label": "before",
+    "base": 28592,
+    "candidate": 25760,
+    "delta": -9.904868494683827,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28592,
+      28592,
+      28592,
+      28592,
+      28592,
+      28592
+    ],
+    "candidateValues": [
+      25760,
+      25760,
+      25760,
+      25760,
+      25760,
+      25760
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_mem",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 28592,
+    "candidate": 25760,
+    "delta": -9.904868494683827,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28592,
+      28592,
+      28592,
+      28592,
+      28592,
+      28592
+    ],
+    "candidateValues": [
+      25760,
+      25760,
+      25760,
+      25760,
+      25760,
+      25760
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_mem",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 39,
+    "candidate": 39,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ],
+    "candidateValues": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_mem",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 39,
+    "candidate": 39,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ],
+    "candidateValues": [
+      39,
+      39,
+      39,
+      39,
+      39,
+      39
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_bulk_mem",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 84219.5,
+    "candidate": 79465.5,
+    "delta": -5.64477347882616,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      85612,
+      82827,
+      126490,
+      97505,
+      77576,
+      82817
+    ],
+    "candidateValues": [
+      100049,
+      75854,
+      83077,
+      73209,
+      91713,
+      74701
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_bulk_mem",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 84219.5,
+    "candidate": 87065,
+    "delta": 3.378671210349138,
+    "p": 0.8181818181818182,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      85612,
+      82827,
+      126490,
+      97505,
+      77576,
+      82817
+    ],
+    "candidateValues": [
+      73098,
+      94900,
+      79230,
+      101072,
+      77868,
+      114718
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_bulk_mem",
+    "unit": "B/op",
+    "label": "before",
+    "base": 13984,
+    "candidate": 13568,
+    "delta": -2.9748283752860427,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      13984,
+      13984,
+      13984,
+      13984,
+      13984,
+      13984
+    ],
+    "candidateValues": [
+      13568,
+      13568,
+      13568,
+      13568,
+      13568,
+      13568
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_bulk_mem",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 13984,
+    "candidate": 13568,
+    "delta": -2.9748283752860427,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      13984,
+      13984,
+      13984,
+      13984,
+      13984,
+      13984
+    ],
+    "candidateValues": [
+      13568,
+      13568,
+      13568,
+      13568,
+      13568,
+      13568
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_bulk_mem",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 41,
+    "candidate": 41,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      41,
+      41,
+      41,
+      41,
+      41,
+      41
+    ],
+    "candidateValues": [
+      41,
+      41,
+      41,
+      41,
+      41,
+      41
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_bulk_mem",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 41,
+    "candidate": 41,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      41,
+      41,
+      41,
+      41,
+      41,
+      41
+    ],
+    "candidateValues": [
+      41,
+      41,
+      41,
+      41,
+      41,
+      41
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_ctl",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 146618,
+    "candidate": 132511,
+    "delta": -9.62160171329578,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      146448,
+      144825,
+      155815,
+      164562,
+      146067,
+      146788
+    ],
+    "candidateValues": [
+      212342,
+      126089,
+      129275,
+      134074,
+      165925,
+      130948
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_ctl",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 146618,
+    "candidate": 149653.5,
+    "delta": 2.070346069377571,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      146448,
+      144825,
+      155815,
+      164562,
+      146067,
+      146788
+    ],
+    "candidateValues": [
+      130427,
+      211421,
+      168880,
+      128915,
+      129115,
+      204628
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_ctl",
+    "unit": "B/op",
+    "label": "before",
+    "base": 61712,
+    "candidate": 61696,
+    "delta": -0.025926886180971387,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      61712,
+      61712,
+      61712,
+      61712,
+      61712,
+      61712
+    ],
+    "candidateValues": [
+      61696,
+      61696,
+      61696,
+      61696,
+      61696,
+      61696
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_ctl",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 61712,
+    "candidate": 61696,
+    "delta": -0.025926886180971387,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      61712,
+      61712,
+      61712,
+      61712,
+      61712,
+      61712
+    ],
+    "candidateValues": [
+      61696,
+      61696,
+      61696,
+      61696,
+      61696,
+      61696
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_ctl",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 43,
+    "candidate": 43,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ],
+    "candidateValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_ctl",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 43,
+    "candidate": 43,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ],
+    "candidateValues": [
+      43,
+      43,
+      43,
+      43,
+      43,
+      43
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_call",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 83303,
+    "candidate": 70103,
+    "delta": -15.845767859500858,
+    "p": 0.6991341991341992,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      111451,
+      72608,
+      106281,
+      93998,
+      66145,
+      67268
+    ],
+    "candidateValues": [
+      135577,
+      63911,
+      106181,
+      66475,
+      73399,
+      66807
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_call",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 83303,
+    "candidate": 95270.5,
+    "delta": 14.366229307467915,
+    "p": 0.48484848484848486,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      111451,
+      72608,
+      106281,
+      93998,
+      66145,
+      67268
+    ],
+    "candidateValues": [
+      93247,
+      82236,
+      97294,
+      113875,
+      99158,
+      86955
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_call",
+    "unit": "B/op",
+    "label": "before",
+    "base": 20936,
+    "candidate": 20296,
+    "delta": -3.0569354222392042,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      20936,
+      20936,
+      20936,
+      20936,
+      20936,
+      20936
+    ],
+    "candidateValues": [
+      20296,
+      20296,
+      20296,
+      20296,
+      20296,
+      20296
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_call",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 20936,
+    "candidate": 20296,
+    "delta": -3.0569354222392042,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      20936,
+      20936,
+      20936,
+      20936,
+      20936,
+      20936
+    ],
+    "candidateValues": [
+      20296,
+      20296,
+      20296,
+      20296,
+      20296,
+      20296
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_call",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 65,
+    "candidate": 65,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      65,
+      65,
+      65,
+      65,
+      65,
+      65
+    ],
+    "candidateValues": [
+      65,
+      65,
+      65,
+      65,
+      65,
+      65
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_call",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 65,
+    "candidate": 65,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      65,
+      65,
+      65,
+      65,
+      65,
+      65
+    ],
+    "candidateValues": [
+      65,
+      65,
+      65,
+      65,
+      65,
+      65
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_var",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 64402,
+    "candidate": 58711.5,
+    "delta": -8.835905717213755,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      105018,
+      52509,
+      55996,
+      72808,
+      85331,
+      55645
+    ],
+    "candidateValues": [
+      69322,
+      52780,
+      54754,
+      52269,
+      62669,
+      79882
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_var",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 64402,
+    "candidate": 53501.5,
+    "delta": -16.925716592652407,
+    "p": 0.17965367965367965,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      105018,
+      52509,
+      55996,
+      72808,
+      85331,
+      55645
+    ],
+    "candidateValues": [
+      72206,
+      84470,
+      51117,
+      54233,
+      45866,
+      52770
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_var",
+    "unit": "B/op",
+    "label": "before",
+    "base": 25664,
+    "candidate": 24896,
+    "delta": -2.9925187032418976,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      25664,
+      25664,
+      25664,
+      25664,
+      25664,
+      25664
+    ],
+    "candidateValues": [
+      24896,
+      24896,
+      24896,
+      24896,
+      24896,
+      24896
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_var",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 25664,
+    "candidate": 24896,
+    "delta": -2.9925187032418976,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      25664,
+      25664,
+      25664,
+      25664,
+      25664,
+      25664
+    ],
+    "candidateValues": [
+      24896,
+      24896,
+      24896,
+      24896,
+      24896,
+      24896
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_var",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 37,
+    "candidate": 37,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      37,
+      37,
+      37,
+      37,
+      37,
+      37
+    ],
+    "candidateValues": [
+      37,
+      37,
+      37,
+      37,
+      37,
+      37
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_var",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 37,
+    "candidate": 37,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      37,
+      37,
+      37,
+      37,
+      37,
+      37
+    ],
+    "candidateValues": [
+      37,
+      37,
+      37,
+      37,
+      37,
+      37
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_cvt",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 133037,
+    "candidate": 150445,
+    "delta": 13.085081593842318,
+    "p": 0.48484848484848486,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      131128,
+      127261,
+      163730,
+      134946,
+      176314,
+      126620
+    ],
+    "candidateValues": [
+      260804,
+      109578,
+      163950,
+      132450,
+      136940,
+      175954
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_cvt",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 133037,
+    "candidate": 122151.5,
+    "delta": -8.1823101843848,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      131128,
+      127261,
+      163730,
+      134946,
+      176314,
+      126620
+    ],
+    "candidateValues": [
+      163009,
+      178548,
+      114667,
+      110269,
+      113905,
+      129636
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_cvt",
+    "unit": "B/op",
+    "label": "before",
+    "base": 26232,
+    "candidate": 23512,
+    "delta": -10.369014943580357,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      26232,
+      26232,
+      26232,
+      26232,
+      26232,
+      26232
+    ],
+    "candidateValues": [
+      23512,
+      23512,
+      23512,
+      23512,
+      23512,
+      23512
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_cvt",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 26232,
+    "candidate": 23512,
+    "delta": -10.369014943580357,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      26232,
+      26232,
+      26232,
+      26232,
+      26232,
+      26232
+    ],
+    "candidateValues": [
+      23512,
+      23512,
+      23512,
+      23512,
+      23512,
+      23512
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_cvt",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 52,
+    "candidate": 52,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      52,
+      52,
+      52,
+      52,
+      52,
+      52
+    ],
+    "candidateValues": [
+      52,
+      52,
+      52,
+      52,
+      52,
+      52
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_cvt",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 52,
+    "candidate": 52,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      52,
+      52,
+      52,
+      52,
+      52,
+      52
+    ],
+    "candidateValues": [
+      52,
+      52,
+      52,
+      52,
+      52,
+      52
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_v128",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 137129.5,
+    "candidate": 105114,
+    "delta": -23.346909308354512,
+    "p": 0.30952380952380953,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      167017,
+      106692,
+      153380,
+      136128,
+      138131,
+      105910
+    ],
+    "candidateValues": [
+      108956,
+      141768,
+      101272,
+      101061,
+      155935,
+      93827
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_v128",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 137129.5,
+    "candidate": 102555,
+    "delta": -25.213028560594186,
+    "p": 0.06493506493506493,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      167017,
+      106692,
+      153380,
+      136128,
+      138131,
+      105910
+    ],
+    "candidateValues": [
+      89119,
+      135206,
+      104609,
+      140145,
+      94670,
+      100501
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_v128",
+    "unit": "B/op",
+    "label": "before",
+    "base": 33080,
+    "candidate": 33064,
+    "delta": -0.04836759371221744,
+    "p": 0.015151515151515152,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      33080,
+      33080,
+      33080,
+      33080,
+      33080,
+      33080
+    ],
+    "candidateValues": [
+      33064,
+      33064,
+      33064,
+      33064,
+      37960,
+      33064
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_v128",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 33080,
+    "candidate": 33064,
+    "delta": -0.04836759371221744,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      33080,
+      33080,
+      33080,
+      33080,
+      33080,
+      33080
+    ],
+    "candidateValues": [
+      33064,
+      33064,
+      33064,
+      33064,
+      33064,
+      33064
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_v128",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 57,
+    "candidate": 57,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      57,
+      57,
+      57,
+      57,
+      57,
+      57
+    ],
+    "candidateValues": [
+      57,
+      57,
+      57,
+      57,
+      59,
+      57
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_v128",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 57,
+    "candidate": 57,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      57,
+      57,
+      57,
+      57,
+      57,
+      57
+    ],
+    "candidateValues": [
+      57,
+      57,
+      57,
+      57,
+      57,
+      57
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i8x16",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 329033,
+    "candidate": 325711.5,
+    "delta": -1.0094732139329543,
+    "p": 0.6991341991341992,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      487443,
+      320216,
+      327350,
+      337389,
+      330716,
+      312793
+    ],
+    "candidateValues": [
+      401300,
+      249913,
+      253480,
+      379779,
+      279459,
+      371964
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i8x16",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 329033,
+    "candidate": 289698.5,
+    "delta": -11.954575984779648,
+    "p": 0.30952380952380953,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      487443,
+      320216,
+      327350,
+      337389,
+      330716,
+      312793
+    ],
+    "candidateValues": [
+      248120,
+      344061,
+      265703,
+      373587,
+      313694,
+      255053
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i8x16",
+    "unit": "B/op",
+    "label": "before",
+    "base": 46328,
+    "candidate": 39288,
+    "delta": -15.195993783457084,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      46328,
+      46328,
+      46328,
+      46328,
+      46328,
+      46328
+    ],
+    "candidateValues": [
+      39288,
+      39288,
+      39288,
+      39288,
+      39288,
+      39288
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i8x16",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 46328,
+    "candidate": 39288,
+    "delta": -15.195993783457084,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      46328,
+      46328,
+      46328,
+      46328,
+      46328,
+      46328
+    ],
+    "candidateValues": [
+      39288,
+      39288,
+      39288,
+      39288,
+      39288,
+      39288
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i8x16",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 66,
+    "candidate": 66,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      66,
+      66,
+      66,
+      66,
+      66,
+      66
+    ],
+    "candidateValues": [
+      66,
+      66,
+      66,
+      66,
+      66,
+      66
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i8x16",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 66,
+    "candidate": 66,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      66,
+      66,
+      66,
+      66,
+      66,
+      66
+    ],
+    "candidateValues": [
+      66,
+      66,
+      66,
+      66,
+      66,
+      66
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i16x8",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 423477,
+    "candidate": 338275.5,
+    "delta": -20.119510622772907,
+    "p": 0.06493506493506493,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      535184,
+      405197,
+      423191,
+      423763,
+      464349,
+      407181
+    ],
+    "candidateValues": [
+      376012,
+      323222,
+      325236,
+      329744,
+      553418,
+      346807
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i16x8",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 423477,
+    "candidate": 339117,
+    "delta": -19.920798532151686,
+    "p": 0.06493506493506493,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      535184,
+      405197,
+      423191,
+      423763,
+      464349,
+      407181
+    ],
+    "candidateValues": [
+      330386,
+      634211,
+      344753,
+      323733,
+      338631,
+      339603
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i16x8",
+    "unit": "B/op",
+    "label": "before",
+    "base": 42816,
+    "candidate": 36544,
+    "delta": -14.648729446935727,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      42816,
+      42816,
+      42816,
+      42816,
+      42816,
+      42816
+    ],
+    "candidateValues": [
+      36544,
+      36544,
+      36544,
+      36544,
+      36544,
+      36544
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i16x8",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 42816,
+    "candidate": 36544,
+    "delta": -14.648729446935727,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      42816,
+      42816,
+      42816,
+      42816,
+      42816,
+      42816
+    ],
+    "candidateValues": [
+      36544,
+      36544,
+      36544,
+      36544,
+      36544,
+      36544
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i16x8",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 51,
+    "candidate": 51,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      51,
+      51,
+      51,
+      51,
+      51,
+      51
+    ],
+    "candidateValues": [
+      51,
+      51,
+      51,
+      51,
+      51,
+      51
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i16x8",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 51,
+    "candidate": 51,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      51,
+      51,
+      51,
+      51,
+      51,
+      51
+    ],
+    "candidateValues": [
+      51,
+      51,
+      51,
+      51,
+      51,
+      51
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i32x4",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 528866.5,
+    "candidate": 401224.5,
+    "delta": -24.135013278398233,
+    "p": 0.06493506493506493,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      551314,
+      562044,
+      577914,
+      506419,
+      491221,
+      399577
+    ],
+    "candidateValues": [
+      344432,
+      459530,
+      315217,
+      312802,
+      555953,
+      458017
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i32x4",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 528866.5,
+    "candidate": 321519,
+    "delta": -39.20601891025429,
+    "p": 0.004329004329004329,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      551314,
+      562044,
+      577914,
+      506419,
+      491221,
+      399577
+    ],
+    "candidateValues": [
+      314426,
+      432880,
+      321519,
+      383015,
+      321519,
+      310728
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i32x4",
+    "unit": "B/op",
+    "label": "before",
+    "base": 37288,
+    "candidate": 31016,
+    "delta": -16.820424801544732,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      37288,
+      37288,
+      37288,
+      37288,
+      37288,
+      42184
+    ],
+    "candidateValues": [
+      31016,
+      31016,
+      31016,
+      31016,
+      31016,
+      31016
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i32x4",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 37288,
+    "candidate": 31016,
+    "delta": -16.820424801544732,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      37288,
+      37288,
+      37288,
+      37288,
+      37288,
+      42184
+    ],
+    "candidateValues": [
+      31016,
+      31016,
+      31016,
+      31016,
+      35912,
+      31016
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i32x4",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 51,
+    "candidate": 51,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      51,
+      51,
+      51,
+      51,
+      51,
+      53
+    ],
+    "candidateValues": [
+      51,
+      51,
+      51,
+      51,
+      51,
+      51
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i32x4",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 51,
+    "candidate": 51,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      51,
+      51,
+      51,
+      51,
+      51,
+      53
+    ],
+    "candidateValues": [
+      51,
+      51,
+      51,
+      51,
+      53,
+      51
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i64x2",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 322761,
+    "candidate": 246011,
+    "delta": -23.77920504645853,
+    "p": 0.13203463203463203,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      238201,
+      358609,
+      246487,
+      286913,
+      362076,
+      362206
+    ],
+    "candidateValues": [
+      327811,
+      285290,
+      197955,
+      196362,
+      310137,
+      206732
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i64x2",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 322761,
+    "candidate": 295094,
+    "delta": -8.571977407431508,
+    "p": 0.5887445887445888,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      238201,
+      358609,
+      246487,
+      286913,
+      362076,
+      362206
+    ],
+    "candidateValues": [
+      305428,
+      254652,
+      311721,
+      288386,
+      301802,
+      196382
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i64x2",
+    "unit": "B/op",
+    "label": "before",
+    "base": 40368,
+    "candidate": 34160,
+    "delta": -15.378517637732859,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      40368,
+      40368,
+      40368,
+      40368,
+      40368,
+      35472
+    ],
+    "candidateValues": [
+      34160,
+      34160,
+      34160,
+      34160,
+      29264,
+      34160
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i64x2",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 40368,
+    "candidate": 34160,
+    "delta": -15.378517637732859,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      40368,
+      40368,
+      40368,
+      40368,
+      40368,
+      35472
+    ],
+    "candidateValues": [
+      34160,
+      34160,
+      34160,
+      34160,
+      29264,
+      34160
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i64x2",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 50,
+    "candidate": 50,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      50,
+      50,
+      50,
+      50,
+      50,
+      48
+    ],
+    "candidateValues": [
+      50,
+      50,
+      50,
+      50,
+      48,
+      50
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_i64x2",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 50,
+    "candidate": 50,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      50,
+      50,
+      50,
+      50,
+      50,
+      48
+    ],
+    "candidateValues": [
+      50,
+      50,
+      50,
+      50,
+      48,
+      50
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_f32x4",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 264165.5,
+    "candidate": 221785,
+    "delta": -16.04316233573271,
+    "p": 0.13203463203463203,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      369670,
+      263579,
+      382434,
+      264752,
+      245545,
+      245204
+    ],
+    "candidateValues": [
+      224705,
+      294778,
+      198717,
+      218865,
+      306620,
+      191662
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_f32x4",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 264165.5,
+    "candidate": 266645,
+    "delta": 0.9386161326895515,
+    "p": 0.3939393939393939,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      369670,
+      263579,
+      382434,
+      264752,
+      245545,
+      245204
+    ],
+    "candidateValues": [
+      298976,
+      351897,
+      302382,
+      192986,
+      205189,
+      234314
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_f32x4",
+    "unit": "B/op",
+    "label": "before",
+    "base": 35752,
+    "candidate": 29544,
+    "delta": -17.36406354889237,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      35752,
+      35752,
+      35752,
+      35752,
+      35752,
+      35752
+    ],
+    "candidateValues": [
+      29544,
+      29544,
+      29544,
+      29544,
+      29544,
+      29544
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_f32x4",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 35752,
+    "candidate": 29544,
+    "delta": -17.36406354889237,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      35752,
+      35752,
+      35752,
+      35752,
+      35752,
+      35752
+    ],
+    "candidateValues": [
+      29544,
+      29544,
+      29544,
+      29544,
+      29544,
+      29544
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_f32x4",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 50,
+    "candidate": 50,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      50,
+      50,
+      50,
+      50,
+      50,
+      50
+    ],
+    "candidateValues": [
+      50,
+      50,
+      50,
+      50,
+      50,
+      50
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_f32x4",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 50,
+    "candidate": 50,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      50,
+      50,
+      50,
+      50,
+      50,
+      50
+    ],
+    "candidateValues": [
+      50,
+      50,
+      50,
+      50,
+      50,
+      50
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_f64x2",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 355674,
+    "candidate": 208314.5,
+    "delta": -41.431057653919034,
+    "p": 0.008658008658008658,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      372265,
+      371664,
+      250985,
+      339684,
+      396461,
+      251847
+    ],
+    "candidateValues": [
+      221550,
+      192074,
+      196101,
+      300980,
+      214376,
+      202253
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_f64x2",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 355674,
+    "candidate": 229569,
+    "delta": -35.45522022976096,
+    "p": 0.025974025974025976,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      372265,
+      371664,
+      250985,
+      339684,
+      396461,
+      251847
+    ],
+    "candidateValues": [
+      197183,
+      246005,
+      213133,
+      285441,
+      198727,
+      321959
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_f64x2",
+    "unit": "B/op",
+    "label": "before",
+    "base": 35704,
+    "candidate": 29496,
+    "delta": -17.387407573381132,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      35704,
+      35704,
+      35704,
+      35704,
+      35704,
+      35704
+    ],
+    "candidateValues": [
+      29496,
+      29496,
+      29496,
+      29496,
+      29496,
+      29496
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_f64x2",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 35704,
+    "candidate": 29496,
+    "delta": -17.387407573381132,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      35704,
+      35704,
+      35704,
+      35704,
+      35704,
+      35704
+    ],
+    "candidateValues": [
+      29496,
+      29496,
+      29496,
+      29496,
+      29496,
+      29496
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_f64x2",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 49,
+    "candidate": 49,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      49,
+      49,
+      49,
+      49,
+      49,
+      49
+    ],
+    "candidateValues": [
+      49,
+      49,
+      49,
+      49,
+      49,
+      49
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_f64x2",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 49,
+    "candidate": 49,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      49,
+      49,
+      49,
+      49,
+      49,
+      49
+    ],
+    "candidateValues": [
+      49,
+      49,
+      49,
+      49,
+      49,
+      49
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_reduce",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 97409.5,
+    "candidate": 84666,
+    "delta": -13.082399560617809,
+    "p": 0.004329004329004329,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      119917,
+      100290,
+      96503,
+      98186,
+      94228,
+      96633
+    ],
+    "candidateValues": [
+      95240,
+      76725,
+      94088,
+      85152,
+      80973,
+      84180
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_reduce",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 97409.5,
+    "candidate": 106121,
+    "delta": 8.943172893814255,
+    "p": 0.8181818181818182,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      119917,
+      100290,
+      96503,
+      98186,
+      94228,
+      96633
+    ],
+    "candidateValues": [
+      128454,
+      97565,
+      120388,
+      87185,
+      76865,
+      114677
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_reduce",
+    "unit": "B/op",
+    "label": "before",
+    "base": 28552,
+    "candidate": 25704,
+    "delta": -9.974782852339592,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28552,
+      28552,
+      28552,
+      28552,
+      28552,
+      28552
+    ],
+    "candidateValues": [
+      25704,
+      25704,
+      25704,
+      25704,
+      25704,
+      25704
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_reduce",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 28552,
+    "candidate": 25704,
+    "delta": -9.974782852339592,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      28552,
+      28552,
+      28552,
+      28552,
+      28552,
+      28552
+    ],
+    "candidateValues": [
+      25704,
+      25704,
+      25704,
+      25704,
+      25704,
+      25704
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_reduce",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 38,
+    "candidate": 38,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      38,
+      38,
+      38,
+      38,
+      38,
+      38
+    ],
+    "candidateValues": [
+      38,
+      38,
+      38,
+      38,
+      38,
+      38
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkCompileCompact/isa_simd_reduce",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 38,
+    "candidate": 38,
+    "delta": 0,
+    "p": 1,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      38,
+      38,
+      38,
+      38,
+      38,
+      38
+    ],
+    "candidateValues": [
+      38,
+      38,
+      38,
+      38,
+      38,
+      38
+    ]
+  }
+]

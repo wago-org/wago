@@ -1514,6 +1514,13 @@ func compileModuleWith(m *wasm.Module, opts CompileOptions) (*a64.CompiledModule
 	return compileModuleParallel(m, opts, workers, codeCap, entry, internalEntry, allHints, hintSidecar, immutableTable, modGlobals, hostAdapters, inlineTargets, moduleTypes, policy, ms, guardMode, boundsFacts, importedFuncs)
 }
 
+// Parallel workers reserve only the small common local range. A rare large
+// function must not multiply its full scratch size by the worker count.
+// All local arrays retain their existing growth path beyond this capacity.
+func parallelLocalScratchCapacity(allHints []funcHints, inlineTargets inlineTargetTable, hostAdapters []bool) int {
+	return min(64, serialLocalScratchCapacity(allHints, inlineTargets, hostAdapters))
+}
+
 func serialLocalScratchCapacity(allHints []funcHints, inlineTargets inlineTargetTable, hostAdapters []bool) int {
 	maxLocals := 0
 	for i := range allHints {
@@ -1540,6 +1547,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	expandedLowering := expandedStackLowering(opts)
 	stackCap := workerStackArenaCap(m, allHints, inlineTargets, expandedLowering)
 	ctrlCap := workerControlFrameCap(m, allHints)
+	localCap := parallelLocalScratchCapacity(allHints, inlineTargets, hostAdapters)
 	pressureAt := shared.PressureThreshold(opts.MemoryPressureAt, codeCap)
 	classifier := wasm.NewModuleInstructionClassifier(m, true)
 	var pressureBytes atomic.Int64
@@ -1548,6 +1556,7 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 		states[i] = workerState{scratch: newScratchWithStackCap(stackCap), arena: make([]byte, 0, arenaCap)}
 		states[i].scratch.classifier = classifier
 		states[i].scratch.moduleTypes = moduleTypes
+		states[i].scratch.reserveLocalScratch(localCap)
 		if ctrlCap != 0 {
 			states[i].scratch.reserveControlFrames(ctrlCap)
 		}
@@ -2101,19 +2110,40 @@ type parallelCalleeHints struct {
 	loop   atomic.Bool
 }
 
-type parallelHintRange struct {
+// Global offsets use each function's existing hint fields until flattening.
+// Only the worker and event-sidecar owner need separate temporary storage.
+type parallelHintOwner struct {
 	worker uint32
-	start  uint32
-	end    uint32
-	event  uint32 // index in the module's eligible-function event sidecars
+	event  uint32
 }
 
 type parallelHintWorker struct {
-	elig        globalEligibilityTracker
-	globals     shared.GlobalHintAccumulator
-	retained    []shared.GlobalHint
-	classifier  wasm.ModuleInstructionClassifier
-	localEvents shared.LocalEventTape
+	elig          globalEligibilityTracker
+	globals       shared.GlobalHintAccumulator
+	retained      []shared.GlobalHint
+	classifier    wasm.ModuleInstructionClassifier
+	localEvents   shared.LocalEventTape
+	frameScratch  [4]globalEligibilityFrame
+	globalScratch [8]uint32
+}
+
+// The caller has already bounded workers * nGlobals with
+// maxParallelHintGlobalEntries. Dense storage is one module-owned allocation;
+// each worker gets exclusive, capacity-bounded slices and small scope scratch.
+func newParallelHintWorkers(m *wasm.Module, nGlobals, workers int) []parallelHintWorker {
+	states := make([]parallelHintWorker, workers)
+	words := make([]uint32, 3*nGlobals*workers)
+	classifier := wasm.NewModuleInstructionClassifier(m, true)
+	for i := range states {
+		state := &states[i]
+		start := i * 3 * nGlobals
+		state.elig.marks = words[start : start+nGlobals : start+nGlobals]
+		state.elig.frames = state.frameScratch[:0]
+		state.elig.globals = state.globalScratch[:0]
+		state.globals.ResetWithScratch(nGlobals, words[start+nGlobals:start+3*nGlobals:start+3*nGlobals])
+		state.classifier = classifier
+	}
+	return states
 }
 
 func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers int, allHints []funcHints, localScores, localLastGets []uint32, compactLastGets bool, intervalFunctions int, localEventMeta []uint32, residencyShadow []shared.ResidencyShadowEntry, eventReserve int, detailedResidency bool) (sparseGlobals []shared.GlobalHint, intervalRangeAt int, moduleEH bool, err error) {
@@ -2138,19 +2168,13 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 		scoreAt += retainedLocalScoreCount(*h)
 	}
 
-	states := make([]parallelHintWorker, workers)
-	classifier := wasm.NewModuleInstructionClassifier(m, true)
-	for i := range states {
-		states[i].elig = newGlobalEligibilityTracker(nGlobals)
-		states[i].globals.Reset(nGlobals)
-		states[i].classifier = classifier
-	}
+	states := newParallelHintWorkers(m, nGlobals, workers)
 	calleeHints := make([]parallelCalleeHints, len(allHints))
-	ranges := make([]parallelHintRange, len(allHints))
+	owners := make([]parallelHintOwner, len(allHints))
 	eventAt := uint32(0)
 	for i := range allHints {
 		if allHints[i].flags.has(hintIntervalRegionStorage) {
-			ranges[i].event = eventAt
+			owners[i].event = eventAt
 			eventAt++
 		}
 	}
@@ -2195,7 +2219,7 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 				}
 				h.flags.assign(hintIntervalRegionStorage, base.flags.has(hintIntervalRegionStorage))
 				if base.flags.has(hintIntervalRegionStorage) {
-					event := int(ranges[i].event)
+					event := int(owners[i].event)
 					h.setLocalEventSummary(len(state.localEvents.Events), state.localEvents.Overflow)
 					localEventMeta[event*2] = h.localStart
 					localEventMeta[event*2+1] = h.localEventMeta
@@ -2208,7 +2232,9 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 					failures.Record(i, fmt.Errorf("function %d hints: worker global sidecar exceeds 32-bit index capacity", i))
 					continue
 				}
-				ranges[i] = parallelHintRange{worker: uint32(workerID), start: uint32(start), end: uint32(len(state.retained)), event: ranges[i].event}
+				allHints[i].globalStart = uint32(start)
+				allHints[i].globalCount = uint32(len(state.retained) - start)
+				owners[i].worker = uint32(workerID)
 			}
 		}(workerID)
 	}
@@ -2218,8 +2244,8 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 	}
 
 	var totalGlobals uint64
-	for i := range ranges {
-		totalGlobals += uint64(ranges[i].end - ranges[i].start)
+	for i := range owners {
+		totalGlobals += uint64(allHints[i].globalCount)
 		if totalGlobals > uint64(^uint32(0)) || totalGlobals > uint64(^uint(0)>>1)/uint64(unsafe.Sizeof(shared.GlobalHint{})) {
 			return nil, 0, false, fmt.Errorf("function hint global sidecar exceeds 32-bit index capacity")
 		}
@@ -2233,8 +2259,10 @@ func scanModuleHintsParallel(m *wasm.Module, nGlobals, importedFuncs, workers in
 		sparseGlobals = make([]shared.GlobalHint, 0, globalCapacity)
 	}
 	for i := range allHints {
-		r := ranges[i]
-		stateGlobals := states[r.worker].retained[r.start:r.end]
+		r := owners[i]
+		start := allHints[i].globalStart
+		count := allHints[i].globalCount
+		stateGlobals := states[r.worker].retained[start : start+count]
 		allHints[i].globalStart = uint32(len(sparseGlobals))
 		allHints[i].globalCount = uint32(len(stateGlobals))
 		sparseGlobals = append(sparseGlobals, stateGlobals...)

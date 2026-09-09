@@ -2,6 +2,39 @@ package shared
 
 import "testing"
 
+func TestGlobalHintAccumulatorExclusiveScratchAndFallback(t *testing.T) {
+	var words [32]uint32
+	for i := range words {
+		words[i] = ^uint32(0)
+	}
+	var a, b GlobalHintAccumulator
+	a.ResetWithScratch(8, words[:16:16])
+	b.ResetWithScratch(8, words[16:32:32])
+	a.Add(1, 9)
+	b.Add(1, 3)
+	a.MarkEligible(1)
+	if got := a.AppendTo(nil); len(got) != 1 || got[0] != (GlobalHint{Index: 1, Score: 9, Eligible: true}) {
+		t.Fatalf("first worker: %+v", got)
+	}
+	if got := b.AppendTo(nil); len(got) != 1 || got[0] != (GlobalHint{Index: 1, Score: 3}) {
+		t.Fatalf("second worker: %+v", got)
+	}
+	if cap(a.scores) != 8 || cap(a.marks) != 8 || cap(b.scores) != 8 || cap(b.marks) != 8 {
+		t.Fatal("scratch range is not capacity-bounded")
+	}
+	if allocs := testing.AllocsPerRun(100, func() { a.ResetWithScratch(8, words[:16:16]); a.Add(2, 1) }); allocs != 0 {
+		t.Fatalf("scratch reuse allocations: %g", allocs)
+	}
+	a.ResetWithScratch(17, words[:16:16])
+	a.Add(16, 7)
+	if got := a.AppendTo(nil); len(got) != 1 || got[0].Index != 16 || got[0].Score != 7 {
+		t.Fatalf("growth fallback: %+v", got)
+	}
+	if got := b.AppendTo(nil); got[0].Score != 3 {
+		t.Fatalf("fallback changed other worker: %+v", got)
+	}
+}
+
 func TestGlobalHintCapacityIndependentOfBatching(t *testing.T) {
 	var a GlobalHintAccumulator
 	var serial []GlobalHint

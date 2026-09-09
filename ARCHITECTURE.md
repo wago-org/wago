@@ -299,6 +299,15 @@ a one-node underestimate. The existing large-arena growth and retention limits
 remain unchanged. Sparse global-hint storage uses the same power-of-two capacity
 rule in serial and parallel scans, starting at one record instead of eight.
 
+Parallel codegen reserves at most 64 local slots per worker; a larger function
+uses the normal growth path. Parallel hint scans allocate dense global scratch
+once, then give each worker exclusive, capacity-bounded slices. Each worker has
+inline space for four eligibility frames and eight global indexes, with normal
+slice growth beyond those sizes. Temporary global offsets use the existing
+per-function hint fields until flattening; worker and event ownership retain
+full-width 32-bit indexes. This removes duplicate range storage without changing
+global ordering, feature checks, deterministic errors, or final resource counts.
+
 The backend is a **single forward pass** that fuses code generation and register
 allocation. It uses the *Valent-Block* technique from WARP: instead of emitting
 a push/pop for every wasm operand, it keeps a **compile-time symbolic operand

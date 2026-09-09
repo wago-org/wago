@@ -1,0 +1,22 @@
+?   	github.com/wago-org/wago/src/core/codeimage	[no test files]
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot	0.088s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	5.952s
+?   	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	[no test files]
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/shared	0.004s
+ok  	github.com/wago-org/wago/src/core/compiler/codegen	0.003s
+ok  	github.com/wago-org/wago/src/core/compiler/frontend	0.011s
+ok  	github.com/wago-org/wago/src/core/compiler/ir	0.032s
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	0.004s
+ok  	github.com/wago-org/wago/src/core/compiler/wasm	1.437s
+?   	github.com/wago-org/wago/src/core/compiler/wasm/internal/geninstrnames	[no test files]
+ok  	github.com/wago-org/wago/src/core/encoder/amd64	0.004s
+ok  	github.com/wago-org/wago/src/core/encoder/arm64	0.004s
+ok  	github.com/wago-org/wago/src/core/nativeabi	0.002s
+ok  	github.com/wago-org/wago/src/core/plugins	0.002s
+ok  	github.com/wago-org/wago/src/core/runtime	0.491s
+ok  	github.com/wago-org/wago/src/core/runtime/abi	0.002s
+ok  	github.com/wago-org/wago/src/core/runtime/gc	0.002s
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	0.516s
+ok  	github.com/wago-org/wago/src/core/runtime/hostthunk	0.002s
+ok  	github.com/wago-org/wago/src/core/semver	0.002s
+ok  	github.com/wago-org/wago/src/wago	4.234s

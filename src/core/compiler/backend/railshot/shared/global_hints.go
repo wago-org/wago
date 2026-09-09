@@ -45,6 +45,19 @@ const (
 	globalHintEpochMask = globalHintEligible - 1
 )
 
+// ResetWithScratch accepts caller-owned, exclusive scratch for initial dense
+// storage. Short scratch keeps Reset's normal allocation fallback. Full-slice
+// bounds prevent one worker's append from overwriting another worker's range.
+func (a *GlobalHintAccumulator) ResetWithScratch(nGlobals int, scratch []uint32) {
+	if len(a.scores) < nGlobals && nGlobals <= len(scratch)/2 {
+		a.scores = scratch[:nGlobals:nGlobals]
+		a.marks = scratch[nGlobals : 2*nGlobals : 2*nGlobals]
+		clear(a.marks)
+		a.epoch = 0
+	}
+	a.Reset(nGlobals)
+}
+
 func (a *GlobalHintAccumulator) Reset(nGlobals int) {
 	if len(a.scores) < nGlobals {
 		words := make([]uint32, 2*nGlobals)

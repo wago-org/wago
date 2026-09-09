@@ -1,0 +1,170 @@
+[
+  {
+    "mode": "signals",
+    "name": "BenchmarkPluginInstantiate/ruby",
+    "unit": "ns/op",
+    "label": "before",
+    "base": 1713647,
+    "candidate": 1550265,
+    "delta": -9.534168939110565,
+    "p": 0.17965367965367965,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1688832,
+      1703311,
+      1920368,
+      1669492,
+      1723983,
+      1813753
+    ],
+    "candidateValues": [
+      1738741,
+      1903157,
+      1468086,
+      1550847,
+      1539615,
+      1549683
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkPluginInstantiate/ruby",
+    "unit": "ns/op",
+    "label": "compact",
+    "base": 1713647,
+    "candidate": 1560652.5,
+    "delta": -8.928005592750432,
+    "p": 0.004329004329004329,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1688832,
+      1703311,
+      1920368,
+      1669492,
+      1723983,
+      1813753
+    ],
+    "candidateValues": [
+      1637293,
+      1545194,
+      1568453,
+      1544022,
+      1552852,
+      1681353
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkPluginInstantiate/ruby",
+    "unit": "B/op",
+    "label": "before",
+    "base": 302068.5,
+    "candidate": 86629,
+    "delta": -71.32140557522548,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      302069,
+      302069,
+      302064,
+      302064,
+      302068,
+      302069
+    ],
+    "candidateValues": [
+      86629,
+      86628,
+      86629,
+      86629,
+      86629,
+      86628
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkPluginInstantiate/ruby",
+    "unit": "B/op",
+    "label": "compact",
+    "base": 302068.5,
+    "candidate": 86629,
+    "delta": -71.32140557522548,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      302069,
+      302069,
+      302064,
+      302064,
+      302068,
+      302069
+    ],
+    "candidateValues": [
+      86629,
+      86629,
+      86629,
+      86629,
+      86629,
+      86629
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkPluginInstantiate/ruby",
+    "unit": "allocs/op",
+    "label": "before",
+    "base": 9405,
+    "candidate": 779,
+    "delta": -91.71717171717172,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      9405,
+      9405,
+      9405,
+      9405,
+      9405,
+      9405
+    ],
+    "candidateValues": [
+      779,
+      779,
+      779,
+      779,
+      779,
+      779
+    ]
+  },
+  {
+    "mode": "signals",
+    "name": "BenchmarkPluginInstantiate/ruby",
+    "unit": "allocs/op",
+    "label": "compact",
+    "base": 9405,
+    "candidate": 779,
+    "delta": -91.71717171717172,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      9405,
+      9405,
+      9405,
+      9405,
+      9405,
+      9405
+    ],
+    "candidateValues": [
+      779,
+      779,
+      779,
+      779,
+      779,
+      779
+    ]
+  }
+]

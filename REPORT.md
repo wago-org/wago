@@ -1,5 +1,14 @@
 # PR #564 correctness and performance qualification
 
+## Compiler scratch memory checkpoint
+
+[The memory report](bench/results/pr564-memory/README.md) records all selected
+warm and fixed-work numbers against main `9708df167`. Parallel scratch reuse
+reduces allocation counts without narrowing indexes or changing code output in
+the checked corpus. Small byte-count and serial summary-storage costs remain and
+are listed. The later `731e95ff2` main update requires a separate integration
+check; it is not the baseline for these saved numbers.
+
 ## Integration with main 9708df167
 
 The branch now incorporates main's regional-residency compiler work. Parallel
