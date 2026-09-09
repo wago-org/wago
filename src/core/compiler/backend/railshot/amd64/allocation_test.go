@@ -53,7 +53,7 @@ func TestGPPinLimitReservesTransientLoweringRegisters(t *testing.T) {
 
 func TestCompileRegisterPressureCorpusUsesOneAttemptPerFunction(t *testing.T) {
 	root := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
-	for _, name := range []string{"assemblyscript/json-as-simd.wasm", "semantic/coremark/coremark.wasm"} {
+	for _, name := range []string{"applications/embench/embench-matmult-int.wasm", "compile/esbuild.wasm"} {
 		t.Run(name, func(t *testing.T) {
 			m := readParallelTestModule(t, filepath.Join(root, name))
 			var stats ModuleStats
