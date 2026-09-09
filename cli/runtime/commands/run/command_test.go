@@ -435,11 +435,11 @@ func TestRunValueParsingAndFormatting(t *testing.T) {
 			t.Errorf("parseVal(%q, %s) accepted invalid value", tc.in, tc.typ)
 		}
 	}
-	args := mustParseArgs([]string{"7", "1.5:f32"}, []wago.ValType{wago.ValI32, wago.ValI64})
-	if got := format("f", args, []uint64{wago.I64(9)}, []wago.ValType{wago.ValI32, wago.ValF32}, []wago.ValType{wago.ValI64}); got != "f(7, 1.5) = 9" {
+	_ = mustParseArgs([]string{"7", "1.5:f32"}, []wago.ValType{wago.ValI32, wago.ValI64})
+	if got := format([]uint64{wago.I64(9)}, []wago.ValType{wago.ValI64}); got != "9" {
 		t.Fatalf("format result = %q", got)
 	}
-	if got := format("g", nil, nil, nil, nil); got != "g() = ()" {
+	if got := format(nil, nil); got != "" {
 		t.Fatalf("format void = %q", got)
 	}
 	if got := trapReason(&wago.TrapError{Code: wago.TrapDivZero}); got != "integer division by zero" {

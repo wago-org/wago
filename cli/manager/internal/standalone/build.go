@@ -64,8 +64,7 @@ type Result struct {
 }
 
 var (
-	findTool    = exec.LookPath
-	toolVersion = func(path string) ([]byte, error) { return exec.Command(path, "version").Output() }
+	findTool = exec.LookPath
 )
 
 func DefaultOutput(input string, target Target) string {
@@ -205,40 +204,16 @@ func Build(request Request) (Result, error) {
 }
 
 func requireToolchain(name string) error {
-	path, err := findTool(name)
-	if err == nil {
-		version, versionErr := toolVersion(path)
-		if versionErr == nil && (name != "go" || supportedGoVersion(string(version))) {
-			return nil
-		}
+	if _, err := findTool(name); err == nil {
+		return nil
 	}
 	label, website := "Go", "https://go.dev/dl/"
 	if name == "tinygo" {
 		label, website = "TinyGo", "https://tinygo.org/getting-started/install/"
 	}
-	problem := "was not found on PATH"
-	if err == nil {
-		problem = "is unsupported or could not report its version"
-	}
-	return fmt.Errorf(`%s is required to build this executable but %s.
+	return fmt.Errorf(`%s is required to build this executable but was not found on PATH.
 
-Install it, then run this command again:
-	local (~/.wago): download the archive from %s and add its bin directory to PATH
-	global: install it with your system package manager or from %s`, label, problem, website, website)
-}
-
-func supportedGoVersion(value string) bool {
-	value = strings.TrimSpace(value)
-	fields := strings.Fields(value)
-	if len(fields) < 3 || fields[0] != "go" {
-		return false
-	}
-	version := strings.TrimPrefix(fields[2], "go")
-	major, minor := 0, 0
-	if _, err := fmt.Sscanf(version, "%d.%d", &major, &minor); err != nil {
-		return false
-	}
-	return major > 1 || major == 1 && minor >= 22
+Install %s and ensure %q is available on PATH: %s`, label, label, name, website)
 }
 
 func mainSource(providerImports []string, selections []byte, invoke string, core int, deferredBoundsChecking bool, functionWorkers int, optimizations map[string]bool, precompiled bool) []byte {
