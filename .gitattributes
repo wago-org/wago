@@ -4,3 +4,4 @@
 # line endings. Do not let Git's Windows checkout policy rewrite their bytes.
 tests/regressions/** -text -whitespace
 tests/enginefuzz/starshine-ffi.wasm -text -whitespace
+bench/corpus/inputs/** -diff -text -whitespace

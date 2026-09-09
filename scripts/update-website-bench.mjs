@@ -215,10 +215,15 @@ function buildCorpusTabs(sets) {
   const seenModules = new Set();
   for (const set of sets) {
     for (const [name, info] of Object.entries(set.modules ?? {})) {
-      if (!APPLICATION_CORPUS.has(name)) continue;
+      if (!APPLICATION_CORPUS.has(name) && info.category !== "application") continue;
       if (seenModules.has(name)) continue;
       seenModules.add(name);
-      modules.push({ name, category: name === "wasm3" ? "real-large" : info.category || "other" });
+      modules.push({
+        name,
+        category: name === "wasm3" ? "real-large" : info.category || "other",
+        suite: info.suite || "",
+        desc: info.desc || "",
+      });
     }
   }
   const categoryLabels = new Map([
@@ -228,6 +233,7 @@ function buildCorpusTabs(sets) {
     ["control", "Control flow"], ["scale", "Scale"], ["compute", "Compute kernels"],
     ["real", "Real-world programs"], ["real-simd", "Real-world SIMD"],
     ["semantic", "Semantic corpus"], ["real-large", "Large real-world programs"],
+    ["application", "Application corpora"],
     ["regression-only", "Regression corpus"], ["other", "Other"],
   ]);
   const grouped = (makeItems) => {
@@ -241,23 +247,30 @@ function buildCorpusTabs(sets) {
     }
     return [...groups].flatMap(([category, items]) => [grp(categoryLabels.get(category) ?? category), ...items]);
   };
-  const moduleRows = (wagoPrefix, wazeroPrefix, kind = "ns") => grouped(({ name, category }) => [
-    rs(name, `${category} corpus`, `${wagoPrefix}${name}`, `${wazeroPrefix}${name}`,
+  const moduleRows = (wagoPrefix, wazeroPrefix, kind = "ns") => grouped(({ name, category, suite, desc }) => [
+    rs(suite ? `${suite} · ${name.replace(/^[^-]+-/, "")}` : name, desc || `${category} corpus`, `${wagoPrefix}${name}`, `${wazeroPrefix}${name}`,
       kind === "ns" ? "faster" : "smaller", kind),
   ]);
-  const execRows = grouped(({ name, category }) => {
+  const execRows = grouped(({ name, category, suite, desc }) => {
     const keys = new Set();
+    let hasCommand = false;
     for (const set of sets) {
       for (const key of set.metrics.keys()) {
         for (const prefix of ["Exec/", "WazeroExec/"]) {
           if (key.startsWith(`${prefix}${name}.`)) keys.add(key.slice(prefix.length));
         }
+        if (key === `CommandExec/${name}` || key === `WazeroCommandExec/${name}`) hasCommand = true;
       }
     }
-    return [...keys].sort().map((tail) => {
+    const rows = [...keys].sort().map((tail) => {
       const exportName = tail.slice(name.length + 1);
       return rs(name, `${exportName} · ${category} corpus`, `Exec/${tail}`, `WazeroExec/${tail}`);
     });
+    if (hasCommand) {
+      rows.push(rs(suite ? `${suite} · ${name.replace(/^[^-]+-/, "")}` : name,
+        desc || "fresh instance + fixed command", `CommandExec/${name}`, `WazeroCommandExec/${name}`));
+    }
+    return rows;
   });
   return [
     { id: "compile", label: "Compile latency", items: moduleRows("CompileFull/", "WazeroCompile/") },

@@ -51,6 +51,19 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       metrics[`WazeroInstantiate/${name}`] = { ns: 60, bytes: 6, allocs: 2 };
     }
     for (const name of [
+      "polybench-gemm",
+      "embench-crc32",
+      "sightglass-rust-json",
+      "r3-parquet",
+      "wabench-bzip2",
+      "tacle-bsort",
+    ]) {
+      metrics[`CompileFull/${name}`] = { ns: 100, bytes: 10, allocs: 1 };
+      metrics[`WazeroCompile/${name}`] = { ns: 200, bytes: 20, allocs: 2 };
+      metrics[`CommandExec/${name}`] = { ns: 40 };
+      metrics[`WazeroCommandExec/${name}`] = { ns: 80 };
+    }
+    for (const name of [
       "coremark.coremark_run",
       "blake3.blake3_hash",
       "blake3.blake3_keyed_hash",
@@ -77,7 +90,9 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       [...new Set(Object.keys(metrics)
         .filter((key) => key.startsWith("CompileFull/"))
         .map((key) => key.slice("CompileFull/".length)))]
-        .map((name) => [name, { category: name === "tiny" ? "micro" : "semantic", bytes: 100 }]),
+        .map((name) => [name, name.includes("-")
+          ? { category: "application", suite: name.split("-")[0], desc: "application workload", bytes: 100 }
+          : { category: name === "tiny" ? "micro" : "semantic", bytes: 100 }]),
     );
 	modules.lua = { category: "real-large", bytes: 100 };
     const general = {
@@ -219,6 +234,10 @@ function assertDOMContract(html) {
   assert.match(html, /<span class="vs__sub">fresh process<\/span>/);
   assert.match(html, /<span class="vs__sub">runnable corpus<\/span>/);
   assert.match(html, /<span class="vs__sub">compile \+ instantiate<\/span>/);
+  assert.equal(matches(html, /<div class="vs__group">Application corpora<\/div>/g), 8);
+  for (const suite of ["polybench", "embench", "sightglass", "r3", "wabench", "tacle"]) {
+    assert.equal(matches(html, new RegExp(`<span class="vs__label">${suite} · `, "g")), 8);
+  }
   assert.match(html, /End-to-end latency/);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);
   assert.match(html, /class="vs__stage"/);

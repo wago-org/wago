@@ -120,9 +120,36 @@ Its result names use `Stage/<module>`.
 | `CompileFull` | Run `wago.Compile`: decode, validate, then compile. |
 | `Instantiate` | Set up an instance from a compiled module. |
 | `Exec` | Make a host-to-wasm call to each manifest entry point. |
+| `CommandExec` | Instantiate and run one complete pinned command or replay. Compilation is excluded; fresh-instance setup is included. |
 
 The corpus is listed in `corpus/manifest.json`. Each tier checks in its `.wasm`
 files, so normal benchmark runs need no toolchain.
+
+### Application Corpora
+
+`corpus/application-manifest.json` adds 73 runnable workloads from PolyBench/C,
+Embench, Sightglass, Wasm-R3, WABench, and TACLeBench. WASI commands, fixed
+application replays, and import-free programs share the `CommandExec` stage.
+Every run uses a fresh instance, and the Wago and wazero rows use the same
+artifact, arguments, stdin, and preopened input directory. Sightglass output is
+checked against pinned upstream hashes; Embench and TACLeBench remain
+self-verifying.
+
+Run the smoke gate without collecting benchmark numbers:
+
+```bash
+go test -run '^TestApplicationCorpusRuns$' -count=1 .
+```
+
+Rebuild and compare the artifacts without overwriting them:
+
+```bash
+WASI_SDK_PATH=/absolute/path/to/wasi-sdk-34.0 \
+  ./corpus/build-applications.sh
+```
+
+The exact revisions, transformations, exclusions, and hashes are in
+`corpus/PROVENANCE.md` and `corpus/APPLICATION_SHA256SUMS`.
 
 ### Synthetic Micro Programs
 

@@ -132,7 +132,16 @@ func TestARM64WIPRegressions(t *testing.T) {
 
 func corpusStages(m corpusModule) []string {
 	if len(m.Stages) != 0 {
-		return m.Stages
+		stages := make([]string, 0, len(m.Stages))
+		for _, stage := range m.Stages {
+			// CommandExec has its own runner because it needs WASI command
+			// configuration, inputs, and output verification from the
+			// application manifest.
+			if stage != "CommandExec" {
+				stages = append(stages, stage)
+			}
+		}
+		return stages
 	}
 	stages := []string{"Decode", "Validate", "Compile", "CompileFull", "Instantiate"}
 	if len(m.Exec) != 0 {

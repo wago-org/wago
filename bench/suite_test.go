@@ -34,20 +34,33 @@ var applicationCorpus = map[string]bool{
 	"wasm3": true, "lua": true, "sqlite3": true, "ruby": true, "esbuild": true,
 }
 
+type commandEntry struct {
+	Runtime      string   `json:"runtime"` // core or wasi; command runs in a fresh instance
+	Export       string   `json:"export"`
+	Args         []string `json:"args"`
+	Stdin        string   `json:"stdin"`   // optional path relative to corpus/
+	Preopen      string   `json:"preopen"` // optional host directory relative to corpus/, mounted at /
+	Want         []uint64 `json:"want"`    // optional exact function results
+	StdoutSHA256 string   `json:"stdout_sha256"`
+	StderrSHA256 string   `json:"stderr_sha256"`
+}
+
 type execEntry struct {
 	Export string  `json:"export"`
 	Args   []int32 `json:"args"`
 }
 
 type corpusModule struct {
-	File         string      `json:"file"`
-	Path         string      `json:"path"`     // optional: reference a wasm in place (relative to bench/)
-	Category     string      `json:"category"` // micro/loop/.../real/real-large
-	Desc         string      `json:"desc"`
-	Stages       []string    `json:"stages"` // optional: stages this module supports (default: all)
-	Init         string      `json:"init"`   // optional: export to call once after instantiate, before exec (e.g. AssemblyScript's _initialize; wago has no start section)
-	Exec         []execEntry `json:"exec"`
-	SemanticExec []string    `json:"semantic_exec"` // exact case IDs from tests/corpora/MANIFEST.json
+	File         string        `json:"file"`
+	Path         string        `json:"path"`     // optional: reference a wasm in place (relative to bench/)
+	Category     string        `json:"category"` // micro/loop/.../real/real-large
+	Suite        string        `json:"suite"`    // optional upstream corpus name
+	Desc         string        `json:"desc"`
+	Stages       []string      `json:"stages"` // optional: stages this module supports (default: all)
+	Init         string        `json:"init"`   // optional: export to call once after instantiate, before exec (e.g. AssemblyScript's _initialize; wago has no start section)
+	Exec         []execEntry   `json:"exec"`
+	SemanticExec []string      `json:"semantic_exec"` // exact case IDs from tests/corpora/MANIFEST.json
+	Command      *commandEntry `json:"command"`       // optional one-shot command/replay workload
 
 	bytes []byte
 	avail bool // false when an optional referenced path is missing
@@ -82,6 +95,7 @@ var (
 func loadCorpus(tb testing.TB) []corpusModule {
 	corpusOnce.Do(func() {
 		corpus = readManifest(tb, "manifest.json")
+		corpus = append(corpus, readManifest(tb, "application-manifest.json")...)
 		if *includeISABenchmarks {
 			// The generated ISA micro-suite (one export per opcode) shares the
 			// normal manifest schema but is large enough to keep opt-in.
@@ -93,7 +107,7 @@ func loadCorpus(tb testing.TB) []corpusModule {
 	}
 	applications := make([]corpusModule, 0, len(applicationCorpus))
 	for _, mod := range corpus {
-		if applicationCorpus[mod.name()] {
+		if applicationCorpus[mod.name()] || mod.Category == "application" {
 			applications = append(applications, mod)
 		}
 	}

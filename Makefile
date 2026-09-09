@@ -27,7 +27,7 @@ BENCH_ISA ?= 0
 STARSHINE_WASM ?=
 # Per-engine -bench filters. wago = the stage suite + the _wago comparisons;
 # wazero = every benchmark carrying "azero" (BenchmarkWazero* and *_wazero).
-WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Exec)$$|_wago$$
+WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Exec|CommandExec)$$|_wago$$
 WAZERO_BENCH_RE ?= [Ww]azero
 BENCH_ISA_GO_FLAG     := $(if $(filter 1 true yes,$(BENCH_ISA)),-wago.bench.isa,)
 BENCH_ISA_BENCHPUB_FLAG := $(if $(filter 1 true yes,$(BENCH_ISA)),-isa,)
@@ -162,7 +162,7 @@ test-native-arm64: ## Native arm64 gate (run locally on your Mac): the checks CI
 
 .PHONY: test-corpus
 test-corpus: ## Corpus pipeline + differential execution in parent/child processes (WAGO_CORPUS_TIMEOUT=15s)
-	cd bench && go test -count=1 -run '^TestCorpus$$' .
+	cd bench && go test -count=1 -run '^(TestCorpus|TestApplicationCorpusRuns|TestApplicationCorpusChecksums)$$' .
 	cd bench && go test -count=1 -tags wago_guardpage -run '^TestCorpus$$' .
 
 .PHONY: test-semantic-corpus

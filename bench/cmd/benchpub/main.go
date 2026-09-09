@@ -27,7 +27,7 @@ import (
 // suiteRegex selects the wago stage suite plus the cross-engine wazero
 // benchmarks (compare_test.go). The fixed wago-vs-wazero set in bench_test.go is
 // excluded — these fan out over the same corpus as the wago stages.
-const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec|BenchmarkWazeroCompile|BenchmarkWazeroInstantiate|BenchmarkWazeroExec|BenchmarkPluginInstantiate|BenchmarkPluginExec)$`
+const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec|BenchmarkCommandExec|BenchmarkWazeroCompile|BenchmarkWazeroInstantiate|BenchmarkWazeroExec|BenchmarkWazeroCommandExec|BenchmarkPluginInstantiate|BenchmarkPluginExec)$`
 
 // stampPath (bench-relative — benchpub runs with cwd=bench/) records the commit
 // the last published/charted numbers reflect and the wall-clock time benchpub
@@ -43,7 +43,7 @@ type stamp struct {
 }
 
 // stageOrder fixes chart/JSON ordering and is the canonical pipeline sequence.
-var stageOrder = []string{"Decode", "Validate", "Compile", "CompileFull", "Instantiate", "Exec"}
+var stageOrder = []string{"Decode", "Validate", "Compile", "CompileFull", "Instantiate", "Exec", "CommandExec"}
 
 // Metric is one benchmark's central result.
 type Metric struct {
@@ -57,6 +57,8 @@ type Metric struct {
 // and label modules (e.g. the real-world subset) without re-reading the manifest.
 type ModuleInfo struct {
 	Category string `json:"category"`
+	Suite    string `json:"suite,omitempty"`
+	Desc     string `json:"desc,omitempty"`
 	Bytes    int64  `json:"bytes"` // wasm file size
 }
 
@@ -118,7 +120,7 @@ func main() {
 	cor := readCorpus(*includeISA)
 	run.Modules = map[string]ModuleInfo{}
 	for _, c := range cor {
-		run.Modules[c.Name] = ModuleInfo{Category: c.Category, Bytes: c.Bytes}
+		run.Modules[c.Name] = ModuleInfo{Category: c.Category, Suite: c.Suite, Desc: c.Desc, Bytes: c.Bytes}
 	}
 
 	hp := *historyPath
@@ -233,6 +235,12 @@ func normalizeName(n string) string {
 	if strings.HasPrefix(n, "PluginExec/") {
 		return "Exec/" + strings.TrimPrefix(n, "PluginExec/") + ".plugin-workload"
 	}
+	if strings.HasPrefix(n, "CommandExec/") {
+		return n
+	}
+	if strings.HasPrefix(n, "WazeroCommandExec/") {
+		return n
+	}
 	return n
 }
 
@@ -304,8 +312,8 @@ func medianInt(x []int64) int64 {
 // corpusEntry is one manifest module with the bits benchpub needs for chart
 // metadata: name, byte size, and category.
 type corpusEntry struct {
-	Name, Category string
-	Bytes          int64
+	Name, Category, Suite, Desc string
+	Bytes                       int64
 }
 
 // readCorpus reads the manifests for module metadata. Best-effort: nil on error.
@@ -313,7 +321,7 @@ type corpusEntry struct {
 // large and one export per opcode can dominate local runs and charts.
 func readCorpus(includeISA bool) []corpusEntry {
 	var out []corpusEntry
-	files := []string{"manifest.json"}
+	files := []string{"manifest.json", "application-manifest.json"}
 	if includeISA {
 		files = append(files, "isa-manifest.json")
 	}
@@ -324,7 +332,7 @@ func readCorpus(includeISA bool) []corpusEntry {
 		}
 		var m struct {
 			Modules []struct {
-				File, Path, Category string
+				File, Path, Category, Suite, Desc string
 			} `json:"modules"`
 		}
 		if err := json.Unmarshal(raw, &m); err != nil {
@@ -341,8 +349,7 @@ func readCorpus(includeISA bool) []corpusEntry {
 				b = fi.Size()
 			}
 			out = append(out, corpusEntry{
-				Name:     name,
-				Category: mod.Category, Bytes: b,
+				Name: name, Category: mod.Category, Suite: mod.Suite, Desc: mod.Desc, Bytes: b,
 			})
 		}
 	}
