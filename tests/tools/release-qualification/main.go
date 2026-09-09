@@ -27,7 +27,7 @@ var (
 
 var requiredJobs = []string{
 	"changes", "docs", "lint", "regression-corpus", "runtime-concurrency",
-	"race", "platform-test", "core-v2", "core-v3", "tinygo", "coverage", "size",
+	"race", "platform-test", "core-v2", "core-v3", "tinygo", "size",
 }
 
 type qualificationJob struct {

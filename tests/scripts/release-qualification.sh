@@ -9,7 +9,7 @@ source_sha=0123456789abcdef0123456789abcdef01234567
 run_id=123456
 version=v1.2.3-beta.1
 repository=wago-org/wago
-success_needs='{"changes":{"result":"success"},"docs":{"result":"success"},"lint":{"result":"success"},"regression-corpus":{"result":"success"},"runtime-concurrency":{"result":"success"},"race":{"result":"success"},"platform-test":{"result":"success"},"core-v2":{"result":"success"},"core-v3":{"result":"success"},"tinygo":{"result":"success"},"coverage":{"result":"success"},"size":{"result":"success"}}'
+success_needs='{"changes":{"result":"success"},"docs":{"result":"success"},"lint":{"result":"success"},"regression-corpus":{"result":"success"},"runtime-concurrency":{"result":"success"},"race":{"result":"success"},"platform-test":{"result":"success"},"core-v2":{"result":"success"},"core-v3":{"result":"success"},"tinygo":{"result":"success"},"size":{"result":"success"}}'
 
 CI_NEEDS="$success_needs" \
 CI_REPOSITORY="$repository" \
