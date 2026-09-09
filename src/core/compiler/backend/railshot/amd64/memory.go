@@ -183,11 +183,35 @@ func compactTrapBranch(branch int) uint32 {
 	return uint32(branch)
 }
 
+// Entry checks precede pin initialization. On those cold edges, reload value
+// pins before the common trap exit writes them back.
+func (f *fn) prepareEntryTrapPins() {
+	needed := false
+	for g, state := range f.globalReg {
+		needed = needed || (!f.isModuleGlobal(g) && globalRegIsDirty(state))
+	}
+	if !needed {
+		return
+	}
+	for _, code := range [...]uint32{trapStackFence, trapInterrupted} {
+		sites := f.sc.trapSites[code]
+		for i := range sites {
+			if int(sites[i].branch) >= f.entryTrapEnd {
+				break
+			}
+			f.a.PatchRel32(int(sites[i].branch), f.a.Len())
+			f.derivePinnedGlobals()
+			sites[i].branch = compactTrapBranch(f.a.JmpPlaceholder())
+		}
+	}
+}
+
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
 	before := f.a.Len()
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
+	f.prepareEntryTrapPins()
 	groups := 0
 	for code := uint32(1); code <= trapMax; code++ {
 		sites := f.sc.trapSites[code]
@@ -239,7 +263,7 @@ func (f *fn) emitTrapStubs() {
 					f.a.PatchRel32(int(site.branch), common)
 				}
 			}
-			f.storeModuleGlobals(RSI)
+			f.storeGlobalPins(RSI, true)
 			f.emitTrap(code, first.function)
 			if commonJump >= 0 {
 				f.a.PatchRel32(commonJump, common)
@@ -288,7 +312,7 @@ func (f *fn) emitSharedTrapStubs(groupCount int) {
 
 	common := f.a.Len()
 	f.trapBodyOff = common
-	f.storeModuleGlobals(RSI)
+	f.storeGlobalPins(RSI, true)
 	f.a.Load64(RSI, RBX, -offTrapCellPtr)
 	f.a.Store32(RSI, 16, RCX)
 	f.a.Store32(RSI, 20, RAX)

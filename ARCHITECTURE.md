@@ -28,6 +28,10 @@ a numeric or vector operand and has no binary encoding.
 An unreachable `try_table` body still produces its declared results at the
 parent validation frame, just like a block.
 
+Generated trap exits persist dirty value-pinned globals as well as module pins. Entry
+traps first reload value pins because the prologue has not initialized them.
+Cold trap stores use a fixed scratch register and preserve pins until stored.
+
 ## Start here
 
 Wago processes a module in five steps: **decode**, **validate**, **compile**,

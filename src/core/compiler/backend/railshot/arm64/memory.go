@@ -206,11 +206,39 @@ func compactTrapBranch(branch int) uint32 {
 	return uint32(branch)
 }
 
+// Entry checks precede pin initialization. Reload value pins only on those cold
+// edges, before the common trap exit persists them.
+func (f *fn) prepareEntryTrapPins() {
+	needed := false
+	for g, state := range f.globalReg {
+		needed = needed || (!f.isModuleGlobal(g) && globalRegIsDirty(state))
+	}
+	if !needed {
+		return
+	}
+	for _, code := range [...]uint32{trapStackFence, trapInterrupted} {
+		sites := f.scratchState().trapSites[code]
+		for i := range sites {
+			if int(sites[i].branch&^1) >= f.entryTrapEnd {
+				break
+			}
+			if sites[i].branch&1 != 0 {
+				f.a.PatchBranch26(int(sites[i].branch&^1), f.a.Len())
+			} else {
+				f.a.PatchBranch19(int(sites[i].branch), f.a.Len())
+			}
+			f.derivePinnedGlobals()
+			sites[i].branch = compactTrapBranch(f.a.Branch()) | 1
+		}
+	}
+}
+
 // emitTrapStubs emits one trap stub per trap code used by this function and
 // patches every recorded site to it. Called once, after the epilogue.
 func (f *fn) emitTrapStubs() {
 	before := f.a.Len()
 	defer func() { f.stats.addGCTrapStubBytes(f.a.Len() - before) }()
+	f.prepareEntryTrapPins()
 	compact := f.policy.CompactNative
 	groups := 0
 	if compact {
@@ -289,7 +317,7 @@ func (f *fn) emitTrapStubs() {
 					}
 				}
 			}
-			f.storeModuleGlobals(X9)
+			f.storeGlobalPins(X16, true)
 			f.emitTrapRecord(code, first.function)
 			if shareUnwind {
 				site := f.a.Branch()
@@ -335,8 +363,9 @@ func (f *fn) emitSharedTrapStubs() {
 				pc = uint64(first.pc)
 			}
 			f.a.MovImm64(X17, pc)
-			f.a.MovImm64(X10, uint64(first.function+1))
-			f.a.MovImm64(X11, uint64(code))
+			// X9-X11 can hold value pins. X12/X13 are never pin registers.
+			f.a.MovImm64(X12, uint64(first.function+1))
+			f.a.MovImm64(X13, uint64(code))
 			for _, site := range group {
 				if site.branch&1 != 0 {
 					f.a.PatchBranch26(int(site.branch&^1), pos)
@@ -369,11 +398,11 @@ func (f *fn) emitSharedTrapStubs() {
 }
 
 func (f *fn) emitTrapFromRegisters() {
-	f.storeModuleGlobals(X9)
+	f.storeGlobalPins(X16, true)
 	f.ld64(X9, linMemReg, -int32(offTrapCellPtr))
-	f.st32(X9, 16, X10)
+	f.st32(X9, 16, X12)
 	f.st32(X9, 20, X17)
-	f.st32(X9, 0, X11)
+	f.st32(X9, 0, X13)
 	f.emitTrapUnwind()
 }
 
