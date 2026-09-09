@@ -316,7 +316,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location bench
           try {
-            go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns)$' ./suite -args -wago.corpus=quick
+            go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns)$' ./suite -args '-wago.corpus=quick'
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Pop-Location
@@ -338,7 +338,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location bench
           try {
-            go test -v -count=1 -tags wago_guardpage -run '^(TestCorpus|TestJsonAsGuardCorrect)$' ./suite -args -wago.corpus=quick
+            go test -v -count=1 -tags wago_guardpage -run '^(TestCorpus|TestJsonAsGuardCorrect)$' ./suite -args '-wago.corpus=quick'
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Pop-Location
