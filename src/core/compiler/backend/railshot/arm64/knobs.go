@@ -42,6 +42,7 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("value-facts", &valueFactsEnabled),
 	optimization.Bind("load-pair", &loadPairEnabled),
 	optimization.Bind("merge-next-use", &mergeNextUseEnabled),
+	optimization.Bind("weighted-scalar-merge", &weightedScalarMergeEnabled),
 	optimization.Bind("entry-param-pairs", &entryParamPairsEnabled),
 	optimization.Bind("entry-zero-pairs", &entryZeroPairsEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
@@ -98,6 +99,7 @@ var (
 	optValueFacts           = optimizationBindings.Option("value-facts")
 	optLoadPair             = optimizationBindings.Option("load-pair")
 	optMergeNextUse         = optimizationBindings.Option("merge-next-use")
+	optWeightedScalarMerge  = optimizationBindings.Option("weighted-scalar-merge")
 	optEntryParamPairs      = optimizationBindings.Option("entry-param-pairs")
 	optEntryZeroPairs       = optimizationBindings.Option("entry-zero-pairs")
 	optEntryArgPins         = optimizationBindings.Option("entry-arg-pins")

@@ -46,6 +46,11 @@ var valueFactsEnabled = os.Getenv("WAGO_ARM64_NOPROVENANCE") != "1"
 // targets stay conservative. WAGO_ARM64_NO_MERGE_NEXT_USE=1 restores eager loads.
 var mergeNextUseEnabled = os.Getenv("WAGO_ARM64_NO_MERGE_NEXT_USE") != "1"
 
+// weightedScalarMergeEnabled reserves the canonical merge register in
+// call-free functions with loop-hot scalar result joins. It changes only the
+// whole-function pin choice; structured-control convergence remains unchanged.
+var weightedScalarMergeEnabled = os.Getenv("WAGO_ARM64_NO_WEIGHTED_SCALAR_MERGE") != "1"
+
 // memcopyQPairsEnabled halves the load/store instruction count in the 32- and
 // 64-byte dynamic memory.copy loops. WAGO_ARM64_NO_MEMCOPY_QPAIRS=1 restores
 // independent Q-register loads/stores for differential testing.
@@ -810,7 +815,7 @@ func moduleControlFrameCap(m *wasm.Module, hints []funcHints) int {
 	}
 	maxDepth := 0
 	for i := range hints {
-		if depth := int(hints[i].maxControlDepth); depth > maxDepth {
+		if depth := hints[i].controlDepth(); depth > maxDepth {
 			maxDepth = depth
 		}
 	}
@@ -2954,6 +2959,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// and retain the rest of the call-free pin pool.
 	if hints.flags.has(hintUsesBulkMem) {
 		gpPool = withoutReg(withoutReg(withoutReg(gpPool, X9), X10), X11)
+	}
+	// A call-free function can execute loop-nested scalar result joins far more
+	// often than it enters or exits. Keep the canonical merge register available
+	// in that class instead of spending it on one additional whole-function
+	// local; this removes a spill/reload pair from each single-result join edge.
+	if f.opt(optWeightedScalarMerge) && f.regMerge && !hasCall && hints.hasHotScalarMerge() {
+		gpPool = withoutReg(gpPool, mergeReg)
+		f.stats.peep("weighted-reg-merge")
 	}
 	// Memory-touching call-makers with imports or tables retain the conservative
 	// unpinned path: host/cross-instance/indirect setup has substantially wider

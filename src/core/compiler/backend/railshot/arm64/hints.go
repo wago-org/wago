@@ -92,9 +92,9 @@ type funcHints struct {
 	inlineCallSites uint16 // saturated ordinary direct call sites targeting this local function
 	flags           funcHintFlags
 	directCallRefs  uint8 // saturated call + return_call references targeting this local function
-	// maxControlDepth is the greatest simultaneously open structured-control
-	// depth, excluding the implicit function frame. It occupies alignment padding;
-	// 255 is a saturated fallback sentinel.
+	// maxControlDepth stores the greatest simultaneously open structured-control
+	// depth in its low seven bits. 127 is the saturated fallback sentinel; the
+	// high bit records a hot scalar-result join without growing this fixed header.
 	maxControlDepth uint8
 	// callRelocSites packs a saturated direct-call count in the low 14 bits.
 	// The high bits retain sparse loop-constant presence and fail closed for
@@ -131,6 +131,7 @@ func (h *funcHints) markLoopIntConsts() {
 // retained per function; all variable-length data lives in one module sidecar.
 type funcHintView struct {
 	funcHints
+	scalarMergeWeight uint32 // scan-only; retained as one threshold bit in maxControlDepth
 	entryInitialized  uint64 // scan-local view; compilation decodes bits during pin planning
 	nLocals           int
 	localScore        []uint32
@@ -247,11 +248,70 @@ type immutableTableHint struct {
 }
 
 func (h *funcHints) noteControlDepth(depth int) {
-	if depth >= 255 {
-		h.maxControlDepth = 255
-	} else if d := uint8(depth); d > h.maxControlDepth {
-		h.maxControlDepth = d
+	const depthMask = uint8(0x7f)
+	flags := h.maxControlDepth &^ depthMask
+	current := h.maxControlDepth & depthMask
+	if depth >= int(depthMask) {
+		current = depthMask
+	} else if d := uint8(depth); d > current {
+		current = d
 	}
+	h.maxControlDepth = flags | current
+}
+
+const (
+	hotScalarMergeBit       = uint8(0x80)
+	hotScalarMergeThreshold = uint32(100)
+)
+
+func (h funcHints) controlDepth() int {
+	depth := h.maxControlDepth &^ hotScalarMergeBit
+	if depth == 0x7f {
+		return 255
+	}
+	return int(depth)
+}
+
+func (h funcHints) hasHotScalarMerge() bool { return h.maxControlDepth&hotScalarMergeBit != 0 }
+
+func (h *funcHintView) addScalarMergeWeight(weight int64) {
+	if weight <= 0 {
+		return
+	}
+	if uint64(weight) >= uint64(^uint32(0)-h.scalarMergeWeight) {
+		h.scalarMergeWeight = ^uint32(0)
+	} else {
+		h.scalarMergeWeight += uint32(weight)
+	}
+	if h.scalarMergeWeight >= hotScalarMergeThreshold {
+		h.maxControlDepth |= hotScalarMergeBit
+	}
+}
+
+func scalarMergeBlockType(bt wasm.BlockType) bool {
+	return bt.Kind == wasm.BlockVal && (bt.Val == wasm.I32 || bt.Val == wasm.I64 || bt.Val == wasm.F32 || bt.Val == wasm.F64)
+}
+
+func encodedScalarMergeBlockType(r wasm.Reader, m *wasm.Module) bool {
+	x, err := r.S33()
+	if err != nil {
+		return false
+	}
+	switch x {
+	case -1, -2, -3, -4: // i32, i64, f32, f64
+		return true
+	case -64: // empty block type
+		return false
+	}
+	if x < 0 || m == nil {
+		return false
+	}
+	ft, ok := m.TypeFunc(uint32(x))
+	if !ok || len(ft.Results) != 1 {
+		return false
+	}
+	typ := ft.Results[0]
+	return typ == wasm.I32 || typ == wasm.I64 || typ == wasm.F32 || typ == wasm.F64
 }
 
 const (
@@ -520,6 +580,9 @@ func scanBodyInto(body wasm.Expr, nLocals, nGlobals int, selfIdx uint32, h funcH
 		sub := false
 		for i := range instrs {
 			in := &instrs[i]
+			if depth != 0 && (in.Kind == wasm.InstrBlock || in.Kind == wasm.InstrIf) && scalarMergeBlockType(in.BlockType()) {
+				h.addScalarMergeWeight(loopWeight(depth))
+			}
 			noteASTPhysicalEvent(&h, in.Kind, depth)
 			if in.Kind == wasm.InstrF32Const || in.Kind == wasm.InstrF64Const {
 				h.flags.set(hintHasFloatConst)
@@ -1018,6 +1081,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			s.entryPrefix = false
 			opOffset := s.localDeclBytes + uint32(s.r.off()-1)
 			s.h.noteControlDepth(depth + 1)
+			if loopDepth != 0 && op != 0x03 && encodedScalarMergeBlockType(s.r.Reader, s.m) {
+				s.h.addScalarMergeWeight(pathWeight * loopWeight(loopDepth))
+			}
 			if err := wasm.SkipInstructionImmediate(&s.r.Reader, op); err != nil {
 				return true, 0, err
 			}

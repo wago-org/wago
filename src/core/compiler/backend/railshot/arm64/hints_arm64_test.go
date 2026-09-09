@@ -313,8 +313,49 @@ func TestControlDepthHintSaturatesArm64(t *testing.T) {
 	var h funcHints
 	h.noteControlDepth(254)
 	h.noteControlDepth(300)
-	if h.maxControlDepth != 255 {
-		t.Fatalf("saturated max control depth = %d, want 255", h.maxControlDepth)
+	if h.controlDepth() != 255 {
+		t.Fatalf("saturated max control depth = %d, want 255", h.controlDepth())
+	}
+}
+
+func TestHotScalarMergeHintSharesControlDepthByteArm64(t *testing.T) {
+	var h funcHintView
+	h.noteControlDepth(3)
+	h.addScalarMergeWeight(int64(hotScalarMergeThreshold - 1))
+	if h.hasHotScalarMerge() {
+		t.Fatal("sub-threshold scalar merge was marked hot")
+	}
+	h.addScalarMergeWeight(1)
+	if !h.hasHotScalarMerge() {
+		t.Fatal("threshold scalar merge was not marked hot")
+	}
+	if got := h.controlDepth(); got != 3 {
+		t.Fatalf("control depth after packed hot bit = %d, want 3", got)
+	}
+}
+
+func TestHotScalarMergeHintRequiresLoopWeightArm64(t *testing.T) {
+	cold, err := scanBodyBytes([]byte{0x02, 0x7f, 0x41, 0x00, 0x0b, 0x1a, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cold.hasHotScalarMerge() {
+		t.Fatal("straight-line scalar result block was marked hot")
+	}
+	hot, err := scanBodyBytes([]byte{
+		0x03, 0x40, // loop
+		0x03, 0x40, // nested loop: weight 100
+		0x02, 0x7f, 0x41, 0x00, 0x0b, 0x1a, // block (result i32); drop
+		0x0b, 0x0b, 0x0b,
+	}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hot.hasHotScalarMerge() {
+		t.Fatal("nested-loop scalar result block was not marked hot")
+	}
+	if got := hot.controlDepth(); got != 3 {
+		t.Fatalf("nested-loop control depth = %d, want 3", got)
 	}
 }
 

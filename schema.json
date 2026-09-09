@@ -149,6 +149,7 @@
               "v128-sink",
               "value-facts",
               "vex-float-mem",
+              "weighted-scalar-merge",
               "wide-loop-int-const",
               "x8-pin",
               "zero-branch"

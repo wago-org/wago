@@ -134,6 +134,11 @@ or rejected. Do not combine unattributed experiments.
   1.487395x to 1.499132x (35/46 wins). Raw captures are
   `/tmp/wago-v5-loopconst-{off,on}.txt` and
   `/tmp/wago-v5-amd-loopconst-full-screen.txt` on the Ryzen host.
+  The first cross-platform CI run later found deterministic `xjb-mulhi.runN`
+  corruption on Darwin/AMD64 and Windows/AMD64; the codegen report showed this
+  cache firing twice while the other new fixed-register and BMI2 paths did not
+  fire. It therefore defaults off outside its qualified Linux/AMD64 target and
+  remains explicitly selectable for future platform qualification.
 - **AMD64 ninth whole-function leaf pin (rejected).** Allowing RDI to hold one
   additional hot local in call-free functions preserved safety but was flat on
   Blake3, float, globals, and raytrace; Blake-AS and arith moved about 0.2--0.3%
@@ -763,7 +768,7 @@ or rejected. Do not combine unattributed experiments.
   disabling its existing register-merge path. Captures are
   `/private/tmp/wago-fann.sample.txt`, `/private/tmp/wago-fann-guard.bin`, and
   `/private/tmp/wago-fann-guard.asm`.
-- **ARM64 weighted scalar-merge reservation (rejected on current main).**
+- **ARM64 weighted scalar-merge reservation (retained in isolated form).**
   The bounded forward pre-scan now records one packed header bit when scalar
   block/if joins accumulate at least 100 units of loop and branch-path weight.
   A call-free qualifying function reserves X15 for the existing merge lowering
@@ -776,10 +781,21 @@ or rejected. Do not combine unattributed experiments.
   remaining rows effectively neutral. Explicit and guard-page semantic corpora
   pass. Raw captures are
   `/private/tmp/wago-v5-arm-merge-weighted-leaf-{base,cand}.txt`.
-  After rebasing onto PR #564's compiler-state rewrite, the current-main
-  execution oracle found JSON initialization and SQLite corruption. The entire
-  merge-state mechanism and its packed hint were removed; the earlier timing is
-  historical pre-main evidence only.
+  After rebasing onto PR #564's compiler-state rewrite, the original version's
+  separate local-state convergence changes corrupted JSON initialization and
+  SQLite and were removed. Reintroducing only the packed hotness hint and X15
+  reservation leaves structured-control convergence untouched. The current
+  isolated form passes the ARM64 backend, JSON/SQLite/FASTA/IFS execution
+  oracles, and the complete signal-backed differential and semantic corpus.
+  Five alternating two-second samples improve Fannkuch 22.71% and zlib 7.66%.
+  Raw captures are `/private/tmp/wago-v5-arm-weighted-long-{off,on}.txt`.
+- **ARM64 counted-loop latch retry (rejected).** Reintroducing the exact latch
+  without the unsafe convergence rewrite passed focused execution,
+  asynchronous interruption, backend, and signal-backed semantic tests. Seven
+  alternating 500 ms samples improved the five affected rows only 1.15%
+  geometrically while regressing arithmetic 2.33% and `memory.sum` 3.13%.
+  The mixed default trade was removed. Raw captures are
+  `/private/tmp/wago-v5-arm-latch-current-{off,on}.txt`.
 - **ARM64 pinned-local result merge (rejected for correctness).** A prototype
   tried to carry a scalar block/if result directly in the pinned register of an
   immediately following `local.set` or `local.tee`. Backend tests passed, but
