@@ -10,6 +10,10 @@ invalidation and this PR's cached type lookup. Tests compare basic and detailed
 serial/parallel sidecars. Earlier benchmark tables remain tied to their original
 commits; they do not measure this merged state.
 
+Native CI caught a Windows ARM64 test-build failure: portable hint tests used
+a fixture loader defined only in the Linux/Darwin native-entry test file. The
+loader now lives with the portable hint tests. No test or platform is skipped.
+
 ## Instantiation allocation follow-up — measured checkpoint 3a84fa628
 
 Production code `3a84fa628` removes temporary integer-ABI signature slices and

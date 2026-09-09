@@ -3,14 +3,31 @@
 package arm64
 
 import (
+	"os"
 	"reflect"
 	"testing"
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
+	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
+
+// Hint scanning is portable and does not enter generated code. Keep its
+// fixture loader available to Windows ARM64 as well as native-entry targets.
+func readParallelTestModuleArm64(t testing.TB, path string) *wasm.Module {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := frontend.DecodeValidate(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
 
 func TestParallelModuleHintsMatchSerialDetailedResidencyArm64(t *testing.T) {
 	for _, name := range []string{"json-as-simd.wasm", "lua.wasm", "sqlite3.wasm"} {
