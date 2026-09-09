@@ -45,10 +45,23 @@ func (st *storage) setEHRoot(root bool) {
 }
 
 func (f *fn) factsForLocal(x int) valueFacts {
-	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
-		return f.locals[x].facts
+	if uint(x) >= uint(len(f.locals)) {
+		return 0
 	}
-	return 0
+	// Every ARM64 carrier of a Wasm i32 is canonical: constants and ALU results
+	// use W-register writes, scalar loads zero-extend, call/host boundaries
+	// marshal to uint32, and local copies preserve that representation. Unlike
+	// value-specific facts, this type invariant is identical on every control
+	// edge and therefore remains valid when detailed local fact tracking is
+	// disabled for control-flow functions.
+	facts := valueFacts(0)
+	if f.opt(optValueFacts) && f.localType[x] == mtI32 {
+		facts |= factUpper32Zero
+	}
+	if f.localFactsEnabled {
+		facts |= f.locals[x].facts
+	}
+	return facts
 }
 
 func (f *fn) setFactsForLocal(x int, facts valueFacts) {
@@ -60,7 +73,7 @@ func (f *fn) setFactsForLocal(x int, facts valueFacts) {
 func (f *fn) applyFactsForLocal(e *elem, x int) {
 	facts := f.factsForLocal(x)
 	e.st.setValueFacts(facts)
-	if facts != 0 {
+	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) && f.locals[x].facts != 0 {
 		f.stats.peep("local-fact")
 	}
 }

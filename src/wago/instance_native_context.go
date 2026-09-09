@@ -293,7 +293,20 @@ const (
 )
 
 func (in *Instance) preparedEntryMode() preparedEntryMode {
-	if in == nil || in.c == nil || in.c.boundsMode == BoundsChecksSignalsBased ||
+	return in.preparedEntryModeFor(false)
+}
+
+// preparedMemoryFreeEntryMode is reserved for entries whose compiler metadata
+// proves they cannot access linear memory. Signal-backed bounds checks do not
+// participate in such an entry, so they need not force the general guarded
+// adapter. All ownership, table, GC, import, and shared-control exclusions stay
+// identical to ordinary prepared entry.
+func (in *Instance) preparedMemoryFreeEntryMode() preparedEntryMode {
+	return in.preparedEntryModeFor(true)
+}
+
+func (in *Instance) preparedEntryModeFor(memoryFree bool) preparedEntryMode {
+	if in == nil || in.c == nil || (!memoryFree && in.c.boundsMode == BoundsChecksSignalsBased) ||
 		in.memoryDir != nil || in.nativeControlIsShared() || in.syncMode {
 		return preparedEntryGeneral
 	}

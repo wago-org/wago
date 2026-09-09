@@ -97,6 +97,8 @@ type invokeCache struct {
 	valid             bool
 	entryMode         preparedEntryMode
 	directIntFast     bool
+	directIntLight    bool
+	directIntBounded  bool
 	scalarWideMask    uint8
 	scalarResultWide  bool
 	li                int // local index, or -1-import index for an InstanceExport re-export

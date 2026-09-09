@@ -238,6 +238,17 @@ func clearTrapUnlessInterrupted(trap []byte) {
 	}
 }
 
+// PreparePreparedIntTrap gives direct prepared entries the same stale-trap
+// reset as the ordinary wrapper entry. The zero fast path avoids rewriting the
+// cold source payload on successful calls; a concurrent interruption remains
+// visible to the generated entry poll.
+func PreparePreparedIntTrap(trap []byte) {
+	if len(trap) < 4 || atomic.LoadUint32((*uint32)(unsafe.Pointer(&trap[0]))) == 0 {
+		return
+	}
+	clearTrapUnlessInterrupted(trap)
+}
+
 // CallWithHost runs native code that may request returning host imports via the
 // synchronous re-entry protocol. The first crossing is a
 // normal enterNative; whenever native code parks at a host call (trap cell ==

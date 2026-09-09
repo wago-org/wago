@@ -75,7 +75,7 @@ func TestInvokeCacheSelectsIsolatedDirectIntegerEntry(t *testing.T) {
 	}
 	ic := in.findInvokeCache("f")
 	wantDirect := preparedCallEnabled && invokePrivateEntryEnabled && preparedIsolatedEntryEnabled &&
-		preparedDirectIntSupported && preparedDirectIntEnabled && in.preparedIsolatedEligible() &&
+		preparedDirectIntSupported && preparedDirectIntEnabled && in.preparedMemoryFreeEntryMode() == preparedEntryIsolated &&
 		in.c.directPreparedAt(0)
 	if ic == nil || ic.directIntFast != wantDirect {
 		t.Fatalf("direct integer cache selection = %+v; want %v", ic, wantDirect)

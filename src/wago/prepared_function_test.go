@@ -76,7 +76,9 @@ func TestPreparedFunctionPrivateFastPath(t *testing.T) {
 		if fn.isolatedFast != wantIsolated {
 			t.Fatalf("isolated fast enabled=%v: got %v, want %v", enabled, fn.isolatedFast, wantIsolated)
 		}
-		wantDirect := wantFast && (wantIsolated || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntSignature(in.c.Funcs[0]) && in.c.directPreparedAt(0)
+		directMode := in.preparedMemoryFreeEntryMode()
+		wantDirect := enabled && (preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated || preparedDirectIntPrivateSupported && directMode == preparedEntryPrivate) &&
+			preparedDirectIntSupported && preparedDirectIntSignature(in.c.Funcs[0]) && in.c.directPreparedAt(0)
 		if fn.directIntFast != wantDirect {
 			t.Fatalf("direct int enabled=%v: got %v, want %v", enabled, fn.directIntFast, wantDirect)
 		}

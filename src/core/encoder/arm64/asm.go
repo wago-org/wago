@@ -95,10 +95,12 @@ func (c Cond) Invert() Cond { return c ^ 1 }
 type Asm struct {
 	B                             []byte
 	DenseIdxDisp                  bool // prefer ADD base,index + immediate-offset load/store
+	ReuseIndexedBase              bool // reuse an adjacent proven X16=base+index address
 	DisableLogicalMoveImmediate   bool
 	DisableCompactMoveImmediate32 bool
 	LogicalMoveImmediates         int
 	CompactMoveImmediates32       int
+	IndexedBaseReuses             int
 }
 
 // word appends one 32-bit instruction little-endian.

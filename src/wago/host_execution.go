@@ -306,6 +306,10 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 
 	return func() {
 		in.lifeMu.Lock()
+		// Close may race after the nested trap cell is installed. The nested
+		// activation can consume that interrupt while unwinding; carry the close
+		// request back to the parked outer activation before it resumes.
+		propagateCloseInterrupt := in.isLogicallyClosed()
 		binary.LittleEndian.PutUint64(nativeCtx, outerCustomCtx)
 		restoreInvocationContext()
 		unregisterHostControl(in)
@@ -319,5 +323,8 @@ func (in *Instance) prepareHostReentryState() (func(), error) {
 			panic(invalidHostReference{err: fmt.Errorf("release host re-entry engine: %w", err)})
 		}
 		in.lifeMu.Unlock()
+		if propagateCloseInterrupt {
+			coreruntime.RequestInterrupt(outerTrap)
+		}
 	}, nil
 }

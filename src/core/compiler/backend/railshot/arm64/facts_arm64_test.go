@@ -3,6 +3,7 @@
 package arm64
 
 import (
+	"encoding/binary"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -229,5 +230,45 @@ func TestLocalFactsDisabledAcrossControlFlowArm64(t *testing.T) {
 	defer compiled.CodeImage.Close()
 	if got := stats.Funcs[0].Peephole["local-fact"]; got != 0 {
 		t.Fatalf("local-fact transfers = %d, want 0 across control flow; peeps=%v", got, stats.Funcs[0].Peephole)
+	}
+}
+
+func TestI32LocalElidesRepeatedMemoryAddressCanonicalizationArm64(t *testing.T) {
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x00,       // no locals
+		0x02, 0x40, // block (forces value-specific facts off)
+		0x20, 0x00, // local.get 0
+		0x28, 0x02, 0x00, // i32.load align=4 offset=0
+		0x0b, 0x0b, // end block/function
+	})
+	compile := func(enabled bool) *CodegenStats {
+		t.Helper()
+		var stats ModuleStats
+		cm, err := CompileModuleWith(m, CompileOptions{
+			Stats:         &stats,
+			Optimizations: map[string]bool{"value-facts": enabled},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cm.CodeImage != nil {
+			t.Cleanup(func() { _ = cm.CodeImage.Close() })
+		}
+		return stats.Funcs[0]
+	}
+	on, off := compile(true), compile(false)
+	if got := on.Peephole["memory-address-zext-elim"]; got != 1 {
+		t.Fatalf("address zext eliminations = %d, want 1", got)
+	}
+	if got := off.Peephole["memory-address-zext-elim"]; got != 0 {
+		t.Fatalf("disabled address zext eliminations = %d, want 0", got)
+	}
+	if on.CodeBytes != off.CodeBytes {
+		t.Fatalf("optimized code = %d bytes, rollback = %d; following-function phase changed", on.CodeBytes, off.CodeBytes)
+	}
+	if got, err := runArm64WrapperMem(t, m, 4, func(memory []byte) {
+		binary.LittleEndian.PutUint32(memory[4:], 42)
+	}); err != nil || got != 42 {
+		t.Fatalf("load(4) = %d, %v; want 42", got, err)
 	}
 }
