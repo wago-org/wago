@@ -103,6 +103,21 @@ func TestHiddenOptimizationFamiliesUsePerCompilePolicyAMD64(t *testing.T) {
 	}
 }
 
+func TestWideLoopIntConstPlatformDefaultAMD64(t *testing.T) {
+	for _, tc := range []struct {
+		goos string
+		want bool
+	}{
+		{goos: "linux", want: true},
+		{goos: "darwin", want: false},
+		{goos: "windows", want: false},
+	} {
+		if got := wideLoopIntConstPlatformDefault(tc.goos); got != tc.want {
+			t.Errorf("%s default = %t, want %t", tc.goos, got, tc.want)
+		}
+	}
+}
+
 func TestNativeCompactionPolicyAndRollbackAMD64(t *testing.T) {
 	beforeEnabled, beforeDisabled := nativeCompactionEnabled, nativeCompactionDisabled
 	beforeLimitOverride := finalizerDeletionLimitOverride

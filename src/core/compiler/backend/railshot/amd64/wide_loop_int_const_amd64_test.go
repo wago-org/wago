@@ -40,6 +40,10 @@ func wideLoopIntConstModuleAMD64(t testing.TB) *wasm.Module {
 }
 
 func TestWideLoopIntConstUsesOnlyIdleRegistersAMD64(t *testing.T) {
+	before := wideLoopIntConstEnabled
+	wideLoopIntConstEnabled = true
+	defer func() { wideLoopIntConstEnabled = before }()
+
 	h := funcHintView{loopIntConsts: &loopIntConstHintEntry{bits: [2]int64{1, 2}, count: 2}}
 	f := fn{
 		a:               &encoderamd64.Asm{},

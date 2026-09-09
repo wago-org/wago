@@ -17,6 +17,7 @@ package amd64
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"unsafe"
@@ -47,9 +48,11 @@ var (
 	preparedDirectEntryEnabled  = os.Getenv("WAGO_AMD64_NO_PREPARED_DIRECT_ENTRY") != "1"
 	preparedBoundedEntryEnabled = os.Getenv("WAGO_AMD64_NO_PREPARED_BOUNDED_ENTRY") != "1"
 	// wideLoopIntConstEnabled keeps repeatedly materialized non-imm32 i64 loop
-	// constants in otherwise-idle registers. WAGO_AMD64_NO_WIDE_LOOP_INT_CONST=1
-	// is the bounded rollback switch.
-	wideLoopIntConstEnabled = os.Getenv("WAGO_AMD64_NO_WIDE_LOOP_INT_CONST") != "1"
+	// constants in otherwise-idle registers. It defaults on only for the
+	// Linux/AMD64 target whose native corpus qualifies its fixed-register
+	// interactions; explicit optimization policy can still enable it elsewhere.
+	// WAGO_AMD64_NO_WIDE_LOOP_INT_CONST=1 is the bounded rollback switch.
+	wideLoopIntConstEnabled = wideLoopIntConstPlatformDefault(runtime.GOOS) && os.Getenv("WAGO_AMD64_NO_WIDE_LOOP_INT_CONST") != "1"
 	// memSizeRegionalLeaseEnabled lets a large straight-line, call-free regional
 	// allocator borrow R15. Bounds checks read the immutable current byte size
 	// directly, and the register-ABI return reloads R15 for its caller.
@@ -117,6 +120,8 @@ var (
 	// WAGO_NO_COMMUTE_FMEM=1 is the A/B oracle.
 	commuteFMemEnabled = os.Getenv("WAGO_NO_COMMUTE_FMEM") != "1"
 )
+
+func wideLoopIntConstPlatformDefault(goos string) bool { return goos == "linux" }
 
 const (
 	callKindInline         = shared.CallInline

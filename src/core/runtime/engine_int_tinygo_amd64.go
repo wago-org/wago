@@ -8,7 +8,18 @@ func (e *Engine) PrepareIntCall(call *PreparedIntCall, code, linMem uintptr) {
 	call.code, call.linMem, call.stack = code, linMem, e.stackTop
 }
 
+// PrepareBoundedIntContext is a no-op under TinyGo: its portable entry path
+// establishes the trap re-entry context on each call.
+func (*Engine) PrepareBoundedIntContext(uintptr) {}
+
 func (e *Engine) EnterPreparedIntCallBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
+	result, _ := e.EnterPreparedIntBounded(call.code, call.linMem, a0, a1, a2, a3)
+	return result
+}
+
+// EnterPreparedIntPreboundContextBounded retains the immutable call descriptor
+// contract while using TinyGo's portable per-call transition.
+func (e *Engine) EnterPreparedIntPreboundContextBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
 	result, _ := e.EnterPreparedIntBounded(call.code, call.linMem, a0, a1, a2, a3)
 	return result
 }
