@@ -428,7 +428,7 @@ func TestInstalledWagoLabel(t *testing.T) {
 		build     wagopaths.Build
 		want      string
 	}{
-		{"canary", "v0.1.0-canary.g7d8c58a123456789012345678901234567890123", wagopaths.ProfileStandard, wagopaths.BuildTiny, "Wago Canary (7d8c58a/standard/tiny)"},
+		{"canary", "v0.1.0-canary.g7d8c58a", wagopaths.ProfileStandard, wagopaths.BuildTiny, "Wago Canary (7d8c58a/standard/tiny)"},
 		{"v0.1.0-beta.1", "v0.1.0-beta.1", wagopaths.ProfileMinimal, wagopaths.BuildNormal, "Wago Beta (minimal/normal)"},
 		{"v0.2.0", "v0.2.0", wagopaths.ProfileStandard, wagopaths.BuildNormal, "Wago v0.2.0 (standard/normal)"},
 	}
@@ -479,7 +479,7 @@ func TestUpdateVersionTarget(t *testing.T) {
 }
 
 func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
-	tags := []string{"v0.1.0-beta.2", "v0.1.4", "v0.1.0-canary.gcafef00123456789012345678901234567890123", "v0.1.0-beta.1", "v0.2.0", "0.1.0", "canary"}
+	tags := []string{"v0.1.0-beta.2", "v0.1.4", "v0.1.0-canary.gcafef00", "v0.1.0-beta.1", "v0.2.0", "0.1.0", "canary"}
 	if got, want := stableReleaseNames(tags), []string{"v0.2.0", "v0.1.4", "v0.1.0"}; !slices.Equal(got, want) {
 		t.Fatalf("stableReleaseNames = %v, want %v", got, want)
 	}
@@ -489,7 +489,7 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 	releases := []remoteRelease{
 		{TagName: "v0.1.0-beta.2", TargetCommitish: "7d8c58a123456789012345678901234567890123", PublishedAt: "2026-07-28T08:31:22Z"},
 		{TagName: "v0.1.4", PublishedAt: "2026-06-30T12:00:00Z"},
-		{TagName: "v0.1.0-canary.gcafef00123456789012345678901234567890123", PublishedAt: "2026-07-28T00:48:44Z"},
+		{TagName: "v0.1.0-canary.gcafef00", PublishedAt: "2026-07-28T00:48:44Z"},
 		{TagName: "v0.1.0-beta.1", PublishedAt: "2026-07-11T08:31:22Z"},
 		{TagName: "v0.2.0", PublishedAt: "2026-07-28T08:31:22Z"},
 		{TagName: "0.1.0", PublishedAt: "2026-06-01T12:00:00Z"},

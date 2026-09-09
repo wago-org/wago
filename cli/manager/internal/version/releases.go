@@ -51,11 +51,23 @@ func channelRelease(tag string) string {
 			return ""
 		}
 	case "canary":
-		if !strings.HasPrefix(identity, "g") || !validCommitSHA(strings.TrimPrefix(identity, "g")) {
+		if !strings.HasPrefix(identity, "g") || !validShortCommitSHA(strings.TrimPrefix(identity, "g")) {
 			return ""
 		}
 	}
 	return channel
+}
+
+func validShortCommitSHA(sha string) bool {
+	if len(sha) != 7 {
+		return false
+	}
+	for _, char := range sha {
+		if !strings.ContainsRune("0123456789abcdef", char) {
+			return false
+		}
+	}
+	return true
 }
 
 func validReleaseCore(tag string) bool {

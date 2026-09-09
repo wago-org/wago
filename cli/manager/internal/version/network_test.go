@@ -27,7 +27,7 @@ func TestLatestChannelRelease(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		_, _ = w.Write([]byte(`[{"tag_name":"v0.1.0-beta.2","target_commitish":"deadbee123456789012345678901234567890123"},{"tag_name":"v0.1.0-canary.gcafef00123456789012345678901234567890123","target_commitish":"cafef00123456789012345678901234567890123"}]`))
+		_, _ = w.Write([]byte(`[{"tag_name":"v0.1.0-beta.2","target_commitish":"deadbee123456789012345678901234567890123"},{"tag_name":"v0.1.0-canary.gcafef00","target_commitish":"cafef00123456789012345678901234567890123"}]`))
 	}))
 	defer srv.Close()
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
@@ -285,7 +285,7 @@ func TestMainCommitBrowsingPaginatesAndResolvesTip(t *testing.T) {
 			}
 			releases := make([]remoteRelease, count)
 			for i := range releases {
-				releases[i].TagName = fmt.Sprintf("v0.1.0-canary.g%040x", i+1)
+				releases[i].TagName = fmt.Sprintf("v0.1.0-canary.g%07x", i+1)
 			}
 			_ = json.NewEncoder(w).Encode(releases)
 		default:
@@ -632,10 +632,10 @@ func TestVersionAssetsIncludeProfileAndHost(t *testing.T) {
 
 func TestCanonicalReleaseRef(t *testing.T) {
 	for input, want := range map[string]string{
-		"0.2.0":  "v0.2.0",
-		"v0.2.0": "v0.2.0",
-		"main":   "main",
-		"v0.1.0-canary.gdeadbee123456789012345678901234567890123": "v0.1.0-canary.gdeadbee123456789012345678901234567890123",
+		"0.2.0":                  "v0.2.0",
+		"v0.2.0":                 "v0.2.0",
+		"main":                   "main",
+		"v0.1.0-canary.gdeadbee": "v0.1.0-canary.gdeadbee",
 	} {
 		if got := canonicalReleaseRef(input); got != want {
 			t.Fatalf("canonicalReleaseRef(%q) = %q, want %q", input, got, want)

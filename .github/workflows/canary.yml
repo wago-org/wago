@@ -46,9 +46,10 @@ jobs:
         id: version
         run: |
           sha=$(git rev-parse HEAD)
+          short_sha=${sha:0:7}
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "version=v${RELEASE_SERIES}-canary.g$sha" >> "$GITHUB_OUTPUT"
-          echo "tag=v${RELEASE_SERIES}-canary.g$sha" >> "$GITHUB_OUTPUT"
+          echo "version=v${RELEASE_SERIES}-canary.g$short_sha" >> "$GITHUB_OUTPUT"
+          echo "tag=v${RELEASE_SERIES}-canary.g$short_sha" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build canary (${{ matrix.goos }}/${{ matrix.goarch }})

@@ -61,7 +61,8 @@ func TestCanaryUsesImmutableSemVerTagsAndTargets(t *testing.T) {
 	contents := string(canary)
 	for _, required := range []string{
 		`RELEASE_SERIES: "0.1.0"`,
-		`echo "tag=v${RELEASE_SERIES}-canary.g$sha"`,
+		`short_sha=${sha:0:7}`,
+		`echo "tag=v${RELEASE_SERIES}-canary.g$short_sha"`,
 		`target=$(gh api "repos/${{ github.repository }}/releases/tags/`,
 		`has an invalid target commit`,
 		`if [ "$target" != "${{ needs.`,

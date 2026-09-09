@@ -13,7 +13,7 @@ func TestVersionSelectionAndOrderingHelpers(t *testing.T) {
 	if !isRollingChannel("canary") || isRollingChannel("1.2.3") || channelRelease("v0.1.0-beta.1") != "beta" || channelRelease("v1.2.3") != "" {
 		t.Fatal("release channel detection mismatch")
 	}
-	if got := strings.Join(stableReleaseNames([]string{"v1.2.3", "v0.1.0-canary.gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "", "v1.2.3-beta.1"}), ","); got != "v1.2.3" {
+	if got := strings.Join(stableReleaseNames([]string{"v1.2.3", "v0.1.0-canary.gaaaaaaa", "", "v1.2.3-beta.1"}), ","); got != "v1.2.3" {
 		t.Fatalf("stable releases = %q", got)
 	}
 	for _, tc := range []struct {
