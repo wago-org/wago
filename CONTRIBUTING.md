@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping with `wago`, a small Go-first WebAssembly JIT. Keep each
+Thank you for helping with `wago`! Please keep each
 change small, tested, and easy to review.
 
 Run commands from the repository root unless a command says otherwise. Start
