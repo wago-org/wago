@@ -1,1 +1,0 @@
-ok  	github.com/wago-org/wago/internal/namecheck	0.001s

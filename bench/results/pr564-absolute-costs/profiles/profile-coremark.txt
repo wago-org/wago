@@ -1,6 +1,0 @@
-goos: linux
-goarch: amd64
-pkg: wagobench
-cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
-BenchmarkExec/coremark.coremark_run-8         	     171	  35002908 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
-PASS

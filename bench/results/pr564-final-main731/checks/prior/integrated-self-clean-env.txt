@@ -1,1 +1,0 @@
-ok  	github.com/wago-org/wago/cli/manager/internal/self	0.123s

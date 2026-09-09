@@ -29,9 +29,8 @@ for both revisions, and retain exit status plus peak resident memory for each ru
 Keep long-run data and tools in a persistent workspace directory, not volatile
 `/tmp` storage. Checkpoint each completed process. Preserve interrupted logs on
 resume, and refuse to combine samples from changed benchmark binaries.
-Keep checksummed report files byte-identical in Git, including raw tool-output
-whitespace and line endings. Add an evidence-specific `.gitattributes` rule
-when automatic text conversion would invalidate their manifests.
+Keep generated benchmark results, profiles, logs, and archives out of source
+commits. Use an ignored local workspace for these files during a comparison.
 
 After a full qualification, a narrow allocation-only follow-up can use a bounded
 focused comparison when requested. Pin main and the qualified PR as separate

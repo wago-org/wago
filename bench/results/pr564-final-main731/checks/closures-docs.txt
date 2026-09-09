@@ -1,2 +1,0 @@
-go run ./tests/tools/docs-check
-docs-check: validated 52 Markdown files

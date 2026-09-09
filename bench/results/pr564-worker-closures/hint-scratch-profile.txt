@@ -1,6 +1,0 @@
-goos: linux
-goarch: amd64
-pkg: wagobench
-cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
-BenchmarkCompileWorkers/json-as/p8-8      	       1	   1205615 ns/op	     57638 code-B	  771520 B/op	     626 allocs/op
-PASS

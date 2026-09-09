@@ -1,8 +1,0 @@
-{
-  "head": "b4f2360f517641803249c7ed998f37d8b0ec82a2",
-  "main": "731e95ff2cda7309eaf6d956f1417066bf7f1b69",
-  "fullProcesses": 1020,
-  "fullMetrics": 16144,
-  "selectedRepeats": 170,
-  "result": "PASS"
-}

@@ -1,3 +1,0 @@
---- FAIL: TestIndexedBaseReuseSwitchAndExecutionArm64 (0.00s)
-    indexed_base_reuse_arm64_test.go:60: indexed base reuse did not fire (all: map[entry-init-elide:1 frame-header-elide:1 local-fact:1 small-frame-adjust:1 store-load-fwd:1])
-FAIL

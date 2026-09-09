@@ -4,9 +4,3 @@
 # line endings. Do not let Git's Windows checkout policy rewrite their bytes.
 tests/regressions/** -text -whitespace
 tests/enginefuzz/starshine-ffi.wasm -text -whitespace
-
-# Saved benchmark evidence includes raw tool output and SHA256 manifests. Keep
-# its original line endings and whitespace so checkout preserves those hashes.
-bench/results/pr564-main731-checkpoint/** -text -whitespace
-bench/results/pr564-final-main731/** -text -whitespace
-bench/results/pr564-last-pass/** -text -whitespace

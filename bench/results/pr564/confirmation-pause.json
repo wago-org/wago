@@ -1,9 +1,0 @@
-{
-  "pausedSample": "candidate-explicit-27-6",
-  "pausedSampleCompletedUTC": "2026-09-08T05:08:59.775Z",
-  "heavyChecksStartedUTC": "2026-09-08T05:09:15.883Z",
-  "resumeRequestedUTC": "2026-09-08T05:16:52.118Z",
-  "reason": "Check strengthened correctness test, pinned toolchains, binary/code sizes, and structural allocation counters without overlapping timed samples.",
-  "method": "Only the runner parent was stopped; its active timed child completed. ps then showed the time child as a zombie and no benchmark process before test/build work started. The parent resumes only after those tasks finish.",
-  "statusLimit": "This one sample has inflated wrapper seconds in status.jsonl because the parent could not reap it during the pause. The benchmark ns/op and GNU time elapsed/RSS measurements finished before the pause work and are unaffected. Use the resource file, not wrapper seconds, for its process duration."
-}
