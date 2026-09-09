@@ -1,0 +1,41 @@
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPluginInstantiate/ruby-8         	     128	   1887173 ns/op	  302064 B/op	    9405 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPluginInstantiate/ruby-8         	     128	   1747579 ns/op	  302069 B/op	    9405 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPluginInstantiate/ruby-8         	     128	   1771577 ns/op	  302070 B/op	    9405 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPluginInstantiate/ruby-8         	     128	   1815165 ns/op	  302069 B/op	    9405 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPluginInstantiate/ruby-8         	     128	   2030594 ns/op	  302069 B/op	    9405 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkPluginInstantiate/ruby-8         	     128	   2012992 ns/op	  302068 B/op	    9405 allocs/op
+PASS

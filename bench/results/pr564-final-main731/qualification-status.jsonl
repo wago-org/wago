@@ -1,0 +1,6 @@
+{"stage":"full","args":[],"start":"2026-09-09T07:18:41.982Z","end":"2026-09-09T09:34:53.020Z","code":0,"head":"b4f2360f517641803249c7ed998f37d8b0ec82a2"}
+{"stage":"analyze","args":[],"start":"2026-09-09T09:34:53.022Z","end":"2026-09-09T09:34:53.793Z","code":0,"head":"b4f2360f517641803249c7ed998f37d8b0ec82a2"}
+{"stage":"render","args":["--full-only"],"start":"2026-09-09T09:34:53.793Z","end":"2026-09-09T09:34:53.905Z","code":0,"head":"b4f2360f517641803249c7ed998f37d8b0ec82a2"}
+{"stage":"repeat","args":[],"start":"2026-09-09T09:34:53.905Z","end":"2026-09-09T10:40:43.975Z","code":0,"head":"b4f2360f517641803249c7ed998f37d8b0ec82a2"}
+{"stage":"fixed","args":[],"start":"2026-09-09T10:40:43.975Z","end":"2026-09-09T10:44:29.199Z","code":0,"head":"b4f2360f517641803249c7ed998f37d8b0ec82a2"}
+{"stage":"render","args":["--confirmed-only"],"start":"2026-09-09T10:44:29.199Z","end":"2026-09-09T10:44:29.319Z","code":0,"head":"b4f2360f517641803249c7ed998f37d8b0ec82a2"}

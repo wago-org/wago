@@ -1,0 +1,5963 @@
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/coremark.coremark_run-8         	      16	  33662129 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/coremark.coremark_run-8         	      16	  35028016 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/coremark.coremark_run-8         	      16	  33821903 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/coremark.coremark_run-8         	      16	  33802819 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/coremark.coremark_run-8         	      16	  33879292 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/coremark.coremark_run-8         	      16	  33463915 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/coremark.coremark_run-8         	      15	  33690267 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/coremark.coremark_run-8         	      16	  33602618 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/coremark.coremark_run-8         	      16	  33969103 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/coremark.coremark_run-8         	      16	  33637424 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/coremark.coremark_run-8         	      16	  33727089 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/coremark.coremark_run-8         	      16	  33840681 ns/op	         1.000 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_mem.store_i32_stride-8         	  412548	      1725 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_mem.store_i32_stride-8         	  387482	      1683 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_mem.store_i32_stride-8         	  359898	      1898 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_mem.store_i32_stride-8         	  350348	      1920 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_mem.store_i32_stride-8         	  410017	      2001 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_mem.store_i32_stride-8         	  415964	      1693 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_mem.store_i32_stride-8         	  430138	      1679 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_mem.store_i32_stride-8         	  407052	      1749 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_mem.store_i32_stride-8         	  406233	      1767 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_mem.store_i32_stride-8         	  413421	      1781 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_mem.store_i32_stride-8         	  418544	      1687 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_mem.store_i32_stride-8         	  444285	      1720 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.max-8         	     302	     10736 ns/op	       188.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.max-8         	     298	     10512 ns/op	       190.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.max-8         	     297	     10383 ns/op	       194.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.max-8         	     301	     10323 ns/op	       194.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.max-8         	     302	     10340 ns/op	       167.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.max-8         	     303	     10320 ns/op	       195.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.max-8         	     303	     10345 ns/op	       194.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.max-8         	     301	     10353 ns/op	       190.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.max-8         	     303	     10294 ns/op	       196.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.max-8         	     304	     10397 ns/op	       194.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.max-8         	     302	     10316 ns/op	       195.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.max-8         	     300	     10338 ns/op	       194.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.le-8         	     303	      3442 ns/op	       582.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.le-8         	     307	      3435 ns/op	       581.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.le-8         	     300	      3558 ns/op	       566.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.le-8         	     297	      3545 ns/op	       555.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.le-8         	     303	      3444 ns/op	       580.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.le-8         	     302	      3445 ns/op	       587.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.le-8         	     303	      3447 ns/op	       583.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.le-8         	     302	      3436 ns/op	       582.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.le-8         	     304	      3448 ns/op	       578.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.le-8         	     300	      3452 ns/op	       580.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.le-8         	     306	      3441 ns/op	       581.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f32x4.le-8         	     297	      3444 ns/op	       579.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f64x2.ne-8         	     303	      3588 ns/op	       553.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f64x2.ne-8         	     302	      3569 ns/op	       560.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f64x2.ne-8         	     306	      3573 ns/op	       561.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f64x2.ne-8         	     298	      3566 ns/op	       565.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f64x2.ne-8         	     297	      3536 ns/op	       566.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f64x2.ne-8         	     298	      3541 ns/op	       567.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f64x2.ne-8         	     303	      3544 ns/op	       566.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f64x2.ne-8         	     303	      3542 ns/op	       566.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f64x2.ne-8         	     300	      3537 ns/op	       569.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f64x2.ne-8         	     300	      3545 ns/op	       556.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f64x2.ne-8         	     301	      3555 ns/op	       577.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_f64x2.ne-8         	     296	      3571 ns/op	       562.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off-8         	     861	    692812 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off-8         	     867	    685688 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off-8         	     864	    686643 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off-8         	     873	    686074 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off-8         	     867	    689332 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off-8         	     871	    700981 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off-8         	     867	    685881 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off-8         	     866	    692286 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off-8         	     872	    689386 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off-8         	     874	    684373 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off-8         	     771	    782383 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off-8         	     870	    700725 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecMemoryLoad_wago-8   	 7669891	        76.82 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecMemoryLoad_wago-8   	 7897021	        75.97 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecMemoryLoad_wago-8   	 7686607	        77.02 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecMemoryLoad_wago-8   	 7850564	        76.68 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecMemoryLoad_wago-8   	 7544862	        77.13 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecMemoryLoad_wago-8   	 7827592	        78.24 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecMemoryLoad_wago-8   	 7723334	        76.39 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecMemoryLoad_wago-8   	 7744929	        76.53 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecMemoryLoad_wago-8   	 7887466	        76.47 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecMemoryLoad_wago-8   	 7823822	        76.47 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecMemoryLoad_wago-8   	 7891149	        76.35 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecMemoryLoad_wago-8   	 7820628	        76.78 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_call.call_indirect-8         	   93844	      6417 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_call.call_indirect-8         	   99244	      6478 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_call.call_indirect-8         	  112129	      5840 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_call.call_indirect-8         	  112485	      5680 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_call.call_indirect-8         	   99715	      5936 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_call.call_indirect-8         	   89684	      6303 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_call.call_indirect-8         	  112516	      5738 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_call.call_indirect-8         	  105666	      5588 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_call.call_indirect-8         	  109087	      5582 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_call.call_indirect-8         	  117916	      5813 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_call.call_indirect-8         	  108961	      5670 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_call.call_indirect-8         	  117780	      5796 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_var.global_getset-8         	   75675	      7914 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_var.global_getset-8         	   74966	      7892 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_var.global_getset-8         	   75040	      8194 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_var.global_getset-8         	   73484	      8151 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_var.global_getset-8         	   77408	      7908 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_var.global_getset-8         	   75291	      7924 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_var.global_getset-8         	   75313	      7876 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_var.global_getset-8         	   76958	      7907 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_var.global_getset-8         	   75722	      7935 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_var.global_getset-8         	   76544	      7901 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_var.global_getset-8         	   74661	      7890 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_var.global_getset-8         	   74287	      8106 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s-8         	 1320861	       452.5 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s-8         	 1328151	       451.9 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s-8         	 1312111	       466.7 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s-8         	 1300310	       460.3 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s-8         	 1331208	       451.7 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s-8         	 1333449	       452.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s-8         	 1317565	       458.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s-8         	 1322288	       450.3 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s-8         	 1321110	       455.4 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s-8         	 1320342	       464.1 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s-8         	 1297474	       462.9 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s-8         	 1315948	       459.7 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i32x4.le_u-8         	 1257997	       471.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i32x4.le_u-8         	 1275487	       472.9 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i32x4.le_u-8         	 1291575	       455.9 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i32x4.le_u-8         	 1323642	       454.3 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i32x4.le_u-8         	 1265740	       467.2 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i32x4.le_u-8         	 1294669	       473.9 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i32x4.le_u-8         	 1272616	       474.3 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i32x4.le_u-8         	 1284637	       477.6 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i32x4.le_u-8         	 1300657	       467.1 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i32x4.le_u-8         	 1299450	       467.1 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i32x4.le_u-8         	 1276280	       479.3 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i32x4.le_u-8         	 1295350	       473.0 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkValidateWorkers/tiny/p8-8      	  183633	      3611 ns/op	    2576 B/op	      17 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkValidateWorkers/tiny/p8-8      	  182025	      3374 ns/op	    2576 B/op	      17 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkValidateWorkers/tiny/p8-8      	  177692	      3691 ns/op	    2576 B/op	      17 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkValidateWorkers/tiny/p8-8      	  185382	      3515 ns/op	    2576 B/op	      17 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkValidateWorkers/tiny/p8-8      	  175524	      3495 ns/op	    2576 B/op	      17 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkValidateWorkers/tiny/p8-8      	  183284	      3577 ns/op	    2576 B/op	      17 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkValidateWorkers/tiny/p8-8      	  166006	      3529 ns/op	    2576 B/op	      17 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkValidateWorkers/tiny/p8-8      	  173448	      3570 ns/op	    2576 B/op	      17 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkValidateWorkers/tiny/p8-8      	  175310	      3560 ns/op	    2576 B/op	      17 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkValidateWorkers/tiny/p8-8      	  167346	      3648 ns/op	    2576 B/op	      17 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkValidateWorkers/tiny/p8-8      	  183020	      3635 ns/op	    2576 B/op	      17 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkValidateWorkers/tiny/p8-8      	  176568	      3791 ns/op	    2576 B/op	      17 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotl-8         	  283719	      2247 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotl-8         	  300807	      2314 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotl-8         	  236724	      2323 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotl-8         	  288556	      2365 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotl-8         	  287460	      2283 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotl-8         	  253820	      2332 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotl-8         	  247100	      2113 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotl-8         	  285866	      2254 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotl-8         	  273933	      2273 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotl-8         	  259694	      2237 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotl-8         	  269046	      2216 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotl-8         	  276100	      2188 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/tiny.add-8         	     278	         8.724 ns/op	    223114 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/tiny.add-8         	     282	         8.521 ns/op	    243038 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/tiny.add-8         	     283	         8.429 ns/op	    247510 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/tiny.add-8         	     280	         8.635 ns/op	    244018 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/tiny.add-8         	     316	         8.539 ns/op	    240052 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/tiny.add-8         	     284	         8.485 ns/op	    243820 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/tiny.add-8         	     279	         8.564 ns/op	    239368 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/tiny.add-8         	     286	         8.571 ns/op	    247464 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/tiny.add-8         	     280	         8.464 ns/op	    217879 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/tiny.add-8         	     290	         8.626 ns/op	    249995 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/tiny.add-8         	     289	         8.404 ns/op	    245616 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/tiny.add-8         	     349	         8.509 ns/op	    211130 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/memory_tree.run-8         	     292	      9309 ns/op	       220.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/memory_tree.run-8         	     295	      9327 ns/op	       218.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/memory_tree.run-8         	     298	      9166 ns/op	       219.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/memory_tree.run-8         	     297	      9141 ns/op	       219.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/memory_tree.run-8         	     298	      9281 ns/op	       217.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/memory_tree.run-8         	     295	      9190 ns/op	       218.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/memory_tree.run-8         	     302	      9332 ns/op	       218.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/memory_tree.run-8         	     291	      9200 ns/op	       210.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/memory_tree.run-8         	     289	      9227 ns/op	       219.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/memory_tree.run-8         	     298	      9251 ns/op	       220.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/memory_tree.run-8         	     294	      9189 ns/op	       220.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/memory_tree.run-8         	     295	      9153 ns/op	       219.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.pack-8         	     274	         8.484 ns/op	    249129 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.pack-8         	     290	         8.495 ns/op	    245161 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.pack-8         	     343	         8.740 ns/op	    193131 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.pack-8         	     350	         8.429 ns/op	    249835 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.pack-8         	     270	         8.531 ns/op	    250379 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.pack-8         	     284	         8.497 ns/op	    244536 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.pack-8         	     349	         8.440 ns/op	    226826 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.pack-8         	     283	         8.518 ns/op	    244537 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.pack-8         	     265	         8.334 ns/op	    251919 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.pack-8         	     290	         8.499 ns/op	    248365 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.pack-8         	     277	         8.961 ns/op	    244522 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.pack-8         	     292	         8.501 ns/op	    243223 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.parse4-8         	     274	         8.370 ns/op	    253093 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.parse4-8         	     277	         8.675 ns/op	    244081 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.parse4-8         	     280	         8.437 ns/op	    256084 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.parse4-8         	     279	         8.286 ns/op	    250947 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.parse4-8         	     288	         8.554 ns/op	    244018 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.parse4-8         	     486	         8.695 ns/op	    248075 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.parse4-8         	     284	         8.587 ns/op	    250423 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.parse4-8         	     280	         8.564 ns/op	    250798 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.parse4-8         	     280	         8.417 ns/op	    252750 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.parse4-8         	     291	         8.440 ns/op	    241180 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.parse4-8         	     284	         8.613 ns/op	    251013 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/swar-pack-parse.parse4-8         	     278	         8.694 ns/op	    248218 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/utf-as-simd.convertN-8         	     292	     53505 ns/op	        33.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/utf-as-simd.convertN-8         	     321	     53129 ns/op	        36.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/utf-as-simd.convertN-8         	     290	     52642 ns/op	        39.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/utf-as-simd.convertN-8         	     303	     53049 ns/op	        38.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/utf-as-simd.convertN-8         	     300	     52742 ns/op	        38.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/utf-as-simd.convertN-8         	     296	     52698 ns/op	        38.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/utf-as-simd.convertN-8         	     289	     53367 ns/op	        34.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/utf-as-simd.convertN-8         	     289	     53233 ns/op	        38.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/utf-as-simd.convertN-8         	     289	     52907 ns/op	        38.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/utf-as-simd.convertN-8         	     290	     52612 ns/op	        38.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/utf-as-simd.convertN-8         	     294	     53154 ns/op	        38.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/utf-as-simd.convertN-8         	     387	     53052 ns/op	        37.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.rotr-8         	     301	     13808 ns/op	       144.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.rotr-8         	     302	     13991 ns/op	       146.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.rotr-8         	     295	     14030 ns/op	       146.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.rotr-8         	     298	     14101 ns/op	       147.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.rotr-8         	     295	     13916 ns/op	       144.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.rotr-8         	     298	     13900 ns/op	       131.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.rotr-8         	     302	     13802 ns/op	       146.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.rotr-8         	     295	     14006 ns/op	       144.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.rotr-8         	     298	     14225 ns/op	       141.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.rotr-8         	     296	     14270 ns/op	       140.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.rotr-8         	     300	     14235 ns/op	       140.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.rotr-8         	     294	     14351 ns/op	       140.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_f32.ceil-8         	     291	     41738 ns/op	        49.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_f32.ceil-8         	     308	     41460 ns/op	        49.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_f32.ceil-8         	     303	     42243 ns/op	        44.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_f32.ceil-8         	     308	     42054 ns/op	        48.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_f32.ceil-8         	     310	     41719 ns/op	        50.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_f32.ceil-8         	     375	     41448 ns/op	        49.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_f32.ceil-8         	     306	     41814 ns/op	        48.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_f32.ceil-8         	     298	     41958 ns/op	        48.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_f32.ceil-8         	     284	     42353 ns/op	        48.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_f32.ceil-8         	     292	     42305 ns/op	        48.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_f32.ceil-8         	     304	     42411 ns/op	        50.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_f32.ceil-8         	     298	     42303 ns/op	        49.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i16x8.abs-8         	     301	      1778 ns/op	      1158 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i16x8.abs-8         	     300	      1783 ns/op	      1147 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i16x8.abs-8         	     314	      1787 ns/op	      1157 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i16x8.abs-8         	     294	      1788 ns/op	      1148 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i16x8.abs-8         	     307	      1777 ns/op	      1135 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i16x8.abs-8         	     361	      1757 ns/op	      1131 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i16x8.abs-8         	     339	      1770 ns/op	      1088 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i16x8.abs-8         	     298	      1766 ns/op	      1114 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i16x8.abs-8         	     306	      1786 ns/op	      1168 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i16x8.abs-8         	     295	      1788 ns/op	      1127 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i16x8.abs-8         	     302	      1782 ns/op	       939.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i16x8.abs-8         	     296	      1785 ns/op	      1164 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/utf-as-simd.validateN-8         	   25178	     24551 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/utf-as-simd.validateN-8         	   22598	     25631 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/utf-as-simd.validateN-8         	   27273	     23383 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/utf-as-simd.validateN-8         	   26628	     22930 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/utf-as-simd.validateN-8         	   21237	     28994 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/utf-as-simd.validateN-8         	   27649	     23297 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/utf-as-simd.validateN-8         	   26622	     22560 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/utf-as-simd.validateN-8         	   25017	     23420 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/utf-as-simd.validateN-8         	   23496	     22691 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/utf-as-simd.validateN-8         	   26506	     22830 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/utf-as-simd.validateN-8         	   26805	     23185 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/utf-as-simd.validateN-8         	   24996	     22237 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotr-8         	  343158	      2042 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotr-8         	  300832	      2066 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotr-8         	  254623	      2247 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotr-8         	  276271	      2396 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotr-8         	  308943	      2054 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotr-8         	  310731	      2270 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotr-8         	  286640	      2236 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotr-8         	  281361	      2261 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotr-8         	  289675	      2222 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotr-8         	  269290	      2203 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotr-8         	  283882	      2243 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_i64.rotr-8         	  302882	      2234 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/float.run-8         	  877506	       665.0 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/float.run-8         	 1000000	       596.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/float.run-8         	  883084	       641.5 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/float.run-8         	 1000000	       620.4 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/float.run-8         	  879112	       620.3 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/float.run-8         	  957817	       617.1 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/float.run-8         	 1000000	       624.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/float.run-8         	  997842	       631.2 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/float.run-8         	  869116	       678.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/float.run-8         	  983584	       636.2 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/float.run-8         	  876805	       603.9 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/float.run-8         	 1000000	       669.7 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_f64.max-8         	  127165	      5063 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_f64.max-8         	  134434	      4968 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_f64.max-8         	  121399	      4847 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_f64.max-8         	  119167	      5020 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_f64.max-8         	  126739	      4992 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_f64.max-8         	  118305	      4863 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_f64.max-8         	  118893	      4810 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_f64.max-8         	  116743	      4893 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_f64.max-8         	  120387	      4706 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_f64.max-8         	  125548	      4931 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_f64.max-8         	  119287	      5058 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_f64.max-8         	  119076	      5072 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_f64.ceil-8         	  112622	      5571 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_f64.ceil-8         	  111428	      5516 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_f64.ceil-8         	  105596	      5480 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_f64.ceil-8         	   96711	      5556 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_f64.ceil-8         	  110188	      5567 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_f64.ceil-8         	  111958	      5501 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_f64.ceil-8         	  110860	      5452 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_f64.ceil-8         	  110823	      5559 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_f64.ceil-8         	  110103	      5614 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_f64.ceil-8         	  113221	      5725 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_f64.ceil-8         	  110847	      5472 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_f64.ceil-8         	  114324	      5536 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u-8         	  831894	       707.2 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u-8         	  890835	       708.5 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u-8         	  861969	       720.5 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u-8         	  833972	       730.6 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u-8         	  822738	       723.9 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u-8         	  848274	       715.6 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u-8         	  822610	       709.7 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u-8         	  845023	       718.3 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u-8         	  872697	       727.9 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u-8         	  840290	       715.7 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u-8         	  837270	       709.3 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u-8         	  838125	       705.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i64x2.gt_s-8         	 1293484	       462.0 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i64x2.gt_s-8         	 1311255	       462.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i64x2.gt_s-8         	 1311313	       472.1 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i64x2.gt_s-8         	 1339299	       451.7 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i64x2.gt_s-8         	 1286286	       462.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i64x2.gt_s-8         	 1319802	       449.4 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i64x2.gt_s-8         	 1341546	       446.7 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i64x2.gt_s-8         	 1309378	       465.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i64x2.gt_s-8         	 1337250	       453.0 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i64x2.gt_s-8         	 1320736	       449.2 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i64x2.gt_s-8         	 1318371	       449.2 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_i64x2.gt_s-8         	 1321250	       464.0 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_f64x2.floor-8         	 1760445	       337.2 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_f64x2.floor-8         	 1773985	       340.6 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_f64x2.floor-8         	 1735281	       348.9 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_f64x2.floor-8         	 1752994	       355.2 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_f64x2.floor-8         	 1772970	       343.1 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_f64x2.floor-8         	 1765327	       353.6 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_f64x2.floor-8         	 1738899	       351.7 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_f64x2.floor-8         	 1731206	       347.6 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_f64x2.floor-8         	 1709895	       356.2 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_f64x2.floor-8         	 1718955	       348.5 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_f64x2.floor-8         	 1714798	       353.4 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_simd_f64x2.floor-8         	 1766178	       343.1 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileCompact/fannkuch-8         	    6602	     91117 ns/op	   69442 B/op	      71 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileCompact/fannkuch-8         	    6092	     88281 ns/op	   69449 B/op	      71 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileCompact/fannkuch-8         	    6594	     88786 ns/op	   69442 B/op	      71 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileCompact/fannkuch-8         	    6469	     88051 ns/op	   69443 B/op	      71 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileCompact/fannkuch-8         	    6584	     90711 ns/op	   69442 B/op	      71 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileCompact/fannkuch-8         	    6840	     90232 ns/op	   69438 B/op	      71 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileCompact/fannkuch-8         	    6655	     89701 ns/op	   69440 B/op	      71 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileCompact/fannkuch-8         	    6123	     89132 ns/op	   69449 B/op	      71 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileCompact/fannkuch-8         	    6618	     88957 ns/op	   69441 B/op	      71 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileCompact/fannkuch-8         	    6708	     87627 ns/op	   69441 B/op	      71 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileCompact/fannkuch-8         	    6348	     90555 ns/op	   69446 B/op	      71 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileCompact/fannkuch-8         	    6470	     90197 ns/op	   69443 B/op	      71 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/many_funcs-8         	    1443	    400937 ns/op	      7817 code-B	  161637 B/op	      86 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/many_funcs-8         	    1479	    408379 ns/op	      7817 code-B	  161632 B/op	      86 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/many_funcs-8         	    1507	    404674 ns/op	      7817 code-B	  161632 B/op	      86 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/many_funcs-8         	    1410	    405231 ns/op	      7817 code-B	  161634 B/op	      86 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/many_funcs-8         	    1468	    402163 ns/op	      7817 code-B	  161632 B/op	      86 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/many_funcs-8         	    1506	    412558 ns/op	      7817 code-B	  161632 B/op	      86 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/many_funcs-8         	    1462	    401126 ns/op	      7817 code-B	  161633 B/op	      86 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/many_funcs-8         	    1411	    401376 ns/op	      7817 code-B	  161634 B/op	      86 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/many_funcs-8         	    1447	    420872 ns/op	      7817 code-B	  161637 B/op	      86 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/many_funcs-8         	    1420	    417769 ns/op	      7817 code-B	  161633 B/op	      86 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/many_funcs-8         	    1298	    435588 ns/op	      7817 code-B	  161636 B/op	      86 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/many_funcs-8         	    1482	    400269 ns/op	      7817 code-B	  161632 B/op	      86 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/json-as-simd-8         	     414	   1435389 ns/op	     79493 code-B	  229542 B/op	     439 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/json-as-simd-8         	     402	   1449126 ns/op	     79493 code-B	  229532 B/op	     439 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/json-as-simd-8         	     417	   1438968 ns/op	     79493 code-B	  229544 B/op	     439 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/json-as-simd-8         	     396	   1470539 ns/op	     79493 code-B	  229546 B/op	     439 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/json-as-simd-8         	     416	   1451004 ns/op	     79493 code-B	  229530 B/op	     439 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/json-as-simd-8         	     417	   1433848 ns/op	     79493 code-B	  229529 B/op	     439 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/json-as-simd-8         	     416	   1450578 ns/op	     79493 code-B	  229528 B/op	     439 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/json-as-simd-8         	     415	   1459489 ns/op	     79493 code-B	  229530 B/op	     439 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/json-as-simd-8         	     412	   1451320 ns/op	     79493 code-B	  229530 B/op	     439 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/json-as-simd-8         	     415	   1452617 ns/op	     79493 code-B	  229530 B/op	     439 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/json-as-simd-8         	     394	   1466398 ns/op	     79493 code-B	  229531 B/op	     439 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFull/json-as-simd-8         	     417	   1460810 ns/op	     79493 code-B	  229529 B/op	     439 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p1-8      	    1498	    397381 ns/op	      7817 code-B	  161488 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p1-8      	    1476	    398065 ns/op	      7817 code-B	  161489 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p1-8      	    1464	    449909 ns/op	      7817 code-B	  161489 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p1-8      	    1533	    400022 ns/op	      7817 code-B	  161488 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p1-8      	    1465	    405585 ns/op	      7817 code-B	  161488 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p1-8      	    1512	    405043 ns/op	      7817 code-B	  161488 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p1-8      	    1518	    400031 ns/op	      7817 code-B	  161488 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p1-8      	    1534	    396208 ns/op	      7817 code-B	  161488 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p1-8      	    1394	    411097 ns/op	      7817 code-B	  161490 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p1-8      	    1537	    398269 ns/op	      7817 code-B	  161492 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p1-8      	    1508	    397469 ns/op	      7817 code-B	  161488 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p1-8      	    1512	    399271 ns/op	      7817 code-B	  161488 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p2-8      	    1816	    341167 ns/op	      7817 code-B	  238175 B/op	     117 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p2-8      	    1766	    336949 ns/op	      7817 code-B	  238183 B/op	     117 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p2-8      	    1862	    325531 ns/op	      7817 code-B	  238159 B/op	     117 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p2-8      	    1840	    322037 ns/op	      7817 code-B	  238166 B/op	     117 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p2-8      	    1810	    336249 ns/op	      7817 code-B	  238170 B/op	     117 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p2-8      	    1803	    338331 ns/op	      7817 code-B	  238170 B/op	     117 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p2-8      	    1756	    340377 ns/op	      7817 code-B	  238189 B/op	     117 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p2-8      	    1815	    332527 ns/op	      7817 code-B	  238173 B/op	     117 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p2-8      	    1849	    330672 ns/op	      7817 code-B	  238170 B/op	     117 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p2-8      	    1741	    330574 ns/op	      7817 code-B	  238167 B/op	     117 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p2-8      	    1629	    327103 ns/op	      7817 code-B	  238169 B/op	     117 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p2-8      	    1782	    336102 ns/op	      7817 code-B	  238222 B/op	     117 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_f32x4.abs-8         	 2194050	       277.7 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_f32x4.abs-8         	 2281713	       269.1 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_f32x4.abs-8         	 2633349	       237.4 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_f32x4.abs-8         	 2427050	       242.0 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_f32x4.abs-8         	 2249308	       275.1 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_f32x4.abs-8         	 2356143	       296.9 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_f32x4.abs-8         	 2134928	       272.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_f32x4.abs-8         	 2354613	       275.4 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_f32x4.abs-8         	 2439144	       281.4 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_f32x4.abs-8         	 2354881	       275.5 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_f32x4.abs-8         	 2269569	       270.8 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/process/isa_simd_f32x4.abs-8         	 2375221	       241.0 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p4-8      	    2209	    268547 ns/op	      7817 code-B	  286163 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p4-8      	    2366	    268895 ns/op	      7817 code-B	  286186 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p4-8      	    2317	    265226 ns/op	      7817 code-B	  286163 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p4-8      	    2290	    267981 ns/op	      7817 code-B	  286157 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p4-8      	    2254	    272733 ns/op	      7817 code-B	  286167 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p4-8      	    2311	    266697 ns/op	      7817 code-B	  286131 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p4-8      	    1996	    313398 ns/op	      7817 code-B	  286328 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p4-8      	    1930	    270080 ns/op	      7817 code-B	  286270 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p4-8      	    2238	    269863 ns/op	      7817 code-B	  286304 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p4-8      	    2251	    271714 ns/op	      7817 code-B	  286252 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p4-8      	    2307	    267791 ns/op	      7817 code-B	  286152 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p4-8      	    2293	    264947 ns/op	      7817 code-B	  286170 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p8-8      	    2193	    265787 ns/op	      7817 code-B	  382237 B/op	     207 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p8-8      	    2103	    270398 ns/op	      7817 code-B	  382388 B/op	     206 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p8-8      	    2353	    279887 ns/op	      7817 code-B	  382253 B/op	     207 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p8-8      	    1935	    309852 ns/op	      7817 code-B	  382262 B/op	     206 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p8-8      	    2334	    261194 ns/op	      7817 code-B	  382320 B/op	     206 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p8-8      	    2028	    262240 ns/op	      7817 code-B	  382231 B/op	     207 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p8-8      	    2328	    263260 ns/op	      7817 code-B	  382234 B/op	     206 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p8-8      	    2293	    265847 ns/op	      7817 code-B	  382243 B/op	     206 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p8-8      	    2293	    264303 ns/op	      7817 code-B	  382320 B/op	     206 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p8-8      	    2314	    262401 ns/op	      7817 code-B	  382249 B/op	     207 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p8-8      	    2275	    261911 ns/op	      7817 code-B	  382205 B/op	     206 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/p8-8      	    2295	    265266 ns/op	      7817 code-B	  382262 B/op	     206 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/auto-8    	    2268	    264003 ns/op	      7817 code-B	  286152 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/auto-8    	    1869	    268726 ns/op	      7817 code-B	  286168 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/auto-8    	    2216	    265643 ns/op	      7817 code-B	  286184 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/auto-8    	    2332	    269017 ns/op	      7817 code-B	  286246 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/auto-8    	    2288	    274116 ns/op	      7817 code-B	  286166 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/auto-8    	    2311	    264232 ns/op	      7817 code-B	  286176 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/auto-8    	    2277	    270508 ns/op	      7817 code-B	  286155 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/auto-8    	    2244	    269136 ns/op	      7817 code-B	  286264 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/auto-8    	    2191	    264398 ns/op	      7817 code-B	  286295 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/auto-8    	    2281	    270018 ns/op	      7817 code-B	  286161 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/auto-8    	    2198	    270686 ns/op	      7817 code-B	  286160 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/many_funcs/auto-8    	    2216	    266456 ns/op	      7817 code-B	  286151 B/op	     147 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p2-8      	     680	    875461 ns/op	     66502 code-B	  532288 B/op	     528 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p2-8      	     674	    891179 ns/op	     66502 code-B	  532473 B/op	     528 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p2-8      	     668	    895009 ns/op	     66502 code-B	  532150 B/op	     528 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p2-8      	     690	    881154 ns/op	     66502 code-B	  532038 B/op	     528 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p2-8      	     627	    870591 ns/op	     66502 code-B	  532428 B/op	     529 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p2-8      	     691	    884081 ns/op	     66502 code-B	  532533 B/op	     528 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p2-8      	     696	    889229 ns/op	     66502 code-B	  532313 B/op	     529 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p2-8      	     669	    882246 ns/op	     66502 code-B	  532225 B/op	     529 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p2-8      	     676	    875600 ns/op	     66502 code-B	  531729 B/op	     528 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p2-8      	     703	    883476 ns/op	     66502 code-B	  532092 B/op	     528 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p2-8      	     686	    878929 ns/op	     66502 code-B	  532163 B/op	     528 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p2-8      	     678	    882538 ns/op	     66502 code-B	  532597 B/op	     528 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p4-8      	     927	    667505 ns/op	     66502 code-B	  666218 B/op	     684 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p4-8      	     876	    658516 ns/op	     66502 code-B	  666682 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p4-8      	     831	    681666 ns/op	     66502 code-B	  665834 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p4-8      	     906	    801941 ns/op	     66502 code-B	  666601 B/op	     684 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p4-8      	     866	    711330 ns/op	     66502 code-B	  666700 B/op	     683 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p4-8      	     846	    741643 ns/op	     66502 code-B	  667632 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p4-8      	     846	    707874 ns/op	     66502 code-B	  666236 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p4-8      	     888	    710704 ns/op	     66502 code-B	  667058 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p4-8      	     860	    719284 ns/op	     66502 code-B	  666814 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p4-8      	     861	    711268 ns/op	     66502 code-B	  666381 B/op	     684 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p4-8      	     812	    702516 ns/op	     66502 code-B	  667145 B/op	     683 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p4-8      	     823	    685601 ns/op	     66502 code-B	  667144 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p8-8      	     945	    639333 ns/op	     66502 code-B	  885513 B/op	     937 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p8-8      	     966	    640801 ns/op	     66502 code-B	  884105 B/op	     935 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p8-8      	     879	    710124 ns/op	     66502 code-B	  885337 B/op	     936 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p8-8      	     907	    683802 ns/op	     66502 code-B	  884505 B/op	     937 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p8-8      	     973	    644234 ns/op	     66502 code-B	  884724 B/op	     937 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p8-8      	     924	    696091 ns/op	     66502 code-B	  884477 B/op	     936 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p8-8      	     860	    654079 ns/op	     66502 code-B	  885139 B/op	     937 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p8-8      	     868	    653587 ns/op	     66502 code-B	  884582 B/op	     936 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p8-8      	     957	    647998 ns/op	     66502 code-B	  885999 B/op	     936 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p8-8      	     969	    634785 ns/op	     66502 code-B	  885166 B/op	     937 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p8-8      	     949	    674067 ns/op	     66502 code-B	  884632 B/op	     937 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/p8-8      	     787	    690443 ns/op	     66502 code-B	  883984 B/op	     935 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/auto-8    	     842	    728581 ns/op	     66502 code-B	  666459 B/op	     684 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/auto-8    	     822	    703162 ns/op	     66502 code-B	  664650 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/auto-8    	     860	    724010 ns/op	     66502 code-B	  665857 B/op	     684 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/auto-8    	     788	    718237 ns/op	     66502 code-B	  665523 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/auto-8    	     830	    717843 ns/op	     66502 code-B	  665977 B/op	     684 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/auto-8    	     876	    747528 ns/op	     66502 code-B	  668326 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/auto-8    	     848	    720782 ns/op	     66502 code-B	  667470 B/op	     684 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/auto-8    	     858	    727481 ns/op	     66502 code-B	  666563 B/op	     684 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/auto-8    	     733	    804369 ns/op	     66502 code-B	  665819 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/auto-8    	     882	    697101 ns/op	     66502 code-B	  665071 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/auto-8    	     886	    704833 ns/op	     66502 code-B	  665456 B/op	     685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/json-as/auto-8    	     822	    708859 ns/op	     66502 code-B	  665426 B/op	     684 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/p4-8      	      69	   7786145 ns/op	    898660 code-B	 4933743 B/op	    3276 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/p4-8      	      75	   8037346 ns/op	    898660 code-B	 4924360 B/op	    3275 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/p4-8      	      72	   7846414 ns/op	    898660 code-B	 4927553 B/op	    3273 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/p4-8      	      78	   7576459 ns/op	    898660 code-B	 4926093 B/op	    3276 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/p4-8      	      80	   7819023 ns/op	    898660 code-B	 4915591 B/op	    3274 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/p4-8      	      78	   7876208 ns/op	    898660 code-B	 4937587 B/op	    3276 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/p4-8      	      70	   7689482 ns/op	    898660 code-B	 4926776 B/op	    3274 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/p4-8      	      80	   7673235 ns/op	    898660 code-B	 4926763 B/op	    3274 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/p4-8      	      72	   7749963 ns/op	    898660 code-B	 4935026 B/op	    3275 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/p4-8      	      79	   7797835 ns/op	    898660 code-B	 4954704 B/op	    3275 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/p4-8      	      75	   7767015 ns/op	    898660 code-B	 4928105 B/op	    3275 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/p4-8      	      76	   7810754 ns/op	    898660 code-B	 4927782 B/op	    3275 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/auto-8    	      81	   7782780 ns/op	    898660 code-B	 4917660 B/op	    3271 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/auto-8    	      68	   7764783 ns/op	    898660 code-B	 4919673 B/op	    3276 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/auto-8    	      75	   7373003 ns/op	    898660 code-B	 4935437 B/op	    3274 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/auto-8    	      75	   7401325 ns/op	    898660 code-B	 4916488 B/op	    3271 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/auto-8    	      76	   7707714 ns/op	    898660 code-B	 4926521 B/op	    3276 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/auto-8    	      74	   7683334 ns/op	    898660 code-B	 4927429 B/op	    3272 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/auto-8    	      79	   7423145 ns/op	    898660 code-B	 4927146 B/op	    3278 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/auto-8    	      79	   7402562 ns/op	    898660 code-B	 4923098 B/op	    3272 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/auto-8    	      76	   7285724 ns/op	    898660 code-B	 4931227 B/op	    3273 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/auto-8    	      76	   7340704 ns/op	    898660 code-B	 4931185 B/op	    3277 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/auto-8    	      75	   7347318 ns/op	    898660 code-B	 4926659 B/op	    3274 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/lua/auto-8    	      79	   7342333 ns/op	    898660 code-B	 4931749 B/op	    3272 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p2-8      	      13	  41080026 ns/op	   3648553 code-B	14735634 B/op	    8326 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p2-8      	      14	  41697075 ns/op	   3648553 code-B	14518049 B/op	    8331 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p2-8      	      14	  41390104 ns/op	   3648553 code-B	14654723 B/op	    8366 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p2-8      	      14	  40995782 ns/op	   3648553 code-B	14738855 B/op	    8328 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p2-8      	      13	  41535489 ns/op	   3648553 code-B	14636411 B/op	    8314 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p2-8      	      14	  40950687 ns/op	   3648553 code-B	14651532 B/op	    8331 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p2-8      	      14	  41494210 ns/op	   3648553 code-B	14679444 B/op	    8342 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p2-8      	      13	  41641051 ns/op	   3648553 code-B	14707680 B/op	    8349 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p2-8      	      14	  41381854 ns/op	   3648553 code-B	14712186 B/op	    8325 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p2-8      	      14	  41976438 ns/op	   3648553 code-B	14599796 B/op	    8346 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p2-8      	      14	  41294774 ns/op	   3648553 code-B	14641069 B/op	    8358 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p2-8      	      14	  41742989 ns/op	   3648553 code-B	14727552 B/op	    8361 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_ctl.br_table-8         	  207705	      2598 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_ctl.br_table-8         	  226159	      2868 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_ctl.br_table-8         	  222844	      2679 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_ctl.br_table-8         	  211544	      2689 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_ctl.br_table-8         	  211459	      3163 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_ctl.br_table-8         	  216063	      2604 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_ctl.br_table-8         	  210052	      3049 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_ctl.br_table-8         	  206671	      2623 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_ctl.br_table-8         	  201764	      2818 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_ctl.br_table-8         	  202791	      3344 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_ctl.br_table-8         	  221932	      2692 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExecParallel/independent/isa_ctl.br_table-8         	  222642	      2632 ns/op	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p4-8      	      22	  25742661 ns/op	   3648553 code-B	16301807 B/op	    8977 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p4-8      	      22	  25885217 ns/op	   3648553 code-B	16476532 B/op	    8985 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p4-8      	      20	  25935183 ns/op	   3648553 code-B	16293574 B/op	    8976 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p4-8      	      22	  26462900 ns/op	   3648553 code-B	16432382 B/op	    8992 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p4-8      	      22	  26099274 ns/op	   3648553 code-B	16182439 B/op	    8988 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p4-8      	      22	  25799906 ns/op	   3648553 code-B	16356288 B/op	    8983 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p4-8      	      22	  26108496 ns/op	   3648553 code-B	16325679 B/op	    8990 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p4-8      	      22	  26154579 ns/op	   3648553 code-B	16503063 B/op	    8992 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p4-8      	      22	  26043978 ns/op	   3648553 code-B	16394437 B/op	    8981 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p4-8      	      22	  26448606 ns/op	   3648553 code-B	16658064 B/op	    8979 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p4-8      	      22	  26261800 ns/op	   3648553 code-B	16461049 B/op	    8985 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p4-8      	      22	  26596861 ns/op	   3648553 code-B	16522329 B/op	    8994 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p8-8      	      31	  19444375 ns/op	   3648553 code-B	19226907 B/op	    9951 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p8-8      	      33	  18279222 ns/op	   3648553 code-B	18470285 B/op	    9939 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p8-8      	      33	  19092841 ns/op	   3648553 code-B	19049664 B/op	    9958 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p8-8      	      33	  19392143 ns/op	   3648553 code-B	19213877 B/op	    9946 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p8-8      	      31	  19021215 ns/op	   3648553 code-B	18819692 B/op	    9946 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p8-8      	      32	  19125586 ns/op	   3648553 code-B	18869655 B/op	    9942 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p8-8      	      31	  18913494 ns/op	   3648553 code-B	19020218 B/op	    9945 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p8-8      	      32	  19057335 ns/op	   3648553 code-B	19154200 B/op	    9947 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p8-8      	      31	  19326710 ns/op	   3648553 code-B	19367482 B/op	    9946 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p8-8      	      32	  18757004 ns/op	   3648553 code-B	18670444 B/op	    9928 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p8-8      	      32	  18685794 ns/op	   3648553 code-B	19017579 B/op	    9948 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/p8-8      	      30	  19129297 ns/op	   3648553 code-B	18667235 B/op	    9943 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/auto-8    	      21	  25791224 ns/op	   3648553 code-B	16390075 B/op	    8979 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/auto-8    	      22	  25933036 ns/op	   3648553 code-B	16281901 B/op	    8983 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/auto-8    	      21	  25806699 ns/op	   3648553 code-B	16324214 B/op	    8987 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/auto-8    	      22	  25968315 ns/op	   3648553 code-B	16355993 B/op	    8992 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/auto-8    	      22	  28058396 ns/op	   3648553 code-B	16394204 B/op	    8980 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/auto-8    	      20	  28035075 ns/op	   3648553 code-B	16548752 B/op	    8990 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/auto-8    	      22	  25885725 ns/op	   3648553 code-B	16302404 B/op	    8981 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/auto-8    	      22	  26258258 ns/op	   3648553 code-B	16382185 B/op	    8974 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/auto-8    	      19	  28302700 ns/op	   3648553 code-B	16349480 B/op	    8984 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/auto-8    	      22	  26856476 ns/op	   3648553 code-B	16575120 B/op	    8979 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/auto-8    	      22	  25288690 ns/op	   3648553 code-B	16266592 B/op	    8978 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/sqlite3/auto-8    	      20	  25972510 ns/op	   3648553 code-B	16286848 B/op	    8981 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p4-8      	       3	 187064586 ns/op	  26629248 code-B	186347997 B/op	   26972 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p4-8      	       3	 186934285 ns/op	  26629248 code-B	189397152 B/op	   28771 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p4-8      	       3	 192457773 ns/op	  26629248 code-B	186047685 B/op	   26804 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p4-8      	       3	 205044715 ns/op	  26629248 code-B	186143813 B/op	   26322 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p4-8      	       3	 189769243 ns/op	  26629248 code-B	188995416 B/op	   27957 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p4-8      	       3	 188096333 ns/op	  26629248 code-B	188477613 B/op	   28656 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p4-8      	       3	 194329073 ns/op	  26629248 code-B	185454506 B/op	   27465 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p4-8      	       3	 198587605 ns/op	  26629248 code-B	189312280 B/op	   28461 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p4-8      	       3	 196985578 ns/op	  26629248 code-B	188779376 B/op	   27592 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p4-8      	       3	 198290053 ns/op	  26629248 code-B	186975445 B/op	   27731 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p4-8      	       3	 195858548 ns/op	  26629248 code-B	187949005 B/op	   28048 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p4-8      	       3	 191711374 ns/op	  26629248 code-B	188074794 B/op	   28270 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p8-8      	       4	 150150650 ns/op	  26629248 code-B	200455646 B/op	   35190 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p8-8      	       4	 145673668 ns/op	  26629248 code-B	198706346 B/op	   34261 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p8-8      	       4	 153736680 ns/op	  26629248 code-B	201399930 B/op	   35639 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p8-8      	       4	 153354789 ns/op	  26629248 code-B	201110410 B/op	   34275 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p8-8      	       4	 149192016 ns/op	  26629248 code-B	201468014 B/op	   35318 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p8-8      	       4	 151359754 ns/op	  26629248 code-B	200275076 B/op	   34681 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p8-8      	       4	 157155434 ns/op	  26629248 code-B	201432506 B/op	   34392 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p8-8      	       4	 158197292 ns/op	  26629248 code-B	200099438 B/op	   33990 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p8-8      	       4	 159148046 ns/op	  26629248 code-B	201350056 B/op	   34853 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p8-8      	       4	 159655550 ns/op	  26629248 code-B	200096170 B/op	   34935 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p8-8      	       4	 154468938 ns/op	  26629248 code-B	200380774 B/op	   33991 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p8-8      	       4	 154161376 ns/op	  26629248 code-B	199942520 B/op	   34063 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/auto-8    	       3	 199704758 ns/op	  26629248 code-B	187992714 B/op	   27978 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/auto-8    	       3	 196715908 ns/op	  26629248 code-B	186972538 B/op	   27442 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/auto-8    	       3	 188923437 ns/op	  26629248 code-B	188879661 B/op	   28847 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/auto-8    	       3	 187093696 ns/op	  26629248 code-B	186005509 B/op	   27947 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/auto-8    	       3	 201225933 ns/op	  26629248 code-B	188081930 B/op	   28557 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/auto-8    	       3	 195912349 ns/op	  26629248 code-B	185773216 B/op	   26849 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/auto-8    	       3	 195739770 ns/op	  26629248 code-B	188749282 B/op	   28346 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/auto-8    	       3	 193470191 ns/op	  26629248 code-B	190046192 B/op	   29426 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/auto-8    	       3	 195601424 ns/op	  26629248 code-B	187952082 B/op	   28597 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/auto-8    	       3	 201004167 ns/op	  26629248 code-B	186807048 B/op	   28156 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/auto-8    	       3	 227418301 ns/op	  26629248 code-B	186968069 B/op	   27352 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/auto-8    	       3	 195472087 ns/op	  26629248 code-B	187269962 B/op	   28746 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1-8      	   10000	     69905 ns/op	  161477 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1-8      	   10000	     70907 ns/op	  161476 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1-8      	   10000	     71148 ns/op	  161476 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1-8      	    8612	     73071 ns/op	  161478 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1-8      	   10000	     71750 ns/op	  161477 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1-8      	    9844	     71257 ns/op	  161476 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1-8      	    8092	     77948 ns/op	  161478 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1-8      	    9703	     73042 ns/op	  161476 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1-8      	    8064	     75081 ns/op	  161478 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1-8      	   10000	     69151 ns/op	  161476 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1-8      	    9746	     71675 ns/op	  161476 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/p1-8      	   10000	     70970 ns/op	  161476 B/op	      85 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto-8    	    7802	     68461 ns/op	  304903 B/op	     141 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto-8    	    7779	     71514 ns/op	  304901 B/op	     141 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto-8    	    7702	     69659 ns/op	  304933 B/op	     141 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto-8    	    8520	     72023 ns/op	  304830 B/op	     141 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto-8    	    7881	     70833 ns/op	  304739 B/op	     141 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto-8    	    8515	     71172 ns/op	  304918 B/op	     141 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto-8    	    7764	     71533 ns/op	  304785 B/op	     141 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto-8    	    7755	     72635 ns/op	  304885 B/op	     141 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto-8    	    7509	     72322 ns/op	  304760 B/op	     141 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto-8    	    6538	     89231 ns/op	  304893 B/op	     141 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto-8    	    7698	     73111 ns/op	  304821 B/op	     141 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/many_funcs/auto-8    	    8275	     70958 ns/op	  304928 B/op	     141 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/json-as/auto-8    	    2812	    210288 ns/op	  718613 B/op	     509 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/json-as/auto-8    	    2712	    209468 ns/op	  718872 B/op	     507 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/json-as/auto-8    	    2724	    213242 ns/op	  718816 B/op	     509 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/json-as/auto-8    	    2613	    215828 ns/op	  719014 B/op	     508 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/json-as/auto-8    	    2769	    215828 ns/op	  719207 B/op	     510 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/json-as/auto-8    	    2941	    213618 ns/op	  719043 B/op	     509 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/json-as/auto-8    	    2703	    211416 ns/op	  719030 B/op	     507 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/json-as/auto-8    	    2948	    220306 ns/op	  718915 B/op	     508 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/json-as/auto-8    	    2936	    214875 ns/op	  718812 B/op	     508 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/json-as/auto-8    	    2772	    218754 ns/op	  718934 B/op	     508 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/json-as/auto-8    	    2804	    217055 ns/op	  718751 B/op	     507 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileMultiModuleThroughput/json-as/auto-8    	    2890	    213577 ns/op	  719161 B/op	     507 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p2-8      	    1225	    496001 ns/op	     57638 code-B	  436584 B/op	     244 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p2-8      	    1176	    497873 ns/op	     57638 code-B	  436281 B/op	     243 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p2-8      	    1138	    494607 ns/op	     57638 code-B	  436693 B/op	     243 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p2-8      	    1202	    497330 ns/op	     57638 code-B	  436337 B/op	     244 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p2-8      	    1207	    501177 ns/op	     57638 code-B	  436451 B/op	     244 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p2-8      	    1215	    497308 ns/op	     57638 code-B	  436223 B/op	     243 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p2-8      	    1224	    496922 ns/op	     57638 code-B	  436443 B/op	     244 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p2-8      	    1110	    499540 ns/op	     57638 code-B	  436704 B/op	     243 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p2-8      	    1174	    497678 ns/op	     57638 code-B	  436344 B/op	     243 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p2-8      	    1238	    498680 ns/op	     57638 code-B	  436560 B/op	     244 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p2-8      	    1218	    502243 ns/op	     57638 code-B	  436128 B/op	     243 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p2-8      	    1210	    497420 ns/op	     57638 code-B	  436429 B/op	     244 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/branches.classify-8         	     358	         8.358 ns/op	    248139 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/branches.classify-8         	     291	         8.206 ns/op	    251389 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/branches.classify-8         	     296	         8.324 ns/op	    252093 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/branches.classify-8         	     282	         8.230 ns/op	    241556 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/branches.classify-8         	     362	         8.259 ns/op	    252070 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/branches.classify-8         	     284	         8.180 ns/op	    231252 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/branches.classify-8         	     292	         8.221 ns/op	    252614 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/branches.classify-8         	     296	         8.268 ns/op	    253076 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/branches.classify-8         	     289	         8.214 ns/op	    250891 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/branches.classify-8         	     307	         8.300 ns/op	    251956 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/branches.classify-8         	     284	         8.274 ns/op	    228892 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/branches.classify-8         	     301	         8.459 ns/op	    250630 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p4-8      	    1899	    340432 ns/op	     57638 code-B	  555844 B/op	     379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p4-8      	    1918	    333426 ns/op	     57638 code-B	  556562 B/op	     379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p4-8      	    1857	    339457 ns/op	     57638 code-B	  556643 B/op	     379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p4-8      	    1868	    339887 ns/op	     57638 code-B	  556017 B/op	     379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p4-8      	    1818	    336832 ns/op	     57638 code-B	  556364 B/op	     379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p4-8      	    1604	    334500 ns/op	     57638 code-B	  556275 B/op	     379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p4-8      	    1704	    331221 ns/op	     57638 code-B	  556523 B/op	     379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p4-8      	    1867	    334284 ns/op	     57638 code-B	  556758 B/op	     379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p4-8      	    1902	    337561 ns/op	     57638 code-B	  555910 B/op	     379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p4-8      	    1910	    343015 ns/op	     57638 code-B	  555836 B/op	     379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p4-8      	    1770	    331479 ns/op	     57638 code-B	  557612 B/op	     379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p4-8      	    1663	    333793 ns/op	     57638 code-B	  556239 B/op	     379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p8-8      	    1819	    299303 ns/op	     57638 code-B	  752191 B/op	     595 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p8-8      	    2040	    297244 ns/op	     57638 code-B	  751394 B/op	     596 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p8-8      	    1687	    314866 ns/op	     57638 code-B	  753134 B/op	     597 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p8-8      	    1878	    318281 ns/op	     57638 code-B	  754367 B/op	     596 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p8-8      	    2100	    305305 ns/op	     57638 code-B	  752115 B/op	     596 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p8-8      	    2020	    301238 ns/op	     57638 code-B	  751762 B/op	     595 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p8-8      	    2059	    302372 ns/op	     57638 code-B	  752199 B/op	     596 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p8-8      	    2060	    301075 ns/op	     57638 code-B	  751635 B/op	     596 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p8-8      	    1798	    336841 ns/op	     57638 code-B	  755079 B/op	     594 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p8-8      	    1872	    342894 ns/op	     57638 code-B	  755882 B/op	     596 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p8-8      	    1982	    318767 ns/op	     57638 code-B	  753350 B/op	     596 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/json-as/p8-8      	    1830	    321113 ns/op	     57638 code-B	  753056 B/op	     597 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p8-8      	       5	 104553840 ns/op	  35172218 code-B	139980400 B/op	   14347 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p8-8      	       6	 104765483 ns/op	  35172218 code-B	139874101 B/op	   14328 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p8-8      	       5	 106119478 ns/op	  35172218 code-B	140063726 B/op	   14329 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p8-8      	       5	 108267302 ns/op	  35172218 code-B	139716257 B/op	   14374 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p8-8      	       6	 103309014 ns/op	  35172218 code-B	139747117 B/op	   14360 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p8-8      	       6	 105960688 ns/op	  35172218 code-B	139447180 B/op	   14276 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p8-8      	       6	 106593482 ns/op	  35172218 code-B	140229932 B/op	   14288 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p8-8      	       6	 106012680 ns/op	  35172218 code-B	139637548 B/op	   14379 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p8-8      	       5	 109464086 ns/op	  35172218 code-B	139442025 B/op	   14331 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p8-8      	       6	 109702252 ns/op	  35172218 code-B	140100037 B/op	   14284 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p8-8      	       5	 107341557 ns/op	  35172218 code-B	139704124 B/op	   14312 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p8-8      	       5	 112870759 ns/op	  35172218 code-B	139804713 B/op	   14313 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p8-8      	       8	  66318810 ns/op	  26622496 code-B	133162368 B/op	   25415 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p8-8      	       8	  69236544 ns/op	  26622496 code-B	131500884 B/op	   24969 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p8-8      	       9	  58269352 ns/op	  26622496 code-B	131312098 B/op	   25304 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p8-8      	      10	  60573196 ns/op	  26622496 code-B	131511438 B/op	   25364 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p8-8      	       8	  78438083 ns/op	  26622496 code-B	132135632 B/op	   25204 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p8-8      	       8	  69837351 ns/op	  26622496 code-B	131406270 B/op	   24536 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p8-8      	       8	  69967620 ns/op	  26622496 code-B	132532365 B/op	   25825 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p8-8      	       8	  67617839 ns/op	  26622496 code-B	133058967 B/op	   26182 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p8-8      	       8	  66349064 ns/op	  26622496 code-B	131280806 B/op	   25345 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p8-8      	       9	  67561898 ns/op	  26622496 code-B	131919571 B/op	   25523 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p8-8      	       8	  68099958 ns/op	  26622496 code-B	132719002 B/op	   25358 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p8-8      	       9	  61446852 ns/op	  26622496 code-B	133672105 B/op	   26362 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/many_funcs-8         	    2126	    284843 ns/op	   68212 B/op	      34 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/many_funcs-8         	    2079	    281736 ns/op	   68218 B/op	      34 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/many_funcs-8         	    2112	    290498 ns/op	   68213 B/op	      34 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/many_funcs-8         	    2052	    287270 ns/op	   68217 B/op	      34 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/many_funcs-8         	    2070	    278319 ns/op	   68216 B/op	      34 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/many_funcs-8         	    2103	    285316 ns/op	   68216 B/op	      34 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/many_funcs-8         	    2109	    283746 ns/op	   68213 B/op	      34 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/many_funcs-8         	    2113	    285279 ns/op	   68213 B/op	      34 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/many_funcs-8         	    2114	    283768 ns/op	   68213 B/op	      34 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/many_funcs-8         	    2101	    282136 ns/op	   68216 B/op	      34 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/many_funcs-8         	    2102	    282637 ns/op	   68216 B/op	      34 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompile/many_funcs-8         	    2137	    284786 ns/op	   68211 B/op	      34 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p2-8      	       2	 292470096 ns/op	  26629248 code-B	177985056 B/op	   23444 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p2-8      	       2	 288911946 ns/op	  26629248 code-B	178525408 B/op	   23593 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p2-8      	       2	 294312629 ns/op	  26629248 code-B	178137216 B/op	   23353 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p2-8      	       2	 291055187 ns/op	  26629248 code-B	177947072 B/op	   22592 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p2-8      	       2	 286306598 ns/op	  26629248 code-B	178738600 B/op	   24398 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p2-8      	       2	 283380028 ns/op	  26629248 code-B	177236832 B/op	   22866 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p2-8      	       2	 284179372 ns/op	  26629248 code-B	177908112 B/op	   22970 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p2-8      	       2	 279294326 ns/op	  26629248 code-B	178020776 B/op	   23194 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p2-8      	       2	 285155961 ns/op	  26629248 code-B	177654784 B/op	   21684 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p2-8      	       2	 300151142 ns/op	  26629248 code-B	178736776 B/op	   23861 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p2-8      	       2	 293187858 ns/op	  26629248 code-B	178714736 B/op	   24127 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullWorkers/esbuild/p2-8      	       2	 294228260 ns/op	  26629248 code-B	178976776 B/op	   23974 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p2-8      	      79	   7422054 ns/op	    890004 code-B	 3912228 B/op	    1038 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p2-8      	      79	   7547343 ns/op	    890004 code-B	 3916516 B/op	    1038 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p2-8      	      75	   7668490 ns/op	    890004 code-B	 3913229 B/op	    1039 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p2-8      	      73	   7859439 ns/op	    890004 code-B	 3913250 B/op	    1038 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p2-8      	      78	   7433225 ns/op	    890004 code-B	 3913523 B/op	    1038 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p2-8      	      76	   7572385 ns/op	    890004 code-B	 3906738 B/op	    1039 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p2-8      	      81	   7438767 ns/op	    890004 code-B	 3913297 B/op	    1037 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p2-8      	      78	   7579457 ns/op	    890004 code-B	 3918811 B/op	    1038 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p2-8      	      76	   7628071 ns/op	    890004 code-B	 3921325 B/op	    1038 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p2-8      	      73	   7486010 ns/op	    890004 code-B	 3917322 B/op	    1038 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p2-8      	      80	   7446378 ns/op	    890004 code-B	 3916063 B/op	    1035 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p2-8      	      80	   7872120 ns/op	    890004 code-B	 3913228 B/op	    1038 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p4-8      	     133	   4624161 ns/op	    890004 code-B	 4430735 B/op	    1452 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p4-8      	     130	   4548350 ns/op	    890004 code-B	 4436331 B/op	    1452 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p4-8      	     126	   5061887 ns/op	    890004 code-B	 4411063 B/op	    1448 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p4-8      	     132	   4558766 ns/op	    890004 code-B	 4436271 B/op	    1449 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p4-8      	     133	   4777892 ns/op	    890004 code-B	 4438491 B/op	    1449 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p4-8      	     132	   4556594 ns/op	    890004 code-B	 4427928 B/op	    1451 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p4-8      	     130	   4509172 ns/op	    890004 code-B	 4417395 B/op	    1450 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p4-8      	     133	   4632818 ns/op	    890004 code-B	 4409604 B/op	    1447 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p4-8      	     121	   5021752 ns/op	    890004 code-B	 4425786 B/op	    1450 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p4-8      	     132	   4673016 ns/op	    890004 code-B	 4429057 B/op	    1449 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p4-8      	     127	   4667092 ns/op	    890004 code-B	 4435035 B/op	    1449 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/lua/p4-8      	     130	   4521173 ns/op	    890004 code-B	 4420422 B/op	    1447 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/sqlite3/p4-8      	      37	  16626555 ns/op	   3636329 code-B	14113368 B/op	    3555 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/sqlite3/p4-8      	      31	  16704906 ns/op	   3636329 code-B	14084414 B/op	    3551 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/sqlite3/p4-8      	      39	  15838518 ns/op	   3636329 code-B	14056704 B/op	    3553 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/sqlite3/p4-8      	      39	  15763303 ns/op	   3636329 code-B	14086941 B/op	    3551 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/sqlite3/p4-8      	      37	  17030261 ns/op	   3636329 code-B	14281570 B/op	    3548 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/sqlite3/p4-8      	      38	  17213996 ns/op	   3636329 code-B	14170573 B/op	    3551 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/sqlite3/p4-8      	      38	  16298887 ns/op	   3636329 code-B	14289502 B/op	    3548 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/sqlite3/p4-8      	      38	  16053877 ns/op	   3636329 code-B	14266968 B/op	    3555 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/sqlite3/p4-8      	      37	  16636833 ns/op	   3636329 code-B	14512352 B/op	    3556 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/sqlite3/p4-8      	      39	  16040508 ns/op	   3636329 code-B	14214192 B/op	    3544 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/sqlite3/p4-8      	      39	  15754551 ns/op	   3636329 code-B	13940632 B/op	    3551 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/sqlite3/p4-8      	      38	  15623917 ns/op	   3636329 code-B	13969936 B/op	    3554 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p4-8      	       4	 156729186 ns/op	  35172218 code-B	133291454 B/op	   12663 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p4-8      	       4	 155085845 ns/op	  35172218 code-B	133309350 B/op	   12666 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p4-8      	       4	 155893798 ns/op	  35172218 code-B	133363368 B/op	   12691 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p4-8      	       4	 154793428 ns/op	  35172218 code-B	133360880 B/op	   12671 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p4-8      	       4	 155537778 ns/op	  35172218 code-B	133208422 B/op	   12664 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p4-8      	       4	 153092767 ns/op	  35172218 code-B	132887024 B/op	   12679 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p4-8      	       4	 156995329 ns/op	  35172218 code-B	132916320 B/op	   12658 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p4-8      	       4	 151695363 ns/op	  35172218 code-B	133263708 B/op	   12681 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p4-8      	       4	 154382218 ns/op	  35172218 code-B	133062428 B/op	   12681 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p4-8      	       4	 160569533 ns/op	  35172218 code-B	133062878 B/op	   12672 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p4-8      	       4	 157186062 ns/op	  35172218 code-B	133295082 B/op	   12685 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/ruby/p4-8      	       4	 155793300 ns/op	  35172218 code-B	133587142 B/op	   12679 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.add-8         	     302	     13723 ns/op	       145.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.add-8         	     313	     13767 ns/op	       143.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.add-8         	     301	     14101 ns/op	       141.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.add-8         	     298	     14092 ns/op	       132.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.add-8         	     300	     14052 ns/op	       136.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.add-8         	     301	     14095 ns/op	       142.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.add-8         	     298	     14244 ns/op	       141.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.add-8         	     313	     14209 ns/op	       137.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.add-8         	     300	     14092 ns/op	       142.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.add-8         	     303	     14073 ns/op	       142.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.add-8         	     298	     14108 ns/op	       142.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i32.add-8         	     298	     14110 ns/op	       141.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p2-8      	       3	 173865735 ns/op	  26622496 code-B	113194789 B/op	   15240 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p2-8      	       3	 169513410 ns/op	  26622496 code-B	112533466 B/op	   14263 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p2-8      	       3	 172866538 ns/op	  26622496 code-B	112592442 B/op	   14577 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p2-8      	       3	 171307335 ns/op	  26622496 code-B	113725290 B/op	   15255 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p2-8      	       3	 168772710 ns/op	  26622496 code-B	112533589 B/op	   13930 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p2-8      	       3	 172138660 ns/op	  26622496 code-B	112573813 B/op	   14329 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p2-8      	       3	 175061455 ns/op	  26622496 code-B	113062277 B/op	   14995 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p2-8      	       3	 175343986 ns/op	  26622496 code-B	112000965 B/op	   14038 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p2-8      	       3	 171552944 ns/op	  26622496 code-B	113226986 B/op	   15090 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p2-8      	       3	 168218334 ns/op	  26622496 code-B	113065946 B/op	   14861 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p2-8      	       3	 175118720 ns/op	  26622496 code-B	113105936 B/op	   14954 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileWorkers/esbuild/p2-8      	       3	 172471798 ns/op	  26622496 code-B	112568442 B/op	   14514 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i64.mul-8         	     292	     42242 ns/op	        47.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i64.mul-8         	     306	     41746 ns/op	        46.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i64.mul-8         	     304	     42728 ns/op	        48.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i64.mul-8         	     297	     42796 ns/op	        45.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i64.mul-8         	     291	     42613 ns/op	        47.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i64.mul-8         	     304	     42497 ns/op	        48.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i64.mul-8         	     298	     42813 ns/op	        47.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i64.mul-8         	     298	     42760 ns/op	        45.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i64.mul-8         	     298	     42698 ns/op	        47.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i64.mul-8         	     290	     42797 ns/op	        48.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i64.mul-8         	     342	     42785 ns/op	        47.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_i64.mul-8         	     292	     42601 ns/op	        46.00 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i32x4.extend_high_s-8         	     290	      2054 ns/op	      1010 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i32x4.extend_high_s-8         	     302	      2056 ns/op	       994.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i32x4.extend_high_s-8         	     291	      2054 ns/op	       987.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i32x4.extend_high_s-8         	     303	      2043 ns/op	      1009 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i32x4.extend_high_s-8         	     285	      2039 ns/op	      1008 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i32x4.extend_high_s-8         	     291	      2058 ns/op	      1010 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i32x4.extend_high_s-8         	     300	      2133 ns/op	       990.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i32x4.extend_high_s-8         	     300	      2065 ns/op	      1009 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i32x4.extend_high_s-8         	     296	      2070 ns/op	      1004 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i32x4.extend_high_s-8         	     310	      2057 ns/op	      1014 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i32x4.extend_high_s-8         	     307	      2053 ns/op	       975.0 calls/batch	       0 B/op	       0 allocs/op
+PASS
+
+goos: linux
+goarch: amd64
+pkg: wagobench
+cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkExec/isa_simd_i32x4.extend_high_s-8         	     316	      2046 ns/op	      1002 calls/batch	       0 B/op	       0 allocs/op
+PASS

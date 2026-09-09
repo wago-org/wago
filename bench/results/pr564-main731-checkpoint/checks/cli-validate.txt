@@ -1,0 +1,1 @@
+✓ tests/fixtures/wasm/fib.wasm is valid

@@ -1,0 +1,60 @@
+{
+  "created": "2026-09-09T07:15:37.083Z",
+  "main": "731e95ff2cda7309eaf6d956f1417066bf7f1b69",
+  "head": "b4f2360f517641803249c7ed998f37d8b0ec82a2",
+  "go": "go version go1.27.1 linux/amd64",
+  "binaries": {
+    "base-explicit": {
+      "args": [
+        "test",
+        "-c",
+        "-o",
+        "/home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/base-explicit.test",
+        "."
+      ],
+      "cwd": "/home/jtenner/Projects/wago/.tmp/pr564-memory/main-latest",
+      "seconds": 0.333,
+      "sha256": "aca202567daaba1467bb9c03aa8a68aa45e9f6ba665decbde99ded0987bdfbab"
+    },
+    "base-signals": {
+      "args": [
+        "test",
+        "-c",
+        "-o",
+        "/home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/base-signals.test",
+        "-tags",
+        "wago_guardpage",
+        "."
+      ],
+      "cwd": "/home/jtenner/Projects/wago/.tmp/pr564-memory/main-latest",
+      "seconds": 0.334,
+      "sha256": "432251c1062d09357884a88c9c04706c66cd8c87e933a6626d68b2d7ebaa2f0e"
+    },
+    "final-explicit": {
+      "args": [
+        "test",
+        "-c",
+        "-o",
+        "/home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/final-explicit.test",
+        "."
+      ],
+      "cwd": "/home/jtenner/Projects/wago",
+      "seconds": 0.348,
+      "sha256": "075671becf95b14de31b1c36f4ea1c20223fe1747ee60a90c589309706e4504e"
+    },
+    "final-signals": {
+      "args": [
+        "test",
+        "-c",
+        "-o",
+        "/home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/final-signals.test",
+        "-tags",
+        "wago_guardpage",
+        "."
+      ],
+      "cwd": "/home/jtenner/Projects/wago",
+      "seconds": 2,
+      "sha256": "7d05af285f60806d4222ec642b294b7b8328c9b0f4df9ec30a3afbb98ebeba10"
+    }
+  }
+}

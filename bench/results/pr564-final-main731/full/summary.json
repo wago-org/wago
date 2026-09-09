@@ -1,0 +1,4562 @@
+[
+  {
+    "mode": "explicit",
+    "stage": "Decode",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -10.510140592189874
+  },
+  {
+    "mode": "explicit",
+    "stage": "Decode",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -9.845207168574872
+  },
+  {
+    "mode": "explicit",
+    "stage": "Decode",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -9.079480033857926
+  },
+  {
+    "mode": "explicit",
+    "stage": "Decode",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -10.917527926637709
+  },
+  {
+    "mode": "explicit",
+    "stage": "Decode",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Decode",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Decode",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Decode",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Decode",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Decode",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Decode",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Decode",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Validate",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -16.523227035092134
+  },
+  {
+    "mode": "explicit",
+    "stage": "Validate",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -14.14126528420705
+  },
+  {
+    "mode": "explicit",
+    "stage": "Validate",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -14.972500370972487
+  },
+  {
+    "mode": "explicit",
+    "stage": "Validate",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -16.876106122603098
+  },
+  {
+    "mode": "explicit",
+    "stage": "Validate",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Validate",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Validate",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Validate",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Validate",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Validate",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Validate",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Validate",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "ValidateWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 28,
+    "positiveRows": 28,
+    "allEqual": false,
+    "delta": -9.506819507270258
+  },
+  {
+    "mode": "explicit",
+    "stage": "ValidateWorkers",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 28,
+    "positiveRows": 28,
+    "allEqual": false,
+    "delta": -9.506819507270258
+  },
+  {
+    "mode": "explicit",
+    "stage": "ValidateWorkers",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -12.316126206222883
+  },
+  {
+    "mode": "explicit",
+    "stage": "ValidateWorkers",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -12.316126206222883
+  },
+  {
+    "mode": "explicit",
+    "stage": "ValidateWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 28,
+    "positiveRows": 28,
+    "allEqual": false,
+    "delta": 0.09965900210644262
+  },
+  {
+    "mode": "explicit",
+    "stage": "ValidateWorkers",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 28,
+    "positiveRows": 28,
+    "allEqual": false,
+    "delta": 0.09965900210644262
+  },
+  {
+    "mode": "explicit",
+    "stage": "ValidateWorkers",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -0.06385545233890329
+  },
+  {
+    "mode": "explicit",
+    "stage": "ValidateWorkers",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -0.06385545233890329
+  },
+  {
+    "mode": "explicit",
+    "stage": "ValidateWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 28,
+    "positiveRows": 28,
+    "allEqual": false,
+    "delta": -0.03143563751203926
+  },
+  {
+    "mode": "explicit",
+    "stage": "ValidateWorkers",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 28,
+    "positiveRows": 28,
+    "allEqual": false,
+    "delta": -0.03143563751203926
+  },
+  {
+    "mode": "explicit",
+    "stage": "ValidateWorkers",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -0.044007125384814695
+  },
+  {
+    "mode": "explicit",
+    "stage": "ValidateWorkers",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -0.044007125384814695
+  },
+  {
+    "mode": "explicit",
+    "stage": "Compile",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -17.730041307262002
+  },
+  {
+    "mode": "explicit",
+    "stage": "Compile",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -15.653761380661853
+  },
+  {
+    "mode": "explicit",
+    "stage": "Compile",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -19.107896128059444
+  },
+  {
+    "mode": "explicit",
+    "stage": "Compile",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -17.889941787812695
+  },
+  {
+    "mode": "explicit",
+    "stage": "Compile",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -11.34005307712035
+  },
+  {
+    "mode": "explicit",
+    "stage": "Compile",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -11.000427623525242
+  },
+  {
+    "mode": "explicit",
+    "stage": "Compile",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -2.055418564120874
+  },
+  {
+    "mode": "explicit",
+    "stage": "Compile",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -0.6319075626738873
+  },
+  {
+    "mode": "explicit",
+    "stage": "Compile",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -0.1000537963646346
+  },
+  {
+    "mode": "explicit",
+    "stage": "Compile",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -0.14290334377369768
+  },
+  {
+    "mode": "explicit",
+    "stage": "Compile",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": 0.0013020800556671707
+  },
+  {
+    "mode": "explicit",
+    "stage": "Compile",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -0.3586899909366164
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileCompact",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -13.970878833815464
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileCompact",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -11.606259166298205
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileCompact",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -14.650704194395606
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileCompact",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -14.040188518855148
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileCompact",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -9.514376503574704
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileCompact",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -9.623304298776166
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileCompact",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -2.065783531825985
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileCompact",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -0.6575737904752603
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileCompact",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -0.0874887832549279
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileCompact",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -0.12496054068096323
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileCompact",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -0.012506729546568758
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileCompact",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -0.3144629987767222
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -25.989998947983345
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -22.17597191850679
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -31.55583098640737
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -29.619642929563195
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -6.9155127761944515
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -7.029857522201269
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -0.42976748323773534
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -0.042945635709013705
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": 1.3835405704170478
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": 1.2893183942335813
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": 0.10701186688410755
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": 0.4355533315107854
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "all-including-ISA",
+    "unit": "code-B",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "default",
+    "unit": "code-B",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "five-large",
+    "unit": "code-B",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFull",
+    "corpus": "applications",
+    "unit": "code-B",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -26.066457763784197
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -26.066457763784197
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -37.11515272850864
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 24,
+    "positiveRows": 24,
+    "allEqual": false,
+    "delta": -34.3678245626927
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -1.463791940136435
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -1.463791940136435
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -0.5189487988911644
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 24,
+    "positiveRows": 24,
+    "allEqual": false,
+    "delta": -0.4719088905913078
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -1.4390541789219693
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -1.4390541789219693
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -1.7518788465984585
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 24,
+    "positiveRows": 24,
+    "allEqual": false,
+    "delta": -2.3186341484478934
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "code-B",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "default",
+    "unit": "code-B",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "five-large",
+    "unit": "code-B",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileWorkers",
+    "corpus": "applications",
+    "unit": "code-B",
+    "rows": 24,
+    "positiveRows": 24,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": false,
+    "delta": -34.352467884631466
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": false,
+    "delta": -34.352467884631466
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 25,
+    "positiveRows": 25,
+    "allEqual": false,
+    "delta": -47.49039786714913
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 30,
+    "positiveRows": 30,
+    "allEqual": false,
+    "delta": -44.84349912156122
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": false,
+    "delta": -0.39782938393356226
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": false,
+    "delta": -0.39782938393356226
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 25,
+    "positiveRows": 25,
+    "allEqual": false,
+    "delta": 0.11154511720628021
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 30,
+    "positiveRows": 30,
+    "allEqual": false,
+    "delta": 0.06592336539326529
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": false,
+    "delta": 0.024535333091396168
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": false,
+    "delta": 0.024535333091396168
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 25,
+    "positiveRows": 25,
+    "allEqual": false,
+    "delta": -0.7351513031311213
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 30,
+    "positiveRows": 30,
+    "allEqual": false,
+    "delta": -0.9096945465644728
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "code-B",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "default",
+    "unit": "code-B",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "five-large",
+    "unit": "code-B",
+    "rows": 25,
+    "positiveRows": 25,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileFullWorkers",
+    "corpus": "applications",
+    "unit": "code-B",
+    "rows": 30,
+    "positiveRows": 30,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 6,
+    "positiveRows": 6,
+    "allEqual": false,
+    "delta": -27.048704311698213
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 6,
+    "positiveRows": 6,
+    "allEqual": false,
+    "delta": -27.048704311698213
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -34.62086720179306
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -34.62086720179306
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 6,
+    "positiveRows": 6,
+    "allEqual": false,
+    "delta": 0.39620298731212467
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 6,
+    "positiveRows": 6,
+    "allEqual": false,
+    "delta": 0.39620298731212467
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": 0.14448443216472714
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": 0.14448443216472714
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 6,
+    "positiveRows": 6,
+    "allEqual": false,
+    "delta": 0.5544280436815473
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 6,
+    "positiveRows": 6,
+    "allEqual": false,
+    "delta": 0.5544280436815473
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -1.0335451873416073
+  },
+  {
+    "mode": "explicit",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -1.0335451873416073
+  },
+  {
+    "mode": "explicit",
+    "stage": "Instantiate",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 54,
+    "positiveRows": 54,
+    "allEqual": false,
+    "delta": -1.3827867267991905
+  },
+  {
+    "mode": "explicit",
+    "stage": "Instantiate",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -1.251879761810976
+  },
+  {
+    "mode": "explicit",
+    "stage": "Instantiate",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 1,
+    "positiveRows": 1,
+    "allEqual": false,
+    "delta": -3.358268983268986
+  },
+  {
+    "mode": "explicit",
+    "stage": "Instantiate",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 12,
+    "positiveRows": 12,
+    "allEqual": false,
+    "delta": -2.417075874863286
+  },
+  {
+    "mode": "explicit",
+    "stage": "Instantiate",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 54,
+    "positiveRows": 54,
+    "allEqual": false,
+    "delta": -0.6098849987680112
+  },
+  {
+    "mode": "explicit",
+    "stage": "Instantiate",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -0.6256007925895164
+  },
+  {
+    "mode": "explicit",
+    "stage": "Instantiate",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 1,
+    "positiveRows": 1,
+    "allEqual": false,
+    "delta": -0.1908396946564861
+  },
+  {
+    "mode": "explicit",
+    "stage": "Instantiate",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 12,
+    "positiveRows": 12,
+    "allEqual": false,
+    "delta": -0.7080937240343437
+  },
+  {
+    "mode": "explicit",
+    "stage": "Instantiate",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 54,
+    "positiveRows": 54,
+    "allEqual": false,
+    "delta": -13.55271005622947
+  },
+  {
+    "mode": "explicit",
+    "stage": "Instantiate",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -13.378650863186184
+  },
+  {
+    "mode": "explicit",
+    "stage": "Instantiate",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 1,
+    "positiveRows": 1,
+    "allEqual": false,
+    "delta": -3.8461538461538436
+  },
+  {
+    "mode": "explicit",
+    "stage": "Instantiate",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 12,
+    "positiveRows": 12,
+    "allEqual": false,
+    "delta": -13.452605841099347
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 333,
+    "positiveRows": 333,
+    "allEqual": false,
+    "delta": 0.168312057115582
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 46,
+    "positiveRows": 46,
+    "allEqual": false,
+    "delta": 0.7890911429634964
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 2,
+    "positiveRows": 2,
+    "allEqual": false,
+    "delta": -0.21026886741058087
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 19,
+    "positiveRows": 19,
+    "allEqual": false,
+    "delta": 0.49048578937517273
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 333,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 46,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 2,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 19,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 333,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 46,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 2,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 19,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "all-including-ISA",
+    "unit": "B/call",
+    "rows": 333,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "default",
+    "unit": "B/call",
+    "rows": 46,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "five-large",
+    "unit": "B/call",
+    "rows": 2,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "applications",
+    "unit": "B/call",
+    "rows": 19,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/call",
+    "rows": 333,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "default",
+    "unit": "allocs/call",
+    "rows": 46,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "five-large",
+    "unit": "allocs/call",
+    "rows": 2,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "Exec",
+    "corpus": "applications",
+    "unit": "allocs/call",
+    "rows": 19,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "ExecParallel",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 646,
+    "positiveRows": 646,
+    "allEqual": false,
+    "delta": -3.1637688137080477
+  },
+  {
+    "mode": "explicit",
+    "stage": "ExecParallel",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 72,
+    "positiveRows": 72,
+    "allEqual": false,
+    "delta": -22.589890074095642
+  },
+  {
+    "mode": "explicit",
+    "stage": "ExecParallel",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": 0.8018768893489561
+  },
+  {
+    "mode": "explicit",
+    "stage": "ExecParallel",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 18,
+    "positiveRows": 18,
+    "allEqual": false,
+    "delta": 0.5297486274672863
+  },
+  {
+    "mode": "explicit",
+    "stage": "ExecParallel",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 646,
+    "positiveRows": 31,
+    "allEqual": false,
+    "delta": 27.779582378907314
+  },
+  {
+    "mode": "explicit",
+    "stage": "ExecParallel",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 72,
+    "positiveRows": 31,
+    "allEqual": false,
+    "delta": 27.779582378907314
+  },
+  {
+    "mode": "explicit",
+    "stage": "ExecParallel",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 4,
+    "positiveRows": 2,
+    "allEqual": false,
+    "delta": 41.4213562373095
+  },
+  {
+    "mode": "explicit",
+    "stage": "ExecParallel",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 18,
+    "positiveRows": 12,
+    "allEqual": false,
+    "delta": 40.70216580237147
+  },
+  {
+    "mode": "explicit",
+    "stage": "ExecParallel",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 646,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "ExecParallel",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 72,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "ExecParallel",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 4,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "ExecParallel",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 18,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginInstantiate",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -7.668339210226757
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginInstantiate",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -7.668339210226757
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginInstantiate",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -7.597245809006931
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginInstantiate",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -7.668339210226757
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginInstantiate",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -57.53559794367635
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginInstantiate",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -57.53559794367635
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginInstantiate",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -62.004455205929624
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginInstantiate",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -57.53559794367635
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginInstantiate",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -82.80654334268314
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginInstantiate",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -82.80654334268314
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginInstantiate",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -84.51769667596282
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginInstantiate",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -82.80654334268314
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginExec",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -1.177004804992729
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginExec",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -1.177004804992729
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginExec",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -0.9110491675695286
+  },
+  {
+    "mode": "explicit",
+    "stage": "PluginExec",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -1.177004804992729
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": 1.0071505311602438
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": 1.2035659840015505
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": 1.1491153356829975
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": 1.5326498749720892
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": 0.00003120846360909178
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": 0.00004458352242309482
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": 0.0017110617370549868
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": 0.00014225438377491286
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": 0.000015469807615130852
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": 0.00002209972589706941
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": 0.00018563784932951714
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": 0.00005459933167680463
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "all-including-ISA",
+    "unit": "code-B",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "default",
+    "unit": "code-B",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "five-large",
+    "unit": "code-B",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroCompile",
+    "corpus": "applications",
+    "unit": "code-B",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroInstantiate",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 54,
+    "positiveRows": 54,
+    "allEqual": false,
+    "delta": 0.4063964014640195
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroInstantiate",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": 0.526912449370311
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroInstantiate",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 1,
+    "positiveRows": 1,
+    "allEqual": false,
+    "delta": 0.13298337707785546
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroInstantiate",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 12,
+    "positiveRows": 12,
+    "allEqual": false,
+    "delta": -0.5082730447091762
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroInstantiate",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 54,
+    "positiveRows": 54,
+    "allEqual": false,
+    "delta": 0.000002145068367285069
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroInstantiate",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": 5.87031495068162e-7
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroInstantiate",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 1,
+    "positiveRows": 1,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroInstantiate",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 12,
+    "positiveRows": 12,
+    "allEqual": false,
+    "delta": -0.000005951242694402233
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroInstantiate",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 54,
+    "positiveRows": 54,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroInstantiate",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroInstantiate",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 1,
+    "positiveRows": 1,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroInstantiate",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 12,
+    "positiveRows": 12,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 333,
+    "positiveRows": 333,
+    "allEqual": false,
+    "delta": 0.06868144455169295
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 46,
+    "positiveRows": 46,
+    "allEqual": false,
+    "delta": 0.4092802221156818
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 2,
+    "positiveRows": 2,
+    "allEqual": false,
+    "delta": -0.34067080140192313
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 19,
+    "positiveRows": 19,
+    "allEqual": false,
+    "delta": -0.16817523575479743
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 333,
+    "positiveRows": 333,
+    "allEqual": false,
+    "delta": 0.05827319778954297
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 46,
+    "positiveRows": 46,
+    "allEqual": false,
+    "delta": 0.30294784410580583
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 2,
+    "positiveRows": 2,
+    "allEqual": false,
+    "delta": -1.0426172497333144
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 19,
+    "positiveRows": 19,
+    "allEqual": false,
+    "delta": 0.24424805737139607
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 333,
+    "positiveRows": 333,
+    "allEqual": false,
+    "delta": 0.05828268449893407
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 46,
+    "positiveRows": 46,
+    "allEqual": false,
+    "delta": 0.30301668758658856
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 2,
+    "positiveRows": 2,
+    "allEqual": false,
+    "delta": -1.0426172497333144
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 19,
+    "positiveRows": 19,
+    "allEqual": false,
+    "delta": 0.24424805737139607
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "all-including-ISA",
+    "unit": "B/call",
+    "rows": 333,
+    "positiveRows": 333,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "default",
+    "unit": "B/call",
+    "rows": 46,
+    "positiveRows": 46,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "five-large",
+    "unit": "B/call",
+    "rows": 2,
+    "positiveRows": 2,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "applications",
+    "unit": "B/call",
+    "rows": 19,
+    "positiveRows": 19,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/call",
+    "rows": 333,
+    "positiveRows": 333,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "default",
+    "unit": "allocs/call",
+    "rows": 46,
+    "positiveRows": 46,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "five-large",
+    "unit": "allocs/call",
+    "rows": 2,
+    "positiveRows": 2,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "explicit",
+    "stage": "WazeroExec",
+    "corpus": "applications",
+    "unit": "allocs/call",
+    "rows": 19,
+    "positiveRows": 19,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Decode",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -10.517982590284644
+  },
+  {
+    "mode": "signals",
+    "stage": "Decode",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -9.642970826862147
+  },
+  {
+    "mode": "signals",
+    "stage": "Decode",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -10.351364487941648
+  },
+  {
+    "mode": "signals",
+    "stage": "Decode",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -11.364051436123942
+  },
+  {
+    "mode": "signals",
+    "stage": "Decode",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Decode",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Decode",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Decode",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Decode",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Decode",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Decode",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Decode",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Validate",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -15.49410175359375
+  },
+  {
+    "mode": "signals",
+    "stage": "Validate",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -12.972572725157901
+  },
+  {
+    "mode": "signals",
+    "stage": "Validate",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -12.67614316404177
+  },
+  {
+    "mode": "signals",
+    "stage": "Validate",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -15.102911479928274
+  },
+  {
+    "mode": "signals",
+    "stage": "Validate",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Validate",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Validate",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Validate",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Validate",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Validate",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Validate",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Validate",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "ValidateWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 28,
+    "positiveRows": 28,
+    "allEqual": false,
+    "delta": -8.596989300705038
+  },
+  {
+    "mode": "signals",
+    "stage": "ValidateWorkers",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 28,
+    "positiveRows": 28,
+    "allEqual": false,
+    "delta": -8.596989300705038
+  },
+  {
+    "mode": "signals",
+    "stage": "ValidateWorkers",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -11.156058963827
+  },
+  {
+    "mode": "signals",
+    "stage": "ValidateWorkers",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -11.156058963827
+  },
+  {
+    "mode": "signals",
+    "stage": "ValidateWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 28,
+    "positiveRows": 28,
+    "allEqual": false,
+    "delta": -0.015358979783267255
+  },
+  {
+    "mode": "signals",
+    "stage": "ValidateWorkers",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 28,
+    "positiveRows": 28,
+    "allEqual": false,
+    "delta": -0.015358979783267255
+  },
+  {
+    "mode": "signals",
+    "stage": "ValidateWorkers",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -0.2259105053244892
+  },
+  {
+    "mode": "signals",
+    "stage": "ValidateWorkers",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -0.2259105053244892
+  },
+  {
+    "mode": "signals",
+    "stage": "ValidateWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 28,
+    "positiveRows": 28,
+    "allEqual": false,
+    "delta": -0.06000447141637557
+  },
+  {
+    "mode": "signals",
+    "stage": "ValidateWorkers",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 28,
+    "positiveRows": 28,
+    "allEqual": false,
+    "delta": -0.06000447141637557
+  },
+  {
+    "mode": "signals",
+    "stage": "ValidateWorkers",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -0.08399617727031297
+  },
+  {
+    "mode": "signals",
+    "stage": "ValidateWorkers",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -0.08399617727031297
+  },
+  {
+    "mode": "signals",
+    "stage": "Compile",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -17.33843607545277
+  },
+  {
+    "mode": "signals",
+    "stage": "Compile",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -15.540697478018533
+  },
+  {
+    "mode": "signals",
+    "stage": "Compile",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -18.07967472992309
+  },
+  {
+    "mode": "signals",
+    "stage": "Compile",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -17.447303267393004
+  },
+  {
+    "mode": "signals",
+    "stage": "Compile",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -11.360030185091526
+  },
+  {
+    "mode": "signals",
+    "stage": "Compile",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -11.029074287855028
+  },
+  {
+    "mode": "signals",
+    "stage": "Compile",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -2.055410226781244
+  },
+  {
+    "mode": "signals",
+    "stage": "Compile",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -0.6319050748759616
+  },
+  {
+    "mode": "signals",
+    "stage": "Compile",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -0.1000537963646346
+  },
+  {
+    "mode": "signals",
+    "stage": "Compile",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -0.14290334377369768
+  },
+  {
+    "mode": "signals",
+    "stage": "Compile",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": 0.0013020800556671707
+  },
+  {
+    "mode": "signals",
+    "stage": "Compile",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -0.3586899909366164
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileCompact",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -13.738632344639989
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileCompact",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -11.834582655189116
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileCompact",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -14.845833315962222
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileCompact",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -14.53221262743048
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileCompact",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -9.488375504631504
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileCompact",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -9.58620244507717
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileCompact",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -2.065783531825985
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileCompact",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -0.6882163779833281
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileCompact",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -0.0874887832549279
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileCompact",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -0.12496054068096323
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileCompact",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -0.012506729546568758
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileCompact",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -0.3144629987767222
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -26.463128392768947
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -23.09100255486771
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -32.65349994786551
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -30.649928066304177
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -6.917523106117951
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -7.030996941608482
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -0.4255532515591548
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -0.04055320681673852
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": 1.398354123967225
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": 1.308094877937855
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": 0.11490250234382555
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": 0.45216165136910463
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "all-including-ISA",
+    "unit": "code-B",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "default",
+    "unit": "code-B",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "five-large",
+    "unit": "code-B",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFull",
+    "corpus": "applications",
+    "unit": "code-B",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -26.74808488989312
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -26.74808488989312
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -37.07855611237569
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 24,
+    "positiveRows": 24,
+    "allEqual": false,
+    "delta": -34.935268742067535
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -1.4109457108748769
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -1.4109457108748769
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -0.4792431994750249
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 24,
+    "positiveRows": 24,
+    "allEqual": false,
+    "delta": -0.4405505741222519
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -1.4185229092640383
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -1.4185229092640383
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -1.7182666517666165
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 24,
+    "positiveRows": 24,
+    "allEqual": false,
+    "delta": -2.288110492977963
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "code-B",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "default",
+    "unit": "code-B",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "five-large",
+    "unit": "code-B",
+    "rows": 20,
+    "positiveRows": 20,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileWorkers",
+    "corpus": "applications",
+    "unit": "code-B",
+    "rows": 24,
+    "positiveRows": 24,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": false,
+    "delta": -35.88709708188597
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": false,
+    "delta": -35.88709708188597
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 25,
+    "positiveRows": 25,
+    "allEqual": false,
+    "delta": -49.05188785745947
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 30,
+    "positiveRows": 30,
+    "allEqual": false,
+    "delta": -46.45221046120716
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": false,
+    "delta": -0.296189342149699
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": false,
+    "delta": -0.296189342149699
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 25,
+    "positiveRows": 25,
+    "allEqual": false,
+    "delta": 0.29808852046932705
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 30,
+    "positiveRows": 30,
+    "allEqual": false,
+    "delta": 0.2205731683582345
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": false,
+    "delta": 0.08294954177684502
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": false,
+    "delta": 0.08294954177684502
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 25,
+    "positiveRows": 25,
+    "allEqual": false,
+    "delta": -0.6259467728194327
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 30,
+    "positiveRows": 30,
+    "allEqual": false,
+    "delta": -0.8308929381972536
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "all-including-ISA",
+    "unit": "code-B",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "default",
+    "unit": "code-B",
+    "rows": 45,
+    "positiveRows": 45,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "five-large",
+    "unit": "code-B",
+    "rows": 25,
+    "positiveRows": 25,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileFullWorkers",
+    "corpus": "applications",
+    "unit": "code-B",
+    "rows": 30,
+    "positiveRows": 30,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 6,
+    "positiveRows": 6,
+    "allEqual": false,
+    "delta": -29.597343531600234
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 6,
+    "positiveRows": 6,
+    "allEqual": false,
+    "delta": -29.597343531600234
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -36.620881066848035
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -36.620881066848035
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 6,
+    "positiveRows": 6,
+    "allEqual": false,
+    "delta": 0.5102237975895666
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 6,
+    "positiveRows": 6,
+    "allEqual": false,
+    "delta": 0.5102237975895666
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": 0.32330181707283856
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": 0.32330181707283856
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 6,
+    "positiveRows": 6,
+    "allEqual": false,
+    "delta": 0.9072200587992985
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 6,
+    "positiveRows": 6,
+    "allEqual": false,
+    "delta": 0.9072200587992985
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -0.5122576321185146
+  },
+  {
+    "mode": "signals",
+    "stage": "CompileMultiModuleThroughput",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -0.5122576321185146
+  },
+  {
+    "mode": "signals",
+    "stage": "Instantiate",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 54,
+    "positiveRows": 54,
+    "allEqual": false,
+    "delta": -0.7208374292337237
+  },
+  {
+    "mode": "signals",
+    "stage": "Instantiate",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -0.8970164354249728
+  },
+  {
+    "mode": "signals",
+    "stage": "Instantiate",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 1,
+    "positiveRows": 1,
+    "allEqual": false,
+    "delta": -0.017026589857827013
+  },
+  {
+    "mode": "signals",
+    "stage": "Instantiate",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 12,
+    "positiveRows": 12,
+    "allEqual": false,
+    "delta": -0.7834989049696799
+  },
+  {
+    "mode": "signals",
+    "stage": "Instantiate",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 54,
+    "positiveRows": 54,
+    "allEqual": false,
+    "delta": -0.6098849987680112
+  },
+  {
+    "mode": "signals",
+    "stage": "Instantiate",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -0.6256007925895164
+  },
+  {
+    "mode": "signals",
+    "stage": "Instantiate",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 1,
+    "positiveRows": 1,
+    "allEqual": false,
+    "delta": -0.1908396946564861
+  },
+  {
+    "mode": "signals",
+    "stage": "Instantiate",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 12,
+    "positiveRows": 12,
+    "allEqual": false,
+    "delta": -0.7080937240343437
+  },
+  {
+    "mode": "signals",
+    "stage": "Instantiate",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 54,
+    "positiveRows": 54,
+    "allEqual": false,
+    "delta": -13.55271005622947
+  },
+  {
+    "mode": "signals",
+    "stage": "Instantiate",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": -13.378650863186184
+  },
+  {
+    "mode": "signals",
+    "stage": "Instantiate",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 1,
+    "positiveRows": 1,
+    "allEqual": false,
+    "delta": -3.8461538461538436
+  },
+  {
+    "mode": "signals",
+    "stage": "Instantiate",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 12,
+    "positiveRows": 12,
+    "allEqual": false,
+    "delta": -13.452605841099347
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 333,
+    "positiveRows": 333,
+    "allEqual": false,
+    "delta": -0.07279433180997065
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 46,
+    "positiveRows": 46,
+    "allEqual": false,
+    "delta": -0.39061415742811584
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 2,
+    "positiveRows": 2,
+    "allEqual": false,
+    "delta": -0.334233243973439
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 19,
+    "positiveRows": 19,
+    "allEqual": false,
+    "delta": -0.18548144258627958
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 333,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 46,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 2,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 19,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 333,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 46,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 2,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 19,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "all-including-ISA",
+    "unit": "B/call",
+    "rows": 333,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "default",
+    "unit": "B/call",
+    "rows": 46,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "five-large",
+    "unit": "B/call",
+    "rows": 2,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "applications",
+    "unit": "B/call",
+    "rows": 19,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/call",
+    "rows": 333,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "default",
+    "unit": "allocs/call",
+    "rows": 46,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "five-large",
+    "unit": "allocs/call",
+    "rows": 2,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "Exec",
+    "corpus": "applications",
+    "unit": "allocs/call",
+    "rows": 19,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "ExecParallel",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 646,
+    "positiveRows": 646,
+    "allEqual": false,
+    "delta": -3.0419939495963626
+  },
+  {
+    "mode": "signals",
+    "stage": "ExecParallel",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 72,
+    "positiveRows": 72,
+    "allEqual": false,
+    "delta": -22.91569029841928
+  },
+  {
+    "mode": "signals",
+    "stage": "ExecParallel",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": 0.46230840869426904
+  },
+  {
+    "mode": "signals",
+    "stage": "ExecParallel",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 18,
+    "positiveRows": 18,
+    "allEqual": false,
+    "delta": 1.4897939331292602
+  },
+  {
+    "mode": "signals",
+    "stage": "ExecParallel",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 646,
+    "positiveRows": 67,
+    "allEqual": false,
+    "delta": -18.0957921626654
+  },
+  {
+    "mode": "signals",
+    "stage": "ExecParallel",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 72,
+    "positiveRows": 20,
+    "allEqual": false,
+    "delta": -11.144587574023829
+  },
+  {
+    "mode": "signals",
+    "stage": "ExecParallel",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 4,
+    "positiveRows": 1,
+    "allEqual": false,
+    "delta": -50
+  },
+  {
+    "mode": "signals",
+    "stage": "ExecParallel",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 18,
+    "positiveRows": 8,
+    "allEqual": false,
+    "delta": 16.209518004478763
+  },
+  {
+    "mode": "signals",
+    "stage": "ExecParallel",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 646,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "ExecParallel",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 72,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "ExecParallel",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 4,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "ExecParallel",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 18,
+    "positiveRows": 0,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginInstantiate",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -7.704117447479197
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginInstantiate",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -7.704117447479197
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginInstantiate",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -6.837584997863683
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginInstantiate",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -7.704117447479197
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginInstantiate",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -57.539669524080026
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginInstantiate",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -57.539669524080026
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginInstantiate",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -62.00299975973126
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginInstantiate",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -57.539669524080026
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginInstantiate",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -82.8210702761288
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginInstantiate",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -82.8210702761288
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginInstantiate",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": -84.51176990879085
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginInstantiate",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -82.8210702761288
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginExec",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": 0.27912846415601544
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginExec",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": 0.27912846415601544
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginExec",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 4,
+    "positiveRows": 4,
+    "allEqual": false,
+    "delta": 0.49396161960731516
+  },
+  {
+    "mode": "signals",
+    "stage": "PluginExec",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": 0.27912846415601544
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": -0.7484197762299782
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": -0.5103657391207514
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": -0.6800665910049739
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": -1.0267208494658053
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": 0.00006175048389842709
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": 0.00008657046561252093
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": 0.0017114325170297985
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": 0.00019247568204794005
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": false,
+    "delta": 0.000015469807615130852
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": false,
+    "delta": 0.00002209972589706941
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": false,
+    "delta": 0.00018563784932951714
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": false,
+    "delta": 0.00005459933167680463
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "all-including-ISA",
+    "unit": "code-B",
+    "rows": 60,
+    "positiveRows": 60,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "default",
+    "unit": "code-B",
+    "rows": 42,
+    "positiveRows": 42,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "five-large",
+    "unit": "code-B",
+    "rows": 5,
+    "positiveRows": 5,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroCompile",
+    "corpus": "applications",
+    "unit": "code-B",
+    "rows": 17,
+    "positiveRows": 17,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroInstantiate",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 54,
+    "positiveRows": 54,
+    "allEqual": false,
+    "delta": 0.41605192226961435
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroInstantiate",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": 0.6392463626869214
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroInstantiate",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 1,
+    "positiveRows": 1,
+    "allEqual": false,
+    "delta": -1.151338604522123
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroInstantiate",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 12,
+    "positiveRows": 12,
+    "allEqual": false,
+    "delta": 0.6928737714787242
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroInstantiate",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 54,
+    "positiveRows": 54,
+    "allEqual": false,
+    "delta": 0.000007375610643736232
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroInstantiate",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": false,
+    "delta": 0.000009748130832763579
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroInstantiate",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 1,
+    "positiveRows": 1,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroInstantiate",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 12,
+    "positiveRows": 12,
+    "allEqual": false,
+    "delta": 0.00001781756988473498
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroInstantiate",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 54,
+    "positiveRows": 54,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroInstantiate",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 36,
+    "positiveRows": 36,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroInstantiate",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 1,
+    "positiveRows": 1,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroInstantiate",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 12,
+    "positiveRows": 12,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "all-including-ISA",
+    "unit": "ns/op",
+    "rows": 333,
+    "positiveRows": 333,
+    "allEqual": false,
+    "delta": -0.1606357984877113
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "default",
+    "unit": "ns/op",
+    "rows": 46,
+    "positiveRows": 46,
+    "allEqual": false,
+    "delta": -0.3942398341333771
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "five-large",
+    "unit": "ns/op",
+    "rows": 2,
+    "positiveRows": 2,
+    "allEqual": false,
+    "delta": -0.03162376437338429
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "applications",
+    "unit": "ns/op",
+    "rows": 19,
+    "positiveRows": 19,
+    "allEqual": false,
+    "delta": 0.012907740678376587
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "all-including-ISA",
+    "unit": "B/op",
+    "rows": 333,
+    "positiveRows": 333,
+    "allEqual": false,
+    "delta": 0.21803459420058702
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "default",
+    "unit": "B/op",
+    "rows": 46,
+    "positiveRows": 46,
+    "allEqual": false,
+    "delta": 1.0634965061799289
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "five-large",
+    "unit": "B/op",
+    "rows": 2,
+    "positiveRows": 2,
+    "allEqual": false,
+    "delta": 1.439514711908855
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "applications",
+    "unit": "B/op",
+    "rows": 19,
+    "positiveRows": 19,
+    "allEqual": false,
+    "delta": 0.8582477929791745
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/op",
+    "rows": 333,
+    "positiveRows": 333,
+    "allEqual": false,
+    "delta": 0.21804513684076893
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "default",
+    "unit": "allocs/op",
+    "rows": 46,
+    "positiveRows": 46,
+    "allEqual": false,
+    "delta": 1.0635734696014805
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "five-large",
+    "unit": "allocs/op",
+    "rows": 2,
+    "positiveRows": 2,
+    "allEqual": false,
+    "delta": 1.439514711908855
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "applications",
+    "unit": "allocs/op",
+    "rows": 19,
+    "positiveRows": 19,
+    "allEqual": false,
+    "delta": 0.8582477929791745
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "all-including-ISA",
+    "unit": "B/call",
+    "rows": 333,
+    "positiveRows": 333,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "default",
+    "unit": "B/call",
+    "rows": 46,
+    "positiveRows": 46,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "five-large",
+    "unit": "B/call",
+    "rows": 2,
+    "positiveRows": 2,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "applications",
+    "unit": "B/call",
+    "rows": 19,
+    "positiveRows": 19,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "all-including-ISA",
+    "unit": "allocs/call",
+    "rows": 333,
+    "positiveRows": 333,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "default",
+    "unit": "allocs/call",
+    "rows": 46,
+    "positiveRows": 46,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "five-large",
+    "unit": "allocs/call",
+    "rows": 2,
+    "positiveRows": 2,
+    "allEqual": true,
+    "delta": 0
+  },
+  {
+    "mode": "signals",
+    "stage": "WazeroExec",
+    "corpus": "applications",
+    "unit": "allocs/call",
+    "rows": 19,
+    "positiveRows": 19,
+    "allEqual": true,
+    "delta": 0
+  }
+]

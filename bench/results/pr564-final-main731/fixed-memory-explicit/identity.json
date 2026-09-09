@@ -1,0 +1,92 @@
+{
+  "names": [
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/json-as/p2"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/json-as/p4"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/json-as/p8"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/lua/p4"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/lua/p8"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/esbuild/p2"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFull/many_funcs"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFull/json-as"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/esbuild/p4"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/esbuild/p8"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/ruby/p8"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/sqlite3/p4"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/sqlite3/p8"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/sqlite3/p8"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/json-as/p8"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/tiny/p2"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/sqlite3/p2"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/esbuild/p2"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/esbuild/auto"
+    ]
+  ],
+  "labels": [
+    "base",
+    "final"
+  ],
+  "samples": 6,
+  "benchtime": "1x",
+  "procs": "8",
+  "binaries": {
+    "/home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/base-explicit.test": "aca202567daaba1467bb9c03aa8a68aa45e9f6ba665decbde99ded0987bdfbab",
+    "/home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/final-explicit.test": "075671becf95b14de31b1c36f4ea1c20223fe1747ee60a90c589309706e4504e"
+  },
+  "resourceLogs": true
+}

@@ -1,0 +1,681 @@
+bounds,benchmark,unit,main_median,after_median,change_percent,p,main_samples,after_samples,measurement
+signals,BenchmarkExecParallel/independent/isa_simd_i64x2.extend_high_s,ns/op,290.04999999999995,288.79999999999995,-0.4309601792794382,0.7666628700415212,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i64x2.extend_high_s,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i64x2.extend_high_s,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_ctl.if_else,ns/op,1660.5,1644.5,-0.9635651912074716,0.6706595329559389,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_ctl.if_else,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_ctl.if_else,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/spectralnorm.run,ns/op,96155.5,98573,2.5141567565037937,0.17818202795992538,12,12,reported
+signals,BenchmarkExecParallel/independent/spectralnorm.run,B/op,1.5,2.5,66.66666666666667,0.4276276960352879,12,12,reported
+signals,BenchmarkExecParallel/independent/spectralnorm.run,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/matmul.run,ns/op,17747.5,17915.5,0.9466121989012644,0.629725504001988,12,12,reported
+signals,BenchmarkExecParallel/independent/matmul.run,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/matmul.run,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/nbody.step,ns/op,41235.5,41075,-0.38922772853487997,0.2913426592252814,12,12,reported
+signals,BenchmarkExecParallel/independent/nbody.step,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/nbody.step,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/arith.run,ns/op,219.64999999999998,219.1,-0.2503983610289029,0.3253784175173326,12,12,reported
+signals,BenchmarkExecParallel/independent/arith.run,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/arith.run,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_ctl.br_table,ns/op,3237.5,3252.5,0.4633204633204713,0.9892602349864431,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_ctl.br_table,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_ctl.br_table,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/isa_bulk_mem.copy_fwd_64,ns/op,350.25,352.1,0.5281941470378415,0.7552848282421576,12,12,reported
+signals,BenchmarkExecParallel/process/isa_bulk_mem.copy_fwd_64,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/isa_bulk_mem.copy_fwd_64,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkPluginInstantiate/ruby,ns/op,1867957.5,1648693,-11.738195328319833,0.000001479204602101358,12,12,reported
+signals,BenchmarkPluginInstantiate/ruby,B/op,295183,79230.5,-73.15885399904467,7.39602301050679e-7,12,12,reported
+signals,BenchmarkPluginInstantiate/ruby,allocs/op,9177,534.5,-94.17565653263593,7.39602301050679e-7,12,12,reported
+signals,BenchmarkExec/fib_rec.fib,ns/op,1235133,1234574.5,-0.0452178024552774,0.5898757320213774,12,12,reported
+signals,BenchmarkExec/fib_rec.fib,calls/batch,2,2,0,1,12,12,reported
+signals,BenchmarkExec/fib_rec.fib,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/fib_rec.fib,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/fib_rec.fib,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/fib_rec.fib,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/linked_list.sum,ns/op,8291.5,8293,0.018090815895788204,0.7656252080131472,12,12,reported
+signals,BenchmarkExec/linked_list.sum,calls/batch,244,244,0,0.6999145019739985,12,12,reported
+signals,BenchmarkExec/linked_list.sum,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/linked_list.sum,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/linked_list.sum,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/linked_list.sum,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/mandelbrot.render,ns/op,241513,242053,0.22359044854727284,0.10053044277031355,12,12,reported
+signals,BenchmarkExec/mandelbrot.render,calls/batch,9,9,0,0.21739130434782608,12,12,reported
+signals,BenchmarkExec/mandelbrot.render,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/mandelbrot.render,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/mandelbrot.render,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/mandelbrot.render,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExecParallel/independent/float.run,ns/op,616.9,632.55,2.5368779380774864,0.2913426592252814,12,12,reported
+signals,BenchmarkExecParallel/independent/float.run,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/float.run,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExec/sieve.count,ns/op,61207,60999,-0.33983041155423166,0.17818202795992538,12,12,reported
+signals,BenchmarkExec/sieve.count,calls/batch,33,33,0,0.6392205183428766,12,12,reported
+signals,BenchmarkExec/sieve.count,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/sieve.count,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/sieve.count,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/sieve.count,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/fannkuch.run,ns/op,1030413.5,1030499,0.008297639733956252,0.4775752582321434,12,12,reported
+signals,BenchmarkExec/fannkuch.run,calls/batch,2,2,0,1,12,12,reported
+signals,BenchmarkExec/fannkuch.run,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/fannkuch.run,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/fannkuch.run,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/fannkuch.run,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/crc32.hashN,ns/op,15833,15633.5,-1.2600265268742472,0.15997301930805768,12,12,reported
+signals,BenchmarkExec/crc32.hashN,calls/batch,128,128,0,0.7855774592885914,12,12,reported
+signals,BenchmarkExec/crc32.hashN,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/crc32.hashN,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/crc32.hashN,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/crc32.hashN,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/blake-as.hashN,ns/op,671530,673012.5,0.22076452280612724,0.2656695841512102,12,12,reported
+signals,BenchmarkExec/blake-as.hashN,calls/batch,3,3,0,1,12,12,reported
+signals,BenchmarkExec/blake-as.hashN,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/blake-as.hashN,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/blake-as.hashN,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/blake-as.hashN,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/xjb-mulhi.mulhi,ns/op,8.933,8.968,0.3918056643904544,0.9323005033733262,12,12,reported
+signals,BenchmarkExec/xjb-mulhi.mulhi,calls/batch,226191.5,227344.5,0.5097450611539323,0.40951039806875045,12,12,reported
+signals,BenchmarkExec/xjb-mulhi.mulhi,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/xjb-mulhi.mulhi,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/xjb-mulhi.mulhi,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/xjb-mulhi.mulhi,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/blake-as-simd.hashN,ns/op,541358,542090,0.13521551357882355,1,12,12,reported
+signals,BenchmarkExec/blake-as-simd.hashN,calls/batch,4,4,0,1,12,12,reported
+signals,BenchmarkExec/blake-as-simd.hashN,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/blake-as-simd.hashN,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/blake-as-simd.hashN,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/blake-as-simd.hashN,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_cvt.reinterpret_f64,ns/op,64110.5,64075,-0.05537314480467126,0.551167166391288,12,12,reported
+signals,BenchmarkExec/isa_cvt.reinterpret_f64,calls/batch,32,32,0,0.7303040209218699,12,12,reported
+signals,BenchmarkExec/isa_cvt.reinterpret_f64,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_cvt.reinterpret_f64,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_cvt.reinterpret_f64,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_cvt.reinterpret_f64,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExecParallel/independent/sieve.count,ns/op,10306.5,10337.5,0.3007810604958028,0.7987453386564977,12,12,reported
+signals,BenchmarkExecParallel/independent/sieve.count,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/sieve.count,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/blake-as-simd.hashN,ns/op,541849,539061,-0.5145344920817418,0.8428359902313328,12,12,reported
+signals,BenchmarkExecParallel/process/blake-as-simd.hashN,B/op,19,20,5.263157894736836,0.33838432398130874,12,12,reported
+signals,BenchmarkExecParallel/process/blake-as-simd.hashN,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i8x16.add_sat_s,ns/op,476.5,481.7,1.0912906610702988,0.09118704690114032,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i8x16.add_sat_s,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i8x16.add_sat_s,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/json-as.deserializeN,ns/op,7019,7031.5,0.17808804673029588,0.2913426592252814,12,12,reported
+signals,BenchmarkExecParallel/independent/json-as.deserializeN,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/json-as.deserializeN,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i8x16.ne,ns/op,478.20000000000005,477.95,-0.05227938101214358,0.6600706468117964,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i8x16.ne,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i8x16.ne,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_i16x8.extadd_pairwise_s,ns/op,2997.5,3013,0.5170975813177714,0.09728358866870107,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_i16x8.extadd_pairwise_s,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_i16x8.extadd_pairwise_s,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_i16x8.max_s,ns/op,2083.5,2117,1.6078713702903702,0.6817483902555918,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_i16x8.max_s,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_i16x8.max_s,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i32x4.extmul_high_u,ns/op,922.75,922.8,0.005418585749117355,0.5040005088463831,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i32x4.extmul_high_u,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i32x4.extmul_high_u,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_f32x4.min,ns/op,1451.5,1455.5,0.2755769893213911,0.8985539295809857,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_f32x4.min,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_f32x4.min,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_f32x4.max,ns/op,1512,1509,-0.1984126984126977,0.8315748055955352,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_f32x4.max,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_f32x4.max,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_f32x4.ge,ns/op,486.1,488.45,0.4834396214770553,0.2844813686784342,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_f32x4.ge,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_f32x4.ge,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_f32x4.convert_i32x4_s,ns/op,3039,3060,0.6910167818361401,0.08549728639915745,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_f32x4.convert_i32x4_s,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_f32x4.convert_i32x4_s,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_reduce.i8x16_all_true,ns/op,1733,1740,0.4039238315060478,0.14663798982011392,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_reduce.i8x16_all_true,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_reduce.i8x16_all_true,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkInstantiate/sieve,ns/op,4980.5,4985,0.09035237425960574,0.6196395474225599,12,12,reported
+signals,BenchmarkInstantiate/sieve,B/op,1608,1600,-0.497512437810943,7.39602301050679e-7,12,12,reported
+signals,BenchmarkInstantiate/sieve,allocs/op,8,7,-12.5,7.39602301050679e-7,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_mem.store_i32_stride,ns/op,1714.5,1713.5,-0.058326042578016324,0.9205386079797171,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_mem.store_i32_stride,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_mem.store_i32_stride,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkInstantiate/isa_f64,ns/op,5081.5,4958,-2.430384728918622,0.028420697622474442,12,12,reported
+signals,BenchmarkInstantiate/isa_f64,B/op,1608,1600,-0.497512437810943,7.39602301050679e-7,12,12,reported
+signals,BenchmarkInstantiate/isa_f64,allocs/op,8,7,-12.5,7.39602301050679e-7,12,12,reported
+signals,BenchmarkJsonAsDeserialize_wago,ns/op,212.14999999999998,211.5,-0.30638699033701533,0.920332258937724,12,12,reported
+signals,BenchmarkJsonAsDeserialize_wago,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkJsonAsDeserialize_wago,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkMemSumBounds/explicit,ns/op,294.4,293.5,-0.30570652173912416,0.7658729747839992,12,12,reported
+signals,BenchmarkMemSumBounds/explicit,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkMemSumBounds/explicit,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExec/globals.accumulate,ns/op,953.05,952.5999999999999,-0.047216830176810554,0.6706595329559389,12,12,reported
+signals,BenchmarkExec/globals.accumulate,calls/batch,2149,2140,-0.4187994416007479,0.43409182014647085,12,12,reported
+signals,BenchmarkExec/globals.accumulate,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/globals.accumulate,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/globals.accumulate,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/globals.accumulate,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_f32.min,ns/op,33202,33933,2.2016745979157815,7.39602301050679e-7,12,12,reported
+signals,BenchmarkExec/isa_f32.min,calls/batch,62.5,60.5,-3.200000000000003,0.054925085682926575,12,12,reported
+signals,BenchmarkExec/isa_f32.min,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_f32.min,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_f32.min,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_f32.min,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_f64.max,ns/op,33195,33323,0.3856002410001613,0.2656695841512102,12,12,reported
+signals,BenchmarkExec/isa_f64.max,calls/batch,61.5,61,-0.8130081300813052,0.8064623490656604,12,12,reported
+signals,BenchmarkExec/isa_f64.max,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_f64.max,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_f64.max,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_f64.max,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_simd_i16x8.extend_high_s,ns/op,1986.5,2069,4.1530329725648185,7.39602301050679e-7,12,12,reported
+signals,BenchmarkExec/isa_simd_i16x8.extend_high_s,calls/batch,1039,1002,-3.561116458132818,0.006811737192676754,12,12,reported
+signals,BenchmarkExec/isa_simd_i16x8.extend_high_s,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_simd_i16x8.extend_high_s,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_simd_i16x8.extend_high_s,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_simd_i16x8.extend_high_s,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_simd_i16x8.le_s,ns/op,3563.5,3572.5,0.2525606847200823,0.6395407661392316,12,12,reported
+signals,BenchmarkExec/isa_simd_i16x8.le_s,calls/batch,565.5,563.5,-0.35366931918655586,0.9209246803808656,12,12,reported
+signals,BenchmarkExec/isa_simd_i16x8.le_s,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_simd_i16x8.le_s,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_simd_i16x8.le_s,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_simd_i16x8.le_s,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_simd_i32x4.trunc_sat_f64x2_u_zero,ns/op,10010.5,10040.5,0.29968533040307666,0.46867414453899847,12,12,reported
+signals,BenchmarkExec/isa_simd_i32x4.trunc_sat_f64x2_u_zero,calls/batch,203,202.5,-0.24630541871921707,0.8089488920017928,12,12,reported
+signals,BenchmarkExec/isa_simd_i32x4.trunc_sat_f64x2_u_zero,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_simd_i32x4.trunc_sat_f64x2_u_zero,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_simd_i32x4.trunc_sat_f64x2_u_zero,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_simd_i32x4.trunc_sat_f64x2_u_zero,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_simd_i32x4.ge_u,ns/op,3685,3682,-0.08141112618724744,0.9209801505534444,12,12,reported
+signals,BenchmarkExec/isa_simd_i32x4.ge_u,calls/batch,550.5,551,0.09082652134422275,0.6589797334177466,12,12,reported
+signals,BenchmarkExec/isa_simd_i32x4.ge_u,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_simd_i32x4.ge_u,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_simd_i32x4.ge_u,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_simd_i32x4.ge_u,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExecParallel/independent/isa_f64.sqrt,ns/op,21823.5,21757,-0.30471739180241153,0.3185851703821821,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_f64.sqrt,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_f64.sqrt,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExec/isa_simd_f32x4.trunc,ns/op,2776,2773.5,-0.09005763688760826,0.41666678993371686,12,12,reported
+signals,BenchmarkExec/isa_simd_f32x4.trunc,calls/batch,731,731.5,0.06839945280436854,0.4651321891192668,12,12,reported
+signals,BenchmarkExec/isa_simd_f32x4.trunc,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_simd_f32x4.trunc,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_simd_f32x4.trunc,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_simd_f32x4.trunc,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_simd_reduce.v128_any_true,ns/op,1868,1863,-0.2676659528907943,0.09666010392891534,12,12,reported
+signals,BenchmarkExec/isa_simd_reduce.v128_any_true,calls/batch,1081,1087,0.5550416281220993,0.24671801478908761,12,12,reported
+signals,BenchmarkExec/isa_simd_reduce.v128_any_true,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_simd_reduce.v128_any_true,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+signals,BenchmarkExec/isa_simd_reduce.v128_any_true,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExec/isa_simd_reduce.v128_any_true,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+signals,BenchmarkExecGlobalGet_wago,ns/op,92.925,96.155,3.4759214420231332,7.39602301050679e-7,12,12,reported
+signals,BenchmarkExecGlobalGet_wago,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecGlobalGet_wago,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecMemoryLoad_wago,ns/op,93.1,96.46000000000001,3.609022556390995,0.00007174142320191587,12,12,reported
+signals,BenchmarkExecMemoryLoad_wago,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecMemoryLoad_wago,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/utf-as.convertN,ns/op,23722.5,24276,2.333227948150496,0.5898757320213774,12,12,reported
+signals,BenchmarkExecParallel/independent/utf-as.convertN,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/utf-as.convertN,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i8x16.min_u,ns/op,258.70000000000005,256.45000000000005,-0.8697332817935832,0.22408766358153895,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i8x16.min_u,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i8x16.min_u,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i16x8.lt_u,ns/op,756.4,745,-1.5071390798519269,0.02727135564664169,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i16x8.lt_u,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i16x8.lt_u,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i32x4.extadd_pairwise_u,ns/op,703.55,728.2,3.5036600099495496,0.007869368483179226,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i32x4.extadd_pairwise_u,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i32x4.extadd_pairwise_u,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_reduce.i64x2_all_true,ns/op,1723,1741,1.044689495066753,0.2845042963497668,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_reduce.i64x2_all_true,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/process/isa_simd_reduce.i64x2_all_true,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkMemSumBounds/guard,ns/op,240.3,245.95,2.3512276321264958,0.0003712803551274409,12,12,reported
+signals,BenchmarkMemSumBounds/guard,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkMemSumBounds/guard,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkCompileCompact/fib_rec,ns/op,15033,14456,-3.8382225769972744,0.002249130597495115,12,12,reported
+signals,BenchmarkCompileCompact/fib_rec,B/op,13393,12621,-5.764205181811399,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileCompact/fib_rec,allocs/op,37,37,0,1,12,12,reported
+signals,BenchmarkValidateWorkers/tiny/p4,ns/op,3291.5,3338.5,1.4279204010329671,0.004652838075909822,12,12,reported
+signals,BenchmarkValidateWorkers/tiny/p4,B/op,2560,2576,0.6250000000000089,7.39602301050679e-7,12,12,reported
+signals,BenchmarkValidateWorkers/tiny/p4,allocs/op,17,17,0,1,12,12,reported
+signals,BenchmarkCompileFull/many_funcs,ns/op,452508.5,393348.5,-13.073787564211504,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFull/many_funcs,code-B,7817,7817,0,1,12,12,reported
+signals,BenchmarkCompileFull/many_funcs,B/op,159139,161632,1.5665550242241144,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFull/many_funcs,allocs/op,84,86,2.3809523809523725,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFull/json-as-simd,ns/op,1923915.5,1356535.5,-29.490900198059634,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFull/json-as-simd,code-B,66634,66634,0,1,12,12,reported
+signals,BenchmarkCompileFull/json-as-simd,B/op,227093,228264,0.5156477742598753,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFull/json-as-simd,allocs/op,436,438,0.4587155963302836,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p1,ns/op,454300.5,389237.5,-14.321577898329407,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p1,code-B,7817,7817,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p1,B/op,158995,161488,1.567973835655212,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p1,allocs/op,83,85,2.4096385542168752,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p2,ns/op,385484.5,325357.5,-15.597773710745832,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p2,code-B,7817,7817,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p2,B/op,236130,238168.5,0.8632956422309768,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p2,allocs/op,116,117,0.8620689655172376,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p4,ns/op,333806.5,279622,-16.232308238455516,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p4,code-B,7817,7817,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p4,B/op,285091.5,286220.5,0.39601320979405497,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p4,allocs/op,148,147,-0.6756756756756799,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p8,ns/op,333605.5,277194.5,-16.90949339864001,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p8,code-B,7817,7817,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p8,B/op,383035,382267,-0.20050387040349005,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/p8,allocs/op,211,207,-1.8957345971563955,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/auto,ns/op,335709,277504,-17.337932554682776,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/auto,code-B,7817,7817,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/auto,B/op,285120.5,286165,0.36633633849547653,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/many_funcs/auto,allocs/op,148,147,-0.6756756756756799,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/p2,ns/op,1370180.5,855666.5,-37.55081903442649,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/p2,code-B,55941,55941,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/p2,B/op,511720,515840.5,0.8052255139529452,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/p2,allocs/op,536,518.5,-3.264925373134331,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/p4,ns/op,1167766.5,656187,-43.808372649840535,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/p4,code-B,55941,55941,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/p4,B/op,633093,638728.5,0.8901535793319537,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/p4,allocs/op,679,659,-2.945508100147276,7.39602301050679e-7,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i8x16.shr_s,ns/op,675.2,680.2,0.7405213270142097,0.4009894399583456,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i8x16.shr_s,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i8x16.shr_s,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/p8,ns/op,1242408,578908.5,-53.40431645642978,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/p8,code-B,55941,55941,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/p8,B/op,831059,838449,0.8892268779954193,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/p8,allocs/op,911,882,-3.183315038419321,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/auto,ns/op,1132320,636961,-43.747262258018935,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/auto,code-B,55941,55941,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/auto,B/op,633606,638776,0.8159644952857148,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/json-as/auto,allocs/op,679,659,-2.945508100147276,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/lua/p4,ns/op,14888229.5,6838507.5,-54.06769152772666,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/lua/p4,code-B,710077,710077,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/lua/p4,B/op,4725580.5,4755680.5,0.6369587821009493,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/lua/p4,allocs/op,3276.5,3239,-1.1445139630703483,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/lua/auto,ns/op,14853568,6821742.5,-54.073374828189436,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/lua/auto,code-B,710077,710077,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/lua/auto,B/op,4716950,4761975.5,0.9545469000095341,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/lua/auto,allocs/op,3276,3238.5,-1.1446886446886406,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/p2,ns/op,66950824,38159941.5,-43.003029357786545,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/p2,code-B,2628361,2628361,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/p2,B/op,14104933.5,14293217.5,1.3348804515810109,0.00002218806903152037,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/p2,allocs/op,8291.5,8263,-0.3437255020201424,0.0006027758753563034,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/p4,ns/op,53622427.5,24182344,-54.90255639769386,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/p4,code-B,2628361,2628361,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/p4,B/op,15379296,15524788.5,0.9460283487618737,0.0000495533541703955,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/p4,allocs/op,8897.5,8884,-0.15172801348692921,0.00015013926711328785,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/p8,ns/op,47627516.5,17566864.5,-63.11614421465792,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/p8,code-B,2628361,2628361,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/p8,B/op,17012345,17193902.5,1.0672103111005526,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/p8,allocs/op,9809,9774,-0.35681516974207517,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/auto,ns/op,53594677.5,24028596,-55.166077825545266,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/auto,code-B,2628361,2628361,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/auto,B/op,15374864.5,15500036.5,0.8141340042378875,0.00014422244870488242,12,12,reported
+signals,BenchmarkCompileFullWorkers/sqlite3/auto,allocs/op,8897.5,8884.5,-0.1461084574318594,0.002198837641023669,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/p2,ns/op,484201332,268074087,-44.635822067503106,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/p2,code-B,20163867,20163867,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/p2,B/op,173974416,174117184,0.08206264075059089,0.14316777582358414,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/p2,allocs/op,23666.5,22836,-3.5091796421101606,0.02048920254600696,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/p4,ns/op,389182139,177962160,-54.27278331496092,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/p4,code-B,20163867,20163867,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/p4,B/op,181508968,181961058.5,0.24907336809936176,0.629725504001988,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/p4,allocs/op,27641,27585.5,-0.2007886834774375,0.9774021912936975,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i64x2.shl,ns/op,178.55,179.39999999999998,0.4760571268552116,0.7987453386564977,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i64x2.shl,B/op,0,0,0,1,12,12,reported
+signals,BenchmarkExecParallel/independent/isa_simd_i64x2.shl,allocs/op,0,0,0,1,12,12,reported
+signals,BenchmarkCompileMultiModuleThroughput/many_funcs/p1,ns/op,81456,73213.5,-10.118959929286975,0.000014052443719962901,12,12,reported
+signals,BenchmarkCompileMultiModuleThroughput/many_funcs/p1,B/op,158982,161476,1.5687310513139874,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileMultiModuleThroughput/many_funcs/p1,allocs/op,83,85,2.4096385542168752,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileMultiModuleThroughput/many_funcs/auto,ns/op,77792,68292,-12.212052653229122,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileMultiModuleThroughput/many_funcs/auto,B/op,304086,304811,0.23841939451338945,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileMultiModuleThroughput/many_funcs/auto,allocs/op,134,141,5.223880597014929,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileMultiModuleThroughput/json-as/auto,ns/op,272273.5,198764.5,-26.99822053927393,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileMultiModuleThroughput/json-as/auto,B/op,632030.5,638528,1.028035830549312,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileMultiModuleThroughput/json-as/auto,allocs/op,498.5,498,-0.10030090270812808,0.10160952252754649,12,12,reported
+signals,BenchmarkCompileWorkers/json-as/p2,ns/op,644416.5,493148.5,-23.47363855518907,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/json-as/p2,code-B,57638,57638,0,1,12,12,reported
+signals,BenchmarkCompileWorkers/json-as/p2,B/op,433835,436669,0.6532437447416717,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/json-as/p2,allocs/op,264,244,-7.57575757575758,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/json-as/p4,ns/op,522983.5,345876.5,-33.86473951855078,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/json-as/p4,code-B,57638,57638,0,1,12,12,reported
+signals,BenchmarkCompileWorkers/json-as/p4,B/op,551711,556173,0.8087567585203015,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/json-as/p4,allocs/op,402,379,-5.721393034825873,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/json-as/p8,ns/op,504795,331045,-34.419913034003905,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/json-as/p8,code-B,57638,57638,0,1,12,12,reported
+signals,BenchmarkCompileWorkers/json-as/p8,B/op,749154.5,753648,0.5998095185973051,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/json-as/p8,allocs/op,629,596,-5.246422893481717,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/lua/p8,ns/op,6828364.5,3478925,-49.05185568227941,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/lua/p8,code-B,890004,890004,0,1,12,12,reported
+signals,BenchmarkCompileWorkers/lua/p8,B/op,5293317,5328858.5,0.671440988703309,0.0002011718258857847,12,12,reported
+signals,BenchmarkCompileWorkers/lua/p8,allocs/op,2214.5,2131,-3.770602844885984,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/sqlite3/p4,ns/op,27911372,15860624.5,-43.17504528261814,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/sqlite3/p4,code-B,3636329,3636329,0,1,12,12,reported
+signals,BenchmarkCompileWorkers/sqlite3/p4,B/op,13887069,14078500.5,1.378487425964403,0.0029140330661396752,12,12,reported
+signals,BenchmarkCompileWorkers/sqlite3/p4,allocs/op,3569,3552,-0.4763239002521735,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/ruby/p8,ns/op,227612920.5,93494975.5,-58.92369585407609,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/ruby/p8,code-B,35172218,35172218,0,1,12,12,reported
+signals,BenchmarkCompileWorkers/ruby/p8,B/op,139282710,139297570,0.01066894806971419,0.629725504001988,12,12,reported
+signals,BenchmarkCompileWorkers/ruby/p8,allocs/op,14302.5,14297.5,-0.03495892326516037,0.8095701579346753,12,12,reported
+signals,BenchmarkCompileWorkers/esbuild/p2,ns/op,258259510.5,173290481.5,-32.90063890986892,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/esbuild/p2,code-B,26622496,26622496,0,1,12,12,reported
+signals,BenchmarkCompileWorkers/esbuild/p2,B/op,112684800,113035687.5,0.31138849250298417,0.6706595329559389,12,12,reported
+signals,BenchmarkCompileWorkers/esbuild/p2,allocs/op,14862.5,14651,-1.4230445752733356,1,12,12,reported
+signals,BenchmarkPluginExec/wasm3,ns/op,23167829.5,23501930.5,1.442090205299551,0.7987453386564977,12,12,reported
+signals,BenchmarkPluginExec/wasm3,B/op,0,0,0,1,12,12,unmeasured: allocation timer stopped
+signals,BenchmarkPluginExec/wasm3,allocs/op,0,0,0,1,12,12,unmeasured: allocation timer stopped
+signals,BenchmarkCompileWorkers/esbuild/p8,ns/op,151682824,63266265.5,-58.29042219045184,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/esbuild/p8,code-B,26622496,26622496,0,1,12,12,reported
+signals,BenchmarkCompileWorkers/esbuild/p8,B/op,132286507,132363129.5,0.05792162914997068,0.5137225810936943,12,12,reported
+signals,BenchmarkCompileWorkers/esbuild/p8,allocs/op,25594,25788.5,0.7599437368133177,0.2721551567291236,12,12,reported
+signals,BenchmarkCompile/many_funcs,ns/op,318243.5,283747,-10.839655798154556,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompile/many_funcs,B/op,68487.5,68213.5,-0.400073006022994,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompile/many_funcs,allocs/op,34,34,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/lua/p8,ns/op,14394819,5952458,-58.64860822494538,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/lua/p8,code-B,710077,710077,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/lua/p8,B/op,5464063.5,5513255,0.9002732124178348,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/lua/p8,allocs/op,3999,3922,-1.9254813703425855,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/ruby/p8,ns/op,522371186,188651176,-63.88560834593966,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/ruby/p8,code-B,28421203,28421203,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/ruby/p8,B/op,164058768,164015331.5,-0.026476183217472027,0.7552848282421576,12,12,reported
+signals,BenchmarkCompileFullWorkers/ruby/p8,allocs/op,43782,43737,-0.10278196519117877,0.17332505964892558,12,12,reported
+signals,BenchmarkCompileFullWorkers/ruby/auto,ns/op,568223765,247033164,-56.525372711224065,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/ruby/auto,code-B,28421203,28421203,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/ruby/auto,B/op,158594864,158296843.5,-0.18791308399495055,0.10053044277031355,12,12,reported
+signals,BenchmarkCompileFullWorkers/ruby/auto,allocs/op,42132.5,42100.5,-0.07595086928143813,0.14728218342432908,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/p8,ns/op,349229473,134675790,-61.43630466149116,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/p8,code-B,20163867,20163867,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/p8,B/op,192474086,192327949,-0.0759255456342367,0.8873859348351204,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/p8,allocs/op,34330.5,34524.5,0.5650951777573798,0.9774021912936975,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/auto,ns/op,391699216.5,179620536,-54.14324858625292,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/auto,code-B,20163867,20163867,0,1,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/auto,B/op,181417736,182087743.5,0.36931752913067495,0.7125350756391273,12,12,reported
+signals,BenchmarkCompileFullWorkers/esbuild/auto,allocs/op,27870.5,27220.5,-2.332215066109322,0.7552848282421576,12,12,reported
+signals,BenchmarkCompileWorkers/ruby/p4,ns/op,300640391.5,159713667.5,-46.875512401000854,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/ruby/p4,code-B,35172218,35172218,0,1,12,12,reported
+signals,BenchmarkCompileWorkers/ruby/p4,B/op,133767360,133245147,-0.3903889558708462,0.000033282103547280556,12,12,reported
+signals,BenchmarkCompileWorkers/ruby/p4,allocs/op,12682,12674,-0.0630815328812484,0.17281991127730797,12,12,reported
+signals,BenchmarkCompileWorkers/esbuild/p4,ns/op,186545959.5,99252012.5,-46.79487416075608,7.39602301050679e-7,12,12,reported
+signals,BenchmarkCompileWorkers/esbuild/p4,code-B,26622496,26622496,0,1,12,12,reported
+signals,BenchmarkCompileWorkers/esbuild/p4,B/op,120640542.5,121705945,0.883121443191448,0.00182977609279938,12,12,reported
+signals,BenchmarkCompileWorkers/esbuild/p4,allocs/op,18910.5,19387.5,2.5224081859284597,0.05186461136117887,12,12,reported
+explicit,BenchmarkExec/coremark.coremark_run,ns/op,33766523.5,33764954,-0.004648094732051522,0.37768531105453973,12,12,reported
+explicit,BenchmarkExec/coremark.coremark_run,calls/batch,1,1,0,1,12,12,reported
+explicit,BenchmarkExec/coremark.coremark_run,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/coremark.coremark_run,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/coremark.coremark_run,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/coremark.coremark_run,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExecParallel/independent/isa_mem.store_i32_stride,ns/op,1745.5,1737,-0.4869664852477751,0.5137225810936943,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_mem.store_i32_stride,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_mem.store_i32_stride,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExec/isa_simd_f32x4.max,ns/op,10348,10342.5,-0.053150367220722305,0.7439733506498886,12,12,reported
+explicit,BenchmarkExec/isa_simd_f32x4.max,calls/batch,193,194,0.5181347150259086,0.6745964360044316,12,12,reported
+explicit,BenchmarkExec/isa_simd_f32x4.max,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_simd_f32x4.max,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_simd_f32x4.max,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_simd_f32x4.max,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_simd_f32x4.le,ns/op,3445,3444.5,-0.014513788098691194,0.6594878401985684,12,12,reported
+explicit,BenchmarkExec/isa_simd_f32x4.le,calls/batch,580,580.5,0.08620689655172153,0.9204957110462562,12,12,reported
+explicit,BenchmarkExec/isa_simd_f32x4.le,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_simd_f32x4.le,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_simd_f32x4.le,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_simd_f32x4.le,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_simd_f64x2.ne,ns/op,3558.5,3550,-0.23886469017844192,0.283864540359358,12,12,reported
+explicit,BenchmarkExec/isa_simd_f64x2.ne,calls/batch,562,565.5,0.6227758007117501,0.4494688915876155,12,12,reported
+explicit,BenchmarkExec/isa_simd_f64x2.ne,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_simd_f64x2.ne,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_simd_f64x2.ne,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_simd_f64x2.ne,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off,ns/op,689029,689359,0.0478934848896051,0.9323005033733262,12,12,reported
+explicit,BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecCommuteSelfUpdate/blake-as.hashN/off,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecMemoryLoad_wago,ns/op,76.85499999999999,76.605,-0.32528787977358364,0.5232249914575934,12,12,reported
+explicit,BenchmarkExecMemoryLoad_wago,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecMemoryLoad_wago,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_call.call_indirect,ns/op,5864,5804.5,-1.0146657571623474,0.629725504001988,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_call.call_indirect,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_call.call_indirect,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_var.global_getset,ns/op,7965,7911,-0.6779661016949157,0.2189208019063989,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_var.global_getset,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_var.global_getset,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s,ns/op,457,457.1,0.02188183807441124,0.7440510088914989,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_simd_i8x16.narrow_i16x8_s,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_simd_i32x4.le_u,ns/op,472.25,472.35,0.02117522498676916,0.7011895763410099,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_simd_i32x4.le_u,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_simd_i32x4.le_u,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkValidateWorkers/tiny/p8,ns/op,3550,3573.5,0.661971830985908,0.2027582728215384,12,12,reported
+explicit,BenchmarkValidateWorkers/tiny/p8,B/op,2560,2576,0.6250000000000089,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkValidateWorkers/tiny/p8,allocs/op,17,17,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_i64.rotl,ns/op,2267.5,2263.5,-0.17640573318632446,0.6191647227452854,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_i64.rotl,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_i64.rotl,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExec/tiny.add,ns/op,8.1115,8.530000000000001,5.159341675399154,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkExec/tiny.add,calls/batch,252526.5,243429,-3.6025922031945212,0.028420697622474442,12,12,reported
+explicit,BenchmarkExec/tiny.add,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/tiny.add,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/tiny.add,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/tiny.add,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/memory_tree.run,ns/op,9213,9213.5,0.005427113860845267,0.9891870143586391,12,12,reported
+explicit,BenchmarkExec/memory_tree.run,calls/batch,218.5,219,0.22883295194509046,0.9457368583765138,12,12,reported
+explicit,BenchmarkExec/memory_tree.run,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/memory_tree.run,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/memory_tree.run,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/memory_tree.run,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/swar-pack-parse.pack,ns/op,8.221,8.498000000000001,3.3694197786157565,0.000001479204602101358,12,12,reported
+explicit,BenchmarkExec/swar-pack-parse.pack,calls/batch,244729.5,244849,0.04882942187189876,0.5898757320213774,12,12,reported
+explicit,BenchmarkExec/swar-pack-parse.pack,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/swar-pack-parse.pack,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/swar-pack-parse.pack,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/swar-pack-parse.pack,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/swar-pack-parse.parse4,ns/op,8.0785,8.559000000000001,5.94788636504302,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkExec/swar-pack-parse.parse4,calls/batch,250575,250610.5,0.014167414945620571,0.9323005033733262,12,12,reported
+explicit,BenchmarkExec/swar-pack-parse.parse4,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/swar-pack-parse.parse4,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/swar-pack-parse.parse4,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/swar-pack-parse.parse4,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/utf-as-simd.convertN,ns/op,52852.5,53050.5,0.374627501064273,0.5898757320213774,12,12,reported
+explicit,BenchmarkExec/utf-as-simd.convertN,calls/batch,38,38,0,0.25080061949088733,12,12,reported
+explicit,BenchmarkExec/utf-as-simd.convertN,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/utf-as-simd.convertN,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/utf-as-simd.convertN,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/utf-as-simd.convertN,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_i32.rotr,ns/op,13953.5,14018,0.46224961479199855,0.5898757320213774,12,12,reported
+explicit,BenchmarkExec/isa_i32.rotr,calls/batch,144.5,144,-0.34602076124568004,0.6963865989979868,12,12,reported
+explicit,BenchmarkExec/isa_i32.rotr,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_i32.rotr,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_i32.rotr,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_i32.rotr,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_f32.ceil,ns/op,41957.5,42006,0.11559315974498663,0.37768531105453973,12,12,reported
+explicit,BenchmarkExec/isa_f32.ceil,calls/batch,48,48.5,1.041666666666674,0.3432753139981569,12,12,reported
+explicit,BenchmarkExec/isa_f32.ceil,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_f32.ceil,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_f32.ceil,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_f32.ceil,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_simd_i16x8.abs,ns/op,1777,1782.5,0.3095104108047364,0.1633478246077519,12,12,reported
+explicit,BenchmarkExec/isa_simd_i16x8.abs,calls/batch,1148,1141,-0.6097560975609762,0.9659427932412183,12,12,reported
+explicit,BenchmarkExec/isa_simd_i16x8.abs,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_simd_i16x8.abs,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_simd_i16x8.abs,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_simd_i16x8.abs,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExecParallel/independent/utf-as-simd.validateN,ns/op,22564,23241,3.000354547066131,0.1135023275284414,12,12,reported
+explicit,BenchmarkExecParallel/independent/utf-as-simd.validateN,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/utf-as-simd.validateN,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_i64.rotr,ns/op,2247.5,2235,-0.5561735261401579,0.7870966024149494,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_i64.rotr,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_i64.rotr,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/process/float.run,ns/op,633.9000000000001,628,-0.930746174475483,0.9774021912936975,12,12,reported
+explicit,BenchmarkExecParallel/process/float.run,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/process/float.run,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_f64.max,ns/op,4939,4949.5,0.2125936424377306,0.551167166391288,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_f64.max,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_f64.max,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_f64.ceil,ns/op,5518.5,5546,0.49832381987859886,0.8873859348351204,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_f64.ceil,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_f64.ceil,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u,ns/op,716.45,715.6500000000001,-0.1116616651545721,0.35458013516971654,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_simd_i16x8.gt_u,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_simd_i64x2.gt_s,ns/op,459.75,457.5,-0.4893964110929905,0.6196018277052063,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_simd_i64x2.gt_s,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_simd_i64x2.gt_s,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_simd_f64x2.floor,ns/op,348.75,348.7,-0.014336917562729479,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_simd_f64x2.floor,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_simd_f64x2.floor,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkCompileCompact/fannkuch,ns/op,106035,89416.5,-15.672655255340217,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileCompact/fannkuch,B/op,69459.5,69442,-0.025194537824202445,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileCompact/fannkuch,allocs/op,71,71,0,1,12,12,reported
+explicit,BenchmarkCompileFull/many_funcs,ns/op,458926.5,404952.5,-11.760924679660034,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFull/many_funcs,code-B,7817,7817,0,1,12,12,reported
+explicit,BenchmarkCompileFull/many_funcs,B/op,159139,161633,1.567183405701944,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFull/many_funcs,allocs/op,84,86,2.3809523809523725,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFull/json-as-simd,ns/op,2044608,1451162,-29.02492800575954,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFull/json-as-simd,code-B,79493,79493,0,1,12,12,reported
+explicit,BenchmarkCompileFull/json-as-simd,B/op,228353.5,229530,0.5152099705062474,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFull/json-as-simd,allocs/op,437,439,0.4576659038901587,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p1,ns/op,459509,399646.5,-13.027492388614803,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p1,code-B,7817,7817,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p1,B/op,158995,161488,1.567973835655212,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p1,allocs/op,83,85,2.4096385542168752,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p2,ns/op,391438.5,334314.5,-14.593352467884479,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p2,code-B,7817,7817,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p2,B/op,236129,238170,0.8643580415789609,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p2,allocs/op,116,117,0.8620689655172376,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_simd_f32x4.abs,ns/op,270.45000000000005,273.95000000000005,1.2941393973007864,0.6403705999210104,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_simd_f32x4.abs,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/process/isa_simd_f32x4.abs,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p4,ns/op,322163,268721,-16.588497127230628,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p4,code-B,7817,7817,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p4,B/op,285085,286168.5,0.380062086746058,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p4,allocs/op,148,147,-0.6756756756756799,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p8,ns/op,317637,264784.5,-16.6392769104355,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p8,code-B,7817,7817,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p8,B/op,383045,382251,-0.20728635016773467,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/p8,allocs/op,211,206,-2.3696682464455,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/auto,ns/op,321394.5,268871.5,-16.342221164332305,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/auto,code-B,7817,7817,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/auto,B/op,285088,286167,0.37847962734314233,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/many_funcs/auto,allocs/op,148,147,-0.6756756756756799,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/p2,ns/op,1334316.5,882392,-33.86936307840006,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/p2,code-B,66502,66502,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/p2,B/op,528250.5,532256.5,0.7583523347351351,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/p2,allocs/op,547,528,-3.4734917733089565,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/p4,ns/op,1192721,709289,-40.53185950444404,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/p4,code-B,66502,66502,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/p4,B/op,662456.5,666691,0.6392117822075827,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/p4,allocs/op,704,685,-2.6988636363636354,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/p8,ns/op,1230606.5,653833,-46.8690438413904,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/p8,code-B,66502,66502,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/p8,B/op,877266.5,884678,0.8448401939433525,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/p8,allocs/op,966,936.5,-3.0538302277432705,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/auto,ns/op,1245346.5,719509.5,-42.22415207333863,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/auto,code-B,66502,66502,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/auto,B/op,661701.5,665838,0.6251308180501347,0.000001479204602101358,12,12,reported
+explicit,BenchmarkCompileFullWorkers/json-as/auto,allocs/op,704,684.5,-2.7698863636363646,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/lua/p4,ns/op,16102018.5,7791990,-51.60861354121534,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/lua/p4,code-B,898660,898660,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/lua/p4,B/op,4887657,4927667.5,0.8186028602252593,0.0000495533541703955,12,12,reported
+explicit,BenchmarkCompileFullWorkers/lua/p4,allocs/op,3309,3275,-1.0275007555152649,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/lua/auto,ns/op,15447092.5,7401943.5,-52.08196299724366,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/lua/auto,code-B,898660,898660,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/lua/auto,B/op,4895538,4926902.5,0.64067524345639,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/lua/auto,allocs/op,3309.5,3273.5,-1.0877776099108671,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/p2,ns/op,70746675.5,41442157,-41.42176051792003,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/p2,code-B,3648553,3648553,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/p2,B/op,14539264.5,14667083.5,0.879129752402541,0.0002743924536898019,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/p2,allocs/op,8355,8336.5,-0.22142429682824316,0.01956248086279046,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_ctl.br_table,ns/op,3018,2690.5,-10.851557322730287,0.37768531105453973,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_ctl.br_table,B/op,0,0,0,1,12,12,reported
+explicit,BenchmarkExecParallel/independent/isa_ctl.br_table,allocs/op,0,0,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/p4,ns/op,55022146,26103885,-52.55749384984003,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/p4,code-B,3648553,3648553,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/p4,B/op,16285662,16413409.5,0.7844169920756094,0.1978081146206062,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/p4,allocs/op,8990,8985,-0.05561735261401246,0.15459685018172029,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/p8,ns/op,48256456.5,19075088,-60.47142831550427,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/p8,code-B,3648553,3648553,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/p8,B/op,19065976,19018898.5,-0.24691890937028615,0.5898757320213774,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/p8,allocs/op,9978.5,9946,-0.3257002555494326,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/auto,ns/op,55230146.5,25970412.5,-52.977831590578894,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/auto,code-B,3648553,3648553,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/auto,B/op,16183094.5,16352736.5,1.048266757634031,0.0045130532410112435,12,12,reported
+explicit,BenchmarkCompileFullWorkers/sqlite3/auto,allocs/op,8996,8981,-0.16674077367718754,0.003419181437757289,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/p4,ns/op,408273663.5,193393423,-52.63142340799065,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/p4,code-B,26629248,26629248,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/p4,B/op,186916442,188011899.5,0.5860680249841321,0.05186461136117887,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/p4,allocs/op,27677,27844,0.6033890956389731,0.9323005033733262,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/p8,ns/op,376298366,153949028,-59.08857387916482,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/p8,code-B,26629248,26629248,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/p8,B/op,199848414,200418210,0.28511409652718367,0.07802434474934139,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/p8,allocs/op,34468.5,34536.5,0.19728157593164042,0.8428359902313328,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/auto,ns/op,417108024,195826059.5,-53.05147630053744,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/auto,code-B,26629248,26629248,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/auto,B/op,187353614,187611022,0.1373915317160579,0.2189208019063989,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/auto,allocs/op,27820,28251,1.5492451473759994,0.2656695841512102,12,12,reported
+explicit,BenchmarkCompileMultiModuleThroughput/many_funcs/p1,ns/op,79132,71466,-9.687610574735883,0.000005177216107354753,12,12,reported
+explicit,BenchmarkCompileMultiModuleThroughput/many_funcs/p1,B/op,158980,161476,1.5700088061391337,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileMultiModuleThroughput/many_funcs/p1,allocs/op,83,85,2.4096385542168752,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileMultiModuleThroughput/many_funcs/auto,ns/op,78537.5,71523.5,-8.930765557854524,0.0002011718258857847,12,12,reported
+explicit,BenchmarkCompileMultiModuleThroughput/many_funcs/auto,B/op,304056.5,304889,0.27379779744882704,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileMultiModuleThroughput/many_funcs/auto,allocs/op,134,141,5.223880597014929,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileMultiModuleThroughput/json-as/auto,ns/op,292608.5,214246.5,-26.780493389631545,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileMultiModuleThroughput/json-as/auto,B/op,713515,718924.5,0.758148041737039,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileMultiModuleThroughput/json-as/auto,allocs/op,507,508,0.19723865877712132,0.01164429862774189,12,12,reported
+explicit,BenchmarkCompileWorkers/json-as/p2,ns/op,648852.5,497549,-23.31862788538227,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/json-as/p2,code-B,57638,57638,0,1,12,12,reported
+explicit,BenchmarkCompileWorkers/json-as/p2,B/op,433619.5,436436,0.6495325971272115,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/json-as/p2,allocs/op,264,243.5,-7.765151515151514,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkExec/branches.classify,ns/op,7.9445,8.2635,4.015356535968295,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkExec/branches.classify,calls/batch,256388.5,251140,-2.047088695475807,0.012093976826780704,12,12,reported
+explicit,BenchmarkExec/branches.classify,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/branches.classify,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/branches.classify,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/branches.classify,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkCompileWorkers/json-as/p4,ns/op,508171.5,335666,-33.94631536794173,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/json-as/p4,code-B,57638,57638,0,1,12,12,reported
+explicit,BenchmarkCompileWorkers/json-as/p4,B/op,551925,556319.5,0.7962132536123656,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/json-as/p4,allocs/op,402,379,-5.721393034825873,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/json-as/p8,ns/op,478698.5,310085.5,-35.22321461212016,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/json-as/p8,code-B,57638,57638,0,1,12,12,reported
+explicit,BenchmarkCompileWorkers/json-as/p8,B/op,749236,752627.5,0.4526611107848577,0.000002958409204202716,12,12,reported
+explicit,BenchmarkCompileWorkers/json-as/p8,allocs/op,629,596,-5.246422893481717,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/ruby/p8,ns/op,243689461,106356480,-56.3557325936225,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/ruby/p8,code-B,35172218,35172218,0,1,12,12,reported
+explicit,BenchmarkCompileWorkers/ruby/p8,B/op,139534105,139775915,0.17329813381465886,0.024184255642056153,12,12,reported
+explicit,BenchmarkCompileWorkers/ruby/p8,allocs/op,14336.5,14328.5,-0.05580162522232923,0.7987453386564977,12,12,reported
+explicit,BenchmarkCompileWorkers/esbuild/p8,ns/op,155860463.5,67589868.5,-56.634372192791524,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/esbuild/p8,code-B,26622496,26622496,0,1,12,12,reported
+explicit,BenchmarkCompileWorkers/esbuild/p8,B/op,132534367,132027601.5,-0.3823653528295834,0.4775752582321434,12,12,reported
+explicit,BenchmarkCompileWorkers/esbuild/p8,allocs/op,25827.5,25361,-1.8062143064562997,0.017271192934135458,12,12,reported
+explicit,BenchmarkCompile/many_funcs,ns/op,307087,284277,-7.427862462429213,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompile/many_funcs,B/op,68480,68214.5,-0.38770443925233433,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompile/many_funcs,allocs/op,34,34,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/p2,ns/op,505854017,289983566.5,-42.67445611685239,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/p2,code-B,26629248,26629248,0,1,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/p2,B/op,178636548,178078996,-0.3121153012876188,0.629725504001988,12,12,reported
+explicit,BenchmarkCompileFullWorkers/esbuild/p2,allocs/op,23886,23398.5,-2.04094448630997,0.3185851703821821,12,12,reported
+explicit,BenchmarkCompileWorkers/lua/p2,ns/op,10789753.5,7559864,-29.934784886420253,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/lua/p2,code-B,890004,890004,0,1,12,12,reported
+explicit,BenchmarkCompileWorkers/lua/p2,B/op,3895022.5,3913410,0.4720768622004101,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/lua/p2,allocs/op,1057,1038,-1.797540208136239,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/lua/p4,ns/op,7902056,4628489.5,-41.426769185133594,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/lua/p4,code-B,890004,890004,0,1,12,12,reported
+explicit,BenchmarkCompileWorkers/lua/p4,B/op,4387975,4428492.5,0.9233758168631256,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/lua/p4,allocs/op,1487,1449,-2.555480833893742,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/sqlite3/p4,ns/op,28655888.5,16176382,-43.5495360752817,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/sqlite3/p4,code-B,3636329,3636329,0,1,12,12,reported
+explicit,BenchmarkCompileWorkers/sqlite3/p4,B/op,14138048.5,14141970.5,0.027740745124771315,0.9774021912936975,12,12,reported
+explicit,BenchmarkCompileWorkers/sqlite3/p4,allocs/op,3562,3551,-0.3088152723189186,0.000005177216107354753,12,12,reported
+explicit,BenchmarkCompileWorkers/ruby/p4,ns/op,292606756,155665539,-46.80042896890597,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/ruby/p4,code-B,35172218,35172218,0,1,12,12,reported
+explicit,BenchmarkCompileWorkers/ruby/p4,B/op,133460614,133277581,-0.13714383181243628,0.0045130532410112435,12,12,reported
+explicit,BenchmarkCompileWorkers/ruby/p4,allocs/op,12671,12675.5,0.03551416620630743,0.5602346906021693,12,12,reported
+explicit,BenchmarkExec/isa_i32.add,ns/op,14120,14093.5,-0.1876770538243644,0.6191351386532434,12,12,reported
+explicit,BenchmarkExec/isa_i32.add,calls/batch,143,141.5,-1.0489510489510523,0.03320740371487444,12,12,reported
+explicit,BenchmarkExec/isa_i32.add,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_i32.add,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_i32.add,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_i32.add,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkCompileWorkers/esbuild/p2,ns/op,257505375,172305229,-33.08674469416415,7.39602301050679e-7,12,12,reported
+explicit,BenchmarkCompileWorkers/esbuild/p2,code-B,26622496,26622496,0,1,12,12,reported
+explicit,BenchmarkCompileWorkers/esbuild/p2,B/op,112699122,112827359.5,0.11378748806933903,1,12,12,reported
+explicit,BenchmarkCompileWorkers/esbuild/p2,allocs/op,14646,14719,0.4984296053530013,0.8995716223472314,12,12,reported
+explicit,BenchmarkExec/isa_i64.mul,ns/op,42559,42713,0.3618506073920891,0.1978081146206062,12,12,reported
+explicit,BenchmarkExec/isa_i64.mul,calls/batch,47,47,0,0.6771428867269492,12,12,reported
+explicit,BenchmarkExec/isa_i64.mul,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_i64.mul,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_i64.mul,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_i64.mul,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_simd_i32x4.extend_high_s,ns/op,2056.5,2055,-0.07293946024798936,0.8982773183203927,12,12,reported
+explicit,BenchmarkExec/isa_simd_i32x4.extend_high_s,calls/batch,1000.5,1006,0.5497251374312784,0.4340296935531826,12,12,reported
+explicit,BenchmarkExec/isa_simd_i32x4.extend_high_s,B/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_simd_i32x4.extend_high_s,allocs/op,0,0,0,1,12,12,raw per batch; use per-call metric
+explicit,BenchmarkExec/isa_simd_i32x4.extend_high_s,B/call,0,0,0,1,12,12,derived per sample from calls/batch
+explicit,BenchmarkExec/isa_simd_i32x4.extend_high_s,allocs/call,0,0,0,1,12,12,derived per sample from calls/batch

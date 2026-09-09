@@ -1,0 +1,72 @@
+[
+  {
+    "name": "standard-tiny-build",
+    "command": "/home/jtenner/Projects/wago/.tmp/pr564-absolute-costs/pinned-tinygo/bin/tinygo",
+    "args": [
+      "build",
+      "-scheduler=tasks",
+      "-no-debug",
+      "-opt=z",
+      "-gc=conservative",
+      "-ldflags",
+      "-X main.version=0.0.0",
+      "-tags",
+      "wago_runtime,wago_lean",
+      "-o",
+      "/home/jtenner/Projects/wago/.tmp/pr564-memory/final731/size/final-runtime-standard-tiny",
+      "./cli/wago"
+    ],
+    "cwd": "/home/jtenner/Projects/wago",
+    "status": 0,
+    "signal": null,
+    "seconds": 47.204
+  },
+  {
+    "name": "standard-tiny-strip",
+    "command": "strip",
+    "args": [
+      "-s",
+      "--strip-section-headers",
+      "--remove-section=.eh_frame",
+      "--remove-section=.eh_frame_hdr",
+      "--remove-section=.comment",
+      "/home/jtenner/Projects/wago/.tmp/pr564-memory/final731/size/final-runtime-standard-tiny"
+    ],
+    "cwd": "/home/jtenner/Projects/wago",
+    "status": 0,
+    "signal": null,
+    "seconds": 0.022
+  },
+  {
+    "name": "main-wine-installer",
+    "command": "/home/jtenner/.local/share/mise/installs/go/1.22.12/bin/go",
+    "args": [
+      "test",
+      ".",
+      "-run",
+      "^TestWineInstallerCompletesNativeInstallFlow$",
+      "-count=1",
+      "-timeout=2m"
+    ],
+    "cwd": "/home/jtenner/Projects/wago/.tmp/pr564-memory/main-latest",
+    "status": 1,
+    "signal": null,
+    "seconds": 6.977
+  },
+  {
+    "name": "final-wine-installer",
+    "command": "/home/jtenner/.local/share/mise/installs/go/1.22.12/bin/go",
+    "args": [
+      "test",
+      ".",
+      "-run",
+      "^TestWineInstallerCompletesNativeInstallFlow$",
+      "-count=1",
+      "-timeout=2m"
+    ],
+    "cwd": "/home/jtenner/Projects/wago",
+    "status": 1,
+    "signal": null,
+    "seconds": 3.488
+  }
+]

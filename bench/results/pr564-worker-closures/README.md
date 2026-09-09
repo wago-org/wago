@@ -35,7 +35,8 @@ Some byte-count increases and serial validation-summary costs remain; this is
 not a claim that every allocation metric is below main.
 
 A guard-page esbuild allocation warning appeared in the warm screen. A separate
-12-triple check used exactly three compiles per process. Its guard-page counts
+12-triple check used three timed compiles per final sample, plus Go's initial
+one-operation calibration on each version. Its guard-page counts
 were 27,862 on main, 27,991 on the prior PR, and 28,091.5 after the change
 (+0.82% versus main, p = 0.319). Allocated bytes were +0.27% versus main
 (p = 0.068), and time was +0.47% versus the prior PR (p = 0.266). The larger
@@ -62,7 +63,8 @@ this change. Its code patch and every measured result are retained, with the
 - `hintwork-*`: the rejected per-worker work gate.
 - Six fresh alternating main/prior/candidate triples per cold or warm case.
   Cold uses one operation and is not a timing claim. Warm requests 500 ms.
-- Esbuild confirmation uses 12 triples and exactly three operations per process.
+- Esbuild confirmation uses 12 triples and `-benchtime=3x`: three timed
+  operations per final sample, plus one calibration operation per process.
 - Linux AMD64, Go 1.27.1, `GOMAXPROCS=8`, `GOGC=100`, both bounds modes.
   No agent-run builds, tests, or profiles overlapped the timed samples.
 - All values are medians. P-values are unadjusted exact two-sided rank tests

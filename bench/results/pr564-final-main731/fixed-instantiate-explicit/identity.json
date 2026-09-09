@@ -1,0 +1,20 @@
+{
+  "names": [
+    [
+      "explicit",
+      "BenchmarkPluginInstantiate/ruby"
+    ]
+  ],
+  "labels": [
+    "base",
+    "final"
+  ],
+  "samples": 6,
+  "benchtime": "128x",
+  "procs": "8",
+  "binaries": {
+    "/home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/base-explicit.test": "aca202567daaba1467bb9c03aa8a68aa45e9f6ba665decbde99ded0987bdfbab",
+    "/home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/final-explicit.test": "075671becf95b14de31b1c36f4ea1c20223fe1747ee60a90c589309706e4504e"
+  },
+  "resourceLogs": true
+}

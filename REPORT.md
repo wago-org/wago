@@ -1,5 +1,26 @@
 # PR #564 correctness and performance qualification
 
+## Final measured losses against main 731e95ff2
+
+Production code `b4f2360f5` is compared with freshly measured main `731e95ff2`.
+The [complete final report](bench/results/pr564-final-main731/README.md) saves
+all 16,144 metrics, all raw samples, and every positive timing or memory cost.
+All 1,020 full-suite, 4,080 repeat, and 504 fixed-work processes passed.
+The full screen has 950 higher Wago timing medians out of 3,000 rows, including
+37 unadjusted p < 0.05 warnings. The 170-case repeat has 55 higher timing
+medians, including 11 such warnings. These are not zero-regression results.
+
+Memory increases remain in esbuild and SQLite compilation and in some process
+peak-memory checks. All costs remain visible, including nonsignificant median
+increases and earlier screen losses that reverse in the repeat. Ruby fixed-work
+instantiation uses about 71% fewer allocated bytes and 92% fewer allocations;
+this does not mean every process-memory result improves. No further tuning or
+diagnostic benchmark round was run after the user requested the loss report.
+
+The production allocation fix is pushed. All enabled CI checks pass for that
+code; human approval is still required. The report records local Wine failures
+on both main and the PR and does not claim native ARM64 speed measurements.
+
 ## Integration with main 731e95ff2
 
 The branch also incorporates the new prepared-call and ARM64 hot-path work.

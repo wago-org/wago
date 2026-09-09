@@ -1,0 +1,1228 @@
+{
+  "head": "b4f2360f517641803249c7ed998f37d8b0ec82a2",
+  "binary": "/home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny",
+  "bytes": 2154392,
+  "sha256": "76fedfb59041a005624eaa98c51f5031bd53a05f435f20131a3200720758e1cd",
+  "rows": [
+    {
+      "repeat": 0,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 0,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 0,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 0,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 1,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 2,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 3,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 4,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 4,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 4,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 4,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 5,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 5,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 5,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 5,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 6,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 6,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 6,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 6,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 7,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 7,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 7,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 7,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 8,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 8,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 8,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 8,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 9,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 9,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 9,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 9,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 10,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 10,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 10,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 10,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 11,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 11,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 11,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 11,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 12,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 12,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 12,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 12,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 13,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 13,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 13,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 13,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 14,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 14,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 14,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 14,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 15,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 15,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 15,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 15,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 16,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 16,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 16,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 16,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 17,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 17,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 17,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 17,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 18,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 18,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 18,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 18,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 19,
+      "name": "version",
+      "args": [
+        "--version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Wago\n  channel      development\n  release      0.0.0\n  profile      minimal\n  build        tiny\n  platform     linux/amd64\n  toolchain    tinygo 0.41.1\n  runtime      /home/jtenner/Projects/wago/.tmp/pr564-memory/final-closures/size/final-runtime-minimal-tiny\n  plugins      none\n  guard pages  unavailable\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 19,
+      "name": "fib20",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "20"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(20) = 6765\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 19,
+      "name": "fib30",
+      "args": [
+        "run",
+        "--invoke",
+        "fib",
+        "tests/fixtures/wasm/fib.wasm",
+        "30"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "fib(30) = 832040\n",
+      "stderr": "",
+      "passed": true
+    },
+    {
+      "repeat": 19,
+      "name": "hypot",
+      "args": [
+        "run",
+        "--invoke",
+        "hypot",
+        "tests/fixtures/wasm/fprog.wasm",
+        "3.0",
+        "4.0"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "hypot(3, 4) = 5\n",
+      "stderr": "",
+      "passed": true
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+ok  	github.com/wago-org/wago/cli/runtime/commands	0.001s
+?   	github.com/wago-org/wago/cli/runtime/commands/module	[no test files]
+?   	github.com/wago-org/wago/cli/runtime/commands/module/capabilities	[no test files]
+?   	github.com/wago-org/wago/cli/runtime/commands/module/imports	[no test files]
+?   	github.com/wago-org/wago/cli/runtime/commands/plugin	[no test files]
+ok  	github.com/wago-org/wago/cli/runtime/commands/build	0.003s
+ok  	github.com/wago-org/wago/cli/runtime/commands/module/exports	0.002s
+ok  	github.com/wago-org/wago/cli/runtime/commands/plugin/inspect	0.002s
+ok  	github.com/wago-org/wago/cli/runtime/commands/plugin/list	0.002s
+ok  	github.com/wago-org/wago/cli/runtime/commands/run	2.298s
+ok  	github.com/wago-org/wago/cli/runtime/commands/validate	0.002s

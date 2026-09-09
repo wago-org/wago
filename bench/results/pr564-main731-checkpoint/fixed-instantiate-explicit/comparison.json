@@ -1,0 +1,86 @@
+[
+  {
+    "mode": "explicit",
+    "name": "BenchmarkPluginInstantiate/ruby",
+    "unit": "ns/op",
+    "label": "final",
+    "base": 1812448.5,
+    "candidate": 1589730,
+    "delta": -12.288266397638337,
+    "p": 0.004329004329004329,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      1671915,
+      1848995,
+      1680281,
+      1815147,
+      1818993,
+      1809750
+    ],
+    "candidateValues": [
+      1598460,
+      1674695,
+      1571303,
+      1581000,
+      1565477,
+      1655036
+    ]
+  },
+  {
+    "mode": "explicit",
+    "name": "BenchmarkPluginInstantiate/ruby",
+    "unit": "B/op",
+    "label": "final",
+    "base": 302067.5,
+    "candidate": 86626.5,
+    "delta": -71.32213826379865,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      302070,
+      302064,
+      302066,
+      302069,
+      302066,
+      302069
+    ],
+    "candidateValues": [
+      86624,
+      86629,
+      86624,
+      86629,
+      86624,
+      86630
+    ]
+  },
+  {
+    "mode": "explicit",
+    "name": "BenchmarkPluginInstantiate/ruby",
+    "unit": "allocs/op",
+    "label": "final",
+    "base": 9405,
+    "candidate": 779,
+    "delta": -91.71717171717172,
+    "p": 0.0021645021645021645,
+    "baseSamples": 6,
+    "candidateSamples": 6,
+    "baseValues": [
+      9405,
+      9405,
+      9405,
+      9405,
+      9405,
+      9405
+    ],
+    "candidateValues": [
+      779,
+      779,
+      779,
+      779,
+      779,
+      779
+    ]
+  }
+]

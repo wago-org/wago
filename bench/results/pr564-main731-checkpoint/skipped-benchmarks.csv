@@ -1,0 +1,25 @@
+bounds,label,group,benchmark,context,raw_log
+signals,base,BenchmarkSqliBenign,BenchmarkSqliBenign,"cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSqliBenign
+    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory
+--- SKIP: BenchmarkSqliBenign",full/base-signals-BenchmarkSqliBenign-0.txt
+signals,final,BenchmarkSqliBenign,BenchmarkSqliBenign,"cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSqliBenign
+    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory
+--- SKIP: BenchmarkSqliBenign",full/final-signals-BenchmarkSqliBenign-0.txt
+signals,final,BenchmarkCompileFullOptimizationAblation,BenchmarkCompileFullOptimizationAblation,"cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullOptimizationAblation
+    suite_test.go:332: enable with -wago.bench.optimization-ablation
+--- SKIP: BenchmarkCompileFullOptimizationAblation",full/final-signals-BenchmarkCompileFullOptimizationAblation-0.txt
+explicit,base,BenchmarkSqliBenign,BenchmarkSqliBenign,"cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSqliBenign
+    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory
+--- SKIP: BenchmarkSqliBenign",full/base-explicit-BenchmarkSqliBenign-0.txt
+explicit,final,BenchmarkSqliBenign,BenchmarkSqliBenign,"cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkSqliBenign
+    sqli_rule_test.go:31: sqli.wasm not present: open /home/hub/Code/Impart/impart/experimental/jack/libinjection/compare-build/sqli.wasm: no such file or directory
+--- SKIP: BenchmarkSqliBenign",full/final-explicit-BenchmarkSqliBenign-0.txt
+explicit,final,BenchmarkCompileFullOptimizationAblation,BenchmarkCompileFullOptimizationAblation,"cpu: AMD Ryzen 7 8845HS w/ Radeon 780M Graphics     
+BenchmarkCompileFullOptimizationAblation
+    suite_test.go:332: enable with -wago.bench.optimization-ablation
+--- SKIP: BenchmarkCompileFullOptimizationAblation",full/final-explicit-BenchmarkCompileFullOptimizationAblation-0.txt

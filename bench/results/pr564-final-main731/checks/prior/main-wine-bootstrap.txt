@@ -1,0 +1,6 @@
+--- FAIL: TestWineCmdBootstrapDownloadsVerifiesAndExecutesInstaller (3.52s)
+    install_test.go:358: Wine CMD download bootstrap: exit status 1
+        wago: the installer is unavailable; check your internet connection and try again
+FAIL
+FAIL	github.com/wago-org/wago	3.521s
+FAIL

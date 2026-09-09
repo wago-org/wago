@@ -1,0 +1,4 @@
+--- FAIL: TestMemoryAddressUsesUpperZeroFactArm64 (0.00s)
+    facts_arm64_test.go:278: non-canonical parameter address = 0x0, wasm trap: linear memory access out of bounds
+            at func[0] (func[0], wasm pc 0x3); want truncated address zero
+FAIL

@@ -1,0 +1,185 @@
+--- FAIL: TestWineCmdBootstrapDownloadsVerifiesAndExecutesInstaller (2.87s)
+    install_test.go:358: Wine CMD download bootstrap: exit status 1
+        wago: the installer is unavailable; check your internet connection and try again
+FAIL
+FAIL	github.com/wago-org/wago	22.340s
+ok  	github.com/wago-org/wago/cli/installer	1.030s
+ok  	github.com/wago-org/wago/cli/internal/automation	0.002s
+ok  	github.com/wago-org/wago/cli/internal/command	0.002s
+ok  	github.com/wago-org/wago/cli/internal/handoff	0.004s
+?   	github.com/wago-org/wago/cli/internal/parallel	[no test files]
+ok  	github.com/wago-org/wago/cli/internal/pluginmenu	0.002s
+ok  	github.com/wago-org/wago/cli/internal/project	0.381s
+ok  	github.com/wago-org/wago/cli/internal/settings	0.013s
+?   	github.com/wago-org/wago/cli/internal/settings/cmd/genschema	[no test files]
+ok  	github.com/wago-org/wago/cli/internal/tui	0.002s
+?   	github.com/wago-org/wago/cli/internal/ui	[no test files]
+ok  	github.com/wago-org/wago/cli/internal/wasmcall	0.002s
+ok  	github.com/wago-org/wago/cli/internal/watchsupervisor	1.236s
+ok  	github.com/wago-org/wago/cli/manager	0.014s
+ok  	github.com/wago-org/wago/cli/manager/commands/auth	0.002s
+ok  	github.com/wago-org/wago/cli/manager/commands/auth/login	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/auth/logout	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/auth/whoami	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/cache	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/cache/clean	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/cache/dir	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/cache/options	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/cache/prune	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/cache/size	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/compile	0.007s
+ok  	github.com/wago-org/wago/cli/manager/commands/config	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/config/completions	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/diff	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/get	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/list	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/options	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/reset	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/config/set	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/init	0.003s
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin	0.002s
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/add	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/catalog	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/config	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/deprecate	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/grant	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/outdated	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/publish	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/rebuild	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/remove	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/tree	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/plugin/unpublish	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/plugin/update	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/self	[no test files]
+?   	github.com/wago-org/wago/cli/manager/commands/self/uninstall	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/self/update	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/status	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/update	0.002s
+ok  	github.com/wago-org/wago/cli/manager/commands/version	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/version/current	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/version/install	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/version/list	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/version/switch	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/version/uninstall	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/commands/version/update	0.002s
+?   	github.com/wago-org/wago/cli/manager/commands/version/which	[no test files]
+ok  	github.com/wago-org/wago/cli/manager/internal/cache	0.002s
+ok  	github.com/wago-org/wago/cli/manager/internal/config	0.005s
+ok  	github.com/wago-org/wago/cli/manager/internal/plugin	0.359s
+ok  	github.com/wago-org/wago/cli/manager/internal/plugin/build	2.848s
+ok  	github.com/wago-org/wago/cli/manager/internal/progress	0.302s
+ok  	github.com/wago-org/wago/cli/manager/internal/registry	3.139s
+ok  	github.com/wago-org/wago/cli/manager/internal/self	0.116s
+?   	github.com/wago-org/wago/cli/manager/internal/self/replace	[no test files]
+--- FAIL: TestBuildTinyGoEmbedsArtifactWithoutCompiler (15.92s)
+    build_test.go:146: tinygo build: exit status 1
+        ld.lld: error: duplicate symbol: tinygo_task_exit
+        >>> defined in /tmp/tinygo2946055573/main.o
+        >>> defined in /home/jtenner/.cache/tinygo/obj-0832d60e077e91bf720011dc64b990dc1374ec6148bc3c02d5f14d66.bc
+--- FAIL: TestBuildTinyGoStripsByDefault (14.79s)
+    build_test.go:204: tinygo build: exit status 1
+        ld.lld: error: duplicate symbol: tinygo_task_exit
+        >>> defined in /tmp/tinygo205578945/main.o
+        >>> defined in /home/jtenner/.cache/tinygo/obj-0832d60e077e91bf720011dc64b990dc1374ec6148bc3c02d5f14d66.bc
+FAIL
+FAIL	github.com/wago-org/wago/cli/manager/internal/standalone	65.018s
+ok  	github.com/wago-org/wago/cli/manager/internal/status	0.007s
+ok  	github.com/wago-org/wago/cli/manager/internal/version	0.253s
+ok  	github.com/wago-org/wago/cli/runtime	0.008s
+ok  	github.com/wago-org/wago/cli/runtime/commands	0.003s
+wago: build: load Wago settings: unknown optimization setting "loop-precheck" for settings.json
+FAIL	github.com/wago-org/wago/cli/runtime/commands/build	0.003s
+?   	github.com/wago-org/wago/cli/runtime/commands/module	[no test files]
+?   	github.com/wago-org/wago/cli/runtime/commands/module/capabilities	[no test files]
+ok  	github.com/wago-org/wago/cli/runtime/commands/module/exports	0.002s
+?   	github.com/wago-org/wago/cli/runtime/commands/module/imports	[no test files]
+?   	github.com/wago-org/wago/cli/runtime/commands/plugin	[no test files]
+ok  	github.com/wago-org/wago/cli/runtime/commands/plugin/inspect	0.002s
+ok  	github.com/wago-org/wago/cli/runtime/commands/plugin/list	0.005s
+wago: run: load Wago settings: unknown optimization setting "inline-loop-callees" for settings.json
+FAIL	github.com/wago-org/wago/cli/runtime/commands/run	0.013s
+wago: validate: load Wago settings: unknown optimization setting "inline-loop-callees" for settings.json
+FAIL	github.com/wago-org/wago/cli/runtime/commands/validate	0.002s
+ok  	github.com/wago-org/wago/cli/runtime/internal/artifactcache	0.017s
+ok  	github.com/wago-org/wago/cli/runtime/internal/module	0.002s
+ok  	github.com/wago-org/wago/cli/runtime/internal/plugin	0.003s
+?   	github.com/wago-org/wago/cli/runtime/internal/profile	[no test files]
+ok  	github.com/wago-org/wago/cli/runtime/internal/version	0.003s
+ok  	github.com/wago-org/wago/cli/standalone	0.003s
+ok  	github.com/wago-org/wago/cli/wago	0.034s
+?   	github.com/wago-org/wago/codegen	[no test files]
+?   	github.com/wago-org/wago/codegen/amd64	[no test files]
+?   	github.com/wago-org/wago/codegen/arm64	[no test files]
+ok  	github.com/wago-org/wago/examples/01-hello	0.003s
+ok  	github.com/wago-org/wago/examples/02-runtime-typed	0.003s
+ok  	github.com/wago-org/wago/examples/03-host-import	0.004s
+ok  	github.com/wago-org/wago/examples/04-memory	0.003s
+ok  	github.com/wago-org/wago/examples/05-globals	0.003s
+ok  	github.com/wago-org/wago/examples/06-runtime-service	0.003s
+ok  	github.com/wago-org/wago/examples/07-runtime-limits	0.003s
+ok  	github.com/wago-org/wago/examples/08-custom-plugin	0.003s
+ok  	github.com/wago-org/wago/examples/09-plugin-config-lifecycle	0.002s
+ok  	github.com/wago-org/wago/examples/10-hooks	0.010s
+ok  	github.com/wago-org/wago/examples/11-source-transform	0.005s
+ok  	github.com/wago-org/wago/examples/12-caller-context	0.003s
+ok  	github.com/wago-org/wago/examples/13-plugin-contracts	0.002s
+ok  	github.com/wago-org/wago/examples/14-handles	0.002s
+ok  	github.com/wago-org/wago/examples/15-config	0.004s
+ok  	github.com/wago-org/wago/examples/16-serialize	0.004s
+ok  	github.com/wago-org/wago/examples/17-managed-instances	0.017s
+ok  	github.com/wago-org/wago/examples/18-custom-instruction	0.006s
+ok  	github.com/wago-org/wago/examples/19-custom-type	0.012s
+ok  	github.com/wago-org/wago/examples/20-core-handles	0.004s
+ok  	github.com/wago-org/wago/examples/21-guest-storage	0.004s
+ok  	github.com/wago-org/wago/examples/22-language-guests	0.009s
+ok  	github.com/wago-org/wago/examples/internal/exampleplugin	0.002s
+ok  	github.com/wago-org/wago/examples/internal/mods	0.003s
+ok  	github.com/wago-org/wago/internal/atomicfile	0.003s
+ok  	github.com/wago-org/wago/internal/filelock	0.053s
+ok  	github.com/wago-org/wago/internal/functionworkers	0.002s
+ok  	github.com/wago-org/wago/internal/genfacade	0.045s
+ok  	github.com/wago-org/wago/internal/httpclient	0.159s
+ok  	github.com/wago-org/wago/internal/installbootstrap	0.002s
+ok  	github.com/wago-org/wago/internal/jsonstrict	0.004s
+ok  	github.com/wago-org/wago/internal/managedrelease	0.220s
+ok  	github.com/wago-org/wago/internal/namecheck	0.185s
+ok  	github.com/wago-org/wago/internal/regularfile	0.004s
+ok  	github.com/wago-org/wago/internal/sourcearchive	0.108s
+ok  	github.com/wago-org/wago/internal/wagopaths	0.014s
+ok  	github.com/wago-org/wago/plugin	0.003s
+?   	github.com/wago-org/wago/src/core/codeimage	[no test files]
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot	0.198s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	6.911s
+?   	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	[no test files]
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/shared	0.014s
+ok  	github.com/wago-org/wago/src/core/compiler/codegen	0.005s
+ok  	github.com/wago-org/wago/src/core/compiler/frontend	0.017s
+ok  	github.com/wago-org/wago/src/core/compiler/ir	0.073s
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	0.009s
+ok  	github.com/wago-org/wago/src/core/compiler/wasm	2.642s
+?   	github.com/wago-org/wago/src/core/compiler/wasm/internal/geninstrnames	[no test files]
+ok  	github.com/wago-org/wago/src/core/encoder/amd64	0.012s
+ok  	github.com/wago-org/wago/src/core/encoder/arm64	0.019s
+ok  	github.com/wago-org/wago/src/core/nativeabi	0.004s
+ok  	github.com/wago-org/wago/src/core/plugins	0.012s
+ok  	github.com/wago-org/wago/src/core/runtime	0.620s
+ok  	github.com/wago-org/wago/src/core/runtime/abi	0.002s
+ok  	github.com/wago-org/wago/src/core/runtime/gc	0.004s
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	1.210s
+ok  	github.com/wago-org/wago/src/core/runtime/hostthunk	0.002s
+ok  	github.com/wago-org/wago/src/core/semver	0.003s
+ok  	github.com/wago-org/wago/src/wago	8.660s
+ok  	github.com/wago-org/wago/tests/cipolicy	0.004s
+ok  	github.com/wago-org/wago/tests/enginefuzz/oracle	0.005s
+?   	github.com/wago-org/wago/tests/enginefuzz/worker	[no test files]
+ok  	github.com/wago-org/wago/tests/regressioncorpus	0.005s
+ok  	github.com/wago-org/wago/tests/regressiontest	0.005s
+ok  	github.com/wago-org/wago/tests/runtimeconcurrency	0.082s
+ok  	github.com/wago-org/wago/tests/semanticcorpus	0.204s
+ok  	github.com/wago-org/wago/tests/spectest	0.057s
+ok  	github.com/wago-org/wago/tests/tools/docs-check	0.003s
+ok  	github.com/wago-org/wago/tests/tools/regression-corpus	0.058s
+?   	github.com/wago-org/wago/tests/tools/release-qualification	[no test files]
+ok  	github.com/wago-org/wago/tests/wasmtest	0.001s
+ok  	github.com/wago-org/wago/tests/wasmtimecore3	0.073s
+FAIL

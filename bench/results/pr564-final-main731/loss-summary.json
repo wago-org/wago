@@ -1,0 +1,56 @@
+{
+  "main": "731e95ff2cda7309eaf6d956f1417066bf7f1b69",
+  "branch": "b4f2360f517641803249c7ed998f37d8b0ec82a2",
+  "summary": [
+    {
+      "stage": "full screen",
+      "kind": "time",
+      "increased_rows": 950,
+      "p_below_005": 37
+    },
+    {
+      "stage": "full screen",
+      "kind": "memory",
+      "increased_rows": 443,
+      "p_below_005": 333
+    },
+    {
+      "stage": "longer repeat",
+      "kind": "time",
+      "increased_rows": 55,
+      "p_below_005": 11
+    },
+    {
+      "stage": "longer repeat",
+      "kind": "memory",
+      "increased_rows": 86,
+      "p_below_005": 64
+    },
+    {
+      "stage": "fixed memory",
+      "kind": "memory",
+      "increased_rows": 40,
+      "p_below_005": 16
+    },
+    {
+      "stage": "fixed memory",
+      "kind": "process peak RSS",
+      "increased_rows": 14,
+      "p_below_005": 4
+    },
+    {
+      "stage": "fixed instantiate",
+      "kind": "process peak RSS",
+      "increased_rows": 1,
+      "p_below_005": 0
+    },
+    {
+      "stage": "fixed rss",
+      "kind": "memory",
+      "increased_rows": 15,
+      "p_below_005": 14
+    }
+  ],
+  "wagoCostRows": 1604,
+  "allIncreasedRows": 2633
+}

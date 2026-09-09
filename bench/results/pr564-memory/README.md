@@ -22,7 +22,8 @@ below main and Lua counts are 1.18–1.85% below main. Their allocated bytes rem
 allocation counts vary across samples; a small positive median is not cleared
 merely because it lacks significance.
 
-Ruby instantiation, with exactly 128 operations per process:
+Ruby instantiation, with 128 timed operations per final sample, plus Go's
+initial one-operation calibration on each version:
 
 | Bounds | Metric | Main | After |
 | --- | --- | ---: | ---: |
@@ -57,8 +58,9 @@ linked table.
   case, 500 ms per timed sample, 11 cases per mode.
 - `compact-memory-*`: six triples, one operation per compiler case. These are
   cold allocation checks, **not** timing claims.
-- `compact-instantiate-*`: six triples, exactly 128 Ruby instantiations per
-  process. Compilation/setup is outside the benchmark timer.
+- `compact-instantiate-*`: six triples, 128 timed Ruby instantiations per final
+  sample, plus one calibration operation per process. Compilation/setup is
+  outside the benchmark timer.
 - `compact-rss-*`: six triples, one operation per full compact-compile corpus
   case, in one process. Use this for the earlier process-memory concern.
 

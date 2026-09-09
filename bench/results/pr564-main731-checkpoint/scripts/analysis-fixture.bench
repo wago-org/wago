@@ -1,0 +1,4 @@
+BenchmarkSerial-8 1 20 ns/op 2 calls/batch 10 B/op 2 allocs/op
+BenchmarkSerial-8 1 20 ns/op 10 calls/batch 100 B/op 4 allocs/op
+BenchmarkSerial-8 1 20 ns/op 200 calls/batch 1000 B/op 6 allocs/op
+BenchmarkParallel-8 100 30 ns/op 7 B/op 1 allocs/op
