@@ -151,8 +151,11 @@ jobs:
         run: |
           mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
           test "${#assets[@]}" -gt 0
-          notes=$(printf 'Automated canary build of main at `%s`. All supported Normal targets are required; unsupported Tiny variants are omitted. Unstable — may break without notice.\n\n' \
-            '${{ needs.prepare.outputs.sha }}'; sed -n '1,$p' .github/release-asset-naming.md)
+          gh api --method POST \
+            "repos/${{ github.repository }}/releases/generate-notes" \
+            -f tag_name="${{ needs.prepare.outputs.tag }}" \
+            -f target_commitish="${{ needs.prepare.outputs.sha }}" --jq .body |
+            sed 's/^## New Contributors$/## First-time contributors/' >release-notes.md
           if gh release view "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             target=$(gh api "repos/${{ github.repository }}/releases/tags/${{ needs.prepare.outputs.tag }}" --jq '.target_commitish')
             if [ "$target" != "${{ needs.prepare.outputs.sha }}" ]; then
@@ -160,7 +163,7 @@ jobs:
               exit 1
             fi
             gh release upload "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" --clobber "${assets[@]}"
-            gh release edit "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" --notes "$notes"
+            gh release edit "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" --notes-file release-notes.md
             echo "canary release already exists for ${{ needs.prepare.outputs.sha }}"
             exit 0
           fi
@@ -168,7 +171,7 @@ jobs:
             --repo "${{ github.repository }}" \
             --target "${{ needs.prepare.outputs.sha }}" \
             --title "Canary (${{ needs.prepare.outputs.version }})" \
-            --notes "$notes" \
+            --notes-file release-notes.md \
             --prerelease \
             "${assets[@]}"
       - name: Create documentation synchronization token

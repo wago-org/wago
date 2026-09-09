@@ -15,6 +15,14 @@ SHA that already passed main CI. Both paths build, smoke-test, checksum, and
 publish the same platform asset set. Before starting a new release series,
 update `RELEASE_SERIES` in `canary.yml`.
 
+## Release notes
+
+GitHub generates the public notes for every channel. Pull requests carrying the
+`enhancement` label appear under **New features**; all other included pull
+requests appear under **Changelog**. GitHub also identifies first-time
+contributors. Qualification details and asset hashes stay in
+`release-manifest.json` instead of cluttering the public notes.
+
 ## Choose a file
 
 Start with the Wago CLI that matches your operating system and CPU architecture:
