@@ -131,7 +131,9 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	if err != nil {
 		ui.Fatal("%s %s", ui.Red("trap:"), trapReason(err))
 	}
-	fmt.Println(format(export, values, result, params, results))
+	if output := format(result, results); output != "" {
+		fmt.Println(output)
+	}
 }
 
 func runStart(runtime *wago.Runtime, module *wago.Module, gc wago.GCConfig, configuredGC bool) {
