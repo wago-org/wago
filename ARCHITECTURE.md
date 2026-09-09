@@ -22,6 +22,10 @@ The retired list includes `inline-loop-callees` and `deep-fp-pins` from v1.
 Host calls convert both `HostExit` and non-nil `*HostExit` panics to `ExitError`,
 including calls through a Wasm wrapper and replayed host logs.
 
+Reference instructions constrain an unreachable stack value to a reference.
+The validator uses an internal heap bottom type for this value; it cannot match
+a numeric or vector operand and has no binary encoding.
+
 ## Start here
 
 Wago processes a module in five steps: **decode**, **validate**, **compile**,

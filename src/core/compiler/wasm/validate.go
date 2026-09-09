@@ -972,6 +972,15 @@ type val struct {
 	t       ValType
 	unknown bool
 }
+
+func nonNullValidationType(x val) ValType {
+	if x.unknown {
+		// A reference instruction constrains value bottom to reference bottom.
+		return RefVal(Ref(false, HeapType{lo: uint64(heapBottom)}, false))
+	}
+	return RefVal(x.t.Ref().WithNullable(false))
+}
+
 type ctrlKind uint8
 
 const (
