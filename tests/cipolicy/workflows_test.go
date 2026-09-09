@@ -109,6 +109,17 @@ func TestAggregateCIRequiresEveryWorkflowJob(t *testing.T) {
 	}
 }
 
+func TestCIDoesNotScheduleCoverage(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobs := workflowJobBlocks(string(workflow))
+	if _, ok := jobs["coverage"]; ok {
+		t.Fatal("CI must not schedule the coverage job for pull requests or main")
+	}
+}
+
 func workflowJobBlocks(workflow string) map[string]string {
 	lines := strings.Split(workflow, "\n")
 	jobLine := regexp.MustCompile(`^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$`)
