@@ -13,6 +13,9 @@ custom XMM values use a separate register bank, even when register numbers match
 Context-aware invocation checks cancellation after it acquires the instance
 gate, before it reads export metadata or enters guest or host code.
 
+CLI feature settings apply enables before disables. An explicit disable of
+`extended-constant-expressions` also disables `extended-const-expressions`.
+
 ## Start here
 
 Wago processes a module in five steps: **decode**, **validate**, **compile**,
