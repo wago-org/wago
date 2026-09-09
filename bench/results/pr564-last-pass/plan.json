@@ -1,0 +1,141 @@
+{
+  "main": "731e95ff2cda7309eaf6d956f1417066bf7f1b69",
+  "before": "b4f2360f517641803249c7ed998f37d8b0ec82a2",
+  "sourcePatchSHA256": "840e30b9095cfebd368e161e947613b10d48a0444b438ff88b46e9107e89c95b",
+  "go": "go version go1.27.1 linux/amd64",
+  "plan": [
+    {
+      "name": "cold-explicit",
+      "cases": [
+        [
+          "explicit",
+          "BenchmarkCompileFullWorkers/esbuild/p2"
+        ],
+        [
+          "explicit",
+          "BenchmarkCompileFullWorkers/esbuild/p4"
+        ],
+        [
+          "explicit",
+          "BenchmarkCompileFullWorkers/esbuild/auto"
+        ],
+        [
+          "explicit",
+          "BenchmarkCompileFullWorkers/sqlite3/p2"
+        ],
+        [
+          "explicit",
+          "BenchmarkCompileWorkers/json-as/p8"
+        ]
+      ],
+      "benchtime": "1x",
+      "samples": 6
+    },
+    {
+      "name": "timed-explicit",
+      "cases": [
+        [
+          "explicit",
+          "BenchmarkCompileFullWorkers/esbuild/p4"
+        ],
+        [
+          "explicit",
+          "BenchmarkCompileFullWorkers/sqlite3/p2"
+        ],
+        [
+          "explicit",
+          "BenchmarkCompileWorkers/json-as/p8"
+        ],
+        [
+          "explicit",
+          "BenchmarkCompileCompact/json-as"
+        ],
+        [
+          "explicit",
+          "BenchmarkExec/coremark.coremark_run"
+        ],
+        [
+          "explicit",
+          "BenchmarkExec/isa_f32.min"
+        ],
+        [
+          "explicit",
+          "BenchmarkExec/tiny.add"
+        ],
+        [
+          "explicit",
+          "BenchmarkExecParallel/process/isa_bulk_mem.copy_fwd_64"
+        ]
+      ],
+      "benchtime": "250ms",
+      "samples": 6
+    },
+    {
+      "name": "cold-signals",
+      "cases": [
+        [
+          "signals",
+          "BenchmarkCompileFullWorkers/esbuild/p2"
+        ],
+        [
+          "signals",
+          "BenchmarkCompileFullWorkers/esbuild/p4"
+        ],
+        [
+          "signals",
+          "BenchmarkCompileFullWorkers/esbuild/auto"
+        ],
+        [
+          "signals",
+          "BenchmarkCompileFullWorkers/sqlite3/p2"
+        ],
+        [
+          "signals",
+          "BenchmarkCompileWorkers/json-as/p8"
+        ]
+      ],
+      "benchtime": "1x",
+      "samples": 6
+    },
+    {
+      "name": "timed-signals",
+      "cases": [
+        [
+          "signals",
+          "BenchmarkCompileFullWorkers/esbuild/p4"
+        ],
+        [
+          "signals",
+          "BenchmarkCompileFullWorkers/sqlite3/p2"
+        ],
+        [
+          "signals",
+          "BenchmarkCompileWorkers/json-as/p8"
+        ],
+        [
+          "signals",
+          "BenchmarkCompileCompact/json-as"
+        ],
+        [
+          "signals",
+          "BenchmarkExec/coremark.coremark_run"
+        ],
+        [
+          "signals",
+          "BenchmarkExec/isa_f32.min"
+        ],
+        [
+          "signals",
+          "BenchmarkExec/tiny.add"
+        ],
+        [
+          "signals",
+          "BenchmarkExecParallel/process/isa_bulk_mem.copy_fwd_64"
+        ]
+      ],
+      "benchtime": "250ms",
+      "samples": 6
+    }
+  ],
+  "totalProcesses": 468
+}

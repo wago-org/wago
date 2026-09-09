@@ -1,0 +1,8 @@
+ok  	wagobench	11.212s
+?   	wagobench/chart	[no test files]
+ok  	wagobench/cmd/benchpub	(cached)
+?   	wagobench/cmd/explain	[no test files]
+?   	wagobench/cmd/isatable	[no test files]
+?   	wagobench/cmd/jsonprof	[no test files]
+?   	wagobench/cmd/validatestats	[no test files]
+?   	wagobench/corpus/gen	[no test files]

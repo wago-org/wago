@@ -1,0 +1,34 @@
+{
+  "names": [
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/esbuild/p4"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/esbuild/p2"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/sqlite3/p2"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/json-as/p8"
+    ]
+  ],
+  "labels": [
+    "base",
+    "before",
+    "join"
+  ],
+  "samples": 3,
+  "benchtime": "1x",
+  "procs": "8",
+  "binaries": {
+    "/home/jtenner/Projects/wago/.tmp/pr564-last-pass/base-explicit.test": "aca202567daaba1467bb9c03aa8a68aa45e9f6ba665decbde99ded0987bdfbab",
+    "/home/jtenner/Projects/wago/.tmp/pr564-last-pass/before-explicit.test": "075671becf95b14de31b1c36f4ea1c20223fe1747ee60a90c589309706e4504e",
+    "/home/jtenner/Projects/wago/.tmp/pr564-last-pass/join-explicit.test": "1b13b129d1b31e11171a849b0081c3272d68d12405ccc168bc2651b8146737b9"
+  },
+  "resourceLogs": true
+}

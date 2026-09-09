@@ -1,0 +1,142 @@
+diff --git a/src/core/compiler/backend/railshot/amd64/compile.go b/src/core/compiler/backend/railshot/amd64/compile.go
+index 14603de46..bf9dbae63 100644
+--- a/src/core/compiler/backend/railshot/amd64/compile.go
++++ b/src/core/compiler/backend/railshot/amd64/compile.go
+@@ -1856,6 +1856,19 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
+ 
+ 	// Join in original function order so layout, alignment, entry metadata, and
+ 	// relocation patching are byte-for-byte identical to the serial compiler.
++	if !policy.CompactNative {
++		// Worker bodies are complete. Do not reserve the original Wasm expansion
++		// estimate a second time when it substantially exceeds native output.
++		joinedBytes := 0
++		for i := range states {
++			if len(states[i].arena) > int(^uint(0)>>1)-joinedBytes {
++				joinedBytes = int(^uint(0) >> 1)
++				break
++			}
++			joinedBytes += len(states[i].arena)
++		}
++		codeCap = shared.JoinedModuleCodeCapacity(codeCap, joinedBytes, n)
++	}
+ 	code := make([]byte, 0, codeCap)
+ 	var literalWords []uint64
+ 	var directPrepared, directPreparedBounded []uint64
+diff --git a/src/core/compiler/backend/railshot/amd64/memory.go b/src/core/compiler/backend/railshot/amd64/memory.go
+index 36c315184..4cab75046 100644
+--- a/src/core/compiler/backend/railshot/amd64/memory.go
++++ b/src/core/compiler/backend/railshot/amd64/memory.go
+@@ -1183,7 +1183,10 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
+ 	// loop (WARP emitMemcpyNoBoundsCheck) — `rep movsb`'s ~30-cycle startup
+ 	// dominates the string-append copies AssemblyScript's __renew makes
+ 	// constantly; large copies keep rep movsb (ERMSB wins at size).
+-	var joins []int
++	// Four exits are emitted below. Keep their patch sites on the Go stack;
++	// append still grows if a later lowering adds more exits.
++	var joinScratch [4]int
++	joins := joinScratch[:0]
+ 	f.a.AluRI(cmpDigit, RCX, smallBulkMax, true)
+ 	big := f.a.JccPlaceholder(condAE)
+ 
+diff --git a/src/core/compiler/backend/railshot/arm64/compile.go b/src/core/compiler/backend/railshot/arm64/compile.go
+index 239833897..4eefd24ca 100644
+--- a/src/core/compiler/backend/railshot/arm64/compile.go
++++ b/src/core/compiler/backend/railshot/arm64/compile.go
+@@ -1827,6 +1827,19 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
+ 	}
+ 	relocs := parallelCallRelocTable(results, states)
+ 
++	if !policy.CompactNative {
++		// Worker bodies are complete. Compact adapter sharing keeps its old
++		// estimate because it temporarily appends an island before compaction.
++		joinedBytes := 0
++		for i := range states {
++			if len(states[i].arena) > int(^uint(0)>>1)-joinedBytes {
++				joinedBytes = int(^uint(0) >> 1)
++				break
++			}
++			joinedBytes += len(states[i].arena)
++		}
++		codeCap = shared.JoinedModuleCodeCapacity(codeCap, joinedBytes, n)
++	}
+ 	code := make([]byte, 0, codeCap)
+ 	var directPrepared, directPreparedLight, directPreparedBounded []uint64
+ 	var adapterTails []adapterTailInfo
+diff --git a/src/core/compiler/backend/railshot/arm64/memory.go b/src/core/compiler/backend/railshot/arm64/memory.go
+index e93eb857e..628cda53b 100644
+--- a/src/core/compiler/backend/railshot/arm64/memory.go
++++ b/src/core/compiler/backend/railshot/arm64/memory.go
+@@ -1400,7 +1400,10 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
+ 	// dominates the string-append copies AssemblyScript's __renew makes constantly;
+ 	// large copies fall through to the block byte-copy loops. joins26 collects the
+ 	// unconditional B (imm26) exits, joins19 the CBZ (imm19) exits.
+-	var joins26, joins19 []int
++	// Two exits of each encoding are emitted below. These are compiler-local
++	// patch sites, not runtime state; append retains its ordinary growth path.
++	var scratch26, scratch19 [2]int
++	joins26, joins19 := scratch26[:0], scratch19[:0]
+ 	f.cmpImm(X11, smallBulkMax, true)
+ 	big := f.a.Bcond(condAE)
+ 
+diff --git a/src/core/compiler/backend/railshot/shared/capacity.go b/src/core/compiler/backend/railshot/shared/capacity.go
+index ebf36ed56..238c7f94c 100644
+--- a/src/core/compiler/backend/railshot/shared/capacity.go
++++ b/src/core/compiler/backend/railshot/shared/capacity.go
+@@ -67,6 +67,24 @@ func ModuleCodeCapacity(bodyBytes, functions, expansion int) int {
+ 	return bodyBytes*expansion + overhead
+ }
+ 
++// JoinedModuleCodeCapacity tightens a non-compact parallel join's speculative
++// allocation once native body sizes are known. Keep alignment space per function
++// and a small allowance for module tails. This is only an allocation hint: append
++// must still grow for any larger output. Invalid or overflowing hints retain the
++// old estimate, and a tighter hint never increases the initial allocation.
++func JoinedModuleCodeCapacity(estimate, emittedBytes, functions int) int {
++	const maxInt = int(^uint(0) >> 1)
++	const tailAllowance = 4096
++	if emittedBytes < 0 || functions < 0 || functions > (maxInt-tailAllowance)/16 {
++		return estimate
++	}
++	overhead := functions*16 + tailAllowance
++	if emittedBytes > maxInt-overhead {
++		return estimate
++	}
++	return min(estimate, emittedBytes+overhead)
++}
++
+ // TaperedModuleCodeCapacity keeps the conservative small-module expansion while
+ // capping how much of that headroom a large module can retain. Expansion values
+ // are expressed in eighths (32 == 4x, 40 == 5x), avoiding floating point in the
+diff --git a/src/core/compiler/backend/railshot/shared/capacity_test.go b/src/core/compiler/backend/railshot/shared/capacity_test.go
+index e1fd41e8a..a655e20a4 100644
+--- a/src/core/compiler/backend/railshot/shared/capacity_test.go
++++ b/src/core/compiler/backend/railshot/shared/capacity_test.go
+@@ -2,6 +2,28 @@ package shared
+ 
+ import "testing"
+ 
++func TestJoinedModuleCodeCapacity(t *testing.T) {
++	const maxInt = int(^uint(0) >> 1)
++	for _, tt := range []struct {
++		name                               string
++		estimate, emitted, functions, want int
++	}{
++		{"large overestimate", 1 << 20, 128 << 10, 100, (128 << 10) + 1600 + 4096},
++		{"small estimate", 256, 80, 1, 256},
++		{"underestimate retains growth", 10000, 20000, 3, 10000},
++		{"negative emitted", 8000, -1, 1, 8000},
++		{"negative functions", 8000, 100, -1, 8000},
++		{"emitted overflow", 8000, maxInt, 1, 8000},
++		{"function overflow", 8000, 100, maxInt, 8000},
++	} {
++		t.Run(tt.name, func(t *testing.T) {
++			if got := JoinedModuleCodeCapacity(tt.estimate, tt.emitted, tt.functions); got != tt.want {
++				t.Fatalf("joined capacity = %d, want %d", got, tt.want)
++			}
++		})
++	}
++}
++
+ func TestStackArenaCapacity(t *testing.T) {
+ 	if got := StackArenaCapacity(64, 0, 12); got != 19 {
+ 		t.Fatalf("hinted capacity = %d, want 19", got)

@@ -1,0 +1,22 @@
+?   	github.com/wago-org/wago/src/core/codeimage	[no test files]
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot	0.090s
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64	5.877s
+?   	github.com/wago-org/wago/src/core/compiler/backend/railshot/arm64	[no test files]
+ok  	github.com/wago-org/wago/src/core/compiler/backend/railshot/shared	0.003s
+ok  	github.com/wago-org/wago/src/core/compiler/codegen	(cached)
+ok  	github.com/wago-org/wago/src/core/compiler/frontend	(cached)
+ok  	github.com/wago-org/wago/src/core/compiler/ir	0.028s
+ok  	github.com/wago-org/wago/src/core/compiler/optimization	(cached)
+ok  	github.com/wago-org/wago/src/core/compiler/wasm	1.296s
+?   	github.com/wago-org/wago/src/core/compiler/wasm/internal/geninstrnames	[no test files]
+ok  	github.com/wago-org/wago/src/core/encoder/amd64	(cached)
+ok  	github.com/wago-org/wago/src/core/encoder/arm64	(cached)
+ok  	github.com/wago-org/wago/src/core/nativeabi	(cached)
+ok  	github.com/wago-org/wago/src/core/plugins	(cached)
+ok  	github.com/wago-org/wago/src/core/runtime	(cached)
+ok  	github.com/wago-org/wago/src/core/runtime/abi	(cached)
+ok  	github.com/wago-org/wago/src/core/runtime/gc	(cached)
+ok  	github.com/wago-org/wago/src/core/runtime/gc/native	(cached)
+ok  	github.com/wago-org/wago/src/core/runtime/hostthunk	0.002s
+ok  	github.com/wago-org/wago/src/core/semver	(cached)
+ok  	github.com/wago-org/wago/src/wago	7.533s

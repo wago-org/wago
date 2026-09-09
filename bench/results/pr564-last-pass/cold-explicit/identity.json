@@ -1,0 +1,38 @@
+{
+  "names": [
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/esbuild/p2"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/esbuild/p4"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/esbuild/auto"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileFullWorkers/sqlite3/p2"
+    ],
+    [
+      "explicit",
+      "BenchmarkCompileWorkers/json-as/p8"
+    ]
+  ],
+  "labels": [
+    "base",
+    "before",
+    "final"
+  ],
+  "samples": 6,
+  "benchtime": "1x",
+  "procs": "8",
+  "binaries": {
+    "/home/jtenner/Projects/wago/.tmp/pr564-last-pass/base-explicit.test": "aca202567daaba1467bb9c03aa8a68aa45e9f6ba665decbde99ded0987bdfbab",
+    "/home/jtenner/Projects/wago/.tmp/pr564-last-pass/before-explicit.test": "075671becf95b14de31b1c36f4ea1c20223fe1747ee60a90c589309706e4504e",
+    "/home/jtenner/Projects/wago/.tmp/pr564-last-pass/final-explicit.test": "09a4de5a8950d156f34a324ad17d5b42779919ccd1694ee9e9b0bb1bad4411ea"
+  },
+  "resourceLogs": true
+}

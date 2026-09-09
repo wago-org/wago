@@ -1,5 +1,17 @@
 # PR #564 correctness and performance qualification
 
+## Bounded final memory follow-up
+
+The [last-pass report](bench/results/pr564-last-pass/README.md) qualifies two
+allocation-only changes after `b4f2360f5`: a tighter non-compact parallel join
+capacity and stack-backed dynamic-copy patch lists. The 468-process focused
+comparison took 217 seconds. Selected esbuild allocated bytes are 5.6–11.1%
+below main and allocation counts 7.7–15.1% below main. All selected cold byte
+medians are lower; some allocation-count, peak-RSS, and timing losses remain.
+All source, race, ARM64/QEMU, and bench checks pass, and all 112 checked AMD64
+native-code pairs still match main. This is not a new full-suite qualification;
+the following full report remains tied to its earlier measured code.
+
 ## Final measured losses against main 731e95ff2
 
 Production code `b4f2360f5` is compared with freshly measured main `731e95ff2`.

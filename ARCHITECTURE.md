@@ -299,6 +299,15 @@ a one-node underestimate. The existing large-arena growth and retention limits
 remain unchanged. Sparse global-hint storage uses the same power-of-two capacity
 rule in serial and parallel scans, starting at one record instead of eight.
 
+Parallel non-compact codegen sizes its final heap join from completed native
+worker bytes when that is below the original Wasm expansion estimate. Checked
+arithmetic adds per-function alignment space and a 4 KiB module-tail allowance.
+This remains a capacity hint, not an output limit: append can grow. Compact
+adapter sharing keeps its old estimate because it temporarily appends an island
+before compaction. Code layout, relocation checks, and emitted bytes are unchanged.
+Dynamic `memory.copy` lowering uses stack-backed lists for its four fixed branch
+patch sites (two per branch encoding on ARM64), with ordinary append fallback.
+
 Parallel codegen reserves at most 64 local slots per worker; a larger function
 uses the normal growth path. Parallel hint scans allocate dense global scratch
 once, then give each worker exclusive, capacity-bounded slices. Each worker has

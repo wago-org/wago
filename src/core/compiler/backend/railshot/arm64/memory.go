@@ -1400,7 +1400,10 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	// dominates the string-append copies AssemblyScript's __renew makes constantly;
 	// large copies fall through to the block byte-copy loops. joins26 collects the
 	// unconditional B (imm26) exits, joins19 the CBZ (imm19) exits.
-	var joins26, joins19 []int
+	// Two exits of each encoding are emitted below. These are compiler-local
+	// patch sites, not runtime state; append retains its ordinary growth path.
+	var scratch26, scratch19 [2]int
+	joins26, joins19 := scratch26[:0], scratch19[:0]
 	f.cmpImm(X11, smallBulkMax, true)
 	big := f.a.Bcond(condAE)
 

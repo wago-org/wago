@@ -1856,6 +1856,19 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 
 	// Join in original function order so layout, alignment, entry metadata, and
 	// relocation patching are byte-for-byte identical to the serial compiler.
+	if !policy.CompactNative {
+		// Worker bodies are complete. Do not reserve the original Wasm expansion
+		// estimate a second time when it substantially exceeds native output.
+		joinedBytes := 0
+		for i := range states {
+			if len(states[i].arena) > int(^uint(0)>>1)-joinedBytes {
+				joinedBytes = int(^uint(0) >> 1)
+				break
+			}
+			joinedBytes += len(states[i].arena)
+		}
+		codeCap = shared.JoinedModuleCodeCapacity(codeCap, joinedBytes, n)
+	}
 	code := make([]byte, 0, codeCap)
 	var literalWords []uint64
 	var directPrepared, directPreparedBounded []uint64

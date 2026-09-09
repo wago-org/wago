@@ -1827,6 +1827,19 @@ func compileModuleParallel(m *wasm.Module, opts CompileOptions, workers, codeCap
 	}
 	relocs := parallelCallRelocTable(results, states)
 
+	if !policy.CompactNative {
+		// Worker bodies are complete. Compact adapter sharing keeps its old
+		// estimate because it temporarily appends an island before compaction.
+		joinedBytes := 0
+		for i := range states {
+			if len(states[i].arena) > int(^uint(0)>>1)-joinedBytes {
+				joinedBytes = int(^uint(0) >> 1)
+				break
+			}
+			joinedBytes += len(states[i].arena)
+		}
+		codeCap = shared.JoinedModuleCodeCapacity(codeCap, joinedBytes, n)
+	}
 	code := make([]byte, 0, codeCap)
 	var directPrepared, directPreparedLight, directPreparedBounded []uint64
 	var adapterTails []adapterTailInfo
