@@ -15,6 +15,8 @@ gate, before it reads export metadata or enters guest or host code.
 
 CLI feature settings apply enables before disables. An explicit disable of
 `extended-constant-expressions` also disables `extended-const-expressions`.
+Version-1 global and local settings accept known retired optimization names as
+compatibility no-ops. Unknown names still produce an error.
 
 ## Start here
 

@@ -6,7 +6,28 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wago-org/wago/cli/internal/project"
 )
+
+func TestGlobalSettingsIgnoreRetiredV1Optimizations(t *testing.T) {
+	for _, name := range project.RetiredOptimizationNames() {
+		for _, enabled := range []bool{false, true} {
+			path := filepath.Join(t.TempDir(), "settings.json")
+			data := fmt.Sprintf(`{"version":1,"optimizations":{%q:%t}}`, name, enabled)
+			if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			config, err := LoadFile(path)
+			if err != nil {
+				t.Fatalf("%s=%v: %v", name, enabled, err)
+			}
+			if _, ok := config.Optimizations[name]; ok {
+				t.Fatalf("retired option %s retained in active settings", name)
+			}
+		}
+	}
+}
 
 func TestSettingsRoundTripAndDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
