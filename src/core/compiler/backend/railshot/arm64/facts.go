@@ -46,12 +46,32 @@ func (st *storage) setEHRoot(root bool) {
 
 func (f *fn) factsForLocal(x int) valueFacts {
 	// A serialized i32 parameter can arrive in a 64-bit carrier with high bits
-	// set. Only a recorded machine-value proof can remove canonicalization;
-	// the Wasm type alone is not that proof, including across control joins.
-	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
-		return f.locals[x].facts
+	// set. Declared i32 locals have a stronger representation invariant: their
+	// zero initializer is canonical, and setLocal canonicalizes any assignment
+	// whose producer does not already write a W register. That invariant survives
+	// control joins without assignment-version sidecars.
+	if uint(x) >= uint(len(f.locals)) {
+		return 0
 	}
-	return 0
+	facts := valueFacts(0)
+	if f.declaredI32Local(x) {
+		facts |= factUpper32Zero
+	}
+	if f.localFactsEnabled {
+		facts |= f.locals[x].facts
+	}
+	return facts
+}
+
+func (f *fn) declaredI32Local(x int) bool {
+	return f.opt(optValueFacts) && x >= f.nParams && uint(x) < uint(len(f.localType)) && f.localType[x] == mtI32
+}
+
+func (f *fn) canonicalizeDeclaredI32Local(x int, reg Reg, facts valueFacts) {
+	if f.declaredI32Local(x) && !facts.has(factUpper32Zero) {
+		f.a.MovReg32(reg, reg)
+		f.stats.peep("local-i32-canonicalize")
+	}
 }
 
 func (f *fn) setFactsForLocal(x int, facts valueFacts) {

@@ -1134,7 +1134,8 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	}
 	// Capture the semantic result before condensing or moving it. Every assignment
 	// replaces the current straight-line version of the local.
-	f.setFactsForLocal(x, e.st.valueFacts())
+	assignedFacts := e.st.valueFacts()
+	f.setFactsForLocal(x, assignedFacts)
 	// In-place self-update `local.set $x (binop (local.get $x) …)`: let condenseInto
 	// consume the top expression straight into x's register instead of pre-copying
 	// its (local.get $x) operand. condenseBinary handles an operand aliasing dest.
@@ -1156,6 +1157,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		// expressions; clear that ownership because pinned-local registers are not
 		// allocator scratch registers.
 		f.condenseInto(e, pr)
+		f.canonicalizeDeclaredI32Local(x, pr, assignedFacts)
 		f.release(pr)
 		f.markLocalDirty(x) // value now lives (only) in the register
 		if tee {
@@ -1235,6 +1237,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.condense(e, regNone)
 	}
 	r := f.materialize(e)
+	f.canonicalizeDeclaredI32Local(x, r, assignedFacts)
 	f.st64(SP, f.localOff(x), r) // helper hides the scaled-offset fallback (§6.1)
 	f.locals[x].state = lsMem
 	if !tee {
