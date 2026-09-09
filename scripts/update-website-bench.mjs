@@ -28,13 +28,6 @@ const ENGINES = [
   { id: "railshot", label: "wago" },
   { id: "wazero", label: "wazero" },
 ];
-const APPLICATION_CORPUS = new Set([
-  "json-as", "blake-as", "utf-as",
-  "json-as-simd", "blake-as-simd", "utf-as-simd",
-  "coremark", "blake3", "qoi", "lz4", "zlib", "zstd",
-  "wasm3", "lua", "sqlite3", "ruby", "esbuild",
-]);
-
 const benchmarkSets = await loadBenchmarkSets();
 
 // Row/group spec helpers. A spec is pure data (no metric access) — buildRow
@@ -68,159 +61,23 @@ const TABS = [
       rs("JSON deserialize", "json-as, SWAR", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN"),
     ],
   },
-  {
-    id: "compile",
-    label: "Compile",
-    items: [
-      grp("Micro modules"),
-      rs("tiny", "smallest valid module", "CompileFull/tiny", "WazeroCompile/tiny"),
-      rs("fib_rec", "recursive fib", "CompileFull/fib_rec", "WazeroCompile/fib_rec"),
-      rs("dispatch", "call_indirect table", "CompileFull/dispatch", "WazeroCompile/dispatch"),
-      rs("many_funcs", "thousands of functions", "CompileFull/many_funcs", "WazeroCompile/many_funcs"),
-      grp("Compute kernels"),
-      rs("linked_list", "dependent-load chase", "CompileFull/linked_list", "WazeroCompile/linked_list"),
-      rs("memory_tree", "loads + calls", "CompileFull/memory_tree", "WazeroCompile/memory_tree"),
-      rs("sieve", "Eratosthenes", "CompileFull/sieve", "WazeroCompile/sieve"),
-      rs("mandelbrot", "f64 escape-time", "CompileFull/mandelbrot", "WazeroCompile/mandelbrot"),
-      grp("Benchmarks Game (Rust)"),
-      rs("nbody", "leapfrog integrator", "CompileFull/nbody", "WazeroCompile/nbody"),
-      rs("spectralnorm", "AᵀA power iteration", "CompileFull/spectralnorm", "WazeroCompile/spectralnorm"),
-      rs("fannkuch", "permutation pancake-flips", "CompileFull/fannkuch", "WazeroCompile/fannkuch"),
-      grp("Crypto & graphics (Rust)"),
-      rs("matmul", "64³ f64 multiply-add", "CompileFull/matmul", "WazeroCompile/matmul"),
-      rs("quicksort", "recursive int sort", "CompileFull/quicksort", "WazeroCompile/quicksort"),
-      rs("crc32", "table-driven checksum", "CompileFull/crc32", "WazeroCompile/crc32"),
-      rs("sha256", "SHA-256 hash", "CompileFull/sha256", "WazeroCompile/sha256"),
-      rs("raytrace", "recursive ray tracer", "CompileFull/raytrace", "WazeroCompile/raytrace"),
-      grp("Real-world (AssemblyScript)"),
-      rs("json-as", "JSON SWAR", "CompileFull/json-as", "WazeroCompile/json-as"),
-      rs("blake-as", "BLAKE3 SWAR", "CompileFull/blake-as", "WazeroCompile/blake-as"),
-      rs("utf-as", "UTF SWAR transcode", "CompileFull/utf-as", "WazeroCompile/utf-as"),
-      grp("Semantic corpus — full compile: decode + validate + codegen"),
-      rs("CoreMark", "integer, lists, matrix, state machine", "CompileFull/coremark", "WazeroCompile/coremark"),
-      rs("BLAKE3", "published hash vectors", "CompileFull/blake3", "WazeroCompile/blake3"),
-      rs("QOI", "image encode/decode", "CompileFull/qoi", "WazeroCompile/qoi"),
-      rs("LZ4", "compression library", "CompileFull/lz4", "WazeroCompile/lz4"),
-      rs("zlib", "DEFLATE library", "CompileFull/zlib", "WazeroCompile/zlib"),
-      rs("Zstandard", "decompression library", "CompileFull/zstd", "WazeroCompile/zstd"),
-      // Real-world interpreters/engines. These carry WASI/host imports so they
-      // can't yet be executed here, but the backend compiles them — so this is a
-      // like-for-like FULL-compile race (decode + validate + codegen) vs wazero's
-      // CompileModule. wago's CompileFull is the matching whole-pipeline metric.
-      grp("Real-world programs — full compile: decode + validate + codegen"),
-      rs("Lua 5.4", "interpreter · 270 KB", "CompileFull/lua", "WazeroCompile/lua"),
-      rs("SQLite 3.46", "database engine · 920 KB", "CompileFull/sqlite3", "WazeroCompile/sqlite3"),
-      rs("esbuild", "Go bundler · 12 MB", "CompileFull/esbuild", "WazeroCompile/esbuild"),
-      rs("Ruby 3.3", "interpreter · 16 MB, 17k funcs", "CompileFull/ruby", "WazeroCompile/ruby"),
-    ],
-  },
-  {
-    id: "instantiate",
-    label: "Instantiate",
-    items: [
-      grp("Micro modules"),
-      rs("tiny", "smallest valid module", "Instantiate/tiny", "WazeroInstantiate/tiny"),
-      rs("fib_rec", "recursive fib", "Instantiate/fib_rec", "WazeroInstantiate/fib_rec"),
-      rs("many_funcs", "thousands of functions", "Instantiate/many_funcs", "WazeroInstantiate/many_funcs"),
-      grp("Compute kernels"),
-      rs("linked_list", "dependent-load chase", "Instantiate/linked_list", "WazeroInstantiate/linked_list"),
-      rs("sieve", "Eratosthenes", "Instantiate/sieve", "WazeroInstantiate/sieve"),
-      rs("nbody", "leapfrog integrator", "Instantiate/nbody", "WazeroInstantiate/nbody"),
-      rs("matmul", "64³ f64 multiply-add", "Instantiate/matmul", "WazeroInstantiate/matmul"),
-      rs("raytrace", "recursive ray tracer", "Instantiate/raytrace", "WazeroInstantiate/raytrace"),
-      grp("AssemblyScript"),
-      rs("json-as", "JSON SWAR", "Instantiate/json-as", "WazeroInstantiate/json-as"),
-      rs("blake-as", "BLAKE3 SWAR", "Instantiate/blake-as", "WazeroInstantiate/blake-as"),
-      rs("utf-as", "UTF SWAR transcode", "Instantiate/utf-as", "WazeroInstantiate/utf-as"),
-      grp("Semantic corpus"),
-      rs("CoreMark", "integer, lists, matrix, state machine", "Instantiate/coremark", "WazeroInstantiate/coremark"),
-      rs("BLAKE3", "published hash vectors", "Instantiate/blake3", "WazeroInstantiate/blake3"),
-      rs("QOI", "image encode/decode", "Instantiate/qoi", "WazeroInstantiate/qoi"),
-      rs("LZ4", "compression library", "Instantiate/lz4", "WazeroInstantiate/lz4"),
-      rs("zlib", "DEFLATE library", "Instantiate/zlib", "WazeroInstantiate/zlib"),
-      rs("Zstandard", "decompression library", "Instantiate/zstd", "WazeroInstantiate/zstd"),
-    ],
-  },
-  {
-    id: "memory",
-    label: "Memory",
-    items: [
-      grp("Instantiation — Go heap"),
-      rs("fib_rec instance", "Go heap bytes allocated per fresh instance", "Instantiate/fib_rec", "WazeroInstantiate/fib_rec", "leaner", "bytes"),
-      grp("Full compile — Go heap bytes"),
-      rs("tiny", "smallest module", "CompileFull/tiny", "WazeroCompile/tiny", "leaner", "bytes"),
-      rs("memory tree", "calls + linear-memory access", "CompileFull/memory_tree", "WazeroCompile/memory_tree", "leaner", "bytes"),
-      rs("json-as", "AssemblyScript JSON", "CompileFull/json-as", "WazeroCompile/json-as", "leaner", "bytes"),
-      rs("blake-as", "AssemblyScript BLAKE3", "CompileFull/blake-as", "WazeroCompile/blake-as", "leaner", "bytes"),
-      rs("esbuild", "Go bundler · 12 MB", "CompileFull/esbuild", "WazeroCompile/esbuild", "leaner", "bytes"),
-      rs("Ruby 3.3", "interpreter · 16 MB", "CompileFull/ruby", "WazeroCompile/ruby", "leaner", "bytes"),
-    ],
-  },
-  {
-    id: "exec",
-    label: "Exec",
-    items: [
-      grp("Micro ops"),
-      rs("Call overhead", "tiny host → wasm call", "Exec/tiny.add", "WazeroExec/tiny.add"),
-      rs("Iterative fib", "fib_iter loop", "Exec/fib_iter.fib", "WazeroExec/fib_iter.fib"),
-      rs("Recursive fib", "fib_rec", "Exec/fib_rec.fib", "WazeroExec/fib_rec.fib"),
-      rs("Dispatch", "call_indirect apply", "Exec/dispatch.apply", "WazeroExec/dispatch.apply"),
-      grp("Compute kernels"),
-      rs("Linked list", "dependent-load chase", "Exec/linked_list.sum", "WazeroExec/linked_list.sum"),
-      rs("Recursive tree", "memory_tree, loads + calls", "Exec/memory_tree.run", "WazeroExec/memory_tree.run"),
-      rs("Sieve", "Eratosthenes", "Exec/sieve.count", "WazeroExec/sieve.count"),
-      rs("Mandelbrot", "f64 escape-time", "Exec/mandelbrot.render", "WazeroExec/mandelbrot.render"),
-      grp("Benchmarks Game (Rust)"),
-      rs("N-body", "leapfrog solar-system integrator", "Exec/nbody.step", "WazeroExec/nbody.step"),
-      rs("Spectral norm", "AᵀA power iteration + div", "Exec/spectralnorm.run", "WazeroExec/spectralnorm.run"),
-      rs("Fannkuch-redux", "permutation pancake-flips", "Exec/fannkuch.run", "WazeroExec/fannkuch.run"),
-      grp("Crypto & graphics (Rust)"),
-      rs("Matrix multiply", "64³ f64 multiply-add", "Exec/matmul.run", "WazeroExec/matmul.run"),
-      rs("Quicksort", "recursive int sort", "Exec/quicksort.sortN", "WazeroExec/quicksort.sortN"),
-      rs("CRC-32", "table-driven checksum", "Exec/crc32.hashN", "WazeroExec/crc32.hashN"),
-      rs("SHA-256", "64-round hash, 8 KiB", "Exec/sha256.hashN", "WazeroExec/sha256.hashN"),
-      rs("Ray tracer", "recursive Whitted, depth-4 mirrors", "Exec/raytrace.render", "WazeroExec/raytrace.render"),
-      grp("Real-world (AssemblyScript)"),
-      rs("JSON serialize", "json-as, SWAR", "Exec/json-as.serializeN", "WazeroExec/json-as.serializeN"),
-      rs("JSON deserialize", "json-as, SWAR", "Exec/json-as.deserializeN", "WazeroExec/json-as.deserializeN"),
-      rs("BLAKE3 hash", "blake-as, SWAR", "Exec/blake-as.hashN", "WazeroExec/blake-as.hashN"),
-      rs("UTF transcode", "utf-as, SWAR", "Exec/utf-as.convertN", "WazeroExec/utf-as.convertN"),
-      grp("AssemblyScript SIMD"),
-      rs("JSON serialize", "json-as SIMD", "Exec/json-as-simd.serializeN", "WazeroExec/json-as-simd.serializeN"),
-      rs("JSON deserialize", "json-as SIMD", "Exec/json-as-simd.deserializeN", "WazeroExec/json-as-simd.deserializeN"),
-      rs("BLAKE3 hash", "blake-as SIMD, 4 KiB", "Exec/blake-as-simd.hashN", "WazeroExec/blake-as-simd.hashN"),
-      rs("UTF transcode", "utf-as SIMD, mixed text", "Exec/utf-as-simd.convertN", "WazeroExec/utf-as-simd.convertN"),
-      grp("Semantic corpus — exact-oracle workloads"),
-      rs("CoreMark", "2,000 iterations · self-checking CRC", "Exec/coremark.coremark_run", "WazeroExec/coremark.coremark_run"),
-      rs("BLAKE3 hash", "35 published vectors", "Exec/blake3.blake3_hash", "WazeroExec/blake3.blake3_hash"),
-      rs("BLAKE3 keyed hash", "35 published vectors", "Exec/blake3.blake3_keyed_hash", "WazeroExec/blake3.blake3_keyed_hash"),
-      rs("BLAKE3 derive key", "35 published vectors", "Exec/blake3.blake3_derive_key", "WazeroExec/blake3.blake3_derive_key"),
-      rs("QOI encode", "exact encoded bytes", "Exec/qoi.qoi_encode_run", "WazeroExec/qoi.qoi_encode_run"),
-      rs("QOI decode", "exact decoded pixels", "Exec/qoi.qoi_decode_run", "WazeroExec/qoi.qoi_decode_run"),
-      rs("LZ4 compress", "exact compressed size and bytes", "Exec/lz4.lz4_compress_run", "WazeroExec/lz4.lz4_compress_run"),
-      rs("LZ4 decompress", "exact decompressed bytes", "Exec/lz4.lz4_decompress_run", "WazeroExec/lz4.lz4_decompress_run"),
-      rs("zlib inflate", "exact decoded stream", "Exec/zlib.zlib_inflate_run", "WazeroExec/zlib.zlib_inflate_run"),
-      rs("Zstandard decompress", "exact decoded frame", "Exec/zstd.zstd_decompress_run", "WazeroExec/zstd.zstd_decompress_run"),
-    ],
-  },
 ];
 
 // The detailed tables are derived from the benchmark corpus instead of a
 // hand-picked shortlist. This keeps every available module/export visible when
 // the manifest grows and makes missing benchmark pairs obvious during review.
-TABS.splice(1, TABS.length - 1, ...buildCorpusTabs(benchmarkSets));
+TABS.push(...buildCorpusTabs(benchmarkSets));
 
 function buildCorpusTabs(sets) {
   const modules = [];
   const seenModules = new Set();
   for (const set of sets) {
     for (const [name, info] of Object.entries(set.modules ?? {})) {
-      if (!APPLICATION_CORPUS.has(name) && info.category !== "application") continue;
       if (seenModules.has(name)) continue;
       seenModules.add(name);
       modules.push({
         name,
-        category: name === "wasm3" ? "real-large" : info.category || "other",
+        category: info.category || "other",
         suite: info.suite || "",
         desc: info.desc || "",
       });
@@ -358,11 +215,12 @@ async function loadRunMetrics(path, fallbackArch = "") {
   if (generalRaw?.commit && run.commit && !String(run.commit).startsWith(generalRaw.commit) && !String(generalRaw.commit).startsWith(run.commit)) {
     throw new Error(`general benchmark commit ${generalRaw.commit} does not match ${run.commit}`);
   }
-  const general = buildGeneralSummary(metrics, generalRaw);
-  return { metrics, modules: run.modules ?? {}, general, external: generalRaw, source: path, arch, goos: run.goos || "", commit: run.commit || "", cpu: run.cpu || "" };
+  const modules = run.modules ?? {};
+  const general = buildGeneralSummary(metrics, generalRaw, modules);
+  return { metrics, modules, general, external: generalRaw, source: path, arch, goos: run.goos || "", commit: run.commit || "", cpu: run.cpu || "" };
 }
 
-function buildGeneralSummary(metrics, raw) {
+function buildGeneralSummary(metrics, raw, modules) {
   const compileNames = new Map([
     ["railshot-native", "railshot"],
     ["wazero", "wazero"],
@@ -383,29 +241,32 @@ function buildGeneralSummary(metrics, raw) {
       compile.set(engine, aggregate);
     }
   }
-  // Summary means use only exact Wago/wazero pairs. A plugin-backed Wago row
-  // remains visible in the detailed table when wazero lacks that host runtime,
-  // but it cannot silently enter one side of the aggregate as a zero or as an
-  // unmatched sample.
-  const instantiate = pairedMetricGeomeans(metrics, "Instantiate/", "WazeroInstantiate/", false, APPLICATION_CORPUS);
-  const execution = pairedMetricGeomeans(metrics, "Exec/", "WazeroExec/", true, APPLICATION_CORPUS);
+  // Summary means use only exact Wago/wazero pairs from the catalog recorded in
+  // the benchmark run. Missing pairs never enter one side as zero-valued data.
+  const catalogModules = new Set(Object.keys(modules));
+  const includedModules = catalogModules.size === 0 ? null : catalogModules;
+  const applicationModules = new Set(Object.entries(modules)
+    .filter(([, info]) => info.category === "application")
+    .map(([name]) => name));
+  const instantiate = pairedMetricGeomeans(metrics, "Instantiate/", "WazeroInstantiate/", false, includedModules);
+  const execution = pairedMetricGeomeans(metrics, "Exec/", "WazeroExec/", true, includedModules);
   const machineCode = pairedMetricGeomeans(
     metrics,
     "CompileFull/",
     "WazeroCompile/",
     false,
-    APPLICATION_CORPUS,
+    includedModules,
     "codeBytes",
   );
   const compileTime = {
-    railshot: metricGeomean(metrics, "CompileFull/", false, "ns", APPLICATION_CORPUS),
-    wazero: metricGeomean(metrics, "WazeroCompile/", false, "ns", APPLICATION_CORPUS),
+    railshot: metricGeomean(metrics, "CompileFull/", false, "ns", includedModules),
+    wazero: metricGeomean(metrics, "WazeroCompile/", false, "ns", includedModules),
   };
   const summary = [
     ["Compile", "fresh process", "ns", compileTime],
     ["Compile heap", "per compile", "bytes", {
-      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes", APPLICATION_CORPUS),
-      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes", APPLICATION_CORPUS),
+      railshot: metricGeomean(metrics, "CompileFull/", false, "bytes", includedModules),
+      wazero: metricGeomean(metrics, "WazeroCompile/", false, "bytes", includedModules),
     }],
     ["Machine code", "compiled corpus", "code", machineCode],
     ["Instantiate", "runnable corpus", "ns", instantiate],
@@ -415,7 +276,7 @@ function buildGeneralSummary(metrics, raw) {
     )],
   ].map(([label, sub, kind, values]) => ({ label, sub, kind, values }));
   const breakdowns = [
-    generalCorpusMetric(metrics, "Application compile", "real-world programs", "CompileFull/", "WazeroCompile/", ["lua", "sqlite3", "esbuild", "ruby"]),
+    generalCorpusMetric(metrics, "Application commands", "fresh instance + fixed workload", "CommandExec/", "WazeroCommandExec/", [...applicationModules]),
     generalCorpusMetric(metrics, "SIMD execution", "AssemblyScript SIMD", "Exec/", "WazeroExec/", ["json-as-simd.serializeN", "json-as-simd.deserializeN", "blake-as-simd.hashN", "utf-as-simd.convertN"]),
   ].filter(Boolean);
   return [...summary, ...breakdowns];

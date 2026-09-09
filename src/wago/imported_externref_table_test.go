@@ -286,7 +286,7 @@ func TestImportedExternrefTablePersistenceAndFootprintBoundaries(t *testing.T) {
 }
 
 func TestRelease2ImportedExternrefTableSourceGuard(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Clean("../../tests/spec-v2/test/core/linking.wast"))
+	raw, err := os.ReadFile(filepath.Clean("../../tests/conformance/spec-v2/test/core/linking.wast"))
 	if err != nil {
 		t.Skipf("Release 2 linking.wast unavailable: %v", err)
 	}

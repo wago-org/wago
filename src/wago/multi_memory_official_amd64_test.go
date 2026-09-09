@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/tests/spectest"
+	"github.com/wago-org/wago/tests/conformance/spectest"
 )
 
 type stagedOfficialSpecFile struct {
@@ -28,7 +28,7 @@ func stagedOfficialMultiMemoryJSON(t *testing.T, base string, dst any) string {
 
 func stagedOfficialCoreJSON(t *testing.T, family, base string, dst any) string {
 	t.Helper()
-	checkout := filepath.Clean("../../tests/spec-v3")
+	checkout := filepath.Clean("../../tests/conformance/spec-v3")
 	suite, err := spectest.DiscoverRelease3(checkout)
 	if err != nil {
 		t.Fatalf("discover pinned Release 3 suite: %v", err)

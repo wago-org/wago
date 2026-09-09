@@ -24,8 +24,8 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/wago"
-	"github.com/wago-org/wago/tests/spectest"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/conformance/spectest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // coreFiles1_0 are the WebAssembly 1.0 (MVP) core testsuite .wast files whose
@@ -420,7 +420,7 @@ func specCommandModuleData(tmp string, c specExecCmd, latestDefinition []byte, d
 
 func runRelease2FocusedModule(t *testing.T, base string, moduleLine int) specExecStats {
 	t.Helper()
-	wast := filepath.Clean("../../tests/spec-v2/test/core/" + base + ".wast")
+	wast := filepath.Clean("../../tests/conformance/spec-v2/test/core/" + base + ".wast")
 	if _, err := os.Stat(wast); err != nil {
 		t.Skipf("Release 2 %s fixture unavailable: %v", base, err)
 	}
@@ -478,7 +478,7 @@ func runRelease2FocusedModule(t *testing.T, base string, moduleLine int) specExe
 
 func runRelease2File(t *testing.T, base string) specExecStats {
 	t.Helper()
-	wast := filepath.Clean("../../tests/spec-v2/test/core/" + base + ".wast")
+	wast := filepath.Clean("../../tests/conformance/spec-v2/test/core/" + base + ".wast")
 	if _, err := os.Stat(wast); err != nil {
 		t.Skipf("Release 2 %s fixture unavailable: %v", base, err)
 	}
@@ -658,7 +658,7 @@ func TestRelease2ExternrefTableExecution(t *testing.T) {
 }
 
 func TestRelease2ImportedReferenceGlobalLinkingExecution(t *testing.T) {
-	wast := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
+	wast := filepath.Clean("../../tests/conformance/spec-v2/test/core/linking.wast")
 	if _, err := os.Stat(wast); err != nil {
 		t.Skipf("Release 2 linking fixture unavailable: %v", err)
 	}
@@ -693,7 +693,7 @@ func TestRelease2ImportedReferenceGlobalLinkingExecution(t *testing.T) {
 }
 
 func TestRelease2ImportedExternrefTableLinkingExecution(t *testing.T) {
-	wast := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
+	wast := filepath.Clean("../../tests/conformance/spec-v2/test/core/linking.wast")
 	if _, err := os.Stat(wast); err != nil {
 		t.Skipf("Release 2 linking fixture unavailable: %v", err)
 	}
@@ -746,7 +746,7 @@ func TestRelease2TypedElementCompileGapExecution(t *testing.T) {
 		})
 	}
 
-	wast := filepath.Clean("../../tests/spec-v2/test/core/elem.wast")
+	wast := filepath.Clean("../../tests/conformance/spec-v2/test/core/elem.wast")
 	if _, err := os.Stat(wast); err != nil {
 		t.Skipf("Release 2 elem fixture unavailable: %v", err)
 	}
@@ -821,7 +821,7 @@ func TestRelease2MultipleImportedThenLocalTableExecution(t *testing.T) {
 }
 
 func TestRelease2ImportedThenLocalTableSourceGuard(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Clean("../../tests/spec-v2/test/core/imports.wast"))
+	raw, err := os.ReadFile(filepath.Clean("../../tests/conformance/spec-v2/test/core/imports.wast"))
 	if err != nil {
 		t.Skipf("Release 2 imports fixture unavailable: %v", err)
 	}
@@ -837,7 +837,7 @@ func TestRelease2ImportedThenLocalTableSourceGuard(t *testing.T) {
 }
 
 func TestRelease2RefFuncGlobalExecution(t *testing.T) {
-	wast := filepath.Clean("../../tests/spec-v2/test/core/ref_func.wast")
+	wast := filepath.Clean("../../tests/conformance/spec-v2/test/core/ref_func.wast")
 	if _, err := os.Stat(wast); err != nil {
 		t.Skipf("Release 2 ref_func fixture unavailable: %v", err)
 	}
@@ -867,7 +867,7 @@ func TestRelease2RefFuncGlobalExecution(t *testing.T) {
 }
 
 func TestRelease2LinkingHasNoImportedFunctionReexportGaps(t *testing.T) {
-	wast := filepath.Clean("../../tests/spec-v2/test/core/linking.wast")
+	wast := filepath.Clean("../../tests/conformance/spec-v2/test/core/linking.wast")
 	if _, err := os.Stat(wast); err != nil {
 		t.Skipf("Release 2 linking fixture unavailable: %v", err)
 	}

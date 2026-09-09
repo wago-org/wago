@@ -10,7 +10,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func findGuestStorageArrayType(t *testing.T, compiled *Compiled, storage gc.StorageKind, mutable bool) uint32 {

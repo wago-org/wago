@@ -51,11 +51,8 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       metrics[`WazeroInstantiate/${name}`] = { ns: 60, bytes: 6, allocs: 2 };
     }
     for (const name of [
-      "polybench-gemm",
       "embench-crc32",
-      "sightglass-rust-json",
-      "r3-parquet",
-      "wabench-bzip2",
+      "sightglass-shootout-base64",
       "tacle-bsort",
     ]) {
       metrics[`CompileFull/${name}`] = { ns: 100, bytes: 10, allocs: 1 };
@@ -193,7 +190,7 @@ function assertDOMContract(html) {
     const generalEnd = html.indexOf(`id="perf-${arch}-panel-compile"`, generalStart);
     const general = html.slice(generalStart, generalEnd);
     assert.equal(matches(general, /data-engine-row/g), 8);
-    for (const label of ["Machine code", "Application compile", "SIMD execution"]) {
+    for (const label of ["Machine code", "Application commands", "SIMD execution"]) {
       assert.equal(matches(general, new RegExp(`<span class="vs__label">${label}</span>`, "g")), 1);
     }
 	const machineCodeStart = general.indexOf('<span class="vs__label">Machine code</span>');
@@ -204,8 +201,8 @@ function assertDOMContract(html) {
 	const executionStart = general.indexOf('<span class="vs__label">Execution</span>');
 	const executionEnd = general.indexOf('<div class="vs__row" data-engine-row>', executionStart);
 	const execution = general.slice(executionStart, executionEnd);
-	assert.match(execution, />34\.1ns<\/span>/);
-	assert.match(execution, />68\.3ns<\/span>/);
+	assert.match(execution, />27\.6ns<\/span>/);
+	assert.match(execution, />52\.1ns<\/span>/);
     assert.doesNotMatch(general, /Micro compile mean|Micro startup mean|AS startup mean|Compute execution mean|Tiny compile|Ruby compile|fib_rec startup|Many-function startup|>N-body<|>JSON deserialize</);
   }
   assert.match(html, />[0-9.]+× faster<\/span>/);
@@ -235,7 +232,7 @@ function assertDOMContract(html) {
   assert.match(html, /<span class="vs__sub">runnable corpus<\/span>/);
   assert.match(html, /<span class="vs__sub">compile \+ instantiate<\/span>/);
   assert.equal(matches(html, /<div class="vs__group">Application corpora<\/div>/g), 8);
-  for (const suite of ["polybench", "embench", "sightglass", "r3", "wabench", "tacle"]) {
+  for (const suite of ["embench", "sightglass", "tacle"]) {
     assert.equal(matches(html, new RegExp(`<span class="vs__label">${suite} · `, "g")), 8);
   }
   assert.match(html, /End-to-end latency/);

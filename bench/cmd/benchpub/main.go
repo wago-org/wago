@@ -27,7 +27,7 @@ import (
 // suiteRegex selects the wago stage suite plus the cross-engine wazero
 // benchmarks (compare_test.go). The fixed wago-vs-wazero set in bench_test.go is
 // excluded — these fan out over the same corpus as the wago stages.
-const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec|BenchmarkCommandExec|BenchmarkWazeroCompile|BenchmarkWazeroInstantiate|BenchmarkWazeroExec|BenchmarkWazeroCommandExec|BenchmarkPluginInstantiate|BenchmarkPluginExec)$`
+const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec|BenchmarkCommandExec|BenchmarkWazeroCompile|BenchmarkWazeroInstantiate|BenchmarkWazeroExec|BenchmarkWazeroCommandExec)$`
 
 // stampPath (bench-relative — benchpub runs with cwd=bench/) records the commit
 // the last published/charted numbers reflect and the wall-clock time benchpub
@@ -86,7 +86,7 @@ func main() {
 	benchtime := flag.String("benchtime", "1s", "benchtime for the suite run")
 	count := flag.Int("count", 1, "count for the suite run (median is taken)")
 	base := flag.String("base", "", "load this bench.json as the run and skip the suite (only re-collect engines and re-render)")
-	includeISA := flag.Bool("isa", false, "include the generated ISA micro-suite (off by default)")
+	corpus := flag.String("corpus", "all", "corpus profile, tag:<tag>, all, or comma-separated IDs")
 	flag.Parse()
 
 	var run Run
@@ -102,7 +102,7 @@ func main() {
 		// commit the numbers actually reflect), not current HEAD.
 		gitInfoFromCapture(&run, captureCommit(text))
 	default:
-		run = parseRun(runSuite(*benchtime, *count, *includeISA))
+		run = parseRun(runSuite(*benchtime, *count, *corpus))
 		gitInfo(&run)
 	}
 
@@ -117,7 +117,7 @@ func main() {
 	warnIfStale(run.Commit, head, dirty && fresh)
 	writeStamp(run.Commit, dirty && fresh)
 
-	cor := readCorpus(*includeISA)
+	cor := readCorpus()
 	run.Modules = map[string]ModuleInfo{}
 	for _, c := range cor {
 		run.Modules[c.Name] = ModuleInfo{Category: c.Category, Suite: c.Suite, Desc: c.Desc, Bytes: c.Bytes}
@@ -140,15 +140,12 @@ func main() {
 	fmt.Printf("benchpub: wrote %s/{bench.json,history.json,charts/*.svg}\n", *out)
 }
 
-func runSuite(benchtime string, count int, includeISA bool) string {
+func runSuite(benchtime string, count int, corpus string) string {
 	// -timeout 0 disables go test's default 10-minute cap: the full corpus at
 	// count>1 (a 9 MB module decoded/validated repeatedly, plus wazero) easily
 	// runs longer, and a timeout kills the whole binary mid-run.
 	args := []string{"test", "-run", "^$", "-bench", suiteRegex, "-benchmem",
-		"-timeout", "0", "-benchtime", benchtime, "-count", strconv.Itoa(count), "."}
-	if includeISA {
-		args = append(args[:len(args)-1], "-wago.bench.isa", args[len(args)-1])
-	}
+		"-timeout", "0", "-benchtime", benchtime, "-count", strconv.Itoa(count), "./suite", "-args", "-wago.corpus=" + corpus}
 	cmd := exec.Command("go", args...)
 	fmt.Printf("benchpub: running suite (benchtime=%s count=%d)...\n", benchtime, count)
 	// CombinedOutput so a build error or panic is captured too. A single flaky
@@ -229,12 +226,6 @@ func parseRun(text string) Run {
 // "Stage/key" form used as the metric key (the leading function name's
 // "Benchmark" is already stripped by benchRe).
 func normalizeName(n string) string {
-	if strings.HasPrefix(n, "PluginInstantiate/") {
-		return "Instantiate/" + strings.TrimPrefix(n, "PluginInstantiate/")
-	}
-	if strings.HasPrefix(n, "PluginExec/") {
-		return "Exec/" + strings.TrimPrefix(n, "PluginExec/") + ".plugin-workload"
-	}
 	if strings.HasPrefix(n, "CommandExec/") {
 		return n
 	}
@@ -316,42 +307,32 @@ type corpusEntry struct {
 	Bytes                       int64
 }
 
-// readCorpus reads the manifests for module metadata. Best-effort: nil on error.
-// The generated isa-manifest.json shares the schema but is opt-in because it is
-// large and one export per opcode can dominate local runs and charts.
-func readCorpus(includeISA bool) []corpusEntry {
+// readCorpus reads the catalog for module metadata. Best-effort: nil on error.
+func readCorpus() []corpusEntry {
 	var out []corpusEntry
-	files := []string{"manifest.json", "application-manifest.json"}
-	if includeISA {
-		files = append(files, "isa-manifest.json")
+	raw, err := os.ReadFile(filepath.Join("..", "corpus", "catalog.json"))
+	if err != nil {
+		return nil
 	}
-	for _, file := range files {
-		raw, err := os.ReadFile(filepath.Join("corpus", file))
-		if err != nil {
-			continue
+	var catalog struct {
+		Benchmarks []struct {
+			ID, Artifact, Suite, Desc string
+			Tags                      []string
+		} `json:"benchmarks"`
+	}
+	if err := json.Unmarshal(raw, &catalog); err != nil {
+		return nil
+	}
+	for _, mod := range catalog.Benchmarks {
+		var size int64
+		if fi, err := os.Stat(filepath.Join("..", "corpus", filepath.FromSlash(mod.Artifact))); err == nil {
+			size = fi.Size()
 		}
-		var m struct {
-			Modules []struct {
-				File, Path, Category, Suite, Desc string
-			} `json:"modules"`
+		category := "other"
+		if len(mod.Tags) != 0 {
+			category = mod.Tags[0]
 		}
-		if err := json.Unmarshal(raw, &m); err != nil {
-			continue
-		}
-		for _, mod := range m.Modules {
-			path := filepath.Join("corpus", mod.File)
-			if mod.Path != "" {
-				path = mod.Path
-			}
-			name := strings.TrimSuffix(filepath.Base(path), ".wasm")
-			var b int64
-			if fi, err := os.Stat(path); err == nil {
-				b = fi.Size()
-			}
-			out = append(out, corpusEntry{
-				Name: name, Category: mod.Category, Suite: mod.Suite, Desc: mod.Desc, Bytes: b,
-			})
-		}
+		out = append(out, corpusEntry{Name: mod.ID, Category: category, Suite: mod.Suite, Desc: mod.Desc, Bytes: size})
 	}
 	return out
 }

@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestFuzzRegressionFixtureManifest(t *testing.T) {
@@ -30,7 +30,7 @@ func TestFuzzRegressionFixtureManifest(t *testing.T) {
 		"2140", "2201", "2260", "695", "696", "699", "701", "704", "708", "709", "715",
 		"716", "717", "718", "719", "720", "721", "722", "725", "730", "733", "873", "874", "888",
 	}
-	paths, err := filepath.Glob(filepath.Join("..", "..", "tests", "regressions", "fuzzcases", "*.wasm"))
+	paths, err := filepath.Glob(filepath.Join("..", "..", "tests", "corpus", "regressions", "fuzzcases", "*.wasm"))
 	if err != nil {
 		t.Fatalf("glob fuzz fixtures: %v", err)
 	}
@@ -439,7 +439,7 @@ func TestFuzzRegressionCorpus(t *testing.T) {
 
 func readFuzzFixture(t *testing.T, id string) []byte {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "tests", "regressions", "fuzzcases", id+".wasm"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "tests", "corpus", "regressions", "fuzzcases", id+".wasm"))
 	if err != nil {
 		t.Fatalf("read fuzz fixture %s: %v", id, err)
 	}

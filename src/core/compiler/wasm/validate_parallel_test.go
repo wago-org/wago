@@ -29,10 +29,11 @@ func TestValidateModuleWithWorkersCorpusParity(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping large validation corpus parity in short mode")
 	}
-	corpus := filepath.Join("..", "..", "..", "..", "bench", "corpus")
+	corpus := filepath.Join("..", "..", "..", "..", "corpus", "workloads")
 	for _, name := range []string{
-		"tiny.wasm", "many_funcs.wasm", "json-as.wasm", "json-as-simd.wasm",
-		"lua.wasm", "sqlite3.wasm", "ruby.wasm", "esbuild.wasm",
+		"synthetic/tiny.wasm", "synthetic/many_funcs.wasm",
+		"assemblyscript/json-as.wasm", "assemblyscript/json-as-simd.wasm",
+		"semantic/coremark/coremark.wasm", "compile/esbuild.wasm",
 	} {
 		t.Run(name, func(t *testing.T) {
 			data, err := os.ReadFile(filepath.Join(corpus, name))

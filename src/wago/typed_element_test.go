@@ -297,7 +297,7 @@ func TestRelease2TypedElementCompileGapSourceGuard(t *testing.T) {
 		},
 	}
 	for file, snippets := range sites {
-		raw, err := os.ReadFile(filepath.Clean("../../tests/spec-v2/test/core/" + file))
+		raw, err := os.ReadFile(filepath.Clean("../../tests/conformance/spec-v2/test/core/" + file))
 		if err != nil {
 			t.Skipf("Release 2 %s unavailable: %v", file, err)
 		}

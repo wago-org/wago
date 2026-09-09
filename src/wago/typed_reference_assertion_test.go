@@ -66,7 +66,7 @@ func (c *proposalReplayCounts) add(other proposalReplayCounts) {
 }
 
 func TestProposalAssertionsReplay(t *testing.T) {
-	root := filepath.Clean("../../tests/regressions/spectest-proposals")
+	root := filepath.Clean("../../tests/corpus/regressions/spectest-proposals")
 	// These totals pin both executed assertions and commands whose provider is
 	// rejected by an explicit proposal boundary. Unsupported commands are not
 	// skipped: their provider rejection and exact command accounting are asserted.

@@ -10,7 +10,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestStoreBoundExternrefGlobalImportsShareExactState(t *testing.T) {
@@ -356,7 +356,7 @@ func TestRelease2ImportedReferenceGlobalSourceGuard(t *testing.T) {
 	if !requireStandardGoTestRuntime(t) {
 		return
 	}
-	raw, err := os.ReadFile(filepath.Clean("../../tests/spec-v2/test/core/linking.wast"))
+	raw, err := os.ReadFile(filepath.Clean("../../tests/conformance/spec-v2/test/core/linking.wast"))
 	if err != nil {
 		t.Skipf("Release 2 linking.wast unavailable: %v", err)
 	}

@@ -2,7 +2,7 @@
 set -eu
 
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-starshine_wasm=${STARSHINE_FFI_WASM:-"$repo_dir/tests/enginefuzz/starshine-ffi.wasm"}
+starshine_wasm=${STARSHINE_FFI_WASM:-"$repo_dir/tests/fuzz/engine/starshine-ffi.wasm"}
 worker_dir="$repo_dir/.tmp/engine-state"
 worker="$worker_dir/railshot-worker"
 
@@ -14,7 +14,7 @@ fi
 
 mkdir -p "$worker_dir"
 cd "$repo_dir"
-go build -o "$worker" ./tests/enginefuzz/worker
+go build -o "$worker" ./tests/fuzz/engine/worker
 exec node scripts/fuzz-engine-state.mjs \
 	--worker "$worker" \
 	--starshine "$starshine_wasm" \

@@ -15,10 +15,10 @@ import (
 	"testing"
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/spectest"
+	"github.com/wago-org/wago/tests/conformance/spectest"
 )
 
-const stagedTypedReferenceDeltaPath = "tests/spec-v3-staged-typed-reference.json"
+const stagedTypedReferenceDeltaPath = "tests/conformance/baselines/spec-v3-staged-typed-reference.json"
 
 // stagedTypedReferenceOfficialFiles is the complete bounded Release 3 accounting
 // set for non-GC typed function references plus the structural files that mix
@@ -126,7 +126,7 @@ func stagedTypedReferenceGateList(counts map[string]int) []stagedTypedReferenceG
 
 func stagedOfficialTypedReferenceJSON(t testing.TB, base string, dst any) string {
 	t.Helper()
-	checkout := filepath.Clean("../../tests/spec-v3")
+	checkout := filepath.Clean("../../tests/conformance/spec-v3")
 	suite, err := spectest.DiscoverRelease3(checkout)
 	if err != nil {
 		t.Fatalf("discover pinned Release 3 suite: %v", err)

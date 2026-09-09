@@ -63,16 +63,12 @@ func trackedMarkdown(root string) ([]string, error) {
 	}
 	var files []string
 	for _, name := range bytes.Split(out, []byte{0}) {
-		if len(name) != 0 && isDocumentationPath(string(name)) {
+		if len(name) != 0 {
 			files = append(files, string(name))
 		}
 	}
 	sort.Strings(files)
 	return files, nil
-}
-
-func isDocumentationPath(name string) bool {
-	return !strings.HasPrefix(filepath.ToSlash(name), "bench/corpus/inputs/")
 }
 
 func checkFiles(root string, files []string) []problem {

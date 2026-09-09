@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/tests/spectest"
+	"github.com/wago-org/wago/tests/conformance/spectest"
 )
 
 func TestRelease2MultipleMemoryValidationSites(t *testing.T) {

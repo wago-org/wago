@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 type hookExt struct {

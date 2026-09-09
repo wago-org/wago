@@ -1,5 +1,3 @@
-github.com/JairusSW/wago-emscripten v0.4.1 h1:30oodpUXa34o5nEk76+tjMiZnyBC31t/0m5eDcnokX4=
-github.com/JairusSW/wago-emscripten v0.4.1/go.mod h1:QR3poAs/3z84iuEcZzXNmp7vtCHwgAS/OXGyaQI50n0=
 github.com/tetratelabs/wazero v1.9.0 h1:IcZ56OuxrtaEz8UYNRHBrUa9bYeX9oVY93KspZZBf/I=
 github.com/tetratelabs/wazero v1.9.0/go.mod h1:TSbcXCfFP0L2FGkRPxHphadXPjo1T6W+CseNNY7EkjM=
 github.com/wago-org/wasi v0.2.1 h1:Hh1JPlM/vTLz9v13ytId0lnRAddyzDqhNHP4H6/SZ2o=
