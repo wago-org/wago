@@ -73,7 +73,7 @@ artifact="$scratch/fib.wago"
   exit 1
 }
 for runtime in "${runtimes[@]}"; do
-  output=$("$runtime" run --invoke fib "$artifact" 20)
+  output=$("$runtime" run --allow-native-artifact --invoke fib "$artifact" 20)
   [[ "$output" == "fib(20) = 6765" ]] || {
     echo "$(basename "$runtime") .wago smoke output: $output" >&2
     exit 1

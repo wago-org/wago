@@ -98,6 +98,9 @@ if [[ "\${1:-}" == "build" ]]; then
   exit 1
 fi
 if [[ "\${1:-}" == "run" ]]; then
+  if [[ "\$*" == *".wago"* && "\$*" != *"--allow-native-artifact"* ]]; then
+    exit 1
+  fi
   printf 'fib(20) = 6765\n'
   exit 0
 fi
