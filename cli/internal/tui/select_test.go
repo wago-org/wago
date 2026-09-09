@@ -300,11 +300,11 @@ func TestActionPrompt(t *testing.T) {
 }
 
 func TestMultiSelectRightSubmitsAndAllSelectsEveryItem(t *testing.T) {
-	m := &MultiSelect{Items: []SelectItem{{Label: "canary"}, {Label: "nightly"}}}
+	m := &MultiSelect{Items: []SelectItem{{Label: "canary"}, {Label: "beta"}}}
 	if done, cancelled := m.apply(keyAll); done || cancelled {
 		t.Fatalf("select all = done %v, cancelled %v", done, cancelled)
 	}
-	if got := strings.Join(m.Chosen(), ","); got != "canary,nightly" {
+	if got := strings.Join(m.Chosen(), ","); got != "canary,beta" {
 		t.Fatalf("chosen after all = %q", got)
 	}
 	if done, cancelled := m.apply(keyRight); !done || cancelled {

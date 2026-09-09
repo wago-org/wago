@@ -4,10 +4,10 @@ import "strings"
 
 func diagnosticChannel(activeVersion, release string) string {
 	switch {
-	case activeVersion == "canary", strings.HasPrefix(release, "canary-"), strings.HasPrefix(release, "canary@"):
+	case activeVersion == "canary", strings.Contains(release, "-canary.g"), strings.HasPrefix(release, "canary@"):
 		return "canary"
-	case activeVersion == "nightly", strings.HasPrefix(release, "nightly-"), strings.HasPrefix(release, "nightly@"):
-		return "nightly"
+	case activeVersion == "beta", strings.Contains(release, "-beta."), strings.HasPrefix(release, "beta@"):
+		return "beta"
 	case activeVersion == "latest":
 		return "latest"
 	case strings.HasPrefix(release, "v"):

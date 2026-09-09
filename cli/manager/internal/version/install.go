@@ -38,7 +38,7 @@ func installVersionContext(ctx context.Context, d wagopaths.Dirs, ver string, pr
 	defer lock.Close()
 	dest := d.RuntimeBinary(installName, string(profile), string(build))
 	if installedPath, _, _, installed := installedRuntime(d, installName, profile, build); installed {
-		// A rolling channel (canary/nightly) re-fetches even when present — the
+		// A rolling channel (canary/beta) re-fetches even when present — the
 		// name is stable but the build behind it moves. Only an immutable release
 		// short-circuits, since re-downloading identical bytes is pointless.
 		if !isRollingChannel(ver) {
@@ -75,8 +75,8 @@ func installVersionContext(ctx context.Context, d wagopaths.Dirs, ver string, pr
 	}
 }
 
-func vmInstallRequestedContext(ctx context.Context, d wagopaths.Dirs, args []string, latest, nightly, canary bool, profileValue, buildValue, use string) {
-	if len(args) > 1 || (len(args) == 1 && (latest || nightly || canary)) || (latest && (nightly || canary)) || (nightly && canary) {
+func vmInstallRequestedContext(ctx context.Context, d wagopaths.Dirs, args []string, latest, beta, canary bool, profileValue, buildValue, use string) {
+	if len(args) > 1 || (len(args) == 1 && (latest || beta || canary)) || (latest && (beta || canary)) || (beta && canary) {
 		fatal("version install: choose one version or channel")
 	}
 	if _, err := requestedProfile(profileValue); err != nil {
@@ -85,7 +85,7 @@ func vmInstallRequestedContext(ctx context.Context, d wagopaths.Dirs, args []str
 	if _, err := requestedBuild(buildValue); err != nil {
 		fatal("version install: %v", err)
 	}
-	if len(args) == 0 && !latest && !nightly && !canary {
+	if len(args) == 0 && !latest && !beta && !canary {
 		vmBrowseContext(ctx, d, profileValue, buildValue, use)
 		return
 	}
@@ -101,8 +101,8 @@ func vmInstallRequestedContext(ctx context.Context, d wagopaths.Dirs, args []str
 		vmInstallContext(ctx, d, release, profile, build, use)
 		return
 	}
-	if nightly {
-		vmInstallContext(ctx, d, "nightly", profile, build, use)
+	if beta {
+		vmInstallContext(ctx, d, "beta", profile, build, use)
 		return
 	}
 	if canary {

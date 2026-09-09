@@ -37,12 +37,42 @@ func isRollingChannel(ver string) bool { return rollingChannels[ver] }
 // prerelease tag, if any. Release APIs return newest-first, so callers keep the
 // first tag seen for each channel.
 func channelRelease(tag string) string {
-	for channel := range rollingChannels {
-		if strings.HasPrefix(tag, channel+"-") {
-			return channel
+	version, prerelease, found := strings.Cut(strings.ToLower(strings.TrimSpace(tag)), "-")
+	if !found || !validReleaseCore(version) {
+		return ""
+	}
+	channel, identity, found := strings.Cut(prerelease, ".")
+	if !found || !rollingChannels[channel] {
+		return ""
+	}
+	switch channel {
+	case "beta":
+		if number, ok := ParseNumeric(identity); !ok || number < 0 || (len(identity) > 1 && identity[0] == '0') {
+			return ""
+		}
+	case "canary":
+		if !strings.HasPrefix(identity, "g") || !validCommitSHA(strings.TrimPrefix(identity, "g")) {
+			return ""
 		}
 	}
-	return ""
+	return channel
+}
+
+func validReleaseCore(tag string) bool {
+	parts := strings.Split(strings.TrimPrefix(tag, "v"), ".")
+	if len(parts) != 3 || !strings.HasPrefix(tag, "v") {
+		return false
+	}
+	for _, part := range parts {
+		if _, ok := ParseNumeric(part); !ok || (len(part) > 1 && part[0] == '0') {
+			return false
+		}
+	}
+	return true
+}
+
+func stableReleaseTag(tag string) bool {
+	return validReleaseCore(strings.ToLower(strings.TrimSpace(tag)))
 }
 
 func channelReleaseNames(tags []string, channel string) []string {
@@ -67,6 +97,9 @@ func stableReleaseNames(tags []string) []string {
 		name := tag
 		if !strings.HasPrefix(name, "v") {
 			name = "v" + name
+		}
+		if !stableReleaseTag(name) {
+			continue
 		}
 		if !seen[name] {
 			names = append(names, name)
@@ -138,8 +171,8 @@ func canaryCommitTarget(sha string) string {
 }
 
 // rollingCommitSHA extracts the canonical commit identity from either a build
-// stamp such as "nightly@<sha>" or a resolved release such as
-// "nightly-20260812-deadbee@<sha>".
+// stamp such as "beta@<sha>" or a resolved release such as
+// "v0.1.0-beta.1@<sha>".
 func rollingCommitSHA(target string) (channel, sha string, found bool) {
 	prefix, sha, found := strings.Cut(strings.ToLower(strings.TrimSpace(target)), "@")
 	if !found || strings.Contains(sha, "@") {
@@ -178,14 +211,14 @@ func validCommitSHA(sha string) bool {
 
 // releaseAssetVersion returns the immutable GitHub release tag used for an
 // asset lookup. Exact commit releases use the full object ID in the tag; a
-// resolved dated rolling release retains the published tag before @SHA.
+// resolved SemVer channel release retains the published tag before @SHA.
 func releaseAssetVersion(target string) string {
-	if channel, sha, ok := rollingCommitSHA(target); ok {
+	if channel, _, ok := rollingCommitSHA(target); ok {
 		normalized := strings.ToLower(strings.TrimSpace(target))
 		if tag, _, tagged := strings.Cut(normalized, "@"); tagged && channelRelease(tag) == channel {
 			return tag
 		}
-		return channel + "-" + sha
+		return target
 	}
 	return target
 }
@@ -210,14 +243,9 @@ func releasePickerLabel(tag string) string {
 		return tag
 	}
 	if channel := channelRelease(tag); channel != "" {
-		parts := strings.Split(tag, "-")
-		if len(parts) >= 3 && len(parts[1]) == 8 {
-			if _, ok := ParseNumeric(parts[1]); ok {
-				return parts[0] + "-" + strings.Join(parts[2:], "-")
-			}
-		}
-		if commit := parts[len(parts)-1]; validCommitSHA(strings.ToLower(commit)) {
-			return channel + "-" + strings.ToLower(commit[:7])
+		if channel == "canary" {
+			_, identity, _ := strings.Cut(tag, "-canary.g")
+			return "canary-" + strings.ToLower(identity[:7])
 		}
 		return tag
 	}
@@ -287,22 +315,22 @@ func versionPickerItemsWithCommits(releases []remoteRelease, commits []remoteCom
 
 func paginatedVersionPickerItems(releases []remoteRelease, commits []remoteCommit, now time.Time, moreReleases, moreCommits bool) []tui.Item {
 	canary := canaryCommitItems(commits, now)
-	nightly := releasePickerItems(releases, "nightly", now)
+	beta := releasePickerItems(releases, "beta", now)
 	stable := releasePickerItems(releases, "", now)
 	canaryChildren := releasePickerChildren("canary", canary)
 	if moreCommits {
 		canaryChildren = appendLoadMorePickerItem("canary", canaryChildren, loadMorePickerItem("Load older commits…", pickerLoadMoreCommits))
 	}
-	nightlyChildren := releasePickerChildren("nightly", nightly)
+	betaChildren := releasePickerChildren("beta", beta)
 	latestChildren := releasePickerChildren("latest", stable)
 	if moreReleases {
 		loadMore := loadMorePickerItem("Load older releases…", pickerLoadMoreReleases)
-		nightlyChildren = appendLoadMorePickerItem("nightly", nightlyChildren, loadMore)
+		betaChildren = appendLoadMorePickerItem("beta", betaChildren, loadMore)
 		latestChildren = appendLoadMorePickerItem("latest", latestChildren, loadMore)
 	}
 	items := []tui.Item{
 		{Label: "canary", Value: "canary", Children: canaryChildren},
-		{Label: "nightly", Value: "nightly", Children: nightlyChildren},
+		{Label: "beta", Value: "beta", Children: betaChildren},
 		{Label: "latest", Value: "latest", Children: latestChildren},
 	}
 	items = append(items, stable...)
@@ -378,33 +406,33 @@ func chooseInstallPicker(releases []remoteRelease, commits []remoteCommit, now t
 // updateVersionTarget chooses the version refreshed by `wago version update`.
 // No selector means the active version; explicit channel flags make refreshing a
 // rolling channel convenient without first selecting it.
-func updateVersionTarget(active string, args []string, nightly, canary bool) (string, error) {
-	if nightly && canary {
-		return "", fmt.Errorf("--nightly and --canary cannot be used together")
+func updateVersionTarget(active string, args []string, beta, canary bool) (string, error) {
+	if beta && canary {
+		return "", fmt.Errorf("--beta and --canary cannot be used together")
 	}
 	if len(args) > 1 {
 		return "", fmt.Errorf("accepts at most one [version]")
 	}
-	if (nightly || canary) && len(args) != 0 {
+	if (beta || canary) && len(args) != 0 {
 		return "", fmt.Errorf("a release-channel flag cannot be used with [version]")
 	}
-	if nightly {
-		return "nightly", nil
+	if beta {
+		return "beta", nil
 	}
 	if canary {
 		return "canary", nil
 	}
 	if len(args) == 1 {
 		if !isRollingChannel(args[0]) {
-			return "", fmt.Errorf("%s is pinned; update only refreshes canary or nightly", args[0])
+			return "", fmt.Errorf("%s is pinned; update only refreshes canary or beta", args[0])
 		}
 		return args[0], nil
 	}
 	if active == "" {
-		return "", fmt.Errorf("no active version; use `wago version update <version>` or select --nightly/--canary")
+		return "", fmt.Errorf("no active version; use `wago version update <version>` or select --beta/--canary")
 	}
 	if !isRollingChannel(active) {
-		return "", fmt.Errorf("active version %s is pinned; switch to canary or nightly to update", active)
+		return "", fmt.Errorf("active version %s is pinned; switch to canary or beta to update", active)
 	}
 	return active, nil
 }

@@ -132,8 +132,8 @@ func TestWindowsWarmFinishAfterPathSetup(t *testing.T) {
 	}
 	installer.pathAdded = true
 	installed := filepath.Join(home, ".wago", "bin", "wago.exe")
-	installer.finish("canary-deadbee", installed, true, "")
-	want := "\nSweet, Wago canary-deadbee is ready at ~\\.wago\\bin\\wago.exe\n\n" +
+	installer.finish("v0.1.0-canary.gdeadbee123456789012345678901234567890123", installed, true, "")
+	want := "\nSweet, Wago v0.1.0-canary.gdeadbee123456789012345678901234567890123 is ready at ~\\.wago\\bin\\wago.exe\n\n" +
 		"Open a new terminal.\n\n" +
 		"Then install the Wago version you want:\n\n" +
 		"wago version install\n"
@@ -143,8 +143,8 @@ func TestWindowsWarmFinishAfterPathSetup(t *testing.T) {
 
 	output.Reset()
 	installer.pathAdded = false
-	installer.finish("canary-deadbee", installed, true, "")
-	want = "\nSweet, Wago canary-deadbee is ready at ~\\.wago\\bin\\wago.exe\n\n" +
+	installer.finish("v0.1.0-canary.gdeadbee123456789012345678901234567890123", installed, true, "")
+	want = "\nSweet, Wago v0.1.0-canary.gdeadbee123456789012345678901234567890123 is ready at ~\\.wago\\bin\\wago.exe\n\n" +
 		"Now, install the Wago version you want:\n\n" +
 		"wago version install\n"
 	if got := output.String(); got != want {

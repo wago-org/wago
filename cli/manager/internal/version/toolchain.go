@@ -21,18 +21,18 @@ func (t Toolchain) context() context.Context {
 }
 
 type InstallRequest struct {
-	Versions                []string
-	Latest, Nightly, Canary bool
-	Profile, Build          string
-	Use                     string
+	Versions             []string
+	Latest, Beta, Canary bool
+	Profile, Build       string
+	Use                  string
 }
 
 type UpdateRequest struct {
-	Args            []string
-	Nightly, Canary bool
-	Force           bool
-	Profile, Build  string
-	Use             string
+	Args           []string
+	Beta, Canary   bool
+	Force          bool
+	Profile, Build string
+	Use            string
 }
 
 func (t Toolchain) List()            { vmList(t.Dirs) }
@@ -42,7 +42,7 @@ func (t Toolchain) ChooseInstalled() { vmChooseInstalled(t.Dirs) }
 
 func (t Toolchain) Install(request InstallRequest) {
 	vmInstallRequestedContext(
-		t.context(), t.Dirs, request.Versions, request.Latest, request.Nightly, request.Canary,
+		t.context(), t.Dirs, request.Versions, request.Latest, request.Beta, request.Canary,
 		request.Profile, request.Build,
 		request.Use,
 	)
@@ -76,10 +76,10 @@ func (t Toolchain) Switch(name, profileValue, buildValue string) {
 func (t Toolchain) Update(request UpdateRequest) {
 	args := request.Args
 	active, profile, build := activeTuple(t.Dirs)
-	if len(args) == 0 && !request.Nightly && !request.Canary {
+	if len(args) == 0 && !request.Beta && !request.Canary {
 		if automation.NoInput() {
 			if !isRollingChannel(active) {
-				fatal("version update: --no-input requires [channel], --nightly, or --canary when the active runtime is pinned")
+				fatal("version update: --no-input requires [channel], --beta, or --canary when the active runtime is pinned")
 			}
 			args = []string{active}
 		} else {
@@ -90,7 +90,7 @@ func (t Toolchain) Update(request UpdateRequest) {
 			args = []string{channel}
 		}
 	}
-	name, err := updateVersionTarget(active, args, request.Nightly, request.Canary)
+	name, err := updateVersionTarget(active, args, request.Beta, request.Canary)
 	if err != nil {
 		fatal("version update: %v", err)
 	}

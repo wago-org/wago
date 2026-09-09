@@ -44,7 +44,7 @@ func TestVersionMutationSerializesRemovalAndSelection(t *testing.T) {
 		t.Fatalf("locked payload changed: %v", err)
 	}
 	// A different version does not contend with this operation.
-	other, err := versionMutationLock(context.Background(), d, "nightly")
+	other, err := versionMutationLock(context.Background(), d, "beta")
 	if err != nil {
 		t.Fatal(err)
 	}

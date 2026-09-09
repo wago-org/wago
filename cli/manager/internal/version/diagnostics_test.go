@@ -7,11 +7,11 @@ func TestDiagnosticChannel(t *testing.T) {
 		active, release, want string
 	}{
 		{"canary", "deadbee", "canary"},
-		{"", "canary-20260729-deadbee", "canary"},
+		{"", "v0.1.0-canary.gdeadbee123456789012345678901234567890123", "canary"},
 		{"", "canary@deadbee123456789012345678901234567890123", "canary"},
-		{"nightly", "deadbee", "nightly"},
-		{"", "nightly-20260729-deadbee", "nightly"},
-		{"", "nightly@deadbee123456789012345678901234567890123", "nightly"},
+		{"beta", "deadbee", "beta"},
+		{"", "v0.1.0-beta.1", "beta"},
+		{"", "beta@deadbee123456789012345678901234567890123", "beta"},
 		{"latest", "v1.0.0", "latest"},
 		{"", "v1.0.0", "stable"},
 		{"local", "deadbee", "local"},

@@ -21,7 +21,7 @@ func TestVersionReportIncludesDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.Stdout = write
-	Print("canary-20260729-deadbee", "standard", "normal", "none")
+	Print("v0.1.0-canary.gdeadbee123456789012345678901234567890123", "standard", "normal", "none")
 	_ = write.Close()
 	output, err := io.ReadAll(read)
 	_ = read.Close()
@@ -32,7 +32,7 @@ func TestVersionReportIncludesDiagnostics(t *testing.T) {
 	for _, want := range []string{
 		"Wago",
 		"channel      canary",
-		"release      canary-20260729-deadbee",
+		"release      v0.1.0-canary.gdeadbee123456789012345678901234567890123",
 		"profile      standard",
 		"platform",
 		"toolchain",
@@ -82,11 +82,11 @@ func TestDiagnosticChannel(t *testing.T) {
 		active, release, want string
 	}{
 		{"canary", "deadbee", "canary"},
-		{"", "canary-20260729-deadbee", "canary"},
+		{"", "v0.1.0-canary.gdeadbee123456789012345678901234567890123", "canary"},
 		{"", "canary@deadbee123456789012345678901234567890123", "canary"},
-		{"nightly", "deadbee", "nightly"},
-		{"", "nightly-20260729-deadbee", "nightly"},
-		{"", "nightly@deadbee123456789012345678901234567890123", "nightly"},
+		{"beta", "deadbee", "beta"},
+		{"", "v0.1.0-beta.1", "beta"},
+		{"", "beta@deadbee123456789012345678901234567890123", "beta"},
 		{"latest", "v1.0.0", "latest"},
 		{"", "v1.0.0", "stable"},
 		{"local", "deadbee", "local"},

@@ -37,7 +37,7 @@ type Catalog interface {
 }
 
 // Resolve selects the release tag named by version. main means the newest
-// canary, nightly means the newest nightly, latest follows the latest release,
+// canary, beta means the newest beta, latest follows the latest release,
 // and explicit release tags pass through without a catalog request.
 func Resolve(version string, catalog Catalog) (string, error) {
 	resolved, err := ResolveRelease(version, catalog)
@@ -66,7 +66,7 @@ func ResolveRelease(version string, catalog Catalog) (ResolvedRelease, error) {
 		}
 		sort.SliceStable(releases, func(a, b int) bool { return releases[a].PublishedAt > releases[b].PublishedAt })
 		for _, item := range releases {
-			if !item.Draft && strings.HasPrefix(item.TagName, channel+"-") && strings.EqualFold(item.TargetCommitish, sha) {
+			if !item.Draft && releaseChannel(item.TagName) == channel && strings.EqualFold(item.TargetCommitish, sha) {
 				return ResolvedRelease{Tag: item.TagName, SourceRef: strings.ToLower(sha)}, nil
 			}
 		}
@@ -76,7 +76,7 @@ func ResolveRelease(version string, catalog Catalog) (ResolvedRelease, error) {
 	if version == "main" {
 		channel = "canary"
 	}
-	if channel != "canary" && channel != "nightly" {
+	if channel != "canary" && channel != "beta" {
 		return ResolvedRelease{}, errors.New("custom source ref requires a source build")
 	}
 	releases, err := catalog.Releases()
@@ -85,7 +85,7 @@ func ResolveRelease(version string, catalog Catalog) (ResolvedRelease, error) {
 	}
 	sort.SliceStable(releases, func(a, b int) bool { return releases[a].PublishedAt > releases[b].PublishedAt })
 	for _, item := range releases {
-		if !item.Draft && strings.HasPrefix(item.TagName, channel+"-") {
+		if !item.Draft && releaseChannel(item.TagName) == channel {
 			return resolvedRelease(item)
 		}
 	}
@@ -117,13 +117,56 @@ func fullCommitSHA(value string) bool {
 
 func IsReleaseTag(version string) bool {
 	version = strings.TrimSpace(version)
-	return version != "" && !strings.Contains(version, "@") &&
-		(strings.HasPrefix(version, "v") || strings.HasPrefix(version, "canary-") || strings.HasPrefix(version, "nightly-"))
+	return version != "" && !strings.Contains(version, "@") && strings.HasPrefix(version, "v")
+}
+
+func releaseChannel(tag string) string {
+	version, prerelease, found := strings.Cut(strings.ToLower(strings.TrimSpace(tag)), "-")
+	if !found || !validReleaseCore(version) {
+		return ""
+	}
+	channel, identity, found := strings.Cut(prerelease, ".")
+	if !found {
+		return ""
+	}
+	switch channel {
+	case "beta":
+		if !canonicalNumber(identity) {
+			return ""
+		}
+	case "canary":
+		if !strings.HasPrefix(identity, "g") || !fullCommitSHA(strings.TrimPrefix(identity, "g")) {
+			return ""
+		}
+	default:
+		return ""
+	}
+	return channel
+}
+
+func validReleaseCore(tag string) bool {
+	if !strings.HasPrefix(tag, "v") {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(tag, "v"), ".")
+	return len(parts) == 3 && canonicalNumber(parts[0]) && canonicalNumber(parts[1]) && canonicalNumber(parts[2])
+}
+
+func canonicalNumber(value string) bool {
+	if value == "" || (len(value) > 1 && value[0] == '0') {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func rollingCommit(version string) (channel, sha string, ok bool) {
 	channel, sha, found := strings.Cut(strings.ToLower(strings.TrimSpace(version)), "@")
-	if !found || (channel != "canary" && channel != "nightly") || len(sha) != 40 {
+	if !found || (channel != "canary" && channel != "beta") || len(sha) != 40 {
 		return "", "", false
 	}
 	for _, char := range sha {

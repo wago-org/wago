@@ -20,7 +20,7 @@ import (
 
 var (
 	shaPattern     = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	versionPattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+	versionPattern = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta\.(0|[1-9][0-9]*))?$`)
 	assetPattern   = regexp.MustCompile(`^wago-[A-Za-z0-9._-]+$`)
 	digestPattern  = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
@@ -211,7 +211,7 @@ func verifyQualification(q qualification, repository, sourceSHA string, runID, r
 
 func createRelease(releaseDir, version, sourceSHA string, runID, runAttempt int64, ciPath, output string) error {
 	if !versionPattern.MatchString(version) {
-		return fmt.Errorf("invalid stable version %q", version)
+		return fmt.Errorf("invalid release version %q", version)
 	}
 	q, err := readQualification(ciPath)
 	if err != nil {
@@ -241,7 +241,7 @@ func createRelease(releaseDir, version, sourceSHA string, runID, runAttempt int6
 
 func verifyRelease(manifestPath, releaseDir, repository, version, sourceSHA string, runID, runAttempt int64) error {
 	if !versionPattern.MatchString(version) {
-		return fmt.Errorf("invalid stable version %q", version)
+		return fmt.Errorf("invalid release version %q", version)
 	}
 	var manifest releaseManifest
 	if err := readJSON(manifestPath, &manifest); err != nil {

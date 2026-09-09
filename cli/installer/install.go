@@ -631,7 +631,7 @@ func fullInstallerCommitSHA(value string) bool {
 
 func installerRollingCommit(version string) (channel, sha string, canonical bool) {
 	channel, sha, found := strings.Cut(strings.ToLower(strings.TrimSpace(version)), "@")
-	if !found || (channel != "canary" && channel != "nightly") || len(sha) != 40 {
+	if !found || (channel != "canary" && channel != "beta") || len(sha) != 40 {
 		return "", "", false
 	}
 	for _, char := range sha {

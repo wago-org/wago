@@ -27,14 +27,14 @@ func TestLatestChannelRelease(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		_, _ = w.Write([]byte(`[{"tag_name":"nightly-20260712-deadbee","target_commitish":"deadbee123456789012345678901234567890123"},{"tag_name":"canary-cafef00","target_commitish":"cafef00123456789012345678901234567890123"}]`))
+		_, _ = w.Write([]byte(`[{"tag_name":"v0.1.0-beta.2","target_commitish":"deadbee123456789012345678901234567890123"},{"tag_name":"v0.1.0-canary.gcafef00123456789012345678901234567890123","target_commitish":"cafef00123456789012345678901234567890123"}]`))
 	}))
 	defer srv.Close()
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
-	got, err := latestChannelRelease("nightly")
-	if err != nil || got != "nightly-20260712-deadbee@deadbee123456789012345678901234567890123" {
-		t.Fatalf("latestChannelRelease(nightly) = %q, %v", got, err)
+	got, err := latestChannelRelease("beta")
+	if err != nil || got != "v0.1.0-beta.2@deadbee123456789012345678901234567890123" {
+		t.Fatalf("latestChannelRelease(beta) = %q, %v", got, err)
 	}
 }
 
@@ -54,13 +54,13 @@ func TestLatestChannelReleasePaginates(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(releases)
 			return
 		}
-		_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "nightly-20260812-deadbee", TargetCommitish: "deadbee123456789012345678901234567890123"}})
+		_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "v0.1.0-beta.2", TargetCommitish: "deadbee123456789012345678901234567890123"}})
 	}))
 	defer srv.Close()
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
-	got, err := latestChannelReleaseContext(context.Background(), "nightly")
-	if err != nil || got != "nightly-20260812-deadbee@deadbee123456789012345678901234567890123" {
+	got, err := latestChannelReleaseContext(context.Background(), "beta")
+	if err != nil || got != "v0.1.0-beta.2@deadbee123456789012345678901234567890123" {
 		t.Fatalf("latestChannelReleaseContext = %q, %v", got, err)
 	}
 	if requests != 2 {
@@ -122,9 +122,9 @@ func TestLatestChannelReleaseUsesLinkPaginationAndSkipsDrafts(t *testing.T) {
 		switch r.URL.Query().Get("cursor") {
 		case "":
 			w.Header().Set("Link", fmt.Sprintf(`<%s/repositories/1277210043/releases?cursor=next>; rel="next"`, "http://"+r.Host))
-			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "nightly-draft", Draft: true, TargetCommitish: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}})
+			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "v0.1.0-beta.3", Draft: true, TargetCommitish: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}})
 		case "next":
-			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "nightly-20260812-deadbee", TargetCommitish: "deadbee123456789012345678901234567890123"}})
+			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "v0.1.0-beta.2", TargetCommitish: "deadbee123456789012345678901234567890123"}})
 		default:
 			http.NotFound(w, r)
 		}
@@ -132,8 +132,8 @@ func TestLatestChannelReleaseUsesLinkPaginationAndSkipsDrafts(t *testing.T) {
 	defer srv.Close()
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
-	got, err := latestChannelReleaseContext(context.Background(), "nightly")
-	if err != nil || got != "nightly-20260812-deadbee@deadbee123456789012345678901234567890123" {
+	got, err := latestChannelReleaseContext(context.Background(), "beta")
+	if err != nil || got != "v0.1.0-beta.2@deadbee123456789012345678901234567890123" {
 		t.Fatalf("latestChannelReleaseContext = %q, %v", got, err)
 	}
 	if requests != 2 {
@@ -163,7 +163,7 @@ func TestReleasePaginationRejectsMalformedAndCrossOriginTargets(t *testing.T) {
 			}))
 			defer server.Close()
 			t.Setenv("WAGO_RELEASE_API", server.URL)
-			if _, err := latestChannelReleaseContext(context.Background(), "nightly"); err == nil || !strings.Contains(err.Error(), test.want) {
+			if _, err := latestChannelReleaseContext(context.Background(), "beta"); err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("pagination target error = %v, want %q", err, test.want)
 			}
 		})
@@ -178,19 +178,19 @@ func TestLatestChannelReleaseRejectsPaginationLoop(t *testing.T) {
 	defer srv.Close()
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
-	if _, err := latestChannelReleaseContext(context.Background(), "nightly"); err == nil || !strings.Contains(err.Error(), "loop") {
+	if _, err := latestChannelReleaseContext(context.Background(), "beta"); err == nil || !strings.Contains(err.Error(), "loop") {
 		t.Fatalf("channel pagination loop error = %v", err)
 	}
 }
 
 func TestLatestChannelReleaseRejectsInvalidTargetCommit(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "nightly-20260812-deadbee", TargetCommitish: "main"}})
+		_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "v0.1.0-beta.2", TargetCommitish: "main"}})
 	}))
 	defer srv.Close()
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
-	if _, err := latestChannelReleaseContext(context.Background(), "nightly"); err == nil || !strings.Contains(err.Error(), "invalid target commit") {
+	if _, err := latestChannelReleaseContext(context.Background(), "beta"); err == nil || !strings.Contains(err.Error(), "invalid target commit") {
 		t.Fatalf("invalid channel target error = %v", err)
 	}
 }
@@ -211,7 +211,7 @@ func TestLatestChannelReleaseCancellationBetweenPages(t *testing.T) {
 	defer srv.Close()
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
-	if _, err := latestChannelReleaseContext(ctx, "nightly"); !errors.Is(err, context.Canceled) {
+	if _, err := latestChannelReleaseContext(ctx, "beta"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled channel pagination = %v", err)
 	}
 	if requests > 2 {
@@ -234,8 +234,8 @@ func TestRollingChannelWithoutPublishedReleaseUsesCanonicalMainSource(t *testing
 	defer srv.Close()
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
-	resolved, sourceOnly, err := resolveRunnerVersionContext(context.Background(), "nightly", nil)
-	if err != nil || !sourceOnly || resolved != "nightly@"+sha {
+	resolved, sourceOnly, err := resolveRunnerVersionContext(context.Background(), "beta", nil)
+	if err != nil || !sourceOnly || resolved != "beta@"+sha {
 		t.Fatalf("resolveRunnerVersionContext = %q, %v, %v", resolved, sourceOnly, err)
 	}
 }
@@ -253,7 +253,7 @@ func TestLatestChannelReleaseBoundsPagination(t *testing.T) {
 	defer srv.Close()
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
-	if _, err := latestChannelReleaseContext(context.Background(), "nightly"); err == nil || !strings.Contains(err.Error(), "exceeded") {
+	if _, err := latestChannelReleaseContext(context.Background(), "beta"); err == nil || !strings.Contains(err.Error(), "exceeded") {
 		t.Fatalf("channel pagination error = %v", err)
 	}
 	if requests != releaseDiscoveryPageLimit {
@@ -285,7 +285,7 @@ func TestMainCommitBrowsingPaginatesAndResolvesTip(t *testing.T) {
 			}
 			releases := make([]remoteRelease, count)
 			for i := range releases {
-				releases[i].TagName = fmt.Sprintf("canary-%07x", i+1)
+				releases[i].TagName = fmt.Sprintf("v0.1.0-canary.g%040x", i+1)
 			}
 			_ = json.NewEncoder(w).Encode(releases)
 		default:
@@ -571,9 +571,9 @@ func TestDownloadBinaryChecksum(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/v0.9.0/" + asset, "/nightly/" + asset, "/canary/" + asset:
+		case "/v0.9.0/" + asset, "/beta/" + asset, "/canary/" + asset:
 			w.Write(payload)
-		case "/v0.9.0/" + asset + ".sha256", "/nightly/" + asset + ".sha256", "/canary/" + asset + ".sha256":
+		case "/v0.9.0/" + asset + ".sha256", "/beta/" + asset + ".sha256", "/canary/" + asset + ".sha256":
 			w.Write([]byte(hexsum + "  " + asset + "\n"))
 		case "/bad/" + asset:
 			w.Write(payload)
@@ -590,7 +590,7 @@ func TestDownloadBinaryChecksum(t *testing.T) {
 		t.Fatalf("downloadBinary: %v", err)
 	}
 
-	for _, channel := range []string{"nightly", "canary"} {
+	for _, channel := range []string{"beta", "canary"} {
 		dest := filepath.Join(t.TempDir(), "wago")
 		if err := downloadBinary(srv.URL, channel, wagopaths.ProfileStandard, wagopaths.BuildNormal, dest); err != nil {
 			t.Fatalf("downloadBinary(%q): %v", channel, err)
@@ -632,10 +632,10 @@ func TestVersionAssetsIncludeProfileAndHost(t *testing.T) {
 
 func TestCanonicalReleaseRef(t *testing.T) {
 	for input, want := range map[string]string{
-		"0.2.0":                   "v0.2.0",
-		"v0.2.0":                  "v0.2.0",
-		"main":                    "main",
-		"canary-20260729-deadbee": "canary-20260729-deadbee",
+		"0.2.0":  "v0.2.0",
+		"v0.2.0": "v0.2.0",
+		"main":   "main",
+		"v0.1.0-canary.gdeadbee123456789012345678901234567890123": "v0.1.0-canary.gdeadbee123456789012345678901234567890123",
 	} {
 		if got := canonicalReleaseRef(input); got != want {
 			t.Fatalf("canonicalReleaseRef(%q) = %q, want %q", input, got, want)

@@ -240,15 +240,15 @@ func TestChecksumMismatchDoesNotBuildFromSource(t *testing.T) {
 	}
 }
 
-func TestCanaryResolvesLatestMainCommit(t *testing.T) {
+func TestCanaryResolvesLatestPublishedCanary(t *testing.T) {
 	const sha = "deadbee123456789012345678901234567890123"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`{"sha":"` + sha + `"}`))
+		_, _ = w.Write([]byte(`[{"tag_name":"v0.1.0-canary.g` + sha + `","target_commitish":"` + sha + `"}]`))
 	}))
 	defer server.Close()
 	t.Setenv("WAGO_RELEASE_API", server.URL)
 	ref, sourceOnly, err := resolveRunnerVersion("canary", nil)
-	if err != nil || ref != canaryCommitTarget(sha) || sourceOnly {
+	if err != nil || ref != "v0.1.0-canary.g"+sha+"@"+sha || sourceOnly {
 		t.Fatalf("resolveRunnerVersion = %q, %v, %v", ref, sourceOnly, err)
 	}
 }
@@ -284,7 +284,7 @@ func TestRollingReleaseMissingAssetsPreserveExactSourceIdentity(t *testing.T) {
 	const sha = "deadbee123456789012345678901234567890123"
 	targets := []string{
 		"canary@" + sha,
-		"nightly-20260812-" + sha + "@" + sha,
+		"beta-20260812-" + sha + "@" + sha,
 	}
 	for _, target := range targets {
 		t.Run(target[:strings.IndexByte(target, '@')], func(t *testing.T) {

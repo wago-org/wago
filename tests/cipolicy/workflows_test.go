@@ -53,33 +53,22 @@ func TestWorkflowActionsUseImmutableCommits(t *testing.T) {
 	}
 }
 
-func TestRollingReleaseWorkflowsUseImmutableTagsAndTargets(t *testing.T) {
-	for _, path := range []string{"../../.github/workflows/canary.yml", "../../.github/workflows/nightly.yml"} {
-		workflow, err := os.ReadFile(filepath.Clean(path))
-		if err != nil {
-			t.Fatal(err)
-		}
-		contents := string(workflow)
-		for _, required := range []string{
-			`target=$(gh api "repos/${{ github.repository }}/releases/tags/`,
-			`has an invalid target commit`,
-			`if [ "$target" != "${{ needs.`,
-		} {
-			if !strings.Contains(contents, required) {
-				t.Errorf("%s is missing immutable existing-release validation %q", filepath.Base(path), required)
-			}
-		}
-	}
-	nightly, err := os.ReadFile(filepath.Clean("../../.github/workflows/nightly.yml"))
+func TestCanaryUsesImmutableSemVerTagsAndTargets(t *testing.T) {
+	canary, err := os.ReadFile(filepath.Clean("../../.github/workflows/canary.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	contents := string(nightly)
-	if !strings.Contains(contents, `echo "tag=nightly-$(date -u +%Y%m%d)-$sha"`) {
-		t.Fatal("nightly release tag must contain the full immutable commit SHA")
-	}
-	if strings.Contains(contents, `echo "tag=nightly-$(date -u +%Y%m%d)-${sha::7}"`) {
-		t.Fatal("nightly release tag still uses an abbreviated commit SHA")
+	contents := string(canary)
+	for _, required := range []string{
+		`RELEASE_SERIES: "0.1.0"`,
+		`echo "tag=v${RELEASE_SERIES}-canary.g$sha"`,
+		`target=$(gh api "repos/${{ github.repository }}/releases/tags/`,
+		`has an invalid target commit`,
+		`if [ "$target" != "${{ needs.`,
+	} {
+		if !strings.Contains(contents, required) {
+			t.Errorf("canary workflow is missing immutable SemVer policy %q", required)
+		}
 	}
 }
 
@@ -191,7 +180,7 @@ func splitWorkflowNeeds(value string) map[string]struct{} {
 	return needs
 }
 
-func TestStableReleasePublishesOnlyExactQualifiedArtifacts(t *testing.T) {
+func TestReleasePublishesOnlyExactQualifiedArtifacts(t *testing.T) {
 	releaseWorkflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/release.yml"))
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +192,8 @@ func TestStableReleasePublishesOnlyExactQualifiedArtifacts(t *testing.T) {
 	for _, required := range []string{
 		`workflow_dispatch:`,
 		`source_sha:`,
-		`stable qualification must be dispatched from the main workflow`,
+		`release qualification must be dispatched from the main workflow`,
+		`vMAJOR.MINOR.PATCH-beta.N or vMAJOR.MINOR.PATCH`,
 		`actions: read`,
 		`contents: write`,
 		`Resolve successful CI run for the exact SHA`,
@@ -214,16 +204,18 @@ func TestStableReleasePublishesOnlyExactQualifiedArtifacts(t *testing.T) {
 		`needs: [prepare, build, manifest]`,
 		`ref: ${{ needs.prepare.outputs.source_sha }}`,
 		`existing tag $VERSION does not point directly to qualified commit $SOURCE_SHA`,
-		`published stable release $VERSION already exists; refusing to replace it`,
-		`--json isDraft,tagName`,
-		`RESUME_DRAFT: ${{ steps.stable.outputs.resume_draft }}`,
+		`published release $VERSION already exists; refusing to replace it`,
+		`--json isDraft,isPrerelease,tagName`,
+		`RESUME_DRAFT: ${{ steps.release.outputs.resume_draft }}`,
+		`PRERELEASE: ${{ needs.prepare.outputs.prerelease }}`,
 		`gh release upload "$VERSION" --repo "${{ github.repository }}"`,
-		`stable release $VERSION became published before draft recovery`,
+		`release $VERSION became published before draft recovery`,
 		`draft release assets do not exactly match the qualified manifest`,
 		`releases/generate-notes`,
 		`--verify-tag`,
 		`--draft`,
 		`--draft=false`,
+		`--prerelease`,
 		`release/release-manifest.json`,
 	} {
 		if !strings.Contains(release, required) {

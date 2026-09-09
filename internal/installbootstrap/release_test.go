@@ -23,16 +23,16 @@ func TestResolveReleaseContract(t *testing.T) {
 	catalog := memoryCatalog{
 		latest: Release{TagName: "v1.2.3"},
 		releases: []Release{
-			{TagName: "canary-draft", TargetCommitish: canarySHA, PublishedAt: "2026-08-05T00:00:00Z", Draft: true},
-			{TagName: "canary-old", TargetCommitish: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", PublishedAt: "2026-08-01T00:00:00Z"},
-			{TagName: "nightly-new", TargetCommitish: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", PublishedAt: "2026-08-04T00:00:00Z"},
-			{TagName: "canary-new", TargetCommitish: canarySHA, PublishedAt: "2026-08-03T00:00:00Z"},
+			{TagName: "v0.1.0-canary.gdeadbee123456789012345678901234567890123", TargetCommitish: canarySHA, PublishedAt: "2026-08-05T00:00:00Z", Draft: true},
+			{TagName: "v0.1.0-canary.gaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", TargetCommitish: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", PublishedAt: "2026-08-01T00:00:00Z"},
+			{TagName: "v0.1.0-beta.2", TargetCommitish: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", PublishedAt: "2026-08-04T00:00:00Z"},
+			{TagName: "v0.1.0-canary.gdeadbee123456789012345678901234567890123", TargetCommitish: canarySHA, PublishedAt: "2026-08-03T00:00:00Z"},
 		},
 	}
 	for _, test := range []struct{ version, want string }{
-		{"latest", "v1.2.3"}, {"main", "canary-new"}, {"canary", "canary-new"},
-		{"canary@" + canarySHA, "canary-new"}, {"nightly", "nightly-new"},
-		{" v9.0.0 ", "v9.0.0"}, {"canary-pinned", "canary-pinned"},
+		{"latest", "v1.2.3"}, {"main", "v0.1.0-canary.gdeadbee123456789012345678901234567890123"}, {"canary", "v0.1.0-canary.gdeadbee123456789012345678901234567890123"},
+		{"canary@" + canarySHA, "v0.1.0-canary.gdeadbee123456789012345678901234567890123"}, {"beta", "v0.1.0-beta.2"},
+		{" v9.0.0 ", "v9.0.0"},
 	} {
 		got, err := Resolve(test.version, catalog)
 		if err != nil || got != test.want {
@@ -42,21 +42,21 @@ func TestResolveReleaseContract(t *testing.T) {
 	if _, err := Resolve("feature/ref", catalog); err == nil {
 		t.Fatal("custom source ref resolved as a release")
 	}
-	if _, err := Resolve("nightly@cccccccccccccccccccccccccccccccccccccccc", catalog); err == nil {
+	if _, err := Resolve("beta@cccccccccccccccccccccccccccccccccccccccc", catalog); err == nil {
 		t.Fatal("unpublished canonical commit resolved as a release")
 	}
-	if _, err := Resolve("nightly-20260812-deadbee@cccccccccccccccccccccccccccccccccccccccc", catalog); err == nil {
+	if _, err := Resolve("v0.1.0-beta.1@cccccccccccccccccccccccccccccccccccccccc", catalog); err == nil {
 		t.Fatal("tag plus unverified commit suffix bypassed release resolution")
 	}
-	if IsReleaseTag("canary-deadbee@cccccccccccccccccccccccccccccccccccccccc") {
+	if IsReleaseTag("v0.1.0-canary.gdeadbee@cccccccccccccccccccccccccccccccccccccccc") {
 		t.Fatal("release tag accepted an appended commit identity")
 	}
 	resolved, err := ResolveRelease("canary@"+canarySHA, catalog)
-	if err != nil || resolved.Tag != "canary-new" || resolved.SourceRef != canarySHA {
+	if err != nil || resolved.Tag != "v0.1.0-canary.gdeadbee123456789012345678901234567890123" || resolved.SourceRef != canarySHA {
 		t.Fatalf("ResolveRelease canonical = %+v, %v", resolved, err)
 	}
 	resolved, err = ResolveRelease("main", catalog)
-	if err != nil || resolved.Tag != "canary-new" || resolved.SourceRef != canarySHA {
+	if err != nil || resolved.Tag != "v0.1.0-canary.gdeadbee123456789012345678901234567890123" || resolved.SourceRef != canarySHA {
 		t.Fatalf("ResolveRelease channel = %+v, %v", resolved, err)
 	}
 	resolved, err = ResolveRelease("v9.0.0", catalog)
