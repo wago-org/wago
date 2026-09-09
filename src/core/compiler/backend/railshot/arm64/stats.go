@@ -68,8 +68,25 @@ var (
 	leafScratchMemSizeEnabled = os.Getenv("WAGO_ARM64_NO_LEAF_SCRATCH_MEMSIZE") != "1"
 	// loopTrapCellEnabled keeps the invocation's stable trap-cell pointer in a
 	// dedicated register across call-free loops, leaving every cancellation poll
-	// intact while removing its repeated basedata load.
+	// intact while removing its repeated basedata load. This is independent of
+	// whether the loop also accesses linear memory.
 	loopTrapCellEnabled = os.Getenv("WAGO_ARM64_NO_LOOP_TRAP_CELL") != "1"
+	// preparedDirectEntryEnabled admits the compiler-proved register-ABI entry
+	// family. Disabling it removes all direct/light/bounded entry metadata, so
+	// prepared calls retain the ordinary adapter as a correctness and A/B oracle.
+	preparedDirectEntryEnabled  = os.Getenv("WAGO_ARM64_NO_PREPARED_DIRECT_ENTRY") != "1"
+	preparedLightEntryEnabled   = os.Getenv("WAGO_ARM64_NO_PREPARED_LIGHT_ENTRY") != "1"
+	preparedBoundedEntryEnabled = os.Getenv("WAGO_ARM64_NO_PREPARED_BOUNDED_ENTRY") != "1"
+	loopIntConstEnabled         = os.Getenv("WAGO_ARM64_NO_LOOP_INT_CONST") != "1"
+	indexedBaseReuseEnabled     = os.Getenv("WAGO_ARM64_NO_INDEXED_BASE_REUSE") != "1"
+	convertReadEnabled          = os.Getenv("WAGO_ARM64_NO_CONVERT_READ") != "1"
+	// shiftedRegisterALUEnabled folds an integer constant shift used as the right
+	// operand of ADD/SUB/AND/OR/XOR into AArch64's shifted-register ALU form.
+	shiftedRegisterALUEnabled = os.Getenv("WAGO_ARM64_NO_SHIFTED_REGISTER_ALU") != "1"
+	// fpImmediateConstEnabled selects exact AArch64 FMOV immediates (and the zero
+	// register for +0) before falling back to integer-bit materialization.
+	fpImmediateConstEnabled  = os.Getenv("WAGO_ARM64_NO_FP_IMMEDIATE_CONST") != "1"
+	coldCallLocalPinsEnabled = os.Getenv("WAGO_ARM64_NO_COLD_CALL_LOCAL_PINS") != "1"
 	// entryInitElisionEnabled skips zero-initialization for declared locals whose
 	// first straight-line access is a set/tee. The kill switch is the A/B oracle.
 	entryInitElisionEnabled = os.Getenv("WAGO_ARM64_NO_ENTRY_INIT_ELISION") != "1"

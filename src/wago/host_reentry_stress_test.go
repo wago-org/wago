@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
+	wruntime "github.com/wago-org/wago/src/core/runtime"
 	"github.com/wago-org/wago/tests/wasmtest"
 )
 
@@ -71,6 +72,47 @@ func TestNestedHostReentryPreservesConfiguredNativeStack(t *testing.T) {
 	got, err := in.Invoke("outer")
 	if err != nil || len(got) != 1 || got[0] != stackBytes {
 		t.Fatalf("nested host-observed stack = %v, %v; want [%d]", got, err, uint64(stackBytes))
+	}
+}
+
+func TestNestedHostReentryRestorePropagatesCloseInterrupt(t *testing.T) {
+	c := MustCompile(voidI32ImportCallerModule())
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{
+		Imports:       Imports{"env.log": HostFunc(func(HostModule, []uint64, []uint64) {})},
+		forceSyncHost: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if err := in.beginInvocation(); err != nil {
+		t.Fatal(err)
+	}
+	defer in.endInvocation()
+
+	outerTrap := in.trap
+	restore, err := in.prepareHostReentryState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	nestedTrap := in.trap
+	if &nestedTrap[0] == &outerTrap[0] {
+		restore()
+		t.Fatal("host re-entry reused the parked outer trap cell")
+	}
+	if err := in.Close(); err != nil {
+		restore()
+		t.Fatal(err)
+	}
+	if got := wruntime.PreparedIntTrapCode(nestedTrap); got != wruntime.TrapInterrupted {
+		restore()
+		t.Fatalf("nested trap after close = %v, want interrupted", got)
+	}
+	_ = wruntime.ConsumePreparedIntTrap(nestedTrap)
+	restore()
+	if got := wruntime.PreparedIntTrapCode(outerTrap); got != wruntime.TrapInterrupted {
+		t.Fatalf("restored outer trap after close = %v, want interrupted", got)
 	}
 }
 

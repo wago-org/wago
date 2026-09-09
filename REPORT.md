@@ -1,5 +1,21 @@
 # PR #564 correctness and performance qualification
 
+## Integration with main 731e95ff2
+
+The branch also incorporates the new prepared-call and ARM64 hot-path work.
+Parallel ARM64 hint scans now collect loop constants in worker-local sparse
+storage and merge them in function order, with the serial sidecar capacity
+contract. Tests compare enabled/disabled facts, ordering, and backing capacity
+with 1, 2, 4, and 8 workers.
+
+The retained dirty-parameter test caught an incompatible new main assumption:
+`i32` alone was treated as proof of zero high carrier bits. The merged branch
+keeps the recorded machine-value proof rule. Unknown serialized parameters still
+get address canonicalization, including across blocks. Proven computed values
+still omit the hot clearing instruction; main's cold-tail padding keeps later
+function positions stable. This is a correctness restriction on the new main
+optimization, not a claim of unchanged ARM64 native output relative to main.
+
 ## Compiler scratch memory checkpoint
 
 [The memory report](bench/results/pr564-memory/README.md) records all selected

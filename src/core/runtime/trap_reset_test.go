@@ -24,6 +24,28 @@ func TestClearTrapUnlessInterrupted(t *testing.T) {
 	}
 }
 
+func TestPreparePreparedIntTrap(t *testing.T) {
+	trap := make([]byte, TrapBufferBytes)
+	binary.LittleEndian.PutUint64(trap[16:], ^uint64(0))
+	PreparePreparedIntTrap(trap)
+	if got := binary.LittleEndian.Uint64(trap[16:]); got != ^uint64(0) {
+		t.Fatalf("zero fast path changed cold trap payload to %#x", got)
+	}
+	storeTrap(trap, uint32(TrapBuiltin))
+	PreparePreparedIntTrap(trap)
+	if got := TrapCode(loadTrap(trap)); got != TrapNone {
+		t.Fatalf("ordinary trap reset = %v, want none", got)
+	}
+	if got := binary.LittleEndian.Uint64(trap[16:]); got != 0 {
+		t.Fatalf("ordinary trap payload = %#x, want zero", got)
+	}
+	storeTrap(trap, uint32(TrapInterrupted))
+	PreparePreparedIntTrap(trap)
+	if got := TrapCode(loadTrap(trap)); got != TrapInterrupted {
+		t.Fatalf("interruption reset = %v, want interrupted", got)
+	}
+}
+
 func TestTrapResetPreservesConcurrentInterruption(t *testing.T) {
 	for _, initial := range []TrapCode{TrapNone, TrapBuiltin} {
 		for i := 0; i < 1000; i++ {

@@ -429,6 +429,7 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) 
 	// global index), captured before materialization. A temp/computed base has no
 	// stable key. See boundsCertMeasure.
 	bcKind, bcIdx := uint8(0), uint32(0)
+	loadDefinedLocal := f.loadDefinedAddressLocal(e)
 	switch e.st.kind {
 	case stLocalReg, stLocalRef:
 		bcKind, bcIdx = 1, uint32(e.st.idx)
@@ -447,9 +448,19 @@ func (f *fn) memAddr(off uint64, size int, aliasPinned bool, rangeExtent int32) 
 	} else {
 		ea, eaOwned = f.materialize(e), true
 	}
-	// ABI slots are 64-bit words; memory32 consumes only the low i32 bits.
-	if !upper32Zero {
+	// ABI slots are 64-bit words; memory32 consumes only the low i32 bits. Skip
+	// the canonicalization when the producer already guarantees a zero upper
+	// half (notably every ARM64-backed Wasm i32 local).
+	if !upper32Zero || loadDefinedLocal {
 		f.a.MovReg32(ea, ea)
+		if loadDefinedLocal && upper32Zero {
+			f.stats.peep("memory-address-load-rename")
+		}
+	} else {
+		f.stats.peep("memory-address-zext-elim")
+		// Keep later function entry addresses stable: move the removed hot word
+		// to this function's cold tail rather than shifting the module layout.
+		f.phasePadWords++
 	}
 	if int64(off32)+int64(size) <= 0x7FFFFFFF {
 		disp = int32(off32)
@@ -568,9 +579,16 @@ func (f *fn) memAddrAt(memoryIndex uint32, off uint64, size int) (base, ea Reg, 
 
 func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea Reg, disp int32) {
 	e := f.popValue()
+	loadDefinedLocal := f.loadDefinedAddressLocal(e)
 	ea = f.materialize(e)
-	if !f.memoryAddr64(memoryIndex) {
+	if !f.memoryAddr64(memoryIndex) && (!e.st.valueFacts().has(factUpper32Zero) || loadDefinedLocal) {
 		f.a.MovReg32(ea, ea)
+		if loadDefinedLocal && e.st.valueFacts().has(factUpper32Zero) {
+			f.stats.peep("memory-address-load-rename")
+		}
+	} else if !f.memoryAddr64(memoryIndex) {
+		f.stats.peep("memory-address-zext-elim")
+		f.phasePadWords++
 	}
 	disp = 0
 	if off != 0 {
@@ -599,6 +617,11 @@ func (f *fn) indexedMemAddr(memoryIndex uint32, off uint64, size int) (base, ea 
 	f.release(dir)
 	f.pinned = f.pinned.remove(ea)
 	return base, ea, disp
+}
+
+func (f *fn) loadDefinedAddressLocal(e *elem) bool {
+	return e.elemKind() == ekValue && (e.st.kind == stLocalReg || e.st.kind == stLocalRef) &&
+		e.st.idx < 64 && f.loadDefinedLocals&(uint64(1)<<e.st.idx) != 0
 }
 
 type boundsCert struct {

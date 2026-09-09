@@ -89,10 +89,20 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	// Valent materialization and spills, but local/global reads and signed loads
 	// begin unknown and therefore cannot trigger this consumer.
 	cleanZExt := node.deferredOp() == opZExt32 && arg0.st.valueFacts().has(factUpper32Zero)
-	src := f.materialize(arg0)
+	src, srcOwned := regNone, true
+	if f.opt(optConvertRead) {
+		src, srcOwned = f.materializeRead(arg0)
+	} else {
+		src = f.materialize(arg0)
+	}
 	result := src
-	if dest != regNone && dest != src {
+	if dest != regNone {
 		result = dest
+	} else if !srcOwned {
+		result = f.allocReg(maskOf(src))
+	}
+	if !srcOwned {
+		f.stats.peep("convert-read")
 	}
 	switch node.deferredOp() {
 	case opZExt32:
@@ -112,7 +122,7 @@ func (f *fn) condenseConvert(node *elem, dest Reg) Reg {
 	case opSExt16:
 		f.a.Sxth(result, src, !node.st.typ.is64())
 	}
-	if result != src {
+	if srcOwned && result != src {
 		f.release(src)
 	}
 	f.consumeBlockBelow(node)
@@ -177,6 +187,17 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		if r := f.tryUxtwAdd(node, left, right, dest); r != regNone {
 			return r
 		}
+	}
+
+	// AArch64 arithmetic and logical register operations can shift their right
+	// operand as part of the same instruction. This is a general tree cover for
+	// `x op (y shift constant)`: it removes the separate shift without matching
+	// any producer, constant mask, or workload-specific sequence. Keeping the
+	// shifted subtree on the right preserves the ordinary condense path's
+	// right-before-left realization order for deferred operands and therefore its
+	// trap and register-pressure behavior.
+	if r := f.tryShiftedRegisterALU(node, left, right, dest); r != regNone {
+		return r
 	}
 
 	// Strength-reduce x * {3,5,9} to a single add-shifted `[x + x*{2,4,8}]` (base ==
@@ -355,9 +376,7 @@ func (f *fn) tryThreeOperandLocalSink(node *elem, dest Reg, left, right *elem, w
 			}
 			// MUL has no immediate encoding, and a non-encodable ALU immediate needs
 			// one short-lived scratch.  The source local is still not copied.
-			rhs = f.allocReg(maskOf(dest, left.st.reg))
-			f.loadConst(rhs, right.st)
-			ownedRHS = true
+			rhs, ownedRHS = f.intConstReadReg(right.st, maskOf(dest, left.st.reg))
 		case stReg:
 			rhs, ownedRHS = right.st.reg, true
 		case stLocalReg, stGlobReg:
@@ -445,6 +464,109 @@ func (f *fn) tryLeaScaledAdd(node, left, right *elem, dest Reg) Reg {
 	f.consumeBlockBelow(node)
 	f.occupy(node, dest)
 	return dest
+}
+
+// constShiftOperand recognizes an integer constant shift/rotate and returns
+// the read-only value operand plus the AArch64 shifted-register modifier. Wasm
+// masks constant counts to the lane width; rotl is represented by the equivalent
+// ROR modifier with the complemented count.
+func constShiftOperand(s *stack, e *elem, t machineType) (*elem, a64.RegShift, uint8, bool) {
+	if e == nil || e.elemKind() != ekDeferred || e.st.typ != t {
+		return nil, 0, 0, false
+	}
+	switch e.deferredOp() {
+	case opShl, opShrU, opShrS, opRotl, opRotr:
+	default:
+		return nil, 0, 0, false
+	}
+	count := s.arg1(e)
+	if count == nil || count.elemKind() != ekValue || count.st.kind != stConst {
+		return nil, 0, 0, false
+	}
+	width := int64(32)
+	if t.is64() {
+		width = 64
+	}
+	k := uint8(count.st.cval & (width - 1))
+	var kind a64.RegShift
+	switch e.deferredOp() {
+	case opShl:
+		kind = a64.RegShiftLSL
+	case opShrU:
+		kind = a64.RegShiftLSR
+	case opShrS:
+		kind = a64.RegShiftASR
+	case opRotl:
+		kind = a64.RegShiftROR
+		k = uint8((width - int64(k)) & (width - 1))
+	case opRotr:
+		kind = a64.RegShiftROR
+	}
+	return s.arg0(e), kind, k, true
+}
+
+// tryShiftedRegisterALU lowers `x op (y shift constant)` to one AArch64
+// shifted-register instruction. ADD/SUB accept LSL/LSR/ASR; AND/ORR/EOR also
+// accept ROR. Both source trees are realized read-only before selecting Rd, so
+// an explicit local.set destination may safely alias either input.
+func (f *fn) tryShiftedRegisterALU(node, left, right *elem, dest Reg) Reg {
+	if !f.opt(optShiftedRegisterALU) {
+		return regNone
+	}
+	op := node.deferredOp()
+	switch op {
+	case opAdd, opSub, opAnd, opOr, opXor:
+	default:
+		return regNone
+	}
+	shiftArg, kind, count, ok := constShiftOperand(f.s, right, node.st.typ)
+	if !ok || shiftArg == nil || ((op == opAdd || op == opSub) && kind == a64.RegShiftROR) {
+		return regNone
+	}
+
+	// This matches condenseBinary's normal realization order: its deferred RHS
+	// (the whole shift) is condensed before the LHS. Pin each realized source
+	// while obtaining the other so allocator pressure cannot silently reuse it.
+	rm, ownRM := f.materializeRead(shiftArg)
+	f.pinned = f.pinned.add(rm)
+	rn, ownRN := f.materializeRead(left)
+	f.pinned = f.pinned.add(rn)
+	rd := dest
+	if rd == regNone {
+		switch {
+		case ownRN:
+			rd = rn
+		case ownRM:
+			rd = rm
+		default:
+			rd = f.allocReg(maskOf(rn, rm))
+		}
+	}
+	w32 := !node.st.typ.is64()
+	switch op {
+	case opAdd:
+		f.a.AddShiftedReg(rd, rn, rm, kind, count, w32)
+	case opSub:
+		f.a.SubShiftedReg(rd, rn, rm, kind, count, w32)
+	case opAnd:
+		f.a.AndShiftedReg(rd, rn, rm, kind, count, w32)
+	case opOr:
+		f.a.OrrShiftedReg(rd, rn, rm, kind, count, w32)
+	case opXor:
+		f.a.EorShiftedReg(rd, rn, rm, kind, count, w32)
+	}
+	f.pinned = f.pinned.remove(rn)
+	f.pinned = f.pinned.remove(rm)
+	if ownRN && rn != rd {
+		f.release(rn)
+	}
+	if ownRM && rm != rd && rm != rn {
+		f.release(rm)
+	}
+	f.stats.peep("shifted-register-alu")
+	f.consumeBlockBelow(node)
+	f.occupy(node, rd)
+	return rd
 }
 
 // tryUxtwAdd lowers i64.add(x, i64.extend_i32_u(y)) to a single extended-register
@@ -837,10 +959,11 @@ func (f *fn) condenseCompare(node *elem, dest Reg) Reg {
 			if f.fitsAddSubImmediate(right.st.cval) {
 				f.cmpImmS(L, right.st.cval, w)
 			} else {
-				t := f.allocReg(maskOf(L))
-				f.loadConst(t, right.st)
+				t, owned := f.intConstReadReg(right.st, maskOf(L))
 				f.cmpRR(L, t, w)
-				f.release(t)
+				if owned {
+					f.release(t)
+				}
 			}
 		case stReg:
 			f.cmpRR(L, right.st.reg, w)
@@ -1182,10 +1305,11 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 	switch right.st.kind {
 	case stConst:
 		if !f.aluImm(enc.op, dest, right.st.cval, w) {
-			t := f.allocReg(maskOf(dest))
-			f.loadConst(t, right.st)
+			t, owned := f.intConstReadReg(right.st, maskOf(dest))
 			f.aluRR(enc.op, dest, t, w)
-			f.release(t)
+			if owned {
+				f.release(t)
+			}
 		}
 	case stReg:
 		f.aluRR(enc.op, dest, right.st.reg, w)
@@ -1360,10 +1484,11 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 			f.leaScaled(dest, dest, dest, uint8(log2u(uint64(right.st.cval-1))), 0, w)
 			return
 		}
-		t := f.allocReg(maskOf(dest))
-		f.loadConst(t, right.st)
+		t, owned := f.intConstReadReg(right.st, maskOf(dest))
 		f.mulRR(dest, t, w)
-		f.release(t)
+		if owned {
+			f.release(t)
+		}
 	case stReg:
 		f.mulRR(dest, right.st.reg, w)
 		f.release(right.st.reg)

@@ -1070,6 +1070,10 @@ const pollFreeLoopPhaseMaxLocals = 16
 // a backedge. Large, loop-dense functions skip it: their extra code footprint
 // costs more than preserving the fetch phase.
 func (f *fn) alignLoopHeader() {
+	// Materialize any phase debt before choosing this hot loop's address. This
+	// preserves the exact alignment decision the unoptimized stream would have
+	// made while keeping the deleted instructions off every backedge.
+	f.emitPhasePadding()
 	loopAlign := f.policy.LoopAlignLog2
 	if loopAlign == 0 {
 		loopAlign = 4
@@ -1990,6 +1994,9 @@ func (f *fn) opBr(r *wasm.Reader, conditional bool) error {
 		top := f.s.back()
 		idx, err := r.U32()
 		if err != nil {
+			return err
+		}
+		if done, err := f.brIfSimpleEqz(top, idx); done || err != nil {
 			return err
 		}
 		return f.brIfFused(top, idx)

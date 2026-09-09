@@ -56,17 +56,37 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 			a0 = uint64(uint32(a0))
 		}
 	}
-	if !fn.isolatedFast {
+	locked := !fn.directIsolated
+	if locked {
 		nativeExecutionMu.Lock()
 		nativeExecutionEpoch++
-		defer nativeExecutionMu.Unlock()
 	}
-	result, err := in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	var result uint64
+	var err error
+	wruntime.PreparePreparedIntTrap(in.trap)
+	if fn.directIntBounded {
+		if fn.directIntLight {
+			result, err = in.eng.EnterPreparedIntLightBounded(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
+		} else {
+			result, err = in.eng.EnterPreparedIntBounded(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
+		}
+	} else if fn.directIntLight {
+		result, err = in.eng.EnterPreparedIntLight(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
+	} else {
+		result, err = in.eng.EnterPreparedInt(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
+	}
 	if err != nil {
+		if locked {
+			nativeExecutionMu.Unlock()
+		}
 		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
 	}
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
-		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+		err := in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+		if locked {
+			nativeExecutionMu.Unlock()
+		}
+		return nil, err
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
@@ -78,10 +98,13 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 			out[0] = uint64(uint32(result))
 		}
 	}
+	if locked {
+		nativeExecutionMu.Unlock()
+	}
 	return out, nil
 }
 
-func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, resultSlots int, scalarWideMask uint8, scalarResultWide, isolatedFast bool, a0, a1, a2, a3 uint64) ([]uint64, error) {
+func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, resultSlots int, scalarWideMask uint8, scalarResultWide, isolatedFast, light, bounded bool, a0, a1, a2, a3 uint64) ([]uint64, error) {
 	if in.isLogicallyClosed() {
 		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
 	}
@@ -106,17 +129,37 @@ func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, result
 			a0 = uint64(uint32(a0))
 		}
 	}
-	if !isolatedFast {
+	locked := !isolatedFast
+	if locked {
 		nativeExecutionMu.Lock()
 		nativeExecutionEpoch++
-		defer nativeExecutionMu.Unlock()
 	}
-	result, err := in.eng.EnterPreparedInt(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	var result uint64
+	var err error
+	wruntime.PreparePreparedIntTrap(in.trap)
+	if bounded {
+		if light {
+			result, err = in.eng.EnterPreparedIntLightBounded(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+		} else {
+			result, err = in.eng.EnterPreparedIntBounded(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+		}
+	} else if light {
+		result, err = in.eng.EnterPreparedIntLight(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	} else {
+		result, err = in.eng.EnterPreparedInt(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	}
 	if err != nil {
+		if locked {
+			nativeExecutionMu.Unlock()
+		}
 		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
 	}
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
-		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+		err := in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
+		if locked {
+			nativeExecutionMu.Unlock()
+		}
+		return nil, err
 	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
@@ -127,6 +170,9 @@ func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, result
 		} else {
 			out[0] = uint64(uint32(result))
 		}
+	}
+	if locked {
+		nativeExecutionMu.Unlock()
 	}
 	return out, nil
 }

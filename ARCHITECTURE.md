@@ -307,6 +307,10 @@ slice growth beyond those sizes. Temporary global offsets use the existing
 per-function hint fields until flattening; worker and event ownership retain
 full-width 32-bit indexes. This removes duplicate range storage without changing
 global ordering, feature checks, deterministic errors, or final resource counts.
+ARM64 loop-constant facts use worker-local sparse lists, merged in function order
+with the same backing-capacity contract as serial scans. Address clearing can
+only be omitted for a proven machine value. An `i32` type does not by itself prove
+that a serialized 64-bit parameter carrier has zero high bits.
 
 The backend is a **single forward pass** that fuses code generation and register
 allocation. It uses the *Valent-Block* technique from WARP: instead of emitting

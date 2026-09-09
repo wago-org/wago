@@ -95,6 +95,36 @@ func TestParallelModuleHintsMatchSerialArm64(t *testing.T) {
 	}
 }
 
+func TestParallelLoopConstantsPreserveOrderAndAccountingArm64(t *testing.T) {
+	m := readParallelTestModuleArm64(t, "../../../../../../bench/corpus/lua.wasm")
+	for _, enabled := range []bool{false, true} {
+		selection, err := optimizationBindings.ResolveSnapshot(map[string]bool{"loop-int-const": enabled}, OptimizationSnapshot{}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		policy := shared.DefaultCodegenPolicy(selection)
+		serial, serialSidecar, _, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, policy)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if enabled != (len(serialSidecar.loopIntConsts) != 0) {
+			t.Fatalf("enabled=%v: constant sidecars=%d", enabled, len(serialSidecar.loopIntConsts))
+		}
+		for _, workers := range []int{2, 4, 8} {
+			parallel, sidecar, _, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), workers, policy)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(serial, parallel) || !reflect.DeepEqual(serialSidecar, sidecar) {
+				t.Fatalf("enabled=%v workers=%d: hint facts or ordered sidecars differ", enabled, workers)
+			}
+			if cap(sidecar.loopIntConsts) != cap(serialSidecar.loopIntConsts) {
+				t.Fatalf("enabled=%v workers=%d: loop capacity %d, serial %d", enabled, workers, cap(sidecar.loopIntConsts), cap(serialSidecar.loopIntConsts))
+			}
+		}
+	}
+}
+
 func TestLocalEventTapeScansStructuredLocalsArm64(t *testing.T) {
 	h := newFuncHints(2, 0)
 	var tape shared.LocalEventTape
@@ -102,7 +132,7 @@ func TestLocalEventTapeScansStructuredLocalsArm64(t *testing.T) {
 	h.localEvents = &tape
 	elig := newGlobalEligibilityTracker(0)
 	var globals shared.GlobalHintAccumulator
-	got, err := scanBodyBytesIntoModule([]byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}, 0, 2, 0, 0, nil, h, &elig, nil, nil, nil, nil, 0, &globals)
+	got, err := scanBodyBytesIntoModule([]byte{0x02, 0x40, 0x20, 0x00, 0x21, 0x01, 0x0b, 0x0b}, 0, 2, 0, 0, nil, h, &elig, nil, nil, nil, nil, 0, &globals, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,6 +147,64 @@ func TestLocalEventTapeScansStructuredLocalsArm64(t *testing.T) {
 	}
 	if got.localEvents != &tape {
 		t.Fatal("scanner lost worker-owned tape")
+	}
+}
+
+func TestLoadDefinedLocalHintRequiresFullWidthSelfRecurrenceArm64(t *testing.T) {
+	h, err := scanBodyBytes([]byte{
+		0x20, 0x00, 0x28, 0x02, 0x00, 0x21, 0x00, // x = i32.load(x)
+		0x20, 0x01, 0x2d, 0x00, 0x00, 0x21, 0x01, // y = i32.load8_u(y)
+		0x0b,
+	}, 2, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := loadDefinedLocalMask(h.localScore); got != 1 {
+		t.Fatalf("load-defined local mask = %#x, want only full-width self recurrence local 0", got)
+	}
+}
+
+func TestCallPlacementHintsDistinguishColdDirectCallsArm64(t *testing.T) {
+	cold, err := scanBodyBytes([]byte{0x10, 0x01, 0x03, 0x40, 0x0b, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cold.flags.has(hintHasCall) || cold.flags.has(hintHasLoopCall) || cold.flags.has(hintHasNonDirectCall) {
+		t.Fatalf("cold direct flags = %#x", cold.flags)
+	}
+	hot, err := scanBodyBytes([]byte{0x03, 0x40, 0x10, 0x01, 0x0b, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hot.flags.has(hintHasLoopCall) || hot.flags.has(hintHasNonDirectCall) {
+		t.Fatalf("loop direct flags = %#x", hot.flags)
+	}
+	dynamic, err := scanBodyBytes([]byte{0x11, 0x00, 0x00, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !dynamic.flags.has(hintHasNonDirectCall) {
+		t.Fatalf("dynamic call flags = %#x", dynamic.flags)
+	}
+	if dynamic.hasUnsupportedDynamicCall() {
+		t.Fatal("call_indirect was classified as an unsupported dynamic call")
+	}
+	callRef, err := scanBodyBytes([]byte{0x14, 0x00, 0x0b}, 0, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !callRef.flags.has(hintHasNonDirectCall) || !callRef.hasUnsupportedDynamicCall() {
+		t.Fatalf("call_ref flags/dynamic marker = %#x/%v", callRef.flags, callRef.hasUnsupportedDynamicCall())
+	}
+	imported := newFuncHints(0, 0)
+	elig := newGlobalEligibilityTracker(0)
+	var globals shared.GlobalHintAccumulator
+	imported, err = scanBodyBytesIntoModule([]byte{0x10, 0x00, 0x0b}, 0, 0, 0, 1, nil, imported, &elig, nil, nil, nil, nil, 1, &globals, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !imported.flags.has(hintCallsImport) {
+		t.Fatalf("import call flags = %#x", imported.flags)
 	}
 }
 
@@ -256,7 +344,7 @@ func TestModuleHintsCountLocalDirectCallRelocations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := hints[0].callRelocSites; got != 2 {
+	if got := hints[0].callRelocSiteCount(); got != 2 {
 		t.Fatalf("call relocation sites = %d, want 2", got)
 	}
 }

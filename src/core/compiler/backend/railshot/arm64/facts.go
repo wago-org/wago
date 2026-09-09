@@ -45,6 +45,9 @@ func (st *storage) setEHRoot(root bool) {
 }
 
 func (f *fn) factsForLocal(x int) valueFacts {
+	// A serialized i32 parameter can arrive in a 64-bit carrier with high bits
+	// set. Only a recorded machine-value proof can remove canonicalization;
+	// the Wasm type alone is not that proof, including across control joins.
 	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
 		return f.locals[x].facts
 	}
@@ -60,7 +63,7 @@ func (f *fn) setFactsForLocal(x int, facts valueFacts) {
 func (f *fn) applyFactsForLocal(e *elem, x int) {
 	facts := f.factsForLocal(x)
 	e.st.setValueFacts(facts)
-	if facts != 0 {
+	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) && f.locals[x].facts != 0 {
 		f.stats.peep("local-fact")
 	}
 }

@@ -16,6 +16,7 @@ type PreparedFunction struct {
 	export              string
 	entry               uintptr
 	directEntry         uintptr
+	directLinMem        uintptr
 	paramSlots          int
 	resultSlots         int
 	paramTypes          []ValType
@@ -30,11 +31,22 @@ type PreparedFunction struct {
 	resultWide          []bool
 	privateFast         bool
 	isolatedFast        bool
+	directIsolated      bool
 	directIntFast       bool
+	directIntLight      bool
+	directIntBounded    bool
 }
 
 func (c *Compiled) directPreparedAt(local int) bool {
 	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedEntry(c.InternalEntry[local])
+}
+
+func (c *Compiled) directPreparedLightAt(local int) bool {
+	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedLightEntry(c.InternalEntry[local])
+}
+
+func (c *Compiled) directPreparedBoundedAt(local int) bool {
+	return c != nil && local >= 0 && local < len(c.InternalEntry) && directPreparedBoundedEntry(c.InternalEntry[local])
 }
 
 func preparedDirectIntSignature(sig FuncSig) bool {
@@ -120,12 +132,28 @@ func (in *Instance) PrepareFunction(export string) (*PreparedFunction, error) {
 		hasReferenceResults: hasReferenceValType(sig.Results),
 		resultWide:          wide,
 	}
-	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled && in.preparedPrivateEligible() {
-		fn.privateFast = true
-		fn.isolatedFast = preparedIsolatedEntryEnabled && in.preparedIsolatedEligible()
-		if (fn.isolatedFast || preparedDirectIntPrivateSupported) && preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
-			fn.directIntFast = true
-			fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+	if scalarFast && preparedCallEnabled && preparedPrivateEntryEnabled {
+		entryMode := in.preparedEntryMode()
+		if entryMode != preparedEntryGeneral {
+			fn.privateFast = true
+			fn.isolatedFast = preparedIsolatedEntryEnabled && entryMode == preparedEntryIsolated
+		}
+		if preparedDirectIntSupported && preparedDirectIntEnabled && preparedDirectIntSignature(sig) && in.c.directPreparedAt(ic.li) {
+			// directPreparedAt is the compiler proof that this internal entry is
+			// memory-free. Re-evaluate only the bounds-mode exclusion; every other
+			// ownership and lifecycle exclusion remains in force.
+			directMode := entryMode
+			if directMode == preparedEntryGeneral && in.c.boundsMode == BoundsChecksSignalsBased {
+				directMode = in.preparedMemoryFreeEntryMode()
+			}
+			fn.directIsolated = preparedIsolatedEntryEnabled && directMode == preparedEntryIsolated
+			if fn.directIsolated || (preparedDirectIntPrivateSupported && directMode == preparedEntryPrivate) {
+				fn.directIntFast = true
+				fn.directIntLight = in.c.directPreparedLightAt(ic.li)
+				fn.directIntBounded = in.c.directPreparedBoundedAt(ic.li)
+				fn.directEntry = in.base + uintptr(internalEntryOffset(in.c.InternalEntry[ic.li]))
+				fn.directLinMem = in.jm.LinMemBase()
+			}
 		}
 	}
 	return fn, nil

@@ -56,7 +56,14 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 			a0 = uint64(uint32(a0))
 		}
 	}
-	result, err := in.eng.EnterPreparedInt(fn.directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	var result uint64
+	var err error
+	wruntime.PreparePreparedIntTrap(in.trap)
+	if fn.directIntBounded {
+		result, err = in.eng.EnterPreparedIntBounded(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
+	} else {
+		result, err = in.eng.EnterPreparedInt(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
 	}
@@ -76,7 +83,7 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 	return out, nil
 }
 
-func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, resultSlots int, scalarWideMask uint8, scalarResultWide, _ bool, a0, a1, a2, a3 uint64) ([]uint64, error) {
+func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, resultSlots int, scalarWideMask uint8, scalarResultWide, _, _, bounded bool, a0, a1, a2, a3 uint64) ([]uint64, error) {
 	if in.isLogicallyClosed() {
 		return nil, fmt.Errorf("wago: invoke prepared function: instance is closed")
 	}
@@ -101,7 +108,14 @@ func (in *Instance) invokeDirectIntEntry(directEntry uintptr, paramSlots, result
 			a0 = uint64(uint32(a0))
 		}
 	}
-	result, err := in.eng.EnterPreparedInt(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	var result uint64
+	var err error
+	wruntime.PreparePreparedIntTrap(in.trap)
+	if bounded {
+		result, err = in.eng.EnterPreparedIntBounded(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	} else {
+		result, err = in.eng.EnterPreparedInt(directEntry, in.jm.LinMemBase(), a0, a1, a2, a3)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("wago: map prepared integer entry: %w", err)
 	}

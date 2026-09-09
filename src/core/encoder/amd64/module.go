@@ -23,7 +23,9 @@ type CompiledModule struct {
 	// DirectPrepared marks small register-ABI internal entries constrained to
 	// caller-saved GPRs and needing only RBX (linMem) from the host trampoline.
 	// The optional bitset uses one bit per local function.
-	DirectPrepared []uint64
+	DirectPrepared        []uint64
+	DirectPreparedLight   []uint64 // currently populated only by the ARM64 backend
+	DirectPreparedBounded []uint64
 
 	// PreparedIsolatedTables reports that every table is local, unexported,
 	// never mutated, and contains only local function descriptors. Runtime entry

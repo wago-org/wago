@@ -85,8 +85,8 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkArm64(t *testing.T) {
 func TestHiddenOptimizationFamiliesUsePerCompilePolicyArm64(t *testing.T) {
 	names := []string{
 		"simd-superopt", "interval-region-pins", "magic-div",
-		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "entry-init-elision",
-		"v128-direct-results",
+		"shared-trap-body", "shared-adapters", "zero-branch", "mul-add-fuse", "shifted-register-alu", "fp-immediate-const", "entry-init-elision", "prepared-direct-entry", "prepared-light-entry", "prepared-bounded-entry", "loop-int-const", "indexed-base-reuse",
+		"v128-direct-results", "cold-call-local-pins", "convert-read",
 	}
 	overrides := make(map[string]bool, len(names))
 	for _, name := range names {
