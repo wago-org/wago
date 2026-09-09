@@ -54,7 +54,7 @@ func (f *fn) factsForLocal(x int) valueFacts {
 		return 0
 	}
 	facts := valueFacts(0)
-	if f.declaredI32Local(x) {
+	if f.canonicalI32Local(x) {
 		facts |= factUpper32Zero
 	}
 	if f.localFactsEnabled {
@@ -67,11 +67,30 @@ func (f *fn) declaredI32Local(x int) bool {
 	return f.opt(optValueFacts) && x >= f.nParams && uint(x) < uint(len(f.localType)) && f.localType[x] == mtI32
 }
 
-func (f *fn) canonicalizeDeclaredI32Local(x int, reg Reg, facts valueFacts) {
-	if f.declaredI32Local(x) && !facts.has(factUpper32Zero) {
+func (f *fn) canonicalI32Local(x int) bool {
+	return f.declaredI32Local(x) || uint(x) < 64 && f.canonicalI32Params&(uint64(1)<<uint(x)) != 0
+}
+
+func (f *fn) canonicalizeI32LocalAssignment(x int, reg Reg, facts valueFacts) {
+	if f.canonicalI32Local(x) && !facts.has(factUpper32Zero) {
 		f.a.MovReg32(reg, reg)
 		f.stats.peep("local-i32-canonicalize")
 	}
+}
+
+func canonicalI32ParamMask(hints *funcHintView, localTypes []machineType, nParams int, enabled bool) uint64 {
+	if !enabled || !hints.flags.has(hintTouchesMemory) {
+		return 0
+	}
+	var mask uint64
+	for i := 0; i < min(nParams, min(len(localTypes), min(len(hints.localScore), 64))); i++ {
+		// One entry canonicalization replaces at least two direct scalar-load
+		// address canonicalizations. Single-use parameters retain per-use lowering.
+		if localTypes[i] == mtI32 && hints.localScore[i]&localScoreParamAddressReuse != 0 {
+			mask |= uint64(1) << uint(i)
+		}
+	}
+	return mask
 }
 
 func (f *fn) setFactsForLocal(x int, facts valueFacts) {

@@ -1939,7 +1939,7 @@ func (f *fn) emitRegisterCallVia(ft *wasm.CompType, resHint int, preservesPins b
 		// register — after any eager post-call reload, which would otherwise
 		// overwrite it with the stale slot value.
 		pr, _, _ := f.pinReg(resHint)
-		if f.declaredI32Local(resHint) && ft.Results[0] == wasm.I32 {
+		if f.canonicalI32Local(resHint) && ft.Results[0] == wasm.I32 {
 			f.a.MovReg32(pr, X0)
 			f.stats.peep("local-i32-canonicalize")
 		} else {

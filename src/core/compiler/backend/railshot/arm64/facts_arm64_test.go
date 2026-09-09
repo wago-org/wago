@@ -363,3 +363,41 @@ func TestDeclaredI32LocalCanonicalizesOnceAcrossControlFlowArm64(t *testing.T) {
 		t.Fatalf("non-canonical parameter copied through declared local = %#x, %v; want address zero", got, err)
 	}
 }
+
+func TestHotI32ParameterCanonicalizesOnceAtEntryArm64(t *testing.T) {
+	m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
+		0x00,       // no locals
+		0x03, 0x40, // loop: parameter reads receive loop-weighted hotness
+		0x20, 0x00, 0x28, 0x02, 0x00, // i32.load param0
+		0x20, 0x00, 0x28, 0x02, 0x00, // i32.load param0 again
+		0x6a,
+		0x0f,       // return the sum
+		0x0b, 0x0b, // end loop/function
+	})
+	for _, tc := range []struct {
+		name   string
+		regABI bool
+	}{{"register-abi", true}, {"wrapper-abi", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := map[string]bool{"value-facts": true, "reg-abi": tc.regABI}
+			var stats ModuleStats
+			cm, err := CompileModuleWith(m, CompileOptions{Stats: &stats, Optimizations: opts})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cm.CodeImage != nil {
+				defer cm.CodeImage.Close()
+			}
+			peeps := stats.Funcs[0].Peephole
+			if got := peeps["entry-i32-param-canonicalize"]; got != 1 {
+				t.Fatalf("entry parameter canonicalizations = %d, want 1; peeps=%v", got, peeps)
+			}
+			if got := peeps["memory-address-zext-elim"]; got != 2 {
+				t.Fatalf("hot parameter address eliminations = %d, want 2; peeps=%v", got, peeps)
+			}
+			if got, err := runArm64WrapperWithOptions(t, m, CompileOptions{Optimizations: opts}, uint64(1)<<32); err != nil || got != 0 {
+				t.Fatalf("non-canonical hot parameter address = %#x, %v; want address zero", got, err)
+			}
+		})
+	}
+}

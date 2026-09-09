@@ -133,6 +133,7 @@ type funcHintView struct {
 	funcHints
 	scalarMergeWeight uint32 // scan-only; retained as one threshold bit in maxControlDepth
 	entryInitialized  uint64 // scan-local view; compilation decodes bits during pin planning
+	paramAddressSeen  uint64 // scan-local first direct scalar-load use; second use is retained in localScore
 	nLocals           int
 	localScore        []uint32
 	localLastGet      []uint32
@@ -370,7 +371,12 @@ const (
 	// dependency chain on Apple ARM cores, so retain this bounded provenance from
 	// the existing body scan without allocating another sidecar.
 	localScoreLoadDefined = uint32(1 << 30)
-	localScoreHotnessMask = localScoreLoadDefined - 1
+	// A parameter used directly as a scalar-load address at least twice can pay
+	// one entry canonicalization instead of one canonicalization per load. The
+	// first occurrence stays scan-local so the retained score spends one bit only
+	// on proven reuse.
+	localScoreParamAddressReuse = uint32(1 << 29)
+	localScoreHotnessMask       = localScoreParamAddressReuse - 1
 )
 
 func localHotness(score uint32) uint32 { return score & localScoreHotnessMask }
@@ -406,6 +412,18 @@ func (h *funcHintView) markEntryInitialized(idx uint32) {
 func (h *funcHintView) markLoadDefined(idx uint32) {
 	if int(idx) < len(h.localScore) {
 		h.localScore[idx] |= localScoreLoadDefined
+	}
+}
+
+func (h *funcHintView) noteParamAddress(idx uint32) {
+	if idx >= 64 || int(idx) >= len(h.localScore) {
+		return
+	}
+	bit := uint64(1) << idx
+	if h.paramAddressSeen&bit != 0 {
+		h.localScore[idx] |= localScoreParamAddressReuse
+	} else {
+		h.paramAddressSeen |= bit
 	}
 }
 
@@ -1327,6 +1345,9 @@ func (s *byteBodyScanner) scanExpr(depth int, loopDepth int, curLoop int, stopAt
 			if imm.TouchesMemory {
 				s.h.flags.set(hintTouchesMemory)
 				s.h.memOps++
+				if op >= 0x28 && op <= 0x35 && prevOp == 0x20 {
+					s.h.noteParamAddress(prevIndex)
+				}
 			}
 			if imm.UsesBulkMemory {
 				s.h.noteBoundaryEvent(shared.LocalEventInvalidate, depth)

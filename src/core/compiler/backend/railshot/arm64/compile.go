@@ -197,6 +197,10 @@ type fn struct {
 	// own prior value. Their explicit W-register address rename is a useful
 	// dependency break on Apple ARM cores and is retained by memory lowering.
 	loadDefinedLocals uint64
+	// canonicalI32Params marks hot i32 parameters whose 64-bit local
+	// representation is canonicalized once at entry (and on every assignment).
+	// This lets repeated address uses retain an upper-zero fact across control.
+	canonicalI32Params uint64
 	// memcopyTail4 bounds per-function native expansion for the four-byte
 	// dynamic memory-copy tail. The lowering itself remains general within this cap.
 	memcopyTail4 bool
@@ -2858,6 +2862,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.localSlot[i] = uint32(f.nLocalSlots)
 		f.nLocalSlots += mt.stackSlots()
 	}
+	f.canonicalI32Params = canonicalI32ParamMask(hints, f.localType, f.nParams, f.opt(optValueFacts))
 	hasCall := hints.flags.has(hintHasCall)
 	touchesMemory := hints.flags.has(hintTouchesMemory)
 	// A private prepared entry establishes X26 and preserves the full Go
@@ -3677,6 +3682,7 @@ func (f *fn) prologue(localScores []uint32) {
 		paramOff += abiValSize(pt)
 	}
 	x0ParamOff := int32(-1) // a param pinned in X0 must load LAST: X0 is the args base
+	x0ParamI32 := false
 	pairParams := f.opt(optEntryParamPairs)
 	pendingParam := pendingWrapperParamHome{}
 	paramOff = 0
@@ -3685,11 +3691,23 @@ func (f *fn) prologue(localScores []uint32) {
 			if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 				if pr == X0 {
 					x0ParamOff = paramOff
+					x0ParamI32 = f.canonicalI32Local(i)
+				} else if f.canonicalI32Local(i) {
+					f.ld32(pr, X0, paramOff)
+					f.stats.peep("entry-i32-param-canonicalize")
 				} else {
 					f.ld64(pr, X0, paramOff) // pinned int param → its GP register
 				}
 			} else if ok && isFloat {
 				a.FLoadDisp(pr, X0, paramOff, f.localType[i] == mtF64) // pinned float param → V reg
+			} else if f.canonicalI32Local(i) {
+				if pairParams {
+					f.flushWrapperParamHome(pendingParam)
+					pendingParam = pendingWrapperParamHome{}
+				}
+				f.ld32(X16, X0, paramOff)
+				f.st64(SP, f.localOff(i), X16)
+				f.stats.peep("entry-i32-param-canonicalize")
 			} else {
 				if pairParams {
 					pendingParam = f.queueWrapperParamHome(pendingParam, paramOff, f.localOff(i))
@@ -3708,7 +3726,12 @@ func (f *fn) prologue(localScores []uint32) {
 		f.flushWrapperParamHome(pendingParam)
 	}
 	if x0ParamOff >= 0 {
-		f.ld64(X0, X0, x0ParamOff)
+		if x0ParamI32 {
+			f.ld32(X0, X0, x0ParamOff)
+			f.stats.peep("entry-i32-param-canonicalize")
+		} else {
+			f.ld64(X0, X0, x0ParamOff)
+		}
 	}
 	f.zeroDeclaredLocals(localScores)
 	f.derivePinnedGlobals()
@@ -3972,10 +3995,18 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 			}
 			fp++
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
+			if f.canonicalI32Local(i) {
+				a.MovReg32(intArgRegs[gp], intArgRegs[gp])
+				f.stats.peep("entry-i32-param-canonicalize")
+			}
 			if pr != intArgRegs[gp] {
 				moves = append(moves, regMove{dst: pr, src: intArgRegs[gp]})
 			}
 		} else {
+			if f.canonicalI32Local(i) {
+				a.MovReg32(intArgRegs[gp], intArgRegs[gp])
+				f.stats.peep("entry-i32-param-canonicalize")
+			}
 			f.st64(SP, f.localOff(i), intArgRegs[gp])
 		}
 		if !mt.isFloat() {

@@ -1157,7 +1157,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		// expressions; clear that ownership because pinned-local registers are not
 		// allocator scratch registers.
 		f.condenseInto(e, pr)
-		f.canonicalizeDeclaredI32Local(x, pr, assignedFacts)
+		f.canonicalizeI32LocalAssignment(x, pr, assignedFacts)
 		f.release(pr)
 		f.markLocalDirty(x) // value now lives (only) in the register
 		if tee {
@@ -1237,7 +1237,7 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 		f.condense(e, regNone)
 	}
 	r := f.materialize(e)
-	f.canonicalizeDeclaredI32Local(x, r, assignedFacts)
+	f.canonicalizeI32LocalAssignment(x, r, assignedFacts)
 	f.st64(SP, f.localOff(x), r) // helper hides the scaled-offset fallback (§6.1)
 	f.locals[x].state = lsMem
 	if !tee {
