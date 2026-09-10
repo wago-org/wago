@@ -11,9 +11,14 @@
 - `latest` resolves the newest stable `vMAJOR.MINOR.PATCH` release.
 
 The canary workflow builds and tags automatically after main CI succeeds. Its
-workflow artifacts are retained for 90 days, while CLI canary installation
-builds the exact tagged source with the requested `go` or `tinygo` executable
-from `PATH`. Beta and stable releases are dispatched through
+workflow artifacts are retained for 90 days. Manager and runtime installation
+first attempt the matching host artifact and verify its bundled SHA-256 file.
+Wago first asks an installed and authenticated GitHub CLI (`gh`) to download the
+artifact. If that is unavailable, it tries the Actions API with
+`WAGO_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`. If both transports fail, or
+the archive is expired or invalid, installation builds the exact tagged source
+with the requested `go` or `tinygo` executable from `PATH`. Beta and stable
+releases are dispatched through
 `release.yml` with an exact full commit SHA that already passed main CI; those
 releases build, smoke-test, checksum, and publish the platform asset set. Before
 starting a new release series, update `RELEASE_SERIES` in `canary.yml`.

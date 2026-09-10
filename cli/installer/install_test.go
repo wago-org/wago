@@ -15,6 +15,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wago-org/wago/internal/actionartifact"
+	"github.com/wago-org/wago/internal/installbootstrap"
 )
 
 type installerRoundTripFunc func(*http.Request) (*http.Response, error)
@@ -196,8 +199,18 @@ func TestInstallerDryRunPresentation(t *testing.T) {
 
 func TestInstallerBuildsExactCanonicalCanaryFromSource(t *testing.T) {
 	const sha = "deadbee123456789012345678901234567890123"
+	const tag = "v0.1.0-canary.gdeadbee"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/tags" {
+			http.NotFound(writer, request)
+			return
+		}
+		_, _ = fmt.Fprintf(writer, `[{"name":%q,"commit":{"sha":%q}}]`, tag, sha)
+	}))
+	defer server.Close()
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("WAGO_VERSION", "canary@"+sha)
+	t.Setenv("WAGO_TAGS_API_URL", server.URL+"/tags")
 	var output bytes.Buffer
 	installer, err := newInstaller(&output)
 	if err != nil {
@@ -205,10 +218,18 @@ func TestInstallerBuildsExactCanonicalCanaryFromSource(t *testing.T) {
 	}
 	installer.tmpDir = t.TempDir()
 	target := filepath.Join(installer.tmpDir, executableName("wago"))
-	if err := installer.downloadManager(target); err == nil || !strings.Contains(err.Error(), "do not contain release assets") {
+	previousDownload := downloadInstallerActionArtifact
+	downloadInstallerActionArtifact = func(_ context.Context, _ actionartifact.Config, gotTag, commit, _, _, _ string) error {
+		if gotTag != tag || commit != sha {
+			t.Fatalf("artifact identity = %q@%s", gotTag, commit)
+		}
+		return errors.New("artifact unavailable")
+	}
+	t.Cleanup(func() { downloadInstallerActionArtifact = previousDownload })
+	if err := installer.downloadManager(target); err == nil || !strings.Contains(err.Error(), "artifact unavailable") {
 		t.Fatalf("downloadManager error = %v", err)
 	}
-	if installer.managerTag != "canary@"+sha || installer.managerSourceRef != sha || installer.managerFromRelease {
+	if installer.managerTag != tag || installer.managerSourceRef != sha || installer.managerFromRelease {
 		t.Fatalf("manager resolution = %q, %q, %v", installer.managerTag, installer.managerSourceRef, installer.managerFromRelease)
 	}
 }
@@ -494,11 +515,53 @@ func TestInstallerResolvesNewestCanaryTagForSourceBuild(t *testing.T) {
 	}
 	installer.tmpDir = t.TempDir()
 	target := filepath.Join(installer.tmpDir, executableName("wago"))
-	if err := installer.downloadManager(target); err == nil || !strings.Contains(err.Error(), "do not contain release assets") {
+	previousDownload := downloadInstallerActionArtifact
+	downloadInstallerActionArtifact = func(context.Context, actionartifact.Config, string, string, string, string, string) error {
+		return errors.New("artifact unavailable")
+	}
+	t.Cleanup(func() { downloadInstallerActionArtifact = previousDownload })
+	if err := installer.downloadManager(target); err == nil || !strings.Contains(err.Error(), "artifact unavailable") {
 		t.Fatalf("downloadManager error = %v", err)
 	}
 	if installer.managerTag != "v0.1.0-canary.gdeadbee" || installer.managerSourceRef != sha || installer.managerFromRelease {
 		t.Fatalf("manager resolution = %q, %q, %v", installer.managerTag, installer.managerSourceRef, installer.managerFromRelease)
+	}
+}
+
+func TestInstallerDownloadsCanaryManagerWorkflowArtifact(t *testing.T) {
+	const tag = "v0.1.0-canary.gdeadbee"
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("WAGO_VERSION", tag)
+	var output bytes.Buffer
+	installer, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.tmpDir = t.TempDir()
+	target := filepath.Join(installer.tmpDir, executableName("wago"))
+	previousDownload := downloadInstallerActionArtifact
+	downloadInstallerActionArtifact = func(_ context.Context, config actionartifact.Config, gotTag, commit, platform, asset, destination string) error {
+		if config.CatalogURL != installer.actionsArtifactAPI || gotTag != tag || commit != "" || platform != runtime.GOOS+"-"+runtime.GOARCH {
+			t.Fatalf("artifact request = %#v, %q, %q, %q", config, gotTag, commit, platform)
+		}
+		wantAsset, assetErr := installbootstrap.Asset("wago", runtime.GOOS, runtime.GOARCH)
+		if assetErr != nil {
+			t.Fatal(assetErr)
+		}
+		if asset != wantAsset || destination != target {
+			t.Fatalf("artifact target = %q, %q; want %q, %q", asset, destination, wantAsset, target)
+		}
+		return os.WriteFile(destination, []byte("artifact manager"), 0o755)
+	}
+	t.Cleanup(func() { downloadInstallerActionArtifact = previousDownload })
+	if err := installer.downloadManager(target); err != nil {
+		t.Fatal(err)
+	}
+	if installer.managerTag != tag || installer.managerSourceRef != tag || !installer.managerFromRelease {
+		t.Fatalf("manager resolution = %q, %q, %v", installer.managerTag, installer.managerSourceRef, installer.managerFromRelease)
+	}
+	if got, readErr := os.ReadFile(target); readErr != nil || string(got) != "artifact manager" {
+		t.Fatalf("manager = %q, %v", got, readErr)
 	}
 }
 
