@@ -81,6 +81,8 @@ graph. It rejects unknown cost, unknown targets, cycles, missing boundaries,
 overflow, and excess work. Analysis is capped at 4096 nodes, 8192 edges, and
 128 recursive visits in depth. Its temporary arrays die with the analysis; no
 cache is retained. It is not called by runtime admission or module compilation.
+The verifier is a separate compiler experiment. Its result is not an admission
+token, and no public API can use a supplied graph to bypass scheduler release.
 
 Enabling segments still requires all of the following:
 
