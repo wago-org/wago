@@ -37,6 +37,35 @@ func (c hostInvocationContext) empty() bool {
 
 var hostInvocationContexts sync.Map // map[uintptr]hostInvocationContext
 
+// hostLoopActivation belongs to one Go native-entry/host-resume loop. The
+// invocation gate keeps the root identity/reservation stable, and the parent
+// binding spans this loop. Nested entries get distinct values and control
+// frames. This cache is neither execution ownership nor callback authority.
+type hostLoopActivation struct {
+	root       *Instance
+	ctrl       uintptr
+	invocation hostInvocationContext
+}
+
+func (a *hostLoopActivation) context(active *Instance) hostInvocationContext {
+	if a.invocation.id != 0 && a.ctrl == offHeapSlicePtr(a.root.ctrl) {
+		return a.invocation
+	}
+	return a.resolveContext(active)
+}
+
+func (a *hostLoopActivation) resolveContext(active *Instance) hostInvocationContext {
+	invocation := activeHostInvocationContext(a.root)
+	if a.root != nil && a.ctrl != 0 && a.ctrl == offHeapSlicePtr(a.root.ctrl) && invocation.id != 0 {
+		a.invocation = invocation
+	}
+	if invocation.empty() {
+		// An active callee's identity must never become a cached public root.
+		invocation = activeHostInvocationContext(active)
+	}
+	return invocation
+}
+
 func currentHostInvocationContext(ctrl uintptr, in *Instance) hostInvocationContext {
 	if value, ok := hostInvocationContexts.Load(ctrl); ok {
 		return value.(hostInvocationContext)
@@ -122,6 +151,15 @@ func offHeapSlicePtr(b []byte) uintptr {
 // touching the process-wide registry. A cross-instance callee falls back to the
 // active control-frame lookup published by its native host stub.
 func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32, args, results []uint64) {
+	activation := hostLoopActivation{root: root}
+	if root != nil {
+		activation.ctrl = offHeapSlicePtr(root.ctrl)
+	}
+	activation.dispatch(ctrl, importIdx, args, results)
+}
+
+func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, results []uint64) {
+	root := a.root
 	active := root
 	if root == nil || ctrl != offHeapSlicePtr(root.ctrl) {
 		value, ok := hostControlInstances.Load(ctrl)
@@ -183,10 +221,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// Cross-instance native dispatch parks the producer while the public root still
 	// owns the invocation identity and collector lease. Carry that identity into
 	// the producer's HostModule instead of reading its zero local invocation ID.
-	invocation := activeHostInvocationContext(root)
-	if invocation.empty() {
-		invocation = activeHostInvocationContext(active)
-	}
+	invocation := a.context(active)
 	// Exact parked native roots and translated GC host arguments are now
 	// published. Release every collector lease owned by the public native root
 	// while arbitrary host code runs. A non-GC relay may have pre-acquired more

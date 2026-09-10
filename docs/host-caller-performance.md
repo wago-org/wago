@@ -271,3 +271,80 @@ counts are unchanged. The full package and race suites passed in 5.902 s and
 20.552 s. The profile still shows context-map lookup (8.13% cumulative) and
 reservation lookup (2.61% cumulative), supporting an activation-local cache
 experiment next.
+
+## Activation-local context proof, before implementation
+
+The public invocation gate fixes identity and reservation for the native call.
+`callNativeSyncWithTrapContext` installs the callback parent before entering its
+Go host loop and restores it only when that loop ends. Re-entry installs a
+distinct control frame, engine and Go loop, then restores the outer frame and
+parent binding. A cache can therefore belong to that Go loop, never to the
+instance. It will be initialized only on the first arbitrary host callback, so
+zero-host invocations do not pay an identity lookup.
+
+Admission requires a nonzero root identity and the same root control frame as
+at entry. A changed control frame uses the existing lookup without replacing
+the outer snapshot. A missing root identity uses the existing callee fallback
+and is never cached as a root. The cache carries only runtime-derived root ID,
+reservation and parent context; GC lease owner and flags remain resolved on
+every callback. The value is accessed only by its Go loop's callback, so no
+cross-goroutine atomics are removed. Each nested native entry has its own value.
+All callback generations, leases, roots, traps and scheduler transitions remain
+outside this cache and retain their existing protocol.
+
+The implementation follows this proof with a 48-byte Go-local activation on
+amd64. Escape analysis reports that its dispatch method value does not escape.
+The cancellation context is a reference to the live parent, not a snapshot of
+its cancellation state. A parent cancellation therefore remains observable.
+Focused tests cover nested frames, restoration, later invocations that reuse a
+frame, and a callee fallback that must never become cached root authority.
+The full package and race suites passed in 6.447 s and 22.008 s.
+
+### Context-cache checkpoint
+
+Five 500 ms samples, median (range), ns per 1,024-call public invocation:
+
+| Path | Before | Activation-local cache |
+|---|---:|---:|
+| Concrete memory-0 | 135821 (135192–136408) | 119013 (118744–119725) |
+| Legacy memory-0 | 154570 (151824–160640) | 147718 (144329–153382) |
+| Concrete parallel | 19210 (18993–19291) | 18170 (17850–18848) |
+| Concrete local GC | 252413 (252064–253805) | 228134 (227282–233132) |
+| Concrete imported domain | 205573 (203868–206113) | 181821 (181192–182810) |
+| Concrete dynamic domain | 214547 (212825–215621) | 188494 (187490–193866) |
+
+Guest subtraction gives 115.6 ns/call concrete and 143.7 ns/call legacy. All
+concrete rows retain 0 B/op and 0 allocs/op. There is a small-call tradeoff:
+public single-call latency is 351.6 ns concrete (349.5–354.2), up from 343.5 ns,
+and 392.3 ns legacy (390.0–395.9), up from 387.8 ns. Concrete zero-host fixed
+invocation cost is 135.2 ns (134.8–136.3). The cache is justified for repeated
+calls, not claimed as a single-call improvement.
+
+The profile has no repeated context-map, reservation-lookup or generic GC
+suspension samples. The cache helper is 1.58% flat; scalar dispatch is 9.42%
+flat / 17.03% cumulative, and native resume is 3.69% flat / 17.18% cumulative.
+The allocation profile again samples setup/profiling, not callback boxes.
+Mutex delay is 492 us total, attributed to the Go runtime, not global Wago
+activation bookkeeping.
+
+## Security and DoS review of this pass
+
+| Change | Removed work and proof | Abuse, protection and fallback |
+|---|---|---|
+| Concrete caller | Interface box removed only from direct concrete dispatch; the private token is unchanged | Retention cannot change its generation snapshot. All helper APIs resolve the same private authority. Nested return restores active generation, not sequence. Overflow still stops issuance. Legacy dispatch remains available. |
+| No-GC suspension | Generic suspension omitted only when the actual lease owner's collector and domain metadata exclude a lease | Scalar relays cannot hide imported leases. Dynamic and uncertain store-owned cases retain suspension, including empty dynamic topology. Roots, native lease handoff, interruption and cleanup remain unconditional. |
+| Scope reuse | Repeated sidecar resolution removed; the scope address belongs to a once-published, never-replaced sidecar | Cross-instance dispatch uses the callee's captured scope. Close does not recycle tokens or sidecars. All generation and optional-state atomics remain. Other entry paths retain lazy initialization. |
+| Reservation order | Fallback-map probe removed on an exact inline match under the existing mutex | A different invocation ID cannot use the inline entry. Nested swaps, fallback lookup and cleanup remain. No new map or cache is introduced. |
+| Activation-local context | Repeated root lookup removed only within one native loop with the same control frame | Re-entry gets a separate activation. Missing root identity and changed frames use the general lookup. Callee identity is never promoted to root identity. GC ownership is not cached. |
+
+No step admits additional native scheduler paths or permits host code on a
+foreign stack. An indefinitely blocking callback still runs as ordinary Go.
+Cancellation, trap publication and lease reacquisition retain the old order.
+The existing recursion/entry controls remain; the context snapshot adds fixed
+stack storage per already-required native entry, not state per repeated call.
+Reservation fallback cardinality and lifetime remain tied to live nested
+invocations, with removal on unwind. No cache grows with callback count.
+High callback frequency no longer creates Wago token boxes on the concrete
+scalar path; host code can still choose to allocate or retain its own values.
+Neither retained slices nor arbitrary Go host behavior are used as a proof of
+native safety. Direct frame views and scheduler segments remain disabled.

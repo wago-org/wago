@@ -1630,7 +1630,10 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 	if in.hostCall == nil {
 		in.hostCall = in.newHostDispatch()
 	}
-	err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, in.dispatchSynchronousHostCall)
+	// Resolve stable root context lazily in this activation, not on the instance.
+	// Each nested native entry receives a separate snapshot and fresh callbacks.
+	activation := hostLoopActivation{root: in, ctrl: offHeapSlicePtr(in.ctrl)}
+	err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch)
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	return err

@@ -12,6 +12,63 @@ func TestHostInvocationContextCrossInstanceChain(t *testing.T) {
 	t.Run("concrete", func(t *testing.T) { testHostInvocationContextCrossInstanceChain(t, true) })
 }
 
+func TestHostLoopActivationContextNesting(t *testing.T) {
+	// Model distinct parked control frames without entering native code. Real
+	// re-entry, including A -> B -> A, is covered by the chain test above.
+	outerFrame, innerFrame := make([]byte, 8), make([]byte, 8)
+	root := &Instance{ctrl: outerFrame}
+	outer := hostInvocationContext{id: 71, reservation: &pluginOperationReservation{}, parent: context.Background()}
+	innerParent, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	inner := hostInvocationContext{id: 72, reservation: &pluginOperationReservation{}, parent: innerParent}
+	restoreOuter := bindHostInvocationContext(offHeapSlicePtr(outerFrame), outer)
+	defer restoreOuter()
+	restoreInner := bindHostInvocationContext(offHeapSlicePtr(innerFrame), inner)
+	defer restoreInner()
+	a := hostLoopActivation{root: root, ctrl: offHeapSlicePtr(outerFrame)}
+	if got := a.context(root); got != outer {
+		t.Fatalf("outer context = %+v, want %+v", got, outer)
+	}
+	root.ctrl = innerFrame
+	b := hostLoopActivation{root: root, ctrl: offHeapSlicePtr(innerFrame)}
+	if got := b.context(root); got != inner {
+		t.Fatalf("inner context = %+v, want %+v", got, inner)
+	}
+	if got := a.context(root); got != inner || a.invocation != outer {
+		t.Fatalf("changed frame must use lookup without replacing outer snapshot: got %+v, cache %+v", got, a.invocation)
+	}
+	root.ctrl = outerFrame
+	if got := a.context(root); got != outer || b.invocation != inner {
+		t.Fatal("nested return changed an activation's identity, reservation or parent")
+	}
+	// A later public call can reuse the frame, but never the old Go-loop cache.
+	next := hostInvocationContext{id: 73, parent: innerParent}
+	restoreNext := bindHostInvocationContext(offHeapSlicePtr(outerFrame), next)
+	defer restoreNext()
+	c := hostLoopActivation{root: root, ctrl: offHeapSlicePtr(outerFrame)}
+	if got := c.context(root); got != next || a.invocation != outer {
+		t.Fatal("later invocation reused the previous loop's snapshot")
+	}
+}
+
+func TestHostLoopActivationDoesNotCacheCalleeAsRoot(t *testing.T) {
+	root := &Instance{ctrl: make([]byte, 8)}
+	callee := &Instance{ctrl: make([]byte, 8)}
+	child := hostInvocationContext{id: 81}
+	restoreChild := bindHostInvocationContext(offHeapSlicePtr(callee.ctrl), child)
+	defer restoreChild()
+	a := hostLoopActivation{root: root, ctrl: offHeapSlicePtr(root.ctrl)}
+	if got := a.context(callee); got != child || !a.invocation.empty() {
+		t.Fatal("callee fallback became cached root authority")
+	}
+	parent := hostInvocationContext{id: 82, reservation: &pluginOperationReservation{}}
+	restoreParent := bindHostInvocationContext(offHeapSlicePtr(root.ctrl), parent)
+	defer restoreParent()
+	if got := a.context(callee); got != parent || a.invocation != parent {
+		t.Fatal("runtime root identity did not replace uncached fallback")
+	}
+}
+
 func testHostInvocationContextCrossInstanceChain(t *testing.T, concrete bool) {
 	c := MustCompile(benchReturningImportModule())
 	defer c.Close()
