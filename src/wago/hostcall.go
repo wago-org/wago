@@ -1279,14 +1279,14 @@ func (in *Instance) boundHostFuncRef(dispatch uint32) (boundHostFuncRefCall, boo
 	return binding, true
 }
 
-func dispatchSyncHostScalar(in *Instance, binding *syncHostBinding, args, results []uint64, invocation hostInvocationContext) {
-	caller := in.beginHostCallScopeReservedWithID(invocation.id, invocation.reservation)
+func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, binding *syncHostBinding, args, results []uint64, invocation hostInvocationContext) {
+	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation)
 	caller.exact = binding.exact
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	binding.call(caller, args, results)
 }
 
-func dispatchSyncHostReference(in *Instance, ctrl uintptr, importIdx uint32, binding *syncHostBinding, sig FuncSig, exact *DefinedTypeDescriptor, exactTypes []DefinedTypeDescriptor, exactTypesPtr *[]DefinedTypeDescriptor, args, results []uint64, invocation hostInvocationContext) {
+func dispatchSyncHostReference(in *Instance, scope *hostCallScope, ctrl uintptr, importIdx uint32, binding *syncHostBinding, sig FuncSig, exact *DefinedTypeDescriptor, exactTypes []DefinedTypeDescriptor, exactTypesPtr *[]DefinedTypeDescriptor, args, results []uint64, invocation hostInvocationContext) {
 	var exactParams, exactResults []ValueTypeDescriptor
 	if exact != nil {
 		exactParams, exactResults = exact.Params, exact.Results
@@ -1297,7 +1297,7 @@ func dispatchSyncHostReference(in *Instance, ctrl uintptr, importIdx uint32, bin
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 	}
 	defer gcTemps.release(in)
-	caller := in.beginHostCallScopeReservedWithID(invocation.id, invocation.reservation)
+	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation)
 	caller.exact = exact
 	var gcResultTemps gcHostTempTokens
 	gcResultTemps.exactTypes = exactTypesPtr
@@ -1315,6 +1315,10 @@ func dispatchSyncHostReference(in *Instance, ctrl uintptr, importIdx uint32, bin
 // bound to this instance. It is constructed once at instantiation so hot Invoke
 // paths do not allocate a fresh closure per call.
 func (in *Instance) newHostDispatch() resolvedHostCall {
+	// Atomic publication happens once; the sidecar is never replaced. Cache
+	// only its address, not authority: each callback still gets a fresh atomic
+	// generation and the runtime-resolved invocation identity passed below.
+	scope := &in.ensurePluginState().hostScope
 	return func(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
 		if importIdx&shared.AtomicWaitDispatchBit != 0 {
 			if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
@@ -1352,7 +1356,7 @@ func (in *Instance) newHostDispatch() resolvedHostCall {
 				exactTypes = exact.types
 				exactTypesPtr = &exact.types
 			}
-			dispatchSyncHostReference(in, ctrl, importIdx, &syncHostBinding{fn: fn}, sig, signature, exactTypes, exactTypesPtr, args, results, invocation)
+			dispatchSyncHostReference(in, scope, ctrl, importIdx, &syncHostBinding{fn: fn}, sig, signature, exactTypes, exactTypesPtr, args, results, invocation)
 			return
 		}
 		if int(importIdx) >= len(in.syncHosts) || !in.syncHosts[importIdx].callable() {
@@ -1360,9 +1364,9 @@ func (in *Instance) newHostDispatch() resolvedHostCall {
 		}
 		binding := &in.syncHosts[importIdx]
 		if binding.scalar {
-			dispatchSyncHostScalar(in, binding, args, results, invocation)
+			dispatchSyncHostScalar(in, scope, binding, args, results, invocation)
 		} else {
-			dispatchSyncHostReference(in, ctrl, importIdx, binding, in.c.importFuncSigs[importIdx], binding.exact, in.c.Types, &in.c.Types, args, results, invocation)
+			dispatchSyncHostReference(in, scope, ctrl, importIdx, binding, in.c.importFuncSigs[importIdx], binding.exact, in.c.Types, &in.c.Types, args, results, invocation)
 		}
 	}
 }

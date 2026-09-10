@@ -30,6 +30,9 @@ func testHostInvocationContextCrossInstanceChain(t *testing.T, concrete bool) {
 			if h.in != *owner || h.invocationID != rootID || !isNativeActive(*owner, rootID) {
 				t.Error("callback changed callee or invocation ownership")
 			}
+			if h.scope != &(*owner).pluginState.Load().hostScope {
+				t.Error("dispatcher cached another instance's callback scope")
+			}
 			if p[0] == 0 {
 				if outer.valid() {
 					t.Error("outer A capability active during inner A callback")

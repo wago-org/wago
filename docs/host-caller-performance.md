@@ -203,3 +203,37 @@ The no-GC CPU profile has no `suspendGCInvocation` samples. Scope setup now
 accounts for 11.67% cumulative CPU, which supports measuring sidecar reuse next.
 The revised full package suite passed in 5.811 s; its full race run passed in
 20.663 s. Generation, cancellation, root and scheduler tests remain enabled.
+
+## Scope-address reuse checkpoint
+
+The once-created dispatcher captures the address of the atomically published
+host scope. That sidecar is never replaced. This removes the repeated
+`ensurePluginState` lookup and the intermediate token return through
+`beginHostCallScopeReservedWithID`. It does not cache identity or generation.
+Both scalar and reference dispatch call the same existing scope constructor.
+All atomic operations and lazy optional watcher/context state remain unchanged.
+The dispatcher closure adds one pointer (8 bytes on the measured target) once
+per instance; no unbounded state is added.
+
+Five 500 ms samples, medians (ranges), ns per 1,024-call public invocation:
+
+| Path | Before | Scope reuse |
+|---|---:|---:|
+| Concrete memory-0 | 143226 (142623–145968) | 128488 (127243–129618) |
+| Legacy memory-0 | 175644 (172533–175950) | 150659 (149333–152323) |
+| Concrete parallel | 18419 (18317–19411) | 17939 (17759–18266) |
+| Concrete local GC | 254001 (251212–255975) | 248816 (245143–252162) |
+| Concrete imported domain | 201729 (200729–202151) | 202161 (199451–204414) |
+| Concrete dynamic domain | 220598 (215120–222400) | 213618 (211758–215346) |
+
+Guest subtraction gives 124.9 ns/call concrete and 146.6 ns/call legacy.
+Concrete calls remain 0 B/op and 0 allocs/op in all rows; legacy calls remain
+64 B and one allocation per callback. Public single-call medians are 340.3 ns
+concrete (338.7–340.8) and 375.0 ns legacy (373.4–393.2).
+
+The full package and race suites passed (5.827 s and 21.452 s). The cross-instance
+chain test also checks that each dispatcher uses its own instance's scope.
+The profile no longer contains `beginHostCallScopeReservedWithID` on the hot
+path. Remaining `beginReservedWithID` is 6.60% cumulative; context-map lookup
+is 6.52% cumulative and reservation resolution is 3.00%. These are separate
+observations, not additive exclusive CPU percentages.
