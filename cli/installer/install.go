@@ -445,6 +445,7 @@ type installerReleaseCatalog struct{ installer *installer }
 const (
 	installerReleasePageSize  = 20
 	installerReleasePageLimit = 50
+	installerReleaseJSONLimit = int64(4 << 20)
 )
 
 func (catalog installerReleaseCatalog) Latest() (installbootstrap.Release, error) {
@@ -481,7 +482,11 @@ func (catalog installerReleaseCatalog) Releases() ([]installbootstrap.Release, e
 }
 
 func (i *installer) getJSON(url string, value any) error {
-	response, err := i.httpClient.Get(url)
+	request, err := http.NewRequestWithContext(i.installContext(), http.MethodGet, url, nil)
+	if err != nil {
+		return err
+	}
+	response, err := i.httpClient.Do(request)
 	if err != nil {
 		return err
 	}
@@ -489,7 +494,22 @@ func (i *installer) getJSON(url string, value any) error {
 	if response.StatusCode/100 != 2 {
 		return fmt.Errorf("%s returned %s", url, response.Status)
 	}
-	return json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(value)
+	limited := &io.LimitedReader{R: response.Body, N: installerReleaseJSONLimit + 1}
+	decoder := json.NewDecoder(limited)
+	if err := decoder.Decode(value); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("release metadata contains multiple JSON values")
+		}
+		return fmt.Errorf("release metadata contains trailing data: %w", err)
+	}
+	if limited.N == 0 {
+		return fmt.Errorf("release metadata exceeds %d-byte limit", installerReleaseJSONLimit)
+	}
+	return nil
 }
 
 func (i *installer) downloadChecked(url, target string) error {

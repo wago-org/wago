@@ -651,6 +651,9 @@ func (p *PreparedCompile) Compile() (*Module, error) {
 // ownership. A failed adoption closes the artifact exactly once.
 func (p *PreparedCompile) Adopt(c *Compiled) (*Module, error) {
 	if err := p.consume(); err != nil {
+		if c != nil {
+			err = joinPrimary(err, c.Close())
+		}
 		return nil, err
 	}
 	defer p.finish()
@@ -731,7 +734,7 @@ func (rt *Runtime) Module(c *Compiled) (*Module, error) {
 func (rt *Runtime) AdoptModule(c *Compiled) (*Module, error) {
 	mod, err := rt.bindModule(c, true)
 	if err != nil && c != nil {
-		_ = c.Close()
+		err = joinPrimary(err, c.Close())
 	}
 	return mod, err
 }

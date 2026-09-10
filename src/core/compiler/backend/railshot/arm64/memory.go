@@ -1815,11 +1815,16 @@ func (f *fn) bulkBoundsCheck(base Reg, n int, memoryIndex uint32) {
 	} else {
 		f.leaDisp(t, base, int32(n), true)
 	}
-	if f.memSizeReg != regNone {
+	if memoryIndex == 0 && f.memSizeReg != regNone {
 		f.cmpRR(t, f.memSizeReg, true)
 	} else {
 		mb := f.allocReg(maskOf(t))
-		f.ld64(mb, linMemReg, -int32(bdCurBytes))
+		if memoryIndex == 0 {
+			f.ld64(mb, linMemReg, -int32(bdCurBytes))
+		} else {
+			f.ld64(mb, linMemReg, -int32(offMemoryDirPtr))
+			f.ld64(mb, mb, int32(memoryIndex)*abi.MemoryDirEntryBytes+abi.MemoryDirCurrentBytesOffset)
+		}
 		f.cmpRR(t, mb, true)
 		f.release(mb)
 	}
