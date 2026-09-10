@@ -82,12 +82,6 @@
   },
   "workloads": [
     {
-      "id": "json-as",
-      "label": "json-as",
-      "twin": "json-as.wasm",
-      "desc": "AssemblyScript JSON serialize + parse (SWAR)"
-    },
-    {
       "id": "nbody",
       "label": "nbody",
       "twin": "nbody.wasm",
@@ -98,6 +92,12 @@
       "label": "fib",
       "twin": "fib.wasm",
       "desc": "recursive Fibonacci"
+    },
+    {
+      "id": "spectralnorm",
+      "label": "spectralnorm",
+      "twin": "spectralnorm.wasm",
+      "desc": "Benchmarks-Game power iteration (f64)"
     },
     {
       "id": "quicksort",

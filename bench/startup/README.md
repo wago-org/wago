@@ -26,8 +26,7 @@ requires the complete runtime set so a partial comparison cannot be published.
   `_start`, so every CLI uses a plain `run`. The sweep needs only the runtimes,
   not a wasm toolchain.
 - `src/*.rs` contains the Rust compute-twin sources. A `_start` wrapper is
-  appended to the matching `corpus/sources/rust/*.rs` kernel. The `json-as` twin
-  is AssemblyScript.
+  appended to the matching `corpus/sources/rust/*.rs` kernel.
 - `run.mjs` performs one host sweep and writes `startup-arm64.json` or
   `startup-amd64.json`.
 - Both architecture-specific JSON files are committed inputs to the website
