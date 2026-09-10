@@ -29,13 +29,6 @@ type remoteCommit struct {
 	} `json:"commit"`
 }
 
-type remoteTag struct {
-	Name   string `json:"name"`
-	Commit struct {
-		SHA string `json:"sha"`
-	} `json:"commit"`
-}
-
 // isRollingChannel reports whether ver names a rolling release channel rather
 // than a pinned, immutable version.
 func isRollingChannel(ver string) bool { return rollingChannels[ver] }

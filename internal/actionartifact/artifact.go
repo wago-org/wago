@@ -99,6 +99,49 @@ func DownloadExecutable(ctx context.Context, config Config, tag, commit, target,
 	if err != nil {
 		return err
 	}
+	return downloadSelected(ctx, config, selected, asset, destination)
+}
+
+// DownloadCanaryExecutable downloads a canary artifact addressed by its full
+// source commit. New canaries do not require or create a git tag.
+func DownloadCanaryExecutable(ctx context.Context, config Config, commit, target, asset, destination string) error {
+	commit = strings.ToLower(strings.TrimSpace(commit))
+	if !fullCommitSHA(commit) {
+		return fmt.Errorf("%q is not a full commit SHA", commit)
+	}
+	name := canaryArtifactName(commit, target)
+	selected, err := find(ctx, config, name, commit, "")
+	if err != nil {
+		return err
+	}
+	return downloadSelected(ctx, config, selected, asset, destination)
+}
+
+// LatestCanaryCommit returns the newest non-expired commit-addressed canary
+// artifact available for target.
+func LatestCanaryCommit(ctx context.Context, config Config, target string) (string, error) {
+	items, err := list(ctx, config, "")
+	if err != nil {
+		return "", err
+	}
+	prefix, suffix := "canary-", "-"+target
+	for _, item := range items {
+		head := strings.ToLower(strings.TrimSpace(item.WorkflowRun.HeadSHA))
+		if item.ID <= 0 || item.Expired || item.ArchiveDownloadURL == "" || !fullCommitSHA(head) {
+			continue
+		}
+		if item.Name == prefix+head+suffix {
+			return head, nil
+		}
+	}
+	return "", fmt.Errorf("no usable canary Actions artifact for %s", target)
+}
+
+func canaryArtifactName(commit, target string) string {
+	return "canary-" + commit + "-" + target
+}
+
+func downloadSelected(ctx context.Context, config Config, selected artifact, asset, destination string) error {
 	if strings.TrimSpace(config.Repository) != "" {
 		directory, tempErr := os.MkdirTemp("", ".wago-gh-artifact-*")
 		if tempErr == nil {
@@ -136,40 +179,11 @@ func githubCLIDownload(ctx context.Context, repository string, runID int64, name
 }
 
 func find(ctx context.Context, config Config, name, commit, short string) (artifact, error) {
-	address, err := url.Parse(config.CatalogURL)
-	if err != nil {
-		return artifact{}, fmt.Errorf("parse Actions artifact catalog URL: %w", err)
-	}
-	query := address.Query()
-	query.Set("name", name)
-	query.Set("per_page", "100")
-	address.RawQuery = query.Encode()
-	request, err := request(ctx, address.String(), config.Token)
+	items, err := list(ctx, config, name)
 	if err != nil {
 		return artifact{}, err
 	}
-	client := httpclient.New(httpclient.Config{HTTPClient: config.HTTPClient, Timeout: 30 * time.Second})
-	response, err := client.Bytes(ctx, request, metadataLimit)
-	if err != nil {
-		return artifact{}, fmt.Errorf("fetch Actions artifact catalog: %w", err)
-	}
-	if response.StatusCode != http.StatusOK {
-		return artifact{}, fmt.Errorf("fetch Actions artifact catalog: GET %s: %s", address, response.Status)
-	}
-	var items catalog
-	if err := json.Unmarshal(response.Body, &items); err != nil {
-		return artifact{}, fmt.Errorf("decode Actions artifact catalog: %w", err)
-	}
-	if len(items.Artifacts) > 100 {
-		return artifact{}, errors.New("Actions artifact catalog returned too many artifacts")
-	}
-	sort.SliceStable(items.Artifacts, func(i, j int) bool {
-		if items.Artifacts[i].CreatedAt.Equal(items.Artifacts[j].CreatedAt) {
-			return items.Artifacts[i].ID > items.Artifacts[j].ID
-		}
-		return items.Artifacts[i].CreatedAt.After(items.Artifacts[j].CreatedAt)
-	})
-	for _, item := range items.Artifacts {
+	for _, item := range items {
 		head := strings.ToLower(strings.TrimSpace(item.WorkflowRun.HeadSHA))
 		if item.ID <= 0 || item.Name != name || item.Expired || item.ArchiveDownloadURL == "" || !fullCommitSHA(head) {
 			continue
@@ -177,12 +191,60 @@ func find(ctx context.Context, config Config, name, commit, short string) (artif
 		if commit != "" && head != commit {
 			continue
 		}
-		if commit == "" && !strings.HasPrefix(head, short) {
+		if commit == "" && short != "" && !strings.HasPrefix(head, short) {
 			continue
 		}
 		return item, nil
 	}
 	return artifact{}, fmt.Errorf("no usable Actions artifact named %s", name)
+}
+
+func list(ctx context.Context, config Config, name string) ([]artifact, error) {
+	if ctx == nil {
+		return nil, errors.New("nil Actions artifact context")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(config.CatalogURL) == "" {
+		return nil, errors.New("Actions artifact catalog URL is empty")
+	}
+	address, err := url.Parse(config.CatalogURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse Actions artifact catalog URL: %w", err)
+	}
+	query := address.Query()
+	if name != "" {
+		query.Set("name", name)
+	}
+	query.Set("per_page", "100")
+	address.RawQuery = query.Encode()
+	request, err := request(ctx, address.String(), config.Token)
+	if err != nil {
+		return nil, err
+	}
+	client := httpclient.New(httpclient.Config{HTTPClient: config.HTTPClient, Timeout: 30 * time.Second})
+	response, err := client.Bytes(ctx, request, metadataLimit)
+	if err != nil {
+		return nil, fmt.Errorf("fetch Actions artifact catalog: %w", err)
+	}
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch Actions artifact catalog: GET %s: %s", address, response.Status)
+	}
+	var items catalog
+	if err := json.Unmarshal(response.Body, &items); err != nil {
+		return nil, fmt.Errorf("decode Actions artifact catalog: %w", err)
+	}
+	if len(items.Artifacts) > 100 {
+		return nil, errors.New("Actions artifact catalog returned too many artifacts")
+	}
+	sort.SliceStable(items.Artifacts, func(i, j int) bool {
+		if items.Artifacts[i].CreatedAt.Equal(items.Artifacts[j].CreatedAt) {
+			return items.Artifacts[i].ID > items.Artifacts[j].ID
+		}
+		return items.Artifacts[i].CreatedAt.After(items.Artifacts[j].CreatedAt)
+	})
+	return items.Artifacts, nil
 }
 
 func download(ctx context.Context, config Config, item artifact, asset, destination string) error {

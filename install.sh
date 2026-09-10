@@ -8,8 +8,6 @@ set -eu
 
 release_repo="${WAGO_RELEASE_REPO:-wago-org/wago}"
 release_api="${WAGO_RELEASES_API_URL:-https://api.github.com/repos/$release_repo/releases}"
-tags_api="${WAGO_TAGS_API_URL:-https://api.github.com/repos/$release_repo/tags}"
-commits_api="${WAGO_COMMITS_API_URL:-https://api.github.com/repos/$release_repo/commits}"
 release_download_base="${WAGO_RELEASE_DOWNLOAD_BASE:-https://github.com/$release_repo/releases}"
 version="${WAGO_VERSION:-main}"
 install_version=$version
@@ -86,38 +84,6 @@ release_tag_from_pages() {
 	return 1
 }
 
-canary_tag_from_json() {
-	awk '
-		FNR == NR && /"name"[[:space:]]*:/ {
-			line = $0
-			sub(/^.*"name"[[:space:]]*:[[:space:]]*"/, "", line)
-			sub(/".*$/, "", line)
-			pending = line
-			next
-		}
-		FNR == NR && pending != "" && /"sha"[[:space:]]*:/ {
-			line = $0
-			sub(/^.*"sha"[[:space:]]*:[[:space:]]*"/, "", line)
-			sub(/".*$/, "", line)
-			if (pending ~ /^v[0-9]+\.[0-9]+\.[0-9]+-canary\.g[0-9a-f]{7}$/) tags[line] = pending
-			pending = ""
-			next
-		}
-		/"name"[[:space:]]*:/ {
-			next
-		}
-		/"sha"[[:space:]]*:/ {
-			line = $0
-			sub(/^.*"sha"[[:space:]]*:[[:space:]]*"/, "", line)
-			sub(/".*$/, "", line)
-			if (tags[line] != "") {
-				print tags[line]
-				exit
-			}
-		}
-	' "$1" "$2"
-}
-
 resolve_release() {
 	tags=""
 	case "$version" in
@@ -136,11 +102,8 @@ resolve_release() {
 				beta)
 					tags=$(release_tag_from_pages beta) || return 1
 					;;
-				canary)
-					download "$tags_api?per_page=100&page=1" "$tmp/tags.json" || return 1
-					download "$commits_api?sha=main&per_page=100&page=1" "$tmp/commits.json" || return 1
-					install_version=$(canary_tag_from_json "$tmp/tags.json" "$tmp/commits.json")
-					[ -n "$install_version" ] || return 1
+				canary|canary@*)
+					install_version=$version
 					tags=$(release_tag_from_pages beta) || return 1
 					;;
 				main)

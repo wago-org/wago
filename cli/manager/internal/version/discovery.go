@@ -9,11 +9,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
+	"github.com/wago-org/wago/internal/actionartifact"
 	"github.com/wago-org/wago/internal/wagopaths"
 )
 
@@ -392,26 +394,6 @@ func resolveRunnerVersion(ver string, progress *managerprogress.Progress) (resol
 func resolveRunnerVersionContext(ctx context.Context, ver string, progress *managerprogress.Progress) (resolved string, sourceOnly bool, err error) {
 	if channel, sha, canonical := rollingCommitSHA(ver); canonical {
 		if channel == "canary" {
-			if progress != nil {
-				progress.Begin("resolving canary workflow artifact")
-			}
-			tag, tagErr := canaryTagForCommitContext(ctx, sha)
-			if tagErr == nil {
-				resolved = tag + "@" + sha
-				if progress != nil {
-					progress.Done("resolved " + releasePickerLabel(resolved))
-				}
-				return resolved, true, nil
-			}
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				if progress != nil {
-					progress.Fail("could not resolve canary workflow artifact")
-				}
-				return "", false, ctxErr
-			}
-			if progress != nil {
-				progress.Done("no workflow artifact tag; using " + releasePickerLabel(ver) + " source")
-			}
 			return ver, true, nil
 		}
 		if progress != nil {
@@ -442,15 +424,21 @@ func resolveRunnerVersionContext(ctx context.Context, ver string, progress *mana
 		progress.Begin("resolving release")
 	}
 	if ver == "canary" {
-		resolved, err = latestCanaryTagContext(ctx)
+		sha, canaryErr := latestCanaryCommit(ctx, actionartifact.Config{
+			CatalogURL: actionsArtifactCatalog(),
+			Repository: "wago-org/wago",
+			Token:      actionartifact.TokenFromEnvironment(),
+		}, runtime.GOOS+"-"+runtime.GOARCH)
+		err = canaryErr
 		if err == nil {
+			resolved = "canary@" + sha
 			if progress != nil {
 				progress.Done("resolved " + releasePickerLabel(resolved))
 			}
 			return resolved, true, nil
 		}
 		if progress != nil {
-			progress.Fail("could not resolve canary tag")
+			progress.Fail("could not resolve canary artifact")
 		}
 		return "", false, err
 	}
@@ -637,85 +625,6 @@ func fetchMainCommitsContext(ctx context.Context) ([]remoteCommit, error) {
 
 func latestChannelRelease(channel string) (string, error) {
 	return latestChannelReleaseContext(context.Background(), channel)
-}
-
-const canaryTagDiscoveryPageSize = 100
-
-func canaryTagsByCommitContext(ctx context.Context) (map[string]string, error) {
-	address := fmt.Sprintf("%s/repos/wago-org/wago/tags?per_page=%d&page=1", releaseAPI(), canaryTagDiscoveryPageSize)
-	response, err := getReleaseBytes(ctx, "canary tag discovery", address, releaseMetadataMaximum)
-	if err != nil {
-		return nil, err
-	}
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub returned %s", response.Status)
-	}
-	var tags []remoteTag
-	if err := json.Unmarshal(response.Body, &tags); err != nil {
-		return nil, err
-	}
-	if len(tags) > canaryTagDiscoveryPageSize {
-		return nil, errors.New("GitHub returned too many tags")
-	}
-	byCommit := make(map[string]string, len(tags))
-	for _, tag := range tags {
-		if channelRelease(tag.Name) != "canary" {
-			continue
-		}
-		sha := strings.ToLower(strings.TrimSpace(tag.Commit.SHA))
-		if !validCommitSHA(sha) {
-			return nil, fmt.Errorf("GitHub tag %q has an invalid target commit", tag.Name)
-		}
-		_, identity, _ := strings.Cut(strings.ToLower(tag.Name), "-canary.g")
-		if !strings.HasPrefix(sha, identity) {
-			return nil, fmt.Errorf("GitHub tag %q does not match target commit %s", tag.Name, sha)
-		}
-		byCommit[sha] = tag.Name
-	}
-	return byCommit, nil
-}
-
-func canaryTagForCommitContext(ctx context.Context, sha string) (string, error) {
-	byCommit, err := canaryTagsByCommitContext(ctx)
-	if err != nil {
-		return "", err
-	}
-	if tag := byCommit[strings.ToLower(strings.TrimSpace(sha))]; tag != "" {
-		return tag, nil
-	}
-	return "", fmt.Errorf("%w: canary tag", errNoPublishedRelease)
-}
-
-// latestCanaryTagContext resolves the newest qualified canary tag by
-// intersecting repository tags with main's newest-first commit history. The
-// repository tags endpoint does not guarantee commit-date ordering.
-func latestCanaryTagContext(ctx context.Context) (string, error) {
-	byCommit, err := canaryTagsByCommitContext(ctx)
-	if err != nil {
-		return "", err
-	}
-	commitsAddress := fmt.Sprintf("%s/repos/wago-org/wago/commits?sha=main&per_page=%d&page=1", releaseAPI(), canaryTagDiscoveryPageSize)
-	commitsResponse, err := getReleaseBytes(ctx, "canary commit discovery", commitsAddress, releaseMetadataMaximum)
-	if err != nil {
-		return "", err
-	}
-	if commitsResponse.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub returned %s", commitsResponse.Status)
-	}
-	var commits []remoteCommit
-	if err := json.Unmarshal(commitsResponse.Body, &commits); err != nil {
-		return "", err
-	}
-	if len(commits) > canaryTagDiscoveryPageSize {
-		return "", errors.New("GitHub returned too many commits")
-	}
-	for _, commit := range commits {
-		sha := strings.ToLower(strings.TrimSpace(commit.SHA))
-		if tag := byCommit[sha]; tag != "" {
-			return tag + "@" + sha, nil
-		}
-	}
-	return "", fmt.Errorf("%w: canary tag", errNoPublishedRelease)
 }
 
 func latestChannelReleaseContext(ctx context.Context, channel string) (string, error) {

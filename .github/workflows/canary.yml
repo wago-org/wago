@@ -1,7 +1,7 @@
-name: Publish canary tag
+name: Publish canary artifacts
 
-# A successful CI run on main builds workflow artifacts and creates one
-# immutable SemVer canary tag. It never creates a GitHub Release.
+# A successful CI run on main builds commit-addressed workflow artifacts.
+# Canary builds intentionally create neither git tags nor GitHub Releases.
 on:
   workflow_run:
     workflows: [CI]
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   # A workflow_run that fails the job-level guard still enters concurrency.
@@ -21,7 +21,6 @@ concurrency:
 env:
   GO_VERSION: "1.22"
   TINYGO_VERSION: "0.41.1"
-  RELEASE_SERIES: "0.1.0"
 
 jobs:
   prepare:
@@ -35,19 +34,16 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.version.outputs.sha }}
-      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || 'main' }}
           fetch-depth: 1
-      - name: Resolve canary tag
+      - name: Resolve canary commit
         id: version
         run: |
           sha=$(git rev-parse HEAD)
-          short_sha=${sha:0:7}
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "tag=v${RELEASE_SERIES}-canary.g$short_sha" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build canary (${{ matrix.goos }}/${{ matrix.goarch }})
@@ -116,7 +112,7 @@ jobs:
       - name: Upload canary workflow artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ${{ needs.prepare.outputs.tag }}-${{ matrix.target }}
+          name: canary-${{ needs.prepare.outputs.sha }}-${{ matrix.target }}
           path: |
             wago-${{ matrix.target }}
             wago-${{ matrix.target }}.sha256
@@ -127,8 +123,8 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-  tag:
-    name: Tag qualified canary
+  synchronize-docs:
+    name: Synchronize canary documentation
     needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
@@ -136,24 +132,6 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 1
-      - name: Create immutable canary tag
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SHA: ${{ needs.prepare.outputs.sha }}
-          TAG: ${{ needs.prepare.outputs.tag }}
-        run: |
-          existing=$(gh api "repos/${{ github.repository }}/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null) || existing=""
-          if [ -n "$existing" ]; then
-            if [ "$existing" != "$SHA" ]; then
-              echo "::error::tag $TAG already targets $existing instead of $SHA"
-              exit 1
-            fi
-            echo "canary tag $TAG already exists"
-            exit 0
-          fi
-          gh api --method POST "repos/${{ github.repository }}/git/refs" \
-            -f ref="refs/tags/$TAG" \
-            -f sha="$SHA"
       - name: Create documentation synchronization token
         id: docs-sync-token
         if: vars.DOCS_SYNC_APP_ID != ''
@@ -166,4 +144,4 @@ jobs:
       - name: Synchronize canary documentation
         env:
           DOCS_SYNC_TOKEN: ${{ steps.docs-sync-token.outputs.token }}
-        run: scripts/dispatch-docs-release.sh canary "${{ needs.prepare.outputs.tag }}" "${{ needs.prepare.outputs.sha }}"
+        run: scripts/dispatch-docs-release.sh canary "canary@${{ needs.prepare.outputs.sha }}" "${{ needs.prepare.outputs.sha }}"

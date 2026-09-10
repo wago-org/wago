@@ -66,6 +66,57 @@ func TestDownloadExecutable(t *testing.T) {
 	}
 }
 
+func TestDownloadCanaryExecutableByCommit(t *testing.T) {
+	const target = "linux-amd64"
+	const asset = "wago-linux-amd64"
+	payload := []byte("tagless canary")
+	archive := artifactZip(t, asset, payload, "")
+	name := canaryArtifactName(testCommit, target)
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/artifacts":
+			if got := request.URL.Query().Get("name"); got != name {
+				t.Errorf("artifact name = %q", got)
+			}
+			fmt.Fprintf(writer, `{"artifacts":[{"id":8,"name":%q,"expired":false,"created_at":"2026-09-10T00:00:00Z","archive_download_url":%q,"workflow_run":{"head_sha":%q}}]}`, name, server.URL+"/archive", testCommit)
+		case "/archive":
+			_, _ = writer.Write(archive)
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	defer server.Close()
+
+	destination := filepath.Join(t.TempDir(), "wago")
+	if err := DownloadCanaryExecutable(context.Background(), Config{CatalogURL: server.URL + "/artifacts", HTTPClient: server.Client()}, testCommit, target, asset, destination); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := os.ReadFile(destination); err != nil || !bytes.Equal(got, payload) {
+		t.Fatalf("downloaded payload = %q, %v", got, err)
+	}
+}
+
+func TestLatestCanaryCommitUsesNewestUsableTargetArtifact(t *testing.T) {
+	newest := "cafef00123456789012345678901234567890123"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if got := request.URL.Query().Get("name"); got != "" {
+			t.Errorf("artifact name filter = %q", got)
+		}
+		fmt.Fprintf(writer, `{"artifacts":[
+			{"id":3,"name":%q,"expired":false,"created_at":"2026-09-10T03:00:00Z","archive_download_url":"archive","workflow_run":{"head_sha":%q}},
+			{"id":2,"name":%q,"expired":false,"created_at":"2026-09-10T02:00:00Z","archive_download_url":"archive","workflow_run":{"head_sha":%q}},
+			{"id":1,"name":%q,"expired":false,"created_at":"2026-09-10T01:00:00Z","archive_download_url":"archive","workflow_run":{"head_sha":%q}}
+		]}`, canaryArtifactName(newest, "darwin-arm64"), newest, canaryArtifactName(newest, "linux-amd64"), newest, canaryArtifactName(testCommit, "linux-amd64"), testCommit)
+	}))
+	defer server.Close()
+
+	got, err := LatestCanaryCommit(context.Background(), Config{CatalogURL: server.URL, HTTPClient: server.Client()}, "linux-amd64")
+	if err != nil || got != newest {
+		t.Fatalf("LatestCanaryCommit = %q, %v", got, err)
+	}
+}
+
 func TestDownloadExecutablePrefersGitHubCLI(t *testing.T) {
 	const (
 		tag        = "v0.1.0-canary.gdeadbee"

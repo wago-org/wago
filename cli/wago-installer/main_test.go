@@ -14,6 +14,8 @@ func TestResolveInstallerVersion(t *testing.T) {
 	}{
 		{name: "release build", stamped: "v1.2.3", info: &debug.BuildInfo{Main: debug.Module{Version: "v1.2.2"}}, want: "v1.2.3"},
 		{name: "go install", info: &debug.BuildInfo{Main: debug.Module{Version: "v1.2.3"}}, want: "v1.2.3"},
+		{name: "main pseudo-version", info: &debug.BuildInfo{Main: debug.Module{Version: "v0.0.0-20260910181111-332716a90f86"}}},
+		{name: "tag-derived pseudo-version", info: &debug.BuildInfo{Main: debug.Module{Version: "v0.1.0-canary.ge844da4.0.20260910181111-332716a90f86+dirty"}}},
 		{name: "local build", info: &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}},
 		{name: "no build info"},
 	}
