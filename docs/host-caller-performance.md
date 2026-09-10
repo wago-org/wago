@@ -348,3 +348,264 @@ High callback frequency no longer creates Wago token boxes on the concrete
 scalar path; host code can still choose to allocate or retain its own values.
 Neither retained slices nor arbitrary Go host behavior are used as a proof of
 native safety. Direct frame views and scheduler segments remain disabled.
+
+## Final results
+
+[The measurement table](host-caller-benchmarks.csv) contains sample counts,
+medians, ranges, bytes and allocations for every benchmark checkpoint, including
+all matched loop counts. Its commit column identifies the runtime code; the
+final test-only additions do not change dispatch. Benchmarks ran without large
+concurrent local builds. The CPU profile's separately timed sample is not mixed
+into the five-sample latency medians.
+
+Memory-0 repeated-call estimates subtract the matched guest loop at 1,024
+iterations and divide by 1,024. Bytes and allocations in this table are per
+callback, not per 1,024-call public invocation:
+
+| Stage | ns/call | B/call | allocs/call |
+|---|---:|---:|---:|
+| Fresh PR #588 baseline | 227.1 | 64 | 1 |
+| Concrete caller | 159.6 | 0 | 0 |
+| No-GC suspension fast path | 139.3 | 0 | 0 |
+| Scope/state cleanup | 124.9 | 0 | 0 |
+| Reservation lookup | 132.1 | 0 | 0 |
+| Context caching | 115.6 | 0 | 0 |
+| Direct frame experiment | Not enabled | — | — |
+| Final combined, fresh sweep | 115.8 | 0 | 0 |
+
+These are sequential checkpoints, not an additive attribution model. In
+particular, the same-checkpoint legacy/concrete comparison at the API stage is
+184.0 versus 159.6 ns/call; the fresh baseline was slower. Reservation ordering
+has a measured microbenchmark win but no isolated full-loop win.
+
+### Public invocation and matched loop
+
+All values below are median ns per public invocation, memory-0. Both controls
+use the same compiled, host-capable `run(count, host)` export and `Invoke` API.
+Each result is checked against the requested count.
+
+| Count | Baseline host | Baseline guest | Final legacy host | Final concrete host | Final concrete guest |
+|---|---:|---:|---:|---:|---:|
+| 0 | 124.2 | 115.5 | 136.7 | 136.4 | 137.8 |
+| 1 | 442.7 | 126.9 | 391.1 | 356.0 | 138.7 |
+| 8 | 1862 | 134.2 | 1413 | 1199 | 143.2 |
+| 64 | 13395 | 164.6 | 9148 | 7718 | 166.6 |
+| 1024 | 233111 | 604.2 | 142821 | 119186 | 592.4 |
+
+The final concrete fixed invocation median is 136.4 ns (135.5–137.1), versus
+124.2 ns (117.4–126.1) at baseline. That fixed-cost increase is not hidden by
+using a cheaper zero-host export. A linear fit of all five host-minus-guest
+medians gives 115.7 ns per additional call, close to the endpoint estimate.
+
+The retained simple one-call API benchmark measures 353.3 ns concrete
+(352.1–359.4), 0 B and 0 allocations; legacy is 395.8 ns (393.9–402.9), 64 B
+and one allocation. Baseline was 416.4 ns (413.1–430.0). This one-call fixture
+is reported separately and is not subtracted from a different execution path.
+
+The final concrete 1,024-call range is 119098–120587 ns; legacy is
+141725–143608 ns. Final legacy repeated cost is 138.9 ns/call with 64 B and one
+allocation per callback. All final concrete scalar arities and GC-domain loop
+cases report zero Wago allocations after setup.
+
+### Memory count and parallel throughput
+
+| Memories | Concrete host median ns/1024 calls (range) | Guest median ns | Approx. ns/call |
+|---|---:|---:|---:|
+| 0 | 119186 (119098–120587) | 592.4 | 115.8 |
+| 1 | 121407 (121020–125707) | 620.1 | 118.0 |
+| 4 | 121649 (119928–122373) | 632.6 | 118.2 |
+
+The prior native-context reuse path remains in place. Full memory-directory
+refresh is linear in memory count, but an unchanged private host return does
+not refresh it. These samples show no large per-callback memory-count growth.
+The four-memory fixture explicitly enables multi-memory and is skipped only
+on products that do not support that additional feature.
+
+Sixteen independent memory-0 instances measure 15946 ns per 1,024-call public
+invocation (15711–16333) for concrete callbacks, with a 99.58 ns guest control.
+That is 64.6 million callbacks/s in aggregate, not 15.5 ns single-thread
+latency. Legacy is 34722 ns (34686–35034), with a 103.2 ns guest control, or
+29.6 million callbacks/s. Baseline host time was 37027 ns (36767–38002).
+The complete per-memory parallel ranges are in the CSV.
+
+### GC-capable fallback and arities
+
+The actual GC fallback remains active in every row below. These are ns per
+1,024-call public invocation, including fixed invocation and guest work, not
+isolated suspension timings:
+
+| Concrete path | Median ns (range) | B/op | allocs/op |
+|---|---:|---:|---:|
+| Local WasmGC | 215934 (215316–219360) | 0 | 0 |
+| Imported GC domain, no local collector | 171994 (170608–172313) | 0 | 0 |
+| Dynamic GC domain | 186272 (184788–189041) | 0 | 0 |
+
+The final combined imported-domain result is below the concrete-API reference
+measurement; the intermediate no-GC layout tradeoff is not a final fallback
+regression. Each local-GC invocation constructs a guest object before the loop
+to require a real collector. Imported and dynamic cases assert actual admission
+flags and domain ownership, not just a scalar signature.
+
+The direct-frame experiment stays disabled. Existing buffers give these public
+one-call medians (ranges), ns/op:
+
+| Arguments -> results | Legacy | Concrete |
+|---|---:|---:|
+| 0 -> 0 | 385.2 (383.5–389.8) | 341.0 (339.3–343.9) |
+| 1 -> 0 | 381.4 (379.5–384.8) | 345.4 (343.1–354.5) |
+| 1 -> 1 | 389.5 (385.1–392.7) | 354.3 (353.8–354.8) |
+| 4 -> 1 | 397.8 (396.2–400.2) | 365.5 (360.9–368.2) |
+| 8 -> 4 | 422.6 (419.3–425.0) | 385.1 (383.3–391.3) |
+| 16 -> 8 | 458.6 (455.6–460.9) | 417.7 (414.6–422.0) |
+| 64 -> 64 | 757.0 (755.9–760.6) | 713.5 (711.5–720.1) |
+
+Legacy allocates 64 B/one object in each arity; concrete allocates zero.
+These comparisons measure caller boxing, not an unimplemented frame-view path.
+
+## Final profile and supported follow-up work
+
+The final concrete, memory-0, 1,024-call no-op-host CPU profile has 13.29 seconds
+of samples. Ranked by **flat**, non-overlapping CPU attribution:
+
+| Rank | Symbol | Flat CPU | Cumulative CPU |
+|---|---|---:|---:|
+| 1 | Unresolved `runtime._ExternalCode` | 14.00% | 14.00% |
+| 2 | `dispatchSyncHostScalar` | 8.88% | 16.63% |
+| 3 | `hostLoopActivation.dispatch` | 8.43% | 51.47% |
+| 4 | `runtime.exitsyscall` | 6.40% | 7.60% |
+| 5 | `enterNativeRaw` | 5.19% | 5.19% |
+| 6 | `Engine.callWithHostLoop` | 4.36% | 79.46% |
+
+`loadTrap` is 3.99% flat; `resumeNative` is 3.46% flat / 16.48% cumulative.
+Scope construction is 2.71% flat / 4.59% cumulative. The remaining sidecar
+lookup is 2.63% flat. Cumulative percentages overlap and must not be added.
+Unresolved external samples are not assigned to a particular JIT instruction
+or trampoline without further symbolization.
+
+Generic GC suspension and repeated context/reservation lookup are absent from
+the private hot profile. Sampled allocation space is 4.68 MiB from runtime,
+compiler, benchmark and profiler setup; there are no callback-token boxes.
+The sampled cancellation context comes from `testing.B.runN`, not dispatch.
+The mutex profile records 649 us of Go-runtime delay, not Wago global activation
+bookkeeping.
+
+Known likely improvement to measure next: carry the already-published sidecar
+through the remaining activation/lease helpers. The 2.63% flat lookup cost is
+visible, and the stable publication proof is already established. Keep all
+ownership locks and generation atomics.
+
+Experimental idea supported by this profile: reduce intermediate token-value
+moves in scalar scope construction. Line attribution places 620 ms flat at the
+constructor call site. Go disassembly shows an eight-word return spill followed
+by a 64-byte stack copy before the concrete call. A better constructor shape
+must preserve the immutable by-value token and exception cleanup; no speedup is
+claimed without a new measurement. Do not replace it with mutable token pooling.
+
+Scheduler transitions are a visible remaining cost, but still have no complete
+continuation/progress proof for arbitrary host-capable execution. The segment
+analyzer remains test infrastructure only. No scheduler speedup is claimed.
+
+## Files and validation
+
+Production changes are split into measured commits:
+
+| Commit | Topic | Main implementation files |
+|---|---|---|
+| `1b67194a4` | Portable scheduler fixture | `src/wago/host_scheduler_bench_test.go` |
+| `05a8f0b89` | Concrete API, direct allocation-free dispatch and helper compatibility | `src/wago/hostcall.go`, `api.go`, `instantiate.go`, `registry.go`, `plugin_plan.go`, `plugin_call_gate.go`, `managed_instances.go`, `globals.go`, `instruction_runtime.go`; generated `wago.go` |
+| `72832b16a` | Proven no-domain suspension branch | `src/wago/reference_store.go`, `host_execution.go` |
+| `8ab8d0df7` | Strict Go/TinyGo binding footprint | `src/wago/footprint_test.go` |
+| `40bda73c5` | Once-published scope pointer | `src/wago/hostcall.go` |
+| `b70909137` | Inline reservation first | `src/wago/instance_native_context.go` |
+| `ae19a6ec0` | Activation-local root context | `src/wago/host_execution.go`, `hostcall.go` |
+
+All enabled runtime changes are production paths with the conservative
+fallbacks described above. New benchmark variants are in
+`host_roundtrip_bench_test.go`, `caller_arity_bench_test.go`, `caller_test.go` and
+`host_activation_test.go`. `ARCHITECTURE.md` and `CONTRIBUTING.md` describe the
+API, measurement method and race-run exit-delay setting.
+
+Added or expanded tests cover:
+
+- `TestCallerRetainedAndNested`, `TestCallerCapabilityHelpers`: immutable
+  generations; stale caller A during callback B; nested B expiry and A
+  restoration; zero caller; resolver, invoker, invocation context, watcher,
+  guest storage, GC result operations and live externref read/release denial.
+- `TestCallerScalarDispatchAllocations`, `TestCallerImportedStart`,
+  `TestCallerReexport`, `TestCallerConcurrentIndependentInstances`: public entry
+  variants, zero allocations and 16 independent standard-Go parallel workers.
+- `TestHostInvocationContextCrossInstanceChain`,
+  `TestHostLoopActivationContextNesting`,
+  `TestHostLoopActivationDoesNotCacheCalleeAsRoot`: A -> host -> B -> host -> A,
+  exact callee scope, parent/reservation restoration and distinct cache lifetime.
+- `TestHostGCSuspensionAdmission`,
+  `TestScalarCrossInstanceRelaySuspendsAllProducerGCDomainsForHostCollection`:
+  private/local/imported/dynamic/uncertain admission and actual root-owned leases
+  in both callback representations.
+- `TestHostContextResumeMatchesForcedRestore`: both APIs versus forced general
+  suspension/restoration, including reads, writes, nested memory growth, globals,
+  parked export, Go GC, panic, HostExit, HostTrap and cancellation.
+- `TestPluginGCHostImportsNonNullRoundTripAndZeroCopyWrite` and
+  `TestCallerResolverInvocationContextContract`: both APIs with exact GC results,
+  collection, guest storage and callback-context expiry. Existing dynamic-domain,
+  scheduler admission, generation exhaustion and GC frame-root tests remain.
+
+The complete `src/wago` suite and its race suite ran at each production
+checkpoint, with timings recorded above. Final commands and results:
+
+| Command | Result |
+|---|---|
+| `go test ./...` | Runtime and integration packages pass; three local external-tool failures below |
+| `(cd bench && go test ./...)` | Pass, including semantic corpus and suite |
+| `GORACE=atexit_sleep_ms=0 go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency` | Pass: 20.545 s, 1.188 s, 0.169 s |
+| `go test -count=1 -tags wago_guardpage ./src/core/runtime ./src/wago` | Pass: 0.432 s, 2.983 s |
+| `make test-fuzz FUZZTIME=5s` | All four bounded gates pass |
+| `go test ./src/wago -run '^$' -fuzz '^FuzzCompiledCodecGeneratedValidModules$' -fuzztime=5s` | Pass: 122,993 executions |
+| `go test ./src/wago -run '^$' -gcflags='-m=2'` | Escape and inlining output inspected at API, suspension and cache stages |
+| `go build -gcflags='-m=2' ./src/wago` | Pass; concrete dispatch method value does not escape |
+| `go generate ./...` | Pass; generated facade unchanged in final check |
+
+Full tests use the pinned spec interpreter at
+`.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm`, with
+`WAGO_SPEC_INTERPRETER_REVISION=9d36019973201a19f9c9ebb0f10828b2fe2374aa` and
+`WAGO_SPEC_INTERPRETER` set to that executable's absolute path.
+`GORACE=atexit_sleep_ms=0` removes only process-exit delay, not race checks.
+The final ordinary `src/wago` package run passed in 6.931 s.
+
+The local all-repository failures are
+`TestWineCmdBootstrapDownloadsVerifiesAndExecutesInstaller` (installer download
+unavailable), `TestBuildTinyGoEmbedsArtifactWithoutCompiler`, and
+`TestBuildTinyGoStripsByDefault` (both link with duplicate `tinygo_task_exit`).
+They reproduce the checkout's local external-tool failures; they are not
+hidden or counted as passes. The 59-second standalone test package is dominated
+by those external TinyGo builds, not a new runtime or compiler hot-path delay.
+
+The final runtime commit passed the
+[full CI matrix](https://github.com/wago-org/wago/actions/runs/34478366701),
+including Darwin/amd64, both Windows targets, all TinyGo lanes, Linux/arm64,
+race, concurrency, fuzz and Core v2/v3 conformance. The initial fixture-only
+commit and the scope checkpoint also passed full native matrices.
+
+### Reproduce the measurements
+
+```bash
+go test ./src/wago -run '^$' \
+  -bench '^Benchmark(InvokeHostFuncDirect|InvokeCallerHostFuncDirect|HostRoundtripLoop|HostRoundtripLoopCaller)$' \
+  -benchmem -benchtime=500ms -count=5
+go test ./src/wago -run '^$' \
+  -bench '^Benchmark(CallerArity|CallerGCLoop|CallerDomainLoop)$' \
+  -benchmem -benchtime=500ms -count=5
+go test ./src/wago -run '^$' \
+  -bench '^BenchmarkCurrentInvocationReservation$' \
+  -benchmem -benchtime=2s -count=10
+go test ./src/wago -run '^$' \
+  -bench '^BenchmarkHostRoundtripLoopCaller$/mem0/parallelfalse/host1/n1024$' \
+  -benchmem -benchtime=10s -cpuprofile=/tmp/wago-caller-cpu.pprof \
+  -memprofile=/tmp/wago-caller-alloc.pprof -mutexprofile=/tmp/wago-caller-mutex.pprof
+```
+
+The imported/local/dynamic fallback comparison also used ten 2-second samples
+from separate reference and candidate binaries. CPU, allocation and mutex
+profiles were collected after every meaningful production step. The public
+single-call benchmark is selected separately from loop sub-benchmark filters
+so it is never silently excluded by a slash-qualified regular expression.

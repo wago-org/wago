@@ -3,6 +3,7 @@ package wago
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -117,6 +118,34 @@ func TestCallerScalarDispatchAllocations(t *testing.T) {
 	}
 }
 
+func TestCallerConcurrentIndependentInstances(t *testing.T) {
+	c := MustCompile(benchReturningImportModule())
+	t.Cleanup(func() { c.Close() })
+	for worker := 0; worker < 16; worker++ {
+		t.Run(fmt.Sprint(worker), func(t *testing.T) {
+			t.Parallel()
+			var retained Caller
+			in, err := Instantiate(c, Imports{"env.f": CallerHostFunc(func(h Caller, p, r []uint64) {
+				if !h.valid() || retained.valid() || h.generation <= retained.generation {
+					t.Error("independent callback lost authority or revived an expired generation")
+				}
+				retained = h
+				r[0] = p[0] + 1
+			})})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer in.Close()
+			for n := 0; n < 128; n++ {
+				got, err := in.Invoke("g", uint64(n))
+				if err != nil || len(got) != 1 || got[0] != uint64(n+1) || retained.valid() {
+					t.Fatalf("independent invocation %d: result=%v error=%v active=%v", n, got, err, retained.valid())
+				}
+			}
+		})
+	}
+}
+
 func TestCallerCapabilityHelpers(t *testing.T) {
 	state := &invocationContextTestState{concrete: true}
 	rt := newInvocationContextTestRuntime(t, state)
@@ -165,6 +194,14 @@ func TestCallerCapabilityHelpers(t *testing.T) {
 		ref, err := h.NewExternRef("caller")
 		if err != nil {
 			t.Fatal(err)
+		}
+		if retained.in != nil {
+			if _, ok := retained.ExternRefValue(ref); ok {
+				t.Fatal("expired caller read a live later callback's externref")
+			}
+			if retained.ReleaseExternRef(ref) {
+				t.Fatal("expired caller released a live later callback's externref")
+			}
 		}
 		if value, ok := h.ExternRefValue(ref); !ok || value != "caller" {
 			t.Fatalf("externref = %v, %v", value, ok)
