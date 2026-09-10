@@ -14,6 +14,7 @@
       "tag": "single-pass",
       "bin": "wago",
       "env": "WAGO_BIN",
+      "versionLine": 2,
       "args": [
         "run",
         "{wasm}"
@@ -23,6 +24,9 @@
       "tag": "compiler",
       "bin": "wazero",
       "env": "WAZERO_BIN",
+      "versionArgs": [
+        "version"
+      ],
       "args": [
         "run",
         "{wasm}"

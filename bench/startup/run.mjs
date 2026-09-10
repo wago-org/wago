@@ -108,7 +108,8 @@ async function exists(path) {
 
 function runtimeVersion(runtime) {
   const result = spawnSync(runtime.bin, runtime.versionArgs ?? ["--version"], { encoding: "utf8" });
-  const value = `${result.stdout || ""}\n${result.stderr || ""}`.trim().split("\n", 1)[0];
+  const lines = `${result.stdout || ""}\n${result.stderr || ""}`.trim().split("\n");
+  const value = lines[runtime.versionLine ?? 0]?.trim();
   return value || "unknown";
 }
 
