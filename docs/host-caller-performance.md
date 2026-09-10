@@ -237,3 +237,37 @@ The profile no longer contains `beginHostCallScopeReservedWithID` on the hot
 path. Remaining `beginReservedWithID` is 6.60% cumulative; context-map lookup
 is 6.52% cumulative and reservation resolution is 3.00%. These are separate
 observations, not additive exclusive CPU percentages.
+
+## Inline reservation lookup
+
+The lookup now checks the inline entry's exact invocation ID before looking in
+the fallback map. It retains the mutex, nil-reservation condition, fallback
+keys and all swap/restore behavior. No authority is inferred from an occupied
+inline slot belonging to a different invocation.
+
+Ten 2-second samples, ns/op; all cases allocate 0 B and 0 objects:
+
+| Lookup | Before median (range) | After median (range) |
+|---|---:|---:|
+| No reservation | 5.125 (5.085–5.329) | 5.022 (4.902–5.053) |
+| Inline | 5.263 (5.238–5.340) | 3.606 (3.597–3.621) |
+| Fallback | 6.133 (6.084–6.241) | 5.905 (5.768–5.941) |
+| Inline with fallback map | 6.355 (6.341–6.392) | 3.718 (3.702–3.735) |
+| Nested swap/lookup/restore | 12.825 (12.800–12.890) | 11.470 (11.440–11.490) |
+
+The benefit is a few nanoseconds for an actual inline reservation, not a large
+claim for the no-reservation host loop. Existing nested-identity and cleanup
+tests remain unchanged; each benchmark also checks the returned reservation.
+
+The full-loop checkpoint does **not** show a host-call win: concrete memory-0
+is 135,821 ns (135,192–136,408), or 132.1 ns/call after guest subtraction;
+legacy is 154,570 ns (151,824–160,640). The guest-only control also moved from
+556.1 to 579.5 ns. Concrete parallel is 19,210 ns (18,993–19,291), local GC
+252,413 ns (252,064–253,805), imported domain 205,573 ns (203,868–206,113), and
+dynamic domain 214,547 ns (212,825–215,621). These macro samples do not isolate
+the lookup's small benefit, so no large host-call gain is attributed to it.
+Public single-call medians are 343.5 ns concrete and 387.8 ns legacy. Allocation
+counts are unchanged. The full package and race suites passed in 5.902 s and
+20.552 s. The profile still shows context-map lookup (8.13% cumulative) and
+reservation lookup (2.61% cumulative), supporting an activation-local cache
+experiment next.

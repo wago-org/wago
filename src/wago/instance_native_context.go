@@ -150,9 +150,13 @@ func currentInvocationReservation(in *Instance) *pluginOperationReservation {
 	}
 	a := &in.ensurePluginState().activations
 	a.mu.Lock()
-	reservation := a.reservations[id]
+	var reservation *pluginOperationReservation
+	// The inline capability belongs only to this exact invocation. A different
+	// active chain must still resolve its own fallback entry.
 	if a.reservationID == id && a.reservation != nil {
 		reservation = a.reservation
+	} else {
+		reservation = a.reservations[id]
 	}
 	a.mu.Unlock()
 	return reservation
