@@ -1,13 +1,16 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/wago-org/wago/cli/internal/project"
+	"github.com/wago-org/wago/internal/atomicfile"
 )
 
 func TestGlobalSettingsIgnoreRetiredV1Optimizations(t *testing.T) {
@@ -56,6 +59,33 @@ func TestSettingsRoundTripAndDefaults(t *testing.T) {
 	}
 }
 
+func TestSettingsSavePreservesExistingOnReplaceFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	original := []byte(`{"version":1}`)
+	if err := os.WriteFile(path, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	injected := errors.New("replace failed")
+	previous := replaceSettingsFile
+	replaceSettingsFile = func(_ string, _ atomicfile.Options, write func(io.Writer) error) error {
+		if err := write(io.Discard); err != nil {
+			t.Fatal(err)
+		}
+		return injected
+	}
+	t.Cleanup(func() { replaceSettingsFile = previous })
+	if err := SaveFile(path, Default()); !errors.Is(err, injected) {
+		t.Fatalf("SaveFile error = %v, want %v", err, injected)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(original) {
+		t.Fatalf("failed save changed existing settings to %q", got)
+	}
+}
+
 func TestPartialSettingsKeepBuiltInDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	if err := os.WriteFile(path, []byte(`{"version":1,"features":{"simd":false},"runtime":{}}`), 0o644); err != nil {
@@ -67,6 +97,25 @@ func TestPartialSettingsKeepBuiltInDefaults(t *testing.T) {
 	}
 	if config.Features["simd"] || !config.Features["multi-value"] || !config.Runtime.DeferredBoundsChecking || config.Runtime.Parallel != "1" {
 		t.Fatalf("partial config did not preserve defaults: %#v", config)
+	}
+}
+
+func TestSettingsRejectDuplicateMembers(t *testing.T) {
+	for _, data := range []string{
+		`{"version":1,"version":1}`,
+		`{"version":1,"Version":1}`,
+		`{"version":1,"features":{"simd":true,"simd":false}}`,
+		`{"version":1,"features":{"simd":false,"SIMD":false}}`,
+		`{"version":1,"features":{"tail-call":false,"tail_call":false}}`,
+		`{"version":1,"optimizations":{"inline":false,"INLINE":false}}`,
+	} {
+		path := filepath.Join(t.TempDir(), "settings.json")
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadFile(path); err == nil || !strings.Contains(err.Error(), "duplicate") {
+			t.Fatalf("duplicate settings members accepted: %s: %v", data, err)
+		}
 	}
 }
 
