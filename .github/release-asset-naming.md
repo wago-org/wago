@@ -49,6 +49,10 @@ uses `go run github.com/wago-org/wago/cli/wago-installer@main` when Go is
 available. Other channels do not fall back to source, and a machine without Go
 gets an explicit message that no published installer is available.
 
+The `Publish installers` workflow copies these bootstrap scripts to the
+installer site. It stages the full site checkout so that removed bootstrap
+files are also removed from the published site.
+
 The CLI installs and switches runtimes. Runtime files use this name format:
 
 `wago-runtime-<profile>-<build>-<os>-<arch>`

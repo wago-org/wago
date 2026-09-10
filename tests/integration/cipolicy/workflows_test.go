@@ -100,6 +100,20 @@ func TestCanaryPublishesCommitAddressedArtifactsWithoutTags(t *testing.T) {
 	}
 }
 
+func TestInstallerPublishStagesRemovedBootstraps(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/sync-install.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := string(workflow)
+	if !strings.Contains(contents, "git add --all -- .") {
+		t.Error("installer publish workflow must stage removed bootstrap files")
+	}
+	if strings.Contains(contents, "git add --all -- install.sh install.cmd install.ps1") {
+		t.Error("installer publish workflow names the removed install.cmd path")
+	}
+}
+
 func TestAggregateCIRequiresEveryWorkflowJob(t *testing.T) {
 	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/ci.yml"))
 	if err != nil {
