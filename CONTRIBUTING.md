@@ -53,6 +53,8 @@ go test -bench .
 | `src/wago` | Public API implementation. |
 | `internal/genfacade` | Generator for `wago.go`. |
 | `cli/wago` | Build-tagged manager and runtime entry point. |
+| `cli/wago-installer` | Installable `wago-installer` command entry point. |
+| `cli/installer` | Shared installer implementation. |
 | `cli/manager` | Manager commands. |
 | `cli/runtime` | Runtime commands. |
 | `cli/internal` | Shared CLI code. |

@@ -132,7 +132,7 @@ fuzz-engine-state: ## Compare Starshine state hashes in Node and Railshot (ENGIN
 
 .PHONY: install-local
 install-local: ## Run the installer from this checkout
-	@go run ./cli/installer install
+	@go run ./cli/wago-installer install
 
 .PHONY: install-local-runtime
 install-local-runtime: ## Build this checkout and atomically replace the global manager and canary standard runtime
