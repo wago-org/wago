@@ -10,10 +10,14 @@ import (
 )
 
 func TestSyncHostBindingStaysCompact(t *testing.T) {
-	// Standard Go packs the trailing scalar flag into 24 bytes. TinyGo may align
-	// the same pointer-bearing shape to 32 bytes on some targets.
-	if got := unsafe.Sizeof(syncHostBinding{}); got != 24 && got != 32 {
-		t.Fatalf("syncHostBinding size = %d, want 24 or 32", got)
+	// Two callback representations, one exact descriptor, and the index/flag.
+	// TinyGo function values are larger than standard Go function values. Keep
+	// the budget exact for this compiler instead of accepting either footprint.
+	want := unsafe.Sizeof(HostFunc(nil)) + unsafe.Sizeof(CallerHostFunc(nil)) + unsafe.Sizeof((*DefinedTypeDescriptor)(nil)) + 5
+	align := unsafe.Alignof(syncHostBinding{})
+	want = (want + align - 1) &^ (align - 1)
+	if got := unsafe.Sizeof(syncHostBinding{}); got != want {
+		t.Fatalf("syncHostBinding size = %d, want %d", got, want)
 	}
 }
 

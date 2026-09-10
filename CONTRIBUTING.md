@@ -178,6 +178,20 @@ If a change can affect speed or memory use, include before-and-after numbers in
 the pull request. If it affects only cold paths, say so. Do not accept an
 unsupported WebAssembly feature just to improve an optimization result.
 
+For synchronous host-boundary work, run `BenchmarkInvokeHostFuncDirect` and
+`BenchmarkHostRoundtripLoop` in `./src/wago`, including the independent-instance
+parallel cases. Compare counts on the same host-capable export and subtract the
+matched guest-loop slope. Record each stage separately. See the
+[host-call measurement and safety rules](docs/host-roundtrip-performance.md).
+Also compare `BenchmarkInvokeCallerHostFuncDirect`,
+`BenchmarkHostRoundtripLoopCaller`, `BenchmarkCallerGCLoop`,
+`BenchmarkCallerDomainLoop`, and `BenchmarkCallerArity` when changing concrete
+callback dispatch. Record medians and ranges, not just the fastest sample. See
+the [concrete caller invariants](docs/host-caller-performance.md). Run profiles
+and benchmarks without concurrent builds. The full race suite starts many
+subprocesses; `GORACE=atexit_sleep_ms=0` avoids the race runtime's fixed exit
+delay while retaining race checks.
+
 ## Make a Commit
 
 Keep each commit small, measurable, and easy to review. A commit should do one

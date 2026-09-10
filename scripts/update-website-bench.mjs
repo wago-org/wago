@@ -250,9 +250,6 @@ function buildGeneralSummary(metrics, raw, modules) {
   // the benchmark run. Missing pairs never enter one side as zero-valued data.
   const catalogModules = new Set(Object.keys(modules));
   const includedModules = catalogModules.size === 0 ? null : catalogModules;
-  const applicationModules = new Set(Object.entries(modules)
-    .filter(([, info]) => info.category === "application")
-    .map(([name]) => name));
   const instantiate = pairedMetricGeomeans(metrics, "Instantiate/", "WazeroInstantiate/", false, includedModules);
   const execution = pairedMetricGeomeans(metrics, "Exec/", "WazeroExec/", true, includedModules);
   const machineCode = pairedMetricGeomeans(
@@ -280,24 +277,18 @@ function buildGeneralSummary(metrics, raw, modules) {
       ENGINES.map(({ id }) => [id, Number(compileTime[id] ?? 0) + Number(instantiate[id] ?? 0)]),
     )],
   ].map(([label, sub, kind, values]) => ({ label, sub, kind, values }));
-  const breakdowns = [
-    generalCorpusMetric(metrics, "Application commands", "fresh instance + fixed workload", "CommandExec/", "WazeroCommandExec/", [...applicationModules]),
-    generalCorpusMetric(metrics, "SIMD execution", "AssemblyScript SIMD", "Exec/", "WazeroExec/", ["json-as-simd.serializeN", "json-as-simd.deserializeN", "blake-as-simd.hashN", "utf-as-simd.convertN"]),
+  const boundary = [
+    generalPairedMetric(metrics, "Host → Wasm call", "public entry", "ExecCallOverhead_wago", "ExecCallOverhead_wazero"),
+    generalPairedMetric(metrics, "Wasm → host → Wasm", "import call and return", "ExecHostRoundtrip_wago", "ExecHostRoundtrip_wazero"),
   ].filter(Boolean);
-  return [...summary, ...breakdowns];
+  return [...summary, ...boundary];
 }
 
-function generalCorpusMetric(metrics, label, sub, railshotPrefix, wazeroPrefix, keys, kind = "ns") {
-  const field = kind === "bytes" ? "bytes" : kind === "count" ? "allocs" : "ns";
-  const values = (prefix) => keys
-    .map((key) => Number(metrics.get(`${prefix}${key}`)?.[field] ?? 0))
-    .filter((value) => value > 0);
-  const railshotValues = values(railshotPrefix);
-  const wazeroValues = values(wazeroPrefix);
-  if (railshotValues.length === 0 || wazeroValues.length === 0) return null;
-  const railshot = geomean(railshotValues);
-  const wazero = geomean(wazeroValues);
-  return { label, sub, kind, values: { railshot, wazero } };
+function generalPairedMetric(metrics, label, sub, railshotKey, wazeroKey) {
+  const railshot = Number(metrics.get(railshotKey)?.ns ?? 0);
+  const wazero = Number(metrics.get(wazeroKey)?.ns ?? 0);
+  if (!(railshot > 0) || !(wazero > 0)) return null;
+  return { label, sub, kind: "ns", values: { railshot, wazero } };
 }
 
 function metricGeomean(metrics, prefix, groupExports = false, field = "ns", includedModules = null) {
@@ -427,11 +418,12 @@ function buildRow(spec, metrics, backend) {
   const zv = pick(z);
   const max = Math.max(wv, zv, 1);
   const wWins = wv <= zv;
-  const same = Math.abs(wv - zv) / Math.max(wv, zv, 1) < 0.03;
+  const magnitude = Math.max(wv, zv) / Math.max(Math.min(wv, zv), 1);
+  const same = Math.abs(wv - zv) / Math.max(wv, zv, 1) < 0.03 || Number(ratio(magnitude)) === 1;
   const winWord = spec.winWord ?? "faster";
   const delta =
     spec.forcedDelta ||
-    (same ? "same speed" : `${ratio(Math.max(wv, zv) / Math.max(Math.min(wv, zv), 1))}×${wWins ? ` ${winWord}` : " slower"}`);
+    (same ? "parity" : `${ratio(magnitude)}×${wWins ? ` ${winWord}` : " slower"}`);
   return {
     label: spec.label,
     sub: spec.sub,
@@ -764,10 +756,11 @@ function comparisonDelta(row) {
   const railshot = row.values.find(({ engine }) => engine.id === "railshot")?.value;
   const wazero = row.values.find(({ engine }) => engine.id === "wazero")?.value;
   if (!(railshot > 0) || !(wazero > 0)) return null;
-  const same = Math.abs(railshot - wazero) / Math.max(railshot, wazero) < 0.03;
-  if (same) return { text: "same", className: "tie" };
+  const ratioValue = Math.max(railshot, wazero) / Math.min(railshot, wazero);
+  const same = Math.abs(railshot - wazero) / Math.max(railshot, wazero) < 0.03 || Number(trim(ratioValue, 1)) === 1;
+  if (same) return { text: "parity", className: "tie" };
   const railshotWins = railshot < wazero;
-  const magnitude = trim(Math.max(railshot, wazero) / Math.min(railshot, wazero), 1);
+  const magnitude = trim(ratioValue, 1);
   const resource = row.kind === "bytes" || row.kind === "code" || row.kind === "count";
   const word = resource
     ? railshotWins ? "less" : "more"

@@ -1,24 +1,12 @@
 #!/usr/bin/env node
-// Cross-runtime startup-latency sweep → bench/out/startup.json.
+// Cross-runtime end-to-end latency sweep → one architecture-specific JSON file.
 //
-// Times the whole process (exec → load → compile → instantiate → run _start →
-// exit) for each committed work-twin in bench/startup/twins/ across every
-// runtime in runtimes.json, using hyperfine with cold caches and the settings
-// recorded in bench/startup/README.md.
-//
-// A runtime whose binary isn't on PATH (nor via its *_BIN env override) is
-// skipped with a warning, so the sweep still produces a partial dataset on a
-// machine that lacks some engines. The website generator
-// (scripts/update-website-startup.mjs) consumes the JSON this writes.
-//
-// Usage:
-//   node bench/startup/run.mjs                 # full sweep → bench/out/startup.json
-//   node bench/startup/run.mjs --out x.json    # write elsewhere
-//   WARMUP=5 MINRUNS=30 node bench/startup/run.mjs
-//   WAGO_BIN=/path/to/wago V8_BIN=/path/to/v8 WASM3_BIN=... node bench/startup/run.mjs
+// Times the full process (spawn → load → compile → instantiate → run _start →
+// exit) for every committed work twin and every configured runtime. A complete
+// runtime set is required so the website never publishes unmatched rows.
 
-import { readFile, writeFile, mkdir, access, rm } from "node:fs/promises";
-import { constants, accessSync } from "node:fs";
+import { access, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { accessSync, constants } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,85 +14,129 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, "..", "..");
 const cfg = JSON.parse(await readFile(join(HERE, "runtimes.json"), "utf8"));
-const outPath = resolve(argOf("--out") || join(HERE, "startup.json"));
+const architecture = process.arch === "x64" ? "amd64" : process.arch;
+const outPath = resolve(argOf("--out") || join(HERE, `startup-${architecture}.json`));
 const WARMUP = process.env.WARMUP || "5";
 const MINRUNS = process.env.MINRUNS || "30";
 
 const HYPERFINE = which(process.env.HYPERFINE_BIN || "hyperfine");
 if (!HYPERFINE) fail("hyperfine not found (set HYPERFINE_BIN or install it)");
 
-// Resolve each runtime's binary once; drop the ones we can't find.
 const resolved = {};
+const missing = [];
 for (const name of cfg.order) {
-  const rt = cfg.runtimes[name];
-  const bin = which(process.env[rt.env] || rt.bin);
-  if (bin) resolved[name] = { ...rt, bin };
-  else console.warn(`! ${name}: binary not found (${rt.env}=… to point at it) — skipping`);
+  const runtime = cfg.runtimes[name];
+  const bin = which(process.env[runtime.env] || runtime.bin);
+  if (bin) resolved[name] = { ...runtime, bin };
+  else missing.push(`${name} (${runtime.env})`);
 }
-const active = cfg.order.filter((n) => resolved[n]);
-if (!active.length) fail("no runtimes found");
-console.log(`startup sweep: ${active.length}/${cfg.order.length} runtimes · ${cfg.workloads.length} workloads`);
+if (missing.length) fail(`missing required runtimes: ${missing.join(", ")}`);
+console.log(`end-to-end sweep: ${cfg.order.length} runtimes · ${cfg.workloads.length} workloads · ${architecture}`);
 
+const versions = Object.fromEntries(cfg.order.map((name) => [name, runtimeVersion(resolved[name])]));
 const workloads = [];
-for (const w of cfg.workloads) {
-  const wasm = join(HERE, "twins", w.twin);
-  if (!(await exists(wasm))) {
-    console.warn(`! ${w.id}: twin ${w.twin} missing — skipping workload`);
-    continue;
-  }
-  // One hyperfine invocation per workload, one named command per runtime.
-  const jsonTmp = join(dirname(outPath), `.startup-${w.id}.json`);
+for (const workload of cfg.workloads) {
+  const wasm = join(HERE, "twins", workload.twin);
+  if (!(await exists(wasm))) fail(`${workload.id}: twin ${workload.twin} is missing`);
+
+  const commands = Object.fromEntries(cfg.order.map((name) => {
+    const runtime = resolved[name];
+    const args = runtime.args.map((arg) => substitute(arg, wasm));
+    const check = spawnSync(runtime.bin, args, { encoding: "utf8", maxBuffer: 64 << 20 });
+    if (check.status !== 0) {
+      fail(`${name} correctness preflight failed for ${workload.id}: ${check.stderr || check.stdout || `exit ${check.status}`}`);
+    }
+    return [name, [runtime.bin, ...args].map(shellQuote).join(" ")];
+  }));
+
+  const jsonTmp = join(dirname(outPath), `.startup-${architecture}-${workload.id}.json`);
   const args = ["-N", "--warmup", WARMUP, "--min-runs", MINRUNS, "--export-json", jsonTmp];
-  for (const name of active) {
-    const r = resolved[name];
-    const cmd = [r.bin, ...r.args.map((a) => a.replaceAll("{repo}", REPO).replaceAll("{wasm}", wasm))].join(" ");
-    args.push("-n", name, cmd);
-  }
-  process.stdout.write(`  ${w.id} … `);
+  for (const name of cfg.order) args.push("-n", name, commands[name]);
+  process.stdout.write(`  ${workload.id} … `);
   await mkdir(dirname(outPath), { recursive: true });
-  const res = spawnSync(HYPERFINE, args, { encoding: "utf8", maxBuffer: 64 << 20 });
-  if (res.status !== 0) fail(`hyperfine failed for ${w.id}: ${res.stderr || res.stdout}`);
-  const hf = JSON.parse(await readFile(jsonTmp, "utf8"));
+  const result = spawnSync(HYPERFINE, args, { encoding: "utf8", maxBuffer: 64 << 20 });
+  if (result.status !== 0) fail(`hyperfine failed for ${workload.id}: ${result.stderr || result.stdout}`);
+  const hyperfine = JSON.parse(await readFile(jsonTmp, "utf8"));
   await rm(jsonTmp, { force: true });
   const results = {};
-  for (const r of hf.results) results[r.command] = round(r.mean * 1000, 3); // s → ms
-  console.log(active.map((n) => `${n} ${results[n]}`).join("  "));
-  workloads.push({ id: w.id, label: w.label, desc: w.desc, results });
+  for (const row of hyperfine.results) results[row.command] = round(row.mean * 1000, 3);
+  console.log(cfg.order.map((name) => `${name} ${results[name]} ms`).join("  "));
+  workloads.push({ id: workload.id, label: workload.label, desc: workload.desc, results });
 }
 
 const data = {
   generated: new Date().toISOString().slice(0, 10),
+  sourceCommit: gitCommit(),
   machine: process.env.STARTUP_MACHINE || cpuName(),
-  method: `hyperfine -N --warmup ${WARMUP} --min-runs ${MINRUNS}; cold caches (full process, exec→exit)`,
+  method: `hyperfine -N --warmup ${WARMUP} --min-runs ${MINRUNS}; fresh process per run (spawn→exit)`,
   unit: "ms",
-  runtimes: Object.fromEntries(cfg.order.map((n) => [n, { tag: cfg.runtimes[n].tag }])),
+  architecture,
+  runtimes: Object.fromEntries(cfg.order.map((name) => [name, {
+    label: cfg.runtimes[name].label ?? name,
+    tag: cfg.runtimes[name].tag,
+    version: versions[name],
+  }])),
   workloads,
 };
 
 await mkdir(dirname(outPath), { recursive: true });
 await writeFile(outPath, JSON.stringify(data, null, 2) + "\n");
-console.log(`wrote ${outPath} (${workloads.length} workloads, ${active.length} runtimes)`);
+console.log(`wrote ${outPath} (${workloads.length} workloads, ${cfg.order.length} runtimes)`);
 
-// ---- helpers -------------------------------------------------------------
 function argOf(flag) {
-  const i = process.argv.indexOf(flag);
-  return i >= 0 ? process.argv[i + 1] : "";
+  const index = process.argv.indexOf(flag);
+  return index >= 0 ? process.argv[index + 1] : "";
 }
+
+function substitute(arg, wasm) {
+  return arg.replaceAll("{repo}", REPO).replaceAll("{wasm}", wasm);
+}
+
 function which(bin) {
   if (bin.includes("/")) return existsSync(bin) ? bin : "";
-  const r = spawnSync("command", ["-v", bin], { shell: true, encoding: "utf8" });
-  return r.status === 0 ? r.stdout.trim() : "";
+  const result = spawnSync("command", ["-v", bin], { shell: true, encoding: "utf8" });
+  return result.status === 0 ? result.stdout.trim() : "";
 }
-function existsSync(p) {
-  try { accessSync(p, constants.X_OK); return true; } catch { return false; }
+
+function existsSync(path) {
+  try { accessSync(path, constants.X_OK); return true; } catch { return false; }
 }
-async function exists(p) {
-  try { await access(p, constants.R_OK); return true; } catch { return false; }
+
+async function exists(path) {
+  try { await access(path, constants.R_OK); return true; } catch { return false; }
 }
+
+function runtimeVersion(runtime) {
+  const result = spawnSync(runtime.bin, runtime.versionArgs ?? ["--version"], { encoding: "utf8" });
+  const lines = `${result.stdout || ""}\n${result.stderr || ""}`.trim().split("\n");
+  const value = lines[runtime.versionLine ?? 0]?.trim();
+  return value || "unknown";
+}
+
 function cpuName() {
-  const r = spawnSync("sh", ["-c", "grep -m1 'model name' /proc/cpuinfo | cut -d: -f2"], { encoding: "utf8" });
-  const cpu = (r.stdout || "").trim();
-  return cpu ? `${cpu}, ${process.platform}/${process.arch}` : `${process.platform}/${process.arch}`;
+  const command = process.platform === "darwin"
+    ? ["sysctl", ["-n", "machdep.cpu.brand_string"]]
+    : ["sh", ["-c", "grep -m1 'model name' /proc/cpuinfo | cut -d: -f2"]];
+  const result = spawnSync(command[0], command[1], { encoding: "utf8" });
+  const cpu = (result.stdout || "").trim();
+  return cpu ? `${cpu}, ${process.platform}/${architecture}` : `${process.platform}/${architecture}`;
 }
-function round(v, d) { const f = 10 ** d; return Math.round(v * f) / f; }
-function fail(msg) { console.error("startup sweep:", msg); process.exit(1); }
+
+function gitCommit() {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8" });
+  return result.status === 0 ? result.stdout.trim() : "";
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'\\''`)}'`;
+}
+
+function round(value, digits) {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function fail(message) {
+  console.error("end-to-end sweep:", message);
+  process.exit(1);
+}

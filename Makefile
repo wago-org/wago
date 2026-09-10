@@ -35,7 +35,7 @@ WAZERO_BENCH_RE ?= [Ww]azero
 BENCH_RE_all      := .
 BENCH_RE_pipeline := ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate)$$
 BENCH_RE_compile  := ^Benchmark(Decode|Validate|Compile|CompileFull)$$
-BENCH_RE_exec     := ^Benchmark(Exec|CommandExec)$$
+BENCH_RE_exec     := ^Benchmark(Exec|CommandExec)$$|^BenchmarkExec(CallOverhead|HostRoundtrip)_
 BENCH_RE          := $(or $(BENCH_RE_$(BENCH)),$(BENCH))
 # Where `make cover` writes the coverage profile, and where `make card` collects
 # section fragments / writes the assembled PR card.
@@ -97,6 +97,7 @@ lint-staticcheck:
 .PHONY: lint-website-generator
 lint-website-generator:
 	node --test scripts/update-website-bench.test.mjs
+	node --test scripts/update-website-startup.test.mjs
 	node --test scripts/engine-state-oracle.test.mjs
 	node --test scripts/fuzz-engine-state.test.mjs
 
@@ -419,10 +420,10 @@ bench-website: ## Update ../website performance numbers from the last benchmark 
 
 # Cross-runtime startup-latency sweep (full process, exec→exit) over the
 # committed work-twins in bench/startup/twins, across every runtime found on the
-# machine → bench/out/startup.json. See bench/startup/runtimes.json for the
-# runtime list and *_BIN env overrides; a missing runtime is skipped.
+# machine → bench/startup/startup-<host-arch>.json. See
+# bench/startup/runtimes.json for the required runtime list and *_BIN overrides.
 .PHONY: bench-startup
-bench-startup: ## Run the cross-runtime startup-latency sweep and write bench/startup/startup.json
+bench-startup: ## Run the end-to-end sweep and write startup-<host-arch>.json
 	node bench/startup/run.mjs
 
 # Website checkout (sibling by default); override for a worktree:
@@ -430,7 +431,7 @@ bench-startup: ## Run the cross-runtime startup-latency sweep and write bench/st
 WEBSITE_DIR ?= ../website
 
 .PHONY: startup-website
-startup-website: ## Update the website startup-latency numbers from bench/startup/startup.json
+startup-website: ## Update website end-to-end numbers from both architecture captures
 	WAGO_WEBSITE_DIR=$(WEBSITE_DIR) scripts/update-website-startup.mjs
 
 # One command to rebuild the whole website from committed data — startup +

@@ -773,7 +773,6 @@ func TestHTTPCatalogRejectsExactDuplicateConfigSchemaProperties(t *testing.T) {
 		"properties":{"mode":{"type":"string"},"mode":{"type":"number"}},
 		"additionalProperties":false
 	}`)
-	release = resignRelease(t, release)
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(response).Encode(map[string]any{
 			"plugins": []CatalogRelease{release}, "total": 1, "offset": 0, "limit": 256,

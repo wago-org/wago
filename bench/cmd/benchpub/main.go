@@ -27,7 +27,7 @@ import (
 // suiteRegex selects the wago stage suite plus the cross-engine wazero
 // benchmarks (compare_test.go). The fixed wago-vs-wazero set in bench_test.go is
 // excluded — these fan out over the same corpus as the wago stages.
-const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec|BenchmarkCommandExec|BenchmarkWazeroCompile|BenchmarkWazeroInstantiate|BenchmarkWazeroExec|BenchmarkWazeroCommandExec)$`
+const suiteRegex = `^(BenchmarkDecode|BenchmarkValidate|BenchmarkCompile|BenchmarkCompileFull|BenchmarkInstantiate|BenchmarkExec|BenchmarkCommandExec|BenchmarkWazeroCompile|BenchmarkWazeroInstantiate|BenchmarkWazeroExec|BenchmarkWazeroCommandExec|BenchmarkExecCallOverhead_(wago|wazero)|BenchmarkExecHostRoundtrip_(wago|wazero))$`
 
 // stampPath (bench-relative — benchpub runs with cwd=bench/) records the commit
 // the last published/charted numbers reflect and the wall-clock time benchpub

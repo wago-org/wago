@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/wago-org/wago/internal/jsonstrict"
 )
 
 // Registrar is the declarative builder passed to Plugin.Register. It is scoped
@@ -86,6 +88,9 @@ func (r *Registrar) Config(dst any) error {
 	if len(b) == 0 {
 		b = []byte("{}")
 	}
+	if err := jsonstrict.ValidateTypedJSON(b, dst); err != nil {
+		return &PluginError{Plugin: r.definition.ID, Phase: PluginPhaseConfigure, Path: "config", Err: err}
+	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
@@ -155,14 +160,15 @@ func CapabilityDocs(docs string) CapabilityOption {
 
 // registeredImport is one declared host function.
 type registeredImport struct {
-	module  string
-	name    string
-	fn      HostFunc
-	params  []ValType
-	results []ValType
-	cap     Capability
-	hasCap  bool
-	docs    string
+	module   string
+	name     string
+	fn       HostFunc
+	concrete CallerHostFunc
+	params   []ValType
+	results  []ValType
+	cap      Capability
+	hasCap   bool
+	docs     string
 }
 
 func (i *registeredImport) key() string { return i.module + "." + i.name }
@@ -188,6 +194,19 @@ func (m *ImportModuleBuilder) Func(name string, fn HostFunc) *ImportFuncBuilder 
 		return &ImportFuncBuilder{}
 	}
 	imp := &registeredImport{module: m.module, name: name, fn: fn}
+	if m.reg != nil && !m.reg.sealed {
+		m.reg.imports = append(m.reg.imports, imp)
+	}
+	return &ImportFuncBuilder{imp: imp}
+}
+
+// CallerFunc declares a concrete synchronous import with the same signature,
+// authority and plugin lifetime rules as Func.
+func (m *ImportModuleBuilder) CallerFunc(name string, fn CallerHostFunc) *ImportFuncBuilder {
+	if m == nil {
+		return &ImportFuncBuilder{}
+	}
+	imp := &registeredImport{module: m.module, name: name, concrete: fn}
 	if m.reg != nil && !m.reg.sealed {
 		m.reg.imports = append(m.reg.imports, imp)
 	}
