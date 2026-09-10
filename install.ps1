@@ -176,7 +176,11 @@ try {
     $installerStatus = 1
     $message = $_.Exception.Message
     if (-not $message.StartsWith("wago:")) {
-        $message = "wago: the installer is unavailable; check your internet connection and try again"
+        if ($env:WAGO_INSTALLER_DEBUG) {
+            $message = "wago: the installer failed: $message"
+        } else {
+            $message = "wago: the installer is unavailable; check your internet connection and try again"
+        }
     }
     [Console]::Error.WriteLine($message)
 } finally {
