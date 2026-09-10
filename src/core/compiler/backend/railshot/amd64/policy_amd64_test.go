@@ -84,7 +84,7 @@ func TestCompileModuleWithPoliciesDoNotCrossTalkAMD64(t *testing.T) {
 
 func TestHiddenOptimizationFamiliesUsePerCompilePolicyAMD64(t *testing.T) {
 	names := []string{
-		"simd-superopt", "interval-region-pins", "magic-div",
+		"simd-superopt", "interval-region-pins", "memsize-regional-lease", "module-global-regional-lease", "magic-div", "commute-fixed-self-update",
 		"shared-trap-body", "shared-adapters", "dead-gc-new", "gc-native-alloc",
 	}
 	overrides := make(map[string]bool, len(names))
@@ -99,6 +99,21 @@ func TestHiddenOptimizationFamiliesUsePerCompilePolicyAMD64(t *testing.T) {
 	for _, name := range names {
 		if policy.EnabledOption(optimizationBindings.Option(name)) {
 			t.Errorf("per-compile policy did not disable %s", name)
+		}
+	}
+}
+
+func TestWideLoopIntConstPlatformDefaultAMD64(t *testing.T) {
+	for _, tc := range []struct {
+		goos string
+		want bool
+	}{
+		{goos: "linux", want: true},
+		{goos: "darwin", want: false},
+		{goos: "windows", want: false},
+	} {
+		if got := wideLoopIntConstPlatformDefault(tc.goos); got != tc.want {
+			t.Errorf("%s default = %t, want %t", tc.goos, got, tc.want)
 		}
 	}
 }

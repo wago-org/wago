@@ -97,6 +97,90 @@ type ctrlFrameMerge struct {
 	eh            *ctrlFrameEH
 }
 
+func (m *ctrlFrameMerge) setCountedLoop(counter, bodySite int) bool {
+	if counter < 0 || counter >= 1<<16-1 || bodySite < 0 || uint64(bodySite) >= uint64(^uint32(0)) ||
+		m.firstEndSite != 0 || m.secondEndSite != 0 || len(m.ends) != 0 {
+		return false
+	}
+	m.firstEndSite = uint32(counter + 1)
+	m.secondEndSite = uint32(bodySite + 1)
+	return true
+}
+
+func (m *ctrlFrameMerge) countedLoop() (counter, bodySite int, ok bool) {
+	if m == nil || m.firstEndSite == 0 || m.secondEndSite == 0 || len(m.ends) != 0 {
+		return 0, 0, false
+	}
+	return int(m.firstEndSite - 1), int(m.secondEndSite - 1), true
+}
+
+// tryCountedLoopLatch recognizes the exact tail of a top-tested i32 countdown
+// and branches from the decrement flags directly to the loop body. Interruptible
+// loops retain their header poll and are deliberately excluded.
+func (f *fn) tryCountedLoopLatch(r *wasm.Reader, x int) (bool, error) {
+	if !f.opt(optCountedLoopLatch) || f.interruptible || f.usesCalls || len(f.ctrl) < 2 || f.depth() != 0 {
+		return false, nil
+	}
+	loop := &f.ctrl[len(f.ctrl)-1]
+	outer := &f.ctrl[len(f.ctrl)-2]
+	if loop.kind != cfLoop || loop.paramN != 0 || loop.resultN != 0 || outer.kind != cfBlock || outer.branchArity() != 0 {
+		return false, nil
+	}
+	counter, bodySite, ok := f.ctrlMerge(loop).countedLoop()
+	if !ok || counter != x || x < 0 || x >= len(f.localType) || f.localType[x] != mtI32 {
+		return false, nil
+	}
+	reg, isFloat, pinned := f.pinReg(x)
+	if !pinned || isFloat {
+		return false, nil
+	}
+	r2 := *r
+	op, err := r2.Byte()
+	if err != nil || op != 0x41 {
+		return false, nil
+	}
+	one, err := r2.I32()
+	if err != nil || one != 1 {
+		return false, nil
+	}
+	for _, want := range []byte{0x6b, 0x21} { // i32.sub; local.set
+		op, err = r2.Byte()
+		if err != nil || op != want {
+			return false, nil
+		}
+	}
+	set, err := r2.U32()
+	if err != nil || int(set) != x {
+		return false, nil
+	}
+	op, err = r2.Byte()
+	if err != nil || op != 0x0c {
+		return false, nil
+	}
+	label, err := r2.U32()
+	if err != nil || label != 0 {
+		return false, nil
+	}
+	latchEnd := r2.Offset()
+	for range 2 {
+		op, err = r2.Byte()
+		if err != nil || op != 0x0b {
+			return false, nil
+		}
+	}
+	if err := r.JumpTo(latchEnd); err != nil {
+		return false, err
+	}
+	f.convergeBranchLocals(loop)
+	f.invalidateBoundsCertFor(1, uint32(x))
+	f.unitAdjust(reg, false, false)
+	f.markLocalDirty(x)
+	site := f.a.JccPlaceholder(condNE)
+	f.a.PatchRel32(site, bodySite)
+	f.stats.peep("counted-loop-latch")
+	return true, nil
+}
+
 // ctrlFrameRoots is allocated as a depth-parallel sidecar only when exact GC
 // root tracking reaches structured control. Scalar merges and fact-only control
 // do not retain its scanned slice headers.
@@ -1030,7 +1114,12 @@ func (f *fn) opBlock(r *wasm.Reader, op byte) error {
 			f.flush()
 		}
 		if kind == cfLoop {
-			f.a.AlignLoop() // padding runs on entry, not per iteration
+			if f.compactLoopAlign32 {
+				f.a.AlignLoop32()
+				f.stats.peep("compact-loop-align32")
+			} else {
+				f.a.AlignLoop()
+			}
 			fr.controlSite = f.a.Len()
 			f.emitInterruptCheck(RSI) // RSI freed by the flush() above; poll once per iteration
 		}

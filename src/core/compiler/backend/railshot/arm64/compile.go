@@ -46,6 +46,16 @@ var valueFactsEnabled = os.Getenv("WAGO_ARM64_NOPROVENANCE") != "1"
 // targets stay conservative. WAGO_ARM64_NO_MERGE_NEXT_USE=1 restores eager loads.
 var mergeNextUseEnabled = os.Getenv("WAGO_ARM64_NO_MERGE_NEXT_USE") != "1"
 
+// weightedScalarMergeEnabled reserves the canonical merge register in
+// call-free functions with loop-hot scalar result joins. It changes only the
+// whole-function pin choice; structured-control convergence remains unchanged.
+var weightedScalarMergeEnabled = os.Getenv("WAGO_ARM64_NO_WEIGHTED_SCALAR_MERGE") != "1"
+
+// memcopyQPairsEnabled halves the load/store instruction count in the 32- and
+// 64-byte dynamic memory.copy loops. WAGO_ARM64_NO_MEMCOPY_QPAIRS=1 restores
+// independent Q-register loads/stores for differential testing.
+var memcopyQPairsEnabled = os.Getenv("WAGO_ARM64_NO_MEMCOPY_QPAIRS") != "1"
+
 // sharedAdaptersEnabled lets compact code replace byte-identical register-ABI
 // host adapters with eight-byte function-local target thunks plus one cold
 // module copy. WAGO_ARM64_NO_SHARED_ADAPTERS=1 retains adapter-tail sharing.
@@ -187,6 +197,16 @@ type fn struct {
 	// own prior value. Their explicit W-register address rename is a useful
 	// dependency break on Apple ARM cores and is retained by memory lowering.
 	loadDefinedLocals uint64
+	// canonicalI32Params marks hot i32 parameters whose 64-bit local
+	// representation is canonicalized once at entry (and on every assignment).
+	// This lets repeated address uses retain an upper-zero fact across control.
+	canonicalI32Params uint64
+	// memcopyTail4 bounds per-function native expansion for the four-byte
+	// dynamic memory-copy tail. The lowering itself remains general within this cap.
+	memcopyTail4 bool
+	// memcopyQPairs selects paired Q-register loads/stores for the existing
+	// dynamic memory-copy loops. Full-range bounds checks precede both forms.
+	memcopyQPairs bool
 	// immutableLocalTable proves every non-null table-0 entry targets this module,
 	// so call_indirect can enter it directly through the internal register ABI.
 	immutableLocalTable bool
@@ -799,7 +819,7 @@ func moduleControlFrameCap(m *wasm.Module, hints []funcHints) int {
 	}
 	maxDepth := 0
 	for i := range hints {
-		if depth := int(hints[i].maxControlDepth); depth > maxDepth {
+		if depth := hints[i].controlDepth(); depth > maxDepth {
 			maxDepth = depth
 		}
 	}
@@ -2790,7 +2810,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	f := &sc.fnState
 	localType, localSlot, locals, globalReg := f.localType, f.localSlot, f.locals, f.globalReg
 	mt0, _ := m.MemoryType(0)
-	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints)}
+	boundedMemcopy := len(c.BodyBytes) <= 4096 && hints.memOps <= 128
+	*f = fn{a: sc.asm, s: sc.stack, sc: sc, m: m, ft: ft, gcTypeLayouts: gcTypeLayouts, classifier: sc.classifier, transient: sc.transient, traceFuncIdx: uint32(globalIdx), tracePCBase: c.LocalDeclBytes, customInstructions: customInstructions, nParams: len(ft.Params), nLocals: nLocals, localType: localType, localSlot: localSlot, locals: locals, globalReg: globalReg[:0], guardMode: guardMode, boundsFacts: boundsFacts, interruptible: interruptible, hasLoop: hints.flags.has(hintHasLoop), gcStructHelpers: gcStructHelpers, gcArrayHelpers: gcArrayHelpers, gcFrameRoots: gcFrameRoots, moduleEH: hints.flags.has(hintModuleEH), regMerge: policy.EnabledOption(optRegMerge), globalCellReg: regNone, memSizeReg: regNone, trapCellReg: regNone, immutableLocalTable: immutableTable.local, immutableTableType: immutableTable.typeKey, immutableTableTyped: immutableTable.typed, monomorphicTarget: immutableTable.monomorphicTarget, importBindings: importBindings, stagedTailDescriptors: true, stats: stats, policy: policy, branchHints: m.BranchHintsForFunc(uint32(globalIdx)), branchHintLocalDecl: c.LocalDeclBytes, calleeHints: calleeHints, threadedMemory0: mt0.Shared, localFactsEnabled: policy.EnabledOption(optValueFacts) && !hints.flags.has(hintHasControlFlow), loadDefinedLocals: loadDefinedLocalMaskForHints(hints), memcopyTail4: policy.EnabledOption(optMemcopyTail4) && boundedMemcopy, memcopyQPairs: policy.EnabledOption(optMemcopyQPairs) && boundedMemcopy}
 	// Relocations are transient until the module owner copies them into its flat
 	// arena. Reuse one function buffer instead of allocating one backing per
 	// caller; larger decoded call counts can still reserve the exact target-cost
@@ -2841,6 +2862,7 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		f.localSlot[i] = uint32(f.nLocalSlots)
 		f.nLocalSlots += mt.stackSlots()
 	}
+	f.canonicalI32Params = canonicalI32ParamMask(hints, f.localType, f.nParams, f.opt(optValueFacts))
 	hasCall := hints.flags.has(hintHasCall)
 	touchesMemory := hints.flags.has(hintTouchesMemory)
 	// A private prepared entry establishes X26 and preserves the full Go
@@ -2942,6 +2964,14 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 	// and retain the rest of the call-free pin pool.
 	if hints.flags.has(hintUsesBulkMem) {
 		gpPool = withoutReg(withoutReg(withoutReg(gpPool, X9), X10), X11)
+	}
+	// A call-free function can execute loop-nested scalar result joins far more
+	// often than it enters or exits. Keep the canonical merge register available
+	// in that class instead of spending it on one additional whole-function
+	// local; this removes a spill/reload pair from each single-result join edge.
+	if f.opt(optWeightedScalarMerge) && f.regMerge && !hasCall && hints.hasHotScalarMerge() {
+		gpPool = withoutReg(gpPool, mergeReg)
+		f.stats.peep("weighted-reg-merge")
 	}
 	// Memory-touching call-makers with imports or tables retain the conservative
 	// unpinned path: host/cross-instance/indirect setup has substantially wider
@@ -3652,6 +3682,7 @@ func (f *fn) prologue(localScores []uint32) {
 		paramOff += abiValSize(pt)
 	}
 	x0ParamOff := int32(-1) // a param pinned in X0 must load LAST: X0 is the args base
+	x0ParamI32 := false
 	pairParams := f.opt(optEntryParamPairs)
 	pendingParam := pendingWrapperParamHome{}
 	paramOff = 0
@@ -3660,11 +3691,23 @@ func (f *fn) prologue(localScores []uint32) {
 			if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
 				if pr == X0 {
 					x0ParamOff = paramOff
+					x0ParamI32 = f.canonicalI32Local(i)
+				} else if f.canonicalI32Local(i) {
+					f.ld32(pr, X0, paramOff)
+					f.stats.peep("entry-i32-param-canonicalize")
 				} else {
 					f.ld64(pr, X0, paramOff) // pinned int param → its GP register
 				}
 			} else if ok && isFloat {
 				a.FLoadDisp(pr, X0, paramOff, f.localType[i] == mtF64) // pinned float param → V reg
+			} else if f.canonicalI32Local(i) {
+				if pairParams {
+					f.flushWrapperParamHome(pendingParam)
+					pendingParam = pendingWrapperParamHome{}
+				}
+				f.ld32(X16, X0, paramOff)
+				f.st64(SP, f.localOff(i), X16)
+				f.stats.peep("entry-i32-param-canonicalize")
 			} else {
 				if pairParams {
 					pendingParam = f.queueWrapperParamHome(pendingParam, paramOff, f.localOff(i))
@@ -3683,7 +3726,12 @@ func (f *fn) prologue(localScores []uint32) {
 		f.flushWrapperParamHome(pendingParam)
 	}
 	if x0ParamOff >= 0 {
-		f.ld64(X0, X0, x0ParamOff)
+		if x0ParamI32 {
+			f.ld32(X0, X0, x0ParamOff)
+			f.stats.peep("entry-i32-param-canonicalize")
+		} else {
+			f.ld64(X0, X0, x0ParamOff)
+		}
 	}
 	f.zeroDeclaredLocals(localScores)
 	f.derivePinnedGlobals()
@@ -3947,10 +3995,18 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter bool, localScores []uint32, ha
 			}
 			fp++
 		} else if pr, isFloat, ok := f.pinReg(i); ok && !isFloat {
+			if f.canonicalI32Local(i) {
+				a.MovReg32(intArgRegs[gp], intArgRegs[gp])
+				f.stats.peep("entry-i32-param-canonicalize")
+			}
 			if pr != intArgRegs[gp] {
 				moves = append(moves, regMove{dst: pr, src: intArgRegs[gp]})
 			}
 		} else {
+			if f.canonicalI32Local(i) {
+				a.MovReg32(intArgRegs[gp], intArgRegs[gp])
+				f.stats.peep("entry-i32-param-canonicalize")
+			}
 			f.st64(SP, f.localOff(i), intArgRegs[gp])
 		}
 		if !mt.isFloat() {

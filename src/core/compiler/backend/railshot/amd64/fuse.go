@@ -268,8 +268,20 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 		return errBadLabel
 	}
 	fr := &f.ctrl[fi]
+	loopHeader := false
+	counter := -1
+	if f.opt(optCountedLoopLatch) && !f.interruptible && !f.usesCalls && top.deferredOp() == opEqz &&
+		labelIdx == 1 && len(f.ctrl) >= 2 && fi == len(f.ctrl)-2 {
+		loop := &f.ctrl[len(f.ctrl)-1]
+		counter, loopHeader = localAddressKey(top.arg0)
+		loopHeader = loopHeader && loop.kind == cfLoop && loop.paramN == 0 && loop.resultN == 0 &&
+			fr.kind == cfBlock && fr.branchArity() == 0 && f.a.Len() == loop.controlSite
+	}
 	f.convergeBranchLocals(fr) // before the compare: loads/stores stay clear of the flags window
 	k := f.flushBelow(top)
+	if loopHeader && f.a.Len() != f.ctrl[len(f.ctrl)-1].controlSite {
+		loopHeader = false
+	}
 	cc := f.condenseToFlags(top)
 	a := fr.branchArity()
 	over := f.a.JccPlaceholder(invertCond(cc)) // fall through when the compare is false
@@ -281,5 +293,12 @@ func (f *fn) brIfFused(top *elem, labelIdx uint32) error {
 	f.branchJump(fr)
 	f.a.PatchRel32(over, f.a.Len())
 	f.recordBrFold(over)
+	if loopHeader {
+		loop := &f.ctrl[len(f.ctrl)-1]
+		_, isFloat, pinned := f.pinReg(counter)
+		if pinned && !isFloat {
+			f.ensureCtrlMerge(loop).setCountedLoop(counter, f.a.Len())
+		}
+	}
 	return nil
 }

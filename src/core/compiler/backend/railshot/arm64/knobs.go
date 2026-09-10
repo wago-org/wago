@@ -34,12 +34,15 @@ var optimizationBindings = optimization.NewBindings("arm64",
 	optimization.Bind("olddest-rhs-sink", &oldDestRHSSinkEnabled),
 	optimization.Bind("branch-fold", &branchFoldEnabled),
 	optimization.Bind("store-load-fwd", &storeLoadFwdEnabled),
+	optimization.Bind("memcopy-tail4", &memcopyTail4Enabled),
+	optimization.Bind("memcopy-qpairs", &memcopyQPairsEnabled),
 	optimization.Bind("uxtw-add", &uxtwAddEnabled),
 	optimization.Bind("shifted-register-alu", &shiftedRegisterALUEnabled),
 	optimization.Bind("fp-immediate-const", &fpImmediateConstEnabled),
 	optimization.Bind("value-facts", &valueFactsEnabled),
 	optimization.Bind("load-pair", &loadPairEnabled),
 	optimization.Bind("merge-next-use", &mergeNextUseEnabled),
+	optimization.Bind("weighted-scalar-merge", &weightedScalarMergeEnabled),
 	optimization.Bind("entry-param-pairs", &entryParamPairsEnabled),
 	optimization.Bind("entry-zero-pairs", &entryZeroPairsEnabled),
 	optimization.Bind("entry-arg-pins", &entryArgPinsEnabled),
@@ -88,12 +91,15 @@ var (
 	optOldDestRHSSink       = optimizationBindings.Option("olddest-rhs-sink")
 	optBranchFold           = optimizationBindings.Option("branch-fold")
 	optStoreLoadFwd         = optimizationBindings.Option("store-load-fwd")
+	optMemcopyTail4         = optimizationBindings.Option("memcopy-tail4")
+	optMemcopyQPairs        = optimizationBindings.Option("memcopy-qpairs")
 	optUXTWAdd              = optimizationBindings.Option("uxtw-add")
 	optShiftedRegisterALU   = optimizationBindings.Option("shifted-register-alu")
 	optFPImmediateConst     = optimizationBindings.Option("fp-immediate-const")
 	optValueFacts           = optimizationBindings.Option("value-facts")
 	optLoadPair             = optimizationBindings.Option("load-pair")
 	optMergeNextUse         = optimizationBindings.Option("merge-next-use")
+	optWeightedScalarMerge  = optimizationBindings.Option("weighted-scalar-merge")
 	optEntryParamPairs      = optimizationBindings.Option("entry-param-pairs")
 	optEntryZeroPairs       = optimizationBindings.Option("entry-zero-pairs")
 	optEntryArgPins         = optimizationBindings.Option("entry-arg-pins")

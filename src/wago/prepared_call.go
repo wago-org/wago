@@ -35,3 +35,16 @@ var invokePrivateEntryEnabled = preparedCallEnabled && os.Getenv("WAGO_INVOKE_PR
 // preparedDirectIntEnabled selects register-ABI entry for adapter-free integer
 // scalar leaves. WAGO_PREPARED_DIRECT_INT=0 restores the wrapper adapter.
 var preparedDirectIntEnabled = os.Getenv("WAGO_PREPARED_DIRECT_INT") != "0"
+
+// preparedIntCallBlockEnabled reuses a per-handle call block for compiler-
+// bounded entries. ARM64 enables it by default; AMD64's value-argument thunk is
+// faster on the native Ryzen gate. An explicit 0/1 overrides the architecture
+// default for measurement and rollback.
+var preparedIntCallBlockEnabled = preparedIntCallBlockSetting()
+
+func preparedIntCallBlockSetting() bool {
+	if value, ok := os.LookupEnv("WAGO_PREPARED_INT_CALL_BLOCK"); ok {
+		return value != "0"
+	}
+	return preparedIntCallBlockDefault
+}

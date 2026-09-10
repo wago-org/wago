@@ -4,6 +4,7 @@ package wago
 
 import (
 	"fmt"
+	"os"
 	goruntime "runtime"
 
 	wruntime "github.com/wago-org/wago/src/core/runtime"
@@ -11,6 +12,23 @@ import (
 
 const preparedDirectIntSupported = true
 const preparedDirectIntPrivateSupported = false
+const preparedIntCallBlockDefault = false
+
+var preparedIntPreboundContextEnabled = os.Getenv("WAGO_PREPARED_INT_PREBOUND_CONTEXT") != "0"
+
+func (fn *PreparedFunction) initDirectIntCall() {
+	if preparedIntPreboundContextEnabled && !preparedIntCallBlockEnabled && fn.directIntBounded {
+		fn.in.eng.PrepareBoundedIntContext(fn.directLinMem)
+	}
+	if fn.directIntBounded && (preparedIntCallBlockEnabled || preparedIntPreboundContextEnabled) {
+		fn.in.eng.PrepareIntCall(&fn.directIntCall, fn.directEntry, fn.directLinMem)
+	}
+	if preparedIntCallBlockEnabled && fn.directIntBounded {
+		fn.directIntMode = preparedIntCallBlock
+	} else if preparedIntPreboundContextEnabled && fn.directIntBounded {
+		fn.directIntMode = preparedIntCallPrebound
+	}
+}
 
 func (fn *PreparedFunction) invokeDirectInt(args []uint64) ([]uint64, error) {
 	var a0, a1, a2, a3 uint64
@@ -59,7 +77,11 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 	var result uint64
 	var err error
 	wruntime.PreparePreparedIntTrap(in.trap)
-	if fn.directIntBounded {
+	if fn.directIntMode == preparedIntCallPrebound {
+		result = in.eng.EnterPreparedIntPreboundContextBounded(&fn.directIntCall, a0, a1, a2, a3)
+	} else if fn.directIntMode == preparedIntCallBlock {
+		result = in.eng.EnterPreparedIntCallBounded(&fn.directIntCall, a0, a1, a2, a3)
+	} else if fn.directIntBounded {
 		result, err = in.eng.EnterPreparedIntBounded(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
 	} else {
 		result, err = in.eng.EnterPreparedInt(fn.directEntry, fn.directLinMem, a0, a1, a2, a3)
@@ -70,6 +92,7 @@ func (fn *PreparedFunction) invokeDirectIntFixed(a0, a1, a2, a3 uint64) ([]uint6
 	if wruntime.PreparedIntTrapCode(in.trap) != wruntime.TrapNone {
 		return nil, in.decorateTrap(wruntime.ConsumePreparedIntTrap(in.trap))
 	}
+	goruntime.KeepAlive(fn)
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	out := in.resultVals[:fn.resultSlots]

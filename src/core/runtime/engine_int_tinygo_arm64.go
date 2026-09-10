@@ -65,6 +65,15 @@ func (e *Engine) EnterPreparedIntLightBounded(code, linMemBase uintptr, a0, a1, 
 	return e.EnterPreparedInt(code, linMemBase, a0, a1, a2, a3)
 }
 
+func (e *Engine) PrepareIntCall(call *PreparedIntCall, code, linMem uintptr) {
+	call.code, call.linMem, call.stack = code, linMem, e.stackTop
+}
+
+func (e *Engine) EnterPreparedIntCallBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
+	result, _ := e.EnterPreparedIntLightBounded(call.code, call.linMem, a0, a1, a2, a3)
+	return result
+}
+
 func PreparedIntTrapCode(trap []byte) TrapCode {
 	if len(trap) < 4 {
 		return TrapNone

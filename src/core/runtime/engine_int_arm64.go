@@ -4,6 +4,16 @@ package runtime
 
 func enterNativeIntRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
 func enterNativeIntLightRaw(code, linMem, a0, a1, a2, a3, foreignStackTop uintptr) uintptr
+func enterNativeIntCallRaw(call *PreparedIntCall) uintptr
+
+func (e *Engine) PrepareIntCall(call *PreparedIntCall, code, linMem uintptr) {
+	call.code, call.linMem, call.stack = code, linMem, e.stackTop
+}
+
+func (*Engine) EnterPreparedIntCallBounded(call *PreparedIntCall, a0, a1, a2, a3 uint64) uint64 {
+	call.a0, call.a1, call.a2, call.a3 = uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3)
+	return uint64(enterNativeIntCallRaw(call))
+}
 
 func (e *Engine) EnterPreparedInt(code, linMemBase uintptr, a0, a1, a2, a3 uint64) (uint64, error) {
 	return uint64(enterNativeInt(code, linMemBase, uintptr(a0), uintptr(a1), uintptr(a2), uintptr(a3), e.stackTop)), nil

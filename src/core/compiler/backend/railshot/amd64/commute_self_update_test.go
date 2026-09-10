@@ -64,3 +64,29 @@ func TestCommuteSelfUpdate(t *testing.T) {
 		t.Fatalf("enabled code = %d bytes, disabled = %d", on.CodeBytes, off.CodeBytes)
 	}
 }
+
+func TestFixedSelfUpdateAccumulatorSafety(t *testing.T) {
+	value := &elem{st: storage{kind: stConst, typ: mtI32, cval: 1}}
+	constant := &elem{st: storage{kind: stConst, typ: mtI32, cval: 2}}
+	add := &elem{arg0: value, arg1: constant}
+	add.setElemKind(ekDeferred)
+	add.setDeferredOp(opAdd)
+	add.setValueType(mtI32)
+	div := &elem{arg0: value, arg1: constant}
+	div.setElemKind(ekDeferred)
+	div.setDeferredOp(opDivU)
+	div.setValueType(mtI32)
+
+	if !fixedSelfUpdateAccumulatorSafe(RDX, add, true) {
+		t.Fatal("safe ALU tree rejected for fixed RDX accumulator")
+	}
+	if fixedSelfUpdateAccumulatorSafe(RDX, div, true) {
+		t.Fatal("division tree admitted across fixed RDX accumulator")
+	}
+	if fixedSelfUpdateAccumulatorSafe(RDX, add, false) {
+		t.Fatal("disabled fixed-register self update was admitted")
+	}
+	if !fixedSelfUpdateAccumulatorSafe(R12, div, false) {
+		t.Fatal("ordinary accumulator unexpectedly depends on fixed-register option")
+	}
+}

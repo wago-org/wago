@@ -2,6 +2,7 @@ package wago
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -381,5 +382,53 @@ func BenchmarkPreparedInvokeAddOne(b *testing.B) {
 			b.Fatal(err)
 		}
 		benchResultSink = res
+	}
+}
+
+func TestPreparedIntCallBlockEnvironmentOverride(t *testing.T) {
+	t.Setenv("WAGO_PREPARED_INT_CALL_BLOCK", "0")
+	if preparedIntCallBlockSetting() {
+		t.Fatal("explicit call-block disable was ignored")
+	}
+	t.Setenv("WAGO_PREPARED_INT_CALL_BLOCK", "1")
+	if !preparedIntCallBlockSetting() {
+		t.Fatal("explicit call-block enable was ignored")
+	}
+}
+
+func BenchmarkPreparedInvokeAddOneCallBlock(b *testing.B) {
+	before := preparedIntCallBlockEnabled
+	defer func() { preparedIntCallBlockEnabled = before }()
+	modes := []bool{false, true}
+	if os.Getenv("WAGO_CALL_BLOCK_ON_FIRST") == "1" {
+		modes[0], modes[1] = modes[1], modes[0]
+	}
+	for _, enabled := range modes {
+		name := "off"
+		if enabled {
+			name = "on"
+		}
+		b.Run(name, func(b *testing.B) {
+			preparedIntCallBlockEnabled = enabled
+			c := benchMustCompile(b, benchAddOneModule())
+			in, err := Instantiate(c, InstantiateOptions{})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer in.Close()
+			fn, err := in.PrepareFunction("f")
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				res, err := fn.Invoke1(I32(int32(i)))
+				if err != nil {
+					b.Fatal(err)
+				}
+				benchResultSink = res
+			}
+		})
 	}
 }
