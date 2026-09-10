@@ -195,8 +195,21 @@ func (r *CallerResolver) InvocationContext(caller HostModule) (context.Context, 
 
 // hostCallScope authorizes one synchronous use of an instanceHostModule.
 type hostCallScope struct {
-	active atomic.Uint64
-	state  atomic.Pointer[hostCallState]
+	active   atomic.Uint64
+	sequence atomic.Uint64 // never restored when an outer callback resumes
+	state    atomic.Pointer[hostCallState]
+}
+
+func (s *hostCallScope) nextGeneration() uint64 {
+	for {
+		previous := s.sequence.Load()
+		if previous == ^uint64(0) {
+			panic(invalidHostReference{err: fmt.Errorf("host callback generation exhausted")})
+		}
+		if s.sequence.CompareAndSwap(previous, previous+1) {
+			return previous + 1
+		}
+	}
 }
 
 type hostCallWaiter struct {
@@ -334,21 +347,23 @@ func (s *hostCallScope) expireInvocationContext(state *hostCallState, generation
 }
 
 type instancePluginState struct {
-	hostScope          hostCallScope
-	invokeMu           sync.Mutex // serializes unrelated public calls across parked host callbacks
-	nativeExecutionMu  sync.Mutex // serializes native entry for an independent instance
-	invocationID       invocationID
-	close              atomic.Pointer[instanceCloseState]
-	gcConfig           *GCConfig
-	origin             InstantiateOrigin
-	gcGlobalRootCount  uint32
-	guestStorageBorrow atomic.Uint32
-	gcPublic           atomic.Pointer[gcPublicState]
-	gcArrayElements    atomic.Pointer[gcArrayElementState]
-	gcRefTestTable     atomic.Pointer[gcRefTestTableState]
-	gcGlobalRoots      []gcGlobalRootMapping
-	tagIdentityBase    uintptr      // arena-owned bounded native u64 directory for staged EH
-	tagExports         map[int]*Tag // lazy stable identity handles for exported local tags
+	hostScope            hostCallScope
+	activations          instanceActivations
+	nativeContextVersion atomic.Uint64
+	invokeMu             sync.Mutex // serializes unrelated public calls across parked host callbacks
+	nativeExecutionMu    sync.Mutex // serializes native entry for an independent instance
+	invocationID         invocationID
+	close                atomic.Pointer[instanceCloseState]
+	gcConfig             *GCConfig
+	origin               InstantiateOrigin
+	gcGlobalRootCount    uint32
+	guestStorageBorrow   atomic.Uint32
+	gcPublic             atomic.Pointer[gcPublicState]
+	gcArrayElements      atomic.Pointer[gcArrayElementState]
+	gcRefTestTable       atomic.Pointer[gcRefTestTableState]
+	gcGlobalRoots        []gcGlobalRootMapping
+	tagIdentityBase      uintptr      // arena-owned bounded native u64 directory for staged EH
+	tagExports           map[int]*Tag // lazy stable identity handles for exported local tags
 }
 
 type instanceCloseState struct {
@@ -380,7 +395,7 @@ func (s *hostCallScope) beginReserved(in *Instance, reservation *pluginOperation
 
 func (s *hostCallScope) beginReservedWithID(in *Instance, id invocationID, reservation *pluginOperationReservation) instanceHostModule {
 	parent := s.active.Load()
-	generation := uint64(newInvocationID())
+	generation := s.nextGeneration()
 	s.active.Store(generation)
 	return instanceHostModule{in: in, scope: s, generation: generation, parentGeneration: parent, invocationID: id, reservation: reservation}
 }
@@ -933,7 +948,10 @@ func (h *HostFuncRef) tokenReleased(source *Instance, descriptor uint64) {
 	h.mu.Unlock()
 }
 
-// instanceHostModule is the HostModule handed to host functions during a call.
+// instanceHostModule is an immutable capability snapshot. Never pool or mutate
+// an interface-boxed value: a retained callback must not gain a later generation.
+// Mutable reference-result cleanup stays in dispatch-owned ephemeralGCResults;
+// every operation checks scope validity before accessing that temporary state.
 type instanceHostModule struct {
 	in                 *Instance
 	scope              *hostCallScope
@@ -941,9 +959,15 @@ type instanceHostModule struct {
 	parentGeneration   uint64
 	invocationID       invocationID
 	reservation        *pluginOperationReservation
-	exactParams        []ValueTypeDescriptor
-	exactResults       []ValueTypeDescriptor
+	exact              *DefinedTypeDescriptor // immutable compiled signature, not per-call slice headers
 	ephemeralGCResults *gcHostTempTokens
+}
+
+func (h instanceHostModule) exactSignature() (params, results []ValueTypeDescriptor) {
+	if h.exact != nil {
+		return h.exact.Params, h.exact.Results
+	}
+	return nil, nil
 }
 
 func (h instanceHostModule) valid() bool {
@@ -1207,31 +1231,27 @@ func (in *Instance) boundHostFuncRef(dispatch uint32) (boundHostFuncRefCall, boo
 	return binding, true
 }
 
-func dispatchSyncHostScalar(in *Instance, ctrl uintptr, binding *syncHostBinding, args, results []uint64) {
-	var exactParams, exactResults []ValueTypeDescriptor
-	if binding.exact != nil {
-		exactParams, exactResults = binding.exact.Params, binding.exact.Results
-	}
-	invocation := currentHostInvocationContext(ctrl, in)
+func dispatchSyncHostScalar(in *Instance, binding *syncHostBinding, args, results []uint64, invocation hostInvocationContext) {
 	caller := in.beginHostCallScopeReservedWithID(invocation.id, invocation.reservation)
-	caller.exactParams = exactParams
-	caller.exactResults = exactResults
+	caller.exact = binding.exact
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	var mod HostModule = caller
 	binding.fn(mod, args, results)
 }
 
-func dispatchSyncHostReference(in *Instance, ctrl uintptr, importIdx uint32, fn HostFunc, sig FuncSig, exactParams, exactResults []ValueTypeDescriptor, exactTypes []DefinedTypeDescriptor, exactTypesPtr *[]DefinedTypeDescriptor, args, results []uint64) {
+func dispatchSyncHostReference(in *Instance, ctrl uintptr, importIdx uint32, fn HostFunc, sig FuncSig, exact *DefinedTypeDescriptor, exactTypes []DefinedTypeDescriptor, exactTypesPtr *[]DefinedTypeDescriptor, args, results []uint64, invocation hostInvocationContext) {
+	var exactParams, exactResults []ValueTypeDescriptor
+	if exact != nil {
+		exactParams, exactResults = exact.Params, exact.Results
+	}
 	var gcTemps gcHostTempTokens
 	if err := in.translateHostReferenceArgs(args, sig.Params, exactParams, exactTypes, &gcTemps); err != nil {
 		gcTemps.release(in)
 		panic(invalidHostReference{err: fmt.Errorf("host import %d: %w", importIdx, err)})
 	}
 	defer gcTemps.release(in)
-	invocation := currentHostInvocationContext(ctrl, in)
 	caller := in.beginHostCallScopeReservedWithID(invocation.id, invocation.reservation)
-	caller.exactParams = exactParams
-	caller.exactResults = exactResults
+	caller.exact = exact
 	var gcResultTemps gcHostTempTokens
 	gcResultTemps.exactTypes = exactTypesPtr
 	caller.ephemeralGCResults = &gcResultTemps
@@ -1248,8 +1268,8 @@ func dispatchSyncHostReference(in *Instance, ctrl uintptr, importIdx uint32, fn 
 // maps the wasm import index to the bound HostFunc and runs it with a HostModule
 // bound to this instance. It is constructed once at instantiation so hot Invoke
 // paths do not allocate a fresh closure per call.
-func (in *Instance) newHostDispatch() runtime.HostCall {
-	return func(ctrl uintptr, importIdx uint32, args, results []uint64) {
+func (in *Instance) newHostDispatch() resolvedHostCall {
+	return func(ctrl uintptr, importIdx uint32, args, results []uint64, invocation hostInvocationContext) {
 		if importIdx&shared.AtomicWaitDispatchBit != 0 {
 			if importIdx&(gcStructDispatchBit|hostFuncRefDispatchBit) != 0 {
 				panic(atomicWaitHelperError{err: fmt.Errorf("invalid overlapping atomic helper dispatch index %#x", importIdx)})
@@ -1276,17 +1296,17 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 			if fn == nil {
 				panic(missingHostFunc{importIdx: importIdx})
 			}
-			var exactParams, exactResults []ValueTypeDescriptor
+			var signature *DefinedTypeDescriptor
 			var exactTypes []DefinedTypeDescriptor
 			var exactTypesPtr *[]DefinedTypeDescriptor
 			if exact != nil {
 				sig = exact.sig
-				exactParams = exact.params
-				exactResults = exact.results
+				// Dispatch bindings are created only after exact signature validation.
+				signature = &exact.types[sig.TypeIndex]
 				exactTypes = exact.types
 				exactTypesPtr = &exact.types
 			}
-			dispatchSyncHostReference(in, ctrl, importIdx, fn, sig, exactParams, exactResults, exactTypes, exactTypesPtr, args, results)
+			dispatchSyncHostReference(in, ctrl, importIdx, fn, sig, signature, exactTypes, exactTypesPtr, args, results, invocation)
 			return
 		}
 		if int(importIdx) >= len(in.syncHosts) || in.syncHosts[importIdx].fn == nil {
@@ -1294,13 +1314,9 @@ func (in *Instance) newHostDispatch() runtime.HostCall {
 		}
 		binding := &in.syncHosts[importIdx]
 		if binding.scalar {
-			dispatchSyncHostScalar(in, ctrl, binding, args, results)
+			dispatchSyncHostScalar(in, binding, args, results, invocation)
 		} else {
-			var exactParams, exactResults []ValueTypeDescriptor
-			if binding.exact != nil {
-				exactParams, exactResults = binding.exact.Params, binding.exact.Results
-			}
-			dispatchSyncHostReference(in, ctrl, importIdx, binding.fn, in.c.importFuncSigs[importIdx], exactParams, exactResults, in.c.Types, &in.c.Types, args, results)
+			dispatchSyncHostReference(in, ctrl, importIdx, binding.fn, in.c.importFuncSigs[importIdx], binding.exact, in.c.Types, &in.c.Types, args, results, invocation)
 		}
 	}
 }

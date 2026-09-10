@@ -588,6 +588,16 @@ actual call site, Go writes results, and the same foreign-stack invocation
 resumes. One instance selects exactly one host protocol because both use the
 same context slot.
 
+Synchronous activation counts and operation reservations belong to each
+instance. Callback values retain an immutable generation snapshot and point to
+their compiled signature. The runtime resolves root invocation identity once
+and passes it to the active callee's dispatcher. Private, non-GC, non-threaded
+instances can reuse parked native context if its version has not changed;
+nested entries and guarded host access invalidate it. Shared or unknown state
+uses full restoration. Native and collector leases, parked roots, and scheduler
+entry/resume protocols are still required. See
+[host-call measurements and proof limits](docs/host-roundtrip-performance.md).
+
 ---
 
 ## 12. Memory model

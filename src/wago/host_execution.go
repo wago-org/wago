@@ -27,6 +27,10 @@ type hostInvocationContext struct {
 	parent      context.Context
 }
 
+// resolvedHostCall accepts identity derived by the runtime while its native
+// lease is held. The callee must not replace the public root ID with its own ID.
+type resolvedHostCall func(uintptr, uint32, []uint64, []uint64, hostInvocationContext)
+
 func (c hostInvocationContext) empty() bool {
 	return c.id == 0 && c.reservation == nil && c.parent == nil
 }
@@ -156,7 +160,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 		// Preserve the injected dispatcher path used by hardening tests and by a
 		// partially constructed instance so missing-collector diagnostics remain
 		// centralized in the configured host dispatcher.
-		active.hostCall(ctrl, importIdx, args, results)
+		active.hostCall(ctrl, importIdx, args, results, hostInvocationContext{})
 		return
 	}
 
@@ -195,8 +199,10 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	gcSuspension := leaseOwner.suspendGCInvocation(id)
 	var localMu *sync.Mutex
 	var epoch uint64
+	var localVersion uint64
 	if active.usesIndependentExecution() {
 		localMu = active.independentNativeExecutionMu()
+		localVersion = active.ensurePluginState().nativeContextVersion.Load()
 		localMu.Unlock()
 	} else {
 		epoch = nativeExecutionEpoch
@@ -215,11 +221,16 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 			nativeExecutionMu.Lock()
 		}
 		active.clearGCHostResultRoots(activation)
-		// Public calls on one instance are serialized, but synchronous host code
-		// may re-enter the parked instance while its local lease is released.
-		// Always restore local context; the process lease can retain its epoch
-		// shortcut because competing entries advance the shared epoch.
-		if localMu != nil || nativeExecutionEpoch != epoch {
+		// Reuse only private, non-collector context with no intervening native
+		// entry or guarded host mutation. Do not read the global epoch under a
+		// local lease. All root, interruption, and resume steps remain required.
+		restore := false
+		if localMu != nil {
+			restore = !active.canReuseParkedNativeContext(localVersion)
+		} else {
+			restore = nativeExecutionEpoch != epoch
+		}
+		if restore {
 			if err := active.bindNativeContext(); err != nil {
 				panic(invalidHostReference{err: err})
 			}
@@ -243,7 +254,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 		restoreInvocationContext := bindHostInvocationContext(ctrl, invocation)
 		defer restoreInvocationContext()
 	}
-	active.hostCall(ctrl, importIdx, args, results)
+	active.hostCall(ctrl, importIdx, args, results, invocation)
 }
 
 // prepareHostReentryState gives arbitrary host code an isolated native stack,
@@ -252,6 +263,7 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 // is parked. Reusing any of those buffers corrupts the parked frame and can turn
 // an ordinary guest trap into a process fault.
 func (in *Instance) prepareHostReentryState() (func(), error) {
+	in.invalidateNativeContext()
 	in.lifeMu.Lock()
 	invocation := activeHostInvocationContext(in)
 	stackBytes := coreruntime.DefaultNativeStackBytes

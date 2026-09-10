@@ -17,12 +17,8 @@ import (
 // ordering. Synchronous host dispatch releases the lease while arbitrary Go code
 // runs, then reacquires it and rebinds the exact parked callee before resume.
 var (
-	nativeExecutionMu       sync.Mutex
-	nativeExecutionEpoch    uint64 // guarded by nativeExecutionMu; advances on every public native entry
-	nativeActiveMu          sync.Mutex
-	nativeActive            = map[nativeActivation]uint32{}
-	invocationReservationMu sync.Mutex
-	invocationReservations  = map[nativeActivation]*pluginOperationReservation{}
+	nativeExecutionMu    sync.Mutex
+	nativeExecutionEpoch uint64 // guarded by nativeExecutionMu; advances on every public native entry
 )
 
 const (
@@ -45,33 +41,70 @@ func newInvocationID() invocationID {
 	}
 }
 
-type nativeActivation struct {
-	in *Instance
-	id invocationID
+// These counts authorize parked callbacks, never native execution. The inline
+// entry covers repeated and recursive callbacks in one chain. Overflow entries
+// live only as long as overlapping distinct chains; empty maps are released.
+type instanceActivations struct {
+	mu            sync.Mutex
+	id            invocationID
+	count         uint64
+	other         map[invocationID]uint64
+	reservationID invocationID
+	reservation   *pluginOperationReservation
+	reservations  map[invocationID]*pluginOperationReservation
 }
 
 func markNativeActiveID(in *Instance, id invocationID) {
-	activation := nativeActivation{in: in, id: id}
-	nativeActiveMu.Lock()
-	nativeActive[activation]++
-	nativeActiveMu.Unlock()
+	a := &in.ensurePluginState().activations
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if (a.count == 0 && a.other[id] == 0) || (a.count != 0 && a.id == id) {
+		if a.count == ^uint64(0) {
+			panic(invalidHostReference{err: fmt.Errorf("native activation count exhausted")})
+		}
+		a.id = id
+		a.count++
+		return
+	}
+	if a.other == nil {
+		a.other = make(map[invocationID]uint64)
+	}
+	if a.other[id] == ^uint64(0) {
+		panic(invalidHostReference{err: fmt.Errorf("native activation count exhausted")})
+	}
+	a.other[id]++
 }
 
 func unmarkNativeActiveID(in *Instance, id invocationID) {
-	activation := nativeActivation{in: in, id: id}
-	nativeActiveMu.Lock()
-	if nativeActive[activation] <= 1 {
-		delete(nativeActive, activation)
-	} else {
-		nativeActive[activation]--
+	a := &in.ensurePluginState().activations
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.count != 0 && a.id == id {
+		a.count--
+		return
 	}
-	nativeActiveMu.Unlock()
+	if a.other[id] <= 1 {
+		delete(a.other, id)
+		if len(a.other) == 0 {
+			a.other = nil
+		}
+	} else {
+		a.other[id]--
+	}
 }
 
 func isNativeActive(in *Instance, id invocationID) bool {
-	nativeActiveMu.Lock()
-	active := id != 0 && nativeActive[nativeActivation{in: in, id: id}] != 0
-	nativeActiveMu.Unlock()
+	if in == nil || id == 0 {
+		return false
+	}
+	state := in.pluginState.Load()
+	if state == nil {
+		return false
+	}
+	a := &state.activations
+	a.mu.Lock()
+	active := (a.id == id && a.count != 0) || a.other[id] != 0
+	a.mu.Unlock()
 	return active
 }
 
@@ -79,18 +112,31 @@ func (in *Instance) swapInvocationReservation(next *pluginOperationReservation) 
 	if in == nil {
 		return nil
 	}
-	activation := nativeActivation{in: in, id: in.currentInvocationID()}
-	if activation.id == 0 {
+	id := in.currentInvocationID()
+	if id == 0 {
 		return nil
 	}
-	invocationReservationMu.Lock()
-	previous := invocationReservations[activation]
-	if next == nil {
-		delete(invocationReservations, activation)
-	} else {
-		invocationReservations[activation] = next
+	a := &in.ensurePluginState().activations
+	a.mu.Lock()
+	if (a.reservation != nil && a.reservationID == id) || (a.reservation == nil && a.reservations[id] == nil) {
+		previous := a.reservation
+		a.reservationID, a.reservation = id, next
+		a.mu.Unlock()
+		return previous
 	}
-	invocationReservationMu.Unlock()
+	previous := a.reservations[id]
+	if next == nil {
+		delete(a.reservations, id)
+		if len(a.reservations) == 0 {
+			a.reservations = nil
+		}
+	} else {
+		if a.reservations == nil {
+			a.reservations = make(map[invocationID]*pluginOperationReservation)
+		}
+		a.reservations[id] = next
+	}
+	a.mu.Unlock()
 	return previous
 }
 
@@ -98,13 +144,17 @@ func currentInvocationReservation(in *Instance) *pluginOperationReservation {
 	if in == nil {
 		return nil
 	}
-	activation := nativeActivation{in: in, id: in.currentInvocationID()}
-	if activation.id == 0 {
+	id := in.currentInvocationID()
+	if id == 0 {
 		return nil
 	}
-	invocationReservationMu.Lock()
-	reservation := invocationReservations[activation]
-	invocationReservationMu.Unlock()
+	a := &in.ensurePluginState().activations
+	a.mu.Lock()
+	reservation := a.reservations[id]
+	if a.reservationID == id && a.reservation != nil {
+		reservation = a.reservation
+	}
+	a.mu.Unlock()
 	return reservation
 }
 
@@ -152,11 +202,33 @@ func (in *Instance) bindAndValidateNativeContext() error {
 }
 
 func (in *Instance) bindNativeContext() error {
+	in.invalidateNativeContext()
 	ctx := unsafe.Slice((*byte)(offHeapPtr(in.nativeContext)), wruntime.InstanceContextBytes)
 	in.jm.BindInstanceContextBytes(ctx)
 	primary := in.jm.LinMemBase()
 	in.jm.SetGuardOwner(primary)
 	return in.refreshMemoryDirectory()
+}
+
+// A saturated version permanently disables reuse. Nested entries and guarded
+// host access must invalidate before changing any pointer/control state.
+func (in *Instance) invalidateNativeContext() {
+	v := &in.ensurePluginState().nativeContextVersion
+	for {
+		previous := v.Load()
+		if previous == ^uint64(0) || v.CompareAndSwap(previous, previous+1) {
+			return
+		}
+	}
+}
+
+func (in *Instance) canReuseParkedNativeContext(version uint64) bool {
+	// Independent admission excludes imported resources. Exporting a resource
+	// or native function revokes it. GC and threaded memory remain conservative:
+	// their shared owners can change native state outside this instance's entry.
+	return version != ^uint64(0) && in.usesIndependentExecution() &&
+		in.gc == nil && !in.c.threadedMemory0() &&
+		in.ensurePluginState().nativeContextVersion.Load() == version
 }
 
 // refreshMemoryDirectory rebinds the instance-owned indexed-memory directory
@@ -242,14 +314,20 @@ func (in *Instance) lockInstanceNativeStateForHostAccess() func() {
 	if in.usesIndependentExecution() {
 		mu := in.independentNativeExecutionMu()
 		mu.Lock()
+		in.invalidateNativeContext()
 
 		return mu.Unlock
 	}
 	if in != nil && in.c != nil && in.c.threadedMemory0() {
 		in.memoryDir.nativeMu.Lock()
+		in.invalidateNativeContext()
 		return in.memoryDir.nativeMu.Unlock
 	}
-	return lockNativeExecutionForHostAccess()
+	unlock := lockNativeExecutionForHostAccess()
+	if in != nil {
+		in.invalidateNativeContext()
+	}
+	return unlock
 }
 
 // lockNativeExecutionForHostAccess serializes direct host access to native-visible

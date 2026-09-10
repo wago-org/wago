@@ -178,6 +178,12 @@ If a change can affect speed or memory use, include before-and-after numbers in
 the pull request. If it affects only cold paths, say so. Do not accept an
 unsupported WebAssembly feature just to improve an optimization result.
 
+For synchronous host-boundary work, run `BenchmarkInvokeHostFuncDirect` and
+`BenchmarkHostRoundtripLoop` in `./src/wago`, including the independent-instance
+parallel cases. Compare counts on the same host-capable export and subtract the
+matched guest-loop slope. Record each stage separately. See the
+[host-call measurement and safety rules](docs/host-roundtrip-performance.md).
+
 ## Make a Commit
 
 Keep each commit small, measurable, and easy to review. A commit should do one
