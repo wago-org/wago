@@ -49,6 +49,6 @@ jobs:
           fi
           git config user.name "wago-bot"
           git config user.email "wago-bot@users.noreply.github.com"
-          git add --all -- install.sh install.cmd install.ps1
+          git add --all -- .
           git commit -m "sync: update installer bootstraps"
           git push origin HEAD:main
