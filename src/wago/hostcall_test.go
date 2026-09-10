@@ -11,6 +11,31 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func TestHostExitValueAndPointerThroughWasm(t *testing.T) {
+	for _, value := range []any{HostExit{Code: 17}, &HostExit{Code: 17}} {
+		c, err := NewRuntimeConfig().Compile(returningImportModule(
+			wasmtest.FuncType(nil, []wasm.ValType{wasm.I32}),
+			[]byte{0x00, 0x10, 0x00, 0x0b},
+		))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = c.Close() })
+		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
+			"env.f": HostFunc(func(HostModule, []uint64, []uint64) { panic(value) }),
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = in.Close() })
+		_, err = in.Invoke("g")
+		var exit *ExitError
+		if !errors.As(err, &exit) || exit.Code != 17 {
+			t.Fatalf("%T: got %v, want ExitError(17)", value, err)
+		}
+	}
+}
+
 func TestIndependentInstanceExecutionBypassesProcessLease(t *testing.T) {
 	sig := wasmtest.FuncType(nil, []wasm.ValType{wasm.I32})
 	body := []byte{0x00, 0x10, 0x00, 0x0b} // call 0; end

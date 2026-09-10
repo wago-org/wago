@@ -76,7 +76,7 @@ func (f *fn) allocRegOrNone(avoid regMask) Reg {
 	// Spill a victim: the deepest (bottom-most) stack value in a register — it is
 	// used furthest in the future, WARP's spill heuristic approximated by depth.
 	for e := f.s.head.next; e != f.s.head; e = e.next {
-		if e.isValue() && e.st.kind == stReg && !block.has(e.st.reg) {
+		if e.isValue() && e.st.kind == stReg && !e.st.typ.isXMM() && !block.has(e.st.reg) {
 			r := e.st.reg
 			f.spill(e)
 			return r

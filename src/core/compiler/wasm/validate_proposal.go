@@ -115,12 +115,7 @@ func (v *funcValidator) stepTryTable(in Instruction) error {
 			return err
 		}
 	}
-	fr, err := v.popCtrl()
-	if err == nil && fr.unreachable {
-		// A try_table whose body has no normal completion leaves its parent path
-		// unreachable; catches branch directly to their declared outer labels.
-		v.unreachable()
-	}
+	_, err = v.popCtrl()
 	return err
 }
 

@@ -412,6 +412,9 @@ const (
 // the other: the dynamic result is simply false. Disjoint top-level reference
 // hierarchies (for example func and i31/data) remain validation errors.
 func (v *moduleValidator) refTestCompatible(a, b RefType) bool {
+	if a.Heap().Kind() == heapBottom || b.Heap().Kind() == heapBottom {
+		return true
+	}
 	af, aok := v.refTestHeapFamily(a.Heap())
 	bf, bok := v.refTestHeapFamily(b.Heap())
 	return aok && bok && af == bf
@@ -474,6 +477,9 @@ func (v *moduleValidator) descriptorCompatible(a, b RefType) bool {
 func (v *moduleValidator) refSubtype(a, b RefType) bool {
 	if !b.Nullable() && a.Nullable() {
 		return false
+	}
+	if a.Heap().Kind() == heapBottom {
+		return true
 	}
 	if v.heapTypeEquivalent(a.Heap(), b.Heap()) {
 		if b.Exact() && !a.Exact() {

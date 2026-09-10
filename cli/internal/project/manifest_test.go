@@ -128,8 +128,8 @@ func TestManifestValidationAcceptsCataloguedOptimizationFamilies(t *testing.T) {
 func TestManifestValidationAcceptsRetiredV1OptimizationNames(t *testing.T) {
 	optimizations := map[string]any{}
 	for i, name := range []string{
-		"affine-lea", "call-next-use", "fcmp-fuse", "gc-ref-facts",
-		"immutable-poly-fastpath", "legacy-fp-pins", "legacy-gp-pins",
+		"affine-lea", "call-next-use", "deep-fp-pins", "fcmp-fuse", "gc-ref-facts",
+		"immutable-poly-fastpath", "inline-loop-callees", "legacy-fp-pins", "legacy-gp-pins",
 		"loop-precheck", "loop-region-pins", "swar-idioms",
 		"tee-spill-elide", "v128-sink",
 	} {

@@ -7,6 +7,31 @@ host-boundary shape and runtime ABI are derived from
 [WARP](https://github.com/wago-org/warp), a C++ single-pass wasm engine maintained
 as a separate repository.
 
+The amd64 GP allocator must only spill GP values. Scalar float, SIMD, and
+custom XMM values use a separate register bank, even when register numbers match.
+
+Context-aware invocation checks cancellation after it acquires the instance
+gate, before it reads export metadata or enters guest or host code.
+
+CLI feature settings apply enables before disables. An explicit disable of
+`extended-constant-expressions` also disables `extended-const-expressions`.
+Version-1 global and local settings accept known retired optimization names as
+compatibility no-ops. Unknown names still produce an error.
+The retired list includes `inline-loop-callees` and `deep-fp-pins` from v1.
+
+Host calls convert both `HostExit` and non-nil `*HostExit` panics to `ExitError`,
+including calls through a Wasm wrapper and replayed host logs.
+
+Reference instructions constrain an unreachable stack value to a reference.
+The validator uses an internal heap bottom type for this value; it cannot match
+a numeric or vector operand and has no binary encoding.
+An unreachable `try_table` body still produces its declared results at the
+parent validation frame, just like a block.
+
+Generated trap exits persist dirty value-pinned globals as well as module pins. Entry
+traps first reload value pins because the prologue has not initialized them.
+Cold trap stores use a fixed scratch register and preserve pins until stored.
+
 ## Start here
 
 Wago processes a module in five steps: **decode**, **validate**, **compile**,

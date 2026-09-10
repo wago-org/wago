@@ -285,6 +285,7 @@ type fn struct {
 	adapterReturnReferenced bool // cross-tail reuse embeds the local return PC; keep that tail local
 	trapBodyOff             int  // complete shared trap body start; zero when not emitted
 	trapBodyEnd             int  // complete shared trap body end before any literal pool
+	entryTrapEnd            int  // checks before value-pinned globals are initialized
 	guardMode               bool // elide inline bounds checks; rely on guard-page + SIGSEGV trap
 	boundsFacts             bool // P6.1 straight-line bounds-check elision enabled (explicit mode)
 	interruptible           bool // emit context-cancellation polls at entries and loop headers
@@ -3645,9 +3646,15 @@ func (f *fn) deriveModuleGlobals() {
 }
 
 func (f *fn) storeModuleGlobals(scratch Reg) {
+	f.storeGlobalPins(scratch, false)
+}
+
+// Trap exits also persist dirty function-local value pins. The caller supplies
+// a terminal-path scratch register; allocator state need not match a trap site.
+func (f *fn) storeGlobalPins(scratch Reg, valuePins bool) {
 	for g, state := range f.globalReg {
 		reg := globalRegValue(state)
-		if reg == regNone || !f.isModuleGlobal(g) {
+		if reg == regNone || (!f.isModuleGlobal(g) && (!valuePins || !globalRegIsDirty(state))) {
 			continue
 		}
 		f.a.Load64(scratch, RBX, -int32(abi.GlobalsPtrOffset))
@@ -3720,6 +3727,7 @@ func (f *fn) prologue(localScores []uint32) {
 	}
 	f.emitStackFenceCheck(RBX, RAX)
 	f.emitInterruptCheck(RAX) // RAX still free: params load below
+	f.entryTrapEnd = a.Len()
 	// Copy v128 params through XMM0 before loading any pinned scalar float params.
 	// XMM0 is only a prologue scratch here; keeping these copies first prevents a
 	// future pin-pool change from letting a later v128 copy clobber an already-live
@@ -3886,6 +3894,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	a.SubRsp(0)
 	f.emitStackFenceCheck(RBX, RSI)
 	f.emitInterruptCheck(RSI) // RSI is not an int-arg reg: free before args are homed
+	f.entryTrapEnd = a.Len()
 	gp, fp = 0, 0
 	if len(f.intervalReg) != 0 {
 		// Home all incoming integer parameters so the regional cache can claim and
