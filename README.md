@@ -67,8 +67,10 @@ wago-installer
 ```
 
 These commands install the Wago manager. Run `wago version install` to install
-a runtime. See [Getting started](https://docs.wago.sh/getting-started) for other
-installation methods, release channels, and source builds.
+a runtime. Its picker lists available Official, Beta, and Canary channels in
+that order; unavailable channels remain visible and disabled at the bottom. See
+[Getting started](https://docs.wago.sh/getting-started) for other installation
+methods, release channels, and source builds.
 
 ## Run a module
 

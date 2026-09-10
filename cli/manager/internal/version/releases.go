@@ -339,16 +339,35 @@ func paginatedVersionPickerItems(releases []remoteRelease, commits []remoteCommi
 		betaChildren = appendLoadMorePickerItem("beta", betaChildren, loadMore)
 		latestChildren = appendLoadMorePickerItem("latest", latestChildren, loadMore)
 	}
-	items := []tui.Item{
-		{Label: "canary", Value: "canary", Children: canaryChildren},
-		{Label: "beta", Value: "beta", Children: betaChildren},
-		{Label: "latest", Value: "latest", Children: latestChildren},
+	channels := []tui.Item{
+		channelPickerItem("Official", "latest", latestChildren),
+		channelPickerItem("Beta", "beta", betaChildren),
+		channelPickerItem("Canary", "canary", canaryChildren),
+	}
+	items := make([]tui.Item, 0, len(channels)+len(stable)+1)
+	unavailable := make([]tui.Item, 0, len(channels))
+	for _, channel := range channels {
+		if channel.Disabled {
+			unavailable = append(unavailable, channel)
+		} else {
+			items = append(items, channel)
+		}
 	}
 	items = append(items, stable...)
 	if moreReleases {
 		items = append(items, loadMorePickerItem("Load older releases…", pickerLoadMoreReleases))
 	}
+	items = append(items, unavailable...)
 	return items
+}
+
+func channelPickerItem(label, value string, children []tui.Item) tui.Item {
+	item := tui.Item{Label: label, Value: value, Children: children}
+	if len(children) == 0 {
+		item.Description = "no releases available"
+		item.Disabled = true
+	}
+	return item
 }
 
 func installPickerItemsWithCommits(releases []remoteRelease, commits []remoteCommit, now time.Time) []tui.Item {
@@ -362,7 +381,7 @@ func paginatedInstallPickerItems(releases []remoteRelease, commits []remoteCommi
 func addProfileChoices(items []tui.Item) []tui.Item {
 	for i := range items {
 		items[i].Children = addProfileChoices(items[i].Children)
-		if items[i].Value == "" || isPickerLoadMore(items[i].Value) {
+		if items[i].Disabled || items[i].Value == "" || isPickerLoadMore(items[i].Value) {
 			continue
 		}
 		items[i].AcceptTitle = "Choose Wago profile"
