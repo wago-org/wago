@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const deferredCleanupTestTimeout = 45 * time.Second
+
 func TestTargetRemovalScriptWaitsThenRemovesTargets(t *testing.T) {
 	script := targetRemovalScript(1234, []string{`C:\Users\A'lice\.wago`, `C:\Users\A'lice\.local\bin\wago.exe`}, `C:\Users\A'lice\.local\bin\.wago-release.lock`, nil, syscall.ByHandleFileInformation{}, "test-operation", 1)
 	if strings.Index(script, "[WagoLockIdentity]::WaitForParent(") < strings.Index(script, "$lock.Lock(0, 1)") {
@@ -25,6 +27,7 @@ func TestTargetRemovalScriptWaitsThenRemovesTargets(t *testing.T) {
 		`Remove-WagoTarget 'C:\Users\A''lice\.wago'`,
 		`Remove-WagoTarget 'C:\Users\A''lice\.local\bin\wago.exe'`,
 		`Start-Sleep -Milliseconds 250`,
+		`$attempt -lt 80`,
 		`Remove-Item -LiteralPath $PSCommandPath -Force`,
 	} {
 		if !strings.Contains(script, want) {
@@ -82,7 +85,7 @@ func TestScheduleTargetRemovalDeletesContainingDirectoryAfterExit(t *testing.T) 
 	if err := lock.Close(); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(deferredCleanupTestTimeout)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(root); os.IsNotExist(err) {
 			return
@@ -141,7 +144,7 @@ func TestScheduleTargetRemovalFindsRunningPayload(t *testing.T) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("run payload cleanup child: %v\n%s", err, output)
 	}
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(deferredCleanupTestTimeout)
 	for time.Now().Before(deadline) {
 		_, releaseErr := os.Stat(releases)
 		_, launcherErr := os.Stat(launcher)

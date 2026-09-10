@@ -19,7 +19,8 @@
   <a href="https://docs.wago.sh/getting-started">getting started</a> ·
   <a href="https://plugins.wago.sh">plugins</a> ·
   <a href="https://wago.sh/#performance">benchmarks</a> ·
-  <a href="https://wago.sh/discord">discord</a>
+  <a href="https://wago.sh/discord">discord</a> ·
+  <a href="https://github.com/sponsors/JairusSW">sponsor us</a>
 </p>
 
 Wago is a pure-Go WebAssembly engine that compiles Wasm directly to native
@@ -37,10 +38,6 @@ machine code.
 * **Extensible by design.** WASI, the Component Model, and other host
   capabilities live outside the core runtime as plugins.
 * **Standalone executables** Compile your `.wasm` to _tiny_ native executables. Great for CLIs.
-
-Wago supports WebAssembly 1.0, 2.0, and the supported WebAssembly 3.0 feature
-set, including SIMD on supported hosts. See the
-[feature matrix](FEATURES.md) for exact platform and feature coverage.
 
 ## Install
 
@@ -124,6 +121,10 @@ See the [feature matrix](FEATURES.md) for exact coverage.
 
 ## Learn more
 
+> 💖 We develop wago free-of-charge. If you or your company benefits from using wago or you'd like developement to continue, *please* consider sponsoring us! It'd truly mean the world
+
+We use the [Apache License 2.0](LICENSE) so you can enjoy wago too!
+
 [Documentation](https://docs.wago.sh) ·
 [Examples](examples/README.md) ·
 [Features](FEATURES.md) ·
@@ -131,8 +132,5 @@ See the [feature matrix](FEATURES.md) for exact coverage.
 [Benchmarks](bench/README.md) ·
 [Roadmap](ROADMAP.md) ·
 [Contributing](CONTRIBUTING.md) ·
-[Issues](https://github.com/wago-org/wago/issues)
-
-## License
-
-[Apache License 2.0](LICENSE)
+[Issues](https://github.com/wago-org/wago/issues) ·
+[Sponsor us!](https://github.com/sponsors/JairusSW)

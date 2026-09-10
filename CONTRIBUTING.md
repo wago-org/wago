@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping with `wago`, a small Go-first WebAssembly JIT. Keep each
+Thank you for helping with `wago`! Please keep each
 change small, tested, and easy to review.
 
 Run commands from the repository root unless a command says otherwise. Start
@@ -100,6 +100,10 @@ Start with the smallest relevant test. Before you open a pull request, run:
 go test ./...
 (cd bench && go test ./...)
 ```
+
+CI validates documentation for every change. Changes limited to Markdown,
+`LICENSE`, or `docs/` paths skip the native code matrix; mixed or executable
+changes run both documentation validation and the full matrix.
 
 For CLI changes, also build and run these checks:
 

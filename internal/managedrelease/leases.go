@@ -85,7 +85,7 @@ func pruneReleases(root string, record Record) error {
 		name := entry.Name()
 		path := filepath.Join(directory, name)
 		if strings.HasPrefix(name, ".retired-release-") {
-			if err := os.RemoveAll(path); err != nil {
+			if err := removeRetiredDirectory(path); err != nil {
 				return err
 			}
 			continue
@@ -132,7 +132,7 @@ func pruneReleases(root string, record Record) error {
 		}
 		// The lease name disappeared before unlock, so old waiters and fresh
 		// launchers cannot acquire a valid lease on this retired directory.
-		if err := os.RemoveAll(retired); err != nil {
+		if err := removeRetiredDirectory(retired); err != nil {
 			return err
 		}
 	}
