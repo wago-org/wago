@@ -33,6 +33,24 @@ func TestResolveCompilationOwnsPrecedence(t *testing.T) {
 	}
 }
 
+func TestExtendedConstantSettingsDisableWins(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		for _, umbrella := range []bool{false, true} {
+			selection := CompilationSelection{Core: 3, Features: map[string]bool{
+				"extended-constant-expressions": legacy,
+				"extended-const-expressions":    umbrella,
+			}}
+			for i := 0; i < 100; i++ {
+				got := selection.RuntimeConfig().CoreFeatures()
+				if got.IsEnabled(wago.CoreFeatureExtendedConst) != legacy ||
+					got.IsEnabled(wago.CoreFeatureExtendedConstExpressions) != (legacy && umbrella) {
+					t.Fatalf("legacy=%v umbrella=%v: features=%v", legacy, umbrella, got)
+				}
+			}
+		}
+	}
+}
+
 func TestResolveCompilationFiltersTargetOptimizations(t *testing.T) {
 	config := Default()
 	selection, err := ResolveCompilationFrom(config, true, CompilationRequest{Arch: "amd64"})

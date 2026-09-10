@@ -117,9 +117,16 @@ func (selection CompilationSelection) RuntimeConfig() *wago.RuntimeConfig {
 	case 3:
 		config = config.WithCoreFeatures(wago.CoreFeaturesV3)
 	}
-	for name, enabled := range selection.Features {
-		if feature, ok := wago.FeatureInfoByName(name); ok && feature.Available {
-			config = config.WithFeature(feature.Feature, enabled)
+	// Apply disables last: an explicit legacy extended-constant disable also
+	// disables the umbrella feature, independent of map iteration order.
+	for _, pass := range []bool{true, false} {
+		for name, enabled := range selection.Features {
+			if enabled != pass {
+				continue
+			}
+			if feature, ok := wago.FeatureInfoByName(name); ok && feature.Available {
+				config = config.WithFeature(feature.Feature, enabled)
+			}
 		}
 	}
 	return config

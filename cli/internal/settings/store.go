@@ -116,6 +116,9 @@ func LoadFile(path string) (Config, error) {
 		setting.SetValue(&config, value)
 	}
 	for name, value := range stored.Optimizations {
+		if project.IsRetiredOptimizationName(name) {
+			continue
+		}
 		if setting, ok := Lookup("optimizations." + name); !ok || !setting.Available {
 			return Config{}, fmt.Errorf("unknown optimization setting %q for %s", name, filepath.Base(path))
 		} else {

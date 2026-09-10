@@ -42,6 +42,8 @@ const (
 	HeapAbs HeapTypeKind = iota
 	HeapTypeIndex
 	HeapDefType
+	// heapBottom is validator-only and has no binary encoding.
+	heapBottom
 )
 
 // HeapType, RefType, ValType, StorageType, and FieldType share one canonical,
@@ -173,6 +175,8 @@ func (rt RefType) String() string {
 
 func (h HeapType) String() string {
 	switch h.Kind() {
+	case heapBottom:
+		return "bot"
 	case HeapAbs:
 		return h.Abs().String()
 	case HeapTypeIndex:

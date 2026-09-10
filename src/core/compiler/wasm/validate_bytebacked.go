@@ -1311,9 +1311,6 @@ func (v *funcValidator) directEnd() error {
 	if _, err := v.popCtrl(); err != nil {
 		return err
 	}
-	if f.kind == ctrlTry && f.unreachable {
-		v.unreachable()
-	}
 	if f.kind == ctrlIf {
 		if f.ifSeenElse {
 			if len(v.vals) != f.ifThenHeight {
