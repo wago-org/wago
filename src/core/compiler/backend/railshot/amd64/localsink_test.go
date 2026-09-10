@@ -49,6 +49,47 @@ func TestLocalSinkExec(t *testing.T) {
 	}
 }
 
+func TestLocalSinkPreservesBorrowedMemoryAddress(t *testing.T) {
+	// The second load borrows local 0 as its address. Sinking the enclosing add
+	// directly into local 0 must read that memory operand before overwriting the
+	// address register.
+	for _, tc := range []struct {
+		name string
+		op   byte
+	}{
+		{name: "set", op: 0x21},
+		{name: "tee", op: 0x22},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte{
+				0x01, 0x01, 0x7f, // one i32 local
+				0x41, 0x10, 0x41, 0x01, 0x36, 0x02, 0x00, // memory[16] = 1
+				0x41, 0x00, // store destination
+				0x41, 0x00, 0x28, 0x02, 0x00, // memory[0]
+				0x41, 0x10, 0x22, 0x00, 0x28, 0x02, 0x00, // memory[local.tee 0 16]
+				0x6a, tc.op, 0x00, // local.set/tee 0 (add)
+			}
+			if tc.op == 0x21 {
+				body = append(body, 0x20, 0x00) // local.set leaves no store value
+			}
+			body = append(body,
+				0x36, 0x02, 0x00, // memory[0] = result
+				0x20, 0x00, 0x0b, // return local 0
+			)
+			m := modMem(t, 1, nil, []wasm.ValType{wasm.I32}, body)
+			got, _, err := runMemAmd64WithOptions(t, m, CompileOptions{
+				Optimizations: map[string]bool{"tee-sink": true},
+			}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != 1 {
+				t.Fatalf("borrowed-address local.%s result = %d, want 1", tc.name, got)
+			}
+		})
+	}
+}
+
 // TestLocalSinkKillSwitchEquivalent verifies the unary/convert and tee sinks are
 // behavior-neutral: same results with the sinks on and off.
 func TestLocalSinkKillSwitchEquivalent(t *testing.T) {

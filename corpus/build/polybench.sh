@@ -30,9 +30,6 @@ find "$UPSTREAM_DIR/datamining" "$UPSTREAM_DIR/linear-algebra" \
 	"$UPSTREAM_DIR/medley" "$UPSTREAM_DIR/stencils" -type f -name '*.c' | sort |
 while IFS= read -r src; do
 	name=$(basename "$src" .c)
-	# This kernel currently exposes an AMD64 Wago miscompile. Keep the corpus
-	# portable and oracle-clean until that runtime bug is fixed.
-	[ "$name" = floyd-warshall ] && continue
 	printf 'polybench: %s\n' "$name"
 	"$WASI_SDK/bin/clang" --target=wasm32-wasip1 -O3 -nostartfiles \
 		-DSMALL_DATASET -DPOLYBENCH_NO_FLUSH_CACHE -Wno-unknown-pragmas \

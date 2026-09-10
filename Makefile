@@ -182,7 +182,7 @@ test-corpus-all: ## Run every curated corpus correctness case
 	$(MAKE) test-corpus CORPUS=all
 
 .PHONY: corpus-build-polybench
-corpus-build-polybench: ## Rebuild 29 portable PolyBench/C kernels (WASI_SDK=/opt/wasi-sdk)
+corpus-build-polybench: ## Rebuild all 30 checked PolyBench/C kernels (WASI_SDK=/opt/wasi-sdk)
 	WASI_SDK='$(WASI_SDK)' corpus/build/polybench.sh
 
 .PHONY: test-semantic-corpus
