@@ -17,6 +17,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/wago-org/wago/internal/actionartifact"
+	"github.com/wago-org/wago/internal/installbootstrap"
 )
 
 type installerRoundTripFunc func(*http.Request) (*http.Response, error)
@@ -196,33 +199,20 @@ func TestInstallerDryRunPresentation(t *testing.T) {
 	}
 }
 
-func TestInstallerDownloadsExactCanonicalRollingManager(t *testing.T) {
+func TestInstallerBuildsExactCanonicalCanaryFromSource(t *testing.T) {
 	const sha = "deadbee123456789012345678901234567890123"
-	payload := []byte("exact released manager")
-	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
-	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/releases":
-			_, _ = fmt.Fprintf(w, `[
-  {"tag_name":"v0.1.0-canary.gdeadbee","target_commitish":%q,"published_at":"2026-08-05T00:00:00Z","draft":true},
-  {"tag_name":"v0.1.0-canary.gaaaaaaa","target_commitish":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","published_at":"2026-08-04T00:00:00Z"},
-  {"tag_name":"v0.1.0-canary.gdeadbee","target_commitish":%q,"published_at":"2026-08-03T00:00:00Z"}
-]`, sha, sha)
-		case "/download/v0.1.0-canary.gdeadbee/" + asset:
-			_, _ = w.Write(payload)
-		case "/download/v0.1.0-canary.gdeadbee/" + asset + ".sha256":
-			_, _ = fmt.Fprintf(w, "%s  %s\n", hash, asset)
-		default:
-			http.NotFound(w, r)
+	const tag = "v0.1.0-canary.gdeadbee"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/tags" {
+			http.NotFound(writer, request)
+			return
 		}
+		_, _ = fmt.Fprintf(writer, `[{"name":%q,"commit":{"sha":%q}}]`, tag, sha)
 	}))
 	defer server.Close()
-
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("WAGO_VERSION", "canary@"+sha)
-	t.Setenv("WAGO_RELEASES_API_URL", server.URL+"/releases")
-	t.Setenv("WAGO_RELEASE_DOWNLOAD_BASE", server.URL)
+	t.Setenv("WAGO_TAGS_API_URL", server.URL+"/tags")
 	var output bytes.Buffer
 	installer, err := newInstaller(&output)
 	if err != nil {
@@ -230,18 +220,23 @@ func TestInstallerDownloadsExactCanonicalRollingManager(t *testing.T) {
 	}
 	installer.tmpDir = t.TempDir()
 	target := filepath.Join(installer.tmpDir, executableName("wago"))
-	if err := installer.downloadManager(target); err != nil {
-		t.Fatal(err)
+	previousDownload := downloadInstallerActionArtifact
+	downloadInstallerActionArtifact = func(_ context.Context, _ actionartifact.Config, gotTag, commit, _, _, _ string) error {
+		if gotTag != tag || commit != sha {
+			t.Fatalf("artifact identity = %q@%s", gotTag, commit)
+		}
+		return errors.New("artifact unavailable")
 	}
-	if got, err := os.ReadFile(target); err != nil || !bytes.Equal(got, payload) {
-		t.Fatalf("manager = %q, %v", got, err)
+	t.Cleanup(func() { downloadInstallerActionArtifact = previousDownload })
+	if err := installer.downloadManager(target); err == nil || !strings.Contains(err.Error(), "artifact unavailable") {
+		t.Fatalf("downloadManager error = %v", err)
 	}
-	if installer.managerTag != "v0.1.0-canary.gdeadbee" || !installer.managerFromRelease {
-		t.Fatalf("manager resolution = %q, %v", installer.managerTag, installer.managerFromRelease)
+	if installer.managerTag != tag || installer.managerSourceRef != sha || installer.managerFromRelease {
+		t.Fatalf("manager resolution = %q, %q, %v", installer.managerTag, installer.managerSourceRef, installer.managerFromRelease)
 	}
 }
 
-func TestInstallerCanonicalRollingManagerResolutionPaginates(t *testing.T) {
+func TestInstallerCanonicalBetaManagerResolutionPaginates(t *testing.T) {
 	const sha = "deadbee123456789012345678901234567890123"
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -266,13 +261,13 @@ func TestInstallerCanonicalRollingManagerResolutionPaginates(t *testing.T) {
 			_, _ = fmt.Fprint(w, "]")
 			return
 		}
-		_, _ = fmt.Fprintf(w, `[{"tag_name":"v0.1.0-canary.gdeadbee","target_commitish":%q,"published_at":"2026-08-03T00:00:00Z"}]`, sha)
+		_, _ = fmt.Fprintf(w, `[{"tag_name":"v0.1.0-beta.2","target_commitish":%q,"published_at":"2026-08-03T00:00:00Z"}]`, sha)
 	}))
 	defer server.Close()
 
 	i := &installer{releaseAPI: server.URL + "/releases?scope=installer&per_page=1&page=99", httpClient: server.Client()}
-	tag, _, err := i.resolveReleaseForTest("canary@" + sha)
-	if err != nil || tag != "v0.1.0-canary.gdeadbee" {
+	tag, _, err := i.resolveReleaseForTest("beta@" + sha)
+	if err != nil || tag != "v0.1.0-beta.2" {
 		t.Fatalf("resolve canonical manager = %q, %v", tag, err)
 	}
 	if requests != 2 {
@@ -494,21 +489,17 @@ func (ctx *cancelWhenStagingExists) Err() error {
 	return ctx.Context.Err()
 }
 
-func TestInstallerDownloadsNewestChannelManager(t *testing.T) {
-	payload := []byte("released manager")
-	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
-	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
+func TestInstallerResolvesNewestCanaryTagForSourceBuild(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/releases":
+		case "/tags":
 			_, _ = fmt.Fprint(w, `[
-  {"tag_name":"v0.1.0-canary.gaaaaaaa","published_at":"2026-01-01T00:00:00Z"},
-  {"tag_name":"v0.1.0-canary.gdeadbee","published_at":"2026-08-03T00:00:00Z"}
+  {"name":"v0.1.0-beta.2","commit":{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+  {"name":"v0.1.0-canary.gdeadbee","commit":{"sha":"deadbee123456789012345678901234567890123"}}
 ]`)
-		case "/download/v0.1.0-canary.gdeadbee/" + asset:
-			_, _ = w.Write(payload)
-		case "/download/v0.1.0-canary.gdeadbee/" + asset + ".sha256":
-			_, _ = fmt.Fprintf(w, "%s  %s\n", hash, asset)
+		case "/commits":
+			_, _ = fmt.Fprintf(w, `[{"sha":%q},{"sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]`, sha)
 		default:
 			http.NotFound(w, r)
 		}
@@ -517,8 +508,8 @@ func TestInstallerDownloadsNewestChannelManager(t *testing.T) {
 
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("WAGO_VERSION", "canary")
-	t.Setenv("WAGO_RELEASES_API_URL", server.URL+"/releases")
-	t.Setenv("WAGO_RELEASE_DOWNLOAD_BASE", server.URL)
+	t.Setenv("WAGO_TAGS_API_URL", server.URL+"/tags")
+	t.Setenv("WAGO_COMMITS_API_URL", server.URL+"/commits")
 	var output bytes.Buffer
 	installer, err := newInstaller(&output)
 	if err != nil {
@@ -526,14 +517,53 @@ func TestInstallerDownloadsNewestChannelManager(t *testing.T) {
 	}
 	installer.tmpDir = t.TempDir()
 	target := filepath.Join(installer.tmpDir, executableName("wago"))
+	previousDownload := downloadInstallerActionArtifact
+	downloadInstallerActionArtifact = func(context.Context, actionartifact.Config, string, string, string, string, string) error {
+		return errors.New("artifact unavailable")
+	}
+	t.Cleanup(func() { downloadInstallerActionArtifact = previousDownload })
+	if err := installer.downloadManager(target); err == nil || !strings.Contains(err.Error(), "artifact unavailable") {
+		t.Fatalf("downloadManager error = %v", err)
+	}
+	if installer.managerTag != "v0.1.0-canary.gdeadbee" || installer.managerSourceRef != sha || installer.managerFromRelease {
+		t.Fatalf("manager resolution = %q, %q, %v", installer.managerTag, installer.managerSourceRef, installer.managerFromRelease)
+	}
+}
+
+func TestInstallerDownloadsCanaryManagerWorkflowArtifact(t *testing.T) {
+	const tag = "v0.1.0-canary.gdeadbee"
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("WAGO_VERSION", tag)
+	var output bytes.Buffer
+	installer, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.tmpDir = t.TempDir()
+	target := filepath.Join(installer.tmpDir, executableName("wago"))
+	previousDownload := downloadInstallerActionArtifact
+	downloadInstallerActionArtifact = func(_ context.Context, config actionartifact.Config, gotTag, commit, platform, asset, destination string) error {
+		if config.CatalogURL != installer.actionsArtifactAPI || gotTag != tag || commit != "" || platform != runtime.GOOS+"-"+runtime.GOARCH {
+			t.Fatalf("artifact request = %#v, %q, %q, %q", config, gotTag, commit, platform)
+		}
+		wantAsset, assetErr := installbootstrap.Asset("wago", runtime.GOOS, runtime.GOARCH)
+		if assetErr != nil {
+			t.Fatal(assetErr)
+		}
+		if asset != wantAsset || destination != target {
+			t.Fatalf("artifact target = %q, %q; want %q, %q", asset, destination, wantAsset, target)
+		}
+		return os.WriteFile(destination, []byte("artifact manager"), 0o755)
+	}
+	t.Cleanup(func() { downloadInstallerActionArtifact = previousDownload })
 	if err := installer.downloadManager(target); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := os.ReadFile(target); err != nil || !bytes.Equal(got, payload) {
-		t.Fatalf("manager = %q, %v", got, err)
+	if installer.managerTag != tag || installer.managerSourceRef != tag || !installer.managerFromRelease {
+		t.Fatalf("manager resolution = %q, %q, %v", installer.managerTag, installer.managerSourceRef, installer.managerFromRelease)
 	}
-	if installer.managerTag != "v0.1.0-canary.gdeadbee" || !installer.managerFromRelease {
-		t.Fatalf("manager resolution = %q, %v", installer.managerTag, installer.managerFromRelease)
+	if got, readErr := os.ReadFile(target); readErr != nil || string(got) != "artifact manager" {
+		t.Fatalf("manager = %q, %v", got, readErr)
 	}
 }
 
@@ -580,6 +610,69 @@ func TestInstallerManagerDownloadFallsBackFromOfficialToBeta(t *testing.T) {
 	canaryPath := "/download/v1.2.0-canary.gdeadbee/" + asset
 	if slices.Contains(requests, canaryPath) {
 		t.Fatalf("requested canary after beta succeeded: %v", requests)
+	}
+}
+
+func TestInstallerManagerDownloadFallsBackFromBetaToCanaryTagArtifact(t *testing.T) {
+	const (
+		canaryTag = "v1.2.0-canary.gdeadbee"
+		canarySHA = "deadbee123456789012345678901234567890123"
+	)
+	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
+		switch r.URL.Path {
+		case "/releases/latest":
+			_, _ = fmt.Fprint(w, `{"tag_name":"v1.0.0","published_at":"2026-08-01T00:00:00Z"}`)
+		case "/releases":
+			_, _ = fmt.Fprint(w, `[{"tag_name":"v1.1.0-beta.1","published_at":"2026-08-02T00:00:00Z"}]`)
+		case "/tags":
+			_, _ = fmt.Fprintf(w, `[{"name":%q,"commit":{"sha":%q}}]`, canaryTag, canarySHA)
+		case "/commits":
+			_, _ = fmt.Fprintf(w, `[{"sha":%q}]`, canarySHA)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	t.Setenv("WAGO_VERSION", "main")
+	t.Setenv("WAGO_RELEASES_API_URL", server.URL+"/releases")
+	t.Setenv("WAGO_TAGS_API_URL", server.URL+"/tags")
+	t.Setenv("WAGO_COMMITS_API_URL", server.URL+"/commits")
+	t.Setenv("WAGO_RELEASE_DOWNLOAD_BASE", server.URL)
+	installer, err := newInstaller(io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.tmpDir = t.TempDir()
+	target := filepath.Join(installer.tmpDir, executableName("wago"))
+	previousDownload := downloadInstallerActionArtifact
+	downloadInstallerActionArtifact = func(_ context.Context, _ actionartifact.Config, tag, sha, platform, gotAsset, destination string) error {
+		if tag != canaryTag || sha != canarySHA || platform != runtime.GOOS+"-"+runtime.GOARCH || gotAsset != asset || destination != target {
+			t.Fatalf("artifact request = %q, %q, %q, %q, %q", tag, sha, platform, gotAsset, destination)
+		}
+		return os.WriteFile(destination, []byte("canary manager"), 0o755)
+	}
+	t.Cleanup(func() { downloadInstallerActionArtifact = previousDownload })
+
+	if err := installer.downloadManager(target); err != nil {
+		t.Fatal(err)
+	}
+	if installer.managerTag != canaryTag || installer.managerSourceRef != canarySHA {
+		t.Fatalf("manager resolution = %q, %q", installer.managerTag, installer.managerSourceRef)
+	}
+	wantRequests := []string{
+		"/download/v1.0.0/" + asset,
+		"/download/v1.1.0-beta.1/" + asset,
+		"/tags",
+		"/commits",
+	}
+	for _, want := range wantRequests {
+		if !slices.Contains(requests, want) {
+			t.Fatalf("requests = %v, missing %q", requests, want)
+		}
 	}
 }
 

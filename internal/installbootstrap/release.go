@@ -36,9 +36,9 @@ type Catalog interface {
 	Releases() ([]Release, error)
 }
 
-// Resolve selects the preferred release tag named by version. main prefers the
-// newest official release, then beta, then canary. Explicit channels, latest,
-// and release tags select only the requested release.
+// Resolve selects the preferred GitHub release tag named by version. main
+// prefers the newest official release, then beta. Canary builds are tags backed
+// by workflow artifacts and are resolved by the installer separately.
 func Resolve(version string, catalog Catalog) (string, error) {
 	resolved, err := ResolveRelease(version, catalog)
 	return resolved.Tag, err
@@ -72,6 +72,9 @@ func ResolveReleaseCandidates(version string, catalog Catalog) ([]ResolvedReleas
 		return []ResolvedRelease{{Tag: version, SourceRef: version}}, nil
 	}
 	if channel, sha, canonical := rollingCommit(version); canonical {
+		if channel == "canary" {
+			return nil, errors.New("canary builds are resolved from tags and workflow artifacts")
+		}
 		releases, err := catalog.Releases()
 		if err != nil {
 			return nil, err
@@ -84,7 +87,10 @@ func ResolveReleaseCandidates(version string, catalog Catalog) ([]ResolvedReleas
 		}
 		return nil, fmt.Errorf("no %s installer release found for commit %s", channel, sha)
 	}
-	if version != "main" && version != "canary" && version != "beta" {
+	if version == "canary" {
+		return nil, errors.New("canary builds are resolved from tags and workflow artifacts")
+	}
+	if version != "main" && version != "beta" {
 		return nil, errors.New("custom source ref requires a source build")
 	}
 	candidates := make([]ResolvedRelease, 0, 3)
@@ -108,7 +114,7 @@ func ResolveReleaseCandidates(version string, catalog Catalog) ([]ResolvedReleas
 	sort.SliceStable(releases, func(a, b int) bool { return releases[a].PublishedAt > releases[b].PublishedAt })
 	channels := []string{version}
 	if version == "main" {
-		channels = []string{"beta", "canary"}
+		channels = []string{"beta"}
 	}
 	seen := make(map[string]bool, len(channels))
 	for _, item := range releases {
@@ -133,7 +139,7 @@ func ResolveReleaseCandidates(version string, catalog Catalog) ([]ResolvedReleas
 	})
 	if len(candidates) == 0 {
 		if version == "main" {
-			return nil, errors.New("no official, beta, or canary installer release found")
+			return nil, errors.New("no official or beta installer release found")
 		}
 		return nil, fmt.Errorf("no %s installer release found", version)
 	}

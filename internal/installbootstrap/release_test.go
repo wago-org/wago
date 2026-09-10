@@ -31,8 +31,7 @@ func TestResolveReleaseContract(t *testing.T) {
 		},
 	}
 	for _, test := range []struct{ version, want string }{
-		{"latest", "v1.2.3"}, {"main", "v1.2.3"}, {"canary", "v0.1.0-canary.gdeadbee"},
-		{"canary@" + canarySHA, "v0.1.0-canary.gdeadbee"}, {"beta", "v0.1.0-beta.2"},
+		{"latest", "v1.2.3"}, {"main", "v1.2.3"}, {"beta", "v0.1.0-beta.2"},
 		{" v9.0.0 ", "v9.0.0"},
 	} {
 		got, err := Resolve(test.version, catalog)
@@ -52,11 +51,13 @@ func TestResolveReleaseContract(t *testing.T) {
 	if IsReleaseTag("v0.1.0-canary.gdeadbee@cccccccccccccccccccccccccccccccccccccccc") {
 		t.Fatal("release tag accepted an appended commit identity")
 	}
-	resolved, err := ResolveRelease("canary@"+canarySHA, catalog)
-	if err != nil || resolved.Tag != "v0.1.0-canary.gdeadbee" || resolved.SourceRef != canarySHA {
-		t.Fatalf("ResolveRelease canonical = %+v, %v", resolved, err)
+	if _, err := ResolveRelease("canary", catalog); err == nil {
+		t.Fatal("canary unexpectedly used the release catalog")
 	}
-	resolved, err = ResolveRelease("main", catalog)
+	if _, err := ResolveRelease("canary@"+canarySHA, catalog); err == nil {
+		t.Fatal("canonical canary unexpectedly used the release catalog")
+	}
+	resolved, err := ResolveRelease("main", catalog)
 	if err != nil || resolved.Tag != "v1.2.3" || resolved.SourceRef != "cccccccccccccccccccccccccccccccccccccccc" {
 		t.Fatalf("ResolveRelease channel = %+v, %v", resolved, err)
 	}
@@ -66,7 +67,7 @@ func TestResolveReleaseContract(t *testing.T) {
 	}
 }
 
-func TestResolveReleaseCandidatesPrefersOfficialBetaCanary(t *testing.T) {
+func TestResolveReleaseCandidatesPrefersOfficialThenBeta(t *testing.T) {
 	catalog := memoryCatalog{latest: Release{TagName: "v1.0.0"}, releases: []Release{
 		{TagName: "v2.0.0-canary.gbbbbbbb", PublishedAt: "2026-08-06T00:00:00Z"},
 		{TagName: "v1.1.0-beta.2", PublishedAt: "2026-08-05T00:00:00Z"},
@@ -78,7 +79,7 @@ func TestResolveReleaseCandidatesPrefersOfficialBetaCanary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"v1.0.0", "v1.1.0-beta.2", "v2.0.0-canary.gbbbbbbb"}
+	want := []string{"v1.0.0", "v1.1.0-beta.2"}
 	if len(candidates) != len(want) {
 		t.Fatalf("candidates = %+v, want %v", candidates, want)
 	}
@@ -90,7 +91,7 @@ func TestResolveReleaseCandidatesPrefersOfficialBetaCanary(t *testing.T) {
 	for _, test := range []struct {
 		channel string
 		want    string
-	}{{"beta", "v1.1.0-beta.2"}, {"canary", "v2.0.0-canary.gbbbbbbb"}} {
+	}{{"beta", "v1.1.0-beta.2"}} {
 		candidates, err := ResolveReleaseCandidates(test.channel, catalog)
 		if err != nil || len(candidates) != 1 || candidates[0].Tag != test.want {
 			t.Errorf("ResolveReleaseCandidates(%q) = %+v, %v; want only %q", test.channel, candidates, err, test.want)

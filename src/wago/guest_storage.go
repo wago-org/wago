@@ -165,7 +165,8 @@ func (h instanceHostModule) WithGuestStorage(fn func(GuestStorage) error) error 
 	} else if h.in.c != nil {
 		types = h.in.c.Types
 	}
-	view := &guestStorageView{in: h.in, params: h.exactParams, results: h.exactResults, types: types}
+	params, results := h.exactSignature()
+	view := &guestStorageView{in: h.in, params: params, results: results, types: types}
 	view.active.Store(true)
 	defer view.active.Store(false)
 	return fn(view)

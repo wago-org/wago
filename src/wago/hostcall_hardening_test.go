@@ -449,5 +449,5 @@ func TestMissingSyncHostDispatchErrors(t *testing.T) {
 		}
 	}()
 	var res [1]uint64
-	in.hostCall(0, 0, nil, res[:])
+	in.hostCall(0, 0, nil, res[:], hostInvocationContext{})
 }

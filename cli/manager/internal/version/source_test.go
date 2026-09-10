@@ -10,12 +10,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
+	"github.com/wago-org/wago/internal/actionartifact"
 	"github.com/wago-org/wago/internal/atomicfile"
 	"github.com/wago-org/wago/internal/httpclient"
 	"github.com/wago-org/wago/internal/wagopaths"
@@ -212,6 +214,79 @@ func TestMissingManagerAssetFallsBackToSource(t *testing.T) {
 	}
 }
 
+func TestCanaryWorkflowArtifactPreferredForRuntimeAndManager(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	ref := "v0.1.0-canary.gdeadbee@" + sha
+	previousDownload := downloadActionsExecutable
+	previousRunner, previousManager := buildRunnerSource, buildManagerSource
+	var assets []string
+	downloadActionsExecutable = func(_ context.Context, config actionartifact.Config, tag, commit, platform, asset, destination string) error {
+		if config.CatalogURL != actionsArtifactCatalog() || tag != "v0.1.0-canary.gdeadbee" || commit != sha || platform != runtime.GOOS+"-"+runtime.GOARCH {
+			t.Fatalf("artifact request = %#v, %q, %q, %q", config, tag, commit, platform)
+		}
+		assets = append(assets, asset)
+		return os.WriteFile(destination, []byte("artifact "+asset), 0o755)
+	}
+	buildRunnerSource = func(context.Context, string, wagopaths.Profile, wagopaths.Build, string, *managerprogress.Progress) error {
+		t.Fatal("runtime source build called after artifact download")
+		return nil
+	}
+	buildManagerSource = func(context.Context, string, string, *managerprogress.Progress) error {
+		t.Fatal("manager source build called after artifact download")
+		return nil
+	}
+	t.Cleanup(func() {
+		downloadActionsExecutable = previousDownload
+		buildRunnerSource, buildManagerSource = previousRunner, previousManager
+	})
+
+	runner := filepath.Join(t.TempDir(), "runner")
+	manager := filepath.Join(t.TempDir(), "manager")
+	if err := installRunnerPayload(ref, wagopaths.ProfileMinimal, wagopaths.BuildTiny, runner, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := installManagerPayload(ref, manager, true, nil); err != nil {
+		t.Fatal(err)
+	}
+	wantAssets := []string{versionAsset(wagopaths.ProfileMinimal, wagopaths.BuildTiny), managerAsset()}
+	if fmt.Sprint(assets) != fmt.Sprint(wantAssets) {
+		t.Fatalf("downloaded assets = %v, want %v", assets, wantAssets)
+	}
+}
+
+func TestCanaryWorkflowArtifactFailureBuildsExactSource(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	ref := "v0.1.0-canary.gdeadbee@" + sha
+	previousDownload := downloadActionsExecutable
+	previousRunner, previousManager := buildRunnerSource, buildManagerSource
+	var runnerRef, managerRef string
+	downloadActionsExecutable = func(context.Context, actionartifact.Config, string, string, string, string, string) error {
+		return errors.New("GitHub returned 401")
+	}
+	buildRunnerSource = func(_ context.Context, ref string, _ wagopaths.Profile, _ wagopaths.Build, destination string, _ *managerprogress.Progress) error {
+		runnerRef = ref
+		return os.WriteFile(destination, []byte("source runner"), 0o755)
+	}
+	buildManagerSource = func(_ context.Context, ref, destination string, _ *managerprogress.Progress) error {
+		managerRef = ref
+		return os.WriteFile(destination, []byte("source manager"), 0o755)
+	}
+	t.Cleanup(func() {
+		downloadActionsExecutable = previousDownload
+		buildRunnerSource, buildManagerSource = previousRunner, previousManager
+	})
+
+	if err := installRunnerPayload(ref, wagopaths.ProfileStandard, wagopaths.BuildNormal, filepath.Join(t.TempDir(), "runner"), true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := installManagerPayload(ref, filepath.Join(t.TempDir(), "manager"), true, nil); err != nil {
+		t.Fatal(err)
+	}
+	if runnerRef != ref || managerRef != ref {
+		t.Fatalf("source fallback refs = runtime %q, manager %q; want %q", runnerRef, managerRef, ref)
+	}
+}
+
 func TestChecksumMismatchDoesNotBuildFromSource(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, ".sha256") {
@@ -240,16 +315,54 @@ func TestChecksumMismatchDoesNotBuildFromSource(t *testing.T) {
 	}
 }
 
-func TestCanaryResolvesLatestPublishedCanary(t *testing.T) {
+func TestCanaryResolvesLatestTagAsSource(t *testing.T) {
 	const sha = "deadbee123456789012345678901234567890123"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`[{"tag_name":"v0.1.0-canary.g` + sha[:7] + `","target_commitish":"` + sha + `"}]`))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/tags") {
+			_, _ = w.Write([]byte(`[{"name":"v0.1.0-canary.g` + sha[:7] + `","commit":{"sha":"` + sha + `"}}]`))
+			return
+		}
+		_, _ = w.Write([]byte(`[{"sha":"` + sha + `"}]`))
 	}))
 	defer server.Close()
 	t.Setenv("WAGO_RELEASE_API", server.URL)
 	ref, sourceOnly, err := resolveRunnerVersion("canary", nil)
-	if err != nil || ref != "v0.1.0-canary.g"+sha[:7]+"@"+sha || sourceOnly {
+	if err != nil || ref != "v0.1.0-canary.g"+sha[:7]+"@"+sha || !sourceOnly {
 		t.Fatalf("resolveRunnerVersion = %q, %v, %v", ref, sourceOnly, err)
+	}
+}
+
+func TestCanonicalCanaryCommitResolvesWorkflowArtifactTag(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, "/tags") {
+			_, _ = fmt.Fprintf(writer, `[{"name":"v0.1.0-canary.gdeadbee","commit":{"sha":%q}}]`, sha)
+			return
+		}
+		http.NotFound(writer, request)
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_RELEASE_API", server.URL)
+	resolved, sourceOnly, err := resolveRunnerVersion("canary@"+sha, nil)
+	if err != nil || resolved != "v0.1.0-canary.gdeadbee@"+sha || !sourceOnly {
+		t.Fatalf("canonical canary resolution = %q, %v, %v", resolved, sourceOnly, err)
+	}
+}
+
+func TestCanonicalCanaryCommitWithoutTagRemainsExactSource(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, "/tags") {
+			_, _ = writer.Write([]byte(`[]`))
+			return
+		}
+		http.NotFound(writer, request)
+	}))
+	defer server.Close()
+	t.Setenv("WAGO_RELEASE_API", server.URL)
+	resolved, sourceOnly, err := resolveRunnerVersion("canary@"+sha, nil)
+	if err != nil || resolved != "canary@"+sha || !sourceOnly {
+		t.Fatalf("untagged canary resolution = %q, %v, %v", resolved, sourceOnly, err)
 	}
 }
 

@@ -21,6 +21,8 @@ type (
 	AuthorityScope                  = impl.AuthorityScope
 	Bits                            = impl.Bits
 	BoundsCheckMode                 = impl.BoundsCheckMode
+	Caller                          = impl.Caller
+	CallerHostFunc                  = impl.CallerHostFunc
 	CallerInvoker                   = impl.CallerInvoker
 	CallerResolver                  = impl.CallerResolver
 	Capability                      = impl.Capability

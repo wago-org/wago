@@ -38,6 +38,48 @@ func TestLatestChannelRelease(t *testing.T) {
 	}
 }
 
+func TestLatestCanaryTag(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	const olderCommitSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/wago-org/wago/tags":
+			if r.URL.Query().Get("per_page") != "100" {
+				http.Error(w, "wrong page size", http.StatusBadRequest)
+				return
+			}
+			older := remoteTag{Name: "v0.1.0-canary.gaaaaaaa"}
+			older.Commit.SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+			newest := remoteTag{Name: "v0.1.0-canary.gdeadbee"}
+			newest.Commit.SHA = sha
+			_ = json.NewEncoder(w).Encode([]remoteTag{older, newest})
+		case "/repos/wago-org/wago/commits":
+			_ = json.NewEncoder(w).Encode([]remoteCommit{{SHA: sha}, {SHA: olderCommitSHA}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	got, err := latestCanaryTagContext(context.Background())
+	if err != nil || got != "v0.1.0-canary.gdeadbee@"+sha {
+		t.Fatalf("latestCanaryTagContext = %q, %v", got, err)
+	}
+}
+
+func TestLatestCanaryTagRejectsMismatchedHash(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`[{"name":"v0.1.0-canary.gdeadbee","commit":{"sha":"cafef00123456789012345678901234567890123"}}]`))
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	if _, err := latestCanaryTagContext(context.Background()); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Fatalf("latestCanaryTagContext mismatch error = %v", err)
+	}
+}
+
 func TestLatestChannelReleasePaginates(t *testing.T) {
 	requests := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

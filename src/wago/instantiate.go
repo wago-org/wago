@@ -1676,7 +1676,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			if ex, ok := imports[key].(*InstanceExport); ok && ex != nil {
 				return nil, fmt.Errorf("start function %q is a cross-instance import; cross-instance imported starts are unsupported", key)
 			}
-			fn, err := bindHostImport(imports[key], FuncSig{})
+			fn, err := bindSyncHostImport(imports[key], FuncSig{})
 			if err != nil {
 				return nil, fmt.Errorf("start function %q: %w", key, err)
 			}
@@ -1735,7 +1735,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	return in, nil
 }
 
-func callImportedStart(fn HostFunc, caller instanceHostModule) (err error) {
+func callImportedStart(fn syncHostBinding, caller instanceHostModule) (err error) {
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -1755,7 +1755,7 @@ func callImportedStart(fn HostFunc, caller instanceHostModule) (err error) {
 			}
 		}
 	}()
-	fn(caller, nil, nil)
+	fn.call(caller, nil, nil)
 	return nil
 }
 
@@ -1882,7 +1882,7 @@ func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (map[uint3
 			continue
 		}
 		switch imports[key].(type) {
-		case HostFunc, *HostFuncRef:
+		case HostFunc, CallerHostFunc, *HostFuncRef:
 			offs[uint32(fidx)] = len(blob)
 			blob = append(blob, railshotHostIndirectThunk(uint32(fidx))...)
 		default:

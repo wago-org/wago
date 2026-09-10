@@ -19,6 +19,8 @@ func instructionCallingInstance(m HostModule) (*Instance, bool) {
 	switch h := m.(type) {
 	case instanceHostModule:
 		return h.in, h.in != nil
+	case Caller:
+		return h.in, h.valid()
 	case staticHostModule:
 		return h.in, h.in != nil
 	default:

@@ -858,12 +858,14 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	}
 	w := at.is64() || bt.is64()
 	// Materialize both branches into owned registers BEFORE the compare: their loads
-	// clobber flags harmlessly (the CMP comes after and sets them cleanly), and they
-	// are pinned so condensing the compare's operands cannot spill them.
+	// clobber flags harmlessly (the CMP comes after and sets them cleanly). Keep them
+	// out of x86's fixed-role registers: nested div/rem and shifts reclaim RAX/RDX/RCX
+	// even when ordinary allocator pins are set, so caching one of those register
+	// numbers across condenseToFlags would make the CMOV read a clobbered value.
 	gcRoot := (aRoot.isValue() && aRoot.st.hasGCRoot()) || (bRoot.isValue() && bRoot.st.hasGCRoot())
-	aReg := f.materialize(aRoot)
+	aReg := f.materializeSelectBranch(aRoot, at)
 	f.pinned = f.pinned.add(aReg)
-	bReg := f.materialize(bRoot)
+	bReg := f.materializeSelectBranch(bRoot, bt)
 	f.pinned = f.pinned.add(bReg)
 	cc := f.condenseToFlags(cond) // emits the CMP (last flag-affecting insn), consumes cond
 	f.stats.peep("select-flags")
@@ -876,6 +878,18 @@ func (f *fn) trySelectOnFlags(cond *elem) bool {
 	result := f.pushReg(aReg, mtI32OrWide(w))
 	result.st.setGCRoot(gcRoot)
 	return true
+}
+
+func (f *fn) materializeSelectBranch(e *elem, typ machineType) Reg {
+	r := f.materialize(e)
+	if r != RAX && r != RDX && r != RCX {
+		return r
+	}
+	safe := f.allocReg(maskOf(RAX, RDX, RCX))
+	f.moveInt(safe, r, typ)
+	f.release(r)
+	f.occupy(e, safe)
+	return safe
 }
 
 // setLocal stores the top-of-stack value into local x. For local.tee the value
@@ -987,6 +1001,13 @@ func (f *fn) setLocal(reader *wasm.Reader, x int, tee bool) {
 	f.invalidateGCLoadFactsForLocal(x)
 	if e != nil && e.isValue() && e.st.typ == mtCustom {
 		panic("custom value cannot be stored in a Wasm local")
+	}
+	// A deferred load can borrow x's pinned register as its address. Condensing
+	// another child directly into x first would destroy that address. Materialize
+	// the complete value into ordinary allocator storage before considering the
+	// in-place local sink.
+	if e != nil && e.isDeferred() && subtreeBorrowsLocalAddress(e, x) {
+		f.condense(e, regNone)
 	}
 	// In-place self-update `local.set $x (op (local.get $x) …)`: let condenseInto
 	// consume the top expression straight into x's register instead of pre-copying
