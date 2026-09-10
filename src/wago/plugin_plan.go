@@ -588,7 +588,7 @@ func validateRegistration(reg *Registrar) error {
 		}
 	}
 	for _, imp := range reg.imports {
-		if imp.fn == nil || imp.module == "" || imp.name == "" {
+		if imp.fn == nil && imp.concrete == nil || imp.module == "" || imp.name == "" {
 			return fmt.Errorf("invalid host import %q", imp.key())
 		}
 	}
@@ -760,7 +760,11 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 		needsInstructionABI = needsInstructionABI || len(p.reg.instructions) != 0
 		for _, imp := range p.reg.imports {
 			key := imp.key()
-			rt.imports[key] = p.reg.callGate.wrap(imp.fn)
+			if imp.concrete != nil {
+				rt.imports[key] = p.reg.callGate.wrapCaller(imp.concrete)
+			} else {
+				rt.imports[key] = p.reg.callGate.wrap(imp.fn)
+			}
 			rt.importMeta[key] = cloneRegisteredImport(imp)
 			rt.importOwner[key] = id
 			rt.moduleOwner[imp.module] = id

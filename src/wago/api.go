@@ -2441,6 +2441,13 @@ func (c *Compiled) validateImportBindingsWithPluginGC(imports Imports, store *re
 					if sigTransfersCollectorObjects && c.genericGCFrameRoots() == nil {
 						return fmt.Errorf("Runtime plugin host import %q cannot transfer collector references: exact native root maps are unavailable", key)
 					}
+				case CallerHostFunc:
+					if owner == nil || !pluginImport || store == nil {
+						return fmt.Errorf("host import %q cannot transfer collector references; use a Runtime plugin import", key)
+					}
+					if sigTransfersCollectorObjects && c.genericGCFrameRoots() == nil {
+						return fmt.Errorf("Runtime plugin host import %q cannot transfer collector references: exact native root maps are unavailable", key)
+					}
 				default:
 					return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef, a Runtime plugin import, or a same-Runtime InstanceExport", key)
 				}
@@ -4829,7 +4836,7 @@ func (in *Instance) replayHostLog() (err error) {
 }
 
 func (in *Instance) invokeReexportedHost(export string, importIdx int, args []uint64, id invocationID, parent context.Context) (results []uint64, err error) {
-	if importIdx < 0 || importIdx >= len(in.syncHosts) || in.syncHosts[importIdx].fn == nil || importIdx >= len(in.c.importFuncSigs) {
+	if importIdx < 0 || importIdx >= len(in.syncHosts) || !in.syncHosts[importIdx].callable() || importIdx >= len(in.c.importFuncSigs) {
 		return nil, fmt.Errorf("export %q is an imported function without a callable host owner", export)
 	}
 	sig := in.c.importFuncSigs[importIdx]
@@ -4896,10 +4903,10 @@ func (in *Instance) invokeReexportedHost(export string, importIdx int, args []ui
 	defer gcSuspension.resume()
 	restoreInvocationContext := bindHostInvocationParent(in, parent)
 	defer restoreInvocationContext()
-	fn := in.syncHosts[importIdx].fn
+	fn := &in.syncHosts[importIdx]
 	caller := in.beginHostCallScope()
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
-	fn(caller, params, results)
+	fn.call(caller, params, results)
 	return results, nil
 }
 
@@ -4918,7 +4925,7 @@ func (in *Instance) fillInvokeCache(export string) (*invokeCache, error) {
 		if gfi >= len(in.c.Imports) {
 			return nil, fmt.Errorf("export %q imported function index %d has no binding", export, gfi)
 		}
-		if ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport); (!ok || ex == nil || ex.inst == nil) && (gfi >= len(in.syncHosts) || in.syncHosts[gfi].fn == nil) {
+		if ex, ok := in.imports[in.c.Imports[gfi]].(*InstanceExport); (!ok || ex == nil || ex.inst == nil) && (gfi >= len(in.syncHosts) || !in.syncHosts[gfi].callable()) {
 			return nil, fmt.Errorf("export %q is an imported function without a callable owner", export)
 		}
 		slot := &in.ic[int(in.icNext)%len(in.ic)]

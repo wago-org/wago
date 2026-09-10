@@ -983,6 +983,11 @@ func TestScalarCrossInstanceRelayWaitsForProducerGCInvocationLease(t *testing.T)
 }
 
 func TestScalarCrossInstanceRelaySuspendsAllProducerGCDomainsForHostCollection(t *testing.T) {
+	t.Run("legacy", func(t *testing.T) { testScalarRelaySuspendsAllDomains(t, false) })
+	t.Run("concrete", func(t *testing.T) { testScalarRelaySuspendsAllDomains(t, true) })
+}
+
+func testScalarRelaySuspendsAllDomains(t *testing.T, concrete bool) {
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	firstCode, err := Compile(cfg, gcAllocatingHostScalarProducerModule())
 	if err != nil {
@@ -1004,7 +1009,7 @@ func TestScalarCrossInstanceRelaySuspendsAllProducerGCDomainsForHostCollection(t
 	first, err := instantiateCore(firstCode, InstantiateOptions{
 		GC:    GCConfig{CollectEveryAlloc: true, StressNurseryBytes: 64, ForceMajorEveryMinor: true, VerifyAfterCollect: true},
 		store: store,
-		Imports: Imports{"env.host": HostFunc(func(module HostModule, _ []uint64, results []uint64) {
+		Imports: Imports{"env.host": callerTestCallback(concrete, func(module HostModule, _ []uint64, results []uint64) {
 			if collectErr := second.CollectGC(); collectErr != nil {
 				panic(HostTrap{Err: collectErr})
 			}
@@ -1051,6 +1056,9 @@ func TestScalarCrossInstanceRelaySuspendsAllProducerGCDomainsForHostCollection(t
 	}
 	if got := relay.gcInvocationDomains().len(); got != 2 {
 		t.Fatalf("relay invocation domains = %d, want 2", got)
+	}
+	if relay.gc != nil || !relay.hostCallNeedsGCSuspension() {
+		t.Fatal("scalar root must suspend its imported domains without a local collector")
 	}
 
 	type result struct {
