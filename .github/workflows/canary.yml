@@ -13,7 +13,9 @@ permissions:
   contents: write
 
 concurrency:
-  group: publish-canary
+  # A workflow_run that fails the job-level guard still enters concurrency.
+  # Scope by source SHA so it cannot cancel a valid build for another commit.
+  group: publish-canary-${{ github.event.workflow_run.head_sha || github.sha }}
   cancel-in-progress: true
 
 env:
