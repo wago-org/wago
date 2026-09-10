@@ -280,11 +280,22 @@ function buildGeneralSummary(metrics, raw, modules) {
       ENGINES.map(({ id }) => [id, Number(compileTime[id] ?? 0) + Number(instantiate[id] ?? 0)]),
     )],
   ].map(([label, sub, kind, values]) => ({ label, sub, kind, values }));
+  const boundary = [
+    generalPairedMetric(metrics, "Host → Wasm call", "public entry", "ExecCallOverhead_wago", "ExecCallOverhead_wazero"),
+    generalPairedMetric(metrics, "Wasm → host → Wasm", "import call and return", "ExecHostRoundtrip_wago", "ExecHostRoundtrip_wazero"),
+  ].filter(Boolean);
   const breakdowns = [
     generalCorpusMetric(metrics, "Application commands", "fresh instance + fixed workload", "CommandExec/", "WazeroCommandExec/", [...applicationModules]),
     generalCorpusMetric(metrics, "SIMD execution", "AssemblyScript SIMD", "Exec/", "WazeroExec/", ["json-as-simd.serializeN", "json-as-simd.deserializeN", "blake-as-simd.hashN", "utf-as-simd.convertN"]),
   ].filter(Boolean);
-  return [...summary, ...breakdowns];
+  return [...summary, ...boundary, ...breakdowns];
+}
+
+function generalPairedMetric(metrics, label, sub, railshotKey, wazeroKey) {
+  const railshot = Number(metrics.get(railshotKey)?.ns ?? 0);
+  const wazero = Number(metrics.get(wazeroKey)?.ns ?? 0);
+  if (!(railshot > 0) || !(wazero > 0)) return null;
+  return { label, sub, kind: "ns", values: { railshot, wazero } };
 }
 
 function generalCorpusMetric(metrics, label, sub, railshotPrefix, wazeroPrefix, keys, kind = "ns") {

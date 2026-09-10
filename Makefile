@@ -35,7 +35,7 @@ WAZERO_BENCH_RE ?= [Ww]azero
 BENCH_RE_all      := .
 BENCH_RE_pipeline := ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate)$$
 BENCH_RE_compile  := ^Benchmark(Decode|Validate|Compile|CompileFull)$$
-BENCH_RE_exec     := ^Benchmark(Exec|CommandExec)$$
+BENCH_RE_exec     := ^Benchmark(Exec|CommandExec)$$|^BenchmarkExec(CallOverhead|HostRoundtrip)_
 BENCH_RE          := $(or $(BENCH_RE_$(BENCH)),$(BENCH))
 # Where `make cover` writes the coverage profile, and where `make card` collects
 # section fragments / writes the assembled PR card.
