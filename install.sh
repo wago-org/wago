@@ -26,7 +26,7 @@ download() {
 	url=$1
 	target=$2
 	if command -v curl >/dev/null 2>&1; then
-		curl -fsSL --retry 2 --connect-timeout 10 "$url" -o "$target"
+		curl -fsSL --retry 2 --connect-timeout 10 "$url" -o "$target" 2>/dev/null
 	elif command -v wget >/dev/null 2>&1; then
 		wget -q "$url" -O "$target"
 	else
@@ -43,11 +43,13 @@ release_tag_from_json() {
 			sub(/".*$/, "", line)
 			tag = line
 		}
+		/"draft"[[:space:]]*:[[:space:]]*true/ { tag = "" }
 		/"published_at"[[:space:]]*:/ {
 			line = $0
 			sub(/^.*"published_at"[[:space:]]*:[[:space:]]*"/, "", line)
 			sub(/".*$/, "", line)
-			matches = (channel == "beta" && tag ~ /^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$/) || \
+			matches = (channel == "official" && tag ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/) || \
+				(channel == "beta" && tag ~ /^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$/) || \
 				(channel == "canary" && tag ~ /^v[0-9]+\.[0-9]+\.[0-9]+-canary\.g[0-9a-f]{7}$/)
 			if (matches && (best == "" || line > best)) {
 				best = line
@@ -59,20 +61,71 @@ release_tag_from_json() {
 	' "$2"
 }
 
+release_count_from_json() {
+	awk '{ count += gsub(/"tag_name"[[:space:]]*:/, "&") } END { print count + 0 }' "$1"
+}
+
+release_tags_from_pages() {
+	found_channels=""
+	beta_tag=""
+	canary_tag=""
+	page=1
+	while [ "$page" -le 10 ]; do
+		page_file="$tmp/releases-$page.json"
+		download "$release_api?per_page=100&page=$page" "$page_file" || break
+		for channel in "$@"; do
+			case " $found_channels " in
+				*" $channel "*) continue ;;
+			esac
+			tag=$(release_tag_from_json "$channel" "$page_file")
+			if [ -n "$tag" ]; then
+				found_channels="$found_channels $channel"
+				case "$channel" in beta) beta_tag=$tag ;; canary) canary_tag=$tag ;; esac
+			fi
+		done
+		complete=1
+		for channel in "$@"; do
+			case " $found_channels " in *" $channel "*) ;; *) complete="" ;; esac
+		done
+		[ -z "$complete" ] || break
+		count=$(release_count_from_json "$page_file")
+		[ "$count" -ge 100 ] || break
+		page=$((page + 1))
+	done
+	found_tags=""
+	for channel in "$@"; do
+		case "$channel" in beta) tag=$beta_tag ;; canary) tag=$canary_tag ;; esac
+		[ -z "$tag" ] || found_tags="$found_tags $tag"
+	done
+	printf '%s\n' "${found_tags# }"
+}
+
 resolve_release() {
+	tags=""
 	case "$version" in
 		latest)
 			download "$release_api/latest" "$tmp/release.json" || return 1
 			tag=$(sed -n 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp/release.json" | head -1)
+			tags=$tag
 			;;
-		v*) tag=$version ;;
+		v*) tags=$version ;;
 		*)
-			case "$version" in beta) channel=beta ;; *) channel=canary ;; esac
-			download "$release_api?per_page=100" "$tmp/releases.json" || return 1
-			tag=$(release_tag_from_json "$channel" "$tmp/releases.json")
+			case "$version" in
+				beta|canary)
+					tags=$(release_tags_from_pages "$version")
+					;;
+				main)
+					if download "$release_api/latest" "$tmp/release.json"; then
+						tag=$(release_tag_from_json official "$tmp/release.json")
+						[ -z "$tag" ] || tags=$tag
+					fi
+					prerelease_tags=$(release_tags_from_pages beta canary)
+					[ -z "$prerelease_tags" ] || tags="$tags $prerelease_tags"
+					;;
+			esac
 			;;
 	esac
-	[ -n "${tag:-}" ] || return 1
+	[ -n "${tags# }" ] || return 1
 }
 
 target_name() {
@@ -144,12 +197,21 @@ asset=$(target_name) || die "this operating system or architecture is not suppor
 if ! resolve_release; then
 	die "the installer is unavailable; check your internet connection and try again"
 fi
-url="$release_download_base/download/$tag/$asset"
-if ! download "$url" "$tmp/installer" || ! download "$url.sha256" "$tmp/installer.sha256"; then
+downloaded=""
+for tag in $tags; do
+	url="$release_download_base/download/$tag/$asset"
+	rm -f "$tmp/installer" "$tmp/installer.sha256"
+	if ! download "$url" "$tmp/installer" || ! download "$url.sha256" "$tmp/installer.sha256"; then
+		continue
+	fi
+	if ! verify_checksum "$tmp/installer" "$tmp/installer.sha256"; then
+		die "the downloaded installer could not be verified; try again when the release service is available"
+	fi
+	downloaded=1
+	break
+done
+if [ -z "$downloaded" ]; then
 	die "the installer is unavailable; check your internet connection and try again"
-fi
-if ! verify_checksum "$tmp/installer" "$tmp/installer.sha256"; then
-	die "the downloaded installer could not be verified; try again when the release service is available"
 fi
 chmod +x "$tmp/installer"
 run_installer "$tmp/installer" "$@"

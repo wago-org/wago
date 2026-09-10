@@ -37,6 +37,7 @@ func TestShellBootstrapMatchesReleaseContract(t *testing.T) {
 	catalog := bootstrapContractCatalog{
 		latest: installbootstrap.Release{TagName: "v1.2.3", PublishedAt: "2026-08-04T00:00:00Z"},
 		releases: []installbootstrap.Release{
+			{TagName: "v1.2.3", PublishedAt: "2026-08-02T00:00:00Z"},
 			{TagName: "v0.1.0-canary.gaaaaaaa", PublishedAt: "2026-08-01T00:00:00Z"},
 			{TagName: "v0.1.0-beta.1", PublishedAt: "2026-08-04T00:00:00Z"},
 			{TagName: "v0.1.0-canary.gbbbbbbb", PublishedAt: "2026-08-03T00:00:00Z"},
@@ -56,7 +57,7 @@ func TestShellBootstrapMatchesReleaseContract(t *testing.T) {
 				case "/releases/latest":
 					_, _ = fmt.Fprintf(w, "{\n  \"tag_name\": %q,\n  \"published_at\": %q\n}\n", catalog.latest.TagName, catalog.latest.PublishedAt)
 				case "/releases":
-					_, _ = fmt.Fprint(w, "[\n  {\n    \"tag_name\": \"v0.1.0-canary.gaaaaaaa\",\n    \"published_at\": \"2026-08-01T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"v0.1.0-beta.1\",\n    \"published_at\": \"2026-08-04T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"v0.1.0-canary.gbbbbbbb\",\n    \"published_at\": \"2026-08-03T00:00:00Z\"\n  }\n]\n")
+					_, _ = fmt.Fprint(w, "[\n  {\n    \"tag_name\": \"v1.2.3\",\n    \"published_at\": \"2026-08-02T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"v0.1.0-canary.gaaaaaaa\",\n    \"published_at\": \"2026-08-01T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"v0.1.0-beta.1\",\n    \"published_at\": \"2026-08-04T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"v0.1.0-canary.gbbbbbbb\",\n    \"published_at\": \"2026-08-03T00:00:00Z\"\n  }\n]\n")
 				case "/download/" + wantTag + "/" + asset:
 					_, _ = w.Write(payload)
 				case "/download/" + wantTag + "/" + asset + ".sha256":
@@ -82,12 +83,24 @@ func TestShellBootstrapMatchesReleaseContract(t *testing.T) {
 func TestShellBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
 	payload := []byte("#!/bin/sh\nprintf 'native installer: %s\\n' \"$WAGO_VERSION\"\n")
 	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
-	tag := "v0.1.0-canary.gdeadbee"
+	tag := "v0.1.0-beta.1"
 	asset := "wago-installer-" + runtime.GOOS + "-" + runtime.GOARCH
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/releases/latest":
+			_, _ = fmt.Fprint(w, `{"tag_name":"v1.0.0","published_at":"2026-08-01T00:00:00Z"}`)
 		case "/releases":
-			_, _ = fmt.Fprintf(w, `[{"tag_name":%q,"published_at":"2026-08-03T00:00:00Z"}]`, tag)
+			if r.URL.Query().Get("page") == "1" {
+				_, _ = fmt.Fprintln(w, "[")
+				for index := 0; index < 100; index++ {
+					_, _ = fmt.Fprintf(w, "  {\"tag_name\":\"v0.1.0-canary.g%07x\",\"published_at\":\"2026-08-03T00:00:00Z\"},\n", index)
+				}
+				_, _ = fmt.Fprintln(w, "]")
+			} else {
+				_, _ = fmt.Fprint(w, `[
+  {"tag_name":"v0.1.0-beta.1","published_at":"2026-08-02T00:00:00Z"}
+]`)
+			}
 		case "/download/" + tag + "/" + asset:
 			_, _ = w.Write(payload)
 		case "/download/" + tag + "/" + asset + ".sha256":
@@ -127,6 +140,46 @@ func TestShellBootstrapStopsCleanlyWhenInstallerIsUnavailable(t *testing.T) {
 	}
 	if text := string(output); !strings.Contains(text, "installer is unavailable") || !strings.Contains(text, "internet connection") {
 		t.Fatalf("unavailable output:\n%s", output)
+	}
+}
+
+func TestShellBootstrapDoesNotBypassBadOfficialChecksum(t *testing.T) {
+	payload := []byte("#!/bin/sh\nexit 0\n")
+	asset := "wago-installer-" + runtime.GOOS + "-" + runtime.GOARCH
+	requestedBeta := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/releases/latest":
+			_, _ = fmt.Fprint(w, `{"tag_name":"v1.0.0","published_at":"2026-08-01T00:00:00Z"}`)
+		case "/releases":
+			_, _ = fmt.Fprint(w, `[
+  {"tag_name":"v1.1.0-beta.1","published_at":"2026-08-02T00:00:00Z"}
+]`)
+		case "/download/v1.0.0/" + asset:
+			_, _ = w.Write(payload)
+		case "/download/v1.0.0/" + asset + ".sha256":
+			_, _ = fmt.Fprint(w, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  installer\n")
+		default:
+			if strings.Contains(r.URL.Path, "beta") {
+				requestedBeta = true
+			}
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(),
+		"WAGO_VERSION=main",
+		"WAGO_RELEASES_API_URL="+server.URL+"/releases",
+		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
+	)
+	output, err := command.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "could not be verified") {
+		t.Fatalf("shell bootstrap checksum result: %v\n%s", err, output)
+	}
+	if requestedBeta {
+		t.Fatal("shell bootstrap requested beta after an official checksum failure")
 	}
 }
 
@@ -331,11 +384,23 @@ func TestWineCmdBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
 		t.Fatal(err)
 	}
 	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
-	tag := "v0.1.0-canary.gbbbbbbb"
+	tag := "v0.1.0-beta.1"
+	var requests []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.RequestURI())
 		switch r.URL.Path {
+		case "/releases/latest":
+			_, _ = fmt.Fprint(w, "{\n  \"tag_name\": \"v1.0.0\",\n  \"published_at\": \"2026-08-01T00:00:00Z\"\n}\n")
 		case "/releases":
-			_, _ = fmt.Fprintf(w, "[\n  {\n    \"tag_name\": %q,\n    \"published_at\": \"2026-08-03T00:00:00Z\"\n  }\n]\n", tag)
+			if r.URL.Query().Get("page") == "1" {
+				_, _ = fmt.Fprintln(w, "[")
+				for index := 0; index < 100; index++ {
+					_, _ = fmt.Fprintf(w, "  {\n    \"tag_name\": \"v0.1.0-canary.g%07x\",\n    \"published_at\": \"2026-08-03T00:00:00Z\"\n  },\n", index)
+				}
+				_, _ = fmt.Fprintln(w, "]")
+			} else {
+				_, _ = fmt.Fprint(w, "[\n  {\n    \"tag_name\": \"v0.1.0-beta.x\",\n    \"published_at\": \"2026-08-04T00:00:00Z\"\n  },\n  {\n    \"tag_name\": \"v0.1.0-beta.1\",\n    \"published_at\": \"2026-08-02T00:00:00Z\"\n  }\n]\n")
+			}
 		case "/download/" + tag + "/wago-installer-windows-amd64":
 			_, _ = w.Write(payload)
 		case "/download/" + tag + "/wago-installer-windows-amd64.sha256":
@@ -348,17 +413,57 @@ func TestWineCmdBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
 
 	command := exec.Command(wine, "cmd", "/D", "/C", "call install.cmd")
 	command.Env = append(os.Environ(),
-		"WINEDEBUG=-all", "NO_COLOR=1", "WAGO_VERSION=canary", "WAGO_DRY_RUN=1",
+		"WINEDEBUG=-all", "NO_COLOR=1", "WAGO_VERSION=main", "WAGO_DRY_RUN=1",
 		"WAGO_BIN_DIR=ROOT\\bin", "WAGO_SRC_DIR=ROOT\\src",
 		"WAGO_RELEASES_API_URL="+server.URL+"/releases",
 		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
 	)
 	output, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("Wine CMD download bootstrap: %v\n%s", err, output)
+		t.Fatalf("Wine CMD download bootstrap: %v\nrequests: %v\n%s", err, requests, output)
 	}
 	if text := strings.ReplaceAll(string(output), "\r", ""); !strings.Contains(text, "Install location: ROOT\\bin") || !strings.Contains(text, "Dry run · no changes made.") {
 		t.Fatalf("Wine CMD download bootstrap output:\n%s", text)
+	}
+}
+
+func TestWineCmdBootstrapDoesNotBypassBadOfficialChecksum(t *testing.T) {
+	wine, err := exec.LookPath("wine")
+	if err != nil {
+		t.Skip("Wine is not installed")
+	}
+	requestedBeta := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/releases/latest":
+			_, _ = fmt.Fprint(w, "{\n  \"tag_name\": \"v1.0.0\"\n}\n")
+		case "/releases":
+			_, _ = fmt.Fprint(w, "[\n  {\n    \"tag_name\": \"v1.1.0-beta.1\",\n    \"published_at\": \"2026-08-02T00:00:00Z\"\n  }\n]\n")
+		case "/download/v1.0.0/wago-installer-windows-amd64":
+			_, _ = w.Write([]byte("not an installer"))
+		case "/download/v1.0.0/wago-installer-windows-amd64.sha256":
+			_, _ = fmt.Fprint(w, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  installer.exe\n")
+		default:
+			if strings.Contains(r.URL.Path, "beta") {
+				requestedBeta = true
+			}
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	command := exec.Command(wine, "cmd", "/D", "/C", "call install.cmd")
+	command.Env = append(os.Environ(),
+		"WINEDEBUG=-all", "WAGO_VERSION=main",
+		"WAGO_RELEASES_API_URL="+server.URL+"/releases",
+		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
+	)
+	output, err := command.CombinedOutput()
+	if err == nil || !strings.Contains(string(output), "could not be verified") {
+		t.Fatalf("Wine CMD checksum result: %v\n%s", err, output)
+	}
+	if requestedBeta {
+		t.Fatal("Wine CMD requested beta after an official checksum failure")
 	}
 }
 
