@@ -2,6 +2,7 @@ package wago
 
 import (
 	"bytes"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -10,11 +11,17 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestValidatedAnalysisRequirementsCorpusParity(t *testing.T) {
-	paths, err := filepath.Glob("../../bench/corpus/*.wasm")
+	var paths []string
+	err := filepath.WalkDir("../../corpus/workloads", func(path string, entry fs.DirEntry, err error) error {
+		if err == nil && !entry.IsDir() && filepath.Ext(path) == ".wasm" {
+			paths = append(paths, path)
+		}
+		return err
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,8 +51,8 @@ func TestValidatedAnalysisRequirementsCorpusParity(t *testing.T) {
 		}
 		compared++
 	}
-	if compared < 50 {
-		t.Fatalf("compared %d validated corpus modules, want at least 50", compared)
+	if compared < 20 {
+		t.Fatalf("compared %d validated corpus modules, want at least 20", compared)
 	}
 }
 

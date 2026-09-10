@@ -24,8 +24,8 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/wago"
-	"github.com/wago-org/wago/tests/regressioncorpus"
-	"github.com/wago-org/wago/tests/regressiontest"
+	"github.com/wago-org/wago/tests/support/regressioncorpus"
+	"github.com/wago-org/wago/tests/support/regressiontest"
 )
 
 type regressionCoreFixture struct {
@@ -123,8 +123,8 @@ func TestRuntimeRegressionPortCoreManifest(t *testing.T) {
 		}
 	}
 
-	root := filepath.Clean("../../tests/regressions/runtime/core")
-	parsed, err := regressioncorpus.LoadManifest(filepath.Clean("../../tests/regressions/runtime/MANIFEST.tsv"))
+	root := filepath.Clean("../../tests/corpus/regressions/runtime/core")
+	parsed, err := regressioncorpus.LoadManifest(filepath.Clean("../../tests/corpus/regressions/runtime/MANIFEST.tsv"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestRuntimeRegressionPortCoreManifest(t *testing.T) {
 }
 
 func TestRuntimeRegressionRustPortLedger(t *testing.T) {
-	ports, err := regressioncorpus.LoadRustPorts(filepath.Clean("../../tests/regressions/runtime/RUST_PORTS.tsv"))
+	ports, err := regressioncorpus.LoadRustPorts(filepath.Clean("../../tests/corpus/regressions/runtime/RUST_PORTS.tsv"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func discoverRegressionRustPortTests(t *testing.T) map[string]map[string]bool {
 }
 
 func TestRuntimeRegressionUpstreamInventoryLedger(t *testing.T) {
-	entries, err := regressioncorpus.LoadInventory(filepath.Clean("../../tests/regressions/runtime/UPSTREAM_INVENTORY.tsv"))
+	entries, err := regressioncorpus.LoadInventory(filepath.Clean("../../tests/corpus/regressions/runtime/UPSTREAM_INVENTORY.tsv"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestRuntimeRegressionUpstreamInventoryLedger(t *testing.T) {
 		upstream[i] = entry.Path
 		statusCounts[entry.Status]++
 	}
-	parsed, err := regressioncorpus.LoadManifest(filepath.Clean("../../tests/regressions/runtime/MANIFEST.tsv"))
+	parsed, err := regressioncorpus.LoadManifest(filepath.Clean("../../tests/corpus/regressions/runtime/MANIFEST.tsv"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestRuntimeRegressionUpstreamInventoryLedger(t *testing.T) {
 }
 
 func TestRuntimeRegressionDirectArtifactLedger(t *testing.T) {
-	entries, err := regressioncorpus.LoadDirectArtifacts(filepath.Clean("../../tests/regressions/runtime/DIRECT_ARTIFACTS.tsv"))
+	entries, err := regressioncorpus.LoadDirectArtifacts(filepath.Clean("../../tests/corpus/regressions/runtime/DIRECT_ARTIFACTS.tsv"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,7 +281,7 @@ func TestRuntimeRegressionDirectArtifactLedger(t *testing.T) {
 }
 
 func TestRuntimeRegressionPortCoreFixtureTreeDigest(t *testing.T) {
-	root := filepath.Clean("../../tests/regressions/runtime/core")
+	root := filepath.Clean("../../tests/corpus/regressions/runtime/core")
 	var paths []string
 	if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -671,7 +671,7 @@ func TestRuntimeRegressionPortTableFill(t *testing.T) {
 
 func loadRegressionProvenance(t *testing.T) regressionProvenance {
 	t.Helper()
-	provenance, err := regressioncorpus.LoadProvenance(filepath.Clean("../../tests/regressions/runtime/PROVENANCE.json"))
+	provenance, err := regressioncorpus.LoadProvenance(filepath.Clean("../../tests/corpus/regressions/runtime/PROVENANCE.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -680,7 +680,7 @@ func loadRegressionProvenance(t *testing.T) regressionProvenance {
 
 func loadRegressionCoreManifest(t *testing.T) []regressionCoreFixture {
 	t.Helper()
-	parsed, err := regressioncorpus.LoadManifest(filepath.Clean("../../tests/regressions/runtime/MANIFEST.tsv"))
+	parsed, err := regressioncorpus.LoadManifest(filepath.Clean("../../tests/corpus/regressions/runtime/MANIFEST.tsv"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -695,7 +695,7 @@ func loadRegressionCoreManifest(t *testing.T) []regressionCoreFixture {
 }
 
 func regressionCoreFixtureDir(path string) string {
-	return filepath.Clean(filepath.Join("../../tests/regressions/runtime/core", strings.TrimSuffix(path, ".wast")))
+	return filepath.Clean(filepath.Join("../../tests/corpus/regressions/runtime/core", strings.TrimSuffix(path, ".wast")))
 }
 
 func compileRegressionCoreDirectFixture(t *testing.T, path string, module int) *wago.Compiled {

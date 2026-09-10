@@ -18,7 +18,7 @@ import (
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const stagedGCRefTestDeltaPath = "tests/spec-v3-staged-gc-ref-test.json"
+const stagedGCRefTestDeltaPath = "tests/conformance/baselines/spec-v3-staged-gc-ref-test.json"
 
 type stagedGCRefTestClass uint8
 

@@ -12,7 +12,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	wruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestPublicCompileOmitsCooperativeInterruptPolls(t *testing.T) {

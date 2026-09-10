@@ -16,7 +16,7 @@ import (
 )
 
 func TestExtendedConstFixtureManifest(t *testing.T) {
-	root := filepath.Clean("../../tests/regressions/extended-const")
+	root := filepath.Clean("../../tests/corpus/regressions/extended-const")
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +47,7 @@ func TestExtendedConstFixtureManifest(t *testing.T) {
 }
 
 func TestExtendedConstCodecExecution(t *testing.T) {
-	root := filepath.Clean("../../tests/regressions/extended-const")
+	root := filepath.Clean("../../tests/corpus/regressions/extended-const")
 	imports := wago.Imports{
 		"spectest.global_i32": wago.GlobalImport{Type: wago.ValI32, Bits: wago.I32(666)},
 		"spectest.global_i64": wago.GlobalImport{Type: wago.ValI64, Bits: wago.I64(666)},
@@ -132,7 +132,7 @@ func TestExtendedConstCodecExecution(t *testing.T) {
 }
 
 func TestExtendedConstSpecExecution(t *testing.T) {
-	root := filepath.Clean("../../tests/regressions/extended-const")
+	root := filepath.Clean("../../tests/corpus/regressions/extended-const")
 	var total specExecStats
 	for _, base := range []string{"data", "elem", "global"} {
 		raw, err := os.ReadFile(filepath.Join(root, base+".json"))

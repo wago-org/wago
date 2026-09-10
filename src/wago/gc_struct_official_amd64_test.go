@@ -18,7 +18,7 @@ import (
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const stagedGCStructDeltaPath = "tests/spec-v3-staged-gc-struct.json"
+const stagedGCStructDeltaPath = "tests/conformance/baselines/spec-v3-staged-gc-struct.json"
 
 var stagedGCStructSourceOnlyMalformed = []int{15}
 

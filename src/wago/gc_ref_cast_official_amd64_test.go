@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	stagedGCRefCastDeltaPath         = "tests/spec-v3-staged-gc-ref-cast.json"
+	stagedGCRefCastDeltaPath         = "tests/conformance/baselines/spec-v3-staged-gc-ref-cast.json"
 	stagedGCRefCastOfficialExecution = true
 )
 

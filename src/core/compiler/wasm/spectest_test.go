@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/tests/spectest"
+	"github.com/wago-org/wago/tests/conformance/spectest"
 )
 
 // coreFiles are spec-testsuite .wast files whose modules are within this

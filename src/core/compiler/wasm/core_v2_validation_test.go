@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wago-org/wago/tests/spectest"
+	"github.com/wago-org/wago/tests/conformance/spectest"
 )
 
 func TestCoreV2Validation(t *testing.T) {
-	root := filepath.Clean("../../../../tests/spec-v2")
+	root := filepath.Clean("../../../../tests/conformance/spec-v2")
 	if _, err := os.Stat(filepath.Join(root, "test", "core")); err != nil {
 		if os.IsNotExist(err) {
 			t.Skip("pinned Core v2 submodule is not initialized; run make spec2 for mandatory execution")

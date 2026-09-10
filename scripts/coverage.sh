@@ -34,10 +34,10 @@ measure() {
 		printf 'coverage: wast2json (wabt) not on PATH\n' >&2
 		exit 1
 	}
-	[ -f "$dir/tests/spec/i32.wast" ] ||
-		git -C "$dir" submodule update --init tests/spec >/dev/null
-	[ -f "$dir/tests/spec-v2/test/core/i32.wast" ] ||
-		git -C "$dir" submodule update --init tests/spec-v2 >/dev/null
+	[ -f "$dir/tests/conformance/spec-v1/i32.wast" ] ||
+		git -C "$dir" submodule update --init tests/conformance/spec-v1 >/dev/null
+	[ -f "$dir/tests/conformance/spec-v2/test/core/i32.wast" ] ||
+		git -C "$dir" submodule update --init tests/conformance/spec-v2 >/dev/null
 
 	(cd "$dir" && go test -count=1 -covermode=atomic -coverpkg=./... \
 		-coverprofile="$profiles/normal.out" ./... >/dev/null)
@@ -47,20 +47,20 @@ measure() {
 	(cd "$dir" && go test -count=1 -tags wago_guardpage -covermode=atomic \
 		-coverpkg=./... -coverprofile="$profiles/guard-root.out" ./src/wago/ >/dev/null)
 	(cd "$dir/bench" && go test -count=1 -tags wago_guardpage \
-		-run 'TestCorpusDifferential|TestJsonAsGuardCorrect' -covermode=atomic \
+		-run '^(TestCorpus|TestJsonAsGuardCorrect)$' -covermode=atomic \
 		-coverpkg=github.com/wago-org/wago/... \
-		-coverprofile="$profiles/guard-bench.out" . >/dev/null)
-	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/spec" WAGO_SPEC_VERSION=1.0 \
+		-coverprofile="$profiles/guard-bench.out" ./suite -args -wago.corpus=quick >/dev/null)
+	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/conformance/spec-v1" WAGO_SPEC_VERSION=1.0 \
 		go test -count=1 -run TestSpecSuiteExec -covermode=atomic -coverpkg=./... \
 		-coverprofile="$profiles/spec1.out" ./src/wago/ >/dev/null)
 	(cd "$dir" && go test -count=1 -run '^TestCoreV2Validation$' \
 		-covermode=atomic -coverpkg=./... -coverprofile="$profiles/spec2-validation.out" \
 		./src/core/compiler/wasm/ >/dev/null)
-	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/spec-v2" WAGO_SPEC_VERSION=2.0 \
+	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/conformance/spec-v2" WAGO_SPEC_VERSION=2.0 \
 		go test -count=1 -run '^TestCoreV2SpecExecution$' \
 		-covermode=atomic -coverpkg=./... -coverprofile="$profiles/spec2-execution.out" \
 		./src/wago/ >/dev/null)
-	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/spec" WAGO_SPEC_VERSION=simd \
+	(cd "$dir" && WAGO_SPECTEST_DIR="$dir/tests/conformance/spec-v1" WAGO_SPEC_VERSION=simd \
 		go test -count=1 -run TestSpecSuiteExec -covermode=atomic -coverpkg=./... \
 		-coverprofile="$profiles/simd.out" ./src/wago/ >/dev/null)
 

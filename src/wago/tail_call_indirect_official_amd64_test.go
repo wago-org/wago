@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-const stagedIndirectTailDeltaPath = "tests/spec-v3-staged-return-call-indirect.json"
+const stagedIndirectTailDeltaPath = "tests/conformance/baselines/spec-v3-staged-return-call-indirect.json"
 
 func TestStagedOfficialReturnCallIndirect(t *testing.T) {
 	if _, err := exec.LookPath("wast2json"); err != nil {

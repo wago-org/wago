@@ -51,6 +51,16 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       metrics[`WazeroInstantiate/${name}`] = { ns: 60, bytes: 6, allocs: 2 };
     }
     for (const name of [
+      "embench-crc32",
+      "sightglass-shootout-base64",
+      "tacle-bsort",
+    ]) {
+      metrics[`CompileFull/${name}`] = { ns: 100, bytes: 10, allocs: 1 };
+      metrics[`WazeroCompile/${name}`] = { ns: 200, bytes: 20, allocs: 2 };
+      metrics[`CommandExec/${name}`] = { ns: 40 };
+      metrics[`WazeroCommandExec/${name}`] = { ns: 80 };
+    }
+    for (const name of [
       "coremark.coremark_run",
       "blake3.blake3_hash",
       "blake3.blake3_keyed_hash",
@@ -77,7 +87,9 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       [...new Set(Object.keys(metrics)
         .filter((key) => key.startsWith("CompileFull/"))
         .map((key) => key.slice("CompileFull/".length)))]
-        .map((name) => [name, { category: name === "tiny" ? "micro" : "semantic", bytes: 100 }]),
+        .map((name) => [name, name.includes("-")
+          ? { category: "application", suite: name.split("-")[0], desc: "application workload", bytes: 100 }
+          : { category: name === "tiny" ? "micro" : "semantic", bytes: 100 }]),
     );
 	modules.lua = { category: "real-large", bytes: 100 };
     const general = {
@@ -178,7 +190,7 @@ function assertDOMContract(html) {
     const generalEnd = html.indexOf(`id="perf-${arch}-panel-compile"`, generalStart);
     const general = html.slice(generalStart, generalEnd);
     assert.equal(matches(general, /data-engine-row/g), 8);
-    for (const label of ["Machine code", "Application compile", "SIMD execution"]) {
+    for (const label of ["Machine code", "Application commands", "SIMD execution"]) {
       assert.equal(matches(general, new RegExp(`<span class="vs__label">${label}</span>`, "g")), 1);
     }
 	const machineCodeStart = general.indexOf('<span class="vs__label">Machine code</span>');
@@ -189,8 +201,8 @@ function assertDOMContract(html) {
 	const executionStart = general.indexOf('<span class="vs__label">Execution</span>');
 	const executionEnd = general.indexOf('<div class="vs__row" data-engine-row>', executionStart);
 	const execution = general.slice(executionStart, executionEnd);
-	assert.match(execution, />34\.1ns<\/span>/);
-	assert.match(execution, />68\.3ns<\/span>/);
+	assert.match(execution, />27\.6ns<\/span>/);
+	assert.match(execution, />52\.1ns<\/span>/);
     assert.doesNotMatch(general, /Micro compile mean|Micro startup mean|AS startup mean|Compute execution mean|Tiny compile|Ruby compile|fib_rec startup|Many-function startup|>N-body<|>JSON deserialize</);
   }
   assert.match(html, />[0-9.]+× faster<\/span>/);
@@ -219,6 +231,10 @@ function assertDOMContract(html) {
   assert.match(html, /<span class="vs__sub">fresh process<\/span>/);
   assert.match(html, /<span class="vs__sub">runnable corpus<\/span>/);
   assert.match(html, /<span class="vs__sub">compile \+ instantiate<\/span>/);
+  assert.equal(matches(html, /<div class="vs__group">Application corpora<\/div>/g), 8);
+  for (const suite of ["embench", "sightglass", "tacle"]) {
+    assert.equal(matches(html, new RegExp(`<span class="vs__label">${suite} · `, "g")), 8);
+  }
   assert.match(html, /End-to-end latency/);
   assert.match(html, /class="vs__side"[^>]*data-arch-toggle/);
   assert.match(html, /class="vs__stage"/);

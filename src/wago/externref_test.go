@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 type externrefIssuer interface {
@@ -419,7 +419,7 @@ func TestExternrefFeatureGateAndOfficialSourceSites(t *testing.T) {
 		{"br_table.wast", `(func (export "meet-externref") (param i32) (param externref) (result externref)`},
 	}
 	for _, site := range sites {
-		raw, err := os.ReadFile(filepath.Join("../../tests/spec-v2/test/core", site.file))
+		raw, err := os.ReadFile(filepath.Join("../../tests/conformance/spec-v2/test/core", site.file))
 		if err != nil {
 			t.Skipf("Release 2 fixture unavailable: %v", err)
 		}

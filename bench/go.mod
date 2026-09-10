@@ -1,4 +1,4 @@
-module wagobench
+module github.com/wago-org/wago/bench
 
 go 1.22.0
 
@@ -10,9 +10,6 @@ require (
 	github.com/wago-org/wasi v0.2.1
 )
 
-require (
-	github.com/JairusSW/wago-emscripten v0.4.1
-	golang.org/x/sys v0.30.0 // indirect
-)
+require golang.org/x/sys v0.30.0 // indirect
 
 replace github.com/wago-org/wago => ../

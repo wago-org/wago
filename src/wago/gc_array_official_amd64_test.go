@@ -17,7 +17,7 @@ import (
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const stagedGCArrayDeltaPath = "tests/spec-v3-staged-gc-array.json"
+const stagedGCArrayDeltaPath = "tests/conformance/baselines/spec-v3-staged-gc-array.json"
 
 type stagedGCArrayClass uint8
 

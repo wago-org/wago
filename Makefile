@@ -4,7 +4,8 @@
 #
 #   make lint        gofmt + generate sync + vet + staticcheck (host, no act)
 #   make docs-check  local Markdown paths and anchors           (host, no act)
-#   make test        go build + go test                         (host, no act)
+#   make test        unit/integration tests + quick corpus      (host, no act)
+#   make test-all    tests + corpus + spec suites + fuzzing     (host, no act)
 #   make test-concurrency  seeded runtime concurrency harness   (host, no act)
 #   make ci          replay the whole workflow in Docker via act
 #   make bench       benchmark suite (BENCH=<regex> to filter)  (host)
@@ -23,14 +24,19 @@ GENERATED := wago.go schema.json
 BENCHTIME ?= 1s
 COUNT     ?= 1
 BENCH_RUN ?= bench/.bench-run.txt
-BENCH_ISA ?= 0
+CORPUS    ?= quick
+BENCH     ?= all
+FUZZTIME  ?= 5s
 STARSHINE_WASM ?=
 # Per-engine -bench filters. wago = the stage suite + the _wago comparisons;
 # wazero = every benchmark carrying "azero" (BenchmarkWazero* and *_wazero).
-WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Exec)$$|_wago$$
+WAGO_BENCH_RE   ?= ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate|Exec|CommandExec)$$|_wago$$
 WAZERO_BENCH_RE ?= [Ww]azero
-BENCH_ISA_GO_FLAG     := $(if $(filter 1 true yes,$(BENCH_ISA)),-wago.bench.isa,)
-BENCH_ISA_BENCHPUB_FLAG := $(if $(filter 1 true yes,$(BENCH_ISA)),-isa,)
+BENCH_RE_all      := .
+BENCH_RE_pipeline := ^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate)$$
+BENCH_RE_compile  := ^Benchmark(Decode|Validate|Compile|CompileFull)$$
+BENCH_RE_exec     := ^Benchmark(Exec|CommandExec)$$
+BENCH_RE          := $(or $(BENCH_RE_$(BENCH)),$(BENCH))
 # Where `make cover` writes the coverage profile, and where `make card` collects
 # section fragments / writes the assembled PR card.
 COVERPROFILE ?= coverage.out
@@ -99,7 +105,10 @@ docs-check: ## Validate local paths and anchors in tracked Markdown files
 	go run ./tests/tools/docs-check
 
 .PHONY: test
-test: ## Build and run the test suite (host)
+test: test-unit test-corpus ## Run ordinary tests and the quick correctness corpus
+
+.PHONY: test-unit
+test-unit: ## Build and run unit and integration tests (without external spec suites)
 	go build ./...
 	go build -tags wago_runtime ./cli/...
 	go test -count=1 ./...
@@ -107,9 +116,12 @@ test: ## Build and run the test suite (host)
 	tests/scripts/build-release-assets.sh
 	tests/scripts/release-qualification.sh
 
+.PHONY: test-all
+test-all: test-unit test-corpus-all test-spec test-fuzz ## Run every correctness suite
+
 .PHONY: test-concurrency
 test-concurrency: ## Run the deterministic runtime concurrency harness (WAGO_CONCURRENCY_SEED=...)
-	go test -count=1 -run '^TestRuntimeConcurrency' ./tests/runtimeconcurrency
+	go test -count=1 -run '^TestRuntimeConcurrency' ./tests/integration/runtimeconcurrency
 
 ENGINE_FUZZ_ARGS ?=
 
@@ -150,9 +162,9 @@ bench-starshine: ## Benchmark Starshine compile, cold link/JIT, compile+link, an
 	WAGO_STARSHINE_SMOKE_WASM="$(STARSHINE_WASM)" go test ./src/wago -run '^$$' -bench '^BenchmarkMoonBitStarshineWasmGC' -benchmem -count $(COUNT) -benchtime $(BENCHTIME)
 
 .PHONY: test-guard
-test-guard: ## Guard-page (signals-based) tests: full public-API suite (incl. the SIGSEGV fault->trap path) + in-bounds differential
+test-guard: ## Guard-page tests: public API plus exact corpus oracles in explicit and signal modes
 	go test -count=1 -tags wago_guardpage ./src/wago/
-	cd bench && go test -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+	cd bench && go test -count=1 -tags wago_guardpage -run '^(TestCorpus|TestJsonAsGuardCorrect)$$' ./suite -args -wago.corpus='$(CORPUS)'
 
 .PHONY: test-native-arm64
 test-native-arm64: ## Native arm64 gate (run locally on your Mac): the checks CI used to run on the macOS/arm64 runner
@@ -161,13 +173,27 @@ test-native-arm64: ## Native arm64 gate (run locally on your Mac): the checks CI
 	WAGO_CORPUS_TIMEOUT=20s $(MAKE) test-corpus
 
 .PHONY: test-corpus
-test-corpus: ## Corpus pipeline + differential execution in parent/child processes (WAGO_CORPUS_TIMEOUT=15s)
-	cd bench && go test -count=1 -run '^TestCorpus$$' .
-	cd bench && go test -count=1 -tags wago_guardpage -run '^TestCorpus$$' .
+test-corpus: ## Corpus pipeline + exact-oracle execution (CORPUS=quick|all|tag:<tag>|id[,id])
+	cd bench && go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns)$$' ./suite -args -wago.corpus='$(CORPUS)'
+
+.PHONY: test-corpus-all
+test-corpus-all: ## Run every curated corpus correctness case
+	$(MAKE) test-corpus CORPUS=all
+
+.PHONY: corpus-build-polybench
+corpus-build-polybench: ## Rebuild 29 portable PolyBench/C kernels (WASI_SDK=/opt/wasi-sdk)
+	WASI_SDK='$(WASI_SDK)' corpus/build/polybench.sh
 
 .PHONY: test-semantic-corpus
-test-semantic-corpus: ## Semantic corpus: real programs checked against exact oracles (tests/corpora)
-	go test -count=1 ./tests/semanticcorpus
+test-semantic-corpus: ## Semantic corpus: real programs checked against exact oracles
+	cd bench && go test -count=1 ./internal/semanticcorpus
+
+.PHONY: test-fuzz
+test-fuzz: ## Run bounded fuzzing gates (FUZZTIME=5s)
+	go test ./tests/support/regressioncorpus -run '^$$' -fuzz '^FuzzValidateRelativePathAndRustScannerDoNotPanic$$' -fuzztime='$(FUZZTIME)'
+	go test ./tests/tools/regression-corpus -run '^$$' -fuzz '^FuzzNormalizeWABTJSONDoesNotPanic$$' -fuzztime='$(FUZZTIME)'
+	go test ./src/wago -run '^$$' -fuzz '^FuzzSpecTrapMatchingDoesNotPanic$$' -fuzztime='$(FUZZTIME)'
+	go test ./src/core/compiler/wasm -run '^$$' -fuzz '^FuzzDecodeValidateByteBackedDifferentialGenerated$$' -fuzztime='$(FUZZTIME)'
 
 REGRESSION_UPSTREAM ?= $(CURDIR)/.tmp/regression-corpus-upstream
 WAST2JSON ?= wast2json
@@ -185,15 +211,15 @@ regression-stress: ## Repeat lifecycle tests, optimizer and guard modes, and fuz
 	tests/scripts/regression-stress.sh
 
 # Run the WebAssembly spec suites as native execution oracles for the x64
-# backend. The preserved MVP baseline is WebAssembly/testsuite at tests/spec;
+# backend. The preserved MVP baseline is WebAssembly/testsuite at tests/conformance/spec-v1;
 # Release 2.0 and Release 3.0 are independently pinned from WebAssembly/spec at
-# tests/spec-v2 and tests/spec-v3; both official core corpora live under
+# tests/conformance/spec-v2 and tests/conformance/spec-v3; both official core corpora live under
 # test/core. Release 3 bootstraps the checksum-pinned WABT tool below; older
 # suites retain their existing PATH behavior. Env paths are absolute because
 # `go test` runs in the package directory.
-SPEC1_DIR = $(CURDIR)/tests/spec
-SPEC2_DIR = $(CURDIR)/tests/spec-v2
-SPEC3_DIR = $(CURDIR)/tests/spec-v3
+SPEC1_DIR = $(CURDIR)/tests/conformance/spec-v1
+SPEC2_DIR = $(CURDIR)/tests/conformance/spec-v2
+SPEC3_DIR = $(CURDIR)/tests/conformance/spec-v3
 define run-spec
 	@command -v wast2json >/dev/null 2>&1 || { echo "wast2json (wabt) not on PATH; install wabt (e.g. apt-get install wabt)"; exit 1; }
 	@test -f $(2)/$(3) || git submodule update --init $(4)
@@ -202,12 +228,12 @@ endef
 
 .PHONY: spec1
 spec1: ## Run the WebAssembly 1.0 (MVP core) spec suite against x64 (needs wast2json)
-	$(call run-spec,1.0,$(SPEC1_DIR),i32.wast,tests/spec)
+	$(call run-spec,1.0,$(SPEC1_DIR),i32.wast,tests/conformance/spec-v1)
 
 .PHONY: spec2
 spec2: ## Run the pinned official WebAssembly 2.0 core suite against x64 (needs wast2json)
 	@command -v wast2json >/dev/null 2>&1 || { echo "wast2json (wabt) not on PATH; install wabt (e.g. apt-get install wabt)"; exit 1; }
-	@test -f $(SPEC2_DIR)/test/core/i32.wast || git submodule update --init tests/spec-v2
+	@test -f $(SPEC2_DIR)/test/core/i32.wast || git submodule update --init tests/conformance/spec-v2
 	go test -count=1 -run '^TestCoreV2Validation$$' -v ./src/core/compiler/wasm/
 	go test -count=1 -run '^TestCoreV2SpecExecution$$' -v ./src/wago/
 
@@ -224,7 +250,7 @@ spec3: wabt spec-interpreter ## Run the pinned official WebAssembly 3.0 core sui
 	@wast2json="$$(scripts/bootstrap-wabt.sh --print-path)"; \
 		interpreter="$$(scripts/bootstrap-spec-interpreter.sh --print-path)"; \
 		interpreter_revision="$$(scripts/bootstrap-spec-interpreter.sh --print-revision)"; \
-		test -f $(SPEC3_DIR)/test/core/i32.wast || git submodule update --init tests/spec-v3; \
+		test -f $(SPEC3_DIR)/test/core/i32.wast || git submodule update --init tests/conformance/spec-v3; \
 		WAGO_WAST2JSON="$$wast2json" WAGO_WABT_VERSION=1.0.41 \
 		WAGO_SPEC_INTERPRETER="$$interpreter" WAGO_SPEC_INTERPRETER_REVISION="$$interpreter_revision" \
 		WAGO_SPECTEST_DIR=$(SPEC3_DIR) WAGO_SPEC_VERSION=3.0 \
@@ -235,22 +261,28 @@ spec3-signals: wabt spec-interpreter ## Run zero-gap Core 3 with linux/amd64 sig
 	@wast2json="$$(scripts/bootstrap-wabt.sh --print-path)"; \
 		interpreter="$$(scripts/bootstrap-spec-interpreter.sh --print-path)"; \
 		interpreter_revision="$$(scripts/bootstrap-spec-interpreter.sh --print-revision)"; \
-		test -f $(SPEC3_DIR)/test/core/i32.wast || git submodule update --init tests/spec-v3; \
+		test -f $(SPEC3_DIR)/test/core/i32.wast || git submodule update --init tests/conformance/spec-v3; \
 		WAGO_BOUNDS=signals WAGO_WAST2JSON="$$wast2json" WAGO_WABT_VERSION=1.0.41 \
 		WAGO_SPEC_INTERPRETER="$$interpreter" WAGO_SPEC_INTERPRETER_REVISION="$$interpreter_revision" \
 		WAGO_SPECTEST_DIR=$(SPEC3_DIR) WAGO_SPEC_VERSION=3.0 \
 		go test -tags wago_guardpage -count=1 -run TestSpecSuiteExec -v ./src/wago/
 
 .PHONY: spec3-baseline
-spec3-baseline: ## Refresh tests/spec-v3-baseline.json and return the spec3 status
+spec3-baseline: ## Refresh tests/conformance/baselines/spec-v3-baseline.json and return the spec3 status
 	@scripts/spec3-baseline.sh
 
 .PHONY: simd
 simd: ## Run the official SIMD proposal execution suite (needs wast2json)
-	$(call run-spec,simd,$(SPEC1_DIR),proposals/simd/simd_address.wast,tests/spec)
+	$(call run-spec,simd,$(SPEC1_DIR),proposals/simd/simd_address.wast,tests/conformance/spec-v1)
 
 .PHONY: spec
 spec: spec1 spec2 spec3 ## Run the WebAssembly spec suite for all versions
+
+.PHONY: test-spec test-spec-v1 test-spec-v2 test-spec-v3
+test-spec: spec ## Run all pinned WebAssembly spec suites
+test-spec-v1: spec1 ## Run WebAssembly 1.0 conformance
+test-spec-v2: spec2 ## Run WebAssembly 2.0 conformance
+test-spec-v3: spec3 ## Run WebAssembly 3.0 conformance
 
 TINYGO ?= tinygo
 # wago runs native code on a dedicated foreign stack. TinyGo's conservative
@@ -320,7 +352,7 @@ cover: ## Run all five public gates with merged cross-package coverage
 verify-public: ## Run/count SIMD, spec1, spec2, normal, and guard-page gates, then merge coverage
 	scripts/verification.sh
 
-# card-fragments produces the go-only section fragments (coverage/tests/spec).
+# card-fragments produces the go-only section fragments (coverage/tests/conformance/spec-v1).
 # The build-size fragment is produced separately (scripts/size-card.sh) since it
 # needs TinyGo — in CI it runs as its own parallel job. `make card` does all of it
 # locally for a full preview.
@@ -347,31 +379,37 @@ ci: ## Replay the full CI workflow locally in Docker (act)
 # mode; use bench-noguard for explicit-bounds numbers.
 .PHONY: bench
 bench: ## Run all engine benches (wago + wazero) under guard-page bounds and write the capture (bench/.bench-run.txt)
-	{ echo "# git $(HEAD_HASH)"; (cd bench && WAGO_BOUNDS=signals go test -run '^$$' -tags wago_guardpage -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .); } | tee $(BENCH_RUN)
+	{ echo "# git $(HEAD_HASH)"; (cd bench && WAGO_BOUNDS=signals go test -run '^$$' -tags wago_guardpage -bench '$(BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 ./suite -args -wago.corpus='$(CORPUS)'); } | tee $(BENCH_RUN)
+
+.PHONY: bench-all bench-check
+bench-all: ## Run every curated benchmark (BENCH=all by default)
+	$(MAKE) bench CORPUS=all
+bench-check: ## Execute each selected benchmark once to verify benchmark wiring
+	cd bench && go test -run '^$$' -bench '$(BENCH_RE)' -count 1 -benchtime 1x -timeout 0 ./suite -args -wago.corpus='$(CORPUS)'
 
 .PHONY: bench-noguard
 bench-noguard: ## Run the full suite under explicit bounds and write the capture
-	{ echo "# git $(HEAD_HASH)"; (cd bench && go test -run '^$$' -bench . -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .); } | tee $(BENCH_RUN)
+	{ echo "# git $(HEAD_HASH)"; (cd bench && go test -run '^$$' -bench '$(BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 ./suite -args -wago.corpus='$(CORPUS)'); } | tee $(BENCH_RUN)
 
 .PHONY: bench-wago
 bench-wago: ## Run only the wago benchmarks
-	cd bench && go test -run '^$$' -bench '$(WAGO_BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .
+	cd bench && go test -run '^$$' -bench '$(WAGO_BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 ./suite -args -wago.corpus='$(CORPUS)'
 
 .PHONY: bench-jit
 bench-jit: ## Benchmark railshot JIT edge cases and corpus raw/end-to-end compilation
 	go test ./src/core/compiler/backend/railshot/amd64 -run '^$$' -bench '^BenchmarkRailshotCompile' -benchmem -count $(COUNT) -benchtime $(BENCHTIME)
-	cd bench && go test -run '^$$' -bench '^BenchmarkCompile(Full)?$$' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 .
+	cd bench && go test -run '^$$' -bench '^BenchmarkCompile(Full)?$$' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 ./suite -args -wago.corpus='$(CORPUS)'
 
 .PHONY: bench-wazero
 bench-wazero: ## Run only the wazero benchmarks
-	cd bench && go test -run '^$$' -bench '$(WAZERO_BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 $(BENCH_ISA_GO_FLAG) .
+	cd bench && go test -run '^$$' -bench '$(WAZERO_BENCH_RE)' -benchmem -count $(COUNT) -benchtime $(BENCHTIME) -timeout 0 ./suite -args -wago.corpus='$(CORPUS)'
 
 # Build charts from the last capture into bench/out — no re-run, no publish.
 # Uses whatever capture exists.
 .PHONY: bench-chart
 bench-chart: ## Build charts from the last capture into bench/out
 	@if [ ! -f "$(BENCH_RUN)" ]; then echo "make: no capture at $(BENCH_RUN); run 'make bench'" >&2; exit 1; fi
-	cd bench && go run ./cmd/benchpub -in $(notdir $(BENCH_RUN)) $(BENCH_ISA_BENCHPUB_FLAG) -out out
+	cd bench && go run ./cmd/benchpub -in $(notdir $(BENCH_RUN)) -out out
 	@echo "make: charts written to bench/out/charts/*.svg"
 
 .PHONY: bench-website

@@ -2,7 +2,7 @@
 set -u
 
 repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-out=${1:-"$repo/tests/spec-v3-baseline.json"}
+out=${1:-"$repo/tests/conformance/baselines/spec-v3-baseline.json"}
 mkdir -p "$repo/.validation"
 log="$repo/.validation/spec3-baseline.log"
 

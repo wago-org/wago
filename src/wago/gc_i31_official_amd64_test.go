@@ -17,7 +17,7 @@ import (
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const stagedGCI31DeltaPath = "tests/spec-v3-staged-gc-i31.json"
+const stagedGCI31DeltaPath = "tests/conformance/baselines/spec-v3-staged-gc-i31.json"
 
 type stagedGCI31Class uint8
 

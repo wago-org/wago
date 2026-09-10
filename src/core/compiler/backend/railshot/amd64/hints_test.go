@@ -9,7 +9,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func TestLocalEventTapeScansStructuredLocals(t *testing.T) {
@@ -45,9 +45,9 @@ func TestFuncHintsSize(t *testing.T) {
 }
 
 func TestParallelModuleHintsMatchSerialDetailedResidency(t *testing.T) {
-	for _, name := range []string{"json-as-simd.wasm", "lua.wasm", "sqlite3.wasm"} {
+	for _, name := range []string{"assemblyscript/json-as-simd.wasm", "semantic/coremark/coremark.wasm"} {
 		t.Run(name, func(t *testing.T) {
-			m := readParallelTestModule(t, "../../../../../../bench/corpus/"+name)
+			m := readParallelTestModule(t, "../../../../../../corpus/workloads/"+name)
 			policy := currentCodegenPolicy()
 			serial, serialSidecar, serialGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, nil, false, policy, true)
 			if err != nil {
@@ -78,9 +78,9 @@ func TestParallelModuleHintsMatchSerialDetailedResidency(t *testing.T) {
 }
 
 func TestParallelModuleHintsMatchSerial(t *testing.T) {
-	for _, name := range []string{"json-as-simd.wasm", "lua.wasm", "sqlite3.wasm"} {
+	for _, name := range []string{"assemblyscript/json-as-simd.wasm", "semantic/coremark/coremark.wasm"} {
 		t.Run(name, func(t *testing.T) {
-			m := readParallelTestModule(t, "../../../../../../bench/corpus/"+name)
+			m := readParallelTestModule(t, "../../../../../../corpus/workloads/"+name)
 			policy := currentCodegenPolicy()
 			serial, serialSidecar, serialGlobals, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, nil, false, policy)
 			if err != nil {

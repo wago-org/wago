@@ -19,7 +19,7 @@ import (
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const stagedGCArrayInitDeltaPath = "tests/spec-v3-staged-gc-array-init.json"
+const stagedGCArrayInitDeltaPath = "tests/conformance/baselines/spec-v3-staged-gc-array-init.json"
 
 var stagedGCArrayInitOfficialExecution = map[string]bool{
 	"gc/array_init_data": true,

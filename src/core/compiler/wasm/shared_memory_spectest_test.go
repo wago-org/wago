@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wago-org/wago/tests/spectest"
+	"github.com/wago-org/wago/tests/conformance/spectest"
 )
 
 func TestRelease2MalformedSharedMemorySite(t *testing.T) {

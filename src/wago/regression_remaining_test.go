@@ -16,7 +16,7 @@ import (
 
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 	coreruntime "github.com/wago-org/wago/src/core/runtime"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // These tests adapt portable runtime and compiler regressions from Regression's
@@ -486,7 +486,7 @@ func regressionProcessResourceCounts() (fds, mappings int) {
 
 func compileRegressionDirectFixture(t *testing.T, fixture string, module int) *Compiled {
 	t.Helper()
-	path := filepath.Join("../../tests/regressions/runtime/core", fixture, fmt.Sprintf("module.%d.wasm", module))
+	path := filepath.Join("../../tests/corpus/regressions/runtime/core", fixture, fmt.Sprintf("module.%d.wasm", module))
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

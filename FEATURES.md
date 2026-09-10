@@ -44,7 +44,7 @@ describes the mandatory WebAssembly Core 3.0 scope.
   systems.
 - The pinned 258-file suite passes on linux/amd64 and under Linux/arm64 QEMU:
   **2,226 modules and 58,038 assertions passed**, with zero failures, skips, or
-  gap categories. `tests/spec-v3-baseline.json` is the machine-readable source
+  gap categories. `tests/conformance/baselines/spec-v3-baseline.json` is the machine-readable source
   of truth. Native Linux/Darwin arm64 runs are mandatory CI gates.
 - Linux/amd64 signal-backed builds also admit every Core 3 family and pass the
   same suite. Indexed nonzero memories keep explicit directory bounds checks,

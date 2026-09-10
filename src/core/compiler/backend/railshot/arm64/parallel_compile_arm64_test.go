@@ -64,16 +64,14 @@ func TestCompactFuncResultRangeArm64(t *testing.T) {
 }
 
 func TestCompileWorkersDeterministicArm64(t *testing.T) {
-	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
+	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
 	for _, name := range []string{
-		"tiny.wasm",
-		"fib_rec.wasm",      // recursion and direct-call relocations
-		"dispatch.wasm",     // call_indirect
-		"many_funcs.wasm",   // enough functions to exercise every worker
-		"globals.wasm",      // mutable globals
-		"memory_tree.wasm",  // memory plus recursion
-		"branches.wasm",     // structured control flow
-		"json-as-simd.wasm", // SIMD, memory, globals, calls, and auto-inlining
+		"synthetic/tiny.wasm",
+		"synthetic/fib_rec.wasm",           // recursion and direct-call relocations
+		"synthetic/dispatch.wasm",          // call_indirect
+		"synthetic/many_funcs.wasm",        // enough functions to exercise every worker
+		"synthetic/memory_tree.wasm",       // memory plus recursion
+		"assemblyscript/json-as-simd.wasm", // SIMD, memory, globals, calls, and auto-inlining
 	} {
 		t.Run(name, func(t *testing.T) {
 			m := readParallelTestModuleArm64(t, filepath.Join(corpus, name))
@@ -92,8 +90,8 @@ func TestCompileWorkersDeterministicArm64(t *testing.T) {
 }
 
 func TestCompileWorkersSizeSharedAdaptersDeterministicArm64(t *testing.T) {
-	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
-	for _, name := range []string{"many_funcs.wasm", "json-as-simd.wasm"} {
+	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
+	for _, name := range []string{"synthetic/many_funcs.wasm", "assemblyscript/json-as-simd.wasm"} {
 		t.Run(name, func(t *testing.T) {
 			m := readParallelTestModuleArm64(t, filepath.Join(corpus, name))
 			want, wantStats := compileWorkerTestModuleCompactArm64(t, m, 1, true)
@@ -134,8 +132,8 @@ func equalWorkerModuleStatsARM64(a, b *ModuleStats) bool {
 }
 
 func BenchmarkCompileModuleCompactionArm64(b *testing.B) {
-	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "bench", "corpus")
-	for _, name := range []string{"many_funcs.wasm", "json-as.wasm"} {
+	corpus := filepath.Join("..", "..", "..", "..", "..", "..", "corpus", "workloads")
+	for _, name := range []string{"synthetic/many_funcs.wasm", "assemblyscript/json-as.wasm"} {
 		m := readParallelTestModuleArm64(b, filepath.Join(corpus, name))
 		b.Run(name, func(b *testing.B) {
 			for _, compact := range []bool{false, true} {

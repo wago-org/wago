@@ -7,7 +7,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	x86 "github.com/wago-org/wago/src/core/encoder/amd64"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // TestBorrowedLocalSurvivesDeferredCompareLoad is the minimized LZ4 regression.

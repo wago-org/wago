@@ -133,7 +133,7 @@ under standard Go; callers must retain their own length limits.
 ### WebAssembly Conformance
 
 [SPECTEST.md](SPECTEST.md) records results against the official WebAssembly
-testsuite. The WebAssembly 1.0 suite is vendored as the `tests/spec` submodule
+testsuite. The WebAssembly 1.0 suite is vendored as the `tests/conformance/spec-v1` submodule
 at a pre-reference-types revision. `TestSpecExec` runs its `assert_return` and
 `assert_trap` assertions in isolated subprocesses. It needs the checked-out
 submodule and WABT's `wast2json` on `PATH`.
@@ -142,7 +142,7 @@ submodule and WABT's `wast2json` on `PATH`.
 the WebAssembly 1.0 report when conformance changes:
 
 ```bash
-git submodule update --init tests/spec
+git submodule update --init tests/conformance/spec-v1
 WAGO_SPECTEST_WRITE=SPECTEST.md go test . -run TestSpecExec
 ```
 
@@ -150,7 +150,7 @@ The report's `note` column gives the first blocker for each file. A missing
 opcode can block a whole module. Commit the regenerated report with the
 conformance change.
 
-The pinned WebAssembly 2.0 wrappers need WABT and `tests/spec-v2`. Run
+The pinned WebAssembly 2.0 wrappers need WABT and `tests/conformance/spec-v2`. Run
 `make spec2` when you change decoding, validation, linking, or execution
 semantics.
 

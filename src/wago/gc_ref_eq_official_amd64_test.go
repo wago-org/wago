@@ -18,7 +18,7 @@ import (
 	corewasm "github.com/wago-org/wago/src/core/compiler/wasm"
 )
 
-const stagedGCRefEqDeltaPath = "tests/spec-v3-staged-gc-ref-eq.json"
+const stagedGCRefEqDeltaPath = "tests/conformance/baselines/spec-v3-staged-gc-ref-eq.json"
 const stagedGCRefEqGate = "eqref table identity with rooted struct/array allocation"
 
 type stagedGCRefEqLeaderPin struct {

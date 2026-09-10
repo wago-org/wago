@@ -20,7 +20,7 @@ func TestRuntimeRegressionPortRustFannkuchExecution(t *testing.T) {
 	if runRegressionIsolatedPortTest(t) {
 		return
 	}
-	data, err := os.ReadFile("../../tests/regressions/runtime/core/rust_fannkuch/commands.0.wasm")
+	data, err := os.ReadFile("../../tests/corpus/regressions/runtime/core/rust_fannkuch/commands.0.wasm")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func runRegressionEmbenchen(t *testing.T, name string) (int32, []byte) {
 	t.Helper()
 	rt := wago.NewRuntime()
 	t.Cleanup(func() { _ = rt.Close() })
-	data, err := os.ReadFile("../../tests/regressions/runtime/core/" + name + "/commands.1.wasm")
+	data, err := os.ReadFile("../../tests/corpus/regressions/runtime/core/" + name + "/commands.1.wasm")
 	if err != nil {
 		t.Fatal(err)
 	}
