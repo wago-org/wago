@@ -33,7 +33,7 @@ func TestCmdBootstrapExecutesNativeInstaller(t *testing.T) {
 	}
 	tmp := t.TempDir()
 	installer := filepath.Join(tmp, "wago-installer.exe")
-	command := exec.Command("go", "build", "-o", installer, "./cli/installer")
+	command := exec.Command("go", "build", "-o", installer, "./cli/wago-installer")
 	command.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("build installer: %v\n%s", err, output)

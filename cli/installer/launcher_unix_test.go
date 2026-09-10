@@ -1,6 +1,6 @@
 //go:build !windows
 
-package main
+package installer
 
 import (
 	"os"
@@ -14,7 +14,7 @@ import (
 func TestInstalledLauncherAliasDispatches(t *testing.T) {
 	if os.Getenv("WAGO_TEST_LAUNCHER_ALIAS") == "1" {
 		os.Args = append(os.Args[:1], "manager-probe")
-		main()
+		Main(version)
 		t.Fatal("launcher returned without dispatch")
 	}
 	root := t.TempDir()

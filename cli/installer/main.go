@@ -1,4 +1,5 @@
-package main
+// Package installer implements the Wago installation program.
+package installer
 
 import (
 	"context"
@@ -37,7 +38,11 @@ type radioItem struct {
 
 var version = "dev"
 
-func main() {
+// Main runs the installer with the supplied release identity.
+func Main(embeddedVersion string) {
+	if embeddedVersion != "" {
+		version = embeddedVersion
+	}
 	executable, err := managedrelease.ExecutablePath()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

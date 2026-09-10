@@ -257,7 +257,9 @@ src/wago/                         public API implementation (package wago)
   import_attachments.go           imported owner attachment and root retention
 wago.go                           generated root facade (re-exports src/wago)
 internal/genfacade/               generator for wago.go (+ up-to-date test)
-cli/wago/                         CLI entry point and command implementation
+cli/wago/                         manager and runtime command entry point
+cli/wago-installer/               installer command entry point
+cli/installer/                    shared installer implementation
 src/core/compiler/wasm/           decoder + validator (front end)
 src/core/compiler/backend/railshot/  direct native codegen (Valent-Block)
   amd64/                            x86-64 selection, registers, ABI, encoding
