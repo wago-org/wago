@@ -12,6 +12,13 @@
   report its release `target_commitish` as `main` when the tag already exists.
 - `latest` resolves the newest stable `vMAJOR.MINOR.PATCH` release.
 
+The Go-installable command is a separate module at
+`github.com/wago-org/wago/cli/wago-installer`. Each qualified beta or stable
+release also creates the matching immutable
+`cli/wago-installer/<version>` tag. This keeps `go install ...@latest`
+independent of legacy runtime tags. The nested module's Wago requirement and
+the repository workspace replacement must equal the version being released.
+
 The canary workflow builds automatically after main CI succeeds. Artifacts are
 named `canary-<40-character-commit-sha>-<os>-<arch>` and retained for 90 days.
 Manager and runtime installation

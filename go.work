@@ -1,0 +1,8 @@
+go 1.22
+
+use (
+	.
+	./cli/wago-installer
+)
+
+replace github.com/wago-org/wago v0.1.0-beta.8 => .

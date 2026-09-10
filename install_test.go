@@ -293,15 +293,26 @@ func TestWindowsBootstrapUsesPowerShellOnly(t *testing.T) {
 }
 
 func TestGoInstallBuildsNamedInstallerCommand(t *testing.T) {
+	module := exec.Command("go", "list", "-m", "github.com/wago-org/wago/cli/wago-installer")
+	module.Dir = "cli/wago-installer"
+	output, err := module.CombinedOutput()
+	if err != nil {
+		t.Fatalf("list wago-installer module: %v\n%s", err, output)
+	}
+	if got, want := strings.TrimSpace(string(output)), "github.com/wago-org/wago/cli/wago-installer"; got != want {
+		t.Fatalf("wago-installer module = %q, want %q", got, want)
+	}
+
 	bin := t.TempDir()
-	command := exec.Command("go", "install", "./cli/wago-installer")
+	command := exec.Command("go", "install", ".")
+	command.Dir = "cli/wago-installer"
 	command.Env = append(os.Environ(), "GOBIN="+bin)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("go install wago-installer: %v\n%s", err, output)
 	}
 
 	executable := filepath.Join(bin, "wago-installer")
-	output, err := exec.Command(executable, "--version").CombinedOutput()
+	output, err = exec.Command(executable, "--version").CombinedOutput()
 	if err != nil || strings.TrimSpace(string(output)) != "dev" {
 		t.Fatalf("installed wago-installer version = %q, %v; want dev", output, err)
 	}

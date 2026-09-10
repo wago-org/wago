@@ -44,6 +44,12 @@ Run `just install` to install the manager built from the current checkout's
 runtime command. The optional hook formats staged Go files. Review and stage
 its changes before you commit again.
 
+`cli/wago-installer` is a nested Go module so its `@latest` version is not
+selected from Wago runtime tags. Before a beta or stable release, set its Wago
+requirement and the matching `go.work` replacement to the release version. The
+release workflow checks both values and publishes
+`cli/wago-installer/<version>` with the qualified Wago release tag.
+
 The benchmark suite is a separate Go module:
 
 ```bash
