@@ -1,6 +1,26 @@
 package main
 
-import "testing"
+import (
+	"regexp"
+	"testing"
+)
+
+func TestSuiteRegexIncludesPublishedBoundaryBenchmarks(t *testing.T) {
+	re := regexp.MustCompile(suiteRegex)
+	for _, name := range []string{
+		"BenchmarkExecCallOverhead_wago",
+		"BenchmarkExecCallOverhead_wazero",
+		"BenchmarkExecHostRoundtrip_wago",
+		"BenchmarkExecHostRoundtrip_wazero",
+	} {
+		if !re.MatchString(name) {
+			t.Errorf("suiteRegex does not match %s", name)
+		}
+	}
+	if re.MatchString("BenchmarkExecGlobalGet_wago") {
+		t.Fatal("suiteRegex unexpectedly includes an unpublished microbenchmark")
+	}
+}
 
 func TestParseRunAcceptsOptionalProcessorSuffix(t *testing.T) {
 	const input = `goos: linux

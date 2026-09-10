@@ -39,6 +39,8 @@ test("benchmark regeneration only replaces the benchmark widget", async () => {
       "Instantiate/many_funcs": { ns: 6 }, "WazeroInstantiate/many_funcs": { ns: 9 },
       "Instantiate/json-as": { ns: 7 }, "WazeroInstantiate/json-as": { ns: 14 },
       "Exec/tiny.add": { ns: 3 }, "DraglineExec/tiny.add": { ns: 2 }, "WazeroExec/tiny.add": { ns: 4 },
+      "ExecCallOverhead_wago": { ns: 11 }, "ExecCallOverhead_wazero": { ns: 22 },
+      "ExecHostRoundtrip_wago": { ns: 33 }, "ExecHostRoundtrip_wazero": { ns: 66 },
       "Exec/nbody.step": { ns: 20 }, "WazeroExec/nbody.step": { ns: 30 },
       "Exec/json-as.deserializeN": { ns: 25 }, "WazeroExec/json-as.deserializeN": { ns: 50 },
       "Exec/json-as-simd.deserializeN": { ns: 18 }, "WazeroExec/json-as-simd.deserializeN": { ns: 36 },
@@ -189,10 +191,12 @@ function assertDOMContract(html) {
     const generalStart = html.indexOf(`id="perf-${arch}-panel-general"`);
     const generalEnd = html.indexOf(`id="perf-${arch}-panel-compile"`, generalStart);
     const general = html.slice(generalStart, generalEnd);
-    assert.equal(matches(general, /data-engine-row/g), 8);
-    for (const label of ["Machine code", "Application commands", "SIMD execution"]) {
+    assert.equal(matches(general, /data-engine-row/g), 10);
+    for (const label of ["Machine code", "Host → Wasm call", "Wasm → host → Wasm", "Application commands", "SIMD execution"]) {
       assert.equal(matches(general, new RegExp(`<span class="vs__label">${label}</span>`, "g")), 1);
     }
+    assert.ok(general.includes('<span class="vs__sub">public entry</span>'));
+    assert.ok(general.includes('<span class="vs__sub">import call and return</span>'));
 	const machineCodeStart = general.indexOf('<span class="vs__label">Machine code</span>');
 	const machineCodeEnd = general.indexOf('<div class="vs__row" data-engine-row>', machineCodeStart);
 	const machineCode = general.slice(machineCodeStart, machineCodeEnd);
