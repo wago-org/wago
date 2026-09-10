@@ -293,15 +293,29 @@ func isInstallerPathCommand(line string) bool {
 }
 
 func pathContains(parent, child string) bool {
+	parent = resolvedCleanupPath(parent)
+	child = resolvedCleanupPath(child)
 	relative, err := filepath.Rel(parent, child)
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func safeManagedPath(path string) bool {
-	clean := filepath.Clean(path)
+	clean := resolvedCleanupPath(path)
 	home, _ := os.UserHomeDir()
+	home = resolvedCleanupPath(home)
 	return clean != "" &&
 		clean != "." &&
 		clean != filepath.VolumeName(clean)+string(filepath.Separator) &&
 		(home == "" || clean != filepath.Clean(home))
+}
+
+func resolvedCleanupPath(path string) string {
+	if path == "" {
+		return ""
+	}
+	clean := filepath.Clean(path)
+	if resolved, err := filepath.EvalSymlinks(clean); err == nil {
+		return resolved
+	}
+	return clean
 }
