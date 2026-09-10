@@ -53,9 +53,22 @@ On Windows, in PowerShell:
 irm https://install.wago.sh/ps | iex
 ```
 
-These commands install the Wago manager and then install a runtime. See
-[Getting started](https://docs.wago.sh/getting-started) for other installation
-methods, release channels, and source builds.
+Or run the installer with Go:
+
+```sh
+go run github.com/wago-org/wago/cli/wago-installer@latest
+```
+
+To keep the installer command:
+
+```sh
+go install github.com/wago-org/wago/cli/wago-installer@latest
+wago-installer
+```
+
+These commands install the Wago manager. Run `wago version install` to install
+a runtime. See [Getting started](https://docs.wago.sh/getting-started) for other
+installation methods, release channels, and source builds.
 
 ## Run a module
 

@@ -495,7 +495,22 @@ func makeArtifactArchive(t *testing.T, files map[string][]byte) []byte {
 
 func buildInstaller(t *testing.T, target, goos, goarch string) {
 	t.Helper()
-	buildTarget(t, target, goos, goarch, "./cli/installer")
+	buildTarget(t, target, goos, goarch, "./cli/wago-installer")
+}
+
+func TestGoInstallBuildsNamedInstallerCommand(t *testing.T) {
+	bin := t.TempDir()
+	command := exec.Command("go", "install", "./cli/wago-installer")
+	command.Env = append(os.Environ(), "GOBIN="+bin)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("go install wago-installer: %v\n%s", err, output)
+	}
+
+	executable := filepath.Join(bin, "wago-installer")
+	output, err := exec.Command(executable, "--version").CombinedOutput()
+	if err != nil || strings.TrimSpace(string(output)) != "dev" {
+		t.Fatalf("installed wago-installer version = %q, %v; want dev", output, err)
+	}
 }
 
 func buildTarget(t *testing.T, target, goos, goarch, pkg string) {
