@@ -94,6 +94,42 @@ func TestPickerRightSelectsLeaf(t *testing.T) {
 	}
 }
 
+func TestPickerSkipsAndRejectsDisabledItems(t *testing.T) {
+	p := NewPicker("Pick", []Item{
+		{Label: "unavailable first", Value: "first", Disabled: true},
+		{Label: "available", Value: "available"},
+		{Label: "unavailable last", Value: "last", Disabled: true},
+	})
+	if got := p.Selected(); got != "available" {
+		t.Fatalf("initial selection = %q, want available", got)
+	}
+	p.apply(keyUp)
+	if got := p.Selected(); got != "available" {
+		t.Fatalf("up selected disabled item: %q", got)
+	}
+	p.apply(keyDown)
+	if got := p.Selected(); got != "available" {
+		t.Fatalf("down selected disabled item: %q", got)
+	}
+	if frame := p.frame(); strings.Count(frame, "◌") != 2 {
+		t.Fatalf("disabled rows are not rendered distinctly:\n%s", frame)
+	}
+
+	allDisabled := NewPicker("Pick", []Item{{
+		Label: "unavailable", Value: "no", Disabled: true,
+		Children: []Item{{Label: "hidden", Value: "hidden"}},
+	}})
+	if got := allDisabled.Selected(); got != "" {
+		t.Fatalf("disabled selection = %q, want empty", got)
+	}
+	if done, cancelled := allDisabled.apply(keyAccept); done || cancelled {
+		t.Fatalf("disabled accept = done %v, cancelled %v", done, cancelled)
+	}
+	if done, cancelled := allDisabled.apply(keyRight); done || cancelled || allDisabled.Depth() != 1 {
+		t.Fatalf("disabled browse = done %v, cancelled %v, depth %d", done, cancelled, allDisabled.Depth())
+	}
+}
+
 func TestPickerFramePaginatesAtWindowBoundary(t *testing.T) {
 	items := make([]Item, 25)
 	for i := range items {

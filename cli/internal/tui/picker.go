@@ -15,6 +15,7 @@ type Item struct {
 	MetaWidth   int
 	Description string
 	Value       string
+	Disabled    bool
 	Children    []Item
 	ChildCursor int
 	AcceptTitle string
@@ -37,7 +38,7 @@ type Picker struct {
 const pickerVisibleRows = 15
 
 func NewPicker(title string, items []Item) *Picker {
-	return &Picker{pages: []pickerPage{{title: title, items: items}}}
+	return &Picker{pages: []pickerPage{{title: title, items: items, cursor: pickerCursor(items, 0)}}}
 }
 
 func (p *Picker) page() *pickerPage {
@@ -48,21 +49,30 @@ func (p *Picker) apply(key selectKey) (done, cancelled bool) {
 	page := p.page()
 	switch key {
 	case keyUp:
-		if page.cursor > 0 {
-			page.cursor--
+		for cursor := page.cursor - 1; cursor >= 0; cursor-- {
+			if !page.items[cursor].Disabled {
+				page.cursor = cursor
+				break
+			}
 		}
 	case keyDown:
-		if page.cursor < len(page.items)-1 {
-			page.cursor++
+		for cursor := page.cursor + 1; cursor < len(page.items); cursor++ {
+			if !page.items[cursor].Disabled {
+				page.cursor = cursor
+				break
+			}
 		}
 	case keyRight:
 		if len(page.items) != 0 {
 			item := page.items[page.cursor]
+			if item.Disabled {
+				return false, false
+			}
 			if len(item.Children) != 0 {
 				p.pages = append(p.pages, pickerPage{
 					title:  page.title + " › " + item.Label,
 					items:  item.Children,
-					cursor: item.ChildCursor,
+					cursor: pickerCursor(item.Children, item.ChildCursor),
 				})
 			} else {
 				return p.accept(item)
@@ -88,10 +98,14 @@ func (p *Picker) apply(key selectKey) (done, cancelled bool) {
 }
 
 func (p *Picker) accept(item Item) (done, cancelled bool) {
+	if item.Disabled {
+		return false, false
+	}
 	if len(item.AcceptItems) != 0 {
 		p.pages = append(p.pages, pickerPage{
-			title: item.AcceptTitle,
-			items: item.AcceptItems,
+			title:  item.AcceptTitle,
+			items:  item.AcceptItems,
+			cursor: pickerCursor(item.AcceptItems, 0),
 		})
 		return false, false
 	}
@@ -114,12 +128,15 @@ func (p *Picker) Selected() string {
 	if len(page.items) == 0 {
 		return ""
 	}
+	if page.items[page.cursor].Disabled {
+		return ""
+	}
 	return page.items[page.cursor].Value
 }
 
 func (p *Picker) SetCursor(cursor int) {
 	page := p.page()
-	if cursor >= 0 && cursor < len(page.items) {
+	if cursor >= 0 && cursor < len(page.items) && !page.items[cursor].Disabled {
 		page.cursor = cursor
 	}
 }
@@ -165,7 +182,9 @@ func (p *Picker) frame() string {
 	for i := start; i < end; i++ {
 		item := page.items[i]
 		cursor, mark := "  ", "○"
-		if i == page.cursor {
+		if item.Disabled {
+			mark = ui.Dim("◌")
+		} else if i == page.cursor {
 			cursor, mark = ui.Cyan("› "), ui.Cyan("◉")
 		}
 		line := fmt.Sprintf("%s%s %-*s", cursor, mark, labelW, item.Label)
@@ -181,6 +200,9 @@ func (p *Picker) frame() string {
 		}
 		if item.Description != "" {
 			line += "  " + ui.Dim(item.Description)
+		}
+		if item.Disabled {
+			line = ui.Dim(line)
 		}
 		fmt.Fprintf(&b, "%s\n", line)
 	}
@@ -203,11 +225,23 @@ func (p *Picker) Frame() string {
 
 func pickerHasChildren(items []Item) bool {
 	for _, item := range items {
-		if len(item.Children) != 0 {
+		if !item.Disabled && len(item.Children) != 0 {
 			return true
 		}
 	}
 	return false
+}
+
+func pickerCursor(items []Item, preferred int) int {
+	if preferred >= 0 && preferred < len(items) && !items[preferred].Disabled {
+		return preferred
+	}
+	for i := range items {
+		if !items[i].Disabled {
+			return i
+		}
+	}
+	return 0
 }
 
 func pickerWindow(page *pickerPage) (start, end int) {

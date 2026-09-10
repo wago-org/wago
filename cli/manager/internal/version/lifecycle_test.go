@@ -500,17 +500,20 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 	commits[1].Commit.Author.Date = "2026-07-27T00:48:44Z"
 	now := time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC)
 	items := versionPickerItemsWithCommits(releases, commits, now)
-	if got, want := []string{items[0].Children[0].Value, items[0].Children[1].Value, items[0].Children[2].Value}, []string{"canary", canaryCommitTarget(commits[0].SHA), canaryCommitTarget(commits[1].SHA)}; !slices.Equal(got, want) {
+	if got, want := []string{items[0].Label, items[1].Label, items[2].Label}, []string{"Official", "Beta", "Canary"}; !slices.Equal(got, want) {
+		t.Fatalf("channel order = %v, want %v", got, want)
+	}
+	if got, want := []string{items[2].Children[0].Value, items[2].Children[1].Value, items[2].Children[2].Value}, []string{"canary", canaryCommitTarget(commits[0].SHA), canaryCommitTarget(commits[1].SHA)}; !slices.Equal(got, want) {
 		t.Fatalf("canary picker children = %v, want %v", got, want)
 	}
-	if got, want := []string{items[2].Children[0].Value, items[2].Children[1].Value, items[2].Children[2].Value, items[2].Children[3].Value}, []string{"latest", "v0.2.0", "v0.1.4", "0.1.0"}; !slices.Equal(got, want) {
+	if got, want := []string{items[0].Children[0].Value, items[0].Children[1].Value, items[0].Children[2].Value, items[0].Children[3].Value}, []string{"latest", "v0.2.0", "v0.1.4", "0.1.0"}; !slices.Equal(got, want) {
 		t.Fatalf("latest picker children = %v, want %v", got, want)
 	}
 	beta := items[1].Children[1]
 	if beta.Label != "v0.1.0-beta.2" || beta.Value != "v0.1.0-beta.2@7d8c58a123456789012345678901234567890123" || beta.Description != "07/28/2026  1d ago" {
 		t.Fatalf("beta picker item = %#v", beta)
 	}
-	canary := items[0].Children[1]
+	canary := items[2].Children[1]
 	if canary.Label != "canary-cafef00" || canary.Description != "07/28/2026  1d ago" {
 		t.Fatalf("canary picker item = %#v", canary)
 	}
@@ -522,6 +525,25 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 	}
 }
 
+func TestInstallPickerMovesUnavailableChannelsToBottom(t *testing.T) {
+	releases := []remoteRelease{{TagName: "v0.2.0", PublishedAt: "2026-07-28T08:31:22Z"}}
+	items := installPickerItemsWithCommits(releases, nil, time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC))
+	if got, want := []string{items[0].Label, items[1].Label, items[2].Label, items[3].Label}, []string{"Official", "v0.2.0", "Beta", "Canary"}; !slices.Equal(got, want) {
+		t.Fatalf("picker order = %v, want %v", got, want)
+	}
+	for _, item := range items[2:] {
+		if !item.Disabled || item.Description != "no releases available" || len(item.AcceptItems) != 0 || len(item.Children) != 0 {
+			t.Fatalf("unavailable channel is selectable: %#v", item)
+		}
+	}
+	p := tui.NewPicker("Install Wago version", items)
+	p.Apply(tui.KeyDown)
+	p.Apply(tui.KeyDown)
+	if got := p.Selected(); got != "v0.2.0" {
+		t.Fatalf("picker moved onto unavailable channel: %q", got)
+	}
+}
+
 func TestInstallPickerProfilePageReturnsToReleasePage(t *testing.T) {
 	releases := []remoteRelease{
 		{TagName: "v0.2.0", PublishedAt: "2026-07-27T08:31:22Z"},
@@ -529,6 +551,7 @@ func TestInstallPickerProfilePageReturnsToReleasePage(t *testing.T) {
 	commits := []remoteCommit{{SHA: "7d8c58a123456789012345678901234567890123"}}
 	commits[0].Commit.Author.Date = "2026-07-28T08:31:22Z"
 	p := tui.NewPicker("Install Wago version", installPickerItemsWithCommits(releases, commits, time.Now()))
+	p.Apply(tui.KeyDown)  // choose Canary
 	p.Apply(tui.KeyRight) // browse canary releases
 	p.Apply(tui.KeyDown)  // choose the immutable canary build
 	if done, cancelled := p.Apply(tui.KeyAccept); done || cancelled {
@@ -569,9 +592,9 @@ func TestPaginatedInstallPickerKeepsChannelsSelectableAndLoadActionsTerminal(t *
 		channel    string
 		loadAction string
 	}{
-		{name: "canary", item: items[0], channel: "canary", loadAction: pickerLoadMoreCommits},
+		{name: "official", item: items[0], channel: "latest", loadAction: pickerLoadMoreReleases},
 		{name: "beta", item: items[1], channel: "beta", loadAction: pickerLoadMoreReleases},
-		{name: "latest", item: items[2], channel: "latest", loadAction: pickerLoadMoreReleases},
+		{name: "canary", item: items[2], channel: "canary", loadAction: pickerLoadMoreCommits},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
