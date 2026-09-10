@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -234,7 +236,7 @@ func TestInstallerBuildsExactCanonicalCanaryFromSource(t *testing.T) {
 	}
 }
 
-func TestInstallerCanonicalRollingManagerResolutionPaginates(t *testing.T) {
+func TestInstallerCanonicalBetaManagerResolutionPaginates(t *testing.T) {
 	const sha = "deadbee123456789012345678901234567890123"
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -259,13 +261,13 @@ func TestInstallerCanonicalRollingManagerResolutionPaginates(t *testing.T) {
 			_, _ = fmt.Fprint(w, "]")
 			return
 		}
-		_, _ = fmt.Fprintf(w, `[{"tag_name":"v0.1.0-canary.gdeadbee","target_commitish":%q,"published_at":"2026-08-03T00:00:00Z"}]`, sha)
+		_, _ = fmt.Fprintf(w, `[{"tag_name":"v0.1.0-beta.2","target_commitish":%q,"published_at":"2026-08-03T00:00:00Z"}]`, sha)
 	}))
 	defer server.Close()
 
 	i := &installer{releaseAPI: server.URL + "/releases?scope=installer&per_page=1&page=99", httpClient: server.Client()}
-	tag, _, err := i.resolveReleaseForTest("canary@" + sha)
-	if err != nil || tag != "v0.1.0-canary.gdeadbee" {
+	tag, _, err := i.resolveReleaseForTest("beta@" + sha)
+	if err != nil || tag != "v0.1.0-beta.2" {
 		t.Fatalf("resolve canonical manager = %q, %v", tag, err)
 	}
 	if requests != 2 {
@@ -562,6 +564,195 @@ func TestInstallerDownloadsCanaryManagerWorkflowArtifact(t *testing.T) {
 	}
 	if got, readErr := os.ReadFile(target); readErr != nil || string(got) != "artifact manager" {
 		t.Fatalf("manager = %q, %v", got, readErr)
+	}
+}
+
+func TestInstallerManagerDownloadFallsBackFromOfficialToBeta(t *testing.T) {
+	payload := []byte("beta manager")
+	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
+	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
+		switch r.URL.Path {
+		case "/releases/latest":
+			_, _ = fmt.Fprint(w, `{"tag_name":"v1.0.0","published_at":"2026-08-01T00:00:00Z"}`)
+		case "/releases":
+			_, _ = fmt.Fprint(w, `[
+  {"tag_name":"v1.1.0-beta.1","published_at":"2026-08-02T00:00:00Z"},
+  {"tag_name":"v1.2.0-canary.gdeadbee","published_at":"2026-08-03T00:00:00Z"}
+]`)
+		case "/download/v1.1.0-beta.1/" + asset:
+			_, _ = w.Write(payload)
+		case "/download/v1.1.0-beta.1/" + asset + ".sha256":
+			_, _ = fmt.Fprintf(w, "%s  %s\n", hash, asset)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("WAGO_VERSION", "main")
+	t.Setenv("WAGO_RELEASES_API_URL", server.URL+"/releases")
+	t.Setenv("WAGO_RELEASE_DOWNLOAD_BASE", server.URL)
+	installer, err := newInstaller(io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.tmpDir = t.TempDir()
+	if err := installer.downloadManager(filepath.Join(installer.tmpDir, executableName("wago"))); err != nil {
+		t.Fatal(err)
+	}
+	if installer.managerTag != "v1.1.0-beta.1" {
+		t.Fatalf("manager tag = %q, want beta fallback", installer.managerTag)
+	}
+	canaryPath := "/download/v1.2.0-canary.gdeadbee/" + asset
+	if slices.Contains(requests, canaryPath) {
+		t.Fatalf("requested canary after beta succeeded: %v", requests)
+	}
+}
+
+func TestInstallerManagerDownloadFallsBackFromBetaToCanaryTagArtifact(t *testing.T) {
+	const (
+		canaryTag = "v1.2.0-canary.gdeadbee"
+		canarySHA = "deadbee123456789012345678901234567890123"
+	)
+	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
+	var requests []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.URL.Path)
+		switch r.URL.Path {
+		case "/releases/latest":
+			_, _ = fmt.Fprint(w, `{"tag_name":"v1.0.0","published_at":"2026-08-01T00:00:00Z"}`)
+		case "/releases":
+			_, _ = fmt.Fprint(w, `[{"tag_name":"v1.1.0-beta.1","published_at":"2026-08-02T00:00:00Z"}]`)
+		case "/tags":
+			_, _ = fmt.Fprintf(w, `[{"name":%q,"commit":{"sha":%q}}]`, canaryTag, canarySHA)
+		case "/commits":
+			_, _ = fmt.Fprintf(w, `[{"sha":%q}]`, canarySHA)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	t.Setenv("WAGO_VERSION", "main")
+	t.Setenv("WAGO_RELEASES_API_URL", server.URL+"/releases")
+	t.Setenv("WAGO_TAGS_API_URL", server.URL+"/tags")
+	t.Setenv("WAGO_COMMITS_API_URL", server.URL+"/commits")
+	t.Setenv("WAGO_RELEASE_DOWNLOAD_BASE", server.URL)
+	installer, err := newInstaller(io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.tmpDir = t.TempDir()
+	target := filepath.Join(installer.tmpDir, executableName("wago"))
+	previousDownload := downloadInstallerActionArtifact
+	downloadInstallerActionArtifact = func(_ context.Context, _ actionartifact.Config, tag, sha, platform, gotAsset, destination string) error {
+		if tag != canaryTag || sha != canarySHA || platform != runtime.GOOS+"-"+runtime.GOARCH || gotAsset != asset || destination != target {
+			t.Fatalf("artifact request = %q, %q, %q, %q, %q", tag, sha, platform, gotAsset, destination)
+		}
+		return os.WriteFile(destination, []byte("canary manager"), 0o755)
+	}
+	t.Cleanup(func() { downloadInstallerActionArtifact = previousDownload })
+
+	if err := installer.downloadManager(target); err != nil {
+		t.Fatal(err)
+	}
+	if installer.managerTag != canaryTag || installer.managerSourceRef != canarySHA {
+		t.Fatalf("manager resolution = %q, %q", installer.managerTag, installer.managerSourceRef)
+	}
+	wantRequests := []string{
+		"/download/v1.0.0/" + asset,
+		"/download/v1.1.0-beta.1/" + asset,
+		"/tags",
+		"/commits",
+	}
+	for _, want := range wantRequests {
+		if !slices.Contains(requests, want) {
+			t.Fatalf("requests = %v, missing %q", requests, want)
+		}
+	}
+}
+
+func TestInstallerManagerDownloadDoesNotBypassBadOfficialChecksum(t *testing.T) {
+	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
+	var requestedBeta bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/releases/latest":
+			_, _ = fmt.Fprint(w, `{"tag_name":"v1.0.0","published_at":"2026-08-01T00:00:00Z"}`)
+		case "/releases":
+			_, _ = fmt.Fprint(w, `[
+  {"tag_name":"v1.1.0-beta.1","published_at":"2026-08-02T00:00:00Z"}
+]`)
+		case "/download/v1.0.0/" + asset:
+			_, _ = w.Write([]byte("official manager"))
+		case "/download/v1.0.0/" + asset + ".sha256":
+			_, _ = fmt.Fprint(w, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  manager\n")
+		default:
+			if strings.Contains(r.URL.Path, "beta") {
+				requestedBeta = true
+			}
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	t.Setenv("WAGO_VERSION", "main")
+	t.Setenv("WAGO_RELEASES_API_URL", server.URL+"/releases")
+	t.Setenv("WAGO_RELEASE_DOWNLOAD_BASE", server.URL)
+	installer, err := newInstaller(io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.tmpDir = t.TempDir()
+	err = installer.downloadManager(filepath.Join(installer.tmpDir, executableName("wago")))
+	if !errors.Is(err, errChecksumVerification) {
+		t.Fatalf("downloadManager error = %v, want checksum verification failure", err)
+	}
+	if requestedBeta {
+		t.Fatal("beta was requested after an official checksum failure")
+	}
+}
+
+func TestInstallerManagerDownloadDoesNotBypassLocalFailure(t *testing.T) {
+	asset := "wago-" + runtime.GOOS + "-" + runtime.GOARCH
+	var requestedBeta bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/releases/latest":
+			_, _ = fmt.Fprint(w, `{"tag_name":"v1.0.0","published_at":"2026-08-01T00:00:00Z"}`)
+		case "/releases":
+			_, _ = fmt.Fprint(w, `[
+  {"tag_name":"v1.1.0-beta.1","published_at":"2026-08-02T00:00:00Z"}
+]`)
+		case "/download/v1.0.0/" + asset:
+			_, _ = w.Write([]byte("official manager"))
+		default:
+			if strings.Contains(r.URL.Path, "beta") {
+				requestedBeta = true
+			}
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	t.Setenv("WAGO_VERSION", "main")
+	t.Setenv("WAGO_RELEASES_API_URL", server.URL+"/releases")
+	t.Setenv("WAGO_RELEASE_DOWNLOAD_BASE", server.URL)
+	installer, err := newInstaller(io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	installer.tmpDir = t.TempDir()
+	target := filepath.Join(installer.tmpDir, "missing", executableName("wago"))
+	if err := installer.downloadManager(target); err == nil {
+		t.Fatal("downloadManager succeeded despite a local write failure")
+	}
+	if requestedBeta {
+		t.Fatal("beta was requested after a local write failure")
 	}
 }
 

@@ -422,7 +422,7 @@ func (i *installer) downloadManager(target string) error {
 		}
 		return i.downloadCanaryManager(tag, sha, target)
 	}
-	if i.version == "main" || i.version == "canary" {
+	if i.version == "canary" {
 		tag, sha, err := i.latestCanaryTag()
 		if err != nil {
 			return err
@@ -432,34 +432,50 @@ func (i *installer) downloadManager(target string) error {
 	if installerCanaryTag(i.version) {
 		return i.downloadCanaryManager(i.version, "", target)
 	}
-	resolved := installbootstrap.ResolvedRelease{Tag: i.version, SourceRef: installerSourceRef(i.version)}
-	base := ""
-	if os.Getenv("WAGO_MANAGER_URL") == "" {
-		var err error
-		resolved, base, err = i.resolveRelease()
-		if err != nil {
-			return err
-		}
-	}
-	tag := resolved.Tag
 	asset, err := installbootstrap.Asset("wago", runtime.GOOS, runtime.GOARCH)
 	if err != nil {
 		return err
 	}
-	url := base + "/" + asset
-	if override := os.Getenv("WAGO_MANAGER_URL"); override != "" {
-		url = override
+	override := os.Getenv("WAGO_MANAGER_URL")
+	candidates := []installbootstrap.ResolvedRelease{{Tag: i.version, SourceRef: installerSourceRef(i.version)}}
+	if override == "" {
+		candidates, err = installbootstrap.ResolveReleaseCandidates(i.version, installerReleaseCatalog{i})
+		if err != nil {
+			return err
+		}
 	}
-	i.begin("Downloading Wago manager " + tag)
-	if err := i.downloadChecked(url, target); err != nil {
-		return err
+	var downloadErr error
+	for _, resolved := range candidates {
+		url := override
+		if url == "" {
+			url = i.releaseDownloadBase + "/download/" + resolved.Tag + "/" + asset
+		}
+		i.begin("Downloading Wago manager " + resolved.Tag)
+		if err := i.downloadChecked(url, target); err != nil {
+			if errors.Is(err, errChecksumVerification) {
+				return err
+			}
+			if !releaseAssetUnavailable(err) {
+				return err
+			}
+			downloadErr = err
+			continue
+		}
+		if err := os.Chmod(target, 0o755); err != nil {
+			return err
+		}
+		i.managerTag, i.managerSourceRef, i.managerFromRelease = resolved.Tag, resolved.SourceRef, true
+		i.done("Downloaded Wago manager " + resolved.Tag)
+		return nil
 	}
-	if err := os.Chmod(target, 0o755); err != nil {
-		return err
+	if i.version == "main" {
+		tag, sha, err := i.latestCanaryTag()
+		if err != nil {
+			return errors.Join(downloadErr, err)
+		}
+		return i.downloadCanaryManager(tag, sha, target)
 	}
-	i.managerTag, i.managerSourceRef, i.managerFromRelease = tag, resolved.SourceRef, true
-	i.done("Downloaded Wago manager " + tag)
-	return nil
+	return downloadErr
 }
 
 func (i *installer) downloadCanaryManager(tag, sha, target string) error {
@@ -699,9 +715,24 @@ func (i *installer) downloadChecked(url, target string) error {
 		return err
 	}
 	if err := installbootstrap.VerifyFile(payload, wantData); err != nil {
-		return err
+		return fmt.Errorf("%w: %v", errChecksumVerification, err)
 	}
 	return os.Rename(payload, target)
+}
+
+var errChecksumVerification = errors.New("downloaded file checksum verification failed")
+
+type downloadHTTPError struct {
+	url        string
+	status     string
+	statusCode int
+}
+
+func (err *downloadHTTPError) Error() string { return err.url + " returned " + err.status }
+
+func releaseAssetUnavailable(err error) bool {
+	var statusErr *downloadHTTPError
+	return errors.As(err, &statusErr) && (statusErr.statusCode == http.StatusNotFound || statusErr.statusCode == http.StatusGone)
 }
 
 func (i *installer) download(url, target string) error {
@@ -715,7 +746,7 @@ func (i *installer) download(url, target string) error {
 	}
 	defer response.Body.Close()
 	if response.StatusCode/100 != 2 {
-		return fmt.Errorf("%s returned %s", url, response.Status)
+		return &downloadHTTPError{url: url, status: response.Status, statusCode: response.StatusCode}
 	}
 	file, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {

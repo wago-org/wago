@@ -36,9 +36,9 @@ type Catalog interface {
 	Releases() ([]Release, error)
 }
 
-// Resolve selects the release tag named by version. main means the newest
-// canary, beta means the newest beta, latest follows the latest release,
-// and explicit release tags pass through without a catalog request.
+// Resolve selects the preferred GitHub release tag named by version. main
+// prefers the newest official release, then beta. Canary builds are tags backed
+// by workflow artifacts and are resolved by the installer separately.
 func Resolve(version string, catalog Catalog) (string, error) {
 	resolved, err := ResolveRelease(version, catalog)
 	return resolved.Tag, err
@@ -48,48 +48,113 @@ func Resolve(version string, catalog Catalog) (string, error) {
 // version. Once discovery knows a full commit SHA or stable tag, every fallback
 // uses that immutable reference rather than the original mutable channel.
 func ResolveRelease(version string, catalog Catalog) (ResolvedRelease, error) {
+	candidates, err := ResolveReleaseCandidates(version, catalog)
+	if err != nil {
+		return ResolvedRelease{}, err
+	}
+	return candidates[0], nil
+}
+
+// ResolveReleaseCandidates returns manager releases in download preference
+// order. Only main has cross-channel fallback; every explicit selector remains
+// exact so a caller never silently installs a different requested channel.
+func ResolveReleaseCandidates(version string, catalog Catalog) ([]ResolvedRelease, error) {
 	version = strings.TrimSpace(version)
 	switch {
 	case version == "latest":
 		item, err := catalog.Latest()
 		if err != nil {
-			return ResolvedRelease{}, err
+			return nil, err
 		}
-		return resolvedRelease(item)
+		resolved, err := resolvedRelease(item)
+		return []ResolvedRelease{resolved}, err
 	case IsReleaseTag(version):
-		return ResolvedRelease{Tag: version, SourceRef: version}, nil
+		return []ResolvedRelease{{Tag: version, SourceRef: version}}, nil
 	}
 	if channel, sha, canonical := rollingCommit(version); canonical {
+		if channel == "canary" {
+			return nil, errors.New("canary builds are resolved from tags and workflow artifacts")
+		}
 		releases, err := catalog.Releases()
 		if err != nil {
-			return ResolvedRelease{}, err
+			return nil, err
 		}
 		sort.SliceStable(releases, func(a, b int) bool { return releases[a].PublishedAt > releases[b].PublishedAt })
 		for _, item := range releases {
 			if !item.Draft && releaseChannel(item.TagName) == channel && strings.EqualFold(item.TargetCommitish, sha) {
-				return ResolvedRelease{Tag: item.TagName, SourceRef: strings.ToLower(sha)}, nil
+				return []ResolvedRelease{{Tag: item.TagName, SourceRef: strings.ToLower(sha)}}, nil
 			}
 		}
-		return ResolvedRelease{}, fmt.Errorf("no %s installer release found for commit %s", channel, sha)
+		return nil, fmt.Errorf("no %s installer release found for commit %s", channel, sha)
 	}
-	channel := version
+	if version == "canary" {
+		return nil, errors.New("canary builds are resolved from tags and workflow artifacts")
+	}
+	if version != "main" && version != "beta" {
+		return nil, errors.New("custom source ref requires a source build")
+	}
+	candidates := make([]ResolvedRelease, 0, 3)
 	if version == "main" {
-		channel = "canary"
-	}
-	if channel != "canary" && channel != "beta" {
-		return ResolvedRelease{}, errors.New("custom source ref requires a source build")
+		latest, latestErr := catalog.Latest()
+		if latestErr == nil && !latest.Draft && releaseChannel(latest.TagName) == "official" {
+			resolved, err := resolvedRelease(latest)
+			if err != nil {
+				return nil, err
+			}
+			candidates = append(candidates, resolved)
+		}
 	}
 	releases, err := catalog.Releases()
 	if err != nil {
-		return ResolvedRelease{}, err
+		if len(candidates) != 0 {
+			return candidates, nil
+		}
+		return nil, err
 	}
 	sort.SliceStable(releases, func(a, b int) bool { return releases[a].PublishedAt > releases[b].PublishedAt })
+	channels := []string{version}
+	if version == "main" {
+		channels = []string{"beta"}
+	}
+	seen := make(map[string]bool, len(channels))
 	for _, item := range releases {
-		if !item.Draft && releaseChannel(item.TagName) == channel {
-			return resolvedRelease(item)
+		channel := releaseChannel(item.TagName)
+		if item.Draft || seen[channel] {
+			continue
+		}
+		for _, wanted := range channels {
+			if channel == wanted {
+				resolved, err := resolvedRelease(item)
+				if err != nil {
+					return nil, err
+				}
+				candidates = append(candidates, resolved)
+				seen[channel] = true
+				break
+			}
 		}
 	}
-	return ResolvedRelease{}, fmt.Errorf("no %s installer release found", channel)
+	sort.SliceStable(candidates, func(a, b int) bool {
+		return channelPriority(releaseChannel(candidates[a].Tag)) < channelPriority(releaseChannel(candidates[b].Tag))
+	})
+	if len(candidates) == 0 {
+		if version == "main" {
+			return nil, errors.New("no official or beta installer release found")
+		}
+		return nil, fmt.Errorf("no %s installer release found", version)
+	}
+	return candidates, nil
+}
+
+func channelPriority(channel string) int {
+	switch channel {
+	case "official":
+		return 0
+	case "beta":
+		return 1
+	default:
+		return 2
+	}
 }
 
 func resolvedRelease(item Release) (ResolvedRelease, error) {
@@ -122,8 +187,11 @@ func IsReleaseTag(version string) bool {
 
 func releaseChannel(tag string) string {
 	version, prerelease, found := strings.Cut(strings.ToLower(strings.TrimSpace(tag)), "-")
-	if !found || !validReleaseCore(version) {
+	if !validReleaseCore(version) {
 		return ""
+	}
+	if !found {
+		return "official"
 	}
 	channel, identity, found := strings.Cut(prerelease, ".")
 	if !found {
