@@ -348,7 +348,7 @@ func TestDocsChangesRunDocumentationValidation(t *testing.T) {
 }
 
 func TestDocsOnlyChangesSkipCodeMatrix(t *testing.T) {
-	workflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/ci.yml"))
+	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/ci.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
