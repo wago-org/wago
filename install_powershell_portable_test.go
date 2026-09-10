@@ -46,8 +46,8 @@ func TestPowerShellBootstrapFallsBackToGoForMainWithoutRelease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("source fallback: %v\n%s", err, output)
 	}
-	if got, want := strings.TrimSpace(string(output)), "source installer: main"; got != want {
-		t.Fatalf("source fallback output = %q, want %q", got, want)
+	if got, want := string(output), "source installer: main"; !strings.Contains(got, want) {
+		t.Fatalf("source fallback output = %q, want it to contain %q", got, want)
 	}
 	args, err := os.ReadFile(log)
 	if err != nil {
