@@ -18,7 +18,7 @@ Selection is consistent across tests and benchmarks:
 ```sh
 make test-corpus                         # quick profile
 make test-corpus CORPUS=algorithms       # representative raw algorithms
-make test-corpus CORPUS=tag:polybench    # all 30 PolyBench/C kernels
+make test-corpus CORPUS=tag:polybench    # 29 portable PolyBench/C kernels
 make test-corpus CORPUS=tag:application
 make bench-check CORPUS=tiny,coremark
 make bench-all                           # complete benchmark inventory

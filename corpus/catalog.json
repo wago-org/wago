@@ -19,7 +19,7 @@
       "polybench-gemm",
       "polybench-cholesky",
       "polybench-correlation",
-      "polybench-floyd-warshall",
+      "polybench-2mm",
       "polybench-nussinov",
       "polybench-jacobi-2d"
     ],
@@ -35,7 +35,6 @@
       "polybench-atax",
       "polybench-cholesky",
       "polybench-correlation",
-      "polybench-floyd-warshall",
       "polybench-nussinov",
       "polybench-jacobi-2d"
     ]
@@ -1852,27 +1851,6 @@
           "args": [],
           "want": [
             1759778808
-          ]
-        }
-      ]
-    },
-    {
-      "suite": "PolyBench/C",
-      "desc": "PolyBench/C floyd-warshall (small dataset)",
-      "id": "polybench-floyd-warshall",
-      "artifact": "workloads/polybench/floyd-warshall.wasm",
-      "tags": [
-        "graph",
-        "algorithm",
-        "polybench"
-      ],
-      "artifact_sha256": "20766bf0b5e219d64759fcbae37b68c3f1a3e2c08e7722e7a3ac04e966a879fe",
-      "exec": [
-        {
-          "export": "polybench_run",
-          "args": [],
-          "want": [
-            1157866469
           ]
         }
       ]
