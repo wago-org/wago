@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,12 @@ import (
 	"testing"
 	"time"
 )
+
+type installerRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn installerRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
 
 func TestInstallerMovesPayloadsAcrossFilesystems(t *testing.T) {
 	downloadRoot := t.TempDir()
@@ -92,6 +99,42 @@ func TestInstallerMovesPayloadsAcrossFilesystems(t *testing.T) {
 		if matches, err := filepath.Glob(pattern); err != nil || len(matches) != 0 {
 			t.Fatalf("temporary paths for %q = %v, %v", pattern, matches, err)
 		}
+	}
+}
+
+func TestInstallerReleaseMetadataHonorsCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	i := &installer{
+		ctx: ctx,
+		httpClient: &http.Client{Transport: installerRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return nil, request.Context().Err()
+		})},
+	}
+	var value any
+	if err := i.getJSON("https://example.invalid/releases", &value); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled release metadata request = %v, want context.Canceled", err)
+	}
+}
+
+func TestInstallerReleaseMetadataRejectsTrailingAndOversizedData(t *testing.T) {
+	for name, body := range map[string]string{
+		"trailing value":  "{}{}",
+		"over byte limit": "{}" + strings.Repeat(" ", int(installerReleaseJSONLimit)+1),
+	} {
+		t.Run(name, func(t *testing.T) {
+			i := &installer{httpClient: &http.Client{Transport: installerRoundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Status:     "200 OK",
+					Body:       io.NopCloser(strings.NewReader(body)),
+				}, nil
+			})}}
+			var value any
+			if err := i.getJSON("https://example.invalid/releases", &value); err == nil {
+				t.Fatal("invalid release metadata accepted")
+			}
+		})
 	}
 }
 
