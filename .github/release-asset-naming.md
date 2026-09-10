@@ -4,9 +4,9 @@
 
 - `canary` resolves the newest successful main commit with a retained host
   artifact. Its canonical identity is `canary@<40-character-commit-sha>`.
-  Canaries create neither git tags nor GitHub Releases. Legacy
-  `vMAJOR.MINOR.PATCH-canary.g<7-character-commit-sha>` artifacts remain
-  installable while they are retained.
+  Canaries create neither git tags nor GitHub Releases. Legacy tagged Canary
+  module versions are retracted and remain available only for builds that
+  request an exact old version.
 - `beta` resolves the newest manually qualified beta, such as
   `v0.1.0-beta.1`.
 - `latest` resolves the newest stable `vMAJOR.MINOR.PATCH` release.
