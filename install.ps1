@@ -2,6 +2,17 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 function Get-WagoArchitecture {
+    try {
+        $operatingSystemArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+        if ($operatingSystemArchitecture -eq "Arm64") {
+            return "arm64"
+        }
+        if ($operatingSystemArchitecture -eq "X64") {
+            return "amd64"
+        }
+    } catch {
+        # Fall back for older Windows PowerShell runtimes.
+    }
     $architectures = @($env:PROCESSOR_ARCHITEW6432, $env:PROCESSOR_ARCHITECTURE)
     if ($architectures -contains "ARM64") {
         return "arm64"
@@ -179,7 +190,11 @@ try {
     } else {
         $env:WAGO_REFRESH_PATH = $previousRefreshChoice
     }
-    Remove-Item -LiteralPath $temporaryDirectory, $refreshRequest -Recurse -Force -ErrorAction SilentlyContinue
+    foreach ($path in @($temporaryDirectory, $refreshRequest)) {
+        if (Test-Path -LiteralPath $path) {
+            Remove-Item -LiteralPath $path -Recurse -Force
+        }
+    }
 }
 
 if ($installerStatus -ne 0) {
