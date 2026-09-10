@@ -337,12 +337,29 @@ func TestDocsChangesRunDocumentationValidation(t *testing.T) {
 	contents := string(workflow)
 	for _, required := range []string{
 		`docs: ${{ steps.derive.outputs.docs }}`,
-		`if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.code == 'true'`,
+		`if: needs.changes.outputs.docs == 'true'`,
 		`run: make docs-check`,
 		`needs: [changes, docs, lint, regression-corpus`,
 	} {
 		if !strings.Contains(contents, required) {
 			t.Errorf("CI workflow is missing docs-validation policy %q", required)
+		}
+	}
+}
+
+func TestDocsOnlyChangesSkipCodeMatrix(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../.github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := string(workflow)
+	for _, required := range []string{
+		`predicate-quantifier: 'every'`,
+		"docs:\n              - '**'",
+		"code:\n              - '**'\n              - '!**/*.md'\n              - '!docs/**'\n              - '!LICENSE'",
+	} {
+		if !strings.Contains(contents, required) {
+			t.Errorf("CI workflow is missing docs-only gating policy %q", required)
 		}
 	}
 }
