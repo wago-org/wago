@@ -37,6 +37,7 @@ func FuzzDecodeValidateByteBackedDifferentialGenerated(f *testing.F) {
 		{6, 1, 0, 0},
 		{0, 8, 1, 17},
 		{0, 8, 2, 23},
+		{0, 23, 2, 222}, // nonzero memory.copy index under Core 3 grammar
 		{0, 8, 3, 5},
 		{0, 8, 4, 0},
 	} {
@@ -45,8 +46,9 @@ func FuzzDecodeValidateByteBackedDifferentialGenerated(f *testing.F) {
 	f.Fuzz(func(t *testing.T, kind, funcs, mutation uint8, arg uint32) {
 		data := generatedDifferentialModule(kind, funcs)
 		data = mutateDifferentialModule(data, mutation, arg)
-		want := decodeThenValidate(data)
-		got := byteBackedDecodeThenValidate(data)
+		features := ValidationFeatures{MultiMemory: true}
+		want := decodeThenValidateWithFeatures(data, features)
+		got := byteBackedDecodeThenValidateWithFeatures(data, features)
 		if (want == nil) != (got == nil) {
 			t.Fatalf("AST decode+ValidateModule=%v byte-backed decode+validate=%v", want, got)
 		}
@@ -57,6 +59,22 @@ func FuzzDecodeValidateByteBackedDifferentialGenerated(f *testing.F) {
 		// acceptance. Focused edge tests above pin phases where phase is part of
 		// the intended behavior.
 	})
+}
+
+func decodeThenValidateWithFeatures(data []byte, features ValidationFeatures) error {
+	m, err := decodeModuleASTWithFeaturesForTest(data, features)
+	if err != nil {
+		return err
+	}
+	return ValidateModuleWithFeatures(m, features)
+}
+
+func byteBackedDecodeThenValidateWithFeatures(data []byte, features ValidationFeatures) error {
+	dm, err := DecodeModuleByteBackedWithFeatures(data, features)
+	if err != nil {
+		return err
+	}
+	return ValidateDecodedByteBackedModuleWithFeatures(dm, features)
 }
 
 func generatedDifferentialModule(kind, funcs uint8) []byte {
