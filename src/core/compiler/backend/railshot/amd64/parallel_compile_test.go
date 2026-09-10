@@ -155,7 +155,7 @@ func TestCompileWorkersCorpusParity(t *testing.T) {
 	for _, name := range []string{
 		"synthetic/tiny.wasm", "synthetic/fib_rec.wasm", "synthetic/many_funcs.wasm",
 		"assemblyscript/json-as.wasm", "assemblyscript/blake-as.wasm",
-		"semantic/coremark/coremark.wasm", "compile/esbuild.wasm",
+		"semantic/coremark/coremark.wasm", "polybench/gemm.wasm",
 	} {
 		t.Run(name, func(t *testing.T) {
 			m := readParallelTestModule(t, filepath.Join(corpus, name))

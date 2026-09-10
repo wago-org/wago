@@ -20,6 +20,8 @@ Use Make as the public entry point:
 
 ```sh
 make test                    # unit/integration tests + quick corpus
+make test-corpus CORPUS=algorithms
+make test-corpus CORPUS=tag:polybench
 make test-corpus CORPUS=all  # every curated executable workload
 make test-spec-v1            # one pinned spec version
 make test-spec               # all pinned spec versions

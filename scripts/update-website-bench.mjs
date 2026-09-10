@@ -91,6 +91,11 @@ function buildCorpusTabs(sets) {
     ["real", "Real-world programs"], ["real-simd", "Real-world SIMD"],
     ["semantic", "Semantic corpus"], ["real-large", "Large real-world programs"],
     ["application", "Application corpora"],
+    ["statistics", "Statistics"], ["blas", "BLAS"],
+    ["linear-algebra", "Linear algebra"], ["solver", "Solvers"],
+    ["stencil", "Stencils"], ["graph", "Graph algorithms"],
+    ["dynamic-programming", "Dynamic programming"],
+    ["image-processing", "Image processing"],
     ["regression-only", "Regression corpus"], ["other", "Other"],
   ]);
   const grouped = (makeItems) => {

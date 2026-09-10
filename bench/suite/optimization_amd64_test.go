@@ -13,7 +13,6 @@ import (
 func BenchmarkCompileCommuteSelfUpdate(b *testing.B) {
 	wanted := map[string]bool{
 		"blake-as": true, "blake-as-simd": true,
-		"esbuild": true,
 	}
 	for _, m := range loadCorpus(b) {
 		if !wanted[m.name()] || !m.supports("CompileFull") {

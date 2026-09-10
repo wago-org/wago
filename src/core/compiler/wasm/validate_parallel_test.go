@@ -33,7 +33,7 @@ func TestValidateModuleWithWorkersCorpusParity(t *testing.T) {
 	for _, name := range []string{
 		"synthetic/tiny.wasm", "synthetic/many_funcs.wasm",
 		"assemblyscript/json-as.wasm", "assemblyscript/json-as-simd.wasm",
-		"semantic/coremark/coremark.wasm", "compile/esbuild.wasm",
+		"semantic/coremark/coremark.wasm", "polybench/gemm.wasm",
 	} {
 		t.Run(name, func(t *testing.T) {
 			data, err := os.ReadFile(filepath.Join(corpus, name))

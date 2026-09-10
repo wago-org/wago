@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/tetratelabs/wazero"
@@ -167,11 +168,18 @@ func BenchmarkWazeroExec(b *testing.B) {
 		for _, e := range m.Exec {
 			fn := mod.ExportedFunction(e.Export)
 			if fn == nil {
-				continue
+				b.Fatalf("%s: wazero export %s not found", m.name(), e.Export)
 			}
 			args := make([]uint64, len(e.Args))
 			for i, a := range e.Args {
 				args[i] = uint64(uint32(a))
+			}
+			got, err := fn.Call(ctx, args...)
+			if err != nil {
+				b.Fatalf("%s wazero oracle invoke %s: %v", m.name(), e.Export, err)
+			}
+			if !slices.Equal(got, e.Want) {
+				b.Fatalf("%s.%s wazero results = %v, want %v", m.name(), e.Export, got, e.Want)
 			}
 			b.Run(m.name()+"."+e.Export, func(b *testing.B) {
 				benchmarkExecCalls(b, func() error {

@@ -120,8 +120,8 @@ func readCatalog(tb testing.TB) []corpusModule {
 	var modules []corpusModule
 	for i := range c.Benchmarks {
 		mod := &c.Benchmarks[i]
-		if mod.ID == "" || mod.Artifact == "" || mod.ArtifactSHA256 == "" {
-			tb.Fatalf("corpus benchmark %d: id, artifact, and artifact_sha256 are required", i)
+		if err := validateCorpusModule(*mod); err != nil {
+			tb.Fatalf("corpus benchmark %d: %v", i, err)
 		}
 		if seen[mod.ID] {
 			tb.Fatalf("duplicate corpus benchmark id %q", mod.ID)
@@ -150,6 +150,47 @@ func readCatalog(tb testing.TB) []corpusModule {
 		tb.Fatalf("corpus selector %q selected no benchmarks", *corpusSelector)
 	}
 	return modules
+}
+
+func validateCorpusModule(mod corpusModule) error {
+	if mod.ID == "" || mod.Artifact == "" || mod.ArtifactSHA256 == "" {
+		return fmt.Errorf("id, artifact, and artifact_sha256 are required")
+	}
+	executionContracts := 0
+	if len(mod.Exec) != 0 {
+		executionContracts++
+		if !mod.supports("Exec") {
+			return fmt.Errorf("%s: direct execution is excluded by stages", mod.ID)
+		}
+		for _, invocation := range mod.Exec {
+			if invocation.Export == "" || invocation.Want == nil {
+				return fmt.Errorf("%s: every direct invocation needs an export and exact result oracle", mod.ID)
+			}
+		}
+	}
+	if len(mod.SemanticExec) != 0 {
+		executionContracts++
+		if !mod.supports("Exec") {
+			return fmt.Errorf("%s: semantic execution is excluded by stages", mod.ID)
+		}
+	}
+	if mod.Command != nil {
+		executionContracts++
+		if !mod.supports("CommandExec") {
+			return fmt.Errorf("%s: command execution is excluded by stages", mod.ID)
+		}
+		if mod.Command.Export == "" {
+			return fmt.Errorf("%s: command execution needs an export", mod.ID)
+		}
+		if mod.Command.Oracle == "" && mod.Command.Want == nil &&
+			mod.Command.StdoutSHA256 == "" && mod.Command.StderrSHA256 == "" {
+			return fmt.Errorf("%s: command execution needs an exact oracle", mod.ID)
+		}
+	}
+	if executionContracts != 1 {
+		return fmt.Errorf("%s: declare exactly one end-to-end execution contract", mod.ID)
+	}
+	return nil
 }
 
 func selectedIDs(tb testing.TB, c catalog, selector string) map[string]bool {
@@ -250,7 +291,6 @@ func BenchmarkValidate(b *testing.B) {
 func BenchmarkValidateWorkers(b *testing.B) {
 	wanted := map[string]bool{
 		"tiny": true, "many_funcs": true, "json-as": true,
-		"esbuild": true,
 	}
 	for _, m := range loadCorpus(b) {
 		if !m.supports("Validate") || !wanted[m.name()] {
@@ -313,7 +353,7 @@ func BenchmarkCompileCompact(b *testing.B) {
 func BenchmarkCompileWorkers(b *testing.B) {
 	wanted := map[string]bool{
 		"tiny": true, "fib_rec": true, "many_funcs": true,
-		"json-as": true, "blake-as": true, "esbuild": true,
+		"json-as": true, "blake-as": true,
 	}
 	for _, m := range loadCorpus(b) {
 		if !m.supports("Compile") || !wanted[m.name()] {
@@ -373,7 +413,6 @@ func BenchmarkCompileFullOptimizationAblation(b *testing.B) {
 	}
 	wanted := map[string]bool{
 		"json-as": true,
-		"esbuild": true,
 	}
 	base := wago.NewRuntimeConfig().WithFunctionWorkers(1)
 	infos := base.OptimizationInfos()
@@ -420,7 +459,7 @@ func BenchmarkCompileFullOptimizationAblation(b *testing.B) {
 func BenchmarkCompileFullWorkers(b *testing.B) {
 	wanted := map[string]bool{
 		"tiny": true, "fib_rec": true, "many_funcs": true,
-		"json-as": true, "blake-as": true, "esbuild": true,
+		"json-as": true, "blake-as": true,
 	}
 	for _, m := range loadCorpus(b) {
 		if !m.supports("CompileFull") || !wanted[m.name()] {
@@ -455,7 +494,7 @@ func BenchmarkCompileFullWorkers(b *testing.B) {
 // full module compilations in parallel. Unlike BenchmarkCompileWorkers, this is
 // a server-throughput/oversubscription benchmark, not single-module latency.
 func BenchmarkCompileMultiModuleThroughput(b *testing.B) {
-	wanted := map[string]bool{"many_funcs": true, "json-as": true, "esbuild": true}
+	wanted := map[string]bool{"many_funcs": true, "json-as": true}
 	for _, m := range loadCorpus(b) {
 		if !m.supports("CompileFull") || !wanted[m.name()] {
 			continue

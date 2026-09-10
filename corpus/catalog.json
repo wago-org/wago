@@ -15,7 +15,29 @@
       "blake3",
       "embench-crc32",
       "sightglass-shootout-base64",
-      "tacle-bsort"
+      "tacle-bsort",
+      "polybench-gemm",
+      "polybench-cholesky",
+      "polybench-correlation",
+      "polybench-floyd-warshall",
+      "polybench-nussinov",
+      "polybench-jacobi-2d"
+    ],
+    "algorithms": [
+      "fib_rec",
+      "linked_list",
+      "nbody",
+      "fannkuch",
+      "matmul",
+      "sha256",
+      "raytrace",
+      "polybench-gemm",
+      "polybench-atax",
+      "polybench-cholesky",
+      "polybench-correlation",
+      "polybench-floyd-warshall",
+      "polybench-nussinov",
+      "polybench-jacobi-2d"
     ]
   },
   "checks": [
@@ -1238,21 +1260,6 @@
       "artifact_sha256": "8867205c0e7c3772b776bb495867378a587db972de47cfb4914a4fa55083b31a"
     },
     {
-      "desc": "esbuild bundler (Go -> wasm, ~12 MiB; Go runtime/GC code shape); decode+validate+compile (running needs the gojs host bridge)",
-      "stages": [
-        "Decode",
-        "Validate",
-        "Compile",
-        "CompileFull"
-      ],
-      "id": "esbuild",
-      "artifact": "workloads/compile/esbuild.wasm",
-      "tags": [
-        "real-large"
-      ],
-      "artifact_sha256": "711d62484385c29d64ddcdc4c0beb3fb7903635a41bafffeb652938ee8480587"
-    },
-    {
       "desc": "CoreMark 1.0 integer, list, matrix, and state-machine workload",
       "semantic_exec": [
         "coremark/2k-performance"
@@ -1340,7 +1347,12 @@
       ],
       "command": {
         "runtime": "wasi",
-        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "darwin/amd64",
+          "darwin/arm64"
+        ],
         "export": "_start",
         "oracle": "self-check"
       },
@@ -1364,7 +1376,12 @@
       ],
       "command": {
         "runtime": "wasi",
-        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "darwin/amd64",
+          "darwin/arm64"
+        ],
         "export": "_start",
         "oracle": "self-check"
       },
@@ -1388,7 +1405,12 @@
       ],
       "command": {
         "runtime": "wasi",
-        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "darwin/amd64",
+          "darwin/arm64"
+        ],
         "export": "_start",
         "oracle": "self-check"
       },
@@ -1412,7 +1434,12 @@
       ],
       "command": {
         "runtime": "wasi",
-        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "darwin/amd64",
+          "darwin/arm64"
+        ],
         "export": "_start",
         "oracle": "self-check"
       },
@@ -1436,7 +1463,12 @@
       ],
       "command": {
         "runtime": "wasi",
-        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "darwin/amd64",
+          "darwin/arm64"
+        ],
         "export": "_start",
         "oracle": "self-check"
       },
@@ -1460,7 +1492,12 @@
       ],
       "command": {
         "runtime": "wasi",
-        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "darwin/amd64",
+          "darwin/arm64"
+        ],
         "export": "_start",
         "oracle": "self-check"
       },
@@ -1484,7 +1521,12 @@
       ],
       "command": {
         "runtime": "wasi",
-        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "darwin/amd64",
+          "darwin/arm64"
+        ],
         "export": "_start",
         "preopen": "workloads/applications/sightglass/shootout-base64/inputs",
         "inputs": {
@@ -1513,7 +1555,12 @@
       ],
       "command": {
         "runtime": "wasi",
-        "platforms": ["linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"],
+        "platforms": [
+          "linux/amd64",
+          "linux/arm64",
+          "darwin/amd64",
+          "darwin/arm64"
+        ],
         "export": "_start",
         "preopen": "workloads/applications/sightglass/libsodium-hash/inputs",
         "stdout_sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
@@ -1556,6 +1603,636 @@
         "taclebench"
       ],
       "artifact_sha256": "625f345fb68018659984ed408a5c9ea1456b6bda09f02044f409e11676060028"
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C 2mm (small dataset)",
+      "id": "polybench-2mm",
+      "artifact": "workloads/polybench/2mm.wasm",
+      "tags": [
+        "linear-algebra",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "89b9c80bcde4caba2bbb6831db31ed4dd3f8db2db86f633503109c58d233d8b6",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            1546556155
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C 3mm (small dataset)",
+      "id": "polybench-3mm",
+      "artifact": "workloads/polybench/3mm.wasm",
+      "tags": [
+        "linear-algebra",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "a3294759cb52222d4b14a850b44ffd52ecd9ea1b8e7f16dcd748235d721c5891",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            2627163156
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C adi (small dataset)",
+      "id": "polybench-adi",
+      "artifact": "workloads/polybench/adi.wasm",
+      "tags": [
+        "stencil",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "c014667facaebc17da35d3fa04a959ed52be98c0cc0869d3e95bb523158c4519",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            3789631225
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C atax (small dataset)",
+      "id": "polybench-atax",
+      "artifact": "workloads/polybench/atax.wasm",
+      "tags": [
+        "linear-algebra",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "5697d8c317f7e0aceb53621a79edef1aea51f3c45dc12e8307ce7a5fc6505f15",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            2813533339
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C bicg (small dataset)",
+      "id": "polybench-bicg",
+      "artifact": "workloads/polybench/bicg.wasm",
+      "tags": [
+        "linear-algebra",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "fe0e107639ea3e9c6bed2ead194de2f73d6c43da3fbef4086d618a2cb4cb9237",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            2132546483
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C cholesky (small dataset)",
+      "id": "polybench-cholesky",
+      "artifact": "workloads/polybench/cholesky.wasm",
+      "tags": [
+        "solver",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "32fa0520bc4ef20f36f5d9d374485ce8cd9dd505d57ce9cccc95c601a7f6557d",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            4195741085
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C correlation (small dataset)",
+      "id": "polybench-correlation",
+      "artifact": "workloads/polybench/correlation.wasm",
+      "tags": [
+        "statistics",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "d82e216024b8b69c6eac4a731851e9db9c9a9be54fed0ea4c0e920786542df7c",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            1660149189
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C covariance (small dataset)",
+      "id": "polybench-covariance",
+      "artifact": "workloads/polybench/covariance.wasm",
+      "tags": [
+        "statistics",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "8617430637a0269e124411c4e55233739ef9a78f12bb089e2487f0000ed9194a",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            1352634564
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C deriche (small dataset)",
+      "id": "polybench-deriche",
+      "artifact": "workloads/polybench/deriche.wasm",
+      "tags": [
+        "image-processing",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "fa1f06819b6a401427d034571199d6d4e055b466135b170f73fa83ec55736bef",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            1881944242
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C doitgen (small dataset)",
+      "id": "polybench-doitgen",
+      "artifact": "workloads/polybench/doitgen.wasm",
+      "tags": [
+        "linear-algebra",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "d0a3cad13d8f4cc732a38f6f4455c5090761892c811f810bec1950f906de48ae",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            200608810
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C durbin (small dataset)",
+      "id": "polybench-durbin",
+      "artifact": "workloads/polybench/durbin.wasm",
+      "tags": [
+        "solver",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "c7731633a680988fe4dba32d8b2248630340226dc18f50537b630e500d783b58",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            1487643478
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C fdtd-2d (small dataset)",
+      "id": "polybench-fdtd-2d",
+      "artifact": "workloads/polybench/fdtd-2d.wasm",
+      "tags": [
+        "stencil",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "330efa74054f9b909cd3f9bfa8a9f41fafaeea1854ab21537bdfc3d36ff6e04c",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            1759778808
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C floyd-warshall (small dataset)",
+      "id": "polybench-floyd-warshall",
+      "artifact": "workloads/polybench/floyd-warshall.wasm",
+      "tags": [
+        "graph",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "20766bf0b5e219d64759fcbae37b68c3f1a3e2c08e7722e7a3ac04e966a879fe",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            1157866469
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C gemm (small dataset)",
+      "id": "polybench-gemm",
+      "artifact": "workloads/polybench/gemm.wasm",
+      "tags": [
+        "blas",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "8ba9ee8cafd9bf19b1547fe9127c861505daeecfe84c0516801776fddfcabd79",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            122535361
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C gemver (small dataset)",
+      "id": "polybench-gemver",
+      "artifact": "workloads/polybench/gemver.wasm",
+      "tags": [
+        "blas",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "5f6027eeccaafa4f330e75259ce07122f76567ed5aa9442143b073674ee9e8ee",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            4254405390
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C gesummv (small dataset)",
+      "id": "polybench-gesummv",
+      "artifact": "workloads/polybench/gesummv.wasm",
+      "tags": [
+        "blas",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "2bebb9d74f110824633022ff2d4981192295f3b466cdeb38cbc5342f36d720b1",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            3680386315
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C gramschmidt (small dataset)",
+      "id": "polybench-gramschmidt",
+      "artifact": "workloads/polybench/gramschmidt.wasm",
+      "tags": [
+        "solver",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "7454650c22f10bf57dd330ab00e553a81e20891025751cae5b78e50d494eee15",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            1911444950
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C heat-3d (small dataset)",
+      "id": "polybench-heat-3d",
+      "artifact": "workloads/polybench/heat-3d.wasm",
+      "tags": [
+        "stencil",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "d9dd40a6d35a87fecf2c5aea7d53948229a3a7d32f79e535c061ae9eb4e26c65",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            1278026138
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C jacobi-1d (small dataset)",
+      "id": "polybench-jacobi-1d",
+      "artifact": "workloads/polybench/jacobi-1d.wasm",
+      "tags": [
+        "stencil",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "a53dec8850662d78ad36c5563a3998cb550bfe29de517b4689789d222d4e77b7",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            139987702
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C jacobi-2d (small dataset)",
+      "id": "polybench-jacobi-2d",
+      "artifact": "workloads/polybench/jacobi-2d.wasm",
+      "tags": [
+        "stencil",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "22bf77b0c5d1ef03d29d5a11aaffd704a6e3979c9e15ce3ae150ffcc0ca82bf1",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            3353712388
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C lu (small dataset)",
+      "id": "polybench-lu",
+      "artifact": "workloads/polybench/lu.wasm",
+      "tags": [
+        "solver",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "dd09f51afbfa45e88efef5248248483f8e33df484dec94157f7e6226fba9e269",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            905863077
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C ludcmp (small dataset)",
+      "id": "polybench-ludcmp",
+      "artifact": "workloads/polybench/ludcmp.wasm",
+      "tags": [
+        "solver",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "15819eaa64025760a47988e579841a0cc1611febfa185227b4b19ce427eefe32",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            2231810866
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C mvt (small dataset)",
+      "id": "polybench-mvt",
+      "artifact": "workloads/polybench/mvt.wasm",
+      "tags": [
+        "linear-algebra",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "7cefc0d81ab2218fee9302226c0edc49b7f7838256331786eb3c89c6af6f77f7",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            2420409310
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C nussinov (small dataset)",
+      "id": "polybench-nussinov",
+      "artifact": "workloads/polybench/nussinov.wasm",
+      "tags": [
+        "dynamic-programming",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "d057968b40a33481a9f64c98365f1301450c627586bbeabe64f39d03901ebf44",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            1011254973
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C seidel-2d (small dataset)",
+      "id": "polybench-seidel-2d",
+      "artifact": "workloads/polybench/seidel-2d.wasm",
+      "tags": [
+        "stencil",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "0c9025ce4ec0116c713e11c69e5c354bb39cdaef9c0045d3a120fedb58cb89c1",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            2549988844
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C symm (small dataset)",
+      "id": "polybench-symm",
+      "artifact": "workloads/polybench/symm.wasm",
+      "tags": [
+        "blas",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "679cc4876b25367e32a2e90479c58908e4478e982d444218884ae1a143716af2",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            163885790
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C syr2k (small dataset)",
+      "id": "polybench-syr2k",
+      "artifact": "workloads/polybench/syr2k.wasm",
+      "tags": [
+        "blas",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "d121107ec1742784107be56c7a095804a61779644047fdca7599ce77d379ba5a",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            2124289815
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C syrk (small dataset)",
+      "id": "polybench-syrk",
+      "artifact": "workloads/polybench/syrk.wasm",
+      "tags": [
+        "blas",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "daf0a9df60bfb18de8515e73abd49f518d550b14ea8e87e1da5943604e1e51a0",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            2640594851
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C trisolv (small dataset)",
+      "id": "polybench-trisolv",
+      "artifact": "workloads/polybench/trisolv.wasm",
+      "tags": [
+        "solver",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "9d9af505eb4c4accbd360a1805cf243fbb40e2519f3567d0ced756ebfad55578",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            713615498
+          ]
+        }
+      ]
+    },
+    {
+      "suite": "PolyBench/C",
+      "desc": "PolyBench/C trmm (small dataset)",
+      "id": "polybench-trmm",
+      "artifact": "workloads/polybench/trmm.wasm",
+      "tags": [
+        "blas",
+        "algorithm",
+        "polybench"
+      ],
+      "artifact_sha256": "e379eb762f2b827b1a5663a703c9d7e8e7bdff3072e4a4b007c02daa76639b20",
+      "exec": [
+        {
+          "export": "polybench_run",
+          "args": [],
+          "want": [
+            3017656213
+          ]
+        }
+      ]
     }
   ]
 }

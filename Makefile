@@ -180,6 +180,10 @@ test-corpus: ## Corpus pipeline + exact-oracle execution (CORPUS=quick|all|tag:<
 test-corpus-all: ## Run every curated corpus correctness case
 	$(MAKE) test-corpus CORPUS=all
 
+.PHONY: corpus-build-polybench
+corpus-build-polybench: ## Rebuild all 30 checked PolyBench/C kernels (WASI_SDK=/opt/wasi-sdk)
+	WASI_SDK='$(WASI_SDK)' corpus/build/polybench.sh
+
 .PHONY: test-semantic-corpus
 test-semantic-corpus: ## Semantic corpus: real programs checked against exact oracles
 	cd bench && go test -count=1 ./internal/semanticcorpus
