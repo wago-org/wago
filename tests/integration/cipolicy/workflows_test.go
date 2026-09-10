@@ -53,7 +53,7 @@ func TestWorkflowActionsUseImmutableCommits(t *testing.T) {
 	}
 }
 
-func TestCanaryUsesImmutableSemVerTagsAndTargets(t *testing.T) {
+func TestCanaryCreatesOnlyImmutableSemVerTags(t *testing.T) {
 	canary, err := os.ReadFile(filepath.Clean("../../../.github/workflows/canary.yml"))
 	if err != nil {
 		t.Fatal(err)
@@ -63,12 +63,19 @@ func TestCanaryUsesImmutableSemVerTagsAndTargets(t *testing.T) {
 		`RELEASE_SERIES: "0.1.0"`,
 		`short_sha=${sha:0:7}`,
 		`echo "tag=v${RELEASE_SERIES}-canary.g$short_sha"`,
-		`target=$(gh api "repos/${{ github.repository }}/releases/tags/`,
-		`has an invalid target commit`,
-		`if [ "$target" != "${{ needs.`,
+		`git/ref/tags/$TAG`,
+		`tag $TAG already targets $existing instead of $SHA`,
+		`-f ref="refs/tags/$TAG"`,
+		`-f sha="$SHA"`,
+		`retention-days: 90`,
 	} {
 		if !strings.Contains(contents, required) {
 			t.Errorf("canary workflow is missing immutable SemVer policy %q", required)
+		}
+	}
+	for _, forbidden := range []string{"gh release", "/releases", "--prerelease", "download-artifact"} {
+		if strings.Contains(contents, forbidden) {
+			t.Errorf("canary workflow must create tags only, found %q", forbidden)
 		}
 	}
 }

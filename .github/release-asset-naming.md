@@ -2,22 +2,25 @@
 
 ## Channels and versions
 
-- `canary` resolves the newest successful main build. Canary releases use an
-  immutable SemVer tag such as
-  `v0.1.0-canary.g<7-character-commit-sha>`.
+- `canary` resolves the newest successful main commit carrying an immutable
+  SemVer tag such as `v0.1.0-canary.g<7-character-commit-sha>`. Canaries are
+  tags only in the repository: they do not create GitHub Releases. Their
+  cross-platform binaries are retained on the matching Actions workflow run.
 - `beta` resolves the newest manually qualified beta, such as
   `v0.1.0-beta.1`.
 - `latest` resolves the newest stable `vMAJOR.MINOR.PATCH` release.
 
-The canary workflow publishes automatically after main CI succeeds. Beta and
-stable releases are dispatched through `release.yml` with an exact full commit
-SHA that already passed main CI. Both paths build, smoke-test, checksum, and
-publish the same platform asset set. Before starting a new release series,
-update `RELEASE_SERIES` in `canary.yml`.
+The canary workflow builds and tags automatically after main CI succeeds. Its
+workflow artifacts are retained for 90 days, while CLI canary installation
+builds the exact tagged source with the requested `go` or `tinygo` executable
+from `PATH`. Beta and stable releases are dispatched through
+`release.yml` with an exact full commit SHA that already passed main CI; those
+releases build, smoke-test, checksum, and publish the platform asset set. Before
+starting a new release series, update `RELEASE_SERIES` in `canary.yml`.
 
 ## Release notes
 
-GitHub generates the public notes for every channel. Pull requests carrying the
+GitHub generates public notes for beta and stable releases. Pull requests carrying the
 `enhancement` label appear under **New features**; all other included pull
 requests appear under **Changelog**. GitHub also identifies first-time
 contributors. Qualification details and asset hashes stay in

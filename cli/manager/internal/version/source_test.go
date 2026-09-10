@@ -240,15 +240,19 @@ func TestChecksumMismatchDoesNotBuildFromSource(t *testing.T) {
 	}
 }
 
-func TestCanaryResolvesLatestPublishedCanary(t *testing.T) {
+func TestCanaryResolvesLatestTagAsSource(t *testing.T) {
 	const sha = "deadbee123456789012345678901234567890123"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte(`[{"tag_name":"v0.1.0-canary.g` + sha[:7] + `","target_commitish":"` + sha + `"}]`))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/tags") {
+			_, _ = w.Write([]byte(`[{"name":"v0.1.0-canary.g` + sha[:7] + `","commit":{"sha":"` + sha + `"}}]`))
+			return
+		}
+		_, _ = w.Write([]byte(`[{"sha":"` + sha + `"}]`))
 	}))
 	defer server.Close()
 	t.Setenv("WAGO_RELEASE_API", server.URL)
 	ref, sourceOnly, err := resolveRunnerVersion("canary", nil)
-	if err != nil || ref != "v0.1.0-canary.g"+sha[:7]+"@"+sha || sourceOnly {
+	if err != nil || ref != "v0.1.0-canary.g"+sha[:7]+"@"+sha || !sourceOnly {
 		t.Fatalf("resolveRunnerVersion = %q, %v, %v", ref, sourceOnly, err)
 	}
 }
