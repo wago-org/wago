@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	managerprogress "github.com/wago-org/wago/cli/manager/internal/progress"
+	"github.com/wago-org/wago/internal/actionartifact"
 	"github.com/wago-org/wago/internal/atomicfile"
 	"github.com/wago-org/wago/internal/httpclient"
 	"github.com/wago-org/wago/internal/wagopaths"
@@ -25,8 +26,9 @@ import (
 const releaseAssetLimit int64 = 512 << 20
 
 var (
-	releaseAssetMaximum = releaseAssetLimit
-	errChecksumFormat   = errors.New("invalid release checksum format")
+	releaseAssetMaximum       = releaseAssetLimit
+	errChecksumFormat         = errors.New("invalid release checksum format")
+	downloadActionsExecutable = actionartifact.DownloadExecutable
 )
 
 type httpStatusError struct {
@@ -238,6 +240,47 @@ func managerAsset() string {
 	return "wago-" + runtime.GOOS + "-" + runtime.GOARCH
 }
 
+func canaryArtifactReference(ref string) (tag, commit string, ok bool) {
+	tag = releaseAssetVersion(ref)
+	if channelRelease(tag) != "canary" {
+		return "", "", false
+	}
+	if _, sha, canonical := rollingCommitSHA(ref); canonical {
+		commit = sha
+	}
+	return tag, commit, true
+}
+
+func downloadCanaryArtifactContext(ctx context.Context, ref, asset, dest string, progress *managerprogress.Progress) error {
+	tag, commit, ok := canaryArtifactReference(ref)
+	if !ok {
+		return errors.New("version does not identify a canary workflow artifact")
+	}
+	if progress != nil {
+		progress.Begin("downloading canary workflow artifact")
+	}
+	err := downloadActionsExecutable(ctx, actionartifact.Config{
+		CatalogURL: actionsArtifactCatalog(),
+		Repository: "wago-org/wago",
+		Token:      actionartifact.TokenFromEnvironment(),
+	}, tag, commit, runtime.GOOS+"-"+runtime.GOARCH, asset, dest)
+	if err != nil {
+		if progress != nil {
+			if ctx.Err() != nil {
+				progress.Fail("artifact download canceled")
+			} else {
+				progress.Done("workflow artifact unavailable; using source")
+			}
+		}
+		return err
+	}
+	if progress != nil {
+		progress.Done("downloaded and verified " + asset)
+		progress.Done("installed executable")
+	}
+	return nil
+}
+
 // httpGetBytesProgress remains for small metadata tests/callers only. Release
 // executables use the dedicated streaming path above.
 func httpGetBytesProgress(url string, progress func(current, total int64)) ([]byte, error) {
@@ -268,4 +311,11 @@ func releaseAPI() string {
 		return v
 	}
 	return "https://api.github.com"
+}
+
+func actionsArtifactCatalog() string {
+	if value := os.Getenv("WAGO_ACTIONS_ARTIFACT_API"); value != "" {
+		return value
+	}
+	return strings.TrimRight(releaseAPI(), "/") + "/repos/wago-org/wago/actions/artifacts"
 }

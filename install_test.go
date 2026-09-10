@@ -400,14 +400,20 @@ func TestWineInstallerCompletesNativeInstallFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	managerHash := fmt.Sprintf("%x", sha256.Sum256(manager))
+	managerArtifact := makeArtifactArchive(t, map[string][]byte{
+		"wago-windows-amd64":        manager,
+		"wago-windows-amd64.sha256": []byte(managerHash + "  wago-windows-amd64\n"),
+	})
 	sourceArchive := makeSourceArchive(t)
 	tag := "v0.1.0-canary.gccccccc"
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/download/" + tag + "/wago-windows-amd64":
-			_, _ = w.Write(manager)
-		case "/download/" + tag + "/wago-windows-amd64.sha256":
-			_, _ = fmt.Fprintf(w, "%s  wago-windows-amd64\n", managerHash)
+		case "/artifacts":
+			_, _ = fmt.Fprintf(w, `{"artifacts":[{"id":1,"name":%q,"expired":false,"created_at":"2026-09-10T00:00:00Z","archive_download_url":%q,"workflow_run":{"head_sha":"cccccccccccccccccccccccccccccccccccccccc"}}]}`,
+				tag+"-windows-amd64", server.URL+"/artifact.zip")
+		case "/artifact.zip":
+			_, _ = w.Write(managerArtifact)
 		case "/source.zip":
 			_, _ = w.Write(sourceArchive)
 		default:
@@ -427,7 +433,7 @@ func TestWineInstallerCompletesNativeInstallFlow(t *testing.T) {
 		"WAGO_VERSION="+tag,
 		"WAGO_BIN_DIR="+windowsPath(binDir),
 		"WAGO_SRC_DIR="+windowsPath(srcDir),
-		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
+		"WAGO_ACTIONS_ARTIFACT_API="+server.URL+"/artifacts",
 		"WAGO_ARCHIVE_URL="+server.URL+"/source.zip",
 		"WAGO_REPO_URL=Z:\\does-not-exist",
 	)
@@ -437,7 +443,7 @@ func TestWineInstallerCompletesNativeInstallFlow(t *testing.T) {
 	}
 	text := strings.ReplaceAll(string(output), "\r", "")
 	for _, fragment := range []string{
-		"Downloaded Wago manager " + tag,
+		"Downloaded and verified Wago manager " + tag,
 		"Fetched Wago source",
 		"Verified installation",
 		"Sweet, Wago " + tag + " is ready",
@@ -466,6 +472,25 @@ func TestWineInstallerCompletesNativeInstallFlow(t *testing.T) {
 			t.Fatalf("Wine install did not create %s: %v", path, err)
 		}
 	}
+}
+
+func makeArtifactArchive(t *testing.T, files map[string][]byte) []byte {
+	t.Helper()
+	var archive bytes.Buffer
+	writer := zip.NewWriter(&archive)
+	for name, data := range files {
+		entry, err := writer.Create(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := entry.Write(data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return archive.Bytes()
 }
 
 func buildInstaller(t *testing.T, target, goos, goarch string) {
