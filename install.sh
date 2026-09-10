@@ -8,8 +8,11 @@ set -eu
 
 release_repo="${WAGO_RELEASE_REPO:-wago-org/wago}"
 release_api="${WAGO_RELEASES_API_URL:-https://api.github.com/repos/$release_repo/releases}"
+tags_api="${WAGO_TAGS_API_URL:-https://api.github.com/repos/$release_repo/tags}"
+commits_api="${WAGO_COMMITS_API_URL:-https://api.github.com/repos/$release_repo/commits}"
 release_download_base="${WAGO_RELEASE_DOWNLOAD_BASE:-https://github.com/$release_repo/releases}"
 version="${WAGO_VERSION:-main}"
+install_version=$version
 tmp=""
 
 die() {
@@ -59,15 +62,61 @@ release_tag_from_json() {
 	' "$2"
 }
 
+canary_tag_from_json() {
+	awk '
+		FNR == NR && /"name"[[:space:]]*:/ {
+			line = $0
+			sub(/^.*"name"[[:space:]]*:[[:space:]]*"/, "", line)
+			sub(/".*$/, "", line)
+			pending = line
+			next
+		}
+		FNR == NR && pending != "" && /"sha"[[:space:]]*:/ {
+			line = $0
+			sub(/^.*"sha"[[:space:]]*:[[:space:]]*"/, "", line)
+			sub(/".*$/, "", line)
+			if (pending ~ /^v[0-9]+\.[0-9]+\.[0-9]+-canary\.g[0-9a-f]{7}$/) tags[line] = pending
+			pending = ""
+			next
+		}
+		/"name"[[:space:]]*:/ {
+			next
+		}
+		/"sha"[[:space:]]*:/ {
+			line = $0
+			sub(/^.*"sha"[[:space:]]*:[[:space:]]*"/, "", line)
+			sub(/".*$/, "", line)
+			if (tags[line] != "") {
+				print tags[line]
+				exit
+			}
+		}
+	' "$1" "$2"
+}
+
 resolve_release() {
 	case "$version" in
 		latest)
 			download "$release_api/latest" "$tmp/release.json" || return 1
 			tag=$(sed -n 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp/release.json" | head -1)
 			;;
+		v*-canary.g???????)
+			install_version=$version
+			download "$release_api?per_page=100" "$tmp/releases.json" || return 1
+			tag=$(release_tag_from_json beta "$tmp/releases.json")
+			;;
 		v*) tag=$version ;;
 		*)
-			case "$version" in beta) channel=beta ;; *) channel=canary ;; esac
+			case "$version" in
+				beta) channel=beta ;;
+				*)
+					download "$tags_api?per_page=100&page=1" "$tmp/tags.json" || return 1
+					download "$commits_api?sha=main&per_page=100&page=1" "$tmp/commits.json" || return 1
+					install_version=$(canary_tag_from_json "$tmp/tags.json" "$tmp/commits.json")
+					[ -n "$install_version" ] || return 1
+					channel=beta
+					;;
+			esac
 			download "$release_api?per_page=100" "$tmp/releases.json" || return 1
 			tag=$(release_tag_from_json "$channel" "$tmp/releases.json")
 			;;
@@ -110,7 +159,7 @@ verify_checksum() {
 run_installer() {
 	installer=$1
 	shift
-	if WAGO_PATH_REFRESH_FILE="$tmp/path-refresh" "$installer" install "$@"; then
+	if WAGO_VERSION="$install_version" WAGO_PATH_REFRESH_FILE="$tmp/path-refresh" "$installer" install "$@"; then
 		return 0
 	else
 		status=$?

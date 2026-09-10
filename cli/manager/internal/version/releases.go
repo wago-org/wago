@@ -29,13 +29,19 @@ type remoteCommit struct {
 	} `json:"commit"`
 }
 
+type remoteTag struct {
+	Name   string `json:"name"`
+	Commit struct {
+		SHA string `json:"sha"`
+	} `json:"commit"`
+}
+
 // isRollingChannel reports whether ver names a rolling release channel rather
 // than a pinned, immutable version.
 func isRollingChannel(ver string) bool { return rollingChannels[ver] }
 
-// channelRelease returns the moving channel represented by an immutable
-// prerelease tag, if any. Release APIs return newest-first, so callers keep the
-// first tag seen for each channel.
+// channelRelease returns the moving channel represented by an immutable SemVer
+// tag, if any.
 func channelRelease(tag string) string {
 	version, prerelease, found := strings.Cut(strings.ToLower(strings.TrimSpace(tag)), "-")
 	if !found || !validReleaseCore(version) {

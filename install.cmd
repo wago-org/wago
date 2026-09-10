@@ -33,10 +33,15 @@ if defined WAGO_INSTALLER (
 
 set "version=main"
 if defined WAGO_VERSION set "version=%WAGO_VERSION%"
+set "install_version=!version!"
 set "release_repo=wago-org/wago"
 if defined WAGO_RELEASE_REPO set "release_repo=%WAGO_RELEASE_REPO%"
 set "release_api=https://api.github.com/repos/!release_repo!/releases"
 if defined WAGO_RELEASES_API_URL set "release_api=%WAGO_RELEASES_API_URL%"
+set "tags_api=https://api.github.com/repos/!release_repo!/tags"
+if defined WAGO_TAGS_API_URL set "tags_api=%WAGO_TAGS_API_URL%"
+set "commits_api=https://api.github.com/repos/!release_repo!/commits"
+if defined WAGO_COMMITS_API_URL set "commits_api=%WAGO_COMMITS_API_URL%"
 set "release_download_base=https://github.com/!release_repo!/releases"
 if defined WAGO_RELEASE_DOWNLOAD_BASE set "release_download_base=%WAGO_RELEASE_DOWNLOAD_BASE%"
 
@@ -74,6 +79,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
+set "WAGO_VERSION=!install_version!"
 "!tmp_dir!\installer.exe" install %*
 set "installer_status=!ERRORLEVEL!"
 call :cleanup
@@ -116,10 +122,53 @@ if /i "!version!"=="latest" (
   if not defined tag exit /b 1
   exit /b 0
 )
-if /i "!version:~0,1!"=="v" set "tag=!version!"
+if /i "!version:~0,1!"=="v" (
+  if /i "!version:-canary.g=!"=="!version!" (
+    set "tag=!version!"
+  ) else (
+    set "channel=beta"
+  )
+)
 if defined tag exit /b 0
-set "channel=canary"
-if /i "!version!"=="beta" set "channel=beta"
+if not defined channel (
+  if /i "!version!"=="beta" (
+    set "channel=beta"
+  ) else (
+    curl.exe -fsSL "!tags_api!?per_page=100&page=1" -o "!tmp_dir!\tags.json" >nul 2>&1
+    if errorlevel 1 exit /b 1
+	curl.exe -fsSL "!commits_api!?sha=main&per_page=100&page=1" -o "!tmp_dir!\commits.json" >nul 2>&1
+	if errorlevel 1 exit /b 1
+    set "install_version="
+	set "canary_pending_tag="
+    for /f "usebackq tokens=1,* delims=:" %%A in ("!tmp_dir!\tags.json") do (
+      set "tag_key=%%A"
+      set "tag_key=!tag_key: =!"
+      set "tag_key=!tag_key:"=!"
+      if /i "!tag_key!"=="name" (
+        call :clean_release_candidate "%%B"
+		set "canary_pending_tag="
+		if /i not "!release_candidate:-canary.g=!"=="!release_candidate!" set "canary_pending_tag=!release_candidate!"
+      )
+	  if /i "!tag_key!"=="sha" if defined canary_pending_tag (
+		call :clean_release_candidate "%%B"
+		set "canary_!release_candidate!=!canary_pending_tag!"
+		set "canary_pending_tag="
+	  )
+    )
+	for /f "usebackq tokens=1,* delims=:" %%A in ("!tmp_dir!\commits.json") do if not defined install_version (
+	  set "commit_key=%%A"
+	  set "commit_key=!commit_key: =!"
+	  set "commit_key=!commit_key:"=!"
+	  if /i "!commit_key!"=="sha" (
+		call :clean_release_candidate "%%B"
+		call set "install_version=%%canary_!release_candidate!%%"
+		if "!install_version:~0,1!"=="%%" set "install_version="
+	  )
+	)
+    if not defined install_version exit /b 1
+    set "channel=beta"
+  )
+)
 curl.exe -fsSL "!release_api!?per_page=100" -o "!tmp_dir!\releases.json" >nul 2>&1
 if errorlevel 1 exit /b 1
 set "release_pending_tag="

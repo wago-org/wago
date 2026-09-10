@@ -1,9 +1,7 @@
-name: Publish canary
+name: Publish canary tag
 
-# A push to main publishes a canary only after that commit's CI run succeeds.
-# Manual dispatches build the current main tip. Every successful target is
-# attached to a uniquely tagged SemVer canary prerelease with the same asset
-# names as beta and stable releases.
+# A successful CI run on main builds workflow artifacts and creates one
+# immutable SemVer canary tag. It never creates a GitHub Release.
 on:
   workflow_run:
     workflows: [CI]
@@ -35,20 +33,18 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.version.outputs.sha }}
-      version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || 'main' }}
           fetch-depth: 1
-      - name: Resolve version
+      - name: Resolve canary tag
         id: version
         run: |
           sha=$(git rev-parse HEAD)
           short_sha=${sha:0:7}
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          echo "version=v${RELEASE_SERIES}-canary.g$short_sha" >> "$GITHUB_OUTPUT"
           echo "tag=v${RELEASE_SERIES}-canary.g$short_sha" >> "$GITHUB_OUTPUT"
 
   build:
@@ -115,10 +111,10 @@ jobs:
         run: |
           scripts/build-release-assets.sh
           scripts/verify-channel-assets.sh . "${{ matrix.target }}"
-      - name: Upload release files
+      - name: Upload canary workflow artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: canary-${{ matrix.target }}
+          name: ${{ needs.prepare.outputs.tag }}-${{ matrix.target }}
           path: |
             wago-${{ matrix.target }}
             wago-${{ matrix.target }}.sha256
@@ -127,53 +123,35 @@ jobs:
             wago-runtime-*-${{ matrix.target }}
             wago-runtime-*-${{ matrix.target }}.sha256
           if-no-files-found: error
+          retention-days: 90
 
-  publish:
-    name: Publish canary release
+  tag:
+    name: Tag qualified canary
     needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ needs.prepare.outputs.sha }}
-      - name: Download release files
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          pattern: canary-*
-          merge-multiple: true
-          path: release
-      - name: Verify available release files
-        run: |
-          scripts/verify-channel-assets.sh release
-      - name: Publish uniquely tagged canary release
+          fetch-depth: 1
+      - name: Create immutable canary tag
         env:
           GH_TOKEN: ${{ github.token }}
+          SHA: ${{ needs.prepare.outputs.sha }}
+          TAG: ${{ needs.prepare.outputs.tag }}
         run: |
-          mapfile -t assets < <(find release -maxdepth 1 -type f -name 'wago-*' -print | sort)
-          test "${#assets[@]}" -gt 0
-          gh api --method POST \
-            "repos/${{ github.repository }}/releases/generate-notes" \
-            -f tag_name="${{ needs.prepare.outputs.tag }}" \
-            -f target_commitish="${{ needs.prepare.outputs.sha }}" --jq .body |
-            sed 's/^## New Contributors$/## First-time contributors/' >release-notes.md
-          if gh release view "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            target=$(gh api "repos/${{ github.repository }}/releases/tags/${{ needs.prepare.outputs.tag }}" --jq '.target_commitish')
-            if [ "$target" != "${{ needs.prepare.outputs.sha }}" ]; then
-              echo "GitHub release ${{ needs.prepare.outputs.tag }} has an invalid target commit: $target" >&2
+          existing=$(gh api "repos/${{ github.repository }}/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null || true)
+          if [ -n "$existing" ]; then
+            if [ "$existing" != "$SHA" ]; then
+              echo "::error::tag $TAG already targets $existing instead of $SHA"
               exit 1
             fi
-            gh release upload "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" --clobber "${assets[@]}"
-            gh release edit "${{ needs.prepare.outputs.tag }}" --repo "${{ github.repository }}" --notes-file release-notes.md
-            echo "canary release already exists for ${{ needs.prepare.outputs.sha }}"
+            echo "canary tag $TAG already exists"
             exit 0
           fi
-          gh release create "${{ needs.prepare.outputs.tag }}" \
-            --repo "${{ github.repository }}" \
-            --target "${{ needs.prepare.outputs.sha }}" \
-            --title "Canary (${{ needs.prepare.outputs.version }})" \
-            --notes-file release-notes.md \
-            --prerelease \
-            "${assets[@]}"
+          gh api --method POST "repos/${{ github.repository }}/git/refs" \
+            -f ref="refs/tags/$TAG" \
+            -f sha="$SHA"
       - name: Create documentation synchronization token
         id: docs-sync-token
         if: vars.DOCS_SYNC_APP_ID != ''
