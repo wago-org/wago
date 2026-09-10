@@ -30,8 +30,6 @@ type installer struct {
 	repoURL             string
 	archiveURL          string
 	releaseAPI          string
-	tagAPI              string
-	commitAPI           string
 	actionsArtifactAPI  string
 	actionsArtifactRepo string
 	releaseDownloadBase string
@@ -89,6 +87,8 @@ var installerSourceArchiveURL = func(repo, ref string) string {
 }
 
 var downloadInstallerActionArtifact = actionartifact.DownloadExecutable
+var downloadInstallerCanaryArtifact = actionartifact.DownloadCanaryExecutable
+var latestInstallerCanaryCommit = actionartifact.LatestCanaryCommit
 
 func newInstaller(out io.Writer) (*installer, error) {
 	home, err := os.UserHomeDir()
@@ -118,8 +118,6 @@ func newInstaller(out io.Writer) (*installer, error) {
 		repoURL:             envOr("WAGO_REPO_URL", "https://github.com/wago-org/wago.git"),
 		archiveURL:          envOr("WAGO_ARCHIVE_URL", installerSourceArchiveURL(releaseRepo, archiveRef)),
 		releaseAPI:          envOr("WAGO_RELEASES_API_URL", "https://api.github.com/repos/"+releaseRepo+"/releases"),
-		tagAPI:              envOr("WAGO_TAGS_API_URL", "https://api.github.com/repos/"+releaseRepo+"/tags"),
-		commitAPI:           envOr("WAGO_COMMITS_API_URL", "https://api.github.com/repos/"+releaseRepo+"/commits"),
 		actionsArtifactAPI:  envOr("WAGO_ACTIONS_ARTIFACT_API", "https://api.github.com/repos/"+releaseRepo+"/actions/artifacts"),
 		actionsArtifactRepo: releaseRepo,
 		releaseDownloadBase: envOr("WAGO_RELEASE_DOWNLOAD_BASE", "https://github.com/"+releaseRepo+"/releases"),
@@ -414,20 +412,14 @@ func reinstallLabel(mode string) string {
 
 func (i *installer) downloadManager(target string) error {
 	if channel, sha, canonical := installerRollingCommit(i.version); canonical && channel == "canary" {
-		i.managerTag = i.version
-		i.managerSourceRef = sha
-		tag, err := i.canaryTagForCommit(sha)
-		if err != nil {
-			return fmt.Errorf("resolve canary workflow artifact: %w", err)
-		}
-		return i.downloadCanaryManager(tag, sha, target)
+		return i.downloadCanaryCommitManager(sha, target)
 	}
 	if i.version == "canary" {
-		tag, sha, err := i.latestCanaryTag()
+		sha, err := i.latestCanaryCommit(runtime.GOOS + "-" + runtime.GOARCH)
 		if err != nil {
 			return err
 		}
-		return i.downloadCanaryManager(tag, sha, target)
+		return i.downloadCanaryCommitManager(sha, target)
 	}
 	if installerCanaryTag(i.version) {
 		return i.downloadCanaryManager(i.version, "", target)
@@ -469,13 +461,45 @@ func (i *installer) downloadManager(target string) error {
 		return nil
 	}
 	if i.version == "main" {
-		tag, sha, err := i.latestCanaryTag()
+		sha, err := i.latestCanaryCommit(runtime.GOOS + "-" + runtime.GOARCH)
 		if err != nil {
 			return errors.Join(downloadErr, err)
 		}
-		return i.downloadCanaryManager(tag, sha, target)
+		return i.downloadCanaryCommitManager(sha, target)
 	}
 	return downloadErr
+}
+
+func (i *installer) latestCanaryCommit(target string) (string, error) {
+	return latestInstallerCanaryCommit(i.installContext(), actionartifact.Config{
+		CatalogURL: i.actionsArtifactAPI,
+		Repository: i.actionsArtifactRepo,
+		Token:      actionartifact.TokenFromEnvironment(),
+		HTTPClient: i.httpClient,
+	}, target)
+}
+
+func (i *installer) downloadCanaryCommitManager(sha, target string) error {
+	identity := "canary@" + strings.ToLower(strings.TrimSpace(sha))
+	i.managerTag = identity
+	i.managerSourceRef = sha
+	asset, err := installbootstrap.Asset("wago", runtime.GOOS, runtime.GOARCH)
+	if err != nil {
+		return err
+	}
+	i.begin("Downloading Wago manager " + identity + " workflow artifact")
+	err = downloadInstallerCanaryArtifact(i.installContext(), actionartifact.Config{
+		CatalogURL: i.actionsArtifactAPI,
+		Repository: i.actionsArtifactRepo,
+		Token:      actionartifact.TokenFromEnvironment(),
+		HTTPClient: i.httpClient,
+	}, sha, runtime.GOOS+"-"+runtime.GOARCH, asset, target)
+	if err != nil {
+		return fmt.Errorf("download canary workflow artifact: %w", err)
+	}
+	i.managerFromRelease = true
+	i.done("Downloaded and verified Wago manager " + identity)
+	return nil
 }
 
 func (i *installer) downloadCanaryManager(tag, sha, target string) error {
@@ -501,91 +525,6 @@ func (i *installer) downloadCanaryManager(tag, sha, target string) error {
 	i.managerFromRelease = true
 	i.done("Downloaded and verified Wago manager " + tag)
 	return nil
-}
-
-type installerTag struct {
-	Name   string `json:"name"`
-	Commit struct {
-		SHA string `json:"sha"`
-	} `json:"commit"`
-}
-
-func (i *installer) canaryTagsByCommit() (map[string]string, error) {
-	var tags []installerTag
-	address, err := url.Parse(i.tagAPI)
-	if err != nil {
-		return nil, fmt.Errorf("parse tag catalog URL: %w", err)
-	}
-	query := address.Query()
-	query.Set("per_page", "100")
-	query.Set("page", "1")
-	address.RawQuery = query.Encode()
-	if err := i.getJSON(address.String(), &tags); err != nil {
-		return nil, err
-	}
-	if len(tags) > 100 {
-		return nil, errors.New("tag catalog returned too many tags")
-	}
-	byCommit := make(map[string]string, len(tags))
-	for _, tag := range tags {
-		name := strings.ToLower(strings.TrimSpace(tag.Name))
-		marker := "-canary.g"
-		index := strings.Index(name, marker)
-		if index < 0 || !installerCanaryTag(name) {
-			continue
-		}
-		short := name[index+len(marker):]
-		sha := strings.ToLower(strings.TrimSpace(tag.Commit.SHA))
-		if len(short) != 7 || !fullInstallerCommitSHA(sha) || !strings.HasPrefix(sha, short) {
-			return nil, fmt.Errorf("canary tag %q has an invalid target commit", tag.Name)
-		}
-		byCommit[sha] = tag.Name
-	}
-	return byCommit, nil
-}
-
-func (i *installer) canaryTagForCommit(sha string) (string, error) {
-	byCommit, err := i.canaryTagsByCommit()
-	if err != nil {
-		return "", err
-	}
-	if tag := byCommit[strings.ToLower(strings.TrimSpace(sha))]; tag != "" {
-		return tag, nil
-	}
-	return "", errors.New("no canary tag found")
-}
-
-func (i *installer) latestCanaryTag() (string, string, error) {
-	byCommit, err := i.canaryTagsByCommit()
-	if err != nil {
-		return "", "", err
-	}
-	type commit struct {
-		SHA string `json:"sha"`
-	}
-	var commits []commit
-	commitsAddress, err := url.Parse(i.commitAPI)
-	if err != nil {
-		return "", "", fmt.Errorf("parse commit catalog URL: %w", err)
-	}
-	query := commitsAddress.Query()
-	query.Set("sha", "main")
-	query.Set("per_page", "100")
-	query.Set("page", "1")
-	commitsAddress.RawQuery = query.Encode()
-	if err := i.getJSON(commitsAddress.String(), &commits); err != nil {
-		return "", "", err
-	}
-	if len(commits) > 100 {
-		return "", "", errors.New("commit catalog returned too many commits")
-	}
-	for _, commit := range commits {
-		sha := strings.ToLower(strings.TrimSpace(commit.SHA))
-		if tag := byCommit[sha]; tag != "" {
-			return tag, sha, nil
-		}
-	}
-	return "", "", errors.New("no canary tag found")
 }
 
 func installerCanaryTag(tag string) bool {

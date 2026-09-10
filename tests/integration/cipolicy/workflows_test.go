@@ -53,31 +53,26 @@ func TestWorkflowActionsUseImmutableCommits(t *testing.T) {
 	}
 }
 
-func TestCanaryCreatesOnlyImmutableSemVerTags(t *testing.T) {
+func TestCanaryPublishesCommitAddressedArtifactsWithoutTags(t *testing.T) {
 	canary, err := os.ReadFile(filepath.Clean("../../../.github/workflows/canary.yml"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	contents := string(canary)
 	for _, required := range []string{
-		`RELEASE_SERIES: "0.1.0"`,
-		`short_sha=${sha:0:7}`,
-		`echo "tag=v${RELEASE_SERIES}-canary.g$short_sha"`,
-		`git/ref/tags/$TAG`,
-		`tag $TAG already targets $existing instead of $SHA`,
-		`-f ref="refs/tags/$TAG"`,
-		`-f sha="$SHA"`,
+		`name: Publish canary artifacts`,
+		`name: canary-${{ needs.prepare.outputs.sha }}-${{ matrix.target }}`,
+		`WAGO_VERSION: canary@${{ needs.prepare.outputs.sha }}`,
 		`retention-days: 90`,
 		`group: publish-canary-${{ github.event.workflow_run.head_sha || github.sha }}`,
-		`2>/dev/null) || existing=""`,
 	} {
 		if !strings.Contains(contents, required) {
-			t.Errorf("canary workflow is missing immutable SemVer policy %q", required)
+			t.Errorf("canary workflow is missing commit-addressed artifact policy %q", required)
 		}
 	}
-	for _, forbidden := range []string{"gh release", "/releases", "--prerelease", "download-artifact"} {
+	for _, forbidden := range []string{"gh release", "/releases", "--prerelease", "git/ref/tags", "refs/tags/", "RELEASE_SERIES", "contents: write"} {
 		if strings.Contains(contents, forbidden) {
-			t.Errorf("canary workflow must create tags only, found %q", forbidden)
+			t.Errorf("canary workflow must not publish tags or releases, found %q", forbidden)
 		}
 	}
 }

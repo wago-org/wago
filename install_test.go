@@ -92,15 +92,10 @@ func TestShellBootstrapMatchesReleaseContract(t *testing.T) {
 func TestShellBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
 	payload := []byte("#!/bin/sh\nprintf 'native installer: %s\\n' \"$WAGO_VERSION\"\n")
 	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
-	canaryTag := "v0.1.0-canary.gdeadbee"
 	carrierTag := "v0.1.0-beta.2"
 	asset := "wago-installer-" + runtime.GOOS + "-" + runtime.GOARCH
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/tags":
-			_, _ = fmt.Fprintf(w, "[\n  {\n    \"name\": %q,\n    \"commit\": {\n      \"sha\": \"deadbee123456789012345678901234567890123\"\n    }\n  }\n]\n", canaryTag)
-		case "/commits":
-			_, _ = fmt.Fprint(w, "[\n  {\n    \"sha\": \"deadbee123456789012345678901234567890123\"\n  }\n]\n")
 		case "/releases":
 			_, _ = fmt.Fprintf(w, "[\n  {\n    \"tag_name\": %q,\n    \"published_at\": \"2026-08-03T00:00:00Z\"\n  }\n]\n", carrierTag)
 		case "/download/" + carrierTag + "/" + asset:
@@ -117,15 +112,13 @@ func TestShellBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
 	command.Env = append(os.Environ(),
 		"WAGO_VERSION=canary",
 		"WAGO_RELEASES_API_URL="+server.URL+"/releases",
-		"WAGO_TAGS_API_URL="+server.URL+"/tags",
-		"WAGO_COMMITS_API_URL="+server.URL+"/commits",
 		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
 	)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("run shell bootstrap: %v\n%s", err, output)
 	}
-	if got, want := string(output), "native installer: "+canaryTag+"\n"; got != want {
+	if got, want := string(output), "native installer: canary\n"; got != want {
 		t.Fatalf("bootstrap output = %q, want %q", got, want)
 	}
 }
@@ -389,15 +382,10 @@ func TestWineCmdBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
 	}
 	hash := fmt.Sprintf("%x", sha256.Sum256(payload))
 	var requests []string
-	canaryTag := "v0.1.0-canary.gbbbbbbb"
 	carrierTag := "v0.1.0-beta.2"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.URL.RequestURI())
 		switch r.URL.Path {
-		case "/tags":
-			_, _ = fmt.Fprintf(w, "[\n  {\n    \"name\": %q,\n    \"commit\": {\n      \"sha\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\n    }\n  }\n]\n", canaryTag)
-		case "/commits":
-			_, _ = fmt.Fprint(w, "[\n  {\n    \"sha\": \"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"\n  }\n]\n")
 		case "/releases":
 			_, _ = fmt.Fprintf(w, "[\n  {\n    \"tag_name\": %q,\n    \"published_at\": \"2026-08-03T00:00:00Z\"\n  }\n]\n", carrierTag)
 		case "/download/" + carrierTag + "/wago-installer-windows-amd64":
@@ -415,8 +403,6 @@ func TestWineCmdBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) {
 		"WINEDEBUG=-all", "NO_COLOR=1", "WAGO_VERSION=canary", "WAGO_DRY_RUN=1",
 		"WAGO_BIN_DIR=ROOT\\bin", "WAGO_SRC_DIR=ROOT\\src",
 		"WAGO_RELEASES_API_URL="+server.URL+"/releases",
-		"WAGO_TAGS_API_URL="+server.URL+"/tags",
-		"WAGO_COMMITS_API_URL="+server.URL+"/commits",
 		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
 	)
 	output, err := command.CombinedOutput()

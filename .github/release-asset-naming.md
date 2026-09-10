@@ -2,26 +2,27 @@
 
 ## Channels and versions
 
-- `canary` resolves the newest successful main commit carrying an immutable
-  SemVer tag such as `v0.1.0-canary.g<7-character-commit-sha>`. Canaries are
-  tags only in the repository: they do not create GitHub Releases. Their
-  cross-platform binaries are retained on the matching Actions workflow run.
+- `canary` resolves the newest successful main commit with a retained host
+  artifact. Its canonical identity is `canary@<40-character-commit-sha>`.
+  Canaries create neither git tags nor GitHub Releases. Legacy
+  `vMAJOR.MINOR.PATCH-canary.g<7-character-commit-sha>` artifacts remain
+  installable while they are retained.
 - `beta` resolves the newest manually qualified beta, such as
   `v0.1.0-beta.1`.
 - `latest` resolves the newest stable `vMAJOR.MINOR.PATCH` release.
 
-The canary workflow builds and tags automatically after main CI succeeds. Its
-workflow artifacts are retained for 90 days. Manager and runtime installation
+The canary workflow builds automatically after main CI succeeds. Artifacts are
+named `canary-<40-character-commit-sha>-<os>-<arch>` and retained for 90 days.
+Manager and runtime installation
 first attempt the matching host artifact and verify its bundled SHA-256 file.
 Wago first asks an installed and authenticated GitHub CLI (`gh`) to download the
 artifact. If that is unavailable, it tries the Actions API with
 `WAGO_GITHUB_TOKEN`, `GH_TOKEN`, or `GITHUB_TOKEN`. If both transports fail, or
-the archive is expired or invalid, installation builds the exact tagged source
+the archive is expired or invalid, installation builds the exact commit source
 with the requested `go` or `tinygo` executable from `PATH`. Beta and stable
 releases are dispatched through
 `release.yml` with an exact full commit SHA that already passed main CI; those
-releases build, smoke-test, checksum, and publish the platform asset set. Before
-starting a new release series, update `RELEASE_SERIES` in `canary.yml`.
+releases build, smoke-test, checksum, and publish the platform asset set.
 
 ## Release notes
 

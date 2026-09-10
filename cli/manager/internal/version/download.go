@@ -29,6 +29,8 @@ var (
 	releaseAssetMaximum       = releaseAssetLimit
 	errChecksumFormat         = errors.New("invalid release checksum format")
 	downloadActionsExecutable = actionartifact.DownloadExecutable
+	downloadCanaryExecutable  = actionartifact.DownloadCanaryExecutable
+	latestCanaryCommit        = actionartifact.LatestCanaryCommit
 )
 
 type httpStatusError struct {
@@ -241,14 +243,16 @@ func managerAsset() string {
 }
 
 func canaryArtifactReference(ref string) (tag, commit string, ok bool) {
+	if channel, sha, canonical := rollingCommitSHA(ref); canonical && channel == "canary" {
+		normalized := strings.ToLower(strings.TrimSpace(ref))
+		prefix, _, _ := strings.Cut(normalized, "@")
+		if channelRelease(prefix) == "canary" {
+			return prefix, sha, true
+		}
+		return "", sha, true
+	}
 	tag = releaseAssetVersion(ref)
-	if channelRelease(tag) != "canary" {
-		return "", "", false
-	}
-	if _, sha, canonical := rollingCommitSHA(ref); canonical {
-		commit = sha
-	}
-	return tag, commit, true
+	return tag, "", channelRelease(tag) == "canary"
 }
 
 func downloadCanaryArtifactContext(ctx context.Context, ref, asset, dest string, progress *managerprogress.Progress) error {
@@ -259,11 +263,17 @@ func downloadCanaryArtifactContext(ctx context.Context, ref, asset, dest string,
 	if progress != nil {
 		progress.Begin("downloading canary workflow artifact")
 	}
-	err := downloadActionsExecutable(ctx, actionartifact.Config{
+	config := actionartifact.Config{
 		CatalogURL: actionsArtifactCatalog(),
 		Repository: "wago-org/wago",
 		Token:      actionartifact.TokenFromEnvironment(),
-	}, tag, commit, runtime.GOOS+"-"+runtime.GOARCH, asset, dest)
+	}
+	var err error
+	if tag == "" {
+		err = downloadCanaryExecutable(ctx, config, commit, runtime.GOOS+"-"+runtime.GOARCH, asset, dest)
+	} else {
+		err = downloadActionsExecutable(ctx, config, tag, commit, runtime.GOOS+"-"+runtime.GOARCH, asset, dest)
+	}
 	if err != nil {
 		if progress != nil {
 			if ctx.Err() != nil {
