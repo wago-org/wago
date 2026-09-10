@@ -446,6 +446,18 @@ regression. Each local-GC invocation constructs a guest object before the loop
 to require a real collector. Imported and dynamic cases assert actual admission
 flags and domain ownership, not just a scalar signature.
 
+A final longer paired check ran the unchanged concrete-API reference binary
+and the final binary for ten 2-second samples each, with no concurrent builds:
+
+| Concrete fallback | Reference median ns (range) | Final median ns (range) | Delta |
+|---|---:|---:|---:|
+| Local GC | 244500 (237832–251523) | 214576.5 (213160–216340) | -12.2% |
+| Imported domain | 188077 (187353–198225) | 173785.5 (173280–174761) | -7.6% |
+| Dynamic domain | 203092 (200871–205075) | 183965 (183361–184268) | -9.4% |
+
+All rows remain zero allocation. This check supports the final fallback result
+independently of the shorter full sweep.
+
 The direct-frame experiment stays disabled. Existing buffers give these public
 one-call medians (ranges), ns/op:
 
@@ -488,6 +500,14 @@ compiler, benchmark and profiler setup; there are no callback-token boxes.
 The sampled cancellation context comes from `testing.B.runN`, not dispatch.
 The mutex profile records 649 us of Go-runtime delay, not Wago global activation
 bookkeeping.
+
+A separate 10-second parallel profile spans 12.88 seconds wall time and 190.95
+seconds sampled CPU across workers. It records only 319 us of mutex delay,
+attributed to Go runtime locks; no Wago activation mutex has sampled contended
+delay. The profiled loop is 15294 ns per 1,024 callbacks with zero allocations.
+This sample is not mixed into the five-run throughput median. Parallel flat CPU
+is led by unresolved external code (11.90%), activation dispatch (9.89%), scalar
+dispatch (7.54%) and the Go host loop (6.17%).
 
 Known likely improvement to measure next: carry the already-published sidecar
 through the remaining activation/lease helpers. The 2.63% flat lookup cost is
@@ -564,6 +584,7 @@ checkpoint, with timings recorded above. Final commands and results:
 | `go test ./src/wago -run '^$' -gcflags='-m=2'` | Escape and inlining output inspected at API, suspension and cache stages |
 | `go build -gcflags='-m=2' ./src/wago` | Pass; concrete dispatch method value does not escape |
 | `go generate ./...` | Pass; generated facade unchanged in final check |
+| `make docs-check` | Pass; 29 Markdown files validated |
 
 Full tests use the pinned spec interpreter at
 `.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm`, with
@@ -585,6 +606,16 @@ The final runtime commit passed the
 including Darwin/amd64, both Windows targets, all TinyGo lanes, Linux/arm64,
 race, concurrency, fuzz and Core v2/v3 conformance. The initial fixture-only
 commit and the scope checkpoint also passed full native matrices.
+
+The first CI attempt for the final test/report commit hit
+`TestWatchSupervisorMirrorsTerminalJobControl/separate_guest_foreground` in
+the unchanged CLI package (helper exit status 1). A local 20-repeat check of
+that test had one `shared_foreground` log-wait timeout; 20 repeats from the
+concrete-API reference checkout passed. These observations are recorded rather
+than treated as a host-boundary test failure or hidden by a retry.
+The unchanged failed job passed on retry, and the
+[final test/report matrix](https://github.com/wago-org/wago/actions/runs/34480083220)
+completed successfully. All other matrix jobs passed on their first attempt.
 
 ### Reproduce the measurements
 

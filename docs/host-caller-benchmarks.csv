@@ -572,3 +572,9 @@ final,ae19a6ec0,500ms,BenchmarkCallerDomainLoop/dynamictrue/n1-16,5,569.7,564.5,
 final,ae19a6ec0,500ms,BenchmarkCallerDomainLoop/dynamictrue/n8-16,5,1885,1865,1896,0,0
 final,ae19a6ec0,500ms,BenchmarkCallerDomainLoop/dynamictrue/n64-16,5,12133,11977,12195,0,0
 final,ae19a6ec0,500ms,BenchmarkCallerDomainLoop/dynamictrue/n1024-16,5,186272,184788,189041,0,0
+final-gc-long-reference,05a8f0b89,2s,BenchmarkCallerGCLoop/concretetrue/n1024-16,10,244500,237832,251523,0,0
+final-gc-long-reference,05a8f0b89,2s,BenchmarkCallerDomainLoop/dynamicfalse/n1024-16,10,188077,187353,198225,0,0
+final-gc-long-reference,05a8f0b89,2s,BenchmarkCallerDomainLoop/dynamictrue/n1024-16,10,203092,200871,205075,0,0
+final-gc-long-current,ae19a6ec0,2s,BenchmarkCallerGCLoop/concretetrue/n1024-16,10,214576.5,213160,216340,0,0
+final-gc-long-current,ae19a6ec0,2s,BenchmarkCallerDomainLoop/dynamicfalse/n1024-16,10,173785.5,173280,174761,0,0
+final-gc-long-current,ae19a6ec0,2s,BenchmarkCallerDomainLoop/dynamictrue/n1024-16,10,183965,183361,184268,0,0
