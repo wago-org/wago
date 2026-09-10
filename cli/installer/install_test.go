@@ -174,6 +174,61 @@ func TestInstallerUsesEmbeddedReleaseIdentityByDefault(t *testing.T) {
 	}
 }
 
+func TestInstallerUsesLocalManagerOverride(t *testing.T) {
+	source := filepath.Join(t.TempDir(), executableName("wago"))
+	if err := os.WriteFile(source, []byte("local manager"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WAGO_MANAGER_PATH", source)
+	var output bytes.Buffer
+	i, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i.tmpDir = t.TempDir()
+	target := filepath.Join(i.tmpDir, executableName("wago"))
+	if err := i.downloadManager(target); err != nil {
+		t.Fatalf("use local manager: %v", err)
+	}
+	got, err := os.ReadFile(target)
+	if err != nil || string(got) != "local manager" {
+		t.Fatalf("staged manager = %q, %v", got, err)
+	}
+	if !i.managerFromRelease {
+		t.Fatal("local manager was scheduled for replacement by a source build")
+	}
+}
+
+func TestInstallerUsesLocalSourceOverrideWithoutMovingCheckout(t *testing.T) {
+	source := t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "go.mod"), []byte("module example.com/local\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WAGO_MANAGER_SOURCE", source)
+	var output bytes.Buffer
+	i, err := newInstaller(&output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i.tmpDir = t.TempDir()
+	staged, err := i.fetchSource()
+	if err != nil {
+		t.Fatalf("use local source: %v", err)
+	}
+	if filepath.Clean(staged) == filepath.Clean(source) {
+		t.Fatal("local checkout was returned as movable installation source")
+	}
+	for _, path := range []string{filepath.Join(source, "go.mod"), filepath.Join(staged, "go.mod")} {
+		got, err := os.ReadFile(path)
+		if err != nil || string(got) != "module example.com/local\n" {
+			t.Fatalf("source file %s = %q, %v", path, got, err)
+		}
+	}
+	if i.sourceMethod != "local" {
+		t.Fatalf("source method = %q, want local", i.sourceMethod)
+	}
+}
+
 func TestInstallerDryRunPresentation(t *testing.T) {
 	t.Setenv("NO_COLOR", "1")
 	t.Setenv("HOME", filepath.Join(string(os.PathSeparator), "home", "wago"))

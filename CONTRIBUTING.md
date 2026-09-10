@@ -35,6 +35,11 @@ just build runtime standard
 just install hooks
 ```
 
+Run `just install` to install the manager built from the current checkout's
+`HEAD`. It does not fetch a release or clone the repository. Set
+`WAGO_MANAGER_PATH` to install an existing manager binary instead. Set
+`WAGO_MANAGER_SOURCE` with it when the matching source is in another directory.
+
 `wago` is the manager command. `wago-runtime-standard-normal` is the standard
 runtime command. The optional hook formats staged Go files. Review and stage
 its changes before you commit again.

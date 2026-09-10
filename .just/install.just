@@ -1,9 +1,29 @@
 set working-directory := '..'
 
-# Run the installer from this checkout.
+# Install the manager built from this checkout's HEAD.
 [default]
 manager:
-    go run ./cli/wago-installer install
+    #!/usr/bin/env bash
+    set -euo pipefail
+    stage=$(mktemp -d)
+    trap 'rm -rf "$stage"' EXIT
+    source_dir="${WAGO_MANAGER_SOURCE:-}"
+    if [[ -z "$source_dir" ]]; then
+        source_dir="$stage/source"
+        mkdir -p "$source_dir"
+        git archive HEAD | tar -xf - -C "$source_dir"
+    fi
+    source_sha=$(git rev-parse HEAD)
+    install_version="${WAGO_VERSION:-canary@$source_sha}"
+    manager_path="${WAGO_MANAGER_PATH:-}"
+    if [[ -z "$manager_path" ]]; then
+        manager_path="$stage/wago$(go env GOEXE)"
+        (cd "$source_dir" && CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$install_version" -o "$manager_path" ./cli/wago)
+    fi
+    WAGO_VERSION="$install_version" \
+        WAGO_MANAGER_PATH="$manager_path" \
+        WAGO_MANAGER_SOURCE="$source_dir" \
+        go run ./cli/wago-installer install
 
 # Atomically install this checkout as the global canary manager and runtime.
 runtime:
