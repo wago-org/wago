@@ -33,7 +33,7 @@ func TestLatestChannelRelease(t *testing.T) {
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
 	got, err := latestChannelRelease("beta")
-	if err != nil || got != "v0.1.0-beta.2@deadbee123456789012345678901234567890123" {
+	if err != nil || got != "v0.1.0-beta.2" {
 		t.Fatalf("latestChannelRelease(beta) = %q, %v", got, err)
 	}
 }
@@ -60,7 +60,7 @@ func TestLatestChannelReleasePaginates(t *testing.T) {
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
 	got, err := latestChannelReleaseContext(context.Background(), "beta")
-	if err != nil || got != "v0.1.0-beta.2@deadbee123456789012345678901234567890123" {
+	if err != nil || got != "v0.1.0-beta.2" {
 		t.Fatalf("latestChannelReleaseContext = %q, %v", got, err)
 	}
 	if requests != 2 {
@@ -133,7 +133,7 @@ func TestLatestChannelReleaseUsesLinkPaginationAndSkipsDrafts(t *testing.T) {
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
 	got, err := latestChannelReleaseContext(context.Background(), "beta")
-	if err != nil || got != "v0.1.0-beta.2@deadbee123456789012345678901234567890123" {
+	if err != nil || got != "v0.1.0-beta.2" {
 		t.Fatalf("latestChannelReleaseContext = %q, %v", got, err)
 	}
 	if requests != 2 {
@@ -183,15 +183,55 @@ func TestLatestChannelReleaseRejectsPaginationLoop(t *testing.T) {
 	}
 }
 
-func TestLatestChannelReleaseRejectsInvalidTargetCommit(t *testing.T) {
+func TestLatestChannelReleaseAcceptsBranchTarget(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "v0.1.0-beta.2", TargetCommitish: "main"}})
 	}))
 	defer srv.Close()
 	t.Setenv("WAGO_RELEASE_API", srv.URL)
 
-	if _, err := latestChannelReleaseContext(context.Background(), "beta"); err == nil || !strings.Contains(err.Error(), "invalid target commit") {
-		t.Fatalf("invalid channel target error = %v", err)
+	if got, err := latestChannelReleaseContext(context.Background(), "beta"); err != nil || got != "v0.1.0-beta.2" {
+		t.Fatalf("latestChannelReleaseContext = %q, %v", got, err)
+	}
+}
+
+func TestChannelCommitReleaseResolvesBranchTargetTag(t *testing.T) {
+	const sha = "deadbee123456789012345678901234567890123"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/wago-org/wago/releases":
+			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "v0.1.0-beta.6", TargetCommitish: "main"}})
+		case "/repos/wago-org/wago/git/ref/tags/v0.1.0-beta.6":
+			_, _ = w.Write([]byte(`{"object":{"type":"commit","sha":"` + sha + `"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	got, err := channelCommitReleaseContext(context.Background(), "beta", sha)
+	if err != nil || got != "v0.1.0-beta.6" {
+		t.Fatalf("channelCommitReleaseContext = %q, %v", got, err)
+	}
+}
+
+func TestChannelCommitReleaseRejectsInvalidTagRef(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/wago-org/wago/releases":
+			_ = json.NewEncoder(w).Encode([]remoteRelease{{TagName: "v0.1.0-beta.6", TargetCommitish: "main"}})
+		case "/repos/wago-org/wago/git/ref/tags/v0.1.0-beta.6":
+			_, _ = w.Write([]byte(`{"object":{"type":"tag","sha":"deadbee123456789012345678901234567890123"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("WAGO_RELEASE_API", srv.URL)
+
+	if _, err := channelCommitReleaseContext(context.Background(), "beta", "deadbee123456789012345678901234567890123"); err == nil || !strings.Contains(err.Error(), "invalid commit") {
+		t.Fatalf("invalid tag ref error = %v", err)
 	}
 }
 

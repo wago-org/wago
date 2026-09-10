@@ -376,7 +376,7 @@ func installedCommitMatches(path, resolved string) bool {
 func sameRelease(installed, resolved string) bool {
 	lowerInstalled := strings.ToLower(strings.TrimSpace(installed))
 	rollingStamp := strings.HasPrefix(lowerInstalled, "canary@") || strings.HasPrefix(lowerInstalled, "beta@")
-	if installed != "" && installed == resolved && channelRelease(installed) == "" && !isRollingChannel(installed) && !rollingStamp {
+	if installed != "" && installed == resolved && !isRollingChannel(installed) && !rollingStamp {
 		return true
 	}
 	installedChannel, installedCommit, installedCanonical := rollingCommitSHA(installed)
@@ -629,18 +629,44 @@ func latestChannelRelease(channel string) (string, error) {
 
 func latestChannelReleaseContext(ctx context.Context, channel string) (string, error) {
 	var resolved string
-	var resolveErr error
 	err := forEachReleasePage(ctx, "release channel discovery", func(releases []remoteRelease) bool {
 		for _, release := range releases {
 			if release.Draft || channelRelease(release.TagName) != channel {
 				continue
 			}
-			sha := strings.ToLower(strings.TrimSpace(release.TargetCommitish))
-			if !validCommitSHA(sha) {
-				resolveErr = fmt.Errorf("GitHub release %q has an invalid target commit", release.TagName)
-				return false
+			resolved = release.TagName
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return "", err
+	}
+	if resolved == "" {
+		return "", fmt.Errorf("%w: %s", errNoPublishedRelease, channel)
+	}
+	return resolved, nil
+}
+
+func channelCommitReleaseContext(ctx context.Context, channel, sha string) (string, error) {
+	var resolved string
+	var resolveErr error
+	err := forEachReleasePage(ctx, "release commit discovery", func(releases []remoteRelease) bool {
+		for _, release := range releases {
+			if release.Draft || channelRelease(release.TagName) != channel {
+				continue
 			}
-			resolved = release.TagName + "@" + sha
+			target := strings.ToLower(strings.TrimSpace(release.TargetCommitish))
+			if !validCommitSHA(target) {
+				target, resolveErr = releaseTagCommitContext(ctx, release.TagName)
+				if resolveErr != nil {
+					return false
+				}
+			}
+			if !strings.EqualFold(target, sha) {
+				continue
+			}
+			resolved = release.TagName
 			return false
 		}
 		return true
@@ -652,30 +678,34 @@ func latestChannelReleaseContext(ctx context.Context, channel string) (string, e
 		return "", resolveErr
 	}
 	if resolved == "" {
-		return "", fmt.Errorf("%w: %s", errNoPublishedRelease, channel)
+		return "", fmt.Errorf("%w: %s commit %s", errNoPublishedRelease, channel, sha)
 	}
 	return resolved, nil
 }
 
-func channelCommitReleaseContext(ctx context.Context, channel, sha string) (string, error) {
-	var resolved string
-	err := forEachReleasePage(ctx, "release commit discovery", func(releases []remoteRelease) bool {
-		for _, release := range releases {
-			if release.Draft || channelRelease(release.TagName) != channel || !strings.EqualFold(release.TargetCommitish, sha) {
-				continue
-			}
-			resolved = release.TagName + "@" + strings.ToLower(sha)
-			return false
-		}
-		return true
-	})
+func releaseTagCommitContext(ctx context.Context, tag string) (string, error) {
+	address := releaseAPI() + "/repos/wago-org/wago/git/ref/tags/" + url.PathEscape(tag)
+	response, err := getReleaseBytes(ctx, "release tag discovery", address, releaseMetadataMaximum)
 	if err != nil {
 		return "", err
 	}
-	if resolved == "" {
-		return "", fmt.Errorf("%w: %s commit %s", errNoPublishedRelease, channel, sha)
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub returned %s for release tag %s", response.Status, tag)
 	}
-	return resolved, nil
+	var ref struct {
+		Object struct {
+			Type string `json:"type"`
+			SHA  string `json:"sha"`
+		} `json:"object"`
+	}
+	if err := json.Unmarshal(response.Body, &ref); err != nil {
+		return "", err
+	}
+	sha := strings.ToLower(strings.TrimSpace(ref.Object.SHA))
+	if ref.Object.Type != "commit" || !validCommitSHA(sha) {
+		return "", fmt.Errorf("GitHub returned an invalid commit for release tag %s", tag)
+	}
+	return sha, nil
 }
 
 var errNoPublishedRelease = errors.New("no published release")
