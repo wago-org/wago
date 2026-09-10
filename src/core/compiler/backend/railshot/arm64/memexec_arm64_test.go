@@ -11,7 +11,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/src/core/runtime/arm64spike"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // TestMemExec compiles a store+load function in guard-page mode (no bounds

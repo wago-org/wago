@@ -7,7 +7,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/amd64"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func moduleGlobalLeaseResultBody(twoResults bool) []byte {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	encoderamd64 "github.com/wago-org/wago/src/core/encoder/amd64"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func appendWideI64ConstAMD64(body []byte, v int64, op byte) []byte {
