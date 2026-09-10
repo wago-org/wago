@@ -8,6 +8,11 @@ import (
 )
 
 func TestHostInvocationContextCrossInstanceChain(t *testing.T) {
+	t.Run("legacy", func(t *testing.T) { testHostInvocationContextCrossInstanceChain(t, false) })
+	t.Run("concrete", func(t *testing.T) { testHostInvocationContextCrossInstanceChain(t, true) })
+}
+
+func testHostInvocationContextCrossInstanceChain(t *testing.T, concrete bool) {
 	c := MustCompile(benchReturningImportModule())
 	defer c.Close()
 	var a, b *Instance
@@ -16,7 +21,7 @@ func TestHostInvocationContextCrossInstanceChain(t *testing.T) {
 	calls := 0
 	host := func(owner **Instance, next **Instance) HostFunc {
 		return func(mod HostModule, p, r []uint64) {
-			h := mod.(instanceHostModule)
+			h, _ := resolveHostCaller(mod)
 			calls++
 			if rootID == 0 {
 				rootID = h.invocationID
@@ -43,12 +48,12 @@ func TestHostInvocationContextCrossInstanceChain(t *testing.T) {
 		}
 	}
 	var err error
-	a, err = Instantiate(c, Imports{"env.f": host(&a, &b)})
+	a, err = Instantiate(c, Imports{"env.f": callerTestCallback(concrete, host(&a, &b))})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer a.Close()
-	b, err = Instantiate(c, Imports{"env.f": host(&b, &a)})
+	b, err = Instantiate(c, Imports{"env.f": callerTestCallback(concrete, host(&b, &a))})
 	if err != nil {
 		t.Fatal(err)
 	}

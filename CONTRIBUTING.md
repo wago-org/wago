@@ -183,6 +183,14 @@ For synchronous host-boundary work, run `BenchmarkInvokeHostFuncDirect` and
 parallel cases. Compare counts on the same host-capable export and subtract the
 matched guest-loop slope. Record each stage separately. See the
 [host-call measurement and safety rules](docs/host-roundtrip-performance.md).
+Also compare `BenchmarkInvokeCallerHostFuncDirect`,
+`BenchmarkHostRoundtripLoopCaller`, `BenchmarkCallerGCLoop`,
+`BenchmarkCallerDomainLoop`, and `BenchmarkCallerArity` when changing concrete
+callback dispatch. Record medians and ranges, not just the fastest sample. See
+the [concrete caller invariants](docs/host-caller-performance.md). Run profiles
+and benchmarks without concurrent builds. The full race suite starts many
+subprocesses; `GORACE=atexit_sleep_ms=0` avoids the race runtime's fixed exit
+delay while retaining race checks.
 
 ## Make a Commit
 

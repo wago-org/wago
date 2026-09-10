@@ -63,7 +63,7 @@ func (m *InstanceManager) activate(rt *Runtime) {
 }
 
 func (m *InstanceManager) caller(caller HostModule) (*Instance, error) {
-	h, ok := caller.(instanceHostModule)
+	h, ok := resolveHostCaller(caller)
 	if !ok || !h.valid() || h.in == nil || h.in.rt != m.rt {
 		return nil, fmt.Errorf("wago: managed operation requires an active caller: %w", ErrPermissionDenied)
 	}
@@ -98,7 +98,7 @@ func (m *InstanceManager) CallerIdentity(caller HostModule) (InstanceIdentity, e
 // WatchCaller returns a channel signaled when caller's synchronous authority
 // expires. The cancel function must be called when the watcher is no longer used.
 func (m *InstanceManager) WatchCaller(caller HostModule) (<-chan struct{}, func(), error) {
-	h, ok := caller.(instanceHostModule)
+	h, ok := resolveHostCaller(caller)
 	if !ok || !h.valid() || h.in == nil || h.in.rt != m.rt {
 		return nil, nil, fmt.Errorf("wago: managed operation requires an active caller: %w", ErrPermissionDenied)
 	}
@@ -243,7 +243,7 @@ func managedForkImports(parent *Instance) (Imports, error) {
 			return fmt.Errorf("managed fork import %q is missing", key)
 		}
 		switch x := v.(type) {
-		case HostFunc:
+		case HostFunc, CallerHostFunc:
 			imports[key] = x
 		case GlobalImport:
 			if x.Global != nil {

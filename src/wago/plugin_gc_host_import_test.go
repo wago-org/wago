@@ -15,6 +15,7 @@ import (
 type pluginGCHostImportTestPlugin struct{ state *pluginGCHostImportTestState }
 
 type pluginGCHostImportTestState struct {
+	concrete          bool
 	mu                sync.Mutex
 	resolver          *CallerResolver
 	invocationContext context.Context
@@ -87,16 +88,17 @@ func (p pluginGCHostImportTestPlugin) Register(reg *Registrar) error {
 	if err != nil {
 		return err
 	}
-	module.Func("null_result", func(_ HostModule, _, results []uint64) {
+	define := callerTestDeclare(module, p.state.concrete)
+	define("null_result", func(_ HostModule, _, results []uint64) {
 		results[0] = 0
 	}).Results(ValAnyRef)
-	module.Func("null_param", func(_ HostModule, params, results []uint64) {
+	define("null_param", func(_ HostModule, params, results []uint64) {
 		if params[0] != 0 {
 			panic(HostTrap{Err: fmt.Errorf("null parameter arrived as %#x", params[0])})
 		}
 		results[0] = 1
 	}).Params(ValAnyRef).Results(ValI32)
-	module.Func("create", func(m HostModule, _, results []uint64) {
+	define("create", func(m HostModule, _, results []uint64) {
 		storageHost, ok := m.(GuestStorageHostModule)
 		if !ok {
 			panic(HostTrap{Err: fmt.Errorf("plugin GC create has no GuestStorage")})
@@ -122,7 +124,7 @@ func (p pluginGCHostImportTestPlugin) Register(reg *Registrar) error {
 		}
 		results[0] = token
 	}).Results(ValAnyRef)
-	module.Func("consume", func(m HostModule, params, results []uint64) {
+	define("consume", func(m HostModule, params, results []uint64) {
 		if params[0] == 0 || params[0] == uint64(uint32(params[0])) {
 			panic(HostTrap{Err: fmt.Errorf("plugin received raw or null GC parameter %#x", params[0])})
 		}
@@ -173,7 +175,7 @@ func (p pluginGCHostImportTestPlugin) Register(reg *Registrar) error {
 		}))
 		results[0] = uint64(firstByte)
 	}).Params(ValAnyRef).Results(ValI32)
-	module.Func("mutate", func(m HostModule, params, results []uint64) {
+	define("mutate", func(m HostModule, params, results []uint64) {
 		storageHost, ok := m.(GuestStorageHostModule)
 		if !ok {
 			panic(HostTrap{Err: fmt.Errorf("plugin GC mutate has no GuestStorage")})
@@ -195,20 +197,20 @@ func (p pluginGCHostImportTestPlugin) Register(reg *Registrar) error {
 		}))
 		results[0] = 1
 	}).Params(ValAnyRef).Results(ValI32)
-	module.Func("collect", func(m HostModule, _, _ []uint64) {
+	define("collect", func(m HostModule, _, _ []uint64) {
 		collector, ok := m.(GCHostModule)
 		if !ok {
 			panic(HostTrap{Err: fmt.Errorf("plugin GC collect has no collector")})
 		}
 		pluginGCHostTrap(collector.CollectGC())
 	})
-	module.Func("raw_result", func(_ HostModule, _, results []uint64) {
+	define("raw_result", func(_ HostModule, _, results []uint64) {
 		results[0] = 2 // compact object-shaped bits are not a valid host token
 	}).Results(ValAnyRef)
-	module.Func("scalar", func(_ HostModule, _, results []uint64) {
+	define("scalar", func(_ HostModule, _, results []uint64) {
 		results[0] = 11
 	}).Results(ValI32)
-	module.Func("context", func(m HostModule, params, results []uint64) {
+	define("context", func(m HostModule, params, results []uint64) {
 		if params[0] != 0 {
 			panic(HostTrap{Err: fmt.Errorf("context parameter arrived as %#x, want null", params[0])})
 		}
@@ -350,10 +352,14 @@ func pluginGCScalarModule() []byte {
 }
 
 func newPluginGCTestRuntime(t testing.TB) (*Runtime, *pluginGCHostImportTestState) {
+	return newPluginGCTestRuntimeCaller(t, false)
+}
+
+func newPluginGCTestRuntimeCaller(t testing.TB, concrete bool) (*Runtime, *pluginGCHostImportTestState) {
 	t.Helper()
 	cfg := NewRuntimeConfig().WithCoreFeatures(CoreFeaturesV3)
 	rt := NewRuntime(WithRuntimeConfig(cfg))
-	state := new(pluginGCHostImportTestState)
+	state := &pluginGCHostImportTestState{concrete: concrete}
 	provider := pluginGCHostImportTestProvider(state)
 	if err := rt.LoadPlugins(context.Background(), testSet(t, provider)); err != nil {
 		rt.Close()
@@ -440,8 +446,13 @@ func TestPluginGCHostImportInvocationContext(t *testing.T) {
 }
 
 func TestPluginGCHostImportsNonNullRoundTripAndZeroCopyWrite(t *testing.T) {
+	t.Run("legacy", func(t *testing.T) { testPluginGCHostImportsNonNullRoundTripAndZeroCopyWrite(t, false) })
+	t.Run("concrete", func(t *testing.T) { testPluginGCHostImportsNonNullRoundTripAndZeroCopyWrite(t, true) })
+}
+
+func testPluginGCHostImportsNonNullRoundTripAndZeroCopyWrite(t *testing.T, concrete bool) {
 	requireCompleteCore3Backend(t)
-	rt, state := newPluginGCTestRuntime(t)
+	rt, state := newPluginGCTestRuntimeCaller(t, concrete)
 	defer rt.Close()
 	mod, err := rt.Compile(pluginGCArrayRoundTripModule(true, true))
 	if err != nil {

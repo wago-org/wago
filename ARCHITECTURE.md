@@ -598,6 +598,13 @@ uses full restoration. Native and collector leases, parked roots, and scheduler
 entry/resume protocols are still required. See
 [host-call measurements and proof limits](docs/host-roundtrip-performance.md).
 
+`CallerHostFunc` is an optional concrete-value callback ABI. Its `Caller` wraps
+the same private immutable token as the legacy `HostModule` value. Dispatch
+passes it directly, without an interface box; both representations share the
+same capability resolver. Plugin `CallerFunc` registration retains the normal
+gate and reservation checks. See the
+[concrete caller design and measurements](docs/host-caller-performance.md).
+
 ---
 
 ## 12. Memory model

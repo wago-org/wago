@@ -14,6 +14,11 @@ import (
 )
 
 func TestHostContextResumeMatchesForcedRestore(t *testing.T) {
+	t.Run("legacy", func(t *testing.T) { testHostContextResumeMatchesForcedRestore(t, false) })
+	t.Run("concrete", func(t *testing.T) { testHostContextResumeMatchesForcedRestore(t, true) })
+}
+
+func testHostContextResumeMatchesForcedRestore(t *testing.T, concrete bool) {
 	c := MustCompile(watToWasm(t, `(module
  (import "env" "step" (func $step))
  (memory (export "memory") 1 3)
@@ -33,8 +38,8 @@ func TestHostContextResumeMatchesForcedRestore(t *testing.T) {
 				var in *Instance
 				var callbackVersion uint64
 				var caller instanceHostModule
-				in, err := Instantiate(c, Imports{"env.step": HostFunc(func(mod HostModule, _, _ []uint64) {
-					caller = mod.(instanceHostModule)
+				in, err := Instantiate(c, Imports{"env.step": callerTestCallback(concrete, func(mod HostModule, _, _ []uint64) {
+					caller, _ = resolveHostCaller(mod)
 					callbackVersion = in.pluginState.Load().nativeContextVersion.Load()
 					nested := func(name string) {
 						if _, err := in.InvokeFromHost(ctx, mod, name); err != nil {

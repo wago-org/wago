@@ -12,6 +12,7 @@ import (
 )
 
 type invocationContextTestState struct {
+	concrete bool
 	resolver *CallerResolver
 	manager  *InstanceManager
 	outer    HostFunc
@@ -54,12 +55,13 @@ func (p invocationContextTestPlugin) Register(reg *Registrar) error {
 	}
 	p.state.resolver = resolver
 	p.state.manager = manager
-	module.Func("outer", func(m HostModule, params, results []uint64) {
+	define := callerTestDeclare(module, p.state.concrete)
+	define("outer", func(m HostModule, params, results []uint64) {
 		if p.state.outer != nil {
 			p.state.outer(m, params, results)
 		}
 	})
-	module.Func("inner", func(m HostModule, params, results []uint64) {
+	define("inner", func(m HostModule, params, results []uint64) {
 		if p.state.inner != nil {
 			p.state.inner(m, params, results)
 		}
@@ -149,7 +151,12 @@ func invocationContextTestDeadline(ctx context.Context, want time.Time) bool {
 }
 
 func TestCallerResolverInvocationContextContract(t *testing.T) {
-	state := new(invocationContextTestState)
+	t.Run("legacy", func(t *testing.T) { testCallerResolverInvocationContextContract(t, false) })
+	t.Run("concrete", func(t *testing.T) { testCallerResolverInvocationContextContract(t, true) })
+}
+
+func testCallerResolverInvocationContextContract(t *testing.T, concrete bool) {
+	state := &invocationContextTestState{concrete: concrete}
 	rt := newInvocationContextTestRuntime(t, state)
 	defer rt.Close()
 
