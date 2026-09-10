@@ -13,7 +13,17 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func TestPreparedIntCallBlockDefaultARM64(t *testing.T) {
+	if !preparedIntCallBlockDefault {
+		t.Fatal("ARM64 call block defaults off; the prepared struct thunk is faster")
+	}
+}
+
 func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
+	beforeCallBlock := preparedIntCallBlockEnabled
+	preparedIntCallBlockEnabled = true
+	defer func() { preparedIntCallBlockEnabled = beforeCallBlock }()
+
 	module := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(
 			wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}),
@@ -105,9 +115,24 @@ func TestPreparedDirectARM64IgnoresUnusedModuleMemory(t *testing.T) {
 	if !fn.directIntBounded {
 		t.Fatal("memory-independent function did not retain the bounded entry proof")
 	}
+	if fn.directIntMode != preparedIntCallBlock {
+		t.Fatal("bounded light function did not select the immutable call block")
+	}
 	got, err := fn.Invoke2(20, 22)
 	if err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatalf("add(20,22) = %v, %v; want 42", got, err)
+	}
+
+	preparedIntCallBlockEnabled = false
+	fallback, err := in.PrepareFunction("add")
+	if err != nil {
+		t.Fatalf("prepare call-block rollback: %v", err)
+	}
+	if fallback.directIntMode == preparedIntCallBlock {
+		t.Fatal("call-block rollback retained the call block")
+	}
+	if got, err := fallback.Invoke2(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatalf("call-block rollback add(20,22) = %v, %v; want 42", got, err)
 	}
 }
 
@@ -139,6 +164,9 @@ func TestPreparedDirectARM64CallIndirectAndTrapRecovery(t *testing.T) {
 	}
 	if !fn.directIntBounded {
 		t.Fatal("acyclic immutable-table dispatch did not retain bounded entry proof")
+	}
+	if fn.directIntMode == preparedIntCallBlock {
+		t.Fatal("non-light bounded dispatch selected the light-only call block")
 	}
 	for _, tc := range []struct {
 		idx, want uint64

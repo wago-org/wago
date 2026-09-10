@@ -397,6 +397,45 @@ func (f *fn) v128Bin(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 	return nil
 }
 
+// v128BinDirect selects any owned input as the destination of a three-register
+// NEON operation. Borrowed locals remain read-only; when both inputs are
+// borrowed, only the result register is allocated. swap changes semantic input
+// order without introducing a copy, and invert applies a full-width boolean
+// complement after the operation.
+func (f *fn) v128BinDirect(op func(dst, s1, s2 Reg), swap, invert bool) {
+	b := f.popValue()
+	a := f.popValue()
+	s1, o1 := f.operandRegV128(a)
+	f.fpinned = f.fpinned.add(s1)
+	s2, o2 := f.operandRegV128(b)
+	f.fpinned = f.fpinned.add(s2)
+	dst := s1
+	if !o1 {
+		f.stats.peep("v128-direct-result")
+		if o2 {
+			dst = s2
+		} else {
+			dst = f.allocFReg(maskOf(s1, s2))
+		}
+	}
+	if swap {
+		op(dst, s2, s1)
+	} else {
+		op(dst, s1, s2)
+	}
+	if invert {
+		f.a.NeonNot16b(dst, dst)
+	}
+	f.fpinned = f.fpinned.remove(s1).remove(s2)
+	if o1 && dst != s1 {
+		f.releaseF(s1)
+	}
+	if o2 && dst != s2 {
+		f.releaseF(s2)
+	}
+	f.pushVReg(dst)
+}
+
 // v128Unary lowers a single-instruction unary v128 op (op(dst, src)).
 func (f *fn) v128Unary(r *wasm.Reader, op func(dst, src Reg)) error {
 	a := f.popValue()
@@ -940,6 +979,10 @@ func (f *fn) i16x8Q15mulrSatS(r *wasm.Reader) error {
 
 // v128BinNot lowers `ne` = not(eq): the compare op, then a full-width NOT.
 func (f *fn) v128BinNot(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
+	if f.opt(optV128DirectResults) {
+		f.v128BinDirect(op, false, true)
+		return nil
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -954,6 +997,10 @@ func (f *fn) v128BinNot(r *wasm.Reader, op func(dst, s1, s2 Reg)) error {
 }
 
 func (f *fn) v128SignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap, invert bool) error {
+	if f.opt(optV128DirectResults) {
+		f.v128BinDirect(op, swap, invert)
+		return nil
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -974,6 +1021,10 @@ func (f *fn) v128SignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap, inver
 }
 
 func (f *fn) v128UnsignedCmp(r *wasm.Reader, op func(dst, s1, s2 Reg), swap bool) error {
+	if f.opt(optV128DirectResults) {
+		f.v128BinDirect(op, swap, false)
+		return nil
+	}
 	b := f.popValue()
 	a := f.popValue()
 	xa := f.materializeV128(a)
@@ -1004,6 +1055,10 @@ func (f *fn) i64x2SignedCmp(r *wasm.Reader, cc Cond) error {
 		op, swap = f.a.NeonCmgeD, false
 	default:
 		panic("arm64: unsupported i64x2 signed compare")
+	}
+	if f.opt(optV128DirectResults) {
+		f.v128BinDirect(op, swap, false)
+		return nil
 	}
 	b := f.popValue()
 	a := f.popValue()

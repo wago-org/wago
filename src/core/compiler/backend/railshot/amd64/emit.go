@@ -198,7 +198,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	// The register is already occupied, so ordinary allocation cannot reuse it.
 	// Exclude x86's fixed-role registers: a div/rem/shift inside the other operand
 	// may claim one of those directly even while it is occupied.
-	commuteSelfUpdate := node.deferredOp().commutative() && dest != regNone && dest != RAX && dest != RDX && dest != RCX &&
+	fixedDest := dest == RAX || dest == RDX || dest == RCX
+	fixedDestSafe := fixedSelfUpdateAccumulatorSafe(dest, left, f.opt(optCommuteFixedSelfUpdate))
+	commuteSelfUpdate := node.deferredOp().commutative() && dest != regNone && fixedDestSafe &&
 		right.isValue() &&
 		(right.st.kind == stReg || right.st.kind == stLocalReg || right.st.kind == stGlobReg) &&
 		right.st.reg == dest
@@ -221,6 +223,9 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 		}
 		f.pinned = f.pinned.remove(dest)
 		f.stats.peep("commute-self-update")
+		if fixedDest {
+			f.stats.peep("commute-fixed-self-update")
+		}
 		f.consumeBlockBelow(node)
 		f.occupy(node, dest)
 		node.setDeferredOp(opNone)
@@ -332,6 +337,13 @@ func (f *fn) condenseBinary(node *elem, dest Reg) Reg {
 	f.occupy(node, dest)
 	node.setDeferredOp(opNone)
 	return dest
+}
+
+func fixedSelfUpdateAccumulatorSafe(dest Reg, other *elem, enabled bool) bool {
+	if dest != RAX && dest != RDX && dest != RCX {
+		return true
+	}
+	return enabled && treeAccumulatorSafe(other)
 }
 
 // tryXorByteMask lowers `(x ^ i32.load8_u(...)) & 255` with an 8-bit XOR.
@@ -945,7 +957,11 @@ func (f *fn) condenseInto(e *elem, dest Reg) {
 	case stConst:
 		f.loadConst(dest, e.st)
 	case stSlot:
-		f.a.Load64(dest, RSP, f.spillOff(e.st.slotIndex()))
+		if f.opt(optCanonicalI32) && e.st.typ == mtI32 {
+			f.a.Load32(dest, RSP, f.spillOff(e.st.slotIndex()))
+		} else {
+			f.a.Load64(dest, RSP, f.spillOff(e.st.slotIndex()))
+		}
 	case stLocalRef:
 		f.loadFrameInt(dest, f.localAddr(e.st.index()), e.st.typ)
 	case stLocalReg, stGlobReg:
@@ -986,10 +1002,11 @@ func (f *fn) applyALU(enc aluEnc, dest Reg, right *elem, w bool) {
 		} else if fitsImm32(right.st.cval) {
 			f.a.AluRI(enc.digit, dest, int32(right.st.cval), w)
 		} else {
-			t := f.allocReg(maskOf(dest))
-			f.loadConst(t, right.st)
+			t, owned := f.intConstReadReg(right.st, maskOf(dest))
 			f.a.AluRR(enc.rr, dest, t, w)
-			f.release(t)
+			if owned {
+				f.release(t)
+			}
 		}
 	case stReg:
 		f.a.AluRR(enc.rr, dest, right.st.reg, w)
@@ -1061,10 +1078,11 @@ func (f *fn) applyMul(dest Reg, right *elem, w bool) {
 		if fitsImm32(right.st.cval) {
 			f.a.ImulRI(dest, int32(right.st.cval), w)
 		} else {
-			t := f.allocReg(maskOf(dest))
-			f.loadConst(t, right.st)
+			t, owned := f.intConstReadReg(right.st, maskOf(dest))
 			f.a.IMul(dest, t, w)
-			f.release(t)
+			if owned {
+				f.release(t)
+			}
 		}
 	case stReg:
 		f.a.IMul(dest, right.st.reg, w)

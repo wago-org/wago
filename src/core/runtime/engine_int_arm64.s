@@ -73,3 +73,35 @@ afterNativeIntLightCall:
 	MOVD R11, RSP
 	MOVD R0, ret+56(FP)
 	RET
+
+// func enterNativeIntCallRaw(call *PreparedIntCall) uintptr
+// The owning prepared handle admits only the caller-clobber-only light ABI.
+TEXT ·enterNativeIntCallRaw(SB), NOSPLIT, $0-16
+	MOVD call+0(FP), R12
+	MOVD 0(R12), R9
+	MOVD 16(R12), R10
+	SUB  $32, R10, R10
+	MOVD RSP, R11
+	MOVD R11, 0(R10)
+	MOVD R26, 8(R10)
+	STP  (R29, R30), 16(R10)
+
+	MOVD 8(R12), R26
+	MOVD 24(R12), R0
+	MOVD 32(R12), R1
+	MOVD 40(R12), R2
+	MOVD 48(R12), R3
+	MOVD R10, RSP
+	MOVD ZR, R29
+	MOVD R10, -24(R26)
+	ADR  afterNativeIntCallBlock, R11
+	MOVD R11, -32(R26)
+	BL   (R9)
+
+afterNativeIntCallBlock:
+	MOVD 8(RSP), R26
+	LDP  16(RSP), (R29, R30)
+	MOVD 0(RSP), R11
+	MOVD R11, RSP
+	MOVD R0, ret+8(FP)
+	RET

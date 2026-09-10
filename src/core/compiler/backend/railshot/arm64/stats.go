@@ -60,6 +60,7 @@ var (
 	// lifetimes in bounded call-free straight-line functions. The cache is
 	// pressure-spillable and releases a register at the local's final get.
 	intervalRegionPinsEnabled = os.Getenv("WAGO_ARM64_INTERVAL_REGIONS") != "0"
+	memcopyTail4Enabled       = os.Getenv("WAGO_ARM64_NO_MEMCOPY_TAIL4") != "1"
 	// multiBoundsCertEnabled keeps independent straight-line bounds proofs for a
 	// small set of address sources. The kill switch restores the single proof.
 	multiBoundsCertEnabled = os.Getenv("WAGO_ARM64_SINGLE_BOUNDS_CERT") != "1"

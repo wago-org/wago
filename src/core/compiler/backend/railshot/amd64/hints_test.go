@@ -193,6 +193,42 @@ func TestScanBodyBytesDetectsDeepVariableShiftPressure(t *testing.T) {
 	}
 }
 
+func TestScratchLeaseHintExcludesDivisionAndRemainder(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body []byte
+		want bool
+	}{
+		{name: "plain arithmetic", body: []byte{0x41, 6, 0x41, 3, 0x6a, 0x0b}},
+		{name: "i32 div", body: []byte{0x41, 6, 0x41, 3, 0x6e, 0x0b}, want: true},
+		{name: "i64 rem", body: []byte{0x42, 6, 0x42, 3, 0x82, 0x0b}, want: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, err := scanBodyBytes(tc.body, 0, 0, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := h.hasFixedScratchLease(); got != tc.want {
+				t.Fatalf("fixed-scratch hint = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	var ast funcHintView
+	noteASTPhysicalEvent(&ast, wasm.InstrI64DivU, 0, false)
+	if !ast.hasFixedScratchLease() {
+		t.Fatal("decoded-AST division did not reserve the fixed scratch pair")
+	}
+
+	var packed funcHints
+	packed.noteFixedScratchLease()
+	packed.noteDeepVariableShift()
+	if !packed.hasFixedScratchLease() || !packed.hasDeepVariableShift() {
+		t.Fatalf("packed scratch/pressure = %v/%v, want true/true",
+			packed.hasFixedScratchLease(), packed.hasDeepVariableShift())
+	}
+}
+
 func globalHint(h funcHintView, index uint32) (score uint32, eligible bool) {
 	for _, hint := range h.sparseGlobals {
 		if hint.Index == index {

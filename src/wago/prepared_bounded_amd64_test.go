@@ -13,7 +13,22 @@ import (
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
+func TestPreparedIntCallBlockDefaultAMD64(t *testing.T) {
+	if preparedIntCallBlockDefault {
+		t.Fatal("AMD64 call block defaults on; the value-argument thunk is faster")
+	}
+}
+
 func TestPreparedBoundedAMD64SelectionAndExecution(t *testing.T) {
+	beforeCallBlock := preparedIntCallBlockEnabled
+	beforePreboundContext := preparedIntPreboundContextEnabled
+	preparedIntCallBlockEnabled = true
+	preparedIntPreboundContextEnabled = true
+	defer func() {
+		preparedIntCallBlockEnabled = beforeCallBlock
+		preparedIntPreboundContextEnabled = beforePreboundContext
+	}()
+
 	add := wasmtest.Module(
 		wasmtest.Section(1, wasmtest.Vec(wasmtest.FuncType([]wasm.ValType{wasm.I64, wasm.I64}, []wasm.ValType{wasm.I64}))),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0))),
@@ -39,8 +54,44 @@ func TestPreparedBoundedAMD64SelectionAndExecution(t *testing.T) {
 	if !fn.directIntFast || !fn.directIntBounded {
 		t.Fatalf("prepared direct/bounded = %v/%v, want true/true", fn.directIntFast, fn.directIntBounded)
 	}
+	if fn.directIntMode != preparedIntCallBlock {
+		t.Fatal("bounded prepared function did not select the immutable call block")
+	}
+	if fn.directIntMode == preparedIntCallPrebound {
+		t.Fatal("explicit call-block override also selected prebound-context entry")
+	}
 	if got, err := fn.Invoke2(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
 		t.Fatalf("add(20,22) = %v, %v; want 42", got, err)
+	}
+
+	preparedIntCallBlockEnabled = false
+	prebound, err := in.PrepareFunction("add")
+	if err != nil {
+		t.Fatalf("prepare call-block rollback: %v", err)
+	}
+	if prebound.directIntMode == preparedIntCallBlock {
+		t.Fatal("call-block rollback retained the call block")
+	}
+	if prebound.directIntMode != preparedIntCallPrebound {
+		t.Fatal("call-block rollback did not select prebound-context entry")
+	}
+	if got, err := prebound.Invoke2(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatalf("call-block rollback add(20,22) = %v, %v; want 42", got, err)
+	}
+
+	preparedIntPreboundContextEnabled = false
+	legacy, err := in.PrepareFunction("add")
+	if err != nil {
+		t.Fatalf("prepare prebound-context rollback: %v", err)
+	}
+	if legacy.directIntMode == preparedIntCallBlock {
+		t.Fatal("prebound-context rollback selected a call block")
+	}
+	if legacy.directIntMode == preparedIntCallPrebound {
+		t.Fatal("prebound-context rollback retained prebound entry")
+	}
+	if got, err := legacy.Invoke2(20, 22); err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatalf("prebound-context rollback add(20,22) = %v, %v; want 42", got, err)
 	}
 
 	rollback, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit).WithOptimization("prepared-bounded-entry", false), add)
@@ -142,5 +193,41 @@ func TestPreparedBoundedAMD64RejectsInlinedCall(t *testing.T) {
 	}
 	if compiled.directPreparedBoundedAt(1) {
 		t.Fatal("caller admitted to bounded entry after inlining")
+	}
+}
+
+func TestPreparedBoundedAMD64CallIndirectAndTrapRecovery(t *testing.T) {
+	compiled, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), callIndirectModule(2, 1, 2))
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	if !compiled.directPreparedAt(0) || !compiled.directPreparedBoundedAt(0) {
+		t.Fatalf("call_indirect caller direct/bounded = %v/%v, want true/true", compiled.directPreparedAt(0), compiled.directPreparedBoundedAt(0))
+	}
+	in, err := Instantiate(compiled, InstantiateOptions{})
+	if err != nil {
+		t.Fatalf("instantiate: %v", err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareFunction("caller")
+	if err != nil {
+		t.Fatalf("prepare: %v", err)
+	}
+	if !fn.directIntFast || !fn.directIntBounded || !fn.isolatedFast {
+		t.Fatalf("direct/bounded/isolated = %v/%v/%v, want true/true/true", fn.directIntFast, fn.directIntBounded, fn.isolatedFast)
+	}
+	for _, tc := range []struct {
+		idx, want uint64
+	}{{0, 13}, {1, 7}} {
+		got, err := fn.Invoke(tc.idx, 10, 3)
+		if err != nil || len(got) != 1 || got[0] != tc.want {
+			t.Fatalf("caller(%d,10,3) = %v, %v; want %d", tc.idx, got, err, tc.want)
+		}
+	}
+	if _, err := fn.Invoke(2, 10, 3); err == nil {
+		t.Fatal("out-of-bounds bounded call_indirect did not trap")
+	}
+	if got, err := fn.Invoke(0, 20, 22); err != nil || len(got) != 1 || got[0] != 42 {
+		t.Fatalf("call after trap = %v, %v; want 42", got, err)
 	}
 }

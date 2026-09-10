@@ -39,6 +39,24 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		return false
 	}
 	f.intervalRegLimit = intervalRegionRegLimit(f.guardMode)
+	// SIMD lowering has fixed integer scratch uses which are not all represented
+	// by the scalar fixed-scratch scan. Keep RDX available throughout a SIMD
+	// module: scalar helper functions share its module register/pinning plan, and
+	// the full Blake oracle reaches the high-pressure overlap there.
+	f.intervalScratch = f.opt(optIntervalScratchLease) && !hints.hasFixedScratchLease() &&
+		!f.moduleHasSIMD && !hints.flags.has(hintHasCall|hintHasControlFlow|hintUsesBulkMem) && len(f.ft.Results) <= 1
+	if f.intervalScratch {
+		f.intervalRegLimit++
+	}
+	mt0, hasMemory := f.m.MemoryType(0)
+	strictScratchLease := f.guardMode && !f.moduleHasSIMD && !f.threadedMemory0 &&
+		f.m.TableCount() == 0 && f.m.MemCount() <= 1 && (!hasMemory || !mt0.Limits.Addr64) &&
+		len(f.gcTypeLayouts) == 0 && len(f.customInstructions) == 0 &&
+		!hints.flags.has(hintHasCall|hintHasControlFlow|hintUsesBulkMem)
+	f.intervalR8 = f.opt(optIntervalR8Lease) && strictScratchLease
+	if f.intervalR8 {
+		f.intervalRegLimit++
+	}
 
 	assigned := resizeRegScratch(f.tmpIntervalReg, f.nLocals)
 	f.tmpIntervalReg = assigned
@@ -57,6 +75,12 @@ func (f *fn) prepareIntervalRegion(body []byte, hints *funcHintView) bool {
 		f.intervalOwner[i] = -1
 	}
 	f.stats.peep("interval-region")
+	if f.intervalScratch {
+		f.stats.peep("interval-scratch-lease")
+	}
+	if f.intervalR8 {
+		f.stats.peep("interval-r8-lease")
+	}
 	f.noteResidencyCandidates(kept)
 	return true
 }
@@ -118,14 +142,40 @@ func (f *fn) claimIntervalReg(x int) Reg {
 		}
 	}
 	if active < f.intervalRegLimit {
-		for _, reg := range intervalRegionOrder {
+		baseLimit := intervalRegionRegLimit(f.guardMode)
+		for _, reg := range intervalRegionOrder[:baseLimit] {
 			if !f.reserved.has(reg) && !f.pinned.has(reg) && !f.pinnedLocalMask.has(reg) &&
 				f.regUser[reg] == nil && f.intervalOwner[reg] < 0 {
 				return reg
 			}
 		}
+		if f.intervalScratch {
+			// Only RDX passed the semantic corpus. RAX and multi-scratch variants
+			// conflict with implicit arithmetic lowering even in this bounded class.
+			if reg := RDX; !f.reserved.has(reg) && !f.pinned.has(reg) && !f.pinnedLocalMask.has(reg) &&
+				f.regUser[reg] == nil && f.intervalOwner[reg] < 0 {
+				return reg
+			}
+		}
+		if f.intervalR8 {
+			if reg := R8; !f.reserved.has(reg) && !f.pinned.has(reg) && !f.pinnedLocalMask.has(reg) &&
+				f.regUser[reg] == nil && f.intervalOwner[reg] < 0 {
+				return reg
+			}
+		}
 	}
-	return f.evictIntervalLocalBelow(0, int(localHotness(f.intervalScore[x])))
+	return f.evictIntervalLocalBelow(0, f.intervalResidencyScore(x))
+}
+
+func (f *fn) intervalResidencyScore(x int) int {
+	if x < 0 || x >= len(f.intervalScore) {
+		return 0
+	}
+	score := int(localHotness(f.intervalScore[x]))
+	if f.opt(optIntervalI64Weight) && x < len(f.localType) && f.localType[x] == mtI64 {
+		score += score / 2
+	}
+	return score
 }
 
 // takeFinalIntervalGet transfers a dying local's register directly to the
@@ -167,10 +217,7 @@ func (f *fn) evictIntervalLocalBelow(avoid regMask, scoreLimit int) Reg {
 		if x < 0 || avoid.has(Reg(reg)) || f.pinned.has(Reg(reg)) || f.intervalLocalHasMemBorrow(x) {
 			continue
 		}
-		s := 0
-		if x < len(f.intervalScore) {
-			s = int(localHotness(f.intervalScore[x]))
-		}
+		s := f.intervalResidencyScore(x)
 		if s < scoreLimit && s < bestScore {
 			best, bestScore = x, s
 		}

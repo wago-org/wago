@@ -159,6 +159,9 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 			return err
 		}
 		x := uint32(int(x32) + f.localBase) // localBase remaps an inlined callee's locals; 0 otherwise
+		if done, err := f.tryCountedLoopLatch(r, int(x)); done || err != nil {
+			return err
+		}
 		if f.localType[x] == mtV128 {
 			next, _ := r.Peek()
 			if f.forwardV128Local(int(x), next == 0xfd) {

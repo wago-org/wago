@@ -1138,14 +1138,21 @@ func (f *fn) copyFwdLoop(dst, src, n Reg) {
 	f.cmpImm(n, 64, true)
 	wideTail := f.a.Bcond(condB)
 	wideLoop := f.a.Len()
-	f.a.LdrQ(X16, src, 0)
-	f.a.LdrQ(X17, src, 16)
-	f.a.LdrQ(X18, src, 32)
-	f.a.LdrQ(X19, src, 48)
-	f.a.StrQ(dst, 0, X16)
-	f.a.StrQ(dst, 16, X17)
-	f.a.StrQ(dst, 32, X18)
-	f.a.StrQ(dst, 48, X19)
+	if f.memcopyQPairs {
+		f.a.LdpQ(X16, X17, src, 0)
+		f.a.LdpQ(X18, X19, src, 32)
+		f.a.StpQ(X16, X17, dst, 0)
+		f.a.StpQ(X18, X19, dst, 32)
+	} else {
+		f.a.LdrQ(X16, src, 0)
+		f.a.LdrQ(X17, src, 16)
+		f.a.LdrQ(X18, src, 32)
+		f.a.LdrQ(X19, src, 48)
+		f.a.StrQ(dst, 0, X16)
+		f.a.StrQ(dst, 16, X17)
+		f.a.StrQ(dst, 32, X18)
+		f.a.StrQ(dst, 48, X19)
+	}
 	f.a.AddImm64(src, src, 64)
 	f.a.AddImm64(dst, dst, 64)
 	f.a.SubImm64(n, n, 64)
@@ -1155,10 +1162,15 @@ func (f *fn) copyFwdLoop(dst, src, n Reg) {
 	f.cmpImm(n, 32, true)
 	vecTail := f.a.Bcond(condB)
 	vecLoop32 := f.a.Len()
-	f.a.LdrQ(X16, src, 0)
-	f.a.LdrQ(X17, src, 16)
-	f.a.StrQ(dst, 0, X16)
-	f.a.StrQ(dst, 16, X17)
+	if f.memcopyQPairs {
+		f.a.LdpQ(X16, X17, src, 0)
+		f.a.StpQ(X16, X17, dst, 0)
+	} else {
+		f.a.LdrQ(X16, src, 0)
+		f.a.LdrQ(X17, src, 16)
+		f.a.StrQ(dst, 0, X16)
+		f.a.StrQ(dst, 16, X17)
+	}
 	f.a.AddImm64(src, src, 32)
 	f.a.AddImm64(dst, dst, 32)
 	f.a.SubImm64(n, n, 32)
@@ -1214,14 +1226,21 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 	wideLoop := f.a.Len()
 	f.a.SubImm64(src, src, 64)
 	f.a.SubImm64(dst, dst, 64)
-	f.a.LdrQ(X16, src, 0)
-	f.a.LdrQ(X17, src, 16)
-	f.a.LdrQ(X18, src, 32)
-	f.a.LdrQ(X19, src, 48)
-	f.a.StrQ(dst, 0, X16)
-	f.a.StrQ(dst, 16, X17)
-	f.a.StrQ(dst, 32, X18)
-	f.a.StrQ(dst, 48, X19)
+	if f.memcopyQPairs {
+		f.a.LdpQ(X16, X17, src, 0)
+		f.a.LdpQ(X18, X19, src, 32)
+		f.a.StpQ(X16, X17, dst, 0)
+		f.a.StpQ(X18, X19, dst, 32)
+	} else {
+		f.a.LdrQ(X16, src, 0)
+		f.a.LdrQ(X17, src, 16)
+		f.a.LdrQ(X18, src, 32)
+		f.a.LdrQ(X19, src, 48)
+		f.a.StrQ(dst, 0, X16)
+		f.a.StrQ(dst, 16, X17)
+		f.a.StrQ(dst, 32, X18)
+		f.a.StrQ(dst, 48, X19)
+	}
 	f.a.SubImm64(n, n, 64)
 	f.cmpImm(n, 64, true)
 	f.a.PatchBranch19(f.a.Bcond(condAE), wideLoop)
@@ -1231,10 +1250,15 @@ func (f *fn) copyBackLoop(dst, src, n Reg) {
 	vecLoop32 := f.a.Len()
 	f.a.SubImm64(src, src, 32)
 	f.a.SubImm64(dst, dst, 32)
-	f.a.LdrQ(X16, src, 0)
-	f.a.LdrQ(X17, src, 16)
-	f.a.StrQ(dst, 0, X16)
-	f.a.StrQ(dst, 16, X17)
+	if f.memcopyQPairs {
+		f.a.LdpQ(X16, X17, src, 0)
+		f.a.StpQ(X16, X17, dst, 0)
+	} else {
+		f.a.LdrQ(X16, src, 0)
+		f.a.LdrQ(X17, src, 16)
+		f.a.StrQ(dst, 0, X16)
+		f.a.StrQ(dst, 16, X17)
+	}
 	f.a.SubImm64(n, n, 32)
 	f.cmpImm(n, 32, true)
 	f.a.PatchBranch19(f.a.Bcond(condAE), vecLoop32)
@@ -1423,6 +1447,9 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	}
 	f.absoluteBulkAddr(dstMemory, X9, X11)
 	f.absoluteBulkAddr(srcMemory, X10, X11)
+	if f.memcopyQPairs {
+		f.stats.peep("memcopy-qpairs")
+	}
 
 	// Hybrid dispatch: small dynamic copies take an inline 8-byte-chunk memmove
 	// loop (WARP emitMemcpyNoBoundsCheck) — the byte-copy loop's per-element cost
@@ -1447,6 +1474,14 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.SubImm32(X11, X11, 8) // n -= 8
 	f.a.PatchBranch26(f.a.Branch(), back8)
 	f.a.PatchBranch19(b8done, f.a.Len())
+	if f.memcopyTail4 {
+		f.cmpImm(X11, 4, false)
+		done := f.a.Bcond(condB)
+		f.a.LoadIdx(X12, X10, X11, -4, 4, false, false)
+		f.a.StoreIdx(X9, X11, X12, -4, 4)
+		f.a.SubImm32(X11, X11, 4)
+		f.a.PatchBranch19(done, f.a.Len())
+	}
 	joins19 = append(joins19, f.a.Cbz64(X11)) // n == 0 → done
 	back1 := f.a.Len()
 	f.a.LoadIdx(X12, X10, X11, -1, 1, false, false)
@@ -1468,6 +1503,14 @@ func (f *fn) memoryCopy(r *wasm.Reader) error {
 	f.a.AddImm64(X11, X11, 8) // n += 8
 	f.a.PatchBranch26(f.a.Branch(), fwd8)
 	f.a.PatchBranch19(f8done, f.a.Len())
+	if f.memcopyTail4 {
+		f.cmpImmS(X11, -4, true)
+		done := f.a.Bcond(condG)
+		f.a.LoadIdx(X12, X10, X11, 0, 4, false, false)
+		f.a.StoreIdx(X9, X11, X12, 0, 4)
+		f.a.AddImm64(X11, X11, 4)
+		f.a.PatchBranch19(done, f.a.Len())
+	}
 	joins19 = append(joins19, f.a.Cbz64(X11))
 	fwd1 := f.a.Len()
 	f.a.LoadIdx(X12, X10, X11, 0, 1, false, false)

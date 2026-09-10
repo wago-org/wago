@@ -46,12 +46,51 @@ func (st *storage) setEHRoot(root bool) {
 
 func (f *fn) factsForLocal(x int) valueFacts {
 	// A serialized i32 parameter can arrive in a 64-bit carrier with high bits
-	// set. Only a recorded machine-value proof can remove canonicalization;
-	// the Wasm type alone is not that proof, including across control joins.
-	if f.localFactsEnabled && uint(x) < uint(len(f.locals)) {
-		return f.locals[x].facts
+	// set. Declared i32 locals have a stronger representation invariant: their
+	// zero initializer is canonical, and setLocal canonicalizes any assignment
+	// whose producer does not already write a W register. That invariant survives
+	// control joins without assignment-version sidecars.
+	if uint(x) >= uint(len(f.locals)) {
+		return 0
 	}
-	return 0
+	facts := valueFacts(0)
+	if f.canonicalI32Local(x) {
+		facts |= factUpper32Zero
+	}
+	if f.localFactsEnabled {
+		facts |= f.locals[x].facts
+	}
+	return facts
+}
+
+func (f *fn) declaredI32Local(x int) bool {
+	return f.opt(optValueFacts) && x >= f.nParams && uint(x) < uint(len(f.localType)) && f.localType[x] == mtI32
+}
+
+func (f *fn) canonicalI32Local(x int) bool {
+	return f.declaredI32Local(x) || uint(x) < 64 && f.canonicalI32Params&(uint64(1)<<uint(x)) != 0
+}
+
+func (f *fn) canonicalizeI32LocalAssignment(x int, reg Reg, facts valueFacts) {
+	if f.canonicalI32Local(x) && !facts.has(factUpper32Zero) {
+		f.a.MovReg32(reg, reg)
+		f.stats.peep("local-i32-canonicalize")
+	}
+}
+
+func canonicalI32ParamMask(hints *funcHintView, localTypes []machineType, nParams int, enabled bool) uint64 {
+	if !enabled || !hints.flags.has(hintTouchesMemory) {
+		return 0
+	}
+	var mask uint64
+	for i := 0; i < min(nParams, min(len(localTypes), min(len(hints.localScore), 64))); i++ {
+		// One entry canonicalization replaces at least two direct scalar-load
+		// address canonicalizations. Single-use parameters retain per-use lowering.
+		if localTypes[i] == mtI32 && hints.localScore[i]&localScoreParamAddressReuse != 0 {
+			mask |= uint64(1) << uint(i)
+		}
+	}
+	return mask
 }
 
 func (f *fn) setFactsForLocal(x int, facts valueFacts) {

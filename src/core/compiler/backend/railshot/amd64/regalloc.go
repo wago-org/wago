@@ -4,6 +4,61 @@ package amd64
 
 import "github.com/wago-org/wago/src/core/runtime"
 
+type intConstReg struct {
+	bits int64
+	reg  Reg
+}
+
+func (f *fn) cachedIntConst(st storage) (Reg, bool) {
+	if st.typ != mtI64 {
+		return regNone, false
+	}
+	for i := 0; i < int(f.iconstN); i++ {
+		if f.iconsts[i].bits == st.cval {
+			return f.iconsts[i].reg, true
+		}
+	}
+	return regNone, false
+}
+
+func (f *fn) preloadLoopIntConsts(h *funcHintView) {
+	if !f.opt(optWideLoopIntConst) || f.usesCalls || h.loopIntConsts == nil {
+		return
+	}
+	for i := 0; i < int(h.loopIntConsts.count) && i < len(f.iconsts); i++ {
+		reg := regNone
+		for _, candidate := range [...]Reg{R12, R13, R14, R15, R9, R10, R11, RDI, RSI} {
+			// Loop interrupt polls use RSI as fixed scratch after the operand stack
+			// is flushed. It cannot simultaneously hold function-persistent state.
+			if f.interruptible && candidate == RSI {
+				continue
+			}
+			if !f.reserved.has(candidate) && !f.pinnedLocalMask.has(candidate) && f.regUser[candidate] == nil {
+				reg = candidate
+				break
+			}
+		}
+		if reg == regNone {
+			break
+		}
+		bits := h.loopIntConsts.bits[i]
+		f.loadConst(reg, storage{kind: stConst, typ: mtI64, cval: bits})
+		f.iconsts[f.iconstN] = intConstReg{bits: bits, reg: reg}
+		f.iconstN++
+		f.reserved = f.reserved.add(reg)
+		f.stats.peep("wide-loop-int-const")
+	}
+}
+
+func (f *fn) intConstReadReg(st storage, avoid regMask) (Reg, bool) {
+	if reg, ok := f.cachedIntConst(st); ok {
+		return reg, false
+	}
+	reg := f.allocReg(avoid)
+	f.loadConst(reg, st)
+	return reg, true
+}
+
 // On-the-fly register allocator — the core of WARP's speed. Values (locals,
 // temporaries, deferred results) live in registers over the whole general-purpose
 // file and are spilled to frame slots only when the allocator runs out. Ported
@@ -259,7 +314,11 @@ func (f *fn) materialize(e *elem) Reg {
 		f.stats.addReload()
 		r := f.allocReg(0)
 		before := f.a.Len()
-		f.a.Load64(r, RSP, f.spillOff(e.st.slotIndex()))
+		if f.opt(optCanonicalI32) && e.st.typ == mtI32 {
+			f.a.Load32(r, RSP, f.spillOff(e.st.slotIndex()))
+		} else {
+			f.a.Load64(r, RSP, f.spillOff(e.st.slotIndex()))
+		}
 		f.stats.addGCSpillReloadBytes(f.a.Len() - before)
 		f.occupy(e, r)
 		return r

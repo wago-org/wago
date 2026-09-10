@@ -425,6 +425,20 @@ func (a *Asm) StrQ(base Reg, disp int32, src Reg) {
 	a.ldStrScaled(0x3D800000, 4, src, X16, 0)
 }
 
+// LdpQ / StpQ load or store two adjacent 128-bit SIMD registers without
+// modifying the base. off is a signed byte offset, aligned to 16 bytes, in
+// [-1024, 1008]. Keep the explicit validation here: silently truncating the
+// scaled imm7 would turn a compiler mistake into a wrong-address access.
+func (a *Asm) LdpQ(rt, rt2, rn Reg, off int32) { a.pairQ(0xAD400000, rt, rt2, rn, off) }
+func (a *Asm) StpQ(rt, rt2, rn Reg, off int32) { a.pairQ(0xAD000000, rt, rt2, rn, off) }
+
+func (a *Asm) pairQ(base uint32, rt, rt2, rn Reg, off int32) {
+	if off < -1024 || off > 1008 || off&15 != 0 {
+		panic("arm64: Q-register pair offset out of range or unaligned")
+	}
+	a.word(base | uint32((off/16)&0x7f)<<15 | r(rt2)<<10 | r(rn)<<5 | r(rt))
+}
+
 // LoadIdx / StoreIdx / StoreImmIdx are the base+index(+disp) linear-memory
 // accessors the port calls with the amd64 shape. AArch64 has no base+index+disp
 // form, so a nonzero displacement is folded by computing the effective address
@@ -593,8 +607,8 @@ func (a *Asm) reuseIndexedBase(base, index Reg) bool {
 }
 
 // reuseIndexedBaseStablePhase recognizes the same address across a tiny
-// straight-line window but leaves a NOP in place of the redundant ADD. Keeping
-// all later instruction addresses fixed avoids perturbing branch-dense loops.
+// straight-line window. The redundant ADD is omitted: branch relocations are
+// resolved after emission, so later instruction addresses may move safely.
 func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
 	if !a.ReuseIndexedBase || len(a.B) < 12 {
 		return false
@@ -603,7 +617,6 @@ func (a *Asm) reuseIndexedBaseStablePhase(base, index Reg) bool {
 	for words := 1; words <= 4 && words*4 <= len(a.B); words++ {
 		instruction := a.wordAt(len(a.B) - words*4)
 		if instruction == wantAdd {
-			a.Nop()
 			a.IndexedBaseReuses++
 			return true
 		}

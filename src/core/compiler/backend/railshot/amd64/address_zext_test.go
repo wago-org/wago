@@ -40,8 +40,7 @@ func TestMemory32AddressZExtElision(t *testing.T) {
 
 	t.Run("dirty host upper", func(t *testing.T) {
 		// A wrapper-ABI i32 argument occupies a 64-bit word and may carry arbitrary
-		// high bits. A nonregional pinned parameter must retain the canonicalizing
-		// self-move and use only its low 32-bit address.
+		// high bits. Call-free pinned-local ingress canonicalizes it once.
 		m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 			0x00,
 			0x20, 0x00, 0x2d, 0x00, 0x00,
@@ -56,13 +55,13 @@ func TestMemory32AddressZExtElision(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got := ms.Funcs[0].Peephole["addr-zext-elim"]; got != 0 {
-			t.Fatalf("borrowed parameter used addr-zext-elim %d times", got)
+			t.Fatalf("isolated borrowed parameter used addr-zext-elim %d times", got)
 		}
 	})
 
 	t.Run("borrowed local tee", func(t *testing.T) {
-		// local.tee of a pinned parameter can preserve the wrapper's dirty upper
-		// half when source and destination are the same native register.
+		// local.tee preserves the canonical call-free register form established at
+		// wrapper ingress.
 		m := modMem(t, 1, []wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32}, []byte{
 			0x00,
 			0x20, 0x00, // local.get 0
@@ -78,7 +77,7 @@ func TestMemory32AddressZExtElision(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got := ms.Funcs[0].Peephole["addr-zext-elim"]; got != 0 {
-			t.Fatalf("borrowed local.tee used addr-zext-elim %d times", got)
+			t.Fatalf("isolated borrowed local.tee used addr-zext-elim %d times", got)
 		}
 	})
 
@@ -124,6 +123,15 @@ func TestCleanMemory32AddressProof(t *testing.T) {
 				t.Fatalf("cleanMemory32Address() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+	f.usesCalls = true
+	if got := f.cleanMemory32Address(testValueElem(storage{kind: stLocalReg, typ: mtI32})); got {
+		t.Fatal("call-making whole-function i32 local was treated as canonical")
+	}
+	f.intervalReg = []Reg{R12}
+	f.canonicalI32Uses = 2
+	if got := f.cleanMemory32Address(testValueElem(storage{kind: stLocalReg, typ: mtI32})); !got {
+		t.Fatal("third regional borrowed i32 use was not proven profitable and canonical")
 	}
 
 	if !SetOptKnob("addr-zext-elim", false) {
