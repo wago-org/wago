@@ -13,10 +13,10 @@ func (e *Engine) PrepareIntCall(call *PreparedIntCall, code, linMem uintptr) {
 	call.code, call.linMem, call.stack = code, linMem, e.stackTop
 }
 
-// PrepareBoundedIntContext binds the immutable trap-unwind stack address for a
-// non-concurrent prepared handle. Engine stackTop and the instance's basedata
-// mapping are stable until their owners close; every ordinary entry would store
-// this same value immediately before its native CALL.
+// PrepareBoundedIntContext primes the trap-unwind stack address for a
+// non-concurrent prepared handle. The prebound trampoline republishes it on
+// every invocation because ordinary entries use a different foreign-stack frame
+// and share the same basedata slot.
 func (e *Engine) PrepareBoundedIntContext(linMem uintptr) {
 	storeOffHeapU64(linMem-offTrapStackReentry, uint64(e.stackTop-40))
 }

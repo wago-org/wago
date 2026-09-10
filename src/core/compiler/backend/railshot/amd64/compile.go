@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
+	"math/bits"
 	"os"
 	"runtime"
 	"sort"
@@ -406,10 +407,11 @@ type fn struct {
 	// (touched in every function) free at call boundaries.
 	moduleGlobals []moduleGlobalPin
 	// moduleGlobalRegionalLease is a module-global register which this function
-	// proves it never reads or writes. Its incoming value is saved in spill slot
-	// zero while the bounded regional cache borrows the register, then restored
-	// on every normal return and terminal trap path.
-	moduleGlobalRegionalLease Reg
+	// proves it never reads or writes. Its incoming value is saved in a dedicated
+	// frame slot outside the canonical operand/result area while the bounded
+	// regional cache borrows the register, then restored on every return/trap.
+	moduleGlobalRegionalLease     Reg
+	moduleGlobalRegionalLeaseSlot uint32
 
 	// Control-flow state (Phase 3).
 	ctrl        []ctrlFrame // open block/loop/if/try frames; ctrl[0] is the function frame
@@ -1118,6 +1120,7 @@ func resolveBoundedPreparedEntries(m *wasm.Module, candidates []uint64, hints []
 	depth := make([]uint8, n)
 	for changed := true; changed; {
 		changed = false
+		tableTargetsSafe, maxTargetWork, maxTargetDepth := boundedPreparedTableSummary(tableTargets, safe, work, depth, n, tableTargetsOK)
 		for i := 0; i < n; i++ {
 			if !directPreparedMarked(candidates, i) || directPreparedMarked(safe, i) || i >= len(hints) {
 				continue
@@ -1148,22 +1151,7 @@ func resolveBoundedPreparedEntries(m *wasm.Module, candidates []uint64, hints []
 				continue
 			}
 			if h.hasNonDirectCall() {
-				if !tableTargetsOK {
-					continue
-				}
-				maxTargetWork, maxTargetDepth := 0, 0
-				for target := 0; target < n; target++ {
-					if !directPreparedMarked(tableTargets, target) {
-						continue
-					}
-					if !directPreparedMarked(safe, target) {
-						admit = false
-						break
-					}
-					maxTargetWork = max(maxTargetWork, int(work[target]))
-					maxTargetDepth = max(maxTargetDepth, int(depth[target]))
-				}
-				if !admit {
+				if !tableTargetsSafe {
 					continue
 				}
 				candidateWork += maxTargetWork * (bodyBytes / 2)
@@ -1179,6 +1167,29 @@ func resolveBoundedPreparedEntries(m *wasm.Module, candidates []uint64, hints []
 		}
 	}
 	return safe
+}
+
+func boundedPreparedTableSummary(targets, safe []uint64, work []uint16, depth []uint8, n int, proved bool) (bool, int, int) {
+	if !proved {
+		return false, 0, 0
+	}
+	maxWork, maxDepth := 0, 0
+	for wordIndex, targetWord := range targets {
+		if wordIndex >= len(safe) || targetWord&^safe[wordIndex] != 0 {
+			return false, 0, 0
+		}
+		for targetWord != 0 {
+			bit := bits.TrailingZeros64(targetWord)
+			target := wordIndex*64 + bit
+			if target >= n {
+				return false, 0, 0
+			}
+			maxWork = max(maxWork, int(work[target]))
+			maxDepth = max(maxDepth, int(depth[target]))
+			targetWord &^= uint64(1) << uint(bit)
+		}
+	}
+	return true, maxWork, maxDepth
 }
 
 func immutablePreparedTableTargets(m *wasm.Module, tables []immutableTableHint) ([]uint64, bool) {
@@ -1371,7 +1382,7 @@ func (f *fn) frameSize() int {
 func (f *fn) elideRegisterOnlyFrame() bool {
 	voidResult := len(f.ft.Results) == 0
 	registerResult := f.singleRegResult || voidResult
-	if !f.opt(optFrameElide) || !registerResult || f.moduleEH || f.usesCalls || f.maxSpill != 0 || len(f.localType) != f.nLocals {
+	if !f.opt(optFrameElide) || !registerResult || f.moduleEH || f.usesCalls || f.moduleGlobalRegionalLease != regNone || f.maxSpill != 0 || len(f.localType) != f.nLocals {
 		return false
 	}
 	if !f.allLocalsRegisterHomed() {
@@ -3266,7 +3277,8 @@ func compileFuncAttempt(m *wasm.Module, gcTypeLayouts []codegen.GCTypeLayout, fu
 		hasCall, len(inlinedCallees), hints.flags, modGlobals, hints.sparseGlobals,
 	)
 	if f.moduleGlobalRegionalLease != regNone {
-		f.spillFloor, f.maxSpill = 1, 1
+		f.moduleGlobalRegionalLeaseSlot = uint32(f.nLocalSlots)
+		f.nLocalSlots++
 		f.stats.peep("module-global-regional-lease")
 	}
 	// Ordinary register-ABI bodies never consume frResultsOff: adapters preserve
@@ -4141,7 +4153,7 @@ func (f *fn) emitRegABI(c *wasm.Func, hostAdapter, hasFloatConst, hasSIMD bool, 
 	f.subRspAt = a.Len() + 3
 	a.SubRsp(0)
 	if f.moduleGlobalRegionalLease != regNone {
-		a.Store64(RSP, f.spillOff(0), f.moduleGlobalRegionalLease)
+		a.Store64(RSP, f.moduleGlobalRegionalLeaseOff(), f.moduleGlobalRegionalLease)
 	}
 	f.emitStackFenceCheck(RBX, RSI)
 	f.emitInterruptCheck(RSI) // RSI is not an int-arg reg: free before args are homed
@@ -4262,8 +4274,12 @@ func selectModuleGlobalRegionalLease(enabled, touchesMemory, pinLocals, regABI, 
 
 func (f *fn) restoreModuleGlobalRegionalLease() {
 	if f.moduleGlobalRegionalLease != regNone {
-		f.a.Load64(f.moduleGlobalRegionalLease, RSP, f.spillOff(0))
+		f.a.Load64(f.moduleGlobalRegionalLease, RSP, f.moduleGlobalRegionalLeaseOff())
 	}
+}
+
+func (f *fn) moduleGlobalRegionalLeaseOff() int32 {
+	return int32(f.frameHeaderBytes()) + int32(8*f.moduleGlobalRegionalLeaseSlot)
 }
 
 func (f *fn) patchFrameSize() error {

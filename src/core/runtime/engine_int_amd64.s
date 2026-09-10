@@ -36,18 +36,19 @@ TEXT ·enterNativeIntPreboundContextRaw(SB), NOSPLIT, $0-48
 	MOVQ call+0(FP), R9
 	MOVQ  0(R9), R11
 	MOVQ 16(R9), R10
-	SUBQ $32, R10
-	MOVQ SP,  0(R10)
-	MOVQ BX,  8(R10)
-	MOVQ BP, 16(R10)
+	SUBQ $40, R10 // trap reentry address; save area starts eight bytes above it
+	MOVQ SP,  8(R10)
+	MOVQ BX, 16(R10)
+	MOVQ BP, 24(R10)
 
 	MOVQ 8(R9), BX
+	MOVQ R10, -24(BX)
 	MOVQ a0+8(FP), AX
 	MOVQ a1+16(FP), CX
 	MOVQ a2+24(FP), DX
 	MOVQ a3+32(FP), R8
 
-	MOVQ R10, SP
+	LEAQ 8(R10), SP
 	XORL BP, BP
 	CALL R11
 	MOVQ AX, DI

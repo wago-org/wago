@@ -3,6 +3,7 @@
 package amd64
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
@@ -102,5 +103,37 @@ func TestResolveBoundedPreparedEntriesEnforcesDepthCap(t *testing.T) {
 	}
 	if !directPreparedMarked(got, n-1) {
 		t.Fatal("bounded leaf rejected")
+	}
+}
+
+func benchmarkResolveBoundedPreparedEntriesTableFanout(b *testing.B, n int) {
+	m := boundedGraphTestModule(n)
+	m.Tables = []wasm.Table{{}}
+	m.Elements = []wasm.Elem{{
+		Mode: wasm.ElemMode{Kind: wasm.ElemActive},
+		Kind: wasm.ElemKind{Kind: wasm.ElemFuncs, Funcs: []wasm.FuncIdx{wasm.FuncIdx(n - 1)}},
+	}}
+	hints := make([]funcHints, n)
+	for i := 0; i+1 < n; i++ {
+		hints[i].flags.set(hintHasCall)
+		hints[i].markNonDirectCall()
+	}
+	tables := []immutableTableHint{{local: true}}
+	candidates := boundedGraphCandidates(n)
+	relocs := boundedGraphRelocs(n)
+	b.ResetTimer()
+	for range b.N {
+		got := resolveBoundedPreparedEntries(m, candidates, hints, relocs, tables)
+		if !directPreparedMarked(got, 0) || !directPreparedMarked(got, n-1) {
+			b.Fatal("bounded immutable-table fanout rejected")
+		}
+	}
+}
+
+func BenchmarkResolveBoundedPreparedEntriesTableFanout(b *testing.B) {
+	for _, n := range []int{1000, 2000, 4000} {
+		b.Run(fmt.Sprintf("functions=%d", n), func(b *testing.B) {
+			benchmarkResolveBoundedPreparedEntriesTableFanout(b, n)
+		})
 	}
 }
