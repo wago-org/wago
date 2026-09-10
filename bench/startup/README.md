@@ -1,22 +1,21 @@
 # Startup-latency sweep
 
-Use this sweep to refresh the website's **Startup latency** data. It measures
+Use this sweep to refresh the website's **End-to-end latency** data. It measures
 the whole process path for one real binary per workload:
 
 ```text
 exec() → load → compile → instantiate → run _start → exit
 ```
 
-It compares interpreters and JITs with
+It compares interpreters and compilers with
 [hyperfine](https://github.com/sharkdp/hyperfine). This directory creates the
 data. `scripts/update-website-startup.mjs` creates the website section from that
 data; `scripts/update-website-bench.mjs` does the same for performance data.
 
 ## Before You Run
 
-Install Node.js, `hyperfine`, and the runtimes you want to measure. A missing
-runtime binary is skipped. The sweep still writes results for the runtimes it
-can find.
+Install Node.js, `hyperfine`, and every runtime in `runtimes.json`. The sweep
+requires the complete runtime set so a partial comparison cannot be published.
 
 ## Layout
 
@@ -27,17 +26,19 @@ can find.
   `_start`, so every CLI uses a plain `run`. The sweep needs only the runtimes,
   not a wasm toolchain.
 - `src/*.rs` contains the Rust compute-twin sources. A `_start` wrapper is
-  appended to the matching `corpus/sources/rust/*.rs` kernel. The `json-as` twin
-  is AssemblyScript.
-- `run.mjs` performs the sweep and writes `startup.json`.
-- `startup.json` is the committed dataset consumed by the website generator.
+  appended to the matching `corpus/sources/rust/*.rs` kernel.
+- `run.mjs` performs one host sweep and writes `startup-arm64.json` or
+  `startup-amd64.json`.
+- Both architecture-specific JSON files are committed inputs to the website
+  generator. The generator requires matching source commits, workload order,
+  runtime metadata, and result sets.
 
 ## Run the Sweep
 
 ```sh
-make bench-startup                 # → bench/startup/startup.json
+make bench-startup                 # → startup-<host-arch>.json
 # or point at specific binaries:
-V8_BIN=… WASM3_BIN=… IWASM_BIN=… node bench/startup/run.mjs
+V8_BIN=… WASM3_BIN=… WASMI_BIN=… WAVM_BIN=… node bench/startup/run.mjs
 ```
 
 Then regenerate the site from the saved data. This does not benchmark again:
@@ -50,14 +51,15 @@ make startup-website
 
 ## Method
 
-The command is `hyperfine -N --warmup 5 --min-runs 30` with cold caches. Each
+The command is `hyperfine -N --warmup 5 --min-runs 30`. Each
 workload uses one hyperfine invocation with one named command per runtime. This
-times every engine back to back under the same conditions.
+times every engine back to back under the same conditions, with a fresh process
+from spawn through exit for every run. The harness first runs every command once
+as a correctness preflight.
 
 The website sorts each workload from fastest to slowest. It scales bar widths
-against the slowest non-LLVM runtime. Wavm's LLVM compilation is an outlier and
-would otherwise flatten the other bars.
+against the slowest runtime in that workload.
 
-Keep the command, cache controls, and work twins unchanged when you compare
-results. When you add or rebuild a twin, document its source and build steps in
-this README.
+Keep the command and work twins unchanged when you compare results. Capture both
+architectures from the exact same committed Wago revision. When you add or
+rebuild a twin, document its source and build steps in this README.
