@@ -187,7 +187,6 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	if invocation.empty() {
 		invocation = activeHostInvocationContext(active)
 	}
-	id := invocation.id
 	// Exact parked native roots and translated GC host arguments are now
 	// published. Release every collector lease owned by the public native root
 	// while arbitrary host code runs. A non-GC relay may have pre-acquired more
@@ -196,7 +195,15 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	if root != nil && root.executionFlags.Load()&executionFlagImportedGCDomain != 0 {
 		leaseOwner = root
 	}
-	gcSuspension := leaseOwner.suspendGCInvocation(id)
+	id := invocation.id
+	// The no-domain branch does not construct a zero-value suspension. The
+	// conditional value stays on this Go frame; only its pointer is captured by
+	// cleanup. Keeping the original dispatch frame avoids extra GC-path calls.
+	var gcSuspension *gcInvocationSuspension
+	if leaseOwner.hostCallNeedsGCSuspension() {
+		suspension := leaseOwner.suspendGCInvocation(id)
+		gcSuspension = &suspension
+	}
 	var localMu *sync.Mutex
 	var epoch uint64
 	var localVersion uint64
@@ -214,7 +221,9 @@ func (root *Instance) dispatchSynchronousHostCall(ctrl uintptr, importIdx uint32
 	// between host result validation and the caller's resumed native frame.
 	defer active.popGCHostActivation(activation)
 	defer func() {
-		gcSuspension.resume()
+		if gcSuspension != nil {
+			gcSuspension.resume()
+		}
 		if localMu != nil {
 			localMu.Lock()
 		} else {

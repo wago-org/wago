@@ -81,8 +81,6 @@ Windows/amd64 and Windows/arm64. The local package suite passed in 6.278 s.
 The four-memory case is additional coverage only; both basic host-admission
 assertions still run on every supported platform.
 
-## Scope and buffer review
-
 ## Concrete caller checkpoint
 
 Five 500 ms samples; median (range). Loop values below are public invocations
@@ -142,3 +140,59 @@ Segment scheduler admission also stays disabled. A callee's bounded prefix says
 nothing about an unbounded caller continuation. Repeated bounded/host segments
 need explicit scheduler-progress boundaries across the whole native stack.
 Arbitrary Go callbacks still execute through the normal Go scheduler protocol.
+
+## No-GC suspension proof
+
+The predicate reads the actual `leaseOwner`, after parked roots and arguments
+are published and before native ownership is released. It admits omission only
+when `gc == nil` and none of ImportedGCDomain, DynamicGCDomain or
+StoreOwnedGCCollector is set. Registration establishes these flags before
+invocation; dynamic table/global reachability gets the dynamic flag even when
+the domain topology is currently empty. `gcInvocationDomains` already returns
+an empty view for the admitted case. The generic routine's separate dynamic
+topology work is also impossible in that case.
+
+GC-capable calls create the existing suspension conditionally on the original
+Go dispatch frame; escape analysis keeps the value itself on the stack. Both
+branches use the same parked-callback cleanup. It restores collector leases, if any,
+before native ownership, then restores context and roots in the original
+order. The no-domain path neither constructs the large suspension value nor
+calls its generic suspend/resume functions. No collector lock is removed when
+a collector lease exists. Root identity selection is unchanged, including a
+non-GC public relay that owns multiple producer domains.
+
+Tests include admission metadata, both caller APIs against forced general
+cleanup, and both APIs in a two-domain scalar relay whose host callback collects
+and re-enters the other producer. Existing dynamic-domain installation tests
+remain in the full suite. No new cache, counter or growing map is introduced.
+
+An initial split-helper layout was rejected: it improved private repeated calls
+but increased the concrete local-GC loop from 242,402 to 285,298 ns per public
+invocation. The conditional stack-local value keeps the original call structure.
+Disassembly confirms that the no-domain branch skips the suspension call and
+its 80-byte result copy; it only passes a nil pointer to the shared cleanup.
+
+The conditional-value checkpoint measures 139.3 ns per repeated concrete call
+(143,226 ns per 1,024-call invocation; range 142,623–145,968), 0 B and 0
+allocations. The matching legacy loop is 175,644 ns (172,533–175,950), or
+171.0 ns/call after guest subtraction. Concrete parallel calls measure 17.9
+ns/call in aggregate. Public single-call medians are 345.8 ns concrete and
+381.6 ns legacy.
+
+To check the fallback separately, a reference binary was built from
+`05a8f0b89`, then both binaries ran ten 2-second samples, without concurrent
+builds. Medians (ranges), ns per 1,024-call public invocation:
+
+| Concrete fallback | Reference | Conditional value | Delta |
+|---|---:|---:|---:|
+| Local GC | 248261.5 (246056–256299) | 251565.5 (250506–252532) | +1.3% |
+| Imported domain | 191283 (190569–197059) | 204412.5 (200729–207536) | +6.9% |
+| Dynamic domain | 221451.5 (213262–225136) | 217743.5 (213739–222029) | -1.7% |
+
+This checkpoint is a private-path win with a measured imported-domain tradeoff,
+not an across-the-board improvement. All concrete fallback samples remain at
+0 B/op and 0 allocs/op. The next scope step must check these paths again.
+The no-GC CPU profile has no `suspendGCInvocation` samples. Scope setup now
+accounts for 11.67% cumulative CPU, which supports measuring sidecar reuse next.
+The revised full package suite passed in 5.811 s; its full race run passed in
+20.663 s. Generation, cancellation, root and scheduler tests remain enabled.

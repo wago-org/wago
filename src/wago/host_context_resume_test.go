@@ -93,6 +93,9 @@ func testHostContextResumeMatchesForcedRestore(t *testing.T, concrete bool) {
 					t.Fatal(err)
 				}
 				if force {
+					// Force the general suspension branch too. With no collector and
+					// no registered domains its generic suspension is intentionally empty.
+					in.executionFlags.Store(in.executionFlags.Load() | executionFlagImportedGCDomain)
 					in.ensurePluginState().nativeContextVersion.Store(^uint64(0))
 				}
 				var got []uint64

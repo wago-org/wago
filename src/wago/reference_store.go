@@ -1102,6 +1102,16 @@ type gcInvocationSuspension struct {
 	active   bool
 }
 
+// hostCallNeedsGCSuspension is checked on the actual lease owner under native
+// ownership. Collector identity and domain-admission flags are established
+// before invocation. Dynamic topology always falls back, even when empty now.
+// No signature-based test can replace this predicate: a scalar relay can own
+// imported domains without having a local collector.
+func (in *Instance) hostCallNeedsGCSuspension() bool {
+	return in != nil && (in.gc != nil || in.executionFlags.Load()&
+		(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) != 0)
+}
+
 func (in *Instance) suspendGCInvocation(owner invocationID) gcInvocationSuspension {
 	dynamic := in != nil && in.refStore != nil && in.executionFlags.Load()&executionFlagDynamicGCDomain != 0
 	var topology *gcDomainTopology
