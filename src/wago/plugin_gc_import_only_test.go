@@ -6,7 +6,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func pluginGCImportOnlyModule() []byte {

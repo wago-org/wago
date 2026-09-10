@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	stagedGCBrOnCastDeltaPath         = "tests/spec-v3-staged-gc-br-on-cast.json"
+	stagedGCBrOnCastDeltaPath         = "tests/conformance/baselines/spec-v3-staged-gc-br-on-cast.json"
 	stagedGCBrOnCastOfficialExecution = true
 )
 

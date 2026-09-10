@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // TestDeepFPPinExec runs a call-free function with five f64 params (a+b+c+d+e)

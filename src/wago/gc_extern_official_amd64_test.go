@@ -18,7 +18,7 @@ import (
 	"github.com/wago-org/wago/src/core/runtime/gc/native"
 )
 
-const stagedGCExternDeltaPath = "tests/spec-v3-staged-gc-extern.json"
+const stagedGCExternDeltaPath = "tests/conformance/baselines/spec-v3-staged-gc-extern.json"
 
 const stagedGCExternGate = "extern conversion constant globals/table with bounded anyref ingress and result ownership"
 

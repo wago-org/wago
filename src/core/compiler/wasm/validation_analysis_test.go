@@ -6,7 +6,7 @@ import (
 	"unsafe"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 func validationAnalysisModule(t *testing.T) *wasm.Module {

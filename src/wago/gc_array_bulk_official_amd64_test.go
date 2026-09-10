@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	stagedGCArrayBulkDeltaPath         = "tests/spec-v3-staged-gc-array-bulk.json"
+	stagedGCArrayBulkDeltaPath         = "tests/conformance/baselines/spec-v3-staged-gc-array-bulk.json"
 	stagedGCArrayBulkOfficialExecution = true
 )
 

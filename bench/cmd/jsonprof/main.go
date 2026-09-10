@@ -9,7 +9,7 @@
 //	perf report -i /tmp/j.data --stdio | head -60
 //
 // Set WAGO_JSON_MODULE to the module path, or it defaults to the committed
-// bench/corpus/json-as.wasm workload (when run from bench/).
+// corpus/workloads/assemblyscript/json-as.wasm workload (when run from bench/).
 // Pass "guard" as a 2nd arg to use signals-based (guard-page) bounds.
 package main
 

@@ -27,7 +27,7 @@ can find.
   `_start`, so every CLI uses a plain `run`. The sweep needs only the runtimes,
   not a wasm toolchain.
 - `src/*.rs` contains the Rust compute-twin sources. A `_start` wrapper is
-  appended to the matching `bench/corpus/rust/*.rs` kernel. The `json-as` twin
+  appended to the matching `corpus/sources/rust/*.rs` kernel. The `json-as` twin
   is AssemblyScript.
 - `run.mjs` performs the sweep and writes `startup.json`.
 - `startup.json` is the committed dataset consumed by the website generator.

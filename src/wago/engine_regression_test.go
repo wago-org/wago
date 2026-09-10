@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // Keep this manifest exact so fixture additions or accidental deletions require
@@ -45,7 +45,7 @@ func TestEngineFixtureManifest(t *testing.T) {
 		"unreachable.wasm",
 		"urem_regalloc.wasm",
 	}
-	dir := filepath.Join("..", "..", "tests", "regressions", "engine")
+	dir := filepath.Join("..", "..", "tests", "corpus", "regressions", "engine")
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("read engine fixtures: %v", err)
@@ -68,7 +68,7 @@ func TestEngineFixtureManifest(t *testing.T) {
 }
 
 func TestFixtureTreeDigest(t *testing.T) {
-	root := filepath.Join("..", "..", "tests", "regressions")
+	root := filepath.Join("..", "..", "tests", "corpus", "regressions")
 	paths := make([]string, 0, 941)
 	if err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
@@ -202,7 +202,7 @@ func TestEngineBehaviorFixtures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		data, err := os.ReadFile(filepath.Join("..", "..", "tests", "regressions", "engine", "reftype_imports.wasm"))
+		data, err := os.ReadFile(filepath.Join("..", "..", "tests", "corpus", "regressions", "engine", "reftype_imports.wasm"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -257,7 +257,7 @@ func TestEngineBehaviorFixtures(t *testing.T) {
 
 func instantiateEngineFixture(t *testing.T, name string, imports Imports) *Instance {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join("..", "..", "tests", "regressions", "engine", name))
+	data, err := os.ReadFile(filepath.Join("..", "..", "tests", "corpus", "regressions", "engine", name))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +316,7 @@ func TestTypedFunctionReferenceFeatureDisableFailsClosed(t *testing.T) {
 }
 
 func TestExceptionHandlingFixturesFailClosed(t *testing.T) {
-	paths, err := filepath.Glob(filepath.Join("..", "..", "tests", "regressions", "engine", "eh_*.wasm"))
+	paths, err := filepath.Glob(filepath.Join("..", "..", "tests", "corpus", "regressions", "engine", "eh_*.wasm"))
 	if err != nil {
 		t.Fatalf("glob exception fixtures: %v", err)
 	}

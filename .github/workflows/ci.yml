@@ -114,9 +114,9 @@ jobs:
       - name: Read pinned WABT provenance
         id: wabt
         run: |
-          go test ./tests/regressioncorpus
-          repo="$(jq -er '.wabt_repo | select(test("^https://[^[:space:]]+$"))' tests/regressions/runtime/PROVENANCE.json)"
-          revision="$(jq -er '.wabt_revision | select(test("^[0-9a-f]{40}$"))' tests/regressions/runtime/PROVENANCE.json)"
+          go test ./tests/support/regressioncorpus
+          repo="$(jq -er '.wabt_repo | select(test("^https://[^[:space:]]+$"))' tests/corpus/regressions/runtime/PROVENANCE.json)"
+          revision="$(jq -er '.wabt_revision | select(test("^[0-9a-f]{40}$"))' tests/corpus/regressions/runtime/PROVENANCE.json)"
           printf 'repo=%s\n' "$repo" >> "$GITHUB_OUTPUT"
           printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
       - name: Build pinned WABT from verified source
@@ -185,9 +185,9 @@ jobs:
       # deciding whether an unavailable conversion tool makes the case skippable.
       # Fetch the corpus so the race lane reports races rather than checkout noise.
       - name: Initialize Release 3 suite
-        run: git submodule update --init --depth=1 tests/spec-v3
+        run: git submodule update --init --depth=1 tests/conformance/spec-v3
       - name: Run focused runtime race suites
-        run: go test -race -count=1 ./src/wago ./src/core/runtime ./tests/runtimeconcurrency
+        run: go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency
 
   platform-test:
     name: ${{ matrix.name }}
@@ -262,7 +262,7 @@ jobs:
       # toolchain and verify the portable/backend surface directly.
       - name: Initialize Release 3 suite
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
-        run: git submodule update --init --depth=1 tests/spec-v3
+        run: git submodule update --init --depth=1 tests/conformance/spec-v3
 
       - name: Install Release 3 interpreter toolchain
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
@@ -302,7 +302,7 @@ jobs:
 
       - name: Build & test
         if: matrix.runtime && runner.os != 'Windows'
-        run: make test
+        run: make test CORPUS=quick
 
       - name: Build & test (Windows)
         if: matrix.runtime && runner.os == 'Windows'
@@ -316,6 +316,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test -count=1 -tags wago_runtime ./cli/...
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location bench
+          try {
+            go test -count=1 -run '^(TestCorpus|TestCorpusSemanticExec|TestApplicationCorpusRuns)$' ./suite -args '-wago.corpus=quick'
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Pop-Location
+          }
 
       # Guard-page (signals-based) mode is behind a build tag, so `make test`
       # never exercises it — which is how a broken SIGSEGV fault->trap handler
@@ -333,29 +340,25 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location bench
           try {
-            go test -v -count=1 -tags wago_guardpage -run 'TestCorpusDifferential|TestJsonAsGuardCorrect' .
+            go test -v -count=1 -tags wago_guardpage -run '^(TestCorpus|TestJsonAsGuardCorrect)$' ./suite -args '-wago.corpus=quick'
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } finally {
             Pop-Location
           }
 
       - name: Corpus correctness matrix
-        if: matrix.corpus && runner.os != 'Windows'
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
         env:
           WAGO_CORPUS_TIMEOUT: 20s
-        run: make test-corpus
+        run: make test-corpus CORPUS=all
 
-      - name: Corpus correctness matrix (Windows)
-        if: matrix.corpus && runner.os == 'Windows'
-        shell: pwsh
-        working-directory: bench
-        env:
-          WAGO_CORPUS_TIMEOUT: 20s
-        run: go test -count=1 -run '^TestCorpus$' .
+      - name: Benchmark wiring smoke test
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: make bench-check CORPUS=quick
 
       - name: Fetch SIMD proposal suite
         if: matrix.runtime
-        run: git submodule update --init tests/spec
+        run: git submodule update --init tests/conformance/spec-v1
 
       - name: SIMD execution suite
         if: matrix.runtime && runner.os != 'Windows'
@@ -365,8 +368,8 @@ jobs:
         if: matrix.runtime && runner.os == 'Windows'
         shell: pwsh
         run: |
-          git submodule update --init tests/spec
-          $env:WAGO_SPECTEST_DIR = (Resolve-Path tests/spec)
+          git submodule update --init tests/conformance/spec-v1
+          $env:WAGO_SPECTEST_DIR = (Resolve-Path tests/conformance/spec-v1)
           $env:WAGO_SPEC_VERSION = 'simd'
           go test -count=1 -run TestSpecSuiteExec -v ./src/wago/
 
@@ -396,9 +399,9 @@ jobs:
       - name: Install WABT
         run: sudo apt-get update && sudo apt-get install -y wabt
       - name: Fetch pinned Core v2 corpus
-        run: git submodule update --init tests/spec-v2
+        run: git submodule update --init tests/conformance/spec-v2
       - name: Run exact Core v2 validation and execution
-        run: make spec2
+        run: make test-spec-v2
 
   core-v3:
     name: Core v3 conformance / ${{ matrix.name }}
@@ -442,9 +445,24 @@ jobs:
             brew install ocaml dune menhir
           fi
       - name: Fetch pinned Core v3 corpus
-        run: git submodule update --init tests/spec-v3
+        run: git submodule update --init tests/conformance/spec-v3
       - name: Run exact Core v3 validation and execution
         run: make ${{ matrix.target }}
+
+  fuzz:
+    name: Bounded fuzzing / Linux amd64
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+      - name: Run bounded fuzzing gates
+        run: make test-fuzz FUZZTIME=5s
 
   tinygo:
     name: TinyGo / ${{ matrix.name }}
@@ -583,7 +601,7 @@ jobs:
   ci-ok:
     name: CI
     if: always()
-    needs: [changes, docs, lint, regression-corpus, runtime-concurrency, race, platform-test, core-v2, core-v3, tinygo, size]
+    needs: [changes, docs, lint, regression-corpus, runtime-concurrency, race, platform-test, core-v2, core-v3, fuzz, tinygo, size]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no required job failed

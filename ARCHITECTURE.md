@@ -265,13 +265,13 @@ src/core/compiler/backend/railshot/  direct native codegen (Valent-Block)
   shared/                           architecture-neutral policy and metadata
 src/core/runtime/                 mmap, foreign stack, JobMemory, traps
 src/core/runtime/abi/             layout constants shared by codegen + runtime
-tests/spec/                       WebAssembly spec testsuite (submodule, MVP-pinned)
-tests/spec-v2/                    WebAssembly 2.0 specification (submodule)
-tests/fixtures/                   small Wasm, benchmark, and parser fixtures
-tests/regressions/                pinned binary regression corpus
-tests/spectest/                   shared specification-test helpers
-tests/wasmtest/                   programmatic Wasm fixture builders
-tests/scripts/                    shell integration tests
+tests/conformance/spec-v1/      WebAssembly spec testsuite (submodule, MVP-pinned)
+tests/conformance/spec-v2/      WebAssembly 2.0 specification (submodule)
+tests/fixtures/                 small Wasm, benchmark, and parser fixtures
+tests/corpus/regressions/       pinned binary regression corpus
+tests/conformance/spectest/     shared specification-test helpers
+tests/support/wasmtest/         programmatic Wasm fixture builders
+tests/scripts/                  shell integration tests
 spectest_exec_test.go             wasm 1.0 conformance harness (+ SPECTEST.md)
 bench/                            benchmarks vs wazero (separate Go module)
 ```
@@ -650,7 +650,7 @@ to build and test the Go module.
 ## 15. Conformance & testing
 
 - **Execution conformance** (`spectest_exec_test.go`, `TestSpecExec`): runs the
-  official WebAssembly testsuite (`tests/spec`, pinned to a pre-reference-types
+  official WebAssembly testsuite (`tests/conformance/spec-v1`, pinned to a pre-reference-types
   MVP commit) through compile→instantiate→invoke, scoring `assert_return` /
   `assert_trap` per file. Each file runs in an **isolated subprocess** so a JIT
   fault is recorded as `CRASH` rather than aborting the run. Results are written

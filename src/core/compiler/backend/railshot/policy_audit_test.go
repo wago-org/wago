@@ -18,7 +18,7 @@ import (
 // are not valid optimization selectors.
 func TestProductionPolicyRejectsWorkloadIdentity(t *testing.T) {
 	workloadMarkers := []string{
-		"bench/corpus", "many_funcs", "json-as", "utf-as", "blake-as",
+		"corpus/workloads", "many_funcs", "json-as", "utf-as", "blake-as",
 		"xjb-mulhi", "swar-pack", "regexmatch", "esbuild", "sqlite", "ruby",
 	}
 	forbiddenImports := map[string]bool{

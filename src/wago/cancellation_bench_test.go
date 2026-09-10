@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // Report cancel-to-return tails separately from the scheduled work interval.

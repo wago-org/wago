@@ -51,9 +51,9 @@ func TestImportedInstancesShareCodeAcrossBindings(t *testing.T) {
 }
 
 func TestImportedModuleCodeIsBindingIndependent(t *testing.T) {
-	src, err := os.ReadFile("../../bench/corpus/jsonproc.wasm")
+	src, err := os.ReadFile("../../corpus/workloads/assemblyscript/json-as.wasm")
 	if err != nil {
-		t.Skip("jsonproc.wasm not present")
+		t.Fatal(err)
 	}
 	c, err := Compile(nil, src)
 	if err != nil {

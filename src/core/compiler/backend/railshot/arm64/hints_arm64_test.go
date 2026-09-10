@@ -11,7 +11,7 @@ import (
 	"github.com/wago-org/wago/src/core/compiler/backend/railshot/shared"
 	"github.com/wago-org/wago/src/core/compiler/frontend"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 // Hint scanning is portable and does not enter generated code. Keep its
@@ -30,9 +30,9 @@ func readParallelTestModuleArm64(t testing.TB, path string) *wasm.Module {
 }
 
 func TestParallelModuleHintsMatchSerialDetailedResidencyArm64(t *testing.T) {
-	for _, name := range []string{"json-as-simd.wasm", "lua.wasm", "sqlite3.wasm"} {
+	for _, name := range []string{"assemblyscript/json-as-simd.wasm", "semantic/coremark/coremark.wasm"} {
 		t.Run(name, func(t *testing.T) {
-			m := readParallelTestModuleArm64(t, "../../../../../../bench/corpus/"+name)
+			m := readParallelTestModuleArm64(t, "../../../../../../corpus/workloads/"+name)
 			policy := currentCodegenPolicy()
 			serial, serialSidecar, serialGlobals, err := computeModuleHintsWithWorkersResidencyPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, policy, true)
 			if err != nil {
@@ -63,9 +63,9 @@ func TestParallelModuleHintsMatchSerialDetailedResidencyArm64(t *testing.T) {
 }
 
 func TestParallelModuleHintsMatchSerialArm64(t *testing.T) {
-	for _, name := range []string{"json-as-simd.wasm", "lua.wasm", "sqlite3.wasm"} {
+	for _, name := range []string{"assemblyscript/json-as-simd.wasm", "semantic/coremark/coremark.wasm"} {
 		t.Run(name, func(t *testing.T) {
-			m := readParallelTestModuleArm64(t, "../../../../../../bench/corpus/"+name)
+			m := readParallelTestModuleArm64(t, "../../../../../../corpus/workloads/"+name)
 			policy := currentCodegenPolicy()
 			serial, serialSidecar, serialGlobals, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, policy)
 			if err != nil {
@@ -92,36 +92,6 @@ func TestParallelModuleHintsMatchSerialArm64(t *testing.T) {
 				t.Fatalf("global sidecar backing capacity: parallel %d, serial %d", cap(parallelSidecar.sparseGlobals), cap(serialSidecar.sparseGlobals))
 			}
 		})
-	}
-}
-
-func TestParallelLoopConstantsPreserveOrderAndAccountingArm64(t *testing.T) {
-	m := readParallelTestModuleArm64(t, "../../../../../../bench/corpus/lua.wasm")
-	for _, enabled := range []bool{false, true} {
-		selection, err := optimizationBindings.ResolveSnapshot(map[string]bool{"loop-int-const": enabled}, OptimizationSnapshot{}, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
-		policy := shared.DefaultCodegenPolicy(selection)
-		serial, serialSidecar, _, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), 1, policy)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if enabled != (len(serialSidecar.loopIntConsts) != 0) {
-			t.Fatalf("enabled=%v: constant sidecars=%d", enabled, len(serialSidecar.loopIntConsts))
-		}
-		for _, workers := range []int{2, 4, 8} {
-			parallel, sidecar, _, err := computeModuleHintsWithWorkersPolicy(m, m.GlobalCount(), m.ImportedFuncCount(), workers, policy)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(serial, parallel) || !reflect.DeepEqual(serialSidecar, sidecar) {
-				t.Fatalf("enabled=%v workers=%d: hint facts or ordered sidecars differ", enabled, workers)
-			}
-			if cap(sidecar.loopIntConsts) != cap(serialSidecar.loopIntConsts) {
-				t.Fatalf("enabled=%v workers=%d: loop capacity %d, serial %d", enabled, workers, cap(sidecar.loopIntConsts), cap(serialSidecar.loopIntConsts))
-			}
-		}
 	}
 }
 

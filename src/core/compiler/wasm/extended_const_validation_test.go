@@ -8,7 +8,7 @@ import (
 )
 
 func TestExtendedConstValidation(t *testing.T) {
-	root := filepath.Clean("../../../../tests/regressions/extended-const")
+	root := filepath.Clean("../../../../tests/corpus/regressions/extended-const")
 	features := ValidationFeatures{ExtendedConstGlobals: true}
 	var valid, invalid, malformedBinary, malformedText int
 	for _, base := range []string{"data", "elem", "global"} {

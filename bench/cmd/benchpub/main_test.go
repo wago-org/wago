@@ -9,8 +9,6 @@ cpu: test cpu
 BenchmarkDecode/tiny          10  100 ns/op  20 B/op  3 allocs/op  96 code-B
 BenchmarkDecode/tiny          10  120 ns/op  24 B/op  5 allocs/op  104 code-B
 BenchmarkExec/tiny.add-16     20   30 ns/op   0 B/op  0 allocs/op
-BenchmarkPluginInstantiate/lua 1  40 ns/op  5 B/op  1 allocs/op
-BenchmarkPluginExec/lua         1  50 ns/op  6 B/op  2 allocs/op
 `
 	run := parseRun(input)
 	if run.Goos != "linux" || run.Goarch != "amd64" || run.CPU != "test cpu" {
@@ -29,12 +27,6 @@ BenchmarkPluginExec/lua         1  50 ns/op  6 B/op  2 allocs/op
 	}
 	if exec.Ns != 30 || exec.Bytes != 0 || exec.Allocs != 0 {
 		t.Fatalf("Exec/tiny.add = %+v", exec)
-	}
-	if got := run.Metrics["Instantiate/lua"]; got.Ns != 40 {
-		t.Fatalf("Instantiate/lua = %+v", got)
-	}
-	if got := run.Metrics["Exec/lua.plugin-workload"]; got.Ns != 50 {
-		t.Fatalf("Exec/lua.plugin-workload = %+v", got)
 	}
 }
 

@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/wago-org/wago/src/wago"
-	"github.com/wago-org/wago/tests/regressiontest"
-	"github.com/wago-org/wago/tests/wasmtimecore3"
+	"github.com/wago-org/wago/tests/conformance/wasmtime"
+	"github.com/wago-org/wago/tests/support/regressiontest"
 )
 
 const wasmtimeCore3FixtureEnv = "WAGO_WASMTIME_CORE3_FIXTURE"
@@ -31,7 +31,7 @@ func TestWasmtimeCore3Corpus(t *testing.T) {
 		fmt.Printf("%s%s\n", regressionFixtureOutcomeMarker, outcome)
 		return
 	}
-	root := filepath.Clean("../../tests/regressions/wasmtime-core3")
+	root := filepath.Clean("../../tests/corpus/regressions/wasmtime-core3")
 	fixtures, err := wasmtimecore3.LoadManifest(filepath.Join(root, "MANIFEST.tsv"))
 	if err != nil {
 		t.Fatal(err)
@@ -82,7 +82,7 @@ func TestWasmtimeTable64TooBigCoreEquivalent(t *testing.T) {
 
 func runWasmtimeAdaptedEquivalent(t *testing.T, fixture string, wantModules, wantAssertions int) {
 	t.Helper()
-	dir := filepath.Join(filepath.Clean("../../tests/regressions/wasmtime-core3/adapted"), fixture, "equivalent")
+	dir := filepath.Join(filepath.Clean("../../tests/corpus/regressions/wasmtime-core3/adapted"), fixture, "equivalent")
 	modules, assertions, err := wasmtimecore3.ValidateFixture(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func runWasmtimeAdaptedEquivalent(t *testing.T, fixture string, wantModules, wan
 
 func runWasmtimeCore3FixtureInProcess(t *testing.T, fixture string) specExecStats {
 	t.Helper()
-	dir := filepath.Join(filepath.Clean("../../tests/regressions/wasmtime-core3/core"), strings.TrimSuffix(fixture, ".wast"))
+	dir := filepath.Join(filepath.Clean("../../tests/corpus/regressions/wasmtime-core3/core"), strings.TrimSuffix(fixture, ".wast"))
 	if _, _, err := wasmtimecore3.ValidateFixture(dir); err != nil {
 		t.Fatal(err)
 	}

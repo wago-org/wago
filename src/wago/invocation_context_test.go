@@ -8,7 +8,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/wago-org/wago/tests/wasmtest"
+	"github.com/wago-org/wago/tests/support/wasmtest"
 )
 
 type invocationContextTestState struct {
