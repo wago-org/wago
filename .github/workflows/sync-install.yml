@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - install.sh
-      - install.cmd
       - install.ps1
       - .github/workflows/sync-install.yml
   workflow_dispatch:
@@ -34,11 +33,11 @@ jobs:
 
       - name: Synchronize installer bootstraps
         run: |
-          cp install.sh install.cmd install.ps1 published/
+          cp install.sh install.ps1 published/
+          rm -f published/install.cmd
           chmod 0755 published/install.sh
-          chmod 0644 published/install.cmd published/install.ps1
+          chmod 0644 published/install.ps1
           cmp install.sh published/install.sh
-          cmp install.cmd published/install.cmd
           cmp install.ps1 published/install.ps1
 
       - name: Publish changed scripts
@@ -50,6 +49,6 @@ jobs:
           fi
           git config user.name "wago-bot"
           git config user.email "wago-bot@users.noreply.github.com"
-          git add install.sh install.cmd install.ps1
+          git add --all -- install.sh install.cmd install.ps1
           git commit -m "sync: update installer bootstraps"
           git push origin HEAD:main
