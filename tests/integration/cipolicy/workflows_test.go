@@ -69,6 +69,7 @@ func TestCanaryCreatesOnlyImmutableSemVerTags(t *testing.T) {
 		`-f sha="$SHA"`,
 		`retention-days: 90`,
 		`group: publish-canary-${{ github.event.workflow_run.head_sha || github.sha }}`,
+		`2>/dev/null) || existing=""`,
 	} {
 		if !strings.Contains(contents, required) {
 			t.Errorf("canary workflow is missing immutable SemVer policy %q", required)
