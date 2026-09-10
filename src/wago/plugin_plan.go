@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wago-org/wago/internal/jsonstrict"
 	"github.com/wago-org/wago/src/core/semver"
 )
 
@@ -224,8 +225,10 @@ func validateImmutablePlan(set PluginSet) (*immutablePlan, error) {
 		if selection.DefinitionDigest != plan.digests[selection.ID] {
 			return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseValidate, Path: "definitionDigest", Err: fmt.Errorf("linked definition digest %q does not match reviewed digest %q", plan.digests[selection.ID], selection.DefinitionDigest)}
 		}
-		if len(selection.Config) != 0 && !json.Valid(selection.Config) {
-			return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseConfigure, Path: "config", Err: fmt.Errorf("invalid JSON")}
+		if len(selection.Config) != 0 {
+			if err := jsonstrict.ValidateUniqueJSON(selection.Config); err != nil {
+				return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseConfigure, Path: "config", Err: err}
+			}
 		}
 		if err := validateGrants(provider.Definition, selection.Grants); err != nil {
 			return nil, &PluginError{Plugin: selection.ID, Phase: PluginPhaseAuthorize, Err: err}

@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/wago-org/wago/internal/jsonstrict"
 	"github.com/wago-org/wago/internal/namecheck"
 	"github.com/wago-org/wago/src/core/semver"
 )
@@ -349,6 +350,9 @@ func canonicalPluginDefinition(def PluginDefinition) (PluginDefinition, error) {
 }
 
 func canonicalJSON(raw []byte) ([]byte, error) {
+	if err := jsonstrict.ValidateUniqueJSON(raw); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var value any

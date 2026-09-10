@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/wago-org/wago/internal/jsonstrict"
 )
 
 // Registrar is the declarative builder passed to Plugin.Register. It is scoped
@@ -85,6 +87,9 @@ func (r *Registrar) Config(dst any) error {
 	b := r.config
 	if len(b) == 0 {
 		b = []byte("{}")
+	}
+	if err := jsonstrict.ValidateTypedJSON(b, dst); err != nil {
+		return &PluginError{Plugin: r.definition.ID, Phase: PluginPhaseConfigure, Path: "config", Err: err}
 	}
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()

@@ -77,7 +77,11 @@ func TestDefinitionDigestCanonicalAndStrict(t *testing.T) {
 	if da != db || !strings.HasPrefix(da, "sha256:") {
 		t.Fatalf("digests %q %q", da, db)
 	}
-	for _, raw := range []string{`{} garbage`, `{} {}`} {
+	for _, raw := range []string{
+		`{} garbage`,
+		`{} {}`,
+		`{"type":"object","type":"object","additionalProperties":false}`,
+	} {
 		broken := a
 		broken.ConfigSchema = []byte(raw)
 		if _, err := DefinitionDigest(broken); err == nil {
@@ -686,6 +690,13 @@ func TestConfigStrictAndRegistrarSealed(t *testing.T) {
 	if err := NewRuntime().LoadPlugins(context.Background(), set); err == nil {
 		t.Fatal("trailing config accepted")
 	}
+	for _, config := range []string{`{"limit":1,"limit":2}`, `{"limit":1,"Limit":2}`} {
+		set = testSet(t, provider)
+		set.Selections[0].Config = []byte(config)
+		if err := NewRuntime().LoadPlugins(context.Background(), set); err == nil {
+			t.Fatalf("duplicate config accepted: %s", config)
+		}
+	}
 	set = testSet(t, provider)
 	set.Selections[0].Config = []byte(`{"limit":1}`)
 	rt := NewRuntime()
@@ -694,6 +705,18 @@ func TestConfigStrictAndRegistrarSealed(t *testing.T) {
 	}
 	if err := handle.Observe(func(ModuleCompiledEvent) {}); err == nil {
 		t.Fatal("sealed handle mutated registration")
+	}
+}
+
+func TestPluginPlanRejectsDuplicateOpaqueConfig(t *testing.T) {
+	provider := PluginProvider{
+		Definition: testDefinition("example.com/config/unused"),
+		New:        func() Plugin { return pluginFunc(func(*Registrar) error { return nil }) },
+	}
+	set := testSet(t, provider)
+	set.Selections[0].Config = []byte(`{"value":1,"value":2}`)
+	if err := NewRuntime().LoadPlugins(context.Background(), set); err == nil {
+		t.Fatal("duplicate opaque config accepted")
 	}
 }
 
