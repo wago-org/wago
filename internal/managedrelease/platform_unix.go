@@ -35,6 +35,7 @@ func inheritLease(lease *filelock.Lock) error {
 }
 
 func renameRetiredDirectory(path, retired string) error { return os.Rename(path, retired) }
+func removeRetiredDirectory(path string) error          { return os.RemoveAll(path) }
 
 func leaseHandoff(lease *filelock.Lock) (string, error) {
 	if lease == nil {

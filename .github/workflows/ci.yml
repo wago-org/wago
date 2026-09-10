@@ -36,11 +36,13 @@ jobs:
           # Avoid a separate PR-files API call; compare the checked-out merge
           # ref with the base SHA from the pull_request event instead.
           token: ''
+          # Every change validates documentation. Code additionally requires
+          # every exclusion below to match, so documentation-only changes do
+          # not schedule the native matrix.
+          predicate-quantifier: 'every'
           filters: |
             docs:
-              - '**/*.md'
-              - 'docs/**'
-              - 'LICENSE'
+              - '**'
             code:
               - '**'
               - '!**/*.md'
@@ -58,9 +60,9 @@ jobs:
   docs:
     name: Documentation
     needs: changes
-    # Code-only changes can delete or rename a path referenced by unchanged
-    # documentation, so validate both documentation and executable changes.
-    if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.code == 'true'
+    # Code changes can delete or rename a path referenced by unchanged
+    # documentation, so every change validates documentation.
+    if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

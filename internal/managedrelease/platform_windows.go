@@ -12,6 +12,11 @@ import (
 	"github.com/wago-org/wago/internal/filelock"
 )
 
+const (
+	windowsFilesystemRetryDelay   = 10 * time.Millisecond
+	windowsFilesystemRetryTimeout = 5 * time.Second
+)
+
 // Files and selection use MOVEFILE_WRITE_THROUGH; Go does not expose a portable
 // directory fsync on Windows.
 func syncDirectory(string) error { return nil }
@@ -32,17 +37,30 @@ func inheritLease(*filelock.Lock) error { return nil }
 // A racing nonblocking lease opener closes its child handle after observing
 // retirement. Bound the wait for that Windows directory-sharing restriction.
 func renameRetiredDirectory(path, retired string) error {
-	var err error
-	for attempt := 0; attempt < 32; attempt++ {
-		err = os.Rename(path, retired)
-		if err == nil || (!errors.Is(err, syscall.ERROR_ACCESS_DENIED) && !errors.Is(err, syscall.Errno(32))) {
+	return retryWindowsFilesystemOperation(func() error { return os.Rename(path, retired) })
+}
+
+func removeRetiredDirectory(path string) error {
+	return retryWindowsFilesystemOperation(func() error { return os.RemoveAll(path) })
+}
+
+func retryWindowsFilesystemOperation(operation func() error) error {
+	deadline := time.Now().Add(windowsFilesystemRetryTimeout)
+	for {
+		err := operation()
+		if err == nil || os.IsNotExist(err) {
+			return nil
+		}
+		if !errors.Is(err, syscall.ERROR_ACCESS_DENIED) &&
+			!errors.Is(err, syscall.Errno(32)) &&
+			!errors.Is(err, syscall.Errno(33)) {
 			return err
 		}
-		if attempt != 31 {
-			time.Sleep(10 * time.Millisecond)
+		if !time.Now().Before(deadline) {
+			return err
 		}
+		time.Sleep(windowsFilesystemRetryDelay)
 	}
-	return err
 }
 
 func leaseHandoff(*filelock.Lock) (string, error) { return "", nil }

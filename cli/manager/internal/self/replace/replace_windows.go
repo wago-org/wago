@@ -254,7 +254,7 @@ try {
             }
             return
         }
-        for ($attempt = 0; $attempt -lt 20 -and (Test-Path -LiteralPath $path); $attempt++) {
+        for ($attempt = 0; $attempt -lt 80 -and (Test-Path -LiteralPath $path); $attempt++) {
             Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue
             if (Test-Path -LiteralPath $path) { Start-Sleep -Milliseconds 250 }
         }
