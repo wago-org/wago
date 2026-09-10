@@ -65,6 +65,7 @@ func TestPowerShellBootstrapDownloadsVerifiesAndExecutesInstaller(t *testing.T) 
 
 	output, err := runPowerShellBootstrap(t,
 		"WAGO_VERSION=beta",
+		"WAGO_INSTALLER_DEBUG=1",
 		"WAGO_DRY_RUN=1",
 		`WAGO_BIN_DIR=ROOT\bin`,
 		`WAGO_SRC_DIR=ROOT\src`,

@@ -120,6 +120,7 @@ try {
         $installer = Join-Path $temporaryDirectory "installer.exe"
         $checksum = Join-Path $temporaryDirectory "installer.sha256"
         $downloaded = $false
+        $downloadError = $null
 
         foreach ($tag in @(Get-WagoDownloadTags $version)) {
             if (-not $tag) {
@@ -130,6 +131,7 @@ try {
                 Invoke-WebRequest $url -OutFile $installer -UseBasicParsing
                 Invoke-WebRequest "$url.sha256" -OutFile $checksum -UseBasicParsing
             } catch {
+                $downloadError = $_.Exception.Message
                 Remove-Item -LiteralPath $installer, $checksum -Force -ErrorAction SilentlyContinue
                 continue
             }
@@ -144,6 +146,9 @@ try {
         }
 
         if (-not $downloaded) {
+            if ($env:WAGO_INSTALLER_DEBUG -and $downloadError) {
+                throw "wago: the installer is unavailable: $downloadError"
+            }
             throw "wago: the installer is unavailable; check your internet connection and try again"
         }
     }
