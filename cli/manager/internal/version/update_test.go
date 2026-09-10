@@ -47,6 +47,9 @@ func TestSameReleaseRejectsMalformedRollingIdentityEvenWhenTextMatches(t *testin
 	if !sameRelease("v1.2.3", "v1.2.3") {
 		t.Fatal("equal stable releases did not match")
 	}
+	if !sameRelease("v0.1.0-beta.6", "v0.1.0-beta.6") {
+		t.Fatal("equal immutable beta releases did not match")
+	}
 }
 
 func TestRollingCommitIdentityRequiresCanonicalSHA(t *testing.T) {

@@ -201,11 +201,9 @@ func canonicalRollingRelease(release remoteRelease) (string, bool) {
 	if release.Draft || channelRelease(release.TagName) == "" {
 		return "", false
 	}
-	sha := strings.ToLower(strings.TrimSpace(release.TargetCommitish))
-	if !validCommitSHA(sha) {
-		return "", false
-	}
-	return release.TagName + "@" + sha, true
+	// GitHub reports target_commitish as the branch name when the immutable tag
+	// existed before its Release. The tag is the exact published identity.
+	return release.TagName, true
 }
 
 func validCommitSHA(sha string) bool {

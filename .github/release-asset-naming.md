@@ -8,7 +8,8 @@
   `vMAJOR.MINOR.PATCH-canary.g<7-character-commit-sha>` artifacts remain
   installable while they are retained.
 - `beta` resolves the newest manually qualified beta, such as
-  `v0.1.0-beta.1`.
+  `v0.1.0-beta.1`. The immutable tag is the published identity; GitHub can
+  report its release `target_commitish` as `main` when the tag already exists.
 - `latest` resolves the newest stable `vMAJOR.MINOR.PATCH` release.
 
 The canary workflow builds automatically after main CI succeeds. Artifacts are

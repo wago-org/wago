@@ -510,7 +510,7 @@ func TestInstallPickerHidesImmutableChannelTagsAtTopLevel(t *testing.T) {
 		t.Fatalf("latest picker children = %v, want %v", got, want)
 	}
 	beta := items[1].Children[1]
-	if beta.Label != "v0.1.0-beta.2" || beta.Value != "v0.1.0-beta.2@7d8c58a123456789012345678901234567890123" || beta.Description != "07/28/2026  1d ago" {
+	if beta.Label != "v0.1.0-beta.2" || beta.Value != "v0.1.0-beta.2" || beta.Description != "07/28/2026  1d ago" {
 		t.Fatalf("beta picker item = %#v", beta)
 	}
 	canary := items[2].Children[1]
@@ -542,6 +542,31 @@ func TestInstallPickerMovesUnavailableChannelsToBottom(t *testing.T) {
 	if got := p.Selected(); got != "v0.2.0" {
 		t.Fatalf("picker moved onto unavailable channel: %q", got)
 	}
+}
+
+func TestInstallPickerIncludesBetaReleasesWithBranchTargets(t *testing.T) {
+	releases := []remoteRelease{
+		{TagName: "v0.1.0-beta.6", TargetCommitish: "main", PublishedAt: "2026-09-10T22:36:40Z"},
+		{TagName: "v0.1.0-beta.5", TargetCommitish: "main", PublishedAt: "2026-09-10T21:58:04Z"},
+	}
+	items := versionPickerItemsWithCommits(releases, nil, time.Date(2026, 9, 10, 23, 0, 0, 0, time.UTC))
+	for _, item := range items {
+		if item.Value != "beta" {
+			continue
+		}
+		if item.Disabled {
+			t.Fatal("Beta channel is disabled")
+		}
+		got := make([]string, len(item.Children))
+		for index := range item.Children {
+			got[index] = item.Children[index].Label
+		}
+		if want := []string{"latest", "v0.1.0-beta.6", "v0.1.0-beta.5"}; !slices.Equal(got, want) {
+			t.Fatalf("Beta releases = %v, want %v", got, want)
+		}
+		return
+	}
+	t.Fatal("Beta channel is missing")
 }
 
 func TestInstallPickerProfilePageReturnsToReleasePage(t *testing.T) {
