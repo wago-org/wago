@@ -10,14 +10,10 @@ workloads are rebuilt from `sources/` with the scripts in `build/`.
 | Rust compute | linked list, nbody, fannkuch, matmul, SHA-256, ray tracing | reviewed files in `sources/rust` |
 | AssemblyScript | json-as, blake-as, utf-as; scalar and SIMD | local adapters plus the corresponding upstream package checkout |
 | semantic | CoreMark, BLAKE3, QOI, LZ4, zlib, zstd | revisions and WASI SDK versions pinned per catalog check |
-| PolyBench/C | 29 portable kernels, small dataset | `5474c59fe88f4e36ba968e8f8c4ac913ee83f0d0`, WASI SDK 34 |
+| PolyBench/C | all 30 kernels, small dataset | `5474c59fe88f4e36ba968e8f8c4ac913ee83f0d0`, WASI SDK 34 |
 | Embench | crc32, huffbench, matmult-int, nettle-aes, nettle-sha256, qrduino | `09c2ed8c3b7008c95d08b038de4a3f6dc103ed70`, WASI SDK 34 |
 | Sightglass | shootout base64, libsodium hash | `9ce88522d75b2d155e358f576e7d88ed26d14de8`, Binaryen 130 timing-hook removal |
 | TACLeBench | self-checking bubble sort | `c6a0d73e47bbd2bc86e34637156fb26dd4d5cf08`, WASI SDK 34 |
-
-`floyd-warshall` is intentionally excluded: its reference checksum passes in
-Wasmtime and Wago ARM64, but currently differs under Wago AMD64. Corpus entries
-must pass their result oracle on every supported CI architecture.
 
 The PolyBench adapter includes each upstream kernel unchanged, replaces its
 dump stream with a deterministic checksum at the suite's two-decimal output
