@@ -16,17 +16,18 @@ tests/
   tools/         corpus and documentation maintenance commands
 ```
 
-Use Make as the public entry point:
+Use `just` as the public entry point. Run `just --list test` or
+`just --list test spec` to explore:
 
 ```sh
-make test                    # unit/integration tests + quick corpus
-make test-corpus CORPUS=algorithms
-make test-corpus CORPUS=tag:polybench
-make test-corpus CORPUS=all  # every curated executable workload
-make test-spec-v1            # one pinned spec version
-make test-spec               # all pinned spec versions
-make test-fuzz FUZZTIME=30s  # bounded fuzzing gates
-make test-all                # all of the above
+just test                         # unit/integration tests + quick corpus
+just test corpus algorithms
+just test corpus tag:polybench
+just test corpus all              # every curated executable workload
+just test spec v1                 # one pinned spec version
+just test spec                    # all pinned spec versions
+just test fuzz 30s                # bounded fuzzing gates
+just test all                     # all of the above
 ```
 
 The runtime benchmark corpus is repository-level data in `corpus/`; it is not

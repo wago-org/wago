@@ -500,7 +500,7 @@ remain unchanged; fixture identity is no longer a production gate.
 **Execution-only CLI prototype (2026-08-01).** The superseded monolithic
 `wago_engine` experiment measured **1,529,176 bytes** versus **1,742,072 bytes**
 for the full CLI (**−212,896, −12.2%**) while retaining the Core 3 execution
-engine. In the split CLI architecture, `make build-engine` is only a diagnostic
+engine. In the split CLI architecture, `just build engine` is only a diagnostic
 alias for the existing run-only `wago_runtime,wago_lean,wago_minimal` product.
 The complete plugin-capable Standard runtime remains the authoritative product,
 and split artifacts require fresh size measurements.

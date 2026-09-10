@@ -36,7 +36,7 @@ requires the complete runtime set so a partial comparison cannot be published.
 ## Run the Sweep
 
 ```sh
-make bench-startup                 # → startup-<host-arch>.json
+just bench startup                 # → startup-<host-arch>.json
 # or point at specific binaries:
 V8_BIN=… WASM3_BIN=… WASMI_BIN=… WAVM_BIN=… node bench/startup/run.mjs
 ```
@@ -44,9 +44,9 @@ V8_BIN=… WASM3_BIN=… WASMI_BIN=… WAVM_BIN=… node bench/startup/run.mjs
 Then regenerate the site from the saved data. This does not benchmark again:
 
 ```sh
-make site                          # startup + performance + stats, then build
+just site                          # startup + performance + stats, then build
 # or just the startup section:
-make startup-website
+just site startup
 ```
 
 ## Method

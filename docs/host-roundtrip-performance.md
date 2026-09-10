@@ -283,7 +283,7 @@ GOOS=linux GOARCH=arm64 go test -c -o /tmp/wago-host-arm64.test ./src/wago
 go test ./src/wago -run '^$' -fuzz '^FuzzCompiledCodecGeneratedValidModules$' -fuzztime=5s -parallel=2
 go vet ./src/wago ./src/core/compiler/backend/railshot/shared
 git diff --check
-make docs-check
+just docs
 
 # Escape analysis ran before and after token compaction.
 go build -gcflags='-m=2' ./src/wago
@@ -314,7 +314,7 @@ baseline installer/toolchain tests: Wine CMD cannot download its installer,
 and both TinyGo standalone builds report duplicate `tinygo_task_exit` symbols.
 The standalone package took 64.235 seconds; inspection traced that time to the
 external TinyGo build commands, not Wago JIT compilation. No runtime test remains
-failing. `make docs-check` and `git diff --check` passed.
+failing. `just docs` and `git diff --check` passed.
 
 ## Change locations
 

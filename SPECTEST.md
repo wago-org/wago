@@ -17,7 +17,7 @@ guide.
   feature skips.
 - WebAssembly 3.0 is independently pinned at `tests/conformance/spec-v3` from
   `WebAssembly/spec` tag `wg-3.0`, commit
-  `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. `make spec3` discovers all 258
+  `9d36019973201a19f9c9ebb0f10828b2fe2374aa`. `just test spec v3` discovers all 258
   official core `.wast` files. WABT 1.0.41 remains the primary converter; the
   official WebAssembly/spec 3.0.0 reference interpreter from the same exact pin
   converts the 28 text files WABT cannot parse. Parser/tool failures remain hard.

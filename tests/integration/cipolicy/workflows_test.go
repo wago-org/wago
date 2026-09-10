@@ -53,6 +53,29 @@ func TestWorkflowActionsUseImmutableCommits(t *testing.T) {
 	}
 }
 
+func TestCIUsesPinnedJustTaskRunner(t *testing.T) {
+	workflow, err := os.ReadFile(filepath.Clean("../../../.github/workflows/ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents := string(workflow)
+	for _, required := range []string{
+		`JUST_VERSION: "1.58.0"`,
+		`extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3`,
+		`run: just lint`,
+		`run: just test`,
+		`run: just test spec v2`,
+		`run: just build tinygo`,
+	} {
+		if !strings.Contains(contents, required) {
+			t.Errorf("CI workflow is missing just task-runner policy %q", required)
+		}
+	}
+	if strings.Contains(contents, "run: make ") {
+		t.Error("CI workflow still invokes the removed Makefile")
+	}
+}
+
 func TestCanaryPublishesCommitAddressedArtifactsWithoutTags(t *testing.T) {
 	canary, err := os.ReadFile(filepath.Clean("../../../.github/workflows/canary.yml"))
 	if err != nil {
@@ -321,7 +344,7 @@ func TestRuntimeConcurrencyHarnessRunsOnLinuxAMD64AndARM64(t *testing.T) {
 		`runner: ubuntu-24.04`,
 		`runner: ubuntu-24.04-arm`,
 		`WAGO_CONCURRENCY_SEED: 439000001,439000019,439000043,439000081`,
-		`run: make test-concurrency`,
+		`run: just test concurrency`,
 		`name: Race detector / Linux amd64`,
 		`timeout-minutes: 15`,
 		`go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency`,
@@ -342,7 +365,7 @@ func TestDocsChangesRunDocumentationValidation(t *testing.T) {
 	for _, required := range []string{
 		`docs: ${{ steps.derive.outputs.docs }}`,
 		`if: needs.changes.outputs.docs == 'true'`,
-		`run: make docs-check`,
+		`run: just docs`,
 		`needs: [changes, docs, lint, regression-corpus`,
 	} {
 		if !strings.Contains(contents, required) {

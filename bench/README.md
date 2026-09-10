@@ -5,21 +5,22 @@ and artifacts live in the repository-level `corpus` directory. The benchmark
 module is deliberately separate from the runtime module so comparison-engine
 dependencies do not become runtime dependencies.
 
-Run benchmarks from the repository root through Make:
+Run benchmarks from the repository root through `just`:
 
 ```sh
-make bench                              # quick profile, all benchmark groups
-make bench CORPUS=algorithms BENCH=exec # representative raw algorithms
-make bench CORPUS=tag:polybench BENCH=exec
-make bench CORPUS=tag:compute BENCH=exec
-make bench CORPUS=tiny,fib_rec BENCH=compile
-make bench-all                          # every admitted workload
-make bench-check                        # one iteration, wiring only
+just bench                              # quick profile, all benchmark groups
+just bench run algorithms exec          # representative raw algorithms
+just bench run tag:polybench exec
+just bench run tag:compute exec
+just bench run tiny,fib_rec compile
+just bench run all                      # every admitted workload
+just bench check                        # one iteration, wiring only
 ```
 
 `CORPUS` accepts `quick`, `algorithms`, `all`, `tag:<tag>`, or comma-separated benchmark IDs.
 `BENCH` accepts `all`, `pipeline`, `compile`, `exec`, or a Go benchmark regex.
-`BENCHTIME` and `COUNT` retain their usual meanings. `make bench-check` is a
+The remaining positional arguments set count, duration, and output; environment
+variables remain available for automation. `just bench check` is a
 correctness/wiring smoke test; its numbers must not be published as performance
 results.
 
@@ -33,6 +34,6 @@ There are no compile-only corpus entries. Compilation remains a measured stage
 for every executable workload, but admission requires the same artifact to run
 end-to-end and pass its oracle.
 
-The default benchmark writes `bench/.bench-run.txt`. `make bench-chart`,
-`make bench-website`, and `make bench-publish` consume that capture without
+The default benchmark writes `bench/.bench-run.txt`. `just bench render`,
+`just bench website`, and `just bench publish` consume that capture without
 silently changing the selected corpus.

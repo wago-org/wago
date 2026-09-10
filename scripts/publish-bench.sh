@@ -17,8 +17,8 @@ corpus="${WAGO_CORPUS:-all}"
 
 # WAGO_BENCH_IN: publish a previously captured `go test -bench` output instead of
 # re-running the suite. Capture one (once) with:
-#   make bench BENCHTIME=1s COUNT=1 CORPUS=all
-# then: WAGO_BENCH_IN=run.txt make bench-publish
+#   just bench run all all 1 1s
+# then: WAGO_BENCH_IN=run.txt just bench publish
 # Resolve to an absolute path now, before the script cd's into the docs clone.
 bench_in="${WAGO_BENCH_IN:-}"
 [ -z "$bench_in" ] || case "$bench_in" in /*) : ;; *) bench_in="$(pwd)/$bench_in" ;; esac

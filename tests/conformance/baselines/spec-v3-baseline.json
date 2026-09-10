@@ -1,5 +1,5 @@
 {
-  "command": "make spec3",
+  "command": "just test spec v3",
   "exit_code": 0,
   "inventory": {
     "by_family": {

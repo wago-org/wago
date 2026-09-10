@@ -9,7 +9,8 @@ with [README.md](README.md), [ARCHITECTURE.md](ARCHITECTURE.md),
 
 ## Before You Start
 
-`wago` supports Go **1.22+**. Its first-class targets are linux/amd64,
+`wago` supports Go **1.22+** and uses [just](https://just.systems/) **1.43+**
+for developer commands. Its first-class targets are linux/amd64,
 linux/arm64, darwin/amd64, darwin/arm64, windows/amd64, and windows/arm64. CI,
 release assets, and conformance gates cover all six targets. See
 [FEATURES.md](FEATURES.md) for feature-level platform support.
@@ -26,16 +27,17 @@ Read these files before you plan feature work:
 ```bash
 git clone https://github.com/wago-org/wago
 cd wago
-make test
-go build -o wago ./cli/wago
+just test
+just build
 ./wago version
-go build -tags wago_runtime -o wago-runtime ./cli/wago
-./scripts/install-hooks.sh
+just build runtime standard
+./wago-runtime-standard-normal version
+just install hooks
 ```
 
-`wago` is the manager command. `wago-runtime` is the runtime command. The
-optional hook formats staged Go files. Review and stage its changes before you
-commit again.
+`wago` is the manager command. `wago-runtime-standard-normal` is the standard
+runtime command. The optional hook formats staged Go files. Review and stage
+its changes before you commit again.
 
 The benchmark suite is a separate Go module:
 
@@ -153,7 +155,7 @@ opcode can block a whole module. Commit the regenerated report with the
 conformance change.
 
 The pinned WebAssembly 2.0 wrappers need WABT and `tests/conformance/spec-v2`. Run
-`make spec2` when you change decoding, validation, linking, or execution
+`just test spec v2` when you change decoding, validation, linking, or execution
 semantics.
 
 ## Measure Performance and Stress
