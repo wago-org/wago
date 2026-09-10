@@ -142,7 +142,7 @@ jobs:
           SHA: ${{ needs.prepare.outputs.sha }}
           TAG: ${{ needs.prepare.outputs.tag }}
         run: |
-          existing=$(gh api "repos/${{ github.repository }}/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null || true)
+          existing=$(gh api "repos/${{ github.repository }}/git/ref/tags/$TAG" --jq '.object.sha' 2>/dev/null) || existing=""
           if [ -n "$existing" ]; then
             if [ "$existing" != "$SHA" ]; then
               echo "::error::tag $TAG already targets $existing instead of $SHA"
