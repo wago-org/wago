@@ -50,6 +50,13 @@ the zero-allocation claim applies to direct scalar dispatch with a no-op host.
 The caller contains the same 64-byte private token as the legacy path. It is
 never pooled. Each synchronous binding adds one function pointer (8 bytes on
 the measured target); the per-instance activation sidecar is unchanged.
+TinyGo represents each function value with 16 bytes, so its binding grows from
+32 to 48 bytes. The footprint test computes the exact compact layout from the
+two function-value sizes, descriptor pointer and index/flag; it does not accept
+an enlarged standard-Go layout just because TinyGo needs more space.
+The updated footprint assertion passes with Go. Local TinyGo linking stops at
+the checkout's existing duplicate `tinygo_task_exit` symbol, before tests run;
+the native CI TinyGo jobs are used to verify the 48-byte layout.
 Reference dispatch keeps argument translation, exact result validation and
 temporary root/token cleanup. Imported starts and re-exports also dispatch the
 concrete value directly. Raw callbacks do not gain plugin GC import authority.
