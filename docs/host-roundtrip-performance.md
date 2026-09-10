@@ -331,3 +331,10 @@ The four runtime changes are enabled with conservative fallback. The fifth is
 analysis/measurement infrastructure only. Scalar callback allocation count did
 not fall: the delivered improvement is smaller immutable allocations, not a
 zero-allocation claim.
+# Follow-up pass: portable admission fixtures
+
+The single-import and zero-memory loop scheduler-admission tests run on every
+native target. The extra four-memory fixture explicitly selects multi-memory
+and runs only where `SupportedFeatures` admits it. Its scheduler assertion is
+unchanged. The matched benchmark uses the same feature gate. Unsupported
+multi-memory must not hide a failure in either basic scheduler test.

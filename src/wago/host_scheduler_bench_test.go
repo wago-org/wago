@@ -44,15 +44,26 @@ func BenchmarkHostSchedulerPotential(b *testing.B) {
 
 func TestHostImportsRemainOutsideBoundedSchedulerAdmission(t *testing.T) {
 	for _, fixture := range []struct {
-		name string
-		data []byte
+		name        string
+		data        []byte
+		multiMemory bool
 	}{
-		{"single", benchReturningImportModule()},
-		{"loop", hostRoundtripLoopModule(t, 0)},
-		{"memory-loop", hostRoundtripLoopModule(t, 4)},
+		{"single", benchReturningImportModule(), false},
+		{"loop", hostRoundtripLoopModule(t, 0), false},
+		{"memory-loop", hostRoundtripLoopModule(t, 4), true},
 	} {
 		t.Run(fixture.name, func(t *testing.T) {
-			c := MustCompile(fixture.data)
+			cfg := NewRuntimeConfig()
+			if fixture.multiMemory {
+				if !SupportedFeatures().IsEnabled(CoreFeatureMultiMemory) {
+					t.Skip("additional fixture requires multi-memory support")
+				}
+				cfg = cfg.WithCoreFeatures(CoreFeaturesV2 | CoreFeatureMultiMemory)
+			}
+			c, err := Compile(cfg, fixture.data)
+			if err != nil {
+				t.Fatal(err)
+			}
 			defer c.Close()
 			if c.directPreparedBoundedAt(0) {
 				t.Fatal("host-capable function admitted without segment proof")

@@ -44,7 +44,17 @@ func hostRoundtripLoopModule(b testing.TB, memories int) []byte {
 func BenchmarkHostRoundtripLoop(b *testing.B) {
 	for _, memories := range []int{0, 1, 4} {
 		b.Run(fmt.Sprintf("mem%d", memories), func(b *testing.B) {
-			c := benchMustCompile(b, hostRoundtripLoopModule(b, memories))
+			cfg := NewRuntimeConfig()
+			if memories > 1 {
+				if !SupportedFeatures().IsEnabled(CoreFeatureMultiMemory) {
+					b.Skip("additional fixture requires multi-memory support")
+				}
+				cfg = cfg.WithCoreFeatures(CoreFeaturesV2 | CoreFeatureMultiMemory)
+			}
+			c, err := Compile(cfg, hostRoundtripLoopModule(b, memories))
+			if err != nil {
+				b.Fatal(err)
+			}
 			defer c.Close()
 			for _, parallel := range []bool{false, true} {
 				for _, host := range []int32{0, 1} {
