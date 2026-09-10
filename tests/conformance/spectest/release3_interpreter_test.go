@@ -34,18 +34,18 @@ func TestRelease3InterpreterBootstrapIsPinned(t *testing.T) {
 		t.Fatalf("official interpreter revision = %q, want %q", got, release3Revision)
 	}
 
-	makefile, err := os.ReadFile(filepath.Join(repo, "Makefile"))
+	justfile, err := os.ReadFile(filepath.Join(repo, ".just", "spec.just"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(makefile)
+	text := string(justfile)
 	for _, want := range []string{
-		"spec3: wabt spec-interpreter",
-		"WAGO_SPEC_INTERPRETER=\"$$interpreter\"",
-		"WAGO_SPEC_INTERPRETER_REVISION=\"$$interpreter_revision\"",
+		"v3: wabt interpreter",
+		"WAGO_SPEC_INTERPRETER=\"$interpreter\"",
+		"WAGO_SPEC_INTERPRETER_REVISION=\"$interpreter_revision\"",
 	} {
 		if !strings.Contains(text, want) {
-			t.Errorf("Makefile does not lock Release 3 interpreter wiring %q", want)
+			t.Errorf("spec justfile does not lock Release 3 interpreter wiring %q", want)
 		}
 	}
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # Run the public verification gates plus focused wago_gcstats collector coverage
-# and render a compact per-package report. Backs `make cover` and the CI coverage
+# and render a compact per-package report. Backs `just coverage` and the CI coverage
 # job. When
 # COVER_BASELINE_REF is set (e.g. origin/main) the report gains a "Δ vs main"
 # column by measuring that ref in a throwaway worktree. In GitHub Actions the
@@ -10,7 +10,7 @@ set -eu
 
 profile="${COVERPROFILE:-coverage.out}"
 report="${COVER_REPORT:-coverage-report.md}"
-# Shared across card producers; COVER_BASELINE_REF kept for `make cover` alone.
+# Shared across card producers; COVER_BASELINE_REF is kept for `just coverage` alone.
 baseline_ref="${COVER_BASELINE_REF:-${CARD_BASELINE_REF:-}}"
 tab=$(printf '\t')
 

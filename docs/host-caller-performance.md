@@ -579,12 +579,12 @@ checkpoint, with timings recorded above. Final commands and results:
 | `(cd bench && go test ./...)` | Pass, including semantic corpus and suite |
 | `GORACE=atexit_sleep_ms=0 go test -race -count=1 ./src/wago ./src/core/runtime ./tests/integration/runtimeconcurrency` | Pass: 20.545 s, 1.188 s, 0.169 s |
 | `go test -count=1 -tags wago_guardpage ./src/core/runtime ./src/wago` | Pass: 0.432 s, 2.983 s |
-| `make test-fuzz FUZZTIME=5s` | All four bounded gates pass |
+| `just test fuzz 5s` | All four bounded gates pass |
 | `go test ./src/wago -run '^$' -fuzz '^FuzzCompiledCodecGeneratedValidModules$' -fuzztime=5s` | Pass: 122,993 executions |
 | `go test ./src/wago -run '^$' -gcflags='-m=2'` | Escape and inlining output inspected at API, suspension and cache stages |
 | `go build -gcflags='-m=2' ./src/wago` | Pass; concrete dispatch method value does not escape |
 | `go generate ./...` | Pass; generated facade unchanged in final check |
-| `make docs-check` | Pass; 29 Markdown files validated |
+| `just docs` | Pass; 29 Markdown files validated |
 
 Full tests use the pinned spec interpreter at
 `.tools/spec-interpreter-9d36019973201a19f9c9ebb0f10828b2fe2374aa/wasm`, with

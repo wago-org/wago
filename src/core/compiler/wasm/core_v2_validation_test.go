@@ -13,7 +13,7 @@ func TestCoreV2Validation(t *testing.T) {
 	root := filepath.Clean("../../../../tests/conformance/spec-v2")
 	if _, err := os.Stat(filepath.Join(root, "test", "core")); err != nil {
 		if os.IsNotExist(err) {
-			t.Skip("pinned Core v2 submodule is not initialized; run make spec2 for mandatory execution")
+			t.Skip("pinned Core v2 submodule is not initialized; run just test spec v2 for mandatory execution")
 		}
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestCoreV2Validation(t *testing.T) {
 		t.Fatalf("pinned Core v2 digest = %s, want %s", digest, want)
 	}
 	if _, err := exec.LookPath("wast2json"); err != nil {
-		t.Skipf("wast2json is unavailable in the ordinary test environment; run make spec2 for mandatory execution: %v", err)
+		t.Skipf("wast2json is unavailable in the ordinary test environment; run just test spec v2 for mandatory execution: %v", err)
 	}
 	t.Setenv("WAGO_SPECTEST_DIR", root)
 	t.Setenv("WAGO_SPEC_VERSION", "2.0")

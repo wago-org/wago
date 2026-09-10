@@ -108,7 +108,7 @@ func main() {
 
 	// Best-effort: never abort on stale/empty results — regenerate what we can
 	// and warn. The stamp records what the current numbers reflect so staleness
-	// against HEAD is detectable later (by benchpub and by `make`).
+	// against HEAD is detectable later (by benchpub and by `just`).
 	if len(run.Metrics) == 0 {
 		fmt.Println("benchpub: WARNING no benchmark results parsed; benches were not updated")
 	}
@@ -337,7 +337,7 @@ func readCorpus() []corpusEntry {
 	return out
 }
 
-// captureCommit extracts the "# git <hash>" stamp that `make bench` writes as
+// captureCommit extracts the "# git <hash>" stamp that `just bench` writes as
 // the first line of a capture file, or "" if the capture carries no stamp.
 func captureCommit(text string) string {
 	for _, ln := range strings.Split(text, "\n") {
@@ -398,7 +398,7 @@ func warnIfStale(numbersCommit, headCommit string, dirty bool) {
 	case numbersCommit == "":
 		fmt.Println("benchpub: WARNING no commit recorded for these numbers; staleness unknown")
 	case short(numbersCommit) != short(headCommit):
-		fmt.Printf("benchpub: WARNING benches are stale — numbers reflect %s but HEAD is %s; run 'make bench' to regenerate\n",
+		fmt.Printf("benchpub: WARNING benches are stale — numbers reflect %s but HEAD is %s; run 'just bench' to regenerate\n",
 			short(numbersCommit), short(headCommit))
 	case dirty:
 		fmt.Printf("benchpub: WARNING working tree is dirty at %s; benches may not reflect uncommitted changes\n", short(headCommit))

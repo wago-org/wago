@@ -6,7 +6,7 @@
 .tools/
 .validation/
 
-# Built CLI binaries (make build / build-release / tinygo-build) + release assets
+# Built CLI binaries (`just build`, `just build release`, `just build tinygo`) + release assets
 /wago
 /wago-engine
 wago-tinygo
@@ -29,8 +29,8 @@ bench/charts/
 bench/bench-out/
 bench/out/
 
-# Cached suite run from `make bench` (git-hash stamped), reused by
-# `make bench-chart` and `make bench-publish NO_RUN=1`
+# Cached suite run from `just bench` (git-hash stamped), reused by
+# `just bench render` and `just bench publish`
 bench/.bench-run.txt
 
 # Staleness marker written by benchpub: commit the charted numbers reflect + when
@@ -47,7 +47,7 @@ card.md
 .wago/
 
 # Claude Code ephemeral git worktrees (per-session; never committed). Excluded
-# from gofmt/lint walks too — see lint-fmt in the Makefile.
+# from gofmt/lint walks too — see `just lint fmt`.
 .claude/worktrees/
 
 # Local temporary analysis and cleanup notes

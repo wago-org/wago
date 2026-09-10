@@ -48,9 +48,7 @@ Install the exact WABT version recorded in `PROVENANCE.json`, then provide an
 exact Wasmtime checkout:
 
 ```sh
-make regression-corpus-check \
-  REGRESSION_UPSTREAM="$PWD/.tmp/regression-corpus-upstream" \
-  WAST2JSON=wast2json
+just test regression check "$PWD/.tmp/regression-corpus-upstream" wast2json
 ```
 
 This check is byte for byte. Before it reads an upstream source, it verifies the
@@ -79,7 +77,7 @@ unexpected or already-fixed WABT shape fails closed.
 ## Refresh the Corpus
 
 ```sh
-make regression-corpus-sync WAST2JSON=wast2json
+just test regression sync .tmp/regression-corpus-upstream wast2json
 ```
 
 The sync target rejects a Wasmtime checkout with staged or unstaged tracked
@@ -113,7 +111,7 @@ changes fail when artifact hashes stay unchanged.
 2. Review every addition/removal reported against `UPSTREAM_INVENTORY.tsv`.
    Classify it explicitly, update `MANIFEST.tsv` for newly ported fixtures, and
    never edit generated `EXCLUSIONS.md` directly.
-3. Run `make regression-corpus-sync`.
+3. Run `just test regression sync`.
 4. Review all source diffs and generated artifact changes.
 5. Update the fixed manifest/mode totals only when the reviewed applicability
    inventory changed.
@@ -132,14 +130,14 @@ when measurements show that a target needs more time.
 Run the same matrix used by the scheduled workflow with:
 
 ```sh
-make regression-stress
+just test regression stress
 ```
 
 For a shorter local smoke run, set `WAGO_STRESS_COUNT` and
 `WAGO_STRESS_FUZZTIME`, for example:
 
 ```sh
-WAGO_STRESS_COUNT=2 WAGO_STRESS_FUZZTIME=5s make regression-stress
+WAGO_STRESS_COUNT=2 WAGO_STRESS_FUZZTIME=5s just test regression stress
 ```
 
 The full run repeats lifecycle, reuse, and resource tests at several

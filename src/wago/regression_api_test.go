@@ -17,7 +17,7 @@ func TestRuntimeRegressionCanonicalBoundsMode(t *testing.T) {
 		want = BoundsChecksSignalsBased
 	}
 	if got := NewRuntimeConfig().BoundsChecks(); got != want {
-		t.Fatalf("canonical Regression bounds mode = %v, want %v; use make test or make test-guard", got, want)
+		t.Fatalf("canonical Regression bounds mode = %v, want %v; use just test or just test guard", got, want)
 	}
 }
 
