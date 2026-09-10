@@ -23,6 +23,20 @@ function Get-WagoArchitecture {
     throw "wago: this Windows architecture is not supported"
 }
 
+function Get-WagoSHA256([string]$path) {
+    $stream = [IO.File]::OpenRead($path)
+    try {
+        $sha256 = [Security.Cryptography.SHA256]::Create()
+        try {
+            return ([BitConverter]::ToString($sha256.ComputeHash($stream))).Replace("-", "")
+        } finally {
+            $sha256.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+}
+
 function Get-WagoLatestTag {
     $release = Invoke-RestMethod "$releaseAPI/latest" -UseBasicParsing
     $tag = [string]$release.tag_name
@@ -137,7 +151,7 @@ try {
             }
 
             $expectedHash = ((Get-Content -LiteralPath $checksum -Raw) -split '\s+')[0]
-            $actualHash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash
+            $actualHash = Get-WagoSHA256 $installer
             if ($expectedHash -notmatch '^[0-9a-fA-F]{64}$' -or $actualHash -ne $expectedHash) {
                 throw "wago: the downloaded installer could not be verified; try again when the release service is available"
             }
