@@ -22,6 +22,13 @@ The retired list includes `inline-loop-callees` and `deep-fp-pins` from v1.
 Host calls convert both `HostExit` and non-nil `*HostExit` panics to `ExitError`,
 including calls through a Wasm wrapper and replayed host logs.
 
+Both native backends consume the complete result-type vector of a typed
+`select` through the shared Wasm immediate reader. Explicit reference types
+include a nullable/non-null prefix and a signed heap-type index, which can span
+multiple bytes. No heap-type byte may re-enter the instruction stream.
+`TestTypedSelectReferenceImmediates` checks reference identity and selection for
+both nullability forms and one-byte/multi-byte type indexes.
+
 Reference instructions constrain an unreachable stack value to a reference.
 The validator uses an internal heap bottom type for this value; it cannot match
 a numeric or vector operand and has no binary encoding.

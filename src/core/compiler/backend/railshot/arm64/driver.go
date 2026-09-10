@@ -136,14 +136,8 @@ func (f *fn) emitPlain(r *wasm.Reader, op byte) error {
 		}
 		f.emitSelect()
 	case 0x1c: // select t (typed) — consume the declared result types
-		n, err := r.U32()
-		if err != nil {
+		if err := wasm.SkipInstructionImmediate(r, op); err != nil {
 			return err
-		}
-		for k := uint32(0); k < n; k++ {
-			if _, err := r.Byte(); err != nil {
-				return err
-			}
 		}
 		if done, err := f.trySelectLocalSet(r); done || err != nil {
 			return err
