@@ -76,6 +76,8 @@ Build a standalone executable:
 wago compile fib.wasm -o fib
 ./fib 30
 ```
+> [!NOTE]
+> If you have any questions or want to invest in the community, please join our [Discord](https://wago.sh/discord)
 
 ## Use Wago from Go
 
