@@ -115,9 +115,11 @@ $previousRefreshRequest = $env:WAGO_PATH_REFRESH_FILE
 $previousRefreshChoice = $env:WAGO_REFRESH_PATH
 $runsInChildShell = [Environment]::GetCommandLineArgs()[-1] -eq "-"
 $installerStatus = 1
+$installerWasRun = $false
 
 try {
     $env:WAGO_PATH_REFRESH_FILE = $refreshRequest
+    $env:WAGO_VERSION = $version
     if ($runsInChildShell) {
         $env:WAGO_REFRESH_PATH = "no"
     }
@@ -136,7 +138,13 @@ try {
         $downloaded = $false
         $downloadError = $null
 
-        foreach ($tag in @(Get-WagoDownloadTags $version)) {
+        $downloadTags = @()
+        try {
+            $downloadTags = @(Get-WagoDownloadTags $version)
+        } catch {
+            $downloadError = $_.Exception.Message
+        }
+        foreach ($tag in $downloadTags) {
             if (-not $tag) {
                 continue
             }
@@ -160,16 +168,26 @@ try {
         }
 
         if (-not $downloaded) {
-            if ($env:WAGO_INSTALLER_DEBUG -and $downloadError) {
-                throw "wago: the installer is unavailable: $downloadError"
+            $goCommandName = if ($env:WAGO_GO_COMMAND) { $env:WAGO_GO_COMMAND } else { "go" }
+            $goCommand = Get-Command -Name $goCommandName -CommandType Application -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($version -eq "main" -and $null -ne $goCommand) {
+                & $goCommand.Source run github.com/wago-org/wago/cli/wago-installer@main install @args
+                $installerStatus = $LASTEXITCODE
+                $installerWasRun = $true
+            } else {
+                if ($env:WAGO_INSTALLER_DEBUG -and $downloadError) {
+                    throw "wago: the installer is unavailable: $downloadError"
+                }
+                throw "wago: no published installer is available; install Go and try again, or wait for the next Wago release"
             }
-            throw "wago: the installer is unavailable; check your internet connection and try again"
         }
     }
 
-    $env:WAGO_VERSION = $version
-    & $installer install @args
-    $installerStatus = $LASTEXITCODE
+    if (-not $installerWasRun) {
+        & $installer install @args
+        $installerStatus = $LASTEXITCODE
+    }
     if ($installerStatus -eq 2) {
         throw "wago: this installer release predates the native install flow; wait for the channel to update and try again"
     }

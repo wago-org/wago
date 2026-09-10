@@ -44,6 +44,11 @@ bootstrap script only refreshes `PATH` in its own shell when requested:
 
 `wago-installer-<os>-<arch>`
 
+Before the first GitHub Release provides that executable, the `main` bootstrap
+uses `go run github.com/wago-org/wago/cli/wago-installer@main` when Go is
+available. Other channels do not fall back to source, and a machine without Go
+gets an explicit message that no published installer is available.
+
 The CLI installs and switches runtimes. Runtime files use this name format:
 
 `wago-runtime-<profile>-<build>-<os>-<arch>`

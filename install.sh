@@ -176,6 +176,27 @@ start_refreshed_shell() {
 	exec "$shell" -i
 }
 
+run_go_fallback() {
+	[ "$version" = main ] || return 1
+	go_command=${WAGO_GO_COMMAND:-go}
+	command -v "$go_command" >/dev/null 2>&1 || return 1
+	if WAGO_VERSION="$install_version" WAGO_PATH_REFRESH_FILE="$tmp/path-refresh" \
+		"$go_command" run github.com/wago-org/wago/cli/wago-installer@main install "$@"; then
+		start_refreshed_shell
+		exit 0
+	else
+		status=$?
+		exit "$status"
+	fi
+}
+
+unavailable() {
+	if run_go_fallback "$@"; then
+		return 0
+	fi
+	die "no published installer is available; install Go and try again, or wait for the next Wago release"
+}
+
 tmp=$(mktemp -d 2>/dev/null || mktemp -d -t wago) || die "could not create a temporary directory"
 
 if [ -n "${WAGO_INSTALLER:-}" ]; then
@@ -187,7 +208,7 @@ fi
 
 asset=$(target_name) || die "this operating system or architecture is not supported"
 if ! resolve_release; then
-	die "the installer is unavailable; check your internet connection and try again"
+	unavailable "$@"
 fi
 downloaded=""
 for tag in $tags; do
@@ -203,7 +224,7 @@ for tag in $tags; do
 	break
 done
 if [ -z "$downloaded" ]; then
-	die "the installer is unavailable; check your internet connection and try again"
+	unavailable "$@"
 fi
 chmod +x "$tmp/installer"
 run_installer "$tmp/installer" "$@"

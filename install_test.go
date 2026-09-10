@@ -125,6 +125,7 @@ func TestShellBootstrapStopsCleanlyWhenInstallerIsUnavailable(t *testing.T) {
 	defer server.Close()
 	command := exec.Command("sh", "install.sh")
 	command.Env = append(os.Environ(),
+		"WAGO_VERSION=beta",
 		"WAGO_RELEASES_API_URL="+server.URL+"/releases",
 		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
 	)
@@ -132,8 +133,40 @@ func TestShellBootstrapStopsCleanlyWhenInstallerIsUnavailable(t *testing.T) {
 	if err == nil {
 		t.Fatal("bootstrap unexpectedly succeeded without an installer")
 	}
-	if text := string(output); !strings.Contains(text, "installer is unavailable") || !strings.Contains(text, "internet connection") {
+	if text := string(output); !strings.Contains(text, "no published installer") || !strings.Contains(text, "install Go") {
 		t.Fatalf("unavailable output:\n%s", output)
+	}
+}
+
+func TestShellBootstrapFallsBackToGoForMainWithoutRelease(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	defer server.Close()
+	log := filepath.Join(t.TempDir(), "go.log")
+	goCommand := filepath.Join(t.TempDir(), "go")
+	if err := os.WriteFile(goCommand, []byte("#!/bin/sh\nprintf '%s\\n' \"$*\" >\"$WAGO_GO_LOG\"\nprintf 'source installer: %s\\n' \"$WAGO_VERSION\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command("sh", "install.sh")
+	command.Env = append(os.Environ(),
+		"WAGO_VERSION=main",
+		"WAGO_RELEASES_API_URL="+server.URL+"/releases",
+		"WAGO_RELEASE_DOWNLOAD_BASE="+server.URL,
+		"WAGO_GO_COMMAND="+goCommand,
+		"WAGO_GO_LOG="+log,
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("source fallback: %v\n%s", err, output)
+	}
+	if got, want := string(output), "source installer: main\n"; got != want {
+		t.Fatalf("source fallback output = %q, want %q", got, want)
+	}
+	args, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.TrimSpace(string(args)), "run github.com/wago-org/wago/cli/wago-installer@main install"; got != want {
+		t.Fatalf("go fallback arguments = %q, want %q", got, want)
 	}
 }
 
