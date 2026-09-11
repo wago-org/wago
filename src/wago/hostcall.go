@@ -409,15 +409,17 @@ type instancePluginState struct {
 }
 
 type instanceCloseState struct {
-	done           chan struct{}
-	quiesced       chan struct{}
-	quiescedOnce   sync.Once
-	result         error
-	interruptStop  func()
-	hooks          *hookRegistry
-	event          *InstanceCloseEvent
-	terminalOnce   sync.Once
-	terminalResult error
+	done            chan struct{}
+	quiesced        chan struct{}
+	quiescedOnce    sync.Once
+	prepared        atomic.Bool // publishes hook data and completion of all BeforeClose work
+	result          error
+	interruptStop   func()
+	hooks           *hookRegistry
+	event           *InstanceCloseEvent
+	terminalStarted atomic.Bool
+	terminalDone    chan struct{} // publishes terminalResult, independently of quiescence
+	terminalResult  error
 }
 
 func (in *Instance) instantiateOrigin() InstantiateOrigin {
