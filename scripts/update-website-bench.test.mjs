@@ -192,13 +192,13 @@ function assertDOMContract(html) {
     const generalEnd = html.indexOf(`id="perf-${arch}-panel-compile"`, generalStart);
     const general = html.slice(generalStart, generalEnd);
     assert.equal(matches(general, /data-engine-row/g), 8);
-    for (const label of ["Machine code", "Host → Wasm call", "Wasm → host → Wasm"]) {
+    for (const label of ["Machine code", "Host → Wasm", "Wasm → host"]) {
       assert.equal(matches(general, new RegExp(`<span class="vs__label">${label}</span>`, "g")), 1);
     }
     assert.doesNotMatch(general, /Application commands|SIMD execution/);
     assert.ok(general.includes('<span class="vs__sub">public entry</span>'));
-    assert.ok(general.includes('<span class="vs__sub">import call and return</span>'));
-	const callStart = general.indexOf('<span class="vs__label">Host → Wasm call</span>');
+    assert.ok(general.includes('<span class="vs__sub">import callback</span>'));
+	const callStart = general.indexOf('<span class="vs__label">Host → Wasm</span>');
 	const callEnd = general.indexOf('<div class="vs__row" data-engine-row>', callStart);
 	assert.match(general.slice(callStart, callEnd), /vs__delta--tie">parity<\/span>/);
 	const machineCodeStart = general.indexOf('<span class="vs__label">Machine code</span>');

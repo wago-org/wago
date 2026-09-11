@@ -278,8 +278,8 @@ function buildGeneralSummary(metrics, raw, modules) {
     )],
   ].map(([label, sub, kind, values]) => ({ label, sub, kind, values }));
   const boundary = [
-    generalPairedMetric(metrics, "Host → Wasm call", "public entry", "ExecCallOverhead_wago", "ExecCallOverhead_wazero"),
-    generalPairedMetric(metrics, "Wasm → host → Wasm", "import call and return", "ExecHostRoundtrip_wago", "ExecHostRoundtrip_wazero"),
+    generalPairedMetric(metrics, "Host → Wasm", "public entry", "ExecCallOverhead_wago", "ExecCallOverhead_wazero"),
+    generalPairedMetric(metrics, "Wasm → host", "import callback", "ExecHostRoundtrip_wago", "ExecHostRoundtrip_wazero"),
   ].filter(Boolean);
   return [...summary, ...boundary];
 }
