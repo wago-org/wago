@@ -22,12 +22,12 @@ func Command(environment Environment) *command.Cmd {
 		Summary:    "log in to the registry",
 		Automation: command.DryRun,
 		Flags: []command.Flag{
-			{Name: "link", Short: "l", Bool: true, Help: "show one-time authorization with copy and browser shortcuts"},
+			{Name: "link", Short: "l", Bool: true, Help: "show a complete authorization link with copy and browser shortcuts"},
 			{Name: "code", Short: "c", Bool: true, Help: "log in with a one-time code (headless/remote)"},
 			{Name: "token", Short: "t", Arg: "<t>", Help: "use this API token directly"},
 			{Name: "with-token", Bool: true, Help: "read an API token from stdin (for CI)"},
 		},
-		Long: "With no flag, login asks whether to use a browser link or a one-time code.",
+		Long: "With no flag, login asks whether to use a browser link or a one-time code. For CI, set WAGO_TOKEN for registry commands or pipe a token to --with-token.",
 		Run: func(c *command.Ctx) {
 			options := Options{
 				Link:      c.Bool("link"),
