@@ -32,7 +32,7 @@ func WantsHelp(args []string, _ bool, flags []Flag) bool {
 // first positional; unknown flags there belong to the guest. Use -- when a
 // guest argument intentionally collides with a command flag.
 func (c *Cmd) Parse(path string, args []string) (*Ctx, error) {
-	ctx := &Ctx{Cmd: c, Path: path, input: append([]string(nil), args...), strs: map[string]string{}, bools: map[string]bool{}}
+	ctx := &Ctx{Cmd: c, Path: path, input: append([]string(nil), args...), strs: map[string][]string{}, bools: map[string]bool{}}
 	lookup := flagLookup(c.AllFlags())
 	raw, positional := false, false
 	for index := 0; index < len(args); index++ {
@@ -67,9 +67,9 @@ func (c *Cmd) Parse(path string, args []string) (*Ctx, error) {
 		}
 		switch {
 		case inline:
-			ctx.strs[flag.Name] = inlineValue
+			ctx.strs[flag.Name] = append(ctx.strs[flag.Name], inlineValue)
 		case index+1 < len(args):
-			ctx.strs[flag.Name] = args[index+1]
+			ctx.strs[flag.Name] = append(ctx.strs[flag.Name], args[index+1])
 			index++
 		default:
 			return nil, fmt.Errorf("flag --%s needs a value", flag.Name)
