@@ -588,7 +588,7 @@ func validateRegistration(reg *Registrar) error {
 		}
 	}
 	for _, imp := range reg.imports {
-		if imp.fn == nil && imp.concrete == nil && imp.typedI32 == nil && imp.typedI32x2 == nil && imp.eventI32 == nil || imp.module == "" || imp.name == "" {
+		if imp.fn == nil && imp.concrete == nil && imp.typedNone == nil && imp.typedI32V == nil && imp.typedI32 == nil && imp.typedI32x2V == nil && imp.typedI32x2 == nil && imp.typedI32R2 == nil && imp.typedI32x2R2 == nil && imp.eventI32 == nil || imp.module == "" || imp.name == "" {
 			return fmt.Errorf("invalid host import %q", imp.key())
 		}
 	}
@@ -762,10 +762,20 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 			key := imp.key()
 			if imp.eventI32 != nil {
 				rt.imports[key] = gatedI32HostEvent{fn: imp.eventI32, gate: p.reg.callGate}
+			} else if imp.typedNone != nil {
+				rt.imports[key] = gatedNoArgsHostFunc{fn: imp.typedNone, gate: p.reg.callGate}
+			} else if imp.typedI32V != nil {
+				rt.imports[key] = gatedI32HostFunc{fn: imp.typedI32V, gate: p.reg.callGate}
 			} else if imp.typedI32 != nil {
 				rt.imports[key] = gatedI32ToI32HostFunc{fn: imp.typedI32, gate: p.reg.callGate}
+			} else if imp.typedI32x2V != nil {
+				rt.imports[key] = gatedI32I32HostFunc{fn: imp.typedI32x2V, gate: p.reg.callGate}
 			} else if imp.typedI32x2 != nil {
 				rt.imports[key] = gatedI32I32ToI32HostFunc{fn: imp.typedI32x2, gate: p.reg.callGate}
+			} else if imp.typedI32R2 != nil {
+				rt.imports[key] = gatedI32ToI32I32HostFunc{fn: imp.typedI32R2, gate: p.reg.callGate}
+			} else if imp.typedI32x2R2 != nil {
+				rt.imports[key] = gatedI32I32ToI32I32HostFunc{fn: imp.typedI32x2R2, gate: p.reg.callGate}
 			} else if imp.concrete != nil {
 				rt.imports[key] = p.reg.callGate.wrapCaller(imp.concrete)
 			} else {

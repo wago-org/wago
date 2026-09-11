@@ -133,10 +133,10 @@ func TestImportedStartHostFuncRuns(t *testing.T) {
 
 func TestImportedStartBadSignatureErrors(t *testing.T) {
 	c := MustCompile(importedStartModule())
-	// A bare native func is not a HostFunc; binding it is rejected identically on
-	// standard Go and TinyGo (no reflection anywhere).
+	// Bare functions matching a typed fast lane are accepted without reflection,
+	// but their exact Wasm signature is still enforced.
 	_, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.start": func(int32) {}}})
-	want := "must be a wago.HostFunc"
+	want := "requires signature (i32) -> ()"
 	if err == nil || !strings.Contains(err.Error(), "env.start") || !strings.Contains(err.Error(), want) {
 		t.Fatalf("want clear start binding error containing %q, got %v", want, err)
 	}

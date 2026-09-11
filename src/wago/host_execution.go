@@ -324,6 +324,70 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 // instances retain their already-exclusive local lease; shared execution
 // releases the global lease so another instance may run. The context version or
 // global epoch still decides whether native context must be rebound before resume.
+func (a *hostLoopActivation) dispatchTypedScalarExpandedPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
+	active := a.root
+	if active == nil || ctrl != a.ctrl ||
+		importIdx&hostFuncRefDispatchBit != 0 || int(importIdx) >= len(active.syncHosts) ||
+		active.gc != nil || active.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) != 0 {
+		return 0, false
+	}
+	binding := &active.syncHosts[importIdx]
+	if binding.gate != nil || binding.scalarKind < syncHostTypedI32 {
+		return 0, false
+	}
+	if binding.scalarKind == syncHostTypedI32 {
+		if rawSlots != 1|1<<16 {
+			return 0, false
+		}
+	} else if binding.scalarKind == syncHostTypedI32x2 {
+		if rawSlots != 2|1<<16 {
+			return 0, false
+		}
+	} else if !binding.matchesTypedScalarSlots(rawSlots) {
+		return 0, false
+	}
+
+	state := a.state
+	flags := active.executionFlags.Load()
+	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+		version := state.nativeContextVersion.Load()
+		var result uint64
+		if binding.scalarKind == syncHostTypedI32 {
+			result = I32(binding.typedI32(AsI32(a0)))
+		} else if binding.scalarKind == syncHostTypedI32x2 {
+			result = I32(binding.typedI32x2(AsI32(a0), AsI32(a1)))
+		} else {
+			result = binding.callTypedScalar(a0, a1)
+		}
+		if version == ^uint64(0) || !a.parkedNativeContextReusable ||
+			active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent ||
+			state.nativeContextVersion.Load() != version {
+			active.restoreTypedScalarNativeContext(ctrl)
+		}
+		return result, true
+	}
+
+	epoch := nativeExecutionEpoch
+	nativeExecutionMu.Unlock()
+	defer func() {
+		nativeExecutionMu.Lock()
+		if nativeExecutionEpoch != epoch {
+			active.restoreTypedScalarNativeContext(ctrl)
+		}
+	}()
+
+	if binding.scalarKind == syncHostTypedI32 {
+		return I32(binding.typedI32(AsI32(a0))), true
+	}
+	if binding.scalarKind == syncHostTypedI32x2 {
+		return I32(binding.typedI32x2(AsI32(a0), AsI32(a1))), true
+	}
+	return binding.callTypedScalar(a0, a1), true
+}
+
+// dispatchTypedScalarPortal preserves the compact one-result ABI and hot path
+// for the original typed scalar imports. Expanded signatures use the separate
+// portal above so adding them cannot perturb this path's register allocation.
 func (a *hostLoopActivation) dispatchTypedScalarPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
 	active := a.root
 	if active == nil || ctrl != a.ctrl ||
@@ -369,9 +433,51 @@ func (a *hostLoopActivation) dispatchTypedScalarPortal(ctrl uintptr, importIdx, 
 
 	if binding.scalarKind == syncHostTypedI32 {
 		return I32(binding.typedI32(AsI32(a0))), true
-	} else {
-		return I32(binding.typedI32x2(AsI32(a0), AsI32(a1))), true
 	}
+	return I32(binding.typedI32x2(AsI32(a0), AsI32(a1))), true
+}
+
+func (b *syncHostBinding) matchesTypedScalarSlots(raw uint32) bool {
+	switch b.scalarKind {
+	case syncHostTypedNone:
+		return raw == 0
+	case syncHostTypedI32V:
+		return raw == 1
+	case syncHostTypedI32:
+		return raw == 1|1<<16
+	case syncHostTypedI32x2V:
+		return raw == 2
+	case syncHostTypedI32x2:
+		return raw == 2|1<<16
+	case syncHostTypedI32R2:
+		return raw == 1|2<<16
+	case syncHostTypedI32x2R2:
+		return raw == 2|2<<16
+	default:
+		return false
+	}
+}
+
+func (b *syncHostBinding) callTypedScalar(a0, a1 uint64) uint64 {
+	switch b.scalarKind {
+	case syncHostTypedNone:
+		b.typedNone()
+	case syncHostTypedI32V:
+		b.typedI32V(AsI32(a0))
+	case syncHostTypedI32:
+		return I32(b.typedI32(AsI32(a0)))
+	case syncHostTypedI32x2V:
+		b.typedI32x2V(AsI32(a0), AsI32(a1))
+	case syncHostTypedI32x2:
+		return I32(b.typedI32x2(AsI32(a0), AsI32(a1)))
+	case syncHostTypedI32R2:
+		a, c := b.typedI32R2(AsI32(a0))
+		return uint64(uint32(a)) | uint64(uint32(c))<<32
+	case syncHostTypedI32x2R2:
+		a, c := b.typedI32x2R2(AsI32(a0), AsI32(a1))
+		return uint64(uint32(a)) | uint64(uint32(c))<<32
+	}
+	return 0
 }
 
 func (in *Instance) restoreTypedScalarNativeContext(ctrl uintptr) {
@@ -388,7 +494,17 @@ func (in *Instance) restoreTypedScalarNativeContext(ctrl uintptr) {
 func (in *Instance) hasDirectTypedScalarHost() bool {
 	for i := range in.syncHosts {
 		binding := &in.syncHosts[i]
-		if binding.gate == nil && (binding.typedI32 != nil || binding.typedI32x2 != nil) {
+		if binding.gate == nil && (binding.scalarKind == syncHostTypedI32 || binding.scalarKind == syncHostTypedI32x2) {
+			return true
+		}
+	}
+	return false
+}
+
+func (in *Instance) hasExpandedTypedScalarHost() bool {
+	for i := range in.syncHosts {
+		binding := &in.syncHosts[i]
+		if binding.gate == nil && binding.scalarKind >= syncHostTypedNone {
 			return true
 		}
 	}

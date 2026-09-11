@@ -305,6 +305,29 @@ func TestTypedI32HostImportBindingRejectsInvalidFunctions(t *testing.T) {
 	}
 }
 
+func TestTypedHostSignatureMatrixRejectsMismatches(t *testing.T) {
+	cases := []struct {
+		name string
+		fn   any
+		bad  FuncSig
+	}{
+		{name: "empty_to_empty", fn: NoArgsHostFunc(func() {}), bad: FuncSig{Params: []ValType{ValI32}}},
+		{name: "i32_to_empty", fn: I32HostFunc(func(int32) {}), bad: FuncSig{}},
+		{name: "i32_to_i32", fn: I32ToI32HostFunc(func(v int32) int32 { return v }), bad: FuncSig{Params: []ValType{ValI32}}},
+		{name: "i32_i32_to_empty", fn: I32I32HostFunc(func(int32, int32) {}), bad: FuncSig{Params: []ValType{ValI32}}},
+		{name: "i32_i32_to_i32", fn: I32I32ToI32HostFunc(func(a, b int32) int32 { return a + b }), bad: FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}}},
+		{name: "i32_to_i32_i32", fn: I32ToI32I32HostFunc(func(v int32) (int32, int32) { return v, v }), bad: FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}}},
+		{name: "i32_i32_to_i32_i32", fn: I32I32ToI32I32HostFunc(func(a, b int32) (int32, int32) { return a, b }), bad: FuncSig{Params: []ValType{ValI32, ValI32}, Results: []ValType{ValI32}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := bindSyncHostImport(tc.fn, tc.bad); err == nil {
+				t.Fatal("mismatched typed host signature was accepted")
+			}
+		})
+	}
+}
+
 func TestGatedTypedI32HostImportAdmission(t *testing.T) {
 	gate := newPluginCallGate("typed")
 	binding, err := bindSyncHostImport(gatedI32ToI32HostFunc{

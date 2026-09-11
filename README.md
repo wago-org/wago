@@ -112,6 +112,11 @@ The example compiles a module, creates an instance, and calls an exported
 function. See [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for the
 complete guide.
 
+Capability-free synchronous imports have direct typed lanes for `() -> ()`,
+`(i32) -> ()`, `(i32) -> i32`, `(i32, i32) -> ()`, `(i32, i32) -> i32`,
+`(i32) -> (i32, i32)`, and `(i32, i32) -> (i32, i32)`. Their public Go types
+follow the signature, such as `I32HostFunc` and `I32I32ToI32I32HostFunc`.
+
 For high-frequency one-way `(i32) -> ()` imports, `wago.I32HostEvent` avoids a
 Go stack transition for every call. Events are delivered in order after the
 native invocation returns. This is an explicit deferred contract; use a normal

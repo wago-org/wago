@@ -734,3 +734,34 @@ where cumulative. This profile motivated the fixed-slot portal above rather
 than another callback adapter. Scheduler-transition elision remains disabled:
 `AnalyzeNativeSegment` still has no compiler-produced complete-continuation
 graph or cross-segment work budget.
+
+## Expanded typed signature matrix (2026-09-11)
+
+The fixed-slot portal now covers every zero-to-two-`i32` parameter/result shape
+requested for the public host API. The matrix runs 1,024 calls inside one Wasm
+invocation and reports elapsed time divided by 1,024. Generic and typed rows use
+the same compiled fixture. Five samples used Go 1.26.5, one logical CPU, an
+Apple M4 Max on Darwin/arm64 and a Ryzen 7 7800X3D on Linux/amd64.
+
+| Signature | Go type | ARM64 generic / typed ns | AMD64 generic / typed ns |
+|---|---|---:|---:|
+| `[] -> []` | `NoArgsHostFunc` | 87.50 / 44.85 | 120.8 / 60.94 |
+| `[i32] -> []` | `I32HostFunc` | 86.93 / 43.87 | 121.6 / 61.82 |
+| `[i32] -> [i32]` | `I32ToI32HostFunc` | 88.78 / 44.70 | 125.2 / 62.63 |
+| `[i32, i32] -> []` | `I32I32HostFunc` | 89.53 / 46.15 | 126.4 / 63.22 |
+| `[i32, i32] -> [i32]` | `I32I32ToI32HostFunc` | 88.82 / 44.66 | 129.1 / 63.71 |
+| `[i32] -> [i32, i32]` | `I32ToI32I32HostFunc` | 89.37 / 46.09 | 127.7 / 65.24 |
+| `[i32, i32] -> [i32, i32]` | `I32I32ToI32I32HostFunc` | 89.91 / 47.41 | 128.7 / 63.02 |
+
+Every row reports 0 B/op and 0 allocs/op. Typed dispatch is 1.90-1.99x faster
+than generic dispatch on ARM64 and 1.96-2.04x faster on AMD64. The explicitly
+deferred `[i32] -> []` `I32HostEvent` path measures 7.297 ns/event on ARM64 and
+9.013 ns/event on AMD64, but delivery occurs only after the outer Wasm
+invocation returns and is not a synchronous-latency replacement.
+
+The expanded zero/two-result engine loop is separate from the original
+one-result loop. Eight alternating one-second measurements of the established
+`[i32] -> [i32]` benchmark gave 44,878 ns/1,024 calls for its parent and
+44,905.5 ns/1,024 calls for this change (+0.06%, noise), preserving the old
+portal's register allocation and binding-field layout. The corresponding
+AMD64 exact-main/head medians were 63,476.5 and 63,460.5 ns (-0.03%, noise).

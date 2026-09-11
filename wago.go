@@ -99,8 +99,13 @@ type (
 	HostModule                      = impl.HostModule
 	HostTrap                        = impl.HostTrap
 	I31Ref                          = impl.I31Ref
+	I32HostEvent                    = impl.I32HostEvent
+	I32HostFunc                     = impl.I32HostFunc
+	I32I32HostFunc                  = impl.I32I32HostFunc
 	I32I32ToI32HostFunc             = impl.I32I32ToI32HostFunc
+	I32I32ToI32I32HostFunc          = impl.I32I32ToI32I32HostFunc
 	I32ToI32HostFunc                = impl.I32ToI32HostFunc
+	I32ToI32I32HostFunc             = impl.I32ToI32I32HostFunc
 	ImplementationLimitError        = impl.ImplementationLimitError
 	ImportFuncBuilder               = impl.ImportFuncBuilder
 	ImportKind                      = impl.ImportKind
@@ -149,6 +154,7 @@ type (
 	ModuleSourceTransformer         = impl.ModuleSourceTransformer
 	ModuleView                      = impl.ModuleView
 	NativeMemoryStats               = impl.NativeMemoryStats
+	NoArgsHostFunc                  = impl.NoArgsHostFunc
 	OffsetInit                      = impl.OffsetInit
 	OperationIdentity               = impl.OperationIdentity
 	OptKnobInfo                     = impl.OptKnobInfo
@@ -321,6 +327,7 @@ const (
 	ImportTag                                  = impl.ImportTag
 	InstantiateDirect                          = impl.InstantiateDirect
 	InstantiateManaged                         = impl.InstantiateManaged
+	MaxDeferredHostEventsPerInvocation         = impl.MaxDeferredHostEventsPerInvocation
 	MaxFunctionLocalsLimit                     = impl.MaxFunctionLocalsLimit
 	MaxMemoriesPerModuleLimit                  = impl.MaxMemoriesPerModuleLimit
 	MaxNativeStackBytes                        = impl.MaxNativeStackBytes
