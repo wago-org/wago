@@ -438,7 +438,7 @@ func TestLoginMethodPickerDefaultsToLinkAndAcceptsRightArrow(t *testing.T) {
 	frame := p.Frame()
 	for _, want := range []string{
 		"Choose login method",
-		"Link", "Copy the code or open GitHub from this terminal",
+		"Link", "Use a complete authorization link",
 		"Code", "Use a one-time code on another device",
 		"◉", "○", "enter/→ select", "esc cancel",
 	} {
