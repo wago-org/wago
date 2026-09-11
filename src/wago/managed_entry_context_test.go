@@ -367,6 +367,8 @@ func TestManagedTableReentryCleanup(t *testing.T) {
 	var lastID invocationID
 	var cancel context.CancelFunc
 	var hostPanic bool
+	var hostTrap bool
+	trapErr := errors.New("managed host trap")
 	var callbacks int
 	owned, err := manager.Instantiate(nil, mod, WithImports(Imports{"env.host": CallerHostFunc(func(caller Caller, _, _ []uint64) {
 		callbacks++
@@ -390,6 +392,9 @@ func TestManagedTableReentryCleanup(t *testing.T) {
 		if hostPanic {
 			panic("host panic")
 		}
+		if hostTrap {
+			panic(HostTrap{Err: trapErr})
+		}
 	})}))
 	if err != nil {
 		t.Fatal(err)
@@ -405,7 +410,9 @@ func TestManagedTableReentryCleanup(t *testing.T) {
 		t.Fatal("trap entry succeeded")
 	}
 	assertManagedEntryClean(t, in, stale)
+	wantCallbacks := 5 // Two normal entries, guest trap, host trap, final entry.
 	if nativeCancellationSupported() {
+		wantCallbacks++
 		ctx, cancelCall := context.WithCancel(context.Background())
 		cancel = cancelCall
 		if err := owned.InvokeVoidTable(ctx, 2); !errors.Is(err, context.Canceled) {
@@ -415,22 +422,36 @@ func TestManagedTableReentryCleanup(t *testing.T) {
 		cancel = nil
 		assertManagedEntryClean(t, in, stale)
 	}
-	hostPanic = true
-	func() {
-		defer func() {
-			if recover() != "host panic" {
-				t.Error("host panic did not propagate")
-			}
-		}()
-		_ = owned.InvokeVoidTable(nil, 0)
-	}()
+	hostTrap = true
+	if err := owned.InvokeVoidTable(nil, 0); !errors.Is(err, trapErr) {
+		t.Fatalf("host trap = %v", err)
+	}
 	assertManagedEntryClean(t, in, stale)
-	hostPanic = false
+	hostTrap = false
+	t.Run("host-panic", func(t *testing.T) {
+		// Match the existing nested host-panic test boundary: TinyGo
+		// cannot unwind this recovered panic when the native bridge rethrows it.
+		if !requireStandardGoTestRuntime(t) {
+			return
+		}
+		wantCallbacks++
+		hostPanic = true
+		func() {
+			defer func() {
+				if recover() != "host panic" {
+					t.Error("host panic did not propagate")
+				}
+			}()
+			_ = owned.InvokeVoidTable(nil, 0)
+		}()
+		assertManagedEntryClean(t, in, stale)
+		hostPanic = false
+	})
 	if err := owned.InvokeVoidTable(nil, 0); err != nil {
 		t.Fatalf("call after failures: %v", err)
 	}
 	assertManagedEntryClean(t, in, stale)
-	if callbacks < 5 {
-		t.Fatalf("host calls = %d", callbacks)
+	if callbacks != wantCallbacks {
+		t.Fatalf("host calls = %d, want %d", callbacks, wantCallbacks)
 	}
 }
