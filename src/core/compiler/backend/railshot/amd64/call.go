@@ -1211,12 +1211,11 @@ func (f *fn) callHostSync(importIdx int, ft *wasm.CompType) error {
 	return nil
 }
 
-// HostIndirectThunk returns standalone machine code that logs a host call for
-// importIdx and returns — for a legacy HostFunc reached through call_indirect
-// (placed in a table as a funcref). It is entered with the wrapper ABI (RSI =
+// HostIndirectThunk returns standalone machine code that logs a deferred host
+// event for importIdx and returns. It is entered with the wrapper ABI (RSI =
 // linMem, RDI = args buffer), appends (importIdx, first-arg-i32) to the host-call
 // log at [linMem-offCustomCtx] exactly like callHost, and returns void, so the
-// normal post-invoke replay runs the host function. Emitted per host funcref into
+// normal post-invoke replay delivers the event. Emitted per host funcref into
 // a per-instance mapping; the same code is instance-independent (it reads the log
 // pointer from RSI at run time).
 func HostIndirectThunk(importIdx uint32) []byte {
@@ -1224,11 +1223,18 @@ func HostIndirectThunk(importIdx uint32) []byte {
 	a.Load32(RAX, RDI, 0)            // RAX = first arg (i32; a harmless slot read for 0-param funcs)
 	a.Load64(R8, RSI, -offCustomCtx) // R8 = host-call log (RSI = linMem in the wrapper ABI)
 	a.Load32(RCX, R8, 0)             // count
-	a.LeaScaled(RDX, R8, RCX, 3, 8)  // entry = log + count*8 + 8
+	a.AluRI(cmpDigit, RCX, runtime.HostCallLogEntries, false)
+	full := a.JccPlaceholder(condAE)
+	a.LeaScaled(RDX, R8, RCX, 3, 8) // entry = log + count*8 + 8
 	a.StoreImm32Mem(RDX, 0, int32(importIdx))
 	a.Store32(RDX, 4, RAX)    // arg
 	a.AluRI(0, RCX, 1, false) // count++
 	a.Store32(R8, 0, RCX)
+	a.Ret()
+	a.PatchRel32(full, a.Len())
+	a.Load64(R8, RSI, -offTrapCellPtr)
+	a.StoreImm32Mem(R8, 0, int32(runtime.TrapHostEventOverflow))
+	a.Load64(RSP, RSI, -offTrapStackReentry)
 	a.Ret()
 	return a.B
 }

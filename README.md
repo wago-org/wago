@@ -112,6 +112,11 @@ The example compiles a module, creates an instance, and calls an exported
 function. See [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for the
 complete guide.
 
+For high-frequency one-way `(i32) -> ()` imports, `wago.I32HostEvent` avoids a
+Go stack transition for every call. Events are delivered in order after the
+native invocation returns. This is an explicit deferred contract; use a normal
+host function when Wasm must observe the callback's effects immediately.
+
 ## Performance
 
 [**View the benchmarks →**](https://wago.sh/#performance)

@@ -588,7 +588,7 @@ func validateRegistration(reg *Registrar) error {
 		}
 	}
 	for _, imp := range reg.imports {
-		if imp.fn == nil && imp.concrete == nil && imp.typedI32 == nil && imp.typedI32x2 == nil || imp.module == "" || imp.name == "" {
+		if imp.fn == nil && imp.concrete == nil && imp.typedI32 == nil && imp.typedI32x2 == nil && imp.eventI32 == nil || imp.module == "" || imp.name == "" {
 			return fmt.Errorf("invalid host import %q", imp.key())
 		}
 	}
@@ -760,7 +760,9 @@ func (rt *Runtime) commitPluginPlan(plan []plannedPlugin) error {
 		needsInstructionABI = needsInstructionABI || len(p.reg.instructions) != 0
 		for _, imp := range p.reg.imports {
 			key := imp.key()
-			if imp.typedI32 != nil {
+			if imp.eventI32 != nil {
+				rt.imports[key] = gatedI32HostEvent{fn: imp.eventI32, gate: p.reg.callGate}
+			} else if imp.typedI32 != nil {
 				rt.imports[key] = gatedI32ToI32HostFunc{fn: imp.typedI32, gate: p.reg.callGate}
 			} else if imp.typedI32x2 != nil {
 				rt.imports[key] = gatedI32I32ToI32HostFunc{fn: imp.typedI32x2, gate: p.reg.callGate}

@@ -261,7 +261,7 @@ func managedForkImports(parent *Instance) (Imports, error) {
 			return fmt.Errorf("managed fork import %q is missing", key)
 		}
 		switch x := v.(type) {
-		case HostFunc, CallerHostFunc:
+		case HostFunc, CallerHostFunc, I32HostEvent, gatedI32HostEvent:
 			imports[key] = x
 		case GlobalImport:
 			if x.Global != nil {

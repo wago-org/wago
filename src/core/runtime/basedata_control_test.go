@@ -143,8 +143,8 @@ func TestJobMemoryRebindTrapCellPreservesInterruption(t *testing.T) {
 }
 
 func TestTrapMessagesStayCompactAndComplete(t *testing.T) {
-	if got := unsafe.Sizeof(trapMessages); got != 352 {
-		t.Fatalf("trap message storage = %d bytes, want 352", got)
+	if got := unsafe.Sizeof(trapMessages); got != 368 {
+		t.Fatalf("trap message storage = %d bytes, want 368", got)
 	}
 	for code, message := range trapMessages {
 		if message == "" {

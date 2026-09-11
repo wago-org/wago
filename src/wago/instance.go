@@ -27,8 +27,8 @@ type Instance struct {
 	memory                  *Memory // the memory object (owned or host-imported)
 	ar                      *runtime.Arena
 	base                    uintptr
-	hosts                   map[string]HostFunc
-	imports                 Imports // the imports as provided to Instantiate
+	hostEvents              *hostEventBindings // nil outside deferred event mode
+	imports                 Imports            // the imports as provided to Instantiate
 	hostLog                 []byte
 	ctrl                    []byte                              // sync host-call control frame (nil in async mode)
 	syncHosts               []syncHostBinding                   // immutable per-import sync host bindings

@@ -40,6 +40,9 @@ func (in *Instance) ExportedFunc(name string) (*InstanceExport, error) {
 		return nil, err
 	}
 	defer in.endInvocation()
+	if in.hostEvents != nil {
+		return nil, fmt.Errorf("instance with deferred host events cannot be used as a cross-instance native callee")
+	}
 	gfi, ok := in.c.Exports[name]
 	if !ok {
 		return nil, fmt.Errorf("no exported function %q", name)

@@ -5,12 +5,17 @@ package hostthunk
 import a64 "github.com/wago-org/wago/src/core/encoder/arm64"
 
 const (
-	offCustomCtx = 40
-	hcTrampoline = 176
-	hcImportIdx  = 184
-	hcNArgs      = 188
-	hcArgs       = 192
-	hcResults    = 704
+	offTrapHandlerPtr   = 32
+	offTrapStackReentry = 24
+	offCustomCtx        = 40
+	offTrapCellPtr      = 104
+	hostCallLogEntries  = 1 << 13
+	trapHostEventFull   = 22
+	hcTrampoline        = 176
+	hcImportIdx         = 184
+	hcNArgs             = 188
+	hcArgs              = 192
+	hcResults           = 704
 )
 
 func Indirect(importIdx uint32) []byte {
@@ -19,6 +24,8 @@ func Indirect(importIdx uint32) []byte {
 	a.SubImm64(a64.X10, a64.X1, offCustomCtx)
 	a.Load64(a64.X10, a64.X10, 0)
 	a.Load32(a64.X11, a64.X10, 0)
+	a.CmpImm32LSL12(a64.X11, hostCallLogEntries)
+	full := a.Bcond(a64.CondCS)
 	a.AddShifted(a64.X12, a64.X10, a64.X11, 3, false)
 	a.AddImm64(a64.X12, a64.X12, 8)
 	a.MovImm64(a64.X16, uint64(importIdx))
@@ -26,6 +33,17 @@ func Indirect(importIdx uint32) []byte {
 	a.Store32(a64.X9, a64.X12, 4)
 	a.AddImm32(a64.X11, a64.X11, 1)
 	a.Store32(a64.X11, a64.X10, 0)
+	a.Ret()
+	a.PatchBranch19(full, a.Len())
+	a.SubImm64(a64.X10, a64.X1, offTrapCellPtr)
+	a.Load64(a64.X10, a64.X10, 0)
+	a.MovImm64(a64.X16, trapHostEventFull)
+	a.Store32(a64.X16, a64.X10, 0)
+	a.SubImm64(a64.X10, a64.X1, offTrapStackReentry)
+	a.Load64(a64.X10, a64.X10, 0)
+	a.SubImm64(a64.X11, a64.X1, offTrapHandlerPtr)
+	a.Load64(a64.LR, a64.X11, 0)
+	a.AddImm64(a64.SP, a64.X10, 0)
 	a.Ret()
 	return a.B
 }

@@ -166,6 +166,7 @@ type registeredImport struct {
 	concrete   CallerHostFunc
 	typedI32   I32ToI32HostFunc
 	typedI32x2 I32I32ToI32HostFunc
+	eventI32   I32HostEvent
 	params     []ValType
 	results    []ValType
 	cap        Capability
@@ -235,6 +236,19 @@ func (m *ImportModuleBuilder) I32I32ToI32Func(name string, fn I32I32ToI32HostFun
 		return &ImportFuncBuilder{}
 	}
 	imp := &registeredImport{module: m.module, name: name, typedI32x2: fn, params: []ValType{ValI32, ValI32}, results: []ValType{ValI32}}
+	if m.reg != nil && !m.reg.sealed {
+		m.reg.imports = append(m.reg.imports, imp)
+	}
+	return &ImportFuncBuilder{imp: imp}
+}
+
+// I32Event declares a deferred capability-free (i32) -> () import. Calls are
+// delivered in order after the native invocation returns.
+func (m *ImportModuleBuilder) I32Event(name string, fn I32HostEvent) *ImportFuncBuilder {
+	if m == nil {
+		return &ImportFuncBuilder{}
+	}
+	imp := &registeredImport{module: m.module, name: name, eventI32: fn, params: []ValType{ValI32}}
 	if m.reg != nil && !m.reg.sealed {
 		m.reg.imports = append(m.reg.imports, imp)
 	}

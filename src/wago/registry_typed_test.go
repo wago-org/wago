@@ -12,4 +12,8 @@ func TestImportModuleBuilderTypedFunctionsDeclareExactSignatures(t *testing.T) {
 	if two.imp == nil || two.imp.typedI32x2 == nil || len(two.imp.params) != 2 || two.imp.params[0] != ValI32 || two.imp.params[1] != ValI32 || len(two.imp.results) != 1 || two.imp.results[0] != ValI32 {
 		t.Fatalf("two-parameter typed declaration = %+v", two.imp)
 	}
+	event := module.I32Event("event", func(int32) {})
+	if event.imp == nil || event.imp.eventI32 == nil || len(event.imp.params) != 1 || event.imp.params[0] != ValI32 || len(event.imp.results) != 0 {
+		t.Fatalf("deferred event declaration = %+v", event.imp)
+	}
 }

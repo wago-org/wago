@@ -678,6 +678,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 	// while this reference keeps its native mapping live.
 	b.releaseModuleUse()
 	var hostLog, ctrl []byte
+	var hostEvents *hostEventBindings
 	var syncHosts []syncHostBinding
 	if syncMode {
 		// Synchronous host-call path: install the control frame (not the async
@@ -703,19 +704,23 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			}
 			hasHostImport = true
 			if imports[key] == nil {
-				return nil, fmt.Errorf("import %q: legacy async host calls require wago.HostFunc or *wago.HostFuncRef", key)
+				return nil, fmt.Errorf("import %q: deferred host event is missing", key)
 			}
 			if i >= len(c.importFuncSigs) {
 				return nil, fmt.Errorf("import %q: missing signature", key)
 			}
-			if _, err := bindHostImport(imports[key], c.importFuncSigs[i]); err != nil {
-				return nil, fmt.Errorf("import %q: legacy async host call: %w", key, err)
+			if _, err := bindI32HostEvent(imports[key], c.importFuncSigs[i]); err != nil {
+				return nil, err
 			}
 		}
 		if hasHostImport {
+			hostEvents, err = c.buildHostEvents(imports)
+			if err != nil {
+				return nil, fmt.Errorf("instantiate: %w", err)
+			}
 			// The log's count header is reset at the start of every Invoke and its
-			// body is written by native code before the host reads it, so the ~64 KiB
-			// buffer needs no instantiate-time zero-fill.
+			// body is written by native code before deferred callbacks read it, so
+			// the ~64 KiB buffer needs no instantiate-time zero-fill.
 			hostLog = ar.AllocNoZero(runtime.HostCallLogBytes)
 			jm.SetCustomCtx(uintptr(unsafe.Pointer(&hostLog[0])))
 		}
@@ -1509,7 +1514,7 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 		binary.LittleEndian.PutUint64(nativeContext[runtime.InstanceContextGCNativeViewOffset:], uint64(uintptr(unsafe.Pointer(gcNativeView))))
 	}
 	in := &Instance{
-		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hosts: imports.hostFuncs(), imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
+		c: c, eng: eng, jm: jm, memory: memObj, ownsMem: ownsMem, ar: ar, base: base, hostEvents: hostEvents, imports: imports, hostLog: hostLog, syncMode: syncMode, ctrl: ctrl, syncHosts: syncHosts, globals: globals, globalCells: globalCells, tableDescPtr: tableDescPtr, tableDescLen: len(tableDesc), funcRefDescs: funcRefDescs, passiveDataDesc: passiveDataDesc, thunkMem: thunkMem, gc: b.collector, gcTypeMap: b.gcTypeMap, gcNativeView: gcNativeView,
 		serArgs: serArgs, results: results, trap: trap, rt: opts.runtime,
 		nativeContext:   nativeContextPtr,
 		moduleIdentity:  opts.moduleIdentity,
@@ -1881,12 +1886,12 @@ func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (map[uint3
 			continue
 		}
 		switch imports[key].(type) {
-		case HostFunc, CallerHostFunc, *HostFuncRef:
+		case HostFunc, CallerHostFunc, *HostFuncRef, I32HostEvent, gatedI32HostEvent:
 			offs[uint32(fidx)] = len(blob)
 			blob = append(blob, railshotHostIndirectThunk(uint32(fidx))...)
 		default:
 			if imports[key] != nil {
-				return nil, nil, fmt.Errorf("import %q is %T; async host wrappers support wago.HostFunc or *wago.HostFuncRef bindings", key, imports[key])
+				return nil, nil, fmt.Errorf("import %q is %T; async host wrappers require wago.I32HostEvent", key, imports[key])
 			}
 		}
 	}

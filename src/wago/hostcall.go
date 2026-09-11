@@ -121,6 +121,22 @@ type I32ToI32HostFunc func(int32) int32
 // lifetime and re-entry rules as I32ToI32HostFunc.
 type I32I32ToI32HostFunc func(int32, int32) int32
 
+// MaxDeferredHostEventsPerInvocation bounds an instance's deferred event log.
+// Exceeding it traps the invocation and discards the whole event transaction.
+const MaxDeferredHostEventsPerInvocation = runtime.HostCallLogEntries
+
+// I32HostEvent is a deferred, capability-free host import specialized for the
+// Wasm signature (i32) -> (). Native code appends each value to the instance's
+// event log and continues without crossing onto the Go stack. Wago delivers the
+// events in call order after the native invocation returns.
+//
+// The callback therefore cannot affect the currently running Wasm invocation.
+// It runs on an ordinary Go stack and may allocate, block, or panic. Use a
+// synchronous host function when the guest must observe the callback before its
+// next instruction. At most MaxDeferredHostEventsPerInvocation events may be
+// emitted by one invocation; overflow traps and delivers none of them.
+type I32HostEvent func(int32)
+
 // Only runtime-issued representations carry authority. The snapshot is copied,
 // never replaced with the scope's current generation, including on re-entry.
 func resolveHostCaller(module HostModule) (instanceHostModule, bool) {
@@ -1141,6 +1157,57 @@ type gatedI32I32ToI32HostFunc struct {
 	gate *pluginCallGate
 }
 
+type gatedI32HostEvent struct {
+	fn   I32HostEvent
+	gate *pluginCallGate
+}
+
+type asyncHostBinding struct {
+	eventI32 I32HostEvent
+	gate     *pluginCallGate
+}
+
+type hostEventBindings struct {
+	byImport []asyncHostBinding
+}
+
+func bindI32HostEvent(value any, sig FuncSig) (asyncHostBinding, error) {
+	var binding asyncHostBinding
+	switch fn := value.(type) {
+	case I32HostEvent:
+		binding.eventI32 = fn
+	case gatedI32HostEvent:
+		binding.eventI32, binding.gate = fn.fn, fn.gate
+	default:
+		return binding, fmt.Errorf("deferred host event must be a wago.I32HostEvent; got %T", value)
+	}
+	if binding.eventI32 == nil {
+		return asyncHostBinding{}, fmt.Errorf("deferred host event is nil")
+	}
+	if len(sig.Params) != 1 || sig.Params[0] != ValI32 || len(sig.Results) != 0 {
+		return asyncHostBinding{}, fmt.Errorf("deferred host event requires signature (i32) -> ()")
+	}
+	return binding, nil
+}
+
+func (c *Compiled) buildHostEvents(imports Imports) (*hostEventBindings, error) {
+	events := &hostEventBindings{byImport: make([]asyncHostBinding, len(c.Imports))}
+	for i, key := range c.Imports {
+		if _, cross := imports[key].(*InstanceExport); cross {
+			continue
+		}
+		if i >= len(c.importFuncSigs) {
+			return nil, fmt.Errorf("import %q: missing signature", key)
+		}
+		binding, err := bindI32HostEvent(imports[key], c.importFuncSigs[i])
+		if err != nil {
+			return nil, fmt.Errorf("import %q: %w", key, err)
+		}
+		events.byImport[i] = binding
+	}
+	return events, nil
+}
+
 func (b *syncHostBinding) callable() bool {
 	return b.fn != nil || b.concrete != nil || b.typedI32 != nil || b.typedI32x2 != nil
 }
@@ -1155,6 +1222,8 @@ func (b *syncHostBinding) call(caller instanceHostModule, args, results []uint64
 
 func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
 	switch fn := value.(type) {
+	case I32HostEvent, gatedI32HostEvent:
+		return syncHostBinding{}, fmt.Errorf("deferred host event cannot be used by a module that requires synchronous host control")
 	case CallerHostFunc:
 		if fn == nil {
 			return syncHostBinding{}, fmt.Errorf("concrete host function is nil")

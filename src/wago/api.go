@@ -2377,6 +2377,12 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 		return true
 	}
 	for _, key := range c.Imports {
+		if _, ok := imports[key].(I32HostEvent); ok {
+			continue
+		}
+		if _, ok := imports[key].(gatedI32HostEvent); ok {
+			continue
+		}
 		if export, cross := imports[key].(*InstanceExport); cross {
 			// A cross-instance-only consumer needs the parked-host loop only when
 			// its target can itself park. syncMode is immutable after the producer
@@ -2386,10 +2392,9 @@ func (c *Compiled) importsRequireSync(imports Imports, force bool) bool {
 			}
 			continue
 		}
-		// Every actual host binding remains synchronous. In particular, a legacy
-		// replayable HostFunc may later be reached through an InstanceExport, where
-		// logging into the callee's private buffer would be invisible to the public
-		// root. Only host-free cross-instance links take the fast native path.
+		// Only the explicit I32HostEvent contract may use deferred replay. Every
+		// ordinary host binding remains synchronous; otherwise a callback could be
+		// delayed despite expecting immediate side effects or a Caller capability.
 		return true
 	}
 	// An imported funcref table can be mutated to contain a host or
@@ -4764,9 +4769,8 @@ func (in *Instance) startCancellationWatch(cancel context.Context, activeTrap []
 	}, nil
 }
 
-// replayHostLog runs the void host imports the last native call logged. Each
-// logged entry carries the single i32 argument the codegen captured; it is passed
-// to the stack-form HostFunc as params[0], with no results.
+// replayHostLog delivers the deferred events the last native call logged. Each
+// entry carries its import index and one i32 payload.
 func (in *Instance) replayHostLog() (err error) {
 	if len(in.hostLog) == 0 {
 		return nil
@@ -4807,19 +4811,25 @@ func (in *Instance) replayHostLog() (err error) {
 		}
 	}()
 	n := binary.LittleEndian.Uint32(in.hostLog)
-	var params [1]uint64
 	for i := uint32(0); i < n; i++ {
 		off := 8 + i*8
 		imp := binary.LittleEndian.Uint32(in.hostLog[off:])
 		arg := int32(binary.LittleEndian.Uint32(in.hostLog[off+4:]))
-		if int(imp) < len(in.c.Imports) {
-			if fn := in.hosts[in.c.Imports[imp]]; fn != nil {
-				params[0] = uint64(uint32(arg))
-				caller := in.beginHostCallScope()
-				func() {
-					defer caller.scope.end(caller.generation, caller.parentGeneration)
-					fn(caller, params[:], nil)
-				}()
+		if in.hostEvents != nil && int(imp) < len(in.hostEvents.byImport) {
+			binding := &in.hostEvents.byImport[imp]
+			if binding.eventI32 != nil {
+				if binding.gate != nil {
+					if err := binding.gate.enter(); err != nil {
+						panic(HostTrap{Err: err})
+					}
+					func() {
+						defer binding.gate.release()
+						binding.eventI32(arg)
+					}()
+				} else {
+					binding.eventI32(arg)
+				}
+				continue
 			}
 		}
 	}
