@@ -640,3 +640,97 @@ from separate reference and candidate binaries. CPU, allocation and mutex
 profiles were collected after every meaningful production step. The public
 single-call benchmark is selected separately from loop sub-benchmark filters
 so it is never silently excluded by a slash-qualified regular expression.
+
+## Typed call-gate checkpoint (2026-09-11)
+
+The first specialized gates now sit beside, rather than replace, the managed
+callback path:
+
+- `I32ToI32HostFunc` and `I32I32ToI32HostFunc` are checked against the imported
+  Wasm signature at instantiation. Their bound dispatch calls the typed function
+  directly, without constructing a `Caller` or exposing argument/result slices.
+- `ImportModuleBuilder.I32ToI32Func` and `I32I32ToI32Func` preserve plugin
+  shutdown admission and operation reservations without granting callback
+  capabilities.
+- `PrepareI32ToI32` and `PrepareI32I32ToI32` bind local exports once and expose
+  typed scalar calls over the existing compiler-verified prepared integer entry.
+  They retain `PreparedFunction`'s ownership rule: calls must not race instance
+  closure or another call on the same instance.
+
+The callback remains ordinary Go. It may allocate, block, panic, or run another
+instance through a closure. The typed callback has no callback-scoped authority
+and cannot synchronously re-enter its calling instance; callbacks that require
+re-entry use the managed `CallerHostFunc` and `InvokeFromHost` path.
+
+For a root-instance typed scalar import with no plugin gate or GC domain, the
+runtime now selects a fixed-slot portal. The engine passes at most two raw scalar
+slots and receives one raw result without constructing argument/result slices or
+entering the managed capability path. Independent instances retain their local
+execution lease while the callback runs (the public invocation already excludes
+a second call on that instance); shared execution releases and reacquires the
+global lease. Both modes restore native context when another instance or a host
+mutation invalidates the parked context. Stack growth plus `runtime.GC`, panic,
+blocking callbacks, and callbacks that run a different instance have dedicated
+tests. Gated typed plugin callbacks conservatively retain the managed admission
+path.
+
+Five matched Apple M4 Max samples of the 1,024-callback typed loop now measure
+46.2-48.2 us, median 46.7 us, at zero allocations. The matched guest-only
+control remains 673.5 ns per public invocation, yielding about 44.9 ns per
+typed callback after subtraction. The preceding typed binding plus activation
+cache checkpoint measured 77.0 us median, so the fixed-slot direct portal saves
+about 29.6 ns per callback. The experimental 20 ns callback target is therefore
+not yet met, but the retained lane is materially faster than the 88.6 ns managed
+callback and preserves ordinary Go callback semantics.
+
+A scheduler-elided resume prototype was not retained. On an exact prepared,
+single-callback entry with a complete short/acyclic continuation proof it
+measured 227.0 ns median with the managed resume and 228.2 ns with the raw
+resume, both at zero allocations. The current profile still attributes 27.7%
+cumulative time to `resumeNative` (including 16.3% flat in its raw assembly),
+but removing the Go scheduler transition did not produce a repeatable end-to-end
+win. Loops and generic/public entries remain ineligible without a complete
+continuation proof and a carried bounded-work budget.
+
+Reproduce the retained typed-gate measurements with:
+
+```bash
+go test ./src/wago -run '^$' \
+  -bench '^BenchmarkPreparedTypedI32ToI32$' \
+  -benchmem -count=5
+go test ./src/wago -run '^$' \
+  -bench '^BenchmarkHostRoundtripLoopTyped/mem0/parallelfalse/host1/n1024$' \
+  -benchmem -count=5
+go test ./src/wago -run '^$' \
+  -bench '^BenchmarkHostRoundtripLoopTyped/mem0/parallelfalse/host1/n1024$' \
+  -benchtime=5s -cpuprofile=/tmp/wago-typed-portal.pprof
+```
+
+Initial typed-dispatch baseline on Darwin/arm64, Go, Apple M4 Max, five
+500 ms samples; median (range):
+
+| Path | ns per 1,024 callbacks | B/op | allocs/op |
+|---|---:|---:|---:|
+| Managed `CallerHostFunc` | 91,436 (90,278-93,604) | 0 | 0 |
+| Typed `I32ToI32HostFunc` | 77,015 (76,800-78,252) | 0 | 0 |
+
+The matched 1,024-iteration guest control median was 673.5 ns per public
+invocation. Subtraction gives approximately 88.6 ns per managed callback and
+74.6 ns per typed callback at this checkpoint. The typed prepared Go-to-Wasm
+entry measured 5.805 ns/op median (5.689-5.963), 0 B/op and 0 allocations, and
+therefore meets the restricted 20 ns experimental target on this machine.
+
+An attempted conditional skip of invocation-context resolution was rejected:
+its typed-loop median moved from about 78.2 to 80.6 microseconds per 1,024 calls.
+Caching the already-published instance sidecar in the activation loop was kept;
+it improved both typed and managed medians while preserving cross-instance state
+selection.
+
+The Wasm-to-Go result remains well above 20 ns. An 8-second typed-loop CPU
+profile attributes 72.76% cumulative samples to the generic engine resume loop,
+with 18.27% cumulative in `resumeNative`, 10.35% flat in `resumeNativeRaw`, and
+roughly 9.7% combined flat time in scheduler re-entry/exit. Percentages overlap
+where cumulative. This profile motivated the fixed-slot portal above rather
+than another callback adapter. Scheduler-transition elision remains disabled:
+`AnalyzeNativeSegment` still has no compiler-produced complete-continuation
+graph or cross-segment work budget.

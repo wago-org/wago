@@ -223,6 +223,121 @@ func TestSyncHostImportSlotForm(t *testing.T) {
 	}
 }
 
+func TestTypedI32HostImports(t *testing.T) {
+	t.Run("one parameter", func(t *testing.T) {
+		sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+		body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b} // local.get 0; call 0; end
+		c := MustCompile(returningImportModule(sig, body))
+		defer c.Close()
+		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
+			"env.f": func(v int32) int32 { return v - 1 },
+		}})
+		if err != nil {
+			t.Fatalf("instantiate: %v", err)
+		}
+		defer in.Close()
+		if got, err := in.Invoke("g", I32(-41)); err != nil || len(got) != 1 || AsI32(got[0]) != -42 {
+			t.Fatalf("g(-41) = %v, %v; want -42", got, err)
+		}
+		if got := in.ensurePluginState().hostScope.sequence.Load(); got != 0 {
+			t.Fatalf("typed callback issued %d Caller capabilities, want 0", got)
+		}
+	})
+
+	t.Run("two parameters", func(t *testing.T) {
+		sig := wasmtest.FuncType([]wasm.ValType{wasm.I32, wasm.I32}, []wasm.ValType{wasm.I32})
+		body := []byte{0x00, 0x20, 0x00, 0x20, 0x01, 0x10, 0x00, 0x0b} // local.get 0, 1; call 0; end
+		c := MustCompile(returningImportModule(sig, body))
+		defer c.Close()
+		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
+			"env.f": I32I32ToI32HostFunc(func(a, b int32) int32 { return a + b }),
+		}})
+		if err != nil {
+			t.Fatalf("instantiate: %v", err)
+		}
+		defer in.Close()
+		if got, err := in.Invoke("g", I32(20), I32(22)); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
+			t.Fatalf("g(20, 22) = %v, %v; want 42", got, err)
+		}
+	})
+
+	t.Run("panic", func(t *testing.T) {
+		sig := wasmtest.FuncType([]wasm.ValType{wasm.I32}, []wasm.ValType{wasm.I32})
+		body := []byte{0x00, 0x20, 0x00, 0x10, 0x00, 0x0b}
+		c := MustCompile(returningImportModule(sig, body))
+		defer c.Close()
+		in, err := Instantiate(c, InstantiateOptions{Imports: Imports{
+			"env.f": I32ToI32HostFunc(func(int32) int32 { panic(HostExit{Code: 23}) }),
+		}})
+		if err != nil {
+			t.Fatalf("instantiate: %v", err)
+		}
+		defer in.Close()
+		_, err = in.Invoke("g", 0)
+		var exit *ExitError
+		if !errors.As(err, &exit) || exit.Code != 23 {
+			t.Fatalf("typed callback panic = %v, want ExitError(23)", err)
+		}
+	})
+}
+
+func TestTypedI32HostImportBindingRejectsInvalidFunctions(t *testing.T) {
+	oneI32 := FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}}
+	twoI32 := FuncSig{Params: []ValType{ValI32, ValI32}, Results: []ValType{ValI32}}
+	one, err := bindSyncHostImport(I32ToI32HostFunc(func(v int32) int32 { return v }), oneI32)
+	if err != nil || one.scalarKind != syncHostTypedI32 {
+		t.Fatalf("one-parameter typed binding = kind %d, %v; want kind %d", one.scalarKind, err, syncHostTypedI32)
+	}
+	two, err := bindSyncHostImport(I32I32ToI32HostFunc(func(a, b int32) int32 { return a + b }), twoI32)
+	if err != nil || two.scalarKind != syncHostTypedI32x2 {
+		t.Fatalf("two-parameter typed binding = kind %d, %v; want kind %d", two.scalarKind, err, syncHostTypedI32x2)
+	}
+
+	var nilOne I32ToI32HostFunc
+	if _, err := bindSyncHostImport(nilOne, oneI32); err == nil {
+		t.Fatal("nil typed host function was accepted")
+	}
+	if _, err := bindSyncHostImport(I32I32ToI32HostFunc(func(a, b int32) int32 { return a + b }), oneI32); err == nil {
+		t.Fatal("two-parameter typed host function accepted a one-parameter signature")
+	}
+	if _, err := bindSyncHostImport(I32ToI32HostFunc(func(v int32) int32 { return v }), twoI32); err == nil {
+		t.Fatal("one-parameter typed host function accepted a two-parameter signature")
+	}
+}
+
+func TestGatedTypedI32HostImportAdmission(t *testing.T) {
+	gate := newPluginCallGate("typed")
+	binding, err := bindSyncHostImport(gatedI32ToI32HostFunc{
+		fn:   func(v int32) int32 { return v + 1 },
+		gate: gate,
+	}, FuncSig{Params: []ValType{ValI32}, Results: []ValType{ValI32}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results := []uint64{0}
+	dispatchSyncHostScalar(nil, nil, &binding, []uint64{41}, results, hostInvocationContext{})
+	if results[0] != 42 || gate.state.Load() != 0 {
+		t.Fatalf("gated typed call = %v, gate state %#x; want [42], 0", results, gate.state.Load())
+	}
+
+	reservation, err := reservePluginOperation([]*pluginCallGate{gate})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate.state.Store(pluginCallGateClosed | 1)
+	results[0] = 0
+	dispatchSyncHostScalar(nil, nil, &binding, []uint64{41}, results, hostInvocationContext{reservation: reservation})
+	if results[0] != 42 {
+		t.Fatalf("reserved typed call during close = %v, want [42]", results)
+	}
+	reservation.release()
+	select {
+	case <-gate.drained:
+	default:
+		t.Fatal("typed plugin gate did not drain after its reservation")
+	}
+}
+
 func TestSyncHostImportV128SlotForm(t *testing.T) {
 	if !hostSupportsSIMD() {
 		t.Skip("host SIMD unavailable")

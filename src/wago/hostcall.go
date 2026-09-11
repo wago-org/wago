@@ -106,6 +106,21 @@ type Caller struct {
 // Legacy asynchronous host-call logging does not support CallerHostFunc.
 type CallerHostFunc func(caller Caller, params, results []uint64)
 
+// I32ToI32HostFunc is a capability-free synchronous host import specialized
+// for the Wasm signature (i32) -> i32. Its signature is checked once when the
+// instance is created. Calls do not construct a Caller or expose slot slices.
+// The callback still runs on an ordinary Go stack and may allocate or panic.
+// It carries no supported synchronous re-entry authority; use CallerHostFunc
+// when callback-scoped re-entry is required. Directly invoking a captured
+// Instance remains subject to ordinary instance serialization and is not a
+// substitute for Caller-authorized re-entry.
+type I32ToI32HostFunc func(int32) int32
+
+// I32I32ToI32HostFunc is a capability-free synchronous host import specialized
+// for the Wasm signature (i32, i32) -> i32. It has the same execution and
+// lifetime and re-entry rules as I32ToI32HostFunc.
+type I32I32ToI32HostFunc func(int32, int32) int32
+
 // Only runtime-issued representations carry authority. The snapshot is copied,
 // never replaced with the scope's current generation, including on re-entry.
 func resolveHostCaller(module HostModule) (instanceHostModule, bool) {
@@ -1097,14 +1112,36 @@ func bindHostImport(v any, sig FuncSig) (HostFunc, error) {
 }
 
 type syncHostBinding struct {
-	fn        HostFunc
-	concrete  CallerHostFunc
-	exact     *DefinedTypeDescriptor
-	importIdx uint32
-	scalar    bool
+	fn         HostFunc
+	concrete   CallerHostFunc
+	typedI32   I32ToI32HostFunc
+	typedI32x2 I32I32ToI32HostFunc
+	gate       *pluginCallGate
+	exact      *DefinedTypeDescriptor
+	importIdx  uint32
+	scalarKind uint8
 }
 
-func (b *syncHostBinding) callable() bool { return b.fn != nil || b.concrete != nil }
+const (
+	syncHostNonScalar uint8 = iota
+	syncHostScalar
+	syncHostTypedI32
+	syncHostTypedI32x2
+)
+
+type gatedI32ToI32HostFunc struct {
+	fn   I32ToI32HostFunc
+	gate *pluginCallGate
+}
+
+type gatedI32I32ToI32HostFunc struct {
+	fn   I32I32ToI32HostFunc
+	gate *pluginCallGate
+}
+
+func (b *syncHostBinding) callable() bool {
+	return b.fn != nil || b.concrete != nil || b.typedI32 != nil || b.typedI32x2 != nil
+}
 
 func (b *syncHostBinding) call(caller instanceHostModule, args, results []uint64) {
 	if b.concrete != nil {
@@ -1115,14 +1152,51 @@ func (b *syncHostBinding) call(caller instanceHostModule, args, results []uint64
 }
 
 func bindSyncHostImport(value any, sig FuncSig) (syncHostBinding, error) {
-	if fn, ok := value.(CallerHostFunc); ok {
+	switch fn := value.(type) {
+	case CallerHostFunc:
 		if fn == nil {
 			return syncHostBinding{}, fmt.Errorf("concrete host function is nil")
 		}
 		return syncHostBinding{concrete: fn}, nil
+	case I32ToI32HostFunc:
+		return bindI32ToI32HostFunc(fn, sig)
+	case func(int32) int32:
+		return bindI32ToI32HostFunc(I32ToI32HostFunc(fn), sig)
+	case I32I32ToI32HostFunc:
+		return bindI32I32ToI32HostFunc(fn, sig)
+	case func(int32, int32) int32:
+		return bindI32I32ToI32HostFunc(I32I32ToI32HostFunc(fn), sig)
+	case gatedI32ToI32HostFunc:
+		binding, err := bindI32ToI32HostFunc(fn.fn, sig)
+		binding.gate = fn.gate
+		return binding, err
+	case gatedI32I32ToI32HostFunc:
+		binding, err := bindI32I32ToI32HostFunc(fn.fn, sig)
+		binding.gate = fn.gate
+		return binding, err
 	}
 	fn, err := bindHostImport(value, sig)
 	return syncHostBinding{fn: fn}, err
+}
+
+func bindI32ToI32HostFunc(fn I32ToI32HostFunc, sig FuncSig) (syncHostBinding, error) {
+	if fn == nil {
+		return syncHostBinding{}, fmt.Errorf("typed host function is nil")
+	}
+	if len(sig.Params) != 1 || sig.Params[0] != ValI32 || len(sig.Results) != 1 || sig.Results[0] != ValI32 {
+		return syncHostBinding{}, fmt.Errorf("typed host function requires signature (i32) -> i32")
+	}
+	return syncHostBinding{typedI32: fn, scalarKind: syncHostTypedI32}, nil
+}
+
+func bindI32I32ToI32HostFunc(fn I32I32ToI32HostFunc, sig FuncSig) (syncHostBinding, error) {
+	if fn == nil {
+		return syncHostBinding{}, fmt.Errorf("typed host function is nil")
+	}
+	if len(sig.Params) != 2 || sig.Params[0] != ValI32 || sig.Params[1] != ValI32 || len(sig.Results) != 1 || sig.Results[0] != ValI32 {
+		return syncHostBinding{}, fmt.Errorf("typed host function requires signature (i32, i32) -> i32")
+	}
+	return syncHostBinding{typedI32x2: fn, scalarKind: syncHostTypedI32x2}, nil
 }
 
 // buildSyncHosts resolves every function import of a sync-mode module to one
@@ -1149,17 +1223,20 @@ func (c *Compiled) buildSyncHosts(imports Imports) ([]syncHostBinding, error) {
 		if err != nil {
 			return nil, fmt.Errorf("import %q: %w", key, err)
 		}
-		binding.importIdx, binding.scalar = uint32(i), true
+		binding.importIdx = uint32(i)
+		if binding.scalarKind == syncHostNonScalar {
+			binding.scalarKind = syncHostScalar
+		}
 		for _, typ := range sig.Params {
 			if isReferenceValType(typ) {
-				binding.scalar = false
+				binding.scalarKind = syncHostNonScalar
 				break
 			}
 		}
-		if binding.scalar {
+		if binding.scalarKind != syncHostNonScalar {
 			for _, typ := range sig.Results {
 				if isReferenceValType(typ) {
-					binding.scalar = false
+					binding.scalarKind = syncHostNonScalar
 					break
 				}
 			}
@@ -1280,6 +1357,24 @@ func (in *Instance) boundHostFuncRef(dispatch uint32) (boundHostFuncRefCall, boo
 }
 
 func dispatchSyncHostScalar(in *Instance, scope *hostCallScope, binding *syncHostBinding, args, results []uint64, invocation hostInvocationContext) {
+	enteredGate := false
+	if binding.gate != nil && (invocation.reservation == nil || !invocation.reservation.allows(binding.gate)) {
+		if err := binding.gate.enter(); err != nil {
+			panic(HostTrap{Err: err})
+		}
+		enteredGate = true
+	}
+	if enteredGate {
+		defer binding.gate.release()
+	}
+	if binding.typedI32 != nil {
+		results[0] = I32(binding.typedI32(AsI32(args[0])))
+		return
+	}
+	if binding.typedI32x2 != nil {
+		results[0] = I32(binding.typedI32x2(AsI32(args[0]), AsI32(args[1])))
+		return
+	}
 	caller := scope.beginReservedWithID(in, invocation.id, invocation.reservation)
 	caller.exact = binding.exact
 	defer caller.scope.end(caller.generation, caller.parentGeneration)
@@ -1363,7 +1458,7 @@ func (in *Instance) newHostDispatch() resolvedHostCall {
 			panic(missingHostFunc{importIdx: importIdx})
 		}
 		binding := &in.syncHosts[importIdx]
-		if binding.scalar {
+		if binding.scalarKind != syncHostNonScalar {
 			dispatchSyncHostScalar(in, scope, binding, args, results, invocation)
 		} else {
 			dispatchSyncHostReference(in, scope, ctrl, importIdx, binding, in.c.importFuncSigs[importIdx], binding.exact, in.c.Types, &in.c.Types, args, results, invocation)
@@ -1632,8 +1727,17 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 	}
 	// Resolve stable root context lazily in this activation, not on the instance.
 	// Each nested native entry receives a separate snapshot and fresh callbacks.
-	activation := hostLoopActivation{root: in, ctrl: offHeapSlicePtr(in.ctrl)}
-	err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch)
+	activation := hostLoopActivation{
+		root:                        in,
+		ctrl:                        offHeapSlicePtr(in.ctrl),
+		state:                       in.ensurePluginState(),
+		parkedNativeContextReusable: in.gc == nil && !in.c.threadedMemory0(),
+	}
+	if in.hasDirectTypedScalarHost() {
+		err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchTypedScalarPortal)
+	} else {
+		err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch)
+	}
 	goruntime.KeepAlive(in)
 	goruntime.KeepAlive(in.c)
 	return err
