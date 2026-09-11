@@ -55,7 +55,11 @@ type instanceActivations struct {
 }
 
 func markNativeActiveID(in *Instance, id invocationID) {
-	a := &in.ensurePluginState().activations
+	markNativeActiveState(in.ensurePluginState(), id)
+}
+
+func markNativeActiveState(state *instancePluginState, id invocationID) {
+	a := &state.activations
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if (a.count == 0 && a.other[id] == 0) || (a.count != 0 && a.id == id) {
@@ -76,7 +80,11 @@ func markNativeActiveID(in *Instance, id invocationID) {
 }
 
 func unmarkNativeActiveID(in *Instance, id invocationID) {
-	a := &in.ensurePluginState().activations
+	unmarkNativeActiveState(in.ensurePluginState(), id)
+}
+
+func unmarkNativeActiveState(state *instancePluginState, id invocationID) {
+	a := &state.activations
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.count != 0 && a.id == id {
@@ -227,12 +235,16 @@ func (in *Instance) invalidateNativeContext() {
 }
 
 func (in *Instance) canReuseParkedNativeContext(version uint64) bool {
+	return in.canReuseParkedNativeContextWithState(version, in.ensurePluginState())
+}
+
+func (in *Instance) canReuseParkedNativeContextWithState(version uint64, state *instancePluginState) bool {
 	// Independent admission excludes imported resources. Exporting a resource
 	// or native function revokes it. GC and threaded memory remain conservative:
 	// their shared owners can change native state outside this instance's entry.
 	return version != ^uint64(0) && in.usesIndependentExecution() &&
 		in.gc == nil && !in.c.threadedMemory0() &&
-		in.ensurePluginState().nativeContextVersion.Load() == version
+		state.nativeContextVersion.Load() == version
 }
 
 // refreshMemoryDirectory rebinds the instance-owned indexed-memory directory

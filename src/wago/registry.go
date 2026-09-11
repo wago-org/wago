@@ -160,15 +160,17 @@ func CapabilityDocs(docs string) CapabilityOption {
 
 // registeredImport is one declared host function.
 type registeredImport struct {
-	module   string
-	name     string
-	fn       HostFunc
-	concrete CallerHostFunc
-	params   []ValType
-	results  []ValType
-	cap      Capability
-	hasCap   bool
-	docs     string
+	module     string
+	name       string
+	fn         HostFunc
+	concrete   CallerHostFunc
+	typedI32   I32ToI32HostFunc
+	typedI32x2 I32I32ToI32HostFunc
+	params     []ValType
+	results    []ValType
+	cap        Capability
+	hasCap     bool
+	docs       string
 }
 
 func (i *registeredImport) key() string { return i.module + "." + i.name }
@@ -207,6 +209,32 @@ func (m *ImportModuleBuilder) CallerFunc(name string, fn CallerHostFunc) *Import
 		return &ImportFuncBuilder{}
 	}
 	imp := &registeredImport{module: m.module, name: name, concrete: fn}
+	if m.reg != nil && !m.reg.sealed {
+		m.reg.imports = append(m.reg.imports, imp)
+	}
+	return &ImportFuncBuilder{imp: imp}
+}
+
+// I32ToI32Func declares a capability-free typed synchronous import. Params and
+// Results are fixed by the callback type and need not be declared separately.
+func (m *ImportModuleBuilder) I32ToI32Func(name string, fn I32ToI32HostFunc) *ImportFuncBuilder {
+	if m == nil {
+		return &ImportFuncBuilder{}
+	}
+	imp := &registeredImport{module: m.module, name: name, typedI32: fn, params: []ValType{ValI32}, results: []ValType{ValI32}}
+	if m.reg != nil && !m.reg.sealed {
+		m.reg.imports = append(m.reg.imports, imp)
+	}
+	return &ImportFuncBuilder{imp: imp}
+}
+
+// I32I32ToI32Func declares a capability-free typed synchronous import. Params
+// and Results are fixed by the callback type and need not be declared separately.
+func (m *ImportModuleBuilder) I32I32ToI32Func(name string, fn I32I32ToI32HostFunc) *ImportFuncBuilder {
+	if m == nil {
+		return &ImportFuncBuilder{}
+	}
+	imp := &registeredImport{module: m.module, name: name, typedI32x2: fn, params: []ValType{ValI32, ValI32}, results: []ValType{ValI32}}
 	if m.reg != nil && !m.reg.sealed {
 		m.reg.imports = append(m.reg.imports, imp)
 	}

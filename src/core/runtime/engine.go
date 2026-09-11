@@ -270,6 +270,22 @@ func (e *Engine) CallWithHost(code uintptr, serArgs, linMem, trap, results, ctrl
 // reserved linear-memory base may not be representable by LinearMemory's Go
 // slice. The guard handler is installed/registered by JobMemory creation.
 func (e *Engine) CallWithHostBase(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, host HostCall) error {
+	return e.callWithHostBase(code, serArgs, linMemBase, trap, results, ctrl, host, nil)
+}
+
+// ScalarHostCall is an optional fixed-slot portal for the common scalar import
+// shapes. rawSlots packs parameter slots in the low 16 bits and result slots in
+// the high 16 bits. Returning handled=false preserves the generic slice path.
+type ScalarHostCall func(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (result uint64, handled bool)
+
+// CallWithHostBaseScalar adds a fixed-slot portal without changing the generic
+// host callback contract used for unsupported signatures and cross-instance
+// frames.
+func (e *Engine) CallWithHostBaseScalar(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, host HostCall, scalar ScalarHostCall) error {
+	return e.callWithHostBase(code, serArgs, linMemBase, trap, results, ctrl, host, scalar)
+}
+
+func (e *Engine) callWithHostBase(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, host HostCall, scalar ScalarHostCall) error {
 	if linMemBase == 0 {
 		return fmt.Errorf("jit: host-call linear-memory base is zero")
 	}
@@ -285,11 +301,11 @@ func (e *Engine) CallWithHostBase(code uintptr, serArgs []byte, linMemBase uintp
 	var callErr error
 	if e.hostScratchInUse {
 		var argBuf, resBuf [maxHostArity]uint64
-		callErr = e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, argBuf[:], resBuf[:])
+		callErr = e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, scalar, argBuf[:], resBuf[:])
 	} else {
 		e.hostScratchInUse = true
 		defer func() { e.hostScratchInUse = false }()
-		callErr = e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, e.hostArgs[:], e.hostResults[:])
+		callErr = e.callWithHostLoop(code, serArgs, linMemBase, trap, results, ctrl, ctrlPtr, host, scalar, e.hostArgs[:], e.hostResults[:])
 	}
 	// Native frames can retain these addresses across every host park/resume.
 	goruntime.KeepAlive(serArgs)
@@ -325,7 +341,7 @@ func hostCtrlFrame(ptr uintptr) []byte {
 	return unsafe.Slice((*byte)(offHeapPointer(ptr)), ctrlFrameSize)
 }
 
-func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, ctrlPtr uintptr, host HostCall, argBuf, resBuf []uint64) error {
+func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintptr, trap, results, ctrl []byte, ctrlPtr uintptr, host HostCall, scalar ScalarHostCall, argBuf, resBuf []uint64) error {
 	rootCtrl, rootCtrlPtr := ctrl, ctrlPtr
 	// The host-call re-entry loop is intentionally unbounded: a single guest
 	// invocation may legitimately make an arbitrary number of host calls (e.g. a
@@ -380,6 +396,19 @@ func (e *Engine) callWithHostLoop(code uintptr, serArgs []byte, linMemBase uintp
 				clear(wideResults[:nres])
 				host(ctrlPtr, imp, args[:n], wideResults[:nres])
 				continue
+			}
+			if scalar != nil && n <= 2 && nres == 1 {
+				var a0, a1 uint64
+				if n != 0 {
+					a0 = binary.LittleEndian.Uint64(ctrl[hcArgs:])
+				}
+				if n == 2 {
+					a1 = binary.LittleEndian.Uint64(ctrl[hcArgs+8:])
+				}
+				if result, handled := scalar(ctrlPtr, imp, raw, a0, a1); handled {
+					binary.LittleEndian.PutUint64(ctrl[hcResults:], result)
+					continue
+				}
 			}
 			for k := 0; k < n; k++ {
 				argBuf[k] = binary.LittleEndian.Uint64(ctrl[hcArgs+k*8:])

@@ -42,6 +42,31 @@ func BenchmarkHostSchedulerPotential(b *testing.B) {
 	}
 }
 
+func BenchmarkPreparedTypedI32ToI32(b *testing.B) {
+	c, err := Compile(NewRuntimeConfig().WithBoundsChecks(BoundsChecksExplicit), benchAddOneModule())
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := Instantiate(c, InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareI32ToI32("f")
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got, err := fn.Call(41)
+		if err != nil || got != 42 {
+			b.Fatalf("invoke=%d, %v", got, err)
+		}
+	}
+}
+
 func TestHostImportsRemainOutsideBoundedSchedulerAdmission(t *testing.T) {
 	for _, fixture := range []struct {
 		name        string

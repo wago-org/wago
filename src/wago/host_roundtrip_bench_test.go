@@ -67,14 +67,26 @@ func hostRoundtripLoopFixture(b testing.TB, memories int, collector, imported, d
 }
 
 func BenchmarkHostRoundtripLoop(b *testing.B) {
-	benchmarkHostRoundtripLoop(b, false)
+	benchmarkHostRoundtripLoop(b, hostRoundtripLegacy)
 }
 
 func BenchmarkHostRoundtripLoopCaller(b *testing.B) {
-	benchmarkHostRoundtripLoop(b, true)
+	benchmarkHostRoundtripLoop(b, hostRoundtripCaller)
 }
 
-func benchmarkHostRoundtripLoop(b *testing.B, concrete bool) {
+func BenchmarkHostRoundtripLoopTyped(b *testing.B) {
+	benchmarkHostRoundtripLoop(b, hostRoundtripTyped)
+}
+
+type hostRoundtripCallback uint8
+
+const (
+	hostRoundtripLegacy hostRoundtripCallback = iota
+	hostRoundtripCaller
+	hostRoundtripTyped
+)
+
+func benchmarkHostRoundtripLoop(b *testing.B, callbackKind hostRoundtripCallback) {
 	for _, memories := range []int{0, 1, 4} {
 		b.Run(fmt.Sprintf("mem%d", memories), func(b *testing.B) {
 			cfg := NewRuntimeConfig()
@@ -100,8 +112,10 @@ func benchmarkHostRoundtripLoop(b *testing.B, concrete bool) {
 							instances := make([]*Instance, workers)
 							for i := range instances {
 								var callback any = HostFunc(func(_ HostModule, p, r []uint64) { r[0] = p[0] + 1 })
-								if concrete {
+								if callbackKind == hostRoundtripCaller {
 									callback = CallerHostFunc(func(_ Caller, p, r []uint64) { r[0] = p[0] + 1 })
+								} else if callbackKind == hostRoundtripTyped {
+									callback = I32ToI32HostFunc(func(v int32) int32 { return v + 1 })
 								}
 								in, err := Instantiate(c, InstantiateOptions{Imports: Imports{"env.step": callback}})
 								if err != nil {

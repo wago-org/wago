@@ -28,3 +28,26 @@ func TestScalarSyncHostCallUsesOneScopedHandleAllocation(t *testing.T) {
 		t.Fatalf("scalar synchronous host-call allocations = %.1f, want at most 1", allocs)
 	}
 }
+
+func TestTypedScalarSyncHostCallAllocatesNothing(t *testing.T) {
+	compiled := MustCompile(benchReturningImportModule())
+	defer compiled.Close()
+	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
+		"env.f": I32ToI32HostFunc(func(v int32) int32 { return v + 1 }),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer instance.Close()
+	if got, err := instance.Invoke("g", I32(1)); err != nil || len(got) != 1 || got[0] != 2 {
+		t.Fatalf("warm typed host call = %v, %v", got, err)
+	}
+	allocs := testing.AllocsPerRun(100, func() {
+		if _, err := instance.Invoke("g", I32(1)); err != nil {
+			panic(err)
+		}
+	})
+	if allocs != 0 {
+		t.Fatalf("typed scalar synchronous host-call allocations = %.1f, want 0", allocs)
+	}
+}
