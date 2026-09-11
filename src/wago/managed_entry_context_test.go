@@ -228,12 +228,18 @@ func TestManagedForkContext(t *testing.T) {
 						t.Errorf("Fork = %v, %v", child, err)
 					}
 					if child != nil {
+						released := make(chan struct{})
+						child.Instance().referenceLifetime().afterPhysicalRelease(func() { close(released) })
 						if child.Instance().currentInvocationID() != 0 {
 							t.Error("start identity leaked")
 						}
 						if err := child.Close(); err != nil {
 							t.Error(err)
 						}
+						if err := child.WaitClosed(); err != nil {
+							t.Error(err)
+						}
+						awaitCloseSignal(t, released)
 					}
 					if after := managedReservations(manager, gate); after != before {
 						t.Errorf("reservations: before=%+v after=%+v", before, after)

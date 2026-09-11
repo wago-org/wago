@@ -57,8 +57,8 @@ type Instance struct {
 	closed                  bool          // logical close; retained references may defer physical release
 	finalizing              bool          // one goroutine owns quiescent finalization
 	resourcesClosed         bool
-	icNext                  uint8 // round-robin invoke-cache replacement cursor
-	physicalFinalizer       func()
+	icNext                  uint8                    // round-robin invoke-cache replacement cursor
+	finalizers              *instanceFinalizers      // optional lifecycle callbacks; lifeMu protects access
 	ownsMem                 bool                     // false when memory 0 is host-imported (don't close it)
 	memoryDir               *instanceMemoryDirectory // allocated only for indexed memory execution
 	syncMode                bool                     // true when host imports use the synchronous re-entry protocol

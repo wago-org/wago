@@ -30,19 +30,19 @@ type InstanceManager struct {
 	dispatchBase uintptr
 	pending      sync.WaitGroup
 	draining     []*Instance
+	drainOnce    sync.Once
+	drainErr     error
 }
 
 // ManagedInstance is one instance whose lifetime is owned by an
-// InstanceManager. Instance exposes the normal call surface; Close releases the
-// ownership record and closes the instance exactly once.
+// InstanceManager. Close initiates logical close; WaitClosed waits for terminal
+// completion. Manager ownership ends automatically at terminal completion.
 type ManagedInstance struct {
 	mu          sync.Mutex
 	manager     *InstanceManager
 	value       *Instance
 	closed      bool
-	done        chan struct{}
 	closedValue *Instance
-	err         error
 	memoryBytes uint64
 }
 
@@ -164,15 +164,21 @@ func managedMemoryReservation(mod *Module) (uint64, error) {
 func (m *InstanceManager) adopt(in *Instance, memoryBytes uint64) (*ManagedInstance, error) {
 	owned := &ManagedInstance{manager: m, value: in, memoryBytes: memoryBytes}
 	in.referenceLifetime().afterPhysicalRelease(func() { m.releaseReservation(memoryBytes) })
+	// Registration and terminal detachment use the same lock order. A child
+	// closed during creation must not acquire an ownership record afterward.
+	in.lifeMu.Lock()
 	m.mu.Lock()
-	if m.closed {
+	if m.closed || in.isLogicallyClosed() {
 		m.mu.Unlock()
+		in.lifeMu.Unlock()
 		closeErr := in.closeAndWait()
-		return nil, joinPrimary(fmt.Errorf("wago: instance manager closed during instantiation"), closeErr)
+		return nil, joinPrimary(fmt.Errorf("wago: instance or manager closed during instantiation"), closeErr)
 	}
 	m.instances[owned] = struct{}{}
 	m.byInstance[in] = owned
+	in.finalizers.managed = owned
 	m.mu.Unlock()
+	in.lifeMu.Unlock()
 	return owned, nil
 }
 
@@ -416,49 +422,50 @@ func (m *ManagedInstance) Identity() InstanceIdentity {
 	return InstanceIdentity{value: m.Instance()}
 }
 
-// Close closes the instance and waits for all terminal close hooks. It must not
-// be called from a lifecycle callback whose completion it waits for; use
-// CloseLogical from those callbacks. Retained references may delay resource release.
+// Close initiates logical close without waiting for active invocations or
+// terminal close hooks. The first call runs BeforeClose synchronously and
+// returns its logical-close error. Repeated calls, including calls from
+// BeforeClose and AfterClose, join the same operation without waiting for it.
+// Manager ownership is removed automatically at terminal completion.
 func (m *ManagedInstance) Close() error {
-	in, err := m.closeLogical()
-	if m != nil {
-		m.mu.Lock()
-		done := m.done
-		m.mu.Unlock()
-		// A concurrent logical closer may not yet have called Instance.Close.
-		<-done
-	}
-	if in != nil {
-		err = in.waitTerminalClose()
-	}
-	m.releaseOwnership()
-	return err
-}
-
-// CloseLogical closes admission without waiting for active invocations or an
-// ongoing close callback. It is safe to call again from BeforeClose or AfterClose
-// on the same instance. The first call can run hooks synchronously. Use Close
-// outside those callbacks to wait for terminal completion and receive hook errors.
-func (m *ManagedInstance) CloseLogical() error {
 	_, err := m.closeLogical()
 	return err
 }
 
-// Keep an instance in the manager's drain set until its terminal close has
-// completed, including when a concurrent ManagedInstance.Close owns the close.
-func (m *ManagedInstance) releaseOwnership() {
-	if m == nil {
-		return
+// WaitClosed initiates close if necessary, then waits until logical close,
+// admitted invocations, and terminal close hooks are complete. It returns the
+// joined logical and terminal errors, without waiting for retained references
+// to release physical resources. Do not call it from a close callback on the
+// same instance: that callback is part of the completion condition.
+func (m *ManagedInstance) WaitClosed() error {
+	in, err := m.closeLogical()
+	if in != nil {
+		return in.waitTerminalClose()
 	}
+	return err
+}
+
+// Called exactly once by the instance's terminal finalizer, with lifeMu held.
+// Publish completion under the manager lock so drain cannot miss a record
+// whose terminal work is still in progress. No plugin hooks run under locks.
+func (m *ManagedInstance) finishTerminalClose(state *instanceCloseState) {
 	m.mu.Lock()
 	manager := m.manager
 	m.manager = nil
-	m.mu.Unlock()
+	if !m.closed {
+		m.closed, m.closedValue, m.value = true, m.value, nil
+		m.memoryBytes = 0
+	}
 	if manager != nil {
 		manager.mu.Lock()
 		delete(manager.instances, m)
+		delete(manager.byInstance, m.closedValue)
+		close(state.terminalDone)
 		manager.mu.Unlock()
+	} else {
+		close(state.terminalDone)
 	}
+	m.mu.Unlock()
 }
 
 func (m *ManagedInstance) closeLogical() (*Instance, error) {
@@ -466,32 +473,23 @@ func (m *ManagedInstance) closeLogical() (*Instance, error) {
 		return nil, nil
 	}
 	m.mu.Lock()
-	if m.closed {
-		in, err := m.closedValue, m.err
-		m.mu.Unlock()
-		return in, err
+	if !m.closed {
+		m.closed, m.closedValue, m.value = true, m.value, nil
+		m.memoryBytes = 0
 	}
-	m.closed = true
-	m.done = make(chan struct{})
-	in, manager, done := m.value, m.manager, m.done
-	m.closedValue = in
-	m.value = nil
-	m.memoryBytes = 0
+	in, manager := m.closedValue, m.manager
 	m.mu.Unlock()
-	var err error
-	if in != nil {
-		err = in.Close()
-	}
 	if manager != nil {
 		manager.mu.Lock()
 		delete(manager.byInstance, in)
 		manager.mu.Unlock()
 	}
-	m.mu.Lock()
-	m.err = err
-	close(done)
-	m.mu.Unlock()
-	return in, err
+	// Instance.Close owns preparation and its result. Calling it even when
+	// another managed caller won admission avoids a second publication barrier.
+	if in != nil {
+		return in, in.Close()
+	}
+	return nil, nil
 }
 
 func (m *InstanceManager) releaseReservation(memoryBytes uint64) {
@@ -526,6 +524,11 @@ func (m *InstanceManager) drain() error {
 	if m == nil {
 		return nil
 	}
+	m.drainOnce.Do(func() { m.drainErr = m.drainInstances() })
+	return m.drainErr
+}
+
+func (m *InstanceManager) drainInstances() error {
 	// closed was published under m.mu before this wait, so no later pending.Add
 	// can race the Wait. In-flight creators either fail or close their partial
 	// instance in adopt before signaling Done.
@@ -538,15 +541,13 @@ func (m *InstanceManager) drain() error {
 	m.mu.Unlock()
 	var errs []error
 	for _, managed := range owned {
-		_ = managed.CloseLogical()
+		_ = managed.Close()
 	}
 	m.mu.Lock()
 	list := m.draining
-	m.instances = nil
-	m.byInstance = nil
 	m.mu.Unlock()
 	for _, managed := range owned {
-		if err := managed.Close(); err != nil {
+		if err := managed.WaitClosed(); err != nil {
 			errs = append(errs, err)
 		}
 	}

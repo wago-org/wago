@@ -115,7 +115,7 @@ func TestCloseTerminalWaiters(t *testing.T) {
 					if err := event.Instance.value.Close(); err != nil {
 						panic(err)
 					}
-					if err := owned.CloseLogical(); err != nil {
+					if err := owned.Close(); err != nil {
 						panic(err)
 					}
 					event.Instance.value.releaseResourceRoot()
@@ -142,7 +142,7 @@ func TestCloseTerminalWaiters(t *testing.T) {
 					t.Fatal(err)
 				}
 				if waiter == "drain-logically-closed" {
-					if _, err := owned.closeLogical(); err != nil {
+					if err := owned.Close(); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -161,7 +161,7 @@ func TestCloseTerminalWaiters(t *testing.T) {
 					case "instance":
 						done <- in.closeAndWait()
 					case "managed":
-						done <- owned.Close()
+						done <- owned.WaitClosed()
 					case "drain", "drain-logically-closed":
 						done <- manager.close()
 					}
@@ -192,14 +192,14 @@ func TestCloseTerminalWaiters(t *testing.T) {
 	}
 }
 
-func TestManagedCloseLogicalReentry(t *testing.T) {
+func TestManagedCloseCallbackReentry(t *testing.T) {
 	for _, phase := range []string{"before", "after"} {
 		t.Run(phase, func(t *testing.T) {
 			var owned *ManagedInstance
 			var calls atomic.Int32
 			hook := func(InstanceCloseEvent) {
 				calls.Add(1)
-				if err := owned.CloseLogical(); err != nil {
+				if err := owned.Close(); err != nil {
 					panic(err)
 				}
 			}
@@ -219,7 +219,13 @@ func TestManagedCloseLogicalReentry(t *testing.T) {
 				t.Fatal(err)
 			}
 			done := make(chan error, 1)
-			go func() { done <- owned.Close() }()
+			go func() {
+				if err := owned.Close(); err != nil {
+					done <- err
+					return
+				}
+				done <- owned.WaitClosed()
+			}()
 			if err := awaitCloseResult(t, done); err != nil {
 				t.Fatal(err)
 			}
@@ -279,7 +285,7 @@ func awaitTerminalWait(t *testing.T, done chan error) {
 			return
 		}
 		for _, stack := range strings.Split(string(buf[:n]), "\n\n") {
-			if strings.Contains(stack, "[chan receive]:") && strings.Contains(stack, "(*Instance).waitTerminalClose(") && strings.Contains(stack, "TestCloseTerminalWaiters.func") {
+			if strings.Contains(stack, "[chan receive]:") && strings.Contains(stack, "(*Instance).waitTerminalClose(") && strings.Contains(stack, strings.Split(t.Name(), "/")[0]+".func") {
 				return
 			}
 		}

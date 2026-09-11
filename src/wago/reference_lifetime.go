@@ -2,6 +2,13 @@ package wago
 
 import "sync"
 
+// Only instances with managed ownership or physical-release callbacks need
+// this state. Terminal detachment and physical release remain separate phases.
+type instanceFinalizers struct {
+	managed  *ManagedInstance
+	physical func()
+}
+
 // referenceLifetimeEvent is the complete interface between instance lifecycle
 // and reference-store accounting. Events are idempotent and may arrive in any
 // order; the store releases tokens only after the required state converges.
@@ -56,14 +63,14 @@ func (lifetime referenceLifetime) finalize() {
 		return
 	}
 	in.resourcesClosed = true
-	finalizer := in.physicalFinalizer
-	in.physicalFinalizer = nil
+	finalizers := in.finalizers
+	in.finalizers = nil
 	in.lifeMu.Unlock()
 
 	lifetime.notifyStore(store, referenceLifetimeResourcesReleased)
 	in.releaseResources()
-	if finalizer != nil {
-		finalizer()
+	if finalizers != nil && finalizers.physical != nil {
+		finalizers.physical()
 	}
 }
 
@@ -78,11 +85,14 @@ func (lifetime referenceLifetime) afterPhysicalRelease(fn func()) {
 		fn()
 		return
 	}
-	if in.physicalFinalizer == nil {
-		in.physicalFinalizer = fn
+	if in.finalizers == nil {
+		in.finalizers = &instanceFinalizers{}
+	}
+	if in.finalizers.physical == nil {
+		in.finalizers.physical = fn
 	} else {
-		previous := in.physicalFinalizer
-		in.physicalFinalizer = func() {
+		previous := in.finalizers.physical
+		in.finalizers.physical = func() {
 			previous()
 			fn()
 		}

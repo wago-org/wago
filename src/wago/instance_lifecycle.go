@@ -42,6 +42,11 @@ func (in *Instance) Close() (err error) {
 		}
 		state.result = err
 		close(state.done)
+		// Managed terminal work must not detach ownership before the logical
+		// result is available to drain and WaitClosed. Retry after publication.
+		if in.hasManagedOwner() {
+			in.tryFinalize()
+		}
 	}()
 	return in.closeOnce()
 }
@@ -253,10 +258,9 @@ func (in *Instance) endInvocation() {
 			}
 			in.tryFinalize()
 		}
-		// Keep the Runtime operation admitted through terminal instance
-		// finalization. Runtime shutdown uses this count as its barrier, so
-		// publishing it earlier could let WaitClosed return before reference
-		// tokens and store membership were released.
+		// Keep the Runtime operation admitted through invocation finalization.
+		// Managed terminal hooks can finish asynchronously; manager drain
+		// separately waits for terminalDone before provider teardown.
 		if in.rt != nil {
 			in.rt.mu.Lock()
 			if in.rt.activeOperations == 0 {
@@ -281,19 +285,25 @@ func (in *Instance) tryFinalize() {
 		if !closeState.prepared.Load() {
 			return
 		}
+		managed := in.hasManagedOwner()
+		if managed {
+			select {
+			case <-closeState.done:
+			default:
+				return
+			}
+		}
 		closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
 		if closeState.terminalStarted.CompareAndSwap(false, true) {
-			if closeState.hooks != nil && closeState.event != nil {
-				var errs []error
-				for i := len(closeState.hooks.afterClose) - 1; i >= 0; i-- {
-					fn := closeState.hooks.afterClose[i]
-					if err := callShutdownSafely("AfterClose", func() { fn(*closeState.event) }); err != nil {
-						errs = append(errs, err)
-					}
-				}
-				closeState.terminalResult = errors.Join(errs...)
+			if managed && closeState.hooks != nil && len(closeState.hooks.afterClose) != 0 {
+				// Managed Close must return without waiting for terminal hooks.
+				// One short-lived worker owns hooks, detachment, and finalization;
+				// there is no per-instance background waiter for ownership cleanup.
+				go in.finishTerminalClose(closeState)
+			} else {
+				in.finishTerminalClose(closeState)
 			}
-			close(closeState.terminalDone)
+			return
 		} else {
 			// A hook can release a reference and reenter tryFinalize. Do not
 			// wait for that hook here, or release its resources underneath it.
@@ -304,6 +314,36 @@ func (in *Instance) tryFinalize() {
 			}
 		}
 	}
+	in.referenceLifetime().finalize()
+}
+
+func (in *Instance) hasManagedOwner() bool {
+	in.lifeMu.Lock()
+	managed := in.finalizers != nil && in.finalizers.managed != nil
+	in.lifeMu.Unlock()
+	return managed
+}
+
+func (in *Instance) finishTerminalClose(state *instanceCloseState) {
+	if state.hooks != nil && state.event != nil {
+		var errs []error
+		for i := len(state.hooks.afterClose) - 1; i >= 0; i-- {
+			fn := state.hooks.afterClose[i]
+			if err := callShutdownSafely("AfterClose", func() { fn(*state.event) }); err != nil {
+				errs = append(errs, err)
+			}
+		}
+		state.terminalResult = errors.Join(errs...)
+	}
+	in.lifeMu.Lock()
+	if in.finalizers != nil && in.finalizers.managed != nil {
+		managed := in.finalizers.managed
+		in.finalizers.managed = nil
+		managed.finishTerminalClose(state)
+	} else {
+		close(state.terminalDone)
+	}
+	in.lifeMu.Unlock()
 	in.referenceLifetime().finalize()
 }
 
