@@ -10,9 +10,10 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
-const REQUIRED_RUNTIMES = ["wago", "wazero", "wasmtime", "v8", "wasm3", "wasmi", "wavm"];
+const REQUIRED_RUNTIMES = ["wago", "wazy", "wazero", "wasmtime", "v8", "wasm3", "wasmi", "wavm"];
 const REQUIRED_TAGS = {
   wago: "single-pass",
+  wazy: "compiler",
   wazero: "compiler",
   wasmtime: "cranelift",
   v8: "turboshaft",
