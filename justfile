@@ -21,7 +21,7 @@ docs:
 coverage output=env('COVERPROFILE', 'coverage.out'):
     COVERPROFILE='{{ output }}' scripts/coverage.sh
 
-# Run/count every public gate and refresh VERIFICATION.md.
+# Run and count every public verification gate.
 verify:
     scripts/verification.sh
 
