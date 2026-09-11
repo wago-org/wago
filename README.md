@@ -56,7 +56,7 @@ irm https://install.wago.sh/ps | iex
 Or run the installer with Go:
 
 ```sh
-go run github.com/wago-org/wago/cli/wago-installer@latest
+go run github.com/wago-org/wago/cli/wago-installer@main
 ```
 
 These commands install the Wago manager. Run `wago version install` to install
