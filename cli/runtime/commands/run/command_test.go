@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -365,6 +366,70 @@ func TestRunExecValueMode(t *testing.T) {
 	implementation{environment: testEnvironment{}}.Run(command.NewContext([]string{path}, nil, map[string]bool{"no-deferred-bounds-checking": true}))
 }
 
+func TestRunExecInvokesReactorInitializerInOrder(t *testing.T) {
+	const helper = "WAGO_TEST_RUN_REACTOR_SEQUENCE"
+	if os.Getenv(helper) != "" {
+		cmd := Command(testEnvironment{})
+		args, err := cmd.Normalize([]string{
+			os.Getenv(helper), "--invoke", "_initialize", "--invoke", "value",
+		})
+		if err != nil {
+			panic(err)
+		}
+		ctx, err := cmd.Parse("wago run", args)
+		if err != nil {
+			panic(err)
+		}
+		implementation{environment: testEnvironment{}}.Run(ctx)
+		os.Exit(0)
+	}
+	path := filepath.Join(t.TempDir(), "reactor.wasm")
+	if err := os.WriteFile(path, reactorModule(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRunExecInvokesReactorInitializerInOrder$", "-test.count=1")
+	cmd.Env = append(os.Environ(), helper+"="+path, "WAGO_BARE=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("reactor invocation sequence: %v\n%s", err, output)
+	}
+	if got := string(output); got != "42\n" {
+		t.Fatalf("output = %q, want 42", got)
+	}
+}
+
+func TestRunExecMultipleInvokesConsumeArgumentsByArity(t *testing.T) {
+	const helper = "WAGO_TEST_RUN_INVOKE_SEQUENCE"
+	if os.Getenv(helper) != "" {
+		cmd := Command(testEnvironment{})
+		args, err := cmd.Normalize([]string{
+			os.Getenv(helper), "--invoke", "set", "7:i32", "--invoke", "add", "35", "subcommand",
+		})
+		if err != nil {
+			panic(err)
+		}
+		ctx, err := cmd.Parse("wago run", args)
+		if err != nil {
+			panic(err)
+		}
+		implementation{environment: testEnvironment{}}.Run(ctx)
+		os.Exit(0)
+	}
+	path := filepath.Join(t.TempDir(), "sequence.wasm")
+	if err := os.WriteFile(path, invokeSequenceModule(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestRunExecMultipleInvokesConsumeArgumentsByArity$", "-test.count=1")
+	cmd.Env = append(os.Environ(), helper+"="+path, "WAGO_BARE=1")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("ordered invocation: %v\n%s", err, output)
+	}
+	if got := string(output); got != "42\n" {
+		t.Fatalf("output = %q, want 42", got)
+	}
+}
+
 func TestRunExecGCHeapOverride(t *testing.T) {
 	if wago.CoreFeaturesV3&^wago.SupportedFeatures() != 0 {
 		t.Skip("complete Core 3 execution is unavailable on this platform")
@@ -447,5 +512,39 @@ func TestRunValueParsingAndFormatting(t *testing.T) {
 	}
 	if got := trapReason(errors.New("plain error")); got != "plain error" {
 		t.Fatalf("plain trap reason = %q", got)
+	}
+}
+
+func reactorModule() []byte {
+	// (module
+	//   (global $initialized (mut i32) (i32.const 0))
+	//   (func (export "_initialize") (global.set $initialized (i32.const 1)))
+	//   (func (export "value") (result i32)
+	//     (if (result i32) (global.get $initialized)
+	//       (then (i32.const 42)) (else unreachable))))
+	return []byte{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x60,
+		0x00, 0x00, 0x60, 0x00, 0x01, 0x7f, 0x03, 0x03, 0x02, 0x00, 0x01, 0x06,
+		0x06, 0x01, 0x7f, 0x01, 0x41, 0x00, 0x0b, 0x07, 0x17, 0x02, 0x0b, 0x5f,
+		0x69, 0x6e, 0x69, 0x74, 0x69, 0x61, 0x6c, 0x69, 0x7a, 0x65, 0x00, 0x00,
+		0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x00, 0x01, 0x0a, 0x14, 0x02, 0x06,
+		0x00, 0x41, 0x01, 0x24, 0x00, 0x0b, 0x0b, 0x00, 0x23, 0x00, 0x04, 0x7f,
+		0x41, 0x2a, 0x05, 0x00, 0x0b, 0x0b,
+	}
+}
+
+func invokeSequenceModule() []byte {
+	// (module
+	//   (global $value (mut i32) (i32.const 0))
+	//   (func (export "set") (param i32) (global.set $value (local.get 0)))
+	//   (func (export "add") (param i32) (result i32)
+	//     (i32.add (global.get $value) (local.get 0))))
+	return []byte{
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x0a, 0x02, 0x60,
+		0x01, 0x7f, 0x00, 0x60, 0x01, 0x7f, 0x01, 0x7f, 0x03, 0x03, 0x02, 0x00,
+		0x01, 0x06, 0x06, 0x01, 0x7f, 0x01, 0x41, 0x00, 0x0b, 0x07, 0x0d, 0x02,
+		0x03, 0x73, 0x65, 0x74, 0x00, 0x00, 0x03, 0x61, 0x64, 0x64, 0x00, 0x01,
+		0x0a, 0x10, 0x02, 0x06, 0x00, 0x20, 0x00, 0x24, 0x00, 0x0b, 0x07, 0x00,
+		0x23, 0x00, 0x20, 0x00, 0x6a, 0x0b,
 	}
 }

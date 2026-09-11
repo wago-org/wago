@@ -26,7 +26,7 @@ type Environment interface {
 
 func Command(environment Environment) *command.Cmd {
 	flags := []command.Flag{
-		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call"},
+		{Name: "invoke", Short: "e", Arg: "<name>", Help: "exported function to call; repeat to call multiple exports in order"},
 		{Name: "allow-native-artifact", Bool: true, Help: "execute a trusted .wago native-code artifact"},
 	}
 	flags = append(flags, watchFlags()...)
@@ -49,6 +49,8 @@ func Command(environment Environment) *command.Cmd {
 		Long: "<file> is raw .wasm. Trusted precompiled .wago native code requires --allow-native-artifact.\n" +
 			"Never enable that flag for an untrusted artifact. Args after the file are typed by the\n" +
 			"signature; override per-arg with a suffix:  42   7:i64   3.5:f64\n" +
+			"Repeated --invoke flags share one instance and consume positional values by function arity;\n" +
+			"remaining values are not passed as function parameters.\n" +
 			"Wago flags may appear before or after <file>; use -- before colliding guest flags.\n" +
 			"Selected Core 3 features default on where supported; use --core 2 for strict Release 2\n" +
 			"or --core 3 for the complete release. Use -p for\n" +
@@ -108,47 +110,62 @@ func (cmd implementation) Run(ctx *command.Ctx) {
 	defer runtime.Close()
 	module := mustLoadModule(positionals[0], config, runtime, cmd.environment.ArtifactCache(), ctx.Bool("allow-native-artifact"))
 	compiled := module.Compiled()
-	export := mustResolveExport(compiled, ctx.Str("invoke"))
-
-	if export == "_start" {
-		runStart(runtime, module, gc, configuredGC)
-		return
-	}
-	params, results, err := compiled.Signature(export)
-	if err != nil {
-		ui.Fatal("run: %v", err)
-	}
-	if err := wasmcall.ValidateSignature(params, results); err != nil {
-		ui.Fatal("run: %v", err)
-	}
-	values := mustParseArgs(positionals[1:], params)
-	instance, err := instantiate(runtime, module, gc, configuredGC)
-	if err != nil {
-		ui.Fatal("%v", friendlyInstantiationError(err))
-	}
-	defer instance.Close()
-	result, err := instance.Invoke(export, values...)
-	if err != nil {
-		ui.Fatal("%s %s", ui.Red("trap:"), trapReason(err))
-	}
-	if output := format(result, results); output != "" {
-		fmt.Println(output)
-	}
-}
-
-func runStart(runtime *wago.Runtime, module *wago.Module, gc wago.GCConfig, configuredGC bool) {
-	instance, err := instantiate(runtime, module, gc, configuredGC)
-	if err != nil {
-		ui.Fatal("%v", friendlyInstantiationError(err))
-	}
-	defer instance.Close()
-	if _, err := instance.Invoke("_start"); err != nil {
-		var exit *wago.ExitError
-		if errors.As(err, &exit) {
-			instance.Close()
-			os.Exit(int(exit.Code))
+	exports := ctx.Strings("invoke")
+	if len(exports) == 0 {
+		exports = []string{mustResolveExport(compiled, "")}
+	} else {
+		for index, export := range exports {
+			exports[index] = mustResolveExport(compiled, export)
 		}
-		ui.Fatal("%s %s", ui.Red("trap:"), trapReason(err))
+	}
+	type invocation struct {
+		export  string
+		values  []uint64
+		results []wago.ValType
+	}
+	invocations := make([]invocation, 0, len(exports))
+	arguments := positionals[1:]
+	for _, export := range exports {
+		if export == "_start" {
+			invocations = append(invocations, invocation{export: export})
+			continue
+		}
+		params, results, err := compiled.Signature(export)
+		if err != nil {
+			ui.Fatal("run: %v", err)
+		}
+		if err := wasmcall.ValidateSignature(params, results); err != nil {
+			ui.Fatal("run: %s: %v", export, err)
+		}
+		count := len(params)
+		if len(arguments) < count {
+			ui.Fatal("run: %s: expected %d arg(s), got %d", export, count, len(arguments))
+		}
+		invocations = append(invocations, invocation{
+			export: export, values: mustParseArgs(arguments[:count], params), results: results,
+		})
+		arguments = arguments[count:]
+	}
+	instance, err := instantiate(runtime, module, gc, configuredGC)
+	if err != nil {
+		ui.Fatal("%v", friendlyInstantiationError(err))
+	}
+	defer instance.Close()
+	for _, invocation := range invocations {
+		result, err := instance.Invoke(invocation.export, invocation.values...)
+		if err != nil {
+			if invocation.export == "_start" {
+				var exit *wago.ExitError
+				if errors.As(err, &exit) {
+					instance.Close()
+					os.Exit(int(exit.Code))
+				}
+			}
+			ui.Fatal("%s %s", ui.Red("trap:"), trapReason(err))
+		}
+		if output := format(result, invocation.results); output != "" {
+			fmt.Println(output)
+		}
 	}
 }
 
