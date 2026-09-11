@@ -11,7 +11,7 @@ run corpus=env('CORPUS', 'quick') group=env('BENCH', 'all') count=env('COUNT', '
       all) pattern='.' ;;
       pipeline) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate)$' ;;
       compile) pattern='^Benchmark(Decode|Validate|Compile|CompileFull)$' ;;
-      exec) pattern='^Benchmark(Exec|CommandExec)$|^BenchmarkExec(CallOverhead|HostRoundtrip)_' ;;
+      exec) pattern='^Benchmark(Exec|CommandExec)$|^BenchmarkExec(CallOverhead|HostCallback|HostRoundtrip)_' ;;
       *) pattern='{{ group }}' ;;
     esac
     { echo '# git {{ head }}'; (cd bench && WAGO_BOUNDS=signals go test -run '^$' -tags wago_guardpage -bench "$pattern" -benchmem -count '{{ count }}' -benchtime '{{ time }}' -timeout 0 ./suite -args -wago.corpus='{{ corpus }}'); } | tee '{{ output }}'
@@ -24,7 +24,7 @@ check corpus=env('CORPUS', 'quick') group=env('BENCH', 'all'):
       all) pattern='.' ;;
       pipeline) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate)$' ;;
       compile) pattern='^Benchmark(Decode|Validate|Compile|CompileFull)$' ;;
-      exec) pattern='^Benchmark(Exec|CommandExec)$|^BenchmarkExec(CallOverhead|HostRoundtrip)_' ;;
+      exec) pattern='^Benchmark(Exec|CommandExec)$|^BenchmarkExec(CallOverhead|HostCallback|HostRoundtrip)_' ;;
       *) pattern='{{ group }}' ;;
     esac
     cd bench
@@ -34,7 +34,7 @@ check corpus=env('CORPUS', 'quick') group=env('BENCH', 'all'):
 no-guard corpus=env('CORPUS', 'quick') group=env('BENCH', 'all') count=env('COUNT', '1') time=env('BENCHTIME', '1s') output=env('BENCH_RUN', 'bench/.bench-run.txt'):
     #!/usr/bin/env bash
     set -euo pipefail
-    case '{{ group }}' in all) pattern='.' ;; pipeline) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate)$' ;; compile) pattern='^Benchmark(Decode|Validate|Compile|CompileFull)$' ;; exec) pattern='^Benchmark(Exec|CommandExec)$|^BenchmarkExec(CallOverhead|HostRoundtrip)_' ;; *) pattern='{{ group }}' ;; esac
+    case '{{ group }}' in all) pattern='.' ;; pipeline) pattern='^Benchmark(Decode|Validate|Compile|CompileFull|Instantiate)$' ;; compile) pattern='^Benchmark(Decode|Validate|Compile|CompileFull)$' ;; exec) pattern='^Benchmark(Exec|CommandExec)$|^BenchmarkExec(CallOverhead|HostCallback|HostRoundtrip)_' ;; *) pattern='{{ group }}' ;; esac
     { echo '# git {{ head }}'; (cd bench && go test -run '^$' -bench "$pattern" -benchmem -count '{{ count }}' -benchtime '{{ time }}' -timeout 0 ./suite -args -wago.corpus='{{ corpus }}'); } | tee '{{ output }}'
 
 # Run only Wago benchmarks.
