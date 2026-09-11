@@ -59,6 +59,13 @@ Or run the installer with Go:
 go run github.com/wago-org/wago/cli/wago-installer@main
 ```
 
+To keep the installer command:
+
+```sh
+go install github.com/wago-org/wago/cli/wago-installer@latest
+wago-installer
+```
+
 These commands install the Wago manager. Run `wago version install` to install
 a runtime. Its picker lists available Official, Beta, and Canary channels in
 that order; unavailable channels remain visible and disabled at the bottom. See

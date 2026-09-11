@@ -33,6 +33,8 @@ type installer struct {
 	actionsArtifactAPI  string
 	actionsArtifactRepo string
 	releaseDownloadBase string
+	localManagerPath    string
+	localManagerSource  string
 	binDir              string
 	srcDir              string
 	dataDir             string
@@ -121,6 +123,8 @@ func newInstaller(out io.Writer) (*installer, error) {
 		actionsArtifactAPI:  envOr("WAGO_ACTIONS_ARTIFACT_API", "https://api.github.com/repos/"+releaseRepo+"/actions/artifacts"),
 		actionsArtifactRepo: releaseRepo,
 		releaseDownloadBase: envOr("WAGO_RELEASE_DOWNLOAD_BASE", "https://github.com/"+releaseRepo+"/releases"),
+		localManagerPath:    strings.TrimSpace(os.Getenv("WAGO_MANAGER_PATH")),
+		localManagerSource:  strings.TrimSpace(os.Getenv("WAGO_MANAGER_SOURCE")),
 		binDir:              filepath.Clean(binDir),
 		srcDir:              filepath.Clean(envOr("WAGO_SRC_DIR", filepath.Join(home, ".wago", "src"))),
 		dataDir:             dataDir,
@@ -411,6 +415,16 @@ func reinstallLabel(mode string) string {
 }
 
 func (i *installer) downloadManager(target string) error {
+	if i.localManagerPath != "" {
+		i.begin("Using local Wago manager")
+		if err := managedrelease.CopyFile(i.localManagerPath, target); err != nil {
+			return fmt.Errorf("copy local Wago manager: %w", err)
+		}
+		i.managerTag = i.version
+		i.managerFromRelease = true
+		i.done("Used local Wago manager")
+		return nil
+	}
 	if channel, sha, canonical := installerRollingCommit(i.version); canonical && channel == "canary" {
 		return i.downloadCanaryCommitManager(sha, target)
 	}
@@ -709,6 +723,25 @@ var runInstallerGit = func(args ...string) ([]byte, error) {
 
 func (i *installer) fetchSource() (string, error) {
 	target := filepath.Join(i.tmpDir, "src")
+	if i.localManagerSource != "" {
+		i.begin("Using local Wago source")
+		info, err := os.Stat(i.localManagerSource)
+		if err != nil {
+			return "", fmt.Errorf("inspect local Wago source: %w", err)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("local Wago source is not a directory: %s", i.localManagerSource)
+		}
+		if err := os.Mkdir(target, 0o700); err != nil {
+			return "", err
+		}
+		if err := copyDirectoryContents(i.localManagerSource, target); err != nil {
+			return "", fmt.Errorf("copy local Wago source: %w", err)
+		}
+		i.sourceMethod = "local"
+		i.done("Used local Wago source")
+		return target, nil
+	}
 	sourceVersion := installerSourceRef(i.version)
 	if i.managerSourceRef != "" {
 		sourceVersion = i.managerSourceRef
