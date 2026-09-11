@@ -4344,15 +4344,13 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 	if state := in.pluginState.Load(); state != nil && state.guestStorageBorrow.Load() != 0 {
 		return nil, fmt.Errorf("invoke %q: guest storage is borrowed: %w", export, ErrPermissionDenied)
 	}
-	state := in.ensurePluginState()
-	state.invokeMu.Lock()
+	state := in.lockInvocation(0)
 	admittedHere := false
 	defer func() {
 		if admittedHere {
 			in.endInvocation()
 		}
-		state.invocationID = 0
-		state.invokeMu.Unlock()
+		state.unlockInvocation()
 	}()
 	privateRefStore := in.refStore == nil || in.refStore.private
 	if !alreadyAdmitted && contexts.interrupt == nil && contexts.callback == nil && privateRefStore {
@@ -4397,9 +4395,7 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 			}
 		}
 	}
-	id := newInvocationID()
-	state.invocationID = id
-	return in.invokeWithToken(export, args, contexts, id, true, alreadyAdmitted, nil)
+	return in.invokeWithToken(export, args, contexts, state.invocationID, true, alreadyAdmitted, nil)
 }
 
 //go:noinline
@@ -4413,13 +4409,8 @@ func (in *Instance) invokeWithToken(export string, args []uint64, contexts invoc
 		// Acquire the target instance gate before the shared collector lease. A
 		// parked same-domain callback must be able to reacquire the collector and
 		// finish releasing this gate while a second callback waits to enter.
-		state := in.ensurePluginState()
-		state.invokeMu.Lock()
-		state.invocationID = id
-		defer func() {
-			state.invocationID = 0
-			state.invokeMu.Unlock()
-		}()
+		state := in.lockInvocation(id)
+		defer state.unlockInvocation()
 	}
 	// Cancellation may arrive while this call waits for the instance gate.
 	ctx := contexts.interrupt

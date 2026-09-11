@@ -73,7 +73,7 @@ func (in *Instance) beginClose() (*instanceCloseState, bool) {
 	if active := state.close.Load(); active != nil {
 		return active, false
 	}
-	candidate := &instanceCloseState{done: make(chan struct{}), quiesced: make(chan struct{})}
+	candidate := &instanceCloseState{done: make(chan struct{}), quiesced: make(chan struct{}), terminalDone: make(chan struct{})}
 	if state.close.CompareAndSwap(nil, candidate) {
 		return candidate, true
 	}
@@ -140,6 +140,7 @@ func (in *Instance) closeOnce() error {
 	in.lifeMu.Unlock()
 
 	appendStep("close reference store instance", func() { in.referenceLifetime().notifyStore(store, referenceLifetimeClosed) })
+	in.ensurePluginState().close.Load().prepared.Store(true)
 	appendStep("finalize instance resources", in.tryFinalize)
 	return errors.Join(errs...)
 }
@@ -152,14 +153,20 @@ func (in *Instance) closeAndWait() error {
 	if in == nil {
 		return nil
 	}
-	closeErr := in.Close()
+	_ = in.Close()
+	return in.waitTerminalClose()
+}
+
+// waitTerminalClose joins logical preparation and terminal hooks, but does not
+// wait for resources retained by other instances or public reference tokens.
+func (in *Instance) waitTerminalClose() error {
 	state := in.ensurePluginState().close.Load()
 	if state != nil {
 		<-state.done
-		<-state.quiesced
+		<-state.terminalDone
 		return joinPrimary(state.result, state.terminalResult)
 	}
-	return closeErr
+	return nil
 }
 
 func (in *Instance) isLogicallyClosed() bool {
@@ -271,7 +278,11 @@ func (in *Instance) tryFinalize() {
 		return
 	}
 	if closeState := in.ensurePluginState().close.Load(); closeState != nil {
-		closeState.terminalOnce.Do(func() {
+		if !closeState.prepared.Load() {
+			return
+		}
+		closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
+		if closeState.terminalStarted.CompareAndSwap(false, true) {
 			if closeState.hooks != nil && closeState.event != nil {
 				var errs []error
 				for i := len(closeState.hooks.afterClose) - 1; i >= 0; i-- {
@@ -282,8 +293,16 @@ func (in *Instance) tryFinalize() {
 				}
 				closeState.terminalResult = errors.Join(errs...)
 			}
-			closeState.quiescedOnce.Do(func() { close(closeState.quiesced) })
-		})
+			close(closeState.terminalDone)
+		} else {
+			// A hook can release a reference and reenter tryFinalize. Do not
+			// wait for that hook here, or release its resources underneath it.
+			select {
+			case <-closeState.terminalDone:
+			default:
+				return
+			}
+		}
 	}
 	in.referenceLifetime().finalize()
 }

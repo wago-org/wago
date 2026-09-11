@@ -114,6 +114,12 @@ func (m *InstanceManager) Instantiate(ctx context.Context, mod *Module, opts ...
 	if m == nil {
 		return nil, fmt.Errorf("wago: nil instance manager")
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	memoryBytes, err := managedMemoryReservation(mod)
 	if err != nil {
 		return nil, fmt.Errorf("wago: plugin %s module memory limits: %v: %w", m.owner, err, ErrPermissionDenied)
@@ -174,6 +180,12 @@ func (m *InstanceManager) adopt(in *Instance, memoryBytes uint64) (*ManagedInsta
 // safe host functions, by-value globals, GC configuration, and runtime policy.
 // Borrowed memories, tables, globals, and cross-instance exports are rejected.
 func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*ManagedInstance, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	parent, err := m.caller(caller)
 	if err != nil {
 		return nil, err
@@ -223,7 +235,7 @@ func (m *InstanceManager) Fork(ctx context.Context, caller HostModule) (*Managed
 	mod, err := buildModule(parent.c, bindings)
 	var child *Instance
 	if err == nil {
-		child, err = rt.instantiateWithHooksOrigin(mod, imports, pluginGCImports, gc, hasGC, false, InstantiateManaged, hooks, operation.reservation, nil)
+		child, err = rt.instantiateWithHooksOrigin(ctx, mod, imports, pluginGCImports, gc, hasGC, parent.syncMode, InstantiateManaged, hooks, operation.reservation)
 	}
 	if err != nil {
 		m.mu.Lock()
@@ -330,6 +342,8 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 		return fmt.Errorf("wago: managed instance invocation: %w", err)
 	}
 	defer in.endInvocation()
+	state := in.lockInvocation(0)
+	defer state.unlockInvocation()
 	if err := validateVoidTableEntry(in, index); err != nil {
 		return err
 	}
@@ -344,33 +358,7 @@ func (m *ManagedInstance) InvokeVoidTable(ctx context.Context, index uint32) err
 		return fmt.Errorf("wago: managed invocation argument buffer is unavailable")
 	}
 	binary.LittleEndian.PutUint64(in.serArgs, uint64(index))
-	if len(in.hostLog) > 0 {
-		binary.LittleEndian.PutUint32(in.hostLog, 0)
-	}
-	if ctx.Done() == nil {
-		// Keep the common non-cancelable path identical to the original dispatch:
-		// Go 1.22 otherwise retains the context through the trap translation call
-		// and adds a heap allocation even though no watcher can ever fire.
-		if in.syncMode {
-			return in.callNativeSync(base)
-		}
-		if err := in.callNativeAsync(base, false); err != nil {
-			return err
-		}
-		return in.replayHostLog()
-	}
-	stopCancel, err := in.startCancellationWatch(ctx, in.trap)
-	if err != nil {
-		return err
-	}
-	defer stopCancel()
-	if in.syncMode {
-		return contextInterruptError(ctx, in.callNativeSyncWithTrapContext(base, in.trap, ctx))
-	}
-	if err := in.callNativeAsync(base, false); err != nil {
-		return contextInterruptError(ctx, err)
-	}
-	return contextInterruptError(ctx, in.replayHostLog())
+	return in.invokeVoidEntry(ctx, base, nil)
 }
 
 func (m *InstanceManager) ensureVoidDispatcher() (uintptr, error) {
@@ -431,12 +419,27 @@ func (m *ManagedInstance) Identity() InstanceIdentity {
 func (m *ManagedInstance) Close() error {
 	in, err := m.closeLogical()
 	if in != nil {
-		state := in.ensurePluginState().close.Load()
-		if state != nil {
-			<-state.quiesced
-		}
+		err = in.waitTerminalClose()
 	}
+	m.releaseOwnership()
 	return err
+}
+
+// Keep an instance in the manager's drain set until its terminal close has
+// completed, including when a concurrent ManagedInstance.Close owns the close.
+func (m *ManagedInstance) releaseOwnership() {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	manager := m.manager
+	m.manager = nil
+	m.mu.Unlock()
+	if manager != nil {
+		manager.mu.Lock()
+		delete(manager.instances, m)
+		manager.mu.Unlock()
+	}
 }
 
 func (m *ManagedInstance) closeLogical() (*Instance, error) {
@@ -459,7 +462,7 @@ func (m *ManagedInstance) closeLogical() (*Instance, error) {
 	m.done = make(chan struct{})
 	in, manager, done := m.value, m.manager, m.done
 	m.closedValue = in
-	m.value, m.manager = nil, nil
+	m.value = nil
 	m.memoryBytes = 0
 	m.mu.Unlock()
 	var err error
@@ -468,7 +471,6 @@ func (m *ManagedInstance) closeLogical() (*Instance, error) {
 	}
 	if manager != nil {
 		manager.mu.Lock()
-		delete(manager.instances, m)
 		delete(manager.byInstance, in)
 		manager.mu.Unlock()
 	}
@@ -525,7 +527,7 @@ func (m *InstanceManager) drain() error {
 	list := make([]*Instance, 0, len(owned))
 	for _, managed := range owned {
 		in, err := managed.closeLogical()
-		if err != nil {
+		if err != nil && in == nil {
 			errs = append(errs, err)
 		}
 		if in != nil {
@@ -538,10 +540,12 @@ func (m *InstanceManager) drain() error {
 	m.byInstance = nil
 	m.mu.Unlock()
 	for _, in := range list {
-		state := in.ensurePluginState().close.Load()
-		if state != nil {
-			<-state.quiesced
+		if err := in.waitTerminalClose(); err != nil {
+			errs = append(errs, err)
 		}
+	}
+	for _, managed := range owned {
+		managed.releaseOwnership()
 	}
 	m.mu.Lock()
 	m.draining = nil
