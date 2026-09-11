@@ -1124,6 +1124,7 @@ func (rt *Runtime) instantiateWithHooksOrigin(ctx context.Context, mod *Module, 
 	if err == nil && ctx.Err() != nil {
 		err = joinPrimary(ctx.Err(), in.closeAndWait())
 		in = nil
+		err = emitInstantiationError(hooks, InstantiationRequest{Module: moduleView(mod), Origin: origin, reservation: reservation}, err)
 	}
 	return in, err
 }
@@ -1136,16 +1137,7 @@ func (rt *Runtime) instantiateWithHooksOrigin(ctx context.Context, mod *Module, 
 func instantiateWithLifecycleHooks(mod *Module, iopts InstantiateOptions, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
 	request := InstantiationRequest{Module: moduleView(mod), Origin: origin, reservation: reservation}
 	emitError := func(original error) error {
-		var hookErrs []error
-		for _, fn := range hooks.onInstantiateError {
-			observer := fn
-			if panicErr := callHookSafely("OnInstantiateError", func() {
-				observer(InstantiationErrorEvent{Module: request.Module, Origin: origin, Err: original, reservation: reservation})
-			}); panicErr != nil {
-				hookErrs = append(hookErrs, panicErr)
-			}
-		}
-		return joinPrimary(original, hookErrs...)
+		return emitInstantiationError(hooks, request, original)
 	}
 
 	for _, fn := range hooks.beforeInstantiate {
@@ -1181,6 +1173,21 @@ func instantiateWithLifecycleHooks(mod *Module, iopts InstantiateOptions, origin
 		}
 	}
 	return inst, nil
+}
+
+// The caller retains the plugin-operation reservation through every observer,
+// including when cancellation is first detected after AfterInstantiate.
+func emitInstantiationError(hooks *hookRegistry, request InstantiationRequest, original error) error {
+	var hookErrs []error
+	for _, fn := range hooks.onInstantiateError {
+		observer := fn
+		if panicErr := callHookSafely("OnInstantiateError", func() {
+			observer(InstantiationErrorEvent{Module: request.Module, Origin: request.Origin, Err: original, reservation: request.reservation})
+		}); panicErr != nil {
+			hookErrs = append(hookErrs, panicErr)
+		}
+	}
+	return joinPrimary(original, hookErrs...)
 }
 
 func instantiateCoreWithModuleUse(mod *Module, opts InstantiateOptions) (*Instance, error) {

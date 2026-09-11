@@ -3,7 +3,9 @@ package wago
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
@@ -55,24 +57,32 @@ func managedStartModule() []byte {
 		wasmtest.Section(2, wasmtest.Vec(
 			append(append(wasmtest.Name("env"), wasmtest.Name("fork")...), 0, 0),
 			append(append(wasmtest.Name("env"), wasmtest.Name("start")...), 0, 1),
+			append(append(wasmtest.Name("env"), wasmtest.Name("resumed")...), 0, 0),
 		)),
 		wasmtest.Section(3, wasmtest.Vec(wasmtest.ULEB(0), wasmtest.ULEB(0))),
 		wasmtest.Section(5, wasmtest.Vec([]byte{1, 1, 1})), // one page, bounded maximum
-		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 3))),
-		wasmtest.Section(8, wasmtest.ULEB(2)),
+		wasmtest.Section(7, wasmtest.Vec(wasmtest.ExportEntry("run", 0, 4))),
+		wasmtest.Section(8, wasmtest.ULEB(3)),
 		wasmtest.Section(10, wasmtest.Vec(
-			wasmtest.Code([]byte{0x10, 1, 0x04, 0x40, 0x03, 0x40, 0x0c, 0, 0x0b, 0x0b, 0x0b}),
+			wasmtest.Code([]byte{0x10, 1, 0x04, 0x40, 0x10, 2, 0x03, 0x40, 0x0c, 0, 0x0b, 0x0b, 0x0b}),
 			wasmtest.Code([]byte{0x10, 0, 0x0b}),
 		)),
 	)
 }
 
 func TestManagedForkContext(t *testing.T) {
-	for _, mode := range []string{"canceled", "before-create", "during-start", "after-start", "live", "nil", "mapping-limit"} {
+	modes := []string{"canceled", "before-create", "live", "nil", "mapping-limit"}
+	if nativeCancellationSupported() {
+		modes = append(modes, "during-start", "after-resume", "deadline", "after-start", "after-start-close-panic", "live-cancelable")
+	} else {
+		// TinyGo tasks cannot run native cancellation. Do not call t.Skip:
+		// its incomplete SkipNow both marks failure and continues execution.
+		modes = append(modes, "unsupported-scheduler")
+	}
+	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
-			if mode == "during-start" && !nativeCancellationSupported() {
-				t.Skip("native cancellation requires a concurrent scheduler")
-			}
+			longStart := mode == "during-start" || mode == "after-resume" || mode == "deadline"
+			afterStart := mode == "after-start" || mode == "after-start-close-panic"
 			mappingLimit := uint32(2)
 			if mode == "mapping-limit" {
 				mappingLimit = 1
@@ -80,7 +90,18 @@ func TestManagedForkContext(t *testing.T) {
 			rt := NewRuntime(WithRuntimeConfig(NewRuntimeConfig().WithNativeMemoryMappingLimit(mappingLimit)))
 			manager := newPendingInstanceManager("fork-test", AuthorityScope{MaxInstances: 2, MaxMemoryBytes: 2 * 65536})
 			manager.activate(rt)
-			t.Cleanup(func() { _ = manager.close(); _ = rt.CloseContext(context.Background()) })
+			t.Cleanup(func() {
+				done := make(chan error, 1)
+				go func() { done <- manager.close() }()
+				if err := awaitCloseResult(t, done); err != nil {
+					t.Error(err)
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				defer cancel()
+				if err := rt.CloseContext(ctx); errors.Is(err, context.DeadlineExceeded) {
+					t.Error("runtime cleanup timed out")
+				}
+			})
 			gate := newPluginCallGate("fork-test")
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -88,13 +109,29 @@ func TestManagedForkContext(t *testing.T) {
 				cancel()
 			}
 			var forkCtx context.Context = ctx
-			if mode == "nil" {
+			switch mode {
+			case "nil":
 				forkCtx = nil
+			case "live", "mapping-limit":
+				forkCtx = context.Background()
 			}
 			var parent, partial *Instance
 			var childClosed int
+			var notifications [2]int
+			observeError := func(index int) func(InstantiationErrorEvent) {
+				return func(event InstantiationErrorEvent) {
+					notifications[index]++
+					if !event.reservation.allows(gate) || gate.state.Load() == 0 {
+						t.Error("error observer lost its plugin-operation reservation")
+					}
+					if afterStart && (!errors.Is(event.Err, context.Canceled) || childClosed != 1) {
+						t.Errorf("post-start observer: error=%v close count=%d", event.Err, childClosed)
+					}
+				}
+			}
 			rt.storeHooks(&hookRegistry{
-				operationGates: []*pluginCallGate{gate},
+				operationGates:     []*pluginCallGate{gate},
+				onInstantiateError: []func(InstantiationErrorEvent){observeError(0), observeError(1)},
 				beforeInstantiate: []func(InstantiationRequest) error{func(InstantiationRequest) error {
 					if parent != nil && mode == "before-create" {
 						cancel()
@@ -108,13 +145,16 @@ func TestManagedForkContext(t *testing.T) {
 					return nil
 				}},
 				afterInstantiate: []func(InstantiationEvent){func(InstantiationEvent) {
-					if parent != nil && mode == "after-start" {
+					if parent != nil && afterStart {
 						cancel()
 					}
 				}},
 				afterClose: []func(InstanceCloseEvent){func(event InstanceCloseEvent) {
 					if event.Instance.value == partial {
 						childClosed++
+						if mode == "after-start-close-panic" {
+							panic("partial close")
+						}
 					}
 				}},
 			})
@@ -123,7 +163,8 @@ func TestManagedForkContext(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer mod.Close()
-			started, release := make(chan struct{}), make(chan struct{})
+			started, resumed, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			defer close(release)
 			imports := Imports{
 				"env.start": gate.wrapCaller(func(caller Caller, _, out []uint64) {
 					if parent == nil {
@@ -133,24 +174,51 @@ func TestManagedForkContext(t *testing.T) {
 					if caller.invocationID == 0 || !caller.reservation.allows(gate) {
 						t.Error("start lacks invocation identity or reservation")
 					}
-					if mode == "during-start" {
-						if activeHostInvocationContext(caller.in).parent != ctx {
+					if longStart {
+						if activeHostInvocationContext(caller.in).parent != forkCtx {
 							t.Error("start lost its parent context")
 						}
 						close(started)
-						<-release
+						select {
+						case <-release:
+						case <-forkCtx.Done():
+						case <-time.After(10 * time.Second):
+							t.Error("start callback timed out")
+							return
+						}
 						out[0] = 1
 					} else {
 						out[0] = 0
 					}
 				}),
+				"env.resumed": gate.wrapCaller(func(Caller, []uint64, []uint64) {
+					// Guest instructions ran after env.start returned, before
+					// entering this second callback and the native loop.
+					close(resumed)
+				}),
 				"env.fork": gate.wrapCaller(func(caller Caller, _, _ []uint64) {
 					before := managedReservations(manager, gate)
+					if mode == "deadline" {
+						var stop context.CancelFunc
+						forkCtx, stop = context.WithTimeout(context.Background(), 250*time.Millisecond)
+						defer stop()
+					}
 					child, err := manager.Fork(forkCtx, caller)
-					wantCanceled := mode == "canceled" || mode == "before-create" || mode == "during-start" || mode == "after-start"
+					wantCanceled := mode == "canceled" || mode == "before-create" || longStart || afterStart
 					if wantCanceled {
-						if child != nil || !errors.Is(err, context.Canceled) {
-							t.Errorf("Fork = %v, %v; want context.Canceled", child, err)
+						want := context.Canceled
+						if mode == "deadline" {
+							want = context.DeadlineExceeded
+						}
+						if child != nil || !errors.Is(err, want) {
+							t.Errorf("Fork = %v, %v; want %v", child, err, want)
+						}
+						if errors.Is(err, ErrCallbackPanic) != (mode == "after-start-close-panic") {
+							t.Errorf("Fork close error = %v", err)
+						}
+					} else if mode == "unsupported-scheduler" {
+						if child != nil || err == nil || !strings.Contains(err.Error(), "requires a concurrent scheduler") {
+							t.Errorf("Fork = %v, %v; want unsupported scheduler", child, err)
 						}
 					} else if mode == "mapping-limit" {
 						if child != nil || !errors.Is(err, ErrResourceLimit) {
@@ -183,15 +251,51 @@ func TestManagedForkContext(t *testing.T) {
 			}
 			done := make(chan error, 1)
 			go func() { _, err := parent.Invoke("run"); done <- err }()
-			if mode == "during-start" {
-				<-started
+			if longStart {
+				if !awaitManagedStart(t, started, done) {
+					cancel()
+					return
+				}
+				if mode == "during-start" {
+					cancel()
+				} else {
+					// Release the first callback without canceling startup.
+					select {
+					case release <- struct{}{}:
+					case err := <-done:
+						t.Errorf("Fork ended before startup resumed: %v", err)
+						return
+					case <-time.After(10 * time.Second):
+						t.Error("startup release timed out")
+						cancel()
+						return
+					}
+					if !awaitManagedStart(t, resumed, done) {
+						cancel()
+						return
+					}
+					if mode == "after-resume" {
+						cancel()
+					}
+				}
+			}
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Error("Fork did not finish")
 				cancel()
-				close(release)
+				return
 			}
-			if err := <-done; err != nil {
-				t.Fatal(err)
+			wantNotifications := 0
+			if mode == "before-create" || longStart || afterStart || mode == "unsupported-scheduler" {
+				wantNotifications = 1
 			}
-			manager.pending.Wait()
+			if notifications != [2]int{wantNotifications, wantNotifications} {
+				t.Errorf("error notifications = %v, want %d per observer", notifications, wantNotifications)
+			}
 			if partial != nil {
 				if childClosed != 1 || partial.referenceLifetime().snapshot().PhysicalResources {
 					t.Fatalf("partial child close count=%d, resources=%+v", childClosed, partial.referenceLifetime().snapshot())
@@ -202,6 +306,19 @@ func TestManagedForkContext(t *testing.T) {
 			}
 		})
 	}
+}
+
+func awaitManagedStart(t *testing.T, started <-chan struct{}, done <-chan error) bool {
+	t.Helper()
+	select {
+	case <-started:
+		return true
+	case err := <-done:
+		t.Errorf("Fork ended before the startup signal: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Error("startup signal timed out")
+	}
+	return false
 }
 
 func assertManagedEntryCleanAfterClose(t *testing.T, in *Instance) {

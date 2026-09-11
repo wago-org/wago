@@ -3,8 +3,11 @@ package wago
 import (
 	"context"
 	"errors"
+	"runtime"
+	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/wago-org/wago/tests/support/wasmtest"
 )
@@ -21,7 +24,14 @@ func closeCompletionInstance(t *testing.T, hooks *hookRegistry) (*Runtime, *Inst
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = rt.CloseContext(context.Background()); _ = mod.Close() })
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := rt.CloseContext(ctx); errors.Is(err, context.DeadlineExceeded) {
+			t.Error("runtime cleanup timed out")
+		}
+		_ = mod.Close()
+	})
 	return rt, in
 }
 
@@ -32,7 +42,7 @@ func TestClosePreparationOrdersTerminalHooks(t *testing.T) {
 			var after atomic.Int32
 			block := func() {
 				close(entered)
-				<-release
+				awaitCloseHookRelease(release)
 				if phase == "panic" {
 					panic("before")
 				}
@@ -49,11 +59,11 @@ func TestClosePreparationOrdersTerminalHooks(t *testing.T) {
 			}
 			closed := make(chan error, 1)
 			go func() { closed <- in.Close() }()
-			<-entered
+			awaitCloseSignal(t, entered)
 			in.endInvocation()
 			gotEarly := after.Load()
 			close(release)
-			err := <-closed
+			err := awaitCloseResult(t, closed)
 			if gotEarly != 0 {
 				t.Fatal("AfterClose ran before BeforeClose completed")
 			}
@@ -97,11 +107,15 @@ func TestCloseTerminalWaiters(t *testing.T) {
 			}
 			t.Run(name, func(t *testing.T) {
 				entered, release := make(chan struct{}), make(chan struct{})
+				var owned *ManagedInstance
 				rt, in := closeCompletionInstance(t, &hookRegistry{afterClose: []func(InstanceCloseEvent){func(event InstanceCloseEvent) {
 					close(entered)
-					<-release
+					awaitCloseHookRelease(release)
 					// Callback reentry must not wait for its own terminal phase.
 					if err := event.Instance.value.Close(); err != nil {
+						panic(err)
+					}
+					if err := owned.CloseLogical(); err != nil {
 						panic(err)
 					}
 					event.Instance.value.releaseResourceRoot()
@@ -112,7 +126,8 @@ func TestCloseTerminalWaiters(t *testing.T) {
 				manager := newPendingInstanceManager("close-test", AuthorityScope{})
 				manager.activate(rt)
 				manager.live = 1
-				owned, err := manager.adopt(in, 0)
+				var err error
+				owned, err = manager.adopt(in, 0)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -133,16 +148,15 @@ func TestCloseTerminalWaiters(t *testing.T) {
 				}
 				ended := make(chan struct{})
 				go func() { in.endInvocation(); close(ended) }()
-				<-entered
+				awaitCloseSignal(t, entered)
 				state := in.ensurePluginState().close.Load()
 				select {
 				case <-state.quiesced:
 				default:
 					t.Fatal("invocations did not quiesce")
 				}
-				started, done := make(chan struct{}), make(chan error, 1)
+				done := make(chan error, 1)
 				go func() {
-					close(started)
 					switch waiter {
 					case "instance":
 						done <- in.closeAndWait()
@@ -152,7 +166,7 @@ func TestCloseTerminalWaiters(t *testing.T) {
 						done <- manager.close()
 					}
 				}()
-				<-started
+				awaitTerminalWait(t, done)
 				select {
 				case <-state.terminalDone:
 					t.Error("terminal completion preceded AfterClose")
@@ -165,8 +179,8 @@ func TestCloseTerminalWaiters(t *testing.T) {
 				default:
 				}
 				close(release)
-				err = <-done
-				<-ended
+				err = awaitCloseResult(t, done)
+				awaitCloseSignal(t, ended)
 				if errors.Is(err, ErrCallbackPanic) != panics {
 					t.Fatalf("terminal waiter = %v", err)
 				}
@@ -174,6 +188,111 @@ func TestCloseTerminalWaiters(t *testing.T) {
 					t.Fatal("retained resources were released")
 				}
 			})
+		}
+	}
+}
+
+func TestManagedCloseLogicalReentry(t *testing.T) {
+	for _, phase := range []string{"before", "after"} {
+		t.Run(phase, func(t *testing.T) {
+			var owned *ManagedInstance
+			var calls atomic.Int32
+			hook := func(InstanceCloseEvent) {
+				calls.Add(1)
+				if err := owned.CloseLogical(); err != nil {
+					panic(err)
+				}
+			}
+			hooks := &hookRegistry{}
+			if phase == "before" {
+				hooks.beforeClose = []func(InstanceCloseEvent){hook}
+			} else {
+				hooks.afterClose = []func(InstanceCloseEvent){hook}
+			}
+			rt, in := closeCompletionInstance(t, hooks)
+			manager := newPendingInstanceManager("close-reentry", AuthorityScope{})
+			manager.activate(rt)
+			manager.live = 1
+			var err error
+			owned, err = manager.adopt(in, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			go func() { done <- owned.Close() }()
+			if err := awaitCloseResult(t, done); err != nil {
+				t.Fatal(err)
+			}
+			if calls.Load() != 1 || owned.Instance() != nil {
+				t.Fatal("logical callback close did not complete exactly once")
+			}
+			manager.mu.Lock()
+			remaining := len(manager.instances)
+			manager.mu.Unlock()
+			if remaining != 0 {
+				t.Fatal("terminal close retained managed ownership")
+			}
+		})
+	}
+}
+
+func awaitCloseHookRelease(release <-chan struct{}) {
+	select {
+	case <-release:
+	case <-time.After(10 * time.Second):
+		panic("close hook release timed out")
+	}
+}
+
+func awaitCloseSignal(t *testing.T, signal <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-signal:
+	case <-time.After(10 * time.Second):
+		t.Fatal("close signal timed out")
+	}
+}
+
+func awaitCloseResult(t *testing.T, done <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(10 * time.Second):
+		return errors.New("close completion timed out")
+	}
+}
+
+// Observe the blocked receive itself, not a signal sent before entering Close.
+// This is test-only: no wait probes or allocations enter production close paths.
+func awaitTerminalWait(t *testing.T, done chan error) {
+	t.Helper()
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	buf := make([]byte, 1<<20)
+	for {
+		n := runtime.Stack(buf, true)
+		if n == 0 {
+			// TinyGo has no goroutine stack snapshots. Its tasks scheduler
+			// runs the queued waiter until it blocks when this task yields.
+			runtime.Gosched()
+			return
+		}
+		for _, stack := range strings.Split(string(buf[:n]), "\n\n") {
+			if strings.Contains(stack, "[chan receive]:") && strings.Contains(stack, "(*Instance).waitTerminalClose(") && strings.Contains(stack, "TestCloseTerminalWaiters.func") {
+				return
+			}
+		}
+		select {
+		case err := <-done:
+			t.Errorf("terminal waiter returned before blocking: %v", err)
+			done <- err
+			return
+		case <-deadline.C:
+			t.Error("terminal waiter did not enter its channel wait")
+			return
+		default:
+			runtime.Gosched()
 		}
 	}
 }

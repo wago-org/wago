@@ -416,12 +416,31 @@ func (m *ManagedInstance) Identity() InstanceIdentity {
 	return InstanceIdentity{value: m.Instance()}
 }
 
+// Close closes the instance and waits for all terminal close hooks. It must not
+// be called from a lifecycle callback whose completion it waits for; use
+// CloseLogical from those callbacks. Retained references may delay resource release.
 func (m *ManagedInstance) Close() error {
 	in, err := m.closeLogical()
+	if m != nil {
+		m.mu.Lock()
+		done := m.done
+		m.mu.Unlock()
+		// A concurrent logical closer may not yet have called Instance.Close.
+		<-done
+	}
 	if in != nil {
 		err = in.waitTerminalClose()
 	}
 	m.releaseOwnership()
+	return err
+}
+
+// CloseLogical closes admission without waiting for active invocations or an
+// ongoing close callback. It is safe to call again from BeforeClose or AfterClose
+// on the same instance. The first call can run hooks synchronously. Use Close
+// outside those callbacks to wait for terminal completion and receive hook errors.
+func (m *ManagedInstance) CloseLogical() error {
+	_, err := m.closeLogical()
 	return err
 }
 
@@ -448,12 +467,6 @@ func (m *ManagedInstance) closeLogical() (*Instance, error) {
 	}
 	m.mu.Lock()
 	if m.closed {
-		done := m.done
-		m.mu.Unlock()
-		if done != nil {
-			<-done
-		}
-		m.mu.Lock()
 		in, err := m.closedValue, m.err
 		m.mu.Unlock()
 		return in, err
@@ -524,28 +537,23 @@ func (m *InstanceManager) drain() error {
 	}
 	m.mu.Unlock()
 	var errs []error
-	list := make([]*Instance, 0, len(owned))
 	for _, managed := range owned {
-		in, err := managed.closeLogical()
-		if err != nil && in == nil {
-			errs = append(errs, err)
-		}
-		if in != nil {
-			list = append(list, in)
-		}
+		_ = managed.CloseLogical()
 	}
 	m.mu.Lock()
-	list = append(list, m.draining...)
+	list := m.draining
 	m.instances = nil
 	m.byInstance = nil
 	m.mu.Unlock()
+	for _, managed := range owned {
+		if err := managed.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	for _, in := range list {
 		if err := in.waitTerminalClose(); err != nil {
 			errs = append(errs, err)
 		}
-	}
-	for _, managed := range owned {
-		managed.releaseOwnership()
 	}
 	m.mu.Lock()
 	m.draining = nil
