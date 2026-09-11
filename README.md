@@ -127,7 +127,8 @@ wago add wago-org/wasi
 ```
 
 See [Use plugins](https://docs.wago.sh/guides/plugins) or browse the
-[plugin registry](https://plugins.wago.sh).
+[plugin registry](https://plugins.wago.sh). Plugin authors can
+[publish from CI/CD](docs/plugin-publishing-ci.md) with a registry token.
 
 ## Platforms
 

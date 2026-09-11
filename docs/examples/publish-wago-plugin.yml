@@ -1,0 +1,59 @@
+name: Publish Wago plugin
+
+on:
+  pull_request:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-wago-plugin-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: "1.22"
+  # Pin this to a Wago release for reproducible publishing.
+  WAGO_CLI_VERSION: latest
+
+jobs:
+  validate:
+    name: Validate plugin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Publication verifies the pushed tag and its exact source archive.
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Install Wago
+        run: go install "github.com/wago-org/wago/cli/wago@${WAGO_CLI_VERSION}"
+      - name: Test plugin
+        run: go test ./...
+      - name: Validate publication
+        run: wago --dry-run --no-input plugin publish
+
+  publish:
+    name: Publish plugin
+    if: github.event_name == 'release'
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Install Wago
+        run: go install "github.com/wago-org/wago/cli/wago@${WAGO_CLI_VERSION}"
+      - name: Publish to the Wago plugin registry
+        env:
+          WAGO_TOKEN: ${{ secrets.WAGO_TOKEN }}
+          WAGO_NONINTERACTIVE: "1"
+          RELEASE_NOTES: ${{ github.event.release.body }}
+        run: wago plugin publish --notes "$RELEASE_NOTES"
