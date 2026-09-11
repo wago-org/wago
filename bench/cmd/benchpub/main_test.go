@@ -10,6 +10,7 @@ func TestSuiteRegexIncludesPublishedBoundaryBenchmarks(t *testing.T) {
 	for _, name := range []string{
 		"BenchmarkExecCallOverhead_wago",
 		"BenchmarkExecCallOverhead_wazero",
+		"BenchmarkExecHostCallback_wago",
 		"BenchmarkExecHostRoundtrip_wago",
 		"BenchmarkExecHostRoundtrip_wazero",
 	} {
