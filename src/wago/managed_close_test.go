@@ -137,14 +137,10 @@ func TestManagedCloseWaitClosed(t *testing.T) {
 }
 
 func TestManagedCloseAutomaticOwnership(t *testing.T) {
-	for _, hooks := range []bool{false, true} {
-		name := "inline"
-		if hooks {
-			name = "terminal-worker"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, mode := range []string{"inline", "terminal-worker", "retained"} {
+		t.Run(mode, func(t *testing.T) {
 			p := &disposalTestPlugin{}
-			if hooks {
+			if mode != "inline" {
 				p.afterClose = []func(*InstanceContext){func(*InstanceContext) {}}
 			}
 			_, manager, mod := managedCloseRuntime(t, p)
@@ -154,6 +150,9 @@ func TestManagedCloseAutomaticOwnership(t *testing.T) {
 					t.Fatal(err)
 				}
 				in := owned.Instance()
+				if mode == "retained" && !in.retainResourceRoot() {
+					t.Fatal("retain")
+				}
 				released := make(chan struct{})
 				in.referenceLifetime().afterPhysicalRelease(func() { close(released) })
 				if err := owned.Close(); err != nil {
@@ -163,6 +162,12 @@ func TestManagedCloseAutomaticOwnership(t *testing.T) {
 				// detachment, and physical release owns budget accounting.
 				awaitCloseSignal(t, in.ensurePluginState().close.Load().terminalDone)
 				assertManagedDetached(t, manager, owned, in)
+				if mode == "retained" {
+					if !in.referenceLifetime().snapshot().PhysicalResources {
+						t.Fatal("retained resources released during detachment")
+					}
+					in.releaseResourceRoot()
+				}
 				awaitCloseSignal(t, released)
 				assertManagedReservationsReleased(t, manager)
 			}
