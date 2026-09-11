@@ -151,3 +151,5 @@ We use the [Apache License 2.0](LICENSE) so you can enjoy wago too!
 [Contributing](CONTRIBUTING.md) ·
 [Issues](https://github.com/wago-org/wago/issues) ·
 [Sponsor us!](https://github.com/sponsors/JairusSW)
+
+P.S. *pleaseeeee* consider leaving us a star! i really believe in wago and if it makes it big some day, you'll know cuz you starred it!
