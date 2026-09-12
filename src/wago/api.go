@@ -4301,6 +4301,13 @@ type invocationContextSet struct {
 	callback  context.Context
 }
 
+func (contexts invocationContextSet) admissionContext() context.Context {
+	if contexts.interrupt != nil {
+		return contexts.interrupt
+	}
+	return contexts.callback
+}
+
 func invocationContextSetFor(ctx context.Context) (contexts invocationContextSet) {
 	if ctx == nil || ctx.Done() == nil {
 		return contexts
@@ -4363,7 +4370,10 @@ func (in *Instance) invokeEntry(export string, args []uint64, contexts invocatio
 	if state := in.pluginState.Load(); state != nil && state.guestStorageBorrow.Load() != 0 {
 		return nil, fmt.Errorf("invoke %q: guest storage is borrowed: %w", export, ErrPermissionDenied)
 	}
-	state := in.lockInvocation(0)
+	state, err := in.lockInvocationContext(contexts.admissionContext(), 0)
+	if err != nil {
+		return nil, err
+	}
 	admittedHere := false
 	defer func() {
 		if admittedHere {
@@ -4462,19 +4472,19 @@ func nilInstanceInvokeError() error {
 }
 
 func (in *Instance) invokeWithToken(export string, args []uint64, contexts invocationContextSet, id invocationID, gateHeld, alreadyAdmitted bool, reservation *pluginOperationReservation) ([]uint64, error) {
+	ctx := contexts.admissionContext()
 	reentry := !gateHeld && isNativeActive(in, id)
 	if !reentry && !gateHeld {
 		// Acquire the target instance gate before the shared collector lease. A
 		// parked same-domain callback must be able to reacquire the collector and
 		// finish releasing this gate while a second callback waits to enter.
-		state := in.lockInvocation(id)
+		state, err := in.lockInvocationContext(ctx, id)
+		if err != nil {
+			return nil, err
+		}
 		defer state.unlockInvocation()
 	}
 	// Cancellation may arrive while this call waits for the instance gate.
-	ctx := contexts.interrupt
-	if ctx == nil {
-		ctx = contexts.callback
-	}
 	if ctx != nil {
 		if err := ctx.Err(); err != nil {
 			return nil, err
