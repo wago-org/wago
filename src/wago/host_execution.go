@@ -437,6 +437,152 @@ func (a *hostLoopActivation) dispatchTypedScalarPortal(ctrl uintptr, importIdx, 
 	return I32(binding.typedI32x2(AsI32(a0), AsI32(a1))), true
 }
 
+// dispatchSingleTypedScalarPortal specializes the common instance shape with
+// one capability-free scalar import. Selection validates the binding and
+// immutable GC-domain constraints once at native entry; the portal retains the
+// control-frame, import, slot, and execution-version checks that can vary while
+// the activation is live.
+func (a *hostLoopActivation) dispatchSingleTypedScalarPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
+	if ctrl != a.ctrl || importIdx != 0 {
+		return 0, false
+	}
+	active := a.root
+	binding := &active.syncHosts[0]
+	typedScalarArity := uint32(binding.scalarKind - syncHostScalar)
+	if rawSlots != typedScalarArity|1<<16 {
+		return 0, false
+	}
+
+	state := a.state
+	flags := active.executionFlags.Load()
+	if flags&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+		return a.dispatchTypedScalarPortal(ctrl, importIdx, rawSlots, a0, a1)
+	}
+	version := state.nativeContextVersion.Load()
+	var result uint64
+	if binding.scalarKind == syncHostTypedI32 {
+		result = I32(binding.typedI32(AsI32(a0)))
+	} else {
+		result = I32(binding.typedI32x2(AsI32(a0), AsI32(a1)))
+	}
+	if version == ^uint64(0) || !a.parkedNativeContextReusable ||
+		active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent ||
+		state.nativeContextVersion.Load() != version {
+		active.restoreTypedScalarNativeContext(ctrl)
+	}
+	return result, true
+}
+
+func (a *hostLoopActivation) dispatchSingleTypedScalarExpandedPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
+	if ctrl != a.ctrl || importIdx != 0 {
+		return 0, false
+	}
+	active := a.root
+	binding := &active.syncHosts[0]
+	if !binding.matchesTypedScalarSlots(rawSlots) {
+		return 0, false
+	}
+
+	state := a.state
+	flags := active.executionFlags.Load()
+	if flags&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent {
+		return a.dispatchTypedScalarExpandedPortal(ctrl, importIdx, rawSlots, a0, a1)
+	}
+	version := state.nativeContextVersion.Load()
+	result := binding.callTypedScalar(a0, a1)
+	if version == ^uint64(0) || !a.parkedNativeContextReusable ||
+		active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent ||
+		state.nativeContextVersion.Load() != version {
+		active.restoreTypedScalarNativeContext(ctrl)
+	}
+	return result, true
+}
+
+// dispatchSingleHostCall is selected once for an instance whose only import is
+// an ungated, capability-free HostCallFunc with no reference values. Such a
+// callback cannot obtain supported re-entry authority and needs no GC root
+// translation, so it can share the typed portal's compact park/resume protocol
+// while retaining the generic slice ABI for arbitrary scalar arity.
+func (a *hostLoopActivation) dispatchSingleHostCall(ctrl uintptr, importIdx uint32, args, results []uint64) {
+	if ctrl != a.ctrl || importIdx != 0 {
+		a.dispatch(ctrl, importIdx, args, results)
+		return
+	}
+	active := a.root
+	binding := &active.syncHosts[0]
+	call := func() {
+		binding.fn.(HostCallFunc)(HostCall{
+			params: args, results: results, sig: binding.sig, exact: binding.exact,
+		})
+	}
+
+	state := a.state
+	flags := active.executionFlags.Load()
+	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+		version := state.nativeContextVersion.Load()
+		call()
+		if version == ^uint64(0) || !a.parkedNativeContextReusable ||
+			active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent ||
+			state.nativeContextVersion.Load() != version {
+			active.restoreTypedScalarNativeContext(ctrl)
+		}
+		return
+	}
+
+	epoch := nativeExecutionEpoch
+	nativeExecutionMu.Unlock()
+	defer func() {
+		nativeExecutionMu.Lock()
+		if nativeExecutionEpoch != epoch {
+			active.restoreTypedScalarNativeContext(ctrl)
+		}
+	}()
+	call()
+}
+
+// dispatchSingleHostCallView is selected for wide instances whose only import is
+// an ungated, capability-free HostCallFunc with no reference values. Such a
+// callback cannot obtain supported re-entry authority and needs no GC root
+// translation, so it can share the typed portal's compact park/resume protocol
+// while operating directly on the parked argument and result areas. A foreign
+// control frame falls back to the activation's generic dispatcher.
+func (a *hostLoopActivation) dispatchSingleHostCallView(ctrl uintptr, importIdx uint32, args, results []uint64) bool {
+	if ctrl != a.ctrl || importIdx != 0 {
+		return false
+	}
+	active := a.root
+	binding := &active.syncHosts[0]
+	call := func() {
+		binding.fn.(HostCallFunc)(HostCall{
+			params: args, results: results, sig: binding.sig, exact: binding.exact,
+		})
+	}
+
+	state := a.state
+	flags := active.executionFlags.Load()
+	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+		version := state.nativeContextVersion.Load()
+		call()
+		if version == ^uint64(0) || !a.parkedNativeContextReusable ||
+			active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent ||
+			state.nativeContextVersion.Load() != version {
+			active.restoreTypedScalarNativeContext(ctrl)
+		}
+		return true
+	}
+
+	epoch := nativeExecutionEpoch
+	nativeExecutionMu.Unlock()
+	defer func() {
+		nativeExecutionMu.Lock()
+		if nativeExecutionEpoch != epoch {
+			active.restoreTypedScalarNativeContext(ctrl)
+		}
+	}()
+	call()
+	return true
+}
+
 func (b *syncHostBinding) matchesTypedScalarSlots(raw uint32) bool {
 	switch b.scalarKind {
 	case syncHostTypedNone:
@@ -453,6 +599,10 @@ func (b *syncHostBinding) matchesTypedScalarSlots(raw uint32) bool {
 		return raw == 1|2<<16
 	case syncHostTypedI32x2R2:
 		return raw == 2|2<<16
+	case syncHostTypedI64, syncHostTypedF32, syncHostTypedF64:
+		return raw == 1|1<<16
+	case syncHostTypedI64x2, syncHostTypedF32x2, syncHostTypedF64x2:
+		return raw == 2|1<<16
 	default:
 		return false
 	}
@@ -476,6 +626,18 @@ func (b *syncHostBinding) callTypedScalar(a0, a1 uint64) uint64 {
 	case syncHostTypedI32x2R2:
 		a, c := b.typedI32x2R2(AsI32(a0), AsI32(a1))
 		return uint64(uint32(a)) | uint64(uint32(c))<<32
+	case syncHostTypedI64:
+		return I64(b.fn.(func(int64) int64)(AsI64(a0)))
+	case syncHostTypedI64x2:
+		return I64(b.fn.(func(int64, int64) int64)(AsI64(a0), AsI64(a1)))
+	case syncHostTypedF32:
+		return F32(b.fn.(func(float32) float32)(AsF32(a0)))
+	case syncHostTypedF32x2:
+		return F32(b.fn.(func(float32, float32) float32)(AsF32(a0), AsF32(a1)))
+	case syncHostTypedF64:
+		return F64(b.fn.(func(float64) float64)(AsF64(a0)))
+	case syncHostTypedF64x2:
+		return F64(b.fn.(func(float64, float64) float64)(AsF64(a0), AsF64(a1)))
 	}
 	return 0
 }
@@ -499,6 +661,48 @@ func (in *Instance) hasDirectTypedScalarHost() bool {
 		}
 	}
 	return false
+}
+
+func (in *Instance) hasSingleDirectTypedScalarHost() bool {
+	if !in.singleTypedScalarHostEligible() {
+		return false
+	}
+	binding := &in.syncHosts[0]
+	return binding.gate == nil && (binding.scalarKind == syncHostTypedI32 || binding.scalarKind == syncHostTypedI32x2)
+}
+
+func (in *Instance) hasSingleExpandedTypedScalarHost() bool {
+	if !in.singleTypedScalarHostEligible() {
+		return false
+	}
+	binding := &in.syncHosts[0]
+	return binding.gate == nil && binding.scalarKind >= syncHostTypedNone
+}
+
+func (in *Instance) singleTypedScalarHostEligible() bool {
+	return len(in.syncHosts) == 1 && in.gc == nil &&
+		in.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) == 0
+}
+
+func (in *Instance) hasSingleHostCallPortal() bool {
+	if !in.singleTypedScalarHostEligible() {
+		return false
+	}
+	binding := &in.syncHosts[0]
+	return binding.hostCall && !binding.hostCallView && binding.gate == nil && binding.scalarKind != syncHostNonScalar
+}
+
+// The compact copy loop remains faster below this crossover on native AMD64.
+// Calls exceeding the inline capacity already receive a direct extension view
+// from the generic loop, so this portal is only marked for wide inline shapes.
+const directHostCallViewSlots = 96
+
+func (in *Instance) hasSingleHostCallViewPortal() bool {
+	if !in.singleTypedScalarHostEligible() {
+		return false
+	}
+	binding := &in.syncHosts[0]
+	return binding.hostCallView && binding.gate == nil && binding.scalarKind != syncHostNonScalar
 }
 
 func (in *Instance) hasExpandedTypedScalarHost() bool {

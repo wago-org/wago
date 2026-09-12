@@ -2453,6 +2453,20 @@ func (c *Compiled) validateImportBindingsWithPluginGC(imports Imports, store *re
 					if sigTransfersCollectorObjects && c.genericGCFrameRoots() == nil {
 						return fmt.Errorf("Runtime plugin host import %q cannot transfer collector references: exact native root maps are unavailable", key)
 					}
+				case HostCallFunc:
+					if owner == nil || !pluginImport || store == nil {
+						return fmt.Errorf("host import %q cannot transfer collector references; use a Runtime plugin import", key)
+					}
+					if sigTransfersCollectorObjects && c.genericGCFrameRoots() == nil {
+						return fmt.Errorf("Runtime plugin host import %q cannot transfer collector references: exact native root maps are unavailable", key)
+					}
+				case gatedHostCallFunc, gatedOrdinaryHostFunc:
+					if !pluginImport || store == nil {
+						return fmt.Errorf("host import %q cannot transfer collector references; use a Runtime plugin import", key)
+					}
+					if sigTransfersCollectorObjects && c.genericGCFrameRoots() == nil {
+						return fmt.Errorf("Runtime plugin host import %q cannot transfer collector references: exact native root maps are unavailable", key)
+					}
 				default:
 					return fmt.Errorf("host import %q cannot transfer collector references; use Runtime.NewGCHostFuncRef, a Runtime plugin import, or a same-Runtime InstanceExport", key)
 				}

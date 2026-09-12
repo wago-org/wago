@@ -160,23 +160,15 @@ func CapabilityDocs(docs string) CapabilityOption {
 
 // registeredImport is one declared host function.
 type registeredImport struct {
-	module       string
-	name         string
-	fn           HostFunc
-	concrete     CallerHostFunc
-	typedNone    NoArgsHostFunc
-	typedI32V    I32HostFunc
-	typedI32     I32ToI32HostFunc
-	typedI32x2V  I32I32HostFunc
-	typedI32x2   I32I32ToI32HostFunc
-	typedI32R2   I32ToI32I32HostFunc
-	typedI32x2R2 I32I32ToI32I32HostFunc
-	eventI32     I32HostEvent
-	params       []ValType
-	results      []ValType
-	cap          Capability
-	hasCap       bool
-	docs         string
+	module   string
+	name     string
+	fn       any
+	eventI32 I32HostEvent
+	params   []ValType
+	results  []ValType
+	cap      Capability
+	hasCap   bool
+	docs     string
 }
 
 func (i *registeredImport) key() string { return i.module + "." + i.name }
@@ -197,113 +189,16 @@ type ImportModuleBuilder struct {
 	module string
 }
 
-func (m *ImportModuleBuilder) Func(name string, fn HostFunc) *ImportFuncBuilder {
+// Func declares a synchronous host import. Ordinary Go functions use a
+// reflection-free specialized lane when their shape is recognized. HostCallFunc
+// (or func(HostCall)) is the universal form for arbitrary arity and every Wasm
+// value type; declare its signature with Params and Results.
+func (m *ImportModuleBuilder) Func(name string, fn any) *ImportFuncBuilder {
 	if m == nil {
 		return &ImportFuncBuilder{}
 	}
 	imp := &registeredImport{module: m.module, name: name, fn: fn}
-	if m.reg != nil && !m.reg.sealed {
-		m.reg.imports = append(m.reg.imports, imp)
-	}
-	return &ImportFuncBuilder{imp: imp}
-}
-
-// CallerFunc declares a concrete synchronous import with the same signature,
-// authority and plugin lifetime rules as Func.
-func (m *ImportModuleBuilder) CallerFunc(name string, fn CallerHostFunc) *ImportFuncBuilder {
-	if m == nil {
-		return &ImportFuncBuilder{}
-	}
-	imp := &registeredImport{module: m.module, name: name, concrete: fn}
-	if m.reg != nil && !m.reg.sealed {
-		m.reg.imports = append(m.reg.imports, imp)
-	}
-	return &ImportFuncBuilder{imp: imp}
-}
-
-// NoArgsFunc declares a capability-free typed synchronous () -> () import.
-func (m *ImportModuleBuilder) NoArgsFunc(name string, fn NoArgsHostFunc) *ImportFuncBuilder {
-	if m == nil {
-		return &ImportFuncBuilder{}
-	}
-	imp := &registeredImport{module: m.module, name: name, typedNone: fn}
-	if m.reg != nil && !m.reg.sealed {
-		m.reg.imports = append(m.reg.imports, imp)
-	}
-	return &ImportFuncBuilder{imp: imp}
-}
-
-// I32Func declares a capability-free typed synchronous (i32) -> () import.
-func (m *ImportModuleBuilder) I32Func(name string, fn I32HostFunc) *ImportFuncBuilder {
-	if m == nil {
-		return &ImportFuncBuilder{}
-	}
-	imp := &registeredImport{module: m.module, name: name, typedI32V: fn, params: []ValType{ValI32}}
-	if m.reg != nil && !m.reg.sealed {
-		m.reg.imports = append(m.reg.imports, imp)
-	}
-	return &ImportFuncBuilder{imp: imp}
-}
-
-// I32ToI32Func declares a capability-free typed synchronous import. Params and
-// Results are fixed by the callback type and need not be declared separately.
-func (m *ImportModuleBuilder) I32ToI32Func(name string, fn I32ToI32HostFunc) *ImportFuncBuilder {
-	if m == nil {
-		return &ImportFuncBuilder{}
-	}
-	imp := &registeredImport{module: m.module, name: name, typedI32: fn, params: []ValType{ValI32}, results: []ValType{ValI32}}
-	if m.reg != nil && !m.reg.sealed {
-		m.reg.imports = append(m.reg.imports, imp)
-	}
-	return &ImportFuncBuilder{imp: imp}
-}
-
-// I32I32ToI32Func declares a capability-free typed synchronous import. Params
-// and Results are fixed by the callback type and need not be declared separately.
-func (m *ImportModuleBuilder) I32I32ToI32Func(name string, fn I32I32ToI32HostFunc) *ImportFuncBuilder {
-	if m == nil {
-		return &ImportFuncBuilder{}
-	}
-	imp := &registeredImport{module: m.module, name: name, typedI32x2: fn, params: []ValType{ValI32, ValI32}, results: []ValType{ValI32}}
-	if m.reg != nil && !m.reg.sealed {
-		m.reg.imports = append(m.reg.imports, imp)
-	}
-	return &ImportFuncBuilder{imp: imp}
-}
-
-// I32I32Func declares a capability-free typed synchronous
-// (i32, i32) -> () import.
-func (m *ImportModuleBuilder) I32I32Func(name string, fn I32I32HostFunc) *ImportFuncBuilder {
-	if m == nil {
-		return &ImportFuncBuilder{}
-	}
-	imp := &registeredImport{module: m.module, name: name, typedI32x2V: fn, params: []ValType{ValI32, ValI32}}
-	if m.reg != nil && !m.reg.sealed {
-		m.reg.imports = append(m.reg.imports, imp)
-	}
-	return &ImportFuncBuilder{imp: imp}
-}
-
-// I32ToI32I32Func declares a capability-free typed synchronous
-// (i32) -> (i32, i32) import.
-func (m *ImportModuleBuilder) I32ToI32I32Func(name string, fn I32ToI32I32HostFunc) *ImportFuncBuilder {
-	if m == nil {
-		return &ImportFuncBuilder{}
-	}
-	imp := &registeredImport{module: m.module, name: name, typedI32R2: fn, params: []ValType{ValI32}, results: []ValType{ValI32, ValI32}}
-	if m.reg != nil && !m.reg.sealed {
-		m.reg.imports = append(m.reg.imports, imp)
-	}
-	return &ImportFuncBuilder{imp: imp}
-}
-
-// I32I32ToI32I32Func declares a capability-free typed synchronous
-// (i32, i32) -> (i32, i32) import.
-func (m *ImportModuleBuilder) I32I32ToI32I32Func(name string, fn I32I32ToI32I32HostFunc) *ImportFuncBuilder {
-	if m == nil {
-		return &ImportFuncBuilder{}
-	}
-	imp := &registeredImport{module: m.module, name: name, typedI32x2R2: fn, params: []ValType{ValI32, ValI32}, results: []ValType{ValI32, ValI32}}
+	imp.params, imp.results, _ = inferredHostFuncSignature(fn)
 	if m.reg != nil && !m.reg.sealed {
 		m.reg.imports = append(m.reg.imports, imp)
 	}

@@ -33,7 +33,7 @@ func TestTypedScalarSyncHostCallAllocatesNothing(t *testing.T) {
 	compiled := MustCompile(benchReturningImportModule())
 	defer compiled.Close()
 	instance, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
-		"env.f": I32ToI32HostFunc(func(v int32) int32 { return v + 1 }),
+		"env.f": func(v int32) int32 { return v + 1 },
 	}})
 	if err != nil {
 		t.Fatal(err)

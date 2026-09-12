@@ -26,6 +26,7 @@ type V128 [16]byte
 // Signed/Unsigned accessors expose its 31-bit payload.
 type FuncRef struct{ token uint64 }
 type ExternRef struct{ token uint64 }
+type ExnRef struct{ token uint64 }
 type GCRef struct{ token uint64 }
 type I31Ref struct{ bits uint32 }
 
@@ -42,9 +43,10 @@ const (
 	ValI31Ref // exact i31 immediate category; never an opaque GCRef token
 )
 
-// NullFuncRef, NullExternRef, NullGCRef, and NullI31Ref return null reference values.
+// NullFuncRef, NullExternRef, NullExnRef, NullGCRef, and NullI31Ref return null reference values.
 func NullFuncRef() FuncRef     { return FuncRef{} }
 func NullExternRef() ExternRef { return ExternRef{} }
+func NullExnRef() ExnRef       { return ExnRef{} }
 func NullGCRef() GCRef         { return GCRef{} }
 func NullI31Ref() I31Ref       { return I31Ref{} }
 
@@ -54,6 +56,7 @@ func NewI31Ref(v int32) I31Ref { return I31Ref{bits: uint32(v)<<1 | 1} }
 // IsNull reports whether a reference is null.
 func (r FuncRef) IsNull() bool   { return r.token == 0 }
 func (r ExternRef) IsNull() bool { return r.token == 0 }
+func (r ExnRef) IsNull() bool    { return r.token == 0 }
 func (r GCRef) IsNull() bool     { return r.token == 0 }
 func (r I31Ref) IsNull() bool    { return r.bits == 0 }
 

@@ -18,13 +18,13 @@ type hostSignatureCase struct {
 
 func hostSignatureCases() []hostSignatureCase {
 	return []hostSignatureCase{
-		{name: "empty_to_empty", typed: NoArgsHostFunc(func() {})},
-		{name: "i32_to_empty", params: 1, typed: I32HostFunc(func(int32) {})},
-		{name: "i32_to_i32", params: 1, results: 1, typed: I32ToI32HostFunc(func(int32) int32 { return 7 })},
-		{name: "i32_i32_to_empty", params: 2, typed: I32I32HostFunc(func(int32, int32) {})},
-		{name: "i32_i32_to_i32", params: 2, results: 1, typed: I32I32ToI32HostFunc(func(int32, int32) int32 { return 7 })},
-		{name: "i32_to_i32_i32", params: 1, results: 2, typed: I32ToI32I32HostFunc(func(int32) (int32, int32) { return 7, 9 })},
-		{name: "i32_i32_to_i32_i32", params: 2, results: 2, typed: I32I32ToI32I32HostFunc(func(int32, int32) (int32, int32) { return 7, 9 })},
+		{name: "empty_to_empty", typed: func() {}},
+		{name: "i32_to_empty", params: 1, typed: func(int32) {}},
+		{name: "i32_to_i32", params: 1, results: 1, typed: func(int32) int32 { return 7 }},
+		{name: "i32_i32_to_empty", params: 2, typed: func(int32, int32) {}},
+		{name: "i32_i32_to_i32", params: 2, results: 1, typed: func(int32, int32) int32 { return 7 }},
+		{name: "i32_to_i32_i32", params: 1, results: 2, typed: func(int32) (int32, int32) { return 7, 9 }},
+		{name: "i32_i32_to_i32_i32", params: 2, results: 2, typed: func(int32, int32) (int32, int32) { return 7, 9 }},
 	}
 }
 
@@ -112,8 +112,8 @@ func TestMixedOriginalAndExpandedTypedHostSignatures(t *testing.T) {
 	defer compiled.Close()
 	seen := int32(0)
 	in, err := Instantiate(compiled, Imports{
-		"env.transform": I32ToI32HostFunc(func(v int32) int32 { return v + 1 }),
-		"env.event":     I32HostFunc(func(v int32) { seen = v }),
+		"env.transform": func(v int32) int32 { return v + 1 },
+		"env.event":     func(v int32) { seen = v },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -141,6 +141,11 @@ func BenchmarkHostSignatureMatrix(b *testing.B) {
 				{name: "generic", fn: CallerHostFunc(func(_ Caller, _ []uint64, results []uint64) {
 					for i := range results {
 						results[i] = uint64(7 + 2*i)
+					}
+				})},
+				{name: "call", fn: HostCallFunc(func(call HostCall) {
+					for i := 0; i < call.ResultCount(); i++ {
+						call.SetI32(i, int32(7+2*i))
 					}
 				})},
 				{name: "typed", fn: tc.typed},
@@ -176,14 +181,16 @@ func BenchmarkHostSignatureMatrix(b *testing.B) {
 	}
 }
 
-func ExampleNoArgsHostFunc_signatureMatrix() {
-	_ = NoArgsHostFunc(func() {})
-	_ = I32HostFunc(func(int32) {})
-	_ = I32ToI32HostFunc(func(v int32) int32 { return v })
-	_ = I32I32HostFunc(func(int32, int32) {})
-	_ = I32I32ToI32HostFunc(func(a, b int32) int32 { return a + b })
-	_ = I32ToI32I32HostFunc(func(v int32) (int32, int32) { return v, v })
-	_ = I32I32ToI32I32HostFunc(func(a, b int32) (int32, int32) { return a, b })
-	fmt.Println("typed host signature matrix")
-	// Output: typed host signature matrix
+func ExampleHostCallFunc_signatureMatrix() {
+	callbacks := []any{
+		func() {},
+		func(int32) {},
+		func(v int32) int32 { return v },
+		func(int32, int32) {},
+		func(a, b int32) int32 { return a + b },
+		func(v int32) (int32, int32) { return v, v },
+		func(a, b int32) (int32, int32) { return a, b },
+	}
+	fmt.Println(len(callbacks), "ordinary host signatures")
+	// Output: 7 ordinary host signatures
 }

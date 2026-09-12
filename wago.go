@@ -22,6 +22,7 @@ type (
 	Bits                            = impl.Bits
 	BoundsCheckMode                 = impl.BoundsCheckMode
 	Caller                          = impl.Caller
+	CallerHostCallFunc              = impl.CallerHostCallFunc
 	CallerHostFunc                  = impl.CallerHostFunc
 	CallerInvoker                   = impl.CallerInvoker
 	CallerResolver                  = impl.CallerResolver
@@ -51,6 +52,7 @@ type (
 	ElemInit                        = impl.ElemInit
 	ElemMode                        = impl.ElemMode
 	ExitError                       = impl.ExitError
+	ExnRef                          = impl.ExnRef
 	ExternRef                       = impl.ExternRef
 	ExternRefHostModule             = impl.ExternRefHostModule
 	FeatureInfo                     = impl.FeatureInfo
@@ -92,6 +94,8 @@ type (
 	Handle                          = impl.Handle
 	HandleTable                     = impl.HandleTable
 	HeapTypeDescriptor              = impl.HeapTypeDescriptor
+	HostCall                        = impl.HostCall
+	HostCallFunc                    = impl.HostCallFunc
 	HostExit                        = impl.HostExit
 	HostFunc                        = impl.HostFunc
 	HostFuncRef                     = impl.HostFuncRef
@@ -508,6 +512,8 @@ func NewTable(minSize uint32, maxSize uint32) (*Table, error) { return impl.NewT
 func NewTable64(minSize uint32, maxSize uint32) (*Table, error) {
 	return impl.NewTable64(minSize, maxSize)
 }
+
+func NullExnRef() ExnRef { return impl.NullExnRef() }
 
 func NullExternRef() ExternRef { return impl.NullExternRef() }
 

@@ -112,10 +112,20 @@ The example compiles a module, creates an instance, and calls an exported
 function. See [Embed Wago in Go](https://docs.wago.sh/guides/embed-wago) for the
 complete guide.
 
-Capability-free synchronous imports have direct typed lanes for `() -> ()`,
-`(i32) -> ()`, `(i32) -> i32`, `(i32, i32) -> ()`, `(i32, i32) -> i32`,
-`(i32) -> (i32, i32)`, and `(i32, i32) -> (i32, i32)`. Their public Go types
-follow the signature, such as `I32HostFunc` and `I32I32ToI32I32HostFunc`.
+Register synchronous imports with ordinary Go functions. Wago infers supported
+hot signatures once and dispatches them without reflection or allocation:
+
+```go
+module.Func("add", func(a, b int32) int32 { return a + b })
+module.Func("hypot", func(a, b float64) float64 { return math.Hypot(a, b) })
+```
+
+For arbitrary arity, mixed types, `v128`, or references, use the same `Func`
+method with `func(wago.HostCall)`. The call is a borrowed logical view and
+supports every core Wasm value category under both Go and TinyGo. Eligible wide
+scalar signatures use the parked argument/result slots directly.
+High-arity adapters can process the borrowed raw ABI slices directly with
+`ParamSlots()` and `ResultSlots()`; `v128` occupies two consecutive slots.
 
 For high-frequency one-way `(i32) -> ()` imports, `wago.I32HostEvent` avoids a
 Go stack transition for every call. Events are delivered in order after the

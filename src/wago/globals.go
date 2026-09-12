@@ -34,8 +34,8 @@ func valTypeCode(t wasm.ValType) byte {
 }
 
 // Imports supplies a module's imports by "module.name" key, JS-style: one
-// namespace whose function values may be a HostFunc, CallerHostFunc, a supported
-// typed host function, or an I32HostEvent, alongside a GlobalImport, *Global, or
+// namespace whose function values may be an ordinary supported Go function,
+// HostCallFunc, HostFunc, CallerHostFunc, or I32HostEvent, alongside a GlobalImport, *Global, or
 // *Memory.
 // This mirrors the WebAssembly JS API's single imports object.
 type Imports map[string]any

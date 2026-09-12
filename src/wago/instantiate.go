@@ -1885,11 +1885,10 @@ func buildHostFuncThunks(c *Compiled, imports Imports, syncMode bool) (map[uint3
 			}
 			continue
 		}
-		switch imports[key].(type) {
-		case HostFunc, CallerHostFunc, *HostFuncRef, I32HostEvent, gatedI32HostEvent:
+		if isHostCallback(imports[key]) {
 			offs[uint32(fidx)] = len(blob)
 			blob = append(blob, railshotHostIndirectThunk(uint32(fidx))...)
-		default:
+		} else {
 			if imports[key] != nil {
 				return nil, nil, fmt.Errorf("import %q is %T; async host wrappers require wago.I32HostEvent", key, imports[key])
 			}

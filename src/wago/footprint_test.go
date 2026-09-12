@@ -10,15 +10,15 @@ import (
 )
 
 func TestSyncHostBindingStaysCompact(t *testing.T) {
-	// Nine callback representations, two pointers, the index, and a
+	// One tagged callback, seven dedicated hot representations, three pointers,
+	// the index, and a
 	// classification byte.
 	// TinyGo function values are larger than standard Go function values. Keep
 	// the budget exact for this compiler instead of accepting either footprint.
-	want := unsafe.Sizeof(HostFunc(nil)) + unsafe.Sizeof(CallerHostFunc(nil)) +
-		unsafe.Sizeof(NoArgsHostFunc(nil)) + unsafe.Sizeof(I32HostFunc(nil)) +
+	want := unsafe.Sizeof(any(nil)) + unsafe.Sizeof(NoArgsHostFunc(nil)) + unsafe.Sizeof(I32HostFunc(nil)) +
 		unsafe.Sizeof(I32ToI32HostFunc(nil)) + unsafe.Sizeof(I32I32HostFunc(nil)) +
 		unsafe.Sizeof(I32I32ToI32HostFunc(nil)) + unsafe.Sizeof(I32ToI32I32HostFunc(nil)) +
-		unsafe.Sizeof(I32I32ToI32I32HostFunc(nil)) + 2*unsafe.Sizeof((*DefinedTypeDescriptor)(nil)) + 5
+		unsafe.Sizeof(I32I32ToI32I32HostFunc(nil)) + 3*unsafe.Sizeof((*DefinedTypeDescriptor)(nil)) + 5
 	align := unsafe.Alignof(syncHostBinding{})
 	want = (want + align - 1) &^ (align - 1)
 	if got := unsafe.Sizeof(syncHostBinding{}); got != want {

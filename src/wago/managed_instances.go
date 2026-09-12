@@ -260,9 +260,12 @@ func managedForkImports(parent *Instance) (Imports, error) {
 		if !ok {
 			return fmt.Errorf("managed fork import %q is missing", key)
 		}
+		_, ownedHostRef := v.(*HostFuncRef)
+		if !ownedHostRef && isHostCallback(v) {
+			imports[key] = v
+			return nil
+		}
 		switch x := v.(type) {
-		case HostFunc, CallerHostFunc, I32HostEvent, gatedI32HostEvent:
-			imports[key] = x
 		case GlobalImport:
 			if x.Global != nil {
 				return fmt.Errorf("managed fork import %q borrows a global: %w", key, ErrManagedImportLifetime)
