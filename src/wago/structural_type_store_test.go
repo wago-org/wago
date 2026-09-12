@@ -22,7 +22,7 @@ func TestCompiledStructuralCallIdentityCacheLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if compiled.validateMemo.structuralCallIdentities != nil {
+	if compiled.validateMemo.structuralCallIdentities.Load() != nil {
 		t.Fatal("structural identity cache built before instantiation")
 	}
 
@@ -30,7 +30,7 @@ func TestCompiledStructuralCallIdentityCacheLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if compiled.validateMemo.structuralCallIdentities != structuralCallIdentitySeenSentinel {
+	if compiled.validateMemo.structuralCallIdentities.Load() != structuralCallIdentitySeenSentinel {
 		t.Fatal("structural identity cache built for one-shot instantiation")
 	}
 	if err := in.Close(); err != nil {
@@ -44,7 +44,7 @@ func TestCompiledStructuralCallIdentityCacheLifecycle(t *testing.T) {
 	if !ok || !bytes.Equal(got, want) {
 		t.Fatalf("cached identity = %x, %v; want %x", got, ok, want)
 	}
-	cache := compiled.validateMemo.structuralCallIdentities
+	cache := compiled.validateMemo.structuralCallIdentities.Load()
 	retained := structuralCallIdentityCacheHeaderBytes + cap(cache.spans)*structuralCallIdentitySpanBytes + cap(cache.identities)
 	if retained > maxStructuralCallIdentityCacheBytes {
 		t.Fatalf("identity cache retains %d bytes; budget %d", retained, maxStructuralCallIdentityCacheBytes)
@@ -52,13 +52,13 @@ func TestCompiledStructuralCallIdentityCacheLifecycle(t *testing.T) {
 	if err := compiled.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if compiled.validateMemo.structuralCallIdentities == nil {
+	if compiled.validateMemo.structuralCallIdentities.Load() == nil {
 		t.Fatal("Close released identity cache while an instance was live")
 	}
 	if err := in.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if compiled.validateMemo.structuralCallIdentities != nil {
+	if compiled.validateMemo.structuralCallIdentities.Load() != nil {
 		t.Fatal("identity cache retained after compiled module and final instance closed")
 	}
 }
@@ -79,7 +79,7 @@ func TestCompiledStructuralCallIdentityCacheBudget(t *testing.T) {
 	if err := compiled.prepareStructuralCallIdentities(); err != nil {
 		t.Fatal(err)
 	}
-	cache := compiled.validateMemo.structuralCallIdentities
+	cache := compiled.validateMemo.structuralCallIdentities.Load()
 	if cache == nil {
 		t.Fatal("oversized module did not record disabled identity cache")
 	}
