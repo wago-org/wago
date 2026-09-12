@@ -234,6 +234,42 @@ func BenchmarkExecCallOverhead_wazero(b *testing.B) {
 	}
 }
 
+// BenchmarkExecTypedCall_wago measures the public specialized (i32) -> i32
+// entry path. Setup resolves the export and verifies its signature once; the
+// timed loop uses PreparedI32ToI32 rather than the arbitrary-slot Invoke API.
+func BenchmarkExecTypedCall_wago(b *testing.B) {
+	c, err := wago.Compile(nil, fibWasm)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer c.Close()
+	in, err := wago.Instantiate(c, wago.InstantiateOptions{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer in.Close()
+	fn, err := in.PrepareI32ToI32("fib")
+	if err != nil {
+		b.Fatal(err)
+	}
+	if got, err := fn.Call(1); err != nil || got != 1 {
+		b.Fatalf("fib(1) = %d, %v; want 1", got, err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	var got int32
+	for i := 0; i < b.N; i++ {
+		got, err = fn.Call(1)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.StopTimer()
+	if got != 1 {
+		b.Fatalf("fib(1) = %d, want 1", got)
+	}
+}
+
 // BenchmarkExecHostRoundtrip measures one full wasm -> host -> wasm roundtrip:
 // the guest calls a value-returning host import (env.host) once and returns its
 // result. wago routes this through its synchronous host-call trampoline (the
