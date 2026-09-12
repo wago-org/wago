@@ -2561,18 +2561,38 @@ func (in *Instance) callNativeSyncWithTrapContext(entry uintptr, activeTrap []by
 		}
 		fixed := runtime.FixedScalarHostCall(activation.dispatchSingleTypedScalarFixedPortal)
 		switch in.syncHosts[0].scalarKind {
+		case syncHostTypedNone:
+			fixed = activation.dispatchSingleTypedNoneFixedPortal
+		case syncHostTypedI32V:
+			fixed = activation.dispatchSingleTypedI32VoidFixedPortal
 		case syncHostTypedI32x2V:
 			fixed = activation.dispatchSingleTypedI32x2VoidFixedPortal
 		case syncHostTypedI32R2:
 			fixed = activation.dispatchSingleTypedI32PairFixedPortal
 		case syncHostTypedI32x2R2:
 			fixed = activation.dispatchSingleTypedI32x2PairFixedPortal
+		case syncHostTypedI64:
+			fixed = activation.dispatchSingleTypedI64FixedPortal
+		case syncHostTypedI64x2:
+			fixed = activation.dispatchSingleTypedI64x2FixedPortal
+		case syncHostTypedF32:
+			fixed = activation.dispatchSingleTypedF32FixedPortal
+		case syncHostTypedF32x2:
+			fixed = activation.dispatchSingleTypedF32x2FixedPortal
+		case syncHostTypedF64:
+			fixed = activation.dispatchSingleTypedF64FixedPortal
+		case syncHostTypedF64x2:
+			fixed = activation.dispatchSingleTypedF64x2FixedPortal
 		}
 		err = in.eng.CallWithHostBaseScalarFixed(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatch, activation.dispatchTypedScalarExpandedPortal, fixed)
 	} else if in.hasExpandedTypedScalarHost() {
 		err = in.eng.CallWithHostBaseScalarExpanded(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchTypedScalarExpandedPortal)
 	} else if in.hasDirectTypedScalarHost() {
 		err = in.eng.CallWithHostBaseScalar(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatch, activation.dispatchTypedScalarPortal)
+	} else if in.hasSingleHostCallFixedViewPortal() {
+		binding := &in.syncHosts[0]
+		rawSlots := uint32(len(binding.sig.Params)) | uint32(len(binding.sig.Results))<<16
+		err = in.eng.CallWithHostBaseFixedView(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, rawSlots, activation.dispatch, activation.dispatchSingleHostCallFixedView)
 	} else if in.hasSingleHostCallPortal() {
 		err = in.eng.CallWithHostBase(entry, in.serArgs, in.jm.LinMemBase(), activeTrap, in.results, in.ctrl, activation.dispatchSingleHostCall)
 	} else if in.hasSingleHostCallViewPortal() {

@@ -697,6 +697,16 @@ func (in *Instance) hasSingleHostCallPortal() bool {
 	return binding.hostCall && !binding.hostCallView && binding.gate == nil && binding.scalarKind != syncHostNonScalar
 }
 
+func (in *Instance) hasSingleHostCallFixedViewPortal() bool {
+	if !in.singleTypedScalarHostEligible() {
+		return false
+	}
+	binding := &in.syncHosts[0]
+	return binding.hostCall && binding.gate == nil && binding.scalarKind != syncHostNonScalar &&
+		len(binding.sig.Params) <= coreruntime.MaxHostArity && len(binding.sig.Results) <= coreruntime.MaxHostArity &&
+		len(binding.sig.Params)+len(binding.sig.Results) < directHostCallViewSlots
+}
+
 // The compact copy loop remains faster below this crossover on native AMD64.
 // Calls exceeding the inline capacity already receive a direct extension view
 // from the generic loop, so this portal is only marked for wide inline shapes.

@@ -32,6 +32,9 @@ func TestHostCallPortalMayGrowStackCollectAndRecoverFromTrap(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer in.Close()
+	if !in.hasSingleHostCallFixedViewPortal() {
+		t.Fatal("HostCall did not select the fixed control-frame view")
+	}
 	if _, err := in.Invoke("g", I32(41)); err == nil || err.Error() != "expected portal trap" {
 		t.Fatalf("first portal call error = %v", err)
 	}
@@ -179,6 +182,36 @@ func TestTypedI32HostCallbackMayGrowStackAndCollect(t *testing.T) {
 	defer in.Close()
 	if got, err := in.Invoke("g", I32(41)); err != nil || len(got) != 1 || AsI32(got[0]) != 42 {
 		t.Fatalf("typed callback after stack growth and GC = %v, %v; want 42", got, err)
+	}
+}
+
+func TestTypedExpandedHostCallbackMayGrowStackCollectAndRecoverFromTrap(t *testing.T) {
+	compiled := MustCompile(hostSignatureLoopModule(1, 1, wasm.F64))
+	defer compiled.Close()
+	calls := 0
+	in, err := Instantiate(compiled, InstantiateOptions{Imports: Imports{
+		"env.f": func(value float64) float64 {
+			calls++
+			_ = typedHostGrowStack(128, int32(value))
+			runtime.GC()
+			if calls == 1 {
+				panic(HostTrap{Err: errors.New("expected expanded typed trap")})
+			}
+			return 7
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer in.Close()
+	if !in.hasSingleExpandedTypedScalarHost() {
+		t.Fatal("expanded typed callback did not select the fixed scalar portal")
+	}
+	if _, err := in.Invoke("run", I32(1)); err == nil || err.Error() != "expected expanded typed trap" {
+		t.Fatalf("first expanded typed call error = %v", err)
+	}
+	if got, err := in.Invoke("run", I32(1)); err != nil || len(got) != 1 || AsI32(got[0]) != 7 {
+		t.Fatalf("expanded typed callback after stack growth, GC, and trap = %v, %v; want 7", got, err)
 	}
 }
 

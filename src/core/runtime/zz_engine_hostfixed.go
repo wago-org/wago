@@ -76,17 +76,17 @@ func (e *Engine) callWithHostLoopFixed(code uintptr, serArgs []byte, linMemBase 
 				ctrl = rootCtrl
 				var a0, a1 uint64
 				if n != 0 {
-					a0 = binary.LittleEndian.Uint64(ctrl[hcArgs:])
+					a0 = *(*uint64)(unsafe.Pointer(&ctrl[hcArgs]))
 				}
 				if n == 2 {
-					a1 = binary.LittleEndian.Uint64(ctrl[hcArgs+8:])
+					a1 = *(*uint64)(unsafe.Pointer(&ctrl[hcArgs+8]))
 				}
 				result := fixed(a0, a1)
 				if nres == 1 {
-					binary.LittleEndian.PutUint64(ctrl[hcResults:], result)
+					*(*uint64)(unsafe.Pointer(&ctrl[hcResults])) = result
 				} else if nres == 2 {
-					binary.LittleEndian.PutUint64(ctrl[hcResults:], result&0xffffffff)
-					binary.LittleEndian.PutUint64(ctrl[hcResults+8:], result>>32)
+					*(*uint64)(unsafe.Pointer(&ctrl[hcResults])) = result & 0xffffffff
+					*(*uint64)(unsafe.Pointer(&ctrl[hcResults+8])) = result >> 32
 				}
 				continue
 			}

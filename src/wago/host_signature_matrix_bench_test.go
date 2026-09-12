@@ -13,6 +13,7 @@ import (
 type hostSignatureCase struct {
 	name            string
 	params, results int
+	valueType       wasm.ValType
 	typed           any
 }
 
@@ -25,17 +26,27 @@ func hostSignatureCases() []hostSignatureCase {
 		{name: "i32_i32_to_i32", params: 2, results: 1, typed: func(int32, int32) int32 { return 7 }},
 		{name: "i32_to_i32_i32", params: 1, results: 2, typed: func(int32) (int32, int32) { return 7, 9 }},
 		{name: "i32_i32_to_i32_i32", params: 2, results: 2, typed: func(int32, int32) (int32, int32) { return 7, 9 }},
+		{name: "i64_to_i64", params: 1, results: 1, valueType: wasm.I64, typed: func(int64) int64 { return 7 }},
+		{name: "i64_i64_to_i64", params: 2, results: 1, valueType: wasm.I64, typed: func(int64, int64) int64 { return 7 }},
+		{name: "f32_to_f32", params: 1, results: 1, valueType: wasm.F32, typed: func(float32) float32 { return 7 }},
+		{name: "f32_f32_to_f32", params: 2, results: 1, valueType: wasm.F32, typed: func(float32, float32) float32 { return 7 }},
+		{name: "f64_to_f64", params: 1, results: 1, valueType: wasm.F64, typed: func(float64) float64 { return 7 }},
+		{name: "f64_f64_to_f64", params: 2, results: 1, valueType: wasm.F64, typed: func(float64, float64) float64 { return 7 }},
 	}
 }
 
-func hostSignatureLoopModule(params, results int) []byte {
+func hostSignatureLoopModule(params, results int, types ...wasm.ValType) []byte {
+	valueType := wasm.I32
+	if len(types) != 0 && types[0] != (wasm.ValType{}) {
+		valueType = types[0]
+	}
 	importParams := make([]wasm.ValType, params)
 	importResults := make([]wasm.ValType, results)
 	for i := range importParams {
-		importParams[i] = wasm.I32
+		importParams[i] = valueType
 	}
 	for i := range importResults {
-		importResults[i] = wasm.I32
+		importResults[i] = valueType
 	}
 	body := []byte{
 		1, 1, 0x7f, // local accumulator: i32
@@ -43,10 +54,27 @@ func hostSignatureLoopModule(params, results int) []byte {
 		0x20, 0, 0x45, 0x0d, 1, // count == 0: branch done
 	}
 	for i := 0; i < params; i++ {
-		body = append(body, 0x41, byte(i+1)) // i32.const
+		switch valueType {
+		case wasm.I32:
+			body = append(body, 0x41, byte(i+1))
+		case wasm.I64:
+			body = append(body, 0x42, byte(i+1))
+		case wasm.F32:
+			body = append(body, 0x43, 0, 0, 0, 0)
+		case wasm.F64:
+			body = append(body, 0x44, 0, 0, 0, 0, 0, 0, 0, 0)
+		}
 	}
 	body = append(body, 0x10, 0) // call import 0
 	for i := 0; i < results; i++ {
+		switch valueType {
+		case wasm.I64:
+			body = append(body, 0xa7) // i32.wrap_i64
+		case wasm.F32:
+			body = append(body, 0xa8) // i32.trunc_f32_s
+		case wasm.F64:
+			body = append(body, 0xaa) // i32.trunc_f64_s
+		}
 		body = append(body, 0x21, 1) // consume result into accumulator
 	}
 	body = append(body,
@@ -69,7 +97,7 @@ func hostSignatureLoopModule(params, results int) []byte {
 func TestTypedHostSignatureMatrix(t *testing.T) {
 	for _, tc := range hostSignatureCases() {
 		t.Run(tc.name, func(t *testing.T) {
-			compiled, err := Compile(NewRuntimeConfig(), hostSignatureLoopModule(tc.params, tc.results))
+			compiled, err := Compile(NewRuntimeConfig(), hostSignatureLoopModule(tc.params, tc.results, tc.valueType))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -129,7 +157,7 @@ func BenchmarkHostSignatureMatrix(b *testing.B) {
 	const calls = int32(1024)
 	for _, tc := range hostSignatureCases() {
 		b.Run(tc.name, func(b *testing.B) {
-			compiled, err := Compile(NewRuntimeConfig(), hostSignatureLoopModule(tc.params, tc.results))
+			compiled, err := Compile(NewRuntimeConfig(), hostSignatureLoopModule(tc.params, tc.results, tc.valueType))
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -145,7 +173,16 @@ func BenchmarkHostSignatureMatrix(b *testing.B) {
 				})},
 				{name: "call", fn: HostCallFunc(func(call HostCall) {
 					for i := 0; i < call.ResultCount(); i++ {
-						call.SetI32(i, int32(7+2*i))
+						switch tc.valueType {
+						case wasm.I64:
+							call.SetI64(i, int64(7+2*i))
+						case wasm.F32:
+							call.SetF32(i, float32(7+2*i))
+						case wasm.F64:
+							call.SetF64(i, float64(7+2*i))
+						default:
+							call.SetI32(i, int32(7+2*i))
+						}
 					}
 				})},
 				{name: "typed", fn: tc.typed},
@@ -190,7 +227,13 @@ func ExampleHostCallFunc_signatureMatrix() {
 		func(a, b int32) int32 { return a + b },
 		func(v int32) (int32, int32) { return v, v },
 		func(a, b int32) (int32, int32) { return a, b },
+		func(v int64) int64 { return v },
+		func(a, b int64) int64 { return a + b },
+		func(v float32) float32 { return v },
+		func(a, b float32) float32 { return a + b },
+		func(v float64) float64 { return v },
+		func(a, b float64) float64 { return a + b },
 	}
 	fmt.Println(len(callbacks), "ordinary host signatures")
-	// Output: 7 ordinary host signatures
+	// Output: 13 ordinary host signatures
 }
