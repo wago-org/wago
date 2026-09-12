@@ -456,8 +456,9 @@ func (in *Instance) preparedIsolatedEligible() bool {
 
 // Shared control requires native locking/rebinding. Imported, dynamic, and
 // store-owned GC domains require general GC admission, even for numeric exports.
-// Registration fixes the GC bits before public entry. Resource sharing revokes
-// direct gate admission before setting the shared bit.
+// Non-private domains are registered before public entry. Late boundary stores
+// are private; an isolated module has no collector or imports to attach there.
+// Resource sharing revokes direct gate admission before setting the shared bit.
 const preparedFastBlocked = executionFlagNativeControlShared | executionFlagImportedGCDomain | executionFlagDynamicGCDomain | executionFlagStoreOwnedGCCollector
 
 func (in *Instance) preparedFastStateValid() bool {
@@ -533,8 +534,9 @@ func (in *Instance) callPreparedIsolated(entry uintptr, activeTrap []byte) error
 // caller holds a lifetime lease and has the compiler's direct-entry proof plus
 // the immutable isolated module shape: no imports/host calls, collector, global
 // cells, external memory, or externally reachable function context. A scalar
-// signature alone is not sufficient. GC-domain flags are set at registration;
-// resource export revokes this gate before publishing shared ownership. Direct
+// signature alone is not sufficient. Non-private GC domains are registered
+// during construction; late private stores cannot add GC to this module shape.
+// Resource export revokes this gate before publishing shared ownership. Direct
 // memory-free code uses its own engine and cannot need native context rebinding.
 func (in *Instance) tryPreparedDirect() bool {
 	gate := &in.ensurePluginState().invokeMu

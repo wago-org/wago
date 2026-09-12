@@ -13,7 +13,7 @@ The invocation gate adds 16 bytes to `instancePluginState` on amd64. The fast-en
 
 ## Narrow direct prepared entry
 
-The compiler's direct-entry metadata and isolated module shape establish that the entry cannot call a host, enter another instance, or use GC facilities. The module has no imports, collector, external global cells, or external memory. Isolated local tables require the existing compiler proof. The integer signature alone is not a safety proof. Those construction-time facts are immutable; current sharing and GC-domain exclusions are checked at each entry. GC-domain flags are published during reference-store registration, before public calls. Resource sharing revokes direct admission before publishing a shared handle.
+The compiler's direct-entry metadata and isolated module shape establish that the entry cannot call a host, enter another instance, or use GC facilities. The module has no imports, collector, external global cells, or external memory. Isolated local tables require the existing compiler proof. The integer signature alone is not a safety proof. Those construction-time facts are immutable; current sharing and GC-domain exclusions are checked at each entry. Non-private GC domains are registered during construction. A late boundary-created store is private and cannot add GC domains to a module with no collector or imports. Resource sharing revokes direct admission before publishing a shared handle.
 
 The gate state machine uses `Held`, `Fast`, `Waiters`, and permanent `Revoked` bits:
 
