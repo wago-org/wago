@@ -4,34 +4,60 @@ import (
 	"context"
 	"encoding/binary"
 	"sync"
+	"sync/atomic"
 )
 
 // invocationGate has a zero-value, allocation-free uncontended path. Waiters
 // share a notification channel, not an invocation slot. Cancellation never
 // changes the owner or interrupts the active invocation.
 type invocationGate struct {
+	state   atomic.Uint32
 	mu      sync.Mutex
-	held    bool
 	changed chan struct{}
 }
+
+const (
+	invocationGateHeld    = uint32(1)
+	invocationGateWaiters = uint32(2)
+)
 
 func (g *invocationGate) Lock() { _ = g.lockContext(nil) }
 
 func (g *invocationGate) lockContext(ctx context.Context) error {
-	g.mu.Lock()
 	for {
-		// Cancellation wins if it is visible at the admission decision, including
-		// when both the notification and Done channels became ready.
 		if ctx != nil {
 			if err := ctx.Err(); err != nil {
-				g.mu.Unlock()
 				return err
 			}
 		}
-		if !g.held {
-			g.held = true
-			g.mu.Unlock()
+		if g.state.CompareAndSwap(0, invocationGateHeld) {
+			// Cancellation observed after acquisition wins; return the slot before
+			// the caller publishes an identity or arms an interrupt watcher.
+			if ctx != nil {
+				if err := ctx.Err(); err != nil {
+					g.Unlock()
+					return err
+				}
+			}
 			return nil
+		}
+		g.mu.Lock()
+		registered := false
+		for {
+			state := g.state.Load()
+			if state == 0 {
+				break
+			}
+			// Registration and release use the same atomic word. If release wins,
+			// retry admission; otherwise Unlock must take mu and notify this waiter.
+			if g.state.CompareAndSwap(state, state|invocationGateWaiters) {
+				registered = true
+				break
+			}
+		}
+		if !registered {
+			g.mu.Unlock()
+			continue
 		}
 		if g.changed == nil {
 			g.changed = make(chan struct{})
@@ -47,22 +73,22 @@ func (g *invocationGate) lockContext(ctx context.Context) error {
 				return ctx.Err()
 			}
 		}
-		g.mu.Lock()
 	}
 }
 
 func (g *invocationGate) Unlock() {
-	g.mu.Lock()
-	if !g.held {
-		g.mu.Unlock()
+	previous := g.state.Swap(0)
+	if previous&invocationGateHeld == 0 {
 		panic("unlock of unlocked invocation gate")
 	}
-	g.held = false
-	if g.changed != nil {
-		close(g.changed)
-		g.changed = nil
+	if previous&invocationGateWaiters != 0 {
+		g.mu.Lock()
+		if g.changed != nil {
+			close(g.changed)
+			g.changed = nil
+		}
+		g.mu.Unlock()
 	}
-	g.mu.Unlock()
 }
 
 func (in *Instance) lockInvocationContext(ctx context.Context, id invocationID) (*instancePluginState, error) {

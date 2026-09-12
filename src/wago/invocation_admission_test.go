@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"github.com/wago-org/wago/src/core/compiler/wasm"
 	"github.com/wago-org/wago/tests/support/wasmtest"
+	goruntime "runtime"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -222,5 +224,35 @@ func TestContextEntryCancellationWhileWaiting(t *testing.T) {
 				t.Fatal("canceled context entry waited for admission")
 			}
 		})
+	}
+}
+
+func TestInvocationGateConcurrentOwners(t *testing.T) {
+	var gate invocationGate
+	var owners atomic.Int32
+	var workers sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for j := 0; j < 100; j++ {
+				gate.Lock()
+				if owners.Add(1) != 1 {
+					t.Error("multiple invocation owners")
+				}
+				goruntime.Gosched()
+				if owners.Add(-1) != 0 {
+					t.Error("invocation ownership changed")
+				}
+				gate.Unlock()
+			}
+		}()
+	}
+	done := make(chan struct{})
+	go func() { workers.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("invocation owner lost its wakeup")
 	}
 }
