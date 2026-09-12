@@ -66,6 +66,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	// Close is callback-safe and starts logical close. Use WaitClosed when the
+	// caller must wait for active calls and terminal close hooks to finish.
 	defer owned.Close()
 
 	result, err := owned.Instance().Call(

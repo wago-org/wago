@@ -242,12 +242,26 @@ func BenchmarkExecCallOverhead_wazero(b *testing.B) {
 // boundary crossing. Compare against ExecCallOverhead (a plain guest-only call):
 // the difference is the added cost of the host-boundary round trip.
 func BenchmarkExecHostRoundtrip_wago(b *testing.B) {
+	benchmarkExecHostRoundtripWago(b, wago.HostFunc(func(_ wago.HostModule, p, r []uint64) {
+		r[0] = p[0] + 1
+	}))
+}
+
+// BenchmarkExecHostCallback_wago measures the same callback transaction through
+// Wago's allocation-free typed scalar portal, matching wazero's typed WithFunc
+// binding while retaining BenchmarkExecHostRoundtrip_wago as the legacy API
+// history series.
+func BenchmarkExecHostCallback_wago(b *testing.B) {
+	benchmarkExecHostRoundtripWago(b, wago.I32ToI32HostFunc(func(x int32) int32 { return x + 1 }))
+}
+
+func benchmarkExecHostRoundtripWago(b *testing.B, callback any) {
 	c, err := wago.Compile(nil, hostcallWasm)
 	if err != nil {
 		b.Fatal(err)
 	}
 	in, err := wago.Instantiate(c, wago.InstantiateOptions{Imports: wago.Imports{
-		"env.host": wago.HostFunc(func(_ wago.HostModule, p, r []uint64) { r[0] = p[0] + 1 }),
+		"env.host": callback,
 	}})
 	if err != nil {
 		b.Fatal(err)

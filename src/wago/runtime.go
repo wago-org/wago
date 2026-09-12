@@ -923,16 +923,6 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	if err := applyPolicy(mod, cfg.policy); err != nil {
 		return nil, err
 	}
-	reservation, err := rt.reserveRuntimeInstance(mod, origin)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if reservation != nil && !reservation.registered.Load() {
-			reservation.release()
-		}
-	}()
-
 	imports, pluginGCImports, err := rt.resolveInstanceImports(mod.imports, mod.importIdentities, cfg.imports, cfg.exactImports, cfg.extraImports...)
 	if err != nil {
 		return nil, err
@@ -946,7 +936,7 @@ func (rt *Runtime) instantiateOrigin(ctx context.Context, mod *Module, origin In
 	// retained code ownership before start-time host callbacks.
 	mod.endUse()
 	usingModule = false
-	in, err := rt.instantiateWithHooksOrigin(mod, imports, pluginGCImports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin, hooks, operation.reservation, reservation)
+	in, err := rt.instantiateWithHooksOrigin(ctx, mod, imports, pluginGCImports, cfg.gc, cfg.hasGC, cfg.forceSyncHost, origin, hooks, operation.reservation)
 	if err == nil && rt.isClosed() {
 		err = joinPrimary(fmt.Errorf("wago: runtime closed during instantiation"), in.Close())
 		in = nil
@@ -1085,8 +1075,28 @@ func applyInstantiateOptions(opts []InstantiateOption) instantiateConfig {
 
 // instantiateWithHooksOrigin runs the Runtime-aware instantiation path and emits
 // plugin lifecycle callbacks around the low-level instantiator.
-func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation, runtimeReservation *runtimeInstanceReservation) (*Instance, error) {
+func (rt *Runtime) instantiateWithHooksOrigin(ctx context.Context, mod *Module, imports Imports, pluginGCImports map[uint32]struct{}, gc GCConfig, hasGC, forceSyncHost bool, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !mod.beginUse() {
+		return nil, fmt.Errorf("wago: Instantiate: module is closed")
+	}
+	runtimeReservation, err := rt.reserveRuntimeInstance(mod, origin)
+	mod.endUse()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if runtimeReservation != nil && !runtimeReservation.registered.Load() {
+			runtimeReservation.release()
+		}
+	}()
 	iopts := InstantiateOptions{
+		startContext:             ctx,
 		MaxCompiledMetadataBytes: rt.cfg.maxCompiledMetadataBytes,
 		Imports:                  imports, ownedImports: true, store: rt.refStore, runtime: rt, origin: origin, pluginGCImports: pluginGCImports,
 		forceSyncHost:            forceSyncHost || rt.callerResolverActive.Load(),
@@ -1105,10 +1115,18 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, plug
 	}
 
 	// Keep the no-lifecycle-hook path allocation-free.
+	var in *Instance
 	if len(hooks.beforeInstantiate) == 0 && len(hooks.afterCreate) == 0 && len(hooks.afterInstantiate) == 0 && len(hooks.onInstantiateError) == 0 {
-		return instantiateCoreWithModuleUse(mod, iopts)
+		in, err = instantiateCoreWithModuleUse(mod, iopts)
+	} else {
+		in, err = instantiateWithLifecycleHooks(mod, iopts, origin, hooks, reservation)
 	}
-	return instantiateWithLifecycleHooks(mod, iopts, origin, hooks, reservation)
+	if err == nil && ctx.Err() != nil {
+		err = joinPrimary(ctx.Err(), in.closeAndWait())
+		in = nil
+		err = emitInstantiationError(hooks, InstantiationRequest{Module: moduleView(mod), Origin: origin, reservation: reservation}, err)
+	}
+	return in, err
 }
 
 // instantiateWithLifecycleHooks is kept separate from the ordinary no-hook
@@ -1119,16 +1137,7 @@ func (rt *Runtime) instantiateWithHooksOrigin(mod *Module, imports Imports, plug
 func instantiateWithLifecycleHooks(mod *Module, iopts InstantiateOptions, origin InstantiateOrigin, hooks *hookRegistry, reservation *pluginOperationReservation) (*Instance, error) {
 	request := InstantiationRequest{Module: moduleView(mod), Origin: origin, reservation: reservation}
 	emitError := func(original error) error {
-		var hookErrs []error
-		for _, fn := range hooks.onInstantiateError {
-			observer := fn
-			if panicErr := callHookSafely("OnInstantiateError", func() {
-				observer(InstantiationErrorEvent{Module: request.Module, Origin: origin, Err: original, reservation: reservation})
-			}); panicErr != nil {
-				hookErrs = append(hookErrs, panicErr)
-			}
-		}
-		return joinPrimary(original, hookErrs...)
+		return emitInstantiationError(hooks, request, original)
 	}
 
 	for _, fn := range hooks.beforeInstantiate {
@@ -1164,6 +1173,21 @@ func instantiateWithLifecycleHooks(mod *Module, iopts InstantiateOptions, origin
 		}
 	}
 	return inst, nil
+}
+
+// The caller retains the plugin-operation reservation through every observer,
+// including when cancellation is first detected after AfterInstantiate.
+func emitInstantiationError(hooks *hookRegistry, request InstantiationRequest, original error) error {
+	var hookErrs []error
+	for _, fn := range hooks.onInstantiateError {
+		observer := fn
+		if panicErr := callHookSafely("OnInstantiateError", func() {
+			observer(InstantiationErrorEvent{Module: request.Module, Origin: request.Origin, Err: original, reservation: request.reservation})
+		}); panicErr != nil {
+			hookErrs = append(hookErrs, panicErr)
+		}
+	}
+	return joinPrimary(original, hookErrs...)
 }
 
 func instantiateCoreWithModuleUse(mod *Module, opts InstantiateOptions) (*Instance, error) {
@@ -1437,13 +1461,8 @@ func (rt *Runtime) finishClose(ctx context.Context, state *runtimeCloseState, ho
 	}
 	rt.mu.Unlock()
 	for i := len(instances) - 1; i >= 0; i-- {
-		closeState := instances[i].ensurePluginState().close.Load()
-		if closeState != nil {
-			<-closeState.done
-			<-closeState.quiesced
-			if err := joinPrimary(closeState.result, closeState.terminalResult); err != nil {
-				errs = append(errs, err)
-			}
+		if err := instances[i].waitTerminalClose(); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	for i := len(internalClose) - 1; i >= 0; i-- {

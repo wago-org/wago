@@ -42,9 +42,22 @@ var hostInvocationContexts sync.Map // map[uintptr]hostInvocationContext
 // binding spans this loop. Nested entries get distinct values and control
 // frames. This cache is neither execution ownership nor callback authority.
 type hostLoopActivation struct {
-	root       *Instance
-	ctrl       uintptr
-	invocation hostInvocationContext
+	root                        *Instance
+	ctrl                        uintptr
+	invocation                  hostInvocationContext
+	state                       *instancePluginState
+	parkedNativeContextReusable bool
+}
+
+func (a *hostLoopActivation) stateFor(active *Instance) *instancePluginState {
+	if active == a.root && a.state != nil {
+		return a.state
+	}
+	state := active.ensurePluginState()
+	if active == a.root {
+		a.state = state
+	}
+	return state
 }
 
 func (a *hostLoopActivation) context(active *Instance) hostInvocationContext {
@@ -201,7 +214,6 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		active.hostCall(ctrl, importIdx, args, results, hostInvocationContext{})
 		return
 	}
-
 	// Run arbitrary Go host code without the non-reentrant native execution
 	// lease. The deferred reacquire covers normal return, HostExit, validation
 	// panics, and arbitrary host panics. Rebind the exact parked callee because a
@@ -242,9 +254,14 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	var localMu *sync.Mutex
 	var epoch uint64
 	var localVersion uint64
+	state := a.stateFor(active)
 	if active.usesIndependentExecution() {
-		localMu = active.independentNativeExecutionMu()
-		localVersion = active.ensurePluginState().nativeContextVersion.Load()
+		if active.memoryDir != nil {
+			localMu = &active.memoryDir.nativeMu
+		} else {
+			localMu = &state.nativeExecutionMu
+		}
+		localVersion = state.nativeContextVersion.Load()
 		localMu.Unlock()
 	} else {
 		epoch = nativeExecutionEpoch
@@ -270,7 +287,7 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 		// local lease. All root, interruption, and resume steps remain required.
 		restore := false
 		if localMu != nil {
-			restore = !active.canReuseParkedNativeContext(localVersion)
+			restore = !active.canReuseParkedNativeContextWithState(localVersion, state)
 		} else {
 			restore = nativeExecutionEpoch != epoch
 		}
@@ -292,13 +309,90 @@ func (a *hostLoopActivation) dispatch(ctrl uintptr, importIdx uint32, args, resu
 	// Only arbitrary host code can synchronously re-enter this instance. The
 	// active marker includes the callback-scoped invocation identity, so another
 	// call chain cannot masquerade as this parked activation.
-	markNativeActiveID(active, id)
-	defer unmarkNativeActiveID(active, id)
+	markNativeActiveState(state, id)
+	defer unmarkNativeActiveState(state, id)
 	if active != root {
 		restoreInvocationContext := bindHostInvocationContext(ctrl, invocation)
 		defer restoreInvocationContext()
 	}
 	active.hostCall(ctrl, importIdx, args, results, invocation)
+}
+
+// dispatchTypedScalarPortal is the capability-free root portal. Its callback
+// type cannot inspect Caller or obtain supported re-entry authority, and non-GC
+// activations have no native roots to publish while parked. Independent
+// instances retain their already-exclusive local lease; shared execution
+// releases the global lease so another instance may run. The context version or
+// global epoch still decides whether native context must be rebound before resume.
+func (a *hostLoopActivation) dispatchTypedScalarPortal(ctrl uintptr, importIdx, rawSlots uint32, a0, a1 uint64) (uint64, bool) {
+	active := a.root
+	if active == nil || ctrl != a.ctrl ||
+		importIdx&hostFuncRefDispatchBit != 0 || int(importIdx) >= len(active.syncHosts) ||
+		active.gc != nil || active.executionFlags.Load()&(executionFlagImportedGCDomain|executionFlagDynamicGCDomain|executionFlagStoreOwnedGCCollector) != 0 {
+		return 0, false
+	}
+	binding := &active.syncHosts[importIdx]
+	if binding.gate != nil || binding.scalarKind < syncHostTypedI32 {
+		return 0, false
+	}
+	typedScalarArity := uint32(binding.scalarKind - syncHostScalar)
+	if rawSlots != typedScalarArity|1<<16 {
+		return 0, false
+	}
+
+	state := a.state
+	flags := active.executionFlags.Load()
+	if flags&(executionFlagIndependent|executionFlagNativeControlShared) == executionFlagIndependent {
+		version := state.nativeContextVersion.Load()
+		var result uint64
+		if binding.scalarKind == syncHostTypedI32 {
+			result = I32(binding.typedI32(AsI32(a0)))
+		} else {
+			result = I32(binding.typedI32x2(AsI32(a0), AsI32(a1)))
+		}
+		if version == ^uint64(0) || !a.parkedNativeContextReusable ||
+			active.executionFlags.Load()&(executionFlagIndependent|executionFlagNativeControlShared) != executionFlagIndependent ||
+			state.nativeContextVersion.Load() != version {
+			active.restoreTypedScalarNativeContext(ctrl)
+		}
+		return result, true
+	}
+
+	epoch := nativeExecutionEpoch
+	nativeExecutionMu.Unlock()
+	defer func() {
+		nativeExecutionMu.Lock()
+		if nativeExecutionEpoch != epoch {
+			active.restoreTypedScalarNativeContext(ctrl)
+		}
+	}()
+
+	if binding.scalarKind == syncHostTypedI32 {
+		return I32(binding.typedI32(AsI32(a0))), true
+	} else {
+		return I32(binding.typedI32x2(AsI32(a0), AsI32(a1))), true
+	}
+}
+
+func (in *Instance) restoreTypedScalarNativeContext(ctrl uintptr) {
+	if err := in.bindNativeContext(); err != nil {
+		panic(invalidHostReference{err: err})
+	}
+	in.jm.SetStackFence(in.eng.StackLimit())
+	if err := in.jm.RebindTrapCell(in.trap); err != nil {
+		panic(invalidHostReference{err: err})
+	}
+	in.jm.SetCustomCtx(ctrl)
+}
+
+func (in *Instance) hasDirectTypedScalarHost() bool {
+	for i := range in.syncHosts {
+		binding := &in.syncHosts[i]
+		if binding.gate == nil && (binding.typedI32 != nil || binding.typedI32x2 != nil) {
+			return true
+		}
+	}
+	return false
 }
 
 // prepareHostReentryState gives arbitrary host code an isolated native stack,

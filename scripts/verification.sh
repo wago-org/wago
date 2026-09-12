@@ -4,7 +4,7 @@
 # its own accounting row.
 set -eu
 
-report="${VERIFY_REPORT:-VERIFICATION.md}"
+report="${VERIFY_REPORT:-/dev/null}"
 root=$(git rev-parse --show-toplevel) || {
 	printf 'wago: not inside a git repository\n' >&2
 	exit 1

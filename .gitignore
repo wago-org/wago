@@ -50,5 +50,9 @@ card.md
 # from gofmt/lint walks too — see `just lint fmt`.
 .claude/worktrees/
 
+# Local agent knowledge graphs and repository worktrees.
+/graphify-out/
+/.worktrees/
+
 # Local temporary analysis and cleanup notes
 /.tmp/

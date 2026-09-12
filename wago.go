@@ -99,6 +99,8 @@ type (
 	HostModule                      = impl.HostModule
 	HostTrap                        = impl.HostTrap
 	I31Ref                          = impl.I31Ref
+	I32I32ToI32HostFunc             = impl.I32I32ToI32HostFunc
+	I32ToI32HostFunc                = impl.I32ToI32HostFunc
 	ImplementationLimitError        = impl.ImplementationLimitError
 	ImportFuncBuilder               = impl.ImportFuncBuilder
 	ImportKind                      = impl.ImportKind
@@ -167,6 +169,8 @@ type (
 	Policy                          = impl.Policy
 	PreparedCompile                 = impl.PreparedCompile
 	PreparedFunction                = impl.PreparedFunction
+	PreparedI32I32ToI32             = impl.PreparedI32I32ToI32
+	PreparedI32ToI32                = impl.PreparedI32ToI32
 	ProviderCatalogDocument         = impl.ProviderCatalogDocument
 	ProviderCatalogEntry            = impl.ProviderCatalogEntry
 	RefInit                         = impl.RefInit

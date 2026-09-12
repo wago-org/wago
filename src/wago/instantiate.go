@@ -1,6 +1,7 @@
 package wago
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ type InstantiateOptions struct {
 	Imports                  Imports
 	GC                       GCConfig
 	store                    *referenceStore
+	startContext             context.Context
 
 	ownedImports             bool // private Runtime resolution has transferred ownership
 	runtime                  *Runtime
@@ -133,6 +135,11 @@ func instantiateCoreWithModuleLease(c *Compiled, opts InstantiateOptions, module
 	}
 	b := instanceBuilder{c: c, opts: opts, imports: opts.Imports, moduleUse: moduleUse}
 	defer b.releaseModuleUse()
+	if opts.startContext != nil {
+		if err := opts.startContext.Err(); err != nil {
+			return nil, err
+		}
+	}
 	if c == nil {
 		return nil, errors.New("wago: instantiate: nil compiled module")
 	}
@@ -1664,6 +1671,11 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 
 	// Run the start function (() -> ()) now that memory, globals, table, and data
 	// are initialized. A trap here aborts instantiation.
+	if opts.startContext != nil {
+		if err := opts.startContext.Err(); err != nil {
+			return nil, err
+		}
+	}
 	if c.HasStart {
 		if c.StartIsImport {
 			// Imported start: run the imported function through the same normalized
@@ -1695,22 +1707,9 @@ func (b *instanceBuilder) instantiate() (result *Instance, err error) {
 			// tenant's native result before public tokenization. The instance gate is
 			// acquired first, matching Invoke and prepared-call lock ordering.
 			startErr := func() error {
-				state := in.ensurePluginState()
-				state.invokeMu.Lock()
-				id := newInvocationID()
-				state.invocationID = id
-				defer func() {
-					state.invocationID = 0
-					state.invokeMu.Unlock()
-				}()
-				gcLease := in.lockGCInvocation(id)
-				defer gcLease.unlock()
-				previousReservation := in.swapInvocationReservation(in.constructionReservationSnapshot())
-				defer in.swapInvocationReservation(previousReservation)
-				if in.syncMode {
-					return in.callNativeSync(startEntry)
-				}
-				return in.callNativeAsync(startEntry, false)
+				state := in.lockInvocation(0)
+				defer state.unlockInvocation()
+				return in.invokeVoidEntry(opts.startContext, startEntry, in.constructionReservationSnapshot())
 			}()
 			if startErr != nil {
 				// Instantiation writes to imported tables are store side effects. If a
